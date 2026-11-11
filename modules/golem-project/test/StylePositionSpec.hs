@@ -43,8 +43,8 @@ rowTest (Row name src code needle skip path) = testCase (T.unpack name) $
 -- | The errors Golem makes while reading the values (FromValue).
 readingRows :: [Row]
 readingRows =
-  [ Row "code padding without a unit" "[paragraph-styles.code]\npadding = \"0\"\n" "G03006" "\"0\"" 0 (Just "paragraph-styles.code.padding"),
-    Row "character style padding without a unit" "[character-styles.code]\npadding = \"0\"\n" "G03006" "\"0\"" 0 (Just "character-styles.code.padding"),
+  [ Row "code padding without a unit" "[paragraph-styles.code]\npadding = \"1\"\n" "G03006" "\"1\"" 0 (Just "paragraph-styles.code.padding"),
+    Row "character style padding without a unit" "[character-styles.code]\npadding = \"1\"\n" "G03006" "\"1\"" 0 (Just "character-styles.code.padding"),
     Row "first-line-indent without a unit" "[paragraph-styles.body]\nfirst-line-indent = \"1\"\n" "G03006" "\"1\"" 0 (Just "paragraph-styles.body.first-line-indent"),
     Row "line-pitch without a unit" (T.replace "\"16pt\"" "\"20\"" grid) "G03006" "\"20\"" 0 (Just "page.grid.line-pitch"),
     Row "gutter without a unit" (T.replace "gutter = \"14mm\"" "gutter = \"14\"" grid) "G03006" "\"14\"" 0 Nothing,
