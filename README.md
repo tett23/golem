@@ -227,6 +227,8 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
+番号の表記は `{n:kanji}` のように名前で選ぶ。
+文字の波括弧は `\{` と `\}` で書く（[ADR 0318](./docs/adr/0318-retire-legacy-style-formats.md)）。
 
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
@@ -244,6 +246,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印だけを書く。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
+注の印の大きさは `[character-styles.note-mark]` の `size` で指定する（[ADR 0318](./docs/adr/0318-retire-legacy-style-formats.md)）。
 
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 索引の項目には、`[index reading=くみはん range=begin: 組版]` と `range=end` でページの範囲を、`see=組版` で「（組版を見よ）」「（組版をも見よ）」の参照を書ける。

@@ -1,6 +1,6 @@
 module DiagnosticsSpec (explainTests, noticeTests, projectDiagnosticTests, readingTests, evalDiagnosticTests, outputDiagnosticTests) where
 
-import Control.Monad (filterM, forM)
+import Control.Monad (filterM, forM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
@@ -55,7 +55,13 @@ readingTests =
     testCase "an empty expression is one G01020" $
       withChapters "" [("a.gm", "[=]\n")] [] $ \tmp -> do
         (codes, _) <- checked tmp
-        codes @?= [DiagnosticCode "G01020"]
+        codes @?= [DiagnosticCode "G01020"],
+    testCase "ADR 0318 I2: retired style forms stop every target even with --no-notices" $
+      withChapters "[lists]\nnumbers = [\"{{{a}}}\"]\n[notes]\nmark-size = \"0.5zw\"\n[masters.book]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n" [("a.gm", "一。\n")] [] $ \tmp ->
+        forM_ [TargetPdf, TargetHtml, TargetEpub, TargetText] $ \target -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [target], optNoNotices = True}
+          map diagCode (filter isError (brDiagnostics r)) @?= map DiagnosticCode ["G03250", "G03251", "G03252", "G03253"]
+          brWritten r @?= []
   ]
   where
     checked tmp = do
@@ -151,8 +157,7 @@ everyNoticeProjects =
         <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
         -- the role overhang of the fake fonts draws ink past the box of ” (G07126, docs/adr/0302)
         <> "\n[fonts.overhang]\nja = \"fonts/b.otf\"\n\n[character-styles.overhang]\nfont = \"overhang\"\n"
-        -- the ways of writing to be retired of docs/adr/0177: G03114, G03115, G03116 and G03117
-        <> "\n[lists]\nnumbers = [\"{{{n}}}\", \"{a}.\"]\n\n[notes]\nmark-size = \"0.5zw\"\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n"
+        <> "\n[lists]\nnumbers = [\"{n:lower-alpha}.\"]\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"x\"] }\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
     source =
       T.concat

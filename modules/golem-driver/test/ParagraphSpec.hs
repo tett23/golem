@@ -398,7 +398,7 @@ listTests =
         assertBool "css" (not ("@counter-style" `T.isInfixOf` css))
         assertBool "page" ("<ul>" `T.isInfixOf` page && "<ol>" `T.isInfixOf` page),
     testCase "plain text: [lists] markers by depth" $ do
-      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{a}.\"]\n"
+      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:lower-alpha}.\"]\n"
       t <- listText style "- 一\n  - 二\n    - 三\n\n+ 一\n  + 二\n" "horizontal"
       t @?= "■ 一\n　□ 二\n　　□ 三\n\n(1) 一\n　a. 二\n"
       t' <- listText "" "- 一\n\n+ 一\n" "horizontal"
