@@ -14,6 +14,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
+import Golem.Driver.Html (cssLength)
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
