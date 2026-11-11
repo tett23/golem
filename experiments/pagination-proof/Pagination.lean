@@ -69,4 +69,48 @@ theorem tallFigure : ∃ capacity height : Nat,
       legacyFigure capacity height kept ∧ noSendFromEmpty kept) := by
   exact ⟨3, 4, rfl, rfl, tallFigure_general 3 4 (by decide)⟩
 
+/- A column with capacity 3 and 2 lines already used. Two headings follow.
+   A break is the number of headings kept in this column. This is the
+   smallest `greedyKeepHeading` witness in the Alloy model's report. -/
+def twoHeadingFits (brk : Fin 3) : Prop := 2 + brk.val ≤ 3
+def twoHeadingGreedy (brk : Fin 3) : Prop := brk.val = 2 ∨ 2 + brk.val + 1 > 3
+def twoHeadingKeep (brk : Fin 3) : Prop := brk.val = 0 ∨ brk.val = 2
+
+theorem greedyKeepHeading :
+    (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
+    (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingKeep brk) ∧
+    (∀ brk : Fin 3, ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoHeadingKeep brk)) := by
+  refine ⟨⟨1, by simp [twoHeadingFits, twoHeadingGreedy]⟩, ⟨0, by simp [twoHeadingFits, twoHeadingKeep]⟩, ?_⟩
+  intro brk
+  unfold twoHeadingFits twoHeadingGreedy twoHeadingKeep
+  omega
+
+theorem noneMeetsAll :
+    ∀ brk : Fin 3,
+      ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoHeadingKeep brk) := by
+  exact greedyKeepHeading.2.2
+
+/- A two-line paragraph after the same partly used column. Breaking after
+   its first line would make both an orphan and a widow. -/
+def twoLineOrphan (brk : Fin 3) : Prop := brk.val ≠ 1
+def twoLineWidow (brk : Fin 3) : Prop := brk.val ≠ 1
+
+theorem greedyOrphan :
+    (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
+    (∃ brk : Fin 3, twoHeadingFits brk ∧ twoLineOrphan brk) ∧
+    (∀ brk : Fin 3, ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoLineOrphan brk)) := by
+  refine ⟨⟨1, by simp [twoHeadingFits, twoHeadingGreedy]⟩, ⟨0, by simp [twoHeadingFits, twoLineOrphan]⟩, ?_⟩
+  intro brk
+  unfold twoHeadingFits twoHeadingGreedy twoLineOrphan
+  omega
+
+theorem greedyWidow :
+    (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
+    (∃ brk : Fin 3, twoHeadingFits brk ∧ twoLineWidow brk) ∧
+    (∀ brk : Fin 3, ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoLineWidow brk)) := by
+  refine ⟨⟨1, by simp [twoHeadingFits, twoHeadingGreedy]⟩, ⟨0, by simp [twoHeadingFits, twoLineWidow]⟩, ?_⟩
+  intro brk
+  unfold twoHeadingFits twoHeadingGreedy twoLineWidow
+  omega
+
 end GolemPagination
