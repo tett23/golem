@@ -115,7 +115,7 @@ tomlTests =
           exactly "manifest.toml" "[targets.text]\nvariants = ['▮" ["vertical", "horizontal"],
           exactly "manifest.toml" "[targets.text]\nvariants = ▮" [],
           including "manifest.toml" "[diagnostics]\nsilence-notices = ['▮" ["G02062"] ["G03024"],
-          exactly "manifest.toml" "[diagnostics]\nsilence-info = ['▮" ["G02254", "G07047", "E05108"],
+          exactly "manifest.toml" "[diagnostics]\nsilence-info = ['▮" ["G02254", "G05100", "G07047", "E05108"],
           exactly "manifest.toml" "[vars]\nflag = ▮" []
         ],
       testGroup
