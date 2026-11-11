@@ -72,7 +72,7 @@ import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 #if !defined(wasm32_HOST_ARCH)
 import Foreign.C.Error (throwErrnoIfMinus1Retry_)
-import Foreign.C.String (CString, withCString)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
 #endif
 import Golem.Assemble
@@ -773,8 +773,8 @@ cleanFinderInfo root paths = do
     absoluteRoot <- Directory.canonicalizePath root
     forM_ (nub paths) $ \path -> do
       let relative = FilePath.normalise (FilePath.makeRelative absoluteRoot (if FilePath.isAbsolute path then path else absoluteRoot </> path))
-      withCString absoluteRoot $ \rootString ->
-        withCString relative $ \relativeString ->
+      BS.useAsCString (TE.encodeUtf8 (T.pack absoluteRoot)) $ \rootString ->
+        BS.useAsCString (TE.encodeUtf8 (T.pack relative)) $ \relativeString ->
           throwErrnoIfMinus1Retry_ ("remove " <> absoluteRoot </> relative </> ".DS_Store")
             (cleanFinderInfoAt rootString relativeString)
 
