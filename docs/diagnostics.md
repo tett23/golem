@@ -5963,6 +5963,10 @@ cite には書誌データのキーを書きます
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [ADR 0316](adr/0316-retire-dash-line-ranges.md)
 
+### 主な原因
+
+- `@listing` の `lines` またはコードブロックの `highlight` に `1-3` のような範囲を書いた。
+
 ### 直し方
 
 `lines=1-3` を `lines=1...3` に書き換える。
