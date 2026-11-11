@@ -1,3 +1,6 @@
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+
 {- | The build pipeline (golem-driver ADR 0001): project → parse → S0 → S1
 → outputs. PDF (S2 and later) is added by golem-driver ADR 0002.
 -}
@@ -48,6 +51,9 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
+#if !defined(wasm32_HOST_ARCH)
+import Control.Exception qualified as Exception
+#endif
 import Control.Monad (filterM, forM, forM_, join, mfilter, when)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
@@ -63,6 +69,10 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
+#if !defined(wasm32_HOST_ARCH)
+import Foreign.C.Error (throwErrnoIfMinus1Retry_)
+import Foreign.C.Types (CInt (..))
+#endif
 import Golem.Assemble
 import Golem.Assemble.Formats (MarkFormat (..))
 import Golem.Assemble.ListMarkers (defaultNumberFormat, listNumberDiagnostics)
@@ -103,6 +113,10 @@ import Golem.Typeset
 import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
+#if !defined(wasm32_HOST_ARCH)
+import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
+import System.Posix.Types (Fd (..))
+#endif
 
 data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
   deriving stock (Eq, Ord, Show)
@@ -743,8 +757,35 @@ targetsOf m =
   let t = manifestTargets m
    in [TargetHtml | tgHtml t] <> [TargetEpub | isJust (tgEpub t)] <> [TargetText | not (null (tgText t))] <> [TargetPdf | isJust (tgPdf t)]
 
+#if !defined(wasm32_HOST_ARCH)
+foreign import ccall safe "golem_lock_directory" lockDirectory :: CInt -> IO CInt
+
+-- | Hold an exclusive lock on the project directory while writing targets or
+-- removing an earlier PDF. The directory itself is the lock, so a build
+-- leaves no lock file in the project.
+withOutputLock :: FilePath -> IO a -> IO a
+withOutputLock root action = do
+  exists <- doesDirectoryExist root
+  if exists
+    then Exception.bracket (openFd root ReadOnly defaultFileFlags) closeFd $ \(Fd fd) -> do
+      throwErrnoIfMinus1Retry_ "lock project directory" (lockDirectory fd)
+      action
+    else action
+#else
+withOutputLock :: FilePath -> IO a -> IO a
+withOutputLock _ action = action
+#endif
+
 build :: BuildOptions -> IO BuildResult
-build opts = fst <$> buildCore False opts
+build opts = withOutputLock (optRoot opts) $ do
+  (result, _, selectedTargets) <- buildCore False opts
+  let pdfDir = optRoot opts </> "build/pdf"
+      pdfWasWritten = any ((== pdfDir) . takeDirectory) (brWritten result)
+      pdfWasSelected = TargetPdf `elem` fromMaybe [TargetPdf] selectedTargets
+  when (optProfile opts == Prod && not (optCheckOnly opts) && pdfWasSelected && hasErrors (brDiagnostics result) && not pdfWasWritten) $ do
+    unsafe <- unsafeOutputDirs (optRoot opts) [TargetPdf]
+    when (null unsafe) (cleanDir pdfDir)
+  pure result
 
 -- | The PDF of a project built from its files in memory (docs/adr/0199).
 data BuildInMemory = BuildInMemory
@@ -765,17 +806,17 @@ nothing. The PDF and the diagnostics are those of golem build --target pdf
 buildPdfInMemory :: Map FilePath BS.ByteString -> IO BuildInMemory
 buildPdfInMemory table = do
   let opts = (defaultOptions ".") {optFiles = memoryFiles table, optTargets = Just [TargetPdf], optParallel = False}
-  (r, pdf) <- buildCore True opts
+  (r, pdf, _) <- buildCore True opts
   pure (BuildInMemory (fst <$> pdf) (brDiagnostics r) (brSources r))
 
 {- | The build; with @inMemory@, the PDF is not written but returned with
 its view (golem preflight, golem-cli ADR 0006).
 -}
-buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View))
+buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View), Maybe [Target])
 buildCore inMemory opts = do
   ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
   case ev of
-    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing)
+    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, optTargets opts)
     Right e -> do
       let project = evProject e
           finish = finishWith (manifestSilencedNotices (projectManifest project)) (manifestSilencedInfo (projectManifest project))
@@ -827,8 +868,8 @@ buildCore inMemory opts = do
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf)
-        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, Just targets)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, Just targets)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
@@ -926,12 +967,12 @@ preflight po = do
       then
         pure $
           if isJust (poRules po)
-            then Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
+            then Left ([diagnostic "G09100" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
             else Right (printRules, "組み込みの print")
       else do
         bytes <- BS.readFile path
         pure $ case TE.decodeUtf8' bytes of
-          Left _ -> Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
+          Left _ -> Left ([diagnostic "G09101" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
           Right src -> case parseRules rulesFid src of
             Left ds -> Left (ds, src)
             Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
@@ -939,7 +980,7 @@ preflight po = do
     Left (ds, src) -> pure (PreflightResult (sortDiagnostics ds) (Map.singleton rulesFid (SourceInfo path (mkLineIndex src))) Nothing Nothing "" "")
     Right (rules, label) -> do
       let opts = (defaultOptions (poRoot po)) {optTargets = Just [TargetPdf], optProfile = Prod, optMarks = poMarks po, optFonts = poFonts po, optParallel = poParallel po}
-      (r, pdf) <- buildCore True opts
+      (r, pdf, _) <- buildCore True opts
       let checks = maybe [] (check rules . snd) pdf
       pure (PreflightResult (sortDiagnostics (brDiagnostics r <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
 

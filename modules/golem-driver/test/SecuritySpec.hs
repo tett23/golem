@@ -110,6 +110,43 @@ securityTests =
         assertBool (show (brWritten r)) (any ((root </> "build" </> "html") `isPrefixOf`) (brWritten r) && not (null (brWritten r)))
         doesFileExist (root </> "build" </> "html" </> "a.xhtml") >>= assertBool "written in build/html"
         doesFileExist (v </> "pdf" </> "precious.txt") >>= assertBool "kept",
+      testCase "Golem ADR 0326 B1 and B4: prod clears stale PDF and dev keeps it" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
+        let pdfDir = tmp </> "build/pdf"
+            oldPdf = pdfDir </> "book.pdf"
+            oldPages = pdfDir </> "pages.json"
+        createDirectoryIfMissing True pdfDir
+        BS.writeFile oldPdf "previous pdf"
+        BS.writeFile oldPages "previous pages"
+        dev <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Dev}
+        assertBool "dev build failed" (any isError (brDiagnostics dev))
+        BS.readFile oldPdf >>= (@?= "previous pdf")
+        BS.readFile oldPages >>= (@?= "previous pages")
+        prod <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Prod}
+        assertBool "prod build failed" (any isError (brDiagnostics prod))
+        doesFileExist oldPdf >>= (@?= False)
+        doesFileExist oldPages >>= (@?= False),
+      testCase "Golem ADR 0326 B3: prod failure keeps a linked PDF directory's target" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        let root = tmp </> "project"
+            outside = tmp </> "outside"
+        createDirectoryIfMissing True (root </> "build")
+        createDirectoryIfMissing True outside
+        project root "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
+        BS.writeFile (outside </> "precious.pdf") "keep me"
+        createDirectoryLink outside (root </> "build/pdf")
+        r <- build (defaultOptions root) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Prod}
+        assertBool "prod build failed" (any isError (brDiagnostics r))
+        BS.readFile (outside </> "precious.pdf") >>= (@?= "keep me"),
+      testCase "Golem ADR 0326 B2: check and HTML-only builds keep the old PDF" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
+        let pdfDir = tmp </> "build/pdf"
+            oldPdf = pdfDir </> "book.pdf"
+        createDirectoryIfMissing True pdfDir
+        BS.writeFile oldPdf "previous pdf"
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Prod, optCheckOnly = True}
+        BS.readFile oldPdf >>= (@?= "previous pdf")
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider, optProfile = Prod}
+        BS.readFile oldPdf >>= (@?= "previous pdf"),
       testCase "a figure path with a quote stays inside the src attribute" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         img <- tinyImage
         let name = "q\" onerror=\"alert(1).jpg"

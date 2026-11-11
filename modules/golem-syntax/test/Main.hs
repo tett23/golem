@@ -184,7 +184,7 @@ tests =
         [c | c <- noticeCodes <> infoCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
         map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "02", "03", "03", "03", "03", "03", "03", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "07", "07", "07", "07", "07", "08", "02"]
-        map stage infoCodes @?= ["07", "05"]
+        map stage infoCodes @?= ["05", "07", "05"]
         map stage profileDependentCodes @?= ["05", "03", "08", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
       testCase "human rendering" $ do
@@ -287,7 +287,7 @@ infoTests =
         diagSeverity (adjustForProfile Prod d) @?= Info
         diagSeverity (adjustForProfile Dev d) @?= Info,
       testCase "the initial info codes, apart from the notices and the profile" $ do
-        infoCodes @?= [DiagnosticCode "G07047", DiagnosticCode "E05108"]
+        infoCodes @?= [DiagnosticCode "G05100", DiagnosticCode "G07047", DiagnosticCode "E05108"]
         [c | c <- infoCodes, c `elem` noticeCodes] @?= []
         [c | c <- infoCodes, c `elem` profileDependentCodes] @?= [],
       testCase "an info early in the code and the file comes after a notice late in them" $ do
