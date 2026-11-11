@@ -4,7 +4,7 @@
 
 この付録は、プリフライトの設定（[code: preflight.toml]）に書けるテーブルとキーをすべて並べたものです。
 使い方の流れは、第[ref-number output]章の「[ref-title preflight]」（[ref-page preflight] ページ）で説明しています。[index reading=ぷりふらいと/せってい: プリフライト/設定]
-ここに載せていないキーを書くと、エラー（G09001）になります。
+ここに載せていないキーを書くと、エラー（G09103）になります。
 [code: preflight.toml] も、[code: manifest.toml] と同じく TOML の形式で書きます（第[ref-number basics]章「[ref-title toml]」）。
 
 [code: golem preflight] は、[code: --rules] で指したファイルを読みます。
@@ -17,7 +17,7 @@
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: based-on] | [code: "print"] | 元にする組み込みの設定です。[code: "basic"]、[code: "print"]、[code: "none"] のどれかです。 |
+| [code: based-on] | [code: "print"] | 元にする組み込みの設定です。[code: "basic"]、[code: "print"]、[code: "screen"]、[code: "none"] のどれかです。 |
 | [code: name] | ファイル名 | 要約の行の「設定」に出す名前です。 |
 
 ほかの最上位のキーは、下の検査の名前のテーブルです。
@@ -215,5 +215,6 @@ PDF の図版の中の色の情報を持たない RGB の色と、SVG の図版�
 | [code: cmy-plates] | off | off |
 
 [code: basic] は、InDesign の \[基本\] のプロファイルに当たります。
+[code: screen] は [code: basic] の検査から PDF/X-4 の検査を外した設定です。
 [code: none] は、すべての検査を [code: off] にした設定です。
 [code: print] の値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではありません。

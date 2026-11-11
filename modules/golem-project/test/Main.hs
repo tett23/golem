@@ -82,6 +82,24 @@ separators p =
     Just path <- [lookupPath fid (projectFiles p)]
   ]
 
+languageTests :: TestTree
+languageTests =
+  testGroup
+    "manifest language (Golem ADR 0324)"
+    [ testCase "L1: reject each malformed tag once" $
+        forM_ ["", "x", "ja_JP", "ja-"] $ \tag ->
+          codes (parse tag "") @?= ["G03119"],
+      testCase "L1: schema errors precede language validation" $
+        codes (parse "ja_JP" "bogus = 1\n") @?= ["G03001"],
+      testCase "L3: preserve the spelling of every accepted tag" $
+        forM_ ["ja", "ja-JP", "JA-jp", "i-klingon", "en-US", "JP", "US", "DE", "de", "jbo", "sl-rozaj", "ja-x-my-dialect", "x-local"] $ \tag ->
+          fmap (mdLanguage . manifestMetadata) (parse tag "") @?= Right tag
+    ]
+  where
+    parse tag extra =
+      parseManifest (FileId 0) $
+        T.replace "language = \"ja\"" (extra <> "language = \"" <> tag <> "\"") (manifest ["\"a.gm\""])
+
 sourceTests :: TestTree
 sourceTests =
   testGroup
@@ -135,7 +153,7 @@ sourceTests =
           [ ("manifest.toml", manifestWith ["\"a.gm\"", "{ file = \"b.gm\", paragraph-separator = \"blank-line\" }"] "[source]\nparagraph-separator = \"line\"\n"),
             ("a.gm", "@import c.gm as c\n"),
             ("b.gm", "@import c.gm as c\n"),
-            ("c.gm", "@set x = 1\n")
+            ("c.gm", "set x = 1\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -782,8 +800,8 @@ tests =
             ("ch/01.gm", "@import common/v.gm as v\n\n本文。\n"),
             ("ch/02.gm", "@import common/v.gm as v\n@import common/w.gm as w\n"),
             ("ch/03.gm", "三。\n"),
-            ("common/v.gm", "@import common/w.gm as w\n@set x = 1\n"),
-            ("common/w.gm", "@set y = 2\n")
+            ("common/v.gm", "@import common/w.gm as w\nset x = 1\n"),
+            ("common/w.gm", "set y = 2\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -821,8 +839,8 @@ tests =
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
             ("a.gm", "@import Common.gm as c\n"),
             ("b.gm", "@import common.gm as c\n"),
-            ("Common.gm", "@set x = 1\n"),
-            ("common.gm", "@set x = 1\n")
+            ("Common.gm", "set x = 1\n"),
+            ("common.gm", "set x = 1\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -834,7 +852,7 @@ tests =
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
             ("a.gm", "@import real.gm as r\n"),
             ("b.gm", "@import link.gm as r\n"),
-            ("real.gm", "@set x = 1\n")
+            ("real.gm", "set x = 1\n")
           ]
         $ \root -> do
           createFileLink (root </> "real.gm") (root </> "link.gm")
@@ -845,6 +863,7 @@ tests =
       testCase "unknown manifest keys and missing id are errors" $ do
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[extra]\nx = 1\n"), ("a.gm", "")] $ \root -> loadProject root >>= (@?= ["G03001"]) . codes
         withProject [("manifest.toml", T.replace "id = " "idd = " (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> loadProject root >>= (@?= True) . (not . null) . codes,
+      languageTests,
       sourceTests,
       diagnosticCodeTests,
       tomlMessageTests,

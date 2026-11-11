@@ -1,6 +1,6 @@
 # ADR 0335: golem repl emet で Emet の式を対話的に評価する
 
-ステータス: 採択（未実装）
+ステータス: 採択→[ADR 0348](0348-revise-emet-expression-repl.md)
 
 ## 文脈
 

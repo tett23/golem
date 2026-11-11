@@ -6,13 +6,15 @@ import Data.ByteString qualified as BS
 import Data.Char (isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
-import Data.List (intercalate, isPrefixOf, isSuffixOf, stripPrefix)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, sortOn, stripPrefix)
 import Data.Map.Strict qualified as Map
+import Data.Ord (Down (..))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
+import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
@@ -40,7 +42,7 @@ import Options.Applicative.Extra (helperWith)
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeExtension, (</>))
+import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, (</>))
 import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
@@ -49,7 +51,7 @@ data Format = Human | Json
 data InspectAs = AsCst | AsAst | AsIr | AsCbor
 
 data Command
-  = New FilePath Language Bool
+  = New FilePath Language Bool Bool
   | Build [Target] Profile CropMarks Bool Bool Format
   | Check Profile CropMarks Bool Bool Format
   | Preflight (Maybe FilePath) CropMarks Format
@@ -192,7 +194,7 @@ commands =
   subparser
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
-        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
+        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない") <*> switch (long "screen" <> help "画面向けのプリフライト設定を作る")) "プロジェクトを作る"
         <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を build/ に書く"
         <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
@@ -243,9 +245,9 @@ localize = intercalate "\n" . go . lines
 
 run :: Command -> IO ExitCode
 run = \case
-  New dir lang noFonts -> newProject dir lang noFonts
-  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
-  Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+  New dir lang noFonts screen -> newProject dir lang noFonts screen
+  Build tgs profile marks quiet verbose fmt -> report fmt =<< runBuild "." (WriteTargets tgs) profile marks quiet verbose
+  Check profile marks quiet verbose fmt -> report fmt =<< runBuild "." CheckOnly profile marks quiet verbose
   Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
@@ -290,9 +292,8 @@ report :: Format -> BuildResult -> IO ExitCode
 report fmt r = do
   let ds = brDiagnostics r
   case fmt of
-    Human -> putHuman (brSources r) ds
-    Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
-  pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+    Human -> putHuman (brSources r) ds >> pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+    Json -> let (code, text) = jsonResult r in TIO.hPutStr stderr text >> pure code
 
 {- | golem preflight (golem-cli ADR 0006): the diagnostics, and in the human
 format a summary as the last line when the PDF was made.
@@ -420,12 +421,12 @@ relativePath p = do
   pure (makeRelative cwd (joinPath parts))
 
 -- | golem new (golem-cli ADR 0003).
-newProject :: FilePath -> Language -> Bool -> IO ExitCode
-newProject dir lang noFonts = do
+newProject :: FilePath -> Language -> Bool -> Bool -> IO ExitCode
+newProject dir lang noFonts screen = do
   uuid <- UUID.nextRandom
   fetch <- httpsFetcher
   let fonts = templateFonts lang
-  r <- createProject dir (templateFiles lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
+  r <- createProject dir (templateFilesFor screen lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
   case r of
     Left (FetchFailed es) -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
     Left (Conflicts cs) -> putNewDiagnostics (map conflictDiagnostic cs) >> pure (ExitFailure 1)
@@ -478,6 +479,7 @@ formatFiles check files0 = do
   case files of
     Nothing -> pure (ExitFailure 1)
     Just fs -> do
+      unless check $ cleanFinderInfo "." ("." : map (takeDirectory . fst) fs)
       results <- mapM (uncurry one) fs
       pure (if and results then ExitSuccess else ExitFailure 1)
   where
@@ -522,12 +524,9 @@ tablePaths project = do
   resolved <- mapM (resolveInRoot ".") paths
   pure (nubOrd (rights resolved))
 
-{- | The sources of the project in the current directory, for golem fmt
-without arguments (golem-fmt ADR 0004). When the load stops only at the CR
-of sources (G01003 in chapters and imported files), those sources go
-preprocessed into the overlay and the project is loaded again. Each retry
-adds a file to the overlay, so the retries end; a file that is G01003 again
-after it was overlaid ends them with the failure.
+{- | The sources of the project for golem fmt without arguments. Recoverable
+CR and missing quotes are fixed only in the loading overlay. The original
+source is still passed to the formatter and is never written after an error.
 -}
 projectSourcePaths :: IO (Either ProjectFailure (Project, [FilePath]))
 projectSourcePaths = go Map.empty
@@ -535,20 +534,30 @@ projectSourcePaths = go Map.empty
     go overlay =
       loadProjectWith (diskFiles ".") overlay "." >>= \case
         Right p -> pure (Right (p, map sfPath (Map.elems (projectSources p))))
-        Left f -> case crSources f of
-          Just paths
-            | not (any (`Map.member` overlay) paths) -> do
-                fixed <- traverse (\path -> (path,) . preprocess . TE.decodeUtf8Lenient <$> BS.readFile path) paths
-                go (Map.union overlay (Map.fromList fixed))
+        Left f -> case recoverSources f of
+          Just grouped -> do
+            fixed <-
+              traverse
+                ( \(path, ds) -> do
+                    original <- maybe (TE.decodeUtf8Lenient <$> BS.readFile path) pure (Map.lookup path overlay)
+                    let next = if any ((== DiagnosticCode "G01003") . diagCode) ds then preprocess original else quoteOverlay original ds
+                    pure (path, next)
+                )
+                grouped
+            let overlay' = Map.union (Map.fromList fixed) overlay
+            if overlay' /= overlay then go overlay' else pure (Left f)
           _ -> pure (Left f)
-    -- the sources the errors point at, when every error is G01003 in a
-    -- source; manifest.toml is not formatted
-    crSources f =
+    -- Only these syntax errors permit discovering the remaining source paths.
+    recoverSources f =
       let errs = filter ((== Error) . diagSeverity) (pfDiagnostics f)
           pathOf d = siPath <$> Map.lookup (spanFile (diagSpan d)) (pfSources f)
-       in if not (null errs) && all ((== DiagnosticCode "G01003") . diagCode) errs
-            then traverse pathOf errs >>= \ps -> if "manifest.toml" `elem` ps then Nothing else Just (nubOrd ps)
+       in if not (null errs) && all ((`elem` [DiagnosticCode "G01003", DiagnosticCode "G01102"]) . diagCode) errs
+            then traverse (\d -> (,d) <$> pathOf d) errs >>= \pairs -> if any ((== "manifest.toml") . fst) pairs then Nothing else Just (Map.toList (Map.fromListWith (<>) [(p, [d]) | (p, d) <- pairs]))
             else Nothing
+    quoteOverlay original ds =
+      let edits = sortOn (Down . spanStart . fst) (concatMap (concatMap fixEdits . diagFixes) ds)
+          replace bytes (sp, replacement) = BS.take (spanStart sp) bytes <> TE.encodeUtf8 replacement <> BS.drop (spanEnd sp) bytes
+       in TE.decodeUtf8Lenient (foldl' replace (TE.encodeUtf8 original) edits)
 
 -- | golem plugin lock (golem-plugin ADR 0002).
 pluginLock :: IO ExitCode

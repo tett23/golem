@@ -104,6 +104,7 @@ rulesWith =
   [ (none, blankLines),
     (none, trailingWhitespace),
     (none, commandSpacing),
+    (none, commentSpacing),
     (none, tableSpacing),
     (removableEscape, escapes),
     (none, finalNewline)
@@ -216,6 +217,49 @@ commandSpacing = rewrite
     startsLine = \case
       (e : _) -> isTok KNewline e || isTok KEquals e || isNode NCommandBody e
       [] -> True
+
+{- | Spaces around comments in argument lists and manuscript expressions
+(Golem ADR 0339). The trivia token itself is kept byte for byte.
+-}
+commentSpacing :: Node -> Node
+commentSpacing = go
+  where
+    go n =
+      let cs = map descend (nodeChildren n)
+          k = nodeKind n
+          eligible = k `elem` [NInlineCommand, NBlockCommand, NCodeBlock, NExpr, NRangeExpr, NBinaryExpr, NUnaryExpr, NCallExpr, NVarExpr, NArrayExpr, NHashExpr, NHashEntry, NParenExpr]
+       in node k (if eligible then adjust cs else cs)
+    descend (ElemNode n) = ElemNode (go n)
+    descend e = e
+    adjust cs = case cs of
+      (a : ElemToken (Token KWhitespace _) : b : rest)
+        | edgeLast a `elem` map Just [KExprOpen, KLParen, KLBracket, KLBrace], edgeFirst b == Just KComment -> a : adjust (b : rest)
+      (a : ElemToken (Token KWhitespace _) : b : rest)
+        | edgeLast a == Just KComment, edgeFirst b `elem` map Just [KRBracket, KRParen, KRBrace, KColon] -> a : adjust (b : rest)
+      (a : ElemToken (Token KWhitespace _) : b : rest)
+        | boundary a b -> a : token KWhitespace " " : adjust (b : rest)
+      (a : b : rest)
+        | boundary a b -> a : token KWhitespace " " : adjust (b : rest)
+      (a : rest) -> a : adjust rest
+      [] -> []
+    boundary a b =
+      let left = edgeLast a
+          right = edgeFirst b
+          comment = left == Just KComment || right == Just KComment
+          tight =
+            left `elem` map Just [KExprOpen, KLParen, KLBracket, KLBrace]
+              || right `elem` map Just [KRBracket, KRParen, KRBrace, KColon, KNewline]
+       in comment && not tight && left /= Just KWhitespace && right /= Just KWhitespace
+    edgeFirst = \case
+      ElemToken t -> Just (tokKind t)
+      ElemNode n -> case nodeChildren n of
+        (e : _) -> edgeFirst e
+        [] -> Nothing
+    edgeLast = \case
+      ElemToken t -> Just (tokKind t)
+      ElemNode n -> case reverse (nodeChildren n) of
+        (e : _) -> edgeLast e
+        [] -> Nothing
 
 {- | One space on each side of every @|@ of a table row; column widths are
 not aligned (golem-fmt ADR 0001).

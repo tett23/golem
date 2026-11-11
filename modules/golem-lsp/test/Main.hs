@@ -34,6 +34,7 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import PositionEnumSpec (positionEnumTests)
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
 import StaleS1Spec (staleS1Tests)
@@ -109,7 +110,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-lsp (ADR 0001)"
-    [ testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
+    [ positionEnumTests,
+      testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
       testCase "definition: label across files, import path, namespaced variable" $ do
         ws <- openWorkspace root
@@ -394,7 +396,7 @@ tests =
         wsFullEvaluations ws1 @?= n0
         ws2 <- updateFile ws1 "b.gm" "@label second\n# 別の題\n\n[ref-title intro]と[ref-page intro]を読む。\n"
         wsFullEvaluations ws2 @?= n0 + 1
-        ws3 <- updateFile ws2 "common/values.gm" "@set version = \"2.0\"\n"
+        ws3 <- updateFile ws2 "common/values.gm" "set version = \"2.0\"\n"
         wsFullEvaluations ws3 @?= n0 + 2
         hover ws3 "a.gm" (at ws3 "a.gm" "values.version" 2) @?= Just "2.0",
       testCase "hover: S0 values, S1 values, and page numbers left to S2" $ do

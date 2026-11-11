@@ -95,7 +95,7 @@ malformed =
         [(bare e, at e) | SplatPositional e <- argsOf "[f *[]]\n"] @?= [(EError, (5, 5))]
         syntaxDiags "[f *[]]\n" @?= [("G01020", 5, 5)],
       testCase "@set without an expression is a SetVar of an EError at the G01020" $ do
-        [(locValue n, bare e, at e) | SetVar n e <- blocks "@set x = +\n"] @?= [("x", EError, (9, 10))]
+        [(locValue n, bare e, at e) | SetVar _ n e <- blocks "@set x = +\n"] @?= [("x", EError, (9, 10))]
         syntaxDiags "@set x = +\n" @?= [("G01020", 9, 10)],
       testCase "a hash entry without a value is an EError" $ do
         bare (exprIn "[= {a:}]\n") @?= EError
