@@ -215,12 +215,22 @@ pdfFigureTests =
       writeProject tmp miniManifest (figStyle horizontalStyle) "@figure images/b.png alt=\"t\"\n" [("images/b.png", png True)]
       r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
       map diagMessage (filter isError (brDiagnostics r)) @?= ["図版を PDF に置けません: images/b.png（インターレースの PNG は使えません）"],
-    testCase "an encrypted PDF figure is G08010" $ do
+    testCase "Golem ADR 0331 I1: an encrypted PDF figure is G08105" $ do
       figPdf <- golemPdf
       let (before, rest) = BS.breakSubstring "trailer\n<<" figPdf
           encrypted = before <> "trailer\n<< /Encrypt 1 0 R" <> BS.drop 10 rest
       (codes, written) <- buildIn Dev [TargetPdf] "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", encrypted), ("images/f.png", png False)]
-      codes @?= [DiagnosticCode "G08010"]
+      codes @?= [DiagnosticCode "G08105"]
+      written @?= False,
+    testCase "Golem ADR 0331 I1 and I2: a missing PDF page is G08106" $ do
+      figPdf <- golemPdf
+      (codes, written) <- buildIn Dev [TargetPdf] "@figure images/f.pdf page=2 web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
+      codes @?= [DiagnosticCode "G08106"]
+      written @?= False,
+    testCase "Golem ADR 0331 I1: qpdf-encrypted PDF is G08105" $ do
+      encrypted <- BS.readFile "test/fixtures/figures/images/chart-encrypted.pdf"
+      (codes, written) <- buildIn Dev [TargetPdf] "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", encrypted), ("images/f.png", png False)]
+      codes @?= [DiagnosticCode "G08105"]
       written @?= False,
     testCase "HTML does not read the images: a broken PNG is not G08010" $ do
       (codes, _) <- buildIn Dev [TargetHtml] "@figure images/a.png alt=\"t\"\n" [("images/a.png", BS.take 20 (png False))]
