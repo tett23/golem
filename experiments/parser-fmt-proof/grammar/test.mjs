@@ -67,6 +67,9 @@ try {
   assert.notEqual(failed.status, 0, 'unsupported PEG alternatives must fail generation');
   assert.match(failed.stderr, /StringLit/);
   assert.match(failed.stderr, /UnsupportedTerm/);
+  writeFileSync(join(work, 'Golem.hpeg'), original.replace(/^StringLit <- .*$/m, "$& / 'extra'"));
+  const strictString = spawnSync(process.execPath, [join(here, 'generate.mjs'), join(work, 'Golem.hpeg'), generated], { encoding: 'utf8' });
+  assert.match(strictString.stderr, /unsupported StringLit choice \d+ at .*: 'extra'/);
 
   const unsupportedArguments = original.replace(/^Arguments <- .*$/m, '$& / UnsupportedTerm');
   const argumentFailure = generate(unsupportedArguments);
@@ -79,6 +82,11 @@ try {
   assert.notEqual(wordFailure.status, 0, 'unsupported word branch must fail generation');
   assert.match(wordFailure.stderr, /Word/);
   assert.match(wordFailure.stderr, /UnsupportedTerm/);
+  const changedWordSource = join(work, 'Golem.hpeg');
+  writeFileSync(changedWordSource, original.replace(/^Word <- .*$/m, "$& / 'a' / 'b'"));
+  const strictWord = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedWordSource, generated], { encoding: 'utf8' });
+  assert.match(strictWord.stderr, /unsupported Word choice \d+ at .*: 'a'/, 'first new Word branch needs a choice report');
+  assert.match(strictWord.stderr, /unsupported Word choice \d+ at .*: 'b'/, 'second new Word branch needs a choice report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);

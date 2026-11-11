@@ -97,22 +97,6 @@ function choices(rhs) {
   return branches;
 }
 
-if (!fragment) {
-  for (const [name, rhs, line] of sourceRules) {
-    if (name === 'StringLit') continue;
-    if (name === 'Word') {
-      const normalized = rhs.replaceAll(' { () }', '').replace(/\s+/g, ' ').trim();
-      const special = normalized.indexOf(' / ');
-      if (special >= 0) errors.push(`unsupported Word choice 1 at ${input}:${line}: ${normalized.slice(0, special)}`);
-      continue;
-    }
-    try {
-      choices(rhs).forEach((choice, index) => errors.push(`unsupported ${name} choice ${index + 1} at ${input}:${line + choice.lineOffset}: ${choice.text}`));
-    } catch (error) {
-      errors.push(`unsupported ${name} choice ?: ${error.message}`);
-    }
-  }
-}
 function rule(name) {
   const lines = grammar.split('\n');
   const starts = lines.flatMap((line, index) => line.startsWith(`${name} <- `) ? [index] : []);
@@ -181,6 +165,21 @@ const shapes = {
   ArgValue: ['StringLit / ExprCtx / ReservedBracket / InlineCommand(0) / Word'],
   KeywordArgument: ['Word Eq ArgValue']
 };
+if (!fragment) {
+  const supportedWord = shapes.Word[0];
+  for (const [name, rhs, line] of sourceRules) {
+    try {
+      if (name === 'StringLit' && alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary)) continue;
+      choices(rhs).forEach((choice, index) => {
+        const normalized = choice.text.replaceAll(' { () }', '').trim();
+        if (name === 'Word' && normalized === supportedWord) return;
+        errors.push(`unsupported ${name} choice ${index + 1} at ${input}:${line + choice.lineOffset}: ${choice.text}`);
+      });
+    } catch (error) {
+      errors.push(`unsupported ${name} choice ?: ${error.message}`);
+    }
+  }
+}
 for (const [name, rhs] of Object.entries(productions)) {
   if (!shapes[name].includes(rhs)) errors.push(`${name}: unsupported production ${JSON.stringify(rhs)}`);
 }
