@@ -1,6 +1,6 @@
 module PositionEnumSpec (positionEnumTests) where
 
-import Control.Monad (replicateM)
+import Control.Monad (replicateM, when)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -45,9 +45,8 @@ positionEnumTests =
               assertEqual context utf16 (Lsp.toLineCol Lsp.Utf16 index byte)
               assertEqual context (Just byte) (Lsp.fromLineCol Lsp.Utf16 index utf16)
               assertEqual context (Just byte) (Lsp.fromLineCol Lsp.Utf8 index (Lsp.toLineCol Lsp.Utf8 index byte))
-              if source == "a😀" && count == 2
-                then Lsp.toLineCol Lsp.Utf8 index byte @?= LineCol 0 5
-                else pure ()
+              when (source == "a😀" && count == 2) $
+                Lsp.toLineCol Lsp.Utf8 index byte @?= LineCol 0 5
           )
           boundaries,
       testCase "U2: pagesJson uses independent UTF-16 line and column" $
