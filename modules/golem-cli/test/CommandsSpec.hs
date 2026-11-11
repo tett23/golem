@@ -117,7 +117,7 @@ headingLimitTests :: TestTree
 headingLimitTests =
   testGroup
     "heading-limit"
-    [ testCase ("G3/H1/H2/C1: " <> scenario <> " " <> name) $
+    [ testCase ("H1/H2/C1: " <> scenario <> " " <> name) $
         withSystemTempDirectory "golem-heading" $ \dir -> do
           let manifest = T.replace "chapters = [\"a.gm\"]" ("chapters = " <> chapters) (manifestToml testManifest)
           writeFiles dir (("manifest.toml", T.unpack manifest) : [(file, T.unpack text) | (file, text) <- files])
@@ -135,7 +135,8 @@ headingLimitTests =
     firstHeading = T.unlines (take 5 (T.lines headingLimitSource))
     importing = "@import shared.gm as common\n"
     scenarios =
-      [ ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
+      [ ("identical files", "[\"a.gm\", \"b.gm\"]", [("a.gm", firstHeading), ("b.gm", firstHeading)], one "a.gm" <> one "b.gm"),
+        ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
         ("nested", "[[\"a.gm\"]]", [("a.gm", headingLimitSource)], two "a.gm"),
         ("repeat", "[\"a.gm\", \"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
         ("two", "[\"a.gm\", \"b.gm\"]", [("a.gm", headingLimitSource), ("b.gm", firstHeading)], two "a.gm" <> one "b.gm"),
@@ -160,6 +161,13 @@ newTests =
         assertEqual err ExitSuccess code
         files <- filesUnder (tmp </> "book")
         files @?= [".gitignore", "chapters/01.gm", "manifest.toml", "preflight.toml", "style.toml"],
+      testCase "Golem ADR 0327 S2: new --screen writes screen rules and no bleed" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts", "--screen"]
+        assertEqual err ExitSuccess code
+        rules <- readUtf8 (tmp </> "book/preflight.toml")
+        style <- readUtf8 (tmp </> "book/style.toml")
+        rules @?= "based-on = \"screen\"\n"
+        assertBool style (not ("bleed =" `isInfixOf` style)),
       testCase "--no-fonts names the Japanese font and its licence to place, with their URLs" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         (_, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
         lines err

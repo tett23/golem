@@ -663,9 +663,10 @@ marksTests =
       boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h)
   ]
     <> englishTemplateTests
-    <> [ testCase "Japanese marks without bleed are G07002 at the top of style.toml, and no PDF" $ do
+    <> [ testCase "Golem ADR 0332 M1: Japanese marks without bleed report the positive length" $ do
            b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
            map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
+           map diagMessage (bErrors b) @?= ["日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください"]
            [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- bErrors b] @?= [(Just "style.toml", 0)]
            bPdf b @?= Nothing
            w <- buildMarks (\o -> o {optMarks = WesternMarks}) (Just horizontalStyle)
