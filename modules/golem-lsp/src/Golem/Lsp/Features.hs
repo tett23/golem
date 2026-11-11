@@ -139,7 +139,7 @@ occurrences (File _ bs) = concatMap block bs
       OrderedList items -> concatMap (concatMap block) items
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
-      SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
+      SetVar _ (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
       BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | T.isInfixOf "." name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       _ -> []

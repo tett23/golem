@@ -31,7 +31,7 @@ module Golem.Eval.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
@@ -498,7 +498,13 @@ evalBlock ctx (A.Located sp b) = case b of
         ca <- codeArgs ctx sp [] args
         c <- codeOf sp ca Nothing lang True [(lsp, t) | A.Located lsp t <- ls]
         pure [block sp (CodeBlock c)]
-  A.SetVar (A.Located nsp n) e -> do
+  A.SetVar prefix (A.Located nsp n) e -> do
+    forM_ prefix $ \asp ->
+      report
+        ( (notice "G02154" asp "@set の @ は廃止予定です。set で変数を宣言します")
+            { diagFixes = [Fix "先頭の @ を消す" [(asp, "")]]
+            }
+        )
     defined <- gets (Map.member n . stVars)
     if n `elem` reservedNames
       then err "G02023" nsp ("予約語は変数の名前に使えません: " <> n)

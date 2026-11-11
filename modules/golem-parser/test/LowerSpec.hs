@@ -218,10 +218,32 @@ tests =
             assertBool (show is) (not ("blank-line" `isInfixOf` show (inl is)))
           other -> assertFailure (show other),
       testCase "set and attributed blocks" $ case ast "@set price = 100\n\n@label intro\n@nonumber\n# はじめに\n" of
-        [SetVar n _, Attributed cmds (Just (Located _ (Heading 1 _)))] -> do
+        [SetVar (Just _) n _, Attributed cmds (Just (Located _ (Heading 1 _)))] -> do
           locValue n @?= "price"
           length cmds @?= 2
         other -> assertFailure (show other),
+      testCase "ADR 0336 I1 I2: only a complete line-start declaration omits @" $ do
+        case ast "set x = 3\n\n[= x]\n" of
+          [SetVar Nothing n _, Paragraph _] -> locValue n @?= "x"
+          other -> assertFailure (show other)
+        case ast "set up is easy\n" of
+          [Paragraph _] -> pure ()
+          other -> assertFailure (show other)
+        case ast "set x == 3\n" of
+          [Paragraph _] -> pure ()
+          other -> assertFailure (show other)
+        case ast "set x =3\n" of
+          [Paragraph _] -> pure ()
+          other -> assertFailure (show other)
+        case ast "# set x = 3\n" of
+          [Heading 1 _] -> pure ()
+          other -> assertFailure (show other)
+        case ast "前置 set x = 3\n" of
+          [Paragraph _] -> pure ()
+          other -> assertFailure (show other)
+        case ast "```\nset x = 3\n```\n" of
+          [CodeBlock _ _ _] -> pure ()
+          other -> assertFailure (show other),
       testCase "lists with nesting" $ case ast "- a\n- b\n  - c\n" of
         [BulletList [[Located _ (Paragraph _)], [Located _ (Paragraph _), Located _ (BulletList [_])]]] -> pure ()
         other -> assertFailure (show other),

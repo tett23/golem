@@ -567,6 +567,7 @@ codeTests =
         parsed "[=]\n" @?= [(g "G01020", 2, 2)]
         parsed "[= ]\n" @?= [(g "G01020", 3, 3)]
         parsed "@set x = +\n" @?= [(g "G01020", 9, 10)]
+        parsed "set x =\n" @?= [(g "G01020", 7, 7)]
         sort (parsed "本文 [=\n") @?= [(g "G01017", 9, 9), (g "G01020", 9, 9)],
       testCase "G01021 starts at [" $ do
         map (\(c, s, _) -> (c, s)) (parsed "本文 [ だけ\n") @?= [(g "G01021", 7)]

@@ -57,10 +57,10 @@ featureTests =
       ws <- openWorkspace root
       map (slice ws) (references ws "a.gm" (at ws "a.gm" "values.version" 8))
         @?= [("common/values.gm", "version"), ("a.gm", "values.version")],
-    testCase "definition of a variable of the file is its @set" $ do
+    testCase "ADR 0336 I1: definition of a variable of the file is its set" $ do
       ws0 <- openWorkspace root
-      ws <- updateFile ws0 "b.gm" "@set count = 3\n\n@label second\n# 次の章\n\n[= count]\n"
-      definition ws "b.gm" (at ws "b.gm" "count]" 1) @?= [Location "b.gm" 5 10],
+      ws <- updateFile ws0 "b.gm" "set count = 3\n\n@label second\n# 次の章\n\n[= count]\n"
+      definition ws "b.gm" (at ws "b.gm" "count]" 1) @?= [Location "b.gm" 4 9],
     testCase "references of a variable of the file are its @set and its uses" $ do
       ws0 <- openWorkspace root
       ws <- updateFile ws0 "b.gm" "@set count = 3\n\n@label second\n# 次の章\n\n[= count]と[= count + 1]\n"

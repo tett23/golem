@@ -63,7 +63,7 @@ tests =
       testCase "@set product and vars.product are different names" $
         textsOf (ctxAt 1 "a.gm") "@set product = \"x\"\n\n[= product] [= vars.product]\n" @?= [["x Golem"]],
       testCase "vars is a reserved word: G02023" $ do
-        map fst (codesOf "@set vars = 1\n") @?= ["G02023"]
+        map fst (codesOf "set vars = 1\n") @?= ["G02023"]
         map fst (codesOf "@import a.gm as vars\n") @?= ["G02023"],
       testCase "a key not in [vars] is G02002" $
         codesOf "[= vars.missing]\n" @?= [("G02002", "未定義の名前 missing です")],
