@@ -45,6 +45,7 @@ LSP はレイアウト（S2）とバックエンドを実行しない。
 補完と位置の変換のために、テキストと行の索引だけを持つ。
 
 [code: style.toml] と [code: preflight.toml] の補完は、ルートからの相対パスがちょうどその名前のファイルだけで働く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0169-lsp-completion-in-style-and-preflight-toml.md]（ADR 0169「LSP で style.toml と preflight.toml のキーと値を補完する」）]
+ルートの [code: manifest.toml] では、段落区切り、ページ番号の表記、関係者の役割、PDF 宣言、テキスト出力の向き、抑制する diagnostic のコードの候補を返す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0334-complete-manifest-values-and-manuscript-expressions.md]（Golem ADR 0334「原稿の入力位置と設定の欄に合う候補を返す」）]
 キーと列挙の値は、デコーダーと同じモジュールに置いたスキーマ（golem-project の [code: styleSchema] と golem-preflight の [code: rulesSchema]）から取る。
 スキーマは知らないキーの判定にも使うので、補完の候補と、読み込みが受け付けるキーは食い違わない。
 カーソルの位置は、エディタが今持っているテキストの先頭からカーソルまでを小さな読み取りで読んで決める。
@@ -65,7 +66,8 @@ vim.lsp.enable('golem')
 
 この設定は、ADR がエディタでの確かめの手順として示しているものである。
 [code: 'toml'] は [code: style.toml] と [code: preflight.toml] の補完のための指定である。
-Neovim 0.12.6 をヘッドレスで動かし、この設定で、[code: style.toml] の見出し、キー、列挙の値、真偽の値、名前の参照と、[code: preflight.toml] の [code: severity] に候補が出ること、[code: manifest.toml] とルートの外の [code: style.toml] には候補が出ず、原稿として解析した diagnostics も出ないことを確かめた。
+ADR 0169 の実装時には、Neovim 0.12.6 をヘッドレスで動かし、この設定で、[code: style.toml] の見出し、キー、列挙の値、真偽の値、名前の参照と、[code: preflight.toml] の [code: severity] に候補が出ることを確かめた。
+同じ検査では、当時は [code: manifest.toml] とルートの外の [code: style.toml] に候補が出ず、原稿として解析した diagnostics も出ないことを確かめた。
 実際の Neovim でこの手順を通して確かめる作業は、[code: docs/roadmap.md] の「手で確かめる項目」にまだ残っている。
 
 ## 位置の単位の交渉
