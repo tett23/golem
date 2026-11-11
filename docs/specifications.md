@@ -3341,13 +3341,12 @@ gap = "0.5zw"
 `{n}` は本の数の表記（横組みでは算用数字、縦組みでは `[numbers]` の `vertical` の表記）で、`{n:<表記>}` は「数の表記の登録表」の名前の表記で書く。
 登録表の行はどれも使え、`{n:asterisks}` も書ける。
 
-次の書き方は廃止予定である。
-表の読み方で今と同じ意味に読み、廃止予定の notice を出す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)、docs/diagnostics.md の「廃止予定の手順」）。
+次の旧記法はエラーになる（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
 
-| 書き方 | 読み方 | notice |
+| 書き方 | 代わりの書き方 | エラー |
 | --- | --- | --- |
-| `{{` と `}}` | `{` と `}`（`\{` と `\}` と書く） | [G03114](diagnostics.md#g03114) |
-| `{1}`、`{一}`、`{①}`、`{a}`、`{A}`、`{i}`、`{I}`、`{イ}`、`{ア}` | `{n:arabic}`、`{n:kanji}`、`{n:circled}`、`{n:lower-alpha}`、`{n:upper-alpha}`、`{n:lower-roman}`、`{n:upper-roman}`、`{n:iroha}`、`{n:aiueo}` | [G03115](diagnostics.md#g03115) |
+| `{{` と `}}` | `\{` と `\}` | [G03250](diagnostics.md#g03250) |
+| `{1}`、`{一}`、`{①}`、`{a}`、`{A}`、`{i}`、`{I}`、`{イ}`、`{ア}` | `{n:arabic}`、`{n:kanji}`、`{n:circled}`、`{n:lower-alpha}`、`{n:upper-alpha}`、`{n:lower-roman}`、`{n:upper-roman}`、`{n:iroha}`、`{n:aiueo}` | [G03251](diagnostics.md#g03251) |
 
 `[lists]` の値の誤りは、`style.toml` を読むときに G03022 とする。
 
@@ -3760,7 +3759,7 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 柱の書式の各行は、「差し込みのある書式」の一つであり、文字、エスケープ、差し込みからなる。
 差し込みは `{` と `}` で囲み、文字の `{` と `}` は `\{` と `\}` で書く。
 柱の差し込みは数の差し込みではないので、表記を書けない。
-廃止予定の書き方の `{{` と `}}` は、今と同じく `{` と `}` に読み、廃止予定の notice（[G03116](diagnostics.md#g03116)）を出す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
+旧記法の `{{` と `}}` は [G03252](diagnostics.md#g03252) のエラーにする（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
 
 | 差し込み | 値 |
 |---|---|
@@ -4626,10 +4625,6 @@ notice を出すのは、次のものである。
 - 続けて書いた `@blank-line`（G02094）
 - `style.toml` のないプロジェクト（G03023）
 - `caption`、`sidenote`、`table` の 0 の字下げ（G03100）
-- `[lists]` の `numbers` の `{{` と `}}`（G03114、廃止予定）
-- `[lists]` の `numbers` の一字の見本の差し込み（G03115、廃止予定）
-- 柱の書式の `{{` と `}}`（G03116、廃止予定）
-- `[notes]` の `mark-size`（G03117、廃止予定）
 - `[source]` に `paragraph-separator` を書いていないプロジェクト（G03120）
 - `golem new` が書かずに残した既存の `.gitignore`（G03134）
 - 自動の番号と同じ `@number`（G04007）
@@ -6445,7 +6440,6 @@ PDF の本文の印（合印）は、`[notes]` の `mark-format` の書式で番
 | `mark-format` | 文字列 | PDF の本文の印と注の本文の先頭の印の書式。数の差し込みをちょうど一つ含む。既定は `"*{n}"` |
 | `mark-style` | 文字列 | PDF の本文の印に当てる文字スタイルの名前。既定は組み込みの `note-mark` |
 | `body-mark-style` | 文字列 | PDF の注の本文の先頭の印に当てる文字スタイルの名前。既定はなし（注の本文の文字のまま） |
-| `mark-size` | 寸法 | 廃止予定。本文の印の文字スタイルの `size` の省略形 |
 
 `mark-format` は、「style.toml」の節の差し込みのある書式の読み方で読む。
 数の差し込みは `{n}` か `{n:<表記>}` である。
@@ -6484,23 +6478,11 @@ body-mark-style = "strong"
 印に書体の上付きの字形を使いたい本は、印の文字スタイルに `features = ["sups"]` を書く。
 一方、注の本文の先頭の印（`body-mark-style`）は、注の本文の行の中で組むので、`position` を書ける。
 
-`mark-size` は廃止予定であり、書くと notice（[G03117](diagnostics.md#g03117)）を出す。
-廃止までのあいだ、`mark-size` は本文の印の文字スタイルの `size` の省略形として読む。
-本文の印の文字スタイルは、`mark-style` を書けばその名前、書かなければ `note-mark` である。
-`mark-style` を書かない本では、組み込みの `note-mark` の `size` を `mark-size` の値に替えて組むので、今の本の印の大きさは変わらない。
-`mark-size` の `zw` は 0 より大きく 1 以下とし、絶対の寸法が印の位置の文字の大きさを超える場合はその大きさで組む。
-この検査と規則は `mark-size` に限る。
+`mark-size` は [G03253](diagnostics.md#g03253) のエラーになる（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
+本文の印の大きさは、`mark-style` が指す文字スタイルの `size` で指定する。
+`mark-style` を書かない場合は `[character-styles.note-mark]` の `size` を指定する。
 
-ただし、`mark-size` と、本文の印の文字スタイルの `size` は一緒に書けず、一緒に書くと G03006 とする（[ADR 0214](adr/0214-mark-size-conflict-names-the-style-that-writes-the-size.md)）。
-大きさを決める値が二つあると、どちらかを黙って捨てることになるためである。
-一緒に書いたとみなすのは、本文の印の文字スタイルが、`based-on` で `size` を書いた定義に行き着くときである。
-`mark-style` を書かずに、`[character-styles.note-mark]`（とその `based-on` の先）に `size` を書いた場合も、これに当たる。
-組み込みの `note-mark` の `size` は、`mark-size` がその代わりなので数えない。
-メッセージは、`based-on` の鎖を本文の印の文字スタイルからたどって最初に `size` を書いた定義の名前を示し、`mark-size` を消すよう求める。
-文言は次のとおりであり、位置は `mark-size` の値である。
-
-- `mark-style` を書いたとき：`[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`
-- `mark-style` を書かないとき：`[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`
+`mark-size` と文字スタイルの `size` が並んだ場合も G03253 を先に出す。
 
 印の中の字は、ふつうの文字と同じく、文字スタイルのカーニング、トラッキング、プロポーショナルメトリクスで送る。
 印の最後の字の後のトラッキングは足さない。
@@ -6534,7 +6516,7 @@ HTML、EPUB、プレーンテキストの印は、PDF の印とは別に決ま�
 HTML と EPUB は、本文の参照（`noteref`）と注の一覧の戻りのリンクの文字を、`mark-format` の表記で書く。
 接頭辞と接尾辞は書かないので、`mark-format = '（{n:kanji}）'` の 3 番の注は、リンクの文字が `三` になる。
 `{n}` は算用数字なので、表記を変えない本の HTML と EPUB は変わらない。
-`mark-style`、`body-mark-style`、`mark-size` は HTML と EPUB では使わず、印の大きさと書体は CSS とリーダーが決める。
+`mark-style` と `body-mark-style` は HTML と EPUB では使わず、印の大きさと書体は CSS とリーダーが決める。
 プレーンテキストの印は、`mark-format` によらず、横書きで `*1`、縦書きで `※1` とする（[golem-text ADR 0001](golem-text/adr/0001-plain-text-output.md)）。
 
 番号が書式の表記で表せない注（`note-symbols` の 8 番、`circled` の 51 番など）は、その注の位置でエラー（[G07102](diagnostics.md#g07102)）とする。

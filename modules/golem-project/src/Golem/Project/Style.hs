@@ -743,15 +743,16 @@ zeroDim = \case
   Abs x -> x == 0
   Zw r -> r == 0
 
-{- | The notices of style.toml: G03100 for a zero indent or
-first-line-indent of caption or sidenote, at the value, with the value as
-written (golem-driver ADR 0043); the ways of writing to be retired
-(docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
-numbers, G03116 for a line of a running head format, G03117 for [notes]
-mark-size. A style.toml that does not parse has none.
--}
+-- | The notices of style.toml that parses (golem-driver ADR 0043).
 styleNotices :: FileId -> Text -> [Diagnostic]
-styleNotices fid src = case Toml.parse src of
+styleNotices fid src = filter ((== Notice) . diagSeverity) (styleSyntaxDiagnostics fid src)
+
+-- | The retired forms of style.toml fail before the style is decoded (ADR 0344).
+styleLegacyErrors :: FileId -> Text -> [Diagnostic]
+styleLegacyErrors fid src = filter ((== Error) . diagSeverity) (styleSyntaxDiagnostics fid src)
+
+styleSyntaxDiagnostics :: FileId -> Text -> [Diagnostic]
+styleSyntaxDiagnostics fid src = case Toml.parse src of
   Left _ -> []
   Right top ->
     let root = Table' (Position 0 1 1) top
@@ -763,13 +764,13 @@ styleNotices fid src = case Toml.parse src of
           zeroDim v
         ]
           <> concat
-            [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
-                <> [notice "G03115" (spanAt pos) ("[lists] の numbers の {" <> w <> "} は廃止予定です。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
+            [ [diagnostic "G03250" Error (spanAt pos) ("[lists] の numbers の {{ と }} は使えません。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
+                <> [diagnostic "G03251" Error (spanAt pos) ("[lists] の numbers の {" <> w <> "} は使えません。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
             | Just (List' _ xs) <- [lookupValue root ["lists", "numbers"]],
               Text' pos t <- xs,
               Right (_, legacy) <- [parseNumberFormatLegacy t]
             ]
-          <> [ notice "G03116" (spanAt pos) ("柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t)
+          <> [ diagnostic "G03252" Error (spanAt pos) ("柱の書式の {{ と }} は使えません。\\{ と \\} と書きます: " <> t)
              | Just (Table' _ (MkTable masters)) <- [lookupValue root ["masters"]],
                (_, master) <- Map.elems masters,
                k <- ["content", "even", "odd"],
@@ -778,9 +779,12 @@ styleNotices fid src = case Toml.parse src of
                Right (_, legacy) <- [parseRunningFormatLegacy t],
                LegacyBraces `elem` legacy
              ]
-          <> [ notice "G03117" (spanAt pos) "[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます"
+          <> [ diagnostic "G03253" Error (spanAt pos) ("[notes] の mark-size は使えません。[character-styles." <> markStyle <> "] の size に移します")
              | Just v <- [lookupValue root ["notes", "mark-size"]],
-               let pos = valueAnn v
+               let pos = valueAnn v,
+               let markStyle = case lookupValue root ["notes", "mark-style"] of
+                     Just (Text' _ name) -> name
+                     _ -> "note-mark"
              ]
   where
     lookupValue v = \case
@@ -2580,6 +2584,9 @@ filesystem.
 -}
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
+  case styleLegacyErrors fid src of
+    [] -> pure ()
+    ds -> Left ds
   s0 <- either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
   let s = sited s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
   -- the same code and message once, at the path that comes first (golem-project ADR 0008)

@@ -4,6 +4,7 @@ import ColophonSpec qualified
 import Control.Monad (forM_, void)
 import Data.Bifunctor (bimap, first)
 import Data.ByteString qualified as BS
+import Data.Either (fromLeft)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
@@ -160,6 +161,10 @@ silenceTests =
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G02062\"]\n") @?= Right (Set.fromList [DiagnosticCode "G02062"]),
       testCase "the notice of .emet E02109 is read (docs/adr/0160)" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"E02109\"]\n") @?= Right (Set.fromList [DiagnosticCode "E02109"]),
+      testCase "ADR 0344 I4: retired notice codes are not accepted in silence-notices" $
+        mapM_
+          (\code -> codes (parse ("[diagnostics]\nsilence-notices = [\"" <> code <> "\"]\n")) @?= ["G03024"])
+          ["G03114", "G03115", "G03116", "G03117"],
       testCase "without [diagnostics] and with an empty array nothing is silenced" $ do
         fmap manifestSilencedNotices (parse "") @?= Right Set.empty
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = []\n") @?= Right Set.empty,
@@ -520,11 +525,11 @@ runningHeadTests =
       testCase "variables (ADR 0022)" $ do
         parseRunningFormat "{set.revision}" @?= Right [ref (RefVar ["revision"])]
         parseRunningFormat "{set.values.price}" @?= Right [ref (RefVar ["values", "price"])],
-      testCase "{{ and }} are braces (ADR 0022), with the notice G03116 (docs/adr/0177)" $ do
-        fmap (fmap rhOdd) (runningHead "content = [\"{{書名}}\"]") @?= Right (Just (one [PartText "{書名}"]))
+      testCase "ADR 0344 I2: old running-head braces are G03252" $ do
+        codes (parseStyle (FileId 0) "[masters.a.running-head]\nposition = \"top-outside\"\ncontent = [\"{{書名}}\"]\n") @?= ["G03252"]
         fmap (fmap rhOdd) (runningHead "content = ['\\{書名\\}']") @?= Right (Just (one [PartText "{書名}"]))
         let notices v = map diagCode (styleNotices (FileId 0) ("[masters.a.running-head]\nposition = \"top-outside\"\ncontent = [" <> v <> "]\n"))
-        notices "\"{{x}}\"" @?= [DiagnosticCode "G03116"]
+        notices "\"{{x}}\"" @?= []
         notices "'\\{x\\}'" @?= [],
       testCase "the vocabulary is read as formats (ADR 0022)" $ do
         fmap (fmap rhOdd) (runningHead "content = \"heading.1.short\"") @?= Right (Just (RunningLines ([PartRef (RefHeading 1 HeadShort PickFirst) False] :| [])))
@@ -909,12 +914,10 @@ tests =
         fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
         fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
         codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G03006"],
-      testCase "the size of note marks (golem-driver ADR 0025), to be retired (docs/adr/0177)" $ do
-        let sizeOf v = either (const Nothing) (\s -> Just (stNotesMarkSize s, csSize =<< Map.lookup "note-mark" (stCharStyles s))) (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n"))
-        sizeOf "0.65zw" @?= Just (Just (Zw (65 % 100)), Just (Zw (65 % 100)))
-        sizeOf "6pt" @?= Just (parseDim "6pt", parseDim "6pt")
-        sizeOf "1zw" @?= Just (Just (Zw 1), Just (Zw 1))
-        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G03006"]) ["0zw", "1.5zw", "abc", "0pt"],
+      testCase "note mark size is set by its character style (ADR 0344 I1)" $
+        case parseStyle (FileId 0) "[character-styles.note-mark]\nsize = \"0.65zw\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> (csSize =<< Map.lookup "note-mark" (stCharStyles s)) @?= Just (Zw (65 % 100)),
       noteMarkTests,
       indentTests,
       listTests,
@@ -1416,18 +1419,17 @@ noteMarkTests =
       testCase "a character style that does not exist is G03013" $ do
         codes (parseStyle (FileId 0) "[notes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[notes]\nbody-mark-style = \"nothing\"\n") @?= ["G03013"],
-      testCase "mark-size is G03117 and is the size of note-mark; with a mark-style of a size it is G03006" $ do
+      testCase "ADR 0344 I2 I5: mark-size is G03253 before a size conflict" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
-        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03117", Notice, 20)]
-        fmap (\s -> csSize =<< Map.lookup "note-mark" (stCharStyles s)) (first (const ()) (parseStyle (FileId 0) src)) @?= Right (Just (Zw (6 % 10)))
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03253", Error, 20)]
         let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
-        codes (parseStyle (FileId 0) both) @?= ["G03006"]
-        let ms = either (map diagMessage) (const []) (parseStyle (FileId 0) both)
-        assertBool (show ms) (any ("[notes] の mark-size と、mark-style mark の size（[character-styles.base] に書いたもの）は一緒に書けません。mark-size を消します" `T.isInfixOf`) ms)
-        -- a mark-style without a size takes mark-size
-        codes (parseStyle (FileId 0) "[character-styles.mark]\nsynthetic-bold = true\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n") @?= [],
-      -- docs/adr/0214
-      testGroup "mark-size and the size of the character style of the marks (docs/adr/0214)" markSizeConflictTests,
+        codes (parseStyle (FileId 0) both) @?= ["G03253"]
+        codes (parseStyle (FileId 0) "[character-styles.mark]\nsynthetic-bold = true\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n") @?= ["G03253"],
+      testCase "ADR 0344 I2: mark-size names the actual mark style in its migration" $ do
+        let defaultText = "[notes]\nmark-size = \"0.5zw\"\n"
+            customText = "[character-styles.mark]\nsize = \"0.5zw\"\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
+        assertBool "default note-mark" (any ("[character-styles.note-mark]" `T.isInfixOf`) (msgs (parseStyle (FileId 0) defaultText)))
+        assertBool "custom mark" (any ("[character-styles.mark]" `T.isInfixOf`) (msgs (parseStyle (FileId 0) customText))),
       testCase "the number formats read as the other formats" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"第{n:kanji}章\"\n") @?= []
         codes (parseStyle (FileId 0) "[headings.1]\nnumber = \"{chapter:upper-roman}\"\n") @?= []
@@ -1461,7 +1463,7 @@ listTests =
   testGroup
     "[lists] (golem-driver ADR 0013)"
     [ testCase "bullets, numbers and gap are read" $
-        case parseStyle (FileId 0) "[lists]\nbullets = [\"・\", \"◦\"]\nnumbers = [\"{n}.\", \"({a})\"]\ngap = \"0.5zw\"\n" of
+        case parseStyle (FileId 0) "[lists]\nbullets = [\"・\", \"◦\"]\nnumbers = [\"{n}.\", \"({n:lower-alpha})\"]\ngap = \"0.5zw\"\n" of
           Left ds -> assertFailure (show ds)
           Right s -> do
             lsBullets (stLists s) @?= Just ("・" :| ["◦"])
@@ -1491,21 +1493,17 @@ listTests =
         g03022 "[lists]\nnumbers = [\"\"]\n" "numbers"
         g03022 "[lists]\ngap = \"-1zw\"\n" "gap"
         g03022 "[lists]\ngap = \"wide\"\n" "gap",
-      testCase "literal braces in a number format" $
-        case parseStyle (FileId 0) "[lists]\nnumbers = [\"{{{n}}}\"]\n" of
+      testCase "escaped braces in a number format" $
+        case parseStyle (FileId 0) "[lists]\nnumbers = ['\\{{n:kanji}\\}']\n" of
           Left ds -> assertFailure (show ds)
-          Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" NsBook "}" :| []),
-      testCase "the old forms read as before, with the notices G03114 and G03115 (docs/adr/0177)" $ do
-        let numbersOf v = either (const Nothing) (lsNumbers . stLists) (parseStyle (FileId 0) ("[lists]\nnumbers = [" <> v <> "]\n"))
-            noticesOf v = map diagCode (styleNotices (FileId 0) ("[lists]\nnumbers = [" <> v <> "]\n"))
-        numbersOf "\"{{{n}}}\"" @?= Just (NumberFormat "{" NsBook "}" :| [])
-        noticesOf "\"{{{n}}}\"" @?= [DiagnosticCode "G03114"]
-        numbersOf "\"{一}\"" @?= numbersOf "\"{n:kanji}\""
-        noticesOf "\"{一}\"" @?= [DiagnosticCode "G03115"]
-        numbersOf "'\\{{n:kanji}\\}'" @?= Just (NumberFormat "{" (NsNotation kanjiNotation) "}" :| [])
-        noticesOf "'\\{{n:kanji}\\}'" @?= []
-        noticesOf "\"{n:kanji}\"" @?= []
-        map diagMessage (styleNotices (FileId 0) "[lists]\nnumbers = [\"{一}.\"]\n") @?= ["[lists] の numbers の {一} は廃止予定です。{n:kanji} と書きます: {一}."],
+          Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" (NsNotation kanjiNotation) "}" :| []),
+      testCase "ADR 0344 I1 I2: legacy formats are errors at their values" $ do
+        codes (parseStyle (FileId 0) "[lists]\nnumbers = [\"{n:lower-alpha}\"]\n") @?= []
+        codes (parseStyle (FileId 0) "[lists]\nnumbers = [\"{{{n}}}\"]\n") @?= ["G03250"]
+        codes (parseStyle (FileId 0) "[lists]\nnumbers = [\"{a}\"]\n") @?= ["G03251"]
+        codes (parseStyle (FileId 0) "[lists]\nnumbers = [\"{{{a}}}\"]\n") @?= ["G03250", "G03251"]
+        codes (parseStyle (FileId 0) "[masters.book]\nrunning-head={position=\"top-outside\",content=[\"{{x}}\"]}\n") @?= ["G03252"]
+        codes (parseStyle (FileId 0) "[notes]\nmark-size=\"0.5zw\"\n") @?= ["G03253"],
       testCase "[lists] numbers takes the notations of the table (docs/adr/0177)" $
         case parseStyle (FileId 0) "[lists]\nnumbers = [\"{n:asterisks}\"]\n" of
           Left ds -> assertFailure (show ds)
@@ -2434,56 +2432,3 @@ pageSizeTests =
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G03017"]
         assertBool (show (map diagMessage ds)) (any ((needle `T.isInfixOf`) . diagMessage) ds)
       Right _ -> assertFailure ("not an error: " <> T.unpack v)
-
-{- | The size of the character style of the marks besides [notes]
-mark-size (docs/adr/0214): m is the value of mark-style or else
-note-mark, d the first definition of the user on the based-on chain from m
-that writes a size (the built-in note-mark's does not count).
--}
-markSizeConflictTests :: [TestTree]
-markSizeConflictTests =
-  [ testCase "M1, M2: mark-style not written, the user's note-mark writes the size" $
-      conflict "[character-styles.note-mark]\nsize = \"0.6zw\"\n" "" @?= [unwritten "note-mark"],
-    testCase "M1, M2: mark-style not written, note-mark is based on a style that writes the size" $
-      conflict "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.note-mark]\nbased-on = \"big\"\n" "" @?= [unwritten "big"],
-    testCase "M1, M2: mark-style = \"note-mark\" takes the wording of a written mark-style" $
-      conflict "[character-styles.note-mark]\nsize = \"0.6zw\"\n" "mark-style = \"note-mark\"\n" @?= [written "note-mark" "note-mark"],
-    testCase "M1, M2: mark-style itself writes the size" $
-      conflict "[character-styles.mine]\nsize = \"0.6zw\"\n" "mark-style = \"mine\"\n" @?= [written "mine" "mine"],
-    testCase "M1, M2: the size one based-on away names the style that writes it" $
-      conflict "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mine]\nbased-on = \"big\"\n" "mark-style = \"mine\"\n" @?= [written "mine" "big"],
-    testCase "M1, M2: the size two based-on away names the style that writes it" $
-      conflict
-        "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mid]\nbased-on = \"big\"\n[character-styles.mine]\nbased-on = \"mid\"\n"
-        "mark-style = \"mine\"\n"
-        @?= [written "mine" "big"],
-    testCase "M1, M2: the nearest definition that writes a size is named" $
-      conflict
-        "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mid]\nbased-on = \"big\"\nsize = \"0.5zw\"\n[character-styles.mine]\nbased-on = \"mid\"\n"
-        "mark-style = \"mine\"\n"
-        @?= [written "mine" "mid"],
-    testCase "M1: the error is at the value of mark-size" $ do
-      let src = "[character-styles.note-mark]\nsize = \"0.6zw\"\n[notes]\nmark-size = \"0.65zw\"\n"
-      case parseStyle (FileId 0) src of
-        Left [d] -> do
-          diagCode d @?= DiagnosticCode "G03006"
-          spanStart (diagSpan d) @?= fromIntegral (T.length (fst (T.breakOn "\"0.65zw\"" src)))
-        other -> assertFailure (show other),
-    testCase "M3: only the built-in note-mark's size, with mark-style based on note-mark" $
-      conflict "[character-styles.mine]\nbased-on = \"note-mark\"\n" "mark-style = \"mine\"\n" @?= [],
-    testCase "M3: no definition writes a size" $ do
-      conflict "" "" @?= []
-      conflict "[character-styles.mine]\nsynthetic-bold = true\n" "mark-style = \"mine\"\n" @?= []
-      conflict "" "mark-style = \"note-mark\"\n" @?= [],
-    testCase "M3: mark-size not written" $ do
-      codes (parseStyle (FileId 0) "[character-styles.note-mark]\nsize = \"0.6zw\"\n") @?= []
-      codes (parseStyle (FileId 0) "[character-styles.big]\nsize = \"0.6zw\"\n[character-styles.mine]\nbased-on = \"big\"\n[notes]\nmark-style = \"mine\"\n") @?= []
-  ]
-  where
-    -- the messages of G03006 for character styles and the rest of [notes], with mark-size written
-    conflict styles notes =
-      case parseStyle (FileId 0) (styles <> "[notes]\nmark-size = \"0.65zw\"\n" <> notes) of
-        Left ds -> [(diagCode d, diagMessage d) | d <- ds]
-        Right _ -> []
-    written m d = (DiagnosticCode "G03006", "[notes] の mark-size と、mark-style " <> m <> " の size（[character-styles." <> d <> "] に書いたもの）は一緒に書けません。mark-size を消します (notes.mark-size)")
-    unwritten d = (DiagnosticCode "G03006", "[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles." <> d <> "] に書いたもの）は一緒に書けません。mark-size を消します (notes.mark-size)")

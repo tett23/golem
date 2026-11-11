@@ -122,8 +122,8 @@ footnoteTests =
           r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider}
           [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= [(DiagnosticCode "G07102", "注の番号 8 は、[notes] の mark-format {n:note-symbols} で表せません")]
           brWritten r @?= [],
-    testCase "PDF: horizontal, mark-size 0.65zw sets the mark at that size, raised to the top of the em box (golem-driver ADR 0025)" $ do
-      content <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+    testCase "PDF: horizontal, note-mark size 0.65zw sets the mark at that size, raised to the top of the em box (ADR 0344 I1)" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           s = 10 :: Rational
           m = toRational (unSp (dimToSp (10 * 65536) (Zw (65 % 100)))) / 65536
@@ -135,8 +135,8 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, mark-size 0.65zw keeps the right end of the mark column half the size right of the centre line (golem-driver ADR 0025, docs/adr/0177, golem-driver ADR 0045)" $ do
-      content <- miniPdf fakeProvider True (pdfStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+    testCase "PDF: vertical, note-mark size 0.65zw keeps the right end of the mark column half the size right of the centre line (ADR 0344 I1)" $ do
+      content <- miniPdf fakeProvider True (pdfStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sSp = maybe 0 (dimToSp 0) (parseDim "13Q")
           s = toRational (unSp sSp) / 65536
@@ -159,16 +159,14 @@ footnoteTests =
             _ -> Nothing
       marks @?= ["1)"]
       map start firsts @?= [Just ("1)", "甲")],
-    testCase "PDF: mark-size 0.65zw alone gives the page contents of the size of note-mark 0.65zw (docs/adr/0177)" $ do
+    testCase "PDF: note-mark size 0.65zw changes page contents (ADR 0344 I1)" $ do
       let src = "漢[note: 注。]字\n"
-      a <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") src [] >>= inflateAll
-      b <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") src [] >>= inflateAll
+      a <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") src [] >>= inflateAll
       c <- miniPdf fakeProvider True horizontalStyle src [] >>= inflateAll
-      a @?= b
       assertBool "the size changes the page contents" (a /= c),
     testCase "PDF: the default values written give the same page contents as none (golem-driver ADR 0025)" $ do
       a <- miniPdf fakeProvider True horizontalStyle "漢[note: 注。]字\n" [] >>= inflateAll
-      b <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.5zw\"\nmark-format = \"*{n}\"\n") "漢[note: 注。]字\n" [] >>= inflateAll
+      b <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-format = \"*{n}\"\n[character-styles.note-mark]\nsize = \"0.5zw\"\n") "漢[note: 注。]字\n" [] >>= inflateAll
       a @?= b,
     testCase "by default the notes of a chapter in two files count on, in the PDF, HTML and plain text" $
       withSystemTempDirectory "golem-notes" $ \tmp -> do

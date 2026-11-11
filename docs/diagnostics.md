@@ -109,10 +109,6 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G02129](#g02129) | 廃止予定 | 評価 |
 | [G03023](#g03023) | 既定の使用 | プロジェクト |
 | [G03100](#g03100) | 効果のない書き方 | プロジェクト、評価 |
-| [G03114](#g03114) | 廃止予定 | プロジェクト |
-| [G03115](#g03115) | 廃止予定 | プロジェクト |
-| [G03116](#g03116) | 廃止予定 | プロジェクト |
-| [G03117](#g03117) | 廃止予定 | プロジェクト |
 | [G03120](#g03120) | 既定の使用 | プロジェクト |
 | [G03134](#g03134) | 処理系による調整 | プロジェクト |
 | [G04007](#g04007) | 効果のない書き方 | 文書の組み立て |
@@ -7103,177 +7099,68 @@ dev と prod の両方でエラーである。
 PDF/A が要らなければ、`pdfa` を消す。
 ## G03114
 
-[lists] の numbers の {{ と }} は廃止予定です
+リスト番号の二重波括弧のお知らせは廃止しました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`style.toml` の `[lists]` の `numbers` の書式に、括弧そのものを表す `{{` か `}}` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-書式の括弧そのものは、原稿と同じくバックスラッシュのエスケープ（`\{` と `\}`）で書く。
-`{{` と `}}` は書式だけの例外なので、廃止する予定である。
-今は `{{` と `}}` を `{` と `}` に読み、組みは変わらない。
-お知らせは書式ごとに一つである。
-位置はその書式の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
-
-- メッセージ: `[lists] の numbers の {{ と }} は廃止予定です。\{ と \} と書きます: <書式>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
-- ADR: [docs/adr/0177](adr/0177-note-mark-style-and-numerals.md)
-
-### 主な原因
-
-- 以前の書き方に合わせて、括弧を `{{` と `}}` と書いた。
+旧記法 `{{` と `}}` の廃止を予告していた。
+現在は [G03250](#g03250) のエラーである（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
 
 ### 直し方
 
-`{{` を `\{` に、`}}` を `\}` に書き換える。
-TOML の基本の文字列（`"..."`）では `\` を `\\` と書くので、リテラル文字列（`'...'`）を使う。
-
-書き換える前：
-
-```toml
-[lists]
-numbers = ["{{{n}}}"]
-```
-
-書き換えた後：
-
-```toml
-[lists]
-numbers = ['\{{n}\}']
-```
+`{{` と `}}` を `\{` と `\}` に書き換える。
 
 ## G03115
 
-[lists] の numbers の一字の見本の差し込みは廃止予定です
+リスト番号の一字の見本のお知らせは廃止しました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`style.toml` の `[lists]` の `numbers` の書式に、表記を一字の見本で選ぶ差し込み（`{1}`、`{一}`、`{①}`、`{a}`、`{A}`、`{i}`、`{I}`、`{イ}`、`{ア}`）を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-表記は、表記の表の名前で `{n:<名前>}` と選ぶ。
-見本の字は、表記を足すと決めにくく、`{1}` は見出しの番号の書式の第 1 階層と食い違うので、廃止する予定である。
-今は見本の差し込みを `{n:<名前>}` と同じに読み、組みは変わらない。
-お知らせは書式ごとに一つである。
-位置はその書式の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
-
-- メッセージ: `[lists] の numbers の {<見本>} は廃止予定です。{n:<名前>} と書きます: <書式>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
-- ADR: [docs/adr/0177](adr/0177-note-mark-style-and-numerals.md)
-
-### 主な原因
-
-- 以前の書き方に合わせて、表記を一字の見本で選んだ。
+旧記法の一字の見本の廃止を予告していた。
+現在は [G03251](#g03251) のエラーである（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
 
 ### 直し方
 
-見本の差し込みを、メッセージの `{n:<名前>}` に書き換える。
-`{1}` は `{n:arabic}`、`{一}` は `{n:kanji}`、`{①}` は `{n:circled}`、`{a}` と `{A}` は `{n:lower-alpha}` と `{n:upper-alpha}`、`{i}` と `{I}` は `{n:lower-roman}` と `{n:upper-roman}`、`{イ}` は `{n:iroha}`、`{ア}` は `{n:aiueo}` である。
-
-書き換える前：
-
-```toml
-[lists]
-numbers = ["{n}.", "({a})", "{一}、"]
-```
-
-書き換えた後：
-
-```toml
-[lists]
-numbers = ["{n}.", "({n:lower-alpha})", "{n:kanji}、"]
-```
+一字の見本を `{n:<表記>}` に書き換える。
 
 ## G03116
 
-柱の書式の {{ と }} は廃止予定です
+柱の書式の二重波括弧のお知らせは廃止しました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`style.toml` のマスターページの柱の書式の行に、括弧そのものを表す `{{` か `}}` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-書式の括弧そのものは、バックスラッシュのエスケープ（`\{` と `\}`）で書く。
-今は `{{` と `}}` を `{` と `}` に読み、組みは変わらない。
-お知らせは行ごとに一つである。
-位置はその行の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
-
-- メッセージ: `柱の書式の {{ と }} は廃止予定です。\{ と \} と書きます: <書式>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
-- ADR: [docs/adr/0177](adr/0177-note-mark-style-and-numerals.md)
-
-### 主な原因
-
-- 以前の書き方に合わせて、柱の書式の括弧を `{{` と `}}` と書いた。
+旧記法 `{{` と `}}` の廃止を予告していた。
+現在は [G03252](#g03252) のエラーである（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
 
 ### 直し方
 
-`{{` を `\{` に、`}}` を `\}` に書き換え、リテラル文字列（`'...'`）で書く。
-
-書き換える前：
-
-```toml
-[masters.body]
-running-head = { position = "top-outside", content = ["{{{meta.title}}}"] }
-```
-
-書き換えた後：
-
-```toml
-[masters.body]
-running-head = { position = "top-outside", content = ['\{{meta.title}\}'] }
-```
+`{{` と `}}` を `\{` と `\}` に書き換える。
 
 ## G03117
 
-[notes] の mark-size は廃止予定です
+脚注印の mark-size のお知らせは廃止しました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`style.toml` の `[notes]` に `mark-size` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-注の印の大きさは、印の文字スタイル（`[notes]` の `mark-style`、既定は組み込みの `note-mark`）の `size` で決める。
-同じ値を二つのキーで書ける形を残さないため、`mark-size` を廃止する予定である。
-今は `mark-size` を本文の印の文字スタイルの `size` の省略形として読み、組みは変わらない。
-位置は `mark-size` の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
-
-- メッセージ: `[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
-- ADR: [docs/adr/0177](adr/0177-note-mark-style-and-numerals.md)
-
-### 主な原因
-
-- 以前の書き方に合わせて、印の大きさを `mark-size` で書いた。
+`[notes] mark-size` の廃止を予告していた。
+現在は [G03253](#g03253) のエラーである（[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)）。
 
 ### 直し方
 
-`mark-size` を消し、同じ値を `[character-styles.note-mark]` の `size` に書く。
-`mark-style` で別の文字スタイルを指す本では、その文字スタイルの `size` に書く。
-絶対の寸法が印の位置の文字の大きさを超えるとその大きさで組む規則は `mark-size` だけのものなので、文字スタイルの `size` では、印の位置の文字より大きい値もそのまま組む。
-
-書き換える前：
-
-```toml
-[notes]
-mark-size = "0.65zw"
-```
-
-書き換えた後：
-
-```toml
-[character-styles.note-mark]
-size = "0.65zw"
-```
+`mark-size` を消し、`mark-style` が指す文字スタイルの `size` に移す。
+`mark-style` を省略したときは `note-mark` の `size` に移す。
 
 ## G03118
 
@@ -7779,6 +7666,98 @@ HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` �
 出力のディレクトリ `build/` を git で管理しないなら、すでにある `.gitignore` に `build/` の行を足す。
 すでに書いてあれば、直す必要はない。
 `golem new` は `--no-notices` を受け付けないので、このお知らせは消せない。
+
+## G03250
+
+[lists] の numbers の {{ と }} は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+- 段階とモジュール: プロジェクト（golem-project）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 意味
+
+`style.toml` の旧記法を指定した。
+位置は該当する値である。
+
+### 主な原因
+
+- `[lists] numbers` の値に `{{` または `}}` を書いた。
+
+### 直し方
+
+`{{` と `}}` を `\{` と `\}` に書き換える。
+
+
+## G03251
+
+[lists] の numbers の一字の見本は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+- 段階とモジュール: プロジェクト（golem-project）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 意味
+
+`style.toml` の旧記法を指定した。
+位置は該当する値である。
+
+### 主な原因
+
+- `[lists] numbers` の値に `{a}` などの一字の見本を書いた。
+
+### 直し方
+
+一字の見本を `{n:<表記>}` に書き換える。
+
+
+## G03252
+
+柱の書式の {{ と }} は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+- 段階とモジュール: プロジェクト（golem-project）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 意味
+
+`style.toml` の旧記法を指定した。
+位置は該当する値である。
+
+### 主な原因
+
+- 柱の書式に `{{` または `}}` を書いた。
+
+### 直し方
+
+`{{` と `}}` を `\{` と `\}` に書き換える。
+
+
+## G03253
+
+[notes] の mark-size は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+- 段階とモジュール: プロジェクト（golem-project）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 意味
+
+`style.toml` の旧記法を指定した。
+位置は該当する値である。
+
+### 主な原因
+
+- `[notes]` に `mark-size` を書いた。
+
+### 直し方
+
+`mark-size` を消し、印の文字スタイルの `size` に移す。
+
 
 ## G04001
 
