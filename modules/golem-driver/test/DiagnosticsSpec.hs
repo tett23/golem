@@ -269,7 +269,8 @@ noticeTests =
         -- a new notice or info must be added to the projects; G03134 is a
         -- notice of golem new, which builds nothing (docs/adr/0273)
         sort (nub (concatMap (\(n, _, _) -> n) raised)) @?= sort (filter (/= DiagnosticCode "G03134") noticeCodes)
-        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort infoCodes
+        -- G05100 belongs to golem lint, while these projects exercise golem build.
+        sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort (filter (/= DiagnosticCode "G05100") infoCodes)
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
       testCase "the path of @listing as the first argument gives the same outputs as src=" $ do

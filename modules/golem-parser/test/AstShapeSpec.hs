@@ -100,7 +100,19 @@ tests :: TestTree
 tests =
   testGroup
     "the whole AST of a source (ADR 0002-0005)"
-    [ testCase "paragraphs and inline commands" $
+    [ testCase "Golem ADR 0339 I1: comments do not change argument or expression AST" $ do
+        a <- blocksOf "[f x key=y]\n@f x key=y\n\n```text key=y\nbody\n```\n\n[= 1+2]\n\n@set x = 1+2\n"
+        b <- blocksOf "[f %%甲%% x %%乙%% key=y %%丙%%]\n@f %%甲%% x %%乙%% key=y %%丙%%\n\n```text %%甲%% key=y %%乙%%\nbody\n```\n\n[= 1+%%注%%2]\n\n@set x = 1+%%注%%2\n"
+        a @?= b,
+      testCase "Golem ADR 0339 I1: call and member comments keep AST" $ do
+        a <- blocksOf "[= f(1)] [= values.price]\n"
+        b <- blocksOf "[= f%%注%%(1)] [= values%%注%%.price]\n"
+        a @?= b,
+      testCase "Golem ADR 0339 I1: comment-only argument lists have zero arguments" $ do
+        a <- blocksOf "[f]\n@f\n\n```text\nbody\n```\n"
+        b <- blocksOf "[f %%甲%% %%乙%%]\n@f %%甲%% %%乙%%\n\n```text %%甲%% %%乙%%\nbody\n```\n"
+        a @?= b,
+      testCase "paragraphs and inline commands" $
         shapeOf
           "Golem は[ruby: 組/版|くみ/はん]の結果を出力する[note: 決定性。]。\n本書は第[= version]版である。\n%% 図 %%\n"
           [ Paragraph

@@ -73,6 +73,8 @@
 %inline CellInline
 %inline PosArg
 %inline KwArg
+%inline ArgComment
+%inline ExprComment
 %inline ArgValue
 %inline Primary
 %inline ParaEnd
@@ -342,13 +344,17 @@ Ident :: ()
 Ident <- [a-z] [a-z0-9\-]* ('.' [a-z] [a-z0-9\-]*)? !('.' [a-z]) { () }
 
 Arguments :: ()
-Arguments <- (Sp PosArg)* (Sp KwArg)* (!(Sp PosArg))^arg_order { () }
+Arguments <- (Sp ArgComment)* (Sp PosArg (Sp ArgComment)*)*
+             (Sp KwArg (Sp ArgComment)*)* (!(Sp PosArg))^arg_order { () }
+
+ArgComment :: ()
+ArgComment <- ProofComment { () } / Comment { () }
 
 # Positional arguments and *[...] come first, then keyword arguments and
 # **[...] (golem-parser ADR 0013).
 PosArg :: ()
-PosArg <- !(Word Eq) !'**[' SplatArgument { () }
-        / !(Word Eq) !Splat Argument { () }
+PosArg <- !'%%' !(Word Eq) !'**[' SplatArgument { () }
+        / !'%%' !(Word Eq) !Splat Argument { () }
 
 KwArg :: ()
 KwArg <- KeywordArgument { () }
@@ -374,7 +380,10 @@ ArgValue <- StringLit { () }
           / Word { () }
 
 Word :: ()
-Word <- (![ \t\n\]:|=\["\\] .)+ { () }
+# A proof-looking value after key= keeps its equals sign in the word so the
+# missing-quote diagnostic covers the entire value.
+Word <- '%%=' (![ \t\n\]:|\["\\] .)* { () }
+      / (![ \t\n\]:|=\["\\] .)+ { () }
 
 Eq :: ()
 Eq <- '=' { () }
@@ -423,7 +432,10 @@ ExprBody :: ()
 ExprBody <- ES (Expr)^expr ES { () }
 
 ES :: ()
-ES <- Ws? { () }
+ES <- (Ws? ExprComment)* Ws? { () }
+
+ExprComment :: ()
+ExprComment <- ProofComment { () } / Comment { () }
 
 Expr :: ()
 Expr <- RangeExpr { () }
@@ -493,7 +505,7 @@ PostfixExpr <- CallExpr { () }
              / Primary { () }
 
 CallExpr :: ()
-CallExpr <- ExprIdent (Dot ExprIdent)? LParen ES (Expr ES (Comma ES Expr ES)*)? RParen { () }
+CallExpr <- ExprIdent (ES Dot ES ExprIdent)? ES LParen ES (Expr ES (Comma ES Expr ES)*)? RParen { () }
 
 Primary :: ()
 Primary <- NumberLiteral { () }
@@ -520,7 +532,7 @@ Keyword :: ()
 Keyword <- ('true' / 'false' / 'nil') ![a-z0-9_] { () }
 
 VarExpr :: ()
-VarExpr <- !Keyword ExprIdent (Dot ExprIdent)* { () }
+VarExpr <- !Keyword ExprIdent (ES Dot ES ExprIdent)* { () }
 
 ExprIdent :: ()
 ExprIdent <- [a-zA-Z_] [a-zA-Z0-9_]* { () }

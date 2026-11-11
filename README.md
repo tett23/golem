@@ -155,6 +155,12 @@ golem new mybook
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
+命令の引数列と原稿内の式には通常コメント `%%注%%` を書ける（[Golem ADR 0339](./docs/adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+たとえば `[f %%理由%% x key=y]` と `[= 1+%%理由%%2]` のコメントは値に入らない。
+既存の原稿で `%%注%%` を引数の値にしていた場合は `"%%注%%"` と書く。
+`key=x%%注%%` を値にしていた場合は `key="x%%注%%"` と書く。
+引用符不足のファイルは `golem fmt` でも自動修正されず、ほかの整形可能なファイルは整形される。
+
 プリフライトの設定を読めない場合は、原因に応じて G09001 または G09100〜G09104 を出す（[Golem ADR 0321](./docs/adr/0321-preflight-rule-error-causes.md)）。
 設定のエラーを検出した実行は PDF を組まず、終了コード 1 で終わる。
 
