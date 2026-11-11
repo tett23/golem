@@ -2083,7 +2083,8 @@ listing ctx sp args = do
             Nothing -> code numberedLines
             Just Nothing -> pure []
             Just (Just (r, rs)) -> case rs of
-              _ | all (\(LineRange a b) -> a >= 1 && b <= fromIntegral (length ls)) rs ->
+              _
+                | all (\(LineRange a b) -> a >= 1 && b <= fromIntegral (length ls)) rs ->
                     code (concatMap (\(LineRange a b) -> take (fromIntegral (b - a + 1)) (drop (fromIntegral (a - 1)) numberedLines)) rs)
               _ -> err "G02037" lsp ("@listing の lines の範囲がファイルの行（1〜" <> tshow (length ls) <> "）を外れています: " <> r) >> pure []
         Just _ -> missing sp p >> pure []
