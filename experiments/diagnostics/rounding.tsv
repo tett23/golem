@@ -1,0 +1,144 @@
+modules/golem-bibliography/src/Golem/Bibliography/Csl.hs	152	| otherwise = Just (round n)
+modules/golem-doc/src/Golem/Doc/FigureWidth.hs	65	WidthPercent r -> Sp (floor (fromInteger (unSp measure) * r / 100))
+modules/golem-doc/src/Golem/Doc/IR.hs	3	mirror it and are checked against it by round-trip tests.
+modules/golem-emet/src/Golem/Emet/Builtins.hs	211	-- | @div@: the floor division of integers, as in the expression context.
+modules/golem-emet/src/Golem/Emet/Check.hs	1660	(ArgNat, Just (_, q)) | q >= 0 && q == fromInteger (round q) -> Just (VNat (fromInteger (round q)))
+modules/golem-emet/src/Golem/Emet/Check.hs	1661	(ArgInt, Just (_, q)) | q == fromInteger (round q) -> Just (VInt (round q))
+modules/golem-emet/src/Golem/Emet/Gm.hs	159	largest Int64, so that it does not wrap round where Int has 32 bits
+modules/golem-emet/src/Golem/Emet/IR.hs	297	q == fromInteger (round q) ->
+modules/golem-emet/src/Golem/Emet/IR.hs	298	let n = round q
+modules/golem-emet/src/Golem/Emet/Prim.hs	51	length is an Integer, so that no length wraps round.
+modules/golem-emet/src/Golem/Emet/Prim.hs	157	Left _ -> Left (diagnostic "G02102" Error nowhere "小数点以下が 1000 桁を超える数は文字列にできません。round に当たる計算で桁数を減らします")
+modules/golem-eval/src/Golem/Eval/Analysis.hs	108	("floor", [x]) -> numOf x >>= num . min TInt
+modules/golem-eval/src/Golem/Eval/Analysis.hs	110	("round", [x]) -> numOf x >>= num . min TInt
+modules/golem-eval/src/Golem/Eval/Analysis.hs	111	("round", [x, _]) -> numOf x >>= num
+modules/golem-eval/src/Golem/Eval/Analysis.hs	152	| f `elem` ["round", "fixed"],
+modules/golem-eval/src/Golem/Eval/Expr.hs	106	builtinNames = ["pi", "e", "sqrt", "floor", "ceil", "round", "fixed", "abs", "min", "max", "len", "div", "join"]
+modules/golem-eval/src/Golem/Eval/Expr.hs	215	{- | The number of digits of round and fixed, the second argument, when it
+modules/golem-eval/src/Golem/Eval/Expr.hs	220	| f `elem` ["round", "fixed"], Just (_, q) <- numberOf v = naturalDiagnostic (f <> " の桁数") (locSpan d) q
+modules/golem-eval/src/Golem/Eval/Expr.hs	328	if q < 0 then err "G02101" le "負の数の平方根は求められません" else checked le TRat (sqrtRational q)
+modules/golem-eval/src/Golem/Eval/Expr.hs	329	("floor", [v]) | Just (t, q) <- numberOf v -> checked le (min TInt t) (fromInteger (floor q))
+modules/golem-eval/src/Golem/Eval/Expr.hs	330	("ceil", [v]) | Just (t, q) <- numberOf v -> checked le (min TInt t) (fromInteger (ceiling q))
+modules/golem-eval/src/Golem/Eval/Expr.hs	331	("round", [v]) | Just (t, q) <- numberOf v -> checked le (min TInt t) (fromInteger (roundHalfAway q))
+modules/golem-eval/src/Golem/Eval/Expr.hs	332	("round", [_, d]) | Just (_, n) <- integral d, n > maxFractionDigits -> tooManyDigits
+modules/golem-eval/src/Golem/Eval/Expr.hs	334	("round", [v, d]) | Just (_, n) <- integral d, n >= 0 -> num v >>= \(t, q) -> checked le t (roundTo n q)
+modules/golem-eval/src/Golem/Eval/Expr.hs	335	("fixed", [v, d]) | Just (_, n) <- integral d, n >= 0 -> num v >>= \(_, q) -> pure (VString (renderFixed n (roundTo n q)))
+modules/golem-eval/src/Golem/Eval/Expr.hs	373	Left _ -> Left (diagnostic "G02102" Error sp "小数点以下が 1000 桁を超える数は本文に埋め込めません。round か fixed で桁数を決めます")
+modules/golem-eval/src/Golem/Eval/Number.hs	8	roundTo,
+modules/golem-eval/src/Golem/Eval/Number.hs	10	round17,
+modules/golem-eval/src/Golem/Eval/Number.hs	11	sqrtRational,
+modules/golem-eval/src/Golem/Eval/Number.hs	12	isqrt,
+modules/golem-eval/src/Golem/Eval/Number.hs	34	| otherwise = floor (q + 1 % 2)
+modules/golem-eval/src/Golem/Eval/Number.hs	37	roundTo :: Integer -> Rational -> Rational
+modules/golem-eval/src/Golem/Eval/Number.hs	38	roundTo n q = roundHalfAway (q * 10 ^ n) % 10 ^ n
+modules/golem-eval/src/Golem/Eval/Number.hs	81	round17 :: Rational -> Rational
+modules/golem-eval/src/Golem/Eval/Number.hs	82	round17 q
+modules/golem-eval/src/Golem/Eval/Number.hs	84	| otherwise = roundTo (digitsAfterPoint (decimalExponent (abs q))) q
+modules/golem-eval/src/Golem/Eval/Number.hs	87	isqrt :: Integer -> Integer
+modules/golem-eval/src/Golem/Eval/Number.hs	88	isqrt n
+modules/golem-eval/src/Golem/Eval/Number.hs	105	sqrtRational :: Rational -> Rational
+modules/golem-eval/src/Golem/Eval/Number.hs	106	sqrtRational x
+modules/golem-eval/src/Golem/Eval/Number.hs	114	s = isqrt (floor y)
+modules/golem-eval/src/Golem/Eval/Number.hs	120	sn = isqrt n
+modules/golem-eval/src/Golem/Eval/Number.hs	121	sd = isqrt d
+modules/golem-eval/src/Golem/Eval/Number.hs	131	-- | The most fractional digits of a number in prose, and of round and fixed.
+modules/golem-eval/src/Golem/Eval/Number.hs	148	Nothing -> let r = round17 q in (fromMaybe 0 (finiteDigits (denominator r)), r)
+modules/golem-html/src/Golem/Html.hs	286	let ch v = round (255 * (1 - fromIntegral v / 100 :: Rational) * (1 - fromIntegral k / 100))
+modules/golem-layout-spec/src/Golem/LayoutSpec.hs	161	| otherwise = [fromInteger i * pitch + Sp (round (fromInteger (unSp fs) * baselineRatio)) | i <- [0 .. nLines - 1]]
+modules/golem-layout-spec/src/Golem/LayoutSpec.hs	294	above = Sp (round (fromInteger (unSp fs) * baselineRatio))
+modules/golem-layout/src/Golem/Layout/Align.hs	80	in if rest > 0 then Sp (floor rest) else 0
+modules/golem-layout/src/Golem/Layout/Code.hs	140	codeGeometry fs p s = CodeGeometry fs p s (if fs <= 0 then p else Sp (round (unSp p * unSp s % unSp fs)))
+modules/golem-layout/src/Golem/Layout/Japanese.hs	1213	tracking lk = Sp (round (toInteger (lkTracking lk) * unSp (lkSize lk) % 1000))
+modules/golem-layout/src/Golem/Layout/Japanese.hs	2229	wrapMarkSize (Sp s) = Sp (floor (toRational s * wrapMarkScale))
+modules/golem-layout/src/Golem/Layout/KnuthPlass.hs	596	steps = (if clamped < 0 then floor q else truncate q) :: Integer
+modules/golem-layout/src/Golem/Layout/KnuthPlass.hs	631	in zip its (map (Sp . round) offsets)
+modules/golem-layout/src/Golem/Layout/Paginate.hs	77	let hp = round (p * s % fs)
+modules/golem-layout/src/Golem/Layout/Ruby.hs	94	in map (Sp . floor) (take (length advances) starts)
+modules/golem-layout/src/Golem/Layout/Table.hs	100	ColumnZw q -> Just (Sp (floor (fromInteger (unSp size) * q)))
+modules/golem-layout/src/Golem/Layout/Table.hs	102	ColumnPercent q -> Just (Sp (floor (fromInteger (unSp shared) * q / 100)))
+modules/golem-length/src/Golem/Length.hs	8	and em to at most four decimals in the output; both round half to even.
+modules/golem-length/src/Golem/Length.hs	49	toSp u r = Sp (round (r * spPer u))
+modules/golem-length/src/Golem/Length.hs	53	zwToSp (Sp size) r = Sp (round (r * fromInteger size))
+modules/golem-length/src/Golem/Length.hs	68	mmCeilText = mmRationalText . (% 100) . ceiling . (* 100) . fromSp Mm
+modules/golem-length/src/Golem/Length.hs	76	let hundredths = round (abs mm * 100) :: Integer
+modules/golem-pdf/src/Golem/Pdf/Drawing.hs	48	-- | 0 butt, 1 round, 2 square (J)
+modules/golem-pdf/src/Golem/Pdf/Drawing.hs	50	-- | 0 miter, 1 round, 2 bevel (j)
+modules/golem-pdf/src/Golem/Pdf/Drawing.hs	68	fixed v = B.byteString (TE.encodeUtf8 (showRationalDigits 6 (round (v * 65536) % 65536)))
+modules/golem-pdf/src/Golem/Pdf/Sha1.hs	36	-- | The function and the constant of round t (FIPS 180-4 4.1.1 and 4.2.1).
+modules/golem-pdf/src/Golem/Pdf/Srgb.hs	25	fixed v = be32 (fromIntegral (fromIntegral (round (v * 65536) :: Integer) :: Int32) `mod` (2 ^ (32 :: Int)))
+modules/golem-pdf/src/Golem/Pdf/Writer.hs	120	array (empty for a solid line) and whether its ends are round.
+modules/golem-pdf/src/Golem/Pdf/Writer.hs	457	let k = Sp (round (toRational (unSp r) * 5523 / 10000))
+modules/golem-preflight/src/Golem/Preflight.hs	106	per px sz = if sz <= 0 then 0 else floor (toRational px / L.fromSp L.In sz)
+modules/golem-project/src/Golem/Project/Style.hs	1188	minGutter = until (\k -> 2 * mmToSp (k % 100) >= size) (+ 1) (max 0 (floor (spToMm size * 50) - 1))
+modules/golem-project/src/Golem/Project/Style.hs	1190	maxSize = until (\k -> k <= 0 || mmToSp (k % 100) <= 2 * gutter) (subtract 1) (ceiling (spToMm (2 * gutter) * 100) + 1)
+modules/golem-svg/src/Golem/Svg.hs	358	"stroke-linecap" -> v `elem` ["butt", "round", "square"]
+modules/golem-svg/src/Golem/Svg.hs	359	"stroke-linejoin" -> v `elem` ["miter", "round", "bevel"]
+modules/golem-svg/src/Golem/Svg.hs	421	| Just p <- T.stripSuffix "%" t = clamp . round . (* 255) . (/ 100) <$> parseNumber p
+modules/golem-svg/src/Golem/Svg.hs	422	| T.all isDigit t && not (T.null t) = clamp . round <$> parseNumber t
+modules/golem-svg/src/Golem/Svg.hs	472	stCap = case get "stroke-linecap" of "round" -> CapRound; "square" -> CapSquare; _ -> CapButt,
+modules/golem-svg/src/Golem/Svg.hs	473	stJoin = case get "stroke-linejoin" of "round" -> JoinRound; "bevel" -> JoinBevel; _ -> JoinMiter,
+modules/golem-svg/src/Golem/Svg.hs	657	kappa = roundTo (4 / 3 * (sqrtR 2 - 1))
+modules/golem-svg/src/Golem/Svg.hs	797	(rx, ry) = if lambda > 1 then let s = sqrtR lambda in (roundTo (rxa * s), roundTo (rya * s)) else (rxa, rya)
+modules/golem-svg/src/Golem/Svg.hs	800	coef = (if large /= sweep then 1 else -1) * (if den == 0 then 0 else sqrtR (max 0 (num' / den)))
+modules/golem-svg/src/Golem/Svg.hs	801	cx' = roundTo (coef * rx * y1' / ry)
+modules/golem-svg/src/Golem/Svg.hs	802	cy' = roundTo (negate coef * ry * x1' / rx)
+modules/golem-svg/src/Golem/Svg.hs	812	n = max 1 (ceiling (abs delta / 90 - 1 / 1000000)) :: Integer
+modules/golem-svg/src/Golem/Svg.hs	814	k = roundTo (4 / 3 * tanDeg (step / 4))
+modules/golem-svg/src/Golem/Svg.hs	940	unit v@(x, y) = let n = norm v in if n == 0 then (0, 0) else (roundTo (x / n), roundTo (y / n))
+modules/golem-svg/src/Golem/Svg/Number.hs	20	roundTo,
+modules/golem-svg/src/Golem/Svg/Number.hs	21	sqrtR,
+modules/golem-svg/src/Golem/Svg/Number.hs	39	roundTo :: Rational -> Rational
+modules/golem-svg/src/Golem/Svg/Number.hs	40	roundTo x = round (x * 2 ^ precisionBits) % (2 ^ precisionBits)
+modules/golem-svg/src/Golem/Svg/Number.hs	105	{- | Whether digits scaled by a power of ten are not 0 and below the floor,
+modules/golem-svg/src/Golem/Svg/Number.hs	148	sqrtR :: Rational -> Rational
+modules/golem-svg/src/Golem/Svg/Number.hs	149	sqrtR x
+modules/golem-svg/src/Golem/Svg/Number.hs	153	n = floor (x * fromInteger (s * s)) :: Integer
+modules/golem-svg/src/Golem/Svg/Number.hs	154	in isqrt n % s
+modules/golem-svg/src/Golem/Svg/Number.hs	156	isqrt :: Integer -> Integer
+modules/golem-svg/src/Golem/Svg/Number.hs	157	isqrt n
+modules/golem-svg/src/Golem/Svg/Number.hs	165	norm (x, y) = sqrtR (x * x + y * y)
+modules/golem-svg/src/Golem/Svg/Number.hs	174	let d = d0 - 360 * fromInteger (floor (d0 / 360))
+modules/golem-svg/src/Golem/Svg/Number.hs	182	let q = round (d / 90) :: Integer
+modules/golem-svg/src/Golem/Svg/Number.hs	184	c = roundTo (series 1 (\k -> negate (r * r) / fromInteger ((2 * k - 1) * (2 * k))))
+modules/golem-svg/src/Golem/Svg/Number.hs	185	s = roundTo (r * series 1 (\k -> negate (r * r) / fromInteger ((2 * k) * (2 * k + 1))))
+modules/golem-svg/src/Golem/Svg/Number.hs	203	tanDeg d = let (c, s) = cosSinDeg d in if c == 0 then 0 else roundTo (s / c)
+modules/golem-svg/src/Golem/Svg/Number.hs	220	let half v = roundTo (v / (1 + sqrtR (1 + v * v)))
+modules/golem-svg/src/Golem/Svg/Number.hs	223	in roundTo (4 * t * 180 / piR)
+modules/golem-text/src/Golem/Text.hs	247	Aki _ (AkiZw r) -> T.replicate (fromInteger (max 0 (floor r))) "\x3000"
+modules/golem-typeset/src/Golem/Typeset/Box.hs	5	Every length is an 'Sp'; the points of a path with round corners are
+modules/golem-typeset/src/Golem/Typeset/Box.hs	97	{- | The corners of a part of a box (docs/adr/0271, B8): a corner is round,
+modules/golem-typeset/src/Golem/Typeset/Box.hs	159	sides of the rectangle in lines, the round corners in quarters, from the
+modules/golem-typeset/src/Golem/Typeset/Box.hs	173	{- | The paths of the border of a part with round corners (docs/adr/0271):
+modules/golem-typeset/src/Golem/Typeset/Box.hs	183	let -- from the side after one not drawn, so that no run goes round the end of the list
+modules/golem-typeset/src/Golem/Typeset/Box.hs	199	without round corners (docs/adr/0271): each centred on its side, as long
+modules/golem-typeset/src/Golem/Typeset/Box.hs	229	those of the background and those of the border (docs/adr/0271). A part with no round
+modules/golem-typeset/src/Golem/Typeset/Box.hs	230	corner fills the rectangle and draws the bands; one with a round corner
+modules/golem-typeset/src/Golem/Typeset/Box.hs	233	round ends.
+modules/golem-typeset/src/Golem/Typeset/Box.hs	277	spPoint (x, y) = (Sp (round x), Sp (round y))
+modules/golem-typeset/src/Golem/Typeset/Draw.hs	793	in [if n /= c then Sp (round (fromIntegral (cluster c) * unSp tr % 1000)) else 0 | (c, n) <- zip starts nexts]
+modules/golem-typeset/src/Golem/Typeset/Draw.hs	1270	above = Sp (round (toRational (unSp s) * (emCentre place + 1 / 2) - toRational (unSp size) * (emCentre look + 1 / 2)))
+modules/golem-typeset/src/Golem/Typeset/Draw.hs	1325	lift = Sp (floor ((1 - wrapMarkScale) * (baselineRatio - 1 / 2) * toRational (unSp size)))
+modules/golem-typeset/src/Golem/Typeset/Draw.hs	1679	else tg {tgAscent = Sp (round (maximum (map fst inks))), tgDescent = Sp (round (maximum (map snd inks)))}
+modules/golem-typeset/src/Golem/Typeset/Draw.hs	1728	| otherwise = codeCaptionTop env slot (Sp (round (toRational (unSp (pgLinePitch geom)) * toRational (unSp (slSize sl)) / toRational (unSp fs)))) (slSize sl) j
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	352	-- | the units composed and the marker widths of the lists, for the next round of S2 to reuse (docs/adr ADR 0251)
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	530	trackingOf lk = L.Sp (round (toInteger (lkTracking lk) * L.unSp (lkSize lk) % 1000))
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	595	-- the round before, whose compositions of the units that did not change are reused (docs/adr ADR 0251)
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	596	round' prev assumed = do
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	601	result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	1365	-- | The page labels assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007, docs/adr/0260).
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	1373	and index marks settle. A round that fails stops it with its errors;
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	1381	-- each round is given the value of the round just before it, and of no other (docs/adr ADR 0251)
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	2263	-- a mark without an assumed page yet stands at page 1 in the first round
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	2520	Just _ -> (alongSp, Sp (floor (fromInteger (unSp alongSp) * ratio)), False)
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	2891	cellPitch = Sp (round (toRational (unSp pitch) * toRational (unSp ts) / toRational (unSp fs)))
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3162	their lines. With the round before (docs/adr ADR 0251), a unit equal to the
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3163	unit at its place in that round and with no reference to a page is not
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3164	composed again: its composition is that of the round before, which the
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3173	-- the units the round before composed the same way: none if the number of the units or the widths of the list markers differ (docs/adr ADR 0256)
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3288	composition reads the pages assumed, so it is composed in every round.
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3609	let across0 = Sp (floor (fromInteger (unSp along0) * ratio))
+modules/golem-typeset/src/Golem/Typeset/Flow.hs	3613	in if across0 <= acrossMax then (along0, across0, False) else (Sp (floor (fromInteger (unSp acrossMax) / ratio)), acrossMax, True)
+modules/golem-typeset/src/Golem/Typeset/FontProvider.hs	169	the second round of the page references (docs/adr/0253) -}
+modules/golem-typeset/src/Golem/Typeset/FontProvider.hs	258	per1000 v = fromInteger (round (toInteger v * 1000 % upem))
+modules/golem-typeset/src/Golem/Typeset/Fonts.hs	646	syntheticStroke r size = Sp (floor (toRational (unSp size) * r))
+modules/golem-typeset/src/Golem/Typeset/WrapMark.hs	66	in (Sp (floor (cx + dx * w)), Sp (floor (cy + dy * w)))

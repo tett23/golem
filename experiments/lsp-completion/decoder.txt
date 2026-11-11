@@ -1,0 +1,41 @@
+Build profile: -w ghc-9.10.3 -O1
+In order, the following will be built (use -v for more details):
+ - golem-project-0.1.0 (test:golem-project-test) (first run)
+Configuring test suite 'golem-project-test' for golem-project-0.1.0...
+Preprocessing test suite 'golem-project-test' for golem-project-0.1.0...
+Building test suite 'golem-project-test' for golem-project-0.1.0...
+[ 1 of 16] Compiling ColophonSpec     ( test/ColophonSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/ColophonSpec.o )
+[ 2 of 16] Compiling FilesSpec        ( test/FilesSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/FilesSpec.o )
+[ 3 of 16] Compiling HyphenationExceptionsSpec ( test/HyphenationExceptionsSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/HyphenationExceptionsSpec.o )
+[ 4 of 16] Compiling PositionSpec     ( test/PositionSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/PositionSpec.o )
+[ 5 of 16] Compiling SharedValuesSpec ( test/SharedValuesSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/SharedValuesSpec.o )
+[ 6 of 16] Compiling StyleSchemaSpec  ( test/StyleSchemaSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/StyleSchemaSpec.o )
+[ 7 of 16] Compiling Support          ( test/Support.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/Support.o )
+[ 8 of 16] Compiling StylePositionSpec ( test/StylePositionSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/StylePositionSpec.o )
+[ 9 of 16] Compiling OutputCharsSpec  ( test/OutputCharsSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/OutputCharsSpec.o )
+[10 of 16] Compiling NaturalKeySpec   ( test/NaturalKeySpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/NaturalKeySpec.o )
+[11 of 16] Compiling FunctionsSpec    ( test/FunctionsSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/FunctionsSpec.o )
+[12 of 16] Compiling FeaturesSpec     ( test/FeaturesSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/FeaturesSpec.o )
+[13 of 16] Compiling TomlMessageSpec  ( test/TomlMessageSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/TomlMessageSpec.o )
+[14 of 16] Compiling UnderlineSpec    ( test/UnderlineSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/UnderlineSpec.o )
+[15 of 16] Compiling VarsSpec         ( test/VarsSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/VarsSpec.o )
+[16 of 16] Compiling Main             ( test/Main.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test-tmp/Main.o )
+[17 of 17] Linking /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/build/golem-project-test/golem-project-test
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+Running 1 test suites...
+Test suite golem-project-test: RUNNING...
+golem-project
+  [source] (docs/adr ADR 0013)
+    paragraph-separator = "line" is read:                       OK (0.01s)
+    paragraph-separator = "blank-line" is read (docs/adr/0193): OK
+  [targets.pdf] pdfa and pdfua (docs/adr ADR 0183)
+    pdfa = "2a" and pdfua = "1" are read:                       OK
+    other values and values that are not strings are G03001:    OK
+    pdfa is not a key of [targets.epub]:                        OK
+    the span of a value of the manifest is at the value:        OK
+
+All 6 tests passed (0.02s)
+Test suite golem-project-test: PASS
+Test suite logged to:
+/Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/t/golem-project-test/test/golem-project-0.1.0-golem-project-test.log
+1 of 1 test suites (1 of 1 test cases) passed.

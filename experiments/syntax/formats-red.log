@@ -1,0 +1,8 @@
+("318 I1","[lists]\nnumbers = [\"{n:lower-alpha}\"]",[],True)
+("318 I1","[character-styles.note-mark]\nsize=\"0.5zw\"",[],True)
+("318 I2","[lists]\nnumbers = [\"{{{n}}}\"]",[],False)
+("318 I2","[lists]\nnumbers = [\"{a}\"]",[],False)
+("318 I2","[lists]\nnumbers = [\"{{{a}}}\"]",[],False)
+("318 I2","[masters.book]\nrunning-head={position=\"top-outside\",content=[\"{{x}}\"]}",[],False)
+("318 I2","[notes]\nmark-size=\"0.5zw\"",[],False)
+(2,7)

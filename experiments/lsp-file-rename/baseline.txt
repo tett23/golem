@@ -1,0 +1,2 @@
+initialize fileOperations={}
+willRenameFiles={"code":-32601,"message":"No handler for:  SMethod_WorkspaceWillRenameFiles"}

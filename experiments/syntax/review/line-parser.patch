@@ -1,0 +1,43 @@
+--- a/modules/golem-parser/src/Golem/Parser.hs
++++ b/modules/golem-parser/src/Golem/Parser.hs
+@@ -11,6 +11,9 @@
+ 
+ import Data.ByteString (ByteString)
+ import Data.Text (Text)
++import Data.Text qualified as T
++import Data.Maybe (maybeToList)
++import Golem.Parser.AST qualified as A
+ import Golem.Parser.AST (File)
+ import Golem.Parser.CST
+ import Golem.Parser.Convert (convert)
+@@ -30,7 +33,29 @@
+ parseAst :: FileId -> Text -> (File, Node, [Diagnostic])
+ parseAst fid src =
+   let (cst, ds) = parse fid src
+-   in (lower fid cst, cst, ds)
++      ast = lower fid cst
++   in (ast, cst, ds ++ concatMap lineSyntax (A.fileBlocks ast))
++
++-- Check literal line selectors before evaluating an expression or looking up its asset.
++lineSyntax :: A.Located A.Block -> [Diagnostic]
++lineSyntax (A.Located _ block) = case block of
++  A.BlockCommand (A.Located _ name) args children ->
++    selectors [key | name == "listing", key <- ["lines","highlight"]] args ++ descend children
++  A.CodeBlock _ args _ -> selectors ["highlight"] args
++  A.Attributed commands target -> descend (commands ++ maybeToList target)
++  A.BulletList items -> descend (concat items)
++  A.OrderedList items -> descend (concat items)
++  A.DefList groups -> descend (concatMap (concat . A.dgDefs) groups)
++  _ -> []
++  where
++    descend = concatMap lineSyntax
++    selectors keys args =
++      [ diagnostic "G02110" Error sp "行番号には負号を書けません"
++      | A.Located sp (A.Keyword (A.Located _ key) arg) <- args, key `elem` keys
++      , text <- case arg of { A.Word x -> [x]; A.StringLit x -> [x]; _ -> [] }
++      , let negative item = "-" `T.isPrefixOf` T.strip item || "...-" `T.isInfixOf` item || "--" `T.isInfixOf` item
++      , any negative (T.splitOn "," text)
++      ]
+ 
+ -- | Reading stage followed by 'parse'.
+ parseFile :: FileId -> ByteString -> Either [Diagnostic] (Node, [Diagnostic])

@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {source,selection,blank,quantity,declaration} from './review.mjs';
+const check=(name,run)=>test(name,run);
+for (const [args,want] of [[[], 'G02036'],[['a'],'a'],[['src=a'],'G02250'],[['a','a'],'G02253'],[['a','src=a'],'G02253'],[['src=a','src=a'],'G02077'],[['src=a','src=b'],'G02077'],[['a','src=a','src=b'],'G02077']]) check('315 '+JSON.stringify(args),()=>assert.equal(source(args),want));
+for(const [arg,want] of [['1...3, 5...7',[[1,3],[5,7]]],['1.,.3, 5..,7','syntax'],['1...3',[[1,3]]],['1...1',[[1,1]]],['-1','syntax'],['1...-2','syntax'],['1-2','G02251'],['0','value'],['5..','syntax'],['..7','syntax'],['1..3','syntax'],['7...5','value'],[0,'value'],[-1,'value'],[2,[[2,2]]]]) check('316 '+JSON.stringify(arg),()=>assert.deepEqual(selection(arg),want));
+for(const [a,b] of [[0,0],[0,3],[3,0],[2,3]]) check('319 '+a+'+'+b,()=>assert.equal(blank(a,b),a+b));
+const defs=new Map([['indent',['length','1zw']],['rows',['count',2]]]);
+for(const [kind,key,want] of [['length','indent','1zw'],['count','rows',2],['count','indent','G03258'],['length','missing','G03257'],['length','$indent','invalid'],['length','2pt','2pt']]) check('320 '+kind+key,()=>assert.equal(quantity(kind,key,defs),want));
+for(const [s,want] of [['set x = 3','@set x = 3'],['set x is fine','set x is fine'],['set up =','@set up ='],['@import f as m','@import f as m'],['  set x = 3','  set x = 3'],['set x == 3','set x == 3']]) check('336 '+s,()=>assert.equal(declaration(s),want));
+const graph=new Map([['more',['count','rows + 1']],['rows',['count',2]],['left',['length','right']],['right',['length','left']],['self',['count','self']],['gap',['length','1zw']]]);
+for (const [kind,expr,want] of [['count','more',3],['count','more + rows',5],['count','self','cycle'],['length','left','cycle'],['count','gap + 1','G03258'],['length','0','0pt'],['count','0',0],['aki','0','ベタ'],['count','2147483647',2147483647],['count','2147483647 + 1','G03256']]) check('320 I3 '+kind+' '+expr,()=>assert.equal(quantity(kind,expr,graph),want));

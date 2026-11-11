@@ -1,0 +1,21 @@
+{"label":"screen template created","ok":true,"actual":0,"expected":0}
+{"label":"screen rules selected","ok":true,"actual":"based-on = \"screen\"","expected":"based-on = \"screen\""}
+{"label":"screen omits bleed","ok":true,"actual":false,"expected":false}
+{"label":"zero bleed / screen / glyph off","ok":true,"actual":[0],"expected":[0]}
+{"label":"zero bleed / screen / glyph warning","ok":true,"actual":[0,["G09002","warning"]],"expected":[0,["G09002","warning"]]}
+{"label":"zero bleed / screen / glyph error","ok":true,"actual":[1,["G09002","error"]],"expected":[1,["G09002","error"]]}
+{"label":"bleed override and glyph coexist","ok":true,"actual":[1,"G09002","G09010"],"expected":[1,"G09002","G09010"]}
+{"label":"0332 M1 explicit marks reject zero bleed","ok":true,"actual":[1,true],"expected":[1,true]}
+{"label":"0332 M1 marks explain how to correct an explicitly present zero","ok":true,"actual":"日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください","expected":"日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください"}
+{"label":"0332 M3 explain lists the same required positive length","ok":true,"actual":[0,true],"expected":[0,true]}
+{"label":"0332 M2 positive bleed resolves marks error","ok":true,"actual":[0,false],"expected":[0,false]}
+{"label":"0332 M2 HTML-only build ignores marks","ok":true,"actual":[0,false],"expected":[0,false]}
+{"label":"0332 M1 omitted bleed has the same repair","ok":true,"actual":[1,["日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください"]],"expected":[1,["日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください"]]}
+{"label":"HTML language JA-jp","ok":true,"actual":[0],"expected":[0]}
+{"label":"JA-jp prints Japanese edition and date","ok":true,"actual":"二〇二六年十月十六日　初版第一刷発行","expected":"二〇二六年十月十六日　初版第一刷発行"}
+{"label":"HTML language ja_JP","ok":true,"actual":[1,"G03119"],"expected":[1,"G03119"]}
+{"label":"HTML language en-US","ok":true,"actual":[1,"G02076"],"expected":[1,"G02076"]}
+{"label":"table source and row-size precedence: @table src=items.csv","ok":true,"actual":[1,["G02252"]],"expected":[1,["G02252"]]}
+{"label":"table source and row-size precedence: @table items.csv src=items.csv","ok":true,"actual":[1,["G02130"]],"expected":[1,["G02130"]]}
+{"label":"table source and row-size precedence: @table items.csv","ok":true,"actual":[1,["G02154"]],"expected":[1,["G02154"]]}
+{"total":20,"passed":20,"failed":0}

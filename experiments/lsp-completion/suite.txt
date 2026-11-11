@@ -1,0 +1,558 @@
+Build profile: -w ghc-9.10.3 -O1
+In order, the following will be built (use -v for more details):
+ - golem-parser-0.1.0 (lib) (file src/Golem/Parser/SourceSettings.hs changed)
+ - golem-fmt-0.1.0 (lib) (dependency rebuilt)
+ - golem-doc-0.1.0 (lib) (dependency rebuilt)
+ - golem-assemble-0.1.0 (lib) (dependency rebuilt)
+ - golem-text-0.1.0 (lib) (dependency rebuilt)
+ - golem-project-0.1.0 (lib) (dependency rebuilt)
+ - golem-html-0.1.0 (lib) (dependency rebuilt)
+ - golem-preflight-0.1.0 (lib) (dependency rebuilt)
+ - golem-layout-spec-0.1.0 (lib) (dependency rebuilt)
+ - golem-layout-0.1.0 (lib) (dependency rebuilt)
+ - golem-eval-0.1.0 (lib) (dependency rebuilt)
+ - golem-epub-0.1.0 (lib) (dependency rebuilt)
+ - golem-typeset-0.1.0 (lib) (dependency rebuilt)
+ - golem-plugin-0.1.0 (lib) (dependency rebuilt)
+ - golem-lint-0.1.0 (lib) (dependency rebuilt)
+ - golem-emet-0.1.0 (lib) (dependency rebuilt)
+ - golem-driver-0.1.0 (lib) (dependency rebuilt)
+ - golem-lsp-0.1.0 (lib) (dependency rebuilt)
+ - golem-lsp-0.1.0 (test:golem-lsp-test) (dependency rebuilt)
+Preprocessing library for golem-parser-0.1.0...
+Building library for golem-parser-0.1.0...
+[8 of 8] Compiling Golem.Parser.SourceSettings ( src/Golem/Parser/SourceSettings.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-parser-0.1.0/build/Golem/Parser/SourceSettings.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-parser-0.1.0/build/Golem/Parser/SourceSettings.dyn_o ) [Source file changed]
+Preprocessing library for golem-doc-0.1.0...
+Building library for golem-doc-0.1.0...
+Preprocessing library for golem-fmt-0.1.0...
+Building library for golem-fmt-0.1.0...
+Preprocessing library for golem-assemble-0.1.0...
+Building library for golem-assemble-0.1.0...
+Preprocessing library for golem-html-0.1.0...
+Building library for golem-html-0.1.0...
+Preprocessing library for golem-project-0.1.0...
+Building library for golem-project-0.1.0...
+Preprocessing library for golem-text-0.1.0...
+Building library for golem-text-0.1.0...
+[ 8 of 10] Compiling Golem.Project.Manifest ( src/Golem/Project/Manifest.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/build/Golem/Project/Manifest.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/build/Golem/Project/Manifest.dyn_o ) [Source file changed]
+Preprocessing library for golem-epub-0.1.0...
+Building library for golem-epub-0.1.0...
+[ 9 of 10] Compiling Golem.Project.Style ( src/Golem/Project/Style.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/build/Golem/Project/Style.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/build/Golem/Project/Style.dyn_o ) [Golem.Project.Manifest changed]
+[10 of 10] Compiling Golem.Project    ( src/Golem/Project.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/build/Golem/Project.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-project-0.1.0/build/Golem/Project.dyn_o ) [Golem.Parser.SourceSettings changed]
+Preprocessing library for golem-layout-spec-0.1.0...
+Building library for golem-layout-spec-0.1.0...
+Preprocessing library for golem-preflight-0.1.0...
+Building library for golem-preflight-0.1.0...
+Preprocessing library for golem-layout-0.1.0...
+Building library for golem-layout-0.1.0...
+[1 of 3] Compiling Golem.Preflight.Rules ( src/Golem/Preflight/Rules.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-preflight-0.1.0/build/Golem/Preflight/Rules.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-preflight-0.1.0/build/Golem/Preflight/Rules.dyn_o ) [Golem.Project.Manifest changed]
+Preprocessing library for golem-eval-0.1.0...
+Building library for golem-eval-0.1.0...
+[5 of 9] Compiling Golem.Eval.Value ( src/Golem/Eval/Value.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/Value.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/Value.dyn_o ) [Golem.Project.Manifest changed]
+[9 of 9] Compiling Golem.Eval.File  ( src/Golem/Eval/File.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/File.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/File.dyn_o ) [Golem.Parser.SourceSettings changed]
+Preprocessing library for golem-typeset-0.1.0...
+Building library for golem-typeset-0.1.0...
+[ 9 of 16] Compiling Golem.Typeset.Fonts ( src/Golem/Typeset/Fonts.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Fonts.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Fonts.dyn_o ) [Golem.Project changed]
+[10 of 16] Compiling Golem.Typeset.Flow ( src/Golem/Typeset/Flow.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Flow.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Flow.dyn_o ) [Golem.Project changed]
+Preprocessing library for golem-lint-0.1.0...
+Building library for golem-lint-0.1.0...
+Preprocessing library for golem-plugin-0.1.0...
+Building library for golem-plugin-0.1.0...
+[1 of 1] Compiling Golem.Lint       ( src/Golem/Lint.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lint-0.1.0/build/Golem/Lint.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lint-0.1.0/build/Golem/Lint.dyn_o ) [Golem.Parser.SourceSettings changed]
+[2 of 2] Compiling Golem.Plugin.Lock ( src/Golem/Plugin/Lock.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-plugin-0.1.0/build/Golem/Plugin/Lock.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-plugin-0.1.0/build/Golem/Plugin/Lock.dyn_o ) [Golem.Project.Manifest changed]
+Preprocessing library for golem-emet-0.1.0...
+Building library for golem-emet-0.1.0...
+[11 of 16] Compiling Golem.Typeset.Structure ( src/Golem/Typeset/Structure.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Structure.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Structure.dyn_o ) [Golem.Typeset.Flow changed]
+[13 of 16] Compiling Golem.Typeset.Draw ( src/Golem/Typeset/Draw.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Draw.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset/Draw.dyn_o ) [Golem.Project changed]
+[14 of 16] Compiling Golem.Typeset    ( src/Golem/Typeset.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-typeset-0.1.0/build/Golem/Typeset.dyn_o ) [Golem.Typeset.Draw changed]
+Preprocessing library for golem-driver-0.1.0...
+Building library for golem-driver-0.1.0...
+[ 6 of 13] Compiling Golem.Driver.Plugins ( src-plugins/Golem/Driver/Plugins.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/Plugins.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/Plugins.dyn_o ) [Golem.Project.Manifest changed]
+[ 7 of 13] Compiling Golem.Driver.Functions ( src/Golem/Driver/Functions.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/Functions.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/Functions.dyn_o ) [Golem.Project.Manifest changed]
+[ 8 of 13] Compiling Golem.Driver.ProjectVars ( src/Golem/Driver/ProjectVars.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/ProjectVars.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/ProjectVars.dyn_o ) [Golem.Project.Manifest changed]
+[12 of 13] Compiling Golem.Driver     ( src/Golem/Driver.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver.dyn_o ) [Golem.Driver.Functions changed]
+[13 of 13] Compiling Golem.Driver.Lint ( src/Golem/Driver/Lint.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/Lint.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/Lint.dyn_o ) [Golem.Driver changed]
+Preprocessing library for golem-lsp-0.1.0...
+Building library for golem-lsp-0.1.0...
+[2 of 4] Compiling Golem.Lsp.Workspace ( src/Golem/Lsp/Workspace.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Workspace.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Workspace.dyn_o ) [Golem.Driver changed]
+[3 of 4] Compiling Golem.Lsp.Features ( src/Golem/Lsp/Features.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Features.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Features.dyn_o ) [Source file changed]
+[4 of 4] Compiling Golem.Lsp.Server ( src/Golem/Lsp/Server.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Server.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Server.dyn_o ) [Golem.Lsp.Features changed]
+Preprocessing test suite 'golem-lsp-test' for golem-lsp-0.1.0...
+Building test suite 'golem-lsp-test' for golem-lsp-0.1.0...
+[1 of 9] Compiling EditingSpec      ( test/EditingSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/EditingSpec.o ) [Source file changed]
+[2 of 9] Compiling PublishSpec      ( test/PublishSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/PublishSpec.o ) [Golem.Lsp.Server changed]
+[3 of 9] Compiling SemanticTokensSpec ( test/SemanticTokensSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/SemanticTokensSpec.o ) [Golem.Lsp.Features changed]
+[4 of 9] Compiling StaleS1Spec      ( test/StaleS1Spec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/StaleS1Spec.o ) [Golem.Lsp.Workspace changed]
+[5 of 9] Compiling Support          ( test/Support.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/Support.o ) [Golem.Lsp.Workspace changed]
+[6 of 9] Compiling FunctionsLspSpec ( test/FunctionsLspSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/FunctionsLspSpec.o ) [Golem.Lsp.Features changed]
+[7 of 9] Compiling TableWatchSpec   ( test/TableWatchSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/TableWatchSpec.o ) [Golem.Lsp.Features changed]
+[8 of 9] Compiling TomlSpec         ( test/TomlSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/TomlSpec.o ) [Source file changed]
+[9 of 9] Compiling Main             ( test/Main.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/Main.o ) [Golem.Lsp.Features changed]
+[10 of 10] Linking /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+Running 1 test suites...
+Test suite golem-lsp-test: RUNNING...
+golem-lsp
+  golem-lsp (ADR 0001)
+    no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005):                                      OK (0.05s)
+    definition: label across files, import path, namespaced variable:                                                    OK
+    references of a label cross files:                                                                                   OK
+    rename rewrites every reference and refuses an existing name:                                                        OK
+    completion: commands, labels, import paths, swatches:                                                                OK
+    completion: a project without plugins has the built-in names only:                                                   OK
+    completion: paragraph and character styles (docs/adr ADR 0005):                                                      OK
+    completion: the kinds of a page break (docs/adr ADR 0017):                                                           OK
+    completion: the signs of page-lines (docs/adr ADR 0030):                                                             OK
+    completion: @style-def (docs/adr ADR 0014):                                                                          OK
+    completion: the keys of docs/adr/0189 and the values of align in @style-def:                                         OK
+    completion: @style-def regex (docs/adr ADR 0015):                                                                    OK
+    definition: the styles @style-def regex names (docs/adr ADR 0015):                                                   OK
+    completion: @manifest (docs/adr ADR 0014):                                                                           OK
+    a file outside the project read in the line style has no G05001 (docs/adr ADR 0014, docs/adr/0193):                  OK
+    an empty expression outside the project is one G01020, and hover and completion still work:                          OK
+    the reserved [! is published as the error G01100 (docs/adr ADR 0115):                                                OK
+    a buffer with CR or a BOM is G01003 or G01002, in and outside the project:                                           OK
+    definition: a style defined in the file (docs/adr ADR 0014):                                                         OK
+    editing the file settings evaluates that file alone (docs/adr ADR 0014):                                             OK
+    with a syntax error, completion and definition still work elsewhere:                                                 OK
+    a missing font leaves the manuscript diagnostics in place (golem-project ADR 0004):                                  OK
+    a missing import is reported on the file of the @import (golem-project ADR 0006):                                    OK
+    a style.toml error is reported on style.toml (golem-project ADR 0006):                                               OK
+    a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159):                   OK
+    a project file publishes its diagnostics in the order of the codes (golem-syntax ADR 0003):                          OK
+    a @nonumber figure in a preface: no G04004, and G04005 at a ref-number to it (docs/adr/0200):                        OK
+    a notice is published as Information (golem-syntax ADR 0002):                                                        OK
+    an info is published as Hint (docs/adr 0104):                                                                        OK
+    the infos of silence-info are not published, the others are (docs/adr 0104):                                         OK
+    the notices of silence-notices are not published, the others are (golem-syntax ADR 0002):                            OK
+    completion: the keys of meta and the roles of the manifest (docs/adr ADR 0033):                                      OK
+    completion: the keys of [vars] after vars. and of its tables (docs/adr/0185):                                        OK
+    G05001 is not reported for the newlines of the line style (docs/adr ADR 0013):                                       OK
+    only changes to headings, labels or exports re-evaluate the project:                                                 OK
+    hover: S0 values, S1 values, and page numbers left to S2:                                                            OK
+    outline and formatting:                                                                                              OK
+    outline: an escaped character is the character, without the backslash:                                               OK
+    outline: the headings of levels 4 to 6 are children of their parents (docs/adr/0188):                                OK
+    UTF-8 and UTF-16 positions on a line with Japanese and a 4-byte character:                                           OK
+    columns past the line end clamp to the line end (ADR 0003):                                                          OK
+    a converted position lies within its line; only a position off the lines or inside a character has none (ADR 0003):  OK
+        ✓ <interactive> passed 100 tests.
+    past the line, fromLineCol is the line end; within it, the column comes back (ADR 0003):                             OK
+        ✓ <interactive> passed 100 tests.
+    the workspace keeps a line index per file and follows edits (ADR 0002):                                              OK
+    the server prefers UTF-8 positions and falls back to UTF-16 (ADR 0002):                                              OK
+    only the matching initialize response gets its positionEncoding replaced (ADR 0002):                                 OK
+    protocol
+      protocol: hover, definition, symbols, diagnostics:                                                                 [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/a.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/b.gm
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/style.toml
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] S[eIrnvfeor]  sSteorpvpeerd 
+starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/a.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/b.gm
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/style.toml
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] SOK
+e      protocol in utf-8 (ADR 0002):                                                                                      rver stopped
+OK
+      utf-8 columns of a diagnostic exceed utf-16 by the emoji's 2 units (ADR 0002):                                     OK
+      utf-8 hover inside a character returns null (ADR 0002):                                                            OK
+      completion past the line end clamps to the line end (ADR 0003):                                                    OK
+      hover past the line end equals hover at the line end (ADR 0003):                                                   OK
+    renaming, formatting, closing and imports (ADR 0001)
+      features
+        references of an imported variable from its definition include the namespaced uses:                              OK
+        references of a namespaced variable find its definition in the imported file:                                    OK
+        definition of a variable of the file is its @set:                                                                OK
+        references of a variable of the file are its @set and its uses:                                                  OK
+        rename refuses a name with a space:                                                                              OK
+        rename refuses an empty name:                                                                                    OK
+        rename from a reference rewrites the definition too:                                                             OK
+        formatting a formatted file is no edit:                                                                          OK
+        closing a file drops its unsaved text and its diagnostics:                                                       OK
+      protocol
+        rename answers one workspace edit over both files:                                                               [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: OK
+r        rename to an existing label is refused with an error response:                                                   ec[eIinvfeod]  eSxeirtv
+er[ Isntfaor]t iSnegr
+ver stopped
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] OK
+L        formatting answers one edit that replaces the whole document:                                                    S[PI:n froe]c eSievrevde re xsitta
+rt[iInngf
+o] Server stopped
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: receOK (0.11s)
+i        closing an edited document publishes the diagnostics of the file on disk:                                        [vIendf oe]x iSte
+rv[eIrn fsot]a rSteirnvge
+r stopped
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Debug] VFS: closing file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/b.gm
+[Info] LSP: received shutdown
+[Info] LSP:OK (0.11s)
+       roadmap-completion
+rec        M1 expression operands and exclusions:                                                                           eived exit
+[Info] Server stopped
+OK (0.02s)
+[        T1 manifest source enumeration inside quotes:                                                                    Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/manifest.toml
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: receiOK (0.01s)
+ved exit        T1 manifest unsaved PDF settings and free metadata:                                                              
+[I[nIfnof]o ]S eSrevrevre rs tsatrotpipnegd
+
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/manifest.toml
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[OK
+I        M1 block command at the beginning of a line:                                                                     nfo] LSP: [rIencfeoi]v eSde revxeirt 
+st[aIrntfion]g 
+Server stopped
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[OK
+I        M1 D1 expression function with its explanation over UTF-16:                                                      nfo] LSP[:I nrfeoc]e iSveerdv eerx istt
+ar[tIinnfgo
+] Server stopped
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] OK
+L        M1 D1 inline command after an emoji and prose outside a command:                                                 [Info] SSPe:r vreerc esitvaerdt ienxgi
+t
+[Info] Server stopped
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+OK
+    the functions of .emet (docs/adr/0162)
+      the project with functions has no diagnostics:                                                                     [Info] LSP: received exit
+[Info] Server stopped
+OK (0.04s)
+      completion in a .emet: the variables of the patterns, the names of a built-in module, the requirements:            OK
+      completion in a .gm after a namespace of a .emet:                                                                  OK (0.01s)
+      definition: from a command of .gm to the .emet, and in a .emet to an import:                                       OK
+      references: the calls in .gm of a function of a .emet:                                                             OK
+      hover: the signature with its requirements in .gm, and the type in a .emet:                                        OK
+      an edit of a .emet evaluates the .gm again, and its diagnostics are published:                                     OK
+      formatting of a .emet:                                                                                             OK
+      renaming a name of a .emet (docs/adr/0170)
+        a pub fn: its declaration and the calls of the expressions of .gm:                                               OK
+        a pub inline with a string name: .gm keeps its name:                                                             OK
+        a pub block without a string name: the commands of .gm:                                                          OK
+        a pub filter without a string name: the filter of [[filters]]:                                                   OK
+        a function imported: the file that declares it and the file that imports it:                                     OK
+        a name not of the rules of .gm for a command, a reserved word: an error:                                         OK
+        a file that does not check: the names of the program last checked:                                               OK (0.01s)
+      hover: the type of a local name in a .emet (docs/adr/0170):                                                        OK
+      semantic tokens of a .emet (docs/adr/0170)
+        columns after Japanese text in the negotiated unit:                                                              OK
+        the names of declarations have the modifier declaration:                                                         OK
+        tokens are in document order, do not overlap, and encode with the default legend:                                OK (0.02s)
+            ✓ <interactive> passed 100 tests.
+      a session: semantic tokens, symbols, hover and renaming of a .emet:                                                [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-functions-f8be0ab3caa62d20/fn/book.emet
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-functions-f8be0ab3caa62d20/a.gm
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK (0.02s)
+    table files (golem-eval ADR 0004)
+      the glob of a table file escapes the metacharacters of its path:                                                   OK
+      G02085 is published on the table file:                                                                             OK
+      the editor's text of an open table file comes before the disk:                                                     OK
+      the table files to watch, and which notifications re-evaluate:                                                     OK
+      a table file written as the first argument is watched, as one written as src=:                                     OK
+      a client with dynamic registration watches the table files; a fixed file clears G02085:                            [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-tables-d4b0d85983dc305f/a.gm
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK (0.11s)
+      a table file named with * and ? is watched as that file, not as a glob:                                            [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK
+      the files of [functions.requires] are watched, and creating a missing one publishes the diagnostics again:         [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK
+      manifest.toml is watched; a change of [vars] on the disk evaluates again:                                          [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopOK
+ped      a client without dynamic registration is not asked to watch:                                                       
+[Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK
+      a large table is G02088 at its @table (docs/adr ADR 0043):                                                         OK
+    S1 on every edit (golem-lsp ADR 0004)
+      a reference to a missing label is G04003 at once:                                                                  OK
+      two @toc are G04002:                                                                                               OK
+      removing the reference removes G04003:                                                                             OK
+      G04003 moves with the text before it:                                                                              OK
+      an S0 error stops S1, and removing it brings G04003 back:                                                          OK (0.02s)
+    publishing and evaluation order (golem-lsp ADR 0005)
+      an edit that changes no other file's diagnostics is published for that file alone:                                 [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-publish-f22356488499b05e/a.gm
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-publish-f22356488499b05e/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK (2.01s)
+      an edit of another file within the wait does not drop the first edit:                                              [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-publish-864c5701a028cdc4/a.gm
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-publish-864c5701a028cdc4/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK (2.02s)
+      a fixed error clears the file's diagnostics:                                                                       [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-publish-9058539d5bbeb358/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK (3.02s)
+    semantic tokens (golem-lsp ADR 0006)
+      commands, arguments, headings, expressions and comments:                                                           OK
+      code blocks, lists, definition lists, tables and keyword arguments:                                                OK
+      escapes and number shorthands:                                                                                     OK
+      columns after Japanese text are counted in the negotiated unit:                                                    OK
+      a comment over two lines is two tokens:                                                                            OK
+      no tokens for text, prose slots, code and errors:                                                                  OK
+      tokens are in document order, do not overlap, and encode with the default legend:                                  OK (0.01s)
+          ✓ <interactive> passed 100 tests.
+      the brackets, colons and pipes of commands and the punctuation of expressions (golem-lsp ADR 0007):                OK
+      a prose slot over lines and nested commands give tokens that do not overlap (golem-lsp ADR 0007):                  OK
+      the spaces and the equals signs of arguments (golem-lsp ADR 0008):                                                 OK
+      the spaces after the name and the colon, not the prose slot (golem-lsp ADR 0008):                                  OK
+      the spaces after the colon and the pipe, not those of the prose slots (golem-lsp ADR 0008):                        OK
+      splat arguments and the expressions in them (golem-lsp ADR 0008):                                                  OK
+      the keys and the spaces of a hash (golem-lsp ADR 0008):                                                            OK
+      the name, the equals sign and the expression of @set (golem-lsp ADR 0008):                                         OK
+      not the indentation of a block command, but its other spaces (golem-lsp ADR 0008):                                 OK
+      the spaces at the end of a block command (golem-lsp ADR 0008):                                                     OK
+      no tokens for the spaces of text, headings, lists and definition lists (golem-lsp ADR 0008):                       OK
+      the mark of a new definition (golem-lsp ADR 0008):                                                                 OK
+      every byte of commands and expressions is in a token (golem-lsp ADR 0008):                                         OK
+          ✓ <interactive> passed 100 tests.
+      tokens of commands are in document order, do not overlap, and encode with the default legend (golem-lsp ADR 0008): OK
+          ✓ <interactive> passed 100 tests.
+      the initialize response keeps semanticTokensProvider:                                                              OK
+      the server advertises full semantic tokens with a legend, without range or delta:                                  [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK
+      tokens follow the editor's text at once, before the evaluation:                                                    [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-tokens-efe7ae256a039cde/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK
+      style.toml has no tokens:                                                                                          [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-tokens-27a2ecf93a5ef81e/style.toml
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK
+      $/cancelRequest is answered by nothing:                                                                            [Info] Server starting
+[Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///private/var/folders/5t/47dyfgwj64v0jt16_pgwr8gw0000gn/T/golem-lsp-tokens-c0a480a1ba967dc3/b.gm
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[Info] Server stopped
+OK (0.32s)
+    style.toml and preflight.toml (docs/adr ADR 0169)
+      the context of the cursor
+        a header:                                                                                                        OK
+        a key under a header, with the keys written:                                                                     OK
+        a key of an inline table:                                                                                        OK
+        a value outside a string:                                                                                        OK
+        a value in a basic string:                                                                                       OK
+        a value in a literal string:                                                                                     OK
+        an element of an array:                                                                                          OK
+        a dotted key:                                                                                                    OK
+        after a value:                                                                                                   OK
+        in a comment:                                                                                                    OK
+        in a multi-line string:                                                                                          OK
+        a string with an escaped quote is closed where it ends:                                                          OK
+        a quoted key of a header is one step:                                                                            OK
+        the defined paths:                                                                                               OK
+      style.toml
+        "[\9646":                                                                                                        OK
+        "[paragraph-styles.quote]\n[paragraph-styles.\9646":                                                             OK
+        "[page]\nbinding = \"right\"\n\9646":                                                                            OK
+        "[page]\nbinding = \9646":                                                                                       OK
+        "[page]\nbinding = \"\9646":                                                                                     OK
+        "[character-styles.em]\nsynthetic-bold = \9646":                                                                 OK
+        "[paragraph-styles.quote]\nbased-on = \9646":                                                                    OK
+        "[fonts.heading]\nja = \"a.otf\"\n[character-styles.em]\nfont = \9646":                                          OK
+        "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n[character-styles.em]\ncolor = \9646":                   OK
+        "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = \9646":            OK
+        "[page]\n# binding = \9646":                                                                                     OK
+        "[page]\nbinding = \"\"\"\n\9646":                                                                               OK
+        "[page]\nsize = \n[page.grid]\n\9646":                                                                           OK
+        "# \26085\26412\35486\12398\12467\12513\12531\12488\128512\n[page]\nbinding = \9646":                            OK
+        "[page]\nsize = { width = \"100mm\", \9646":                                                                     OK
+        "[headings.1]\nrunning-head = \9646":                                                                            OK
+        "[headings.1]\n\9646":                                                                                           OK
+        "[paragraph-styles.body]\nrule-before = \9646":                                                                  OK
+        "[paragraph-styles.quote]\nalign = \9646":                                                                       OK
+        "[paragraph-styles.quote]\n\9646":                                                                               OK
+        "[character-styles.em]\nbackground = \9646":                                                                     OK
+        "[color.swatches.a]\ncmyk = [0, 0, 0, 0]\n[character-styles.em]\nbackground = \9646":                            OK
+        "[aki-sets.mine]\nrules = [{ before = [\9646":                                                                   OK
+        "[aki-sets.mine]\nbased-on = \9646":                                                                             OK
+        "[page]\nbleed = \9646":                                                                                         OK
+        the kinds of the candidates:                                                                                     OK
+      T1 manifest.toml finite value positions
+        "chapters = [{ paragraph-separator = '\9646":                                                                    OK
+        "chapters = [{ page-numbering = { style = '\9646":                                                               OK
+        "[metadata]\ncreators = [{ role = '\9646":                                                                       OK
+        "[[metadata.contributors]]\nrole = '\9646":                                                                      OK
+        "[targets.text]\nvariants = ['\9646":                                                                            OK
+        "[targets.text]\nvariants = \9646":                                                                              OK
+        "[diagnostics]\nsilence-notices = ['\9646":                                                                      OK
+        "[diagnostics]\nsilence-info = ['\9646":                                                                         OK
+        "[vars]\nflag = \9646":                                                                                          OK
+      preflight.toml
+        "based-on = \9646":                                                                                              OK
+        "[type-size]\nseverity = \9646":                                                                                 OK
+        "[font-formats]\nallowed = [\9646":                                                                              OK
+        "[font-formats]\nallowed = \9646":                                                                               OK
+        "[\9646":                                                                                                        OK
+        "[image-resolution]\ncolor = { \9646":                                                                           OK
+      the workspace
+        style.toml in the editor is not read as a source:                                                                OK
+        manifest.toml in the editor is not read as a source:                                                             OK
+        completion in the edited style.toml of the root:                                                                 OK
+        no completion in a style.toml below the root, nor in a manifest.toml header:                                     OK
+  XDG_CACHE_HOME (docs/adr ADR 0072)
+    completion: the commands of the plugins after the built-in ones, with a syntax error too:                            OK (0.02s)
+    XDG_CACHE_HOME is as it was when the suite started:                                                                  OK
+
+All 197 tests passed (9.02s)
+Test suite golem-lsp-test: PASS
+Test suite logged to:
+/Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/test/golem-lsp-0.1.0-golem-lsp-test.log
+1 of 1 test suites (1 of 1 test cases) passed.

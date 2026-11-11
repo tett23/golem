@@ -1,0 +1,8 @@
+Build profile: -w ghc-9.10.3 -O1
+In order, the following will be built (use -v for more details):
+ - golem-cli-0.1.0 (exe:golem) (file app/Main.hs changed)
+Preprocessing executable 'golem' for golem-cli-0.1.0...
+Building executable 'golem' for golem-cli-0.1.0...
+[2 of 2] Compiling Main             ( app/Main.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-emet-repl/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-cli-0.1.0/x/golem/build/golem/golem-tmp/Main.o ) [Source file changed]
+[3 of 3] Linking /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-emet-repl/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-cli-0.1.0/x/golem/build/golem/golem [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup

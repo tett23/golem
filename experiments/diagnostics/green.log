@@ -1,0 +1,27 @@
+PASS L2/target and profile
+PASS P3/other error
+PASS D1/G09001 missing
+PASS D2/G09001 encoding
+PASS D3/G09001 syntax
+PASS D4/G09001 schema
+PASS D5/G09001 unknown key
+PASS D6/G09001 TOML duplicate
+PASS D7/mixed schema
+PASS S3/explicit override
+PASS A1/resolution
+PASS H1/headings
+PASS L1/manifest
+PASS P1/glyphs
+PASS P2/glyph exit
+PASS B1/stale PDF
+PASS B2/target boundary
+PASS B3/output link
+PASS F1/plugin filter
+PASS L1/schema error
+PASS B4/sibling link
+PASS I1/import PDF
+PASS O1/output file
+PASS T1/table cause
+PASS S2/screen template
+PASS S1/screen print rules
+26 checks, 0 failures

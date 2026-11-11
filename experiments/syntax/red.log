@@ -1,0 +1,244 @@
+✖ 315 I1 migration preserves location and only changes targeted codes (2.135083ms)
+✖ 316 I1 migration preserves location and only changes targeted codes (0.226709ms)
+✖ 317 I1 migration preserves location and only changes targeted codes (0.131042ms)
+✖ 318 I1 migration preserves location and only changes targeted codes (0.105625ms)
+✖ 317 I2 existing duplicate path error takes precedence (0.1335ms)
+✖ 319 I1 numeric and textual zero share canonical dimension (0.129375ms)
+✔ 319 I2 count and CSS remain distinct (0.092375ms)
+✖ 320 I1 use site resolves zw and enforces kind (0.084375ms)
+✖ 320 I2 completion and rename follow references (0.108583ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 1
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57.65025
+
+✖ failing tests:
+
+test at experiments/syntax/test.mjs:6:3
+✖ 315 I1 migration preserves location and only changes targeted codes (2.135083ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+        code: 'G02065',
+  +     severity: 'notice',
+  -     severity: 'error',
+        span: {
+          end: 4,
+          start: 1
+        }
+      },
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:9:14)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { code: 'G02065', severity: 'notice', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    expected: [ { code: 'G02065', severity: 'error', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:6:3
+✖ 316 I1 migration preserves location and only changes targeted codes (0.226709ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+        code: 'G02108',
+  +     severity: 'notice',
+  -     severity: 'error',
+        span: {
+          end: 4,
+          start: 1
+        }
+      },
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:9:14)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { code: 'G02108', severity: 'notice', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    expected: [ { code: 'G02108', severity: 'error', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:6:3
+✖ 317 I1 migration preserves location and only changes targeted codes (0.131042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+        code: 'G02129',
+  +     severity: 'notice',
+  -     severity: 'error',
+        span: {
+          end: 4,
+          start: 1
+        }
+      },
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:9:14)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { code: 'G02129', severity: 'notice', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    expected: [ { code: 'G02129', severity: 'error', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:6:3
+✖ 318 I1 migration preserves location and only changes targeted codes (0.105625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+        code: 'G03114',
+  +     severity: 'notice',
+  -     severity: 'error',
+        span: {
+          end: 4,
+          start: 1
+        }
+      },
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:9:14)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { code: 'G03114', severity: 'notice', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    expected: [ { code: 'G03114', severity: 'error', span: [Object] }, { code: 'G02062', severity: 'notice', span: [Object] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:13:1
+✖ 317 I2 existing duplicate path error takes precedence (0.1335ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+  +     code: 'G02129',
+  +     severity: 'notice',
+  +     span: {
+  +       end: 4,
+  +       start: 1
+  +     }
+  +   },
+  +   {
+        code: 'G02130',
+        severity: 'error',
+        span: {
+          end: 4,
+          start: 1
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:14:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { code: 'G02129', severity: 'notice', span: [Object] }, { code: 'G02130', severity: 'error', span: [Object] } ],
+    expected: [ { code: 'G02130', severity: 'error', span: [Object] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:16:1
+✖ 319 I1 numeric and textual zero share canonical dimension (0.129375ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== '0pt'
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:17:46)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: '0pt',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:25:1
+✖ 320 I1 use site resolves zw and enforces kind (0.084375ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  '$body' !== 10
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:26:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '$body',
+    expected: 10,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at experiments/syntax/test.mjs:33:1
+✖ 320 I2 completion and rename follow references (0.108583ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + []
+  - [
+  -   '$body'
+  - ]
+  
+      at TestContext.<anonymous> (file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-syntax/experiments/syntax/test.mjs:34:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ '$body' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

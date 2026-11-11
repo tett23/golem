@@ -1,0 +1,158 @@
+FAIL L2/target and profile: Expected values to be strictly equal:
+
+0 !== 1
+
+PASS P3/other error
+FAIL D1/G09001 missing: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G09001'
+-   'G09100'
+  ]
+
+FAIL D2/G09001 encoding: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G09001'
+-   'G09101'
+  ]
+
+PASS D3/G09001 syntax
+FAIL D4/G09001 schema: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G09001'
+-   'G09102'
+  ]
+
+FAIL D5/G09001 unknown key: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G09001'
+-   'G09103'
+  ]
+
+FAIL D6/G09001 TOML duplicate: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G09001'
+-   'G09104'
+  ]
+
+FAIL D7/mixed schema: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    [
++     'G09001',
++     1
+-     'G09102',
+-     3
+    ],
+    [
++     'G09001',
++     3
+-     'G09103',
+-     1
+    ]
+  ]
+
+FAIL S3/explicit override: The expression evaluated to a falsy value:
+
+  assert.ok(
+
+PASS A1/resolution
+PASS H1/headings
+FAIL L1/manifest: The expression evaluated to a falsy value:
+
+  assert.ok(r["language-" + tag].includes("G03119"))
+
+FAIL P1/glyphs: The expression evaluated to a falsy value:
+
+  assert.ok(!ds.some((x) => x.code === "G08100"))
+
+FAIL P2/glyph exit: Expected values to be strictly equal:
+
+1 !== 0
+
+FAIL B1/stale PDF: Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   'pages.json',
++   'urn-uuid-11111111-2222-4333-8444-555555555555.pdf'
++ ]
+- []
+
+FAIL B2/target boundary: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    exit: 1,
++   remaining: true
+-   remaining: false
+  }
+
+PASS B3/output link
+FAIL F1/plugin filter: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G06010'
+-   'G06107'
+  ]
+
+PASS L1/schema error
+FAIL B4/sibling link: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    codes: [
+      'G03001'
+    ],
+    external: 'outside',
++   remaining: true
+-   remaining: false
+  }
+
+FAIL I1/import PDF: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G08010'
+-   'G08105'
+  ]
+
+FAIL O1/output file: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    codes: [
++     'G08013'
+-     'G08104'
+    ],
+    remaining: 'file'
+  }
+
+FAIL T1/table cause: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   'G02085'
+-   'G02154'
+  ]
+
+FAIL S2/screen template: Expected values to be strictly equal:
+
+2 !== 0
+
+FAIL S1/screen print rules: The expression evaluated to a falsy value:
+
+  assert.ok(!r["press-screen"].includes("G09001"))
+
+26 checks, 20 failures

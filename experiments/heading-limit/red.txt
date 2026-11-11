@@ -1,0 +1,14 @@
+        expected: [(DiagnosticCode "G01012",24,29),(DiagnosticCode "G01012",46,49)]
+         but got: [(DiagnosticCode "G01012",23,29),(DiagnosticCode "G01012",46,49)]
+1 out of 1 tests failed (0.00s)
+Test suite golem-parser-test: FAIL
+          expected: [Range {_start = Position {_line = 4, _character = 6}, _end = Position {_line = 4, _character = 9}},Range {_start = Position {_line = 8, _character = 6}, _end = Position {_line = 8, _character = 9}}]
+           but got: [Range {_start = Position {_line = 4, _character = 6}, _end = Position {_line = 4, _character = 10}},Range {_start = Position {_line = 8, _character = 6}, _end = Position {_line = 8, _character = 9}}]
+1 out of 1 tests failed (0.17s)
+Test suite golem-lsp-test: FAIL
+        expected: Right [Object (fromList [("column",Number 7.0),("end",Number 29.0),("file",String "shared.gm"),("line",Number 5.0),("start",Number 23.0)]),Object (fromList [("column",Number 7.0),("end",Number 29.0),("file",String "shared.gm"),("line",Number 5.0),("start",Number 23.0)]),Object (fromList [("column",Number 7.0),("end",Number 49.0),("file",String "shared.gm"),("line",Number 9.0),("start",Number 46.0)])]
+         but got: Right [Object (fromList [("column",Number 7.0),("end",Number 29.0),("file",String "shared.gm"),("line",Number 5.0),("start",Number 23.0)]),Object (fromList [("column",Number 7.0),("end",Number 49.0),("file",String "shared.gm"),("line",Number 9.0),("start",Number 46.0)])]
+        expected: Right [Object (fromList [("column",Number 7.0),("end",Number 29.0),("file",String "shared.gm"),("line",Number 5.0),("start",Number 23.0)]),Object (fromList [("column",Number 7.0),("end",Number 29.0),("file",String "shared.gm"),("line",Number 5.0),("start",Number 23.0)]),Object (fromList [("column",Number 7.0),("end",Number 49.0),("file",String "shared.gm"),("line",Number 9.0),("start",Number 46.0)])]
+         but got: Right [Object (fromList [("column",Number 7.0),("end",Number 29.0),("file",String "shared.gm"),("line",Number 5.0),("start",Number 23.0)]),Object (fromList [("column",Number 7.0),("end",Number 49.0),("file",String "shared.gm"),("line",Number 9.0),("start",Number 46.0)])]
+2 out of 2 tests failed (1.71s)
+Test suite golem-cli-test: FAIL

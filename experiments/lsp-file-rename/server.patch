@@ -1,0 +1,47 @@
+--- Golem/Lsp/Server.hs
++++ Golem/Lsp/Server.hs
+@@ -48,7 +48,8 @@
+ import Language.LSP.Protocol.Message
+ import Language.LSP.Protocol.Types
+ import Language.LSP.Server
+-import Language.LSP.VFS (virtualFileText)
++import Language.LSP.VFS (virtualFileText, VirtualFile (_lsp_version))
++import ReferencePlan (plan)
+ import Prettyprinter (pretty, viaShow)
+ import System.Directory (doesFileExist, makeAbsolute)
+ import System.FilePath (makeRelative, takeDirectory, takeExtension, (</>))
+@@ -156,9 +157,14 @@
+         options =
+           defaultOptions
+             { optTextDocumentSync = Just (TextDocumentSyncOptions (Just True) (Just TextDocumentSyncKind_Full) Nothing Nothing Nothing),
++              optWorkspaceWillRenameFileOperationRegistrationOptions = Just renameFilter,
++              optWorkspaceDidRenameFileOperationRegistrationOptions = Just renameFilter,
+               optCompletionTriggerCharacters = Just ['[', ' ']
+             }
+       }
++
++renameFilter :: FileOperationRegistrationOptions
++renameFilter = FileOperationRegistrationOptions [FileOperationFilter (Just "file") (FileOperationPattern "**/*" Nothing Nothing)]
+ 
+ -- | @capabilities.general.positionEncodings@ of the initialize request.
+ offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
+@@ -219,6 +225,19 @@
+         forM_ (relPath st uri) $ \p -> serially $ withWs $ \ws -> do
+           ws' <- liftIO (closeFile ws p)
+           commit Set.empty ws',
++      requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
++        st <- state
++        let doc = filePathToUri (stRoot st </> "a.gm")
++            pairs = [(from, to) | FileRename old new <- renames, Just from <- [relPath st (Uri old)], Just to <- [relPath st (Uri new)]]
++        vf <- getVirtualFile (toNormalizedUri doc)
++        case (vf, plan pairs . virtualFileText <$> vf) of
++          (Just source, Just (Right changes@(_ : _))) -> do
++            let edits = [InL (TextEdit (Range (toPosition start) (toPosition end)) t) | (start, end, t) <- changes]
++                docEdit = TextDocumentEdit (OptionalVersionedTextDocumentIdentifier doc (InL (_lsp_version source))) edits
++            respond (Right (InL (WorkspaceEdit Nothing (Just [InL docEdit]) Nothing)))
++          (_, Just (Left reason)) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack reason) Nothing))
++          _ -> respond (Right (InR Null)),
++      notificationHandler SMethod_WorkspaceDidRenameFiles $ \_ -> pure (),
+       requestHandler SMethod_TextDocumentDefinition $ \(TRequestMessage _ _ _ (DefinitionParams doc pos _ _)) respond -> do
+         enc <- encoding
+         r <- atPosition doc pos $ \ws p off ->

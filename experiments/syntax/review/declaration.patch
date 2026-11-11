@@ -1,0 +1,31 @@
+--- a/modules/golem-parser/grammar/Golem.hpeg
++++ b/modules/golem-parser/grammar/Golem.hpeg
+@@ -233,6 +233,7 @@
+             / '```' { () }
+             / '@' [a-z] { () }
+             / '@!' { () }
++            / BareSetStart { () }
+ 
+ # ------------------------------------------------------------ headings
+ 
+@@ -562,6 +563,10 @@
+ 
+ BlockCommandStart :: ()
+ BlockCommandStart <- '@' [a-z] { () }
++                   / BareSetStart { () }
++
++BareSetStart :: ()
++BareSetStart <- SetIdent Ws SetName Ws Eq !'=' &([ \t\n] / !.) { () }
+ 
+ AttributedBlock(ind :: Int) :: ()
+ AttributedBlock <- ( Heading(ind)
+@@ -574,7 +579,8 @@
+                    ) { () }
+ 
+ BlockCommand(ind :: Int) :: ()
+-BlockCommand <- Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.) { () }
++BlockCommand <- Ind(ind) &BareSetStart SetIdent Ws SetName Ws Eq ExprBody (Nl / !.) { () }
++              / Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.) { () }
+               / Ind(ind) At Ident Arguments Sp (Nl / !.) CommandBody(ind)? { () }
+ 
+ At :: ()

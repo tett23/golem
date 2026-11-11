@@ -1,0 +1,5 @@
+failed request budget
+failed rate-primary
+failed rate-jobs
+failed rate-headerless
+failed timeout
