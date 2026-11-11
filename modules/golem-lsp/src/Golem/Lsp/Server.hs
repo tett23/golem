@@ -308,7 +308,7 @@ handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar 
           (Just ws, Right pairs, True) -> do
             plot <- liftIO (readTVarIO plotVar)
             wiki <- liftIO (readTVarIO wikiVar)
-            let projectFiles = [(stRoot st </> p, Nothing) | p <- ["manifest.toml", "style.toml"] <> wsSourceFiles ws <> maybe [] pure plot]
+            let projectFiles = [(stRoot st </> p, Nothing) | p <- ["manifest.toml", "style.toml"] <> wsSourceFiles ws <> emetSourceFiles ws <> maybe [] pure plot]
                 wikiFiles = maybe [] (\(root, sheets) -> [(root </> p, Just p) | (p, _) <- sheets, map toLower (takeExtension p) == ".md"]) wiki
                 wikiPairs = maybe [] (\(root, _) -> [(makeRelative root (stRoot st </> from), makeRelative root (stRoot st </> to)) | (from, to) <- pairs]) wiki
             planned <- forM (projectFiles <> wikiFiles) $ \(path, wikiSource) -> do

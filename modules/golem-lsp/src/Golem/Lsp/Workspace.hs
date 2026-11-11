@@ -16,6 +16,7 @@ module Golem.Lsp.Workspace
     tableFilesChanged,
     sourceOf,
     emetText,
+    emetSourceFiles,
     isEmet,
     lineIndexOf,
     diagnosticsFor,
@@ -306,6 +307,11 @@ emetText :: Workspace -> FilePath -> Maybe Text
 emetText ws path
   | not (isEmet path) = Nothing
   | otherwise = Map.lookup path (wsOverlay ws) <|> (wsEvaluated ws >>= evFunctions >>= \p -> (\(_, t, _) -> t) <$> Map.lookup path (programModules p))
+
+-- | Emet modules reached by the project, including their imports.
+emetSourceFiles :: Workspace -> [FilePath]
+emetSourceFiles ws =
+  maybe [] (Map.keys . programModules) (wsEvaluated ws >>= evFunctions)
 
 sourceOf :: Workspace -> FilePath -> Maybe Source
 sourceOf ws path = case wsEvaluated ws >>= \e -> fmap (e,) (findSource e path) of

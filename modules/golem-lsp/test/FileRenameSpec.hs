@@ -8,7 +8,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planPlotCsv, planStyle, planWiki, renamePath, validateRenames)
 import Golem.Lsp.Server (runGolemLspWithHandles, safeRenamePair)
-import Golem.Lsp.Workspace (openWorkspace, renameWorkspace, updateFile, wsOverlay, wsSourceFiles)
+import Golem.Lsp.Workspace (emetSourceFiles, openWorkspace, renameWorkspace, updateFile, wsOverlay, wsSourceFiles)
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
@@ -61,6 +61,15 @@ fileRenameTests =
             length edits @?= 2
             foldr (\(start, end, replacement) text -> T.take start text <> replacement <> T.drop end text) source edits
               @?= "r :: <file \"b.tsv\"> String\nr = File.read \"b.tsv\"\n",
+      testCase "R2: Emet modules reached through imports are rename sources" $
+        withSystemTempDirectory "golem-rename-emet" $ \root -> do
+          createDirectory (root </> "fn")
+          TIO.writeFile (root </> "manifest.toml") "chapters=[\"a.gm\"]\n[metadata]\nid=\"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle=\"T\"\nlanguage=\"ja\"\ndate=2026-10-11\n[targets.html]\n"
+          TIO.writeFile (root </> "a.gm") "@import fn/book.emet as book\n"
+          TIO.writeFile (root </> "fn/book.emet") "import \"fn/lib.emet\"\npub twice :: Nat -> Nat\ntwice n = 2 * n\n"
+          TIO.writeFile (root </> "fn/lib.emet") "pub three :: Nat\nthree = 3\n"
+          ws <- openWorkspace root
+          emetSourceFiles ws @?= ["fn/book.emet", "fn/lib.emet"],
       testCase "R2: duplicate manifest chapters edit every value but no unrelated text" $ do
         let source = "chapters = [\"a.gm\", [\"a.gm\"], {file = \"a.gm\", title = \"a.gm\"}]\n"
         case planManifest [("a.gm", "b.gm")] source of
