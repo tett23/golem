@@ -13,6 +13,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
+import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
@@ -244,8 +245,8 @@ localize = intercalate "\n" . go . lines
 run :: Command -> IO ExitCode
 run = \case
   New dir lang noFonts screen -> newProject dir lang noFonts screen
-  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
-  Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+  Build tgs profile marks quiet verbose fmt -> report fmt =<< runBuild "." (WriteTargets tgs) profile marks quiet verbose
+  Check profile marks quiet verbose fmt -> report fmt =<< runBuild "." CheckOnly profile marks quiet verbose
   Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
@@ -290,9 +291,8 @@ report :: Format -> BuildResult -> IO ExitCode
 report fmt r = do
   let ds = brDiagnostics r
   case fmt of
-    Human -> putHuman (brSources r) ds
-    Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
-  pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+    Human -> putHuman (brSources r) ds >> pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+    Json -> let (code, text) = jsonResult r in TIO.hPutStr stderr text >> pure code
 
 {- | golem preflight (golem-cli ADR 0006): the diagnostics, and in the human
 format a summary as the last line when the PDF was made.
