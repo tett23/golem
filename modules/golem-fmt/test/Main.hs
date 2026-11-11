@@ -1,7 +1,7 @@
 module Main (main) where
 
-import Data.ByteString.Lazy qualified as BL
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BL
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -40,35 +40,50 @@ grammarHeadings = do
       items -> fail ("HashMark: unsupported alternative " <> show items)
 
 grammarRoundTrips :: TestTree
-grammarRoundTrips = testGroup "Golem ADR 0310" [
-  testCase "G1: generated manuscripts retain syntax" $ do
-    marks <- grammarHeadings
-    let letters = ["a", "漢", "😀"]
-        manuscripts = "" : [mark <> " " <> letter <> "\n" | mark <- marks, letter <- letters]
-          ++ [a <> "\n\n" <> b | a <- letters, b <- letters]
-    mapM_ (\source -> case format source of
-      Formatted result -> do
-        assertEqual ("source: " <> show source) [] (snd (parse (FileId 0) source))
-        assertEqual ("source: " <> show source) (astFingerprint source) (astFingerprint result)
-      Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)) manuscripts,
-  testCase "G2: generated manuscripts format idempotently" $ do
-    marks <- grammarHeadings
-    let letters = ["a", "漢", "😀"]
-        manuscripts = "" : [mark <> " " <> letter <> "\n" | mark <- marks, letter <- letters]
-          ++ [a <> "\n\n" <> b | a <- letters, b <- letters]
-    mapM_ (\source -> case format source of
-      Formatted once -> case format once of
-        Formatted twice -> assertEqual ("source: " <> show source) once twice
-        Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
-      Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)) manuscripts,
-  testCase "G3: a seventh hash starts G01012 at its generated UTF-8 offset" $ do
-    let prefixes = ["", "a\n\n", "漢\n\n", "😀\n\n"]
-    mapM_ (\prefix -> do
-      let source = prefix <> "####### a\n"
-          offset = BS.length (TE.encodeUtf8 prefix) + 6
-          positions = [spanStart (diagSpan issue) | issue <- snd (parse (FileId 0) source), diagCode issue == DiagnosticCode "G01012"]
-      assertEqual ("source: " <> show source) [offset] positions) prefixes
-  ]
+grammarRoundTrips =
+  testGroup
+    "Golem ADR 0310"
+    [ testCase "G1: generated manuscripts retain syntax" $ do
+        marks <- grammarHeadings
+        let letters = ["a", "漢", "😀"]
+            manuscripts =
+              ""
+                : [mark <> " " <> letter <> "\n" | mark <- marks, letter <- letters]
+                ++ [a <> "\n\n" <> b | a <- letters, b <- letters]
+        mapM_
+          ( \source -> case format source of
+              Formatted result -> do
+                assertEqual ("source: " <> show source) [] (snd (parse (FileId 0) source))
+                assertEqual ("source: " <> show source) (astFingerprint source) (astFingerprint result)
+              Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
+          )
+          manuscripts,
+      testCase "G2: generated manuscripts format idempotently" $ do
+        marks <- grammarHeadings
+        let letters = ["a", "漢", "😀"]
+            manuscripts =
+              ""
+                : [mark <> " " <> letter <> "\n" | mark <- marks, letter <- letters]
+                ++ [a <> "\n\n" <> b | a <- letters, b <- letters]
+        mapM_
+          ( \source -> case format source of
+              Formatted once -> case format once of
+                Formatted twice -> assertEqual ("source: " <> show source) once twice
+                Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
+              Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
+          )
+          manuscripts,
+      testCase "G3: a seventh hash starts G01012 at its generated UTF-8 offset" $ do
+        let prefixes = ["", "a\n\n", "漢\n\n", "😀\n\n"]
+        mapM_
+          ( \prefix -> do
+              let source = prefix <> "####### a\n"
+                  offset = BS.length (TE.encodeUtf8 prefix) + 6
+                  positions = [spanStart (diagSpan issue) | issue <- snd (parse (FileId 0) source), diagCode issue == DiagnosticCode "G01012"]
+              assertEqual ("source: " <> show source) [offset] positions
+          )
+          prefixes
+    ]
 
 spaces :: Gen Text
 spaces = Gen.element ["", " ", "  ", "   "]
