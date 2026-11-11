@@ -53,6 +53,12 @@ try {
   assert.match(wordFailure.stderr, /Word/);
   assert.match(wordFailure.stderr, /UnsupportedTerm/);
 
+  const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
+  const combinedFailure = generate(bothUnsupported);
+  assert.notEqual(combinedFailure.status, 0);
+  assert.match(combinedFailure.stderr, /Arguments: unsupported production/);
+  assert.match(combinedFailure.stderr, /Word: unsupported production/);
+
   writeFileSync(generated, model);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, stdio: 'pipe' });
   const stringProof = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
@@ -65,7 +71,7 @@ try {
   const refuted = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
-  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, positive proofs 2, negative mutations 4`);
+  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, positive proofs 2, negative mutations 5`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
