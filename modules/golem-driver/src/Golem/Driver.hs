@@ -551,7 +551,7 @@ the root G03003, at the top of manifest.toml; the project checks those of
 functionRoots :: Files -> Project -> IO ([Diagnostic], [FilePath])
 functionRoots files project = do
   let imported = [p | sf <- Map.elems (projectSources project), site <- sfImports sf, ".emet" `T.isSuffixOf` isPath site, Right p <- [normalizeRelative (T.unpack (isPath site))]]
-      filtered = nub [p | FilterDecl (FilterFunction p) _ _ <- manifestFilters (projectManifest project)]
+      filtered = nub [p | FilterDecl (FilterFunction p) _ _ _ _ <- manifestFilters (projectManifest project)]
       at = mkSpan (projectManifestFile project) 0 0
   checked <- forM filtered $ \p ->
     filesResolve files p >>= \case
@@ -580,7 +580,7 @@ calls report nothing.
 -}
 functionTableOf :: Handlers -> Project -> [FilePath] -> LoadedFunctions -> FunctionTable
 functionTableOf hs project roots lf =
-  let filterFiles = Set.fromList [rel | FilterDecl (FilterFunction _) _ fs <- manifestFilters (projectManifest project), f <- fs, Right rel <- [normalizeRelative f]]
+  let filterFiles = Set.fromList [rel | FilterDecl (FilterFunction _) _ fs _ _ <- manifestFilters (projectManifest project), f <- fs, Right rel <- [normalizeRelative f]]
    in case lfProgram lf of
         Just p -> FunctionTable (functionNamespaces hs p) False filterFiles
         Nothing
@@ -606,7 +606,7 @@ unknownFilters project = \case
   Nothing -> []
   Just p ->
     [ diagnostic "G03001" Error (mkSpan (projectManifestFile project) 0 0) ("function の .emet にないフィルタです: " <> T.pack emet <> " の " <> name)
-    | FilterDecl (FilterFunction emet) name _ <- manifestFilters (projectManifest project),
+    | FilterDecl (FilterFunction emet) name _ _ _ <- manifestFilters (projectManifest project),
       Right rel <- [normalizeRelative emet],
       Nothing <- [filterOf (Handlers (const Nothing)) p rel name]
     ]
