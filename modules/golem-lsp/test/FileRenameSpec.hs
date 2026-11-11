@@ -1,14 +1,21 @@
 module FileRenameSpec (fileRenameTests) where
 
+import Control.Concurrent (forkIO)
+import Control.Monad (void)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planPlotCsv, planStyle, planWiki, renamePath, validateRenames)
-import Golem.Lsp.Server (safeRenamePair)
+import Golem.Lsp.Server (runGolemLspWithHandles, safeRenamePair)
 import Golem.Lsp.Workspace (openWorkspace, renameWorkspace, updateFile, wsOverlay, wsSourceFiles)
+import Language.LSP.Protocol.Message qualified as M
+import Language.LSP.Protocol.Types qualified as L
+import Language.LSP.Test qualified as LT
 import System.Directory (createDirectory, createFileLink, renameDirectory)
 import System.FilePath ((</>))
+import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
+import System.Process (createPipe)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, (@?=))
 
@@ -123,5 +130,23 @@ fileRenameTests =
             TIO.writeFile (outside </> "a.gm") "# Outside\n"
             createFileLink (outside </> "a.gm") (root </> "link.gm")
             safeRenamePair root ("a.gm", "b.gm") >>= (@?= True)
-            safeRenamePair root ("link.gm", "new.gm") >>= (@?= False)
+            safeRenamePair root ("link.gm", "new.gm") >>= (@?= False),
+      testCase "R2: willRename returns old URI edits without renaming files" $
+        withSystemTempDirectory "golem-rename-protocol" $ \root -> do
+          TIO.writeFile (root </> "manifest.toml") "chapters=[\"a.gm\"]\n[metadata]\nid=\"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle=\"T\"\nlanguage=\"ja\"\ndate=2026-10-11\n[targets.html]\n"
+          TIO.writeFile (root </> "a.gm") "@import \"旧 章.gm\" as old\n"
+          TIO.writeFile (root </> "旧 章.gm") "# Old\n"
+          (serverIn, clientOut) <- createPipe
+          (clientIn, serverOut) <- createPipe
+          void (forkIO (void (runGolemLspWithHandles serverIn serverOut)))
+          edits <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig {LT.messageTimeout = 10} LT.fullLatestClientCaps root $ do
+            let L.Uri old = L.filePathToUri (root </> "旧 章.gm")
+                L.Uri new = L.filePathToUri (root </> "新 章.gm")
+            M.TResponseMessage _ _ result <- LT.request M.SMethod_WorkspaceWillRenameFiles (L.RenameFilesParams [L.FileRename old new])
+            pure $ case result of
+              Right (L.InL (L.WorkspaceEdit _ (Just changes) _)) ->
+                [(L.uriToFilePath uri, version, length replacements) | L.InL (L.TextDocumentEdit (L.OptionalVersionedTextDocumentIdentifier uri version) replacements) <- changes]
+              _ -> []
+          hClose clientOut
+          edits @?= [(Just (root </> "a.gm"), L.InR L.Null, 1)]
     ]
