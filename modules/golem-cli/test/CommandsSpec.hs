@@ -49,6 +49,36 @@ replTests =
       testCase "R1: both input and displayed string can exceed 4096 bytes" $ do
         let literal = "\"" <> replicate 4097 'a' <> "\""
         runRepl literal >>= (@?= (ExitSuccess, literal <> "\n", "")),
+      testCase "R5: 100000000 steps and 10000 frames succeed; one more fails and the next input gets a fresh budget" $ do
+        (code, out, err) <-
+          runRepl $
+            unlines
+              [ "discard :: List Int -> Nat",
+                "discard xs = 7",
+                "work :: Int -> Nat",
+                "work n = discard (List.range 1 n)",
+                "depth :: Int -> Int",
+                "depth 0 = 0",
+                "depth n = 1 + depth (n - 1)",
+                "",
+                "work 99999995",
+                "work 99999996",
+                "depth 9999",
+                "depth 10000",
+                "42"
+              ]
+        (code, lines out) @?= (ExitFailure 1, ["7", "9999", "42"])
+        map (take 6) (lines err) @?= ["E04100", "E04101"],
+      testCase "R6: a rejected import preserves public functions and does not expose private names" $
+        withSystemTempDirectory "golem-repl" $ \dir -> do
+          writeFiles dir [("double.emet", "pub twice :: Nat -> Nat\ntwice n = hidden n\nhidden :: Nat -> Nat\nhidden n = n + n\n")]
+          (code, out, err) <-
+            readCreateProcessWithExitCode
+              (proc "golem" ["repl", "emet"]) {cwd = Just dir}
+              "import \"double.emet\"\ntwice 3\nimport \"../outside.emet\"\nhidden 2\ntwice 4\n"
+          (code, lines out) @?= (ExitFailure 1, ["6", "8"])
+          length (lines err) @?= 2
+          assertBool err ("G03003" `isInfixOf` err),
       testCase "R6: failed replacement leaves the checked definition callable" $ do
         (code, out, _) <- runRepl "twice :: Nat -> Nat\ntwice n = n + n\n\ntwice 3\ntwice :: Nat -> Nat\ntwice n = False\n\ntwice 4\n"
         (code, out) @?= (ExitFailure 1, "6\n8\n"),

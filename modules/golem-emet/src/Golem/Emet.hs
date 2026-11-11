@@ -56,7 +56,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet.Builtins (builtinSources, divInfo, hiddenConstructors)
 import Golem.Emet.Check
-import Golem.Emet.Core (CEq (..), CFun (..), CRhs (..), Global (..))
 import Golem.Emet.Eval
 import Golem.Emet.Fmt (formatEmet)
 import Golem.Emet.Parse (parseModule, readEmet)
@@ -169,11 +168,10 @@ evaluateExpression session limit bytes = do
         [] -> pure ()
         _ -> Left ds
       body <- withInputPositions (checkExpression own scope fid path wrapped expr)
-      let fn = GFun (CFun "入力した式" path 1 0 [CEq [] (CPlain body)] [])
-          key = (path, "<expression>")
+      let key = (path, "<expression>")
           at = mkSpan fid (T.length prefix) (T.length prefix + BS.length bytes)
           files = Map.fromList ((path, fid) : [(p, FileId (-1)) | (_, p, _) <- builtinSources])
-          result = fst (evalCallLimited limit noHandlers (Map.insert key fn (maybe globals prGlobals session)) files at key [])
+          result = evalExpressionLimited limit (maybe globals prGlobals session) files at key body
           -- A fault inside a built-in module points to this submission.
           locate d
             | spanFile (diagSpan d) == fid = adjust d
