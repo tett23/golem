@@ -11334,6 +11334,10 @@ PDF のビルドとプリフライトで `@figure` の位置に一度出す。
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-pdf の `Golem.Pdf.Import`）
 - ADR: [ADR 0331](adr/0331-encrypted-figure-and-missing-page.md)
 
+### 主な原因
+
+暗号化された PDF を図版に指定した。
+
 ### 直し方
 
 暗号化していない PDF を用意する。
@@ -11353,6 +11357,10 @@ PDF のビルドとプリフライトで `@figure` の位置に一度出す。
 - メッセージ: `図版の PDF に <要求したページ番号> ページ目がありません（全 <総ページ数> ページ）: <パス>`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-pdf の `Golem.Pdf.Import`）
 - ADR: [ADR 0331](adr/0331-encrypted-figure-and-missing-page.md)
+
+### 主な原因
+
+`@figure` の `page` に PDF の総ページ数より大きい番号を書いた。
 
 ### 直し方
 
