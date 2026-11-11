@@ -385,6 +385,15 @@ checkTests =
       lookup "pixels" (concatMap snd (res 6 4.5)) @?= Just (FactInts [1200, 900])
       map fst (res 10 7.5) @?= [Error]
       lookup "ppi" (concatMap snd (res 10 7.5)) @?= Just (FactInt 120),
+    testCase "Golem ADR 0322 A1: a one-ppi image crosses only the threshold of two" $ do
+      let iv = placed (image CsCmyk 8 1 1 Nothing) (Rect (mm 20) (mm 20) (inch 1) (inch 1))
+          result limit = only "G09006" (check printRules {ruResolutionColor = Tier limit 0} (imagePage [iv]))
+      map (length . result) [0, 1, 2] @?= [0, 0, 1],
+    testCase "Golem ADR 0322 A2: native and wasm share the one-ppi diagnostic facts" $ do
+      let iv = placed (image CsCmyk 8 1 1 Nothing) (Rect (mm 20) (mm 20) (inch 1) (inch 1))
+          result = only "G09006" (check printRules {ruResolutionColor = Tier 2 0} (imagePage [iv]))
+      [(diagSeverity d, diagSpan d, lookup "ppi" (diagFacts d)) | d <- result]
+        @?= [(Error, srcSpan, Just (FactInt 1))],
     testCase "G09006: the smaller of the two directions" $
       [lookup "ppi" (diagFacts d) | d <- only "G09006" (check printRules (imagePage [placedAt CsCmyk 1200 600 4 3]))] @?= [Just (FactInt 200)],
     testCase "G09006: a turned image divides its pixel width by the height of its rectangle (golem-driver ADR 0034)" $ do
