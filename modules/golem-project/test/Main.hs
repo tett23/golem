@@ -878,7 +878,8 @@ tests =
           Right _ -> pure ()
         codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = \"0\"\n") @?= [],
       testCase "ADR 0319 I1: zero reaches style length fields" $ do
-        mapM_ (\src -> codes (parseStyle (FileId 0) src) @?= [])
+        mapM_
+          (\src -> codes (parseStyle (FileId 0) src) @?= [])
           [ "[paragraph-styles.quote]\nindent = 0\nfirst-line-indent = \"-0\"\n",
             "[paragraph-styles.code]\npadding = 0\n",
             "[character-styles.code]\npadding = 0\nbaseline-shift = 0\n",
