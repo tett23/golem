@@ -4195,6 +4195,7 @@ HTML と EPUB は、透過を持つ PNG も、そのまま写す。
 ### PDF に置けない図版
 
 PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に、`@figure` ごとに G08010 のエラーとし、PDF を書かない（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+暗号化した PDF の図版は G08105、指定したページがない PDF の図版は G08106 とし、同じ `@figure` の位置を指す（[ADR 0331](adr/0331-encrypted-figure-and-missing-page.md)）。
 dev と prod の両方でエラーである。
 HTML、EPUB、プレーンテキストは G08010 を出さない。
 HTML と EPUB が図版のファイルを読むのは SVG だけであり、それは動的なコンテンツの検査（G08014、[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）のためである。

@@ -366,6 +366,11 @@ preflightTests =
         p <- preflightIn tmp
         errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08010"]
         assertBool "no view" (isNothing (prView p)),
+    testCase "Golem ADR 0331 I1: preflight reports encrypted PDF as G08105" $ do
+      encrypted <- BS.readFile "test/fixtures/figures/images/chart-encrypted.pdf"
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf alt=\"t\"\n\n本文。\n" [("images/a.pdf", encrypted)] $ \tmp -> do
+        p <- preflightIn tmp
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08105"],
     testCase "image-unplaceable in preflight.toml is G09001 (golem-pdf ADR 0008)" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[image-unplaceable]\nseverity = \"off\"\n")] $ \tmp -> do
         p <- preflightIn tmp
