@@ -17,10 +17,10 @@ if (peg.error || peg.status !== 0) {
 }
 const sourceRules = [];
 let activeRule = false;
-for (const line of grammar.split('\n')) {
+for (const [lineNumber, line] of grammar.split('\n').entries()) {
   const start = line.match(/^([A-Za-z][A-Za-z0-9]*) <- (.*)$/);
   if (start) {
-    sourceRules.push([start[1], start[2]]);
+    sourceRules.push([start[1], start[2], lineNumber + 1]);
     activeRule = true;
   } else if (activeRule && /^\s+\S/.test(line)) {
     sourceRules[sourceRules.length - 1][1] += `\n${line}`;
@@ -36,6 +36,14 @@ for (const name of new Set(names)) {
 // Quotes, character classes and semantic actions do not contain PEG choices.
 function choices(rhs) {
   const branches = [];
+  const branch = (start, end) => {
+    const raw = rhs.slice(start, end);
+    const leading = raw.match(/^\s*/)[0].length;
+    return {
+      text: raw.replace(/\s+/g, ' ').trim(),
+      lineOffset: [...rhs.slice(0, start + leading).matchAll(/\n/g)].length
+    };
+  };
   const stack = [{ start: 0, slashes: [] }];
   let quote = false;
   let charClass = false;
@@ -68,7 +76,7 @@ function choices(rhs) {
         const boundaries = [group.start, ...group.slashes.map(index => index + 1), i];
         for (let j = 0; j + 1 < boundaries.length; j++) {
           const end = j < group.slashes.length ? group.slashes[j] : boundaries[j + 1];
-          branches.push(rhs.slice(boundaries[j], end).replace(/\s+/g, ' ').trim());
+          branches.push(branch(boundaries[j], end));
         }
       }
     } else if (char === '/') {
@@ -81,25 +89,25 @@ function choices(rhs) {
     const boundaries = [0, ...root.slashes.map(index => index + 1), rhs.length];
     for (let j = 0; j + 1 < boundaries.length; j++) {
       const end = j < root.slashes.length ? root.slashes[j] : boundaries[j + 1];
-      branches.push(rhs.slice(boundaries[j], end).replace(/\s+/g, ' ').trim());
+      branches.push(branch(boundaries[j], end));
     }
   } else {
-    branches.push(rhs.replace(/\s+/g, ' ').trim());
+    branches.push(branch(0, rhs.length));
   }
   return branches;
 }
 
 if (!fragment) {
-  for (const [name, rhs] of sourceRules) {
+  for (const [name, rhs, line] of sourceRules) {
     if (name === 'StringLit') continue;
     if (name === 'Word') {
       const normalized = rhs.replaceAll(' { () }', '').replace(/\s+/g, ' ').trim();
       const special = normalized.indexOf(' / ');
-      if (special >= 0) errors.push(`unsupported Word choice 1: ${normalized.slice(0, special)}`);
+      if (special >= 0) errors.push(`unsupported Word choice 1 at ${input}:${line}: ${normalized.slice(0, special)}`);
       continue;
     }
     try {
-      choices(rhs).forEach((choice, index) => errors.push(`unsupported ${name} choice ${index + 1}: ${choice}`));
+      choices(rhs).forEach((choice, index) => errors.push(`unsupported ${name} choice ${index + 1} at ${input}:${line + choice.lineOffset}: ${choice.text}`));
     } catch (error) {
       errors.push(`unsupported ${name} choice ?: ${error.message}`);
     }

@@ -28,6 +28,8 @@ try {
   }
   assert.match(strict.stderr, /unsupported Block choice .*Heading\(ind\)/);
   assert.match(strict.stderr, /unsupported Block choice .*Paragraph\(ind\)/);
+  const headingLine = original.slice(0, original.indexOf('Heading(ind)', original.indexOf('Block <-'))).split('\n').length;
+  assert.match(strict.stderr, new RegExp(`unsupported Block choice .* at .*Golem\\.hpeg:${headingLine}: Heading\\(ind\\)`), 'unsupported choices need exact source lines');
   const newRule = `${original}\nUnmodeled <- ('a' / 'b') / 'c' { () }\n`;
   const newSource = join(work, 'Unmodeled.hpeg');
   writeFileSync(newSource, newRule);
@@ -37,7 +39,7 @@ try {
   assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'b'/);
   assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'c'/);
   if (/^Word <- '%%='/m.test(original)) {
-    assert.match(strict.stderr, /unsupported Word choice 1: '%%='/);
+    assert.match(strict.stderr, /unsupported Word choice 1 at .*Golem\.hpeg:\d+: '%%='/);
   }
 
   const invalidPeg = generate(`${original}\nUnclosed <- (\n`);
