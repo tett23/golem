@@ -199,6 +199,8 @@ tests =
         "rules"
         [ golden "blank-lines" "\n\n# 見出し\n\n\n\n本文\n\n \n\n次の段落",
           golden "command-spacing" "[strong:   a] と [ruby   漢字  :かん|  じ]。[= 1 ]\n\n@toc    depth=2   \n\n@set   v = 1\n",
+          testCase "ADR 0336 I1: format an unprefixed declaration without adding @" $
+            formatted "set   x = 3\n" @?= "set x = 3\n",
           golden "escapes" "\\a\\漢\\[\\]\\\\\\%と\\1\n\n\\1. 番号ではない\n",
           golden "trailing-whitespace" "@toc depth=2   \n\n- a  \n- b\t\n\n本文。  \n続き。 \n",
           golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n",

@@ -425,7 +425,7 @@ tests =
         wsFullEvaluations ws1 @?= n0
         ws2 <- updateFile ws1 "b.gm" "@label second\n# 別の題\n\n[ref-title intro]と[ref-page intro]を読む。\n"
         wsFullEvaluations ws2 @?= n0 + 1
-        ws3 <- updateFile ws2 "common/values.gm" "@set version = \"2.0\"\n"
+        ws3 <- updateFile ws2 "common/values.gm" "set version = \"2.0\"\n"
         wsFullEvaluations ws3 @?= n0 + 2
         hover ws3 "a.gm" (at ws3 "a.gm" "values.version" 2) @?= Just "2.0",
       testCase "hover: S0 values, S1 values, and page numbers left to S2" $ do

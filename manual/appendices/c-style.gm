@@ -634,7 +634,7 @@ PDF でだけ有効です。
 | [code: {heading.<階層>.numbered}] | 番号と題を並べたものです。[code: "heading.<階層>.numbered"] と同じです。 |
 | [code: {heading.<階層>.number}] | 見出しの番号だけです。番号のない見出しでは値がありません。 |
 | [code: {meta.キー}] | [code: manifest.toml] の [code: \[metadata\]] の値です。キーは [code: title]、[code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] です。 |
-| [code: {set.名前}] | そのページの章のファイルで [code: @set] した変数です。 |
+| [code: {set.名前}] | そのページの章のファイルで [code: set] した変数です。 |
 | [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... as 名前空間] で取り込んだ変数です。 |
 
 見出しの差し込みの末尾には [code: .last] を付けられます。

@@ -119,6 +119,7 @@ noticeCodes =
       "G02094", -- @blank-line written in a row (docs/adr ADR 0046)
       "G02108", -- a range of lines separated by - (to be retired; docs/adr ADR 0113)
       "G02129", -- @table src= (to be retired; docs/adr/0184)
+      "G02155", -- @set's @ (to be retired; ADR 0336)
       "G03023", -- no style.toml
       "G03100", -- a zero indent of caption or sidenote (golem-driver ADR 0043)
       "G03114", -- {{ and }} in [lists] numbers (to be retired; docs/adr/0177)
