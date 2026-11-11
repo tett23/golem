@@ -200,7 +200,9 @@ tests =
         counts "[cmd x %%注%% : 本文]\n" @?= 0
         counts "[cmd \"x\"%%甲%%%%乙%%key=y]\n" @?= 3
         counts "[= 1+%%注%%2]\n" @?= 2
-        counts "[= (%%前%% 1 %%後%%)]\n" @?= 0,
+        counts "[= (%%前%% 1 %%後%%)]\n" @?= 0
+        counts "[= f%%注%%(1)]\n" @?= 2
+        counts "[= values%%注%%.price]\n" @?= 2,
       testCase "positional after keyword" $ do
         let (_, ds) = parse fid "[f a=1 b]\n"
         map diagCode ds @?= [DiagnosticCode "G01019"],
