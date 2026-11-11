@@ -4,6 +4,7 @@ import ColophonSpec qualified
 import Control.Monad (forM_, void)
 import Data.Bifunctor (bimap, first)
 import Data.ByteString qualified as BS
+import Data.Either (fromLeft)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
@@ -1416,7 +1417,7 @@ noteMarkTests =
         codes (parseStyle (FileId 0) "[notes]\nbody-mark-style = \"nothing\"\n") @?= ["G03013"],
       testCase "ADR 0318 I2: mark-size is G03253 before a size conflict" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
-        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- either id (const []) (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03253", Error, 20)]
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03253", Error, 20)]
         let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
         codes (parseStyle (FileId 0) both) @?= ["G03253"]
         codes (parseStyle (FileId 0) "[character-styles.mark]\nsynthetic-bold = true\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n") @?= ["G03253"],

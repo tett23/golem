@@ -360,9 +360,9 @@ listTests =
       length (nub keys) @?= 2
       sort placed @?= sort keys,
     testCase "PDF: [lists] numbers set the marker, and its width" $ do
-      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") "+ 一\n+ 二\n"
+      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({n:arabic})\"]\n") "+ 一\n+ 二\n"
       ts @?= ["(1)一", "(2)二"]
-      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
+      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({n:arabic})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
       map snd ls @?= [0, 20 * pt],
     testCase "PDF: [lists] bullets by depth, the last one for deeper lists, with a gap" $ do
       let style = horizontalStyle <> TE.encodeUtf8 "\n[lists]\nbullets = [\"■\", \"□\"]\n"
@@ -372,13 +372,13 @@ listTests =
       -- 1 character and fs / 2, rounded up to whole characters
       map snd ls @?= [0, 20 * pt],
     testCase "a number its format cannot write is G07029, at the item" $ do
-      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
+      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{n:circled}\"]\n") "+ 一\n@number 51\n+ 二\n" []
       layoutErrors r @?= [("G07029", "リストの番号 51 は、書式 {n:circled} で表せません", FileId 1, 17, 23)]
-      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
+      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{n:circled}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
         [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G07029"],
     testCase "HTML: [lists] writes a @counter-style for each depth" $
-      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{①}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
+      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:circled}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
         page <- TIO.readFile (tmp </> "build/html/v.xhtml")
