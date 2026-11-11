@@ -1405,6 +1405,8 @@ CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と�
 成果物は既定で 30 秒ごとに問い合わせる。
 見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
 GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
+集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](adr/0349-retry-ci-job-list-on-rate-limit.md)）。
+全ページを取得してから各ジョブのログを検査する。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
 
 比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
