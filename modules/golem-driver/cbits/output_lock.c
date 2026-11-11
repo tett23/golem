@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -18,7 +19,25 @@ int golem_clean_finder_info(const char *root, const char *relative) {
     if (dir < 0) return -1;
 
     const char *part = relative;
-    if (*part == '/' || *part == '\0') {
+    if (*part == '/') {
+        char absolute_root[PATH_MAX];
+        if (!realpath(root, absolute_root)) {
+            int error = errno;
+            close(dir);
+            errno = error;
+            return -1;
+        }
+        size_t root_length = strlen(absolute_root);
+        if (strncmp(part, absolute_root, root_length) != 0 ||
+            (part[root_length] != '/' && part[root_length] != '\0')) {
+            close(dir);
+            return 0;
+        }
+        part += root_length;
+        if (*part == '/') ++part;
+        if (*part == '\0') part = ".";
+    }
+    if (*part == '\0') {
         close(dir);
         return 0;
     }

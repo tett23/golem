@@ -116,7 +116,6 @@ import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
-import System.Directory qualified as Directory
 import System.FilePath qualified as FilePath
 import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
 import System.Posix.Types (Fd (..))
@@ -770,12 +769,11 @@ cleanFinderInfo :: FilePath -> [FilePath] -> IO ()
 cleanFinderInfo root paths = do
   exists <- doesDirectoryExist root
   when exists $ do
-    absoluteRoot <- Directory.canonicalizePath root
     forM_ (nub paths) $ \path -> do
-      let relative = FilePath.normalise (FilePath.makeRelative absoluteRoot (if FilePath.isAbsolute path then path else absoluteRoot </> path))
-      BS.useAsCString (TE.encodeUtf8 (T.pack absoluteRoot)) $ \rootString ->
+      let relative = FilePath.normalise path
+      BS.useAsCString (TE.encodeUtf8 (T.pack root)) $ \rootString ->
         BS.useAsCString (TE.encodeUtf8 (T.pack relative)) $ \relativeString ->
-          throwErrnoIfMinus1Retry_ ("remove " <> absoluteRoot </> relative </> ".DS_Store")
+          throwErrnoIfMinus1Retry_ ("remove " <> root </> relative </> ".DS_Store")
             (cleanFinderInfoAt rootString relativeString)
 
 -- | Hold an exclusive lock on the project directory while writing targets or
