@@ -1,6 +1,6 @@
 // Compare the tagged rc4 CLI with the executable intended for v1.0.0.
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -15,19 +15,25 @@ title = "listing"
 language = "ja"
 date = 2026-11-11
 [targets.text]
+[targets.pdf]
+[targets.html]
+[targets.epub]
 [source]
 paragraph-separator = "blank-line"
 `;
 
-function build(bin, line, rules = "", flags = []) {
+function build(bin, line, rules = "", flags = [], target = "text") {
   const cwd = mkdtempSync(join(tmpdir(), "listing-release-"));
   try {
     writeFileSync(join(cwd, "manifest.toml"), manifest + rules);
-    writeFileSync(join(cwd, "style.toml"), "");
+    const fixture = new URL("../../modules/golem-driver/test/fixtures/tempest/", import.meta.url);
+    copyFileSync(new URL("style.toml", fixture), join(cwd, "style.toml"));
+    cpSync(new URL("fonts/", fixture), join(cwd, "fonts"), { recursive: true });
     writeFileSync(join(cwd, "a.gm"), line + "\n");
     writeFileSync(join(cwd, "a.txt"), "source\n");
-    const r = spawnSync(bin, ["build", "--target", "text", "--format", "json", ...flags], { cwd, encoding: "utf8" });
+    const r = spawnSync(bin, ["build", "--target", target, "--format", "json", ...flags], { cwd, encoding: "utf8" });
     if (r.error) throw r.error;
+    if (r.status === 1) assert.equal(existsSync(join(cwd, "build", target)), false);
     return { exit: r.status, diagnostics: JSON.parse(r.stderr) };
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 }
@@ -49,4 +55,17 @@ test("I4: silencing only the retired notice is accepted by rc4 and rejected by v
   const result = build(candidate, "@listing a.txt", rules);
   assert.equal(result.exit, 1);
   assert.deepEqual(result.diagnostics.map(d => d.code), ["G03024"]);
+});
+
+test("I2: duplicate src points to each repeated argument on every target", () => {
+  const line = "@listing src=a.txt src=b.txt src=c.txt";
+  for (const target of ["pdf", "html", "text", "epub"]) {
+    const result = build(candidate, line, "", ["--no-notices"], target);
+    assert.equal(result.exit, 1, target);
+    assert.deepEqual(
+      result.diagnostics.map(d => [d.code, d.span.start, d.span.end]),
+      [["G02077", 19, 28], ["G02077", 29, 38]],
+      target,
+    );
+  }
 });
