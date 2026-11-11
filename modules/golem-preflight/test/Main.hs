@@ -388,7 +388,7 @@ checkTests =
     testCase "Golem ADR 0322 A1: a one-ppi image crosses only the threshold of two" $ do
       let iv = placed (image CsCmyk 8 1 1 Nothing) (Rect (mm 20) (mm 20) (inch 1) (inch 1))
           result limit = only "G09006" (check printRules {ruResolutionColor = Tier limit 0} (imagePage [iv]))
-      map length (map result [0, 1, 2]) @?= [0, 0, 1],
+      map (length . result) [0, 1, 2] @?= [0, 0, 1],
     testCase "Golem ADR 0322 A2: native and wasm share the one-ppi diagnostic facts" $ do
       let iv = placed (image CsCmyk 8 1 1 Nothing) (Rect (mm 20) (mm 20) (inch 1) (inch 1))
           result = only "G09006" (check printRules {ruResolutionColor = Tier 2 0} (imagePage [iv]))
