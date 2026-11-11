@@ -109,6 +109,7 @@ test-suite golem-layout-test
                     LineBreakingSpec
                     NarrowPunctuationSpec
                     NoBreakEnum
+                    NoBreakShapeSpec
                     NumberUnitSpec
                     SoftHyphenSpec
                     OverflowSpec
@@ -133,6 +134,7 @@ test-suite golem-layout-test
     , bytestring
     , containers
     , golem-doc
+    , golem-font
     , golem-layout
     , golem-length
     , golem-project

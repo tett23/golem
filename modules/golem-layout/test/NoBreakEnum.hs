@@ -16,7 +16,7 @@ forced break. The parts of a range are set in the character style
 @no-break@, those around them as they are; a run of parts in a range or
 out of one is one inline, so that a word in a range is one piece.
 -}
-module NoBreakEnum (noBreakTests, noBreakPrDepth) where
+module NoBreakEnum (noBreakTests, noBreakPrDepth, realProbe) where
 
 import Control.Applicative ((<|>))
 import Data.List (mapAccumL, zip4)
@@ -228,8 +228,8 @@ the boxes around it one box of both texts, as wide as both and the
 kerning between them (the advance of the joined text less those of the
 two).
 -}
-dropTouching :: Chars -> [Item] -> Either String [Item]
-dropTouching ch = go []
+dropTouching :: ComposeEnv -> Chars -> [Item] -> Either String [Item]
+dropTouching measures ch = go []
   where
     go acc = \case
       [] -> Right (reverse acc)
@@ -247,7 +247,7 @@ dropTouching ch = go []
         | otherwise -> go (x : acc) rest
     joined w1 w2 c1 c2 =
       let lk = bcLook c1
-          adv t = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
+          adv t = L.zwToSp (lkSize lk) (ceWordAdvance measures lk t)
        in w1 + w2 + adv (bcText c1 <> bcText c2) - adv (bcText c1) - adv (bcText c2)
 
 {- | The second step of S1: each break whose nearest characters before and
@@ -276,7 +276,10 @@ an input are those of it with its ranges off, 'dropTouching' and then
 'holdInside'.
 -}
 s1Breaks :: Input -> [Item] -> [Item] -> [Violation]
-s1Breaks i its off = case dropTouching ch off of
+s1Breaks = s1With env
+
+s1With :: ComposeEnv -> Input -> [Item] -> [Item] -> [Violation]
+s1With measures i its off = case dropTouching measures ch off of
   Left e -> [Violation "S1" ("the predicate cannot read the items: " <> e)]
   Right off' ->
     let want = holdInside ch off'
@@ -431,3 +434,17 @@ noBreakTests =
     tailsOf xs = case xs of
       [] -> []
       _ : rest -> xs : tailsOf rest
+
+-- | Apply the original S1 predicate to boxes composed with measured words.
+realProbe :: (Text -> Rational) -> (Int,[String])
+realProbe word =
+  let measures = env {ceWordAdvance = const word}
+      atoms = [(PText t,b) | t <- ["A","V","f","i","\xAD"], b <- [False,True]]
+      original = [(p,b) | p <- nbParts, b <- [False,True]]
+      originalRuns = [] : [[a] | a <- original] ++ [[a,b] | a <- original, b <- original]
+      latinRuns = [] : [[a] | a <- atoms] ++ [[a,b] | a <- atoms, b <- atoms] ++ [[a,b,c] | a <- atoms, b <- atoms, c <- atoms]
+      cases = [Input 0 run 0 3 | run <- originalRuns ++ latinRuns]
+      checks i =
+        let compose s = fst (composeInlines measures (inlinesWith s i))
+        in s1With measures i (compose "no-break") (compose "nb-off")
+   in (length cases, [show i ++ ": " ++ show (map violationDetail vs) | i <- cases, let vs = checks i, not (null vs)])
