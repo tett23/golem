@@ -41,18 +41,29 @@ lineIds = \case
   _ -> []
 
 paginateElementsTests :: TestTree
-paginateElementsTests = testGroup "Golem ADR 0313"
-  [ testCase "P1: every body line and wrapped figure occurs exactly once" $
-      mapM_ (\(capacity, pieces) -> do
-        let entries = zipWith flow [1 ..] pieces
-            slots = concatMap poSlots (paginate 1 capacity (map fst entries))
-            context = show (capacity, pieces)
-        assertEqual context (sort (concatMap snd entries)) (sort (concatMap (lineIds . snd) slots))
-        assertEqual context [1000 + index * 10 | (index, Wrapped) <- zip [1 ..] pieces]
-          (sort [identifier | (_, SWrapped identifier) <- slots])) cases,
-    testCase "P2: every output item starts inside its effective column" $
-      mapM_ (\(capacity, pieces) -> do
-        let pages = paginate 1 capacity (map fst (zipWith flow [1 ..] pieces))
-        assertBool (show (capacity, pieces))
-          (all (\page -> all (\(row, _) -> row >= 0 && row < poLines page) (poSlots page)) pages)) cases
-  ]
+paginateElementsTests =
+  testGroup
+    "Golem ADR 0313"
+    [ testCase "P1: every body line and wrapped figure occurs exactly once" $
+        mapM_
+          ( \(capacity, pieces) -> do
+              let entries = zipWith flow [1 ..] pieces
+                  slots = concatMap poSlots (paginate 1 capacity (map fst entries))
+                  context = show (capacity, pieces)
+              assertEqual context (sort (concatMap snd entries)) (sort (concatMap (lineIds . snd) slots))
+              assertEqual
+                context
+                [1000 + index * 10 | (index, Wrapped) <- zip [1 ..] pieces]
+                (sort [identifier | (_, SWrapped identifier) <- slots])
+          )
+          cases,
+      testCase "P2: every output item starts inside its effective column" $
+        mapM_
+          ( \(capacity, pieces) -> do
+              let pages = paginate 1 capacity (map fst (zipWith flow [1 ..] pieces))
+              assertBool
+                (show (capacity, pieces))
+                (all (\page -> all (\(row, _) -> row >= 0 && row < poLines page) (poSlots page)) pages)
+          )
+          cases
+    ]
