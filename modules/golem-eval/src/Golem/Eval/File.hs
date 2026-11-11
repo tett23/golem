@@ -36,7 +36,7 @@ import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
 import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.Either (fromLeft, fromRight, isLeft)
+import Data.Either (fromLeft, fromRight, isLeft, lefts)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -711,7 +711,7 @@ functionArgs ctx sp name ps args = do
           Just kp <- [lookupKeyword k],
           isNothing (fitValue (kpType kp) v)
         ]
-      errors = [d | Left d <- vals] <> map unknownDiagnostic unknown <> countErrors <> positionalTypeErrors <> keywordTypeErrors
+      errors = lefts vals <> map unknownDiagnostic unknown <> countErrors <> positionalTypeErrors <> keywordTypeErrors
   mapM_ report errors
   if not (null errors) || not (null (repeatedKeys args))
     then pure Nothing
