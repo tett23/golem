@@ -135,6 +135,7 @@ serverDefinition encVar initIdVar = do
   wsVar <- newTVarIO Nothing
   gen <- newTVarIO 0
   rootVar <- newTVarIO "."
+  plotVar <- newTVarIO Nothing
   watchVar <- newTVarIO Nothing
   lock <- newMVar ()
   dirtyVar <- newTVarIO Set.empty
@@ -150,10 +151,11 @@ serverDefinition encVar initIdVar = do
           root <- findRoot (fromMaybe "." (resRootPath env))
           atomically $ do
             writeTVar rootVar root
+            writeTVar plotVar (alephPlot root params)
             writeTVar encVar (F.chooseEncoding (offeredEncodings params))
             writeTVar initIdVar (Just lid)
           pure (Right env),
-        staticHandlers = \_ -> handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar,
+        staticHandlers = \_ -> handlers encVar rootVar plotVar wsVar gen watchVar lock dirtyVar pubVar,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
@@ -167,6 +169,17 @@ serverDefinition encVar initIdVar = do
 renameFilter :: FileOperationRegistrationOptions
 renameFilter = FileOperationRegistrationOptions [FileOperationFilter (Just "file") (FileOperationPattern "**/*" Nothing Nothing)]
 
+-- | Aleph identifies its plot explicitly; other clients' CSV files stay text.
+alephPlot :: FilePath -> InitializeParams -> Maybe FilePath
+alephPlot root params = do
+  J.Object fields <- pure (J.toJSON params)
+  J.Object options <- KM.lookup "initializationOptions" fields
+  J.Object aleph <- KM.lookup "aleph" options
+  J.String plotUri <- KM.lookup "plotCsv" aleph
+  path <- uriToFilePath (Uri plotUri)
+  guard (makeRelative root path == "plot.csv")
+  pure "plot.csv"
+
 -- | @capabilities.general.positionEncodings@ of the initialize request.
 offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
 offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ general _) _ _ _) =
@@ -175,8 +188,8 @@ offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ gener
 -- | The registration of the watched table files (golem-eval ADR 0004).
 type WatchToken = RegistrationToken Method_WorkspaceDidChangeWatchedFiles
 
-handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
-handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
+handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe FilePath) -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
+handlers encVar rootVar plotVar wsVar gen watchVar lock dirtyVar pubVar =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_ -> do
         root <- liftIO (readTVarIO rootVar)
@@ -234,9 +247,10 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
           (_, Left err) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
           (Nothing, _) -> respond (Right (InR Null))
           (Just ws, Right pairs) -> do
-            planned <- forM (["manifest.toml", "style.toml"] <> wsSourceFiles ws) $ \p -> do
+            plot <- liftIO (readTVarIO plotVar)
+            planned <- forM (["manifest.toml", "style.toml"] <> wsSourceFiles ws <> maybe [] pure plot) $ \p -> do
               safe <- liftIO (resolveInRoot (stRoot st) p)
-              if (p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"]) || either (const True) (const False) safe
+              if (p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"] && Just p /= plot) || either (const True) (const False) safe
                 then pure (Right Nothing)
                 else do
                   let uri = filePathToUri (stRoot st </> p)
@@ -250,7 +264,7 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
                       version = maybe (InR Null) (InL . _lsp_version) vf
                   case content of
                     Nothing -> pure (Right Nothing)
-                    Just source -> case (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source of
+                    Just source -> case (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if Just p == plot then R.planPlotCsv else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source of
                       Left err -> pure (Left err)
                       Right edits -> do
                         let li = S.mkLineIndex source

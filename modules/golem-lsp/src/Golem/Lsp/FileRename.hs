@@ -1,5 +1,5 @@
 -- | Path component matching for file and folder rename operations (Golem ADR 0338).
-module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetImports, planManifest, planStyle) where
+module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetImports, planManifest, planStyle, planPlotCsv) where
 
 import Control.Monad (forM)
 import Data.ByteString qualified as BS
@@ -24,6 +24,8 @@ import Golem.Syntax (FileId (..), SrcSpan (..))
 import System.FilePath (joinPath, splitDirectories)
 import Toml.Semantics (Table' (..), Value' (..))
 import Toml.Syntax (Position)
+
+data CsvCell = CsvCell !Int !Int !Text !Bool
 
 {- | Apply all operations against the same pre-rename path. Duplicate pairs
 have no extra effect; overlapping pairs must agree on the destination.
@@ -300,3 +302,62 @@ tomlStringLength bytes = do
             | BS.take closing (BS.drop i bytes) == BS.replicate closing quote = Just (i + closing)
             | otherwise = seek (i + 1) False
       seek opening False
+
+{- | Aleph's plot.csv uses its file column as a project-root-relative path.
+Only an explicitly enabled plot file is passed to this function.
+-}
+planPlotCsv :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
+planPlotCsv operations source = do
+  rows <- csvRows (TE.encodeUtf8 source)
+  case rows of
+    [] -> Right []
+    header : body -> case [index | (index, CsvCell _ _ name _) <- zip [0 ..] header, T.strip name == "file"] of
+      [] -> Right []
+      [column] -> sortOn (\(start, _, _) -> start) . concat <$> traverse (oneCell column) body
+      _ -> Left "duplicate plot file column"
+  where
+    oneCell column cells = case drop column cells of
+      CsvCell start end raw wasQuoted : _
+        | let written = T.strip raw,
+          not (T.null written),
+          Right original <- normalizeRelative (T.unpack written) -> do
+            destination <- renamePath operations (T.unpack written)
+            let value = T.pack destination
+                replacement = if wasQuoted || T.any (`elem` (",\"\n\r" :: String)) value then "\"" <> T.replace "\"" "\"\"" value <> "\"" else value
+            pure (if destination == original then [] else [(start, end, replacement)])
+      _ -> Right []
+
+csvRows :: BS.ByteString -> Either String [[CsvCell]]
+csvRows bytes = rows 0
+  where
+    lengthOfInput = BS.length bytes
+    byte i = BS.index bytes i
+    rows i
+      | i >= lengthOfInput = Right []
+      | otherwise = do
+          (cells, next) <- row i
+          (cells :) <$> rows next
+    row i = do
+      (cell, end) <- field i
+      if end >= lengthOfInput
+        then Right ([cell], end)
+        else case byte end of
+          44 -> do
+            (rest, next) <- row (end + 1)
+            Right (cell : rest, next)
+          10 -> Right ([cell], end + 1)
+          13 -> Right ([cell], end + if end + 1 < lengthOfInput && byte (end + 1) == 10 then 2 else 1)
+          _ -> Left "invalid plot CSV delimiter"
+    field start
+      | start < lengthOfInput && byte start == 34 = do
+          end <- quotedEnd (start + 1)
+          let raw = BS.take (end - start - 2) (BS.drop (start + 1) bytes)
+          Right (CsvCell start end (T.replace "\"\"" "\"" (TE.decodeUtf8 raw)) True, end)
+      | otherwise =
+          let end = start + BS.length (BS.takeWhile (\b -> b /= 44 && b /= 10 && b /= 13) (BS.drop start bytes))
+           in Right (CsvCell start end (TE.decodeUtf8 (BS.take (end - start) (BS.drop start bytes))) False, end)
+    quotedEnd i
+      | i >= lengthOfInput = Left "unclosed plot CSV quote"
+      | byte i /= 34 = quotedEnd (i + 1)
+      | i + 1 < lengthOfInput && byte (i + 1) == 34 = quotedEnd (i + 2)
+      | otherwise = Right (i + 1)

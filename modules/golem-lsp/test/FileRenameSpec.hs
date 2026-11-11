@@ -3,7 +3,7 @@ module FileRenameSpec (fileRenameTests) where
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planStyle, renamePath, validateRenames)
+import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planPlotCsv, planStyle, renamePath, validateRenames)
 import Golem.Lsp.Workspace (openWorkspace, renameWorkspace, updateFile, wsOverlay, wsSourceFiles)
 import System.Directory (createDirectory, renameDirectory)
 import System.FilePath ((</>))
@@ -76,6 +76,14 @@ fileRenameTests =
             length edits @?= 1
             foldr (\(start, end, replacement) text -> T.take start text <> replacement <> T.drop end text) source edits
               @?= "[fonts.body]\nja=\"fonts/new.otf\"\nlatin=\"fonts/b.otf\"\n[paragraph-styles.body]\nfont=\"body\"\n",
+      testCase "R4: Aleph plot edits only file cells and keeps CSV quoting" $ do
+        let source = "scene,file,memo\none,\"chapters/a,1.gm\",\"chapters/a,1.gm\"\ntwo,chapters/a.gm,note\n"
+        case planPlotCsv [("chapters", "parts")] source of
+          Left err -> fail err
+          Right edits -> do
+            length edits @?= 2
+            foldr (\(start, end, replacement) text -> T.take start text <> replacement <> T.drop end text) source edits
+              @?= "scene,file,memo\none,\"parts/a,1.gm\",\"chapters/a,1.gm\"\ntwo,parts/a.gm,note\n",
       testCase "R3: didRename discards old overlays and refreshes the source index" $
         withSystemTempDirectory "golem-rename" $ \root -> do
           createDirectory (root </> "part")
