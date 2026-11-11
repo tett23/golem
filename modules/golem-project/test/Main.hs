@@ -1,6 +1,7 @@
 module Main (main) where
 
 import ColophonSpec qualified
+import Control.Exception (evaluate)
 import Control.Monad (forM_, void)
 import Data.Bifunctor (bimap, first)
 import Data.ByteString qualified as BS
@@ -31,6 +32,7 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import System.Timeout (timeout)
 import PositionSpec qualified
 import SharedValuesSpec qualified
 import StylePositionSpec qualified
@@ -906,6 +908,12 @@ tests =
             fmap (either (const Nothing) psKeepWithNext) (localStyleDefWithValues s ParagraphKind [("keep-with-next", LocalWord "more")]) @?= Right (Just 3)
             fmap (either (const Nothing) psKeepWithNext) (localStyleDefWithValues s ParagraphKind [("keep-with-next", LocalString "rows + 1")]) @?= Right (Just 3)
             either (map fst) (const []) (localStyleDefWithValues s ParagraphKind [("keep-with-next", LocalWord "missing")]) @?= ["G03257"],
+      testCase "ADR 0320 I1: repeated count references resolve once per declaration" $ do
+        let names = ["v" <> T.pack (show n) | n <- [0 .. 30 :: Int]]
+            declarations = "[values.count]\nv0 = 0\n" <> T.concat [name <> " = \"" <> prev <> " + " <> prev <> "\"\n" | (name, prev) <- zip (drop 1 names) names]
+            source = declarations <> "[paragraph-styles.quote]\nkeep-with-next = \"v30\"\n"
+        result <- timeout 5000000 (evaluate (either (const False) (\s -> (paraStyle s (Just "quote") >>= psKeepWithNext) == Just 0) (parseStyle (FileId 0) source)))
+        result @?= Just True,
       testCase "ADR 0320 I3: invalid names and typed references have located errors" $ do
         codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]

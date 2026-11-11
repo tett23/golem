@@ -401,9 +401,10 @@ renameLayoutValue ws styleText path off new = case [ (kind, name) | (kind, name,
         | Just styleKind <- styleKindOf kind ->
             [ (kindOf styleKind key, name, loc', False)
             | Located argSpan (Keyword (Located _ key) value) <- args,
-              Just name <- [case value of Word n -> Just n; StringLit n -> Just n; _ -> Nothing],
+              Just valueText <- [case value of Word n -> Just n; StringLit n -> Just n; _ -> Nothing],
+              (name, loc') <- argumentSites src argSpan,
               name `elem` layoutValueNames style styleKind key,
-              Just loc' <- [argumentSite src argSpan name]
+              kindOf styleKind key == "count" || name == valueText
             ]
       _ -> []
     kindOf styleKind key = case layoutValueNames style styleKind key of
@@ -411,14 +412,22 @@ renameLayoutValue ws styleText path off new = case [ (kind, name) | (kind, name,
       names | any (\n -> ("aki", n) `elem` declared) names -> "aki"
       _ -> "count"
     declared = [(kind, name) | (kind, name, _, True) <- styleSites]
-    argumentSite src span' name =
+    argumentSites src span' =
       let bytes = TE.encodeUtf8 (srcText src)
           fragment = TE.decodeUtf8Lenient (BS.take (spanEnd span' - spanStart span') (BS.drop (spanStart span') bytes))
           (_, afterEq) = T.breakOn "=" fragment
           prefix = T.take (T.length fragment - T.length afterEq) fragment <> "="
-          (beforeName, found) = T.breakOn name (T.drop 1 afterEq)
-          start = spanStart span' + BS.length (TE.encodeUtf8 (prefix <> beforeName))
-       in if T.null afterEq || T.null found then Nothing else Just (Location (srcPath src) start (start + BS.length (TE.encodeUtf8 name)))
+          parts = T.splitOn "+" (T.drop 1 afterEq)
+          prefixes = scanl (\before part -> before <> part <> "+") "" parts
+       in [ (name, Location (srcPath src) start (start + BS.length (TE.encodeUtf8 name)))
+          | not (T.null afterEq),
+            (beforePart, part) <- zip prefixes parts,
+            let name = T.dropAround (\c -> c == '"' || c == ' ' || c == '\t') part,
+            not (T.null name),
+            let (beforeName, found) = T.breakOn name part,
+            not (T.null found),
+            let start = spanStart span' + BS.length (TE.encodeUtf8 (prefix <> beforePart <> beforeName))
+          ]
 
 {- | Renames a name of a .emet (docs/adr/0170): in the .emet of the
 program, and for a function .gm calls by its name, the calls of .gm and

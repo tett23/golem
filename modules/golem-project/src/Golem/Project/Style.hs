@@ -2618,7 +2618,7 @@ resolveStyleValues fid src (MkTable root) = do
       entries <- fmap concat . traverse typeEntries $ Map.toList kinds
       foldM insert Map.empty (sortOn (place . third) entries)
     Just (_, v) -> Left (bad "G03256" (valueAnn v) "values には length、aki、count の表を書きます")
-  resolved <- Map.traverseWithKey (\name _ -> resolveName definitions [] name) definitions
+  resolved <- foldM (\cache name -> snd <$> resolveName definitions cache [] name) Map.empty (Map.keys definitions)
   MkTable changed <- rewrite definitions [] resolved (MkTable (Map.delete "values" root))
   pure (MkTable changed, resolved)
   where
@@ -2637,46 +2637,53 @@ resolveStyleValues fid src (MkTable root) = do
       Just (first, rest) -> isAsciiLower first && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
       Nothing -> False
     bad code pos msg = diagnostic code Error (positionSpan fid src (Just pos)) msg
-    resolveName defs stack name = case Map.lookup name defs of
-      Nothing -> Left (bad "G03257" (Position 0 1 1) ("値の名前がありません: " <> name))
-      Just (kind, value)
-        | name `elem` stack -> Left (bad "G03256" (valueAnn value) ("値の宣言が循環しています: " <> T.intercalate " → " (reverse (name : stack))))
-        | otherwise -> (kind,) <$> resolveValue defs (name : stack) kind value
-    resolveValue defs stack kind value = case value of
+    resolveName defs cache stack name = case Map.lookup name cache of
+      Just result -> Right (result, cache)
+      Nothing -> case Map.lookup name defs of
+        Nothing -> Left (bad "G03257" (Position 0 1 1) ("値の名前がありません: " <> name))
+        Just (kind, value)
+          | name `elem` stack -> Left (bad "G03256" (valueAnn value) ("値の宣言が循環しています: " <> T.intercalate " → " (reverse (name : stack))))
+          | otherwise -> do
+              (resolved, cache') <- resolveValue defs cache (name : stack) kind value
+              let result = (kind, resolved)
+              Right (result, Map.insert name result cache')
+    resolveValue defs cache stack kind value = case value of
       Integer' pos n
-        | kind == CountKind, n >= 0, n <= toInteger maxNaturalInt -> Right (QuantityCount n)
-        | kind /= CountKind, n == 0 -> Right (QuantityText "0")
+        | kind == CountKind, n >= 0, n <= toInteger maxNaturalInt -> Right (QuantityCount n, cache)
+        | kind /= CountKind, n == 0 -> Right (QuantityText "0", cache)
         | otherwise -> Left (bad "G03256" pos "宣言の値が種類に合いません")
-      Text' pos raw -> term defs stack kind pos (T.strip raw)
+      Text' pos raw -> term defs cache stack kind pos (T.strip raw)
       _ -> Left (bad "G03256" (valueAnn value) "宣言の値が種類に合いません")
-    term defs stack kind pos raw = case kind of
+    term defs cache stack kind pos raw = case kind of
       LengthKind
-        | Just _ <- parseSignedDim raw -> Right (QuantityText raw)
-        | validName raw -> reference defs stack kind pos raw
+        | Just _ <- parseSignedDim raw -> Right (QuantityText raw, cache)
+        | validName raw -> reference defs cache stack kind pos raw
         | otherwise -> Left (bad "G03256" pos ("長さの宣言値が正しくありません: " <> raw))
       AkiKind
-        | Just _ <- parseAki raw -> Right (QuantityText raw)
-        | validName raw -> reference defs stack kind pos raw
+        | Just _ <- parseAki raw -> Right (QuantityText raw, cache)
+        | validName raw -> reference defs cache stack kind pos raw
         | otherwise -> Left (bad "G03256" pos ("アキ量の宣言値が正しくありません: " <> raw))
       CountKind -> do
-        values <- traverse countAtom (T.splitOn "+" raw)
+        (values, cache') <- foldM (\(values, current) atom -> do
+            (n, next) <- countAtom current atom
+            Right (n : values, next)) ([], cache) (T.splitOn "+" raw)
         let total = sum values
-        if total <= toInteger maxNaturalInt then Right (QuantityCount total) else Left (bad "G03256" pos "行数が上限を超えています")
+        if total <= toInteger maxNaturalInt then Right (QuantityCount total, cache') else Left (bad "G03256" pos "行数が上限を超えています")
         where
-          countAtom atom
-            | let t = T.strip atom, not (T.null t), T.all isDigit t = Right (read (T.unpack (T.strip atom)))
+          countAtom current atom
+            | let t = T.strip atom, not (T.null t), T.all isDigit t = Right (read (T.unpack (T.strip atom)), current)
             | validName (T.strip atom) = do
-                v <- reference defs stack CountKind pos (T.strip atom)
+                (v, next) <- reference defs current stack CountKind pos (T.strip atom)
                 case v of
-                  QuantityCount n -> Right n
+                  QuantityCount n -> Right (n, next)
                   _ -> Left (bad "G03256" pos "行数の宣言値が正しくありません")
             | otherwise = Left (bad "G03256" pos ("行数の宣言値が正しくありません: " <> raw))
-    reference defs stack wanted pos name = do
+    reference defs cache stack wanted pos name = do
       case Map.lookup name defs of
         Nothing -> Left (bad (if null stack then "G03257" else "G03256") pos ("値の名前がありません: " <> name))
         Just _ -> do
-          (actual, resolved) <- resolveName defs stack name
-          if actual == wanted then Right resolved else Left (bad (if null stack then "G03258" else "G03256") pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
+          ((actual, resolved), next) <- resolveName defs cache stack name
+          if actual == wanted then Right (resolved, next) else Left (bad (if null stack then "G03258" else "G03256") pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
     kindText = \case
       LengthKind -> "length"
       AkiKind -> "aki"
@@ -2690,7 +2697,7 @@ resolveStyleValues fid src (MkTable root) = do
         | Just CountKind <- expected path,
           T.all (\c -> isDigit c || c == '+' || c == ' ' || c == '-' || isAsciiLower c) raw,
           not (T.null raw) -> do
-            result <- term defs [] CountKind pos (T.strip raw)
+            result <- fst <$> term defs names [] CountKind pos (T.strip raw)
             case result of
               QuantityCount n -> Right (Integer' pos n)
               _ -> Right (Text' pos raw)

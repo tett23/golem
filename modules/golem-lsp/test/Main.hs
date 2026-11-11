@@ -143,6 +143,16 @@ tests =
           Left err -> assertFailure (show err)
           Right edits -> map (\(loc', _) -> (locPath loc', sliceAt loc')) edits @?= [("style.toml", "indent"), ("style.toml", "indent"), ("b.gm", "indent")]
         renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "rows" @?= Left (LayoutValueExists "rows"),
+      testCase "ADR 0320 I2: rename includes each count operand in loaded source" $ do
+        let styleText = "[values.count]\nrows = 2\n"
+            gmText = "@style-def paragraph quote keep-with-next=\"rows + rows\"\n"
+        ws0 <- openWorkspace root
+        ws1 <- updateFile ws0 "style.toml" styleText
+        ws <- updateFile ws1 "b.gm" gmText
+        let sliceAt (Location p s e) = TE.decodeUtf8 (BS.take (e - s) (BS.drop s (TE.encodeUtf8 (if p == "style.toml" then styleText else gmText))))
+        case renameLayoutValue ws styleText "style.toml" (offsetIn styleText "rows =" 1) "lines" of
+          Left err -> assertFailure (show err)
+          Right edits -> map (\(loc', _) -> (locPath loc', sliceAt loc')) edits @?= [("style.toml", "rows"), ("b.gm", "rows"), ("b.gm", "rows")],
       testCase "completion: commands, labels, import paths, swatches" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n[ref-title \n[co\n[color \n@import \n"
