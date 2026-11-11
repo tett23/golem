@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 
+const allTargets = ["text", "pdf", "html", "epub"];
 const [rc4, candidate] = process.argv.slice(2).map((p) => resolve(p));
 assert.ok(rc4 && candidate, "supply paths to the rc4 and candidate executables");
 const manifest = `chapters = ["a.gm"]
@@ -48,11 +49,14 @@ test("I3: rc4 and v1 report the notice and errors for one or two table paths", (
     const before = build(rc4, line);
     assert.equal(before.exit, oldExit);
     assert.deepEqual(before.diagnostics.map(d => [d.code, d.severity]).sort(), oldCodes);
-    for (const target of ["text", "pdf", "html", "epub"]) {
-      const after = build(candidate, line, "", ["--no-notices"], target);
-      assert.equal(after.exit, 1, target);
-      assert.deepEqual(after.diagnostics.map(d => [d.code, d.severity, d.span.start, d.span.end]),
-        [[newCode, "error", line.indexOf("src="), line.length]], target);
+    const span = newCode === "G02130" ? [0, line.length + 1] : [line.indexOf("src="), line.length];
+    for (const target of allTargets) {
+      for (const flags of [[], ["--no-notices"]]) {
+        const after = build(candidate, line, "", flags, target);
+        assert.equal(after.exit, 1, target);
+        assert.deepEqual(after.diagnostics.map(d => [d.code, d.severity, d.span.start, d.span.end]),
+          [[newCode, "error", ...span]], target);
+      }
     }
   }
 });
