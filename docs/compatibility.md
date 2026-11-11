@@ -73,7 +73,6 @@ Golem は、壊れた出力を黙って作るより止めるほうを選ぶ（�
 | --- | --- | --- | --- |
 | [G02065](diagnostics.md#g02065) | `@listing` の `src=` | パスを最初の引数に書く（`@listing src/Main.hs`） | v0.1.0-rc2 と v0.1.0-rc3 で notice を出したので、v0.1.0-rc4 からエラーにしてよい |
 | [G02108](diagnostics.md#g02108) | `@listing` の `lines` とコードブロックの `highlight` の、`10-20` のような `-` で区切った範囲（[ADR 0113](adr/0113-closed-range-literal.md)） | `...` で区切った範囲（`10...20`） | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |
-| [G02129](diagnostics.md#g02129) | `@table` の `src=`（[ADR 0184](adr/0184-table-positional-path.md)） | パスを最初の引数に書く（`@table data/sizes.csv`） | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |
 | [G03114](diagnostics.md#g03114) | `[lists]` の `numbers` の `{{` と `}}`（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)） | `\{` と `\}` | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |
 | [G03115](diagnostics.md#g03115) | `[lists]` の `numbers` の一字の見本の差し込み（`{1}`、`{一}`、`{①}` など。[ADR 0177](adr/0177-note-mark-style-and-numerals.md)） | `{n:<表記>}`（`{n:arabic}`、`{n:kanji}`、`{n:circled}` など） | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |
 | [G03116](diagnostics.md#g03116) | 柱の書式の `{{` と `}}`（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)） | `\{` と `\}` | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |

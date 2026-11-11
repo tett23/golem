@@ -211,35 +211,30 @@ tableOf src = case fst (run src) of
   where
     texts = map (\case Text _ t -> t; _ -> "?")
 
--- | The path as the first argument, and src= to be retired (docs/adr/0184).
+-- | The path as the first argument (ADR 0317).
 positionalTests :: TestTree
 positionalTests =
   testGroup
     "the path as the first argument (docs/adr/0184)"
-    [ testCase "a positional path is the table of src=, without diagnostics" $ do
+    [ testCase "ADR 0317 I1: a positional path builds the same table" $ do
         snd (run "@table data/t.csv\n") @?= []
-        table "@table data/t.csv\n" @?= tableOf "@table src=data/t.csv\n"
         fmap (\(_, h, rs) -> (h, rs)) (table "@table data/t.csv\n") @?= Just ([["a"], ["b"], ["c"]], [[["1"], ["2"], ["3"]]])
         table "@table \"data/t.csv\"\n" @?= table "@table data/t.csv\n",
-      testCase "src= reads the table as before, with the notice G02129 at the argument" $ do
-        tableOf "@table src=data/t.csv\n" @?= table "@table data/t.csv\n"
-        snd (run "@table src=data/t.csv\n") @?= [("G02129", "@table の src= は廃止予定です。パスを最初の引数に書きます", 7, 21)],
+      testCase "ADR 0317 I1 I2: legacy and duplicated table paths stop before the asset" $ do
+        snd (run "@table src=data/t.csv\n") @?= [("G02252", "@table の src= は使えません。パスを最初の引数に移します", 7, 21)]
+        tableOf "@table src=data/t.csv\n" @?= Nothing
+        snd (run "@table data/t.csv src=data/t.csv\n") @?= [("G02130", "@table にはファイルのパスを一つ書きます", 0, 33)]
+        tableOf "@table data/t.csv src=data/t.csv\n" @?= Nothing,
       testCase "two paths are G02130 at the command, and no table" $ do
         run "@table data/a.csv data/b.csv\n" @?= ([], [("G02130", "@table にはファイルのパスを一つ書きます", 0, 29)])
         run "@table data/a.csv src=data/b.csv\n"
-          @?= ( [],
-                [ ("G02129", "@table の src= は廃止予定です。パスを最初の引数に書きます", 18, 32),
-                  ("G02130", "@table にはファイルのパスを一つ書きます", 0, 33)
-                ]
-              ),
+          @?= ([], [("G02130", "@table にはファイルのパスを一つ書きます", 0, 33)]),
       testCase "no path is G02034, with the new message" $
         run "@table\n" @?= ([], [("G02034", "@table にはファイルのパスが必要です", 0, 7)]),
-      testCase "format= and the extension apply to a positional path as to src=" $ do
+      testCase "ADR 0317 I1: format= and the extension apply to a positional path" $ do
         snd (run "@table data/export.txt format=tsv\n") @?= []
-        table "@table data/export.txt format=tsv\n" @?= tableOf "@table src=data/export.txt format=tsv\n"
         fmap (\(_, h, _) -> h) (table "@table data/export.txt format=tsv\n") @?= Just [["a"], ["b"], ["c"]]
         snd (run "@table data/x.TSV\n") @?= []
-        table "@table data/x.TSV\n" @?= tableOf "@table src=data/x.TSV\n"
         fmap (\(_, h, _) -> h) (table "@table data/x.TSV\n") @?= Just [["a"], ["b"], ["c"]]
     ]
 

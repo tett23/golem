@@ -237,6 +237,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 ```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 
+CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイルのパスを最初の位置引数に置く（[ADR 0317](docs/adr/0317-retire-table-src.md)）。
 表には `@caption` でキャプションを付けて表番号（既定 `表{chapter}-{n}`）を振り、`@column-widths 8zw auto` で列の幅を、`@style` でセルの段落スタイル（既定は組み込みの `table`）を指定できる。
 キャプションを表の上と下のどちらに置くかは `[tables]` の `caption-position` で決める（[docs/adr/0262](./docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 
