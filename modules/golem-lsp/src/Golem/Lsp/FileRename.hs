@@ -411,29 +411,13 @@ wikiResolve source sheets written
       let byName = [path | (path, _) <- sheets, nfc (T.pack (takeBaseName path)) == nfc written]
           byTitle = [path | (path, Just title) <- sheets, nfc title == nfc written]
           candidates = if null byName then byTitle else byName
-          ranked = sortOn (\path -> (if null byName then 0 :: Int else kindRank path, wikiDistance source path)) candidates
-       in case ranked of
-            [] -> Nothing
-            [best] -> Just (best, False, False)
-            best : second : _
-              | (if null byName then 0 else kindRank best, wikiDistance source best)
-                  == (if null byName then 0 else kindRank second, wikiDistance source second) ->
-                  Nothing
-              | otherwise -> Just (best, False, False)
+       in case candidates of
+            [target] -> Just (target, False, False)
+            _ -> Nothing
   where
     text = T.unpack written
     nfc = normalize NFC
     hasKnownExtension path = map toLower (takeExtension path) `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
-    kindRank path | map toLower (takeExtension path) == ".md" = 0
-    kindRank path | map toLower (takeExtension path) == ".gm" = 1
-    kindRank _ = 2
-
-wikiDistance :: FilePath -> FilePath -> Int
-wikiDistance source target =
-  let a = splitDirectories (takeDirectory source)
-      b = splitDirectories (takeDirectory target)
-      shared = length (takeWhile id (zipWith (==) a b))
-   in length a + length b - 2 * shared
 
 wikiRelative :: FilePath -> FilePath -> FilePath
 wikiRelative base target =

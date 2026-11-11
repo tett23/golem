@@ -114,6 +114,10 @@ fileRenameTests =
         let sheets = [("notes/a.md", Nothing), ("one/target.md", Nothing), ("two/target.md", Nothing)]
         planWiki [("one/target.md", "one/new.md")] "notes/a.md" sheets "`[[target]]`\n```\n[[target]]\n```\n[[target]]\n"
           @?= Right [],
+      testCase "R4: a nearer sheet does not disambiguate a duplicate Wiki name" $ do
+        let sheets = [("notes/a.md", Nothing), ("notes/target.md", Nothing), ("other/target.md", Nothing)]
+        planWiki [("notes/target.md", "notes/new.md")] "notes/a.md" sheets "[[target]]\n"
+          @?= Right [],
       testCase "R2: Wiki byte ranges account for non-ASCII text and paired backticks" $ do
         let sheets = [("notes/a.md", Nothing), ("notes/target.md", Nothing)]
         planWiki [("notes/target.md", "notes/new.md")] "notes/a.md" sheets "章\n``[[target]]`` [[target]]\n"
