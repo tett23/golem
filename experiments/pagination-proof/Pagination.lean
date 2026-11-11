@@ -145,4 +145,31 @@ theorem strictAfterHeadings : ∀ brk : Fin 5,
     headingParagraphOrphan headingParagraphWidow
   omega
 
+/- In the historical blank-line rule, the next block after the blank is
+   the second figure even when it waits. The current rule skips waiting
+   figures and finds the following heading. These functions capture that
+   distinction for the sequence figure, blank, figure, heading. -/
+def blankWithNext25Case (secondKept : Bool) : Bool := secondKept
+def blankWithNextCase (firstKept secondKept headingHere : Bool) : Bool :=
+  if firstKept == false && secondKept == false then headingHere else secondKept
+
+theorem blankBeforeWaiting25 :
+    ∃ capacity used firstSize secondSize : Nat,
+      capacity = 5 ∧ used = 4 ∧ firstSize = 4 ∧ secondSize = 5 ∧
+      used + 1 ≤ capacity ∧
+      decide (used + firstSize ≤ capacity) = false ∧
+      decide (used + firstSize + secondSize ≤ capacity) = false ∧
+      blankWithNext25Case false = false ∧
+      blankWithNextCase false false true = true := by
+  exact ⟨5, 4, 4, 5, by decide⟩
+
+theorem waitingBlankSome :
+    ∃ capacity used firstSize secondSize : Nat,
+      capacity = 4 ∧ used = 2 ∧ firstSize = 4 ∧ secondSize = 4 ∧
+      used + 1 + 1 ≤ capacity ∧
+      decide (used + firstSize ≤ capacity) = false ∧
+      decide (used + firstSize + secondSize ≤ capacity) = false ∧
+      blankWithNextCase false false true = true := by
+  exact ⟨4, 2, 4, 4, by decide⟩
+
 end GolemPagination
