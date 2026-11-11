@@ -1115,8 +1115,9 @@ blankLine ctx sp args body
       pure [block sp (BlankLines (if n < 2 ^ (63 :: Int) then fromInteger n else 0))]
     bad m = err "G02092" sp m >> pure []
 
--- | A run of @blank-line commands becomes one IR block (Golem ADR 0345).
--- Page controls keep their order without dividing the run.
+{- | A run of @blank-line commands becomes one IR block (Golem ADR 0345).
+Page controls keep their order without dividing the run.
+-}
 collapseBlankLines :: Map.Map SrcSpan (SrcSpan, Integer) -> [Block] -> ([Block], [Diagnostic])
 collapseBlankLines counts = go
   where
