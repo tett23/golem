@@ -824,12 +824,12 @@ recoverRulesSyntax fid src =
     collect acc rest state
       | not (ruleTriple state) && ruleSquare state <= 0 && ruleCurly state <= 0 = (reverse acc, rest, False)
       | otherwise = case rest of
-          [] -> (reverse acc, [], True)
-          line : more ->
-            collect
-              (line : acc)
-              more
-              (scanRuleLine state line)
+        [] -> (reverse acc, [], True)
+        line : more ->
+          collect
+            (line : acc)
+            more
+            (scanRuleLine state line)
 
 data RuleTokenState = RuleTokenState
   { ruleQuote :: !(Maybe Char),
