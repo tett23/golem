@@ -30,6 +30,7 @@ module Golem.Project.Manifest
     decodeStrict,
     decodeStrictBy,
     decodeStrictWith,
+    decodeStrictWithReasons,
     naturalOf,
     naturalIntOf,
     maxNaturalInt,
@@ -757,6 +758,114 @@ decodeStrictWith schema code codeAt fid src = case parseToml src of
           Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
             [] -> Right a
             ms -> report ms
+
+-- | Decode preflight rules with separate codes for syntax, conflicting
+-- definitions, unknown keys and invalid known values (docs/adr/0321).
+decodeStrictWithReasons :: (FromValue a) => Node -> FileId -> Text -> Either [Diagnostic] a
+decodeStrictWithReasons schema fid src =
+  case parseToml src of
+    Left (ErrSyntax _) ->
+      let (masked, syntaxErrors) = recoverRulesSyntax fid src
+          combined = case decode masked of
+            Left ds -> syntaxErrors <> ds
+            Right _ -> syntaxErrors
+       in Left (sortOn (spanStart . diagSpan) combined)
+    _ -> decode src
+  where
+    decode candidate = case parseToml candidate of
+      Left (ErrSyntax (Located pos msg)) -> Left [diagnostic "G09001" Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
+      Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic "G09104" Error (positionSpan fid src (Just pos)) ("TOML の定義が衝突しています: " <> semanticMessage kind key)]
+      Right tab ->
+        let unknown = unknownKeys schema tab
+            report = Left . map one . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
+            one (MatchMessage loc path msg) =
+              diagnostic
+                (if msg == naturalOutOfRange then "G02103" else if "unexpected key: " `isPrefixOf` msg then "G09103" else "G09102")
+                Error
+                (positionSpan fid src loc)
+                (schemaMessage path msg)
+         in case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
+              Failure es -> report (es <> unknown)
+              Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
+                [] -> Right a
+                ms -> report ms
+
+-- | Check each complete TOML item once. A multiline item is a single token
+-- range; without its closing delimiter, no later text is treated as a key.
+-- Replacing a rejected range with spaces preserves every later line and
+-- column for the normal TOML parser and schema matcher.
+recoverRulesSyntax :: FileId -> Text -> (Text, [Diagnostic])
+recoverRulesSyntax fid src =
+  let (parts, errors) = go 1 (T.splitOn "\n" src)
+   in (T.intercalate "\n" parts, errors)
+  where
+    go _ [] = ([], [])
+    go first remaining =
+      let (item, rest, unclosed) = takeItem remaining
+          chunk = T.intercalate "\n" item
+          count = length item
+          (following, more) = if unclosed then (map blank rest, []) else go (first + count) rest
+       in case parseRawToml chunk of
+            Right _ -> (item <> following, more)
+            Left (Located (Position _ line column) msg) ->
+              let pos = Position 0 (first + line - 1) column
+                  suffix = if unclosed then "（未検査範囲: " <> T.pack (show first) <> " 行目からファイルの終わりまで）" else ""
+                  err = diagnostic "G09001" Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg <> suffix)
+               in (map blank item <> following, err : more)
+    blank = T.map (const ' ')
+    takeItem [] = ([], [], False)
+    takeItem (line : rest) =
+      collect [line] rest (scanRuleLine emptyRuleTokenState line)
+    collect acc rest state
+      | not (ruleTriple state) && ruleSquare state <= 0 && ruleCurly state <= 0 = (reverse acc, rest, False)
+      | otherwise = case rest of
+          [] -> (reverse acc, [], True)
+          line : more ->
+            collect
+              (line : acc)
+              more
+              (scanRuleLine state line)
+
+data RuleTokenState = RuleTokenState
+  { ruleQuote :: !(Maybe Char),
+    ruleTriple :: !Bool,
+    ruleEscaped :: !Bool,
+    ruleSquare :: !Int,
+    ruleCurly :: !Int
+  }
+
+emptyRuleTokenState :: RuleTokenState
+emptyRuleTokenState = RuleTokenState Nothing False False 0 0
+
+-- | Track only delimiters outside strings and comments, once per character.
+scanRuleLine :: RuleTokenState -> Text -> RuleTokenState
+scanRuleLine initial input =
+  let end = go initial input
+   in if ruleTriple end then end else end {ruleQuote = Nothing, ruleEscaped = False}
+  where
+    go state remaining = case T.uncons remaining of
+      Nothing -> state
+      Just (c, rest)
+        | ruleEscaped state -> go (state {ruleEscaped = False}) rest
+        | Just q <- ruleQuote state,
+          ruleTriple state,
+          T.isPrefixOf (T.replicate 3 (T.singleton q)) remaining ->
+            go (state {ruleQuote = Nothing, ruleTriple = False}) (T.drop 3 remaining)
+        | Just q <- ruleQuote state,
+          not (ruleTriple state),
+          c == q -> go (state {ruleQuote = Nothing}) rest
+        | Just '"' <- ruleQuote state,
+          c == '\\' -> go (state {ruleEscaped = True}) rest
+        | Just _ <- ruleQuote state -> go state rest
+        | c == '#' -> state
+        | T.isPrefixOf "\"\"\"" remaining -> go (state {ruleQuote = Just '"', ruleTriple = True}) (T.drop 3 remaining)
+        | T.isPrefixOf "'''" remaining -> go (state {ruleQuote = Just '\'', ruleTriple = True}) (T.drop 3 remaining)
+        | c == '"' || c == '\'' -> go (state {ruleQuote = Just c}) rest
+        | c == '[' -> go (state {ruleSquare = ruleSquare state + 1}) rest
+        | c == ']' -> go (state {ruleSquare = ruleSquare state - 1}) rest
+        | c == '{' -> go (state {ruleCurly = ruleCurly state + 1}) rest
+        | c == '}' -> go (state {ruleCurly = ruleCurly state - 1}) rest
+        | otherwise -> go state rest
 
 -- | The errors of reading TOML before the schema (Toml.parse' of toml-parser, which the package does not export).
 data TomlError
