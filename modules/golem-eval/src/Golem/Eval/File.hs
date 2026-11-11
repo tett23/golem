@@ -1760,18 +1760,26 @@ figure ctx sp args body = do
 -- ------------------------------------------------------------------ tables (golem-eval ADR 0004)
 
 {- | @table: a table of a CSV or a TSV file. The path is the first argument;
-src= is to be retired (G02129), and two paths are G02130 (docs/adr/0184).
+src= is G02252, and two paths are G02130 (ADR 0343).
 The arguments are checked before the file is read: format= (G02080),
 align= (G02081) and cells= (G02084); the number of align= values is
 checked against the header row.
 -}
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
-csvTable ctx sp args = do
+csvTable ctx sp args
+  | Just asp <- listToMaybe legacy,
+    null positional =
+      err "G02252" asp "@table の src= は使えません。パスを最初の引数に移します" >> pure []
+  | not (null legacy) && not (null positional) || length positional > 1 =
+      err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []
+  | otherwise = csvTableValid ctx sp args
+  where
+    positional = [() | A.Located _ (A.Positional _) <- args]
+    legacy = [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
+
+csvTableValid :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
+csvTableValid ctx sp args = do
   kw <- keywords ctx args
-  -- G02129: the path as src= is to be retired (docs/adr/0184)
-  mapM_
-    (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
       paths = [argText v | A.Located _ (A.Positional v) <- args] <> maybe [] (pure . argText) (lookup "src" kw)
       src = listToMaybe paths

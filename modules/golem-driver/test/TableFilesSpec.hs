@@ -56,11 +56,17 @@ tableFileTests =
   testGroup
     "table files (golem-eval ADR 0004)"
     [ -- docs/adr/0184
-      testCase "assetRefs collects the path of @table as the first argument, and as src=" $
+      testCase "ADR 0343 I1 I2: assetRefs collects only a valid positional table path" $
         withTables [("a.gm", "@table data/t.csv\n\n@table src=data/u.csv\n")] [("data/t.csv", "a\n"), ("data/u.csv", "a\n")] $ \tmp -> do
           e <- evaluateProject Dev tmp >>= either (const (assertFailure "the project does not load")) pure
           [r | sf <- Map.elems (projectSources (evProject e)), sfPath sf == "a.gm", r <- assetRefs (sfAst sf)]
-            @?= [("data/t.csv", UseTable), ("data/u.csv", UseTable)],
+            @?= [("data/t.csv", UseTable)],
+      testCase "ADR 0343 I2: an invalid table path is not read" $
+        withTables [("a.gm", "@table src=data/missing.csv\n")] [] $ \tmp -> do
+          result <- check tmp
+          codesOf (brDiagnostics result) @?= ["G02252"]
+          quiet <- build (defaultOptions tmp) {optCheckOnly = True, optTargets = Just [TargetHtml], optNoNotices = True}
+          codesOf (brDiagnostics quiet) @?= ["G02252"],
       testCase "a BOM at the start of a TSV or a CSV is skipped" $ do
         withBom <- oneTable "data/x.tsv" "\xEF\xBB\xBF\&a\tb\n1\t2\n"
         without <- oneTable "data/x.tsv" "a\tb\n1\t2\n"

@@ -25,7 +25,7 @@ import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
 import Golem.Syntax.ShowTree (showTree)
 import Golem.TestSupport.Heading (headingLimitSource)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeDirectoryRecursive)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -321,18 +321,12 @@ templateBuildTests =
         ]
     ]
 
-{- | The path of @table as the first argument builds the same outputs as
-src=, byte for byte, in the four targets; src= gives the notice G02129
-(docs/adr/0184). The instance ID of the PDF (the second of /ID) is the
-hash of the bytes of every input (docs/adr/0002), the source among them,
-and differs with the source; it alone is left out of the comparison
-(docs/adr/0211).
--}
+-- | The path of @table is positional; src= is G02252 (ADR 0343).
 tablePathTests :: TestTree
 tablePathTests =
   testGroup
-    "the path of @table as the first argument (docs/adr/0184)"
-    [ testCase "golem build writes the same files for @table data/t.csv and @table src=data/t.csv" $ withSystemTempDirectory "golem-table" $ \tmp -> do
+    "the path of @table as the first argument (docs/adr/0184, ADR 0343)"
+    [ testCase "golem build accepts @table data/t.csv and rejects @table src=data/t.csv with G02252" $ withSystemTempDirectory "golem-table" $ \tmp -> do
         -- one project for both, as golem new gives each project its own identifier
         _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
         font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
@@ -342,30 +336,17 @@ tablePathTests =
         let buildWith line = do
               writeFiles (tmp </> "book") [("chapters/01.gm", chapter <> "\n" <> line <> "\n"), ("data/t.csv", "Name,Size\nA,1\nB,2\n")]
               (code, _, err) <- golemAt (tmp </> "book") ["build", "--format", "json"]
-              assertEqual err ExitSuccess code
-              files <- filesUnder (tmp </> "book/build")
-              outputs <- mapM (\p -> (p,) <$> BS.readFile (tmp </> "book/build" </> p)) files
-              removeDirectoryRecursive (tmp </> "book/build")
-              pure (Map.fromList outputs, err)
-        (positional, perr) <- buildWith "@table data/t.csv"
-        (keyword, kerr) <- buildWith "@table src=data/t.csv"
+              pure (code, err)
+        (pcode, perr) <- buildWith "@table data/t.csv"
+        pcode @?= ExitSuccess
         perr @?= "[]\n"
-        assertBool kerr ("G02129" `isInfixOf` kerr)
+        files <- filesUnder (tmp </> "book/build")
         forM_ ["html", "epub", "text", "pdf"] $ \t ->
-          assertBool ("no " <> t <> " output") (any ((t <> "/") `isPrefixOf`) (Map.keys positional))
-        Map.keys positional @?= Map.keys keyword
-        forM_ (Map.toList positional) $ \(p, bytes) -> assertBool p (fmap withoutInstanceId (Map.lookup p keyword) == Just (withoutInstanceId bytes))
+          assertBool ("no " <> t <> " output") (any ((t <> "/") `isPrefixOf`) files)
+        (kcode, kerr) <- buildWith "@table src=data/t.csv"
+        kcode @?= ExitFailure 1
+        assertBool kerr ("G02252" `isInfixOf` kerr)
     ]
-  where
-    -- /ID [<document ID> <instance ID>], the instance ID as zeros
-    withoutInstanceId bytes = case BS.breakSubstring "/ID [<" bytes of
-      (before, rest)
-        | not (BS.null rest) ->
-            let (docId, afterDoc) = BS.break (== 0x3E) (BS.drop 6 rest)
-                (sep, instanceAndRest) = BS.break (== 0x3C) afterDoc
-                (instanceId, afterInstance) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
-             in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, afterInstance]
-      _ -> bytes
 
 -- ------------------------------------------------------------------ golem inspect (golem-cli ADR 0001)
 
