@@ -51,6 +51,11 @@ example : PegModel.recognize Generated.pegGrammar 40 (.ref "StringLit" [])
 example : PegModel.recognize Generated.pegGrammar 40 (.ref "StringLit" [])
     "\"a".toList = .ok none := by rfl
 
+example : PegModel.recognizeStart Generated.pegGrammar 50 [] = .ok (some []) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 100 "abc\n".toList =
+    .error "parameterized reference Blocks" := by rfl
+
 -- Opaque Haskell predicates cannot become a successful model parse.
 example : PegModel.recognize Generated.pegGrammar 2
     (.semanticPred true " True ") [] = .error "opaque semantic predicate" := by rfl
