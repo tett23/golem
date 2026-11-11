@@ -5,14 +5,17 @@ separators between the items.
 -}
 module FmtSpec (fmtTests) where
 
+import Data.Int (Int64)
 import Data.List (sortOn)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Emet
 import Golem.Emet.Syntax
 import Golem.Eval.Value (Value (..))
-import Golem.Syntax (FileId (..))
+import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), FileId (..))
+import Support (callSpan, load, nat, str)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -49,7 +52,8 @@ fmtTests =
         parseModule (FileId 0) src === Right m
         out <- evalEither (formatEmet src)
         parseModule (FileId 0) out === Right m
-        formatEmet out === Right out
+        formatEmet out === Right out,
+      i5EvalTests
     ]
   where
     messy =
@@ -71,6 +75,51 @@ fmtTests =
           "    printable c = c >= ' ' && c <= '~'",
           "  }"
         ]
+
+-- Golem ADR 0351 I5: the same cases appear in eval/Eval.lean.
+i5EvalTests :: TestTree
+i5EvalTests =
+  testGroup
+    "Golem ADR 0351 I5 evaluation"
+    [ testCase "I5 integer binding and Emet function preserve value" $ do
+        let source = "id :: Nat -> Nat\nid n = n\nf :: Nat -> Nat\nf x = id (x + 3)\n"
+        compareEval source "f" [nat 2] 100 (Right (nat 5)),
+      testCase "I5 string binding preserves value" $ do
+        let source = "f :: String -> String\nf x = x ++ \"b\"\n"
+        compareEval source "f" [str "a"] 100 (Right (str "ab")),
+      testCase "I5 the same external input preserves value or failure" $ do
+        let source = "f :: <file \"data/a.tsv\"> String\nf = File.read \"data/a.tsv\" ++ \"b\"\n"
+        compareEvalWith (fileHandlers (Map.fromList [("data/a.tsv", "a")])) source "f" [] 100 (Right (str "ab"))
+        compareEval source "f" [] 100 (Left (DiagnosticCode "E05104")),
+      testCase "I5 same budget at boundary preserves value or E04100" $ do
+        let source = "f :: Nat -> Nat\nf x = x + 3\n"
+        case load source of
+          ([], Just program) -> do
+            let (_, used) = callFunctionCounted noHandlers program callSpan "main.emet" "f" [nat 2]
+            compareEval source "f" [nat 2] used (Right (nat 5))
+            compareEval source "f" [nat 2] (used - 1) (Left (DiagnosticCode "E04100"))
+          other -> assertFailure (show (fst other)),
+      testCase "I5 checker error is preserved before evaluation" $ do
+        let source = "f :: String -> String\nf x = x + 3\n"
+        formatted <- either (assertFailure . show) pure (formatEmet source)
+        map diagCode (fst (load source)) @?= map diagCode (fst (load formatted))
+    ]
+
+compareEval :: Text -> Text -> [Result] -> Int64 -> Either DiagnosticCode Result -> IO ()
+compareEval = compareEvalWith noHandlers
+
+compareEvalWith :: Handlers -> Text -> Text -> [Result] -> Int64 -> Either DiagnosticCode Result -> IO ()
+compareEvalWith handlers source name args budget expected = do
+  formatted <- either (assertFailure . show) pure (formatEmet source)
+  before <- run source
+  formattedResult <- run formatted
+  before @?= expected
+  formattedResult @?= expected
+  where
+    run text = case load text of
+      ([], Just program) -> pure $ either (Left . diagCode) Right $
+        callFunctionLimited budget handlers program callSpan "main.emet" name args
+      (diagnostics, _) -> assertFailure (show diagnostics) >> fail "unreachable"
 
 -- * Sources from trees
 
