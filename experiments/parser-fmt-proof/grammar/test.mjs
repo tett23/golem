@@ -15,10 +15,31 @@ const generated = join(work, 'Generated.lean');
 function generate(grammar) {
   const input = join(work, 'Golem.hpeg');
   writeFileSync(input, grammar);
-  return spawnSync(process.execPath, [join(here, 'generate.mjs'), input, generated], { encoding: 'utf8' });
+  return spawnSync(process.execPath, [join(here, 'generate.mjs'), '--fragment', input, generated], { encoding: 'utf8' });
 }
 
 try {
+  const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
+  assert.notEqual(strict.status, 0, 'the incomplete full grammar model must fail generation');
+  const requiredRules = [...original.matchAll(/^([A-Za-z][A-Za-z0-9]*) <- /gm)]
+    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'Word');
+  for (const name of requiredRules) {
+    assert.match(strict.stderr, new RegExp(`^unsupported ${name} choice `, 'm'), `${name} is not reported`);
+  }
+  assert.match(strict.stderr, /unsupported Block choice .*Heading\(ind\)/);
+  assert.match(strict.stderr, /unsupported Block choice .*Paragraph\(ind\)/);
+  const newRule = `${original}\nUnmodeled <- ('a' / 'b') / 'c' { () }\n`;
+  const newSource = join(work, 'Unmodeled.hpeg');
+  writeFileSync(newSource, newRule);
+  const newStrict = spawnSync(process.execPath, [join(here, 'generate.mjs'), newSource, generated], { encoding: 'utf8' });
+  assert.notEqual(newStrict.status, 0);
+  assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'a'/);
+  assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'b'/);
+  assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'c'/);
+  if (/^Word <- '%%='/m.test(original)) {
+    assert.match(strict.stderr, /unsupported Word choice 1: '%%='/);
+  }
+
   const positive = generate(original);
   assert.equal(positive.status, 0, positive.stderr);
   const model = readFileSync(generated, 'utf8');
@@ -71,7 +92,8 @@ try {
   const refuted = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
-  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, positive proofs 2, negative mutations 5`);
+  const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
+  console.log(`grammar fragment: rules ${emittedRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proofs 2, negative mutations 6`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
