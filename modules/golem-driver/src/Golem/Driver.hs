@@ -53,9 +53,9 @@ where
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 #if !defined(wasm32_HOST_ARCH)
-import Control.Exception (bracket)
+import Control.Exception qualified as Exception
 #endif
-import Control.Monad (forM, forM_, join, mfilter, when)
+import Control.Monad (forM, forM_, join, mfilter, unless, when)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -113,9 +113,11 @@ import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
 import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
-import System.Directory (canonicalizePath, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
-import System.FilePath (isAbsolute, makeRelative, normalise, takeDirectory, takeFileName, (</>))
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
+import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
+import System.Directory qualified as Directory
+import System.FilePath qualified as FilePath
 import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
 import System.Posix.Types (Fd (..))
 #endif
@@ -768,9 +770,9 @@ cleanFinderInfo :: FilePath -> [FilePath] -> IO ()
 cleanFinderInfo root paths = do
   exists <- doesDirectoryExist root
   when exists $ do
-    absoluteRoot <- canonicalizePath root
+    absoluteRoot <- Directory.canonicalizePath root
     forM_ (nub paths) $ \path -> do
-      let relative = normalise (makeRelative absoluteRoot (if isAbsolute path then path else absoluteRoot </> path))
+      let relative = FilePath.normalise (FilePath.makeRelative absoluteRoot (if FilePath.isAbsolute path then path else absoluteRoot </> path))
       withCString absoluteRoot $ \rootString ->
         withCString relative $ \relativeString ->
           throwErrnoIfMinus1Retry_ ("remove " <> absoluteRoot </> relative </> ".DS_Store")
@@ -783,7 +785,7 @@ withOutputLock :: FilePath -> IO a -> IO a
 withOutputLock root action = do
   exists <- doesDirectoryExist root
   if exists
-    then bracket (openFd root ReadOnly defaultFileFlags) closeFd $ \(Fd fd) -> do
+    then Exception.bracket (openFd root ReadOnly defaultFileFlags) closeFd $ \(Fd fd) -> do
       throwErrnoIfMinus1Retry_ "lock project directory" (lockDirectory fd)
       action
     else action
@@ -801,8 +803,8 @@ build opts = withOutputLock (optRoot opts) $ do
   let pdfDir = optRoot opts </> "build/pdf"
       pdfWasWritten = any ((== pdfDir) . takeDirectory) (brWritten result)
       pdfWasSelected = TargetPdf `elem` fromMaybe [TargetPdf] selectedTargets
-      selectedDirs = map targetOutputDir (fromMaybe [] selectedTargets)
-  when (not (optCheckOnly opts)) $
+      selectedDirs = maybe [] (map targetOutputDir) selectedTargets
+  unless (optCheckOnly opts) $
     cleanFinderInfo (optRoot opts) ("." : "build" : selectedDirs)
   when (optProfile opts == Prod && not (optCheckOnly opts) && pdfWasSelected && hasErrors (brDiagnostics result) && not pdfWasWritten) $ do
     unsafe <- unsafeOutputDirs (optRoot opts) [TargetPdf]
