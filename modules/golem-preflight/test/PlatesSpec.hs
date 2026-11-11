@@ -76,8 +76,8 @@ rulesTests =
       testCase "the three tables are read with severity alone" $
         parseRules (FileId 0) "based-on = \"none\"\n[font-embedding]\nseverity = \"warning\"\n[spot-colors]\nseverity = \"error\"\n[cmy-plates]\nseverity = \"error\"\n"
           @?= Right noneRules {ruFontEmbedding = LevelWarning, ruSpotColors = LevelError, ruCmyPlates = LevelError},
-      testCase "another key of the three tables is G09001" $
-        either (map diagCode) (const []) (parseRules (FileId 0) "[cmy-plates]\nmax = 1\n") @?= [DiagnosticCode "G09001"],
+      testCase "another key of the three tables is G09103" $
+        either (map diagCode) (const []) (parseRules (FileId 0) "[cmy-plates]\nmax = 1\n") @?= [DiagnosticCode "G09103"],
       testCase "the schema has the three tables with severity" $
         [k | NTable kvs <- [rulesSchema], (k, NTable [("severity", _)]) <- kvs, k `elem` ["font-embedding", "spot-colors", "cmy-plates"]]
           @?= ["font-embedding", "spot-colors", "cmy-plates"]
