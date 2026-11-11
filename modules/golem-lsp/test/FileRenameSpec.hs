@@ -100,6 +100,10 @@ fileRenameTests =
         let sheets = [("notes/a.md", Nothing), ("notes/target.md", Nothing)]
         planWiki [("notes/target.md", "notes/new.md")] "notes/a.md" sheets "章\n``[[target]]`` [[target]]\n"
           @?= Right [(21, 27, "new")],
+      testCase "R1: Wiki names compare in NFC without changing their byte range" $ do
+        let sheets = [("notes/a.md", Nothing), ("notes/Café.md", Nothing)]
+        planWiki [("notes/Café.md", "notes/new.md")] "notes/a.md" sheets "[[Café]]\n"
+          @?= Right [(2, 8, "new")],
       testCase "R3: didRename discards old overlays and refreshes the source index" $
         withSystemTempDirectory "golem-rename" $ \root -> do
           createDirectory (root </> "part")

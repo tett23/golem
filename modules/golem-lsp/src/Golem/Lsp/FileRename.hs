@@ -13,6 +13,7 @@ import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.Normalize (NormalizationMode (NFC), normalize)
 import Golem.Emet (parseModule)
 import Golem.Emet.Syntax (Decl (DImport), Loc (..), Module (..))
 import Golem.Emet.Syntax qualified as E
@@ -393,15 +394,15 @@ wikiResolve source sheets written
       let withExt = if hasKnownExtension text then text else text <> ".md"
           relative = wikiPath (takeDirectory source </> withExt)
           rooted = wikiPath withExt
-          present path = path `elem` map fst sheets
+          present path = lookup (nfc (T.pack path)) [(nfc (T.pack candidate), candidate) | (candidate, _) <- sheets]
        in case relative of
-            Just path | present path -> Just (path, True, True)
+            Just path | Just actual <- present path -> Just (actual, True, True)
             _ -> case rooted of
-              Just path | present path -> Just (path, True, False)
+              Just path | Just actual <- present path -> Just (actual, True, False)
               _ -> Nothing
   | otherwise =
-      let byName = [path | (path, _) <- sheets, T.pack (takeBaseName path) == written]
-          byTitle = [path | (path, Just title) <- sheets, title == written]
+      let byName = [path | (path, _) <- sheets, nfc (T.pack (takeBaseName path)) == nfc written]
+          byTitle = [path | (path, Just title) <- sheets, nfc title == nfc written]
           candidates = if null byName then byTitle else byName
           ranked = sortOn (\path -> (if null byName then 0 :: Int else kindRank path, wikiDistance source path)) candidates
        in case ranked of
@@ -413,6 +414,7 @@ wikiResolve source sheets written
               | otherwise -> Just (best, False, False)
   where
     text = T.unpack written
+    nfc = normalize NFC
     hasKnownExtension path = takeExtension path `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
     kindRank path | takeExtension path == ".md" = 0
     kindRank path | takeExtension path == ".gm" = 1
