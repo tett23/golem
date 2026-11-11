@@ -5966,6 +5966,10 @@ cite には書誌データのキーを書きます
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [ADR 0315](adr/0315-retire-listing-src.md)
 
+### 主な原因
+
+以前の `@listing src=...` の書き方を残している。
+
 ### 直し方
 
 `@listing src=src/Main.hs` を `@listing src/Main.hs` に書き換える。
@@ -5987,6 +5991,10 @@ cite には書誌データのキーを書きます
 - メッセージ: `@listing のパスを二つ書いています: <最初のパス>、<二つ目のパス>。採用する一方だけを位置引数に残します`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [ADR 0315](adr/0315-retire-listing-src.md)
+
+### 主な原因
+
+位置引数を二つ書いたか、位置引数と `src=` を併記した。
 
 ### 直し方
 
