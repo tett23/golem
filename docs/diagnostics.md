@@ -11336,6 +11336,10 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`）
 - ADR: [ADR 0329](adr/0329-output-path-file-diagnostic.md)
 
+### 主な原因
+
+出力フォルダーと同じ名前の通常のファイルをプロジェクトに置いた。
+
 ### 直し方
 
 該当するファイルを別の場所に移してからビルドする。
