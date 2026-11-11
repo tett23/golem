@@ -106,6 +106,18 @@ tomlTests =
             take 1 (kinds "[paragraph-styles.em]\nbased-on = ▮") @?= [CkParaStyle]
         ],
       testGroup
+        "T1 manifest.toml finite value positions"
+        [ exactly "manifest.toml" "chapters = [{ paragraph-separator = '▮" ["blank-line", "line"],
+          including "manifest.toml" "chapters = [{ page-numbering = { style = '▮" ["arabic"] ["line"],
+          exactly "manifest.toml" "[metadata]\ncreators = [{ role = '▮" roles,
+          exactly "manifest.toml" "[[metadata.contributors]]\nrole = '▮" roles,
+          exactly "manifest.toml" "[targets.text]\nvariants = ['▮" ["vertical", "horizontal"],
+          exactly "manifest.toml" "[targets.text]\nvariants = ▮" [],
+          including "manifest.toml" "[diagnostics]\nsilence-notices = ['▮" ["G02062"] ["G03024"],
+          exactly "manifest.toml" "[diagnostics]\nsilence-info = ['▮" ["G07047", "E05108"],
+          exactly "manifest.toml" "[vars]\nflag = ▮" []
+        ],
+      testGroup
         "preflight.toml"
         [ exactly "preflight.toml" "based-on = ▮" ["\"basic\"", "\"print\"", "\"none\""],
           exactly "preflight.toml" "[type-size]\nseverity = ▮" ["\"error\"", "\"warning\"", "\"off\""],
@@ -132,7 +144,7 @@ tomlTests =
             ws0 <- openWorkspace root
             ws <- updateFile ws0 "style.toml" "[page]\nbinding = "
             map cmpLabel (completions ws "style.toml" (BS.length (TE.encodeUtf8 "[page]\nbinding = "))) @?= ["\"right\"", "\"left\""],
-          testCase "no completion in a style.toml below the root, nor in manifest.toml" $ do
+          testCase "no completion in a style.toml below the root, nor in a manifest.toml header" $ do
             ws0 <- openWorkspace root
             ws1 <- updateFile ws0 "sub/style.toml" "["
             ws <- updateFile ws1 "manifest.toml" "["
@@ -140,3 +152,6 @@ tomlTests =
             completions ws "manifest.toml" 1 @?= []
         ]
     ]
+
+roles :: [Text]
+roles = ["author", "translator", "editor", "illustrator", "book-designer", "cover-designer", "typesetter", "printer", "binder"]

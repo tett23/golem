@@ -6182,7 +6182,7 @@ LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。重大度ごとの載せ方は下に書く。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）と、`.emet` の名前の変更（[docs/adr/0170](adr/0170-emet-editor-support.md)）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0334](adr/0334-complete-manifest-values-and-manuscript-expressions.md)）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトラインと、`.emet` の宣言のアウトライン（[docs/adr/0170](adr/0170-emet-editor-support.md)）
@@ -6243,10 +6243,11 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 ### TOML の補完
 
 `style.toml` と `preflight.toml` の補完は、プロジェクトのルートからの相対パスがちょうど `style.toml` と `preflight.toml` のファイルだけで働く（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
-ルートより下の同じ名前のファイルと `manifest.toml` では補わない。
+`manifest.toml` では、段落区切り、ページ番号の表記、関係者の役割、PDF の宣言、テキスト出力の向き、抑制する diagnostic のコードに、欄ごとの候補を返す（[Golem ADR 0334](adr/0334-complete-manifest-values-and-manuscript-expressions.md)）。
+ルートより下の同じ名前のファイルでは補わない。
 エディタがこれらのファイルを LSP に送るように設定する必要がある。
 
-補う位置は次の五つである。
+`style.toml` と `preflight.toml` で補う位置は次の五つである。
 
 - 表の見出し（次の段のキー、利用者が名前を決める段では名前）
 - 表の中のキー（その表にまだ書いていないキー）
@@ -6265,8 +6266,8 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 候補は、エディタが今持っているテキストのカーソルより前だけを、先頭から読んで決める。
 コメントと複数行の文字列の中、値の後では候補を返さない。
 
-補完のほかは、この二つのファイルを編集中の内容で扱わない。
-この二つのファイルの diagnostics は、ディスクの内容による。
+補完のほかは、この三つのファイルを編集中の内容で扱わない。
+これらのファイルの diagnostics は、ディスクの内容による。
 拡張子が `.gm` でない編集中のファイル（`style.toml`、`manifest.toml` など）は、原稿として構文解析も評価もしない。
 
 ### semantic tokens
