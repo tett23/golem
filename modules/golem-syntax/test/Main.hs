@@ -363,7 +363,15 @@ orderTests :: TestTree
 orderTests =
   testGroup
     "diagnostic order (golem-syntax ADR 0003)"
-    [ testCase "the code comes before the position" $ do
+    [ testCase "Golem ADR 0351 I8: argument errors follow source order and same-site priority" $ do
+        let at code start = diagnostic code Error (mkSpan (FileId 0) start (start + 1)) code
+            unknownEarly = at "G02119" 10
+            unknownLate = at "G02119" 20
+            duplicateLate = at "G02077" 20
+            typeLate = at "G02121" 20
+        sortDiagnostics [typeLate, duplicateLate, unknownLate, unknownEarly]
+          @?= [unknownEarly, unknownLate, duplicateLate, typeLate],
+      testCase "the code comes before the position" $ do
         let a = diagnostic "G01001" Error (mkSpan (FileId 0) 40 41) "a"
             b = diagnostic "G05004" Warning (mkSpan (FileId 0) 10 11) "b"
         sortDiagnostics [b, a] @?= [a, b],

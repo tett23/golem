@@ -235,20 +235,38 @@ ADR 0003). Errors and warnings are not told apart: they mix in the order of
 their codes.
 -}
 sortDiagnostics :: [Diagnostic] -> [Diagnostic]
-sortDiagnostics =
-  sortOn
-    ( \d ->
-        ( tier (diagSeverity d),
-          diagCode d,
-          spanFile (diagSpan d),
-          spanStart (diagSpan d),
-          spanEnd (diagSpan d),
-          diagMessage d,
-          -- the rest only breaks ties, so the order is total
-          show (diagSeverity d, diagRelated d, diagFixes d, diagFacts d)
-        )
-    )
+sortDiagnostics ds = placeArguments orderedArguments codeOrder
   where
+    codeOrder = sortOn codeKey ds
+    orderedArguments = sortOn argumentKey (filter isArgumentError codeOrder)
+    codeKey d =
+      ( tier (diagSeverity d),
+        diagCode d,
+        spanFile (diagSpan d),
+        spanStart (diagSpan d),
+        spanEnd (diagSpan d),
+        diagMessage d,
+        show (diagSeverity d, diagRelated d, diagFixes d, diagFacts d)
+      )
+    -- ADR 0351 I8 changes only the relative order of argument errors.
+    -- Every other diagnostic keeps the order specified by ADR 0003.
+    argumentKey d =
+      ( tier (diagSeverity d),
+        spanFile (diagSpan d),
+        spanStart (diagSpan d),
+        argumentPriority (diagCode d),
+        spanEnd (diagSpan d),
+        diagCode d
+      )
+    argumentPriority = \case
+      DiagnosticCode "G02119" -> 0 :: Int -- unknown name
+      DiagnosticCode "G02077" -> 1 -- duplicate
+      DiagnosticCode "G02121" -> 2 -- wrong type
+      _ -> 3 -- missing positional argument
+    isArgumentError d = diagCode d `elem` map DiagnosticCode ["G02119", "G02077", "G02121", "G02120"]
+    placeArguments (a : as) (d : rest) | isArgumentError d = a : placeArguments as rest
+    placeArguments as (d : rest) = d : placeArguments as rest
+    placeArguments _ [] = []
     tier :: Severity -> Int
     tier = \case
       Notice -> 1
