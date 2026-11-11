@@ -203,6 +203,10 @@ rulesTests =
         let src = "name = nope\nmystery = 1\n[pdf-x]\nseverity = \"notice\"\nother = nope\n"
             found = either (map (\d -> (diagCode d, lcLine (offsetToLineCol (mkLineIndex src) (spanStart (diagSpan d)))))) (const []) (parseRules (FileId 0) src)
         found @?= [(DiagnosticCode "G09001", 0), (DiagnosticCode "G09103", 1), (DiagnosticCode "G09102", 3), (DiagnosticCode "G09001", 4)],
+      testCase "Golem ADR 0321 D8: quoted delimiters and a multiline array keep later errors reachable" $ do
+        let src = "name = \"[not a table\"\n[font-formats]\nallowed = [\n  \"cff\",\n]\ninvalid = nope\nunknown = 1\n"
+            found = either (map diagCode) (const []) (parseRules (FileId 0) src)
+        found @?= [DiagnosticCode "G09001", DiagnosticCode "G09103"],
       testCase "Golem ADR 0321 D9: an unclosed multiline string leaves its range unexamined" $ do
         let src = "name = \"\"\"open\n[unknown]\nbad = 1\n"
             found = either id (const []) (parseRules (FileId 0) src)
