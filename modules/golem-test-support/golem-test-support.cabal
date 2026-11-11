@@ -31,6 +31,7 @@ library
     Golem.TestSupport.ExternalTool
     Golem.TestSupport.ExternalTool.Internal
     Golem.TestSupport.Gen
+    Golem.TestSupport.Heading
     Golem.TestSupport.Manifest
     Golem.TestSupport.PackageDirectory
     Golem.TestSupport.Parallel
