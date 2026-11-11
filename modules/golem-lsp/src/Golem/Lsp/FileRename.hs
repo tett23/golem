@@ -4,6 +4,7 @@ module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetI
 import Control.Monad (forM)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, toLower)
+import Data.Either (fromRight)
 import Data.List
   ( nub,
     sortOn,
@@ -105,7 +106,7 @@ planImports operations source = do
                 if T.isPrefixOf "\"" oldToken || not (T.all bareChar newText)
                   then quoted newText
                   else newText
-          pure (if destination == original then [] else [(spanStart sp, spanEnd sp, replacement)])
+          pure [(spanStart sp, spanEnd sp, replacement) | destination /= original]
       )
   where
     bareChar c = isAlphaNum c || c `elem` ("./_-" :: String)
@@ -129,7 +130,7 @@ planEmetImports operations source = do
       ( \(path, start, end) -> do
           original <- either (Left . show) Right (normalizeRelative (T.unpack path))
           destination <- renamePath operations (T.unpack path)
-          pure (if destination == original then [] else [(start, end, quoted (T.pack destination))])
+          pure [(start, end, quoted (T.pack destination)) | destination /= original]
       )
 
 declSites :: BS.ByteString -> E.Decl -> [(Text, Int, Int)]
@@ -178,9 +179,9 @@ rowSites bytes row =
   [ (path, start, end)
   | requirement <- E.rowReqs row,
     E.reqKind requirement == "file",
-    [path] <- [E.reqArgs requirement],
     let Loc from to = E.reqLoc requirement,
     let raw = BS.take (to - from) (BS.drop from bytes),
+    [path] <- [E.reqArgs requirement],
     Just quoteStart <- [BS.elemIndex 34 raw],
     let start = from + quoteStart,
     Just lengthOfString <- [tomlStringLength (BS.drop start bytes)],
@@ -249,7 +250,7 @@ manifestPaths :: Table' Position -> [(Position, Text)]
 manifestPaths top =
   maybe [] chapterEntries (lookupValue "chapters" top)
     <> maybe [] textValues (lookupValue "bibliography" top)
-    <> maybe [] (\functions -> maybe [] (\requires -> maybe [] textValues (lookupValue "file" requires)) (asTable =<< lookupValue "requires" functions)) (asTable =<< lookupValue "functions" top)
+    <> maybe [] (\functions -> maybe [] (maybe [] textValues . lookupValue "file") (asTable =<< lookupValue "requires" functions)) (asTable =<< lookupValue "functions" top)
     <> maybe [] pluginPaths (asTable =<< lookupValue "plugins" top)
     <> maybe [] filterPaths (lookupValue "filters" top)
   where
@@ -325,14 +326,14 @@ planPlotCsv operations source = do
             destination <- renamePath operations (T.unpack written)
             let value = T.pack destination
                 replacement = if wasQuoted || T.any (`elem` (",\"\n\r" :: String)) value then "\"" <> T.replace "\"" "\"\"" value <> "\"" else value
-            pure (if destination == original then [] else [(start, end, replacement)])
+            pure [(start, end, replacement) | destination /= original]
       _ -> Right []
 
 csvRows :: BS.ByteString -> Either String [[CsvCell]]
 csvRows bytes = rows 0
   where
     lengthOfInput = BS.length bytes
-    byte i = BS.index bytes i
+    byte = BS.index bytes
     rows i
       | i >= lengthOfInput = Right []
       | otherwise = do
@@ -363,12 +364,13 @@ csvRows bytes = rows 0
       | i + 1 < lengthOfInput && byte (i + 1) == 34 = quotedEnd (i + 2)
       | otherwise = Right (i + 1)
 
--- | Rewrite the target of Aleph Wiki links using its complete sheet list.
--- Paths in this function are relative to Aleph's workspace, not Golem's root.
+{- | Rewrite the target of Aleph Wiki links using its complete sheet list.
+Paths in this function are relative to Aleph's workspace, not Golem's root.
+-}
 planWiki :: [(FilePath, FilePath)] -> FilePath -> [(FilePath, Maybe Text)] -> Text -> Either String [(Int, Int, Text)]
 planWiki operations sourcePath sheets source = do
   newSource <- renamePath operations sourcePath
-  let movedSheets = [(either (const path) id (renamePath operations path), title) | (path, title) <- sheets]
+  let movedSheets = [(fromRight path (renamePath operations path), title) | (path, title) <- sheets]
   concat <$> traverse (oneLink newSource movedSheets) (wikiLinks source)
   where
     oneLink newSource movedSheets (start, end, written) =
@@ -390,7 +392,7 @@ planWiki operations sourcePath sheets source = do
               resolvesSame = case wikiResolve newSource movedSheets written of
                 Just (path, _, _) -> path == newTarget
                 Nothing -> False
-          pure (if resolvesSame || replacement == written then [] else [(start, end, replacement)])
+          pure [(start, end, replacement) | not resolvesSame && replacement /= written]
     dropExtension path = take (length path - length (takeExtension path)) path
 
 wikiResolve :: FilePath -> [(FilePath, Maybe Text)] -> Text -> Maybe (FilePath, Bool, Bool)
@@ -415,7 +417,8 @@ wikiResolve source sheets written
             [best] -> Just (best, False, False)
             best : second : _
               | (if null byName then 0 else kindRank best, wikiDistance source best)
-                  == (if null byName then 0 else kindRank second, wikiDistance source second) -> Nothing
+                  == (if null byName then 0 else kindRank second, wikiDistance source second) ->
+                  Nothing
               | otherwise -> Just (best, False, False)
   where
     text = T.unpack written
@@ -449,15 +452,17 @@ wikiPath path = joinPath . reverse <$> foldl step (Just []) (splitDirectories pa
     step (Just []) ".." = Nothing
     step (Just parts) part = Just (part : parts)
 
--- | Byte ranges of link targets, excluding headings and labels. Fenced and
--- inline code, escaped opens, and malformed links are not references.
+{- | Byte ranges of link targets, excluding headings and labels. Fenced and
+inline code, escaped opens, and malformed links are not references.
+-}
 wikiLinks :: Text -> [(Int, Int, Text)]
 wikiLinks source = reverse (third (foldl line (False, 0, []) (T.splitOn "\n" source)))
   where
     third (_, _, found) = found
     line (fenced, base, found) content
       | let stripped = T.stripStart content,
-        "```" `T.isPrefixOf` stripped || "~~~" `T.isPrefixOf` stripped = (not fenced, next, found)
+        "```" `T.isPrefixOf` stripped || "~~~" `T.isPrefixOf` stripped =
+          (not fenced, next, found)
       | fenced = (fenced, next, found)
       | otherwise = (False, next, reverse (scan base content 0) <> found)
       where
@@ -482,5 +487,5 @@ wikiLinks source = reverse (third (foldl line (False, 0, []) (T.splitOn "\n" sou
               next = innerStart + T.length inner + 2
            in if T.null close || T.any (`elem` ("[]" :: String)) inner
                 then scan base content (index + 2)
-                else (if T.null target then [] else [(byteAt start, byteAt (start + T.length target), target)]) <> scan base content next
+                else [(byteAt start, byteAt (start + T.length target), target) | not (T.null target)] <> scan base content next
       | otherwise = scan base content (index + 1)

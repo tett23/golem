@@ -149,10 +149,11 @@ fileRenameTests =
                 L.Uri new = L.filePathToUri (root </> "新 章.gm")
                 files = L.RenameFilesParams [L.FileRename old new]
             M.TResponseMessage _ _ result <- LT.request M.SMethod_WorkspaceWillRenameFiles files
-            let before = case result of
-              Right (L.InL (L.WorkspaceEdit _ (Just changes) _)) ->
-                [(L.uriToFilePath uri, version, length replacements) | L.InL (L.TextDocumentEdit (L.OptionalVersionedTextDocumentIdentifier uri version) replacements) <- changes]
-              _ -> []
+            let before =
+                  case result of
+                    Right (L.InL (L.WorkspaceEdit _ (Just changes) _)) ->
+                      [(L.uriToFilePath uri, version, length replacements) | L.InL (L.TextDocumentEdit (L.OptionalVersionedTextDocumentIdentifier uri version) replacements) <- changes]
+                    _ -> []
             liftIO $ do
               TIO.writeFile (root </> "a.gm") "@import \"新 章.gm\" as old\n"
               renameFile (root </> "旧 章.gm") (root </> "新 章.gm")

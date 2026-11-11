@@ -35,7 +35,7 @@ import Data.Char (toLower)
 import Data.Either (fromRight)
 import Data.Foldable (foldlM)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -184,8 +184,9 @@ alephPlot root params = do
   guard (makeRelative root path == "plot.csv")
   pure "plot.csv"
 
--- | Aleph supplies the complete set of visible sheets for one workspace.
--- Absence of any field leaves Wiki links disabled for this client.
+{- | Aleph supplies the complete set of visible sheets for one workspace.
+Absence of any field leaves Wiki links disabled for this client.
+-}
 alephWiki :: FilePath -> InitializeParams -> Maybe (FilePath, [(FilePath, Maybe Text)])
 alephWiki root params = do
   J.Object fields <- pure (J.toJSON params)
@@ -211,8 +212,9 @@ alephWiki root params = do
       pure (makeRelative workspace path, title)
     sheet _ _ = Nothing
 
--- | A rename source and its destination parent must resolve inside the
--- project. This also rejects a symlink that leads out of the project.
+{- | A rename source and its destination parent must resolve inside the
+project. This also rejects a symlink that leads out of the project.
+-}
 safeRenamePair :: FilePath -> (FilePath, FilePath) -> IO Bool
 safeRenamePair root (from, to) = do
   result <- try $ do
@@ -230,7 +232,7 @@ safeRenamePair root (from, to) = do
                   Right relative -> relative /= ""
                   Left _ -> False
         pure (inside canonicalOld && inside canonicalParent)
-  pure (either (const False) id (result :: Either IOException Bool))
+  pure (fromRight False (result :: Either IOException Bool))
 
 -- | @capabilities.general.positionEncodings@ of the initialize request.
 offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
@@ -316,7 +318,7 @@ handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar 
                     _ -> (stRoot st, p)
               safe <- liftIO (resolveInRoot safeRoot safePath)
               exists <- liftIO (doesFileExist path)
-              if (wikiSource == Nothing && p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"] && Just p /= plot) || either (const True) (const False) safe || not exists
+              if (isNothing wikiSource && p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"] && Just p /= plot) || either (const True) (const False) safe || not exists
                 then pure (Right Nothing)
                 else do
                   let uri = filePathToUri path
@@ -330,9 +332,10 @@ handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar 
                       version = maybe (InR Null) (InL . _lsp_version) vf
                   case content of
                     Nothing -> pure (Right Nothing)
-                    Just source -> case (case (wikiSource, wiki) of
-                      (Just wikiPath, Just (_, sheets)) -> R.planWiki wikiPairs wikiPath sheets source
-                      _ -> (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if Just p == plot then R.planPlotCsv else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source) of
+                    Just source -> case ( case (wikiSource, wiki) of
+                                            (Just wikiPath, Just (_, sheets)) -> R.planWiki wikiPairs wikiPath sheets source
+                                            _ -> (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if Just p == plot then R.planPlotCsv else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source
+                                        ) of
                       Left err -> pure (Left err)
                       Right edits -> do
                         let li = S.mkLineIndex source
