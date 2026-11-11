@@ -450,10 +450,11 @@ toDiagnostic enc li d =
         Nothing
 
 completionItem :: F.Completion -> CompletionItem
-completionItem (F.Completion label kind) =
-  CompletionItem label Nothing (Just k) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+completionItem item =
+  CompletionItem (F.cmpLabel item) Nothing (Just k) Nothing Nothing (InL <$> F.cmpDocumentation item) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where
-    k = case kind of
+    k = case F.cmpKind item of
+      F.CkConstant -> CompletionItemKind_Constant
       F.CkCommand -> CompletionItemKind_Function
       F.CkLabel -> CompletionItemKind_Reference
       F.CkPath -> CompletionItemKind_File

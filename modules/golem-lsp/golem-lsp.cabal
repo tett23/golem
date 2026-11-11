@@ -77,4 +77,5 @@ test-suite golem-lsp-test
     , tasty-hunit    >=0.10 && <0.11
     , temporary
     , text
+    , toml-parser
   default-language: GHC2021

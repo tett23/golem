@@ -15,6 +15,9 @@ module Golem.Lsp.Features
     renameEmet,
     emetTextOf,
     Completion (..),
+    cmpLabel,
+    cmpKind,
+    cmpDocumentation,
     CompletionKind (..),
     completions,
     tomlFileCompletions,
@@ -41,7 +44,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -50,7 +53,8 @@ import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports, 
 import Golem.Emet.Highlight (Highlight (..), HlType (..), emetHighlights)
 import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover, emetLocalHover)
 import Golem.Emet.Rename qualified as R
-import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
+import Golem.Eval.Builtin (builtinBlockCommands)
+import Golem.Eval.Expr (builtinExpressionNames, embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), projectVarValues, typeName)
 import Golem.Fmt (FormatResult (..), format)
@@ -59,7 +63,7 @@ import Golem.Lsp.Workspace
 import Golem.Parser (parse)
 import Golem.Parser.AST
 import Golem.Parser.CST qualified as C
-import Golem.Parser.SourceSettings (sourceKeys)
+import Golem.Parser.SourceSettings (paragraphSeparators, sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
@@ -516,25 +520,69 @@ filterNames manifest path old = maybe [] scan manifest
 
 -- ------------------------------------------------------------------ completion
 
-data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind | CkTable
+data CompletionKind = CkCommand | CkConstant | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind | CkTable
   deriving stock (Eq, Show)
 
-data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
+data Completion = Completion !Text !CompletionKind | Described !Text !CompletionKind !Text
   deriving stock (Eq, Show)
+
+cmpLabel :: Completion -> Text
+cmpLabel (Completion n _) = n
+cmpLabel (Described n _ _) = n
+
+cmpKind :: Completion -> CompletionKind
+cmpKind (Completion _ k) = k
+cmpKind (Described _ k _) = k
+
+cmpDocumentation :: Completion -> Maybe Text
+cmpDocumentation (Completion _ _) = Nothing
+cmpDocumentation (Described _ _ doc) = Just doc
+
+{- | Text since the innermost command opener on this line. Nested array
+brackets in an expression keep the expression as their context.
+-}
+activeBracket :: Text -> Maybe Text
+activeBracket line = go 0 [] False (T.unpack line)
+  where
+    go _ ((start, _) : _) False [] = Just (T.drop start line)
+    go _ _ _ [] = Nothing
+    go pos frames quoted ('\\' : _ : rest) = go (pos + 2) frames quoted rest
+    go pos frames@((_, True) : _) quoted ('"' : rest) = go (pos + 1) frames (not quoted) rest
+    go pos frames False ('[' : rest) =
+      let frame = case frames of
+            f@(_, True) : _ -> f
+            _ -> (pos + 1, take 1 rest == "=")
+       in go (pos + 1) (frame : frames) False rest
+    go pos (_ : frames) False (']' : rest) = go (pos + 1) frames False rest
+    go pos frames quoted (_ : rest) = go (pos + 1) frames quoted rest
+
+-- | A code block keeps its body as raw text, even when it contains command openers.
+codeBlockAt :: Int -> File -> Bool
+codeBlockAt off (File _ blocks) = any inside blocks
+  where
+    inside (Located sp block) = case block of
+      CodeBlock {} -> spanStart sp <= off && off < spanEnd sp
+      BlockCommand _ _ body -> any inside body
+      Attributed commands body -> any inside commands || maybe False inside body
+      BulletList items -> any (any inside) items
+      OrderedList items -> any (any inside) items
+      DefList groups -> any (any (any inside) . dgDefs) groups
+      _ -> False
 
 -- | Completion from the text before the cursor on its line.
 completions :: Workspace -> FilePath -> Int -> [Completion]
 completions ws path off = case sourceOf ws path of
-  _ | isJust (settingsSchemaOf path) -> maybe [] (\t -> tomlFileCompletions path t off) (Map.lookup path (wsOverlay ws))
+  _ | isSettingsFile path -> maybe [] (\t -> tomlFileCompletions path t off) (Map.lookup path (wsOverlay ws))
   -- a .emet (docs/adr/0162)
   Nothing -> [Completion n (emetKind k) | Just text <- [emetText ws path], (n, k) <- emetCompletions (programOf ws) path text off]
   Just src
+    | codeBlockAt off (srcAst src) -> []
     | Just names <- namespaceCompletions ws src off -> names
   Just src ->
     let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
         lineBefore = T.takeWhileEnd (/= '\n') before
-        lastOpen = T.takeWhileEnd (/= '[') lineBefore
-        hasOpen = T.isInfixOf "[" lineBefore
+        open = activeBracket lineBefore
+        lastOpen = fromMaybe "" open
         ws' = T.words lastOpen
         style = maybe defaultStyle evStyle (wsEvaluated ws)
         {- the styles of the file (docs/adr ADR 0014): of its evaluation, and
@@ -551,40 +599,57 @@ completions ws path off = case sourceOf ws path of
           Nothing -> Nothing
         meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
         projectVars = projectVarsOf ws
-     in if "@import " `T.isPrefixOf` T.stripStart lineBefore
-          then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
-          else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
-            (Just rest, _) -> manifestCompletions rest
-            (_, Just rest) -> styleDefCompletions style paraNames charNames rest
-            _ ->
-              -- the kinds of a page break (docs/adr ADR 0017)
-              if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                then [Completion k CkSettingValue | k <- ["recto", "verso"]]
-                else -- the signed counts of @page-lines (docs/adr ADR 0030)
-                  if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                    then [Completion k CkSettingValue | k <- ["+1", "-1"]]
-                    else
-                      -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
-                      if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                        then [Completion n CkParaStyle | n <- paraNames]
+     in if maybe False (T.all nameChar) (T.stripPrefix "@" (T.stripStart lineBefore))
+          then [Completion n CkCommand | n <- builtinBlockCommands]
+          else
+            if "@import " `T.isPrefixOf` T.stripStart lineBefore
+              then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
+              else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
+                (Just rest, _) -> manifestCompletions rest
+                (_, Just rest) -> styleDefCompletions style paraNames charNames rest
+                _ ->
+                  -- the kinds of a page break (docs/adr ADR 0017)
+                  if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                    then [Completion k CkSettingValue | k <- ["recto", "verso"]]
+                    else -- the signed counts of @page-lines (docs/adr ADR 0030)
+                      if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                        then [Completion k CkSettingValue | k <- ["+1", "-1"]]
                         else
-                          if not hasOpen || T.isInfixOf "]" lastOpen
-                            then []
-                            else case metaPath of
-                              -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                              Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                              Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                              -- the keys of [vars] and of its tables (docs/adr/0185)
-                              Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
-                              _ -> case ws' of
-                                [] -> commandNames
-                                [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                                (cmd : _)
-                                  | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                  | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                  | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                                _ -> []
+                          -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
+                          if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                            then [Completion n CkParaStyle | n <- paraNames]
+                            else
+                              if isNothing open
+                                then []
+                                else case metaPath of
+                                  -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                                  Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                                  Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                                  -- the keys of [vars] and of its tables (docs/adr/0185)
+                                  Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
+                                  Just [_] | inOperand lastOpen -> expressionNames
+                                  Just _ -> []
+                                  _ -> case ws' of
+                                    [] -> commandNames
+                                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                    (cmd : _)
+                                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                      | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                      | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                    _ -> []
   where
+    nameChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
+    inOperand expression =
+      let prefix = T.stripEnd (T.dropWhileEnd (\c -> isAsciiLower c || isAsciiUpper c || isDigit c || c == '_') expression)
+       in maybe False (\(_, c) -> c `elem` ("=([+-*/%,<>&|!" :: String)) (T.unsnoc prefix)
+    expressionNames =
+      [ case n of
+          "len" -> Described n CkCommand "文字列の文字数、または配列の要素数を返します。"
+          "pi" -> Completion n CkConstant
+          "e" -> Completion n CkConstant
+          _ -> Completion n CkCommand
+      | n <- builtinExpressionNames
+      ]
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
 
@@ -627,19 +692,15 @@ namespaceCompletions ws src off = do
   path <- Map.lookup ns (emetImports src)
   let exports = Map.findWithDefault [] path (programExports p)
       rest = T.dropEnd (T.length typed) lineBefore
-      names kind = Just [Completion (exName e) CkCommand | e <- exports, exKind e == kind]
+      names kind = Just [Described (exName e) CkCommand (exSignature e) | e <- exports, exKind e == kind]
   case () of
     _
       | T.strip rest == "@" -> names KindBlock
-      | inExpression rest -> names KindFn
-      | "[" `T.isSuffixOf` rest -> names KindInline
+      | Just expr <- activeBracket lineBefore, "=" `T.isPrefixOf` expr -> names KindFn
+      | Just inner <- activeBracket lineBefore, inner == typed -> names KindInline
       | otherwise -> Nothing
   where
     isAsciiAlphaNum c = isAsciiLower c || isAsciiUpper c || isDigit c
-    -- the text before the name is inside [= ... ] that is not closed
-    inExpression rest = case T.breakOnEnd "[=" rest of
-      ("", _) -> False
-      (_, after) -> not (T.isInfixOf "]" after)
 
 {- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
 (docs/adr ADR 0013), then the values of a key.
@@ -653,7 +714,7 @@ manifestCompletions rest = case T.words rest of
   where
     keys = [Completion (k <> "=") CkSettingKey | (k, _) <- sourceKeys]
     valuesOf = \case
-      "paragraph-separator" -> ["blank-line", "line"]
+      "paragraph-separator" -> map fst paragraphSeparators
       _ -> []
 
 {- | Completion after @style-def (docs/adr ADR 0014): the kinds, then the
@@ -707,12 +768,16 @@ settingsSchemaOf = \case
   "preflight.toml" -> Just rulesSchema
   _ -> Nothing
 
--- | style.toml or preflight.toml at the root.
+-- | A root configuration file with completion support.
 isSettingsFile :: FilePath -> Bool
-isSettingsFile = isJust . settingsSchemaOf
+isSettingsFile path = path == "manifest.toml" || isJust (settingsSchemaOf path)
 
--- | Completion in style.toml or preflight.toml at the root, from its text; none in another file.
+-- | Completion from the live text of a root configuration file.
 tomlFileCompletions :: FilePath -> Text -> Int -> [Completion]
+tomlFileCompletions "manifest.toml" text off = case contextAt text off of
+  AtValue path element quote _ ->
+    [Completion (if quote == Bare then "\"" <> v <> "\"" else v) CkSettingValue | v <- manifestChoiceValues path element]
+  _ -> []
 tomlFileCompletions path text off = maybe [] (\schema -> tomlCompletions schema text off) (settingsSchemaOf path)
 
 {- | Completion in a TOML file of a schema (docs/adr ADR 0169): the steps
