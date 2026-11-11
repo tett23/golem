@@ -113,6 +113,7 @@ test-suite golem-layout-test
                     SoftHyphenSpec
                     OverflowSpec
                     PaginateEnum
+                    PaginateElementsEnum
                     PaginateInvariants
                     PaginateInvariantsSpec
                     PaginateSpec
