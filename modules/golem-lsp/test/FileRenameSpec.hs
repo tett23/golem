@@ -2,6 +2,7 @@ module FileRenameSpec (fileRenameTests) where
 
 import Control.Concurrent (forkIO)
 import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -11,7 +12,7 @@ import Golem.Lsp.Workspace (openWorkspace, renameWorkspace, updateFile, wsOverla
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
-import System.Directory (createDirectory, createFileLink, renameDirectory)
+import System.Directory (createDirectory, createFileLink, renameDirectory, renameFile)
 import System.FilePath ((</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
@@ -143,14 +144,22 @@ fileRenameTests =
           (serverIn, clientOut) <- createPipe
           (clientIn, serverOut) <- createPipe
           void (forkIO (void (runGolemLspWithHandles serverIn serverOut)))
-          edits <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig {LT.messageTimeout = 10} LT.fullLatestClientCaps root $ do
+          (edits, noSecondEdit) <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig {LT.messageTimeout = 10} LT.fullLatestClientCaps root $ do
             let L.Uri old = L.filePathToUri (root </> "旧 章.gm")
                 L.Uri new = L.filePathToUri (root </> "新 章.gm")
-            M.TResponseMessage _ _ result <- LT.request M.SMethod_WorkspaceWillRenameFiles (L.RenameFilesParams [L.FileRename old new])
-            pure $ case result of
+                files = L.RenameFilesParams [L.FileRename old new]
+            M.TResponseMessage _ _ result <- LT.request M.SMethod_WorkspaceWillRenameFiles files
+            let before = case result of
               Right (L.InL (L.WorkspaceEdit _ (Just changes) _)) ->
                 [(L.uriToFilePath uri, version, length replacements) | L.InL (L.TextDocumentEdit (L.OptionalVersionedTextDocumentIdentifier uri version) replacements) <- changes]
               _ -> []
+            liftIO $ do
+              TIO.writeFile (root </> "a.gm") "@import \"新 章.gm\" as old\n"
+              renameFile (root </> "旧 章.gm") (root </> "新 章.gm")
+            LT.sendNotification M.SMethod_WorkspaceDidRenameFiles files
+            M.TResponseMessage _ _ second <- LT.request M.SMethod_WorkspaceWillRenameFiles files
+            pure (before, case second of Right (L.InR L.Null) -> True; _ -> False)
           hClose clientOut
           edits @?= [(Just (root </> "a.gm"), L.InR L.Null, 1)]
+          noSecondEdit @?= True
     ]
