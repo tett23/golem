@@ -237,11 +237,20 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         manifest <- case virtualFileText <$> mvf of
           Just t -> pure (Just t)
           Nothing -> liftIO (either (const Nothing) Just . TE.decodeUtf8' <$> BS.readFile manifestPath) `orIfMissing` manifestPath
+        let stylePath = stRoot st </> "style.toml"
+        svf <- getVirtualFile (toNormalizedUri (filePathToUri stylePath))
+        styleText <- case virtualFileText <$> svf of
+          Just t -> pure (Just t)
+          Nothing -> liftIO (either (const Nothing) Just . TE.decodeUtf8' <$> BS.readFile stylePath) `orIfMissing` stylePath
         r <- atPosition doc pos $ \ws p off ->
           pure $
             if isEmet p
               then fmap (toEditWith enc (emetLines ws manifest)) (F.renameEmet ws manifest p off newName)
-              else fmap (toEdit enc ws) (F.renameLabel ws p off newName)
+              else fmap (toEditWith enc (layoutLines ws styleText)) (case styleText of
+                Just t -> case F.renameLayoutValue ws t p off newName of
+                  Left F.NotALayoutValue | p /= "style.toml" -> F.renameLabel ws p off newName
+                  result -> result
+                Nothing -> F.renameLabel ws p off newName)
         case r of
           Just (Right edit) -> respond (Right (InL edit))
           Just (Left e) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (F.renameMessage e) Nothing))
@@ -359,7 +368,7 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
       let TextDocumentIdentifier docUri = doc
       case (mws, relPath st docUri) of
         -- a .gm, or a .emet the project uses (docs/adr/0162)
-        (Just ws, Just p) | isJust (sourceOf ws p) || isJust (emetText ws p) -> do
+        (Just ws, Just p) | isJust (sourceOf ws p) || isJust (emetText ws p) || p == "style.toml" -> do
           case F.fromLineCol enc (lineIndexOf ws p) (fromPosition pos) of
             Just off -> Just <$> k ws p off
             Nothing -> pure Nothing
@@ -369,7 +378,6 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
     toLspLocation enc (ws, p, s, e) = Location (fileUri ws p) (rangeIn enc ws p s e)
     toLink enc (ws, p, s, e) = DefinitionLink (LocationLink Nothing (fileUri ws p) (rangeIn enc ws p s e) (rangeIn enc ws p s e))
     fileUri ws p = filePathToUri (wsRoot ws </> p)
-    toEdit enc ws = toEditWith enc (ws, lineIndexOf ws)
     toEditWith enc (ws, li) pairs =
       WorkspaceEdit
         (Just (Map.fromListWith (<>) [(fileUri ws p, [TextEdit (rangeWith enc (li p) s e) t]) | (F.Location p s e, t) <- pairs]))
@@ -377,6 +385,7 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         Nothing
     -- the lines of the files a renaming in a .emet rewrites
     emetLines ws manifest = (ws, \p -> if p == "manifest.toml" then S.mkLineIndex (fromMaybe "" manifest) else maybe (lineIndexOf ws p) S.mkLineIndex (F.emetTextOf ws p))
+    layoutLines ws styleText = (ws, \p -> if p == "style.toml" then S.mkLineIndex (fromMaybe "" styleText) else lineIndexOf ws p)
     orIfMissing act path = do
       exists <- liftIO (doesFileExist path)
       if exists then act else pure Nothing
