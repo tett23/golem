@@ -9,7 +9,8 @@ category:           Text
 build-type:         Simple
 
 executable golem
-  hs-source-dirs:   app
+  hs-source-dirs:   app shared
+  other-modules:    Golem.Cli.BuildCommand
   main-is:          Main.hs
   -- -N: every processor, so that paragraphs are composed on several OS
   -- threads at once (golem-driver ADR 0002); -A64m: an allocation area of
@@ -39,9 +40,10 @@ executable golem
 
 test-suite golem-cli-test
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   test
+  hs-source-dirs:   test shared
   main-is:          Main.hs
-  other-modules:    CommandsSpec
+  other-modules:    Golem.Cli.BuildCommand
+                    CommandsSpec
                     FmtTableSpec
                     LocaleSpec
                     RtsSpec

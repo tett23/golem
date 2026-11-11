@@ -7308,24 +7308,21 @@ InDesign は縦組みのフレームではこの二つを適用しないが、Go
 
 ## G03119
 
-PDF/A と PDF/UA には、language を言語のタグの形で書きます
+language を言語のタグの形で書きます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`manifest.toml` の `[targets.pdf]` に `pdfa` か `pdfua` を書いた本で、`[metadata]` の `language` が BCP 47 の言語のタグの形でない。
-PDF のカタログの `/Lang` に書く値なので、PDF/A と PDF/UA はその形を調べる。
-調べるのは形だけで、IANA の登録簿に載っているかは調べない。
-`pdfa` も `pdfua` も書かない本では調べない。
-PDF は書かず、HTML、EPUB、プレーンテキストは書く。
+マニフェストの `[metadata]` の `language` が言語のタグの形に合わない。
+すべての出力ターゲットと `check` で、マニフェストを読むときに形を調べる。
 dev と prod の両方でエラーである。
 位置は `language` の値である。
 
-- メッセージ: `PDF/A と PDF/UA には、language を言語のタグの形で書きます: <値>`
-- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset`、形の検査は golem-syntax の `Golem.Syntax.LanguageTag`）。PDF を書くときに、組む前に調べる
-- ADR: [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)
+- メッセージ: `language を言語のタグの形で書きます: <値>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
+- ADR: [Golem ADR 0324](adr/0324-manifest-language-form.md)
 
 ### 主な原因
 
@@ -8655,21 +8652,20 @@ overrides に書けない名前です
 
 ### 意味
 
-`[[filters]]` の項目が、宣言されていないプラグインか、宣言したプラグインが提供していないフィルタを指す。
-位置は `manifest.toml` の先頭である。
+`[[filters]]` の項目が、宣言されていないプラグインを指す。
+位置は `manifest.toml` の `[[filters]]` の `plugin` の値である。
 
-- メッセージ: `宣言されていないプラグインです: <プラグイン>（フィルタ <プラグイン>.<フィルタ>）`、`プラグインが提供していないフィルタです: <プラグイン>.<フィルタ>`
+- メッセージ: `宣言されていないプラグインです: <プラグイン>（フィルタ <プラグイン>.<フィルタ>）`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)、[ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)
 
 ### 主な原因
 
 - `[[filters]]` の項目が、宣言されていないプラグインを指す。
-- `[[filters]]` の項目が、プラグインが提供していないフィルタを指す。
 
 ### 直し方
 
-プラグインを宣言するか、`[[filters]]` の項目のプラグインとフィルタの名前を直す。
+プラグインを宣言するか、`[[filters]]` の `plugin` の名前を直す。
 
 ## G06011
 
@@ -8911,6 +8907,30 @@ Golem を新しい版に上げるか、この Golem に合う版のプラグイ�
 プラグインを使うプロジェクトは、ネイティブの `golem` で組む。
 wasm の Golem で組むときは、`[plugins]` とプラグインのフィルタの `[[filters]]` を外す。
 
+## G06107
+
+プラグインがフィルタを提供していません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[[filters]]` に書いたプラグインは読み込めたが、指定した `filter` を提供していない。
+位置は `manifest.toml` の `[[filters]]` の `filter` の値である。
+
+- メッセージ: `プラグインが提供していないフィルタです: <プラグイン>.<フィルタ>`
+- 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
+- ADR: [ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)
+
+### 主な原因
+
+`[[filters]]` の `filter` に、プラグインが提供しない名前を書いた。
+
+### 直し方
+
+`[[filters]]` の `filter` に、プラグインが提供する名前を書く。
+
 ## G07001
 
 版面を計算できません
@@ -8975,7 +8995,7 @@ LSP は出さない。
 PDF をターゲットに含まないビルドと LSP では出さない。
 `golem check` は四つのターゲットを検査するので、マニフェストのターゲットによらず出す。
 
-- メッセージ: `日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください`
+- メッセージ: `日本式のトンボには塗り足しが要ります。style.toml の [page] の bleed に 0 より大きい長さを書いてください`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`）
 - ADR: [golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)
 
@@ -10827,10 +10847,9 @@ SVG の図版は、XML として読めないとき、UTF-8 でないとき、内
 大きすぎる数と小さすぎる数の両方があれば、理由は `大きさの数が大きすぎます` である。
 SVG の範囲の外のものは [G08011](#g08011) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
+暗号化された PDF は [G08105](#g08105)、指定したページがない PDF は [G08106](#g08106) で報告する。
 
 - 相互参照などが壊れている。
-- 暗号化されている。
-- `page` のページがない。
 - 扱わない圧縮（`LZWDecode`、`JBIG2Decode`、`JPXDecode` など）を使っている。
 - 埋め込んでいないフォントがある。
 - 特色（Separation か DeviceN）がある。
@@ -11344,6 +11363,54 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 
 該当するファイルを別の場所に移してからビルドする。
 
+## G08105
+
+図版の PDF が暗号化されています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF の図版が暗号化されているため、ページを取り込めない。
+PDF のビルドとプリフライトで `@figure` の位置に一度出す。
+
+- メッセージ: `暗号化された PDF の図版は使えません: <パス>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-pdf の `Golem.Pdf.Import`）
+- ADR: [ADR 0331](adr/0331-encrypted-figure-and-missing-page.md)
+
+### 主な原因
+
+暗号化された PDF を図版に指定した。
+
+### 直し方
+
+暗号化していない PDF を用意する。
+
+## G08106
+
+図版の PDF に指定したページがありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF の図版で指定したページ番号が、読み取った総ページ数を超える。
+PDF のビルドとプリフライトで `@figure` の位置に一度出す。
+
+- メッセージ: `図版の PDF に <要求したページ番号> ページ目がありません（全 <総ページ数> ページ）: <パス>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-pdf の `Golem.Pdf.Import`）
+- ADR: [ADR 0331](adr/0331-encrypted-figure-and-missing-page.md)
+
+### 主な原因
+
+`@figure` の `page` に PDF の総ページ数より大きい番号を書いた。
+
+### 直し方
+
+`@figure` の `page` に存在するページ番号を書く。
+
 ## G09001
 
 プリフライトの設定に誤りがあります
@@ -11356,7 +11423,7 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 `golem preflight` が読むプリフライトの設定のファイルに誤りがある。
 ファイルは `--rules` で指したもの、指さなければプロジェクトのルートの `preflight.toml` である。
 ファイルが読めない（`--rules` の指すファイルがない、UTF-8 でない）、TOML として読めない、知らないキーがある、値の型や範囲が違う、のどれもがこのコードになる。
-`based-on` が `basic`、`print`、`none` のどれでもないとき、`image-resolution` の `error-below` が `warning-below` より大きいときも、このコードである。
+`based-on` が `basic`、`print`、`screen`、`none` のどれでもないとき、`image-resolution` の `error-below` が `warning-below` より大きいときも、このコードである。
 しきい値が負のときは [G02103](#g02103) である（[docs/adr/0102](adr/0102-natural-number-type.md)）。
 位置は、そのファイルの中の誤りの位置である。
 このコードが出ると、PDF を組まずに終える。

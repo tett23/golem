@@ -336,4 +336,13 @@ fileSystemTests =
        ]
 
 newPlanTests :: TestTree
-newPlanTests = testGroup "golem new in a directory without a project (docs/adr/0273)" (planTests <> fileSystemTests)
+newPlanTests = testGroup "golem new in a directory without a project (docs/adr/0273)" (planTests <> fileSystemTests <> screenTests)
+
+screenTests :: [TestTree]
+screenTests =
+  [ testCase "Golem ADR 0327 S2: Japanese and English screen templates omit bleed" $
+      forM_ [Japanese, English] $ \language -> do
+        let files = templateFilesFor True language uuid0
+        assertBool (show language) (maybe False (not . T.isInfixOf "bleed =") (lookup "style.toml" files))
+        lookup "preflight.toml" files @?= Just "based-on = \"screen\"\n"
+  ]
