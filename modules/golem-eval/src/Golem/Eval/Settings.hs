@@ -297,16 +297,18 @@ fileStyles style header =
       v -> v
     valueSite sp code message kvs
       | code `notElem` ["G03257", "G03258"] = sp
-      | otherwise = fromMaybe sp $ listToMaybe
-          [ mkSpan (spanFile argSpan) start (start + byteLength name)
-          | (key, argSpan, value) <- kvs,
-            let raw = case value of LocalWord t -> t; LocalString t -> t,
-            Just name <- [nameIn message],
-            let (before, rest) = T.breakOn name raw,
-            not (T.null rest),
-            let quote = case value of LocalWord _ -> 0; LocalString _ -> 1,
-            let start = spanStart argSpan + byteLength key + 1 + quote + byteLength before
-          ]
+      | otherwise =
+          fromMaybe sp $
+            listToMaybe
+              [ mkSpan (spanFile argSpan) start (start + byteLength name)
+              | (key, argSpan, value) <- kvs,
+                let raw = case value of LocalWord t -> t; LocalString t -> t,
+                Just name <- [nameIn message],
+                let (before, rest) = T.breakOn name raw,
+                not (T.null rest),
+                let quote = case value of LocalWord _ -> 0; LocalString _ -> 1,
+                let start = spanStart argSpan + byteLength key + 1 + quote + byteLength before
+              ]
       where
         byteLength = BS.length . TE.encodeUtf8
         nameIn m = T.stripPrefix "値の名前がありません: " m <|> (T.stripPrefix "値 " m >>= \r -> Just (fst (T.breakOn " の種類" r)))

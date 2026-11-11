@@ -32,7 +32,6 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
-import System.Timeout (timeout)
 import PositionSpec qualified
 import SharedValuesSpec qualified
 import StylePositionSpec qualified
@@ -40,6 +39,7 @@ import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 import TomlMessageSpec qualified

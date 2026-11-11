@@ -126,8 +126,8 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Monad (foldM, join, unless, when)
-import Data.ByteString qualified as BS
 import Data.Bifunctor (bimap)
+import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
 import Data.Foldable (asum, toList)
 import Data.List (find, nub, nubBy, sortOn)
@@ -2603,9 +2603,11 @@ checkPosition top path = valueAt path <|> (case reverse path of _ : parent@(_ : 
 {- | Parses style.toml and checks what can be checked without the
 filesystem.
 -}
--- | Resolve typed layout values in the TOML tree while retaining each use's
--- original position (ADR 0346). The declaration table is removed only after
--- its names and values have been checked.
+
+{- | Resolve typed layout values in the TOML tree while retaining each use's
+original position (ADR 0346). The declaration table is removed only after
+its names and values have been checked.
+-}
 data QuantityKind = LengthKind | AkiKind | CountKind deriving stock (Eq, Show)
 
 data QuantityValue = QuantityText Text | QuantityCount Integer deriving stock (Eq, Show)
@@ -2665,9 +2667,14 @@ resolveStyleValues fid src (MkTable root) = do
         | validName raw -> reference defs cache stack kind pos raw
         | otherwise -> Left (bad "G03256" pos ("アキ量の宣言値が正しくありません: " <> raw))
       CountKind -> do
-        (values, cache') <- foldM (\(values, current) atom -> do
-            (n, next) <- countAtom current atom
-            Right (n : values, next)) ([], cache) (T.splitOn "+" raw)
+        (values, cache') <-
+          foldM
+            ( \(values, current) atom -> do
+                (n, next) <- countAtom current atom
+                Right (n : values, next)
+            )
+            ([], cache)
+            (T.splitOn "+" raw)
         let total = sum values
         if total <= toInteger maxNaturalInt then Right (QuantityCount total, cache') else Left (bad "G03256" pos "行数が上限を超えています")
         where
@@ -2721,8 +2728,9 @@ quantityKindAt path = case nodeAt styleSchema path of
     lastMay [] = Nothing
     lastMay xs = Just (last xs)
 
--- | Typed declaration and reference spans in style.toml, as UTF-8 byte
--- offsets. The last flag marks a declaration (ADR 0346).
+{- | Typed declaration and reference spans in style.toml, as UTF-8 byte
+offsets. The last flag marks a declaration (ADR 0346).
+-}
 layoutValueSites :: Text -> [(Text, Text, Int, Int, Bool)]
 layoutValueSites src = case Toml.parse src of
   Left _ -> []
@@ -2738,10 +2746,11 @@ layoutValueSites src = case Toml.parse src of
         ]
       _ -> []
     known = [(kind, name) | (kind, name, _, _, True) <- case Toml.parse src of Right root -> declarations root; Left _ -> []]
-    uses path (MkTable entries) = concat
-      [ walk (path <> [key]) value
-      | (key, (_, value)) <- Map.toList entries
-      ]
+    uses path (MkTable entries) =
+      concat
+        [ walk (path <> [key]) value
+        | (key, (_, value)) <- Map.toList entries
+        ]
     walk path = \case
       Table' _ tab -> uses path tab
       List' _ xs -> concatMap (walk path) xs

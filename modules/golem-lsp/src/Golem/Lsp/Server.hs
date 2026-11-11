@@ -246,11 +246,15 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
           pure $
             if isEmet p
               then fmap (toEditWith enc (emetLines ws manifest)) (F.renameEmet ws manifest p off newName)
-              else fmap (toEditWith enc (layoutLines ws styleText)) (case styleText of
-                Just t -> case F.renameLayoutValue ws t p off newName of
-                  Left F.NotALayoutValue | p /= "style.toml" -> F.renameLabel ws p off newName
-                  result -> result
-                Nothing -> F.renameLabel ws p off newName)
+              else
+                fmap
+                  (toEditWith enc (layoutLines ws styleText))
+                  ( case styleText of
+                      Just t -> case F.renameLayoutValue ws t p off newName of
+                        Left F.NotALayoutValue | p /= "style.toml" -> F.renameLabel ws p off newName
+                        result -> result
+                      Nothing -> F.renameLabel ws p off newName
+                  )
         case r of
           Just (Right edit) -> respond (Right (InL edit))
           Just (Left e) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (F.renameMessage e) Nothing))

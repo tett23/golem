@@ -380,7 +380,7 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
 
 -- | Rename one typed layout value in style.toml and loaded source files.
 renameLayoutValue :: Workspace -> Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
-renameLayoutValue ws styleText path off new = case [ (kind, name) | (kind, name, loc', _) <- sites, path == locPath loc', locStart loc' <= off, off <= locEnd loc' ] of
+renameLayoutValue ws styleText path off new = case [(kind, name) | (kind, name, loc', _) <- sites, path == locPath loc', locStart loc' <= off, off <= locEnd loc'] of
   [] -> Left NotALayoutValue
   (kind, old) : _
     | length [() | (_, name, _, True) <- sites, name == old] /= 1 -> Left NotALayoutValue

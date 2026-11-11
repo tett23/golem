@@ -752,8 +752,9 @@ decodeStrictWith schema code codeAt fid src = case parseToml src of
   Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> semanticMessage kind key)]
   Right tab -> decodeStrictTableWith schema codeAt fid src tab
 
--- | Decode an already parsed table after a caller has resolved its values.
--- The annotations retain the original source positions (ADR 0346).
+{- | Decode an already parsed table after a caller has resolved its values.
+The annotations retain the original source positions (ADR 0346).
+-}
 decodeStrictTableWith :: (FromValue a) => Node -> ([Scope] -> Text) -> FileId -> Text -> Table' Position -> Either [Diagnostic] a
 decodeStrictTableWith schema codeAt fid src tab =
   let unknown = unknownKeys schema tab
