@@ -1,0 +1,16 @@
+name: Parser and fmt proof experiment
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Lean 4.7.0
+        run: |
+          curl --fail --location --retry 3 https://github.com/leanprover/lean4/releases/download/v4.7.0/lean-4.7.0-linux.tar.zst -o "$RUNNER_TEMP/lean.tar.zst"
+          tar --zstd -xf "$RUNNER_TEMP/lean.tar.zst" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/lean-4.7.0-linux/bin" >> "$GITHUB_PATH"
+      - name: Check the prototype
+        run: sh experiments/parser-fmt-proof/check-ci.sh
