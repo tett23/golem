@@ -135,7 +135,7 @@ sourceTests =
           [ ("manifest.toml", manifestWith ["\"a.gm\"", "{ file = \"b.gm\", paragraph-separator = \"blank-line\" }"] "[source]\nparagraph-separator = \"line\"\n"),
             ("a.gm", "@import c.gm as c\n"),
             ("b.gm", "@import c.gm as c\n"),
-            ("c.gm", "@set x = 1\n")
+            ("c.gm", "set x = 1\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -782,8 +782,8 @@ tests =
             ("ch/01.gm", "@import common/v.gm as v\n\n本文。\n"),
             ("ch/02.gm", "@import common/v.gm as v\n@import common/w.gm as w\n"),
             ("ch/03.gm", "三。\n"),
-            ("common/v.gm", "@import common/w.gm as w\n@set x = 1\n"),
-            ("common/w.gm", "@set y = 2\n")
+            ("common/v.gm", "@import common/w.gm as w\nset x = 1\n"),
+            ("common/w.gm", "set y = 2\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -821,8 +821,8 @@ tests =
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
             ("a.gm", "@import Common.gm as c\n"),
             ("b.gm", "@import common.gm as c\n"),
-            ("Common.gm", "@set x = 1\n"),
-            ("common.gm", "@set x = 1\n")
+            ("Common.gm", "set x = 1\n"),
+            ("common.gm", "set x = 1\n")
           ]
         $ \root -> do
           r <- loadProject root
@@ -834,7 +834,7 @@ tests =
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
             ("a.gm", "@import real.gm as r\n"),
             ("b.gm", "@import link.gm as r\n"),
-            ("real.gm", "@set x = 1\n")
+            ("real.gm", "set x = 1\n")
           ]
         $ \root -> do
           createFileLink (root </> "real.gm") (root </> "link.gm")

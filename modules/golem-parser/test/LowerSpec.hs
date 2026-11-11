@@ -242,7 +242,7 @@ tests =
           [Paragraph _] -> pure ()
           other -> assertFailure (show other)
         case ast "```\nset x = 3\n```\n" of
-          [CodeBlock _ _ _] -> pure ()
+          [CodeBlock {}] -> pure ()
           other -> assertFailure (show other),
       testCase "lists with nesting" $ case ast "- a\n- b\n  - c\n" of
         [BulletList [[Located _ (Paragraph _)], [Located _ (Paragraph _), Located _ (BulletList [_])]]] -> pure ()

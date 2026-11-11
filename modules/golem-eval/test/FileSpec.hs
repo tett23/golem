@@ -369,7 +369,7 @@ tests =
         errs "@import [= 1] as x\n" @?= ["G03009"]
         errs "@import \"common/values.gm\" as v\n" @?= [],
       testCase "doc becomes a deferred expression; forbidden in headings" $ do
-        paraOf "@set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
+        paraOf "set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
         errs "# 全 [= doc.chapters.count] 章\n" @?= ["G02014"]
         errs "# [ref-title intro]\n" @?= ["G02014"],
       testCase "notes are numbered per file" $

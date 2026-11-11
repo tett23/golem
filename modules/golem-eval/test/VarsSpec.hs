@@ -60,8 +60,8 @@ tests =
         textsOf (ctxAt 2 "b.gm") "[= vars.product] [= vars.count]\n" @?= [["Golem 3"]],
       testCase "vars.product is evaluated in a heading (S0)" $
         textsOf (ctxAt 1 "a.gm") "# [= vars.product] 入門\n" @?= [["Golem 入門"]],
-      testCase "@set product and vars.product are different names" $
-        textsOf (ctxAt 1 "a.gm") "@set product = \"x\"\n\n[= product] [= vars.product]\n" @?= [["x Golem"]],
+      testCase "set product and vars.product are different names" $
+        textsOf (ctxAt 1 "a.gm") "set product = \"x\"\n\n[= product] [= vars.product]\n" @?= [["x Golem"]],
       testCase "vars is a reserved word: G02023" $ do
         map fst (codesOf "set vars = 1\n") @?= ["G02023"]
         map fst (codesOf "@import a.gm as vars\n") @?= ["G02023"],
