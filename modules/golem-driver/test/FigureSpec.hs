@@ -605,7 +605,9 @@ fitFigureTests :: [TestTree]
 fitFigureTests =
   [ testGroup
       "the size: within the measure and the depth of the column"
-      [ testCase "without a caption a figure is as deep as the column: (L - 1) p + h, its height in proportion" $
+      [ testCase "Golem ADR 0352 I2: the Lean captioned fit fixture has the same rounded dimensions" $
+          fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) (Just 1) @?= (45 * pt, 135 * pt, True),
+        testCase "without a caption a figure is as deep as the column: (L - 1) p + h, its height in proportion" $
           fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) Nothing @?= (Sp (floor (145 * unSp pt % 3)), 145 * pt, True),
         testCase "a figure that fits keeps the measure" $
           fitFigure (1 / 3) (240 * pt) 10 (15 * pt) (10 * pt) Nothing @?= (240 * pt, 80 * pt, False),
