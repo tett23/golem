@@ -1368,6 +1368,9 @@ G09001 のほかは、エラーか警告か、出すかどうかをプリフラ�
 [code: golem build]、[code: golem check]、[code: golem lint] に [code: --verbose]（[code: -v]）を付けたときにだけ表示します。
 [code: manifest.toml] の [code: \[diagnostics\]] の [code: silence-info] にコードを並べると、[code: --verbose] を付けてもその情報を出さなくなります。
 
+= [strong: G02254 [code: 行アキは 0 行です]]
+  [code: @blank-line 0] だけが続くまとまりは、行アキを作りません。
+  不要な指定なら消してください。
 = [strong: G07047 [code: 段の先頭に来た @blank-line の空きを捨てました]]
   PDF で、[code: @blank-line] の行アキがページ（段）の先頭に来たので、空きを取らずに捨てました。
   ページの先頭の空きは、区切りとして読者に伝わらないためです。

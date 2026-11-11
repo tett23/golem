@@ -538,7 +538,7 @@ tomlMessageTests =
           ["unexpected key", "missing key", "expected ", "lexical error", "parse error"],
       -- golem-project ADR 0008: the errors of style.toml are at their value
       testCase "a padding without a unit is at the value of padding" $ do
-        (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\n\n[paragraph-styles.code]\npadding = \"0\"\n"), ("a.gm", "本文。\n")] ["check"]
+        (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\n\n[paragraph-styles.code]\npadding = \"1\"\n"), ("a.gm", "本文。\n")] ["check"]
         assertEqual err (ExitFailure 1) code
         assertBool err (not ("style.toml:1:1" `isInfixOf` err))
         assertBool err ("style.toml:5:11: error[G03006]" `isPrefixOf` err),

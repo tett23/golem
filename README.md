@@ -213,7 +213,7 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
 長さとアキ量のゼロは、設定では `0` または `"0"` と書ける。
-`@blank-line 0` は行アキを作らない（[ADR 0319](./docs/adr/0319-unitless-zero-in-length-fields.md)）。
+`@blank-line 0` は行アキを作らず、info の G02254 を出す（[Golem ADR 0345](./docs/adr/0345-revise-unitless-zero-in-length-fields.md)）。
 
 原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
 PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
