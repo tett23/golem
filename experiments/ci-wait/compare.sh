@@ -5,7 +5,11 @@ cd "$(dirname "$0")/../.."
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir "$tmp/bin"
-git show 706e5888fb1d63a53da68a0e7223b76f8441d2f9:scripts/visual/wait-pdfs.sh >"$tmp/baseline"
+versions="new"
+if [ "${1:-}" != --current ]; then
+  versions="old new"
+  git show 706e5888fb1d63a53da68a0e7223b76f8441d2f9:scripts/visual/wait-pdfs.sh >"$tmp/baseline"
+fi
 cat >"$tmp/bin/sleep" <<'FAKE'
 #!/bin/sh
 set -eu
@@ -68,7 +72,7 @@ printf 'version\tcase\texit\tseconds\tartifacts\tjobs\tdelay\n'
 fail=0
 trial() {
   rule=$1 SCENARIO=$2 READY=$3 FAILED=$4; export SCENARIO READY FAILED
-  for version in old new; do
+  for version in $versions; do
     script="$tmp/baseline"; [ "$version" = old ] || script=scripts/visual/wait-pdfs.sh
     echo 0 >"$CLOCK"; : >"$CALLS"
     rc=0; sh "$script" 1 1 producer >"$tmp/out" 2>"$tmp/err" || rc=$?
