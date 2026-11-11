@@ -87,7 +87,7 @@ templateFilesFor screen lang uuid =
       [ "[page]",
         "size = \"" <> size <> "\"",
         "binding = \"" <> binding <> "\"",
-        "writing-mode = \"" <> mode <> "\"",
+        "writing-mode = \"" <> mode <> "\""
       ]
         <> ["bleed = \"" <> bleed <> "\"" | not screen]
         <> [ "",
