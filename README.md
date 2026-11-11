@@ -723,6 +723,9 @@ x86-64 の一覧からマニュアルの行を除いたものを、コミット�
 
 `visual` は見た目の回帰テストである。
 `changes` だけを待って `build` と同時に始まり、`build` の x86-64 の `outputs` が成果物 `visual-pdfs` を上げるのを `scripts/visual/wait-pdfs.sh` で待つ（上限は 60 分、ジョブは 75 分。`outputs` が上げずに終わると失敗する、[docs/adr/0099](./docs/adr/0099-visual-job-waits-only-for-visual-pdfs.md)）。
+成果物は既定で 30 秒ごとに問い合わせる。
+見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
+GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](./docs/adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
 
 上がった `visual-pdfs` を取り寄せ、固定した版の shem で 72 dpi の PPM に描き、ページごとの SHA-256 が `scripts/visual/pages/` の参照と一致することを `scripts/visual/check.sh` で確かめる。
 shem は、shem のアーカイブを `third_party/downloads` に `scripts/visual/fetch-shem.sh` のハッシュをキーにキャッシュし、`fetch-shem.sh` を 10 分の上限で実行して取る。
