@@ -1767,7 +1767,8 @@ checked against the header row.
 -}
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 csvTable ctx sp args
-  | Just asp <- listToMaybe legacy, null positional =
+  | Just asp <- listToMaybe legacy,
+    null positional =
       err "G02252" asp "@table の src= は使えません。パスを最初の引数に移します" >> pure []
   | not (null legacy) && not (null positional) || length positional > 1 =
       err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []

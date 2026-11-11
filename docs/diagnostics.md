@@ -5967,6 +5967,10 @@ cite には書誌データのキーを書きます
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [ADR 0317](adr/0317-retire-table-src.md)
 
+### 主な原因
+
+- `@table src=data/sizes.tsv` のように、パスをキーワードで書いた。
+
 ### 直し方
 
 `@table src=data/sizes.tsv` を `@table data/sizes.tsv` に書き換える。
