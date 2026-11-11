@@ -5109,6 +5109,8 @@ HTML と EPUB では、`@no-page-break` の後の最初のブロックの要素�
 `pages.json` は、PDF の各ページの最初の行が、原稿のどのファイルの何行何列から始まるかを表す。
 エディタは、`pages.json` を読んで、改ページの位置の印を原稿に出す。
 `golem preflight` は PDF をファイルに書かないので、`pages.json` も書かない。
+ディスクに書く prod ビルドで PDF を対象に選び、エラーで今回の PDF を書けなければ、前の `build/pdf` と `pages.json` を片付ける（[ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)）。
+dev ビルド、`golem check`、`golem preflight`、PDF を選ばないビルドでは前の PDF を残す。
 
 `pages.json` は、ページの順に、ページごとに一つのオブジェクトを並べた配列である。
 配列は diagnostics と同じく一行に書き、改行で終える。
