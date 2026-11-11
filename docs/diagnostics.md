@@ -11337,7 +11337,7 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 このコードが出ると、PDF を組まずに終える。
 重大度は、プリフライトの設定で変えられない。
 
-- メッセージ: `TOML の誤りです: <理由>`。終わりを識別できない範囲には `未検査範囲` も示す
+- メッセージ: `TOML の誤りです: <理由>`。終わりを識別できない範囲には `未検査範囲` と検出済み件数も示す
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight.Rules`、golem-driver の `Golem.Driver`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)、[Golem ADR 0321](adr/0321-preflight-rule-error-causes.md)
 

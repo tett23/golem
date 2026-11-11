@@ -211,7 +211,8 @@ rulesTests =
         let src = "name = \"\"\"open\n[unknown]\nbad = 1\n"
             found = either id (const []) (parseRules (FileId 0) src)
         map diagCode found @?= [DiagnosticCode "G09001"]
-        assertBool "unexamined range" (any (T.isInfixOf "未検査" . diagMessage) found),
+        assertBool "unexamined range" (any (T.isInfixOf "未検査範囲" . diagMessage) found)
+        assertBool "detected count" (any (T.isInfixOf "検出済み 1 件" . diagMessage) found),
       testCase "every key of every check goes to its own field" $
         parsed
           ( T.unlines

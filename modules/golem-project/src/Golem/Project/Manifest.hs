@@ -769,7 +769,12 @@ decodeStrictWithReasons schema fid src =
           combined = case decode masked of
             Left ds -> syntaxErrors <> ds
             Right _ -> syntaxErrors
-       in Left (sortOn (spanStart . diagSpan) combined)
+          detected = length combined
+          withCount d
+            | "未検査範囲" `T.isInfixOf` diagMessage d =
+                d {diagMessage = diagMessage d <> "（検出済み " <> T.pack (show detected) <> " 件）"}
+            | otherwise = d
+       in Left (map withCount (sortOn (spanStart . diagSpan) combined))
     _ -> decode src
   where
     decode candidate = case parseToml candidate of
