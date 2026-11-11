@@ -42,7 +42,7 @@ block = \case
   DefList gs -> DefList [DefGroup (map inlines ts) (map (map (unspan block)) ds) | DefGroup ts ds <- gs]
   Table al h rows -> Table al (map inlines h) (map (map inlines) rows)
   CodeBlock lang args ls -> CodeBlock lang (map (unspan argument) args) (map (unspan id) ls)
-  SetVar n e -> SetVar (unspan id n) (unspan expr e)
+  SetVar prefix n e -> SetVar (fmap (const noSpan) prefix) (unspan id n) (unspan expr e)
   BlockCommand n args body -> BlockCommand (unspan id n) (map (unspan argument) args) (map (unspan block) body)
   Attributed as b -> Attributed (map (unspan block) as) (fmap (unspan block) b)
   ErrorBlock -> ErrorBlock
@@ -136,7 +136,7 @@ tests =
           [ -- lines of commands without a block after them are a group without a target
             Attributed
               [ l (BlockCommand (l "import") (map l [Positional (Word "common/values.gm"), Positional (Word "as"), Positional (Word "values")]) []),
-                l (SetVar (l "version") (l (EString "1.0")))
+                l (SetVar (Just noSpan) (l "version") (l (EString "1.0")))
               ]
               Nothing,
             Attributed

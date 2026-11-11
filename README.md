@@ -194,6 +194,11 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 
+### 原稿の変数
+
+行頭の `set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[Golem ADR 0336](docs/adr/0336-unprefixed-variable-declarations.md)）。
+旧記法の `@set x = "abc"` も使えるが、先頭の `@` に移行用の notice が出る。
+
 ### 書体とスタイル
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。

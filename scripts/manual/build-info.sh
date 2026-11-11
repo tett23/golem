@@ -54,9 +54,9 @@ TMP=$(mktemp "$PROJECT/common/.build-info.XXXXXX")
 trap 'rm -f "$TMP"' EXIT
 {
   echo '%% scripts/manual/build-info.sh が書いたファイル。手で編集しない %%'
-  printf '@set edition = "%s"\n' "$EDITION"
-  printf '@set commit = "%s"\n' "$COMMIT"
-  printf '@set uncommitted = "%s"\n' "$UNCOMMITTED"
+  printf 'set edition = "%s"\n' "$EDITION"
+  printf 'set commit = "%s"\n' "$COMMIT"
+  printf 'set uncommitted = "%s"\n' "$UNCOMMITTED"
 } >"$TMP"
 mv "$TMP" "$PROJECT/common/build-info.gm"
 trap - EXIT
