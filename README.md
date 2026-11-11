@@ -160,6 +160,10 @@ golem new mybook
 既存の原稿で `%%注%%` を引数の値にしていた場合は `"%%注%%"` と書く。
 `key=x%%注%%` を値にしていた場合は `key="x%%注%%"` と書く。
 引用符不足のファイルは `golem fmt` でも自動修正されず、ほかの整形可能なファイルは整形される。
+
+プリフライトの設定を読めない場合は、原因に応じて G09001 または G09100〜G09104 を出す（[Golem ADR 0321](./docs/adr/0321-preflight-rule-error-causes.md)）。
+設定のエラーを検出した実行は PDF を組まず、終了コード 1 で終わる。
+
 `golem lsp` は原稿の命令と式、プロジェクト直下の `style.toml`、`preflight.toml`、`manifest.toml` に入力候補を返す。
 説明のある候補では、その説明と Emet の公開関数の署名も表示する（[Golem ADR 0347](docs/adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
 

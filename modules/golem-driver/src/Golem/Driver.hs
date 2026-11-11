@@ -967,12 +967,12 @@ preflight po = do
       then
         pure $
           if isJust (poRules po)
-            then Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
+            then Left ([diagnostic "G09100" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
             else Right (printRules, "組み込みの print")
       else do
         bytes <- BS.readFile path
         pure $ case TE.decodeUtf8' bytes of
-          Left _ -> Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
+          Left _ -> Left ([diagnostic "G09101" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
           Right src -> case parseRules rulesFid src of
             Left ds -> Left (ds, src)
             Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
