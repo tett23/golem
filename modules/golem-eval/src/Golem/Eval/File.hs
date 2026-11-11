@@ -637,8 +637,9 @@ pluginArgs ctx sp args = forM (firstKeywords args) $ \(A.Located _ a) -> case a 
   A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
   _ -> pure (Right (PluginPositional VNil))
 
--- | A plugin receives the first value of a repeated key, as before ADR 0351;
--- diagnostics are collected from the complete list before this call.
+{- | A plugin receives the first value of a repeated key, as before ADR 0351;
+diagnostics are collected from the complete list before this call.
+-}
 firstKeywords :: [A.Located A.Argument] -> [A.Located A.Argument]
 firstKeywords args =
   [ a

@@ -15,10 +15,10 @@ import Golem.Emet
 import Golem.Emet.Syntax
 import Golem.Eval.Value (Value (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), FileId (..))
-import Support (callSpan, load, nat, str)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Support (callSpan, load, nat, str)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
@@ -119,8 +119,10 @@ compareEvalWith handlers source name args budget expected = do
   formattedResult @?= expected
   where
     run text = case load text of
-      ([], Just program) -> pure $ either (Left . diagCode) Right $
-        callFunctionLimited budget handlers program callSpan "main.emet" name args
+      ([], Just program) ->
+        pure
+          $ either (Left . diagCode) Right
+          $ callFunctionLimited budget handlers program callSpan "main.emet" name args
       (diagnostics, _) -> assertFailure (show diagnostics) >> fail "unreachable"
 
 -- * Sources from trees
