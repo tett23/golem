@@ -1677,6 +1677,15 @@ codeTests =
         linesOf c @?= [("line 20", Just 20, Nothing, False, []), ("line 21", Just 21, Nothing, False, []), ("line 22", Just 22, Nothing, False, [])]
         d <- oneCode "@listing x.hs lines=20...22 numbers=5\n"
         map clNumber (codeLines d) @?= [Just 5, Just 6, Just 7],
+      testCase "ADR 0316 I1: boolean numbers preserves noncontiguous listing source lines" $ do
+        c <- oneCode "@listing x.hs lines=1,3 numbers=true highlight=3\n"
+        map clNumber (codeLines c) @?= [Just 1, Just 3]
+        map clHighlight (codeLines c) @?= [False, True]
+        d <- oneCode "@listing x.hs lines=1,3 numbers=false\n"
+        map clNumber (codeLines d) @?= [Just 1, Just 3]
+        codeNumbers d @?= Just False
+        e <- oneCode "@listing x.hs lines=1,3 numbers=5\n"
+        map clNumber (codeLines e) @?= [Just 5, Just 6],
       testCase "highlight=2,4...5: lines 2, 4 and 5; highlight=9 in three lines is G02069" $ do
         c <- oneCode "``` highlight=2,4...5\na\nb\nc\nd\ne\n```\n"
         map clHighlight (codeLines c) @?= [False, True, False, True, True]

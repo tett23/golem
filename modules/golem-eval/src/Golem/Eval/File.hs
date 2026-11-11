@@ -2173,7 +2173,8 @@ codeOf bsp ca0 start lang inSource ls = do
   marked <- mapM diffOf ls
   withCallouts <- mapM calloutsOf marked
   let numberedFrom c = case (caNumbers c, start) of
-        (Nothing, Just sourceNumbers)
+        (Just (Right _), _) -> snd (mapAccumL number (firstOf c) withCallouts)
+        (_, Just sourceNumbers)
           | not (and (zipWith (\a b -> b == a + 1) sourceNumbers (drop 1 sourceNumbers))) ->
               zipWith sourceNumber sourceNumbers withCallouts
         _ -> snd (mapAccumL number (firstOf c) withCallouts)
