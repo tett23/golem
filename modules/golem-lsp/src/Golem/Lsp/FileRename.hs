@@ -376,8 +376,13 @@ planWiki operations sourcePath sheets source = do
         Nothing -> Right []
         Just (oldTarget, byPath, relative) -> do
           newTarget <- renamePath operations oldTarget
-          let replacement
-                | not byPath = T.pack (takeBaseName newTarget)
+          let nameSpelling = T.pack (takeBaseName newTarget)
+              pathSpelling = T.pack (wikiRelative (takeDirectory newSource) newTarget)
+              nameIsUnique = case wikiResolve newSource movedSheets nameSpelling of
+                Just (path, _, _) -> path == newTarget
+                Nothing -> False
+              replacement
+                | not byPath = if nameIsUnique then nameSpelling else pathSpelling
                 | otherwise =
                     let base = if relative then takeDirectory newSource else "."
                         rel = wikiRelative base newTarget

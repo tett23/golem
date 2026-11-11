@@ -112,6 +112,10 @@ fileRenameTests =
         let sheets = [("notes/a.md", Nothing), ("notes/Café.md", Nothing)]
         planWiki [("notes/Café.md", "notes/new.md")] "notes/a.md" sheets "[[Café]]\n"
           @?= Right [(2, 8, "new")],
+      testCase "R1: a renamed Wiki name uses a path when the new name is ambiguous" $ do
+        let sheets = [("src/a.md", Nothing), ("one/target.md", Nothing), ("two/new.md", Nothing)]
+        planWiki [("one/target.md", "one/new.md")] "src/a.md" sheets "[[target]]\n"
+          @?= Right [(2, 8, "../one/new.md")],
       testCase "R3: didRename discards old overlays and refreshes the source index" $
         withSystemTempDirectory "golem-rename" $ \root -> do
           createDirectory (root </> "part")
