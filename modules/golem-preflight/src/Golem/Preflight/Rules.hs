@@ -160,6 +160,10 @@ basicRules =
       ruSpotColors = LevelOff
     }
 
+-- | screen: basic checks without the PDF/X-4 requirement.
+screenRules :: Rules
+screenRules = basicRules {ruBasedOn = "screen", ruPdfX = LevelOff}
+
 -- | none: every check off, to write rules from nothing.
 noneRules :: Rules
 noneRules =
@@ -172,7 +176,7 @@ noneRules =
     }
 
 builtinRules :: [(Text, Rules)]
-builtinRules = [("basic", basicRules), ("print", printRules), ("none", noneRules)]
+builtinRules = [("basic", basicRules), ("print", printRules), ("screen", screenRules), ("none", noneRules)]
 
 -- | Reads a file of rules; every error is G09001 at its place in the file.
 parseRules :: FileId -> Text -> Either [Diagnostic] Rules

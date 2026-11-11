@@ -109,7 +109,7 @@ tomlTests =
         ],
       testGroup
         "preflight.toml"
-        [ exactly "preflight.toml" "based-on = ▮" ["\"basic\"", "\"print\"", "\"none\""],
+        [ exactly "preflight.toml" "based-on = ▮" ["\"basic\"", "\"print\"", "\"screen\"", "\"none\""],
           exactly "preflight.toml" "[type-size]\nseverity = ▮" ["\"error\"", "\"warning\"", "\"off\""],
           exactly "preflight.toml" "[font-formats]\nallowed = [▮" ["\"cff\"", "\"cff2\"", "\"truetype\""],
           exactly "preflight.toml" "[font-formats]\nallowed = ▮" [],

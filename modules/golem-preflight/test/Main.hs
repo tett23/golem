@@ -169,7 +169,7 @@ rulesTests =
         ruFontFormatsAllowed printRules @?= ["cff", "truetype"]
         (ruBleedMin printRules, ruTrimHazardDistance printRules, ruLiveAreaDistance printRules) @?= (mm 3, mm 3, mm 3)
         (ruInkMax printRules, ruPageMultiple printRules, ruStrokeMin printRules) @?= (350, 1, mm 0.1)
-        map fst builtinRules @?= ["basic", "print", "none"],
+        map fst builtinRules @?= ["basic", "print", "screen", "none"],
       testCase "a key written replaces only itself" $ do
         let r = parsed "based-on = \"print\"\n[image-resolution]\ncolor = { warning-below = 350 }\n"
         ruResolutionColor r @?= Tier 150 350
@@ -179,6 +179,14 @@ rulesTests =
         ruName (parsed "name = \"A 印刷\"\n") @?= Just "A 印刷"
         parsed "based-on = \"basic\"\n" @?= basicRules
         parsed "based-on = \"none\"\n" @?= noneRules,
+      testCase "Golem ADR 0327 S1 and S3: screen keeps basic checks and accepts bleed override" $ do
+        let screen = parsed "based-on = \"screen\"\n"
+        ruBasedOn screen @?= "screen"
+        ruGlyphMissing screen @?= ruGlyphMissing basicRules
+        ruOverfullLines screen @?= ruOverfullLines basicRules
+        ruFontEmbedding screen @?= ruFontEmbedding basicRules
+        map ($ screen) [ruBleedSize, ruBleedTrimHazard, ruLiveArea, ruPdfX] @?= replicate 4 LevelOff
+        ruBleedSize (parsed "based-on = \"screen\"\n[bleed-size]\nseverity = \"error\"\nmin = \"3mm\"\n") @?= LevelError,
       testCase "image-unplaceable is an unknown check (golem-pdf ADR 0008)" $ g09001 "[image-unplaceable]\nseverity = \"off\"\n" 0,
       testCase "an unknown top-level key is G09001 at its line" $ g09001 "based-on = \"print\"\nfoo = 1\n" 1,
       testCase "an unknown key of a check is G09001 at its line" $ g09001 "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" 2,
@@ -389,6 +397,15 @@ checkTests =
       lookup "pixels" (concatMap snd (res 6 4.5)) @?= Just (FactInts [1200, 900])
       map fst (res 10 7.5) @?= [Error]
       lookup "ppi" (concatMap snd (res 10 7.5)) @?= Just (FactInt 120),
+    testCase "Golem ADR 0322 A1: a one-ppi image crosses only the threshold of two" $ do
+      let iv = placed (image CsCmyk 8 1 1 Nothing) (Rect (mm 20) (mm 20) (inch 1) (inch 1))
+          result limit = only "G09006" (check printRules {ruResolutionColor = Tier limit 0} (imagePage [iv]))
+      map (length . result) [0, 1, 2] @?= [0, 0, 1],
+    testCase "Golem ADR 0322 A2: native and wasm share the one-ppi diagnostic facts" $ do
+      let iv = placed (image CsCmyk 8 1 1 Nothing) (Rect (mm 20) (mm 20) (inch 1) (inch 1))
+          result = only "G09006" (check printRules {ruResolutionColor = Tier 2 0} (imagePage [iv]))
+      [(diagSeverity d, diagSpan d, lookup "ppi" (diagFacts d)) | d <- result]
+        @?= [(Error, srcSpan, Just (FactInt 1))],
     testCase "G09006: the smaller of the two directions" $
       [lookup "ppi" (diagFacts d) | d <- only "G09006" (check printRules (imagePage [placedAt CsCmyk 1200 600 4 3]))] @?= [Just (FactInt 200)],
     testCase "G09006: a turned image divides its pixel width by the height of its rectangle (golem-driver ADR 0034)" $ do

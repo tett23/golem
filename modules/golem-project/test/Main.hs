@@ -84,6 +84,24 @@ separators p =
     Just path <- [lookupPath fid (projectFiles p)]
   ]
 
+languageTests :: TestTree
+languageTests =
+  testGroup
+    "manifest language (Golem ADR 0324)"
+    [ testCase "L1: reject each malformed tag once" $
+        forM_ ["", "x", "ja_JP", "ja-"] $ \tag ->
+          codes (parse tag "") @?= ["G03119"],
+      testCase "L1: schema errors precede language validation" $
+        codes (parse "ja_JP" "bogus = 1\n") @?= ["G03001"],
+      testCase "L3: preserve the spelling of every accepted tag" $
+        forM_ ["ja", "ja-JP", "JA-jp", "i-klingon", "en-US", "JP", "US", "DE", "de", "jbo", "sl-rozaj", "ja-x-my-dialect", "x-local"] $ \tag ->
+          fmap (mdLanguage . manifestMetadata) (parse tag "") @?= Right tag
+    ]
+  where
+    parse tag extra =
+      parseManifest (FileId 0) $
+        T.replace "language = \"ja\"" (extra <> "language = \"" <> tag <> "\"") (manifest ["\"a.gm\""])
+
 sourceTests :: TestTree
 sourceTests =
   testGroup
@@ -847,6 +865,7 @@ tests =
       testCase "unknown manifest keys and missing id are errors" $ do
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[extra]\nx = 1\n"), ("a.gm", "")] $ \root -> loadProject root >>= (@?= ["G03001"]) . codes
         withProject [("manifest.toml", T.replace "id = " "idd = " (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> loadProject root >>= (@?= True) . (not . null) . codes,
+      languageTests,
       sourceTests,
       diagnosticCodeTests,
       tomlMessageTests,
