@@ -89,6 +89,21 @@ securityTests =
         map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08104"]
         brWritten r @?= []
         BS.readFile (tmp </> "build" </> "html") >>= (@?= "not a folder"),
+      testCase "Golem ADR 0329 O1 and O2: a regular build parent reports only G08104" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        BS.writeFile (tmp </> "build") "keep build"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08104"]
+        brWritten r @?= []
+        BS.readFile (tmp </> "build") >>= (@?= "keep build"),
+      testCase "Golem ADR 0329 O1: a broken output link remains G08013" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        createDirectoryIfMissing True (tmp </> "build")
+        createDirectoryLink (tmp </> "missing") (tmp </> "build/html")
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
+        brWritten r @?= []
+        pathIsSymbolicLink (tmp </> "build/html") >>= (@?= True),
       testCase "Golem ADR 0329 O3 and O4: build removes selected regular .DS_Store files" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         project tmp "" horizontalStyle "本文。\n" []
         createDirectoryIfMissing True (tmp </> "build/html")
