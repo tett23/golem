@@ -102,7 +102,9 @@ i5EvalTests =
       testCase "I5 checker error is preserved before evaluation" $ do
         let source = "f :: String -> String\nf x = x + 3\n"
         formatted <- either (assertFailure . show) pure (formatEmet source)
-        map diagCode (fst (load source)) @?= map diagCode (fst (load formatted))
+        let before = map diagCode (fst (load source))
+        assertBool "expected a type error" (not (null before))
+        before @?= map diagCode (fst (load formatted))
     ]
 
 compareEval :: Text -> Text -> [Result] -> Int64 -> Either DiagnosticCode Result -> IO ()
