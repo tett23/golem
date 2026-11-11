@@ -1573,8 +1573,7 @@ blankLineTests =
       testCase "wrong arguments and a body are G02092 and give no block" $
         mapM_
           (\src -> assertEqual (T.unpack src) ([], ["G02092"]) (outline ctx src))
-          [ "@blank-line 0\n",
-            "@blank-line x\n",
+          [ "@blank-line x\n",
             "@blank-line 1 2\n",
             "@blank-line lines=2\n",
             "@blank-line +1\n",
@@ -1583,8 +1582,12 @@ blankLineTests =
       testCase "an integer out of int64 is G02091" $
         outline ctx "@blank-line 9223372036854775808\n" @?= ([], ["G02091"]),
       testCase "the messages of G02092" $ do
-        msgs "@blank-line 0\n" @?= [("G02092", "@blank-line の引数は 1 以上の整数を一つだけ書きます")]
+        msgs "@blank-line x\n" @?= [("G02092", "@blank-line の引数は 0 以上の整数を一つだけ書きます")]
         msgs "@blank-line\n  あ\n" @?= [("G02092", "@blank-line は本体を持てません")],
+      testCase "ADR 0319 I2: zero blank-line adds no block or notice" $ do
+        outline lineCtx "あ\n@blank-line 0\nい\n" @?= outline lineCtx "あ\nい\n"
+        outline lineCtx "あ\n@blank-line 0\n@blank-line 1\nい\n" @?= outline lineCtx "あ\n@blank-line 1\nい\n"
+        outline ctx "@blank-line 0\nあ\n" @?= outline ctx "あ\n",
       testCase "@blank-line not at the top of the document is G02093 and dropped" $ do
         mapM_
           ( \src -> do

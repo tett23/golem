@@ -1070,6 +1070,9 @@ captionTests =
       cssFontSize s13 (dim "0.85zw") @?= "0.85em"
       none <- styleOf ""
       cssFontSize none (dim "9pt") @?= "9pt"
+      cssLength (Abs 0) @?= "0"
+      cssLength (Zw 0) @?= "0"
+      cssFontSize s13 (Abs 0) @?= "0"
   ]
 
 sidenoteTests :: [TestTree]

@@ -1089,8 +1089,8 @@ needLines ctx sp name args body = case args of
   where
     usage = breakCommand sp name body (Left ("G02070", "@need-lines の引数は 1 以上の整数です"))
 
-{- | @blank-line and @blank-line N (docs/adr ADR 0046): one positional
-natural number of 1 or more, G02092 otherwise; G02091 out of int64; a
+{- | @blank-line and @blank-line N (docs/adr ADR 0046, ADR 0319): one positional
+natural number; zero adds no block. G02091 out of int64; a
 negative number or one that is not an integer is G02103 or G02104
 (docs/adr ADR 0102).
 -}
@@ -1102,14 +1102,14 @@ blankLine ctx sp args body
       [A.Located asp (A.Positional v)] ->
         naturalArg ctx "@blank-line の引数" sp (A.Located asp v) >>= \case
           Right n
-            | n < 1 -> bad usage
+            | n == 0 -> pure []
             | inInt64 (toInteger n) -> ok (fromIntegral n)
             | otherwise -> outOfInt64 sp >> pure []
           Left NaturalReported -> pure []
           Left NotANumber -> bad usage
       _ -> bad usage
   where
-    usage = "@blank-line の引数は 1 以上の整数を一つだけ書きます"
+    usage = "@blank-line の引数は 0 以上の整数を一つだけ書きます"
     ok n = pure [block sp (BlankLines n)]
     bad m = err "G02092" sp m >> pure []
 
@@ -2558,7 +2558,7 @@ link ctx inHeading sp args slots = case (args, slots) of
 
 -- | What the amount of an [aki] may be (the message of G02055).
 akiAmounts :: Text
-akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
+akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、単位のない 0、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
 
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is

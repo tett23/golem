@@ -869,6 +869,26 @@ tests =
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
+      testCase "ADR 0319 I1 I2: unitless zero is a typed zero" $ do
+        map parseDim ["0", "-0", "0pt"] @?= replicate 3 (Just (Abs 0))
+        map parseDim ["", "1", "0.0", "+0", "00"] @?= replicate 5 Nothing
+        map parseAki ["0", "-0", "0pt"] @?= [Just 0, Just 0, Nothing]
+        case parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = 0\n" of
+          Left ds -> assertFailure (show ds)
+          Right _ -> pure ()
+        codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = \"0\"\n") @?= [],
+      testCase "ADR 0319 I1: zero reaches style length fields" $ do
+        mapM_ (\src -> codes (parseStyle (FileId 0) src) @?= [])
+          [ "[paragraph-styles.quote]\nindent = 0\nfirst-line-indent = \"-0\"\n",
+            "[paragraph-styles.code]\npadding = 0\n",
+            "[character-styles.code]\npadding = 0\nbaseline-shift = 0\n",
+            "[composition.ruby]\noverhang = 0\n",
+            "[lists]\ngap = 0\n",
+            "[index]\ncolumn-gap = 0\n",
+            "[paragraph-styles.body]\nrule-before = { weight = \"1pt\", space-before = 0, start-indent = 0 }\n"
+          ]
+        let notices = styleNotices (FileId 0) "[paragraph-styles.caption]\nindent = 0\n"
+        map diagCode notices @?= [DiagnosticCode "G03100"],
       testCase "the inch unit (golem-project ADR 0010)" $ do
         parseDim "1in" @?= Just (Abs (72 * 65536))
         parseDim "0.125in" @?= Just (Abs (9 * 65536))

@@ -439,8 +439,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G02072 [code: @no-page-break と @page-break が同じ位置にあります]] など
   改ページを止める指定と、改ページの指定を並べて書いています。
   どちらか一方を消してください。
-= [strong: G02092 [code: @blank-line の引数は 1 以上の整数を一つだけ書きます]] など
-  [code: @blank-line] には何も書かないか、[code: 2] のような 1 以上の整数を一つだけ書きます。
+= [strong: G02092 [code: @blank-line の引数は 0 以上の整数を一つだけ書きます]] など
+  [code: @blank-line] には何も書かないか、[code: 0] 以上の整数を一つだけ書きます。
   次の行を字下げしているなら、字下げをやめてください。
 = [strong: G02093 [code: @blank-line は文書の最上位にだけ置けます]]
   リストの項目や図版のキャプションの中に [code: @blank-line] を書いています。

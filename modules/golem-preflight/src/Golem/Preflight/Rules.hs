@@ -304,6 +304,7 @@ rulesSchema =
 
 lengthOf :: Text -> Value' l -> Matcher l Sp
 lengthOf k = \case
+  Integer' _ 0 -> pure 0
   Text' l t -> case parseDim t of
     Just (Abs s) -> pure s
     Just (Zw _) -> bad l k t "zw は使えません。3mm や 0.25pt のように書きます"

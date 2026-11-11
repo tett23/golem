@@ -164,6 +164,7 @@ data Dim = Abs !Sp | Zw !Rational
 exact rationals and rounds once, half to even.
 -}
 parseDim :: Text -> Maybe Dim
+parseDim t | T.strip t == "0" || T.strip t == "-0" = Just (Abs 0)
 parseDim t =
   let (num, unit) = T.span (\c -> isDigit c || c == '.') (T.strip t)
    in do
@@ -563,6 +564,8 @@ value is in zw; negative amounts are not written.
 -}
 parseAki :: Text -> Maybe Rational
 parseAki t = case T.strip t of
+  "0" -> Just 0
+  "-0" -> Just 0
   "ベタ" -> Just 0
   "全角" -> Just 1
   "二分" -> Just (1 % 2)
@@ -755,12 +758,11 @@ styleNotices fid src = case Toml.parse src of
   Left _ -> []
   Right top ->
     let root = Table' (Position 0 1 1) top
-     in [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
+     in [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k written)
         | n <- unindentedStyles,
           k <- ["indent", "first-line-indent", "end-indent"],
-          Just (Text' pos t) <- [lookupValue root ["paragraph-styles", n, k]],
-          Just v <- [parseSignedDim t],
-          zeroDim v
+          Just value <- [lookupValue root ["paragraph-styles", n, k]],
+          Just (pos, written) <- [zeroWritten value]
         ]
           <> concat
             [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
@@ -783,6 +785,10 @@ styleNotices fid src = case Toml.parse src of
                let pos = valueAnn v
              ]
   where
+    zeroWritten = \case
+      Text' pos t | maybe False zeroDim (parseSignedDim t) -> Just (pos, "\"" <> t <> "\"")
+      Integer' pos 0 -> Just (pos, "0")
+      _ -> Nothing
     lookupValue v = \case
       [] -> Just v
       k : rest | Table' _ (MkTable t) <- v -> Map.lookup k t >>= \(_, x) -> lookupValue x rest
@@ -1522,6 +1528,7 @@ instance FromValue RuleSpec where
     pure (RuleSpec len w before after color style (fromMaybe (Zw 0) startIndent) endIndent (fromMaybe True keepIn))
     where
       ruleDim key check v = case v of
+        Integer' l 0 -> check l (Abs 0)
         Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
         _ -> failAt (valueAnn v) (T.unpack ("罫線の " <> key <> " は \"0.3pt\" のように文字列で書きます"))
       positiveDim = \case
@@ -1571,6 +1578,7 @@ lineKeys zwAllowed = do
   pure (LineKeys (snd <$> weight) color (name, multi) (snd <$> dash) (snd <$> gap))
   where
     ruleDim key check v = case v of
+      Integer' l 0 -> check l (Abs 0)
       Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
       _ -> failAt (valueAnn v) (T.unpack ("罫線の " <> key <> " は \"0.3pt\" のように文字列で書きます"))
 
@@ -1582,6 +1590,7 @@ instance FromValue DecorationSpec where
   fromValue = parseTableFromValue $ do
     LineKeys weight color style dash gap <- lineKeys True
     offset <- optKeyOf "offset" $ \case
+      Integer' _ 0 -> pure (Abs 0)
       Text' l t -> maybe (failAt l (T.unpack ("offset の長さの書き方が不正です: " <> t <> "（0.05zw や -1pt のように書きます）"))) pure (parseSignedDim t)
       v -> failAt (valueAnn v) "offset は \"0.05zw\" のように文字列で書きます"
     let d = defaultDecoration
@@ -1745,6 +1754,7 @@ instance FromValue PageSize where
 newtype DimV = DimV Dim
 
 instance FromValue DimV where
+  fromValue (Integer' _ 0) = pure (DimV (Abs 0))
   fromValue (Text' l t) = case parseDim t of
     Just d -> pure (DimV d)
     Nothing
@@ -1785,6 +1795,7 @@ akiError why = "アキの量の指定が正しくありません: " <> why
 newtype AkiV = AkiV Rational
 
 instance FromValue AkiV where
+  fromValue (Integer' _ 0) = pure (AkiV 0)
   fromValue (Text' l t) = maybe (failAt l (T.unpack (akiError ("アキの量として読めません: " <> t)))) (pure . AkiV) (parseAki t)
   fromValue v = failAt (valueAnn v) (T.unpack (akiError "アキの量は \"四分\" や \"25%\" のように文字列で書きます"))
 
@@ -1955,7 +1966,9 @@ featureKeysOf = do
       withValue $ \l n ->
         if n < -1000 || n > 10000 then wrong l "tracking" (T.pack (show n) <> "（-1000 から 10000 までです）") else pure n
   p <- optKey "proportional-metrics"
-  bs <- optKeyOf "baseline-shift" (withValue (\l v -> maybe (wrong l "baseline-shift" v) pure (parseSignedDim v)))
+  bs <- optKeyOf "baseline-shift" $ \case
+    Integer' _ 0 -> pure (Abs 0)
+    v -> withValue (\l raw -> maybe (wrong l "baseline-shift" raw) pure (parseSignedDim raw)) v
   pw <- optKeyOf "punctuation-width" (withValue (\l v -> maybe (wrong l "punctuation-width" v) pure (lookup v punctuationWidthValues)))
   pure (k, t, p, bs, pw)
 
@@ -2089,8 +2102,9 @@ boxSidesOf = \case
 at the value and names the key (golem-project ADR 0008).
 -}
 signedDimKey :: Text -> String -> ParseTable l (Maybe Dim)
-signedDimKey k example = optKeyOf k $ withValue $ \l v ->
-  maybe (failAt l ("長さの書き方が不正です: " <> T.unpack v <> example)) pure (parseSignedDim v)
+signedDimKey k example = optKeyOf k $ \case
+  Integer' _ 0 -> pure (Abs 0)
+  v -> withValue (\l t -> maybe (failAt l ("長さの書き方が不正です: " <> T.unpack t <> example)) pure (parseSignedDim t)) v
 
 {- | A paragraph or heading rule (golem-driver ADR 0027): a rule spec, or
 false for none; true is an error.
@@ -2398,7 +2412,9 @@ instance FromValue ListsSec where
   fromValue = parseTableFromValue $ do
     bullets <- optKeyAt "bullets"
     numbers <- optKeyAt "numbers"
-    gap <- textAt "gap"
+    gap <- optKeyOf "gap" $ \v -> case v of
+      Integer' l 0 -> pure (l, "0")
+      _ -> (valueAnn v,) <$> fromValue v
     -- each error is at the value of its key (golem-project ADR 0008)
     let bad l key why = failTableAt l (T.unpack ("[lists] の " <> key <> " が正しくありません: " <> why))
         nonEmpty key = \case
@@ -2434,6 +2450,7 @@ instance FromValue IndexSec where
           if n >= 1 && n <= maxNaturalInt then pure n else failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
       _ -> failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
     gap <- optKeyOf "column-gap" $ \v -> case v of
+      Integer' _ 0 -> pure (Abs 0)
       Text' _ t | Just d <- parseSignedDim t, not (negativeDim d) -> pure d
       _ -> failAt (valueAnn v) "[index] の column-gap が正しくありません"
     headings <- optKeyOf "section-headings" $ \case

@@ -274,7 +274,11 @@ rulesTests =
         msgs "[page-count]\nmultiple-of = 0\n" @?= ["multiple-of の値が正しくありません: 0（1 以上の整数にします） (page-count.multiple-of)"]
         msgs "[image-color-space]\nallowed = [\"cmyk\", \"lab\"]\n" @?= ["allowed の値が正しくありません: lab（cmyk、gray、rgb のどれかにします） (image-color-space.allowed)"]
         msgs "[font-formats]\nallowed = [\"opentype\"]\n" @?= ["allowed の値が正しくありません: opentype（cff、cff2、truetype のどれかにします） (font-formats.allowed)"]
-        msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"]
+        msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"],
+      testCase "ADR 0319 I1: preflight length accepts typed zero" $ do
+        ruBleedMin (parsed "[bleed-size]\nmin = 0\n") @?= 0
+        ruBleedMin (parsed "[bleed-size]\nmin = \"-0\"\n") @?= 0
+        g09001 "[bleed-size]\nmin = 0.0\n" 1
     ]
 
 checkTests :: [TestTree]
