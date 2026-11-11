@@ -642,11 +642,11 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   [code: \[targets.pdf\]] に [code: pdfa] を書いたのに、[code: style.toml] の [code: \[color\]] に [code: intent] がありません。
   [code: intent] に CMYK の ICC プロファイルを書くか、PDF/A が要らなければ [code: pdfa] を消してください。
   PDF は書きません。
-= [strong: G03119 [code: PDF/A と PDF/UA には、language を言語のタグの形で書きます: …]]
-  [code: pdfa] か [code: pdfua] を書いた本で、[code: \[metadata\]] の [code: language] が言語のタグの形ではありません。
+= [strong: G03119 [code: language を言語のタグの形で書きます: …]]
+  [code: \[metadata\]] の [code: language] が言語のタグの形ではありません。
   [code: ja]、[code: en-US] のように書いてください。
   [code: 日本語] や [code: ja_JP] は使えません。
-  PDF は書きません。
+  マニフェストの読み込みで止まります。
 = [strong: G07103 [code: PDF/UA では見出しの段を飛ばせません: … から …]]
   [code: pdfua] を書いた本で、[code: #] の次に [code: ###] を置くように、見出しの段を飛ばしています。
   最初の見出しは [code: #] にし、段を一つずつ深くしてください。
