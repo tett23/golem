@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- | manifest.toml (golem-project ADR 0001, specifications.md).
 module Golem.Project.Manifest
   ( Manifest (..),
@@ -759,9 +761,10 @@ decodeStrictWith schema code codeAt fid src = case parseToml src of
             [] -> Right a
             ms -> report ms
 
--- | Decode preflight rules with separate codes for syntax, conflicting
--- definitions, unknown keys and invalid known values (docs/adr/0321).
-decodeStrictWithReasons :: (FromValue a) => Node -> FileId -> Text -> Either [Diagnostic] a
+{- | Decode preflight rules with separate codes for syntax, conflicting
+definitions, unknown keys and invalid known values (docs/adr/0321).
+-}
+decodeStrictWithReasons :: forall a. (FromValue a) => Node -> FileId -> Text -> Either [Diagnostic] a
 decodeStrictWithReasons schema fid src =
   case parseToml src of
     Left (ErrSyntax _) ->
@@ -777,6 +780,7 @@ decodeStrictWithReasons schema fid src =
        in Left (map withCount (sortOn (spanStart . diagSpan) combined))
     _ -> decode src
   where
+    decode :: Text -> Either [Diagnostic] a
     decode candidate = case parseToml candidate of
       Left (ErrSyntax (Located pos msg)) -> Left [diagnostic "G09001" Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
       Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic "G09104" Error (positionSpan fid src (Just pos)) ("TOML の定義が衝突しています: " <> semanticMessage kind key)]
@@ -795,10 +799,11 @@ decodeStrictWithReasons schema fid src =
                 [] -> Right a
                 ms -> report ms
 
--- | Check each complete TOML item once. A multiline item is a single token
--- range; without its closing delimiter, no later text is treated as a key.
--- Replacing a rejected range with spaces preserves every later line and
--- column for the normal TOML parser and schema matcher.
+{- | Check each complete TOML item once. A multiline item is a single token
+range; without its closing delimiter, no later text is treated as a key.
+Replacing a rejected range with spaces preserves every later line and
+column for the normal TOML parser and schema matcher.
+-}
 recoverRulesSyntax :: FileId -> Text -> (Text, [Diagnostic])
 recoverRulesSyntax fid src =
   let (parts, errors) = go 1 (T.splitOn "\n" src)
@@ -824,12 +829,12 @@ recoverRulesSyntax fid src =
     collect acc rest state
       | not (ruleTriple state) && ruleSquare state <= 0 && ruleCurly state <= 0 = (reverse acc, rest, False)
       | otherwise = case rest of
-        [] -> (reverse acc, [], True)
-        line : more ->
-          collect
-            (line : acc)
-            more
-            (scanRuleLine state line)
+          [] -> (reverse acc, [], True)
+          line : more ->
+            collect
+              (line : acc)
+              more
+              (scanRuleLine state line)
 
 data RuleTokenState = RuleTokenState
   { ruleQuote :: !(Maybe Char),
@@ -858,9 +863,11 @@ scanRuleLine initial input =
             go (state {ruleQuote = Nothing, ruleTriple = False}) (T.drop 3 remaining)
         | Just q <- ruleQuote state,
           not (ruleTriple state),
-          c == q -> go (state {ruleQuote = Nothing}) rest
+          c == q ->
+            go (state {ruleQuote = Nothing}) rest
         | Just '"' <- ruleQuote state,
-          c == '\\' -> go (state {ruleEscaped = True}) rest
+          c == '\\' ->
+            go (state {ruleEscaped = True}) rest
         | Just _ <- ruleQuote state -> go state rest
         | c == '#' -> state
         | T.isPrefixOf "\"\"\"" remaining -> go (state {ruleQuote = Just '"', ruleTriple = True}) (T.drop 3 remaining)
