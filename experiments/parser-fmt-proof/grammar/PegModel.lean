@@ -1,8 +1,9 @@
 namespace PegModel
 
 -- The constructors match Peg.Grammar.Expr in the pinned peg-hs release.
--- Haskell actions and predicates remain source text until their semantics are
--- modeled. Recognition alone does not prove the action's AST or value.
+-- Haskell actions remain source text. Only the numeric argument expressions
+-- and boolean predicates handled below have semantics in the recognizer;
+-- recognition alone does not prove the action's AST or value.
 inductive Expr where
   | lit (value written : String)
   | charClass (ranges : List (Nat × Nat)) (written : String)
@@ -48,17 +49,48 @@ structure Grammar where
 
 abbrev ParseResult := Except String (Option (List Char))
 
--- A bounded recognizer for the PEG operators.  An opaque Haskell predicate,
--- a template call or a parameterized rule is an error, never an accepted
--- input.  Fuel exhaustion is distinct from an ordinary PEG failure.
-def recognize (grammar : Grammar) : Nat → Expr → List Char → ParseResult
+abbrev Params := List (String × Nat)
+
+def atom (env : Params) (source : String) : Option Nat :=
+  source.toNat?.orElse (fun _ => (env.find? (fun pair => pair.1 == source)).map Prod.snd)
+
+def integer (env : Params) (source : String) : Option Nat :=
+  match source.splitOn " + " with
+  | [name, offset] => do
+      let base ← atom env name
+      let delta ← offset.toNat?
+      some (base + delta)
+  | _ =>
+      match source.splitOn " - " with
+      | [name, offset] => do
+          let base ← atom env name
+          let delta ← offset.toNat?
+          if delta ≤ base then some (base - delta) else none
+      | _ => atom env source
+
+def predicate (env : Params) (source : String) : Option Bool :=
+  match source.trim with
+  | "True" => some true
+  | "False" => some false
+  | condition =>
+      match condition.splitOn " == " with
+      | [left, right] => do
+          let a ← integer env left
+          let b ← integer env right
+          some (a == b)
+      | _ => none
+
+-- A bounded recognizer for the PEG operators. Unsupported Haskell expressions
+-- and template calls are errors, never accepted input. Fuel exhaustion is
+-- distinct from an ordinary PEG failure.
+def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char → ParseResult
   | 0, _, _ => .error "fuel exhausted"
   | fuel + 1, expr, input => Id.run do
       let sequence (items : List Expr) : ParseResult :=
         items.foldlM (fun state item =>
           match state with
           | none => pure none
-          | some rest => recognize grammar fuel item rest) (some input)
+          | some rest => recognizeEnv grammar env fuel item rest) (some input)
       let alternatives (alts : List (List Expr)) : ParseResult :=
         alts.foldlM (fun found items =>
           match found with
@@ -74,49 +106,58 @@ def recognize (grammar : Grammar) : Nat → Expr → List Char → ParseResult
             | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then some rest else none)
       | .any => return pure (match input with | [] => none | _ :: rest => some rest)
       | .ref name args =>
-          if !args.isEmpty then return .error s!"parameterized reference {name}"
           match grammar.rules.find? (fun rule => rule.name == name) with
           | none => return .error s!"unknown rule {name}"
           | some rule =>
-              if !rule.params.isEmpty || !rule.templateParams.isEmpty then
-                return .error s!"parameterized rule {name}"
-              return recognize grammar fuel (.choice (rule.alts.map Alt.items)) input
+              if !rule.templateParams.isEmpty then return .error s!"template rule {name}"
+              if args.length != rule.params.length then return .error s!"argument count for {name}"
+              match args.mapM (integer env) with
+              | none => return .error s!"opaque argument for {name}"
+              | some values =>
+                  let bindings := List.zip rule.params values
+                  return recognizeEnv grammar bindings fuel (.choice (rule.alts.map Alt.items)) input
       | .choice alts => return alternatives alts
       | .star child =>
-          match recognize grammar fuel child input with
+          match recognizeEnv grammar env fuel child input with
           | .error reason => return .error reason
           | .ok none => return .ok (some input)
           | .ok (some rest) =>
-              if rest.length < input.length then return recognize grammar fuel (.star child) rest
+              if rest.length < input.length then return recognizeEnv grammar env fuel (.star child) rest
               return .error "zero-width repetition"
       | .plus child =>
-          match recognize grammar fuel child input with
+          match recognizeEnv grammar env fuel child input with
           | .error reason => return .error reason
           | .ok none => return .ok none
           | .ok (some rest) =>
-              if rest.length < input.length then return recognize grammar fuel (.star child) rest
+              if rest.length < input.length then return recognizeEnv grammar env fuel (.star child) rest
               return .error "zero-width repetition"
       | .opt child =>
-          match recognize grammar fuel child input with
+          match recognizeEnv grammar env fuel child input with
           | .error reason => return .error reason
           | .ok none => return .ok (some input)
           | .ok hit => return .ok hit
       | .andPred child =>
-          match recognize grammar fuel child input with
+          match recognizeEnv grammar env fuel child input with
           | .error reason => return .error reason
           | .ok none => return .ok none
           | .ok (some _) => return .ok (some input)
       | .notPred child =>
-          match recognize grammar fuel child input with
+          match recognizeEnv grammar env fuel child input with
           | .error reason => return .error reason
           | .ok none => return .ok (some input)
           | .ok (some _) => return .ok none
-      | .capture child => return recognize grammar fuel child input
-      | .label child _ => return recognize grammar fuel child input
-      | .discard child => return recognize grammar fuel child input
-      | .bind _ child => return recognize grammar fuel child input
-      | .semanticPred _ _ => return .error "opaque semantic predicate"
+      | .capture child => return recognizeEnv grammar env fuel child input
+      | .label child _ => return recognizeEnv grammar env fuel child input
+      | .discard child => return recognizeEnv grammar env fuel child input
+      | .bind _ child => return recognizeEnv grammar env fuel child input
+      | .semanticPred positive source =>
+          match predicate env source with
+          | none => return .error "opaque semantic predicate"
+          | some hit => return .ok (if hit == positive then some input else none)
       | .template name _ _ => return .error s!"opaque template {name}"
+
+def recognize (grammar : Grammar) (fuel : Nat) (expr : Expr) (input : List Char) : ParseResult :=
+  recognizeEnv grammar [] fuel expr input
 
 def recognizeStart (grammar : Grammar) (fuel : Nat) (input : List Char) : ParseResult :=
   recognize grammar fuel (.ref grammar.start []) input
