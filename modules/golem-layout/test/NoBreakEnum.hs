@@ -436,15 +436,15 @@ noBreakTests =
       _ : rest -> xs : tailsOf rest
 
 -- | Apply the original S1 predicate to boxes composed with measured words.
-realProbe :: (Text -> Rational) -> (Int,[String])
+realProbe :: (Text -> Rational) -> (Int, [String])
 realProbe word =
   let measures = env {ceWordAdvance = const word}
-      atoms = [(PText t,b) | t <- ["A","V","f","i","\xAD"], b <- [False,True]]
-      original = [(p,b) | p <- nbParts, b <- [False,True]]
-      originalRuns = [] : [[a] | a <- original] ++ [[a,b] | a <- original, b <- original]
-      latinRuns = [] : [[a] | a <- atoms] ++ [[a,b] | a <- atoms, b <- atoms] ++ [[a,b,c] | a <- atoms, b <- atoms, c <- atoms]
+      atoms = [(PText t, b) | t <- ["A", "V", "f", "i", "\xAD"], b <- [False, True]]
+      original = [(p, b) | p <- nbParts, b <- [False, True]]
+      originalRuns = [] : [[a] | a <- original] ++ [[a, b] | a <- original, b <- original]
+      latinRuns = [] : [[a] | a <- atoms] ++ [[a, b] | a <- atoms, b <- atoms] ++ [[a, b, c] | a <- atoms, b <- atoms, c <- atoms]
       cases = [Input 0 run 0 3 | run <- originalRuns ++ latinRuns]
       checks i =
         let compose s = fst (composeInlines measures (inlinesWith s i))
-        in s1With measures i (compose "no-break") (compose "nb-off")
+         in s1With measures i (compose "no-break") (compose "nb-off")
    in (length cases, [show i ++ ": " ++ show (map violationDetail vs) | i <- cases, let vs = checks i, not (null vs)])

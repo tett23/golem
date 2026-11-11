@@ -23,17 +23,21 @@ wordWidth :: Font -> Text -> Rational
 wordWidth font text = advance font text % fromIntegral (fontUnitsPerEm font)
 
 noBreakShapeTests :: TestTree
-noBreakShapeTests = testGroup "Golem ADR 0314"
-  [ testCase "H1: Source Sans Pro AV has a pair advance" $ do
-      font <- loadTestFont "SourceSansPro-Regular.otf"
-      let joined = wordWidth font "AV"
-          separate = wordWidth font "A" + wordWidth font "V"
-      assertBool "Source Sans Pro must exercise pair adjustment" (joined /= separate),
-    testCase "S1: real font advances preserve every small no-break range" $
-      mapM_ (\name -> do
-        font <- loadTestFont name
-        let (count, failures) = realProbe (wordWidth font)
-        assertEqual name 1814 count
-        assertEqual name [] (take 1 failures))
-        ["SourceSansPro-Regular.otf", "SourceSerifVariable-Roman.ttf", "SourceHanSans-Regular_subset.otf"]
-  ]
+noBreakShapeTests =
+  testGroup
+    "Golem ADR 0314"
+    [ testCase "H1: Source Sans Pro AV has a pair advance" $ do
+        font <- loadTestFont "SourceSansPro-Regular.otf"
+        let joined = wordWidth font "AV"
+            separate = wordWidth font "A" + wordWidth font "V"
+        assertBool "Source Sans Pro must exercise pair adjustment" (joined /= separate),
+      testCase "S1: real font advances preserve every small no-break range" $
+        mapM_
+          ( \name -> do
+              font <- loadTestFont name
+              let (count, failures) = realProbe (wordWidth font)
+              assertEqual name 1814 count
+              assertEqual name [] (take 1 failures)
+          )
+          ["SourceSansPro-Regular.otf", "SourceSerifVariable-Roman.ttf", "SourceHanSans-Regular_subset.otf"]
+    ]
