@@ -35,6 +35,7 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import PositionEnumSpec (positionEnumTests)
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
 import StaleS1Spec (staleS1Tests)
@@ -111,6 +112,7 @@ tests =
   testGroup
     "golem-lsp (ADR 0001)"
     [ fileRenameTests,
+      positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
       testCase "definition: label across files, import path, namespaced variable" $ do
