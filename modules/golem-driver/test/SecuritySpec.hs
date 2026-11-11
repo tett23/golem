@@ -13,7 +13,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing, createDirectoryLink, createFileLink, doesFileExist, pathIsSymbolicLink)
+import System.Directory (createDirectoryIfMissing, createDirectoryLink, createFileLink, doesDirectoryExist, doesFileExist, pathIsSymbolicLink)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -110,6 +110,19 @@ securityTests =
         _ <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
         pathIsSymbolicLink (root </> ".DS_Store") >>= (@?= True)
         BS.readFile (outside </> "precious") >>= (@?= "keep me"),
+      testCase "Golem ADR 0329 O4: Finder cleanup stays in real visible project folders" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        let root = tmp </> "project"
+            outside = tmp </> "outside"
+        createDirectoryIfMissing True (root </> ".hidden")
+        createDirectoryIfMissing True (root </> "directory/.DS_Store")
+        createDirectoryIfMissing True outside
+        createDirectoryLink outside (root </> "link")
+        BS.writeFile (root </> ".hidden/.DS_Store") "hidden"
+        BS.writeFile (outside </> ".DS_Store") "outside"
+        cleanFinderInfo root [".hidden", "directory", "link", "../outside"]
+        BS.readFile (root </> ".hidden/.DS_Store") >>= (@?= "hidden")
+        BS.readFile (outside </> ".DS_Store") >>= (@?= "outside")
+        doesDirectoryExist (root </> "directory/.DS_Store") >>= (@?= True),
       testCase "build/html as a symbolic link to a folder inside the project is G08013 (docs/adr ADR 0076)" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "build")
         project tmp "" horizontalStyle "本文。\n" []
