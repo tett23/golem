@@ -29,6 +29,15 @@ theorem ordered_choice_first (grammar : PegModel.Grammar) (first : PegModel.Expr
   simp [PegModel.recognize, hit, Id.run]
   rfl
 
+theorem ordered_choice_fallback (grammar : PegModel.Grammar)
+    (first second : PegModel.Expr) (input rest : List Char) (fuel : Nat)
+    (miss : PegModel.recognize grammar fuel first input = .ok none)
+    (hit : PegModel.recognize grammar fuel second input = .ok (some rest)) :
+    PegModel.recognize grammar (fuel + 1) (.choice [[first], [second]]) input =
+      .ok (some rest) := by
+  simp [PegModel.recognize, miss, hit, Id.run]
+  rfl
+
 theorem repeated_a_roundtrip (grammar : PegModel.Grammar) (count : Nat) :
     PegModel.recognize grammar (count + 2) (.star (.lit "a" "'a'"))
       (List.replicate count 'a') = .ok (some []) := by
