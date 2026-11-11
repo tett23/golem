@@ -52,7 +52,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 #if !defined(wasm32_HOST_ARCH)
-import Control.Exception (bracket)
+import Control.Exception qualified as Exception
 #endif
 import Control.Monad (filterM, forM, forM_, join, mfilter, when)
 import Data.Bifunctor (first)
@@ -767,7 +767,7 @@ withOutputLock :: FilePath -> IO a -> IO a
 withOutputLock root action = do
   exists <- doesDirectoryExist root
   if exists
-    then bracket (openFd root ReadOnly defaultFileFlags) closeFd $ \(Fd fd) -> do
+    then Exception.bracket (openFd root ReadOnly defaultFileFlags) closeFd $ \(Fd fd) -> do
       throwErrnoIfMinus1Retry_ "lock project directory" (lockDirectory fd)
       action
     else action
