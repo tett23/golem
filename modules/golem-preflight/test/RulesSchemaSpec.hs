@@ -87,7 +87,7 @@ tests =
           (keyPaths rulesSchema),
       testCase "the enumerations of severity, based-on and allowed" $ do
         map fst levelValues @?= ["error", "warning", "off"]
-        map fst builtinRules @?= ["basic", "print", "none"]
+        map fst builtinRules @?= ["basic", "print", "screen", "none"]
         fontFormatValues @?= ["cff", "cff2", "truetype"]
         colorSpaceValues @?= ["cmyk", "gray", "rgb"],
       testCase "an unknown key of a check: G09001 at the key, with its path" $
@@ -102,7 +102,7 @@ tests =
       testCase "a severity outside its values keeps its message" $
         errorsOf "[pdf-x]\nseverity = \"notice\"\n" @?= [("G09001", "severity の値が正しくありません: notice（error、warning、off のどれかにします） (pdf-x.severity)", 1)],
       testCase "a based-on outside its values keeps its message" $
-        errorsOf "based-on = \"strict\"\n" @?= [("G09001", "based-on の値が正しくありません: strict（basic、print、none のどれかにします） (based-on)", 0)],
+        errorsOf "based-on = \"strict\"\n" @?= [("G09001", "based-on の値が正しくありません: strict（basic、print、screen、none のどれかにします） (based-on)", 0)],
       testCase "an allowed outside its values keeps its message" $
         errorsOf "[font-formats]\nallowed = [\"otf\"]\n" @?= [("G09001", "allowed の値が正しくありません: otf（cff、cff2、truetype のどれかにします） (font-formats.allowed)", 1)]
     ]

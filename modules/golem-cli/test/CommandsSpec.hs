@@ -7,6 +7,8 @@ that are rejected or artifacts that are already in the cache.
 module CommandsSpec (commandsTests) where
 
 import Control.Monad (forM_)
+import Data.Aeson qualified as J
+import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
@@ -14,12 +16,14 @@ import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
 import Golem.Doc.Cbor (encodeDocument)
-import Golem.Driver (Evaluated (..), evaluateProject)
+import Golem.Driver (CropMarks (NoMarks), Evaluated (..), Target (TargetHtml), evaluateProject)
 import Golem.Eval.File (EvalResult (..))
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
 import Golem.Syntax.ShowTree (showTree)
+import Golem.TestSupport.Heading (headingLimitSource)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeDirectoryRecursive)
 import System.Environment (getEnvironment)
@@ -34,7 +38,7 @@ commandsTests :: TestTree
 commandsTests =
   testGroup
     "commands on a project"
-    [newTests, templateBuildTests, tablePathTests, inspectTests, fmtTests, pluginTests, preflightTests]
+    [newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
 
 -- ------------------------------------------------------------------ helpers
 
@@ -106,6 +110,46 @@ twoChapters = [("manifest.toml", manifestWith ["a.gm", "b.gm"]), ("style.toml", 
 manifestWith :: [T.Text] -> String
 manifestWith chapters = T.unpack (manifestToml testManifest {tmChapters = chapters})
 
+{- | Compare each command with literal source spans. In particular, do
+not deduplicate or sort its diagnostics before checking them.
+-}
+headingLimitTests :: TestTree
+headingLimitTests =
+  testGroup
+    "heading-limit"
+    [ testCase ("H1/H2/C1: " <> scenario <> " " <> name) $
+        withSystemTempDirectory "golem-heading" $ \dir -> do
+          let manifest = T.replace "chapters = [\"a.gm\"]" ("chapters = " <> chapters) (manifestToml testManifest)
+          writeFiles dir (("manifest.toml", T.unpack manifest) : [(file, T.unpack text) | (file, text) <- files])
+          (exit, err) <- jsonResult <$> runBuild dir mode Dev NoMarks False False
+          assertEqual (T.unpack err) (ExitFailure 1) exit
+          let decoded = J.eitherDecodeStrict (TE.encodeUtf8 err) :: Either String [J.Value]
+              spans = decoded >>= parseEither (mapM headingSpan)
+          fmap concat spans @?= Right wanted
+    | (scenario, chapters, files, wanted) <- scenarios,
+      (name, mode) <- [("check", CheckOnly), ("build --target html", WriteTargets [TargetHtml])]
+    ]
+  where
+    two file = [expected file 23 29 5, expected file 46 49 9]
+    one file = [expected file 23 29 5]
+    firstHeading = T.unlines (take 5 (T.lines headingLimitSource))
+    importing = "@import shared.gm as common\n"
+    scenarios =
+      [ ("identical files", "[\"a.gm\", \"b.gm\"]", [("a.gm", firstHeading), ("b.gm", firstHeading)], one "a.gm" <> one "b.gm"),
+        ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
+        ("nested", "[[\"a.gm\"]]", [("a.gm", headingLimitSource)], two "a.gm"),
+        ("repeat", "[\"a.gm\", \"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
+        ("two", "[\"a.gm\", \"b.gm\"]", [("a.gm", headingLimitSource), ("b.gm", firstHeading)], two "a.gm" <> one "b.gm"),
+        ("shared", "[\"a.gm\", \"b.gm\"]", [("a.gm", importing), ("b.gm", importing), ("shared.gm", firstHeading)], one "shared.gm"),
+        ("chapter-import", "[\"a.gm\", \"shared.gm\"]", [("a.gm", importing), ("shared.gm", firstHeading)], one "shared.gm")
+      ]
+    headingSpan :: J.Value -> Parser [J.Value]
+    headingSpan = J.withObject "diagnostic" $ \d -> do
+      code <- d J..: "code"
+      if code == ("G01012" :: T.Text) then pure <$> d J..: "span" else pure []
+    expected :: T.Text -> Int -> Int -> Int -> J.Value
+    expected file start end line = J.object ["file" J..= file, "start" J..= start, "end" J..= end, "line" J..= line, "column" J..= (7 :: Int)]
+
 -- ------------------------------------------------------------------ golem new (golem-cli ADR 0003, ADR 0006)
 
 newTests :: TestTree
@@ -117,6 +161,13 @@ newTests =
         assertEqual err ExitSuccess code
         files <- filesUnder (tmp </> "book")
         files @?= [".gitignore", "chapters/01.gm", "manifest.toml", "preflight.toml", "style.toml"],
+      testCase "Golem ADR 0327 S2: new --screen writes screen rules and no bleed" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts", "--screen"]
+        assertEqual err ExitSuccess code
+        rules <- readUtf8 (tmp </> "book/preflight.toml")
+        style <- readUtf8 (tmp </> "book/style.toml")
+        rules @?= "based-on = \"screen\"\n"
+        assertBool style (not ("bleed =" `isInfixOf` style)),
       testCase "--no-fonts names the Japanese font and its licence to place, with their URLs" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         (_, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
         lines err
