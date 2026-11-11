@@ -1,13 +1,19 @@
 module Main (main) where
 
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
 import Golem.Fmt
+import Golem.Parser (parse)
+import Golem.Syntax
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Peg.Grammar qualified as Grammar
+import Peg.Grammar.Parser (parseGrammar)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
@@ -15,6 +21,69 @@ import Test.Tasty.Hedgehog (testProperty)
 
 main :: IO ()
 main = defaultMain tests
+
+-- The alternatives come from the grammar used by the parser, not a second
+-- handwritten list of accepted heading marks (Golem ADR 0310).
+grammarHeadings :: IO [Text]
+grammarHeadings = do
+  source <- TIO.readFile "../golem-parser/grammar/Golem.hpeg"
+  grammar <- either (fail . show) pure (parseGrammar source)
+  let hashRules = [rule | rule <- Grammar.grammarRules grammar, Grammar.ruleName rule == "HashMark"]
+  case hashRules of
+    [rule] -> mapM headingLiteral (Grammar.ruleAlts rule)
+    _ -> fail ("HashMark: expected one rule, found " <> show (length hashRules))
+  where
+    headingLiteral alt = case Grammar.altItems alt of
+      [item] -> case Grammar.itemExpr item of
+        Grammar.ELit literal _ -> pure literal
+        expression -> fail ("HashMark: unsupported expression " <> show expression)
+      items -> fail ("HashMark: unsupported alternative " <> show items)
+
+grammarRoundTrips :: TestTree
+grammarRoundTrips =
+  testGroup
+    "Golem ADR 0310"
+    [ testCase "G1: generated manuscripts retain syntax" $ do
+        marks <- grammarHeadings
+        let letters = ["a", "漢", "😀"]
+            manuscripts =
+              ""
+                : [mark <> " " <> letter <> "\n" | mark <- marks, letter <- letters]
+                ++ [a <> "\n\n" <> b | a <- letters, b <- letters]
+        mapM_
+          ( \source -> case format source of
+              Formatted result -> do
+                assertEqual ("source: " <> show source) [] (snd (parse (FileId 0) source))
+                assertEqual ("source: " <> show source) (astFingerprint source) (astFingerprint result)
+              Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
+          )
+          manuscripts,
+      testCase "G2: generated manuscripts format idempotently" $ do
+        marks <- grammarHeadings
+        let letters = ["a", "漢", "😀"]
+            manuscripts =
+              ""
+                : [mark <> " " <> letter <> "\n" | mark <- marks, letter <- letters]
+                ++ [a <> "\n\n" <> b | a <- letters, b <- letters]
+        mapM_
+          ( \source -> case format source of
+              Formatted once -> case format once of
+                Formatted twice -> assertEqual ("source: " <> show source) once twice
+                Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
+              Unformattable diagnostics -> assertFailure ("source: " <> show source <> ": " <> show diagnostics)
+          )
+          manuscripts,
+      testCase "G3: a seventh hash starts G01012 at its generated UTF-8 offset" $ do
+        let prefixes = ["", "a\n\n", "漢\n\n", "😀\n\n"]
+        mapM_
+          ( \prefix -> do
+              let source = prefix <> "####### a\n"
+                  offset = BS.length (TE.encodeUtf8 prefix) + 6
+                  positions = [spanStart (diagSpan issue) | issue <- snd (parse (FileId 0) source), diagCode issue == DiagnosticCode "G01012"]
+              assertEqual ("source: " <> show source) [offset] positions
+          )
+          prefixes
+    ]
 
 spaces :: Gen Text
 spaces = Gen.element ["", " ", "  ", "   "]
@@ -184,7 +253,8 @@ tests =
         ],
       testCase "code blocks and comments are untouched" $
         formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n",
-      tableTests
+      tableTests,
+      grammarRoundTrips
     ]
 
 -- | The preprocessing of the table files (docs/adr/0186).
