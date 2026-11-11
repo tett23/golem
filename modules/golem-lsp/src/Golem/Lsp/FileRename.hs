@@ -1,5 +1,5 @@
 -- | Path component matching for file and folder rename operations (Golem ADR 0338).
-module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetImports, planManifest, planStyle, planPlotCsv) where
+module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetImports, planManifest, planStyle, planPlotCsv, planWiki) where
 
 import Control.Monad (forM)
 import Data.ByteString qualified as BS
@@ -21,7 +21,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Project.Manifest (positionSpan, readTomlTable)
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Syntax (FileId (..), SrcSpan (..))
-import System.FilePath (joinPath, splitDirectories)
+import System.FilePath (joinPath, splitDirectories, takeBaseName, takeDirectory, takeExtension, (</>))
 import Toml.Semantics (Table' (..), Value' (..))
 import Toml.Syntax (Position)
 
@@ -361,3 +361,117 @@ csvRows bytes = rows 0
       | byte i /= 34 = quotedEnd (i + 1)
       | i + 1 < lengthOfInput && byte (i + 1) == 34 = quotedEnd (i + 2)
       | otherwise = Right (i + 1)
+
+-- | Rewrite the target of Aleph Wiki links using its complete sheet list.
+-- Paths in this function are relative to Aleph's workspace, not Golem's root.
+planWiki :: [(FilePath, FilePath)] -> FilePath -> [(FilePath, Maybe Text)] -> Text -> Either String [(Int, Int, Text)]
+planWiki operations sourcePath sheets source = do
+  newSource <- renamePath operations sourcePath
+  let movedSheets = [(either (const path) id (renamePath operations path), title) | (path, title) <- sheets]
+  concat <$> traverse (oneLink newSource movedSheets) (wikiLinks source)
+  where
+    oneLink newSource movedSheets (start, end, written) =
+      case wikiResolve sourcePath sheets written of
+        Nothing -> Right []
+        Just (oldTarget, byPath, relative) -> do
+          newTarget <- renamePath operations oldTarget
+          let replacement
+                | not byPath = T.pack (takeBaseName newTarget)
+                | otherwise =
+                    let base = if relative then takeDirectory newSource else "."
+                        rel = wikiRelative base newTarget
+                     in T.pack (if takeExtension (T.unpack written) == "" && takeExtension rel == ".md" then dropExtension rel else rel)
+              resolvesSame = case wikiResolve newSource movedSheets written of
+                Just (path, _, _) -> path == newTarget
+                Nothing -> False
+          pure (if resolvesSame || replacement == written then [] else [(start, end, replacement)])
+    dropExtension path = take (length path - length (takeExtension path)) path
+
+wikiResolve :: FilePath -> [(FilePath, Maybe Text)] -> Text -> Maybe (FilePath, Bool, Bool)
+wikiResolve source sheets written
+  | T.any (== '/') written || hasKnownExtension text =
+      let withExt = if hasKnownExtension text then text else text <> ".md"
+          relative = wikiPath (takeDirectory source </> withExt)
+          rooted = wikiPath withExt
+          present path = path `elem` map fst sheets
+       in case relative of
+            Just path | present path -> Just (path, True, True)
+            _ -> case rooted of
+              Just path | present path -> Just (path, True, False)
+              _ -> Nothing
+  | otherwise =
+      let byName = [path | (path, _) <- sheets, T.pack (takeBaseName path) == written]
+          byTitle = [path | (path, Just title) <- sheets, title == written]
+          candidates = if null byName then byTitle else byName
+          ranked = sortOn (\path -> (if null byName then 0 :: Int else kindRank path, wikiDistance source path)) candidates
+       in case ranked of
+            [] -> Nothing
+            [best] -> Just (best, False, False)
+            best : second : _
+              | (if null byName then 0 else kindRank best, wikiDistance source best)
+                  == (if null byName then 0 else kindRank second, wikiDistance source second) -> Nothing
+              | otherwise -> Just (best, False, False)
+  where
+    text = T.unpack written
+    hasKnownExtension path = takeExtension path `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
+    kindRank path | takeExtension path == ".md" = 0
+    kindRank path | takeExtension path == ".gm" = 1
+    kindRank _ = 2
+
+wikiDistance :: FilePath -> FilePath -> Int
+wikiDistance source target =
+  let a = splitDirectories (takeDirectory source)
+      b = splitDirectories (takeDirectory target)
+      shared = length (takeWhile id (zipWith (==) a b))
+   in length a + length b - 2 * shared
+
+wikiRelative :: FilePath -> FilePath -> FilePath
+wikiRelative base target =
+  let a = if base == "." then [] else splitDirectories base
+      b = splitDirectories target
+      shared = length (takeWhile id (zipWith (==) a b))
+   in joinPath (replicate (length a - shared) ".." <> drop shared b)
+
+wikiPath :: FilePath -> Maybe FilePath
+wikiPath path = joinPath . reverse <$> foldl step (Just []) (splitDirectories path)
+  where
+    step Nothing _ = Nothing
+    step acc "." = acc
+    step acc "" = acc
+    step (Just (_ : rest)) ".." = Just rest
+    step (Just []) ".." = Nothing
+    step (Just parts) part = Just (part : parts)
+
+-- | Byte ranges of link targets, excluding headings and labels. Fenced and
+-- inline code, escaped opens, and malformed links are not references.
+wikiLinks :: Text -> [(Int, Int, Text)]
+wikiLinks source = concat (snd (foldl line (False, []) (zip [0 ..] (T.splitOn "\n" source))))
+  where
+    line (fenced, found) (lineNo, content)
+      | let stripped = T.stripStart content,
+        "```" `T.isPrefixOf` stripped || "~~~" `T.isPrefixOf` stripped = (not fenced, found <> [[]])
+      | fenced = (fenced, found <> [[]])
+      | otherwise =
+          let base = BS.length (TE.encodeUtf8 (T.intercalate "\n" (take lineNo (T.splitOn "\n" source)))) + if lineNo == 0 then 0 else 1
+           in (False, found <> [scan base content 0])
+    scan base content index
+      | index >= T.length content = []
+      | T.index content index == '\\' = scan base content (index + 2)
+      | T.index content index == '`' =
+          let rest = T.drop (index + 1) content
+              (before, after) = T.breakOn "`" rest
+           in scan base content (if T.null after then index + 1 else index + 2 + T.length before)
+      | "[[" `T.isPrefixOf` T.drop index content =
+          let innerStart = index + 2
+              (inner, close) = T.breakOn "]]" (T.drop innerStart content)
+              beforeLabel = fst (T.breakOn "|" inner)
+              beforeHeading = fst (T.breakOn "#" beforeLabel)
+              target = T.strip beforeHeading
+              lead = T.length beforeHeading - T.length (T.stripStart beforeHeading)
+              start = innerStart + lead
+              byteAt offset = base + BS.length (TE.encodeUtf8 (T.take offset content))
+              next = innerStart + T.length inner + 2
+           in if T.null close || T.any (`elem` ("[]" :: String)) inner
+                then scan base content (index + 2)
+                else (if T.null target then [] else [(byteAt start, byteAt (start + T.length target), target)]) <> scan base content next
+      | otherwise = scan base content (index + 1)

@@ -136,6 +136,7 @@ serverDefinition encVar initIdVar = do
   gen <- newTVarIO 0
   rootVar <- newTVarIO "."
   plotVar <- newTVarIO Nothing
+  wikiVar <- newTVarIO Nothing
   watchVar <- newTVarIO Nothing
   lock <- newMVar ()
   dirtyVar <- newTVarIO Set.empty
@@ -152,10 +153,11 @@ serverDefinition encVar initIdVar = do
           atomically $ do
             writeTVar rootVar root
             writeTVar plotVar (alephPlot root params)
+            writeTVar wikiVar (alephWiki root params)
             writeTVar encVar (F.chooseEncoding (offeredEncodings params))
             writeTVar initIdVar (Just lid)
           pure (Right env),
-        staticHandlers = \_ -> handlers encVar rootVar plotVar wsVar gen watchVar lock dirtyVar pubVar,
+        staticHandlers = \_ -> handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
@@ -180,6 +182,33 @@ alephPlot root params = do
   guard (makeRelative root path == "plot.csv")
   pure "plot.csv"
 
+-- | Aleph supplies the complete set of visible sheets for one workspace.
+-- Absence of any field leaves Wiki links disabled for this client.
+alephWiki :: FilePath -> InitializeParams -> Maybe (FilePath, [(FilePath, Maybe Text)])
+alephWiki root params = do
+  J.Object fields <- pure (J.toJSON params)
+  J.Object options <- KM.lookup "initializationOptions" fields
+  J.Object aleph <- KM.lookup "aleph" options
+  J.String workspaceUri <- KM.lookup "workspaceUri" aleph
+  workspace <- uriToFilePath (Uri workspaceUri)
+  guard (within workspace root)
+  raw <- KM.lookup "wikiSheets" aleph
+  J.Success entries <- pure (J.fromJSON raw :: J.Result [J.Value])
+  sheets <- traverse (sheet workspace) entries
+  pure (workspace, sheets)
+  where
+    within base path = either (const False) (const True) (normalizeRelative (makeRelative base path)) || base == path
+    sheet workspace (J.Object fields) = do
+      J.String uri <- KM.lookup "uri" fields
+      path <- uriToFilePath (Uri uri)
+      guard (within workspace path)
+      title <- case KM.lookup "title" fields of
+        Just (J.String value) -> Just (Just value)
+        Just J.Null -> Just Nothing
+        _ -> Nothing
+      pure (makeRelative workspace path, title)
+    sheet _ _ = Nothing
+
 -- | @capabilities.general.positionEncodings@ of the initialize request.
 offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
 offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ general _) _ _ _) =
@@ -188,8 +217,8 @@ offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ gener
 -- | The registration of the watched table files (golem-eval ADR 0004).
 type WatchToken = RegistrationToken Method_WorkspaceDidChangeWatchedFiles
 
-handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe FilePath) -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
-handlers encVar rootVar plotVar wsVar gen watchVar lock dirtyVar pubVar =
+handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe FilePath) -> TVar (Maybe (FilePath, [(FilePath, Maybe Text)])) -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
+handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_ -> do
         root <- liftIO (readTVarIO rootVar)
@@ -248,23 +277,34 @@ handlers encVar rootVar plotVar wsVar gen watchVar lock dirtyVar pubVar =
           (Nothing, _) -> respond (Right (InR Null))
           (Just ws, Right pairs) -> do
             plot <- liftIO (readTVarIO plotVar)
-            planned <- forM (["manifest.toml", "style.toml"] <> wsSourceFiles ws <> maybe [] pure plot) $ \p -> do
-              safe <- liftIO (resolveInRoot (stRoot st) p)
-              if (p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"] && Just p /= plot) || either (const True) (const False) safe
+            wiki <- liftIO (readTVarIO wikiVar)
+            let projectFiles = [(stRoot st </> p, Nothing) | p <- ["manifest.toml", "style.toml"] <> wsSourceFiles ws <> maybe [] pure plot]
+                wikiFiles = maybe [] (\(root, sheets) -> [(root </> p, Just p) | (p, _) <- sheets, takeExtension p == ".md"]) wiki
+                wikiPairs = maybe [] (\(root, _) -> [(makeRelative root (stRoot st </> from), makeRelative root (stRoot st </> to)) | (from, to) <- pairs]) wiki
+            planned <- forM (projectFiles <> wikiFiles) $ \(path, wikiSource) -> do
+              let p = makeRelative (stRoot st) path
+                  (safeRoot, safePath) = case (wikiSource, wiki) of
+                    (Just wikiPath, Just (root, _)) -> (root, wikiPath)
+                    _ -> (stRoot st, p)
+              safe <- liftIO (resolveInRoot safeRoot safePath)
+              exists <- liftIO (doesFileExist path)
+              if (wikiSource == Nothing && p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"] && Just p /= plot) || either (const True) (const False) safe || not exists
                 then pure (Right Nothing)
                 else do
-                  let uri = filePathToUri (stRoot st </> p)
+                  let uri = filePathToUri path
                   vf <- getVirtualFile (toNormalizedUri uri)
                   disk <- case vf of
                     Just _ -> pure Nothing
                     Nothing -> liftIO $ do
-                      bytes <- BS.readFile (stRoot st </> p)
+                      bytes <- BS.readFile path
                       pure (either (const Nothing) Just (TE.decodeUtf8' bytes))
                   let content = maybe disk (Just . virtualFileText) vf
                       version = maybe (InR Null) (InL . _lsp_version) vf
                   case content of
                     Nothing -> pure (Right Nothing)
-                    Just source -> case (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if Just p == plot then R.planPlotCsv else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source of
+                    Just source -> case (case (wikiSource, wiki) of
+                      (Just wikiPath, Just (_, sheets)) -> R.planWiki wikiPairs wikiPath sheets source
+                      _ -> (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if Just p == plot then R.planPlotCsv else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source) of
                       Left err -> pure (Left err)
                       Right edits -> do
                         let li = S.mkLineIndex source

@@ -3,7 +3,7 @@ module FileRenameSpec (fileRenameTests) where
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planPlotCsv, planStyle, renamePath, validateRenames)
+import Golem.Lsp.FileRename (planEmetImports, planImports, planManifest, planPlotCsv, planStyle, planWiki, renamePath, validateRenames)
 import Golem.Lsp.Workspace (openWorkspace, renameWorkspace, updateFile, wsOverlay, wsSourceFiles)
 import System.Directory (createDirectory, renameDirectory)
 import System.FilePath ((</>))
@@ -84,6 +84,18 @@ fileRenameTests =
             length edits @?= 2
             foldr (\(start, end, replacement) text -> T.take start text <> replacement <> T.drop end text) source edits
               @?= "scene,file,memo\none,\"parts/a,1.gm\",\"chapters/a,1.gm\"\ntwo,parts/a.gm,note\n",
+      testCase "R1: Wiki links follow a moved target and preserve heading and label" $ do
+        let sheets = [("notes/a.md", Nothing), ("notes/target.md", Nothing)]
+        planWiki [("notes/target.md", "notes/new.md")] "notes/a.md" sheets "[[target#Heading|Label]]\n"
+          @?= Right [(2, 8, "new")],
+      testCase "R1: moving a Wiki source rebases a relative path but not a title" $ do
+        let sheets = [("notes/a.md", Nothing), ("notes/target.md", Nothing), ("chapters/other.md", Just "Target")]
+        planWiki [("notes/a.md", "chapters/a.md")] "notes/a.md" sheets "[[target.md]] [[Target]]\n"
+          @?= Right [(2, 11, "../notes/target.md")],
+      testCase "R4: Wiki parser ignores code spans, fences and an ambiguous name" $ do
+        let sheets = [("notes/a.md", Nothing), ("one/target.md", Nothing), ("two/target.md", Nothing)]
+        planWiki [("one/target.md", "one/new.md")] "notes/a.md" sheets "`[[target]]`\n```\n[[target]]\n```\n[[target]]\n"
+          @?= Right [],
       testCase "R3: didRename discards old overlays and refreshes the source index" $
         withSystemTempDirectory "golem-rename" $ \root -> do
           createDirectory (root </> "part")
