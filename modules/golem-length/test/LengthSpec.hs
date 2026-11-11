@@ -49,7 +49,14 @@ tests =
         ],
       testGroup
         "toSp"
-        [ testCase "1pt is 65536sp" $ toSp Pt 1 @?= 65536,
+        [ testCase "L1 (Golem ADR 0312): 325 signed half-sp values round to even in all absolute units" $ do
+            let units = [(Pt, 65536), (Mm, 23592960 % 127), (In, 4718592), (Q, 5898240 % 127), (H, 5898240 % 127)]
+                nearestEven n = let (quotient, remainder) = n `divMod` 2
+                  in quotient + if remainder == 1 && odd quotient then 1 else 0
+            mapM_ (\(n, unit, scale) ->
+              assertEqual (show (n, unit)) (Sp (nearestEven n)) (toSp unit (n % 2 / scale)))
+              [(n, unit, scale) | n <- [-32 .. 32], (unit, scale) <- units],
+          testCase "1pt is 65536sp" $ toSp Pt 1 @?= 65536,
           testCase "1in is 72pt" $ toSp In 1 @?= 4718592,
           testCase "25.4mm is 1in" $ toSp Mm (254 % 10) @?= 4718592,
           testCase "4Q is 1mm" $ toSp Q 4 @?= toSp Mm 1,

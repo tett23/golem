@@ -20,7 +20,7 @@ import Golem.Layout.PageLabel (PageLabel (..), Section (..), pageLabelText)
 import Golem.Layout.Paginate
 import Golem.Layout.Paginate.State qualified as S
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
-import Golem.Length (Sp)
+import Golem.Length (Sp (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -31,11 +31,34 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 
+headingRoundingCases :: [(Integer, Integer, Integer, Int, Int)]
+headingRoundingCases =
+  [ (fontSize, bodyPitch, headingSize, linesCount, minimumLines)
+  | fontSize <- [1 .. 4], bodyPitch <- [fontSize .. 6], headingSize <- [1 .. 8],
+    linesCount <- [1 .. 3], minimumLines <- [1 .. 3]
+  ]
+
 paginateTests :: TestTree
 paginateTests =
   testGroup
     "pagination boundaries (golem-layout ADR 0003)"
-    [ testGroup "a heading kept with what follows" keepWithNextTests,
+    [ testCase "L2 (Golem ADR 0312): heading pitches round within half a sp and ties to even" $
+        forM_ headingRoundingCases $ \(fontSize, bodyPitch, headingSize, linesCount, minimumLines) -> do
+          let HeadingBlock (Sp pitch) _ _ = headingBlock (Sp fontSize) (Sp bodyPitch) (Sp headingSize) linesCount minimumLines
+              distance = abs (pitch * fontSize - bodyPitch * headingSize)
+          assertBool (show (fontSize, bodyPitch, headingSize, linesCount, minimumLines))
+            (2 * distance <= fontSize && (2 * distance /= fontSize || even pitch)),
+      testCase "L3 (Golem ADR 0312): heading span is minimal and vertical remainder is at most one sp" $
+        forM_ headingRoundingCases $ \(fontSize, bodyPitch, headingSize, linesCount, minimumLines) -> do
+          let HeadingBlock (Sp pitch) spanLines (Sp top) = headingBlock (Sp fontSize) (Sp bodyPitch) (Sp headingSize) linesCount minimumLines
+              extent = toInteger (linesCount - 1) * pitch + headingSize
+              area n = toInteger (n - 1) * bodyPitch + fontSize
+              remainder = area spanLines - extent - 2 * top
+          assertBool (show (fontSize, bodyPitch, headingSize, linesCount, minimumLines))
+            (spanLines >= minimumLines && area spanLines >= extent
+              && (spanLines == minimumLines || area (spanLines - 1) < extent)
+              && remainder `elem` [0, 1]),
+      testGroup "a heading kept with what follows" keepWithNextTests,
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
       testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
