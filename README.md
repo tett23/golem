@@ -320,6 +320,8 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 コードは `G` と、段階の 2 桁と番号の 3 桁からなる 5 桁の数字である（[docs/adr/0061](./docs/adr/0061-five-digit-diagnostic-codes.md)）。
 関数を書く言語 Emet のコードは `E` で始まる（[docs/adr/0160](./docs/adr/0160-emet-function-language-core.md)）。
 
+原稿から Emet のコマンドを呼ぶとき、位置引数が足りなければ、`golem check` は不足した引数が何番目かを一つずつ表示する（[Golem ADR 0351](./docs/adr/0351-prove-parser-formatter-round-trips.md)）。
+
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
 
 ## Development
