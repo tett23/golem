@@ -4444,6 +4444,113 @@ theorem keepHeadingWidow (capacity used : Nat) (items : List SourceItem)
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, widow, heading⟩
 
+theorem orphanEmpty (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      orphanModel used brk items config kept paragraphs := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, orphan, _, _⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, noSend, orphan⟩
+
+theorem widowEmpty (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      widowModel used brk items config kept paragraphs := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, _, widow, _⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, noSend, widow⟩
+
+theorem orphanWidow (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      orphanModel used brk items config kept paragraphs ∧
+      widowModel used brk items config kept paragraphs := by
+  obtain ⟨brk, kept, atTop, placed, rule, _, _, _, orphan, widow, _⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, orphan, widow⟩
+
+/- The command omits greedy filling; the same placement proves every
+   remaining boundary rule in the modeled inDomain inputs. -/
+theorem noneMeetsAllButGreedy (capacity used : Nat)
+    (items : List SourceItem) (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      figuresInOrder (figureCount config) kept ∧
+      (∀ f, f < figureCount config → kept f = true →
+        ∀ textPos, .text textPos ∈ items →
+          textPos < figurePosAt config f →
+            textHereAtBreak items brk textPos = true) ∧
+      orphanModel used brk items config kept paragraphs ∧
+      widowModel used brk items config kept paragraphs ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  exact keep21 capacity used items config capacityPositive usedFits ordered
+    figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+    headingsValid keptLines
+
 /- This proves the keep-option command for any first/last bounds and
    keep-all flags once paragraph positions agree with the ordered source. -/
 theorem keepNone (capacity used : Nat) (items : List SourceItem)
@@ -4731,6 +4838,21 @@ theorem needMoreSpace46 :
 theorem needMoreSpace46Here :
     ∃ brk : Fin 3, brk.val = 2 ∧ space46Keeps brk ∧ 1 + brk.val ≤ 4 := by
   exact ⟨2, by decide, by simp [space46Keeps], by decide⟩
+
+theorem needMoreSome :
+    ∃ brk : Fin 3,
+      brk.val = 2 ∧ space46Keeps brk ∧
+      1 + brk.val ≤ 4 ∧ 1 < 3 ∧ 3 ≤ 4 := by
+  obtain ⟨brk, atTwo, keeps, fits⟩ := needMoreSpace46Here
+  exact ⟨brk, atTwo, keeps, fits, by decide, by decide⟩
+
+/- A single two-line need before one space and one body line can keep both
+   text items in a capacity-three column with one line already used. -/
+theorem needSpaceSome :
+    ∃ brk : Fin 3,
+      brk.val = 2 ∧ 1 + brk.val ≤ 3 ∧
+      3 - 1 ≥ 2 ∧ 1 + 1 + 1 ≤ 3 := by
+  exact ⟨2, by decide, by decide, by decide, by decide⟩
 
 /- Historical two-need input: capacity 3, one used line, need 1, space,
    need 3, then a one-line paragraph. The older P7 tests only the first
