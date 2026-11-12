@@ -1254,7 +1254,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [manuscripts, tables]
+        suite: [manuscripts, tables, arguments]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1272,11 +1272,12 @@ jobs:
         timeout-minutes: 10
         run: |
           chmod +x golem-linux-x86_64/golem
-          node --test experiments/parser-fmt-proof/"$SUITE"/*.test.mjs
           export GOLEM="$PWD/golem-linux-x86_64/golem"
+          node --test experiments/parser-fmt-proof/"$SUITE"/*.test.mjs
           case "$SUITE" in
             manuscripts) node experiments/parser-fmt-proof/manuscripts/check.mjs 2 ;;
             tables) node experiments/parser-fmt-proof/tables/check.mjs ;;
+            arguments) ;;
             *) exit 1 ;;
           esac
       - name: Save failing manuscripts and replay commands
