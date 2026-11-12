@@ -344,6 +344,11 @@ keepNoteTests =
     testCase "Golem ADR 0352 I3: headingFigureWaits model fixture sends the figure" $ do
       let ps = paginate 1 3 [heading 20, FFigure 99 3 [] [], FParagraph defaultKeep (lines' 30 1)]
       contents ps @?= [[SHeading 20 1, SLine 30], [SFigure 99]],
+    testCase "Golem ADR 0352 I3: heading paragraph, blank, figure fixture preserves order" $ do
+      let flows = [heading 20, FParagraph defaultKeep (lines' 30 2), FBlank mk 1, FFigure 99 1 [] []]
+          ps = paginate 1 3 flows
+      contents ps @?= [[SHeading 20 1, SLine 30, SLine 31], [SFigure 99]]
+      brokenOf [I3, I4, I5, P3, P4, P5] flows ps @?= [],
     testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]

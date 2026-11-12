@@ -124,14 +124,34 @@ run headingRunFixture {
     orphanH[p] and widowH[p] and keepHeading21[p] and
     lineAfterHeadings[p]
 } for 5 but 5 Int, exactly 4 Placement, exactly 3 Item
+
+run headingBlankFigureParagraphFixture {
+  inDomain26 and no Recto
+  Col.cap = 3 and Col.used = 0
+  #Heading = 1 and #Line = 2 and #Para = 1 and
+    #Figure = 1 and #Blank = 1
+  no Space and no Need
+  all h: Heading | h.pos = 0
+  all l: Line | l.pos = 1 or l.pos = 2
+  all b: Blank | b.pos = 3
+  all f: Figure | f.pos = 4 and f.size = 1
+  some p: Placement | p.brk = 2 and no p.kept and
+    no p.placed and base26[p] and blankWithNext[p] and
+    orphanH[p] and widowH[p] and keepHeading21[p] and
+    lineAfterHeadings[p]
+} for 6 but 5 Int, exactly 16 Placement, exactly 5 Item
 EOF
 
 for command in decidedFixture keepAllFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
-    rectoRunDifferenceFixture headingRunFixture; do
+    rectoRunDifferenceFixture headingRunFixture \
+    headingBlankFigureParagraphFixture; do
   JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$tmp" "${ALLOY:-alloy6}" exec -q -n -t text \
     -c "$command" -o - "$tmp/witnesses.als" > "$tmp/result"
-  grep -q '^---Trace---' "$tmp/result"
+  if ! grep -q '^---Trace---' "$tmp/result"; then
+    cat "$tmp/result" >&2
+    exit 1
+  fi
   echo "$command found"
 done
