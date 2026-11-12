@@ -187,6 +187,20 @@ theorem I3_relaxed_heading_paragraph_first_line
     have lineHeading := allHeading 1 (by omega)
     omega
 
+/- Outside Alloy's capacity-three lower bound, a one-line empty column
+   cannot keep both a heading and its following first body line. The
+   first-content rule forces break 1, while lineAfterHeadings forbids it. -/
+theorem I3_relaxed_heading_capacity_one_conflict :
+    ∀ brk : Fin 3,
+      ¬ (brk.val ≤ 1 ∧ 1 ≤ brk.val ∧
+        headingParagraphLineAfterHeadings brk.val) := by
+  intro brk ⟨fits, firstContent, after⟩
+  have alone : ∀ textIndex, textIndex < brk.val → textIndex = 0 := by
+    intro textIndex before
+    omega
+  have nextLine := after ⟨firstContent, alone⟩
+  omega
+
 /- With one figure, the heading-only break is legal when the figure
    after the heading fits and is kept. Otherwise the first body line is
    included; a figure after that line is kept exactly when both fit. -/

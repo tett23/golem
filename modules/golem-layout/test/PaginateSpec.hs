@@ -335,6 +335,9 @@ keepNoteTests =
     testCase "Golem ADR 0352 I3: relaxedAfterHeadings model fixture places one body line" $ do
       let ps = paginate 1 3 [heading 20, FParagraph defaultKeep (lines' 30 3)]
       contents ps @?= [[SHeading 20 1, SLine 30, SLine 31], [SLine 32]],
+    testCase "Golem ADR 0352 I3: capacity one relaxes the heading-after-line conflict" $ do
+      let ps = paginate 1 1 [heading 20, FParagraph defaultKeep (lines' 30 1)]
+      contents ps @?= [[SHeading 20 1], [SLine 30]],
     testCase "Golem ADR 0352 I3: headingFigureFits model fixture keeps the figure" $ do
       let ps = paginate 1 3 [heading 20, FFigure 99 2 [] [], FParagraph defaultKeep (lines' 30 1)]
       contents ps @?= [[SHeading 20 1, SFigure 99], [SLine 30]],
