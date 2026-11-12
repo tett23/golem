@@ -834,6 +834,39 @@ theorem I3_figuresRule_and_order_iff_rule (count : Nat)
 def figureWaits (kept : Nat → Bool) (f : Nat) : Prop :=
   kept f = false ∧ ∃ g, g < f ∧ kept g = false
 
+def earlierFigureSent (kept : Nat → Bool) : Nat → Bool
+  | 0 => false
+  | f + 1 => earlierFigureSent kept f || !kept f
+
+def waitingFigureBool (kept : Nat → Bool) (f : Nat) : Bool :=
+  !kept f && earlierFigureSent kept f
+
+theorem I3_earlierFigureSent_iff (kept : Nat → Bool) (f : Nat) :
+    earlierFigureSent kept f = true ↔
+      ∃ g, g < f ∧ kept g = false := by
+  induction f with
+  | zero =>
+      constructor
+      · intro impossible
+        simp [earlierFigureSent] at impossible
+      · rintro ⟨g, before, _⟩
+        exact False.elim (Nat.not_lt_zero g before)
+  | succ f ih =>
+      simp [earlierFigureSent, Bool.or_eq_true, ih]
+      constructor
+      · rintro (⟨g, before, sent⟩ | sent)
+        · exact ⟨g, by omega, sent⟩
+        · exact ⟨f, by omega, sent⟩
+      · rintro ⟨g, before, sent⟩
+        by_cases same : g = f
+        · exact Or.inr (by simpa [same] using sent)
+        · exact Or.inl ⟨g, by omega, sent⟩
+
+theorem I3_waitingFigureBool_iff_waitingIn (kept : Nat → Bool) (f : Nat) :
+    waitingFigureBool kept f = true ↔ figureWaits kept f := by
+  simp [waitingFigureBool, figureWaits, Bool.and_eq_true,
+    I3_earlierFigureSent_iff]
+
 theorem waitingIn_after_first_sent (count : Nat) (kept : Nat → Bool)
     (ordered : figuresInOrder count kept)
     (g f : Nat) (before : g < f) (bound : f < count)
