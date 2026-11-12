@@ -321,7 +321,12 @@ keepNoteTests =
         mapM
           (\capacity -> timeout 1000000 (evaluate (length (paginate 1 capacity [FParagraph defaultKeep [noted 0 1]]))))
           [1 .. 3]
-      map isJust results @?= [True, True, True],
+      map isJust results @?= [True, True, True]
+      map (unmets . (\capacity -> paginate 1 capacity [FParagraph defaultKeep [noted 0 1]])) [1, 2]
+        @?= [[UnplaceableFootnote (nid 900) 1], [UnplaceableFootnote (nid 900) 2]],
+    testCase "Golem ADR 0353 I2: capacities 1 and 2 remain valid without footnotes" $
+      map (\capacity -> (contents (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]), unmets (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]))) [1, 2]
+        @?= [([[SLine 0]], []), ([[SLine 0]], [])],
     testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]
