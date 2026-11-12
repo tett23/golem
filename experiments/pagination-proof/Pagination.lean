@@ -5092,6 +5092,83 @@ theorem needSpaceSome :
       3 - 1 ≥ 2 ∧ 1 + 1 + 1 ≤ 3 := by
   exact ⟨2, by decide, by decide, by decide, by decide⟩
 
+/- One need, one space and one following line. The line can be kept when
+   both the need and the space fit; otherwise the space alone or neither
+   is placed. This is the arithmetic core of the simplest P1/P7 input. -/
+def needSpaceSimpleBase (capacity used : Nat) (brk : Fin 3) : Prop :=
+  used + brk.val ≤ capacity
+
+def needSpaceSimpleMet (capacity used need : Nat) (brk : Fin 3) : Prop :=
+  brk.val = 2 → need ≤ capacity - used
+
+def needSpaceSimpleKeeps (capacity used need : Nat) (brk : Fin 3) : Prop :=
+  need ≤ capacity - used ∧
+    used + (if 1 ≤ brk.val then 1 else 0) + 1 ≤ capacity →
+    brk.val = 2
+
+theorem I3_need_space_one_block_exists
+    (capacity used need : Nat) (usedFits : used ≤ capacity)
+    (needPositive : 1 ≤ need) :
+    ∃ brk : Fin 3,
+      needSpaceSimpleBase capacity used brk ∧
+      needSpaceSimpleMet capacity used need brk ∧
+      needSpaceSimpleKeeps capacity used need brk := by
+  by_cases met : need ≤ capacity - used
+  · by_cases bothFit : used + 2 ≤ capacity
+    · refine ⟨2, ?_, ?_, ?_⟩
+      all_goals simp [needSpaceSimpleBase, needSpaceSimpleMet,
+        needSpaceSimpleKeeps] <;> omega
+    · have oneFits : used + 1 ≤ capacity := by omega
+      refine ⟨1, ?_, ?_, ?_⟩
+      all_goals simp [needSpaceSimpleBase, needSpaceSimpleMet,
+        needSpaceSimpleKeeps] <;> omega
+  · refine ⟨0, ?_, ?_, ?_⟩
+    all_goals simp [needSpaceSimpleBase, needSpaceSimpleMet,
+      needSpaceSimpleKeeps] <;> omega
+
+/- The two-need input judges the larger requirement; both P1 checks are
+   satisfied when a line is retained. The preceding space affects fit,
+   but neither requirement's remaining-line count. -/
+theorem I3_need_space_two_needs_simple_exists
+    (capacity used firstNeed secondNeed : Nat)
+    (usedFits : used ≤ capacity)
+    (firstPositive : 1 ≤ firstNeed) :
+    ∃ brk : Fin 3,
+      needSpaceSimpleBase capacity used brk ∧
+      (brk.val = 2 →
+        firstNeed ≤ capacity - used ∧
+        secondNeed ≤ capacity - used) ∧
+      ((firstNeed ≤ capacity - used ∧
+        secondNeed ≤ capacity - used) ∧
+        used + (if 1 ≤ brk.val then 1 else 0) + 1 ≤ capacity →
+        brk.val = 2) := by
+  have maxPositive : 1 ≤ max firstNeed secondNeed :=
+    Nat.le_trans firstPositive (Nat.le_max_left _ _)
+  obtain ⟨brk, base, met, keeps⟩ :=
+    I3_need_space_one_block_exists capacity used
+      (max firstNeed secondNeed) usedFits maxPositive
+  refine ⟨brk, base, ?_, ?_⟩
+  · intro placed
+    have enough := met placed
+    exact ⟨Nat.le_trans (Nat.le_max_left _ _) enough,
+      Nat.le_trans (Nat.le_max_right _ _) enough⟩
+  · rintro ⟨⟨firstEnough, secondEnough⟩, fits⟩
+    apply keeps
+    exact ⟨Nat.max_le.mpr ⟨firstEnough, secondEnough⟩, fits⟩
+
+theorem I3_need_space_fixture_source_break (brk : Fin 3) :
+    textHereAtBreak [.need 0, .text 1, .need 2, .text 3]
+        brk.val 1 = decide (1 ≤ brk.val) ∧
+      textHereAtBreak [.need 0, .text 1, .need 2, .text 3]
+        brk.val 3 = decide (brk.val = 2) := by
+  have cases : brk.val = 0 ∨ brk.val = 1 ∨ brk.val = 2 := by
+    have bound := brk.isLt
+    omega
+  rcases cases with zero | one | two
+  · simp [zero, textHereAtBreak, textBeforeCount, earlierTextItem]
+  · simp [one, textHereAtBreak, textBeforeCount, earlierTextItem]
+  · simp [two, textHereAtBreak, textBeforeCount, earlierTextItem]
+
 /- Historical two-need input: capacity 3, one used line, need 1, space,
    need 3, then a one-line paragraph. The older P7 tests only the first
    need and keeps the paragraph; P1 tests the larger need before that
