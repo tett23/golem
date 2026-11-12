@@ -12,13 +12,14 @@ inductive Expr where
   | literal : Value → Expr
   | variable : String → Expr
   | add : Expr → Expr → Expr
+  | quotient : Expr → Expr → Expr
   | append : Expr → Expr → Expr
   | external : String → Expr
   | call : String → Expr → Expr → Expr
   deriving DecidableEq, Repr
 
 inductive Failure where
-  | unknownName | missingFile | typeError | overLimit
+  | unknownName | missingFile | typeError | divisionByZero | overLimit
   deriving DecidableEq, Repr
 
 structure Environment where
@@ -48,6 +49,14 @@ def run : Expr → Environment → Nat → Except Failure (Value × Nat)
       let (y, afterB) ← run b env afterA
       match x, y with
       | .nat m, .nat n => return (.nat (m + n), ← spend 1 afterB)
+      | _, _ => .error .typeError
+  | .quotient a b, env, budget => do
+      let (x, afterA) ← run a env budget
+      let (y, afterB) ← run b env afterA
+      let left ← spend 1 afterB
+      match x, y with
+      | .nat _, .nat 0 => .error .divisionByZero
+      | .nat m, .nat (n + 1) => return (.nat (m / (n + 1)), left)
       | _, _ => .error .typeError
   | .append a b, env, budget => do
       let (x, afterA) ← run a env budget
@@ -89,6 +98,9 @@ inductive Derives : Nat → Environment → Expr → Value → Nat → Prop wher
   | add (left : Derives n env a (.nat x) i)
         (right : Derives i env b (.nat y) (k + 1)) :
       Derives n env (.add a b) (.nat (x + y)) k
+  | quotient (left : Derives n env a (.nat x) i)
+             (right : Derives i env b (.nat (y + 1)) (k + 1)) :
+      Derives n env (.quotient a b) (.nat (x / (y + 1))) k
   | append (left : Derives n env a (.string x) i)
         (right : Derives i env b (.string y) (k + (1 + x.length + y.length))) :
       Derives n env (.append a b) (.string (x ++ y)) k
@@ -150,5 +162,12 @@ example : eval 3 ⟨[], []⟩ (.add (.add (.literal (.nat 1)) (.literal (.nat 1)
     (.add (.literal (.nat 1)) (.literal (.nat 1)))) = .ok (.nat 4) := by rfl
 example : eval 3 ⟨[], []⟩ (.append (.literal (.string "鰍")) (.literal (.string "𠮷")))
     = .ok (.string "鰍𠮷") := by rfl
+
+example : eval 1 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 0)))
+    = .error .divisionByZero := by rfl
+example : eval 0 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 0)))
+    = .error .overLimit := by rfl
+example : eval 1 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 2)))
+    = .ok (.nat 1) := by rfl
 
 end GolemEval

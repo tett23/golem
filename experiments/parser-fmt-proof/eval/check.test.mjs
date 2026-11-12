@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +27,43 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
     assert.equal(evaluate(), before);
   } catch (error) {
     saveProjectFailure('eval', dir, original, error);
+    throw error;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Golem ADR 0351 I5: division failure in an imported function survives manuscript formatting', () => {
+  const root = fileURLToPath(new URL('../../../', import.meta.url));
+  const fixtures = join(root, 'modules/golem-driver/test/fixtures');
+  const dir = mkdtempSync(join(tmpdir(), 'golem-fmt-division-'));
+  const original = '@import fn/book.emet as book\n\n[= book.quotient(3,%%注%%0)]\n';
+  const file = join(dir, 'a.gm');
+  try {
+    cpSync(join(fixtures, 'functions'), dir, { recursive: true });
+    cpSync(join(fixtures, 'int-width/style.toml'), join(dir, 'style.toml'));
+    mkdirSync(join(dir, 'fonts'));
+    cpSync(join(fixtures, 'kanikosen/fonts/NotoSerifJP-Regular.otf'), join(dir, 'fonts/ja.otf'));
+    cpSync(join(root, 'modules/golem-font/test/fonts/SourceSansPro-Regular.otf'), join(dir, 'fonts/latin.otf'));
+    const book = join(dir, 'fn/book.emet');
+    appendFileSync(book, '\npub fn quotient :: Nat -> Nat -> Nat\nquotient a b = div a b\n');
+    writeFileSync(file, original);
+    const cli = process.env.GOLEM || 'golem';
+    function diagnostics() {
+      const result = spawnSync(cli, ['check', '--format', 'json'], { cwd: dir, encoding: 'utf8' });
+      if (result.error) throw result.error;
+      assert.equal(result.status, 1, result.stderr);
+      return JSON.parse(result.stderr);
+    }
+    const before = diagnostics();
+    assert.deepEqual(before.map(d => [d.code, d.severity, d.span.file]), [['G02003', 'error', 'fn/book.emet']]);
+    const { start, end } = before[0].span;
+    assert.equal(readFileSync(book).subarray(start, end).toString(), 'div a b');
+    execFileSync(cli, ['fmt', 'a.gm'], { cwd: dir });
+    assert.notEqual(readFileSync(file, 'utf8'), original);
+    assert.deepEqual(diagnostics(), before);
+  } catch (error) {
+    saveProjectFailure('eval', dir, original, error, 'division');
     throw error;
   } finally {
     rmSync(dir, { recursive: true, force: true });
