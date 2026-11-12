@@ -17,15 +17,18 @@ const started = performance.now();
 let tested = 0;
 
 function* cases() {
-  yield '';
+  yield [''];
   for (const word of bodies(limit)) {
-    if (word) yield word + '\n';
+    if (word) yield [word + '\n'];
   }
-  for (const word of ['เก', 'لا', 'می‌روم', 'SrcSpan {first}', 'before @2..4 after']) yield word + '\n';
-  yield '[f "x"%%甲%%%%乙%%key=y]\n';
-  yield '[= 1+%%注%%2]\n';
-  yield* listingCases();
-  yield* nestedInlineCases(nesting);
+  for (const word of ['เก', 'لا', 'می‌روم', 'SrcSpan {first}', 'before @2..4 after']) yield [word + '\n'];
+  const pair = index => [[index, '"%%甲%%"'], [index, '"%%乙%%"']];
+  yield ['[f "x"%%甲%%%%乙%%key=y]\n', pair(3)];
+  yield ['[= 1+%%注%%2]\n', [[3, '"%%注%%"']]];
+  for (const listing of listingCases()) {
+    yield [listing, listing.includes('%%') ? pair(6) : []];
+  }
+  for (const nested of nestedInlineCases(nesting)) yield [nested];
 }
 
 // Compare each comment's text and its position in the non-trivia token
@@ -47,7 +50,7 @@ function run(...args) {
 }
 
 try {
-  for (const [index, input] of Array.from(cases()).entries()) {
+  for (const [index, [input, expectedComments = []]] of Array.from(cases()).entries()) {
     if (only !== 'all' && Number(only) !== index) continue;
     tested++;
     writeFileSync(file, input);
@@ -55,7 +58,7 @@ try {
       const ast = () => withoutPositions(run('inspect', file, '--as', 'ast'));
       const positions = () => comments(run('inspect', file, '--as', 'cst'));
       const expectedAst = ast();
-      const expectedComments = positions();
+      assert.deepEqual(positions(), expectedComments);
       run('fmt', file);
       assert.equal(ast(), expectedAst);
       assert.deepEqual(positions(), expectedComments);
