@@ -48,6 +48,15 @@ try {
   const strictLiteral = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedLiteral, generated], { encoding: 'utf8' });
   assert.match(strictLiteral.stderr, /unsupported Nl choice 1 at /,
     'a literal rule with a second item must return to the unsupported report');
+  assert.match(strictLiteral.stderr, /unsupported EOL choice 2 at /,
+    'the EOL nested choice needs the proved single-literal Nl rule');
+  assert.doesNotMatch(strict.stderr, /^unsupported EOL choice [23] at /m,
+    'the proved Nl/EOF nested choice must leave only EOL outer sequence unsupported');
+  const changedEol = join(work, 'ChangedEol.hpeg');
+  writeFileSync(changedEol, original.replace('EOL <- Sp (Nl / !.)', "EOL <- Sp (Nl / !. / 'x')"));
+  const strictEol = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedEol, generated], { encoding: 'utf8' });
+  assert.match(strictEol.stderr, /unsupported EOL choice \d+ at .*'x'/,
+    'a changed EOL nested choice must return to the unsupported report');
   const changedClassPlus = join(work, 'ChangedClassPlus.hpeg');
   writeFileSync(changedClassPlus, original.replace(/^Ws <- .*$/m, "Ws <- [ \\t]+ 'x' { () }"));
   const strictClassPlus = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedClassPlus, generated], { encoding: 'utf8' });
@@ -179,8 +188,8 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.equal(unsupportedChoices, 251, 'fragment proofs cannot remove StringLit, Word, or their alias');
-  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 14, implementation parser cases ${parserCases.length}`);
+  assert.equal(unsupportedChoices, 249, 'the proved EOL nested choice removes two alternatives only');
+  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 15, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

@@ -213,6 +213,21 @@ const orderedLiteralRules = (ast?.rules ?? []).filter(rule =>
   rule.alts.every(alt => alt.items.length === 1 && alt.items[0].bind === null &&
     alt.items[0].expr.tag === 'lit' && alt.action?.trim() === '()' && alt.constructor === null));
 const orderedLiteralNames = new Set(orderedLiteralRules.map(rule => rule.name));
+// PegModelTest.generated_newline_or_eof proves this exact nested EOL choice
+// using the generated Nl reference. The enclosing Sp sequence is unproved.
+function provedEolNestedChoice(rule) {
+  if (rule.name !== 'EOL' || !literalNames.has('Nl') ||
+      rule.params.length || rule.templateParams.length || rule.alts.length !== 1) return false;
+  const alt = rule.alts[0];
+  if (alt.items.length !== 2 || alt.action?.trim() !== '()' || alt.constructor !== null) return false;
+  const [sp, choice] = alt.items;
+  if (sp.bind !== null || sp.expr.tag !== 'ref' || sp.expr.name !== 'Sp' || sp.expr.args.length ||
+      choice.bind !== null || choice.expr.tag !== 'choice' || choice.expr.alts.length !== 2) return false;
+  if (choice.expr.alts.some(items => items.length !== 1)) return false;
+  const [[nl], [eof]] = choice.expr.alts;
+  return nl?.bind === null && nl.expr.tag === 'ref' && nl.expr.name === 'Nl' && nl.expr.args.length === 0 &&
+    eof?.bind === null && eof.expr.tag === 'not' && eof.expr.expr.tag === 'any';
+}
 if (!fragment && ast) {
   // StringLit, Word, and StringLiteral stay unsupported: their fragment proofs
   // do not establish an arbitrary-input theorem for the canonical PEG model.
@@ -231,6 +246,7 @@ if (!fragment && ast) {
     }
     for (const alt of rule.alts) {
       for (const item of alt.items) {
+        if (provedEolNestedChoice(rule) && item === alt.items[1]) continue;
         nestedChoices(item.expr, items => report(items, items[0]?.line ?? item.line));
       }
     }

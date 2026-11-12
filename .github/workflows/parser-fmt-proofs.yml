@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [eval/Eval, arguments/Arguments]
+        model: [eval/Eval, arguments/Arguments, grammar]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,6 +23,35 @@ jobs:
           sh scripts/ci/fetch-url.sh "$archive" 6d7e1c6f951009b7f277df996c196c9747c0b6b80b30b74e61acc894577a3106 https://github.com/leanprover/lean4/releases/download/v4.7.0/lean-4.7.0-linux.tar.zst
           tar --zstd -xf "$archive" -C "$RUNNER_TEMP"
       - name: Check the model with Lean
+        if: matrix.model != 'grammar'
         env:
           MODEL: ${{ matrix.model }}
         run: '"$RUNNER_TEMP/lean-4.7.0-linux/bin/lean" "experiments/parser-fmt-proof/$MODEL.lean"'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.model == 'grammar'
+        with:
+          node-version: lts/*
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
+        if: matrix.model == 'grammar'
+        with:
+          ghc-version: "9.10.3"
+          cabal-version: "3.18.2.0"
+      - name: Build the pinned grammar tools
+        if: matrix.model == 'grammar'
+        run: |
+          cabal update
+          cabal build peg-cli:exe:peg-hs
+          cabal build --only-dependencies lib:golem-bibliography
+          echo "PEG_HS=$(cabal list-bin peg-cli:exe:peg-hs)" >> "$GITHUB_ENV"
+          echo "LEAN=$RUNNER_TEMP/lean-4.7.0-linux/bin/lean" >> "$GITHUB_ENV"
+      - name: Check grammar proofs, mutations and native parser examples
+        if: matrix.model == 'grammar'
+        run: node experiments/parser-fmt-proof/grammar/test.mjs
+      - name: Require the full grammar model
+        if: matrix.model == 'grammar'
+        run: |
+          grammar=experiments/parser-fmt-proof/grammar
+          node "$grammar/generate.mjs" modules/golem-parser/grammar/Golem.hpeg "$RUNNER_TEMP/Generated.lean"
+          "$LEAN" -o "$RUNNER_TEMP/PegModel.olean" "$grammar/PegModel.lean"
+          cd "$RUNNER_TEMP"
+          LEAN_PATH=. "$LEAN" Generated.lean
