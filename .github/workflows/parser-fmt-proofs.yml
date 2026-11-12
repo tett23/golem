@@ -47,6 +47,9 @@ jobs:
       - name: Compare table formatting in Haskell and Lean
         if: matrix.model == 'grammar'
         run: sh experiments/parser-fmt-proof/tables/compare-format.sh
+      - name: Compare Emet evaluations in Haskell and Lean
+        if: matrix.model == 'grammar'
+        run: sh experiments/parser-fmt-proof/eval/compare-eval.sh
       - name: Check grammar proofs, mutations and native parser examples
         if: matrix.model == 'grammar'
         run: node experiments/parser-fmt-proof/grammar/test.mjs
