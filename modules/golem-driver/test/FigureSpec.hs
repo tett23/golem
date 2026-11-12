@@ -616,10 +616,9 @@ fitFigureTests =
                     (pf, _, _) <- single (figuresIn pl)
                     pure (map captionText (pfCaption pf), pfCaptionSpan pf, pfImageLines pf, pfAlong pf, pfAcross pf)
           actual <- mapM observe [sans, serif]
-          actual
-            @?= [ (["F1\x3000MMMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt),
-                   (["F1\x3000MMMMMMMMM", "MMM"], 2, 2, 10 * pt, 30 * pt)
-                 ],
+          let sansExpected = (["F1\x3000MMMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt)
+              serifExpected = (["F1\x3000MMMMMMMMM", "MMM"], 2, 2, 10 * pt, 30 * pt)
+          actual @?= [sansExpected, serifExpected],
         testCase "Golem ADR 0352 I2: the Lean captioned fit fixture has the same rounded dimensions" $
           fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) (Just 1) @?= (45 * pt, 135 * pt, True),
         testCase "without a caption a figure is as deep as the column: (L - 1) p + h, its height in proportion" $
