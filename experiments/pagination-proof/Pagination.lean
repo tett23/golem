@@ -2909,6 +2909,57 @@ def headingKeepModel (used brk : Nat) (items : List SourceItem)
     ¬ startsColumnModel used brk items config kept h →
     keptLines h
 
+structure KeepParagraph where
+  firstPos : Nat
+  linePositions : List Nat
+  firstCount : Nat
+  lastCount : Nat
+  allLines : Bool
+
+def keepParagraphValid (items : List SourceItem) (p : KeepParagraph) : Prop :=
+  p.firstPos ∈ p.linePositions ∧
+    ∀ pos ∈ p.linePositions, .text pos ∈ items ∧ p.firstPos ≤ pos
+
+def paragraphHasHere (brk : Nat) (items : List SourceItem)
+    (p : KeepParagraph) : Prop :=
+  ∃ pos ∈ p.linePositions, textHereAtBreak items brk pos = true
+
+def paragraphBrokenModel (brk : Nat) (items : List SourceItem)
+    (p : KeepParagraph) : Prop :=
+  paragraphHasHere brk items p ∧
+    ∃ pos ∈ p.linePositions, textHereAtBreak items brk pos = false
+
+def paragraphHereCount (brk : Nat) (items : List SourceItem)
+    (p : KeepParagraph) : Nat :=
+  (p.linePositions.filter
+    (fun pos => textHereAtBreak items brk pos)).length
+
+def paragraphNextCount (brk : Nat) (items : List SourceItem)
+    (p : KeepParagraph) : Nat :=
+  (p.linePositions.filter
+    (fun pos => !textHereAtBreak items brk pos)).length
+
+def keepFirstModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List KeepParagraph) : Prop :=
+  ∀ p ∈ paragraphs, paragraphBrokenModel brk items p →
+    ¬ startsColumnModel used brk items config kept p.firstPos →
+    p.firstCount ≤ paragraphHereCount brk items p
+
+def keepLastModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List KeepParagraph) : Prop :=
+  ∀ p ∈ paragraphs, paragraphBrokenModel brk items p →
+    ¬ startsColumnModel used brk items config kept p.firstPos →
+    p.lastCount ≤ paragraphNextCount brk items p
+
+def keepAllModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List KeepParagraph) : Prop :=
+  ∀ p ∈ paragraphs, p.allLines = true →
+    paragraphBrokenModel brk items p →
+    startsColumnModel used brk items config kept p.firstPos
+
 theorem I3_old_blank_rule_projection
     (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
@@ -3914,6 +3965,60 @@ theorem I3_first_break_here_is_first_text
   have firstBefore := first textPos member
   omega
 
+theorem I3_first_text_break_keeps_paragraphs
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (firstTextPos : Nat)
+    (first : firstContent items = some (.text firstTextPos))
+    (paragraphs : List KeepParagraph)
+    (valid : ∀ p ∈ paragraphs, keepParagraphValid items p) :
+    keepFirstModel 0 1 items config kept paragraphs ∧
+      keepLastModel 0 1 items config kept paragraphs ∧
+      keepAllModel 0 1 items config kept paragraphs := by
+  obtain ⟨firstText, firstTextOrder, _⟩ :=
+    I3_firstContent_text_before_figures items ordered firstTextPos first
+  have starts := I3_first_content_text_starts_column items ordered
+    config kept firstTextPos first
+  have everyHereStarts : ∀ p ∈ paragraphs,
+      paragraphHasHere 1 items p →
+      startsColumnModel 0 1 items config kept p.firstPos := by
+    intro p member ⟨pos, posMember, here⟩
+    obtain ⟨firstMember, paragraphPositions⟩ := valid p member
+    obtain ⟨textMember, firstBefore⟩ :=
+      paragraphPositions pos posMember
+    have same := I3_first_break_here_is_first_text items firstTextPos
+      firstText firstTextOrder pos textMember here
+    have firstTextMember := (paragraphPositions p.firstPos firstMember).1
+    have globalBefore := firstTextOrder p.firstPos firstTextMember
+    have firstEq : p.firstPos = firstTextPos := by omega
+    simpa [firstEq] using starts
+  refine ⟨?_, ?_, ?_⟩
+  · intro p member broken notStarts
+    exact False.elim (notStarts (everyHereStarts p member broken.1))
+  · intro p member broken notStarts
+    exact False.elim (notStarts (everyHereStarts p member broken.1))
+  · intro p member _ broken
+    exact everyHereStarts p member broken.1
+
+theorem I3_zero_break_keeps_paragraphs
+    (used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List KeepParagraph) :
+    keepFirstModel used 0 items config kept paragraphs ∧
+      keepLastModel used 0 items config kept paragraphs ∧
+      keepAllModel used 0 items config kept paragraphs := by
+  have neverHere : ∀ p, ¬ paragraphHasHere 0 items p := by
+    intro p ⟨pos, _, here⟩
+    simp [textHereAtBreak] at here
+    omega
+  refine ⟨?_, ?_, ?_⟩
+  · intro p _ broken _
+    exact False.elim (neverHere p broken.1)
+  · intro p _ broken _
+    exact False.elim (neverHere p broken.1)
+  · intro p _ _ broken
+    exact False.elim (neverHere p broken.1)
+
 theorem I3_first_text_break_preserves_boundary_rules
     (items : List SourceItem) (ordered : sourceOrdered items)
     (config : FigureConfig) (kept : Nat → Bool)
@@ -4235,6 +4340,147 @@ theorem keep21 (capacity used : Nat) (items : List SourceItem)
         headings headingsValid keptLines
     exact ⟨1, kept, atTop, placed, Or.inr ⟨rfl, rfl, oneRule⟩,
       noSend, figureOrder, textOrder, orphan, widow, heading⟩
+
+/- The historical `keepHeadingEmpty` command searches for an input with no
+   joint placement.  `keep21` constructs a stronger joint placement for every
+   input in its domain.  The projection below retains the two rules queried
+   by that command. -/
+theorem keepHeadingEmpty (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, _, _, heading⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, noSend, heading⟩
+
+theorem keepHeadingFigure (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  obtain ⟨brk, kept, atTop, placed, rule, _, _, _, _, _, heading⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, heading⟩
+
+theorem keepHeadingOrphan (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      orphanModel used brk items config kept paragraphs ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  obtain ⟨brk, kept, atTop, placed, rule, _, _, _, orphan, _, heading⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, orphan, heading⟩
+
+theorem keepHeadingWidow (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      widowModel used brk items config kept paragraphs ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  obtain ⟨brk, kept, atTop, placed, rule, _, _, _, _, widow, heading⟩ :=
+    keep21 capacity used items config capacityPositive usedFits ordered
+      figuresValid noBlank sizesFit paragraphs paragraphsValid headings
+      headingsValid keptLines
+  exact ⟨brk, kept, atTop, placed, rule, widow, heading⟩
+
+/- This proves the keep-option command for any first/last bounds and
+   keep-all flags once paragraph positions agree with the ordered source. -/
+theorem keepNone (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List KeepParagraph)
+    (valid : ∀ p ∈ paragraphs, keepParagraphValid items p) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      keepFirstModel used brk items config kept paragraphs ∧
+      keepLastModel used brk items config kept paragraphs ∧
+      keepAllModel used brk items config kept paragraphs := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase, _, _⟩ :=
+    blankRules25 capacity used items config none capacityPositive usedFits
+      ordered figuresValid noBlank sizesFit
+  rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
+  · subst brk
+    obtain ⟨firstRule, lastRule, allRule⟩ :=
+      I3_zero_break_keeps_paragraphs used items config kept paragraphs
+    exact ⟨0, kept, atTop, placed, Or.inl ⟨rfl, zeroRule⟩,
+      noSend, firstRule, lastRule, allRule⟩
+  · subst brk
+    subst used
+    obtain ⟨firstTextPos, firstTextCase⟩ := firstCase rfl
+    obtain ⟨firstRule, lastRule, allRule⟩ :=
+      I3_first_text_break_keeps_paragraphs items ordered config kept
+        firstTextPos firstTextCase paragraphs valid
+    exact ⟨1, kept, atTop, placed, Or.inr ⟨rfl, rfl, oneRule⟩,
+      noSend, firstRule, lastRule, allRule⟩
 
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
