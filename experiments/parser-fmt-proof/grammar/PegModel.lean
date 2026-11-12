@@ -107,14 +107,21 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
                         | .error reason => return .error reason
                         | .ok none => return .error "bound length prefix failed"
                         | .ok (some start) =>
-                            let counted := (List.range fuel).foldl (fun (state : List Char × Nat × Bool) _ =>
-                              if state.2.2 then state else
-                                match recognizeEnv grammar params fuel child state.1 with
-                                | .ok (some rest) =>
-                                    if rest.length < state.1.length then (rest, state.2.1 + 1, false)
-                                    else (state.1, state.2.1, true)
-                                | _ => (state.1, state.2.1, true)) (start, 0, false)
-                            return if counted.2.2 then .ok (some counted.2.1) else .error "fuel exhausted"
+                            let counted := (List.range fuel).foldl (fun (state : Except String (List Char × Nat × Bool)) _ =>
+                              match state with
+                              | .error reason => .error reason
+                              | .ok (rest, count, true) => .ok (rest, count, true)
+                              | .ok (rest, count, false) =>
+                                  match recognizeEnv grammar params fuel child rest with
+                                  | .error reason => .error reason
+                                  | .ok none => .ok (rest, count, true)
+                                  | .ok (some next) =>
+                                      if next.length < rest.length then .ok (next, count + 1, false)
+                                      else .error "zero-width repetition") (.ok (start, 0, false))
+                            match counted with
+                            | .error reason => return .error reason
+                            | .ok (_, count, true) => return .ok (some count)
+                            | .ok _ => return .error "fuel exhausted"
                     | _ => return .ok none
                 | _, _ => return .ok none
         | _ => return .ok none
