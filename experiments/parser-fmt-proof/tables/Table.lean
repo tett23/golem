@@ -179,4 +179,31 @@ theorem repairEncodedLoneCR (leftEncoding : LineEncoding before encodedBefore)
 
 example : newlines false "a\r\r\nb\r".toList = "a\n\nb\n".toList := by decide
 
+def firstLoneCR : List Char → Nat → Option Nat
+  | [], _ => none
+  | c :: rest, offset =>
+      if c = '\r' ∧ rest.head? ≠ some '\n' then some offset
+      else firstLoneCR rest (offset + c.utf8Size.toNat)
+
+def byteLength : List Char → Nat
+  | [] => 0
+  | c :: rest => c.utf8Size.toNat + byteLength rest
+
+theorem scanEncodedPrefix (encoded : LineEncoding canonical bytes)
+    (tail : List Char) (offset : Nat) :
+    firstLoneCR (bytes ++ tail) offset = firstLoneCR tail (offset + byteLength bytes) := by
+  induction encoded generalizing offset with
+  | empty => simp [byteLength]
+  | scalar c ordinary _ ih => simp [firstLoneCR, ordinary, byteLength, ih, Nat.add_assoc]
+  | crlf _ ih => simp [firstLoneCR, byteLength, ih, Nat.add_assoc]
+
+theorem I10_loneCRByteOffset (encoded : LineEncoding canonical bytes)
+    (tail : List Char) (lone : tail.head? ≠ some '\n') :
+    firstLoneCR (bytes ++ '\r' :: tail) 0 = some (byteLength bytes) := by
+  rw [scanEncodedPrefix encoded]
+  simp [firstLoneCR, lone]
+
+-- The diagnostic reports a byte offset, including after multibyte cell text.
+example : firstLoneCR "名\r\n甲\rb".toList 0 = some 8 := by decide
+
 end TableFormat
