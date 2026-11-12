@@ -6288,6 +6288,14 @@ UTF-32 は選ばない。
 要求の列が、交渉した単位で数えた行の長さ（改行を含まない）より大きい場合は、LSP 3.17 の定めのとおり行末に丸める。
 行の番号が文書の行の数を超える場合と、列が文字の途中に当たる場合は、仕様が定めていないので丸めず、結果を空にする。
 
+### ファイルとフォルダの改名
+
+LSP は、ファイルとフォルダの改名前にクライアントが送る `workspace/willRenameFiles` に応じ、参照を指す値だけの編集を操作前の URI に対する `WorkspaceEdit.documentChanges` で返す（[docs/adr/0338](adr/0338-update-references-on-file-and-folder-renames.md)）。
+編集がなければ `null` を返し、LSP はディスクを変更しない。
+原稿の import、画像、表、コードのファイル引数、Emet のファイル引数、manifest の章とファイル欄、書体のパスを対象にする。
+Aleph が初期化時に指定した場合だけ、`plot.csv` の `file` 列とワークスペースの Markdown シートの Wiki リンクも対象にする。
+クライアントから `workspace/didRenameFiles` が届いた後は、旧パスの索引を捨ててプロジェクトを読み直す。
+
 ### 同期と評価し直し
 
 文書の同期は全文の同期である。
@@ -8246,14 +8254,17 @@ spark は純粋な値の計算を別の capability に委ねるだけなので�
 - `--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
 
 構文から出力までの段階の誤りは、`golem build` と同じコードで出す。
-そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
+PDF のページ情報を作れない場合も、読み取れた版面設定と有効な規則から塗り足しの幅を検査する（[Golem ADR 0325](adr/0325-preflight-glyph-severity.md)）。
+この場合の要約にはエラー件数と、実行できなかった有効な検査名と理由を載せる。
+JSON の診断配列では先頭の診断の `facts` に `error-count`、`skipped-checks`、同じ順の `skipped-reasons` を含める。
 逆に、LSP、`golem check`、`golem build` はプリフライトの検査をしない。
 
 ビルドとプリフライトの役割は、止める理由で分かれている。
 ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる。
-それでも、次の二つの問題は、両方の側から同じ位置に同じメッセージと事実で出る。
+ページ情報があるときは、フォントにない字を `glyph-missing` の重大度で G09002 として報告する。
+同じ字の G08100 は PDF ビルドの診断である（[Golem ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
+ほかにエラーがなければ、`glyph-missing` が `warning` または `off` の場合は終了コード 0 を返す。
 
-- フォントにない字は、プリフライトの検査の G09002 のほかに、ビルドの G08100 としても出る（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。プロファイルが prod なので、G08100 はエラーである。G08100 は PDF を組んだ後に出るので、プリフライトの検査は走る。プリフライトの設定の `glyph-missing` は G08100 に当たらないので、`glyph-missing` を `warning` か `off` にしても、フォントにない字があれば終了コードは 1 である。
 - 行長からはみ出す行は、プリフライトの検査の G09013 のほかに、ビルドの G07105 の警告としても出る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。G09013 の重大度だけが、`overfull-lines` の `severity` による。
 
 #### プリフライトの設定

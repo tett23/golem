@@ -101,8 +101,8 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
-import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
-import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
+import Golem.Preflight (MissingGlyph (..), check, checkBleed, missingGlyphs, pageChecks)
+import Golem.Preflight.Rules (Level (LevelOff), Rules (..), parseRules, printRules)
 import Golem.Preflight.View (View)
 import Golem.Project
 import Golem.Project.Files (Files (..), diskFiles, memoryFiles)
@@ -797,7 +797,7 @@ cleanFinderInfo _ _ = pure ()
 
 build :: BuildOptions -> IO BuildResult
 build opts = withOutputLock (optRoot opts) $ do
-  (result, _, selectedTargets) <- buildCore False opts
+  (result, _, _, selectedTargets) <- buildCore False opts
   let pdfDir = optRoot opts </> "build/pdf"
       pdfWasWritten = any ((== pdfDir) . takeDirectory) (brWritten result)
       pdfWasSelected = TargetPdf `elem` fromMaybe [TargetPdf] selectedTargets
@@ -835,17 +835,17 @@ nothing. The PDF and the diagnostics are those of golem build --target pdf
 buildPdfInMemory :: Map FilePath BS.ByteString -> IO BuildInMemory
 buildPdfInMemory table = do
   let opts = (defaultOptions ".") {optFiles = memoryFiles table, optTargets = Just [TargetPdf], optParallel = False}
-  (r, pdf, _) <- buildCore True opts
+  (r, pdf, _, _) <- buildCore True opts
   pure (BuildInMemory (fst <$> pdf) (brDiagnostics r) (brSources r))
 
 {- | The build; with @inMemory@, the PDF is not written but returned with
 its view (golem preflight, golem-cli ADR 0006).
 -}
-buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View), Maybe [Target])
+buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View), Maybe (SrcSpan, Sp), Maybe [Target])
 buildCore inMemory opts = do
   ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
   case ev of
-    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, optTargets opts)
+    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, Nothing, optTargets opts)
     Right e -> do
       let project = evProject e
           finish = finishWith (manifestSilencedNotices (projectManifest project)) (manifestSilencedInfo (projectManifest project))
@@ -858,6 +858,7 @@ buildCore inMemory opts = do
               (withEvaluatedSources e (sourceInfos project))
           -- where diagnostics about style.toml point (golem-driver ADR 0016)
           diagFid = if hasStyle then styleFid else projectManifestFile project
+          bleed = Just (mkSpan diagFid 0 0, maybe 0 pageBleed (stPage (evStyle e)))
           -- G07002, and what style.toml decides of the layout (G07001, G07025; golem-driver ADR 0016)
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
@@ -897,8 +898,8 @@ buildCore inMemory opts = do
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, Just targets)
-        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, Just targets)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, bleed, Just targets)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
@@ -979,6 +980,7 @@ data PreflightResult = PreflightResult
     prView :: !(Maybe View),
     -- | the rules as the summary names them: their name, their file, or the built-in print
     prRulesLabel :: !Text,
+    prSkipped :: ![(Text, Text)],
     prBasedOn :: !Text
   }
 
@@ -1006,12 +1008,37 @@ preflight po = do
             Left ds -> Left (ds, src)
             Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
   case rulesE of
-    Left (ds, src) -> pure (PreflightResult (sortDiagnostics ds) (Map.singleton rulesFid (SourceInfo path (mkLineIndex src))) Nothing Nothing "" "")
+    Left (ds, src) -> pure (PreflightResult (sortDiagnostics ds) (Map.singleton rulesFid (SourceInfo path (mkLineIndex src))) Nothing Nothing "" [] "")
     Right (rules, label) -> do
       let opts = (defaultOptions (poRoot po)) {optTargets = Just [TargetPdf], optProfile = Prod, optMarks = poMarks po, optFonts = poFonts po, optParallel = poParallel po}
-      (r, pdf, _) <- buildCore True opts
-      let checks = maybe [] (check rules . snd) pdf
-      pure (PreflightResult (sortDiagnostics (brDiagnostics r <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
+      (r, pdf, pageBleedInput, _) <- buildCore True opts
+      (sources, bleed) <- case (pdf, pageBleedInput) of
+        (Nothing, Nothing) -> independentBleed (optFiles opts) (brSources r)
+        _ -> pure (brSources r, pageBleedInput)
+      let (diagnostics, skipped) = case pdf of
+            Just (_, view) -> (filter ((/= DiagnosticCode "G08100") . diagCode) (brDiagnostics r) <> check rules view, [])
+            Nothing ->
+              ( brDiagnostics r <> maybe [] (uncurry (checkBleed rules)) bleed,
+                [(name, "ページ情報を作れませんでした") | name <- pageChecks rules]
+                  <> [("bleed-size", "版面設定を読み取れませんでした") | isNothing bleed, ruBleedSize rules /= LevelOff]
+              )
+      pure (PreflightResult (sortDiagnostics diagnostics) sources (fst <$> pdf) (snd <$> pdf) label skipped (ruBasedOn rules))
+
+-- | A manifest or source failure can precede the build's first read of the style.
+independentBleed :: Files -> Map FileId SourceInfo -> IO (Map FileId SourceInfo, Maybe (SrcSpan, Sp))
+independentBleed files infos
+  | any ((== "style.toml") . siPath) (Map.elems infos) = pure (infos, Nothing)
+  | otherwise =
+      filesResolve files "style.toml" >>= \case
+        Left _ -> pure (infos, Nothing)
+        Right rel -> do
+          bytes <- filesRead files rel
+          let fid = case Map.lookupMax infos of Nothing -> FileId 0; Just (FileId n, _) -> FileId (n + 1)
+          pure $ case readSourceFile fid "style.toml" bytes of
+            Right src
+              | Right style <- parseStyle fid src ->
+                  (Map.insert fid (readInfo "style.toml" bytes) infos, Just (mkSpan fid 0 0, maybe 0 pageBleed (stPage style)))
+            _ -> (infos, Nothing)
 
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
