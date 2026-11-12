@@ -8,6 +8,7 @@ import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, sortOn, stripPrefix)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Data.Ord (Down (..))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -39,6 +40,7 @@ import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.ShowTree (showTree)
 import Options.Applicative
 import Options.Applicative.Extra (helperWith)
+import Repl qualified
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
@@ -60,6 +62,7 @@ data Command
   | Inspect FilePath InspectAs
   | Lint Profile Bool Bool Format
   | Fmt Bool [FilePath]
+  | EmetRepl
   | Lsp
   | Explain [T.Text]
 
@@ -210,6 +213,7 @@ commands =
           "プラグインを管理する"
         <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "lint の規則を適用する"
         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
+        <> cmd "repl" (subparser (commandGroup "コマンド:" <> metavar "LANGUAGE" <> cmd "emet" (pure EmetRepl) "Emet の式を対話的に評価する")) "対話的に式を評価する"
         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
         <> cmd "explain" (Explain <$> many (strArgument (metavar "CODE..."))) "診断のコードの説明を表示する"
@@ -245,6 +249,7 @@ localize = intercalate "\n" . go . lines
 
 run :: Command -> IO ExitCode
 run = \case
+  EmetRepl -> Repl.run
   New dir lang noFonts screen -> newProject dir lang noFonts screen
   Build tgs profile marks quiet verbose fmt -> report fmt =<< runBuild "." (WriteTargets tgs) profile marks quiet verbose
   Check profile marks quiet verbose fmt -> report fmt =<< runBuild "." CheckOnly profile marks quiet verbose
@@ -303,10 +308,21 @@ preflightRun rules marks fmt = do
   r <- preflight (defaultPreflightOptions ".") {poRules = rules, poMarks = marks}
   let ds = prDiagnostics r
       count sev = length (filter ((== sev) . diagSeverity) ds)
+      skips = prSkipped r
+      summaryFacts =
+        [("error-count", FactInt (toInteger (count Error)))]
+          <> [("skipped-checks", FactTexts (map fst skips)), ("skipped-reasons", FactTexts (map snd skips))]
   case fmt of
-    Json -> TIO.hPutStr stderr (renderJson (prSources r) ds)
+    Json -> do
+      let withSummary = case (prPdf r, ds) of
+            (Nothing, firstDiag : rest) -> firstDiag {diagFacts = diagFacts firstDiag <> summaryFacts} : rest
+            _ -> ds
+      TIO.hPutStr stderr (renderJson (prSources r) withSummary)
     Human -> do
       putHuman (prSources r) ds
+      when (isNothing (prPdf r)) $ do
+        TIO.hPutStrLn stderr ("プリフライト: エラー " <> T.pack (show (count Error)))
+        forM_ skips $ \(name, reason) -> TIO.hPutStrLn stderr ("未検査: " <> name <> "（" <> reason <> "）")
       forM_ (prPdf r) $ \pdf ->
         TIO.hPutStrLn stderr $
           "プリフライト（設定: "

@@ -48,7 +48,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### 記法と設定の値
 
-- **Emet の REPL**：`golem repl emet` で Emet の式を対話的に入力し、その場で評価結果を確かめられるようにする。
 - **廃止予定の書き方をエラーにすること**：1.0.0 には廃止予定の書き方を残さない（[ADR 0174](adr/0174-compatibility-promises-for-1-0.md)）。`@listing` の `src=`（G02065）をエラーにする。[ADR 0184](adr/0184-table-positional-path.md) が廃止予定にした `@table` の `src=`（G02129）も同じである。[ADR 0177](adr/0177-note-mark-style-and-numerals.md) が廃止予定にした、`[lists]` の `numbers` の `{{` と `}}`（G03114）と一字の見本の差し込み（G03115）、柱の書式の `{{` と `}}`（G03116）、`[notes]` の `mark-size`（G03117）も同じである。G02065 は v0.1.0-rc2 と v0.1.0-rc3 で notice を出したので、v0.1.0-rc4 からエラーにしてよい。G02129 は v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後にエラーにする。`-` で区切った範囲は [ADR 0342](adr/0342-revise-retire-dash-line-ranges.md) に従ってエラーにした。
 - **`@listing` の位置引数のパスと `src=` の両方**：`@listing` に位置引数のパスと `src=` を両方書くと、位置引数のファイルを取り込み、`src=` に G02065 の notice を出し、`src=` のパスは黙って捨てる。`@table` は同じ書き方を G02130 のエラーにする（[ADR 0184](adr/0184-table-positional-path.md)）。`@listing` ではパスを二度指定したら同じパスでもエラーにする。`src=` の出現は一つまでとする。
 - **単位のない 0**：長さとアキ量の欄、`@blank-line 0` は [Golem ADR 0345](adr/0345-revise-unitless-zero-in-length-fields.md) に従って実装した。
@@ -124,7 +123,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **wasm32 で落ちることがわかっているテストを 0 にする**：毎晩の `wasm-tests.yml` は、`golem.wasm` のパッケージのテストのスイートを wasm32 で走らせ、落ちることがわかっているテストを `scripts/wasm/test-failures.tsv` に、製品の問題（product）とテストの問題（test）に分けて載せる（[docs/adr/0293](adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。一覧が空になるまで、一つずつ別のプルリクエストで直す。
 - **より複雑な組版の fixture**：v0.1.0-rc4 で作る二冊の fixture（縦組みの一段の本と、横組みの二段の本）より複雑な組版の例を作り、fixture に入れる。二冊が組み合わせていない機能、たとえば縦組みの本文の段組みや、章ごとの書字方向と段数の切り替えのように後から足す機能を組み合わせ、機能のあいだの相互作用を、出力のゴールデン、決定性の検査、見た目の回帰テストで固定する。どの組み合わせを足すかと、fixture の数と大きさは、着手するときに ADR で決める。
-- **リンクの注釈についての ISO 15930-7 の照合**：v1.0.0 のタグを打つ前に、メンテナーが ISO 15930-7:2010 の本文を入手し、リンクの注釈、URI のアクション、`/Dest` を持つ文書の中のリンクの注釈、文書のアウトライン（`/Outlines`）、仕上がりの線の内側の印刷する注釈、外観のストリームのない注釈の六つの問いと、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件の一覧を照合する。結果は `docs/audits/<日付>-iso-15930-7-check.md` に記録する。今の出力が規格に反すると分かれば、[docs/adr/0182](adr/0182-external-links.md) の PDF/X-4 の節を改める ADR を作り、その実装がマージされるまで v1.0.0 のタグを打たない。タグを打つ前に、記録があり、この項目が消えていることを確かめる（[docs/adr/0221](adr/0221-check-iso-15930-7-for-link-annotations-before-rc4.md)、[docs/adr/0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。v1.0.0 の前のリリースのリリースノートには、照合を済ませていないことを既知の問題として書く。
+- **PDF/X-4 の未照合事項**：印刷領域のリンク注釈は [ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md) に従って省く。v1.0.0 の前に、しおり、URI アクション一般、外観ストリームの条件、[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) の要件一覧について、公開資料と生成物で確定できていない点をメンテナーが照合し、監査記録に残す（[ADR 0226](adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。
 - **Adobe の製品で確かめる見た目**：Adobe の製品を使う手の確かめは、費用がかかるので、v1.0.0 のリリースのときにメンテナーがまとめて行う（[docs/adr/0233](adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md) の「決めたことの記録」）。見本は、見た目の回帰テストの入力の `specimens-horizontal` と `specimens-vertical` を使える。
   - 縦組みのダッシュを、InDesign の縦組みと比べること（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
   - 圏点の十の形を、InDesign の圏点と比べること（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。

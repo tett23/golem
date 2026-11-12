@@ -608,10 +608,32 @@ then the document information.
 documentObjects :: Document -> PdfObjects
 documentObjects = documentObjectsWith parPages
 
+{- | Print the text of a link without creating a clickable area inside the
+trim box. Apply this before allocating annotation and structure objects.
+-}
+printLinksAsText :: Document -> Document
+printLinksAsText doc
+  | isJust (docPdfX doc) =
+      doc
+        { docPages = [p {pageAnnots = []} | p <- docPages doc],
+          docStructure = asText (docStructure doc)
+        }
+  | otherwise = doc
+  where
+    asText e =
+      let children = concatMap stripAnnotation (seKids e)
+       in if seType e == SLink
+            then e {seType = SSpan, seAttrs = filter ((/= "Golem") . atOwner) (seAttrs e), seKids = children}
+            else e {seKids = children}
+    stripAnnotation (KidAnnot _) = []
+    stripAnnotation (KidElem e) = [KidElem (asText e)]
+    stripAnnotation k = [k]
+
 -- | 'documentObjects' with the compressed content streams of the pages passed through a function (see 'writePdfWith').
 documentObjectsWith :: ([ByteString] -> [ByteString]) -> Document -> PdfObjects
-documentObjectsWith strategy doc =
-  let pages = docPages doc
+documentObjectsWith strategy input =
+  let doc = printLinksAsText input
+      pages = docPages doc
       fontOrder = nub [f | p <- pages, m <- pageMarks p, f <- fontsOf m]
       imageOrder = nub [i | p <- pages, m <- pageMarks p, i <- imagesOf m]
       fontNames = Map.fromList (zip fontOrder [1 ..])
@@ -884,8 +906,9 @@ of the glyphs it draws (by the ToUnicode entries of their fonts, or their
 ActualText) on all pages.
 -}
 structureText :: Document -> Text
-structureText doc =
-  let pages = docPages doc
+structureText input =
+  let doc = printLinksAsText input
+      pages = docPages doc
       drawn = [l | p <- pages, c <- pageContent p, (l, _) <- taggedContent c]
       (tree, _) = withOrphans (docStructure doc) drawn
       texts = leafTexts doc

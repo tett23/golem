@@ -734,6 +734,6 @@ outputDiagnosticTests =
         createDirectoryIfMissing True (tmp </> "fonts")
         BS.writeFile (tmp </> "fonts/v.otf") cff2
         p <- preflight (defaultPreflightOptions tmp)
-        map diagCode (filter isError (prDiagnostics p)) @?= [DiagnosticCode "G08019"]
+        map diagCode (filter isError (prDiagnostics p)) @?= [DiagnosticCode "G08019", DiagnosticCode "G09010"]
         assertBool "no PDF" (isNothing (prPdf p))
   ]

@@ -1,6 +1,6 @@
 # ADR 0182: 外部の URL へのリンクと、PDF のリンクの注釈
 
-ステータス: 採択→散文スロットが二つ以上の `[link]` の G02038 は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
+ステータス: 採択→散文スロットが二つ以上の `[link]` の G02038 は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)→PDF/X-4 の本文リンク注釈は [ADR 0350](0350-omit-page-link-annotations-from-pdf-x-4.md)
 
 ## 文脈
 
