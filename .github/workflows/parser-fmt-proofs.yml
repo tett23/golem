@@ -18,15 +18,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Install Lean 4.7.0
-        run: |
-          archive="$RUNNER_TEMP/lean.tar.zst"
-          sh scripts/ci/fetch-url.sh "$archive" 6d7e1c6f951009b7f277df996c196c9747c0b6b80b30b74e61acc894577a3106 https://github.com/leanprover/lean4/releases/download/v4.7.0/lean-4.7.0-linux.tar.zst
-          tar --zstd -xf "$archive" -C "$RUNNER_TEMP"
+        run: sh scripts/ci/install-parser-proof-lean.sh
       - name: Check the model with Lean
         if: matrix.model != 'grammar'
         env:
           MODEL: ${{ matrix.model }}
-        run: '"$RUNNER_TEMP/lean-4.7.0-linux/bin/lean" "experiments/parser-fmt-proof/$MODEL.lean"'
+        run: '"$LEAN" "experiments/parser-fmt-proof/$MODEL.lean"'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.model == 'grammar'
         with:
@@ -43,7 +40,6 @@ jobs:
           cabal build peg-cli:exe:peg-hs
           cabal build --only-dependencies lib:golem-bibliography
           echo "PEG_HS=$(cabal list-bin peg-cli:exe:peg-hs)" >> "$GITHUB_ENV"
-          echo "LEAN=$RUNNER_TEMP/lean-4.7.0-linux/bin/lean" >> "$GITHUB_ENV"
       - name: Compare table formatting in Haskell and Lean
         if: matrix.model == 'grammar'
         run: sh experiments/parser-fmt-proof/tables/compare-format.sh
@@ -82,6 +78,8 @@ jobs:
           cabal update
           cabal build exe:golem
           echo "GOLEM=$(cabal list-bin exe:golem)" >> "$GITHUB_ENV"
+      - name: Install Lean 4.7.0 for the nightly argument comparison
+        run: sh scripts/ci/install-parser-proof-lean.sh
       - name: Check the nightly corpus
         run: |
           status=0
