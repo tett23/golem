@@ -189,3 +189,27 @@ test('Golem ADR 0351 I8: each call reports its own unsupplied suffix in declarat
       [code, span.file, span.start, span.end, /(\d+) 番目の位置引数がありません$/.exec(message)?.[1]]), expected);
   }, 'missing-multiple-calls');
 });
+
+test('Golem ADR 0351 I1: the enclosing command consumes its delimiter after the final keyword', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'golem-argument-terminator-'));
+  const file = join(dir, 'a.gm');
+  try {
+    for (const [input, token] of [
+      ['@foo a=b c=d\n続き\n', 'KNewline'],
+      ['[foo a=b c=d]続き\n', 'KRBracket'],
+      ['```hs a=b c=d\nx\n```\n', 'KNewline'],
+    ]) {
+      writeFileSync(file, input);
+      const cli = process.env.GOLEM || 'golem';
+      const result = spawnSync(cli, ['inspect', file, '--as', 'cst'], { encoding: 'utf8' });
+      if (result.error) throw result.error;
+      assert.equal(result.status, 0, result.stderr);
+      const start = Buffer.from(input).indexOf('c=d');
+      const end = start + 3;
+      assert.ok(result.stdout.includes('NKeywordArgument@' + start + '..' + end));
+      assert.ok(result.stdout.includes(token + '@' + end + '..' + (end + 1)), result.stdout);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
