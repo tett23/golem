@@ -407,6 +407,34 @@ theorem I6_allFindingsHaveSpans (rules : List Rule) (args : List Argument)
 def callEndOffset (words : List KeywordText) (offset : Nat) (closing : String) : Nat :=
   offset + words.foldr (fun entry total => entry.width + total) 0 + closing.utf8ByteSize
 
+private theorem keywordSpanBounds (words : List KeywordText) (index offset : Nat)
+    (error : Error) (found : keywordSpan words index offset error = some (lo, hi)) :
+    offset ≤ lo ∧ lo ≤ hi ∧ hi ≤ offset + words.foldr (fun w total => w.width + total) 0 := by
+  induction words generalizing index offset with
+  | nil => simp [keywordSpan] at found
+  | cons word rest ih =>
+      cases index with
+      | zero =>
+          cases error <;> simp [keywordSpan, atKeyword] at found <;>
+            obtain ⟨rfl, rfl⟩ := found <;> simp [List.foldr, KeywordText.width] <;> omega
+      | succ index =>
+          have bounds := ih index (offset + word.width) found
+          simp only [List.foldr]
+          omega
+
+theorem I6_spanWithinCall (words : List KeywordText) (offset : Nat) (closing : String)
+    (f : Finding) (found : findingSpan words offset (callEndOffset words offset closing) f =
+      some (lo, hi)) : offset ≤ lo ∧ lo ≤ hi ∧ hi ≤ callEndOffset words offset closing := by
+  unfold findingSpan at found
+  split at found
+  · simp at found
+    obtain ⟨rfl, rfl⟩ := found
+    simp [callEndOffset]
+    omega
+  · have bounds := keywordSpanBounds words f.position offset f.error found
+    unfold callEndOffset
+    omega
+
 structure TypedKeyword where
   text : KeywordText
   kind : Kind
