@@ -507,6 +507,26 @@ theorem canonical_sp_kwarg_step (fuel : Nat) (input afterSpace rest : List Char)
   simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
     spaceHit, keywordHit, Except.map] <;> rfl
 
+theorem canonical_keyword_child_of_parts (fuel : Nat)
+    (input afterSpace afterKeyword rest : List Char)
+    (spaceHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Sp" []) input = .ok (some afterSpace))
+    (keywordHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "KwArg" []) afterSpace = .ok (some afterKeyword))
+    (commentsHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])) afterKeyword =
+        .ok (some rest)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
+      keywordRepetitionChild input = .ok (some rest) := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item source)
+      _ [] items input)
+    [[.ref "Sp" [], .ref "KwArg" [],
+      .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]] = .ok (some rest)
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    spaceHit, keywordHit, commentsHit, Except.map] <;> rfl
+
 -- Concrete checks of the canonical PegModel ref, including Sp, ordered
 -- PosArg rejection, KwArg selection and the newline left for the command.
 -- The arbitrary-length theorem above is for the restricted derivation; these
