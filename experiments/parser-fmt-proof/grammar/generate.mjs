@@ -94,7 +94,8 @@ function describeItems(items) {
 function nestedChoices(expr, visit) {
   switch (expr.tag) {
     case 'choice':
-      if (expr.alts.length > 1 && !provedNlEofChoice(expr) && !provedLiteralNlEofChoice(expr)) expr.alts.forEach(visit);
+      if (expr.alts.length > 1 && !provedNlEofChoice(expr) &&
+          !provedLiteralNlEofChoice(expr) && !provedClassLookaheadOrEof(expr)) expr.alts.forEach(visit);
       expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));
       break;
     case 'star': case 'plus': case 'opt': case 'and': case 'not':
@@ -230,6 +231,14 @@ function provedLiteralNlEofChoice(expr) {
   return nl?.bind === null && nl.expr.tag === 'lit' && nl.expr.value === '\n' &&
     nl.expr.written === "'\\n'" && eof?.bind === null && eof.expr.tag === 'not' &&
     eof.expr.expr.tag === 'any';
+}
+// PegModelTest.class_lookahead_or_eof covers any character class in this form.
+function provedClassLookaheadOrEof(expr) {
+  if (expr.tag !== 'choice' || expr.alts.length !== 2 ||
+      expr.alts.some(items => items.length !== 1)) return false;
+  const [[hit], [eof]] = expr.alts;
+  return hit?.bind === null && hit.expr.tag === 'and' && hit.expr.expr.tag === 'class' &&
+    eof?.bind === null && eof.expr.tag === 'not' && eof.expr.expr.tag === 'any';
 }
 if (!fragment && ast) {
   // StringLit, Word, and StringLiteral stay unsupported: their fragment proofs

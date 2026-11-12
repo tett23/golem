@@ -445,6 +445,56 @@ theorem generated_newline_or_eof (env : PegModel.Params) (fuel : Nat) (input : L
       · simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
           nl, eof, h, Except.map]; rfl
 
+theorem class_lookahead (grammar : PegModel.Grammar) (env : PegModel.Params) (fuel : Nat)
+    (ranges : List (Nat × Nat)) (written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 3) (.andPred (.charClass ranges written)) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then some (c :: rest) else none) := by
+  cases input with
+  | nil => rfl
+  | cons c rest =>
+      change (match PegModel.recognizeEnv grammar env (fuel + 2) (.charClass ranges written) (c :: rest) with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok none
+        | Except.ok (some _) => Except.ok (some (c :: rest))) = _
+      rw [show PegModel.recognizeEnv grammar env (fuel + 2) (.charClass ranges written) (c :: rest) =
+        .ok (if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then some rest else none) from rfl]
+      cases h : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) <;> simp [h]
+
+theorem class_lookahead_or_eof (grammar : PegModel.Grammar) (env : PegModel.Params) (fuel : Nat)
+    (ranges : List (Nat × Nat)) (written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 5)
+      (.choice [[.andPred (.charClass ranges written)], [.notPred .any]]) input =
+      .ok (match input with
+        | [] => some []
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then some (c :: rest) else none) := by
+  have classHit : PegModel.recognizeEnv grammar env (fuel + 4)
+      (.andPred (.charClass ranges written)) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then some (c :: rest) else none) := by
+    simpa [Nat.add_assoc] using class_lookahead grammar env (fuel + 1) ranges written input
+  have eof : PegModel.recognizeEnv grammar env (fuel + 4) (.notPred .any) input =
+      .ok (if input.isEmpty then some input else none) := by
+    cases input <;> rfl
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 4) item rest)
+      _ env items input) [[.andPred (.charClass ranges written)], [.notPred .any]] = _
+  cases input with
+  | nil => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+      classHit, eof, Except.map]; rfl
+  | cons c rest =>
+      cases h : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) with
+      | false => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+          classHit, eof, h, Except.map]; rfl
+      | true => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+          classHit, eof, h, Except.map]; rfl
+
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
     .ok (some "!".toList) := by rfl
 
