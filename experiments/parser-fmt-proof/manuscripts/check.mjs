@@ -71,6 +71,14 @@ try {
       const positions = () => comments(run('inspect', file, '--as', 'cst'));
       const expectedAst = ast();
       if (expectedStructure) assert.match(expectedAst, expectedStructure);
+      if (input.startsWith('@listing ')) {
+        assert.match(expectedAst, /BlockCommand\s+\(?"listing"/u);
+        assert.match(expectedAst, /Positional \(Word "x\.hs"\)/u);
+        const keywords = [...expectedAst.matchAll(/Keyword \("([^"]+)"\) \(Word "([^"]+)"\)/gu)];
+        const expected = input.trim().split(' ').filter(part => part.includes('='));
+        assert.deepEqual(keywords.map(([, name, value]) => name + '=' + value), expected);
+        assert.equal([...expectedAst.matchAll(/\bKeyword\b/gu)].length, expected.length);
+      }
       assert.deepEqual(positions(), expectedComments);
       run('fmt', file);
       assert.equal(ast(), expectedAst);

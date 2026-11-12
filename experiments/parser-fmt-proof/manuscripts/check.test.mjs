@@ -60,3 +60,18 @@ for (const [fault, comments] of [
     }
   });
 }
+
+test('Golem ADR 0351 I4: a listing keyword must occur in the accepted AST', () => {
+  const output = mkdtempSync(join(tmpdir(), 'golem-listing-coverage-'));
+  const stub = join(output, 'golem');
+  try {
+    writeFileSync(stub, '#!/bin/sh\necho \'BlockCommand ("listing") [Positional (Word "x.hs")] []\'\n', { mode: 0o755 });
+    const result = spawnSync('node', ['experiments/parser-fmt-proof/manuscripts/check.mjs', '0', '9'], {
+      env: { ...process.env, GOLEM: stub, ROUND_TRIP_FAILURES: output }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.match(readFileSync(join(output, 'manuscript-9', 'error.txt'), 'utf8'), /lines/);
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
+});
