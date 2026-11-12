@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { saveProjectFailure } from '../save-project-failure.mjs';
 
 test('Golem ADR 0351 I6-I8: fmt preserves keyword errors and the declaration order of missing arguments', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -39,6 +40,7 @@ test('Golem ADR 0351 I6-I8: fmt preserves keyword errors and the declaration ord
     assert.match(ds.at(-2).message, /2 番目の位置引数がありません$/);
     assert.match(ds.at(-1).message, /3 番目の位置引数がありません$/);
   }
+  const original = '@import fn/book.emet as book\n\n注[book.price 1  x=1 %%甲%% x=1 tax=abc x=1]\n\n[book.triple   1]\n';
   try {
     cpSync(join(fixtures, 'functions'), dir, { recursive: true });
     cpSync(join(fixtures, 'int-width/style.toml'), join(dir, 'style.toml'));
@@ -49,12 +51,14 @@ test('Golem ADR 0351 I6-I8: fmt preserves keyword errors and the declaration ord
       '', 'pub inline triple :: Nat -> Nat -> Nat -> Inlines',
       'triple a b c = Inline.text (String.fromNat (a + b + c))', '',
     ].join('\n'));
-    const original = '@import fn/book.emet as book\n\n注[book.price 1  x=1 %%甲%% x=1 tax=abc x=1]\n\n[book.triple   1]\n';
     writeFileSync(source, original);
     checkSites();
     run(['fmt', source], 0);
     assert.notEqual(readFileSync(source, 'utf8'), original);
     checkSites();
+  } catch (error) {
+    saveProjectFailure('arguments', dir, original, error);
+    throw error;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { saveProjectFailure } from '../save-project-failure.mjs';
 import { withoutPositions } from '../manuscripts/corpus.mjs';
 
 test('Golem ADR 0351 I5: an imported Emet function evaluates identically after fmt', () => {
@@ -12,9 +13,9 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
   const dir = mkdtempSync(join(tmpdir(), 'golem-fmt-evaluation-'));
   const file = join(dir, 'a.gm');
   const run = (...args) => execFileSync(process.env.GOLEM || 'golem', args, { cwd: dir, encoding: 'utf8' });
+  const original = '@import fn/book.emet as book\n\n[= book.sum(1,%%注%%2,3)]\n';
   try {
     cpSync(fixture, dir, { recursive: true });
-    const original = '@import fn/book.emet as book\n\n[= book.sum(1,%%注%%2,3)]\n';
     writeFileSync(file, original);
     const evaluate = () => withoutPositions(run('inspect', 'a.gm', '--as', 'ir'));
     const before = evaluate();
@@ -24,6 +25,9 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
     assert.notEqual(formatted, original);
     assert.ok(formatted.includes('%%注%%'));
     assert.equal(evaluate(), before);
+  } catch (error) {
+    saveProjectFailure('eval', dir, original, error);
+    throw error;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
