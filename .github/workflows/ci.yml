@@ -1273,15 +1273,7 @@ jobs:
         run: |
           chmod +x golem-linux-x86_64/golem
           export GOLEM="$PWD/golem-linux-x86_64/golem"
-          status=0
-          node --test experiments/parser-fmt-proof/"$SUITE"/*.test.mjs || status=1
-          case "$SUITE" in
-            manuscripts) node experiments/parser-fmt-proof/manuscripts/check.mjs 2 || status=1 ;;
-            tables) node experiments/parser-fmt-proof/tables/check.mjs || status=1 ;;
-            arguments|eval) ;;
-            *) exit 1 ;;
-          esac
-          exit "$status"
+          sh experiments/parser-fmt-proof/check-suite.sh "$SUITE" 2
       - name: Save failing manuscripts and replay commands
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
