@@ -711,7 +711,21 @@ blankLineTests =
 
 figureOrderTests :: [TestTree]
 figureOrderTests =
-  [ testCase "a figure after a figure sent on is sent on after it" $ do
+  [ testCase "Golem ADR 0352 I3: two figures and one blank use the modeled source order" $ do
+      let line = FParagraph defaultKeep (lines' 0 1)
+          first = FFigure 1000 2 [] []
+          second = FFigure 1001 1 [] []
+          cases =
+            [ ([line, FBlank mk 1, first, second], [0, 2, 4], []),
+              ([line, first, FBlank mk 1, second], [0, 1, 4], []),
+              ([line, first, second, FBlank mk 1], [0, 1, 3], [])
+            ]
+      forM_ cases $ \(flows, positions, dropped) -> do
+        let ps = paginate 1 5 flows
+        contents ps @?= [[SLine 0, SFigure 1000, SFigure 1001]]
+        gridLines ps @?= [positions]
+        unmets ps @?= dropped,
+    testCase "a figure after a figure sent on is sent on after it" $ do
       let ps = paginate 1 5 [FParagraph defaultKeep (lines' 0 3), FFigure 98 3 [] [], FParagraph defaultKeep (lines' 10 1), FFigure 99 1 [] []]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10], [SFigure 98, SFigure 99]],
     testCase "in two columns, a figure after a figure sent on goes to the next column after it" $ do

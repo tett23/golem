@@ -383,6 +383,79 @@ theorem blankFigureOrder_oneFigure (capacity used size : Nat) (top : Bool)
     · simp
     · simpa using usedFits
 
+/- Two source-ordered figures after one blank and no text. With the blank
+   first, it is dropped at the column top and otherwise follows the first
+   kept figure. The second figure cannot be kept after the first is sent. -/
+theorem blankFigureOrder_twoFiguresAfterBlank
+    (capacity used firstSize secondSize : Nat)
+    (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (used + (if used = 0 then 0 else 1) + firstSize ≤ capacity) ∧
+      second = decide (first = true ∧
+        used + (if used = 0 then 0 else 1) + firstSize + secondSize ≤ capacity) ∧
+      placed = decide (first = true ∧ used ≠ 0) ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases top : used = 0
+  · subst used
+    by_cases firstFits : firstSize ≤ capacity
+    · by_cases secondFits : firstSize + secondSize ≤ capacity
+      · refine ⟨true, true, false, ?_, ?_, ?_, ?_⟩
+        all_goals simp [firstFits, secondFits] <;> omega
+      · refine ⟨true, false, false, ?_, ?_, ?_, ?_⟩
+        all_goals simp [firstFits, secondFits] <;> omega
+    · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits] <;> omega
+  · by_cases firstFits : used + 1 + firstSize ≤ capacity
+    · by_cases secondFits : used + 1 + firstSize + secondSize ≤ capacity
+      · refine ⟨true, true, true, ?_, ?_, ?_, ?_⟩
+        all_goals simp [top, firstFits, secondFits] <;> omega
+      · refine ⟨true, false, true, ?_, ?_, ?_, ?_⟩
+        all_goals simp [top, firstFits, secondFits] <;> omega
+    · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [top, firstFits] <;> omega
+
+/- The same no-text input with the blank between the two figures. If the
+   first figure is sent, the second waits and the blank is dropped. -/
+theorem blankFigureOrder_twoFiguresAroundBlank
+    (capacity used firstSize secondSize : Nat)
+    (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (used + firstSize ≤ capacity) ∧
+      second = decide (first = true ∧
+        used + firstSize + 1 + secondSize ≤ capacity) ∧
+      placed = second ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases firstFits : used + firstSize ≤ capacity
+  · by_cases secondFits : used + firstSize + 1 + secondSize ≤ capacity
+    · refine ⟨true, true, true, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+    · refine ⟨true, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+  · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+    all_goals simp [firstFits] <;> omega
+
+/- The blank after both figures has no following block and is dropped. -/
+theorem blankFigureOrder_twoFiguresBeforeBlank
+    (capacity used firstSize secondSize : Nat)
+    (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (used + firstSize ≤ capacity) ∧
+      second = decide (first = true ∧
+        used + firstSize + secondSize ≤ capacity) ∧
+      placed = false ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases firstFits : used + firstSize ≤ capacity
+  · by_cases secondFits : used + firstSize + secondSize ≤ capacity
+    · refine ⟨true, true, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+    · refine ⟨true, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+  · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+    all_goals simp [firstFits] <;> omega
+
 /- A need of two lines before a one-line figure in a column with one line
    left conflicts with the older rule that keeps every figure that fits. -/
 theorem needFigure :
