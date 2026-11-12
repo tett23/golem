@@ -259,6 +259,36 @@ theorem missingInDeclarationOrder (rules : List Rule) (args : List Argument) :
         !(args.any (fun arg => arg.name == rule.name)))).map Rule.name := by
   simp [missing, List.map_map, Function.comp_def]
 
+private def isMissing (f : Finding) : Bool := f.error == .missing
+
+private theorem filterMissingAppend (xs ys : List Finding) :
+    (xs ++ ys).filter isMissing = xs.filter isMissing ++ ys.filter isMissing := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+      cases h : isMissing x <;> simp [List.filter, h, ih]
+
+theorem I8_checkedMissingInDeclarationOrder (rules : List Rule) (args : List Argument) :
+    ((check rules args).filter isMissing).map Finding.name =
+      (rules.filter (fun rule => rule.required &&
+        !(args.any (fun arg => arg.name == rule.name)))).map Rule.name := by
+  have scanned (input : List Argument) (seen : List String) (pos : Nat) :
+      (scan rules input seen pos).filter isMissing = [] := by
+    induction input generalizing seen pos with
+    | nil => rfl
+    | cons arg rest ih =>
+        rw [scan, filterMissingAppend, ih, List.append_nil]
+        simp only [atOccurrence, filterMissingAppend]
+        split <;> split <;> split <;> rfl
+  have kept (decls : List Rule) :
+      ((decls.map (fun r => Finding.mk args.length r.name .missing)).filter isMissing) =
+        decls.map (fun r => Finding.mk args.length r.name .missing) := by
+    induction decls with
+    | nil => rfl
+    | cons r rs ih => simp [List.filter, isMissing, ih]
+  rw [check, filterMissingAppend, scanned, List.nil_append]
+  simpa only [missing, kept] using missingInDeclarationOrder rules args
+
 def known : List Rule :=
   [ { name := "tax", kind := .bool, required := false, repeatable := false },
     { name := "count", kind := .nat, required := true, repeatable := false },
