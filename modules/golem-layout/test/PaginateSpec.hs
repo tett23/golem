@@ -9,10 +9,11 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
+import Control.Exception (evaluate)
 import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
@@ -27,6 +28,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput, sectionFlow)
 import PaginateInvariants (Breach (..), Invariant (..), breaches, p11WaitingBeforeSpace, p9SpaceMoved, w3WaitingAlike, waitingFigures)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -314,7 +316,23 @@ noted i k = LineBox i [NoteBody (nid 900) k] [] [] 0
 
 keepNoteTests :: [TestTree]
 keepNoteTests =
-  [ testCase "a heading goes on with a line whose note does not fit after it" $ do
+  [ testCase "Golem ADR 0352 I4: a one-line note terminates at capacities 1, 2, and 3" $ do
+      results <-
+        mapM
+          (\capacity -> timeout 1000000 (evaluate (length (paginate 1 capacity [FParagraph defaultKeep [noted 0 1]]))))
+          [1 .. 3]
+      map isJust results @?= [True, True, True]
+      map (unmets . (\capacity -> paginate 1 capacity [FParagraph defaultKeep [noted 0 1]])) [1, 2]
+        @?= [[UnplaceableFootnote (nid 900) 1], [UnplaceableFootnote (nid 900) 2]],
+    testCase "Golem ADR 0353 I2: capacities 1 and 2 remain valid without footnotes" $
+      map (\capacity -> (contents (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]), unmets (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]))) [1, 2]
+        @?= [([[SLine 0]], []), ([[SLine 0]], [])],
+    testCase "Golem ADR 0353 I1: page-lines leaves marker and note together in the next full column" $ do
+      let ps = paginate 1 3 [FAdjustLines mk (-1), FParagraph defaultKeep [noted 0 1]]
+      [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps, not (null (poSlots p))]
+        @?= [(2, [nid 900])]
+      unmets ps @?= [],
+    testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]
       contents ps @?= [map SLine [0 .. 3], [SHeading 20 1, SLine 30, SLine 31]]

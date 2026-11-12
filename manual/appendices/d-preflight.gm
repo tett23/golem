@@ -4,7 +4,7 @@
 
 この付録は、プリフライトの設定（[code: preflight.toml]）に書けるテーブルとキーをすべて並べたものです。
 使い方の流れは、第[ref-number output]章の「[ref-title preflight]」（[ref-page preflight] ページ）で説明しています。[index reading=ぷりふらいと/せってい: プリフライト/設定]
-ここに載せていないキーを書くと、エラー（G09001）になります。
+ここに載せていないキーを書くと、エラー（G09103）になります。
 [code: preflight.toml] も、[code: manifest.toml] と同じく TOML の形式で書きます（第[ref-number basics]章「[ref-title toml]」）。
 
 [code: golem preflight] は、[code: --rules] で指したファイルを読みます。
@@ -37,7 +37,7 @@
 
 | テーブル | print の既定 | 検査 |
 |:---|:---|:---|
-| [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G09002）。同じ文字はビルドの G08100 のエラーでも出て、この設定では消えません |
+| [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G09002）。警告にするには [code: "warning"]、報告を止めるには [code: "off"] を選びます |
 | [code: \[image-icc\]] | [code: "warning"] | 出力インテントと違う ICC プロファイルを持つ CMYK の図版（G09009） |
 | [code: \[overfull-lines\]] | [code: "warning"] | 行長からはみ出す行（G09013）。同じ行はビルドの G07105 の警告でも出て、この設定では消えません |
 | [code: \[pdf-x\]] | [code: "error"] | PDF/X-4 の要件（G09014）。フォントの埋め込みは、この表でなく [code: \[font-embedding\]] で検査します |

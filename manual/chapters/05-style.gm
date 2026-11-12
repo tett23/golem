@@ -308,6 +308,35 @@ InDesign の段落スタイルとの違いは、次のとおりです。
 - 最終行右インデントはありません。
 - 段落ごとに書いたスタイルの上書き（オーバーライド）はありません。体裁を変えたい段落には、別の段落スタイルを作って付けます。原稿にあるのはスタイルの名前だけなので、スタイルを直せば、それを使うすべての段落が変わります。
 
+## 組版用の値を名前で共有する
+
+同じ字下げ、アキ量、行数を複数のスタイルで使うときは、[code: style.toml] の [code: \[values.length\]]、[code: \[values.aki\]]、[code: \[values.count\]] に名前を付けます。
+スタイル同士を [code: based-on] で結ばなくても、同じ値を参照できます。
+
+```toml
+[values.length]
+indent = "1zw"
+
+[values.aki]
+half = "二分"
+
+[values.count]
+rows = 2
+more = "rows + 1"
+
+[paragraph-styles.quote]
+indent = "indent"
+keep-with-next = "more"
+```
+
+名前は英小文字で始め、後は英小文字、数字、ハイフンで書きます。
+三つの表で同じ名前を二度使えません。
+単位やアキ量の組み込み名は、名前に使えません。
+宣言の順番は自由で、行数の式には足し算を使えます。
+行数は 0 から 2147483647 までです。
+原稿の [code: @style-def paragraph letter indent=indent] でも、同じ宣言を参照できます。
+長さの [code: zw] は、値を使う欄の文字の大きさで決まります。
+
 ## 行揃えと段落の前後のアキ
 
 段落スタイルの [code: align] で、段落の行の揃え方を変えます。
@@ -842,7 +871,7 @@ content = ["{meta.title}", "{heading.1.short}"]
 - [code: {heading.<階層>.short}]、[code: {heading.<階層>.numbered}]：上の値と同じ、見出しの題と、番号と題です。末尾に [code: .last] を付けられます。
 - [code: {heading.<階層>.number}]：見出しの番号だけです（「第3章」など）。
 - [code: {meta.title}]：[code: manifest.toml] の書名です。[code: title] のほかに [code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] を書けます。
-- [code: {set.名前}]：そのページの章のファイルで [code: @set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
+- [code: {set.名前}]：そのページの章のファイルで [code: set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
 - [code: {vars.名前}]：[code: manifest.toml] の [code: \[vars\]] の変数です。どの章のページにも同じ値が出ます。表の中の値は [code: {vars.author.short}] と書きます。[code: \[vars\]] にない名前は G03111、文字列でも数でもない値は G03112 です。
 
 値のない差し込みがあると、その行は描きません。
@@ -958,6 +987,7 @@ leader = "dots"
 [code: space-after] は書いたとおりの空きになり、余った分は線の上の空きに入ります。
 そのため、[code: space-before] は「少なくともこれだけ空ける」という意味になります。
 行が増えると、脚注のあるページの本文はその分だけ短くなります。
+脚注の印の行、区切りの領域、脚注本文の最初の行が空の段にも収まらないときは、G07125 を出して PDF を作りません。
 [code: length] は [code: zw] で書くと版面の文字の大きさを一字として数え、一行の長さ（段組みでは一段の長さ）より長いとエラーになります。
 このマニュアルは、脚注の前に 8 字分の区切り線を引いています。
 

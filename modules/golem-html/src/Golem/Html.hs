@@ -1270,8 +1270,8 @@ css cfg book =
     {- the indent of a style is written when it differs from body's, and
     body's when it is not 0; text-indent is inherited by the lines, so
     each line of a style that keeps them hangs (docs/adr ADR 0006) -}
-    bodyIndent = maybe ("0em", "0em") (\b -> (hpsIndent b, hpsFirstLineIndent b)) (Map.lookup "body" (hcParaStyles cfg))
-    isZero l = T.dropWhile (== '-') l `elem` ["0em", "0pt"]
+    bodyIndent = maybe ("0", "0") (\b -> (hpsIndent b, hpsFirstLineIndent b)) (Map.lookup "body" (hcParaStyles cfg))
+    isZero l = T.dropWhile (== '-') l `elem` ["0", "0em", "0pt"]
     indentRule name ps
       | name == "body" = not (isZero (hpsIndent ps) && isZero (hpsFirstLineIndent ps))
       | otherwise = (hpsIndent ps, hpsFirstLineIndent ps) /= bodyIndent
