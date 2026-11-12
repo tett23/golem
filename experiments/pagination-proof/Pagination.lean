@@ -1862,6 +1862,51 @@ theorem I3_no_blank_two_figures_arbitrary_text
     figureOrder (by simp) (by simp)
   simpa using fits
 
+theorem I3_one_break_no_blank_two_figures
+    (capacity firstTextPos firstPos secondPos firstSize secondSize : Nat)
+    (items : List SourceItem)
+    (capacityPositive : 1 ≤ capacity)
+    (firstText : .text firstTextPos ∈ items)
+    (firstBefore : firstTextPos < firstPos)
+    (secondBefore : firstTextPos < secondPos) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 2 capacity 0 kept
+        (fun f => textBeforeCount items
+          (if f = 0 then firstPos else secondPos) ≤ 1)
+        (fun f => textBeforeCount items
+          (if f = 0 then firstPos else secondPos))
+        (fun f => if f = 0 then firstSize else secondSize)
+        (fun _ => false) ∧
+      1 + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) ≤ capacity := by
+  let pos : Nat → Nat := fun f => if f = 0 then firstPos else secondPos
+  let count : Nat → Nat := fun f => textBeforeCount items (pos f)
+  let size : Nat → Nat := fun f => if f = 0 then firstSize else secondSize
+  let ready : Nat → Bool := fun f => decide (count f ≤ 1)
+  obtain ⟨kept, shiftedRule, fits⟩ :=
+    I3_no_blank_two_figures_arbitrary_text capacity 1 firstSize secondSize
+      ready (fun f => count f - 1) capacityPositive
+  refine ⟨kept, ?_, fits⟩
+  intro f bound
+  have priorText : 0 < count f := by
+    have earlier : firstTextPos < pos f := by
+      by_cases first : f = 0
+      · simpa [pos, first] using firstBefore
+      · simpa [pos, first] using secondBefore
+    have hit : .text firstTextPos ∈ items.filter (earlierTextItem (pos f)) :=
+      List.mem_filter.mpr ⟨firstText, by simp [earlierTextItem, earlier]⟩
+    cases h : items.filter (earlierTextItem (pos f)) with
+    | nil => simp [h] at hit
+    | cons x xs => simp [count, textBeforeCount, h]
+  have roomEq :
+      figureHasRoom capacity 1 (fun g => count g - 1) size (fun _ => false) f ↔
+      figureHasRoom capacity 0 count size (fun _ => false) f := by
+    simp only [figureHasRoom]
+    omega
+  have figureRule := shiftedRule f bound
+  simpa [figuresRuleWithLoad, figuresRule, ready, count, pos, size,
+    roomEq] using figureRule
+
 theorem I3_blankFigureOrder_no_blank_one_figure_zero_break
     (capacity used figurePos figureSize : Nat)
     (items : List SourceItem) (usedFits : used ≤ capacity) :
