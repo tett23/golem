@@ -6288,6 +6288,14 @@ UTF-32 は選ばない。
 要求の列が、交渉した単位で数えた行の長さ（改行を含まない）より大きい場合は、LSP 3.17 の定めのとおり行末に丸める。
 行の番号が文書の行の数を超える場合と、列が文字の途中に当たる場合は、仕様が定めていないので丸めず、結果を空にする。
 
+### ファイルとフォルダの改名
+
+LSP は、ファイルとフォルダの改名前にクライアントが送る `workspace/willRenameFiles` に応じ、参照を指す値だけの編集を操作前の URI に対する `WorkspaceEdit.documentChanges` で返す（[docs/adr/0338](adr/0338-update-references-on-file-and-folder-renames.md)）。
+編集がなければ `null` を返し、LSP はディスクを変更しない。
+原稿の import、画像、表、コードのファイル引数、Emet のファイル引数、manifest の章とファイル欄、書体のパスを対象にする。
+Aleph が初期化時に指定した場合だけ、`plot.csv` の `file` 列とワークスペースの Markdown シートの Wiki リンクも対象にする。
+クライアントから `workspace/didRenameFiles` が届いた後は、旧パスの索引を捨ててプロジェクトを読み直す。
+
 ### 同期と評価し直し
 
 文書の同期は全文の同期である。
