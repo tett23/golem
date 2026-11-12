@@ -1907,6 +1907,61 @@ theorem I3_one_break_no_blank_two_figures
   simpa [figuresRuleWithLoad, figuresRule, ready, count, pos, size,
     roomEq] using figureRule
 
+theorem I3_one_break_no_blank_one_figure
+    (capacity firstTextPos figurePos figureSize : Nat)
+    (items : List SourceItem)
+    (capacityPositive : 1 ≤ capacity)
+    (firstText : .text firstTextPos ∈ items)
+    (beforeFigure : firstTextPos < figurePos) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 1 capacity 0 kept
+        (fun _ => textBeforeCount items figurePos ≤ 1)
+        (fun _ => textBeforeCount items figurePos)
+        (fun _ => figureSize) (fun _ => false) ∧
+      1 + (if kept 0 then figureSize else 0) ≤ capacity := by
+  let count := textBeforeCount items figurePos
+  have hit : .text firstTextPos ∈ items.filter (earlierTextItem figurePos) :=
+    List.mem_filter.mpr ⟨firstText, by simp [earlierTextItem, beforeFigure]⟩
+  have positive : 0 < count := by
+    cases h : items.filter (earlierTextItem figurePos) with
+    | nil => simp [h] at hit
+    | cons x xs => simp [count, textBeforeCount, h]
+  obtain ⟨kept, rule⟩ := I3_figuresRuleWithLoad_exists 1 capacity 1
+    (fun _ => decide (count ≤ 1)) (fun _ => count - 1)
+    (fun _ => figureSize) (fun _ => false)
+  refine ⟨kept, ?_, ?_⟩
+  · intro f bound
+    have roomEq :
+        figureHasRoom capacity 1 (fun _ => count - 1)
+          (fun _ => figureSize) (fun _ => false) f ↔
+        figureHasRoom capacity 0 (fun _ => count)
+          (fun _ => figureSize) (fun _ => false) f := by
+      simp only [figureHasRoom]
+      omega
+    have figureRule := rule f bound
+    simpa [figuresRuleWithLoad, figuresRule, count, roomEq] using figureRule
+  · cases present : kept 0 with
+    | false => simpa [present] using capacityPositive
+    | true =>
+        have room := I3_kept_figure_has_room 1 capacity 1 kept
+          (fun _ => decide (count ≤ 1) = true) (fun _ => count - 1)
+          (fun _ => figureSize) (fun _ => false)
+          rule 0 (by decide) present
+        simp [figureHasRoom, priorFigureLines,
+          show List.range 0 = [] from rfl] at room
+        simp [present]
+        omega
+
+theorem I3_one_break_no_blank_no_figures
+    (capacity : Nat) (capacityPositive : 1 ≤ capacity) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 0 capacity 0 kept
+        (fun _ => True) (fun _ => 0) (fun _ => 0) (fun _ => false) ∧
+      1 ≤ capacity := by
+  refine ⟨fun _ => false, ?_, capacityPositive⟩
+  intro f bound
+  exact False.elim (Nat.not_lt_zero f bound)
+
 theorem I3_blankFigureOrder_no_blank_one_figure_zero_break
     (capacity used figurePos figureSize : Nat)
     (items : List SourceItem) (usedFits : used ≤ capacity) :
