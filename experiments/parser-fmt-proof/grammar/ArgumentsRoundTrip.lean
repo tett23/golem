@@ -2,6 +2,109 @@ import WordRoundTrip
 
 namespace ArgumentsRoundTrip
 
+-- A finite trace for the canonical recognizer's star operator.  Every hit is
+-- checked at the fuel that recognizeEnv actually passes to its child; the
+-- final miss leaves the caller's suffix untouched.
+def CanonicalStarSteps (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (child : PegModel.Expr) (base : Nat) (suffix : List Char) :
+    List (List Char) → Prop
+  | [] => PegModel.recognizeEnv grammar env base child suffix = .ok none
+  | chunk :: rest =>
+      PegModel.recognizeEnv grammar env (base + rest.length + 1) child
+        ((chunk :: rest).join ++ suffix) =
+          .ok (some (rest.join ++ suffix)) ∧
+      chunk ≠ [] ∧ CanonicalStarSteps grammar env child base suffix rest
+
+theorem canonical_star_chunks (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (child : PegModel.Expr) (base : Nat) (suffix : List Char)
+    (chunks : List (List Char))
+    (steps : CanonicalStarSteps grammar env child base suffix chunks) :
+    PegModel.recognizeEnv grammar env (base + chunks.length + 1)
+      (.star child) (chunks.join ++ suffix) = .ok (some suffix) := by
+  induction chunks with
+  | nil =>
+      simp only [List.join_nil, List.nil_append, List.length_nil,
+        Nat.add_zero] at steps ⊢
+      change (match PegModel.recognizeEnv grammar env base child suffix with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some suffix)
+        | Except.ok (some rest) =>
+            if rest.length < suffix.length then
+              PegModel.recognizeEnv grammar env base (.star child) rest
+            else Except.error "zero-width repetition") = Except.ok (some suffix)
+      rw [steps]
+  | cons chunk rest ih =>
+      obtain ⟨hit, nonempty, more⟩ := steps
+      have strict : (rest.join ++ suffix).length <
+          ((chunk :: rest).join ++ suffix).length := by
+        simp only [List.join_cons, List.length_append]
+        have positive : 0 < chunk.length := by
+          cases chunk with
+          | nil => exact False.elim (nonempty rfl)
+          | cons _ _ => simp
+        omega
+      have fuelEq : base + (chunk :: rest).length + 1 =
+          (base + rest.length + 1) + 1 := by simp; omega
+      rw [fuelEq]
+      change (match PegModel.recognizeEnv grammar env
+        (base + rest.length + 1) child ((chunk :: rest).join ++ suffix) with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some ((chunk :: rest).join ++ suffix))
+        | Except.ok (some next) =>
+            if next.length < ((chunk :: rest).join ++ suffix).length then
+              PegModel.recognizeEnv grammar env (base + rest.length + 1) (.star child) next
+            else Except.error "zero-width repetition") = Except.ok (some suffix)
+      rw [hit]
+      simp only [strict, ↓reduceIte]
+      exact ih more
+
+def printedKeywordChunks : List (WordRoundTrip.Word × WordRoundTrip.Word) →
+    List (List Char)
+  | [] => []
+  | (name, value) :: rest =>
+      (' ' :: name.chars ++ '=' :: value.chars) :: printedKeywordChunks rest
+
+theorem printedKeywordChunks_join
+    (args : List (WordRoundTrip.Word × WordRoundTrip.Word)) (suffix : List Char) :
+    WordRoundTrip.printArgs args ++ suffix =
+      (printedKeywordChunks args).join ++ '\n' :: suffix := by
+  induction args with
+  | nil => rfl
+  | cons pair rest ih =>
+      rcases pair with ⟨name, value⟩
+      simp [WordRoundTrip.printArgs, printedKeywordChunks, List.join_cons,
+        List.append_assoc, ih]
+
+theorem printedKeywordChunks_length
+    (args : List (WordRoundTrip.Word × WordRoundTrip.Word)) :
+    (printedKeywordChunks args).length = args.length := by
+  induction args with
+  | nil => rfl
+  | cons pair rest ih =>
+      rcases pair with ⟨_, _⟩
+      simp [printedKeywordChunks, ih]
+
+def keywordRepetitionChild : PegModel.Expr :=
+  .choice [[.ref "Sp" [], .ref "KwArg" [],
+    .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]]
+
+-- The actual Arguments keyword repetition has this result for any number of
+-- printed arguments and any enclosing suffix once each canonical step and the
+-- final miss are supplied.  canonical_star_chunks discharges all repetition,
+-- strict-consumption and fuel bookkeeping obligations.
+theorem canonical_keyword_repetition
+    (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
+    (base : Nat) (suffix : List Char)
+    (steps : CanonicalStarSteps Generated.pegGrammar [] keywordRepetitionChild base
+      ('\n' :: suffix) (printedKeywordChunks args)) :
+    PegModel.recognizeEnv Generated.pegGrammar []
+      (base + args.length + 1) (.star keywordRepetitionChild)
+      (WordRoundTrip.printArgs args ++ suffix) =
+        .ok (some ('\n' :: suffix)) := by
+  rw [printedKeywordChunks_join args suffix, ← printedKeywordChunks_length args]
+  exact canonical_star_chunks Generated.pegGrammar [] keywordRepetitionChild base
+    ('\n' :: suffix) (printedKeywordChunks args) steps
+
 -- Stage 1 fixes the peg-hs AST of Golem.hpeg via Generated.  Stage 2 derives
 -- how the Word-valued keyword path consumes each printed argument and leaves
 -- an arbitrary suffix.  Stage 3 reuses WordRoundTrip's parse/format theorems.
@@ -18,6 +121,16 @@ private theorem arguments_rule :
         .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]]),
       .star (.choice [[.ref "Sp" [], .ref "KwArg" [],
         .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]]),
+      .label (.choice [[.notPred (.choice [[.ref "Sp" [], .ref "PosArg" []]])]])
+        "arg_order"]] := by
+  rfl
+
+private theorem keyword_repetition_is_generated :
+    ruleItems "Arguments" = some [[
+      .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]]),
+      .star (.choice [[.ref "Sp" [], .ref "PosArg" [],
+        .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]]),
+      .star keywordRepetitionChild,
       .label (.choice [[.notPred (.choice [[.ref "Sp" [], .ref "PosArg" []]])]])
         "arg_order"]] := by
   rfl
