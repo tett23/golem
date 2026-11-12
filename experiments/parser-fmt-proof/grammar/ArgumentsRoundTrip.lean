@@ -124,7 +124,8 @@ private theorem parse_one_printed
 
 -- A derivation in the generated PEG's restricted Word-valued keyword path.
 -- Each step checks the actual extracted rule shapes and consumes one keyword
--- with parseOneWordKeyword.  It stops after the newline, leaving any suffix.
+-- with parseOneWordKeyword.  Arguments stops before the newline; the newline
+-- belongs to its enclosing command production.
 inductive PegWordKeywordDerives : List Char → List Char → List (List Char × List Char) → Prop where
   | done (suffix : List Char)
       (arguments : ruleItems "Arguments" = some [[
@@ -135,7 +136,7 @@ inductive PegWordKeywordDerives : List Char → List Char → List (List Char ×
           .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]]),
         .label (.choice [[.notPred (.choice [[.ref "Sp" [], .ref "PosArg" []]])]])
           "arg_order"]]) :
-      PegWordKeywordDerives ('\n' :: suffix) suffix []
+      PegWordKeywordDerives suffix suffix []
   | step (input remaining suffix : List Char) (name value : List Char)
       (rest : List (List Char × List Char))
       (wrapper : ruleItems "KwArg" = some [
@@ -156,11 +157,12 @@ inductive PegWordKeywordDerives : List Char → List Char → List (List Char ×
 theorem derived_printed_sequence (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
     (suffix : List Char) (namesSafe : WordRoundTrip.safeNames args)
     (valuesSafe : WordRoundTrip.safeValues args) :
-    PegWordKeywordDerives (WordRoundTrip.printArgs args ++ suffix) suffix
+    PegWordKeywordDerives (WordRoundTrip.printArgs args ++ suffix) ('\n' :: suffix)
       (args.map fun (name, value) => (name.chars, value.chars)) := by
   induction args with
   | nil =>
-      simpa [WordRoundTrip.printArgs] using PegWordKeywordDerives.done suffix arguments_rule
+      simpa [WordRoundTrip.printArgs] using
+        PegWordKeywordDerives.done ('\n' :: suffix) arguments_rule
   | cons pair rest ih =>
       rcases pair with ⟨name, value⟩
       have nameSafe : WordRoundTrip.startsComment name.chars = false :=
@@ -180,7 +182,7 @@ theorem derived_printed_sequence (args : List (WordRoundTrip.Word × WordRoundTr
         PegWordKeywordDerives.step
           (' ' :: name.chars ++ '=' :: value.chars ++
             (WordRoundTrip.printArgs rest ++ suffix))
-          (WordRoundTrip.printArgs rest ++ suffix) suffix name.chars value.chars
+          (WordRoundTrip.printArgs rest ++ suffix) ('\n' :: suffix) name.chars value.chars
           (rest.map fun (name, value) => (name.chars, value.chars))
           keyword_wrapper_rule keyword_argument_rule word_rule equals_rule
           argument_value_rule one more
@@ -218,12 +220,40 @@ theorem I1_I4_peg_word_keyword_sequences
     (WordRoundTrip.format fuel (WordRoundTrip.printArgs args)).bind
       (WordRoundTrip.parseArgs fuel) =
       some (args.map fun (name, value) => (name.chars, value.chars)) ∧
-    ∀ suffix, PegWordKeywordDerives (WordRoundTrip.printArgs args ++ suffix) suffix
+    ∀ suffix, PegWordKeywordDerives (WordRoundTrip.printArgs args ++ suffix) ('\n' :: suffix)
       (args.map fun (name, value) => (name.chars, value.chars)) := by
   obtain ⟨parsed, reformatted⟩ :=
     WordRoundTrip.I4_word_keyword_sequences args fuel namesSafe valuesSafe enough
   exact ⟨arguments_rule, keyword_wrapper_rule, keyword_argument_rule,
     word_rule, equals_rule, argument_value_rule, parsed, reformatted,
     fun suffix => derived_printed_sequence args suffix namesSafe valuesSafe⟩
+
+-- Concrete checks of the canonical PegModel ref, including Sp, ordered
+-- PosArg rejection, KwArg selection and the newline left for the command.
+-- The arbitrary-length theorem above is for the restricted derivation; these
+-- checks do not establish its equivalence with PegModel.recognize for all input.
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "Sp" [])
+    " a=x\n".toList = .ok (some "a=x\n".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "PosArg" [])
+    "a=x\n".toList = .ok none := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "KwArg" [])
+    "a=x\n".toList = .ok (some "\n".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "ArgComment" [])
+    "\n".toList = .ok none := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "Arguments" [])
+    "\n".toList = .ok (some "\n".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "Arguments" [])
+    " a=x\n".toList = .ok (some "\n".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 120 (.ref "Arguments" [])
+    " a=x b=y c=z\n".toList = .ok (some "\n".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 80 (.ref "Arguments" [])
+    " a=x q\n".toList = .ok none := by rfl
 
 end ArgumentsRoundTrip
