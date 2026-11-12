@@ -203,6 +203,26 @@ theorem I10_loneCRByteOffset (encoded : LineEncoding canonical bytes)
   rw [scanEncodedPrefix encoded]
   simp [firstLoneCR, lone]
 
+-- Each leading UTF-8 BOM contributes three bytes to the diagnostic,
+-- even though the formatter strips the entire leading run.
+theorem I10_loneCRByteOffsetWithBOM (count : Nat)
+    (encoded : LineEncoding canonical bytes) (tail : List Char)
+    (lone : tail.head? ≠ some '\n') :
+    firstLoneCR (List.replicate count bom ++ (bytes ++ '\r' :: tail)) 0 =
+      some (3 * count + byteLength bytes) := by
+  have scan (offset : Nat) :
+      firstLoneCR (List.replicate count bom ++ (bytes ++ '\r' :: tail)) offset =
+        some (offset + 3 * count + byteLength bytes) := by
+    induction count generalizing offset with
+    | zero =>
+        simp [scanEncodedPrefix encoded, firstLoneCR, lone]
+    | succ n ih =>
+        have ordinary : bom ≠ '\r' := by decide
+        have width : bom.utf8Size.toNat = 3 := by decide
+        simp [List.replicate, firstLoneCR, ordinary, width, ih, Nat.mul_succ]
+        omega
+  simpa using scan 0
+
 -- The diagnostic reports a byte offset, including after multibyte cell text.
 example : firstLoneCR "名\r\n甲\rb".toList 0 = some 8 := by decide
 
