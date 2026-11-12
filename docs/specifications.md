@@ -119,6 +119,8 @@ IR の要素は、次の構造の要素にする。
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
 | ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
 
+PDF/X-4 では、上表の `Link` は文字を保持する `Span` になり、注釈への参照を持たない（[ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md)）。
+
 表の対応には、次の補いがある。
 
 - 読みのない区切りの親文字は `Ruby` を作らない。
@@ -5991,7 +5993,7 @@ PDF の文字の様式は 26 を超えると `AA`、`BB` と同じ字を重ね�
 
 ### PDF の注釈
 
-PDF では、リンクの文字の上にリンクの注釈を置く。
+PDF/X-4 を宣言しない PDF では、リンクの文字の上にリンクの注釈を置く。
 リンクの範囲は、行分割の箱の見た目の `lkLink :: Maybe LinkTarget`（`data LinkTarget = LinkUri Text | LinkTo LinkDest`）が持ち、golem-typeset の `restyle` がインラインをたどるときに決める。
 `LinkTo` は文書の中の行先で、`LinkDest` は次のどれかである（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 
@@ -6032,14 +6034,15 @@ ASCII でない文字は UTF-8 のバイトの `%XX`（大文字の 16 進）に
 
 注釈のオブジェクトは、PDF/X-4 の出力インテントと XMP の後、文書情報の前に、ページの順、ページの中の順で番号を振る。
 リンクのない PDF のバイト列は変わらない。
-`[color] intent` のある本（PDF/X-4 の PDF）にも、リンクの注釈を書く。
+`[color] intent` のある本では、外部リンクと文書内リンクの文字を同じ位置に描き、ページのリンク注釈を省く（[ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md)）。
+構造ツリーではリンクの文字を読み順どおりの `Span` にし、しおりは元のページを指す。
 
 参考文献の URL は、`checkUrl` を通れば PDF でもリンクにし、通らなければ文字スタイル `url` の文字だけにする。
 本文の `[style url: ...]` はリンクにしない。
 
 ### PDF の文書の中のリンク
 
-次のものを、文書の中の行先へのリンクにする（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
+PDF/X-4 を宣言しない場合、次のものを文書の中の行先へのリンクにする（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 
 | リンクの元 | 矩形 | 行先 |
 | --- | --- | --- |
