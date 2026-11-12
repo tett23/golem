@@ -299,6 +299,30 @@ theorem decidedSome :
   · intro earlier
     cases earlier <;> simp
 
+/- Two ordinary headings followed by a recto heading. At break 2 the
+   second ordinary heading is in the column and the recto is not. The
+   older heading rule keeps the recto in that column; the revised rule
+   ends the run before it. Both existence commands can still have a
+   solution through a different break, so this compares predicates at
+   one placement rather than asserting a global counterexample. -/
+def rectoRunOldKeep (brk : Fin 4) : Prop :=
+  1 < brk.val → 2 < brk.val
+
+def rectoRunNewKeep (_ : Fin 4) : Prop := True
+
+def rectoRunStartsColumn (brk : Fin 4) : Prop :=
+  2 < brk.val → ¬ 0 < brk.val
+
+theorem I3_recto_ends_heading_run :
+    ∃ brk : Fin 4,
+      brk.val = 2 ∧ brk.val ≤ 3 ∧ 1 ≤ brk.val ∧
+      ¬ rectoRunOldKeep brk ∧ rectoRunNewKeep brk ∧
+      rectoRunStartsColumn brk := by
+  refine ⟨2, by decide, by decide, by decide, ?_, ?_, ?_⟩
+  · simp [rectoRunOldKeep]
+  · trivial
+  · simp [rectoRunStartsColumn]
+
 /- An Alloy `keepAllSome` witness: capacity 3, used 1, one line in a
    paragraph marked AllLines, and no other item. At break 0 the
    paragraph is not split, so all three keep rules hold. -/

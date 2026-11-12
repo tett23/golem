@@ -1119,6 +1119,9 @@ undecidedPointTests =
       needGrid (lookAhead 3 flows) @?= 1
       needNotes (lookAhead 3 flows) @?= 0
       needGrid (lookAhead 3 [FHeading 1 True 1 (lines' 21 1), FParagraph defaultKeep (lines' 30 1)]) @?= 0,
+    testCase "Golem ADR 0352 I3: rectoRunDifference model fixture ends the heading run" $ do
+      let ps = paginate 1 3 [heading 20, heading 21, FHeading 1 True 1 (lines' 22 1)]
+      contents ps @?= [[SHeading 20 1, SHeading 21 1], [], [SHeading 22 1]],
     testCase "D1: a heading before a heading at a recto stays at the end of its page, and page 2 is blank" $ do
       let input = Input 3 1 [EPara 2, EHeading, ERecto, EPara 1]
       placedIn input
