@@ -159,6 +159,29 @@ def blankWithNext25Case (secondKept : Bool) : Bool := secondKept
 def blankWithNextCase (firstKept secondKept headingHere : Bool) : Bool :=
   if firstKept == false && secondKept == false then headingHere else secondKept
 
+/- An ordered list of candidate items after a blank has already removed
+   blanks and need markers. `nextOf25` takes its head; `nextOf` skips figures
+   that have been sent on. The equality is general when none waits. -/
+def nextAfterWaiting (waiting : Nat → Bool) : List Nat → Option Nat
+  | [] => none
+  | x :: xs => if waiting x then nextAfterWaiting waiting xs else some x
+
+theorem nextAfterWaiting_eq_head_when_none_wait
+    (waiting : Nat → Bool) (items : List Nat)
+    (noneWait : ∀ x ∈ items, waiting x = false) :
+    nextAfterWaiting waiting items = items.head? := by
+  induction items with
+  | nil => rfl
+  | cons x xs =>
+      have hx : waiting x = false := noneWait x (by simp)
+      simp [nextAfterWaiting, hx]
+
+theorem nextAfterWaiting_skips_waiting_head
+    (waiting : Nat → Bool) (x : Nat) (xs : List Nat)
+    (waits : waiting x = true) :
+    nextAfterWaiting waiting (x :: xs) = nextAfterWaiting waiting xs := by
+  simp [nextAfterWaiting, waits]
+
 theorem blankBeforeWaiting25 :
     ∃ capacity used firstSize secondSize : Nat,
       capacity = 5 ∧ used = 4 ∧ firstSize = 4 ∧ secondSize = 5 ∧
