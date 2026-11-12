@@ -16,7 +16,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Emet
 import Golem.Emet.Syntax
 import Golem.Eval.Value (Value (..))
-import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), FileId (..))
+import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -115,11 +115,11 @@ i5EvalTests =
         evaluate 1 "div 3 0" @?= Left [DiagnosticCode "G02003"]
         evaluate 1 "div 3 2" @?= Right (nat 1),
       testCase "I5 checker error is preserved before evaluation" $ do
-        let source = "f :: String -> String\nf x = x + 3\n"
+        let source = "-- 甲\nz :: Nat\nz = 0\n\n\n\nf :: String -> String\nf x = x + 3\n"
+            findings text = [(diagCode d, diagSpan d) | d <- fst (load text)]
         formatted <- either (assertFailure . show) pure (formatEmet source)
-        let before = map diagCode (fst (load source))
-        assertBool "expected a type error" (not (null before))
-        before @?= map diagCode (fst (load formatted))
+        findings source @?= [(DiagnosticCode "E02101", mkSpan (FileId 100) 53 58)]
+        findings formatted @?= [(DiagnosticCode "E02101", mkSpan (FileId 100) 51 56)]
     ]
 
 compareEval :: Text -> Text -> [Result] -> Int64 -> Either DiagnosticCode Result -> IO ()
