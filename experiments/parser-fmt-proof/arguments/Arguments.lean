@@ -150,6 +150,21 @@ theorem checkPosition {rules args finding} (found : finding ∈ check rules args
       subst finding
       exact Or.inr ⟨rfl, rfl⟩
 
+-- At a single supplied argument, the emitted codes form a subsequence
+-- of the specified tie order. The Boolean choices include absent codes.
+theorem occurrenceErrorOrder (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) :
+    ∃ unknown duplicate wrongType : Bool,
+      (atOccurrence rules seen position arg).map Finding.error =
+        (if unknown then [Error.unknown] else []) ++
+        (if duplicate then [Error.duplicate] else []) ++
+        (if wrongType then [Error.wrongType] else []) := by
+  let rule := ruleFor rules arg.name
+  refine ⟨rule.isNone, seen.contains arg.name && (rule.isNone || rule.any (fun r => !r.repeatable)),
+    rule.any (fun r => r.kind != arg.kind), ?_⟩
+  simp only [atOccurrence, rule, List.map_append]
+  repeat first | split | rfl
+
 theorem absentUnknown (rules : List Rule) (seen : List String)
     (position : Nat) (arg : Argument) (h : ruleFor rules arg.name = none) :
     { position, name := arg.name, error := Error.unknown } ∈
