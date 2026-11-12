@@ -73,6 +73,33 @@ theorem newlineIdempotent (input : List Char) :
     newlines false (newlines false input) = newlines false input :=
   cleanFixed _ (noCR _ _)
 
+-- Golem ADR 0354 applies only to table files.
+def bom : Char := Char.ofNat 0xFEFF
+
+def stripBOM : List Char → List Char
+  | [] => []
+  | c :: rest => if c = bom then stripBOM rest else c :: rest
+
+def formatTable (input : List Char) := newlines false (stripBOM input)
+
+theorem stripAfterFormat (input : List Char) :
+    stripBOM (formatTable input) = formatTable input := by
+  induction input with
+  | nil => rfl
+  | cons c rest ih =>
+      by_cases b : c = bom
+      · simpa [formatTable, stripBOM, b] using ih
+      · by_cases cr : c = '\r'
+        · subst c; simp [formatTable, stripBOM, newlines, bom]
+        · simp [formatTable, stripBOM, newlines, b, cr]
+
+theorem tableIdempotent (input : List Char) :
+    formatTable (formatTable input) = formatTable input := by
+  unfold formatTable at *
+  rw [show stripBOM (newlines false (stripBOM input)) = newlines false (stripBOM input)
+      from stripAfterFormat input]
+  exact newlineIdempotent _
+
 -- Corrupting LF creates a lone CR only when the next scalar is not LF.
 theorem repairLoneCR (before after : List Char)
     (cleanBefore : '\r' ∉ before) (cleanAfter : '\r' ∉ after)
