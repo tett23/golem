@@ -208,7 +208,7 @@ example : firstLoneCR "名\r\n甲\rb".toList 0 = some 8 := by decide
 
 -- On validated TSV input every CR belongs to CRLF. Removing those CRs
 -- leaves the original LF row boundaries; tabs and other scalars survive.
-theorem tsvDecodedLines (encoded : LineEncoding canonical contents) :
+theorem decodeCRLFPairs (encoded : LineEncoding canonical contents) :
     replaceCRLF contents = canonical := by
   induction encoded with
   | empty => rfl
@@ -230,7 +230,7 @@ theorem I9_tsvCells (encoded : LineEncoding canonical contents) :
     | empty => rfl
     | scalar c ordinary _ ih => simp [replaceCRLF, ordinary, ih]
     | crlf _ ih => simp [replaceCRLF, ih]
-  simp [tsvRows, tsvDecodedLines encoded, normalized]
+  simp [tsvRows, decodeCRLFPairs encoded, normalized]
 
 -- The table reader skips one initial BOM. The canonical first cell
 -- therefore starts after the optional file marker in this preservation case.
@@ -244,5 +244,54 @@ theorem I9_tsvCellsAfterFormat (encoded : LineEncoding canonical contents)
 -- A tab is always a cell boundary, including just before a row ends.
 example : tsvRows "甲\t\r\n\t乙  \n".toList =
     [["甲".toList, []], [[], "乙  ".toList]] := by decide
+
+-- parseCsv unescapes doubled quotes before replacing CRLF inside a field.
+def undoQuotes : Bool → List Char → List Char
+  | _, [] => []
+  | pending, c :: rest =>
+      if c = '"' then
+        if pending then undoQuotes false rest else c :: undoQuotes true rest
+      else c :: undoQuotes false rest
+
+def csvQuotedValue (inner : List Char) := replaceCRLF (undoQuotes false inner)
+
+-- Values are decoded scalars. The writer must double every quote, while
+-- choosing the line ending independently for each newline in the cell.
+inductive QuotedEncoding : List Char → List Char → Prop where
+  | empty : QuotedEncoding [] []
+  | scalar (c : Char) (ordinary : c ≠ '\r') (single : c ≠ '"')
+      (rest : QuotedEncoding xs ys) : QuotedEncoding (c :: xs) (c :: ys)
+  | quote (rest : QuotedEncoding xs ys) : QuotedEncoding ('"' :: xs) ('"' :: '"' :: ys)
+  | crlf (rest : QuotedEncoding xs ys) : QuotedEncoding ('\n' :: xs) ('\r' :: '\n' :: ys)
+
+theorem unescapeQuoted (encoded : QuotedEncoding value inner) :
+    LineEncoding value (undoQuotes false inner) := by
+  induction encoded with
+  | empty => exact .empty
+  | scalar c ordinary single _ ih =>
+      simpa [undoQuotes, single] using LineEncoding.scalar c ordinary ih
+  | quote _ ih =>
+      simpa [undoQuotes] using LineEncoding.scalar '"' (by decide) ih
+  | crlf _ ih => simpa [undoQuotes] using LineEncoding.crlf ih
+
+theorem I9_csvQuotedValue (encoded : QuotedEncoding value inner) :
+    csvQuotedValue inner = value := decodeCRLFPairs (unescapeQuoted encoded)
+
+theorem normalizeQuotedEncoding (encoded : QuotedEncoding value inner) :
+    QuotedEncoding value (newlines false inner) := by
+  induction encoded with
+  | empty => exact .empty
+  | scalar c ordinary single _ ih =>
+      simpa [newlines, ordinary] using QuotedEncoding.scalar c ordinary single ih
+  | quote _ ih => simpa [newlines] using QuotedEncoding.quote ih
+  | crlf _ ih =>
+      simpa [newlines] using QuotedEncoding.scalar '\n' (by decide) (by decide) ih
+
+theorem I9_csvQuotedValueAfterFormat (encoded : QuotedEncoding value inner) :
+    csvQuotedValue (newlines false inner) = csvQuotedValue inner := by
+  rw [I9_csvQuotedValue (normalizeQuotedEncoding encoded), I9_csvQuotedValue encoded]
+
+-- Escaped quotes, commas and mixed newlines can coexist in one field.
+example : csvQuotedValue "甲\"\"乙,\r\n丙\n".toList = "甲\"乙,\n丙\n".toList := by decide
 
 end TableFormat
