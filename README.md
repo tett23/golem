@@ -26,6 +26,7 @@ Golem は 1.0.0 から、原稿の記法、設定、CLI、出力、プラグイ�
 マニュアルの読み手と書き方の方針は [docs/manual-policy.md](./docs/manual-policy.md) にある。
 
 関数とプラグインには、それぞれ見本がある。
+`golem repl emet` で Emet の式を一つずつ試せる。
 本を作る人が自分の本のために書く関数（Emet の `.emet`）の見本は [`functions/`](./functions/) に、プログラムを書く技術者が作って配るプラグインの見本は [`plugins/`](./plugins/) にある。
 関数の見本の使い方は [functions/README.md](./functions/README.md) にある。
 
