@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { bodies, listingCases, nestedInlineCases, withoutPositions } from './corpus.mjs';
+import { bodies, listingCases, nestedInlineCases, orderedSubsets, withoutPositions } from './corpus.mjs';
 
 const [bound = '1', only = 'all', depth = '0'] = process.argv.slice(2);
 const limit = Number(bound);
@@ -33,11 +33,14 @@ function* cases() {
   // CodeBlock <- Fence Lang? Arguments ... . Check the parser's chosen
   // node, optional language and ordered arguments against the input.
   for (const lang of ['', 'hs']) {
-    for (const keys of [[], ['k'], ['m'], ['k', 'm'], ['m', 'k']]) {
+    for (const keys of orderedSubsets(['k', 'm', 'n'])) {
       const fields = keys.map(key => ' ' + key + '="' + key + '"').join('');
-      const expectedKeys = keys.map(key => 'Keyword \\("' + key + '"\\) \\(StringLit "' + key + '"\\)').join(', ');
+      const expectedKeys = keys.map(key => 'Keyword \\("' + key + '"\\) \\(StringLit "' + key + '"\\)');
       const language = lang ? '\\(?Just "hs"\\)?' : 'Nothing';
-      const ast = new RegExp('CodeBlock\\s+' + language + '\\s+\\[' + expectedKeys + '\\]\\s+\\["x"\\]');
+      const inline = '\\[' + expectedKeys.join(', ') + '\\]';
+      const vertical = expectedKeys.map(entry => '- ' + entry).join('\\s+');
+      const argumentsPattern = vertical ? '(?:' + inline + '|' + vertical + ')' : inline;
+      const ast = new RegExp('CodeBlock\\s+' + language + '\\s+' + argumentsPattern + '\\s+\\["x"\\]');
       yield ['```' + lang + fields + '\nx\n```\n', [], ast];
     }
   }

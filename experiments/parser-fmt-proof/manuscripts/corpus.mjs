@@ -41,3 +41,13 @@ export function* nestedInlineCases(depth) {
     for (const command of layer) yield command + '\n';
   }
 }
+
+// One branch per choice of next key; stopping here omits the rest.
+export function* orderedSubsets(keys) {
+  yield [];
+  for (const key of keys) {
+    for (const tail of orderedSubsets(keys.filter(other => other !== key))) {
+      yield [key, ...tail];
+    }
+  }
+}

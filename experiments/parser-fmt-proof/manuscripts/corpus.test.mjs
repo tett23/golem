@@ -36,3 +36,11 @@ test('Golem ADR 0351 I2/I3: enumerate nested inline command paths at each depth'
     '[strong: [em: 鰍]]\n', '[em: [em: 鰍]]\n',
   ]);
 });
+
+test('Golem ADR 0351 I4: enumerate every ordered subset of three fence keys', async () => {
+  const { orderedSubsets } = await import('./corpus.mjs');
+  const cases = [...orderedSubsets(['k', 'm', 'n'])];
+  assert.deepEqual([0, 1, 2, 3].map(n => cases.filter(keys => keys.length === n).length), [1, 3, 6, 6]);
+  assert.equal(new Set(cases.map(keys => keys.join(''))).size, 16);
+  assert.ok(cases.every(keys => keys.every(key => ['k', 'm', 'n'].includes(key)) && new Set(keys).size === keys.length));
+});
