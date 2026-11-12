@@ -151,6 +151,68 @@ theorem strictAfterHeadings : ∀ brk : Fin 5,
     headingParagraphOrphan headingParagraphWidow
   omega
 
+/- An Alloy `decidedSome` witness: capacity 3, used 0, a recto heading
+   at source/text index 0 and the sole line of a one-line paragraph at
+   index 1. There are no other items. The break after both text items
+   makes `orphanH` and `widowH` vacuous because the paragraph has one
+   line; `keepHeadingR` has no non-recto heading to constrain. -/
+inductive DecidedText where
+  | recto
+  | line
+  deriving DecidableEq
+
+def decidedTextIndex : DecidedText → Nat
+  | .recto => 0
+  | .line => 1
+
+def decidedHere (brk : Fin 3) (item : DecidedText) : Prop :=
+  decidedTextIndex item < brk.val
+
+def decidedHeading : DecidedText → Prop
+  | .recto => True
+  | .line => False
+
+def decidedStartsColumn (brk : Fin 3) (item : DecidedText) : Prop :=
+  ∀ earlier : DecidedText,
+    decidedTextIndex earlier < decidedTextIndex item →
+      ¬ decidedHere brk earlier
+
+def decidedBase (brk : Fin 3) : Prop :=
+  brk.val ≤ 3 ∧ (1 ≤ brk.val)
+
+def decidedOrphanH (brk : Fin 3) : Prop :=
+  2 ≤ (1 : Nat) → decidedStartsColumn brk .line
+
+def decidedWidowH (brk : Fin 3) : Prop :=
+  2 ≤ (1 : Nat) → decidedStartsColumn brk .line
+
+def decidedKeepHeadingR (brk : Fin 3) : Prop :=
+  ∀ h : DecidedText, decidedHeading h → h ≠ .recto →
+    decidedHere brk h
+
+def decidedLineAfterHeadings (brk : Fin 3) : Prop :=
+  (1 ≤ brk.val ∧
+    (∀ t : DecidedText, decidedHere brk t → decidedHeading t)) →
+      decidedTextIndex .line ≠ brk.val
+
+def decidedRectoRule (brk : Fin 3) : Prop :=
+  decidedHere brk .recto → decidedStartsColumn brk .recto
+
+theorem decidedSome :
+    ∃ brk : Fin 3,
+      decidedBase brk ∧ decidedOrphanH brk ∧ decidedWidowH brk ∧
+      decidedKeepHeadingR brk ∧ decidedLineAfterHeadings brk ∧
+      decidedRectoRule brk := by
+  refine ⟨⟨2, by decide⟩, ?_⟩
+  simp [decidedBase, decidedOrphanH, decidedWidowH,
+    decidedKeepHeadingR, decidedLineAfterHeadings, decidedRectoRule,
+    decidedStartsColumn, decidedHere, decidedHeading, decidedTextIndex]
+  constructor
+  · intro h
+    cases h <;> simp
+  · intro earlier
+    cases earlier <;> simp
+
 /- In the historical blank-line rule, the next block after the blank is
    the second figure even when it waits. The current rule skips waiting
    figures and finds the following heading. These functions capture that
@@ -3836,6 +3898,46 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
       exact False.elim (emptyColumn empty)
     · intro f bound present textPos member earlier
       exact False.elim (textOrder f bound present textPos member earlier)
+
+theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _⟩ :=
+    blankRules25 capacity used items config none capacityPositive usedFits
+      ordered figuresValid noBlank sizesFit
+  exact ⟨brk, kept, atTop, placed, rule, noSend⟩
+
+theorem figureOrder (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      figuresInOrder (figureCount config) kept ∧
+      (∀ f, f < figureCount config → kept f = true →
+        ∀ textPos, .text textPos ∈ items →
+          textPos < figurePosAt config f →
+            textHereAtBreak items brk textPos = true) := by
+  obtain ⟨brk, kept, atTop, placed, rule, _, figureOrder, textOrder⟩ :=
+    blankRules25 capacity used items config none capacityPositive usedFits
+      ordered figuresValid noBlank sizesFit
+  exact ⟨brk, kept, atTop, placed, rule, figureOrder, textOrder⟩
 
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
