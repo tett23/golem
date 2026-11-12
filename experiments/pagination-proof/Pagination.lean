@@ -4732,6 +4732,40 @@ theorem needMoreSpace46Here :
     ∃ brk : Fin 3, brk.val = 2 ∧ space46Keeps brk ∧ 1 + brk.val ≤ 4 := by
   exact ⟨2, by decide, by simp [space46Keeps], by decide⟩
 
+/- Historical two-need input: capacity 3, one used line, need 1, space,
+   need 3, then a one-line paragraph. The older P7 tests only the first
+   need and keeps the paragraph; P1 tests the larger need before that
+   paragraph and rejects it. -/
+def needMore27Base (brk : Fin 3) : Prop :=
+  1 + brk.val ≤ 3
+
+def needMore27OldKeep (brk : Fin 3) : Prop :=
+  (3 - 1 ≥ 1 ∧
+    1 + (if 1 ≤ brk.val then 1 else 0) + 1 ≤ 3) →
+    brk.val = 2
+
+def needMore27NeedMet (brk : Fin 3) : Prop :=
+  brk.val = 2 → 3 - 1 ≥ 3
+
+theorem needMore27 :
+    (∃ brk : Fin 3, needMore27Base brk ∧ needMore27OldKeep brk) ∧
+    (∃ brk : Fin 3, needMore27Base brk ∧ needMore27NeedMet brk) ∧
+    (∀ brk : Fin 3,
+      ¬ (needMore27Base brk ∧ needMore27OldKeep brk ∧
+        needMore27NeedMet brk)) := by
+  refine ⟨⟨2, by simp [needMore27Base],
+      by simp [needMore27OldKeep]⟩,
+    ⟨0, by simp [needMore27Base],
+      by simp [needMore27NeedMet]⟩, ?_⟩
+  intro brk ⟨_, oldRule, needRule⟩
+  have oldForces : brk.val = 2 := by
+    apply oldRule
+    constructor
+    · decide
+    · split <;> omega
+  have impossible := needRule oldForces
+  omega
+
 /- A one-line body, one-line footnote separator, and one-line note cannot
    all fit in a column of capacity 1 or 2. Golem ADR 0353 makes this a
    diagnostic instead of retrying the same unplaceable note forever. -/
