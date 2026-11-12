@@ -67,4 +67,47 @@ theorem printed_keyword_posarg_miss (name : WordRoundTrip.Word) (tail : List Cha
   change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 12 + extra) _ input = _
   simpa only [base, show input.length + 8 + extra + 4 = input.length + 12 + extra by omega] using rejected
 
+theorem printed_positional_repetition (extra : Nat) (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
+    (safe : WordRoundTrip.safeNames args) (suffix : List Char) :
+    let input := WordRoundTrip.printArgs args ++ suffix
+    PegModel.recognizeEnv Generated.pegGrammar [] (input.length + extra + 20)
+      (.star positionalItem) input = .ok (some input) := by
+  cases args with
+  | nil => rfl
+  | cons pair rest =>
+    rcases pair with ⟨name, value⟩
+    let tail := value.chars ++ WordRoundTrip.printArgs rest ++ suffix
+    let body := name.chars ++ '=' :: tail
+    let fuel := (' ' :: body).length + extra
+    have rejected := printed_keyword_posarg_miss name tail (extra + 7) (safe (name, value) (by simp))
+    have pos : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 18)
+        (.ref "PosArg" []) body = .ok none := by
+      change PegModel.recognizeEnv Generated.pegGrammar [] (body.length + 12 + (extra + 7)) _ body = _ at rejected
+      simpa only [fuel, List.length_cons, show body.length + 1 + extra + 18 =
+        body.length + 12 + (extra + 7) by omega] using rejected
+    have space : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 18)
+        (.ref "Sp" []) (' ' :: body) = .ok (some body) := by
+      cases h : name.chars with
+      | nil => exact False.elim (name.nonempty h)
+      | cons c cs =>
+        have sp := WordRoundTrip.canonical_space_before_word (fuel + 8) c (cs ++ '=' :: tail)
+          (name.valid c (by simp [h]))
+        simpa only [body, h, List.cons_append] using sp
+    have miss : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 19)
+        positionalItem (' ' :: body) = .ok none := by
+      change PegModel.runChoices (fun items => PegModel.runSequence
+        (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 18) item s)
+        _ [] items (' ' :: body)) [[.ref "Sp" [], .ref "PosArg" [], leadingComments]] = _
+      simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, space, pos, Except.map] <;> rfl
+    have star : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 20)
+        (.star positionalItem) (' ' :: body) = .ok (some (' ' :: body)) := by
+      change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 19) positionalItem (' ' :: body) with
+        | .error e => Except.error e
+        | .ok none => Except.ok (some (' ' :: body))
+        | .ok (some remaining) => if remaining.length < (' ' :: body).length then
+            PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 19) (.star positionalItem) remaining
+          else Except.error "zero-width repetition") = _
+      rw [miss]
+    simpa [fuel, body, tail, WordRoundTrip.printArgs, List.append_assoc] using star
+
 end ArgumentsRoundTrip
