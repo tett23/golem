@@ -567,4 +567,39 @@ theorem canonical_space_before_word (fuel : Nat) (c : Char) (tail : List Char)
     _ [] items (' ' :: c :: tail)) [[.opt (.ref "Ws" [])]] = _
   simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, optional, Except.map] <;> rfl
 
+-- The optional comments after a keyword must leave the separating space
+-- available to the next keyword when no comment follows it.
+theorem comments_before_keyword (fuel : Nat) (name : Word) (suffix : List Char)
+    (safe : startsComment name.chars = false) :
+    let input := ' ' :: name.chars ++ '=' :: suffix
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 12)
+      (.star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])) input = .ok (some input) := by
+  have guarded := safe_name_before_equals name suffix safe
+  cases chars : name.chars with
+  | nil => exact False.elim (name.nonempty chars)
+  | cons c rest =>
+    have valid := name.valid c (by simp [chars])
+    let afterSpace := c :: rest ++ '=' :: suffix
+    have space := canonical_space_before_word fuel c (rest ++ '=' :: suffix) valid
+    have comment := ordinary_comment_misses (fuel + 2) afterSpace (by simpa [afterSpace, chars] using guarded)
+    have stop : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 11)
+        (.choice [[.ref "Sp" [], .ref "ArgComment" []]]) (' ' :: afterSpace) = .ok none := by
+      change PegModel.runChoices (fun items => PegModel.runSequence
+        (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 10) item s)
+        _ [] items (' ' :: afterSpace)) [[.ref "Sp" [], .ref "ArgComment" []]] = _
+      change PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 10) (.ref "Sp" [])
+        (' ' :: afterSpace) = .ok (some afterSpace) at space
+      simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM,
+        space, comment, Except.map] <;> rfl
+    change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 11)
+          (.choice [[.ref "Sp" [], .ref "ArgComment" []]]) (' ' :: afterSpace) with
+      | .error e => Except.error e
+      | .ok none => Except.ok (some (' ' :: afterSpace))
+      | .ok (some remaining) => if remaining.length < (' ' :: afterSpace).length then
+          PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 11)
+            (.star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])) remaining
+        else Except.error "zero-width repetition") = _
+    rw [stop]
+    rfl
+
 end WordRoundTrip
