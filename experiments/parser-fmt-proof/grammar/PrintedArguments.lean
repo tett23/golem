@@ -110,4 +110,25 @@ theorem printed_positional_repetition (extra : Nat) (args : List (WordRoundTrip.
       rw [miss]
     simpa [fuel, body, tail, WordRoundTrip.printArgs, List.append_assoc] using star
 
+theorem printed_arguments_from_keyword_hits (extra : Nat)
+    (args : List (WordRoundTrip.Word × WordRoundTrip.Word)) (suffix : List Char)
+    (safe : WordRoundTrip.safeNames args)
+    (hits : CanonicalKeywordHits ((WordRoundTrip.printArgs args ++ suffix).length + extra)
+      suffix (printedKeywordChunks args)) :
+    let input := WordRoundTrip.printArgs args ++ suffix
+    PegModel.recognizeEnv Generated.pegGrammar [] (input.length + extra + args.length + 83)
+      (.ref "Arguments" []) input = .ok (some ('\n' :: suffix)) := by
+  let input := WordRoundTrip.printArgs args ++ suffix
+  let budget := input.length + extra + args.length + 1
+  have comments := printed_leading_comments (budget + 68) args safe suffix
+  have positions := printed_positional_repetition (extra + args.length + 61) args safe suffix
+  have keywords := canonical_keyword_repetition args (input.length + extra) suffix hits
+  change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + extra + args.length + 83) _ input = _
+  apply canonical_arguments_from_repetitions budget input suffix
+  · exact comments
+  · change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + (extra + args.length + 61) + 20)
+      (.star positionalItem) input = .ok (some input) at positions
+    rwa [show budget + 80 = input.length + (extra + args.length + 61) + 20 by dsimp [budget]; omega]
+  · rwa [show budget + 80 = input.length + extra + 80 + args.length + 1 by dsimp [budget]; omega]
+
 end ArgumentsRoundTrip
