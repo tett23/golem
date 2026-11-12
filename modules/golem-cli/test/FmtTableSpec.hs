@@ -28,14 +28,14 @@ import Test.Tasty.Hedgehog (testProperty)
 fmtTableTests :: TestTree
 fmtTableTests = testGroup "golem fmt and the table files (docs/adr/0186)" [propertyTests, commandTests]
 
-{- | The text of a table file without a lone CR: a BOM or none, then cells,
+{- | The text of a table file without a lone CR: a run of leading BOMs, then cells,
 separators, quotes and line breaks.
 -}
 tableText :: Gen Text
 tableText = do
-  bom <- Gen.element ["", "\xFEFF"]
+  count <- Gen.int (Range.linear 0 5)
   body <- T.concat <$> Gen.list (Range.linear 0 30) (Gen.element ["a", "x y", " ", ",", "\t", "\"", "\n", "\r\n", "\xFEFF", "語"])
-  pure (bom <> (if "\xFEFF" `T.isPrefixOf` body then "a" <> body else body))
+  pure (T.replicate count "\xFEFF" <> body)
 
 -- | The table the reader makes, or none when it stops.
 tableOf :: (FileId -> Text -> Either e [[Text]]) -> Text -> Maybe [[Text]]
@@ -44,13 +44,13 @@ tableOf parse = either (const Nothing) Just . parse (FileId 0)
 propertyTests :: TestTree
 propertyTests =
   testGroup
-    "the preprocessing keeps the table"
+    "the preprocessing keeps cells except for leading BOMs"
     [ testProperty "CSV" $ property $ do
         src <- forAll tableText
-        tableOf parseCsv (formatTable src) === tableOf parseCsv src,
+        tableOf parseCsv (formatTable src) === tableOf parseCsv (T.dropWhile (== '\xFEFF') src),
       testProperty "TSV" $ property $ do
         src <- forAll tableText
-        tableOf parseTsv (formatTable src) === tableOf parseTsv src
+        tableOf parseTsv (formatTable src) === tableOf parseTsv (T.dropWhile (== '\xFEFF') src)
     ]
 
 manifest :: String
@@ -81,7 +81,19 @@ commandTests :: TestTree
 commandTests =
   testGroup
     "golem fmt"
-    [ testCase "without arguments, the table files become LF only, and golem check reports no G02082" $ do
+    [ testCase "Golem ADR 0354 I1-I3: fmt strips repeated BOMs from CSV and TSV in one pass" $ do
+        let csv = "\xFEFF\xFEFF\&a,b\n"
+            tsv = "\xFEFF\xFEFF\xFEFF\&c\td\n"
+            files = [("manifest.toml", T.pack manifest), ("a.gm", "@table a.csv\n\n@table b.tsv\n"), ("a.csv", csv), ("b.tsv", tsv)]
+        tableOf parseCsv csv @?= Just [["\xFEFF\&a", "b"]]
+        tableOf parseTsv tsv @?= Just [["\xFEFF\xFEFF\&c", "d"]]
+        (runs, output) <- golemSteps files [["fmt"], ["fmt", "--check"], ["fmt"]]
+        mapM_ (\(code, out, err) -> assertEqual (out <> err) ExitSuccess code) runs
+        lookup "a.csv" output @?= Just "a,b\n"
+        lookup "b.tsv" output @?= Just "c\td\n"
+        (lookup "a.csv" output >>= tableOf parseCsv) @?= Just [["a", "b"]]
+        (lookup "b.tsv" output >>= tableOf parseTsv) @?= Just [["c", "d"]],
+      testCase "without arguments, the table files become LF only, and golem check reports no G02082" $ do
         ([(code, _, err), (_, _, err')], files') <- golemSteps tables [["fmt"], ["check"]]
         assertEqual err ExitSuccess code
         lookup "data/a.csv" files' @?= Just "a,b\n\"x\ny\",2\n"

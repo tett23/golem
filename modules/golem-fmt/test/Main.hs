@@ -193,7 +193,7 @@ tests =
       testCase "Golem ADR 0339 I2: call and member comments keep their order" $ do
         formatted "[= f%%注%%(1)]\n" @?= "[= f %%注%% (1)]\n"
         formatted "[= values%%注%%.price]\n" @?= "[= values %%注%% .price]\n",
-      testProperty "idempotent" $ property $ do
+      testProperty "Golem ADR 0354 I3: table formatting is idempotent" $ property $ do
         src <- forAll document
         cover 80 "formattable" (isFormatted (format src))
         let once = formatted src
@@ -290,18 +290,12 @@ tableTests =
       testCase "tabs, spaces, blank lines and quotes are kept" $ do
         formatTable "a\tb\n\tz  \n" @?= "a\tb\n\tz  \n"
         formatTable "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n" @?= "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n",
-      -- A4 of docs/adr/0211: 0, 1 and 2 BOMs at the start lose 0, 1 and 1
-      testCase "A4: of 0, 1 and 2 BOMs at the start, formatTable removes 0, 1 and 1" $ do
-        formatTable "a,b\n" @?= "a,b\n"
-        formatTable "\xFEFF\&a,b\n" @?= "a,b\n"
-        formatTable "\xFEFF\xFEFF\&a,b\n" @?= "\xFEFF\&a,b\n"
-        formatTable (formatTable "\xFEFF\&a,b\n") @?= formatTable "\xFEFF\&a,b\n",
-      testCase "only the BOM at the start, and only one, is removed" $ do
-        formatTable "a\xFEFF\&b\n" @?= "a\xFEFF\&b\n"
-        formatTable "\xFEFF\xFEFF\&a\n" @?= "\xFEFF\&a\n",
-      -- a second BOM right after the first is a character of the first cell,
-      -- which the reader keeps; it is left out here, as the reader leaves it
-      testProperty "idempotent" $ property $ do
+      testCase "Golem ADR 0354 I1/I2: strip the whole leading run, keep interior BOMs" $ do
+        formatTable "" @?= ""
+        formatTable "\xFEFF\xFEFF" @?= ""
+        formatTable "\xFEFF\xFEFF\xFEFF\&a\xFEFF\xFEFF\&b" @?= "a\xFEFF\xFEFF\&b"
+        formatTable "\"\xFEFF\&a\",b" @?= "\"\xFEFF\&a\",b",
+      testProperty "Golem ADR 0354 I3: table formatting is idempotent" $ property $ do
         src <- forAll tableText
         formatTable (formatTable src) === formatTable src
     ]
@@ -313,4 +307,4 @@ tableText :: Gen Text
 tableText = do
   bom <- Gen.element ["", "\xFEFF"]
   body <- T.concat <$> Gen.list (Range.linear 0 30) (Gen.element ["a", "x y", " ", ",", "\t", "\"", "\n", "\r\n", "\r", "\xFEFF", "語"])
-  pure (bom <> (if "\xFEFF" `T.isPrefixOf` body then "a" <> body else body))
+  pure (bom <> body)
