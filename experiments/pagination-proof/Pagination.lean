@@ -890,11 +890,47 @@ theorem needMoreSpace46Here :
   exact ⟨2, by decide, by simp [space46Keeps], by decide⟩
 
 /- A one-line body, one-line footnote separator, and one-line note cannot
-   all fit in a column of capacity 1 or 2. Golem's current `carryNote`
-   retries without consuming the note in those columns (I4 red test). -/
+   all fit in a column of capacity 1 or 2. Golem ADR 0353 makes this a
+   diagnostic instead of retrying the same unplaceable note forever. -/
 theorem I4_footnote_capacity_conflict (capacity : Nat) (small : capacity ≤ 2) :
     ¬ (1 + 1 + 1 ≤ capacity) := by
   omega
+
+inductive FootnoteOutcome where
+  | placed | sent | diagnostic
+  deriving DecidableEq, Repr
+
+/- The empty-column decision for one marker line, one separator, and one
+   first note line. A temporary reduction sends the note to the full column. -/
+def footnoteDecision (base current separator : Nat) : FootnoteOutcome :=
+  if 2 + separator ≤ current then .placed
+  else if current < base ∧ 2 + separator ≤ base then .sent
+  else .diagnostic
+
+def footnoteFinal (base current separator : Nat) : FootnoteOutcome :=
+  match footnoteDecision base current separator with
+  | .sent => footnoteDecision base base separator
+  | x => x
+
+theorem I4_footnote_small_diagnostic (base : Nat) (small : base ≤ 2) :
+    footnoteFinal base base 1 = .diagnostic := by
+  have tooShort : ¬ 2 + 1 ≤ base := by omega
+  simp [footnoteFinal, footnoteDecision, tooShort]
+
+theorem I4_footnote_adjusted_column_places (base current : Nat)
+    (fitsBase : 3 ≤ base) (short : current < 3) :
+    footnoteFinal base current 1 = .placed := by
+  have tooShort : ¬ 2 + 1 ≤ current := by omega
+  have send : current < base ∧ 2 + 1 ≤ base := by omega
+  simp [footnoteFinal, footnoteDecision, tooShort, send, fitsBase]
+
+theorem I4_footnote_final_never_sends (base current separator : Nat) :
+    footnoteFinal base current separator ≠ .sent := by
+  by_cases fits : 2 + separator ≤ current
+  · simp [footnoteFinal, footnoteDecision, fits]
+  · by_cases send : current < base ∧ 2 + separator ≤ base
+    · simp [footnoteFinal, footnoteDecision, fits, send, send.2]
+    · simp [footnoteFinal, footnoteDecision, fits, send]
 
 /- The figure-only projection of a pagination state. Sending the next
    figure adds it to the FIFO waiting queue; emitting the queue's head
