@@ -36,6 +36,29 @@ export function tableCases(format) {
   return cases;
 }
 
+// Each pair removes the earlier error and exposes the one it masked.
+export function competingDiagnostics(format) {
+  const sep = format === 'csv' ? ',' : '\t';
+  const header = '\uFEFF名' + sep + 'b\r\n';
+  const row = '𠮷';
+  const tail = format === 'csv' ? '"末' : '末';
+  const rowStart = Buffer.byteLength(header);
+  const rowEnd = rowStart + Buffer.byteLength(row);
+  const prefix = header + row + '\r\n';
+  const validRow = row + sep + '乙\r\n';
+  const valid = header + validRow + '末' + sep + '尾\n';
+  const inputs = [
+    [prefix + tail + '\r', 'G02082', Buffer.byteLength(prefix + tail), 1],
+    [prefix + tail, 'G02154', rowStart, rowEnd - rowStart],
+    [header + validRow + tail, format === 'csv' ? 'G02083' : 'G02154',
+      Buffer.byteLength(header + validRow), format === 'csv' ? 1 : Buffer.byteLength(tail)],
+  ];
+  return inputs.map(([input, code, start, width]) => ({
+    manuscript: '@table data.txt format=' + format + '\n',
+    expected: valid, input, diagnostic: [code, 'data.txt', start, start + width],
+  }));
+}
+
 // The generated tables contain at most one Text inline per cell. Keep the row and
 // column nesting so that a moved empty cell changes the comparison.
 export function inspectedCells(ir) {
