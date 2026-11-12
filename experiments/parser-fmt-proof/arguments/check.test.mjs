@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { saveProjectFailure } from '../save-project-failure.mjs';
 
-function checkRoundTrip(original, check, caseName) {
+function checkRoundTrip(original, check, caseName, reference = original) {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   const fixtures = join(root, 'modules/golem-driver/test/fixtures');
   const dir = mkdtempSync(join(tmpdir(), 'golem-argument-sites-'));
@@ -35,7 +35,7 @@ function checkRoundTrip(original, check, caseName) {
     assert.notEqual(readFileSync(source, 'utf8'), original);
     check(source, run);
   } catch (error) {
-    saveProjectFailure('arguments', dir, original, error, caseName);
+    saveProjectFailure('arguments', dir, reference, error, caseName);
     throw error;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -189,6 +189,125 @@ test('Golem ADR 0351 I8: each call reports its own unsupplied suffix in declarat
       [code, span.file, span.start, span.end, /(\d+) 番目の位置引数がありません$/.exec(message)?.[1]]), expected);
   }, 'missing-multiple-calls');
 });
+
+// Every case starts from this valid manuscript and damages one argument site.
+// The expected diagnostic list is computed from that case's own source bytes,
+// both before and after fmt moves the surrounding whitespace.
+const diagnosticMutationBase = '@import fn/book.emet as book\n\n'
+  + '甲[book.price  1 tax=true unit="円"]\n'
+  + '乙[book.price  2 unit="銭" tax=false]\n'
+  + '丙[book.triple  1 2 3]\n'
+  + '丁[book.triple  4 5 6]\n'
+  + '戊[book.triple  7 8 9]\n';
+
+test('Golem ADR 0351 I6-I8: the source of independent mutations is valid', () => {
+  checkRoundTrip(diagnosticMutationBase, (_source, run) => {
+    assert.deepEqual(JSON.parse(run(['check', '--format', 'json'], 0).stderr), []);
+  }, 'independent-baseline');
+});
+
+function oneSite(original, from, to) {
+  assert.equal(original.split(from).length, 2, from);
+  return original.replace(from, to);
+}
+
+function errorAt(bytes, code, start, end, ordinal = null) {
+  return [code, 'a.gm', start, end, ordinal];
+}
+
+function tokenSite(bytes, token) {
+  const start = bytes.indexOf(Buffer.from(token));
+  assert.ok(start >= 0, token);
+  return start;
+}
+
+const diagnosticMutations = [];
+for (const [token, replacement] of [
+  ['tax=true', 'oops=true'], ['unit="円"', 'oops="円"'],
+  ['unit="銭"', 'oops="銭"'], ['tax=false', 'oops=false'],
+]) {
+  diagnosticMutations.push({
+    name: 'unknown-' + token,
+    from: token, to: replacement,
+    expected(bytes) {
+      const start = tokenSite(bytes, replacement);
+      return [errorAt(bytes, 'G02119', start, start + 4)];
+    },
+  });
+}
+for (const [token, duplicate] of [
+  ['tax=true', 'tax=false'], ['unit="円"', 'unit="円"'],
+  ['unit="銭"', 'unit="円"'], ['tax=false', 'tax=false'],
+]) {
+  diagnosticMutations.push({
+    name: 'duplicate-' + token,
+    from: token, to: token + ' ' + duplicate,
+    expected(bytes) {
+      const first = tokenSite(bytes, token);
+      const start = bytes.indexOf(Buffer.from(duplicate), first + Buffer.byteLength(token));
+      assert.ok(start > first, duplicate);
+      return [errorAt(bytes, 'G02077', start, start + Buffer.byteLength(duplicate))];
+    },
+  });
+}
+for (const [token, replacement] of [
+  ['tax=true', 'tax=abc'], ['unit="円"', 'unit=1'],
+  ['unit="銭"', 'unit=2'], ['tax=false', 'tax=abc'],
+]) {
+  diagnosticMutations.push({
+    name: 'type-' + token,
+    from: token, to: replacement,
+    expected(bytes) {
+      const start = tokenSite(bytes, replacement) + Buffer.byteLength(replacement.split('=')[0]) + 1;
+      return [errorAt(bytes, 'G02121', start, start + Buffer.byteLength(replacement.split('=')[1]))];
+    },
+  });
+}
+for (const [anchor, values] of [
+  ['丙', ['1', '2', '3']],
+  ['丁', ['4', '5', '6']],
+  ['戊', ['7', '8', '9']],
+]) {
+  const call = `[book.triple  ${values.join(' ')}]`;
+  for (let index = 0; index < values.length; index++) {
+    const wrongType = values.toSpliced(index, 1, '"bad"');
+    diagnosticMutations.push({
+      name: `required-type-${anchor}-${index}`,
+      from: call, to: `[book.triple  ${wrongType.join(' ')}]`,
+      expected(bytes) {
+        const start = tokenSite(bytes, '"bad"');
+        return [errorAt(bytes, 'G02121', start, start + 5)];
+      },
+    });
+    const omitted = values.toSpliced(index, 1);
+    diagnosticMutations.push({
+      name: `required-missing-${anchor}-${index}`,
+      from: call, to: `[book.triple  ${omitted.join(' ')}]`,
+      expected(bytes) {
+        const callStart = tokenSite(bytes, anchor);
+        const close = bytes.indexOf(']', callStart) + 1;
+        assert.ok(close > callStart);
+        return [errorAt(bytes, 'G02120', close, close, '3')];
+      },
+    });
+  }
+}
+
+assert.equal(diagnosticMutations.length, 30);
+for (const mutation of diagnosticMutations) {
+  test(`Golem ADR 0351 I6-I8: independently damage ${mutation.name}`, () => {
+    const original = oneSite(diagnosticMutationBase, mutation.from, mutation.to);
+    checkRoundTrip(original, (source, run) => {
+      const bytes = readFileSync(source);
+      const diagnostics = JSON.parse(run(['check', '--format', 'json'], 1).stderr);
+      const actual = diagnostics.map(({ code, span, message }) =>
+        errorAt(bytes, code, span.start, span.end,
+          /([0-9]+) 番目の位置引数がありません$/.exec(message)?.[1] ?? null));
+      assert.deepEqual(actual, mutation.expected(bytes));
+    }, 'independent-' + mutation.name.replaceAll(/[^a-z0-9-]/gi, '-'),
+    diagnosticMutationBase);
+  });
+}
 
 test('Golem ADR 0351 I1: the enclosing command consumes its delimiter after the final keyword', () => {
   const dir = mkdtempSync(join(tmpdir(), 'golem-argument-terminator-'));
