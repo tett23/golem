@@ -177,6 +177,29 @@ theorem repairEncodedLoneCR (leftEncoding : LineEncoding before encodedBefore)
         simp [newlines, lf]
   simp [newlines, resume, decodeLineEncoding suffix]
 
+-- A file may have any number of damaged row or quoted-field newlines.
+-- The guard excludes the case where a CR and the following LF form one CRLF.
+inductive DamagedLines : List Char → List Char → Prop where
+  | empty : DamagedLines [] []
+  | scalar (ordinary : c ≠ '\r') (rest : DamagedLines xs ys) :
+      DamagedLines (c :: xs) (c :: ys)
+  | crlf (rest : DamagedLines xs ys) : DamagedLines ('\n' :: xs) ('\r' :: '\n' :: ys)
+  | lone (separate : ys.head? ≠ some '\n') (rest : DamagedLines xs ys) :
+      DamagedLines ('\n' :: xs) ('\r' :: ys)
+
+theorem I10_repairAllLoneCR (input : DamagedLines canonical bytes) :
+    newlines false bytes = canonical := by
+  induction input with
+  | empty => rfl
+  | scalar ordinary _ ih => simp [newlines, ordinary, ih]
+  | crlf _ ih => simp [newlines, ih]
+  | @lone xs ys separate _ ih =>
+      cases ys with
+      | nil => simpa [newlines] using congrArg (List.cons '\n') ih
+      | cons c rest =>
+          have lf : c ≠ '\n' := by simpa using separate
+          simpa [newlines, lf] using congrArg (List.cons '\n') ih
+
 example : newlines false "a\r\r\nb\r".toList = "a\n\nb\n".toList := by decide
 
 def firstLoneCR : List Char → Nat → Option Nat
