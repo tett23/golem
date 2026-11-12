@@ -8,12 +8,13 @@ cabal exec -w ghc-9.10.3 -- ghc -hide-all-packages -package base -package contai
   -package golem-emet-0.1.0 -package golem-eval-0.1.0 -package golem-syntax-0.1.0 \
   -outputdir "$work" "$suite/EvalCases.hs" -o "$work/eval-cases"
 "$work/eval-cases" > "$work/haskell"
-cp "$suite/Eval.lean" "$suite/EvalCases.lean" "$work/"
+cp "$suite/Eval.lean" "$suite/EvalSelection.lean" "$suite/EvalCases.lean" "$work/"
 (cd "$work" && "${LEAN:-lean}" -o Eval.olean Eval.lean)
+(cd "$work" && LEAN_PATH="$work" "${LEAN:-lean}" -o EvalSelection.olean EvalSelection.lean)
 (cd "$work" && LEAN_PATH="$work" "${LEAN:-lean}" --run EvalCases.lean) > "$work/lean"
 if ! cmp -s "$work/haskell" "$work/lean"; then
   diff -u "$work/haskell" "$work/lean" | head -n 12 >&2
   exit 1
 fi
-test "$(wc -l < "$work/haskell")" -eq 5010
-echo '5010 Emet evaluation results matched'
+test "$(wc -l < "$work/haskell")" -eq 5046
+echo '5046 Emet evaluation results matched'

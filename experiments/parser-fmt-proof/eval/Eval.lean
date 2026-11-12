@@ -21,7 +21,7 @@ inductive Expr where
   deriving DecidableEq, Repr
 
 inductive Failure where
-  | unknownName | missingFile | typeError | divisionByZero | overLimit
+  | unknownName | missingFile | typeError | divisionByZero | overLimit | noEquation
   deriving DecidableEq, Repr
 
 structure Environment where

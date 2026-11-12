@@ -1,4 +1,4 @@
-import Eval
+import EvalSelection
 
 open GolemEval
 
@@ -60,3 +60,23 @@ def main : IO Unit := do
         | .error .overLimit => pure "E04100"
         | _ => throw (IO.userError s!"unexpected binding result for {source} at {budget}")
       IO.println s!"{budget} {functionName} {source} => {output}"
+  let guarded : List Selection.Equation :=
+    [⟨.variable "n", .guards
+      [(some (.variable "n"), .literal (.nat 2)),
+       (none, .literal (.nat 3))]⟩]
+  let chooseMatch : List Selection.Equation :=
+    ⟨.literal (.boolean true), .plain (.literal (.nat 1))⟩ :: guarded
+  let guardFallback : List Selection.Equation :=
+    [⟨.variable "n", .guards
+      [(some (.variable "n"), .literal (.nat 2))]⟩,
+     ⟨.wildcard, .plain (.literal (.nat 3))⟩]
+  for (name, equations) in [("chooseMatch", chooseMatch), ("guarded", guarded),
+                            ("guardFallback", guardFallback)] do
+    for (source, value) in [("False", false), ("True", true)] do
+      for budget in List.range 6 do
+        let result := Selection.call (.literal (.boolean value)) equations ⟨[], []⟩ budget
+        let output ← match result with
+          | .ok (.nat n, _) => pure (toString n)
+          | .error .overLimit => pure "E04100"
+          | _ => throw (IO.userError s!"unexpected selection result for {name} {source} at {budget}")
+        IO.println s!"{budget} {name} {source} => {output}"
