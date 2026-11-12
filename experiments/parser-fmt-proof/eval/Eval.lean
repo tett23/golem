@@ -4,6 +4,7 @@
 namespace GolemEval
 
 inductive Value where
+  | boolean : Bool → Value
   | nat : Nat → Value
   | string : String → Value
   deriving DecidableEq, Repr
@@ -13,6 +14,7 @@ inductive Expr where
   | variable : String → Expr
   | add : Expr → Expr → Expr
   | quotient : Expr → Expr → Expr
+  | ternary : Expr → Expr → Expr → Expr
   | append : Expr → Expr → Expr
   | external : String → Expr
   | call : String → Expr → Expr → Expr
@@ -58,6 +60,12 @@ def run : Expr → Environment → Nat → Except Failure (Value × Nat)
       | .nat _, .nat 0 => .error .divisionByZero
       | .nat m, .nat (n + 1) => return (.nat (m / (n + 1)), left)
       | _, _ => .error .typeError
+  | .ternary c a b, env, budget => do
+      let (value, afterCondition) ← run c env budget
+      let left ← spend 1 afterCondition
+      match value with
+      | .boolean true => run a env left
+      | _ => run b env left
   | .append a b, env, budget => do
       let (x, afterA) ← run a env budget
       let (y, afterB) ← run b env afterA
@@ -83,6 +91,7 @@ inductive SourceExpr where
   | external : String → SourceExpr
   | add : SourceExpr → SourceExpr → SourceExpr
   | quotient : SourceExpr → SourceExpr → SourceExpr
+  | ternary : SourceExpr → SourceExpr → SourceExpr → SourceExpr
   | append : SourceExpr → SourceExpr → SourceExpr
   | call : String → SourceExpr → SourceExpr → SourceExpr
   | whitespace : String → SourceExpr → SourceExpr
@@ -94,6 +103,7 @@ def parsed : SourceExpr → Expr
   | .external path => .external path
   | .add a b => .add (parsed a) (parsed b)
   | .quotient a b => .quotient (parsed a) (parsed b)
+  | .ternary c a b => .ternary (parsed c) (parsed a) (parsed b)
   | .append a b => .append (parsed a) (parsed b)
   | .call name arg body => .call name (parsed arg) (parsed body)
   | .whitespace _ x | .comment _ x => parsed x
@@ -106,6 +116,7 @@ def format : SourceExpr → SourceExpr
   | .external path => .external path
   | .add a b => .add (format a) (format b)
   | .quotient a b => .quotient (format a) (format b)
+  | .ternary c a b => .ternary (format c) (format a) (format b)
   | .append a b => .append (format a) (format b)
   | .call name arg body => .call name (format arg) (format body)
   | .whitespace _ x => .whitespace " " (format x)
@@ -128,6 +139,10 @@ inductive Derives : Nat → Environment → Expr → Value → Nat → Prop wher
   | quotient (left : Derives n env a (.nat x) i)
              (right : Derives i env b (.nat (y + 1)) (k + 1)) :
       Derives n env (.quotient a b) (.nat (x / (y + 1))) k
+  | ternaryTrue (condition : Derives n env c (.boolean true) (i + 1))
+        (branch : Derives i env a value k) : Derives n env (.ternary c a b) value k
+  | ternaryFalse (condition : Derives n env c (.boolean false) (i + 1))
+        (branch : Derives i env b value k) : Derives n env (.ternary c a b) value k
   | append (left : Derives n env a (.string x) i)
         (right : Derives i env b (.string y) (k + (1 + x.length + y.length))) :
       Derives n env (.append a b) (.string (x ++ y)) k
@@ -201,5 +216,13 @@ example : eval 1 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 2))
 example (left right : SourceExpr) (spaces : String) :
     parsed (format (.add (.whitespace spaces left) right)) =
       .add (parsed left) (parsed right) := by rw [parsed_format]; rfl
+
+-- A failing branch costs nothing when it is not selected.
+example : eval 1 ⟨[], []⟩ (.ternary (.literal (.boolean true)) (.literal (.nat 7))
+    (.quotient (.literal (.nat 1)) (.literal (.nat 0)))) = .ok (.nat 7) := by rfl
+example : eval 0 ⟨[], []⟩ (.ternary (.literal (.boolean false))
+    (.external "missing") (.literal (.nat 7))) = .error .overLimit := by rfl
+example : eval 1 ⟨[], []⟩ (.ternary (.literal (.boolean false))
+    (.external "missing") (.literal (.nat 7))) = .ok (.nat 7) := by rfl
 
 end GolemEval

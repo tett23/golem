@@ -13,13 +13,21 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
   const dir = mkdtempSync(join(tmpdir(), 'golem-fmt-evaluation-'));
   const file = join(dir, 'a.gm');
   const run = (...args) => execFileSync(process.env.GOLEM || 'golem', args, { cwd: dir, encoding: 'utf8' });
-  const original = '@import fn/book.emet as book\n\n[= book.sum(1,%%注%%2,3)]\n';
+  const original = '@import fn/book.emet as book\n\n[= book.sum(1,%%注%%2,3)]\n\n' +
+    '[= book.first(7,%%左%%0)]\n\n[= book.second(8,%%右%%0)]\n';
   try {
     cpSync(fixture, dir, { recursive: true });
+    appendFileSync(join(dir, 'fn/book.emet'), [
+      '', 'pub fn first :: Nat -> Nat -> Nat', 'first a b = True ? a : div a b',
+      '', 'pub fn second :: Nat -> Nat -> Nat', 'second a b = False ? div a b : a', '',
+    ].join('\n'));
     writeFileSync(file, original);
     const evaluate = () => withoutPositions(run('inspect', 'a.gm', '--as', 'ir'));
     const before = evaluate();
     assert.match(before, /blockBody = Paragraph Nothing \[Text "6"\]/);
+    for (const value of ['7', '8']) {
+      assert.ok(before.includes('blockBody = Paragraph Nothing [Text "' + value + '"]'));
+    }
     run('fmt', 'a.gm');
     const formatted = readFileSync(file, 'utf8');
     assert.notEqual(formatted, original);
