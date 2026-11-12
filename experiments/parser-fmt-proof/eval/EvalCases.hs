@@ -23,7 +23,7 @@ main = do
   let strings = ["", "甲", "𠮷", "a甲", "e\x0301"]
       appends = ["(\"" ++ a ++ "\" ++ \"" ++ b ++ "\")" | a <- strings, b <- strings]
       nested = ["(" ++ s ++ " ++ \"甲\")" | s <- appends] ++ ["(\"甲\" ++ " ++ s ++ ")" | s <- appends]
-  let functions = T.pack "inc :: Nat -> Nat\ninc n = n + 1\ntwice :: Nat -> Nat\ntwice n = inc (inc n)\nreadInput :: Nat -> <file \"input.tsv\"> String\nreadInput n = File.read \"input.tsv\"\n"
+  let functions = T.pack "inc :: Nat -> Nat\ninc n = n + 1\ntwice :: Nat -> Nat\ntwice n = inc (inc n)\nidentityNat :: Nat -> Nat\nidentityNat x = x\nidentityString :: String -> String\nidentityString x = x\nreadInput :: Nat -> <file \"input.tsv\"> String\nreadInput n = File.read \"input.tsv\"\n"
   session <-
     loadProgram (\_ -> pure (Right (FileId 1, TE.encodeUtf8 functions))) [sessionPath] >>= \case
       ([], Just program) -> pure program
@@ -45,3 +45,15 @@ main = do
       Left d -> let DiagnosticCode code = diagCode d in pure (T.unpack code)
       _ -> fail (show result)
     putStrLn (show budget ++ " readInput " ++ maybe "missing" ("present " ++) contents ++ " => " ++ value)
+  forM_ [("identityNat", "0"), ("identityNat", "1"),
+         ("identityString", "\"\""), ("identityString", "\"甲\""),
+         ("identityString", "\"𠮷\"")] $ \(name, argument) ->
+    forM_ [0 .. 4] $ \budget -> do
+      let source = name ++ " " ++ argument
+          result = evaluateExpression (Just session) budget (TE.encodeUtf8 (T.pack source))
+      value <- case result of
+        Right (RPrim (VNat n)) -> pure (show n)
+        Right (RPrim (VString s)) -> pure ("string " ++ T.unpack s)
+        Left [d] -> let DiagnosticCode code = diagCode d in pure (T.unpack code)
+        _ -> fail (show (source, budget, result))
+      putStrLn (show budget ++ " " ++ source ++ " => " ++ value)

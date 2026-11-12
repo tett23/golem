@@ -44,3 +44,19 @@ def main : IO Unit := do
         | _ => throw (IO.userError "unexpected file result")
       let input := contents.elim "missing" ("present " ++ ·)
       IO.println s!"{budget} readInput {input} => {value}"
+  let boundValues : List (String × Value) :=
+    [("0", .nat 0), ("1", .nat 1), ("\"\"", .string ""),
+     ("\"甲\"", .string "甲"), ("\"𠮷\"", .string "𠮷")]
+  for (source, value) in boundValues do
+    let functionName := match value with
+      | .nat _ => "identityNat"
+      | .string _ => "identityString"
+      | .boolean _ => "identityBool"
+    let expression := Expr.call "x" (.literal value) (.variable "x")
+    for budget in List.range 5 do
+      let output ← match eval budget ⟨[], []⟩ expression with
+        | .ok (.nat n) => pure (toString n)
+        | .ok (.string s) => pure ("string " ++ s)
+        | .error .overLimit => pure "E04100"
+        | _ => throw (IO.userError s!"unexpected binding result for {source} at {budget}")
+      IO.println s!"{budget} {functionName} {source} => {output}"
