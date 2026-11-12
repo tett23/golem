@@ -10,6 +10,47 @@ def newlines : Bool → List Char → List Char
       else if skipLF && c == '\n' then newlines false rest
       else c :: newlines false rest
 
+-- The two substitutions in Golem.Fmt.formatTable, in application order.
+def replaceCRLF : List Char → List Char
+  | [] => []
+  | c :: rest =>
+      if c = '\r' ∧ rest.head? = some '\n' then replaceCRLF rest
+      else c :: replaceCRLF rest
+
+def replaceCR (c : Char) : Char := if c = '\r' then '\n' else c
+
+theorem twoPassEqualsModel (input : List Char) :
+    (replaceCRLF input).map replaceCR = newlines false input := by
+  induction input with
+  | nil => rfl
+  | cons c rest ih =>
+      by_cases cr : c = '\r'
+      · subst c
+        cases rest with
+        | nil => rfl
+        | cons d tail =>
+            by_cases lf : d = '\n'
+            · subst d
+              simp [replaceCRLF, replaceCR, newlines] at ih ⊢
+              exact ih
+            · simpa [replaceCRLF, replaceCR, newlines, lf] using ih
+      · simp [replaceCRLF, cr, replaceCR, ih, newlines]
+
+-- In particular, quotes, delimiters, spaces and every scalar in a cell
+-- other than its line endings keep their original order and multiplicity.
+def nonNewline (c : Char) : Bool := c != '\r' && c != '\n'
+
+theorem preserveNonNewlines (input : List Char) (skipLF : Bool) :
+    (newlines skipLF input).filter nonNewline = input.filter nonNewline := by
+  induction input generalizing skipLF with
+  | nil => rfl
+  | cons c rest ih =>
+      by_cases cr : c = '\r'
+      · subst c; simp [newlines, nonNewline, ih]
+      · by_cases lf : c = '\n'
+        · subst c; cases skipLF <;> simp [newlines, nonNewline, ih]
+        · simp [newlines, cr, lf, List.filter, ih]
+
 theorem noCR (input : List Char) (skipLF : Bool) :
     '\r' ∉ newlines skipLF input := by
   induction input generalizing skipLF with
