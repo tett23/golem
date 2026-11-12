@@ -294,4 +294,56 @@ theorem I9_csvQuotedValueAfterFormat (encoded : QuotedEncoding value inner) :
 -- Escaped quotes, commas and mixed newlines can coexist in one field.
 example : csvQuotedValue "甲\"\"乙,\r\n丙\n".toList = "甲\"乙,\n丙\n".toList := by decide
 
+inductive CsvMode where
+  | start | plain | quoted | afterQuote
+  deriving DecidableEq
+
+-- Partial cell, row and table are accumulated in reverse source order.
+structure CsvState where
+  mode : CsvMode := .start
+  cell : List Char := []
+  row : List (List Char) := []
+  rows : List (List (List Char)) := []
+
+def CsvState.finishRow (s : CsvState) : CsvState :=
+  let row := (s.cell.reverse :: s.row).reverse
+  { rows := if row == [[]] then s.rows else row :: s.rows }
+
+def CsvState.step (s : CsvState) (c : Char) : CsvState :=
+  match s.mode, c with
+  | .start, '"' => { s with mode := .quoted }
+  | .quoted, '"' => { s with mode := .afterQuote }
+  | .afterQuote, '"' => { s with mode := .quoted, cell := '"' :: s.cell }
+  | .quoted, _ => { s with cell := c :: s.cell }
+  | _, ',' => { s with mode := .start, cell := [], row := s.cell.reverse :: s.row }
+  | _, '\n' => s.finishRow
+  | _, _ => { s with mode := .plain, cell := c :: s.cell }
+
+-- The reader treats CRLF as one newline both inside and outside quotes.
+def csvScan : List Char → CsvState → Option (List (List (List Char)))
+  | [], s => if s.mode = .quoted then none else some s.finishRow.rows.reverse
+  | c :: rest, s =>
+      if c = '\r' then
+        if rest.head? = some '\n' then csvScan rest s else none
+      else csvScan rest (s.step c)
+
+def csvRows (contents : List Char) := csvScan contents {}
+
+theorem csvScanEncoding (encoded : LineEncoding canonical contents) (s : CsvState) :
+    csvScan contents s = csvScan canonical s := by
+  induction encoded generalizing s with
+  | empty => rfl
+  | scalar c ordinary _ ih => simp [csvScan, ordinary, ih]
+  | crlf _ ih => simp [csvScan, ih]
+
+theorem I9_csvRowsAfterFormat (encoded : LineEncoding canonical contents)
+    (first : canonical.head? ≠ some bom) (marker : Bool) :
+    csvRows (formatTable (List.replicate (if marker then 1 else 0) bom ++ contents)) =
+      csvRows contents := by
+  rw [formatEncodedTable encoded first]
+  exact (csvScanEncoding encoded {}).symm
+
+example : csvRows "a,b\r\n\r\n\"x\"\"甲,\r\ny\",\n,z  ".toList =
+    some [["a".toList, "b".toList], ["x\"甲,\ny".toList, []], [[], "z  ".toList]] := by decide
+
 end TableFormat

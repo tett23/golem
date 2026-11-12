@@ -1,6 +1,6 @@
 // Quoted CSV newlines and trailing spaces are significant cell contents.
 const tables = {
-  csv: '名,b\n"x""甲,\n\ny",\n,z  \n',
+  csv: '名,b\n\n"x""甲,\n\ny",\n,z  \n',
   tsv: '名\tb\nx\t\n\tz  \n',
 };
 
