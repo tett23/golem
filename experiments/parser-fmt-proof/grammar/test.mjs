@@ -161,7 +161,7 @@ try {
     ['@set x = truex\n', 'BlockCommand', 0, 'ExprIdent@9..14 "truex"'],
     ['[= 1>=0]\n', 'Paragraph', 0, 'CmpOp@4..6 ">="'],
     ['[foo *[1]]\n', 'Paragraph', 0, 'Splat@5..7 "*["'],
-    ['```en-US\nx\n```\n', 'CodeBlock', 0],
+    ['```en-US\nx\n```\n', 'CodeBlock', 0, 'CodeLine@9..11 "x\\n"'],
     ['| a | b |\n|---|---|\n| c | d |\n', 'Table', 4]
   ];
   for (const [sample, node, cells, chosen] of parserCases) {
@@ -287,6 +287,15 @@ try {
     [join(here, 'generate.mjs'), changedSkipLine, generated], { encoding: 'utf8' });
   assert.match(strictSkipLine.stderr, /unsupported SkipLine choice 1 at /,
     'changing the newline boundary must return to the report');
+  assert.doesNotMatch(strict.stderr, /^unsupported CodeLine choice /m,
+    'the canonical code line consumes a required newline after text');
+  const changedCodeLine = join(work, 'ChangedCodeLine.hpeg');
+  writeFileSync(changedCodeLine, original.replace(/^CodeLine <- .*$/m,
+    'CodeLine <- (![x] .)* Nl { () }'));
+  const strictCodeLine = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedCodeLine, generated], { encoding: 'utf8' });
+  assert.match(strictCodeLine.stderr, /unsupported CodeLine choice 1 at /,
+    'changing the code line boundary must return to the report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);
@@ -330,7 +339,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 5, negative mutations 26, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 5, negative mutations 27, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

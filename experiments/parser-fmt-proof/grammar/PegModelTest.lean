@@ -1592,4 +1592,58 @@ theorem generated_skip_line (input : List Char) (extra : Nat) :
   simp [PegModel.runSequence, star]
   rfl
 
+def codeLineExpected (input : List Char) : Option (List Char) :=
+  match input.dropWhile (permitted [(10, 10)]) with
+  | '\n' :: rest => some rest
+  | _ => none
+
+theorem code_line_sequence (input : List Char) (extra : Nat)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat)) :
+    PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (input.length + 5 + extra) item rest)
+      boundLength []
+      [.star (.choice [[.notPred (.charClass [(10, 10)] "[\\n]"), .any]]), .ref "Nl" []]
+      input = .ok (codeLineExpected input) := by
+  let suffix := input.dropWhile (permitted [(10, 10)])
+  have star := star_nonclass_total Generated.pegGrammar [] [(10, 10)] "[\\n]" input extra
+  have suffixEq : input.dropWhile (permitted [(10, 10)]) = suffix := rfl
+  rw [suffixEq] at star
+  have nl := generated_nl_eval [] (input.length + 1 + extra) suffix
+  have fuelEq : input.length + 1 + extra + 4 = input.length + 5 + extra := by omega
+  rw [fuelEq] at nl
+  unfold codeLineExpected
+  rw [suffixEq]
+  cases hs : suffix with
+  | nil =>
+      rw [hs] at nl
+      simp [PegModel.runSequence, star, nl, hs] <;> rfl
+  | cons c rest =>
+      rw [hs] at nl
+      by_cases hc : c = '\n'
+      · subst c
+        simp [PegModel.runSequence, star, nl, hs] <;> rfl
+      · simp [PegModel.runSequence, star, nl, hs, hc] <;> rfl
+
+theorem generated_code_line (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 7 + extra)
+      (.ref "CodeLine" []) input = .ok (codeLineExpected input) := by
+  have refFuel : input.length + 7 + extra = (input.length + 6 + extra) + 1 := by omega
+  rw [refFuel]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 6 + extra)
+    (.choice [[.star (.choice [[.notPred (.charClass [(10, 10)] "[\\n]"), .any]]),
+      .ref "Nl" []]]) input = _
+  have choiceFuel : input.length + 6 + extra = (input.length + 5 + extra) + 1 := by omega
+  rw [choiceFuel]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (input.length + 5 + extra) item rest)
+      _ [] items input)
+    [[.star (.choice [[.notPred (.charClass [(10, 10)] "[\\n]"), .any]]), .ref "Nl" []]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [code_line_sequence input extra]
+  rfl
+
+example : codeLineExpected "abc\nnext".toList = some "next".toList := by rfl
+example : codeLineExpected "abc".toList = none := by rfl
+
 end PegModelTest

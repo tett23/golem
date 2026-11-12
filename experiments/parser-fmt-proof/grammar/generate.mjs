@@ -226,6 +226,13 @@ const skipLineFullyProved = rule('SkipLine') === String.raw`(![\n] .)*` &&
   skipLineAst.alts.length === 1 && skipLineAst.alts[0].items.length === 1 &&
   skipLineAst.alts[0].items[0].bind === null &&
   skipLineAst.alts[0].action?.trim() === '()' && skipLineAst.alts[0].constructor === null;
+// PegModelTest.generated_code_line composes the scan with a required Nl.
+const codeLineAst = ast?.rules.find(rule => rule.name === 'CodeLine');
+const codeLineFullyProved = rule('CodeLine') === String.raw`(![\n] .)* Nl` &&
+  codeLineAst?.params.length === 0 && codeLineAst.templateParams.length === 0 &&
+  codeLineAst.alts.length === 1 && codeLineAst.alts[0].items.length === 2 &&
+  codeLineAst.alts[0].items.every(item => item.bind === null) &&
+  codeLineAst.alts[0].action?.trim() === '()' && codeLineAst.alts[0].constructor === null;
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -304,6 +311,7 @@ if (!fragment && ast) {
     if (blockCommandStartFullyProved && rule.name === 'BlockCommandStart') continue;
     if (skipAllFullyProved && rule.name === 'SkipAll') continue;
     if (skipLineFullyProved && rule.name === 'SkipLine') continue;
+    if (codeLineFullyProved && rule.name === 'CodeLine') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
