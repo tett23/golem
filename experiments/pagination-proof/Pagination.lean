@@ -238,6 +238,33 @@ def figuresRule (count : Nat) (kept : Nat → Bool)
     (kept f = true ↔ textReady f ∧
       (∀ g, g < f → kept g = true) ∧ room f)
 
+/- The line-count part of Alloy `figures` for figures numbered in source
+   order. `textBefore f` counts all text before f; `blankBefore f` is true
+   exactly when the model's one blank precedes f and is not at column top.
+   The actual `figures` predicate also requires those text items and every
+   earlier figure to be kept, represented by `figuresRule`. -/
+def priorFigureLines (size : Nat → Nat) (f : Nat) : Nat :=
+  (List.range f).foldl (fun used g => used + size g) 0
+
+def figureHasRoom (capacity used : Nat) (textBefore size : Nat → Nat)
+    (blankBefore : Nat → Bool) (f : Nat) : Prop :=
+  used + textBefore f + priorFigureLines size f +
+    (if blankBefore f then 1 else 0) + size f ≤ capacity
+
+def figuresRuleWithLoad (count capacity used : Nat) (kept : Nat → Bool)
+    (textReady : Nat → Prop) (textBefore size : Nat → Nat)
+    (blankBefore : Nat → Bool) : Prop :=
+  figuresRule count kept textReady
+    (figureHasRoom capacity used textBefore size blankBefore)
+
+theorem I3_kept_figure_has_room (count capacity used : Nat)
+    (kept : Nat → Bool) (textReady : Nat → Prop)
+    (textBefore size : Nat → Nat) (blankBefore : Nat → Bool)
+    (rule : figuresRuleWithLoad count capacity used kept textReady textBefore size blankBefore)
+    (f : Nat) (bound : f < count) (present : kept f = true) :
+    figureHasRoom capacity used textBefore size blankBefore f := by
+  exact ((rule f bound).mp present).2.2
+
 theorem I3_figuresRule_implies_figuresInOrder (count : Nat)
     (kept : Nat → Bool) (textReady room : Nat → Prop)
     (rule : figuresRule count kept textReady room) :
