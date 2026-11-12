@@ -36,7 +36,7 @@ import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
 import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.Either (fromLeft, fromRight, isLeft)
+import Data.Either (fromLeft, fromRight, isLeft, lefts)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -641,10 +641,23 @@ pluginBlock ctx sp pb args body = do
 (docs/adr/0112), so a plugin never gets one.
 -}
 pluginArgs :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Either Diagnostic PluginArg]
-pluginArgs ctx sp args = forM args $ \(A.Located _ a) -> case a of
+pluginArgs ctx sp args = forM (firstKeywords args) $ \(A.Located _ a) -> case a of
   A.Positional v -> fmap PluginPositional <$> argValue ctx sp v
   A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
   _ -> pure (Right (PluginPositional VNil))
+
+{- | A plugin receives the first value of a repeated key, as before ADR 0351;
+diagnostics are collected from the complete list before this call.
+-}
+firstKeywords :: [A.Located A.Argument] -> [A.Located A.Argument]
+firstKeywords args =
+  [ a
+  | (i, a) <- zip [0 :: Int ..] args,
+    let previous = take i args,
+    case a of
+      A.Located _ (A.Keyword (A.Located _ k) _) -> k `notElem` [p | A.Located _ (A.Keyword (A.Located _ p) _) <- previous]
+      _ -> True
+  ]
 
 -- ------------------------------------------------------------------ functions of .emet
 
@@ -678,25 +691,53 @@ functionArgs ctx sp name ps args = do
     A.Positional _ -> fmap (Nothing,) <$> plainArgValue ctx sp (argOf la)
     A.Keyword (A.Located _ k) _ -> fmap (Just k,) <$> plainArgValue ctx sp (argOf la)
     _ -> pure (Right (Nothing, VNil))
-  case sequence vals of
-    Left d -> report d >> pure Nothing
-    Right vs -> do
-      let known = map kpName (prKeywords ps)
-          unknown = [(asp, k) | (A.Located asp (A.Keyword (A.Located _ k) _)) <- args, k `notElem` known]
-      mapM_ (\(asp, k) -> err "G02119" asp ("シグネチャにないキーワード引数です: " <> k <> "（" <> name <> (if null known then " はキーワード引数を取りません）" else " のキーワード引数: " <> T.intercalate "、" known <> "）"))) unknown
-      if not (null unknown)
-        then pure Nothing
-        else case positionalValues ps [v | (Nothing, v) <- vs] of
-          Left e -> report (argErrorDiagnostic sp name e) >> pure Nothing
-          Right pos -> do
-            let given = [(k, v) | (Just k, v) <- vs]
-                keyword kp = case lookup (kpName kp) given of
-                  Nothing -> Right (kpDefault kp)
-                  Just v -> maybe (Left (diagnostic "G02121" Error sp ("引数の型が合いません: " <> name <> " のキーワード引数 " <> kpName kp <> " は " <> argTypeText (kpType kp) <> " を求めますが、" <> typeName v <> "です"))) Right (fitValue (kpType kp) v)
-            case mapM keyword (prKeywords ps) of
-              Left d -> report d >> pure Nothing
-              Right kws -> pure (Just (pos <> kws))
+  let known = map kpName (prKeywords ps)
+      unknown = [(ksp, k) | A.Located _ (A.Keyword (A.Located ksp k) _) <- args, k `notElem` known]
+      unknownDiagnostic (ksp, k) = diagnostic "G02119" Error ksp ("シグネチャにないキーワード引数です: " <> k <> "（" <> name <> (if null known then " はキーワード引数を取りません）" else " のキーワード引数: " <> T.intercalate "、" known <> "）"))
+      positionalArguments = [(asp, result) | (A.Located asp (A.Positional _), result) <- zip args vals]
+      positional = [(i, asp, v) | (i, (asp, Right (_, v))) <- zip [1 ..] positionalArguments]
+      positionalCount = length positionalArguments
+      requiredCount = length (prPositional ps)
+      missingSite = mkSpan (spanFile sp) (spanEnd sp) (spanEnd sp)
+      countError = argErrorDiagnostic missingSite name (WrongCount positionalCount requiredCount (isJust (prVarargs ps)))
+      countErrors
+        | positionalCount < requiredCount =
+            [ countError {diagMessage = diagMessage countError <> "。" <> tshow index <> " 番目の位置引数がありません"}
+            | index <- [positionalCount + 1 .. requiredCount]
+            ]
+        | positionalCount > requiredCount && isNothing (prVarargs ps) = [countError]
+        | otherwise = []
+      positionalTypeErrors =
+        [ argErrorDiagnostic asp name (WrongType i expected v)
+        | (i, asp, v) <- positional,
+          Just expected <- [if i <= requiredCount then Just (prPositional ps !! (i - 1)) else prVarargs ps],
+          isNothing (fitValue expected v)
+        ]
+      keywordValues =
+        [ (valueSpan asp ksp, k, v)
+        | (A.Located asp (A.Keyword (A.Located ksp k) _), Right (_, v)) <- zip args vals
+        ]
+      keywordTypeErrors =
+        [ diagnostic "G02121" Error vsp ("引数の型が合いません: " <> name <> " のキーワード引数 " <> k <> " は " <> argTypeText (kpType kp) <> " を求めますが、" <> typeName v <> "です")
+        | (vsp, k, v) <- keywordValues,
+          Just kp <- [lookupKeyword k],
+          isNothing (fitValue (kpType kp) v)
+        ]
+      errors = lefts vals <> map unknownDiagnostic unknown <> countErrors <> positionalTypeErrors <> keywordTypeErrors
+  mapM_ report errors
+  if not (null errors) || not (null (repeatedKeys args))
+    then pure Nothing
+    else case sequence vals of
+      Left _ -> pure Nothing
+      Right vs -> do
+        let given = [(k, v) | (Just k, v) <- vs]
+            keyword kp = maybe (kpDefault kp) (fromMaybe (kpDefault kp) . fitValue (kpType kp)) (lookup (kpName kp) given)
+        case positionalValues ps [v | (Nothing, v) <- vs] of
+          Left _ -> pure Nothing
+          Right pos -> pure (Just (pos <> map keyword (prKeywords ps)))
   where
+    lookupKeyword k = listToMaybe [kp | kp <- prKeywords ps, kpName kp == k]
+    valueSpan asp ksp = mkSpan (spanFile asp) (spanEnd ksp + 1) (spanEnd asp)
     argOf (A.Located asp a) = case a of
       A.Positional v -> A.Located asp v
       A.Keyword _ v -> A.Located asp v
@@ -2664,19 +2705,14 @@ repeatedKeys args = [(asp, k) | (i, (asp, k)) <- zip [0 :: Int ..] keyed, k `ele
   where
     keyed = [(asp, k) | A.Located asp (A.Keyword (A.Located _ k) _) <- args]
 
-{- | The arguments with 'duplicateKeys' reported and every repeated keyword
-argument dropped: the first of each key is used. The arguments are told
-apart by their place, since the keywords of one **[式] share its span.
--}
+-- | Report every repeated keyword while retaining every occurrence (ADR 0351 I7).
 uniqueKeys :: [A.Located A.Argument] -> M [A.Located A.Argument]
 uniqueKeys args = do
   mapM_ report (duplicateKeys args)
-  let keyed = [(i, k) | (i, A.Located _ (A.Keyword (A.Located _ k) _)) <- zip [0 :: Int ..] args]
-      repeated = [i | (n, (i, k)) <- zip [0 :: Int ..] keyed, k `elem` map snd (take n keyed)]
-  pure [a | (i, a) <- zip [0 :: Int ..] args, i `notElem` repeated]
+  pure args
 
 {- | The arguments of a command with *[式] and **[式] spread (docs/adr ADR 0112)
-and the repeated keys dropped ('uniqueKeys'). Each element of a spread is
+and the repeated keys reported ('uniqueKeys'). Each element of a spread is
 the argument written as a literal: a string as a string literal, another
 value as [= value]; the keys of a hash in code point order. A spread of
 the wrong type is G02111 or G02112 at the spread; then, as for an error of
