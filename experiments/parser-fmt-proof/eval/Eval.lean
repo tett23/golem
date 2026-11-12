@@ -226,6 +226,16 @@ theorem I5_zeroDivisor (left : Derives budget env a (.nat x) afterA)
     simp [run, derives_sound left, derives_sound right, spend, enough,
       Bind.bind, Except.bind, Pure.pure, Except.pure]
 
+theorem I5_appendBudget (left : Derives budget env a (.string x) afterA)
+    (right : Derives afterA env b (.string y) afterB) :
+    run (.append a b) env budget =
+      if 1 + x.length + y.length ≤ afterB then
+        .ok (.string (x ++ y), afterB - (1 + x.length + y.length))
+      else .error .overLimit := by
+  by_cases enough : 1 + x.length + y.length ≤ afterB <;>
+    simp [run, derives_sound left, derives_sound right, spend, enough,
+      Bind.bind, Except.bind, Pure.pure, Except.pure]
+
 theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
     eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
   rw [parsed_format]
