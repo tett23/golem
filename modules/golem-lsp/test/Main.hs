@@ -15,6 +15,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import EditingSpec (editingTests)
+import FileRenameSpec (fileRenameTests)
 import FunctionsLspSpec (functionsLspTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Eval.File (builtinInlineCommands)
@@ -110,7 +111,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-lsp (ADR 0001)"
-    [ positionEnumTests,
+    [ fileRenameTests,
+      positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
       testCase "definition: label across files, import path, namespaced variable" $ do

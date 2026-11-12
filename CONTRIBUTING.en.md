@@ -343,7 +343,7 @@ A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-a
    Right after it makes the archive of `golem.wasm`, the `wasm` job checks its license documents and its `.sha256` with `scripts/release/check-wasm-archive.sh`; it runs on `workflow_dispatch` too ([docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)).
    After it makes the draft release, the `release` job runs `gh attestation verify` on each uploaded archive and checks the files of `dist/` against the `SHA256SUMS` of the draft ([docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)).
 6. Read the draft release notes. Fix by hand what the AI classified or summarized badly. When the AI or the check failed, the notes are the list of changes with a `## Unsorted` section; classify and rewrite them. The summary of the workflow says why it failed.
-   Before v1.0.0, the known issues of the notes say that link annotations in PDF/X-4 output have not been checked against ISO 15930-7 ([docs/adr/0226](./docs/adr/0226-move-the-iso-15930-7-check-to-before-v1.md)).
+   Before v1.0.0, document the omission of page links in PDF/X-4 and the outstanding ISO 15930-7 checks ([Golem ADR 0350](./docs/adr/0350-omit-page-link-annotations-from-pdf-x-4.md)).
 7. Publish the draft on the GitHub Releases page. The workflow never publishes.
 
 To try the build and the checks without a release, run `gh workflow run release.yml --ref <branch>`, which starts the workflow through `workflow_dispatch`.
