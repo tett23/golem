@@ -10,4 +10,5 @@ main :: IO ()
 main = mapM_ checkLength [0 .. 7]
   where
     checkLength n = mapM_ emit (replicateM n ['\xFEFF', '甲', '𠮷', '\r', '\n'])
-    emit input = putStrLn (intercalate "," (map (show . ord) (T.unpack (formatTable (T.pack input)))))
+    scalars = intercalate "," . map (show . ord)
+    emit input = putStrLn (scalars input ++ " => " ++ scalars (T.unpack (formatTable (T.pack input))))

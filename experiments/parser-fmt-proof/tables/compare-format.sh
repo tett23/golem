@@ -10,6 +10,10 @@ cabal exec -w ghc-9.10.3 -- ghc -hide-all-packages -package base -package text \
 "$work/format-cases" > "$work/haskell"
 "${LEAN:-lean}" -o "$work/Table.olean" "$tables/Table.lean"
 LEAN_PATH="$work" "${LEAN:-lean}" --run "$tables/FormatCases.lean" > "$work/lean"
-cmp "$work/haskell" "$work/lean"
+if ! cmp -s "$work/haskell" "$work/lean"; then
+  echo 'Table formatter mismatch (input => output, decimal Unicode scalars)' >&2
+  diff -u "$work/haskell" "$work/lean" | head -n 12 >&2
+  exit 1
+fi
 test "$(wc -l < "$work/haskell")" -eq 97656
 echo '97656 table formatter outputs matched'
