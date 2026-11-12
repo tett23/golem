@@ -91,6 +91,19 @@ try {
     [join(here, 'generate.mjs'), changedRefChoice, generated], { encoding: 'utf8' });
   assert.match(strictRefChoice.stderr, /unsupported HeadInline choice 1 at .*Escape Ws/,
     'a multi-item reference branch must return to the report');
+  assert.doesNotMatch(strict.stderr, /^unsupported (StringLiteral|KeywordLiteral) choice /m,
+    'single-reference alternatives use the same error-preserving theorem');
+  assert.match(strict.stderr, /^unsupported StringLit choice /m,
+    'proving StringLiteral does not discharge its referenced StringLit rule');
+  const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');
+  const singleRefMutation = original.replace(/^KeywordLiteral <- .*$/m,
+    'KeywordLiteral <- Keyword Ws { () }');
+  assert.notEqual(singleRefMutation, original);
+  writeFileSync(changedSingleRef, singleRefMutation);
+  const strictSingleRef = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedSingleRef, generated], { encoding: 'utf8' });
+  assert.match(strictSingleRef.stderr, /unsupported KeywordLiteral choice 1 at .*Keyword Ws/,
+    'a second item must return a single-reference rule to the unsupported report');
   const changedClassPlus = join(work, 'ChangedClassPlus.hpeg');
   writeFileSync(changedClassPlus, original.replace(/^Ws <- .*$/m, "Ws <- [ \\t]+ 'x' { () }"));
   const strictClassPlus = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedClassPlus, generated], { encoding: 'utf8' });
@@ -276,7 +289,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 22, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 23, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

@@ -242,7 +242,7 @@ const orderedLiteralNames = new Set(orderedLiteralRules.map(rule => rule.name));
 // ordered list of single references. Referenced productions are checked on
 // their own and are not discharged by this classifier.
 const orderedRefRules = (ast?.rules ?? []).filter(rule =>
-  rule.templateParams.length === 0 && rule.alts.length > 1 &&
+  rule.templateParams.length === 0 && rule.alts.length > 0 &&
   rule.alts.every(alt => alt.items.length === 1 && alt.items[0].bind === null &&
     alt.items[0].expr.tag === 'ref' && alt.action?.trim() === '()' && alt.constructor === null));
 const orderedRefNames = new Set(orderedRefRules.map(rule => rule.name));
