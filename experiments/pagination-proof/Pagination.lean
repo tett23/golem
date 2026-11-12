@@ -245,4 +245,100 @@ theorem I4_footnote_capacity_conflict (capacity : Nat) (small : capacity ≤ 2) 
     ¬ (1 + 1 + 1 ≤ capacity) := by
   omega
 
+/- The figure-only projection of a pagination state. Sending the next
+   figure adds it to the FIFO waiting queue; emitting the queue's head
+   appends it to the output. `placed ++ waiting ++ remaining` is the
+   input order throughout those two transitions. -/
+structure FigureState where
+  placed : List Nat
+  waiting : List Nat
+  remaining : List Nat
+
+def figureTrace (s : FigureState) : List Nat :=
+  s.placed ++ s.waiting ++ s.remaining
+
+def sendFigure (s : FigureState) : FigureState :=
+  match s.remaining with
+  | [] => s
+  | x :: rest => { s with waiting := s.waiting ++ [x], remaining := rest }
+
+def emitFigure (s : FigureState) : FigureState :=
+  match s.waiting with
+  | [] => s
+  | x :: rest => { s with placed := s.placed ++ [x], waiting := rest }
+
+theorem I5_sendFigure_preserves_trace (s : FigureState) :
+    figureTrace (sendFigure s) = figureTrace s := by
+  cases s with
+  | mk placed waiting remaining =>
+    cases remaining <;> simp [sendFigure, figureTrace, List.append_assoc]
+
+theorem I5_emitFigure_preserves_trace (s : FigureState) :
+    figureTrace (emitFigure s) = figureTrace s := by
+  cases s with
+  | mk placed waiting remaining =>
+    cases waiting <;> simp [emitFigure, figureTrace, List.append_assoc]
+
+def figureRank (s : FigureState) : Nat :=
+  2 * s.remaining.length + s.waiting.length
+
+theorem I4_sendFigure_decreases (s : FigureState) (nonempty : s.remaining ≠ []) :
+    figureRank (sendFigure s) < figureRank s := by
+  cases s with
+  | mk placed waiting remaining =>
+    cases remaining with
+    | nil => contradiction
+    | cons x rest => simp [sendFigure, figureRank, List.length_append]; omega
+
+theorem I4_emitFigure_decreases (s : FigureState) (nonempty : s.waiting ≠ []) :
+    figureRank (emitFigure s) < figureRank s := by
+  cases s with
+  | mk placed waiting remaining =>
+    cases waiting with
+    | nil => contradiction
+    | cons x rest => simp [emitFigure, figureRank, List.length_append]; omega
+
+def drainFigures (s : FigureState) : List Nat :=
+  if _waiting : s.waiting ≠ [] then
+    drainFigures (emitFigure s)
+  else if _remaining : s.remaining ≠ [] then
+    drainFigures (sendFigure s)
+  else
+    s.placed
+termination_by figureRank s
+decreasing_by
+  all_goals simp_wf
+  · exact I4_emitFigure_decreases _ _waiting
+  · exact I4_sendFigure_decreases _ _remaining
+
+theorem I5_drainFigures_exact (s : FigureState) :
+    drainFigures s = figureTrace s := by
+  by_cases waiting : s.waiting ≠ []
+  · calc
+      drainFigures s = drainFigures (emitFigure s) := by
+        rw [drainFigures]
+        simp [waiting]
+      _ = figureTrace (emitFigure s) := I5_drainFigures_exact (emitFigure s)
+      _ = figureTrace s := I5_emitFigure_preserves_trace s
+  · by_cases remaining : s.remaining ≠ []
+    · calc
+        drainFigures s = drainFigures (sendFigure s) := by
+          rw [drainFigures]
+          simp [waiting, remaining]
+        _ = figureTrace (sendFigure s) := I5_drainFigures_exact (sendFigure s)
+        _ = figureTrace s := I5_sendFigure_preserves_trace s
+    · have waitingEmpty : s.waiting = [] := by
+        cases h : s.waiting with
+        | nil => rfl
+        | cons x xs => exact False.elim (waiting (by simp [h]))
+      have remainingEmpty : s.remaining = [] := by
+        cases h : s.remaining with
+        | nil => rfl
+        | cons x xs => exact False.elim (remaining (by simp [h]))
+      simp [drainFigures, waitingEmpty, remainingEmpty, figureTrace]
+termination_by figureRank s
+decreasing_by
+  · exact I4_emitFigure_decreases _ waiting
+  · exact I4_sendFigure_decreases _ remaining
+
 end GolemPagination
