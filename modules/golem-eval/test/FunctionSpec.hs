@@ -87,6 +87,46 @@ tests =
         codesOf "[book.price 1000 rate=1]\n" @?= ["G02119"],
       testCase "a keyword argument written twice is G02077, as for a built-in command" $
         codesOf "[book.price 1000 tax=false tax=true]\n" @?= ["G02077"],
+      testCase "Golem ADR 0351 I7-I8: every unknown occurrence and later duplicate keeps its own site" $ do
+        let src = withImport "[book.price 1 x=1 x=2 x=3]\n"
+            (ds, _) = evalSource functionCtx src
+            index needle = Data.Text.length (fst (Data.Text.breakOn needle src))
+            site d = (diagCodeText d, spanStart (diagSpan d), spanEnd (diagSpan d))
+        map site (sortDiagnostics ds)
+          @?= [ ("G02119", index "x=1", index "x=1" + 1),
+                ("G02119", index "x=2", index "x=2" + 1),
+                ("G02077", index "x=2", index "x=2" + 3),
+                ("G02119", index "x=3", index "x=3" + 1),
+                ("G02077", index "x=3", index "x=3" + 3)
+              ],
+      testCase "Golem ADR 0351 I6-I7: independent unknown, duplicate and type errors survive" $ do
+        let src = withImport "[book.price 1 x=1 x=2 tax=abc]\n"
+            (ds, _) = evalSource functionCtx src
+            index needle = Data.Text.length (fst (Data.Text.breakOn needle src))
+            site d = (diagCodeText d, spanStart (diagSpan d), spanEnd (diagSpan d))
+        map site (sortDiagnostics ds)
+          @?= [ ("G02119", index "x=1", index "x=1" + 1),
+                ("G02119", index "x=2", index "x=2" + 1),
+                ("G02077", index "x=2", index "x=2" + 3),
+                ("G02121", index "abc", index "abc" + 3)
+              ],
+      testCase "Golem ADR 0351 I7: equal and separated duplicates keep their errors" $ do
+        let src = withImport "[book.price 1 x=1 tax=true x=1 tax=abc]\n"
+            (ds, _) = evalSource functionCtx src
+        map diagCodeText (sortDiagnostics ds)
+          @?= ["G02119", "G02119", "G02077", "G02077", "G02121"],
+      testCase "Golem ADR 0351 I8: two missing required values are reported separately" $ do
+        let f = InlineFunction (Params [ArgNat, ArgString, ArgBool] Nothing []) 0 "" (\_ _ _ -> Right [])
+            ctx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" emptyNamespace {fnInline = Map.singleton "f" f}) False Set.empty}
+            (ds, _) = evalSource ctx (withImport "[book.f abc]\n")
+        map diagCodeText (sortDiagnostics ds) @?= ["G02121", "G02120", "G02120"]
+        let omissions = [diagMessage d | d <- sortDiagnostics ds, diagCodeText d == "G02120"]
+        zipWith Data.Text.isSuffixOf ["2 番目の位置引数がありません", "3 番目の位置引数がありません"] omissions @?= [True, True],
+      testCase "Golem ADR 0351 I6: an earlier value failure keeps the later argument number" $ do
+        let f = InlineFunction (Params [ArgNat, ArgNat] Nothing []) 0 "" (\_ _ _ -> Right [])
+            ctx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" emptyNamespace {fnInline = Map.singleton "f" f}) False Set.empty}
+            (ds, _) = evalSource ctx (withImport "[book.f [= missing] abc]\n")
+        assertBool "later argument type is reported" (any (Data.Text.isInfixOf "2 番目" . diagMessage) ds),
       testCase "G02120 for the number of positional arguments, G02121 for a type" $ do
         codesOf "[book.tax-included]\n" @?= ["G02120"]
         codesOf "[book.tax-included 1 2]\n" @?= ["G02120"]
