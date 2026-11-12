@@ -4,9 +4,9 @@ set -eu
 tables=experiments/parser-fmt-proof/tables
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-cabal build lib:golem-fmt -w ghc-9.10.3
+cabal build lib:golem-fmt lib:golem-eval -w ghc-9.10.3
 cabal exec -w ghc-9.10.3 -- ghc -hide-all-packages -package base -package text \
-  -package golem-fmt-0.1.0 -outputdir "$work" "$tables/FormatCases.hs" -o "$work/format-cases"
+  -package golem-eval-0.1.0 -package golem-syntax-0.1.0 -package golem-fmt-0.1.0 -outputdir "$work" "$tables/FormatCases.hs" -o "$work/format-cases"
 "$work/format-cases" > "$work/haskell"
 "${LEAN:-lean}" -o "$work/Table.olean" "$tables/Table.lean"
 LEAN_PATH="$work" "${LEAN:-lean}" --run "$tables/FormatCases.lean" > "$work/lean"
@@ -15,5 +15,5 @@ if ! cmp -s "$work/haskell" "$work/lean"; then
   diff -u "$work/haskell" "$work/lean" | head -n 12 >&2
   exit 1
 fi
-test "$(wc -l < "$work/haskell")" -eq 97656
-echo '97656 table formatter outputs matched'
+test "$(wc -l < "$work/haskell")" -eq 105468
+echo '97656 formatter outputs and 3906 inputs per CSV/TSV parser matched'
