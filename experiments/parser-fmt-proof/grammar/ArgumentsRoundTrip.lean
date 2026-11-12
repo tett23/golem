@@ -311,6 +311,77 @@ theorem canonical_word_before_equals (name : WordRoundTrip.Word)
         simpa [chars, List.dropWhile, allowed] using dropped
       simpa [chars, rangeMiss, droppedRest] using model
 
+private theorem safe_word_before_separator (word : WordRoundTrip.Word)
+    (sep : Char) (tail : List Char)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false) :
+    WordRoundTrip.startsComment (word.chars ++ sep :: tail) = false := by
+  have notPercent : sep ≠ '%' := by
+    intro equal
+    subst sep
+    have percentAllowed : WordRoundTrip.allowed '%' = true := by decide
+    rw [percentAllowed] at blocked
+    cases blocked
+  cases chars : word.chars with
+  | nil => exact False.elim (word.nonempty chars)
+  | cons c rest =>
+      cases rest with
+      | nil =>
+          by_cases hc : c = '%'
+          · subst c
+            simp [WordRoundTrip.startsComment, notPercent]
+          · simp [WordRoundTrip.startsComment, hc]
+      | cons d more =>
+          by_cases hc : c = '%'
+          · subst c
+            by_cases hd : d = '%'
+            · subst d
+              simp [WordRoundTrip.startsComment, chars] at safe
+            · simp [WordRoundTrip.startsComment, hd]
+          · simp [WordRoundTrip.startsComment, hc]
+
+private theorem safe_word_misses_special (word : WordRoundTrip.Word)
+    (sep : Char) (tail : List Char)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false) :
+    ("%%=".toList).isPrefixOf (word.chars ++ sep :: tail) = false := by
+  have guarded := safe_word_before_separator word sep tail safe blocked
+  cases hasPrefix : ("%%=".toList).isPrefixOf (word.chars ++ sep :: tail) with
+  | false => rfl
+  | true =>
+      have comment := special_prefix_implies_comment _ hasPrefix
+      simp [guarded] at comment
+
+theorem canonical_word_before_separator (word : WordRoundTrip.Word)
+    (sep : Char) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false) :
+    PegModel.recognizeEnv Generated.pegGrammar []
+      ((word.chars ++ sep :: tail).length + 8 + extra)
+      (.ref "Word" []) (word.chars ++ sep :: tail) =
+        .ok (some (sep :: tail)) := by
+  have miss := safe_word_misses_special word sep tail safe blocked
+  have dropped : (word.chars ++ sep :: tail).dropWhile WordRoundTrip.allowed =
+      sep :: tail := WordRoundTrip.drop_append word.chars tail sep word.valid blocked
+  cases chars : word.chars with
+  | nil => exact False.elim (word.nonempty chars)
+  | cons c rest =>
+      have miss' : ("%%=".toList).isPrefixOf ((c :: rest) ++ sep :: tail) = false := by
+        simpa only [← chars] using miss
+      have model := PegModelTest.generated_word_ordinary_total
+        ((c :: rest) ++ sep :: tail) extra miss'
+      rw [← generated_ordinary_ranges] at model
+      rw [ordinary_permitted_is_allowed] at model
+      have allowed : WordRoundTrip.allowed c = true := word.valid c (by simp [chars])
+      have rangeMiss : WordRoundTrip.ordinaryWordRanges.any
+          (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false := by
+        rw [WordRoundTrip.ordinary_ranges_allowed, allowed]
+        rfl
+      have droppedRest : (rest ++ sep :: tail).dropWhile WordRoundTrip.allowed =
+          sep :: tail := by
+        simpa [chars, List.dropWhile, allowed] using dropped
+      simpa [chars, rangeMiss, droppedRest] using model
+
 private theorem parse_one_printed
     (name value : WordRoundTrip.Word) (rest suffix : List Char)
     (nameSafe : WordRoundTrip.startsComment name.chars = false)
