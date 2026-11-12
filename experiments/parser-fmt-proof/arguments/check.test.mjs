@@ -195,6 +195,7 @@ test('Golem ADR 0351 I1: the enclosing command consumes its delimiter after the 
   const file = join(dir, 'a.gm');
   try {
     for (const [input, token] of [
+      ['@foo a=b c=d', null],
       ['@foo a=b c=d\n続き\n', 'KNewline'],
       ['[foo a=b c=d]続き\n', 'KRBracket'],
       ['```hs a=b c=d\nx\n```\n', 'KNewline'],
@@ -207,7 +208,13 @@ test('Golem ADR 0351 I1: the enclosing command consumes its delimiter after the 
       const start = Buffer.from(input).indexOf('c=d');
       const end = start + 3;
       assert.ok(result.stdout.includes('NKeywordArgument@' + start + '..' + end));
-      assert.ok(result.stdout.includes(token + '@' + end + '..' + (end + 1)), result.stdout);
+      if (token === null) {
+        assert.equal(end, Buffer.byteLength(input));
+        assert.ok(result.stdout.includes('NBlockCommand@0..' + end + '\n'));
+        assert.doesNotMatch(result.stdout, /KNewline@/);
+      } else {
+        assert.ok(result.stdout.includes(token + '@' + end + '..' + (end + 1)), result.stdout);
+      }
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
