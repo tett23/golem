@@ -371,6 +371,11 @@ orderTests =
             typeLate = at "G02121" 20
         sortDiagnostics [typeLate, duplicateLate, unknownLate, unknownEarly]
           @?= [unknownEarly, unknownLate, duplicateLate, typeLate],
+      testCase "Golem ADR 0351 I8: same-site missing arguments retain declaration order" $ do
+        let missing = diagnostic "G02120" Error (mkSpan (FileId 0) 9 9)
+            first = missing "z"
+            second = missing "a"
+        sortDiagnostics [first, second] @?= [first, second],
       testCase "the code comes before the position" $ do
         let a = diagnostic "G01001" Error (mkSpan (FileId 0) 40 41) "a"
             b = diagnostic "G05004" Warning (mkSpan (FileId 0) 10 11) "b"

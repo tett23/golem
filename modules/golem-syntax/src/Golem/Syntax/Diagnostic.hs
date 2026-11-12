@@ -239,7 +239,8 @@ sortDiagnostics :: [Diagnostic] -> [Diagnostic]
 sortDiagnostics ds = placeArguments orderedArguments codeOrder
   where
     codeOrder = sortOn codeKey ds
-    orderedArguments = sortOn argumentKey (filter isArgumentError codeOrder)
+    -- Stable ties retain declaration order for missing arguments at one site.
+    orderedArguments = sortOn argumentKey (filter isArgumentError ds)
     codeKey d =
       ( tier (diagSeverity d),
         diagCode d,
