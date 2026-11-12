@@ -115,33 +115,36 @@ def startsComment : List Char → Bool
   | '%' :: '%' :: _ => true
   | _ => false
 
+theorem safe_comment_prefixes (input : List Char) (safe : startsComment input = false) :
+    "%%".toList.isPrefixOf input = false ∧ "%%=".toList.isPrefixOf input = false := by
+  cases input with
+  | nil => decide
+  | cons c rest =>
+    by_cases hc : c = '%'
+    · subst c
+      cases rest with
+      | nil => decide
+      | cons d tail =>
+        have hd : d ≠ '%' := by intro h; subst d; contradiction
+        have hb : ('%' == d) = false := by
+          cases h : ('%' == d)
+          · rfl
+          · exact False.elim (hd (eq_of_beq h).symm)
+        change ['%', '%'].isPrefixOf ('%' :: d :: tail) = false ∧
+          ['%', '%', '='].isPrefixOf ('%' :: d :: tail) = false
+        simp [List.isPrefixOf, hb]
+    · have hb : ('%' == c) = false := by
+        cases h : ('%' == c)
+        · rfl
+        · exact False.elim (hc (eq_of_beq h).symm)
+      change ['%', '%'].isPrefixOf (c :: rest) = false ∧ ['%', '%', '='].isPrefixOf (c :: rest) = false
+      simp [List.isPrefixOf, hb]
+
 theorem ordinary_comment_misses (fuel : Nat) (input : List Char)
     (safe : startsComment input = false) :
     PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 8)
       (.ref "ArgComment" []) input = .ok none := by
-  have prefixes : "%%".toList.isPrefixOf input = false ∧ "%%=".toList.isPrefixOf input = false := by
-    cases input with
-    | nil => decide
-    | cons c rest =>
-      by_cases hc : c = '%'
-      · subst c
-        cases rest with
-        | nil => decide
-        | cons d tail =>
-          have hd : d ≠ '%' := by intro h; subst d; contradiction
-          have hb : ('%' == d) = false := by
-            cases h : ('%' == d)
-            · rfl
-            · exact False.elim (hd (eq_of_beq h).symm)
-          change ['%', '%'].isPrefixOf ('%' :: d :: tail) = false ∧
-            ['%', '%', '='].isPrefixOf ('%' :: d :: tail) = false
-          simp [List.isPrefixOf, hb]
-      · have hb : ('%' == c) = false := by
-          cases h : ('%' == c)
-          · rfl
-          · exact False.elim (hc (eq_of_beq h).symm)
-        change ['%', '%'].isPrefixOf (c :: rest) = false ∧ ['%', '%', '='].isPrefixOf (c :: rest) = false
-        simp [List.isPrefixOf, hb]
+  have prefixes := safe_comment_prefixes input safe
   have proofMiss : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 6)
       (.ref "ProofComment" []) input = .ok none := by
     apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+4) item s) _ [] (.lit "%%=" "'%%='") _ input
