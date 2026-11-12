@@ -605,7 +605,22 @@ fitFigureTests :: [TestTree]
 fitFigureTests =
   [ testGroup
       "the size: within the measure and the depth of the column"
-      [ testCase "Golem ADR 0352 I2: the Lean captioned fit fixture has the same rounded dimensions" $
+      [ testCase "Golem ADR 0352 I1/I2: real fonts change caption breaks and the fitted image size" $ do
+          (sans, serif) <- realLatinFonts
+          let style = pageStyle "horizontal" "left" 12 4 1 20 20 <> "\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n\n[fonts.caption]\nlatin = \"fonts/latin.otf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\n"
+              observe font = do
+                r <- layoutMiniFonts realProvider miniManifest style (fig "tall" "" (T.replicate 12 "M")) (boxes <> [("fonts/latin.otf", font)])
+                case r of
+                  Left ds -> assertFailure (show ds) >> pure ([], 0, 0, 0, 0)
+                  Right (_, pl) -> do
+                    (pf, _, _) <- single (figuresIn pl)
+                    pure (map captionText (pfCaption pf), pfCaptionSpan pf, pfImageLines pf, pfAlong pf, pfAcross pf)
+          actual <- mapM observe [sans, serif]
+          actual
+            @?= [ (["F1\x3000MMMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt),
+                   (["F1\x3000MMMMMMMMM", "MMM"], 2, 2, 10 * pt, 30 * pt)
+                 ],
+        testCase "Golem ADR 0352 I2: the Lean captioned fit fixture has the same rounded dimensions" $
           fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) (Just 1) @?= (45 * pt, 135 * pt, True),
         testCase "without a caption a figure is as deep as the column: (L - 1) p + h, its height in proportion" $
           fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) Nothing @?= (Sp (floor (145 * unSp pt % 3)), 145 * pt, True),

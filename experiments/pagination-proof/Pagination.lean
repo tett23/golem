@@ -36,6 +36,12 @@ theorem I2_fitted_figure_depth (capacity captionSpan pitch along numerator denom
 example : fitCaptionedFigure 2 2 15 240 3 1 = none := by rfl
 example : fitCaptionedFigure 10 1 15 240 3 1 = some (45, 135) := by rfl
 
+/- The real-font driver test records caption spans 1 and 2 for the same
+   twelve M characters in Source Sans Pro and Source Serif. With the
+   measured span as input, the rounded image sizes agree with Golem. -/
+example : fitCaptionedFigure 4 1 15 240 3 1 = some (15, 45) := by rfl
+example : fitCaptionedFigure 4 2 15 240 3 1 = some (10, 30) := by rfl
+
 /- The one-figure, empty-column case of the Alloy `tallFigure` command.
    A legacy figure taller than the column must be sent, while an empty
    column cannot send its first figure. -/
@@ -171,6 +177,25 @@ theorem waitingBlankSome :
       decide (used + firstSize + secondSize ≤ capacity) = false ∧
       blankWithNextCase false false true = true := by
   exact ⟨4, 2, 4, 4, by decide⟩
+
+/- One blank immediately before one figure, with no text. These are the
+   `fits`, `figures`, `figureOrder`, and `blankWithNext` clauses of the
+   Alloy `blankFigureOrder` command specialized to that order. -/
+theorem blankFigureOrder_oneFigure (capacity used size : Nat) (top : Bool)
+    (usedFits : used ≤ capacity) :
+    ∃ kept placed : Bool,
+      kept = decide (used + (if top then 0 else 1) + size ≤ capacity) ∧
+      placed = decide (kept = true ∧ top = false) ∧
+      used + (if kept then size else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases room : used + (if top then 0 else 1) + size ≤ capacity
+  · refine ⟨true, !top, ?_, ?_, ?_⟩
+    · simp [room]
+    · cases top <;> decide
+    · cases top <;> simp_all <;> omega
+  · refine ⟨false, false, ?_, ?_, ?_⟩
+    · simp [room]
+    · simp
+    · simpa using usedFits
 
 /- A need of two lines before a one-line figure in a column with one line
    left conflicts with the older rule that keeps every figure that fits. -/
