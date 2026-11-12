@@ -143,6 +143,8 @@ try {
     ['@set x = 2*3\n', 'BlockCommand', 0, 'MulOp@10..11 "*"'],
     ['@set x = 2**3\n', 'BlockCommand', 0, 'PowOp@10..12 "**"'],
     ['@set x = 2%3\n', 'BlockCommand', 0, 'MulOp@10..11 "%"'],
+    ['@set x = true\n', 'BlockCommand', 0, 'Keyword@9..13 "true"'],
+    ['@set x = truex\n', 'BlockCommand', 0, 'ExprIdent@9..14 "truex"'],
     ['[= 1>=0]\n', 'Paragraph', 0, 'CmpOp@4..6 ">="'],
     ['[foo *[1]]\n', 'Paragraph', 0, 'Splat@5..7 "*["'],
     ['```en-US\nx\n```\n', 'CodeBlock', 0],
@@ -234,6 +236,17 @@ try {
     [join(here, 'generate.mjs'), changedMulOp, generated], { encoding: 'utf8' });
   assert.match(strictMulOp.stderr, /unsupported MulOp choice 1 at /,
     'a changed MulOp lookahead must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported Keyword choice /m,
+    'the canonical keyword alternatives and boundary have arbitrary-input proofs');
+  const changedKeyword = join(work, 'ChangedKeyword.hpeg');
+  const keywordMutation = original.replace(/^Keyword <- .*$/m,
+    line => line.replace(' ![a-z0-9_]', ''));
+  assert.notEqual(keywordMutation, original);
+  writeFileSync(changedKeyword, keywordMutation);
+  const strictKeyword = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedKeyword, generated], { encoding: 'utf8' });
+  assert.match(strictKeyword.stderr, /unsupported Keyword choice 1 at /,
+    'removing the keyword boundary must return to the unsupported report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);
@@ -263,7 +276,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 21, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 22, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

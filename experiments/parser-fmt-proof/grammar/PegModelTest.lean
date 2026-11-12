@@ -1345,4 +1345,79 @@ theorem generated_mul_choice_total (input : List Char) (fuel : Nat) :
       [.lit "/" "'/'"], [.lit "%" "'%'", .notPred (.lit "%" "'%'")]]) input = _
   exact mul_choice_total Generated.pegGrammar [] input fuel
 
+theorem keyword_literal_choice (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv grammar env (fuel + 3)
+      (.choice [[.lit "true" "'true'"], [.lit "false" "'false'"], [.lit "nil" "'nil'"]]) input =
+      .ok (firstLiteral [("true", "'true'"), ("false", "'false'"), ("nil", "'nil'")] input) := by
+  have fuelEq : fuel + 3 = (fuel + 2) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 2) item rest)
+      _ env items input)
+    (literalAlternatives [("true", "'true'"), ("false", "'false'"), ("nil", "'nil'")]) = _
+  exact interpreted_literal_choices grammar env _
+    [("true", "'true'"), ("false", "'false'"), ("nil", "'nil'")] input (fuel + 1)
+
+def keywordExpected (input : List Char) : Option (List Char) :=
+  (firstLiteral [("true", "'true'"), ("false", "'false'"), ("nil", "'nil'")] input).bind fun rest =>
+    match rest with
+    | [] => some []
+    | c :: tail => if ([(97, 122), (48, 57), (95, 95)] : List (Nat × Nat)).any
+        (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then none else some (c :: tail)
+
+theorem keyword_sequence_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (input : List Char) (fuel : Nat) :
+    PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 3) item rest)
+      boundLength env
+      [.choice [[.lit "true" "'true'"], [.lit "false" "'false'"], [.lit "nil" "'nil'"]],
+        .notPred (.charClass [(97, 122), (48, 57), (95, 95)] "[a-z0-9_]")]
+      input = .ok (keywordExpected input) := by
+  have first := keyword_literal_choice grammar env input fuel
+  cases h : firstLiteral [("true", "'true'"), ("false", "'false'"), ("nil", "'nil'")] input with
+  | none => simp [PegModel.runSequence, first, h, keywordExpected] <;> rfl
+  | some rest =>
+      have second := not_class grammar env (fuel + 1)
+        [(97, 122), (48, 57), (95, 95)] "[a-z0-9_]" rest
+      have fuelEq : fuel + 1 + 2 = fuel + 3 := by omega
+      rw [fuelEq] at second
+      cases rest with
+      | nil => simp [PegModel.runSequence, first, h, second, keywordExpected] <;> rfl
+      | cons c tail =>
+          by_cases h1 : 97 ≤ c.toNat ∧ c.toNat ≤ 122
+          · simp [PegModel.runSequence, first, h, second, keywordExpected, h1] <;> rfl
+          · by_cases h2 : 48 ≤ c.toNat ∧ c.toNat ≤ 57
+            · simp [PegModel.runSequence, first, h, second, keywordExpected, h1, h2] <;> rfl
+            · by_cases h3 : 95 ≤ c.toNat ∧ c.toNat ≤ 95
+              · simp [PegModel.runSequence, first, h, second, keywordExpected, h1, h2, h3] <;> rfl
+              · simp [PegModel.runSequence, first, h, second, keywordExpected, h1, h2, h3] <;> rfl
+
+theorem generated_keyword_total (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 5) (.ref "Keyword" []) input =
+      .ok (keywordExpected input) := by
+  have fuelEq : fuel + 5 = (fuel + 4) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4)
+    (.choice [[.choice [[.lit "true" "'true'"], [.lit "false" "'false'"], [.lit "nil" "'nil'"]],
+      .notPred (.charClass [(97, 122), (48, 57), (95, 95)] "[a-z0-9_]")]]) input = _
+  have innerEq : fuel + 4 = (fuel + 3) + 1 := by omega
+  rw [innerEq]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 3) item rest)
+      _ [] items input)
+    [[.choice [[.lit "true" "'true'"], [.lit "false" "'false'"], [.lit "nil" "'nil'"]],
+      .notPred (.charClass [(97, 122), (48, 57), (95, 95)] "[a-z0-9_]")]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [keyword_sequence_total Generated.pegGrammar [] _ input fuel]
+  rfl
+
+example : keywordExpected "true!".toList = some "!".toList := by rfl
+example : keywordExpected "truex".toList = none := by rfl
+example : keywordExpected "nil_".toList = none := by rfl
+example : keywordExpected "false".toList = some [] := by rfl
+
 end PegModelTest

@@ -196,6 +196,14 @@ const mulOpFullyProved = rule('MulOp') === "'*' !'*' / '/' / '%' !'%'" &&
   mulOpAst.alts.length === 3 && mulOpAst.alts.every(alt =>
     alt.action?.trim() === '()' && alt.constructor === null &&
     alt.items.every(item => item.bind === null));
+// PegModelTest.generated_keyword_total covers all ordered keyword literals
+// followed by the identifier-character boundary check.
+const keywordAst = ast?.rules.find(rule => rule.name === 'Keyword');
+const keywordFullyProved = rule('Keyword') === "('true' / 'false' / 'nil') ![a-z0-9_]" &&
+  keywordAst?.params.length === 0 && keywordAst.templateParams.length === 0 &&
+  keywordAst.alts.length === 1 && keywordAst.alts[0].items.length === 2 &&
+  keywordAst.alts[0].items.every(item => item.bind === null) &&
+  keywordAst.alts[0].action?.trim() === '()' && keywordAst.alts[0].constructor === null;
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -270,6 +278,7 @@ if (!fragment && ast) {
   for (const rule of ast.rules) {
     if (wordFullyProved && rule.name === 'Word') continue;
     if (mulOpFullyProved && rule.name === 'MulOp') continue;
+    if (keywordFullyProved && rule.name === 'Keyword') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
