@@ -33,3 +33,11 @@ export function* listingCases() {
     }
   }
 }
+
+export function* nestedInlineCases(depth) {
+  let layer = ['鰍'];
+  for (let level = 1; level <= depth; level++) {
+    layer = layer.flatMap(body => ['strong', 'em'].map(name => `[${name}: ${body}]`));
+    for (const command of layer) yield command + '\n';
+  }
+}

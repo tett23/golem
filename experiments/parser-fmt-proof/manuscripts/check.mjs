@@ -4,11 +4,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { bodies, listingCases, withoutPositions } from './corpus.mjs';
+import { bodies, listingCases, nestedInlineCases, withoutPositions } from './corpus.mjs';
 
-const [bound = '1', only] = process.argv.slice(2);
+const [bound = '1', only = 'all', depth = '0'] = process.argv.slice(2);
 const limit = Number(bound);
 assert.ok(Number.isSafeInteger(limit) && limit >= 0);
+const nesting = Number(depth);
+assert.ok(Number.isSafeInteger(nesting) && nesting >= 0);
 const dir = mkdtempSync(join(tmpdir(), 'golem-round-trip-'));
 const file = join(dir, 'source.gm');
 const started = performance.now();
@@ -23,6 +25,7 @@ function* cases() {
   yield '[f "x"%%甲%%%%乙%%key=y]\n';
   yield '[= 1+%%注%%2]\n';
   yield* listingCases();
+  yield* nestedInlineCases(nesting);
 }
 
 // Compare each comment's text and its position in the non-trivia token
@@ -45,7 +48,7 @@ function run(...args) {
 
 try {
   for (const [index, input] of Array.from(cases()).entries()) {
-    if (only !== undefined && Number(only) !== index) continue;
+    if (only !== 'all' && Number(only) !== index) continue;
     tested++;
     writeFileSync(file, input);
     try {
@@ -64,14 +67,14 @@ try {
       mkdirSync(path, { recursive: true });
       writeFileSync(join(path, 'original.gm'), input);
       writeFileSync(join(path, 'result.gm'), readFileSync(file));
-      writeFileSync(join(path, 'reproduce.txt'), `node experiments/parser-fmt-proof/manuscripts/check.mjs ${bound} ${index}\n`);
+      writeFileSync(join(path, 'reproduce.txt'), `node experiments/parser-fmt-proof/manuscripts/check.mjs ${bound} ${index}${nesting ? ` ${nesting}` : ''}\n`);
       writeFileSync(join(path, 'error.txt'), error.message + '\n');
       console.error(index, error.message);
       process.exitCode = 1;
     }
   }
   assert.ok(tested);
-  console.log(`${tested} cases at cluster bound ${limit} in ${((performance.now()-started)/1000).toFixed(2)} seconds`);
+  console.log(`${tested} cases at cluster bound ${limit} and nesting depth ${nesting} in ${((performance.now()-started)/1000).toFixed(2)} seconds`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

@@ -80,7 +80,7 @@ jobs:
         run: |
           status=0
           for suite in manuscripts tables arguments eval; do
-            sh experiments/parser-fmt-proof/check-suite.sh "$suite" 3 || status=1
+            sh experiments/parser-fmt-proof/check-suite.sh "$suite" 3 2 || status=1
           done
           exit "$status"
       - name: Save failing manuscripts and replay commands

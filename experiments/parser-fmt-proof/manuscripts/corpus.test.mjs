@@ -26,3 +26,13 @@ test('Golem ADR 0351 I4: listing keywords cover independent omissions and both o
     '@listing x.hs lang=haskell %%甲%%%%乙%% lines=1...1\n',
   ]);
 });
+
+test('Golem ADR 0351 I2/I3: enumerate nested inline command paths at each depth', async () => {
+  const { nestedInlineCases } = await import('./corpus.mjs');
+  assert.deepEqual([...nestedInlineCases(0)], []);
+  assert.deepEqual([...nestedInlineCases(2)], [
+    '[strong: 鰍]\n', '[em: 鰍]\n',
+    '[strong: [strong: 鰍]]\n', '[em: [strong: 鰍]]\n',
+    '[strong: [em: 鰍]]\n', '[em: [em: 鰍]]\n',
+  ]);
+});

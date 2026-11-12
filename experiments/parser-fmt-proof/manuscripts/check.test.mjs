@@ -23,6 +23,11 @@ test('Golem ADR 0351: a failed CLI inspection records the input and replay comma
     const replay = spawnSync(node, args, { env, encoding: 'utf8' });
     assert.equal(replay.status, 1);
     assert.match(replay.stdout, /1 cases/);
+    const nested = spawnSync(node, [script, '1', '24', '2'], { env, encoding: 'utf8' });
+    assert.equal(nested.status, 1);
+    const nestedPath = join(output, 'manuscript-24');
+    assert.equal(readFileSync(join(nestedPath, 'original.gm'), 'utf8'), '[em: [em: 鰍]]\n');
+    assert.equal(readFileSync(join(nestedPath, 'reproduce.txt'), 'utf8'), `node ${script} 1 24 2\n`);
   } finally {
     rmSync(output, { recursive: true, force: true });
   }
