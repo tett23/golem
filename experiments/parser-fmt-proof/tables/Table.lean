@@ -69,6 +69,22 @@ theorem cleanFixed (input : List Char) (clean : '\r' ∉ input) :
       have tail : '\r' ∉ rest := fun member => clean (List.Mem.tail _ member)
       simp [newlines, h, ih tail]
 
+-- A writer can choose LF or CRLF separately for every newline, even
+-- inside a quoted CSV field. All other scalar values are copied.
+inductive LineEncoding : List Char → List Char → Prop where
+  | empty : LineEncoding [] []
+  | scalar (c : Char) (ordinary : c ≠ '\r') (rest : LineEncoding xs ys) :
+      LineEncoding (c :: xs) (c :: ys)
+  | crlf (rest : LineEncoding xs ys) :
+      LineEncoding ('\n' :: xs) ('\r' :: '\n' :: ys)
+
+theorem decodeLineEncoding (encoded : LineEncoding canonical bytes) :
+    newlines false bytes = canonical := by
+  induction encoded with
+  | empty => rfl
+  | scalar c ordinary _ ih => simp [newlines, ordinary, ih]
+  | crlf _ ih => simp [newlines, ih]
+
 theorem newlineIdempotent (input : List Char) :
     newlines false (newlines false input) = newlines false input :=
   cleanFixed _ (noCR _ _)
@@ -81,6 +97,27 @@ def stripBOM : List Char → List Char
   | c :: rest => if c = bom then stripBOM rest else c :: rest
 
 def formatTable (input : List Char) := newlines false (stripBOM input)
+
+theorem stripLeadingRun (count : Nat) (contents : List Char) :
+    stripBOM (List.replicate count bom ++ contents) = stripBOM contents := by
+  induction count with
+  | zero => rfl
+  | succ n ih => simpa [List.replicate, stripBOM] using ih
+
+theorem formatEncodedTable (encoded : LineEncoding canonical contents)
+    (first : canonical.head? ≠ some bom) (count : Nat) :
+    formatTable (List.replicate count bom ++ contents) = canonical := by
+  unfold formatTable
+  rw [stripLeadingRun]
+  have clean : stripBOM contents = contents := by
+    cases encoded with
+    | empty => rfl
+    | scalar c _ _ =>
+        have h : c ≠ bom := by simpa using first
+        simp [stripBOM, h]
+    | crlf _ => simp [stripBOM, bom]
+  rw [clean]
+  exact decodeLineEncoding encoded
 
 theorem stripAfterFormat (input : List Char) :
     stripBOM (formatTable input) = formatTable input := by

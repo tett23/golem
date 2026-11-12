@@ -9,7 +9,11 @@ for (const format of ['csv', 'tsv']) {
     assert.equal(orders.size, 2);
     for (const manuscript of orders) {
       const group = cases.filter(c => c.manuscript === manuscript);
-      const [normal, ...broken] = group;
+      const normal = group[0];
+      const broken = group.filter(c => c.offset !== null);
+      const mixed = group.filter(c => c.offset === null && /(?<!\r)\n/.test(c.input) && c.input.includes('\r\n'));
+      assert.equal(mixed.length, 2);
+      for (const c of mixed) assert.equal(c.input.replaceAll('\r\n', '\n'), normal.expected);
       assert.equal(normal.offset, null);
       assert.ok(normal.input.startsWith('\uFEFF'));
       assert.equal(normal.input.slice(1).replaceAll('\r\n', '\n'), normal.expected);
