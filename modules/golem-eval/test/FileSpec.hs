@@ -1580,8 +1580,7 @@ blankLineTests =
       testCase "wrong arguments and a body are G02092 and give no block" $
         mapM_
           (\src -> assertEqual (T.unpack src) ([], ["G02092"]) (outline ctx src))
-          [ "@blank-line 0\n",
-            "@blank-line x\n",
+          [ "@blank-line x\n",
             "@blank-line 1 2\n",
             "@blank-line lines=2\n",
             "@blank-line +1\n",
@@ -1590,8 +1589,32 @@ blankLineTests =
       testCase "an integer out of int64 is G02091" $
         outline ctx "@blank-line 9223372036854775808\n" @?= ([], ["G02091"]),
       testCase "the messages of G02092" $ do
-        msgs "@blank-line 0\n" @?= [("G02092", "@blank-line の引数は 1 以上の整数を一つだけ書きます")]
+        msgs "@blank-line x\n" @?= [("G02092", "@blank-line の引数は 0 以上の整数を一つだけ書きます")]
         msgs "@blank-line\n  あ\n" @?= [("G02092", "@blank-line は本体を持てません")],
+      testCase "ADR 0345 I3 I4: zero blank-line has no IR and one info per run" $ do
+        outline lineCtx "あ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254"])
+        outline ctx "@blank-line 0\n@blank-line 0\nあ\n" @?= (["p あ"], ["G02254"])
+        outline ctx "@blank-line 0\nあ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254", "G02254"])
+        let (_, ds, _) = runS ctx "@blank-line 0\n"
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- ds] @?= [(DiagnosticCode "G02254", Info, 0)]
+        assertBool "an info code" (DiagnosticCode "G02254" `elem` infoCodes),
+      testCase "ADR 0345 I3 I4: consecutive blank-line counts form one IR block" $ do
+        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
+        outline ctx "@blank-line 0\n@blank-line 2\n@blank-line 0\nあ\n" @?= (["blank 2", "p あ"], [])
+        outline ctx "@blank-line 1\n@blank-line 0\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
+        outline ctx "@blank-line 9223372036854775807\n@blank-line 1\nあ\n" @?= (["p あ"], ["G02094", "G02091"])
+        outline ctx "@blank-line 2\n@blank-line 9223372036854775808\nあ\n" @?= (["p あ"], ["G02094", "G02091"]),
+      testCase "ADR 0345 I3: page controls keep their order in an added run" $ do
+        let src = "@blank-line 0\n@need-lines 3\n@blank-line 2\n@no-page-break\n@blank-line 1\nあ\n"
+        case fst (blocksAndCodes src) of
+          [Block _ _ _ (PageControl (NeedLines 3)), Block _ _ _ (BlankLines 3), Block _ _ _ (PageControl NoBreak), Block _ _ _ (Paragraph _ _)] -> pure ()
+          other -> assertFailure (show other)
+        snd (blocksAndCodes src) @?= ["G02094"],
+      testCase "ADR 0345 I3: sum overflow points at the second argument" $ do
+        let src = "@blank-line 9223372036854775807\n@blank-line 1\n"
+            (_, ds, _) = runS ctx src
+            expected = T.length "@blank-line 9223372036854775807\n@blank-line "
+        [spanStart (diagSpan d) | d <- ds, diagCode d == DiagnosticCode "G02091"] @?= [expected],
       testCase "@blank-line not at the top of the document is G02093 and dropped" $ do
         mapM_
           ( \src -> do
@@ -1611,7 +1634,7 @@ blankLineTests =
         labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
         snd (labelled "@label x\n@blank-line\n") @?= ["G02010"],
       testCase "blank lines written in a row are the notice G02094 at the later ones" $ do
-        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 1", "blank 2", "p あ"], ["G02094"])
+        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
         [(c, m, s) | (c, m, s, _) <- diags "@blank-line\n@blank-line 2\nあ\n"] @?= [("G02094", "続けて書いた @blank-line は @blank-line <N> にまとめて書けます", 12)]
         snd (outline ctx "@blank-line\n@need-lines 3\n@blank-line\nあ\n") @?= ["G02094"]
         snd (outline ctx "@blank-line\n@no-page-break\n@page-lines +1\n@blank-line\nあ\n") @?= ["G02094"]

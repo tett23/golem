@@ -17,6 +17,7 @@ module Golem.Fmt
 where
 
 import Data.Char (isAscii, isPunctuation, isSpace, isSymbol)
+import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -65,12 +66,21 @@ match made text (golem-parser ADR 0010).
 astFingerprintWith :: (Char -> Bool) -> Text -> Text
 astFingerprintWith p src =
   let (f, _, _) = parseAst (FileId 0) src
-   in eraseSpans (T.pack (show (plainEscapesIn p f)))
+   in T.pack (eraseSpans (show (plainEscapesIn p f)))
   where
-    eraseSpans t = case T.breakOn "SrcSpan {" t of
-      (pre, rest)
-        | T.null rest -> pre
-        | otherwise -> pre <> eraseSpans (T.drop 1 (T.dropWhile (/= '}') rest))
+    -- Skip records only outside the quoted Text and Char literals of Show.
+    eraseSpans input
+      | Just rest <- stripPrefix "SrcSpan {" input =
+          eraseSpans (drop 1 (dropWhile (/= '}') rest))
+    eraseSpans (c : rest)
+      | c == '"' || c == '\'' = c : quoted c rest
+      | otherwise = c : eraseSpans rest
+    eraseSpans [] = []
+    quoted delimiter ('\\' : c : rest) = '\\' : c : quoted delimiter rest
+    quoted delimiter (c : rest)
+      | c == delimiter = c : eraseSpans rest
+      | otherwise = c : quoted delimiter rest
+    quoted _ [] = []
 
 {- | Formats a source. The AST of the preprocessed source is what every
 rule must keep.
