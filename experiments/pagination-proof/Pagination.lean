@@ -4328,6 +4328,170 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
     · intro f bound present textPos member earlier
       exact False.elim (textOrder f bound present textPos member earlier)
 
+/- Current blank-line rule, which skips a waiting figure when looking for
+   the next block.  Unlike `blankRules25`, this keeps the new placement
+   predicate rather than projecting it to the historical one. -/
+theorem waitingBlankNone (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (blank : Option Nat)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (blankValid : blankDomain items blank)
+    (sizesFit : figureSizesFit capacity config) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement capacity used items config blank
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement capacity items config
+        blank kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      (brk = 1 → ∃ firstTextPos,
+        firstContent items = some (.text firstTextPos)) := by
+  by_cases emptyColumn : used = 0
+  · subst used
+    cases firstCase : firstContent items with
+    | none =>
+        obtain ⟨kept, atTop, placed, rule⟩ :=
+          blankFigureOrder capacity 0 items config blank
+            (Nat.zero_le capacity) ordered figuresValid blankValid
+        refine ⟨0, kept, atTop, placed, Or.inl ⟨rfl, rule⟩,
+          by simp [firstContentNotSent, firstCase], ?_⟩
+        intro impossible
+        cases impossible
+    | some item =>
+        cases item with
+        | text firstTextPos =>
+            obtain ⟨firstText, firstTextOrder, textBeforeFigures⟩ :=
+              I3_firstContent_text_before_figures items ordered
+                firstTextPos firstCase
+            obtain ⟨kept, atTop, placed, rule⟩ :=
+              I3_blankFigureOrder_one_break capacity firstTextPos items
+                config blank capacityPositive ordered figuresValid
+                blankValid firstText firstTextOrder textBeforeFigures
+            refine ⟨1, kept, atTop, placed,
+              Or.inr ⟨rfl, rfl, rule⟩,
+              by simp [firstContentNotSent, firstCase], ?_⟩
+            intro _
+            exact ⟨firstTextPos, rfl⟩
+        | figure firstFigurePos =>
+            obtain ⟨figureIn, noEarlierText, _⟩ :=
+              I3_firstContent_figure_before_text items ordered
+                firstFigurePos firstCase
+            cases config with
+            | zero =>
+                exact False.elim (figuresValid firstFigurePos figureIn)
+            | one figurePos figureSize =>
+                have same : firstFigurePos = figurePos :=
+                  figuresValid.2 firstFigurePos figureIn
+                subst firstFigurePos
+                obtain ⟨kept, atTop, placed, rule, firstKept⟩ :=
+                  I3_first_figure_stays_one_figure capacity figurePos
+                    figureSize items blank ordered figuresValid blankValid
+                    noEarlierText sizesFit
+                refine ⟨0, kept, atTop, placed,
+                  Or.inl ⟨rfl, rule⟩, ?_, ?_⟩
+                · intro _ item eq
+                  rw [firstCase] at eq
+                  cases eq
+                  simpa [figureKeptAtPos, keptAtTwoPositions] using firstKept
+                · intro impossible
+                  cases impossible
+            | two firstPos firstSize secondPos secondSize =>
+                have same :=
+                  (I3_firstContent_figure_matches_config items ordered
+                    (.two firstPos firstSize secondPos secondSize)
+                    figuresValid firstFigurePos firstCase).2
+                simp [figurePosAt] at same
+                subst firstFigurePos
+                obtain ⟨kept, atTop, placed, rule, firstKept⟩ :=
+                  I3_first_figure_stays_two_figures capacity firstPos
+                    firstSize secondPos secondSize items blank ordered
+                    figuresValid blankValid noEarlierText sizesFit.1
+                refine ⟨0, kept, atTop, placed,
+                  Or.inl ⟨rfl, rule⟩, ?_, ?_⟩
+                · intro _ item eq
+                  rw [firstCase] at eq
+                  cases eq
+                  simpa [figureKeptAtPos, keptAtTwoPositions] using firstKept
+                · intro impossible
+                  cases impossible
+        | blank pos =>
+            have content := (I3_firstContent_is_earliest items ordered
+              (.blank pos) firstCase).1
+            simp [isContent] at content
+        | need pos =>
+            have content := (I3_firstContent_is_earliest items ordered
+              (.need pos) firstCase).1
+            simp [isContent] at content
+  · obtain ⟨kept, atTop, placed, rule⟩ :=
+      blankFigureOrder capacity used items config blank usedFits ordered
+        figuresValid blankValid
+    refine ⟨0, kept, atTop, placed, Or.inl ⟨rfl, rule⟩, ?_, ?_⟩
+    · intro empty
+      exact False.elim (emptyColumn empty)
+    · intro impossible
+      cases impossible
+
+theorem waitingBlankAllButGreedy (capacity used : Nat)
+    (items : List SourceItem) (config : FigureConfig)
+    (blank : Option Nat)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (blankValid : blankDomain items blank)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement capacity used items config blank
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement capacity items config
+        blank kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      figuresInOrder (figureCount config) kept ∧
+      (∀ f, f < figureCount config → kept f = true →
+        ∀ textPos, .text textPos ∈ items →
+          textPos < figurePosAt config f →
+            textHereAtBreak items brk textPos = true) ∧
+      orphanModel used brk items config kept paragraphs ∧
+      widowModel used brk items config kept paragraphs ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase⟩ :=
+    waitingBlankNone capacity used items config blank capacityPositive
+      usedFits ordered figuresValid blankValid sizesFit
+  rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
+  · subst brk
+    have figureOrder := I3_zeroBreakPlacement_implies_figure_order
+      capacity used items config blank kept atTop placed zeroRule
+    have textOrder := I3_zeroBreakPlacement_implies_text_order
+      capacity used items config blank kept atTop placed zeroRule
+    obtain ⟨orphan, widow, heading⟩ :=
+      I3_zero_break_preserves_boundary_rules used items config kept
+        paragraphs headings keptLines
+    refine ⟨0, kept, atTop, placed, Or.inl ⟨rfl, zeroRule⟩,
+      noSend, figureOrder, ?_, orphan, widow, heading⟩
+    intro f bound present textPos member earlier
+    exact False.elim (textOrder f bound present textPos member earlier)
+  · subst brk
+    subst used
+    obtain ⟨firstTextPos, firstTextCase⟩ := firstCase rfl
+    obtain ⟨firstText, firstTextOrder, textBeforeFigures⟩ :=
+      I3_firstContent_text_before_figures items ordered firstTextPos
+        firstTextCase
+    have figureOrder := I3_figuresRule_implies_figuresInOrder
+      _ _ _ _ oneRule.1
+    have textOrder := I3_one_break_placement_implies_text_order
+      capacity firstTextPos items config blank kept atTop placed
+        figuresValid firstText firstTextOrder textBeforeFigures oneRule
+    obtain ⟨orphan, widow, heading⟩ :=
+      I3_first_text_break_preserves_boundary_rules items ordered
+        config kept firstTextPos firstTextCase paragraphs paragraphsValid
+        headings headingsValid keptLines
+    exact ⟨1, kept, atTop, placed, Or.inr ⟨rfl, rfl, oneRule⟩,
+      noSend, figureOrder, textOrder, orphan, widow, heading⟩
+
 theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
