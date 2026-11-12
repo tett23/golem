@@ -89,6 +89,14 @@ theorem suppliedNeverMissing (rules : List Rule) (args : List Argument)
   have eligible := (List.mem_filter.mp selected).2
   simp [same, supplied] at eligible
 
+/- Golem ADR 0351 I8: projecting the names of missing findings returns
+   exactly the unsupplied required names in declaration order. -/
+theorem missingInDeclarationOrder (rules : List Rule) (args : List Argument) :
+    (missing rules args).map Finding.name =
+      (rules.filter (fun rule => rule.required &&
+        !(args.any (fun arg => arg.name == rule.name)))).map Rule.name := by
+  simp [missing, List.map_map, Function.comp_def]
+
 def known : List Rule :=
   [ { name := "tax", kind := .bool, required := false, repeatable := false },
     { name := "count", kind := .nat, required := true, repeatable := false },
