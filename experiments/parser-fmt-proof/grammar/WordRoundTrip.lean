@@ -4,6 +4,46 @@ namespace WordRoundTrip
 
 def allowed (c : Char) : Bool := !(Generated.wordForbidden.contains c)
 
+def ordinaryWordRanges : List (Nat × Nat) :=
+  Generated.wordForbidden.map (fun c => (c.toNat, c.toNat))
+
+theorem singleton_ranges_match (chars : List Char) (c : Char) :
+    (chars.map (fun d => (d.toNat, d.toNat))).any
+      (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = chars.contains c := by
+  induction chars with
+  | nil => rfl
+  | cons d rest ih =>
+    simp only [List.map_cons, List.any_cons, List.contains, List.elem, ih]
+    by_cases h : d = c
+    · subst d; simp
+    · have ne : d.toNat ≠ c.toNat := by
+        intro eq
+        apply h
+        cases d with
+        | mk x hx =>
+          cases c with
+          | mk y hy =>
+            cases x with
+            | mk u =>
+              cases y with
+              | mk v =>
+                have uv : u = v := Fin.ext eq
+                subst v
+                rfl
+      have cd : (c == d) = false := by
+        cases e : (c == d)
+        · rfl
+        · exact False.elim (h (eq_of_beq e).symm)
+      rw [cd]
+      rcases Nat.lt_or_gt_of_ne ne with lt | gt
+      · simp [Nat.not_le_of_gt lt]
+      · simp [Nat.not_le_of_gt gt]
+
+theorem ordinary_ranges_allowed (c : Char) :
+    ordinaryWordRanges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = !allowed c := by
+  rw [ordinaryWordRanges, singleton_ranges_match]
+  simp [allowed]
+
 private theorem space_forbidden : allowed ' ' = false := by decide
 private theorem equals_forbidden : allowed '=' = false := by decide
 private theorem newline_forbidden : allowed '\n' = false := by decide
