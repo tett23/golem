@@ -1,4 +1,4 @@
-import Generated
+import PegModelTest
 
 namespace WordRoundTrip
 
@@ -115,6 +115,47 @@ def startsComment : List Char → Bool
   | '%' :: '%' :: _ => true
   | _ => false
 
+theorem ordinary_comment_misses (fuel : Nat) (input : List Char)
+    (safe : startsComment input = false) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 8)
+      (.ref "ArgComment" []) input = .ok none := by
+  have prefixes : "%%".toList.isPrefixOf input = false ∧ "%%=".toList.isPrefixOf input = false := by
+    cases input with
+    | nil => decide
+    | cons c rest =>
+      by_cases hc : c = '%'
+      · subst c
+        cases rest with
+        | nil => decide
+        | cons d tail =>
+          have hd : d ≠ '%' := by intro h; subst d; contradiction
+          have hb : ('%' == d) = false := by
+            cases h : ('%' == d)
+            · rfl
+            · exact False.elim (hd (eq_of_beq h).symm)
+          change ['%', '%'].isPrefixOf ('%' :: d :: tail) = false ∧
+            ['%', '%', '='].isPrefixOf ('%' :: d :: tail) = false
+          simp [List.isPrefixOf, hb]
+      · have hb : ('%' == c) = false := by
+          cases h : ('%' == c)
+          · rfl
+          · exact False.elim (hc (eq_of_beq h).symm)
+        change ['%', '%'].isPrefixOf (c :: rest) = false ∧ ['%', '%', '='].isPrefixOf (c :: rest) = false
+        simp [List.isPrefixOf, hb]
+  have proofMiss : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 6)
+      (.ref "ProofComment" []) input = .ok none := by
+    apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+4) item s) _ [] (.lit "%%=" "'%%='") _ input
+    exact literal_misses _ _ _ _ _ prefixes.2
+  have ordinaryMiss : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 6)
+      (.ref "Comment" []) input = .ok none := by
+    apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+4) item s) _ [] (.lit "%%" "'%%'") _ input
+    exact literal_misses _ _ _ _ _ prefixes.1
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+6) item s)
+      _ [] items input) [[.ref "ProofComment" []], [.ref "Comment" []]] = .ok none
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, proofMiss, ordinaryMiss, Except.map] <;> rfl
+
 def containsDoublePercent : List Char → Bool
   | '%' :: '%' :: _ => true
   | _ :: tail => containsDoublePercent tail
@@ -126,7 +167,7 @@ def safeNames (args : List (Word × Word)) : Prop :=
 def safeValues (args : List (Word × Word)) : Prop :=
   ∀ pair ∈ args, containsDoublePercent pair.2.chars = false
 
-private theorem safe_name_before_equals (name : Word) (tail : List Char)
+theorem safe_name_before_equals (name : Word) (tail : List Char)
     (safe : startsComment name.chars = false) :
     startsComment (name.chars ++ '=' :: tail) = false := by
   cases chars : name.chars with
@@ -314,5 +355,161 @@ theorem I4_word_keyword_sequences (args : List (Word × Word)) (fuel : Nat)
       some (args.map fun (name, value) => (name.chars, value.chars)) :=
   ⟨I1_word_keyword_arguments args fuel namesSafe valuesSafe enough,
     I2_word_keyword_ast args fuel namesSafe valuesSafe enough⟩
+
+-- The generated forbidden-character list and canonical PEG class agree for every Char.
+open PegModelTest
+
+theorem char_nat_injective (a b : Char) (h : a.toNat = b.toNat) : a = b := by
+  cases a with
+  | mk av ah =>
+    cases b with
+    | mk bv bh =>
+      cases av with
+      | mk an =>
+        cases bv with
+        | mk bn =>
+          simp [Char.toNat, UInt32.toNat] at h
+          congr
+          omega
+
+theorem word_allowed_is_peg_allowed (c : Char) :
+    WordRoundTrip.allowed c = permitted
+      [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (61, 61), (91, 91), (34, 34), (92, 92)] c := by
+  by_cases h32 : c.toNat = 32
+  · have hc : c = ' ' := char_nat_injective c ' ' (by simpa using h32)
+    subst c
+    decide
+  by_cases h9 : c.toNat = 9
+  · have hc : c = '\t' := char_nat_injective c '\t' (by simpa using h9)
+    subst c
+    decide
+  by_cases h10 : c.toNat = 10
+  · have hc : c = '\n' := char_nat_injective c '\n' (by simpa using h10)
+    subst c
+    decide
+  by_cases h93 : c.toNat = 93
+  · have hc : c = ']' := char_nat_injective c ']' (by simpa using h93)
+    subst c
+    decide
+  by_cases h58 : c.toNat = 58
+  · have hc : c = ':' := char_nat_injective c ':' (by simpa using h58)
+    subst c
+    decide
+  by_cases h124 : c.toNat = 124
+  · have hc : c = '|' := char_nat_injective c '|' (by simpa using h124)
+    subst c
+    decide
+  by_cases h61 : c.toNat = 61
+  · have hc : c = '=' := char_nat_injective c '=' (by simpa using h61)
+    subst c
+    decide
+  by_cases h91 : c.toNat = 91
+  · have hc : c = '[' := char_nat_injective c '[' (by simpa using h91)
+    subst c
+    decide
+  by_cases h34 : c.toNat = 34
+  · have hc : c = '"' := char_nat_injective c '"' (by simpa using h34)
+    subst c
+    decide
+  by_cases h92 : c.toNat = 92
+  · have hc : c = '\\' := char_nat_injective c '\\' (by simpa using h92)
+    subst c
+    decide
+  have ne32 : c ≠ ' ' := by
+    intro hc
+    subst c
+    simp at h32
+  have ne9 : c ≠ '\t' := by
+    intro hc
+    subst c
+    simp at h9
+  have ne10 : c ≠ '\n' := by
+    intro hc
+    subst c
+    simp at h10
+  have ne93 : c ≠ ']' := by
+    intro hc
+    subst c
+    simp at h93
+  have ne58 : c ≠ ':' := by
+    intro hc
+    subst c
+    simp at h58
+  have ne124 : c ≠ '|' := by
+    intro hc
+    subst c
+    simp at h124
+  have ne61 : c ≠ '=' := by
+    intro hc
+    subst c
+    simp at h61
+  have ne91 : c ≠ '[' := by
+    intro hc
+    subst c
+    simp at h91
+  have ne34 : c ≠ '"' := by
+    intro hc
+    subst c
+    simp at h34
+  have ne92 : c ≠ '\\' := by
+    intro hc
+    subst c
+    simp at h92
+  have be32 : (c == ' ') = false := by
+    cases he : (c == ' ') with
+    | false => rfl
+    | true => exact False.elim (ne32 ((beq_iff_eq c ' ').mp he))
+  have be9 : (c == '\t') = false := by
+    cases he : (c == '\t') with
+    | false => rfl
+    | true => exact False.elim (ne9 ((beq_iff_eq c '\t').mp he))
+  have be10 : (c == '\n') = false := by
+    cases he : (c == '\n') with
+    | false => rfl
+    | true => exact False.elim (ne10 ((beq_iff_eq c '\n').mp he))
+  have be93 : (c == ']') = false := by
+    cases he : (c == ']') with
+    | false => rfl
+    | true => exact False.elim (ne93 ((beq_iff_eq c ']').mp he))
+  have be58 : (c == ':') = false := by
+    cases he : (c == ':') with
+    | false => rfl
+    | true => exact False.elim (ne58 ((beq_iff_eq c ':').mp he))
+  have be124 : (c == '|') = false := by
+    cases he : (c == '|') with
+    | false => rfl
+    | true => exact False.elim (ne124 ((beq_iff_eq c '|').mp he))
+  have be61 : (c == '=') = false := by
+    cases he : (c == '=') with
+    | false => rfl
+    | true => exact False.elim (ne61 ((beq_iff_eq c '=').mp he))
+  have be91 : (c == '[') = false := by
+    cases he : (c == '[') with
+    | false => rfl
+    | true => exact False.elim (ne91 ((beq_iff_eq c '[').mp he))
+  have be34 : (c == '"') = false := by
+    cases he : (c == '"') with
+    | false => rfl
+    | true => exact False.elim (ne34 ((beq_iff_eq c '"').mp he))
+  have be92 : (c == '\\') = false := by
+    cases he : (c == '\\') with
+    | false => rfl
+    | true => exact False.elim (ne92 ((beq_iff_eq c '\\').mp he))
+  have rangeFalse :
+      ([(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (61, 61), (91, 91), (34, 34), (92, 92)] : List (Nat × Nat)).any
+        (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false := by
+    cases hr : ([(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (61, 61), (91, 91), (34, 34), (92, 92)] : List (Nat × Nat)).any
+        (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) with
+    | false => rfl
+    | true =>
+        simp [List.any] at hr
+        omega
+  simp only [WordRoundTrip.allowed, permitted]
+  rw [rangeFalse]
+  simp [Generated.wordForbidden, List.contains, List.elem,
+be32, be9, be10, be93, be58, be124, be61, be91, be34, be92]
 
 end WordRoundTrip
