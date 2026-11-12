@@ -47,6 +47,13 @@ function* cases() {
   yield ['鰍%%甲%%%%=乙%%𠮷%%=丙%%%%丁%%末\n',
     [[1, '"%%甲%%"'], [1, '"%%=乙%%"'], [2, '"%%=丙%%"'], [2, '"%%丁%%"']]];
 
+  for (let level = 1; level <= 6; level++) {
+    const mark = '#'.repeat(level) + ' ';
+    yield [mark + '\n', [], new RegExp('Heading ' + level + ' \\[\\]')];
+    yield [mark + '甲\n', [], new RegExp('Heading ' + level + ' \\[Text "甲"\\]')];
+    yield [mark + '%%注%%乙\n', [[1, '"%%注%%"']],
+      new RegExp('Heading ' + level + ' \\[Text "乙"\\]')];
+  }
 }
 
 // Compare each comment's text and its position in the non-trivia token
