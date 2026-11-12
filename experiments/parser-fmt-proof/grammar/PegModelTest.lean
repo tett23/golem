@@ -631,6 +631,91 @@ theorem generated_word_ordinary_shape :
           (61, 61), (91, 91), (34, 34), (92, 92)]
         "[ \\t\\n\\]:|=\\[\"\\\\]"), .any]])] := by rfl
 
+theorem star_nonclass (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String)
+    (chars suffix : List Char)
+    (allowed : ∀ c ∈ chars, ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false)
+    (boundary : match suffix with
+      | [] => True
+      | c :: _ => ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
+    PegModel.recognizeEnv grammar env (chars.length + 5)
+      (.star (.choice [[.notPred (.charClass ranges written), .any]]))
+      (chars ++ suffix) = .ok (some suffix) := by
+  induction chars with
+  | nil =>
+      cases suffix with
+      | nil => rfl
+      | cons c rest =>
+          have hb : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true := boundary
+          have stop : PegModel.recognizeEnv grammar env 4
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) =
+              .ok none := by simpa [hb] using nonclass_any grammar env 0 ranges written (c :: rest)
+          change (match PegModel.recognizeEnv grammar env 4
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) with
+            | Except.error reason => Except.error reason
+            | Except.ok none => Except.ok (some (c :: rest))
+            | Except.ok (some next) =>
+                if next.length < (c :: rest).length then
+                  PegModel.recognizeEnv grammar env 4
+                    (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+                else Except.error "zero-width repetition") = _
+          rw [stop]
+  | cons c tail ih =>
+      have hc := allowed c (by simp)
+      have ht : ∀ x ∈ tail, ranges.any (fun (lo, hi) => lo ≤ x.toNat && x.toNat ≤ hi) = false := by
+        intro x hx
+        exact allowed x (by simp [hx])
+      have hit := nonclass_any grammar env (tail.length + 1) ranges written (c :: tail ++ suffix)
+      have childHit : PegModel.recognizeEnv grammar env (tail.length + 5)
+          (.choice [[.notPred (.charClass ranges written), .any]]) (c :: tail ++ suffix) =
+          .ok (some (tail ++ suffix)) := by simpa [hc, Nat.add_assoc] using hit
+      have progress : (tail ++ suffix).length < (c :: tail ++ suffix).length := by simp
+      have tailResult := ih ht
+      change (match PegModel.recognizeEnv grammar env (tail.length + 5)
+          (.choice [[.notPred (.charClass ranges written), .any]]) (c :: tail ++ suffix) with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some (c :: tail ++ suffix))
+        | Except.ok (some next) =>
+            if next.length < (c :: tail ++ suffix).length then
+              PegModel.recognizeEnv grammar env (tail.length + 5)
+                (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+            else Except.error "zero-width repetition") = _
+      rw [childHit]
+      simp [progress, tailResult]
+theorem plus_nonclass (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String)
+    (first : Char) (tail suffix : List Char)
+    (allowed : ∀ c ∈ first :: tail,
+      ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false)
+    (boundary : match suffix with
+      | [] => True
+      | c :: _ => ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
+    PegModel.recognizeEnv grammar env ((first :: tail).length + 5)
+      (.plus (.choice [[.notPred (.charClass ranges written), .any]]))
+      ((first :: tail) ++ suffix) = .ok (some suffix) := by
+  have hf := allowed first (by simp)
+  have ht : ∀ c ∈ tail, ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false := by
+    intro c hc
+    exact allowed c (by simp [hc])
+  have childHit : PegModel.recognizeEnv grammar env (tail.length + 5)
+      (.choice [[.notPred (.charClass ranges written), .any]]) (first :: tail ++ suffix) =
+      .ok (some (tail ++ suffix)) := by
+    simpa [hf, Nat.add_assoc] using
+      nonclass_any grammar env (tail.length + 1) ranges written (first :: tail ++ suffix)
+  have progress : (tail ++ suffix).length < (first :: tail ++ suffix).length := by simp
+  have tailResult := star_nonclass grammar env ranges written tail suffix ht boundary
+  change (match PegModel.recognizeEnv grammar env (tail.length + 5)
+      (.choice [[.notPred (.charClass ranges written), .any]]) (first :: tail ++ suffix) with
+    | Except.error reason => Except.error reason
+    | Except.ok none => Except.ok none
+    | Except.ok (some next) =>
+        if next.length < (first :: tail ++ suffix).length then
+          PegModel.recognizeEnv grammar env (tail.length + 5)
+            (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+        else Except.error "zero-width repetition") = _
+  rw [childHit]
+  simp [progress, tailResult]
+
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
     .ok (some "!".toList) := by rfl
 

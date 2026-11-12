@@ -140,6 +140,7 @@ try {
     ['@set x = 1\n', 'BlockCommand', 0],
     ['set x = 1\n', 'BlockCommand', 0],
     ['@set x = 1+2\n', 'BlockCommand', 0, 'AddOp@10..11 "+"'],
+    ['@foo foo=%%\n', 'BlockCommand', 0, 'Word@9..11 "%%"'],
     ['[= 1>=0]\n', 'Paragraph', 0, 'CmpOp@4..6 ">="'],
     ['[foo *[1]]\n', 'Paragraph', 0, 'Splat@5..7 "*["'],
     ['```en-US\nx\n```\n', 'CodeBlock', 0],
@@ -157,6 +158,16 @@ try {
     if (node) assert.match(parsed.stdout, new RegExp(`^ +${node}@`, 'm'));
     if (chosen) assert.ok(parsed.stdout.includes(chosen), `${chosen} was not chosen by the generated parser`);
     assert.equal([...parsed.stdout.matchAll(/cs: TableCellAndPipe@/g)].length, cells);
+  }
+  const rejectedParserCases = ['@foo %%=x\n', '@foo %%foo=x\n'];
+  for (const sample of rejectedParserCases) {
+    const samplePath = join(work, 'rejected.gm');
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, 'the proof comment prefix cannot start a plain keyword name');
+    assert.match(parsed.stderr, /expected '%%'/);
   }
 
   const reversed = original.replace(/^(StringLit <- )'"' \('\\\\' \. \/ !\["\\n\] \.\)\* '"'/m, '$1\'"\' (!["\\n] . / \'\\\\\' .)* \'"\'');
@@ -219,7 +230,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 19, implementation parser cases ${parserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 19, implementation parser cases ${parserCases.length}, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
