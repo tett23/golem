@@ -2399,6 +2399,99 @@ theorem I3_source_text_first_break
       (here.mp placed)
     simpa [isLine] using role
 
+inductive AlloyTextRole where
+  | heading
+  | line
+  | space
+  deriving DecidableEq
+
+def alloyTextFirstBreak : List AlloyTextRole → Nat
+  | [] => 0
+  | .heading :: .line :: _ => 2
+  | _ :: _ => 1
+
+def alloyLineAfterHeadings (roles : List AlloyTextRole)
+    (brk : Nat) : Prop :=
+  (0 < brk ∧
+    ∀ i, i < brk → List.get? roles i = some .heading) →
+    List.get? roles brk ≠ some .line
+
+theorem I3_alloy_text_first_break_line_after
+    (capacity : Nat) (roles : List AlloyTextRole)
+    (twoFit : 2 ≤ capacity) :
+    let brk := alloyTextFirstBreak roles
+    brk ≤ capacity ∧
+      (roles ≠ [] → 1 ≤ brk) ∧
+      alloyLineAfterHeadings roles brk := by
+  cases roles with
+  | nil => simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+  | cons first rest =>
+      cases first with
+      | heading =>
+          cases rest with
+          | nil =>
+              simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+              omega
+          | cons second tail =>
+              cases second with
+              | heading =>
+                  simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+                  omega
+              | line =>
+                  simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+                  constructor
+                  · exact twoFit
+                  · intro onlyHeadings
+                    have impossible := onlyHeadings 1 (by decide)
+                    simp at impossible
+              | space =>
+                  simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+                  omega
+      | line =>
+          simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+          constructor
+          · omega
+          · intro onlyHeadings
+            have impossible := onlyHeadings 0 (by decide)
+            simp at impossible
+      | space =>
+          simp [alloyTextFirstBreak, alloyLineAfterHeadings]
+          constructor
+          · omega
+          · intro onlyHeadings
+            have impossible := onlyHeadings 0 (by decide)
+            simp at impossible
+
+theorem I3_alloy_source_text_first_break
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (roleForText : Nat → AlloyTextRole) (capacity : Nat)
+    (twoFit : 2 ≤ capacity) :
+    let positions := sourceTextPositions items
+    let roles := positions.map roleForText
+    let brk := alloyTextFirstBreak roles
+    brk ≤ capacity ∧
+      (roles ≠ [] → 1 ≤ brk) ∧
+      alloyLineAfterHeadings roles brk ∧
+      ∀ pos, .text pos ∈ items →
+        (textHereAtBreak items brk pos = true ↔
+          textRank positions pos < brk) ∧
+        List.get? roles (textRank positions pos) =
+          some (roleForText pos) := by
+  dsimp
+  obtain ⟨fits, nonempty, afterHeading⟩ :=
+    I3_alloy_text_first_break_line_after capacity
+      ((sourceTextPositions items).map roleForText) twoFit
+  refine ⟨fits, nonempty, afterHeading, ?_⟩
+  intro pos member
+  constructor
+  · exact I3_text_here_iff_source_rank items ordered pos
+      (alloyTextFirstBreak ((sourceTextPositions items).map roleForText))
+      member
+  · rw [List.get?_map]
+    rw [I3_text_rank_points_to_position (sourceTextPositions items) pos
+      ((I3_source_text_position_member items pos).mpr member)]
+    rfl
+
 theorem I3_break_one_keeps_first_text
     (items : List SourceItem) (pos : Nat)
     (first : ∀ textPos, .text textPos ∈ items → pos ≤ textPos) :
