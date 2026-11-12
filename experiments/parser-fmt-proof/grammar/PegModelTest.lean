@@ -325,6 +325,40 @@ theorem interpreted_literal_choices (grammar : PegModel.Grammar) (env : PegModel
   simp [PegModel.recognizeEnv, literalItems, Id.run]
   rfl
 
+-- The terminal branch of EOL is a negative lookahead for any character.
+-- It succeeds exactly at EOF and consumes nothing, regardless of the grammar.
+theorem eof_lookahead (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (fuel : Nat) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 2) (.notPred .any) input =
+      .ok (if input.isEmpty then some input else none) := by
+  cases input with
+  | nil => rfl
+  | cons _ _ => rfl
+
+-- This proves the literal/EOF choice in isolation. EOL uses a reference to
+-- Nl, so this theorem does not yet discharge EOL's generated AST choice.
+set_option maxHeartbeats 1000000 in
+theorem newline_or_eof (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (fuel : Nat) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 3)
+      (.choice [[.lit "\n" "'\\n'"], [.notPred .any]]) input =
+      .ok (match input with
+        | [] => some []
+        | '\n' :: rest => some rest
+        | _ :: _ => none) := by
+  cases input with
+  | nil => rfl
+  | cons c rest =>
+      by_cases h : c = '\n'
+      · subst c
+        simp [PegModel.recognizeEnv, PegModel.runChoices, PegModel.foldChoice,
+          PegModel.runSequence, Id.run, List.isPrefixOf, List.drop, Except.map, Except.bind]
+        rfl
+      · have hc : '\n' ≠ c := Ne.symm h
+        simp [PegModel.recognizeEnv, PegModel.runChoices, PegModel.foldChoice,
+          PegModel.runSequence, Id.run, List.isPrefixOf, h, hc, Except.map, Except.bind]
+        rfl
+
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
     .ok (some "!".toList) := by rfl
 
