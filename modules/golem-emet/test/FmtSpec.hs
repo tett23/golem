@@ -110,7 +110,10 @@ i5EvalTests =
         evaluate 2 addition @?= overLimit
         evaluate 3 addition @?= Right (nat 4)
         evaluate 2 append @?= overLimit
-        evaluate 3 append @?= Right (str "鰍𠮷"),
+        evaluate 3 append @?= Right (str "鰍𠮷")
+        evaluate 0 "div 3 0" @?= overLimit
+        evaluate 1 "div 3 0" @?= Left [DiagnosticCode "G02003"]
+        evaluate 1 "div 3 2" @?= Right (nat 1),
       testCase "I5 checker error is preserved before evaluation" $ do
         let source = "f :: String -> String\nf x = x + 3\n"
         formatted <- either (assertFailure . show) pure (formatEmet source)
