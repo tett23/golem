@@ -142,3 +142,30 @@ for (const unquoted of [[0], [1], [0, 1]]) {
     }
   });
 }
+
+for (const [argument, code, column] of [
+  ['%%=x', 'G01101', 7],
+  ['%%=x%%', 'G01101', 7],
+  ['%%foo=x', 'G01018', 7],
+  ['foo=%%', 'G01102', 11],
+]) {
+  test(`Golem ADR 0351 I2: fmt diagnoses ${argument} at its argument boundary`, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'golem-percent-prefix-'));
+    const file = join(dir, 'a.gm');
+    const input = '@foo  ' + argument + '\n';
+    try {
+      writeFileSync(file, input);
+      const result = spawnSync(process.env.GOLEM || 'golem', ['fmt', file], { encoding: 'utf8' });
+      if (result.error) throw result.error;
+      assert.equal(result.status, 1);
+      const reports = [...result.stderr.matchAll(/:1:(\d+): error\[(\w+)\]/g)];
+      assert.deepEqual(reports.map(match => [Number(match[1]), match[2]]), [[column, code]]);
+      assert.deepEqual(readFileSync(file), Buffer.from(input));
+    } catch (error) {
+      saveProjectFailure('arguments', dir, input, error, 'percent-' + argument);
+      throw error;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
