@@ -191,11 +191,21 @@ const classPlusRules = (ast?.rules ?? []).filter(rule =>
   rule.alts[0].items[0].expr.expr.tag === 'class' &&
   rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
 const classPlusNames = new Set(classPlusRules.map(rule => rule.name));
+const optionalRefRules = (ast?.rules ?? []).filter(rule =>
+  rule.params.length === 0 && rule.templateParams.length === 0 &&
+  rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
+  rule.alts[0].items[0].bind === null && rule.alts[0].items[0].expr.tag === 'opt' &&
+  rule.alts[0].items[0].expr.expr.tag === 'ref' &&
+  rule.alts[0].items[0].expr.expr.args.length === 0 &&
+  classPlusNames.has(rule.alts[0].items[0].expr.expr.name) &&
+  rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
+const optionalRefNames = new Set(optionalRefRules.map(rule => rule.name));
 if (!fragment && ast) {
   for (const rule of ast.rules) {
     if (rule.name === 'StringLit' && alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary) && rule.alts.length === 1) continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
+    if (optionalRefNames.has(rule.name)) continue;
     let index = 0;
     const report = (items, line) => {
       index++;
@@ -259,6 +269,7 @@ writeFileSync(output, [
   `def wordForbidden : List Char := ${leanString(forbidden?.join('') ?? '').replace(/^/, '(').replace(/$/, ').toList')}`,
   `def literalProductions : List (String × String × String) := ${leanList(literalRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.value)}, ${leanString(rule.alts[0].items[0].expr.written)})`)}`,
   `def classPlusProductions : List (String × List (Nat × Nat) × String) := ${leanList(classPlusRules, rule => { const cls = rule.alts[0].items[0].expr.expr; return `(${leanString(rule.name)}, ${leanList(cls.ranges, ([lo, hi]) => `(${lo}, ${hi})`)}, ${leanString(cls.written)})`; })}`,
+  `def optionalRefProductions : List (String × String) := ${leanList(optionalRefRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.expr.name)})`)}`,
   'def sourceRules : List (String × String) := [',
   ...sourceRules.map(([name, rhs]) => `  (${leanString(name)}, ${leanString(rhs)}),`),
   ']',

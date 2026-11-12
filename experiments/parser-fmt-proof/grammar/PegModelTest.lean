@@ -25,6 +25,8 @@ theorem literal_production_count : Generated.literalProductions.length = 23 := b
 
 theorem class_plus_production_count : Generated.classPlusProductions.length = 2 := by rfl
 
+theorem optional_ref_production_count : Generated.optionalRefProductions.length = 1 := by rfl
+
 theorem class_hit (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
     (written : String) (c : Char) (rest : List Char) (fuel : Nat)
     (hit : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
@@ -133,6 +135,12 @@ theorem class_plus_boundary (grammar : PegModel.Grammar) (ranges : List (Nat × 
 example : PegModel.recognize Generated.pegGrammar 12 (.ref "Ws" []) " \t!".toList =
     .ok (some "!".toList) := by rfl
 
+example : PegModel.recognize Generated.pegGrammar 12 (.ref "Sp" []) "!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 12 (.ref "Sp" []) " \t!".toList =
+    .ok (some "!".toList) := by rfl
+
 example : PegModel.recognize Generated.pegGrammar 12 (.ref "Lang" []) "en-US!".toList =
     .ok (some "!".toList) := by rfl
 
@@ -164,6 +172,28 @@ theorem ordered_choice_fallback (grammar : PegModel.Grammar)
   simp only [PegModel.recognize] at miss hit ⊢
   simp [PegModel.recognizeEnv, miss, hit, Id.run]
   rfl
+
+theorem optional_hit (grammar : PegModel.Grammar) (child : PegModel.Expr)
+    (input rest : List Char) (fuel : Nat)
+    (hit : PegModel.recognizeEnv grammar [] fuel child input = .ok (some rest)) :
+    PegModel.recognizeEnv grammar [] (fuel + 1) (.opt child) input =
+      .ok (some rest) := by
+  change (match PegModel.recognizeEnv grammar [] fuel child input with
+    | .error reason => Except.error reason
+    | .ok none => Except.ok (some input)
+    | .ok found => Except.ok found) = .ok (some rest)
+  rw [hit]
+
+theorem optional_miss (grammar : PegModel.Grammar) (child : PegModel.Expr)
+    (input : List Char) (fuel : Nat)
+    (miss : PegModel.recognizeEnv grammar [] fuel child input = .ok none) :
+    PegModel.recognizeEnv grammar [] (fuel + 1) (.opt child) input =
+      .ok (some input) := by
+  change (match PegModel.recognizeEnv grammar [] fuel child input with
+    | .error reason => Except.error reason
+    | .ok none => Except.ok (some input)
+    | .ok found => Except.ok found) = .ok (some input)
+  rw [miss]
 
 theorem repeated_a_roundtrip (grammar : PegModel.Grammar) (count : Nat) :
     PegModel.recognizeEnv grammar [] (count + 2) (.star (.lit "a" "'a'"))
