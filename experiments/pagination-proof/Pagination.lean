@@ -456,6 +456,77 @@ theorem blankFigureOrder_twoFiguresBeforeBlank
   · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
     all_goals simp [firstFits] <;> omega
 
+/- A zero-text break sends every text item on. `firstReady` and
+   `secondReady` record whether each figure has any earlier text; unlike
+   the preceding no-text theorem, either may therefore be unavailable. -/
+theorem blankFigureOrder_twoFiguresBeforeBlank_withText
+    (capacity used firstSize secondSize : Nat)
+    (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (firstReady = true ∧ used + firstSize ≤ capacity) ∧
+      second = decide (secondReady = true ∧ first = true ∧
+        used + firstSize + secondSize ≤ capacity) ∧
+      placed = false ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases firstFits : firstReady = true ∧ used + firstSize ≤ capacity
+  · by_cases secondFits : secondReady = true ∧ used + firstSize + secondSize ≤ capacity
+    · refine ⟨true, true, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+    · refine ⟨true, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+  · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+    all_goals simp [firstFits] <;> omega
+
+theorem blankFigureOrder_twoFiguresAroundBlank_withText
+    (capacity used firstSize secondSize : Nat)
+    (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (firstReady = true ∧ used + firstSize ≤ capacity) ∧
+      second = decide (secondReady = true ∧ first = true ∧
+        used + firstSize + 1 + secondSize ≤ capacity) ∧
+      placed = second ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases firstFits : firstReady = true ∧ used + firstSize ≤ capacity
+  · by_cases secondFits : secondReady = true ∧ used + firstSize + 1 + secondSize ≤ capacity
+    · refine ⟨true, true, true, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+    · refine ⟨true, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits, secondFits] <;> omega
+  · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+    all_goals simp [firstFits] <;> omega
+
+theorem blankFigureOrder_twoFiguresAfterBlank_withText
+    (capacity used firstSize secondSize : Nat)
+    (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (firstReady = true ∧
+        used + (if used = 0 then 0 else 1) + firstSize ≤ capacity) ∧
+      second = decide (secondReady = true ∧ first = true ∧
+        used + (if used = 0 then 0 else 1) + firstSize + secondSize ≤ capacity) ∧
+      placed = decide (first = true ∧ used ≠ 0) ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases top : used = 0
+  · subst used
+    by_cases firstFits : firstReady = true ∧ firstSize ≤ capacity
+    · by_cases secondFits : secondReady = true ∧ firstSize + secondSize ≤ capacity
+      · refine ⟨true, true, false, ?_, ?_, ?_, ?_⟩
+        all_goals simp [firstFits, secondFits] <;> omega
+      · refine ⟨true, false, false, ?_, ?_, ?_, ?_⟩
+        all_goals simp [firstFits, secondFits] <;> omega
+    · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [firstFits] <;> omega
+  · by_cases firstFits : firstReady = true ∧ used + 1 + firstSize ≤ capacity
+    · by_cases secondFits : secondReady = true ∧ used + 1 + firstSize + secondSize ≤ capacity
+      · refine ⟨true, true, true, ?_, ?_, ?_, ?_⟩
+        all_goals simp [top, firstFits, secondFits] <;> omega
+      · refine ⟨true, false, true, ?_, ?_, ?_, ?_⟩
+        all_goals simp [top, firstFits, secondFits] <;> omega
+    · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
+      all_goals simp [top, firstFits] <;> omega
+
 /- A need of two lines before a one-line figure in a column with one line
    left conflicts with the older rule that keeps every figure that fits. -/
 theorem needFigure :
