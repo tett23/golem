@@ -436,18 +436,67 @@ private theorem scanUnknownCount (rules : List Rule) (name : String)
           | true => exact False.elim (same (of_decide_eq_true h))
         simp [countOther name .unknown rules seen pos a same, List.filter, diff]
 
+private theorem countMissingForOtherCode (rules : List Rule) (args : List Argument)
+    (name : String) (code : Error) (different : (Error.missing == code) = false) :
+    countFor name code (missing rules args) = 0 := by
+  unfold missing
+  generalize rules.filter _ = required
+  induction required with
+  | nil => rfl
+  | cons r rs ih => simpa [countFor, List.filter, different] using ih
+
 theorem I7_unknownCount (rules : List Rule) (name : String)
     (unknown : ruleFor rules name = none) (args : List Argument) :
     countFor name .unknown (check rules args) =
       (args.filter (fun a => a.name == name)).length := by
   rw [check, countForAppend, scanUnknownCount rules name unknown]
-  have omissions : countFor name .unknown (missing rules args) = 0 := by
-    unfold missing
-    generalize rules.filter _ = required
-    induction required with
-    | nil => rfl
-    | cons r rs ih =>
-        simpa [countFor, List.filter, show (Error.missing == Error.unknown) = false by decide] using ih
-  rw [omissions, Nat.add_zero]
+  rw [countMissingForOtherCode rules args name .unknown (by decide), Nat.add_zero]
+
+private def nonrepeatable (rule : Option Rule) :=
+  rule.isNone || rule.any (fun r => !r.repeatable)
+
+private theorem duplicateAt (rules : List Rule) (seen : List String) (pos : Nat) (a : Argument)
+    (once : nonrepeatable (ruleFor rules a.name) = true) :
+    countFor a.name .duplicate (atOccurrence rules seen pos a) =
+      (if seen.contains a.name then 1 else 0) := by
+  unfold nonrepeatable at once
+  simp only [atOccurrence, once, Bool.and_true, countForAppend]
+  cases h : seen.contains a.name <;>
+    cases h₁ : (ruleFor rules a.name).isNone <;>
+    cases h₂ : (ruleFor rules a.name).any (fun r => r.kind != a.kind) <;>
+    simp [countFor, h, h₁, h₂] <;> rfl
+
+private theorem scanDuplicateCount (rules : List Rule) (name : String)
+    (once : nonrepeatable (ruleFor rules name) = true)
+    (args : List Argument) (seen : List String) (pos : Nat) :
+    countFor name .duplicate (scan rules args seen pos) =
+      (args.filter (fun a => a.name == name)).length - (if seen.contains name then 0 else 1) := by
+  induction args generalizing seen pos with
+  | nil => simp [scan, countFor]
+  | cons a rest ih =>
+      rw [scan, countForAppend, ih]
+      by_cases same : a.name = name
+      · subst name
+        rw [duplicateAt rules seen pos a once]
+        cases h : seen.contains a.name <;> simp [List.filter, List.contains, h] <;> omega
+      · have diff : (a.name == name) = false := by
+          cases h : a.name == name with
+          | false => rfl
+          | true => exact False.elim (same (of_decide_eq_true h))
+        simp [countOther name .duplicate rules seen pos a same, List.filter, List.contains, List.elem, diff, show (name == a.name) = false by
+          cases h : name == a.name with
+          | false => rfl
+          | true => exact False.elim (same (of_decide_eq_true h).symm)]
+
+theorem I7_duplicateCount (rules : List Rule) (name : String) (args : List Argument)
+    (once : ruleFor rules name = none ∨
+      ∃ rule, ruleFor rules name = some rule ∧ rule.repeatable = false) :
+    countFor name .duplicate (check rules args) =
+      (args.filter (fun a => a.name == name)).length - 1 := by
+  have single : nonrepeatable (ruleFor rules name) = true := by
+    rcases once with unknown | ⟨rule, known, repeatable⟩ <;> simp_all [nonrepeatable, Option.any]
+  rw [check, countForAppend, scanDuplicateCount rules name single]
+  rw [countMissingForOtherCode rules args name .duplicate (by decide), Nat.add_zero]
+  rfl
 
 end ArgumentDiagnostics
