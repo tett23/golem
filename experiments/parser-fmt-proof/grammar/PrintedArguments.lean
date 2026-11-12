@@ -143,3 +143,22 @@ theorem I1_generated_word_keywords (args : List (WordRoundTrip.Word × WordRound
   omega
 
 end ArgumentsRoundTrip
+
+namespace ReservedRecovery
+open PegModel
+
+-- The closing bracket in each of these bodies has a different lexical role.
+example (extra : Nat) :
+    recognize Generated.pegGrammar (extra + 80) (.ref "SkipReserved" [])
+      ("[![x]]".toList ++ "末\n".toList) = .ok (some "末\n".toList) := by
+  rfl
+example (extra : Nat) :
+    recognize Generated.pegGrammar (extra + 80) (.ref "SkipReserved" [])
+      ("[!\\]]".toList ++ "末\n".toList) = .ok (some "末\n".toList) := by
+  rfl
+example (extra : Nat) :
+    recognize Generated.pegGrammar (extra + 80) (.ref "SkipReserved" [])
+      ("[!%%]%%]".toList ++ "末\n".toList) = .ok (some "末\n".toList) := by
+  rfl
+
+end ReservedRecovery
