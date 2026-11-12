@@ -78,6 +78,17 @@ theorem presentRequiredName (name : String) (kind : Kind) (rest : List Argument)
     (({ name, kind } : Argument) :: rest).any (fun arg => arg.name == name) = true := by
   simp
 
+/- Golem ADR 0351 I7: a supplied name cannot give rise to a missing
+   finding, including when its value failed the declared type check. -/
+theorem suppliedNeverMissing (rules : List Rule) (args : List Argument)
+    (name : String) (supplied : args.any (fun arg => arg.name == name) = true) :
+    { position := args.length, name, error := Error.missing } ∉ missing rules args := by
+  intro found
+  obtain ⟨rule, selected, eq⟩ := List.mem_map.mp found
+  have same : rule.name = name := congrArg Finding.name eq
+  have eligible := (List.mem_filter.mp selected).2
+  simp [same, supplied] at eligible
+
 def known : List Rule :=
   [ { name := "tax", kind := .bool, required := false, repeatable := false },
     { name := "count", kind := .nat, required := true, repeatable := false },
