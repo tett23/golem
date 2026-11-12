@@ -119,7 +119,12 @@ i5EvalTests =
         evaluate 3 append @?= Right (str "鰍𠮷")
         evaluate 0 "div 3 0" @?= overLimit
         evaluate 1 "div 3 0" @?= Left [DiagnosticCode "G02003"]
-        evaluate 1 "div 3 2" @?= Right (nat 1),
+        evaluate 1 "div 3 2" @?= Right (nat 1)
+        let nestedDivision = "div (1 + 2) (0 + 0)"
+        evaluate 1 nestedDivision @?= overLimit
+        evaluate 2 nestedDivision @?= overLimit
+        evaluate 3 nestedDivision @?= Left [DiagnosticCode "G02003"]
+        evaluate 4 nestedDivision @?= Left [DiagnosticCode "G02003"],
       testCase "I5 checker error is preserved before evaluation" $ do
         let source = "-- 甲\nz :: Nat\nz = 0\n\n\n\nf :: String -> String\nf x = x + 3\n"
             findings text = [(diagCode d, diagSpan d) | d <- fst (load text)]
