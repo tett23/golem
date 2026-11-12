@@ -94,7 +94,7 @@ function describeItems(items) {
 function nestedChoices(expr, visit) {
   switch (expr.tag) {
     case 'choice':
-      if (expr.alts.length > 1 && !provedNlEofChoice(expr)) expr.alts.forEach(visit);
+      if (expr.alts.length > 1 && !provedNlEofChoice(expr) && !provedLiteralNlEofChoice(expr)) expr.alts.forEach(visit);
       expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));
       break;
     case 'star': case 'plus': case 'opt': case 'and': case 'not':
@@ -221,6 +221,15 @@ function provedNlEofChoice(expr) {
   const [[nl], [eof]] = expr.alts;
   return nl?.bind === null && nl.expr.tag === 'ref' && nl.expr.name === 'Nl' && nl.expr.args.length === 0 &&
     eof?.bind === null && eof.expr.tag === 'not' && eof.expr.expr.tag === 'any';
+}
+// PegModelTest.newline_or_eof covers this direct literal form in RowBreak.
+function provedLiteralNlEofChoice(expr) {
+  if (expr.tag !== 'choice' || expr.alts.length !== 2 ||
+      expr.alts.some(items => items.length !== 1)) return false;
+  const [[nl], [eof]] = expr.alts;
+  return nl?.bind === null && nl.expr.tag === 'lit' && nl.expr.value === '\n' &&
+    nl.expr.written === "'\\n'" && eof?.bind === null && eof.expr.tag === 'not' &&
+    eof.expr.expr.tag === 'any';
 }
 if (!fragment && ast) {
   // StringLit, Word, and StringLiteral stay unsupported: their fragment proofs
