@@ -28,14 +28,14 @@ import Test.Tasty.Hedgehog (testProperty)
 fmtTableTests :: TestTree
 fmtTableTests = testGroup "golem fmt and the table files (docs/adr/0186)" [propertyTests, commandTests]
 
-{- | The text of a table file without a lone CR: a BOM or none, then cells,
+{- | The text of a table file without a lone CR: a run of leading BOMs, then cells,
 separators, quotes and line breaks.
 -}
 tableText :: Gen Text
 tableText = do
-  bom <- Gen.element ["", "\xFEFF"]
+  count <- Gen.int (Range.linear 0 5)
   body <- T.concat <$> Gen.list (Range.linear 0 30) (Gen.element ["a", "x y", " ", ",", "\t", "\"", "\n", "\r\n", "\xFEFF", "語"])
-  pure (bom <> (if "\xFEFF" `T.isPrefixOf` body then "a" <> body else body))
+  pure (T.replicate count "\xFEFF" <> body)
 
 -- | The table the reader makes, or none when it stops.
 tableOf :: (FileId -> Text -> Either e [[Text]]) -> Text -> Maybe [[Text]]
@@ -44,13 +44,13 @@ tableOf parse = either (const Nothing) Just . parse (FileId 0)
 propertyTests :: TestTree
 propertyTests =
   testGroup
-    "the preprocessing keeps the table"
+    "the preprocessing keeps cells except for leading BOMs"
     [ testProperty "CSV" $ property $ do
         src <- forAll tableText
-        tableOf parseCsv (formatTable src) === tableOf parseCsv src,
+        tableOf parseCsv (formatTable src) === tableOf parseCsv (T.dropWhile (== '\xFEFF') src),
       testProperty "TSV" $ property $ do
         src <- forAll tableText
-        tableOf parseTsv (formatTable src) === tableOf parseTsv src
+        tableOf parseTsv (formatTable src) === tableOf parseTsv (T.dropWhile (== '\xFEFF') src)
     ]
 
 manifest :: String
