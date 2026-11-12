@@ -214,6 +214,14 @@ const orderedLiteralRules = (ast?.rules ?? []).filter(rule =>
   rule.alts.every(alt => alt.items.length === 1 && alt.items[0].bind === null &&
     alt.items[0].expr.tag === 'lit' && alt.action?.trim() === '()' && alt.constructor === null));
 const orderedLiteralNames = new Set(orderedLiteralRules.map(rule => rule.name));
+// PegModelTest.interpreted_ref_choices proves first success/error for any
+// ordered list of single references. Referenced productions are checked on
+// their own and are not discharged by this classifier.
+const orderedRefRules = (ast?.rules ?? []).filter(rule =>
+  rule.templateParams.length === 0 && rule.alts.length > 1 &&
+  rule.alts.every(alt => alt.items.length === 1 && alt.items[0].bind === null &&
+    alt.items[0].expr.tag === 'ref' && alt.action?.trim() === '()' && alt.constructor === null));
+const orderedRefNames = new Set(orderedRefRules.map(rule => rule.name));
 // PegModelTest.generated_newline_or_eof proves this exact choice for any
 // parameter environment. The enclosing alternatives still need proofs.
 function provedNlEofChoice(expr) {
@@ -248,6 +256,7 @@ if (!fragment && ast) {
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
     if (orderedLiteralNames.has(rule.name)) continue;
+    if (orderedRefNames.has(rule.name)) continue;
     let index = 0;
     const report = (items, line) => {
       index++;

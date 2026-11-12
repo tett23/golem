@@ -270,6 +270,80 @@ private theorem fold_choice_spec {α β : Type} (xs : List α)
           have keep := fold_keeps_hit_parse tail parse value
           simpa [List.foldlM, List.findSome?, headMatch, hit] using keep
 
+private def firstResult {α β : Type} (parse : α → Except String (Option β)) :
+    List α → Except String (Option β)
+  | [] => .ok none
+  | head :: tail =>
+      match parse head with
+      | .ok none => firstResult parse tail
+      | result => result
+
+theorem ordered_choice_preserves_error {α β : Type}
+    (parse : α → Except String (Option β)) (alts : List α) :
+    PegModel.foldChoice parse alts = firstResult parse alts := by
+  induction alts with
+  | nil => rfl
+  | cons head tail ih =>
+      cases hit : parse head with
+      | error reason => simp [PegModel.foldChoice, firstResult, List.foldlM, hit]; rfl
+      | ok result =>
+          cases result with
+          | none => simpa [PegModel.foldChoice, firstResult, List.foldlM, hit] using ih
+          | some value =>
+              simpa [PegModel.foldChoice, firstResult, List.foldlM, hit]
+                using fold_keeps_hit_parse tail parse value
+
+private theorem run_sequence_ref (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (name : String) (args : List String) (input : List Char) :
+    PegModel.runSequence parse boundLength env [.ref name args] input =
+      parse env (.ref name args) input := by
+  cases hit : parse env (.ref name args) input with
+  | error reason => simp [PegModel.runSequence, hit]; rfl
+  | ok result =>
+      cases result with
+      | none => simp [PegModel.runSequence, hit]; rfl
+      | some rest => simp [PegModel.runSequence, hit]; rfl
+
+def refAlternatives (refs : List (String × List String)) : List (List PegModel.Expr) :=
+  refs.map (fun (name, args) => [.ref name args])
+
+theorem ordered_ref_choices (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (refs : List (String × List String)) (input : List Char) :
+    PegModel.runChoices (fun items => PegModel.runSequence parse boundLength env items input)
+      (refAlternatives refs) =
+      firstResult (fun pair => parse env (.ref pair.1 pair.2) input) refs := by
+  unfold PegModel.runChoices
+  rw [ordered_choice_preserves_error]
+  induction refs with
+  | nil => rfl
+  | cons pair tail ih =>
+      cases pair with
+      | mk name args =>
+          simp only [refAlternatives, List.map, firstResult, run_sequence_ref]
+          cases hit : parse env (.ref name args) input with
+          | error _ => rfl
+          | ok result =>
+              cases result with
+              | none => exact ih
+              | some _ => rfl
+
+theorem interpreted_ref_choices (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (refs : List (String × List String)) (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv grammar env (fuel + 1) (.choice (refAlternatives refs)) input =
+      firstResult (fun pair => PegModel.recognizeEnv grammar env fuel
+        (.ref pair.1 pair.2) input) refs := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope fuel item rest)
+      _ env items input) (refAlternatives refs) = _
+  exact ordered_ref_choices _ _ env refs input
+
+example : PegModel.foldChoice
+    (fun n : Nat => if n == 1 then (.error "label" : PegModel.ParseResult) else .ok none) [0, 1, 2] =
+      .error "label" := by rfl
+
 private theorem run_sequence_literal (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
     (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
     (env : PegModel.Params) (value written : String) (input : List Char) :
