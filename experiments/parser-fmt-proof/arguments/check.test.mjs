@@ -108,3 +108,35 @@ test('Golem ADR 0351 I6: missing arguments point past the closing delimiter and 
     assert.match(diagnostics[1].message, /3 番目の位置引数がありません$/);
   }, 'missing-after-comment');
 });
+
+for (const unquoted of [0, 1]) {
+  test(`Golem ADR 0351 I2: fmt preserves bytes when value ${unquoted + 1} requires quotes`, () => {
+    const dir = mkdtempSync(join(tmpdir(), 'golem-argument-quotes-'));
+    const file = join(dir, 'a.gm');
+    const values = ['abc%%甲%%', 'def%%乙%%'];
+    const manuscript = omit => '[f  ' + values.map((value, index) =>
+      ['key=', 'other='][index] + (index === omit ? value : '"' + value + '"')).join(' ') + ']\n';
+    const original = manuscript(-1);
+    const input = manuscript(unquoted);
+    try {
+      writeFileSync(file, original);
+      const cli = process.env.GOLEM || 'golem';
+      const valid = spawnSync(cli, ['fmt', file], { encoding: 'utf8' });
+      assert.equal(valid.status, 0, valid.stderr);
+      writeFileSync(file, input);
+      const broken = spawnSync(cli, ['fmt', file], { encoding: 'utf8' });
+      if (broken.error) throw broken.error;
+      assert.equal(broken.status, 1);
+      assert.deepEqual([...broken.stderr.matchAll(/error\[(\w+)\]/g)].map(match => match[1]), ['G01102']);
+      assert.deepEqual(readFileSync(file), Buffer.from(input));
+    } catch (error) {
+      const name = 'required-quotes-' + unquoted;
+      saveProjectFailure('arguments', dir, original, error, name);
+      writeFileSync(join(process.env.ROUND_TRIP_FAILURES || 'round-trip-failures',
+        'arguments', name, 'input.gm'), input);
+      throw error;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
