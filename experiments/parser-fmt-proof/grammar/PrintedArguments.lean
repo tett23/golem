@@ -131,4 +131,15 @@ theorem printed_arguments_from_keyword_hits (extra : Nat)
     rwa [show budget + 80 = input.length + (extra + args.length + 61) + 20 by dsimp [budget]; omega]
   · rwa [show budget + 80 = input.length + extra + 80 + args.length + 1 by dsimp [budget]; omega]
 
+-- The enclosing command receives its newline and the exact original suffix.
+theorem I1_generated_word_keywords (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
+    (suffix : List Char) (extra : Nat)
+    (namesSafe : WordRoundTrip.safeNames args) (valuesSafe : WordRoundTrip.safeValues args) :
+    let input := WordRoundTrip.printArgs args ++ suffix
+    PegModel.recognize Generated.pegGrammar (input.length + extra + args.length + 83)
+      (.ref "Arguments" []) input = .ok (some ('\n' :: suffix)) := by
+  apply printed_arguments_from_keyword_hits extra args suffix namesSafe
+  apply canonical_keyword_hits_of_printed args suffix _ _ namesSafe valuesSafe
+  omega
+
 end ArgumentsRoundTrip
