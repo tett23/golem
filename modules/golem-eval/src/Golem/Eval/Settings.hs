@@ -13,11 +13,14 @@ module Golem.Eval.Settings
   )
 where
 
+import Control.Applicative ((<|>))
+import Data.ByteString qualified as BS
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isNothing, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Parser.AST qualified as A
 import Golem.Project.Style
 import Golem.Syntax
@@ -279,9 +282,9 @@ fileStyles style header =
                       Right d -> (defs <> [RegexDef sp name d], ds)
                     Just k
                       | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G02053" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
-                      | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
+                      | otherwise -> case localStyleDefWithValues style k [(key, v) | (key, _, v) <- kvs] of
                           -- an aki amount in a dimension is G03020 (docs/adr ADR 0019); kerning, tracking and baseline shift G03021 (docs/adr/0020)
-                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
+                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) (valueSite sp code m kvs) ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
                           Right d -> (defs <> [Def sp k name (sited sp d)], ds)
             _ -> (defs, ds <> errs)
     -- the kind and the name, as a word or a string literal (docs/adr ADR 0132)
@@ -292,6 +295,23 @@ fileStyles style header =
     asString = \case
       LocalWord w -> LocalString w
       v -> v
+    valueSite sp code message kvs
+      | code `notElem` ["G03257", "G03258"] = sp
+      | otherwise =
+          fromMaybe sp $
+            listToMaybe
+              [ mkSpan (spanFile argSpan) start (start + byteLength name)
+              | (key, argSpan, value) <- kvs,
+                let raw = case value of LocalWord t -> t; LocalString t -> t,
+                Just name <- [nameIn message],
+                let (before, rest) = T.breakOn name raw,
+                not (T.null rest),
+                let quote = case value of LocalWord _ -> 0; LocalString _ -> 1,
+                let start = spanStart argSpan + byteLength key + 1 + quote + byteLength before
+              ]
+      where
+        byteLength = BS.length . TE.encodeUtf8
+        nameIn m = T.stripPrefix "値の名前がありません: " m <|> (T.stripPrefix "値 " m >>= \r -> Just (fst (T.breakOn " の種類" r)))
     isSplat = \case
       A.SplatPositional _ -> True
       A.SplatKeyword _ -> True

@@ -175,6 +175,9 @@ tests =
         case format src of
           Formatted r -> astFingerprintWith removableEscape r === astFingerprintWith removableEscape (preprocess src)
           Unformattable _ -> discard,
+      testCase "Golem ADR 0351 I2: literal SrcSpan text remains part of the AST" $ do
+        let pairs = [("SrcSpan {first}", "SrcSpan {other}"), ("SrcSpan {first", "SrcSpan {other")]
+        mapM_ (\(a, b) -> assertBool (show (a, b)) (astFingerprint a /= astFingerprint b)) pairs,
       testCase "Golem ADR 0339 I2: comment boundaries and order format idempotently" $ do
         let source = "[cmd%%注%%]\n\n[cmd x %%注%% : 本文]\n\n[cmd \"x\"%%甲%%%%乙%%key=y]\n\n[= 1+%%注%%2]\n"
             expected = "[cmd %%注%%]\n\n[cmd x %%注%%: 本文]\n\n[cmd \"x\" %%甲%% %%乙%% key=y]\n\n[= 1+ %%注%% 2]\n"

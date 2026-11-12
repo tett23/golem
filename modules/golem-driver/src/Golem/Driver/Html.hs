@@ -265,6 +265,8 @@ most four decimals (docs/adr ADR 0103).
 -}
 cssLength :: Dim -> Text
 cssLength = \case
+  Zw 0 -> "0"
+  Abs 0 -> "0"
   Zw r -> L.emText r <> "em"
   Abs sp -> L.ptText sp <> "pt"
 
@@ -274,6 +276,8 @@ without one.
 -}
 cssFontSize :: Style -> Dim -> Text
 cssFontSize style = \case
+  Zw 0 -> "0"
+  Abs 0 -> "0"
   Zw r -> L.emText r <> "em"
   Abs sp -> case stPage style >>= pageGrid of
     Just Grid {gridFontSize = Abs fs} | fs > 0 -> L.emText (toRational (unSp sp) / toRational (unSp fs)) <> "em"

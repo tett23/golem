@@ -26,6 +26,7 @@ Golem は 1.0.0 から、原稿の記法、設定、CLI、出力、プラグイ�
 マニュアルの読み手と書き方の方針は [docs/manual-policy.md](./docs/manual-policy.md) にある。
 
 関数とプラグインには、それぞれ見本がある。
+`golem repl emet` で Emet の式を一つずつ試せる。
 本を作る人が自分の本のために書く関数（Emet の `.emet`）の見本は [`functions/`](./functions/) に、プログラムを書く技術者が作って配るプラグインの見本は [`plugins/`](./plugins/) にある。
 関数の見本の使い方は [functions/README.md](./functions/README.md) にある。
 
@@ -147,10 +148,10 @@ golem new mybook
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
-| `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。最後に検査した PDF の SHA-256 を出す |
+| `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。PDF を組めた場合は SHA-256、組めなかった場合はエラー件数と未検査の項目を出す |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
-| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
@@ -209,6 +210,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+字下げなどの長さ、アキ量、行数を複数の欄で共有するときは、`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` に名前を付ける。
+たとえば `[values.length]` の `indent = "1zw"` は、段落スタイルの `indent = "indent"` と原稿の `@style-def paragraph letter indent=indent` から参照できる（[ADR 0346](docs/adr/0346-revise-named-layout-values.md)）。
 
 強調と書体の切り替えも、文字スタイルで組む。
 `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic`、`code` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。
@@ -233,6 +236,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
+長さとアキ量のゼロは、設定では `0` または `"0"` と書ける。
+`@blank-line 0` は行アキを作らず、info の G02254 を出す（[Golem ADR 0345](./docs/adr/0345-revise-unitless-zero-in-length-fields.md)）。
 
 原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
 PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
@@ -271,7 +276,8 @@ PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組み�
 索引の項目には、`[index reading=くみはん range=begin: 組版]` と `range=end` でページの範囲を、`see=組版` で「（組版を見よ）」「（組版をも見よ）」の参照を書ける。
 続くページは「5–6」のように範囲にまとめ、項目は「あ」「か」のような行の見出しの下に並べる（見出しは `[index]` の `section-headings = false` で外せる。[docs/adr/0265](./docs/adr/0265-index-cross-references-page-ranges-and-section-headings.md)）。
 
-外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
+PDF/X-4 ではリンクの文字としおりを保ち、本文のクリック領域を省く。
+外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、出力インテントのない PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
 リンクは見た目を変えない（[docs/adr/0182](./docs/adr/0182-external-links.md)）。
 
 文書の中の参照も、行先へのリンクになる。
@@ -750,6 +756,8 @@ x86-64 の一覧からマニュアルの行を除いたものを、コミット�
 成果物は既定で 30 秒ごとに問い合わせる。
 見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
 GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](./docs/adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
+集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](./docs/adr/0349-retry-ci-job-list-on-rate-limit.md)）。
+全ページを取得してから各ジョブのログを検査する。
 
 上がった `visual-pdfs` を取り寄せ、固定した版の shem で 72 dpi の PPM に描き、ページごとの SHA-256 が `scripts/visual/pages/` の参照と一致することを `scripts/visual/check.sh` で確かめる。
 shem は、shem のアーカイブを `third_party/downloads` に `scripts/visual/fetch-shem.sh` のハッシュをキーにキャッシュし、`fetch-shem.sh` を 10 分の上限で実行して取る。

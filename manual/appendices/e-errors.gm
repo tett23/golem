@@ -439,8 +439,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G02072 [code: @no-page-break と @page-break が同じ位置にあります]] など
   改ページを止める指定と、改ページの指定を並べて書いています。
   どちらか一方を消してください。
-= [strong: G02092 [code: @blank-line の引数は 1 以上の整数を一つだけ書きます]] など
-  [code: @blank-line] には何も書かないか、[code: 2] のような 1 以上の整数を一つだけ書きます。
+= [strong: G02092 [code: @blank-line の引数は 0 以上の整数を一つだけ書きます]] など
+  [code: @blank-line] には何も書かないか、[code: 0] 以上の整数を一つだけ書きます。
   次の行を字下げしているなら、字下げをやめてください。
 = [strong: G02093 [code: @blank-line は文書の最上位にだけ置けます]]
   リストの項目や図版のキャプションの中に [code: @blank-line] を書いています。
@@ -1173,8 +1173,8 @@ PDF を組むときに出るエラーです。
 = [strong: G09002 [code: フォントにグリフのない文字です: …]]（エラー）
   フォントが持っていない文字があり、PDF では空の箱などで表示されます。
   その文字を持つフォントを [code: style.toml] の [code: \[fonts\]] に書くか、文字を替えてください。
-  同じ文字は、ビルドの G08100 のエラーとしても出ます。
-  [code: \[glyph-missing\]] を [code: "off"] にしても G08100 は消えず、終了コードは 1 になります。
+  プリフライトでは [code: \[glyph-missing\]] の重大度を使います。
+  [code: "warning"] または [code: "off"] で、ほかにエラーがなければ終了コードは 0 です。
 = [strong: G09003 [code: この設定では使えない形式のフォントです: …]]（検査しない）
   印刷所が受けない形式（TrueType など）のフォントを埋め込んでいます。
   受ける形式のフォントに替えてください。
@@ -1371,6 +1371,9 @@ PDF を組むときに出るエラーです。
 [code: golem build]、[code: golem check]、[code: golem lint] に [code: --verbose]（[code: -v]）を付けたときにだけ表示します。
 [code: manifest.toml] の [code: \[diagnostics\]] の [code: silence-info] にコードを並べると、[code: --verbose] を付けてもその情報を出さなくなります。
 
+= [strong: G02254 [code: 行アキは 0 行です]]
+  [code: @blank-line 0] だけが続くまとまりは、行アキを作りません。
+  不要な指定なら消してください。
 = [strong: G07047 [code: 段の先頭に来た @blank-line の空きを捨てました]]
   PDF で、[code: @blank-line] の行アキがページ（段）の先頭に来たので、空きを取らずに捨てました。
   ページの先頭の空きは、区切りとして読者に伝わらないためです。

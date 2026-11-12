@@ -165,7 +165,8 @@ must agree with them (a golem-driver test).
 -}
 infoCodes :: [DiagnosticCode]
 infoCodes =
-  [ DiagnosticCode "G05100", -- missing space at a comment boundary (docs/adr/0339)
+  [ DiagnosticCode "G02254", -- a zero-line run of @blank-line (Golem ADR 0345)
+    DiagnosticCode "G05100", -- missing space at a comment boundary (docs/adr/0339)
     DiagnosticCode "G07047", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
     DiagnosticCode "E05108" -- a requirement of a signature of .emet that its body does not use (docs/adr/0161)
   ]
