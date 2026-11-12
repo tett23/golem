@@ -1,6 +1,6 @@
 // Quoted CSV newlines and trailing spaces are significant cell contents.
 const tables = {
-  csv: '名,b\n"x\ny",\n,z  \n',
+  csv: '名,b\n"x\n\ny",\n,z  \n',
   tsv: '名\tb\nx\t\n\tz  \n',
 };
 
@@ -12,7 +12,8 @@ export function tableCases(format) {
     cases.push({ manuscript, expected, input: '\uFEFF' + expected.replaceAll('\n', '\r\n'), offset: null });
     const bytes = Buffer.from(expected);
     for (const [offset, byte] of bytes.entries()) {
-      if (byte !== 10) continue;
+      // Replacing the first LF of an adjacent pair creates a valid CRLF.
+      if (byte !== 10 || bytes[offset + 1] === 10) continue;
       const broken = Buffer.from(bytes);
       broken[offset] = 13;
       cases.push({ manuscript, expected, input: broken.toString(), offset });
@@ -25,9 +26,19 @@ export function tableCases(format) {
 // column nesting so that a moved empty cell changes the comparison.
 export function inspectedCells(ir) {
   const values = label => {
-    const field = ir.match(new RegExp('^\\s*' + label + ' =\\s*(\\[.*\\])$', 'm'));
-    if (!field) throw new Error('Missing IR field ' + label);
-    return JSON.parse(field[1].replace(/\[Text @\d+\.\.\d+ ("(?:\\.|[^"\\])*")\]/gu, '$1'));
+    const lines = ir.split('\n');
+    const start = lines.findIndex(line => line.trimStart().startsWith(label + ' ='));
+    if (start < 0) throw new Error('Missing IR field ' + label);
+    let line = start;
+    let value = lines[line].slice(lines[line].indexOf(' =') + 2).trim() || lines[++line].trim();
+    if (value.startsWith('- ')) {
+      const rows = [];
+      while (line < lines.length && lines[line].trimStart().startsWith('- ')) {
+        rows.push(lines[line++].trim().slice(2));
+      }
+      value = '[' + rows.join(',') + ']';
+    }
+    return JSON.parse(value.replace(/\[Text @\d+\.\.\d+ ("(?:\\.|[^"\\])*")\]/gu, '$1'));
   };
   return [values('tableHeader'), ...values('tableRows')].map(row =>
     row.map(cell => Array.isArray(cell) && cell.length === 0 ? '' : cell));
