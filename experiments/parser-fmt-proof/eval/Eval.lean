@@ -103,6 +103,10 @@ theorem derives_sound (derivation : Derives n env expression value k) :
     run expression env n = .ok (value, k) := by
   induction derivation <;> simp_all [run, Bind.bind, Except.bind, Pure.pure, Except.pure]
 
+theorem remaining_le_budget (derivation : Derives budget env expression value remaining) :
+    remaining ≤ budget := by
+  induction derivation <;> omega
+
 theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
     eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
   rfl
