@@ -214,6 +214,28 @@ theorem repeatedKnownFindings (rules : List Rule) (seen : List String)
         (if rule.kind != arg.kind then [{ position, name := arg.name, error := .wrongType }] else []) := by
   simp [atOccurrence, known, once, repeated, Option.any]
 
+-- I7 also covers the first occurrence of a name, even after unrelated
+-- errors. No duplicate is emitted until that same spelling appears again.
+theorem firstUnknownFindings (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (unknown : ruleFor rules arg.name = none)
+    (first : seen.contains arg.name = false) :
+    atOccurrence rules seen position arg =
+      [{ position, name := arg.name, error := .unknown }] := by
+  simp [atOccurrence, unknown, first, Option.any]
+
+theorem scan_repeated_known (rules : List Rule) (before after : List Argument)
+    (arg : Argument) (rule : Rule) (known : ruleFor rules arg.name = some rule)
+    (once : rule.repeatable = false)
+    (repeated : (before.map Argument.name).reverse.contains arg.name = true) :
+    scan rules (before ++ arg :: after) [] 0 =
+      scan rules before [] 0 ++
+        [{ position := before.length, name := arg.name, error := Error.duplicate }] ++
+        (if rule.kind != arg.kind then
+          [{ position := before.length, name := arg.name, error := Error.wrongType }] else []) ++
+        scan rules after (arg.name :: (before.map Argument.name).reverse) (before.length + 1) := by
+  rw [scan_split]
+  simp [scan, repeatedKnownFindings rules _ _ _ rule known once repeated, List.append_assoc]
+
 theorem presentRequiredName (name : String) (kind : Kind) (rest : List Argument) :
     (({ name, kind } : Argument) :: rest).any (fun arg => arg.name == name) = true := by
   simp
