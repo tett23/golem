@@ -151,6 +151,42 @@ theorem strictAfterHeadings : ∀ brk : Fin 5,
     headingParagraphOrphan headingParagraphWidow
   omega
 
+/- In a column beginning with a heading at text index 0, the first body
+   line at index 1 is after headings only. This is the relaxation that
+   resolves the historical strict-rule counterexample for any paragraph
+   length, provided the first two text items fit. -/
+def headingParagraphAfterHeadingsOnly (brk pos : Nat) : Prop :=
+  ∀ earlier, earlier < pos → earlier < brk → earlier = 0
+
+def headingParagraphOrphanH (lines brk : Nat) : Prop :=
+  2 ≤ lines ∧ 1 < brk ∧ ¬ 2 < brk →
+    headingParagraphAfterHeadingsOnly brk 1
+
+def headingParagraphWidowH (lines brk : Nat) : Prop :=
+  2 ≤ lines ∧ lines - 1 < brk ∧ ¬ lines < brk →
+    headingParagraphAfterHeadingsOnly brk 1
+
+def headingParagraphLineAfterHeadings (brk : Nat) : Prop :=
+  (1 ≤ brk ∧ ∀ textIndex, textIndex < brk → textIndex = 0) →
+    brk ≠ 1
+
+theorem I3_relaxed_heading_paragraph_first_line
+    (capacity lines : Nat) (fitsTwo : 2 ≤ capacity)
+    (nonempty : 1 ≤ lines) :
+    ∃ brk : Nat,
+      brk = 2 ∧ brk ≤ capacity ∧ brk ≤ lines + 1 ∧
+      headingParagraphOrphanH lines brk ∧
+      headingParagraphWidowH lines brk ∧
+      headingParagraphLineAfterHeadings brk := by
+  refine ⟨2, rfl, fitsTwo, by omega, ?_, ?_, ?_⟩
+  · intro _ earlier before _
+    omega
+  · intro _ earlier before _
+    omega
+  · intro ⟨_, allHeading⟩
+    have lineHeading := allHeading 1 (by omega)
+    omega
+
 /- An Alloy `decidedSome` witness: capacity 3, used 0, a recto heading
    at source/text index 0 and the sole line of a one-line paragraph at
    index 1. There are no other items. The break after both text items
@@ -2909,6 +2945,13 @@ def headingKeepModel (used brk : Nat) (items : List SourceItem)
     ¬ startsColumnModel used brk items config kept h →
     keptLines h
 
+def rectoModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (rectos : List Nat) : Prop :=
+  ∀ r ∈ rectos,
+    textHereAtBreak items brk r = true →
+    startsColumnModel used brk items config kept r
+
 structure KeepParagraph where
   firstPos : Nat
   linePositions : List Nat
@@ -4149,6 +4192,32 @@ theorem I3_zero_break_preserves_boundary_rules
     simp [textHereAtBreak] at here
     omega
 
+theorem I3_zero_break_preserves_recto
+    (used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (rectos : List Nat) :
+    rectoModel used 0 items config kept rectos := by
+  intro r _ here
+  simp [textHereAtBreak] at here
+  omega
+
+theorem I3_first_text_break_preserves_recto
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (firstTextPos : Nat)
+    (first : firstContent items = some (.text firstTextPos))
+    (rectos : List Nat)
+    (rectosValid : ∀ r ∈ rectos, .text r ∈ items) :
+    rectoModel 0 1 items config kept rectos := by
+  obtain ⟨firstText, firstTextOrder, _⟩ :=
+    I3_firstContent_text_before_figures items ordered firstTextPos first
+  have starts := I3_first_content_text_starts_column items ordered
+    config kept firstTextPos first
+  intro r member here
+  have same := I3_first_break_here_is_first_text items firstTextPos
+    firstText firstTextOrder r (rectosValid r member) here
+  simpa [same] using starts
+
 theorem I3_zeroBreakPlacement25_implies_orders
     (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
@@ -4491,6 +4560,37 @@ theorem waitingBlankAllButGreedy (capacity used : Nat)
         headings headingsValid keptLines
     exact ⟨1, kept, atTop, placed, Or.inr ⟨rfl, rfl, oneRule⟩,
       noSend, figureOrder, textOrder, orphan, widow, heading⟩
+
+theorem I3_recto_compatible_with_blank_and_figure
+    (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (blank : Option Nat)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (blankValid : blankDomain items blank)
+    (sizesFit : figureSizesFit capacity config)
+    (rectos : List Nat)
+    (rectosValid : ∀ r ∈ rectos, .text r ∈ items) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement capacity used items config blank
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement capacity items config
+        blank kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      rectoModel used brk items config kept rectos := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase⟩ :=
+    waitingBlankNone capacity used items config blank capacityPositive
+      usedFits ordered figuresValid blankValid sizesFit
+  rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
+  · subst brk
+    exact ⟨0, kept, atTop, placed, Or.inl ⟨rfl, zeroRule⟩,
+      noSend, I3_zero_break_preserves_recto used items config kept rectos⟩
+  · subst brk
+    subst used
+    obtain ⟨firstTextPos, firstTextCase⟩ := firstCase rfl
+    exact ⟨1, kept, atTop, placed, Or.inr ⟨rfl, rfl, oneRule⟩,
+      noSend, I3_first_text_break_preserves_recto items ordered config
+        kept firstTextPos firstTextCase rectos rectosValid⟩
 
 theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)

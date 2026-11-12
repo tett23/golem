@@ -6,6 +6,10 @@
 
 `decidedSome` は、容量3行の空段に改丁見出し1行と1行段落を続け、両方を置く配置を証人とする。手元の Alloy CLI で同じ容量、使用済み行数0、本文の位置0・1、区切り位置2を固定して実行し、解を確認した。`keepAllSome` は、容量3行、使用済み1行、本文1行の配置を証人とする。同じ入力を Alloy CLI で固定して解を確認した。
 
+`relaxedAfterHeadings` の代表入力では、空段の先頭に見出し1行と3行段落を続ける。Lean は任意の段落行数と容量2行以上について、見出しと最初の本文行を置く区切りが緩めた孤立行・寡婦行規則と見出し後の1行規則を満たすことを示す。Alloy でも容量3行、段落3行、区切り2を固定して解を確認した。任意の見出し列と図版を含む `relaxedAfterHeadings` 全体は未証明である。
+
+改丁見出しを本文の位置列として与えた場合は、本文を置かない区切りと、空段の最初の本文だけを置く区切りで、置いた改丁見出しが段頭になることを証明した。これは図版と行アキの現在の規則が構成する配置にも接続した。見出し後の1行規則を同時に満たす `rectoKept` と `rectoEnds` 全体は未証明である。
+
 `keepDefaultDiffers` は、段落の分割前後の行数に関する orphan、widow 規則と、先頭・最後の位置による境界規則が一致することを示す。さらに、Lean の段落行位置列を配置済み行と次段の行に分けると、両者の行数の和が元の行数と一致し、分割の存在と両方の行数が正であることも同値である。Alloy の `para`、`first`、`second`、`beforeLast`、`last` から Lean の行数と位置への対応は未証明である。
 
 `keepNone` は、段落の最初の行を含む任意の行位置列と任意の keep 指定について、旧図版規則の配置と keep 指定を同時に満たす証人を構成する。Lean では、本文を置かない場合に分割を生じさせず、空段に最初の本文行を置く場合に分割された段落が段頭で始まることを証明する。Alloy の `para.q` と Lean の行位置列の対応は未証明である。
@@ -29,7 +33,7 @@ lean experiments/pagination-proof/Pagination.lean
 sh experiments/pagination-proof/check.sh
 ```
 
-`decidedSome`、`keepAllSome`、`needMore27`、`needMoreSome`、`needSpaceSome` の具体的な証人は、Alloy CLI を用意して次のコマンドで照合する。
+`decidedSome`、`keepAllSome`、`needMore27`、`needMoreSome`、`needSpaceSome`、見出し後の本文行の具体的な証人は、Alloy CLI を用意して次のコマンドで照合する。
 
 ```sh
 sh experiments/pagination-proof/check-alloy-witnesses.sh
