@@ -345,6 +345,23 @@ theorem canonical_kwarg_matches_parseOne_given_parts (fuel : Nat)
     nameHit eqHit valueHit
   simpa [Nat.add_assoc] using canonical_kwarg_of_keyword (fuel + 2) input rest keyword
 
+-- The actual PEG sequence for a keyword step composes its Sp and KwArg refs.
+-- The caller still has to establish both recognizer results at this fuel.
+theorem canonical_sp_kwarg_step (fuel : Nat) (input afterSpace rest : List Char)
+    (spaceHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Sp" []) input = .ok (some afterSpace))
+    (keywordHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "KwArg" []) afterSpace = .ok (some rest)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
+      (.choice [[.ref "Sp" [], .ref "KwArg" []]]) input = .ok (some rest) := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item source)
+      _ [] items input)
+    [[.ref "Sp" [], .ref "KwArg" []]] = .ok (some rest)
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    spaceHit, keywordHit, Except.map] <;> rfl
+
 -- Concrete checks of the canonical PegModel ref, including Sp, ordered
 -- PosArg rejection, KwArg selection and the newline left for the command.
 -- The arbitrary-length theorem above is for the restricted derivation; these
