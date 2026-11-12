@@ -67,6 +67,22 @@ example : PegModel.recognizeStart Generated.pegGrammar 50 [] = .ok (some []) := 
 example : PegModel.recognizeStart Generated.pegGrammar 100 "abc\n".toList =
     .ok (some []) := by rfl
 
+-- The source PEG has direct left recursion in AddExpr and MulExpr.
+example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
+    "1!".toList = .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
+    "1+2!".toList = .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
+    "1+2*3!".toList = .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
+    "1+!".toList = .ok (some "+!".toList) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1\n".toList =
+    .ok (some []) := by rfl
+
 -- Ind(n) consumes exactly n spaces; these are the parameter boundary cases.
 example : PegModel.integer [("ind", 1)] "ind + 2" = some 3 := by rfl
 

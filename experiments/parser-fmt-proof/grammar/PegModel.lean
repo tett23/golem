@@ -80,6 +80,11 @@ def predicate (env : Params) (source : String) : Option Bool :=
           some (a == b)
       | _ => none
 
+def directSuffix (name : String) (alt : Alt) : Option (List Expr) :=
+  match alt.items with
+  | .ref target [] :: suffix => if target == name then some suffix else none
+  | _ => none
+
 -- A bounded recognizer for the PEG operators. Unsupported Haskell expressions
 -- and template calls are errors, never accepted input. Fuel exhaustion is
 -- distinct from an ordinary PEG failure.
@@ -115,7 +120,24 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
               | none => return .error s!"opaque argument for {name}"
               | some values =>
                   let bindings := List.zip rule.params values
-                  return recognizeEnv grammar bindings fuel (.choice (rule.alts.map Alt.items)) input
+                  let recursive := rule.alts.filterMap (directSuffix name)
+                  if recursive.isEmpty then
+                    return recognizeEnv grammar bindings fuel (.choice (rule.alts.map Alt.items)) input
+                  let bases := rule.alts.filter (fun alt => (directSuffix name alt).isNone)
+                  let seed := recognizeEnv grammar bindings fuel (.choice (bases.map Alt.items)) input
+                  let grown := (List.range fuel).foldl (fun (state : ParseResult × Bool) _ =>
+                    if state.2 then state else
+                      match state.1 with
+                      | .error _ => (state.1, true)
+                      | .ok none => (state.1, true)
+                      | .ok (some rest) =>
+                          match recognizeEnv grammar bindings fuel (.choice recursive) rest with
+                          | .error reason => (.error reason, true)
+                          | .ok none => (state.1, true)
+                          | .ok (some next) =>
+                              if next.length < rest.length then (.ok (some next), false)
+                              else (.error "zero-width left recursion", true)) (seed, false)
+                  return if grown.2 then grown.1 else .error "fuel exhausted"
       | .choice alts => return alternatives alts
       | .star child =>
           match recognizeEnv grammar env fuel child input with
