@@ -584,7 +584,7 @@ theorem canonical_posarg_rejects_keyword (fuel : Nat) (input afterEq : List Char
       (.notPred (.lit "%%" "'%%'")) input = .ok (some input) := by
     change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
       (.lit "%%" "'%%'") input with
-      | .error reason => if reason.startsWith "label: " then Except.ok (some input) else Except.error reason
+      | .error reason => if PegModel.isLabelFailure reason then Except.ok (some input) else Except.error reason
       | .ok none => Except.ok (some input)
       | .ok (some _) => Except.ok none) = Except.ok (some input)
     rw [noProofPrefix]
@@ -592,7 +592,7 @@ theorem canonical_posarg_rejects_keyword (fuel : Nat) (input afterEq : List Char
       (.notPred (.choice [[.ref "Word" [], .ref "Eq" []]])) input = .ok none := by
     change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
       (.choice [[.ref "Word" [], .ref "Eq" []]]) input with
-      | .error reason => if reason.startsWith "label: " then Except.ok (some input) else Except.error reason
+      | .error reason => if PegModel.isLabelFailure reason then Except.ok (some input) else Except.error reason
       | .ok none => Except.ok (some input)
       | .ok (some _) => Except.ok none) = Except.ok none
     rw [wordEq]

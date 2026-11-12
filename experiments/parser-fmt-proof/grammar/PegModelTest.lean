@@ -530,7 +530,7 @@ theorem class_lookahead (grammar : PegModel.Grammar) (env : PegModel.Params) (fu
   | nil => rfl
   | cons c rest =>
       change (match PegModel.recognizeEnv grammar env (fuel + 2) (.charClass ranges written) (c :: rest) with
-        | Except.error reason => Except.error reason
+        | Except.error reason => if PegModel.isLabelFailure reason then Except.ok none else Except.error reason
         | Except.ok none => Except.ok none
         | Except.ok (some _) => Except.ok (some (c :: rest))) = _
       rw [show PegModel.recognizeEnv grammar env (fuel + 2) (.charClass ranges written) (c :: rest) =
@@ -580,7 +580,7 @@ theorem not_class (grammar : PegModel.Grammar) (env : PegModel.Params) (fuel : N
   | nil => rfl
   | cons c rest =>
       change (match PegModel.recognizeEnv grammar env (fuel + 1) (.charClass ranges written) (c :: rest) with
-        | Except.error reason => Except.error reason
+        | Except.error reason => if PegModel.isLabelFailure reason then Except.ok (some (c :: rest)) else Except.error reason
         | Except.ok none => Except.ok (some (c :: rest))
         | Except.ok (some _) => Except.ok none) = _
       rw [show PegModel.recognizeEnv grammar env (fuel + 1) (.charClass ranges written) (c :: rest) =
@@ -1237,7 +1237,7 @@ theorem not_literal_total (grammar : PegModel.Grammar) (env : PegModel.Params)
   have fuelEq : fuel + 2 = (fuel + 1) + 1 := by omega
   rw [fuelEq]
   change (match PegModel.recognizeEnv grammar env (fuel + 1) (.lit value written) input with
-    | Except.error reason => Except.error reason
+    | Except.error reason => if PegModel.isLabelFailure reason then Except.ok (some input) else Except.error reason
     | Except.ok none => Except.ok (some input)
     | Except.ok (some _) => Except.ok none) = _
   rw [literal_total]

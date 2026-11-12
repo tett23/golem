@@ -49,6 +49,9 @@ structure Grammar where
 
 abbrev ParseResult := Except String (Option (List Char))
 
+def isLabelFailure (reason : String) : Bool :=
+  "label: ".toList.isPrefixOf reason.toList
+
 abbrev Params := List (String × Nat)
 
 def atom (env : Params) (source : String) : Option Nat :=
@@ -219,12 +222,12 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
           | .ok hit => return .ok hit
       | .andPred child =>
           match recognizeEnv grammar env fuel child input with
-          | .error reason => return if reason.startsWith "label: " then .ok none else .error reason
+          | .error reason => return if isLabelFailure reason then .ok none else .error reason
           | .ok none => return .ok none
           | .ok (some _) => return .ok (some input)
       | .notPred child =>
           match recognizeEnv grammar env fuel child input with
-          | .error reason => return if reason.startsWith "label: " then .ok (some input) else .error reason
+          | .error reason => return if isLabelFailure reason then .ok (some input) else .error reason
           | .ok none => return .ok (some input)
           | .ok (some _) => return .ok none
       | .capture child => return recognizeEnv grammar env fuel child input
@@ -245,6 +248,38 @@ def recognize (grammar : Grammar) (fuel : Nat) (expr : Expr) (input : List Char)
 
 def recognizeStart (grammar : Grammar) (fuel : Nat) (input : List Char) : ParseResult :=
   recognize grammar fuel (.ref grammar.start []) input
+
+theorem label_of_miss (grammar : Grammar) (env : Params) (fuel : Nat)
+    (child : Expr) (input : List Char) (name : String)
+    (miss : recognizeEnv grammar env fuel child input = .ok none) :
+    recognizeEnv grammar env (fuel + 1) (.label child name) input =
+      .error ("label: " ++ name) := by
+  change (match recognizeEnv grammar env fuel child input with
+    | .ok none => Except.error ("label: " ++ name)
+    | result => result) = _
+  rw [miss]
+
+theorem thrown_label_lookahead (grammar : Grammar) (env : Params) (fuel : Nat)
+    (child : Expr) (input : List Char) (name : String)
+    (thrown : recognizeEnv grammar env fuel child input = .error ("label: " ++ name)) :
+    recognizeEnv grammar env (fuel + 1) (.andPred child) input = .ok none ∧
+    recognizeEnv grammar env (fuel + 1) (.notPred child) input = .ok (some input) := by
+  have tagged : isLabelFailure ("label: " ++ name) = true := by
+    cases name with
+    | mk chars => cases chars <;> rfl
+  constructor
+  · change (match recognizeEnv grammar env fuel child input with
+      | .error reason => if isLabelFailure reason then Except.ok none else Except.error reason
+      | .ok none => Except.ok none
+      | .ok (some _) => Except.ok (some input)) = _
+    rw [thrown]
+    simp [tagged]
+  · change (match recognizeEnv grammar env fuel child input with
+      | .error reason => if isLabelFailure reason then Except.ok (some input) else Except.error reason
+      | .ok none => Except.ok (some input)
+      | .ok (some _) => Except.ok none) = _
+    rw [thrown]
+    simp [tagged]
 
 namespace StrictLabelTests
 
