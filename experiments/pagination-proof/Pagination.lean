@@ -187,6 +187,56 @@ theorem I3_relaxed_heading_paragraph_first_line
     have lineHeading := allHeading 1 (by omega)
     omega
 
+/- With one figure, the heading-only break is legal when the figure
+   after the heading fits and is kept. Otherwise the first body line is
+   included; a figure after that line is kept exactly when both fit. -/
+def headingLineFigureRule (beforeLine : Bool)
+    (capacity size : Nat) (brk : Fin 3) (kept : Bool) : Prop :=
+  kept = decide (
+    (if beforeLine then 1 else 2) ≤ brk.val ∧
+      (if beforeLine then 1 else 2) + size ≤ capacity)
+
+def headingLineFigureFits (capacity size : Nat)
+    (brk : Fin 3) (kept : Bool) : Prop :=
+  brk.val + (if kept then size else 0) ≤ capacity
+
+def headingLineAfterHeadings (brk : Fin 3) (kept : Bool) : Prop :=
+  brk.val = 1 → kept = true
+
+theorem I3_heading_line_one_figure_exists
+    (capacity size : Nat) (beforeLine : Bool)
+    (twoFit : 2 ≤ capacity) (figureFits : size ≤ capacity) :
+    ∃ brk : Fin 3, ∃ kept : Bool,
+      1 ≤ brk.val ∧
+      headingLineFigureRule beforeLine capacity size brk kept ∧
+      headingLineFigureFits capacity size brk kept ∧
+      headingLineAfterHeadings brk kept := by
+  cases beforeLine with
+  | true =>
+      by_cases figureHere : 1 + size ≤ capacity
+      · refine ⟨1, true, by decide, ?_, ?_, ?_⟩
+        · simp [headingLineFigureRule, figureHere]
+        · simp [headingLineFigureFits]
+          omega
+        · simp [headingLineAfterHeadings]
+      · refine ⟨2, false, by decide, ?_, ?_, ?_⟩
+        · simp [headingLineFigureRule, figureHere]
+        · simp [headingLineFigureFits]
+          omega
+        · simp [headingLineAfterHeadings]
+  | false =>
+      by_cases figureHere : 2 + size ≤ capacity
+      · refine ⟨2, true, by decide, ?_, ?_, ?_⟩
+        · simp [headingLineFigureRule, figureHere]
+        · simp [headingLineFigureFits]
+          omega
+        · simp [headingLineAfterHeadings]
+      · refine ⟨2, false, by decide, ?_, ?_, ?_⟩
+        · simp [headingLineFigureRule, figureHere]
+        · simp [headingLineFigureFits]
+          omega
+        · simp [headingLineAfterHeadings]
+
 /- An Alloy `decidedSome` witness: capacity 3, used 0, a recto heading
    at source/text index 0 and the sole line of a one-line paragraph at
    index 1. There are no other items. The break after both text items
