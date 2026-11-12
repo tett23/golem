@@ -94,13 +94,19 @@ i5EvalTests =
         compareEvalWith (fileHandlers (Map.fromList [("data/a.tsv", "a")])) source "f" [] 100 (Right (str "ab"))
         compareEval source "f" [] 100 (Left (DiagnosticCode "E05104")),
       testCase "I5 same budget at boundary preserves value or E04100" $ do
-        let source = "f :: Nat -> Nat\nf x = x + 3\n"
-        case load source of
-          ([], Just program) -> do
-            let (_, used) = callFunctionCounted noHandlers program callSpan "main.emet" "f" [nat 2]
+        let source = "id :: Nat -> Nat\nid n = n\n\n\n\nf :: Nat -> Nat\nf x = id (x + 3)\n"
+            counted program = callFunctionCounted noHandlers program callSpan "main.emet" "f" [nat 2]
+        formatted <- either (assertFailure . show) pure (formatEmet source)
+        assertBool "formatting must move the declaration" (formatted /= source)
+        case (load source, load formatted) of
+          (([], Just before), ([], Just formattedProgram)) -> do
+            let (value, used) = counted before
+            value @?= Right (nat 5)
+            counted formattedProgram @?= (value, used)
             compareEval source "f" [nat 2] used (Right (nat 5))
+            compareEval source "f" [nat 2] (used + 1) (Right (nat 5))
             compareEval source "f" [nat 2] (used - 1) (Left (DiagnosticCode "E04100"))
-          other -> assertFailure (show (fst other)),
+          (before, formattedProgram) -> assertFailure (show (fst before, fst formattedProgram)),
       testCase "I5 expression reductions match the Lean budget boundaries" $ do
         let evaluate budget source = first (map diagCode) (evaluateExpression Nothing budget (TE.encodeUtf8 source))
             overLimit = Left [DiagnosticCode "E04100"]

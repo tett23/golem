@@ -176,6 +176,22 @@ theorem I5_surplusBudget (d : Derives budget env expression value remaining) (ex
   | append _ _ left right => exact .append left (by simpa [Nat.add_assoc] using right)
   | call _ _ arg body => exact .call arg body
 
+-- Two successful evaluations of the same expression and environment
+-- yield the same value and consume the same steps, even at different limits.
+theorem I5_uniqueValueAndCost
+    (first : Derives budget₁ env expression value₁ left₁)
+    (second : Derives budget₂ env expression value₂ left₂) :
+    value₁ = value₂ ∧ budget₁ - left₁ = budget₂ - left₂ := by
+  have h₁ := derives_sound (I5_surplusBudget first budget₂)
+  have h₂ := derives_sound (I5_surplusBudget second budget₁)
+  rw [Nat.add_comm budget₂ budget₁] at h₁
+  have same := h₁.symm.trans h₂
+  injection same with pair
+  have values := congrArg Prod.fst pair
+  have remaining := congrArg Prod.snd pair
+  simp only [Prod.fst, Prod.snd] at values remaining
+  exact ⟨values, by omega⟩
+
 theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
     eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
   rw [parsed_format]
