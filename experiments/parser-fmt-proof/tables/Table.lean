@@ -156,6 +156,27 @@ theorem repairLoneCR (before after : List Char)
       have tail : '\r' ∉ rest := fun member => cleanBefore (List.Mem.tail _ member)
       simp [newlines, cr, ih tail]
 
+-- Even when earlier rows mix LF and CRLF, fixing one lone CR leaves
+-- the decoded prefix unchanged. The suffix can use either encoding too.
+theorem decodeWithSuffix (encoded : LineEncoding canonical bytes) (suffix : List Char) :
+    newlines false (bytes ++ suffix) = canonical ++ newlines false suffix := by
+  induction encoded with
+  | empty => rfl
+  | scalar c ordinary _ ih => simp [newlines, ordinary, ih]
+  | crlf _ ih => simp [newlines, ih]
+
+theorem repairEncodedLoneCR (leftEncoding : LineEncoding before encodedBefore)
+    (suffix : LineEncoding after encodedAfter) (lone : encodedAfter.head? ≠ some '\n') :
+    newlines false (encodedBefore ++ '\r' :: encodedAfter) = before ++ '\n' :: after := by
+  rw [decodeWithSuffix leftEncoding]
+  have resume : newlines true encodedAfter = newlines false encodedAfter := by
+    cases encodedAfter with
+    | nil => rfl
+    | cons c rest =>
+        have lf : c ≠ '\n' := by simpa using lone
+        simp [newlines, lf]
+  simp [newlines, resume, decodeLineEncoding suffix]
+
 example : newlines false "a\r\r\nb\r".toList = "a\n\nb\n".toList := by decide
 
 end TableFormat

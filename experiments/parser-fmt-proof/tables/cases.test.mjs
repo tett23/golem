@@ -20,8 +20,18 @@ for (const format of ['csv', 'tsv']) {
       const bytes = Buffer.from(normal.expected);
       if (format === 'csv') assert.ok(normal.expected.includes('\n\n'));
       const positions = Array.from(bytes.keys()).filter(i => bytes[i] === 10 && bytes[i + 1] !== 10);
-      assert.deepEqual(broken.map(c => c.offset), positions);
-      for (const c of broken) {
+      const mixedBroken = broken.filter(c => c.input.includes('\r\n'));
+      assert.ok(mixedBroken.length > 0);
+      for (const c of mixedBroken) {
+        const raw = Buffer.from(c.input);
+        assert.equal(raw[c.offset], 13);
+        assert.notEqual(raw[c.offset + 1], 10);
+        raw[c.offset] = 10;
+        assert.equal(raw.toString().replaceAll('\r\n', '\n'), normal.expected);
+      }
+      const plainBroken = broken.filter(c => !c.input.includes('\r\n'));
+      assert.deepEqual(plainBroken.map(c => c.offset), positions);
+      for (const c of plainBroken) {
         const mutated = Buffer.from(bytes);
         mutated[c.offset] = 13;
         assert.notEqual(mutated[c.offset + 1], 10);

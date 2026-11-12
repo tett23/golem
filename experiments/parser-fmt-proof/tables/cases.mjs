@@ -10,18 +10,22 @@ export function tableCases(format) {
   for (const options of [`format=${format} align=left`, `align=left format=${format}`]) {
     const manuscript = `@table data.txt ${options}\n`;
     cases.push({ manuscript, expected, input: '\uFEFF' + expected.replaceAll('\n', '\r\n'), offset: null });
+    const variants = [expected];
     for (const parity of [0, 1]) {
       let line = 0;
       const input = expected.replaceAll('\n', () => line++ % 2 === parity ? '\r\n' : '\n');
+      variants.push(input);
       cases.push({ manuscript, expected, input, offset: null });
     }
-    const bytes = Buffer.from(expected);
-    for (const [offset, byte] of bytes.entries()) {
-      // Replacing the first LF of an adjacent pair creates a valid CRLF.
-      if (byte !== 10 || bytes[offset + 1] === 10) continue;
-      const broken = Buffer.from(bytes);
-      broken[offset] = 13;
-      cases.push({ manuscript, expected, input: broken.toString(), offset });
+    for (const variant of variants) {
+      const bytes = Buffer.from(variant);
+      for (const [offset, byte] of bytes.entries()) {
+        // Replacing the first LF of an adjacent pair creates a valid CRLF.
+        if (byte !== 10 || bytes[offset - 1] === 13 || bytes[offset + 1] === 10) continue;
+        const broken = Buffer.from(bytes);
+        broken[offset] = 13;
+        cases.push({ manuscript, expected, input: broken.toString(), offset });
+      }
     }
   }
   return cases;
