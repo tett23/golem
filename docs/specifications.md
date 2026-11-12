@@ -6228,18 +6228,18 @@ G01003 と G01102 以外のエラーで読み込みが失敗したら、diagnost
 ### 表のファイル
 
 `golem fmt` は、`@table` が読む CSV と TSV のファイル（表のファイル）の BOM と改行も直す（[ADR 0186](adr/0186-fmt-table-files.md)）。
-表のファイルの前処理（`Golem.Fmt.formatTable`）は、先頭の BOM を一つ取り除き、CRLF を LF に直し、残った単独の CR を LF に直す。
+表のファイルの前処理（`Golem.Fmt.formatTable`）は、先頭に続く BOM をすべて取り除き、CRLF を LF に直し、残った単独の CR を LF に直す。
 CSV と TSV で前処理は同じである。
 
 表のファイルでは、BOM と改行のほかを直さない。
 空白、空行、タブ、引用符、セルの区切りには触れず、原稿の前処理と違って行頭のタブも空白に直さない。
 
-この前処理は、読み手が作る表をほとんど変えない。
-読み手は引用符の中の CRLF を LF にしてセルに入れるので、BOM と CRLF を直しても、読み手が作る表は変わらない。
-単独の CR を直したときだけ表が変わり、G02082 で止まっていた表が組めるようになり、引用符の中の単独の CR はセルの中の改行になる。
+読み手は引用符の中の CRLF を LF としてセルに入れる。
+単独の CR を直すと、G02082 で止まっていた表が組めるようになり、引用符の中の単独の CR はセルの中の改行になる。
 
-取り除く BOM は一つだけなので、二度かけても結果が変わらないのは、先頭の BOM が多くとも一つのファイルである（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
-先頭に BOM が二つ続くファイルは、一度目の `golem fmt` の後も BOM が一つ残り、`--check` が整形されていないファイルとして示す。
+先頭に BOM が二つ以上続く場合も一度の整形ですべて取り除き、二度目の整形で表は変わらない（[Golem ADR 0354](adr/0354-remove-leading-boms-from-table-files.md)）。
+読み手は先頭の BOM を一つ読み飛ばすので、整形前の最初のセルに含まれていた二つ目以降の U+FEFF は整形後に消える。
+CSV の最初のセルを引用符で囲むと、引用符の中の U+FEFF は保持される。
 また、`@listing` は表のファイルの BOM を読み飛ばさない。
 このため、`@listing` も読むファイルでは、BOM を取り除くと、取り込む最初の行の先頭の U+FEFF もなくなる（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
 
