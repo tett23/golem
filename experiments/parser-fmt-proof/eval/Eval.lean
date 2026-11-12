@@ -277,22 +277,22 @@ private theorem remove_unused (d : Derives budget env expression value remaining
   | «variable» found => exact .variable found
   | external found =>
     rw [shift _ _ unused]; exact .external found
-  | add l r il ir =>
+  | add _ r il ir =>
     have hr := remaining_le_budget r
     exact .add (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
-  | quotient l r il ir =>
+  | quotient _ r il ir =>
     have hr := remaining_le_budget r
     exact .quotient (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
-  | append l r il ir =>
+  | append _ r il ir =>
     have hr := remaining_le_budget r
     exact .append (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
-  | ternaryTrue c b ic ib =>
+  | ternaryTrue _ b ic ib =>
     have hb := remaining_le_budget b
     exact .ternaryTrue (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) (ib unused)
-  | ternaryElse c other b ic ib =>
+  | ternaryElse _ other b ic ib =>
     have hb := remaining_le_budget b
     exact .ternaryElse (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) other (ib unused)
-  | call a b ia ib =>
+  | call _ b ia ib =>
     have hb := remaining_le_budget b
     exact .call (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ia (by omega)) (ib unused)
 
