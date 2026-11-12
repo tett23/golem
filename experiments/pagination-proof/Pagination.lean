@@ -2193,6 +2193,212 @@ def textBeforeCount (items : List SourceItem) (pos : Nat) : Nat :=
 def textHereAtBreak (items : List SourceItem) (brk pos : Nat) : Bool :=
   decide (textBeforeCount items pos < brk)
 
+def strictTextPositions : List Nat → Prop
+  | [] => True
+  | x :: rest =>
+      (∀ y ∈ rest, x < y) ∧ strictTextPositions rest
+
+def textRank : List Nat → Nat → Nat
+  | [], _ => 0
+  | x :: rest, pos =>
+      if x = pos then 0 else 1 + textRank rest pos
+
+def countEarlierText (positions : List Nat) (pos : Nat) : Nat :=
+  (positions.filter (fun x => x < pos)).length
+
+theorem I3_count_earlier_text_eq_rank
+    (positions : List Nat) (ordered : strictTextPositions positions)
+    (pos : Nat) (member : pos ∈ positions) :
+    countEarlierText positions pos = textRank positions pos := by
+  induction positions with
+  | nil => simp at member
+  | cons x rest ih =>
+      obtain ⟨before, restOrdered⟩ := ordered
+      rcases List.mem_cons.mp member with same | inRest
+      · subst pos
+        have noneEarlier : rest.filter (fun y => y < x) = [] :=
+          List.filter_eq_nil.mpr (by
+            intro y inRest earlier
+            have later := before y inRest
+            simp at earlier
+            omega)
+        simp [countEarlierText, textRank, noneEarlier]
+      · have earlier := before pos inRest
+        have distinct : x ≠ pos := by omega
+        have tail := ih restOrdered inRest
+        simp [countEarlierText, textRank, earlier, distinct]
+        simp only [countEarlierText] at tail
+        omega
+
+theorem I3_text_before_count_mapped_positions
+    (positions : List Nat) (pos : Nat) :
+    textBeforeCount (positions.map SourceItem.text) pos =
+      countEarlierText positions pos := by
+  induction positions with
+  | nil => simp [textBeforeCount, countEarlierText]
+  | cons x rest ih =>
+      by_cases earlier : x < pos
+      · simp [textBeforeCount, countEarlierText,
+          earlierTextItem, earlier]
+        simp only [textBeforeCount, countEarlierText] at ih
+        omega
+      · simp [textBeforeCount, countEarlierText,
+          earlierTextItem, earlier]
+        simp only [textBeforeCount, countEarlierText] at ih
+        omega
+
+theorem I3_text_here_iff_rank
+    (positions : List Nat) (ordered : strictTextPositions positions)
+    (pos brk : Nat) (member : pos ∈ positions) :
+    textHereAtBreak (positions.map SourceItem.text) brk pos = true ↔
+      textRank positions pos < brk := by
+  rw [textHereAtBreak, I3_text_before_count_mapped_positions,
+    I3_count_earlier_text_eq_rank positions ordered pos member]
+  simp
+
+def sourceTextPositions : List SourceItem → List Nat
+  | [] => []
+  | .text pos :: rest => pos :: sourceTextPositions rest
+  | .figure _ :: rest | .blank _ :: rest | .need _ :: rest =>
+      sourceTextPositions rest
+
+theorem I3_source_text_position_member
+    (items : List SourceItem) (pos : Nat) :
+    pos ∈ sourceTextPositions items ↔ .text pos ∈ items := by
+  induction items with
+  | nil => simp [sourceTextPositions]
+  | cons item rest ih =>
+      cases item with
+      | text p => simp [sourceTextPositions, ih]
+      | figure p => simp [sourceTextPositions, ih]
+      | blank p => simp [sourceTextPositions, ih]
+      | need p => simp [sourceTextPositions, ih]
+
+theorem I3_source_text_positions_ordered
+    (items : List SourceItem) (ordered : sourceOrdered items) :
+    strictTextPositions (sourceTextPositions items) := by
+  induction items with
+  | nil => trivial
+  | cons item rest ih =>
+      obtain ⟨headBefore, restOrdered⟩ := ordered
+      cases item with
+      | text pos =>
+          constructor
+          · intro later laterIn
+            have textIn :=
+              (I3_source_text_position_member rest later).mp laterIn
+            have earlier := headBefore (.text later) textIn
+            simpa [sourcePos] using earlier
+          · exact ih restOrdered
+      | figure _ => exact ih restOrdered
+      | blank _ => exact ih restOrdered
+      | need _ => exact ih restOrdered
+
+theorem I3_source_text_before_count
+    (items : List SourceItem) (pos : Nat) :
+    textBeforeCount items pos =
+      countEarlierText (sourceTextPositions items) pos := by
+  induction items with
+  | nil => simp [textBeforeCount, countEarlierText,
+      sourceTextPositions]
+  | cons item rest ih =>
+      cases item with
+      | text textPos =>
+          by_cases earlier : textPos < pos
+          · simp [textBeforeCount, countEarlierText,
+              sourceTextPositions, earlierTextItem, earlier]
+            simp only [textBeforeCount, countEarlierText] at ih
+            omega
+          · simp [textBeforeCount, countEarlierText,
+              sourceTextPositions, earlierTextItem, earlier]
+            simp only [textBeforeCount, countEarlierText] at ih
+            omega
+      | figure _ => simpa [textBeforeCount, countEarlierText,
+          sourceTextPositions, earlierTextItem] using ih
+      | blank _ => simpa [textBeforeCount, countEarlierText,
+          sourceTextPositions, earlierTextItem] using ih
+      | need _ => simpa [textBeforeCount, countEarlierText,
+          sourceTextPositions, earlierTextItem] using ih
+
+theorem I3_text_here_iff_source_rank
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (pos brk : Nat) (member : .text pos ∈ items) :
+    textHereAtBreak items brk pos = true ↔
+      textRank (sourceTextPositions items) pos < brk := by
+  rw [textHereAtBreak, I3_source_text_before_count,
+    I3_count_earlier_text_eq_rank (sourceTextPositions items)
+      (I3_source_text_positions_ordered items ordered) pos
+      ((I3_source_text_position_member items pos).mpr member)]
+  simp
+
+theorem I3_text_rank_points_to_position
+    (positions : List Nat) (pos : Nat) (member : pos ∈ positions) :
+    List.get? positions (textRank positions pos) = some pos := by
+  induction positions with
+  | nil => simp at member
+  | cons first rest ih =>
+      by_cases same : first = pos
+      · subst pos
+        simp [textRank]
+      · have inRest := (List.mem_cons.mp member).resolve_left
+          (Ne.symm same)
+        simp only [textRank, if_neg same]
+        rw [Nat.add_comm 1 (textRank rest pos), List.get?_cons_succ]
+        exact ih inRest
+
+theorem I3_text_role_at_source_rank
+    (items : List SourceItem) (roleForText : Nat → TextRole)
+    (pos : Nat) (member : .text pos ∈ items) :
+    List.get? ((sourceTextPositions items).map roleForText)
+      (textRank (sourceTextPositions items) pos) =
+      some (roleForText pos) := by
+  rw [List.get?_map]
+  rw [I3_text_rank_points_to_position (sourceTextPositions items) pos
+    ((I3_source_text_position_member items pos).mpr member)]
+  rfl
+
+theorem I3_source_text_first_break
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (roleForText : Nat → TextRole) (capacity : Nat)
+    (twoFit : 2 ≤ capacity) :
+    let positions := sourceTextPositions items
+    let roles := positions.map roleForText
+    let brk := textOnlyFirstBreak roles
+    brk ≤ capacity ∧
+      (roles ≠ [] → 1 ≤ brk) ∧
+      textOnlyLineAfterHeadings roles brk ∧
+      ∀ pos, .text pos ∈ items →
+        (textHereAtBreak items brk pos = true ↔
+          textRank positions pos < brk) ∧
+        (textHereAtBreak items brk pos = true →
+          roleForText pos = .heading → textRank positions pos = 0) ∧
+        (textHereAtBreak items brk pos = true →
+          roleForText pos = .line →
+          textOnlyAfterHeadings roles brk (textRank positions pos)) := by
+  dsimp
+  obtain ⟨fits, nonempty, afterHeading⟩ :=
+    I3_text_only_first_break_line_after capacity
+      ((sourceTextPositions items).map roleForText) twoFit
+  refine ⟨fits, nonempty, afterHeading, ?_⟩
+  intro pos member
+  have here := I3_text_here_iff_source_rank items ordered pos
+    (textOnlyFirstBreak ((sourceTextPositions items).map roleForText))
+    member
+  have role := I3_text_role_at_source_rank items roleForText pos member
+  refine ⟨here, ?_, ?_⟩
+  · intro placed isHeading
+    apply I3_text_only_first_break_headings_start
+      ((sourceTextPositions items).map roleForText)
+      (textRank (sourceTextPositions items) pos)
+      (here.mp placed)
+    simpa [isHeading] using role
+  · intro placed isLine
+    apply I3_text_only_first_break_lines_after_headings
+      ((sourceTextPositions items).map roleForText)
+      (textRank (sourceTextPositions items) pos)
+      (here.mp placed)
+    simpa [isLine] using role
+
 theorem I3_break_one_keeps_first_text
     (items : List SourceItem) (pos : Nat)
     (first : ∀ textPos, .text textPos ∈ items → pos ≤ textPos) :
