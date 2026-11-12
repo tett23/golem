@@ -228,6 +228,123 @@ theorem I1_I4_peg_word_keyword_sequences
     word_rule, equals_rule, argument_value_rule, parsed, reformatted,
     fun suffix => derived_printed_sequence args suffix namesSafe valuesSafe⟩
 
+-- Canonical PegModel ref: a successful KeywordArgument chooses the first
+-- KwArg branch, without evaluating its splat fallback.
+theorem canonical_kwarg_of_keyword (fuel : Nat) (input rest : List Char)
+    (hit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "KeywordArgument" []) input = .ok (some rest)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3)
+      (.ref "KwArg" []) input = .ok (some rest) := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item source)
+      _ [] items input)
+    [[.ref "KeywordArgument" []],
+      [.andPred (.lit "**[" "'**['"), .ref "SplatArgument" []]] = .ok (some rest)
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    hit, Except.map] <;> rfl
+
+-- Canonical PegModel ref: once Word Eq succeeds, both PosArg alternatives
+-- fail their ordered negative lookahead.
+theorem canonical_posarg_rejects_keyword (fuel : Nat) (input afterEq : List Char)
+    (noProofPrefix : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.lit "%%" "'%%'") input = .ok none)
+    (wordEq : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.choice [[.ref "Word" [], .ref "Eq" []]]) input = .ok (some afterEq)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4)
+      (.ref "PosArg" []) input = .ok none := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 2) item source)
+      _ [] items input)
+    [[.notPred (.lit "%%" "'%%'"),
+      .notPred (.choice [[.ref "Word" [], .ref "Eq" []]]),
+      .notPred (.lit "**[" "'**['"), .ref "SplatArgument" []],
+     [.notPred (.lit "%%" "'%%'"),
+      .notPred (.choice [[.ref "Word" [], .ref "Eq" []]]),
+      .notPred (.ref "Splat" []), .ref "Argument" []]] = .ok none
+  have noPrefix : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
+      (.notPred (.lit "%%" "'%%'")) input = .ok (some input) := by
+    change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.lit "%%" "'%%'") input with
+      | .error reason => Except.error reason
+      | .ok none => Except.ok (some input)
+      | .ok (some _) => Except.ok none) = Except.ok (some input)
+    rw [noProofPrefix]
+  have noPos : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
+      (.notPred (.choice [[.ref "Word" [], .ref "Eq" []]])) input = .ok none := by
+    change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.choice [[.ref "Word" [], .ref "Eq" []]]) input with
+      | .error reason => Except.error reason
+      | .ok none => Except.ok (some input)
+      | .ok (some _) => Except.ok none) = Except.ok none
+    rw [wordEq]
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    noPrefix, noPos, Except.map] <;> rfl
+
+-- Canonical PegModel ref: ArgValue reaches Word only after its four earlier
+-- alternatives fail.  Their failure is an explicit premise, not inferred
+-- from the WordRoundTrip validity predicate.
+theorem canonical_argvalue_word (fuel : Nat) (input rest : List Char)
+    (notString : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "StringLit" []) input = .ok none)
+    (notExpr : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "ExprCtx" []) input = .ok none)
+    (notReserved : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "ReservedBracket" []) input = .ok none)
+    (notInline : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "InlineCommand" ["0"]) input = .ok none)
+    (word : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Word" []) input = .ok (some rest)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3)
+      (.ref "ArgValue" []) input = .ok (some rest) := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item source)
+      _ [] items input)
+    [[.ref "StringLit" []], [.ref "ExprCtx" []], [.ref "ReservedBracket" []],
+     [.ref "InlineCommand" ["0"]], [.ref "Word" []]] = .ok (some rest)
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    notString, notExpr, notReserved, notInline, word, Except.map] <;> rfl
+
+-- Canonical PegModel ref: the three recognized pieces compose in the only
+-- KeywordArgument branch, with the suffix returned by ArgValue.
+theorem canonical_keyword_of_parts (fuel : Nat)
+    (input afterName afterEq rest : List Char)
+    (nameHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Word" []) input = .ok (some afterName))
+    (eqHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Eq" []) afterName = .ok (some afterEq))
+    (valueHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "ArgValue" []) afterEq = .ok (some rest)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3)
+      (.ref "KeywordArgument" []) input = .ok (some rest) := by
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item source)
+      _ [] items input)
+    [[.ref "Word" [], .ref "Eq" [], .ref "ArgValue" []]] = .ok (some rest)
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    nameHit, eqHit, valueHit, Except.map] <;> rfl
+
+-- Conditional refinement of parseOneWordKeyword to the actual canonical
+-- KwArg ref.  The separate Word/Eq/ArgValue recognition premises still need
+-- to be discharged for every valid Word pair before this is a general bridge.
+theorem canonical_kwarg_matches_parseOne_given_parts (fuel : Nat)
+    (input afterName afterEq rest name value : List Char)
+    (_one : parseOneWordKeyword (' ' :: input) = some ((name, value), rest))
+    (nameHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Word" []) input = .ok (some afterName))
+    (eqHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "Eq" []) afterName = .ok (some afterEq))
+    (valueHit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.ref "ArgValue" []) afterEq = .ok (some rest)) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 5)
+      (.ref "KwArg" []) input = .ok (some rest) := by
+  have keyword := canonical_keyword_of_parts fuel input afterName afterEq rest
+    nameHit eqHit valueHit
+  simpa [Nat.add_assoc] using canonical_kwarg_of_keyword (fuel + 2) input rest keyword
+
 -- Concrete checks of the canonical PegModel ref, including Sp, ordered
 -- PosArg rejection, KwArg selection and the newline left for the command.
 -- The arbitrary-length theorem above is for the restricted derivation; these
