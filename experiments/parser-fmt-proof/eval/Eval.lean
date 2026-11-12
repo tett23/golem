@@ -125,6 +125,28 @@ def format : SourceExpr → SourceExpr
 @[simp] theorem parsed_format (source : SourceExpr) : parsed (format source) = parsed source := by
   induction source <;> simp_all [parsed, format]
 
+-- Forget only the spelling of whitespace. Unlike parsed, this projection
+-- retains each comment at its original subexpression, including nested ones.
+def withoutWhitespace : SourceExpr → SourceExpr
+  | .literal v => .literal v
+  | .variable name => .variable name
+  | .external path => .external path
+  | .add a b => .add (withoutWhitespace a) (withoutWhitespace b)
+  | .quotient a b => .quotient (withoutWhitespace a) (withoutWhitespace b)
+  | .ternary c a b => .ternary (withoutWhitespace c) (withoutWhitespace a) (withoutWhitespace b)
+  | .append a b => .append (withoutWhitespace a) (withoutWhitespace b)
+  | .call name arg body => .call name (withoutWhitespace arg) (withoutWhitespace body)
+  | .whitespace _ x => withoutWhitespace x
+  | .comment text x => .comment text (withoutWhitespace x)
+
+theorem I2_expressionCommentPlacement (source : SourceExpr) :
+    withoutWhitespace (format source) = withoutWhitespace source := by
+  induction source <;> simp_all [format, withoutWhitespace]
+
+theorem I3_expressionFormatIdempotent (source : SourceExpr) :
+    format (format source) = format source := by
+  induction source <;> simp_all [format]
+
 /- A derivation records how a successful value is obtained, including
    argument evaluation and the body of a user function. -/
 inductive Derives : Nat → Environment → Expr → Value → Nat → Prop where
