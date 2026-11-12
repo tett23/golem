@@ -29,22 +29,24 @@ jobs:
         with:
           node-version: lts/*
       - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
-        if: matrix.model == 'grammar'
+        if: matrix.model != 'arguments/Arguments'
         with:
           ghc-version: "9.10.3"
           cabal-version: "3.18.2.0"
+      - name: Update the Cabal index
+        if: matrix.model != 'arguments/Arguments'
+        run: cabal update
       - name: Build the pinned grammar tools
         if: matrix.model == 'grammar'
         run: |
-          cabal update
           cabal build peg-cli:exe:peg-hs
           cabal build --only-dependencies lib:golem-bibliography
           echo "PEG_HS=$(cabal list-bin peg-cli:exe:peg-hs)" >> "$GITHUB_ENV"
       - name: Compare table formatting in Haskell and Lean
-        if: matrix.model == 'grammar'
+        if: matrix.model == 'tables/Table'
         run: sh experiments/parser-fmt-proof/tables/compare-format.sh
       - name: Compare Emet evaluations in Haskell and Lean
-        if: matrix.model == 'grammar'
+        if: matrix.model == 'eval/Eval'
         run: sh experiments/parser-fmt-proof/eval/compare-eval.sh
       - name: Check grammar proofs, mutations and native parser examples
         if: matrix.model == 'grammar'
