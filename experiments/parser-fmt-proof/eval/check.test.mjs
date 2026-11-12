@@ -41,7 +41,7 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
   }
 });
 
-test('Golem ADR 0351 I5: division failure in an imported function survives manuscript formatting', () => {
+test('Golem ADR 0351 I5: division failure points to the same expression after manuscript and Emet formatting', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   const fixtures = join(root, 'modules/golem-driver/test/fixtures');
   const dir = mkdtempSync(join(tmpdir(), 'golem-fmt-division-'));
@@ -54,7 +54,7 @@ test('Golem ADR 0351 I5: division failure in an imported function survives manus
     cpSync(join(fixtures, 'kanikosen/fonts/NotoSerifJP-Regular.otf'), join(dir, 'fonts/ja.otf'));
     cpSync(join(root, 'modules/golem-font/test/fonts/SourceSansPro-Regular.otf'), join(dir, 'fonts/latin.otf'));
     const book = join(dir, 'fn/book.emet');
-    appendFileSync(book, '\npub fn quotient :: Nat -> Nat -> Nat\nquotient a b = div a b\n');
+    appendFileSync(book, '\n\n\n\npub fn quotient :: Nat -> Nat -> Nat\nquotient a b = div a b\n');
     writeFileSync(file, original);
     const cli = process.env.GOLEM || 'golem';
     function diagnostics() {
@@ -70,6 +70,18 @@ test('Golem ADR 0351 I5: division failure in an imported function survives manus
     execFileSync(cli, ['fmt', 'a.gm'], { cwd: dir });
     assert.notEqual(readFileSync(file, 'utf8'), original);
     assert.deepEqual(diagnostics(), before);
+
+    const originalBook = readFileSync(book);
+    execFileSync(cli, ['fmt', book], { cwd: dir });
+    const formattedBook = readFileSync(book);
+    assert.notDeepEqual(formattedBook, originalBook);
+    const after = diagnostics();
+    assert.equal(after.length, 1);
+    const span = after[0].span;
+    assert.equal(span.file, before[0].span.file);
+    assert.notEqual(span.start, start);
+    assert.equal(formattedBook.subarray(span.start, span.end).toString(), 'div a b');
+    assert.deepEqual({ ...after[0], span: before[0].span }, before[0]);
   } catch (error) {
     saveProjectFailure('eval', dir, original, error, 'division');
     throw error;
