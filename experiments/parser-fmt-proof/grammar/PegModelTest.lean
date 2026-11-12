@@ -21,20 +21,21 @@ theorem literal_roundtrip (grammar : PegModel.Grammar) (value written : String)
   simp [PegModel.recognize, PegModel.recognizeEnv, prefix_self_append, drop_self_append, Id.run]
   rfl
 
-theorem ordered_choice_first (grammar : PegModel.Grammar) (first : PegModel.Expr)
+theorem ordered_choice_first (grammar : PegModel.Grammar) (value written : String)
     (later : List PegModel.Expr) (input rest : List Char) (fuel : Nat)
-    (hit : PegModel.recognize grammar fuel first input = .ok (some rest)) :
-    PegModel.recognize grammar (fuel + 1) (.choice [[first], later]) input =
+    (hit : PegModel.recognize grammar fuel (.lit value written) input = .ok (some rest)) :
+    PegModel.recognize grammar (fuel + 1) (.choice [[.lit value written], later]) input =
       .ok (some rest) := by
   simp only [PegModel.recognize] at hit ⊢
   simp [PegModel.recognizeEnv, hit, Id.run]
   rfl
 
 theorem ordered_choice_fallback (grammar : PegModel.Grammar)
-    (first second : PegModel.Expr) (input rest : List Char) (fuel : Nat)
-    (miss : PegModel.recognize grammar fuel first input = .ok none)
-    (hit : PegModel.recognize grammar fuel second input = .ok (some rest)) :
-    PegModel.recognize grammar (fuel + 1) (.choice [[first], [second]]) input =
+    (firstValue firstWritten secondValue secondWritten : String) (input rest : List Char) (fuel : Nat)
+    (miss : PegModel.recognize grammar fuel (.lit firstValue firstWritten) input = .ok none)
+    (hit : PegModel.recognize grammar fuel (.lit secondValue secondWritten) input = .ok (some rest)) :
+    PegModel.recognize grammar (fuel + 1)
+      (.choice [[.lit firstValue firstWritten], [.lit secondValue secondWritten]]) input =
       .ok (some rest) := by
   simp only [PegModel.recognize] at miss hit ⊢
   simp [PegModel.recognizeEnv, miss, hit, Id.run]
@@ -82,6 +83,16 @@ example : PegModel.recognize Generated.pegGrammar 200 (.ref "AddExpr" [])
 
 example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1\n".toList =
     .ok (some []) := by rfl
+
+-- TableRow returns length cs, which the table passes as h to body rows.
+example : PegModel.recognizeStart Generated.pegGrammar 300
+    "| a |\n|---|\n".toList = .ok (some []) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300
+    "| a |\n|---|\n| b |\n".toList = .ok (some []) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300
+    "| a | b |\n|---|---|\n| c | d |\n".toList = .ok (some []) := by rfl
 
 -- Ind(n) consumes exactly n spaces; these are the parameter boundary cases.
 example : PegModel.integer [("ind", 1)] "ind + 2" = some 3 := by rfl

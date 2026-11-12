@@ -1,9 +1,9 @@
 namespace PegModel
 
 -- The constructors match Peg.Grammar.Expr in the pinned peg-hs release.
--- Haskell actions remain source text. Only the numeric argument expressions
--- and boolean predicates handled below have semantics in the recognizer;
--- recognition alone does not prove the action's AST or value.
+-- Haskell actions remain source text. Numeric arguments, boolean predicates,
+-- and the bound repetition length handled below have limited semantics;
+-- recognition alone does not prove the action's AST or every value.
 inductive Expr where
   | lit (value written : String)
   | charClass (ranges : List (Nat × Nat)) (written : String)
@@ -91,11 +91,49 @@ def directSuffix (name : String) (alt : Alt) : Option (List Expr) :=
 def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char → ParseResult
   | 0, _, _ => .error "fuel exhausted"
   | fuel + 1, expr, input => Id.run do
+      let boundLength (scope : Params) (item : Expr) (before : List Char) : Except String (Option Nat) := Id.run do
+        match item with
+        | .bind (some _) (.ref target args) =>
+            match grammar.rules.find? (fun rule => rule.name == target) with
+            | none => return .ok none
+            | some rule =>
+                match args.mapM (integer scope), rule.alts with
+                | some values, [alt] =>
+                    match alt.items with
+                    | leading :: .bind (some captured) (.plus child) :: _ =>
+                        if alt.action.map String.trim != some ("length " ++ captured) then return .ok none
+                        let params := List.zip rule.params values
+                        match recognizeEnv grammar params fuel leading before with
+                        | .error reason => return .error reason
+                        | .ok none => return .error "bound length prefix failed"
+                        | .ok (some start) =>
+                            let counted := (List.range fuel).foldl (fun (state : List Char × Nat × Bool) _ =>
+                              if state.2.2 then state else
+                                match recognizeEnv grammar params fuel child state.1 with
+                                | .ok (some rest) =>
+                                    if rest.length < state.1.length then (rest, state.2.1 + 1, false)
+                                    else (state.1, state.2.1, true)
+                                | _ => (state.1, state.2.1, true)) (start, 0, false)
+                            return if counted.2.2 then .ok (some counted.2.1) else .error "fuel exhausted"
+                    | _ => return .ok none
+                | _, _ => return .ok none
+        | _ => return .ok none
       let sequence (items : List Expr) : ParseResult :=
-        items.foldlM (fun state item =>
+        (items.foldlM (fun state item =>
           match state with
           | none => pure none
-          | some rest => recognizeEnv grammar env fuel item rest) (some input)
+          | some (rest, scope) => do
+              match recognizeEnv grammar scope fuel item rest with
+              | .error reason => Except.error reason
+              | .ok none => pure none
+              | .ok (some next) =>
+                  match item with
+                  | .bind (some name) _ =>
+                      match boundLength scope item rest with
+                      | .error reason => Except.error reason
+                      | .ok none => pure (some (next, scope))
+                      | .ok (some value) => pure (some (next, (name, value) :: scope))
+                  | _ => pure (some (next, scope))) (some (input, env)) : Except String (Option (List Char × Params))).map (Option.map Prod.fst)
       let alternatives (alts : List (List Expr)) : ParseResult :=
         alts.foldlM (fun found items =>
           match found with
