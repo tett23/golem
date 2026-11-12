@@ -569,6 +569,68 @@ theorem class_lookahead_or_eof (grammar : PegModel.Grammar) (env : PegModel.Para
       | true => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
           classHit, eof, h, Except.map]; rfl
 
+theorem not_class (grammar : PegModel.Grammar) (env : PegModel.Params) (fuel : Nat)
+    (ranges : List (Nat × Nat)) (written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 2) (.notPred (.charClass ranges written)) input =
+      .ok (match input with
+        | [] => some []
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then none else some (c :: rest)) := by
+  cases input with
+  | nil => rfl
+  | cons c rest =>
+      change (match PegModel.recognizeEnv grammar env (fuel + 1) (.charClass ranges written) (c :: rest) with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some (c :: rest))
+        | Except.ok (some _) => Except.ok none) = _
+      rw [show PegModel.recognizeEnv grammar env (fuel + 1) (.charClass ranges written) (c :: rest) =
+        .ok (if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then some rest else none) from rfl]
+      cases h : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) <;> simp [h]
+
+-- Word uses this exact PEG sequence as one character of its ordinary branch.
+theorem nonclass_any (grammar : PegModel.Grammar) (env : PegModel.Params) (fuel : Nat)
+    (ranges : List (Nat × Nat)) (written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 4)
+      (.choice [[.notPred (.charClass ranges written), .any]]) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then none else some rest) := by
+  have pred : PegModel.recognizeEnv grammar env (fuel + 3)
+      (.notPred (.charClass ranges written)) input =
+      .ok (match input with
+        | [] => some []
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then none else some (c :: rest)) := by
+    simpa [Nat.add_assoc] using not_class grammar env (fuel + 1) ranges written input
+  have any : PegModel.recognizeEnv grammar env (fuel + 3) (.any) input =
+      .ok (match input with | [] => none | _ :: rest => some rest) := by
+    cases input <;> rfl
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 3) item rest)
+      _ env items input) [[.notPred (.charClass ranges written), .any]] = _
+  cases input with
+  | nil =>
+      simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, pred, any, Except.map]
+      rfl
+  | cons c rest =>
+      cases h : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) with
+      | false =>
+          simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, pred, any, h, Except.map]
+          rfl
+      | true =>
+          simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, pred, any, h, Except.map]
+          rfl
+
+theorem generated_word_ordinary_shape :
+    (Generated.pegGrammar.rules.find? (fun rule => rule.name == "Word")).bind
+      (fun rule => (rule.alts.get? 1).map PegModel.Alt.items) =
+      some [.plus (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (61, 61), (91, 91), (34, 34), (92, 92)]
+        "[ \\t\\n\\]:|=\\[\"\\\\]"), .any]])] := by rfl
+
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
     .ok (some "!".toList) := by rfl
 
