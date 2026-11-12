@@ -501,6 +501,72 @@ theorem I3_nextOfSource_iff_alloy_min_position
           minimum firstItem firstMember first firstSelected firstAvailable
         exact ⟨first, rfl, Nat.le_antisymm firstLe posLe⟩
 
+theorem I3_sourceOrdered_unique_position
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (first second : SourceItem) (firstIn : first ∈ items)
+    (secondIn : second ∈ items)
+    (samePos : sourcePos first = sourcePos second) : first = second := by
+  induction items generalizing first second with
+  | nil => cases firstIn
+  | cons head rest ih =>
+      rcases ordered with ⟨headBefore, restOrdered⟩
+      rcases List.mem_cons.mp firstIn with firstHead | firstTail
+      · subst first
+        rcases List.mem_cons.mp secondIn with secondHead | secondTail
+        · exact secondHead.symm
+        · have earlier := headBefore second secondTail
+          omega
+      · rcases List.mem_cons.mp secondIn with secondHead | secondTail
+        · subst second
+          have earlier := headBefore first firstTail
+          omega
+        · exact ih restOrdered first second firstTail secondTail samePos
+
+def alloyNextCandidate (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (candidate : SourceCandidate) : Prop :=
+  (∃ item ∈ items,
+      candidateAfterBlank blankPos item = some candidate ∧
+      candidateWaits waitingFigure candidate = false) ∧
+  (∀ item ∈ items, ∀ other,
+      candidateAfterBlank blankPos item = some other →
+      candidateWaits waitingFigure other = false →
+      candidate.pos ≤ other.pos)
+
+theorem I3_nextOfSource_iff_alloy_candidate
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (candidate : SourceCandidate) :
+    nextOfSource blankPos waitingFigure items = some candidate ↔
+      alloyNextCandidate blankPos waitingFigure items candidate := by
+  constructor
+  · intro next
+    constructor
+    · exact I3_nextOfSource_some_has_member blankPos waitingFigure items candidate next
+    · intro item member other selected available
+      exact I3_nextOfSource_minimal blankPos waitingFigure items ordered
+        candidate next item member other selected available
+  · intro spec
+    obtain ⟨⟨item, member, selected, available⟩, minimum⟩ := spec
+    have minPos : alloyNextPosition blankPos waitingFigure items candidate.pos := by
+      exact ⟨⟨item, member, candidate, selected, available, rfl⟩, minimum⟩
+    obtain ⟨first, next, samePos⟩ :=
+      (I3_nextOfSource_iff_alloy_min_position blankPos waitingFigure
+        items ordered candidate.pos).mpr minPos
+    obtain ⟨firstItem, firstMember, firstSelected, _⟩ :=
+      I3_nextOfSource_some_has_member blankPos waitingFigure items first next
+    have firstSourcePos :=
+      I3_candidateAfterBlank_preserves_position blankPos firstItem first firstSelected
+    have candidateSourcePos :=
+      I3_candidateAfterBlank_preserves_position blankPos item candidate selected
+    have sameItem : firstItem = item :=
+      I3_sourceOrdered_unique_position items ordered firstItem item
+        firstMember member (by omega)
+    subst firstItem
+    have sameCandidate : first = candidate := by
+      simp [selected] at firstSelected
+      exact firstSelected.symm
+    simpa [sameCandidate] using next
+
 /- Number figures in source order. This is the `figureOrder` pair condition
    from the Alloy model without its finite limit of two figures. It says a
    kept figure requires every earlier figure to be kept. -/
