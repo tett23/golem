@@ -2939,6 +2939,80 @@ def paragraphNextCount (brk : Nat) (items : List SourceItem)
   (p.linePositions.filter
     (fun pos => !textHereAtBreak items brk pos)).length
 
+theorem I3_filter_length_positive_iff_exists
+    (xs : List Nat) (f : Nat → Bool) :
+    0 < (xs.filter f).length ↔ ∃ x ∈ xs, f x = true := by
+  induction xs with
+  | nil => simp
+  | cons x xs ih =>
+      cases h : f x <;> simp [List.filter, h, ih]
+
+theorem I3_paragraph_broken_count_equivalence
+    (brk : Nat) (items : List SourceItem) (p : KeepParagraph) :
+    paragraphBrokenModel brk items p ↔
+      0 < paragraphHereCount brk items p ∧
+        0 < paragraphNextCount brk items p := by
+  have hereEq : paragraphHasHere brk items p ↔
+      0 < paragraphHereCount brk items p := by
+    simpa [paragraphHasHere, paragraphHereCount] using
+      (I3_filter_length_positive_iff_exists p.linePositions
+        (textHereAtBreak items brk)).symm
+  have nextEq :
+      (∃ pos ∈ p.linePositions,
+        textHereAtBreak items brk pos = false) ↔
+        0 < paragraphNextCount brk items p := by
+    rw [paragraphNextCount, I3_filter_length_positive_iff_exists]
+    constructor
+    · rintro ⟨pos, member, next⟩
+      exact ⟨pos, member, by simp [next]⟩
+    · rintro ⟨pos, member, next⟩
+      cases h : textHereAtBreak items brk pos <;>
+        simp [h] at next ⊢
+      exact ⟨pos, member, h⟩
+  simp [paragraphBrokenModel, hereEq, nextEq]
+
+theorem I3_paragraph_line_partition
+    (brk : Nat) (items : List SourceItem) (p : KeepParagraph) :
+    paragraphHereCount brk items p + paragraphNextCount brk items p =
+      p.linePositions.length := by
+  unfold paragraphHereCount paragraphNextCount
+  generalize p.linePositions = positions
+  induction positions with
+  | nil => simp
+  | cons pos rest ih =>
+      cases h : textHereAtBreak items brk pos <;>
+        simp [List.filter, h] <;> omega
+
+theorem I3_split_broken_matches_paragraph
+    (brk : Nat) (items : List SourceItem) (p : KeepParagraph) :
+    splitBroken p.linePositions.length (paragraphHereCount brk items p) ↔
+      paragraphBrokenModel brk items p := by
+  have partition := I3_paragraph_line_partition brk items p
+  rw [I3_paragraph_broken_count_equivalence]
+  unfold splitBroken
+  omega
+
+theorem I3_keep_default_paragraph_equivalence
+    (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (p : KeepParagraph) :
+    (orphanByBoundary p.linePositions.length
+        (paragraphHereCount brk items p)
+        (startsColumnModel used brk items config kept p.firstPos) ∧
+      widowByBoundary p.linePositions.length
+        (paragraphHereCount brk items p)
+        (startsColumnModel used brk items config kept p.firstPos)) ↔
+      (splitKeepFirst p.linePositions.length
+        (paragraphHereCount brk items p)
+        (startsColumnModel used brk items config kept p.firstPos) ∧
+      splitKeepLast p.linePositions.length
+        (paragraphHereCount brk items p)
+        (startsColumnModel used brk items config kept p.firstPos)) := by
+  have partition := I3_paragraph_line_partition brk items p
+  exact keepDefaultDiffers p.linePositions.length
+    (paragraphHereCount brk items p)
+    (startsColumnModel used brk items config kept p.firstPos) (by omega)
+
 def keepFirstModel (used brk : Nat) (items : List SourceItem)
     (config : FigureConfig) (kept : Nat → Bool)
     (paragraphs : List KeepParagraph) : Prop :=
