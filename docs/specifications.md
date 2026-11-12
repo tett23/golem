@@ -119,6 +119,8 @@ IR の要素は、次の構造の要素にする。
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
 | ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
 
+PDF/X-4 では、上表の `Link` は文字を保持する `Span` になり、注釈への参照を持たない（[ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md)）。
+
 表の対応には、次の補いがある。
 
 - 読みのない区切りの親文字は `Ruby` を作らない。
@@ -1422,6 +1424,8 @@ CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と�
 成果物は既定で 30 秒ごとに問い合わせる。
 見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
 GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
+集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](adr/0349-retry-ci-job-list-on-rate-limit.md)）。
+全ページを取得してから各ジョブのログを検査する。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
 
 比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
@@ -5989,7 +5993,7 @@ PDF の文字の様式は 26 を超えると `AA`、`BB` と同じ字を重ね�
 
 ### PDF の注釈
 
-PDF では、リンクの文字の上にリンクの注釈を置く。
+PDF/X-4 を宣言しない PDF では、リンクの文字の上にリンクの注釈を置く。
 リンクの範囲は、行分割の箱の見た目の `lkLink :: Maybe LinkTarget`（`data LinkTarget = LinkUri Text | LinkTo LinkDest`）が持ち、golem-typeset の `restyle` がインラインをたどるときに決める。
 `LinkTo` は文書の中の行先で、`LinkDest` は次のどれかである（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 
@@ -6030,14 +6034,15 @@ ASCII でない文字は UTF-8 のバイトの `%XX`（大文字の 16 進）に
 
 注釈のオブジェクトは、PDF/X-4 の出力インテントと XMP の後、文書情報の前に、ページの順、ページの中の順で番号を振る。
 リンクのない PDF のバイト列は変わらない。
-`[color] intent` のある本（PDF/X-4 の PDF）にも、リンクの注釈を書く。
+`[color] intent` のある本では、外部リンクと文書内リンクの文字を同じ位置に描き、ページのリンク注釈を省く（[ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md)）。
+構造ツリーではリンクの文字を読み順どおりの `Span` にし、しおりは元のページを指す。
 
 参考文献の URL は、`checkUrl` を通れば PDF でもリンクにし、通らなければ文字スタイル `url` の文字だけにする。
 本文の `[style url: ...]` はリンクにしない。
 
 ### PDF の文書の中のリンク
 
-次のものを、文書の中の行先へのリンクにする（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
+PDF/X-4 を宣言しない場合、次のものを文書の中の行先へのリンクにする（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 
 | リンクの元 | 矩形 | 行先 |
 | --- | --- | --- |
@@ -6285,6 +6290,14 @@ UTF-32 は選ばない。
 範囲の外の位置は、LSP の仕様が定めている場合だけ丸める（[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 要求の列が、交渉した単位で数えた行の長さ（改行を含まない）より大きい場合は、LSP 3.17 の定めのとおり行末に丸める。
 行の番号が文書の行の数を超える場合と、列が文字の途中に当たる場合は、仕様が定めていないので丸めず、結果を空にする。
+
+### ファイルとフォルダの改名
+
+LSP は、ファイルとフォルダの改名前にクライアントが送る `workspace/willRenameFiles` に応じ、参照を指す値だけの編集を操作前の URI に対する `WorkspaceEdit.documentChanges` で返す（[docs/adr/0338](adr/0338-update-references-on-file-and-folder-renames.md)）。
+編集がなければ `null` を返し、LSP はディスクを変更しない。
+原稿の import、画像、表、コードのファイル引数、Emet のファイル引数、manifest の章とファイル欄、書体のパスを対象にする。
+Aleph が初期化時に指定した場合だけ、`plot.csv` の `file` 列とワークスペースの Markdown シートの Wiki リンクも対象にする。
+クライアントから `workspace/didRenameFiles` が届いた後は、旧パスの索引を捨ててプロジェクトを読み直す。
 
 ### 同期と評価し直し
 
@@ -7070,6 +7083,17 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 一覧は目次と EPUB のナビゲーション文書に入れない。
 
 ## 関数の言語 Emet
+
+`golem repl emet` は標準入力から Emet の式を読み、値を標準出力に一行ずつ書く（[Golem ADR 0348](adr/0348-revise-emet-expression-repl.md)）。
+未完の式では次の行を待つ。
+端末では Tab で名前や import のパスを補完でき、Ctrl-C で書きかけの入力を取り消せる。
+診断を出した場合も次の式を読み、セッションの終了時に終了コード 1 を返す。
+評価の手数と深さの上限は原稿から呼ぶ場合と同じで、式ごとに数え直す。
+
+関数や型の宣言は空行または入力の終わりで確定する。
+再定義を含む宣言のまとまりは、既存の宣言と一緒に型検査に通った場合だけ登録する。
+`import` は起動時の作業ディレクトリをルートとしてモジュールを読み込む。
+宣言と取り込んだ名前はセッションを終えるまで使える。
 
 関数は、社内の使い手や組版のオペレーターが、手元の小さな計算や書式の不便を解消するために `.emet` のファイルに書く（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
 関数を書く言語は Emet である。
@@ -8233,14 +8257,17 @@ spark は純粋な値の計算を別の capability に委ねるだけなので�
 - `--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
 
 構文から出力までの段階の誤りは、`golem build` と同じコードで出す。
-そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
+PDF のページ情報を作れない場合も、読み取れた版面設定と有効な規則から塗り足しの幅を検査する（[Golem ADR 0325](adr/0325-preflight-glyph-severity.md)）。
+この場合の要約にはエラー件数と、実行できなかった有効な検査名と理由を載せる。
+JSON の診断配列では先頭の診断の `facts` に `error-count`、`skipped-checks`、同じ順の `skipped-reasons` を含める。
 逆に、LSP、`golem check`、`golem build` はプリフライトの検査をしない。
 
 ビルドとプリフライトの役割は、止める理由で分かれている。
 ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる。
-それでも、次の二つの問題は、両方の側から同じ位置に同じメッセージと事実で出る。
+ページ情報があるときは、フォントにない字を `glyph-missing` の重大度で G09002 として報告する。
+同じ字の G08100 は PDF ビルドの診断である（[Golem ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
+ほかにエラーがなければ、`glyph-missing` が `warning` または `off` の場合は終了コード 0 を返す。
 
-- フォントにない字は、プリフライトの検査の G09002 のほかに、ビルドの G08100 としても出る（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。プロファイルが prod なので、G08100 はエラーである。G08100 は PDF を組んだ後に出るので、プリフライトの検査は走る。プリフライトの設定の `glyph-missing` は G08100 に当たらないので、`glyph-missing` を `warning` か `off` にしても、フォントにない字があれば終了コードは 1 である。
 - 行長からはみ出す行は、プリフライトの検査の G09013 のほかに、ビルドの G07105 の警告としても出る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。G09013 の重大度だけが、`overfull-lines` の `severity` による。
 
 #### プリフライトの設定

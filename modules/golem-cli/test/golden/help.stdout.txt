@@ -14,6 +14,7 @@
   plugin                   プラグインを管理する
   lint                     lint の規則を適用する
   fmt                      原稿を整形する
+  repl                     対話的に式を評価する
   lsp                      標準入出力で LSP サーバーを動かす
   inspect                  ファイルの CST、AST、IR を表示する
   explain                  診断のコードの説明を表示する
