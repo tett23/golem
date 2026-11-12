@@ -2825,6 +2825,102 @@ theorem I3_two_break_one_figure_one_blank_after_text
     simpa [count, roomEq f] using r
   · rw [topFalse, actualTop]
 
+theorem I3_two_break_two_figures_one_blank_after_text
+    (capacity secondTextPos blankPos firstPos secondPos
+      firstSize secondSize : Nat)
+    (items : List SourceItem) (sourceOrder : sourceOrdered items)
+    (twoFit : 2 ≤ capacity)
+    (secondTextIn : .text secondTextPos ∈ items)
+    (secondTextRank : textBeforeCount items secondTextPos = 1)
+    (blankAfter : secondTextPos < blankPos)
+    (firstTextBefore : 2 ≤ textBeforeCount items firstPos)
+    (secondTextBefore : 2 ≤ textBeforeCount items secondPos)
+    (figureOrder : firstPos < secondPos)
+    (blankFirstDifferent : blankPos ≠ firstPos)
+    (blankSecondDifferent : blankPos ≠ secondPos)
+    (firstIn : .figure firstPos ∈ items)
+    (secondIn : .figure secondPos ∈ items)
+    (onlyTwo : ∀ pos, .figure pos ∈ items →
+      pos = firstPos ∨ pos = secondPos) :
+    ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      figuresRuleWithLoad 2 capacity 0 kept
+        (fun f => textBeforeCount items
+          (if f = 0 then firstPos else secondPos) ≤ 2)
+        (fun f => textBeforeCount items
+          (if f = 0 then firstPos else secondPos))
+        (fun f => if f = 0 then firstSize else secondSize)
+        (fun f => !beforeBlankMask firstPos secondPos blankPos f && !atTop) ∧
+      atTop = blankAtTopSource 0 blankPos items
+        (textHereAtBreak items 2)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+      placed = blankPlacedFromSourceFull 0 blankPos
+        (waitingAtTwoPositions firstPos secondPos kept) items
+        (textHereAtBreak items 2)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+      2 + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) +
+        (if placed then 1 else 0) ≤ capacity := by
+  let count : Nat → Nat := fun f => textBeforeCount items
+    (if f = 0 then firstPos else secondPos)
+  let sizes : Nat → Nat := fun f => if f = 0 then firstSize else secondSize
+  obtain ⟨top, kept, placed, rule, topRule, placedRule, fits⟩ :=
+    I3_blankFigureOrder_arbitrary_source_exists capacity 2 blankPos
+      firstPos secondPos firstSize secondSize
+      (fun f => decide (count f ≤ 2)) (fun f => count f - 2)
+      (waitingAtTwoPositions firstPos secondPos) items twoFit
+      figureOrder blankFirstDifferent blankSecondDifferent
+      firstIn secondIn onlyTwo
+  have topFalse : top = false := by
+    rw [topRule]
+    simp [blankAtTopSource]
+  have secondHere : textHereAtBreak items 2 secondTextPos = true := by
+    simp [textHereAtBreak, secondTextRank]
+  have actualTop : blankAtTopSource 0 blankPos items
+      (textHereAtBreak items 2)
+      (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) = false := by
+    have found : items.any (keptBeforeBlank blankPos
+        (textHereAtBreak items 2)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1))) = true :=
+      (List.any_eq_true).mpr ⟨.text secondTextPos, secondTextIn,
+        by simp [keptBeforeBlank, blankAfter, secondHere]⟩
+    simp [blankAtTopSource, found]
+  have actualPlaced : placed = blankPlacedFromSourceFull 0 blankPos
+      (waitingAtTwoPositions firstPos secondPos kept) items
+      (textHereAtBreak items 2)
+      (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) := by
+    calc
+      placed = blankPlacedFromSourceFull 2 blankPos
+          (waitingAtTwoPositions firstPos secondPos kept) items
+          (fun _ => false)
+          (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) :=
+        placedRule
+      _ = blankPlacedFromSourceFull 0 blankPos
+          (waitingAtTwoPositions firstPos secondPos kept) items
+          (textHereAtBreak items 2)
+          (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) :=
+        (I3_blank_after_second_placement_matches_used_two items sourceOrder
+          secondTextPos blankPos
+          (waitingAtTwoPositions firstPos secondPos kept)
+          (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1))
+          secondTextIn secondTextRank blankAfter).symm
+  have roomEq (f : Nat) (bound : f < 2) :
+      figureHasRoom capacity 2 (fun f => count f - 2) sizes
+        (fun f => !beforeBlankMask firstPos secondPos blankPos f && !top) f ↔
+      figureHasRoom capacity 0 count sizes
+        (fun f => !beforeBlankMask firstPos secondPos blankPos f && !top) f := by
+    have enough : 2 ≤ count f := by
+      by_cases zero : f = 0
+      · simpa [count, zero] using firstTextBefore
+      · have one : f = 1 := by omega
+        simpa [count, one] using secondTextBefore
+    simp only [figureHasRoom]
+    omega
+  refine ⟨kept, top, placed, ?_, ?_, actualPlaced, fits⟩
+  · intro f bound
+    have r := rule f bound
+    simpa [count, sizes, roomEq f bound] using r
+  · rw [topFalse, actualTop]
+
 theorem I3_break_one_keeps_first_text
     (items : List SourceItem) (pos : Nat)
     (first : ∀ textPos, .text textPos ∈ items → pos ≤ textPos) :
@@ -3959,6 +4055,79 @@ theorem I3_two_break_figure_blank_relaxed_paragraphs
   exact ⟨kept, top, placed, figures, topRule, blankRule, fits,
     relaxed.1, relaxed.2⟩
 
+theorem I3_two_break_two_figures_blank_relaxed_paragraphs
+    (capacity secondTextPos blankPos firstPos secondPos
+      firstSize secondSize : Nat)
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (roleForText : Nat → AlloyTextRole)
+    (paragraphs : List ParagraphBoundary)
+    (twoFit : 2 ≤ capacity)
+    (secondTextIn : .text secondTextPos ∈ items)
+    (secondTextRank : textBeforeCount items secondTextPos = 1)
+    (blankAfter : secondTextPos < blankPos)
+    (firstTextBefore : 2 ≤ textBeforeCount items firstPos)
+    (secondTextBefore : 2 ≤ textBeforeCount items secondPos)
+    (figureOrder : firstPos < secondPos)
+    (blankFirstDifferent : blankPos ≠ firstPos)
+    (blankSecondDifferent : blankPos ≠ secondPos)
+    (firstIn : .figure firstPos ∈ items)
+    (secondIn : .figure secondPos ∈ items)
+    (onlyTwo : ∀ pos, .figure pos ∈ items →
+      pos = firstPos ∨ pos = secondPos)
+    (breakTwo : alloyTextFirstBreak
+      ((sourceTextPositions items).map roleForText) = 2)
+    (valid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (firstIsLine : ∀ p ∈ paragraphs,
+      roleForText p.firstPos = .line)
+    (figuresAfterPlacedFirst : ∀ p ∈ paragraphs,
+      textHereAtBreak items 2 p.firstPos = true →
+      p.firstPos < firstPos ∧ p.firstPos < secondPos) :
+    ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      figuresRuleWithLoad 2 capacity 0 kept
+        (fun f => textBeforeCount items
+          (if f = 0 then firstPos else secondPos) ≤ 2)
+        (fun f => textBeforeCount items
+          (if f = 0 then firstPos else secondPos))
+        (fun f => if f = 0 then firstSize else secondSize)
+        (fun f => !beforeBlankMask firstPos secondPos blankPos f && !atTop) ∧
+      atTop = blankAtTopSource 0 blankPos items
+        (textHereAtBreak items 2)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+      placed = blankPlacedFromSourceFull 0 blankPos
+        (waitingAtTwoPositions firstPos secondPos kept) items
+        (textHereAtBreak items 2)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+      2 + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) +
+        (if placed then 1 else 0) ≤ capacity ∧
+      orphanHSource 2 items roleForText
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1))
+        paragraphs ∧
+      widowHSource 2 items roleForText
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1))
+        paragraphs := by
+  obtain ⟨kept, top, placed, figures, topRule, blankRule, fits⟩ :=
+    I3_two_break_two_figures_one_blank_after_text capacity secondTextPos
+      blankPos firstPos secondPos firstSize secondSize items ordered
+      twoFit secondTextIn secondTextRank blankAfter firstTextBefore
+      secondTextBefore figureOrder blankFirstDifferent
+      blankSecondDifferent firstIn secondIn onlyTwo
+  have relaxed := I3_alloy_first_break_relaxed_paragraphs items ordered
+    roleForText
+    (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1))
+    paragraphs valid firstIsLine (by
+      intro p member placedFirst otherPos otherIn
+      rcases onlyTwo otherPos otherIn with first | second
+      · subst otherPos
+        exact (figuresAfterPlacedFirst p member
+          (by simpa [breakTwo] using placedFirst)).1
+      · subst otherPos
+        exact (figuresAfterPlacedFirst p member
+          (by simpa [breakTwo] using placedFirst)).2)
+  rw [breakTwo] at relaxed
+  exact ⟨kept, top, placed, figures, topRule, blankRule, fits,
+    relaxed.1, relaxed.2⟩
+
 theorem I3_two_break_figure_blank_paragraph_fixture :
     ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
       2 + (if kept 0 then 1 else 0) +
@@ -4014,6 +4183,74 @@ theorem I3_two_break_figure_blank_paragraph_fixture :
     (by simp [items, roles, sourceTextPositions,
       alloyTextFirstBreak])
     valid firstIsLine figureAfter
+  obtain ⟨kept, top, placed, _, _, _, fits, orphan, widow⟩ := witness
+  exact ⟨kept, top, placed, fits, orphan, widow⟩
+
+theorem I3_two_break_two_figures_paragraph_fixture :
+    ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      2 + (if kept 0 then 1 else 0) +
+        (if kept 1 then 1 else 0) +
+        (if placed then 1 else 0) ≤ 3 ∧
+      orphanHSource 2
+        [.text 0, .text 1, .text 2, .blank 3,
+          .figure 4, .figure 5]
+        (fun pos => if pos = 0 then .heading else .line)
+        (keptAtTwoPositions 4 5 (kept 0) (kept 1))
+        [{firstPos := 1, secondPos := 2,
+          beforeLastPos := 1, lastPos := 2, lineCount := 2}] ∧
+      widowHSource 2
+        [.text 0, .text 1, .text 2, .blank 3,
+          .figure 4, .figure 5]
+        (fun pos => if pos = 0 then .heading else .line)
+        (keptAtTwoPositions 4 5 (kept 0) (kept 1))
+        [{firstPos := 1, secondPos := 2,
+          beforeLastPos := 1, lastPos := 2, lineCount := 2}] := by
+  let items : List SourceItem :=
+    [.text 0, .text 1, .text 2, .blank 3,
+      .figure 4, .figure 5]
+  let roles : Nat → AlloyTextRole :=
+    fun pos => if pos = 0 then .heading else .line
+  let p : ParagraphBoundary :=
+    {firstPos := 1, secondPos := 2,
+      beforeLastPos := 1, lastPos := 2, lineCount := 2}
+  have ordered : sourceOrdered items := by
+    simp [items, sourceOrdered, sourcePos]
+  have secondTextIn : .text 1 ∈ items := by simp [items]
+  have firstFigureIn : .figure 4 ∈ items := by simp [items]
+  have secondFigureIn : .figure 5 ∈ items := by simp [items]
+  have onlyTwo : ∀ pos, .figure pos ∈ items →
+      pos = 4 ∨ pos = 5 := by
+    intro pos member
+    simpa [items] using member
+  have valid : ∀ q ∈ [p], paragraphBoundaryValid items q := by
+    intro q member
+    have same : q = p := by simpa using member
+    subst q
+    simp [p, paragraphBoundaryValid, items]
+  have firstIsLine : ∀ q ∈ [p], roles q.firstPos = .line := by
+    intro q member
+    have same : q = p := by simpa using member
+    subst q
+    simp [p, roles]
+  have figuresAfter : ∀ q ∈ [p],
+      textHereAtBreak items 2 q.firstPos = true →
+      q.firstPos < 4 ∧ q.firstPos < 5 := by
+    intro q member _
+    have same : q = p := by simpa using member
+    subst q
+    simp [p]
+  have witness := I3_two_break_two_figures_blank_relaxed_paragraphs
+    3 1 3 4 5 1 1 items ordered roles [p]
+    (by decide) secondTextIn
+    (by simp [items, textBeforeCount, earlierTextItem])
+    (by decide)
+    (by simp [items, textBeforeCount, earlierTextItem])
+    (by simp [items, textBeforeCount, earlierTextItem])
+    (by decide) (by decide) (by decide)
+    firstFigureIn secondFigureIn onlyTwo
+    (by simp [items, roles, sourceTextPositions,
+      alloyTextFirstBreak])
+    valid firstIsLine figuresAfter
   obtain ⟨kept, top, placed, _, _, _, fits, orphan, widow⟩ := witness
   exact ⟨kept, top, placed, fits, orphan, widow⟩
 
