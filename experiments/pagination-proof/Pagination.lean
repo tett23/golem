@@ -601,6 +601,56 @@ def figuresRule (count : Nat) (kept : Nat → Bool)
     (kept f = true ↔ textReady f ∧
       (∀ g, g < f → kept g = true) ∧ room f)
 
+def figurePrefixReady (ready room : Nat → Bool) : Nat → Bool
+  | 0 => true
+  | f + 1 => figurePrefixReady ready room f && ready f && room f
+
+def greedyFigure (ready room : Nat → Bool) (f : Nat) : Bool :=
+  figurePrefixReady ready room f && ready f && room f
+
+theorem I3_figurePrefixReady_iff_all_prior
+    (ready room : Nat → Bool) (f : Nat) :
+    figurePrefixReady ready room f = true ↔
+      ∀ g, g < f → greedyFigure ready room g = true := by
+  induction f with
+  | zero =>
+      constructor
+      · intro _ g before
+        exact False.elim (Nat.not_lt_zero g before)
+      · intro _
+        rfl
+  | succ f ih =>
+      constructor
+      · intro hprefix g before
+        have latest : greedyFigure ready room f = true := by
+          simpa [greedyFigure, figurePrefixReady] using hprefix
+        by_cases same : g = f
+        · simpa [same] using latest
+        · have earlier : g < f := by omega
+          have oldPrefix : figurePrefixReady ready room f = true := by
+            simp [greedyFigure, Bool.and_eq_true] at latest
+            exact latest.1.1
+          exact ih.mp oldPrefix g earlier
+      · intro allPrior
+        have latest := allPrior f (by omega)
+        simpa [greedyFigure, figurePrefixReady] using latest
+
+theorem I3_greedyFigures_rule (count : Nat) (ready room : Nat → Bool) :
+    figuresRule count (greedyFigure ready room)
+      (fun f => ready f = true) (fun f => room f = true) := by
+  intro f _
+  constructor
+  · intro present
+    have parts : (figurePrefixReady ready room f = true ∧
+        ready f = true) ∧ room f = true := by
+      simpa [greedyFigure, Bool.and_eq_true] using present
+    exact ⟨parts.1.2,
+      (I3_figurePrefixReady_iff_all_prior ready room f).mp parts.1.1,
+      parts.2⟩
+  · rintro ⟨readyNow, prior, roomNow⟩
+    have hprefix := (I3_figurePrefixReady_iff_all_prior ready room f).mpr prior
+    simp [greedyFigure, hprefix, readyNow, roomNow]
+
 /- The line-count part of Alloy `figures` for figures numbered in source
    order. `textBefore f` counts all text before f; `blankBefore f` is true
    exactly when the model's one blank precedes f and is not at column top.
@@ -619,6 +669,19 @@ def figuresRuleWithLoad (count capacity used : Nat) (kept : Nat → Bool)
     (blankBefore : Nat → Bool) : Prop :=
   figuresRule count kept textReady
     (figureHasRoom capacity used textBefore size blankBefore)
+
+theorem I3_figuresRuleWithLoad_exists
+    (count capacity used : Nat) (textReady : Nat → Bool)
+    (textBefore size : Nat → Nat) (blankBefore : Nat → Bool) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad count capacity used kept
+        (fun f => textReady f = true) textBefore size blankBefore := by
+  let room : Nat → Bool := fun f =>
+    decide (used + textBefore f + priorFigureLines size f +
+      (if blankBefore f then 1 else 0) + size f ≤ capacity)
+  refine ⟨greedyFigure textReady room, ?_⟩
+  simpa [figuresRuleWithLoad, room, figureHasRoom] using
+    (I3_greedyFigures_rule count textReady room)
 
 theorem I3_kept_figure_has_room (count capacity used : Nat)
     (kept : Nat → Bool) (textReady : Nat → Prop)
