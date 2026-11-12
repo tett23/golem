@@ -19,7 +19,7 @@ main = do
     scalars = intercalate "," . map (show . ord)
     emit input = putStrLn (scalars input ++ " => " ++ scalars (T.unpack (formatTable (T.pack input))))
     checkParser (label, separator, parse) =
-      mapM_ (mapM_ check . flip replicateM ['甲', separator, '\n', '\r', '"']) [0 .. 5]
+      mapM_ (mapM_ check . flip replicateM ['\xFEFF', '甲', separator, '\n', '\r', '"']) [0 .. 5]
       where
         check input = do
           let output = case parse (FileId 0) (T.pack input) of

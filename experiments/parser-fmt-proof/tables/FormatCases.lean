@@ -14,9 +14,10 @@ def main : IO Unit := do
 
   for (label, separator) in [("csv", ','), ("tsv", '\t')] do
     for n in List.range 6 do
-      for input in inputs ['甲', separator, '\n', '\r', '"'] n do
-        let rows := if separator == ',' then TableFormat.csvRows input
-          else if (TableFormat.firstLoneCR input 0).isSome then none else some (TableFormat.tsvRows input)
+      for input in inputs [TableFormat.bom, '甲', separator, '\n', '\r', '"'] n do
+        let payload := TableFormat.skipFileMarker input
+        let rows := if separator == ',' then TableFormat.csvRows payload
+          else if (TableFormat.firstLoneCR input 0).isSome then none else some (TableFormat.tsvRows payload)
         let output := match rows with
           | some (first :: rest) =>
             if rest.all (fun row => row.length == first.length) then

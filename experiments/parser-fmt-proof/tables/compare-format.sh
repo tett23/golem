@@ -15,5 +15,5 @@ if ! cmp -s "$work/haskell" "$work/lean"; then
   diff -u "$work/haskell" "$work/lean" | head -n 12 >&2
   exit 1
 fi
-test "$(wc -l < "$work/haskell")" -eq 124999
-echo '97656 formatter outputs and 3906 inputs per CSV/TSV parser matched; 19531 diagnostic lists matched'
+test "$(wc -l < "$work/haskell")" -eq 135849
+echo '97656 formatter outputs and 9331 inputs per CSV/TSV parser matched; 19531 diagnostic lists matched'

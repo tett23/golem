@@ -92,6 +92,14 @@ theorem newlineIdempotent (input : List Char) :
 -- Golem ADR 0354 applies only to table files.
 def bom : Char := Char.ofNat 0xFEFF
 
+-- parseCsv and parseTsv consume a single marker when reading a file.
+def skipFileMarker : List Char → List Char
+  | [] => []
+  | c :: rest => if c = bom then rest else c :: rest
+
+theorem readerSkipsOneMarker (payload : List Char) :
+    skipFileMarker (bom :: payload) = payload := by simp [skipFileMarker]
+
 def stripBOM : List Char → List Char
   | [] => []
   | c :: rest => if c = bom then stripBOM rest else c :: rest
