@@ -1732,6 +1732,20 @@ theorem I3_textReadyZero_iff_hereAtBreakOne
   exact (I3_textReadyZero_iff_no_earlier_text items pos).trans
     (I3_break_one_text_iff_first items pos).symm
 
+theorem I3_one_break_figure_load_matches_alloy
+    (items : List SourceItem) (textPos figurePos : Nat)
+    (member : .text textPos ∈ items) (earlier : textPos < figurePos)
+    (prior blank size : Nat) :
+    1 + (textBeforeCount items figurePos - 1) + prior + blank + size =
+      textBeforeCount items figurePos + prior + blank + size := by
+  have hit : .text textPos ∈ items.filter (earlierTextItem figurePos) :=
+    List.mem_filter.mpr ⟨member, by simp [earlierTextItem, earlier]⟩
+  have positive : 0 < textBeforeCount items figurePos := by
+    cases h : items.filter (earlierTextItem figurePos) with
+    | nil => simp [h] at hit
+    | cons x xs => simp [textBeforeCount, h]
+  omega
+
 theorem I3_blankFigureOrder_two_figures_zero_break
     (capacity used blankPos firstPos secondPos firstSize secondSize : Nat)
     (items : List SourceItem) (usedFits : used ≤ capacity)
@@ -1779,6 +1793,46 @@ theorem I3_blankFigureOrder_no_blank_two_figures_zero_break
     textReadyZero items (if f = 0 then firstPos else secondPos)
   let textBefore : Nat → Nat := fun f =>
     textBeforeCount items (if f = 0 then firstPos else secondPos)
+  let size : Nat → Nat := fun f => if f = 0 then firstSize else secondSize
+  obtain ⟨kept, rule⟩ := I3_figuresRuleWithLoad_exists 2 capacity used
+    ready textBefore size (fun _ => false)
+  refine ⟨kept, rule, ?_⟩
+  have firstFits : kept 0 = true → used + firstSize ≤ capacity := by
+    intro present
+    have room := I3_kept_figure_has_room 2 capacity used kept
+      (fun f => ready f = true) textBefore size (fun _ => false)
+      rule 0 (by decide) present
+    simp [figureHasRoom, priorFigureLines, size] at room
+    omega
+  have secondFits : kept 1 = true →
+      used + firstSize + secondSize ≤ capacity := by
+    intro present
+    have room := I3_kept_figure_has_room 2 capacity used kept
+      (fun f => ready f = true) textBefore size (fun _ => false)
+      rule 1 (by decide) present
+    simp [figureHasRoom, priorFigureLines, size,
+      show List.range 1 = [0] from rfl] at room
+    omega
+  have figureOrder : kept 1 = true → kept 0 = true := by
+    intro present
+    exact ((rule 1 (by decide)).mp present).2.1 0 (by decide)
+  have fits := I3_two_figure_fits_from_blank_cause capacity used firstSize
+    secondSize (kept 0) (kept 1) false false false usedFits
+    (by simpa using firstFits) (by simpa using secondFits)
+    figureOrder (by simp) (by simp)
+  simpa using fits
+
+theorem I3_no_blank_two_figures_arbitrary_text
+    (capacity used firstSize secondSize : Nat)
+    (ready : Nat → Bool) (textBefore : Nat → Nat)
+    (usedFits : used ≤ capacity) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 2 capacity used kept
+        (fun f => ready f = true) textBefore
+        (fun f => if f = 0 then firstSize else secondSize)
+        (fun _ => false) ∧
+      used + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) ≤ capacity := by
   let size : Nat → Nat := fun f => if f = 0 then firstSize else secondSize
   obtain ⟨kept, rule⟩ := I3_figuresRuleWithLoad_exists 2 capacity used
     ready textBefore size (fun _ => false)
