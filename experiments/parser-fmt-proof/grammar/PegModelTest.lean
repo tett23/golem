@@ -23,6 +23,8 @@ theorem literal_roundtrip (grammar : PegModel.Grammar) (value written : String)
 
 theorem literal_production_count : Generated.literalProductions.length = 23 := by rfl
 
+theorem class_plus_production_count : Generated.classPlusProductions.length = 2 := by rfl
+
 theorem class_hit (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
     (written : String) (c : Char) (rest : List Char) (fuel : Nat)
     (hit : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
@@ -49,11 +51,93 @@ theorem class_star_roundtrip (grammar : PegModel.Grammar) (ranges : List (Nat ×
         exact all x (by simp [hx])
       simp [ih tailAll, Id.run]
 
+theorem class_plus_roundtrip (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
+    (written : String) (first : Char) (tail : List Char)
+    (firstHit : ranges.any (fun (lo, hi) => lo ≤ first.toNat && first.toNat ≤ hi) = true)
+    (tailHit : ∀ c ∈ tail, ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
+    PegModel.recognizeEnv grammar [] (tail.length + 3) (.plus (.charClass ranges written))
+      (first :: tail) = .ok (some []) := by
+  have hit : PegModel.recognizeEnv grammar [] (tail.length + 2) (.charClass ranges written)
+      (first :: tail) = .ok (some tail) := by
+    simpa [Nat.add_assoc] using class_hit grammar ranges written first tail (tail.length + 1) firstHit
+  change (match PegModel.recognizeEnv grammar [] (tail.length + 2) (.charClass ranges written)
+      (first :: tail) with
+    | .error reason => Except.error reason
+    | .ok none => Except.ok none
+    | .ok (some rest) =>
+        if rest.length < (first :: tail).length then
+          PegModel.recognizeEnv grammar [] (tail.length + 2) (.star (.charClass ranges written)) rest
+        else Except.error "zero-width repetition") = .ok (some [])
+  rw [hit]
+  simp [class_star_roundtrip grammar ranges written tail tailHit]
+
+theorem class_star_boundary (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
+    (written : String) (xs rest : List Char)
+    (all : ∀ c ∈ xs, ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true)
+    (boundary : PegModel.recognizeEnv grammar [] 1 (.charClass ranges written) rest = .ok none) :
+    PegModel.recognizeEnv grammar [] (xs.length + 2) (.star (.charClass ranges written))
+      (xs ++ rest) = .ok (some rest) := by
+  induction xs with
+  | nil =>
+      simp only [List.length_nil, Nat.zero_add, List.nil_append]
+      change (match PegModel.recognizeEnv grammar [] 1 (.charClass ranges written) rest with
+        | .error reason => Except.error reason
+        | .ok none => Except.ok (some rest)
+        | .ok (some next) =>
+            if next.length < rest.length then
+              PegModel.recognizeEnv grammar [] 1 (.star (.charClass ranges written)) next
+            else Except.error "zero-width repetition") = .ok (some rest)
+      rw [boundary]
+  | cons c tail ih =>
+      have hit : PegModel.recognizeEnv grammar [] (tail.length + 2) (.charClass ranges written)
+          (c :: tail ++ rest) = .ok (some (tail ++ rest)) := by
+        simpa [Nat.add_assoc] using class_hit grammar ranges written c (tail ++ rest)
+          (tail.length + 1) (all c (by simp))
+      have tailAll : ∀ x ∈ tail, ranges.any (fun (lo, hi) => lo ≤ x.toNat && x.toNat ≤ hi) = true := by
+        intro x hx
+        exact all x (by simp [hx])
+      simp only [List.length_cons, Nat.succ_eq_add_one, Nat.add_assoc]
+      change (match PegModel.recognizeEnv grammar [] (tail.length + 2) (.charClass ranges written)
+          (c :: tail ++ rest) with
+        | .error reason => Except.error reason
+        | .ok none => Except.ok (some (c :: tail ++ rest))
+        | .ok (some next) =>
+            if next.length < (c :: tail ++ rest).length then
+              PegModel.recognizeEnv grammar [] (tail.length + 2) (.star (.charClass ranges written)) next
+            else Except.error "zero-width repetition") = .ok (some rest)
+      rw [hit]
+      simp [ih tailAll, Id.run]
+
+theorem class_plus_boundary (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
+    (written : String) (first : Char) (tail rest : List Char)
+    (firstHit : ranges.any (fun (lo, hi) => lo ≤ first.toNat && first.toNat ≤ hi) = true)
+    (tailHit : ∀ c ∈ tail, ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true)
+    (boundary : PegModel.recognizeEnv grammar [] 1 (.charClass ranges written) rest = .ok none) :
+    PegModel.recognizeEnv grammar [] (tail.length + 3) (.plus (.charClass ranges written))
+      (first :: tail ++ rest) = .ok (some rest) := by
+  have hit : PegModel.recognizeEnv grammar [] (tail.length + 2) (.charClass ranges written)
+      (first :: tail ++ rest) = .ok (some (tail ++ rest)) := by
+    simpa [Nat.add_assoc] using class_hit grammar ranges written first (tail ++ rest)
+      (tail.length + 1) firstHit
+  change (match PegModel.recognizeEnv grammar [] (tail.length + 2) (.charClass ranges written)
+      (first :: tail ++ rest) with
+    | .error reason => Except.error reason
+    | .ok none => Except.ok none
+    | .ok (some next) =>
+        if next.length < (first :: tail ++ rest).length then
+          PegModel.recognizeEnv grammar [] (tail.length + 2) (.star (.charClass ranges written)) next
+        else Except.error "zero-width repetition") = .ok (some rest)
+  rw [hit]
+  simp [class_star_boundary grammar ranges written tail rest tailHit boundary]
+
 example : PegModel.recognize Generated.pegGrammar 12 (.ref "Ws" []) " \t!".toList =
     .ok (some "!".toList) := by rfl
 
 example : PegModel.recognize Generated.pegGrammar 12 (.ref "Lang" []) "en-US!".toList =
     .ok (some "!".toList) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300 "```en-US\nx\n```\n".toList =
+    .ok (some []) := by rfl
 
 example : PegModel.recognize Generated.pegGrammar 4 (.ref "Nl" []) "\nx".toList =
     .ok (some "x".toList) := by rfl
