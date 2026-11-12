@@ -188,6 +188,14 @@ const wordFullyProved = word === shapes.Word[1] &&
   wordAst.alts.length === 2 && wordAst.alts.every(alt =>
     alt.action?.trim() === '()' && alt.constructor === null &&
     alt.items.every(item => item.bind === null));
+// PegModelTest.generated_mul_choice_total covers the guarded operators and
+// the slash fallback on every input, including ** and %% boundaries.
+const mulOpAst = ast?.rules.find(rule => rule.name === 'MulOp');
+const mulOpFullyProved = rule('MulOp') === "'*' !'*' / '/' / '%' !'%'" &&
+  mulOpAst?.params.length === 0 && mulOpAst.templateParams.length === 0 &&
+  mulOpAst.alts.length === 3 && mulOpAst.alts.every(alt =>
+    alt.action?.trim() === '()' && alt.constructor === null &&
+    alt.items.every(item => item.bind === null));
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -261,6 +269,7 @@ if (!fragment && ast) {
   // theorems cover their enclosing alternatives.
   for (const rule of ast.rules) {
     if (wordFullyProved && rule.name === 'Word') continue;
+    if (mulOpFullyProved && rule.name === 'MulOp') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;

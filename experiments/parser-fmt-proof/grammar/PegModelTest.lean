@@ -1224,4 +1224,125 @@ theorem generated_word_ordinary_total (input : List Char) (extra : Nat)
         (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|\\[\"\\\\]"), .any]]))
     input extra missPrefix
 
+theorem literal_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (fuel : Nat) (value written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 1) (.lit value written) input =
+      .ok (if value.toList.isPrefixOf input then some (input.drop value.toList.length) else none) := by
+  rfl
+
+theorem not_literal_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (fuel : Nat) (value written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 2) (.notPred (.lit value written)) input =
+      .ok (if value.toList.isPrefixOf input then none else some input) := by
+  have fuelEq : fuel + 2 = (fuel + 1) + 1 := by omega
+  rw [fuelEq]
+  change (match PegModel.recognizeEnv grammar env (fuel + 1) (.lit value written) input with
+    | Except.error reason => Except.error reason
+    | Except.ok none => Except.ok (some input)
+    | Except.ok (some _) => Except.ok none) = _
+  rw [literal_total]
+  cases h : value.toList.isPrefixOf input <;> simp [h]
+
+theorem sequence_literal_guard (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (fuel : Nat) (value valueWritten guard guardWritten : String) (input : List Char) :
+    PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 3) item rest)
+      boundLength env [.lit value valueWritten, .notPred (.lit guard guardWritten)] input =
+      .ok (if value.toList.isPrefixOf input then
+        let rest := input.drop value.toList.length
+        if guard.toList.isPrefixOf rest then none else some rest
+        else none) := by
+  have literal := literal_total grammar env (fuel + 2) value valueWritten input
+  have fuelEq : fuel + 2 + 1 = fuel + 3 := by omega
+  rw [fuelEq] at literal
+  cases hv : value.toList.isPrefixOf input with
+  | false =>
+      simp [PegModel.runSequence, literal, hv] <;> rfl
+  | true =>
+      have guardProof := not_literal_total grammar env (fuel + 1) guard guardWritten
+        (input.drop value.toList.length)
+      have fuelEq2 : fuel + 1 + 2 = fuel + 3 := by omega
+      rw [fuelEq2] at guardProof
+      cases hg : guard.toList.isPrefixOf (input.drop value.toList.length) with
+      | false => simp [PegModel.runSequence, literal, guardProof, hv, hg] <;> rfl
+      | true => simp [PegModel.runSequence, literal, guardProof, hv, hg] <;> rfl
+
+theorem sequence_literal_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (fuel : Nat) (value written : String) (input : List Char) :
+    PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 1) item rest)
+      boundLength env [.lit value written] input =
+      .ok (if value.toList.isPrefixOf input then some (input.drop value.toList.length) else none) := by
+  have literal := literal_total grammar env fuel value written input
+  cases h : value.toList.isPrefixOf input <;>
+    simp [PegModel.runSequence, literal, h] <;> rfl
+
+theorem mul_choice_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv grammar env (fuel + 4)
+      (.choice [
+        [.lit "*" "'*'", .notPred (.lit "*" "'*'")],
+        [.lit "/" "'/'"],
+        [.lit "%" "'%'", .notPred (.lit "%" "'%'")]]) input =
+      .ok (let star := if ("*".toList).isPrefixOf input then
+          let rest := input.drop 1
+          if ("*".toList).isPrefixOf rest then none else some rest else none
+        let slash := if ("/".toList).isPrefixOf input then some (input.drop 1) else none
+        let percent := if ("%".toList).isPrefixOf input then
+          let rest := input.drop 1
+          if ("%".toList).isPrefixOf rest then none else some rest else none
+        match star with
+        | some x => some x
+        | none => match slash with
+          | some x => some x
+          | none => percent) := by
+  have fuelEq : fuel + 4 = (fuel + 3) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 3) item rest)
+      _ env items input)
+    [[.lit "*" "'*'", .notPred (.lit "*" "'*'")],
+     [.lit "/" "'/'"],
+     [.lit "%" "'%'", .notPred (.lit "%" "'%'")]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [sequence_literal_guard grammar env _ fuel "*" "'*'" "*" "'*'" input]
+  have slashFuel : fuel + 3 = (fuel + 2) + 1 := by omega
+  rw [slashFuel]
+  rw [sequence_literal_total grammar env _ (fuel + 2) "/" "'/'" input]
+  rw [sequence_literal_guard grammar env _ fuel "%" "'%'" "%" "'%'" input]
+  have starLength : ("*".toList).length = 1 := by decide
+  have slashLength : ("/".toList).length = 1 := by decide
+  have percentLength : ("%".toList).length = 1 := by decide
+  simp only [starLength, slashLength, percentLength]
+  cases hs : ("*".toList).isPrefixOf input <;>
+    cases hss : ("*".toList).isPrefixOf (input.drop 1) <;>
+    cases hl : ("/".toList).isPrefixOf input <;>
+    cases hp : ("%".toList).isPrefixOf input <;>
+    cases hpp : ("%".toList).isPrefixOf (input.drop 1) <;>
+    simp [hs, hss, hl, hp, hpp, Except.bind, Except.pure] <;> rfl
+
+theorem generated_mul_choice_total (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 5) (.ref "MulOp" []) input =
+      .ok (let star := if ("*".toList).isPrefixOf input then
+          let rest := input.drop 1
+          if ("*".toList).isPrefixOf rest then none else some rest else none
+        let slash := if ("/".toList).isPrefixOf input then some (input.drop 1) else none
+        let percent := if ("%".toList).isPrefixOf input then
+          let rest := input.drop 1
+          if ("%".toList).isPrefixOf rest then none else some rest else none
+        match star with
+        | some x => some x
+        | none => match slash with
+          | some x => some x
+          | none => percent) := by
+  have fuelEq : fuel + 5 = (fuel + 4) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4)
+    (.choice [[.lit "*" "'*'", .notPred (.lit "*" "'*'")],
+      [.lit "/" "'/'"], [.lit "%" "'%'", .notPred (.lit "%" "'%'")]]) input = _
+  exact mul_choice_total Generated.pegGrammar [] input fuel
+
 end PegModelTest
