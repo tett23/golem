@@ -233,6 +233,7 @@ theorem I3_heading_line_one_figure_exists
         · simp [headingLineFigureFits]
           omega
         · simp [headingLineAfterHeadings]
+
       · refine ⟨2, false, by decide, ?_, ?_, ?_⟩
         · simp [headingLineFigureRule, figureHere]
         · simp [headingLineFigureFits]
@@ -250,6 +251,34 @@ theorem I3_heading_line_one_figure_exists
         · simp [headingLineFigureFits]
           omega
         · simp [headingLineAfterHeadings]
+
+/- A nonempty run of headings followed by a nonempty paragraph has a
+   rule-compatible first break in any column with room for two lines:
+   break after the first heading if another heading follows, otherwise
+   include the paragraph's first line. -/
+def headingRunLineAfter (headings brk : Nat) : Prop :=
+  brk ≤ headings → brk ≠ headings
+
+theorem I3_heading_run_first_break_exists
+    (capacity headings lines : Nat)
+    (twoFit : 2 ≤ capacity) (someHeading : 1 ≤ headings)
+    (someLine : 1 ≤ lines) :
+    ∃ brk : Nat,
+      1 ≤ brk ∧ brk ≤ capacity ∧ brk ≤ headings + lines ∧
+      headingRunLineAfter headings brk ∧
+      (brk ≤ headings ∨
+        headingParagraphAfterHeadingsOnly brk headings) := by
+  by_cases oneHeading : headings = 1
+  · refine ⟨2, by omega, twoFit, by omega, ?_, ?_⟩
+    · intro _
+      omega
+    · right
+      intro earlier before _
+      omega
+  · have moreHeadings : 2 ≤ headings := by omega
+    refine ⟨1, by omega, by omega, by omega, ?_, Or.inl (by omega)⟩
+    intro _
+    omega
 
 /- An Alloy `decidedSome` witness: capacity 3, used 0, a recto heading
    at source/text index 0 and the sole line of a one-line paragraph at

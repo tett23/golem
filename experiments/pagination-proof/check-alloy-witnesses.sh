@@ -112,12 +112,24 @@ run rectoRunDifferenceFixture {
     keepHeadingR[p] and recto[p] and lineAfterHeadings[p] and
     not keepHeading21[p]
 } for 5 but 5 Int, exactly 4 Placement, exactly 3 Item
+
+run headingRunFixture {
+  inDomain and no Recto
+  Col.cap = 3 and Col.used = 0
+  #Heading = 2 and #Line = 1 and #Para = 1
+  no Figure and no Blank and no Space and no Need
+  all h: Heading | h.pos = 0 or h.pos = 1
+  all l: Line | l.pos = 2
+  some p: Placement | p.brk = 1 and base[p] and
+    orphanH[p] and widowH[p] and keepHeading21[p] and
+    lineAfterHeadings[p]
+} for 5 but 5 Int, exactly 4 Placement, exactly 3 Item
 EOF
 
 for command in decidedFixture keepAllFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
-    rectoRunDifferenceFixture; do
+    rectoRunDifferenceFixture headingRunFixture; do
   JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$tmp" "${ALLOY:-alloy6}" exec -q -n -t text \
     -c "$command" -o - "$tmp/witnesses.als" > "$tmp/result"
   grep -q '^---Trace---' "$tmp/result"
