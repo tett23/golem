@@ -2346,8 +2346,36 @@ theorem I3_text_rank_points_to_position
         rw [Nat.add_comm 1 (textRank rest pos), List.get?_cons_succ]
         exact ih inRest
 
+theorem I3_text_rank_preserves_order
+    (positions : List Nat) (ordered : strictTextPositions positions)
+    (first later : Nat) (firstIn : first ∈ positions)
+    (laterIn : later ∈ positions) (before : first < later) :
+    textRank positions first < textRank positions later := by
+  induction positions with
+  | nil => simp at firstIn
+  | cons head rest ih =>
+      obtain ⟨headBefore, restOrdered⟩ := ordered
+      rcases List.mem_cons.mp firstIn with firstHead | firstRest
+      · subst first
+        have distinct : head ≠ later := by omega
+        simp [textRank, distinct]
+        omega
+      · rcases List.mem_cons.mp laterIn with laterHead | laterRest
+        · subst later
+          have greater := headBefore first firstRest
+          omega
+        · have firstDistinct : head ≠ first := by
+            have greater := headBefore first firstRest
+            omega
+          have laterDistinct : head ≠ later := by
+            have greater := headBefore later laterRest
+            omega
+          have tail := ih restOrdered firstRest laterRest
+          simp [textRank, firstDistinct, laterDistinct]
+          omega
+
 theorem I3_text_role_at_source_rank
-    (items : List SourceItem) (roleForText : Nat → TextRole)
+    {Role : Type} (items : List SourceItem) (roleForText : Nat → Role)
     (pos : Nat) (member : .text pos ∈ items) :
     List.get? ((sourceTextPositions items).map roleForText)
       (textRank (sourceTextPositions items) pos) =
@@ -2462,6 +2490,53 @@ theorem I3_alloy_text_first_break_line_after
             have impossible := onlyHeadings 0 (by decide)
             simp at impossible
 
+theorem I3_alloy_text_first_break_lines_after_headings
+    (roles : List AlloyTextRole) :
+    ∀ i, i < alloyTextFirstBreak roles →
+      List.get? roles i = some .line →
+      ∀ earlier, earlier < i →
+        List.get? roles earlier = some .heading := by
+  intro i placed line earlier before
+  cases roles with
+  | nil =>
+      simp [alloyTextFirstBreak] at placed
+      omega
+  | cons first rest =>
+      cases first with
+      | heading =>
+          cases rest with
+          | nil =>
+              simp [alloyTextFirstBreak] at placed
+              omega
+          | cons second tail =>
+              cases second with
+              | heading =>
+                  simp [alloyTextFirstBreak] at placed
+                  omega
+              | line =>
+                  simp [alloyTextFirstBreak] at placed
+                  have one : i = 1 := by
+                    by_cases zero : i = 0
+                    · subst i
+                      simp at line
+                    · omega
+                  have earlierZero : earlier = 0 := by omega
+                  subst earlier
+                  simp
+              | space =>
+                  simp [alloyTextFirstBreak] at placed
+                  have zero : i = 0 := by omega
+                  subst i
+                  simp at line
+      | line =>
+          simp [alloyTextFirstBreak] at placed
+          omega
+      | space =>
+          simp [alloyTextFirstBreak] at placed
+          have zero : i = 0 := by omega
+          subst i
+          simp at line
+
 theorem I3_alloy_source_text_first_break
     (items : List SourceItem) (ordered : sourceOrdered items)
     (roleForText : Nat → AlloyTextRole) (capacity : Nat)
@@ -2491,6 +2566,40 @@ theorem I3_alloy_source_text_first_break
     rw [I3_text_rank_points_to_position (sourceTextPositions items) pos
       ((I3_source_text_position_member items pos).mpr member)]
     rfl
+
+theorem I3_alloy_placed_line_prior_text_heading
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (roleForText : Nat → AlloyTextRole)
+    (linePos earlierPos : Nat)
+    (lineIn : .text linePos ∈ items)
+    (earlierIn : .text earlierPos ∈ items)
+    (before : earlierPos < linePos)
+    (lineRole : roleForText linePos = .line)
+    (placed : textHereAtBreak items
+      (alloyTextFirstBreak
+        ((sourceTextPositions items).map roleForText)) linePos = true) :
+    roleForText earlierPos = .heading := by
+  have lineRank := (I3_text_here_iff_source_rank items ordered linePos
+    (alloyTextFirstBreak
+      ((sourceTextPositions items).map roleForText)) lineIn).mp placed
+  have earlierRank := I3_text_rank_preserves_order
+    (sourceTextPositions items)
+    (I3_source_text_positions_ordered items ordered)
+    earlierPos linePos
+    ((I3_source_text_position_member items earlierPos).mpr earlierIn)
+    ((I3_source_text_position_member items linePos).mpr lineIn)
+    before
+  have lineAt := I3_text_role_at_source_rank items roleForText linePos
+    lineIn
+  have earlierAt := I3_text_role_at_source_rank items roleForText
+    earlierPos earlierIn
+  have headingAt := I3_alloy_text_first_break_lines_after_headings
+    ((sourceTextPositions items).map roleForText)
+    (textRank (sourceTextPositions items) linePos)
+    lineRank (by simpa [lineRole] using lineAt)
+    (textRank (sourceTextPositions items) earlierPos) earlierRank
+  rw [earlierAt] at headingAt
+  exact Option.some.inj headingAt
 
 theorem I3_break_one_keeps_first_text
     (items : List SourceItem) (pos : Nat)
