@@ -213,6 +213,115 @@ theorem decidedSome :
   · intro earlier
     cases earlier <;> simp
 
+/- An Alloy `keepAllSome` witness: capacity 3, used 1, one line in a
+   paragraph marked AllLines, and no other item. At break 0 the
+   paragraph is not split, so all three keep rules hold. -/
+def keepAllSomeBroken (brk : Fin 2) : Prop :=
+  0 < brk.val ∧ 0 < 1 - brk.val
+
+def keepAllSomeBase (brk : Fin 2) : Prop :=
+  1 + brk.val ≤ 3
+
+def keepAllSomeFirst (brk : Fin 2) : Prop :=
+  keepAllSomeBroken brk → 2 ≤ brk.val
+
+def keepAllSomeLast (brk : Fin 2) : Prop :=
+  keepAllSomeBroken brk → 2 ≤ 1 - brk.val
+
+def keepAllSomeAll (brk : Fin 2) : Prop :=
+  keepAllSomeBroken brk → False
+
+theorem keepAllSome :
+    ∃ brk : Fin 2,
+      keepAllSomeBase brk ∧ keepAllSomeFirst brk ∧
+      keepAllSomeLast brk ∧ keepAllSomeAll brk := by
+  refine ⟨⟨0, by decide⟩, ?_⟩
+  simp [keepAllSomeBase, keepAllSomeFirst, keepAllSomeLast,
+    keepAllSomeAll, keepAllSomeBroken]
+
+def splitBroken (total here : Nat) : Prop :=
+  0 < here ∧ 0 < total - here
+
+def splitOrphan (total here : Nat) (starts : Prop) : Prop :=
+  splitBroken total here ∧ here = 1 → starts
+
+def splitWidow (total here : Nat) (starts : Prop) : Prop :=
+  splitBroken total here ∧ total - here = 1 → starts
+
+def splitKeepFirst (total here : Nat) (starts : Prop) : Prop :=
+  splitBroken total here ∧ ¬starts → 2 ≤ here
+
+def splitKeepLast (total here : Nat) (starts : Prop) : Prop :=
+  splitBroken total here ∧ ¬starts → 2 ≤ total - here
+
+theorem I3_keepDefault_count_equivalence
+    (total here : Nat) (starts : Prop) :
+    (splitOrphan total here starts ∧ splitWidow total here starts) ↔
+      (splitKeepFirst total here starts ∧
+        splitKeepLast total here starts) := by
+  by_cases hstart : starts
+  · simp [splitOrphan, splitWidow, splitKeepFirst, splitKeepLast, hstart]
+  · simp [splitOrphan, splitWidow, splitKeepFirst, splitKeepLast,
+      splitBroken, hstart]
+    constructor
+    · rintro ⟨orphan, widow⟩
+      constructor
+      · intro positive next
+        by_cases one : here = 1
+        · exact False.elim (orphan positive next one)
+        · omega
+      · intro positive next
+        by_cases one : total - here = 1
+        · exact False.elim (widow positive next one)
+        · omega
+    · rintro ⟨first, last⟩
+      constructor
+      · intro positive next one
+        have enough := first positive next
+        omega
+      · intro positive next one
+        have enough := last positive next
+        omega
+
+def orphanByBoundary (total here : Nat) (starts : Prop) : Prop :=
+  2 ≤ total ∧ 0 < here ∧ here ≤ 1 → starts
+
+def widowByBoundary (total here : Nat) (starts : Prop) : Prop :=
+  2 ≤ total ∧ total - 1 ≤ here ∧ here < total → starts
+
+theorem keepDefaultDiffers (total here : Nat) (starts : Prop)
+    (within : here ≤ total) :
+    (orphanByBoundary total here starts ∧
+      widowByBoundary total here starts) ↔
+      (splitKeepFirst total here starts ∧
+        splitKeepLast total here starts) := by
+  have orphanEq : orphanByBoundary total here starts ↔
+      splitOrphan total here starts := by
+    constructor
+    · intro boundary ⟨⟨positive, next⟩, one⟩
+      apply boundary
+      constructor
+      · omega
+      · exact ⟨positive, by omega⟩
+    · intro count ⟨atLeastTwo, positive, atMostOne⟩
+      apply count
+      constructor
+      · exact ⟨positive, by omega⟩
+      · omega
+  have widowEq : widowByBoundary total here starts ↔
+      splitWidow total here starts := by
+    constructor
+    · intro boundary ⟨⟨positive, _⟩, one⟩
+      apply boundary
+      exact ⟨by omega, by omega, by omega⟩
+    · intro count ⟨atLeastTwo, beforeLast, beforeEnd⟩
+      apply count
+      constructor
+      · exact ⟨by omega, by omega⟩
+      · omega
+  rw [orphanEq, widowEq]
+  exact I3_keepDefault_count_equivalence total here starts
+
 /- In the historical blank-line rule, the next block after the blank is
    the second figure even when it waits. The current rule skips waiting
    figures and finds the following heading. These functions capture that
@@ -2755,6 +2864,51 @@ def firstContentNotSent (used brk : Nat) (items : List SourceItem)
       | .figure pos => figureKeptAtPos config kept pos = true
       | .blank _ | .need _ => False
 
+def startsColumnModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool) (pos : Nat) : Prop :=
+  used = 0 ∧
+    (∀ textPos, .text textPos ∈ items → textPos < pos →
+      textHereAtBreak items brk textPos = false) ∧
+    (∀ figurePos, .figure figurePos ∈ items → figurePos < pos →
+      figureKeptAtPos config kept figurePos = false)
+
+structure ParagraphBoundary where
+  firstPos : Nat
+  secondPos : Nat
+  beforeLastPos : Nat
+  lastPos : Nat
+  lineCount : Nat
+
+def paragraphBoundaryValid (items : List SourceItem)
+    (p : ParagraphBoundary) : Prop :=
+  .text p.firstPos ∈ items ∧
+    .text p.beforeLastPos ∈ items ∧
+    p.firstPos ≤ p.beforeLastPos
+
+def orphanModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List ParagraphBoundary) : Prop :=
+  ∀ p ∈ paragraphs, 2 ≤ p.lineCount →
+    textHereAtBreak items brk p.firstPos = true →
+    textHereAtBreak items brk p.secondPos = false →
+    startsColumnModel used brk items config kept p.firstPos
+
+def widowModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List ParagraphBoundary) : Prop :=
+  ∀ p ∈ paragraphs, 2 ≤ p.lineCount →
+    textHereAtBreak items brk p.beforeLastPos = true →
+    textHereAtBreak items brk p.lastPos = false →
+    startsColumnModel used brk items config kept p.firstPos
+
+def headingKeepModel (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (headings : List Nat) (keptLines : Nat → Prop) : Prop :=
+  ∀ h ∈ headings,
+    textHereAtBreak items brk h = true →
+    ¬ startsColumnModel used brk items config kept h →
+    keptLines h
+
 theorem I3_old_blank_rule_projection
     (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
@@ -3732,6 +3886,90 @@ theorem I3_firstContent_figure_matches_config
       · have earlier := firstBeforeFigures firstPos firstInConfig
         omega
 
+theorem I3_first_content_text_starts_column
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (firstTextPos : Nat)
+    (first : firstContent items = some (.text firstTextPos)) :
+    startsColumnModel 0 1 items config kept firstTextPos := by
+  obtain ⟨_, firstTextOrder, textBeforeFigures⟩ :=
+    I3_firstContent_text_before_figures items ordered firstTextPos first
+  refine ⟨rfl, ?_, ?_⟩
+  · intro textPos member earlier
+    have later := firstTextOrder textPos member
+    exact False.elim (by omega)
+  · intro figurePos member earlier
+    have later := textBeforeFigures figurePos member
+    exact False.elim (by omega)
+
+theorem I3_first_break_here_is_first_text
+    (items : List SourceItem) (firstTextPos : Nat)
+    (firstText : .text firstTextPos ∈ items)
+    (first : ∀ textPos, .text textPos ∈ items → firstTextPos ≤ textPos)
+    (textPos : Nat) (member : .text textPos ∈ items)
+    (here : textHereAtBreak items 1 textPos = true) :
+    textPos = firstTextPos := by
+  have beforeFirst := (I3_break_one_text_iff_first items textPos).mp here
+    firstTextPos firstText
+  have firstBefore := first textPos member
+  omega
+
+theorem I3_first_text_break_preserves_boundary_rules
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (firstTextPos : Nat)
+    (first : firstContent items = some (.text firstTextPos))
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    orphanModel 0 1 items config kept paragraphs ∧
+      widowModel 0 1 items config kept paragraphs ∧
+      headingKeepModel 0 1 items config kept headings keptLines := by
+  obtain ⟨firstText, firstTextOrder, _⟩ :=
+    I3_firstContent_text_before_figures items ordered firstTextPos first
+  have starts := I3_first_content_text_starts_column items ordered
+    config kept firstTextPos first
+  refine ⟨?_, ?_, ?_⟩
+  · intro p member _ here _
+    obtain ⟨firstIn, _, _⟩ := paragraphsValid p member
+    have same := I3_first_break_here_is_first_text items firstTextPos
+      firstText firstTextOrder p.firstPos firstIn here
+    simpa [same] using starts
+  · intro p member _ here _
+    obtain ⟨firstIn, beforeLastIn, firstBeforeLast⟩ :=
+      paragraphsValid p member
+    have beforeLastEq := I3_first_break_here_is_first_text items
+      firstTextPos firstText firstTextOrder p.beforeLastPos beforeLastIn here
+    have firstAfter := firstTextOrder p.firstPos firstIn
+    have firstEq : p.firstPos = firstTextPos := by omega
+    simpa [firstEq] using starts
+  · intro h member here notStarts
+    have headingIn := headingsValid h member
+    have same := I3_first_break_here_is_first_text items firstTextPos
+      firstText firstTextOrder h headingIn here
+    exact False.elim (notStarts (by simpa [same] using starts))
+
+theorem I3_zero_break_preserves_boundary_rules
+    (used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool)
+    (paragraphs : List ParagraphBoundary)
+    (headings : List Nat) (keptLines : Nat → Prop) :
+    orphanModel used 0 items config kept paragraphs ∧
+      widowModel used 0 items config kept paragraphs ∧
+      headingKeepModel used 0 items config kept headings keptLines := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro p _ _ here _
+    simp [textHereAtBreak] at here
+    omega
+  · intro p _ _ here _
+    simp [textHereAtBreak] at here
+    omega
+  · intro h _ here _
+    simp [textHereAtBreak] at here
+    omega
+
 theorem I3_zeroBreakPlacement25_implies_orders
     (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
@@ -3792,6 +4030,8 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
        (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
         blank kept atTop placed)) ∧
       firstContentNotSent used brk items config kept ∧
+      (brk = 1 → ∃ firstTextPos,
+        firstContent items = some (.text firstTextPos)) ∧
       figuresInOrder (figureCount config) kept ∧
       (∀ f, f < figureCount config → kept f = true →
         ∀ textPos, .text textPos ∈ items →
@@ -3808,8 +4048,10 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
           I3_zeroBreakPlacement25_implies_orders capacity 0 items
             config blank kept atTop oldPlaced oldRule
         refine ⟨0, kept, atTop, oldPlaced, Or.inl ⟨rfl, oldRule⟩, ?_,
-          figureOrder, ?_⟩
+          ?_, figureOrder, ?_⟩
         · simp [firstContentNotSent, firstCase]
+        · intro impossible
+          cases impossible
         · intro f bound present textPos member earlier
           exact False.elim (textOrder f bound present textPos member earlier)
     | some item =>
@@ -3827,8 +4069,10 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
                 items config blank kept atTop oldPlaced figuresValid
                 firstText firstTextOrder textBeforeFigures oldRule
             refine ⟨1, kept, atTop, oldPlaced,
-              Or.inr ⟨rfl, rfl, oldRule⟩, ?_, figureOrder, textOrder⟩
-            simp [firstContentNotSent, firstCase]
+              Or.inr ⟨rfl, rfl, oldRule⟩, ?_, ?_, figureOrder, textOrder⟩
+            · simp [firstContentNotSent, firstCase]
+            · intro _
+              exact ⟨firstTextPos, rfl⟩
         | figure firstFigurePos =>
             obtain ⟨figureIn, noEarlierText, _⟩ :=
               I3_firstContent_figure_before_text items ordered
@@ -3848,11 +4092,13 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
                   I3_zeroBreakPlacement25_implies_orders capacity 0 items
                     (.one figurePos figureSize) blank kept atTop oldPlaced oldRule
                 refine ⟨0, kept, atTop, oldPlaced,
-                  Or.inl ⟨rfl, oldRule⟩, ?_, figureOrder, ?_⟩
+                  Or.inl ⟨rfl, oldRule⟩, ?_, ?_, figureOrder, ?_⟩
                 · intro _ item eq
                   rw [firstCase] at eq
                   cases eq
                   simpa [figureKeptAtPos, keptAtTwoPositions] using firstKept
+                · intro impossible
+                  cases impossible
                 · intro f bound present textPos member earlier
                   exact False.elim (textOrder f bound present textPos member earlier)
             | two firstPos firstSize secondPos secondSize =>
@@ -3871,11 +4117,13 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
                     (.two firstPos firstSize secondPos secondSize)
                     blank kept atTop oldPlaced oldRule
                 refine ⟨0, kept, atTop, oldPlaced,
-                  Or.inl ⟨rfl, oldRule⟩, ?_, figureOrder, ?_⟩
+                  Or.inl ⟨rfl, oldRule⟩, ?_, ?_, figureOrder, ?_⟩
                 · intro _ item eq
                   rw [firstCase] at eq
                   cases eq
                   simpa [figureKeptAtPos, keptAtTwoPositions] using firstKept
+                · intro impossible
+                  cases impossible
                 · intro f bound present textPos member earlier
                   exact False.elim (textOrder f bound present textPos member earlier)
         | blank pos =>
@@ -3893,9 +4141,11 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
       I3_zeroBreakPlacement25_implies_orders capacity used items
         config blank kept atTop oldPlaced oldRule
     refine ⟨0, kept, atTop, oldPlaced, Or.inl ⟨rfl, oldRule⟩, ?_,
-      figureOrder, ?_⟩
+      ?_, figureOrder, ?_⟩
     · intro empty
       exact False.elim (emptyColumn empty)
+    · intro impossible
+      cases impossible
     · intro f bound present textPos member earlier
       exact False.elim (textOrder f bound present textPos member earlier)
 
@@ -3912,7 +4162,7 @@ theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
        (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
         none kept atTop placed)) ∧
       firstContentNotSent used brk items config kept := by
-  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _⟩ :=
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, _⟩ :=
     blankRules25 capacity used items config none capacityPositive usedFits
       ordered figuresValid noBlank sizesFit
   exact ⟨brk, kept, atTop, placed, rule, noSend⟩
@@ -3934,10 +4184,57 @@ theorem figureOrder (capacity used : Nat) (items : List SourceItem)
         ∀ textPos, .text textPos ∈ items →
           textPos < figurePosAt config f →
             textHereAtBreak items brk textPos = true) := by
-  obtain ⟨brk, kept, atTop, placed, rule, _, figureOrder, textOrder⟩ :=
+  obtain ⟨brk, kept, atTop, placed, rule, _, _, figureOrder, textOrder⟩ :=
     blankRules25 capacity used items config none capacityPositive usedFits
       ordered figuresValid noBlank sizesFit
   exact ⟨brk, kept, atTop, placed, rule, figureOrder, textOrder⟩
+
+theorem keep21 (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (noBlank : blankDomain items none)
+    (sizesFit : figureSizesFit capacity config)
+    (paragraphs : List ParagraphBoundary)
+    (paragraphsValid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (headings : List Nat)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (keptLines : Nat → Prop) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement25 capacity used items config none
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement25 capacity items config
+        none kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      figuresInOrder (figureCount config) kept ∧
+      (∀ f, f < figureCount config → kept f = true →
+        ∀ textPos, .text textPos ∈ items →
+          textPos < figurePosAt config f →
+            textHereAtBreak items brk textPos = true) ∧
+      orphanModel used brk items config kept paragraphs ∧
+      widowModel used brk items config kept paragraphs ∧
+      headingKeepModel used brk items config kept headings keptLines := by
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase,
+    figureOrder, textOrder⟩ :=
+    blankRules25 capacity used items config none capacityPositive usedFits
+      ordered figuresValid noBlank sizesFit
+  rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
+  · subst brk
+    obtain ⟨orphan, widow, heading⟩ :=
+      I3_zero_break_preserves_boundary_rules used items config kept
+        paragraphs headings keptLines
+    exact ⟨0, kept, atTop, placed, Or.inl ⟨rfl, zeroRule⟩,
+      noSend, figureOrder, textOrder, orphan, widow, heading⟩
+  · subst brk
+    subst used
+    obtain ⟨firstTextPos, firstTextCase⟩ := firstCase rfl
+    obtain ⟨orphan, widow, heading⟩ :=
+      I3_first_text_break_preserves_boundary_rules items ordered
+        config kept firstTextPos firstTextCase paragraphs paragraphsValid
+        headings headingsValid keptLines
+    exact ⟨1, kept, atTop, placed, Or.inr ⟨rfl, rfl, oneRule⟩,
+      noSend, figureOrder, textOrder, orphan, widow, heading⟩
 
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
