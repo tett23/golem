@@ -1087,7 +1087,7 @@ theorem I3_blankAtTop_two_figures_source
     (used blankPos firstPos secondPos : Nat) (first second : Bool)
     (items : List SourceItem) (different : firstPos ≠ secondPos)
     (firstIn : .figure firstPos ∈ items)
-    (secondIn : .figure secondPos ∈ items)
+    (secondIn : second = true → .figure secondPos ∈ items)
     (onlyTwo : ∀ pos, .figure pos ∈ items →
       pos = firstPos ∨ pos = secondPos) :
     blankAtTopSource used blankPos items (fun _ => false)
@@ -1128,7 +1128,7 @@ theorem I3_blankAtTop_two_figures_source
         exact ⟨.figure firstPos, firstIn,
           by simp [keptBeforeBlank, keptAt, keptAtTwoPositions, before, present]⟩
       · apply (List.any_eq_true).mpr
-        exact ⟨.figure secondPos, secondIn,
+        exact ⟨.figure secondPos, secondIn present,
           by simp [keptBeforeBlank, keptAt, keptAtTwoPositions,
             Ne.symm different, before, present]⟩
   have pairIff : pairAny = true ↔
@@ -1150,6 +1150,22 @@ theorem I3_blankAtTop_two_figures_source
         (fun i => if i = 0 then first else second) := by
           simp [blankTopFromFigures, pairAny,
             show List.range 2 = [0, 1] from rfl]
+
+theorem I3_blankAtTop_one_figure_source
+    (used blankPos figurePos : Nat) (kept : Bool)
+    (items : List SourceItem) (figureIn : .figure figurePos ∈ items)
+    (onlyOne : ∀ pos, .figure pos ∈ items → pos = figurePos) :
+    blankAtTopSource used blankPos items (fun _ => false)
+      (keptAtTwoPositions figurePos (figurePos + 1) kept false) =
+      blankTopFromFigures used false 1
+        (fun _ => decide (figurePos < blankPos)) (fun _ => kept) := by
+  have two := I3_blankAtTop_two_figures_source used blankPos figurePos
+    (figurePos + 1) kept false items (Nat.ne_of_lt (Nat.lt_succ_self figurePos))
+    figureIn (by intro impossible; cases impossible)
+    (by intro pos member; exact Or.inl (onlyOne pos member))
+  simpa [blankTopFromFigures,
+    show List.range 1 = [0] from rfl,
+    show List.range 2 = [0, 1] from rfl] using two
 
 def beforeBlankMask (firstPos secondPos blankPos : Nat) (index : Nat) : Bool :=
   if index = 0 then decide (firstPos < blankPos)
@@ -1231,7 +1247,7 @@ theorem I3_blankFigureOrder_arbitrary_source_exists
       _ = blankAtTopSource used blankPos items (fun _ => false) keptAt := by
             exact (I3_blankAtTop_two_figures_source used blankPos firstPos
               secondPos (kept 0) (kept 1) items (Nat.ne_of_lt ordered)
-              firstIn secondIn onlyTwo).symm
+              firstIn (fun _ => secondIn) onlyTwo).symm
   let placed := blankPlacedFromSourceFull used blankPos (waitingFigureOf kept) items
     (fun _ => false) keptAt
   refine ⟨top, kept, placed, rule, topActual, rfl, ?_⟩
@@ -1273,6 +1289,86 @@ theorem I3_blankFigureOrder_arbitrary_source_exists
   exact I3_two_figure_fits_with_arbitrary_source capacity used blankPos
     firstPos secondPos firstSize secondSize (kept 0) (kept 1)
     (waitingFigureOf kept) items usedFits ordered onlyTwo firstRoom secondRoom orderedFigures
+
+theorem I3_blankFigureOrder_one_figure_arbitrary_source_exists
+    (capacity used blankPos figurePos figureSize : Nat)
+    (ready : Nat → Bool) (textBefore : Nat → Nat)
+    (waitingFigureOf : (Nat → Bool) → Nat → Bool) (items : List SourceItem)
+    (usedFits : used ≤ capacity) (blankDifferent : blankPos ≠ figurePos)
+    (figureIn : .figure figurePos ∈ items)
+    (onlyOne : ∀ pos, .figure pos ∈ items → pos = figurePos) :
+    ∃ atTop : Bool, ∃ kept : Nat → Bool, ∃ placed : Bool,
+      figuresRuleWithLoad 1 capacity used kept
+        (fun f => ready f = true) textBefore (fun _ => figureSize)
+        (fun f => !beforeBlankMask figurePos (figurePos + 1) blankPos f && !atTop) ∧
+      atTop = blankAtTopSource used blankPos items (fun _ => false)
+        (keptAtTwoPositions figurePos (figurePos + 1) (kept 0) false) ∧
+      placed = blankPlacedFromSourceFull used blankPos (waitingFigureOf kept) items
+        (fun _ => false)
+        (keptAtTwoPositions figurePos (figurePos + 1) (kept 0) false) ∧
+      used + (if kept 0 then figureSize else 0) +
+        (if placed then 1 else 0) ≤ capacity := by
+  let mask := beforeBlankMask figurePos (figurePos + 1) blankPos
+  obtain ⟨top, kept, topModel, rule⟩ :=
+    I3_blankFigureOrder_figures_with_load_exist 1 capacity used false
+      ready mask textBefore (fun _ => figureSize)
+      (I3_beforeBlankMask_prefix figurePos (figurePos + 1) blankPos
+        (Nat.lt_succ_self figurePos))
+  let keptAt := keptAtTwoPositions figurePos (figurePos + 1) (kept 0) false
+  have topActual : top = blankAtTopSource used blankPos items (fun _ => false) keptAt := by
+    calc
+      top = blankTopFromFigures used false 1 mask kept := topModel
+      _ = blankTopFromFigures used false 1
+          (fun _ => decide (figurePos < blankPos)) (fun _ => kept 0) := by
+            simp [blankTopFromFigures, mask, beforeBlankMask,
+              show List.range 1 = [0] from rfl]
+      _ = blankAtTopSource used blankPos items (fun _ => false) keptAt := by
+            exact (I3_blankAtTop_one_figure_source used blankPos figurePos
+              (kept 0) items figureIn onlyOne).symm
+  let placed := blankPlacedFromSourceFull used blankPos (waitingFigureOf kept) items
+    (fun _ => false) keptAt
+  refine ⟨top, kept, placed, rule, topActual, rfl, ?_⟩
+  have firstRoom : kept 0 = true →
+      used + (if blankBeforePosition used blankPos items keptAt figurePos then 1 else 0) +
+        figureSize ≤ capacity := by
+    intro present
+    have room := I3_kept_figure_has_room 1 capacity used kept
+      (fun f => ready f = true) textBefore (fun _ => figureSize)
+      (fun f => !mask f && !top) rule 0 (by decide) present
+    have beforeEq : blankBeforePosition used blankPos items keptAt figurePos =
+        (!mask 0 && !top) := by
+      rw [I3_blankBeforePosition_complement used blankPos figurePos items
+        keptAt blankDifferent, topActual]
+      rfl
+    rw [beforeEq]
+    simp [figureHasRoom, priorFigureLines, mask, beforeBlankMask] at room ⊢
+    omega
+  have fits := I3_two_figure_fits_with_arbitrary_source capacity used blankPos
+    figurePos (figurePos + 1) figureSize 0 (kept 0) false
+    (waitingFigureOf kept) items usedFits (Nat.lt_succ_self figurePos)
+    (by intro pos member; exact Or.inl (onlyOne pos member))
+    firstRoom (by intro impossible; cases impossible)
+    (by intro impossible; cases impossible)
+  simpa [placed] using fits
+
+theorem I3_blankFigureOrder_no_figure_arbitrary_source_exists
+    (capacity used blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (usedFits : used ≤ capacity) :
+    ∃ placed : Bool,
+      placed = blankPlacedFromSourceFull used blankPos waitingFigure items
+        (fun _ => false) (fun _ => false) ∧
+      used + (if placed then 1 else 0) ≤ capacity := by
+  have absent : blankPlacedFromSourceFull used blankPos waitingFigure items
+      (fun _ => false) (fun _ => false) = false := by
+    cases h : blankPlacedFromSourceFull used blankPos waitingFigure items
+      (fun _ => false) (fun _ => false) with
+    | false => rfl
+    | true =>
+        obtain ⟨candidate, _, _, kept, _⟩ :=
+          I3_blank_placed_at_zero_text_break_has_kept_figure used blankPos
+            waitingFigure items (fun _ => false) h
+        simp at kept
+  exact ⟨false, absent.symm, by simpa using usedFits⟩
 
 theorem I3_blankPlacedFromSource_eq_candidate_placement
     (blankPos : Nat) (waitingFigure : Nat → Bool)
