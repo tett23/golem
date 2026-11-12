@@ -10,7 +10,7 @@ export function tableCases(format) {
   for (const options of [`format=${format} align=left`, `align=left format=${format}`]) {
     const manuscript = `@table data.txt ${options}\n`;
     cases.push({ manuscript, expected, input: '\uFEFF' + expected.replaceAll('\n', '\r\n'), offset: null });
-    const variants = [expected];
+    const variants = [expected, '\uFEFF' + expected];
     for (const parity of [0, 1]) {
       let line = 0;
       const input = expected.replaceAll('\n', () => line++ % 2 === parity ? '\r\n' : '\n');

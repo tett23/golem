@@ -29,7 +29,10 @@ for (const format of ['csv', 'tsv']) {
         raw[c.offset] = 10;
         assert.equal(raw.toString().replaceAll('\r\n', '\n'), normal.expected);
       }
-      const plainBroken = broken.filter(c => !c.input.includes('\r\n'));
+      const plainBroken = broken.filter(c => !c.input.includes('\r\n') && !c.input.startsWith('\uFEFF'));
+      const prefixed = broken.filter(c => c.input.startsWith('\uFEFF'));
+      assert.deepEqual(prefixed.map(c => c.offset), positions.map(i => i + 3));
+      for (const c of prefixed) assert.equal(Buffer.from(c.input)[c.offset], 13);
       assert.deepEqual(plainBroken.map(c => c.offset), positions);
       for (const c of plainBroken) {
         const mutated = Buffer.from(bytes);
