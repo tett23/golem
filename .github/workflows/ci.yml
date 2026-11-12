@@ -1324,7 +1324,7 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           mkdir -p "$RUNNER_TEMP/logs"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
+          GITHUB_API_READ_SECONDS=3600 timeout -k 10 3600 sh scripts/ci/github-api-read.sh --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
             --jq '.jobs[] | select(.status == "completed" and .conclusion != "skipped") | [.id, .name] | @tsv' >"$RUNNER_TEMP/jobs.tsv"
           cat "$RUNNER_TEMP/jobs.tsv"
           while IFS="$(printf '\t')" read -r id name; do

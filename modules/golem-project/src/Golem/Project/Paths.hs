@@ -3,12 +3,13 @@ module Golem.Project.Paths
   ( normalizeRelative,
     PathError (..),
     resolveInRoot,
+    resolveEntryInRoot,
     pathErrorMessage,
   )
 where
 
 import Data.List (intercalate, isInfixOf, isPrefixOf)
-import System.Directory (canonicalizePath, doesFileExist)
+import System.Directory (canonicalizePath, doesFileExist, doesPathExist)
 import System.FilePath (makeRelative, splitDirectories, (</>))
 
 data PathError
@@ -45,10 +46,17 @@ normalizeRelative p
 relative to the canonical root and must stay inside it.
 -}
 resolveInRoot :: FilePath -> FilePath -> IO (Either PathError FilePath)
-resolveInRoot root p = case normalizeRelative p of
+resolveInRoot = resolveExisting doesFileExist
+
+-- | For completion, directories as well as files must be inside the root.
+resolveEntryInRoot :: FilePath -> FilePath -> IO (Either PathError FilePath)
+resolveEntryInRoot = resolveExisting doesPathExist
+
+resolveExisting :: (FilePath -> IO Bool) -> FilePath -> FilePath -> IO (Either PathError FilePath)
+resolveExisting existsAt root p = case normalizeRelative p of
   Left e -> pure (Left e)
   Right rel -> do
-    exists <- doesFileExist (root </> rel)
+    exists <- existsAt (root </> rel)
     if not exists
       then pure (Left Missing)
       else do

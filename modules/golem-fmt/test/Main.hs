@@ -175,6 +175,9 @@ tests =
         case format src of
           Formatted r -> astFingerprintWith removableEscape r === astFingerprintWith removableEscape (preprocess src)
           Unformattable _ -> discard,
+      testCase "Golem ADR 0351 I2: literal SrcSpan text remains part of the AST" $ do
+        let pairs = [("SrcSpan {first}", "SrcSpan {other}"), ("SrcSpan {first", "SrcSpan {other")]
+        mapM_ (\(a, b) -> assertBool (show (a, b)) (astFingerprint a /= astFingerprint b)) pairs,
       testCase "Golem ADR 0339 I2: comment boundaries and order format idempotently" $ do
         let source = "[cmd%%注%%]\n\n[cmd x %%注%% : 本文]\n\n[cmd \"x\"%%甲%%%%乙%%key=y]\n\n[= 1+%%注%%2]\n"
             expected = "[cmd %%注%%]\n\n[cmd x %%注%%: 本文]\n\n[cmd \"x\" %%甲%% %%乙%% key=y]\n\n[= 1+ %%注%% 2]\n"
@@ -199,6 +202,8 @@ tests =
         "rules"
         [ golden "blank-lines" "\n\n# 見出し\n\n\n\n本文\n\n \n\n次の段落",
           golden "command-spacing" "[strong:   a] と [ruby   漢字  :かん|  じ]。[= 1 ]\n\n@toc    depth=2   \n\n@set   v = 1\n",
+          testCase "ADR 0336 I1: format an unprefixed declaration without adding @" $
+            formatted "set   x = 3\n" @?= "set x = 3\n",
           golden "escapes" "\\a\\漢\\[\\]\\\\\\%と\\1\n\n\\1. 番号ではない\n",
           golden "trailing-whitespace" "@toc depth=2   \n\n- a  \n- b\t\n\n本文。  \n続き。 \n",
           golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n",

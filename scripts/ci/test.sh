@@ -768,6 +768,10 @@ run werror "$WE"
 expect "werror: -w in cabal.project.local (docs/adr/0259, decision 7)" 1
 if grep -qxF "cabal.project.local: package a" "$WORK/err"; then ok; else ng "werror: the section of cabal.project.local with -w (docs/adr/0259, decision 7)"; fi
 
+# Exercise the job-list query and warning scan together (Golem ADR 0349).
+run sh "$HERE/test-warning-job-list.sh"
+expect "CI warning job list I1-I4" 0
+
 # ---------------------------------------------------------------- log-warnings.sh
 # (docs/adr/0245 section 5, W4, W5, W6): lines of the logs of 40eb98ce with
 # their times, in testdata/log-warnings: one.txt the warning of

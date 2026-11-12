@@ -97,6 +97,8 @@ tomlTests =
           exactly "style.toml" "[aki-sets.mine]\nrules = [{ before = [▮" ["\"opening\"", "\"closing\"", "\"hyphen\"", "\"dividing\"", "\"middle-dot\"", "\"full-stop\"", "\"comma\"", "\"inseparable\"", "\"iteration\"", "\"prolonged-sound\"", "\"small-kana\"", "\"ideographic-space\"", "\"kana\"", "\"ideograph\"", "\"western\"", "\"japanese\"", "\"line-start\"", "\"paragraph-start\""],
           exactly "style.toml" "[aki-sets.mine]\nbased-on = ▮" ["\"gyomatsu-yakumono-hankaku\"", "\"gyomatsu-yakumono-zenkaku\""],
           exactly "style.toml" "[page]\nbleed = ▮" [],
+          exactly "style.toml" "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nindent = ▮" ["\"indent\""],
+          exactly "style.toml" "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nkeep-with-next = ▮" ["\"rows\""],
           testCase "the kinds of the candidates" $ do
             let kinds t = let (src, off) = cursor t in map cmpKind (tomlFileCompletions "style.toml" src off)
             take 1 (kinds "[▮") @?= [CkTable]
@@ -115,7 +117,7 @@ tomlTests =
           exactly "manifest.toml" "[targets.text]\nvariants = ['▮" ["vertical", "horizontal"],
           exactly "manifest.toml" "[targets.text]\nvariants = ▮" [],
           including "manifest.toml" "[diagnostics]\nsilence-notices = ['▮" ["G02062"] ["G03024"],
-          exactly "manifest.toml" "[diagnostics]\nsilence-info = ['▮" ["G05100", "G07047", "E05108"],
+          exactly "manifest.toml" "[diagnostics]\nsilence-info = ['▮" ["G02254", "G05100", "G07047", "E05108"],
           exactly "manifest.toml" "[vars]\nflag = ▮" []
         ],
       testGroup

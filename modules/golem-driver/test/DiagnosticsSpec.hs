@@ -157,7 +157,9 @@ everyNoticeProjects =
     source =
       T.concat
         [ TE.decodeUtf8 noticeSource,
-          "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
+          "\n@set legacy = 1\n\n", -- G02155 (Golem ADR 0336)
+          "\n本文。\n\n@blank-line 0\n\n", -- G02254 (an info)
+          "@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
           "あ[style inkless: ——]い\n\n", -- G07101
           "[style overhang: あ\x201Dい]\n\n", -- G07126 (docs/adr/0302)
@@ -732,6 +734,6 @@ outputDiagnosticTests =
         createDirectoryIfMissing True (tmp </> "fonts")
         BS.writeFile (tmp </> "fonts/v.otf") cff2
         p <- preflight (defaultPreflightOptions tmp)
-        map diagCode (filter isError (prDiagnostics p)) @?= [DiagnosticCode "G08019"]
+        map diagCode (filter isError (prDiagnostics p)) @?= [DiagnosticCode "G08019", DiagnosticCode "G09010"]
         assertBool "no PDF" (isNothing (prPdf p))
   ]

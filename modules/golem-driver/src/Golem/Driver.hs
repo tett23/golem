@@ -12,6 +12,7 @@ module Golem.Driver
     defaultOptions,
     BuildResult (..),
     build,
+    cleanFinderInfo,
     PreflightOptions (..),
     defaultPreflightOptions,
     PreflightResult (..),
@@ -54,7 +55,7 @@ import Control.Exception (SomeException, try)
 #if !defined(wasm32_HOST_ARCH)
 import Control.Exception qualified as Exception
 #endif
-import Control.Monad (filterM, forM, forM_, join, mfilter, when)
+import Control.Monad (forM, forM_, join, mfilter, unless, when)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -62,7 +63,7 @@ import Data.Either (fromRight, lefts, rights)
 import Data.List (isPrefixOf, nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -71,6 +72,7 @@ import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 #if !defined(wasm32_HOST_ARCH)
 import Foreign.C.Error (throwErrnoIfMinus1Retry_)
+import Foreign.C.String (CString)
 import Foreign.C.Types (CInt (..))
 #endif
 import Golem.Assemble
@@ -99,8 +101,8 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
-import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
-import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
+import Golem.Preflight (MissingGlyph (..), check, checkBleed, missingGlyphs, pageChecks)
+import Golem.Preflight.Rules (Level (LevelOff), Rules (..), parseRules, printRules)
 import Golem.Preflight.View (View)
 import Golem.Project
 import Golem.Project.Files (Files (..), diskFiles, memoryFiles)
@@ -114,6 +116,7 @@ import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
+import System.FilePath qualified as FilePath
 import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
 import System.Posix.Types (Fd (..))
 #endif
@@ -759,6 +762,19 @@ targetsOf m =
 
 #if !defined(wasm32_HOST_ARCH)
 foreign import ccall safe "golem_lock_directory" lockDirectory :: CInt -> IO CInt
+foreign import ccall safe "golem_clean_finder_info" cleanFinderInfoAt :: CString -> CString -> IO CInt
+
+-- | Remove only a regular Finder file in real project directories.
+cleanFinderInfo :: FilePath -> [FilePath] -> IO ()
+cleanFinderInfo root paths = do
+  exists <- doesDirectoryExist root
+  when exists $ do
+    forM_ (nub paths) $ \path -> do
+      let relative = FilePath.normalise path
+      BS.useAsCString (TE.encodeUtf8 (T.pack root)) $ \rootString ->
+        BS.useAsCString (TE.encodeUtf8 (T.pack relative)) $ \relativeString ->
+          throwErrnoIfMinus1Retry_ ("remove " <> root </> relative </> ".DS_Store")
+            (cleanFinderInfoAt rootString relativeString)
 
 -- | Hold an exclusive lock on the project directory while writing targets or
 -- removing an earlier PDF. The directory itself is the lock, so a build
@@ -774,18 +790,31 @@ withOutputLock root action = do
 #else
 withOutputLock :: FilePath -> IO a -> IO a
 withOutputLock _ action = action
+
+cleanFinderInfo :: FilePath -> [FilePath] -> IO ()
+cleanFinderInfo _ _ = pure ()
 #endif
 
 build :: BuildOptions -> IO BuildResult
 build opts = withOutputLock (optRoot opts) $ do
-  (result, _, selectedTargets) <- buildCore False opts
+  (result, _, _, selectedTargets) <- buildCore False opts
   let pdfDir = optRoot opts </> "build/pdf"
       pdfWasWritten = any ((== pdfDir) . takeDirectory) (brWritten result)
       pdfWasSelected = TargetPdf `elem` fromMaybe [TargetPdf] selectedTargets
+      selectedDirs = maybe [] (map targetOutputDir) selectedTargets
+  unless (optCheckOnly opts) $
+    cleanFinderInfo (optRoot opts) ("." : "build" : selectedDirs)
   when (optProfile opts == Prod && not (optCheckOnly opts) && pdfWasSelected && hasErrors (brDiagnostics result) && not pdfWasWritten) $ do
     unsafe <- unsafeOutputDirs (optRoot opts) [TargetPdf]
     when (null unsafe) (cleanDir pdfDir)
   pure result
+
+targetOutputDir :: Target -> FilePath
+targetOutputDir = \case
+  TargetHtml -> "build/html"
+  TargetEpub -> "build/epub"
+  TargetText -> "build/text"
+  TargetPdf -> "build/pdf"
 
 -- | The PDF of a project built from its files in memory (docs/adr/0199).
 data BuildInMemory = BuildInMemory
@@ -806,17 +835,17 @@ nothing. The PDF and the diagnostics are those of golem build --target pdf
 buildPdfInMemory :: Map FilePath BS.ByteString -> IO BuildInMemory
 buildPdfInMemory table = do
   let opts = (defaultOptions ".") {optFiles = memoryFiles table, optTargets = Just [TargetPdf], optParallel = False}
-  (r, pdf, _) <- buildCore True opts
+  (r, pdf, _, _) <- buildCore True opts
   pure (BuildInMemory (fst <$> pdf) (brDiagnostics r) (brSources r))
 
 {- | The build; with @inMemory@, the PDF is not written but returned with
 its view (golem preflight, golem-cli ADR 0006).
 -}
-buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View), Maybe [Target])
+buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View), Maybe (SrcSpan, Sp), Maybe [Target])
 buildCore inMemory opts = do
   ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
   case ev of
-    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, optTargets opts)
+    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, Nothing, optTargets opts)
     Right e -> do
       let project = evProject e
           finish = finishWith (manifestSilencedNotices (projectManifest project)) (manifestSilencedInfo (projectManifest project))
@@ -829,6 +858,7 @@ buildCore inMemory opts = do
               (withEvaluatedSources e (sourceInfos project))
           -- where diagnostics about style.toml point (golem-driver ADR 0016)
           diagFid = if hasStyle then styleFid else projectManifestFile project
+          bleed = Just (mkSpan diagFid 0 0, maybe 0 pageBleed (stPage (evStyle e)))
           -- G07002, and what style.toml decides of the layout (G07001, G07025; golem-driver ADR 0016)
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
@@ -868,8 +898,8 @@ buildCore inMemory opts = do
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, Just targets)
-        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, Just targets)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, bleed, Just targets)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
@@ -950,6 +980,7 @@ data PreflightResult = PreflightResult
     prView :: !(Maybe View),
     -- | the rules as the summary names them: their name, their file, or the built-in print
     prRulesLabel :: !Text,
+    prSkipped :: ![(Text, Text)],
     prBasedOn :: !Text
   }
 
@@ -977,12 +1008,37 @@ preflight po = do
             Left ds -> Left (ds, src)
             Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
   case rulesE of
-    Left (ds, src) -> pure (PreflightResult (sortDiagnostics ds) (Map.singleton rulesFid (SourceInfo path (mkLineIndex src))) Nothing Nothing "" "")
+    Left (ds, src) -> pure (PreflightResult (sortDiagnostics ds) (Map.singleton rulesFid (SourceInfo path (mkLineIndex src))) Nothing Nothing "" [] "")
     Right (rules, label) -> do
       let opts = (defaultOptions (poRoot po)) {optTargets = Just [TargetPdf], optProfile = Prod, optMarks = poMarks po, optFonts = poFonts po, optParallel = poParallel po}
-      (r, pdf, _) <- buildCore True opts
-      let checks = maybe [] (check rules . snd) pdf
-      pure (PreflightResult (sortDiagnostics (brDiagnostics r <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
+      (r, pdf, pageBleedInput, _) <- buildCore True opts
+      (sources, bleed) <- case (pdf, pageBleedInput) of
+        (Nothing, Nothing) -> independentBleed (optFiles opts) (brSources r)
+        _ -> pure (brSources r, pageBleedInput)
+      let (diagnostics, skipped) = case pdf of
+            Just (_, view) -> (filter ((/= DiagnosticCode "G08100") . diagCode) (brDiagnostics r) <> check rules view, [])
+            Nothing ->
+              ( brDiagnostics r <> maybe [] (uncurry (checkBleed rules)) bleed,
+                [(name, "ページ情報を作れませんでした") | name <- pageChecks rules]
+                  <> [("bleed-size", "版面設定を読み取れませんでした") | isNothing bleed, ruBleedSize rules /= LevelOff]
+              )
+      pure (PreflightResult (sortDiagnostics diagnostics) sources (fst <$> pdf) (snd <$> pdf) label skipped (ruBasedOn rules))
+
+-- | A manifest or source failure can precede the build's first read of the style.
+independentBleed :: Files -> Map FileId SourceInfo -> IO (Map FileId SourceInfo, Maybe (SrcSpan, Sp))
+independentBleed files infos
+  | any ((== "style.toml") . siPath) (Map.elems infos) = pure (infos, Nothing)
+  | otherwise =
+      filesResolve files "style.toml" >>= \case
+        Left _ -> pure (infos, Nothing)
+        Right rel -> do
+          bytes <- filesRead files rel
+          let fid = case Map.lookupMax infos of Nothing -> FileId 0; Just (FileId n, _) -> FileId (n + 1)
+          pure $ case readSourceFile fid "style.toml" bytes of
+            Right src
+              | Right style <- parseStyle fid src ->
+                  (Map.insert fid (readInfo "style.toml" bytes) infos, Just (mkSpan fid 0 0, maybe 0 pageBleed (stPage style)))
+            _ -> (infos, Nothing)
 
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
@@ -1060,14 +1116,18 @@ writeTargets inMemory opts e diagFid book missing targets = do
   unsafe <- if null written then pure [] else unsafeOutputDirs (optRoot opts) written
   case unsafe of
     [] -> writeTargetsChecked inMemory opts e diagFid book missing targets
-    ps -> pure ([], [diagnostic "G08013" Error (mkSpan diagFid 0 0) ("出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: " <> T.pack p) | p <- ps], Nothing)
+    ps -> pure ([], [diagnostic code Error (mkSpan diagFid 0 0) (reason <> ": " <> T.pack path) | (path, code, reason) <- ps], Nothing)
 
 {- | The output folders, relative to the root, that are symbolic links (to
 anywhere, or nowhere) or files that are not folders: @build@ and the folder
 of each target.
 -}
-unsafeOutputDirs :: FilePath -> [Target] -> IO [FilePath]
-unsafeOutputDirs root targets = filterM unsafe ("build" : nub (map targetDir targets))
+unsafeOutputDirs :: FilePath -> [Target] -> IO [(FilePath, Text, Text)]
+unsafeOutputDirs root targets = do
+  parent <- unsafe "build"
+  case parent of
+    Just problem -> pure [problem]
+    Nothing -> catMaybes <$> mapM unsafe (nub (map targetDir targets))
   where
     targetDir = \case
       TargetHtml -> "build/html"
@@ -1077,7 +1137,11 @@ unsafeOutputDirs root targets = filterM unsafe ("build" : nub (map targetDir tar
     unsafe rel = do
       let p = root </> rel
       link <- fromRight False <$> (try (pathIsSymbolicLink p) :: IO (Either SomeException Bool))
-      if link then pure True else doesFileExist p
+      if link
+        then pure (Just (rel, "G08013", "出力先がシンボリックリンクです"))
+        else do
+          file <- doesFileExist p
+          pure (if file then Just (rel, "G08104", "出力先に通常のファイルがあります") else Nothing)
 
 {- | Writes each target in turn: the written files, the diagnostics of the
 targets and the PDF kept in memory with its view. The HTML configuration

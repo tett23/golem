@@ -48,7 +48,7 @@ data Block
   | Table [Alignment] [[Located Inline]] [[[Located Inline]]]
   | -- | the language, the arguments after it and the lines with their spans (golem-driver ADR 0023)
     CodeBlock (Maybe Text) [Located Argument] [Located Text]
-  | SetVar (Located Name) (Located Expr)
+  | SetVar !(Maybe SrcSpan) (Located Name) (Located Expr)
   | BlockCommand (Located Name) [Located Argument] [Located Block]
   | Attributed [Located Block] (Maybe (Located Block))
   | ErrorBlock
