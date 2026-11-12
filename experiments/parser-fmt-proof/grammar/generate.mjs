@@ -233,6 +233,15 @@ const codeLineFullyProved = rule('CodeLine') === String.raw`(![\n] .)* Nl` &&
   codeLineAst.alts.length === 1 && codeLineAst.alts[0].items.length === 2 &&
   codeLineAst.alts[0].items.every(item => item.bind === null) &&
   codeLineAst.alts[0].action?.trim() === '()' && codeLineAst.alts[0].constructor === null;
+// ReservedBracketTotal.generated_reserved_total proves the canonical reference
+// for every input: [! throws the reserved label; every other prefix misses.
+const reservedBracketAst = ast?.rules.find(rule => rule.name === 'ReservedBracket');
+const reservedBracketFullyProved = rule('ReservedBracket') === "&'[!' (&{ False } '[!')^reserved" &&
+  reservedBracketAst?.params.length === 0 && reservedBracketAst.templateParams.length === 0 &&
+  reservedBracketAst.alts.length === 1 && reservedBracketAst.alts[0].items.length === 2 &&
+  reservedBracketAst.alts[0].items.every(item => item.bind === null) &&
+  reservedBracketAst.alts[0].action?.trim() === '()' &&
+  reservedBracketAst.alts[0].constructor === null;
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -312,6 +321,7 @@ if (!fragment && ast) {
     if (skipAllFullyProved && rule.name === 'SkipAll') continue;
     if (skipLineFullyProved && rule.name === 'SkipLine') continue;
     if (codeLineFullyProved && rule.name === 'CodeLine') continue;
+    if (reservedBracketFullyProved && rule.name === 'ReservedBracket') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
