@@ -1126,6 +1126,41 @@ theorem blankFigureOrder_twoFiguresBeforeBlank
   · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
     all_goals simp [firstFits] <;> omega
 
+theorem I3_blankWithNext_before_two_figures
+    (used : Nat) (first second : Bool) :
+    blankPlacedFromSourceFull used 0 (fun pos =>
+      if pos = 1 then false else
+        waitingFigureBool (fun i => if i = 0 then first else second) 1)
+      [.blank 0, .figure 1, .figure 2]
+      (fun _ => false)
+      (fun pos => if pos = 1 then first else second) =
+      decide (first = true ∧ used ≠ 0) := by
+  cases first <;> cases second <;> cases used <;>
+    simp [blankPlacedFromSourceFull, blankPlacedFromSource, blankAtTopSource,
+      nextOfSource, candidateAfterBlank, candidateWaits, sourceInColumn,
+      keptBeforeBlank, waitingFigureBool, earlierFigureSent]
+
+theorem I3_blankWithNext_between_two_figures
+    (used : Nat) (first second : Bool)
+    (ordered : second = true → first = true) :
+    blankPlacedFromSourceFull used 1 (fun _ =>
+      waitingFigureBool (fun i => if i = 0 then first else second) 1)
+      [.figure 0, .blank 1, .figure 2]
+      (fun _ => false)
+      (fun pos => if pos = 0 then first else second) = second := by
+  cases first <;> cases second <;> cases used <;>
+    simp_all [blankPlacedFromSourceFull, blankPlacedFromSource, blankAtTopSource,
+      nextOfSource, candidateAfterBlank, candidateWaits, sourceInColumn,
+      keptBeforeBlank, waitingFigureBool, earlierFigureSent]
+
+theorem I3_blankWithNext_after_two_figures
+    (used : Nat) (first second : Bool) :
+    blankPlacedFromSourceFull used 2 (fun _ => false)
+      [.figure 0, .figure 1, .blank 2]
+      (fun _ => false)
+      (fun pos => if pos = 0 then first else second) = false := by
+  rfl
+
 /- A zero-text break sends every text item on. `firstReady` and
    `secondReady` record whether each figure has any earlier text; unlike
    the preceding no-text theorem, either may therefore be unavailable. -/
@@ -1222,6 +1257,74 @@ theorem blankFigureOrder_twoFiguresAfterBlank_withText
         all_goals simp [top, firstFits, secondFits] <;> omega
     · refine ⟨false, false, false, ?_, ?_, ?_, ?_⟩
       all_goals simp [top, firstFits] <;> omega
+
+theorem I3_blankFigureOrder_before_two_figures_with_source
+    (capacity used firstSize secondSize : Nat)
+    (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (firstReady = true ∧
+        used + (if used = 0 then 0 else 1) + firstSize ≤ capacity) ∧
+      second = decide (secondReady = true ∧ first = true ∧
+        used + (if used = 0 then 0 else 1) + firstSize + secondSize ≤ capacity) ∧
+      placed = blankPlacedFromSourceFull used 0 (fun pos =>
+        if pos = 1 then false else
+          waitingFigureBool (fun i => if i = 0 then first else second) 1)
+        [.blank 0, .figure 1, .figure 2]
+        (fun _ => false) (fun pos => if pos = 1 then first else second) ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  obtain ⟨first, second, placed, firstRule, secondRule, blankRule, fits⟩ :=
+    blankFigureOrder_twoFiguresAfterBlank_withText capacity used firstSize
+      secondSize firstReady secondReady usedFits
+  refine ⟨first, second, placed, firstRule, secondRule, ?_, fits⟩
+  rw [I3_blankWithNext_before_two_figures]
+  exact blankRule
+
+theorem I3_blankFigureOrder_between_two_figures_with_source
+    (capacity used firstSize secondSize : Nat)
+    (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (firstReady = true ∧ used + firstSize ≤ capacity) ∧
+      second = decide (secondReady = true ∧ first = true ∧
+        used + firstSize + 1 + secondSize ≤ capacity) ∧
+      placed = blankPlacedFromSourceFull used 1 (fun _ =>
+        waitingFigureBool (fun i => if i = 0 then first else second) 1)
+        [.figure 0, .blank 1, .figure 2]
+        (fun _ => false) (fun pos => if pos = 0 then first else second) ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  obtain ⟨first, second, placed, firstRule, secondRule, blankRule, fits⟩ :=
+    blankFigureOrder_twoFiguresAroundBlank_withText capacity used firstSize
+      secondSize firstReady secondReady usedFits
+  have ordered : second = true → first = true := by
+    intro present
+    cases hfirst : first with
+    | true => rfl
+    | false =>
+        simp [hfirst] at secondRule
+        simp [secondRule] at present
+  refine ⟨first, second, placed, firstRule, secondRule, ?_, fits⟩
+  rw [I3_blankWithNext_between_two_figures used first second ordered]
+  exact blankRule
+
+theorem I3_blankFigureOrder_after_two_figures_with_source
+    (capacity used firstSize secondSize : Nat)
+    (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
+    ∃ first second placed : Bool,
+      first = decide (firstReady = true ∧ used + firstSize ≤ capacity) ∧
+      second = decide (secondReady = true ∧ first = true ∧
+        used + firstSize + secondSize ≤ capacity) ∧
+      placed = blankPlacedFromSourceFull used 2 (fun _ => false)
+        [.figure 0, .figure 1, .blank 2]
+        (fun _ => false) (fun pos => if pos = 0 then first else second) ∧
+      used + (if first then firstSize else 0) +
+        (if second then secondSize else 0) + (if placed then 1 else 0) ≤ capacity := by
+  obtain ⟨first, second, placed, firstRule, secondRule, blankRule, fits⟩ :=
+    blankFigureOrder_twoFiguresBeforeBlank_withText capacity used firstSize
+      secondSize firstReady secondReady usedFits
+  refine ⟨first, second, placed, firstRule, secondRule, ?_, fits⟩
+  rw [I3_blankWithNext_after_two_figures]
+  exact blankRule
 
 /- A need of two lines before a one-line figure in a column with one line
    left conflicts with the older rule that keeps every figure that fits. -/
