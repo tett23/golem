@@ -408,6 +408,99 @@ theorem I3_nextOfSource_minimal
                 rw [candidateEq, headPos, otherPos]
                 exact Nat.le_of_lt earlier
 
+theorem I3_nextOfSource_some_has_member
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (candidate : SourceCandidate)
+    (next : nextOfSource blankPos waitingFigure items = some candidate) :
+    ∃ item ∈ items,
+      candidateAfterBlank blankPos item = some candidate ∧
+      candidateWaits waitingFigure candidate = false := by
+  induction items with
+  | nil => simp [nextOfSource] at next
+  | cons head rest ih =>
+      cases h : candidateAfterBlank blankPos head with
+      | none =>
+          have nextRest : nextOfSource blankPos waitingFigure rest = some candidate := by
+            simpa [nextOfSource, h] using next
+          obtain ⟨item, member, selected, available⟩ := ih nextRest
+          exact ⟨item, List.mem_cons_of_mem head member, selected, available⟩
+      | some c =>
+          cases hw : candidateWaits waitingFigure c with
+          | true =>
+              have nextRest : nextOfSource blankPos waitingFigure rest = some candidate := by
+                simpa [nextOfSource, h, hw] using next
+              obtain ⟨item, member, selected, available⟩ := ih nextRest
+              exact ⟨item, List.mem_cons_of_mem head member, selected, available⟩
+          | false =>
+              have same : candidate = c := by
+                simpa [nextOfSource, h, hw] using next.symm
+              subst candidate
+              exact ⟨head, List.mem_cons_self head rest, h, hw⟩
+
+def alloyNextPosition (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (pos : Nat) : Prop :=
+  (∃ item ∈ items, ∃ candidate,
+      candidateAfterBlank blankPos item = some candidate ∧
+      candidateWaits waitingFigure candidate = false ∧ candidate.pos = pos) ∧
+  (∀ item ∈ items, ∀ candidate,
+      candidateAfterBlank blankPos item = some candidate →
+      candidateWaits waitingFigure candidate = false →
+      pos ≤ candidate.pos)
+
+theorem I3_candidate_member_filtered
+    (blankPos : Nat) (items : List SourceItem)
+    (item : SourceItem) (member : item ∈ items)
+    (candidate : SourceCandidate)
+    (selected : candidateAfterBlank blankPos item = some candidate) :
+    candidate ∈ candidatesAfterBlank blankPos items := by
+  induction items with
+  | nil => cases member
+  | cons head rest ih =>
+      rcases List.mem_cons.mp member with same | tail
+      · subst item
+        simp [candidatesAfterBlank, List.filterMap, selected]
+      · cases h : candidateAfterBlank blankPos head with
+        | none => simpa [candidatesAfterBlank, List.filterMap, h] using ih tail
+        | some c =>
+            simp only [candidatesAfterBlank, List.filterMap, h, List.mem_cons]
+            exact Or.inr (ih tail)
+
+theorem I3_nextOfSource_iff_alloy_min_position
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (ordered : sourceOrdered items) (pos : Nat) :
+    (∃ candidate, nextOfSource blankPos waitingFigure items = some candidate ∧
+      candidate.pos = pos) ↔
+      alloyNextPosition blankPos waitingFigure items pos := by
+  constructor
+  · rintro ⟨candidate, next, rfl⟩
+    obtain ⟨item, member, selected, available⟩ :=
+      I3_nextOfSource_some_has_member blankPos waitingFigure items candidate next
+    constructor
+    · exact ⟨item, member, candidate, selected, available, rfl⟩
+    · intro otherItem otherMember other otherSelected otherAvailable
+      exact I3_nextOfSource_minimal blankPos waitingFigure items ordered
+        candidate next otherItem otherMember other otherSelected otherAvailable
+  · intro spec
+    obtain ⟨⟨item, member, candidate, selected, available, equalPos⟩, minimum⟩ := spec
+    cases next : nextOfSource blankPos waitingFigure items with
+    | none =>
+        have allWait := (I3_nextOfSource_none_iff_no_available
+          blankPos waitingFigure items).mp next
+        have inCandidates : candidate ∈ candidatesAfterBlank blankPos items := by
+          exact I3_candidate_member_filtered blankPos items item member candidate selected
+        have impossible := allWait candidate inCandidates
+        simp [available] at impossible
+    | some first =>
+        obtain ⟨firstItem, firstMember, firstSelected, firstAvailable⟩ :=
+          I3_nextOfSource_some_has_member blankPos waitingFigure items first next
+        have firstLe : first.pos ≤ pos := by
+          rw [← equalPos]
+          exact I3_nextOfSource_minimal blankPos waitingFigure items ordered
+            first next item member candidate selected available
+        have posLe : pos ≤ first.pos :=
+          minimum firstItem firstMember first firstSelected firstAvailable
+        exact ⟨first, rfl, Nat.le_antisymm firstLe posLe⟩
+
 /- Number figures in source order. This is the `figureOrder` pair condition
    from the Alloy model without its finite limit of two figures. It says a
    kept figure requires every earlier figure to be kept. -/
