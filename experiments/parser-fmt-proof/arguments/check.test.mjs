@@ -169,3 +169,23 @@ for (const [argument, code, column] of [
     }
   });
 }
+
+test('Golem ADR 0351 I8: each call reports its own unsupplied suffix in declaration order', () => {
+  const original = '@import fn/book.emet as book\n\n前[book.triple   ]中[book.triple   1 2]後[book.triple   1]\n';
+  checkRoundTrip(original, (source, run) => {
+    const bytes = readFileSync(source);
+    const expected = [];
+    let cursor = 0;
+    for (const firstMissing of [1, 3, 2]) {
+      const close = bytes.indexOf(']', cursor);
+      assert.ok(close >= cursor);
+      cursor = close + 1;
+      for (let ordinal = firstMissing; ordinal <= 3; ordinal++) {
+        expected.push(['G02120', 'a.gm', cursor, cursor, String(ordinal)]);
+      }
+    }
+    const reports = JSON.parse(run(['check', '--format', 'json'], 1).stderr);
+    assert.deepEqual(reports.map(({ code, span, message }) =>
+      [code, span.file, span.start, span.end, /(\d+) 番目の位置引数がありません$/.exec(message)?.[1]]), expected);
+  }, 'missing-multiple-calls');
+});
