@@ -182,6 +182,20 @@ theorem nextAfterWaiting_skips_waiting_head
     nextAfterWaiting waiting (x :: xs) = nextAfterWaiting waiting xs := by
   simp [nextAfterWaiting, waits]
 
+/- Alloy `nextOf` is empty exactly when every candidate after the blank
+   waits. The statement holds for any finite source-order candidate list,
+   not just the model's two-figure limit. -/
+theorem I3_nextAfterWaiting_none_iff_all_wait
+    (waiting : Nat → Bool) (items : List Nat) :
+    nextAfterWaiting waiting items = none ↔
+      ∀ x ∈ items, waiting x = true := by
+  induction items with
+  | nil => simp [nextAfterWaiting]
+  | cons x xs ih =>
+      cases hx : waiting x with
+      | false => simp [nextAfterWaiting, hx]
+      | true => simp [nextAfterWaiting, hx, ih]
+
 /- Number figures in source order. This is the `figureOrder` pair condition
    from the Alloy model without its finite limit of two figures. It says a
    kept figure requires every earlier figure to be kept. -/
@@ -267,6 +281,13 @@ theorem blankPlaced_iff_next_in_column (waiting : Nat → Bool)
   | none => simp
   | some i =>
       cases hi : inColumn i <;> cases ht : atTop <;> simp [hi, ht]
+
+theorem I3_blank_dropped_after_all_wait (waiting : Nat → Bool)
+    (items : List Nat) (inColumn : Nat → Bool) (atTop : Bool)
+    (allWait : ∀ x ∈ items, waiting x = true) :
+    blankPlaced waiting items inColumn atTop = false := by
+  unfold blankPlaced
+  rw [(I3_nextAfterWaiting_none_iff_all_wait waiting items).mpr allWait]
 
 theorem blankBeforeWaiting25 :
     ∃ capacity used firstSize secondSize : Nat,
