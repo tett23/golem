@@ -91,6 +91,53 @@ theorem scanPositionBounds {rules seen position args finding}
           simp only [List.length_cons]
           omega
 
+-- Each finding precedes only findings at the same or a later position.
+def InSourceOrder : List Finding → Prop
+  | [] => True
+  | x :: xs => (∀ y ∈ xs, x.position ≤ y.position) ∧ InSourceOrder xs
+
+private theorem samePositionOrdered {xs : List Finding} {n : Nat}
+    (h : ∀ x ∈ xs, x.position = n) : InSourceOrder xs := by
+  induction xs with
+  | nil => trivial
+  | cons x xs ih =>
+      have tail : ∀ y ∈ xs, y.position = n := fun y hy => h y (.tail _ hy)
+      exact ⟨fun y hy => Nat.le_of_eq ((h x (.head _)).trans (tail y hy).symm), ih tail⟩
+
+private theorem orderedAppend {xs ys : List Finding} (left : InSourceOrder xs)
+    (right : InSourceOrder ys) (cross : ∀ x ∈ xs, ∀ y ∈ ys, x.position ≤ y.position) :
+    InSourceOrder (xs ++ ys) := by
+  induction xs with
+  | nil => exact right
+  | cons x xs ih =>
+      constructor
+      · intro y hy
+        exact (splitMembership hy).elim (left.1 y) (cross x (.head _) y)
+      · exact ih left.2 (fun z hz => cross z (.tail _ hz))
+
+theorem scanInSourceOrder (rules : List Rule) (args : List Argument)
+    (seen : List String) (position : Nat) : InSourceOrder (scan rules args seen position) := by
+  induction args generalizing seen position with
+  | nil => trivial
+  | cons a rest ih =>
+      apply orderedAppend (samePositionOrdered (fun _ h => occurrencePosition h)) (ih _ _)
+      intro x hx y hy
+      have bounds := (scanPositionBounds hy).1
+      rw [occurrencePosition hx]
+      omega
+
+theorem checkInSourceOrder (rules : List Rule) (args : List Argument) :
+    InSourceOrder (check rules args) := by
+  have endPos : ∀ f ∈ missing rules args, f.position = args.length := by
+    intro f hf
+    obtain ⟨rule, _, eq⟩ := List.mem_map.mp hf
+    subst f
+    rfl
+  apply orderedAppend (scanInSourceOrder rules args [] 0) (samePositionOrdered endPos)
+  intro x hx y hy
+  rw [endPos y hy]
+  exact Nat.le_of_lt (by simpa using (scanPositionBounds hx).2)
+
 -- Every reported occurrence belongs to the call. Only declaration
 -- omissions can point just past its last argument.
 theorem checkPosition {rules args finding} (found : finding ∈ check rules args) :
