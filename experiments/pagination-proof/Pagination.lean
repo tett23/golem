@@ -186,7 +186,7 @@ theorem nextAfterWaiting_skips_waiting_head
    waits. The statement holds for any finite source-order candidate list,
    not just the model's two-figure limit. -/
 theorem I3_nextAfterWaiting_none_iff_all_wait
-    (waiting : Nat → Bool) (items : List Nat) :
+    {α : Type} (waiting : α → Bool) (items : List α) :
     nextAfterWaiting waiting items = none ↔
       ∀ x ∈ items, waiting x = true := by
   induction items with
@@ -272,6 +272,14 @@ inductive SourceItem where
   | blank (pos : Nat)
   | need (pos : Nat)
 
+def sourcePos : SourceItem → Nat
+  | .text pos | .figure pos | .blank pos | .need pos => pos
+
+def sourceOrdered : List SourceItem → Prop
+  | [] => True
+  | item :: rest =>
+      (∀ later ∈ rest, sourcePos item < sourcePos later) ∧ sourceOrdered rest
+
 structure SourceCandidate where
   pos : Nat
   figure : Bool
@@ -281,6 +289,13 @@ def candidateAfterBlank (blankPos : Nat) : SourceItem → Option SourceCandidate
   | .figure pos => if blankPos < pos then some ⟨pos, true⟩ else none
   | .blank _ => none
   | .need _ => none
+
+theorem I3_candidateAfterBlank_preserves_position
+    (blankPos : Nat) (item : SourceItem) (candidate : SourceCandidate)
+    (selected : candidateAfterBlank blankPos item = some candidate) :
+    candidate.pos = sourcePos item := by
+  cases item <;> simp [candidateAfterBlank, sourcePos] at selected ⊢
+  all_goals rcases selected with ⟨_, rfl⟩ <;> rfl
 
 def candidatesAfterBlank (blankPos : Nat) (items : List SourceItem) :
     List SourceCandidate :=
@@ -328,6 +343,70 @@ theorem I3_nextOfSource_some_iff_first_candidate
   rw [I3_nextOfSource_eq_filtered_candidates]
   exact I3_nextAfterWaiting_some_iff_first
     (candidateWaits waitingFigure) (candidatesAfterBlank blankPos items) candidate
+
+theorem I3_nextOfSource_none_iff_no_available
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) :
+    nextOfSource blankPos waitingFigure items = none ↔
+      ∀ candidate ∈ candidatesAfterBlank blankPos items,
+        candidateWaits waitingFigure candidate = true := by
+  rw [I3_nextOfSource_eq_filtered_candidates]
+  exact I3_nextAfterWaiting_none_iff_all_wait
+    (candidateWaits waitingFigure) (candidatesAfterBlank blankPos items)
+
+/- On a source-position ordered input, the first eligible candidate is
+   also the least-position eligible item in Alloy's `nextOf` set. -/
+theorem I3_nextOfSource_minimal
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (candidate : SourceCandidate)
+    (next : nextOfSource blankPos waitingFigure items = some candidate)
+    (otherItem : SourceItem) (member : otherItem ∈ items)
+    (other : SourceCandidate)
+    (selected : candidateAfterBlank blankPos otherItem = some other)
+    (available : candidateWaits waitingFigure other = false) :
+    candidate.pos ≤ other.pos := by
+  induction items generalizing candidate with
+  | nil => cases member
+  | cons head rest ih =>
+      rcases ordered with ⟨headBefore, restOrdered⟩
+      rcases List.mem_cons.mp member with same | tail
+      · subst otherItem
+        cases hc : candidateAfterBlank blankPos head with
+        | none =>
+            simp [hc] at selected
+        | some headCandidate =>
+            cases hw : candidateWaits waitingFigure headCandidate with
+            | true =>
+                have otherEq : other = headCandidate := by simpa [hc] using selected.symm
+                subst other
+                simp [hw] at available
+            | false =>
+                have candidateEq : candidate = headCandidate := by
+                  simpa [nextOfSource, hc, hw] using next.symm
+                have otherEq : other = headCandidate := by simpa [hc] using selected.symm
+                subst candidate
+                subst other
+                exact Nat.le_refl _
+      · cases hc : candidateAfterBlank blankPos head with
+        | none =>
+            have nextRest : nextOfSource blankPos waitingFigure rest = some candidate := by
+              simpa [nextOfSource, hc] using next
+            exact ih restOrdered candidate nextRest tail
+        | some headCandidate =>
+            cases hw : candidateWaits waitingFigure headCandidate with
+            | true =>
+                have nextRest : nextOfSource blankPos waitingFigure rest = some candidate := by
+                  simpa [nextOfSource, hc, hw] using next
+                exact ih restOrdered candidate nextRest tail
+            | false =>
+                have candidateEq : candidate = headCandidate := by
+                  simpa [nextOfSource, hc, hw] using next.symm
+                have earlier := headBefore otherItem tail
+                have headPos := I3_candidateAfterBlank_preserves_position blankPos head headCandidate hc
+                have otherPos := I3_candidateAfterBlank_preserves_position blankPos otherItem other selected
+                rw [candidateEq, headPos, otherPos]
+                exact Nat.le_of_lt earlier
 
 /- Number figures in source order. This is the `figureOrder` pair condition
    from the Alloy model without its finite limit of two figures. It says a
@@ -435,12 +514,70 @@ def sourceInColumn (textHere keptFigure : Nat → Bool)
     (item : SourceCandidate) : Bool :=
   if item.figure then keptFigure item.pos else textHere item.pos
 
+def keptBeforeBlank (blankPos : Nat) (textHere keptFigure : Nat → Bool) :
+    SourceItem → Bool
+  | .text pos => decide (pos < blankPos) && textHere pos
+  | .figure pos => decide (pos < blankPos) && keptFigure pos
+  | .blank _ => false
+  | .need _ => false
+
+def blankAtTopSource (used blankPos : Nat) (items : List SourceItem)
+    (textHere keptFigure : Nat → Bool) : Bool :=
+  decide (used = 0) && !(items.any (keptBeforeBlank blankPos textHere keptFigure))
+
+theorem I3_blankAtTopSource_iff_empty_before
+    (used blankPos : Nat) (items : List SourceItem)
+    (textHere keptFigure : Nat → Bool) :
+    blankAtTopSource used blankPos items textHere keptFigure = true ↔
+      used = 0 ∧
+        ∀ item ∈ items, keptBeforeBlank blankPos textHere keptFigure item = false := by
+  have anyFalse :
+      items.any (keptBeforeBlank blankPos textHere keptFigure) = false ↔
+        ∀ item ∈ items, keptBeforeBlank blankPos textHere keptFigure item = false := by
+    constructor
+    · intro none item member
+      cases h : keptBeforeBlank blankPos textHere keptFigure item with
+      | false => rfl
+      | true =>
+          have someItem := (List.any_eq_true).mpr ⟨item, member, h⟩
+          simp [none] at someItem
+    · intro allNone
+      cases h : items.any (keptBeforeBlank blankPos textHere keptFigure) with
+      | false => rfl
+      | true =>
+          obtain ⟨item, member, present⟩ := (List.any_eq_true).mp h
+          have absent := allNone item member
+          simp [present] at absent
+  simp [blankAtTopSource, Bool.and_eq_true, Bool.not_eq_true, anyFalse]
+
 def blankPlacedFromSource (blankPos : Nat) (waitingFigure : Nat → Bool)
     (items : List SourceItem) (textHere keptFigure : Nat → Bool)
     (atTop : Bool) : Bool :=
   match nextOfSource blankPos waitingFigure items with
   | none => false
   | some item => sourceInColumn textHere keptFigure item && !atTop
+
+def blankPlacedFromSourceFull (used blankPos : Nat)
+    (waitingFigure : Nat → Bool) (items : List SourceItem)
+    (textHere keptFigure : Nat → Bool) : Bool :=
+  blankPlacedFromSource blankPos waitingFigure items textHere keptFigure
+    (blankAtTopSource used blankPos items textHere keptFigure)
+
+theorem I3_blankPlacedFromSourceFull_iff_next_in_column
+    (used blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (textHere keptFigure : Nat → Bool) :
+    blankPlacedFromSourceFull used blankPos waitingFigure items textHere keptFigure = true ↔
+      ∃ candidate,
+        nextOfSource blankPos waitingFigure items = some candidate ∧
+        sourceInColumn textHere keptFigure candidate = true ∧
+        blankAtTopSource used blankPos items textHere keptFigure = false := by
+  unfold blankPlacedFromSourceFull blankPlacedFromSource
+  cases h : nextOfSource blankPos waitingFigure items with
+  | none => simp [h]
+  | some candidate =>
+      cases hc : sourceInColumn textHere keptFigure candidate <;>
+        cases ht : blankAtTopSource used blankPos items textHere keptFigure <;>
+        simp [h, hc, ht]
 
 theorem I3_blankPlacedFromSource_eq_candidate_placement
     (blankPos : Nat) (waitingFigure : Nat → Bool)
