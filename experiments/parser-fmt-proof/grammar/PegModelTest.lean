@@ -23,6 +23,38 @@ theorem literal_roundtrip (grammar : PegModel.Grammar) (value written : String)
 
 theorem literal_production_count : Generated.literalProductions.length = 23 := by rfl
 
+theorem class_hit (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
+    (written : String) (c : Char) (rest : List Char) (fuel : Nat)
+    (hit : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
+    PegModel.recognizeEnv grammar [] (fuel + 1) (.charClass ranges written) (c :: rest) =
+      .ok (some rest) := by
+  simp [PegModel.recognizeEnv, hit, Id.run]
+  rfl
+
+theorem class_star_roundtrip (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
+    (written : String) (xs : List Char)
+    (all : ∀ c ∈ xs, ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
+    PegModel.recognizeEnv grammar [] (xs.length + 2) (.star (.charClass ranges written))
+      xs = .ok (some []) := by
+  induction xs with
+  | nil =>
+      rfl
+  | cons c tail ih =>
+      rw [PegModel.recognizeEnv]
+      simp only [List.length_cons]
+      have hit := class_hit grammar ranges written c tail (tail.length + 1) (all c (by simp))
+      rw [hit]
+      have tailAll : ∀ x ∈ tail, ranges.any (fun (lo, hi) => lo ≤ x.toNat && x.toNat ≤ hi) = true := by
+        intro x hx
+        exact all x (by simp [hx])
+      simp [ih tailAll, Id.run]
+
+example : PegModel.recognize Generated.pegGrammar 12 (.ref "Ws" []) " \t!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 12 (.ref "Lang" []) "en-US!".toList =
+    .ok (some "!".toList) := by rfl
+
 example : PegModel.recognize Generated.pegGrammar 4 (.ref "Nl" []) "\nx".toList =
     .ok (some "x".toList) := by rfl
 
