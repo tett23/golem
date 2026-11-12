@@ -14,10 +14,14 @@ def main : IO Unit := do
   let choices := [true, false].bind fun c => branches.bind fun (a, x) => branches.map fun (b, y) =>
     ("(" ++ (if c then "True" else "False") ++ " ? " ++ a ++ " : " ++ b ++ ")",
      Expr.ternary (.literal (.boolean c)) x y)
-  for (source, expr) in arithmetic 2 ++ choices do
-    for budget in List.range 5 do
+  let strings := ["", "甲", "𠮷", "a甲"]
+  let appends := strings.bind fun a => strings.map fun b =>
+    ("(\"" ++ a ++ "\" ++ \"" ++ b ++ "\")", Expr.append (.literal (.string a)) (.literal (.string b)))
+  for (source, expr) in arithmetic 2 ++ choices ++ appends do
+    for budget in List.range 6 do
       let value ← match eval budget ⟨[], []⟩ expr with
         | .ok (.nat n) => pure (toString n)
+        | .ok (.string s) => pure ("string " ++ s)
         | .error .overLimit => pure "E04100"
         | .error .divisionByZero => pure "G02003"
         | _ => throw (IO.userError s!"unexpected result for {source} at {budget}")
