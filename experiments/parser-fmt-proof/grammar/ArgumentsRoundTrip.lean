@@ -1,6 +1,18 @@
 import WordRoundTrip
+import PegModelTest
 
 namespace ArgumentsRoundTrip
+
+private theorem generated_ordinary_ranges :
+    WordRoundTrip.ordinaryWordRanges =
+      [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58),
+       (124, 124), (61, 61), (91, 91), (34, 34), (92, 92)] := by
+  rfl
+
+private theorem ordinary_permitted_is_allowed :
+    PegModelTest.permitted WordRoundTrip.ordinaryWordRanges = WordRoundTrip.allowed := by
+  funext c
+  simp [PegModelTest.permitted, WordRoundTrip.ordinary_ranges_allowed]
 
 -- A finite trace for the canonical recognizer's star operator.  Every hit is
 -- checked at the fuel that recognizeEnv actually passes to its child; the
@@ -242,6 +254,62 @@ private theorem safe_name_before_equals (name : WordRoundTrip.Word) (tail : List
               simp [WordRoundTrip.startsComment, chars] at safe
             · simp [WordRoundTrip.startsComment, hd]
           · simp [WordRoundTrip.startsComment, hc]
+
+private theorem special_prefix_implies_comment (input : List Char)
+    (hasPrefix : ("%%=".toList).isPrefixOf input = true) :
+    WordRoundTrip.startsComment input = true := by
+  cases input with
+  | nil => simp [List.isPrefixOf] at hasPrefix
+  | cons a rest =>
+      cases rest with
+      | nil => simp [List.isPrefixOf] at hasPrefix
+      | cons b more =>
+          simp [List.isPrefixOf] at hasPrefix
+          rcases hasPrefix with ⟨ha, hb, _⟩
+          subst a
+          subst b
+          rfl
+
+private theorem safe_name_misses_special (name : WordRoundTrip.Word)
+    (tail : List Char)
+    (safe : WordRoundTrip.startsComment name.chars = false) :
+    ("%%=".toList).isPrefixOf (name.chars ++ '=' :: tail) = false := by
+  have guarded := safe_name_before_equals name tail safe
+  cases hasPrefix : ("%%=".toList).isPrefixOf (name.chars ++ '=' :: tail) with
+  | false => rfl
+  | true =>
+      have comment := special_prefix_implies_comment _ hasPrefix
+      simp [guarded] at comment
+
+theorem canonical_word_before_equals (name : WordRoundTrip.Word)
+    (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.startsComment name.chars = false) :
+    PegModel.recognizeEnv Generated.pegGrammar []
+      ((name.chars ++ '=' :: tail).length + 8 + extra)
+      (.ref "Word" []) (name.chars ++ '=' :: tail) =
+        .ok (some ('=' :: tail)) := by
+  have miss := safe_name_misses_special name tail safe
+  have dropped : (name.chars ++ '=' :: tail).dropWhile WordRoundTrip.allowed =
+      '=' :: tail :=
+    WordRoundTrip.drop_append name.chars tail '=' name.valid (by decide)
+  cases chars : name.chars with
+  | nil => exact False.elim (name.nonempty chars)
+  | cons c rest =>
+      have miss' : ("%%=".toList).isPrefixOf ((c :: rest) ++ '=' :: tail) = false := by
+        simpa only [← chars] using miss
+      have model := PegModelTest.generated_word_ordinary_total
+        ((c :: rest) ++ '=' :: tail) extra miss'
+      rw [← generated_ordinary_ranges] at model
+      rw [ordinary_permitted_is_allowed] at model
+      have allowed : WordRoundTrip.allowed c = true := name.valid c (by simp [chars])
+      have rangeMiss : WordRoundTrip.ordinaryWordRanges.any
+          (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false := by
+        rw [WordRoundTrip.ordinary_ranges_allowed, allowed]
+        rfl
+      have droppedRest : (rest ++ '=' :: tail).dropWhile WordRoundTrip.allowed =
+          '=' :: tail := by
+        simpa [chars, List.dropWhile, allowed] using dropped
+      simpa [chars, rangeMiss, droppedRest] using model
 
 private theorem parse_one_printed
     (name value : WordRoundTrip.Word) (rest suffix : List Char)
