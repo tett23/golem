@@ -24,3 +24,12 @@ for (const format of ['csv', 'tsv']) {
     }
   });
 }
+
+test('Golem ADR 0351 I9: inspect IR exposes cell boundaries and significant whitespace', async () => {
+  const { inspectedCells } = await import('./cases.mjs');
+  assert.deepEqual(inspectedCells([
+    'tableHeader = [[Text @0..7 "a"]]',
+    'tableRows =',
+    '  [[[Text @0..7 "x\\ny"]], [[Text @0..7 ""]], [[Text @0..7 "z  "]]]',
+  ].join('\n')), [['a'], ['x\ny'], [''], ['z  ']]);
+});

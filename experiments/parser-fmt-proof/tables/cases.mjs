@@ -20,3 +20,15 @@ export function tableCases(format) {
   }
   return cases;
 }
+
+// The generated tables contain at most one Text inline per cell. Keep the row and
+// column nesting so that a moved empty cell changes the comparison.
+export function inspectedCells(ir) {
+  const values = label => {
+    const field = ir.match(new RegExp('^\\s*' + label + ' =\\s*(\\[.*\\])$', 'm'));
+    if (!field) throw new Error('Missing IR field ' + label);
+    return JSON.parse(field[1].replace(/\[Text @\d+\.\.\d+ ("(?:\\.|[^"\\])*")\]/gu, '$1'));
+  };
+  return [values('tableHeader'), ...values('tableRows')].map(row =>
+    row.map(cell => Array.isArray(cell) && cell.length === 0 ? '' : cell));
+}

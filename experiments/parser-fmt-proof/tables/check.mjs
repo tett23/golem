@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tableCases } from './cases.mjs';
+import { inspectedCells, tableCases } from './cases.mjs';
 
 const root = fileURLToPath(new URL('../../../', import.meta.url));
 const fixture = join(root, 'modules/golem-driver/test/fixtures/int-width');
@@ -35,15 +35,19 @@ for (const format of ['csv', 'tsv']) {
       copyFileSync(join(root, 'modules/golem-font/test/fonts/SourceSansPro-Regular.otf'), join(dir, 'fonts/latin.otf'));
       writeFileSync(source, c.manuscript);
       writeFileSync(table, c.input);
+      const cells = () => inspectedCells(run(['inspect', source, '--as', 'ir']).stdout);
+      const expectedCells = [['名', 'b'], [format === 'csv' ? 'x\ny' : 'x', ''], ['', 'z  ']];
       if (c.offset !== null) {
         const { stderr } = run(['check', '--format', 'json'], 1);
         const spans = JSON.parse(stderr).map(({ code, span }) => [code, span.file, span.start, span.end]);
         assert.deepEqual(spans, [['G02082', 'data.txt', c.offset, c.offset + 1]]);
       } else {
         run(['check', '--format', 'json']);
+        assert.deepEqual(cells(), expectedCells);
       }
       run(['fmt']);
       assert.equal(read(table), c.expected);
+      assert.deepEqual(cells(), expectedCells);
       const formatted = read(source);
       run(['check', '--format', 'json']);
       run(['fmt']);
