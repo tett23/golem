@@ -1,8 +1,8 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export function saveProjectFailure(suite, dir, original, error) {
-  const output = join(process.env.ROUND_TRIP_FAILURES || 'round-trip-failures', suite);
+export function saveProjectFailure(suite, dir, original, error, caseName = '') {
+  const output = join(process.env.ROUND_TRIP_FAILURES || 'round-trip-failures', suite, caseName);
   mkdirSync(output, { recursive: true });
   writeFileSync(join(output, 'original.gm'), original);
   for (const name of ['a.gm', 'fn/book.emet']) {
