@@ -311,9 +311,14 @@ try {
   const wordProof = spawnSync(lean, ['-o', join(work, 'WordRoundTrip.olean'), wordSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(wordProof.status, 0, wordProof.stderr);
-  const argumentsProof = spawnSync(lean, [join(here, 'ArgumentsRoundTrip.lean')],
+  const argumentsSource = join(work, 'ArgumentsRoundTrip.lean');
+  copyFileSync(join(here, 'ArgumentsRoundTrip.lean'), argumentsSource);
+  const argumentsProof = spawnSync(lean, ['-o', join(work, 'ArgumentsRoundTrip.olean'), argumentsSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(argumentsProof.status, 0, argumentsProof.stderr);
+  const printedArgumentsProof = spawnSync(lean, [join(here, 'PrintedArguments.lean')],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(printedArgumentsProof.status, 0, printedArgumentsProof.stderr);
 
   writeFileSync(generated, mutation);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
@@ -325,7 +330,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 4, negative mutations 26, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 5, negative mutations 26, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
