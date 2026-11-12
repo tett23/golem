@@ -200,6 +200,21 @@ theorem I10_repairAllLoneCR (input : DamagedLines canonical bytes) :
           have lf : c ≠ '\n' := by simpa using separate
           simpa [newlines, lf] using congrArg (List.cons '\n') ih
 
+theorem I10_formatDamagedTable (input : DamagedLines canonical contents)
+    (first : canonical.head? ≠ some bom) (count : Nat) :
+    formatTable (List.replicate count bom ++ contents) = canonical := by
+  unfold formatTable
+  rw [stripLeadingRun]
+  have clean : stripBOM contents = contents := by
+    cases input with
+    | empty => rfl
+    | @scalar c _ _ _ _ =>
+        have ordinary : c ≠ bom := by simpa using first
+        simp [stripBOM, ordinary]
+    | crlf _ | lone _ _ => simp [stripBOM, bom]
+  rw [clean]
+  exact I10_repairAllLoneCR input
+
 example : newlines false "a\r\r\nb\r".toList = "a\n\nb\n".toList := by decide
 
 def firstLoneCR : List Char → Nat → Option Nat
