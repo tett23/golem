@@ -63,6 +63,35 @@ def check (rules : List Rule) (args : List Argument) : List Finding :=
 def positionalMissing (supplied required : Nat) : List Nat :=
   ((List.range required).drop supplied).map (· + 1)
 
+private theorem rangeLoopAt (n : Nat) (tail : List Nat) (i : Nat) :
+    (List.range.loop n tail).get? i = if i < n then some i else tail.get? (i - n) := by
+  induction n generalizing tail with
+  | zero => simp [List.range.loop, Nat.not_lt_zero]
+  | succ n ih =>
+    rw [List.range.loop, ih]
+    by_cases lt : i < n
+    · simp [lt, Nat.lt_succ_of_lt lt]
+    · by_cases eq : i = n
+      · subst i; simp
+      · have a : ¬ i < n + 1 := by omega
+        have b : i - n = (i - (n + 1)) + 1 := by omega
+        simp [lt, a, b]
+
+private theorem droppedAt (xs : List α) (skip i : Nat) :
+    (xs.drop skip).get? i = xs.get? (skip + i) := by
+  induction skip generalizing xs with
+  | zero => simp
+  | succ n ih =>
+    cases xs with
+    | nil => simp
+    | cons x xs => simpa [List.drop, Nat.succ_add] using ih xs
+
+theorem I8_positionalMissingInOrder (supplied required i : Nat) :
+    (positionalMissing supplied required).get? i =
+      if supplied + i < required then some (supplied + i + 1) else none := by
+  simp only [positionalMissing, List.get?_map, droppedAt, List.range, rangeLoopAt]
+  split <;> simp_all
+
 example : positionalMissing 1 3 = [2, 3] := by decide
 
 private theorem splitMembership {xs ys : List α} {x : α} (h : x ∈ xs ++ ys) :
