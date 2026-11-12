@@ -1,7 +1,7 @@
 import { copyFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export function saveProjectFailure(suite, dir, original, error, caseName = '') {
+export function saveProjectFailure(suite, dir, original, error, caseName = '', testFile = 'check.test.mjs') {
   const output = join(process.env.ROUND_TRIP_FAILURES || 'round-trip-failures', suite, caseName);
   mkdirSync(output, { recursive: true });
   writeFileSync(join(output, 'original.gm'), original);
@@ -12,5 +12,5 @@ export function saveProjectFailure(suite, dir, original, error, caseName = '') {
   const data = join(dir, 'data');
   if (existsSync(data)) cpSync(data, join(output, 'data'), { recursive: true });
   writeFileSync(join(output, 'failure.txt'), String(error.stack || error) + '\n');
-  writeFileSync(join(output, 'reproduce.txt'), `node --test experiments/parser-fmt-proof/${suite}/check.test.mjs\n`);
+  writeFileSync(join(output, 'reproduce.txt'), `node --test experiments/parser-fmt-proof/${suite}/${testFile}\n`);
 }
