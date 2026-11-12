@@ -372,4 +372,31 @@ theorem I6_allFindingsHaveSpans (rules : List Rule) (args : List Argument)
       exact (checkPosition found).elim id (fun h => False.elim (absent h.2))
     simpa [findingSpan, absent] using keywordSpanExists words f.position offset within f.error absent
 
+-- The missing-argument span follows the closing delimiter, including
+-- any intervening comments. The offset is the start of the argument list.
+def callEndOffset (words : List KeywordText) (offset : Nat) (closing : String) : Nat :=
+  offset + words.foldr (fun entry total => entry.width + total) 0 + closing.utf8ByteSize
+
+structure TypedKeyword where
+  text : KeywordText
+  kind : Kind
+
+def TypedKeyword.argument (word : TypedKeyword) : Argument := ⟨word.text.name, word.kind⟩
+
+def diagnosticsWithSpans (rules : List Rule) (words : List TypedKeyword)
+    (offset : Nat) (closing : String) :=
+  let spellings := words.map TypedKeyword.text
+  (check rules (words.map TypedKeyword.argument)).map fun f =>
+    (f, findingSpan spellings offset (callEndOffset spellings offset closing) f)
+
+theorem I6_diagnosticsInBothSpellings (rules : List Rule) (before after : List TypedKeyword)
+    (preserved : before.map TypedKeyword.argument = after.map TypedKeyword.argument)
+    (startBefore startAfter : Nat) (closeBefore closeAfter : String) :
+    (diagnosticsWithSpans rules before startBefore closeBefore).map Prod.fst =
+      (diagnosticsWithSpans rules after startAfter closeAfter).map Prod.fst := by
+  simp [diagnosticsWithSpans, List.map_map, Function.comp_def, preserved]
+
+example : (diagnosticsWithSpans known [] 12 " %%甲%% ]").map Prod.snd =
+    [some (22, 22), some (22, 22)] := by decide
+
 end ArgumentDiagnostics
