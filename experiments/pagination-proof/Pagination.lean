@@ -182,6 +182,43 @@ theorem nextAfterWaiting_skips_waiting_head
     nextAfterWaiting waiting (x :: xs) = nextAfterWaiting waiting xs := by
   simp [nextAfterWaiting, waits]
 
+/- Number figures in source order. This is the `figureOrder` pair condition
+   from the Alloy model without its finite limit of two figures. It says a
+   kept figure requires every earlier figure to be kept. -/
+def figuresInOrder (count : Nat) (kept : Nat → Bool) : Prop :=
+  ∀ f, f < count → kept f = true → ∀ g, g < f → kept g = true
+
+theorem figuresInOrder_iff_no_reentry (count : Nat) (kept : Nat → Bool) :
+    figuresInOrder count kept ↔
+      ∀ g f, g < f → f < count → kept g = false → kept f = false := by
+  constructor
+  · intro ordered g f before bound missing
+    cases h : kept f with
+    | false => rfl
+    | true =>
+        have earlier := ordered f bound h g before
+        simp [missing] at earlier
+  · intro noReentry f bound present g before
+    cases h : kept g with
+    | true => rfl
+    | false =>
+        have later := noReentry g f before bound h
+        simp [present] at later
+
+/- Alloy `waitingIn` selects an unkept figure with an earlier unkept
+   figure. Under `figureOrder`, every later figure after the first sent
+   figure is also sent and therefore waits. -/
+def figureWaits (kept : Nat → Bool) (f : Nat) : Prop :=
+  kept f = false ∧ ∃ g, g < f ∧ kept g = false
+
+theorem waitingIn_after_first_sent (count : Nat) (kept : Nat → Bool)
+    (ordered : figuresInOrder count kept)
+    (g f : Nat) (before : g < f) (bound : f < count)
+    (sent : kept g = false) :
+    figureWaits kept f := by
+  exact ⟨(figuresInOrder_iff_no_reentry count kept).mp ordered g f before bound sent,
+    ⟨g, before, sent⟩⟩
+
 theorem blankBeforeWaiting25 :
     ∃ capacity used firstSize secondSize : Nat,
       capacity = 5 ∧ used = 4 ∧ firstSize = 4 ∧ secondSize = 5 ∧
