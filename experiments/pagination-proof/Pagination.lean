@@ -867,6 +867,23 @@ theorem I3_waitingFigureBool_iff_waitingIn (kept : Nat → Bool) (f : Nat) :
   simp [waitingFigureBool, figureWaits, Bool.and_eq_true,
     I3_earlierFigureSent_iff]
 
+def waitingAtTwoPositions (firstPos secondPos : Nat)
+    (kept : Nat → Bool) (pos : Nat) : Bool :=
+  if pos = firstPos then waitingFigureBool kept 0
+  else if pos = secondPos then waitingFigureBool kept 1
+  else false
+
+theorem I3_waitingAtTwoPositions_matches_waitingIn
+    (firstPos secondPos : Nat) (different : firstPos ≠ secondPos)
+    (kept : Nat → Bool) :
+    waitingAtTwoPositions firstPos secondPos kept firstPos = false ∧
+      (waitingAtTwoPositions firstPos secondPos kept secondPos = true ↔
+        figureWaits kept 1) := by
+  constructor
+  · simp [waitingAtTwoPositions, waitingFigureBool, earlierFigureSent]
+  · simpa [waitingAtTwoPositions, Ne.symm different] using
+      (I3_waitingFigureBool_iff_waitingIn kept 1)
+
 theorem waitingIn_after_first_sent (count : Nat) (kept : Nat → Bool)
     (ordered : figuresInOrder count kept)
     (g f : Nat) (before : g < f) (bound : f < count)
@@ -1582,6 +1599,43 @@ theorem I3_blankWithNext_after_two_figures
    the preceding no-text theorem, either may therefore be unavailable. -/
 def textReadyAtZeroBreak (textPositions : List Nat) (figurePos : Nat) : Prop :=
   ∀ t ∈ textPositions, figurePos ≤ t
+
+def earlierTextItem (pos : Nat) : SourceItem → Bool
+  | .text textPos => decide (textPos < pos)
+  | _ => false
+
+def textReadyZero (items : List SourceItem) (pos : Nat) : Bool :=
+  !(items.any (earlierTextItem pos))
+
+def textBeforeCount (items : List SourceItem) (pos : Nat) : Nat :=
+  (items.filter (earlierTextItem pos)).length
+
+theorem I3_textReadyZero_iff_no_earlier_text
+    (items : List SourceItem) (pos : Nat) :
+    textReadyZero items pos = true ↔
+      ∀ textPos, .text textPos ∈ items → pos ≤ textPos := by
+  constructor
+  · intro ready textPos member
+    by_cases earlier : textPos < pos
+    · have found : items.any (earlierTextItem pos) = true :=
+        (List.any_eq_true).mpr ⟨.text textPos, member,
+          by simp [earlierTextItem, earlier]⟩
+      simp [textReadyZero, found] at ready
+    · omega
+  · intro noEarlier
+    cases found : items.any (earlierTextItem pos) with
+    | false => simp [textReadyZero, found]
+    | true =>
+        obtain ⟨item, member, hit⟩ := (List.any_eq_true).mp found
+        cases item with
+        | text textPos =>
+            have earlier : textPos < pos := by
+              simpa [earlierTextItem] using hit
+            have later := noEarlier textPos member
+            omega
+        | figure _ => simp [earlierTextItem] at hit
+        | blank _ => simp [earlierTextItem] at hit
+        | need _ => simp [earlierTextItem] at hit
 
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
