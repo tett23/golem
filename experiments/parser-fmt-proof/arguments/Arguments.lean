@@ -344,4 +344,32 @@ theorem I6_keywordSpanAtOccurrence (before after : List KeywordText)
 example : keywordSpan [.mk " " "x" "=" "1", .mk " %%甲%% " "x" "=" "1"]
     1 0 .duplicate = some (13, 16) := by decide
 
+def findingSpan (words : List KeywordText) (offset callEnd : Nat)
+    (finding : Finding) : Option (Nat × Nat) :=
+  if finding.error = .missing then some (callEnd, callEnd)
+  else keywordSpan words finding.position offset finding.error
+
+private theorem keywordSpanExists (words : List KeywordText) (index offset : Nat)
+    (within : index < words.length) (error : Error) (supplied : error ≠ .missing) :
+    ∃ span, keywordSpan words index offset error = some span := by
+  induction words generalizing index offset with
+  | nil => simp at within; omega
+  | cons word rest ih =>
+      cases index with
+      | zero => cases error <;> simp_all [keywordSpan, atKeyword]
+      | succ i => exact ih i (offset + word.width) (Nat.lt_of_succ_lt_succ within)
+
+-- Every finding returned by the checker has a concrete span when each
+-- argument has its source spelling. Missing arguments point to callEnd.
+theorem I6_allFindingsHaveSpans (rules : List Rule) (args : List Argument)
+    (words : List KeywordText) (aligned : words.length = args.length)
+    (offset callEnd : Nat) (f : Finding) (found : f ∈ check rules args) :
+    ∃ span, findingSpan words offset callEnd f = some span := by
+  by_cases absent : f.error = .missing
+  · simp [findingSpan, absent]
+  · have within : f.position < words.length := by
+      rw [aligned]
+      exact (checkPosition found).elim id (fun h => False.elim (absent h.2))
+    simpa [findingSpan, absent] using keywordSpanExists words f.position offset within f.error absent
+
 end ArgumentDiagnostics
