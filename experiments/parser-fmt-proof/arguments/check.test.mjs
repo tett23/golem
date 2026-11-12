@@ -93,3 +93,18 @@ for (let index = 0; index <= base.length; index++) {
     checkRoundTrip(original, checkRepeatedTax, 'tax-' + index);
   });
 }
+
+test('Golem ADR 0351 I6: missing arguments point past the closing delimiter and its preceding comment', () => {
+  const original = '@import fn/book.emet as book\n\n日本語[book.triple   1 %%末尾%% ]続き\n';
+  checkRoundTrip(original, (source, run) => {
+    const bytes = readFileSync(source);
+    const comment = bytes.indexOf('%%末尾%%');
+    const close = bytes.indexOf(']', comment);
+    assert.ok(comment >= 0 && close > comment);
+    const diagnostics = JSON.parse(run(['check', '--format', 'json'], 1).stderr);
+    assert.deepEqual(diagnostics.map(d => [d.code, d.span.file, d.span.start, d.span.end]),
+      Array.from({ length: 2 }, () => ['G02120', 'a.gm', close + 1, close + 1]));
+    assert.match(diagnostics[0].message, /2 番目の位置引数がありません$/);
+    assert.match(diagnostics[1].message, /3 番目の位置引数がありません$/);
+  }, 'missing-after-comment');
+});
