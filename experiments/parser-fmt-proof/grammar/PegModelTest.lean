@@ -385,8 +385,8 @@ theorem single_literal_choice (grammar : PegModel.Grammar) (env : PegModel.Param
       | none => simp [hit, Except.map]; rfl
       | some rest => simp [hit, Except.map]; rfl
 
-theorem generated_nl_reference (fuel : Nat) (input : List Char) :
-    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4) (.ref "Nl" []) input =
+theorem generated_nl_reference (env : PegModel.Params) (fuel : Nat) (input : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 4) (.ref "Nl" []) input =
       PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
         (.lit "\n" "'\\n'") input := by
   calc
@@ -394,8 +394,8 @@ theorem generated_nl_reference (fuel : Nat) (input : List Char) :
       (.choice [[.lit "\n" "'\\n'"]]) input := by rfl
     _ = _ := single_literal_choice Generated.pegGrammar [] (fuel + 1) "\n" "'\\n'" input
 
-theorem generated_nl_eval (fuel : Nat) (input : List Char) :
-    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4) (.ref "Nl" []) input =
+theorem generated_nl_eval (env : PegModel.Params) (fuel : Nat) (input : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 4) (.ref "Nl" []) input =
       .ok (match input with
         | [] => none
         | '\n' :: rest => some rest
@@ -412,28 +412,28 @@ theorem generated_nl_eval (fuel : Nat) (input : List Char) :
         simp [PegModel.recognizeEnv, List.isPrefixOf, h, hc]
         rfl
 
-theorem generated_newline_or_eof (fuel : Nat) (input : List Char) :
-    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 6)
+theorem generated_newline_or_eof (env : PegModel.Params) (fuel : Nat) (input : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 6)
       (.choice [[.ref "Nl" []], [.notPred .any]]) input =
       .ok (match input with
         | [] => some []
         | '\n' :: rest => some rest
         | _ :: _ => none) := by
-  have nl : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 5)
+  have nl : PegModel.recognizeEnv Generated.pegGrammar env (fuel + 5)
       (.ref "Nl" []) input =
       .ok (match input with
         | [] => none
         | '\n' :: rest => some rest
         | _ :: _ => none) := by
-    simpa [Nat.add_assoc] using generated_nl_eval (fuel + 1) input
-  have eof : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 5)
+    simpa [Nat.add_assoc] using generated_nl_eval env (fuel + 1) input
+  have eof : PegModel.recognizeEnv Generated.pegGrammar env (fuel + 5)
       (.notPred .any) input =
       .ok (if input.isEmpty then some input else none) := by
-    simpa [Nat.add_assoc] using eof_lookahead Generated.pegGrammar [] (fuel + 3) input
+    simpa [Nat.add_assoc] using eof_lookahead Generated.pegGrammar env (fuel + 3) input
   change PegModel.runChoices
     (fun items => PegModel.runSequence
       (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 5) item rest)
-      _ [] items input) [[.ref "Nl" []], [.notPred .any]] = _
+      _ env items input) [[.ref "Nl" []], [.notPred .any]] = _
   cases input with
   | nil => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
       nl, eof, Except.map]; rfl

@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 257, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 239, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -43,13 +43,21 @@ try {
     'a literal rule with a second item must return to the unsupported report');
   assert.match(strictLiteral.stderr, /unsupported EOL choice 2 at /,
     'the EOL nested choice needs the proved single-literal Nl rule');
-  assert.doesNotMatch(strict.stderr, /^unsupported EOL choice [23] at /m,
-    'the proved Nl/EOF nested choice must leave only EOL outer sequence unsupported');
+  assert.doesNotMatch(strict.stderr,
+    /^unsupported (EOL|Paragraph|BlockCommand|ListItem|DefTerm|DefNew|Table|CodeClose) choice \d+ at .*: (Nl|!\.)$/m,
+    'the proved Nl/EOF nested choice applies inside every matching rule');
   const changedEol = join(work, 'ChangedEol.hpeg');
   writeFileSync(changedEol, original.replace('EOL <- Sp (Nl / !.)', "EOL <- Sp (Nl / !. / 'x')"));
   const strictEol = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedEol, generated], { encoding: 'utf8' });
   assert.match(strictEol.stderr, /unsupported EOL choice \d+ at .*'x'/,
     'a changed EOL nested choice must return to the unsupported report');
+  const changedParagraph = join(work, 'ChangedParagraph.hpeg');
+  writeFileSync(changedParagraph,
+    original.replace('Inline(ind)+ (Nl / !.)', "Inline(ind)+ (Nl / !. / 'x')"));
+  const strictParagraph = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedParagraph, generated], { encoding: 'utf8' });
+  assert.match(strictParagraph.stderr, /unsupported Paragraph choice \d+ at .*'x'/,
+    'a changed Nl/EOF choice in an argument rule must return to the report');
   const changedClassPlus = join(work, 'ChangedClassPlus.hpeg');
   writeFileSync(changedClassPlus, original.replace(/^Ws <- .*$/m, "Ws <- [ \\t]+ 'x' { () }"));
   const strictClassPlus = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedClassPlus, generated], { encoding: 'utf8' });
@@ -178,7 +186,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 15, implementation parser cases ${parserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 16, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
