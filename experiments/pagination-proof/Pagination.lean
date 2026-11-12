@@ -954,6 +954,25 @@ theorem I3_blankPlacedFromSourceFull_iff_next_in_column
         cases ht : blankAtTopSource used blankPos items textHere keptFigure <;>
         simp [h, hc, ht]
 
+theorem I3_blank_placed_at_zero_text_break_has_kept_figure
+    (used blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (keptFigure : Nat → Bool)
+    (placed : blankPlacedFromSourceFull used blankPos waitingFigure
+      items (fun _ => false) keptFigure = true) :
+    ∃ candidate,
+      nextOfSource blankPos waitingFigure items = some candidate ∧
+      candidate.figure = true ∧ keptFigure candidate.pos = true ∧
+      blankAtTopSource used blankPos items (fun _ => false) keptFigure = false := by
+  obtain ⟨candidate, next, inColumn, notTop⟩ :=
+    (I3_blankPlacedFromSourceFull_iff_next_in_column used blankPos waitingFigure
+      items (fun _ => false) keptFigure).mp placed
+  cases hfigure : candidate.figure with
+  | false => simp [sourceInColumn, hfigure] at inColumn
+  | true =>
+      have kept : keptFigure candidate.pos = true := by
+        simpa [sourceInColumn, hfigure] using inColumn
+      exact ⟨candidate, next, hfigure, kept, notTop⟩
+
 theorem I3_blankPlacedFromSource_eq_candidate_placement
     (blankPos : Nat) (waitingFigure : Nat → Bool)
     (items : List SourceItem) (textHere keptFigure : Nat → Bool)
@@ -1325,6 +1344,56 @@ theorem I3_blankFigureOrder_after_two_figures_with_source
   refine ⟨first, second, placed, firstRule, secondRule, ?_, fits⟩
   rw [I3_blankWithNext_after_two_figures]
   exact blankRule
+
+theorem I3_blankWithNext_before_one_figure (used : Nat) (kept : Bool) :
+    blankPlacedFromSourceFull used 0 (fun _ => false)
+      [.blank 0, .figure 1] (fun _ => false) (fun _ => kept) =
+      decide (kept = true ∧ used ≠ 0) := by
+  cases kept <;> cases used <;>
+    simp [blankPlacedFromSourceFull, blankPlacedFromSource, blankAtTopSource,
+      nextOfSource, candidateAfterBlank, candidateWaits, sourceInColumn,
+      keptBeforeBlank]
+
+theorem I3_blankFigureOrder_before_one_figure_with_source
+    (capacity used size : Nat) (ready : Bool) (usedFits : used ≤ capacity) :
+    ∃ kept placed : Bool,
+      kept = decide (ready = true ∧
+        used + (if used = 0 then 0 else 1) + size ≤ capacity) ∧
+      placed = blankPlacedFromSourceFull used 0 (fun _ => false)
+        [.blank 0, .figure 1] (fun _ => false) (fun _ => kept) ∧
+      used + (if kept then size else 0) + (if placed then 1 else 0) ≤ capacity := by
+  cases hready : ready with
+  | false =>
+      refine ⟨false, false, ?_, ?_, ?_⟩
+      · simp [hready]
+      · simp [I3_blankWithNext_before_one_figure]
+      · simpa using usedFits
+  | true =>
+      obtain ⟨kept, placed, rule, blank, fits⟩ :=
+        blankFigureOrder_oneFigure capacity used size (decide (used = 0)) usedFits
+      refine ⟨kept, placed, ?_, ?_, fits⟩
+      · simpa [hready] using rule
+      · rw [I3_blankWithNext_before_one_figure]
+        simpa using blank
+
+theorem I3_blankFigureOrder_after_one_figure_with_source
+    (capacity used size : Nat) (ready : Bool) (usedFits : used ≤ capacity) :
+    ∃ kept placed : Bool,
+      kept = decide (ready = true ∧ used + size ≤ capacity) ∧
+      placed = blankPlacedFromSourceFull used 1 (fun _ => false)
+        [.figure 0, .blank 1] (fun _ => false) (fun _ => kept) ∧
+      used + (if kept then size else 0) + (if placed then 1 else 0) ≤ capacity := by
+  by_cases fits : ready = true ∧ used + size ≤ capacity
+  · exact ⟨true, false, by simp [fits], rfl, by simpa using fits.2⟩
+  · exact ⟨false, false, by simp [fits], rfl, by simpa using usedFits⟩
+
+theorem I3_blankFigureOrder_no_figures_with_source
+    (capacity used : Nat) (usedFits : used ≤ capacity) :
+    ∃ placed : Bool,
+      placed = blankPlacedFromSourceFull used 0 (fun _ => false)
+        [.blank 0] (fun _ => false) (fun _ => false) ∧
+      used + (if placed then 1 else 0) ≤ capacity := by
+  exact ⟨false, rfl, by simpa using usedFits⟩
 
 /- A need of two lines before a one-line figure in a column with one line
    left conflicts with the older rule that keeps every figure that fits. -/
