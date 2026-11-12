@@ -268,6 +268,45 @@ theorem I5_uniqueValueAndCost
   simp only [Prod.fst, Prod.snd] at values remaining
   exact ⟨values, by omega⟩
 
+private theorem remove_unused (d : Derives budget env expression value remaining)
+    (extra : Nat) (unused : extra ≤ remaining) :
+    Derives (budget - extra) env expression value (remaining - extra) := by
+  have shift (n c : Nat) (h : extra ≤ n) : n + c - extra = n - extra + c := by omega
+  induction d with
+  | literal => exact .literal
+  | «variable» found => exact .variable found
+  | external found =>
+    rw [shift _ _ unused]; exact .external found
+  | add l r il ir =>
+    have hr := remaining_le_budget r
+    exact .add (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
+  | quotient l r il ir =>
+    have hr := remaining_le_budget r
+    exact .quotient (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
+  | append l r il ir =>
+    have hr := remaining_le_budget r
+    exact .append (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
+  | ternaryTrue c b ic ib =>
+    have hb := remaining_le_budget b
+    exact .ternaryTrue (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) (ib unused)
+  | ternaryElse c other b ic ib =>
+    have hb := remaining_le_budget b
+    exact .ternaryElse (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) other (ib unused)
+  | call a b ia ib =>
+    have hb := remaining_le_budget b
+    exact .call (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ia (by omega)) (ib unused)
+
+theorem I5_minimumBudget (ok : run expression env budget = .ok (value, remaining)) :
+    run expression env (budget - remaining) = .ok (value, 0) ∧
+    ∀ smaller < budget - remaining, ∀ result left,
+      run expression env smaller ≠ .ok (result, left) := by
+  have d := derives_complete ok
+  constructor
+  · simpa using derives_sound (remove_unused d remaining (by omega))
+  · intro smaller below result left h
+    have cost := (I5_uniqueValueAndCost d (derives_complete h)).2
+    omega
+
 -- Operand evaluation may itself call functions or consume steps. Once both
 -- finish, charging the division step precedes the zero-divisor diagnostic.
 theorem I5_zeroDivisor (left : Derives budget env a (.nat x) afterA)
