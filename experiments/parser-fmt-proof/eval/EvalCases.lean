@@ -33,3 +33,14 @@ def main : IO Unit := do
         | .error .divisionByZero => pure "G02003"
         | _ => throw (IO.userError s!"unexpected result for {source} at {budget}")
       IO.println s!"{budget} {source} => {value}"
+  for contents in ([none, some "", some "甲𠮷"] : List (Option String)) do
+    let files := contents.toList.map fun t => ("input.tsv", t)
+    for budget in List.range 5 do
+      let expr := Expr.call "n" (.literal (.nat 0)) (.external "input.tsv")
+      let value ← match eval budget ⟨[], files⟩ expr with
+        | .ok (.string s) => pure ("string " ++ s)
+        | .error .overLimit => pure "E04100"
+        | .error .missingFile => pure "E05104"
+        | _ => throw (IO.userError "unexpected file result")
+      let input := contents.elim "missing" ("present " ++ ·)
+      IO.println s!"{budget} readInput {input} => {value}"
