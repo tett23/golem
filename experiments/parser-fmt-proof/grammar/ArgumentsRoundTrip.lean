@@ -382,6 +382,23 @@ theorem canonical_word_before_separator (word : WordRoundTrip.Word)
         simpa [chars, List.dropWhile, allowed] using dropped
       simpa [chars, rangeMiss, droppedRest] using model
 
+private theorem safe_value_starts_comment (xs : List Char)
+    (safe : WordRoundTrip.containsDoublePercent xs = false) :
+    WordRoundTrip.startsComment xs = false := by
+  cases xs with
+  | nil => simp [WordRoundTrip.startsComment]
+  | cons c tail =>
+      cases tail with
+      | nil => simp [WordRoundTrip.startsComment]
+      | cons d more =>
+          by_cases hc : c = '%'
+          · subst c
+            by_cases hd : d = '%'
+            · subst d
+              simp [WordRoundTrip.containsDoublePercent] at safe
+            · simp [WordRoundTrip.startsComment, hd]
+          · simp [WordRoundTrip.startsComment, hc]
+
 private theorem parse_one_printed
     (name value : WordRoundTrip.Word) (rest suffix : List Char)
     (nameSafe : WordRoundTrip.startsComment name.chars = false)
@@ -590,6 +607,43 @@ theorem canonical_argvalue_word (fuel : Nat) (input rest : List Char)
      [.ref "InlineCommand" ["0"]], [.ref "Word" []]] = .ok (some rest)
   simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
     notString, notExpr, notReserved, notInline, word, Except.map] <;> rfl
+
+set_option maxHeartbeats 1000000 in
+theorem canonical_argvalue_of_safe_word (value : WordRoundTrip.Word)
+    (sep : Char) (tail : List Char) (extra : Nat)
+    (safe : WordRoundTrip.containsDoublePercent value.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false) :
+    let input := value.chars ++ sep :: tail
+    PegModel.recognizeEnv Generated.pegGrammar []
+      (input.length + extra + 10) (.ref "ArgValue" []) input =
+        .ok (some (sep :: tail)) := by
+  dsimp only
+  have safeStart := safe_value_starts_comment value.chars safe
+  have word := canonical_word_before_separator value sep tail extra safeStart blocked
+  cases chars : value.chars with
+  | nil => exact False.elim (value.nonempty chars)
+  | cons c rest =>
+      have allowed : WordRoundTrip.allowed c = true := value.valid c (by simp [chars])
+      have misses := WordRoundTrip.ordinary_value_precedence
+        ((value.chars ++ sep :: tail).length + extra) c (rest ++ sep :: tail) allowed
+      rcases misses with ⟨notString, notExpr, notReserved, notInline⟩
+      have inputEq : value.chars ++ sep :: tail = c :: (rest ++ sep :: tail) := by
+        simp [chars]
+      rw [← inputEq] at notString notExpr notReserved notInline
+      have fuelWord : (value.chars ++ sep :: tail).length + 8 + extra =
+          ((value.chars ++ sep :: tail).length + extra + 7) + 1 := by omega
+      have fuelMiss : (value.chars ++ sep :: tail).length + extra + 8 =
+          ((value.chars ++ sep :: tail).length + extra + 7) + 1 := by omega
+      rw [fuelWord] at word
+      rw [fuelMiss] at notString notExpr notReserved notInline
+      have result := canonical_argvalue_word
+        ((value.chars ++ sep :: tail).length + extra + 7)
+        (value.chars ++ sep :: tail) (sep :: tail)
+        notString notExpr notReserved notInline word
+      have fuelResult : ((value.chars ++ sep :: tail).length + extra + 7) + 3 =
+          (value.chars ++ sep :: tail).length + extra + 10 := by omega
+      rw [fuelResult] at result
+      simpa only [chars] using result
 
 -- Canonical PegModel ref: the three recognized pieces compose in the only
 -- KeywordArgument branch, with the suffix returned by ArgValue.
