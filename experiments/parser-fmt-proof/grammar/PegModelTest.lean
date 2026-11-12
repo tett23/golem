@@ -716,6 +716,96 @@ theorem plus_nonclass (grammar : PegModel.Grammar) (env : PegModel.Params)
   rw [childHit]
   simp [progress, tailResult]
 
+theorem sequence_head_miss (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (head : PegModel.Expr) (tail : List PegModel.Expr) (input : List Char)
+    (miss : parse env head input = .ok none) :
+    PegModel.runSequence parse boundLength env (head :: tail) input = .ok none := by
+  simp [PegModel.runSequence, List.foldlM, miss]
+  induction tail with
+  | nil => rfl
+  | cons _ rest ih => simpa [List.foldlM] using ih
+
+private theorem run_sequence_plus (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (child : PegModel.Expr) (input : List Char) :
+    PegModel.runSequence parse boundLength env [.plus child] input =
+      parse env (.plus child) input := by
+  cases hit : parse env (.plus child) input with
+  | error reason => simp [PegModel.runSequence, hit]; rfl
+  | ok result =>
+      cases result with
+      | none => simp [PegModel.runSequence, hit]; rfl
+      | some rest => simp [PegModel.runSequence, hit]; rfl
+
+set_option maxHeartbeats 1000000 in
+theorem word_choice_ordinary (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String) (special : PegModel.Expr)
+    (first : Char) (tail suffix : List Char)
+    (allowed : ∀ c ∈ first :: tail,
+      ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false)
+    (boundary : match suffix with
+      | [] => True
+      | c :: _ => ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true)
+    (missPrefix : ("%%=".toList).isPrefixOf ((first :: tail) ++ suffix) = false) :
+    PegModel.recognizeEnv grammar env ((first :: tail).length + 6)
+      (.choice [[.lit "%%=" "'%%='", special],
+        [.plus (.choice [[.notPred (.charClass ranges written), .any]])]])
+      ((first :: tail) ++ suffix) = .ok (some suffix) := by
+  have miss : PegModel.recognizeEnv grammar env ((first :: tail).length + 5)
+      (.lit "%%=" "'%%='") ((first :: tail) ++ suffix) = .ok none := by
+    change (Except.ok (if ("%%=".toList).isPrefixOf ((first :: tail) ++ suffix) then
+      some (((first :: tail) ++ suffix).drop "%%=".toList.length) else none) :
+      PegModel.ParseResult) = .ok none
+    rw [missPrefix]
+    rfl
+  have ordinary : PegModel.recognizeEnv grammar env ((first :: tail).length + 5)
+      (.plus (.choice [[.notPred (.charClass ranges written), .any]]))
+      ((first :: tail) ++ suffix) = .ok (some suffix) :=
+    plus_nonclass grammar env ranges written first tail suffix allowed boundary
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope ((first :: tail).length + 5) item rest)
+      _ env items ((first :: tail) ++ suffix))
+    [[.lit "%%=" "'%%='", special],
+      [.plus (.choice [[.notPred (.charClass ranges written), .any]])]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [sequence_head_miss _ _ env (.lit "%%=" "'%%='") [special] _ miss]
+  rw [run_sequence_plus]
+  rw [ordinary]
+  rfl
+
+theorem generated_word_ordinary (first : Char) (tail suffix : List Char)
+    (allowed : ∀ c ∈ first :: tail,
+      ([(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (61, 61), (91, 91), (34, 34), (92, 92)] : List (Nat × Nat)).any
+        (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = false)
+    (boundary : match suffix with
+      | [] => True
+      | c :: _ => ([(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (61, 61), (91, 91), (34, 34), (92, 92)] : List (Nat × Nat)).any
+          (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true)
+    (missPrefix : ("%%=".toList).isPrefixOf ((first :: tail) ++ suffix) = false) :
+    PegModel.recognizeEnv Generated.pegGrammar [] ((first :: tail).length + 7)
+      (.ref "Word" []) ((first :: tail) ++ suffix) = .ok (some suffix) := by
+  change PegModel.recognizeEnv Generated.pegGrammar [] ((first :: tail).length + 6)
+    (.choice [
+      [.lit "%%=" "'%%='", .star (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|\\[\"\\\\]"), .any]])],
+      [.plus (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (61, 61), (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|=\\[\"\\\\]"), .any]])]])
+    ((first :: tail) ++ suffix) = _
+  exact word_choice_ordinary Generated.pegGrammar []
+    [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+      (61, 61), (91, 91), (34, 34), (92, 92)]
+    "[ \\t\\n\\]:|=\\[\"\\\\]"
+    (.star (.choice [[.notPred (.charClass
+      [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|\\[\"\\\\]"), .any]]))
+    first tail suffix allowed boundary missPrefix
+
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
     .ok (some "!".toList) := by rfl
 
@@ -842,5 +932,296 @@ example : PegModel.recognize Generated.pegGrammar 2
 
 example : PegModel.recognize Generated.pegGrammar 2
     (.semanticPred true " r == h ") [] = .error "opaque semantic predicate" := by rfl
+
+def permitted (ranges : List (Nat × Nat)) (c : Char) : Bool :=
+  !(ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi))
+
+theorem star_nonclass_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String) (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv grammar env (input.length + 5 + extra)
+      (.star (.choice [[.notPred (.charClass ranges written), .any]])) input =
+      .ok (some (input.dropWhile (permitted ranges))) := by
+  induction input with
+  | nil =>
+      have child := nonclass_any grammar env extra ranges written []
+      have fuelEq : extra + 4 = 4 + extra := by omega
+      rw [fuelEq] at child
+      simp only [List.length_nil, Nat.zero_add]
+      have outerEq : 5 + extra = (4 + extra) + 1 := by omega
+      rw [outerEq]
+      change (match PegModel.recognizeEnv grammar env (4 + extra)
+          (.choice [[.notPred (.charClass ranges written), .any]]) [] with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some [])
+        | Except.ok (some next) =>
+            if next.length < 0 then
+              PegModel.recognizeEnv grammar env (4 + extra)
+                (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+            else Except.error "zero-width repetition") = _
+      rw [child]
+      rfl
+  | cons c rest ih =>
+      have child := nonclass_any grammar env (rest.length + 1 + extra)
+        ranges written (c :: rest)
+      cases h : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) with
+      | true =>
+          have fuelEq : rest.length + 1 + extra + 4 = rest.length + 5 + extra := by omega
+          rw [fuelEq] at child
+          have childMiss : PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) =
+              .ok none := by simpa [h] using child
+          have outerEq : (c :: rest).length + 5 + extra = rest.length + 5 + extra + 1 := by
+            simp [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
+          rw [outerEq]
+          change (match PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) with
+            | Except.error reason => Except.error reason
+            | Except.ok none => Except.ok (some (c :: rest))
+            | Except.ok (some next) =>
+                if next.length < (c :: rest).length then
+                  PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+                    (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+                else Except.error "zero-width repetition") = _
+          rw [childMiss]
+          simp [List.dropWhile, permitted, h]
+      | false =>
+          have fuelEq : rest.length + 1 + extra + 4 = rest.length + 5 + extra := by omega
+          rw [fuelEq] at child
+          have childHit : PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) =
+              .ok (some rest) := by simpa [h] using child
+          have progress : rest.length < (c :: rest).length := by simp
+          have outerEq : (c :: rest).length + 5 + extra = rest.length + 5 + extra + 1 := by
+            simp [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
+          rw [outerEq]
+          change (match PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) with
+            | Except.error reason => Except.error reason
+            | Except.ok none => Except.ok (some (c :: rest))
+            | Except.ok (some next) =>
+                if next.length < (c :: rest).length then
+                  PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+                    (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+                else Except.error "zero-width repetition") = _
+          rw [childHit]
+          simp [progress, ih, List.dropWhile, permitted, h]
+
+theorem plus_nonclass_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String) (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv grammar env (input.length + 5 + extra)
+      (.plus (.choice [[.notPred (.charClass ranges written), .any]])) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+          then none else some (rest.dropWhile (permitted ranges))) := by
+  cases input with
+  | nil =>
+      simp only [List.length_nil, Nat.zero_add]
+      have outerEq : 5 + extra = (4 + extra) + 1 := by omega
+      rw [outerEq]
+      have child := nonclass_any grammar env extra ranges written []
+      have fuelEq : extra + 4 = 4 + extra := by omega
+      rw [fuelEq] at child
+      change (match PegModel.recognizeEnv grammar env (4 + extra)
+          (.choice [[.notPred (.charClass ranges written), .any]]) [] with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok none
+        | Except.ok (some next) =>
+            if next.length < 0 then
+              PegModel.recognizeEnv grammar env (4 + extra)
+                (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+            else Except.error "zero-width repetition") = _
+      rw [child]
+  | cons c rest =>
+      have child := nonclass_any grammar env (rest.length + 1 + extra)
+        ranges written (c :: rest)
+      have fuelEq : rest.length + 1 + extra + 4 = rest.length + 5 + extra := by omega
+      rw [fuelEq] at child
+      have outerEq : (c :: rest).length + 5 + extra = rest.length + 5 + extra + 1 := by
+        simp [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
+      rw [outerEq]
+      cases h : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) with
+      | true =>
+          have childMiss : PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) =
+              .ok none := by simpa [h] using child
+          change (match PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) with
+            | Except.error reason => Except.error reason
+            | Except.ok none => Except.ok none
+            | Except.ok (some next) =>
+                if next.length < (c :: rest).length then
+                  PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+                    (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+                else Except.error "zero-width repetition") = _
+          rw [childMiss]
+          change _ = Except.ok (if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then none else some (rest.dropWhile (permitted ranges)))
+          rw [h]
+          rfl
+      | false =>
+          have childHit : PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) =
+              .ok (some rest) := by simpa [h] using child
+          have progress : rest.length < (c :: rest).length := by simp
+          have tailResult := star_nonclass_total grammar env ranges written rest extra
+          change (match PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+              (.choice [[.notPred (.charClass ranges written), .any]]) (c :: rest) with
+            | Except.error reason => Except.error reason
+            | Except.ok none => Except.ok none
+            | Except.ok (some next) =>
+                if next.length < (c :: rest).length then
+                  PegModel.recognizeEnv grammar env (rest.length + 5 + extra)
+                    (.star (.choice [[.notPred (.charClass ranges written), .any]])) next
+                else Except.error "zero-width repetition") = _
+          rw [childHit]
+          change _ = Except.ok (if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+            then none else some (rest.dropWhile (permitted ranges)))
+          rw [h]
+          simp [progress, tailResult]
+
+private theorem run_lit_star_hit (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (value written : String) (child : PegModel.Expr)
+    (input middle tail : List Char)
+    (first : parse env (.lit value written) input = .ok (some middle))
+    (second : parse env (.star child) middle = .ok (some tail)) :
+    PegModel.runSequence parse boundLength env [.lit value written, .star child] input =
+      .ok (some tail) := by
+  simp [PegModel.runSequence, first, second, Except.map]
+  rfl
+
+theorem special_word_choice (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String) (other : List PegModel.Expr)
+    (suffix : List Char) (extra : Nat) :
+    PegModel.recognizeEnv grammar env (suffix.length + 7 + extra)
+      (.choice [[.lit "%%=" "'%%='",
+        .star (.choice [[.notPred (.charClass ranges written), .any]])], other])
+      ("%%=".toList ++ suffix) =
+      .ok (some (suffix.dropWhile (permitted ranges))) := by
+  have literal : PegModel.recognizeEnv grammar env (suffix.length + 6 + extra)
+      (.lit "%%=" "'%%='") ("%%=".toList ++ suffix) = .ok (some suffix) := by
+    have fuelEq : suffix.length + 6 + extra = (suffix.length + 5 + extra) + 1 := by omega
+    rw [fuelEq]
+    calc
+      _ = PegModel.recognize grammar ((suffix.length + 5 + extra) + 1)
+          (.lit "%%=" "'%%='") ("%%=".toList ++ suffix) := by rfl
+      _ = .ok (some suffix) :=
+        literal_roundtrip grammar "%%=" "'%%='" suffix (suffix.length + 5 + extra)
+  have star : PegModel.recognizeEnv grammar env (suffix.length + 6 + extra)
+      (.star (.choice [[.notPred (.charClass ranges written), .any]])) suffix =
+      .ok (some (suffix.dropWhile (permitted ranges))) := by
+    have eqFuel : suffix.length + 5 + (1 + extra) = suffix.length + 6 + extra := by omega
+    rw [← eqFuel]
+    exact star_nonclass_total grammar env ranges written suffix (1 + extra)
+  have outerEq : suffix.length + 7 + extra = (suffix.length + 6 + extra) + 1 := by omega
+  rw [outerEq]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (suffix.length + 6 + extra) item rest)
+      _ env items ("%%=".toList ++ suffix))
+    [[.lit "%%=" "'%%='",
+      .star (.choice [[.notPred (.charClass ranges written), .any]])], other] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [run_lit_star_hit _ _ env "%%=" "'%%='"
+    (.choice [[.notPred (.charClass ranges written), .any]])
+    ("%%=".toList ++ suffix) suffix (suffix.dropWhile (permitted ranges)) literal star]
+  rfl
+
+theorem generated_word_special (suffix : List Char) (extra : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (suffix.length + 8 + extra)
+      (.ref "Word" []) ("%%=".toList ++ suffix) =
+      .ok (some (suffix.dropWhile (permitted
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (91, 91), (34, 34), (92, 92)]))) := by
+  have fuelEq : suffix.length + 8 + extra = (suffix.length + 7 + extra) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (suffix.length + 7 + extra)
+    (.choice [
+      [.lit "%%=" "'%%='", .star (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|\\[\"\\\\]"), .any]])],
+      [.plus (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (61, 61), (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|=\\[\"\\\\]"), .any]])]])
+    ("%%=".toList ++ suffix) = _
+  exact special_word_choice Generated.pegGrammar []
+    [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+      (91, 91), (34, 34), (92, 92)]
+    "[ \\t\\n\\]:|\\[\"\\\\]"
+    [.plus (.choice [[.notPred (.charClass
+      [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (61, 61), (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|=\\[\"\\\\]"), .any]])]
+    suffix extra
+
+theorem ordinary_word_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (ranges : List (Nat × Nat)) (written : String) (special : PegModel.Expr)
+    (input : List Char) (extra : Nat)
+    (missPrefix : ("%%=".toList).isPrefixOf input = false) :
+    PegModel.recognizeEnv grammar env (input.length + 7 + extra)
+      (.choice [[.lit "%%=" "'%%='", special],
+        [.plus (.choice [[.notPred (.charClass ranges written), .any]])]])
+      input = .ok (match input with
+        | [] => none
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+          then none else some (rest.dropWhile (permitted ranges))) := by
+  have miss : PegModel.recognizeEnv grammar env (input.length + 6 + extra)
+      (.lit "%%=" "'%%='") input = .ok none := by
+    have missFuel : input.length + 6 + extra = (input.length + 5 + extra) + 1 := by omega
+    rw [missFuel]
+    change (Except.ok (if ("%%=".toList).isPrefixOf input then
+      some (input.drop "%%=".toList.length) else none) : PegModel.ParseResult) = .ok none
+    rw [missPrefix]
+    rfl
+  have ordinary := plus_nonclass_total grammar env ranges written input (1 + extra)
+  have fuelEq : input.length + 5 + (1 + extra) = input.length + 6 + extra := by omega
+  rw [fuelEq] at ordinary
+  have outerEq : input.length + 7 + extra = (input.length + 6 + extra) + 1 := by omega
+  rw [outerEq]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (input.length + 6 + extra) item rest)
+      _ env items input)
+    [[.lit "%%=" "'%%='", special],
+      [.plus (.choice [[.notPred (.charClass ranges written), .any]])]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [sequence_head_miss _ _ env (.lit "%%=" "'%%='") [special] _ miss]
+  rw [run_sequence_plus]
+  rw [ordinary]
+  cases input with
+  | nil => rfl
+  | cons c rest => rfl
+
+theorem generated_word_ordinary_total (input : List Char) (extra : Nat)
+    (missPrefix : ("%%=".toList).isPrefixOf input = false) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 8 + extra)
+      (.ref "Word" []) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if ([(32, 32), (9, 9), (10, 10), (93, 93), (58, 58),
+          (124, 124), (61, 61), (91, 91), (34, 34), (92, 92)] : List (Nat × Nat)).any
+            (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+          then none else some (rest.dropWhile (permitted
+            [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58),
+             (124, 124), (61, 61), (91, 91), (34, 34), (92, 92)]))) := by
+  have fuelEq : input.length + 8 + extra = (input.length + 7 + extra) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 7 + extra)
+    (.choice [
+      [.lit "%%=" "'%%='", .star (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|\\[\"\\\\]"), .any]])],
+      [.plus (.choice [[.notPred (.charClass
+        [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+          (61, 61), (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|=\\[\"\\\\]"), .any]])]])
+    input = _
+  exact ordinary_word_total Generated.pegGrammar []
+    [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+      (61, 61), (91, 91), (34, 34), (92, 92)]
+    "[ \\t\\n\\]:|=\\[\"\\\\]"
+    (.star (.choice [[.notPred (.charClass
+      [(32, 32), (9, 9), (10, 10), (93, 93), (58, 58), (124, 124),
+        (91, 91), (34, 34), (92, 92)] "[ \\t\\n\\]:|\\[\"\\\\]"), .any]]))
+    input extra missPrefix
 
 end PegModelTest

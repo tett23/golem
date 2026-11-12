@@ -180,6 +180,14 @@ const shapes = {
   ArgValue: ['StringLit / ExprCtx / ReservedBracket / InlineCommand(0) / Word'],
   KeywordArgument: ['Word Eq ArgValue']
 };
+// PegModelTest.generated_word_special and generated_word_ordinary_total cover
+// both outcomes for every input of this exact canonical Word production.
+const wordAst = ast?.rules.find(rule => rule.name === 'Word');
+const wordFullyProved = word === shapes.Word[1] &&
+  wordAst?.params.length === 0 && wordAst.templateParams.length === 0 &&
+  wordAst.alts.length === 2 && wordAst.alts.every(alt =>
+    alt.action?.trim() === '()' && alt.constructor === null &&
+    alt.items.every(item => item.bind === null));
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -249,9 +257,10 @@ function provedClassLookaheadOrEof(expr) {
     eof?.bind === null && eof.expr.tag === 'not' && eof.expr.expr.tag === 'any';
 }
 if (!fragment && ast) {
-  // StringLit, Word, and StringLiteral stay unsupported: their fragment proofs
-  // do not establish an arbitrary-input theorem for the canonical PEG model.
+  // StringLit and StringLiteral stay unsupported until canonical arbitrary-input
+  // theorems cover their enclosing alternatives.
   for (const rule of ast.rules) {
+    if (wordFullyProved && rule.name === 'Word') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;

@@ -17,8 +17,16 @@ def startsComment : List Char → Bool
   | '%' :: '%' :: _ => true
   | _ => false
 
+def containsDoublePercent : List Char → Bool
+  | '%' :: '%' :: _ => true
+  | _ :: tail => containsDoublePercent tail
+  | [] => false
+
 def safeNames (args : List (Word × Word)) : Prop :=
   ∀ pair ∈ args, startsComment pair.1.chars = false
+
+def safeValues (args : List (Word × Word)) : Prop :=
+  ∀ pair ∈ args, containsDoublePercent pair.2.chars = false
 
 private theorem safe_name_before_equals (name : Word) (tail : List Char)
     (safe : startsComment name.chars = false) :
@@ -53,15 +61,16 @@ def parseArgs : Nat → List Char → Option (List (List Char × List Char))
         | '=' :: valueStart =>
             let value := valueStart.takeWhile allowed
             let afterValue := valueStart.dropWhile allowed
-            if value.isEmpty then none
+            if value.isEmpty || containsDoublePercent value then none
             else (parseArgs fuel afterValue).map ((name, value) :: ·)
         | _ => none
   | _, _ => none
 
 example : parseArgs 1 [' ', '%', '%', '=', 'x', '\n'] = none := by rfl
 example : parseArgs 1 [' ', '%', '%', 'f', 'o', 'o', '=', 'x', '\n'] = none := by rfl
-example : parseArgs 1 [' ', 'f', 'o', 'o', '=', '%', '%', '\n'] =
-    some [(['f', 'o', 'o'], ['%', '%'])] := by rfl
+example : parseArgs 1 [' ', 'f', 'o', 'o', '=', '%', '%', '\n'] = none := by rfl
+example : parseArgs 1 [' ', 'f', 'o', 'o', '=', '%', 'x', '\n'] =
+    some [(['f', 'o', 'o'], ['%', 'x'])] := by rfl
 
 theorem take_append (word : List Char) (tail : List Char) (sep : Char)
     (valid : ∀ c ∈ word, allowed c = true) (blocked : allowed sep = false) :
@@ -100,7 +109,8 @@ private theorem not_empty (word : Word) : word.chars.isEmpty = false := by
   | nil => exact False.elim (word.nonempty h)
   | cons _ _ => rfl
 
-theorem parse_print_args (args : List (Word × Word)) (namesSafe : safeNames args) :
+theorem parse_print_args (args : List (Word × Word))
+    (namesSafe : safeNames args) (valuesSafe : safeValues args) :
     ∀ fuel, args.length ≤ fuel →
       parseArgs fuel (printArgs args) =
         some (args.map fun (name, value) => (name.chars, value.chars)) := by
@@ -129,12 +139,17 @@ theorem parse_print_args (args : List (Word × Word)) (namesSafe : safeNames arg
           have restSafe : safeNames rest := by
             intro pair member
             exact namesSafe pair (by simp [member])
+          have valueSafe : containsDoublePercent value.chars = false :=
+            valuesSafe (name, value) (by simp)
+          have restValuesSafe : safeValues rest := by
+            intro pair member
+            exact valuesSafe pair (by simp [member])
           simp [printArgs, parseArgs,
             take_append name.chars (value.chars ++ printArgs rest) '=' name.valid equals_forbidden,
             drop_append name.chars (value.chars ++ printArgs rest) '=' name.valid equals_forbidden,
             not_empty name, not_empty value,
-            guarded, vt, vd,
-            ih restSafe n h]
+            guarded, valueSafe, vt, vd,
+            ih restSafe restValuesSafe n h]
 
 def renderRaw : List (List Char × List Char) → List Char
   | [] => ['\n']
@@ -152,46 +167,54 @@ def format (fuel : Nat) (input : List Char) : Option (List Char) :=
   (parseArgs fuel input).map renderRaw
 
 theorem format_print (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     format fuel (printArgs args) = some (printArgs args) := by
-  simp [format, parse_print_args args namesSafe fuel enough, render_raw_print]
+  simp [format, parse_print_args args namesSafe valuesSafe fuel enough, render_raw_print]
 
 theorem parse_after_format (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     (format fuel (printArgs args)).bind (parseArgs fuel) =
       some (args.map fun (name, value) => (name.chars, value.chars)) := by
-  simp [format_print args fuel namesSafe enough, parse_print_args args namesSafe fuel enough]
+  simp [format_print args fuel namesSafe valuesSafe enough,
+    parse_print_args args namesSafe valuesSafe fuel enough]
 
 theorem format_twice (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     (format fuel (printArgs args)).bind (format fuel) = some (printArgs args) := by
-  simp [format_print args fuel namesSafe enough]
+  simp [format_print args fuel namesSafe valuesSafe enough]
 
 theorem I1_word_keyword_arguments (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     parseArgs fuel (printArgs args) =
       some (args.map fun (name, value) => (name.chars, value.chars)) :=
-  parse_print_args args namesSafe fuel enough
+  parse_print_args args namesSafe valuesSafe fuel enough
 
 theorem I2_word_keyword_ast (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     (format fuel (printArgs args)).bind (parseArgs fuel) =
       some (args.map fun (name, value) => (name.chars, value.chars)) :=
-  parse_after_format args fuel namesSafe enough
+  parse_after_format args fuel namesSafe valuesSafe enough
 
 theorem I3_word_keyword_idempotence (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     (format fuel (printArgs args)).bind (format fuel) = some (printArgs args) :=
-  format_twice args fuel namesSafe enough
+  format_twice args fuel namesSafe valuesSafe enough
 
 -- Any order, omission and repetition is still a list of arbitrary length.
 theorem I4_word_keyword_sequences (args : List (Word × Word)) (fuel : Nat)
-    (namesSafe : safeNames args) (enough : args.length ≤ fuel) :
+    (namesSafe : safeNames args) (valuesSafe : safeValues args)
+    (enough : args.length ≤ fuel) :
     parseArgs fuel (printArgs args) =
       some (args.map fun (name, value) => (name.chars, value.chars)) ∧
     (format fuel (printArgs args)).bind (parseArgs fuel) =
       some (args.map fun (name, value) => (name.chars, value.chars)) :=
-  ⟨I1_word_keyword_arguments args fuel namesSafe enough,
-    I2_word_keyword_ast args fuel namesSafe enough⟩
+  ⟨I1_word_keyword_arguments args fuel namesSafe valuesSafe enough,
+    I2_word_keyword_ast args fuel namesSafe valuesSafe enough⟩
 
 end WordRoundTrip
