@@ -27,7 +27,7 @@ try {
   const classPlusRules = new Set(['Ws', 'Lang']);
   const orderedLiteralRules = new Set(['HashMark', 'Splat', 'CmpOp', 'AddOp']);
   const requiredRules = [...original.matchAll(/^([A-Za-z][A-Za-z0-9]*) <- /gm)]
-    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'StringLiteral' && name !== 'Word' && name !== 'Sp' && !literalRules.has(name) && !classPlusRules.has(name) && !orderedLiteralRules.has(name));
+    .map(match => match[1]).filter(name => name !== 'Sp' && !literalRules.has(name) && !classPlusRules.has(name) && !orderedLiteralRules.has(name));
   for (const name of requiredRules) {
     assert.match(strict.stderr, new RegExp(`^unsupported ${name} choice `, 'm'), `${name} is not reported`);
   }
@@ -70,7 +70,9 @@ try {
     'a non-literal branch must return the ordered rule to the unsupported report');
   if (/^Word <- '%%='/m.test(original)) {
     assert.match(strict.stderr, /unsupported Word choice 1 at .*Golem\.hpeg:\d+: '%%='/);
+    assert.match(strict.stderr, /unsupported Word choice 2 at .*Golem\.hpeg:\d+:/);
   }
+  assert.match(strict.stderr, /unsupported StringLit choice 1 at /);
 
   const invalidPeg = generate(`${original}\nUnclosed <- (\n`);
   assert.notEqual(invalidPeg.status, 0, 'the canonical PEG parser must reject malformed grammar');
@@ -177,7 +179,7 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.equal(unsupportedChoices, 246, 'the 16 pure ordered-literal alternatives must leave the unsupported report');
+  assert.equal(unsupportedChoices, 251, 'fragment proofs cannot remove StringLit, Word, or their alias');
   console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 14, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });

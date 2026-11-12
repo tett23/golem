@@ -208,29 +208,26 @@ const aliasRules = (ast?.rules ?? []).filter(rule =>
   rule.alts[0].items[0].expr.name === 'StringLit' &&
   rule.alts[0].items[0].expr.args.length === 0 &&
   rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
-const aliasNames = new Set(aliasRules.map(rule => rule.name));
 const orderedLiteralRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length > 1 &&
   rule.alts.every(alt => alt.items.length === 1 && alt.items[0].bind === null &&
     alt.items[0].expr.tag === 'lit' && alt.action?.trim() === '()' && alt.constructor === null));
 const orderedLiteralNames = new Set(orderedLiteralRules.map(rule => rule.name));
 if (!fragment && ast) {
+  // StringLit, Word, and StringLiteral stay unsupported: their fragment proofs
+  // do not establish an arbitrary-input theorem for the canonical PEG model.
   for (const rule of ast.rules) {
-    if (rule.name === 'StringLit' && stringSupported && rule.alts.length === 1) continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
-    if (aliasNames.has(rule.name)) continue;
     if (orderedLiteralNames.has(rule.name)) continue;
     let index = 0;
     const report = (items, line) => {
       index++;
       errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
     };
-    for (const [rootIndex, alt] of rule.alts.entries()) {
-      if (!(rule.name === 'Word' && shapes.Word.includes(word) && rootIndex === rule.alts.length - 1)) {
-        report(alt.items, alt.line);
-      }
+    for (const alt of rule.alts) {
+      report(alt.items, alt.line);
     }
     for (const alt of rule.alts) {
       for (const item of alt.items) {
