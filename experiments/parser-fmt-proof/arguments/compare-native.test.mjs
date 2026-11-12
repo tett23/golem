@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { saveProjectFailure } from '../save-project-failure.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -66,7 +67,7 @@ function nativeRows(dir, original, tokens, caseName, formatted = false) {
   });
 }
 
-test('Golem ADR 0351 I6-I8: Lean findings equal native check codes, order and spans', () => {
+test('Golem ADR 0351 I6-I8: Lean findings equal native check codes, order and spans', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'golem-argument-model-native-'));
   try {
     const fixtures = join(root, 'modules/golem-driver/test/fixtures');
@@ -82,21 +83,31 @@ test('Golem ADR 0351 I6-I8: Lean findings equal native check codes, order and sp
     const model = modelRows(dir);
     const tokens = ['x=1', 'x=2', 'tax=true', 'tax=abc', 'unit="円"'];
     const price = '@import fn/book.emet as book\n\n[book.price 1 ' + tokens.join(' ') + ']\n';
-    const priceRows = nativeRows(dir, price, tokens, 'price');
-    const formattedPriceRows = nativeRows(dir, price, tokens, 'price', true);
-    const missingRows = [];
-    const formattedMissingRows = [];
+    const preamble = '@import fn/book.emet as book\n\n';
+    const cases = [{ name: 'price', original: preamble + '[book.price 1]\n',
+      input: price, tokens, count: 5 }];
     for (const supplied of [0, 1, 2]) {
       const positional = Array.from({ length: supplied }, (_, index) => String(index + 1));
-      const manuscript = '@import fn/book.emet as book\n\n[book.triple   ' + positional.join(' ') + ']\n';
-      const caseName = `missing-${supplied}`;
-      missingRows.push(...nativeRows(dir, manuscript, [], caseName));
-      formattedMissingRows.push(...nativeRows(dir, manuscript, [], caseName, true));
+      cases.push({ name: `missing-${supplied}`, original: preamble + '[book.triple 1 2 3]\n',
+        input: preamble + '[book.triple   ' + positional.join(' ') + ']\n', tokens: [], count: 3 - supplied });
     }
-    assert.equal(priceRows.length, 5);
-    assert.equal(missingRows.length, 6);
-    assert.deepEqual([...priceRows, ...missingRows], model);
-    assert.deepEqual([...formattedPriceRows, ...formattedMissingRows], model);
+    for (const c of cases) {
+      for (const formatted of [false, true]) {
+        const label = c.name + (formatted ? '-formatted' : '-original');
+        await t.test(label, () => {
+          try {
+            const rows = nativeRows(dir, c.input, c.tokens, c.name, formatted);
+            assert.equal(rows.length, c.count);
+            assert.deepEqual(rows, model.filter(row => row[0] === c.name));
+          } catch (error) {
+            saveProjectFailure('arguments', dir, c.original, error, 'native-' + label,
+              'compare-native.test.mjs', c.input);
+            throw error;
+          }
+        });
+      }
+    }
+    assert.equal(model.length, cases.reduce((total, c) => total + c.count, 0));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
