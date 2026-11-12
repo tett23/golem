@@ -88,22 +88,54 @@ def keywordRepetitionChild : PegModel.Expr :=
   .choice [[.ref "Sp" [], .ref "KwArg" [],
     .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]]
 
+theorem canonical_keyword_child_misses_newline (extra : Nat) (suffix : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (extra + 80)
+      keywordRepetitionChild ('\n' :: suffix) = .ok none := by
+  rfl
+
+theorem canonical_arg_order_accepts_newline (extra : Nat) (suffix : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (extra + 80)
+      (.label (.choice [[.notPred (.choice [[.ref "Sp" [], .ref "PosArg" []]])]])
+        "arg_order") ('\n' :: suffix) = .ok (some ('\n' :: suffix)) := by
+  rfl
+
+def CanonicalKeywordHits (extra : Nat) (suffix : List Char) :
+    List (List Char) → Prop
+  | [] => True
+  | chunk :: rest =>
+      PegModel.recognizeEnv Generated.pegGrammar []
+        (extra + 80 + rest.length + 1) keywordRepetitionChild
+        ((chunk :: rest).join ++ '\n' :: suffix) =
+          .ok (some (rest.join ++ '\n' :: suffix)) ∧
+      chunk ≠ [] ∧ CanonicalKeywordHits extra suffix rest
+
+theorem keyword_hits_to_star_steps (extra : Nat) (suffix : List Char)
+    (chunks : List (List Char))
+    (hits : CanonicalKeywordHits extra suffix chunks) :
+    CanonicalStarSteps Generated.pegGrammar [] keywordRepetitionChild
+      (extra + 80) ('\n' :: suffix) chunks := by
+  induction chunks with
+  | nil => exact canonical_keyword_child_misses_newline extra suffix
+  | cons chunk rest ih =>
+      obtain ⟨hit, nonempty, more⟩ := hits
+      exact ⟨hit, nonempty, ih more⟩
+
 -- The actual Arguments keyword repetition has this result for any number of
 -- printed arguments and any enclosing suffix once each canonical step and the
 -- final miss are supplied.  canonical_star_chunks discharges all repetition,
 -- strict-consumption and fuel bookkeeping obligations.
 theorem canonical_keyword_repetition
     (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
-    (base : Nat) (suffix : List Char)
-    (steps : CanonicalStarSteps Generated.pegGrammar [] keywordRepetitionChild base
-      ('\n' :: suffix) (printedKeywordChunks args)) :
+    (extra : Nat) (suffix : List Char)
+    (hits : CanonicalKeywordHits extra suffix (printedKeywordChunks args)) :
     PegModel.recognizeEnv Generated.pegGrammar []
-      (base + args.length + 1) (.star keywordRepetitionChild)
+      (extra + 80 + args.length + 1) (.star keywordRepetitionChild)
       (WordRoundTrip.printArgs args ++ suffix) =
         .ok (some ('\n' :: suffix)) := by
   rw [printedKeywordChunks_join args suffix, ← printedKeywordChunks_length args]
-  exact canonical_star_chunks Generated.pegGrammar [] keywordRepetitionChild base
-    ('\n' :: suffix) (printedKeywordChunks args) steps
+  exact canonical_star_chunks Generated.pegGrammar [] keywordRepetitionChild
+    (extra + 80) ('\n' :: suffix) (printedKeywordChunks args)
+    (keyword_hits_to_star_steps extra suffix (printedKeywordChunks args) hits)
 
 -- Stage 1 fixes the peg-hs AST of Golem.hpeg via Generated.  Stage 2 derives
 -- how the Word-valued keyword path consumes each printed argument and leaves
