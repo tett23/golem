@@ -91,6 +91,18 @@ theorem scanPositionBounds {rules seen position args finding}
           simp only [List.length_cons]
           omega
 
+-- Every reported occurrence belongs to the call. Only declaration
+-- omissions can point just past its last argument.
+theorem checkPosition {rules args finding} (found : finding ∈ check rules args) :
+    finding.position < args.length ∨
+      (finding.position = args.length ∧ finding.error = .missing) := by
+  cases splitMembership (show finding ∈ _ ++ _ from found) with
+  | inl scanned => exact Or.inl (by simpa using (scanPositionBounds scanned).2)
+  | inr omitted =>
+      obtain ⟨rule, _, eq⟩ := List.mem_map.mp omitted
+      subst finding
+      exact Or.inr ⟨rfl, rfl⟩
+
 theorem absentUnknown (rules : List Rule) (seen : List String)
     (position : Nat) (arg : Argument) (h : ruleFor rules arg.name = none) :
     { position, name := arg.name, error := Error.unknown } ∈
