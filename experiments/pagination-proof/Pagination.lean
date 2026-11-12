@@ -1750,6 +1750,228 @@ theorem I3_blankFigureOrder_no_blank_no_figures
   intro f bound
   exact False.elim (Nat.not_lt_zero f bound)
 
+inductive FigureConfig where
+  | zero
+  | one (pos size : Nat)
+  | two (firstPos firstSize secondPos secondSize : Nat)
+
+def figureCount : FigureConfig → Nat
+  | .zero => 0
+  | .one _ _ => 1
+  | .two _ _ _ _ => 2
+
+def figurePosAt : FigureConfig → Nat → Nat
+  | .zero, _ => 0
+  | .one pos _, _ => pos
+  | .two firstPos _ secondPos _, f => if f = 0 then firstPos else secondPos
+
+def figureSizeAt : FigureConfig → Nat → Nat
+  | .zero, _ => 0
+  | .one _ size, _ => size
+  | .two _ firstSize _ secondSize, f => if f = 0 then firstSize else secondSize
+
+def figureKeptAtPos : FigureConfig → (Nat → Bool) → Nat → Bool
+  | .zero, _, _ => false
+  | .one pos _, kept, sourcePos => keptAtTwoPositions pos (pos + 1) (kept 0) false sourcePos
+  | .two firstPos _ secondPos _, kept, sourcePos =>
+      keptAtTwoPositions firstPos secondPos (kept 0) (kept 1) sourcePos
+
+def figureWaitingAtPos : FigureConfig → (Nat → Bool) → Nat → Bool
+  | .zero, _, _ => false
+  | .one _ _, _, _ => false
+  | .two firstPos _ secondPos _, kept, sourcePos =>
+      waitingAtTwoPositions firstPos secondPos kept sourcePos
+
+def blankMaskFor (figures : FigureConfig) (blank : Option Nat) : Nat → Bool :=
+  match blank, figures with
+  | some blankPos, .one pos _ => beforeBlankMask pos (pos + 1) blankPos
+  | some blankPos, .two firstPos _ secondPos _ =>
+      beforeBlankMask firstPos secondPos blankPos
+  | _, _ => fun _ => false
+
+def figureDomain (items : List SourceItem) : FigureConfig → Prop
+  | .zero => ∀ pos, .figure pos ∉ items
+  | .one pos _ => .figure pos ∈ items ∧
+      ∀ otherPos, .figure otherPos ∈ items → otherPos = pos
+  | .two firstPos _ secondPos _ =>
+      firstPos < secondPos ∧ .figure firstPos ∈ items ∧
+      .figure secondPos ∈ items ∧
+      ∀ otherPos, .figure otherPos ∈ items →
+        otherPos = firstPos ∨ otherPos = secondPos
+
+def blankDomain (items : List SourceItem) : Option Nat → Prop
+  | none => ∀ pos, .blank pos ∉ items
+  | some pos => .blank pos ∈ items ∧
+      ∀ otherPos, .blank otherPos ∈ items → otherPos = pos
+
+def figureLoad (used : Nat) (config : FigureConfig)
+    (kept : Nat → Bool) (placed : Bool) : Nat :=
+  match config with
+  | .zero => used + (if placed then 1 else 0)
+  | .one _ size => used + (if kept 0 then size else 0) +
+      (if placed then 1 else 0)
+  | .two _ firstSize _ secondSize =>
+      used + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) + (if placed then 1 else 0)
+
+def zeroBreakPlacement (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (blank : Option Nat)
+    (kept : Nat → Bool) (atTop placed : Bool) : Prop :=
+  figuresRuleWithLoad (figureCount config) capacity used kept
+    (fun f => textReadyZero items (figurePosAt config f) = true)
+    (fun f => textBeforeCount items (figurePosAt config f))
+    (figureSizeAt config)
+    (match blank with
+      | none => fun _ => false
+      | some _ => fun f => !blankMaskFor config blank f && !atTop) ∧
+  atTop = (match blank with
+    | none => false
+    | some pos => blankAtTopSource used pos items (fun _ => false)
+        (figureKeptAtPos config kept)) ∧
+  placed = (match blank with
+    | none => false
+    | some pos => blankPlacedFromSourceFull used pos
+        (figureWaitingAtPos config kept) items (fun _ => false)
+        (figureKeptAtPos config kept)) ∧
+  figureLoad used config kept placed ≤ capacity
+
+theorem I3_zeroBreakPlacement_implies_figure_order
+    (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (blank : Option Nat)
+    (kept : Nat → Bool) (atTop placed : Bool)
+    (placement : zeroBreakPlacement capacity used items config blank kept atTop placed) :
+    figuresInOrder (figureCount config) kept := by
+  exact I3_figuresRule_implies_figuresInOrder _ _ _ _ placement.1
+
+theorem blankFigureOrder (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (blank : Option Nat)
+    (usedFits : used ≤ capacity) (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (blankValid : blankDomain items blank) :
+    ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      zeroBreakPlacement capacity used items config blank kept atTop placed := by
+  cases config with
+  | zero =>
+      cases blank with
+      | none =>
+          refine ⟨fun _ => false, false, false, ?_⟩
+          simp [zeroBreakPlacement, figureCount, figureLoad,
+            blankMaskFor, usedFits]
+          intro f bound
+          exact False.elim (Nat.not_lt_zero f bound)
+      | some blankPos =>
+          obtain ⟨placed, placedRule, fits⟩ :=
+            I3_blankFigureOrder_no_figure_arbitrary_source_exists
+              capacity used blankPos (fun _ => false) items usedFits
+          refine ⟨fun _ => false,
+            blankAtTopSource used blankPos items (fun _ => false) (fun _ => false),
+            placed, ?_⟩
+          unfold zeroBreakPlacement
+          refine ⟨?_, ?_, ?_, ?_⟩
+          · intro f bound
+            exact False.elim (Nat.not_lt_zero f bound)
+          · rfl
+          · simpa [figureWaitingAtPos, figureKeptAtPos] using placedRule
+          · simpa [figureLoad] using fits
+  | one pos size =>
+      cases blank with
+      | none =>
+          obtain ⟨kept, rule, fits⟩ :=
+            I3_blankFigureOrder_no_blank_one_figure_zero_break
+              capacity used pos size items usedFits
+          exact ⟨kept, false, false,
+            by simpa [zeroBreakPlacement, figureCount, figurePosAt,
+              figureSizeAt, blankMaskFor, figureLoad] using
+              (show figuresRuleWithLoad 1 capacity used kept
+                (fun _ => textReadyZero items pos = true)
+                (fun _ => textBeforeCount items pos)
+                (fun _ => size) (fun _ => false) ∧
+                used + (if kept 0 then size else 0) ≤ capacity from ⟨rule, fits⟩)⟩
+      | some blankPos =>
+          rcases figuresValid with ⟨figureIn, onlyOne⟩
+          rcases blankValid with ⟨blankIn, _⟩
+          have different : blankPos ≠ pos := by
+            intro samePos
+            have sameItem := I3_sourceOrdered_unique_position items ordered
+              (.blank blankPos) (.figure pos) blankIn figureIn
+              (by simp [sourcePos, samePos])
+            cases sameItem
+          obtain ⟨top, kept, placed, rule, topRule, blankRule, fits⟩ :=
+            I3_blankFigureOrder_one_figure_arbitrary_source_exists
+              capacity used blankPos pos size
+              (fun _ => textReadyZero items pos)
+              (fun _ => textBeforeCount items pos)
+              (fun _ _ => false) items usedFits different figureIn onlyOne
+          refine ⟨kept, top, placed, ?_⟩
+          simpa [zeroBreakPlacement, figureCount, figurePosAt,
+            figureSizeAt, blankMaskFor, figureLoad,
+            figureKeptAtPos, figureWaitingAtPos] using
+            (show figuresRuleWithLoad 1 capacity used kept
+              (fun _ => textReadyZero items pos = true)
+              (fun _ => textBeforeCount items pos) (fun _ => size)
+              (fun f => !beforeBlankMask pos (pos + 1) blankPos f && !top) ∧
+              top = blankAtTopSource used blankPos items (fun _ => false)
+                (keptAtTwoPositions pos (pos + 1) (kept 0) false) ∧
+              placed = blankPlacedFromSourceFull used blankPos (fun _ => false)
+                items (fun _ => false)
+                (keptAtTwoPositions pos (pos + 1) (kept 0) false) ∧
+              used + (if kept 0 then size else 0) +
+                (if placed then 1 else 0) ≤ capacity from
+              ⟨rule, topRule, blankRule, fits⟩)
+  | two firstPos firstSize secondPos secondSize =>
+      cases blank with
+      | none =>
+          obtain ⟨kept, rule, fits⟩ :=
+            I3_blankFigureOrder_no_blank_two_figures_zero_break
+              capacity used firstPos secondPos firstSize secondSize items usedFits
+          refine ⟨kept, false, false, ?_⟩
+          simpa [zeroBreakPlacement, figureCount, figurePosAt,
+            figureSizeAt, blankMaskFor, figureLoad] using
+            (show figuresRuleWithLoad 2 capacity used kept
+              (fun f => textReadyZero items (if f = 0 then firstPos else secondPos) = true)
+              (fun f => textBeforeCount items (if f = 0 then firstPos else secondPos))
+              (fun f => if f = 0 then firstSize else secondSize) (fun _ => false) ∧
+              used + (if kept 0 then firstSize else 0) +
+                (if kept 1 then secondSize else 0) ≤ capacity from ⟨rule, fits⟩)
+      | some blankPos =>
+          rcases figuresValid with ⟨positions, firstIn, secondIn, onlyTwo⟩
+          rcases blankValid with ⟨blankIn, _⟩
+          have blankFirstDifferent : blankPos ≠ firstPos := by
+            intro samePos
+            have sameItem := I3_sourceOrdered_unique_position items ordered
+              (.blank blankPos) (.figure firstPos) blankIn firstIn
+              (by simp [sourcePos, samePos])
+            cases sameItem
+          have blankSecondDifferent : blankPos ≠ secondPos := by
+            intro samePos
+            have sameItem := I3_sourceOrdered_unique_position items ordered
+              (.blank blankPos) (.figure secondPos) blankIn secondIn
+              (by simp [sourcePos, samePos])
+            cases sameItem
+          obtain ⟨top, kept, placed, rule, topRule, blankRule, fits⟩ :=
+            I3_blankFigureOrder_two_figures_zero_break capacity used blankPos
+              firstPos secondPos firstSize secondSize items usedFits positions
+              blankFirstDifferent blankSecondDifferent firstIn secondIn onlyTwo
+          refine ⟨kept, top, placed, ?_⟩
+          simpa [zeroBreakPlacement, figureCount, figurePosAt,
+            figureSizeAt, blankMaskFor, figureLoad,
+            figureKeptAtPos, figureWaitingAtPos] using
+            (show figuresRuleWithLoad 2 capacity used kept
+              (fun f => textReadyZero items (if f = 0 then firstPos else secondPos) = true)
+              (fun f => textBeforeCount items (if f = 0 then firstPos else secondPos))
+              (fun f => if f = 0 then firstSize else secondSize)
+              (fun f => !beforeBlankMask firstPos secondPos blankPos f && !top) ∧
+              top = blankAtTopSource used blankPos items (fun _ => false)
+                (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+              placed = blankPlacedFromSourceFull used blankPos
+                (waitingAtTwoPositions firstPos secondPos kept) items
+                (fun _ => false)
+                (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+              used + (if kept 0 then firstSize else 0) +
+                (if kept 1 then secondSize else 0) +
+                (if placed then 1 else 0) ≤ capacity from
+              ⟨rule, topRule, blankRule, fits⟩)
+
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
     textReadyAtZeroBreak textPositions figurePos ↔
