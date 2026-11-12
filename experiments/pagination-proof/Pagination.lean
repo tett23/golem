@@ -238,4 +238,11 @@ theorem needMoreSpace46Here :
     ∃ brk : Fin 3, brk.val = 2 ∧ space46Keeps brk ∧ 1 + brk.val ≤ 4 := by
   exact ⟨2, by decide, by simp [space46Keeps], by decide⟩
 
+/- A one-line body, one-line footnote separator, and one-line note cannot
+   all fit in a column of capacity 1 or 2. Golem's current `carryNote`
+   retries without consuming the note in those columns (I4 red test). -/
+theorem I4_footnote_capacity_conflict (capacity : Nat) (small : capacity ≤ 2) :
+    ¬ (1 + 1 + 1 ≤ capacity) := by
+  omega
+
 end GolemPagination
