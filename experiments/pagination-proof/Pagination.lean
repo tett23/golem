@@ -196,6 +196,14 @@ theorem I3_nextAfterWaiting_none_iff_all_wait
       | false => simp [nextAfterWaiting, hx]
       | true => simp [nextAfterWaiting, hx, ih]
 
+theorem I3_nextAfterWaiting_eq_find (waiting : Nat → Bool)
+    (items : List Nat) :
+    nextAfterWaiting waiting items = List.find? (fun x => !waiting x) items := by
+  induction items with
+  | nil => rfl
+  | cons x xs ih =>
+      cases hx : waiting x <;> simp [nextAfterWaiting, List.find?, hx, ih]
+
 /- Number figures in source order. This is the `figureOrder` pair condition
    from the Alloy model without its finite limit of two figures. It says a
    kept figure requires every earlier figure to be kept. -/
