@@ -74,6 +74,39 @@ theorem repeatedUnknownFindings (rules : List Rule) (seen : List String)
        { position, name := arg.name, error := .duplicate }] := by
   simp [atOccurrence, unknown, repeated, Option.any]
 
+/- Splitting at any occurrence preserves all preceding findings and passes
+   exactly the preceding names to the remaining scan. -/
+theorem scan_split (rules : List Rule) (before after : List Argument)
+    (seen : List String) (position : Nat) :
+    scan rules (before ++ after) seen position =
+      scan rules before seen position ++
+        scan rules after ((before.map Argument.name).reverse ++ seen) (position + before.length) := by
+  induction before generalizing seen position with
+  | nil => simp [scan]
+  | cons arg rest ih =>
+      simp [scan, ih, List.reverse_cons, List.append_assoc, Nat.add_assoc,
+        Nat.add_comm, Nat.add_left_comm]
+
+theorem scan_repeated_unknown (rules : List Rule) (before after : List Argument)
+    (arg : Argument) (unknown : ruleFor rules arg.name = none)
+    (repeated : (before.map Argument.name).reverse.contains arg.name = true) :
+    scan rules (before ++ arg :: after) [] 0 =
+      scan rules before [] 0 ++
+        [{ position := before.length, name := arg.name, error := Error.unknown },
+         { position := before.length, name := arg.name, error := Error.duplicate }] ++
+        scan rules after (arg.name :: (before.map Argument.name).reverse) (before.length + 1) := by
+  rw [scan_split]
+  simp [scan, repeatedUnknownFindings rules _ _ _ unknown repeated, List.append_assoc]
+
+theorem repeatedKnownFindings (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (rule : Rule)
+    (known : ruleFor rules arg.name = some rule) (once : rule.repeatable = false)
+    (repeated : seen.contains arg.name = true) :
+    atOccurrence rules seen position arg =
+      [{ position, name := arg.name, error := .duplicate }] ++
+        (if rule.kind != arg.kind then [{ position, name := arg.name, error := .wrongType }] else []) := by
+  simp [atOccurrence, known, once, repeated, Option.any]
+
 theorem presentRequiredName (name : String) (kind : Kind) (rest : List Argument) :
     (({ name, kind } : Argument) :: rest).any (fun arg => arg.name == name) = true := by
   simp
