@@ -24,3 +24,10 @@ def main : IO Unit := do
             else "-"
           | _ => "-"
         IO.println s!"{label} {scalars input} => {output}"
+
+  for n in List.range 7 do
+    for input in inputs "甲𠮷,\n\r".toList n do
+      let report := match TableFormat.firstLoneCR input 0 with
+        | none => ""
+        | some i => s!"G02082 {i} {i+1}"
+      IO.println s!"span {scalars input} => {report}"
