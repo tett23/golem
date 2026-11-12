@@ -119,7 +119,9 @@ tests =
         let f = InlineFunction (Params [ArgNat, ArgString, ArgBool] Nothing []) 0 "" (\_ _ _ -> Right [])
             ctx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" emptyNamespace {fnInline = Map.singleton "f" f}) False Set.empty}
             (ds, _) = evalSource ctx (withImport "[book.f abc]\n")
-        map diagCodeText (sortDiagnostics ds) @?= ["G02121", "G02120", "G02120"],
+        map diagCodeText (sortDiagnostics ds) @?= ["G02121", "G02120", "G02120"]
+        let omissions = [diagMessage d | d <- sortDiagnostics ds, diagCodeText d == "G02120"]
+        zipWith Data.Text.isSuffixOf ["2 番目の位置引数がありません", "3 番目の位置引数がありません"] omissions @?= [True, True],
       testCase "Golem ADR 0351 I6: an earlier value failure keeps the later argument number" $ do
         let f = InlineFunction (Params [ArgNat, ArgNat] Nothing []) 0 "" (\_ _ _ -> Right [])
             ctx = baseCtx {ctxFunctions = FunctionTable (Map.singleton "functions/book.emet" emptyNamespace {fnInline = Map.singleton "f" f}) False Set.empty}

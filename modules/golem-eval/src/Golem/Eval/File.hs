@@ -692,7 +692,10 @@ functionArgs ctx sp name ps args = do
       missingSite = mkSpan (spanFile sp) (spanEnd sp) (spanEnd sp)
       countError = argErrorDiagnostic missingSite name (WrongCount positionalCount requiredCount (isJust (prVarargs ps)))
       countErrors
-        | positionalCount < requiredCount = replicate (requiredCount - positionalCount) countError
+        | positionalCount < requiredCount =
+            [ countError {diagMessage = diagMessage countError <> "。" <> tshow index <> " 番目の位置引数がありません"}
+            | index <- [positionalCount + 1 .. requiredCount]
+            ]
         | positionalCount > requiredCount && isNothing (prVarargs ps) = [countError]
         | otherwise = []
       positionalTypeErrors =
