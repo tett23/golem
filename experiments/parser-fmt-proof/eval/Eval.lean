@@ -161,6 +161,21 @@ theorem remaining_le_budget (derivation : Derives budget env expression value re
     remaining ≤ budget := by
   induction derivation <;> omega
 
+-- Increasing a successful evaluation's budget by any amount leaves all
+-- steps of the derivation intact. The entire increase remains unspent.
+theorem I5_surplusBudget (d : Derives budget env expression value remaining) (extra : Nat) :
+    Derives (extra + budget) env expression value (extra + remaining) := by
+  induction d with
+  | literal => exact .literal
+  | «variable» found => exact .variable found
+  | external found => exact .external found
+  | add _ _ left right => exact .add left right
+  | quotient _ _ left right => exact .quotient left right
+  | ternaryTrue _ _ cond branch => exact .ternaryTrue cond branch
+  | ternaryFalse _ _ cond branch => exact .ternaryFalse cond branch
+  | append _ _ left right => exact .append left (by simpa [Nat.add_assoc] using right)
+  | call _ _ arg body => exact .call arg body
+
 theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
     eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
   rw [parsed_format]
