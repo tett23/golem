@@ -14,7 +14,8 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
   const file = join(dir, 'a.gm');
   const run = (...args) => execFileSync(process.env.GOLEM || 'golem', args, { cwd: dir, encoding: 'utf8' });
   const original = '@import fn/book.emet as book\n\n[= book.sum(1,%%注%%2,3)]\n\n' +
-    '[= book.first(7,%%左%%0)]\n\n[= book.second(8,%%右%%0)]\n';
+    '[= book.first(7,%%左%%0)]\n\n[= book.second(8,%%右%%0)]\n\n' +
+    '[= book.sum(9,%%外%%book.sum(1,%%内甲%%%%内乙%%2,3),%%末%%4)]\n';
   try {
     cpSync(fixture, dir, { recursive: true });
     appendFileSync(join(dir, 'fn/book.emet'), [
@@ -25,14 +26,19 @@ test('Golem ADR 0351 I5: an imported Emet function evaluates identically after f
     const evaluate = () => withoutPositions(run('inspect', 'a.gm', '--as', 'ir'));
     const before = evaluate();
     assert.match(before, /blockBody = Paragraph Nothing \[Text "6"\]/);
-    for (const value of ['7', '8']) {
+    for (const value of ['7', '8', '19']) {
       assert.ok(before.includes('blockBody = Paragraph Nothing [Text "' + value + '"]'));
     }
     run('fmt', 'a.gm');
     const formatted = readFileSync(file, 'utf8');
     assert.notEqual(formatted, original);
     assert.ok(formatted.includes('%%注%%'));
+    const nested = formatted.split('\n').find(line => line.includes('%%外%%'));
+    assert.ok(nested);
+    assert.equal(nested.replace(/[ \t]/g, ''), '[=book.sum(9,%%外%%book.sum(1,%%内甲%%%%内乙%%2,3),%%末%%4)]');
     assert.equal(evaluate(), before);
+    run('fmt', 'a.gm');
+    assert.equal(readFileSync(file, 'utf8'), formatted);
   } catch (error) {
     saveProjectFailure('eval', dir, original, error);
     throw error;
