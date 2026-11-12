@@ -305,4 +305,43 @@ example :
       [ { position := 0, name := "count", error := .missing },
         { position := 0, name := "label", error := .missing } ] := by decide
 
+structure KeywordText where
+  leading : String
+  name : String
+  separator : String
+  value : String
+
+def KeywordText.width (a : KeywordText) : Nat :=
+  a.leading.utf8ByteSize + a.name.utf8ByteSize + a.separator.utf8ByteSize + a.value.utf8ByteSize
+
+def atKeyword (a : KeywordText) (offset : Nat) (error : Error) : Option (Nat × Nat) :=
+  let start := offset + a.leading.utf8ByteSize
+  let nameEnd := start + a.name.utf8ByteSize
+  let valueStart := nameEnd + a.separator.utf8ByteSize
+  let stop := valueStart + a.value.utf8ByteSize
+  match error with
+  | .unknown => some (start, nameEnd)
+  | .duplicate => some (start, stop)
+  | .wrongType => some (valueStart, stop)
+  | .missing => none
+
+def keywordSpan : List KeywordText → Nat → Nat → Error → Option (Nat × Nat)
+  | [], _, _, _ => none
+  | a :: _, 0, offset, error => atKeyword a offset error
+  | a :: rest, index + 1, offset, error => keywordSpan rest index (offset + a.width) error
+
+-- Computing the span from either spelling targets the same occurrence
+-- ordinal even when trivia or the UTF-8 width of earlier values changes.
+theorem I6_keywordSpanAtOccurrence (before after : List KeywordText)
+    (a : KeywordText) (offset : Nat) (error : Error) :
+    keywordSpan (before ++ a :: after) before.length offset error =
+      atKeyword a (offset + before.foldr (fun entry total => entry.width + total) 0) error := by
+  induction before generalizing offset with
+  | nil => simp [keywordSpan, List.foldr]
+  | cons first rest ih => simp [keywordSpan, List.foldr, ih, Nat.add_assoc]
+
+-- I6: two identical spellings separated by a multibyte comment.
+example : keywordSpan [.mk " " "x" "=" "1", .mk " %%甲%% " "x" "=" "1"]
+    1 0 .duplicate = some (13, 16) := by decide
+
 end ArgumentDiagnostics
