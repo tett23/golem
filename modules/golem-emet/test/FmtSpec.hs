@@ -5,12 +5,14 @@ separators between the items.
 -}
 module FmtSpec (fmtTests) where
 
+import Data.Bifunctor (first)
 import Data.Int (Int64)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Emet
 import Golem.Emet.Syntax
 import Golem.Eval.Value (Value (..))
@@ -99,6 +101,16 @@ i5EvalTests =
             compareEval source "f" [nat 2] used (Right (nat 5))
             compareEval source "f" [nat 2] (used - 1) (Left (DiagnosticCode "E04100"))
           other -> assertFailure (show (fst other)),
+      testCase "I5 expression reductions match the Lean budget boundaries" $ do
+        let evaluate budget source = first (map diagCode) (evaluateExpression Nothing budget (TE.encodeUtf8 source))
+            overLimit = Left [DiagnosticCode "E04100"]
+            addition = "(1 + 1) + (1 + 1)"
+            append = "\"鰍\" ++ \"𠮷\""
+        evaluate 0 "1" @?= Right (nat 1)
+        evaluate 2 addition @?= overLimit
+        evaluate 3 addition @?= Right (nat 4)
+        evaluate 2 append @?= overLimit
+        evaluate 3 append @?= Right (str "鰍𠮷"),
       testCase "I5 checker error is preserved before evaluation" $ do
         let source = "f :: String -> String\nf x = x + 3\n"
         formatted <- either (assertFailure . show) pure (formatEmet source)
