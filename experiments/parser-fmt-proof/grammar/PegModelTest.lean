@@ -1515,4 +1515,81 @@ theorem generated_block_command_start (input : List Char) (fuel : Nat) :
       [.ref "SetDeclarationStart" []]]) input = _
   exact block_command_start_choice Generated.pegGrammar [] input fuel
 
+theorem star_any_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv grammar env (input.length + 2 + extra) (.star .any) input =
+      .ok (some []) := by
+  induction input with
+  | nil =>
+      have fuelEq : 2 + extra = (1 + extra) + 1 := by omega
+      simp only [List.length_nil, Nat.zero_add]
+      rw [fuelEq]
+      change (match PegModel.recognizeEnv grammar env (1 + extra) .any [] with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some [])
+        | Except.ok (some next) =>
+            if next.length < 0 then PegModel.recognizeEnv grammar env (1 + extra) (.star .any) next
+            else Except.error "zero-width repetition") = _
+      have child : PegModel.recognizeEnv grammar env (1 + extra) .any [] = .ok none := by
+        have step : 1 + extra = extra + 1 := by omega
+        rw [step]
+        rfl
+      rw [child]
+  | cons c rest ih =>
+      have fuelEq : (c :: rest).length + 2 + extra = (rest.length + 2 + extra) + 1 := by
+        simp only [List.length_cons]
+        omega
+      rw [fuelEq]
+      change (match PegModel.recognizeEnv grammar env (rest.length + 2 + extra) .any (c :: rest) with
+        | Except.error reason => Except.error reason
+        | Except.ok none => Except.ok (some (c :: rest))
+        | Except.ok (some next) =>
+            if next.length < (c :: rest).length then
+              PegModel.recognizeEnv grammar env (rest.length + 2 + extra) (.star .any) next
+            else Except.error "zero-width repetition") = _
+      have child : PegModel.recognizeEnv grammar env (rest.length + 2 + extra) .any (c :: rest) = .ok (some rest) := by
+        have step : rest.length + 2 + extra = (rest.length + 1 + extra) + 1 := by omega
+        rw [step]
+        rfl
+      rw [child]
+      simp [ih]
+
+theorem generated_skip_all (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 4 + extra)
+      (.ref "SkipAll" []) input = .ok (some []) := by
+  have refFuel : input.length + 4 + extra = (input.length + 3 + extra) + 1 := by omega
+  rw [refFuel]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 3 + extra)
+    (.choice [[.star .any]]) input = _
+  have choiceFuel : input.length + 3 + extra = (input.length + 2 + extra) + 1 := by omega
+  rw [choiceFuel]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (input.length + 2 + extra) item rest)
+      _ [] items input) [[.star .any]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  have star := star_any_total Generated.pegGrammar [] input extra
+  simp [PegModel.runSequence, star]
+  rfl
+
+theorem generated_skip_line (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 7 + extra)
+      (.ref "SkipLine" []) input =
+      .ok (some (input.dropWhile (permitted [(10, 10)]))) := by
+  have refFuel : input.length + 7 + extra = (input.length + 6 + extra) + 1 := by omega
+  rw [refFuel]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (input.length + 6 + extra)
+    (.choice [[.star (.choice [[.notPred (.charClass [(10, 10)] "[\\n]"), .any]])]]) input = _
+  have choiceFuel : input.length + 6 + extra = (input.length + 5 + extra) + 1 := by omega
+  rw [choiceFuel]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (input.length + 5 + extra) item rest)
+      _ [] items input)
+    [[.star (.choice [[.notPred (.charClass [(10, 10)] "[\\n]"), .any]])]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  have star := star_nonclass_total Generated.pegGrammar [] [(10, 10)] "[\\n]" input extra
+  simp [PegModel.runSequence, star]
+  rfl
+
 end PegModelTest

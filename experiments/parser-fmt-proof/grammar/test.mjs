@@ -272,6 +272,21 @@ try {
     [join(here, 'generate.mjs'), changedBlockCommandStart, generated], { encoding: 'utf8' });
   assert.match(strictBlockCommandStart.stderr, /unsupported BlockCommandStart choice 1 at /,
     'changing the command prefix class must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported (SkipAll|SkipLine) choice /m,
+    'the canonical skip rules have arbitrary-input proofs');
+  const changedSkipAll = join(work, 'ChangedSkipAll.hpeg');
+  writeFileSync(changedSkipAll, original.replace(/^SkipAll <- .*$/m, 'SkipAll <- .+ { () }'));
+  const strictSkipAll = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedSkipAll, generated], { encoding: 'utf8' });
+  assert.match(strictSkipAll.stderr, /unsupported SkipAll choice 1 at /,
+    'changing EOF consumption to one-or-more must return to the report');
+  const changedSkipLine = join(work, 'ChangedSkipLine.hpeg');
+  writeFileSync(changedSkipLine, original.replace(/^SkipLine <- .*$/m,
+    'SkipLine <- (![x] .)* { () }'));
+  const strictSkipLine = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedSkipLine, generated], { encoding: 'utf8' });
+  assert.match(strictSkipLine.stderr, /unsupported SkipLine choice 1 at /,
+    'changing the newline boundary must return to the report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);
@@ -310,7 +325,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 4, negative mutations 24, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 4, negative mutations 26, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

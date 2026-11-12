@@ -212,6 +212,20 @@ const blockCommandStartFullyProved = rule('BlockCommandStart') === "'@' [a-z] / 
   blockCommandStartAst.alts.length === 2 && blockCommandStartAst.alts.every(alt =>
     alt.action?.trim() === '()' && alt.constructor === null &&
     alt.items.every(item => item.bind === null));
+// PegModelTest.generated_skip_all proves that .* consumes every input to EOF.
+const skipAllAst = ast?.rules.find(rule => rule.name === 'SkipAll');
+const skipAllFullyProved = rule('SkipAll') === '.*' &&
+  skipAllAst?.params.length === 0 && skipAllAst.templateParams.length === 0 &&
+  skipAllAst.alts.length === 1 && skipAllAst.alts[0].items.length === 1 &&
+  skipAllAst.alts[0].items[0].bind === null &&
+  skipAllAst.alts[0].action?.trim() === '()' && skipAllAst.alts[0].constructor === null;
+// PegModelTest.generated_skip_line proves consumption up to the next newline.
+const skipLineAst = ast?.rules.find(rule => rule.name === 'SkipLine');
+const skipLineFullyProved = rule('SkipLine') === String.raw`(![\n] .)*` &&
+  skipLineAst?.params.length === 0 && skipLineAst.templateParams.length === 0 &&
+  skipLineAst.alts.length === 1 && skipLineAst.alts[0].items.length === 1 &&
+  skipLineAst.alts[0].items[0].bind === null &&
+  skipLineAst.alts[0].action?.trim() === '()' && skipLineAst.alts[0].constructor === null;
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -288,6 +302,8 @@ if (!fragment && ast) {
     if (mulOpFullyProved && rule.name === 'MulOp') continue;
     if (keywordFullyProved && rule.name === 'Keyword') continue;
     if (blockCommandStartFullyProved && rule.name === 'BlockCommandStart') continue;
+    if (skipAllFullyProved && rule.name === 'SkipAll') continue;
+    if (skipLineFullyProved && rule.name === 'SkipLine') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
