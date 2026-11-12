@@ -87,22 +87,22 @@ tests =
           (keyPaths rulesSchema),
       testCase "the enumerations of severity, based-on and allowed" $ do
         map fst levelValues @?= ["error", "warning", "off"]
-        map fst builtinRules @?= ["basic", "print", "none"]
+        map fst builtinRules @?= ["basic", "print", "screen", "none"]
         fontFormatValues @?= ["cff", "cff2", "truetype"]
         colorSpaceValues @?= ["cmyk", "gray", "rgb"],
-      testCase "an unknown key of a check: G09001 at the key, with its path" $
-        errorsOf "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" @?= [("G09001", "知らないキーです: bleed-size.maximum", 2)],
+      testCase "an unknown key of a check: G09103 at the key, with its path" $
+        errorsOf "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" @?= [("G09103", "知らないキーです: bleed-size.maximum", 2)],
       testCase "the retired image-unplaceable is an unknown key (golem-pdf ADR 0008)" $
-        errorsOf "[image-unplaceable]\nseverity = \"off\"\n" @?= [("G09001", "知らないキーです: image-unplaceable", 0)],
+        errorsOf "[image-unplaceable]\nseverity = \"off\"\n" @?= [("G09103", "知らないキーです: image-unplaceable", 0)],
       testCase "an error of a value and an unknown key are both reported, in the order of their positions" $
         errorsOf "[bleed-size]\nmin = \"1zw\"\nmaximum = \"3mm\"\n"
-          @?= [ ("G09001", "min の値が正しくありません: 1zw（zw は使えません。3mm や 0.25pt のように書きます） (bleed-size.min)", 1),
-                ("G09001", "知らないキーです: bleed-size.maximum", 2)
+          @?= [ ("G09102", "min の値が正しくありません: 1zw（zw は使えません。3mm や 0.25pt のように書きます） (bleed-size.min)", 1),
+                ("G09103", "知らないキーです: bleed-size.maximum", 2)
               ],
       testCase "a severity outside its values keeps its message" $
-        errorsOf "[pdf-x]\nseverity = \"notice\"\n" @?= [("G09001", "severity の値が正しくありません: notice（error、warning、off のどれかにします） (pdf-x.severity)", 1)],
+        errorsOf "[pdf-x]\nseverity = \"notice\"\n" @?= [("G09102", "severity の値が正しくありません: notice（error、warning、off のどれかにします） (pdf-x.severity)", 1)],
       testCase "a based-on outside its values keeps its message" $
-        errorsOf "based-on = \"strict\"\n" @?= [("G09001", "based-on の値が正しくありません: strict（basic、print、none のどれかにします） (based-on)", 0)],
+        errorsOf "based-on = \"strict\"\n" @?= [("G09102", "based-on の値が正しくありません: strict（basic、print、screen、none のどれかにします） (based-on)", 0)],
       testCase "an allowed outside its values keeps its message" $
-        errorsOf "[font-formats]\nallowed = [\"otf\"]\n" @?= [("G09001", "allowed の値が正しくありません: otf（cff、cff2、truetype のどれかにします） (font-formats.allowed)", 1)]
+        errorsOf "[font-formats]\nallowed = [\"otf\"]\n" @?= [("G09102", "allowed の値が正しくありません: otf（cff、cff2、truetype のどれかにします） (font-formats.allowed)", 1)]
     ]

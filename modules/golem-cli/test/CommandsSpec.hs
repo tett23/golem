@@ -38,7 +38,58 @@ commandsTests :: TestTree
 commandsTests =
   testGroup
     "commands on a project"
-    [newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
+    [replTests, newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
+
+replTests :: TestTree
+replTests =
+  testGroup
+    "Emet REPL (Golem ADR 0348)"
+    [ testCase "R1/R3/R4: a pipe prints each complete value, including the final unterminated line" $
+        runRepl "1 +\n2\n9" >>= (@?= (ExitSuccess, "3\n9\n", "")),
+      testCase "R1: both input and displayed string can exceed 4096 bytes" $ do
+        let literal = "\"" <> replicate 4097 'a' <> "\""
+        runRepl literal >>= (@?= (ExitSuccess, literal <> "\n", "")),
+      testCase "R5: 100000000 steps and 10000 frames succeed; one more fails and the next input gets a fresh budget" $ do
+        (code, out, err) <-
+          runRepl $
+            unlines
+              [ "discard :: List Int -> Nat",
+                "discard xs = 7",
+                "work :: Int -> Nat",
+                "work n = discard (List.range 1 n)",
+                "depth :: Int -> Int",
+                "depth 0 = 0",
+                "depth n = 1 + depth (n - 1)",
+                "",
+                "work 99999995",
+                "work 99999996",
+                "depth 9999",
+                "depth 10000",
+                "42"
+              ]
+        (code, lines out) @?= (ExitFailure 1, ["7", "9999", "42"])
+        map (take 6) (lines err) @?= ["E04100", "E04101"],
+      testCase "R6: a rejected import preserves public functions and does not expose private names" $
+        withSystemTempDirectory "golem-repl" $ \dir -> do
+          writeFiles dir [("double.emet", "pub twice :: Nat -> Nat\ntwice n = hidden n\nhidden :: Nat -> Nat\nhidden n = n + n\n")]
+          (code, out, err) <-
+            readCreateProcessWithExitCode
+              (proc "golem" ["repl", "emet"]) {cwd = Just dir}
+              "import \"double.emet\"\ntwice 3\nimport \"../outside.emet\"\nhidden 2\ntwice 4\n"
+          (code, lines out) @?= (ExitFailure 1, ["6", "8"])
+          length (lines err) @?= 2
+          assertBool err ("G03003" `isInfixOf` err),
+      testCase "R6: failed replacement leaves the checked definition callable" $ do
+        (code, out, _) <- runRepl "twice :: Nat -> Nat\ntwice n = n + n\n\ntwice 3\ntwice :: Nat -> Nat\ntwice n = False\n\ntwice 4\n"
+        (code, out) @?= (ExitFailure 1, "6\n8\n"),
+      testCase "R2: recover after a syntax error without consuming the next expression" $ do
+        (code, out, err) <- runRepl "1 + )\n42\n"
+        (code, out) @?= (ExitFailure 1, "42\n")
+        assertBool err ("E01100" `isInfixOf` err)
+    ]
+  where
+    runRepl input = withSystemTempDirectory "golem-repl" $ \dir ->
+      readCreateProcessWithExitCode (proc "golem" ["repl", "emet"]) {cwd = Just dir} input
 
 -- ------------------------------------------------------------------ helpers
 
@@ -161,6 +212,13 @@ newTests =
         assertEqual err ExitSuccess code
         files <- filesUnder (tmp </> "book")
         files @?= [".gitignore", "chapters/01.gm", "manifest.toml", "preflight.toml", "style.toml"],
+      testCase "Golem ADR 0327 S2: new --screen writes screen rules and no bleed" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts", "--screen"]
+        assertEqual err ExitSuccess code
+        rules <- readUtf8 (tmp </> "book/preflight.toml")
+        style <- readUtf8 (tmp </> "book/style.toml")
+        rules @?= "based-on = \"screen\"\n"
+        assertBool style (not ("bleed =" `isInfixOf` style)),
       testCase "--no-fonts names the Japanese font and its licence to place, with their URLs" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         (_, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
         lines err
@@ -508,7 +566,24 @@ fmtTests :: TestTree
 fmtTests =
   testGroup
     "golem fmt over the project (golem-fmt ADR 0001)"
-    [ testCase "--check names only the unformatted chapter on stdout and exits with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+    [ testCase "Golem ADR 0339 I3: lint shows boundary info without verbose and obeys silence-info" $ withSystemTempDirectory "golem-lint-comment" $ \tmp -> do
+        let chapter = "[strong%%注%%: 本文]\n"
+            manifest = manifestWith ["chapter.gm"]
+        writeFiles tmp [("manifest.toml", manifest), ("chapter.gm", chapter)]
+        (_, _, shown) <- golemAt tmp ["lint"]
+        assertBool shown ("G05100" `isInfixOf` shown)
+        writeFiles tmp [("manifest.toml", manifest <> "\n[diagnostics]\nsilence-info = [\"G05100\"]\n")]
+        (_, _, hidden) <- golemAt tmp ["lint"]
+        assertBool hidden (not ("G05100" `isInfixOf` hidden)),
+      testCase "Golem ADR 0339 I5: no-argument fmt recovers paths but does not rewrite quote errors" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        let bad = "[f key=x%%注%% other=%%=注記%%]\n"
+        writeFiles tmp [("manifest.toml", manifestWith ["chapters/01.gm", "chapters/02.gm"]), ("chapters/01.gm", bad), ("chapters/02.gm", "本文。  \n")]
+        (code, _, err) <- golemAt tmp ["fmt"]
+        code @?= ExitFailure 1
+        assertBool err ("G01102" `isInfixOf` err)
+        readUtf8 (tmp </> "chapters/01.gm") >>= (@?= bad)
+        readUtf8 (tmp </> "chapters/02.gm") >>= (@?= "本文。\n"),
+      testCase "--check names only the unformatted chapter on stdout and exits with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         writeFiles tmp fmtProject
         (code, out, _) <- golemAt tmp ["fmt", "--check"]
         (code, out) @?= (ExitFailure 1, "chapters/02.gm\n"),

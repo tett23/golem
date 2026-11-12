@@ -1263,13 +1263,21 @@ pluginTests =
              assertBool (show codes) (DiagnosticCode "G06002" `elem` codes)
              assertBool (show codes) (any (\(DiagnosticCode c) -> "G01" `T.isPrefixOf` c) codes)
              evPluginCommands e @?= [],
-         testCase "G06010: a filter of an undeclared plugin, or one the plugin does not provide" $ do
+         testCase "Golem ADR 0330 F1: undeclared plugin and missing filter use distinct codes and value positions" $ do
            withPluginProject (pluginDeclOf "identity" "" <> filterDecl "ghost" "x") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             atManifestTop r >>= (@?= [(DiagnosticCode "G06010", "宣言されていないプラグインです: ghost（フィルタ ghost.x）")])
+             [(diagCode d, diagMessage d) | d <- filter isError (brDiagnostics r)] @?= [(DiagnosticCode "G06010", "宣言されていないプラグインです: ghost（フィルタ ghost.x）")]
+             manifest <- BS.readFile (tmp </> "manifest.toml")
+             map (spanStart . diagSpan) (filter isError (brDiagnostics r)) @?= [BS.length (fst (BS.breakSubstring "\"ghost\"" manifest))]
            withPluginProject (pluginDeclOf "identity" "" <> filterDecl "identity" "nope") $ \tmp -> do
              r <- build (defaultOptions tmp)
-             atManifestTop r >>= (@?= [(DiagnosticCode "G06010", "プラグインが提供していないフィルタです: identity.nope")]),
+             manifest <- BS.readFile (tmp </> "manifest.toml")
+             map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G06107"]
+             map (spanStart . diagSpan) (filter isError (brDiagnostics r)) @?= [BS.length (fst (BS.breakSubstring "\"nope\"" manifest))],
+         testCase "Golem ADR 0330 F2: a provided filter has no declaration error" $
+           withPluginProject (pluginDeclOf "identity" "" <> filterDecl "identity" "same") $ \tmp -> do
+             r <- build (defaultOptions tmp)
+             assertBool (show (map diagCode (brDiagnostics r))) (all (\d -> diagCode d `notElem` [DiagnosticCode "G06010", DiagnosticCode "G06107"]) (brDiagnostics r)),
          testCase "the hook keeps overrides by type and other commands by name (docs/adr ADR 0027)" $ do
            -- (all names, the names of the overrides): the commands of the plugins
            -- and the overrides they declare

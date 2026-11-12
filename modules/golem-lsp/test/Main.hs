@@ -15,6 +15,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import EditingSpec (editingTests)
+import FileRenameSpec (fileRenameTests)
 import FunctionsLspSpec (functionsLspTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Eval.File (builtinInlineCommands)
@@ -110,7 +111,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-lsp (ADR 0001)"
-    [ positionEnumTests,
+    [ fileRenameTests,
+      positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
       testCase "definition: label across files, import path, namespaced variable" $ do
@@ -131,6 +133,35 @@ tests =
           Left e -> assertFailure (show e)
         renameLabel ws "a.gm" (at ws "a.gm" "intro" 0) "second" @?= Left (LabelExists "second")
         renameLabel ws "a.gm" (at ws "a.gm" "はじめに" 0) "x" @?= Left NotALabel,
+      testCase "ADR 0346 I2: rename binds style and source references only" $ do
+        let styleText = "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nindent = \"indent\"\n"
+            gmText = "@style-def paragraph letter indent=indent\n# indent\n"
+        ws0 <- openWorkspace root
+        ws1 <- updateFile ws0 "style.toml" styleText
+        ws2 <- updateFile ws1 "b.gm" gmText
+        ws <- updateFile ws2 "unrelated.gm" gmText
+        assertBool (show (wsProjectErrors ws)) (isJust (wsEvaluated ws))
+        assertBool "b.gm is in workspace" (isJust (sourceOf ws "b.gm"))
+        let sliceAt (Location p s e) = TE.decodeUtf8 (BS.take (e - s) (BS.drop s (TE.encodeUtf8 (if p == "style.toml" then styleText else gmText))))
+        case renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "margin" of
+          Left err -> assertFailure (show err)
+          Right edits -> map (\(loc', _) -> (locPath loc', sliceAt loc')) edits @?= [("style.toml", "indent"), ("style.toml", "indent"), ("b.gm", "indent")]
+        renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "rows" @?= Left (LayoutValueExists "rows")
+        renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "pt" @?= Left (InvalidLayoutValue "pt"),
+      testCase "ADR 0346 I2: ambiguous declarations cannot be renamed" $ do
+        let styleText = "[values.length]\nindent = \"1zw\"\n[values.count]\nindent = 2\n"
+        ws <- openWorkspace root
+        renameLayoutValue ws styleText "style.toml" (offsetIn styleText "indent =" 1) "margin" @?= Left NotALayoutValue,
+      testCase "ADR 0346 I2: rename includes each count operand in loaded source" $ do
+        let styleText = "[values.count]\nrows = 2\n[paragraph-styles.quote]\nkeep-with-next = \"rows\"\n"
+            gmText = "@style-def paragraph quote keep-with-next=\"rows + rows\"\n"
+        ws0 <- openWorkspace root
+        ws1 <- updateFile ws0 "style.toml" styleText
+        ws <- updateFile ws1 "b.gm" gmText
+        let sliceAt (Location p s e) = TE.decodeUtf8 (BS.take (e - s) (BS.drop s (TE.encodeUtf8 (if p == "style.toml" then styleText else gmText))))
+        case renameLayoutValue ws styleText "style.toml" (offsetIn styleText "rows =" 1) "lines" of
+          Left err -> assertFailure (show err)
+          Right edits -> map (\(loc', _) -> (locPath loc', sliceAt loc')) edits @?= [("style.toml", "rows"), ("style.toml", "rows"), ("b.gm", "rows"), ("b.gm", "rows")],
       testCase "completion: commands, labels, import paths, swatches" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n[ref-title \n[co\n[color \n@import \n"
@@ -396,7 +427,7 @@ tests =
         wsFullEvaluations ws1 @?= n0
         ws2 <- updateFile ws1 "b.gm" "@label second\n# 別の題\n\n[ref-title intro]と[ref-page intro]を読む。\n"
         wsFullEvaluations ws2 @?= n0 + 1
-        ws3 <- updateFile ws2 "common/values.gm" "@set version = \"2.0\"\n"
+        ws3 <- updateFile ws2 "common/values.gm" "set version = \"2.0\"\n"
         wsFullEvaluations ws3 @?= n0 + 2
         hover ws3 "a.gm" (at ws3 "a.gm" "values.version" 2) @?= Just "2.0",
       testCase "hover: S0 values, S1 values, and page numbers left to S2" $ do

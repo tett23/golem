@@ -256,7 +256,9 @@ CI でこれを超えるようになったら、入力の数か解像度を見�
 
 GitHub Actions の [code: needs] は、行列の一つのランナーだけを待てない。
 以前の [code: visual] は [code: needs: build] で、[code: outputs] が [code: visual-pdfs] を上げた後も、行列のほかのランナーが終わるのを待っていた。
-今は、[code: scripts/visual/wait-pdfs.sh] が 10 秒ごとに、この実行の成果物 [code: visual-pdfs] を GitHub の API に問い合わせる。
+今は、[code: scripts/visual/wait-pdfs.sh] が既定で 30 秒ごとに、この実行の成果物 [code: visual-pdfs] を GitHub の API に問い合わせる。
+成果物がなければ、初回とその後 4 間隔ごとに生成元のジョブを調べる。
+API が利用上限を返したときは、応答の指定に従って待ち、同じ問い合わせをやり直す。
 成果物があれば終わり、[code: build (ubuntu-24.04, outputs)] のジョブが成果物を上げずに終わったか、そのジョブがなければ失敗する。
 待つのは名前で探したジョブなので、[code: build] の行列の [code: name] か [code: part] を変えると [code: visual] は失敗する。
 [code: scripts/ci/test.sh] が、待つ名前と行列から作られる名前の一致を確かめる。
@@ -345,6 +347,10 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 
 [code: ci.yml] に新しいジョブを足すときは、[code: ci] ジョブの [code: needs] と、[code: gate.sh] の [code: NAMES] の両方に加える。
 片方だけに加えると、新しいジョブが失敗しても [code: ci] が成功してしまうか、[code: ci] が新しいジョブの欠けで常に失敗する。
+
+警告の検査では、その試行で完了したジョブの一覧を GitHub API から取得し、各ジョブのログを調べる。
+一覧の取得中に利用上限の応答が返れば、解除を待って全ページを取り直す。
+一覧の取得期限は 60 分で、権限不足や期限切れで一覧がそろわなければ検査は失敗する。
 
 ## adr、manual、textlint
 

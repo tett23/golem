@@ -17,6 +17,7 @@ import Support (codesOf)
 import System.FilePath ((</>))
 import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
+import Toml qualified
 
 root :: FilePath
 root = "test/fixtures/proj"
@@ -96,6 +97,8 @@ tomlTests =
           exactly "style.toml" "[aki-sets.mine]\nrules = [{ before = [▮" ["\"opening\"", "\"closing\"", "\"hyphen\"", "\"dividing\"", "\"middle-dot\"", "\"full-stop\"", "\"comma\"", "\"inseparable\"", "\"iteration\"", "\"prolonged-sound\"", "\"small-kana\"", "\"ideographic-space\"", "\"kana\"", "\"ideograph\"", "\"western\"", "\"japanese\"", "\"line-start\"", "\"paragraph-start\""],
           exactly "style.toml" "[aki-sets.mine]\nbased-on = ▮" ["\"gyomatsu-yakumono-hankaku\"", "\"gyomatsu-yakumono-zenkaku\""],
           exactly "style.toml" "[page]\nbleed = ▮" [],
+          exactly "style.toml" "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nindent = ▮" ["\"indent\""],
+          exactly "style.toml" "[values.length]\nindent = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.quote]\nkeep-with-next = ▮" ["\"rows\""],
           testCase "the kinds of the candidates" $ do
             let kinds t = let (src, off) = cursor t in map cmpKind (tomlFileCompletions "style.toml" src off)
             take 1 (kinds "[▮") @?= [CkTable]
@@ -106,8 +109,52 @@ tomlTests =
             take 1 (kinds "[paragraph-styles.em]\nbased-on = ▮") @?= [CkParaStyle]
         ],
       testGroup
+        "T1 manifest.toml finite value positions"
+        [ exactly "manifest.toml" "chapters = [{ paragraph-separator = '▮" ["blank-line", "line"],
+          including "manifest.toml" "chapters = [{ page-numbering = { style = '▮" ["arabic"] ["line"],
+          exactly "manifest.toml" "[metadata]\ncreators = [{ role = '▮" roles,
+          exactly "manifest.toml" "[[metadata.contributors]]\nrole = '▮" roles,
+          exactly "manifest.toml" "[targets.text]\nvariants = ['▮" ["vertical", "horizontal"],
+          exactly "manifest.toml" "[targets.text]\nvariants = ▮" [],
+          including "manifest.toml" "[diagnostics]\nsilence-notices = ['▮" ["G02062"] ["G03024"],
+          exactly "manifest.toml" "[diagnostics]\nsilence-info = ['▮" ["G02254", "G05100", "G07047", "E05108"],
+          exactly "manifest.toml" "[vars]\nflag = ▮" []
+        ],
+      testGroup
+        "T1 finite values remain valid TOML after completion"
+        [ testCase (T.unpack source) $ do
+            let labels = labelsIn path source
+            labels @?= expected
+            mapM_
+              ( \label -> case Toml.parse (T.replace "▮" label source) of
+                  Left err -> assertFailure ("invalid completed TOML: " <> show err)
+                  Right _ -> pure ()
+              )
+              labels
+        | (path, source, expected) <-
+            [ ("style.toml", "[page]\nbinding = ▮", ["\"right\"", "\"left\""]),
+              ("style.toml", "[page]\nbinding = \"▮\"", ["right", "left"]),
+              ("style.toml", "[character-styles.em]\nsynthetic-bold = ▮", ["true", "false"]),
+              ("style.toml", "[character-styles.em]\nsynthetic-bold = \"▮\"", []),
+              ("style.toml", "[paragraph-styles.body]\nrule-before = ▮", ["false"]),
+              ("style.toml", "[paragraph-styles.body]\nrule-before = \"▮\"", []),
+              ("preflight.toml", "[font-formats]\nallowed = [▮]", ["\"cff\"", "\"cff2\"", "\"truetype\""]),
+              ("preflight.toml", "[font-formats]\nallowed = [\"▮\"]", ["cff", "cff2", "truetype"]),
+              ("preflight.toml", "[type-size]\nmulti-ink-only = ▮", ["true", "false"]),
+              ("preflight.toml", "[type-size]\nmulti-ink-only = \"▮\"", []),
+              ("manifest.toml", "[source]\nparagraph-separator = ▮", ["\"blank-line\"", "\"line\""]),
+              ("manifest.toml", "[source]\nparagraph-separator = \"▮\"", ["blank-line", "line"]),
+              ("manifest.toml", "[targets.pdf]\npdfa = ▮", ["\"2a\""]),
+              ("manifest.toml", "[targets.pdf]\npdfua = ▮", ["\"1\""]),
+              ("manifest.toml", "[targets.text]\nvariants = [▮]", ["\"vertical\"", "\"horizontal\""]),
+              ("manifest.toml", "[targets.text]\nvariants = [\"▮\"]", ["vertical", "horizontal"]),
+              ("manifest.toml", "[metadata]\nlanguage = ▮", []),
+              ("manifest.toml", "[vars]\nflag = ▮", [])
+            ]
+        ],
+      testGroup
         "preflight.toml"
-        [ exactly "preflight.toml" "based-on = ▮" ["\"basic\"", "\"print\"", "\"none\""],
+        [ exactly "preflight.toml" "based-on = ▮" ["\"basic\"", "\"print\"", "\"screen\"", "\"none\""],
           exactly "preflight.toml" "[type-size]\nseverity = ▮" ["\"error\"", "\"warning\"", "\"off\""],
           exactly "preflight.toml" "[font-formats]\nallowed = [▮" ["\"cff\"", "\"cff2\"", "\"truetype\""],
           exactly "preflight.toml" "[font-formats]\nallowed = ▮" [],
@@ -132,7 +179,7 @@ tomlTests =
             ws0 <- openWorkspace root
             ws <- updateFile ws0 "style.toml" "[page]\nbinding = "
             map cmpLabel (completions ws "style.toml" (BS.length (TE.encodeUtf8 "[page]\nbinding = "))) @?= ["\"right\"", "\"left\""],
-          testCase "no completion in a style.toml below the root, nor in manifest.toml" $ do
+          testCase "no completion in a style.toml below the root, nor in a manifest.toml header" $ do
             ws0 <- openWorkspace root
             ws1 <- updateFile ws0 "sub/style.toml" "["
             ws <- updateFile ws1 "manifest.toml" "["
@@ -140,3 +187,6 @@ tomlTests =
             completions ws "manifest.toml" 1 @?= []
         ]
     ]
+
+roles :: [Text]
+roles = ["author", "translator", "editor", "illustrator", "book-designer", "cover-designer", "typesetter", "printer", "binder"]

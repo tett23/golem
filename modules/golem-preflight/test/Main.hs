@@ -2,6 +2,7 @@
 module Main (main) where
 
 import Data.ByteString qualified as BS
+import Data.Either (fromLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -95,11 +96,11 @@ only c = filter ((== DiagnosticCode c) . diagCode)
 parsed :: Text -> Rules
 parsed src = either (error . show) id (parseRules (FileId 0) src)
 
-g09001 :: Text -> Int -> Assertion
-g09001 src line = case parseRules (FileId 0) src of
+ruleError :: Text -> Text -> Int -> Assertion
+ruleError expected src line = case parseRules (FileId 0) src of
   Right _ -> assertFailure ("accepted: " <> T.unpack src)
   Left ds -> do
-    codesOf ds @?= ["G09001"]
+    codesOf ds @?= [expected]
     let li = mkLineIndex src
     map (lcLine . offsetToLineCol li . spanStart . diagSpan) ds @?= [line]
 
@@ -169,7 +170,7 @@ rulesTests =
         ruFontFormatsAllowed printRules @?= ["cff", "truetype"]
         (ruBleedMin printRules, ruTrimHazardDistance printRules, ruLiveAreaDistance printRules) @?= (mm 3, mm 3, mm 3)
         (ruInkMax printRules, ruPageMultiple printRules, ruStrokeMin printRules) @?= (350, 1, mm 0.1)
-        map fst builtinRules @?= ["basic", "print", "none"],
+        map fst builtinRules @?= ["basic", "print", "screen", "none"],
       testCase "a key written replaces only itself" $ do
         let r = parsed "based-on = \"print\"\n[image-resolution]\ncolor = { warning-below = 350 }\n"
         ruResolutionColor r @?= Tier 150 350
@@ -179,16 +180,48 @@ rulesTests =
         ruName (parsed "name = \"A 印刷\"\n") @?= Just "A 印刷"
         parsed "based-on = \"basic\"\n" @?= basicRules
         parsed "based-on = \"none\"\n" @?= noneRules,
-      testCase "image-unplaceable is an unknown check (golem-pdf ADR 0008)" $ g09001 "[image-unplaceable]\nseverity = \"off\"\n" 0,
-      testCase "an unknown top-level key is G09001 at its line" $ g09001 "based-on = \"print\"\nfoo = 1\n" 1,
-      testCase "an unknown key of a check is G09001 at its line" $ g09001 "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" 2,
-      testCase "an unknown check is G09001" $ g09001 "[no-such-check]\nseverity = \"off\"\n" 0,
-      testCase "severity = notice is G09001 at its line" $ g09001 "[pdf-x]\nseverity = \"notice\"\n" 1,
-      testCase "zw is G09001 at its line" $ g09001 "[bleed-size]\nmin = \"1zw\"\n" 1,
-      testCase "error-below above warning-below is G09001 at its line" $ g09001 "[image-resolution]\ngray = { error-below = 400, warning-below = 300 }\n" 1,
-      testCase "an unknown based-on is G09001" $ g09001 "based-on = \"strict\"\n" 0,
+      testCase "Golem ADR 0327 S1 and S3: screen keeps basic checks and accepts bleed override" $ do
+        let screen = parsed "based-on = \"screen\"\n"
+        ruBasedOn screen @?= "screen"
+        ruGlyphMissing screen @?= ruGlyphMissing basicRules
+        ruOverfullLines screen @?= ruOverfullLines basicRules
+        ruFontEmbedding screen @?= ruFontEmbedding basicRules
+        map ($ screen) [ruBleedSize, ruBleedTrimHazard, ruLiveArea, ruPdfX] @?= replicate 4 LevelOff
+        ruBleedSize (parsed "based-on = \"screen\"\n[bleed-size]\nseverity = \"error\"\nmin = \"3mm\"\n") @?= LevelError,
+      testCase "image-unplaceable is an unknown check (golem-pdf ADR 0008)" $ ruleError "G09103" "[image-unplaceable]\nseverity = \"off\"\n" 0,
+      testCase "an unknown top-level key is G09103 at its line" $ ruleError "G09103" "based-on = \"print\"\nfoo = 1\n" 1,
+      testCase "an unknown key of a check is G09103 at its line" $ ruleError "G09103" "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" 2,
+      testCase "an unknown check is G09103" $ ruleError "G09103" "[no-such-check]\nseverity = \"off\"\n" 0,
+      testCase "severity = notice is G09102 at its line" $ ruleError "G09102" "[pdf-x]\nseverity = \"notice\"\n" 1,
+      testCase "zw is G09102 at its line" $ ruleError "G09102" "[bleed-size]\nmin = \"1zw\"\n" 1,
+      testCase "error-below above warning-below is G09102 at its line" $ ruleError "G09102" "[image-resolution]\ngray = { error-below = 400, warning-below = 300 }\n" 1,
+      testCase "an unknown based-on is G09102" $ ruleError "G09102" "based-on = \"strict\"\n" 0,
       testCase "TOML that does not parse is G09001" $
         either codesOf (const []) (parseRules (FileId 0) "[[") @?= ["G09001"],
+      testCase "Golem ADR 0321 D3-D6: syntax, duplicate, unknown and invalid value have distinct codes" $ do
+        let codes src = either codesOf (const []) (parseRules (FileId 0) src)
+        codes "[" @?= ["G09001"]
+        codes "name = \"one\"\nname = \"two\"\n" @?= ["G09104"]
+        codes "mystery = 1\n" @?= ["G09103"]
+        codes "[pdf-x]\nseverity = \"notice\"\n" @?= ["G09102"],
+      testCase "Golem ADR 0321 D7: unknown and invalid values retain both source lines" $ do
+        let src = "mystery = 1\n[pdf-x]\nseverity = \"notice\"\n"
+            found = either (map (\d -> (diagCode d, lcLine (offsetToLineCol (mkLineIndex src) (spanStart (diagSpan d)))))) (const []) (parseRules (FileId 0) src)
+        found @?= [(DiagnosticCode "G09103", 0), (DiagnosticCode "G09102", 2)],
+      testCase "Golem ADR 0321 D8: recover independent items after bounded syntax errors" $ do
+        let src = "name = nope\nmystery = 1\n[pdf-x]\nseverity = \"notice\"\nother = nope\n"
+            found = either (map (\d -> (diagCode d, lcLine (offsetToLineCol (mkLineIndex src) (spanStart (diagSpan d)))))) (const []) (parseRules (FileId 0) src)
+        found @?= [(DiagnosticCode "G09001", 0), (DiagnosticCode "G09103", 1), (DiagnosticCode "G09102", 3), (DiagnosticCode "G09001", 4)],
+      testCase "Golem ADR 0321 D8: quoted delimiters and a multiline array keep later errors reachable" $ do
+        let src = "name = \"[not a table\"\n[font-formats]\nallowed = [\n  \"cff\",\n]\ninvalid = nope\nunknown = 1\n"
+            found = either (map diagCode) (const []) (parseRules (FileId 0) src)
+        found @?= [DiagnosticCode "G09001", DiagnosticCode "G09103"],
+      testCase "Golem ADR 0321 D9: an unclosed multiline string leaves its range unexamined" $ do
+        let src = "name = \"\"\"open\n[unknown]\nbad = 1\n"
+            found = fromLeft [] (parseRules (FileId 0) src)
+        map diagCode found @?= [DiagnosticCode "G09001"]
+        assertBool "unexamined range" (any (T.isInfixOf "未検査範囲" . diagMessage) found)
+        assertBool "detected count" (any (T.isInfixOf "検出済み 1 件" . diagMessage) found),
       testCase "every key of every check goes to its own field" $
         parsed
           ( T.unlines
@@ -258,23 +291,27 @@ rulesTests =
         ruResolutionColor (parsed "[image-resolution]\ncolor = { error-below = 400, warning-below = 0 }\n") @?= Tier 400 0
         ruInkMax (parsed "[ink-coverage]\nmax = 1000000\n") @?= 1000000
         ruInkMax (parsed "[ink-coverage]\nmax = 0\n") @?= 0
-        g09001 "[ink-coverage]\nmax = 1000001\n" 1
+        ruleError "G09102" "[ink-coverage]\nmax = 1000001\n" 1
         ruPageMultiple (parsed "[page-count]\nmultiple-of = 1\n") @?= 1
-        g09001 "[page-count]\nmultiple-of = 0\n" 1,
+        ruleError "G09102" "[page-count]\nmultiple-of = 0\n" 1,
       -- docs/adr ADR 0102
       testCase "a negative count is G02103 at its value, with the message of the key" $ do
         let errs src = either (map (\d -> let DiagnosticCode c = diagCode d in (c, diagMessage d, spanStart (diagSpan d)))) (const []) (parseRules (FileId 0) src)
         errs "[ink-coverage]\nmax = -1\n" @?= [("G02103", "ink-coverage.max には 0 以上の整数を書きます", 21)]
         errs "[page-count]\nmultiple-of = -1\n" @?= [("G02103", "page-count.multiple-of には 0 以上の整数を書きます", 27)]
         errs "[image-resolution]\ncolor = { error-below = -1 }\n" @?= [("G02103", "image-resolution.color.error-below には 0 以上の整数を書きます", 43)],
-      testCase "the messages of G09001 name the key, the value and what to write" $ do
+      testCase "the messages of G09102 name the key, the value and what to write" $ do
         let msgs src = either (map diagMessage) (const []) (parseRules (FileId 0) src)
         msgs "[image-resolution]\ngray = { error-below = 400, warning-below = 300 }\n"
           @?= ["gray.error-below の値が正しくありません: 400（warning-below の 300 より大きくできません） (image-resolution.gray)"]
         msgs "[page-count]\nmultiple-of = 0\n" @?= ["multiple-of の値が正しくありません: 0（1 以上の整数にします） (page-count.multiple-of)"]
         msgs "[image-color-space]\nallowed = [\"cmyk\", \"lab\"]\n" @?= ["allowed の値が正しくありません: lab（cmyk、gray、rgb のどれかにします） (image-color-space.allowed)"]
         msgs "[font-formats]\nallowed = [\"opentype\"]\n" @?= ["allowed の値が正しくありません: opentype（cff、cff2、truetype のどれかにします） (font-formats.allowed)"]
-        msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"]
+        msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"],
+      testCase "ADR 0319 I1: preflight length accepts typed zero" $ do
+        ruBleedMin (parsed "[bleed-size]\nmin = 0\n") @?= 0
+        ruBleedMin (parsed "[bleed-size]\nmin = \"-0\"\n") @?= 0
+        ruleError "G09102" "[bleed-size]\nmin = 0.0\n" 1
     ]
 
 checkTests :: [TestTree]

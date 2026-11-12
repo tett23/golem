@@ -13,6 +13,7 @@ module Golem.Lsp.Server
     runGolemLspWithHandles,
     rewriteInitializeResponse,
     lspSeverity,
+    safeRenamePair,
   )
 where
 
@@ -22,18 +23,19 @@ import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.MVar (MVar, newMVar, withMVar)
 import Control.Concurrent.STM
-import Control.Exception (evaluate)
-import Control.Monad (forM_, guard, join, unless, void, when)
+import Control.Exception (IOException, evaluate, try)
+import Control.Monad (forM, forM_, guard, join, unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson qualified as J
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as BSL
+import Data.Char (toLower)
 import Data.Either (fromRight)
 import Data.Foldable (foldlM)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -42,15 +44,17 @@ import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Emet.Outline (emetOutline)
 import Golem.Emet.Outline qualified as O
 import Golem.Lsp.Features qualified as F
+import Golem.Lsp.FileRename qualified as R
 import Golem.Lsp.Workspace
+import Golem.Project.Paths (normalizeRelative, resolveInRoot)
 import Golem.Syntax qualified as S
 import Language.LSP.Logging (defaultClientLogger)
 import Language.LSP.Protocol.Message
 import Language.LSP.Protocol.Types
 import Language.LSP.Server
-import Language.LSP.VFS (virtualFileText)
+import Language.LSP.VFS (VirtualFile (_lsp_version), virtualFileText)
 import Prettyprinter (pretty, viaShow)
-import System.Directory (doesFileExist, makeAbsolute)
+import System.Directory (canonicalizePath, doesFileExist, doesPathExist, makeAbsolute)
 import System.FilePath (makeRelative, takeDirectory, takeExtension, (</>))
 import System.IO (BufferMode (..), Handle, hFlush, hSetBuffering, hSetEncoding, stdin, stdout, utf8)
 
@@ -133,6 +137,8 @@ serverDefinition encVar initIdVar = do
   wsVar <- newTVarIO Nothing
   gen <- newTVarIO 0
   rootVar <- newTVarIO "."
+  plotVar <- newTVarIO Nothing
+  wikiVar <- newTVarIO Nothing
   watchVar <- newTVarIO Nothing
   lock <- newMVar ()
   dirtyVar <- newTVarIO Set.empty
@@ -148,17 +154,85 @@ serverDefinition encVar initIdVar = do
           root <- findRoot (fromMaybe "." (resRootPath env))
           atomically $ do
             writeTVar rootVar root
+            writeTVar plotVar (alephPlot root params)
+            writeTVar wikiVar (alephWiki root params)
             writeTVar encVar (F.chooseEncoding (offeredEncodings params))
             writeTVar initIdVar (Just lid)
           pure (Right env),
-        staticHandlers = \_ -> handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar,
+        staticHandlers = \_ -> handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
             { optTextDocumentSync = Just (TextDocumentSyncOptions (Just True) (Just TextDocumentSyncKind_Full) Nothing Nothing Nothing),
-              optCompletionTriggerCharacters = Just ['[', ' ']
+              optCompletionTriggerCharacters = Just ['[', ' '],
+              optWorkspaceWillRenameFileOperationRegistrationOptions = Just renameFilter,
+              optWorkspaceDidRenameFileOperationRegistrationOptions = Just renameFilter
             }
       }
+
+renameFilter :: FileOperationRegistrationOptions
+renameFilter = FileOperationRegistrationOptions [FileOperationFilter (Just "file") (FileOperationPattern "**/*" Nothing Nothing)]
+
+-- | Aleph identifies its plot explicitly; other clients' CSV files stay text.
+alephPlot :: FilePath -> InitializeParams -> Maybe FilePath
+alephPlot root params = do
+  J.Object fields <- pure (J.toJSON params)
+  J.Object options <- KM.lookup "initializationOptions" fields
+  J.Object aleph <- KM.lookup "aleph" options
+  J.String plotUri <- KM.lookup "plotCsv" aleph
+  path <- uriToFilePath (Uri plotUri)
+  guard (makeRelative root path == "plot.csv")
+  pure "plot.csv"
+
+{- | Aleph supplies the complete set of visible sheets for one workspace.
+Absence of any field leaves Wiki links disabled for this client.
+-}
+alephWiki :: FilePath -> InitializeParams -> Maybe (FilePath, [(FilePath, Maybe Text)])
+alephWiki root params = do
+  J.Object fields <- pure (J.toJSON params)
+  J.Object options <- KM.lookup "initializationOptions" fields
+  J.Object aleph <- KM.lookup "aleph" options
+  J.String workspaceUri <- KM.lookup "workspaceUri" aleph
+  workspace <- uriToFilePath (Uri workspaceUri)
+  guard (within workspace root)
+  raw <- KM.lookup "wikiSheets" aleph
+  J.Success entries <- pure (J.fromJSON raw :: J.Result [J.Value])
+  sheets <- traverse (sheet workspace) entries
+  pure (workspace, sheets)
+  where
+    within base path = either (const False) (const True) (normalizeRelative (makeRelative base path)) || base == path
+    sheet workspace (J.Object fields) = do
+      J.String uri <- KM.lookup "uri" fields
+      path <- uriToFilePath (Uri uri)
+      guard (within workspace path)
+      title <- case KM.lookup "title" fields of
+        Just (J.String value) -> Just (Just value)
+        Just J.Null -> Just Nothing
+        _ -> Nothing
+      pure (makeRelative workspace path, title)
+    sheet _ _ = Nothing
+
+{- | A rename source and its destination parent must resolve inside the
+project. This also rejects a symlink that leads out of the project.
+-}
+safeRenamePair :: FilePath -> (FilePath, FilePath) -> IO Bool
+safeRenamePair root (from, to) = do
+  result <- try $ do
+    oldExists <- doesPathExist (root </> from)
+    parentExists <- doesPathExist (root </> takeDirectory to)
+    if not oldExists || not parentExists
+      then pure False
+      else do
+        canonicalRoot <- canonicalizePath root
+        canonicalOld <- canonicalizePath (root </> from)
+        canonicalParent <- canonicalizePath (root </> takeDirectory to)
+        let inside path =
+              path == canonicalRoot
+                || case normalizeRelative (makeRelative canonicalRoot path) of
+                  Right relative -> relative /= ""
+                  Left _ -> False
+        pure (inside canonicalOld && inside canonicalParent)
+  pure (fromRight False (result :: Either IOException Bool))
 
 -- | @capabilities.general.positionEncodings@ of the initialize request.
 offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
@@ -168,8 +242,8 @@ offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ gener
 -- | The registration of the watched table files (golem-eval ADR 0004).
 type WatchToken = RegistrationToken Method_WorkspaceDidChangeWatchedFiles
 
-handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
-handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
+handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe FilePath) -> TVar (Maybe (FilePath, [(FilePath, Maybe Text)])) -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
+handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_ -> do
         root <- liftIO (readTVarIO rootVar)
@@ -219,6 +293,66 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         forM_ (relPath st uri) $ \p -> serially $ withWs $ \ws -> do
           ws' <- liftIO (closeFile ws p)
           commit Set.empty ws',
+      requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
+        st <- state
+        enc <- encoding
+        mws <- liftIO (readTVarIO wsVar)
+        let pairsResult = traverse (renamePair st) renames >>= R.validateRenames
+        safeRenames <- case pairsResult of
+          Left _ -> pure True
+          Right pairs -> liftIO (and <$> traverse (safeRenamePair (stRoot st)) pairs)
+        case (mws, pairsResult, safeRenames) of
+          (_, Left err, _) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
+          (Nothing, _, _) -> respond (Right (InR Null))
+          (_, Right _, False) -> respond (Right (InR Null))
+          (Just ws, Right pairs, True) -> do
+            plot <- liftIO (readTVarIO plotVar)
+            wiki <- liftIO (readTVarIO wikiVar)
+            let projectFiles = [(stRoot st </> p, Nothing) | p <- ["manifest.toml", "style.toml"] <> wsSourceFiles ws <> emetSourceFiles ws <> maybe [] pure plot]
+                wikiFiles = maybe [] (\(root, sheets) -> [(root </> p, Just p) | (p, _) <- sheets, map toLower (takeExtension p) == ".md"]) wiki
+                wikiPairs = maybe [] (\(root, _) -> [(makeRelative root (stRoot st </> from), makeRelative root (stRoot st </> to)) | (from, to) <- pairs]) wiki
+            planned <- forM (projectFiles <> wikiFiles) $ \(path, wikiSource) -> do
+              let p = makeRelative (stRoot st) path
+                  (safeRoot, safePath) = case (wikiSource, wiki) of
+                    (Just wikiPath, Just (root, _)) -> (root, wikiPath)
+                    _ -> (stRoot st, p)
+              safe <- liftIO (resolveInRoot safeRoot safePath)
+              exists <- liftIO (doesFileExist path)
+              if (isNothing wikiSource && p `notElem` ["manifest.toml", "style.toml"] && takeExtension p `notElem` [".gm", ".emet"] && Just p /= plot) || either (const True) (const False) safe || not exists
+                then pure (Right Nothing)
+                else do
+                  let uri = filePathToUri path
+                  vf <- getVirtualFile (toNormalizedUri uri)
+                  disk <- case vf of
+                    Just _ -> pure Nothing
+                    Nothing -> liftIO $ do
+                      bytes <- BS.readFile path
+                      pure (either (const Nothing) Just (TE.decodeUtf8' bytes))
+                  let content = maybe disk (Just . virtualFileText) vf
+                      version = maybe (InR Null) (InL . _lsp_version) vf
+                  case content of
+                    Nothing -> pure (Right Nothing)
+                    Just source -> case ( case (wikiSource, wiki) of
+                                            (Just wikiPath, Just (_, sheets)) -> R.planWiki wikiPairs wikiPath sheets source
+                                            _ -> (if p == "manifest.toml" then R.planManifest else if p == "style.toml" then R.planStyle else if Just p == plot then R.planPlotCsv else if takeExtension p == ".emet" then R.planEmetImports else R.planImports) pairs source
+                                        ) of
+                      Left err -> pure (Left err)
+                      Right edits -> do
+                        let li = S.mkLineIndex source
+                            textEdits = [InL (TextEdit (rangeWith enc li start end) replacement) | (start, end, replacement) <- edits]
+                            doc = TextDocumentEdit (OptionalVersionedTextDocumentIdentifier uri version) textEdits
+                        pure (Right (if null edits then Nothing else Just doc))
+            case sequence planned of
+              Left err -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (T.pack err) Nothing))
+              Right docs -> case [InL doc | Just doc <- docs] of
+                [] -> respond (Right (InR Null))
+                edits -> respond (Right (InL (WorkspaceEdit Nothing (Just edits) Nothing))),
+      notificationHandler SMethod_WorkspaceDidRenameFiles $ \(TNotificationMessage _ _ (RenameFilesParams renames)) -> do
+        st <- state
+        forM_ (traverse (renamePair st) renames >>= R.validateRenames) $ \pairs ->
+          serially $ withWs $ \ws -> do
+            ws' <- liftIO (renameWorkspace ws pairs)
+            commit Set.empty ws',
       requestHandler SMethod_TextDocumentDefinition $ \(TRequestMessage _ _ _ (DefinitionParams doc pos _ _)) respond -> do
         enc <- encoding
         r <- atPosition doc pos $ \ws p off ->
@@ -237,11 +371,24 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         manifest <- case virtualFileText <$> mvf of
           Just t -> pure (Just t)
           Nothing -> liftIO (either (const Nothing) Just . TE.decodeUtf8' <$> BS.readFile manifestPath) `orIfMissing` manifestPath
+        let stylePath = stRoot st </> "style.toml"
+        svf <- getVirtualFile (toNormalizedUri (filePathToUri stylePath))
+        styleText <- case virtualFileText <$> svf of
+          Just t -> pure (Just t)
+          Nothing -> liftIO (either (const Nothing) Just . TE.decodeUtf8' <$> BS.readFile stylePath) `orIfMissing` stylePath
         r <- atPosition doc pos $ \ws p off ->
           pure $
             if isEmet p
               then fmap (toEditWith enc (emetLines ws manifest)) (F.renameEmet ws manifest p off newName)
-              else fmap (toEdit enc ws) (F.renameLabel ws p off newName)
+              else
+                fmap
+                  (toEditWith enc (layoutLines ws styleText))
+                  ( case styleText of
+                      Just t -> case F.renameLayoutValue ws t p off newName of
+                        Left F.NotALayoutValue | p /= "style.toml" -> F.renameLabel ws p off newName
+                        result -> result
+                      Nothing -> F.renameLabel ws p off newName
+                  )
         case r of
           Just (Right edit) -> respond (Right (InL edit))
           Just (Left e) -> respond (Left (TResponseError (InR ErrorCodes_InvalidRequest) (F.renameMessage e) Nothing))
@@ -359,17 +506,22 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
       let TextDocumentIdentifier docUri = doc
       case (mws, relPath st docUri) of
         -- a .gm, or a .emet the project uses (docs/adr/0162)
-        (Just ws, Just p) | isJust (sourceOf ws p) || isJust (emetText ws p) -> do
+        (Just ws, Just p) | isJust (sourceOf ws p) || isJust (emetText ws p) || p == "style.toml" -> do
           case F.fromLineCol enc (lineIndexOf ws p) (fromPosition pos) of
             Just off -> Just <$> k ws p off
             Nothing -> pure Nothing
         _ -> pure Nothing
     relPath st uri = makeRelative (stRoot st) <$> uriToFilePath uri
+    renamePair st (FileRename old new) = do
+      from <- maybe (Left "old URI is not a file") Right (uriToFilePath (Uri old))
+      to <- maybe (Left "new URI is not a file") Right (uriToFilePath (Uri new))
+      a <- either (Left . show) Right (normalizeRelative (makeRelative (stRoot st) from))
+      b <- either (Left . show) Right (normalizeRelative (makeRelative (stRoot st) to))
+      pure (a, b)
     toLocation ws (F.Location p s e) = (ws, p, s, e)
     toLspLocation enc (ws, p, s, e) = Location (fileUri ws p) (rangeIn enc ws p s e)
     toLink enc (ws, p, s, e) = DefinitionLink (LocationLink Nothing (fileUri ws p) (rangeIn enc ws p s e) (rangeIn enc ws p s e))
     fileUri ws p = filePathToUri (wsRoot ws </> p)
-    toEdit enc ws = toEditWith enc (ws, lineIndexOf ws)
     toEditWith enc (ws, li) pairs =
       WorkspaceEdit
         (Just (Map.fromListWith (<>) [(fileUri ws p, [TextEdit (rangeWith enc (li p) s e) t]) | (F.Location p s e, t) <- pairs]))
@@ -377,6 +529,7 @@ handlers encVar rootVar wsVar gen watchVar lock dirtyVar pubVar =
         Nothing
     -- the lines of the files a renaming in a .emet rewrites
     emetLines ws manifest = (ws, \p -> if p == "manifest.toml" then S.mkLineIndex (fromMaybe "" manifest) else maybe (lineIndexOf ws p) S.mkLineIndex (F.emetTextOf ws p))
+    layoutLines ws styleText = (ws, \p -> if p == "style.toml" then S.mkLineIndex (fromMaybe "" styleText) else lineIndexOf ws p)
     orIfMissing act path = do
       exists <- liftIO (doesFileExist path)
       if exists then act else pure Nothing
@@ -437,10 +590,11 @@ toDiagnostic enc li d =
         Nothing
 
 completionItem :: F.Completion -> CompletionItem
-completionItem (F.Completion label kind) =
-  CompletionItem label Nothing (Just k) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+completionItem item =
+  CompletionItem (F.cmpLabel item) Nothing (Just k) Nothing Nothing (InL <$> F.cmpDocumentation item) Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
   where
-    k = case kind of
+    k = case F.cmpKind item of
+      F.CkConstant -> CompletionItemKind_Constant
       F.CkCommand -> CompletionItemKind_Function
       F.CkLabel -> CompletionItemKind_Reference
       F.CkPath -> CompletionItemKind_File

@@ -161,7 +161,7 @@ inFileTests =
           fontsOf c = nub [dFont d | d <- ds, dGlyph d == fromEnum c]
       (fontsOf '手', fontsOf '本') @?= (["/F1"], ["/F2"]),
     testCase "the styles of a file imported are not the importer's" $
-      withChapters "" [("c1.gm", "@import common.gm as c\n\n@style letter\n手紙。\n")] [("common.gm", "@style-def paragraph letter\n\n@set v = 1\n")] $ \tmp -> do
+      withChapters "" [("c1.gm", "@import common.gm as c\n\n@style letter\n手紙。\n")] [("common.gm", "@style-def paragraph letter\n\nset v = 1\n")] $ \tmp -> do
         ev <- evaluateProject Dev tmp
         case ev of
           Left f -> assertFailure (show (pfDiagnostics f))
@@ -185,7 +185,7 @@ inFileTests =
         p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
         T.count "<p>" p1 @?= 1,
     testCase "HTML: @manifest of a file imported does not reach the importer" $
-      withChapters "" [("c1.gm", "@import common.gm as c\n\n[= c.v]。\n二。\n")] [("common.gm", "@manifest paragraph-separator=line\n\n@set v = 1\n")] $ \tmp -> do
+      withChapters "" [("c1.gm", "@import common.gm as c\n\n[= c.v]。\n二。\n")] [("common.gm", "@manifest paragraph-separator=line\n\nset v = 1\n")] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")

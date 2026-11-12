@@ -70,6 +70,9 @@ library
     , text          >=2.0  && <2.2
     , time          >=1.12 && <1.15
   default-language: GHC2021
+  if !arch(wasm32)
+    c-sources:     cbits/output_lock.c
+    build-depends: unix >=2.8 && <3
   -- the two Golem.Driver.Plugins export the same names and types (docs/adr/0199)
   if flag(plugins)
     hs-source-dirs:  src-plugins

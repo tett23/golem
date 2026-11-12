@@ -13,7 +13,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing, createDirectoryLink, doesFileExist)
+import System.Directory (createDirectoryIfMissing, createDirectoryLink, createFileLink, doesDirectoryExist, doesFileExist, pathIsSymbolicLink)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -46,7 +46,7 @@ securityTests =
         forM_ [TargetText, TargetPdf] $ \t -> do
           r <- build (defaultOptions tmp) {optTargets = Just [t], optFonts = fakeProvider}
           (map diagCode (filter isError (brDiagnostics r)), brWritten r) @?= ([DiagnosticCode "G02089"], []),
-      testCase "build as a symbolic link out of the project is G08013, and nothing there is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+      testCase "Golem ADR 0329 O2: build as a symbolic link out of the project is G08013, and nothing there is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         v <- victim tmp
         let root = tmp </> "p"
         createDirectoryIfMissing True root
@@ -81,14 +81,63 @@ securityTests =
             doesFileExist (v </> dir </> "precious.txt") >>= assertBool "kept"
         | (target, dir) <- [(TargetEpub, "epub"), (TargetText, "text"), (TargetPdf, "pdf")]
         ],
-      testCase "build/html as a file that is not a folder is G08013 (docs/adr ADR 0076)" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+      testCase "Golem ADR 0329 O1: build/html as a regular file is G08104" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "build")
         project tmp "" horizontalStyle "本文。\n" []
         BS.writeFile (tmp </> "build" </> "html") "not a folder"
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08104"]
         brWritten r @?= []
         BS.readFile (tmp </> "build" </> "html") >>= (@?= "not a folder"),
+      testCase "Golem ADR 0329 O1 and O2: a regular build parent reports only G08104" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        BS.writeFile (tmp </> "build") "keep build"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08104"]
+        brWritten r @?= []
+        BS.readFile (tmp </> "build") >>= (@?= "keep build"),
+      testCase "Golem ADR 0329 O1: a broken output link remains G08013" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        createDirectoryIfMissing True (tmp </> "build")
+        createDirectoryLink (tmp </> "missing") (tmp </> "build/html")
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
+        brWritten r @?= []
+        pathIsSymbolicLink (tmp </> "build/html") >>= (@?= True),
+      testCase "Golem ADR 0329 O3 and O4: build removes selected regular .DS_Store files" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        createDirectoryIfMissing True (tmp </> "build/html")
+        createDirectoryIfMissing True (tmp </> "build/pdf")
+        forM_ [tmp, tmp </> "build", tmp </> "build/html", tmp </> "build/pdf"] $ \dir -> BS.writeFile (dir </> ".DS_Store") "finder"
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        forM_ [tmp, tmp </> "build", tmp </> "build/html"] $ \dir -> doesFileExist (dir </> ".DS_Store") >>= (@?= False)
+        BS.readFile (tmp </> "build/pdf/.DS_Store") >>= (@?= "finder")
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        doesFileExist (tmp </> ".DS_Store") >>= (@?= False),
+      testCase "Golem ADR 0329 O4: a .DS_Store link and its target remain" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        let root = tmp </> "project"
+            outside = tmp </> "outside"
+        createDirectoryIfMissing True root
+        createDirectoryIfMissing True outside
+        project root "" horizontalStyle "本文。\n" []
+        BS.writeFile (outside </> "precious") "keep me"
+        createFileLink (outside </> "precious") (root </> ".DS_Store")
+        _ <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
+        pathIsSymbolicLink (root </> ".DS_Store") >>= (@?= True)
+        BS.readFile (outside </> "precious") >>= (@?= "keep me"),
+      testCase "Golem ADR 0329 O4: Finder cleanup stays in real visible project folders" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        let root = tmp </> "project"
+            outside = tmp </> "outside"
+        createDirectoryIfMissing True (root </> ".hidden")
+        createDirectoryIfMissing True (root </> "directory/.DS_Store")
+        createDirectoryIfMissing True outside
+        createDirectoryLink outside (root </> "link")
+        BS.writeFile (root </> ".hidden/.DS_Store") "hidden"
+        BS.writeFile (outside </> ".DS_Store") "outside"
+        cleanFinderInfo root [".hidden", "directory", "link", "../outside"]
+        BS.readFile (root </> ".hidden/.DS_Store") >>= (@?= "hidden")
+        BS.readFile (outside </> ".DS_Store") >>= (@?= "outside")
+        doesDirectoryExist (root </> "directory/.DS_Store") >>= (@?= True),
       testCase "build/html as a symbolic link to a folder inside the project is G08013 (docs/adr ADR 0076)" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "build")
         project tmp "" horizontalStyle "本文。\n" []
@@ -110,6 +159,43 @@ securityTests =
         assertBool (show (brWritten r)) (any ((root </> "build" </> "html") `isPrefixOf`) (brWritten r) && not (null (brWritten r)))
         doesFileExist (root </> "build" </> "html" </> "a.xhtml") >>= assertBool "written in build/html"
         doesFileExist (v </> "pdf" </> "precious.txt") >>= assertBool "kept",
+      testCase "Golem ADR 0326 B1 and B4: prod clears stale PDF and dev keeps it" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
+        let pdfDir = tmp </> "build/pdf"
+            oldPdf = pdfDir </> "book.pdf"
+            oldPages = pdfDir </> "pages.json"
+        createDirectoryIfMissing True pdfDir
+        BS.writeFile oldPdf "previous pdf"
+        BS.writeFile oldPages "previous pages"
+        dev <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Dev}
+        assertBool "dev build failed" (any isError (brDiagnostics dev))
+        BS.readFile oldPdf >>= (@?= "previous pdf")
+        BS.readFile oldPages >>= (@?= "previous pages")
+        prod <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Prod}
+        assertBool "prod build failed" (any isError (brDiagnostics prod))
+        doesFileExist oldPdf >>= (@?= False)
+        doesFileExist oldPages >>= (@?= False),
+      testCase "Golem ADR 0326 B3: prod failure keeps a linked PDF directory's target" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        let root = tmp </> "project"
+            outside = tmp </> "outside"
+        createDirectoryIfMissing True (root </> "build")
+        createDirectoryIfMissing True outside
+        project root "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
+        BS.writeFile (outside </> "precious.pdf") "keep me"
+        createDirectoryLink outside (root </> "build/pdf")
+        r <- build (defaultOptions root) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Prod}
+        assertBool "prod build failed" (any isError (brDiagnostics r))
+        BS.readFile (outside </> "precious.pdf") >>= (@?= "keep me"),
+      testCase "Golem ADR 0326 B2: check and HTML-only builds keep the old PDF" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
+        let pdfDir = tmp </> "build/pdf"
+            oldPdf = pdfDir </> "book.pdf"
+        createDirectoryIfMissing True pdfDir
+        BS.writeFile oldPdf "previous pdf"
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Prod, optCheckOnly = True}
+        BS.readFile oldPdf >>= (@?= "previous pdf")
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider, optProfile = Prod}
+        BS.readFile oldPdf >>= (@?= "previous pdf"),
       testCase "a figure path with a quote stays inside the src attribute" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         img <- tinyImage
         let name = "q\" onerror=\"alert(1).jpg"

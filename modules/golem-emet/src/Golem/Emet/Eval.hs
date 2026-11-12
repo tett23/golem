@@ -30,6 +30,7 @@ module Golem.Emet.Eval
     evalCall,
     evalCallCounted,
     evalCallLimited,
+    evalExpressionLimited,
     stepLimit,
     depthLimit,
   )
@@ -161,12 +162,24 @@ evalCallCounted = evalCallLimited stepLimit
 with the document (docs/adr/0162).
 -}
 evalCallLimited :: Int64 -> Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> [Result] -> (Either Diagnostic Result, Int64)
-evalCallLimited limit hs globals files at key args = case Map.lookup key globals of
-  Nothing -> (Left (diagnostic "E02100" Error at ("未定義の関数 " <> snd key <> " です")), 0)
-  Just g -> runST $ do
-    Step c k n d <- apply 0 (Loc 0 0) (globalValue g) (map fromResult args) []
-    (r, used) <- loop c k n d
-    pure (toResult <$> r, used)
+evalCallLimited limit hs globals files at key args =
+  evaluateEntry limit hs globals files at key (Left args)
+
+-- | A checked REPL expression starts before its first reduction, with no implicit call.
+evalExpressionLimited :: Int64 -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> CExpr -> Either Diagnostic Result
+evalExpressionLimited limit globals files at key expr =
+  fst (evaluateEntry limit noHandlers globals files at key (Right expr))
+
+evaluateEntry :: Int64 -> Handlers -> Globals -> Map FilePath FileId -> SrcSpan -> GKey -> Either [Result] CExpr -> (Either Diagnostic Result, Int64)
+evaluateEntry limit hs globals files at key entry = runST $ do
+  (result, used) <- case entry of
+    Right expr -> loop (Eval Map.empty expr) [] 0 0
+    Left args -> case Map.lookup key globals of
+      Nothing -> pure (Left (diagnostic "E02100" Error at ("未定義の関数 " <> snd key <> " です")), 0)
+      Just g -> do
+        Step c k n d <- apply 0 (Loc 0 0) (globalValue g) (map fromResult args) []
+        loop c k n d
+  pure (toResult <$> result, used)
   where
     stop steps d = pure (Left d, steps)
 

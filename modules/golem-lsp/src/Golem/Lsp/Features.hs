@@ -11,9 +11,13 @@ module Golem.Lsp.Features
     RenameError (..),
     renameMessage,
     renameLabel,
+    renameLayoutValue,
     renameEmet,
     emetTextOf,
     Completion (..),
+    cmpLabel,
+    cmpKind,
+    cmpDocumentation,
     CompletionKind (..),
     completions,
     tomlFileCompletions,
@@ -40,7 +44,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromRight)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -49,7 +53,8 @@ import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports, 
 import Golem.Emet.Highlight (Highlight (..), HlType (..), emetHighlights)
 import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover, emetLocalHover)
 import Golem.Emet.Rename qualified as R
-import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
+import Golem.Eval.Builtin (builtinBlockCommands)
+import Golem.Eval.Expr (builtinExpressionNames, embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), projectVarValues, typeName)
 import Golem.Fmt (FormatResult (..), format)
@@ -58,11 +63,11 @@ import Golem.Lsp.Workspace
 import Golem.Parser (parse)
 import Golem.Parser.AST
 import Golem.Parser.CST qualified as C
-import Golem.Parser.SourceSettings (sourceKeys)
+import Golem.Parser.SourceSettings (paragraphSeparators, sourceKeys)
 import Golem.Preflight.Rules (rulesSchema)
 import Golem.Project
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, lineBreaksValues, noLocalStyles, paraStyleKeys, regexStyleKeys, styleSchema)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), alignValues, builtinAkiSetNames, builtinCharStyles, builtinParaStyles, charStyleKeys, defaultStyle, layoutValueNames, layoutValueSites, lineBreaksValues, noLocalStyles, paraStyleKeys, parseStyle, regexStyleKeys, styleSchema)
 import Golem.Project.TomlSchema (Leaf (..), Namespace (..), Node (..), nodeAt)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..), SemanticTokenAbsolute (..), SemanticTokenModifiers (..), SemanticTokenTypes (..))
@@ -139,7 +144,7 @@ occurrences (File _ bs) = concatMap block bs
       OrderedList items -> concatMap (concatMap block) items
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
-      SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
+      SetVar _ (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
       BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | T.isInfixOf "." name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       _ -> []
@@ -344,7 +349,7 @@ references ws path off = case sourceOf ws path of
 
 -- ------------------------------------------------------------------ rename
 
-data RenameError = NotALabel | LabelExists Text | InvalidName Text | EmetRename R.RenameError
+data RenameError = NotALabel | LabelExists Text | InvalidName Text | NotALayoutValue | LayoutValueExists Text | InvalidLayoutValue Text | EmetRename R.RenameError
   deriving stock (Eq, Show)
 
 -- | The message of an error of renaming, as the editor shows it.
@@ -353,6 +358,9 @@ renameMessage = \case
   NotALabel -> "ラベルの上で名前を変更してください"
   LabelExists l -> "すでにあるラベルの名前です: " <> l
   InvalidName l -> "ラベルに使えない名前です: " <> l
+  NotALayoutValue -> "組版用の値の名前の上で名前を変更してください"
+  LayoutValueExists l -> "すでにある組版用の値の名前です: " <> l
+  InvalidLayoutValue l -> "組版用の値に使えない名前です: " <> l
   EmetRename e -> case e of
     R.RenameNotAName -> "関数、型、コンストラクタ、局所の名前の上で名前を変更してください"
     R.RenameBuiltin n -> "組み込みの名前は変えられません: " <> n
@@ -373,6 +381,59 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
       | T.null new || T.any (\c -> c == ' ' || c == ']' || c == '[' || c == '\n') new = Left (InvalidName new)
       | new /= l && not (null (labelDefs ws new)) = Left (LabelExists new)
       | otherwise = Right [(x, new) | x <- nub (labelDefs ws l <> labelRefs ws l)]
+
+-- | Rename one typed layout value in style.toml and loaded source files.
+renameLayoutValue :: Workspace -> Text -> FilePath -> Int -> Text -> Either RenameError [(Location, Text)]
+renameLayoutValue ws styleText path off new = case [(kind, name) | (kind, name, loc', _) <- sites, path == locPath loc', locStart loc' <= off, off <= locEnd loc'] of
+  [] -> Left NotALayoutValue
+  (kind, old) : _
+    | length [() | (_, name, _, True) <- sites, name == old] /= 1 -> Left NotALayoutValue
+    | not (valid new) -> Left (InvalidLayoutValue new)
+    | old /= new, new `elem` [name | (_, name, _, True) <- sites] -> Left (LayoutValueExists new)
+    | otherwise -> Right [(loc', new) | (kind', name, loc', _) <- sites, kind' == kind, name == old]
+  where
+    style = fromRight defaultStyle (parseStyle (FileId 0) styleText)
+    styleSites = [(kind, name, Location "style.toml" start end, def) | (kind, name, start, end, def) <- layoutValueSites styleText]
+    sites = styleSites <> concatMap sourceSites [src | src <- allSources ws, srcInProject src]
+    valid name = case T.uncons name of
+      Just (first, rest) -> name `notElem` ["pt", "in", "mm", "Q", "H", "zw", "ベタ", "全角", "二分", "三分", "四分", "五分", "六分", "八分", "二分四分"] && isAsciiLower first && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
+      Nothing -> False
+    sourceSites src = case srcAst src of
+      File _ blocks -> concatMap (blockSites src) blocks
+    blockSites src (Located _ block) = case block of
+      Attributed commands next -> concatMap (blockSites src) commands <> maybe [] (blockSites src) next
+      BlockCommand (Located _ "style-def") (Located _ (Positional (Word kind)) : _ : args) _
+        | Just styleKind <- styleKindOf kind ->
+            [ (kindOf styleKind key, name, loc', False)
+            | Located argSpan (Keyword (Located _ key) value) <- args,
+              Just valueText <- [case value of Word n -> Just n; StringLit n -> Just n; _ -> Nothing],
+              (name, loc') <- argumentSites src argSpan,
+              name `elem` layoutValueNames style styleKind key,
+              kindOf styleKind key == "count" || name == valueText
+            ]
+      _ -> []
+    kindOf :: StyleKind -> Text -> Text
+    kindOf styleKind key = case layoutValueNames style styleKind key of
+      names | any (\n -> ("length", n) `elem` declared) names -> "length"
+      names | any (\n -> ("aki", n) `elem` declared) names -> "aki"
+      _ -> "count"
+    declared = [(kind, name) | (kind, name, _, True) <- styleSites]
+    argumentSites src span' =
+      let bytes = TE.encodeUtf8 (srcText src)
+          fragment = TE.decodeUtf8Lenient (BS.take (spanEnd span' - spanStart span') (BS.drop (spanStart span') bytes))
+          (_, afterEq) = T.breakOn "=" fragment
+          prefix = T.take (T.length fragment - T.length afterEq) fragment <> "="
+          parts = T.splitOn "+" (T.drop 1 afterEq)
+          prefixes = scanl (\before part -> before <> part <> "+") "" parts
+       in [ (name, Location (srcPath src) start (start + BS.length (TE.encodeUtf8 name)))
+          | not (T.null afterEq),
+            (beforePart, part) <- zip prefixes parts,
+            let name = T.dropAround (\c -> c == '"' || c == ' ' || c == '\t') part,
+            not (T.null name),
+            let (beforeName, found) = T.breakOn name part,
+            not (T.null found),
+            let start = spanStart span' + BS.length (TE.encodeUtf8 (prefix <> beforePart <> beforeName))
+          ]
 
 {- | Renames a name of a .emet (docs/adr/0170): in the .emet of the
 program, and for a function .gm calls by its name, the calls of .gm and
@@ -459,25 +520,69 @@ filterNames manifest path old = maybe [] scan manifest
 
 -- ------------------------------------------------------------------ completion
 
-data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind | CkTable
+data CompletionKind = CkCommand | CkConstant | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind | CkTable
   deriving stock (Eq, Show)
 
-data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
+data Completion = Completion !Text !CompletionKind | Described !Text !CompletionKind !Text
   deriving stock (Eq, Show)
+
+cmpLabel :: Completion -> Text
+cmpLabel (Completion n _) = n
+cmpLabel (Described n _ _) = n
+
+cmpKind :: Completion -> CompletionKind
+cmpKind (Completion _ k) = k
+cmpKind (Described _ k _) = k
+
+cmpDocumentation :: Completion -> Maybe Text
+cmpDocumentation (Completion _ _) = Nothing
+cmpDocumentation (Described _ _ doc) = Just doc
+
+{- | Text since the innermost command opener on this line. Nested array
+brackets in an expression keep the expression as their context.
+-}
+activeBracket :: Text -> Maybe Text
+activeBracket line = go 0 [] False (T.unpack line)
+  where
+    go _ ((start, _) : _) False [] = Just (T.drop start line)
+    go _ _ _ [] = Nothing
+    go pos frames quoted ('\\' : _ : rest) = go (pos + 2) frames quoted rest
+    go pos frames@((_, True) : _) quoted ('"' : rest) = go (pos + 1) frames (not quoted) rest
+    go pos frames False ('[' : rest) =
+      let frame = case frames of
+            f@(_, True) : _ -> f
+            _ -> (pos + 1, take 1 rest == "=")
+       in go (pos + 1) (frame : frames) False rest
+    go pos (_ : frames) False (']' : rest) = go (pos + 1) frames False rest
+    go pos frames quoted (_ : rest) = go (pos + 1) frames quoted rest
+
+-- | A code block keeps its body as raw text, even when it contains command openers.
+codeBlockAt :: Int -> File -> Bool
+codeBlockAt off (File _ blocks) = any inside blocks
+  where
+    inside (Located sp block) = case block of
+      CodeBlock {} -> spanStart sp <= off && off < spanEnd sp
+      BlockCommand _ _ body -> any inside body
+      Attributed commands body -> any inside commands || maybe False inside body
+      BulletList items -> any (any inside) items
+      OrderedList items -> any (any inside) items
+      DefList groups -> any (any (any inside) . dgDefs) groups
+      _ -> False
 
 -- | Completion from the text before the cursor on its line.
 completions :: Workspace -> FilePath -> Int -> [Completion]
 completions ws path off = case sourceOf ws path of
-  _ | isJust (settingsSchemaOf path) -> maybe [] (\t -> tomlFileCompletions path t off) (Map.lookup path (wsOverlay ws))
+  _ | isSettingsFile path -> maybe [] (\t -> tomlFileCompletions path t off) (Map.lookup path (wsOverlay ws))
   -- a .emet (docs/adr/0162)
   Nothing -> [Completion n (emetKind k) | Just text <- [emetText ws path], (n, k) <- emetCompletions (programOf ws) path text off]
   Just src
+    | codeBlockAt off (srcAst src) -> []
     | Just names <- namespaceCompletions ws src off -> names
   Just src ->
     let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
         lineBefore = T.takeWhileEnd (/= '\n') before
-        lastOpen = T.takeWhileEnd (/= '[') lineBefore
-        hasOpen = T.isInfixOf "[" lineBefore
+        open = activeBracket lineBefore
+        lastOpen = fromMaybe "" open
         ws' = T.words lastOpen
         style = maybe defaultStyle evStyle (wsEvaluated ws)
         {- the styles of the file (docs/adr ADR 0014): of its evaluation, and
@@ -494,40 +599,57 @@ completions ws path off = case sourceOf ws path of
           Nothing -> Nothing
         meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
         projectVars = projectVarsOf ws
-     in if "@import " `T.isPrefixOf` T.stripStart lineBefore
-          then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
-          else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
-            (Just rest, _) -> manifestCompletions rest
-            (_, Just rest) -> styleDefCompletions style paraNames charNames rest
-            _ ->
-              -- the kinds of a page break (docs/adr ADR 0017)
-              if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                then [Completion k CkSettingValue | k <- ["recto", "verso"]]
-                else -- the signed counts of @page-lines (docs/adr ADR 0030)
-                  if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                    then [Completion k CkSettingValue | k <- ["+1", "-1"]]
-                    else
-                      -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
-                      if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                        then [Completion n CkParaStyle | n <- paraNames]
+     in if maybe False (T.all nameChar) (T.stripPrefix "@" (T.stripStart lineBefore))
+          then [Completion n CkCommand | n <- builtinBlockCommands]
+          else
+            if "@import " `T.isPrefixOf` T.stripStart lineBefore
+              then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
+              else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
+                (Just rest, _) -> manifestCompletions rest
+                (_, Just rest) -> styleDefCompletions style paraNames charNames rest
+                _ ->
+                  -- the kinds of a page break (docs/adr ADR 0017)
+                  if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                    then [Completion k CkSettingValue | k <- ["recto", "verso"]]
+                    else -- the signed counts of @page-lines (docs/adr ADR 0030)
+                      if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                        then [Completion k CkSettingValue | k <- ["+1", "-1"]]
                         else
-                          if not hasOpen || T.isInfixOf "]" lastOpen
-                            then []
-                            else case metaPath of
-                              -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                              Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                              Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                              -- the keys of [vars] and of its tables (docs/adr/0185)
-                              Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
-                              _ -> case ws' of
-                                [] -> commandNames
-                                [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                                (cmd : _)
-                                  | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                  | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                  | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                                _ -> []
+                          -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
+                          if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                            then [Completion n CkParaStyle | n <- paraNames]
+                            else
+                              if isNothing open
+                                then []
+                                else case metaPath of
+                                  -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                                  Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                                  Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                                  -- the keys of [vars] and of its tables (docs/adr/0185)
+                                  Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
+                                  Just [_] | inOperand lastOpen -> expressionNames
+                                  Just _ -> []
+                                  _ -> case ws' of
+                                    [] -> commandNames
+                                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                    (cmd : _)
+                                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                      | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                      | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                    _ -> []
   where
+    nameChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
+    inOperand expression =
+      let prefix = T.stripEnd (T.dropWhileEnd (\c -> isAsciiLower c || isAsciiUpper c || isDigit c || c == '_') expression)
+       in maybe False (\(_, c) -> c `elem` ("=([+-*/%,<>&|!" :: String)) (T.unsnoc prefix)
+    expressionNames =
+      [ case n of
+          "len" -> Described n CkCommand "文字列の文字数、または配列の要素数を返します。"
+          "pi" -> Completion n CkConstant
+          "e" -> Completion n CkConstant
+          _ -> Completion n CkCommand
+      | n <- builtinExpressionNames
+      ]
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
 
@@ -570,19 +692,15 @@ namespaceCompletions ws src off = do
   path <- Map.lookup ns (emetImports src)
   let exports = Map.findWithDefault [] path (programExports p)
       rest = T.dropEnd (T.length typed) lineBefore
-      names kind = Just [Completion (exName e) CkCommand | e <- exports, exKind e == kind]
+      names kind = Just [Described (exName e) CkCommand (exSignature e) | e <- exports, exKind e == kind]
   case () of
     _
       | T.strip rest == "@" -> names KindBlock
-      | inExpression rest -> names KindFn
-      | "[" `T.isSuffixOf` rest -> names KindInline
+      | Just expr <- activeBracket lineBefore, "=" `T.isPrefixOf` expr -> names KindFn
+      | Just inner <- activeBracket lineBefore, inner == typed -> names KindInline
       | otherwise -> Nothing
   where
     isAsciiAlphaNum c = isAsciiLower c || isAsciiUpper c || isDigit c
-    -- the text before the name is inside [= ... ] that is not closed
-    inExpression rest = case T.breakOnEnd "[=" rest of
-      ("", _) -> False
-      (_, after) -> not (T.isInfixOf "]" after)
 
 {- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
 (docs/adr ADR 0013), then the values of a key.
@@ -596,7 +714,7 @@ manifestCompletions rest = case T.words rest of
   where
     keys = [Completion (k <> "=") CkSettingKey | (k, _) <- sourceKeys]
     valuesOf = \case
-      "paragraph-separator" -> ["blank-line", "line"]
+      "paragraph-separator" -> map fst paragraphSeparators
       _ -> []
 
 {- | Completion after @style-def (docs/adr ADR 0014): the kinds, then the
@@ -638,7 +756,7 @@ styleDefCompletions style paraNames charNames rest =
       "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- lineBreaksValues]
       -- docs/adr/0189
       "align" | kind == "paragraph" -> [Completion v CkSettingValue | v <- alignValues]
-      _ -> []
+      key -> [Completion n CkSettingValue | Just k <- [styleKindOf kind], n <- layoutValueNames style k key]
 
 {- | The schema of a file of settings the language server completes
 (docs/adr ADR 0169): style.toml and preflight.toml at the root of the
@@ -650,12 +768,16 @@ settingsSchemaOf = \case
   "preflight.toml" -> Just rulesSchema
   _ -> Nothing
 
--- | style.toml or preflight.toml at the root.
+-- | A root configuration file with completion support.
 isSettingsFile :: FilePath -> Bool
-isSettingsFile = isJust . settingsSchemaOf
+isSettingsFile path = path == "manifest.toml" || isJust (settingsSchemaOf path)
 
--- | Completion in style.toml or preflight.toml at the root, from its text; none in another file.
+-- | Completion from the live text of a root configuration file.
 tomlFileCompletions :: FilePath -> Text -> Int -> [Completion]
+tomlFileCompletions "manifest.toml" text off = case contextAt text off of
+  AtValue path element quote _ ->
+    [Completion (if quote == Bare then "\"" <> v <> "\"" else v) CkSettingValue | v <- manifestChoiceValues path element]
+  _ -> []
 tomlFileCompletions path text off = maybe [] (\schema -> tomlCompletions schema text off) (settingsSchemaOf path)
 
 {- | Completion in a TOML file of a schema (docs/adr ADR 0169): the steps
@@ -679,7 +801,7 @@ tomlCompletions schema text off = case contextAt text off of
       ]
     Just (NNamed ns _) -> namesUnder ns path
     _ -> []
-  AtValue path element q _ -> maybe [] (nub . values element) (nodeAt schema path)
+  AtValue path element q _ -> nub (maybe [] (values element) (nodeAt schema path) <> layoutNames path q)
     where
       values inArr = \case
         NValue l | not inArr -> leaf l
@@ -696,6 +818,22 @@ tomlCompletions schema text off = case contextAt text off of
   Nowhere -> []
   where
     defined = definedPaths text
+    layoutNames path q
+      | schema /= styleSchema = []
+      | Just kind <- layoutKind path =
+          [ Completion (if q == Bare then "\"" <> name <> "\"" else name) CkSettingValue
+          | ["values", declaredKind, name] <- defined,
+            declaredKind == kind,
+            path /= ["values", kind, name]
+          ]
+      | otherwise = []
+    layoutKind path = case path of
+      ["values", kind, _] | kind `elem` ["length", "aki", "count"] -> Just kind
+      _ -> case nodeAt styleSchema path of
+        Just (NValue LDimension) -> Just "length"
+        Just (NValue LInteger) | last path `elem` ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just "count"
+        _ | "aki-sets" `elem` path, last path `elem` ["optimum", "minimum", "maximum"] -> Just "aki"
+        _ -> Nothing
     -- the names a namespace has: the built-in ones, then those of the file in its order
     names ns = nub (builtinNames ns <> [n | (ns', n) <- concatMap (namesOn schema) defined, ns' == ns])
     namesUnder ns path = case ns of
