@@ -595,7 +595,17 @@ layoutFigures reuse inp geom fonts figures = do
       -- the round before, whose compositions of the units that did not change are reused (docs/adr ADR 0251)
       round' prev assumed = do
         built <- buildFlow inp geom fonts figures (if reuse then prev else Nothing) assumed
-        pure (if null (bErrors built) then Right (built, paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
+        pure $
+          if not (null (bErrors built))
+            then Left (bErrors built)
+            else
+              let pages = paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)
+                  errors =
+                    [ diagnostic "G07125" Error sp ("脚注の印、区切りの領域と脚注本文の一行が " <> T.pack (show n) <> " 行の段に収まりません")
+                    | p <- pages,
+                      UnplaceableFootnote (NoteId sp _) n <- poUnmet p
+                    ]
+               in if null errors then Right (built, pages) else Left errors
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
   result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -696,6 +706,7 @@ unmetWarnings names paraOf styleAt pages =
         ]
       -- G07111, G07112, G07113: the keep options not met (docs/adr/0261)
       UnmetKeepNext sp -> [diagnostic "G07111" Warning sp ("段落スタイル " <> styleAt sp <> " の keep-with-next を守れませんでした")]
+      UnplaceableFootnote {} -> []
       SplitKept i -> [notice "G07112" sp ("段落スタイル " <> name <> " の段落が段に入らないので、keep-all-lines を外して分けました") | Just (sp, name) <- [paraOf i]]
       ShortPart part i asked placed ->
         [ notice "G07113" sp ("段の行が足りないので、段落の" <> (if part == FirstPart then "最初" else "最後") <> "の部分を " <> T.pack (show placed) <> " 行にしました（keep-" <> (if part == FirstPart then "first" else "last") <> "-lines = " <> T.pack (show asked) <> "）")
