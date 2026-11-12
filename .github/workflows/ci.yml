@@ -1266,7 +1266,7 @@ jobs:
         timeout-minutes: 10
         run: |
           chmod +x golem-linux-x86_64/golem
-          node --test experiments/parser-fmt-proof/manuscripts/corpus.test.mjs
+          node --test experiments/parser-fmt-proof/manuscripts/*.test.mjs
           GOLEM="$PWD/golem-linux-x86_64/golem" node experiments/parser-fmt-proof/manuscripts/check.mjs 2
       - name: Save failing manuscripts and replay commands
         if: failure()

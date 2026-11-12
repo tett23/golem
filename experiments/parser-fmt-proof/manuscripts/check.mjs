@@ -64,6 +64,7 @@ try {
       writeFileSync(join(path, 'original.gm'), input);
       writeFileSync(join(path, 'result.gm'), readFileSync(file));
       writeFileSync(join(path, 'reproduce.txt'), `node experiments/parser-fmt-proof/manuscripts/check.mjs ${bound} ${index}\n`);
+      writeFileSync(join(path, 'error.txt'), error.message + '\n');
       console.error(index, error.message);
       process.exitCode = 1;
     }
