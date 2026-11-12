@@ -44,6 +44,9 @@ jobs:
           cabal build --only-dependencies lib:golem-bibliography
           echo "PEG_HS=$(cabal list-bin peg-cli:exe:peg-hs)" >> "$GITHUB_ENV"
           echo "LEAN=$RUNNER_TEMP/lean-4.7.0-linux/bin/lean" >> "$GITHUB_ENV"
+      - name: Compare table formatting in Haskell and Lean
+        if: matrix.model == 'grammar'
+        run: sh experiments/parser-fmt-proof/tables/compare-format.sh
       - name: Check grammar proofs, mutations and native parser examples
         if: matrix.model == 'grammar'
         run: node experiments/parser-fmt-proof/grammar/test.mjs

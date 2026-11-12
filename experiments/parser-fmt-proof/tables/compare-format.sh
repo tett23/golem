@@ -8,8 +8,8 @@ cabal build lib:golem-fmt -w ghc-9.10.3
 cabal exec -w ghc-9.10.3 -- ghc -hide-all-packages -package base -package text \
   -package golem-fmt-0.1.0 -outputdir "$work" "$tables/FormatCases.hs" -o "$work/format-cases"
 "$work/format-cases" > "$work/haskell"
-lean -o "$work/Table.olean" "$tables/Table.lean"
-LEAN_PATH="$work" lean --run "$tables/FormatCases.lean" > "$work/lean"
+"${LEAN:-lean}" -o "$work/Table.olean" "$tables/Table.lean"
+LEAN_PATH="$work" "${LEAN:-lean}" --run "$tables/FormatCases.lean" > "$work/lean"
 cmp "$work/haskell" "$work/lean"
 test "$(wc -l < "$work/haskell")" -eq 97656
 echo '97656 table formatter outputs matched'
