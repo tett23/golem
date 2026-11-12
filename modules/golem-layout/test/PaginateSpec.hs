@@ -332,6 +332,9 @@ keepNoteTests =
       [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps, not (null (poSlots p))]
         @?= [(2, [nid 900])]
       unmets ps @?= [],
+    testCase "Golem ADR 0352 I3: relaxedAfterHeadings model fixture places one body line" $ do
+      let ps = paginate 1 3 [heading 20, FParagraph defaultKeep (lines' 30 3)]
+      contents ps @?= [[SHeading 20 1, SLine 30, SLine 31], [SLine 32]],
     testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]
