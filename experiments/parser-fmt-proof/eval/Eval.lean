@@ -180,6 +180,59 @@ theorem derives_sound (derivation : Derives n env expression value k) :
     run expression env n = .ok (value, k) := by
   induction derivation <;> simp_all [run, Bind.bind, Except.bind, Pure.pure, Except.pure]
 
+theorem spend_ok_iff {cost budget left : Nat} :
+    spend cost budget = .ok left ↔ budget = left + cost := by
+  simp only [spend]
+  split <;> simp_all <;> omega
+
+private theorem bind_ok {x : Except Failure α} {f : α → Except Failure β} {b : β} :
+    (x >>= f) = .ok b ↔ ∃ a, x = .ok a ∧ f a = .ok b := by
+  cases x <;> simp [Bind.bind, Except.bind]
+
+theorem derives_complete (h : run expression env n = .ok (value, k)) :
+    Derives n env expression value k := by
+  induction expression generalizing env n value k with
+  | literal => simp [run] at h; obtain ⟨rfl, rfl⟩ := h; constructor
+  | «variable» => simp only [run] at h; split at h <;> first | contradiction | cases h; exact .variable (by assumption)
+  | external =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨left, rfl, h⟩ := h
+    split at h <;> first | contradiction | cases h; exact .external (by assumption)
+  | call name arg body ihArg ihBody =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨⟨v, afterArg⟩, argOk, left, rfl, bodyOk⟩ := h
+    exact .call (ihArg argOk) (ihBody bodyOk)
+  | ternary c a b ihC ihA ihB =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨⟨v, afterC⟩, cOk, left, rfl, branchOk⟩ := h
+    dsimp only at branchOk
+    split at branchOk
+    · exact .ternaryTrue (ihC cOk) (ihA branchOk)
+    · exact .ternaryElse (ihC cOk) (by assumption) (ihB branchOk)
+  | add a b ihA ihB =>
+    simp only [run, bind_ok] at h
+    obtain ⟨⟨x, i⟩, ha, ⟨y, j⟩, hb, h⟩ := h
+    dsimp only at h
+    split at h <;> try contradiction
+    simp only [bind_ok, spend_ok_iff, Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨left, rfl, rfl, rfl⟩ := h
+    exact .add (ihA ha) (ihB hb)
+  | append a b ihA ihB =>
+    simp only [run, bind_ok] at h
+    obtain ⟨⟨x, i⟩, ha, ⟨y, j⟩, hb, h⟩ := h
+    dsimp only at h
+    split at h <;> try contradiction
+    simp only [bind_ok, spend_ok_iff, Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨left, rfl, rfl, rfl⟩ := h
+    exact .append (ihA ha) (ihB hb)
+  | quotient a b ihA ihB =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨⟨x, i⟩, ha, ⟨y, j⟩, hb, left, rfl, h⟩ := h
+    dsimp only at h
+    split at h <;> try contradiction
+    cases h
+    exact .quotient (ihA ha) (ihB hb)
+
 theorem remaining_le_budget (derivation : Derives budget env expression value remaining) :
     remaining ≤ budget := by
   induction derivation <;> omega
