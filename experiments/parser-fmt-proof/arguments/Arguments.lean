@@ -58,6 +58,13 @@ def missing (rules : List Rule) (args : List Argument) : List Finding :=
 def check (rules : List Rule) (args : List Argument) : List Finding :=
   scan rules args [] 0 ++ missing rules args
 
+/- The native function checker reports each absent positional argument in
+   signature order, using one-based ordinals (G02120). -/
+def positionalMissing (supplied required : Nat) : List Nat :=
+  ((List.range required).drop supplied).map (· + 1)
+
+example : positionalMissing 1 3 = [2, 3] := by decide
+
 private theorem splitMembership {xs ys : List α} {x : α} (h : x ∈ xs ++ ys) :
     x ∈ xs ∨ x ∈ ys := by
   induction xs with
