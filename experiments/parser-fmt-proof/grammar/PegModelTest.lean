@@ -1420,4 +1420,99 @@ example : keywordExpected "truex".toList = none := by rfl
 example : keywordExpected "nil_".toList = none := by rfl
 example : keywordExpected "false".toList = some [] := by rfl
 
+theorem lit_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (fuel : Nat) (value written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 1) (.lit value written) input =
+      .ok (if value.toList.isPrefixOf input then some (input.drop value.toList.length) else none) := by
+  rfl
+
+theorem class_total (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (fuel : Nat) (ranges : List (Nat × Nat)) (written : String) (input : List Char) :
+    PegModel.recognizeEnv grammar env (fuel + 1) (.charClass ranges written) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+          then some rest else none) := by
+  rfl
+
+def prefixClassExpected (input : List Char) : Option (List Char) :=
+  if ("@".toList).isPrefixOf input then
+    match input.drop 1 with
+    | [] => none
+    | c :: rest => if ([(97, 122)] : List (Nat × Nat)).any
+        (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then some rest else none
+  else none
+
+theorem prefix_class_sequence (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (input : List Char) (fuel : Nat) :
+    PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 1) item rest)
+      boundLength env [.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"] input =
+      .ok (prefixClassExpected input) := by
+  have literal := lit_total grammar env fuel "@" "'@'" input
+  cases hp : ("@".toList).isPrefixOf input with
+  | false => simp [PegModel.runSequence, literal, hp, prefixClassExpected] <;> rfl
+  | true =>
+      have classHit :=  class_total grammar env fuel [(97, 122)] "[a-z]" (input.drop 1)
+      have one : ("@".toList).length = 1 := by decide
+      rw [one] at literal
+      cases rest : input.drop 1 with
+      | nil =>
+          rw [rest] at classHit
+          simp [PegModel.runSequence, literal, classHit, hp, prefixClassExpected, rest] <;> rfl
+      | cons c tail =>
+          rw [rest] at classHit
+          by_cases hc : 97 ≤ c.toNat ∧ c.toNat ≤ 122
+          · simp [PegModel.runSequence, literal, classHit, hp, prefixClassExpected, rest, hc] <;> rfl
+          · simp [PegModel.runSequence, literal, classHit, hp, prefixClassExpected, rest, hc] <;> rfl
+
+private theorem single_ref_sequence (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (name : String) (args : List String) (input : List Char) :
+    PegModel.runSequence parse boundLength env [.ref name args] input =
+      parse env (.ref name args) input := by
+  cases hit : parse env (.ref name args) input with
+  | error reason => simp [PegModel.runSequence, hit]; rfl
+  | ok result =>
+      cases result with
+      | none => simp [PegModel.runSequence, hit]; rfl
+      | some rest => simp [PegModel.runSequence, hit]; rfl
+
+theorem block_command_start_choice (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv grammar env (fuel + 2)
+      (.choice [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"],
+        [.ref "SetDeclarationStart" []]]) input =
+      (match prefixClassExpected input with
+      | some rest => .ok (some rest)
+      | none => PegModel.recognizeEnv grammar env (fuel + 1)
+          (.ref "SetDeclarationStart" []) input) := by
+  have fuelEq : fuel + 2 = (fuel + 1) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 1) item rest)
+      _ env items input)
+    [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"],
+      [.ref "SetDeclarationStart" []]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [prefix_class_sequence grammar env _ input fuel]
+  rw [single_ref_sequence]
+  cases h : prefixClassExpected input <;> simp [h] <;> rfl
+
+theorem generated_block_command_start (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3)
+      (.ref "BlockCommandStart" []) input =
+      (match prefixClassExpected input with
+      | some rest => .ok (some rest)
+      | none => PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+          (.ref "SetDeclarationStart" []) input) := by
+  have fuelEq : fuel + 3 = (fuel + 2) + 1 := by omega
+  rw [fuelEq]
+  change PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
+    (.choice [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"],
+      [.ref "SetDeclarationStart" []]]) input = _
+  exact block_command_start_choice Generated.pegGrammar [] input fuel
+
 end PegModelTest

@@ -204,6 +204,14 @@ const keywordFullyProved = rule('Keyword') === "('true' / 'false' / 'nil') ![a-z
   keywordAst.alts.length === 1 && keywordAst.alts[0].items.length === 2 &&
   keywordAst.alts[0].items.every(item => item.bind === null) &&
   keywordAst.alts[0].action?.trim() === '()' && keywordAst.alts[0].constructor === null;
+// PegModelTest.generated_block_command_start proves the @ + lowercase
+// branch and preserves the actual SetDeclarationStart fallback result.
+const blockCommandStartAst = ast?.rules.find(rule => rule.name === 'BlockCommandStart');
+const blockCommandStartFullyProved = rule('BlockCommandStart') === "'@' [a-z] / SetDeclarationStart" &&
+  blockCommandStartAst?.params.length === 0 && blockCommandStartAst.templateParams.length === 0 &&
+  blockCommandStartAst.alts.length === 2 && blockCommandStartAst.alts.every(alt =>
+    alt.action?.trim() === '()' && alt.constructor === null &&
+    alt.items.every(item => item.bind === null));
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -279,6 +287,7 @@ if (!fragment && ast) {
     if (wordFullyProved && rule.name === 'Word') continue;
     if (mulOpFullyProved && rule.name === 'MulOp') continue;
     if (keywordFullyProved && rule.name === 'Keyword') continue;
+    if (blockCommandStartFullyProved && rule.name === 'BlockCommandStart') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;

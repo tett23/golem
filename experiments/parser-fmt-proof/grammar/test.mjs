@@ -153,6 +153,7 @@ try {
     ['@set x = 1\n', 'BlockCommand', 0],
     ['set x = 1\n', 'BlockCommand', 0],
     ['@set x = 1+2\n', 'BlockCommand', 0, 'AddOp@10..11 "+"'],
+    ['@foo\n', 'BlockCommand', 0],
     ['@set x = 2*3\n', 'BlockCommand', 0, 'MulOp@10..11 "*"'],
     ['@set x = 2**3\n', 'BlockCommand', 0, 'PowOp@10..12 "**"'],
     ['@set x = 2%3\n', 'BlockCommand', 0, 'MulOp@10..11 "%"'],
@@ -260,6 +261,17 @@ try {
     [join(here, 'generate.mjs'), changedKeyword, generated], { encoding: 'utf8' });
   assert.match(strictKeyword.stderr, /unsupported Keyword choice 1 at /,
     'removing the keyword boundary must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported BlockCommandStart choice /m,
+    'the canonical block command start dispatch has an arbitrary-input proof');
+  const changedBlockCommandStart = join(work, 'ChangedBlockCommandStart.hpeg');
+  const blockCommandStartMutation = original.replace(/^BlockCommandStart <- .*$/m,
+    line => line.replace('[a-z]', '[A-Z]'));
+  assert.notEqual(blockCommandStartMutation, original);
+  writeFileSync(changedBlockCommandStart, blockCommandStartMutation);
+  const strictBlockCommandStart = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedBlockCommandStart, generated], { encoding: 'utf8' });
+  assert.match(strictBlockCommandStart.stderr, /unsupported BlockCommandStart choice 1 at /,
+    'changing the command prefix class must return to the unsupported report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);
@@ -272,12 +284,21 @@ try {
   copyFileSync(join(here, 'PegModel.lean'), pegModel);
   execFileSync(lean, ['-o', join(work, 'PegModel.olean'), pegModel], { cwd: work, stdio: 'pipe' });
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
-  const modelTests = spawnSync(lean, [join(here, 'PegModelTest.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  const modelTestSource = join(work, 'PegModelTest.lean');
+  copyFileSync(join(here, 'PegModelTest.lean'), modelTestSource);
+  const modelTests = spawnSync(lean, ['-o', join(work, 'PegModelTest.olean'), modelTestSource],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(modelTests.status, 0, modelTests.stdout + modelTests.stderr);
   const stringProof = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(stringProof.status, 0, stringProof.stderr);
-  const wordProof = spawnSync(lean, [join(here, 'WordRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  const wordSource = join(work, 'WordRoundTrip.lean');
+  copyFileSync(join(here, 'WordRoundTrip.lean'), wordSource);
+  const wordProof = spawnSync(lean, ['-o', join(work, 'WordRoundTrip.olean'), wordSource],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(wordProof.status, 0, wordProof.stderr);
+  const argumentsProof = spawnSync(lean, [join(here, 'ArgumentsRoundTrip.lean')],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(argumentsProof.status, 0, argumentsProof.stderr);
 
   writeFileSync(generated, mutation);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
@@ -289,7 +310,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 23, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 4, negative mutations 24, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
