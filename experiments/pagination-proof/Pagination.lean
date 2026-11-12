@@ -162,7 +162,7 @@ def blankWithNextCase (firstKept secondKept headingHere : Bool) : Bool :=
 /- An ordered list of candidate items after a blank has already removed
    blanks and need markers. `nextOf25` takes its head; `nextOf` skips figures
    that have been sent on. The equality is general when none waits. -/
-def nextAfterWaiting (waiting : Nat → Bool) : List Nat → Option Nat
+def nextAfterWaiting {α : Type} (waiting : α → Bool) : List α → Option α
   | [] => none
   | x :: xs => if waiting x then nextAfterWaiting waiting xs else some x
 
@@ -203,6 +203,131 @@ theorem I3_nextAfterWaiting_eq_find (waiting : Nat → Bool)
   | nil => rfl
   | cons x xs ih =>
       cases hx : waiting x <;> simp [nextAfterWaiting, List.find?, hx, ih]
+
+/- The witness returned by `nextOf` is the first eligible source item:
+   every candidate before it waits, and it does not wait. -/
+theorem I3_nextAfterWaiting_some_iff_first
+    {α : Type} (waiting : α → Bool) (items : List α) (i : α) :
+    nextAfterWaiting waiting items = some i ↔
+      ∃ before after, items = before ++ i :: after ∧
+        (∀ x ∈ before, waiting x = true) ∧ waiting i = false := by
+  induction items with
+  | nil =>
+      constructor
+      · intro h
+        cases h
+      · rintro ⟨before, after, eq, _, _⟩
+        cases before <;> simp at eq
+  | cons x xs ih =>
+      cases hx : waiting x with
+      | false =>
+          constructor
+          · intro h
+            have eq : x = i := by simpa [nextAfterWaiting, hx] using h
+            subst i
+            exact ⟨[], xs, rfl, by simp, hx⟩
+          · rintro ⟨before, after, eq, allWait, _⟩
+            cases before with
+            | nil =>
+                simp at eq
+                simpa [nextAfterWaiting, hx] using eq.1
+            | cons y ys =>
+                simp at eq
+                have waits : waiting x = true := by
+                  rw [eq.1]
+                  exact allWait y (by simp)
+                simp [hx] at waits
+      | true =>
+          constructor
+          · intro h
+            obtain ⟨before, after, eq, allWait, noWait⟩ :=
+              ih.mp (by simpa [nextAfterWaiting, hx] using h)
+            refine ⟨x :: before, after, by simp [eq], ?_, noWait⟩
+            intro z member
+            rcases List.mem_cons.mp member with same | earlier
+            · subst z
+              exact hx
+            · exact allWait z earlier
+          · rintro ⟨before, after, eq, allWait, noWait⟩
+            cases before with
+            | nil =>
+                simp at eq
+                have noWaitX : waiting x = false := by simpa [eq.1] using noWait
+                simp [hx] at noWaitX
+            | cons y ys =>
+                simp at eq
+                have earlierWaits : ∀ z ∈ ys, waiting z = true := by
+                  intro z member
+                  exact allWait z (by simp [member])
+                have tail := ih.mpr ⟨ys, after, eq.2, earlierWaits, noWait⟩
+                simpa [nextAfterWaiting, hx] using tail
+
+/- These are the item kinds relevant to Alloy `nextOf`. Each item has a
+   source position; the caller supplies them in increasing source order.
+   `nextOf` ignores Blank and Need and later ignores waiting Figure items.
+   Text remains a candidate even when it is sent to the next column. -/
+inductive SourceItem where
+  | text (pos : Nat)
+  | figure (pos : Nat)
+  | blank (pos : Nat)
+  | need (pos : Nat)
+
+structure SourceCandidate where
+  pos : Nat
+  figure : Bool
+
+def candidateAfterBlank (blankPos : Nat) : SourceItem → Option SourceCandidate
+  | .text pos => if blankPos < pos then some ⟨pos, false⟩ else none
+  | .figure pos => if blankPos < pos then some ⟨pos, true⟩ else none
+  | .blank _ => none
+  | .need _ => none
+
+def candidatesAfterBlank (blankPos : Nat) (items : List SourceItem) :
+    List SourceCandidate :=
+  items.filterMap (candidateAfterBlank blankPos)
+
+def candidateWaits (waitingFigure : Nat → Bool) (item : SourceCandidate) : Bool :=
+  item.figure && waitingFigure item.pos
+
+def nextOfSource (blankPos : Nat) (waitingFigure : Nat → Bool) :
+    List SourceItem → Option SourceCandidate
+  | [] => none
+  | item :: rest =>
+      match candidateAfterBlank blankPos item with
+      | none => nextOfSource blankPos waitingFigure rest
+      | some c =>
+          if candidateWaits waitingFigure c then
+            nextOfSource blankPos waitingFigure rest
+          else some c
+
+theorem I3_nextOfSource_eq_filtered_candidates
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) :
+    nextOfSource blankPos waitingFigure items =
+      nextAfterWaiting (candidateWaits waitingFigure)
+        (candidatesAfterBlank blankPos items) := by
+  induction items with
+  | nil => rfl
+  | cons item rest ih =>
+      cases h : candidateAfterBlank blankPos item with
+      | none =>
+          simpa [nextOfSource, candidatesAfterBlank, List.filterMap, h] using ih
+      | some c =>
+          cases hc : candidateWaits waitingFigure c with
+          | false => simp [nextOfSource, candidatesAfterBlank, List.filterMap, h, hc, nextAfterWaiting]
+          | true => simpa [nextOfSource, candidatesAfterBlank, List.filterMap, h, hc, nextAfterWaiting] using ih
+
+theorem I3_nextOfSource_some_iff_first_candidate
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (candidate : SourceCandidate) :
+    nextOfSource blankPos waitingFigure items = some candidate ↔
+      ∃ before after,
+        candidatesAfterBlank blankPos items = before ++ candidate :: after ∧
+        (∀ x ∈ before, candidateWaits waitingFigure x = true) ∧
+        candidateWaits waitingFigure candidate = false := by
+  rw [I3_nextOfSource_eq_filtered_candidates]
+  exact I3_nextAfterWaiting_some_iff_first
+    (candidateWaits waitingFigure) (candidatesAfterBlank blankPos items) candidate
 
 /- Number figures in source order. This is the `figureOrder` pair condition
    from the Alloy model without its finite limit of two figures. It says a
@@ -300,11 +425,43 @@ theorem waitingIn_after_first_sent (count : Nat) (kept : Nat → Bool)
    order after excluding other blanks and need markers; waiting figures are
    removed by `nextAfterWaiting`. `inColumn` encodes the corresponding
    Alloy membership predicate. -/
-def blankPlaced (waiting : Nat → Bool) (items : List Nat)
-    (inColumn : Nat → Bool) (atTop : Bool) : Bool :=
+def blankPlaced {α : Type} (waiting : α → Bool) (items : List α)
+    (inColumn : α → Bool) (atTop : Bool) : Bool :=
   match nextAfterWaiting waiting items with
   | none => false
   | some i => inColumn i && !atTop
+
+def sourceInColumn (textHere keptFigure : Nat → Bool)
+    (item : SourceCandidate) : Bool :=
+  if item.figure then keptFigure item.pos else textHere item.pos
+
+def blankPlacedFromSource (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (textHere keptFigure : Nat → Bool)
+    (atTop : Bool) : Bool :=
+  match nextOfSource blankPos waitingFigure items with
+  | none => false
+  | some item => sourceInColumn textHere keptFigure item && !atTop
+
+theorem I3_blankPlacedFromSource_eq_candidate_placement
+    (blankPos : Nat) (waitingFigure : Nat → Bool)
+    (items : List SourceItem) (textHere keptFigure : Nat → Bool)
+    (atTop : Bool) :
+    blankPlacedFromSource blankPos waitingFigure items textHere keptFigure atTop =
+      blankPlaced (candidateWaits waitingFigure)
+        (candidatesAfterBlank blankPos items)
+        (sourceInColumn textHere keptFigure) atTop := by
+  unfold blankPlacedFromSource blankPlaced
+  rw [I3_nextOfSource_eq_filtered_candidates]
+  cases nextAfterWaiting (candidateWaits waitingFigure)
+    (candidatesAfterBlank blankPos items) <;> simp
+
+example : blankPlacedFromSource 1 (fun pos => pos == 2)
+    [.figure 0, .blank 1, .figure 2, .need 3, .text 4]
+    (fun pos => pos == 4) (fun _ => false) false = true := by decide
+
+example : blankPlacedFromSource 1 (fun pos => pos == 2)
+    [.figure 0, .blank 1, .figure 2, .need 3]
+    (fun _ => false) (fun _ => false) false = false := by decide
 
 /- In the `inDomain26` inputs of `blankWithNext25`, there is no Need.
    Its next item is the head of the same source-order candidate list. -/
@@ -321,6 +478,7 @@ theorem I3_blankPlaced_eq_25_when_none_wait (waiting : Nat → Bool)
       blankPlaced25 items inColumn atTop := by
   unfold blankPlaced blankPlaced25
   rw [nextAfterWaiting_eq_head_when_none_wait waiting items noneWait]
+  cases items.head? <;> simp
 
 example :
     blankPlaced25 [1, 2] (fun i => i == 2) false = false ∧
