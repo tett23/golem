@@ -192,6 +192,17 @@ theorem I5_uniqueValueAndCost
   simp only [Prod.fst, Prod.snd] at values remaining
   exact ⟨values, by omega⟩
 
+-- Operand evaluation may itself call functions or consume steps. Once both
+-- finish, charging the division step precedes the zero-divisor diagnostic.
+theorem I5_zeroDivisor (left : Derives budget env a (.nat x) afterA)
+    (right : Derives afterA env b (.nat 0) afterB) :
+    run (.quotient a b) env budget =
+      .error (if afterB = 0 then .overLimit else .divisionByZero) := by
+  have enough (n : Nat) : 1 ≤ n.succ := by omega
+  cases afterB <;>
+    simp [run, derives_sound left, derives_sound right, spend, enough,
+      Bind.bind, Except.bind, Pure.pure, Except.pure]
+
 theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
     eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
   rw [parsed_format]
