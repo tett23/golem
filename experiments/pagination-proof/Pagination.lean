@@ -280,6 +280,138 @@ theorem I3_heading_run_first_break_exists
     intro _
     omega
 
+inductive TextRole where
+  | heading
+  | line
+  deriving DecidableEq
+
+def textOnlyFirstBreak : List TextRole → Nat
+  | [] => 0
+  | .line :: _ => 1
+  | .heading :: .line :: _ => 2
+  | .heading :: _ => 1
+
+def textOnlyLineAfterHeadings (roles : List TextRole)
+    (brk : Nat) : Prop :=
+  (0 < brk ∧
+    ∀ i, i < brk → List.get? roles i = some .heading) →
+    List.get? roles brk ≠ some .line
+
+theorem I3_text_only_first_break_line_after
+    (capacity : Nat) (roles : List TextRole)
+    (twoFit : 2 ≤ capacity) :
+    let brk := textOnlyFirstBreak roles
+    brk ≤ capacity ∧
+      (roles ≠ [] → 1 ≤ brk) ∧
+      textOnlyLineAfterHeadings roles brk := by
+  cases roles with
+  | nil => simp [textOnlyFirstBreak, textOnlyLineAfterHeadings]
+  | cons first rest =>
+      cases first with
+      | line =>
+          simp [textOnlyFirstBreak, textOnlyLineAfterHeadings]
+          constructor
+          · omega
+          · intro onlyHeadings
+            have impossible := onlyHeadings 0 (by decide)
+            simp at impossible
+      | heading =>
+          cases rest with
+          | nil =>
+              simp [textOnlyFirstBreak, textOnlyLineAfterHeadings]
+              omega
+          | cons second tail =>
+              cases second with
+              | heading =>
+                  simp [textOnlyFirstBreak, textOnlyLineAfterHeadings]
+                  omega
+              | line =>
+                  simp [textOnlyFirstBreak, textOnlyLineAfterHeadings]
+                  constructor
+                  · exact twoFit
+                  · intro onlyHeadings
+                    have impossible := onlyHeadings 1 (by decide)
+                    simp at impossible
+
+theorem I3_text_only_first_break_headings_start
+    (roles : List TextRole) :
+    ∀ i, i < textOnlyFirstBreak roles →
+      List.get? roles i = some .heading → i = 0 := by
+  intro i placed heading
+  cases roles with
+  | nil =>
+      simp [textOnlyFirstBreak] at placed
+      omega
+  | cons first rest =>
+      cases first with
+      | line =>
+          simp [textOnlyFirstBreak] at placed
+          have zero : i = 0 := by omega
+          subst i
+          simp at heading
+      | heading =>
+          cases rest with
+          | nil =>
+              simp [textOnlyFirstBreak] at placed
+              omega
+          | cons second tail =>
+              cases second with
+              | heading =>
+                  simp [textOnlyFirstBreak] at placed
+                  omega
+              | line =>
+                  simp [textOnlyFirstBreak] at placed
+                  by_cases zero : i = 0
+                  · exact zero
+                  · have one : i = 1 := by omega
+                    subst i
+                    simp at heading
+
+def textOnlyAfterHeadings (roles : List TextRole)
+    (brk i : Nat) : Prop :=
+  ∀ earlier, earlier < i → earlier < brk →
+    List.get? roles earlier = some .heading
+
+theorem I3_text_only_first_break_lines_after_headings
+    (roles : List TextRole) :
+    ∀ i, i < textOnlyFirstBreak roles →
+      List.get? roles i = some .line →
+      textOnlyAfterHeadings roles (textOnlyFirstBreak roles) i := by
+  intro i placed line earlier before _
+  cases roles with
+  | nil =>
+      simp [textOnlyFirstBreak] at placed
+      omega
+  | cons first rest =>
+      cases first with
+      | line =>
+          simp [textOnlyFirstBreak] at placed
+          omega
+      | heading =>
+          cases rest with
+          | nil =>
+              simp [textOnlyFirstBreak] at placed
+              have zero : i = 0 := by omega
+              subst i
+              simp at line
+          | cons second tail =>
+              cases second with
+              | heading =>
+                  simp [textOnlyFirstBreak] at placed
+                  have zero : i = 0 := by omega
+                  subst i
+                  simp at line
+              | line =>
+                  simp [textOnlyFirstBreak] at placed
+                  have one : i = 1 := by
+                    by_cases zero : i = 0
+                    · subst i
+                      simp at line
+                    · omega
+                  have earlierZero : earlier = 0 := by omega
+                  subst earlier
+                  simp
+
 /- An Alloy `decidedSome` witness: capacity 3, used 0, a recto heading
    at source/text index 0 and the sole line of a one-line paragraph at
    index 1. There are no other items. The break after both text items
