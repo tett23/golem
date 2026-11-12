@@ -17,9 +17,10 @@ arithmetic depth =
 main :: IO ()
 main = do
   let choices = ["(" ++ c ++ " ? " ++ a ++ " : " ++ b ++ ")" | c <- ["True", "False"], a <- arithmetic 1, b <- arithmetic 1]
-  let strings = ["", "甲", "𠮷", "a甲"]
+  let strings = ["", "甲", "𠮷", "a甲", "e\x0301"]
       appends = ["(\"" ++ a ++ "\" ++ \"" ++ b ++ "\")" | a <- strings, b <- strings]
-  forM_ (arithmetic 2 ++ choices ++ appends) $ \source -> forM_ [0 .. 5] $ \budget -> do
+      nested = ["(" ++ s ++ " ++ \"甲\")" | s <- appends] ++ ["(\"甲\" ++ " ++ s ++ ")" | s <- appends]
+  forM_ (arithmetic 2 ++ choices ++ appends ++ nested) $ \source -> forM_ [0 .. 9] $ \budget -> do
     let result = evaluateExpression Nothing budget (TE.encodeUtf8 (T.pack source))
     value <- case result of
       Right (RPrim (VNat n)) -> pure (show n)

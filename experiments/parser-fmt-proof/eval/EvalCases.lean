@@ -14,11 +14,14 @@ def main : IO Unit := do
   let choices := [true, false].bind fun c => branches.bind fun (a, x) => branches.map fun (b, y) =>
     ("(" ++ (if c then "True" else "False") ++ " ? " ++ a ++ " : " ++ b ++ ")",
      Expr.ternary (.literal (.boolean c)) x y)
-  let strings := ["", "甲", "𠮷", "a甲"]
+  let strings := ["", "甲", "𠮷", "a甲", "e\u0301"]
   let appends := strings.bind fun a => strings.map fun b =>
     ("(\"" ++ a ++ "\" ++ \"" ++ b ++ "\")", Expr.append (.literal (.string a)) (.literal (.string b)))
-  for (source, expr) in arithmetic 2 ++ choices ++ appends do
-    for budget in List.range 6 do
+  let suffix := Expr.literal (.string "甲")
+  let nested := (appends.map fun (s, e) => ("(" ++ s ++ " ++ \"甲\")", Expr.append e suffix)) ++
+    (appends.map fun (s, e) => ("(\"甲\" ++ " ++ s ++ ")", Expr.append suffix e))
+  for (source, expr) in arithmetic 2 ++ choices ++ appends ++ nested do
+    for budget in List.range 10 do
       let value ← match eval budget ⟨[], []⟩ expr with
         | .ok (.nat n) => pure (toString n)
         | .ok (.string s) => pure ("string " ++ s)
