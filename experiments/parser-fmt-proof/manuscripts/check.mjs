@@ -30,6 +30,17 @@ function* cases() {
   }
   for (const nested of nestedInlineCases(nesting)) yield [nested];
   yield ['鰍\\ \n', [], /Paragraph \[Text "鰍", Escaped ' '\]/u];
+  // CodeBlock <- Fence Lang? Arguments ... . Check the parser's chosen
+  // node, optional language and ordered arguments against the input.
+  for (const lang of ['', 'hs']) {
+    for (const keys of [[], ['k'], ['m'], ['k', 'm'], ['m', 'k']]) {
+      const fields = keys.map(key => ' ' + key + '="' + key + '"').join('');
+      const expectedKeys = keys.map(key => 'Keyword \\("' + key + '"\\) \\(StringLit "' + key + '"\\)').join(', ');
+      const language = lang ? '\\(?Just "hs"\\)?' : 'Nothing';
+      const ast = new RegExp('CodeBlock\\s+' + language + '\\s+\\[' + expectedKeys + '\\]\\s+\\["x"\\]');
+      yield ['```' + lang + fields + '\nx\n```\n', [], ast];
+    }
+  }
 }
 
 // Compare each comment's text and its position in the non-trivia token
