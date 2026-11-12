@@ -27,6 +27,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
@@ -180,6 +181,7 @@ tests =
       fmtTableTests,
       missingFontTests,
       marksTests,
+      shortFootnoteTests,
       preflightTests,
       explainTests,
       tomlMessageTests,
@@ -307,6 +309,26 @@ golemIn files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
   pure (code, err)
+
+shortFootnoteTests :: TestTree
+shortFootnoteTests =
+  testGroup
+    "Golem ADR 0353 I1/I2: short columns with PDF footnotes"
+    [ testCase "capacities 1 and 2 report G07125 at the note and write no PDF" $
+        forM_ ([1, 2] :: [Int]) $ \capacity -> withSystemTempDirectory "golem-short-note" $ \tmp -> do
+          createDirectoryIfMissing True (tmp </> "fonts")
+          BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" >>= BS.writeFile (tmp </> "fonts/latin.otf")
+          TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmLanguage = "en", tmTargets = ["pdf"]})
+          TIO.writeFile (tmp </> "style.toml") (T.pack ("[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = " <> show capacity <> "\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n"))
+          TIO.writeFile (tmp </> "a.gm") "A[note: B]\n"
+          result <- timeout 5000000 (readCreateProcessWithExitCode (proc "golem" ["build", "--target", "pdf"]) {cwd = Just tmp} "")
+          case result of
+            Nothing -> assertFailure ("capacity " <> show capacity <> ": CLI did not terminate")
+            Just (code, _, err) -> do
+              assertEqual err (ExitFailure 1) code
+              assertBool err ("a.gm:1:" `isInfixOf` err && "error[G07125]" `isInfixOf` err)
+          doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
+    ]
 
 marksTests :: TestTree
 marksTests =

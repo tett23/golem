@@ -286,6 +286,8 @@ data Unmet
     TallHeading !Int !Int !Int
   | -- | a keep-with-next not met: the span of the paragraph (docs/adr/0261)
     UnmetKeepNext !SrcSpan
+  | -- | a footnote cannot make progress even in an empty column (Golem ADR 0353)
+    UnplaceableFootnote !NoteId !Int
   | -- | a paragraph of keep-all-lines broken, as an empty column does not hold it: the id of its first line (docs/adr/0261)
     SplitKept !Int
   | {- | a first or last part shorter than its keep, placed in an empty

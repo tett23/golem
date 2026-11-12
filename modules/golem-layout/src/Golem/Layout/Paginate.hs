@@ -588,20 +588,23 @@ placeLines env kp0 st0 isStart0 ls0@(l0 : _) = go kp0 st0 isStart0 ls0
           k2 = splitAtBreak kp isStart n k0
           forced = k2 == 0 && emptyish
           k = if forced then max 1 (min n k0) else k2
-       in if kAll kp && isStart && k0 < n
-            then
-              if isEmpty st || sHeadingOnly st
-                then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart ls
-                else go kp (nextColumn env st) isStart ls
+       in if sAdjust st < 0 && isEmpty st && not (roomForLine env st ls)
+            then go kp (nextColumn env st) isStart ls
             else
-              if k >= n
-                then foldl' (putLine env) st ls
+              if kAll kp && isStart && k0 < n
+                then
+                  if isEmpty st || sHeadingOnly st
+                    then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart ls
+                    else go kp (nextColumn env st) isStart ls
                 else
-                  let short =
-                        [ShortPart FirstPart pid (kFirst kp) k | forced, isStart, k < kFirst kp]
-                          <> [ShortPart LastPart pid (kLast kp) (n - k) | forced, n - k < kLast kp]
-                      st1 = foldl' (flip addUnmet) (foldl' (putLine env) st (take k ls)) short
-                   in go kp (nextColumn env st1) (isStart && k == 0) (drop k ls)
+                  if k >= n
+                    then foldl' (putLine env) st ls
+                    else
+                      let short =
+                            [ShortPart FirstPart pid (kFirst kp) k | forced, isStart, k < kFirst kp]
+                              <> [ShortPart LastPart pid (kLast kp) (n - k) | forced, n - k < kLast kp]
+                          st1 = foldl' (flip addUnmet) (foldl' (putLine env) st (take k ls)) short
+                       in go kp (nextColumn env st1) (isStart && k == 0) (drop k ls)
 
 {- | The verse lines of a stanza (docs/adr/0180): a verse line is not
 broken between columns, and a column neither ends with the first verse
