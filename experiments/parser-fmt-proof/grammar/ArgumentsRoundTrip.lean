@@ -382,6 +382,22 @@ theorem canonical_word_before_separator (word : WordRoundTrip.Word)
         simpa [chars, List.dropWhile, allowed] using dropped
       simpa [chars, rangeMiss, droppedRest] using model
 
+theorem canonical_word_at_budget (word : WordRoundTrip.Word)
+    (sep : Char) (tail : List Char) (budget : Nat)
+    (safe : WordRoundTrip.startsComment word.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false)
+    (enough : (word.chars ++ sep :: tail).length + 8 ≤ budget) :
+    PegModel.recognizeEnv Generated.pegGrammar [] budget
+      (.ref "Word" []) (word.chars ++ sep :: tail) =
+        .ok (some (sep :: tail)) := by
+  let extra := budget - ((word.chars ++ sep :: tail).length + 8)
+  have eq : (word.chars ++ sep :: tail).length + 8 + extra = budget := by
+    dsimp [extra]
+    omega
+  have result := canonical_word_before_separator word sep tail extra safe blocked
+  rw [eq] at result
+  exact result
+
 private theorem safe_value_starts_comment (xs : List Char)
     (safe : WordRoundTrip.containsDoublePercent xs = false) :
     WordRoundTrip.startsComment xs = false := by
@@ -645,6 +661,23 @@ theorem canonical_argvalue_of_safe_word (value : WordRoundTrip.Word)
       rw [fuelResult] at result
       simpa only [chars] using result
 
+theorem canonical_argvalue_at_budget (value : WordRoundTrip.Word)
+    (sep : Char) (tail : List Char) (budget : Nat)
+    (safe : WordRoundTrip.containsDoublePercent value.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false)
+    (enough : (value.chars ++ sep :: tail).length + 10 ≤ budget) :
+    PegModel.recognizeEnv Generated.pegGrammar [] budget
+      (.ref "ArgValue" []) (value.chars ++ sep :: tail) =
+        .ok (some (sep :: tail)) := by
+  let extra := budget - ((value.chars ++ sep :: tail).length + 10)
+  have eq : (value.chars ++ sep :: tail).length + extra + 10 = budget := by
+    dsimp [extra]
+    omega
+  have result := canonical_argvalue_of_safe_word value sep tail extra safe blocked
+  dsimp only at result
+  rw [eq] at result
+  exact result
+
 -- Canonical PegModel ref: the three recognized pieces compose in the only
 -- KeywordArgument branch, with the suffix returned by ArgValue.
 theorem canonical_keyword_of_parts (fuel : Nat)
@@ -719,6 +752,182 @@ theorem canonical_keyword_child_of_parts (fuel : Nat)
       .star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])]] = .ok (some rest)
   simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
     spaceHit, keywordHit, commentsHit, Except.map] <;> rfl
+
+private theorem canonical_eq_any (fuel : Nat) (tail : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3)
+      (.ref "Eq" []) ('=' :: tail) = .ok (some tail) := by
+  have literal : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
+      (.lit "=" "'='") ('=' :: tail) = .ok (some tail) := by
+    have total := PegModelTest.literal_total Generated.pegGrammar []
+      fuel "=" "'='" ('=' :: tail)
+    simpa [List.isPrefixOf] using total
+  change PegModel.runChoices
+    (fun items => PegModel.runSequence
+      (fun scope item source => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item source)
+      _ [] items ('=' :: tail)) [[.lit "=" "'='"]] = .ok (some tail)
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence,
+    literal, Except.map] <;> rfl
+
+theorem canonical_printed_keyword_step
+    (name value : WordRoundTrip.Word) (sep : Char) (tail : List Char)
+    (budget : Nat)
+    (nameSafe : WordRoundTrip.startsComment name.chars = false)
+    (valueSafe : WordRoundTrip.containsDoublePercent value.chars = false)
+    (blocked : WordRoundTrip.allowed sep = false)
+    (enough : (' ' :: name.chars ++ '=' :: value.chars ++ sep :: tail).length + 20 ≤ budget)
+    (comments : PegModel.recognizeEnv Generated.pegGrammar [] (budget - 1)
+      (.star (.choice [[.ref "Sp" [], .ref "ArgComment" []]])) (sep :: tail) =
+        .ok (some (sep :: tail))) :
+    PegModel.recognizeEnv Generated.pegGrammar [] budget keywordRepetitionChild
+      (' ' :: name.chars ++ '=' :: value.chars ++ sep :: tail) =
+        .ok (some (sep :: tail)) := by
+  have nameEnough : (name.chars ++ '=' :: value.chars ++ sep :: tail).length + 8 ≤
+      budget - 5 := by
+    simp only [List.length_append, List.length_cons] at enough ⊢
+    omega
+  have valueEnough : (value.chars ++ sep :: tail).length + 10 ≤ budget - 5 := by
+    simp only [List.length_append, List.length_cons] at enough ⊢
+    omega
+  have nameHit := canonical_word_at_budget name '=' (value.chars ++ sep :: tail)
+    (budget - 5) nameSafe (by decide) (by
+      simpa only [List.append_assoc] using nameEnough)
+  have valueHit := canonical_argvalue_at_budget value sep tail (budget - 5)
+    valueSafe blocked valueEnough
+  have eqHit : PegModel.recognizeEnv Generated.pegGrammar [] (budget - 5)
+      (.ref "Eq" []) ('=' :: value.chars ++ sep :: tail) =
+        .ok (some (value.chars ++ sep :: tail)) := by
+    have fuelEq : budget - 5 = (budget - 8) + 3 := by omega
+    rw [fuelEq]
+    exact canonical_eq_any (budget - 8) (value.chars ++ sep :: tail)
+  cases chars : name.chars with
+  | nil => exact False.elim (name.nonempty chars)
+  | cons c rest =>
+      have valid : WordRoundTrip.allowed c = true := name.valid c (by simp [chars])
+      have space := WordRoundTrip.canonical_space_before_word
+        (budget - 11) c (rest ++ '=' :: value.chars ++ sep :: tail) valid
+      have fSpace : budget - 11 + 10 = budget - 1 := by omega
+      rw [fSpace] at space
+      have fParts : budget - 6 + 1 = budget - 5 := by omega
+      rw [← fParts] at nameHit eqHit valueHit
+      have nameHit' : PegModel.recognizeEnv Generated.pegGrammar [] (budget - 6 + 1)
+          (.ref "Word" []) (name.chars ++ '=' :: value.chars ++ sep :: tail) =
+            .ok (some ('=' :: value.chars ++ sep :: tail)) := by
+        simpa only [List.append_assoc] using nameHit
+      have keyword := canonical_keyword_of_parts (budget - 6)
+        (name.chars ++ '=' :: value.chars ++ sep :: tail)
+        ('=' :: value.chars ++ sep :: tail)
+        (value.chars ++ sep :: tail) (sep :: tail)
+        nameHit' eqHit valueHit
+      have fKeyword : budget - 6 + 3 = budget - 3 := by omega
+      rw [fKeyword] at keyword
+      have fKwInput : budget - 4 + 1 = budget - 3 := by omega
+      rw [← fKwInput] at keyword
+      have kw := canonical_kwarg_of_keyword (budget - 4)
+        (name.chars ++ '=' :: value.chars ++ sep :: tail) (sep :: tail) keyword
+      have fKw : budget - 4 + 3 = budget - 1 := by omega
+      rw [fKw] at kw
+      have fChild : budget - 2 + 1 = budget - 1 := by omega
+      rw [← fChild] at space kw comments
+      have space' : PegModel.recognizeEnv Generated.pegGrammar [] (budget - 2 + 1)
+          (.ref "Sp" []) (' ' :: name.chars ++ '=' :: value.chars ++ sep :: tail) =
+            .ok (some (name.chars ++ '=' :: value.chars ++ sep :: tail)) := by
+        simpa only [chars, List.append_assoc] using space
+      have child := canonical_keyword_child_of_parts (budget - 2)
+        (' ' :: name.chars ++ '=' :: value.chars ++ sep :: tail)
+        (name.chars ++ '=' :: value.chars ++ sep :: tail)
+        (sep :: tail) (sep :: tail) space' kw comments
+      have fDone : budget - 2 + 2 = budget := by omega
+      rw [fDone] at child
+      simpa only [chars] using child
+
+theorem canonical_comments_on_printed_tail
+    (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
+    (suffix : List Char) (budget : Nat)
+    (safe : WordRoundTrip.safeNames args)
+    (enough : 80 ≤ budget) :
+    PegModel.recognizeEnv Generated.pegGrammar [] budget
+      (.star (.choice [[.ref "Sp" [], .ref "ArgComment" []]]))
+      (WordRoundTrip.printArgs args ++ suffix) =
+        .ok (some (WordRoundTrip.printArgs args ++ suffix)) := by
+  cases args with
+  | nil =>
+      have budgetEq : budget = (budget - 80) + 80 := by omega
+      rw [budgetEq]
+      simp only [WordRoundTrip.printArgs, List.singleton_append]
+      rfl
+  | cons pair rest =>
+      rcases pair with ⟨name, value⟩
+      have nameSafe : WordRoundTrip.startsComment name.chars = false :=
+        safe (name, value) (by simp)
+      have result := WordRoundTrip.comments_before_keyword
+        (budget - 12) name (value.chars ++ WordRoundTrip.printArgs rest ++ suffix)
+        nameSafe
+      have budgetEq : budget - 12 + 12 = budget := by omega
+      rw [budgetEq] at result
+      simpa [WordRoundTrip.printArgs, List.append_assoc] using result
+
+theorem canonical_keyword_hits_of_printed
+    (args : List (WordRoundTrip.Word × WordRoundTrip.Word))
+    (suffix : List Char) :
+    ∀ extra, (WordRoundTrip.printArgs args ++ suffix).length ≤ extra →
+      WordRoundTrip.safeNames args → WordRoundTrip.safeValues args →
+      CanonicalKeywordHits extra suffix (printedKeywordChunks args) := by
+  induction args with
+  | nil =>
+      intro _ _ _ _
+      trivial
+  | cons pair rest ih =>
+      intro extra bound namesSafe valuesSafe
+      rcases pair with ⟨name, value⟩
+      have nameSafe : WordRoundTrip.startsComment name.chars = false :=
+        namesSafe (name, value) (by simp)
+      have valueSafe : WordRoundTrip.containsDoublePercent value.chars = false :=
+        valuesSafe (name, value) (by simp)
+      have restNames : WordRoundTrip.safeNames rest := by
+        intro pair member
+        exact namesSafe pair (by simp [member])
+      have restValues : WordRoundTrip.safeValues rest := by
+        intro pair member
+        exact valuesSafe pair (by simp [member])
+      have restBound : (WordRoundTrip.printArgs rest ++ suffix).length ≤ extra := by
+        simp only [WordRoundTrip.printArgs, List.length_append, List.length_cons] at bound
+        simp only [List.length_append]
+        omega
+      have more := ih extra restBound restNames restValues
+      obtain ⟨sep, tail, printed, blocked⟩ := WordRoundTrip.printed_tail rest
+      let budget := extra + 80 + (printedKeywordChunks rest).length + 1
+      have commentBudget : 80 ≤ budget - 1 := by
+        dsimp [budget]
+        omega
+      have comments := canonical_comments_on_printed_tail rest suffix
+        (budget - 1) restNames commentBudget
+      have comments' : PegModel.recognizeEnv Generated.pegGrammar [] (budget - 1)
+          (.star (.choice [[.ref "Sp" [], .ref "ArgComment" []]]))
+          (sep :: (tail ++ suffix)) = .ok (some (sep :: (tail ++ suffix))) := by
+        simpa [printed, List.cons_append, List.append_assoc] using comments
+      have enough : (' ' :: name.chars ++ '=' :: value.chars ++ sep :: (tail ++ suffix)).length +
+          20 ≤ budget := by
+        have same : ' ' :: name.chars ++ '=' :: value.chars ++ sep :: (tail ++ suffix) =
+            WordRoundTrip.printArgs ((name, value) :: rest) ++ suffix := by
+          simp [WordRoundTrip.printArgs, printed, List.append_assoc]
+        rw [same]
+        dsimp [budget]
+        omega
+      have step := canonical_printed_keyword_step name value sep (tail ++ suffix)
+        budget nameSafe valueSafe blocked enough comments'
+      have normalized : PegModel.recognizeEnv Generated.pegGrammar [] budget
+          keywordRepetitionChild (WordRoundTrip.printArgs ((name, value) :: rest) ++ suffix) =
+            .ok (some (WordRoundTrip.printArgs rest ++ suffix)) := by
+        simpa [WordRoundTrip.printArgs, printed, List.append_assoc] using step
+      have wholeJoin := printedKeywordChunks_join ((name, value) :: rest) suffix
+      have restJoin := printedKeywordChunks_join rest suffix
+      rw [wholeJoin, restJoin] at normalized
+      change PegModel.recognizeEnv Generated.pegGrammar [] budget keywordRepetitionChild
+        ((printedKeywordChunks ((name, value) :: rest)).join ++ '\n' :: suffix) =
+          .ok (some ((printedKeywordChunks rest).join ++ '\n' :: suffix)) ∧
+        (' ' :: name.chars ++ '=' :: value.chars) ≠ [] ∧
+        CanonicalKeywordHits extra suffix (printedKeywordChunks rest)
+      exact ⟨normalized, by simp, more⟩
 
 -- Concrete checks of the canonical PegModel ref, including Sp, ordered
 -- PosArg rejection, KwArg selection and the newline left for the command.
