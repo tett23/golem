@@ -150,7 +150,7 @@ golem new mybook
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。最後に検査した PDF の SHA-256 を出す |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
-| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
@@ -209,6 +209,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+字下げなどの長さ、アキ量、行数を複数の欄で共有するときは、`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` に名前を付ける。
+たとえば `[values.length]` の `indent = "1zw"` は、段落スタイルの `indent = "indent"` と原稿の `@style-def paragraph letter indent=indent` から参照できる（[ADR 0346](docs/adr/0346-revise-named-layout-values.md)）。
 
 強調と書体の切り替えも、文字スタイルで組む。
 `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic`、`code` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。

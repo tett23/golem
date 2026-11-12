@@ -33,6 +33,7 @@ module Golem.Project.Manifest
     decodeStrict,
     decodeStrictBy,
     decodeStrictWith,
+    decodeStrictTableWith,
     decodeStrictWithReasons,
     naturalOf,
     naturalIntOf,
@@ -781,14 +782,20 @@ decodeStrictWith :: (FromValue a) => Node -> Text -> ([Scope] -> Text) -> FileId
 decodeStrictWith schema code codeAt fid src = case parseToml src of
   Left (ErrSyntax (Located pos msg)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
   Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> semanticMessage kind key)]
-  Right tab ->
-    let unknown = unknownKeys schema tab
-        report = Left . tomlDiagnosticsBy codeAt fid src . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
-     in case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
-          Failure es -> report (es <> unknown)
-          Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
-            [] -> Right a
-            ms -> report ms
+  Right tab -> decodeStrictTableWith schema codeAt fid src tab
+
+{- | Decode an already parsed table after a caller has resolved its values.
+The annotations retain the original source positions (ADR 0346).
+-}
+decodeStrictTableWith :: (FromValue a) => Node -> ([Scope] -> Text) -> FileId -> Text -> Table' Position -> Either [Diagnostic] a
+decodeStrictTableWith schema codeAt fid src tab =
+  let unknown = unknownKeys schema tab
+      report = Left . tomlDiagnosticsBy codeAt fid src . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
+   in case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
+        Failure es -> report (es <> unknown)
+        Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
+          [] -> Right a
+          ms -> report ms
 
 {- | Decode preflight rules with separate codes for syntax, conflicting
 definitions, unknown keys and invalid known values (docs/adr/0321).
