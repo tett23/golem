@@ -346,11 +346,12 @@ carryNote env st (i, from, len) =
       shown = min len room
    in if len > 0 && room <= 0 && isEmpty st && sReserved st == 0
         then addUnmet (UnplaceableFootnote i (cap env st)) st
-        else st
-        { sNotes = sNotes st <> [(i, from, shown)],
-          sNoteLines = sNoteLines st + sep + shown,
-          sPendingNotes = sPendingNotes st <> [(i, from + shown, len - shown) | shown < len]
-        }
+         else
+           st
+             { sNotes = sNotes st <> [(i, from, shown)],
+               sNoteLines = sNoteLines st + sep + shown,
+               sPendingNotes = sPendingNotes st <> [(i, from + shown, len - shown) | shown < len]
+             }
 
 placeDeferred :: Env -> St -> [Flow] -> St
 placeDeferred _ st [] = st
