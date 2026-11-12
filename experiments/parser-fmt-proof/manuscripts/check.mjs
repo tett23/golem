@@ -44,6 +44,9 @@ function* cases() {
       yield ['```' + lang + fields + '\nx\n```\n', [], ast];
     }
   }
+  yield ['鰍%%甲%%%%=乙%%𠮷%%=丙%%%%丁%%末\n',
+    [[1, '"%%甲%%"'], [1, '"%%=乙%%"'], [2, '"%%=丙%%"'], [2, '"%%丁%%"']]];
+
 }
 
 // Compare each comment's text and its position in the non-trivia token
@@ -54,8 +57,10 @@ function comments(cst) {
   for (const line of cst.split('\n')) {
     const token = /^\s*(K\w+)@\d+\.\.\d+ (.*)$/.exec(line);
     if (!token) continue;
-    if (token[1] === 'KComment') found.push([index, token[2]]);
-    else if (!['KWhitespace', 'KNewline'].includes(token[1])) index++;
+    if (token[1] === 'KComment' || token[1] === 'KProofComment') {
+      assert.equal(token[1], token[2].startsWith('"%%=') ? 'KProofComment' : 'KComment');
+      found.push([index, token[2]]);
+    } else if (!['KWhitespace', 'KNewline'].includes(token[1])) index++;
   }
   return found;
 }
