@@ -76,7 +76,8 @@ def run : Expr → Environment → Nat → Except Failure (Value × Nat)
       | _, _ => .error .typeError
   | .call name arg body, env, budget => do
       let (value, afterArg) ← run arg env budget
-      let left ← spend 1 afterArg
+      -- Entering the function and selecting its matching equation each cost one step.
+      let left ← spend 2 afterArg
       run body { env with variables := (name, value) :: env.variables } left
 
 def eval (budget : Nat) (env : Environment) (expression : Expr) : Except Failure Value := do
@@ -169,7 +170,7 @@ inductive Derives : Nat → Environment → Expr → Value → Nat → Prop wher
   | append (left : Derives n env a (.string x) i)
         (right : Derives i env b (.string y) (k + (1 + x.length + y.length))) :
       Derives n env (.append a b) (.string (x ++ y)) k
-  | call (argument : Derives n env a value (i + 1))
+  | call (argument : Derives n env a value (i + 2))
          (body : Derives i { env with variables := (name, value) :: env.variables } b result k) :
       Derives n env (.call name a b) result k
 
@@ -294,7 +295,7 @@ private theorem remove_unused (d : Derives budget env expression value remaining
     exact .ternaryElse (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) other (ib unused)
   | call _ b ia ib =>
     have hb := remaining_le_budget b
-    exact .call (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ia (by omega)) (ib unused)
+    exact .call (by simpa only [shift _ 2 (Nat.le_trans unused hb)] using ia (by omega)) (ib unused)
 
 theorem I5_minimumBudget (ok : run expression env budget = .ok (value, remaining)) :
     run expression env (budget - remaining) = .ok (value, 0) ∧

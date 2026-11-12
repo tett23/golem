@@ -20,7 +20,11 @@ def main : IO Unit := do
   let suffix := Expr.literal (.string "甲")
   let nested := (appends.map fun (s, e) => ("(" ++ s ++ " ++ \"甲\")", Expr.append e suffix)) ++
     (appends.map fun (s, e) => ("(\"甲\" ++ " ++ s ++ ")", Expr.append suffix e))
-  for (source, expr) in arithmetic 2 ++ choices ++ appends ++ nested do
+  let inc := fun arg => Expr.call "n" arg (.add (.variable "n") (.literal (.nat 1)))
+  let calls := ["inc", "twice"].bind fun name => branches.map fun (s, arg) =>
+    ("(" ++ name ++ " " ++ s ++ ")", if name == "inc" then inc arg
+      else Expr.call "n" arg (inc (inc (.variable "n"))))
+  for (source, expr) in arithmetic 2 ++ choices ++ appends ++ nested ++ calls do
     for budget in List.range 10 do
       let value ← match eval budget ⟨[], []⟩ expr with
         | .ok (.nat n) => pure (toString n)

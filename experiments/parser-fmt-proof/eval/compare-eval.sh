@@ -14,5 +14,5 @@ if ! cmp -s "$work/haskell" "$work/lean"; then
   diff -u "$work/haskell" "$work/lean" | head -n 12 >&2
   exit 1
 fi
-test "$(wc -l < "$work/haskell")" -eq 4770
-echo '4770 Emet evaluation results matched'
+test "$(wc -l < "$work/haskell")" -eq 4970
+echo '4970 Emet evaluation results matched'
