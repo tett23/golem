@@ -404,4 +404,15 @@ theorem I9_csvRowsAfterFormat (encoded : LineEncoding canonical contents)
 example : csvRows "a,b\r\n\r\n\"x\"\"甲,\r\ny\",\n,z  ".toList =
     some [["a".toList, "b".toList], ["x\"甲,\ny".toList, []], [[], "z  ".toList]] := by decide
 
+-- Compare repaired cells with the undamaged source. The reader may see
+-- mixed LF and CRLF in that source; formatting removes every leading BOM.
+theorem I10_repairedRows (original : LineEncoding canonical source)
+    (damaged : DamagedLines canonical broken) (first : canonical.head? ≠ some bom)
+    (markers : Nat) :
+    let repaired := formatTable (List.replicate markers bom ++ broken)
+    csvRows repaired = csvRows source ∧ tsvRows repaired = tsvRows source := by
+  dsimp only
+  rw [I10_formatDamagedTable damaged first]
+  exact ⟨(csvScanEncoding original {}).symm, (I9_tsvCells original).symm⟩
+
 end TableFormat
