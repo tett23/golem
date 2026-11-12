@@ -48,6 +48,64 @@ private theorem space_forbidden : allowed ' ' = false := by decide
 private theorem equals_forbidden : allowed '=' = false := by decide
 private theorem newline_forbidden : allowed '\n' = false := by decide
 
+private theorem first_misses (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (bound : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (head : PegModel.Expr) (tail : List PegModel.Expr) (input : List Char)
+    (miss : parse env head input = .ok none) :
+    PegModel.runChoices (fun items => PegModel.runSequence parse bound env items input)
+      [head :: tail] = .ok none := by
+  suffices h : PegModel.runSequence parse bound env (head :: tail) input = .ok none by
+    simp [PegModel.runChoices, PegModel.foldChoice, List.foldlM, h]
+  simp [PegModel.runSequence, List.foldlM, miss]
+  induction tail with
+  | nil => rfl
+  | cons _ rest ih => simpa [List.foldlM] using ih
+private theorem literal_misses (fuel : Nat) (env : PegModel.Params) (value written : String)
+    (input : List Char) (miss : value.toList.isPrefixOf input = false) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel+1) (.lit value written) input = .ok none := by
+  simp [PegModel.recognizeEnv, miss]; rfl
+
+set_option maxRecDepth 8192 in
+theorem ordinary_value_precedence (fuel : Nat) (c : Char) (tail : List Char)
+    (valid : allowed c = true) :
+    let misses := fun name args => PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 8)
+      (.ref name args) (c :: tail) = .ok none
+    misses "StringLit" [] ∧ misses "ExprCtx" [] ∧ misses "ReservedBracket" [] ∧
+      misses "InlineCommand" ["0"] := by
+  have unequal (a : Char) (blocked : allowed a = false) : (a == c) = false := by
+    cases h : (a == c) with
+    | false => rfl
+    | true => have he := eq_of_beq h; subst a; simp_all
+  have q := unequal '"' (by decide)
+  have b := unequal '[' (by decide)
+  dsimp only
+  constructor
+  · apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+6) item s) _ [] (.lit "\"" "'\"'") _ (c :: tail)
+    apply literal_misses
+    change (['"'].isPrefixOf (c :: tail)) = false
+    simp [List.isPrefixOf,q]
+  · constructor
+    · apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+6) item s) _ [] (.ref "ExprOpen" []) _ (c :: tail)
+      apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+4) item s) _ [] (.lit "[=" "'[='") _ (c :: tail)
+      apply literal_misses
+      change ['[','='].isPrefixOf (c :: tail) = false
+      simp [List.isPrefixOf,b]
+    · constructor
+      · apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+6) item s) _ [] (.andPred (.lit "[!" "'[!'")) _ (c :: tail)
+        have mh := literal_misses (fuel+4) [] "[!" "'[!'" (c :: tail) (by
+          change ['[','!'].isPrefixOf (c :: tail) = false
+          simp [List.isPrefixOf,b])
+        change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel+5) (.lit "[!" "'[!'") (c :: tail) with
+          | .error e => Except.error e
+          | .ok none => Except.ok none
+          | .ok (some _) => Except.ok (some (c :: tail))) = _
+        rw [mh]
+      · apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+6) item s) _ [("ind",0)] (.ref "LBr" []) _ (c :: tail)
+        apply first_misses (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+4) item s) _ [] (.lit "[" "'['") _ (c :: tail)
+        apply literal_misses
+        change ['['].isPrefixOf (c :: tail) = false
+        simp [List.isPrefixOf,b]
+
 structure Word where
   chars : List Char
   valid : ∀ c ∈ chars, allowed c = true
