@@ -635,6 +635,80 @@ theorem I3_figurePrefixReady_iff_all_prior
         have latest := allPrior f (by omega)
         simpa [greedyFigure, figurePrefixReady] using latest
 
+theorem I3_figurePrefixReady_congr_before
+    (ready roomA roomB : Nat → Bool) (f : Nat)
+    (sameRoom : ∀ g, g < f → roomA g = roomB g) :
+    figurePrefixReady ready roomA f = figurePrefixReady ready roomB f := by
+  induction f with
+  | zero => rfl
+  | succ f ih =>
+      have earlier := ih (by
+        intro g before
+        exact sameRoom g (by omega))
+      simp [figurePrefixReady, earlier, sameRoom f (by omega)]
+
+theorem I3_greedyFigure_congr_through
+    (ready roomA roomB : Nat → Bool) (f : Nat)
+    (sameRoom : ∀ g, g ≤ f → roomA g = roomB g) :
+    greedyFigure ready roomA f = greedyFigure ready roomB f := by
+  have earlier := I3_figurePrefixReady_congr_before ready roomA roomB f
+    (by intro g before; exact sameRoom g (by omega))
+  simp [greedyFigure, earlier, sameRoom f (by omega)]
+
+def roomAcrossBlank (beforeBlank : Nat → Bool)
+    (roomBefore : Nat → Bool) (roomAfter : Bool → Nat → Bool)
+    (atTop : Bool) (f : Nat) : Bool :=
+  if beforeBlank f then roomBefore f else roomAfter atTop f
+
+theorem I3_before_blank_choice_independent
+    (ready beforeBlank roomBefore : Nat → Bool)
+    (roomAfter : Bool → Nat → Bool)
+    (beforePrefix : ∀ g f, g < f → beforeBlank f = true → beforeBlank g = true)
+    (f : Nat) (before : beforeBlank f = true) (topA topB : Bool) :
+    greedyFigure ready (roomAcrossBlank beforeBlank roomBefore roomAfter topA) f =
+      greedyFigure ready (roomAcrossBlank beforeBlank roomBefore roomAfter topB) f := by
+  apply I3_greedyFigure_congr_through
+  intro g through
+  have earlier : beforeBlank g = true := by
+    by_cases same : g = f
+    · simpa [same] using before
+    · exact beforePrefix g f (by omega) before
+  simp [roomAcrossBlank, earlier]
+
+def blankTopFromFigures (used : Nat) (earlierText : Bool)
+    (count : Nat) (beforeBlank kept : Nat → Bool) : Bool :=
+  decide (used = 0) && !earlierText &&
+    !((List.range count).any (fun f => beforeBlank f && kept f))
+
+theorem I3_blank_top_decision_independent
+    (used count : Nat) (earlierText : Bool)
+    (ready beforeBlank roomBefore : Nat → Bool)
+    (roomAfter : Bool → Nat → Bool)
+    (beforePrefix : ∀ g f, g < f → beforeBlank f = true → beforeBlank g = true)
+    (topA topB : Bool) :
+    blankTopFromFigures used earlierText count beforeBlank
+      (greedyFigure ready (roomAcrossBlank beforeBlank roomBefore roomAfter topA)) =
+    blankTopFromFigures used earlierText count beforeBlank
+      (greedyFigure ready (roomAcrossBlank beforeBlank roomBefore roomAfter topB)) := by
+  let keptA := greedyFigure ready (roomAcrossBlank beforeBlank roomBefore roomAfter topA)
+  let keptB := greedyFigure ready (roomAcrossBlank beforeBlank roomBefore roomAfter topB)
+  have itemEq : ∀ f, (beforeBlank f && keptA f) = (beforeBlank f && keptB f) := by
+    intro f
+    cases before : beforeBlank f with
+    | false => simp [before]
+    | true =>
+        simpa [before, keptA, keptB] using
+          I3_before_blank_choice_independent ready beforeBlank roomBefore roomAfter
+            beforePrefix f before topA topB
+  have anyEq (xs : List Nat) :
+      xs.any (fun f => beforeBlank f && keptA f) =
+        xs.any (fun f => beforeBlank f && keptB f) := by
+    induction xs with
+    | nil => rfl
+    | cons f rest ih => simp [List.any, itemEq f, ih]
+  exact congrArg (fun xs => decide (used = 0) && !earlierText && !xs)
+    (anyEq (List.range count))
+
 theorem I3_greedyFigures_rule (count : Nat) (ready room : Nat → Bool) :
     figuresRule count (greedyFigure ready room)
       (fun f => ready f = true) (fun f => room f = true) := by
@@ -650,6 +724,27 @@ theorem I3_greedyFigures_rule (count : Nat) (ready room : Nat → Bool) :
   · rintro ⟨readyNow, prior, roomNow⟩
     have hprefix := (I3_figurePrefixReady_iff_all_prior ready room f).mpr prior
     simp [greedyFigure, hprefix, readyNow, roomNow]
+
+theorem I3_blankFigureOrder_causal_exists
+    (used count : Nat) (earlierText : Bool)
+    (ready beforeBlank roomBefore : Nat → Bool)
+    (roomAfter : Bool → Nat → Bool)
+    (beforePrefix : ∀ g f, g < f → beforeBlank f = true → beforeBlank g = true) :
+    ∃ atTop : Bool, ∃ kept : Nat → Bool,
+      atTop = blankTopFromFigures used earlierText count beforeBlank kept ∧
+      figuresRule count kept (fun f => ready f = true)
+        (fun f => roomAcrossBlank beforeBlank roomBefore roomAfter atTop f = true) := by
+  let keptAssumingTop := greedyFigure ready
+    (roomAcrossBlank beforeBlank roomBefore roomAfter true)
+  let atTop := blankTopFromFigures used earlierText count beforeBlank keptAssumingTop
+  let kept := greedyFigure ready
+    (roomAcrossBlank beforeBlank roomBefore roomAfter atTop)
+  refine ⟨atTop, kept, ?_, ?_⟩
+  · simpa [atTop, kept, keptAssumingTop] using
+      (I3_blank_top_decision_independent used count earlierText ready
+        beforeBlank roomBefore roomAfter beforePrefix true atTop)
+  · exact I3_greedyFigures_rule count ready
+      (roomAcrossBlank beforeBlank roomBefore roomAfter atTop)
 
 /- The line-count part of Alloy `figures` for figures numbered in source
    order. `textBefore f` counts all text before f; `blankBefore f` is true
@@ -669,6 +764,31 @@ def figuresRuleWithLoad (count capacity used : Nat) (kept : Nat → Bool)
     (blankBefore : Nat → Bool) : Prop :=
   figuresRule count kept textReady
     (figureHasRoom capacity used textBefore size blankBefore)
+
+theorem I3_blankFigureOrder_figures_with_load_exist
+    (count capacity used : Nat) (earlierText : Bool)
+    (ready beforeBlank : Nat → Bool) (textBefore size : Nat → Nat)
+    (beforePrefix : ∀ g f, g < f → beforeBlank f = true → beforeBlank g = true) :
+    ∃ atTop : Bool, ∃ kept : Nat → Bool,
+      atTop = blankTopFromFigures used earlierText count beforeBlank kept ∧
+      figuresRuleWithLoad count capacity used kept
+        (fun f => ready f = true) textBefore size
+        (fun f => !beforeBlank f && !atTop) := by
+  let roomBefore : Nat → Bool := fun f =>
+    decide (used + textBefore f + priorFigureLines size f + size f ≤ capacity)
+  let roomAfter : Bool → Nat → Bool := fun top f =>
+    decide (used + textBefore f + priorFigureLines size f +
+      (if top then 0 else 1) + size f ≤ capacity)
+  obtain ⟨top, kept, topEq, rule⟩ :=
+    I3_blankFigureOrder_causal_exists used count earlierText ready beforeBlank
+      roomBefore roomAfter beforePrefix
+  refine ⟨top, kept, topEq, ?_⟩
+  unfold figuresRuleWithLoad
+  intro f bound
+  have current := rule f bound
+  cases hbefore : beforeBlank f <;> cases htop : top <;>
+    simpa [roomAcrossBlank, roomBefore, roomAfter, figureHasRoom,
+      hbefore, htop] using current
 
 theorem I3_figuresRuleWithLoad_exists
     (count capacity used : Nat) (textReady : Nat → Bool)
