@@ -220,3 +220,16 @@ test('Golem ADR 0351 I1: the enclosing command consumes its delimiter after the 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('Golem ADR 0351 I4: well-typed optional price keywords in every order pass check and preserve evaluation', () => {
+  const keywords = ['tax=false', 'unit="銭"'];
+  const calls = [[], [keywords[0]], [keywords[1]], keywords, keywords.toReversed()];
+  const original = '@import fn/book.emet as book\n\n' + calls.map(args =>
+    '[book.price  1' + args.map(arg => ' %%注%% ' + arg).join('') + ']').join('\n\n') + '\n';
+  checkRoundTrip(original, (_source, run) => {
+    run(['check', '--format', 'json'], 0);
+    const ir = run(['inspect', 'a.gm', '--as', 'ir'], 0).stdout;
+    const prices = [...ir.matchAll(/Text @\d+\.\.\d+ "(1(?:円|銭)(?:（税込）)?)"/gu)].map(m => m[1]);
+    assert.deepEqual(prices, ['1円（税込）', '1円', '1銭（税込）', '1銭', '1銭']);
+  }, 'valid-keyword-orders');
+});
