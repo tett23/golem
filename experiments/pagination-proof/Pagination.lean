@@ -2003,6 +2003,39 @@ theorem I3_zeroBreakPlacement_implies_text_order
     (figurePosAt config f)).mp ready pos member
   omega
 
+theorem I3_empty_column_first_figure_kept
+    (capacity pos size : Nat) (items : List SourceItem)
+    (noEarlierText : ∀ textPos, .text textPos ∈ items → pos ≤ textPos)
+    (fits : size ≤ capacity)
+    (kept : Nat → Bool) (atTop placed : Bool)
+    (placement : zeroBreakPlacement capacity 0 items (.one pos size) none
+      kept atTop placed) :
+    kept 0 = true := by
+  have noEarlier : ∀ item ∈ items, earlierTextItem pos item = false := by
+    intro item member
+    cases item with
+    | text textPos =>
+        have later := noEarlierText textPos member
+        simp [earlierTextItem, Nat.not_lt.mpr later]
+    | figure _ => rfl
+    | blank _ => rfl
+    | need _ => rfl
+  have countZero : textBeforeCount items pos = 0 := by
+    have emptyFilter : items.filter (earlierTextItem pos) = [] :=
+      List.filter_eq_nil.mpr (by
+        intro item member hit
+        simp [noEarlier item member] at hit)
+    simp [textBeforeCount, emptyFilter]
+  have ready : textReadyZero items pos = true :=
+    (I3_textReadyZero_iff_no_earlier_text items pos).mpr noEarlierText
+  have rule := placement.1 0 (by simp [figureCount])
+  apply rule.mpr
+  refine ⟨ready, ?_, ?_⟩
+  · intro g before
+    exact False.elim (Nat.not_lt_zero g before)
+  · simp [figureHasRoom, figurePosAt, figureSizeAt, priorFigureLines,
+      countZero, blankMaskFor, fits, show List.range 0 = [] from rfl]
+
 theorem blankFigureOrder (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
     (usedFits : used ≤ capacity) (ordered : sourceOrdered items)
