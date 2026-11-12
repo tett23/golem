@@ -17,6 +17,11 @@ export function tableCases(format) {
       variants.push(input);
       cases.push({ manuscript, expected, input, offset: null });
     }
+    // Corrupt the last two row terminators. Both need repair, but the
+    // reader reports the first bad byte in the external file.
+    const finalRow = expected.lastIndexOf('\n', expected.length - 2);
+    const twoCRs = expected.slice(0, finalRow) + '\r' + expected.slice(finalRow + 1, -1) + '\r';
+    cases.push({ manuscript, expected, input: twoCRs, offset: Buffer.byteLength(expected.slice(0, finalRow)) });
     for (const variant of variants) {
       const bytes = Buffer.from(variant);
       for (const [offset, byte] of bytes.entries()) {

@@ -10,7 +10,14 @@ for (const format of ['csv', 'tsv']) {
     for (const manuscript of orders) {
       const group = cases.filter(c => c.manuscript === manuscript);
       const normal = group[0];
-      const broken = group.filter(c => c.offset !== null);
+      const loneCount = text => [...text.matchAll(/\r(?!\n)/g)].length;
+      const multiple = group.filter(c => loneCount(c.input) > 1);
+      assert.equal(multiple.length, 1);
+      const [two] = multiple;
+      assert.equal(loneCount(two.input), 2);
+      assert.equal(Buffer.from(two.input).indexOf(13), two.offset);
+      assert.equal(two.input.replaceAll('\r', '\n'), two.expected);
+      const broken = group.filter(c => loneCount(c.input) === 1);
       const mixed = group.filter(c => c.offset === null && /(?<!\r)\n/.test(c.input) && c.input.includes('\r\n'));
       assert.equal(mixed.length, 2);
       for (const c of mixed) assert.equal(c.input.replaceAll('\r\n', '\n'), normal.expected);
