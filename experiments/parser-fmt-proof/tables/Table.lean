@@ -206,4 +206,43 @@ theorem I10_loneCRByteOffset (encoded : LineEncoding canonical bytes)
 -- The diagnostic reports a byte offset, including after multibyte cell text.
 example : firstLoneCR "名\r\n甲\rb".toList 0 = some 8 := by decide
 
+-- On validated TSV input every CR belongs to CRLF. Removing those CRs
+-- leaves the original LF row boundaries; tabs and other scalars survive.
+theorem tsvDecodedLines (encoded : LineEncoding canonical contents) :
+    replaceCRLF contents = canonical := by
+  induction encoded with
+  | empty => rfl
+  | scalar c ordinary _ ih => simp [replaceCRLF, ordinary, ih]
+  | crlf _ ih => simp [replaceCRLF, ih]
+
+-- The structural rows before the reader validates widths and limits.
+-- parseTsv drops exactly one trailing line ending, then splits on LF and tab.
+def tsvRows (contents : List Char) : List (List (List Char)) :=
+  let lines := replaceCRLF contents
+  let body := if lines.getLast? = some '\n' then lines.dropLast else lines
+  if body.isEmpty then [] else
+    ((String.mk body).splitOn "\n").map fun row => (row.splitOn "\t").map String.toList
+
+theorem I9_tsvCells (encoded : LineEncoding canonical contents) :
+    tsvRows contents = tsvRows canonical := by
+  have normalized : replaceCRLF canonical = canonical := by
+    induction encoded with
+    | empty => rfl
+    | scalar c ordinary _ ih => simp [replaceCRLF, ordinary, ih]
+    | crlf _ ih => simp [replaceCRLF, ih]
+  simp [tsvRows, tsvDecodedLines encoded, normalized]
+
+-- The table reader skips one initial BOM. The canonical first cell
+-- therefore starts after the optional file marker in this preservation case.
+theorem I9_tsvCellsAfterFormat (encoded : LineEncoding canonical contents)
+    (first : canonical.head? ≠ some bom) (marker : Bool) :
+    tsvRows (formatTable (List.replicate (if marker then 1 else 0) bom ++ contents)) =
+      tsvRows contents := by
+  rw [formatEncodedTable encoded first]
+  exact (I9_tsvCells encoded).symm
+
+-- A tab is always a cell boundary, including just before a row ends.
+example : tsvRows "甲\t\r\n\t乙  \n".toList =
+    [["甲".toList, []], [[], "乙  ".toList]] := by decide
+
 end TableFormat
