@@ -399,4 +399,55 @@ theorem I6_diagnosticsInBothSpellings (rules : List Rule) (before after : List T
 example : (diagnosticsWithSpans known [] 12 " %%甲%% ]").map Prod.snd =
     [some (22, 22), some (22, 22)] := by decide
 
+-- Count diagnostics for one name across arbitrary interleaved arguments.
+def countFor (name : String) (error : Error) (findings : List Finding) : Nat :=
+  (findings.filter (fun f => f.name == name && f.error == error)).length
+
+private theorem countForAppend (name : String) (error : Error) (xs ys : List Finding) :
+    countFor name error (xs ++ ys) = countFor name error xs + countFor name error ys := by
+  induction xs with
+  | nil => simp [countFor]
+  | cons f rest ih =>
+      cases h : (f.name == name && f.error == error) <;>
+        simpa [countFor, List.filter, h, Nat.succ_add] using ih
+
+private theorem countOther (name : String) (code : Error) (rules : List Rule)
+    (seen : List String) (pos : Nat) (arg : Argument) (other : arg.name ≠ name) :
+    countFor name code (atOccurrence rules seen pos arg) = 0 := by
+  simp only [atOccurrence, countForAppend]
+  repeat first | split | simp [countFor, other]
+
+private theorem scanUnknownCount (rules : List Rule) (name : String)
+    (unknown : ruleFor rules name = none) (args : List Argument) (seen : List String) (pos : Nat) :
+    countFor name .unknown (scan rules args seen pos) =
+      (args.filter (fun a => a.name == name)).length := by
+  induction args generalizing seen pos with
+  | nil => rfl
+  | cons a rest ih =>
+      rw [scan, countForAppend, ih]
+      by_cases same : a.name = name
+      · subst name
+        cases prior : seen.contains a.name <;>
+          simp [List.filter, atOccurrence, unknown, prior, countFor, Option.any,
+            show (Error.duplicate == Error.unknown) = false by decide] <;> omega
+      · have diff : (a.name == name) = false := by
+          cases h : a.name == name with
+          | false => rfl
+          | true => exact False.elim (same (of_decide_eq_true h))
+        simp [countOther name .unknown rules seen pos a same, List.filter, diff]
+
+theorem I7_unknownCount (rules : List Rule) (name : String)
+    (unknown : ruleFor rules name = none) (args : List Argument) :
+    countFor name .unknown (check rules args) =
+      (args.filter (fun a => a.name == name)).length := by
+  rw [check, countForAppend, scanUnknownCount rules name unknown]
+  have omissions : countFor name .unknown (missing rules args) = 0 := by
+    unfold missing
+    generalize rules.filter _ = required
+    induction required with
+    | nil => rfl
+    | cons r rs ih =>
+        simpa [countFor, List.filter, show (Error.missing == Error.unknown) = false by decide] using ih
+  rw [omissions, Nat.add_zero]
+
 end ArgumentDiagnostics
