@@ -219,6 +219,27 @@ theorem waitingIn_after_first_sent (count : Nat) (kept : Nat → Bool)
   exact ⟨(figuresInOrder_iff_no_reentry count kept).mp ordered g f before bound sent,
     ⟨g, before, sent⟩⟩
 
+/- The `blankWithNext` clause for one blank. Candidate items are in source
+   order after excluding other blanks and need markers; waiting figures are
+   removed by `nextAfterWaiting`. `inColumn` encodes the corresponding
+   Alloy membership predicate. -/
+def blankPlaced (waiting : Nat → Bool) (items : List Nat)
+    (inColumn : Nat → Bool) (atTop : Bool) : Bool :=
+  match nextAfterWaiting waiting items with
+  | none => false
+  | some i => inColumn i && !atTop
+
+theorem blankPlaced_iff_next_in_column (waiting : Nat → Bool)
+    (items : List Nat) (inColumn : Nat → Bool) (atTop : Bool) :
+    blankPlaced waiting items inColumn atTop = true ↔
+      ∃ i, nextAfterWaiting waiting items = some i ∧
+        inColumn i = true ∧ atTop = false := by
+  unfold blankPlaced
+  cases nextAfterWaiting waiting items with
+  | none => simp
+  | some i =>
+      cases hi : inColumn i <;> cases ht : atTop <;> simp [hi, ht]
+
 theorem blankBeforeWaiting25 :
     ∃ capacity used firstSize secondSize : Nat,
       capacity = 5 ∧ used = 4 ∧ firstSize = 4 ∧ secondSize = 5 ∧
