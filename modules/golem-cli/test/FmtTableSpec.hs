@@ -81,7 +81,19 @@ commandTests :: TestTree
 commandTests =
   testGroup
     "golem fmt"
-    [ testCase "without arguments, the table files become LF only, and golem check reports no G02082" $ do
+    [ testCase "Golem ADR 0354 I1-I3: fmt strips repeated BOMs from CSV and TSV in one pass" $ do
+        let csv = "\xFEFF\xFEFF\&a,b\n"
+            tsv = "\xFEFF\xFEFF\xFEFF\&c\td\n"
+            files = [("manifest.toml", T.pack manifest), ("a.gm", "@table a.csv\n\n@table b.tsv\n"), ("a.csv", csv), ("b.tsv", tsv)]
+        tableOf parseCsv csv @?= Just [["\xFEFF\&a", "b"]]
+        tableOf parseTsv tsv @?= Just [["\xFEFF\xFEFF\&c", "d"]]
+        (runs, output) <- golemSteps files [["fmt"], ["fmt", "--check"], ["fmt"]]
+        mapM_ (\(code, out, err) -> assertEqual (out <> err) ExitSuccess code) runs
+        lookup "a.csv" output @?= Just "a,b\n"
+        lookup "b.tsv" output @?= Just "c\td\n"
+        (lookup "a.csv" output >>= tableOf parseCsv) @?= Just [["a", "b"]]
+        (lookup "b.tsv" output >>= tableOf parseTsv) @?= Just [["c", "d"]],
+      testCase "without arguments, the table files become LF only, and golem check reports no G02082" $ do
         ([(code, _, err), (_, _, err')], files') <- golemSteps tables [["fmt"], ["check"]]
         assertEqual err ExitSuccess code
         lookup "data/a.csv" files' @?= Just "a,b\n\"x\ny\",2\n"
