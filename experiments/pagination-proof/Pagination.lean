@@ -1732,6 +1732,61 @@ theorem I3_textReadyZero_iff_hereAtBreakOne
   exact (I3_textReadyZero_iff_no_earlier_text items pos).trans
     (I3_break_one_text_iff_first items pos).symm
 
+theorem I3_blank_after_first_text_not_top
+    (items : List SourceItem) (firstTextPos blankPos : Nat)
+    (keptFigure : Nat → Bool)
+    (firstText : .text firstTextPos ∈ items)
+    (beforeBlank : firstTextPos < blankPos)
+    (firstHere : textHereAtBreak items 1 firstTextPos = true) :
+    blankAtTopSource 0 blankPos items (textHereAtBreak items 1)
+      keptFigure = false := by
+  have found : items.any (keptBeforeBlank blankPos
+      (textHereAtBreak items 1) keptFigure) = true :=
+    (List.any_eq_true).mpr ⟨.text firstTextPos, firstText,
+      by simp [keptBeforeBlank, beforeBlank, firstHere]⟩
+  simp [blankAtTopSource, found]
+
+theorem I3_blank_before_first_text_is_top
+    (items : List SourceItem) (firstTextPos blankPos : Nat)
+    (keptFigure : Nat → Bool)
+    (beforeText : blankPos < firstTextPos)
+    (first : ∀ textPos, .text textPos ∈ items → firstTextPos ≤ textPos)
+    (noFigureBefore : ∀ figurePos, figurePos < blankPos →
+      keptFigure figurePos = false) :
+    blankAtTopSource 0 blankPos items (textHereAtBreak items 1)
+      keptFigure = true := by
+  apply (I3_blankAtTopSource_iff_empty_before 0 blankPos items
+    (textHereAtBreak items 1) keptFigure).mpr
+  refine ⟨rfl, ?_⟩
+  intro item member
+  cases item with
+  | text pos =>
+      have later := first pos member
+      have notBefore : ¬ pos < blankPos := by omega
+      simp [keptBeforeBlank, notBefore]
+  | figure pos =>
+      by_cases before : pos < blankPos
+      · simp [keptBeforeBlank, before, noFigureBefore pos before]
+      · simp [keptBeforeBlank, before]
+  | blank _ => rfl
+  | need _ => rfl
+
+theorem I3_blank_before_first_text_not_placed
+    (items : List SourceItem) (firstTextPos blankPos : Nat)
+    (waitingFigure keptFigure : Nat → Bool)
+    (beforeText : blankPos < firstTextPos)
+    (first : ∀ textPos, .text textPos ∈ items → firstTextPos ≤ textPos)
+    (noFigureBefore : ∀ figurePos, figurePos < blankPos →
+      keptFigure figurePos = false) :
+    blankPlacedFromSourceFull 0 blankPos waitingFigure items
+      (textHereAtBreak items 1) keptFigure = false := by
+  have top := I3_blank_before_first_text_is_top items firstTextPos blankPos
+    keptFigure beforeText first noFigureBefore
+  unfold blankPlacedFromSourceFull blankPlacedFromSource
+  rw [top]
+  cases nextOfSource blankPos waitingFigure items <;>
+    simp
+
 theorem I3_one_break_figure_load_matches_alloy
     (items : List SourceItem) (textPos figurePos : Nat)
     (member : .text textPos ∈ items) (earlier : textPos < figurePos)
