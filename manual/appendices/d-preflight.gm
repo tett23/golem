@@ -4,7 +4,7 @@
 
 この付録は、プリフライトの設定（[code: preflight.toml]）に書けるテーブルとキーをすべて並べたものです。
 使い方の流れは、第[ref-number output]章の「[ref-title preflight]」（[ref-page preflight] ページ）で説明しています。[index reading=ぷりふらいと/せってい: プリフライト/設定]
-ここに載せていないキーを書くと、エラー（G09001）になります。
+ここに載せていないキーを書くと、エラー（G09103）になります。
 [code: preflight.toml] も、[code: manifest.toml] と同じく TOML の形式で書きます（第[ref-number basics]章「[ref-title toml]」）。
 
 [code: golem preflight] は、[code: --rules] で指したファイルを読みます。

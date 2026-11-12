@@ -31,7 +31,7 @@ module Golem.Eval.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
@@ -193,7 +193,9 @@ data St = St
     -- | each [note name] in order: its span and its name (docs/adr/0263)
     stNoteRefs :: ![(SrcSpan, Text)],
     -- | each @note in order: its name, its span and its body, Nothing for one of a name already defined (docs/adr/0263)
-    stNoteDefs :: ![(Text, SrcSpan, [Block])]
+    stNoteDefs :: ![(Text, SrcSpan, [Block])],
+    -- | the argument span and exact count of each @blank-line (Golem ADR 0345)
+    stBlankCounts :: !(Map SrcSpan (SrcSpan, Integer))
   }
 
 type M = State St
@@ -244,12 +246,13 @@ evalFile ctx0 (A.File fid blocks0) =
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
       -- meta and vars, which every file reads without @import (docs/adr/0185)
-      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] []
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] Map.empty
       (bsEval, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bsCollapsed, blankDiags) = collapseBlankLines (stBlankCounts st) bsEval
       -- the notes written by name take their bodies (docs/adr/0263)
-      (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsEval
+      (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsCollapsed
       (bs, nestedDiags) = nestedBreaks bs0
-      breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
+      breakDiags = blankDiags <> nestedDiags <> conflictingBreaks bs
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
@@ -498,7 +501,13 @@ evalBlock ctx (A.Located sp b) = case b of
         ca <- codeArgs ctx sp [] args
         c <- codeOf sp ca Nothing lang True [(lsp, t) | A.Located lsp t <- ls]
         pure [block sp (CodeBlock c)]
-  A.SetVar (A.Located nsp n) e -> do
+  A.SetVar prefix (A.Located nsp n) e -> do
+    forM_ prefix $ \asp ->
+      report
+        ( (notice "G02155" asp "@set の @ は廃止予定です。set で変数を宣言します")
+            { diagFixes = [Fix "先頭の @ を消す" [(asp, "")]]
+            }
+        )
     defined <- gets (Map.member n . stVars)
     if n `elem` reservedNames
       then err "G02023" nsp ("予約語は変数の名前に使えません: " <> n)
@@ -1089,8 +1098,8 @@ needLines ctx sp name args body = case args of
   where
     usage = breakCommand sp name body (Left ("G02070", "@need-lines の引数は 1 以上の整数です"))
 
-{- | @blank-line and @blank-line N (docs/adr ADR 0046): one positional
-natural number of 1 or more, G02092 otherwise; G02091 out of int64; a
+{- | @blank-line and @blank-line N (docs/adr ADR 0046, ADR 0345): one positional
+natural number; zero is kept until adjacent commands are combined. G02091 out of int64; a
 negative number or one that is not an integer is G02103 or G02104
 (docs/adr ADR 0102).
 -}
@@ -1098,35 +1107,73 @@ blankLine :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Bl
 blankLine ctx sp args body
   | not (null body) = bad "@blank-line は本体を持てません"
   | otherwise = case args of
-      [] -> ok 1
+      [] -> ok sp 1
       [A.Located asp (A.Positional v)] ->
         naturalArg ctx "@blank-line の引数" sp (A.Located asp v) >>= \case
-          Right n
-            | n < 1 -> bad usage
-            | inInt64 (toInteger n) -> ok (fromIntegral n)
-            | otherwise -> outOfInt64 sp >> pure []
+          Right n -> ok asp (toInteger n)
           Left NaturalReported -> pure []
           Left NotANumber -> bad usage
       _ -> bad usage
   where
-    usage = "@blank-line の引数は 1 以上の整数を一つだけ書きます"
-    ok n = pure [block sp (BlankLines n)]
+    usage = "@blank-line の引数は 0 以上の整数を一つだけ書きます"
+    ok asp n = do
+      modify' (\s -> s {stBlankCounts = Map.insert sp (asp, n) (stBlankCounts s)})
+      pure [block sp (BlankLines (if n < 2 ^ (63 :: Int) then fromInteger n else 0))]
     bad m = err "G02092" sp m >> pure []
 
-{- | G02094 (docs/adr ADR 0046): blank lines written in a row, with only
-need-lines, page-lines and no-page-break between them, at each one after
-the first.
+{- | A run of @blank-line commands becomes one IR block (Golem ADR 0345).
+Page controls keep their order without dividing the run.
 -}
-blankLinesInRow :: [Block] -> [Diagnostic]
-blankLinesInRow bs =
-  [ notice "G02094" sp "続けて書いた @blank-line は @blank-line <N> にまとめて書けます"
-  | (i, Block sp _ _ (BlankLines _)) <- zip [0 :: Int ..] bs,
-    Block _ _ _ (BlankLines _) : _ <- [dropWhile control (reverse (take i bs))]
-  ]
+collapseBlankLines :: Map.Map SrcSpan (SrcSpan, Integer) -> [Block] -> ([Block], [Diagnostic])
+collapseBlankLines counts = go
   where
-    control b = case blockBody b of
+    go [] = ([], [])
+    go bs = case span inRun bs of
+      ([], b : rest) -> let (out, ds) = go rest in (b : out, ds)
+      (run, rest) ->
+        let (out, ds) = collapseRun run
+            (following, later) = go rest
+         in (out <> following, ds <> later)
+
+    inRun b = case blockBody b of
+      BlankLines _ -> True
       PageControl _ -> True
       _ -> False
+
+    collapseRun run =
+      let blanks = [(b, n) | b <- run, BlankLines n <- [blockBody b]]
+          values = [(b, maybe (toInteger n) snd (Map.lookup (blockSpan b) counts)) | (b, n) <- blanks]
+          positives = [b | (b, n) <- values, n > 0]
+          total = sum [n | (_, n) <- values]
+          over = firstOverflow 0 values
+          notices =
+            [ notice "G02094" (blockSpan b) "続けて書いた @blank-line は @blank-line <N> にまとめて書けます"
+            | b <- drop 1 positives
+            ]
+          infoDiags = case (blanks, positives) of
+            ((b, _) : _, []) -> [infoDiagnostic "G02254" (blockSpan b) "行アキは 0 行です"]
+            _ -> []
+          errorDiags = case over of
+            Just b -> [diagnostic "G02091" Error (maybe (blockSpan b) fst (Map.lookup (blockSpan b) counts)) outOfInt64Message]
+            Nothing -> []
+          output = case (over, positives) of
+            (Just _, _) -> filter (not . isBlank) run
+            (Nothing, []) -> filter (not . isBlank) run
+            (Nothing, first : _) -> mapMaybe (combine first (fromInteger total)) run
+       in (output, infoDiags <> notices <> errorDiags)
+
+    isBlank b = case blockBody b of
+      BlankLines _ -> True
+      _ -> False
+    combine first total b = case blockBody b of
+      BlankLines _
+        | blockSpan b == blockSpan first -> Just b {blockBody = BlankLines total}
+        | otherwise -> Nothing
+      _ -> Just b
+    firstOverflow _ [] = Nothing
+    firstOverflow n ((b, count) : rest)
+      | n + toInteger count >= 2 ^ (63 :: Int) = Just b
+      | otherwise = firstOverflow (n + toInteger count) rest
 
 {- | G02072: a no-break next to a page or column break, with only need-lines
 and page-lines between them (docs/adr ADR 0030).
@@ -1626,7 +1673,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty [] []
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty [] [] Map.empty
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -1822,7 +1869,7 @@ csvTable ctx sp args = do
 
 -- | Why a table file gives no table.
 data TableError
-  = -- | G02082, G02083 or G02085, in the file
+  = -- | G02082, G02083, G02085 or G02154, in the file
     TableInvalid !Diagnostic
   | -- | G02088 (docs/adr ADR 0043)
     TableOverLimit !TableLimit
@@ -1915,7 +1962,7 @@ cellReading = \case
 {- | A TSV file as rows of cells (IANA text/tab-separated-values): LF or
 CRLF ends a line, one line end at the end of the file is dropped, tabs
 separate the cells and nothing else is special. Left is G02085 (an empty
-file, or a row with another number of cells than the header), G02082, or
+file), G02154 (a row with another number of cells than the header), G02082, or
 a limit the file goes over (docs/adr ADR 0043).
 -}
 parseTsv :: FileId -> Text -> Either TableError [[Text]]
@@ -1933,7 +1980,7 @@ parseTsv fid t0 = do
 
 {- | A CSV file as rows of cells (RFC 4180): comma-separated, double-quoted
 fields with "" escapes, LF or CRLF ending a record; CRLF in quotes is LF
-in the cell, and empty lines are dropped. Left is G02085, G02082, G02083
+in the cell, and empty lines are dropped. Left is G02085, G02154, G02082, G02083
 (a quote not closed), or a limit the file goes over (docs/adr ADR 0043).
 The file is read as Text, a record at a time, by its UTF-8 bytes; a cell
 is a slice of the file unless it has quotes or CRLF to undo.
@@ -1989,7 +2036,7 @@ parseCsv fid t0@(TI.Text arr off0 len) = do
 {- | The rows of a table file with their spans, as a table, read in order
 and no further than the first error: a row over 'tableMaxRows' or with
 cells over 'tableMaxCells' (G02088, docs/adr ADR 0043), a reading error
-(G02083), or a row whose cells differ in number from the header's (G02085);
+(G02083), or a row whose cells differ in number from the header's (G02154);
 G02085 also for no rows.
 -}
 tableFileRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
@@ -2008,7 +2055,7 @@ tableFileRows fid name = \case
           (s, e, cs) <- Bi.first TableInvalid r
           withinCells n cs
           unless (length cs == length h) $
-            Left (TableInvalid (diagnostic "G02085" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
+            Left (TableInvalid (diagnostic "G02154" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
           (cs :) <$> go (n + 1) h rs
     withinCells n cs = unless (length cs <= tableMaxCells) (Left (TableOverLimit (OverCells n)))
     count = T.pack . show . length
@@ -2567,7 +2614,7 @@ link ctx inHeading sp args slots = case (args, slots) of
 
 -- | What the amount of an [aki] may be (the message of G02055).
 akiAmounts :: Text
-akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
+akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、単位のない 0、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
 
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
@@ -3063,7 +3110,10 @@ rangeEnds t = case end t of
 0006).
 -}
 outOfInt64 :: SrcSpan -> M ()
-outOfInt64 sp = err "G02091" sp "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
+outOfInt64 sp = err "G02091" sp outOfInt64Message
+
+outOfInt64Message :: Text
+outOfInt64Message = "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
 -- | The number literals of an expression.
 exprNumbers :: A.Located A.Expr -> [Rational]
