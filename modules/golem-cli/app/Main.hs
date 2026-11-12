@@ -8,6 +8,7 @@ import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, sortOn, stripPrefix)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Data.Ord (Down (..))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -303,10 +304,21 @@ preflightRun rules marks fmt = do
   r <- preflight (defaultPreflightOptions ".") {poRules = rules, poMarks = marks}
   let ds = prDiagnostics r
       count sev = length (filter ((== sev) . diagSeverity) ds)
+      skips = prSkipped r
+      summaryFacts =
+        [("error-count", FactInt (toInteger (count Error)))]
+          <> [("skipped-checks", FactTexts (map fst skips)), ("skipped-reasons", FactTexts (map snd skips))]
   case fmt of
-    Json -> TIO.hPutStr stderr (renderJson (prSources r) ds)
+    Json -> do
+      let withSummary = case (prPdf r, ds) of
+            (Nothing, firstDiag : rest) -> firstDiag {diagFacts = diagFacts firstDiag <> summaryFacts} : rest
+            _ -> ds
+      TIO.hPutStr stderr (renderJson (prSources r) withSummary)
     Human -> do
       putHuman (prSources r) ds
+      when (isNothing (prPdf r)) $ do
+        TIO.hPutStrLn stderr ("プリフライト: エラー " <> T.pack (show (count Error)))
+        forM_ skips $ \(name, reason) -> TIO.hPutStrLn stderr ("未検査: " <> name <> "（" <> reason <> "）")
       forM_ (prPdf r) $ \pdf ->
         TIO.hPutStrLn stderr $
           "プリフライト（設定: "

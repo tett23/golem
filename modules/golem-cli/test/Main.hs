@@ -733,12 +733,12 @@ preflightTests =
         (code, _, err, _) <- golemPreflight (("preflight.toml", "[bleed-size]\nseverity = \"warning\"\nmin = \"5mm\"\n") : preflightProject "Body text.\n") ["preflight"]
         assertEqual err ExitSuccess code
         assertBool err ("warning[G09010]" `isInfixOf` err),
-      testCase "G09002: 1" $ do
+      testCase "ADR 0325: preflight reports one error for a missing glyph" $ do
         (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight"]
         assertEqual err (ExitFailure 1) code
         assertBool err ("error[G09002]" `isInfixOf` err)
-        -- the build reports the same character (docs/adr 0081)
-        assertBool err ("error[G08100]" `isInfixOf` err),
+        assertBool err (not ("G08100" `isInfixOf` err))
+        assertBool err ("エラー 1、警告 0" `isInfixOf` err),
       testCase "golem build: G08100 is a warning in dev and an error without the PDF in prod (docs/adr 0081)" $ do
         (code, _, err, prodPdf) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["build", "--target", "pdf", "--format", "json"]
         assertEqual err ExitSuccess code
