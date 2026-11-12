@@ -1646,4 +1646,16 @@ theorem generated_code_line (input : List Char) (extra : Nat) :
 example : codeLineExpected "abc\nnext".toList = some "next".toList := by rfl
 example : codeLineExpected "abc".toList = none := by rfl
 
+theorem seventhHashFails (extra : Nat) (tail : List Char) :
+    PegModel.recognize Generated.pegGrammar (extra + 40) (.ref "Heading" ["0"])
+      ("#######".toList ++ tail) = .error "label: heading_level" := by
+  cases tail <;> rfl
+
+theorem allowedHashRun (level : Fin 6) (extra : Nat) (tail : List Char) :
+    PegModel.recognize Generated.pegGrammar (extra + 12) (.ref "HashMark" [])
+      (List.replicate (level.val + 1) '#' ++ ' ' :: tail) = .ok (some (' ' :: tail)) := by
+  obtain ⟨n, h⟩ := level
+  iterate 6 (cases n <;> first | rfl | rename_i n)
+  omega
+
 end PegModelTest
