@@ -305,6 +305,22 @@ try {
     [join(here, 'generate.mjs'), changedReservedBracket, generated], { encoding: 'utf8' });
   assert.match(strictReservedBracket.stderr, /unsupported ReservedBracket choice 1 at /,
     'a changed reserved label must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported (NumberOpen|SetIdent) choice /m,
+    'both canonical prefix and class references have all-input proofs');
+  const changedNumberOpen = join(work, 'ChangedNumberOpen.hpeg');
+  writeFileSync(changedNumberOpen, original.replace(/^NumberOpen <- .*$/m,
+    "NumberOpen <- '##' [a-z] { () }"));
+  const strictNumberOpen = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedNumberOpen, generated], { encoding: 'utf8' });
+  assert.match(strictNumberOpen.stderr, /unsupported NumberOpen choice 1 at /,
+    'a changed required class must return to the unsupported report');
+  const changedSetIdent = join(work, 'ChangedSetIdent.hpeg');
+  writeFileSync(changedSetIdent, original.replace(/^SetIdent <- .*$/m,
+    "SetIdent <- 'set' ![a-z] { () }"));
+  const strictSetIdent = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedSetIdent, generated], { encoding: 'utf8' });
+  assert.match(strictSetIdent.stderr, /unsupported SetIdent choice 1 at /,
+    'a changed boundary class must return to the unsupported report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);
@@ -340,6 +356,9 @@ try {
   const reservedBracketProof = spawnSync(lean, [join(here, 'ReservedBracketTotal.lean')],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(reservedBracketProof.status, 0, reservedBracketProof.stderr);
+  const prefixBoundaryProof = spawnSync(lean, [join(here, 'PrefixBoundaryTotal.lean')],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(prefixBoundaryProof.status, 0, prefixBoundaryProof.stderr);
 
   writeFileSync(generated, mutation);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
@@ -351,7 +370,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 6, negative mutations 28, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 7, negative mutations 30, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

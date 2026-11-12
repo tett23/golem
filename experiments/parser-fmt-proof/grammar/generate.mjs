@@ -242,6 +242,20 @@ const reservedBracketFullyProved = rule('ReservedBracket') === "&'[!' (&{ False 
   reservedBracketAst.alts[0].items.every(item => item.bind === null) &&
   reservedBracketAst.alts[0].action?.trim() === '()' &&
   reservedBracketAst.alts[0].constructor === null;
+// PrefixBoundaryTotal proves these two canonical references for every input.
+// The same two-item theorem handles both a required class and a boundary class.
+const numberOpenAst = ast?.rules.find(rule => rule.name === 'NumberOpen');
+const numberOpenFullyProved = rule('NumberOpen') === "'##' [0-9]" &&
+  numberOpenAst?.params.length === 0 && numberOpenAst.templateParams.length === 0 &&
+  numberOpenAst.alts.length === 1 && numberOpenAst.alts[0].items.length === 2 &&
+  numberOpenAst.alts[0].items.every(item => item.bind === null) &&
+  numberOpenAst.alts[0].action?.trim() === '()' && numberOpenAst.alts[0].constructor === null;
+const setIdentAst = ast?.rules.find(rule => rule.name === 'SetIdent');
+const setIdentFullyProved = rule('SetIdent') === String.raw`'set' ![a-z0-9\-]` &&
+  setIdentAst?.params.length === 0 && setIdentAst.templateParams.length === 0 &&
+  setIdentAst.alts.length === 1 && setIdentAst.alts[0].items.length === 2 &&
+  setIdentAst.alts[0].items.every(item => item.bind === null) &&
+  setIdentAst.alts[0].action?.trim() === '()' && setIdentAst.alts[0].constructor === null;
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -322,6 +336,8 @@ if (!fragment && ast) {
     if (skipLineFullyProved && rule.name === 'SkipLine') continue;
     if (codeLineFullyProved && rule.name === 'CodeLine') continue;
     if (reservedBracketFullyProved && rule.name === 'ReservedBracket') continue;
+    if (numberOpenFullyProved && rule.name === 'NumberOpen') continue;
+    if (setIdentFullyProved && rule.name === 'SetIdent') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
