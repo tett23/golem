@@ -75,3 +75,23 @@ test('Golem ADR 0351 I4: a listing keyword must occur in the accepted AST', () =
     rmSync(output, { recursive: true, force: true });
   }
 });
+
+test('Golem ADR 0351 I4: detect reordered fence arguments in a multiline AST', () => {
+  const output = mkdtempSync(join(tmpdir(), 'golem-fence-order-'));
+  const stub = join(output, 'golem');
+  try {
+    const reordered = ['CodeBlock', '  Nothing',
+      ...['k', 'n', 'm'].map(key => '  - Keyword ("' + key + '") (StringLit "' + key + '")'),
+      '  ["x"]'];
+    writeFileSync(stub, "#!/bin/sh\ncat <<'AST'\n" + reordered.join('\n') + '\nAST\n', { mode: 0o755 });
+    const result = spawnSync('node', ['experiments/parser-fmt-proof/manuscripts/check.mjs', '0', '17'], {
+      env: { ...process.env, GOLEM: stub, ROUND_TRIP_FAILURES: output }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    const evidence = join(output, 'manuscript-17');
+    assert.match(readFileSync(join(evidence, 'original.gm'), 'utf8'), /k="k" m="m" n="n"/);
+    assert.match(readFileSync(join(evidence, 'error.txt'), 'utf8'), /did not match the regular expression/);
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
+});
