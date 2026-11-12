@@ -17,6 +17,8 @@ $ golem build --target pdf
 ```
 
 PDF は [code: build/pdf/] のフォルダに書かれます。
+入稿用の [code: --profile prod] でエラーが出て PDF を書けなかったときは、前の [code: build/pdf/] とページ情報も片付けます。
+[code: --profile dev] では、前の結果と比べられるように残します。
 ファイルの名前は、[code: manifest.toml] の [code: id] から作ります。
 
 フォントは、使った文字だけを含む形（サブセット）で埋め込みます。
@@ -275,7 +277,7 @@ $ golem preflight --rules ../printer.toml
 [code: --rules] のパスは、コマンドを実行したフォルダからの相対パスか、絶対パスで書きます。
 [code: --marks japanese] も、いっしょに付けられます。
 同じ本を別の印刷所に出すときは、[code: --rules] だけを替えれば済みます。
-設定のファイルに誤りがあると、G09001 のエラーになり、PDF を組まずに終わります。
+設定のファイルに誤りがあると、原因に応じて G09001、G09100〜G09104 のエラーになり、PDF を組まずに終わります。
 設定に [code: name] を書くと、要約の行の「設定」にその名前が出ます。
 
 ## HTML

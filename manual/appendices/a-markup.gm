@@ -111,14 +111,14 @@
 ブロックコマンド[index reading=ぶろっくこまんど: ブロックコマンド]は、行頭の [code: @] で始まる一行の指定です。
 引数の書き方は、段落の中のコマンドと同じです（この付録の「段落の中のコマンド」）。
 
-= [strong: [code: @set 名前 = 式]]
+= [strong: [code: set 名前 = 式]]
   変数を定義します。
   式の書き方は、この付録の「式」のとおりです。
   同じファイルで同じ名前を二度定義すると、エラーになります。
   [code: doc]、[code: meta]、[code: true]、[code: false]、[code: nil] は名前に使えません。
-  例：[code: @set price = 1800]
+  例：[code: set price = 1800]
 = [strong: [code: @import パス as 名前]]
-  別のファイルの [code: @set] の変数を、名前を付けて取り込みます。
+  別のファイルの [code: set] の変数を、名前を付けて取り込みます。
   取り込んだ変数は [code: 名前.変数] で参照します。
   パスの拡張子が [code: .emet] なら、関数を書くファイルの関数を取り込みます（付録J）。
   [code: as] と名前は省けません。
@@ -238,7 +238,7 @@
 
 [code: @manifest]、[code: @style-def]、[code: @hyphenation-exceptions] は、ファイルの最初に置きます。
 前に置けるのは、コメントと空行だけです。
-[code: @import] と [code: @set] は、その後に書きます。
+[code: @import] と [code: set] は、その後に書きます。
 一つのスタイルは一行で定義します。
 
 ```
@@ -476,7 +476,7 @@ PDF と HTML では、この例の一行めのうち、ルビと圏点を次の�
   値の並び（配列）は [code: \[1, 2, 3\]]、名前と値の組の集まり（連想配列）は [code: {price: 1800, tax: 10}] のように書きます。
   本文には埋め込めません。
 = [strong: 名前]
-  [code: @set] の変数は名前で、[code: @import] で取り込んだ変数は [code: 名前.変数] で参照します。
+  [code: set] の変数は名前で、[code: @import] で取り込んだ変数は [code: 名前.変数] で参照します。
   連想配列の値は、[code: 名前.キー] で参照します。
   [code: pi] と [code: e] は円周率と自然対数の底です。
 = [strong: 本の情報]
@@ -498,7 +498,7 @@ PDF と HTML では、この例の一行めのうち、ルビと圏点を次の�
 = [strong: 範囲]
   [code: 1...10] は 1 から 10 までの範囲で、両端を含みます。
   両端は整数で、[code: n...n + 4] のように加減算の式も書けます。
-  [code: @set] で名前に束ねて、[code: @listing] の [code: lines] とコードブロックの [code: highlight] に渡せます。
+  [code: set] で名前に束ねて、[code: @listing] の [code: lines] とコードブロックの [code: highlight] に渡せます。
   範囲は本文に埋め込めず（G02008）、比べられるのは [code: ==] と [code: !=] だけです。
   始めが終わりより大きい範囲はエラー（G02106）、端が数でないか書かれていない範囲はエラー（G02110）になります。
   [code: ..] は将来のために取ってあり、書くとエラー（G01100）になります。
@@ -522,14 +522,14 @@ PDF と HTML では、この例の一行めのうち、ルビと圏点を次の�
 - 本文に書く表記の小数点以下が 1000 桁を超える数は、エラー（G02102）になります。
 
 ```
-@set price = 1800
+set price = 1800
 
 税込み[= fixed(price * 1.1, 0)]円、全[= doc.chapters.count]章。
 ```
 
 PDF と HTML では、この例も次の段落で実際に組んでいます。
 
-@set price = 1800
+set price = 1800
 
 税込み[= fixed(price * 1.1, 0)]円、全[= doc.chapters.count]章。
 

@@ -31,7 +31,7 @@ module Golem.Eval.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
@@ -498,7 +498,13 @@ evalBlock ctx (A.Located sp b) = case b of
         ca <- codeArgs ctx sp [] args
         c <- codeOf sp ca Nothing lang True [(lsp, t) | A.Located lsp t <- ls]
         pure [block sp (CodeBlock c)]
-  A.SetVar (A.Located nsp n) e -> do
+  A.SetVar prefix (A.Located nsp n) e -> do
+    forM_ prefix $ \asp ->
+      report
+        ( (notice "G02155" asp "@set の @ は廃止予定です。set で変数を宣言します")
+            { diagFixes = [Fix "先頭の @ を消す" [(asp, "")]]
+            }
+        )
     defined <- gets (Map.member n . stVars)
     if n `elem` reservedNames
       then err "G02023" nsp ("予約語は変数の名前に使えません: " <> n)
@@ -1826,7 +1832,7 @@ csvTable ctx sp args = do
 
 -- | Why a table file gives no table.
 data TableError
-  = -- | G02082, G02083 or G02085, in the file
+  = -- | G02082, G02083, G02085 or G02154, in the file
     TableInvalid !Diagnostic
   | -- | G02088 (docs/adr ADR 0043)
     TableOverLimit !TableLimit
@@ -1919,7 +1925,7 @@ cellReading = \case
 {- | A TSV file as rows of cells (IANA text/tab-separated-values): LF or
 CRLF ends a line, one line end at the end of the file is dropped, tabs
 separate the cells and nothing else is special. Left is G02085 (an empty
-file, or a row with another number of cells than the header), G02082, or
+file), G02154 (a row with another number of cells than the header), G02082, or
 a limit the file goes over (docs/adr ADR 0043).
 -}
 parseTsv :: FileId -> Text -> Either TableError [[Text]]
@@ -1937,7 +1943,7 @@ parseTsv fid t0 = do
 
 {- | A CSV file as rows of cells (RFC 4180): comma-separated, double-quoted
 fields with "" escapes, LF or CRLF ending a record; CRLF in quotes is LF
-in the cell, and empty lines are dropped. Left is G02085, G02082, G02083
+in the cell, and empty lines are dropped. Left is G02085, G02154, G02082, G02083
 (a quote not closed), or a limit the file goes over (docs/adr ADR 0043).
 The file is read as Text, a record at a time, by its UTF-8 bytes; a cell
 is a slice of the file unless it has quotes or CRLF to undo.
@@ -1993,7 +1999,7 @@ parseCsv fid t0@(TI.Text arr off0 len) = do
 {- | The rows of a table file with their spans, as a table, read in order
 and no further than the first error: a row over 'tableMaxRows' or with
 cells over 'tableMaxCells' (G02088, docs/adr ADR 0043), a reading error
-(G02083), or a row whose cells differ in number from the header's (G02085);
+(G02083), or a row whose cells differ in number from the header's (G02154);
 G02085 also for no rows.
 -}
 tableFileRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
@@ -2012,7 +2018,7 @@ tableFileRows fid name = \case
           (s, e, cs) <- Bi.first TableInvalid r
           withinCells n cs
           unless (length cs == length h) $
-            Left (TableInvalid (diagnostic "G02085" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
+            Left (TableInvalid (diagnostic "G02154" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
           (cs :) <$> go (n + 1) h rs
     withinCells n cs = unless (length cs <= tableMaxCells) (Left (TableOverLimit (OverCells n)))
     count = T.pack . show . length

@@ -27,7 +27,7 @@ exprOf src =
         ([], [A.Paragraph [A.Located _ (A.Expr e)]]) -> e
         other -> error (show other)
 
--- | An environment with r = 2...3, as @set r = 2...3 makes it.
+-- | An environment with r = 2...3, as set r = 2...3 makes it.
 rangeEnv :: Env
 rangeEnv = plainEnv (Map.fromList [("r", VRange 2 3)]) Map.empty
 
@@ -97,18 +97,18 @@ tests =
           testCase "an end that is no number is G02110" $ do
             codes "[= \"a\"...3]\n" @?= ["G02110"]
             codes "[= true...3]\n" @?= ["G02110"]
-            codes "@set x = \"a\"\n\n@set r = x...3\n" @?= ["G02110"],
+            codes "set x = \"a\"\n\nset r = x...3\n" @?= ["G02110"],
           testCase "an end that is not an integer is G02104" $ do
-            codes "@set r = 1.5...3\n" @?= ["G02104"]
-            codes "@set r = 1...7 / 2\n" @?= ["G02104"]
-            msgs "@set r = 1...7 / 2\n" @?= [("G02104", "範囲の端には整数を書きます（書かれた値 3.5 は整数ではありません）")],
+            codes "set r = 1.5...3\n" @?= ["G02104"]
+            codes "set r = 1...7 / 2\n" @?= ["G02104"]
+            msgs "set r = 1...7 / 2\n" @?= [("G02104", "範囲の端には整数を書きます（書かれた値 3.5 は整数ではありません）")],
           testCase "ends of an integral value and negative ends are taken" $ do
-            codes "@set r = 1...4 / 2\n" @?= []
-            codes "@set r = -2...3\n" @?= [],
+            codes "set r = 1...4 / 2\n" @?= []
+            codes "set r = -2...3\n" @?= [],
           testCase "the start after the end is G02106" $
-            msgs "@set r = 7...3\n" @?= [("G02106", "範囲の始め 7 が終わり 3 より大きくなっています")],
+            msgs "set r = 7...3\n" @?= [("G02106", "範囲の始め 7 が終わり 3 より大きくなっています")],
           testCase "a range of a name is not embedded either" $
-            codes "@set r = 1...3\n\n[= r]\n" @?= ["G02008"]
+            codes "set r = 1...3\n\n[= r]\n" @?= ["G02008"]
         ],
       testGroup
         "lines="
@@ -118,8 +118,8 @@ tests =
               [ listing "lines=2...3",
                 listing "lines=\"2...3\"",
                 listing "lines=[= 2...3]",
-                "@set n = 2\n\n" <> listing "lines=[= n...n + 1]",
-                "@set r = 2...3\n\n" <> listing "lines=[= r]"
+                "set n = 2\n\n" <> listing "lines=[= n...n + 1]",
+                "set r = 2...3\n\n" <> listing "lines=[= r]"
               ],
           testCase "one line" $
             mapM_ (\src -> (src, codeOf src) @?= (src, [(["l2"], [], Just 2)])) [listing "lines=2", listing "lines=[= 2]", listing "lines=2...2"],
