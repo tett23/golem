@@ -499,4 +499,47 @@ theorem I7_duplicateCount (rules : List Rule) (name : String) (args : List Argum
   rw [countMissingForOtherCode rules args name .duplicate (by decide), Nat.add_zero]
   rfl
 
+theorem I7_repeatableNeverDuplicate (rules : List Rule) (name : String) (rule : Rule)
+    (known : ruleFor rules name = some rule) (repeatable : rule.repeatable = true)
+    (args : List Argument) : countFor name .duplicate (check rules args) = 0 := by
+  have scanZero (input : List Argument) (seen : List String) (pos : Nat) :
+      countFor name .duplicate (scan rules input seen pos) = 0 := by
+    induction input generalizing seen pos with
+    | nil => rfl
+    | cons a rest ih =>
+        rw [scan, countForAppend, ih, Nat.add_zero]
+        by_cases same : a.name = name
+        · subst name
+          cases wrong : rule.kind != a.kind <;>
+            simp [atOccurrence, known, repeatable, wrong, Option.any, countFor] <;> rfl
+        · exact countOther name .duplicate rules seen pos a same
+  rw [check, countForAppend, scanZero, countMissingForOtherCode rules args name .duplicate (by decide)]
+
+-- Type errors count ill-typed occurrences, independently of whether the
+-- declaration permits repetition or requires the argument to be present.
+theorem I6_wrongTypeCount (rules : List Rule) (name : String) (rule : Rule)
+    (known : ruleFor rules name = some rule) (args : List Argument) :
+    countFor name .wrongType (check rules args) =
+      (args.filter (fun a => a.name == name && rule.kind != a.kind)).length := by
+  have scanCount (input : List Argument) (seen : List String) (pos : Nat) :
+      countFor name .wrongType (scan rules input seen pos) =
+        (input.filter (fun a => a.name == name && rule.kind != a.kind)).length := by
+    induction input generalizing seen pos with
+    | nil => rfl
+    | cons a rest ih =>
+        rw [scan, countForAppend, ih]
+        by_cases same : a.name = name
+        · subst name
+          cases wrong : rule.kind != a.kind <;> cases prior : seen.contains a.name <;>
+            cases multiple : rule.repeatable <;>
+            simp [atOccurrence, known, prior, wrong, multiple, Option.any, countFor, List.filter,
+              show (Error.duplicate == Error.wrongType) = false by decide] <;> omega
+        · have diff : (a.name == name) = false := by
+            cases h : a.name == name with
+            | false => rfl
+            | true => exact False.elim (same (of_decide_eq_true h))
+          simp [countOther name .wrongType rules seen pos a same, List.filter, diff]
+  rw [check, countForAppend, scanCount, countMissingForOtherCode rules args name .wrongType (by decide),
+    Nat.add_zero]
+
 end ArgumentDiagnostics
