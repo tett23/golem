@@ -64,6 +64,16 @@ theorem absentUnknown (rules : List Rule) (seen : List String)
       atOccurrence rules seen position arg := by
   simp [atOccurrence, h]
 
+/- Golem ADR 0351 I7/I8: the value and the distance from an earlier
+   occurrence do not affect the two findings for a repeated unknown name. -/
+theorem repeatedUnknownFindings (rules : List Rule) (seen : List String)
+    (position : Nat) (arg : Argument) (unknown : ruleFor rules arg.name = none)
+    (repeated : seen.contains arg.name = true) :
+    atOccurrence rules seen position arg =
+      [{ position, name := arg.name, error := .unknown },
+       { position, name := arg.name, error := .duplicate }] := by
+  simp [atOccurrence, unknown, repeated, Option.any]
+
 theorem presentRequiredName (name : String) (kind : Kind) (rest : List Argument) :
     (({ name, kind } : Argument) :: rest).any (fun arg => arg.name == name) = true := by
   simp
