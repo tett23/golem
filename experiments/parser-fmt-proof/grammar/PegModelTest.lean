@@ -29,6 +29,8 @@ theorem optional_ref_production_count : Generated.optionalRefProductions.length 
 
 theorem alias_production_count : Generated.aliasProductions.length = 1 := by rfl
 
+theorem ordered_literal_production_count : Generated.orderedLiteralProductions.length = 4 := by rfl
+
 theorem class_hit (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
     (written : String) (c : Char) (rest : List Char) (fuel : Nat)
     (hit : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
@@ -161,7 +163,7 @@ theorem ordered_choice_first (grammar : PegModel.Grammar) (value written : Strin
     PegModel.recognize grammar (fuel + 1) (.choice [[.lit value written], later]) input =
       .ok (some rest) := by
   simp only [PegModel.recognize] at hit ⊢
-  simp [PegModel.recognizeEnv, hit, Id.run]
+  simp [PegModel.recognizeEnv, PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, hit, Id.run]
   rfl
 
 theorem ordered_choice_fallback (grammar : PegModel.Grammar)
@@ -172,7 +174,7 @@ theorem ordered_choice_fallback (grammar : PegModel.Grammar)
       (.choice [[.lit firstValue firstWritten], [.lit secondValue secondWritten]]) input =
       .ok (some rest) := by
   simp only [PegModel.recognize] at miss hit ⊢
-  simp [PegModel.recognizeEnv, miss, hit, Id.run]
+  simp [PegModel.recognizeEnv, PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, miss, hit, Id.run]
   rfl
 
 theorem optional_hit (grammar : PegModel.Grammar) (child : PegModel.Expr)
@@ -202,7 +204,7 @@ theorem single_ref_hit (grammar : PegModel.Grammar) (name : String)
     (hit : PegModel.recognizeEnv grammar [] fuel (.ref name []) input = .ok (some rest)) :
     PegModel.recognizeEnv grammar [] (fuel + 1) (.choice [[.ref name []]]) input =
       .ok (some rest) := by
-  simp [PegModel.recognizeEnv, hit, Id.run]
+  simp [PegModel.recognizeEnv, PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, hit, Id.run]
   rfl
 
 theorem single_ref_miss (grammar : PegModel.Grammar) (name : String)
@@ -210,8 +212,142 @@ theorem single_ref_miss (grammar : PegModel.Grammar) (name : String)
     (miss : PegModel.recognizeEnv grammar [] fuel (.ref name []) input = .ok none) :
     PegModel.recognizeEnv grammar [] (fuel + 1) (.choice [[.ref name []]]) input =
       .ok none := by
-  simp [PegModel.recognizeEnv, miss, Id.run]
+  simp [PegModel.recognizeEnv, PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, miss, Id.run]
   rfl
+
+private theorem fold_keeps_hit {α β : Type} (xs : List α) (f : α → Option β)
+    (value : β) :
+    xs.foldlM (fun found item =>
+      match found with
+      | some _ => pure found
+      | none => pure (f item)) (some value) =
+        (Except.ok (some value) : Except String (Option β)) := by
+  induction xs with
+  | nil => rfl
+  | cons _ tail ih => simpa [List.foldlM] using ih
+
+private theorem fold_keeps_hit_parse {α β : Type} (xs : List α)
+    (parse : α → Except String (Option β)) (value : β) :
+    xs.foldlM (fun found item =>
+      match found with
+      | some _ => pure found
+      | none => parse item) (some value) =
+        (Except.ok (some value) : Except String (Option β)) := by
+  induction xs with
+  | nil => rfl
+  | cons _ tail ih => simpa [List.foldlM] using ih
+
+private theorem first_success {α β : Type} (xs : List α) (f : α → Option β) :
+    xs.foldlM (fun found item =>
+      match found with
+      | some _ => pure found
+      | none => pure (f item)) none =
+        (Except.ok (xs.findSome? f) : Except String (Option β)) := by
+  induction xs with
+  | nil => rfl
+  | cons head tail ih =>
+      cases hit : f head with
+      | none => simpa [List.foldlM, List.findSome?, hit] using ih
+      | some value =>
+          simpa [List.foldlM, List.findSome?, hit] using fold_keeps_hit tail f value
+
+private theorem fold_choice_spec {α β : Type} (xs : List α)
+    (parse : α → Except String (Option β)) (f : α → Option β)
+    (matchesAll : ∀ x ∈ xs, parse x = .ok (f x)) :
+    PegModel.foldChoice parse xs =
+        (Except.ok (xs.findSome? f) : Except String (Option β)) := by
+  unfold PegModel.foldChoice
+  induction xs with
+  | nil => rfl
+  | cons head tail ih =>
+      have headMatch := matchesAll head (by simp)
+      have tailMatch : ∀ x ∈ tail, parse x = .ok (f x) := by
+        intro x hx
+        exact matchesAll x (by simp [hx])
+      cases hit : f head with
+      | none => simpa [List.foldlM, List.findSome?, headMatch, hit] using ih tailMatch
+      | some value =>
+          have keep := fold_keeps_hit_parse tail parse value
+          simpa [List.foldlM, List.findSome?, headMatch, hit] using keep
+
+private theorem run_sequence_literal (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (value written : String) (input : List Char) :
+    PegModel.runSequence parse boundLength env [.lit value written] input =
+      parse env (.lit value written) input := by
+  cases hit : parse env (.lit value written) input with
+  | error reason => simp [PegModel.runSequence, hit]; rfl
+  | ok result =>
+      cases result with
+      | none => simp [PegModel.runSequence, hit]; rfl
+      | some rest => simp [PegModel.runSequence, hit]; rfl
+
+def literalItems (items : List PegModel.Expr) (input : List Char) : Option (List Char) :=
+  match items with
+  | [.lit value _] => if value.toList.isPrefixOf input then some (input.drop value.toList.length) else none
+  | _ => none
+
+def literalAlternatives (alts : List (String × String)) : List (List PegModel.Expr) :=
+  alts.map (fun (value, written) => [.lit value written])
+
+def firstLiteral (alts : List (String × String)) (input : List Char) : Option (List Char) :=
+  (literalAlternatives alts).findSome? (literalItems · input)
+
+theorem run_literal_choices (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (env : PegModel.Params) (alts : List (String × String)) (input : List Char)
+    (literalHit : ∀ value written,
+      parse env (.lit value written) input = .ok (literalItems [.lit value written] input)) :
+    PegModel.runChoices (fun items => PegModel.runSequence parse boundLength env items input)
+      (literalAlternatives alts) = .ok (firstLiteral alts input) := by
+  have allItems : ∀ items ∈ literalAlternatives alts,
+      PegModel.runSequence parse boundLength env items input = .ok (literalItems items input) := by
+    intro items member
+    rcases List.mem_map.mp member with ⟨pair, _, rfl⟩
+    cases pair with
+    | mk value written => simpa [literalAlternatives] using
+        (run_sequence_literal parse boundLength env value written input).trans (literalHit value written)
+  unfold PegModel.runChoices firstLiteral
+  exact fold_choice_spec (literalAlternatives alts)
+    (fun items => PegModel.runSequence parse boundLength env items input)
+    (fun items => literalItems items input) allItems
+
+theorem interpreted_literal_choices (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (alts : List (String × String)) (input : List Char) (fuel : Nat) :
+    PegModel.runChoices
+      (fun items => PegModel.runSequence
+        (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 1) item rest)
+        boundLength env items input)
+      (literalAlternatives alts) = .ok (firstLiteral alts input) := by
+  apply run_literal_choices
+  intro value written
+  simp [PegModel.recognizeEnv, literalItems, Id.run]
+  rfl
+
+example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "##!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 8 (.ref "Splat" []) "**[!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 8 (.ref "CmpOp" []) ">=!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 8 (.ref "AddOp" []) "+!".toList =
+    .ok (some "!".toList) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300 "@set x = 1+2\n".toList =
+    .ok (some []) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300 "[= 1>=0]\n".toList =
+    .ok (some []) := by rfl
+
+example : PegModel.recognizeStart Generated.pegGrammar 300 "[foo *[1]]\n".toList =
+    .ok (some []) := by rfl
 
 theorem repeated_a_roundtrip (grammar : PegModel.Grammar) (count : Nat) :
     PegModel.recognizeEnv grammar [] (count + 2) (.star (.lit "a" "'a'"))

@@ -209,6 +209,11 @@ const aliasRules = (ast?.rules ?? []).filter(rule =>
   rule.alts[0].items[0].expr.args.length === 0 &&
   rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
 const aliasNames = new Set(aliasRules.map(rule => rule.name));
+const orderedLiteralRules = (ast?.rules ?? []).filter(rule =>
+  rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length > 1 &&
+  rule.alts.every(alt => alt.items.length === 1 && alt.items[0].bind === null &&
+    alt.items[0].expr.tag === 'lit' && alt.action?.trim() === '()' && alt.constructor === null));
+const orderedLiteralNames = new Set(orderedLiteralRules.map(rule => rule.name));
 if (!fragment && ast) {
   for (const rule of ast.rules) {
     if (rule.name === 'StringLit' && stringSupported && rule.alts.length === 1) continue;
@@ -216,6 +221,7 @@ if (!fragment && ast) {
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
     if (aliasNames.has(rule.name)) continue;
+    if (orderedLiteralNames.has(rule.name)) continue;
     let index = 0;
     const report = (items, line) => {
       index++;
@@ -281,6 +287,7 @@ writeFileSync(output, [
   `def classPlusProductions : List (String × List (Nat × Nat) × String) := ${leanList(classPlusRules, rule => { const cls = rule.alts[0].items[0].expr.expr; return `(${leanString(rule.name)}, ${leanList(cls.ranges, ([lo, hi]) => `(${lo}, ${hi})`)}, ${leanString(cls.written)})`; })}`,
   `def optionalRefProductions : List (String × String) := ${leanList(optionalRefRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.expr.name)})`)}`,
   `def aliasProductions : List (String × String) := ${leanList(aliasRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.name)})`)}`,
+  `def orderedLiteralProductions : List (String × List (String × String)) := ${leanList(orderedLiteralRules, rule => `(${leanString(rule.name)}, ${leanList(rule.alts, alt => `(${leanString(alt.items[0].expr.value)}, ${leanString(alt.items[0].expr.written)})`)})`)}`,
   'def sourceRules : List (String × String) := [',
   ...sourceRules.map(([name, rhs]) => `  (${leanString(name)}, ${leanString(rhs)}),`),
   ']',

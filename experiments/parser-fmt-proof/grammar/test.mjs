@@ -25,8 +25,9 @@ try {
     'ExprOpen', 'RangeOp', 'NegOp', 'PowOp', 'Dot', 'Comma', 'LBrace', 'RBrace',
     'LParen', 'RParen', 'At', 'BulletMark', 'OrderedMark', 'TermMark', 'NewDefMark', 'Fence']);
   const classPlusRules = new Set(['Ws', 'Lang']);
+  const orderedLiteralRules = new Set(['HashMark', 'Splat', 'CmpOp', 'AddOp']);
   const requiredRules = [...original.matchAll(/^([A-Za-z][A-Za-z0-9]*) <- /gm)]
-    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'StringLiteral' && name !== 'Word' && name !== 'Sp' && !literalRules.has(name) && !classPlusRules.has(name));
+    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'StringLiteral' && name !== 'Word' && name !== 'Sp' && !literalRules.has(name) && !classPlusRules.has(name) && !orderedLiteralRules.has(name));
   for (const name of requiredRules) {
     assert.match(strict.stderr, new RegExp(`^unsupported ${name} choice `, 'm'), `${name} is not reported`);
   }
@@ -62,6 +63,11 @@ try {
   const strictAlias = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedAlias, generated], { encoding: 'utf8' });
   assert.match(strictAlias.stderr, /unsupported StringLiteral choice 1 at /,
     'a single-reference wrapper with a second item must return to the unsupported report');
+  const changedOrdered = join(work, 'ChangedOrdered.hpeg');
+  writeFileSync(changedOrdered, original.replace(/^HashMark <- .*$/m, "$& / 'extra' Ws { () }"));
+  const strictOrdered = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedOrdered, generated], { encoding: 'utf8' });
+  assert.match(strictOrdered.stderr, /unsupported HashMark choice \d+ at .*'extra'/,
+    'a non-literal branch must return the ordered rule to the unsupported report');
   if (/^Word <- '%%='/m.test(original)) {
     assert.match(strict.stderr, /unsupported Word choice 1 at .*Golem\.hpeg:\d+: '%%='/);
   }
@@ -81,6 +87,7 @@ try {
   assert.match(model, /def classPlusProductions : List \(String × List \(Nat × Nat\) × String\) := /);
   assert.match(model, /def optionalRefProductions : List \(String × String\) := /);
   assert.match(model, /def aliasProductions : List \(String × String\) := /);
+  assert.match(model, /def orderedLiteralProductions : List \(String × List \(String × String\)\) := /);
   const sourceRuleCount = [...original.matchAll(/^[A-Za-z][A-Za-z0-9]* <- /gm)].length;
   const emittedRuleCount = [...model.matchAll(/^  \("/gm)].length;
   assert.equal(emittedRuleCount, sourceRuleCount, 'every PEG production must appear in the Lean source data');
@@ -91,10 +98,13 @@ try {
     ['', null, 0],
     ['# Title\n', 'Heading', 0],
     ['@set x = 1\n', 'BlockCommand', 0],
+    ['@set x = 1+2\n', 'BlockCommand', 0, 'AddOp@10..11 "+"'],
+    ['[= 1>=0]\n', 'Paragraph', 0, 'CmpOp@4..6 ">="'],
+    ['[foo *[1]]\n', 'Paragraph', 0, 'Splat@5..7 "*["'],
     ['```en-US\nx\n```\n', 'CodeBlock', 0],
     ['| a | b |\n|---|---|\n| c | d |\n', 'Table', 4]
   ];
-  for (const [sample, node, cells] of parserCases) {
+  for (const [sample, node, cells, chosen] of parserCases) {
     const samplePath = join(work, 'sample.gm');
     writeFileSync(samplePath, sample);
     const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
@@ -104,6 +114,7 @@ try {
     assert.match(parsed.stdout, new RegExp(`^File@0\\.\\.${sample.length}$`, 'm'),
       'the implementation parser must consume the same complete source');
     if (node) assert.match(parsed.stdout, new RegExp(`^ +${node}@`, 'm'));
+    if (chosen) assert.ok(parsed.stdout.includes(chosen), `${chosen} was not chosen by the generated parser`);
     assert.equal([...parsed.stdout.matchAll(/cs: TableCellAndPipe@/g)].length, cells);
   }
 
@@ -166,8 +177,8 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.equal(unsupportedChoices, 262, 'the 23 literal, 2 repeated-class, optional, and alias productions must leave the unsupported report');
-  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 13, implementation parser cases ${parserCases.length}`);
+  assert.equal(unsupportedChoices, 246, 'the 16 pure ordered-literal alternatives must leave the unsupported report');
+  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 14, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

@@ -85,6 +85,36 @@ def directSuffix (name : String) (alt : Alt) : Option (List Expr) :=
   | .ref target [] :: suffix => if target == name then some suffix else none
   | _ => none
 
+def runSequence (parse : Params → Expr → List Char → ParseResult)
+    (boundLength : Params → Expr → List Char → Except String (Option Nat))
+    (env : Params) (items : List Expr) (input : List Char) : ParseResult :=
+  (items.foldlM (fun state item =>
+    match state with
+    | none => pure none
+    | some (rest, scope) => do
+        match parse scope item rest with
+        | .error reason => Except.error reason
+        | .ok none => pure none
+        | .ok (some next) =>
+            match item with
+            | .bind (some name) _ =>
+                match boundLength scope item rest with
+                | .error reason => Except.error reason
+                | .ok none => pure (some (next, scope))
+                | .ok (some value) => pure (some (next, (name, value) :: scope))
+            | _ => pure (some (next, scope))) (some (input, env)) :
+      Except String (Option (List Char × Params))).map (Option.map Prod.fst)
+
+def foldChoice {α β : Type} (parse : α → Except String (Option β))
+    (alts : List α) : Except String (Option β) :=
+  alts.foldlM (fun found items =>
+    match found with
+    | some _ => pure found
+    | none => parse items) none
+
+def runChoices (sequence : List Expr → ParseResult) (alts : List (List Expr)) : ParseResult :=
+  foldChoice sequence alts
+
 -- A bounded recognizer for the PEG operators. Unsupported Haskell expressions
 -- and template calls are errors, never accepted input. Fuel exhaustion is
 -- distinct from an ordinary PEG failure.
@@ -125,27 +155,11 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
                     | _ => return .ok none
                 | _, _ => return .ok none
         | _ => return .ok none
-      let sequence (items : List Expr) : ParseResult :=
-        (items.foldlM (fun state item =>
-          match state with
-          | none => pure none
-          | some (rest, scope) => do
-              match recognizeEnv grammar scope fuel item rest with
-              | .error reason => Except.error reason
-              | .ok none => pure none
-              | .ok (some next) =>
-                  match item with
-                  | .bind (some name) _ =>
-                      match boundLength scope item rest with
-                      | .error reason => Except.error reason
-                      | .ok none => pure (some (next, scope))
-                      | .ok (some value) => pure (some (next, (name, value) :: scope))
-                  | _ => pure (some (next, scope))) (some (input, env)) : Except String (Option (List Char × Params))).map (Option.map Prod.fst)
-      let alternatives (alts : List (List Expr)) : ParseResult :=
-        alts.foldlM (fun found items =>
-          match found with
-          | some _ => pure found
-          | none => sequence items) none
+      let parseItem : Params → Expr → List Char → ParseResult :=
+        fun scope item rest => recognizeEnv grammar scope fuel item rest
+      let sequence : List Expr → ParseResult :=
+        fun items => runSequence parseItem boundLength env items input
+      let alternatives : List (List Expr) → ParseResult := runChoices sequence
       match expr with
       | .lit value _ =>
           let chars := value.toList
