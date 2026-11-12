@@ -58,6 +58,39 @@ def missing (rules : List Rule) (args : List Argument) : List Finding :=
 def check (rules : List Rule) (args : List Argument) : List Finding :=
   scan rules args [] 0 ++ missing rules args
 
+private theorem splitMembership {xs ys : List α} {x : α} (h : x ∈ xs ++ ys) :
+    x ∈ xs ∨ x ∈ ys := by
+  induction xs with
+  | nil => exact Or.inr h
+  | cons a rest ih =>
+      cases h with
+      | head => exact Or.inl (.head _)
+      | tail _ later =>
+          exact (ih later).elim (fun h => Or.inl (.tail _ h)) Or.inr
+
+theorem occurrencePosition {rules seen position arg finding}
+    (found : finding ∈ atOccurrence rules seen position arg) :
+    finding.position = position := by
+  simp only [atOccurrence] at found
+  split at found <;> split at found <;> split at found <;>
+    simp_all <;> rcases found with h | h <;> first | simp [h] | rcases h with h | h <;> simp [h]
+
+theorem scanPositionBounds {rules seen position args finding}
+    (found : finding ∈ scan rules args seen position) :
+    position ≤ finding.position ∧ finding.position < position + args.length := by
+  induction args generalizing seen position with
+  | nil => simp [scan] at found
+  | cons arg rest ih =>
+      cases splitMembership (show finding ∈ _ ++ _ from found) with
+      | inl here =>
+          rw [occurrencePosition here]
+          simp only [List.length_cons]
+          omega
+      | inr later =>
+          have bounds := ih later
+          simp only [List.length_cons]
+          omega
+
 theorem absentUnknown (rules : List Rule) (seen : List String)
     (position : Nat) (arg : Argument) (h : ruleFor rules arg.name = none) :
     { position, name := arg.name, error := Error.unknown } ∈
