@@ -512,4 +512,59 @@ theorem word_allowed_is_peg_allowed (c : Char) :
   simp [Generated.wordForbidden, List.contains, List.elem,
 be32, be9, be10, be93, be58, be124, be61, be91, be34, be92]
 
+theorem canonical_space_before_word (fuel : Nat) (c : Char) (tail : List Char)
+    (valid : allowed c = true) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 10) (.ref "Sp" [])
+      (' ' :: c :: tail) = .ok (some (c :: tail)) := by
+  let cls := PegModel.Expr.charClass [(32, 32), (9, 9)] "[ \\t]"
+  have excluded (d : Char) (invalid : allowed d = false) : c.toNat ≠ d.toNat := by
+    intro eq
+    have same := char_nat_injective c d eq
+    subst c
+    simp_all
+  have ns : c.toNat ≠ 32 := excluded ' ' (by decide)
+  have nt : c.toNat ≠ 9 := excluded '\t' (by decide)
+  have miss : PegModel.recognizeEnv Generated.pegGrammar [] (fuel+3) cls (c :: tail) = .ok none := by
+    have guard (n : Nat) (h : c.toNat ≠ n) : (decide (n ≤ c.toNat) && decide (c.toNat ≤ n)) = false := by
+      by_cases a : n ≤ c.toNat
+      · have b : ¬ c.toNat ≤ n := by omega
+        simp [b]
+      · simp [a]
+    change (Except.ok (if ((decide (32 ≤ c.toNat) && decide (c.toNat ≤ 32)) ||
+      ((decide (9 ≤ c.toNat) && decide (c.toNat ≤ 9)) || false)) then some tail else none)) = _
+    rw [guard _ ns, guard _ nt]
+    rfl
+  have stop : PegModel.recognizeEnv Generated.pegGrammar [] (fuel+4) (.star cls) (c :: tail) =
+      .ok (some (c :: tail)) := by
+    change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel+3) cls (c :: tail) with
+      | .error e => Except.error e
+      | .ok none => Except.ok (some (c :: tail))
+      | .ok (some rest) => if rest.length < (c :: tail).length then
+          PegModel.recognizeEnv Generated.pegGrammar [] (fuel+3) (.star cls) rest
+        else Except.error "zero-width repetition") = _
+    rw [miss]
+  have hit : PegModel.recognizeEnv Generated.pegGrammar [] (fuel+4) cls (' ' :: c :: tail) =
+      .ok (some (c :: tail)) := by rfl
+  have plus : PegModel.recognizeEnv Generated.pegGrammar [] (fuel+5) (.plus cls)
+      (' ' :: c :: tail) = .ok (some (c :: tail)) := by
+    change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel+4) cls (' ' :: c :: tail) with
+      | .error e => Except.error e
+      | .ok none => Except.ok none
+      | .ok (some rest) => if rest.length < (' ' :: c :: tail).length then
+          PegModel.recognizeEnv Generated.pegGrammar [] (fuel+4) (.star cls) rest
+        else Except.error "zero-width repetition") = _
+    rw [hit]
+    simpa using stop
+  have ws : PegModel.recognizeEnv Generated.pegGrammar [] (fuel+7) (.ref "Ws" [])
+      (' ' :: c :: tail) = .ok (some (c :: tail)) := by
+    change PegModel.runChoices (fun items => PegModel.runSequence
+      (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+5) item s)
+      _ [] items (' ' :: c :: tail)) [[.plus cls]] = _
+    simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, plus, Except.map] <;> rfl
+  have optional := PegModelTest.optional_hit Generated.pegGrammar _ _ _ _ ws
+  change PegModel.runChoices (fun items => PegModel.runSequence
+    (fun scope item s => PegModel.recognizeEnv Generated.pegGrammar scope (fuel+8) item s)
+    _ [] items (' ' :: c :: tail)) [[.opt (.ref "Ws" [])]] = _
+  simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, optional, Except.map] <;> rfl
+
 end WordRoundTrip
