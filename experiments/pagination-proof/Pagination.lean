@@ -1669,6 +1669,87 @@ theorem I3_blankFigureOrder_two_figures_zero_break
     (waitingAtTwoPositions firstPos secondPos) items usedFits ordered
     blankFirstDifferent blankSecondDifferent firstIn secondIn onlyTwo
 
+theorem I3_blankFigureOrder_no_blank_two_figures_zero_break
+    (capacity used firstPos secondPos firstSize secondSize : Nat)
+    (items : List SourceItem) (usedFits : used ≤ capacity) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 2 capacity used kept
+        (fun f => textReadyZero items (if f = 0 then firstPos else secondPos) = true)
+        (fun f => textBeforeCount items (if f = 0 then firstPos else secondPos))
+        (fun f => if f = 0 then firstSize else secondSize)
+        (fun _ => false) ∧
+      used + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) ≤ capacity := by
+  let ready : Nat → Bool := fun f =>
+    textReadyZero items (if f = 0 then firstPos else secondPos)
+  let textBefore : Nat → Nat := fun f =>
+    textBeforeCount items (if f = 0 then firstPos else secondPos)
+  let size : Nat → Nat := fun f => if f = 0 then firstSize else secondSize
+  obtain ⟨kept, rule⟩ := I3_figuresRuleWithLoad_exists 2 capacity used
+    ready textBefore size (fun _ => false)
+  refine ⟨kept, rule, ?_⟩
+  have firstFits : kept 0 = true → used + firstSize ≤ capacity := by
+    intro present
+    have room := I3_kept_figure_has_room 2 capacity used kept
+      (fun f => ready f = true) textBefore size (fun _ => false)
+      rule 0 (by decide) present
+    simp [figureHasRoom, priorFigureLines, size] at room
+    omega
+  have secondFits : kept 1 = true →
+      used + firstSize + secondSize ≤ capacity := by
+    intro present
+    have room := I3_kept_figure_has_room 2 capacity used kept
+      (fun f => ready f = true) textBefore size (fun _ => false)
+      rule 1 (by decide) present
+    simp [figureHasRoom, priorFigureLines, size,
+      show List.range 1 = [0] from rfl] at room
+    omega
+  have figureOrder : kept 1 = true → kept 0 = true := by
+    intro present
+    exact ((rule 1 (by decide)).mp present).2.1 0 (by decide)
+  have fits := I3_two_figure_fits_from_blank_cause capacity used firstSize
+    secondSize (kept 0) (kept 1) false false false usedFits
+    (by simpa using firstFits) (by simpa using secondFits)
+    figureOrder (by simp) (by simp)
+  simpa using fits
+
+theorem I3_blankFigureOrder_no_blank_one_figure_zero_break
+    (capacity used figurePos figureSize : Nat)
+    (items : List SourceItem) (usedFits : used ≤ capacity) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 1 capacity used kept
+        (fun _ => textReadyZero items figurePos = true)
+        (fun _ => textBeforeCount items figurePos)
+        (fun _ => figureSize) (fun _ => false) ∧
+      used + (if kept 0 then figureSize else 0) ≤ capacity := by
+  obtain ⟨kept, rule⟩ := I3_figuresRuleWithLoad_exists 1 capacity used
+    (fun _ => textReadyZero items figurePos)
+    (fun _ => textBeforeCount items figurePos)
+    (fun _ => figureSize) (fun _ => false)
+  refine ⟨kept, rule, ?_⟩
+  cases present : kept 0 with
+  | false => simpa [present] using usedFits
+  | true =>
+      have room := I3_kept_figure_has_room 1 capacity used kept
+        (fun _ => textReadyZero items figurePos = true)
+        (fun _ => textBeforeCount items figurePos)
+        (fun _ => figureSize) (fun _ => false)
+        rule 0 (by decide) present
+      simp [figureHasRoom, priorFigureLines,
+        show List.range 0 = [] from rfl] at room
+      simp [present]
+      omega
+
+theorem I3_blankFigureOrder_no_blank_no_figures
+    (capacity used : Nat) (usedFits : used ≤ capacity) :
+    ∃ kept : Nat → Bool,
+      figuresRuleWithLoad 0 capacity used kept
+        (fun _ => True) (fun _ => 0) (fun _ => 0) (fun _ => false) ∧
+      used ≤ capacity := by
+  refine ⟨fun _ => false, ?_, usedFits⟩
+  intro f bound
+  exact False.elim (Nat.not_lt_zero f bound)
+
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
     textReadyAtZeroBreak textPositions figurePos ↔
