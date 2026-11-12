@@ -459,6 +459,32 @@ theorem blankFigureOrder_twoFiguresBeforeBlank
 /- A zero-text break sends every text item on. `firstReady` and
    `secondReady` record whether each figure has any earlier text; unlike
    the preceding no-text theorem, either may therefore be unavailable. -/
+def textReadyAtZeroBreak (textPositions : List Nat) (figurePos : Nat) : Prop :=
+  ∀ t ∈ textPositions, figurePos ≤ t
+
+theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
+    (textPositions : List Nat) (figurePos : Nat) :
+    textReadyAtZeroBreak textPositions figurePos ↔
+      ∀ t ∈ textPositions, t < figurePos → False := by
+  unfold textReadyAtZeroBreak
+  constructor
+  · intro ready t member earlier
+    have later := ready t member
+    omega
+  · intro noEarlier t member
+    by_cases later : figurePos ≤ t
+    · exact later
+    · have earlier : t < figurePos := by omega
+      exact False.elim (noEarlier t member earlier)
+
+theorem I3_textReadyAtZeroBreak_before (textPositions : List Nat)
+    (firstPos secondPos : Nat) (before : firstPos < secondPos)
+    (secondReady : textReadyAtZeroBreak textPositions secondPos) :
+    textReadyAtZeroBreak textPositions firstPos := by
+  intro t member
+  have later := secondReady t member
+  omega
+
 theorem blankFigureOrder_twoFiguresBeforeBlank_withText
     (capacity used firstSize secondSize : Nat)
     (firstReady secondReady : Bool) (usedFits : used ≤ capacity) :
