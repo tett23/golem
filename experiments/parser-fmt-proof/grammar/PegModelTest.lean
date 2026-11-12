@@ -359,6 +359,16 @@ theorem newline_or_eof (grammar : PegModel.Grammar) (env : PegModel.Params)
           PegModel.runSequence, Id.run, List.isPrefixOf, h, hc, Except.map, Except.bind]
         rfl
 
+theorem generated_nl_ast :
+    (Generated.pegGrammar.rules.find? (fun rule => rule.name == "Nl")).map
+      (fun rule => rule.alts.map PegModel.Alt.items) =
+      some [[.lit "\n" "'\\n'"]] := by rfl
+
+theorem generated_eol_ast :
+    (Generated.pegGrammar.rules.find? (fun rule => rule.name == "EOL")).map
+      (fun rule => rule.alts.map PegModel.Alt.items) =
+      some [[.ref "Sp" [], .choice [[.ref "Nl" []], [.notPred .any]]]] := by rfl
+
 example : PegModel.recognize Generated.pegGrammar 8 (.ref "HashMark" []) "######!".toList =
     .ok (some "!".toList) := by rfl
 
