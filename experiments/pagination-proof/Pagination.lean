@@ -279,6 +279,27 @@ def blankPlaced (waiting : Nat → Bool) (items : List Nat)
   | none => false
   | some i => inColumn i && !atTop
 
+/- In the `inDomain26` inputs of `blankWithNext25`, there is no Need.
+   Its next item is the head of the same source-order candidate list. -/
+def blankPlaced25 (items : List Nat) (inColumn : Nat → Bool)
+    (atTop : Bool) : Bool :=
+  match items.head? with
+  | none => false
+  | some i => inColumn i && !atTop
+
+theorem I3_blankPlaced_eq_25_when_none_wait (waiting : Nat → Bool)
+    (items : List Nat) (inColumn : Nat → Bool) (atTop : Bool)
+    (noneWait : ∀ x ∈ items, waiting x = false) :
+    blankPlaced waiting items inColumn atTop =
+      blankPlaced25 items inColumn atTop := by
+  unfold blankPlaced blankPlaced25
+  rw [nextAfterWaiting_eq_head_when_none_wait waiting items noneWait]
+
+example :
+    blankPlaced25 [1, 2] (fun i => i == 2) false = false ∧
+      blankPlaced (fun i => i == 1) [1, 2] (fun i => i == 2) false = true := by
+  decide
+
 theorem blankPlaced_iff_next_in_column (waiting : Nat → Bool)
     (items : List Nat) (inColumn : Nat → Bool) (atTop : Bool) :
     blankPlaced waiting items inColumn atTop = true ↔
