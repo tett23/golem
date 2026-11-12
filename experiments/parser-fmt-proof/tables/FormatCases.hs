@@ -4,7 +4,7 @@ import Control.Monad (replicateM)
 import Data.Char (ord)
 import Data.List (intercalate)
 import qualified Data.Text as T
-import Golem.Eval.File (parseCsv, parseTsv)
+import Golem.Eval.File (TableError (..), parseCsv, parseTsv)
 import Golem.Fmt (formatTable)
 import Golem.Parser.Read (checkTableText)
 import Golem.Syntax (DiagnosticCode (..), FileId (..), diagCode, diagSpan, spanEnd, spanStart)
@@ -23,7 +23,8 @@ main = do
       where
         check input = do
           let output = case parse (FileId 0) (T.pack input) of
-                Left _ -> "-"
+                Left (TableInvalid d) -> let DiagnosticCode code = diagCode d in T.unpack code
+                Left _ -> "unexpected table limit"
                 Right rows -> show (map (map (map ord . T.unpack)) rows)
           putStrLn (label ++ " " ++ scalars input ++ " => " ++ output)
     checkSpan input = do

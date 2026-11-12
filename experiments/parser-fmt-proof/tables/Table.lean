@@ -423,4 +423,27 @@ theorem I10_repairedRows (original : LineEncoding canonical source)
   rw [I10_formatDamagedTable damaged first]
   exact ⟨(csvScanEncoding original {}).symm, (I9_tsvCells original).symm⟩
 
+abbrev TableRows := List (List (List Char))
+
+def checkRowWidths (rows : TableRows) : Except String TableRows :=
+  match rows with
+  | [] => .error "G02085"
+  | header :: rest =>
+      if rest.all (fun row => row.length == header.length) then .ok rows
+      else .error "G02154"
+
+-- A lone CR anywhere takes precedence over record errors. Completed
+-- records are validated before reporting an unclosed field on a later row.
+def checkedTableRows (csv : Bool) (input : List Char) : Except String TableRows := do
+  if (firstLoneCR input 0).isSome then throw "G02082"
+  let payload := skipFileMarker input
+  if !csv then return ← checkRowWidths (tsvRows payload)
+  match csvRows payload with
+  | some rows => checkRowWidths rows
+  | none =>
+    let state := (replaceCRLF payload).foldl CsvState.step {}
+    if !state.rows.isEmpty then
+      let _ ← checkRowWidths state.rows.reverse
+    throw "G02083"
+
 end TableFormat
