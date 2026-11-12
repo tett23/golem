@@ -1446,7 +1446,12 @@ are not counted either.
 -}
 largerNeedTests :: [TestTree]
 largerNeedTests =
-  [ testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
+  [ testCase "Golem ADR 0352 I3: needMoreSome model fixture keeps the paragraph" $ do
+      let flows = [FParagraph defaultKeep (lines' 0 1), FNeedLines mk 1, FSpace 1, FNeedLines mk2 3, FParagraph defaultKeep (lines' 1 1)]
+          ps = paginate 1 4 flows
+      placed ps @?= [(1, 0, [SLine 0, SLine 1])]
+      brokenOf [P1, P2] flows ps @?= [],
+    testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
       let flows = [FParagraph defaultKeep (lines' 0 3), FNeedLines mk 2, FSpace 1, FNeedLines mk2 4, FSpace 1, FParagraph defaultKeep (lines' 3 1)]
           ps = paginate 1 6 flows
       placed ps @?= [(1, 0, map SLine [0 .. 2]), (2, 0, [SLine 3])]
@@ -1515,7 +1520,12 @@ column the block goes on to when its first part does not fit after them.
 -}
 spaceAfterNeedTests :: [TestTree]
 spaceAfterNeedTests =
-  [ testCase "P1: the paragraph after need-lines and two spaces goes past the figure sent on, to page 3" $ do
+  [ testCase "Golem ADR 0352 I3: needSpaceSome model fixture keeps the paragraph" $ do
+      let flows = [FParagraph defaultKeep (lines' 0 1), FNeedLines mk 2, FSpace 1, FParagraph defaultKeep (lines' 1 1)]
+          ps = paginate 1 3 flows
+      placed ps @?= [(1, 0, [SLine 0, SLine 1])]
+      brokenOf [P1, P2] flows ps @?= [],
+    testCase "P1: the paragraph after need-lines and two spaces goes past the figure sent on, to page 3" $ do
       let input = Input 4 1 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1]
           ps = paginateInput input
       placedIn input @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SFigure 1000]), (3, 0, [SLine 2])]
