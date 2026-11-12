@@ -1,7 +1,7 @@
 // Run one case with: node experiments/parser-fmt-proof/tables/check.mjs csv-0
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -60,6 +60,9 @@ for (const format of ['csv', 'tsv']) {
       writeFileSync(join(evidence, 'original-table.txt'), c.expected);
       writeFileSync(join(evidence, 'input.gm'), c.manuscript);
       writeFileSync(join(evidence, 'input-table.txt'), c.input);
+      if (existsSync(source)) copyFileSync(source, join(evidence, 'actual.gm'));
+      if (existsSync(table)) copyFileSync(table, join(evidence, 'actual-table.txt'));
+      writeFileSync(join(evidence, 'failure.txt'), String(error.stack || error) + '\n');
       writeFileSync(join(evidence, 'reproduce.txt'), 'node experiments/parser-fmt-proof/tables/check.mjs ' + name + '\n');
       console.error(name, error);
       process.exitCode = 1;
