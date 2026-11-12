@@ -141,7 +141,8 @@ inductive Derives : Nat → Environment → Expr → Value → Nat → Prop wher
       Derives n env (.quotient a b) (.nat (x / (y + 1))) k
   | ternaryTrue (condition : Derives n env c (.boolean true) (i + 1))
         (branch : Derives i env a value k) : Derives n env (.ternary c a b) value k
-  | ternaryFalse (condition : Derives n env c (.boolean false) (i + 1))
+  | ternaryElse (condition : Derives n env c test (i + 1))
+        (otherwise : test ≠ .boolean true)
         (branch : Derives i env b value k) : Derives n env (.ternary c a b) value k
   | append (left : Derives n env a (.string x) i)
         (right : Derives i env b (.string y) (k + (1 + x.length + y.length))) :
@@ -172,7 +173,7 @@ theorem I5_surplusBudget (d : Derives budget env expression value remaining) (ex
   | add _ _ left right => exact .add left right
   | quotient _ _ left right => exact .quotient left right
   | ternaryTrue _ _ cond branch => exact .ternaryTrue cond branch
-  | ternaryFalse _ _ cond branch => exact .ternaryFalse cond branch
+  | ternaryElse _ otherwise _ cond branch => exact .ternaryElse cond otherwise branch
   | append _ _ left right => exact .append left (by simpa [Nat.add_assoc] using right)
   | call _ _ arg body => exact .call arg body
 
