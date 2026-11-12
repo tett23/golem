@@ -21,6 +21,14 @@ theorem literal_roundtrip (grammar : PegModel.Grammar) (value written : String)
   simp [PegModel.recognize, PegModel.recognizeEnv, prefix_self_append, drop_self_append, Id.run]
   rfl
 
+theorem literal_production_count : Generated.literalProductions.length = 23 := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 4 (.ref "Nl" []) "\nx".toList =
+    .ok (some "x".toList) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 4 (.ref "Fence" []) "```x".toList =
+    .ok (some "x".toList) := by rfl
+
 theorem ordered_choice_first (grammar : PegModel.Grammar) (value written : String)
     (later : List PegModel.Expr) (input rest : List Char) (fuel : Nat)
     (hit : PegModel.recognize grammar fuel (.lit value written) input = .ok (some rest)) :

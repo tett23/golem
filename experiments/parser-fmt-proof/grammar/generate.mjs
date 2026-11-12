@@ -178,9 +178,16 @@ const shapes = {
   ArgValue: ['StringLit / ExprCtx / ReservedBracket / InlineCommand(0) / Word'],
   KeywordArgument: ['Word Eq ArgValue']
 };
+const literalRules = (ast?.rules ?? []).filter(rule =>
+  rule.params.length === 0 && rule.templateParams.length === 0 &&
+  rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
+  rule.alts[0].items[0].bind === null && rule.alts[0].items[0].expr.tag === 'lit' &&
+  rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
+const literalNames = new Set(literalRules.map(rule => rule.name));
 if (!fragment && ast) {
   for (const rule of ast.rules) {
     if (rule.name === 'StringLit' && alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary) && rule.alts.length === 1) continue;
+    if (literalNames.has(rule.name)) continue;
     let index = 0;
     const report = (items, line) => {
       index++;
@@ -242,6 +249,7 @@ writeFileSync(output, [
   `def sourceSha256 : String := ${leanString(sha)}`,
   `def stringLitEscapeFirst : Bool := ${alternatives[0] === escape}`,
   `def wordForbidden : List Char := ${leanString(forbidden?.join('') ?? '').replace(/^/, '(').replace(/$/, ').toList')}`,
+  `def literalProductions : List (String × String × String) := ${leanList(literalRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.value)}, ${leanString(rule.alts[0].items[0].expr.written)})`)}`,
   'def sourceRules : List (String × String) := [',
   ...sourceRules.map(([name, rhs]) => `  (${leanString(name)}, ${leanString(rhs)}),`),
   ']',

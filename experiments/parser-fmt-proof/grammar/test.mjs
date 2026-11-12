@@ -21,8 +21,11 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   assert.notEqual(strict.status, 0, 'the incomplete full grammar model must fail generation');
+  const literalRules = new Set(['Nl', 'NumberMark', 'LBr', 'RBr', 'Eq', 'Colon', 'Pipe',
+    'ExprOpen', 'RangeOp', 'NegOp', 'PowOp', 'Dot', 'Comma', 'LBrace', 'RBrace',
+    'LParen', 'RParen', 'At', 'BulletMark', 'OrderedMark', 'TermMark', 'NewDefMark', 'Fence']);
   const requiredRules = [...original.matchAll(/^([A-Za-z][A-Za-z0-9]*) <- /gm)]
-    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'Word');
+    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'Word' && !literalRules.has(name));
   for (const name of requiredRules) {
     assert.match(strict.stderr, new RegExp(`^unsupported ${name} choice `, 'm'), `${name} is not reported`);
   }
@@ -38,6 +41,11 @@ try {
   assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'a'/);
   assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'b'/);
   assert.match(newStrict.stderr, /unsupported Unmodeled choice .*'c'/);
+  const changedLiteral = join(work, 'ChangedLiteral.hpeg');
+  writeFileSync(changedLiteral, original.replace(/^Nl <- .*$/m, "Nl <- '\\n' 'x' { () }"));
+  const strictLiteral = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedLiteral, generated], { encoding: 'utf8' });
+  assert.match(strictLiteral.stderr, /unsupported Nl choice 1 at /,
+    'a literal rule with a second item must return to the unsupported report');
   if (/^Word <- '%%='/m.test(original)) {
     assert.match(strict.stderr, /unsupported Word choice 1 at .*Golem\.hpeg:\d+: '%%='/);
   }
@@ -53,6 +61,7 @@ try {
   assert.match(model, /def sourceSha256 : String := /);
   assert.match(model, /def wordForbidden : List Char := /);
   assert.match(model, /def pegRules : List PegModel.Rule := /, 'the canonical PEG AST must become an explicit Lean model');
+  assert.match(model, /def literalProductions : List \(String × String × String\) := /);
   const sourceRuleCount = [...original.matchAll(/^[A-Za-z][A-Za-z0-9]* <- /gm)].length;
   const emittedRuleCount = [...model.matchAll(/^  \("/gm)].length;
   assert.equal(emittedRuleCount, sourceRuleCount, 'every PEG production must appear in the Lean source data');
@@ -137,7 +146,8 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 9, implementation parser cases ${parserCases.length}`);
+  assert.equal(unsupportedChoices, 266, 'the 23 verified literal-only productions must leave the unsupported report');
+  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 10, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
