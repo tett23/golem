@@ -96,7 +96,7 @@ theorem ordinary_value_precedence (fuel : Nat) (c : Char) (tail : List Char)
           change ['[','!'].isPrefixOf (c :: tail) = false
           simp [List.isPrefixOf,b])
         change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel+5) (.lit "[!" "'[!'") (c :: tail) with
-          | .error e => Except.error e
+          | .error e => if e.startsWith "label: " then Except.ok none else Except.error e
           | .ok none => Except.ok none
           | .ok (some _) => Except.ok (some (c :: tail))) = _
         rw [mh]

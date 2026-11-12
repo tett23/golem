@@ -584,7 +584,7 @@ theorem canonical_posarg_rejects_keyword (fuel : Nat) (input afterEq : List Char
       (.notPred (.lit "%%" "'%%'")) input = .ok (some input) := by
     change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
       (.lit "%%" "'%%'") input with
-      | .error reason => Except.error reason
+      | .error reason => if reason.startsWith "label: " then Except.ok (some input) else Except.error reason
       | .ok none => Except.ok (some input)
       | .ok (some _) => Except.ok none) = Except.ok (some input)
     rw [noProofPrefix]
@@ -592,7 +592,7 @@ theorem canonical_posarg_rejects_keyword (fuel : Nat) (input afterEq : List Char
       (.notPred (.choice [[.ref "Word" [], .ref "Eq" []]])) input = .ok none := by
     change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
       (.choice [[.ref "Word" [], .ref "Eq" []]]) input with
-      | .error reason => Except.error reason
+      | .error reason => if reason.startsWith "label: " then Except.ok (some input) else Except.error reason
       | .ok none => Except.ok (some input)
       | .ok (some _) => Except.ok none) = Except.ok none
     rw [wordEq]
@@ -955,6 +955,11 @@ example : PegModel.recognize Generated.pegGrammar 120 (.ref "Arguments" [])
     " a=x b=y c=z\n".toList = .ok (some "\n".toList) := by rfl
 
 example : PegModel.recognize Generated.pegGrammar 80 (.ref "Arguments" [])
-    " a=x q\n".toList = .ok none := by rfl
+    " a=x q\n".toList = .error "label: arg_order" := by rfl
+
+theorem strict_reserved_prefix (extra : Nat) (suffix : List Char) :
+    PegModel.recognize Generated.pegGrammar (extra + 20) (.ref "ReservedBracket" [])
+      ('[' :: '!' :: suffix) = .error "label: reserved" := by
+  cases suffix <;> rfl
 
 end ArgumentsRoundTrip

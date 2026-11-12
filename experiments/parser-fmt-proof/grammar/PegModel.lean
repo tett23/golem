@@ -219,16 +219,19 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
           | .ok hit => return .ok hit
       | .andPred child =>
           match recognizeEnv grammar env fuel child input with
-          | .error reason => return .error reason
+          | .error reason => return if reason.startsWith "label: " then .ok none else .error reason
           | .ok none => return .ok none
           | .ok (some _) => return .ok (some input)
       | .notPred child =>
           match recognizeEnv grammar env fuel child input with
-          | .error reason => return .error reason
+          | .error reason => return if reason.startsWith "label: " then .ok (some input) else .error reason
           | .ok none => return .ok (some input)
           | .ok (some _) => return .ok none
       | .capture child => return recognizeEnv grammar env fuel child input
-      | .label child _ => return recognizeEnv grammar env fuel child input
+      | .label child name =>
+          match recognizeEnv grammar env fuel child input with
+          | .ok none => return .error ("label: " ++ name)
+          | result => return result
       | .discard child => return recognizeEnv grammar env fuel child input
       | .bind _ child => return recognizeEnv grammar env fuel child input
       | .semanticPred positive source =>
@@ -242,5 +245,19 @@ def recognize (grammar : Grammar) (fuel : Nat) (expr : Expr) (input : List Char)
 
 def recognizeStart (grammar : Grammar) (fuel : Nat) (input : List Char) : ParseResult :=
   recognize grammar fuel (.ref grammar.start []) input
+
+namespace StrictLabelTests
+
+private def g : Grammar := ⟨"", [], [], [], []⟩
+private def failed := Expr.label (.lit "x" "'x'") "inner"
+example : recognize g 20 (.choice [[failed], [.any]]) ['y'] = .error "label: inner" := by rfl
+example : recognize g 20 (.opt failed) [] = .error "label: inner" := by rfl
+example : recognize g 20 (.star failed) [] = .error "label: inner" := by rfl
+example : recognize g 20 (.label failed "outer") [] = .error "label: inner" := by rfl
+example : recognize g 20 (.andPred failed) [] = .ok none := by rfl
+example : recognize g 20 (.notPred failed) [] = .ok (some []) := by rfl
+example : recognize g 1 (.notPred failed) [] = .error "fuel exhausted" := by rfl
+
+end StrictLabelTests
 
 end PegModel
