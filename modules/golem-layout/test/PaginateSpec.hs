@@ -327,6 +327,11 @@ keepNoteTests =
     testCase "Golem ADR 0353 I2: capacities 1 and 2 remain valid without footnotes" $
       map (\capacity -> (contents (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]), unmets (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]))) [1, 2]
         @?= [([[SLine 0]], []), ([[SLine 0]], [])],
+    testCase "Golem ADR 0353 I1: page-lines leaves marker and note together in the next full column" $ do
+      let ps = paginate 1 3 [FAdjustLines mk (-1), FParagraph defaultKeep [noted 0 1]]
+      [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps, not (null (poSlots p))]
+        @?= [(2, [nid 900])]
+      unmets ps @?= [],
     testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]

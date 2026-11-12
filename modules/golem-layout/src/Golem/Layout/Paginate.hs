@@ -588,7 +588,9 @@ placeLines env kp0 st0 isStart0 ls0@(l0 : _) = go kp0 st0 isStart0 ls0
           k2 = splitAtBreak kp isStart n k0
           forced = k2 == 0 && emptyish
           k = if forced then max 1 (min n k0) else k2
-       in if kAll kp && isStart && k0 < n
+       in if sAdjust st < 0 && isEmpty st && not (roomForLine env st ls)
+            then go kp (nextColumn env st) isStart ls
+            else if kAll kp && isStart && k0 < n
             then
               if isEmpty st || sHeadingOnly st
                 then go kp {kAll = False} (addUnmet (SplitKept pid) st) isStart ls
