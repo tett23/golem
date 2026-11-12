@@ -14,5 +14,6 @@ def main : IO Unit := do
       ⟨"tax", .string⟩, ⟨"unit", .string⟩ ]
   for finding in check bookPrice args do
     IO.println s!"price\t{finding.position}\t{code finding.error}\t{finding.name}"
-  for ordinal in positionalMissing 1 3 do
-    IO.println s!"missing\t{ordinal}\tG02120\t{ordinal}"
+  for supplied in [0, 1, 2] do
+    for ordinal in positionalMissing supplied 3 do
+      IO.println s!"missing-{supplied}\t{ordinal}\tG02120\t{ordinal}"

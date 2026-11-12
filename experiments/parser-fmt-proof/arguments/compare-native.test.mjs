@@ -26,7 +26,7 @@ function modelRows(dir) {
   }).trim().split('\n').map(line => line.split('\t'));
 }
 
-function nativeRows(dir, original, tokens, formatted = false) {
+function nativeRows(dir, original, tokens, caseName, formatted = false) {
   const source = join(dir, 'a.gm');
   writeFileSync(source, original);
   if (formatted) {
@@ -49,7 +49,7 @@ function nativeRows(dir, original, tokens, formatted = false) {
       assert.ok(ordinal, message);
       const end = Buffer.from(text).lastIndexOf(']') + 1;
       assert.deepEqual([span.start, span.end], [end, end]);
-      return ['missing', ordinal, code, ordinal];
+      return [caseName, ordinal, code, ordinal];
     }
     const position = starts.findIndex((start, index) =>
       start <= span.start && span.end <= start + Buffer.byteLength(tokens[index]));
@@ -62,7 +62,7 @@ function nativeRows(dir, original, tokens, formatted = false) {
         : [start + equal + 1, start + Buffer.byteLength(token)];
     assert.deepEqual([span.start, span.end], expected,
       JSON.stringify({ code, token, span }));
-    return ['price', String(position), code, token.slice(0, token.indexOf('='))];
+    return [caseName, String(position), code, token.slice(0, token.indexOf('='))];
   });
 }
 
@@ -82,14 +82,19 @@ test('Golem ADR 0351 I6-I8: Lean findings equal native check codes, order and sp
     const model = modelRows(dir);
     const tokens = ['x=1', 'x=2', 'tax=true', 'tax=abc', 'unit="円"'];
     const price = '@import fn/book.emet as book\n\n[book.price 1 ' + tokens.join(' ') + ']\n';
-    const priceRows = nativeRows(dir, price, tokens);
-    const formattedPriceRows = nativeRows(dir, price, tokens, true);
-    const missingRows = nativeRows(dir,
-      '@import fn/book.emet as book\n\n[book.triple 1]\n', []);
-    const formattedMissingRows = nativeRows(dir,
-      '@import fn/book.emet as book\n\n[book.triple 1]\n', [], true);
+    const priceRows = nativeRows(dir, price, tokens, 'price');
+    const formattedPriceRows = nativeRows(dir, price, tokens, 'price', true);
+    const missingRows = [];
+    const formattedMissingRows = [];
+    for (const supplied of [0, 1, 2]) {
+      const positional = Array.from({ length: supplied }, (_, index) => String(index + 1));
+      const manuscript = '@import fn/book.emet as book\n\n[book.triple   ' + positional.join(' ') + ']\n';
+      const caseName = `missing-${supplied}`;
+      missingRows.push(...nativeRows(dir, manuscript, [], caseName));
+      formattedMissingRows.push(...nativeRows(dir, manuscript, [], caseName, true));
+    }
     assert.equal(priceRows.length, 5);
-    assert.equal(missingRows.length, 2);
+    assert.equal(missingRows.length, 6);
     assert.deepEqual([...priceRows, ...missingRows], model);
     assert.deepEqual([...formattedPriceRows, ...formattedMissingRows], model);
   } finally {
