@@ -1637,6 +1637,38 @@ theorem I3_textReadyZero_iff_no_earlier_text
         | blank _ => simp [earlierTextItem] at hit
         | need _ => simp [earlierTextItem] at hit
 
+theorem I3_blankFigureOrder_two_figures_zero_break
+    (capacity used blankPos firstPos secondPos firstSize secondSize : Nat)
+    (items : List SourceItem) (usedFits : used ≤ capacity)
+    (ordered : firstPos < secondPos)
+    (blankFirstDifferent : blankPos ≠ firstPos)
+    (blankSecondDifferent : blankPos ≠ secondPos)
+    (firstIn : .figure firstPos ∈ items)
+    (secondIn : .figure secondPos ∈ items)
+    (onlyTwo : ∀ pos, .figure pos ∈ items →
+      pos = firstPos ∨ pos = secondPos) :
+    ∃ atTop : Bool, ∃ kept : Nat → Bool, ∃ placed : Bool,
+      figuresRuleWithLoad 2 capacity used kept
+        (fun f => textReadyZero items (if f = 0 then firstPos else secondPos) = true)
+        (fun f => textBeforeCount items (if f = 0 then firstPos else secondPos))
+        (fun f => if f = 0 then firstSize else secondSize)
+        (fun f => !beforeBlankMask firstPos secondPos blankPos f && !atTop) ∧
+      atTop = blankAtTopSource used blankPos items (fun _ => false)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+      placed = blankPlacedFromSourceFull used blankPos
+        (waitingAtTwoPositions firstPos secondPos kept) items
+        (fun _ => false)
+        (keptAtTwoPositions firstPos secondPos (kept 0) (kept 1)) ∧
+      used + (if kept 0 then firstSize else 0) +
+        (if kept 1 then secondSize else 0) +
+        (if placed then 1 else 0) ≤ capacity := by
+  exact I3_blankFigureOrder_arbitrary_source_exists capacity used blankPos
+    firstPos secondPos firstSize secondSize
+    (fun f => textReadyZero items (if f = 0 then firstPos else secondPos))
+    (fun f => textBeforeCount items (if f = 0 then firstPos else secondPos))
+    (waitingAtTwoPositions firstPos secondPos) items usedFits ordered
+    blankFirstDifferent blankSecondDifferent firstIn secondIn onlyTwo
+
 theorem I3_textReadyAtZeroBreak_iff_no_earlier_text
     (textPositions : List Nat) (figurePos : Nat) :
     textReadyAtZeroBreak textPositions figurePos ↔
