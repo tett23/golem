@@ -498,4 +498,23 @@ theorem I9_checkedRowsAfterFormat (encoded : LineEncoding canonical bytes)
         (LineEncoding.scalar bom (by decide) (canonicalEncoding encoded)) [] 0
     simp only [checkedTableRows, clean, cleanWithMarker, readerSkipsOneMarker, unmarked]
 
+theorem I10_checkedRowsAfterRepair (original : LineEncoding canonical source)
+    (damaged : DamagedLines canonical broken) (first : canonical.head? ≠ some bom)
+    (csv originalMarker : Bool) (damagedMarkers : Nat) :
+    checkedTableRows csv (formatTable (List.replicate damagedMarkers bom ++ broken)) =
+      checkedTableRows csv (List.replicate (if originalMarker then 1 else 0) bom ++ source) := by
+  rw [I10_formatDamagedTable damaged first]
+  have originalResult := I9_checkedRowsAfterFormat original first csv originalMarker
+  dsimp only at originalResult
+  rwa [formatEncodedTable original first] at originalResult
+
+theorem I10_checkedRowsReportsFirstLoneCR (original : LineEncoding canonical bytes)
+    (tail : List Char) (lone : tail.head? ≠ some '\n') (csv : Bool) (markers : Nat) :
+    let broken := List.replicate markers bom ++ (bytes ++ '\r' :: tail)
+    firstLoneCR broken 0 = some (3 * markers + byteLength bytes) ∧
+      checkedTableRows csv broken = .error "G02082" := by
+  dsimp only
+  have reported := I10_loneCRByteOffsetWithBOM markers original tail lone
+  exact ⟨reported, by simp [checkedTableRows, reported]; rfl⟩
+
 end TableFormat
