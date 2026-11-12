@@ -131,7 +131,8 @@ const match = string.match(quoted);
 const alternatives = match?.[1].split(' / ') ?? [];
 const escape = String.raw`'\\' .`;
 const ordinary = String.raw`!["\n] .`;
-if (alternatives.length !== 2 || !alternatives.includes(escape) || !alternatives.includes(ordinary)) {
+const stringSupported = alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary);
+if (!stringSupported) {
   errors.push(`StringLit: unsupported alternatives ${JSON.stringify(alternatives.length ? alternatives : string)}`);
 }
 
@@ -200,12 +201,21 @@ const optionalRefRules = (ast?.rules ?? []).filter(rule =>
   classPlusNames.has(rule.alts[0].items[0].expr.expr.name) &&
   rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
 const optionalRefNames = new Set(optionalRefRules.map(rule => rule.name));
+const aliasRules = (ast?.rules ?? []).filter(rule =>
+  stringSupported && rule.params.length === 0 && rule.templateParams.length === 0 &&
+  rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
+  rule.alts[0].items[0].bind === null && rule.alts[0].items[0].expr.tag === 'ref' &&
+  rule.alts[0].items[0].expr.name === 'StringLit' &&
+  rule.alts[0].items[0].expr.args.length === 0 &&
+  rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
+const aliasNames = new Set(aliasRules.map(rule => rule.name));
 if (!fragment && ast) {
   for (const rule of ast.rules) {
-    if (rule.name === 'StringLit' && alternatives.length === 2 && alternatives.includes(escape) && alternatives.includes(ordinary) && rule.alts.length === 1) continue;
+    if (rule.name === 'StringLit' && stringSupported && rule.alts.length === 1) continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
+    if (aliasNames.has(rule.name)) continue;
     let index = 0;
     const report = (items, line) => {
       index++;
@@ -270,6 +280,7 @@ writeFileSync(output, [
   `def literalProductions : List (String × String × String) := ${leanList(literalRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.value)}, ${leanString(rule.alts[0].items[0].expr.written)})`)}`,
   `def classPlusProductions : List (String × List (Nat × Nat) × String) := ${leanList(classPlusRules, rule => { const cls = rule.alts[0].items[0].expr.expr; return `(${leanString(rule.name)}, ${leanList(cls.ranges, ([lo, hi]) => `(${lo}, ${hi})`)}, ${leanString(cls.written)})`; })}`,
   `def optionalRefProductions : List (String × String) := ${leanList(optionalRefRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.expr.name)})`)}`,
+  `def aliasProductions : List (String × String) := ${leanList(aliasRules, rule => `(${leanString(rule.name)}, ${leanString(rule.alts[0].items[0].expr.name)})`)}`,
   'def sourceRules : List (String × String) := [',
   ...sourceRules.map(([name, rhs]) => `  (${leanString(name)}, ${leanString(rhs)}),`),
   ']',

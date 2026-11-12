@@ -26,7 +26,7 @@ try {
     'LParen', 'RParen', 'At', 'BulletMark', 'OrderedMark', 'TermMark', 'NewDefMark', 'Fence']);
   const classPlusRules = new Set(['Ws', 'Lang']);
   const requiredRules = [...original.matchAll(/^([A-Za-z][A-Za-z0-9]*) <- /gm)]
-    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'Word' && name !== 'Sp' && !literalRules.has(name) && !classPlusRules.has(name));
+    .map(match => match[1]).filter(name => name !== 'StringLit' && name !== 'StringLiteral' && name !== 'Word' && name !== 'Sp' && !literalRules.has(name) && !classPlusRules.has(name));
   for (const name of requiredRules) {
     assert.match(strict.stderr, new RegExp(`^unsupported ${name} choice `, 'm'), `${name} is not reported`);
   }
@@ -57,6 +57,11 @@ try {
   const strictOptional = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedOptional, generated], { encoding: 'utf8' });
   assert.match(strictOptional.stderr, /unsupported Sp choice 1 at /,
     'an optional wrapper with a second item must return to the unsupported report');
+  const changedAlias = join(work, 'ChangedAlias.hpeg');
+  writeFileSync(changedAlias, original.replace(/^StringLiteral <- .*$/m, "StringLiteral <- StringLit 'x' { () }"));
+  const strictAlias = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedAlias, generated], { encoding: 'utf8' });
+  assert.match(strictAlias.stderr, /unsupported StringLiteral choice 1 at /,
+    'a single-reference wrapper with a second item must return to the unsupported report');
   if (/^Word <- '%%='/m.test(original)) {
     assert.match(strict.stderr, /unsupported Word choice 1 at .*Golem\.hpeg:\d+: '%%='/);
   }
@@ -75,6 +80,7 @@ try {
   assert.match(model, /def literalProductions : List \(String × String × String\) := /);
   assert.match(model, /def classPlusProductions : List \(String × List \(Nat × Nat\) × String\) := /);
   assert.match(model, /def optionalRefProductions : List \(String × String\) := /);
+  assert.match(model, /def aliasProductions : List \(String × String\) := /);
   const sourceRuleCount = [...original.matchAll(/^[A-Za-z][A-Za-z0-9]* <- /gm)].length;
   const emittedRuleCount = [...model.matchAll(/^  \("/gm)].length;
   assert.equal(emittedRuleCount, sourceRuleCount, 'every PEG production must appear in the Lean source data');
@@ -160,8 +166,8 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.equal(unsupportedChoices, 263, 'the 23 literal, 2 repeated-class, and 1 optional production must leave the unsupported report');
-  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 12, implementation parser cases ${parserCases.length}`);
+  assert.equal(unsupportedChoices, 262, 'the 23 literal, 2 repeated-class, optional, and alias productions must leave the unsupported report');
+  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 13, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

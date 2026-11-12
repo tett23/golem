@@ -27,6 +27,8 @@ theorem class_plus_production_count : Generated.classPlusProductions.length = 2 
 
 theorem optional_ref_production_count : Generated.optionalRefProductions.length = 1 := by rfl
 
+theorem alias_production_count : Generated.aliasProductions.length = 1 := by rfl
+
 theorem class_hit (grammar : PegModel.Grammar) (ranges : List (Nat × Nat))
     (written : String) (c : Char) (rest : List Char) (fuel : Nat)
     (hit : ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) = true) :
@@ -195,6 +197,22 @@ theorem optional_miss (grammar : PegModel.Grammar) (child : PegModel.Expr)
     | .ok found => Except.ok found) = .ok (some input)
   rw [miss]
 
+theorem single_ref_hit (grammar : PegModel.Grammar) (name : String)
+    (input rest : List Char) (fuel : Nat)
+    (hit : PegModel.recognizeEnv grammar [] fuel (.ref name []) input = .ok (some rest)) :
+    PegModel.recognizeEnv grammar [] (fuel + 1) (.choice [[.ref name []]]) input =
+      .ok (some rest) := by
+  simp [PegModel.recognizeEnv, hit, Id.run]
+  rfl
+
+theorem single_ref_miss (grammar : PegModel.Grammar) (name : String)
+    (input : List Char) (fuel : Nat)
+    (miss : PegModel.recognizeEnv grammar [] fuel (.ref name []) input = .ok none) :
+    PegModel.recognizeEnv grammar [] (fuel + 1) (.choice [[.ref name []]]) input =
+      .ok none := by
+  simp [PegModel.recognizeEnv, miss, Id.run]
+  rfl
+
 theorem repeated_a_roundtrip (grammar : PegModel.Grammar) (count : Nat) :
     PegModel.recognizeEnv grammar [] (count + 2) (.star (.lit "a" "'a'"))
       (List.replicate count 'a') = .ok (some []) := by
@@ -212,6 +230,9 @@ theorem repeated_a_roundtrip (grammar : PegModel.Grammar) (count : Nat) :
 
 -- These use the rule and ordered escape choice exported from Golem.hpeg.
 example : PegModel.recognize Generated.pegGrammar 40 (.ref "StringLit" [])
+    "\"a\\\"b\"!".toList = .ok (some ['!']) := by rfl
+
+example : PegModel.recognize Generated.pegGrammar 44 (.ref "StringLiteral" [])
     "\"a\\\"b\"!".toList = .ok (some ['!']) := by rfl
 
 example : PegModel.recognize Generated.pegGrammar 40 (.ref "StringLit" [])
