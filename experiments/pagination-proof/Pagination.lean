@@ -5711,6 +5711,40 @@ theorem I3_need_space_two_needs_simple_exists
     apply keeps
     exact ⟨Nat.max_le.mpr ⟨firstEnough, secondEnough⟩, fits⟩
 
+/- The first part may occupy more than one line. With a space first in
+   an empty column, noSendFromEmpty also requires the one-space break
+   when the following block cannot stay. -/
+theorem I3_need_space_two_needs_first_part_exists
+    (capacity used firstNeed secondNeed firstPart : Nat)
+    (positiveCapacity : 1 ≤ capacity)
+    (usedFits : used ≤ capacity)
+    (positivePart : 1 ≤ firstPart) :
+    ∃ brk : Fin 3,
+      used + brk.val ≤ capacity ∧
+      (brk.val = 2 →
+        firstNeed ≤ capacity - used ∧
+        secondNeed ≤ capacity - used) ∧
+      ((firstNeed ≤ capacity - used ∧
+        secondNeed ≤ capacity - used) ∧
+        used + 1 + firstPart ≤ capacity → brk.val = 2) ∧
+      (used = 0 → 1 ≤ brk.val) := by
+  by_cases bothMet :
+      firstNeed ≤ capacity - used ∧
+        secondNeed ≤ capacity - used
+  · by_cases firstFits : used + 1 + firstPart ≤ capacity
+    · refine ⟨2, ?_, ?_, ?_, ?_⟩
+      all_goals simp_all <;> omega
+    · by_cases spaceFits : used + 1 ≤ capacity
+      · refine ⟨1, ?_, ?_, ?_, ?_⟩
+        all_goals simp_all <;> omega
+      · refine ⟨0, ?_, ?_, ?_, ?_⟩
+        all_goals simp_all <;> omega
+  · by_cases spaceFits : used + 1 ≤ capacity
+    · refine ⟨1, ?_, ?_, ?_, ?_⟩
+      all_goals simp_all <;> omega
+    · refine ⟨0, ?_, ?_, ?_, ?_⟩
+      all_goals simp_all <;> omega
+
 theorem I3_need_space_fixture_source_break (brk : Fin 3) :
     textHereAtBreak [.need 0, .text 1, .need 2, .text 3]
         brk.val 1 = decide (1 ≤ brk.val) ∧
