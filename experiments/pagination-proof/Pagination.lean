@@ -1656,6 +1656,48 @@ def textReadyZero (items : List SourceItem) (pos : Nat) : Bool :=
 def textBeforeCount (items : List SourceItem) (pos : Nat) : Nat :=
   (items.filter (earlierTextItem pos)).length
 
+def textHereAtBreak (items : List SourceItem) (brk pos : Nat) : Bool :=
+  decide (textBeforeCount items pos < brk)
+
+theorem I3_break_one_keeps_first_text
+    (items : List SourceItem) (pos : Nat)
+    (first : ∀ textPos, .text textPos ∈ items → pos ≤ textPos) :
+    textHereAtBreak items 1 pos = true := by
+  have noEarlier : ∀ item ∈ items, earlierTextItem pos item = false := by
+    intro item member
+    cases item with
+    | text textPos =>
+        have later := first textPos member
+        simp [earlierTextItem, Nat.not_lt.mpr later]
+    | figure _ => rfl
+    | blank _ => rfl
+    | need _ => rfl
+  have emptyFilter : items.filter (earlierTextItem pos) = [] :=
+    List.filter_eq_nil.mpr (by
+      intro item member hit
+      simp [noEarlier item member] at hit)
+  simp [textHereAtBreak, textBeforeCount, emptyFilter]
+
+theorem I3_break_one_text_iff_first
+    (items : List SourceItem) (pos : Nat) :
+    textHereAtBreak items 1 pos = true ↔
+      ∀ textPos, .text textPos ∈ items → pos ≤ textPos := by
+  constructor
+  · intro here textPos member
+    have countZero : textBeforeCount items pos = 0 := by
+      simp [textHereAtBreak] at here
+      omega
+    have emptyFilter : items.filter (earlierTextItem pos) = [] := by
+      exact List.length_eq_zero.mp (by simpa [textBeforeCount] using countZero)
+    by_cases later : pos ≤ textPos
+    · exact later
+    · have earlier : textPos < pos := by omega
+      have inFilter : .text textPos ∈ items.filter (earlierTextItem pos) :=
+        List.mem_filter.mpr ⟨member, by simp [earlierTextItem, earlier]⟩
+      simp [emptyFilter] at inFilter
+  · intro first
+    exact I3_break_one_keeps_first_text items pos first
+
 theorem I3_textReadyZero_iff_no_earlier_text
     (items : List SourceItem) (pos : Nat) :
     textReadyZero items pos = true ↔
@@ -1682,6 +1724,13 @@ theorem I3_textReadyZero_iff_no_earlier_text
         | figure _ => simp [earlierTextItem] at hit
         | blank _ => simp [earlierTextItem] at hit
         | need _ => simp [earlierTextItem] at hit
+
+theorem I3_textReadyZero_iff_hereAtBreakOne
+    (items : List SourceItem) (pos : Nat) :
+    textReadyZero items pos = true ↔
+      textHereAtBreak items 1 pos = true := by
+  exact (I3_textReadyZero_iff_no_earlier_text items pos).trans
+    (I3_break_one_text_iff_first items pos).symm
 
 theorem I3_blankFigureOrder_two_figures_zero_break
     (capacity used blankPos firstPos secondPos firstSize secondSize : Nat)
