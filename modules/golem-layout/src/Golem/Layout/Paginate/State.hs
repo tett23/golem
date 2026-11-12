@@ -344,7 +344,7 @@ carryNote env st (i, from, len) =
   let sep = if sNoteLines st == 0 then envSeparator env else 0
       room = cap env st - sNoteLines st - sep - 1
       shown = min len room
-   in if len > 0 && room <= 0 && isEmpty st
+   in if len > 0 && room <= 0 && isEmpty st && sReserved st == 0
         then addUnmet (UnplaceableFootnote i (cap env st)) st
         else st
         { sNotes = sNotes st <> [(i, from, shown)],
