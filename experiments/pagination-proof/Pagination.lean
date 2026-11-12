@@ -205,6 +205,34 @@ theorem figuresInOrder_iff_no_reentry (count : Nat) (kept : Nat → Bool) :
         have later := noReentry g f before bound h
         simp [present] at later
 
+/- Alloy `figures` includes the earlier-figure conjunct for every kept
+   figure. The `figureOrder` predicate is therefore redundant whenever
+   `figures` itself holds, independent of the column capacity and the
+   finite bound of two figures. Text readiness and the occupied-line
+   calculation are separate inputs here. -/
+def figuresRule (count : Nat) (kept : Nat → Bool)
+    (textReady room : Nat → Prop) : Prop :=
+  ∀ f, f < count →
+    (kept f = true ↔ textReady f ∧
+      (∀ g, g < f → kept g = true) ∧ room f)
+
+theorem I3_figuresRule_implies_figuresInOrder (count : Nat)
+    (kept : Nat → Bool) (textReady room : Nat → Prop)
+    (rule : figuresRule count kept textReady room) :
+    figuresInOrder count kept := by
+  unfold figuresInOrder
+  intro f bound present g before
+  exact ((rule f bound).mp present).2.1 g before
+
+theorem I3_figuresRule_and_order_iff_rule (count : Nat)
+    (kept : Nat → Bool) (textReady room : Nat → Prop) :
+    (figuresRule count kept textReady room ∧ figuresInOrder count kept) ↔
+      figuresRule count kept textReady room := by
+  constructor
+  · exact And.left
+  · intro rule
+    exact ⟨rule, I3_figuresRule_implies_figuresInOrder count kept textReady room rule⟩
+
 /- Alloy `waitingIn` selects an unkept figure with an earlier unkept
    figure. Under `figureOrder`, every later figure after the first sent
    figure is also sent and therefore waits. -/
