@@ -29,6 +29,7 @@ function* cases() {
     yield [listing, listing.includes('%%') ? pair(6) : []];
   }
   for (const nested of nestedInlineCases(nesting)) yield [nested];
+  yield ['鰍\\ \n', [], /Paragraph \[Text "鰍", Escaped ' '\]/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token
@@ -50,7 +51,7 @@ function run(...args) {
 }
 
 try {
-  for (const [index, [input, expectedComments = []]] of Array.from(cases()).entries()) {
+  for (const [index, [input, expectedComments = [], expectedStructure]] of Array.from(cases()).entries()) {
     if (only !== 'all' && Number(only) !== index) continue;
     tested++;
     writeFileSync(file, input);
@@ -58,6 +59,7 @@ try {
       const ast = () => withoutPositions(run('inspect', file, '--as', 'ast'));
       const positions = () => comments(run('inspect', file, '--as', 'cst'));
       const expectedAst = ast();
+      if (expectedStructure) assert.match(expectedAst, expectedStructure);
       assert.deepEqual(positions(), expectedComments);
       run('fmt', file);
       assert.equal(ast(), expectedAst);
