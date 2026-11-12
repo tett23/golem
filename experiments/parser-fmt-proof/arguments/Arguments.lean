@@ -542,4 +542,33 @@ theorem I6_wrongTypeCount (rules : List Rule) (name : String) (rule : Rule)
   rw [check, countForAppend, scanCount, countMissingForOtherCode rules args name .wrongType (by decide),
     Nat.add_zero]
 
+-- Relate an ordinal diagnostic to the actual argument it identifies.
+private theorem occurrenceName {rules seen pos arg f}
+    (found : f ∈ atOccurrence rules seen pos arg) : f.name = arg.name := by
+  simp only [atOccurrence] at found
+  split at found <;> split at found <;> split at found <;>
+    simp_all <;> rcases found with h | h <;> first | simp [h] | rcases h with h | h <;> simp [h]
+
+private theorem scanPointsAtName {rules seen pos f} (args : List Argument)
+    (found : f ∈ scan rules args seen pos) :
+    (args.map Argument.name).get? (f.position - pos) = some f.name := by
+  induction args generalizing seen pos with
+  | nil => simp [scan] at found
+  | cons a rest ih =>
+      cases splitMembership (show f ∈ _ ++ _ from found) with
+      | inl here => simp [occurrencePosition here, occurrenceName here]
+      | inr later =>
+          have bound := (scanPositionBounds later).1
+          have step : f.position - pos = (f.position - (pos + 1)) + 1 := by omega
+          simpa [step] using ih later
+
+theorem I6_checkedOccurrenceName {rules args f} (found : f ∈ check rules args)
+    (supplied : f.error ≠ .missing) :
+    (args.map Argument.name).get? f.position = some f.name := by
+  cases splitMembership (show f ∈ _ ++ _ from found) with
+  | inl scanned => simpa using scanPointsAtName args scanned
+  | inr omitted =>
+      obtain ⟨_, _, eq⟩ := List.mem_map.mp omitted
+      exact False.elim (supplied (congrArg Finding.error eq.symm))
+
 end ArgumentDiagnostics
