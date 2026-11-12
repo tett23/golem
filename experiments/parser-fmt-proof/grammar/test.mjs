@@ -59,6 +59,25 @@ try {
   const astRuleCount = [...model.matchAll(/^private def pegRule\d+ : PegModel.Rule := /gm)].length;
   assert.equal(astRuleCount, sourceRuleCount, 'the canonical PEG AST must emit every Lean rule');
 
+  const parserCases = [
+    ['', null, 0],
+    ['# Title\n', 'Heading', 0],
+    ['@set x = 1\n', 'BlockCommand', 0],
+    ['| a | b |\n|---|---|\n| c | d |\n', 'Table', 4]
+  ];
+  for (const [sample, node, cells] of parserCases) {
+    const samplePath = join(work, 'sample.gm');
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status, 0, parsed.stderr);
+    assert.match(parsed.stdout, new RegExp(`^File@0\\.\\.${sample.length}$`, 'm'),
+      'the implementation parser must consume the same complete source');
+    if (node) assert.match(parsed.stdout, new RegExp(`^ +${node}@`, 'm'));
+    assert.equal([...parsed.stdout.matchAll(/cs: TableCellAndPipe@/g)].length, cells);
+  }
+
   const reversed = original.replace(/^(StringLit <- )'"' \('\\\\' \. \/ !\["\\n\] \.\)\* '"'/m, '$1\'"\' (!["\\n] . / \'\\\\\' .)* \'"\'');
   assert.notEqual(reversed, original, 'the negative test must change StringLit');
   assert.equal(generate(reversed).status, 0);
@@ -118,7 +137,7 @@ try {
   assert.notEqual(refuted.status, 0, 'reversing the PEG choice must break the theorem');
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 9`);
+  console.log(`grammar fragment: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 3, negative mutations 9, implementation parser cases ${parserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
