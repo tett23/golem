@@ -12,14 +12,14 @@ test('Golem ADR 0351: a failed CLI inspection records the input and replay comma
   try {
     const result = spawnSync('node', [script, '1'], { env, encoding: 'utf8' });
     assert.equal(result.status, 1);
-    assert.match(result.stdout, /14 cases/);
-    const last = join(output, 'manuscript-13');
+    assert.match(result.stdout, /19 cases/);
+    const last = join(output, 'manuscript-18');
     const original = readFileSync(join(last, 'original.gm'), 'utf8');
-    assert.equal(original, '[= 1+%%注%%2]\n');
+    assert.equal(original, '@listing x.hs lang=haskell %%甲%%%%乙%% lines=1...1\n');
     assert.equal(readFileSync(join(last, 'result.gm'), 'utf8'), original);
     assert.match(readFileSync(join(last, 'error.txt'), 'utf8'), /false inspect/);
     const [node, ...args] = readFileSync(join(last, 'reproduce.txt'), 'utf8').trim().split(' ');
-    assert.deepEqual(args, [script, '1', '13']);
+    assert.deepEqual(args, [script, '1', '18']);
     const replay = spawnSync(node, args, { env, encoding: 'utf8' });
     assert.equal(replay.status, 1);
     assert.match(replay.stdout, /1 cases/);

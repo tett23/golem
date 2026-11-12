@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { bodies, withoutPositions } from './corpus.mjs';
+import { bodies, listingCases, withoutPositions } from './corpus.mjs';
 
 const [bound = '1', only] = process.argv.slice(2);
 const limit = Number(bound);
@@ -22,6 +22,7 @@ function* cases() {
   for (const word of ['เก', 'لا', 'می‌روم', 'SrcSpan {first}', 'before @2..4 after']) yield word + '\n';
   yield '[f "x"%%甲%%%%乙%%key=y]\n';
   yield '[= 1+%%注%%2]\n';
+  yield* listingCases();
 }
 
 // Compare each comment's text and its position in the non-trivia token

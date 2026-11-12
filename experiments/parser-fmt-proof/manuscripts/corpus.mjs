@@ -22,3 +22,14 @@ export function withoutPositions(ast) {
   return ast.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'| @\d+\.\.\d+/gu,
     token => token.startsWith(' @') ? '' : token);
 }
+
+export function* listingCases() {
+  const keys = ['lines=1...1', 'lang=haskell'];
+  yield '@listing x.hs\n';
+  for (const first of keys) {
+    yield `@listing x.hs ${first}\n`;
+    for (const second of keys) {
+      if (second !== first) yield `@listing x.hs ${first} %%甲%%%%乙%% ${second}\n`;
+    }
+  }
+}

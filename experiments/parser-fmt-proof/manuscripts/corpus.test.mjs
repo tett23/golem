@@ -15,3 +15,14 @@ test('Golem ADR 0351 I2: inspect positions are erased only outside literals', ()
   assert.equal(withoutPositions('Text "a @2..3" @0..8'), 'Text "a @2..3"');
   assert.equal(withoutPositions('Text "a\\" @2..3" @0..8'), 'Text "a\\" @2..3"');
 });
+
+test('Golem ADR 0351 I4: listing keywords cover independent omissions and both orders', async () => {
+  const { listingCases } = await import('./corpus.mjs');
+  assert.deepEqual([...listingCases()], [
+    '@listing x.hs\n',
+    '@listing x.hs lines=1...1\n',
+    '@listing x.hs lines=1...1 %%甲%%%%乙%% lang=haskell\n',
+    '@listing x.hs lang=haskell\n',
+    '@listing x.hs lang=haskell %%甲%%%%乙%% lines=1...1\n',
+  ]);
+});
