@@ -75,17 +75,44 @@ def eval (budget : Nat) (env : Environment) (expression : Expr) : Except Failure
   let (value, _) ← run expression env budget
   return value
 
-/- Formatting changes only layout and comments. The parser erases those
-   annotations before evaluation, as in the Haskell parser and checker. -/
-structure SourceExpr where
-  expression : Expr
-  layout : String
-  comments : List String
+/- The resolved expression tree retains trivia at each subexpression.
+   The grammar model separately checks how source text reaches this tree. -/
+inductive SourceExpr where
+  | literal : Value → SourceExpr
+  | variable : String → SourceExpr
+  | external : String → SourceExpr
+  | add : SourceExpr → SourceExpr → SourceExpr
+  | quotient : SourceExpr → SourceExpr → SourceExpr
+  | append : SourceExpr → SourceExpr → SourceExpr
+  | call : String → SourceExpr → SourceExpr → SourceExpr
+  | whitespace : String → SourceExpr → SourceExpr
+  | comment : String → SourceExpr → SourceExpr
 
-def parsed (source : SourceExpr) : Expr := source.expression
+def parsed : SourceExpr → Expr
+  | .literal v => .literal v
+  | .variable name => .variable name
+  | .external path => .external path
+  | .add a b => .add (parsed a) (parsed b)
+  | .quotient a b => .quotient (parsed a) (parsed b)
+  | .append a b => .append (parsed a) (parsed b)
+  | .call name arg body => .call name (parsed arg) (parsed body)
+  | .whitespace _ x | .comment _ x => parsed x
 
-def format (source : SourceExpr) : SourceExpr :=
-  { source with layout := "canonical" }
+-- At this abstraction level the printer's changes to whitespace are
+-- represented by one canonical spelling. Comments retain their text.
+def format : SourceExpr → SourceExpr
+  | .literal v => .literal v
+  | .variable name => .variable name
+  | .external path => .external path
+  | .add a b => .add (format a) (format b)
+  | .quotient a b => .quotient (format a) (format b)
+  | .append a b => .append (format a) (format b)
+  | .call name arg body => .call name (format arg) (format body)
+  | .whitespace _ x => .whitespace " " (format x)
+  | .comment text x => .comment text (format x)
+
+@[simp] theorem parsed_format (source : SourceExpr) : parsed (format source) = parsed source := by
+  induction source <;> simp_all [parsed, format]
 
 /- A derivation records how a successful value is obtained, including
    argument evaluation and the body of a user function. -/
@@ -121,13 +148,13 @@ theorem remaining_le_budget (derivation : Derives budget env expression value re
 
 theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
     eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
-  rfl
+  rw [parsed_format]
 
 theorem I5_derivation_format (fuel : Nat) (env : Environment)
     (source : SourceExpr) (value : Value)
     (derivation : Derives fuel env (parsed source) value remaining) :
     Derives fuel env (parsed (format source)) value remaining := by
-  simpa [parsed, format] using derivation
+  simpa using derivation
 
 example : eval 3 ⟨[("x", .nat 2)], []⟩ (.add (.variable "x") (.literal (.nat 3)))
     = .ok (.nat 5) := by rfl
@@ -169,5 +196,10 @@ example : eval 0 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 0))
     = .error .overLimit := by rfl
 example : eval 1 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 2)))
     = .ok (.nat 1) := by rfl
+
+-- Formatting spaces inside a nested expression must preserve its operands.
+example (left right : SourceExpr) (spaces : String) :
+    parsed (format (.add (.whitespace spaces left) right)) =
+      .add (parsed left) (parsed right) := by rw [parsed_format]; rfl
 
 end GolemEval
