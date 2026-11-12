@@ -41,7 +41,7 @@ for (const { name, original, input, skipped } of cases) {
         assert.equal(readFileSync(file, 'utf8'), input);
       }
     } catch (error) {
-      saveProjectFailure('manuscripts', dir, original, error, 'reserved-' + name, 'reserved.test.mjs');
+      saveProjectFailure('manuscripts', dir, original, error, 'reserved-' + name, 'reserved.test.mjs', input);
       throw error;
     } finally {
       rmSync(dir, { recursive: true, force: true });

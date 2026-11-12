@@ -35,7 +35,7 @@ function checkRoundTrip(original, check, caseName, reference = original) {
     assert.notEqual(readFileSync(source, 'utf8'), original);
     check(source, run);
   } catch (error) {
-    saveProjectFailure('arguments', dir, reference, error, caseName);
+    saveProjectFailure('arguments', dir, reference, error, caseName, 'check.test.mjs', original);
     throw error;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -133,9 +133,7 @@ for (const unquoted of [[0], [1], [0, 1]]) {
       assert.deepEqual(readFileSync(file), Buffer.from(input));
     } catch (error) {
       const name = 'required-quotes-' + unquoted.join('-');
-      saveProjectFailure('arguments', dir, original, error, name);
-      writeFileSync(join(process.env.ROUND_TRIP_FAILURES || 'round-trip-failures',
-        'arguments', name, 'input.gm'), input);
+      saveProjectFailure('arguments', dir, original, error, name, 'check.test.mjs', input);
       throw error;
     } finally {
       rmSync(dir, { recursive: true, force: true });

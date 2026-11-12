@@ -13,7 +13,11 @@ test('Golem ADR 0351 failure artifacts retain referenced tables with their proje
     mkdirSync(join(dir, 'data'));
     const bytes = Buffer.from('\uFEFF甲\t𠮷\r\n');
     writeFileSync(join(dir, 'data/words.tsv'), bytes);
-    saveProjectFailure('arguments', dir, 'original', new Error('test'), 'table');
+    writeFileSync(join(dir, 'a.gm'), 'formatted');
+    saveProjectFailure('arguments', dir, 'original', new Error('test'), 'table', 'check.test.mjs', 'damaged');
+    for (const [file, expected] of [['original.gm', 'original'], ['input.gm', 'damaged'], ['actual.gm', 'formatted']]) {
+      assert.equal(readFileSync(join(dir, 'failures/arguments/table', file), 'utf8'), expected);
+    }
     assert.deepEqual(readFileSync(join(dir, 'failures/arguments/table/data/words.tsv')), bytes);
   } finally {
     if (savedRoot === undefined) delete process.env.ROUND_TRIP_FAILURES;
