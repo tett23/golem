@@ -446,4 +446,56 @@ def checkedTableRows (csv : Bool) (input : List Char) : Except String TableRows 
       let _ ← checkRowWidths state.rows.reverse
     throw "G02083"
 
+
+theorem canonicalEncoding (encoded : LineEncoding canonical bytes) :
+    LineEncoding canonical canonical := by
+  induction encoded with
+  | empty => exact .empty
+  | scalar c ordinary _ ih => exact .scalar c ordinary ih
+  | crlf _ ih => exact .scalar '\n' (by decide) ih
+
+theorem skipMarkerEncoding (encoded : LineEncoding canonical bytes) :
+    LineEncoding (skipFileMarker canonical) (skipFileMarker bytes) := by
+  cases encoded with
+  | empty => exact .empty
+  | scalar c ordinary rest =>
+    by_cases marker : c = bom
+    · simpa [skipFileMarker, marker] using rest
+    · simpa [skipFileMarker, marker] using LineEncoding.scalar c ordinary rest
+  | crlf rest => simpa [skipFileMarker, bom] using LineEncoding.crlf rest
+
+theorem checkedRowsEncoding (encoded : LineEncoding canonical bytes) (csv : Bool) :
+    checkedTableRows csv bytes = checkedTableRows csv canonical := by
+  have clean {xs ys : List Char} (h : LineEncoding xs ys) : firstLoneCR ys 0 = none := by
+    simpa [firstLoneCR] using scanEncodedPrefix h [] 0
+  have payload := skipMarkerEncoding encoded
+  simp only [checkedTableRows, clean encoded, clean (canonicalEncoding encoded),
+    show csvRows (skipFileMarker bytes) = csvRows (skipFileMarker canonical) from csvScanEncoding payload {},
+    I9_tsvCells payload, decodeCRLFPairs payload, decodeCRLFPairs (canonicalEncoding payload)]
+
+theorem I9_checkedRowsAfterFormat (encoded : LineEncoding canonical bytes)
+    (first : canonical.head? ≠ some bom) (csv marker : Bool) :
+    let file := List.replicate (if marker then 1 else 0) bom ++ bytes
+    checkedTableRows csv (formatTable file) = checkedTableRows csv file := by
+  dsimp only
+  rw [formatEncodedTable encoded first]
+  cases marker with
+  | false => exact (checkedRowsEncoding encoded csv).symm
+  | true =>
+    have prefixed := checkedRowsEncoding (LineEncoding.scalar bom (by decide) encoded) csv
+    have unmarked : skipFileMarker canonical = canonical := by
+      cases canonical with
+      | nil => rfl
+      | cons c rest =>
+        have h : c ≠ bom := by simpa using first
+        simp [skipFileMarker, h]
+    change checkedTableRows csv canonical = checkedTableRows csv (bom :: bytes)
+    rw [prefixed]
+    have clean : firstLoneCR canonical 0 = none := by
+      simpa [firstLoneCR] using scanEncodedPrefix (canonicalEncoding encoded) [] 0
+    have cleanWithMarker : firstLoneCR (bom :: canonical) 0 = none := by
+      simpa [firstLoneCR] using scanEncodedPrefix
+        (LineEncoding.scalar bom (by decide) (canonicalEncoding encoded)) [] 0
+    simp only [checkedTableRows, clean, cleanWithMarker, readerSkipsOneMarker, unmarked]
+
 end TableFormat
