@@ -38,23 +38,19 @@ data FormatResult
 made one LF before the lone CRs, or it would become two line breaks.
 -}
 preprocess :: Text -> Text
-preprocess = T.intercalate "\n" . map untab . T.splitOn "\n" . formatTable
+preprocess = T.intercalate "\n" . map untab . T.splitOn "\n" . normalizeLineEndings . stripOneBOM
   where
+    stripOneBOM text = fromMaybe text (T.stripPrefix "\xFEFF" text)
     untab l =
       let (ind, rest) = T.span (\c -> c == ' ' || c == '\t') l
        in T.concatMap (\c -> if c == '\t' then "  " else T.singleton c) ind <> rest
 
-{- | The preprocessing of a table file of @table (docs/adr/0186): the BOM
-at the start is removed, one only, as the readers skip one only and read a
-second one as a character of the first cell (docs/adr/0211); CRLF
-becomes LF, then a lone CR becomes LF. Tabs, spaces, blank lines, quotes
-and separators are kept, so the reader makes the same table, and a lone
-CR in quotes becomes a line break in the cell.
--}
+-- | Remove the complete leading BOM run from a table file (Golem ADR 0354).
 formatTable :: Text -> Text
-formatTable t0 =
-  let t1 = fromMaybe t0 (T.stripPrefix "\xFEFF" t0)
-   in T.replace "\r" "\n" (T.replace "\r\n" "\n" t1)
+formatTable = normalizeLineEndings . T.dropWhile (== '\xFEFF')
+
+normalizeLineEndings :: Text -> Text
+normalizeLineEndings = T.replace "\r" "\n" . T.replace "\r\n" "\n"
 
 -- | The AST without source positions.
 astFingerprint :: Text -> Text
