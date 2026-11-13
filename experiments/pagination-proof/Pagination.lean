@@ -7088,31 +7088,37 @@ theorem I3_all_prior_rows_sum (n : Nat) (size : Nat → Nat) (kept : Nat → Boo
       · exact valid j tail
   exact prior i (bound n [] (by simp) (Nat.le_refl _) i member)
 
-theorem I3_need_figure_rule_exists
-    (count capacity used : Nat) (ready : Nat → Bool)
+def needFigureStatic (capacity used : Nat) (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (blankBefore : Nat → Bool) (block : Nat → Prop) (needs : List (Nat × Nat)) (f : Nat) : Prop :=
+    figureHasRoom capacity used textBefore size blankBefore f ∧
+      (∀ n ∈ needs, needTargetsFigure n.1 positions block f (fun _ => False) →
+        used + nonSpaceBefore f + priorFigureLines size f = 0 ∨
+        n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines size f))
+
+def figures27Model (count capacity used : Nat) (ready : Nat → Bool)
     (textBefore nonSpaceBefore size positions : Nat → Nat)
     (blankBefore : Nat → Bool) (block : Nat → Prop)
-    (needs : List (Nat × Nat)) :
-    ∃ kept : Nat → Bool, figuresInOrder count kept ∧
+    (needs : List (Nat × Nat)) (kept : Nat → Bool) : Prop :=
       (∀ f, f < count → (kept f = true ↔
         ready f = true ∧ (∀ g, g < f → kept g = true) ∧
         figureHasRoom capacity used textBefore size blankBefore f ∧
         (∀ n ∈ needs, needTargetsFigure n.1 positions block f (figureWaits kept) →
           used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f = 0 ∨
-          n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f)))) := by
-  let static : Nat → Prop := fun f =>
-    figureHasRoom capacity used textBefore size blankBefore f ∧
-      (∀ n ∈ needs, needTargetsFigure n.1 positions block f (fun _ => False) →
-        used + nonSpaceBefore f + priorFigureLines size f = 0 ∨
-        n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines size f))
-  let room : Nat → Bool := fun f => @decide (static f) (Classical.propDecidable _)
-  let kept := greedyFigure ready room
-  have rule := I3_greedyFigures_rule count ready room
-  refine ⟨kept, I3_figuresRule_implies_figuresInOrder _ _ _ _ rule, ?_⟩
+          n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f))))
+
+private theorem figures27_of_static
+    (count capacity used : Nat) (ready : Nat → Bool)
+    (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (blankBefore : Nat → Bool) (block : Nat → Prop)
+    (needs : List (Nat × Nat)) (kept : Nat → Bool)
+    (rule : figuresRule count kept (fun f => ready f = true)
+      (needFigureStatic capacity used textBefore nonSpaceBefore size positions blankBefore block needs)) :
+    figures27Model count capacity used ready textBefore nonSpaceBefore size positions
+      blankBefore block needs kept := by
   intro f bound
   have eq : kept f = true ↔ ready f = true ∧
-      (∀ g, g < f → kept g = true) ∧ static f := by
-    simpa only [room, decide_eq_true_eq] using rule f bound
+      (∀ g, g < f → kept g = true) ∧ needFigureStatic capacity used textBefore nonSpaceBefore size positions blankBefore block needs f := by
+    exact rule f bound
   rw [eq]
   constructor
   · rintro ⟨r, prior, fits, allowed⟩
@@ -7129,6 +7135,28 @@ theorem I3_need_figure_rule_exists
         priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
     rw [← same]
     exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mpr target)
+
+theorem I3_need_figure_and_blank_exist
+    (count capacity used : Nat) (earlierText : Bool) (ready beforeBlank : Nat → Bool)
+    (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (block : Nat → Prop) (needs : List (Nat × Nat))
+    (beforePrefix : ∀ g f, g < f → beforeBlank f = true → beforeBlank g = true) :
+    ∃ top : Bool, ∃ kept : Nat → Bool,
+      top = blankTopFromFigures used earlierText count beforeBlank kept ∧
+      figuresInOrder count kept ∧
+      figures27Model count capacity used ready textBefore nonSpaceBefore size positions
+        (fun f => !beforeBlank f && !top) block needs kept := by
+  let static := fun (charge : Bool) =>
+    needFigureStatic capacity used textBefore nonSpaceBefore size positions (fun _ => charge) block needs
+  let room := fun charge f => @decide (static charge f) (Classical.propDecidable _)
+  obtain ⟨top, kept, topRule, rule⟩ := I3_blankFigureOrder_causal_exists used count earlierText
+    ready beforeBlank (room false) (fun t => room (!t)) beforePrefix
+  refine ⟨top, kept, topRule, I3_figuresRule_implies_figuresInOrder _ _ _ _ rule, ?_⟩
+  apply figures27_of_static
+  intro f bound
+  have h := rule f bound
+  cases e : beforeBlank f <;> cases t : top <;>
+    simpa [roomAcrossBlank, room, static, needFigureStatic, figureHasRoom, e, t] using h
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
