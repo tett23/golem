@@ -775,7 +775,7 @@ runAtSqueezed env look v rotated scale squeeze (bx, by) txt =
       (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
       -- shaped with the features of the look; rotated Latin is shaped horizontally
       vv = v && not rotated
-      shapingFor role r = (shapingOf (lfRoleFeatures fonts) vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
+      shapingFor role r = (shapingForFonts fonts vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
       {- the tracking after the last glyph of each cluster, for each of its
       characters, as the boxes count it (docs/adr/0020) -}
       tr = fromIntegral (lkTracking look) * size
@@ -859,7 +859,7 @@ tcyAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Tex
 tcyAt env look (xc, y0) txt =
   let s = lkSize look
       flat = look {lkTracking = 0, lkBaselineShift = 0}
-      shapingFor role r = (shapingOf (lfRoleFeatures fonts) False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
+      shapingFor role r = (shapingForFonts fonts False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
       advances = [unSp (toSp s (shAdvance g)) | (role, r, _) <- runsOf flat txt, g <- lfShape fonts (shapingFor role r) r]
       fit = tcyFit (unSp s) advances
       left = xc + lkBaselineShift look - Sp (tfWidth fit `div` 2)
@@ -1212,8 +1212,8 @@ drawLineAt env (x0, y0) sl =
                           baseUnits = clusters base
                           baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
                           advOf lk u = case T.uncons u of
-                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) ch)
-                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
+                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingForFonts fonts vertical lk ch) ch)
+                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingForFonts fonts vertical lk ch) u)
                             Nothing -> 0
                           baseAdv = zipWith advOf baseLooks baseUnits
                           readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
@@ -1238,7 +1238,7 @@ drawLineAt env (x0, y0) sl =
                   let (b1, u1) = runAtU env (whoOf V.PartBase c) look vertical False 0 (origin off) (bcText c)
                       d = lkSize half
                       shift = lkBaselineShift look
-                      parent = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look (T.head (bcText c))) (bcText c)
+                      parent = lfShape fonts (shapingForFonts fonts vertical look (T.head (bcText c))) (bcText c)
                       centre
                         | vertical = beside (origin (off + Sp (unSp size `div` 2))) (shift + kentenAcross True size 0 d)
                         | otherwise =

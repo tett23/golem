@@ -242,7 +242,8 @@ data FontRole = FontRole
   { frJa :: !(Maybe FilePath),
     frLatin :: !(Maybe FilePath),
     -- | the OpenType features of the role, checked (docs/adr/0268)
-    frFeatures :: ![Feature]
+    frFeatures :: ![Feature],
+    frPunctuationProportional :: !Bool
   }
   deriving stock (Eq, Show)
 
@@ -1904,7 +1905,7 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional")
 
 instance FromValue CharStyleDef where
   fromValue = parseTableFromValue $ do
@@ -3485,7 +3486,7 @@ loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
 
 -- | Font files named by [fonts]: role, then Japanese before Latin, roles in name order.
 fontFiles :: Style -> [(Text, FilePath)]
-fontFiles s = [(r, p) | (r, FontRole ja la _) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
+fontFiles s = [(r, p) | (r, FontRole ja la _ _) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
 
 -- ------------------------------------------------------------------ the schema
 
@@ -3536,7 +3537,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("headings", NNamed Nothing headingNode),

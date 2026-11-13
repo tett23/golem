@@ -87,7 +87,7 @@ fontProvider memoise = FontProvider $ \files fid style locals ->
                   ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- roleFiles]
                   faces = nubOrdOn (\(b, _, _) -> b) ordered
                   faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
-                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, normalFeatureTexts (frFeatures fr))) | (r, fr, ja, la) <- roleFiles]
+                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, normalFeatureTexts (frFeatures fr), frPunctuationProportional fr)) | (r, fr, ja, la) <- roleFiles]
                   clashes =
                     [ (n, p1, p2)
                     | ((_, f1, p1), i) <- zip faces [0 :: Int ..],
@@ -135,7 +135,7 @@ and its OpenType features. A role that is not loaded is the body role.
 The measures are kept by the shaping too: its features change them
 (docs/adr/0020).
 -}
-provide :: Bool -> FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
+provide :: Bool -> FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text], Bool) -> LoadedFonts
 provide memoise fid faces body roles =
   LoadedFonts
     { lfAdvance = advance,
@@ -154,7 +154,8 @@ provide memoise fid faces body roles =
         let f = fontAt ix
             em v = toInteger v % toInteger (fontUnitsPerEm f)
          in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g,
-      lfRoleFeatures = \role -> let (_, _, fs) = roleOf role in fs,
+      lfRoleFeatures = \role -> let (_, _, fs, _) = roleOf role in fs,
+      lfPunctuationProportional = \role -> let (_, _, _, allowed) = roleOf role in allowed,
       -- the feature list of GSUB and GPOS, of any script and language (docs/adr/0268)
       lfHasFeature = fontHasFeature . fontAt
     }
@@ -175,13 +176,13 @@ provide memoise fid faces body roles =
     faceAt i = faces !! max 0 (min (length faces - 1) i)
     fontAt = fst . faceAt
     roleOf role = case Map.lookup role roles of
-      Just (Nothing, Nothing, _) -> roleOf body
+      Just (Nothing, Nothing, _, _) -> roleOf body
       Just r -> r
-      Nothing -> fromMaybe (Just 0, Nothing, []) (Map.lookup body roles)
+      Nothing -> fromMaybe (Just 0, Nothing, [], False) (Map.lookup body roles)
     -- a character of both scripts is Latin in a Latin span (docs/adr ADR 0187)
     latinIn dual c = charClass c == Western || (dual && isDualCharacter c)
     fontFor dual role c =
-      let (ja, la, _) = roleOf role
+      let (ja, la, _, _) = roleOf role
        in fromMaybe 0 (if latinIn dual c then la <|> ja else ja <|> la)
     -- a combining character stays with the character before it, variation selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036)
     runs dual role t = [(fontFor dual role (T.head r), r) | r <- T.groupBy (\a b -> isExtending b || fontFor dual role a == fontFor dual role b) t, not (T.null r)]
@@ -191,7 +192,7 @@ provide memoise fid faces body roles =
     UAX #50, is turned: its horizontal glyphs and advances (golem-driver ADR
     0015). The clusters are numbered by character in the whole text. -}
     shapeText (Shaping role vertical extra dual) t =
-      let (_, la, roleFeatures) = roleOf role
+      let (_, la, roleFeatures, _) = roleOf role
           -- the last value of each tag, in the normal form (docs/adr/0268)
           features = normalTexts (roleFeatures <> extra)
           shapeIn f r dir = shapeUnits f ((shapeRequest r) {srDirection = dir, srFeatures = features})
