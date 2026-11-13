@@ -12054,6 +12054,73 @@ theorem closeContent_notes {Slot : Type} (done : List (PageContent Slot)) (curre
   | mk slots notes =>
     cases slots <;> cases notes <;> simp [closeContent,bind_snoc,List.isEmpty]
 
+namespace BreakDispatch
+
+inductive Kind where
+  | page | column | recto | verso
+
+inductive Action where
+  | stay | nextColumn | nextPage | blank | recto | verso
+  deriving DecidableEq
+
+def turned : Deferred → Bool
+  | .turned _ => true
+  | .figure _ _ => false
+
+def pageAction (empty : Bool) (column : Nat) (afterPageFigure : Bool) : Action :=
+  if empty && column == 0 then (if afterPageFigure then .stay else .blank) else .nextPage
+
+def forced (kind : Kind) (columns column : Nat) (empty afterPageFigure : Bool)
+    (pending : List Deferred) : Action :=
+  match kind with
+  | .page => pageAction empty column afterPageFigure
+  | .recto => .recto
+  | .verso => .verso
+  | .column =>
+    if 1 < columns ∧ pending.any turned = false then .nextColumn
+    else pageAction empty column afterPageFigure
+
+theorem turned_anywhere (before after : List Deferred) (id : Nat) :
+    (before ++ Deferred.turned id :: after).any turned = true := by
+  induction before with
+  | nil => rfl
+  | cons d rest ih =>
+    cases d <;> simp [List.any,turned,ih]
+
+theorem column_before_turned (columns column id : Nat) (empty afterPageFigure : Bool)
+    (before after : List Deferred) :
+    forced .column columns column empty afterPageFigure (before ++ Deferred.turned id :: after) =
+      pageAction empty column afterPageFigure := by
+  simp [forced,turned_anywhere]
+
+theorem column_without_turned (columns column : Nat) (empty afterPageFigure : Bool)
+    (pending : List Deferred) (many : 1 < columns) (regular : pending.any turned = false) :
+    forced .column columns column empty afterPageFigure pending = .nextColumn := by
+  simp [forced,many,regular]
+
+/-- startBefore receives the post-flush geometry for a page start,
+    and the current geometry for a column start. -/
+def startAction (kind : Kind) (empty : Bool) (column : Nat) : Action :=
+  match kind with
+  | .column => if empty then .stay else .nextColumn
+  | .page => if empty && column == 0 then .stay else .nextPage
+  | .recto => .recto
+  | .verso => .verso
+
+/-- parityStart uses the page reached after flushing deferred content
+    and moving to a page boundary. blankPage then advances once. -/
+def parityPage (recto : Bool) (page : Nat) :=
+  if page % 2 = (if recto then 1 else 0) then page else page+1
+
+theorem parityPage_correct (recto : Bool) (page : Nat) :
+    (parityPage recto page) % 2 = (if recto then 1 else 0) ∧
+    page ≤ parityPage recto page ∧ parityPage recto page ≤ page+1 := by
+  cases recto
+  · by_cases h : page % 2 = 0 <;> simp [parityPage,h] <;> omega
+  · by_cases h : page % 2 = 1 <;> simp [parityPage,h] <;> omega
+
+end BreakDispatch
+
 end TableAdvance
 
 
