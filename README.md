@@ -304,6 +304,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 - 欧文の一重のトンボは `--marks western` で付ける。
 - 閲覧用の PDF は `--marks` を付けずに作る。
 
+PDF の柱とノンブルの書体、大きさ、色は、マスターページの `running-head` と `folio` の `character-style` で個別に指定できる。
 トンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
 中綴じの本では `style.toml` の `[hidden-folio]` に `enabled = false` を書く（[golem-driver ADR 0021](docs/golem-driver/adr/0021-hidden-folios.md)）。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。

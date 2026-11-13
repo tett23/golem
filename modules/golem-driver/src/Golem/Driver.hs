@@ -515,7 +515,7 @@ runningVars e =
       ImportGraph graph = projectImports project
       masterOf name = (name >>= \n -> (n,) <$> Map.lookup n masters) <|> (("body",) <$> Map.lookup "body" masters) <|> Map.lookupMin masters
       perFile (fid, name) = case (masterOf name, Map.lookup fid (evResults e)) of
-        (Just (mname, MasterDef (Just rh) _), Just r) ->
+        (Just (mname, MasterDef {mdRunningHead = Just rh}), Just r) ->
           let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
               lookupVar = \case
                 [v] -> Map.lookup v (erExports r)

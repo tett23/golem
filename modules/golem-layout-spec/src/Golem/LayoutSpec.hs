@@ -44,7 +44,9 @@ data MasterGeometry = MasterGeometry
   { -- | the contents of odd and even pages and their anchors (golem-driver ADR 0014)
     mgRunningHead :: !(Maybe (RunningContent, RunningContent, Anchor, Anchor)),
     -- | number format and the anchors on odd and even pages
-    mgFolio :: !(Maybe (Text, Anchor, Anchor))
+    mgFolio :: !(Maybe (Text, Anchor, Anchor)),
+    mgHeadStyle :: !(Maybe Text),
+    mgFolioStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -197,7 +199,7 @@ pageGeometry fid marks style = case stPage style of
                      in (min l1 l2, min r1 r2, min t1 t2, min b1 b2)
               mapM_ (\m -> Left [err m]) (take 1 (ruleChecks style fs columnLength (cols > 1) gap vertical margins))
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
-              runningHeadFits fid ph fs pitch masters
+              runningHeadFits style fid ph fs pitch masters
               hidden <- hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
               Right
                 PageGeometry
@@ -285,19 +287,20 @@ runningHeadBaselines ph pitch a n
 running head (the size times 'baselineRatio' above the baseline, the
 rest below) out of the trimmed page, for the most lines a format has.
 -}
-runningHeadFits :: FileId -> Sp -> Sp -> Sp -> Map Text MasterGeometry -> Either [Diagnostic] ()
-runningHeadFits fid ph fs pitch masters =
-  if any outside [(a, n) | MasterGeometry (Just (co, ce, a1, a2)) _ <- Map.elems masters, (c, a) <- [(co, a1), (ce, a2)], let n = linesOf c, n > 0]
+runningHeadFits :: Style -> FileId -> Sp -> Sp -> Sp -> Map Text MasterGeometry -> Either [Diagnostic] ()
+runningHeadFits style fid ph fs pitch masters =
+  if any outside [(a, n, char) | MasterGeometry (Just (co, ce, a1, a2)) _ char _ <- Map.elems masters, (c, a) <- [(co, a1), (ce, a2)], let n = linesOf c, n > 0]
     then Left [diagnostic "G07052" Error (mkSpan fid 0 0) "柱の行がページからはみ出しています。行の数を減らすか、天（または地）の余白を広げてください"]
     else Right ()
   where
-    above = Sp (round (fromInteger (unSp fs) * baselineRatio))
     linesOf = \case
       RunningLines ls -> length ls
       RunningNone -> 0
-    outside (a, n) =
-      let bs = runningHeadBaselines ph pitch a n
-       in maximum bs + above > ph || minimum bs - (fs - above) < 0
+    outside (a, n, char) =
+      let size = maybe fs (dimToSp fs) (char >>= charStyle style >>= csSize)
+          above = Sp (round (fromInteger (unSp size) * baselineRatio))
+          bs = runningHeadBaselines ph pitch a n
+       in maximum bs + above > ph || minimum bs - (size - above) < 0
 
 {- | The grid lines between the text and the footnotes (golem-driver ADR
 0024): one without spaces; with them, the fewest lines n for which the
@@ -336,7 +339,7 @@ the centre of the type area.
 -}
 masterGeometry :: Sp -> Bool -> Rect -> Rect -> MasterDef -> MasterGeometry
 masterGeometry ph bindingRight oddArea evenArea md =
-  MasterGeometry (head' <$> mdRunningHead md) (place <$> mdFolio md)
+  MasterGeometry (head' <$> mdRunningHead md) (place <$> mdFolio md) (mdRunningHead md >>= rhCharacterStyle) (mdFolioCharacterStyle md)
   where
     head' rh = (rhOdd rh, rhEven rh, anchor (rhPosition rh) 1 oddArea, anchor (rhPosition rh) 2 evenArea)
     place (pos, content) = (content, anchor pos 1 oddArea, anchor pos 2 evenArea)

@@ -114,12 +114,12 @@ tests =
             assertBool "mentions columns" ("段組み" `T.isInfixOf` diagMessage d)
           other -> assertFailure (show other),
       testCase "running heads and folios: outside is the fore-edge, swapped on even pages" $ do
-        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-outside" (oneLine (RefHeading 1 HeadShort PickFirst)) (oneLine (RefMeta "title")))) (Just ("bottom-center", "{n}")))]}
+        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-outside" (oneLine (RefHeading 1 HeadShort PickFirst)) (oneLine (RefMeta "title")) Nothing)) (Just ("bottom-center", "{n}")) Nothing)]}
             g = geom s
             Rect ox oy ow oh = pgTypeArea g
             Rect ex _ _ _ = pgTypeAreaEven g
         case Map.lookup "body" (pgMasters g) of
-          Just (MasterGeometry (Just (co, ce, ho, he)) (Just (_, fo, _))) -> do
+          Just (MasterGeometry (Just (co, ce, ho, he)) (Just (_, fo, _)) _ _) -> do
             (co, ce) @?= (oneLine (RefHeading 1 HeadShort PickFirst), oneLine (RefMeta "title"))
             ho @?= Anchor (ox + ow) (Sp (unSp (oy + oh + a5H) `div` 2)) AlignEnd
             he @?= Anchor ex (Sp (unSp (oy + oh + a5H) `div` 2)) AlignStart
@@ -131,7 +131,7 @@ tests =
             depth = pt 503
             headGrid = (grid 30 30 1 Nothing) {gridTop = Abs margin}
             footGrid = (grid 30 30 1 Nothing) {gridTop = Abs (a5H - depth - margin)}
-            withHead g pos n = (styleWith False False g) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef pos (lines' n) (lines' n))) Nothing)]}
+            withHead g pos n = (styleWith False False g) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef pos (lines' n) (lines' n) Nothing)) Nothing Nothing)]}
             lines' n = RunningLines ([PartText "柱"] :| replicate (n - 1) [PartText "柱"])
             codeOf st = case pageGeometry (FileId 3) False st of
               Left [d] -> Just (diagCode d, diagSpan d)

@@ -52,15 +52,15 @@ geometryTests =
         columnsFor (geom (a5 (grid 14 30 2 (Just (Zw 2))))) 1
           @?= [Rect 3715427 2703489 9175040 32964608, Rect 14201187 2703489 9175040 32964608],
       testCase "top-inside is at the gutter edge: the left of odd pages, the right of even pages" $ do
-        let s = (a5 (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-inside" title title)) Nothing)]}
+        let s = (a5 (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-inside" title title Nothing)) Nothing Nothing)]}
             title = RunningLines ([PartRef (RefMeta "title") False] :| [])
             -- y: the middle of the head margin, (2703489 + 32964608 + 39011981) / 2
-            heads = [(ho, he) | MasterGeometry (Just (_, _, ho, he)) _ <- Map.elems (pgMasters (geom s))]
+            heads = [(ho, he) | MasterGeometry (Just (_, _, ho, he)) _ _ _ <- Map.elems (pgMasters (geom s))]
         heads @?= [(Anchor 3715427 37340039 AlignStart, Anchor 23778731 37340039 AlignEnd)],
       testCase "bottom-outside is at the fore-edge: the right of odd pages, the left of even pages" $ do
-        let s = (a5 (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef Nothing (Just ("bottom-outside", "{n}")))]}
+        let s = (a5 (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef Nothing (Just ("bottom-outside", "{n}")) Nothing)]}
             -- y: the middle of the foot margin, 2703489 / 2
-            folios = [(fo, fe) | MasterGeometry _ (Just (_, fo, fe)) <- Map.elems (pgMasters (geom s))]
+            folios = [(fo, fe) | MasterGeometry _ (Just (_, fo, fe)) _ _ <- Map.elems (pgMasters (geom s))]
         folios @?= [(Anchor 23376227 1351744 AlignEnd, Anchor 4117931 1351744 AlignStart)],
       testCase "a type area that fills the page to the edge is accepted" $
         -- width 20mm + 300pt, height 18mm + 503pt
