@@ -528,6 +528,10 @@ evalBlock ctx (A.Located sp b) = case b of
     | n == "import" -> standalone ctx sp name args body
     -- @style is read before the evaluation for the lines of its body: G02114 at each spread (docs/adr ADR 0112, ADR 0143)
     | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure []
+    | n == "listing",
+      srcDuplicates@(_ : _) <- [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"] -> do
+        mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) srcDuplicates
+        pure []
     | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
   A.Attributed cmds target -> attributed ctx sp cmds target
   A.ErrorBlock -> pure []
@@ -2143,16 +2147,24 @@ missing sp p = err "G02033" sp ("ファイルがありません: " <> p)
 listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 listing ctx sp args = do
   kw <- keywords ctx args
-  -- G02065: the path as src= is to be retired (golem-syntax ADR 0002)
-  mapM_
-    (\asp -> report (notice "G02065" asp "@listing の src= は廃止予定です。パスを最初の引数に書きます"))
-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
-  let src = case [v | A.Located _ (A.Positional v) <- args] of
-        (v : _) -> Just (argText v)
-        [] -> argText <$> lookup "src" kw
-  case src of
-    Nothing -> err "G02036" sp "@listing にはファイルのパスが必要です" >> pure []
-    Just p ->
+  let paths = [(asp, argText v) | A.Located asp (A.Positional v) <- args]
+      legacy = [(asp, argText v) | A.Located asp (A.Keyword (A.Located _ "src") v) <- args]
+      duplicates = [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"]
+  case (duplicates, paths, legacy) of
+    (_ : _, _, _) -> do
+      mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) duplicates
+      pure []
+    ([], first : second : _, _) -> do
+      err "G02253" (fst second) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd second <> "。採用する一方だけを位置引数に残します")
+      pure []
+    ([], first : _, old : _) -> do
+      err "G02253" (fst old) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd old <> "。採用する一方だけを位置引数に残します")
+      pure []
+    ([], [], old : _) -> do
+      err "G02250" (fst old) "@listing の src= は使えません。パスを最初の引数に移します"
+      pure []
+    ([], [], []) -> err "G02036" sp "@listing にはファイルのパスが必要です" >> pure []
+    ([], [(_, p)], []) ->
       asset ctx sp p >>= \case
         Just found | Just content <- assetContent found -> do
           let ls = T.lines content

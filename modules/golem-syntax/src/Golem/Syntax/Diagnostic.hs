@@ -114,7 +114,6 @@ noticeCodes =
     [ "G02062", -- a @style-def overrides a style of style.toml or a built-in one
       "G02063", -- [tcy: ...] of ASCII digits only
       "G02064", -- an escaped space at the start of a line in a paragraph that keeps its lines
-      "G02065", -- @listing src= (to be retired)
       "G02079", -- an escaped space at the end of a line in a paragraph that keeps its lines
       "G02094", -- @blank-line written in a row (docs/adr ADR 0046)
       "G02108", -- a range of lines separated by - (to be retired; docs/adr ADR 0113)

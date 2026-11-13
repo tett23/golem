@@ -71,7 +71,6 @@ Golem は、壊れた出力を黙って作るより止めるほうを選ぶ（�
 
 | コード | 書き方 | 代わりの書き方 | エラーにする時期 |
 | --- | --- | --- | --- |
-| [G02065](diagnostics.md#g02065) | `@listing` の `src=` | パスを最初の引数に書く（`@listing src/Main.hs`） | v0.1.0-rc2 と v0.1.0-rc3 で notice を出したので、v0.1.0-rc4 からエラーにしてよい |
 | [G02108](diagnostics.md#g02108) | `@listing` の `lines` とコードブロックの `highlight` の、`10-20` のような `-` で区切った範囲（[ADR 0113](adr/0113-closed-range-literal.md)） | `...` で区切った範囲（`10...20`） | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |
 | [G02129](diagnostics.md#g02129) | `@table` の `src=`（[ADR 0184](adr/0184-table-positional-path.md)） | パスを最初の引数に書く（`@table data/sizes.csv`） | v0.1.0-rc4 で初めて notice を出すので、v0.1.0-rc4 の後、1.0.0 までにエラーにする。1.0.0 でエラーにしてもよい |
 | [G02154](diagnostics.md#g02154) | 原稿の変数宣言 `@set 名前 = 式`（[Golem ADR 0336](adr/0336-unprefixed-variable-declarations.md)） | 先頭の `@` を消して `set 名前 = 式` と書く | 導入した版で notice を出し始める。エラーにする時期は別の ADR で決める |

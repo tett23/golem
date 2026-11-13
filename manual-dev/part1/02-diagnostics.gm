@@ -218,14 +218,13 @@ notice には、ほかの二つと違う性質が三つある。
 - 出力のバイト列を変えない。抑制しても、しなくても、PDF は同じである。
 
 人が読む形式では [code: notice\[G07030\]] のように書き、JSON では [code: "severity":"notice"] と書く。
-今の notice は次の二十七である。
+今の notice は次の二十六である。
 
 | コード | 内容 |
 | --- | --- |
 | G02062 | [code: @style-def] が [code: style.toml] か組み込みのスタイルを上書きした |
 | G02063 | 数字だけの縦中横 |
 | G02064 | 行を保つ段落の行頭のエスケープした空白 |
-| G02065 | [code: @listing] の [code: src=]（廃止予定） |
 | G02079 | 行を保つ段落の行末のエスケープした空白 |
 | G02094 | 続けて書いた [code: @blank-line] |
 | G02108 | [code: -] で区切った行の範囲（廃止予定） |
@@ -326,7 +325,7 @@ LSP には [code: --no-notices] に当たる設定はなく、[code: silence-not
 
 ## 廃止予定の notice
 
-記法と設定のキーを廃止するときは、まず廃止予定の notice を出す（G02065 と G02108 がその例である）。[index reading="はいしよてい": 廃止予定]
+記法と設定のキーを廃止するときは、まず廃止予定の notice を出す（G02108 がその例である）。[index reading="はいしよてい": 廃止予定]
 手順は互換性の文書 [code: docs/compatibility.md] の「廃止の手順」が決めている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/compatibility.md]（互換性の文書。ADR 0174「1.0.0 から互換を守る範囲と、廃止の手順」で決めた）]
 
 + 廃止を決める ADR で、廃止予定の notice のコードを決める。メッセージは「〜は廃止予定です」で始め、代わりの書き方を続ける。
