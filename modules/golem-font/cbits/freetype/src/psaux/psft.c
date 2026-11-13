@@ -431,6 +431,8 @@
       }
 
       error2 = cf2_getGlyphOutline( font, &buf, &transform, &glyphWidth );
+      if ( error2 == FT_ERR( Invalid_Offset ) )
+        return error2;  /* Preserve a CFF subroutine bounds failure. */
       if ( error2 )
         return FT_ERR( Invalid_File_Format );
 
@@ -624,6 +626,28 @@
   }
 
 
+  /* The fast pointer table clamps offsets when it is built.  Inspect
+   * the original INDEX entries when a CharString actually calls a subr. */
+  static FT_Bool
+  cf2_subrOutsideStream( CFF_Index  index,
+                         CF2_UInt   idx )
+  {
+    FT_ULong  available;
+
+
+    if ( !index->offsets )
+      return FALSE;
+    if ( index->data_offset > index->stream->size )
+      return TRUE;
+
+    available = index->stream->size - index->data_offset;
+    return ( index->offsets[idx] &&
+             index->offsets[idx] - 1 > available ) ||
+           ( index->offsets[idx + 1] &&
+             index->offsets[idx + 1] - 1 > available );
+  }
+
+
   /* convert unbiased subroutine index to `CF2_Buffer' and */
   /* return 0 on success                                   */
   FT_LOCAL_DEF( CF2_Int )
@@ -641,6 +665,10 @@
     idx = (CF2_UInt)( subrNum + decoder->globals_bias );
     if ( idx >= decoder->num_globals )
       return TRUE;     /* error */
+
+    if ( !decoder->builder.is_t1 &&
+         cf2_subrOutsideStream( &decoder->cff->global_subrs_index, idx ) )
+      return TRUE;
 
     FT_ASSERT( decoder->globals );
 
@@ -807,6 +835,10 @@
     idx = (CF2_UInt)( subrNum + decoder->locals_bias );
     if ( idx >= decoder->num_locals )
       return TRUE;     /* error */
+
+    if ( !decoder->builder.is_t1 &&
+         cf2_subrOutsideStream( &decoder->current_subfont->local_subrs_index, idx ) )
+      return TRUE;
 
     FT_ASSERT( decoder->locals );
 

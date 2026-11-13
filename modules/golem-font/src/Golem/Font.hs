@@ -40,6 +40,7 @@ module Golem.Font
     glyphMetrics,
     glyphCid,
     subsetFont,
+    checkCffGlyphs,
     subsetTag,
   )
 where
@@ -89,6 +90,8 @@ foreign import capi unsafe "golem_font.h golem_font_shape"
   c_shape :: Ptr CFont -> CString -> CInt -> CString -> CString -> CInt -> CString -> CInt -> Ptr Word32 -> Ptr Word32 -> Ptr Int32 -> CInt -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_feature_tags" c_featureTags :: Ptr CFont -> Ptr Word32 -> CInt -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_check_cff" c_checkCff :: Ptr CFont -> Ptr Word32 -> CInt -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_subset" c_subset :: Ptr CFont -> Ptr Word32 -> CInt -> Ptr CSize -> IO (Ptr Word8)
 
@@ -302,6 +305,11 @@ glyphCid :: Font -> Int -> Int
 glyphCid f gid = case fontCids f of
   Just cids | inRange (bounds cids) gid -> cids ! gid
   _ -> fromIntegral (fromIntegral gid :: Word32)
+
+-- | Validate the used outlines within the declared CFF table before subsetting.
+checkCffGlyphs :: Font -> [Int] -> IO Bool
+checkCffGlyphs f gids = withForeignPtr (fontPtr f) $ \p ->
+  withArrayLen (map fromIntegral gids) $ \n arr -> (/= 0) <$> c_checkCff p arr (fromIntegral n)
 
 {- | A subset with only the glyphs (and .notdef), glyph ids kept (ADR 0002).
 IO, called when the PDF is written (docs/adr ADR 0034).

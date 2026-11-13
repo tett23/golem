@@ -42,6 +42,9 @@ int golem_font_shape(golem_font *f, const char *utf8, int len, const char *scrip
    language system: the first max to out; returns the number of them all. */
 int golem_font_feature_tags(golem_font *f, uint32_t *out, int max);
 
+/* Checks table and subroutine bounds for the selected glyphs. */
+int golem_font_check_cff(golem_font *f, const uint32_t *gids, int count);
+
 /* Subsets to the glyphs, keeping glyph ids. Returns a malloc'd buffer
    (free with golem_font_free) and its length, or NULL. */
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len);

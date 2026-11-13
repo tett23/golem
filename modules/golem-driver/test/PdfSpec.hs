@@ -159,11 +159,61 @@ pdfPipelineTests =
         codes (setCffRecord 8 0 sans) >>= (@?= unreadable)
         codes (setCffRecord 12 (n * 2) sans) >>= (@?= unreadable)
         codes (setCffRecord 12 0 sans) >>= (@?= unreadable)
-        -- a length cut short but within the file opens: no error, and the
-        -- truncated table is embedded as it is
-        codes (setCffRecord 12 4 sans) >>= (@?= ([], True))
         -- a collection (.ttc) holding the CFF font is opened and subset: no error
         codes (asCollection sans) >>= (@?= ([], True)),
+      testCase "inv1_validate_embedded_cff_property: a header without the required indexes is rejected" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 4 sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "inv1_validate_embedded_cff_property: used local and global subroutine targets must exist" $ do
+        (sans, _) <- realLatinFonts
+        -- T (gid 21) has a three-byte CharString in this fixture. Keep its
+        -- length and replace the operand with 1131, beyond either subr INDEX.
+        BS.take 3 (BS.drop 51558 sans) @?= BS.pack [247, 55, 10]
+        forM_ [10, 29] $ \call -> do
+          let bad = BS.take 51558 sans <> BS.pack [250, 255, call] <> BS.drop 51561 sans
+          b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+          map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+          bPdf b @?= Nothing,
+      testCase "inv1_validate_embedded_cff_property: used local subroutine endpoint exceeds the table" $ do
+        (sans, _) <- realLatinFonts
+        -- T calls local subroutine 270. Its end offset occupies two bytes.
+        let bad = BS.take 120473 sans <> BS.replicate 2 255 <> BS.drop 120475 sans
+        b <- buildMarksFilesWith "T" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "G08107 is specific to out-of-bounds CFF references" $ do
+        (sans, _) <- realLatinFonts
+        -- An add with an empty operand stack is malformed but reads no offset.
+        let bad = BS.take 51558 sans <> BS.pack [12, 10, 14] <> BS.drop 51561 sans
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        assertBool "stack underflow must not be diagnosed as a table bounds error" (DiagnosticCode "G08107" `notElem` map diagCode (bErrors b)),
+      testCase "inv1_validate_embedded_cff_property: private dictionary extends past the declared table" $ do
+        (sans, _) <- realLatinFonts
+        -- The Top DICT locates the 66-byte Private DICT at offset 103526.
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 103591 sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "inv1_validate_embedded_cff_property: used CharString endpoint exceeds the table" $ do
+        (sans, _) <- realLatinFonts
+        -- Offset 22 is the end of the CharString for T (gid 21).
+        let bad = BS.take 45509 sans <> BS.replicate 3 255 <> BS.drop 45512 sans
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      -- In this fixture the last offset of the Local Subrs INDEX is exactly
+      -- the end of the CFF table (114180 bytes).
+      testCase "inv1_validate_embedded_cff_case_1" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 114180 sans)]
+        map diagCode (bErrors b) @?= []
+        assertBool "PDF is written" (isJust (bPdf b)),
+      testCase "inv1_validate_embedded_cff_case_2" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 114179 sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
       testCase "ruby readings, emphasis dots and line-end hyphens are drawn" $ do
         pdf <- withSystemTempDirectory "golem-driver" $ \tmp -> do
           copyTree fixture tmp
