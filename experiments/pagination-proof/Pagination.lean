@@ -7392,6 +7392,66 @@ theorem I3_extended_figure_prefix_fits (capacity used b count : Nat)
         simpa [eq] using positionOrder i f prior)
     omega
 
+/- spaceKeeps quantifies over figures before the need that are not
+   waiting. This is equivalent to retaining every preceding figure:
+   the first sent figure cannot have an earlier sent figure, so it
+   never belongs to waitingIn. -/
+theorem I3_no_unplaced_nonwaiting_before_iff (kept : Nat → Bool) (n : Nat) :
+    (∀ f, f < n → ¬ figureWaits kept f → kept f = true) ↔
+      (∀ f, f < n → kept f = true) := by
+  constructor
+  · intro onlyNonwaiting
+    have all : ∀ bound, bound ≤ n → ∀ f, f < bound → kept f = true := by
+      intro bound
+      induction bound with
+      | zero => intro _ f lt; exact (Nat.not_lt_zero f lt).elim
+      | succ k ih =>
+        intro upper f lt
+        have lower := ih (by omega)
+        by_cases earlier : f < k
+        · exact lower f earlier
+        · have eq : f = k := by omega
+          subst f
+          apply onlyNonwaiting k (by omega)
+          intro wait
+          obtain ⟨_, i, prev, sent⟩ := wait
+          have yes := lower i prev
+          simp [yes] at sent
+    exact all n (Nat.le_refl _)
+  · intro all f lt _
+    exact all f lt
+
+/- If the first unplaced item is a figure and all preceding text and
+   figures are already here, the room and P7 checks force that figure
+   directly. There is no additional text break to select in this case. -/
+theorem I3_target_figure_stays_when_group_fits
+    (count capacity used f : Nat) (ready : Nat → Bool)
+    (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (blankBefore : Nat → Bool) (block : Nat → Prop)
+    (needs : List (Nat × Nat)) (kept : Nat → Bool)
+    (rule : figures27Model count capacity used ready textBefore nonSpaceBefore size
+      positions blankBefore block needs kept)
+    (bound : f < count) (allText : ready f = true)
+    (allFig : ∀ g, g < f → ¬ figureWaits kept g → kept g = true)
+    (firstFits : used + textBefore f + priorFigureLines (fun g => if kept g then size g else 0) f +
+      (if blankBefore f then 1 else 0) + size f ≤ capacity)
+    (records : recordNeedsFit
+      (capacity - (used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f))
+      0 ((needs.filter (fun n => @decide
+        (needTargetsFigure n.1 positions block f (figureWaits kept)) (Classical.propDecidable _))).map Prod.snd)) :
+    kept f = true := by
+  have prior := (I3_no_unplaced_nonwaiting_before_iff kept f).mp allFig
+  have sum := I3_all_prior_rows_sum f size kept prior
+  change priorFigureLines (fun g => if kept g then size g else 0) f = priorFigureLines size f at sum
+  apply (rule f bound).mpr
+  refine ⟨allText, prior, ?_, ?_⟩
+  · rwa [sum] at firstFits
+  · intro n member target
+    apply Or.inr
+    apply (I3_record_needs_fit_iff_all _ 0 _ (Nat.zero_le _)).mp records n.2
+    apply List.mem_map.mpr
+    exact ⟨n, List.mem_filter.mpr ⟨member, decide_eq_true_eq.mpr target⟩, rfl⟩
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
