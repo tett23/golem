@@ -362,6 +362,26 @@ example : captionChooseEnd ⟨8, 0, []⟩ ⟨8, 3, []⟩ = ⟨8, 0, []⟩ := by 
 example : captionChooseEnd ⟨8, 1, [(6, 0)]⟩ ⟨8, 1, [(6, 1)]⟩ =
     ⟨8, 1, [(6, 1)]⟩ := by decide
 
+def captionBestEnd : List CaptionEnd → Option CaptionEnd
+  | [] => none
+  | first :: rest => some (rest.foldl captionChooseEnd first)
+
+theorem captionBestEnd_le (first : CaptionEnd) (rest : List CaptionEnd) :
+    ∀ e ∈ first :: rest, (rest.foldl captionChooseEnd first).demerits ≤ e.demerits := by
+  induction rest generalizing first with
+  | nil => simp
+  | cons next tail ih =>
+    intro e he
+    change (tail.foldl captionChooseEnd (captionChooseEnd first next)).demerits ≤ _
+    have h := ih (captionChooseEnd first next)
+    have bound := h _ (List.Mem.head _)
+    rw [captionChooseEnd_cost] at bound
+    simp only [List.mem_cons] at he
+    rcases he with rfl | rfl | tailMem
+    · omega
+    · omega
+    · exact h _ (List.Mem.tail _ tailMem)
+
 private def measuredCaptionWidth (number pair single triple interior : Nat) : Nat :=
   number + 655360 + pair + interior * single + triple
 
