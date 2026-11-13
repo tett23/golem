@@ -161,6 +161,31 @@ theorem I1_caption_overfull_iff (shortfall stretch glueShrink compression : Int)
     cases pullInFirst <;> by_cases room : -shortfall ≤ glueShrink <;>
     simp [pos, zero, over, room] <;> omega
 
+/-- Within one (line number, fitness) entry, equal demerits select
+    the later predecessor in the active list, as in KnuthPlass.step. -/
+def captionPreferLater {α : Type} (old new : Int × α) : Int × α :=
+  if new.1 ≤ old.1 then new else old
+
+theorem I1_caption_choice_last_minimum {α : Type} (first : Int × α)
+    (rest : List (Int × α)) (last : Int × α) :
+    (first :: rest).all (fun prior => decide (last.1 ≤ prior.1)) = true →
+      (rest ++ [last]).foldl captionPreferLater first = last := by
+  induction rest generalizing first with
+  | nil =>
+    intro h
+    have bound : last.1 ≤ first.1 := by simpa using h
+    simp [captionPreferLater, bound]
+  | cons next tail ih =>
+    intro h
+    simp only [List.all_cons, Bool.and_eq_true, decide_eq_true_eq] at h
+    apply ih
+    simp only [List.all_cons, Bool.and_eq_true, decide_eq_true_eq]
+    refine ⟨?_, h.2.2⟩
+    unfold captionPreferLater
+    split
+    · exact h.2.1
+    · exact h.1
+
 /-- Natural width of the numbered caption fixture, in scaled points.
     The shaped runs are the number, an ideographic space, two initial M
     glyphs, the individual interior glyphs, and three final M glyphs. -/
