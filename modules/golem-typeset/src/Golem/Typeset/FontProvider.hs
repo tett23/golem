@@ -262,24 +262,28 @@ provide memoise fid faces body roles =
           (asc, desc, cap) = fontExtents f
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
-      program <- fromMaybe (fontBytes f) <$> subsetFont f gids
-      pure $
-        (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
-          P.Font
-            { P.fontName = name,
-              P.fontProgram = fontProgram,
-              P.fontVertical = vertical,
-              P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
-              P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
-              P.fontAscent = per1000 asc,
-              P.fontDescent = per1000 desc,
-              P.fontCapHeight = per1000 cap,
-              P.fontStemV = 80,
-              P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
-              P.fontItalicAngle = 0,
-              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
-              P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
-            }
+      valid <- if fontIsCff f then checkCffGlyphs f (0 : gids) else pure True
+      if not valid
+        then pure (Left (diagnostic "G08107" Error (mkSpan fid 0 0) ("CFF の内部参照が表の範囲を外れています: " <> T.pack path)))
+        else do
+          program <- fromMaybe (fontBytes f) <$> subsetFont f gids
+          pure $
+            (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
+              P.Font
+                { P.fontName = name,
+                  P.fontProgram = fontProgram,
+                  P.fontVertical = vertical,
+                  P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
+                  P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
+                  P.fontAscent = per1000 asc,
+                  P.fontDescent = per1000 desc,
+                  P.fontCapHeight = per1000 cap,
+                  P.fontStemV = 80,
+                  P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
+                  P.fontItalicAngle = 0,
+                  P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
+                  P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
+                }
 
 {- | The program of a CFF font: its bare CFF table, embedded in FontFile3 with
 the subtype CIDFontType0C (golem-pdf ADR 0011). PDFium takes the codes of a

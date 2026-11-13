@@ -4149,6 +4149,7 @@ CID-keyed の CFF のフォントは CID を文字のコードとし、CIDFont �
 OpenType に包んだ CFF（`/Subtype /OpenType`）は、ISO 32000-1 が認める形だが、埋め込まない。
 Chromium の PDF のビューアー（PDFium）が、OpenType に包んだ CID-keyed の CFF の文字のコードをグリフ ID として読み、和文を描かないためである。
 そのため、CFF の表を取り出せないフォントは、OpenType のまま埋め込まずにエラー（G08018）とし、PDF を書かない。
+CFF 表が存在しても、INDEX の終端、辞書が指すデータ、使用グリフの輪郭またはサブルーチンの参照が範囲を外れれば、G08107 を出して PDF の生成を中止する（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）。
 
 ### ToUnicode と ActualText
 

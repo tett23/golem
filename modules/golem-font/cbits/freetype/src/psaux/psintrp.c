@@ -1033,7 +1033,8 @@
                                              subrNum,
                                              charstring ) )
             {
-              lastError = FT_THROW( Invalid_Glyph_Format );
+              lastError = font->isT1 ? FT_THROW( Invalid_Glyph_Format )
+                                     : FT_THROW( Invalid_Offset );
               goto exit;  /* subroutine lookup or stream error */
             }
             break;
@@ -1048,7 +1049,8 @@
                                             subrNum,
                                             charstring ) )
             {
-              lastError = FT_THROW( Invalid_Glyph_Format );
+              lastError = font->isT1 ? FT_THROW( Invalid_Glyph_Format )
+                                     : FT_THROW( Invalid_Offset );
               goto exit;  /* subroutine lookup or stream error */
             }
           }

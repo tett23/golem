@@ -44,6 +44,7 @@ int golem_font_feature_tags(golem_font *f, uint32_t *out, int max);
 
 /* Subsets to the glyphs, keeping glyph ids. Returns a malloc'd buffer
    (free with golem_font_free) and its length, or NULL. */
+int golem_font_check_cff(golem_font *f, const uint32_t *gids, int count);
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len);
 char *golem_font_postscript_name(golem_font *f);
 uint32_t golem_font_cid(golem_font *f, uint32_t gid);

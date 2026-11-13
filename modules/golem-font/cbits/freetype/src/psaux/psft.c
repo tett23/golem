@@ -431,6 +431,8 @@
       }
 
       error2 = cf2_getGlyphOutline( font, &buf, &transform, &glyphWidth );
+      if ( error2 == FT_ERR( Invalid_Offset ) )
+        return error2;  /* Preserve a CFF subroutine bounds failure. */
       if ( error2 )
         return FT_ERR( Invalid_File_Format );
 

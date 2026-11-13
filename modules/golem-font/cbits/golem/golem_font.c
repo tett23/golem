@@ -198,6 +198,33 @@ int golem_font_feature_tags(golem_font *f, uint32_t *out, int max) {
   return total;
 }
 
+/* Read only the declared CFF table, including for an sfnt collection. */
+int golem_font_check_cff(golem_font *f, const uint32_t *gids, int count) {
+  hb_blob_t *blob = hb_face_reference_table(f->hbface, HB_TAG('C','F','F',' '));
+  unsigned length = 0;
+  const FT_Byte *bytes = (const FT_Byte *)hb_blob_get_data(blob, &length);
+  FT_Face face = NULL;
+  LOCK_FT(f);
+  FT_Error error = FT_New_Memory_Face(f->lib, bytes, length, 0, &face);
+  if (!error) {
+    FT_Bool cid_keyed = 0;
+    error = FT_Get_CID_Is_Internally_CID_Keyed(face, &cid_keyed);
+    for (int i = 0; !error && i < count; ++i) {
+      FT_UInt index = gids[i];
+      if (cid_keyed) error = FT_Get_CID_From_Glyph_Index(face, gids[i], &index);
+      if (!error) {
+        FT_Error load = FT_Load_Glyph(face, index, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING);
+        if (load == FT_Err_Invalid_Offset || load == FT_Err_Invalid_Stream_Operation)
+          error = load;
+      }
+    }
+    FT_Done_Face(face);
+  }
+  UNLOCK_FT(f);
+  hb_blob_destroy(blob);
+  return !error;
+}
+
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len) {
   hb_subset_input_t *input = hb_subset_input_create_or_fail();
   if (!input) return NULL;
