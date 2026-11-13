@@ -8127,6 +8127,110 @@ theorem I3_written_text_needs_satisfy_P1
   apply (I3_record_needs_fit_iff_all _ 0 _ (Nat.zero_le _)).mp records n.2
   exact List.mem_map.mpr ⟨n, List.mem_filter.mpr ⟨member, decide_eq_true_eq.mpr target⟩, rfl⟩
 
+/- Extending a break to include the previously missed target preserves
+   P1 for every text, not just that target. The newly placed text is
+   either the target or a space between the need and the target; no
+   needNext can target a space. -/
+theorem I3_extend_prefix_preserves_all_text_needs
+    (used capacity count b t : Nat) (items : List SourceItem) (ordered : sourceOrdered items)
+    (positions size : Nat → Nat) (space room : Nat → Bool) (needs : List (Nat × Nat))
+    (posOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (target : .text t ∈ items) (missed : textHereAtBreak items b t = false)
+    (onlySpaces : ∀ p, .text p ∈ items → p < t →
+       textHereAtBreak items b p = false → space p = true)
+    (distinctText : ∀ n ∈ needs, ∀ p, .text p ∈ items → p ≠ n.1)
+    (distinctFigure : ∀ n ∈ needs, ∀ i, positions i ≠ n.1) :
+    let kept := fun brk => greedyFigure (fun i => decide (textBeforeCount items (positions i) ≤ brk)) room
+    let group := needs.filter (fun n => @decide (sourceNeedAtTarget n.1 t count items positions space (kept b))
+      (Classical.propDecidable _))
+    writtenGroupFits capacity 0 (placedBeforeNeedSource used count b items positions size space (kept b)) group →
+    (∀ p, .text p ∈ items → textHereAtBreak items b p = true →
+      needAtPlacedText used capacity count items positions size space needs b (kept b) p) →
+    (∀ p, .text p ∈ items → textHereAtBreak items (b+1) p = true →
+      needAtPlacedText used capacity count items positions size space needs (b+1) (kept (b+1)) p) := by
+  dsimp only
+  intro records old p member placed
+  have rank : textBeforeCount items p ≤ b := by
+    change decide (textBeforeCount items p < b+1) = true at placed
+    have := decide_eq_true_eq.mp placed
+    omega
+  apply (I3_text_need_checks_preserved used capacity count b (b+1) p items ordered positions
+    size space room needs posOrder member rank (by omega)).mp
+  cases oldPlaced : textHereAtBreak items b p with
+  | true => exact old p member oldPlaced
+  | false =>
+    by_cases eq : p = t
+    · subst p
+      exact I3_written_text_needs_satisfy_P1 _ _ _ _ _ _ _ _ _ _ _ distinctText distinctFigure records
+    · have before : p < t := by
+        apply Classical.byContradiction
+        intro later
+        have pm := (I3_source_text_position_member items p).mpr member
+        have tm := (I3_source_text_position_member items t).mpr target
+        have strict := I3_text_rank_preserves_order _ (I3_source_text_positions_ordered items ordered)
+          t p tm pm (by omega)
+        have index := (I3_text_here_iff_source_rank items ordered p (b+1) member).mp placed
+        have tHere := (I3_text_here_iff_source_rank items ordered t b target).mpr (by omega)
+        simp [missed] at tHere
+      have sp := onlySpaces p member before oldPlaced
+      intro n _ selected
+      have notSpace := selected.2.1.2
+      simp [sp] at notSpace
+
+theorem I3_missed_target_can_extend_without_new_figures
+    (used capacity count b t blank : Nat) (items : List SourceItem)
+    (ordered : sourceOrdered items) (positions size : Nat → Nat)
+    (space room waiting keptAt : Nat → Bool) (needs : List (Nat × Nat))
+    (top : Bool) (firstPart : Nat) (positivePart : 0 < firstPart)
+    (posOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (target : .text t ∈ items) (missed : textHereAtBreak items b t = false)
+    (onlySpaces : ∀ p, .text p ∈ items → p < t → textHereAtBreak items b p = false → space p = true)
+    (distinctText : ∀ n ∈ needs, ∀ p, .text p ∈ items → p ≠ n.1)
+    (distinctFigure : ∀ n ∈ needs, ∀ i, positions i ≠ n.1)
+    (distinctTarget : ∀ i, i < count → positions i ≠ t) :
+    let kept := fun brk => greedyFigure (fun i => decide (textBeforeCount items (positions i) ≤ brk)) room
+    let group := needs.filter (fun n => @decide (sourceNeedAtTarget n.1 t count items positions space (kept b))
+      (Classical.propDecidable _))
+    (∀ i, i < count → kept (b+1) i = kept b i) →
+    (∀ p, .figure p ∈ items → keptAt p = true → ∃ i, i < count ∧ kept (b+1) i = true ∧ positions i = p) →
+    (∀ i, i < count → kept b i = true → ∀ p, .text p ∈ items → p < positions i → textHereAtBreak items b p = true) →
+    used + ((sourceTextPositions items).filter (fun p => decide (p < t) && textHereAtBreak items b p)).length +
+      keptRowsThrough (fun i => kept b i && decide (positions i < t)) size count +
+      (if blank < t ∧ top = false then 1 else 0) + firstPart ≤ capacity →
+    writtenGroupFits capacity 0 (placedBeforeNeedSource used count b items positions size space (kept b)) group →
+    (∀ p, .text p ∈ items → textHereAtBreak items b p = true →
+      needAtPlacedText used capacity count items positions size space needs b (kept b) p) →
+    used + (b+1) + keptRowsThrough (kept (b+1)) size count +
+      (if blankPlacedFromSource blank waiting items (textHereAtBreak items (b+1)) keptAt top then 1 else 0) ≤ capacity ∧
+    (∀ p, .text p ∈ items → textHereAtBreak items (b+1) p = true →
+      needAtPlacedText used capacity count items positions size space needs (b+1) (kept (b+1)) p) := by
+  let kept := fun brk => greedyFigure (fun i => decide (textBeforeCount items (positions i) ≤ brk)) room
+  dsimp only
+  intro noNew source order load records p1
+  change ∀ i, i < count → kept (b+1) i = kept b i at noNew
+  have sameSum : ∀ n, n ≤ count → keptRowsThrough (kept (b+1)) size n = keptRowsThrough (kept b) size n := by
+    intro n
+    induction n with
+    | zero => intro _; rfl
+    | succ n ih => intro bound; simp only [keptRowsThrough, noNew n (by omega), ih (by omega)]
+  have allFigures := I3_figure_rows_before_missed_target count (kept b) size positions items b t
+    target missed distinctTarget order
+  have localRoom : used + b + keptRowsThrough (kept b) size count +
+      (if blank < t ∧ top = false then 1 else 0) + firstPart ≤ capacity := by
+    rw [I3_alloy_load_before_missed_target items ordered b t target missed, allFigures] at load
+    exact load
+  constructor
+  · apply I3_unchanged_figures_extended_fits capacity used b count size positions blank t items
+      waiting keptAt (kept (b+1)) top firstPart positivePart source ordered target missed
+    · intro i bound new
+      change kept (b+1) i = true at new
+      rw [noNew i bound] at new
+      exact order i bound new
+    · rw [sameSum count (Nat.le_refl _)]
+      exact localRoom
+  · exact I3_extend_prefix_preserves_all_text_needs _ _ _ _ _ _ ordered _ _ _ _ _ posOrder target
+      missed onlySpaces distinctText distinctFigure records p1
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
