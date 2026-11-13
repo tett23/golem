@@ -99,7 +99,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **傍注の `※` の印（未実装）**：印の位置の見た目のまま組み、文字スタイルを当てる手段がない。 [Golem ADR 0371](adr/0371-sidenote-marker-style.md)。
 - **柱とノンブルのスタイル（未実装）**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
 - **番号と題のあいだの区切りの設定（未実装）**：見出し、図版、コードブロック、表のキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
-- **見出しの行取りの中の位置（未実装）**：見出しを行取りの領域の中央のほかに、前寄せや後ろ寄せで置く設定。行取りの行数は `[headings.<階層>]` の `lines` で指定できるが（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）、見出しはいつも領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。 [Golem ADR 0373](adr/0373-heading-block-alignment.md)。
+- **見出しの行取りの中の位置**：階層ごとの `block-align` で前寄せ、中央寄せ、後ろ寄せを選べる（[Golem ADR 0373](adr/0373-heading-block-alignment.md)）。
 - **段落スタイルの拡張（未実装）**：行送り、次のスタイル、ドロップキャップと字取り、先頭文字スタイル、`@style` の引数による段落ごとの上書き、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リストなどへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。
 - **発行の履歴の書式（未実装）**：`@printings` は、奥付の発行の履歴の行（`2026年10月16日　初版第1刷発行` の形）を、日本語の一つの書式に固定して組む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。この書式を `style.toml` で変えられるようにする（`第1版第1刷` と書く本、日付と版の順を変える本など）。日本語でない本の書式も合わせて扱う。 [Golem ADR 0375](adr/0375-printings-format.md)。
 

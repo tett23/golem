@@ -36,6 +36,7 @@ module Golem.Layout.Paginate
     splitAtBreak,
     firstPart,
     headingBlock,
+    headingBlockAligned,
     Need (..),
     lookAhead,
     keptLookAhead,
@@ -64,6 +65,7 @@ import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd)
 import Golem.Length (Sp (..))
+import Golem.Project.Style (HeadingBlockAlign (..))
 import Golem.Syntax (SrcSpan)
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
@@ -73,12 +75,20 @@ least @least@ (golem-driver ADR 0032), and the heading is centred in
 them. One rounding.
 -}
 headingBlock :: Sp -> Sp -> Sp -> Int -> Int -> HeadingBlock
-headingBlock (Sp fs) (Sp p) (Sp s) m least =
+headingBlock = headingBlockAligned HeadingCenter
+
+headingBlockAligned :: HeadingBlockAlign -> Sp -> Sp -> Sp -> Int -> Int -> HeadingBlock
+headingBlockAligned alignment (Sp fs) (Sp p) (Sp s) m least =
   let hp = round (p * s % fs)
       extent = toInteger (max 1 m - 1) * hp + s
       n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
-   in HeadingBlock (Sp hp) (fromInteger n) (Sp ((area - extent) `div` 2))
+      free = max 0 (area - extent)
+      offset = case alignment of
+        HeadingStart -> 0
+        HeadingCenter -> free `div` 2
+        HeadingEnd -> free
+   in HeadingBlock (Sp hp) (fromInteger n) (Sp offset)
 
 {- | The first part of what follows that a heading keeps with it, in a
 column of @capacity@ grid lines: its grid lines and the lines of its

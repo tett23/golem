@@ -983,6 +983,10 @@ tests =
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G03006"],
+      testCase "inv1_heading_block_alignment: each level has its own alignment, defaulting to center" $ do
+        let src = "[headings.1]\nblock-align = \"start\"\n[headings.2]\nlines = 3\n[headings.3]\nblock-align = \"end\"\n"
+        fmap (map hsBlockAlign . Map.elems . stHeadings) (parseStyle (FileId 0) src) @?= Right [HeadingStart, HeadingCenter, HeadingEnd]
+        codes (parseStyle (FileId 0) "[headings.1]\nblock-align = \"left\"\n") @?= ["G03006"],
       testCase "the lines of a heading (golem-driver ADR 0032)" $ do
         let linesOf src = either (const Nothing) (\s -> Just (hsLines <$> Map.lookup 2 (stHeadings s))) (parseStyle (FileId 0) src)
         linesOf "[headings.2]\nlines = 3\n" @?= Just (Just (Just 3))
