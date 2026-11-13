@@ -374,6 +374,11 @@ function provedClassLookaheadOrEof(expr) {
 }
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (rule.name === 'Ind' && rule.params.length === 1 && rule.params[0] === 'n' &&
+        rule.templateParams.length === 0 && rule.alts.length === 2 &&
+        describeItems(rule.alts[0].items) === '&{ n == 0 }' &&
+        describeItems(rule.alts[1].items) === "' ' Ind(n - 1)" &&
+        rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) continue;
     if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
         rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
         describeItems(rule.alts[0].items) === string && rule.alts[0].action?.trim() === '()' &&
