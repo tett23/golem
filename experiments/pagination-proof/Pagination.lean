@@ -7424,6 +7424,39 @@ theorem I3_no_unplaced_nonwaiting_before_iff (kept : Nat → Bool) (n : Nat) :
 /- If the first unplaced item is a figure and all preceding text and
    figures are already here, the room and P7 checks force that figure
    directly. There is no additional text break to select in this case. -/
+theorem I3_figure_need_earlier_figures_placed
+    (kept : Nat → Bool) (pos : Nat → Nat)
+    (n f : Nat) (block : Nat → Prop)
+    (target : needTargetsFigure n pos block f (figureWaits kept))
+    (beforeNeed : ∀ g, pos g < n → ¬ figureWaits kept g → kept g = true)
+    (distinct : ∀ g, pos g ≠ n) :
+    ∀ g, g < f → kept g = true := by
+  apply (I3_no_unplaced_nonwaiting_before_iff kept f).mp
+  intro g prior notWaiting
+  by_cases earlier : pos g < n
+  · exact beforeNeed g earlier notWaiting
+  · have different := distinct g
+    exact (notWaiting (target.2.2.2 g prior (by omega))).elim
+
+theorem I3_figure_need_earlier_text_placed
+    (items : List SourceItem) (space here : Nat → Bool)
+    (figPos : Nat → Nat) (n f : Nat) (kept : Nat → Bool)
+    (target : needTargetsFigure n figPos (fun p => .text p ∈ items ∧ space p = false)
+      f (figureWaits kept))
+    (beforeNeed : ∀ p, .text p ∈ items → p < n → here p = true)
+    (beforeSpaces : ∀ p, .text p ∈ items → n < p → p < figPos f →
+      space p = true → here p = true)
+    (distinct : ∀ p, .text p ∈ items → p ≠ n) :
+    ∀ p, .text p ∈ items → p < figPos f → here p = true := by
+  intro p member prior
+  by_cases earlier : p < n
+  · exact beforeNeed p member earlier
+  · have diff := distinct p member
+    have after : n < p := by omega
+    cases sp : space p with
+    | true => exact beforeSpaces p member after prior sp
+    | false => exact (target.2.2.1 p ⟨member, sp⟩ after prior).elim
+
 theorem I3_target_figure_stays_when_group_fits
     (count capacity used f : Nat) (ready : Nat → Bool)
     (textBefore nonSpaceBefore size positions : Nat → Nat)
@@ -7451,6 +7484,90 @@ theorem I3_target_figure_stays_when_group_fits
     apply (I3_record_needs_fit_iff_all _ 0 _ (Nat.zero_le _)).mp records n.2
     apply List.mem_map.mpr
     exact ⟨n, List.mem_filter.mpr ⟨member, decide_eq_true_eq.mpr target⟩, rfl⟩
+
+/- For the original one-need rule the needMet test is made at the
+   target whereas P7 checks the need where written. There is no ordinary
+   text or nonwaiting figure between a need and its target, so the
+   occupied, non-space load is unchanged. Record checks for several
+   needs of the same block use the same equality at every need. -/
+theorem I3_same_placed_rows_to_target (n target : Nat) (positions : List Nat)
+    (row : Nat → Nat) (before : n ≤ target)
+    (betweenEmpty : ∀ p ∈ positions, n ≤ p → p < target → row p = 0) :
+    positions.foldl (fun acc p => acc + (if p < n then row p else 0)) 0 =
+      positions.foldl (fun acc p => acc + (if p < target then row p else 0)) 0 := by
+  have gen : ∀ (ps : List Nat) (acc : Nat),
+      (∀ p ∈ ps, n ≤ p → p < target → row p = 0) →
+      ps.foldl (fun a p => a + (if p < n then row p else 0)) acc =
+        ps.foldl (fun a p => a + (if p < target then row p else 0)) acc := by
+    intro ps
+    induction ps with
+    | nil => intros; rfl
+    | cons p rest ih =>
+      intro acc noRows
+      have same : (if p < n then row p else 0) = (if p < target then row p else 0) := by
+        by_cases early : p < n
+        · have := Nat.lt_of_lt_of_le early before
+          simp [early, this]
+        · by_cases inside : p < target
+          · have none := noRows p (List.mem_cons_self _ _) (by omega) inside
+            simp [early, inside, none]
+          · simp [early, inside]
+      simp only [List.foldl_cons, same]
+      exact ih _ (fun q m => noRows q (List.mem_cons_of_mem _ m))
+  exact gen _ _ betweenEmpty
+
+theorem I3_placed_text_rows_to_figure_target
+    (n f : Nat) (positions : Nat → Nat) (items : List SourceItem)
+    (space here : Nat → Bool) (kept : Nat → Bool)
+    (target : needTargetsFigure n positions (fun p => .text p ∈ items ∧ space p = false)
+      f (figureWaits kept))
+    (uniquePos : ∀ p, .text p ∈ items → p ≠ n) :
+    let row := fun p => if here p && !space p then 1 else 0
+    (sourceTextPositions items).foldl (fun a p => a + if p < n then row p else 0) 0 =
+      (sourceTextPositions items).foldl (fun a p => a + if p < positions f then row p else 0) 0 := by
+  apply I3_same_placed_rows_to_target _ _ _ _ (Nat.le_of_lt target.1)
+  intro p member reached before
+  have text := (I3_source_text_position_member items p).mp member
+  have diff := uniquePos p text
+  cases sp : space p with
+  | true => simp [sp]
+  | false => exact (target.2.2.1 p ⟨text, sp⟩ (by omega) before).elim
+
+theorem I3_placed_figure_rows_to_figure_target
+    (n f : Nat) (figureIndices : List Nat) (positions size : Nat → Nat)
+    (kept : Nat → Bool) (block : Nat → Prop)
+    (target : needTargetsFigure n positions block f (figureWaits kept))
+    (ordered : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (uniquePos : ∀ i, positions i ≠ n) :
+    let sumAt := fun before => figureIndices.foldl
+      (fun a i => a + if positions i < before ∧ kept i = true then size i else 0) 0
+    sumAt n = sumAt (positions f) := by
+  have same : ∀ i,
+      (if positions i < n ∧ kept i = true then size i else 0) =
+      (if positions i < positions f ∧ kept i = true then size i else 0) := by
+    intro i
+    by_cases here : kept i = true
+    · by_cases early : positions i < n
+      · have before := Nat.lt_trans early target.1
+        simp [here, early, before]
+      · by_cases before : positions i < positions f
+        · have lt : i < f := by
+            apply Classical.byContradiction
+            intro h
+            have order := ordered f i (by omega)
+            omega
+          have diff := uniquePos i
+          have wait := target.2.2.2 i lt (by omega)
+          have absent := wait.1
+          simp [here] at absent
+        · simp [here, early, before]
+    · simp [here]
+  have funcs : (fun (a i : Nat) => a + if positions i < n ∧ kept i = true then size i else 0) =
+      (fun a i => a + if positions i < positions f ∧ kept i = true then size i else 0) := by
+    funext a i
+    rw [same]
+  dsimp
+  rw [funcs]
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
