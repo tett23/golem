@@ -5955,6 +5955,13 @@ theorem I3_recto_compatible_with_blank_and_figure
       noSend, I3_first_text_break_preserves_recto items ordered config
         kept firstTextPos firstTextCase rectos rectosValid⟩
 
+def sourceLineAfterHeadings (used brk : Nat) (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool) (headings : List Nat)
+    (line : Nat → Prop) : Prop :=
+  used = 0 → 1 ≤ brk → (∀ f, f < figureCount config → kept f = false) →
+    (∀ t, .text t ∈ items → textHereAtBreak items brk t = true → t ∈ headings) →
+      ∀ l, .text l ∈ items → line l → textBeforeCount items l ≠ brk
+
 theorem I3_heading_runs_and_rectos_with_blank_and_figure
     (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
@@ -5980,6 +5987,8 @@ theorem I3_heading_runs_and_rectos_with_blank_and_figure
           textHereAtBreak items brk textPos = true) ∧
       orphanModel used brk items config kept paragraphs ∧
       widowModel used brk items config kept paragraphs ∧
+      ((used ≠ 0 ∨ (∀ l, .text l ∈ items → line l → textBeforeCount items l ≠ 1)) →
+        sourceLineAfterHeadings used brk items config kept headings line) ∧
       rectoModel used brk items config kept rectos ∧
       headingRunKeep (fun p => ∃ i ∈ items, sourcePos i = p)
         (fun p => .text p ∈ items) (fun h => h ∈ headings)
@@ -5997,7 +6006,13 @@ theorem I3_heading_runs_and_rectos_with_blank_and_figure
     waitingBlankAllButGreedy capacity used items config blank capacityPositive usedFits
       ordered figuresValid blankValid sizesFit paragraphs paragraphsValid
       (headings ++ rectos) valid (fun _ => False)
-  refine ⟨brk, kept, atTop, placed, rule, noSend, figureOrder, textOrder, orphan, widow, ?_, ?_⟩
+  refine ⟨brk, kept, atTop, placed, rule, noSend, figureOrder, textOrder, orphan, widow, ?_, ?_, ?_⟩
+  · intro domain empty positive _ _ l member isLine
+    rcases domain with occupied | second
+    · exact (occupied empty).elim
+    · rcases rule with ⟨zero, _⟩ | ⟨one, _, _⟩
+      · omega
+      · simpa [one] using second l member isLine
   · intro r member here
     apply Classical.byContradiction
     exact noInterior r (List.mem_append_of_mem_right headings member) here
