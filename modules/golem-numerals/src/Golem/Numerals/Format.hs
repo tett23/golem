@@ -51,7 +51,9 @@ data Piece a
 {- | How braces themselves are written: by the escapes only, or also as
 @{{@ and @}}@, which are read but to be retired (G03114, G03116).
 -}
-data Braces = EscapesOnly | DoubledToo
+
+-- DoubledOnly treats backslashes literally and doubled braces as current syntax.
+data Braces = EscapesOnly | DoubledToo | DoubledOnly
   deriving stock (Eq, Show)
 
 -- | A way of writing to be retired that a format uses.
@@ -73,19 +75,21 @@ parseFormat braces table = fmap finish . go [] [] . T.unpack
     finish (ps, ls) = (merge (reverse ps), reverse ls)
     go ps ls = \case
       [] -> Right (ps, ls)
+      '\\' : rest | braces == DoubledOnly -> go (PLit "\\" : ps) ls rest
       '\\' : c : rest
         | c `elem` ("{}\\" :: String) -> go (PLit (T.singleton c) : ps) ls rest
         | otherwise -> Left ("\\ の後には {、}、\\ のどれかを書きます: \\" <> T.singleton c)
       ['\\'] -> Left "書式の末尾に \\ があります。文字の \\ は \\\\ と書きます"
-      '{' : '{' : rest | braces == DoubledToo -> go (PLit "{" : ps) (LegacyBraces : ls) rest
-      '}' : '}' : rest | braces == DoubledToo -> go (PLit "}" : ps) (LegacyBraces : ls) rest
+      '{' : '{' : rest | braces /= EscapesOnly -> go (PLit "{" : ps) (legacyBraces ls) rest
+      '}' : '}' : rest | braces /= EscapesOnly -> go (PLit "}" : ps) (legacyBraces ls) rest
       '{' : rest -> case break (`elem` ("{}\\" :: String)) rest of
         (name, '}' : after) -> do
           (p, l) <- slot (T.pack name)
           go (p : ps) (maybe ls (: ls) l) after
-        _ -> Left "閉じていない { があります。文字の { は \\{ と書きます"
-      '}' : _ -> Left "対応する { のない } があります。文字の } は \\} と書きます"
+        _ -> Left (if braces == DoubledOnly then "閉じていない { があります。文字の { は {{ と書きます" else "閉じていない { があります。文字の { は \\{ と書きます")
+      '}' : _ -> Left (if braces == DoubledOnly then "対応する { のない } があります。文字の } は }} と書きます" else "対応する { のない } があります。文字の } は \\} と書きます")
       c : rest -> go (PLit (T.singleton c) : ps) ls rest
+    legacyBraces ls = if braces == DoubledToo then LegacyBraces : ls else ls
     slot written =
       let (name, colon) = T.breakOn ":" written
           notationOf = T.drop 1 colon

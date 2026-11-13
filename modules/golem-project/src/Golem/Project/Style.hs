@@ -1,6 +1,7 @@
 -- | style.toml (golem-project ADR 0002).
 module Golem.Project.Style
   ( Style (..),
+    renderPrintingTemplate,
     Dim (..),
     Sp (..),
     parseDim,
@@ -1653,6 +1654,7 @@ data Style = Style
     stMasters :: !(Map Text MasterDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
+    stPrintingsFormat :: !(Maybe [Piece Text]),
     -- | [lists]: the markers of lists, for the whole book (golem-driver ADR 0013)
     stLists :: !ListStyle,
     -- | [aki-sets.<name>]: the user's aki sets, not the built-in ones (docs/adr ADR 0019)
@@ -1697,6 +1699,7 @@ defaultStyle =
       stSwatches = Map.empty,
       stMasters = Map.empty,
       stTocLeader = "dots",
+      stPrintingsFormat = Nothing,
       stLists = defaultListStyle,
       stAkiSets = Map.empty,
       stIndex = Nothing,
@@ -2465,6 +2468,25 @@ instance FromValue IndexSec where
       v -> failAt (valueAnn v) "[index] の section-headings は真偽値です"
     pure (IndexSec (IndexStyle cs gap 0 (fromMaybe True headings)))
 
+-- These slots are text even for numbers: an explicit printing format
+-- always uses decimal digits, independently of the writing mode.
+printingTemplate :: l -> Text -> Matcher l [Piece Text]
+printingTemplate loc format
+  | T.any (`elem` ("\r\n" :: String)) format = failAt loc "[printings] の format は一行で書きます"
+  | otherwise = either (failAt loc . T.unpack) (pure . fst) (parseFormat DoubledOnly slot format)
+  where
+    slot name
+      | name == "printing" = Right (TextSlot "number")
+      | name `elem` ["year", "month", "day", "date", "edition"] = Right (TextSlot name)
+      | otherwise = Left ("[printings] の format にない欄です: {" <> name <> "}")
+
+-- | Substitute the fields of one printing, leaving literal text intact.
+renderPrintingTemplate :: (Text -> Text) -> [Piece Text] -> Text
+renderPrintingTemplate field = foldMap $ \case
+  PLit literal -> literal
+  PText name -> field name
+  PNumber name _ -> field name
+
 newtype TocSec = TocSec (Maybe Text)
 
 instance FromValue TocSec where
@@ -2513,6 +2535,7 @@ instance FromValue Style where
     masters <- fromMaybe Map.empty <$> optKey "masters"
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
+    printingFormat <- optKeyOf "printings" (parseTableFromValue (optKeyOf "format" (withValue printingTemplate)))
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     -- the built-in sets cannot be defined again (docs/adr ADR 0019); the error is at the set
     akiSets <-
@@ -2552,6 +2575,7 @@ instance FromValue Style where
           stSwatches = swatches,
           stMasters = masters,
           stTocLeader = fromMaybe (stTocLeader d) leader,
+          stPrintingsFormat = fromMaybe Nothing printingFormat,
           stLists = lists,
           stAkiSets = akiSets,
           stIndex = index,
@@ -3550,6 +3574,7 @@ styleSchema =
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
       ("verse", NRejected),
+      ("printings", NTable [("format", str)]),
       ("toc", NTable [("leader", enum leaderValues)]),
       ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),

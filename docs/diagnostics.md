@@ -3822,7 +3822,7 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 
 ### 意味
 
-`@printings` を、日本語でない本（`[metadata] language` の主の副タグが `ja` でない本）に書いた。
+`@printings` を、書式を指定せずに日本語でない本（`[metadata] language` の主の副タグが `ja` でない本）に書いた。
 `@printings` は何も組まない。
 位置は `@printings` の行である。
 `@printings` のほかの誤り（引数の G02096、本体の G02097、`[[metadata.printings]]` の欠けの G02098）も当たれば、それらと一緒に出る。
@@ -3833,12 +3833,12 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 
 ### 主な原因
 
-- `[metadata] language` の主の副タグが `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
+- `[metadata] language` の主の副タグが `ja` でない本に `@printings` を書いた。既定の発行履歴の書式は日本語用である。
 
 ### 直し方
 
 日本語の本なら、`[metadata] language` の主の副タグを `ja` にする。
-日本語でない本では、`@printings` を消し、`meta.printing` の値から発行の履歴を一行ずつ書く。
+日本語でない本では、`style.toml` の `[printings]` に `format = "{date}  Edition {edition}, printing {printing}"` のように書く（[Golem ADR 0375](adr/0375-printings-format.md)）。
 
 ## G02077
 

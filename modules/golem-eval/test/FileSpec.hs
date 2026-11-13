@@ -1957,7 +1957,9 @@ diagnosticTests =
 -- | A printing as meta.printings has it (docs/adr ADR 0033).
 printingValue :: Integer -> Integer -> (Integer, Integer, Integer) -> Value
 printingValue e n (y, m, d) =
-  VHash (Map.fromList [("edition", VInt e), ("number", VInt n), ("year", VInt y), ("month", VInt m), ("day", VInt d), ("date", VString "")])
+  VHash (Map.fromList [("edition", VInt e), ("number", VInt n), ("year", VInt y), ("month", VInt m), ("day", VInt d), ("date", VString (T.pack (show y) <> "-" <> pad m <> "-" <> pad d))])
+  where
+    pad = T.justifyRight 2 '0' . T.pack . show
 
 -- | The context of a book of a language with three printings.
 printingsCtx :: Text -> EvalContext
@@ -1991,10 +1993,28 @@ printingsTests =
             withoutLanguage = (printingsCtx "ja") {ctxMeta = Map.delete "language" (ctxMeta (printingsCtx "ja"))}
         snd (run withoutLanguage "@printings\n") @?= ["G02076"]
         snd (run (withLanguage (VInt 1)) "@printings\n") @?= ["G02076"],
-      testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
+      testCase "inv1_printings_format_case_1: three printings and default 初版" $ do
         let (bs, es) = run (printingsCtx "ja") "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["2026年10月16日\x3000初版第1刷発行", "2027年4月1日\x3000初版第2刷発行", "2028年1月10日\x3000第2版第1刷発行"],
+      testCase "inv1_printings_format_case_2" $ do
+        let style = either (error . show) id (parseStyle (FileId 9) "[printings]\nformat = '  第{edition}版  {{刷}}{printing} {year}/{month}/{day} {date}  '\n")
+            (bs, es) = run ((printingsCtx "en") {ctxStyle = style}) "@printings\n"
+        es @?= []
+        [plainOf is | Paragraph Nothing is <- bs] @?= ["  第1版  {刷}1 2026/10/16 2026-10-16  ", "  第1版  {刷}2 2027/4/1 2027-04-01  ", "  第2版  {刷}1 2028/1/10 2028-01-10  "],
+      testCase "inv1_printings_format_case_3" $
+        mapM_
+          ( \fmt -> case parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n") of
+              Left _ -> pure ()
+              Right _ -> assertFailure (T.unpack fmt)
+          )
+          ["{unknown}", "{", "}", "{}"],
+      testProperty "inv1_printings_format_property" $ property $ do
+        count <- forAll (Gen.int (Range.linear 1 25))
+        let rows = [printingValue 1 (toInteger n) (2026, 2, 3) | n <- [1 .. count]]
+            style = either (error . show) id (parseStyle (FileId 9) "[printings]\nformat = '{edition}'\n")
+            render lang = let c = printingsCtx lang in run (c {ctxStyle = style, ctxMeta = Map.insert "printings" (VArray rows) (ctxMeta c)}) "@printings\n"
+        mapM_ (\lang -> let (bs, es) = render lang in (length bs, es) === (length rows, [])) ["ja", "en", "fr-CA"],
       testCase "the year is kanji-digits, the other numbers follow the default" $
         case run (printingsCtx "ja") "@printings\n" of
           (Paragraph _ is : _, _) -> [(n, st) | Number _ n st <- is] @?= [(2026, Just StyleKanjiDigits), (10, Nothing), (16, Nothing), (1, Nothing)]
