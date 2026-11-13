@@ -506,6 +506,10 @@ if (!fragment && ast) {
     if (reservedBracketFullyProved && rule.name === 'ReservedBracket') continue;
     if (numberOpenFullyProved && rule.name === 'NumberOpen') continue;
     if (setIdentFullyProved && rule.name === 'SetIdent') continue;
+    if (tooDeepFullyProved && rule.name === 'Heading' && rule.params.length === 1 &&
+        rule.params[0] === 'ind' && rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === 'Ind(ind) HashMark (TooDeep / Ws HeadInline(ind)* EOL)') continue;
     if (tooDeepFullyProved && rule.name === 'TooDeep') continue;
     if (badBreakFullyProved && rule.name === 'RowBreak' &&
         singleUnitRuleMatches(rule, String.raw`&('\\' ('\n' / !.)) BadBreak`)) continue;

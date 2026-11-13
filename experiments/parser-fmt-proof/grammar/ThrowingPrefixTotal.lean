@@ -278,4 +278,74 @@ theorem generated_row_break (env : PegModel.Params) (input : List Char) (fuel : 
   cases a : "\\".toList.isPrefixOf input <;> cases b : endsLine (input.drop 1) <;>
     simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, guardAt, badAt, a, b] <;> rfl
 
+namespace HeadingProof
+
+open PegModel
+
+private def thenRead (result : ParseResult) (next : List Char → ParseResult) : ParseResult :=
+  match result with
+  | .ok (some rest) => next rest
+  | other => other
+
+private def alternatives : List (List Expr) :=
+  [[.ref "TooDeep" []], [.ref "Ws" [], .star (.ref "HeadInline" ["ind"]), .ref "EOL" []]]
+
+private def headingTail (ind fuel : Nat) (input : List Char) : ParseResult :=
+  let read := recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+7)
+  if "#".toList.isPrefixOf input then .error "label: heading_level" else
+    thenRead (read (.ref "Ws" []) input) (fun rest =>
+      thenRead (read (.star (.ref "HeadInline" ["ind"])) rest) (read (.ref "EOL" [])))
+
+private theorem choose_tail (ind fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+8) (.choice alternatives) input =
+      headingTail ind fuel input := by
+  have deep : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+7) (.ref "TooDeep" []) input =
+      (if "#".toList.isPrefixOf input then .error "label: heading_level" else .ok none) :=
+    generated_too_deep input fuel
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+7) e x)
+    _ [("ind", ind)] items input) alternatives = _
+  cases hash : "#".toList.isPrefixOf input with
+  | true => simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail]; rfl
+  | false =>
+      cases ws : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+7) (.ref "Ws" []) input with
+      | error reason => simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail, ws, thenRead]; rfl
+      | ok value =>
+          cases value with
+          | none => simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail, ws, thenRead]; rfl
+          | some a =>
+              cases content : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+7) (.star (.ref "HeadInline" ["ind"])) a with
+              | error reason => simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail, ws, thenRead, content]; rfl
+              | ok val =>
+                  cases val with
+                  | none => simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail, ws, thenRead, content]; rfl
+                  | some b =>
+                      cases eol : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+7) (.ref "EOL" []) b with
+                      | error reason => simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail, ws, thenRead, content, eol]; rfl
+                      | ok tail => cases tail <;> simp [alternatives, runChoices, foldChoice, runSequence, deep, hash, headingTail, ws, thenRead, content, eol] <;> rfl
+
+theorem generated_heading (ind fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+10) (.ref "Heading" ["ind"]) input =
+      thenRead (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+8) (.ref "Ind" ["ind"]) input)
+        (fun rest => thenRead (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+8) (.ref "HashMark" []) rest)
+          (headingTail ind fuel)) := by
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+8) e x)
+    _ [("ind", ind)] items input) [[.ref "Ind" ["ind"], .ref "HashMark" [], .choice alternatives]] = _
+  cases indent : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+8) (.ref "Ind" ["ind"]) input with
+  | error reason => simp [runChoices, foldChoice, runSequence, indent, thenRead]; rfl
+  | ok v =>
+      cases v with
+      | none => simp [runChoices, foldChoice, runSequence, indent, thenRead]; rfl
+      | some a =>
+          cases mark : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+8) (.ref "HashMark" []) a with
+          | error reason => simp [runChoices, foldChoice, runSequence, indent, thenRead, mark]; rfl
+          | ok val =>
+              cases val with
+              | none => simp [runChoices, foldChoice, runSequence, indent, thenRead, mark]; rfl
+              | some b =>
+                  cases tail : headingTail ind fuel b with
+                  | error reason => simp [runChoices, foldChoice, runSequence, indent, thenRead, mark, choose_tail, tail]; rfl
+                  | ok endVal => cases endVal <;> simp [runChoices, foldChoice, runSequence, indent, thenRead, mark, choose_tail, tail] <;> rfl
+
+end HeadingProof
+
 end ThrowingPrefixTotal

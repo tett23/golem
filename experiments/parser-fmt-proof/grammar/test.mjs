@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 45, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 42, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -334,7 +334,7 @@ try {
     [join(here, 'generate.mjs'), changedSetIdent, generated], { encoding: 'utf8' });
   assert.match(strictSetIdent.stderr, /unsupported SetIdent choice 1 at /,
     'a changed boundary class must return to the unsupported report');
-  assert.doesNotMatch(strict.stderr, /^unsupported (TooDeep|BadBreak) choice /m,
+  assert.doesNotMatch(strict.stderr, /^unsupported (Heading|TooDeep|BadBreak) choice /m,
     'the canonical throwing prefixes have all-input proofs');
   const changedTooDeep = join(work, 'ChangedTooDeep.hpeg');
   writeFileSync(changedTooDeep, original.replace(/^TooDeep <- .*$/m,
@@ -343,6 +343,8 @@ try {
     [join(here, 'generate.mjs'), changedTooDeep, generated], { encoding: 'utf8' });
   assert.match(strictTooDeep.stderr, /unsupported TooDeep choice 1 at /,
     'a changed lookahead label must return to the unsupported report');
+  assert.match(strictTooDeep.stderr, /unsupported Heading choice 1 at /,
+    'heading dispatch depends on the TooDeep diagnostic');
   const changedBadBreak = join(work, 'ChangedBadBreak.hpeg');
   writeFileSync(changedBadBreak, original.replace(/^BadBreak <- .*$/m,
     "BadBreak <- '\\\\' (&{ False })^changed { () }"));
