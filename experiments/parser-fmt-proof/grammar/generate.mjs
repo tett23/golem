@@ -94,7 +94,9 @@ function describeItems(items) {
 function nestedChoices(expr, visit) {
   switch (expr.tag) {
     case 'choice':
-      if (expr.alts.length > 1 && !provedNlEofChoice(expr) &&
+      if (expr.alts.length > 1 && !expr.alts.every(items =>
+          items.length === 1 && items[0].bind === null && items[0].expr.tag === 'ref') &&
+          !provedNlEofChoice(expr) &&
           !provedLiteralNlEofChoice(expr) && !provedClassLookaheadOrEof(expr))
         expr.alts.filter(items => !provedEscapeItems(items) && !provedReservedOrdinary(items)).forEach(visit);
       expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));

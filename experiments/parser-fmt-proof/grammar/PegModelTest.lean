@@ -340,6 +340,27 @@ theorem interpreted_ref_choices (grammar : PegModel.Grammar) (env : PegModel.Par
       _ env items input) (refAlternatives refs) = _
   exact ordered_ref_choices _ _ env refs input
 
+private def leadingChoice (name : String) : Option PegModel.Expr := do
+  let rule ← Generated.pegGrammar.rules.find? (fun r => r.name == name)
+  let alt ← rule.alts.head?
+  alt.items.head?
+
+private def blockRefs : List (String × List String) :=
+  ["Heading", "BulletList", "OrderedList", "DefList", "Table", "CodeBlock", "Paragraph"].map
+    (fun name => (name, ["ind"]))
+
+private def hashKeyRefs : List (String × List String) := [("ExprIdent", []), ("StringLit", [])]
+
+/-- These are the exact nested choices to which interpreted_ref_choices applies.
+    The enclosing label and each referenced rule retain their own obligations. -/
+theorem generated_nested_ref_shapes :
+    leadingChoice "AttributedBlock" = some (.choice (refAlternatives blockRefs)) ∧
+    leadingChoice "HashEntry" = some (.choice (refAlternatives hashKeyRefs)) ∧
+    leadingChoice "Block" = some (.label (.choice (refAlternatives
+      ((["BadIndent", "OrphanDef", "ReservedBlock", "BlockGroup"].map
+        (fun name => (name, ["ind"]))) ++ blockRefs))) "block") := by
+  exact ⟨rfl, rfl, rfl⟩
+
 example : PegModel.foldChoice
     (fun n : Nat => if n == 1 then (.error "label" : PegModel.ParseResult) else .ok none) [0, 1, 2] =
       .error "label" := by rfl
