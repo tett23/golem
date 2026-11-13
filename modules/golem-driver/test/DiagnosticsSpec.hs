@@ -173,7 +173,7 @@ everyNoticeProjects =
           "@page-break\n\n@page-lines -4\n\n# H\n\ne\n\n", -- G07100
           "@style kept\n  " <> T.replicate 72 "あ" <> "\n\n", -- G07112 (docs/adr/0261)
           "@page-break\n\n@page-lines -4\n\n" <> T.replicate 36 "あ" <> "\n\n", -- G07113 (docs/adr/0261)
-          "``` highlight=1-1\nx\n```\n\n", -- G02108
+          "``` highlight=1...1\nx\n```\n\n",
           "@table src=t.csv\n\n", -- G02129 (docs/adr/0184)
           "@page-break\n\n@blank-line\n" -- G04008 and G04009
         ]

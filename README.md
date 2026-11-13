@@ -261,6 +261,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 
 技術書のためには、コードブロックに行番号などを付けられる。
 ```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
+`@listing src/Main.hs lines="1...3, 5...7"` は指定した行を順に取り込み、コードブロックの `highlight=1...3,5...7` は指定した行を強調する（[ADR 0342](docs/adr/0342-revise-retire-dash-line-ranges.md)）。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 
 表には `@caption` でキャプションを付けて表番号（既定 `表{chapter}-{n}`）を振り、`@column-widths 8zw auto` で列の幅を、`@style` でセルの段落スタイル（既定は組み込みの `table`）を指定できる。
