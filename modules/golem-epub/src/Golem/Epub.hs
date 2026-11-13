@@ -1,5 +1,5 @@
 {- | EPUB 3.3 packaging over the XHTML output (golem-epub ADR 0001).
-Determinism of the zip container is deferred to v2.
+The same inputs produce the same bytes with the same build (Golem ADR 0361).
 -}
 module Golem.Epub
   ( EpubConfig (..),
@@ -15,6 +15,7 @@ import Codec.Archive.Zip
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (toLower)
+import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -142,7 +143,8 @@ navDocument cfg ft book =
 writeEpub :: FilePath -> FilePath -> EpubConfig -> FileTable -> Book -> XhtmlSite -> IO ()
 writeEpub root out cfg ft book site = do
   -- the images plugins made come from the book (docs/adr/0123)
-  assets <- mapM (\(o, src) -> (o,) <$> maybe (BS.readFile (root </> src)) pure (Map.lookup (T.pack src) (bookImages book))) (siteAssets site)
+  let orderedAssets = sortOn fst (siteAssets site)
+  assets <- mapM (\(o, src) -> (o,) <$> maybe (BS.readFile (root </> src)) pure (Map.lookup (T.pack src) (bookImages book))) orderedAssets
   let pages = map fst (sitePages site)
       others = "style.css" : map fst assets
       text p t = toEntry ("OEBPS" </> p) 0 (BL.fromStrict (TE.encodeUtf8 t))

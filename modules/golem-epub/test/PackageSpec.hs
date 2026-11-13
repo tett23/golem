@@ -7,18 +7,20 @@ module PackageSpec (packageTests) where
 import Codec.Archive.Zip
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.List (sort)
+import Data.List (permutations, sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (fromGregorian)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Golem.Assemble (Book (..), TocEntry (..))
 import Golem.Assemble.Formats (arabic)
 import Golem.Doc.IR
 import Golem.Epub
 import Golem.Html
 import Golem.Syntax.Span
+import System.Directory (setModificationTime)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -94,9 +96,43 @@ written = withSystemTempDirectory "golem-epub" $ \tmp -> do
   -- read strictly: the directory is removed on return
   toArchive . BL.fromStrict <$> BS.readFile out
 
+-- Build the same book in independent project roots. Both the filesystem
+-- creation order and the order supplied by the asset producer may vary.
+archiveBytes :: Integer -> [FilePath] -> IO BS.ByteString
+archiveBytes epoch names = withSystemTempDirectory "epub-project" $ \root -> do
+  let site = (renderXhtml htmlConfig ft emptyBook) {siteAssets = [(name, name) | name <- names]}
+      out = root </> "book.epub"
+  mapM_
+    ( \name -> do
+        BS.writeFile (root </> name) (BS.pack (map (fromIntegral . fromEnum) name))
+        setModificationTime (root </> name) (posixSecondsToUTCTime (fromInteger epoch))
+    )
+    names
+  writeEpub root out cfg0 ft emptyBook site
+  BS.readFile out
+
+determinism :: TestTree
+determinism =
+  testGroup
+    "Golem ADR 0361"
+    [ testCase "inv1_epub_byte_determinism_case_1" $ do
+        expected <- archiveBytes 1000000000 ["a.png"]
+        actual <- archiveBytes 1700000000 ["a.png"]
+        actual @?= expected,
+      testCase "inv1_epub_byte_determinism_case_2" $ do
+        expected <- archiveBytes 1000000000 ["a.png", "b.png"]
+        actual <- archiveBytes 1000000000 ["b.png", "a.png"]
+        actual @?= expected,
+      testCase "inv1_epub_byte_determinism_property" $ do
+        let names = ["a.png", "b.png", "c.png"]
+        expected <- archiveBytes 1000000000 names
+        mapM_ (\order -> archiveBytes 1700000000 order >>= (@?= expected)) (permutations names)
+    ]
+
 tests :: [TestTree]
 tests =
-  [ testGroup
+  [ determinism,
+    testGroup
       "package document"
       [ testCase "the identifier is the given ISBN" $
           linesWith "<dc:identifier" (opf cfg0) @?= ["<dc:identifier id=\"bookid\">urn:isbn:9784000000000</dc:identifier>"],
