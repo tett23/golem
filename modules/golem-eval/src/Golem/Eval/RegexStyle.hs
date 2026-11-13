@@ -51,9 +51,9 @@ regexRules style =
 gets those of its paragraph style (body when it has none), a paragraph of
 a caption those of caption, the body of a sidenote those of sidenote,
 each cell of a table those of the paragraph style of its cells, table
-when it has none (docs/adr/0262). Headings, the terms of definition
-lists, the captions of tables and code blocks and the bodies of notes are
-left as they are.
+when it has none (docs/adr/0262). Headings and definition terms use
+body, and paragraphs within notes use their own paragraph styles
+(docs/adr/0368).
 -}
 applyRegexStyles :: RegexRules -> Document -> Document
 applyRegexStyles rules d
@@ -65,9 +65,10 @@ applyRegexStyles rules d
     block forced b = b {blockBody = body forced (blockBody b)}
     body forced = \case
       Paragraph st is -> Paragraph st (paragraph (rulesOf (fromMaybe (fromMaybe "body" st) forced)) is)
+      Heading level attrs is -> Heading level attrs (paragraph (rulesOf "body") is)
       BulletList items -> BulletList (map item items)
       OrderedList items -> OrderedList (map item items)
-      DefList groups -> DefList [g {dgDefs = map (map (block Nothing)) (dgDefs g)} | g <- groups]
+      DefList groups -> DefList [g {dgTerms = map (paragraph (rulesOf "body")) (dgTerms g), dgDefs = map (map (block Nothing)) (dgDefs g)} | g <- groups]
       FigureBlock fig -> FigureBlock fig {figCaption = map (block (Just "caption")) (figCaption fig)}
       TableBlock t ->
         let cell = paragraph (rulesOf (fromMaybe "table" (tableStyle t)))
@@ -79,6 +80,7 @@ applyRegexStyles rules d
     -- the bodies of sidenotes, with the regex styles of sidenote
     sidenotes :: InlineF r -> InlineF r
     sidenotes = \case
+      Note sp n bs -> Note sp n (map (block Nothing) bs)
       Sidenote sp n bs -> Sidenote sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "sidenote") is); other -> other} | b <- bs]
       Kenten sp k xs -> Kenten sp k (map sidenotes xs)
       Color sp c xs -> Color sp c (map sidenotes xs)
