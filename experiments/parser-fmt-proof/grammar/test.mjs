@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 68, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 64, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -314,6 +314,14 @@ try {
     "NumberOpen <- '##' [a-z] { () }"));
   const strictNumberOpen = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedNumberOpen, generated], { encoding: 'utf8' });
+  assert.doesNotMatch(strict.stderr, /^unsupported BlockStart .*: !NumberOpen '#'$/m);
+  assert.match(strictNumberOpen.stderr, /^unsupported BlockStart .*: !NumberOpen '#'$/m,
+    'the heading prefix proof depends on the exact NumberOpen grammar');
+  const changedHeadingPrefix = join(work, 'ChangedHeadingPrefix.hpeg');
+  writeFileSync(changedHeadingPrefix, original.replace("BlockStart <- !NumberOpen '#'", "BlockStart <- !NumberOpen '##'"));
+  const strictHeadingPrefix = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedHeadingPrefix, generated], { encoding: 'utf8' });
+  assert.match(strictHeadingPrefix.stderr, /^unsupported BlockStart .*: !NumberOpen '##'$/m);
   assert.match(strictNumberOpen.stderr, /unsupported NumberOpen choice 1 at /,
     'a changed required class must return to the unsupported report');
   const changedSetIdent = join(work, 'ChangedSetIdent.hpeg');
@@ -576,7 +584,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 19, negative mutations 55, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 19, negative mutations 56, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
