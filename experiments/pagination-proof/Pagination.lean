@@ -12653,6 +12653,41 @@ theorem drain_exists (geometry : FlushState → CrossingGeometry)
       have notes : s.notes = [] := Classical.byContradiction (fun n => pending (Or.inr n))
       exact ⟨[],s,Crossings.stop s,figures,notes⟩
 
+/-- Unlike flushDeferred, flushFigures stops as soon as the figure
+    queue empties. Pending notes may still be carried alongside the next
+    wrapped figure. Cross only while there is a pending figure. -/
+inductive FigureFlush (geometry : FlushState → CrossingGeometry) :
+    FlushState → List Deferred → FlushState → Prop where
+  | stop (s : FlushState) (done : s.figures = []) : FigureFlush geometry s [] s
+  | cross (s : FlushState) (pending : s.figures ≠ []) (out : List Deferred)
+      (last : FlushState)
+      (rest : FigureFlush geometry
+        (flushStep s (geometry s).cap (geometry s).sep (geometry s).free (geometry s).empty) out last) :
+      FigureFlush geometry s
+        ((placedOnAdvance s.geometry s.figures (geometry s).free (geometry s).empty).1 ++ out) last
+
+theorem I4_flush_figures (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true) (s : FlushState) :
+    ∃ out last, FigureFlush geometry s out last ∧ last.figures = [] ∧ out = s.figures := by
+  induction s using I4_flush_terminates.induction with
+  | h s ih =>
+    by_cases done : s.figures = []
+    · exact ⟨[],s,.stop s done,done,done.symm⟩
+    · let g := geometry s
+      have step := FlushTransition.advance s g.cap g.sep g.free g.empty (Or.inl done) (fresh s)
+      obtain ⟨out,last,run,empty,fifo⟩ := ih _ step
+      have head := crossings_fifo (Crossings.next s g.cap g.sep g.free g.empty [] _
+        (Crossings.stop (flushStep s g.cap g.sep g.free g.empty)))
+      exact ⟨_,last,.cross s done out last run,empty,by simpa [fifo] using head⟩
+
+theorem I5_flush_figures_keeps_pending_notes (geometry : FlushState → CrossingGeometry)
+    (s : FlushState) (done : s.figures = []) {out last} (run : FigureFlush geometry s out last) :
+    out = [] ∧ last = s := by
+  cases run with
+  | stop => exact ⟨rfl,rfl⟩
+  | cross s pending => exact (pending done).elim
+
 structure FigureGeometry where
   used : Nat
   noShown : Bool
@@ -12803,6 +12838,112 @@ theorem I5_box_event_positions (geometry : FlushState → CrossingGeometry)
       last.figures = [] ∧ (performEvents s tree.events).1 ++ out =
         s.figures ++ sourceFigures tree.source := by
   simpa [tree.event_source] using I5_events_eof geometry fresh s tree.events
+
+/-- placeAll [] advances once before flushing precisely when terminal
+    blanks and deferred figures coexist. Recording dropped blank spans
+    and resetting break controls do not modify the figure or note queue. -/
+def endCrossings (terminalBlanks : Bool) (s : FlushState) (next : CrossingGeometry) :
+    List CrossingGeometry :=
+  if terminalBlanks && !s.figures.isEmpty then [next] else []
+
+theorem I5_placeAll_eof (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true) (s : FlushState) (terminalBlanks : Bool)
+    (next : CrossingGeometry) :
+    let beforeFlush := replay s (endCrossings terminalBlanks s next)
+    ∃ out last, Crossings beforeFlush.2 out last ∧ last.figures = [] ∧ last.notes = [] ∧
+        beforeFlush.1 ++ out = s.figures := by
+  dsimp only
+  let gs := endCrossings terminalBlanks s next
+  obtain ⟨out,last,run,figures,notes⟩ := drain_exists geometry fresh (replay s gs).2
+  have drained := crossings_fifo run
+  simp [figures] at drained
+  have earlier := crossings_fifo (replay_crossings s gs)
+  exact ⟨out,last,run,figures,notes,by rw [drained]; exact earlier⟩
+
+theorem I5_flow_events_and_terminal_blanks (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true) (s : FlushState) (tree : LayoutTrace)
+    (terminalBlanks : Bool) (next : CrossingGeometry) :
+    let placed := performEvents s tree.events
+    let beforeFlush := replay placed.2 (endCrossings terminalBlanks placed.2 next)
+    ∃ out last, Crossings beforeFlush.2 out last ∧ last.figures = [] ∧ last.notes = [] ∧
+      placed.1 ++ (beforeFlush.1 ++ out) = s.figures ++ sourceFigures tree.source := by
+  dsimp only
+  obtain ⟨out,last,run,figs,notes,fifo⟩ :=
+    I5_placeAll_eof geometry fresh (performEvents s tree.events).2 terminalBlanks next
+  exact ⟨out,last,run,figs,notes,by
+    rw [fifo, ← tree.event_source]
+    exact I5_events_fifo s tree.events⟩
+
+/-- State inspected by placeDeferred after carryNote has visited all
+    pending notes. A rejected note does not occupy the column; a shown
+    part of zero lines still adds an entry to sNotes. -/
+def carriedGeometry (cap sep : Nat) : Bool → ColumnState → List Part → Bool × ColumnState
+  | empty, st, [] => (empty,st)
+  | empty, st, p :: ps =>
+    let room := carryRoom cap sep st
+    if 0 < p.lines ∧ room = 0 ∧ empty = true ∧ st.reserved = 0 then
+      carriedGeometry cap sep empty st ps
+    else
+      let shown := (carry room p).1
+      let separator := if st.noteLines = 0 then sep else 0
+      carriedGeometry cap sep false {st with noteLines := st.noteLines+separator+shown.lines} ps
+
+/-- The typesetter's column capacity (including the box end reserve),
+    top of a noninitial column set, and footnote separator suffice to
+    derive free and isEmpty at placeDeferred before openBox. -/
+structure FlushDimensions where
+  cap : Int
+  top : Nat
+  separator : Nat
+
+def measureCrossing (dims : FlushDimensions) (s : FlushState) : CrossingGeometry :=
+  let next := advanceColumn s.geometry (splitTurned s.figures).1
+  let carried := carriedGeometry dims.cap.toNat dims.separator true next s.notes
+  let top := if s.geometry.columns ≤ s.geometry.column+1 then 0 else dims.top
+  ⟨dims.cap.toNat,dims.separator,dims.cap - (top : Int) - (carried.2.noteLines : Int),carried.1⟩
+
+/-- A negative effective capacity can occur inside a reserved area.
+    Clamping capacity to zero before the note fold gives exactly the
+    signed subtraction followed by max 0 in carryNote. -/
+theorem I4_carry_room_toNat (cap : Int) (reserved separator : Nat) :
+    availableForCarry (cap.toNat : Int) reserved separator =
+      availableForCarry cap reserved separator := by
+  unfold availableForCarry
+  by_cases pos : 0 ≤ cap
+  · simp [Int.toNat_of_nonneg pos]
+  · have clamp (v : Int) (negative : v < 0) : v.toNat = 0 := by
+      cases v with
+      | ofNat n => exact False.elim (Int.not_lt.mpr (Int.ofNat_zero_le n) negative)
+      | negSucc n => rfl
+    rw [clamp cap (by omega),Int.ofNat_zero]
+    rw [clamp (0 - (reserved : Int) - (separator : Int) - 1) (by omega)]
+    exact (clamp _ (by omega)).symm
+
+theorem I4_measured_crossing_fresh (dims : FlushDimensions) (s : FlushState)
+    (noNotes : s.notes = []) : (measureCrossing dims s).empty = true := by
+  simp [measureCrossing,noNotes,carriedGeometry]
+
+/-- At a new page a diagnosed positive-length note takes no space.
+    A zero-length note still has a displayed part, reserving a separator
+    and preventing the oversize-figure fallback on an empty column. -/
+example :
+    let fresh : ColumnState := ⟨1,0,1,0,0⟩
+    let dims : FlushDimensions := ⟨1,0,1⟩
+    let rejected := measureCrossing dims ⟨fresh,[],[⟨4,0,2⟩]⟩
+    let zero := measureCrossing dims ⟨fresh,[],[⟨4,0,0⟩]⟩
+    rejected.empty = true ∧ rejected.free = 1 ∧ zero.empty = false ∧ zero.free = 0 := by decide
+
+theorem I5_measured_flow_eof (dims : FlushState → FlushDimensions)
+    (s : FlushState) (tree : LayoutTrace) (blanks : Bool) :
+    let geometry := fun st => measureCrossing (dims st) st
+    let placed := performEvents s tree.events
+    let beforeFlush := replay placed.2 (endCrossings blanks placed.2 (geometry placed.2))
+    ∃ out last, Crossings beforeFlush.2 out last ∧ last.figures = [] ∧ last.notes = [] ∧
+      placed.1 ++ (beforeFlush.1 ++ out) = s.figures ++ sourceFigures tree.source :=
+  I5_flow_events_and_terminal_blanks (fun st => measureCrossing (dims st) st)
+    (fun st noNotes _ => I4_measured_crossing_fresh _ st noNotes) s tree blanks _
 
 end TableAdvance
 
