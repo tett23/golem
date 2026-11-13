@@ -30,6 +30,7 @@ module Golem.Layout.Japanese
     MarkFormat (..),
     parseMarkFormat,
     composeInlines,
+    displayedInlines,
     composeInlinesTree,
     softHyphenSites,
     SoftHyphenNote (..),
@@ -334,6 +335,25 @@ data WordShys = WordShys
     wsBreakAfter :: !Bool
   }
   deriving stock (Eq, Show)
+
+-- | Display text before line breaking, including resolved numbers and only the base of ruby.
+displayedInlines :: ComposeEnv -> [Inline] -> Text
+displayedInlines env = foldMap (foldMap (display . snd) . piecesOf env)
+  where
+    display = \case
+      PChar _ ch selectors -> T.cons ch selectors
+      PWord _ text _ _ -> text
+      PSpace {} -> " "
+      PBox _ text _ _ -> text
+      PRuby _ _ base _ _ -> base
+      PRubyBreak -> ""
+      PForcedBreak -> "\n"
+      PAki {} -> ""
+      PCode _ text _ _ -> text
+      PDashes _ text -> text
+      PMark _ _ parts _ _ -> markPartsText parts
+      PAnchor _ -> ""
+      PShy {} -> ""
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls = let (items, anchors, _) = composeInlinesTree env inls in (items, anchors)

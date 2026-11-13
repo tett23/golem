@@ -38,7 +38,75 @@ commandsTests :: TestTree
 commandsTests =
   testGroup
     "commands on a project"
-    [replTests, newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
+    [statsTests, replTests, newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
+
+statsTests :: TestTree
+statsTests =
+  testGroup
+    "Golem ADR 0355"
+    [ testCase "inv1_grapheme_count: style boundaries, ruby base and emoji" $ project $ \run -> do
+        plain <- run "e\x301\n" []
+        styled <- run "e[lang en: \x301]\n" []
+        styled @?= plain
+        take 2 plain @?= ["本文文字数: 1", "ワード数: 1"]
+        ruby <- run "[ruby: air | reading]\n" []
+        take 2 ruby @?= ["本文文字数: 3", "ワード数: 1"]
+        family <- run "👨\x200d👩\x200d👧\x200d👦\n" (grid 1 1)
+        take 2 family @?= ["本文文字数: 1", "ワード数: 0"]
+        last family @?= pages 1 1 1,
+      testCase "inv2_grid_lines: empty line, exact width, overflow and distinct paragraphs" $ project $ \run -> do
+        forM_ [("a\n@blank-line\nb", 3), ("ab", 1), ("abc", 2), ("a\n\nb", 2)] $ \(source, count) -> do
+          result <- run (source <> "\n") (grid 2 1)
+          last result @?= pages count 2 1,
+      testCase "inv3_grid_pages: default grid, empty, exact and overflow" $ project $ \run -> do
+        let source = unlines (replicate 32 (replicate 40 'a' <> "\n"))
+        empty <- run "" []
+        empty @?= ["本文文字数: 0", "ワード数: 0", "組版後の行数: 0", pages 0 20 20]
+        defaults <- run source []
+        last defaults @?= pages 4 20 20
+        exact <- run source (grid 40 32)
+        last exact @?= pages 1 40 32
+        overflow <- run (replicate 40 'a' <> "\n@blank-line\n" <> unlines (replicate 31 (replicate 40 'a' <> "\n"))) (grid 40 32)
+        last overflow @?= pages 2 40 32,
+      testCase "inv3_grid_pages: reject non-positive and non-integer dimensions" $
+        withSystemTempDirectory "golem-stats" $ \root ->
+          forM_ ["0", "-1", "0.5"] $ \value -> forM_ ["--chars-per-line", "--lines-per-page"] $ \flag -> do
+            (invalid, _, _) <- golemAt root ["stats", flag, value]
+            invalid @?= ExitFailure 2,
+      testCase "inv4_independent_counts: dimensions affect only the estimate" $ project $ \run -> do
+        first <- run "don't stop 42!\n" (grid 1 1)
+        second <- run "don't stop 42!\n" (grid 40 32)
+        take 3 first @?= take 3 second
+        first !! 1 @?= "ワード数: 3"
+        assertBool "grid pages differ" (last first /= last second),
+      testCase "inv5_master_frame: sidenote is independent of the main text" $ project $ \run -> do
+        plain <- run "ab\n" []
+        beside <- run "ab[sidenote: xy]\n" []
+        first <- run "abxy\n" []
+        take 1 beside @?= take 1 plain
+        take 1 plain @?= ["本文文字数: 2"]
+        take 1 first @?= ["本文文字数: 4"]
+    ]
+  where
+    grid :: Int -> Int -> [String]
+    grid c l = ["--chars-per-line", show c, "--lines-per-page", show l]
+    pages :: Int -> Int -> Int -> String
+    pages n c l = "換算ページ数: " <> show n <> " (" <> show c <> "字 × " <> show l <> "行)"
+    project test = withSystemTempDirectory "golem-stats" $ \tmp -> do
+      let root = tmp </> "book"
+      (created, _, _) <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
+      created @?= ExitSuccess
+      font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+      createDirectoryIfMissing True (root </> "fonts")
+      BL.writeFile (root </> "fonts/SourceSerif4-Regular.otf") font
+      appendFile (root </> "style.toml") "\n[sidenotes]\nwidth = \"2zw\"\ngap = \"0.25zw\"\nmarker = \"none\"\n"
+      test $ \source args -> do
+        writeFiles root [("chapters/01.gm", source)]
+        (status, out, err) <- golemAt root ("stats" : args)
+        assertEqual err ExitSuccess status
+        outputs <- filesUnder root
+        assertBool "stats must not write a PDF" (not (any (".pdf" `isSuffixOf`) outputs))
+        pure (lines out)
 
 replTests :: TestTree
 replTests =

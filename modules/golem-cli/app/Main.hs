@@ -3,7 +3,7 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
-import Data.Char (isSpace, toLower)
+import Data.Char (isDigit, isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, sortOn, stripPrefix)
@@ -41,6 +41,7 @@ import Golem.Syntax.ShowTree (showTree)
 import Options.Applicative
 import Options.Applicative.Extra (helperWith)
 import Repl qualified
+import Stats (printStats)
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
@@ -56,6 +57,7 @@ data Command
   = New FilePath Language Bool Bool
   | Build [Target] Profile CropMarks Bool Bool Format
   | Check Profile CropMarks Bool Bool Format
+  | Stats Integer Integer
   | Preflight (Maybe FilePath) CropMarks Format
   | PluginFetch
   | PluginLock
@@ -142,6 +144,15 @@ marksOpt =
     (choice "トンボの形" [("japanese", JapaneseMarks), ("western", WesternMarks), ("none", NoMarks)])
     (long "marks" <> value NoMarks <> metavar "japanese|western|none" <> help "PDF に付けるトンボ（既定は none）")
 
+statsDimension :: String -> String -> Parser Integer
+statsDimension optionName description =
+  option (eitherReader positive) (long optionName <> metavar "N" <> value 20 <> showDefault <> help description)
+  where
+    positive raw | not (null raw) && all isDigit raw, n > 0 = Right n
+      where
+        n = read raw
+    positive _ = Left "正の整数を指定してください"
+
 inspectAsOpt :: Parser InspectAs
 inspectAsOpt =
   option
@@ -215,6 +226,7 @@ commands =
         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
         <> cmd "repl" (subparser (commandGroup "コマンド:" <> metavar "LANGUAGE" <> cmd "emet" (pure EmetRepl) "Emet の式を対話的に評価する")) "対話的に式を評価する"
         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
+        <> cmd "stats" (Stats <$> statsDimension "chars-per-line" "換算する1行の文字数" <*> statsDimension "lines-per-page" "換算する1ページの行数") "本文の文字数、ワード数、組版行数と換算ページ数を表示する"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
         <> cmd "explain" (Explain <$> many (strArgument (metavar "CODE..."))) "診断のコードの説明を表示する"
     )
@@ -256,6 +268,12 @@ run = \case
   Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
+  Stats charsPerLine rows -> do
+    root <- getCurrentDirectory
+    result <- manuscriptLines (defaultOptions root)
+    case result of
+      Left (sources, ds) -> putHuman sources ds >> pure (ExitFailure 1)
+      Right body -> printStats charsPerLine rows body >> pure ExitSuccess
   Inspect path mode -> inspect path mode
   Lint profile quiet verbose fmt -> do
     (infos, ds) <- lintProject profile quiet verbose "."

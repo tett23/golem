@@ -289,6 +289,10 @@ if has ghc-libffi; then
     fail "licenses/ghc-libffi/ is for GHC $(cat "$GLDIR/GHC_VERSION"), not $GHC_VERSION: check the libffi that GHC bundles"
   copy "$GLDIR/LICENSE" ghc-libffi
 fi
+if [ "$WASM" = false ]; then
+  copy "$ROOT/modules/golem-cli/cbits/libgrapheme/LICENSE" libgrapheme
+  copy "$ROOT/modules/golem-cli/cbits/libgrapheme/UNICODE-LICENSE" libgrapheme
+fi
 copy "$ROOT/modules/golem-font/cbits/harfbuzz/COPYING" harfbuzz
 copy "$ROOT/modules/golem-font/cbits/freetype/LICENSE.TXT" freetype
 copy "$ROOT/modules/golem-font/cbits/freetype/docs/FTL.TXT" freetype
@@ -431,6 +435,7 @@ FREETYPE_YEAR=$(sed -n 's/.*Copyright (C) 1996-\([0-9]\{4\}\).*/\1/p' "$ROOT/mod
   fi
   [ ! -d "$OUT/ghc" ] || line ghc/ "GHC $GHC_VERSION and its runtime system (RTS)"
   [ ! -d "$OUT/ghc-libffi" ] || line ghc-libffi/ "libffi, bundled in the RTS of GHC $GHC_VERSION"
+  if [ "$WASM" = false ]; then line libgrapheme/ "libgrapheme and Unicode 17.0.0 data"; fi
   line harfbuzz/ HarfBuzz
   line freetype/ 'FreeType, used under the FreeType License (FTL.TXT)'
   if [ -d "$OUT/wasmtime" ]; then

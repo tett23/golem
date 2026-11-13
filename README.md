@@ -326,6 +326,12 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
 
+### 原稿の分量を調べる
+
+プロジェクトのディレクトリで `golem stats` を実行すると、本文の文字数、ワード数、組版後の行数、400 字詰め原稿用紙でのページ数が分かる。
+40 字×32 行のページに換算するには `golem stats --chars-per-line 40 --lines-per-page 32` を実行する。
+組版後の行数を調べるため、プロジェクトで指定した書体を使う。
+
 ## Development
 
 変更の進め方と約束ごとは [CONTRIBUTING.md](./CONTRIBUTING.md) にある。
