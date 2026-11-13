@@ -103,4 +103,73 @@ theorem generated_chains :
     chains.map (fun (name, idx, _) => alternative name idx) =
       chains.map (fun (_, _, names) => some (expressions names)) := by rfl
 
+private def closedItems (opening : String) : List Expr :=
+  [.ref opening [], .ref "ExprBody" [], .label (.choice [[.ref "RBr" []]]) "close"]
+
+private def after (result : ParseResult) (next : List Char → ParseResult) : ParseResult :=
+  match result with
+  | .error reason => .error reason
+  | .ok none => .ok none
+  | .ok (some rest) => next rest
+
+private def closeBracket (input : List Char) : ParseResult :=
+  match input with
+  | ']' :: rest => .ok (some rest)
+  | _ => .error "label: close"
+
+private theorem closing_total (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [] (fuel + 7)
+      (.label (.choice [[.ref "RBr" []]]) "close") input = closeBracket input := by
+  have lit := PegModelTest.literal_total Generated.pegGrammar [] (fuel + 2) "]" "']'" input
+  change (match recognizeEnv Generated.pegGrammar [] (fuel + 6) (.choice [[.ref "RBr" []]]) input with
+    | .ok none => Except.error "label: close"
+    | result => result) = _
+  have eq : recognizeEnv Generated.pegGrammar [] (fuel + 6) (.choice [[.ref "RBr" []]]) input =
+      (if "]".toList.isPrefixOf input then .ok (some (input.drop 1)) else .ok none) := by
+    change runChoices (fun items => runSequence (fun env e x => recognizeEnv Generated.pegGrammar env (fuel+5) e x) _ [] items input) [[.ref "RBr" []]] = _
+    have child : recognizeEnv Generated.pegGrammar [] (fuel+5) (.ref "RBr" []) input =
+        (if "]".toList.isPrefixOf input then .ok (some (input.drop 1)) else .ok none) := by
+      change runChoices (fun items => runSequence (fun env e x => recognizeEnv Generated.pegGrammar env (fuel+3) e x) _ [] items input) [[.lit "]" "']'"]] = _
+      cases hit : "]".toList.isPrefixOf input <;> simp [runChoices, foldChoice, runSequence, lit, hit] <;> rfl
+    cases hit : "]".toList.isPrefixOf input <;> simp [runChoices, foldChoice, runSequence, child, hit] <;> rfl
+  rw [eq]
+  cases input with
+  | nil => rfl
+  | cons c rest =>
+      by_cases h : c = ']'
+      · subst c; simp [closeBracket, List.isPrefixOf]
+      · have ne : (']' == c) = false := by
+          cases b : (']' == c) with
+          | false => rfl
+          | true => exact False.elim (h (eq_of_beq b).symm)
+        simp [closeBracket, h, List.isPrefixOf, ne]
+
+theorem generated_closed (name opening : String)
+    (rule : (name = "ExprCtx" ∧ opening = "ExprOpen") ∨ (name = "SplatArgument" ∧ opening = "Splat"))
+    (env : Params) (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar env (fuel + 9) (.ref name []) input =
+      after (recognizeEnv Generated.pegGrammar [] (fuel + 7) (.ref opening []) input)
+        (fun rest => after (recognizeEnv Generated.pegGrammar [] (fuel + 7) (.ref "ExprBody" []) rest) closeBracket) := by
+  have outer : recognizeEnv Generated.pegGrammar env (fuel + 9) (.ref name []) input =
+      recognizeEnv Generated.pegGrammar [] (fuel + 8) (.choice [closedItems opening]) input := by
+    rcases rule with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;> rfl
+  rw [outer]
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+7) e x) _ [] items input) [closedItems opening] = _
+  cases first : recognizeEnv Generated.pegGrammar [] (fuel+7) (.ref opening []) input with
+  | error reason => simp [closedItems, runChoices, foldChoice, runSequence, first, after]; rfl
+  | ok value =>
+      cases value with
+      | none => simp [closedItems, runChoices, foldChoice, runSequence, first, after]; rfl
+      | some rest =>
+          cases body : recognizeEnv Generated.pegGrammar [] (fuel+7) (.ref "ExprBody" []) rest with
+          | error reason => simp [closedItems, runChoices, foldChoice, runSequence, first, body, after]; rfl
+          | ok val =>
+              cases val with
+              | none => simp [closedItems, runChoices, foldChoice, runSequence, first, body, after]; rfl
+              | some endBody =>
+                  cases closer : closeBracket endBody with
+                  | error reason => simp [closedItems, runChoices, foldChoice, runSequence, first, body, after, closing_total, closer]; rfl
+                  | ok tail =>
+                      cases tail <;> simp [closedItems, runChoices, foldChoice, runSequence, first, body, after, closing_total, closer] <;> rfl
+
 end ReferenceSequence

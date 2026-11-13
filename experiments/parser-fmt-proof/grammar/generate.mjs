@@ -457,6 +457,11 @@ if (!fragment && ast) {
       if (describeItems(rule.alts[0].items) === [rule.name, 'ES', op, 'ES', operand].join(' ') &&
           describeItems(rule.alts[1].items) === operand) continue;
     }
+    if ((rule.name === 'ExprCtx' || rule.name === 'SplatArgument') &&
+        singleUnitRuleMatches(ast.rules.find(r => r.name === 'RBr'), "']'")) {
+      const opening = rule.name === 'ExprCtx' ? 'ExprOpen' : 'Splat';
+      if (singleUnitRuleMatches(rule, opening + ' ExprBody (RBr)^close')) continue;
+    }
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&

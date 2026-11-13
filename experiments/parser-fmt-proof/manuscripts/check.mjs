@@ -94,6 +94,8 @@ function* cases() {
     /EBinary\s+OpLt\s+EUnary\s+Negate\s+EBinary Pow \(EBinary Add \(ENat 2\) \(ENat 3\)\) \(ENat 2\)\s+ENat 30/u];
   yield ['[= 8-3-2*6/3]\n', [],
     /EBinary\s+Sub\s+EBinary Sub \(ENat 8\) \(ENat 3\)\s+EBinary Div \(EBinary Mul \(ENat 2\) \(ENat 6\)\) \(ENat 3\)/u];
+  yield ['[f *[xs] **[h]]\n', [],
+    /SplatPositional \(EVar \["xs"\]\), SplatKeyword \(EVar \["h"\]\)/u];
   yield ['[f answer=ok]\n', [], /Keyword \("answer"\) \(Word "ok"\)/u];
 }
 
