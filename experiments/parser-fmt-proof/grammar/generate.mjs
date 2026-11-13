@@ -397,6 +397,12 @@ const textRuns = new Map([
   ['SlotText', "(![\\[\\\\\\n|\\]] !'%%' !NumberOpen .)+"],
   ['CellText', "(![\\[\\\\\\n|] !'%%' !NumberOpen .)+"],
 ]);
+function singleUnitRuleMatches(rule, expected) {
+  return rule?.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
+    rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+    describeItems(rule.alts[0].items) === expected;
+}
+const numberBodyProved = singleUnitRuleMatches(ast?.rules.find(r => r.name === 'NumberBody'), textRuns.get('NumberBody'));
 const indentedLabels = new Map([
   ['BadIndent', 'Ind(ind) &[ \\t] (&{ False } [ \\t])^indent'],
   ['OrphanDef', "Ind(ind) &'=:' (&{ False } '=:')^def_orphan"],
@@ -418,9 +424,10 @@ if (!fragment && ast) {
           rule.alts.length === 1 && describeItems(rule.alts[0].items) === 'Sp (Nl / !.)') continue;
     }
     if (textRuns.has(rule.name) && (rule.name === 'NumberBody' || numberOpenFullyProved) &&
-        rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
-        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
-        describeItems(rule.alts[0].items) === textRuns.get(rule.name)) continue;
+        singleUnitRuleMatches(rule, textRuns.get(rule.name))) continue;
+    if (rule.name === 'NumberShorthand' && numberOpenFullyProved && numberBodyProved &&
+        singleUnitRuleMatches(ast.rules.find(r => r.name === 'NumberMark'), "'##'") &&
+        singleUnitRuleMatches(rule, '&NumberOpen NumberMark NumberBody NumberMark?')) continue;
     if (rule.name === 'ExprIdent' && rule.params.length === 0 && rule.templateParams.length === 0 &&
         rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === '[a-zA-Z_] [a-zA-Z0-9_]*') continue;

@@ -85,6 +85,11 @@ function* cases() {
     [[5, '"%%note%%"'], [15, '"%%n%%"'], [24, '"%%c%%"']],
     /Text "a%z".*NumberShorthand "##12##".*Text "bc".*Command.*\[\[Text "x", NumberShorthand "##3##"\], \[Text "yz"\]\].*Table.*\[\[Text "a", NumberShorthand "##4##"\], \[Text "bd"\]\]/su,
     [[5, '"%%note%%"'], [16, '"%%n%%"'], [26, '"%%c%%"']]];
+  yield ['a##1\n', [], /Paragraph \[Text "a", NumberShorthand "##1"\]/u];
+  yield ['a##1#b\n', [], /Paragraph \[Text "a", NumberShorthand "##1", Text "#b"\]/u];
+  yield ['a##x\n', [], /Paragraph \[Text "a##x"\]/u];
+  yield ['a##１\n', [], /Paragraph \[Text "a##１"\]/u];
+  yield ['a##1%%n%%b\n', [[3, '"%%n%%"']], /Paragraph \[Text "a", NumberShorthand "##1", Text "b"\]/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token
