@@ -388,6 +388,7 @@ const indentFullyProved = indentRule?.params.length === 1 && indentRule.params[0
   describeItems(indentRule.alts[1].items) === "' ' Ind(n - 1)" &&
   indentRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null);
 const indentedLabels = new Map([
+  ['BadIndent', 'Ind(ind) &[ \\t] (&{ False } [ \\t])^indent'],
   ['OrphanDef', "Ind(ind) &'=:' (&{ False } '=:')^def_orphan"],
   ['ReservedBlock', "Ind(ind) &'@!' (&{ False } '@!')^reserved"],
 ]);

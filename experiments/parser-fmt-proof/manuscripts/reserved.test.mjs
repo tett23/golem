@@ -25,6 +25,11 @@ for (const [marker, code] of [['=:', 'G01013'], ['@!', 'G01100']]) {
   }
 }
 
+for (const [name, prefix] of [['space', ' '], ['tab', '\t']]) {
+  cases.push({ name: 'indent-' + name, original: 'x\n\ny\n', input: prefix + 'x\n\ny\n',
+    skipped: [prefix + 'x'], code: 'G01011', following: 'y' });
+}
+
 for (const { name, original, input, skipped, code = 'G01100', following = '末' } of cases) {
   test(`Golem ADR 0351: labeled recovery ${name}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'golem-reserved-'));

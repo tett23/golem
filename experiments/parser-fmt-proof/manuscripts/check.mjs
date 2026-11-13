@@ -74,6 +74,8 @@ function* cases() {
   }
   yield ['[= _A09.x2+Z_]\n', [],
     /EBinary Add \(EVar \["_A09", "x2"\]\) \(EVar \["Z_"\]\)/u];
+  yield ['- x\n   p\n\ny\n', [],
+    /BulletList \[\[Paragraph \[Text "x", SoftBreak, Text " p"\]\]\]\s+- Paragraph \[Text "y"\]/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token

@@ -56,4 +56,54 @@ theorem generated_indented_labels (name marker written label arg : String)
     rw [args]
     exact after_indent _ _ _ _ _ _
 
+private def spaces : List (Nat × Nat) := [(32, 32), (9, 9)]
+private def spaceClass := Expr.charClass spaces "[ \\t]"
+private def spaceHit (c : Char) := spaces.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+private def indentError := Expr.label (.choice [[.semanticPred true " False ", spaceClass]]) "indent"
+private def badItems : List Expr := [.ref "Ind" ["ind"], .andPred spaceClass, indentError]
+
+def badOutcome (n : Nat) (input : List Char) : ParseResult :=
+  match IndentTotal.expected n input with
+  | some (c :: _) => if spaceHit c then .error "label: indent" else .ok none
+  | _ => .ok none
+
+theorem generated_bad_indent (env : Params) (arg : String) (n extra : Nat) (input : List Char)
+    (value : integer env arg = some n) :
+    recognizeEnv Generated.pegGrammar env (2*n + 6 + extra) (.ref "BadIndent" [arg]) input =
+      badOutcome n input := by
+  let fuel := 2*n + 4 + extra
+  have args : [arg].mapM (integer env) = some [n] := by simp [List.mapM, List.mapM.loop, value]
+  rw [show 2*n + 6 + extra = fuel + 1 + 1 by dsimp [fuel]; omega]
+  change (match [arg].mapM (integer env) with
+    | none => Except.error "opaque argument for BadIndent"
+    | some vs => recognizeEnv Generated.pegGrammar (List.zip ["ind"] vs) (fuel + 1) (.choice [badItems]) input) = _
+  rw [args]
+  let scope := [("ind", n)]
+  change runChoices (fun xs => runSequence (fun e item rest => recognizeEnv Generated.pegGrammar e fuel item rest)
+    (fun _ _ _ => .ok none) scope xs input) [badItems] = _
+  have ind := IndentTotal.generated_indent n input scope "ind" (extra+1) (by rfl)
+  rw [show 2*n + 3 + (extra+1) = fuel by dsimp [fuel]; omega] at ind
+  cases found : IndentTotal.expected n input with
+  | none =>
+      simp [badItems, badOutcome, ind, found, runChoices, runSequence, foldChoice, List.foldlM,
+        Bind.bind, Except.bind, pure, Except.pure, Except.map]
+  | some rest =>
+      have look := PegModelTest.class_lookahead Generated.pegGrammar scope
+        (2*n + 1 + extra) spaces "[ \\t]" rest
+      rw [show 2*n + 1 + extra + 3 = fuel by dsimp [fuel]; omega] at look
+      have label : recognizeEnv Generated.pegGrammar scope fuel indentError rest = .error "label: indent" := by
+        rw [show fuel = (2*n + extra) + 4 by dsimp [fuel]; omega]
+        exact label_of_miss _ _ _ _ _ _ (by rfl)
+      cases rest with
+      | nil =>
+          change recognizeEnv _ _ fuel (.andPred spaceClass) [] = .ok none at look
+          simp [badItems, badOutcome, ind, found, look, runChoices, runSequence, foldChoice, List.foldlM,
+            Bind.bind, Except.bind, pure, Except.pure, Except.map]
+      | cons c tail =>
+          change recognizeEnv _ _ fuel (.andPred spaceClass) (c :: tail) =
+            .ok (if spaceHit c then some (c :: tail) else none) at look
+          cases hit : spaceHit c <;>
+            simp [badItems, badOutcome, ind, found, look, hit, label, runChoices, runSequence,
+              foldChoice, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map]
+
 end IndentedLabelTotal
