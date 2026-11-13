@@ -11971,6 +11971,32 @@ theorem retry_after_crossings (header : List Nat) (rows : List (List Nat))
     emitted ++ last.figures = s.figures :=
   ⟨retry_decreases header old fresh rows retryNeeded, crossings_fifo run⟩
 
+/-- Projection of putLineKeeping on the input line, its displayed notes,
+    and the pending state shared with the next column crossing. cap is
+    the signed, box-adjusted capacity returned by the implementation. -/
+def putBody (s : FlushState) (cap : Int) (used reserve separator : Nat) (line : Body) :
+    Nat × List Part × FlushState :=
+  let sep := if s.geometry.noteLines = 0 ∧ 0 < (line.notes.foldl (fun total n => total + n.lines) 0) then separator else 0
+  let room := cap - used - 1 - reserve - s.geometry.noteLines - sep
+  let (shown,pending) := split room line.notes
+  let charged := if shown.isEmpty && reserve > 0 then 0 else sep
+  let next := {s.geometry with noteLines := s.geometry.noteLines + charged + (shown.foldl (fun total part => total + part.lines) 0)}
+  (line.id,shown,{s with geometry := next, notes := s.notes ++ pending})
+
+/-- Displaying a new note can precede older pending notes. Track its own
+    suffix separately from the old FIFO prefix. Figure order survives
+    every subsequent crossing, including one that repeats a table header. -/
+theorem body_then_crossings (s : FlushState) (cap : Int) (used reserve separator : Nat)
+    (line : Body) {emitted : List Deferred} {last : FlushState}
+    (run : Crossings (putBody s cap used reserve separator line).2.2 emitted last) :
+    let result := putBody s cap used reserve separator line
+    result.1 = line.id ∧ emitted ++ last.figures = s.figures ∧
+    ∃ pending, result.2.2.notes = s.notes ++ pending ∧
+      trace result.2.1 ++ trace pending = trace (line.notes.map full) := by
+  have fifo := crossings_fifo run
+  refine ⟨rfl,fifo,_,rfl,?_⟩
+  exact I5_splitNotes_exact _ _
+
 end TableAdvance
 
 
