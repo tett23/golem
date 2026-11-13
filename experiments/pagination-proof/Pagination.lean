@@ -12456,6 +12456,58 @@ theorem I5_events_eof (geometry : FlushState → CrossingGeometry)
   simp [figures] at suffix
   exact ⟨out,last,run,notes,figures,by rw [suffix]; exact I5_events_fifo s es⟩
 
+/-- Hierarchical trace of layout. Before and after an enclosed body, box
+    opening/closing may change geometry or advance; neither introduces a
+    source figure. Each crossing is retained at its actual position. -/
+inductive BodyEvent where
+  | crossing (g : CrossingGeometry)
+  | body (geometry : ColumnState) (notes : List Part)
+
+def BodyEvent.layout : BodyEvent → LayoutEvent
+  | .crossing g => .crossing g
+  | .body geo notes => .body geo notes
+
+inductive LayoutTrace where
+  | body (e : BodyEvent)
+  | figure (f : Deferred) (g : FigureGeometry)
+  | nil
+  | cons (first rest : LayoutTrace)
+  | box (enter leave : BodyEvent) (children : LayoutTrace)
+
+def LayoutTrace.events : LayoutTrace → List LayoutEvent
+  | .body e => [e.layout]
+  | .figure f g => [.figure f g]
+  | .nil => []
+  | .cons first rest => first.events ++ rest.events
+  | .box enter leave children => enter.layout :: (children.events ++ [leave.layout])
+
+def LayoutTrace.source : LayoutTrace → SourceFlow
+  | .body _ => .other
+  | .figure f _ => .figure f
+  | .nil => .nil
+  | .cons first rest => .cons first.source rest.source
+  | .box _ _ children => .box children.source
+
+theorem BodyEvent.no_source_figure (e : BodyEvent) : e.layout.figures = [] := by
+  cases e <;> rfl
+
+theorem LayoutTrace.event_source (t : LayoutTrace) :
+    t.events.bind LayoutEvent.figures = sourceFigures t.source := by
+  induction t with
+  | nil | figure => rfl
+  | body e => simp [events,source,sourceFigures,e.no_source_figure]
+  | cons first rest left right => simp [events,source,sourceFigures,left,right]
+  | box enter leave child inside =>
+    simp [events,source,sourceFigures,inside,BodyEvent.no_source_figure]
+
+theorem I5_box_event_positions (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true) (s : FlushState) (tree : LayoutTrace) :
+    ∃ out last, Crossings (performEvents s tree.events).2 out last ∧ last.notes = [] ∧
+      last.figures = [] ∧ (performEvents s tree.events).1 ++ out =
+        s.figures ++ sourceFigures tree.source := by
+  simpa [tree.event_source] using I5_events_eof geometry fresh s tree.events
+
 end TableAdvance
 
 

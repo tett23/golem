@@ -1389,6 +1389,12 @@ waitingFigureTests =
       gridLines ps @?= [[0], [0], [0]]
       unmets ps @?= [DroppedBlank (controlSpan 0)]
       brokenIn [P3, P4, P5] input @?= [],
+    testCase "I5: crossings before a figure and within a box keep regular and turned figures in source order" $ do
+      let body = [FParagraph defaultKeep (lines' 0 11), FFigure 40 4 [] [], FParagraph defaultKeep (lines' 11 6), FPageFigure 41 [] []]
+          pages = paginate 2 4 [FBoxed 1 0 0 body, FFigure 42 1 [] []]
+          slots = concatMap (map snd . poSlots) pages
+      [i | slot <- slots, i <- case slot of { SFigure n -> [n]; SPageFigure n -> [n]; _ -> [] }] @?= [40, 41, 42]
+      [i | SLine i <- slots] @?= [0 .. 16],
     testCase "P4': blank lines before a figure that waits go with the paragraph after it, in its column" $ do
       let input = Input 4 1 [EPara 2, EFigure 3, EBlank 1, EFigure 2, EPara 1]
           ps = paginateInput input
