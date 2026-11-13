@@ -305,6 +305,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 - 閲覧用の PDF は `--marks` を付けずに作る。
 
 トンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
+隠しノンブルの書体と色は `[hidden-folio]` の `character-style` で選ぶ（[Golem ADR 0365](docs/adr/0365-hidden-folio-style.md)）。
 中綴じの本では `style.toml` の `[hidden-folio]` に `enabled = false` を書く（[golem-driver ADR 0021](docs/golem-driver/adr/0021-hidden-folios.md)）。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 

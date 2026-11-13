@@ -88,6 +88,7 @@ module Golem.Project.Style
     IndexStyle (..),
     indexSectionHeadings,
     HiddenFolio (..),
+    effectiveHiddenFolio,
     HiddenFolioPages (..),
     MasterDef (..),
     RunningHeadDef (..),
@@ -1143,13 +1144,15 @@ data HiddenFolio = HiddenFolio
     -- | from the trim line of the gutter to the centre line of the column, absolute
     hfGutter :: !Dim,
     -- | whether gutter was written: G03029 is at gutter, or at size without it (golem-driver ADR 0041)
-    hfGutterWritten :: !Bool
+    hfGutterWritten :: !Bool,
+    hfCharacterStyle :: !(Maybe Text),
+    hfSizeWritten :: !Bool
   }
   deriving stock (Eq, Show)
 
 -- | Without [hidden-folio]: enabled, on the pages without a folio, 6pt, 1.5mm.
 defaultHiddenFolio :: HiddenFolio
-defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (L.toSp L.Pt 6)) (Abs (mmToSp (3 % 2))) False
+defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (L.toSp L.Pt 6)) (Abs (mmToSp (3 % 2))) False Nothing False
 
 {- | Every error of reading [hidden-folio] is G03006: a dimension in zw, of
 0 or less or unreadable, a value of pages outside the table and an
@@ -1178,11 +1181,12 @@ instance FromValue HiddenFolio where
               Just (Zw _) -> failAt l ("[hidden-folio] の " <> T.unpack k <> " には zw を使えません")
               Nothing -> failAt l ("[hidden-folio] の " <> T.unpack k <> " の長さの書き方が不正です: " <> T.unpack t)
           _ -> failAt (valueAnn v) ("[hidden-folio] の " <> T.unpack k <> " は文字列で書きます")
+    character <- optKey "character-style"
     sizeAt <- len "size"
     gutterAt <- len "gutter"
     let size = maybe (hfSize d) snd sizeAt
         gutter = maybe (hfGutter d) snd gutterAt
-    pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter (isJust gutterAt))
+    pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter (isJust gutterAt) character (isJust sizeAt))
 
 {- | G03029 (golem-driver ADR 0041): the column of digits, half the size on
 each side of its centre line, crosses the trim line of the gutter when
@@ -1191,6 +1195,15 @@ advance of a digit, which the font decides and style.toml does not know.
 The path of the value to fix (gutter, or size when gutter is not
 written), the message with the values in mm, and the facts in sp.
 -}
+effectiveHiddenFolio :: Style -> HiddenFolio
+effectiveHiddenFolio style
+  | hfSizeWritten hf = hf
+  | otherwise = hf {hfSize = maybe (hfSize hf) (Abs . dimToSp base) styledSize}
+  where
+    hf = stHiddenFolio style
+    base = dimToSp (L.toSp L.Pt 10) (hfSize defaultHiddenFolio)
+    styledSize = hfCharacterStyle hf >>= charStyle style >>= csSize
+
 hiddenFolioChecks :: HiddenFolio -> [([Scope], Text, [(Text, Fact)])]
 hiddenFolioChecks hf = case (hfSize hf, hfGutter hf) of
   (Abs size, Abs gutter)
@@ -2802,7 +2815,7 @@ parseStyle fid src = do
   where
     -- the facts of G03029 (golem-driver ADR 0041); the other checks have none
     factsOf st = \case
-      "G03029" -> concat [fs | (_, _, fs) <- hiddenFolioChecks (stHiddenFolio st)]
+      "G03029" -> concat [fs | (_, _, fs) <- hiddenFolioChecks (effectiveHiddenFolio st)]
       _ -> []
     tree = either (const Nothing) Just (Toml.parse src)
     -- the span of the value to fix, of its table, or the start of the file
@@ -2863,7 +2876,7 @@ styleChecks owner s =
     <> hyphenationExceptionChecks s
     <> codeStyleChecks s
     <> ruleStyleChecks s
-    <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
+    <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (effectiveHiddenFolio s)]
     <> fontRoleChecks s
     <> styleReferenceChecks owner s
     <> regexStyleChecks owner s
@@ -3555,7 +3568,7 @@ styleSchema =
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),
       ("index", NTable [("columns", int), ("column-gap", dim), ("section-headings", bool)]),
       ("code", codeNode),
-      ("hidden-folio", NTable [("enabled", bool), ("pages", enum (map fst hiddenFolioPagesValues)), ("size", dim), ("gutter", dim)])
+      ("hidden-folio", NTable [("enabled", bool), ("pages", enum (map fst hiddenFolioPagesValues)), ("size", dim), ("gutter", dim), ("character-style", str)])
     ]
   where
     pageNode =

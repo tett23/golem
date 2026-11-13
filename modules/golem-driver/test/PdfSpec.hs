@@ -488,7 +488,17 @@ layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidde
 -- | The hidden folio tests (ADR 0021).
 hiddenFolioTests :: [TestTree]
 hiddenFolioTests =
-  [ testCase "with crop marks, only the blank page has one" $ do
+  [ testCase "Golem ADR 0365 inv1_hidden_folio_style_case_1: explicit size" $ do
+      pdf <- marksPdf (\o -> o {optMarks = WesternMarks}) (horizontalStyle <> "\n[hidden-folio]\npages = \"all\"\nsize = \"8pt\"\ngutter = \"5pt\"\n")
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "8pt hidden folio" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
+    testCase "Golem ADR 0365 inv1_hidden_folio_style_case_2: style color with size override" $ do
+      let style = horizontalStyle <> "\n[color.swatches]\nhidden-red = { rgb = [255, 0, 0] }\n[character-styles.hidden]\nsize = \"12pt\"\ncolor = \"hidden-red\"\n[hidden-folio]\npages = \"all\"\ncharacter-style = \"hidden\"\nsize = \"8pt\"\ngutter = \"5pt\"\n"
+      pdf <- marksPdf (\o -> o {optMarks = WesternMarks}) style
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "red hidden folio" ("1 0 0 rg" `BS.isInfixOf` content)
+      assertBool "8pt overrides 12pt" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
+    testCase "with crop marks, only the blank page has one" $ do
       (_, _, hf) <- layoutHidden (Just P.Western) miniManifest headsStyle [("a.gm", twoChapters)]
       Map.keys hf @?= [4],
     testCase "without crop marks, none" $ do
