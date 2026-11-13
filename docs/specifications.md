@@ -2439,6 +2439,11 @@ EPUB と HTML は `bleed` を無視する。
 | `size` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"6pt"` | 数字の大きさ |
 | `gutter` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"1.5mm"` | ノドの仕上がりの線から、数字の列の中心線までの距離 |
 
+隠しノンブルの `character-style` には文字スタイル名を指定する（[Golem ADR 0365](adr/0365-hidden-folio-style.md)）。
+書体と色を隠しノンブルに適用する。
+明示した `size` が文字スタイルのサイズより優先し、両方にサイズがなければ既定の 6pt を使う。
+G03029 と G07050 の重なりの判定にも、この優先順位を適用したサイズを使う。
+
 見開きモードで `[hidden-folio]` を書かない本は、すべてのキーが既定の値になり、トンボを付けた PDF には隠しノンブルが入る。
 中綴じの本ではノドが見開きの中央に見えるので、`enabled = false` を書く。
 左右固定モードでは隠しノンブルを描かず、`enabled = true` はトンボの有無によらず G03006 とする（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
