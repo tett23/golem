@@ -118,4 +118,26 @@ theorem generated_skipped_literal_shapes :
       (fun r => (r.alts[1]?.map (fun a => a.items), r.alts[3]?.map (fun a => a.items)))) =
       some (some [.lit "[!" "'[!'"], some [.lit ".." "'..'"]) := by rfl
 
+def skippedAtItems : List PegModel.Expr :=
+  [.lit "@!" "'@!'", .star (.choice [[.notPred (.charClass [(10, 10)] "[\\n]"), .any]])]
+
+theorem generated_skipped_at_shape :
+    ((Generated.pegGrammar.rules.find? (fun r => r.name == "SkippedReserved")).bind
+      (fun r => r.alts[2]?.map (fun a => a.items))) = some skippedAtItems := by rfl
+
+theorem generated_skipped_at (input : List Char) (extra : Nat)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat)) :
+    PegModel.runSequence (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope
+      ((input.drop 2).length + 5 + extra) item rest) boundLength [] skippedAtItems input =
+      .ok (if "@!".toList.isPrefixOf input then
+        some ((input.drop 2).dropWhile (permitted [(10, 10)])) else none) := by
+  have lit := literal_total Generated.pegGrammar [] ((input.drop 2).length + 4 + extra)
+    "@!" "'@!'" input
+  rw [show (input.drop 2).length + 4 + extra + 1 = (input.drop 2).length + 5 + extra by omega] at lit
+  have star := star_nonclass_total Generated.pegGrammar [] [(10, 10)] "[\\n]" (input.drop 2) extra
+  simp only [List.length_drop] at lit star
+  cases hp : "@!".toList.isPrefixOf input <;>
+    simp [skippedAtItems, PegModel.runSequence, lit, hp, show "@!".toList.length = 2 by rfl,
+      Except.bind, Bind.bind, pure, Except.pure, star] <;> rfl
+
 end EscapeTotal

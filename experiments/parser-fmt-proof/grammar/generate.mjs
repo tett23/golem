@@ -400,6 +400,10 @@ if (!fragment && ast) {
       errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
     };
     for (const alt of rule.alts) {
+      if (rule.name === 'SkippedReserved' && alt === rule.alts[2] &&
+          rule.params.length === 0 && rule.templateParams.length === 0 &&
+          describeItems(alt.items) === "'@!' (![\\n] .)*" &&
+          alt.action?.trim() === '()' && alt.constructor === null) continue;
       // generated_skipped_literal_shapes identifies these alternatives;
       // sequence_literal_total gives their result for every input suffix.
       if (rule.name === 'SkippedReserved' && rule.params.length === 0 &&
