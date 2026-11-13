@@ -8780,6 +8780,168 @@ theorem I3_initial_first_text_full_two_figures
   rw [sum]
   omega
 
+/- On an empty column with a figure first, the zero-text break cannot
+   send that figure. All earlier content is either a need or a blank,
+   and an earlier blank is at the top. All needs targeting the figure
+   use the firstInColumn exception. -/
+theorem I3_first_figure_must_stay_under_need_rule
+    (capacity count first blank : Nat) (items : List SourceItem)
+    (positions size plain : Nat → Nat) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (top : Bool) (kept keptAt : Nat → Bool)
+    (firstContentFigure : firstContent items = some (.figure first))
+    (ordered : sourceOrdered items)
+    (index : positions 0 = first) (nonempty : 0 < count)
+    (plainRows : plain 0 = ((sourceTextPositions items).filter
+      (fun p => decide (p < first) && !space p)).length)
+    (sizeFits : size 0 ≤ capacity)
+    (topEq : top = blankAtTopSource 0 blank items (fun _ => false) keptAt)
+    (rule : figures27Model count capacity 0
+      (fun f => decide (textBeforeCount items (positions f) ≤ 0))
+      (fun f => textBeforeCount items (positions f)) plain size positions
+      (fun f => decide (blank < positions f) && !top)
+      (fun p => .text p ∈ items ∧ space p = false) needs kept) :
+    kept 0 = true := by
+  obtain ⟨_, _, minimal⟩ := I3_firstContent_is_earliest items ordered (.figure first) firstContentFigure
+  have textAfter : ∀ p, .text p ∈ items → first ≤ p := fun p member =>
+    minimal (.text p) member (by simp [isContent])
+  have noText : textBeforeCount items first = 0 := by
+    change (items.filter _).length = 0
+    cases eq : items.filter (earlierTextItem first) with
+    | nil => rfl
+    | cons item rest =>
+      have member : item ∈ items.filter (earlierTextItem first) := by rw [eq]; simp
+      obtain ⟨inside, before⟩ := List.mem_filter.mp member
+      cases item with
+      | text p =>
+        have ge := textAfter p inside
+        simp [earlierTextItem, show ¬ p < first by omega] at before
+      | figure _ | need _ | blank _ => contradiction
+  have noRows : plain 0 = 0 := by
+    rw [plainRows]
+    cases eq : (sourceTextPositions items).filter (fun p => decide (p < first) && !space p) with
+    | nil => rfl
+    | cons p rest =>
+      have m : p ∈ (sourceTextPositions items).filter (fun p => decide (p < first) && !space p) := by rw [eq]; simp
+      obtain ⟨pm, before⟩ := List.mem_filter.mp m
+      have ge := textAfter p ((I3_source_text_position_member items p).mp pm)
+      simp [show ¬ p < first by omega] at before
+  have noCharge : (decide (blank < positions 0) && !top) = false := by
+    rw [index]
+    by_cases earlier : blank < first
+    · have atTop : top = true := by
+        rw [topEq]
+        apply (I3_blankAtTopSource_iff_empty_before _ _ _ _ _).mpr
+        refine ⟨rfl, ?_⟩
+        intro item member
+        cases item with
+        | text _ | blank _ | need _ => simp [keptBeforeBlank]
+        | figure p =>
+          have ge : first ≤ p := minimal (.figure p) member (by simp [isContent])
+          simp [keptBeforeBlank, show ¬ p < blank by omega]
+      simp [atTop]
+    · simp [earlier]
+  apply (rule 0 nonempty).mpr
+  refine ⟨by simp [index, noText], by intro g prior; exact (Nat.not_lt_zero g prior).elim,
+    ?_, ?_⟩
+  · simpa [figureHasRoom, index, noText, priorFigureLines, show List.range 0 = [] from rfl,
+      show (decide (blank < first) && !top) = false by simpa [index] using noCharge] using sizeFits
+  · intro _ _ _
+    exact Or.inl (by simp [noRows, priorFigureLines, show List.range 0 = [] from rfl])
+
+/- Normalize the first legal break: zero for an occupied column or a
+   leading figure, one for an empty column whose first content is text.
+   All components below refer to this same top flag, figure set and
+   source-level blank placement. -/
+theorem I3_two_figure_need_initial_placement
+    (capacity used blank first second firstSize secondSize : Nat) (items : List SourceItem)
+    (ordered : sourceOrdered items) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (positiveCapacity : 0 < capacity) (usedFits : used ≤ capacity)
+    (positiveFirst : 0 < firstSize) (positiveSecond : 0 < secondSize)
+    (firstFits : firstSize ≤ capacity) (figOrder : first < second)
+    (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (firstIn : .figure first ∈ items) (secondIn : .figure second ∈ items)
+    (onlyTwo : ∀ p, .figure p ∈ items → p = first ∨ p = second) :
+    let pos := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (pos i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < pos i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    ∃ b : Nat, ∃ top : Bool, ∃ kept : Nat → Bool,
+      b ≤ (sourceTextPositions items).length ∧
+      top = blankAtTopSource used blank items (textHereAtBreak items b)
+        (keptAtTwoPositions first second (kept 0) (kept 1)) ∧
+      figures27Model 2 capacity used (fun i => decide (rank i ≤ b)) rank plain size pos
+        (fun i => !beforeBlankMask first second blank i && !top) block needs kept ∧
+      used + b + keptRowsThrough kept size 2 +
+        (if blankPlacedFromSourceFull used blank (waitingAtTwoPositions first second kept) items
+          (textHereAtBreak items b) (keptAtTwoPositions first second (kept 0) (kept 1)) then 1 else 0) ≤ capacity ∧
+      (∀ p, .text p ∈ items → textHereAtBreak items b p = true →
+        needAtPlacedText used capacity 2 items pos size space needs b kept p) ∧
+      (used = 0 → ∀ p, firstContent items = some (.text p) → 0 < b) ∧
+      (used = 0 → ∀ p, firstContent items = some (.figure p) →
+        keptAtTwoPositions first second (kept 0) (kept 1) p = true) := by
+  intro pos size rank plain block
+  by_cases startText : used = 0 ∧ ∃ p, firstContent items = some (.text p)
+  · obtain ⟨empty, p, firstText⟩ := startText
+    subst used
+    obtain ⟨top, kept, topEq, rule, fits, p1⟩ := I3_initial_first_text_full_two_figures
+      capacity blank p first second firstSize secondSize items ordered space needs positiveCapacity
+      positiveFirst positiveSecond firstText figOrder diffFirst diffSecond firstIn secondIn onlyTwo
+    have textIn := (I3_firstContent_text_before_figures items ordered p firstText).1
+    have present := (I3_source_text_position_member items p).mpr textIn
+    have len : 1 ≤ (sourceTextPositions items).length := by
+      cases eq : sourceTextPositions items with
+      | nil => simp [eq] at present
+      | cons _ _ => simp; omega
+    exact ⟨1, top, kept, len, topEq, rule, by simpa using fits, p1, by intros; decide,
+      by intro _ q figure; simp [firstText] at figure⟩
+  · obtain ⟨top, kept, placed, rule, topEq, blankEq, fits⟩ := I3_need_initial_two_figures_blank
+      capacity used blank first second firstSize secondSize items space needs usedFits figOrder diffFirst
+      diffSecond firstIn secondIn onlyTwo
+    have none : textHereAtBreak items 0 = fun _ => false := by
+      funext p; simp [textHereAtBreak, Nat.not_lt_zero]
+    refine ⟨0, top, kept, Nat.zero_le _, by simpa only [none] using topEq, rule, ?_, ?_, ?_, ?_⟩
+    · rw [none, ← blankEq]
+      simpa [keptRowsThrough, size, Nat.add_assoc] using fits
+    · intro p _ here
+      simp [none] at here
+    · intro empty p text
+      exact (startText ⟨empty, p, text⟩).elim
+    · intro empty p figure
+      subst used
+      obtain ⟨member, _, figBefore⟩ := I3_firstContent_figure_before_text items ordered p figure
+      have actual : p = first := by
+        rcases onlyTwo p member with eq | eq
+        · exact eq
+        · have le := figBefore first firstIn
+          omega
+      subst p
+      have converted : figures27Model 2 capacity 0 (fun i => decide (rank i ≤ 0))
+          rank plain size pos (fun i => decide (blank < pos i) && !top) block needs kept := by
+        intro i bound
+        have actual := rule i bound
+        have maskEq : (!beforeBlankMask first second blank i && !top) = (decide (blank < pos i) && !top) := by
+          by_cases iz : i = 0
+          · subst i
+            by_cases before : first < blank
+            · have later : ¬ blank < first := by omega
+              simp [beforeBlankMask, pos, before, later]
+            · have later : blank < first := by omega
+              simp [beforeBlankMask, pos, before, later]
+          · have io : i = 1 := by omega
+            subst i
+            by_cases before : second < blank
+            · have later : ¬ blank < second := by omega
+              simp [beforeBlankMask, pos, before, later]
+            · have later : blank < second := by omega
+              simp [beforeBlankMask, pos, before, later]
+        simp only [figureHasRoom] at actual ⊢
+        simpa only [maskEq] using actual
+      have keepFirst := I3_first_figure_must_stay_under_need_rule capacity 2 first blank items
+        pos size plain space needs top kept _ figure ordered rfl (by decide) rfl firstFits topEq converted
+      simpa [keptAtTwoPositions] using keepFirst
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
