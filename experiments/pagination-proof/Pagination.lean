@@ -6871,13 +6871,14 @@ theorem I3_record_needs_fit_iff_all (available previous : Nat) (ns : List Nat) (
     · rintro ⟨fits, tail⟩
       exact ⟨fun _ => fits, (ih _ (Nat.max_le.mpr ⟨prior, fits⟩)).mpr tail⟩
 
-/- In the domain without figures or a blank, spaces count towards load but
+/- In the domain without figures, spaces count towards load but
    not placedBefore. Each need belongs to the next non-space text, and
    source order within each group is retained for recordNeedsFit. -/
 structure NeedTextPrefix where
   capacity : Nat
   used : Nat
   texts : Nat
+  blankRank : Option Nat
   needs : Nat → List Nat
   space : Nat → Bool
   spaceHasNoNeeds : ∀ t, space t = true → needs t = []
@@ -6895,14 +6896,54 @@ def placedBefore (d : NeedTextPrefix) : Nat → Nat
 def allowed (d : NeedTextPrefix) (t : Nat) : Prop :=
   d.placedBefore t = 0 ∨ ∀ n ∈ d.needs t, n ≤ d.capacity - d.placedBefore t
 
+/- A blank at gap g belongs to text g. At the top (empty column
+   and g = 0) it is dropped. If the break does not reach its next text
+   the blank stays out; a trailing blank therefore never contributes. -/
+def blankBefore (d : NeedTextPrefix) (t : Nat) : Nat :=
+  match d.blankRank with
+  | none => 0
+  | some g => if g < t ∧ 0 < d.used + g then 1 else 0
+
+def blankPlaced (d : NeedTextPrefix) (b : Nat) : Bool :=
+  match d.blankRank with
+  | none => false
+  | some g => decide (g < b ∧ 0 < d.used + g)
+
+theorem blank_load (d : NeedTextPrefix) (b : Nat) :
+    (if d.blankPlaced b then 1 else 0) = d.blankBefore b := by
+  cases g : d.blankRank <;> simp [blankPlaced, blankBefore, g]
+
+/- loadBefore counts an earlier blank unless the column was empty and
+   no text before that blank was actually placed. For a nonempty input,
+   noSendFromEmpty ensures b > 0 whenever used = 0. -/
+theorem blank_before_load (d : NeedTextPrefix) (b t g : Nat)
+    (blank : d.blankRank = some g) (progress : 0 < d.used + b) :
+    (if g ≤ t ∧ 0 < d.used + min g b then 1 else 0) =
+      d.blankBefore (t+1) := by
+  by_cases prior : g ≤ t ∧ 0 < d.used + min g b
+  · have same : g < t+1 ∧ 0 < d.used + g := by omega
+    simp [blankBefore, blank, prior, same]
+  · have same : ¬ (g < t+1 ∧ 0 < d.used + g) := by omega
+    simp [blankBefore, blank, prior, same]
+
+private theorem blank_mono (d : NeedTextPrefix) (a b : Nat) (le : a ≤ b) :
+    d.blankBefore a ≤ d.blankBefore b := by
+  cases eq : d.blankRank with
+  | none => simp [blankBefore, eq]
+  | some g =>
+    by_cases prior : g < a ∧ 0 < d.used + g
+    · have later : g < b ∧ 0 < d.used + g := ⟨by omega, prior.2⟩
+      simp [blankBefore, eq, prior, later]
+    · simp [blankBefore, eq, prior]
+
 def legal (d : NeedTextPrefix) (b : Nat) : Prop :=
-  d.used + b ≤ d.capacity ∧ ∀ t, t < b → d.allowed t
+  d.used + b + d.blankBefore b ≤ d.capacity ∧ ∀ t, t < b → d.allowed t
 
 private theorem longestLegal (d : NeedTextPrefix) (limit : Nat) :
     ∃ b, b ≤ limit ∧ d.legal b ∧ (b < limit → ¬ d.legal (b+1)) := by
   induction limit with
   | zero =>
-    refine ⟨0, Nat.le_refl _, ⟨by simpa using d.usedFits, ?_⟩, ?_⟩
+    refine ⟨0, Nat.le_refl _, ⟨by cases g : d.blankRank <;> simpa [blankBefore, g] using d.usedFits, ?_⟩, ?_⟩
     · intro t ht
       exact (Nat.not_lt_zero t ht).elim
     · intro h
@@ -6918,15 +6959,15 @@ private theorem longestLegal (d : NeedTextPrefix) (limit : Nat) :
       · exact stop (by omega)
 
 theorem prefix_exists (d : NeedTextPrefix) :
-    ∃ b, b ≤ d.texts ∧ d.used + b ≤ d.capacity ∧
+    ∃ b, b ≤ d.texts ∧ d.used + b + d.blankBefore b ≤ d.capacity ∧
       (d.used = 0 → 0 < d.texts → 0 < b) ∧
       (∀ t, t < b → d.allowed t) ∧
       (∀ t, t < d.texts → d.needs t ≠ [] →
         (∀ i, b ≤ i → i < t → d.space i = true) →
         recordNeedsFit (d.capacity - d.placedBefore t) 0 (d.needs t) →
-        d.used + min t b + d.firstPart t ≤ d.capacity → t < b) := by
+        d.used + min t b + d.blankBefore (t+1) + d.firstPart t ≤ d.capacity → t < b) := by
   obtain ⟨b, bound, legal, stop⟩ := d.longestLegal d.texts
-  have extendAt : d.used + b + 1 ≤ d.capacity → d.allowed b → d.legal (b+1) := by
+  have extendAt : d.used + b + 1 + d.blankBefore (b+1) ≤ d.capacity → d.allowed b → d.legal (b+1) := by
     intro room next
     refine ⟨by omega, ?_⟩
     intro t placed
@@ -6938,6 +6979,12 @@ theorem prefix_exists (d : NeedTextPrefix) :
     apply Classical.byContradiction
     intro noProgress
     have zero : b = 0 := by omega
+    have noBlank : d.blankBefore (b+1) = 0 := by
+      cases eq : d.blankRank with
+      | none => simp [blankBefore, eq]
+      | some g =>
+        have top : ¬ (g < b+1 ∧ 0 < d.used + g) := by omega
+        simp [blankBefore, eq, top]
     exact stop (by omega) (extendAt (by have := d.positiveCapacity; omega)
       (Or.inl (by simp [placedBefore, zero, empty])))
   · intro t member _ onlySpaces records room
@@ -6951,6 +6998,7 @@ theorem prefix_exists (d : NeedTextPrefix) :
         exact Or.inr ((I3_record_needs_fit_iff_all _ 0 _ (Nat.zero_le _)).mp records)
       · have space := onlySpaces b (Nat.le_refl _) (by omega)
         exact Or.inr (by simp [d.spaceHasNoNeeds b space])
+    have blankBound := d.blank_mono (b+1) (t+1) (by omega)
     exact stop (by omega)
       (extendAt (by have := d.firstPartPositive t; omega) allowed)
 
