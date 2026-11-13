@@ -7740,6 +7740,26 @@ theorem I3_figure_after_unplaced_target_impossible
   have yes := order t textIn (by omega)
   simp [yes] at missed
 
+theorem I3_extension_fits_before_target
+    (capacity used b count : Nat) (size positions : Nat → Nat) (blank t : Nat)
+    (items : List SourceItem) (waiting keptAt kept : Nat → Bool) (top : Bool)
+    (part : Nat) (partPositive : 0 < part)
+    (keptSource : ∀ p, .figure p ∈ items → keptAt p = true →
+      ∃ i, i < count ∧ kept i = true ∧ positions i = p)
+    (allTextBefore : ∀ p, .text p ∈ items → textHereAtBreak items (b+1) p = true → p ≤ t)
+    (allFigBefore : ∀ i, i < count → kept i = true → positions i ≤ t)
+    (localRoom : used + b + keptRowsThrough kept size count +
+      (if blank < t ∧ top = false then 1 else 0) + part ≤ capacity) :
+    used + (b+1) + keptRowsThrough kept size count +
+      (if blankPlacedFromSource blank waiting items (textHereAtBreak items (b+1)) keptAt top
+       then 1 else 0) ≤ capacity := by
+  have charge := I3_blank_charge_before_last_placed t blank items waiting
+    (textHereAtBreak items (b+1)) keptAt top allTextBefore (by
+      intro p member present
+      obtain ⟨i, bound, yes, same⟩ := keptSource p member present
+      simpa [same] using allFigBefore i bound yes)
+  omega
+
 theorem I3_unchanged_figures_extended_fits
     (capacity used b count : Nat) (size positions : Nat → Nat) (blank t : Nat)
     (items : List SourceItem) (waiting keptAt kept : Nat → Bool) (top : Bool)
@@ -7769,14 +7789,11 @@ theorem I3_unchanged_figures_extended_fits
       have yes := (I3_text_here_iff_source_rank items ordered t b target).mpr lt
       simp [yes] at missed
     omega
-  have charge := I3_blank_charge_before_last_placed t blank items waiting
-    (textHereAtBreak items (b+1)) keptAt top allTextBefore (by
-      intro p member present
-      obtain ⟨i, bound, yes, same⟩ := keptSource p member present
-      have earlier := I3_figure_after_unplaced_target_impossible items t (positions i) b target
-        missed (figOrder i bound yes)
-      simpa [same] using earlier)
-  omega
+  apply I3_extension_fits_before_target capacity used b count size positions blank t items
+    waiting keptAt kept top part partPositive keptSource allTextBefore _ localRoom
+  intro i bound yes
+  exact I3_figure_after_unplaced_target_impossible items t (positions i) b target missed
+    (figOrder i bound yes)
 
 /- The number of placed texts in the prefix before a missed P7 target
    is exactly the break. Consequently the b term of both extension
@@ -7791,72 +7808,84 @@ private theorem filter_eq_on_members {α : Type} {xs : List α} {f g : α → Bo
     have tail := ih (fun y hy => same y (List.mem_cons_of_mem _ hy))
     simp only [List.filter_cons, head, tail]
 
-private theorem count_placed_before_rank (positions : List Nat) (b t : Nat)
-    (ordered : strictTextPositions positions) (member : t ∈ positions)
-    (missed : b ≤ textRank positions t) :
-    (positions.filter (fun p => decide (p < t ∧ textRank positions p < b))).length = b := by
-  induction positions generalizing b with
-  | nil => cases member
+/- At a figure position its preceding text is the take of the ordered
+   source text list. Its length is the figure's textBeforeCount, so the
+   first b placed texts all occur in this take whenever b is smaller. -/
+private theorem placed_count_before_any_position (ps : List Nat) (t b : Nat)
+    (sorted : strictTextPositions ps) (enough : b ≤ countEarlierText ps t) :
+    (ps.filter (fun p => decide (p < t ∧ textRank ps p < b))).length = b := by
+  induction ps generalizing b with
+  | nil =>
+    simp [countEarlierText] at enough
+    simp [enough]
   | cons h rest ih =>
-    obtain ⟨prior, sorted⟩ := ordered
+    obtain ⟨prior, tailSorted⟩ := sorted
     cases b with
     | zero =>
-      have none : ∀ p, decide (p < t ∧ textRank (h :: rest) p < 0) = false := by
-        intro p
-        simp [Nat.not_lt_zero]
-      have nilFilter : ∀ xs : List Nat, xs.filter (fun _ => false) = [] := by
-        intro xs
-        induction xs with
+      have none : ∀ xs : List Nat, xs.filter (fun _ => false) = [] := by
+        intro xs; induction xs with
         | nil => rfl
         | cons x xs ih => simpa using ih
-      rw [filter_eq_on_members (f := fun p => decide (p < t ∧ textRank (h :: rest) p < 0))
-        (g := fun _ => false) (fun p _ => none p), nilFilter]
+      rw [filter_eq_on_members (g := fun _ => false) (by intros; simp [Nat.not_lt_zero]), none]
       rfl
     | succ b =>
-      have diff : h ≠ t := by
-        intro eq
-        subst t
-        simp [textRank] at missed
-      have inRest := (List.mem_cons.mp member).resolve_left (Ne.symm diff)
-      have earlier := prior t inRest
-      have rank := ih b sorted inRest (by simp [textRank, diff] at missed; omega)
+      have first : h < t := by
+        apply Classical.byContradiction
+        intro later
+        have none : rest.filter (fun p => decide (p < t)) = [] := by
+          cases eq : rest.filter (fun p => decide (p < t)) with
+          | nil => rfl
+          | cons p ps =>
+            have mem : p ∈ rest.filter (fun p => decide (p < t)) := by rw [eq]; simp
+            obtain ⟨inRest, lt⟩ := List.mem_filter.mp mem
+            have after := prior p inRest
+            have := decide_eq_true_eq.mp lt
+            omega
+        simp [countEarlierText, later, none] at enough
+      have remaining : b ≤ countEarlierText rest t := by
+        simp [countEarlierText, first] at enough ⊢
+        omega
+      have tail := ih b tailSorted remaining
       have filtered : rest.filter (fun p => decide (p < t ∧ textRank (h :: rest) p < b+1)) =
           rest.filter (fun p => decide (p < t ∧ textRank rest p < b)) := by
         apply filter_eq_on_members
-        intro p present
-        have ne := Nat.ne_of_lt (prior p present)
+        intro p m
+        have ne := Nat.ne_of_lt (prior p m)
         simp [textRank, ne, Nat.add_comm] <;> omega
       have head : decide (h < t ∧ textRank (h :: rest) h < b+1) = true := by
-        simp [earlier, textRank]
+        simp [first, textRank]
       rw [List.filter_cons_of_pos (p := fun p => decide (p < t ∧ textRank (h :: rest) p < b+1)) rest head, filtered]
-      simp [rank]
+      simp [tail]
+
+theorem I3_load_before_unreached_position (items : List SourceItem) (ordered : sourceOrdered items)
+    (b figurePos : Nat) (beyond : b ≤ textBeforeCount items figurePos) :
+    ((sourceTextPositions items).filter
+      (fun p => decide (p < figurePos) && textHereAtBreak items b p)).length = b := by
+  let ps := sourceTextPositions items
+  have filters : ps.filter (fun p => decide (p < figurePos) && textHereAtBreak items b p) =
+      ps.filter (fun p => decide (p < figurePos ∧ textRank ps p < b)) := by
+    apply filter_eq_on_members
+    intro p m
+    have eq := I3_text_here_iff_source_rank items ordered p b ((I3_source_text_position_member items p).mp m)
+    cases hp : textHereAtBreak items b p with
+    | false =>
+      have absent : ¬ textRank ps p < b := by intro h; have := eq.mpr h; simp [hp] at this
+      simp [absent]
+    | true =>
+      have yes : textRank ps p < b := eq.mp hp
+      simp [yes]
+  change (ps.filter _).length = b
+  rw [filters]
+  exact placed_count_before_any_position ps figurePos b (I3_source_text_positions_ordered items ordered)
+    (by simpa [I3_source_text_before_count, ps] using beyond)
 
 theorem I3_alloy_load_before_missed_target (items : List SourceItem)
     (ordered : sourceOrdered items) (b t : Nat)
-    (member : .text t ∈ items) (missed : textHereAtBreak items b t = false) :
+    (missed : textHereAtBreak items b t = false) :
     ((sourceTextPositions items).filter (fun p => decide (p < t) && textHereAtBreak items b p)).length = b := by
-  let positions := sourceTextPositions items
-  have eq : positions.filter (fun p => decide (p < t) && textHereAtBreak items b p) =
-      positions.filter (fun p => decide (p < t ∧ textRank positions p < b)) := by
-    apply filter_eq_on_members
-    intro p pm
-    have here := I3_text_here_iff_source_rank items ordered p b
-      ((I3_source_text_position_member items p).mp pm)
-    cases flag : textHereAtBreak items b p with
-    | false =>
-      have absent : ¬ textRank positions p < b := by intro lt; have := here.mpr lt; simp [flag] at this
-      simp [absent]
-    | true =>
-      have present := here.mp flag
-      simp [positions, present]
-  change (positions.filter _).length = b
-  rw [eq]
-  apply count_placed_before_rank _ b t (I3_source_text_positions_ordered items ordered)
-    ((I3_source_text_position_member items t).mpr member)
-  apply Nat.le_of_not_lt
-  intro h
-  have := (I3_text_here_iff_source_rank items ordered t b member).mpr h
-  simp [missed] at this
+  apply I3_load_before_unreached_position items ordered b t
+  change decide (textBeforeCount items t < b) = false at missed
+  exact Nat.le_of_not_lt (fun lt => by simp [lt] at missed)
 
 theorem I3_figure_rows_before_missed_target (count : Nat) (kept : Nat → Bool)
     (size pos : Nat → Nat) (items : List SourceItem) (b t : Nat)
@@ -8217,7 +8246,7 @@ theorem I3_missed_target_can_extend_without_new_figures
     target missed distinctTarget order
   have localRoom : used + b + keptRowsThrough (kept b) size count +
       (if blank < t ∧ top = false then 1 else 0) + firstPart ≤ capacity := by
-    rw [I3_alloy_load_before_missed_target items ordered b t target missed, allFigures] at load
+    rw [I3_alloy_load_before_missed_target items ordered b t missed, allFigures] at load
     exact load
   constructor
   · apply I3_unchanged_figures_extended_fits capacity used b count size positions blank t items
@@ -8341,6 +8370,54 @@ theorem I3_space_before_target_figure_preserves_text_needs
       intro need _ selected
       have nonSpace := selected.2.1.2
       simp [isSpace] at nonSpace
+
+theorem I3_space_extension_fits_before_unreached_figure
+    (used capacity count b f blank : Nat) (items : List SourceItem)
+    (positions size : Nat → Nat) (waiting keptAt kept : Nat → Bool) (top : Bool)
+    (ordered : sourceOrdered items)
+    (beyond : b < textBeforeCount items (positions f)) (positive : 0 < size f)
+    (source : ∀ p, .figure p ∈ items → keptAt p = true →
+       ∃ i, i < count ∧ kept i = true ∧ positions i = p)
+    (eligible : ∀ i, i < count → kept i = true → textBeforeCount items (positions i) ≤ b)
+    (room : used + ((sourceTextPositions items).filter
+      (fun p => decide (p < positions f) && textHereAtBreak items b p)).length +
+      keptRowsThrough (fun i => kept i && decide (positions i < positions f)) size count +
+      (if blank < positions f ∧ top = false then 1 else 0) + size f ≤ capacity) :
+    used + (b+1) + keptRowsThrough kept size count +
+      (if blankPlacedFromSource blank waiting items (textHereAtBreak items (b+1)) keptAt top
+       then 1 else 0) ≤ capacity := by
+  have earlier : ∀ i, i < count → kept i = true → positions i < positions f := by
+    intro i bound yes
+    apply Classical.byContradiction
+    intro late
+    have ranks := I3_text_before_source_monotone items (positions f) (positions i) (by omega)
+    have reached := eligible i bound yes
+    omega
+  have equal : ∀ n, n ≤ count →
+      keptRowsThrough (fun i => kept i && decide (positions i < positions f)) size n =
+        keptRowsThrough kept size n := by
+    intro n
+    induction n with
+    | zero => intro _; rfl
+    | succ n ih =>
+      intro bound
+      have same : (kept n && decide (positions n < positions f)) = kept n := by
+        cases yes : kept n with
+        | false => rfl
+        | true => simp [earlier n (by omega) yes]
+      simp only [keptRowsThrough, same, ih (by omega)]
+  rw [I3_load_before_unreached_position items ordered b (positions f) (Nat.le_of_lt beyond),
+    equal count (Nat.le_refl _)] at room
+  apply I3_extension_fits_before_target capacity used b count size positions blank (positions f)
+    items waiting keptAt kept top (size f) positive source _ _ room
+  · intro p _ placed
+    apply Classical.byContradiction
+    intro later
+    have rank := I3_text_before_source_monotone items (positions f) p (by omega)
+    change decide (textBeforeCount items p < b+1) = true at placed
+    have := decide_eq_true_eq.mp placed
+    omega
+  · exact fun i bound yes => Nat.le_of_lt (earlier i bound yes)
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
