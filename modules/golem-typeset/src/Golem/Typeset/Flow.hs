@@ -2038,7 +2038,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
           marker = listMarker style (pgVertical geom) (length ctx')
           item k (j, (num, it)) =
             let (k', us) = blocks style ctx' True k (itemBlocks it)
-             in (k', inFrame (frame j FItem) (if startsWithParagraph it then markFirst (marker num) us else us))
+             in (k', inFrame (frame j FItem) (if startsWithParagraph it then markFirst (lsMarkerStyle (stLists style)) (marker num) us else us))
           (n', uss) = mapAccumL item (n + 1) (zip [0 ..] items)
           numbered = any (isJust . fst) items
        in (n', inFrame (frame n (FList numbered)) (concat uss))
@@ -2046,8 +2046,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       (Block _ _ _ (Paragraph {}) : _) -> True
       _ -> False
     -- the marker is at the block of its paragraph (golem-cli ADR 0008)
-    markFirst m = \case
-      (u : rest) -> u {uMarker = Just (map (atSpan (uSpan u)) m)} : rest
+    markFirst name m = \case
+      (u : rest) ->
+        let sp = uSpan u
+            xs = map (atSpan sp) m
+         in u {uMarker = Just (maybe xs (\n -> [CharStyle sp n xs]) name)} : rest
       [] -> []
     atSpan s = \case
       Text _ t -> Text s t

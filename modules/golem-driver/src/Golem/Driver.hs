@@ -1229,7 +1229,7 @@ htmlConfig dev e book missing bib =
       hcLists =
         if stLists style == defaultListStyle
           then Nothing
-          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)) (lsMarkerStyle (stLists style))),
       -- the rules of headings (golem-driver ADR 0027)
       hcHeadingRules =
         Map.fromList
