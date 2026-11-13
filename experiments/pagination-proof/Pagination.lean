@@ -107,6 +107,39 @@ theorem I2_caption_diagnostic_iff_extent_overflows
 example : captionPitch 2 5 1 = 2 ∧ captionPitch 2 7 1 = 4 := by decide
 example : (List.range 4).map (captionGridSpan 10 15 10) = [0, 1, 2, 3] := by decide
 
+private def cappedCubicBadness (ratio : Nat) : Nat :=
+  if ratio > 1290 then 10000 else (ratio ^ 3 + 131072) / 262144
+
+private theorem cappedCubicBadness_le (ratio : Nat) : cappedCubicBadness ratio ≤ 10000 := by
+  unfold cappedCubicBadness
+  split
+  · decide
+  · rename_i h
+    have bound := Nat.pow_le_pow_left (Nat.le_of_not_gt h) 3
+    omega
+
+/-- TeX badness used by KnuthPlass.evaluate. The stretch or shrink
+    available to the candidate may be nonpositive. -/
+def captionBadness (distance : Nat) (available : Int) : Nat :=
+  if distance = 0 then 0
+  else if available ≤ 0 then 10000
+  else
+    let capacity := available.toNat
+    let ratio := if distance ≤ 7230584 then distance * 297 / capacity
+      else if 1663497 ≤ capacity then distance / (capacity / 297)
+      else distance
+    cappedCubicBadness ratio
+
+theorem I1_caption_badness_bounded (distance : Nat) (available : Int) :
+    captionBadness distance available ≤ 10000 := by
+  unfold captionBadness
+  split <;> try decide
+  split <;> try decide
+  exact cappedCubicBadness_le _
+
+example : captionBadness 0 (-1) = 0 ∧ captionBadness 1 0 = 10000 ∧
+    captionBadness 65536 65536 = 100 := by decide
+
 /-- Natural width of the numbered caption fixture, in scaled points.
     The shaped runs are the number, an ideographic space, two initial M
     glyphs, the individual interior glyphs, and three final M glyphs. -/
