@@ -149,13 +149,28 @@ run needHeadingConflictFixture {
   some r, s: Recto | r.pos = 2 and s.pos = 3
   no p: Placement | base27[p] and needMet[p] and spaceKeeps[p] and orphan[p] and widow[p] and keepHeading21[p]
 } for 4 but 5 Int, exactly 4 Item, exactly 4 Placement
+run needAcrossWaitingFigureFixture {
+  inDomain27
+  Col.cap = 4 and Col.used = 0
+  no Blank and no Space and no Heading
+  some disj q, r: Para |
+    (all l: Line | l.para = q iff l.pos in 0 + 1) and
+    (all l: Line | l.para = r iff l.pos = 5)
+  some disj f, g: Figure, n: Need, l: Line |
+    f.pos = 2 and f.size = 3 and n.pos = 3 and n.lines = 2 and
+    g.pos = 4 and g.size = 1 and l.pos = 5 and
+    (some p: Placement | p.brk = 3 and no p.kept and
+      g in waitingIn[p] and l in needNext[p, n] and
+      base27[p] and needMet[p] and spaceKeeps[p])
+} for 6 but 5 Int, exactly 3 Line, exactly 2 Para, exactly 6 Item, exactly 16 Placement
 EOF
 
 for command in decidedFixture keepAllFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
     rectoRunDifferenceFixture headingRunFixture \
-    headingBlankFigureParagraphFixture needHeadingConflictFixture; do
+    headingBlankFigureParagraphFixture needHeadingConflictFixture \
+    needAcrossWaitingFigureFixture; do
   JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$tmp" "${ALLOY:-alloy6}" exec -q -n -t text \
     -c "$command" -o - "$tmp/witnesses.als" > "$tmp/result"
   if ! grep -q '^---Trace---' "$tmp/result"; then

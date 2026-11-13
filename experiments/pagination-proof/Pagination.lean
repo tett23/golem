@@ -7569,6 +7569,91 @@ theorem I3_placed_figure_rows_to_figure_target
   dsimp
   rw [funcs]
 
+/- needNext for a text target requires every figure between the need
+   and the target to be waiting. The first unplaced figure is never
+   waiting. Once the need is reached, there can therefore be no figure
+   between it and this target; all preceding figures have stayed. -/
+def needTargetsText (n target : Nat) (textBlock : Nat → Prop)
+    (positions : Nat → Nat) (count : Nat) (kept : Nat → Bool) : Prop :=
+  n < target ∧ textBlock target ∧
+    (∀ p, textBlock p → n < p → p < target → False) ∧
+    (∀ f, f < count → n < positions f → positions f < target → figureWaits kept f)
+
+theorem I3_no_intervening_figure_before_reached_need_text
+    (n t count : Nat) (positions : Nat → Nat) (kept : Nat → Bool)
+    (block : Nat → Prop) (target : needTargetsText n t block positions count kept)
+    (ordered : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (distinct : ∀ f, positions f ≠ n)
+    (reached : ∀ f, f < count → positions f < n → ¬ figureWaits kept f → kept f = true) :
+    (∀ f, f < count → positions f < t → kept f = true) ∧
+    (∀ f, f < count → n < positions f → positions f < t → False) := by
+  have yes : ∀ f, f < count → positions f < t → kept f = true := by
+    intro f bound before
+    have all := (I3_no_unplaced_nonwaiting_before_iff kept (f+1)).mp (by
+      intro g prior active
+      have rel := ordered g f (by omega)
+      by_cases early : positions g < n
+      · exact reached g (by omega) early active
+      · have diff := distinct g
+        exact (active (target.2.2.2 g (by omega) (by omega) (by omega))).elim)
+    exact all f (by omega)
+  refine ⟨yes, ?_⟩
+  intro f bound after before
+  have absent := (target.2.2.2 f bound after before).1
+  have present := yes f bound before
+  simp [present] at absent
+
+theorem I3_text_need_missed_only_spaces (n t count : Nat)
+    (positions : Nat → Nat) (kept : Nat → Bool)
+    (items : List SourceItem) (space here : Nat → Bool)
+    (target : needTargetsText n t (fun p => .text p ∈ items ∧ space p = false)
+      positions count kept)
+    (reached : ∀ p, .text p ∈ items → p < n → here p = true)
+    (distinct : ∀ p, .text p ∈ items → p ≠ n) :
+    ∀ p, .text p ∈ items → p < t → here p = false → space p = true := by
+  intro p member before missing
+  by_cases early : p < n
+  · have present := reached p member early
+    simp [present] at missing
+  · have diff := distinct p member
+    cases sp : space p with
+    | true => rfl
+    | false => exact (target.2.2.1 p ⟨member, sp⟩ (by omega) before).elim
+
+/- Source fixture shared with PaginateSpec: two paragraph lines, a
+   size-three figure, need(2), a size-one figure and one paragraph line.
+   Both figures are sent. The first sent figure remains a needNext
+   candidate; the second waits and is passed over. Thus P1 is active
+   for the last line although the prior-figure premise of P7 is false. -/
+theorem I3_need_across_waiting_figure :
+    let pos := fun f : Nat => if f = 0 then 2 else 4
+    let kept := fun _ : Nat => false
+    let items : List SourceItem := [.text 0, .text 1, .figure 2, .need 3, .figure 4, .text 5]
+    ¬ figureWaits kept 0 ∧ figureWaits kept 1 ∧
+      needTargetsText 3 5 (fun p => .text p ∈ items) pos 2 kept ∧
+      textHereAtBreak items 3 5 = true ∧
+      2 ≤ 4 - textBeforeCount items 5 ∧
+      ¬ (∀ f, f < 2 → pos f < 3 → ¬ figureWaits kept f → kept f = true) := by
+  dsimp
+  have first : ¬ figureWaits (fun _ => false) 0 := by
+    rintro ⟨_, i, h, _⟩
+    exact Nat.not_lt_zero i h
+  have second : figureWaits (fun _ => false) 1 :=
+    ⟨rfl, 0, by decide, rfl⟩
+  refine ⟨first, second, ?_, by decide, by decide, ?_⟩
+  · refine ⟨by decide, by simp, ?_, ?_⟩
+    · intro p member after before
+      simp at member
+      omega
+    · intro f limit after _
+      by_cases zero : f = 0
+      · simp [zero] at after
+      · have one : f = 1 := by omega
+        simpa [one] using second
+  · intro all
+    have bad := all 0 (by decide) (by decide) first
+    contradiction
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
