@@ -188,6 +188,13 @@ pdfPipelineTests =
         b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 103591 sans)]
         map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
         bPdf b @?= Nothing,
+      testCase "inv1_validate_embedded_cff_property: used CharString endpoint exceeds the table" $ do
+        (sans, _) <- realLatinFonts
+        -- Offset 22 is the end of the CharString for T (gid 21).
+        let bad = BS.take 45509 sans <> BS.replicate 3 255 <> BS.drop 45512 sans
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
       -- In this fixture the last offset of the Local Subrs INDEX is exactly
       -- the end of the CFF table (114180 bytes).
       testCase "inv1_validate_embedded_cff_case_1" $ do

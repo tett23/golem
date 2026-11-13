@@ -553,16 +553,12 @@
         }
       }
 
-      /* XXX: should check off2 does not exceed the end of this entry; */
-      /*      at present, only truncate off2 at the end of this stream */
-      if ( off2 > stream->size + 1                    ||
-           idx->data_offset > stream->size - off2 + 1 )
+      /* Neither endpoint of a used entry may escape the CFF stream. */
+      if ( ( off1 && off1 - 1 > stream->size - idx->data_offset ) ||
+           ( off2 && off2 - 1 > stream->size - idx->data_offset ) )
       {
-        FT_ERROR(( "cff_index_access_element:"
-                   " offset to next entry (%lu)"
-                   " exceeds the end of stream (%lu)\n",
-                   off2, stream->size - idx->data_offset + 1 ));
-        off2 = stream->size - idx->data_offset + 1;
+        error = FT_THROW( Invalid_Offset );
+        goto Exit;
       }
 
       /* access element */
@@ -2295,7 +2291,7 @@
       if ( FT_SET_ERROR( cff_index_init( &font->name_index,
                                          stream, 0, cff2 ) ) )
       {
-        if ( pure_cff )
+        if ( pure_cff && error != FT_THROW( Invalid_Stream_Operation ) )
         {
           FT_TRACE2(( "  not a CFF file\n" ));
           error = FT_THROW( Unknown_File_Format );

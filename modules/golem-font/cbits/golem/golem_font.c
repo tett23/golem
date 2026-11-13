@@ -19,6 +19,7 @@
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
 #include FT_CID_H
+#include FT_MODULE_H
 
 struct golem_font {
   uint8_t *bytes;
@@ -205,7 +206,12 @@ int golem_font_check_cff(golem_font *f, const uint32_t *gids, int count) {
   const FT_Byte *bytes = (const FT_Byte *)hb_blob_get_data(blob, &length);
   FT_Face face = NULL;
   LOCK_FT(f);
-  FT_Error error = FT_New_Memory_Face(f->lib, bytes, length, 0, &face);
+  FT_Open_Args args = {0};
+  args.flags = FT_OPEN_MEMORY | FT_OPEN_DRIVER;
+  args.memory_base = bytes;
+  args.memory_size = length;
+  args.driver = FT_Get_Module(f->lib, "cff");
+  FT_Error error = FT_Open_Face(f->lib, &args, 0, &face);
   if (!error) {
     FT_Bool cid_keyed = 0;
     error = FT_Get_CID_Is_Internally_CID_Keyed(face, &cid_keyed);
@@ -222,7 +228,7 @@ int golem_font_check_cff(golem_font *f, const uint32_t *gids, int count) {
   }
   UNLOCK_FT(f);
   hb_blob_destroy(blob);
-  return !error;
+  return error != FT_Err_Invalid_Stream_Operation && error != FT_Err_Invalid_Offset;
 }
 
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len) {
