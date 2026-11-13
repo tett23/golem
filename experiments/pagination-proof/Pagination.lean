@@ -173,6 +173,31 @@ def captionBreakCandidate (usePatterns previousBox : Bool) : CaptionItemKind →
   | .glue => previousBox
   | .penalty value patternHyphen => decide (value < 10000) && (usePatterns || !patternHyphen)
 
+/-- Ordered breakpoints for one pass, carrying whether the preceding
+    item was a box as the Haskell scan tests at each glue. -/
+def captionBreakIndices (patterns : Bool) (prevBox : Bool) (start : Nat) :
+    List CaptionItemKind → List Nat
+  | [] => []
+  | item :: tail =>
+    let later := captionBreakIndices patterns (decide (item = .box)) (start + 1) tail
+    if captionBreakCandidate patterns prevBox item then start :: later else later
+
+theorem I1_caption_break_index_range (patterns prevBox : Bool) (start pos : Nat)
+    (items : List CaptionItemKind) (member : pos ∈ captionBreakIndices patterns prevBox start items) :
+    start ≤ pos ∧ pos < start + items.length := by
+  induction items generalizing start prevBox with
+  | nil => simp [captionBreakIndices] at member
+  | cons item tail ih =>
+    simp only [captionBreakIndices] at member
+    split at member
+    · rcases List.mem_cons.mp member with eq | rest
+      · subst pos; simp only [List.length_cons]; omega
+      · have := ih _ _ rest; simp only [List.length_cons]; omega
+    · have := ih _ _ member; simp only [List.length_cons]; omega
+
+example : captionBreakIndices false false 0 [.glue, .box, .glue, .penalty 0 true,
+    .penalty (-10000) false] = [2, 4] := by decide
+
 /-- Count discarded items following a breakpoint, stopping at the next
     box or forced penalty. The paragraph start does not run this scan. -/
 def captionDiscardCount : List CaptionItemKind → Nat
