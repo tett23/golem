@@ -382,6 +382,24 @@ theorem captionBestEnd_le (first : CaptionEnd) (rest : List CaptionEnd) :
     · omega
     · exact h _ (List.Mem.tail _ tailMem)
 
+theorem captionChooseEnd_member (a b : CaptionEnd) :
+    captionChooseEnd a b = a ∨ captionChooseEnd a b = b := by
+  unfold captionChooseEnd
+  split <;> first | exact Or.inl rfl | split <;> first | exact Or.inr rfl | split <;> simp
+
+theorem captionBestEnd_member (first : CaptionEnd) (rest : List CaptionEnd) :
+    rest.foldl captionChooseEnd first ∈ first :: rest := by
+  induction rest generalizing first with
+  | nil => simp
+  | cons next tail ih =>
+    have h := ih (captionChooseEnd first next)
+    simp only [List.mem_cons] at h ⊢
+    rcases h with chosen | later
+    · rcases captionChooseEnd_member first next with left | right
+      · exact Or.inl (chosen.trans left)
+      · exact Or.inr (Or.inl (chosen.trans right))
+    · exact Or.inr (Or.inr later)
+
 private def measuredCaptionWidth (number pair single triple interior : Nat) : Nat :=
   number + 655360 + pair + interior * single + triple
 
