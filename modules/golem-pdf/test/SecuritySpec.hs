@@ -9,6 +9,7 @@ module SecuritySpec (tests) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (replicateM)
 import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -235,12 +236,31 @@ tests2018 =
                       (5, stream "/N 3 /Filter /FlateDecode" (zeros (130 * mib)))
                     ]
             imported 1 pdf >>= readOk,
+      testCase "inv1_imported_content_separators_property" $
+        mapM_
+          ( \sizes -> do
+              let streams = zip [4 ..] (map nulStream sizes)
+                  refs = BC.unwords [BC.pack (show k) <> " 0 R" | (k, _) <- streams]
+              imported 1 (contentsOf refs streams) >>= (@?= Right (sum sizes + length sizes - 1, 0))
+          )
+          (concat [replicateM count [0, 1, 3] | count <- [1 .. 4]]),
+      testCase "inv1_imported_content_separators_reused_form_calls"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 4 0 R 5 0 R" [(4, nulStream 0), (5, nulStream (256 * mib))])
+          >>= (@?= Left (ContentTooLarge (256 * mib + 2 * BS.length "/GolemC4 Do" + 2))),
+      testCase "inv1_imported_content_separators_case_1"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R" [(4, nulStream (256 * mib))]) >>= (@?= Right (256 * mib, 0)),
+      testCase "inv1_imported_content_separators_case_3"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib))])
+          >>= (@?= Left (ContentTooLarge (256 * mib + 1))),
       testCase "the total of two streams in Contents just over 256 MiB is refused" $
         withinTimeLimits hangLimits $
           do
             let pdf = contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib + 1))]
             imported 1 pdf >>= refusedFor tooLarge,
-      testCase "the total of two streams in Contents just under 256 MiB is read" $
+      testCase "inv1_imported_content_separators_case_2" $
         withinTimeLimits hangLimits $
           do
             let pdf = contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib - 1))]
