@@ -342,7 +342,8 @@ pageFigure env st i labels marks =
 carryNote :: Env -> St -> (NoteId, Int, Int) -> St
 carryNote env st (i, from, len) =
   let sep = if sNoteLines st == 0 then envSeparator env else 0
-      room = cap env st - sNoteLines st - sep - 1
+      -- A previous column set may reserve more lines than this column holds.
+      room = max 0 (cap env st - sNoteLines st - sep - 1)
       shown = min len room
    in if len > 0 && room <= 0 && isEmpty st && sReserved st == 0
         then addUnmet (UnplaceableFootnote i (cap env st)) st

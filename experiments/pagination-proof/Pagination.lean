@@ -11502,6 +11502,34 @@ theorem I4_fresh_page_note_progress (capacity separator : Nat) (p : Part)
     have positive : 0 < capacity-separator-1 := by omega
     exact ⟨positive, fun r eq => I4_carryNote_remainder_decreases _ p r positive eq⟩
 
+/-- carryNote uses signed grid arithmetic before clipping available
+    room to zero: reservations can exceed the capacity of the next
+    column after an adjusted column in the same page. -/
+def availableForCarry (cap reserved sep : Int) : Nat := (cap-reserved-sep-1).toNat
+
+theorem I4_I5_reserved_carry (cap reserved sep : Int) (p : Part) :
+    let room := availableForCarry cap reserved sep
+    trace ((carry room p).1 :: (carry room p).2.toList) = trace [p] ∧
+      (∀ rest, (carry room p).2 = some rest →
+        p.start ≤ rest.start ∧ rest.lines ≤ p.lines ∧
+          (cap-reserved-sep-1 > 0 → rest.lines < p.lines)) := by
+  intro room
+  refine ⟨I5_carryNote_exact room p,?_⟩
+  intro rest again
+  unfold carry at again
+  dsimp only at again
+  split at again
+  · cases again
+    simp only
+    refine ⟨by omega,by omega,?_⟩
+    intro pos
+    have cast := Int.toNat_of_nonneg (show 0 ≤ cap-reserved-sep-1 by omega)
+    have hasRoom : 0 < room := by dsimp [room,availableForCarry]; omega
+    omega
+  · contradiction
+
+example : carry (availableForCarry 5 6 0) ⟨20,5,3⟩ = (⟨20,5,0⟩,some ⟨20,5,3⟩) := by decide
+
 end FootnoteSplit
 
 namespace TablePagination
