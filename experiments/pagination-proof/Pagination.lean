@@ -140,6 +140,27 @@ theorem I1_caption_badness_bounded (distance : Nat) (available : Int) :
 example : captionBadness 0 (-1) = 0 ∧ captionBadness 1 0 = 10000 ∧
     captionBadness 65536 65536 = 100 := by decide
 
+/-- The badness, shrink direction and overflow flag computed for a candidate
+    by KnuthPlass.evaluate, after protrusion and edge adjustments. -/
+def captionWidthEvaluation (shortfall stretch glueShrink compression : Int)
+    (pullInFirst : Bool) : Nat × Bool × Bool :=
+  let shrink := glueShrink + compression
+  if 0 < shortfall then (captionBadness shortfall.toNat stretch, false, false)
+  else if shortfall = 0 then (0, false, false)
+  else if shrink < -shortfall then (10000, true, true)
+  else if pullInFirst && decide (-shortfall ≤ glueShrink) then (0, true, false)
+  else (captionBadness (-shortfall).toNat shrink, true, false)
+
+theorem I1_caption_overfull_iff (shortfall stretch glueShrink compression : Int)
+    (pullInFirst : Bool) :
+    (captionWidthEvaluation shortfall stretch glueShrink compression pullInFirst).2.2 = true ↔
+      shortfall < 0 ∧ glueShrink + compression < -shortfall := by
+  unfold captionWidthEvaluation
+  by_cases pos : 0 < shortfall <;> by_cases zero : shortfall = 0 <;>
+    by_cases over : glueShrink + compression < -shortfall <;>
+    cases pullInFirst <;> by_cases room : -shortfall ≤ glueShrink <;>
+    simp [pos, zero, over, room] <;> omega
+
 /-- Natural width of the numbered caption fixture, in scaled points.
     The shaped runs are the number, an ideographic space, two initial M
     glyphs, the individual interior glyphs, and three final M glyphs. -/
