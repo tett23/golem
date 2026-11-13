@@ -123,6 +123,29 @@ punctuationWidthTests =
             lastValue "fwid" (effective look) @?= Nothing
             lastValue "hwid" (effective (lookWith ["hwid"] True)) @?= Just 1
             lastValue tag (effective look {lkKerning = KernJapaneseEqualWidth}) @?= Just 0,
+      testCase "Golem ADR 0378 inv1_punctuation_proportional_features_property: measure and draw with the permitted features" $
+        forM_ [(False, horizontalStyle, "palt"), (True, verticalPage, "vpal")] $ \(vertical, page, tag) -> do
+          files <- fontFiles
+          let style = page <> notoRole <> "punctuation-proportional = true\nfeatures = [\"" <> TE.encodeUtf8 tag <> "\"]\n"
+              target = '「'
+              source = "あ「い。\n"
+              checked = FontProvider $ \fs fid st roles -> fmap (fmap guardFeatures) (loadFonts golemFontProvider fs fid st roles)
+              guardFeatures fonts =
+                let verify shaping ch value
+                      | ch /= target = value
+                      | shVertical shaping == vertical && lastValue tag effective == Just 1 && lastValue "fwid" effective == Nothing = value
+                      | otherwise = error ("unexpected punctuation shaping: " <> show shaping)
+                      where
+                        effective = lfRoleFeatures fonts (shRole shaping) <> shExtra shaping
+                 in fonts
+                      { lfAdvance = \sh ch -> verify sh ch (lfAdvance fonts sh ch),
+                        lfShape = \sh txt -> foldr (verify sh) (lfShape fonts sh txt) (T.unpack txt)
+                      }
+          pdf <- miniPdf checked False style source files
+          fonts <- fontsOf style
+          let expected = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (Shaping "body" vertical [] False) (T.singleton target)]
+          drawn <- drawnGlyphs . BS.concat <$> inflateAll pdf
+          assertBool "the PDF draws the expected punctuation glyph" (not (null expected) && all (\gid -> gid `elem` map dGlyph drawn) expected),
       testCase "N6: Golem adds fwid to JLReq's punctuation only, horizontal and vertical" $
         forM_ [False, True] $ \v -> do
           let fwid c = lastValue "fwid" (shapedWith [] v (lookWith [] True) c)
