@@ -608,18 +608,20 @@ fitFigureTests =
       [ testCase "Golem ADR 0352 I1/I2: real fonts change caption breaks and the fitted image size" $ do
           (sans, serif) <- realLatinFonts
           let style = pageStyle "horizontal" "left" 12 4 1 20 20 <> "\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n\n[fonts.caption]\nlatin = \"fonts/latin.otf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\n"
-              observe font captionLength = do
+              observe font mAdvance captionLength = do
                 r <- layoutMiniFonts realProvider miniManifest style (fig "tall" "" (T.replicate captionLength "M")) (boxes <> [("fonts/latin.otf", font)])
                 case r of
                   Left ds -> assertFailure (show ds) >> pure ([], 0, 0, 0, 0)
                   Right (_, pl) -> do
                     (pf, _, _) <- single (figuresIn pl)
+                    let advances = [w | line <- pfCaption pf, Box w c <- lineItems line, bcText c == "M"]
+                    nubOrd advances @?= [mAdvance]
                     pure (map captionText (pfCaption pf), pfCaptionSpan pf, pfImageLines pf, pfAlong pf, pfAcross pf)
-          actual <- mapM (\font -> observe font 12) [sans, serif]
+          actual <- sequence [observe sans 476447 12, observe serif 591135 12]
           let sansExpected = (["F1\x3000MMMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt)
               serifExpected = (["F1\x3000MMMMMMMMM", "MMM"], 2, 2, 10 * pt, 30 * pt)
           actual @?= [sansExpected, serifExpected]
-          boundary <- mapM (observe serif) [10, 11, 12]
+          boundary <- mapM (observe serif 591135) [10, 11, 12]
           boundary
             @?= [ (["F1\x3000MMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt),
                   (["F1\x3000MMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt),
