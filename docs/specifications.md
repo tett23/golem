@@ -5147,7 +5147,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 
 引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
 
-- `@no-page-break` に引数を書けば G02096 を出す。
+- `@no-page-break N` は 0 以上の整数を一つ指定できる。キーワード引数や余分な引数は G02096、数でない値は G02156、負数は G02103、小数部のある数は G02104 を出す（[ADR 0376](adr/0376-no-page-break-lines.md)）。
 - `@need-lines` の引数が 1 以上の整数の一つでなければ G02070 を出す。
 - `@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G02099 を出す。
 - 三つのどれかに本体を書けば、本体の最初のブロックに G02097 を出す。
@@ -5157,9 +5157,11 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 PDF では、三つの印を次のように扱う。
 
 
-- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分と同じ段に置く。
+- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の末尾から指定行数（既定は 2 行）を次の段に送り、後の最初の部分と同じ段に置く。
   - 後の最初の部分は `nextNeed` と同じ量であり、3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
   - `@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は、段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。
+  - 前に残る行が 1 行以下なら全体を送る。段落の孤立行を防ぐ最小行数を守り、同じ位置の `keep-with-next` と行数の指定が重なれば大きい方を使う。
+  - `@no-page-break 0` は追加の連動を求めない。HTML と EPUB でもこの指定から改ページを抑える属性や CSS を書かない。
   - 空の段からは送らない。
   - 前が見出しなら、見出しの規則（「見出しと後に続くもの」）のとおりに置く。前がそのほかのブロックなら、置き方を変えない。
 - `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。

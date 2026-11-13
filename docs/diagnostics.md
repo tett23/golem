@@ -4419,9 +4419,10 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 位置引数、キーワード引数、展開した引数のどれでも、この誤りになる。
 コマンドは何も組まない。
 位置はコマンドの行である。
-対象は `@column-break`、`@no-page-break`、`@printings` である。
+対象は `@column-break` と `@printings` である。
+`@no-page-break` にキーワード引数か余分な位置引数を書いたときも、このコードを出す。
 
-- メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
+- メッセージ: `<名前> は引数を取りません`。行数を取る場合は `@no-page-break の引数には行数を一つだけ指定できます`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)、[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
 
@@ -6055,6 +6056,29 @@ TSV の途中の空の行は消す。
 ### 直し方
 
 `@set x = 3` を `set x = 3` に書き換える。
+
+## G02156
+
+@no-page-break の行数が数ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@no-page-break` の位置引数が数ではない。
+
+- メッセージ: `@no-page-break の行数には 0 以上の整数を書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [Golem ADR 0376](adr/0376-no-page-break-lines.md)
+
+### 主な原因
+
+- `@no-page-break x` のように、行数に名前を書いた。
+
+### 直し方
+
+`@no-page-break 3` のように 0 以上の整数を書く。
 
 ## G02254
 

@@ -178,7 +178,7 @@ blockSource =
       "",
       "pub data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn",
       "",
-      "pub data PageControl = NoBreak | NeedLines Nat | AdjustLines Int",
+      "pub data PageControl = NoBreak | NoBreakLines Nat | NeedLines Nat | AdjustLines Int",
       "",
       "pub paragraph :: Inlines -> Blocks",
       "paragraph xs = [Paragraph Nothing xs]",

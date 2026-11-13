@@ -583,17 +583,38 @@ columnsOf ps = [(poNumber p, poColumn p, [i | (_, SLine i) <- poSlots p]) | p <-
 
 pageControlTests :: [TestTree]
 pageControlTests =
-  [ testCase "no-break: the last two lines go on with the paragraph after" $ do
+  [ testCase "inv1_no_page_break_lines_property" $
+      mapM_
+        ( \(len, count) -> do
+            let make n k = FParagraph defaultKeep (lines' n k)
+                pages = lineIds (paginate 1 12 [make 100 (11 - len), make 0 len, FNoBreakLines mk count, make 200 2])
+                left = length [i | page <- take 1 pages, i <- page, i < 100]
+                want = len - max 2 count
+            left @?= if want < 2 then 0 else want
+        )
+        [(len, count) | len <- [2 .. 9], count <- [1 .. 10]],
+    testCase "inv1_no_page_break_lines_case_3: five lines send three" $
+      lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 4), FParagraph defaultKeep (lines' 20 5), FNoBreakLines mk 3, FParagraph defaultKeep (lines' 30 2)])
+        @?= [[0, 1, 2, 3, 20, 21], [22, 23, 24, 30, 31]],
+    testCase "inv1_no_page_break_lines_case_3: definition terms and co-located controls" $ do
+      let p n k = FParagraph defaultKeep (lines' n k)
+          place previous cs = lineIds (paginate 1 12 ([p 0 6, previous] ++ cs ++ [p 30 4]))
+          want = [[0 .. 5] ++ [20, 21], [22 .. 24] ++ [30 .. 33]]
+      place (FDefTerm (lines' 20 5)) [FNoBreakLines mk 3] @?= want
+      place (p 20 5) [FNoBreakLines mk 2, FKeepNext mk 3] @?= want
+      place (p 20 5) [FNoBreakLines mk maxBound] @?= [[0 .. 5], [20 .. 24] ++ [30 .. 33]]
+      place (p 20 5) [FNoBreakLines mk 0] @?= place (p 20 5) [],
+    testCase "no-break: the last two lines go on with the paragraph after" $ do
       lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 9), FParagraph defaultKeep (lines' 10 5)]) @?= [[0 .. 8], [10 .. 14]]
       let ps = paginate 1 10 [FParagraph defaultKeep (lines' 0 9), FNoBreak mk, FParagraph defaultKeep (lines' 10 5)]
       lineIds ps @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]]
       unmets ps @?= [],
-    testCase "no-break: a paragraph of two lines, or of three, goes whole" $ do
+    testCase "inv1_no_page_break_lines_case_1: a paragraph of two lines, or of three, goes whole" $ do
       lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 7), FParagraph defaultKeep (lines' 20 2), FNoBreak mk, FParagraph defaultKeep (lines' 30 5)])
         @?= [[0 .. 6], [20, 21, 30, 31, 32, 33, 34]]
       lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 6), FParagraph defaultKeep (lines' 20 3), FNoBreak mk, FParagraph defaultKeep (lines' 30 5)])
         @?= [[0 .. 5], [20, 21, 22, 30, 31, 32, 33, 34]],
-    testCase "no-break: a paragraph of four lines leaves two and sends the last two (docs/adr ADR 0055)" $ do
+    testCase "inv1_no_page_break_lines_case_2: a paragraph of four lines leaves two and sends the last two (docs/adr ADR 0055)" $ do
       let ps = paginate 1 10 [FParagraph defaultKeep (lines' 0 5), FParagraph defaultKeep (lines' 20 4), FNoBreak mk, FParagraph defaultKeep (lines' 30 5)]
       lineIds ps @?= [[0, 1, 2, 3, 4, 20, 21], [22, 23, 30, 31, 32, 33, 34]]
       unmets ps @?= [],

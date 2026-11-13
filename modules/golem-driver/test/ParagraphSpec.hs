@@ -443,6 +443,11 @@ pageControlTests =
       (page', css') <- htmlMini horizontalStyle "a\n\n@need-lines 3\n\n@page-lines +1\n\nb\n"
       assertBool (T.unpack page') ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page')
       assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css')),
+    testCase "inv1_no_page_break_lines_case_3: HTML omits the zero control and keeps a positive count" $ do
+      (zero, css) <- htmlMini horizontalStyle "a\n\n@no-page-break 0\n\nb\n"
+      assertBool "zero has no avoid attribute or rule" (not ("data-break-before" `T.isInfixOf` zero || "data-break-before" `T.isInfixOf` css))
+      (three, _) <- htmlMini horizontalStyle "a\n\n@no-page-break 3\n\nb\n"
+      assertBool "positive count retains avoid" ("data-break-before=\"avoid\"" `T.isInfixOf` three),
     testCase "plain text: the controls write nothing" $ do
       let text src = withVerseProject "" src $ \tmp -> do
             _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
