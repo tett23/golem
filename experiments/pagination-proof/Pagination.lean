@@ -9961,6 +9961,340 @@ theorem I3_maximal_two_figure_need_keeps_figure
     unfold placedBeforeNeedSource
     rw [plainText, figs]
 
+theorem I3_append_figure_preserves_earlier_blank
+    (items suffix : List SourceItem) (blank : Nat) (waiting here kept : Nat → Bool)
+    (top : Bool) :
+    blankPlacedFromSource blank waiting items here kept top = true →
+      blankPlacedFromSource blank waiting (items ++ suffix) here kept top = true := by
+  have next (c : SourceCandidate) (found : nextOfSource blank waiting items = some c) :
+      nextOfSource blank waiting (items ++ suffix) = some c := by
+    induction items with
+    | nil => simp [nextOfSource] at found
+    | cons head rest ih =>
+      cases cand : candidateAfterBlank blank head with
+      | none =>
+        simp [nextOfSource, cand] at found ⊢
+        exact ih found
+      | some v =>
+        by_cases sent : candidateWaits waiting v = true
+        · simp [nextOfSource, cand, sent] at found ⊢
+          exact ih found
+        · simpa [nextOfSource, cand, sent] using found
+  intro placed
+  cases found : nextOfSource blank waiting items with
+  | none => simp [blankPlacedFromSource, found] at placed
+  | some c =>
+    simp only [blankPlacedFromSource, found] at placed
+    simpa only [blankPlacedFromSource, next c found] using placed
+
+theorem I3_padding_preserves_text_prefix (items suffix : List SourceItem)
+    (onlyFigure : ∀ x ∈ suffix, ∃ p, x = .figure p) :
+    sourceTextPositions (items ++ suffix) = sourceTextPositions items ∧
+    ∀ p, textBeforeCount (items ++ suffix) p = textBeforeCount items p := by
+  have none : sourceTextPositions suffix = [] := by
+    induction suffix with
+    | nil => rfl
+    | cons x xs ih =>
+      obtain ⟨p, rfl⟩ := onlyFigure x (by simp)
+      exact ih (fun v h => onlyFigure v (by simp [h]))
+  have eq : sourceTextPositions (items ++ suffix) = sourceTextPositions items := by
+    induction items with
+    | nil => exact none
+    | cons x xs ih => cases x <;> simp_all [sourceTextPositions]
+  exact ⟨eq, fun p => by simp only [I3_source_text_before_count, eq]⟩
+
+def sourceEnd : List SourceItem → Nat
+  | [] => 0
+  | x :: xs => max (sourcePos x + 1) (sourceEnd xs)
+
+theorem I3_original_positions_before_padding (items : List SourceItem) :
+    ∀ x ∈ items, sourcePos x < sourceEnd items := by
+  induction items with
+  | nil => simp
+  | cons h tail ih =>
+    intro x mem
+    rcases List.mem_cons.mp mem with rfl | old
+    · simp [sourceEnd]; omega
+    · exact Nat.lt_of_lt_of_le (ih x old) (Nat.le_max_right _ _)
+
+def padNeedFigures (endPos : Nat) : FigureConfig → List SourceItem
+  | .zero => [.figure endPos, .figure (endPos+1)]
+  | .one _ _ => [.figure endPos]
+  | .two _ _ _ _ => []
+
+def paddedNeedConfig (endPos : Nat) : FigureConfig → FigureConfig
+  | .zero => .two endPos 1 (endPos+1) 1
+  | .one p size => .two p size endPos 1
+  | .two p size q other => .two p size q other
+
+private theorem member_of_source_append (xs ys : List SourceItem) (x : SourceItem) :
+    x ∈ xs ++ ys ↔ x ∈ xs ∨ x ∈ ys := by
+  induction xs with
+  | nil => simp
+  | cons h rest ih => simp only [List.cons_append, List.mem_cons, ih, or_assoc]
+
+theorem I3_padded_need_input_has_two_figures (items : List SourceItem)
+    (config : FigureConfig) (valid : figureDomain items config) :
+    figureDomain (items ++ padNeedFigures (sourceEnd items) config)
+      (paddedNeedConfig (sourceEnd items) config) := by
+  cases config with
+  | zero =>
+    refine ⟨by omega, by simp [padNeedFigures,member_of_source_append], by simp [padNeedFigures,member_of_source_append], ?_⟩
+    intro p member
+    simp only [padNeedFigures,member_of_source_append,List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with old | h | h
+    · exact (valid p old).elim
+    · cases h; exact Or.inl rfl
+    · cases h; exact Or.inr rfl
+  | one pos size =>
+    refine ⟨I3_original_positions_before_padding items (.figure pos) valid.1,
+      by simp [padNeedFigures,member_of_source_append,valid.1], by simp [padNeedFigures,member_of_source_append], ?_⟩
+    intro p member
+    simp only [padNeedFigures,member_of_source_append,List.mem_cons, List.not_mem_nil, or_false] at member
+    rcases member with old | added
+    · exact Or.inl (valid.2 p old)
+    · cases added; exact Or.inr rfl
+  | two p size q other => simpa [padNeedFigures,paddedNeedConfig] using valid
+
+theorem I3_padding_preserves_source_order (items : List SourceItem) (config : FigureConfig)
+    (ordered : sourceOrdered items) :
+    sourceOrdered (items ++ padNeedFigures (sourceEnd items) config) := by
+  have appendOrdered (xs ys : List SourceItem) (xOrder : sourceOrdered xs) (yOrder : sourceOrdered ys)
+      (earlier : ∀ x ∈ xs, ∀ y ∈ ys, sourcePos x < sourcePos y) : sourceOrdered (xs ++ ys) := by
+    induction xs with
+    | nil => exact yOrder
+    | cons head tail ih =>
+      refine ⟨?_, ih xOrder.2 (fun x m => earlier x (List.mem_cons_of_mem _ m))⟩
+      intro y member
+      rcases (member_of_source_append tail ys y).mp member with left | right
+      · exact xOrder.1 y left
+      · exact earlier head (by simp) y right
+  apply appendOrdered _ _ ordered
+  · cases config <;> simp [padNeedFigures,sourceOrdered,sourcePos]
+  · intro x member y padded
+    have bound := I3_original_positions_before_padding items x member
+    cases config <;> simp [padNeedFigures] at padded
+    · rcases padded with rfl | rfl
+      · exact bound
+      · exact Nat.lt_trans bound (Nat.lt_succ_self _)
+    · subst y; exact bound
+
+theorem I3_padding_keeps_original_figure_data (config : FigureConfig) (endPos i : Nat)
+    (actual : i < figureCount config) :
+    figurePosAt (paddedNeedConfig endPos config) i = figurePosAt config i ∧
+      figureSizeAt (paddedNeedConfig endPos config) i = figureSizeAt config i := by
+  cases config with
+  | zero => exact (Nat.not_lt_zero _ actual).elim
+  | one pos size =>
+    have zero : i = 0 := by change i < 1 at actual; omega
+    simp [zero,paddedNeedConfig,figurePosAt,figureSizeAt]
+  | two _ _ _ _ => exact ⟨rfl,rfl⟩
+
+/-- With no manuscript blank, use a position after all padded items. It
+    neither consumes a grid line nor precedes any genuine target. -/
+theorem I3_end_blank_has_no_successor (items : List SourceItem) (blank : Nat)
+    (pastEnd : sourceEnd items ≤ blank) (waiting : Nat → Bool) :
+    nextOfSource blank waiting items = none := by
+  induction items with
+  | nil => rfl
+  | cons x xs ih =>
+    have after : sourcePos x ≤ blank :=
+      Nat.le_trans (Nat.le_of_lt (I3_original_positions_before_padding _ x (List.mem_cons_self x xs))) pastEnd
+    have tail : sourceEnd xs ≤ blank := Nat.le_trans (Nat.le_max_right _ _) pastEnd
+    have skip : candidateAfterBlank blank x = none := by
+      cases x <;> simp [sourcePos] at after <;> simp [candidateAfterBlank] <;> omega
+    simpa only [nextOfSource, skip] using ih tail
+
+theorem I3_missing_blank_never_charged (used : Nat) (items : List SourceItem)
+    (waiting here kept : Nat → Bool) :
+    blankPlacedFromSourceFull used (sourceEnd items) waiting items here kept = false := by
+  simp [blankPlacedFromSourceFull,blankPlacedFromSource,
+    I3_end_blank_has_no_successor items _ (Nat.le_refl _) waiting]
+
+theorem I3_padding_never_adds_figure_rows_before_an_original_target
+    (items : List SourceItem) (config : FigureConfig) (kept : Nat → Bool) (target : SourceItem)
+    (member : target ∈ items) :
+    let padded := paddedNeedConfig (sourceEnd items) config
+    keptRowsThrough (fun i => kept i && decide (figurePosAt padded i < sourcePos target))
+      (figureSizeAt padded) 2 =
+    keptRowsThrough (fun i => kept i && decide (figurePosAt config i < sourcePos target))
+      (figureSizeAt config) (figureCount config) := by
+  intro padded
+  have before := I3_original_positions_before_padding items target member
+  have outside : ¬ sourceEnd items < sourcePos target := by omega
+  have lastOutside : ¬ sourceEnd items + 1 < sourcePos target := by omega
+  cases config <;> simp [padded,paddedNeedConfig,figurePosAt,figureSizeAt,figureCount,keptRowsThrough,outside,lastOutside]
+
+theorem I3_padding_bounds_original_figure_load (items : List SourceItem)
+    (config : FigureConfig) (kept : Nat → Bool) :
+    keptRowsThrough kept (figureSizeAt config) (figureCount config) ≤
+      keptRowsThrough kept (figureSizeAt (paddedNeedConfig (sourceEnd items) config)) 2 := by
+  cases config <;> simp [paddedNeedConfig,figureSizeAt,figureCount,keptRowsThrough] <;> omega
+
+theorem I3_padding_preserves_placed_load_before_need
+    (used b : Nat) (items : List SourceItem) (config : FigureConfig)
+    (space kept : Nat → Bool) (target : SourceItem) (member : target ∈ items) :
+    let augmented := items ++ padNeedFigures (sourceEnd items) config
+    let padded := paddedNeedConfig (sourceEnd items) config
+    placedBeforeNeedSource used 2 b augmented (figurePosAt padded) (figureSizeAt padded) space kept
+      (sourcePos target) =
+    placedBeforeNeedSource used (figureCount config) b items (figurePosAt config) (figureSizeAt config)
+      space kept (sourcePos target) := by
+  intro augmented padded
+  have onlyFigure : ∀ x ∈ padNeedFigures (sourceEnd items) config, ∃ p, x = .figure p := by
+    intro x mem
+    cases config <;> simp [padNeedFigures] at mem
+    · rcases mem with rfl | rfl <;> exact ⟨_,rfl⟩
+    · subst x; exact ⟨_,rfl⟩
+  obtain ⟨sameText, sameRank⟩ := I3_padding_preserves_text_prefix items _ onlyFigure
+  have sameHere : textHereAtBreak augmented b = textHereAtBreak items b := by
+    funext p
+    simp only [textHereAtBreak, augmented, sameRank]
+  unfold placedBeforeNeedSource
+  rw [sameHere]
+  change sourceTextPositions augmented = sourceTextPositions items at sameText
+  rw [sameText, I3_padding_never_adds_figure_rows_before_an_original_target items config kept target member]
+
+private theorem text_mem_padded_source (items : List SourceItem) (config : FigureConfig) (p : Nat) :
+    SourceItem.text p ∈ items ++ padNeedFigures (sourceEnd items) config ↔ .text p ∈ items := by
+  rw [member_of_source_append]
+  cases config <;> simp [padNeedFigures]
+
+theorem I3_padding_preserves_text_target (items : List SourceItem) (config : FigureConfig)
+    (n t : Nat) (member : .text t ∈ items) (space kept : Nat → Bool) :
+    let augmented := items ++ padNeedFigures (sourceEnd items) config
+    let padded := paddedNeedConfig (sourceEnd items) config
+    sourceNeedAtTarget n t 2 augmented (figurePosAt padded) space kept ↔
+      sourceNeedAtTarget n t (figureCount config) items (figurePosAt config) space kept := by
+  intro augmented padded
+  have same (p : Nat) : .text p ∈ augmented ↔ .text p ∈ items := text_mem_padded_source items config p
+  have noExtra (i : Nat) (bound : i < 2) (earlier : figurePosAt padded i < t) : i < figureCount config := by
+    have endAfter : t < sourceEnd items := I3_original_positions_before_padding items (.text t) member
+    cases config with
+    | zero =>
+        by_cases iz : i = 0 <;> simp [padded,paddedNeedConfig,figurePosAt,iz] at earlier <;> omega
+    | one _ _ =>
+        by_cases iz : i = 0
+        · simp [figureCount,iz]
+        · simp [padded,paddedNeedConfig,figurePosAt,iz] at earlier; omega
+    | two _ _ _ _ => exact bound
+  unfold sourceNeedAtTarget needTargetsText
+  simp only [same]
+  constructor
+  · rintro ⟨nt,target,blocks,figures⟩
+    refine ⟨nt,target,blocks,?_⟩
+    intro i original after before
+    have lt : i < 2 := by cases config <;> simp_all [figureCount] <;> omega
+    have pos := (I3_padding_keeps_original_figure_data config (sourceEnd items) i original).1
+    exact figures i lt (pos.symm ▸ after) (pos.symm ▸ before)
+  · rintro ⟨nt,target,blocks,figures⟩
+    refine ⟨nt,target,blocks,?_⟩
+    intro i bound after before
+    have original := noExtra i bound before
+    have pos := (I3_padding_keeps_original_figure_data config (sourceEnd items) i original).1
+    exact figures i original (pos ▸ after) (pos ▸ before)
+
+theorem I3_padding_preserves_figure_target (items : List SourceItem) (config : FigureConfig)
+    (n f : Nat) (bound : f < figureCount config) (space kept : Nat → Bool) :
+    let augmented := items ++ padNeedFigures (sourceEnd items) config
+    let padded := paddedNeedConfig (sourceEnd items) config
+    needTargetsFigure n (figurePosAt padded) (fun p => .text p ∈ augmented ∧ space p = false) f (figureWaits kept) ↔
+      needTargetsFigure n (figurePosAt config) (fun p => .text p ∈ items ∧ space p = false) f (figureWaits kept) := by
+  intro augmented padded
+  have posEq (i : Nat) (hi : i < figureCount config) :
+      figurePosAt padded i = figurePosAt config i :=
+    (I3_padding_keeps_original_figure_data config (sourceEnd items) i hi).1
+  unfold needTargetsFigure
+  simp only [augmented,text_mem_padded_source,posEq f bound]
+  constructor
+  · rintro ⟨before,awake,block,prior⟩
+    refine ⟨before,awake,block,?_⟩
+    intro g lt after
+    apply prior g lt
+    simpa only [posEq g (Nat.lt_trans lt bound)] using after
+  · rintro ⟨before,awake,block,prior⟩
+    refine ⟨before,awake,block,?_⟩
+    intro g lt after
+    apply prior g lt
+    simpa only [posEq g (Nat.lt_trans lt bound)] using after
+
+theorem I3_padding_preserves_text_P1 (used capacity b t : Nat) (items : List SourceItem)
+    (config : FigureConfig) (space kept : Nat → Bool) (needs : List (Nat × Nat))
+    (member : .text t ∈ items) :
+    let padded := paddedNeedConfig (sourceEnd items) config
+    needAtPlacedText used capacity 2 (items ++ padNeedFigures (sourceEnd items) config)
+      (figurePosAt padded) (figureSizeAt padded) space needs b kept t ↔
+    needAtPlacedText used capacity (figureCount config) items (figurePosAt config) (figureSizeAt config)
+      space needs b kept t := by
+  intro padded
+  unfold needAtPlacedText
+  have rows := I3_padding_preserves_placed_load_before_need used b items config space kept (.text t) member
+  change placedBeforeNeedSource _ _ _ _ _ _ _ _ t = _ at rows
+  dsimp only
+  rw [rows]
+  constructor
+  · intro test n m target
+    exact test n m ((I3_padding_preserves_text_target items config n.1 t member space kept).mpr target)
+  · intro test n m target
+    exact test n m ((I3_padding_preserves_text_target items config n.1 t member space kept).mp target)
+
+theorem I3_padding_preserves_figures_at_original_positions (items : List SourceItem)
+    (config : FigureConfig) (valid : figureDomain items config) (p : Nat) (member : .figure p ∈ items)
+    (kept : Nat → Bool) :
+    let padded := paddedNeedConfig (sourceEnd items) config
+    figureKeptAtPos padded kept p = figureKeptAtPos config kept p ∧
+      figureWaitingAtPos padded kept p = figureWaitingAtPos config kept p := by
+  cases config with
+  | zero => exact (valid p member).elim
+  | one pos size =>
+    have eq := valid.2 p member
+    subst p
+    simp [paddedNeedConfig,figureKeptAtPos,keptAtTwoPositions,figureWaitingAtPos,waitingAtTwoPositions,
+      waitingFigureBool,earlierFigureSent]
+  | two _ _ _ _ => exact ⟨rfl,rfl⟩
+
+theorem I3_padding_preserves_real_blank_top
+    (items : List SourceItem) (config : FigureConfig) (valid : figureDomain items config)
+    (used b blank : Nat) (member : .blank blank ∈ items) (kept : Nat → Bool) :
+    let augmented := items ++ padNeedFigures (sourceEnd items) config
+    let padded := paddedNeedConfig (sourceEnd items) config
+    blankAtTopSource used blank augmented (textHereAtBreak augmented b) (figureKeptAtPos padded kept) =
+      blankAtTopSource used blank items (textHereAtBreak items b) (figureKeptAtPos config kept) := by
+  intro augmented padded
+  have onlyFig : ∀ x ∈ padNeedFigures (sourceEnd items) config, ∃ p, x = .figure p := by
+    intro x hi
+    cases config <;> simp [padNeedFigures] at hi
+    · rcases hi with rfl | rfl <;> exact ⟨_,rfl⟩
+    · subst x; exact ⟨_,rfl⟩
+  have textEq (p : Nat) : textHereAtBreak augmented b p = textHereAtBreak items b p := by
+    simp only [textHereAtBreak,augmented,(I3_padding_preserves_text_prefix items _ onlyFig).2]
+  have original (x : SourceItem) (xm : x ∈ items) :
+      keptBeforeBlank blank (textHereAtBreak augmented b) (figureKeptAtPos padded kept) x =
+        keptBeforeBlank blank (textHereAtBreak items b) (figureKeptAtPos config kept) x := by
+    cases x with
+    | text p => simp [keptBeforeBlank,textEq]
+    | figure p => simp [keptBeforeBlank,(I3_padding_preserves_figures_at_original_positions items config valid p xm kept).1,padded]
+    | blank p => rfl
+    | need p => rfl
+  have earlier : blank < sourceEnd items := I3_original_positions_before_padding items _ member
+  have added (x : SourceItem) (xm : x ∈ padNeedFigures (sourceEnd items) config) :
+      keptBeforeBlank blank (textHereAtBreak augmented b) (figureKeptAtPos padded kept) x = false := by
+    cases config <;> simp [padNeedFigures] at xm
+    · rcases xm with rfl | rfl <;> simp [keptBeforeBlank,show ¬ sourceEnd items < blank by omega,
+        show ¬ sourceEnd items + 1 < blank by omega]
+    · subst x; simp [keptBeforeBlank,show ¬ sourceEnd items < blank by omega]
+  apply Bool.eq_iff_iff.mpr
+  rw [I3_blankAtTopSource_iff_empty_before, I3_blankAtTopSource_iff_empty_before]
+  constructor
+  · rintro ⟨empty,all⟩
+    exact ⟨empty,fun x xm => (original x xm) ▸ all x (List.mem_append_of_mem_left _ xm)⟩
+  · rintro ⟨empty,all⟩
+    refine ⟨empty,?_⟩
+    intro x xm
+    rcases (member_of_source_append _ _ _).mp xm with old | new
+    · rw [original x old]; exact all x old
+    · exact added x new
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
