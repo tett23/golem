@@ -176,6 +176,13 @@ pdfPipelineTests =
           b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
           map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
           bPdf b @?= Nothing,
+      testCase "inv1_validate_embedded_cff_property: used local subroutine endpoint exceeds the table" $ do
+        (sans, _) <- realLatinFonts
+        -- T calls local subroutine 270. Its end offset occupies two bytes.
+        let bad = BS.take 120473 sans <> BS.replicate 2 255 <> BS.drop 120475 sans
+        b <- buildMarksFilesWith "T" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
       testCase "G08107 is specific to out-of-bounds CFF references" $ do
         (sans, _) <- realLatinFonts
         -- An add with an empty operand stack is malformed but reads no offset.
