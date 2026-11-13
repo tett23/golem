@@ -6029,6 +6029,71 @@ def sourceLineAfterHeadings (used brk : Nat) (items : List SourceItem)
     (∀ t, .text t ∈ items → textHereAtBreak items brk t = true → t ∈ headings) →
       ∀ l, .text l ∈ items → line l → textBeforeCount items l ≠ brk
 
+theorem I3_rank_of_position_at_index (positions : List Nat)
+    (ordered : strictTextPositions positions) (i p : Nat)
+    (atIndex : positions.get? i = some p) : textRank positions p = i := by
+  induction positions generalizing i with
+  | nil => simp at atIndex
+  | cons first rest ih =>
+    obtain ⟨before, sorted⟩ := ordered
+    cases i with
+    | zero =>
+      simp at atIndex
+      simp [textRank, atIndex]
+    | succ i =>
+      simp only [List.get?_cons_succ] at atIndex
+      obtain ⟨bound, eq⟩ := List.get?_eq_some.mp atIndex
+      have member : p ∈ rest := eq ▸ List.get_mem rest i bound
+      have earlier := before p member
+      simp [textRank, Nat.ne_of_lt earlier, ih sorted i atIndex, Nat.add_comm]
+
+theorem I3_source_line_after_alloy_first_break
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (role : Nat → AlloyTextRole) (config : FigureConfig) (kept : Nat → Bool)
+    (headings : List Nat) (line : Nat → Prop)
+    (headingRole : ∀ p ∈ headings, role p = .heading)
+    (lineRole : ∀ p, line p → role p = .line) :
+    let roles := (sourceTextPositions items).map role
+    sourceLineAfterHeadings 0 (alloyTextFirstBreak roles) items config kept headings line := by
+  let positions := sourceTextPositions items
+  let roles := positions.map role
+  let brk := alloyTextFirstBreak roles
+  change sourceLineAfterHeadings 0 brk items config kept headings line
+  intro _ positive _ onlyHeadings p member isLine atBreak
+  have sorted := I3_source_text_positions_ordered items ordered
+  have pMember := (I3_source_text_position_member items p).mpr member
+  have rank : textRank positions p = brk := by
+    rw [I3_source_text_before_count,
+      I3_count_earlier_text_eq_rank _ sorted p pMember] at atBreak
+    exact atBreak
+  have after := (I3_alloy_text_first_break_line_after 2 roles (by decide)).2.2
+  apply after ⟨positive, ?_⟩
+  · have atRole := I3_text_role_at_source_rank items role p member
+    change roles.get? brk = some .line
+    rw [← rank]
+    simpa only [lineRole p isLine] using atRole
+  · intro i before
+    have brkLe : brk ≤ positions.length := by
+      change alloyTextFirstBreak (positions.map role) ≤ positions.length
+      cases positions with
+      | nil => simp [alloyTextFirstBreak]
+      | cons h t =>
+        cases t with
+        | nil => cases role h <;> simp [alloyTextFirstBreak, *]
+        | cons j t => cases hh : role h <;> cases hj : role j <;>
+            simp [hh, hj, alloyTextFirstBreak] <;> omega
+    have inBounds : i < positions.length := by omega
+    let q := positions.get ⟨i, inBounds⟩
+    have atQ : positions.get? i = some q := List.get?_eq_get inBounds
+    have qMember := List.get_mem positions i inBounds
+    have qText := (I3_source_text_position_member items q).mp qMember
+    have rankQ := I3_rank_of_position_at_index positions sorted i q atQ
+    have here := (I3_text_here_iff_source_rank items ordered q brk qText).mpr
+      (by simpa [← rankQ] using before)
+    change (positions.map role).get? i = some .heading
+    rw [List.get?_map, atQ]
+    simp [headingRole q (onlyHeadings q qText here)]
+
 /- At a two-text break the following line is already in the column.
    This discharges the heading-only premise even with figures and a blank. -/
 theorem I3_two_break_line_after_headings
