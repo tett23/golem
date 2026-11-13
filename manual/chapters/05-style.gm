@@ -1131,6 +1131,7 @@ overhang = "0.5zw"
 overhang-onto = "kana"
 ```
 
+- [code: reading-style]：読みだけに適用する文字スタイルの名前です。大きさを省くと、親文字の半分になります。
 - [code: mono-align]：モノルビの読みが親文字より短いときに、中央に置くか（[code: "center"]）、始まりにそろえるか（[code: "start"]）です。
 - [code: group-align]：グループルビの読みの配置です。[code: "1:2:1"] は字のあいだに等しい空きを入れ、両端にその半分を置きます。
 - [code: overhang]：読みが親文字より長いときに、隣の文字にかけてよい量です。

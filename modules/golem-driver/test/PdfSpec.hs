@@ -710,9 +710,25 @@ marksTests =
 glyphXs :: BS.ByteString -> BS.ByteString -> [Double]
 glyphXs size content = [read (BC.unpack (dX d)) | d <- drawnGlyphs content, dSize d == size]
 
+rubyGlyphs :: BS.ByteString -> IO [Drawn]
+rubyGlyphs name = do
+  let setting = if BS.null name then "" else "[composition.ruby]\nreading-style=\"" <> name <> "\"\n"
+      style = horizontalStyle <> "\n[color.swatches]\nred={cmyk=[0,100,100,0]}\n[character-styles.accent]\ncolor=\"red\"\n[character-styles.large]\nsize=\"8pt\"\n" <> setting
+  drawnGlyphs . BS.concat <$> (miniPdf fakeProvider True style "[ruby: 漢|か]\n" [] >>= inflateAll)
+
+checkReading :: BS.ByteString -> [Drawn] -> Assertion
+checkReading size ds = [dSize d | d <- ds, dGlyph d == fromEnum 'か'] @?= [size]
+
 rubyTests :: [TestTree]
 rubyTests =
-  [ testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
+  [ testCase "inv1_ruby_reading_style_property" $ do
+      a <- rubyGlyphs ""
+      b <- rubyGlyphs "large"
+      [(dFont d, dSize d) | d <- a, dGlyph d == fromEnum '漢'] @?= [(dFont d, dSize d) | d <- b, dGlyph d == fromEnum '漢'],
+    testCase "inv1_ruby_reading_style_case_1" $ rubyGlyphs "" >>= checkReading "5",
+    testCase "inv1_ruby_reading_style_case_2" $ rubyGlyphs "accent" >>= checkReading "5",
+    testCase "inv1_ruby_reading_style_case_3" $ rubyGlyphs "large" >>= checkReading "8",
+    testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
       let source = "[ruby: 五月雨|さみだれ]が降る。\n"
           drawnAt align = do
             content <- miniPdf fakeProvider True (horizontalStyle <> "\n[composition.ruby]\ngroup-align = \"" <> align <> "\"\n") source [] >>= fmap BS.concat . inflateAll

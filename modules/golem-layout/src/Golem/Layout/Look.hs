@@ -47,6 +47,7 @@ half the size outside the range, the nominal size, not of the shrunk
 base, and no glyphs of sups or subs. Outside a range it is half 'lkSize'.
 -}
 readingLook :: Look -> Look
+readingLook lk | Just reading <- lkRubyReading lk = reading
 readingLook lk =
   lk
     { lkSize = half,
@@ -185,7 +186,9 @@ data Look = Look
     -} lkNoBreak :: !Bool,
     {- | JLReq's punctuation is shaped with fwid unless a width feature is
     written (docs/adr/0302): punctuation-width = "full-width"
-    -} lkFullWidthPunctuation :: !Bool
+    -} lkFullWidthPunctuation :: !Bool,
+    -- | Resolved appearance of the reading, only on a composed ruby box.
+    lkRubyReading :: !(Maybe Look)
   }
   deriving stock (Eq, Ord, Show)
 
@@ -243,4 +246,4 @@ outside a language span, no wrap mark, no features, the normal position and
 breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True Nothing

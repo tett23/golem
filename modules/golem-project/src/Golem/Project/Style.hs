@@ -1092,13 +1092,14 @@ data RubyStyleDef = RubyStyleDef
     rdBaseSpacing :: !Text,
     rdOverhang :: !Dim,
     -- | "kana" | "none"
-    rdOverhangOnto :: !Text
+    rdOverhangOnto :: !Text,
+    rdReadingStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | JLReq's usual setting.
 defaultRubyStyleDef :: RubyStyleDef
-defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana"
+defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana" Nothing
 
 {- | [sidenotes]: the sidenote column and the marker. The font and the size
 are the paragraph style sidenote's (golem-driver ADR 0011).
@@ -2148,6 +2149,7 @@ instance FromValue RubyStyleDef where
     b <- enumKey "base-spacing" baseSpacingValues
     o <- dimKey "overhang"
     onto <- enumKey "overhang-onto" overhangOntoValues
+    reading <- optKey "reading-style"
     let d = defaultRubyStyleDef
     pure
       RubyStyleDef
@@ -2155,7 +2157,8 @@ instance FromValue RubyStyleDef where
           rdGroupAlign = fromMaybe (rdGroupAlign d) g,
           rdBaseSpacing = fromMaybe (rdBaseSpacing d) b,
           rdOverhang = fromMaybe (rdOverhang d) o,
-          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto
+          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto,
+          rdReadingStyle = reading
         }
 
 data Expansion = Expansion Int Int
@@ -3160,6 +3163,7 @@ styleReferenceChecks owner s =
             (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
             Map.notMember n cs
           ]
+            <> [("", styleKeys ["composition", "ruby", "reading-style"], "ルビの読みの文字スタイルがありません: " <> n) | Just n <- [rdReadingStyle (compRuby (stComposition s))], Map.notMember n cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3598,7 +3602,8 @@ styleSchema =
                 ("group-align", enum groupAlignValues),
                 ("base-spacing", enum baseSpacingValues),
                 ("overhang", dim),
-                ("overhang-onto", enum overhangOntoValues)
+                ("overhang-onto", enum overhangOntoValues),
+                ("reading-style", ref CharStyles)
               ]
           ),
           ("kenten", enum kentenShapeNames),

@@ -1068,10 +1068,10 @@ tests =
           ["10001", "-10000", "1.5", "\"10\""],
       testCase "[composition.ruby] (golem-layout ADR 0009)" $ do
         let rubyOf = fmap (compRuby . stComposition) . parseStyle (FileId 0)
-        rubyOf "" @?= Right (RubyStyleDef "center" "1:2:1" "1:2:1" (Zw 0.5) "kana")
+        rubyOf "" @?= Right (RubyStyleDef "center" "1:2:1" "1:2:1" (Zw 0.5) "kana" Nothing)
         rubyOf "[composition.ruby]\nmono-align = \"start\"\ngroup-align = \"0:1:0\"\nbase-spacing = \"center\"\noverhang = \"1zw\"\noverhang-onto = \"none\"\n"
-          @?= Right (RubyStyleDef "start" "0:1:0" "center" (Zw 1) "none")
-        rubyOf "[composition.ruby]\ngroup-align = \"center\"\n" @?= Right (RubyStyleDef "center" "center" "1:2:1" (Zw 0.5) "kana")
+          @?= Right (RubyStyleDef "start" "0:1:0" "center" (Zw 1) "none" Nothing)
+        rubyOf "[composition.ruby]\ngroup-align = \"center\"\n" @?= Right (RubyStyleDef "center" "center" "1:2:1" (Zw 0.5) "kana" Nothing)
         codes (parseStyle (FileId 0) "[composition.ruby]\ngroup-align = \"justify\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[composition.ruby]\nmono-align = \"1:2:1\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["G03006"]

@@ -87,6 +87,7 @@ data HtmlConfig = HtmlConfig
     hcRubyMonoAlign :: !Text,
     hcRubyGroupAlign :: !Text,
     hcRubyBaseSpacing :: !Text,
+    hcRubyReadingStyle :: !(Maybe Text),
     -- | the kinds of forced break the book uses (docs/adr ADR 0017)
     hcBreakKinds :: !(Set BreakKind),
     -- | whether the book uses @no-page-break (docs/adr ADR 0030)
@@ -181,7 +182,8 @@ data HtmlCharStyle = HtmlCharStyle
     -- | the declarations of the underline and the strikethrough (docs/adr/0270)
     hcsTextDecoration :: ![Text],
     -- | the characters do not break between them (docs/adr ADR 0272)
-    hcsNoBreak :: !Bool
+    hcsNoBreak :: !Bool,
+    hcsSize :: !(Maybe Text)
   }
   deriving stock (Eq)
 
@@ -1127,6 +1129,7 @@ css cfg book =
          ]
       <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
       -- the markers of [lists] by depth (golem-driver ADR 0013)
+      <> readingRules "" (hcCharStyles cfg)
       <> maybe [] (listRules cfg book) (hcLists cfg)
       -- forced breaks, only the kinds the book uses (docs/adr ADR 0017)
       <> [ "[data-break-before=\"" <> name <> "\"] { page-break-before: always; break-before: " <> name <> "; }"
@@ -1357,6 +1360,18 @@ css cfg book =
     fontStack role = T.intercalate ", " (families role <> ["serif"])
     {- the rules of the styles of a file: every property they handle, as a
     property left out would keep the value of the rule of style.toml -}
+    readingRules prefix styles =
+      [ rule (prefix <> "ruby > rt") (declsOf "" cs <> inherited cs <> ["font-size: " <> fromMaybe "0.5em" (hcsSize cs)])
+      | Just name <- [hcRubyReadingStyle cfg],
+        Just cs <- [Map.lookup name styles]
+      ]
+      where
+        inherited cs =
+          [ property <> ": inherit"
+          | not (T.null prefix),
+            (property, missing) <- [("font-family", hcsFont cs == Nothing), ("color", hcsColor cs == Nothing), ("font-weight", not (hcsBold cs)), ("font-style", not (hcsItalic cs))],
+            missing
+          ]
     localRules n l =
       let pre = "body.file-" <> tshow n
           stackOr = maybe "inherit" fontStack
@@ -1431,7 +1446,7 @@ css cfg book =
           boxLocal =
             [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
-       in charRules <> paraStyleRules <> faceRules <> boxLocal <> listRule
+       in charRules <> readingRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text
