@@ -209,4 +209,86 @@ theorem generated_para_end (env : Params) (input : List Char) (extra : Nat) :
         simp [paraAlts, paraResult, nl, endAt, first, next, picked, e, last, Option.orElse, runChoices,
           runSequence, foldChoice, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map] <;> rfl
 
+private theorem strip_length (input : List Char) :
+    (input.dropWhile whitespace).length ≤ input.length := by
+  induction input with
+  | nil => decide
+  | cons c rest ih =>
+      cases hit : whitespace c <;> simp [List.dropWhile, hit] <;> omega
+
+theorem blank_shortens (input rest : List Char) (hit : blankResult input = some rest) :
+    rest.length < input.length := by
+  have bound := strip_length input
+  cases trim : input.dropWhile whitespace with
+  | nil =>
+      cases input with
+      | nil => contradiction
+      | cons c cs =>
+          cases space : whitespace c <;> simp [blankResult, trim, afterNl, wsResult, space, Option.orElse] at hit
+          rw [← hit.2]; have len := strip_length cs; simp; omega
+  | cons c cs =>
+      rw [trim] at bound
+      by_cases nl : c = '\n'
+      · subst c; simp [blankResult, trim, afterNl, Option.orElse] at hit; subst rest
+        simp at bound; omega
+      · simp [blankResult, trim, afterNl, nl, Option.orElse] at hit
+        cases input with
+        | nil => contradiction
+        | cons first tail =>
+            cases space : whitespace first <;> simp [wsResult, space] at hit
+            rw [← hit.1]; have len := strip_length tail; simp; omega
+
+def afterBlanks (input : List Char) : List Char :=
+  match h : blankResult input with
+  | none => input
+  | some rest => have _shrinks := blank_shortens _ _ h; afterBlanks rest
+termination_by input.length
+decreasing_by exact blank_shortens _ _ h
+
+private theorem star_blank (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar [] (input.length + 8 + extra) (.star (.ref "BlankLine" [])) input =
+      .ok (some (afterBlanks input)) := by
+  let inner := input.length + 7 + extra
+  rw [show input.length + 8 + extra = inner + 1 by dsimp [inner]; omega]
+  have blank := generated_blank_line [] input extra
+  change recognizeEnv _ [] inner _ _ = _ at blank
+  conv => lhs; unfold recognizeEnv
+  cases hit : blankResult input with
+  | none =>
+      rw [afterBlanks]; simp [blank, hit]; rw [hit]; rfl
+  | some rest =>
+      have shrink := blank_shortens _ _ hit
+      have recurse := star_blank rest (input.length - rest.length - 1 + extra)
+      rw [show rest.length + 8 + (input.length - rest.length - 1 + extra) = inner by dsimp [inner]; omega] at recurse
+      rw [afterBlanks]
+      simp [blank, hit, shrink, recurse, Id.run]
+      rw [hit]
+termination_by input.length
+decreasing_by exact blank_shortens _ _ hit
+
+theorem generated_blank_lines (env : Params) (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar env (input.length + 10 + extra) (.ref "BlankLines" []) input =
+      .ok ((blankResult input).map afterBlanks) := by
+  let inner := input.length + 7 + extra
+  rw [show input.length + 10 + extra = inner + 1 + 1 + 1 by dsimp [inner]; omega]
+  change recognizeEnv _ [] (inner + 1 + 1) (.choice [[.plus (.ref "BlankLine" [])]]) input = _
+  change runChoices (fun xs => runSequence (fun sc item rest =>
+    recognizeEnv Generated.pegGrammar sc (inner + 1) item rest) (fun _ _ _ => .ok none) [] xs input)
+      [[.plus (.ref "BlankLine" [])]] = _
+  have plus : recognizeEnv Generated.pegGrammar [] (inner + 1) (.plus (.ref "BlankLine" [])) input =
+      .ok ((blankResult input).map afterBlanks) := by
+    have blank := generated_blank_line [] input extra
+    change recognizeEnv _ [] inner _ _ = _ at blank
+    conv => lhs; unfold recognizeEnv
+    cases hit : blankResult input with
+    | none => simp [blank, hit]; rfl
+    | some rest =>
+        have shrink := blank_shortens _ _ hit
+        have recurse := star_blank rest (input.length - rest.length - 1 + extra)
+        rw [show rest.length + 8 + (input.length - rest.length - 1 + extra) = inner by dsimp [inner]; omega] at recurse
+        simp [blank, hit, shrink, recurse, Id.run]
+  cases first : blankResult input <;>
+    simp [runChoices, runSequence, foldChoice, List.foldlM, plus, first, Bind.bind,
+      Except.bind, pure, Except.pure, Except.map]
+
 end LineBoundaryTotal

@@ -12,7 +12,7 @@ test('Golem ADR 0351: a failed CLI inspection records the input and replay comma
   try {
     const result = spawnSync('node', [script, '1'], { env, encoding: 'utf8' });
     assert.equal(result.status, 1);
-    assert.match(result.stdout, /^75 cases /);
+    assert.match(result.stdout, /^78 cases /);
     assert.equal(readFileSync(join(output, 'manuscript-70', 'original.gm'), 'utf8'),
       '###### %%注%%乙\n');
     const last = join(output, 'manuscript-18');

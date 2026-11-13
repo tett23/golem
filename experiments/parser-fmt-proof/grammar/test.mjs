@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 95, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 94, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -383,6 +383,11 @@ try {
     assert.ok(!strict.stderr.split('\n').some(line =>
       line.startsWith('unsupported SkippedReserved ') && line.endsWith(': ' + literal)));
   }
+  const optionalBlankLines = join(work, 'OptionalBlankLines.hpeg');
+  writeFileSync(optionalBlankLines, original.replace('BlankLines <- BlankLine+', 'BlankLines <- BlankLine*'));
+  const strictBlankLines = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), optionalBlankLines, generated], { encoding: 'utf8' });
+  assert.match(strictBlankLines.stderr, /^unsupported BlankLines .*: BlankLine\*$/m);
   const changedParaEnd = join(work, 'ChangedParaEnd.hpeg');
   writeFileSync(changedParaEnd, original.replace('ParaEnd <- Nl (BlankLine / !.)', 'ParaEnd <- Nl (BlankLines / !.)'));
   const strictParaEnd = spawnSync(process.execPath,
@@ -517,7 +522,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 14, negative mutations 47, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 14, negative mutations 48, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

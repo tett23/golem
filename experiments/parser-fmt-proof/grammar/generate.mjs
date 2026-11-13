@@ -394,6 +394,8 @@ if (!fragment && ast) {
     if (lineLeavesProved && rule.params.length === 0 && rule.templateParams.length === 0 &&
         rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
       if (rule.name === 'BlankLine' && blankLineProved) continue;
+      if (rule.name === 'BlankLines' && blankLineProved && rule.alts.length === 1 &&
+          describeItems(rule.alts[0].items) === 'BlankLine+') continue;
       if (rule.name === 'ParaEnd' && blankLineProved && rule.alts.length === 2 &&
           describeItems(rule.alts[0].items) === 'Nl (BlankLine / !.)' &&
           describeItems(rule.alts[1].items) === '!.') continue;

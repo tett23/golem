@@ -61,6 +61,9 @@ function* cases() {
   yield ['- x\n  - y\n    - z\n', [],
     /BulletList\s+- - Paragraph \[Text "x"\]\s+- BulletList\s+- - Paragraph \[Text "y"\]\s+- BulletList \[\[Paragraph \[Text "z"\]\]\]/u];
   yield ['a\n \t\nb\n \t', [], /fileBlocks = \[Paragraph \[Text "a"\], Paragraph \[Text "b"\]\]/u];
+  yield ['\n\n', [], /fileBlocks = \[\]/u];
+  yield ['\n \t\n\na\n\n\n', [], /fileBlocks = \[Paragraph \[Text "a"\]\]/u];
+  yield ['\t\n \n \t', [], /fileBlocks = \[\]/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token
