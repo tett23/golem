@@ -1,6 +1,6 @@
 # ADR 0051: PDF の図版の `Contents` で繰り返し名指したストリームを、出力でも一度だけ書く
 
-ステータス: 採択
+ステータス: 採択→Form を再利用するページの連結長の上限は [Golem ADR 0359](0359-imported-content-separators.md)
 
 ## 文脈
 

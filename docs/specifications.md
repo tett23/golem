@@ -4276,7 +4276,7 @@ PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、
   - 一つの図版の取り込みで展開するバイト数は、フィルタの各段の出力を合わせて 256 MiB までとする。同じストリームは一度だけ展開する。画像のストリームは展開せずに写すので、数えない。
   - ページの木で一つのノードを二度指す PDF、相互参照の項目がすべての改訂を合わせて 8,388,607 を超える PDF、予測子の値が範囲の外にある PDF は、G08010 で拒む。
 - ページの `Contents` で同じストリームを何度も名指しすると、そのストリームを出力でも一度だけ書き、名指しの位置から呼ぶ（[docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
-  そう書けないストリームはつないで写し、つないだ内容が 256 MiB を超えれば G08015 とする。
+  再利用する場合は呼び出し命令を含む外側の内容、再利用しない場合は元の内容を改行でつなぐ。どちらも区切りの改行を含む長さが 256 MiB を超えれば、連結前に G08015 とする（[Golem ADR 0359](adr/0359-imported-content-separators.md)）。
   呼ぶ先にするストリームのオブジェクトの番号が 2147483647 を超えれば、G08020 とする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 - 内容のストリームは復号し、DeviceRGB を書き換えてから Flate で圧縮し直す。画像などのストリームはそのまま写す。
 - DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
