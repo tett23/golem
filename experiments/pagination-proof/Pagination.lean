@@ -6637,7 +6637,7 @@ theorem I3_shared_needs_first_part_exists
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (partPositive : 1 ≤ firstPart) :
     ∃ brk : Fin 3,
-      used + brk.val ≤ capacity ∧
+      used + (if brk.val = 2 then 1 + firstPart else brk.val) ≤ capacity ∧
       (brk.val = 2 → ∀ n ∈ needs, n ≤ capacity - used) ∧
       (recordNeedsFit (capacity - used) 0 needs ∧
         used + 1 + firstPart ≤ capacity → brk.val = 2) ∧
@@ -6645,8 +6645,8 @@ theorem I3_shared_needs_first_part_exists
   by_cases keep : recordNeedsFit (capacity - used) 0 needs ∧
       used + 1 + firstPart ≤ capacity
   · refine ⟨2, ?_, ?_, fun _ => rfl, ?_⟩
-    · change used + 2 ≤ capacity
-      omega
+    · change used + (1 + firstPart) ≤ capacity
+      simpa [Nat.add_assoc] using keep.2
     · exact fun _ => (I3_record_needs_fit_iff_all _ _ _ (Nat.zero_le _)).mp keep.1
     · simp
   · by_cases spaceFits : used + 1 ≤ capacity
