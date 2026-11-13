@@ -6958,6 +6958,30 @@ structure NeedTextPrefix where
   positiveCapacity : 0 < capacity
   usedFits : used ≤ capacity
 
+/- Choose a maximal feasible break by length of the finite text prefix.
+   Checking just its immediate successor is sufficient because each
+   failed P7 target requires one additional text, possibly a space. -/
+private theorem maximal_break_above (valid : Nat → Prop) (start limit : Nat)
+    (lower : start ≤ limit) (initial : valid start) :
+    ∃ b, start ≤ b ∧ b ≤ limit ∧ valid b ∧ (b < limit → ¬ valid (b+1)) := by
+  induction limit with
+  | zero =>
+    exact ⟨start, Nat.le_refl _, lower, initial, by intro h; exact (Nat.not_lt_zero _ h).elim⟩
+  | succ limit ih =>
+    by_cases last : valid (limit+1)
+    · exact ⟨limit+1, lower, Nat.le_refl _, last, by intro h; omega⟩
+    · have earlier : start ≤ limit := by
+        apply Classical.byContradiction
+        intro bound
+        have eq : start = limit+1 := by omega
+        exact last (eq ▸ initial)
+      obtain ⟨b, lo, hi, ok, stopped⟩ := ih earlier
+      refine ⟨b, lo, by omega, ok, ?_⟩
+      intro _
+      by_cases eq : b = limit
+      · simpa [eq] using last
+      · exact stopped (by omega)
+
 namespace NeedTextPrefix
 /- Count non-space rows in the first t texts, including previously used rows. -/
 def placedBefore (d : NeedTextPrefix) : Nat → Nat
@@ -7012,22 +7036,13 @@ def legal (d : NeedTextPrefix) (b : Nat) : Prop :=
 
 private theorem longestLegal (d : NeedTextPrefix) (limit : Nat) :
     ∃ b, b ≤ limit ∧ d.legal b ∧ (b < limit → ¬ d.legal (b+1)) := by
-  induction limit with
-  | zero =>
-    refine ⟨0, Nat.le_refl _, ⟨by cases g : d.blankRank <;> simpa [blankBefore, g] using d.usedFits, ?_⟩, ?_⟩
+  have initial : d.legal 0 := by
+    refine ⟨?_, ?_⟩
+    · cases g : d.blankRank <;> simpa [blankBefore, g] using d.usedFits
     · intro t ht
       exact (Nat.not_lt_zero t ht).elim
-    · intro h
-      exact (Nat.not_lt_zero _ h).elim
-  | succ limit ih =>
-    obtain ⟨b, bound, legal, stop⟩ := ih
-    by_cases endLegal : d.legal (limit+1)
-    · exact ⟨limit+1, Nat.le_refl _, endLegal, by intro h; omega⟩
-    · refine ⟨b, by omega, legal, ?_⟩
-      intro _
-      by_cases atEnd : b = limit
-      · simpa [atEnd] using endLegal
-      · exact stop (by omega)
+  obtain ⟨b, _, bound, valid, stop⟩ := maximal_break_above d.legal 0 limit (Nat.zero_le _) initial
+  exact ⟨b, bound, valid, stop⟩
 
 theorem prefix_exists (d : NeedTextPrefix) :
     ∃ b, b ≤ d.texts ∧ d.used + b + d.blankBefore b ≤ d.capacity ∧
@@ -8418,6 +8433,95 @@ theorem I3_space_extension_fits_before_unreached_figure
     have := decide_eq_true_eq.mp placed
     omega
   · exact fun i bound yes => Nat.le_of_lt (earlier i bound yes)
+
+/- Construct the fully feasible initial break for an occupied column with
+   two figures and no blank. There are no placed texts; the only figures
+   reachable at break zero precede every text. Their size and need tests
+   alone determine whether either may stay. -/
+theorem I3_need_initial_two_figures (capacity used : Nat)
+    (textBefore nonSpaceBefore size positions : Nat → Nat) (block : Nat → Prop)
+    (needs : List (Nat × Nat)) (usedFits : used ≤ capacity) :
+    ∃ kept : Nat → Bool,
+      figures27Model 2 capacity used (fun i => decide (textBefore i ≤ 0))
+        textBefore nonSpaceBefore size positions (fun _ => false) block needs kept ∧
+      figuresInOrder 2 kept ∧ used + keptRowsThrough kept size 2 ≤ capacity := by
+  let ready := fun i => decide (textBefore i ≤ 0)
+  let static := needFigureStatic capacity used textBefore nonSpaceBefore size positions
+    (fun _ => false) block needs
+  let room := fun i => @decide (static i) (Classical.propDecidable _)
+  let kept := greedyFigure ready room
+  have basic := I3_greedyFigures_rule 2 ready room
+  have rule : figuresRule 2 kept (fun i => ready i = true) static := by
+    simpa only [room, decide_eq_true_eq] using basic
+  have full := figures27_of_static _ _ _ _ _ _ _ _ _ _ _ _ rule
+  refine ⟨kept, full, I3_figuresRule_implies_figuresInOrder _ _ _ _ rule, ?_⟩
+  cases one : kept 1 with
+  | true =>
+    have parts := (rule 1 (by decide)).mp one
+    have zero := parts.2.1 0 (by decide)
+    have room := parts.2.2.1
+    simp [keptRowsThrough, zero, one]
+    simp [figureHasRoom, priorFigureLines, show List.range 1 = [0] from rfl] at room
+    omega
+  | false =>
+    cases zero : kept 0 with
+    | false => simpa [keptRowsThrough, one, zero] using usedFits
+    | true =>
+      have room := ((rule 0 (by decide)).mp zero).2.2.1
+      simp [keptRowsThrough, zero, one]
+      simp [figureHasRoom, priorFigureLines, show List.range 0 = [] from rfl] at room
+      omega
+
+/- Reuse the source-level zero-break construction (including its actual
+   waiting-figure and following-blank predicates). The static need
+   condition is conjoined with text readiness; figures27_of_static
+   restores the dynamic placement-dependent needNext afterwards. -/
+theorem I3_need_initial_two_figures_blank
+    (capacity used blank first second firstSize secondSize : Nat)
+    (items : List SourceItem) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (usedFits : used ≤ capacity) (ordered : first < second)
+    (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (firstIn : .figure first ∈ items) (secondIn : .figure second ∈ items)
+    (onlyTwo : ∀ p, .figure p ∈ items → p = first ∨ p = second) :
+    let positions := fun f : Nat => if f = 0 then first else second
+    let size := fun f : Nat => if f = 0 then firstSize else secondSize
+    let textBefore := fun f => textBeforeCount items (positions f)
+    let nonSpaceBefore := fun f => ((sourceTextPositions items).filter
+      (fun p => decide (p < positions f) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    let mask := beforeBlankMask first second blank
+    ∃ top : Bool, ∃ kept : Nat → Bool, ∃ placed : Bool,
+      figures27Model 2 capacity used (fun f => decide (textBefore f ≤ 0))
+        textBefore nonSpaceBefore size positions (fun f => !mask f && !top) block needs kept ∧
+      top = blankAtTopSource used blank items (fun _ => false)
+        (keptAtTwoPositions first second (kept 0) (kept 1)) ∧
+      placed = blankPlacedFromSourceFull used blank (waitingAtTwoPositions first second kept)
+        items (fun _ => false) (keptAtTwoPositions first second (kept 0) (kept 1)) ∧
+      used + (if kept 0 then firstSize else 0) + (if kept 1 then secondSize else 0) +
+        (if placed then 1 else 0) ≤ capacity := by
+  intro positions size textBefore nonSpaceBefore block mask
+  let needOK := fun f => ∀ n ∈ needs,
+    needTargetsFigure n.1 positions block f (fun _ => False) →
+      used + nonSpaceBefore f + priorFigureLines size f = 0 ∨
+      n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines size f)
+  let ready := fun f => decide (textBefore f ≤ 0) && @decide (needOK f) (Classical.propDecidable _)
+  obtain ⟨top, kept, placed, rule, topEq, blankEq, fits⟩ :=
+    I3_blankFigureOrder_arbitrary_source_exists capacity used blank first second firstSize secondSize
+      ready textBefore (waitingAtTwoPositions first second) items usedFits ordered diffFirst diffSecond
+      firstIn secondIn onlyTwo
+  refine ⟨top, kept, placed, ?_, topEq, blankEq, fits⟩
+  apply figures27_of_static
+  intro f bound
+  have actual := rule f bound
+  simp only [ready, Bool.and_eq_true, decide_eq_true_eq] at actual
+  change kept f = true ↔ decide (textBefore f ≤ 0) = true ∧ _ ∧ _
+  rw [decide_eq_true_eq]
+  constructor
+  · intro includes
+    obtain ⟨⟨texts, met⟩, earlier, room⟩ := actual.mp includes
+    exact ⟨texts, earlier, room, met⟩
+  · rintro ⟨texts, earlier, room, met⟩
+    exact actual.mpr ⟨⟨texts, met⟩, earlier, room⟩
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
