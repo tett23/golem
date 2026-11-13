@@ -471,6 +471,12 @@ if (!fragment && ast) {
       errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
     };
     for (const alt of rule.alts) {
+      // ReferenceSequence.sequence proves propagation of success, failure and errors.
+      // Direct left recursion uses seed growth in place of this sequence.
+      if (rule.params.length === 0 && rule.templateParams.length === 0 &&
+          alt.action?.trim() === '()' && alt.constructor === null && alt.items.length > 0 &&
+          alt.items.every(item => item.bind === null && item.expr.tag === 'ref' && item.expr.args.length === 0) &&
+          alt.items[0].expr.name !== rule.name) continue;
       // PrefixBoundaryTotal.marker_sequence covers both forms for any literal and class.
       if (rule.name === 'BlockStart' && rule.params.length === 0 && rule.templateParams.length === 0 &&
           alt.action?.trim() === '()' && alt.constructor === null &&

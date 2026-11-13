@@ -90,6 +90,9 @@ function* cases() {
   yield ['a##x\n', [], /Paragraph \[Text "a##x"\]/u];
   yield ['a##１\n', [], /Paragraph \[Text "a##１"\]/u];
   yield ['a##1%%n%%b\n', [[3, '"%%n%%"']], /Paragraph \[Text "a", NumberShorthand "##1", Text "b"\]/u];
+  yield ['[= -(2+3)**2<30]\n', [],
+    /EBinary\s+OpLt\s+EUnary\s+Negate\s+EBinary Pow \(EBinary Add \(ENat 2\) \(ENat 3\)\) \(ENat 2\)\s+ENat 30/u];
+  yield ['[f answer=ok]\n', [], /Keyword \("answer"\) \(Word "ok"\)/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token

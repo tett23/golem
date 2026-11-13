@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 83, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 68, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -97,13 +97,13 @@ try {
     'the generated string recognizer is total on arbitrary suffixes');
   const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');
   const singleRefMutation = original.replace(/^KeywordLiteral <- .*$/m,
-    'KeywordLiteral <- Keyword Ws { () }');
+    'KeywordLiteral <- Keyword Ws? { () }');
   assert.notEqual(singleRefMutation, original);
   writeFileSync(changedSingleRef, singleRefMutation);
   const strictSingleRef = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedSingleRef, generated], { encoding: 'utf8' });
-  assert.match(strictSingleRef.stderr, /unsupported KeywordLiteral choice 1 at .*Keyword Ws/,
-    'a second item must return a single-reference rule to the unsupported report');
+  assert.match(strictSingleRef.stderr, /unsupported KeywordLiteral choice 1 at .*Keyword Ws\?/,
+    'an optional suffix must return a plain reference sequence to the unsupported report');
   const changedClassPlus = join(work, 'ChangedClassPlus.hpeg');
   writeFileSync(changedClassPlus, original.replace(/^Ws <- .*$/m, "Ws <- [ \\t]+ 'x' { () }"));
   const strictClassPlus = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedClassPlus, generated], { encoding: 'utf8' });
@@ -383,6 +383,12 @@ try {
     assert.ok(!strict.stderr.split('\n').some(line =>
       line.startsWith('unsupported SkippedReserved ') && line.endsWith(': ' + literal)));
   }
+  const changedChain = join(work, 'ChangedChain.hpeg');
+  writeFileSync(changedChain, original.replace('AddExpr ES CmpOp ES AddExpr', 'AddExpr ES CmpOp ES AddExpr?'));
+  const strictChain = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedChain, generated], { encoding: 'utf8' });
+  assert.match(strictChain.stderr, /^unsupported CompareExpr .*AddExpr\?$/m);
+  assert.match(strict.stderr, /^unsupported AddExpr .*: AddExpr ES AddOp ES MulExpr$/m);
   const requiredClose = join(work, 'RequiredClose.hpeg');
   writeFileSync(requiredClose, original.replace('NumberMark NumberBody NumberMark?', 'NumberMark NumberBody NumberMark'));
   const strictShorthand = spawnSync(process.execPath,
@@ -447,7 +453,7 @@ try {
   const strictMarker = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedMarker, generated], { encoding: 'utf8' });
   assert.match(strictMarker.stderr, /^unsupported BlockStart .*: '-' \[ \\t\] 'x'$/m);
-  assert.match(strict.stderr, /^unsupported BlockStart .*: SetDeclarationStart$/m);
+  assert.match(strict.stderr, /^unsupported SetDeclarationStart /m);
   const changedSkipped = join(work, 'ChangedSkipped.hpeg');
   writeFileSync(changedSkipped, original.replace("/ '..' { () }", "/ '..' 'x' { () }"));
   const strictSkipped = spawnSync(process.execPath,
@@ -497,6 +503,8 @@ try {
   assert.equal(wordProof.status, 0, wordProof.stderr);
   const growthSource = join(here, 'LeftRecursionTotal.lean');
   const growthEnv = { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' };
+  const chainProof = spawnSync(lean, [join(here, 'ReferenceSequence.lean')], growthEnv);
+  assert.equal(chainProof.status, 0, chainProof.stdout + chainProof.stderr);
   const listMarkProof = spawnSync(lean, [join(here, 'ListMarkTotal.lean')], growthEnv);
   assert.equal(listMarkProof.status, 0, listMarkProof.stdout + listMarkProof.stderr);
   const boundarySource = join(work, 'LineBoundaryTotal.lean');
@@ -565,7 +573,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 18, negative mutations 54, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 19, negative mutations 55, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
