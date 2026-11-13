@@ -222,6 +222,7 @@ genTopBlock =
           <*> ( PageControl
                   <$> Gen.choice
                     [ pure NoBreak,
+                      NoBreakLines . fromIntegral <$> Gen.int (Range.linear 0 8),
                       NeedLines <$> Gen.int (Range.linear 1 40),
                       AdjustLines <$> Gen.filter (/= 0) (Gen.int (Range.linear (-5) 5))
                     ]

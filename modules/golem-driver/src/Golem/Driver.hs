@@ -1206,7 +1206,7 @@ htmlConfig dev e book missing bib =
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
       hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
-      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ _ (PageControl NoBreak) <- bs],
+      hcNoBreak = or [keepsPageBreak c | Document _ bs <- bookDocs book, Block _ _ _ (PageControl c) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)
       -- the paragraph style code for pre (golem-driver ADR 0017)
       hcCode =

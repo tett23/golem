@@ -582,7 +582,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "printings" -> printingsBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
-  "no-page-break" -> pageControl sp name args body
+  "no-page-break" -> noPageBreak ctx sp args body
   "need-lines" -> needLines ctx sp name args body
   "page-lines" -> pageControl sp name args body
   "blank-line" -> blankLine ctx sp args body
@@ -1102,14 +1102,9 @@ forcedBreak sp name args body = breakCommand sp name body $ case (name, map A.lo
   ("column-break", _) -> Left ("G02096", takesNoArguments name)
   _ -> Left ("G02058", "@page-break の引数は recto か verso です")
 
-{- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030):
-G02096 for an argument of @no-page-break, G02070 for a wrong argument of
-@need-lines, G02099 for a wrong argument of @page-lines (docs/adr ADR 0060).
--}
+-- | @page-lines takes a signed, nonzero integer (docs/adr ADR 0060).
 pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
-  ("no-page-break", []) -> Right NoBreak
-  ("no-page-break", _) -> Left ("G02096", takesNoArguments name)
   ("page-lines", [A.Positional v])
     | Just w <- nameArg v,
       Just (s, digits) <- T.uncons w,
@@ -1123,6 +1118,19 @@ pageControl sp name args body = breakCommand sp name body . fmap PageControl $ c
     count w
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))
       | otherwise = Nothing
+
+noPageBreak :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+noPageBreak ctx sp args body = case args of
+  [] -> finish (Right (PageControl NoBreak))
+  [A.Located asp (A.Positional v)] ->
+    naturalArg ctx "@no-page-break の引数" sp (A.Located asp v) >>= \case
+      Right n | inInt64 (toInteger n) -> finish (Right (PageControl (NoBreakLines n)))
+      Right _ -> finish (Left ("G02091", outOfInt64Message))
+      Left NotANumber -> finish (Left ("G02156", "@no-page-break の行数には 0 以上の整数を書きます"))
+      Left NaturalReported -> mapM_ (\(A.Located bsp _) -> err "G02097" bsp (takesNoBody "no-page-break")) (take 1 body) >> pure []
+  _ -> finish (Left ("G02096", "@no-page-break の引数には行数を一つだけ指定できます"))
+  where
+    finish = breakCommand sp "no-page-break" body
 
 {- | @need-lines N (docs/adr ADR 0030): a natural number of 1 or more and
 of at most 9 digits, G02070 otherwise; a negative number or one that is
@@ -1222,12 +1230,14 @@ and page-lines between them (docs/adr ADR 0030).
 conflictingBreaks :: [Block] -> [Diagnostic]
 conflictingBreaks bs =
   [ diagnostic "G02072" Error sp ("@no-page-break と " <> breakName k <> " が同じ位置にあります")
-  | (i, Block sp _ _ (PageControl NoBreak)) <- zip [0 :: Int ..] bs,
+  | (i, Block sp _ _ (PageControl control)) <- zip [0 :: Int ..] bs,
+    keepsPageBreak control,
     side <- [reverse (take i bs), drop (i + 1) bs],
     Block _ _ _ (ForcedBreak k) : _ <- [dropWhile soft side]
   ]
   where
     soft b = case blockBody b of
+      PageControl (NoBreakLines 0) -> True
       PageControl (NeedLines _) -> True
       PageControl (AdjustLines _) -> True
       _ -> False

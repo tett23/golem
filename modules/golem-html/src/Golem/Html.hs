@@ -455,7 +455,7 @@ topBlocks c = go Nothing Nothing
     -- the break pending, and the blank lines pending after a block (Nothing before one)
     go _ _ [] = ""
     go _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
-    go _ blanks (Block _ _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go _ blanks (Block _ _ _ (PageControl control) : rest) | keepsPageBreak control = go (Just "avoid") blanks rest
     go pending blanks (Block _ _ _ (PageControl _) : rest) = go pending blanks rest
     go pending blanks (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
     -- the paragraphs of one box in its div (docs/adr/0271)

@@ -2029,6 +2029,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                in (n + 1, inFrame (frame n FChannel) [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face (paraSizeSource style st)) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
             ChannelOutput BibliographyOutput -> (n + 1, inFrame (frame n FBibliography) [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
+            PageControl (NoBreakLines 0) -> (n, [])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
             BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
@@ -2936,6 +2937,7 @@ numberOther fe cu nb (i, u)
       UPageControl c ->
         let control = case c of
               NoBreak -> FNoBreak (uSpan u)
+              NoBreakLines k -> FNoBreakLines (uSpan u) (fromInteger (min (toInteger k) (toInteger (maxBound :: Int))))
               NeedLines k -> FNeedLines (uSpan u) k
               AdjustLines k -> FAdjustLines (uSpan u) k
          in nb {nuFlow = nuFlow nb <> [control]}

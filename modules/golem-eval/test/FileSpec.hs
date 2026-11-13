@@ -1533,14 +1533,22 @@ pageControlTests =
         mapM_
           (\src -> assertEqual (T.unpack src) [("G02099", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")] (msgs src))
           ["@page-lines\n", "@page-lines 1\n", "@page-lines +0\n", "@page-lines +1 +2\n", "@page-lines n=+1\n"],
-      testCase "an argument of @no-page-break is G02096 (docs/adr ADR 0060)" $
-        msgs "@no-page-break x\n" @?= [("G02096", "@no-page-break は引数を取りません")],
+      testCase "inv1_no_page_break_lines_case_3: a count is optional and natural" $ do
+        errs "@no-page-break 3\n" @?= []
+        errs "@no-page-break 0\n" @?= []
+        errs "@no-page-break 1 2\n" @?= ["G02096"]
+        errs "@no-page-break lines=3\n" @?= ["G02096"]
+        errs "@no-page-break 9223372036854775808\n" @?= ["G02091"]
+        errs "@no-page-break -1\n" @?= ["G02103"]
+        errs "@no-page-break 1.5\n" @?= ["G02104"],
+      testCase "a nonnumeric argument of @no-page-break is G02156 (docs/adr ADR 0060)" $
+        msgs "@no-page-break x\n" @?= [("G02156", "@no-page-break の行数には 0 以上の整数を書きます")],
       testCase "a body under a control is G02097 (docs/adr ADR 0060)" $
         mapM_
           (\(src, name) -> assertEqual (T.unpack src) [("G02097", "@" <> name <> " は本体を持てません")] (msgs src))
           [("@no-page-break\n  a\n", "no-page-break"), ("@need-lines 3\n  a\n", "need-lines"), ("@page-lines +1\n  a\n", "page-lines")],
       testCase "a wrong argument and a body are both reported (docs/adr ADR 0060)" $ do
-        map fst (msgs "@no-page-break x\n  a\n") @?= ["G02096", "G02097"]
+        map fst (msgs "@no-page-break x\n  a\n") @?= ["G02156", "G02097"]
         map fst (msgs "@page-lines 1\n  a\n") @?= ["G02099", "G02097"],
       testCase "a control not at the top of the document is G02071 and dropped" $ do
         let (bs, es) = run ctx "- a\n\n  @no-page-break\n"
