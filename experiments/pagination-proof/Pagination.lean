@@ -198,6 +198,25 @@ theorem I1_caption_break_index_range (patterns prevBox : Bool) (start pos : Nat)
 example : captionBreakIndices false false 0 [.glue, .box, .glue, .penalty 0 true,
     .penalty (-10000) false] = [2, 4] := by decide
 
+private def strictlyIncreasingBreaks : List Nat → Prop
+  | [] => True
+  | x :: xs => (∀ y ∈ xs, x < y) ∧ strictlyIncreasingBreaks xs
+
+theorem I1_caption_break_indices_strict (patterns prevBox : Bool) (start : Nat)
+    (items : List CaptionItemKind) :
+    strictlyIncreasingBreaks (captionBreakIndices patterns prevBox start items) := by
+  induction items generalizing prevBox start with
+  | nil => trivial
+  | cons item tail ih =>
+    simp only [captionBreakIndices]
+    split
+    · constructor
+      · intro pos member
+        have bound := I1_caption_break_index_range _ _ _ _ _ member
+        omega
+      · apply ih
+    · apply ih
+
 /-- Count discarded items following a breakpoint, stopping at the next
     box or forced penalty. The paragraph start does not run this scan. -/
 def captionDiscardCount : List CaptionItemKind → Nat
