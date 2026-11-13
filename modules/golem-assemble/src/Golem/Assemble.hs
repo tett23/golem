@@ -672,6 +672,28 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         other -> pure other
     item (ListItem n bs') = ListItem n <$> mapM blk bs'
     inls is = concat <$> mapM inl is
+    baseRefs :: InlineNoRuby -> R [InlineNoRuby]
+    baseRefs = \case
+      Ref sp kind target | kind == RefNumber || kind == RefTitle -> do
+        refs <- inl (Ref sp kind target)
+        pure [Resolved pos k name (concatMap baseOnly xs) | Resolved pos k name xs <- refs]
+      Kenten sp style xs -> pure . Kenten sp style <$> baseList xs
+      Color sp color xs -> pure . Color sp color <$> baseList xs
+      CharStyle sp style xs -> pure . CharStyle sp style <$> baseList xs
+      Lang sp lang xs -> pure . Lang sp lang <$> baseList xs
+      Link sp target xs -> pure . Link sp target <$> baseList xs
+      other -> pure [other]
+    baseList xs = concat <$> mapM baseRefs xs
+    -- A title can contain ruby itself. Only its base fits inside another ruby.
+    baseOnly = \case
+      Ruby _ _ segs -> concatMap rsBase segs
+      Kenten sp style xs -> [Kenten sp style (concatMap baseOnly xs)]
+      Color sp color xs -> [Color sp color (concatMap baseOnly xs)]
+      CharStyle sp style xs -> [CharStyle sp style (concatMap baseOnly xs)]
+      Lang sp lang xs -> [Lang sp lang (concatMap baseOnly xs)]
+      Link sp target xs -> [Link sp target (concatMap baseOnly xs)]
+      Resolved sp kind target xs -> [Resolved sp kind target (concatMap baseOnly xs)]
+      other -> maybe [] pure (noRuby other)
     inl :: Inline -> R [Inline]
     inl = \case
       Ref sp k l -> do
@@ -692,6 +714,9 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
               pure []
             title -> pure [Resolved sp RefTitle l (map (relocate sp) title)]
           (Just _, RefPage) -> pure [Ref sp k l]
+      Ruby sp annotation segments -> do
+        resolved <- mapM (\segment -> (\xs -> segment {rsBase = xs}) <$> baseList (rsBase segment)) segments
+        pure [Ruby sp annotation resolved]
       Deferred sp e -> case evalDeferred dv sp e of
         Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []
         Right t -> pure [Text sp t]

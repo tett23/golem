@@ -288,6 +288,7 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 ### PDF の出力と入稿
 
 どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
+ルビの親文字にある番号や題への参照も、PDF 上でそれぞれの参照先を保持する。
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。

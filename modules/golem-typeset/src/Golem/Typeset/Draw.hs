@@ -1091,19 +1091,52 @@ faceRect vertical size (x0, y0) s0 e0
   | vertical = Rect (x0 - Sp (unSp size `div` 2)) (y0 - e0) size (e0 - s0)
   | otherwise = Rect (x0 + s0) (y0 - (size - zwToSp size baselineRatio)) (e0 - s0) size
 
+-- | Positions and advances used both for drawing a ruby and for its link rectangles.
+rubyPositions :: DrawEnv -> Sp -> BoxContent -> (Text, Look, [Look], [Text], [Sp], RubyPlacement)
+rubyPositions env w c =
+  let look = bcLook c
+      fonts = deFonts env
+      vertical = pgVertical (deGeom env)
+      style = piStyle (deInput env)
+      kind = boxKind c
+      (base, reading) = T.breakOn "|" (bcText c)
+      rt = T.drop 1 reading
+      rlook = readingLook look
+      baseUnits = clusters base
+      baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
+      advOf lk u = case T.uncons u of
+        Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) ch)
+        Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
+        Nothing -> 0
+      baseAdv = zipWith advOf baseLooks baseUnits
+      readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
+      excess = max 0 (sum readAdv - w)
+      rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
+   in (rt, rlook, baseLooks, baseUnits, baseAdv, rp)
+
+rubyBaseLeaf :: Leaf -> Look -> Leaf
+rubyBaseLeaf base@(Leaf site _) look = maybe base (Leaf site) (lkRubyBaseLeaf look)
+
 {- the links on a line (docs/adr ADR 0182): each run of boxes of one
 target, with the glue between them, from the start of its first box to
 the end of its last, across the face of the line, as 'codeBackgrounds';
 the reading of a ruby is not in it -}
+
 linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Maybe Leaf, SrcSpan, Rect)]
 linkRects env start sl =
-  [ (t, Just (bcLeaf c), snd (bcSource c), faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
-  | run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, c) -> lkLink (bcLook p) == lkLink (bcLook c)) boxes,
-    let e0 = maximum [o + w | (o, w, _) <- run],
-    Just t <- [lkLink (bcLook c)]
+  [ (t, Just owner, source, faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
+  | run@((s0, _, Just t, owner, source, _) : _) <- groupWhen sameLink boxes,
+    let e0 = maximum [o + w | (o, w, _, _, _, _) <- run]
   ]
   where
-    boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
+    boxes = concat [parts off w c | (Box w c, off) <- placeLine (slLine sl)]
+    sameLink (_, _, x, _, _, a) (_, _, y, _, _, b) = x == y && a == b
+    parts off w c
+      | boxKind c `elem` [KindRuby, KindGroupRuby],
+        any (isJust . lkRubyBaseLeaf) (bcBaseLooks c) =
+          let (_, _, looks, _, advances, rp) = rubyPositions env w c
+           in [(off + pos, width, lkLink lk, rubyBaseLeaf (bcLeaf c) lk, snd (bcSource c), if isJust (lkLink (bcLook c)) then Nothing else Just (rubyBaseLeaf (bcLeaf c) lk)) | (lk, pos, width) <- zip3 looks (rpBase rp) advances]
+      | otherwise = [(off, w, lkLink (bcLook c), bcLeaf c, snd (bcSource c), Nothing)]
     vertical = pgVertical (deGeom env)
 
 -- the face of a line: from its first box to the end of its last, the height of its size
@@ -1203,22 +1236,8 @@ drawLineAt env (x0, y0) sl =
                   | kind `elem` [KindRuby, KindGroupRuby] ->
                       -- each base and reading character where placeRuby puts it (golem-layout ADR 0009);
                       -- each base character in its own look (golem-layout ADR 0011)
-                      let (base, reading) = T.breakOn "|" (bcText c)
-                          rt = T.drop 1 reading
-                          -- the reading takes no position of a range of superscript or subscript (docs/adr/0269)
-                          rlook = readingLook look
+                      let (rt, rlook, baseLooks, baseUnits, _, rp) = rubyPositions env w c
                           rsize = lkSize rlook
-                          -- a base character with its combining characters is one base (golem-driver ADR 0036)
-                          baseUnits = clusters base
-                          baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
-                          advOf lk u = case T.uncons u of
-                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) ch)
-                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
-                            Nothing -> 0
-                          baseAdv = zipWith advOf baseLooks baseUnits
-                          readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
-                          excess = max 0 (sum readAdv - w)
-                          rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
                           -- the reading sits beside the largest base character
                           big = if null baseLooks then size else maximum (map lkSize baseLooks)
                           across = rubyAcross vertical big rsize
@@ -1229,7 +1248,8 @@ drawLineAt env (x0, y0) sl =
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
                           placed2 = [runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
-                       in ([(leaf, concatMap fst placed1), (readingLeaf, concatMap fst placed2)], inLeaf leaf (concatMap snd placed1) <> inLeaf readingLeaf (concatMap snd placed2))
+                          bases = zipWith (\lk marks -> (leafOf (rubyBaseLeaf (bcLeaf c) lk), marks)) baseLooks placed1
+                       in ([(owner, fst marks) | (owner, marks) <- bases] <> [(readingLeaf, concatMap fst placed2)], concat [inLeaf owner (snd marks) | (owner, marks) <- bases] <> inLeaf readingLeaf (concatMap snd placed2))
                 KindKenten ->
                   {- the character, and the mark of its shape, half its size, the
                   centre of its ink box beside the em box (golem-driver ADR 0019):
@@ -1355,7 +1375,6 @@ drawLineAt env (x0, y0) sl =
    in (backs <> linesOf True <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces) <> linesOf False, concatMap (snd . snd) parts)
   where
     fonts = deFonts env
-    style = piStyle (deInput env)
     vertical = pgVertical (deGeom env)
     body = bodyRole (piStyle (deInput env))
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0

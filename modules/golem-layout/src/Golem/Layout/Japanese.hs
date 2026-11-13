@@ -663,10 +663,35 @@ walk env st@(LeafState next cur seen) inl = case inl of
       let go (s, ns, ps) (seg, segPieces) = case rsReading seg of
             Just _ ->
               let LeafState n c sn = s
-                  (s', after) = freshLeaf (LeafState (n + 2) c sn)
-               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase [NodeLeaf n], NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> [(n, src, p) | (src, p) <- segPieces])
+                  -- Keep n+1 for the reading, independently of the references in RB.
+                  (nextLeaf, _, baseNodes, owners) = rubyBase n (n + 2) (rsBase seg)
+                  (s', after) = freshLeaf (LeafState nextLeaf c sn)
+                  assign (src, PRuby look kind base looks reading) =
+                    (n, src, PRuby look kind base (zipWith own looks owners) reading)
+                  assign (src, other) = (n, src, other)
+                  own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
+               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase (NodeLeaf n : baseNodes), NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> map assign segPieces)
             Nothing -> let LeafState _ c _ = s in (s, ns, ps <> [(c, src, p) | (src, p) <- segPieces])
        in foldl' go (st, [], []) (zip segs (chunks (piecesOf env inl)))
+    rubyBase initial nextLeaf = foldl' visit (nextLeaf, initial, [], [])
+      where
+        visit (unused, current, nodes, owners) child =
+          let chars = baseChars env lk child
+              continue xs =
+                let (end, lastLeaf, nested, inners) = rubyBase current unused xs
+                 in (end, lastLeaf, nodes <> nested, owners <> inners)
+           in case child of
+                Resolved _ kind _ xs
+                  | kind == RefNumber || kind == RefTitle ->
+                      let link = started (lkLink (ceRestyle env lk (withRuby child)))
+                          content = NodeElem RoleReference (linkedNodes link (map withRuby xs) [NodeLeaf unused])
+                       in (unused + 2, unused + 1, nodes <> [content, NodeLeaf (unused + 1)], owners <> replicate (length chars) (unused, link))
+                CharStyle _ _ xs -> continue xs
+                Color _ _ xs -> continue xs
+                Kenten _ _ xs -> continue xs
+                Link _ _ xs -> continue xs
+                Lang _ _ xs -> continue xs
+                _ -> (unused, current, nodes, owners <> replicate (length chars) (current, Nothing))
     -- the pieces of each segment: each ends with its PRuby, the break before it included
     chunks ps = case break isRuby ps of
       (pre, r : rest) -> (pre <> [r]) : chunks rest
