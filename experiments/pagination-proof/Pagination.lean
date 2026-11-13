@@ -11997,6 +11997,63 @@ theorem body_then_crossings (s : FlushState) (cap : Int) (used reserve separator
   refine ⟨rfl,fifo,_,rfl,?_⟩
   exact I5_splitNotes_exact _ _
 
+/-- putBlock emits one heading slot, flattening the notes of its input
+    lines in source order. Unlike putLineKeeping, it never charges the
+    separator if the heading displays no note fragment. -/
+def putHeading (s : FlushState) (cap : Int) (used height separator : Nat)
+    (first : Body) (rest : List Body) : (Nat × Nat) × List Part × FlushState :=
+  let notes := (first :: rest).bind Body.notes
+  let sep := if s.geometry.noteLines = 0 ∧ 0 < notes.foldl (fun total n => total + n.lines) 0
+    then separator else 0
+  let (shown,pending) := split (cap - used - height - s.geometry.noteLines - sep) notes
+  let charged := if shown.isEmpty then 0 else sep
+  let amount := shown.foldl (fun total part => total + part.lines) 0
+  let next := {s.geometry with noteLines := s.geometry.noteLines + charged + amount}
+  ((first.id,rest.length+1),shown,{s with geometry := next,notes := s.notes ++ pending})
+
+theorem heading_then_crossings (s : FlushState) (cap : Int) (used height separator : Nat)
+    (first : Body) (rest : List Body) {emitted : List Deferred} {last : FlushState}
+    (run : Crossings (putHeading s cap used height separator first rest).2.2 emitted last) :
+    let result := putHeading s cap used height separator first rest
+    result.1 = (first.id,(first :: rest).length) ∧ emitted ++ last.figures = s.figures ∧
+    ∃ pending, result.2.2.notes = s.notes ++ pending ∧
+      trace result.2.1 ++ trace pending = trace (((first :: rest).bind Body.notes).map full) := by
+  have fifo := crossings_fifo run
+  refine ⟨rfl,fifo,_,rfl,?_⟩
+  exact I5_splitNotes_exact _ _
+
+/-- sDone is newest first. Project each PageOut to slots and note
+    fragments; control diagnostics and section annotations do not
+    modify those two fields. -/
+structure PageContent (Slot : Type) where
+  slots : List Slot
+  notes : List Part
+
+def closeContent {Slot : Type} (done : List (PageContent Slot)) (current : PageContent Slot) :=
+  if current.slots.isEmpty && current.notes.isEmpty then done else current :: done
+
+private theorem bind_snoc {A B : Type} (xs : List A) (x : A) (f : A → List B) :
+    (xs ++ [x]).bind f = xs.bind f ++ f x := by
+  induction xs with
+  | nil => simp [List.bind]
+  | cons h t ih =>
+    change f h ++ (t ++ [x]).bind f = (f h ++ t.bind f) ++ f x
+    rw [ih,List.append_assoc]
+
+theorem closeContent_slots {Slot : Type} (done : List (PageContent Slot)) (current : PageContent Slot) :
+    (closeContent done current).reverse.bind PageContent.slots =
+    done.reverse.bind PageContent.slots ++ current.slots := by
+  cases current with
+  | mk slots notes =>
+    cases slots <;> cases notes <;> simp [closeContent,bind_snoc,List.isEmpty]
+
+theorem closeContent_notes {Slot : Type} (done : List (PageContent Slot)) (current : PageContent Slot) :
+    (closeContent done current).reverse.bind PageContent.notes =
+    done.reverse.bind PageContent.notes ++ current.notes := by
+  cases current with
+  | mk slots notes =>
+    cases slots <;> cases notes <;> simp [closeContent,bind_snoc,List.isEmpty]
+
 end TableAdvance
 
 
