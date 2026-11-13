@@ -507,6 +507,10 @@ if (!fragment && ast) {
         singleUnitRuleMatches(rule, String.raw`&('\\' ('\n' / !.)) BadBreak`)) continue;
     if (badBreakFullyProved && rule.name === 'BadBreak') continue;
     if (badBracketFullyProved && rule.name === 'BadBracket') continue;
+    if (backslashFullyProved && rule.name === 'HardBreak' && rule.params.length === 1 &&
+        rule.params[0] === 'ind' && rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === 'Backslash LineContinuation(ind) &.') continue;
     if (backslashFullyProved && rule.name === 'Backslash') continue;
     if (escapeFullyProved && rule.name === 'Escape') continue;
     if (literalNames.has(rule.name)) continue;

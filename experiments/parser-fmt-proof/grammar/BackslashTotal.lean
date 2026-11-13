@@ -56,4 +56,41 @@ example : PegModel.recognizeEnv Generated.pegGrammar [] 4
     (.ref "Backslash" []) "\\x".toList = .ok none := by
   simpa using generated_backslash "\\x".toList 0
 
+open PegModel
+
+private theorem backslash_in_scope (env : Params) (input : List Char) (fuel : Nat) :
+    recognizeEnv Generated.pegGrammar env (fuel+4) (.ref "Backslash" []) input =
+      .ok (expected "\\" "\n" input) := by
+  exact generated_backslash input fuel
+
+private def hasNext (result : ParseResult) : ParseResult :=
+  match result with
+  | .ok (some []) => .ok none
+  | other => other
+
+private theorem look_any (env : Params) (input : List Char) (fuel : Nat) :
+    recognizeEnv Generated.pegGrammar env (fuel+4) (.andPred .any) input =
+      (match input with | [] => .ok none | _ :: _ => .ok (some input)) := by
+  cases input <;> rfl
+
+theorem generated_hard_break (ind fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+6) (.ref "HardBreak" ["ind"]) input =
+      match expected "\\" "\n" input with
+      | none => .ok none
+      | some tail => hasNext (recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+4)
+          (.ref "LineContinuation" ["ind"]) tail) := by
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+4) e x)
+    _ [("ind", ind)] items input)
+    [[.ref "Backslash" [], .ref "LineContinuation" ["ind"], .andPred .any]] = _
+  have opening := backslash_in_scope [("ind", ind)] input fuel
+  cases slash : expected "\\" "\n" input with
+  | none => simp [runChoices, foldChoice, runSequence, opening, slash]; rfl
+  | some tail =>
+      cases line : recognizeEnv Generated.pegGrammar [("ind", ind)] (fuel+4) (.ref "LineContinuation" ["ind"]) tail with
+      | error reason => simp [runChoices, foldChoice, runSequence, opening, slash, line, hasNext]; rfl
+      | ok value =>
+          cases value with
+          | none => simp [runChoices, foldChoice, runSequence, opening, slash, line, hasNext]; rfl
+          | some rest => cases rest <;> simp [runChoices, foldChoice, runSequence, opening, slash, line, look_any, hasNext] <;> rfl
+
 end BackslashTotal
