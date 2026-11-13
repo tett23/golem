@@ -77,6 +77,7 @@ import TableCaptionSpec (tableCaptionTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import TrackingBoxesSpec qualified
 import UnbreakablePairsSpec (unbreakablePairsTests)
 import UrlBreakSpec (urlBreakTests)
 
@@ -421,6 +422,7 @@ tests =
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
+      TrackingBoxesSpec.tests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       akiTableTests,
       testGroup
@@ -1426,10 +1428,10 @@ characterFeatureTests =
           gluesOf e = [w | Glue w _ _ _ _ <- take 3 (compose e "abc def")]
       wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
       gluesOf env @?= [w + tenth | w <- gluesOf plain],
-    testCase "ruby and tate-chu-yoko get no tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
+    testCase "tate-chu-yoko has outer tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           half = Sp (unSp fs `div` 2)
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs + tenth, negate tenth)]
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 (noteBody sp [])])] @?= [(half + Sp (unSp half `div` 10), 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}

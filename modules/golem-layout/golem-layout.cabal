@@ -97,6 +97,7 @@ test-suite golem-layout-test
                     EnumSplitSpec
                     ExceptionsSpec
                     ExpansionStepSpec
+                    TrackingBoxesSpec
                     FeaturesSpec
                     ScriptSpec
                     Fixtures

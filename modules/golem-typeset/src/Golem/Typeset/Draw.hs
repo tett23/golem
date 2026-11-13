@@ -1217,7 +1217,7 @@ drawLineAt env (x0, y0) sl =
                             Nothing -> 0
                           baseAdv = zipWith advOf baseLooks baseUnits
                           readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
-                          excess = max 0 (sum readAdv - w)
+                          excess = max 0 (sum readAdv - (w - zwToSp size (fromIntegral (lkTracking look) / 1000)))
                           rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
                           -- the reading sits beside the largest base character
                           big = if null baseLooks then size else maximum (map lkSize baseLooks)
