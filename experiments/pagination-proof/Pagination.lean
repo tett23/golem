@@ -7158,6 +7158,99 @@ theorem I3_need_figure_and_blank_exist
   cases e : beforeBlank f <;> cases t : top <;>
     simpa [roomAcrossBlank, room, static, needFigureStatic, figureHasRoom, e, t] using h
 
+/- Once the text break reaches a figure, every earlier figure is also
+   text-ready. Whether the figure is kept now depends only on the room
+   and need checks in that source prefix. Increasing the break cannot
+   remove it or uncover another figure at an earlier text rank. -/
+theorem I3_figure_break_prefix (textRank : Nat → Nat)
+    (ordered : ∀ i j, i ≤ j → textRank i ≤ textRank j)
+    (room : Nat → Bool) (b f : Nat) :
+    greedyFigure (fun i => decide (textRank i ≤ b)) room f = true ↔
+      textRank f ≤ b ∧ ∀ i, i ≤ f → room i = true := by
+  let ready := fun i => decide (textRank i ≤ b)
+  have rule := I3_greedyFigures_rule (f+1) ready room
+  have upto : ∀ i, i ≤ f → (greedyFigure ready room i = true ↔
+      textRank i ≤ b ∧ ∀ j, j ≤ i → room j = true) := by
+    intro i
+    induction i with
+    | zero =>
+      intro _
+      rw [rule 0 (by omega)]
+      simp [ready]
+      intros; omega
+    | succ i ih =>
+      intro bound
+      rw [rule (i+1) (by omega)]
+      constructor
+      · rintro ⟨now, before, own⟩
+        refine ⟨(decide_eq_true_eq.mp now), ?_⟩
+        intro j earlier
+        by_cases same : j = i+1
+        · simpa [same] using own
+        · exact (((ih (by omega)).mp (before i (by omega))).2 j (by omega))
+      · rintro ⟨reached, allRoom⟩
+        refine ⟨by simpa [ready] using reached, ?_, allRoom _ (by omega)⟩
+        intro j earlier
+        have iKept := (ih (by omega)).mpr
+          ⟨Nat.le_trans (ordered i (i+1) (by omega)) reached,
+            fun k prior => allRoom k (by omega)⟩
+        by_cases same : j = i
+        · simpa [same] using iKept
+        · exact ((rule i (by omega)).mp iKept).2.1 j (by omega)
+  exact upto f (by omega)
+
+theorem I3_new_figure_at_extended_break (textRank : Nat → Nat)
+    (ordered : ∀ i j, i ≤ j → textRank i ≤ textRank j)
+    (room : Nat → Bool) (b f : Nat)
+    (missing : greedyFigure (fun i => decide (textRank i ≤ b)) room f = false)
+    (placed : greedyFigure (fun i => decide (textRank i ≤ b+1)) room f = true) :
+    textRank f = b+1 := by
+  have next := (I3_figure_break_prefix textRank ordered room (b+1) f).mp placed
+  apply Classical.byContradiction
+  intro other
+  have prev := (I3_figure_break_prefix textRank ordered room b f).mpr
+    ⟨by omega, next.2⟩
+  simp [missing] at prev
+
+theorem I3_blank_top_stable_across_positive_breaks (used count rank : Nat)
+    (beforeBlank : Nat → Bool) (textRank : Nat → Nat)
+    (ordered : ∀ i j, i ≤ j → textRank i ≤ textRank j)
+    (beforeRank : ∀ i, beforeBlank i = true → textRank i ≤ rank)
+    (room : Nat → Bool) (b c : Nat) (positiveB : 0 < b) (positiveC : 0 < c) :
+    blankTopFromFigures used (decide (0 < min b rank)) count beforeBlank
+      (greedyFigure (fun i => decide (textRank i ≤ b)) room) =
+    blankTopFromFigures used (decide (0 < min c rank)) count beforeBlank
+      (greedyFigure (fun i => decide (textRank i ≤ c)) room) := by
+  by_cases hasText : 0 < rank
+  · have hb : 0 < min b rank := by omega
+    have hc : 0 < min c rank := by omega
+    simp [blankTopFromFigures, hb, hc]
+  · have rankZero : rank = 0 := by omega
+    subst rank
+    have same : ∀ i, (beforeBlank i && greedyFigure (fun j => decide (textRank j ≤ b)) room i) =
+        (beforeBlank i && greedyFigure (fun j => decide (textRank j ≤ c)) room i) := by
+      intro i
+      cases e : beforeBlank i with
+      | false => rfl
+      | true =>
+        have bound := beforeRank i e
+        have eb := I3_figure_break_prefix textRank ordered room b i
+        have ec := I3_figure_break_prefix textRank ordered room c i
+        have withinB : textRank i ≤ b := by omega
+        have withinC : textRank i ≤ c := by omega
+        have sameRoom : (greedyFigure (fun j => decide (textRank j ≤ b)) room i = true) ↔
+            (greedyFigure (fun j => decide (textRank j ≤ c)) room i = true) := by
+          rw [eb, ec]
+          simp [withinB, withinC]
+        cases hb : greedyFigure (fun j => decide (textRank j ≤ b)) room i <;>
+          cases hc : greedyFigure (fun j => decide (textRank j ≤ c)) room i <;>
+          simp [hb, hc] at sameRoom ⊢
+    have eq : (fun i => beforeBlank i && greedyFigure (fun j => decide (textRank j ≤ b)) room i) =
+        (fun i => beforeBlank i && greedyFigure (fun j => decide (textRank j ≤ c)) room i) :=
+      funext same
+    simp only [blankTopFromFigures, Nat.min_zero]
+    rw [eq]
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
