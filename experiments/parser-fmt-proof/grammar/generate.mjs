@@ -462,6 +462,9 @@ if (!fragment && ast) {
       const opening = rule.name === 'ExprCtx' ? 'ExprOpen' : 'Splat';
       if (singleUnitRuleMatches(rule, opening + ' ExprBody (RBr)^close')) continue;
     }
+    if (rule.name === 'TableCellAndPipe' && singleUnitRuleMatches(rule, 'Pipe TableCell &(Pipe)') &&
+        singleUnitRuleMatches(ast.rules.find(r => r.name === 'Pipe'), "'|'")) continue;
+    if (rule.name === 'TableCell' && singleUnitRuleMatches(rule, 'CellInline*')) continue;
     if (rule.name === 'SkippedArgs' && singleUnitRuleMatches(rule, '(Sp PosArg)+')) continue;
     if (rule.name === 'ProseSlot' && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&

@@ -172,4 +172,42 @@ theorem generated_closed (name opening : String)
                   | ok tail =>
                       cases tail <;> simp [closedItems, runChoices, foldChoice, runSequence, first, body, after, closing_total, closer] <;> rfl
 
+private theorem pipe_total (input : List Char) (fuel : Nat) :
+    recognizeEnv Generated.pegGrammar [] (fuel + 3) (.ref "Pipe" []) input =
+      (if "|".toList.isPrefixOf input then .ok (some (input.drop 1)) else .ok none) := by
+  change runChoices (fun items => runSequence (fun env e x => recognizeEnv Generated.pegGrammar env (fuel+1) e x) _ [] items input) [[.lit "|" "'|'"]] = _
+  have lit := PegModelTest.literal_total Generated.pegGrammar [] fuel "|" "'|'" input
+  cases hit : "|".toList.isPrefixOf input <;> simp [runChoices, foldChoice, runSequence, lit, hit] <;> rfl
+
+private theorem pipe_ahead (input : List Char) (fuel : Nat) :
+    recognizeEnv Generated.pegGrammar [] (fuel + 5) (.andPred (.choice [[.ref "Pipe" []]])) input =
+      (if "|".toList.isPrefixOf input then .ok (some input) else .ok none) := by
+  change (match recognizeEnv Generated.pegGrammar [] (fuel + 4) (.choice [[.ref "Pipe" []]]) input with
+    | .error reason => if isLabelFailure reason then Except.ok none else Except.error reason
+    | .ok none => Except.ok none
+    | .ok (some _) => Except.ok (some input)) = _
+  rw [PegModelTest.single_group _ _ _ _ _ (by simp), pipe_total]
+  cases "|".toList.isPrefixOf input <;> rfl
+
+theorem generated_table_cell_and_pipe (env : Params) (input : List Char) (fuel : Nat) :
+    recognizeEnv Generated.pegGrammar env (fuel + 7) (.ref "TableCellAndPipe" []) input =
+      if "|".toList.isPrefixOf input then
+        after (recognizeEnv Generated.pegGrammar [] (fuel+5) (.ref "TableCell" []) (input.drop 1))
+          (fun rest => if "|".toList.isPrefixOf rest then .ok (some rest) else .ok none)
+      else .ok none := by
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+5) e x) _ [] items input)
+    [[.ref "Pipe" [], .ref "TableCell" [], .andPred (.choice [[.ref "Pipe" []]])]] = _
+  have opening := pipe_total input (fuel+2)
+  cases hit : "|".toList.isPrefixOf input with
+  | false => simp [runChoices, foldChoice, runSequence, opening, hit]; rfl
+  | true =>
+      cases cell : recognizeEnv Generated.pegGrammar [] (fuel+5) (.ref "TableCell" []) (input.drop 1) with
+      | error reason => simp [runChoices, foldChoice, runSequence, opening, hit, cell, after]; rfl
+      | ok value =>
+          cases value with
+          | none => simp [runChoices, foldChoice, runSequence, opening, hit, cell, after]; rfl
+          | some rest =>
+              cases tail : "|".toList.isPrefixOf rest <;>
+                simp [runChoices, foldChoice, runSequence, opening, hit, cell, after, pipe_ahead, tail] <;> rfl
+
 end ReferenceSequence

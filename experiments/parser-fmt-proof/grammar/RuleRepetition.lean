@@ -41,6 +41,13 @@ theorem generated_slot (ind fuel : Nat) (input : List Char) :
     (.choice [[.star (.ref "SlotInline" ["ind"])]]) input = _
   rw [PegModelTest.single_group _ _ _ _ _ (by simp), star]
 
+theorem generated_table_cell (env : Params) (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar env (fuel + 2) (.ref "TableCell" []) input =
+      scan (fun n => recognizeEnv Generated.pegGrammar [] n (.ref "CellInline" [])) fuel input := by
+  change recognizeEnv Generated.pegGrammar [] (fuel + 1)
+    (.choice [[.star (.ref "CellInline" [])]]) input = _
+  rw [PegModelTest.single_group _ _ _ _ _ (by simp), star]
+
 private def recoveryArgument : Expr := .choice [[.ref "Sp" [], .ref "PosArg" []]]
 
 theorem generated_skipped (env : Params) (fuel : Nat) (input : List Char) :
