@@ -161,6 +161,24 @@ theorem I1_caption_overfull_iff (shortfall stretch glueShrink compression : Int)
     cases pullInFirst <;> by_cases room : -shortfall ≤ glueShrink <;>
     simp [pos, zero, over, room] <;> omega
 
+/-- The line and breakpoint contribution before adjacent-fitness and
+    repeated-hyphen costs are added in KnuthPlass.evaluate. -/
+def captionLineDemerits (linePenalty : Int) (badness : Nat) (penalty : Int) : Int :=
+  let total := linePenalty + badness
+  let base := if total.natAbs ≥ 10000 then 100000000 else total * total
+  if 0 ≤ penalty then base + penalty * penalty
+  else if -10000 < penalty then base - penalty * penalty else base
+
+theorem I1_caption_forced_break_cost (linePenalty : Int) (badness : Nat)
+    (penalty : Int) (forced : penalty ≤ -10000) :
+    captionLineDemerits linePenalty badness penalty =
+      captionLineDemerits linePenalty badness 0 := by
+  have negative : ¬ 0 ≤ penalty := by omega
+  simp [captionLineDemerits, negative, Int.not_lt.mpr forced]
+
+example : ([-10000, -9999, 0, 1] : List Int).map (captionLineDemerits 10 0) =
+    [100, -99979901, 100, 101] := by decide
+
 /-- Within one (line number, fitness) entry, equal demerits select
     the later predecessor in the active list, as in KnuthPlass.step. -/
 def captionPreferLater {α : Type} (old new : Int × α) : Int × α :=
