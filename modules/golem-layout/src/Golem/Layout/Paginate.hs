@@ -83,11 +83,11 @@ headingBlockAligned alignment (Sp fs) (Sp p) (Sp s) m least =
       extent = toInteger (max 1 m - 1) * hp + s
       n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
-      free = max 0 (area - extent)
+      availableSpace = max 0 (area - extent)
       offset = case alignment of
         HeadingStart -> 0
-        HeadingCenter -> free `div` 2
-        HeadingEnd -> free
+        HeadingCenter -> availableSpace `div` 2
+        HeadingEnd -> availableSpace
    in HeadingBlock (Sp hp) (fromInteger n) (Sp offset)
 
 {- | The first part of what follows that a heading keeps with it, in a
