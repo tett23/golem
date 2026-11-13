@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 63, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 62, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -439,6 +439,11 @@ try {
   writeFileSync(changedParaEnd, original.replace('ParaEnd <- Nl (BlankLine / !.)', 'ParaEnd <- Nl (BlankLines / !.)'));
   const strictParaEnd = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedParaEnd, generated], { encoding: 'utf8' });
+  for (const rule of ['Rest', 'SkippedExpr']) {
+    const unsupported = new RegExp('^unsupported ' + rule + ' choice ', 'm');
+    assert.doesNotMatch(strict.stderr, unsupported);
+    assert.match(strictParaEnd.stderr, unsupported);
+  }
   assert.match(strictParaEnd.stderr, /^unsupported ParaEnd .*: BlankLines$/m);
   const changedWsBoundary = join(work, 'ChangedWsBoundary.hpeg');
   writeFileSync(changedWsBoundary, original.replace(/^Ws <- .*$/m, 'Ws <- [ ]+ { () }'));
