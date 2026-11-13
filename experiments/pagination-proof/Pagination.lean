@@ -11264,6 +11264,86 @@ theorem I4_footnote_final_never_sends (base current separator : Nat) :
     · simp [footnoteFinal, footnoteDecision, fits, send, send.2]
     · simp [footnoteFinal, footnoteDecision, fits, send]
 
+namespace TablePagination
+
+/-- Projection of placeTable.rowsFrom. Capacity includes any caption
+    that must accompany the last body row. A repeated header takes one
+    grid line per box; its new start can be anywhere in the column. -/
+structure Cursor where
+  used : Nat
+  segmentStart : Nat
+
+def emitHeader (s : Cursor) (header : List Nat) : Cursor :=
+  header.foldl (fun acc _ => { acc with used := acc.used + 1 }) s
+
+theorem header_used (s : Cursor) (header : List Nat) :
+    (emitHeader s header).used = s.used + header.length := by
+  induction header generalizing s with
+  | nil => simp [emitHeader]
+  | cons x xs ih =>
+      change (emitHeader {s with used := s.used+1} xs).used = _
+      rw [ih]
+      simp; omega
+
+def retry (fresh : Cursor) (header : List Nat) : Cursor :=
+  { emitHeader fresh header with segmentStart := fresh.used }
+
+theorem repeated_header_guard (fresh : Cursor) (header : List Nat) :
+    (retry fresh header).used = (retry fresh header).segmentStart + header.length :=
+  header_used fresh header
+
+def rank (header : List Nat) (s : Cursor) (remaining : List (List Nat)) :=
+  2 * remaining.length + (if s.used = s.segmentStart + header.length then 0 else 1)
+
+theorem retry_decreases (header : List Nat) (s fresh : Cursor) (remaining : List (List Nat))
+    (mustRetry : s.used ≠ s.segmentStart + header.length) :
+    rank header (retry fresh header) remaining < rank header s remaining := by
+  simp [rank,mustRetry,repeated_header_guard]
+
+theorem row_decreases (header : List Nat) (s next : Cursor) (row : List Nat) (rest : List (List Nat)) :
+    rank header next rest < rank header s (row :: rest) := by
+  unfold rank
+  simp only [List.length_cons]
+  split <;> split <;> omega
+
+/-- The fitting test and fresh cursor depend on the concrete pagination
+    state. The progress proof works for every result of those calls.
+    The output here includes only original table body rows. -/
+def rowsFrom (header : List Nat) (fits : Cursor → List Nat → List (List Nat) → Bool)
+    (fresh : Cursor → Cursor) (s : Cursor) (remaining : List (List Nat)) : List (List Nat) :=
+  match remaining with
+  | [] => []
+  | row :: rest =>
+    if _consume : fits s row rest = true ∨ s.used = s.segmentStart + header.length then
+      row :: rowsFrom header fits fresh {s with used := s.used + row.length} rest
+    else
+      rowsFrom header fits fresh (retry (fresh s) header) (row :: rest)
+termination_by rank header s remaining
+decreasing_by
+  all_goals simp_wf
+  · exact row_decreases _ _ _ _ _
+  · exact retry_decreases _ _ _ _ (fun ready => _consume (Or.inr ready))
+
+theorem I5_table_body_exact (header : List Nat) (fits : Cursor → List Nat → List (List Nat) → Bool)
+    (fresh : Cursor → Cursor) (s : Cursor) (remaining : List (List Nat)) :
+    rowsFrom header fits fresh s remaining = remaining := by
+  cases remaining with
+  | nil => rw [rowsFrom]
+  | cons row rest =>
+    rw [rowsFrom]
+    split
+    · rw [I5_table_body_exact header fits fresh _ rest]
+    · exact I5_table_body_exact header fits fresh _ (row :: rest)
+termination_by rank header s remaining
+decreasing_by
+  · exact row_decreases _ _ _ _ _
+  · apply retry_decreases
+    intro ready
+    rename_i guard
+    exact guard (Or.inr ready)
+
+end TablePagination
+
 /- The figure-only projection of a pagination state. Sending the next
    figure adds it to the FIFO waiting queue; emitting the queue's head
    appends it to the output. `placed ++ waiting ++ remaining` is the
