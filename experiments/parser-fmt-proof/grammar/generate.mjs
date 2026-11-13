@@ -391,6 +391,12 @@ const indentFullyProved = indentRule?.params.length === 1 && indentRule.params[0
   describeItems(indentRule.alts[0].items) === '&{ n == 0 }' &&
   describeItems(indentRule.alts[1].items) === "' ' Ind(n - 1)" &&
   indentRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null);
+const textRuns = new Map([
+  ['Text', "(![\\[\\\\\\n] !'%%' !NumberOpen .)+"],
+  ['NumberBody', "(![#\\n\\[\\]|\\\\] !'%%' .)+"],
+  ['SlotText', "(![\\[\\\\\\n|\\]] !'%%' !NumberOpen .)+"],
+  ['CellText', "(![\\[\\\\\\n|] !'%%' !NumberOpen .)+"],
+]);
 const indentedLabels = new Map([
   ['BadIndent', 'Ind(ind) &[ \\t] (&{ False } [ \\t])^indent'],
   ['OrphanDef', "Ind(ind) &'=:' (&{ False } '=:')^def_orphan"],
@@ -411,6 +417,10 @@ if (!fragment && ast) {
       if (rule.name === 'EOL' && spUsesWs &&
           rule.alts.length === 1 && describeItems(rule.alts[0].items) === 'Sp (Nl / !.)') continue;
     }
+    if (textRuns.has(rule.name) && (rule.name === 'NumberBody' || numberOpenFullyProved) &&
+        rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === textRuns.get(rule.name)) continue;
     if (rule.name === 'ExprIdent' && rule.params.length === 0 && rule.templateParams.length === 0 &&
         rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
         describeItems(rule.alts[0].items) === '[a-zA-Z_] [a-zA-Z0-9_]*') continue;

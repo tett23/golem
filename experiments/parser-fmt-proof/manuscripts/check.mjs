@@ -80,6 +80,11 @@ function* cases() {
     const comment = opening + 'open\nclose%%';
     yield ['a' + comment + 'b\n', [[1, JSON.stringify(comment)]]];
   }
+  // Formatting inserts a KText space before the slot and cell separators.
+  yield ['a%z##12##b%%note%%c\n[f: x##3##|y%%n%%z]\n\n|a##4##|b%%c%%d|\n|---|---|\n|u|v|\n',
+    [[5, '"%%note%%"'], [15, '"%%n%%"'], [24, '"%%c%%"']],
+    /Text "a%z".*NumberShorthand "##12##".*Text "bc".*Command.*\[\[Text "x", NumberShorthand "##3##"\], \[Text "yz"\]\].*Table.*\[\[Text "a", NumberShorthand "##4##"\], \[Text "bd"\]\]/su,
+    [[5, '"%%note%%"'], [16, '"%%n%%"'], [26, '"%%c%%"']]];
 }
 
 // Compare each comment's text and its position in the non-trivia token
@@ -103,7 +108,7 @@ function run(...args) {
 }
 
 try {
-  for (const [index, [input, expectedComments = [], expectedStructure]] of Array.from(cases()).entries()) {
+  for (const [index, [input, expectedComments = [], expectedStructure, formattedComments = expectedComments]] of Array.from(cases()).entries()) {
     if (only !== 'all' && Number(only) !== index) continue;
     tested++;
     writeFileSync(file, input);
@@ -123,7 +128,7 @@ try {
       assert.deepEqual(positions(), expectedComments);
       run('fmt', file);
       assert.equal(ast(), expectedAst);
-      assert.deepEqual(positions(), expectedComments);
+      assert.deepEqual(positions(), formattedComments);
       const first = readFileSync(file);
       run('fmt', file);
       assert.deepEqual(readFileSync(file), first);

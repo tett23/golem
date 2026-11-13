@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 88, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 84, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -383,6 +383,11 @@ try {
     assert.ok(!strict.stderr.split('\n').some(line =>
       line.startsWith('unsupported SkippedReserved ') && line.endsWith(': ' + literal)));
   }
+  const noCommentGuard = join(work, 'NoCommentGuard.hpeg');
+  writeFileSync(noCommentGuard, original.replace(/^(SlotText <- .*?) !'%%'/m, '$1'));
+  const strictText = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), noCommentGuard, generated], { encoding: 'utf8' });
+  assert.match(strictText.stderr, /^unsupported SlotText /m);
   const wrongComment = join(work, 'WrongComment.hpeg');
   writeFileSync(wrongComment, original.replace(/^(ProofComment <- .*?)!ParaEnd/m, '$1!EOL'));
   const strictComment = spawnSync(process.execPath,
@@ -524,9 +529,13 @@ try {
   const reservedBracketProof = spawnSync(lean, [join(here, 'ReservedBracketTotal.lean')],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(reservedBracketProof.status, 0, reservedBracketProof.stderr);
-  const prefixBoundaryProof = spawnSync(lean, [join(here, 'PrefixBoundaryTotal.lean')],
+  const prefixSource = join(work, 'PrefixBoundaryTotal.lean');
+  copyFileSync(join(here, 'PrefixBoundaryTotal.lean'), prefixSource);
+  const prefixBoundaryProof = spawnSync(lean, ['-o', join(work, 'PrefixBoundaryTotal.olean'), prefixSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(prefixBoundaryProof.status, 0, prefixBoundaryProof.stderr);
+  const textRun = spawnSync(lean, [join(here, 'TextRunTotal.lean')], growthEnv);
+  assert.equal(textRun.status, 0, textRun.stdout + textRun.stderr);
   const throwingSource = join(work, 'ThrowingPrefixTotal.lean');
   copyFileSync(join(here, 'ThrowingPrefixTotal.lean'), throwingSource);
   const throwingPrefixProof = spawnSync(lean, ['-o', join(work, 'ThrowingPrefixTotal.olean'), throwingSource],
@@ -551,7 +560,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 17, negative mutations 52, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 18, negative mutations 53, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
