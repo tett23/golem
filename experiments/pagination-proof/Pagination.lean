@@ -107,6 +107,16 @@ theorem I2_caption_diagnostic_iff_extent_overflows
 example : captionPitch 2 5 1 = 2 ∧ captionPitch 2 7 1 = 4 := by decide
 example : (List.range 4).map (captionGridSpan 10 15 10) = [0, 1, 2, 3] := by decide
 
+/-- Natural width of the numbered caption fixture, in scaled points.
+    The shaped runs are the number, an ideographic space, two initial M
+    glyphs, the individual interior glyphs, and three final M glyphs. -/
+private def measuredCaptionWidth (number pair single triple interior : Nat) : Nat :=
+  number + 655360 + pair + interior * single + triple
+
+example : measuredCaptionWidth 649462 952893 476447 1429340 7 ≤ 120 * 65536 := by decide
+example : measuredCaptionWidth 705167 1182269 591135 1773404 6 ≤ 120 * 65536 ∧
+    120 * 65536 < measuredCaptionWidth 705167 1182269 591135 1773404 7 := by decide
+
 /- The real-font driver test records caption spans 1 and 2 for the same
    twelve M characters in Source Sans Pro and Source Serif. With the
    measured span as input, the rounded image sizes agree with Golem. -/
@@ -9131,6 +9141,151 @@ theorem I3_blank_top_same_for_every_admissible_break
   | figure p => exact retained
   | blank p => exact retained
   | need p => exact retained
+
+/-- A break is legal when the same figure selection and blank placement satisfy
+    capacity, P1 for every retained text and the empty-column rule. -/
+def twoFigureNeedBreak (capacity used blank first second firstSize secondSize : Nat)
+    (items : List SourceItem) (space : Nat → Bool) (needs : List (Nat × Nat)) (b : Nat) : Prop :=
+    let pos := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (pos i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < pos i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    ∃ top : Bool, ∃ kept : Nat → Bool,
+      top = blankAtTopSource used blank items (textHereAtBreak items b)
+        (keptAtTwoPositions first second (kept 0) (kept 1)) ∧
+      figures27Model 2 capacity used (fun i => decide (rank i ≤ b)) rank plain size pos
+        (fun i => !beforeBlankMask first second blank i && !top) block needs kept ∧
+      used + b + keptRowsThrough kept size 2 +
+        (if blankPlacedFromSourceFull used blank (waitingAtTwoPositions first second kept) items
+          (textHereAtBreak items b) (keptAtTwoPositions first second (kept 0) (kept 1)) then 1 else 0) ≤ capacity ∧
+      (∀ p, .text p ∈ items → textHereAtBreak items b p = true →
+        needAtPlacedText used capacity 2 items pos size space needs b kept p) ∧
+      (used = 0 → ∀ p, firstContent items = some (.text p) → 0 < b) ∧
+      (used = 0 → ∀ p, firstContent items = some (.figure p) →
+        keptAtTwoPositions first second (kept 0) (kept 1) p = true)
+
+theorem I3_two_figure_need_maximal_placement
+    (capacity used blank first second firstSize secondSize : Nat) (items : List SourceItem)
+    (ordered : sourceOrdered items) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (positiveCapacity : 0 < capacity) (usedFits : used ≤ capacity)
+    (positiveFirst : 0 < firstSize) (positiveSecond : 0 < secondSize)
+    (firstFits : firstSize ≤ capacity) (figOrder : first < second)
+    (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (firstIn : .figure first ∈ items) (secondIn : .figure second ∈ items)
+    (onlyTwo : ∀ p, .figure p ∈ items → p = first ∨ p = second) :
+    let valid := twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs
+    ∃ b, b ≤ (sourceTextPositions items).length ∧ valid b ∧
+      (b < (sourceTextPositions items).length → ¬ valid (b + 1)) := by
+  intro valid
+  obtain ⟨seed, top, kept, bound, rest⟩ := I3_two_figure_need_initial_placement
+    capacity used blank first second firstSize secondSize items ordered space needs
+    positiveCapacity usedFits positiveFirst positiveSecond firstFits figOrder diffFirst
+    diffSecond firstIn secondIn onlyTwo
+  have initial : valid seed := ⟨top, kept, rest⟩
+  obtain ⟨b, _, within, legal, stop⟩ := maximal_break_above valid seed _
+    bound initial
+  exact ⟨b, within, legal, stop⟩
+
+theorem I3_two_figure_need_blank_charge_unique
+    (used blank first second b : Nat) (items : List SourceItem) (ordered : sourceOrdered items)
+    (kept : Nat → Bool)
+    (firstText : used = 0 → ∀ p, firstContent items = some (.text p) → 0 < b)
+    (firstFigure : used = 0 → ∀ p, firstContent items = some (.figure p) →
+      keptAtTwoPositions first second (kept 0) (kept 1) p = true) :
+    blankAtTopSource used blank items (textHereAtBreak items b)
+      (keptAtTwoPositions first second (kept 0) (kept 1)) =
+      blankAtTopSource used blank items (fun _ => true) (fun _ => true) := by
+  apply I3_blank_top_fixed_by_first_content items ordered
+  intro empty item initial
+  cases item with
+  | text p =>
+      have bound := firstText empty p initial
+      have le := (I3_firstContent_text_before_figures items ordered p initial).2.1
+      have placed := (I3_break_one_text_iff_first items p).mpr le
+      simp [textHereAtBreak] at placed ⊢
+      omega
+  | figure p => exact firstFigure empty p initial
+  | blank p =>
+      exact (I3_firstContent_is_earliest items ordered _ initial).1
+  | need p =>
+      exact (I3_firstContent_is_earliest items ordered _ initial).1
+
+theorem I3_need_at_text_depends_on_actual_figures
+    (used capacity count b p : Nat) (items : List SourceItem) (pos size : Nat → Nat)
+    (space kept other : Nat → Bool) (needs : List (Nat × Nat))
+    (same : ∀ i, i < count → kept i = other i) :
+    needAtPlacedText used capacity count items pos size space needs b kept p ↔
+      needAtPlacedText used capacity count items pos size space needs b other p := by
+  have rows (k : Nat) (bound : k ≤ count) :
+      keptRowsThrough (fun i => kept i && decide (pos i < p)) size k =
+      keptRowsThrough (fun i => other i && decide (pos i < p)) size k := by
+    induction k with
+    | zero => rfl
+    | succ k ih =>
+        simp only [keptRowsThrough]
+        simp only [ih (by omega), same k (by omega)]
+  have waits (i : Nat) (bound : i < count) : figureWaits kept i ↔ figureWaits other i := by
+    unfold figureWaits
+    rw [same i bound]
+    have earlier : (∃ g, g < i ∧ kept g = false) ↔ (∃ g, g < i ∧ other g = false) := by
+      constructor <;> rintro ⟨g, lt, sent⟩
+      · exact ⟨g, lt, (same g (Nat.lt_trans lt bound)) ▸ sent⟩
+      · exact ⟨g, lt, (same g (Nat.lt_trans lt bound)).symm ▸ sent⟩
+    rw [earlier]
+  unfold needAtPlacedText placedBeforeNeedSource
+  rw [rows count (Nat.le_refl _)]
+  simp only [needTargetsText]
+  constructor
+  · intro check n mem h
+    exact check n mem ⟨h.1, h.2.1, h.2.2.1, fun i hi a z => (waits i hi).mpr (h.2.2.2 i hi a z)⟩
+  · intro check n mem h
+    exact check n mem ⟨h.1, h.2.1, h.2.2.1, fun i hi a z => (waits i hi).mp (h.2.2.2 i hi a z)⟩
+
+theorem I3_normalize_two_figure_need_break
+    (capacity used blank first second firstSize secondSize b : Nat) (items : List SourceItem)
+    (ordered : sourceOrdered items) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (valid : twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs b) :
+    let pos := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (pos i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < pos i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    let top := blankAtTopSource used blank items (fun _ => true) (fun _ => true)
+    let charge := fun i => !beforeBlankMask first second blank i && !top
+    let room := fun i => @decide (needFigureStatic capacity used rank plain size pos charge block needs i)
+      (Classical.propDecidable _)
+    let kept := greedyFigure (fun i => decide (rank i ≤ b)) room
+    used + b + keptRowsThrough kept size 2 +
+        (if blankPlacedFromSourceFull used blank (waitingAtTwoPositions first second kept) items
+          (textHereAtBreak items b) (keptAtTwoPositions first second (kept 0) (kept 1)) then 1 else 0) ≤ capacity ∧
+      (∀ p, .text p ∈ items → textHereAtBreak items b p = true →
+        needAtPlacedText used capacity 2 items pos size space needs b kept p) ∧
+      (used = 0 → ∀ p, firstContent items = some (.text p) → 0 < b) ∧
+      (used = 0 → ∀ p, firstContent items = some (.figure p) →
+        keptAtTwoPositions first second (kept 0) (kept 1) p = true) := by
+  intro pos size rank plain block top charge room kept
+  obtain ⟨oldTop, old, atTop, model, fit, p1, firstText, firstFig⟩ := valid
+  have topEq : oldTop = top := atTop.trans (I3_two_figure_need_blank_charge_unique
+    used blank first second b items ordered old firstText firstFig)
+  rw [topEq] at model
+  have same : ∀ i, i < 2 → old i = kept i := by
+    apply I3_need_figure_model_is_greedy 2 capacity used _ room old rank plain size pos charge block needs
+    · intro i; exact @decide_eq_true_iff _ (Classical.propDecidable _)
+    · exact model
+  have zero := same 0 (by decide)
+  have one := same 1 (by decide)
+  have waits : waitingAtTwoPositions first second old = waitingAtTwoPositions first second kept := by
+    funext p
+    simp only [waitingAtTwoPositions, waitingFigureBool, earlierFigureSent, zero, one]
+  refine ⟨?_, ?_, firstText, ?_⟩
+  · simpa only [keptRowsThrough, waits, zero, one] using fit
+  · intro p member here
+    exact (I3_need_at_text_depends_on_actual_figures used capacity 2 b p items pos size space old kept
+      needs same).mp (p1 p member here)
+  · simpa only [zero, one] using firstFig
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
