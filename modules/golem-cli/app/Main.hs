@@ -3,7 +3,7 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
-import Data.Char (isSpace, toLower)
+import Data.Char (isDigit, isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, sortOn, stripPrefix)
@@ -148,7 +148,7 @@ statsDimension :: String -> String -> Parser Integer
 statsDimension optionName description =
   option (eitherReader positive) (long optionName <> metavar "N" <> value 20 <> showDefault <> help description)
   where
-    positive raw | not (null raw) && all (\c -> c >= '0' && c <= '9') raw, n > 0 = Right n
+    positive raw | not (null raw) && all isDigit raw, n > 0 = Right n
       where
         n = read raw
     positive _ = Left "正の整数を指定してください"
