@@ -403,6 +403,12 @@ function singleUnitRuleMatches(rule, expected) {
     describeItems(rule.alts[0].items) === expected;
 }
 const numberBodyProved = singleUnitRuleMatches(ast?.rules.find(r => r.name === 'NumberBody'), textRuns.get('NumberBody'));
+const attributedBranches = ['Heading', 'BulletList', 'OrderedList', 'DefList', 'Table', 'CodeBlock', 'Paragraph'];
+const blockBranches = ['BadIndent', 'OrphanDef', 'ReservedBlock', 'BlockGroup', ...attributedBranches];
+const blockDispatch = new Map([
+  ['AttributedBlock', '(' + attributedBranches.map(name => name + '(ind)').join(' / ') + ')'],
+  ['Block', '(' + blockBranches.map(name => name + '(ind)').join(' / ') + ')^block'],
+]);
 const indentedLabels = new Map([
   ['BadIndent', 'Ind(ind) &[ \\t] (&{ False } [ \\t])^indent'],
   ['OrphanDef', "Ind(ind) &'=:' (&{ False } '=:')^def_orphan"],
@@ -436,6 +442,9 @@ if (!fragment && ast) {
         rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
         describeItems(rule.alts[0].items) === '&{ ordered == 0 } BulletMark' &&
         describeItems(rule.alts[1].items) === '&{ ordered == 1 } OrderedMark') continue;
+    if (blockDispatch.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
+        rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === blockDispatch.get(rule.name)) continue;
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&

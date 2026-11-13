@@ -468,6 +468,7 @@ try {
   assert.match(strictHashKey.stderr, /^unsupported HashEntry .*: ExprIdent ':'$/m);
   assert.doesNotMatch(strict.stderr, /^unsupported HashEntry .*: (ExprIdent|StringLit)$/m);
   assert.doesNotMatch(strict.stderr, /^unsupported AttributedBlock .*: Heading\(ind\)$/m);
+  assert.doesNotMatch(strict.stderr, /^unsupported (Block|AttributedBlock) choice /m);
   const changedAt = join(work, 'ChangedAt.hpeg');
   writeFileSync(changedAt, original.replace("/ '@!' (!", "/ '@?' (!"));
   const strictAt = spawnSync(process.execPath,

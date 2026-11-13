@@ -361,6 +361,52 @@ theorem generated_nested_ref_shapes :
         (fun name => (name, ["ind"]))) ++ blockRefs))) "block") := by
   exact ⟨rfl, rfl, rfl⟩
 
+private theorem single_group (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (item : PegModel.Expr) (input : List Char) (fuel : Nat) (unbound : ∀ n e, item ≠ .bind (some n) e) :
+    PegModel.recognizeEnv grammar env (fuel + 1) (.choice [[item]]) input =
+      PegModel.recognizeEnv grammar env fuel item input := by
+  change PegModel.runChoices (fun items => PegModel.runSequence
+    (fun scope child rest => PegModel.recognizeEnv grammar scope fuel child rest)
+    _ env items input) [[item]] = _
+  cases hit : PegModel.recognizeEnv grammar env fuel item input with
+  | error reason => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, hit]; rfl
+  | ok result =>
+      cases result with
+      | none => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, hit]; rfl
+      | some rest =>
+          cases item <;> simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, hit] <;> try rfl
+
+theorem attributed_block_dispatch (n : Nat) (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] (fuel + 3)
+      (.ref "AttributedBlock" ["ind"]) input =
+      firstResult (fun pair => PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] fuel
+        (.ref pair.1 pair.2) input) blockRefs := by
+  change PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] (fuel + 2)
+    (.choice [[.choice (refAlternatives blockRefs)]]) input = _
+  rw [single_group _ _ _ _ (fuel + 1) (by simp)]
+  exact interpreted_ref_choices _ _ _ _ _
+
+private def allBlockRefs : List (String × List String) :=
+  (["BadIndent", "OrphanDef", "ReservedBlock", "BlockGroup"].map
+    (fun name => (name, ["ind"]))) ++ blockRefs
+
+theorem block_dispatch (n : Nat) (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] (fuel + 4)
+      (.ref "Block" ["ind"]) input =
+      match firstResult (fun pair => PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] fuel
+        (.ref pair.1 pair.2) input) allBlockRefs with
+      | .ok none => .error "label: block"
+      | result => result := by
+  change PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] (fuel + 3)
+    (.choice [[.label (.choice (refAlternatives allBlockRefs)) "block"]]) input = _
+  rw [single_group _ _ _ _ (fuel + 2) (by simp)]
+  change (match PegModel.recognizeEnv Generated.pegGrammar [("ind", n)] (fuel + 1)
+    (.choice (refAlternatives allBlockRefs)) input with
+    | .ok none => Except.error "label: block"
+    | result => result) = _
+  rw [interpreted_ref_choices]
+  rfl
+
 example : PegModel.foldChoice
     (fun n : Nat => if n == 1 then (.error "label" : PegModel.ParseResult) else .ok none) [0, 1, 2] =
       .error "label" := by rfl
