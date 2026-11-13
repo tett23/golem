@@ -8,19 +8,19 @@ module PunctuationWidthSpec (punctuationWidthTests) where
 import Control.Monad (forM_, unless)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isNothing, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (Look (..), plainLook)
+import Golem.Layout.Look (Kerning (..), Look (..), plainLook)
 import Golem.Length (Sp (..))
 import Golem.Project.Feature (parseFeature)
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), shapingOf)
+import Golem.Typeset (PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), shapingForFonts, shapingOf)
 import Golem.Typeset.FontProvider (golemFontProvider)
 import Support
 import System.FilePath ((</>))
@@ -70,7 +70,7 @@ serifRole = "\n[fonts.body]\nlatin = \"fonts/serif.ttf\"\n"
 -- | Every box of one character of a layout: its text, width, look and the glyphs it is shaped with.
 boxesIn :: LoadedFonts -> Bool -> PdfLayout -> [(Text, Sp, Look, [Shaped])]
 boxesIn fonts vertical pl =
-  [ (bcText c, w, bcLook c, lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical (bcLook c) (T.head (bcText c))) (bcText c))
+  [ (bcText c, w, bcLook c, lfShape fonts (shapingForFonts fonts vertical (bcLook c) (T.head (bcText c))) (bcText c))
   | sl <- Map.elems (plLines pl),
     Box w c <- lineItems (slLine sl),
     T.length (bcText c) == 1
@@ -108,7 +108,45 @@ punctuationWidthTests :: TestTree
 punctuationWidthTests =
   testGroup
     "full-width punctuation and narrow punctuation (docs/adr/0302)"
-    [ testCase "N6: Golem adds fwid to JLReq's punctuation only, horizontal and vertical" $
+    [ testCase "Golem ADR 0378 inv1_punctuation_proportional_features_case_1: permission alone" $ do
+        fonts <- fontsOf (notoRole <> "punctuation-proportional = true\n")
+        let extra = shExtra (shapingForFonts fonts False (lookWith [] True) '「')
+        lastValue "palt" extra @?= Nothing
+        lastValue "fwid" extra @?= Just 1,
+      testCase "Golem ADR 0378 inv1_punctuation_proportional_features_case_2: directional feature and explicit width" $ do
+        fonts <- fontsOf (notoRole <> "punctuation-proportional = true\nfeatures = [\"palt\", \"vpal\"]\n")
+        forM_ [(False, "palt"), (True, "vpal")] $ \(vertical, tag) ->
+          forM_ ['「', '」', '。', '、', '・'] $ \ch -> do
+            let effective lk = lfRoleFeatures fonts "body" <> shExtra (shapingForFonts fonts vertical lk ch)
+                look = lookWith [] True
+            lastValue tag (effective look) @?= Just 1
+            lastValue "fwid" (effective look) @?= Nothing
+            lastValue "hwid" (effective (lookWith ["hwid"] True)) @?= Just 1
+            lastValue tag (effective look {lkKerning = KernJapaneseEqualWidth}) @?= Just 0,
+      testCase "Golem ADR 0378 inv1_punctuation_proportional_features_property: measure and draw with the permitted features" $
+        forM_ [(False, horizontalStyle, "palt"), (True, verticalPage, "vpal")] $ \(vertical, page, tag) -> do
+          files <- fontFiles
+          let style = page <> notoRole <> "punctuation-proportional = true\nfeatures = [\"" <> TE.encodeUtf8 tag <> "\"]\n"
+              target = '「'
+              source = "あ「い。\n"
+              checked = FontProvider $ \fs fid st roles -> fmap (fmap guardFeatures) (loadFonts golemFontProvider fs fid st roles)
+              guardFeatures fonts =
+                let verify shaping ch value
+                      | ch /= target = value
+                      | shVertical shaping == vertical && lastValue tag effective == Just 1 && isNothing (lastValue "fwid" effective) = value
+                      | otherwise = error ("unexpected punctuation shaping: " <> show shaping)
+                      where
+                        effective = lfRoleFeatures fonts (shRole shaping) <> shExtra shaping
+                 in fonts
+                      { lfAdvance = \sh ch -> verify sh ch (lfAdvance fonts sh ch),
+                        lfShape = \sh txt -> foldr (verify sh) (lfShape fonts sh txt) (T.unpack txt)
+                      }
+          pdf <- miniPdf checked False style source files
+          fonts <- fontsOf style
+          let expected = [lfCode fonts (shFace g) (shGlyph g) | g <- lfShape fonts (Shaping "body" vertical [] False) (T.singleton target)]
+          drawn <- drawnGlyphs . BS.concat <$> inflateAll pdf
+          assertBool "the PDF draws the expected punctuation glyph" (not (null expected) && all (\gid -> gid `elem` map dGlyph drawn) expected),
+      testCase "N6: Golem adds fwid to JLReq's punctuation only, horizontal and vertical" $
         forM_ [False, True] $ \v -> do
           let fwid c = lastValue "fwid" (shapedWith [] v (lookWith [] True) c)
           forM_ ("\x201C\x201D\x2018\x2019「」。、・" :: String) $ \c -> fwid c @?= Just 1
@@ -134,7 +172,7 @@ punctuationWidthTests =
           -- the glyphs of 「 and 。 are those without fwid
           fonts <- fontsOf (page <> notoRole)
           forM_ (["「", "。"] :: [Text]) $ \t ->
-            glyphsOf t bs @?= [[(shGlyph g, shAdvance g) | g <- lfShape fonts (shapingOf (lfRoleFeatures fonts) v lk {lkFullWidthPunctuation = False} (T.head t)) t] | (t', _, lk, _) <- bs, t' == t]
+            glyphsOf t bs @?= [[(shGlyph g, shAdvance g) | g <- lfShape fonts (shapingForFonts fonts v lk {lkFullWidthPunctuation = False} (T.head t)) t] | (t', _, lk, _) <- bs, t' == t]
           unless v $ map (map fst) (glyphsOf "「" bs <> glyphsOf "。" bs) @?= [[1155], [1145]]
           [w | (t, w, _, _) <- bs, t == "\x201C"] @?= [w | (t, w, _, _) <- bs, t == "「"]
           [w | (t, w, _, _) <- bs, t == "\x201D"] @?= [w | (t, w, _, _) <- bs, t == "」"],

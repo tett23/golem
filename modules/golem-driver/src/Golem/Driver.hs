@@ -1073,7 +1073,7 @@ targetFileDiagnostics fid style locals missing = \case
 
 -- | The font files of the roles the PDF uses.
 pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
-pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _ _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
 {- | G07002 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
 trim line and the bleed line would be drawn on top of each other. Only when

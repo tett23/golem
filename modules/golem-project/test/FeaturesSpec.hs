@@ -15,7 +15,9 @@ tests :: TestTree
 tests =
   testGroup
     "OpenType features (docs/adr/0268)"
-    [ testCase "I4: every form reads and its normal form reads back the same" $ do
+    [ testCase "Golem ADR 0378 inv1: a role accepts punctuation-proportional without enabling any feature" $
+        codes (parseStyle (FileId 0) "[fonts.body]\nja = \"a.otf\"\npunctuation-proportional = true\n") @?= [],
+      testCase "I4: every form reads and its normal form reads back the same" $ do
         let forms = [("smcp", ("smcp", 1)), ("+smcp", ("smcp", 1)), ("-smcp", ("smcp", 0)), ("smcp=0", ("smcp", 0)), ("smcp=1", ("smcp", 1)), ("salt=2", ("salt", 2)), ("salt=65535", ("salt", 65535)), ("ss01", ("ss01", 1)), ("jp90", ("jp90", 1))]
         mapM_ (\(s, f) -> parseFeature s @?= Just f) forms
         mapM_ (\(_, f) -> parseFeature (featureText f) @?= Just f) forms
