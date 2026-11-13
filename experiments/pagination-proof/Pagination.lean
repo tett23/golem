@@ -12181,6 +12181,56 @@ theorem combined_lines_only (a b : Int × Bool) :
     cases b with
     | mk m y => cases x <;> cases y <;> simp [combineWait]
 
+abbrev Address := Nat × Nat
+
+/-- A space records the address reached by applyNeed. At a following
+    block keep asks for the block's first part there and the original
+    need-lines at each other address it visits. -/
+def needAtBlock (cached here : Address) (first need : Int) :=
+  if here = cached then first else need
+
+theorem block_rejudges_after_move (cached here : Address) (first need : Int)
+    (moved : here ≠ cached) :
+    needAtBlock cached cached first need = first ∧ needAtBlock cached here first need = need := by
+  simp [needAtBlock,moved]
+
+/-- Multiple PageOut entries can share an address. checkNoBreak takes
+    their maximum, never their sum. lines is the count after dropping
+    the stored slot offset from that particular output entry. -/
+def closedAdded (target : Address) : List (Address × Nat) → Nat
+  | [] => 0
+  | (addr,lines) :: rest =>
+    if addr = target then max lines (closedAdded target rest) else closedAdded target rest
+
+theorem closed_met_iff (target : Address) (done : List (Address × Nat)) (k : Nat) (positive : 0 < k) :
+    k ≤ closedAdded target done ↔ ∃ lines, (target,lines) ∈ done ∧ k ≤ lines := by
+  induction done with
+  | nil => simp [closedAdded]; omega
+  | cons entry rest ih =>
+    rcases entry with ⟨addr,n⟩
+    by_cases same : addr = target
+    · subst addr
+      simp only [closedAdded,if_true,List.mem_cons,Prod.mk.injEq,true_and]
+      constructor
+      · intro met
+        by_cases first : k ≤ n
+        · exact ⟨n,Or.inl rfl,first⟩
+        · obtain ⟨v,mem,ok⟩ := ih.mp (by omega)
+          exact ⟨v,Or.inr mem,ok⟩
+      · rintro ⟨v,eq|mem,ok⟩
+        · subst v; omega
+        · have := ih.mpr ⟨v,mem,ok⟩; omega
+    · have rev : target ≠ addr := Ne.symm same
+      simp [closedAdded,same,rev,ih]
+
+theorem checkNoBreak_result (target here : Address) (current k : Nat) (done : List (Address × Nat)) :
+    max 1 k ≤ (if here = target then current else closedAdded target done) ↔
+      (here = target ∧ max 1 k ≤ current) ∨
+      (here ≠ target ∧ ∃ lines, (target,lines) ∈ done ∧ max 1 k ≤ lines) := by
+  by_cases same : here = target
+  · simp [same]
+  · simp [same,closed_met_iff target done (max 1 k) (by omega)]
+
 end BreakDispatch
 
 end TableAdvance
