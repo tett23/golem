@@ -310,10 +310,25 @@ projectPdf manifest style sources = withSystemTempDirectory "golem-project" $ \t
     [p] -> BS.readFile p >>= fmap BS.concat . inflateAll
     _ -> assertFailure "no PDF"
 
+masterSizes :: BS.ByteString -> BS.ByteString -> IO ([BS.ByteString], [BS.ByteString])
+masterSizes headStyle folioStyle = do
+  let style = horizontalStyle <> "\n[character-styles.large]\nsize = \"14pt\"\n[character-styles.small]\nsize = \"6pt\"\n[masters.body]\nrunning-head = {position = \"top-center\", odd=[\"H\"], even=[\"E\"]" <> headStyle <> "}\nfolio = {position=\"bottom-center\", format=\"{n}\"" <> folioStyle <> "}\n"
+  content <- miniPdf fakeProvider True style "文。\n\n@page-break\n\n文。\n" [] >>= fmap BS.concat . inflateAll
+  let sizes chars = [dSize d | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum chars]
+  pure (sizes ("HE" :: String), sizes ("12" :: String))
+
 -- | The running head tests (ADR 0014).
 runningHeadTests :: [TestTree]
 runningHeadTests =
-  [ testCase "first and last headings of a page" $ do
+  [ testCase "inv1_running_head_folio_style_property" $ do
+      (_, a) <- masterSizes "" ", character-style = \"small\""
+      (_, b) <- masterSizes ", character-style = \"large\"" ", character-style = \"small\""
+      b @?= a,
+    testCase "inv1_running_head_folio_style_case_1" $
+      masterSizes ", character-style = \"large\"" "" >>= (@?= (["14", "14"], ["10", "10"])),
+    testCase "inv1_running_head_folio_style_case_2" $
+      masterSizes ", character-style = \"large\"" ", character-style = \"small\"" >>= (@?= (["14", "14"], ["6", "6"])),
+    testCase "first and last headings of a page" $ do
       let h1 = Map.fromList [(1, Just umi)]
           h12 = Map.fromList [(1, Just umi), (2, Just asa)]
           h12' = Map.fromList [(1, Just umi), (2, Just hiru)]

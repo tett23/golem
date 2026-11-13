@@ -35,6 +35,7 @@ module Golem.Typeset.Flow
     runningHeads,
     runningHeadNotices,
     plainWidth,
+    masterLook,
     drawsFolio,
     hiddenFolios,
     TocGeometry (..),
@@ -910,12 +911,22 @@ runningHeadNotices inp geom fonts layout =
   | (n, t) <- sortOn id [(n, t) | (t, n) <- Map.toList (Map.fromListWith min wide)]
   ]
   where
+    masters = Map.fromList [(poNumber p, m) | ((p : _), Just m) <- zip (pagesOf (plPages layout)) (pageMasters inp geom layout)]
     wide =
       [ (t, n)
       | (n, ls) <- Map.toList (runningHeads inp geom layout),
         t <- ls,
-        plainWidth fonts (bodyRole (piStyle inp)) (pgFontSize geom) t > rectW (typeAreaFor geom n)
+        let look = masterLook (piStyle inp) (pgFontSize geom) (Map.lookup n masters >>= mgHeadStyle),
+        plainWidth fonts (lkLatinFace look) (lkSize look) t > rectW (typeAreaFor geom n)
       ]
+
+-- | The resolved font, size and swatch of one master-page text component.
+masterLook :: Style -> Sp -> Maybe Text -> Look
+masterLook style grid name =
+  let def = name >>= charStyle style
+      size = maybe grid (dimToSp grid) (def >>= csSize)
+      role = fromMaybe (bodyRole style) (def >>= csFont)
+   in (plainLook role size) {lkColor = def >>= csColor}
 
 -- | The width of a text set in a role at a size, unjustified.
 plainWidth :: LoadedFonts -> Text -> Sp -> Text -> Sp

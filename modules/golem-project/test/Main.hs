@@ -501,10 +501,10 @@ runningHeadTests =
     "running heads (golem-driver ADR 0014)"
     [ testCase "content is both pages" $
         runningHead "content = \"heading.1.short\""
-          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefHeading 1 HeadShort PickFirst)]))),
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefHeading 1 HeadShort PickFirst)]) Nothing)),
       testCase "even and odd" $ do
         runningHead "even = \"title\", odd = \"heading.2.numbered.last\""
-          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 2 HeadNumbered PickLast)]) (one [ref (RefMeta "title")])))
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 2 HeadNumbered PickLast)]) (one [ref (RefMeta "title")]) Nothing))
         fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone)
         fmap (fmap rhEven) (runningHead "content = \"heading.3.short.last\"") @?= Right (Just (one [ref (RefHeading 3 HeadShort PickLast)])),
       testCase "wrong values are G03014" $ do
@@ -552,7 +552,7 @@ runningHeadTests =
         fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone),
       testCase "a string and an array together (ADR 0022)" $
         runningHead "even = \"title\", odd = [\"{heading.1.short}\"]"
-          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefMeta "title")]))),
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefMeta "title")]) Nothing)),
       testCase "wrong formats are G03014 at the value (ADR 0022)" $
         forM_
           [ "[\"{heading.1.short\"]",

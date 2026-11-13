@@ -1266,13 +1266,15 @@ runningRefs = \case
 data RunningHeadDef = RunningHeadDef
   { rhPosition :: !Text,
     rhOdd :: !RunningContent,
-    rhEven :: !RunningContent
+    rhEven :: !RunningContent,
+    rhCharacterStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 data MasterDef = MasterDef
   { mdRunningHead :: !(Maybe RunningHeadDef),
-    mdFolio :: !(Maybe (Text, Text)) -- position, format
+    mdFolio :: !(Maybe (Text, Text)), -- position, format
+    mdFolioCharacterStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -2226,14 +2228,14 @@ instance FromValue MasterPosition where
 reqPosition :: ParseTable l Text
 reqPosition = (\(MasterPosition p) -> p) <$> reqKey "position"
 
-data PosContent = PosContent Text Text
+data PosContent = PosContent Text Text (Maybe Text)
 
 instance FromValue PosContent where
   fromValue = parseTableFromValue $ do
     p <- reqPosition
     c <- optKey "content"
     f <- optKey "format"
-    pure (PosContent p (fromMaybe "" (c <> f)))
+    PosContent p (fromMaybe "" (c <> f)) <$> optKey "character-style"
 
 -- | The message of G03014 (golem-driver ADR 0014).
 runningContentMessage :: Text -> String
@@ -2273,6 +2275,7 @@ G03014.
 instance FromValue RunningHeadDef where
   fromValue v = flip parseTableFromValue v $ do
     p <- reqPosition
+    char <- optKey "character-style"
     c <- optKeyOf "content" runningContentOf
     e <- optKeyOf "even" runningContentOf
     o <- optKeyOf "odd" runningContentOf
@@ -2280,8 +2283,8 @@ instance FromValue RunningHeadDef where
         -- at the value of the key, or at the running head when the key is not written (golem-project ADR 0008)
         wrong k = liftMatcher (inKey k (failAt (keyPosition v k) (runningContentMessage (if T.null written then "（なし）" else written))))
     case (c, e, o) of
-      (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x)
-      (Nothing, Just (_, x), Just (_, y)) -> pure (RunningHeadDef p y x)
+      (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x char)
+      (Nothing, Just (_, x), Just (_, y)) -> pure (RunningHeadDef p y x char)
       (Just _, _, _) -> wrong "content"
       (Nothing, Just _, Nothing) -> wrong "odd"
       (Nothing, Nothing, Just _) -> wrong "even"
@@ -2291,8 +2294,9 @@ instance FromValue MasterDef where
   fromValue = parseTableFromValue $ do
     rh <- optKey "running-head"
     fo <- optKey "folio"
-    let pc (PosContent a b) = (a, b)
-    pure (MasterDef rh (pc <$> fo))
+    let pc (PosContent a b _) = (a, b)
+        cs (PosContent _ _ n) = n
+    pure (MasterDef rh (pc <$> fo) (fo >>= cs))
 
 instance FromValue Swatch where
   fromValue = parseTableFromValue $ do
@@ -3160,6 +3164,7 @@ styleReferenceChecks owner s =
             (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
             Map.notMember n cs
           ]
+            <> [("", styleKeys ["masters", master, part, "character-style"], "マスター " <> master <> " の " <> part <> " の文字スタイルがありません: " <> name) | (master, def) <- Map.toList (stMasters s), (part, Just name) <- [("running-head", mdRunningHead def >>= rhCharacterStyle), ("folio", mdFolioCharacterStyle def)], Map.notMember name cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3627,9 +3632,9 @@ styleSchema =
     masterNode =
       NTable
         [ ( "running-head",
-            NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent)]
+            NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent), ("character-style", ref CharStyles)]
           ),
-          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str)])
+          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str), ("character-style", ref CharStyles)])
         ]
     runningContent = NEither [str, NArray str]
     akiSetNode =
