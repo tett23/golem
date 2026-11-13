@@ -361,7 +361,7 @@ theorem generated_nested_ref_shapes :
         (fun name => (name, ["ind"]))) ++ blockRefs))) "block") := by
   exact ⟨rfl, rfl, rfl⟩
 
-private theorem single_group (grammar : PegModel.Grammar) (env : PegModel.Params)
+theorem single_group (grammar : PegModel.Grammar) (env : PegModel.Params)
     (item : PegModel.Expr) (input : List Char) (fuel : Nat) (unbound : ∀ n e, item ≠ .bind (some n) e) :
     PegModel.recognizeEnv grammar env (fuel + 1) (.choice [[item]]) input =
       PegModel.recognizeEnv grammar env fuel item input := by

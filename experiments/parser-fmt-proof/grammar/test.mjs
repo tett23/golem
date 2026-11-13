@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 58, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 56, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -98,6 +98,7 @@ try {
   assert.doesNotMatch(strict.stderr, /^unsupported RangeExpr choice .*: &'\.\.\.'/m,
     'a leading range operator throws range_end before parsing either endpoint');
   assert.doesNotMatch(strict.stderr, /^unsupported (SplatArgument|ExprCtx) choice /m);
+  assert.doesNotMatch(strict.stderr, /^unsupported (ProseSlot|SkippedArgs) choice /m);
   const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');
   const singleRefMutation = original.replace(/^KeywordLiteral <- .*$/m,
     'KeywordLiteral <- Keyword Ws? { () }');
@@ -520,6 +521,8 @@ try {
   assert.equal(wordProof.status, 0, wordProof.stderr);
   const growthSource = join(here, 'LeftRecursionTotal.lean');
   const growthEnv = { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' };
+  const repetitionProof = spawnSync(lean, [join(here, 'RuleRepetition.lean')], growthEnv);
+  assert.equal(repetitionProof.status, 0, repetitionProof.stdout + repetitionProof.stderr);
   const chainProof = spawnSync(lean, [join(here, 'ReferenceSequence.lean')], growthEnv);
   assert.equal(chainProof.status, 0, chainProof.stdout + chainProof.stderr);
   const listMarkProof = spawnSync(lean, [join(here, 'ListMarkTotal.lean')], growthEnv);
@@ -590,7 +593,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 19, negative mutations 56, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 20, negative mutations 56, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

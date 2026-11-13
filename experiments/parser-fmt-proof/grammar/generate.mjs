@@ -462,6 +462,10 @@ if (!fragment && ast) {
       const opening = rule.name === 'ExprCtx' ? 'ExprOpen' : 'Splat';
       if (singleUnitRuleMatches(rule, opening + ' ExprBody (RBr)^close')) continue;
     }
+    if (rule.name === 'SkippedArgs' && singleUnitRuleMatches(rule, '(Sp PosArg)+')) continue;
+    if (rule.name === 'ProseSlot' && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
+        rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === 'SlotInline(ind)*') continue;
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&
