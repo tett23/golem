@@ -42,7 +42,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Assemble.Numbering (titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
@@ -508,7 +508,7 @@ blockHtml c (Block sp lbl blang body) = case body of
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
-        num = numberSpan c (info >>= hiNumberText)
+        num = numberSpan c sp (Just l) (foldMap inlineText is) (info >>= hiNumberText)
      in "<" <> tag <> " id=\"" <> escapeXml anchor <> "\">" <> num <> inlines c is <> "</" <> tag <> ">\n"
   BulletList items -> "<ul" <> idAttr lbl <> listClass (NE.length . hlBullets) <> ">\n" <> T.concat (map (item inList Nothing) items) <> "</ul>\n"
   OrderedList items ->
@@ -537,7 +537,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         styleClass = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") (tableStyle t)
         -- the caption, the first child whichever side it is on (docs/adr/0262)
         caption = case tableCaption t of
-          Just is -> "<caption>" <> numberSpan c (Map.lookup sp (bookTables (cBook c))) <> inlines c is <> "</caption>\n"
+          Just is -> "<caption>" <> numberSpan c sp Nothing (foldMap inlineText is) (Map.lookup sp (bookTables (cBook c))) <> inlines c is <> "</caption>\n"
           Nothing -> ""
         colgroup
           | null (tableWidths t) = ""
@@ -550,7 +550,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         -- a caption or a file name: a figure (golem-driver ADR 0023)
         wrapped = isJust (codeCaption code) || isJust (codeFile code)
         caption =
-          [ "<figcaption>" <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
+          [ "<figcaption>" <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, Nothing) (bookTitleSeparators (cBook c))) n (foldMap inlineText is))) (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
           | Just is <- [codeCaption code]
           ]
         file = ["<div class=\"code-file\">" <> escapeXml f <> "</div>" | Just f <- [codeFile code]]
@@ -572,7 +572,7 @@ blockHtml c (Block sp lbl blang body) = case body of
           then "<figure class=\"listing\"" <> idAttr lbl <> ">" <> T.concat (caption <> file) <> pre <> "</figure>\n"
           else pre <> "\n"
   FigureBlock f ->
-    let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
+    let num = numberSpan c sp Nothing (T.concat [foldMap inlineText is | Block _ _ _ (Paragraph _ is) <- figCaption f]) (Map.lookup sp (bookFigures (cBook c)))
         -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
         cap = T.concat [maybe id (\l x -> "<span" <> langAttrs l <> ">" <> x <> "</span>") pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
         -- no figcaption without a number and a caption (docs/adr/0200)
@@ -609,8 +609,8 @@ blockHtml c (Block sp lbl blang body) = case body of
 {- | The number of a heading or a caption in its span, and the separator
 of the language of the book after it as text (golem-html ADR 0002).
 -}
-numberSpan :: Ctx -> Maybe Text -> Text
-numberSpan c = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>" <> escapeXml (numberSeparator (hcLanguage (cCfg c)) n))
+numberSpan :: Ctx -> SrcSpan -> Maybe Int -> Text -> Maybe Text -> Text
+numberSpan c sp level title = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>" <> escapeXml (titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, level) (bookTitleSeparators (cBook c))) n title))
 
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
@@ -632,7 +632,7 @@ toc c depth =
           <> "\"><a href=\""
           <> linkTo c (teFile e) (teAnchor e)
           <> "\">"
-          <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (teNumber e)
+          <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators (cBook c))) n (foldMap inlineText (teTitle e)))) (teNumber e)
           <> inlines c {cInLink = True} (teTitle e)
           <> "</a></li>\n"
       | e <- bookToc (cBook c),
@@ -1445,7 +1445,7 @@ indexPage cfg ft book =
               <> "#"
               <> escapeXml (teAnchor te)
               <> "\">"
-              <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
+              <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage cfg) (Map.lookup (teFile te, Just (teLevel te)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle te)))) (teNumber te)
               <> titleWithLanguages (teTitle te)
               <> "</a></li>\n"
           | -- within the depth of @toc (golem-epub ADR 0002)

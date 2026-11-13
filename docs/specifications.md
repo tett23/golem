@@ -1576,11 +1576,15 @@ HTML と EPUB の本文は、階層 l の見出しを `<h{l}>` で書く。
 番号の表記（「第 1 章」か「1.」か）はスタイルで決める。
 見出しの文字列は自由に付けてよく、処理系は文字列の中身を検査しない。
 
-番号と題のあいだには、本の言語で決まる区切りを置く（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）。
+番号と題のあいだの既定の区切りは、本の言語で決まる（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）。
 `manifest.toml` の `[metadata] language` の主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` なら全角の空白（U+3000）、それ以外の言語なら半角の空白（U+0020）である。
 番号の文字列が空白（U+0020、U+3000、タブ）で終わるときは、区切りを足さない。
 `number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
-番号の書式は区切りを変えないので、同じ本の中では章も節も同じ区切りになる。
+番号と題が両方ある場合、`number-title-separator` に文字列を指定すると、その文字列を一度だけ挿入する（[Golem ADR 0372](adr/0372-number-title-separator.md)）。
+`[paragraph-styles.body]` は見出しと、それを継承するキャプションの区切りを決める。
+特定の階層の見出しでは `[headings.1]` などで、図、コード、表のキャプションでは `[paragraph-styles.caption]` で上書きする。
+空文字列を指定するか、番号または題が空なら区切りを挿入しない。
+目次と柱でも元の見出しの区切りを使う。
 
 この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、表のキャプション（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
 HTML の見出しとキャプションでは、区切りを `<span class="number">` の外に、題の前のテキストとして書く。
@@ -3828,7 +3832,7 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 | 差し込み | 値 |
 |---|---|
 | `{heading.<l>.short}` | 階層 l の見出しの短い題 |
-| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、本の言語で決まる区切り（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）、短い題。番号のない見出しは短い題だけ |
+| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、元の見出しの区切り（[Golem ADR 0372](adr/0372-number-title-separator.md)）、短い題。番号のない見出しは短い題だけ |
 | `{heading.<l>.number}` | 階層 l の見出しの番号の表記だけ。番号のない見出しでは値がない |
 | 上の三つの末尾に `.last` | ページの中の見出しの選び方を「最後」にする |
 | `{meta.<キー>}` | マニフェストの `[metadata]` の値。キーは `title`、`title_reading`、`edition`、`publisher`、`date`、`language`、`id` |

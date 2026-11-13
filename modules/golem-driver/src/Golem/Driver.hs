@@ -349,7 +349,15 @@ assembleResults channels style manifest project projectDiags results
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
-       in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
+          separators =
+            Map.fromList
+              [ ((fid, level), separator)
+              | (fid, r) <- Map.toList results,
+                let local = withLocalStyles style (erStyles r)
+                    paragraph name = paraStyle local (Just name) >>= psNumberTitleSeparator,
+                (level, Just separator) <- (Nothing, paragraph "caption") : [(Just l, (Map.lookup l (stHeadings local) >>= hsNumberTitleSeparator) <|> paragraph "body") | l <- [1 .. 6]]
+              ]
+       in (Just book {bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: Files -> FilePath -> IO (Maybe Text)
 readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p

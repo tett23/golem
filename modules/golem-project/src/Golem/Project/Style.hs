@@ -390,7 +390,8 @@ data ParaStyleDef = ParaStyleDef
     -} psShrinkOrder :: !(Maybe [[Text]]),
     psStretchOrder :: !(Maybe [[Text]]),
     -- | whether Golem shapes JLReq's punctuation with fwid (docs/adr/0302)
-    psPunctuationWidth :: !(Maybe PunctuationWidth)
+    psPunctuationWidth :: !(Maybe PunctuationWidth),
+    psNumberTitleSeparator :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -529,7 +530,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -916,6 +917,7 @@ overPara u b =
     (psShrinkOrder u <|> psShrinkOrder b)
     (psStretchOrder u <|> psStretchOrder b)
     (psPunctuationWidth u <|> psPunctuationWidth b)
+    (psNumberTitleSeparator u <|> psNumberTitleSeparator b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1057,7 +1059,8 @@ data HeadingStyle = HeadingStyle
     hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
-    hsRuleAfter :: !(Maybe RuleSpec)
+    hsRuleAfter :: !(Maybe RuleSpec),
+    hsNumberTitleSeparator :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -2033,7 +2036,8 @@ instance FromValue ParaStyleDef where
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw)
+    separator <- optKey "number-title-separator"
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw separator)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -2139,7 +2143,8 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
+    separator <- optKey "number-title-separator"
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) separator)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -3067,6 +3072,7 @@ codeStyleChecks s =
           [ ("based-on", isJust (psBasedOn d)),
             ("line-breaks", isJust (psLineBreaks d)),
             ("space-between", isJust (psSpaceBetween d)),
+            ("number-title-separator", isJust (psNumberTitleSeparator d)),
             ("indent", isJust (psIndent d)),
             ("first-line-indent", isJust (psFirstLineIndent d)),
             ("regex-styles", isJust (psRegexStyles d)),
@@ -3581,6 +3587,7 @@ styleSchema =
         [ ("font", ref FontRoles),
           ("size", dim),
           ("number", str),
+          ("number-title-separator", str),
           ("page-break", enum pageBreakValues),
           ("lines", int),
           -- retired (golem-driver ADR 0014): G03019
@@ -3709,6 +3716,7 @@ paraStyleNode =
         ("size", dim),
         ("line-breaks", enum lineBreaksValues),
         ("space-between", int),
+        ("number-title-separator", str),
         ("space-before", int),
         ("space-after", int),
         ("align", enum alignValues),

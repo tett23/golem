@@ -682,7 +682,7 @@ the table of contents, its number, the separator and its short title, as
 plain text, ruby its base alone.
 -}
 outlineTitle :: PdfInput -> TocEntry -> Text
-outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (numberedTitle (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
+outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (bookNumberedTitle (piBook inp) (Just (teLevel e)) (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
 
 {- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
 that none of the faces of its characters has, once for each font file and

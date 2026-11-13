@@ -209,6 +209,11 @@ TOML の基本の文字列（[code: "..."]）ではバックスラッシュを�
 @label styles
 ## 段落スタイルと文字スタイル
 
+番号と題の間に入れる文字列は [code: number-title-separator] で指定します。
+たとえば [code: \[headings.1\]] に [code: number-title-separator = " — "] と書くと、章見出しの番号と題の間にダッシュが入り、目次と柱も同じ区切りになります。
+図、コード、表では [code: \[paragraph-styles.caption\]] に書きます。
+空文字列を指定すると、番号のすぐ後に題が続きます。
+
 段落の体裁は段落スタイル[index reading=だんらくすたいる: 段落スタイル]に、文字の体裁は文字スタイル[index reading=もじすたいる: 文字スタイル]にまとめます。
 InDesign の段落スタイルと文字スタイルに当たり、ほかのスタイルを引き継ぐ [code: based-on] は、InDesign の「基準」に当たります。
 
@@ -830,7 +835,7 @@ regex-styles = [
 [code: <階層>] は見出しの階層の数です。
 
 - [code: "heading.<階層>.short"]：その階層の見出しの題です。ページの中で始まった最初の見出しを使い、なければその前から続く見出しを使います。
-- [code: "heading.<階層>.numbered"]：番号と題を、見出しの番号と同じ本の言語で決まる区切りでつないだものです（日本語の本なら「第3章　原稿の記法」など）。
+- [code: "heading.<階層>.numbered"]：番号と題を、元の見出しと同じ区切りでつないだものです（日本語の本なら「第3章　原稿の記法」など）。
 - [code: "heading.<階層>.short.last"]、[code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。辞書の柱のような使い方です。
 - [code: "title"]：[code: manifest.toml] の書名です。
 - [code: "none"]：柱を出しません。

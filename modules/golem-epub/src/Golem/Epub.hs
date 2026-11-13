@@ -21,7 +21,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (Day, showGregorian)
 import Golem.Assemble
-import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Assemble.Numbering (titleSeparator)
 import Golem.Html
 import Golem.Syntax.Span
 import System.FilePath (takeExtension, (</>))
@@ -127,7 +127,7 @@ navDocument cfg ft book =
         <> "#"
         <> escapeXml (teAnchor e)
         <> "\">"
-        <> maybe "" (\n -> escapeXml (n <> numberSeparator (epLanguage cfg) n)) (teNumber e)
+        <> maybe "" (\n -> escapeXml (n <> titleSeparator (epLanguage cfg) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle e)))) (teNumber e)
         -- the language spans stay, for assistive technologies (docs/adr ADR 0187)
         <> titleWithLanguages (teTitle e)
         <> "</a>"

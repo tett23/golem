@@ -203,6 +203,8 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 ### 書体とスタイル
 
+見出しや図、コード、表のキャプションで番号と題を区切る文字列は、`style.toml` の `number-title-separator` で選べる（[Golem ADR 0372](docs/adr/0372-number-title-separator.md)）。
+
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。

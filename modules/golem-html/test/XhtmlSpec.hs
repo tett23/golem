@@ -87,6 +87,7 @@ bookOf bs =
       bookChapterOf = [],
       bookChannels = [],
       bookChannelDecls = Map.empty,
+      bookTitleSeparators = Map.empty,
       bookImages = Map.empty
     }
 
