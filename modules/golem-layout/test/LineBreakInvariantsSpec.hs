@@ -23,7 +23,6 @@ module LineBreakInvariantsSpec
   )
 where
 
-import Control.Monad (when)
 import Data.Bits (xor)
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (ord)
@@ -47,6 +46,7 @@ import LineBreakInvariants
 import Numeric (showHex)
 import System.Environment (lookupEnv)
 import Test.Tasty
+import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 import Text.Read (readMaybe)
 
@@ -862,7 +862,7 @@ fnv = foldl (\h c -> (h `xor` fromIntegral (ord c)) * 0x100000001b3) 0xcbf29ce48
 {- | R1 of docs/adr/0274: every run up to two parts, each input of lines up
 to 5 em, balanced and without a limit, broken and placed: the hash of
 'placedKey' of each. The golden file was written by the implementation
-before the ADR.
+before the ADR and accounts for the protected pair stretches of Golem ADR 0362.
 -}
 balancedLines :: Text
 balancedLines =
@@ -890,12 +890,10 @@ limitMisses maxWidth run =
 
 exhaustiveTests :: [TestTree]
 exhaustiveTests =
-  [ testCase "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts is broken and placed as before the ADR (test/golden/line-adjustment-balanced.tsv)" $ do
-      -- up to 'r1Depth', on pull requests too (docs/adr ADR 0286)
-      depth <- linesDepth
-      when (r1Depth depth > 0) $ do
-        want <- BL.readFile "test/golden/line-adjustment-balanced.tsv"
-        BL.fromStrict (TE.encodeUtf8 balancedLines) == want @? "the lines differ from test/golden/line-adjustment-balanced.tsv",
+  [ goldenVsString
+      "R1 (docs/adr/0274): balanced and without a limit, every input up to 2 parts has its recorded breaks and positions"
+      "test/golden/line-adjustment-balanced.tsv"
+      (pure (BL.fromStrict (TE.encodeUtf8 balancedLines))),
     testCase "R7 (docs/adr/0274): a stretch limit of 0, 1000 or 2500 changes no breaks, demerits nor pass of any input up to 2 parts (1 on pull requests)" $ do
       -- 1 on pull requests, as the normal form: up to 2 parts took 4 seconds of the area on a laptop (docs/adr/0208, its section 4)
       depth <- linesDepth

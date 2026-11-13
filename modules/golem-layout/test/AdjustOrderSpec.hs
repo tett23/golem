@@ -43,7 +43,7 @@ adjustOrderTests =
       testGroup "A3 to A8 on lines made by hand" lineTests,
       testGroup "A1 to A6 on every small input (docs/adr/0209)" enumerationTests,
       goldenVsString
-        "A9: the items of every input up to 2 parts, the kinds and the sizes of the glue left out, are those before the ADR (test/golden/adjust-order-items.tsv)"
+        "A9: the items of every input up to 2 parts, the kinds and the sizes of the glue left out, have the recorded spacing (test/golden/adjust-order-items.tsv)"
         "test/golden/adjust-order-items.tsv"
         (pure (BL.fromStrict (TE.encodeUtf8 itemLines)))
     ]
