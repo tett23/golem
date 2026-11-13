@@ -6769,6 +6769,55 @@ theorem needSpaceSome :
 /- One need, one space and one following line. The line can be kept when
    both the need and the space fit; otherwise the space alone or neither
    is placed. This is the arithmetic core of the simplest P1/P7 input. -/
+/- The occupied column from the Alloy counterexample has two of four rows
+   used. The source positions are need(2), heading, recto, recto. Text ranks
+   are one less than the source positions of the three headings. There are
+   no figures, blanks, spaces or paragraphs. Consequently both placement
+   sets are empty, base27 reduces to fits, and orphan, widow, and the line
+   clause of keepHeading21 quantify over empty sets. -/
+namespace NeedHeadingConflict
+
+def heading (p : Nat) : Prop := 1 ≤ p ∧ p ≤ 3
+def here (brk pos : Nat) : Prop := pos - 1 < brk
+def fits (brk : Nat) : Prop := 2 + brk ≤ 4
+
+/- needNext contains only the first heading. Both placedBefore counts are
+   two, the first part has size one, and there are no earlier text items. -/
+def needMet (brk : Nat) : Prop := here brk 1 → 2 ≤ 4 - 2
+def spaceKeeps (brk : Nat) : Prop := 2 ≤ 4 - 2 → 2 + 1 ≤ 4 → here brk 1
+
+def keepHeading21 (brk : Nat) : Prop :=
+  headingRunKeep (fun p => p ≤ 3) heading heading (here brk)
+    (fun _ => False) (fun _ => False) (fun _ => True)
+
+theorem first_keeps_last (brk : Nat) (keeps : keepHeading21 brk)
+    (first : here brk 1) : here brk 3 := by
+  have last := keeps 1 (by unfold heading; decide) first (by simp) 3 (by unfold heading; decide) (by decide)
+    (by intro i _ lower upper; exact ⟨by omega, by omega⟩)
+  exact last.1 (by unfold heading; decide)
+
+end NeedHeadingConflict
+
+theorem needSpaceAllButGreedy :
+    (∃ b : Fin 4, NeedHeadingConflict.fits b.val ∧
+      NeedHeadingConflict.needMet b.val ∧ NeedHeadingConflict.spaceKeeps b.val) ∧
+    (∃ b : Fin 4, NeedHeadingConflict.fits b.val ∧ NeedHeadingConflict.keepHeading21 b.val) ∧
+    (∀ b : Fin 4, ¬ (NeedHeadingConflict.fits b.val ∧
+      NeedHeadingConflict.needMet b.val ∧ NeedHeadingConflict.spaceKeeps b.val ∧
+      NeedHeadingConflict.keepHeading21 b.val)) := by
+  refine ⟨⟨1, by unfold NeedHeadingConflict.fits; decide, by intro _; decide,
+    by intro _ _; unfold NeedHeadingConflict.here; decide⟩, ?_, ?_⟩
+  · refine ⟨0, by unfold NeedHeadingConflict.fits; decide, ?_⟩
+    intro h _ placed
+    exact (Nat.not_lt_zero _ placed).elim
+  · intro b all
+    have first := all.2.2.1 (by decide) (by decide)
+    have last := NeedHeadingConflict.first_keeps_last b.val all.2.2.2 first
+    have bound := all.1
+    change 2 < b.val at last
+    change 2 + b.val ≤ 4 at bound
+    omega
+
 def needSpaceSimpleBase (capacity used : Nat) (brk : Fin 3) : Prop :=
   used + brk.val ≤ capacity
 

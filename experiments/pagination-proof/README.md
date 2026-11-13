@@ -2,7 +2,7 @@
 
 このディレクトリは、[Golem ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の改ページ証明を作る場所である。`check.sh` は Alloy の42コマンドと期待値の一覧が一致することを確かめ、各コマンドに対応する Lean の宣言を要求する。
 
-現在の `Pagination.lean` には、42コマンドのうち39コマンドと同名の宣言がある。`blankFigureOrder` は、本文を置かない境界の配置を構成し、図版が0〜2枚で行アキが0〜1個の入力について、図版規則、行アキ規則、段容量を同時に満たすことを証明する。`blankRules25` は、空段の先頭内容を本文・図版・内容なしに分け、旧行アキ規則と段容量、本文と図版の順序、空段から先頭内容を送らない規則を同時に満たす配置を証明する。`figureEmpty` と `figureOrder` は行アキのない入力をこの証明から導く。`keep21` はこの配置に、段落境界の orphan、widow、見出しの規則を接続する。`keepHeadingEmpty`、`keepHeadingFigure`、`keepHeadingOrphan`、`keepHeadingWidow`、`orphanEmpty`、`widowEmpty`、`orphanWidow`、`noneMeetsAllButGreedy` は、この同じ配置から対象の規則を取り出す。`waitingBlankNone` と `waitingBlankAllButGreedy` は、待機中の図版を飛ばす現在の行アキ規則について同様の配置を構成する。段容量と図版寸法に有限の上限はないが、元の Alloy 入力と Lean の入力が全体として同値であることは未証明である。
+現在の `Pagination.lean` には、42コマンドのうち40コマンドと同名の宣言がある。`blankFigureOrder` は、本文を置かない境界の配置を構成し、図版が0〜2枚で行アキが0〜1個の入力について、図版規則、行アキ規則、段容量を同時に満たすことを証明する。`blankRules25` は、空段の先頭内容を本文・図版・内容なしに分け、旧行アキ規則と段容量、本文と図版の順序、空段から先頭内容を送らない規則を同時に満たす配置を証明する。`figureEmpty` と `figureOrder` は行アキのない入力をこの証明から導く。`keep21` はこの配置に、段落境界の orphan、widow、見出しの規則を接続する。`keepHeadingEmpty`、`keepHeadingFigure`、`keepHeadingOrphan`、`keepHeadingWidow`、`orphanEmpty`、`widowEmpty`、`orphanWidow`、`noneMeetsAllButGreedy` は、この同じ配置から対象の規則を取り出す。`waitingBlankNone` と `waitingBlankAllButGreedy` は、待機中の図版を飛ばす現在の行アキ規則について同様の配置を構成する。段容量と図版寸法に有限の上限はないが、元の Alloy 入力と Lean の入力が全体として同値であることは未証明である。
 
 `decidedSome` は、容量3行の空段に改丁見出し1行と1行段落を続け、両方を置く配置を証人とする。手元の Alloy CLI で同じ容量、使用済み行数0、本文の位置0・1、区切り位置2を固定して実行し、解を確認した。`keepAllSome` は、容量3行、使用済み1行、本文1行の配置を証人とする。同じ入力を Alloy CLI で固定して解を確認した。
 
@@ -46,6 +46,13 @@ done
 
 `keepNone` は、段落の最初の行を含む任意の行位置列と任意の keep 指定について、旧図版規則の配置と keep 指定を同時に満たす証人を構成する。Lean では、本文を置かない場合に分割を生じさせず、空段に最初の本文行を置く場合に分割された段落が段頭で始まることを証明する。Alloy の `para.q` と Lean の行位置列の対応は未証明である。
 
+`needSpaceAllButGreedy` は、容量4行の段を2行使ったところに `@need-lines 2` と見出し3個が続き、後ろの2個が改丁見出しである入力で、規則が両立しないことを示す。
+P7 は最初の見出しをこの段に求める。
+段はすでに使っているため、旧 `keepHeading21` は続く改丁見出しも同じ段に求める。
+残り2行に見出し3個は収まらない。
+Lean で本文の区切り4通りのすべてについてこの衝突を証明し、元の Alloy 述語に同じ原稿と4配置を固定して反例を確認した。
+Golem は改丁見出しの手前で見出し列を切り、三つの見出しを1・3・5ページ目に置いた。
+
 `needMore27` は、容量3行、使用済み1行、`need-lines` 1行、スペース1行、`need-lines` 3行、段落1行の入力で旧 P7 と P1 を同時に満たす配置がないことを示す。Alloy でも同じ入力と配置3通りを固定して解を確認した。
 
 `needMoreSome` は、容量4行で同じ配置の新 P7 が両方の `need-lines` を満たす証人を示す。`needSpaceSome` は、容量3行、使用済み1行、`need-lines` 2行、スペース1行、段落1行の証人を示す。両方の入力は Alloy でも固定して解を確認した。
@@ -56,7 +63,7 @@ done
 
 図版寸法の証明では、`tallFigure` の旧規則が段より高い図版と衝突することを任意の自然数の高さについて示す。縮小後はこの衝突が解消する。キャプション付き図版については、入力の行数から占有できる高さの上限を証明する。
 
-残る3コマンド、既存宣言と元の述語の同値性、キャプションの行分割、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。`check.sh` は `needMoreNone`、`needSpaceAllButGreedy`、`needSpaceNone` の欠落を報告して失敗する。移行が完了するまで Alloy の定期実行と既存の参照を維持する。
+残る2コマンド、既存宣言と元の述語の同値性、キャプションの行分割、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。`check.sh` は `needMoreNone` と `needSpaceNone` の欠落を報告して失敗する。移行が完了するまで Alloy の定期実行と既存の参照を維持する。
 
 手元では次のコマンドで Lean 4.7.0 の証明を検査する。
 

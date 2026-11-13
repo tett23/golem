@@ -1564,6 +1564,15 @@ spaceAfterNeedTests =
           ps = paginate 1 3 flows
       placed ps @?= [(1, 0, [SLine 0, SLine 1])]
       brokenOf [P1, P2] flows ps @?= [],
+    testCase "Golem ADR 0352 I3: needSpaceAllButGreedy stops the heading run before each recto" $ do
+      let input = Input 4 1 [EPara 2, ENeedLines, EHeading, ERecto, ERecto]
+      placedIn input
+        @?= [ (1, 0, [SLine 0, SLine 1, SHeading 2 1]),
+              (2, 0, []),
+              (3, 0, [SHeading 3 1]),
+              (4, 0, []),
+              (5, 0, [SHeading 4 1])
+            ],
     testCase "P1: the paragraph after need-lines and two spaces goes past the figure sent on, to page 3" $ do
       let input = Input 4 1 [EPara 2, EFigure 3, ENeedLines, ESpace, ESpace, EPara 1]
           ps = paginateInput input

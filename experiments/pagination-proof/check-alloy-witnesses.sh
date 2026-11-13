@@ -140,13 +140,22 @@ run headingBlankFigureParagraphFixture {
     orphanH[p] and widowH[p] and keepHeading21[p] and
     lineAfterHeadings[p]
 } for 6 but 5 Int, exactly 16 Placement, exactly 5 Item
+run needHeadingConflictFixture {
+  inDomain27
+  Col.cap = 4 and Col.used = 2
+  no Figure and no Blank and no Space and no Line
+  one n: Need | n.pos = 0
+  some h: Heading - Recto | h.pos = 1
+  some r, s: Recto | r.pos = 2 and s.pos = 3
+  no p: Placement | base27[p] and needMet[p] and spaceKeeps[p] and orphan[p] and widow[p] and keepHeading21[p]
+} for 4 but 5 Int, exactly 4 Item, exactly 4 Placement
 EOF
 
 for command in decidedFixture keepAllFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
     rectoRunDifferenceFixture headingRunFixture \
-    headingBlankFigureParagraphFixture; do
+    headingBlankFigureParagraphFixture needHeadingConflictFixture; do
   JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=$tmp" "${ALLOY:-alloy6}" exec -q -n -t text \
     -c "$command" -o - "$tmp/witnesses.als" > "$tmp/result"
   if ! grep -q '^---Trace---' "$tmp/result"; then
