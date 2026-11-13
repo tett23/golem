@@ -7192,6 +7192,42 @@ def figures27Model (count capacity used : Nat) (ready : Nat → Bool)
           used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f = 0 ∨
           n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f))))
 
+theorem I3_figure_static_rule_iff_model
+    (count capacity used : Nat) (ready : Nat → Bool)
+    (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (blankBefore : Nat → Bool) (block : Nat → Prop)
+    (needs : List (Nat × Nat)) (kept : Nat → Bool)
+    : figuresRule count kept (fun f => ready f = true)
+        (needFigureStatic capacity used textBefore nonSpaceBefore size positions blankBefore block needs) ↔
+      figures27Model count capacity used ready textBefore nonSpaceBefore size positions
+        blankBefore block needs kept := by
+  have one (f : Nat) :
+      (ready f = true ∧ (∀ g, g < f → kept g = true) ∧
+        needFigureStatic capacity used textBefore nonSpaceBefore size positions blankBefore block needs f) ↔
+      (ready f = true ∧ (∀ g, g < f → kept g = true) ∧
+        figureHasRoom capacity used textBefore size blankBefore f ∧
+        (∀ n ∈ needs, needTargetsFigure n.1 positions block f (figureWaits kept) →
+          used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f = 0 ∨
+          n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f))) := by
+    constructor
+    · rintro ⟨r, prior, fits, allowed⟩
+      refine ⟨r, prior, fits, ?_⟩
+      intro n member target
+      have same : priorFigureLines (fun g => if kept g then size g else 0) f =
+          priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
+      rw [same]
+      exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mp target)
+    · rintro ⟨r, prior, fits, allowed⟩
+      refine ⟨r, prior, fits, ?_⟩
+      intro n member target
+      have same : priorFigureLines (fun g => if kept g then size g else 0) f =
+          priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
+      rw [← same]
+      exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mpr target)
+
+  exact ⟨fun rule f h => (rule f h).trans (one f),
+    fun model f h => (model f h).trans (one f).symm⟩
+
 private theorem figures27_of_static
     (count capacity used : Nat) (ready : Nat → Bool)
     (textBefore nonSpaceBefore size positions : Nat → Nat)
@@ -7201,26 +7237,39 @@ private theorem figures27_of_static
       (needFigureStatic capacity used textBefore nonSpaceBefore size positions blankBefore block needs)) :
     figures27Model count capacity used ready textBefore nonSpaceBefore size positions
       blankBefore block needs kept := by
-  intro f bound
-  have eq : kept f = true ↔ ready f = true ∧
-      (∀ g, g < f → kept g = true) ∧ needFigureStatic capacity used textBefore nonSpaceBefore size positions blankBefore block needs f := by
-    exact rule f bound
-  rw [eq]
-  constructor
-  · rintro ⟨r, prior, fits, allowed⟩
-    refine ⟨r, prior, fits, ?_⟩
-    intro n member target
-    have same : priorFigureLines (fun g => if kept g then size g else 0) f =
-        priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
-    rw [same]
-    exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mp target)
-  · rintro ⟨r, prior, fits, allowed⟩
-    refine ⟨r, prior, fits, ?_⟩
-    intro n member target
-    have same : priorFigureLines (fun g => if kept g then size g else 0) f =
-        priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
-    rw [← same]
-    exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mpr target)
+  exact (I3_figure_static_rule_iff_model count capacity used ready textBefore nonSpaceBefore size
+    positions blankBefore block needs kept).mp rule
+
+/-- For a fixed text break and blank charge, P27 determines every figure. -/
+theorem I3_need_figure_model_is_greedy
+    (count capacity used : Nat) (ready room kept : Nat → Bool)
+    (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (blankBefore : Nat → Bool) (block : Nat → Prop) (needs : List (Nat × Nat))
+    (roomEq : ∀ f, room f = true ↔ needFigureStatic capacity used textBefore nonSpaceBefore
+      size positions blankBefore block needs f)
+    (model : figures27Model count capacity used ready textBefore nonSpaceBefore size positions
+      blankBefore block needs kept) :
+    ∀ f, f < count → kept f = greedyFigure ready room f := by
+  have static := (I3_figure_static_rule_iff_model count capacity used ready textBefore nonSpaceBefore
+    size positions blankBefore block needs kept).mpr model
+  intro f
+  induction f using Nat.strongInductionOn with
+  | ind f ih =>
+      intro bound
+      apply Bool.eq_iff_iff.mpr
+      rw [static f bound, I3_greedyFigures_rule count ready room f bound]
+      dsimp only
+      rw [roomEq f]
+      have prior : (∀ g, g < f → kept g = true) ↔
+          (∀ g, g < f → greedyFigure ready room g = true) := by
+        constructor
+        · intro allKept g lt
+          rw [← ih g lt (Nat.lt_trans lt bound)]
+          exact allKept g lt
+        · intro allGreedy g lt
+          rw [ih g lt (Nat.lt_trans lt bound)]
+          exact allGreedy g lt
+      rw [prior]
 
 theorem I3_need_figure_and_blank_exist
     (count capacity used : Nat) (earlierText : Bool) (ready beforeBlank : Nat → Bool)
@@ -9026,6 +9075,62 @@ theorem I3_missed_text_has_another_text (items : List SourceItem) (ordered : sou
     have placed := (I3_text_here_iff_source_rank items ordered t b member).mpr earlier
     simp [missed] at placed
   omega
+
+/-- On an empty column the first content is retained. This fixes whether the
+    source blank is at the top across all feasible choices of the break. -/
+theorem I3_blank_top_fixed_by_first_content (items : List SourceItem)
+    (ordered : sourceOrdered items) (used blank : Nat) (here kept : Nat → Bool)
+    (retain : used = 0 → ∀ i, firstContent items = some i →
+      match i with
+      | .text p => here p = true
+      | .figure p => kept p = true
+      | _ => False) :
+    blankAtTopSource used blank items here kept =
+      blankAtTopSource used blank items (fun _ => true) (fun _ => true) := by
+  by_cases empty : used = 0
+  · unfold blankAtTopSource
+    simp only [empty, decide_True, Bool.true_and]
+    congr 1
+    apply Bool.eq_iff_iff.mpr
+    constructor
+    · intro h
+      obtain ⟨i, member, before⟩ := List.any_eq_true.mp h
+      apply List.any_eq_true.mpr
+      refine ⟨i, member, ?_⟩
+      cases i <;> simp_all [keptBeforeBlank]
+    · intro h
+      obtain ⟨i, member, before⟩ := List.any_eq_true.mp h
+      have contents : isContent i ∧ sourcePos i < blank := by
+        cases i <;> simp_all [keptBeforeBlank, isContent, sourcePos]
+      cases first : firstContent items with
+      | none => exact False.elim (I3_firstContent_none_has_no_content items first i member contents.1)
+      | some start =>
+          obtain ⟨content, belongs, earliest⟩ := I3_firstContent_is_earliest items ordered start first
+          have lt := Nat.lt_of_le_of_lt (earliest i member contents.1) contents.2
+          have retained := retain empty start first
+          apply List.any_eq_true.mpr
+          refine ⟨start, belongs, ?_⟩
+          cases start <;> simp_all [keptBeforeBlank, isContent, sourcePos]
+  · simp [blankAtTopSource, empty]
+
+theorem I3_blank_top_same_for_every_admissible_break
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (used blank b : Nat) (config : FigureConfig) (kept : Nat → Bool)
+    (retain : firstContentNotSent used b items config kept) :
+    blankAtTopSource used blank items (textHereAtBreak items b) (figureKeptAtPos config kept) =
+      blankAtTopSource used blank items (fun _ => true) (fun _ => true) := by
+  apply I3_blank_top_fixed_by_first_content items ordered
+  intro empty item first
+  have retained := retain empty item first
+  cases item with
+  | text p =>
+      have le := (I3_firstContent_text_before_figures items ordered p first).2.1
+      have placed := (I3_break_one_text_iff_first items p).mpr le
+      simp [textHereAtBreak] at placed ⊢
+      omega
+  | figure p => exact retained
+  | blank p => exact retained
+  | need p => exact retained
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
