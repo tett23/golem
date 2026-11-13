@@ -7880,6 +7880,142 @@ theorem I3_figure_rows_before_missed_target (count : Nat) (kept : Nat → Bool)
       simp only [keptRowsThrough, exactAt n (by omega), ih (by omega)]
   exact eq count (Nat.le_refl _)
 
+/- Extending a text break cannot change which need applies to a text
+   already placed. A figure before that text had also been reached at
+   the old break, so its room check and whether it was waiting are the
+   same at both breaks. The same argument also covers rank b, the one
+   new text placed when the break advances from b to b+1. -/
+private theorem kept_before_reached_text (items : List SourceItem) (positions : Nat → Nat)
+    (room : Nat → Bool) (b c t f : Nat)
+    (rankOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (old : textBeforeCount items t ≤ b) (extendsTo : b ≤ c) (before : positions f < t) :
+    let rank := fun i => textBeforeCount items (positions i)
+    let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+    kept b f = kept c f := by
+  let rank := fun i => textBeforeCount items (positions i)
+  let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+  have ranks : ∀ i j, i ≤ j → rank i ≤ rank j := fun i j le =>
+    I3_text_before_source_monotone items _ _ (rankOrder i j le)
+  have prev := I3_text_before_source_monotone items _ _ (Nat.le_of_lt before)
+  have rb : rank f ≤ b := Nat.le_trans prev old
+  have rc : rank f ≤ c := Nat.le_trans rb extendsTo
+  have bh := I3_figure_break_prefix rank ranks room b f
+  have ch := I3_figure_break_prefix rank ranks room c f
+  have equiv : kept b f = true ↔ kept c f = true := by
+    change greedyFigure _ _ _ = true ↔ greedyFigure _ _ _ = true
+    rw [bh, ch]
+    simp [rb, rc]
+  change kept b f = kept c f
+  cases hb : kept b f <;> cases hc : kept c f <;> simp [hb, hc] at equiv ⊢
+
+theorem I3_need_text_target_stable (items : List SourceItem) (positions : Nat → Nat)
+    (room : Nat → Bool) (b c t n count : Nat) (block : Nat → Prop)
+    (rankOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (old : textBeforeCount items t ≤ b) (extendsTo : b ≤ c) :
+    let rank := fun f => textBeforeCount items (positions f)
+    let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+    needTargetsText n t block positions count (kept b) ↔
+      needTargetsText n t block positions count (kept c) := by
+  let rank := fun f => textBeforeCount items (positions f)
+  let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+  have stable : ∀ f, positions f < t → kept b f = kept c f :=
+    fun f before => kept_before_reached_text items positions room b c t f rankOrder old extendsTo before
+  have wait : ∀ f, positions f < t → (figureWaits (kept b) f ↔ figureWaits (kept c) f) := by
+    intro f before
+    have earlier : ∀ g, g < f → kept b g = kept c g := by
+      intro g prior
+      exact stable g (Nat.lt_of_le_of_lt (rankOrder g f (Nat.le_of_lt prior)) before)
+    constructor
+    · rintro ⟨sent, g, prior, firstSent⟩
+      exact ⟨(stable f before) ▸ sent, g, prior, (earlier g prior) ▸ firstSent⟩
+    · rintro ⟨sent, g, prior, firstSent⟩
+      exact ⟨(stable f before).symm ▸ sent, g, prior, (earlier g prior).symm ▸ firstSent⟩
+  change needTargetsText n t block positions count (kept b) ↔ _
+  constructor
+  · rintro ⟨nt, text, first, skips⟩
+    exact ⟨nt, text, first, fun f bound after before =>
+      (wait f before).mp (skips f bound after before)⟩
+  · rintro ⟨nt, text, first, skips⟩
+    exact ⟨nt, text, first, fun f bound after before =>
+      (wait f before).mpr (skips f bound after before)⟩
+
+theorem I3_figure_rows_stable_before_text (items : List SourceItem) (positions size : Nat → Nat)
+    (room : Nat → Bool) (b c t count : Nat)
+    (rankOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (old : textBeforeCount items t ≤ b) (extendsTo : b ≤ c) :
+    let rank := fun i => textBeforeCount items (positions i)
+    let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+    keptRowsThrough (fun i => kept b i && decide (positions i < t)) size count =
+      keptRowsThrough (fun i => kept c i && decide (positions i < t)) size count := by
+  let rank := fun i => textBeforeCount items (positions i)
+  let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+  have same : (fun i => kept b i && decide (positions i < t)) =
+      (fun i => kept c i && decide (positions i < t)) := by
+    funext i
+    by_cases before : positions i < t
+    · have eq := kept_before_reached_text items positions room b c t i rankOrder old extendsTo before
+      change kept b i = kept c i at eq
+      simp [before, eq]
+    · simp [before]
+  change keptRowsThrough _ _ _ = keptRowsThrough _ _ _
+  rw [same]
+
+theorem I3_text_rows_stable_before_reached_target (items : List SourceItem)
+    (ordered : sourceOrdered items) (space : Nat → Bool) (b c t : Nat)
+    (target : .text t ∈ items) (reached : textBeforeCount items t ≤ b) (extendsTo : b ≤ c) :
+    let rows := fun brk => ((sourceTextPositions items).filter
+      (fun p => decide (p < t) && !space p && textHereAtBreak items brk p)).length
+    rows b = rows c := by
+  have equal : (sourceTextPositions items).filter
+      (fun p => decide (p < t) && !space p && textHereAtBreak items b p) =
+      (sourceTextPositions items).filter
+      (fun p => decide (p < t) && !space p && textHereAtBreak items c p) := by
+    apply filter_eq_on_members
+    intro p pm
+    by_cases prior : p < t
+    · have tm := (I3_source_text_position_member items t).mpr target
+      have rank := I3_text_rank_preserves_order _ (I3_source_text_positions_ordered items ordered)
+        p t pm tm prior
+      have count := I3_count_earlier_text_eq_rank _ (I3_source_text_positions_ordered items ordered) t tm
+      have actual := I3_source_text_before_count items t
+      have text := (I3_source_text_position_member items p).mp pm
+      have old := (I3_text_here_iff_source_rank items ordered p b text).mpr (by omega)
+      have new := (I3_text_here_iff_source_rank items ordered p c text).mpr (by omega)
+      simp [old, new]
+    · simp [prior]
+  exact congrArg List.length equal
+
+def needAtPlacedText (used capacity count : Nat) (items : List SourceItem)
+    (positions size : Nat → Nat) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (brk : Nat) (kept : Nat → Bool) (target : Nat) : Prop :=
+  let rows := used + ((sourceTextPositions items).filter
+    (fun p => decide (p < target) && !space p && textHereAtBreak items brk p)).length +
+    keptRowsThrough (fun i => kept i && decide (positions i < target)) size count
+  ∀ need ∈ needs, needTargetsText need.1 target
+    (fun p => .text p ∈ items ∧ space p = false) positions count kept →
+    rows = 0 ∨ need.2 ≤ capacity - rows
+
+theorem I3_text_need_checks_preserved (used capacity count b c t : Nat)
+    (items : List SourceItem) (ordered : sourceOrdered items) (positions size : Nat → Nat)
+    (space room : Nat → Bool) (needs : List (Nat × Nat))
+    (rankOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (target : .text t ∈ items) (reached : textBeforeCount items t ≤ b) (extendsTo : b ≤ c) :
+    let kept := fun brk => greedyFigure (fun i => decide (textBeforeCount items (positions i) ≤ brk)) room
+    needAtPlacedText used capacity count items positions size space needs b (kept b) t ↔
+      needAtPlacedText used capacity count items positions size space needs c (kept c) t := by
+  have textRows := I3_text_rows_stable_before_reached_target items ordered space b c t target reached extendsTo
+  have figureRows := I3_figure_rows_stable_before_text items positions size room b c t count rankOrder reached extendsTo
+  dsimp only at textRows figureRows
+  dsimp only [needAtPlacedText]
+  rw [textRows, figureRows]
+  constructor
+  · intro old need member atNew
+    exact old need member ((I3_need_text_target_stable items positions room b c t _ count _
+      rankOrder reached extendsTo).mpr atNew)
+  · intro new need member atOld
+    exact new need member ((I3_need_text_target_stable items positions room b c t _ count _
+      rankOrder reached extendsTo).mp atOld)
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
