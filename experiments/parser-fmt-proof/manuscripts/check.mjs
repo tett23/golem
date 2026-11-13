@@ -64,6 +64,14 @@ function* cases() {
   yield ['\n\n', [], /fileBlocks = \[\]/u];
   yield ['\n \t\n\na\n\n\n', [], /fileBlocks = \[Paragraph \[Text "a"\]\]/u];
   yield ['\t\n \n \t', [], /fileBlocks = \[\]/u];
+  for (const [outer, inner, parent, child] of [
+    ['-', '+', 'BulletList', 'OrderedList'], ['+', '-', 'OrderedList', 'BulletList'],
+  ]) {
+    const input = outer + ' x\n  ' + inner + ' a\n  ' + inner + ' b\n';
+    const shape = parent + '\\s+- - Paragraph \\[Text "x"\\]\\s+- ' + child +
+      '\\s+\\[\\[Paragraph \\[Text "a"\\]\\], \\[Paragraph \\[Text "b"\\]\\]\\]';
+    yield [input, [], new RegExp(shape)];
+  }
 }
 
 // Compare each comment's text and its position in the non-trivia token

@@ -379,6 +379,8 @@ const blankLineProved = lineLeavesProved && blankRule?.params.length === 0 && bl
   blankRule.alts.length === 2 && blankRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
   describeItems(blankRule.alts[0].items) === 'Ws? Nl' && describeItems(blankRule.alts[1].items) === 'Ws !.';
 const spUsesWs = optionalRefNames.has('Sp') && rule('Sp') === 'Ws?';
+const listMarkersProved = literalNames.has('BulletMark') && rule('BulletMark') === "'-'" &&
+  literalNames.has('OrderedMark') && rule('OrderedMark') === "'+'";
 const indentRule = ast?.rules.find(rule => rule.name === 'Ind');
 const indentFullyProved = indentRule?.params.length === 1 && indentRule.params[0] === 'n' &&
   indentRule.templateParams.length === 0 && indentRule.alts.length === 2 &&
@@ -402,6 +404,11 @@ if (!fragment && ast) {
       if (rule.name === 'EOL' && spUsesWs &&
           rule.alts.length === 1 && describeItems(rule.alts[0].items) === 'Sp (Nl / !.)') continue;
     }
+    if (rule.name === 'ListMark' && listMarkersProved && rule.params.length === 1 && rule.params[0] === 'ordered' &&
+        rule.templateParams.length === 0 && rule.alts.length === 2 &&
+        rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
+        describeItems(rule.alts[0].items) === '&{ ordered == 0 } BulletMark' &&
+        describeItems(rule.alts[1].items) === '&{ ordered == 1 } OrderedMark') continue;
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&
