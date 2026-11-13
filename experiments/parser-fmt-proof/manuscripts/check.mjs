@@ -92,6 +92,8 @@ function* cases() {
   yield ['a##1%%n%%b\n', [[3, '"%%n%%"']], /Paragraph \[Text "a", NumberShorthand "##1", Text "b"\]/u];
   yield ['[= -(2+3)**2<30]\n', [],
     /EBinary\s+OpLt\s+EUnary\s+Negate\s+EBinary Pow \(EBinary Add \(ENat 2\) \(ENat 3\)\) \(ENat 2\)\s+ENat 30/u];
+  yield ['[= 8-3-2*6/3]\n', [],
+    /EBinary\s+Sub\s+EBinary Sub \(ENat 8\) \(ENat 3\)\s+EBinary Div \(EBinary Mul \(ENat 2\) \(ENat 6\)\) \(ENat 3\)/u];
   yield ['[f answer=ok]\n', [], /Keyword \("answer"\) \(Word "ok"\)/u];
 }
 

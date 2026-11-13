@@ -14,6 +14,30 @@ def finish (suffix : List Char → ParseResult) (rest : List Char) : ParseResult
       else .error "zero-width left recursion"
 termination_by rest.length
 
+/-- Growing an expression always returns a suffix of its seed when successful
+    operator/operand steps return a suffix of their input. -/
+theorem finish_suffix (suffix : List Char → ParseResult)
+    (sound : ∀ input rest, suffix input = .ok (some rest) → ∃ front, input = front ++ rest)
+    (input result : List Char) (parsed : finish suffix input = .ok (some result)) :
+    ∃ front, input = front ++ result := by
+  rw [finish] at parsed
+  cases step : suffix input with
+  | error reason => simp [step] at parsed
+  | ok val =>
+      cases val with
+      | none =>
+          simp [step] at parsed
+          exact ⟨[], by simpa using parsed⟩
+      | some next =>
+          simp only [step] at parsed
+          split at parsed
+          next progress =>
+            obtain ⟨first, original⟩ := sound input next step
+            obtain ⟨later, tail_eq⟩ := finish_suffix suffix sound next result parsed
+            exact ⟨first ++ later, by rw [original, tail_eq, List.append_assoc]⟩
+          next => contradiction
+termination_by input.length
+
 private theorem stopped (suffix : List Char → ParseResult) (ticks : List Nat) (result : ParseResult) :
     ticks.foldl (growLeftStep suffix) (result, true) = (result, true) := by
   induction ticks with

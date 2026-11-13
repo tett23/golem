@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 62, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 60, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -398,7 +398,7 @@ try {
   const strictChain = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedChain, generated], { encoding: 'utf8' });
   assert.match(strictChain.stderr, /^unsupported CompareExpr .*AddExpr\?$/m);
-  assert.match(strict.stderr, /^unsupported AddExpr .*: AddExpr ES AddOp ES MulExpr$/m);
+  assert.doesNotMatch(strict.stderr, /^unsupported (AddExpr|MulExpr) choice /m);
   const requiredClose = join(work, 'RequiredClose.hpeg');
   writeFileSync(requiredClose, original.replace('NumberMark NumberBody NumberMark?', 'NumberMark NumberBody NumberMark'));
   const strictShorthand = spawnSync(process.execPath,

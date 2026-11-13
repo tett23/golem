@@ -449,6 +449,14 @@ if (!fragment && ast) {
     if (blockDispatch.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === blockDispatch.get(rule.name)) continue;
+    // LeftRecursionTotal.generated_binary_growth checks the full generated rule, including the seed.
+    if ((rule.name === 'AddExpr' || rule.name === 'MulExpr') && rule.params.length === 0 &&
+        rule.templateParams.length === 0 && rule.alts.length === 2 &&
+        rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
+      const [op, operand] = rule.name === 'AddExpr' ? ['AddOp', 'MulExpr'] : ['MulOp', 'UnaryExpr'];
+      if (describeItems(rule.alts[0].items) === [rule.name, 'ES', op, 'ES', operand].join(' ') &&
+          describeItems(rule.alts[1].items) === operand) continue;
+    }
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&
