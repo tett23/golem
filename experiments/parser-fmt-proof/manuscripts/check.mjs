@@ -54,6 +54,8 @@ function* cases() {
     yield [mark + '%%注%%乙\n', [[1, '"%%注%%"']],
       new RegExp('Heading ' + level + ' \\[Text "乙"\\]')];
   }
+  yield [String.raw`[f "a\"b" "\\" "" "x\y"]` + '\n', [],
+    /Positional \(StringLit "a\\"b"\)\s+- Positional \(StringLit "\\\\"\)\s+- Positional \(StringLit ""\)\s+- Positional \(StringLit "xy"\)/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token

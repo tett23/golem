@@ -425,13 +425,13 @@ try {
   const modelTests = spawnSync(lean, ['-o', join(work, 'PegModelTest.olean'), modelTestSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(modelTests.status, 0, modelTests.stdout + modelTests.stderr);
-  const stringProof = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
-  assert.equal(stringProof.status, 0, stringProof.stderr);
   const wordSource = join(work, 'WordRoundTrip.lean');
   copyFileSync(join(here, 'WordRoundTrip.lean'), wordSource);
   const wordProof = spawnSync(lean, ['-o', join(work, 'WordRoundTrip.olean'), wordSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(wordProof.status, 0, wordProof.stderr);
+  const stringProof = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(stringProof.status, 0, stringProof.stderr);
   const argumentsSource = join(work, 'ArgumentsRoundTrip.lean');
   copyFileSync(join(here, 'ArgumentsRoundTrip.lean'), argumentsSource);
   const argumentsProof = spawnSync(lean, ['-o', join(work, 'ArgumentsRoundTrip.olean'), argumentsSource],
