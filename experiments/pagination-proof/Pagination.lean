@@ -493,6 +493,17 @@ theorem I3_keep_heading_21_implies_recto_variant
     (fun i isItem lo hi => (between i isItem lo hi).1)
   exact ⟨fun next => keepHeading next.1, keepLines⟩
 
+theorem I3_heading_runs_agree_without_recto
+    (item text heading recto here starts line linesKept : Nat → Prop)
+    (noRectoHeading : ∀ p, heading p → ¬ recto p) :
+    headingRunKeep item text heading here starts line linesKept ↔
+      headingRunKeep item text (fun p => heading p ∧ ¬ recto p)
+        here starts line linesKept := by
+  have same : (fun p => heading p ∧ ¬ recto p) = heading := by
+    funext p
+    exact propext ⟨And.left, fun h => ⟨h, noRectoHeading p h⟩⟩
+  rw [same]
+
 /- Two ordinary headings followed by a recto heading. At break 2 the
    second ordinary heading is in the column and the recto is not. The
    older heading rule keeps the recto in that column; the revised rule
