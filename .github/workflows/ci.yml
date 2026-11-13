@@ -1247,12 +1247,55 @@ jobs:
             echo "After: $(usage)"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  parser-fmt-manuscripts:
+    needs: [changes, build]
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [manuscripts, tables, arguments, eval]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: golem-linux-x86_64
+          path: golem-linux-x86_64
+      - name: Install Lean 4.7.0 for argument model comparison
+        if: matrix.suite == 'arguments'
+        run: sh scripts/ci/install-parser-proof-lean.sh
+      - name: Check round trips with the candidate CLI
+        env:
+          SUITE: ${{ matrix.suite }}
+        timeout-minutes: 10
+        run: |
+          chmod +x golem-linux-x86_64/golem
+          export GOLEM="$PWD/golem-linux-x86_64/golem"
+          sh experiments/parser-fmt-proof/check-suite.sh "$SUITE" 2 1
+      - name: Save failing manuscripts and replay commands
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parser-fmt-${{ matrix.suite }}-failures
+          path: round-trip-failures
+          if-no-files-found: ignore
+
+  parser-fmt-proofs:
+    needs: [changes]
+    if: needs.changes.outputs.build == 'true'
+    uses: ./.github/workflows/parser-fmt-proofs.yml
+
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   # the logs of the other jobs of the run are read for warnings, which
   # needs actions: read (docs/adr/0245)
   ci:
-    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, editors-lsp, verapdf, wasm]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format, plugins, editors, editors-lsp, verapdf, wasm, parser-fmt-proofs, parser-fmt-manuscripts]
     if: always()
     runs-on: ubuntu-24.04
     permissions:

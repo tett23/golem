@@ -26,7 +26,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 
 fmtTableTests :: TestTree
-fmtTableTests = testGroup "golem fmt and the table files (docs/adr/0186)" [propertyTests, commandTests]
+fmtTableTests = testGroup "golem fmt and the table files (docs/adr/0186)" [propertyTests, cellRoundTripTests, commandTests]
 
 {- | The text of a table file without a lone CR: a run of leading BOMs, then cells,
 separators, quotes and line breaks.
@@ -52,6 +52,22 @@ propertyTests =
         src <- forAll tableText
         tableOf parseTsv (formatTable src) === tableOf parseTsv (T.dropWhile (== '\xFEFF') src)
     ]
+
+cellRoundTripTests :: TestTree
+cellRoundTripTests =
+  testGroup
+    "Golem ADR 0351 I9: the parsed cells before and after formatting"
+    [ checkCells "CSV" parseCsv "名,b\n\"x\ny\",\n,z  \n" [["名", "b"], ["x\ny", ""], ["", "z  "]],
+      checkCells "TSV" parseTsv "名\tb\nx\t\n\tz  \n" [["名", "b"], ["x", ""], ["", "z  "]]
+    ]
+  where
+    checkCells name parse canonical expected = testCase name $ do
+      let source = "\xFEFF" <> T.replace "\n" "\r\n" canonical
+      tableOf parse source @?= Just expected
+      let formatted = formatTable source
+      formatted @?= canonical
+      tableOf parse formatted @?= Just expected
+      formatTable formatted @?= formatted
 
 manifest :: String
 manifest = T.unpack (manifestToml testManifest {tmChapters = ["a.gm"]})
