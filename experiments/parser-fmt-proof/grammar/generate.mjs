@@ -422,6 +422,8 @@ if (!fragment && ast) {
       if (rule.name === 'BlankLines' && blankLineProved && rule.alts.length === 1 &&
           describeItems(rule.alts[0].items) === 'BlankLine+') continue;
       if (rule.name === 'ParaEnd' && paraEndProved) continue;
+      if (rule.name === 'Rest' && paraEndProved &&
+          singleUnitRuleMatches(rule, '(!ParaEnd .)*')) continue;
       if ((rule.name === 'Comment' || rule.name === 'ProofComment') && paraEndProved && rule.alts.length === 1) {
         const opening = rule.name === 'Comment' ? "'%%'" : "'%%='";
         if (describeItems(rule.alts[0].items) === opening + " (!'%%' !ParaEnd .)* ('%%')^comment_close") continue;

@@ -115,3 +115,73 @@ theorem generated_comment (name opening written : String) (env : Params) (input 
         Bind.bind, Except.bind, pure, Except.pure, Except.map] <;> rfl
 
 end CommentTotal
+
+namespace RestTotal
+
+open PegModel PegModelTest
+
+private def para := Expr.ref "ParaEnd" []
+private def bodyItems : List Expr := [.notPred para, .any]
+private def body := Expr.choice [bodyItems]
+
+
+def stops (input : List Char) := (LineBoundaryTotal.paraResult input).isSome
+
+def suffix : List Char → List Char
+  | [] => []
+  | c :: rest => if stops (c :: rest) then c :: rest else suffix rest
+
+private theorem step (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar [] (input.length + 12 + extra) body input =
+      .ok (if stops input then none else input.tail?) := by
+  let inner := input.length + 11 + extra
+  rw [show input.length + 12 + extra = inner + 1 by dsimp [inner]; omega]
+  change runChoices (fun xs => runSequence (fun sc item rest => recognizeEnv Generated.pegGrammar sc inner item rest)
+    (fun _ _ _ => .ok none) [] xs input) [bodyItems] = _
+  have endAt : recognizeEnv Generated.pegGrammar [] inner (.notPred para) input =
+      .ok (if (LineBoundaryTotal.paraResult input).isSome then none else some input) := by
+    rw [show inner = (input.length + 10 + extra) + 1 by dsimp [inner]; omega]
+    change (match recognizeEnv Generated.pegGrammar [] (input.length + 10 + extra) (.ref "ParaEnd" []) input with
+      | Except.error reason => if isLabelFailure reason then Except.ok (some input) else Except.error reason
+      | Except.ok none => Except.ok (some input)
+      | Except.ok (some _) => Except.ok none) = _
+    rw [LineBoundaryTotal.generated_para_end]
+    cases LineBoundaryTotal.paraResult input <;> rfl
+  have any : recognizeEnv Generated.pegGrammar [] inner .any input = .ok input.tail? := by
+    rw [show inner = (input.length + 10 + extra) + 1 by dsimp [inner]; omega]
+    cases input <;> rfl
+  cases p : (LineBoundaryTotal.paraResult input).isSome <;>
+    cases t : input.tail? <;> simp [stops, bodyItems, endAt, any, p, t, runChoices, runSequence,
+      foldChoice, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map]
+
+private theorem repeated (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar [] (input.length + 13 + extra) (.star body) input =
+      .ok (some (suffix input)) := by
+  induction input with
+  | nil =>
+      rw [show ([] : List Char).length + 13 + extra = (([] : List Char).length + 12 + extra) + 1 by omega]
+      conv => lhs; unfold recognizeEnv
+      have first := step [] extra
+      change recognizeEnv _ [] (12 + extra) body [] = .ok none at first
+      simp [first, suffix]; rfl
+  | cons c rest ih =>
+      let inner := (c :: rest).length + 12 + extra
+      rw [show (c :: rest).length + 13 + extra = inner + 1 by dsimp [inner]; omega]
+      have first := step (c :: rest) extra
+      change recognizeEnv _ [] inner body (c :: rest) = .ok (if stops (c :: rest) then none else some rest) at first
+      rw [show rest.length + 13 + extra = inner by dsimp [inner]] at ih
+      conv => lhs; unfold recognizeEnv
+      cases doneAt : stops (c :: rest) <;> simp [first, doneAt, ih, suffix, Id.run]
+
+theorem generated_rest (env : Params) (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar env (input.length + 15 + extra) (.ref "Rest" []) input =
+      .ok (some (suffix input)) := by
+  let inner := input.length + 13 + extra
+  rw [show input.length + 15 + extra = inner + 1 + 1 by dsimp [inner]; omega]
+  change runChoices (fun xs => runSequence (fun sc item rest => recognizeEnv Generated.pegGrammar sc inner item rest)
+    (fun _ _ _ => .ok none) [] xs input) [[.star body]] = _
+  have many := repeated input extra
+  change recognizeEnv _ [] inner (.star body) input = _ at many
+  simp [many, runChoices, runSequence, foldChoice, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map]
+
+end RestTotal
