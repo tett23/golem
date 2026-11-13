@@ -188,7 +188,7 @@ tests =
         assertBool "9mm" (ok (result (withRule gTop Nothing (out 9))))
         assertBool "10mm" (isG07001 (result (withRule gTop Nothing (out 10))))
         -- a heading rule is checked too, after the paragraph styles
-        let heading = (styleWith False False g40) {stHeadings = Map.fromList [(1, HeadingStyle Nothing Nothing Nothing False Nothing Nothing (Just rule {rsLength = Just (Zw 41)}))]}
+        let heading = (styleWith False False g40) {stHeadings = Map.fromList [(1, HeadingStyle Nothing Nothing Nothing False Nothing Nothing (Just rule {rsLength = Just (Zw 41)}) Nothing)]}
         case result heading of
           Left [d] -> diagMessage d @?= "見出し 1 の罫線が仕上がりの線を超えます"
           other -> assertFailure (show (void other))

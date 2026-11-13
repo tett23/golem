@@ -30,7 +30,19 @@ fs = 655360
 
 headingLevelsTests :: [TestTree]
 headingLevelsTests =
-  [ testCase "PDF: the levels 4 to 6 take the default 1zw and one line" $ do
+  [ testCase "Golem ADR 0372: HTML and EPUB reuse the heading separator in navigation" $
+      withSystemTempDirectory "golem-separator" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n[targets.epub]\n")
+        BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[headings.1]\nnumber = \"{n}\"\nnumber-title-separator = \"<&>\"\n")
+        TIO.writeFile (tmp </> "a.gm") "@toc depth=1\n\n# 題\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let entry path = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath path archive)
+        mapM_ (\page -> T.count "&lt;&amp;&gt;題" page @?= 2) [html, entry "OEBPS/a.xhtml"]
+        assertBool "EPUB navigation" ("1&lt;&amp;&gt;題" `T.isInfixOf` entry "OEBPS/nav.xhtml"),
+    testCase "PDF: the levels 4 to 6 take the default 1zw and one line" $ do
       (_, pl) <- layoutOk horizontalStyle sixLevels []
       -- the size of each heading, and the grid lines from it to the next slot of its page
       [ (next - h, slSize <$> Map.lookup lid (plLines pl))

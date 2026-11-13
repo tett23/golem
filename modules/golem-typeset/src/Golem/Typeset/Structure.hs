@@ -163,7 +163,7 @@ structureTree fe units figureAttrs tocNumber =
           h = tableHeader tbl
           rows = tableRows tbl
           caption = case tableCaption tbl of
-            Just is -> [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) (numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookTables book)) is)))]
+            Just is -> [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) (bookNumberedTitle book Nothing lang (uSpan u) (Map.lookup (uSpan u) (bookTables book)) is)))]
             Nothing -> []
           below = stTableCaption (piStyle inp) == CaptionBelow
           blankRow = all (T.all isSpace . T.concat . map inlineText) h
@@ -175,14 +175,14 @@ structureTree fe units figureAttrs tocNumber =
     -- a code block: its caption, its file name and each line a P of Code (golem-driver ADR 0017, 0023)
     codeElem i u code =
       let caption = case codeCaption code of
-            Just is -> [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) (numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookListings book)) is)))]
+            Just is -> [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) (bookNumberedTitle book Nothing lang (uSpan u) (Map.lookup (uSpan u) (bookListings book)) is)))]
             Nothing -> []
           file = [P.KidElem (P.structElem P.SP [P.KidElem (P.structElem P.SCode [P.KidLeaf (P.LeafId (codeFileSite i <> [0]))])]) | isJust (codeFile code)]
           linesOf = [P.KidElem (P.structElem P.SP [P.KidElem (P.structElem P.SCode [P.KidLeaf (P.LeafId (codeRowSite i j <> [0]))])]) | j <- [0 .. max 1 (length (codeLines code)) - 1]]
        in P.structElem P.SDiv (caption <> file <> linesOf)
     -- a figure: the Figure with its alternate text, then its caption (golem-driver ADR 0005, 0010)
     figureElem i u fig =
-      let captionInlines = numberedTitle lang (uSpan u) (Map.lookup (uSpan u) (bookFigures book)) (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
+      let captionInlines = bookNumberedTitle book Nothing lang (uSpan u) (Map.lookup (uSpan u) (bookFigures book)) (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
           figure = (P.structElem P.SFigure [P.KidLeaf (P.LeafId (figureSite i <> [0]))]) {P.seAlt = Just (figAlt fig), P.seAttrs = figureAttrs i}
        in P.structElem P.SDiv (P.KidElem figure : [P.KidElem (P.structElem P.SCaption (content (captionEnv fe u) (captionSite i) captionInlines)) | not (null captionInlines)])
     -- the units in their frames, the frames made elements
