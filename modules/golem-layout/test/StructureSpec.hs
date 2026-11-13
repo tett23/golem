@@ -3,6 +3,7 @@ the structure tree of the PDF (docs/adr ADR 0183).
 -}
 module StructureSpec (structureTests) where
 
+import Control.Monad (replicateM)
 import Data.Text (Text)
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
@@ -37,7 +38,7 @@ structureTests =
   testGroup
     "the structure of inlines (docs/adr ADR 0183)"
     [ testCase "inv1_ruby_base_references_property: each number or title selects one RB child" $
-        mapM_ check [sequence (replicate n [False, True]) | n <- [0 .. 4]],
+        mapM_ check [replicateM n [False, True] | n <- [0 .. 4]],
       testCase "plain text is leaf 0 of the site" $ do
         let (items, _, nodes) = composeInlinesTree env [txt "あい"]
         nodes @?= [NodeLeaf 0]
