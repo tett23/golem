@@ -1360,7 +1360,18 @@ css cfg book =
     fontStack role = T.intercalate ", " (families role <> ["serif"])
     {- the rules of the styles of a file: every property they handle, as a
     property left out would keep the value of the rule of style.toml -}
-    readingRules prefix styles = [rule (prefix <> "ruby > rt") (["all: inherit" | not (T.null prefix)] <> declsOf "" cs <> ["font-size: " <> fromMaybe "0.5em" (hcsSize cs)]) | Just name <- [hcRubyReadingStyle cfg], Just cs <- [Map.lookup name styles]]
+    readingRules prefix styles =
+      [ rule (prefix <> "ruby > rt") (declsOf "" cs <> inherited cs <> ["font-size: " <> fromMaybe "0.5em" (hcsSize cs)])
+      | Just name <- [hcRubyReadingStyle cfg],
+        Just cs <- [Map.lookup name styles]
+      ]
+      where
+        inherited cs =
+          [ property <> ": inherit"
+          | not (T.null prefix),
+            (property, missing) <- [("font-family", hcsFont cs == Nothing), ("color", hcsColor cs == Nothing), ("font-weight", not (hcsBold cs)), ("font-style", not (hcsItalic cs))],
+            missing
+          ]
     localRules n l =
       let pre = "body.file-" <> tshow n
           stackOr = maybe "inherit" fontStack
