@@ -5955,6 +5955,46 @@ theorem I3_recto_compatible_with_blank_and_figure
       noSend, I3_first_text_break_preserves_recto items ordered config
         kept firstTextPos firstTextCase rectos rectosValid⟩
 
+theorem I3_heading_runs_and_rectos_with_blank_and_figure
+    (capacity used : Nat) (items : List SourceItem)
+    (config : FigureConfig) (blank : Option Nat)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (ordered : sourceOrdered items)
+    (figuresValid : figureDomain items config)
+    (blankValid : blankDomain items blank)
+    (sizesFit : figureSizesFit capacity config)
+    (headings rectos : List Nat) (line linesKept : Nat → Prop)
+    (headingsValid : ∀ h ∈ headings, .text h ∈ items)
+    (rectosValid : ∀ r ∈ rectos, .text r ∈ items) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool, ∃ atTop placed : Bool,
+      ((brk = 0 ∧ zeroBreakPlacement capacity used items config blank
+        kept atTop placed) ∨
+       (brk = 1 ∧ used = 0 ∧ oneBreakPlacement capacity items config
+        blank kept atTop placed)) ∧
+      firstContentNotSent used brk items config kept ∧
+      rectoModel used brk items config kept rectos ∧
+      headingRunKeep (fun p => ∃ i ∈ items, sourcePos i = p)
+        (fun p => .text p ∈ items) (fun h => h ∈ headings)
+        (fun p => textHereAtBreak items brk p = true)
+        (startsColumnModel used brk items config kept) line linesKept := by
+  have valid : ∀ p ∈ headings ++ rectos, .text p ∈ items := by
+    intro p member
+    induction headings with
+    | nil => exact rectosValid p member
+    | cons h hs ih =>
+      rcases List.mem_cons.mp member with eq | tail
+      · exact headingsValid p (List.mem_cons.mpr (Or.inl eq))
+      · exact ih (fun q hq => headingsValid q (List.mem_cons.mpr (Or.inr hq))) tail
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, starts⟩ :=
+    I3_recto_compatible_with_blank_and_figure capacity used items config blank
+      capacityPositive usedFits ordered figuresValid blankValid sizesFit _ valid
+  refine ⟨brk, kept, atTop, placed, rule, noSend, ?_, ?_⟩
+  · intro r member
+    exact starts r (List.mem_append_of_mem_right headings member)
+  · intro h member here inside
+    exact (inside (starts h (List.mem_append_of_mem_left rectos member) here)).elim
+
+
 theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
