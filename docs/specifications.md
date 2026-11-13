@@ -1266,8 +1266,11 @@ Git のコミットやビルドの環境は含めない。
 CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
-決定性を保証するのは、PDF、HTML、プレーンテキストである。
-EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、今は EPUB の決定性を保証しない（予定は [docs/roadmap.md](roadmap.md) の「EPUB の決定性」）。
+PDF、HTML、プレーンテキストに加え、EPUB もファイル全体のバイト一致を保証する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
+EPUB は圧縮器の版を含む同じビルドで、同じ設定、原稿、素材を使って組む。
+本からの相対位置を保ってプロジェクトを移した場合も、素材の列挙順や実行時刻が変わった場合も、出力は一致する。
+ZIP では本文を本の順に、素材を出力先の相対パス順に収め、各エントリに固定の時刻を使う。
+書籍の識別子と更新日はマニフェストから決まる。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
@@ -1361,8 +1364,7 @@ x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであ�
 小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
 すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
 `combined` は capability を二つにして組む。
-この検査は EPUB も比べるので、実際には EPUB にも決定性を求めている。
-しかし、仕様としては EPUB の決定性を約束しない。
+EPUB は ZIP 全体のバイト列を比較する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
 
 ### コミットをまたいだ出力の変化
 

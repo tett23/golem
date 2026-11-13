@@ -290,7 +290,7 @@ Golem はこれらを入力から純粋に計算する。
 - PDF の [code: CreationDate] と [code: ModDate] は、マニフェストの [code: metadata.date] の日付から [code: pdfDate] が [code: D:YYYYMMDD000000Z] の形で作る。時刻は常に 0 時で、タイムゾーンは常に UTC なので、実行したマシンのタイムゾーンは入らない。
 - PDF の文書 ID は、本の識別子から名前に基づく UUID（バージョン 5）を [code: documentId] で作る。
 - インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem のバージョンである（[code: instanceIdInputs]）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
-- EPUB の zip のエントリには、時刻として 0 を渡している（[code: writeEpub]）。EPUB の決定性は v2 で扱う事項だが、今の実装も時計を読まない。
+- EPUB の zip のエントリには、時刻として 0 を渡している（[code: writeEpub]）。
 
 乱数を使うのは [code: golem new] だけで、その乱数も golem-cli の [code: app/Main.hs] が [code: UUID.nextRandom] で作る。
 golem-driver の [code: templateFiles] は、その UUID を引数の文字列として受け取る純粋な関数である。
