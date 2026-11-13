@@ -7027,6 +7027,109 @@ theorem placedBefore_need_gap (d : NeedTextPrefix) (g b t : Nat)
 
 end NeedTextPrefix
 
+/- When checking a figure under figures27, the other conjuncts already
+   require every earlier figure and every earlier text to be placed. An
+   earlier figure can then never be waiting, and the sum in placedBefore
+   uses all earlier figures. This gives a non-circular construction even
+   though waitingIn and needNext are defined in terms of the placement. -/
+def needTargetsFigure (needPos : Nat) (figurePos : Nat → Nat)
+    (block : Nat → Prop) (f : Nat) (waiting : Nat → Prop) : Prop :=
+  needPos < figurePos f ∧ ¬ waiting f ∧
+    (∀ t, block t → needPos < t → t < figurePos f → False) ∧
+    (∀ g, g < f → needPos < figurePos g → waiting g)
+
+theorem I3_figure_need_target_of_prior_kept
+    (f n : Nat) (positions : Nat → Nat) (block : Nat → Prop)
+    (kept : Nat → Bool) (allPrior : ∀ g, g < f → kept g = true) :
+    needTargetsFigure n positions block f (figureWaits kept) ↔
+      needTargetsFigure n positions block f (fun _ => False) := by
+  have noWait : ∀ i, i ≤ f → ¬ figureWaits kept i := by
+    intro i bound h
+    obtain ⟨_, g, earlier, absent⟩ := h
+    have present := allPrior g (by omega)
+    simp [present] at absent
+  constructor
+  · rintro ⟨prior, _, noText, noFig⟩
+    exact ⟨prior, by simp, noText, fun g lt ng => noWait g (Nat.le_of_lt lt) (noFig g lt ng)⟩
+  · rintro ⟨prior, _, noText, noFig⟩
+    exact ⟨prior, noWait _ (Nat.le_refl _), noText, fun g lt ng => (noFig g lt ng).elim⟩
+
+/- Under textReady and the all-prior-figures conjunct, no earlier text
+   or figure is omitted by placedBefore. -/
+theorem I3_all_prior_rows_sum (n : Nat) (size : Nat → Nat) (kept : Nat → Bool)
+    (prior : ∀ i, i < n → kept i = true) :
+    (List.range n).foldl (fun rows i => rows + if kept i then size i else 0) 0 =
+      priorFigureLines size n := by
+  have sum : ∀ (xs : List Nat) (start : Nat),
+      (∀ i ∈ xs, kept i = true) →
+      xs.foldl (fun rows i => rows + if kept i then size i else 0) start =
+        xs.foldl (fun rows i => rows + size i) start := by
+    intro xs
+    induction xs with
+    | nil => intros; rfl
+    | cons head tail ih =>
+      intro start allKept
+      have headKept := allKept head (List.mem_cons_self _ _)
+      simp only [List.foldl_cons, headKept, if_true]
+      exact ih _ (fun i m => allKept i (List.mem_cons_of_mem _ m))
+  apply sum
+  intro i member
+  have bound : ∀ (m : Nat) (acc : List Nat),
+      (∀ j ∈ acc, j < n) → m ≤ n → ∀ j ∈ List.range.loop m acc, j < n := by
+    intro m
+    induction m with
+    | zero => intro acc valid _; exact valid
+    | succ m ih =>
+      intro acc valid upper
+      apply ih (m :: acc) _ (by omega)
+      intro j inside
+      rcases List.mem_cons.mp inside with eq | tail
+      · omega
+      · exact valid j tail
+  exact prior i (bound n [] (by simp) (Nat.le_refl _) i member)
+
+theorem I3_need_figure_rule_exists
+    (count capacity used : Nat) (ready : Nat → Bool)
+    (textBefore nonSpaceBefore size positions : Nat → Nat)
+    (blankBefore : Nat → Bool) (block : Nat → Prop)
+    (needs : List (Nat × Nat)) :
+    ∃ kept : Nat → Bool, figuresInOrder count kept ∧
+      (∀ f, f < count → (kept f = true ↔
+        ready f = true ∧ (∀ g, g < f → kept g = true) ∧
+        figureHasRoom capacity used textBefore size blankBefore f ∧
+        (∀ n ∈ needs, needTargetsFigure n.1 positions block f (figureWaits kept) →
+          used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f = 0 ∨
+          n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines (fun g => if kept g then size g else 0) f)))) := by
+  let static : Nat → Prop := fun f =>
+    figureHasRoom capacity used textBefore size blankBefore f ∧
+      (∀ n ∈ needs, needTargetsFigure n.1 positions block f (fun _ => False) →
+        used + nonSpaceBefore f + priorFigureLines size f = 0 ∨
+        n.2 ≤ capacity - (used + nonSpaceBefore f + priorFigureLines size f))
+  let room : Nat → Bool := fun f => @decide (static f) (Classical.propDecidable _)
+  let kept := greedyFigure ready room
+  have rule := I3_greedyFigures_rule count ready room
+  refine ⟨kept, I3_figuresRule_implies_figuresInOrder _ _ _ _ rule, ?_⟩
+  intro f bound
+  have eq : kept f = true ↔ ready f = true ∧
+      (∀ g, g < f → kept g = true) ∧ static f := by
+    simpa only [room, decide_eq_true_eq] using rule f bound
+  rw [eq]
+  constructor
+  · rintro ⟨r, prior, fits, allowed⟩
+    refine ⟨r, prior, fits, ?_⟩
+    intro n member target
+    have same : priorFigureLines (fun g => if kept g then size g else 0) f =
+        priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
+    rw [same]
+    exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mp target)
+  · rintro ⟨r, prior, fits, allowed⟩
+    refine ⟨r, prior, fits, ?_⟩
+    intro n member target
+    have same : priorFigureLines (fun g => if kept g then size g else 0) f =
+        priorFigureLines size f := I3_all_prior_rows_sum _ _ _ prior
+    rw [← same]
+    exact allowed n member ((I3_figure_need_target_of_prior_kept f n.1 positions block kept prior).mpr target)
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
