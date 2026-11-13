@@ -8693,6 +8693,93 @@ theorem I3_blank_top_two_figures_at_text_break
   simp only [blankTopFromFigures, beforeBlankMask, show List.range 2 = [0, 1] from rfl]
   cases decide (used = 0) <;> cases items.any (keptBeforeBlank blank here (fun _ => false)) <;> simp
 
+theorem I3_initial_first_text_full_two_figures
+    (capacity blank firstText first second firstSize secondSize : Nat)
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (space : Nat → Bool) (needs : List (Nat × Nat))
+    (positiveCapacity : 0 < capacity) (positiveFirst : 0 < firstSize) (positiveSecond : 0 < secondSize)
+    (firstContentText : firstContent items = some (.text firstText))
+    (figOrder : first < second) (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (firstIn : .figure first ∈ items) (secondIn : .figure second ∈ items)
+    (onlyTwo : ∀ p, .figure p ∈ items → p = first ∨ p = second) :
+    let positions := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (positions i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < positions i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    ∃ top : Bool, ∃ kept : Nat → Bool,
+      top = blankAtTopSource 0 blank items (textHereAtBreak items 1)
+        (keptAtTwoPositions first second (kept 0) (kept 1)) ∧
+      figures27Model 2 capacity 0 (fun i => decide (rank i ≤ 1)) rank plain size positions
+        (fun i => !beforeBlankMask first second blank i && !top) block needs kept ∧
+      1 + keptRowsThrough kept size 2 +
+        (if blankPlacedFromSourceFull 0 blank (waitingAtTwoPositions first second kept) items
+          (textHereAtBreak items 1) (keptAtTwoPositions first second (kept 0) (kept 1)) then 1 else 0) ≤ capacity ∧
+      (∀ p, .text p ∈ items → textHereAtBreak items 1 p = true →
+        needAtPlacedText 0 capacity 2 items positions size space needs 1 kept p) := by
+  intro positions size rank plain block
+  let here := textHereAtBreak items 1
+  let mask := beforeBlankMask first second blank
+  let roomText := fun i => decide (rank i ≤ 1)
+  obtain ⟨top, kept, topEq, order, rule⟩ := I3_need_figure_and_blank_exist 2 capacity 0
+    (items.any (keptBeforeBlank blank here (fun _ => false))) roomText mask
+    rank plain size positions block needs (I3_beforeBlankMask_prefix first second blank figOrder)
+  let atPos := keptAtTwoPositions first second (kept 0) (kept 1)
+  have topSource : top = blankAtTopSource 0 blank items here atPos := by
+    exact topEq.trans (I3_blank_top_two_figures_at_text_break 0 blank first second items here kept
+      (Nat.ne_of_lt figOrder) firstIn secondIn onlyTwo).symm
+  have source : ∀ p, .figure p ∈ items → atPos p = true →
+      ∃ i, i < 2 ∧ kept i = true ∧ positions i = p := by
+    intro p member present
+    rcases onlyTwo p member with eq | eq
+    · subst p
+      exact ⟨0, by decide, by simpa [atPos, keptAtTwoPositions] using present, rfl⟩
+    · subst p
+      exact ⟨1, by decide, by simpa [atPos, keptAtTwoPositions, Nat.ne_of_gt figOrder] using present, rfl⟩
+  have member : ∀ i, i < 2 → .figure (positions i) ∈ items := by
+    intro i _
+    by_cases zero : i = 0 <;> simp [positions, zero, firstIn, secondIn]
+  refine ⟨top, kept, topSource, rule, ?_,
+    I3_initial_need_first_text capacity 2 firstText items ordered positions size space kept needs
+      firstContentText member⟩
+  have posOrder : ∀ i j, i ≤ j → positions i ≤ positions j := by
+    intro i j le
+    by_cases iz : i = 0 <;> by_cases jz : j = 0 <;> simp [positions, iz, jz] <;> omega
+  apply I3_initial_one_text_with_need_figures_fits capacity 2 firstText blank items ordered
+    positions size kept atPos (waitingAtTwoPositions first second kept) positiveCapacity
+    (by intro i _; by_cases zero : i = 0 <;> simp [size, zero, positiveFirst, positiveSecond])
+    firstContentText posOrder member source (fun i bound yes => decide_eq_true_eq.mp (((rule i bound).mp yes).1))
+  intro i bound yes
+  have fits := ((rule i bound).mp yes).2.2.1
+  have charges : (if !mask i && !top then 1 else 0) =
+      (if blank < positions i ∧ blankAtTopSource 0 blank items here atPos = false then 1 else 0) := by
+    rw [← topSource]
+    have distinct : blank ≠ positions i := by
+      by_cases iz : i = 0 <;> simp [positions, iz, diffFirst, diffSecond]
+    have maskEq : mask i = decide (positions i < blank) := by
+      by_cases iz : i = 0 <;> simp [mask, beforeBlankMask, positions, iz] <;> omega
+    rw [maskEq]
+    by_cases earlier : blank < positions i
+    · have other : ¬ positions i < blank := by omega
+      cases top <;> simp [earlier, other]
+    · have other : positions i < blank := by omega
+      cases top <;> simp [earlier, other]
+  change 0 + rank i + priorFigureLines size i + (if !mask i && !top then 1 else 0) + size i ≤ capacity at fits
+  rw [charges] at fits
+  change rank i + keptRowsThrough kept size (i+1) +
+    (if blank < positions i ∧ blankAtTopSource 0 blank items here atPos = false then 1 else 0) ≤ capacity
+  have sum : keptRowsThrough kept size (i+1) = priorFigureLines size i + size i := by
+    by_cases iz : i = 0
+    · subst i
+      simp [keptRowsThrough, priorFigureLines, show List.range 0 = [] from rfl, yes]
+    · have one : i = 1 := by omega
+      subst i
+      have firstKept := order 1 (by decide) yes 0 (by decide)
+      simp [keptRowsThrough, priorFigureLines, show List.range 1 = [0] from rfl, yes, firstKept]
+  rw [sum]
+  omega
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
