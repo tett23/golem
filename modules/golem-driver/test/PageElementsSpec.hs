@@ -623,7 +623,7 @@ headingTests =
       (_, pl) <- layoutMiniWith manifest style "# Heading\n\nbody.\n" [] >>= either (assertFailure . show) pure
       headingGap pl @?= [6],
     testCase "inv1_heading_block_alignment_case_2: end leaves two body pitches before a one-line heading" $
-      forM_ [horizontalStyle, replaceIn "horizontal" "vertical" horizontalStyle] $ \base -> do
+      forM_ [horizontalStyle, replaceIn "lines = 30" "lines = 12" (replaceIn "horizontal" "vertical" horizontalStyle)] $ \base -> do
         let style = base <> "\n[headings.1]\nsize = \"1zw\"\nlines = 3\nblock-align = \"end\"\n"
         (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
         map (\hb -> hbOffset hb == 2 * hbPitch hb) (Map.elems (plHeadings pl)) @?= [True],
