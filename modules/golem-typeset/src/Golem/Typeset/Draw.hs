@@ -2,6 +2,7 @@
 module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
+    masterFlowText,
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
@@ -133,6 +134,42 @@ reused between the rounds of S2 or not, for the tests that compare the two
 -}
 renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllReusing reuse = renderPdfAllUsing reuse untouched
+
+-- | The logical lines before wrapping and the line boxes composed in the master flow.
+masterFlowText :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Text], Integer))
+masterFlowText provider input = case checkedGeometry inp of
+  Left ds -> pure (Left ds)
+  Right geom -> do
+    loaded <- loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    case loaded of
+      Left ds -> pure (Left ds)
+      Right fonts -> fmap counts <$> layoutPdf inp geom fonts
+  where
+    inp = codeInput input
+    counts layout =
+      let units = map snd (plUnits layout)
+          blank = sum [toInteger n | Unit {uKind = UBlank n} <- units]
+          boxes =
+            Map.size (plLines layout)
+              + sum (map length (Map.elems (plTableLines layout)))
+              + sum (map (length . pfCaption) (Map.elems (plFigures layout)))
+              + sum (map (length . ccLines) (Map.elems (plTableCaptions layout)))
+              + sum [length (ciCaption code) | (i, code) <- Map.toList (plCodes layout), i == ciFirst code]
+       in (concatMap (logicalLines (plFlowEnv layout)) units, toInteger boxes + blank)
+    logicalLines flow unit = case uKind unit of
+      UBlank n -> replicate (fromIntegral n) ""
+      UFigure fig -> concatMap (concatMap paragraph . blockInlineLists) (figCaption fig)
+      UCode _ code -> maybe [] paragraph (codeCaption code) <> map clText (codeLines code)
+      UTable table -> concatMap paragraph (maybe [] pure (tableCaption table) <> tableHeader table <> concat (tableRows table))
+      UPara {} -> paragraph (uInlines unit)
+      UTerm {} -> paragraph (uInlines unit)
+      UHeading {} -> paragraph (uInlines unit)
+      UNotesTitle {} -> paragraph (uInlines unit)
+      UTocEntry {} -> paragraph (uInlines unit)
+      UIndexEntry {} -> paragraph (uInlines unit)
+      _ -> []
+      where
+        paragraph = T.splitOn "\n" . displayedInlines (unitEnv flow unit)
 
 renderPdfAllUsing :: Bool -> Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
