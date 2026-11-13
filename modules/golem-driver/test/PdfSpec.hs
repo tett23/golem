@@ -488,7 +488,23 @@ layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidde
 -- | The hidden folio tests (ADR 0021).
 hiddenFolioTests :: [TestTree]
 hiddenFolioTests =
-  [ testCase "with crop marks, only the blank page has one" $ do
+  [ testCase "Golem ADR 0365 inv1_hidden_folio_style_case_1: explicit size" $ do
+      pdf <- marksPdf (\o -> o {optMarks = WesternMarks}) (horizontalStyle <> "\n[hidden-folio]\npages = \"all\"\nsize = \"8pt\"\ngutter = \"5pt\"\n")
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "8pt hidden folio" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
+    testCase "Golem ADR 0365 inv1_hidden_folio_style_case_2: style color with size override" $ do
+      let style = horizontalStyle <> "\n[fonts.wide]\nja = \"fonts/b.otf\"\nlatin = \"fonts/b.otf\"\n[color.swatches]\nhidden-red = { cmyk = [0, 100, 100, 0] }\n[character-styles.hidden]\nfont = \"wide\"\nsize = \"12pt\"\ncolor = \"hidden-red\"\n[hidden-folio]\npages = \"all\"\ncharacter-style = \"hidden\"\nsize = \"8pt\"\ngutter = \"5pt\"\n"
+      built <- buildMarksFilesWith "本文。\n" (\o -> o {optMarks = WesternMarks}) (Just (style <> fakeBody)) fakeFontFiles
+      assertEqual "no errors" [] (map diagCode (bErrors built))
+      pdf <- maybe (assertFailure "no PDF") pure (bPdf built)
+      content <- BS.concat <$> inflateAll pdf
+      let drawn = drawnGlyphs content
+      case ([dFont d | d <- drawn, dGlyph d == fromEnum '1'], [dFont d | d <- drawn, dGlyph d == fromEnum '本']) of
+        ([hiddenFont], [bodyFont]) -> assertBool "hidden folio uses its own font role" (hiddenFont /= bodyFont)
+        other -> assertFailure (show other)
+      assertBool "red hidden folio" ("0 1 1 0 k" `BS.isInfixOf` content)
+      assertBool "8pt overrides 12pt" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
+    testCase "with crop marks, only the blank page has one" $ do
       (_, _, hf) <- layoutHidden (Just P.Western) miniManifest headsStyle [("a.gm", twoChapters)]
       Map.keys hf @?= [4],
     testCase "without crop marks, none" $ do

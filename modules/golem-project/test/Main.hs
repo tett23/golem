@@ -1295,10 +1295,16 @@ hiddenFolioTests =
   testGroup
     "[hidden-folio] (golem-driver ADR 0021)"
     [ testCase "the defaults without [hidden-folio]" $
-        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False),
+        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False Nothing False),
+      testCase "Golem ADR 0365 inv1_hidden_folio_style_property: gutter uses the effective size" $ do
+        let source explicit = "[character-styles.hidden]\nsize = \"12pt\"\n[hidden-folio]\ncharacter-style = \"hidden\"\ngutter = \"4pt\"\n" <> explicit
+        codes (parseStyle (FileId 0) (source "")) @?= ["G03029"]
+        codes (parseStyle (FileId 0) (source "size = \"6pt\"\n")) @?= [],
+      testCase "Golem ADR 0365 inv1: unknown character style is diagnosed" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\ncharacter-style = \"absent\"\n") @?= ["G03013"],
       testCase "the four keys are read" $
         fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
-          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True),
+          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True Nothing True),
       testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G03006" $ do
         mapM_
           (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G03006"])

@@ -1787,18 +1787,23 @@ captionIndent env ta pf
 -- each digit of a hidden folio, its advance centred on its point (golem-driver ADR 0021)
 hiddenMarks :: DrawEnv -> Int -> [([P.Content], [GlyphUse])]
 hiddenMarks env n =
-  [ first (pure . P.Artifact P.Pagination) $
-      runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) (plainLook body size) False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
+  [ first (pure . P.Artifact P.Pagination . paint look) $
+      runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) look False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
   | Just hg <- [pgHiddenFolio geom],
-    let size = hgSize hg,
+    let size = hgSize hg
+        look = (maybe (plainLook body size) (\name -> restyle style (plainLook body size) (CharStyle styleSpan name [])) (hfCharacterStyle (stHiddenFolio style))) {lkSize = size, lkNominalSize = size},
     (c, (cx, cy)) <- Map.findWithDefault [] n (deHidden env),
     let txt = T.singleton c
-        w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False [] False) txt]
+        w = sum [toSp size (shAdvance g) | g <- lfShape fonts (shapingOf (lfRoleFeatures fonts) False look c) txt]
   ]
   where
+    paint look marks = case swatchOf env look of
+      Nothing -> marks
+      Just sw -> [P.Saved (P.SetColor sw : marks)]
     geom = deGeom env
     fonts = deFonts env
-    body = bodyRole (piStyle (deInput env))
+    style = piStyle (deInput env)
+    body = bodyRole style
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
 masterMarks :: DrawEnv -> Int -> Bool -> Maybe MasterGeometry -> [Text] -> [(LineRec, ([P.Content], [GlyphUse]))]
