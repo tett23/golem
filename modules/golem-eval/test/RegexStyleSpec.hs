@@ -51,6 +51,16 @@ tests =
         bodies (rules [("body", [("12", "n")])]) [Heading 1 noHeadingAttrs [t "1"], Heading 2 noHeadingAttrs [t "2"]] @?= [Heading 1 noHeadingAttrs [t "1"], Heading 2 noHeadingAttrs [t "2"]],
       testCase "Golem ADR 0368 inv1_regex_style_scope_property: note body independently matched" $
         para digits [t "3", Note sp 1 (noteBody sp [t "12"])] @?= [cs "n" [t "3"], Note sp 1 (noteBody sp [cs "n" [t "12"]])],
+      testCase "Golem ADR 0368 inv1: terms definitions and note paragraphs stay separate" $ do
+        let onlyPair = rules [("body", [("12", "n")])]
+            definition = DefList [DefGroup [[t "1"]] [[Block sp Nothing Nothing (Paragraph Nothing [t "2"])]]]
+            notes = [Block sp Nothing Nothing (Paragraph Nothing [t "1"]), Block sp Nothing Nothing (Paragraph Nothing [t "2"])]
+        bodies onlyPair [definition] @?= [definition]
+        para onlyPair [Note sp 1 notes] @?= [Note sp 1 notes],
+      testCase "Golem ADR 0368 inv1: manual styles win and generated heading numbers stay outside" $ do
+        let attrs = noHeadingAttrs {haNumber = Just 12}
+        bodies digits [Heading 1 attrs [cs "manual" [t "34"]]] @?= [Heading 1 attrs [cs "n" [cs "manual" [t "34"]]]]
+        para digits [Note sp 1 (noteBody sp [cs "manual" [t "56"]])] @?= [Note sp 1 (noteBody sp [cs "n" [cs "manual" [t "56"]]])],
       testCase "a match is wrapped in the character style" $
         para digits [t "第12章"] @?= [t "第", cs "n" [t "12"], t "章"],
       testCase "a later rule is inside an earlier one" $
