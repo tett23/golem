@@ -278,4 +278,52 @@ theorem generated_kwarg (env : Params) (fuel : Nat) (input : List Char) :
               | error reason => simp [runChoices, foldChoice, runSequence, first, splat_ahead, guardHit, splat]; rfl
               | ok tail => cases tail <;> simp [runChoices, foldChoice, runSequence, first, splat_ahead, guardHit, splat] <;> rfl
 
+private def keyRefs : List (String × List String) := [("ExprIdent", []), ("StringLit", [])]
+private def keyChoice : Expr := .choice (PegModelTest.refAlternatives keyRefs)
+
+private def keyResult (fuel : Nat) (input : List Char) : ParseResult :=
+  match recognizeEnv Generated.pegGrammar [] fuel (.ref "ExprIdent" []) input with
+  | .ok none => recognizeEnv Generated.pegGrammar [] fuel (.ref "StringLit" []) input
+  | result => result
+
+private theorem hash_key (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [] (fuel+1) keyChoice input = keyResult fuel input := by
+  change runChoices (fun items => runSequence (fun env e x => recognizeEnv Generated.pegGrammar env fuel e x) _ [] items input)
+    [[.ref "ExprIdent" []], [.ref "StringLit" []]] = _
+  cases ident : recognizeEnv Generated.pegGrammar [] fuel (.ref "ExprIdent" []) input with
+  | error reason => simp [runChoices, foldChoice, runSequence, ident, keyResult]; rfl
+  | ok value =>
+      cases value with
+      | some rest => simp [runChoices, foldChoice, runSequence, ident, keyResult]; rfl
+      | none =>
+          cases str : recognizeEnv Generated.pegGrammar [] fuel (.ref "StringLit" []) input with
+          | error reason => simp [runChoices, foldChoice, runSequence, ident, str, keyResult]; rfl
+          | ok tail => cases tail <;> simp [runChoices, foldChoice, runSequence, ident, str, keyResult] <;> rfl
+
+theorem generated_hash_entry (env : Params) (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar env (fuel+3) (.ref "HashEntry" []) input =
+      after (keyResult fuel input)
+        (follow (fun name => recognizeEnv Generated.pegGrammar [] (fuel+1) (.ref name []))
+          ["ES", "Colon", "ES", "Expr"]) := by
+  let read := fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+1) e x
+  change runChoices (fun items => runSequence read _ [] items input)
+    [keyChoice :: expressions ["ES", "Colon", "ES", "Expr"]] = _
+  rw [← hash_key]
+  cases hit : recognizeEnv Generated.pegGrammar [] (fuel+1) keyChoice input with
+  | error reason =>
+      simp [runChoices, foldChoice, runSequence, read, hit, after, expressions]; rfl
+  | ok value =>
+      cases value with
+      | none =>
+          simp [runChoices, foldChoice, runSequence, read, hit, after, expressions]; rfl
+      | some rest =>
+          have seq := sequence read (fun _ _ _ => .ok none) [] ["ES", "Colon", "ES", "Expr"] rest
+          cases remaining : follow (fun name => read [] (.ref name [])) ["ES", "Colon", "ES", "Expr"] rest with
+          | error reason =>
+              rw [remaining] at seq
+              simpa [runChoices, foldChoice, runSequence, read, hit, after, remaining, expressions] using seq
+          | ok value =>
+              cases value <;> rw [remaining] at seq <;>
+                simpa [runChoices, foldChoice, runSequence, read, hit, after, remaining, expressions] using seq
+
 end ReferenceSequence

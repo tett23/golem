@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 49, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 48, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -97,7 +97,7 @@ try {
     'the generated string recognizer is total on arbitrary suffixes');
   assert.doesNotMatch(strict.stderr, /^unsupported RangeExpr choice .*: &'\.\.\.'/m,
     'a leading range operator throws range_end before parsing either endpoint');
-  assert.doesNotMatch(strict.stderr, /^unsupported (SplatArgument|ExprCtx|ExprBody|KwArg) choice /m);
+  assert.doesNotMatch(strict.stderr, /^unsupported (SplatArgument|ExprCtx|ExprBody|KwArg|HashEntry) choice /m);
   assert.doesNotMatch(strict.stderr, /^unsupported (ProseSlot|SkippedArgs|TableCell|TableCellAndPipe) choice /m);
   assert.doesNotMatch(strict.stderr, /^unsupported (CodeClose|DefNew) choice /m);
   const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');

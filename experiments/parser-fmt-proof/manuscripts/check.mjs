@@ -98,6 +98,8 @@ function* cases() {
     /SplatPositional \(EVar \["xs"\]\), SplatKeyword \(EVar \["h"\]\)/u];
   yield ['||x|\n|---|---|\n|y||\n', [],
     /Table \[AlignDefault, AlignDefault\] \[\[\], \[Text "x"\]\] \[\[\[Text "y"\], \[\]\]\]/u];
+  yield ['[= {aa: 1, "bb": 2}]\n', [],
+    /EHash \[\("aa", ENat 1\), \("bb", ENat 2\)\]/u];
   yield ['[f answer=ok]\n', [], /Keyword \("answer"\) \(Word "ok"\)/u];
 }
 
