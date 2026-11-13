@@ -276,9 +276,32 @@ listText style src variant = withVerseProject style src $ \tmp -> do
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   TIO.readFile (tmp </> "build/text" </> variant </> "v.txt")
 
+markerBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [Sp])
+markerBoxes setting source = do
+  let style = horizontalStyle <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n[character-styles.accent]\ncolor = \"red\"\n[character-styles.large]\nsize = \"3zw\"\n[lists]\nnumbers = [\"({n})\"]\n" <> setting
+  (_, layout) <- layoutOk style source []
+  let ls = Map.elems (plLines layout)
+  pure ([(bcText c, bcLook c) | sl <- ls, Box _ c <- lineItems (slLine sl), not (T.null (bcText c))], map slIndent ls)
+
 listTests :: [TestTree]
 listTests =
-  [ testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
+  [ testCase "inv1_list_marker_style_property" $ do
+      forM_ ["- 本\n", "+ 本\n"] $ \source -> do
+        (plain, _) <- markerBoxes "" source
+        (styled, _) <- markerBoxes "marker-style = \"accent\"\n" source
+        [look | ("本", look) <- styled] @?= [look | ("本", look) <- plain],
+    testCase "inv1_list_marker_style_case_1" $ do
+      (boxes, _) <- markerBoxes "" "- 本\n"
+      map (lkLatinFace . snd) boxes @?= ["body", "body"],
+    testCase "inv1_list_marker_style_case_2" $ do
+      (boxes, _) <- markerBoxes "marker-style = \"accent\"\n" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- boxes] @?= [("(", Just "red"), ("1", Just "red"), (")", Just "red"), ("本", Nothing)],
+    testCase "Golem ADR 0363: marker width is measured after applying the character style" $ do
+      let source = "- " <> T.replicate 25 "本" <> "\n"
+      (_, a) <- markerBoxes "" source
+      (_, b) <- markerBoxes "marker-style = \"large\"\n" source
+      assertBool (show (a, b)) (maximum b > maximum a),
+    testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
       (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
       -- the bullet • is a character and fs / 2 (golem-driver ADR 0044)
       ls @?= [(120 * pt, 0), (100 * pt, 20 * pt)],
