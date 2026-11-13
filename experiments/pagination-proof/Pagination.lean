@@ -161,6 +161,35 @@ theorem I1_caption_overfull_iff (shortfall stretch glueShrink compression : Int)
     cases pullInFirst <;> by_cases room : -shortfall ≤ glueShrink <;>
     simp [pos, zero, over, room] <;> omega
 
+/-- Item properties inspected by isBreak, patternAt, and after. -/
+inductive CaptionItemKind where
+  | box
+  | glue
+  | penalty (value : Int) (patternHyphen : Bool)
+  deriving DecidableEq
+
+def captionBreakCandidate (usePatterns previousBox : Bool) : CaptionItemKind → Bool
+  | .box => false
+  | .glue => previousBox
+  | .penalty value patternHyphen => decide (value < 10000) && (usePatterns || !patternHyphen)
+
+/-- Count discarded items following a breakpoint, stopping at the next
+    box or forced penalty. The paragraph start does not run this scan. -/
+def captionDiscardCount : List CaptionItemKind → Nat
+  | [] | .box :: _ => 0
+  | .glue :: rest => 1 + captionDiscardCount rest
+  | .penalty p _ :: rest => if p ≤ -10000 then 0 else 1 + captionDiscardCount rest
+
+theorem I1_caption_discard_bounded (items : List CaptionItemKind) :
+    captionDiscardCount items ≤ items.length := by
+  induction items with
+  | nil => decide
+  | cons item tail ih =>
+    cases item <;> simp [captionDiscardCount] <;> try omega
+    split <;> omega
+
+example : ([.glue, .penalty 9999 true, .penalty (-10000) false, .box] : List CaptionItemKind).map (captionBreakCandidate false true) = [true, false, true, false] := by decide
+
 /-- Pass settings supplied to the paragraph breaker, in attempt order. -/
 structure CaptionBreakPass where
   number : Nat
