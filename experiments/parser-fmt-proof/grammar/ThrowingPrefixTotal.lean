@@ -217,4 +217,13 @@ example : PegModel.recognizeEnv Generated.pegGrammar [] 7
     (.ref "BadBracket" []) "x".toList = .ok none := by
   simpa using generated_bad_bracket "x".toList 0
 
+private def rangeOpening : List PegModel.Expr :=
+  ((Generated.pegGrammar.rules.find? (fun r => r.name == "RangeExpr")).bind
+    (fun rule => rule.alts.head?)).map (·.items) |>.getD []
+
+theorem generated_range_opening (env : PegModel.Params) (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 6) (.choice [rangeOpening]) input =
+      (if "...".toList.isPrefixOf input then .error "label: range_end" else .ok none) := by
+  exact throwing_prefix_choice Generated.pegGrammar env fuel "..." "'...'" "range_end" input
+
 end ThrowingPrefixTotal

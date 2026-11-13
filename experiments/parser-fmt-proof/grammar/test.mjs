@@ -95,6 +95,8 @@ try {
     'single-reference alternatives use the same error-preserving theorem');
   assert.doesNotMatch(strict.stderr, /^unsupported StringLit choice /m,
     'the generated string recognizer is total on arbitrary suffixes');
+  assert.doesNotMatch(strict.stderr, /^unsupported RangeExpr choice .*: &'\.\.\.'/m,
+    'a leading range operator throws range_end before parsing either endpoint');
   const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');
   const singleRefMutation = original.replace(/^KeywordLiteral <- .*$/m,
     'KeywordLiteral <- Keyword Ws? { () }');

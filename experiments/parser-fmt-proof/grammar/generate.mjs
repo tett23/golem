@@ -471,6 +471,9 @@ if (!fragment && ast) {
       errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
     };
     for (const alt of rule.alts) {
+      if (rule.name === 'RangeExpr' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+          alt === rule.alts[0] && alt.action?.trim() === '()' && alt.constructor === null &&
+          describeItems(alt.items) === "&'...' (&{ False } '...')^range_end") continue;
       // ReferenceSequence.sequence proves propagation of success, failure and errors.
       // Direct left recursion uses seed growth in place of this sequence.
       if (rule.params.length === 0 && rule.templateParams.length === 0 &&
