@@ -53,6 +53,53 @@ theorem I2_fitted_image_and_caption_fit_grid
 example : fitCaptionedFigure 2 2 15 240 3 1 = none := by rfl
 example : fitCaptionedFigure 10 1 15 240 3 1 = some (45, 135) := by rfl
 
+/-- Round an unsigned ratio to nearest, resolving half units to even as in
+    Haskell's round on Rational. Font size is positive in the typesetter. -/
+def captionPitch (bodySize pitch captionSize : Nat) : Nat :=
+  let scaled := pitch * captionSize
+  let whole := scaled / bodySize
+  let twiceRem := 2 * (scaled % bodySize)
+  if twiceRem < bodySize then whole
+  else if bodySize < twiceRem then whole + 1
+  else whole + whole % 2
+
+/-- captionSpanOf calls headingBlock with a minimum span of one for a
+    nonempty caption. The first line occupies one body-size area. -/
+def captionGridSpan (bodySize pitch captionSize lines : Nat) : Nat :=
+  match lines with
+  | 0 => 0
+  | rest + 1 =>
+    let extent := rest * captionPitch bodySize pitch captionSize + captionSize
+    1 + (extent - bodySize + pitch - 1) / pitch
+
+private theorem caption_extent_bound (extent body pitch slots : Nat) (positive : 0 < pitch) :
+    (extent - body + pitch - 1) / pitch ≤ slots ↔ extent ≤ slots * pitch + body := by
+  constructor
+  · intro h
+    have h' := (Nat.div_lt_iff_lt_mul positive).1 (Nat.lt_succ_of_le h)
+    rw [Nat.succ_mul] at h'
+    omega
+  · intro h
+    apply Nat.le_of_lt_succ
+    apply (Nat.div_lt_iff_lt_mul positive).2
+    rw [Nat.succ_mul]
+    by_cases small : extent ≤ body
+    · rw [Nat.sub_eq_zero_of_le small, Nat.zero_add]
+      exact Nat.lt_of_lt_of_le (Nat.sub_lt positive (by decide)) (Nat.le_add_left _ _)
+    have eq := Nat.sub_add_cancel (Nat.le_of_not_ge small)
+    omega
+
+theorem I1_caption_grid_minimal (bodySize pitch captionSize rest slots : Nat)
+    (positive : 0 < pitch) :
+    captionGridSpan bodySize pitch captionSize (rest + 1) ≤ slots + 1 ↔
+      rest * captionPitch bodySize pitch captionSize + captionSize ≤ slots * pitch + bodySize := by
+  simp only [captionGridSpan]
+  rw [Nat.add_comm 1, Nat.add_le_add_iff_right]
+  exact caption_extent_bound _ _ _ _ positive
+
+example : captionPitch 2 5 1 = 2 ∧ captionPitch 2 7 1 = 4 := by decide
+example : (List.range 4).map (captionGridSpan 10 15 10) = [0, 1, 2, 3] := by decide
+
 /- The real-font driver test records caption spans 1 and 2 for the same
    twelve M characters in Source Sans Pro and Source Serif. With the
    measured span as input, the rounded image sizes agree with Golem. -/
