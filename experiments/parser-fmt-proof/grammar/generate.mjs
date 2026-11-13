@@ -404,6 +404,11 @@ if (!fragment && ast) {
       errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
     };
     for (const alt of rule.alts) {
+      // PrefixBoundaryTotal.marker_sequence covers both forms for any literal and class.
+      if (rule.name === 'BlockStart' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+          alt.action?.trim() === '()' && alt.constructor === null &&
+          alt.items.every(item => item.bind === null) && alt.items[0]?.expr.tag === 'lit' &&
+          (alt.items.length === 1 || (alt.items.length === 2 && alt.items[1].expr.tag === 'class'))) continue;
       if (rule.name === 'SkippedReserved' && alt === rule.alts[2] &&
           rule.params.length === 0 && rule.templateParams.length === 0 &&
           describeItems(alt.items) === "'@!' (![\\n] .)*" &&

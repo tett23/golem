@@ -129,4 +129,40 @@ example : PegModel.recognizeEnv Generated.pegGrammar [] 4
     (.ref "SetIdent" []) "setx".toList = .ok none := by
   simpa using generated_set_ident "setx".toList 0
 
+inductive Marker where
+  | literal (value written : String)
+  | followedBy (value written : String) (ranges : List (Nat × Nat)) (classWritten : String)
+
+def Marker.items : Marker → List PegModel.Expr
+  | .literal value written => [.lit value written]
+  | .followedBy value written ranges cls => [.lit value written, .charClass ranges cls]
+
+def Marker.consume (input : List Char) : Marker → Option (List Char)
+  | .literal value _ =>
+      if value.toList.isPrefixOf input then some (input.drop value.toList.length) else none
+  | .followedBy value _ ranges _ => classExpected value ranges input
+
+theorem marker_sequence (marker : Marker) (grammar : PegModel.Grammar) (env : PegModel.Params)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
+    (input : List Char) (fuel : Nat) :
+    PegModel.runSequence
+      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 1) item rest)
+      boundLength env marker.items input = .ok (marker.consume input) := by
+  cases marker with
+  | literal value written => exact sequence_literal_total grammar env boundLength fuel value written input
+  | followedBy value written ranges cls =>
+      exact literal_class_sequence grammar env boundLength value written cls ranges input fuel
+
+private def blockMarkers : List (Nat × Marker) :=
+  [(1, .followedBy "-" "'-'" [(32, 32), (9, 9)] "[ \\t]"),
+   (2, .followedBy "+" "'+'" [(32, 32), (9, 9)] "[ \\t]"),
+   (3, .followedBy "=" "'='" [(32, 32), (9, 9), (58, 58)] "[ \\t:]"),
+   (4, .literal "|" "'|'"), (5, .literal "```" "'```'"),
+   (7, .followedBy "@" "'@'" [(97, 122)] "[a-z]"), (8, .literal "@!" "'@!'")]
+
+theorem generated_block_marker_shapes :
+    ((Generated.pegGrammar.rules.find? (fun r => r.name == "BlockStart")).map
+      (fun r => blockMarkers.map (fun entry => r.alts[entry.1]?.map PegModel.Alt.items))) =
+      some (blockMarkers.map (fun entry => some entry.2.items)) := by rfl
+
 end PrefixBoundaryTotal
