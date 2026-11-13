@@ -60,6 +60,7 @@ function* cases() {
     /EBinary\s+Sub\s+EBinary Sub \(ENat 8\) \(ENat 3\)\s+EBinary Div \(EBinary Mul \(ENat 2\) \(ENat 4\)\) \(ENat 2\)/u];
   yield ['- x\n  - y\n    - z\n', [],
     /BulletList\s+- - Paragraph \[Text "x"\]\s+- BulletList\s+- - Paragraph \[Text "y"\]\s+- BulletList \[\[Paragraph \[Text "z"\]\]\]/u];
+  yield ['a\n \t\nb\n \t', [], /fileBlocks = \[Paragraph \[Text "a"\], Paragraph \[Text "b"\]\]/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token
