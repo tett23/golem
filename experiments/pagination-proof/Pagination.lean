@@ -2647,6 +2647,56 @@ theorem I3_count_earlier_text_eq_rank
         simp only [countEarlierText] at tail
         omega
 
+private theorem all_filtered (xs : List Nat) (p : Nat → Bool) (ok : ∀ x ∈ xs, p x = true) :
+    xs.filter p = xs := by
+  induction xs with
+  | nil => rfl
+  | cons h xs ih =>
+    simp [ok h (by simp), ih (fun x hx => ok x (by simp [hx]))]
+
+theorem I3_paragraph_after_rank (xs : List Nat) (ord : strictTextPositions xs) (p : Nat) (mem : p ∈ xs) :
+    (xs.filter (fun x => p < x)).length + textRank xs p + 1 = xs.length := by
+  induction xs with
+  | nil => simp at mem
+  | cons h xs ih =>
+    obtain ⟨first,sortedTail⟩ := ord
+    rcases List.mem_cons.mp mem with same | tail
+    · subst p
+      have allLater : xs.filter (fun x => decide (h < x)) = xs :=
+        all_filtered xs _ (fun x hx => decide_eq_true (first x hx))
+      simp [textRank,allLater]
+    · have earlier := first p tail
+      have step := ih sortedTail tail
+      simp [textRank, Nat.ne_of_lt earlier, Nat.not_lt_of_ge (Nat.le_of_lt earlier)]
+      omega
+
+/-- For the strictly ordered projection of para.q, the four cardinalities
+    in Alloy first/second/beforeLast/last select exactly the corresponding
+    ranks. Positions need not be consecutive in the enclosing document. -/
+theorem I3_alloy_paragraph_endpoints (xs : List Nat) (ord : strictTextPositions xs)
+    (p : Nat) (mem : p ∈ xs) :
+    (countEarlierText xs p = 0 ↔ textRank xs p = 0) ∧
+    (countEarlierText xs p = 1 ↔ textRank xs p = 1) ∧
+    ((xs.filter (fun x => p < x)).length = 1 ↔ textRank xs p + 2 = xs.length) ∧
+    ((xs.filter (fun x => p < x)).length = 0 ↔ textRank xs p + 1 = xs.length) := by
+  have earlier := I3_count_earlier_text_eq_rank xs ord p mem
+  have later := I3_paragraph_after_rank xs ord p mem
+  omega
+
+/-- Selecting the lines owned by q from document order supplies the
+    strict-order premise above, including interleaved paragraphs. -/
+theorem I3_paragraph_projection_sorted (xs : List Nat) (ord : strictTextPositions xs)
+    (belongs : Nat → Bool) : strictTextPositions (xs.filter belongs) := by
+  induction xs with
+  | nil => trivial
+  | cons h xs ih =>
+    obtain ⟨first,tail⟩ := ord
+    cases keep : belongs h with
+    | false => simpa [keep] using ih tail
+    | true =>
+      simp only [List.filter_cons,keep,ite_true]
+      exact ⟨fun y hy => first y (List.mem_filter.mp hy).1,ih tail⟩
+
 theorem I3_text_before_count_mapped_positions
     (positions : List Nat) (pos : Nat) :
     textBeforeCount (positions.map SourceItem.text) pos =
