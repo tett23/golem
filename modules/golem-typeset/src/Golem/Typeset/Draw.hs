@@ -1787,7 +1787,7 @@ captionIndent env ta pf
 -- each digit of a hidden folio, its advance centred on its point (golem-driver ADR 0021)
 hiddenMarks :: DrawEnv -> Int -> [([P.Content], [GlyphUse])]
 hiddenMarks env n =
-  [ first (pure . P.Artifact P.Pagination) $
+  [ first (pure . P.Artifact P.Pagination . paint look) $
       runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) look False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
   | Just hg <- [pgHiddenFolio geom],
     let size = hgSize hg
@@ -1797,6 +1797,9 @@ hiddenMarks env n =
         w = sum [toSp size (shAdvance g) | g <- lfShape fonts (shapingOf (lfRoleFeatures fonts) False look c) txt]
   ]
   where
+    paint look marks = case swatchOf env look of
+      Nothing -> marks
+      Just sw -> [P.Saved (P.SetColor sw : marks)]
     geom = deGeom env
     fonts = deFonts env
     style = piStyle (deInput env)
