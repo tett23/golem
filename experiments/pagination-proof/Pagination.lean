@@ -12996,6 +12996,165 @@ theorem I5_turned_admission_iff (c : AdmissionColumn) (s : FlushState) (id : Nat
   cases queue : s.figures <;> cases shown : c.shownNotes <;>
     simp [admitFigure,AdmissionColumn.measure,queue,shown,List.isEmpty] <;> split <;> simp_all
 
+/-- placeKept can evaluate several candidate layouts from the original
+    immutable state. The output is only that of its selected candidate.
+    Items may be individual paragraph lines or whole verse lines. -/
+def keptSplitAt (len first last : Nat) (allLines : Bool) : Nat :=
+  len - (if allLines || decide (len ≤ last ∨ len < first+last) then len else last)
+
+def chooseKeptLayout {α σ : Type} (place : σ → Bool → List α → σ) (nextColumn : σ → σ)
+    (fits empty : σ → Bool) (sameColumn : σ → σ → Bool) (first last : Nat)
+    (allLines start : Bool) (s : σ) (xs : List α) : σ :=
+  let whole := place s start xs
+  let cut := keptSplitAt xs.length first last allLines
+  let front := xs.take cut
+  let back := xs.drop cut
+  let prefixState := place s start front
+  let backStart := start && front.isEmpty
+  let here := place prefixState backStart back
+  if fits whole then whole
+  else if sameColumn here prefixState && fits here then here
+  else if empty prefixState then whole else place (nextColumn prefixState) backStart back
+
+theorem I5_kept_layout_emits_once {α σ β : Type} (place : σ → Bool → List α → σ)
+    (nextColumn : σ → σ) (fits empty : σ → Bool) (sameColumn : σ → σ → Bool)
+    (visible : σ → List β) (contents : α → List β)
+    (placeKeeps : ∀ s start xs, visible (place s start xs) = visible s ++ xs.bind contents)
+    (crossKeeps : ∀ s, visible (nextColumn s) = visible s)
+    (first last : Nat) (allLines start : Bool) (s : σ) (xs : List α) :
+    visible (chooseKeptLayout place nextColumn fits empty sameColumn first last allLines start s xs) =
+      visible s ++ xs.bind contents := by
+  have partition (k : Nat) : (xs.take k).bind contents ++ (xs.drop k).bind contents = xs.bind contents := by
+    induction k generalizing xs with
+    | zero => simp
+    | succ k ih => cases xs with
+      | nil => simp
+      | cons x xs => simpa [List.bind,List.append_assoc] using congrArg (fun ys => contents x ++ ys) (ih xs)
+  unfold chooseKeptLayout
+  dsimp only
+  split
+  · exact placeKeeps _ _ _
+  · split
+    · simp only [placeKeeps,List.append_assoc,partition]
+    · split
+      · exact placeKeeps _ _ _
+      · simp only [placeKeeps,crossKeeps,List.append_assoc,partition]
+
+/-- Decide.splitAtBreak for either physical lines or stanza verse lines.
+    Prove the maximal *unforced* choice; placeLines separately allows
+    its forced first part in an empty or heading-only column. -/
+def keptBreakCount (first last n fitting : Nat) (allLines start : Bool) : Nat :=
+  if n ≤ fitting then fitting
+  else if allLines then 0
+  else
+    let k := if n-fitting < last then n-last else fitting
+    if start && decide (0 < k ∧ k < first) then 0 else k
+
+def legalPartial (first last n fitting k : Nat) (allLines start : Bool) : Prop :=
+  k = 0 ∨ (allLines = false ∧ k ≤ fitting ∧ last ≤ n-k ∧ (start = true → first ≤ k))
+
+theorem I3_kept_break_is_largest (first last n fitting : Nat) (allLines start : Bool)
+    (partialFit : fitting < n) :
+    let k := keptBreakCount first last n fitting allLines start
+    legalPartial first last n fitting k allLines start ∧
+      ∀ j, legalPartial first last n fitting j allLines start → j ≤ k := by
+  cases allLines <;> cases start <;>
+    simp [keptBreakCount,legalPartial,Nat.not_le_of_lt partialFit] <;>
+    repeat' first | split | apply And.intro | intro
+  all_goals omega
+
+/-- A stanza counts whole verse lines by their cumulative physical
+    line lengths. Reaching the end of the available room exactly fits;
+    an empty verse line is counted even with zero room. -/
+def fittingVerses {α : Type} (room : Nat) : List (List α) → Nat
+  | [] => 0
+  | v :: rest => if v.length ≤ room then 1 + fittingVerses (room-v.length) rest else 0
+
+def verseEnds {α : Type} (used : Nat) : List (List α) → List Nat
+  | [] => []
+  | v :: rest => (used+v.length) :: verseEnds (used+v.length) rest
+
+theorem I3_fitting_verses_scan {α : Type} (vs : List (List α)) (used room : Nat) :
+    ((verseEnds used vs).takeWhile (fun n => decide (n ≤ used+room))).length =
+      fittingVerses room vs := by
+  induction vs generalizing used room with
+  | nil => rfl
+  | cons v rest ih =>
+    by_cases fits : v.length ≤ room
+    · have bound : used+v.length ≤ used+room := by omega
+      have total : used+v.length+(room-v.length) = used+room := by omega
+      have tail := ih (used+v.length) (room-v.length)
+      rw [total] at tail
+      simp [verseEnds,fittingVerses,fits,bound,List.takeWhile,tail] <;> omega
+    · have beyond : ¬used+v.length ≤ used+room := by omega
+      simp [verseEnds,fittingVerses,fits,beyond,List.takeWhile]
+
+theorem I3_fitting_verses_maximal {α : Type} (vs : List (List α)) (room : Nat) :
+    let k := fittingVerses room vs
+    (vs.take k).join.length ≤ room ∧
+      (∀ next, (vs.drop k).head? = some next → room < (vs.take k).join.length + next.length) := by
+  induction vs generalizing room with
+  | nil => simp [fittingVerses]
+  | cons v rest ih =>
+    by_cases fits : v.length ≤ room
+    · simp only [fittingVerses,if_pos fits,Nat.one_add,List.take,List.drop,List.join,List.length_append]
+      obtain ⟨within,over⟩ := ih (room-v.length)
+      constructor
+      · omega
+      · intro next atNext
+        have h := over next atNext
+        omega
+    · simp [fittingVerses,fits]
+      omega
+
+/-- Exact charge of FSpace. A box part begins at start+before even when
+    it did not open at column top; isEmpty has a different box guard. -/
+def AdmissionColumn.chargeSpace (c : AdmissionColumn) (s : FlushState) (requested : Int) : Nat :=
+  let boxStart := c.box.elim false (fun b => decide (c.used = b.start+b.before))
+  (BreakDispatch.charged (decide (c.used = c.firstLine)) boxStart requested (c.measure s).free).toNat
+
+def AdmissionColumn.placeSpace (c : AdmissionColumn) (s : FlushState) (requested : Int) :
+    AdmissionColumn × (Int × Nat) :=
+  let actual := c.chargeSpace s requested
+  ({c with used := c.used+actual}, (requested,actual))
+
+theorem I3_space_reduces_actual_free (c : AdmissionColumn) (s : FlushState) (n : Int) :
+    let step := c.placeSpace s n
+    (step.1.measure s).free = (c.measure s).free - (step.2.2 : Int) := by
+  simp [AdmissionColumn.placeSpace,AdmissionColumn.measure,Int.ofNat_add]
+  omega
+
+/-- Replay uses requests, since the destination column has its own
+    capacity, footnotes and top; remember the new actual charge. -/
+def replayRequestedSpaces (s : FlushState) (c : AdmissionColumn) :
+    List Int → AdmissionColumn × List (Int × Nat)
+  | [] => (c,[])
+  | n :: ns =>
+    let placed := c.placeSpace s n
+    let rest := replayRequestedSpaces s placed.1 ns
+    (rest.1,placed.2 :: rest.2)
+
+theorem I3_replayed_space_charges (s : FlushState) (c : AdmissionColumn) (ns : List Int) :
+    let done := replayRequestedSpaces s c ns
+    done.2.map Prod.fst = ns ∧ done.1.used = c.used + done.2.foldr (fun entry total => entry.2 + total) 0 := by
+  induction ns generalizing c with
+  | nil => simp [replayRequestedSpaces,List.foldr]
+  | cons n ns ih =>
+    have h := ih (c.placeSpace s n).1
+    simp only [replayRequestedSpaces,List.map_cons,List.foldr,AdmissionColumn.placeSpace] at h ⊢
+    obtain ⟨requests,actual⟩ := h
+    simp [requests,actual,Nat.add_assoc]
+
+theorem I3_replay_on_column_top (s : FlushState) (c : AdmissionColumn) (ns : List Int)
+    (top : c.used = c.firstLine) :
+    (replayRequestedSpaces s c ns).1.used = c.used := by
+  induction ns with
+  | nil => rfl
+  | cons n ns ih =>
+    have zero : c.chargeSpace s n = 0 := by
+      simp [AdmissionColumn.chargeSpace,top,BreakDispatch.charged]
+    simpa [replayRequestedSpaces,AdmissionColumn.placeSpace,zero] using ih
+
 /-- The constructors of Flow that do not introduce an FFigure or an
     FPageFigure. FWrapped places its own slot, not a deferred figure. -/
 inductive BodyKind where
