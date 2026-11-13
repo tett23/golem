@@ -12402,6 +12402,60 @@ theorem figure_execution_exists (geometry : FlushState → CrossingGeometry)
       out last (replay_crossings enter.2 gs) rfl more
     exact ⟨_,last,run,notes,figures,by simpa [figures] using I5_source_figures_fifo run⟩
 
+/-- Operations in execution order, including crossings *before* the first
+    figure or inside a box containing no figures. A body update changes only
+    geometry and note state; an advance can discharge earlier figures. -/
+inductive LayoutEvent where
+  | figure (fig : Deferred) (g : FigureGeometry)
+  | crossing (g : CrossingGeometry)
+  | body (geometry : ColumnState) (notes : List Part)
+
+def LayoutEvent.figures : LayoutEvent → List Deferred
+  | .figure fig _ => [fig]
+  | .crossing _ | .body _ _ => []
+
+def LayoutEvent.perform (e : LayoutEvent) (s : FlushState) : List Deferred × FlushState :=
+  match e with
+  | .figure fig g => admitFigure s g.used g.noShown g.empty g.free fig
+  | .crossing g => ((placedOnAdvance s.geometry s.figures g.free g.empty).1,
+      flushStep s g.cap g.sep g.free g.empty)
+  | .body geo notes => ([],{s with geometry := geo, notes := notes})
+
+theorem LayoutEvent.preserve (e : LayoutEvent) (s : FlushState) :
+    (e.perform s).1 ++ (e.perform s).2.figures = s.figures ++ e.figures := by
+  cases e with
+  | figure fig g => exact figure_admission_fifo s g.used g.noShown g.empty g.free fig
+  | body geo notes => simp [perform,figures]
+  | crossing g =>
+    have h := crossings_fifo (Crossings.next s g.cap g.sep g.free g.empty [] _
+      (Crossings.stop (flushStep s g.cap g.sep g.free g.empty)))
+    simpa [perform,figures] using h
+
+def performEvents (s : FlushState) : List LayoutEvent → List Deferred × FlushState
+  | [] => ([],s)
+  | e :: es =>
+    let step := e.perform s
+    let rest := performEvents step.2 es
+    (step.1 ++ rest.1,rest.2)
+
+theorem I5_events_fifo (s : FlushState) (es : List LayoutEvent) :
+    (performEvents s es).1 ++ (performEvents s es).2.figures = s.figures ++ es.bind LayoutEvent.figures := by
+  induction es generalizing s with
+  | nil => simp [performEvents]
+  | cons e es ih =>
+    change ((e.perform s).1 ++ (performEvents (e.perform s).2 es).1) ++ (performEvents (e.perform s).2 es).2.figures = s.figures ++ (e.figures ++ es.bind _)
+    rw [List.append_assoc, ih, ← List.append_assoc, e.preserve, List.append_assoc]
+
+theorem I5_events_eof (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true) (s : FlushState) (es : List LayoutEvent) :
+    ∃ out last, Crossings (performEvents s es).2 out last ∧ last.notes = [] ∧
+      last.figures = [] ∧ (performEvents s es).1 ++ out = s.figures ++ es.bind LayoutEvent.figures := by
+  obtain ⟨out,last,run,figures,notes⟩ := drain_exists geometry fresh (performEvents s es).2
+  have suffix := crossings_fifo run
+  simp [figures] at suffix
+  exact ⟨out,last,run,notes,figures,by rw [suffix]; exact I5_events_fifo s es⟩
+
 end TableAdvance
 
 
