@@ -4,12 +4,8 @@ predicates of digits, numerals and abbreviations, and no break between a
 pair of digits (in horizontal writing), a prefixed abbreviation and a
 numeral, and a numeral and a postfixed abbreviation, B1 to B8.
 
-The values before the ADR are kept two ways: 'pre0049CharClass' is
-'charClass' as it was, copied; the items of the paragraphs of B5, B6 and
-B8 and of every run of the enumeration up to two parts were recorded
-from the implementation before the ADR, the latter as hashes in
-test/golden/unbreakable-pairs.tsv, with the change B6 allows applied
-('forbidPairs').
+'pre0049CharClass' retains the earlier class table. The item fixtures
+and hashes also cover the zero stretch required by Golem ADR 0362.
 -}
 module UnbreakablePairsSpec
   ( unbreakablePairsTests,
@@ -26,6 +22,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word64)
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
+import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
@@ -41,7 +38,27 @@ unbreakablePairsTests :: TestTree
 unbreakablePairsTests =
   testGroup
     "character classes and unbreakable pairs of JLReq (golem-layout ADR 0049)"
-    [ testGroup "B1: the characters added to the classes" b1Tests,
+    [ testCase "inv1_unbreakable_spacing_case_1" $
+        [unSp y | Glue _ y _ _ _ <- items "１２３", y < filStretch] @?= [0, 0],
+      testCase "inv1_unbreakable_spacing_case_2" $
+        [unSp y | Glue _ y _ _ _ <- items "１", y < filStretch] @?= [],
+      testCase "inv1_unbreakable_spacing_property" $ do
+        let positions = map A.AkiChar [minBound .. maxBound]
+            custom = A.withAkiRule positions positions (A.Aki 0 (1 / 4) (3 / 4)) A.defaultAkiSet
+            gaps vertical t =
+              [g | g@Glue {} <- fst (composeInlines ((composeEnv vertical plain) {ceAkiSet = custom}) [IR.Text sp t]), itemStretch g < filStretch]
+            protected = [(False, "１２"), (False, "￥一"), (True, "〇％"), (False, "……")]
+        mapM_
+          ( \(v, t) -> do
+              let gs = gaps v t
+              [(itemWidth g, itemStretch g, itemShrink g) | g <- gs] @?= [(163840, 0, 163840)]
+              mapM_
+                (\(target, order) -> glueAmounts (Line gs 0 target 0 (0, 0) 0 (0, 0) Nothing order) @?= [0])
+                [(target, order) | target <- [fs, 100 * fs], order <- [AdjustUniform, AdjustStaged [] []]]
+          )
+          protected
+        map (map itemStretch . uncurry gaps) [(False, "１漢"), (True, "１２")] @?= [[327680], [327680]],
+      testGroup "B1: the characters added to the classes" b1Tests,
       testGroup "the predicates of digits, numerals and abbreviations" predicateTests,
       testGroup "B2: a run of digits" b2Tests,
       testGroup "B3: a prefixed abbreviation and a numeral" b3Tests,
@@ -230,13 +247,13 @@ b4Tests =
 
 b5Tests :: [TestTree]
 b5Tests =
-  [ testCase "B5: the items of １００ ％ are those before the ADR but between the digits" $
+  [ testCase "B5: the items of １００ ％ keep the word space and suppress stretch only between the digits" $
       shapes (items "１００ ％") @?= recordedSpaced
   ]
 
 b6Tests :: [TestTree]
 b6Tests =
-  [ testCase ("B6: the items of " <> T.unpack t <> " are those before the ADR with the candidates of its pairs infinite") $
+  [ testCase ("B6: the items of " <> T.unpack t <> " have infinite pair penalties and zero stretch at those pairs") $
       shapes (items t) @?= want
   | (t, want) <- recordedPairs
   ]
@@ -255,16 +272,13 @@ b8Tests =
 {- | Every run of the enumeration up to two parts (the 24 parts of
 docs/adr/0209 and １, ％ and ￥), each in its settings of the normal form,
 with 'あ' set none or once before it and 'い' none or once after it,
-horizontal and vertical: the hash of the items with the change of B6
-applied, and the items are the same with it applied. The hashes in the
-golden file were written by the implementation before golem-layout ADR
-0049, so that, the items being the same with the change applied, they
-are those before the ADR with the change of B6.
+horizontal and vertical. The golden hashes include the pair penalties
+and the zero stretch of Golem ADR 0362.
 -}
 goldenTests :: [TestTree]
 goldenTests =
   [ goldenVsString
-      "B6, B7: the items of every run are those before the ADR with the change of B6 (test/golden/unbreakable-pairs.tsv)"
+      "B6, B7: the items of every run include the pair penalties and stretch limits (test/golden/unbreakable-pairs.tsv)"
       "test/golden/unbreakable-pairs.tsv"
       (pure (BL.fromStrict (TE.encodeUtf8 (T.unlines (map line runs))))),
     testCase "B6: the change of B6 changes no items of any run: the candidates of the pairs are already infinite" $
@@ -300,24 +314,24 @@ fnv = foldl (\h c -> (h `xor` fromIntegral (ord c)) * 0x100000001b3) 0xcbf29ce48
 {- * the items recorded before the ADR
 
 The items the implementation before golem-layout ADR 0049 gave, with the
-change of B6 applied ('forbidPairs'); those of code as it gave them.
+change of B6 applied ('forbidPairs') and pair stretches zeroed for Golem ADR 0362; code items are unchanged.
 -}
 
 recordedSpaced :: [Shape]
 recordedSpaced =
-  [SBox 655360 "１", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SGlue 163840 81920 54613, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]
+  [SBox 655360 "１", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SGlue 163840 81920 54613, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]
 
 recordedPairs :: [(Text, [Shape])]
 recordedPairs =
-  [ ("１２３", [SBox 655360 "１", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "２", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "３", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("あ￥１００", [SBox 655360 "あ", SGlue 0 65536 0, SBox 655360 "￥", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "１", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("€100", [SBox 655360 "€", SPen 0 10000 "", SGlue 163840 163840 81920, SBox 983040 "100", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("№1", [SBox 655360 "№", SPen 0 10000 "", SGlue 163840 163840 81920, SBox 327680 "1", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("100％", [SBox 983040 "100", SPen 0 10000 "", SGlue 163840 163840 81920, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("三〇％", [SBox 655360 "三", SGlue 0 65536 0, SBox 655360 "〇", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("１０℃", [SBox 655360 "１", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "℃", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("5′", [SBox 327680 "5", SPen 0 10000 "", SGlue 163840 163840 81920, SBox 655360 "′", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
-    ("￥１００％", [SBox 655360 "￥", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "１", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 65536 0, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""])
+  [ ("１２３", [SBox 655360 "１", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "２", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "３", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("あ￥１００", [SBox 655360 "あ", SGlue 0 65536 0, SBox 655360 "￥", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "１", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("€100", [SBox 655360 "€", SPen 0 10000 "", SGlue 163840 0 81920, SBox 983040 "100", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("№1", [SBox 655360 "№", SPen 0 10000 "", SGlue 163840 0 81920, SBox 327680 "1", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("100％", [SBox 983040 "100", SPen 0 10000 "", SGlue 163840 0 81920, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("三〇％", [SBox 655360 "三", SGlue 0 65536 0, SBox 655360 "〇", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("１０℃", [SBox 655360 "１", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "℃", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("5′", [SBox 327680 "5", SPen 0 10000 "", SGlue 163840 0 81920, SBox 655360 "′", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""]),
+    ("￥１００％", [SBox 655360 "￥", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "１", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "０", SPen 0 10000 "", SGlue 0 0 0, SBox 655360 "％", SPen 0 10000 "", SGlue 0 1125899906842624 0, SPen 0 (-10000) ""])
   ]
 
 recordedCode :: [(Text, [Shape])]

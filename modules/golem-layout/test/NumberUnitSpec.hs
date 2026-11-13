@@ -151,7 +151,7 @@ boxesAndGlue its = [x | it <- its, x <- shape it]
 
 w34Tests :: [TestTree]
 w34Tests =
-  [ testCase "W3: the boxes and the glue of あ100円, 100円, １０冊, 3つ and 5パーセント are those before the ADR, with 10000 and 500" $
+  [ testCase "W3: the boxes and the glue of あ100円, 100円, １０冊, 3つ and 5パーセント keep their recorded widths and protected digit spacing, with 10000 and 500" $
       [(t, p) | (t, before) <- recordedBoxes, p <- [10000, 500], boxesAndGlue (itemsWith p t) /= before] @?= [],
     testCase "W4: the items of 100 円 and 三人 are those before the ADR" $
       [(t, p) | (t, before) <- recordedItems, p <- [10000, 50], show (itemsShape (itemsWith p t)) /= before] @?= []
@@ -204,7 +204,7 @@ those before the ADR with the change.
 goldenTests :: [TestTree]
 goldenTests =
   [ goldenVsString
-      "W3, W4: the items of every run are those before the ADR with its change (test/golden/number-unit.tsv)"
+      "W3, W4: the items of every run include the number-unit penalty and protected spacing (test/golden/number-unit.tsv)"
       "test/golden/number-unit.tsv"
       (pure (BL.fromStrict (TE.encodeUtf8 (T.unlines [Map.findWithDefault "" run lines' | run <- concat (upTo 2 runsT)])))),
     testCase "W1, W2: the change of the ADR changes no items of any run: the breaks of its pairs are already its penalty" $
@@ -243,7 +243,7 @@ recordedBoxes :: [(Text, [(Char, Integer, Integer, Integer, Text)])]
 recordedBoxes =
   [ ("あ100円", [('B', 655360, 0, 0, "あ"), ('G', 163840, 163840, 81920, ""), ('B', 983040, 0, 0, "100"), ('G', 163840, 163840, 81920, ""), ('B', 655360, 0, 0, "円"), ('G', 0, 1125899906842624, 0, "")]),
     ("100円", [('B', 983040, 0, 0, "100"), ('G', 163840, 163840, 81920, ""), ('B', 655360, 0, 0, "円"), ('G', 0, 1125899906842624, 0, "")]),
-    ("１０冊", [('B', 655360, 0, 0, "１"), ('G', 0, 65536, 0, ""), ('B', 655360, 0, 0, "０"), ('G', 0, 65536, 0, ""), ('B', 655360, 0, 0, "冊"), ('G', 0, 1125899906842624, 0, "")]),
+    ("１０冊", [('B', 655360, 0, 0, "１"), ('G', 0, 0, 0, ""), ('B', 655360, 0, 0, "０"), ('G', 0, 65536, 0, ""), ('B', 655360, 0, 0, "冊"), ('G', 0, 1125899906842624, 0, "")]),
     ("3つ", [('B', 327680, 0, 0, "3"), ('G', 163840, 163840, 81920, ""), ('B', 655360, 0, 0, "つ"), ('G', 0, 1125899906842624, 0, "")]),
     ("5パーセント", [('B', 327680, 0, 0, "5"), ('G', 163840, 163840, 81920, ""), ('B', 655360, 0, 0, "パ"), ('B', 655360, 0, 0, "ー"), ('G', 0, 65536, 0, ""), ('B', 655360, 0, 0, "セ"), ('G', 0, 65536, 0, ""), ('B', 655360, 0, 0, "ン"), ('G', 0, 65536, 0, ""), ('B', 655360, 0, 0, "ト"), ('G', 0, 1125899906842624, 0, "")])
   ]
