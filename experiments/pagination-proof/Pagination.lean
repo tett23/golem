@@ -2657,6 +2657,27 @@ def afterHeadingsOnlySource (used brk : Nat)
     (∀ figurePos, .figure figurePos ∈ items → figurePos < pos →
       keptFigure figurePos = false)
 
+theorem I3_alloy_placed_line_after_sent_figures
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (roleForText : Nat → AlloyTextRole)
+    (keptFigure : Nat → Bool) (linePos : Nat)
+    (lineIn : .text linePos ∈ items)
+    (lineRole : roleForText linePos = .line)
+    (earlierSent : ∀ figurePos, .figure figurePos ∈ items →
+      figurePos < linePos → keptFigure figurePos = false)
+    (placed : textHereAtBreak items
+      (alloyTextFirstBreak
+        ((sourceTextPositions items).map roleForText)) linePos = true) :
+    afterHeadingsOnlySource 0
+      (alloyTextFirstBreak
+        ((sourceTextPositions items).map roleForText))
+      items roleForText keptFigure linePos := by
+  refine ⟨rfl, ?_, ?_⟩
+  · intro textPos textIn before _
+    exact I3_alloy_placed_line_prior_text_heading items ordered
+      roleForText linePos textPos lineIn textIn before lineRole placed
+  · exact earlierSent
+
 theorem I3_alloy_placed_line_after_headings_source
     (items : List SourceItem) (ordered : sourceOrdered items)
     (roleForText : Nat → AlloyTextRole)
@@ -2672,13 +2693,11 @@ theorem I3_alloy_placed_line_after_headings_source
       (alloyTextFirstBreak
         ((sourceTextPositions items).map roleForText))
       items roleForText keptFigure linePos := by
-  refine ⟨rfl, ?_, ?_⟩
-  · intro textPos textIn before _
-    exact I3_alloy_placed_line_prior_text_heading items ordered
-      roleForText linePos textPos lineIn textIn before lineRole placed
-  · intro figurePos figureIn before
-    have after := figuresAfter figurePos figureIn
-    omega
+  apply I3_alloy_placed_line_after_sent_figures items ordered roleForText
+    keptFigure linePos lineIn lineRole _ placed
+  intro figurePos member before
+  have after := figuresAfter figurePos member
+  omega
 
 /- A figure after the first two text items can be kept at break two
    exactly when its own rule permits it. The figure's source prefix
@@ -2713,6 +2732,29 @@ theorem I3_two_break_no_blank_one_figure
         show List.range 0 = [] from rfl] at room
       simp [present]
       omega
+
+/- A figure between the initial heading and the following line has one text
+   item before it. Keeping it satisfies the heading-only rule at break one.
+   Sending it requires break two to include the following line instead. -/
+theorem I3_heading_figure_line_break (capacity figureSize : Nat)
+    (twoFit : 2 ≤ capacity) :
+    ∃ brk : Nat, ∃ kept : Nat → Bool,
+      ((brk = 1 ∧ kept 0 = true) ∨ (brk = 2 ∧ kept 0 = false)) ∧
+      figuresRuleWithLoad 1 capacity 0 kept (fun _ => 1 ≤ brk)
+        (fun _ => 1) (fun _ => figureSize) (fun _ => false) ∧
+      brk + (if kept 0 then figureSize else 0) ≤ capacity := by
+  obtain ⟨kept, rule⟩ := I3_figuresRuleWithLoad_exists 1 capacity 0
+    (fun _ => true) (fun _ => 1) (fun _ => figureSize) (fun _ => false)
+  cases present : kept 0 with
+  | false =>
+      exact ⟨2, kept, Or.inr ⟨rfl, present⟩, by simpa using rule,
+        by simpa [present] using twoFit⟩
+  | true =>
+      have room := I3_kept_figure_has_room 1 capacity 0 kept _ _ _ _
+        rule 0 (by decide) present
+      refine ⟨1, kept, Or.inl ⟨rfl, present⟩, by simpa using rule, ?_⟩
+      simpa [present, figureHasRoom, priorFigureLines,
+        show List.range 0 = [] from rfl] using room
 
 theorem I3_text_after_second_not_in_second_break
     (items : List SourceItem) (ordered : sourceOrdered items)
@@ -4004,6 +4046,45 @@ theorem I3_source_text_here_monotone
       firstIn).mpr
     omega
 
+theorem I3_alloy_first_break_relaxed_with_sent_figures
+    (items : List SourceItem) (ordered : sourceOrdered items)
+    (roleForText : Nat → AlloyTextRole)
+    (keptFigure : Nat → Bool)
+    (paragraphs : List ParagraphBoundary)
+    (valid : ∀ p ∈ paragraphs, paragraphBoundaryValid items p)
+    (firstIsLine : ∀ p ∈ paragraphs,
+      roleForText p.firstPos = .line)
+    (priorFiguresSent : ∀ p ∈ paragraphs,
+      textHereAtBreak items
+        (alloyTextFirstBreak
+          ((sourceTextPositions items).map roleForText))
+        p.firstPos = true →
+      ∀ figurePos, .figure figurePos ∈ items →
+        figurePos < p.firstPos → keptFigure figurePos = false) :
+    let brk := alloyTextFirstBreak
+      ((sourceTextPositions items).map roleForText)
+    orphanHSource brk items roleForText keptFigure paragraphs ∧
+      widowHSource brk items roleForText keptFigure paragraphs := by
+  dsimp
+  constructor
+  · intro p member _ firstHere _
+    have ⟨firstIn, _, _⟩ := valid p member
+    exact I3_alloy_placed_line_after_sent_figures items ordered
+      roleForText keptFigure p.firstPos firstIn
+      (firstIsLine p member)
+      (priorFiguresSent p member firstHere) firstHere
+  · intro p member _ beforeLastHere _
+    have ⟨firstIn, beforeLastIn, beforeLastOrder⟩ := valid p member
+    have firstHere := I3_source_text_here_monotone items ordered
+      p.firstPos p.beforeLastPos
+      (alloyTextFirstBreak
+        ((sourceTextPositions items).map roleForText))
+      firstIn beforeLastIn beforeLastOrder beforeLastHere
+    exact I3_alloy_placed_line_after_sent_figures items ordered
+      roleForText keptFigure p.firstPos firstIn
+      (firstIsLine p member)
+      (priorFiguresSent p member firstHere) firstHere
+
 theorem I3_alloy_first_break_relaxed_paragraphs
     (items : List SourceItem) (ordered : sourceOrdered items)
     (roleForText : Nat → AlloyTextRole)
@@ -4023,25 +4104,11 @@ theorem I3_alloy_first_break_relaxed_paragraphs
       ((sourceTextPositions items).map roleForText)
     orphanHSource brk items roleForText keptFigure paragraphs ∧
       widowHSource brk items roleForText keptFigure paragraphs := by
-  dsimp
-  constructor
-  · intro p member _ firstHere _
-    have ⟨firstIn, _, _⟩ := valid p member
-    exact I3_alloy_placed_line_after_headings_source items ordered
-      roleForText keptFigure p.firstPos firstIn
-      (firstIsLine p member)
-      (figuresAfterPlacedFirst p member firstHere) firstHere
-  · intro p member _ beforeLastHere _
-    have ⟨firstIn, beforeLastIn, beforeLastOrder⟩ := valid p member
-    have firstHere := I3_source_text_here_monotone items ordered
-      p.firstPos p.beforeLastPos
-      (alloyTextFirstBreak
-        ((sourceTextPositions items).map roleForText))
-      firstIn beforeLastIn beforeLastOrder beforeLastHere
-    exact I3_alloy_placed_line_after_headings_source items ordered
-      roleForText keptFigure p.firstPos firstIn
-      (firstIsLine p member)
-      (figuresAfterPlacedFirst p member firstHere) firstHere
+  apply I3_alloy_first_break_relaxed_with_sent_figures items ordered roleForText
+    keptFigure paragraphs valid firstIsLine
+  intro p member here figurePos figureIn before
+  have after := figuresAfterPlacedFirst p member here figurePos figureIn
+  omega
 
 theorem I3_two_break_figure_blank_relaxed_paragraphs
     (capacity secondPos blankPos figurePos figureSize : Nat)
