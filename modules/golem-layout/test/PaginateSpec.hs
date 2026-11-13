@@ -1476,6 +1476,13 @@ largerNeedTests =
           ps = paginate 1 4 flows
       placed ps @?= [(1, 0, [SLine 0, SLine 1])]
       brokenOf [P1, P2] flows ps @?= [],
+    testCase "Golem ADR 0352 I3: shared needs keep the block exactly through the available height" $ do
+      forM_ [[1, 2, 3], [3, 1, 2], [2, 3, 3], [1, 4, 2], [4, 1, 4]] $ \needs -> do
+        let flows = [FParagraph defaultKeep (lines' 0 1), FSpace 1] <> map (FNeedLines mk) needs <> [FParagraph defaultKeep (lines' 1 1)]
+            ps = paginate 1 4 flows
+            expected = if maximum needs <= 3 then [(1, 0, [SLine 0, SLine 1])] else [(1, 0, [SLine 0]), (2, 0, [SLine 1])]
+        placed ps @?= expected
+        unmets ps @?= [],
     testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
       let flows = [FParagraph defaultKeep (lines' 0 3), FNeedLines mk 2, FSpace 1, FNeedLines mk2 4, FSpace 1, FParagraph defaultKeep (lines' 3 1)]
           ps = paginate 1 6 flows
