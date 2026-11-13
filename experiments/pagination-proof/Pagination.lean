@@ -6720,8 +6720,7 @@ theorem I3_need_space_two_needs_first_part_exists
    but contributes nothing to placedBefore at any of those needs. -/
 theorem I3_shared_needs_first_part_exists
     (capacity used firstPart : Nat) (needs : List Nat)
-    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
-    (partPositive : 1 ≤ firstPart) :
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity) :
     ∃ brk : Fin 3,
       used + (if brk.val = 2 then 1 + firstPart else brk.val) ≤ capacity ∧
       (brk.val = 2 → ∀ n ∈ needs, n ≤ capacity - used) ∧
