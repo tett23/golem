@@ -9,6 +9,7 @@ module SecuritySpec (tests) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (replicateM)
 import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -242,7 +243,7 @@ tests2018 =
                   refs = BC.unwords [BC.pack (show k) <> " 0 R" | (k, _) <- streams]
               imported 1 (contentsOf refs streams) >>= (@?= Right (sum sizes + length sizes - 1, 0))
           )
-          (concat [sequence (replicate count [0, 1, 3]) | count <- [1 .. 4]]),
+          (concat [replicateM count [0, 1, 3] | count <- [1 .. 4]]),
       testCase "inv1_imported_content_separators_reused_form_calls"
         $ withinTimeLimits hangLimits
         $ imported 1 (contentsOf "4 0 R 4 0 R 5 0 R" [(4, nulStream 0), (5, nulStream (256 * mib))])
