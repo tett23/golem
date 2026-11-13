@@ -265,6 +265,96 @@ theorem I1_caption_discard_bounded (items : List CaptionItemKind) :
     cases item <;> simp [captionDiscardCount] <;> try omega
     split <;> omega
 
+def captionSkippable : CaptionItemKind → Bool
+  | .box => false
+  | .glue => true
+  | .penalty p _ => decide (-10000 < p)
+
+/-- The computed start drops only the maximal discardable prefix:
+    forced penalties and the first following box are retained. -/
+theorem I1_caption_discard_prefix (items : List CaptionItemKind) :
+    items.take (captionDiscardCount items) = items.takeWhile captionSkippable ∧
+    items.drop (captionDiscardCount items) = items.dropWhile captionSkippable := by
+  induction items with
+  | nil => exact ⟨rfl,rfl⟩
+  | cons h t ih =>
+    cases h with
+    | box => exact ⟨rfl,rfl⟩
+    | glue =>
+      simpa [captionDiscardCount,captionSkippable,Nat.one_add,List.takeWhile,List.dropWhile] using ih
+    | penalty p flag =>
+      by_cases stop : p ≤ -10000
+      · have skip : ¬ -10000 < p := by omega
+        simp [captionDiscardCount,captionSkippable,stop,skip,List.takeWhile,List.dropWhile]
+      · have skip : -10000 < p := by omega
+        simpa [captionDiscardCount,captionSkippable,stop,skip,Nat.one_add,List.takeWhile,List.dropWhile] using ih
+
+/-- Walk is collected from the last break backwards. As in assemble,
+    the first line starts at zero, and each subsequent start skips past
+    its preceding break and discardable items. -/
+def captionLineRanges (items : List CaptionItemKind) (start : Nat) :
+    List Nat → List (Nat × Nat)
+  | [] => []
+  | b :: bs => (start,b) ::
+      captionLineRanges items (b+1+captionDiscardCount (items.drop (b+1))) bs
+
+theorem I1_caption_ranges_end_at_breaks (items : List CaptionItemKind)
+    (start : Nat) (bs : List Nat) :
+    (captionLineRanges items start bs).map Prod.snd = bs := by
+  induction bs generalizing start with
+  | nil => rfl
+  | cons b bs ih => simp [captionLineRanges,ih]
+
+theorem I1_caption_ranges_equal_zip (items : List CaptionItemKind)
+    (start : Nat) (bs : List Nat) :
+    captionLineRanges items start bs =
+      List.zip (start :: bs.map (fun b => b+1+captionDiscardCount (items.drop (b+1)))) bs := by
+  induction bs generalizing start with
+  | nil => rfl
+  | cons b bs ih => simp [captionLineRanges,List.zip,ih]
+
+theorem I1_caption_assemble_span (items : List CaptionItemKind) (reversePath : List Nat)
+    (body pitch size : Nat) :
+    captionGridSpan body pitch size (captionLineRanges items 0 reversePath.reverse).length =
+      captionGridSpan body pitch size reversePath.length := by
+  have h := congrArg List.length (I1_caption_ranges_end_at_breaks items 0 reversePath.reverse)
+  simp at h
+  rw [h]
+
+/-- tW of a prefix sums box and glue widths. A penalty's own width is
+    added only at the chosen break. Signed scaled points permit negative
+    kerns in the input. -/
+structure MeasuredCaptionItem where
+  kind : CaptionItemKind
+  width : Int
+
+def MeasuredCaptionItem.insideWidth (item : MeasuredCaptionItem) : Int :=
+  match item.kind with
+  | .penalty _ _ => 0
+  | _ => item.width
+
+def MeasuredCaptionItem.breakWidth (item : MeasuredCaptionItem) : Int :=
+  match item.kind with
+  | .penalty _ _ => item.width
+  | _ => 0
+
+def captionSum : List MeasuredCaptionItem → Int
+  | [] => 0
+  | h :: t => h.insideWidth + captionSum t
+
+theorem I1_caption_prefix_difference (prior line : List MeasuredCaptionItem) :
+    captionSum (prior ++ line) - captionSum prior = captionSum line := by
+  induction prior with
+  | nil => simp [captionSum]
+  | cons h t ih => simp [captionSum]; omega
+
+theorem I1_caption_assembled_natural (prior line : List MeasuredCaptionItem)
+    (atBreak : MeasuredCaptionItem) (protrudeStart protrudeEnd edgeStart edgeEnd : Int) :
+    captionSum (prior ++ line) - captionSum prior + atBreak.breakWidth -
+        protrudeStart - protrudeEnd + edgeStart + edgeEnd =
+      captionSum line + atBreak.breakWidth - protrudeStart - protrudeEnd + edgeStart + edgeEnd := by
+  rw [I1_caption_prefix_difference]
+
 example : ([.glue, .penalty 9999 true, .penalty (-10000) false, .box] : List CaptionItemKind).map (captionBreakCandidate false true) = [true, false, true, false] := by decide
 
 /-- Pass settings supplied to the paragraph breaker, in attempt order. -/
@@ -432,6 +522,88 @@ theorem captionBestEnd_member (first : CaptionEnd) (rest : List CaptionEnd) :
       · exact Or.inl (chosen.trans left)
       · exact Or.inr (Or.inl (chosen.trans right))
     · exact Or.inr (Or.inr later)
+
+/-- Two-stage selection in KnuthPlass: minimize end demerits, then
+    maximize the final fitness/history key among just the minima. -/
+def captionPreferKey (a b : CaptionEnd) : CaptionEnd :=
+  if a.fitness < b.fitness ||
+      (a.fitness == b.fitness && captionHistoryGreater a.previous b.previous) then a else b
+
+def captionTwoStage (minimum : Int) (ends : List CaptionEnd) : Option CaptionEnd :=
+  match ends.filter (fun e => decide (e.demerits = minimum)) with
+  | [] => none
+  | h :: t => some (t.foldl captionPreferKey h)
+
+theorem captionChooseEnd_same (a b : CaptionEnd) (tie : a.demerits = b.demerits) :
+    captionChooseEnd a b = captionPreferKey a b := by
+  simp [captionChooseEnd,captionPreferKey,tie,Int.lt_irrefl]
+
+private theorem captionKey_cost (a b : CaptionEnd) (tie : a.demerits = b.demerits) :
+    (captionPreferKey a b).demerits = a.demerits := by
+  unfold captionPreferKey
+  split <;> simp_all
+
+private theorem captionFold_at_minimum (threshold : Int) (ends : List CaptionEnd)
+    (a : CaptionEnd) (atMin : a.demerits = threshold)
+    (lower : ∀ e ∈ ends, threshold ≤ e.demerits) :
+    ends.foldl captionChooseEnd a =
+      (ends.filter (fun e => decide (e.demerits = threshold))).foldl captionPreferKey a := by
+  induction ends generalizing a with
+  | nil => rfl
+  | cons h t ih =>
+    have tailMin : ∀ e ∈ t, threshold ≤ e.demerits := fun e m => lower e (List.Mem.tail _ m)
+    by_cases equal : h.demerits = threshold
+    · have tie := atMin.trans equal.symm
+      simpa [equal,captionChooseEnd_same a h tie] using
+        ih (captionPreferKey a h) ((captionKey_cost a h tie).trans atMin) tailMin
+    · have bigger := lower h (List.Mem.head _)
+      have strict : a.demerits < h.demerits := by omega
+      simpa [equal,captionChooseEnd,strict] using ih a atMin tailMin
+
+theorem I1_caption_two_stage (threshold : Int) (a : CaptionEnd) (ends : List CaptionEnd)
+    (lower : ∀ e ∈ a :: ends, threshold ≤ e.demerits)
+    (attained : ∃ e ∈ a :: ends, e.demerits = threshold) :
+    captionBestEnd (a :: ends) = captionTwoStage threshold (a :: ends) := by
+  induction ends generalizing a with
+  | nil =>
+    obtain ⟨e,m,h⟩ := attained
+    have eq : e = a := by simpa using m
+    subst e
+    simp [captionBestEnd,captionTwoStage,h]
+  | cons b rest ih =>
+    by_cases first : a.demerits = threshold
+    · have remaining : ∀ e ∈ b :: rest, threshold ≤ e.demerits := fun e m => lower e (List.Mem.tail _ m)
+      unfold captionBestEnd captionTwoStage
+      simpa [first] using congrArg some (captionFold_at_minimum threshold (b :: rest) a first remaining)
+    · let c := captionChooseEnd a b
+      have cost : c.demerits = min a.demerits b.demerits := captionChooseEnd_cost a b
+      have la := lower a (by simp)
+      have lb := lower b (by simp)
+      have lower' : ∀ e ∈ c :: rest, threshold ≤ e.demerits := by
+        intro e m
+        rcases List.mem_cons.mp m with eq | tail
+        · subst e; omega
+        · exact lower e (by simp [tail])
+      have occurs : ∃ e ∈ c :: rest, e.demerits = threshold := by
+        obtain ⟨e,m,hit⟩ := attained
+        simp only [List.mem_cons] at m
+        rcases m with same | same | tail
+        · exact (first (same ▸ hit)).elim
+        · subst e; exact ⟨c,by simp,by omega⟩
+        · exact ⟨e,List.Mem.tail _ tail,hit⟩
+      have smaller := ih c lower' occurs
+      have eqLists : (a :: b :: rest).filter (fun e => decide (e.demerits = threshold)) =
+          (c :: rest).filter (fun e => decide (e.demerits = threshold)) := by
+        by_cases bh : b.demerits = threshold
+        · have strict : b.demerits < a.demerits := by omega
+          have opposite : ¬ a.demerits < b.demerits := by omega
+          have cb : c = b := by simp [c,captionChooseEnd,strict,opposite]
+          simp [first,bh,cb]
+        · have ch : c.demerits ≠ threshold := by omega
+          simp [first,bh,ch]
+      unfold captionTwoStage at smaller ⊢
+      rw [eqLists]
+      exact smaller
 
 private def measuredCaptionWidth (number pair single triple interior : Nat) : Nat :=
   number + 655360 + pair + interior * single + triple
