@@ -11357,6 +11357,151 @@ theorem I4_carryNote_remainder_decreases (room : Nat) (p rest : Part) (positive 
     omega
   · contradiction
 
+/-- A body line introduces its notes in manuscript order. The abstract
+    column counter counts consecutive no-room transitions before an open
+    column. Replenishing it is allowed after consuming body or note data. -/
+structure Body where
+  id : Nat
+  notes : List Note
+
+structure Combined where
+  body : List Body
+  pending : List Part
+  blockedColumns : Nat
+
+def pendingSize : List Part → Nat
+  | [] => 0
+  | p :: rest => 1 + p.lines + pendingSize rest
+
+def bodyNotes : List Body → List (Nat × Nat)
+  | [] => []
+  | line :: remaining => trace (line.notes.map full) ++ bodyNotes remaining
+
+def noteTrace (s : Combined) := trace s.pending ++ bodyNotes s.body
+
+private theorem trace_append (xs ys : List Part) : trace (xs ++ ys) = trace xs ++ trace ys := by
+  induction xs with
+  | nil => simp [trace]
+  | cons x xs ih => simp [trace,ih,List.append_assoc]
+
+/-- A footprint separates the ordered body IDs and individual note lines.
+    A retry can emit a zero-length note segment, whose trace is empty. -/
+inductive Progress : Combined → List Nat → List (Nat × Nat) → Combined → Prop where
+  | line (l : Body) (rest : List Body) (slots : Int) (before after : Nat) :
+    Progress ⟨l::rest,[],before⟩ [l.id] (trace (split slots l.notes).1)
+      ⟨rest,(split slots l.notes).2,after⟩
+  | lineWaiting (l : Body) (rest : List Body) (ps : List Part) (before after : Nat) :
+    Progress ⟨l::rest,ps,before⟩ [l.id] [] ⟨rest,ps ++ l.notes.map full,after⟩
+  | nextColumn (body : List Body) (ps : List Part) (before : Nat) :
+    Progress ⟨body,ps,before+1⟩ [] [] ⟨body,ps,before⟩
+  | carryPart (body : List Body) (p : Part) (ps : List Part) (slots before after : Nat)
+      (possible : 0 < slots ∨ p.lines = 0) :
+    Progress ⟨body,p::ps,before⟩ [] (trace [(carry slots p).1])
+      ⟨body,(carry slots p).2.toList ++ ps,after⟩
+
+def progressRank (s : Combined) : Nat × Nat × Nat := (s.body.length,pendingSize s.pending,s.blockedColumns)
+
+theorem I4_combined_decreases {s t : Combined} {bodyOut : List Nat} {notesOut : List (Nat × Nat)}
+    (move : Progress s bodyOut notesOut t) :
+    Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) (progressRank t) (progressRank s) := by
+  cases move with
+  | line | lineWaiting => apply Prod.Lex.left; simp [progressRank]
+  | nextColumn => apply Prod.Lex.right; apply Prod.Lex.right; simp [progressRank]
+  | carryPart body p ps slots before after possible =>
+      apply Prod.Lex.right
+      apply Prod.Lex.left
+      cases eq : (carry slots p).2 with
+      | none => simp [eq,pendingSize,progressRank]; omega
+      | some suffix =>
+        have positive : 0 < slots := by
+          rcases possible with h | zero
+          · exact h
+          · simp [carry,zero] at eq
+        have decrease := I4_carryNote_remainder_decreases slots p suffix positive eq
+        simp [progressRank,eq,pendingSize]
+        omega
+
+theorem I5_combined_step_exact {s t : Combined} {bodyOut : List Nat} {notesOut : List (Nat × Nat)}
+    (move : Progress s bodyOut notesOut t) :
+    bodyOut ++ t.body.map Body.id = s.body.map Body.id ∧ notesOut ++ noteTrace t = noteTrace s := by
+  cases move with
+  | line l rest slots before after =>
+      simp only [noteTrace,bodyNotes,trace,List.map_cons,List.cons_append,List.nil_append,true_and]
+      rw [← List.append_assoc,I5_splitNotes_exact]
+  | lineWaiting l rest ps before after =>
+      simp [noteTrace,bodyNotes,trace_append,List.append_assoc]
+  | nextColumn => simp [noteTrace]
+  | carryPart body p ps slots before after possible =>
+      refine ⟨rfl,?_⟩
+      have exactParts := I5_carryNote_exact slots p
+      simp only [trace,List.append_nil] at exactParts
+      simp only [noteTrace,trace_append,trace,List.append_nil,List.append_assoc]
+      rw [← List.append_assoc (linesFrom _ _ _) (trace _) (trace ps ++ bodyNotes body),exactParts]
+
+theorem I4_combined_termination :
+    WellFounded (fun t s : Combined => ∃ bodyOut notesOut, Progress s bodyOut notesOut t) := by
+  apply Subrelation.wf (r := InvImage (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))) progressRank)
+  · rintro _ _ ⟨_,_,move⟩
+    exact I4_combined_decreases move
+  · exact InvImage.wf progressRank (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)).wf
+
+/-- A finite execution retains its suffix; at completion the traces of
+    the body and of each individual note line coincide with the input. -/
+inductive Execution : Combined → List Nat → List (Nat × Nat) → Combined → Prop where
+  | stop (s : Combined) : Execution s [] [] s
+  | more {s t u : Combined} {bs bRest : List Nat} {ns nRest : List (Nat × Nat)} :
+    Progress s bs ns t → Execution t bRest nRest u → Execution s (bs ++ bRest) (ns ++ nRest) u
+
+theorem I5_combined_execution_exact {s t : Combined} {bs : List Nat} {ns : List (Nat × Nat)}
+    (run : Execution s bs ns t) :
+    bs ++ t.body.map Body.id = s.body.map Body.id ∧ ns ++ noteTrace t = noteTrace s := by
+  induction run with
+  | stop => exact ⟨rfl,rfl⟩
+  | more move _ ih =>
+    have first := I5_combined_step_exact move
+    simp only [List.append_assoc,ih.1,ih.2]
+    exact first
+
+def Complete (s : Combined) := s.body = [] ∧ s.pending = []
+
+theorem I5_completed_output {s t : Combined} {bs : List Nat} {ns : List (Nat × Nat)}
+    (run : Execution s bs ns t) (done : Complete t) :
+    bs = s.body.map Body.id ∧ ns = noteTrace s := by
+  have eq := I5_combined_execution_exact run
+  simpa [done.1,done.2,noteTrace,trace,bodyNotes] using eq
+
+theorem I4_I5_three_page_witness :
+    Execution ⟨[⟨0,[⟨10,1⟩,⟨20,5⟩,⟨30,2⟩]⟩],[],0⟩ [0]
+      [(10,0),(20,0),(20,1),(20,2),(20,3),(20,4),(30,0),(30,1)] ⟨[],[],0⟩ := by
+  let initial : Body := ⟨0,[⟨10,1⟩,⟨20,5⟩,⟨30,2⟩]⟩
+  have line := Progress.line initial [] 3 0 0
+  have first := Progress.carryPart [] ⟨20,2,3⟩ [⟨30,0,2⟩] 3 0 1 (Or.inl (by decide))
+  have advance := Progress.nextColumn [] [⟨30,0,2⟩] 0
+  have last := Progress.carryPart [] ⟨30,0,2⟩ [] 3 0 0 (Or.inl (by decide))
+  exact Execution.more line (Execution.more first (Execution.more advance
+    (Execution.more last (Execution.stop _))))
+
+/-- advance ends the page exactly when the next column index reaches
+    the column count. A zero-room carry that stays on the same page
+    therefore consumes one of the remaining columns on that page. -/
+def columnsBeforePage (columns index : Nat) := columns - 1 - index
+
+theorem I4_within_page_retry (columns index : Nat) (samePage : index + 1 < columns) :
+    columnsBeforePage columns index = columnsBeforePage columns (index+1) + 1 := by
+  unfold columnsBeforePage
+  omega
+
+theorem I4_fresh_page_note_progress (capacity separator : Nat) (p : Part)
+    (nonempty : 0 < p.lines) :
+    (0 < p.lines ∧ (capacity : Int) - separator - 1 ≤ 0) ∨
+      (0 < capacity - separator - 1 ∧
+        ∀ rest, (carry (capacity-separator-1) p).2 = some rest → rest.lines < p.lines) := by
+  by_cases room : capacity ≤ separator+1
+  · exact Or.inl ⟨nonempty,by omega⟩
+  · right
+    have positive : 0 < capacity-separator-1 := by omega
+    exact ⟨positive, fun r eq => I4_carryNote_remainder_decreases _ p r positive eq⟩
+
 end FootnoteSplit
 
 namespace TablePagination
