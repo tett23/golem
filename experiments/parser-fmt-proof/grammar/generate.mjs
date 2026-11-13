@@ -292,6 +292,12 @@ function provedEscapeItems(items) {
     items[0].expr.tag === 'lit' && items[1].expr.tag === 'not' &&
     items[1].expr.expr.tag === 'class' && items[2].expr.tag === 'any';
 }
+const backslashAst = ast?.rules.find(rule => rule.name === 'Backslash');
+const backslashFullyProved = rule('Backslash') === String.raw`'\\' &'\n'` &&
+  backslashAst?.params.length === 0 && backslashAst.templateParams.length === 0 &&
+  backslashAst.alts.length === 1 && backslashAst.alts[0].items.length === 2 &&
+  backslashAst.alts[0].items.every(item => item.bind === null) &&
+  backslashAst.alts[0].action?.trim() === '()' && backslashAst.alts[0].constructor === null;
 const escapeAst = ast?.rules.find(rule => rule.name === 'Escape');
 const escapeFullyProved = rule('Escape') === String.raw`'\\' ![\n] .` &&
   escapeAst?.params.length === 0 && escapeAst.templateParams.length === 0 &&
@@ -376,6 +382,7 @@ if (!fragment && ast) {
     if (tooDeepFullyProved && rule.name === 'TooDeep') continue;
     if (badBreakFullyProved && rule.name === 'BadBreak') continue;
     if (badBracketFullyProved && rule.name === 'BadBracket') continue;
+    if (backslashFullyProved && rule.name === 'Backslash') continue;
     if (escapeFullyProved && rule.name === 'Escape') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;

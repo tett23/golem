@@ -357,6 +357,13 @@ try {
   assert.ok(!strict.stderr.split('\n').some(line => line.startsWith('unsupported ReservedBracketBody choice ') &&
     line.endsWith(String.raw`'\\' ![\n] .`)),
     'the identical nested escape sequence has an all-input proof');
+  assert.doesNotMatch(strict.stderr, /^unsupported Backslash choice /m);
+  const changedBackslash = join(work, 'ChangedBackslash.hpeg');
+  writeFileSync(changedBackslash, original.replace(/^Backslash <- .*$/m,
+    line => line.replace("&'", "!'")));
+  const strictBackslash = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedBackslash, generated], { encoding: 'utf8' });
+  assert.match(strictBackslash.stderr, /unsupported Backslash choice 1 at /);
   const changedEscape = join(work, 'ChangedEscape.hpeg');
   writeFileSync(changedEscape, original.replace(/^Escape <- .*$/m,
     String.raw`Escape <- '\\' [\n] . { () }`));
@@ -410,9 +417,14 @@ try {
   const prefixBoundaryProof = spawnSync(lean, [join(here, 'PrefixBoundaryTotal.lean')],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(prefixBoundaryProof.status, 0, prefixBoundaryProof.stderr);
-  const throwingPrefixProof = spawnSync(lean, [join(here, 'ThrowingPrefixTotal.lean')],
+  const throwingSource = join(work, 'ThrowingPrefixTotal.lean');
+  copyFileSync(join(here, 'ThrowingPrefixTotal.lean'), throwingSource);
+  const throwingPrefixProof = spawnSync(lean, ['-o', join(work, 'ThrowingPrefixTotal.olean'), throwingSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(throwingPrefixProof.status, 0, throwingPrefixProof.stderr);
+  const backslashProof = spawnSync(lean, [join(here, 'BackslashTotal.lean')],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(backslashProof.status, 0, backslashProof.stdout + backslashProof.stderr);
   const escapeProof = spawnSync(lean, [join(here, 'EscapeTotal.lean')],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(escapeProof.status, 0, escapeProof.stderr);
@@ -427,7 +439,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 9, negative mutations 36, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 10, negative mutations 37, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
