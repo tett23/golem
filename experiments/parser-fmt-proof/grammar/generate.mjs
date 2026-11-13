@@ -464,6 +464,11 @@ if (!fragment && ast) {
     }
     if (rule.name === 'TableCellAndPipe' && singleUnitRuleMatches(rule, 'Pipe TableCell &(Pipe)') &&
         singleUnitRuleMatches(ast.rules.find(r => r.name === 'Pipe'), "'|'")) continue;
+    if (rule.name === 'KwArg' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 2 && rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
+        describeItems(rule.alts[0].items) === 'KeywordArgument' &&
+        describeItems(rule.alts[1].items) === "&'**[' SplatArgument") continue;
+    if (rule.name === 'ExprBody' && singleUnitRuleMatches(rule, 'ES (Expr)^expr ES')) continue;
     if (rule.name === 'TableCell' && singleUnitRuleMatches(rule, 'CellInline*')) continue;
     if (rule.name === 'SkippedArgs' && singleUnitRuleMatches(rule, '(Sp PosArg)+')) continue;
     if (rule.name === 'ProseSlot' && rule.params.length === 1 && rule.params[0] === 'ind' &&

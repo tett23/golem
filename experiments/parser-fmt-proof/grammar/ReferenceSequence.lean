@@ -210,4 +210,72 @@ theorem generated_table_cell_and_pipe (env : Params) (input : List Char) (fuel :
               cases tail : "|".toList.isPrefixOf rest <;>
                 simp [runChoices, foldChoice, runSequence, opening, hit, cell, after, pipe_ahead, tail] <;> rfl
 
+private def requireExpr (result : ParseResult) : ParseResult :=
+  match result with
+  | .ok none => .error "label: expr"
+  | other => other
+
+private theorem required_expr (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [] (fuel+2) (.label (.choice [[.ref "Expr" []]]) "expr") input =
+      requireExpr (recognizeEnv Generated.pegGrammar [] fuel (.ref "Expr" []) input) := by
+  change (match recognizeEnv Generated.pegGrammar [] (fuel+1) (.choice [[.ref "Expr" []]]) input with
+    | .ok none => Except.error "label: expr"
+    | result => result) = _
+  rw [PegModelTest.single_group _ _ _ _ _ (by simp)]
+  rfl
+
+theorem generated_expr_body (env : Params) (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar env (fuel+4) (.ref "ExprBody" []) input =
+      after (recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "ES" []) input)
+        (fun rest => after (requireExpr (recognizeEnv Generated.pegGrammar [] fuel (.ref "Expr" []) rest))
+          (recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "ES" []))) := by
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+2) e x) _ [] items input)
+    [[.ref "ES" [], .label (.choice [[.ref "Expr" []]]) "expr", .ref "ES" []]] = _
+  cases first : recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "ES" []) input with
+  | error reason => simp [runChoices, foldChoice, runSequence, first, after]; rfl
+  | ok value =>
+      cases value with
+      | none => simp [runChoices, foldChoice, runSequence, first, after]; rfl
+      | some rest =>
+          cases body : requireExpr (recognizeEnv Generated.pegGrammar [] fuel (.ref "Expr" []) rest) with
+          | error reason => simp [runChoices, foldChoice, runSequence, first, after, required_expr, body]; rfl
+          | ok val =>
+              cases val with
+              | none => simp [runChoices, foldChoice, runSequence, first, after, required_expr, body]; rfl
+              | some endBody =>
+                  cases last : recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "ES" []) endBody with
+                  | error reason => simp [runChoices, foldChoice, runSequence, first, after, required_expr, body, last]; rfl
+                  | ok tail => cases tail <;> simp [runChoices, foldChoice, runSequence, first, after, required_expr, body, last] <;> rfl
+
+private theorem splat_ahead (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar [] (fuel+2) (.andPred (.lit "**[" "'**['")) input =
+      .ok (if "**[".toList.isPrefixOf input then some input else none) := by
+  change (match recognizeEnv Generated.pegGrammar [] (fuel+1) (.lit "**[" "'**['") input with
+    | .error reason => if isLabelFailure reason then Except.ok none else Except.error reason
+    | .ok none => Except.ok none
+    | .ok (some _) => Except.ok (some input)) = _
+  rw [PegModelTest.literal_total]
+  cases "**[".toList.isPrefixOf input <;> rfl
+
+theorem generated_kwarg (env : Params) (fuel : Nat) (input : List Char) :
+    recognizeEnv Generated.pegGrammar env (fuel+4) (.ref "KwArg" []) input =
+      match recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "KeywordArgument" []) input with
+      | .ok none => if "**[".toList.isPrefixOf input then
+          recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "SplatArgument" []) input else .ok none
+      | result => result := by
+  change runChoices (fun items => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope (fuel+2) e x) _ [] items input)
+    [[.ref "KeywordArgument" []], [.andPred (.lit "**[" "'**['"), .ref "SplatArgument" []]] = _
+  cases first : recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "KeywordArgument" []) input with
+  | error reason => simp [runChoices, foldChoice, runSequence, first]; rfl
+  | ok val =>
+      cases val with
+      | some rest => simp [runChoices, foldChoice, runSequence, first]; rfl
+      | none =>
+          cases guardHit : "**[".toList.isPrefixOf input with
+          | false => simp [runChoices, foldChoice, runSequence, first, splat_ahead, guardHit]; rfl
+          | true =>
+              cases splat : recognizeEnv Generated.pegGrammar [] (fuel+2) (.ref "SplatArgument" []) input with
+              | error reason => simp [runChoices, foldChoice, runSequence, first, splat_ahead, guardHit, splat]; rfl
+              | ok tail => cases tail <;> simp [runChoices, foldChoice, runSequence, first, splat_ahead, guardHit, splat] <;> rfl
+
 end ReferenceSequence
