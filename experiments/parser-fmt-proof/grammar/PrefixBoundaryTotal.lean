@@ -165,4 +165,32 @@ theorem generated_block_marker_shapes :
       (fun r => blockMarkers.map (fun entry => r.alts[entry.1]?.map PegModel.Alt.items))) =
       some (blockMarkers.map (fun entry => some entry.2.items)) := by rfl
 
+private def headingStartItems : List PegModel.Expr :=
+  [.notPred (.ref "NumberOpen" []), .lit "#" "'#'"]
+
+theorem generated_heading_start_shape :
+    ((Generated.pegGrammar.rules.find? (fun r => r.name == "BlockStart")).bind
+      (fun r => r.alts[0]?.map PegModel.Alt.items)) = some headingStartItems := by rfl
+
+theorem heading_start_sequence (input : List Char) (fuel : Nat)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat)) :
+    PegModel.runSequence
+      (fun sc e rest => PegModel.recognizeEnv Generated.pegGrammar sc (fuel + 4) e rest)
+      boundLength [] headingStartItems input =
+      .ok (if (classExpected "##" [(48, 57)] input).isSome then none
+        else if "#".toList.isPrefixOf input then some (input.drop 1) else none) := by
+  have look : PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4)
+      (.notPred (.ref "NumberOpen" [])) input =
+      .ok (if (classExpected "##" [(48, 57)] input).isSome then none else some input) := by
+    change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3) (.ref "NumberOpen" []) input with
+      | Except.error reason => if PegModel.isLabelFailure reason then Except.ok (some input) else Except.error reason
+      | Except.ok none => Except.ok (some input)
+      | Except.ok (some _) => Except.ok none) = _
+    rw [generated_number_open]
+    cases classExpected "##" [(48, 57)] input <;> rfl
+  have lit := literal_total Generated.pegGrammar [] (fuel + 3) "#" "'#'" input
+  cases h : (classExpected "##" [(48, 57)] input).isSome <;>
+    cases l : "#".toList.isPrefixOf input <;>
+    simp [headingStartItems, PegModel.runSequence, look, lit, h, l] <;> rfl
+
 end PrefixBoundaryTotal

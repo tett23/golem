@@ -489,6 +489,10 @@ if (!fragment && ast) {
           alt.action?.trim() === '()' && alt.constructor === null && alt.items.length > 0 &&
           alt.items.every(item => item.bind === null && item.expr.tag === 'ref' && item.expr.args.length === 0) &&
           alt.items[0].expr.name !== rule.name) continue;
+      if (rule.name === 'BlockStart' && numberOpenFullyProved && alt === rule.alts[0] &&
+          rule.params.length === 0 && rule.templateParams.length === 0 &&
+          alt.action?.trim() === '()' && alt.constructor === null &&
+          describeItems(alt.items) === "!NumberOpen '#'") continue;
       // PrefixBoundaryTotal.marker_sequence covers both forms for any literal and class.
       if (rule.name === 'BlockStart' && rule.params.length === 0 && rule.templateParams.length === 0 &&
           alt.action?.trim() === '()' && alt.constructor === null &&
