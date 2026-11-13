@@ -374,6 +374,10 @@ function provedClassLookaheadOrEof(expr) {
 }
 const lineLeavesProved = classPlusNames.has('Ws') && rule('Ws') === '[ \\t]+' &&
   literalNames.has('Nl') && rule('Nl') === "'\\n'";
+const blankRule = ast?.rules.find(rule => rule.name === 'BlankLine');
+const blankLineProved = lineLeavesProved && blankRule?.params.length === 0 && blankRule.templateParams.length === 0 &&
+  blankRule.alts.length === 2 && blankRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
+  describeItems(blankRule.alts[0].items) === 'Ws? Nl' && describeItems(blankRule.alts[1].items) === 'Ws !.';
 const spUsesWs = optionalRefNames.has('Sp') && rule('Sp') === 'Ws?';
 const indentRule = ast?.rules.find(rule => rule.name === 'Ind');
 const indentFullyProved = indentRule?.params.length === 1 && indentRule.params[0] === 'n' &&
@@ -389,8 +393,10 @@ if (!fragment && ast) {
   for (const rule of ast.rules) {
     if (lineLeavesProved && rule.params.length === 0 && rule.templateParams.length === 0 &&
         rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
-      if (rule.name === 'BlankLine' && rule.alts.length === 2 &&
-          describeItems(rule.alts[0].items) === 'Ws? Nl' && describeItems(rule.alts[1].items) === 'Ws !.') continue;
+      if (rule.name === 'BlankLine' && blankLineProved) continue;
+      if (rule.name === 'ParaEnd' && blankLineProved && rule.alts.length === 2 &&
+          describeItems(rule.alts[0].items) === 'Nl (BlankLine / !.)' &&
+          describeItems(rule.alts[1].items) === '!.') continue;
       if (rule.name === 'EOL' && spUsesWs &&
           rule.alts.length === 1 && describeItems(rule.alts[0].items) === 'Sp (Nl / !.)') continue;
     }

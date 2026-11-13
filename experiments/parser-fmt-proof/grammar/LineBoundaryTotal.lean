@@ -146,4 +146,67 @@ theorem generated_eol (env : Params) (input : List Char) (extra : Nat) :
         simp [runChoices, foldChoice, runSequence, List.foldlM, sp, suffix, line] at endAt ⊢ <;>
         rw [endAt] <;> rfl
 
+def eof (input : List Char) : Option (List Char) :=
+  if input.isEmpty then some input else none
+
+private def blankOrEof : Expr := .choice [[.ref "BlankLine" []], [.notPred .any]]
+
+private theorem blank_or_eof (env : Params) (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar env (input.length + 8 + extra) blankOrEof input =
+      .ok ((blankResult input).orElse (fun _ => eof input)) := by
+  let inner := input.length + 7 + extra
+  rw [show input.length + 8 + extra = inner + 1 by dsimp [inner]; omega]
+  change runChoices (fun xs => runSequence
+    (fun sc item rest => recognizeEnv Generated.pegGrammar sc inner item rest)
+    (fun _ _ _ => .ok none) env xs input) [[.ref "BlankLine" []], [.notPred .any]] = _
+  have blank := generated_blank_line env input extra
+  change recognizeEnv _ _ inner _ _ = _ at blank
+  have endAt := eof_lookahead Generated.pegGrammar env (input.length + 5 + extra) input
+  rw [show input.length + 5 + extra + 2 = inner by dsimp [inner]; omega] at endAt
+  change _ = .ok (eof input) at endAt
+  cases b : blankResult input <;> cases e : eof input <;>
+    simp [runChoices, foldChoice, runSequence, List.foldlM, blank, endAt, b, e, Option.orElse,
+      Bind.bind, Except.bind, pure, Except.pure, Except.map]
+
+def paraResult (input : List Char) : Option (List Char) :=
+  ((afterNl input).bind (fun rest => (blankResult rest).orElse (fun _ => eof rest))).orElse
+    (fun _ => eof input)
+
+private def paraAlts : List (List Expr) := [[.ref "Nl" [], blankOrEof], [.notPred .any]]
+
+theorem generated_para_end (env : Params) (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar env (input.length + 10 + extra) (.ref "ParaEnd" []) input =
+      .ok (paraResult input) := by
+  let inner := input.length + 8 + extra
+  rw [show input.length + 10 + extra = inner + 1 + 1 by dsimp [inner]; omega]
+  change recognizeEnv _ [] (inner + 1) (.choice paraAlts) input = _
+  change runChoices (fun xs => runSequence
+    (fun sc item rest => recognizeEnv Generated.pegGrammar sc inner item rest)
+    (fun _ _ _ => .ok none) [] xs input) paraAlts = _
+  have nl : recognizeEnv Generated.pegGrammar [] inner (.ref "Nl" []) input = .ok (afterNl input) := by
+    rw [show inner = (input.length + 4 + extra) + 4 by dsimp [inner]; omega]
+    exact generated_nl_eval [] _ input
+  have endAt := eof_lookahead Generated.pegGrammar [] (input.length + 6 + extra) input
+  rw [show input.length + 6 + extra + 2 = inner by dsimp [inner]; omega] at endAt
+  change _ = .ok (eof input) at endAt
+  cases first : afterNl input with
+  | none =>
+      cases last : eof input <;>
+        simp [paraAlts, paraResult, nl, endAt, first, last, Option.orElse, runChoices, runSequence,
+          foldChoice, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map]
+  | some rest =>
+      have lengthEq : input.length = rest.length + 1 := by
+        cases input with
+        | nil => contradiction
+        | cons c tail =>
+            by_cases h : c = '\n'
+            · subst c; simp [afterNl] at first; subst rest; rfl
+            · simp [afterNl, h] at first
+      have next := blank_or_eof [] rest (extra + 1)
+      rw [show rest.length + 8 + (extra + 1) = inner by dsimp [inner]; omega] at next
+      cases picked : blankResult rest <;> cases e : eof rest <;> cases last : eof input <;>
+        simp [picked, e, Option.orElse] at next <;>
+        simp [paraAlts, paraResult, nl, endAt, first, next, picked, e, last, Option.orElse, runChoices,
+          runSequence, foldChoice, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map] <;> rfl
+
 end LineBoundaryTotal
