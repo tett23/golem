@@ -8,7 +8,7 @@ module PunctuationWidthSpec (punctuationWidthTests) where
 import Control.Monad (forM_, unless)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (isNothing, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -133,7 +133,7 @@ punctuationWidthTests =
               guardFeatures fonts =
                 let verify shaping ch value
                       | ch /= target = value
-                      | shVertical shaping == vertical && lastValue tag effective == Just 1 && lastValue "fwid" effective == Nothing = value
+                      | shVertical shaping == vertical && lastValue tag effective == Just 1 && isNothing (lastValue "fwid" effective) = value
                       | otherwise = error ("unexpected punctuation shaping: " <> show shaping)
                       where
                         effective = lfRoleFeatures fonts (shRole shaping) <> shExtra shaping
