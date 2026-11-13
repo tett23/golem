@@ -8279,13 +8279,14 @@ theorem I3_text_need_checks_preserved (used capacity count b c t : Nat)
    even with waiting figures between the written needs. They can
    therefore share the record-high check in spaceKeeps35. This equality
    also establishes the single-need comparison in spaceKeeps. -/
-theorem I3_load_at_text_need_agrees_with_target
+private theorem written_need_load_at_target
     (used count b n t : Nat) (items : List SourceItem)
     (positions size : Nat → Nat) (space kept : Nat → Bool)
     (uniqueText : ∀ p, .text p ∈ items → p ≠ n)
     (uniqueFigure : ∀ i, positions i ≠ n)
-    (target : needTargetsText n t (fun p => .text p ∈ items ∧ space p = false)
-      positions count kept) :
+    (beforeTarget : n < t)
+    (noBlock : ∀ p, (.text p ∈ items ∧ space p = false) → n < p → p < t → False)
+    (waits : ∀ i, i < count → n < positions i → positions i < t → figureWaits kept i) :
     placedBeforeNeedSource used count b items positions size space kept n =
       placedBeforeNeedSource used count b items positions size space kept t := by
   have text : (sourceTextPositions items).filter
@@ -8296,14 +8297,14 @@ theorem I3_load_at_text_need_agrees_with_target
     intro p pm
     have member := (I3_source_text_position_member items p).mp pm
     by_cases before : p < n
-    · have earlier := Nat.lt_trans before target.1
+    · have earlier := Nat.lt_trans before beforeTarget
       simp [before, earlier]
     · by_cases between : p < t
       · cases sp : space p with
         | true => simp [sp]
         | false =>
           have diff := uniqueText p member
-          exact (target.2.2.1 p ⟨member, sp⟩ (by omega) between).elim
+          exact (noBlock p ⟨member, sp⟩ (by omega) between).elim
       · simp [before, between]
   have figures : ∀ k, k ≤ count →
       keptRowsThrough (fun i => kept i && decide (positions i < n)) size k =
@@ -8315,16 +8316,45 @@ theorem I3_load_at_text_need_agrees_with_target
       intro bound
       have equal : (kept k && decide (positions k < n)) = (kept k && decide (positions k < t)) := by
         by_cases before : positions k < n
-        · have earlier := Nat.lt_trans before target.1
+        · have earlier := Nat.lt_trans before beforeTarget
           simp [before, earlier]
         · by_cases between : positions k < t
           · have diff := uniqueFigure k
-            have sent := (target.2.2.2 k (by omega) (by omega) between).1
+            have sent := (waits k (by omega) (by omega) between).1
             simp [sent]
           · simp [before, between]
       simp only [keptRowsThrough, ih (by omega), equal]
   unfold placedBeforeNeedSource
   rw [text, figures _ (Nat.le_refl _)]
+
+theorem I3_load_at_text_need_agrees_with_target
+    (used count b n t : Nat) (items : List SourceItem)
+    (positions size : Nat → Nat) (space kept : Nat → Bool)
+    (uniqueText : ∀ p, .text p ∈ items → p ≠ n)
+    (uniqueFigure : ∀ i, positions i ≠ n)
+    (target : needTargetsText n t (fun p => .text p ∈ items ∧ space p = false)
+      positions count kept) :
+    placedBeforeNeedSource used count b items positions size space kept n =
+      placedBeforeNeedSource used count b items positions size space kept t := by
+  exact written_need_load_at_target used count b n t items positions size space kept uniqueText
+    uniqueFigure target.1 target.2.2.1 target.2.2.2
+
+theorem I3_load_at_figure_need_agrees_with_target
+    (used count b n f : Nat) (items : List SourceItem) (positions size : Nat → Nat)
+    (space kept : Nat → Bool) (order : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (uniqueText : ∀ p, .text p ∈ items → p ≠ n) (uniqueFigure : ∀ i, positions i ≠ n)
+    (target : needTargetsFigure n positions (fun p => .text p ∈ items ∧ space p = false) f (figureWaits kept)) :
+    placedBeforeNeedSource used count b items positions size space kept n =
+      placedBeforeNeedSource used count b items positions size space kept (positions f) := by
+  apply written_need_load_at_target used count b n (positions f) items positions size space kept
+    uniqueText uniqueFigure target.1 target.2.2.1
+  intro i _ after before
+  have lt : i < f := by
+    apply Nat.lt_of_not_ge
+    intro ge
+    have contradicts := order f i ge
+    omega
+  exact target.2.2.2 i lt after
 
 def sourceNeedAtTarget (n t count : Nat) (items : List SourceItem)
     (positions : Nat → Nat) (space kept : Nat → Bool) : Prop :=
@@ -9564,6 +9594,299 @@ theorem I3_two_figure_need_geometry_of_canonical
   rw [sum]
   rw [chargeEq] at fits
   omega
+
+theorem I3_source_text_rank_strict_at_member (items : List SourceItem) (p q : Nat)
+    (member : .text p ∈ items) (prior : p < q) :
+    textBeforeCount items p < textBeforeCount items q := by
+  induction items with
+  | nil => simp at member
+  | cons head rest ih =>
+    rcases List.mem_cons.mp member with same | tail
+    · subst head
+      have mono := I3_text_before_source_monotone rest p q (Nat.le_of_lt prior)
+      simp [textBeforeCount, earlierTextItem, prior] at mono ⊢
+      omega
+    · have lt := ih tail
+      simp only [textBeforeCount] at lt ⊢
+      cases head with
+      | text pos =>
+          by_cases early : pos < p
+          · have later : pos < q := by omega
+            simp [earlierTextItem, early, later, lt] <;> omega
+          · by_cases later : pos < q <;> simp [earlierTextItem, early, later, lt] <;> omega
+      | figure _ | blank _ | need _ => simpa [earlierTextItem] using lt
+
+theorem I3_maximal_two_figure_need_keeps_text
+    (capacity used blank first second firstSize secondSize b n t firstPart : Nat)
+    (items : List SourceItem) (ordered : sourceOrdered items) (figOrder : first < second)
+    (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (positiveFirst : 0 < firstSize) (positiveSecond : 0 < secondSize)
+    (firstIn : .figure first ∈ items) (secondIn : .figure second ∈ items)
+    (positivePart : 0 < firstPart) (space : Nat → Bool) (needs : List (Nat × Nat))
+    (reqIn : ∀ m ∈ needs, .need m.1 ∈ items)
+    (atText : .text t ∈ items)
+    (reached : ∀ p, .text p ∈ items → p < n → textHereAtBreak items b p = true)
+    (written : .need n ∈ items)
+    (valid : twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs b)
+    (maximal : b < (sourceTextPositions items).length →
+      ¬ twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs (b+1)) :
+    let pos := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (pos i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < pos i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    let top := blankAtTopSource used blank items (fun _ => true) (fun _ => true)
+    let charge := fun i => !beforeBlankMask first second blank i && !top
+    let room := fun i => @decide (needFigureStatic capacity used rank plain size pos charge block needs i)
+      (Classical.propDecidable _)
+    let kept := fun c => greedyFigure (fun i => decide (rank i ≤ c)) room
+    let group := needs.filter (fun m => @decide (sourceNeedAtTarget m.1 t 2 items pos space (kept b))
+      (Classical.propDecidable _))
+    needTargetsText n t block pos 2 (kept b) →
+    used + ((sourceTextPositions items).filter (fun p => decide (p < t) && textHereAtBreak items b p)).length +
+      keptRowsThrough (fun i => kept b i && decide (pos i < t)) size 2 +
+      (if blank < t ∧ top = false then 1 else 0) + firstPart ≤ capacity →
+    writtenGroupFits capacity 0 (placedBeforeNeedSource used 2 b items pos size space (kept b)) group →
+    textHereAtBreak items b t = true := by
+  intro pos size rank plain block top charge room kept group target load writtenFit
+  let keptAt := fun c => keptAtTwoPositions first second (kept c 0) (kept c 1)
+  cases status : textHereAtBreak items b t with
+  | true => rfl
+  | false =>
+    apply False.elim
+    apply maximal (I3_missed_text_has_another_text items ordered b t atText status)
+    have different (p q : Nat) (here : .text p ∈ items) (there : .need q ∈ items) : p ≠ q := by
+      intro eq
+      have bad := I3_sourceOrdered_unique_position items ordered _ _ here there (by simpa [sourcePos] using eq)
+      cases bad
+    have figureDifferent (v : Nat) (item : SourceItem) (fig : .figure v ∈ items)
+        (member : item ∈ items) (diff : SourceItem.figure v ≠ item) : v ≠ sourcePos item := by
+      intro eq
+      exact diff (I3_sourceOrdered_unique_position items ordered _ _ fig member eq)
+    have posOrder : ∀ i j, i ≤ j → pos i ≤ pos j := by
+      intro i j le
+      dsimp [pos]
+      split <;> split <;> omega
+    have figMember (i : Nat) : .figure (pos i) ∈ items := by
+      by_cases zero : i = 0 <;> simp [pos, zero, firstIn, secondIn]
+    obtain ⟨_, p1, _, _⟩ := I3_normalize_two_figure_need_break capacity used blank first second
+      firstSize secondSize b items ordered space needs valid
+    have next := I3_missed_text_target_extends used capacity 2 b t blank items ordered pos size
+      space room (waitingAtTwoPositions first second (kept (b+1))) (keptAt (b+1)) needs top
+      firstPart positivePart posOrder atText status
+      (I3_text_need_missed_only_spaces n t 2 pos (kept b) items space _ target reached
+        (fun p m => different p n m written))
+      (fun m h p member => different p m.1 member (reqIn m h))
+      (fun m h i => figureDifferent (pos i) (.need m.1) (figMember i) (reqIn m h) (by intro eq; cases eq))
+      (fun i _ => figureDifferent (pos i) (.text t) (figMember i) atText (by intro eq; cases eq))
+      (by intro i _; by_cases zero : i = 0 <;> simp [size, zero, positiveFirst, positiveSecond])
+      (I3_two_figure_need_geometry_of_canonical used capacity blank first second (b+1) size rank plain
+        top block needs diffFirst diffSecond)
+      (by
+        intro p _ yes
+        by_cases a : p = first
+        · exact ⟨0, by decide, by simpa [keptAt, keptAtTwoPositions, a] using yes, by simp [pos,a]⟩
+        · by_cases z : p = second
+          · exact ⟨1, by decide, by simpa [keptAt, keptAtTwoPositions, a, z, Nat.ne_of_gt figOrder] using yes,
+              by simp [pos,z]⟩
+          · simp [keptAt, keptAtTwoPositions, a, z] at yes)
+      (by
+        intro i _ yes p member lt
+        have ready := ((I3_greedyFigures_rule 2 (fun i => decide (rank i ≤ b)) room i (by assumption)).mp yes).1
+        have le : rank i ≤ b := of_decide_eq_true ready
+        have lower := I3_source_text_rank_strict_at_member items p (pos i) member lt
+        exact decide_eq_true (Nat.lt_of_lt_of_le lower le))
+      load writtenFit p1
+    exact I3_two_figure_need_successor_is_legal capacity used blank first second firstSize secondSize
+      b items ordered figOrder space needs valid next.1 next.2
+
+theorem I3_maximal_two_figure_need_reaches_figure
+    (capacity used blank first second firstSize secondSize b n f : Nat)
+    (items : List SourceItem) (ordered : sourceOrdered items) (figOrder : first < second)
+    (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (positiveFirst : 0 < firstSize) (positiveSecond : 0 < secondSize)
+    (space : Nat → Bool) (needs : List (Nat × Nat)) (bound : f < 2)
+    (reached : ∀ p, .text p ∈ items → p < n → textHereAtBreak items b p = true)
+    (written : .need n ∈ items)
+    (valid : twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs b)
+    (maximal : b < (sourceTextPositions items).length →
+      ¬ twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs (b+1)) :
+    let pos := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (pos i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < pos i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    let top := blankAtTopSource used blank items (fun _ => true) (fun _ => true)
+    let charge := fun i => !beforeBlankMask first second blank i && !top
+    let room := fun i => @decide (needFigureStatic capacity used rank plain size pos charge block needs i)
+      (Classical.propDecidable _)
+    let kept := fun c => greedyFigure (fun i => decide (rank i ≤ c)) room
+    needTargetsFigure n pos block f (figureWaits (kept b)) →
+    used + ((sourceTextPositions items).filter
+      (fun p => decide (p < pos f) && textHereAtBreak items b p)).length +
+      keptRowsThrough (fun i => kept b i && decide (pos i < pos f)) size 2 +
+      (if blank < pos f ∧ top = false then 1 else 0) + size f ≤ capacity →
+    rank f ≤ b := by
+  intro pos size rank plain block top charge room kept target load
+  let keptAt := fun c => keptAtTwoPositions first second (kept c 0) (kept c 1)
+  apply Nat.le_of_not_gt
+  intro beyond
+  apply maximal (I3_missed_source_has_another_text items b (pos f) beyond)
+  have posOrder : ∀ i j, i ≤ j → pos i ≤ pos j := by
+    intro i j le
+    dsimp [pos]
+    split <;> split <;> omega
+  obtain ⟨_, p1, _, _⟩ := I3_normalize_two_figure_need_break capacity used blank first second
+    firstSize secondSize b items ordered space needs valid
+  have next := I3_missed_figure_target_extends_if_text_remains used capacity 2 b n f blank items
+    ordered pos size space room (waitingAtTwoPositions first second (kept (b+1))) (keptAt (b+1))
+    needs top posOrder beyond
+    (by intro i _; by_cases zero : i = 0 <;> simp [size, zero, positiveFirst, positiveSecond])
+    bound reached (by
+      intro p member eq
+      have bad := I3_sourceOrdered_unique_position items ordered _ _ member written
+        (by simpa [sourcePos] using eq)
+      cases bad)
+    target (I3_two_figure_need_geometry_of_canonical used capacity blank first second (b+1) size rank plain
+      top block needs diffFirst diffSecond)
+    (by
+      intro p _ yes
+      by_cases a : p = first
+      · exact ⟨0, by decide, by simpa [keptAt, keptAtTwoPositions, a] using yes, by simp [pos,a]⟩
+      · by_cases z : p = second
+        · exact ⟨1, by decide, by simpa [keptAt, keptAtTwoPositions, a, z, Nat.ne_of_gt figOrder] using yes,
+            by simp [pos,z]⟩
+        · simp [keptAt, keptAtTwoPositions, a, z] at yes)
+    load p1
+  exact I3_two_figure_need_successor_is_legal capacity used blank first second firstSize secondSize
+    b items ordered figOrder space needs valid next.1 next.2
+
+theorem I3_reached_figure_counts_every_earlier_text
+    (items : List SourceItem) (b pos : Nat) (space : Nat → Bool)
+    (reached : textBeforeCount items pos ≤ b) :
+    ((sourceTextPositions items).filter (fun p => decide (p < pos) && textHereAtBreak items b p)).length =
+      textBeforeCount items pos ∧
+    (sourceTextPositions items).filter (fun p => decide (p < pos) && !space p && textHereAtBreak items b p) =
+      (sourceTextPositions items).filter (fun p => decide (p < pos) && !space p) := by
+  have allEarlier (p : Nat) (pm : p ∈ sourceTextPositions items) (lt : p < pos) :
+      textHereAtBreak items b p = true :=
+    decide_eq_true (Nat.lt_of_lt_of_le (I3_source_text_rank_strict_at_member items p pos
+      ((I3_source_text_position_member items p).mp pm) lt) reached)
+  have text : (sourceTextPositions items).filter (fun p => decide (p < pos) && textHereAtBreak items b p) =
+      (sourceTextPositions items).filter (fun p => decide (p < pos)) := by
+    apply filter_eq_on_members
+    intro p pm
+    by_cases lt : p < pos <;> simp [lt, allEarlier, pm]
+  constructor
+  · rw [text, I3_source_text_before_count]
+    rfl
+  · apply filter_eq_on_members
+    intro p pm
+    by_cases lt : p < pos <;> simp [lt, allEarlier, pm]
+
+theorem I3_two_figure_rows_before_member
+    (first second f : Nat) (size : Nat → Nat) (kept : Nat → Bool) (order : first < second)
+    (bound : f < 2) :
+    let pos := fun i : Nat => if i = 0 then first else second
+    keptRowsThrough (fun i => kept i && decide (pos i < pos f)) size 2 =
+      priorFigureLines (fun i => if kept i then size i else 0) f := by
+  intro pos
+  by_cases zero : f = 0
+  · subst f
+    simp [pos, keptRowsThrough, priorFigureLines, show List.range 0 = [] from rfl, Nat.not_lt_of_ge (Nat.le_of_lt order)]
+  · have one : f = 1 := by omega
+    subst f
+    simp [pos, keptRowsThrough, priorFigureLines, show List.range 1 = [0] from rfl, order]
+
+theorem I3_maximal_two_figure_need_keeps_figure
+    (capacity used blank first second firstSize secondSize b n f : Nat)
+    (items : List SourceItem) (ordered : sourceOrdered items) (figOrder : first < second)
+    (diffFirst : blank ≠ first) (diffSecond : blank ≠ second)
+    (firstIn : .figure first ∈ items) (secondIn : .figure second ∈ items)
+    (positiveFirst : 0 < firstSize) (positiveSecond : 0 < secondSize)
+    (space : Nat → Bool) (needs : List (Nat × Nat)) (bound : f < 2)
+    (reached : ∀ p, .text p ∈ items → p < n → textHereAtBreak items b p = true)
+    (reqIn : ∀ m ∈ needs, .need m.1 ∈ items)
+    (written : .need n ∈ items)
+    (valid : twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs b)
+    (maximal : b < (sourceTextPositions items).length →
+      ¬ twoFigureNeedBreak capacity used blank first second firstSize secondSize items space needs (b+1)) :
+    let pos := fun i : Nat => if i = 0 then first else second
+    let size := fun i : Nat => if i = 0 then firstSize else secondSize
+    let rank := fun i => textBeforeCount items (pos i)
+    let plain := fun i => ((sourceTextPositions items).filter
+      (fun p => decide (p < pos i) && !space p)).length
+    let block := fun p => .text p ∈ items ∧ space p = false
+    let top := blankAtTopSource used blank items (fun _ => true) (fun _ => true)
+    let charge := fun i => !beforeBlankMask first second blank i && !top
+    let room := fun i => @decide (needFigureStatic capacity used rank plain size pos charge block needs i)
+      (Classical.propDecidable _)
+    let kept := fun c => greedyFigure (fun i => decide (rank i ≤ c)) room
+    let group := needs.filter (fun m => @decide (needTargetsFigure m.1 pos block f (figureWaits (kept b)))
+      (Classical.propDecidable _))
+    needTargetsFigure n pos block f (figureWaits (kept b)) →
+    used + ((sourceTextPositions items).filter
+      (fun p => decide (p < pos f) && textHereAtBreak items b p)).length +
+      keptRowsThrough (fun i => kept b i && decide (pos i < pos f)) size 2 +
+      (if blank < pos f ∧ top = false then 1 else 0) + size f ≤ capacity →
+    (∀ i, i < 2 → pos i < n → ¬ figureWaits (kept b) i → kept b i = true) →
+    writtenGroupFits capacity 0 (placedBeforeNeedSource used 2 b items pos size space (kept b)) group →
+    kept b f = true := by
+  intro pos size rank plain block top charge room kept group target load prior writtenFit
+  have rankReached := I3_maximal_two_figure_need_reaches_figure capacity used blank first second
+    firstSize secondSize b n f items ordered figOrder diffFirst diffSecond positiveFirst positiveSecond
+    space needs bound reached written valid maximal target load
+  have posOrder : ∀ i j, i ≤ j → pos i ≤ pos j := by
+    intro i j le
+    dsimp [pos]
+    split <;> split <;> omega
+  have figMember (i : Nat) : .figure (pos i) ∈ items := by
+    by_cases z : i = 0 <;> simp [pos,z,firstIn,secondIn]
+  have diff (i q : Nat) (node : .need q ∈ items) : pos i ≠ q := by
+    intro eq
+    cases I3_sourceOrdered_unique_position items ordered _ _ (figMember i) node (by simpa [sourcePos] using eq)
+  have roomAt (i : Nat) : room i = true ↔ needFigureStatic capacity used rank plain size pos charge block needs i :=
+    @decide_eq_true_iff _ (Classical.propDecidable _)
+  have rule : figures27Model 2 capacity used (fun i => decide (rank i ≤ b)) rank plain size pos charge block needs (kept b) := by
+    apply figures27_of_static
+    intro i hi
+    exact (I3_greedyFigures_rule 2 (fun i => decide (rank i ≤ b)) room i hi).trans
+      (and_congr_right fun _ => and_congr_right fun _ => roomAt i)
+  have allPrior : ∀ i, i < f → ¬ figureWaits (kept b) i → kept b i = true := by
+    intro i lt awake
+    by_cases early : pos i < n
+    · exact prior i (by omega) early awake
+    · have distinct := diff i n written
+      exact (awake (target.2.2.2 i lt (by omega))).elim
+  obtain ⟨allText, plainText⟩ := I3_reached_figure_counts_every_earlier_text items b (pos f) space rankReached
+  have figs := I3_two_figure_rows_before_member first second f size (kept b) figOrder bound
+  have chargeEq : (if charge f then 1 else 0) = (if blank < pos f ∧ top = false then 1 else 0) := by
+    have distinct : blank ≠ pos f := by by_cases z : f = 0 <;> simp [pos,z,diffFirst,diffSecond]
+    have maskEq : beforeBlankMask first second blank f = decide (pos f < blank) := by
+      by_cases z : f = 0 <;> simp [beforeBlankMask,pos,z] <;> omega
+    dsimp only [charge]
+    rw [maskEq]
+    by_cases earlier : blank < pos f
+    · have other : ¬ pos f < blank := by omega
+      cases top <;> simp [earlier,other]
+    · have other : pos f < blank := by omega
+      cases top <;> simp [earlier,other]
+  apply I3_target_figure_stays_when_group_fits 2 capacity used f _ rank plain size pos charge block needs
+    (kept b) rule bound (decide_eq_true rankReached) allPrior
+  · rw [allText, figs] at load
+    rwa [chargeEq]
+  · apply (I3_written_group_iff_target_max capacity 0 _ _ group ?_).mp writtenFit
+    intro m mem
+    obtain ⟨original, selected⟩ := List.mem_filter.mp mem
+    rw [I3_load_at_figure_need_agrees_with_target used 2 b m.1 f items pos size space (kept b)
+      posOrder (by
+        intro p mText eq
+        cases I3_sourceOrdered_unique_position items ordered _ _ mText (reqIn m original) (by simpa [sourcePos] using eq))
+      (fun i => diff i m.1 (reqIn m original)) (@of_decide_eq_true _ (Classical.propDecidable _) selected)]
+    unfold placedBeforeNeedSource
+    rw [plainText, figs]
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
