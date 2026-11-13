@@ -12334,6 +12334,74 @@ theorem I5_nested_source_fifo {s last : FlushState} {pending : List SourceFlow} 
     emitted ++ last.figures = s.figures ++ pending.bind sourceFigures := by
   simpa [I5_box_dispatch] using I5_source_figures_fifo run
 
+/-- Geometry is sampled anew after each crossing. The empty-column
+    premise is the post-carry, pre-openBox condition of advance. -/
+structure CrossingGeometry where
+  cap : Nat
+  sep : Nat
+  free : Int
+  empty : Bool
+
+theorem drain_exists (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true) (s : FlushState) :
+    ∃ emitted last, Crossings s emitted last ∧ last.figures = [] ∧ last.notes = [] := by
+  induction s using I4_flush_terminates.induction with
+  | h s ih =>
+    by_cases pending : s.figures ≠ [] ∨ s.notes ≠ []
+    · let g := geometry s
+      have step := FlushTransition.advance s g.cap g.sep g.free g.empty pending (fresh s)
+      obtain ⟨out,last,run,figures,notes⟩ := ih _ step
+      exact ⟨_,last,Crossings.next s g.cap g.sep g.free g.empty out last run,figures,notes⟩
+    · have figures : s.figures = [] := Classical.byContradiction (fun n => pending (Or.inl n))
+      have notes : s.notes = [] := Classical.byContradiction (fun n => pending (Or.inr n))
+      exact ⟨[],s,Crossings.stop s,figures,notes⟩
+
+structure FigureGeometry where
+  used : Nat
+  noShown : Bool
+  empty : Bool
+  free : Int
+
+/-- A finite sequence of intervening crossings is data, not a premise
+    that the execution exists. Replay computes all emitted figures. -/
+def replay (s : FlushState) : List CrossingGeometry → List Deferred × FlushState
+  | [] => ([],s)
+  | g :: gs =>
+    let tail := replay (flushStep s g.cap g.sep g.free g.empty) gs
+    ((placedOnAdvance s.geometry s.figures g.free g.empty).1 ++ tail.1,tail.2)
+
+theorem replay_crossings (s : FlushState) (gs : List CrossingGeometry) :
+    Crossings s (replay s gs).1 (replay s gs).2 := by
+  induction gs generalizing s with
+  | nil => exact Crossings.stop s
+  | cons g gs ih => exact Crossings.next s g.cap g.sep g.free g.empty _ _ (ih _)
+
+theorem figure_execution_exists (geometry : FlushState → CrossingGeometry)
+    (fresh : ∀ s : FlushState, s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 →
+      (geometry s).empty = true)
+    (admission : FlushState → Deferred → FigureGeometry)
+    (cross : FlushState → Deferred → List CrossingGeometry)
+    (bodyGeometry : FlushState → ColumnState) (bodyNotes : FlushState → List Part)
+    (input : List Deferred) (s : FlushState) :
+    ∃ emitted last, FigureExecution s input emitted last ∧
+      last.notes = [] ∧ last.figures = [] ∧ emitted = s.figures ++ input := by
+  induction input generalizing s with
+  | nil =>
+    obtain ⟨out,last,run,figures,notes⟩ := drain_exists geometry fresh s
+    have fifo := crossings_fifo run
+    exact ⟨out,last,.finish run,notes,figures,by simpa [figures] using fifo⟩
+  | cons fig rest ih =>
+    let a := admission s fig
+    let enter := admitFigure s a.used a.noShown a.empty a.free fig
+    let gs := cross enter.2 fig
+    let next := (replay enter.2 gs).2
+    let afterBody := {next with geometry := bodyGeometry next,notes := bodyNotes next}
+    obtain ⟨out,last,more,notes,figures,_⟩ := ih afterBody
+    have run := FigureExecution.step s a.used a.noShown a.empty a.free fig rest _ next afterBody
+      out last (replay_crossings enter.2 gs) rfl more
+    exact ⟨_,last,run,notes,figures,by simpa [figures] using I5_source_figures_fifo run⟩
+
 end TableAdvance
 
 
