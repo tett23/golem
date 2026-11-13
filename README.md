@@ -176,6 +176,7 @@ golem new mybook
 雛形のファイルと同じパスに何かあれば何も書かず、既存の `.gitignore` は書き換えない（[docs/adr/0273](./docs/adr/0273-golem-new-in-a-directory-without-a-project.md)）。
 
 マニフェストの `[metadata].language` は `ja-JP` や `en-US` のように書く。
+奥付の `@printings` は、`style.toml` の `[printings]` に `format = "{date}  第{edition}版 第{printing}刷"` のように書くと、指定した書式で発行履歴を組む（[Golem ADR 0375](docs/adr/0375-printings-format.md)）。
 `ja_JP` はどの出力形式でも G03119 になる。
 
 `golem explain` は、コードを省くと一覧を表示する。
