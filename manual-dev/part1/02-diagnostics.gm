@@ -232,10 +232,6 @@ notice には、ほかの二つと違う性質が三つある。
 | G02129 | [code: @table] の [code: src=]（廃止予定） |
 | G03023 | [code: style.toml] のないプロジェクト |
 | G03100 | キャプションと傍注の字下げ 0 |
-| G03114 | [code: \[lists\]] の [code: numbers] の [code: {{] と [code: }}]（廃止予定） |
-| G03115 | [code: \[lists\]] の [code: numbers] の一字の見本の差し込み（廃止予定） |
-| G03116 | 柱の書式の [code: {{] と [code: }}]（廃止予定） |
-| G03117 | [code: \[notes\]] の [code: mark-size]（廃止予定） |
 | G03120 | [code: \[source\]] に [code: paragraph-separator] のないプロジェクト |
 | G04007 | 自動の番号と同じ [code: @number] |
 | G04008 | 本の最後の改ページ |

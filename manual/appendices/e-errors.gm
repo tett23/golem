@@ -1289,25 +1289,21 @@ PDF を組むときに出るエラーです。
   段落スタイル [code: caption] か [code: sidenote] に、0 の [code: indent] か [code: first-line-indent] を書いています。
   キャプションと傍注ははじめから字下げをしないので、組んだ結果は変わりません。
   そのキーを消してください。
-= [strong: G03114 [code: \[lists\] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
-  [code: \[lists\]] の [code: numbers] の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
-  [code: '\\{{n}\\}'] のように、[code: \\{] と [code: \\}] をリテラル文字列で書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
-= [strong: G03115 [code: \[lists\] の numbers の {…} は廃止予定です。{n:…} と書きます: …]]
-  [code: \[lists\]] の [code: numbers] の書式で、[code: {一}] や [code: {a}] のような一字の見本で表記を選んでいます。
-  [code: {n:kanji}] や [code: {n:lower-alpha}] のように、表記の名前で書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
-= [strong: G03116 [code: 柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
-  柱の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
-  [code: \\{] と [code: \\}] をリテラル文字列で書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
-= [strong: G03117 [code: \[notes\] の mark-size は廃止予定です。\[character-styles.note-mark\] の size に書きます]]
-  [code: \[notes\]] の [code: mark-size] を消し、同じ値を [code: \[character-styles.note-mark\]] の [code: size] に書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
 = [strong: G03120 [code: 段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます]]
   [code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator] を書いていないので、改行ひとつで段落を区切って読みます。
   空行で段落を区切って書いた原稿なら、[code: \[source\]] に [code: paragraph-separator = "blank-line"] と書いてください。
   改行で段落を区切って書いた原稿なら、[code: paragraph-separator = "line"] と書くと、このお知らせは出なくなります。
+= [strong: G03250 [code: \[lists\] の numbers の {{ と }} は使えません。\\{ と \\} と書きます: …]]
+  [code: \[lists\]] の [code: numbers] の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
+  [code: '\\{{n}\\}'] のように、[code: \\{] と [code: \\}] をリテラル文字列で書いてください。
+= [strong: G03251 [code: \[lists\] の numbers の {…} は使えません。{n:…} と書きます: …]]
+  [code: \[lists\]] の [code: numbers] の書式で、[code: {一}] や [code: {a}] のような一字の見本で表記を選んでいます。
+  [code: {n:kanji}] や [code: {n:lower-alpha}] のように、表記の名前で書いてください。
+= [strong: G03252 [code: 柱の書式の {{ と }} は使えません。\\{ と \\} と書きます: …]]
+  柱の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
+  [code: \\{] と [code: \\}] をリテラル文字列で書いてください。
+= [strong: G03253 [code: \[notes\] の mark-size は使えません。\[character-styles.note-mark\] の size に書きます]]
+  [code: \[notes\]] の [code: mark-size] を消し、同じ値を [code: \[character-styles.note-mark\]] の [code: size] に書いてください。
 = [strong: G04007 [code: @number … は自動で振られる番号と同じです]]
   見出しやリストの項目の [code: @number] が、書かなくても振られる番号と同じです。
   項目を入れ替えたときに番号が固定されてしまうので、消してください。

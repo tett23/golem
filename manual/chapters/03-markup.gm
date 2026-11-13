@@ -454,7 +454,7 @@ short = "tett23"
 章を複数のファイルに分けても、章の途中で番号は 1 に戻りません。
 番号を振り直す範囲は、[code: style.toml] の [code: \[notes\]] の [code: numbering] で変えられます（「[ref-title notes-style]」、[ref-page notes-style] ページ）。
 PDF では、本文の印（[code: *1]）を本文より小さく前の字に付けて組み、注の本文の先頭にも同じ印を付けます。
-印の大きさと形は、[code: \[notes\]] の [code: mark-size] と [code: mark-format] で変えられます。
+印の大きさは [code: \[character-styles.note-mark\]] の [code: size] で、形は [code: \[notes\]] の [code: mark-format] で変えられます。
 PDF では注をページの下に、HTML、EPUB、プレーンテキストでは章の終わりにまとめて置きます。
 PDF でも章の終わりにまとめたいときは、[code: \[notes\]] の [code: placement] に [code: "chapter-end"] を書きます。
 この段落の終わりにも、注を一つ付けています[note: この注は、ページの下に組まれています。HTML では章の終わりにまとめて置き、本文の番号と相互にリンクします。]。
