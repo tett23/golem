@@ -314,8 +314,8 @@ shortFootnoteTests :: TestTree
 shortFootnoteTests =
   testGroup
     "Golem ADR 0353 I1/I2: short columns with PDF footnotes"
-    [ testCase "capacities 1 and 2 report G07125 at the note and write no PDF" $
-        forM_ ([1, 2] :: [Int]) $ \capacity -> withSystemTempDirectory "golem-short-note" $ \tmp -> do
+    [ testCase "Golem ADR 0352 I4: capacities 1 and 2 report G07125, and capacity 3 writes the PDF" $
+        forM_ ([1, 2, 3] :: [Int]) $ \capacity -> withSystemTempDirectory "golem-short-note" $ \tmp -> do
           createDirectoryIfMissing True (tmp </> "fonts")
           BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" >>= BS.writeFile (tmp </> "fonts/latin.otf")
           TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmLanguage = "en", tmTargets = ["pdf"]})
@@ -324,10 +324,14 @@ shortFootnoteTests =
           result <- timeout 5000000 (readCreateProcessWithExitCode (proc "golem" ["build", "--target", "pdf"]) {cwd = Just tmp} "")
           case result of
             Nothing -> assertFailure ("capacity " <> show capacity <> ": CLI did not terminate")
-            Just (code, _, err) -> do
-              assertEqual err (ExitFailure 1) code
-              assertBool err ("a.gm:1:" `isInfixOf` err && "error[G07125]" `isInfixOf` err)
-          doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
+            Just (code, _, err)
+              | capacity == 3 -> do
+                  assertEqual err ExitSuccess code
+                  doesFileExist (tmp </> "build/pdf/urn-uuid-11111111-2222-4333-8444-555555555555.pdf") >>= assertBool "expected PDF"
+              | otherwise -> do
+                  assertEqual err (ExitFailure 1) code
+                  assertBool err ("a.gm:1:2: error[G07125]" `isInfixOf` err)
+                  doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
     ]
 
 marksTests :: TestTree
