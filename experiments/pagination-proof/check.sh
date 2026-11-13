@@ -18,7 +18,7 @@ diff -u "$tmp/model" "$tmp/listed"
 
 missing=0
 while IFS= read -r name; do
-  grep -Eq "^(theorem|def|example) [[:space:]]*${name}([[:space:]]|:)" "$proof" || {
+  grep -Eq "^theorem [[:space:]]*${name}([[:space:]]|:)" "$proof" || {
     echo "missing Lean counterpart: $name" >&2
     missing=$((missing + 1))
   }

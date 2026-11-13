@@ -27,6 +27,16 @@ run keepAllFixture {
   some p: Placement | p.brk = 0 and base[p] and keepFirst[p] and keepLast[p] and keepAll[p]
 } for 5 but 5 Int, 14 Placement
 
+run needFigureFixture {
+  inDomain27
+  Col.cap = 5 and Col.used = 4
+  one n: Need | n.pos = 0
+  one f: Figure | f.pos = 1 and f.size = 1
+  (some p: Placement | fits[p] and figures[p] and figureOrder[p])
+  (some p: Placement | fits[p] and needMet[p])
+  no p: Placement | fits[p] and figures[p] and figureOrder[p] and needMet[p]
+} for 5 but 5 Int, exactly 2 Item, exactly 2 Placement
+
 run needMore27Fixture {
   Col.cap = 3 and Col.used = 1
   no Heading and no Figure and no Blank
@@ -165,7 +175,7 @@ run needAcrossWaitingFigureFixture {
 } for 6 but 5 Int, exactly 3 Line, exactly 2 Para, exactly 6 Item, exactly 16 Placement
 EOF
 
-for command in decidedFixture keepAllFixture needMore27Fixture \
+for command in decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
     rectoRunDifferenceFixture headingRunFixture \

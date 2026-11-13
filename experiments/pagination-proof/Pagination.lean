@@ -7065,14 +7065,36 @@ theorem I3_blankFigureOrder_no_figures_with_source
 
 /- A need of two lines before a one-line figure in a column with one line
    left conflicts with the older rule that keeps every figure that fits. -/
+namespace NeedFigureWitness
+def fits (keep : Bool) : Prop := 4 + (if keep then 1 else 0) ≤ 5
+def oldRule (keep : Bool) := figuresRuleWithLoad 1 5 4 (fun _ => keep)
+  (fun _ => True) (fun _ => 0) (fun _ => 1) (fun _ => false)
+def ordered (keep : Bool) := figuresInOrder 1 (fun _ => keep)
+def met (keep : Bool) : Prop := keep = true → 2 ≤ 5 - 4
+
+private theorem old_iff (keep : Bool) : oldRule keep ↔ keep = true := by
+  constructor
+  · intro rule
+    exact (rule 0 (by decide)).mpr ⟨trivial,by intro g lt; omega,by unfold figureHasRoom priorFigureLines; decide⟩
+  · intro yes f bound
+    have zero : f = 0 := by omega
+    subst f
+    simp [yes,figureHasRoom,priorFigureLines,show List.range 0 = [] from rfl,Nat.not_lt_zero]
+
+private theorem always_ordered (keep : Bool) : ordered keep := by
+  intro f bound _ g lt
+  omega
+
 theorem needFigure :
-    (∃ kept : Bool, kept = decide (4 + 1 ≤ 5)) ∧
-    (∃ kept : Bool, kept = true → 4 + 2 ≤ 5) ∧
-    (∀ kept : Bool, ¬ (kept = decide (4 + 1 ≤ 5) ∧
-                      (kept = true → 4 + 2 ≤ 5))) := by
-  refine ⟨⟨true, by decide⟩, ⟨false, by decide⟩, ?_⟩
-  intro kept
-  cases kept <;> decide
+    (∃ keep, fits keep ∧ oldRule keep ∧ ordered keep) ∧
+    (∃ keep, fits keep ∧ met keep) ∧
+    (∀ keep, ¬ (fits keep ∧ oldRule keep ∧ ordered keep ∧ met keep)) := by
+  refine ⟨⟨true,by simp [fits], (old_iff true).mpr rfl,always_ordered _⟩,⟨false,by simp [fits],by simp [met]⟩,?_⟩
+  intro keep all
+  have yes := (old_iff keep).mp all.2.1
+  have impossible := all.2.2.2 yes
+  omega
+end NeedFigureWitness
 
 /- The same need before a heading conflicts with filling the last line. -/
 theorem needGreedy :
@@ -10961,6 +10983,84 @@ theorem needMoreNone (d : NeedSource) (ordered : sourceOrdered d.items)
     simp [group,two,ta,tz,writtenGroupFits] at * <;> omega
 
 end NeedSource
+
+namespace GreedyFigureCommand
+
+/-- For the domain with at most one figure, reserve its rows precisely
+    when the source prefix and the figure itself fit. Fill the rest with
+    the longest text prefix. The skipped figure, if present, is too
+    large at its source position regardless of the final break. -/
+theorem greedyFigure (capacity used textCount : Nat) (usedFits : used ≤ capacity)
+    (figure : Option (Nat × Nat))
+    (rankBound : ∀ r h, figure = some (r,h) → r ≤ textCount) :
+    ∃ b : Nat, ∃ kept : Bool,
+      b ≤ textCount ∧
+      (match figure with
+      | none => kept = false
+      | some (rank,height) => kept = decide (rank ≤ b ∧ used + rank + height ≤ capacity)) ∧
+      (let load := used + b + (if kept then figure.elim 0 Prod.snd else 0)
+       load ≤ capacity ∧ (b = textCount ∨ capacity < load + 1)) := by
+  cases figure with
+  | none =>
+    refine ⟨min textCount (capacity-used),false, Nat.min_le_left _ _,rfl,?_⟩
+    change used + min textCount (capacity-used) + 0 ≤ capacity ∧
+      (min textCount (capacity-used) = textCount ∨ capacity < used + min textCount (capacity-used) + 0 + 1)
+    omega
+  | some data =>
+    obtain ⟨rank,height⟩ := data
+    have bounded := rankBound rank height rfl
+    by_cases room : used + rank + height ≤ capacity
+    · let b := min textCount (capacity-used-height)
+      have ready : rank ≤ b := by dsimp [b]; omega
+      refine ⟨b,true,Nat.min_le_left _ _,by simp [ready,room],?_⟩
+      change used + b + height ≤ capacity ∧ (b = textCount ∨ capacity < used + b + height + 1)
+      dsimp [b]; omega
+    · let b := min textCount (capacity-used)
+      refine ⟨b,false,Nat.min_le_left _ _,by simp [room],?_⟩
+      change used + b + 0 ≤ capacity ∧ (b = textCount ∨ capacity < used + b + 0 + 1)
+      dsimp [b]; omega
+
+theorem figure_text_ready_iff (items : List SourceItem) (ordered : sourceOrdered items)
+    (b p : Nat) : textBeforeCount items p ≤ b ↔
+      ∀ t, .text t ∈ items → t < p → textHereAtBreak items b t = true := by
+  constructor
+  · intro ready t member before
+    exact decide_eq_true (Nat.lt_of_lt_of_le (I3_source_text_rank_strict_at_member items t p member before) ready)
+  · intro all
+    apply Nat.le_of_not_gt
+    intro beyond
+    have count := I3_load_before_unreached_position items ordered b p (Nat.le_of_lt beyond)
+    have eq : (sourceTextPositions items).filter (fun t => decide (t < p) && textHereAtBreak items b t) =
+        (sourceTextPositions items).filter (fun t => decide (t < p)) := by
+      apply filter_eq_on_members
+      intro t member
+      by_cases before : t < p
+      · simp [before,all t ((I3_source_text_position_member items t).mp member) before]
+      · simp [before]
+    rw [eq] at count
+    rw [I3_source_text_before_count] at beyond
+    unfold countEarlierText at beyond
+    omega
+
+theorem greedyFigure_from_manuscript (capacity used : Nat) (usedFits : used ≤ capacity)
+    (items : List SourceItem) (ordered : sourceOrdered items) (p h : Nat) :
+    ∃ b : Nat, ∃ kept : Bool, b ≤ (sourceTextPositions items).length ∧
+      (kept = true ↔ (∀ t, .text t ∈ items → t < p → textHereAtBreak items b t = true) ∧
+        used + textBeforeCount items p + h ≤ capacity) ∧
+      used + b + (if kept then h else 0) ≤ capacity ∧
+      (b = (sourceTextPositions items).length ∨ capacity < used + b + (if kept then h else 0) + 1) := by
+  have rankBound : textBeforeCount items p ≤ (sourceTextPositions items).length := by
+    apply Nat.le_of_not_gt
+    intro tooBig
+    have contradiction := I3_missed_source_has_another_text items (sourceTextPositions items).length p tooBig
+    omega
+  obtain ⟨b,kept,bound,rule,fit,fill⟩ := greedyFigure capacity used (sourceTextPositions items).length usedFits
+    (some (textBeforeCount items p,h)) (by intro r z eq; cases eq; exact rankBound)
+  refine ⟨b,kept,bound,?_,fit,fill⟩
+  change kept = decide (_ ∧ _) at rule
+  rw [rule, decide_eq_true_eq, figure_text_ready_iff items ordered b p]
+
+end GreedyFigureCommand
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
