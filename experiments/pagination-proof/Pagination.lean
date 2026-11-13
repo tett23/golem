@@ -474,6 +474,25 @@ theorem decidedSome :
   · intro earlier
     cases earlier <;> simp
 
+/- Both Alloy heading predicates quantify over all items between the
+   heading and the following text. Their sole difference is the heading
+   set accepted at the two endpoints and throughout that interval. -/
+def headingRunKeep (item text heading here starts line linesKept : Nat → Prop) : Prop :=
+  ∀ h, heading h → here h → ¬ starts h →
+    ∀ t, text t → h < t →
+      (∀ i, item i → h < i → i < t → heading i) →
+      (heading t → here t) ∧ (line t → linesKept t)
+
+theorem I3_keep_heading_21_implies_recto_variant
+    (item text heading recto here starts line linesKept : Nat → Prop)
+    (old : headingRunKeep item text heading here starts line linesKept) :
+    headingRunKeep item text (fun p => heading p ∧ ¬ recto p)
+      here starts line linesKept := by
+  intro h eligible placed inside t isText follows between
+  obtain ⟨keepHeading, keepLines⟩ := old h eligible.1 placed inside t isText follows
+    (fun i isItem lo hi => (between i isItem lo hi).1)
+  exact ⟨fun next => keepHeading next.1, keepLines⟩
+
 /- Two ordinary headings followed by a recto heading. At break 2 the
    second ordinary heading is in the column and the recto is not. The
    older heading rule keeps the recto in that column; the revised rule
