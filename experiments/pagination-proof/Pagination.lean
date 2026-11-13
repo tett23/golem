@@ -7251,6 +7251,147 @@ theorem I3_blank_top_stable_across_positive_breaks (used count rank : Nat)
     simp only [blankTopFromFigures, Nat.min_zero]
     rw [eq]
 
+/- If extending the text prefix admits additional figures, the last of
+   those admitted figures bounds the load of every retained figure, not
+   merely its own height. The blank is charged if it was before that
+   figure. If the blank is after it and no later text or figure is placed,
+   the blank has no placed successor and is not charged. -/
+def keptRowsThrough (kept : Nat → Bool) (size : Nat → Nat) : Nat → Nat
+  | 0 => 0
+  | n+1 => keptRowsThrough kept size n + (if kept n then size n else 0)
+
+private theorem keptRowsThrough_prefix_end (kept : Nat → Bool)
+    (size : Nat → Nat) (count : Nat) :
+    (keptRowsThrough kept size count = 0) ∨ ∃ f, f < count ∧ kept f = true ∧
+      keptRowsThrough kept size count = keptRowsThrough kept size (f+1) ∧
+      (∀ i, f < i → i < count → kept i = false) := by
+  induction count with
+  | zero => exact Or.inl rfl
+  | succ n ih =>
+    cases own : kept n with
+    | true => exact Or.inr ⟨n, by omega, own, rfl, by intros; omega⟩
+    | false =>
+      have sum : keptRowsThrough kept size (n+1) = keptRowsThrough kept size n := by
+        simp [keptRowsThrough, own]
+      rcases ih with empty | ⟨f, bound, yes, total, last⟩
+      · exact Or.inl (sum.trans empty)
+      · refine Or.inr ⟨f, by omega, yes, sum.trans total, ?_⟩
+        intro i earlier upper
+        by_cases eq : i = n
+        · simpa [eq] using own
+        · exact last i earlier (by omega)
+
+theorem I3_blank_charge_before_last_placed (last blank : Nat)
+    (items : List SourceItem) (waiting textHere kept : Nat → Bool) (top : Bool)
+    (lastText : ∀ p, .text p ∈ items → textHere p = true → p ≤ last)
+    (lastFigure : ∀ p, .figure p ∈ items → kept p = true → p ≤ last) :
+    (if blankPlacedFromSource blank waiting items textHere kept top then 1 else 0) ≤
+      (if blank < last ∧ top = false then 1 else 0) := by
+  cases next : nextOfSource blank waiting items with
+  | none => simp [blankPlacedFromSource, next]
+  | some candidate =>
+    obtain ⟨item, member, selected, _⟩ :=
+      I3_nextOfSource_some_has_member blank waiting items candidate next
+    cases placed : sourceInColumn textHere kept candidate with
+    | false => simp [blankPlacedFromSource, next, placed]
+    | true =>
+      have before : blank < last := by
+        cases item with
+        | text p =>
+          simp [candidateAfterBlank] at selected
+          obtain ⟨before, eq⟩ := selected
+          subst candidate
+          have loaded : textHere p = true := placed
+          have := lastText p member loaded
+          omega
+        | figure p =>
+          simp [candidateAfterBlank] at selected
+          obtain ⟨before, eq⟩ := selected
+          subst candidate
+          have loaded : kept p = true := placed
+          have := lastFigure p member loaded
+          omega
+        | blank _ => contradiction
+        | need _ => contradiction
+      cases top <;> simp [blankPlacedFromSource, next, placed, before]
+
+theorem I3_text_before_source_monotone (items : List SourceItem)
+    (p q : Nat) (before : p ≤ q) :
+    textBeforeCount items p ≤ textBeforeCount items q := by
+  induction items with
+  | nil => simp [textBeforeCount]
+  | cons head rest ih =>
+    simp only [textBeforeCount] at ih ⊢
+    cases head with
+    | text pos =>
+      by_cases early : pos < p
+      · have later : pos < q := by omega
+        simp [earlierTextItem, early, later, ih] <;> omega
+      · by_cases later : pos < q <;> simp [earlierTextItem, early, later, ih] <;> omega
+    | figure _ | blank _ | need _ => simpa [earlierTextItem] using ih
+
+theorem I3_extended_figure_prefix_fits (capacity used b count : Nat)
+    (kept oldKept : Nat → Bool) (size : Nat → Nat)
+    (positions : Nat → Nat) (blank : Nat) (items : List SourceItem)
+    (waiting keptAt : Nat → Bool) (top : Bool)
+    (positionOrder : ∀ j f, j ≤ f → positions j ≤ positions f)
+    (keptSource : ∀ p, .figure p ∈ items → keptAt p = true →
+      ∃ i, i < count ∧ kept i = true ∧ positions i = p)
+    (newFig : ∃ j, j < count ∧ oldKept j = false ∧ kept j = true)
+    (positive : ∀ j, j < count → 0 < size j)
+    (placedRank : ∀ f, f < count → kept f = true → textBeforeCount items (positions f) ≤ b+1)
+    (freshRank : ∀ j, j < count → oldKept j = false → kept j = true → textBeforeCount items (positions j) = b+1)
+    (room : ∀ f, f < count → kept f = true →
+      used + textBeforeCount items (positions f) + keptRowsThrough kept size (f+1) +
+        (if blank < positions f ∧ top = false then 1 else 0) ≤ capacity) :
+    used + (b+1) + keptRowsThrough kept size count +
+      (if blankPlacedFromSource blank waiting items (textHereAtBreak items (b+1)) keptAt top then 1 else 0) ≤ capacity := by
+  obtain ⟨j, jBound, old, yes⟩ := newFig
+  have jRank := freshRank j jBound old yes
+  rcases keptRowsThrough_prefix_end kept size count with empty | ⟨f, fBound, last, sum, ends⟩
+  · have positiveSum : ∀ n, j < n → 0 < keptRowsThrough kept size n := by
+      intro n
+      induction n with
+      | zero => intro h; exact (Nat.not_lt_zero _ h).elim
+      | succ n ih =>
+        intro h
+        by_cases eq : j = n
+        · subst n
+          simp [keptRowsThrough, yes]
+          have := positive j jBound
+          omega
+        · have := ih (by omega)
+          simp [keptRowsThrough]
+          omega
+    have := positiveSum count jBound
+    omega
+  · have ordered : j ≤ f := by
+      apply Classical.byContradiction
+      intro beyond
+      have absent := ends j (by omega) jBound
+      simp [yes] at absent
+    have later := I3_text_before_source_monotone items _ _ (positionOrder j f ordered)
+    have upper := placedRank f fBound last
+    have fits := room f fBound last
+    have blankCharge := I3_blank_charge_before_last_placed (positions f) blank items
+      waiting (textHereAtBreak items (b+1)) keptAt top (by
+        intro p _ placed
+        apply Classical.byContradiction
+        intro after
+        have later := I3_text_before_source_monotone items (positions f) p (by omega)
+        change decide (textBeforeCount items p < b+1) = true at placed
+        have := decide_eq_true_eq.mp placed
+        omega) (by
+        intro p member placed
+        obtain ⟨i, iBound, included, eq⟩ := keptSource p member placed
+        have prior : i ≤ f := by
+          apply Classical.byContradiction
+          intro later
+          have absent := ends i (by omega) iBound
+          simp [included] at absent
+        simpa [eq] using positionOrder i f prior)
+    omega
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
