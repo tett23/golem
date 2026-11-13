@@ -627,6 +627,15 @@ fitFigureTests =
                   (["F1\x3000MMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt),
                   serifExpected
                 ],
+        testCase "Golem ADR 0352 I1/I2: the same numbered real-font caption either leaves one image line or gives G07038" $ do
+          (sans, serif) <- realLatinFonts
+          let probe font capacity = do
+                let style = pageStyle "horizontal" "left" 12 capacity 1 20 20 <> "\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n\n[fonts.caption]\nlatin = \"fonts/latin.otf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\n"
+                result <- layoutMiniFonts realProvider miniManifest style (fig "tall" "" (T.replicate 12 "M")) (boxes <> [("fonts/latin.otf", font)])
+                pure (either (Left . map diagCode) (Right . map (\(pf, _, _) -> (pfCaptionSpan pf, pfImageLines pf, pfAlong pf, pfAcross pf)) . figuresIn . snd) result)
+              full = Left [DiagnosticCode "G07038"]
+          mapM (probe sans) [1, 2] >>= (@?= [full, Right [(1, 1, 5 * pt, 15 * pt)]])
+          mapM (probe serif) [1, 2, 3] >>= (@?= [full, full, Right [(2, 1, 5 * pt, 15 * pt)]]),
         testCase "Golem ADR 0352 I2: the Lean captioned fit fixture has the same rounded dimensions" $
           fitFigure 3 (240 * pt) 10 (15 * pt) (10 * pt) (Just 1) @?= (45 * pt, 135 * pt, True),
         testCase "without a caption a figure is as deep as the column: (L - 1) p + h, its height in proportion" $

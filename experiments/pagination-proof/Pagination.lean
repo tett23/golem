@@ -53,6 +53,39 @@ theorem I2_fitted_image_and_caption_fit_grid
 example : fitCaptionedFigure 2 2 15 240 3 1 = none := by rfl
 example : fitCaptionedFigure 10 1 15 240 3 1 = some (45, 135) := by rfl
 
+/-- fitFigure with Nothing for the caption: the last line occupies the
+    body font size, not a full pitch. The source uses positive capacity. -/
+def fitUncaptionedFigure (capacity body pitch along numerator denominator : Nat) : Nat × Nat :=
+  let depth := (capacity - 1) * pitch + body
+  let natural := along * numerator / denominator
+  if natural ≤ depth then (along,natural) else (depth * denominator / numerator,depth)
+
+theorem I2_uncaptioned_depth (capacity body pitch along numerator denominator : Nat) :
+    (fitUncaptionedFigure capacity body pitch along numerator denominator).2 =
+      min (along * numerator / denominator) ((capacity - 1) * pitch + body) := by
+  unfold fitUncaptionedFigure
+  dsimp only
+  split
+  · next h => exact (Nat.min_eq_left h).symm
+  · next h => exact (Nat.min_eq_right (Nat.le_of_not_ge h)).symm
+
+/-- The typesetter rounds across/pitch up, including for uncaptioned
+    figures. Page geometry rejects a pitch smaller than the body size. -/
+theorem I2_uncaptioned_fits_grid (capacity body pitch along numerator denominator : Nat)
+    (rows : 0 < capacity) (valid : body ≤ pitch) (positive : 0 < pitch) :
+    ((fitUncaptionedFigure capacity body pitch along numerator denominator).2 + pitch - 1) /
+      pitch ≤ capacity := by
+  rw [I2_uncaptioned_depth]
+  obtain ⟨rest,rfl⟩ := Nat.exists_eq_succ_of_ne_zero (Nat.ne_of_gt rows)
+  simp only [Nat.succ_sub_one]
+  have depth := Nat.min_le_right (along * numerator / denominator) (rest * pitch + body)
+  apply Nat.le_of_lt_succ
+  apply (Nat.div_lt_iff_lt_mul positive).2
+  rw [Nat.succ_mul,Nat.succ_mul]
+  exact Nat.lt_of_lt_of_le
+    (Nat.sub_lt (Nat.add_pos_right _ positive) (by decide))
+    (Nat.add_le_add_right (Nat.le_trans depth (Nat.add_le_add_left valid _)) pitch)
+
 /-- Round an unsigned ratio to nearest, resolving half units to even as in
     Haskell's round on Rational. Font size is positive in the typesetter. -/
 def captionPitch (bodySize pitch captionSize : Nat) : Nat :=
@@ -412,6 +445,15 @@ example : measuredCaptionWidth 705167 1182269 591135 1773404 6 ≤ 120 * 65536 �
    measured span as input, the rounded image sizes agree with Golem. -/
 example : fitCaptionedFigure 4 1 15 240 3 1 = some (15, 45) := by rfl
 example : fitCaptionedFigure 4 2 15 240 3 1 = some (10, 30) := by rfl
+
+/-- The same numbered twelve-glyph caption at the exact bottom of the
+    column. The driver measures one caption line in Sans and two in
+    Serif. At the next capacity both images occupy one 15pt grid line. -/
+theorem I2_real_fonts_at_capacity :
+    (List.map (fun cap => fitCaptionedFigure cap 1 (15*65536) (120*65536) 3 1) [1,2] =
+      [none,some (5*65536,15*65536)]) ∧
+    (List.map (fun cap => fitCaptionedFigure cap 2 (15*65536) (120*65536) 3 1) [1,2,3] =
+      [none,none,some (5*65536,15*65536)]) := by decide
 
 /- The one-figure, empty-column case of the Alloy `tallFigure` command.
    A legacy figure taller than the column must be sent, while an empty
@@ -3176,6 +3218,38 @@ theorem I3_heading_figure_line_break (capacity figureSize : Nat)
       refine ⟨1, kept, Or.inl ⟨rfl, present⟩, by simpa using rule, ?_⟩
       simpa [present, figureHasRoom, priorFigureLines,
         show List.range 0 = [] from rfl] using room
+
+/-- Any strictly later suffix is invisible to the text count at the
+    figure position. The prefix may contain blanks, needs or figures. -/
+theorem I3_text_before_suffix (prior suffix : List SourceItem) (pos : Nat)
+    (later : ∀ x ∈ suffix, pos ≤ sourcePos x) :
+    textBeforeCount (prior ++ suffix) pos = textBeforeCount prior pos := by
+  have noEarlier : suffix.filter (earlierTextItem pos) = [] := by
+    apply List.filter_eq_nil.mpr
+    intro x member selected
+    have bound := later x member
+    cases x with
+    | text t => simp [earlierTextItem, sourcePos] at selected bound; omega
+    | figure | blank | need => simp [earlierTextItem] at selected
+  unfold textBeforeCount
+  induction prior with
+  | nil => simp [noEarlier]
+  | cons x xs ih =>
+    cases test : earlierTextItem pos x <;> simp [test,ih]
+
+theorem I3_heading_figure_with_suffix (cap size h f l : Nat) (suffix : List SourceItem)
+    (twoFit : 2 ≤ cap) (before : h < f) (after : f < l)
+    (later : ∀ x ∈ suffix, f ≤ sourcePos x) :
+    let items := [.text h, .figure f, .text l] ++ suffix
+    ∃ b kept, ((b = 1 ∧ kept 0 = true) ∨ (b = 2 ∧ kept 0 = false)) ∧
+      figuresRuleWithLoad 1 cap 0 kept (fun _ => textBeforeCount items f ≤ b)
+        (fun _ => textBeforeCount items f) (fun _ => size) (fun _ => false) ∧
+      b + (if kept 0 then size else 0) ≤ cap := by
+  dsimp only
+  rw [I3_text_before_suffix _ _ _ later]
+  have one : textBeforeCount [.text h,.figure f,.text l] f = 1 := by
+    simp [textBeforeCount,earlierTextItem,before,Nat.not_lt_of_ge (Nat.le_of_lt after)]
+  simpa only [one] using I3_heading_figure_line_break cap size twoFit
 
 theorem I3_text_after_second_not_in_second_break
     (items : List SourceItem) (ordered : sourceOrdered items)
