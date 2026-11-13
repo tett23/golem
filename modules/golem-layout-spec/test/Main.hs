@@ -265,6 +265,17 @@ tests =
           codesOf (withFolio bindingRight (m - pt 3)) @?= []
           -- with an advance of 0.55em the digits would still be 1pt off the type area
           codesOf (withFolio bindingRight (m - pt 3 + 1)) @?= [DiagnosticCode "G07050"],
+      testCase "Golem ADR 0365 inv1: overlap geometry uses the character style size" $ do
+        let margin = 2786570
+            base =
+              defaultStyle
+                { stPage = Just (Page (NamedSize "A5") False False (Just ((grid 30 30 1 Nothing) {gridGutter = Abs margin})) 0),
+                  stCharStyles = Map.insert "hidden" noCharDef {csSize = Just (Abs (pt 12))} (stCharStyles defaultStyle),
+                  stHiddenFolio = (stHiddenFolio defaultStyle) {hfCharacterStyle = Just "hidden", hfGutter = Abs (margin - pt 4)}
+                }
+            codes st = either (map diagCode) (const []) (pageGeometry (FileId 0) True st)
+        codes base @?= [DiagnosticCode "G07050"]
+        codes base {stHiddenFolio = (stHiddenFolio base) {hfSize = Abs (pt 6), hfSizeWritten = True}} @?= [],
       testCase "the hidden folio geometry is there only with crop marks and when enabled (golem-driver ADR 0021)" $ do
         let s = styleWith False False (grid 30 30 1 Nothing)
         pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s)) @?= Just (HiddenFolioGeometry (pt 6) 278657 False)
