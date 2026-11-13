@@ -328,6 +328,13 @@ runningHeadTests =
       masterSizes ", character-style = \"large\"" "" >>= (@?= (["14", "14"], ["10", "10"])),
     testCase "inv1_running_head_folio_style_case_2" $
       masterSizes ", character-style = \"large\"" ", character-style = \"small\"" >>= (@?= (["14", "14"], ["6", "6"])),
+    testCase "Golem ADR 0364: each component paints its own swatch" $ do
+      let style = horizontalStyle <> "\n[color.swatches]\na = {cmyk=[0,100,100,0]}\nb = {cmyk=[100,100,0,0]}\n[character-styles.h]\ncolor=\"a\"\n[character-styles.f]\ncolor=\"b\"\n[masters.body]\nrunning-head={position=\"top-center\",content=[\"H\"],character-style=\"h\"}\nfolio={position=\"bottom-center\",format=\"{n}\",character-style=\"f\"}\n"
+      content <- miniPdf fakeProvider True style "文。\n" [] >>= fmap BS.concat . inflateAll
+      forM_ [("0 1 1 0 k", 'H'), ("1 1 0 0 k", '1')] $ \(op, ch) -> do
+        let (_, colored) = BS.breakSubstring op content
+        assertBool (BC.unpack op) (not (BS.null colored))
+        take 1 (map dGlyph (drawnGlyphs colored)) @?= [fromEnum ch],
     testCase "first and last headings of a page" $ do
       let h1 = Map.fromList [(1, Just umi)]
           h12 = Map.fromList [(1, Just umi), (2, Just asa)]

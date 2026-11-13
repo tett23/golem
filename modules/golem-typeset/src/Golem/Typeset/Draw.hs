@@ -1383,7 +1383,10 @@ textAt env kind anchor name txt =
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination) (runAtU env (source, V.PartBase, styleSpan) look False False 0 (x0, anY anchor) txt))
+      paint marks = case swatchOf env look of
+        Nothing -> marks
+        Just sw -> [P.Saved (P.SetColor sw : marks)]
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination . paint) (runAtU env (source, V.PartBase, styleSpan) look False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
