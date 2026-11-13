@@ -494,7 +494,9 @@ hiddenFolioTests =
       assertBool "8pt hidden folio" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
     testCase "Golem ADR 0365 inv1_hidden_folio_style_case_2: style color with size override" $ do
       let style = horizontalStyle <> "\n[fonts.wide]\nja = \"fonts/b.otf\"\n[color.swatches]\nhidden-red = { cmyk = [0, 100, 100, 0] }\n[character-styles.hidden]\nfont = \"wide\"\nsize = \"12pt\"\ncolor = \"hidden-red\"\n[hidden-folio]\npages = \"all\"\ncharacter-style = \"hidden\"\nsize = \"8pt\"\ngutter = \"5pt\"\n"
-      pdf <- marksPdf (\o -> o {optMarks = WesternMarks}) style
+      built <- buildMarksFilesWith "本文。\n" (\o -> o {optMarks = WesternMarks}) (Just (style <> fakeBody)) fakeFontFiles
+      assertEqual "no errors" [] (map diagCode (bErrors built))
+      pdf <- maybe (assertFailure "no PDF") pure (bPdf built)
       content <- BS.concat <$> inflateAll pdf
       let drawn = drawnGlyphs content
       case ([dFont d | d <- drawn, dGlyph d == fromEnum '1'], [dFont d | d <- drawn, dGlyph d == fromEnum '本']) of
