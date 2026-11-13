@@ -400,6 +400,14 @@ if (!fragment && ast) {
       errors.push(`unsupported ${rule.name} choice ${index} at ${input}:${line}: ${describeItems(items)}`);
     };
     for (const alt of rule.alts) {
+      // generated_skipped_literal_shapes identifies these alternatives;
+      // sequence_literal_total gives their result for every input suffix.
+      if (rule.name === 'SkippedReserved' && rule.params.length === 0 &&
+          rule.templateParams.length === 0 && alt.items.length === 1 &&
+          alt.items[0].bind === null && alt.items[0].expr.tag === 'lit' &&
+          ((alt === rule.alts[1] && alt.items[0].expr.written === "'[!'") ||
+           (alt === rule.alts[3] && alt.items[0].expr.written === "'..'")) &&
+          alt.action?.trim() === '()' && alt.constructor === null) continue;
       report(alt.items, alt.line);
     }
     for (const alt of rule.alts) {

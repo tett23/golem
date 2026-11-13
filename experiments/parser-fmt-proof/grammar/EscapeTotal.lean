@@ -111,4 +111,11 @@ theorem generated_reserved_body_ordinary (input : List Char) (fuel : Nat) :
             (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then none else some rest) := by
   exact PegModelTest.nonclass_any _ _ _ _ _ _
 
+/- After the longer recovery alternative fails, SkippedReserved can
+   consume its opening delimiter alone. The last alternative consumes "..". -/
+theorem generated_skipped_literal_shapes :
+    ((Generated.pegGrammar.rules.find? (fun r => r.name == "SkippedReserved")).map
+      (fun r => (r.alts[1]?.map (fun a => a.items), r.alts[3]?.map (fun a => a.items)))) =
+      some (some [.lit "[!" "'[!'"], some [.lit ".." "'..'"]) := by rfl
+
 end EscapeTotal
