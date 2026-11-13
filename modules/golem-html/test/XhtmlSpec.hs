@@ -472,7 +472,7 @@ tests =
           let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
            in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
-        testCase "Golem ADR 0369 I2 a local reading style inherits only character properties" $
+        testCase "Golem ADR 0369 inv1 a local reading style inherits only character properties" $
           let local = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcRubyReadingStyle = Just "reading", hcLocalStyles = Map.singleton fidA (HtmlLocalStyles (Map.singleton "reading" local) Map.empty Nothing Nothing Map.empty)}
            in cssLines "body.file-1 ruby > rt" cfg
