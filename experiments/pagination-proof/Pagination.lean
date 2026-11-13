@@ -11941,6 +11941,39 @@ decreasing_by
 
 end TablePagination
 
+namespace TableAdvance
+open FootnoteSplit TablePagination
+
+/-- A table can cross several columns while keep waits for a repeated
+    header and its first body row. Each crossing carries notes and emits
+    the prefix of figures actually placed on that crossing. -/
+inductive Crossings : FlushState → List Deferred → FlushState → Prop where
+  | stop (s) : Crossings s [] s
+  | next (s cap sep free empty emitted last)
+      (tail : Crossings (flushStep s cap sep free empty) emitted last) :
+      Crossings s ((placedOnAdvance s.geometry s.figures free empty).1 ++ emitted) last
+
+theorem crossings_fifo {s last : FlushState} {emitted : List Deferred}
+    (run : Crossings s emitted last) : emitted ++ last.figures = s.figures := by
+  induction run with
+  | stop => simp
+  | next s cap sep free empty emitted last _ ih =>
+    rw [List.append_assoc, ih]
+    exact I5_figures_on_advance s.geometry s.figures free empty
+
+/-- Retrying the same source row decreases the table rank even if keep
+    crosses several columns, places deferred figures, and replays the
+    header at a cursor with a different initial occupancy. -/
+theorem retry_after_crossings (header : List Nat) (rows : List (List Nat))
+    (old fresh : Cursor) (retryNeeded : old.used ≠ old.segmentStart + header.length)
+    {s last : FlushState} {emitted : List Deferred} (run : Crossings s emitted last) :
+    rank header (retry fresh header) rows < rank header old rows ∧
+    emitted ++ last.figures = s.figures :=
+  ⟨retry_decreases header old fresh rows retryNeeded, crossings_fifo run⟩
+
+end TableAdvance
+
+
 /- The figure-only projection of a pagination state. Sending the next
    figure adds it to the FIFO waiting queue; emitting the queue's head
    appends it to the output. `placed ++ waiting ++ remaining` is the
