@@ -510,6 +510,22 @@ theorem I3_heading_runs_agree_without_recto
    ends the run before it. Both existence commands can still have a
    solution through a different break, so this compares predicates at
    one placement rather than asserting a global counterexample. -/
+theorem I3_recto_heading_run_strict_difference :
+    let inRun := fun p : Nat => p < 3
+    let here := fun p : Nat => p < 2
+    let starts := fun p : Nat => p = 0
+    let ordinary := fun p : Nat => inRun p ∧ p ≠ 2
+    headingRunKeep inRun inRun ordinary here starts (fun _ => False) (fun _ => True) ∧
+      ¬ headingRunKeep inRun inRun inRun here starts (fun _ => False) (fun _ => True) := by
+  dsimp [headingRunKeep]
+  constructor
+  · intro h _ _ _ t _ _ _
+    exact ⟨fun next => by omega, fun _ => trivial⟩
+  · intro old
+    have forced := (old 1 (by decide) (by decide) (by decide) 2
+      (by decide) (by decide) (by intro i _ lo hi; omega)).1 (by decide)
+    omega
+
 def rectoRunOldKeep (brk : Fin 4) : Prop :=
   1 < brk.val → 2 < brk.val
 
