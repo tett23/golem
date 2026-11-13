@@ -10498,6 +10498,470 @@ theorem I3_unpad_need_figures_rule (config : FigureConfig) (endPos used cap b : 
   · exact and_congr_right fun _ => I3_original_figure_P27_under_padding config endPos f actual
       used cap rank plain charge block needs
 
+/-- Data shared by the single- and multiple-need commands. Needs occur
+    in manuscript order so the written tests check successive maxima. -/
+structure NeedSource where
+  items : List SourceItem
+  config : FigureConfig
+  blank : Option Nat
+  capacity : Nat
+  used : Nat
+  space : Nat → Bool
+  needs : List (Nat × Nat)
+
+namespace NeedSource
+def here (d : NeedSource) (b : Nat) := textHereAtBreak d.items b
+def waiting (d : NeedSource) (kept : Nat → Bool) := figureWaitingAtPos d.config kept
+def atPos (d : NeedSource) (kept : Nat → Bool) := figureKeptAtPos d.config kept
+def pos (d : NeedSource) := figurePosAt d.config
+def size (d : NeedSource) := figureSizeAt d.config
+def count (d : NeedSource) := figureCount d.config
+def rank (d : NeedSource) (p : Nat) := textBeforeCount d.items p
+def plain (d : NeedSource) (p : Nat) := ((sourceTextPositions d.items).filter
+  (fun q => decide (q < p) && !d.space q)).length
+def block (d : NeedSource) (p : Nat) := .text p ∈ d.items ∧ d.space p = false
+def atTop (d : NeedSource) (b : Nat) (kept : Nat → Bool) (p : Nat) :=
+  blankAtTopSource d.used p d.items (d.here b) (d.atPos kept)
+def charge (d : NeedSource) (b : Nat) (kept : Nat → Bool) (p : Nat) : Bool :=
+  d.blank.elim false (fun q => decide (q < p) && !d.atTop b kept q)
+def placedBlank (d : NeedSource) (b : Nat) (kept : Nat → Bool) : Bool :=
+  d.blank.elim false (fun p => blankPlacedFromSourceFull d.used p (d.waiting kept)
+    d.items (d.here b) (d.atPos kept))
+def before (d : NeedSource) (b : Nat) (kept : Nat → Bool) (p : Nat) :=
+  placedBeforeNeedSource d.used d.count b d.items d.pos d.size d.space kept p
+def load (d : NeedSource) (b : Nat) (kept : Nat → Bool) (p : Nat) :=
+  d.used + ((sourceTextPositions d.items).filter (fun q => decide (q < p) && d.here b q)).length +
+    keptRowsThrough (fun i => kept i && decide (d.pos i < p)) d.size d.count +
+    (if d.charge b kept p then 1 else 0)
+def textTarget (d : NeedSource) (kept : Nat → Bool) (n p : Nat) :=
+  sourceNeedAtTarget n p d.count d.items d.pos d.space kept
+def figureTarget (d : NeedSource) (kept : Nat → Bool) (n f : Nat) :=
+  needTargetsFigure n d.pos d.block f (figureWaits kept)
+def beforeNeed (d : NeedSource) (b n : Nat) : Prop :=
+  ∀ p, .text p ∈ d.items → p < n → d.here b p = true
+def earlierFigures (d : NeedSource) (kept : Nat → Bool) (n : Nat) : Prop :=
+  ∀ f, f < d.count → d.pos f < n → ¬ figureWaits kept f → kept f = true
+noncomputable def group (d : NeedSource) (target : Nat → Prop) :=
+  d.needs.filter (fun m => @decide (target m.1) (Classical.propDecidable _))
+def base (d : NeedSource) (b : Nat) (kept : Nat → Bool) : Prop :=
+  b ≤ (sourceTextPositions d.items).length ∧
+  d.used + b + keptRowsThrough kept d.size d.count + (if d.placedBlank b kept then 1 else 0) ≤ d.capacity ∧
+  figures27Model d.count d.capacity d.used (fun i => decide (d.rank (d.pos i) ≤ b))
+    (fun i => d.rank (d.pos i)) (fun i => d.plain (d.pos i)) d.size d.pos
+    (fun i => d.charge b kept (d.pos i)) d.block d.needs kept ∧
+  firstContentNotSent d.used b d.items d.config kept ∧
+  (∀ t, .text t ∈ d.items → d.here b t = true →
+    needAtPlacedText d.used d.capacity d.count d.items d.pos d.size d.space d.needs b kept t)
+def keeps (d : NeedSource) (b : Nat) (kept : Nat → Bool) : Prop :=
+  (∀ n ∈ d.needs, ∀ t firstPart, .text t ∈ d.items → 0 < firstPart →
+    d.textTarget kept n.1 t → d.beforeNeed b n.1 →
+    d.load b kept t + firstPart ≤ d.capacity →
+    writtenGroupFits d.capacity 0 (d.before b kept) (d.group (fun m => d.textTarget kept m t)) →
+    d.here b t = true) ∧
+  (∀ n ∈ d.needs, ∀ f, f < d.count → d.figureTarget kept n.1 f → d.beforeNeed b n.1 →
+    d.earlierFigures kept n.1 → d.load b kept (d.pos f) + d.size f ≤ d.capacity →
+    writtenGroupFits d.capacity 0 (d.before b kept) (d.group (fun m => d.figureTarget kept m f)) →
+    kept f = true)
+def augment (d : NeedSource) : NeedSource :=
+  let items := d.items ++ padNeedFigures (sourceEnd d.items) d.config
+  { d with
+    items := items
+    config := paddedNeedConfig (sourceEnd d.items) d.config
+    blank := some (d.blank.getD (sourceEnd items)) }
+
+theorem augmented_count (d : NeedSource) : d.augment.count = 2 := by
+  unfold count augment
+  cases d.config <;> rfl
+
+theorem augmented_text (d : NeedSource) :
+    sourceTextPositions d.augment.items = sourceTextPositions d.items ∧
+      ∀ p, d.augment.rank p = d.rank p := by
+  apply I3_padding_preserves_text_prefix
+  intro x hi
+  cases hc : d.config <;> simp [hc,padNeedFigures] at hi
+  · rcases hi with rfl | rfl <;> exact ⟨_,rfl⟩
+  · subst x; exact ⟨_,rfl⟩
+
+theorem augmented_here (d : NeedSource) (b p : Nat) : d.augment.here b p = d.here b p := by
+  change decide (d.augment.rank p < b) = decide (d.rank p < b)
+  rw [d.augmented_text.2]
+
+theorem augmented_before (d : NeedSource) (b : Nat) (kept : Nat → Bool) (item : SourceItem)
+    (mem : item ∈ d.items) : d.augment.before b kept (sourcePos item) = d.before b kept (sourcePos item) := by
+  unfold before
+  rw [augmented_count]
+  exact I3_padding_preserves_placed_load_before_need d.used b d.items d.config d.space kept item mem
+
+theorem augmented_charge (d : NeedSource) (valid : figureDomain d.items d.config)
+    (blankOK : blankDomain d.items d.blank) (b : Nat) (kept : Nat → Bool) (item : SourceItem)
+    (member : item ∈ d.items) :
+    d.augment.charge b kept (sourcePos item) = d.charge b kept (sourcePos item) := by
+  unfold charge
+  cases hb : d.blank with
+  | none =>
+      have original := List.mem_append_of_mem_left (padNeedFigures (sourceEnd d.items) d.config) member
+      have last : sourcePos item < sourceEnd d.augment.items := I3_original_positions_before_padding _ _ original
+      have skip : ¬ sourceEnd d.augment.items < sourcePos item := by omega
+      simp only [augment,hb,Option.getD,Option.elim] at skip ⊢
+      simp [skip]
+  | some blank =>
+      rw [hb] at blankOK
+      have eq := I3_padding_preserves_real_blank_top d.items d.config valid d.used b blank blankOK.1 kept
+      change (decide (d.blank.getD _ < sourcePos item) && !d.augment.atTop b kept (d.blank.getD _)) =
+        (decide (blank < sourcePos item) && !d.atTop b kept blank)
+      simp only [hb,Option.getD]
+      rw [show d.augment.atTop b kept blank = d.atTop b kept blank from eq]
+
+theorem augmented_load (d : NeedSource) (valid : figureDomain d.items d.config)
+    (blankOK : blankDomain d.items d.blank) (b : Nat) (kept : Nat → Bool) (item : SourceItem)
+    (mem : item ∈ d.items) : d.augment.load b kept (sourcePos item) = d.load b kept (sourcePos item) := by
+  unfold load
+  simp only [augmented_text, augmented_here, augmented_count, augmented_charge d valid blankOK b kept item mem]
+  rw [show keptRowsThrough (fun i => kept i && decide (d.augment.pos i < sourcePos item)) d.augment.size 2 =
+    keptRowsThrough (fun i => kept i && decide (d.pos i < sourcePos item)) d.size d.count from
+    I3_padding_never_adds_figure_rows_before_an_original_target d.items d.config kept item mem]
+  rfl
+
+theorem original_fig_member (d : NeedSource) (valid : figureDomain d.items d.config)
+    (f : Nat) (bound : f < d.count) : .figure (d.pos f) ∈ d.items := by
+  cases h : d.config with
+  | zero => simp [count,h,figureCount] at bound; omega
+  | one _ _ =>
+      rw [h] at valid
+      simpa [pos,h,figurePosAt] using valid.1
+  | two p s q z =>
+      rw [h] at valid
+      by_cases first : f = 0 <;> simp [pos,h,figurePosAt,first,valid.2.1,valid.2.2.1]
+
+theorem augmented_text_target (d : NeedSource) (kept : Nat → Bool) (n t : Nat)
+    (mem : .text t ∈ d.items) : d.augment.textTarget kept n t ↔ d.textTarget kept n t := by
+  unfold textTarget
+  rw [augmented_count]
+  exact I3_padding_preserves_text_target d.items d.config n t mem d.space kept
+
+theorem augmented_figure_target (d : NeedSource) (kept : Nat → Bool) (n f : Nat)
+    (bound : f < d.count) : d.augment.figureTarget kept n f ↔ d.figureTarget kept n f :=
+  I3_padding_preserves_figure_target d.items d.config n f bound d.space kept
+
+theorem augmented_earlier_figures (d : NeedSource) (kept : Nat → Bool) (n : Nat)
+    (member : .need n ∈ d.items) (before : d.earlierFigures kept n) : d.augment.earlierFigures kept n := by
+  intro f bound lt awake
+  have endAfter : n < sourceEnd d.items := I3_original_positions_before_padding _ _ member
+  have actual : f < d.count := by
+    rw [augmented_count] at bound
+    cases hc : d.config with
+    | zero => by_cases z : f = 0 <;> simp [pos,augment,hc,paddedNeedConfig,figurePosAt,z] at lt <;> omega
+    | one _ _ =>
+        by_cases z : f = 0
+        · simp [count,hc,figureCount,z]
+        · simp [pos,augment,hc,paddedNeedConfig,figurePosAt,z] at lt; omega
+    | two _ _ _ _ => simpa [count,hc,figureCount] using bound
+  have eq : d.augment.pos f = d.pos f := (I3_padding_keeps_original_figure_data d.config _ f actual).1
+  exact before f actual (eq ▸ lt) awake
+
+theorem augmented_group_fits (d : NeedSource) (b : Nat) (kept : Nat → Bool) (a z : Nat → Prop)
+    (same : ∀ p, a p ↔ z p) (members : ∀ m ∈ d.needs, .need m.1 ∈ d.items) :
+    writtenGroupFits d.capacity 0 (d.before b kept) (d.group a) →
+      writtenGroupFits d.augment.capacity 0 (d.augment.before b kept) (d.augment.group z) := by
+  have groupEq : d.augment.group z = d.group a := by
+    apply filter_eq_on_members
+    intro m _
+    apply Bool.eq_iff_iff.mpr
+    simp only [decide_eq_true_eq]
+    exact (same m.1).symm
+  rw [groupEq]
+  have gen (ms : List (Nat × Nat)) (prev : Nat) (inside : ∀ m ∈ ms, .need m.1 ∈ d.items) :
+      writtenGroupFits d.capacity prev (d.before b kept) ms →
+        writtenGroupFits d.augment.capacity prev (d.augment.before b kept) ms := by
+    induction ms generalizing prev with
+    | nil => exact id
+    | cons m rest ih =>
+        have eq := augmented_before d b kept (.need m.1) (inside m (by simp))
+        change d.augment.before b kept m.1 = d.before b kept m.1 at eq
+        simp only [writtenGroupFits,eq]
+        intro old
+        exact ⟨old.1,ih _ (fun n h => inside n (List.mem_cons_of_mem _ h)) old.2⟩
+  exact gen _ _ (fun m member => members m (List.mem_filter.mp member).1)
+
+theorem unpad_keeps (d : NeedSource) (valid : figureDomain d.items d.config)
+    (blankOK : blankDomain d.items d.blank) (members : ∀ m ∈ d.needs, .need m.1 ∈ d.items)
+    (b : Nat) (kept : Nat → Bool) (padded : d.augment.keeps b kept) : d.keeps b kept := by
+  have earlier (n : Nat) (h : d.beforeNeed b n) : d.augment.beforeNeed b n := by
+    intro p pm lt
+    rw [augmented_here]
+    exact h p ((text_mem_padded_source d.items d.config p).mp pm) lt
+  constructor
+  · intro n mem t part tm positive target reached loadFits groupFits
+    rw [← augmented_here]
+    apply padded.1 n mem t part ((text_mem_padded_source d.items d.config t).mpr tm) positive
+      ((d.augmented_text_target kept n.1 t tm).mpr target) (earlier _ reached)
+    · have eq := d.augmented_load valid blankOK b kept (.text t) tm
+      change d.augment.load b kept t = d.load b kept t at eq
+      rw [eq]; exact loadFits
+    · exact d.augmented_group_fits b kept _ _ (fun m => (d.augmented_text_target kept m t tm).symm)
+        members groupFits
+  · intro n mem f bound target reached prior loadFits groupFits
+    have fig := d.original_fig_member valid f bound
+    have data := I3_padding_keeps_original_figure_data d.config (sourceEnd d.items) f bound
+    have posEq : d.augment.pos f = d.pos f := data.1
+    have sizeEq : d.augment.size f = d.size f := data.2
+    have within : f < d.augment.count := by
+      rw [augmented_count]
+      cases h : d.config <;> simp [count,h,figureCount] at bound <;> omega
+    apply padded.2 n mem f within ((d.augmented_figure_target kept n.1 f bound).mpr target)
+      (earlier _ reached) (d.augmented_earlier_figures kept n.1 (members n mem) prior)
+    · have eq := d.augmented_load valid blankOK b kept (.figure (d.pos f)) fig
+      change d.augment.load b kept (d.pos f) = d.load b kept (d.pos f) at eq
+      rw [posEq,sizeEq,eq]; exact loadFits
+    · exact d.augmented_group_fits b kept _ _ (fun m => (d.augmented_figure_target kept m f bound).symm)
+        members groupFits
+
+theorem unpad_base (d : NeedSource) (ordered : sourceOrdered d.items)
+    (valid : figureDomain d.items d.config) (blankOK : blankDomain d.items d.blank)
+    (b : Nat) (kept : Nat → Bool) (padded : d.augment.base b kept) : d.base b kept := by
+  obtain ⟨range,cap,rule,first,p1⟩ := padded
+  refine ⟨by simpa only [d.augmented_text.1] using range, ?_, ?_, ?_, ?_⟩
+  · apply I3_unpad_need_capacity d.items d.config valid d.blank blankOK d.used d.capacity b kept
+    simp only [augmented_count] at cap
+    exact cap
+  · have old := I3_unpad_need_figures_rule d.config (sourceEnd d.items) d.used d.capacity b
+      d.augment.rank d.augment.plain (d.augment.charge b kept) d.augment.block d.needs kept
+    have all := old (by rw [augmented_count] at rule; exact rule)
+    intro f actual
+    have fig := d.original_fig_member valid f actual
+    have ch := d.augmented_charge valid blankOK b kept (.figure (d.pos f)) fig
+    change d.augment.charge b kept (d.pos f) = d.charge b kept (d.pos f) at ch
+    have plains (q : Nat) : d.augment.plain q = d.plain q := by
+      simp only [plain,d.augmented_text.1]; rfl
+    have blocks : d.augment.block = d.block := by
+      funext q
+      apply propext
+      exact and_congr (text_mem_padded_source d.items d.config q) Iff.rfl
+    change d.augment.charge b kept (figurePosAt d.config f) = d.charge b kept (figurePosAt d.config f) at ch
+    have one := all f actual
+    simpa only [figureHasRoom, d.augmented_text.2, plains, blocks, ch] using one
+  · exact I3_unpad_need_first_content d.items d.config valid ordered d.used b kept first
+  · intro t tm here
+    apply (I3_padding_preserves_text_P1 d.used d.capacity b t d.items d.config d.space kept d.needs tm).mp
+    have paddedP1 := p1 t ((text_mem_padded_source d.items d.config t).mpr tm) (by rwa [augmented_here])
+    rw [augmented_count] at paddedP1
+    exact paddedP1
+
+theorem two_figure_solution (d : NeedSource) (a sa z sz q : Nat)
+    (cfg : d.config = .two a sa z sz) (bl : d.blank = some q)
+    (ordered : sourceOrdered d.items) (figValid : figureDomain d.items d.config)
+    (capacityPos : 0 < d.capacity) (usedFits : d.used ≤ d.capacity)
+    (aPos : 0 < sa) (zPos : 0 < sz) (aFits : sa ≤ d.capacity)
+    (qa : q ≠ a) (qz : q ≠ z) (members : ∀ m ∈ d.needs, .need m.1 ∈ d.items) :
+    ∃ b kept, d.base b kept ∧ d.keeps b kept := by
+  rw [cfg] at figValid
+  obtain ⟨az, aIn, zIn, two⟩ := figValid
+  obtain ⟨b, bound, good, stop⟩ := I3_two_figure_need_maximal_placement d.capacity d.used q a z sa sz
+    d.items ordered d.space d.needs capacityPos usedFits aPos zPos aFits az qa qz aIn zIn two
+  let pos := fun i : Nat => if i = 0 then a else z
+  let size := fun i : Nat => if i = 0 then sa else sz
+  let top := blankAtTopSource d.used q d.items (fun _ => true) (fun _ => true)
+  let mask := fun i => !beforeBlankMask a z q i && !top
+  let room := fun i => @decide (needFigureStatic d.capacity d.used (fun i => d.rank (pos i))
+    (fun i => d.plain (pos i)) size pos mask d.block d.needs i) (Classical.propDecidable _)
+  let kept := greedyFigure (fun i => decide (d.rank (pos i) ≤ b)) room
+  obtain ⟨fit,p1,firstText,firstFig⟩ := I3_normalize_two_figure_need_break d.capacity d.used q a z sa sz b
+    d.items ordered d.space d.needs good
+  have canonicalTop : d.atTop b kept q = top := by
+    unfold atTop atPos here
+    rw [cfg]
+    exact I3_two_figure_need_blank_charge_unique d.used q a z b d.items ordered kept firstText firstFig
+  have chargeEq (p : Nat) : d.charge b kept p = (decide (q < p) && !top) := by
+    unfold charge
+    rw [bl]
+    exact congrArg (fun t => decide (q < p) && !t) canonicalTop
+  have maskEq (i : Nat) (within : i < 2) : mask i = d.charge b kept (pos i) := by
+    rw [chargeEq]
+    by_cases zero : i = 0
+    · subst i; dsimp [mask,beforeBlankMask,pos]
+      by_cases earlier : a < q <;> simp [earlier,show (q < a) ↔ ¬ a < q by omega]
+    · have one : i = 1 := by omega
+      subst i; dsimp [mask,beforeBlankMask,pos]
+      by_cases earlier : z < q <;> simp [earlier,show (q < z) ↔ ¬ z < q by omega]
+  have eqPos : d.pos = pos := by unfold NeedSource.pos; rw [cfg]; rfl
+  have eqSize : d.size = size := by unfold NeedSource.size; rw [cfg]; rfl
+  have eqCount : d.count = 2 := by unfold count; rw [cfg]; rfl
+  have loadEq (p : Nat) :
+      d.load b kept p = d.used + ((sourceTextPositions d.items).filter (fun v => decide (v < p) && d.here b v)).length +
+        keptRowsThrough (fun i => kept i && decide (pos i < p)) size 2 + (if q < p ∧ top = false then 1 else 0) := by
+    unfold load
+    rw [eqCount,eqSize,eqPos,chargeEq]
+    by_cases lt : q < p <;> cases top <;> simp [lt]
+  refine ⟨b,kept,⟨bound,?_,?_,?_,?_⟩,?_,?_⟩
+  · simpa only [eqSize,eqCount,placedBlank,bl,waiting,atPos,cfg,Option.elim,figureWaitingAtPos,
+      figureKeptAtPos,here] using fit
+  · rw [eqCount,eqPos,eqSize]
+    apply figures27_of_static
+    intro i hi
+    have static := I3_greedyFigures_rule 2 (fun i => decide (d.rank (pos i) ≤ b)) room i hi
+    have check : room i = true ↔ needFigureStatic d.capacity d.used (fun i => d.rank (pos i))
+      (fun i => d.plain (pos i)) size pos mask d.block d.needs i := @decide_eq_true_iff _ (Classical.propDecidable _)
+    apply static.trans
+    apply and_congr_right; intro _
+    apply and_congr_right; intro _
+    apply check.trans
+    simp only [needFigureStatic,figureHasRoom,maskEq i hi]
+  · intro empty item first
+    cases item with
+    | text p => exact firstText empty p first
+    | figure p => simpa [cfg,figureKeptAtPos] using firstFig empty p first
+    | blank _ | need _ => exact (I3_firstContent_is_earliest d.items ordered _ first).1
+  · intro t tm here
+    rw [eqCount,eqPos,eqSize]
+    exact p1 t tm here
+  · intro n mem t part tm positive target reached fits records
+    apply I3_maximal_two_figure_need_keeps_text d.capacity d.used q a z sa sz b n.1 t part
+      d.items ordered az qa qz aPos zPos aIn zIn positive d.space d.needs members tm reached
+      (members n mem) good stop
+    · simpa only [textTarget,eqCount,eqPos] using target
+    · rw [loadEq] at fits; exact fits
+    · unfold group textTarget before at records
+      rw [eqCount,eqPos,eqSize] at records
+      exact records
+  · intro n mem f within target reached prior fits records
+    rw [eqCount] at within
+    apply I3_maximal_two_figure_need_keeps_figure d.capacity d.used q a z sa sz b n.1 f
+      d.items ordered az qa qz aIn zIn aPos zPos d.space d.needs within reached members
+      (members n mem) good stop
+    · simpa only [figureTarget,eqPos] using target
+    · rw [loadEq,eqSize,eqPos] at fits; exact fits
+    · simpa only [earlierFigures,eqCount,eqPos] using prior
+    · unfold group figureTarget before at records
+      rw [eqCount,eqPos,eqSize] at records
+      exact records
+
+theorem all_inputs_have_a_placement (d : NeedSource) (ordered : sourceOrdered d.items)
+    (valid : figureDomain d.items d.config) (blankOK : blankDomain d.items d.blank)
+    (capacityPos : 0 < d.capacity) (usedFits : d.used ≤ d.capacity)
+    (sizes : ∀ i, i < d.count → 0 < d.size i ∧ d.size i ≤ d.capacity)
+    (members : ∀ m ∈ d.needs, .need m.1 ∈ d.items) :
+    ∃ b kept, d.base b kept ∧ d.keeps b kept := by
+  have augOrder := I3_padding_preserves_source_order d.items d.config ordered
+  have augValid := I3_padded_need_input_has_two_figures d.items d.config valid
+  have two : ∃ a sa z sz, d.augment.config = .two a sa z sz := by
+    cases h : d.config <;> simp [augment,h,paddedNeedConfig]
+  obtain ⟨a,sa,z,sz,cfg⟩ := two
+  have augSizes (i : Nat) (hi : i < 2) : 0 < d.augment.size i ∧ d.augment.size i ≤ d.capacity := by
+    by_cases actual : i < d.count
+    · have same := (I3_padding_keeps_original_figure_data d.config (sourceEnd d.items) i actual).2
+      change d.augment.size i = d.size i at same
+      rw [same]
+      exact sizes i actual
+    · cases h : d.config with
+      | zero => by_cases z : i = 0 <;> simp [size,augment,h,paddedNeedConfig,figureSizeAt,z] <;> omega
+      | one p s =>
+          have nz : i ≠ 0 := by simp [count,h,figureCount] at actual; omega
+          simp [size,augment,h,paddedNeedConfig,figureSizeAt,nz]; omega
+      | two p s q v => simp [count,h,figureCount] at actual; omega
+  have saOK := augSizes 0 (by decide)
+  have szOK := augSizes 1 (by decide)
+  simp only [size,cfg,figureSizeAt,if_pos rfl,show ¬ 1 = 0 by decide,if_false] at saOK szOK
+  let q := d.blank.getD (sourceEnd d.augment.items)
+  have blankIs : d.augment.blank = some q := rfl
+  have distinct (p : Nat) (fig : .figure p ∈ d.augment.items) : q ≠ p := by
+    cases h : d.blank with
+    | none =>
+      have lt : p < sourceEnd d.augment.items := I3_original_positions_before_padding _ _ fig
+      simp [q,h]; omega
+    | some blank =>
+      rw [h] at blankOK
+      have actual : .blank blank ∈ d.augment.items := List.mem_append_of_mem_left _ blankOK.1
+      intro eq
+      have bad := I3_sourceOrdered_unique_position _ augOrder _ _ actual fig
+        (by simpa [q,h,sourcePos] using eq)
+      cases bad
+  have figs : figureDomain d.augment.items d.augment.config := augValid
+  rw [cfg] at figs
+  obtain ⟨b,kept,base,keeps⟩ := two_figure_solution d.augment a sa z sz q cfg blankIs augOrder augValid
+    capacityPos usedFits saOK.1 szOK.1 saOK.2 (distinct a figs.2.1) (distinct z figs.2.2.1)
+    (fun m hm => List.mem_append_of_mem_left _ (members m hm))
+  exact ⟨b,kept,d.unpad_base ordered valid blankOK b kept base,d.unpad_keeps valid blankOK members b kept keeps⟩
+
+/-- The original Alloy antecedents use a set of preceding needs at
+    the same target. The list of needs is stored in source order. -/
+def sourceKeeps (d : NeedSource) (b : Nat) (kept : Nat → Bool)
+    (written : (Nat × Nat) → (Nat → Prop) → Prop) : Prop :=
+  (∀ n ∈ d.needs, ∀ t firstPart, .text t ∈ d.items → 0 < firstPart →
+    d.textTarget kept n.1 t → d.beforeNeed b n.1 → d.earlierFigures kept n.1 →
+    d.load b kept t + firstPart ≤ d.capacity → written n (fun m => d.textTarget kept m t) →
+    d.here b t = true) ∧
+  (∀ n ∈ d.needs, ∀ f, f < d.count → d.figureTarget kept n.1 f → d.beforeNeed b n.1 →
+    d.earlierFigures kept n.1 → d.load b kept (d.pos f) + d.size f ≤ d.capacity →
+    written n (fun m => d.figureTarget kept m f) → kept f = true)
+
+theorem source_keeps_of_written (d : NeedSource) (b : Nat) (kept : Nat → Bool)
+    (generic : d.keeps b kept) (written : (Nat × Nat) → (Nat → Prop) → Prop)
+    (fits : ∀ n ∈ d.needs, ∀ target : Nat → Prop, target n.1 → written n target →
+      writtenGroupFits d.capacity 0 (d.before b kept) (d.group target)) :
+    d.sourceKeeps b kept written := by
+  constructor
+  · intro n mem t part tm positive target reached _ load met
+    exact generic.1 n mem t part tm positive target reached load (fits n mem _ target met)
+  · intro n mem f bound target reached earlier load met
+    exact generic.2 n mem f bound target reached earlier load (fits n mem _ target met)
+
+def singleWritten (d : NeedSource) (b : Nat) (kept : Nat → Bool)
+    (n : Nat × Nat) (_ : Nat → Prop) := n.2 ≤ d.capacity - d.before b kept n.1
+
+def recordWritten (d : NeedSource) (b : Nat) (kept : Nat → Bool)
+    (_ : Nat × Nat) (target : Nat → Prop) := ∀ m ∈ d.needs, target m.1 →
+      (∀ k ∈ d.needs, target k.1 → k.1 < m.1 → k.2 < m.2) →
+      m.2 ≤ d.capacity - d.before b kept m.1
+
+theorem needSpaceNone (d : NeedSource) (ordered : sourceOrdered d.items)
+    (valid : figureDomain d.items d.config) (blankOK : blankDomain d.items d.blank)
+    (capacityPos : 0 < d.capacity) (usedFits : d.used ≤ d.capacity)
+    (sizes : ∀ i, i < d.count → 0 < d.size i ∧ d.size i ≤ d.capacity)
+    (members : ∀ m ∈ d.needs, .need m.1 ∈ d.items)
+    (domain : d.needs = [] ∨ ∃ p, d.needs = [(p,2)]) :
+    ∃ b kept, d.base b kept ∧ d.sourceKeeps b kept (d.singleWritten b kept) := by
+  obtain ⟨b,kept,base,generic⟩ := d.all_inputs_have_a_placement ordered valid blankOK capacityPos
+    usedFits sizes members
+  refine ⟨b,kept,base,d.source_keeps_of_written b kept generic _ ?_⟩
+  intro n mem target hit met
+  rcases domain with none | ⟨p,one⟩
+  · simp [none] at mem
+  · simp [one] at mem
+    subst n
+    simpa [group,one,hit,writtenGroupFits,singleWritten] using met
+
+theorem needMoreNone (d : NeedSource) (ordered : sourceOrdered d.items)
+    (valid : figureDomain d.items d.config) (blankOK : blankDomain d.items d.blank)
+    (capacityPos : 0 < d.capacity) (usedFits : d.used ≤ d.capacity)
+    (sizes : ∀ i, i < d.count → 0 < d.size i ∧ d.size i ≤ d.capacity)
+    (members : ∀ m ∈ d.needs, .need m.1 ∈ d.items)
+    (domain : ∃ a z : Nat × Nat, d.needs = [a,z] ∧ a.1 < z.1) :
+    ∃ b kept, d.base b kept ∧ d.sourceKeeps b kept (d.recordWritten b kept) := by
+  obtain ⟨b,kept,base,generic⟩ := d.all_inputs_have_a_placement ordered valid blankOK capacityPos
+    usedFits sizes members
+  refine ⟨b,kept,base,d.source_keeps_of_written b kept generic _ ?_⟩
+  intro n _ target _ met
+  obtain ⟨a,z,two,lt⟩ := domain
+  have aFit (hit : target a.1) : a.2 ≤ d.capacity - d.before b kept a.1 := by
+    apply met a (by simp [two]) hit
+    intro k km _ early
+    simp [two] at km
+    rcases km with rfl | rfl <;> omega
+  have zFit (hit : target z.1) (earlier : target a.1 → a.2 < z.2) :
+      z.2 ≤ d.capacity - d.before b kept z.1 := by
+    apply met z (by simp [two]) hit
+    intro k km atK early
+    simp [two] at km
+    rcases km with rfl | rfl
+    · exact earlier atK
+    · omega
+  rcases a with ⟨pa, ha⟩
+  rcases z with ⟨pz, hz⟩
+  by_cases ta : target pa <;> by_cases tz : target pz <;>
+    simp [group,two,ta,tz,writtenGroupFits] at * <;> omega
+
+end NeedSource
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
