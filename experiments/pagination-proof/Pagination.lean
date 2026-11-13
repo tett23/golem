@@ -7102,4 +7102,232 @@ decreasing_by
   · exact I4_emitFigure_decreases _ waiting
   · exact I4_sendFigure_decreases _ remaining
 
+
+/- In the ADR 0206 domain, deleting the single optional figure leaves an
+   ordered list of text items. Texts are identified by their zero-based
+   ranks. A figure at rank f precedes text t exactly when f ≤ t. Size zero
+   encodes absence, since every actual figure has positive size. -/
+structure RectoInput where
+  cap : Nat
+  used : Nat
+  texts : Nat
+  figureRank : Nat
+  figureSize : Nat
+  heading : Nat → Prop
+  line : Nat → Prop
+  recto : Nat → Prop
+  paragraph : List ParagraphBoundary
+  headingsNotLines : ∀ t, heading t → ¬ line t
+  rectosHeadings : ∀ t, recto t → heading t
+  paragraphFirst : ∀ p ∈ paragraph, line p.firstPos
+  paragraphOrder : ∀ p ∈ paragraph, p.firstPos ≤ p.beforeLastPos
+  figureFits : figureSize ≤ cap
+  usedFits : used ≤ cap
+
+namespace RectoInput
+def kept (d : RectoInput) (b : Nat) : Prop :=
+  0 < d.figureSize ∧ d.figureRank ≤ b ∧ d.used + d.figureRank + d.figureSize ≤ d.cap
+
+def starts (d : RectoInput) (b t : Nat) : Prop :=
+  d.used = 0 ∧ t = 0 ∧ (d.kept b → t < d.figureRank)
+
+def afterHeads (d : RectoInput) (b t : Nat) : Prop :=
+  d.used = 0 ∧ (∀ u, u < t → u < b → d.heading u) ∧
+    (d.kept b → t < d.figureRank)
+
+def base (d : RectoInput) (b : Nat) : Prop :=
+  b ≤ d.texts ∧ d.used + b ≤ d.cap ∧
+  (d.kept b → d.used + b + d.figureSize ≤ d.cap) ∧
+  (d.kept b → d.figureRank ≤ b) ∧
+  (d.used = 0 → 0 < d.figureSize → d.figureRank = 0 → d.kept b) ∧
+  (d.used = 0 → 0 < d.texts → (d.figureSize = 0 ∨ 0 < d.figureRank) → 0 < b)
+
+def lineAfter (d : RectoInput) (b : Nat) : Prop :=
+  d.used = 0 → 0 < b → ¬ d.kept b →
+    (∀ t, t < b → d.heading t) → b < d.texts → ¬ d.line b
+
+def orphanH (d : RectoInput) (b : Nat) : Prop :=
+  ∀ p ∈ d.paragraph, 2 ≤ p.lineCount → p.firstPos < b → b ≤ p.secondPos →
+    d.afterHeads b p.firstPos
+
+def widowH (d : RectoInput) (b : Nat) : Prop :=
+  ∀ p ∈ d.paragraph, 2 ≤ p.lineCount → p.beforeLastPos < b → b ≤ p.lastPos →
+    d.afterHeads b p.firstPos
+
+/- These sufficient conditions make both heading-run variants hold,
+   independently of the length of the heading run and the kept lines. -/
+def feasible (d : RectoInput) (b : Nat) : Prop :=
+  d.base b ∧ d.lineAfter b ∧ d.orphanH b ∧ d.widowH b ∧
+  (∀ t, t < b → d.heading t → d.starts b t)
+
+private theorem feasible_of_prefix (d : RectoInput) (b : Nat)
+    (base : d.base b) (after : d.lineAfter b)
+    (paragraphStart : ∀ t, t < b → d.line t → d.afterHeads b t)
+    (heads : ∀ t, t < b → d.heading t → d.starts b t) : d.feasible b := by
+  refine ⟨base, after, ?_, ?_, heads⟩
+  · intro p member _ here _
+    exact paragraphStart _ here (d.paragraphFirst p member)
+  · intro p member _ here _
+    exact paragraphStart _ (Nat.lt_of_le_of_lt (d.paragraphOrder p member) here)
+      (d.paragraphFirst p member)
+
+theorem feasible_exists (d : RectoInput) (twoFit : 2 ≤ d.cap) :
+    ∃ b, d.feasible b := by
+  by_cases zeroBreak : d.used ≠ 0 ∨ d.texts = 0 ∨
+      (0 < d.figureSize ∧ d.figureRank = 0)
+  · refine ⟨0, feasible_of_prefix d 0 ?_ ?_ ?_ ?_⟩
+    · refine ⟨by omega, by simpa using d.usedFits, ?_, fun k => k.2.1, ?_, ?_⟩
+      · intro k
+        have room := k.2.2
+        omega
+      · intro empty pos rank
+        exact ⟨pos, by omega, by simpa [empty, rank] using d.figureFits⟩
+      · intro empty nonempty first
+        omega
+    · intro _ positive
+      omega
+    · intro t here
+      omega
+    · intro t here
+      omega
+  · have empty : d.used = 0 := by apply Classical.byContradiction; intro h; exact zeroBreak (Or.inl h)
+    have nonempty : 0 < d.texts := by
+      apply Classical.byContradiction
+      intro h
+      exact zeroBreak (Or.inr (Or.inl (by omega)))
+    have firstText : d.figureSize = 0 ∨ 0 < d.figureRank := by
+      apply Classical.byContradiction
+      intro h
+      exact zeroBreak (Or.inr (Or.inr ⟨by omega, by omega⟩))
+    have startsZero : ∀ b, d.starts b 0 := by
+      intro b
+      refine ⟨empty, rfl, ?_⟩
+      intro k
+      have positive := k.1
+      omega
+    by_cases two : 1 < d.texts ∧ d.heading 0 ∧ d.line 1 ∧ ¬ d.kept 1
+    · obtain ⟨texts, heading, line, sent⟩ := two
+      have keptAfter : d.kept 2 → d.figureRank = 2 := by
+        intro k
+        apply Classical.byContradiction
+        intro h
+        exact sent ⟨k.1, by have := k.2.1; omega, k.2.2⟩
+      refine ⟨2, feasible_of_prefix d 2 ?_ ?_ ?_ ?_⟩
+      · refine ⟨by omega, by omega, ?_, fun k => k.2.1, ?_, by intros; decide⟩
+        · intro k
+          simpa [keptAfter k] using k.2.2
+        · intro _ pos rank
+          omega
+      · intro _ _ _ allHeadings
+        exact (d.headingsNotLines 1 (allHeadings 1 (by decide)) line).elim
+      · intro t here _
+        refine ⟨empty, ?_, ?_⟩
+        · intro u before _
+          have : u = 0 := by omega
+          simpa [this] using heading
+        · intro k
+          rw [keptAfter k]
+          omega
+      · intro t here tHead
+        have tZero : t = 0 := by
+          apply Classical.byContradiction
+          intro h
+          have : t = 1 := by omega
+          exact d.headingsNotLines 1 (this ▸ tHead) line
+        exact tZero ▸ startsZero 2
+    · refine ⟨1, feasible_of_prefix d 1 ?_ ?_ ?_ ?_⟩
+      · refine ⟨by omega, by omega, ?_, fun k => k.2.1, ?_, by intros; decide⟩
+        · intro k
+          have pos := k.1
+          have bound := k.2.1
+          have rank : d.figureRank = 1 := by omega
+          simpa [rank] using k.2.2
+        · intro _ pos rank
+          omega
+      · intro _ _ sent heads more line
+        exact two ⟨more, heads 0 (by decide), line, sent⟩
+      · intro t here _
+        have eq : t = 0 := by omega
+        subst t
+        exact ⟨empty, by intros; omega, (startsZero 1).2.2⟩
+      · intro t here _
+        have eq : t = 0 := by omega
+        exact eq ▸ startsZero 1
+/- The explicit keep flag ranges over both choices of the Alloy placement.
+   A figure occupies slot 2*f just before text f at slot 2*f+1.
+   Thus intervals in headingRunKeep include the intervening figure. -/
+def itemAt (d : RectoInput) (pos : Nat) : Prop :=
+  (∃ t, t < d.texts ∧ pos = 2*t+1) ∨
+    (0 < d.figureSize ∧ pos = 2*d.figureRank)
+
+def basePlacement (d : RectoInput) (b : Nat) (keep : Bool) : Prop :=
+  b ≤ d.texts ∧ (keep = true ↔ d.kept b) ∧
+    d.used + b + (if keep then d.figureSize else 0) ≤ d.cap ∧
+    (keep = true → d.figureRank ≤ b) ∧
+    (d.used = 0 → 0 < d.figureSize → d.figureRank = 0 → keep = true) ∧
+    (d.used = 0 → 0 < d.texts → (d.figureSize = 0 ∨ 0 < d.figureRank) → 0 < b)
+
+def headingRule (d : RectoInput) (b : Nat) (heading : Nat → Prop)
+    (linesKept : Nat → Prop) : Prop :=
+  headingRunKeep d.itemAt (fun p => ∃ t, t < d.texts ∧ p = 2*t+1)
+    (fun p => ∃ t, t < d.texts ∧ p = 2*t+1 ∧ heading t)
+    (fun p => p / 2 < b) (fun p => d.starts b (p / 2))
+    (fun p => d.line (p / 2)) linesKept
+
+theorem placement_of_feasible (d : RectoInput) (b : Nat) (ok : d.feasible b) :
+    ∃ keep, d.basePlacement b keep := by
+  obtain ⟨bounds, room, fits, order, firstFigure, firstText⟩ := ok.1
+  by_cases k : d.kept b
+  · exact ⟨true, bounds, by simp [k], by simpa using fits k,
+      fun _ => order k, by intros; rfl, firstText⟩
+  · exact ⟨false, bounds, by simp [k], by simpa using room,
+      by simp, fun empty pos rank => (k (firstFigure empty pos rank)).elim,
+      firstText⟩
+
+theorem headings_of_feasible (d : RectoInput) (b : Nat) (ok : d.feasible b)
+    (heading linesKept : Nat → Prop) (subset : ∀ h, heading h → d.heading h) :
+    d.headingRule b heading linesKept := by
+  intro p eligible here inside
+  obtain ⟨t, _, position, head⟩ := eligible
+  subst p
+  have rank : (2*t+1) / 2 = t := by omega
+  change (2*t+1) / 2 < b at here
+  change ¬ d.starts b ((2*t+1) / 2) at inside
+  rw [rank] at here inside
+  exact (inside (ok.2.2.2.2 t here (subset t head))).elim
+
+end RectoInput
+
+/- Alloy's "no placement" has no witness: for each input there is a
+   placement satisfying all the predicates. keptLines may be any predicate,
+   which includes the paragraph-dependent keptLines of ADR 0021. -/
+theorem rectoKept (d : RectoInput) (twoFit : 2 ≤ d.cap)
+    (keptLines : Nat → Prop) :
+    ∃ b keep, d.basePlacement b keep ∧ d.orphanH b ∧ d.widowH b ∧
+      d.headingRule b d.heading keptLines ∧ d.lineAfter b ∧
+      (∀ t, t < b → d.recto t → d.starts b t) := by
+  obtain ⟨b, ok⟩ := d.feasible_exists twoFit
+  obtain ⟨keep, base⟩ := d.placement_of_feasible b ok
+  exact ⟨b, keep, base, ok.2.2.1, ok.2.2.2.1,
+    d.headings_of_feasible b ok d.heading keptLines (fun _ h => h),
+    ok.2.1, fun t here r => ok.2.2.2.2 t here (d.rectosHeadings t r)⟩
+
+theorem rectoEnds (d : RectoInput) (twoFit : 2 ≤ d.cap)
+    (keptLines : Nat → Prop) :
+    ∃ b keep, d.basePlacement b keep ∧ d.orphanH b ∧ d.widowH b ∧
+      d.headingRule b (fun t => d.heading t ∧ ¬ d.recto t) keptLines ∧
+      d.lineAfter b ∧ (∀ t, t < b → d.recto t → d.starts b t) := by
+  obtain ⟨b, ok⟩ := d.feasible_exists twoFit
+  obtain ⟨keep, base⟩ := d.placement_of_feasible b ok
+  exact ⟨b, keep, base, ok.2.2.1, ok.2.2.2.1,
+    d.headings_of_feasible b ok _ keptLines (fun _ h => h.1),
+    ok.2.1, fun t here r => ok.2.2.2.2 t here (d.rectosHeadings t r)⟩
+
+theorem relaxedAfterHeadings (d : RectoInput) (twoFit : 2 ≤ d.cap)
+    (keptLines : Nat → Prop) :
+    ∃ b keep, d.basePlacement b keep ∧ d.orphanH b ∧ d.widowH b ∧
+      d.headingRule b d.heading keptLines ∧ d.lineAfter b := by
+  obtain ⟨b, keep, base, orphan, widow, heading, after, _⟩ := rectoKept d twoFit keptLines
+  exact ⟨b, keep, base, orphan, widow, heading, after⟩
+
 end GolemPagination
