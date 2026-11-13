@@ -3177,6 +3177,10 @@ styleReferenceChecks owner s =
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
                ]
+            <> [ ("", styleKeys ["hidden-folio", "character-style"], "[hidden-folio] の文字スタイルがありません: " <> n)
+               | Just n <- [hfCharacterStyle (stHiddenFolio s)],
+                 Map.notMember n cs
+               ]
             <> [(n, charKey n "based-on", "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
             <> [(n, charKey n "color", "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
             <> [(n, charKey n "background", "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
