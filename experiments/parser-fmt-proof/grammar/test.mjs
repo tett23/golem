@@ -321,6 +321,57 @@ try {
     [join(here, 'generate.mjs'), changedSetIdent, generated], { encoding: 'utf8' });
   assert.match(strictSetIdent.stderr, /unsupported SetIdent choice 1 at /,
     'a changed boundary class must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported (TooDeep|BadBreak) choice /m,
+    'the canonical throwing prefixes have all-input proofs');
+  const changedTooDeep = join(work, 'ChangedTooDeep.hpeg');
+  writeFileSync(changedTooDeep, original.replace(/^TooDeep <- .*$/m,
+    "TooDeep <- &'#' (&{ False } '#')^changed { () }"));
+  const strictTooDeep = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedTooDeep, generated], { encoding: 'utf8' });
+  assert.match(strictTooDeep.stderr, /unsupported TooDeep choice 1 at /,
+    'a changed lookahead label must return to the unsupported report');
+  const changedBadBreak = join(work, 'ChangedBadBreak.hpeg');
+  writeFileSync(changedBadBreak, original.replace(/^BadBreak <- .*$/m,
+    "BadBreak <- '\\\\' (&{ False })^changed { () }"));
+  const strictBadBreak = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedBadBreak, generated], { encoding: 'utf8' });
+  assert.match(strictBadBreak.stderr, /unsupported BadBreak choice 1 at /,
+    'a changed literal label must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported BadBracket choice /m,
+    'the canonical bracket reference has an all-input proof');
+  const changedBadBracket = join(work, 'ChangedBadBracket.hpeg');
+  writeFileSync(changedBadBracket, original.replace(/^BadBracket <- .*$/m,
+    'BadBracket <- &LBr (&{ False } LBr)^changed { () }'));
+  const strictBadBracket = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedBadBracket, generated], { encoding: 'utf8' });
+  assert.match(strictBadBracket.stderr, /unsupported BadBracket choice 1 at /,
+    'a changed bracket label must return to the unsupported report');
+  const changedLBr = join(work, 'ChangedLBr.hpeg');
+  writeFileSync(changedLBr, original.replace(/^LBr <- .*$/m, "LBr <- '{' { () }"));
+  const strictLBr = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedLBr, generated], { encoding: 'utf8' });
+  assert.match(strictLBr.stderr, /unsupported BadBracket choice 1 at /,
+    'a changed referenced bracket must return to the unsupported report');
+  assert.doesNotMatch(strict.stderr, /^unsupported Escape choice /m,
+    'the canonical escape reference has an all-input proof');
+  assert.ok(!strict.stderr.split('\n').some(line => line.startsWith('unsupported ReservedBracketBody choice ') &&
+    line.endsWith(String.raw`'\\' ![\n] .`)),
+    'the identical nested escape sequence has an all-input proof');
+  const changedEscape = join(work, 'ChangedEscape.hpeg');
+  writeFileSync(changedEscape, original.replace(/^Escape <- .*$/m,
+    String.raw`Escape <- '\\' [\n] . { () }`));
+  const strictEscape = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedEscape, generated], { encoding: 'utf8' });
+  assert.match(strictEscape.stderr, /unsupported Escape choice 1 at /,
+    'a changed escape guard must return to the unsupported report');
+  const changedReservedBody = join(work, 'ChangedReservedBody.hpeg');
+  writeFileSync(changedReservedBody, original.replace(
+    String.raw`ReservedBracketBody <- ( '\\' ![\n] .`,
+    String.raw`ReservedBracketBody <- ( '\\' [\n] .`));
+  const strictReservedBody = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedReservedBody, generated], { encoding: 'utf8' });
+  assert.match(strictReservedBody.stderr, /unsupported ReservedBracketBody choice 2 at /,
+    'a changed nested escape guard must return to the unsupported report');
 
   const bothUnsupported = unsupportedArguments.replace(/^Word <- .*$/m, '$& / AnotherTerm');
   const combinedFailure = generate(bothUnsupported);
@@ -359,6 +410,12 @@ try {
   const prefixBoundaryProof = spawnSync(lean, [join(here, 'PrefixBoundaryTotal.lean')],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(prefixBoundaryProof.status, 0, prefixBoundaryProof.stderr);
+  const throwingPrefixProof = spawnSync(lean, [join(here, 'ThrowingPrefixTotal.lean')],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(throwingPrefixProof.status, 0, throwingPrefixProof.stderr);
+  const escapeProof = spawnSync(lean, [join(here, 'EscapeTotal.lean')],
+    { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
+  assert.equal(escapeProof.status, 0, escapeProof.stderr);
 
   writeFileSync(generated, mutation);
   execFileSync(lean, ['-o', join(work, 'Generated.olean'), generated], { cwd: work, env: { ...process.env, LEAN_PATH: work }, stdio: 'pipe' });
@@ -370,7 +427,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 7, negative mutations 30, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 9, negative mutations 36, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

@@ -95,7 +95,8 @@ function nestedChoices(expr, visit) {
   switch (expr.tag) {
     case 'choice':
       if (expr.alts.length > 1 && !provedNlEofChoice(expr) &&
-          !provedLiteralNlEofChoice(expr) && !provedClassLookaheadOrEof(expr)) expr.alts.forEach(visit);
+          !provedLiteralNlEofChoice(expr) && !provedClassLookaheadOrEof(expr))
+        expr.alts.filter(items => !provedEscapeItems(items)).forEach(visit);
       expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));
       break;
     case 'star': case 'plus': case 'opt': case 'and': case 'not':
@@ -256,12 +257,46 @@ const setIdentFullyProved = rule('SetIdent') === String.raw`'set' ![a-z0-9\-]` &
   setIdentAst.alts.length === 1 && setIdentAst.alts[0].items.length === 2 &&
   setIdentAst.alts[0].items.every(item => item.bind === null) &&
   setIdentAst.alts[0].action?.trim() === '()' && setIdentAst.alts[0].constructor === null;
+// ThrowingPrefixTotal proves both lookahead-then-label and
+// literal-then-label errors for every input. ReservedBracket shares the former.
+const tooDeepAst = ast?.rules.find(rule => rule.name === 'TooDeep');
+const tooDeepFullyProved = rule('TooDeep') === "&'#' (&{ False } '#')^heading_level" &&
+  tooDeepAst?.params.length === 0 && tooDeepAst.templateParams.length === 0 &&
+  tooDeepAst.alts.length === 1 && tooDeepAst.alts[0].items.length === 2 &&
+  tooDeepAst.alts[0].items.every(item => item.bind === null) &&
+  tooDeepAst.alts[0].action?.trim() === '()' && tooDeepAst.alts[0].constructor === null;
+const badBreakAst = ast?.rules.find(rule => rule.name === 'BadBreak');
+const badBreakFullyProved = rule('BadBreak') === String.raw`'\\' (&{ False })^hard_break` &&
+  badBreakAst?.params.length === 0 && badBreakAst.templateParams.length === 0 &&
+  badBreakAst.alts.length === 1 && badBreakAst.alts[0].items.length === 2 &&
+  badBreakAst.alts[0].items.every(item => item.bind === null) &&
+  badBreakAst.alts[0].action?.trim() === '()' && badBreakAst.alts[0].constructor === null;
 const literalRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
   rule.alts[0].items[0].bind === null && rule.alts[0].items[0].expr.tag === 'lit' &&
   rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null);
 const literalNames = new Set(literalRules.map(rule => rule.name));
+const badBracketAst = ast?.rules.find(rule => rule.name === 'BadBracket');
+const badBracketFullyProved = rule('BadBracket') === '&LBr (&{ False } LBr)^bracket' &&
+  rule('LBr') === "'['" && literalNames.has('LBr') && badBracketAst?.params.length === 0 &&
+  badBracketAst.templateParams.length === 0 && badBracketAst.alts.length === 1 &&
+  badBracketAst.alts[0].items.length === 2 &&
+  badBracketAst.alts[0].items.every(item => item.bind === null) &&
+  badBracketAst.alts[0].action?.trim() === '()' && badBracketAst.alts[0].constructor === null;
+// EscapeTotal.literal_not_class_any proves the three-item sequence for any
+// literal and class. Its generated_reserved_body_escape_shape ties the nested
+// ReservedBracketBody branch to the exported canonical AST.
+function provedEscapeItems(items) {
+  return items.length === 3 && items.every(item => item.bind === null) &&
+    items[0].expr.tag === 'lit' && items[1].expr.tag === 'not' &&
+    items[1].expr.expr.tag === 'class' && items[2].expr.tag === 'any';
+}
+const escapeAst = ast?.rules.find(rule => rule.name === 'Escape');
+const escapeFullyProved = rule('Escape') === String.raw`'\\' ![\n] .` &&
+  escapeAst?.params.length === 0 && escapeAst.templateParams.length === 0 &&
+  escapeAst.alts.length === 1 && provedEscapeItems(escapeAst.alts[0].items) &&
+  escapeAst.alts[0].action?.trim() === '()' && escapeAst.alts[0].constructor === null;
 const classPlusRules = (ast?.rules ?? []).filter(rule =>
   rule.params.length === 0 && rule.templateParams.length === 0 &&
   rule.alts.length === 1 && rule.alts[0].items.length === 1 &&
@@ -338,6 +373,10 @@ if (!fragment && ast) {
     if (reservedBracketFullyProved && rule.name === 'ReservedBracket') continue;
     if (numberOpenFullyProved && rule.name === 'NumberOpen') continue;
     if (setIdentFullyProved && rule.name === 'SetIdent') continue;
+    if (tooDeepFullyProved && rule.name === 'TooDeep') continue;
+    if (badBreakFullyProved && rule.name === 'BadBreak') continue;
+    if (badBracketFullyProved && rule.name === 'BadBracket') continue;
+    if (escapeFullyProved && rule.name === 'Escape') continue;
     if (literalNames.has(rule.name)) continue;
     if (classPlusNames.has(rule.name)) continue;
     if (optionalRefNames.has(rule.name)) continue;
