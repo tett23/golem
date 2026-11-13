@@ -6543,6 +6543,28 @@ theorem I3_need_space_one_block_exists
     all_goals simp [needSpaceSimpleBase, needSpaceSimpleMet,
       needSpaceSimpleKeeps] <;> omega
 
+-- Only a new maximum triggers a check for needs sharing a following block.
+def recordNeedsFit (available previous : Nat) : List Nat → Prop
+  | [] => True
+  | n :: rest => (previous < n → n ≤ available) ∧
+      recordNeedsFit available (max previous n) rest
+
+theorem I3_record_needs_fit_iff_all (available previous : Nat) (ns : List Nat) (prior : previous ≤ available) :
+    recordNeedsFit available previous ns ↔ ∀ n ∈ ns, n ≤ available := by
+  induction ns generalizing previous with
+  | nil => simp [recordNeedsFit]
+  | cons n rest ih =>
+    simp only [recordNeedsFit, List.mem_cons, forall_eq_or_imp]
+    constructor
+    · rintro ⟨check, tail⟩
+      have fits : n ≤ available := by
+        by_cases h : previous < n
+        · exact check h
+        · omega
+      exact ⟨fits, (ih _ (Nat.max_le.mpr ⟨prior, fits⟩)).mp tail⟩
+    · rintro ⟨fits, tail⟩
+      exact ⟨fun _ => fits, (ih _ (Nat.max_le.mpr ⟨prior, fits⟩)).mpr tail⟩
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
