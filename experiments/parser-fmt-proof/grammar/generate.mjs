@@ -497,6 +497,8 @@ if (!fragment && ast) {
     if (numberOpenFullyProved && rule.name === 'NumberOpen') continue;
     if (setIdentFullyProved && rule.name === 'SetIdent') continue;
     if (tooDeepFullyProved && rule.name === 'TooDeep') continue;
+    if (badBreakFullyProved && rule.name === 'RowBreak' &&
+        singleUnitRuleMatches(rule, String.raw`&('\\' ('\n' / !.)) BadBreak`)) continue;
     if (badBreakFullyProved && rule.name === 'BadBreak') continue;
     if (badBracketFullyProved && rule.name === 'BadBracket') continue;
     if (backslashFullyProved && rule.name === 'Backslash') continue;

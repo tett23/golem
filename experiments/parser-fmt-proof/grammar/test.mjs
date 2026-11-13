@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 52, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 51, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -58,8 +58,8 @@ try {
     [join(here, 'generate.mjs'), changedParagraph, generated], { encoding: 'utf8' });
   assert.match(strictParagraph.stderr, /unsupported Paragraph choice \d+ at .*'x'/,
     'a changed Nl/EOF choice in an argument rule must return to the report');
-  assert.doesNotMatch(strict.stderr, /^unsupported RowBreak choice [23] at /m,
-    'the proved literal newline/EOF choice inside RowBreak must be covered');
+  assert.doesNotMatch(strict.stderr, /^unsupported RowBreak choice /m,
+    'the table line-end guard and hard-break diagnostic must be covered');
   const changedRowBreak = join(work, 'ChangedRowBreak.hpeg');
   const rowBreakMutation = original.replace(/^RowBreak <- .*$/m,
     line => line.replace(' / !.)', " / !. / 'x')"));
@@ -350,6 +350,8 @@ try {
     [join(here, 'generate.mjs'), changedBadBreak, generated], { encoding: 'utf8' });
   assert.match(strictBadBreak.stderr, /unsupported BadBreak choice 1 at /,
     'a changed literal label must return to the unsupported report');
+  assert.match(strictBadBreak.stderr, /unsupported RowBreak choice 1 at /,
+    'the table line-end error must follow the BadBreak label');
   assert.doesNotMatch(strict.stderr, /^unsupported BadBracket choice /m,
     'the canonical bracket reference has an all-input proof');
   const changedBadBracket = join(work, 'ChangedBadBracket.hpeg');

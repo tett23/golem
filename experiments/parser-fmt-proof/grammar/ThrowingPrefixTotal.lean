@@ -226,4 +226,56 @@ theorem generated_range_opening (env : PegModel.Params) (input : List Char) (fue
       (if "...".toList.isPrefixOf input then .error "label: range_end" else .ok none) := by
   exact throwing_prefix_choice Generated.pegGrammar env fuel "..." "'...'" "range_end" input
 
+private def lineEnd : PegModel.Expr := .choice [[.lit "\n" "'\\n'"], [.notPred .any]]
+private def slashLineEnd : PegModel.Expr := .choice [[.lit "\\" "'\\\\'", lineEnd]]
+
+private def endsLine : List Char → Bool
+  | [] | '\n' :: _ => true
+  | _ => false
+
+private theorem slash_line_end_guard (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel+6) (.andPred slashLineEnd) input =
+      .ok (if "\\".toList.isPrefixOf input && endsLine (input.drop 1) then some input else none) := by
+  have parse : PegModel.recognizeEnv Generated.pegGrammar [] (fuel+5) slashLineEnd input =
+      .ok (if "\\".toList.isPrefixOf input then
+        match input.drop 1 with
+        | [] => some []
+        | '\n' :: rest => some rest
+        | _ => none
+      else none) := by
+    change PegModel.runChoices (fun items => PegModel.runSequence
+      (fun env e x => PegModel.recognizeEnv Generated.pegGrammar env (fuel+4) e x) _ [] items input)
+      [[.lit "\\" "'\\\\'", lineEnd]] = _
+    have lit := PegModelTest.literal_total Generated.pegGrammar [] (fuel+3) "\\" "'\\\\'" input
+    have size : "\\".toList.length = 1 := rfl
+    have endAt := PegModelTest.newline_or_eof Generated.pegGrammar [] (fuel+1)
+    cases hit : "\\".toList.isPrefixOf input with
+    | false => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, lit, hit]; rfl
+    | true =>
+        cases tail : input.drop 1 with
+        | nil => simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, lit, hit, size, lineEnd, endAt, tail]; rfl
+        | cons c rest =>
+            by_cases nl : c = '\n'
+            · subst c; simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, lit, hit, size, lineEnd, endAt, tail]; rfl
+            · simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, lit, hit, size, lineEnd, endAt, tail, nl]; rfl
+  change (match PegModel.recognizeEnv Generated.pegGrammar [] (fuel+5) slashLineEnd input with
+    | .error reason => if PegModel.isLabelFailure reason then Except.ok none else Except.error reason
+    | .ok none => Except.ok none
+    | .ok (some _) => Except.ok (some input)) = _
+  rw [parse]
+  cases "\\".toList.isPrefixOf input <;> cases input.drop 1 with
+  | nil => rfl
+  | cons c rest => by_cases h : c = '\n' <;> simp_all [endsLine]
+
+theorem generated_row_break (env : PegModel.Params) (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel+8) (.ref "RowBreak" []) input =
+      (if "\\".toList.isPrefixOf input && endsLine (input.drop 1) then .error "label: hard_break" else .ok none) := by
+  change PegModel.runChoices (fun items => PegModel.runSequence
+    (fun env e x => PegModel.recognizeEnv Generated.pegGrammar env (fuel+6) e x) _ [] items input)
+    [[.andPred slashLineEnd, .ref "BadBreak" []]] = _
+  have guardAt := slash_line_end_guard input fuel
+  have badAt := generated_bad_break input fuel
+  cases a : "\\".toList.isPrefixOf input <;> cases b : endsLine (input.drop 1) <;>
+    simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, guardAt, badAt, a, b] <;> rfl
+
 end ThrowingPrefixTotal
