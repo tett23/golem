@@ -17,8 +17,16 @@ for (const [name, body] of [['nested', '[x]'], ['escaped', '\\]'], ['comment', '
   cases.push({ name, original: '甲末\n', input: '甲' + token + '末\n', skipped: [token] });
 }
 
-for (const { name, original, input, skipped } of cases) {
-  test(`Golem ADR 0351: reserved bracket recovery ${name}`, () => {
+for (const [marker, code] of [['=:', 'G01013'], ['@!', 'G01100']]) {
+  for (const prefix of ['', '- x\n  ']) {
+    cases.push({ name: 'block-' + code + '-' + prefix.length,
+      original: prefix + 'a\n\nend\n', input: prefix + marker + '\n\nend\n',
+      skipped: [marker], code, following: 'end' });
+  }
+}
+
+for (const { name, original, input, skipped, code = 'G01100', following = '末' } of cases) {
+  test(`Golem ADR 0351: labeled recovery ${name}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'golem-reserved-'));
     const file = join(dir, 'a.gm');
     const cli = process.env.GOLEM || 'golem';
@@ -26,7 +34,7 @@ for (const { name, original, input, skipped } of cases) {
       writeFileSync(file, input);
       const result = spawnSync(cli, ['inspect', file, '--as', 'cst'], { cwd: dir, encoding: 'utf8' });
       if (result.error) throw result.error;
-      assert.deepEqual([...result.stderr.matchAll(/error\[(\w+)\]/g)].map(m => m[1]), skipped.map(() => 'G01100'));
+      assert.deepEqual([...result.stderr.matchAll(/error\[(\w+)\]/g)].map(m => m[1]), skipped.map(() => code));
       const expected = skipped.map(token => {
         const start = Buffer.from(input).indexOf(token);
         assert.ok(start >= 0);
@@ -34,7 +42,7 @@ for (const { name, original, input, skipped } of cases) {
       });
       const errors = Array.from(result.stdout.matchAll(/NErrorNode@(\d+)\.\.(\d+)/g), m => [Number(m[1]), Number(m[2])]);
       assert.deepEqual(errors, expected);
-      assert.match(result.stdout, /KText@\d+\.\.\d+ "末"/u);
+      assert.ok(Array.from(result.stdout.matchAll(/KText@\d+\.\.\d+ "(.*?)"/gu), m => m[1]).includes(following));
       if (skipped.length) {
         const fmt = spawnSync(cli, ['fmt', file], { cwd: dir, encoding: 'utf8' });
         assert.equal(fmt.status, 1, fmt.stderr);

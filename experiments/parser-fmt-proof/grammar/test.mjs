@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 104, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 102, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -383,6 +383,11 @@ try {
     assert.ok(!strict.stderr.split('\n').some(line =>
       line.startsWith('unsupported SkippedReserved ') && line.endsWith(': ' + literal)));
   }
+  const wrongLabel = join(work, 'WrongIndentedLabel.hpeg');
+  writeFileSync(wrongLabel, original.replace("'=:')^def_orphan", "'=:')^reserved"));
+  const strictLabel = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), wrongLabel, generated], { encoding: 'utf8' });
+  assert.match(strictLabel.stderr, /^unsupported OrphanDef .*\^reserved$/m);
   const changedIndent = join(work, 'ChangedIndent.hpeg');
   writeFileSync(changedIndent, original.replace("' ' Ind(n - 1)", "' ' Ind(n - 2)"));
   const strictIndent = spawnSync(process.execPath,
@@ -445,7 +450,9 @@ try {
   assert.equal(wordProof.status, 0, wordProof.stderr);
   const growthSource = join(here, 'LeftRecursionTotal.lean');
   const growthEnv = { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' };
-  const indentProof = spawnSync(lean, [join(here, 'IndentTotal.lean')], growthEnv);
+  const indentSource = join(work, 'IndentTotal.lean');
+  copyFileSync(join(here, 'IndentTotal.lean'), indentSource);
+  const indentProof = spawnSync(lean, ['-o', join(work, 'IndentTotal.olean'), indentSource], growthEnv);
   assert.equal(indentProof.status, 0, indentProof.stdout + indentProof.stderr);
   const growthProof = spawnSync(lean, [growthSource], growthEnv);
   assert.equal(growthProof.status, 0, growthProof.stdout + growthProof.stderr);
@@ -478,6 +485,8 @@ try {
   const throwingPrefixProof = spawnSync(lean, ['-o', join(work, 'ThrowingPrefixTotal.olean'), throwingSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(throwingPrefixProof.status, 0, throwingPrefixProof.stderr);
+  const indentedLabel = spawnSync(lean, [join(here, 'IndentedLabelTotal.lean')], growthEnv);
+  assert.equal(indentedLabel.status, 0, indentedLabel.stdout + indentedLabel.stderr);
   const backslashProof = spawnSync(lean, [join(here, 'BackslashTotal.lean')],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(backslashProof.status, 0, backslashProof.stdout + backslashProof.stderr);
@@ -495,7 +504,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 12, negative mutations 44, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 13, negative mutations 45, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
