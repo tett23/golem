@@ -5974,6 +5974,10 @@ theorem I3_heading_runs_and_rectos_with_blank_and_figure
        (brk = 1 ∧ used = 0 ∧ oneBreakPlacement capacity items config
         blank kept atTop placed)) ∧
       firstContentNotSent used brk items config kept ∧
+      figuresInOrder (figureCount config) kept ∧
+      (∀ f, f < figureCount config → kept f = true →
+        ∀ textPos, .text textPos ∈ items → textPos < figurePosAt config f →
+          textHereAtBreak items brk textPos = true) ∧
       orphanModel used brk items config kept paragraphs ∧
       widowModel used brk items config kept paragraphs ∧
       rectoModel used brk items config kept rectos ∧
@@ -5989,11 +5993,11 @@ theorem I3_heading_runs_and_rectos_with_blank_and_figure
       rcases List.mem_cons.mp member with eq | tail
       · exact headingsValid p (List.mem_cons.mpr (Or.inl eq))
       · exact ih (fun q hq => headingsValid q (List.mem_cons.mpr (Or.inr hq))) tail
-  obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, orphan, widow, noInterior⟩ :=
+  obtain ⟨brk, kept, atTop, placed, rule, noSend, figureOrder, textOrder, orphan, widow, noInterior⟩ :=
     waitingBlankAllButGreedy capacity used items config blank capacityPositive usedFits
       ordered figuresValid blankValid sizesFit paragraphs paragraphsValid
       (headings ++ rectos) valid (fun _ => False)
-  refine ⟨brk, kept, atTop, placed, rule, noSend, orphan, widow, ?_, ?_⟩
+  refine ⟨brk, kept, atTop, placed, rule, noSend, figureOrder, textOrder, orphan, widow, ?_, ?_⟩
   · intro r member here
     apply Classical.byContradiction
     exact noInterior r (List.mem_append_of_mem_right headings member) here
