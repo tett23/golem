@@ -5962,6 +5962,20 @@ def sourceLineAfterHeadings (used brk : Nat) (items : List SourceItem)
     (∀ t, .text t ∈ items → textHereAtBreak items brk t = true → t ∈ headings) →
       ∀ l, .text l ∈ items → line l → textBeforeCount items l ≠ brk
 
+/- At a two-text break the following line is already in the column.
+   This discharges the heading-only premise even with figures and a blank. -/
+theorem I3_two_break_line_after_headings
+    (items : List SourceItem) (config : FigureConfig) (kept : Nat → Bool)
+    (headings : List Nat) (line : Nat → Prop) (secondPos : Nat)
+    (secondIn : .text secondPos ∈ items)
+    (secondRank : textBeforeCount items secondPos = 1)
+    (secondNotHeading : secondPos ∉ headings) :
+    sourceLineAfterHeadings 0 2 items config kept headings line := by
+  intro _ _ _ onlyHeadings
+  have placed : textHereAtBreak items 2 secondPos = true := by
+    simp [textHereAtBreak, secondRank]
+  exact (secondNotHeading (onlyHeadings secondPos secondIn placed)).elim
+
 theorem I3_heading_runs_and_rectos_with_blank_and_figure
     (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
