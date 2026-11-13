@@ -11264,6 +11264,101 @@ theorem I4_footnote_final_never_sends (base current separator : Nat) :
     · simp [footnoteFinal, footnoteDecision, fits, send, send.2]
     · simp [footnoteFinal, footnoteDecision, fits, send]
 
+namespace FootnoteSplit
+
+structure Note where
+  id : Nat
+  lines : Nat
+
+structure Part where
+  id : Nat
+  start : Nat
+  lines : Nat
+  deriving DecidableEq
+
+def full (n : Note) : Part := ⟨n.id,0,n.lines⟩
+
+/-- A reserved caption or box can leave negative room. In that case
+    splitNotes defers the full suffix with offset zero. -/
+def split (room : Int) : List Note → List Part × List Part
+  | [] => ([],[])
+  | n :: rest =>
+    if (n.lines : Int) ≤ room then
+      let tail := split (room - n.lines) rest
+      (full n :: tail.1,tail.2)
+    else if room > 0 then
+      ([⟨n.id,0,room.toNat⟩],⟨n.id,room.toNat,n.lines-room.toNat⟩ :: rest.map full)
+    else ([],full n :: rest.map full)
+
+/-- Identify every output grid line by note ID and zero-based index,
+    so equality detects gaps, duplication and changes of order. -/
+def linesFrom (id start : Nat) : Nat → List (Nat × Nat)
+  | 0 => []
+  | n+1 => (id,start) :: linesFrom id (start+1) n
+
+theorem lines_split (id start a b : Nat) :
+    linesFrom id start a ++ linesFrom id (start+a) b = linesFrom id start (a+b) := by
+  induction a generalizing start with
+  | zero => simp [linesFrom]
+  | succ a ih =>
+    rw [Nat.succ_add]
+    simp only [linesFrom,List.cons_append,List.cons.injEq,true_and]
+    have eq : start + (a+1) = (start+1)+a := by omega
+    rw [eq,ih]
+
+def trace : List Part → List (Nat × Nat)
+  | [] => []
+  | p :: rest => linesFrom p.id p.start p.lines ++ trace rest
+
+theorem I5_splitNotes_exact (ns : List Note) (room : Int) :
+    trace (split room ns).1 ++ trace (split room ns).2 = trace (ns.map full) := by
+  induction ns generalizing room with
+  | nil => rfl
+  | cons n rest ih =>
+    by_cases fits : (n.lines : Int) ≤ room
+    · simp only [split, fits, if_true, List.map_cons, trace,List.append_assoc]
+      rw [ih]
+    · by_cases positive : room > 0
+      · have cast := Int.toNat_of_nonneg (show 0 ≤ room by omega)
+        have sum : room.toNat + (n.lines - room.toNat) = n.lines := by omega
+        simp only [split,fits,positive,if_false,if_true,trace,List.append_nil,List.map_cons,full]
+        rw [← List.append_assoc]
+        have join := lines_split n.id 0 room.toNat (n.lines-room.toNat)
+        simp only [Nat.zero_add,sum] at join
+        rw [join]
+      · simp [split,fits,positive,trace]
+
+/-- The part emitted by carryNote and the pending suffix start exactly
+    where the preceding part stopped, including a zero-room column. -/
+def carry (room : Nat) (pending : Part) : Part × Option Part :=
+  let shown := min pending.lines room
+  (⟨pending.id,pending.start,shown⟩,
+    if shown < pending.lines then some ⟨pending.id,pending.start+shown,pending.lines-shown⟩ else none)
+
+theorem I5_carryNote_exact (room : Nat) (p : Part) :
+    trace ((carry room p).1 :: (carry room p).2.toList) = trace [p] := by
+  by_cases notEnough : room < p.lines
+  · have shown := Nat.min_eq_right (Nat.le_of_lt notEnough)
+    simp only [carry,shown,notEnough,if_true,Option.toList,trace,List.append_nil]
+    have eq := lines_split p.id p.start room (p.lines-room)
+    have count : room + (p.lines-room) = p.lines := by omega
+    rwa [count] at eq
+  · have shown := Nat.min_eq_left (show p.lines ≤ room by omega)
+    simp [carry,shown,trace,Option.toList]
+
+theorem I4_carryNote_remainder_decreases (room : Nat) (p rest : Part) (positive : 0 < room)
+    (requeued : (carry room p).2 = some rest) : rest.lines < p.lines := by
+  unfold carry at requeued
+  dsimp only at requeued
+  split at requeued
+  · rename_i notEnough
+    cases requeued
+    simp only
+    omega
+  · contradiction
+
+end FootnoteSplit
+
 namespace TablePagination
 
 /-- Projection of placeTable.rowsFrom. Capacity includes any caption
