@@ -8942,6 +8942,91 @@ theorem I3_two_figure_need_initial_placement
         pos size plain space needs top kept _ figure ordered rfl (by decide) rfl firstFits topEq converted
       simpa [keptAtTwoPositions] using keepFirst
 
+theorem I3_missed_figure_target_extends_if_text_remains
+    (used capacity count b n f blank : Nat) (items : List SourceItem)
+    (ordered : sourceOrdered items) (positions size : Nat → Nat)
+    (space room waiting keptAt : Nat → Bool) (needs : List (Nat × Nat)) (top : Bool)
+    (posOrder : ∀ i j, i ≤ j → positions i ≤ positions j)
+    (beyond : b < textBeforeCount items (positions f))
+    (positive : ∀ i, i < count → 0 < size i) (bound : f < count)
+    (needReached : ∀ p, .text p ∈ items → p < n → textHereAtBreak items b p = true)
+    (unique : ∀ p, .text p ∈ items → p ≠ n) :
+    let rank := fun i => textBeforeCount items (positions i)
+    let kept := fun brk => greedyFigure (fun i => decide (rank i ≤ brk)) room
+    needTargetsFigure n positions (fun p => .text p ∈ items ∧ space p = false) f (figureWaits (kept b)) →
+    (∀ i, i < count → kept (b+1) i = true →
+      used + rank i + keptRowsThrough (kept (b+1)) size (i+1) +
+        (if blank < positions i ∧ top = false then 1 else 0) ≤ capacity) →
+    (∀ p, .figure p ∈ items → keptAt p = true → ∃ i, i < count ∧ kept (b+1) i = true ∧ positions i = p) →
+    used + ((sourceTextPositions items).filter (fun p => decide (p < positions f) && textHereAtBreak items b p)).length +
+      keptRowsThrough (fun i => kept b i && decide (positions i < positions f)) size count +
+      (if blank < positions f ∧ top = false then 1 else 0) + size f ≤ capacity →
+    (∀ p, .text p ∈ items → textHereAtBreak items b p = true →
+      needAtPlacedText used capacity count items positions size space needs b (kept b) p) →
+    used + (b+1) + keptRowsThrough (kept (b+1)) size count +
+      (if blankPlacedFromSource blank waiting items (textHereAtBreak items (b+1)) keptAt top then 1 else 0) ≤ capacity ∧
+    (∀ p, .text p ∈ items → textHereAtBreak items (b+1) p = true →
+      needAtPlacedText used capacity count items positions size space needs (b+1) (kept (b+1)) p) := by
+  intro rank kept target figureRoom source load p1
+  have ranks : ∀ i j, i ≤ j → rank i ≤ rank j := fun i j le =>
+    I3_text_before_source_monotone items _ _ (posOrder i j le)
+  refine ⟨?_, I3_space_before_target_figure_preserves_text_needs _ _ _ _ _ _ _ ordered positions size
+    space room needs posOrder beyond needReached unique target p1⟩
+  by_cases fresh : ∃ j, j < count ∧ kept b j = false ∧ kept (b+1) j = true
+  · exact I3_extended_figure_prefix_fits capacity used b count (kept (b+1)) (kept b) size positions
+      blank items waiting keptAt top posOrder source fresh positive
+      (fun i _ yes => ((I3_figure_break_prefix rank ranks room (b+1) i).mp yes).1)
+      (fun i _ missing yes => I3_new_figure_at_extended_break rank ranks room b i missing yes) figureRoom
+  · have same : ∀ i, i < count → kept (b+1) i = kept b i := by
+      intro i within
+      cases old : kept b i with
+      | false =>
+        cases new : kept (b+1) i with
+        | false => rfl
+        | true => exact (fresh ⟨i, within, old, new⟩).elim
+      | true =>
+        have prior := (I3_figure_break_prefix rank ranks room b i).mp old
+        exact (I3_figure_break_prefix rank ranks room (b+1) i).mpr ⟨by omega, prior.2⟩
+    have newLoad : ∀ k, k ≤ count →
+        keptRowsThrough (fun i => kept (b+1) i && decide (positions i < positions f)) size k =
+          keptRowsThrough (fun i => kept b i && decide (positions i < positions f)) size k := by
+      intro k
+      induction k with
+      | zero => intro _; rfl
+      | succ j ih =>
+        intro lim
+        simp only [keptRowsThrough, same j (by omega), ih (by omega)]
+    apply I3_space_extension_fits_before_unreached_figure used capacity count b f blank items positions
+      size waiting keptAt (kept (b+1)) top ordered beyond (positive f bound) source
+    · intro i within new
+      rw [same i within] at new
+      exact ((I3_figure_break_prefix rank ranks room b i).mp new).1
+    · rw [newLoad count (Nat.le_refl _)]
+      exact load
+
+theorem I3_missed_source_has_another_text (items : List SourceItem) (b pos : Nat)
+    (beyond : b < textBeforeCount items pos) : b < (sourceTextPositions items).length := by
+  rw [I3_source_text_before_count] at beyond
+  have bound : ∀ ps : List Nat, countEarlierText ps pos ≤ ps.length := by
+    intro ps
+    induction ps with
+    | nil => simp [countEarlierText]
+    | cons h rest ih =>
+      by_cases before : h < pos <;> simp [countEarlierText, before] at * <;> omega
+  exact Nat.lt_of_lt_of_le beyond (bound _)
+
+theorem I3_missed_text_has_another_text (items : List SourceItem) (ordered : sourceOrdered items)
+    (b t : Nat) (member : .text t ∈ items) (missed : textHereAtBreak items b t = false) :
+    b < (sourceTextPositions items).length := by
+  have pm := (I3_source_text_position_member items t).mpr member
+  have atIndex := I3_text_rank_points_to_position _ _ pm
+  obtain ⟨bound, _⟩ := List.get?_eq_some.mp atIndex
+  have notPlaced : ¬ textRank (sourceTextPositions items) t < b := by
+    intro earlier
+    have placed := (I3_text_here_iff_source_rank items ordered t b member).mpr earlier
+    simp [missed] at placed
+  omega
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
