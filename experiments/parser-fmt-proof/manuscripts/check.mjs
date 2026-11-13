@@ -76,6 +76,10 @@ function* cases() {
     /EBinary Add \(EVar \["_A09", "x2"\]\) \(EVar \["Z_"\]\)/u];
   yield ['- x\n   p\n\ny\n', [],
     /BulletList \[\[Paragraph \[Text "x", SoftBreak, Text " p"\]\]\]\s+- Paragraph \[Text "y"\]/u];
+  for (const opening of ['%%', '%%=']) {
+    const comment = opening + 'open\nclose%%';
+    yield ['a' + comment + 'b\n', [[1, JSON.stringify(comment)]]];
+  }
 }
 
 // Compare each comment's text and its position in the non-trivia token

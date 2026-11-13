@@ -378,6 +378,10 @@ const blankRule = ast?.rules.find(rule => rule.name === 'BlankLine');
 const blankLineProved = lineLeavesProved && blankRule?.params.length === 0 && blankRule.templateParams.length === 0 &&
   blankRule.alts.length === 2 && blankRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
   describeItems(blankRule.alts[0].items) === 'Ws? Nl' && describeItems(blankRule.alts[1].items) === 'Ws !.';
+const paraRule = ast?.rules.find(rule => rule.name === 'ParaEnd');
+const paraEndProved = blankLineProved && paraRule?.params.length === 0 && paraRule.templateParams.length === 0 &&
+  paraRule.alts.length === 2 && paraRule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
+  describeItems(paraRule.alts[0].items) === 'Nl (BlankLine / !.)' && describeItems(paraRule.alts[1].items) === '!.';
 const spUsesWs = optionalRefNames.has('Sp') && rule('Sp') === 'Ws?';
 const listMarkersProved = literalNames.has('BulletMark') && rule('BulletMark') === "'-'" &&
   literalNames.has('OrderedMark') && rule('OrderedMark') === "'+'";
@@ -399,9 +403,11 @@ if (!fragment && ast) {
       if (rule.name === 'BlankLine' && blankLineProved) continue;
       if (rule.name === 'BlankLines' && blankLineProved && rule.alts.length === 1 &&
           describeItems(rule.alts[0].items) === 'BlankLine+') continue;
-      if (rule.name === 'ParaEnd' && blankLineProved && rule.alts.length === 2 &&
-          describeItems(rule.alts[0].items) === 'Nl (BlankLine / !.)' &&
-          describeItems(rule.alts[1].items) === '!.') continue;
+      if (rule.name === 'ParaEnd' && paraEndProved) continue;
+      if ((rule.name === 'Comment' || rule.name === 'ProofComment') && paraEndProved && rule.alts.length === 1) {
+        const opening = rule.name === 'Comment' ? "'%%'" : "'%%='";
+        if (describeItems(rule.alts[0].items) === opening + " (!'%%' !ParaEnd .)* ('%%')^comment_close") continue;
+      }
       if (rule.name === 'EOL' && spUsesWs &&
           rule.alts.length === 1 && describeItems(rule.alts[0].items) === 'Sp (Nl / !.)') continue;
     }
