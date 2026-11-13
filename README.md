@@ -8,6 +8,7 @@ Golem は、コマンドラインと CI で動く組版システムである。
 Golem の振る舞いと計画は、次の文書に分けて書いている。
 
 - 仕様：[docs/specifications.md](./docs/specifications.md) と [docs/markup.md](./docs/markup.md)
+- 文字を表示する部品に段落スタイルと文字スタイルを適用する設計原則：[組版の自由](./docs/specifications.md#組版の自由)
 - 用語：[docs/glossary.md](./docs/glossary.md)
 - どのバージョンで何を扱うか：[docs/roadmap.md](./docs/roadmap.md)
 - 互換の約束：[docs/compatibility.md](./docs/compatibility.md)
