@@ -61,6 +61,27 @@ theorem sequence (parse : Params → Expr → List Char → ParseResult)
       follow (fun name => parse env (.ref name [])) names input := by
   exact folded parse boundLength env names (some (input, env)) (by simp_all)
 
+theorem follow_suffix (read : String → List Char → ParseResult)
+    (child : ∀ name input rest, read name input = .ok (some rest) →
+      ∃ consumed, input = consumed ++ rest)
+    (names : List String) (input rest : List Char)
+    (parsed : follow read names input = .ok (some rest)) :
+    ∃ consumed, input = consumed ++ rest := by
+  induction names generalizing input with
+  | nil =>
+      simp [follow] at parsed
+      exact ⟨[], by simpa using parsed⟩
+  | cons name names ih =>
+      cases result : read name input with
+      | error reason => simp [follow, result] at parsed
+      | ok val =>
+          cases val with
+          | none => simp [follow, result] at parsed
+          | some next =>
+              obtain ⟨first, first_eq⟩ := child name input next result
+              obtain ⟨later, later_eq⟩ := ih next (by simpa [follow, result] using parsed)
+              exact ⟨first ++ later, by rw [first_eq, later_eq, List.append_assoc]⟩
+
 private def alternative (name : String) (idx : Nat) : Option (List Expr) := do
   let rule ← Generated.pegGrammar.rules.find? (fun r => r.name == name)
   let alt ← rule.alts[idx]?
