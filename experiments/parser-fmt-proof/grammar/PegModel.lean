@@ -118,6 +118,23 @@ def foldChoice {α β : Type} (parse : α → Except String (Option β))
 def runChoices (sequence : List Expr → ParseResult) (alts : List (List Expr)) : ParseResult :=
   foldChoice sequence alts
 
+-- Direct left recursion grows the seed by consuming one suffix per iteration.
+def growLeftStep (suffix : List Char → ParseResult) : ParseResult × Bool → Nat → ParseResult × Bool
+  | (result, true), _ => (result, true)
+  | (Except.error reason, false), _ => (.error reason, true)
+  | (Except.ok none, false), _ => (.ok none, true)
+  | (Except.ok (some rest), false), _ =>
+      match suffix rest with
+      | .error reason => (.error reason, true)
+      | .ok none => (.ok (some rest), true)
+      | .ok (some next) =>
+          if next.length < rest.length then (.ok (some next), false)
+          else (.error "zero-width left recursion", true)
+
+def growLeft (suffix : List Char → ParseResult) (fuel : Nat) (seed : ParseResult) : ParseResult :=
+  let grown := (List.range fuel).foldl (growLeftStep suffix) (seed, false)
+  if grown.2 then grown.1 else .error "fuel exhausted"
+
 -- A bounded recognizer for the PEG operators. Unsupported Haskell expressions
 -- and template calls are errors, never accepted input. Fuel exhaustion is
 -- distinct from an ordinary PEG failure.
@@ -187,19 +204,7 @@ def recognizeEnv (grammar : Grammar) (env : Params) : Nat → Expr → List Char
                     return recognizeEnv grammar bindings fuel (.choice (rule.alts.map Alt.items)) input
                   let bases := rule.alts.filter (fun alt => (directSuffix name alt).isNone)
                   let seed := recognizeEnv grammar bindings fuel (.choice (bases.map Alt.items)) input
-                  let grown := (List.range fuel).foldl (fun (state : ParseResult × Bool) _ =>
-                    if state.2 then state else
-                      match state.1 with
-                      | .error _ => (state.1, true)
-                      | .ok none => (state.1, true)
-                      | .ok (some rest) =>
-                          match recognizeEnv grammar bindings fuel (.choice recursive) rest with
-                          | .error reason => (.error reason, true)
-                          | .ok none => (state.1, true)
-                          | .ok (some next) =>
-                              if next.length < rest.length then (.ok (some next), false)
-                              else (.error "zero-width left recursion", true)) (seed, false)
-                  return if grown.2 then grown.1 else .error "fuel exhausted"
+                  return growLeft (fun rest => recognizeEnv grammar bindings fuel (.choice recursive) rest) fuel seed
       | .choice alts => return alternatives alts
       | .star child =>
           match recognizeEnv grammar env fuel child input with

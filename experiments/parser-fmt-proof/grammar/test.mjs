@@ -438,6 +438,18 @@ try {
   const wordProof = spawnSync(lean, ['-o', join(work, 'WordRoundTrip.olean'), wordSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(wordProof.status, 0, wordProof.stderr);
+  const growthSource = join(here, 'LeftRecursionTotal.lean');
+  const growthEnv = { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' };
+  const growthProof = spawnSync(lean, [growthSource], growthEnv);
+  assert.equal(growthProof.status, 0, growthProof.stdout + growthProof.stderr);
+  const wrongOperator = join(work, 'WrongOperator.lean');
+  const growthText = readFileSync(growthSource, 'utf8');
+  const swapped = growthText.replace('binarySuffix "AddOp" "MulExpr"', 'binarySuffix "MulOp" "MulExpr"');
+  assert.notEqual(swapped, growthText);
+  writeFileSync(wrongOperator, swapped);
+  const wrongGrowth = spawnSync(lean, [wrongOperator], growthEnv);
+  assert.notEqual(wrongGrowth.status, 0);
+  assert.match(wrongGrowth.stdout + wrongGrowth.stderr, /application type mismatch/);
   const stringProof = spawnSync(lean, [join(here, 'StringRoundTrip.lean')], { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(stringProof.status, 0, stringProof.stderr);
   const argumentsSource = join(work, 'ArgumentsRoundTrip.lean');
@@ -476,7 +488,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 10, negative mutations 42, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 11, negative mutations 43, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

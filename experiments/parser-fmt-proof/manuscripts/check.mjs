@@ -56,6 +56,8 @@ function* cases() {
   }
   yield [String.raw`[f "a\"b" "\\" "" "x\y"]` + '\n', [],
     /Positional \(StringLit "a\\"b"\)\s+- Positional \(StringLit "\\\\"\)\s+- Positional \(StringLit ""\)\s+- Positional \(StringLit "xy"\)/u];
+  yield ['[= 8-3-2*4/2]\n', [],
+    /EBinary\s+Sub\s+EBinary Sub \(ENat 8\) \(ENat 3\)\s+EBinary Div \(EBinary Mul \(ENat 2\) \(ENat 4\)\) \(ENat 2\)/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token
