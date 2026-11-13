@@ -3055,11 +3055,13 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
       ls = cLines c
       (boxes, set) = numberedLines fe nextId u c (unitLineIndent fs (uKind u))
       size = lkSize (uLook u)
-      least = case uKind u of
-        UHeading l _ _ -> headingLines (bookLanguage inp) (uStyle u) capacity l
-        UNotesTitle _ -> headingLines (bookLanguage inp) (uStyle u) capacity 2
-        _ -> 1
-      hb = headingBlock fs pitch size (length ls) least
+      headingLevel = case uKind u of
+        UHeading l _ _ -> Just l
+        UNotesTitle _ -> Just 2
+        _ -> Nothing
+      least = maybe 1 (headingLines (bookLanguage inp) (uStyle u) capacity) headingLevel
+      alignment = maybe HeadingCenter hsBlockAlign (headingLevel >>= flip Map.lookup (stHeadings (uStyle u)))
+      hb = headingBlockAligned alignment fs pitch size (length ls) least
       ruledOf = FRuled nextId (ruleSide geom True <$> fst (uRules u)) (ruleSide geom False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
       kp = keepOf u
       flowOf = case uKind u of

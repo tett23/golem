@@ -44,7 +44,7 @@ import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
 import Golem.Length (zwToSp)
-import Golem.Project.Style (Dim (..), dimToSp)
+import Golem.Project.Style (Dim (..), HeadingBlockAlign (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Hedgehog
@@ -980,6 +980,22 @@ tests =
             headingBlock (Sp bfs) (Sp bp) (Sp s) 2 1 @?= expect (2 :: Int)
             hbSpan (headingBlock (Sp bfs) (Sp bp) (Sp s) 1 1) @?= 2
             hbSpan (headingBlock (Sp bfs) (Sp bp) (Sp s) 2 1) @?= 3,
+          testCase "inv1_heading_block_alignment_case_1: exact fits have zero leading space" $
+            map (\a -> hbOffset (headingBlockAligned a 10 13 10 3 3)) [HeadingStart, HeadingCenter, HeadingEnd] @?= [0, 0, 0],
+          testProperty "inv1_heading_block_alignment_property: offsets divide the available block space" $ property $ do
+            body <- forAll (Gen.integral (Range.linear 1 100))
+            pitch <- forAll (Gen.integral (Range.linear body (3 * body)))
+            size <- forAll (Gen.integral (Range.linear 1 (4 * body)))
+            count <- forAll (Gen.int (Range.linear 1 8))
+            least <- forAll (Gen.int (Range.linear 1 12))
+            let block a = headingBlockAligned a (Sp body) (Sp pitch) (Sp size) count least
+                center = block HeadingCenter
+                extent = toInteger (count - 1) * unSp (hbPitch center) + size
+                area = toInteger (hbSpan center - 1) * pitch + body
+                free = max 0 (area - extent)
+                offsets = map (unSp . hbOffset . block) [HeadingStart, HeadingCenter, HeadingEnd]
+            offsets === [0, free `div` 2, free]
+            map (hbSpan . block) [HeadingStart, HeadingEnd] === replicate 2 (hbSpan center),
           testCase "a heading of the body size sits on the grid" $
             mapM_ (\m -> headingBlock fs (Sp (unSp fs * 3 `div` 2)) fs m 1 @?= HeadingBlock (Sp (unSp fs * 3 `div` 2)) m 0) [1, 2, 3],
           testProperty "a least span of one gives the block of golem-driver ADR 0003 (golem-driver ADR 0032)" $ property $ do
