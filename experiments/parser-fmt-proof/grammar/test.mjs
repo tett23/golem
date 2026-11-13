@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 56, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 54, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -99,6 +99,7 @@ try {
     'a leading range operator throws range_end before parsing either endpoint');
   assert.doesNotMatch(strict.stderr, /^unsupported (SplatArgument|ExprCtx) choice /m);
   assert.doesNotMatch(strict.stderr, /^unsupported (ProseSlot|SkippedArgs) choice /m);
+  assert.doesNotMatch(strict.stderr, /^unsupported (CodeClose|DefNew) choice /m);
   const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');
   const singleRefMutation = original.replace(/^KeywordLiteral <- .*$/m,
     'KeywordLiteral <- Keyword Ws? { () }');
@@ -539,6 +540,8 @@ try {
   copyFileSync(join(here, 'IndentTotal.lean'), indentSource);
   const indentProof = spawnSync(lean, ['-o', join(work, 'IndentTotal.olean'), indentSource], growthEnv);
   assert.equal(indentProof.status, 0, indentProof.stdout + indentProof.stderr);
+  const markerProof = spawnSync(lean, [join(here, 'IndentedMarkerLine.lean')], growthEnv);
+  assert.equal(markerProof.status, 0, markerProof.stdout + markerProof.stderr);
   const growthProof = spawnSync(lean, [growthSource], growthEnv);
   assert.equal(growthProof.status, 0, growthProof.stdout + growthProof.stderr);
   const wrongOperator = join(work, 'WrongOperator.lean');
@@ -593,7 +596,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 20, negative mutations 56, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 21, negative mutations 56, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

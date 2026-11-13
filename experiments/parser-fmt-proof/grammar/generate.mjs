@@ -466,6 +466,14 @@ if (!fragment && ast) {
     if (rule.name === 'ProseSlot' && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === 'SlotInline(ind)*') continue;
+    if ((rule.name === 'DefNew' || rule.name === 'CodeClose') && indentFullyProved &&
+        lineLeavesProved && spUsesWs && rule.params.length === 1 && rule.params[0] === 'ind' &&
+        rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
+        rule.alts[0].constructor === null) {
+      const [marker, literal] = rule.name === 'DefNew' ? ['NewDefMark', "'=:'"] : ['Fence', "'```'"];
+      if (singleUnitRuleMatches(ast.rules.find(r => r.name === marker), literal) &&
+          describeItems(rule.alts[0].items) === 'Ind(ind) ' + marker + ' Sp (Nl / !.)') continue;
+    }
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&
