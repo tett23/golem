@@ -282,7 +282,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@bibliography`：参考文献の一覧を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の引用を載せ、番号を一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 - `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
-- `@table path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。パスは最初の引数に書く。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。`src=path` とも書けるが廃止予定であり、notice（G02129）を出す（[ADR 0184](adr/0184-table-positional-path.md)）。
+- `@table path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。パスは最初の位置引数に書く。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。`src=path` はエラー（G02252）になる（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 - `@listing path lines=N...M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。`lines` は `N...M` で N 行めから M 行めまで、`N` で N 行めだけを取り込む。パスは最初の引数に書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` とも書けるが廃止予定であり、notice（G02065）を出す（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - `@note 名前`：二つ以上の段落の脚注の本文を書く。本文の位置には `[note 名前]` を書く（「脚注」の節を参照）。
 - `@style 名前`：段落に段落スタイルを付ける（「段落スタイル」の節を参照）。
@@ -448,7 +448,7 @@ PDF では、指定した幅の和が列の分け合う幅を超えるとエラ�
 表のファイルのパスは、最初の引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
 パスがなければエラー（G02034）になる。
 パスを二つ以上書くとエラー（G02130）になり、表を組まない。
-`src=path` とも書けるが廃止予定であり、`src=` の引数に notice（G02129）を出す。
+`src=path` だけならその引数にエラー（G02252）を出し、ファイルを読まない（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 位置引数のパスと `src=` を両方書くのも、パスが二つあるので G02130 になる。
 
 キーワード引数は次の三つである。
