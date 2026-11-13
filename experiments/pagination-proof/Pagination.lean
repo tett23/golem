@@ -161,6 +161,30 @@ theorem I1_caption_overfull_iff (shortfall stretch glueShrink compression : Int)
     cases pullInFirst <;> by_cases room : -shortfall ≤ glueShrink <;>
     simp [pos, zero, over, room] <;> omega
 
+/-- Pass settings supplied to the paragraph breaker, in attempt order. -/
+structure CaptionBreakPass where
+  number : Nat
+  tolerance : Int
+  emergencyStretch : Int
+  usePatterns : Bool
+  allowOverfull : Bool
+  deriving DecidableEq, Repr
+
+def captionBreakPasses (pretolerance tolerance emergency : Int) : List CaptionBreakPass :=
+  (if pretolerance ≥ 0 then [⟨1, pretolerance, 0, false, false⟩] else []) ++
+  [⟨2, tolerance, 0, true, false⟩] ++
+  (if emergency > 0 then [⟨3, tolerance, emergency, true, false⟩] else []) ++
+  [⟨4, 9999, emergency, true, true⟩]
+
+theorem I1_caption_overfull_pass_last (pretolerance tolerance emergency : Int) :
+    (captionBreakPasses pretolerance tolerance emergency).getLast? =
+      some ⟨4, 9999, emergency, true, true⟩ := by
+  by_cases pre : pretolerance ≥ 0 <;> by_cases extra : emergency > 0 <;>
+    simp [captionBreakPasses, pre, extra] <;> rfl
+
+example : (captionBreakPasses (-1) 200 0).map (·.number) = [2, 4] ∧
+    (captionBreakPasses 0 200 1).map (·.number) = [1, 2, 3, 4] := by decide
+
 /-- The line and breakpoint contribution before adjacent-fitness and
     repeated-hyphen costs are added in KnuthPlass.evaluate. -/
 def captionLineDemerits (linePenalty : Int) (badness : Nat) (penalty : Int) : Int :=
