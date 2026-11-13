@@ -75,8 +75,9 @@ CI の [code: determinism] ジョブは、二つのアーキテクチャの比�
 
 ## 範囲
 
-v1 で決定性を保証するのは、PDF、HTML、プレーンテキストである。
-EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で扱うと決めている。
+v1 で決定性を保証するのは、PDF、EPUB、HTML、プレーンテキストである。
+EPUB は圧縮器の版を含む同じビルドで組み、ZIP のエントリに固定の時刻を使う。
+本文は本の順に、素材は出力先の相対パス順に収める。
 
 ## 確かめ方
 
@@ -120,8 +121,7 @@ $ sh scripts/env-determinism/check.sh --only tz-east --input tempest
 ロケールが入っていない変化は [code: SKIP] と表示し、マニュアルのフォントがなければマニュアルを [code: SKIP] とする。
 [code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けると、どちらも失敗にする。
 CI は二つを付けて実行する。
-この検査は EPUB も比べるので、v1 の EPUB にも事実上の決定性を求める。
-ただし、仕様としての EPUB の決定性の約束は v2 からのままである。
+EPUB は ZIP 全体を比較する。
 
 決定性に反する処理を静的に検出する仕組みは作らないと決めている。
 規則はレビューとテストで守る。
