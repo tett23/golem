@@ -7654,6 +7654,59 @@ theorem I3_need_across_waiting_figure :
     have bad := all 0 (by decide) (by decide) first
     contradiction
 
+/- The next text admitted while P7 is unmet is either the target or an
+   intervening space. For an unchanged set of figures, the existing load
+   bound at the target pays for this one text and any blank whose next
+   placed item is no later than the target. Every already retained figure
+   precedes the missed target by the figure order predicate. -/
+theorem I3_figure_after_unplaced_target_impossible
+    (items : List SourceItem) (t fig b : Nat) (textIn : .text t ∈ items)
+    (missed : textHereAtBreak items b t = false)
+    (order : ∀ p, .text p ∈ items → p < fig → textHereAtBreak items b p = true) :
+    fig ≤ t := by
+  apply Classical.byContradiction
+  intro after
+  have yes := order t textIn (by omega)
+  simp [yes] at missed
+
+theorem I3_unchanged_figures_extended_fits
+    (capacity used b count : Nat) (size positions : Nat → Nat) (blank t : Nat)
+    (items : List SourceItem) (waiting keptAt kept : Nat → Bool) (top : Bool)
+    (part : Nat) (partPositive : 0 < part)
+    (keptSource : ∀ p, .figure p ∈ items → keptAt p = true →
+      ∃ i, i < count ∧ kept i = true ∧ positions i = p)
+    (ordered : sourceOrdered items) (target : .text t ∈ items)
+    (missed : textHereAtBreak items b t = false)
+    (figOrder : ∀ i, i < count → kept i = true →
+      ∀ p, .text p ∈ items → p < positions i → textHereAtBreak items b p = true)
+    (localRoom : used + b + keptRowsThrough kept size count +
+      (if blank < t ∧ top = false then 1 else 0) + part ≤ capacity) :
+    used + (b+1) + keptRowsThrough kept size count +
+      (if blankPlacedFromSource blank waiting items (textHereAtBreak items (b+1)) keptAt top
+       then 1 else 0) ≤ capacity := by
+  have allTextBefore : ∀ p, .text p ∈ items → textHereAtBreak items (b+1) p = true → p ≤ t := by
+    intro p member present
+    apply Classical.byContradiction
+    intro after
+    have increasing := I3_text_rank_preserves_order (sourceTextPositions items)
+      (I3_source_text_positions_ordered items ordered) t p
+      ((I3_source_text_position_member items t).mpr target)
+      ((I3_source_text_position_member items p).mpr member) (by omega)
+    have actual := (I3_text_here_iff_source_rank items ordered p (b+1) member).mp present
+    have targetMissing : ¬ textRank (sourceTextPositions items) t < b := by
+      intro lt
+      have yes := (I3_text_here_iff_source_rank items ordered t b target).mpr lt
+      simp [yes] at missed
+    omega
+  have charge := I3_blank_charge_before_last_placed t blank items waiting
+    (textHereAtBreak items (b+1)) keptAt top allTextBefore (by
+      intro p member present
+      obtain ⟨i, bound, yes, same⟩ := keptSource p member present
+      have earlier := I3_figure_after_unplaced_target_impossible items t (positions i) b target
+        missed (figOrder i bound yes)
+      simpa [same] using earlier)
+  omega
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
