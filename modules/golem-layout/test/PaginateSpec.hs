@@ -1483,6 +1483,13 @@ largerNeedTests =
             expected = if maximum needs <= 3 then [(1, 0, [SLine 0, SLine 1])] else [(1, 0, [SLine 0]), (2, 0, [SLine 1])]
         placed ps @?= expected
         unmets ps @?= [],
+    testCase "Golem ADR 0352 I3: shared needs account for every line of a short paragraph" $ do
+      forM_ [2, 3] $ \height -> do
+        let flows = [FParagraph defaultKeep (lines' 0 1), FSpace 1, FNeedLines mk 2, FNeedLines mk2 3, FParagraph defaultKeep (lines' 1 height)]
+            ps = paginate 1 4 flows
+            expected = if height == 2 then [(1, 0, map SLine [0 .. 2])] else [(1, 0, [SLine 0]), (2, 0, map SLine [1 .. 3])]
+        placed ps @?= expected
+        unmets ps @?= [],
     testCase "N1: need-lines 4 after need-lines 2 judged, one grid line left after the space, sends the paragraph to the next column" $ do
       let flows = [FParagraph defaultKeep (lines' 0 3), FNeedLines mk 2, FSpace 1, FNeedLines mk2 4, FSpace 1, FParagraph defaultKeep (lines' 3 1)]
           ps = paginate 1 6 flows
