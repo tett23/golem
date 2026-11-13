@@ -468,6 +468,10 @@ if (!fragment && ast) {
         rule.alts.length === 2 && rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&
         describeItems(rule.alts[0].items) === 'KeywordArgument' &&
         describeItems(rule.alts[1].items) === "&'**[' SplatArgument") continue;
+    if (rule.name === 'ArrayExpr' || rule.name === 'HashExpr') {
+      const [left, element, right] = rule.name === 'ArrayExpr' ? ['LBr', 'Expr', 'RBr'] : ['LBrace', 'HashEntry', 'RBrace'];
+      if (singleUnitRuleMatches(rule, left + ' ES (' + element + ' ES (Comma ES ' + element + ' ES)*)? ' + right)) continue;
+    }
     if (rule.name === 'HashEntry' && singleUnitRuleMatches(rule, '(ExprIdent / StringLit) ES Colon ES Expr')) continue;
     if (rule.name === 'ExprBody' && singleUnitRuleMatches(rule, 'ES (Expr)^expr ES')) continue;
     if (rule.name === 'TableCell' && singleUnitRuleMatches(rule, 'CellInline*')) continue;

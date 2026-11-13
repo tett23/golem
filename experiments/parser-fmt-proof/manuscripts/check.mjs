@@ -101,6 +101,8 @@ function* cases() {
   yield ['[= {aa: 1, "bb": 2}]\n', [],
     /EHash \[\("aa", ENat 1\), \("bb", ENat 2\)\]/u];
   yield ['a\\\nb\n', [], /Paragraph \[Text "a", HardBreak, Text "b"\]/u];
+  yield ['[= [[], {a: 1}, {}]]\n', [],
+    /EArray \[EArray \[\], EHash \[\("a", ENat 1\)\], EHash \[\]\]/u];
   yield ['[f answer=ok]\n', [], /Keyword \("answer"\) \(Word "ok"\)/u];
 }
 
