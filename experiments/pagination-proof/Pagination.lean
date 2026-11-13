@@ -97,6 +97,13 @@ theorem I1_caption_grid_minimal (bodySize pitch captionSize rest slots : Nat)
   rw [Nat.add_comm 1, Nat.add_le_add_iff_right]
   exact caption_extent_bound _ _ _ _ positive
 
+theorem I2_caption_diagnostic_iff_extent_overflows
+    (bodySize pitch captionSize rest free : Nat) (positive : 0 < pitch) :
+    free + 2 ≤ captionGridSpan bodySize pitch captionSize (rest + 1) ↔
+      free * pitch + bodySize < rest * captionPitch bodySize pitch captionSize + captionSize := by
+  have h := I1_caption_grid_minimal bodySize pitch captionSize rest free positive
+  omega
+
 example : captionPitch 2 5 1 = 2 ∧ captionPitch 2 7 1 = 4 := by decide
 example : (List.range 4).map (captionGridSpan 10 15 10) = [0, 1, 2, 3] := by decide
 
