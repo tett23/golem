@@ -1389,6 +1389,42 @@ waitingFigureTests =
       gridLines ps @?= [[0], [0], [0]]
       unmets ps @?= [DroppedBlank (controlSpan 0)]
       brokenIn [P3, P4, P5] input @?= [],
+    testCase "Golem ADR 0352 I5: every Flow constructor between deferred figures preserves admission order" $ do
+      let ls = lines' 10 1
+          variants =
+            [ FParagraph defaultKeep ls,
+              FStanza defaultKeep [ls],
+              FHeading 1 False 1 ls,
+              FDefTerm ls,
+              FFigure 41 1 [] [],
+              FWrapped 46 1 [] [] ls,
+              FPageFigure 41 [] [],
+              FContinued defaultKeep ls,
+              FTable 46 0 [] [ls] [] False,
+              FSpace 1,
+              FBreak BreakColumn,
+              FSection (OfParagraph mk) BreakPage,
+              FKeepNext mk 2,
+              FCode paddedCode 0 1 False ls,
+              ruled Nothing Nothing ls,
+              FBoxed 1 0 0 [FFigure 41 1 [] []],
+              FSwitchColumns (ColumnSet 2 0 0 0),
+              FRestoreColumns,
+              FNoBreak mk,
+              FNeedLines mk 2,
+              FAdjustLines mk 1,
+              FBlank mk 1
+            ]
+          sourceIds = concatMap $ \case
+            FFigure i _ _ _ -> [i]
+            FPageFigure i _ _ -> [i]
+            FBoxed {fbBody = xs} -> sourceIds xs
+            _ -> []
+      forM_ [1, 2] $ \cols -> forM_ variants $ \f -> do
+        let source = [FParagraph defaultKeep (lines' 0 3), FFigure 40 4 [] [], f, FPageFigure 42 [] [], FFigure 43 1 [] []]
+            slots = concatMap (map snd . poSlots) (paginate cols 4 source)
+            figures = [i | slot <- slots, i <- case slot of SFigure n -> [n]; SPageFigure n -> [n]; _ -> []]
+        assertEqual (show (cols, f)) (sourceIds source) figures,
     testCase "I5: crossings before a figure and within a box keep regular and turned figures in source order" $ do
       let body = [FParagraph defaultKeep (lines' 0 11), FFigure 40 4 [] [], FParagraph defaultKeep (lines' 11 6), FPageFigure 41 [] []]
           pages = paginate 2 4 [FBoxed 1 0 0 body, FFigure 42 1 [] []]

@@ -12945,6 +12945,177 @@ theorem I5_measured_flow_eof (dims : FlushState → FlushDimensions)
   I5_flow_events_and_terminal_blanks (fun st => measureCrossing (dims st) st)
     (fun st noNotes _ => I4_measured_crossing_fresh _ st noNotes) s tree blanks _
 
+/-- The St fields read by cap/free/isEmpty during figure admission.
+    A displayed note part has an entry even when it occupies zero lines. -/
+structure AdmissionBox where
+  top : Bool
+  start : Nat
+  before : Nat
+  after : Nat
+
+structure AdmissionColumn where
+  capacity : Int
+  adjust : Int
+  firstLine : Nat
+  used : Nat
+  shownNotes : List Part
+  box : Option AdmissionBox
+
+def AdmissionColumn.measure (c : AdmissionColumn) (s : FlushState) : FigureGeometry :=
+  let atBoxTop := c.box.elim false (fun b => b.top && decide (c.used = b.start + b.before))
+  let boxAfter := c.box.elim 0 AdmissionBox.after
+  ⟨c.used,c.shownNotes.isEmpty,c.shownNotes.isEmpty && (decide (c.used = c.firstLine) || atBoxTop),
+    c.capacity + c.adjust - (boxAfter : Int) - (c.used : Int) - (s.geometry.noteLines : Int)⟩
+
+def AdmissionColumn.figureNow (c : AdmissionColumn) (s : FlushState) (height : Nat) : Prop :=
+  s.figures = [] ∧
+    ((height : Int) ≤ c.capacity + c.adjust - ((c.box.elim 0 AdmissionBox.after : Nat) : Int) -
+        (c.used : Int) - (s.geometry.noteLines : Int) ∨
+      c.shownNotes = [] ∧ (c.used = c.firstLine ∨
+        ∃ b, c.box = some b ∧ b.top = true ∧ c.used = b.start + b.before))
+
+theorem I5_regular_admission_iff (c : AdmissionColumn) (s : FlushState) (id h : Nat) :
+    let g := c.measure s
+    (admitFigure s g.used g.noShown g.empty g.free (.figure id h)).1 = [.figure id h] ↔
+      c.figureNow s h := by
+  cases shape : c.box with
+  | none =>
+    cases queue : s.figures <;> cases shown : c.shownNotes <;>
+      simp [AdmissionColumn.measure,AdmissionColumn.figureNow,admitFigure,shape,queue,shown,List.isEmpty] <;>
+      split <;> simp_all
+  | some b =>
+    cases queue : s.figures <;> cases shown : c.shownNotes <;>
+      simp [AdmissionColumn.measure,AdmissionColumn.figureNow,admitFigure,shape,queue,shown,List.isEmpty] <;>
+      split <;> simp_all
+
+theorem I5_turned_admission_iff (c : AdmissionColumn) (s : FlushState) (id : Nat) :
+    let g := c.measure s
+    (admitFigure s g.used g.noShown g.empty g.free (.turned id)).1 = [.turned id] ↔
+      s.figures = [] ∧ s.geometry.column = 0 ∧ c.used = 0 ∧
+        c.shownNotes = [] ∧ s.geometry.noteLines = 0 := by
+  cases queue : s.figures <;> cases shown : c.shownNotes <;>
+    simp [admitFigure,AdmissionColumn.measure,queue,shown,List.isEmpty] <;> split <;> simp_all
+
+/-- The constructors of Flow that do not introduce an FFigure or an
+    FPageFigure. FWrapped places its own slot, not a deferred figure. -/
+inductive BodyKind where
+  | paragraph | stanza | heading | defTerm | wrapped | continued | table
+  | space | forcedBreak | section | keepNext | code | ruled | switchColumns
+  | restoreColumns | noBreak | needLines | adjustLines | blank
+
+/-- Measured body operations retain their positions relative to admission
+    and box entry/exit. Geometry is sampled from the state at each step. -/
+abbrev BodyAction := FlushState → BodyEvent
+
+inductive MeasuredFlow where
+  | body (kind : BodyKind) (ops : List BodyAction)
+  | figure (id height : Nat) (breaks controls after : List BodyAction)
+      (geometry : FlushState → AdmissionColumn)
+  | pageFigure (id : Nat) (breaks controls after : List BodyAction)
+      (geometry : FlushState → AdmissionColumn)
+  | boxed (enter leave : List BodyAction) (children : MeasuredFlow)
+  | nil
+  | cons (first rest : MeasuredFlow)
+
+def runBodyActions (s : FlushState) : List BodyAction → List LayoutEvent
+  | [] => []
+  | f :: fs =>
+    let e := (f s).layout
+    e :: runBodyActions (e.perform s).2 fs
+
+theorem runBodyActions_no_figures (s : FlushState) (fs : List BodyAction) :
+    (runBodyActions s fs).bind LayoutEvent.figures = [] := by
+  induction fs generalizing s with
+  | nil => rfl
+  | cons f fs ih => simp [runBodyActions,BodyEvent.no_source_figure,ih]
+
+theorem performEvents_append_state (s : FlushState) (xs ys : List LayoutEvent) :
+    (performEvents s (xs ++ ys)).2 = (performEvents (performEvents s xs).2 ys).2 := by
+  induction xs generalizing s with
+  | nil => rfl
+  | cons x xs ih => simpa [performEvents] using ih (x.perform s).2
+
+def measuredAdmission (s : FlushState) (fig : Deferred) (before after : List BodyAction)
+    (geometry : FlushState → AdmissionColumn) : List LayoutEvent :=
+  let prep := runBodyActions s before
+  let ready := (performEvents s prep).2
+  let e := LayoutEvent.figure fig ((geometry ready).measure ready)
+  prep ++ e :: runBodyActions (e.perform ready).2 after
+
+/-- step first applies pending breaks and then evaluates waitsBehind.
+    A waiting figure skips needBefore/placeBlank entirely. A regular
+    first figure that does not fit still visits those controls; turned
+    figures skip them unless they can take the empty page immediately. -/
+def figureWaitsBehind (s : FlushState) (c : AdmissionColumn) : Deferred → Bool
+  | .figure _ _ => !s.figures.isEmpty
+  | .turned _ => !(s.figures.isEmpty && decide (s.geometry.column = 0 ∧ c.used = 0 ∧
+      c.shownNotes = [] ∧ s.geometry.noteLines = 0))
+
+def dispatchFigure (s : FlushState) (fig : Deferred) (breaks controls after : List BodyAction)
+    (geometry : FlushState → AdmissionColumn) : List LayoutEvent :=
+  let prefixEvents := runBodyActions s breaks
+  let ready := (performEvents s prefixEvents).2
+  let before := if figureWaitsBehind ready (geometry ready) fig then [] else controls
+  prefixEvents ++ measuredAdmission ready fig before after geometry
+
+def MeasuredFlow.events (s : FlushState) : MeasuredFlow → List LayoutEvent
+  | .nil => []
+  | .body _ ops => runBodyActions s ops
+  | .figure id h breaks controls after g => dispatchFigure s (.figure id h) breaks controls after g
+  | .pageFigure id breaks controls after g => dispatchFigure s (.turned id) breaks controls after g
+  | .cons f rest =>
+    let es := f.events s
+    es ++ rest.events (performEvents s es).2
+  | .boxed enter leave children =>
+    let prep := runBodyActions s enter
+    let inside := children.events (performEvents s prep).2
+    prep ++ inside ++ runBodyActions (performEvents s (prep ++ inside)).2 leave
+
+def MeasuredFlow.figures : MeasuredFlow → List Deferred
+  | .nil | .body _ _ => []
+  | .figure id h _ _ _ _ => [.figure id h]
+  | .pageFigure id _ _ _ _ => [.turned id]
+  | .boxed _ _ children => children.figures
+  | .cons f rest => f.figures ++ rest.figures
+
+theorem measuredAdmission_single (s : FlushState) (fig : Deferred) (before after : List BodyAction)
+    (g : FlushState → AdmissionColumn) :
+    (measuredAdmission s fig before after g).bind LayoutEvent.figures = [fig] := by
+  simp [measuredAdmission,runBodyActions_no_figures,LayoutEvent.figures]
+
+theorem dispatchFigure_single (s : FlushState) (fig : Deferred)
+    (breaks controls after : List BodyAction) (g : FlushState → AdmissionColumn) :
+    (dispatchFigure s fig breaks controls after g).bind LayoutEvent.figures = [fig] := by
+  simp [dispatchFigure,runBodyActions_no_figures,measuredAdmission_single]
+
+theorem I5_measured_flow_source (s : FlushState) (flow : MeasuredFlow) :
+    (flow.events s).bind LayoutEvent.figures = flow.figures := by
+  induction flow generalizing s with
+  | nil => rfl
+  | body _ fs => exact runBodyActions_no_figures s fs
+  | figure id h breaks controls after g => exact dispatchFigure_single s _ breaks controls after g
+  | pageFigure id breaks controls after g => exact dispatchFigure_single s _ breaks controls after g
+  | cons f rest first tail => simp [MeasuredFlow.events,MeasuredFlow.figures,first,tail]
+  | boxed enter leave children ih =>
+    simp [MeasuredFlow.events,MeasuredFlow.figures,runBodyActions_no_figures,ih]
+
+theorem I5_all_measured_flows_eof (dims : FlushState → FlushDimensions)
+    (s : FlushState) (flow : MeasuredFlow) (blanks : Bool) :
+    let placed := performEvents s (flow.events s)
+    let beforeFlush := replay placed.2
+      (endCrossings blanks placed.2 (measureCrossing (dims placed.2) placed.2))
+    ∃ out last, Crossings beforeFlush.2 out last ∧ last.figures = [] ∧ last.notes = [] ∧
+      placed.1 ++ (beforeFlush.1 ++ out) = s.figures ++ flow.figures := by
+  dsimp only
+  let placed := performEvents s (flow.events s)
+  obtain ⟨out,last,run,figs,notes,fifo⟩ := I5_placeAll_eof
+    (fun st => measureCrossing (dims st) st)
+    (fun st noNotes _ => I4_measured_crossing_fresh _ st noNotes) placed.2 blanks
+    (measureCrossing (dims placed.2) placed.2)
+  exact ⟨out,last,run,figs,notes,by
+    rw [fifo, ← I5_measured_flow_source s flow]
+    exact I5_events_fifo s (flow.events s)⟩
+
 end TableAdvance
 
 
