@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 92, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 91, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -383,6 +383,12 @@ try {
     assert.ok(!strict.stderr.split('\n').some(line =>
       line.startsWith('unsupported SkippedReserved ') && line.endsWith(': ' + literal)));
   }
+  const changedIdent = join(work, 'ChangedExprIdent.hpeg');
+  writeFileSync(changedIdent, original.replace('ExprIdent <- [a-zA-Z_] [a-zA-Z0-9_]*',
+    'ExprIdent <- [a-zA-Z0-9_] [a-zA-Z0-9_]*'));
+  const strictIdent = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedIdent, generated], { encoding: 'utf8' });
+  assert.match(strictIdent.stderr, /^unsupported ExprIdent /m);
   const differentMarker = join(work, 'DifferentMarker.hpeg');
   writeFileSync(differentMarker, original.replace("OrderedMark <- '+'", "OrderedMark <- '-'"));
   const strictListMark = spawnSync(process.execPath,
@@ -473,8 +479,12 @@ try {
   const growthEnv = { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' };
   const listMarkProof = spawnSync(lean, [join(here, 'ListMarkTotal.lean')], growthEnv);
   assert.equal(listMarkProof.status, 0, listMarkProof.stdout + listMarkProof.stderr);
-  const boundaryProof = spawnSync(lean, [join(here, 'LineBoundaryTotal.lean')], growthEnv);
+  const boundarySource = join(work, 'LineBoundaryTotal.lean');
+  copyFileSync(join(here, 'LineBoundaryTotal.lean'), boundarySource);
+  const boundaryProof = spawnSync(lean, ['-o', join(work, 'LineBoundaryTotal.olean'), boundarySource], growthEnv);
   assert.equal(boundaryProof.status, 0, boundaryProof.stdout + boundaryProof.stderr);
+  const identProof = spawnSync(lean, [join(here, 'ExpressionIdentTotal.lean')], growthEnv);
+  assert.equal(identProof.status, 0, identProof.stdout + identProof.stderr);
   const indentSource = join(work, 'IndentTotal.lean');
   copyFileSync(join(here, 'IndentTotal.lean'), indentSource);
   const indentProof = spawnSync(lean, ['-o', join(work, 'IndentTotal.olean'), indentSource], growthEnv);
@@ -529,7 +539,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 15, negative mutations 49, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 16, negative mutations 50, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

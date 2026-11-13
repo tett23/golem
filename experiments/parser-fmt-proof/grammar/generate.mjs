@@ -404,6 +404,9 @@ if (!fragment && ast) {
       if (rule.name === 'EOL' && spUsesWs &&
           rule.alts.length === 1 && describeItems(rule.alts[0].items) === 'Sp (Nl / !.)') continue;
     }
+    if (rule.name === 'ExprIdent' && rule.params.length === 0 && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === '[a-zA-Z_] [a-zA-Z0-9_]*') continue;
     if (rule.name === 'ListMark' && listMarkersProved && rule.params.length === 1 && rule.params[0] === 'ordered' &&
         rule.templateParams.length === 0 && rule.alts.length === 2 &&
         rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null) &&

@@ -72,6 +72,8 @@ function* cases() {
       '\\s+\\[\\[Paragraph \\[Text "a"\\]\\], \\[Paragraph \\[Text "b"\\]\\]\\]';
     yield [input, [], new RegExp(shape)];
   }
+  yield ['[= _A09.x2+Z_]\n', [],
+    /EBinary Add \(EVar \["_A09", "x2"\]\) \(EVar \["Z_"\]\)/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token

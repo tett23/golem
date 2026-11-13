@@ -8,9 +8,9 @@ def ranges := [(32, 32), (9, 9)]
 def whitespace (c : Char) := ranges.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
 def wsClass := Expr.charClass ranges "[ \\t]"
 
-private theorem star (input : List Char) (extra : Nat) :
-    recognizeEnv Generated.pegGrammar [] (input.length + 2 + extra) (.star wsClass) input =
-      .ok (some (input.dropWhile whitespace)) := by
+theorem star_class (rs : List (Nat × Nat)) (written : String) (input : List Char) (extra : Nat) :
+    recognizeEnv Generated.pegGrammar [] (input.length + 2 + extra) (.star (.charClass rs written)) input =
+      .ok (some (input.dropWhile (fun c => rs.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)))) := by
   induction input with
   | nil =>
       rw [show ([] : List Char).length + 2 + extra = extra + 1 + 1 by simp; omega]
@@ -18,11 +18,11 @@ private theorem star (input : List Char) (extra : Nat) :
   | cons c rest ih =>
       rw [show (c :: rest).length + 2 + extra = (rest.length + 2 + extra) + 1 by simp; omega]
       have test := class_total Generated.pegGrammar [] (rest.length + 1 + extra)
-        ranges "[ \\t]" (c :: rest)
+        rs written (c :: rest)
       rw [show rest.length + 1 + extra + 1 = rest.length + 2 + extra by omega] at test
-      change recognizeEnv _ [] _ wsClass _ = .ok (if whitespace c then some rest else none) at test
+      change recognizeEnv _ [] _ (.charClass rs written) _ = .ok (if rs.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then some rest else none) at test
       conv => lhs; unfold recognizeEnv
-      cases hit : whitespace c <;> simp [test, hit, ih, List.dropWhile, Id.run] <;> rfl
+      cases hit : rs.any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) <;> simp [test, hit, ih, List.dropWhile, Id.run] <;> rfl
 
 def wsResult : List Char → Option (List Char)
   | [] => none
@@ -45,7 +45,8 @@ theorem ws (env : Params) (input : List Char) (extra : Nat) :
         rw [show rest.length + 1 + extra + 1 = rest.length + 2 + extra by omega] at test
         change recognizeEnv _ [] _ wsClass _ = .ok (if whitespace c then some rest else none) at test
         conv => lhs; unfold recognizeEnv
-        cases hit : whitespace c <;> simp [test, hit, star, wsResult, Id.run] <;> rfl
+        cases hit : whitespace c <;> simp [test, hit, show recognizeEnv Generated.pegGrammar [] (rest.length + 2 + extra) (.star wsClass) rest =
+          .ok (some (rest.dropWhile whitespace)) from star_class ranges "[ \\t]" rest extra, wsResult, Id.run] <;> rfl
   cases res : wsResult input <;>
     simp [runChoices, foldChoice, runSequence, List.foldlM, plus, res, Bind.bind, Except.bind, pure,
       Except.pure, Except.map]
