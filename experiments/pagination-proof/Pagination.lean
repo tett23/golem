@@ -12119,6 +12119,68 @@ theorem parityPage_correct (recto : Bool) (page : Nat) :
   · by_cases h : page % 2 = 0 <;> simp [parityPage,h] <;> omega
   · by_cases h : page % 2 = 1 <;> simp [parityPage,h] <;> omega
 
+/-- Each stored paragraph space carries the requested and actual grid
+    lines. Only the actual lines are subtracted when testing need-lines. -/
+def charged (top boxStart : Bool) (request free : Int) : Int :=
+  if top || boxStart then 0 else max 0 (min request free)
+
+def placeSpaces (used : Int) : List Int → Int
+  | [] => used
+  | actual :: rest => placeSpaces (used+actual) rest
+
+theorem restore_before_spaces (used : Int) (actual : List Int) :
+    placeSpaces used actual - actual.foldr (· + ·) 0 = used := by
+  induction actual generalizing used with
+  | nil => simp [placeSpaces]
+  | cons a rest ih =>
+    simp only [placeSpaces,List.foldr]
+    have h := ih (used+a)
+    omega
+
+theorem charged_bounds (top boxStart : Bool) (request free : Int) :
+    0 ≤ charged top boxStart request free ∧ charged top boxStart request free ≤ max 0 free := by
+  unfold charged
+  split <;> omega
+
+/-- At EOF a nonempty pending-blank list triggers exactly one extra
+    column crossing only if a figure is deferred. The subsequent flush
+    still processes carried notes in all branches. -/
+def crossBeforeDropping {A : Type} (blanks : List A) (figures : List Deferred) : Bool :=
+  !blanks.isEmpty && !figures.isEmpty
+
+theorem eof_cross_iff {A : Type} (blanks : List A) (figures : List Deferred) :
+    crossBeforeDropping blanks figures = true ↔ blanks ≠ [] ∧ figures ≠ [] := by
+  cases blanks <;> cases figures <;> simp [crossBeforeDropping,List.isEmpty]
+
+/-- FSwitchColumns judges geometry after flushDeferred. A usable base
+    single column or the empty first column starts the set in place. -/
+def switchHere (baseColumns column : Nat) (free : Int) (empty : Bool) : Bool :=
+  (decide (baseColumns = 1) && decide (0 < free)) || (empty && decide (column = 0))
+
+theorem switch_requires_page (baseColumns column : Nat) (free : Int) (empty : Bool) :
+    switchHere baseColumns column free empty = false ↔
+    (baseColumns ≠ 1 ∨ free ≤ 0) ∧ (empty = false ∨ column ≠ 0) := by
+  cases empty <;> by_cases base : baseColumns = 1 <;> by_cases col : column = 0 <;>
+    by_cases room : 0 < free <;> simp [switchHere,base,col,room] <;> omega
+
+/-- waitFor merges counts with max and the lines-only requirement
+    with disjunction. Both restrictions then apply at the first
+    control's original page, column and slot offset. -/
+def combineWait (a b : Int × Bool) : Int × Bool := (max a.1 b.1,a.2 || b.2)
+
+theorem combined_count_met (a b : Int × Bool) (added : Int) :
+    max 1 (combineWait a b).1 ≤ added ↔ max 1 a.1 ≤ added ∧ max 1 b.1 ≤ added := by
+  unfold combineWait
+  simp only
+  omega
+
+theorem combined_lines_only (a b : Int × Bool) :
+    (combineWait a b).2 = true ↔ a.2 = true ∨ b.2 = true := by
+  cases a with
+  | mk n x =>
+    cases b with
+    | mk m y => cases x <;> cases y <;> simp [combineWait]
+
 end BreakDispatch
 
 end TableAdvance
