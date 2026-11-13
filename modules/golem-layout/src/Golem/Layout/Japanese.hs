@@ -667,7 +667,7 @@ walk env st@(LeafState next cur seen) inl = case inl of
                   (nextLeaf, _, baseNodes, owners) = rubyBase n (n + 2) (rsBase seg)
                   (s', after) = freshLeaf (LeafState nextLeaf c sn)
                   assign (src, PRuby look kind base looks reading) =
-                    (n, src, PRuby look kind base (zipWith own looks owners) reading)
+                    (n, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
                   assign (src, other) = (n, src, other)
                   own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
                in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase (NodeLeaf n : baseNodes), NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> map assign segPieces)
