@@ -6871,6 +6871,114 @@ theorem I3_record_needs_fit_iff_all (available previous : Nat) (ns : List Nat) (
     · rintro ⟨fits, tail⟩
       exact ⟨fun _ => fits, (ih _ (Nat.max_le.mpr ⟨prior, fits⟩)).mpr tail⟩
 
+/- In the domain without figures or a blank, spaces count towards load but
+   not placedBefore. Each need belongs to the next non-space text, and
+   source order within each group is retained for recordNeedsFit. -/
+structure NeedTextPrefix where
+  capacity : Nat
+  used : Nat
+  texts : Nat
+  needs : Nat → List Nat
+  space : Nat → Bool
+  spaceHasNoNeeds : ∀ t, space t = true → needs t = []
+  firstPart : Nat → Nat
+  firstPartPositive : ∀ t, 0 < firstPart t
+  positiveCapacity : 0 < capacity
+  usedFits : used ≤ capacity
+
+namespace NeedTextPrefix
+/- Count non-space rows in the first t texts, including previously used rows. -/
+def placedBefore (d : NeedTextPrefix) : Nat → Nat
+  | 0 => d.used
+  | i + 1 => d.placedBefore i + (if d.space i then 0 else 1)
+
+def allowed (d : NeedTextPrefix) (t : Nat) : Prop :=
+  d.placedBefore t = 0 ∨ ∀ n ∈ d.needs t, n ≤ d.capacity - d.placedBefore t
+
+def legal (d : NeedTextPrefix) (b : Nat) : Prop :=
+  d.used + b ≤ d.capacity ∧ ∀ t, t < b → d.allowed t
+
+private theorem longestLegal (d : NeedTextPrefix) (limit : Nat) :
+    ∃ b, b ≤ limit ∧ d.legal b ∧ (b < limit → ¬ d.legal (b+1)) := by
+  induction limit with
+  | zero =>
+    refine ⟨0, Nat.le_refl _, ⟨by simpa using d.usedFits, ?_⟩, ?_⟩
+    · intro t ht
+      exact (Nat.not_lt_zero t ht).elim
+    · intro h
+      exact (Nat.not_lt_zero _ h).elim
+  | succ limit ih =>
+    obtain ⟨b, bound, legal, stop⟩ := ih
+    by_cases endLegal : d.legal (limit+1)
+    · exact ⟨limit+1, Nat.le_refl _, endLegal, by intro h; omega⟩
+    · refine ⟨b, by omega, legal, ?_⟩
+      intro _
+      by_cases atEnd : b = limit
+      · simpa [atEnd] using endLegal
+      · exact stop (by omega)
+
+theorem prefix_exists (d : NeedTextPrefix) :
+    ∃ b, b ≤ d.texts ∧ d.used + b ≤ d.capacity ∧
+      (d.used = 0 → 0 < d.texts → 0 < b) ∧
+      (∀ t, t < b → d.allowed t) ∧
+      (∀ t, t < d.texts → d.needs t ≠ [] →
+        (∀ i, b ≤ i → i < t → d.space i = true) →
+        recordNeedsFit (d.capacity - d.placedBefore t) 0 (d.needs t) →
+        d.used + min t b + d.firstPart t ≤ d.capacity → t < b) := by
+  obtain ⟨b, bound, legal, stop⟩ := d.longestLegal d.texts
+  have extendAt : d.used + b + 1 ≤ d.capacity → d.allowed b → d.legal (b+1) := by
+    intro room next
+    refine ⟨by omega, ?_⟩
+    intro t placed
+    by_cases eq : t = b
+    · simpa [eq] using next
+    · exact legal.2 _ (by omega)
+  refine ⟨b, bound, legal.1, ?_, legal.2, ?_⟩
+  · intro empty nonempty
+    apply Classical.byContradiction
+    intro noProgress
+    have zero : b = 0 := by omega
+    exact stop (by omega) (extendAt (by have := d.positiveCapacity; omega)
+      (Or.inl (by simp [placedBefore, zero, empty])))
+  · intro t member _ onlySpaces records room
+    apply Classical.byContradiction
+    intro missed
+    have before : b ≤ t := by omega
+    rw [Nat.min_eq_right before] at room
+    have allowed : d.allowed b := by
+      by_cases same : t = b
+      · subst t
+        exact Or.inr ((I3_record_needs_fit_iff_all _ 0 _ (Nat.zero_le _)).mp records)
+      · have space := onlySpaces b (Nat.le_refl _) (by omega)
+        exact Or.inr (by simp [d.spaceHasNoNeeds b space])
+    exact stop (by omega)
+      (extendAt (by have := d.firstPartPositive t; omega) allowed)
+
+/- A need appears at gap g between the text preceding it and its next
+   text. If t is its target, all ranks from g to t (exclusive) are spaces.
+   When all texts before the need are placed, skipping such spaces cannot
+   change placedBefore, even if the chosen break splits that stretch. -/
+theorem placedBefore_need_gap (d : NeedTextPrefix) (g b t : Nat)
+    (gapReached : g ≤ b) (beforeTarget : g ≤ t)
+    (onlySpace : ∀ i, g ≤ i → i < t → d.space i = true) :
+    d.placedBefore (min t b) = d.placedBefore g := by
+  have flat : ∀ k, g ≤ k → k ≤ t → d.placedBefore k = d.placedBefore g := by
+    intro k
+    induction k with
+    | zero =>
+      intro h _
+      have eq := Nat.eq_zero_of_le_zero h
+      rw [eq]
+    | succ k ih =>
+      intro lower upper
+      by_cases same : g = k + 1
+      · rw [same]
+      · have prev : g ≤ k := by omega
+        simp [placedBefore, onlySpace k prev (by omega), ih prev (by omega)]
+  apply flat <;> omega
+
+end NeedTextPrefix
+
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
    but neither requirement's remaining-line count. -/
