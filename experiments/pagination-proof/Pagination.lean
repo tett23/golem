@@ -6629,6 +6629,37 @@ theorem I3_need_space_two_needs_first_part_exists
     · refine ⟨0, ?_, ?_, ?_, ?_⟩
       all_goals simp_all <;> omega
 
+/- For any number of needs sharing one block, a record-high check
+   suffices to choose a break. The single preceding space consumes capacity
+   but contributes nothing to placedBefore at any of those needs. -/
+theorem I3_shared_needs_first_part_exists
+    (capacity used firstPart : Nat) (needs : List Nat)
+    (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
+    (partPositive : 1 ≤ firstPart) :
+    ∃ brk : Fin 3,
+      used + brk.val ≤ capacity ∧
+      (brk.val = 2 → ∀ n ∈ needs, n ≤ capacity - used) ∧
+      (recordNeedsFit (capacity - used) 0 needs ∧
+        used + 1 + firstPart ≤ capacity → brk.val = 2) ∧
+      (used = 0 → 1 ≤ brk.val) := by
+  by_cases keep : recordNeedsFit (capacity - used) 0 needs ∧
+      used + 1 + firstPart ≤ capacity
+  · refine ⟨2, ?_, ?_, fun _ => rfl, ?_⟩
+    · change used + 2 ≤ capacity
+      omega
+    · exact fun _ => (I3_record_needs_fit_iff_all _ _ _ (Nat.zero_le _)).mp keep.1
+    · simp
+  · by_cases spaceFits : used + 1 ≤ capacity
+    · refine ⟨1, spaceFits, ?_, fun h => (keep h).elim, ?_⟩
+      · intro h
+        cases h
+      · simp
+    · refine ⟨0, by simpa using usedFits, ?_, fun h => (keep h).elim, ?_⟩
+      · intro h
+        cases h
+      · intro empty
+        omega
+
 theorem I3_need_space_fixture_source_break (brk : Fin 3) :
     textHereAtBreak [.need 0, .text 1, .need 2, .text 3]
         brk.val 1 = decide (1 ≤ brk.val) ∧
