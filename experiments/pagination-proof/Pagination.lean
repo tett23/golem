@@ -12283,6 +12283,57 @@ theorem I5_source_figures_fifo {s last : FlushState} {input emitted : List Defer
     rw [ih, bodyKeepsQueue, ← List.append_assoc placed, crossing, ← List.append_assoc, admission]
     simp [List.append_assoc]
 
+/-- Projection of the source tree onto the deferred-figure lane. FBoxed
+    retains its nested source body, FFigure/FPageFigure each retain one
+    item. Other constructors, including FWrapped, do not enqueue a new
+    deferred figure. A sibling list uses nil/cons so recursion on deeply
+    nested boxes has a structural measure independent of pagination. -/
+inductive SourceFlow where
+  | other
+  | figure (f : Deferred)
+  | box (children : SourceFlow)
+  | nil
+  | cons (first rest : SourceFlow)
+
+def sourceFigures : SourceFlow → List Deferred
+  | .other | .nil => []
+  | .figure f => [f]
+  | .box children => sourceFigures children
+  | .cons first rest => sourceFigures first ++ sourceFigures rest
+
+/-- The worklist follows placeAll and foldBody: entering a box visits its
+    body before the enclosing suffix, and completes both exactly once. -/
+def visitFlows : List SourceFlow → List Deferred
+  | [] => []
+  | .nil :: rest | .other :: rest => visitFlows rest
+  | .figure f :: rest => f :: visitFlows rest
+  | .box children :: rest => visitFlows (children :: rest)
+  | .cons first more :: rest => visitFlows (first :: more :: rest)
+termination_by pending => pending.foldr (fun flow total => sizeOf flow + total) 0
+decreasing_by all_goals simp_wf; all_goals omega
+
+theorem I5_box_dispatch (pending : List SourceFlow) :
+    visitFlows pending = pending.bind sourceFigures := by
+  cases pending with
+  | nil => rw [visitFlows]; rfl
+  | cons flow rest =>
+    cases flow with
+    | nil | other => rw [visitFlows,I5_box_dispatch rest]; rfl
+    | figure f => rw [visitFlows,I5_box_dispatch rest]; rfl
+    | box children =>
+      rw [visitFlows,I5_box_dispatch (children :: rest)]; rfl
+    | cons first more =>
+      rw [visitFlows,I5_box_dispatch (first :: more :: rest)]
+      change sourceFigures first ++ (sourceFigures more ++ _) = (sourceFigures first ++ sourceFigures more) ++ _
+      rw [List.append_assoc]
+termination_by pending.foldr (fun flow total => sizeOf flow + total) 0
+decreasing_by all_goals simp_wf; all_goals omega
+
+theorem I5_nested_source_fifo {s last : FlushState} {pending : List SourceFlow} {emitted : List Deferred}
+    (run : FigureExecution s (visitFlows pending) emitted last) :
+    emitted ++ last.figures = s.figures ++ pending.bind sourceFigures := by
+  simpa [I5_box_dispatch] using I5_source_figures_fifo run
+
 end TableAdvance
 
 
