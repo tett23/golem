@@ -328,6 +328,40 @@ theorem I1_caption_choice_last_minimum {α : Type} (first : Int × α)
 /-- Natural width of the numbered caption fixture, in scaled points.
     The shaped runs are the number, an ideographic space, two initial M
     glyphs, the individual interior glyphs, and three final M glyphs. -/
+structure CaptionEnd where
+  demerits : Int
+  fitness : Nat
+  previous : List (Int × Nat)
+  deriving DecidableEq
+
+def captionHistoryGreater : List (Int × Nat) → List (Int × Nat) → Bool
+  | [], _ => false
+  | _ :: _, [] => true
+  | (p, f) :: xs, (q, g) :: ys =>
+    if p != q then decide (p > q)
+    else if f != g then decide (f > g)
+    else captionHistoryGreater xs ys
+
+def captionChooseEnd (a b : CaptionEnd) : CaptionEnd :=
+  if a.demerits < b.demerits then a
+  else if b.demerits < a.demerits then b
+  else if a.fitness < b.fitness ||
+      (a.fitness == b.fitness && captionHistoryGreater a.previous b.previous) then a else b
+
+theorem captionChooseEnd_cost (a b : CaptionEnd) :
+    (captionChooseEnd a b).demerits = min a.demerits b.demerits := by
+  unfold captionChooseEnd
+  split
+  · omega
+  · split
+    · omega
+    · split <;> omega
+
+example : captionChooseEnd ⟨9, 0, []⟩ ⟨8, 3, []⟩ = ⟨8, 3, []⟩ := by decide
+example : captionChooseEnd ⟨8, 0, []⟩ ⟨8, 3, []⟩ = ⟨8, 0, []⟩ := by decide
+example : captionChooseEnd ⟨8, 1, [(6, 0)]⟩ ⟨8, 1, [(6, 1)]⟩ =
+    ⟨8, 1, [(6, 1)]⟩ := by decide
+
 private def measuredCaptionWidth (number pair single triple interior : Nat) : Nat :=
   number + 655360 + pair + interior * single + triple
 
