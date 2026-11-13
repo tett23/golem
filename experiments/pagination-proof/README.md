@@ -32,6 +32,13 @@ Alloy の入力に合わせ、本文を見出しと段落の行とし、図版�
 先頭が本文なら本文を1行置く。
 ただし、その1行が見出しで、次の本文が段落の行であり、区切り1で図版を置かない場合は、本文を2行置く。
 この構成で置く見出しはすべて段頭にあるため、改丁見出しを見出し列に含める規則と改丁見出しの前で列を切る規則の両方を満たす。
+元の3コマンドを Alloy CLI の SAT4J で実行したところ、いずれも指定した範囲（スコープ5、整数5ビット、配置14）で反例は0件だった。
+
+```sh
+for command in relaxedAfterHeadings rectoKept rectoEnds; do
+  alloy6 exec -q -n -t text -c "$command" -o - docs/golem-layout/models/pagination.als || exit 1
+done
+```
 
 旧 `keepHeading21` と改丁見出しで見出し列を切る `keepHeadingR` の差は、通常見出し2行と改丁見出し1行を続け、区切り2を選ぶ固定入力で示した。この配置は `keepHeadingR` と改丁規則を満たすが、旧 `keepHeading21` を満たさない。Alloy でも同じ述語差を確認した。Golem に同じ原稿を渡す回帰テストは、通常見出し2行を最初のページに置き、空白の2ページ目の後で改丁見出しを3ページ目に置く結果で通過した。
 
