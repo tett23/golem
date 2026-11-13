@@ -33,6 +33,23 @@ theorem I2_fitted_figure_depth (capacity captionSpan pitch along numerator denom
   · next h => exact ⟨along, _, rfl, h⟩
   · next h => exact ⟨_, _, rfl, Nat.le_refl _⟩
 
+/-- The image depth is rounded up to a number of grid lines by the typesetter. -/
+theorem I2_fitted_image_and_caption_fit_grid
+    (capacity captionSpan pitch along numerator denominator : Nat)
+    (room : captionSpan < capacity) (positive : 0 < pitch) :
+    ∃ width height,
+      fitCaptionedFigure capacity captionSpan pitch along numerator denominator = some (width, height) ∧
+      (height + pitch - 1) / pitch + captionSpan ≤ capacity := by
+  obtain ⟨width, height, result, fits⟩ :=
+    I2_fitted_figure_depth capacity captionSpan pitch along numerator denominator room
+  refine ⟨width, height, result, ?_⟩
+  have rounded : (height + pitch - 1) / pitch ≤ capacity - captionSpan := by
+    apply Nat.le_of_lt_succ
+    apply (Nat.div_lt_iff_lt_mul positive).2
+    rw [Nat.succ_mul]
+    omega
+  omega
+
 example : fitCaptionedFigure 2 2 15 240 3 1 = none := by rfl
 example : fitCaptionedFigure 10 1 15 240 3 1 = some (45, 135) := by rfl
 
