@@ -12233,6 +12233,56 @@ theorem checkNoBreak_result (target here : Address) (current k : Nat) (done : Li
 
 end BreakDispatch
 
+/-- Admission of a regular or turned figure by place. Availability for
+    a turned figure also requires the first column, zero used lines
+    and no displayed or reserved footnotes. -/
+def admitFigure (s : FlushState) (used : Nat) (noShown empty : Bool) (free : Int)
+    (fig : Deferred) : List Deferred × FlushState :=
+  let fits := match fig with
+    | .figure _ height => decide ((height : Int) ≤ free) || empty
+    | .turned _ => decide (s.geometry.column = 0 ∧ used = 0 ∧ s.geometry.noteLines = 0) && noShown
+  if s.figures.isEmpty && fits then ([fig],s)
+  else ([],{s with figures := s.figures ++ [fig]})
+
+theorem figure_admission_fifo (s : FlushState) (used : Nat) (noShown empty : Bool) (free : Int)
+    (fig : Deferred) :
+    (admitFigure s used noShown empty free fig).1 ++ (admitFigure s used noShown empty free fig).2.figures =
+      s.figures ++ [fig] := by
+  unfold admitFigure
+  dsimp only
+  split
+  · rename_i h
+    have nil : s.figures = [] := by
+      cases eq : s.figures with
+      | nil => rfl
+      | cons x xs => simp [eq,List.isEmpty] at h
+    simp [nil]
+  · rfl
+
+/-- Each source figure first goes through admission; before the next
+    source figure, body/table placement can cause any sequence of
+    crossings. At EOF all outstanding figures go through that same
+    queue. Geometry between source figures is supplied by the layout. -/
+inductive FigureExecution : FlushState → List Deferred → List Deferred → FlushState → Prop where
+  | finish {s emitted last} (run : Crossings s emitted last) : FigureExecution s [] emitted last
+  | step (s used noShown empty free fig rest placed next) (afterBody : FlushState) (tail last)
+      (run : Crossings (admitFigure s used noShown empty free fig).2 placed next)
+      (bodyKeepsQueue : afterBody.figures = next.figures)
+      (more : FigureExecution afterBody rest tail last) :
+      FigureExecution s (fig :: rest) ((admitFigure s used noShown empty free fig).1 ++ placed ++ tail) last
+
+theorem I5_source_figures_fifo {s last : FlushState} {input emitted : List Deferred}
+    (execution : FigureExecution s input emitted last) :
+    emitted ++ last.figures = s.figures ++ input := by
+  induction execution with
+  | finish run => simpa using crossings_fifo run
+  | step s used noShown empty free fig rest placed next afterBody tail last run bodyKeepsQueue _ ih =>
+    have crossing := crossings_fifo run
+    have admission := figure_admission_fifo s used noShown empty free fig
+    simp only [List.append_assoc] at *
+    rw [ih, bodyKeepsQueue, ← List.append_assoc placed, crossing, ← List.append_assoc, admission]
+    simp [List.append_assoc]
+
 end TableAdvance
 
 
