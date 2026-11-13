@@ -1437,6 +1437,7 @@ composeEnv bookLang style geom fonts assumed look =
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
           ceNumberUnitPenalty = compNumberUnitPenalty comp,
           ceRuby = rubyStyleOf style (lkSize look),
+          ceRubyReading = styledReading style,
           ceVerticalNumbers = verticalNumbersNamed (stNumbersVertical style),
           ceRefPageNumbers = case fromMaybe (stNumbersVertical style) (stNumbersRefPage style) of
             "sideways" -> Nothing
@@ -1521,6 +1522,15 @@ withNoteMark style vertical sp n body = styled (markInlines sp (markParts vertic
 -- | How many inlines the mark of a note is in 'withNoteMark': the label of the Note (docs/adr ADR 0183).
 noteMarkCount :: Style -> Bool -> SrcSpan -> Int -> Int
 noteMarkCount style vertical sp n = length (withNoteMark style vertical sp n []) - 1
+
+styledReading :: Style -> Look -> Maybe Look
+styledReading style outer = do
+  name <- rdReadingStyle (compRuby (stComposition style))
+  def <- charStyle style name
+  let base = readingLook outer
+      resolved = restyle style base (CharStyle (mkSpan (FileId 0) 0 0) name [])
+      size = maybe (lkSize base) (dimToSp (lkNominalSize outer)) (csSize def)
+  pure resolved {lkSize = size, lkNominalSize = size}
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -2185,7 +2195,7 @@ citeLink book sp k = case Map.lookup (spanFile sp, sp) (bookCiteMarks book) of
 
 -- | A composition with the character styles of the style of a document (docs/adr ADR 0014).
 withDocStyle :: Style -> ComposeEnv -> ComposeEnv
-withDocStyle st e = e {ceRestyle = restyle st, ceSizeSourceOf = restyleSource st}
+withDocStyle st e = e {ceRestyle = restyle st, ceRubyReading = styledReading st, ceSizeSourceOf = restyleSource st}
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv

@@ -1227,7 +1227,7 @@ drawLineAt env (x0, y0) sl =
                             | lkColor lk /= lkColor look, Just sw <- swatchOf env lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                             | otherwise = (marks, glyphs)
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
-                          placed2 = [runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                          placed2 = [inColour rlook (runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch)) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
                        in ([(leaf, concatMap fst placed1), (readingLeaf, concatMap fst placed2)], inLeaf leaf (concatMap snd placed1) <> inLeaf readingLeaf (concatMap snd placed2))
                 KindKenten ->

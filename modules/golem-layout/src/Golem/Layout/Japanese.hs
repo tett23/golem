@@ -141,6 +141,7 @@ data ComposeEnv = ComposeEnv
     ceProtrusion :: !Bool,
     -- | the placement of ruby (golem-layout ADR 0009)
     ceRuby :: !RubyStyle,
+    ceRubyReading :: Look -> Maybe Look,
     -- | the number notation of vertical text when the source names none
     ceVerticalNumbers :: !VerticalNumbers,
     -- | the notation of a page reference in vertical text; Nothing sets the digits sideways (docs/adr/0118)
@@ -229,6 +230,7 @@ defaultComposeEnv fs =
       ceHanging = False,
       ceProtrusion = False,
       ceRuby = defaultRubyStyle fs,
+      ceRubyReading = const Nothing,
       ceVerticalNumbers = VerticalFixed StyleKanji,
       ceRefPageNumbers = Just (VerticalFixed StyleKanji),
       cePatterns = const Nothing,
@@ -1431,7 +1433,8 @@ itemsFor env lead prev p next = case p of
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
-        rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
+        withReading x = x {lkRubyReading = ceRubyReading env x}
+        rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env (withReading lk) reading) (allowance True prev, allowance False next)
         -- how far the reading may overhang a neighbour: kana up to half its
         -- advance, the free space of a neighbouring reading, nothing else;
         -- a neighbouring base is measured in the looks of its characters
@@ -1442,7 +1445,7 @@ itemsFor env lead prev p next = case p of
             (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lc c) `div` 2))
             _ -> 0
           Just (PRuby lk' k b ls r@(Just _)) ->
-            let ras = readingAdvances env lk' r
+            let ras = readingAdvances env (withReading lk') r
                 placed = placeRuby style k (baseAdvances env lk' ls b) ras (0, 0)
                 room = case (rpReading placed, reverse (zip (rpReading placed) ras)) of
                   (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth placed - (lastPos + lastAdv) else firstPos
@@ -1452,7 +1455,7 @@ itemsFor env lead prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
