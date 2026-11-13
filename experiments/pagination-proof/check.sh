@@ -16,12 +16,17 @@ diff -u "$tmp/model" "$tmp/listed"
 [ "$(wc -l < "$tmp/model" | tr -d ' ')" -eq 42 ]
 [ -f "$proof" ] || { echo "missing Lean proof: $proof" >&2; exit 1; }
 
+missing=0
 while IFS= read -r name; do
   grep -Eq "^(theorem|def|example) [[:space:]]*${name}([[:space:]]|:)" "$proof" || {
     echo "missing Lean counterpart: $name" >&2
-    exit 1
+    missing=$((missing + 1))
   }
 done < "$tmp/model"
+if [ "$missing" -gt 0 ]; then
+  echo "$missing of 42 Alloy commands lack a Lean counterpart" >&2
+  exit 1
+fi
 
 if grep -En '(^|[^A-Za-z])(sorry|admit|axiom)([^A-Za-z]|$)' "$proof"; then
   echo "unproved Lean declaration" >&2
