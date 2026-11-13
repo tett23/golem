@@ -96,7 +96,7 @@ function nestedChoices(expr, visit) {
     case 'choice':
       if (expr.alts.length > 1 && !provedNlEofChoice(expr) &&
           !provedLiteralNlEofChoice(expr) && !provedClassLookaheadOrEof(expr))
-        expr.alts.filter(items => !provedEscapeItems(items)).forEach(visit);
+        expr.alts.filter(items => !provedEscapeItems(items) && !provedReservedOrdinary(items)).forEach(visit);
       expr.alts.flat().forEach(item => nestedChoices(item.expr, visit));
       break;
     case 'star': case 'plus': case 'opt': case 'and': case 'not':
@@ -298,6 +298,11 @@ const backslashFullyProved = rule('Backslash') === String.raw`'\\' &'\n'` &&
   backslashAst.alts.length === 1 && backslashAst.alts[0].items.length === 2 &&
   backslashAst.alts[0].items.every(item => item.bind === null) &&
   backslashAst.alts[0].action?.trim() === '()' && backslashAst.alts[0].constructor === null;
+function provedReservedOrdinary(items) {
+  return items.length === 2 && items.every(item => item.bind === null) &&
+    items[0].expr.tag === 'not' && items[0].expr.expr.tag === 'class' &&
+    items[0].expr.expr.written === String.raw`[\[\]\\\n]` && items[1].expr.tag === 'any';
+}
 const escapeAst = ast?.rules.find(rule => rule.name === 'Escape');
 const escapeFullyProved = rule('Escape') === String.raw`'\\' ![\n] .` &&
   escapeAst?.params.length === 0 && escapeAst.templateParams.length === 0 &&

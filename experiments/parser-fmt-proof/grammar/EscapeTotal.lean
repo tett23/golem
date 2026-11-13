@@ -91,4 +91,24 @@ example : PegModel.recognizeEnv Generated.pegGrammar [] 4
     (.ref "Escape" []) "\\\n".toList = .ok none := by
   simpa using generated_escape "\\\n".toList 0
 
+def reservedOrdinary : List PegModel.Expr :=
+  [.notPred (.charClass [(91, 91), (93, 93), (92, 92), (10, 10)] "[\\[\\]\\\\\\n]"), .any]
+
+theorem generated_reserved_body_ordinary_shape :
+    ((Generated.pegGrammar.rules.find? (fun rule => rule.name == "ReservedBracketBody")).bind
+      (fun rule => match rule.alts with
+        | [alt] => match alt.items with
+          | [.star (.choice alts)] => alts[3]?
+          | _ => none
+        | _ => none)) = some reservedOrdinary := by rfl
+
+theorem generated_reserved_body_ordinary (input : List Char) (fuel : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 4)
+      (.choice [reservedOrdinary]) input =
+      .ok (match input with
+        | [] => none
+        | c :: rest => if [(91, 91), (93, 93), (92, 92), (10, 10)].any
+            (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi) then none else some rest) := by
+  exact PegModelTest.nonclass_any _ _ _ _ _ _
+
 end EscapeTotal

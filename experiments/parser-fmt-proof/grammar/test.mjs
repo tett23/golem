@@ -371,6 +371,14 @@ try {
     [join(here, 'generate.mjs'), changedEscape, generated], { encoding: 'utf8' });
   assert.match(strictEscape.stderr, /unsupported Escape choice 1 at /,
     'a changed escape guard must return to the unsupported report');
+  const ordinaryBody = String.raw`![\[\]\\\n] .`;
+  assert.ok(!strict.stderr.split('\n').some(line =>
+    line.startsWith('unsupported ReservedBracketBody ') && line.endsWith(ordinaryBody)));
+  const changedOrdinary = join(work, 'ChangedOrdinary.hpeg');
+  writeFileSync(changedOrdinary, original.replace(ordinaryBody, String.raw`![\[\]\\\nX] .`));
+  const strictOrdinary = spawnSync(process.execPath,
+    [join(here, 'generate.mjs'), changedOrdinary, generated], { encoding: 'utf8' });
+  assert.match(strictOrdinary.stderr, /^unsupported ReservedBracketBody .*X\] \.$/m);
   const changedReservedBody = join(work, 'ChangedReservedBody.hpeg');
   writeFileSync(changedReservedBody, original.replace(
     String.raw`ReservedBracketBody <- ( '\\' ![\n] .`,
@@ -439,7 +447,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 10, negative mutations 37, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 10, negative mutations 38, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
