@@ -163,6 +163,15 @@ structureTests =
       t <- treeLines <$> miniStructure horizontalStyle "前[ruby: 漢字 | かんじ]後。\n"
       let after = drop 1 (dropWhile (/= "Ruby") t)
       take 4 after @?= ["RB", "\"漢字\"", "RT", "\"かんじ\""],
+    testCase "inv1_ruby_base_references_case_1: plain bases have no references" $ do
+      t <- treeLines <$> miniStructure horizontalStyle "[ruby: 漢字 | かんじ]。\n"
+      takeWhile (/= "RT") (dropWhile (/= "RB") t) @?= ["RB", "\"漢字\""],
+    testCase "inv1_ruby_base_references_case_2: adjacent references stay in source order" $ do
+      let source = "@label a\n# 一章\n\n@label b\n# 二章\n\n[ruby: 前[ref-title a][ref-title b]後 | よみ]。\n"
+      t <- treeLines <$> miniStructure horizontalStyle source
+      let base = takeWhile (/= "RT") (dropWhile (/= "RB") t)
+      filter (`elem` ["Reference", "\"前\"", "\"一章\"", "\"二章\"", "\"後\""]) base
+        @?= ["\"前\"", "Reference", "\"一章\"", "Reference", "\"二章\"", "\"後\""],
     testCase "a Note follows the Reference of its mark; their IDs are one each" $ do
       t <- treeLines <$> miniStructure horizontalStyle "前[note: 一。]中[note: 二。]後。\n"
       let refs = [i | (i, l) <- zip [0 :: Int ..] t, l == "Reference"]

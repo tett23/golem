@@ -87,6 +87,10 @@ PDF の版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの
 カタログに `/MarkInfo << /Marked true >>` と `/StructTreeRoot` を書く。
 ページの内容はすべて、構造の要素の印付きの内容（`/<型> << /MCID n >> BDC` と `EMC`）か、アーティファクト（`/Artifact << /Type /Pagination >>` か `/Layout`）にする。
 
+ルビの親文字にある `ref-number` と `ref-title` は、親文字を表す `RB` の下に原稿順の `Reference` として登録する（[Golem ADR 0360](adr/0360-ruby-base-references.md)）。
+各参照は対応する文字の範囲と参照先を持つ。
+参照の前後にある文字は親文字の一部として扱い、読みは別の `RT` に登録する。
+
 MCID は、ページごとに 0 から内容のストリームの順に振る。
 一つの葉が二つのページに分かれれば、ページごとに別の MCID になり、構造の要素の子は `/Pg` を持つ `MCR` になる。
 `StructTreeRoot` は、`ParentTree`（ページの `StructParents` の番号から、MCID ごとの構造の要素を引く数の木）、`ParentTreeNextKey`、`Note` の `ID` を引く `IDTree` を持つ。

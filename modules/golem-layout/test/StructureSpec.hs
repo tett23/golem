@@ -3,6 +3,7 @@ the structure tree of the PDF (docs/adr ADR 0183).
 -}
 module StructureSpec (structureTests) where
 
+import Control.Monad (replicateM)
 import Data.Text (Text)
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
@@ -23,11 +24,22 @@ txt = IR.Text sp
 leaves :: [Item] -> [(Text, Leaf)]
 leaves items = [(bcText c, bcLeaf c) | Box _ c <- items, bcText c /= ""]
 
+check :: [[Bool]] -> Assertion
+check = mapM_ $ \flags -> do
+  let child False = IR.Text sp "x"
+      child True = IR.Resolved sp IR.RefNumber "h" [IR.Text sp "1"]
+      base = IR.Text sp "a" : map child flags
+      (_, _, nodes) = composeInlinesTree env [IR.Ruby sp () [IR.RubySegment base (Just "reading")]]
+      references = [() | NodeElem RoleRuby ruby <- nodes, NodeElem RoleRubyBase rb <- ruby, NodeElem RoleReference _ <- rb]
+  length references @?= length (filter id flags)
+
 structureTests :: TestTree
 structureTests =
   testGroup
     "the structure of inlines (docs/adr ADR 0183)"
-    [ testCase "plain text is leaf 0 of the site" $ do
+    [ testCase "inv1_ruby_base_references_property: each number or title selects one RB child" $
+        mapM_ check [replicateM n [False, True] | n <- [0 .. 4]],
+      testCase "plain text is leaf 0 of the site" $ do
         let (items, _, nodes) = composeInlinesTree env [txt "あい"]
         nodes @?= [NodeLeaf 0]
         leaves items @?= [("あ", Leaf [7, 0] 0), ("い", Leaf [7, 0] 0)],
