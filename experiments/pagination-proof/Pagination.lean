@@ -11530,6 +11530,335 @@ theorem I4_I5_reserved_carry (cap reserved sep : Int) (p : Part) :
 
 example : carry (availableForCarry 5 6 0) ⟨20,5,3⟩ = (⟨20,5,0⟩,some ⟨20,5,3⟩) := by decide
 
+structure ColumnState where
+  page : Nat
+  column : Nat
+  columns : Nat
+  reserved : Nat
+  noteLines : Nat
+
+/-- Only the leading turned figures are removed when crossing the page
+    boundary. pageFigure increments the page but leaves the fresh
+    column's reservation and note load unchanged. -/
+def advanceColumn (s : ColumnState) (turned : List Nat) : ColumnState :=
+  if s.columns ≤ s.column + 1 then
+    { s with page := s.page + 1 + turned.length, column := 0, reserved := 0, noteLines := 0 }
+  else
+    { s with column := s.column + 1, noteLines := s.reserved }
+
+def carryRoom (cap separator : Nat) (s : ColumnState) : Nat :=
+  availableForCarry cap s.noteLines (if s.noteLines = 0 then separator else 0)
+
+def noteWeight (p : Part) := p.lines + 1
+
+/-- A diagnosed first note is removed from the pending list and the
+    driver aborts PDF generation. For a carried note, calculate the
+    actual remainder using the clamped room of the new column. -/
+def firstRemainder (cap separator : Nat) (s : ColumnState) (p : Part) : Option Part :=
+  let room := carryRoom cap separator s
+  if 0 < p.lines ∧ room = 0 ∧ s.noteLines = 0 ∧ s.reserved = 0 then none
+  else (carry room p).2
+
+theorem I4_advance_first_note_rank (s : ColumnState) (turned : List Nat) (cap separator : Nat) (p : Part) :
+    let next := advanceColumn s turned
+    let old := (noteWeight p, columnsBeforePage s.columns s.column)
+    let new := ((firstRemainder cap separator next p).elim 0 noteWeight,
+      columnsBeforePage next.columns next.column)
+    Prod.Lex (· < ·) (· < ·) new old := by
+  intro next old new
+  have weight (r : Part) (eq : firstRemainder cap separator next p = some r) :
+      r.lines ≤ p.lines ∧ (0 < carryRoom cap separator next → r.lines < p.lines) := by
+    unfold firstRemainder at eq
+    dsimp only at eq
+    split at eq
+    · contradiction
+    · have rec := eq
+      unfold carry at eq
+      dsimp only at eq
+      split at eq
+      · cases eq
+        exact ⟨by simp; omega,fun positive => I4_carryNote_remainder_decreases _ _ _ positive rec⟩
+      · contradiction
+  cases rem : firstRemainder cap separator next p with
+  | none =>
+    apply Prod.Lex.left
+    simp [new,old,rem,noteWeight]
+  | some r =>
+    obtain ⟨weak,strict⟩ := weight r rem
+    by_cases decreased : r.lines < p.lines
+    · apply Prod.Lex.left
+      simp [new,old,rem,noteWeight]; omega
+    · have same : r.lines = p.lines := by omega
+      have roomZero : carryRoom cap separator next = 0 := by
+        apply Classical.byContradiction
+        intro positive
+        exact decreased (strict (by omega))
+      have remains : 0 < p.lines := by
+        apply Classical.byContradiction
+        intro zero
+        have z : p.lines = 0 := by omega
+        simp [firstRemainder,carry,roomZero,z] at rem
+      have within : s.column + 1 < s.columns := by
+        apply Classical.byContradiction
+        intro crossed
+        have toPage : s.columns ≤ s.column+1 := by omega
+        have fresh : next.noteLines = 0 ∧ next.reserved = 0 := by simp [next,advanceColumn,toPage]
+        simp [firstRemainder,remains,roomZero,fresh] at rem
+      have eq := I4_within_page_retry s.columns s.column within
+      have stay : ¬ s.columns ≤ s.column+1 := by omega
+      change Prod.Lex _ _ ((firstRemainder cap separator next p).elim 0 noteWeight,
+        columnsBeforePage next.columns next.column) (noteWeight p,columnsBeforePage s.columns s.column)
+      rw [rem]
+      simp only [Option.elim,noteWeight,same]
+      apply Prod.Lex.right
+      simp only [next,advanceColumn,stay,if_false]
+      omega
+
+/-- Later notes on the same column see the separator and note rows
+    already consumed by preceding notes. They are no longer first on an
+    empty column, even if a preceding zero-length part was recorded. -/
+def carryBatch (cap separator : Nat) : Bool → ColumnState → List Part → List Part
+  | _, _, [] => []
+  | empty, s, p :: ps =>
+    let room := carryRoom cap separator s
+    if 0 < p.lines ∧ room = 0 ∧ empty = true ∧ s.reserved = 0 then
+      carryBatch cap separator empty s ps
+    else
+      let part := carry room p
+      let sep := if s.noteLines = 0 then separator else 0
+      part.2.toList ++ carryBatch cap separator false {s with noteLines := s.noteLines + sep + part.1.lines} ps
+
+theorem carryBatch_weight_le (cap separator : Nat) (ps : List Part) (empty : Bool) (s : ColumnState) :
+    pendingSize (carryBatch cap separator empty s ps) ≤ pendingSize ps := by
+  induction ps generalizing empty s with
+  | nil => exact Nat.le_refl _
+  | cons p ps ih =>
+    rw [carryBatch]
+    dsimp only
+    split
+    · have rec := ih empty s
+      change pendingSize _ ≤ 1 + p.lines + pendingSize ps
+      exact Nat.le_trans rec (by omega)
+    · cases rem : (carry (carryRoom cap separator s) p).2 with
+      | none =>
+        simp only [Option.toList,List.nil_append,pendingSize]
+        exact Nat.le_trans (ih _ _) (by omega)
+      | some r =>
+        have bound : r.lines ≤ p.lines := by
+          unfold carry at rem
+          dsimp only at rem
+          split at rem
+          · cases rem; exact Nat.sub_le _ _
+          · contradiction
+        simp only [Option.toList,List.cons_append,List.nil_append,pendingSize]
+        apply Nat.add_le_add _ (ih _ _)
+        omega
+
+theorem I4_advance_note_batch (ps : List Part) (nonempty : ps ≠ []) (s : ColumnState)
+    (turned : List Nat) (cap separator : Nat) :
+    let next := advanceColumn s turned
+    let rest := carryBatch cap separator true next ps
+    Prod.Lex (· < ·) (· < ·) (pendingSize rest,columnsBeforePage next.columns next.column)
+      (pendingSize ps,columnsBeforePage s.columns s.column) := by
+  cases ps with
+  | nil => contradiction
+  | cons p ps =>
+    intro next rest
+    have head := I4_advance_first_note_rank s turned cap separator p
+    have fresh : next.noteLines = next.reserved := by
+      by_cases last : s.columns ≤ s.column+1 <;> simp [next,advanceColumn,last]
+    have whole : pendingSize rest ≤ (firstRemainder cap separator next p).elim 0 noteWeight + pendingSize ps := by
+      dsimp only [rest,carryBatch,firstRemainder]
+      split
+      · rename_i guard
+        simp [guard,fresh] at *
+        exact carryBatch_weight_le _ _ _ _ _
+      · rename_i guard
+        simp only [true_and] at guard
+        have notDiag : ¬ (0 < p.lines ∧ carryRoom cap separator next = 0 ∧ next.noteLines = 0 ∧ next.reserved = 0) := by
+          intro h
+          exact guard ⟨h.1,h.2.1,h.2.2.2⟩
+        rw [if_neg notDiag]
+        cases (carry (carryRoom cap separator next) p).2 with
+        | none => simpa [Option.elim] using carryBatch_weight_le cap separator ps false _
+        | some r =>
+          simp only [Option.elim,Option.toList,List.cons_append,List.nil_append,pendingSize,noteWeight]
+          rw [Nat.add_comm 1 r.lines]
+          exact Nat.add_le_add_left (carryBatch_weight_le cap separator ps false _) _
+    have lexCases {x y u v : Nat} (h : Prod.Lex (· < ·) (· < ·) (x,u) (y,v)) :
+        x < y ∨ (x = y ∧ u < v) := by
+      cases h with
+      | left _ _ lt => exact Or.inl lt
+      | right _ lt => exact Or.inr ⟨rfl,lt⟩
+    have options := lexCases head
+    change (firstRemainder cap separator next p).elim 0 noteWeight < noteWeight p ∨
+      ((firstRemainder cap separator next p).elim 0 noteWeight = noteWeight p ∧
+        columnsBeforePage next.columns next.column < columnsBeforePage s.columns s.column) at options
+    change Prod.Lex _ _ (pendingSize rest,_) (1+p.lines+pendingSize ps,_)
+    rcases options with less | ⟨equal,closer⟩
+    · apply Prod.Lex.left
+      change _ < p.lines + 1 at less
+      omega
+    · rw [equal] at whole
+      unfold noteWeight at whole
+      by_cases fewer : pendingSize rest < 1+p.lines+pendingSize ps
+      · exact Prod.Lex.left _ _ fewer
+      · have same : pendingSize rest = 1+p.lines+pendingSize ps := by omega
+        rw [same]
+        exact Prod.Lex.right _ closer
+
+inductive Deferred where
+  | figure (id height : Nat)
+  | turned (id : Nat)
+  deriving DecidableEq
+
+def splitTurned : List Deferred → List Nat × List Deferred
+  | .turned id :: rest => let parts := splitTurned rest; (id :: parts.1,parts.2)
+  | rest => ([],rest)
+
+theorem splitTurned_exact (xs : List Deferred) :
+    (splitTurned xs).1.map Deferred.turned ++ (splitTurned xs).2 = xs := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+    cases x with
+    | figure _ _ => rfl
+    | turned id =>
+      simpa only [splitTurned,List.map_cons,List.cons_append,List.cons.injEq,true_and] using ih
+
+def placeDeferred (free : Int) (empty : Bool) : List Deferred → List Deferred × List Deferred
+  | [] => ([],[])
+  | .turned i :: rest => ([],.turned i :: rest)
+  | .figure i h :: rest =>
+    if (h : Int) ≤ free ∨ empty = true then
+      let placed := placeDeferred (free-h) false rest
+      (.figure i h :: placed.1,placed.2)
+    else ([],.figure i h :: rest)
+
+theorem placeDeferred_exact (xs : List Deferred) (free : Int) (empty : Bool) :
+    (placeDeferred free empty xs).1 ++ (placeDeferred free empty xs).2 = xs := by
+  induction xs generalizing free empty with
+  | nil => rfl
+  | cons x xs ih =>
+    cases x with
+    | turned _ => rfl
+    | figure i h =>
+      by_cases fit : (h : Int) ≤ free ∨ empty = true
+      · simp only [placeDeferred,fit,if_true,List.cons_append,List.cons.injEq,true_and]
+        exact ih _ _
+      · simp [placeDeferred,fit]
+
+def placedOnAdvance (s : ColumnState) (xs : List Deferred) (free : Int) (empty : Bool) :
+    List Deferred × List Deferred :=
+  let parts := if s.columns ≤ s.column+1 then splitTurned xs else ([],xs)
+  let placed := placeDeferred free empty parts.2
+  (parts.1.map Deferred.turned ++ placed.1,placed.2)
+
+theorem I5_figures_on_advance (s : ColumnState) (xs : List Deferred) (free : Int) (empty : Bool) :
+    (placedOnAdvance s xs free empty).1 ++ (placedOnAdvance s xs free empty).2 = xs := by
+  by_cases crossed : s.columns ≤ s.column+1
+  · simp only [placedOnAdvance,crossed,if_true,List.append_assoc,placeDeferred_exact,splitTurned_exact]
+  · simp [placedOnAdvance,crossed,placeDeferred_exact]
+
+theorem I4_advance_waiting_figures (s : ColumnState) (xs : List Deferred) (nonempty : xs ≠ [])
+    (free : Int) (empty : Bool) (freshEmpty : s.columns ≤ s.column+1 → empty = true) :
+    let rest := (placedOnAdvance s xs free empty).2
+    let next := advanceColumn s (splitTurned xs).1
+    Prod.Lex (· < ·) (· < ·) (rest.length,columnsBeforePage next.columns next.column)
+      (xs.length,columnsBeforePage s.columns s.column) := by
+  intro rest next
+  have exactFig := I5_figures_on_advance s xs free empty
+  have total := congrArg List.length exactFig
+  rw [List.length_append] at total
+  change (placedOnAdvance s xs free empty).1.length + rest.length = xs.length at total
+  by_cases progress : rest.length < xs.length
+  · exact Prod.Lex.left _ _ progress
+  · have same : rest.length = xs.length := by omega
+    have none : (placedOnAdvance s xs free empty).1 = [] := List.length_eq_zero.mp (by omega)
+    have before : s.column+1 < s.columns := by
+      apply Nat.lt_of_not_ge
+      intro nextPage
+      have e := freshEmpty nextPage
+      cases xs with
+      | nil => contradiction
+      | cons x xs =>
+        cases x with
+        | turned id => simp [placedOnAdvance,nextPage,splitTurned] at none
+        | figure i h => simp [placedOnAdvance,nextPage,splitTurned,placeDeferred,e] at none
+    rw [same]
+    apply Prod.Lex.right
+    have rank := I4_within_page_retry s.columns s.column before
+    simp only [next,advanceColumn,show ¬ s.columns ≤ s.column+1 by omega,if_false]
+    omega
+
+structure FlushState where
+  geometry : ColumnState
+  figures : List Deferred
+  notes : List Part
+
+def flushRank (s : FlushState) : Nat × Nat × Nat :=
+  (s.figures.length,pendingSize s.notes,columnsBeforePage s.geometry.columns s.geometry.column)
+
+def flushStep (s : FlushState) (cap sep : Nat) (free : Int) (emptyAfterNotes : Bool) : FlushState :=
+  let next := advanceColumn s.geometry (splitTurned s.figures).1
+  ⟨next,(placedOnAdvance s.geometry s.figures free emptyAfterNotes).2,carryBatch cap sep true next s.notes⟩
+
+/-- On a fresh page with no carried notes, therefore before openBox,
+    no body or figure has occupied the new column. Leading turned
+    figures already emitted each occupy a separate preceding page. -/
+theorem I4_actual_flush_step (s : FlushState) (cap sep : Nat) (free : Int) (emptyAfterNotes : Bool)
+    (needsFlush : s.figures ≠ [] ∨ s.notes ≠ [])
+    (freshEmpty : s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 → emptyAfterNotes = true) :
+    Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) (flushRank (flushStep s cap sep free emptyAfterNotes)) (flushRank s) := by
+  let next := advanceColumn s.geometry (splitTurned s.figures).1
+  let ps := placedOnAdvance s.geometry s.figures free emptyAfterNotes
+  have total := congrArg List.length (I5_figures_on_advance s.geometry s.figures free emptyAfterNotes)
+  change (ps.1 ++ ps.2).length = s.figures.length at total
+  rw [List.length_append] at total
+  change Prod.Lex _ _ (ps.2.length,pendingSize (carryBatch cap sep true next s.notes),columnsBeforePage next.columns next.column)
+    (s.figures.length,pendingSize s.notes,columnsBeforePage s.geometry.columns s.geometry.column)
+  by_cases fewer : ps.2.length < s.figures.length
+  · exact Prod.Lex.left _ _ fewer
+  · have equal : ps.2.length = s.figures.length := by omega
+    rw [equal]
+    apply Prod.Lex.right
+    by_cases hasNotes : s.notes ≠ []
+    · exact I4_advance_note_batch s.notes hasNotes s.geometry (splitTurned s.figures).1 cap sep
+    · have noNotes : s.notes = [] := Classical.byContradiction (fun h => hasNotes h)
+      have figs : s.figures ≠ [] := needsFlush.resolve_right hasNotes
+      have progress := I4_advance_waiting_figures s.geometry s.figures figs free emptyAfterNotes (freshEmpty noNotes)
+      change Prod.Lex _ _ (ps.2.length,columnsBeforePage next.columns next.column)
+        (s.figures.length,columnsBeforePage s.geometry.columns s.geometry.column) at progress
+      rw [equal] at progress
+      rw [noNotes]
+      apply Prod.Lex.right
+      have coords {a b c : Nat} (p : Prod.Lex (· < ·) (· < ·) (a,b) (a,c)) : b < c := by
+        cases p with
+        | left _ _ h => omega
+        | right _ h => exact h
+      exact coords progress
+
+inductive FlushTransition : FlushState → FlushState → Prop where
+  | advance (s : FlushState) (cap sep : Nat) (free : Int) (empty : Bool)
+      (pending : s.figures ≠ [] ∨ s.notes ≠ [])
+      (fresh : s.notes = [] → s.geometry.columns ≤ s.geometry.column+1 → empty = true) :
+      FlushTransition (flushStep s cap sep free empty) s
+
+theorem I4_flush_terminates : WellFounded FlushTransition := by
+  apply Subrelation.wf (r := InvImage (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))) flushRank)
+  · intro _ _ moved
+    cases moved with
+    | advance s cap sep free empty pending fresh =>
+      exact I4_actual_flush_step _ _ _ _ _ pending fresh
+  · exact InvImage.wf flushRank (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)).wf
+
+example : let st : FlushState := ⟨⟨1,0,2,6,6⟩,[.turned 99],[⟨20,5,3⟩]⟩
+    let second := flushStep st 5 1 (-1) false
+    let third := flushStep second 5 1 1 false
+    second.geometry.page = 1 ∧ second.geometry.column = 1 ∧ second.notes = [⟨20,5,3⟩] ∧
+    third.geometry.page = 3 ∧ third.geometry.column = 0 ∧ third.geometry.reserved = 0 ∧
+    third.notes = [] ∧ third.figures = [] := by decide
+
 end FootnoteSplit
 
 namespace TablePagination
