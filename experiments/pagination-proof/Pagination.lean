@@ -7985,12 +7985,16 @@ theorem I3_text_rows_stable_before_reached_target (items : List SourceItem)
     · simp [prior]
   exact congrArg List.length equal
 
+def placedBeforeNeedSource (used count brk : Nat) (items : List SourceItem)
+    (positions size : Nat → Nat) (space kept : Nat → Bool) (t : Nat) : Nat :=
+  used + ((sourceTextPositions items).filter
+    (fun p => decide (p < t) && !space p && textHereAtBreak items brk p)).length +
+    keptRowsThrough (fun i => kept i && decide (positions i < t)) size count
+
 def needAtPlacedText (used capacity count : Nat) (items : List SourceItem)
     (positions size : Nat → Nat) (space : Nat → Bool) (needs : List (Nat × Nat))
     (brk : Nat) (kept : Nat → Bool) (target : Nat) : Prop :=
-  let rows := used + ((sourceTextPositions items).filter
-    (fun p => decide (p < target) && !space p && textHereAtBreak items brk p)).length +
-    keptRowsThrough (fun i => kept i && decide (positions i < target)) size count
+  let rows := placedBeforeNeedSource used count brk items positions size space kept target
   ∀ need ∈ needs, needTargetsText need.1 target
     (fun p => .text p ∈ items ∧ space p = false) positions count kept →
     rows = 0 ∨ need.2 ≤ capacity - rows
@@ -8006,7 +8010,7 @@ theorem I3_text_need_checks_preserved (used capacity count b c t : Nat)
   have textRows := I3_text_rows_stable_before_reached_target items ordered space b c t target reached extendsTo
   have figureRows := I3_figure_rows_stable_before_text items positions size room b c t count rankOrder reached extendsTo
   dsimp only at textRows figureRows
-  dsimp only [needAtPlacedText]
+  dsimp only [needAtPlacedText, placedBeforeNeedSource]
   rw [textRows, figureRows]
   constructor
   · intro old need member atNew
@@ -8015,6 +8019,106 @@ theorem I3_text_need_checks_preserved (used capacity count b c t : Nat)
   · intro new need member atOld
     exact new need member ((I3_need_text_target_stable items positions room b c t _ count _
       rankOrder reached extendsTo).mp atOld)
+
+/- All needs of the same text target see the same occupied height,
+   even with waiting figures between the written needs. They can
+   therefore share the record-high check in spaceKeeps35. This equality
+   also establishes the single-need comparison in spaceKeeps. -/
+theorem I3_load_at_text_need_agrees_with_target
+    (used count b n t : Nat) (items : List SourceItem)
+    (positions size : Nat → Nat) (space kept : Nat → Bool)
+    (uniqueText : ∀ p, .text p ∈ items → p ≠ n)
+    (uniqueFigure : ∀ i, positions i ≠ n)
+    (target : needTargetsText n t (fun p => .text p ∈ items ∧ space p = false)
+      positions count kept) :
+    placedBeforeNeedSource used count b items positions size space kept n =
+      placedBeforeNeedSource used count b items positions size space kept t := by
+  have text : (sourceTextPositions items).filter
+      (fun p => decide (p < n) && !space p && textHereAtBreak items b p) =
+      (sourceTextPositions items).filter
+      (fun p => decide (p < t) && !space p && textHereAtBreak items b p) := by
+    apply filter_eq_on_members
+    intro p pm
+    have member := (I3_source_text_position_member items p).mp pm
+    by_cases before : p < n
+    · have earlier := Nat.lt_trans before target.1
+      simp [before, earlier]
+    · by_cases between : p < t
+      · cases sp : space p with
+        | true => simp [sp]
+        | false =>
+          have diff := uniqueText p member
+          exact (target.2.2.1 p ⟨member, sp⟩ (by omega) between).elim
+      · simp [before, between]
+  have figures : ∀ k, k ≤ count →
+      keptRowsThrough (fun i => kept i && decide (positions i < n)) size k =
+        keptRowsThrough (fun i => kept i && decide (positions i < t)) size k := by
+    intro k
+    induction k with
+    | zero => intro _; rfl
+    | succ k ih =>
+      intro bound
+      have equal : (kept k && decide (positions k < n)) = (kept k && decide (positions k < t)) := by
+        by_cases before : positions k < n
+        · have earlier := Nat.lt_trans before target.1
+          simp [before, earlier]
+        · by_cases between : positions k < t
+          · have diff := uniqueFigure k
+            have sent := (target.2.2.2 k (by omega) (by omega) between).1
+            simp [sent]
+          · simp [before, between]
+      simp only [keptRowsThrough, ih (by omega), equal]
+  unfold placedBeforeNeedSource
+  rw [text, figures _ (Nat.le_refl _)]
+
+def sourceNeedAtTarget (n t count : Nat) (items : List SourceItem)
+    (positions : Nat → Nat) (space kept : Nat → Bool) : Prop :=
+  needTargetsText n t (fun p => .text p ∈ items ∧ space p = false) positions count kept
+
+def writtenGroupFits (capacity previous : Nat) (load : Nat → Nat) :
+    List (Nat × Nat) → Prop
+  | [] => True
+  | (n, h) :: ns =>
+      (previous < h → h ≤ capacity - load n) ∧
+      writtenGroupFits capacity (max previous h) load ns
+
+theorem I3_written_group_iff_target_max
+    (capacity previous rows : Nat) (load : Nat → Nat) (ns : List (Nat × Nat))
+    (equal : ∀ n ∈ ns, load n.1 = rows) :
+    writtenGroupFits capacity previous load ns ↔
+      recordNeedsFit (capacity - rows) previous (ns.map Prod.snd) := by
+  induction ns generalizing previous with
+  | nil => rfl
+  | cons head tail ih =>
+    obtain ⟨pos, height⟩ := head
+    have own := equal (pos,height) (List.mem_cons_self _ _)
+    have rest := ih (max previous height) (fun n m => equal n (List.mem_cons_of_mem _ m))
+    simp only [writtenGroupFits, List.map_cons, recordNeedsFit, Prod.snd, own, rest]
+
+theorem I3_written_text_needs_satisfy_P1
+    (used capacity count b t : Nat) (items : List SourceItem)
+    (positions size : Nat → Nat) (space kept : Nat → Bool) (needs : List (Nat × Nat))
+    (distinctText : ∀ n ∈ needs, ∀ p, .text p ∈ items → p ≠ n.1)
+    (distinctFigure : ∀ n ∈ needs, ∀ i, positions i ≠ n.1) :
+    let load := placedBeforeNeedSource used count b items positions size space kept
+    let group := needs.filter (fun n => @decide (sourceNeedAtTarget n.1 t count items positions space kept)
+      (Classical.propDecidable _))
+    writtenGroupFits capacity 0 load group →
+      needAtPlacedText used capacity count items positions size space needs b kept t := by
+  let load := placedBeforeNeedSource used count b items positions size space kept
+  let group := needs.filter (fun n => @decide (sourceNeedAtTarget n.1 t count items positions space kept)
+    (Classical.propDecidable _))
+  change writtenGroupFits capacity 0 load group → _
+  intro fit n member target
+  apply Or.inr
+  have equal : ∀ m ∈ group, load m.1 = load t := by
+    intro m inGroup
+    obtain ⟨present, selected⟩ := List.mem_filter.mp inGroup
+    exact I3_load_at_text_need_agrees_with_target used count b m.1 t items positions size space kept
+      (distinctText m present) (distinctFigure m present) (decide_eq_true_eq.mp selected)
+  have records := (I3_written_group_iff_target_max capacity 0 (load t) load group equal).mp fit
+  apply (I3_record_needs_fit_iff_all _ 0 _ (Nat.zero_le _)).mp records n.2
+  exact List.mem_map.mpr ⟨n, List.mem_filter.mpr ⟨member, decide_eq_true_eq.mpr target⟩, rfl⟩
 
 /- The two-need input judges the larger requirement; both P1 checks are
    satisfied when a line is retained. The preceding space affects fit,
