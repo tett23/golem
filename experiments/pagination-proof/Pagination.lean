@@ -179,6 +179,30 @@ theorem I1_caption_forced_break_cost (linePenalty : Int) (badness : Nat)
 example : ([-10000, -9999, 0, 1] : List Int).map (captionLineDemerits 10 0) =
     [100, -99979901, 100, 101] := by decide
 
+/-- Classify the chosen line by shrink direction and TeX badness. -/
+def captionFitness (shrinking : Bool) (bad : Nat) : Int :=
+  if shrinking then (if bad > 12 then 3 else 2)
+  else if bad ≥ 100 then 0 else if bad > 12 then 1 else 2
+
+/-- Cumulative demerits of extending a predecessor, including the costs
+    for two flagged breaks and nonadjacent fitness classes. -/
+def captionPathCost (previous previousFitness linePenalty penalty doubleHyphen adjacent : Int)
+    (previousFlagged flagged shrinking : Bool) (bad : Nat) : Int :=
+  previous + captionLineDemerits linePenalty bad penalty +
+    (if previousFlagged && flagged then doubleHyphen else 0) +
+    (if (captionFitness shrinking bad - previousFitness).natAbs > 1 then adjacent else 0)
+
+theorem I1_caption_path_cost_order (left right fit linePenalty penalty doubleHyphen adjacent : Int)
+    (previousFlagged flagged shrinking : Bool) (bad : Nat) :
+    captionPathCost left fit linePenalty penalty doubleHyphen adjacent previousFlagged flagged shrinking bad ≤
+      captionPathCost right fit linePenalty penalty doubleHyphen adjacent previousFlagged flagged shrinking bad ↔
+      left ≤ right := by
+  unfold captionPathCost
+  omega
+
+example : [12, 13, 99, 100].map (captionFitness false) = [2, 1, 1, 0] ∧
+    [12, 13].map (captionFitness true) = [2, 3] := by decide
+
 /-- Within one (line number, fitness) entry, equal demerits select
     the later predecessor in the active list, as in KnuthPlass.step. -/
 def captionPreferLater {α : Type} (old new : Int × α) : Int × α :=
