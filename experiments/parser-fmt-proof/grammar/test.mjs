@@ -21,7 +21,7 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 116, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 113, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -93,8 +93,8 @@ try {
     'a multi-item reference branch must return to the report');
   assert.doesNotMatch(strict.stderr, /^unsupported (StringLiteral|KeywordLiteral) choice /m,
     'single-reference alternatives use the same error-preserving theorem');
-  assert.match(strict.stderr, /^unsupported StringLit choice /m,
-    'proving StringLiteral does not discharge its referenced StringLit rule');
+  assert.doesNotMatch(strict.stderr, /^unsupported StringLit choice /m,
+    'the generated string recognizer is total on arbitrary suffixes');
   const changedSingleRef = join(work, 'ChangedSingleRef.hpeg');
   const singleRefMutation = original.replace(/^KeywordLiteral <- .*$/m,
     'KeywordLiteral <- Keyword Ws { () }');

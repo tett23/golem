@@ -174,4 +174,116 @@ theorem I1_generated_quoted_round_trip (parts : List Part) (tail : List Char) (e
       repeated_spell [] parts tail extra, List.foldlM, Bind.bind, Except.bind, pure, Except.pure, Except.map]
   · exact ⟨scan_spell parts tail, unescape_spell parts⟩
 
+def stopsBody (c : Char) : Bool :=
+  [(34, 34), (10, 10)].any (fun (lo, hi) => lo ≤ c.toNat && c.toNat ≤ hi)
+
+def bodySuffix : List Char → List Char
+  | [] => []
+  | '\\' :: _ :: rest => bodySuffix rest
+  | c :: rest => if stopsBody c then c :: rest else bodySuffix rest
+
+private theorem starStop (env : PegModel.Params) (fuel : Nat) (input : List Char)
+    (stop : PegModel.recognizeEnv Generated.pegGrammar env fuel (.choice bodyChoices) input = .ok none) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 1) (.star (.choice bodyChoices)) input =
+      .ok (some input) := by unfold PegModel.recognizeEnv; simp [stop]; rfl
+
+private theorem starNext (env : PegModel.Params) (fuel : Nat) (input rest : List Char)
+    (step : PegModel.recognizeEnv Generated.pegGrammar env fuel (.choice bodyChoices) input = .ok (some rest))
+    (shrinks : rest.length < input.length) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 1) (.star (.choice bodyChoices)) input =
+      PegModel.recognizeEnv Generated.pegGrammar env fuel (.star (.choice bodyChoices)) rest := by
+  conv => lhs; unfold PegModel.recognizeEnv
+  simp [step, shrinks]; rfl
+
+theorem body_total (env : PegModel.Params) (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar env (input.length + 5 + extra)
+      (.star (.choice bodyChoices)) input = .ok (some (bodySuffix input)) := by
+  cases input with
+  | nil =>
+      rw [show ([] : List Char).length + 5 + extra = (extra + 4) + 1 by simp; omega]
+      apply starStop
+      rfl
+  | cons c rest =>
+      rw [show (c :: rest).length + 5 + extra = (rest.length + 5 + extra) + 1 by simp; omega]
+      by_cases slash : c = '\\'
+      · subst c
+        cases rest with
+        | nil =>
+            rw [show ([] : List Char).length + 5 + extra = (extra + 4) + 1 by simp; omega]
+            have step : PegModel.recognizeEnv Generated.pegGrammar env (extra + 4 + 1)
+                (.choice bodyChoices) ['\\'] = .ok (some []) := by rfl
+            rw [starNext env _ _ [] step (by decide)]
+            rw [show extra + 4 + 1 = ([] : List Char).length + 5 + extra by simp; omega]
+            exact body_total env [] extra
+        | cons next tail =>
+            have step := escaped_step env (tail.length + 4 + extra) next tail
+            have eqFuel : (next :: tail).length + 5 + extra = tail.length + 4 + extra + 2 := by simp; omega
+            rw [← eqFuel] at step
+            rw [starNext env _ _ tail step (by simp; omega)]
+            rw [show (next :: tail).length + 5 + extra = tail.length + 5 + (extra + 1) by simp; omega]
+            exact body_total env tail (extra + 1)
+      · have step := unescaped_step env (rest.length + 1 + extra) c rest slash
+        rw [show rest.length + 1 + extra + 4 = rest.length + 5 + extra by omega] at step
+        change _ = .ok (if stopsBody c then none else some rest) at step
+        cases stop : stopsBody c with
+        | true =>
+            simp [stop] at step
+            rw [starStop env _ _ step]
+            simp [bodySuffix, slash, stop]
+        | false =>
+            simp [stop] at step
+            rw [starNext env _ _ rest step (by simp), body_total env rest extra]
+            simp [bodySuffix, slash, stop]
+termination_by input.length
+decreasing_by all_goals simp_wf; all_goals omega
+
+def afterQuote : List Char → Option (List Char)
+  | '"' :: rest => some rest
+  | _ => none
+
+theorem quote_total (env : PegModel.Params) (fuel : Nat) (input : List Char) :
+    PegModel.recognizeEnv Generated.pegGrammar env (fuel + 1) (.lit "\"" "'\"'") input =
+      .ok (afterQuote input) := by
+  rw [PegModelTest.literal_total]
+  cases input with
+  | nil => rfl
+  | cons c rest =>
+      by_cases quoted : c = '"'
+      · subst c; simp [afterQuote, show "\"".toList = ['"'] by rfl, List.isPrefixOf]
+      · have miss : ('"' == c) = false := by
+          cases h : ('"' == c) <;> simp_all <;> exact quoted h.symm
+        simp [afterQuote, quoted, show "\"".toList = ['"'] by rfl, List.isPrefixOf, miss]
+
+theorem generated_string_total (env : PegModel.Params) (input : List Char) (extra : Nat) :
+    PegModel.recognizeEnv Generated.pegGrammar env (input.length + 7 + extra)
+      (.ref "StringLit" []) input =
+      .ok ((afterQuote input).bind fun rest => afterQuote (bodySuffix rest)) := by
+  have fuelEq : input.length + 7 + extra = (input.length + 5 + extra) + 1 + 1 := by omega
+  rw [fuelEq]
+  change PegModel.recognizeEnv Generated.pegGrammar [] ((input.length + 5 + extra) + 1)
+    (.choice [[.lit "\"" "'\"'", .star (.choice bodyChoices), .lit "\"" "'\"'"]]) input = _
+  change PegModel.runChoices (fun items => PegModel.runSequence
+    (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope
+      (input.length + 5 + extra) item rest) (fun _ _ _ => .ok none) [] items input)
+    [[.lit "\"" "'\"'", .star (.choice bodyChoices), .lit "\"" "'\"'"]] = _
+  have quote (remaining : List Char) := quote_total [] (input.length + 4 + extra) remaining
+  simp only [show input.length + 4 + extra + 1 = input.length + 5 + extra by omega] at quote
+  cases h : afterQuote input with
+  | none =>
+      simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, Bind.bind,
+        Except.bind, pure, Except.pure, Except.map, quote, h]
+  | some rest =>
+      have lengthEq : input.length = rest.length + 1 := by
+        cases input with
+        | nil => contradiction
+        | cons c cs =>
+            by_cases quoted : c = '"'
+            · subst c; simp [afterQuote] at h; subst rest; rfl
+            · simp [afterQuote, quoted] at h
+      have body := body_total [] rest (extra + 1)
+      rw [show rest.length + 5 + (extra + 1) = input.length + 5 + extra by omega] at body
+      cases trailing : afterQuote (bodySuffix rest) <;>
+        simp [PegModel.runChoices, PegModel.foldChoice, PegModel.runSequence, List.foldlM, Bind.bind,
+          Except.bind, pure, Except.pure, Except.map, quote, h, body, trailing]
+
 end StringRoundTrip

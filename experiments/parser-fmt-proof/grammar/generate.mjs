@@ -373,9 +373,11 @@ function provedClassLookaheadOrEof(expr) {
     eof?.bind === null && eof.expr.tag === 'not' && eof.expr.expr.tag === 'any';
 }
 if (!fragment && ast) {
-  // StringLit and StringLiteral stay unsupported until canonical arbitrary-input
-  // theorems cover their enclosing alternatives.
   for (const rule of ast.rules) {
+    if (rule.name === 'StringLit' && stringSupported && alternatives[0] === escape &&
+        rule.params.length === 0 && rule.templateParams.length === 0 && rule.alts.length === 1 &&
+        describeItems(rule.alts[0].items) === string && rule.alts[0].action?.trim() === '()' &&
+        rule.alts[0].constructor === null) continue;
     if (wordFullyProved && rule.name === 'Word') continue;
     if (mulOpFullyProved && rule.name === 'MulOp') continue;
     if (keywordFullyProved && rule.name === 'Keyword') continue;
