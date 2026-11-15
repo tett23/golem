@@ -1,6 +1,6 @@
 # ADR 0192: PDF の組版を golem-driver から新しいパッケージに分ける
 
-ステータス: 採択→`PdfInput` の `piProjectVars` と、`Golem.Driver` が export する `projectVarTexts` は [ADR 0196](0196-pass-project-vars-to-golem-typeset.md)
+Status: superseded [{"by":["docs/adr/0196-pass-project-vars-to-golem-typeset.md"],"part":"`PdfInput` の `piProjectVars` と、`Golem.Driver` が export する `projectVarTexts`"}]
 
 ## 文脈
 

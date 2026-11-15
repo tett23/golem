@@ -1,6 +1,6 @@
 # ADR 0386: EPUB のページ一覧とページ部品の色を指定する
 
-ステータス: 採択（未実装）
+Status: accepted-pending
 
 ## 文脈
 

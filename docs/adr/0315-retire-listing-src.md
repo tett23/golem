@@ -1,6 +1,6 @@
 # ADR 0315: @listing のパスを位置引数にそろえる
 
-ステータス: 採択→[ADR 0341](0341-revise-retire-listing-src.md)
+Status: superseded [{"by":["docs/adr/0341-revise-retire-listing-src.md"],"part":null}]
 
 ## 文脈
 

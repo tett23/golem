@@ -1,6 +1,6 @@
 # ADR 0034: unsafePerformIO を減らし、残すものを検査で固定する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0046: Alloy のモデルの `spaceKeeps35` を、前の空きを数えない判定に改める
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

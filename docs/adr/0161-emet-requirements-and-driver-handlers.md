@@ -1,6 +1,6 @@
 # ADR 0161: Emet の関数の要求と driver のハンドラ
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

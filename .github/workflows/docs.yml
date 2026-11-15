@@ -27,12 +27,12 @@ jobs:
           persist-credentials: false
       # status-line changes and link-only changes to committed ADRs are allowed;
       # unlinked or mislinked ADR references (module-qualified ones included),
-      # ADRs without exactly one status line, duplicate ADR numbers, and
-      # changes to committed records (docs/audit/, docs/audits/,
-      # docs/benchmarks/, docs/benchmark/) fail
+      # ADRs without exactly one status line, status transitions that are not
+      # allowed, duplicate ADR numbers, and changes to committed records
+      # (docs/audit/, docs/audits/, docs/benchmarks/, docs/benchmark/) fail
       # (docs/adr/0010, docs/adr/0011, docs/adr/0012, docs/adr/0032,
-      # docs/adr/0048, docs/adr/0194)
-      - uses: tett23/adr-guard@624df60fe8956ef52b3a275198ee938175324496 # v0.10.0
+      # docs/adr/0048, docs/adr/0194, docs/adr/0387)
+      - uses: tett23/adr-guard@ab55769152ed0f8a3465ee3435a2df43ab9d067f # v0.13.1
         with:
           allow-status: true
           allow-links: true

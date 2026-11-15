@@ -1,6 +1,6 @@
 # ADR 0022: 組版のサンプルを兼ねるマニュアル
 
-ステータス: 採択→原稿、読み手、章立て、更新の検査は [ADR 0024](0024-manual-audiences-and-policy.md)
+Status: superseded [{"by":["docs/adr/0024-manual-audiences-and-policy.md"],"part":"原稿、読み手、章立て、更新の検査"}]
 
 ## 文脈
 

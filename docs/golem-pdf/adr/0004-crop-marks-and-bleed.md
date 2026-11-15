@@ -1,6 +1,6 @@
 # ADR 0004: トンボと塗り足し
 
-ステータス: 採択→トンボの色は [ADR 0007](0007-registration-crop-marks.md)、`golem check` が G07002 を出す条件は [ADR 0010](0010-golem-check-g0702-and-template-bleed.md)（`golem check` が四つのターゲットを検査することは [golem-project ADR 0004](../../golem-project/adr/0004-font-file-check-per-target.md)）
+Status: superseded [{"by":["docs/golem-pdf/adr/0007-registration-crop-marks.md"],"part":"トンボの色"},{"by":["docs/golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md"],"part":"`golem check` が G07002 を出す条件"},{"by":["docs/golem-project/adr/0004-font-file-check-per-target.md"],"part":"`golem check` が四つのターゲットを検査すること"}]
 
 ## 文脈
 

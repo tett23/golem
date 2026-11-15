@@ -1,6 +1,6 @@
 # ADR 0037: CI の build ジョブの手戻りをなくす
 
-ステータス: 採択、epubcheck の入れ方と apt の時間切れの再試行は [ADR 0062](0062-epubcheck-from-release-with-cache.md)
+Status: superseded [{"by":["docs/adr/0062-epubcheck-from-release-with-cache.md"],"part":"epubcheck の入れ方と apt の時間切れの再試行"}]
 
 ## 文脈
 

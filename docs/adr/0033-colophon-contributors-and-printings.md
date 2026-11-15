@@ -1,6 +1,6 @@
 # ADR 0033: 奥付の関係者と刷
 
-ステータス: 採択→`@printings` の誤りのコード（G02096、G02097、G02098 と G02076 の範囲）は [ADR 0056](0056-printings-diagnostic-codes-by-cause.md)
+Status: superseded [{"by":["docs/adr/0056-printings-diagnostic-codes-by-cause.md"],"part":"`@printings` の誤りのコード（G02096、G02097、G02098 と G02076 の範囲）"}]
 
 ## 文脈
 

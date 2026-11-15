@@ -1,6 +1,6 @@
 # ADR 0105: プラグインにデータを渡す
 
-ステータス: 採択→`description` の形は [docs/adr/0107](0107-named-describe-fields.md)
+Status: superseded [{"by":["docs/adr/0107-named-describe-fields.md"],"part":"`description` の形"}]
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0061: diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0194: adr-guard を v0.10.0 に上げ、ADR の番号の重複と修飾子付きの参照を検査する
 
-ステータス: 採択
+Status: superseded [{"by":["docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md"],"part":"CI の action の版"}]
 
 ## 文脈
 

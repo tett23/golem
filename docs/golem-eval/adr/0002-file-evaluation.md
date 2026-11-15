@@ -1,6 +1,6 @@
 # ADR 0002: ファイル内評価（S0）
 
-ステータス: 採択→`ruby` と `index` の `/` の区切りは [golem-parser ADR 0010](../../golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)、上書きできるコマンドの一覧は [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)、`@table` の TSV と `format`、`align`、`cells` の引数は [ADR 0004](0004-tsv-tables.md)、`@channel` の追加は [golem-doc ADR 0007](../../golem-doc/adr/0007-plugin-channel-lists.md)、`@listing` の `src=` の廃止予定は [golem-syntax ADR 0002](../../golem-syntax/adr/0002-notice-severity.md)、圏点の形の集合と形を省いた圏点の補いは [golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md)
+Status: superseded [{"by":["docs/golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md"],"part":"`ruby` と `index` の `/` の区切り"},{"by":["docs/adr/0031-adr-code-mismatches.md"],"part":"上書きできるコマンドの一覧"},{"by":["docs/golem-eval/adr/0004-tsv-tables.md"],"part":"`@table` の TSV と `format`、`align`、`cells` の引数"},{"by":["docs/golem-doc/adr/0007-plugin-channel-lists.md"],"part":"`@channel` の追加"},{"by":["docs/golem-syntax/adr/0002-notice-severity.md"],"part":"`@listing` の `src=` の廃止予定"},{"by":["docs/golem-driver/adr/0019-pdf-kenten-shapes.md"],"part":"圏点の形の集合と形を省いた圏点の補い"}]
 
 ## 文脈
 

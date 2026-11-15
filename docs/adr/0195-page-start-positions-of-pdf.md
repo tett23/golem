@@ -1,6 +1,6 @@
 # ADR 0195: PDF の各ページが原稿のどこから始まるかを出す
 
-ステータス: 採択→コードブロックの途中で始まるページの位置は [ADR 0218](0218-page-starts-inside-code-blocks.md)
+Status: superseded [{"by":["docs/adr/0218-page-starts-inside-code-blocks.md"],"part":"コードブロックの途中で始まるページの位置"}]
 
 ## 文脈
 

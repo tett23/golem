@@ -1,6 +1,6 @@
 # ADR 0201: CI の cabal に `CABAL_DIR` を与え、`~/.cabal` の配置に固定する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 
