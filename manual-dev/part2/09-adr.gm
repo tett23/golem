@@ -95,7 +95,7 @@ Status: proposed
 [code: kind] を省くと [code: replace] である。
 
 ```markdown
-Status: superseded [{"part":"行の長さを超える列の扱い","by":["docs/adr/0003-position-handling.md"]}]
+Status: superseded [{"part":"列の扱い","by":["docs/adr/0003-columns.md"]}]
 ```
 
 修正の連なりは [code: adr-guard trace <パス>] で出せる。
@@ -161,7 +161,7 @@ adr-guard には、一覧を出す命令と直す命令がある。
 $ adr-guard links          # リンクのない ADR の参照の一覧
 $ adr-guard links --fix    # リンクを付ける
 $ adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
-$ adr-guard unimplemented  # ステータスが accepted-pending か superseded-pending の ADR の一覧
+$ adr-guard unimplemented  # 実装を待つ ADR の一覧
 $ adr-guard trace <パス>   # ADR の修正の連なり
 $ adr-guard check-numbers  # 番号が重複した ADR の一覧
 $ adr-guard renumber       # 重複した番号を振りなおす
