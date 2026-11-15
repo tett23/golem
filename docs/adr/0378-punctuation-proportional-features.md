@@ -1,6 +1,6 @@
 # ADR 0378: 約物にも palt と vpal を適用できるようにする
 
-ステータス: 採択（未実装）
+Status: accepted-pending
 
 ## 文脈
 

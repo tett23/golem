@@ -1,6 +1,6 @@
 # ADR 0023: 見出しを次の段に送ったら、送った図版を置いた後で、もう一度入るかを確かめる
 
-ステータス: 採択→F4 の上限は [ADR 0211](../../adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"F4 の上限"}]
 
 ## 文脈
 

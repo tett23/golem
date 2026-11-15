@@ -1,6 +1,6 @@
 # ADR 0039: HTML と EPUB に写す SVG の図版の、動く中身を拒む
 
-ステータス: 採択→G08014 の文言（動的なコンテンツ）は [ADR 0057](0057-g0814-says-dynamic-content.md)
+Status: superseded [{"by":["docs/adr/0057-g0814-says-dynamic-content.md"],"part":"G08014 の文言（動的なコンテンツ）"}]
 
 ## 文脈
 

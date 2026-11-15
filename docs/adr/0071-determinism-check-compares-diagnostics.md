@@ -1,6 +1,6 @@
 # ADR 0071: アーキテクチャ間の決定性の検査で、diagnostics と終了コードも比べる
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

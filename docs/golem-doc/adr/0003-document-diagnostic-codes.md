@@ -1,6 +1,6 @@
 # ADR 0003: 文書の組み立ての診断のコード（G04001 から G04005）
 
-ステータス: 採択→G04004 のメッセージと条件のコードブロックへの広げ、番号と題を持つ要素へのコードブロックの追加は [golem-driver ADR 0023](../../golem-driver/adr/0023-code-block-book-features.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0023-code-block-book-features.md"],"part":"G04004 のメッセージと条件のコードブロックへの広げ、番号と題を持つ要素へのコードブロックの追加"}]
 
 ## 文脈
 

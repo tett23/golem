@@ -1,6 +1,6 @@
 # ADR 0322: 数に関する diagnostics を実装の型と境界の入力で確かめる
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

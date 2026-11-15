@@ -1,6 +1,6 @@
 # ADR 0009: 構文の段階の診断コード
 
-ステータス: 採択→G01019 の条件とメッセージは [ADR 0013](0013-splat-after-keyword-arguments.md)
+Status: superseded [{"by":["docs/golem-parser/adr/0013-splat-after-keyword-arguments.md"],"part":"G01019 の条件とメッセージ"}]
 
 ## 文脈
 

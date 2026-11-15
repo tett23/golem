@@ -1,6 +1,6 @@
 # ADR 0018: 段組み
 
-ステータス: 採択→索引の段組みは [ADR 0025](0025-index-columns.md)、回り込ませない図版の大きさは [golem-driver ADR 0034](../golem-driver/adr/0034-fit-figures-to-column.md)、（回した図版が待っているあいだの改段）は [golem-driver ADR 0039](../golem-driver/adr/0039-breaks-around-turned-figures.md)
+Status: superseded [{"by":["docs/adr/0025-index-columns.md"],"part":"索引の段組み"},{"by":["docs/golem-driver/adr/0034-fit-figures-to-column.md"],"part":"回り込ませない図版の大きさ"},{"by":["docs/golem-driver/adr/0039-breaks-around-turned-figures.md"],"part":"（回した図版が待っているあいだの改段）"}]
 
 ## 文脈
 

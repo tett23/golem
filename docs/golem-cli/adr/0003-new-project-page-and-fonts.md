@@ -1,6 +1,6 @@
 # ADR 0003: golem new の雛形に版面とフォントを入れる
 
-ステータス: 採択→雛形の `preflight.toml` は[ADR 0006](0006-preflight.md)
+Status: superseded [{"by":["docs/golem-cli/adr/0006-preflight.md"],"part":"雛形の `preflight.toml`"}]
 
 ## 文脈
 

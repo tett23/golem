@@ -1,6 +1,6 @@
 # ADR 0194: adr-guard を v0.10.0 に上げ、ADR の番号の重複と修飾子付きの参照を検査する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

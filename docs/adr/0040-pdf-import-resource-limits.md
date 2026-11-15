@@ -1,6 +1,6 @@
 # ADR 0040: PDF の図版の取り込みの資源の上限
 
-ステータス: 採択→`Contents` の繰り返しの名指しの扱いと上限、テストの C3 は [ADR 0051](0051-reuse-repeated-pdf-content-streams.md)
+Status: superseded [{"by":["docs/adr/0051-reuse-repeated-pdf-content-streams.md"],"part":"`Contents` の繰り返しの名指しの扱いと上限、テストの C3"}]
 
 ## 文脈
 
