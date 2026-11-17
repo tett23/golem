@@ -10,7 +10,7 @@ template of golem new with that font in place of its font.
 -}
 module CffRandomSpec (cffRandomTests) where
 
-import Control.Monad (forM, forM_)
+import Control.Monad (forM, forM_, when)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -80,7 +80,7 @@ build directory is removed: the exit code and stdout followed by stderr.
 build :: FilePath -> [(String, String)] -> [String] -> IO (ExitCode, String)
 build book extra args = do
   exists <- doesDirectoryExist (book </> "build")
-  if exists then removeDirectoryRecursive (book </> "build") else pure ()
+  when exists (removeDirectoryRecursive (book </> "build"))
   env <- filter ((/= "FREETYPE_PROPERTIES") . fst) <$> getEnvironment
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" ("build" : args)) {cwd = Just book, env = Just (extra <> env)} ""
   pure (code, err)

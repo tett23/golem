@@ -549,7 +549,7 @@ run t font locals depth code st0 c0 back = go code st0 c0
                 | count < 33900 = 1131
                 | otherwise = 32768
               enter k cc = reading (entry t ix (k + bias)) cc $ \sub ->
-                if depth >= 10 then Went cc else run t font locals (depth + 1) sub st' cc (\st'' cc' -> go rest st'' cc')
+                if depth >= 10 then Went cc else run t font locals (depth + 1) sub st' cc (go rest)
            in case v of
                 Pt x -> enter (toInt x) c
                 _
