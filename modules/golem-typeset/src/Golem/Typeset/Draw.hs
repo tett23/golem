@@ -169,7 +169,12 @@ masterFlowText provider input = case checkedGeometry inp of
       UIndexEntry {} -> paragraph (uInlines unit)
       _ -> []
       where
-        paragraph = T.splitOn "\n" . displayedInlines (unitEnv flow unit)
+        -- A paragraph with no text of its own in the master flow (only a
+        -- sidenote, say) is not an explicit empty line (Golem ADR 0355).
+        paragraph inls = case displayedInlines (unitEnv flow unit) inls of
+          t
+            | T.null t -> []
+            | otherwise -> T.splitOn "\n" t
 
 renderPdfAllUsing :: Bool -> Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
