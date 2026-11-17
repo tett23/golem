@@ -1,6 +1,6 @@
 # ADR 0357: 範囲外を参照する CFF を PDF への埋め込み前に拒む
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
