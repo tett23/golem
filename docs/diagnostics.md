@@ -6308,9 +6308,9 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: <キー>`（`table` では「キャプションと傍注」が「表のセル」になる）、`[tables] の number には {n} などの差し込みを書きます: <書式>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル table には 0 でない indent、first-line-indent、end-indent を書けません。表のセルは字下げをしません: <キー>`、`[tables] の number には {n} などの差し込みを書きます: <書式>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)（`caption` と `sidenote` の字下げを外した）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -6322,7 +6322,7 @@ style.toml の誤りです
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - 段落スタイルの `padding` か `border-radius` が負であるか、寸法として読めない。`background` か `border` に `true` を書いた（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
-- 組み込みの段落スタイル `caption`、`sidenote`、`table` に、0 でない `indent`、`first-line-indent`、`end-indent` を書いた。キャプションと傍注と表のセルは字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。三つに書けないキーは、0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）である。目次の項目の `toc-1` から `toc-6` にも、囲みの七つのキーを書けない（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
+- 組み込みの段落スタイル `table` に、0 でない `indent`、`first-line-indent`、`end-indent` を書いた。表のセルは字下げをしないためである。値が 0 なら誤りとせず、お知らせ [G03100](#g03100) を出す（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。`caption` と `sidenote` には字下げを書ける（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。`caption`、`sidenote`、`table` の三つに書けないキーは、`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）である。目次の項目の `toc-1` から `toc-6` にも、囲みの七つのキーを書けない（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
 - 段落スタイルの `align` に九つのほかの値を書いたか、`space-before` か `space-after` に負の数を、`end-indent` に負の長さを書いた（[docs/adr/0189](adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。段落スタイル `code` に `align`、`space-before`、`space-after`、`end-indent` を書いた場合も同じである。
 - 段落スタイルの `border-width` を zw で書いたか、負の値を書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 段落スタイルの `border-style` に `solid`、`dashed`、`dotted` のほかの値を書いた。`border-sides` が空の配列か、同じ辺を二度含むか、`before`、`after`、`start`、`end` のほかの値を含む（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
@@ -7038,27 +7038,28 @@ diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`
 
 ## G03100
 
-キャプションと傍注は字下げを掛けないので、`<スタイル>.<キー> = <値>` は効果がありません
+表のセルは字下げを掛けないので、`<スタイル>.<キー> = <値>` は効果がありません
 
 - 重大度: お知らせ
 - 状態: 使用中
 
 ### 意味
 
-組み込みの段落スタイル `caption`、`sidenote`、`table` に、値が 0 の `indent`、`first-line-indent`、`end-indent`（`"0zw"`、`"0mm"`、`"-0pt"` など）を書いた。
-キャプションと傍注と表のセルは字下げをしない（組み込みの定義が字下げ 0 を持つ）ので、書いた値は組版を変えない（`table` は [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+組み込みの段落スタイル `table` に、値が 0 の `indent`、`first-line-indent`、`end-indent`（`"0zw"`、`"0mm"`、`"-0pt"` など）を書いた。
+表のセルは字下げをしない（組み込みの定義が字下げ 0 を持つ）ので、書いた値は組版を変えない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
+`caption` と `sidenote` の字下げはキャプションと傍注の本文に掛かるので、値が 0 でもこのお知らせは出さない（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。
 0 でない値は [G03006](#g03006) のエラーである。
 `style.toml` では位置は値で、`style.toml` を読めた後に出す。
 ファイルの中の定義（`@style-def`）では、位置はそのキーの引数で、評価（golem-eval の `Golem.Eval.Settings`）が出す。
 `<値>` は書いたとおりの値である（`style.toml` では `"0zw"` のように引用符を付ける）。
 
-- メッセージ: `キャプションと傍注は字下げを掛けないので、<スタイル>.<キー> = <値> は効果がありません`（例: `キャプションと傍注は字下げを掛けないので、caption.indent = "0zw" は効果がありません`）。`table` では「キャプションと傍注」が「表のセル」になる
+- メッセージ: `表のセルは字下げを掛けないので、<スタイル>.<キー> = <値> は効果がありません`（例: `表のセルは字下げを掛けないので、table.indent = "0zw" は効果がありません`）
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`、golem-driver の `Golem.Driver`）、評価（golem-eval の `Golem.Eval.Settings`）
-- ADR: [golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)。お知らせにしたのは実装のときのメンテナーの判断である
+- ADR: [golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)、[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。お知らせにしたのは実装のときのメンテナーの判断である
 
 ### 主な原因
 
-- `body` の字下げを打ち消すつもりで、`caption` か `sidenote` に字下げ 0 を書いた。
+- `body` の字下げを打ち消すつもりで、`table` に字下げ 0 を書いた。
 
 ### 直し方
 
@@ -9467,7 +9468,7 @@ PDF を書かない。
 
 `style.toml` か原稿のファイルが定める段落スタイルについて、版面の段の行長から `indent` と `first-line-indent`（負なら 0）と `end-indent` を引いた値が、その段落スタイルの文字の大きさの 8 字分に満たない。
 囲みを持つ段落スタイルでは、左右の `padding` も引く（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
-字下げをしない `caption` と `sidenote`、[G07043](#g07043) が検査する `code` は検査しない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+段の行長でなく部品の内幅で組む `caption` と `sidenote`、[G07043](#g07043) が検査する `code` は検査しない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。
 字下げが大きすぎる段落スタイルを `based-on` で引き継ぐほかの段落スタイルにも出る。
 PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
 PDF を書かない。

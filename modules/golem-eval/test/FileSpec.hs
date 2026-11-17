@@ -1057,17 +1057,20 @@ noticeTests =
         [c | (c, _, _, _) <- diagsWith hctx "@style-def character bold font=heading\n\n[bold: x]\n"] @?= ["G02062"]
         at "@style-def paragraph letter indent=1zw\n@style-def paragraph quote indent=2zw\n\nx\n" @?= [("G02062", "ファイルの中の定義が段落スタイルの quote を上書きしています", 39)],
       -- golem-driver ADR 0043
-      testCase "G03100: a zero indent of caption or sidenote in @style-def, at the keyword" $ do
+      testCase "G03100: a zero indent of table in @style-def, at the keyword; none for caption and sidenote (docs/adr/0367)" $ do
         let at src = [(c, m, st) | (c, m, st, _) <- diagsWith sctx src, c == "G03100"]
-        at "@style-def paragraph caption indent=0zw\n\nx\n" @?= [("G03100", "キャプションと傍注は字下げを掛けないので、caption.indent = 0zw は効果がありません", 29)]
-        at "@style-def paragraph sidenote first-line-indent=\"0mm\"\n\nx\n" @?= [("G03100", "キャプションと傍注は字下げを掛けないので、sidenote.first-line-indent = \"0mm\" は効果がありません", 30)]
+        at "@style-def paragraph table indent=0zw\n\nx\n" @?= [("G03100", "表のセルは字下げを掛けないので、table.indent = 0zw は効果がありません", 27)]
+        at "@style-def paragraph table first-line-indent=\"0mm\"\n\nx\n" @?= [("G03100", "表のセルは字下げを掛けないので、table.first-line-indent = \"0mm\" は効果がありません", 27)]
+        at "@style-def paragraph caption indent=0zw\n\nx\n" @?= []
+        at "@style-def paragraph sidenote first-line-indent=\"0mm\"\n\nx\n" @?= []
         at "@style-def paragraph quote indent=0zw\n\nx\n" @?= []
-        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph caption indent=1zw\n\nx\n"] @?= ["G03006"]
-        let (_, ds, _) = runS sctx "@style-def paragraph caption indent=0zw\n\nx\n"
+        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph caption indent=1zw\n\nx\n", c /= "G02062"] @?= []
+        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph table indent=1zw\n\nx\n"] @?= ["G03006"]
+        let (_, ds, _) = runS sctx "@style-def paragraph table indent=0zw\n\nx\n"
         sort [(diagCode d, diagSeverity d) | d <- ds] @?= [(DiagnosticCode "G02062", Notice), (DiagnosticCode "G03100", Notice)],
       -- docs/adr/0189
-      testCase "G03100 for a zero end-indent of caption, G03118 for the spine in a vertical book, at the keyword" $ do
-        [(c, st) | (c, _, st, _) <- diagsWith sctx "@style-def paragraph caption end-indent=0zw\n\nx\n", c == "G03100"] @?= [("G03100", 29)]
+      testCase "G03100 for a zero end-indent of table, G03118 for the spine in a vertical book, at the keyword" $ do
+        [(c, st) | (c, _, st, _) <- diagsWith sctx "@style-def paragraph table end-indent=0zw\n\nx\n", c == "G03100"] @?= [("G03100", 27)]
         let vertical = either (error . show) id (parseStyle (FileId 0) "[page]\nsize = \"B6\"\nwriting-mode = \"vertical\"\n")
             vctx = ctx {ctxStyle = vertical, ctxCharStyles = Map.keysSet (stCharStyles vertical), ctxParaStyles = paraLineBreaks vertical}
         [(c, m, st) | (c, m, st, _) <- diagsWith vctx "@style-def paragraph quote size=1zw align=towards-spine\n\nx\n"]

@@ -1,6 +1,6 @@
 # ADR 0367: キャプションと傍注に段落の組み方も適用する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

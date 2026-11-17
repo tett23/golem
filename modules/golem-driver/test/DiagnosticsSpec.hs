@@ -140,11 +140,11 @@ everyNoticeProjects =
       ]
   ]
   where
-    -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
+    -- five lines of 12 characters, a paragraph style with rules, and a zero indent of table (G03100)
     -- the role inkless of the fake fonts draws dashes without ink (G07101)
     style =
       replaceIn "lines = 30" "lines = 5" horizontalStyle
-        <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+        <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.table]\nindent = \"0zw\"\n"
         -- a paragraph style that is not broken (G07112, docs/adr/0261)
         <> "\n[paragraph-styles.kept]\nkeep-all-lines = true\n"
         <> fakeBody
@@ -165,7 +165,7 @@ everyNoticeProjects =
           "[style overhang: あ\x201Dい]\n\n", -- G07126 (docs/adr/0302)
           "a\xAD. [code: x[shy]y]\n\n", -- G07123 and G07124 (docs/adr ADR 0272)
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
-          "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
+          "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046
           "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047 (an info)
           "@blank-line\n@blank-line\n\nc\n\n", -- G02094
@@ -196,12 +196,12 @@ noticeTests =
         codesOf (nDiagnostics n) @?= ["G02062", "G02063", "G02064", "G04007", "G04008", "G08008"]
         map diagSeverity (nDiagnostics n) @?= replicate 6 Notice,
       -- golem-driver ADR 0043
-      testCase "G03100: a zero indent of caption in style.toml is a notice at style.toml; silence-notices drops it" $ do
-        let style = withBodyFont horizontalStyle <> "\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+      testCase "G03100: a zero indent of table in style.toml is a notice at style.toml; silence-notices drops it (docs/adr/0367)" $ do
+        let style = withBodyFont horizontalStyle <> "\n[paragraph-styles.table]\nindent = \"0zw\"\n"
             files extra = [("manifest.toml", noticeManifest extra), ("style.toml", style), ("a.gm", "abc\n")] <> fakeFontFiles
         n <- buildNotified (files "") id
         [(diagCode d, diagSeverity d, diagMessage d) | d <- nDiagnostics n]
-          @?= [(DiagnosticCode "G03100", Notice, "キャプションと傍注は字下げを掛けないので、caption.indent = \"0zw\" は効果がありません")]
+          @?= [(DiagnosticCode "G03100", Notice, "表のセルは字下げを掛けないので、table.indent = \"0zw\" は効果がありません")]
         assertBool "outputs" (not (null (nOutputs n)))
         quiet <- buildNotified (files "\n[diagnostics]\nsilence-notices = [\"G03100\"]\n") id
         nDiagnostics quiet @?= [],
