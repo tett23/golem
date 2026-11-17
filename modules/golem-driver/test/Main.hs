@@ -9,7 +9,6 @@ import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
-import ParagraphStyleControlsSpec (paragraphStyleControlsTests)
 import ChapterNotesSpec
 import CliSpec
 import CodeFontSpec (codeFontTests)
@@ -38,6 +37,7 @@ import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+import ParagraphStyleControlsSpec (paragraphStyleControlsTests)
 #ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
 #endif
