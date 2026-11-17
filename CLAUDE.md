@@ -26,3 +26,8 @@ Golem はユーザーに組版システムと組版にまつわるワークフ�
 
 - 文書を書く前、直す前には `doc-writing` スキルを読み、文書を変えた後は `close-reading` スキルで精読する（グローバルの CLAUDE.md の「スキル」の表）。
 - 日本語の文章を書くときは、加えて cognitive-rhythm-writing と japanese-tech-writing スキルを使用する。
+
+## hook
+
+- hook を迂回しない。`git commit --no-verify` などで pre-commit を飛ばしてはいけない。
+- origin/main を取り込むマージを adr-guard の pre-commit が拒むことがある。main が ADR を `proposed` で足し、別のコミットで `accepted-pending` にした場合で、マージの差分では `Absent -> accepted-pending` に見えるためである。そのときは、main のその二つのコミットを順にマージしてから、origin/main をマージする（PR #1011 と #1013 の手順）。

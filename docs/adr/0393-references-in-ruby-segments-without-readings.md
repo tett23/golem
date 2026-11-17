@@ -1,6 +1,6 @@
 # ADR 0393: 読みのないルビの区切りの中の参照を Reference にする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
