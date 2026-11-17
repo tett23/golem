@@ -147,7 +147,8 @@ character of the marker).
 data HtmlLists = HtmlLists
   { hlBullets :: !(NonEmpty Text),
     hlNumbers :: !(NonEmpty NumberFormat),
-    hlGap :: !(Maybe Bool)
+    hlGap :: !(Maybe Bool),
+    hlMarkerStyle :: !(Maybe Text)
   }
 
 -- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
@@ -181,7 +182,8 @@ data HtmlCharStyle = HtmlCharStyle
     -- | the declarations of the underline and the strikethrough (docs/adr/0270)
     hcsTextDecoration :: ![Text],
     -- | the characters do not break between them (docs/adr ADR 0272)
-    hcsNoBreak :: !Bool
+    hcsNoBreak :: !Bool,
+    hcsSize :: !(Maybe Text)
   }
   deriving stock (Eq)
 
@@ -1128,6 +1130,7 @@ css cfg book =
       <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
       -- the markers of [lists] by depth (golem-driver ADR 0013)
       <> maybe [] (listRules cfg book) (hcLists cfg)
+      <> markerRules "" (hcCharStyles cfg)
       -- forced breaks, only the kinds the book uses (docs/adr ADR 0017)
       <> [ "[data-break-before=\"" <> name <> "\"] { page-break-before: always; break-before: " <> name <> "; }"
          | k <- Set.toAscList (hcBreakKinds cfg),
@@ -1237,6 +1240,12 @@ css cfg book =
             <> ["margin-inline-end: " <> i | Just i <- [hrEndIndent r]]
         )
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
+    markerRules prefix styles =
+      [ rule (prefix <> markerSelector) (["all: inherit" | not (T.null prefix)] <> declsOf "" cs <> ["font-size: " <> size | Just size <- [hcsSize cs]])
+      | Just name <- [hcLists cfg >>= hlMarkerStyle],
+        Just cs <- [Map.lookup name styles]
+      ]
+    markerSelector = ":is(ol, ul)[class^=\"list-\"] > li::marker"
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written
     {- the box of each style that has one, its paragraphs without their
@@ -1431,7 +1440,7 @@ css cfg book =
           boxLocal =
             [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
-       in charRules <> paraStyleRules <> faceRules <> boxLocal <> listRule
+       in charRules <> markerRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text
