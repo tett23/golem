@@ -189,6 +189,8 @@ data Look = Look
     {- | JLReq's punctuation is shaped with fwid unless a width feature is
     written (docs/adr/0302): punctuation-width = "full-width"
     -} lkFullWidthPunctuation :: !Bool,
+    -- | The structure leaf of a reference or surrounding text inside a ruby base.
+    lkRubyBaseLeaf :: !(Maybe Int),
     {- | the look of the reading in the character style of [composition.ruby]
     reading-style, set on the look of a composed ruby box alone; Nothing
     is 'readingLook' of the look (docs/adr/0369)
@@ -250,4 +252,4 @@ outside a language span, no wrap mark, no features, the normal position and
 breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True Nothing
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True Nothing Nothing
