@@ -132,7 +132,7 @@ pdfPipelineTests =
         -- is known to reach G08018 through the real provider (golem-pdf ADR 0013)
         let failing =
               FontProvider $ \files fid style locals ->
-                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
+                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left [diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"])})
                   <$> loadFonts golemFontProvider files fid style locals
         b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just sansStyle) [("fonts/sans.otf", sans)]
         map diagCode (bErrors b) @?= [DiagnosticCode "G08018"]
@@ -177,7 +177,8 @@ pdfPipelineTests =
         forM_ [10, 29] $ \call -> do
           let bad = BS.take 51558 sans <> BS.pack [250, 255, call] <> BS.drop 51561 sans
           b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
-          map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+          -- FreeType cannot read T either: G08109 as well (Golem ADR 0390)
+          map diagCode (bErrors b) @?= [DiagnosticCode "G08107", DiagnosticCode "G08109"]
           bPdf b @?= Nothing,
       testCase "ADR 0357 I1: used local subroutine endpoint exceeds the table" $ do
         (sans, _) <- realLatinFonts
