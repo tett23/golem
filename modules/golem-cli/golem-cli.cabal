@@ -59,6 +59,7 @@ test-suite golem-cli-test
   hs-source-dirs:   test shared
   main-is:          Main.hs
   other-modules:    Golem.Cli.BuildCommand
+                    CffRandomSpec
                     CommandsSpec
                     FmtTableSpec
                     LocaleSpec

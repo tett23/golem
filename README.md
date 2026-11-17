@@ -205,6 +205,7 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
+参照を確かめきれない字は G08108、FreeType が寸法を読めない字は G08109 とし、どちらも PDF を書かない（[Golem ADR 0390](docs/adr/0390-deterministic-and-exhaustive-cff-random.md)）。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
