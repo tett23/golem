@@ -35,7 +35,7 @@ import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.CffRos (withRos)
 import Golem.TestSupport.ExternalTool (needsTool)
-import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PartLine (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Typeset.FontProvider (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
 import Golem.Typeset.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Numeric (readHex)
@@ -1504,7 +1504,7 @@ codeTests =
         (ci : _) -> do
           ciCaptionSize ci @?= 8 * pt
           ciCaptionSpan ci @?= 1
-          [T.concat [bcText c | Box _ c <- lineItems l] | l <- ciCaption ci] @?= ["L1　設定"]
+          [T.concat [bcText c | Box _ c <- lineItems (ptLine l)] | l <- ciCaption ci] @?= ["L1　設定"]
         [] -> assertFailure "no code"
       contents <- miniPdf fakeProvider True style "@caption 設定\n```\na\n```\n" [] >>= pageContents
       let ta = firstColumn geom
