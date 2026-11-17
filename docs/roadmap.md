@@ -51,6 +51,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **パスの描画のベンチマーク**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは shem（[tett23/shem](https://github.com/tett23/shem)）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。
 
+- **プルリクエストの CI の時間の予算（未実装）**：プルリクエストの `ci.yml` の時間の中央値を 300 秒以下とする予算を、計測のコマンド `scripts/ci/ci-critical-path.sh` で確かめられるようにする。今の CI はこの予算を超えており、収める組み替えは別の ADR で決める。 [Golem ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)。
+
 ### 記法と設定の値
 
 - **原稿の変数の宣言を `@set` に戻す（未実装）**：今は行頭の `set 名前 = 式` を変数の宣言として読み、`@set` に廃止予定の notice G02155 を出す。`@` の無い宣言は本文と区別がつかないので、宣言を `@set` に戻し、G02155 を廃止する。 [Golem ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)。
