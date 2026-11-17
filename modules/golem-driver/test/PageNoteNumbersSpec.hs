@@ -7,11 +7,11 @@ import Data.List (isSuffixOf, nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.Driver
-import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), Severity (..), SrcSpan (..))
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Project.Style (Sp (..))
+import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), Severity (..), SrcSpan (..))
 import Golem.Typeset (PdfLayout (..), SetLine (..), layoutPdf, layoutPdfUnnumbered)
 import Support
 import System.FilePath ((</>))
