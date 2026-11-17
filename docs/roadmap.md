@@ -83,12 +83,12 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **柱とノンブル（未実装）**：本文の役割の書体と版面の文字の大きさで描く。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
   - **隠しノンブル（未実装）**：本文の役割の書体で、`[hidden-folio]` の `size` だけを変えられる。 [Golem ADR 0365](adr/0365-hidden-folio-style.md)。
   - **脚注と章末の注の本文を別々の段落スタイルで組むこと（未決）**：`[notes]` の `body-style` は、ページの下の脚注と章末の注の本文に同じ段落スタイルを当てる。ADR は「脚注本文、章末注本文、章末注の一覧の見出しにそれぞれ段落スタイルを選ぶ」と書き、境界の入力の表に「脚注本文だけ指定すれば章末注は既定」を挙げる一方、キーは `body-style` と `heading-style` の二つだけを決めている。脚注と章末の注に別のキーを設けるかを決める。 [Golem ADR 0366](adr/0366-note-body-styles.md)。
-  - **キャプションと傍注の内幅を超える字下げ（未決）**：`caption` と `sidenote` の字下げで、行の使える幅が 0 以下になっても、誤りにしない。本文の段落の G07025 は段の行長で検査し、キャプションと傍注は部品ごとに内幅が違うので、検査から除いている。行は一字ずつの溢れた行になり、図版のキャプションでは段の行数を超えて G07038 になることがある（ADR の実装で見つかった）。部品の内幅で検査する diagnostic を設けるか、その下限（本文と同じ 8 字分か）を決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
+  - **キャプションと傍注の行の幅を使い切る字下げ（未実装）**：`caption` と `sidenote` の字下げで行の使える幅が 1 字分に満たなくなっても、誤りにしない。ファイルのスタイルの `caption` の字下げは、キャプションに当たらない。字下げが行の幅を使い切るキャプションを G07127、傍注を G07128 とし、dev では警告、prod ではエラーにする。 [Golem ADR 0389](adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **正規表現スタイルの届かない文字（未実装）**：見出し、定義リストの用語、注の本文には正規表現スタイルを当てない。 [Golem ADR 0368](adr/0368-regex-style-scope.md)。
   - **ルビの読み（未実装）**：外側の書体と色で、親文字の半分の大きさで組み、文字スタイルを当てる手段がない。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
   - **トラッキングの届かない文字（未実装）**：縦中横の箱とルビにトラッキングを足さない。 [Golem ADR 0370](adr/0370-tracking-inline-boxes.md)。
-  - **傍注の `※` の印（未実装）**：印の位置の見た目のまま組み、文字スタイルを当てる手段がない。 [Golem ADR 0371](adr/0371-sidenote-marker-style.md)。
+  - **傍注の `※` の印**：`[sidenotes]` の `marker-style` で印の文字スタイルを指定できる。 [Golem ADR 0371](adr/0371-sidenote-marker-style.md)。
 - **柱とノンブルのスタイル（未実装）**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
 - **番号と題のあいだの区切りの設定（未実装）**：見出し、図版、コードブロック、表のキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
 - **段落スタイルの拡張（未実装）**：行送り、次のスタイル、ドロップキャップと字取り、先頭文字スタイル、`@style` の引数による段落ごとの上書き、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リストなどへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。

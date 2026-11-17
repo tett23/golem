@@ -74,7 +74,7 @@ tests =
         assertBool "too wide" (isLeft (pageGeometry (FileId 0) False (styleWith False False (grid 40 30 1 Nothing))))
         assertBool "too many lines" (isLeft (pageGeometry (FileId 0) False (styleWith False False (grid 30 60 1 Nothing)))),
       testCase "sidenote column on the fore-edge side; errors when vertical or too wide" $ do
-        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
+        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}" Nothing
             s = (styleWith False False (grid 25 30 1 Nothing)) {stSidenotes = Just (sn 60)}
             g = geom s
             Rect ox oy _ oh = pgTypeArea g
@@ -84,7 +84,7 @@ tests =
         assertBool "too wide" (isLeft (pageGeometry (FileId 0) False s {stSidenotes = Just (sn 200)}))
         assertBool "vertical" (isLeft (pageGeometry (FileId 0) False ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
       testCase "G07001: one diagnostic per failed condition, at the top of the given file (golem-driver ADR 0016)" $ do
-        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
+        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}" Nothing
             base = styleWith False False (grid 30 30 1 Nothing)
             noGrid = defaultStyle {stPage = Just (Page (NamedSize "A5") False False Nothing 0)}
             zwSize = styleWith False False ((grid 30 30 1 Nothing) {gridFontSize = Zw 1})
@@ -107,7 +107,7 @@ tests =
           )
           cases,
       testCase "a sidenote column on a page of two columns is G07001 (docs/adr ADR 0018)" $ do
-        let sn = SidenoteStyle (Abs (pt 20)) (Abs (pt 10)) "{n}"
+        let sn = SidenoteStyle (Abs (pt 20)) (Abs (pt 10)) "{n}" Nothing
         case pageGeometry (FileId 0) False ((styleWith False False (grid 12 30 2 (Just (Abs (pt 20))))) {stSidenotes = Just sn}) of
           Left [d] -> do
             diagCode d @?= DiagnosticCode "G07001"

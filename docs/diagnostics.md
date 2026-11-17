@@ -6541,6 +6541,7 @@ style.toml のスタイルの参照が不正です
 `[notes]` の `mark-style` か `body-mark-style` が文字スタイルにない場合も、この誤りとする（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `[notes]` の `body-style` か `heading-style` が段落スタイルにない場合も、この誤りとする（[ADR 0366](adr/0366-note-body-styles.md)）。
 `[lists]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
+`[sidenotes]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
 段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`（ファイルの中の定義では `@style-def のスタイルの参照が不正です: <理由>`）。正規表現スタイルの理由は `正規表現スタイルの文字スタイルがありません: <名前>` か `正規表現スタイルの段落スタイルがありません: <名前>`
