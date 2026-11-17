@@ -237,7 +237,7 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 文字スタイルと段落スタイルの `punctuation-width = "font"` で、フォントの字形のまま組む（[ADR 0302](docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
-見出しと定義リストの用語にも本文の規則を当て、注本文は段落ごとに照合する（[Golem ADR 0368](docs/adr/0368-regex-style-scope.md)）。
+見出し、定義リストの用語、注の本文の段落には、`body` の正規表現スタイルを一つの段落ずつ当てる（[ADR 0368](docs/adr/0368-regex-style-scope.md)）。
 
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 

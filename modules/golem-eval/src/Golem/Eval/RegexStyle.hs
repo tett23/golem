@@ -53,9 +53,12 @@ regexRules style =
 gets those of its paragraph style (body when it has none), a paragraph of
 a caption those of caption, the body of a sidenote those of sidenote,
 each cell of a table those of the paragraph style of its cells, table
-when it has none (docs/adr/0262). Headings and definition terms use
-body, and paragraphs within notes use their own paragraph styles
-(docs/adr/0368).
+when it has none (docs/adr/0262). A heading, each term of a definition
+list and each paragraph of the body of a note get those of body, each
+matched alone: the generated number of a heading and the mark of a note
+are not in its text, and the mark of a note in a paragraph is one
+character there (docs/adr/0368). The captions of tables and code blocks
+are left as they are.
 -}
 applyRegexStyles :: RegexRules -> Document -> Document
 applyRegexStyles rules d
@@ -79,10 +82,11 @@ applyRegexStyles rules d
     item i = i {itemBlocks = map (block Nothing) (itemBlocks i)}
     paragraph :: [(Regex, Text)] -> [InlineF r] -> [InlineF r]
     paragraph rs is = wrap rs (map sidenotes is)
-    -- the bodies of sidenotes, with the regex styles of sidenote
+    -- the bodies of notes and sidenotes
     sidenotes :: InlineF r -> InlineF r
     sidenotes = \case
-      Note sp n bs -> Note sp n (map (block Nothing) bs)
+      -- the paragraphs of the body of a note, with the regex styles of body (docs/adr/0368)
+      Note sp n bs -> Note sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "body") is); other -> other} | b <- bs]
       Sidenote sp n bs -> Sidenote sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "sidenote") is); other -> other} | b <- bs]
       Kenten sp k xs -> Kenten sp k (map sidenotes xs)
       Color sp c xs -> Color sp c (map sidenotes xs)
