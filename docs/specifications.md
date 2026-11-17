@@ -499,6 +499,9 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
 - `Golem.TestSupport.ExternalTool`：外部ツールを使うテストの補助。
 - `Golem.TestSupport.Parallel`：いくつもの capability で動作を同時に走らせる補助。
 - `Golem.TestSupport.TimeLimit`：golem-pdf と golem-svg のテストの時間の上限を、プロセスの CPU 時間と実時間の二つで測る補助（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+  上限の `hangLimits` は、ネイティブでは CPU 時間 60 秒、実時間 300 秒である（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+  wasm32 では、CPU 時間 600 秒、実時間 1200 秒である。
+  どちらの値を使うかは、実行のときの環境の変数ではなく、コンパイルのときに `wasm32_HOST_ARCH` で決める（[docs/adr/0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md)）。
 - `Golem.TestSupport.Watchdog`（`watchTests`）：`-threaded` のテストのスイートが止まったときに、Haskell のランタイムの外の POSIX のスレッドで実時間を測り、走っていたテストの名前を書いてプロセスを止める補助。
   golem-driver-parallel-test がこれを使う（[docs/adr/0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。
   golem-emet-test も木の全体を `watchTests 300` で包み、aarch64 の GHC の不具合（GHC の issue #28001）を避けるために、`localOption (NumThreads 1)` でテストを一つずつ走らせる（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。
