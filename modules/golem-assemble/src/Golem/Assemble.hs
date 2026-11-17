@@ -182,6 +182,8 @@ data Book = Book
     -} bookChannels :: ![(ListAt, Text, [ChannelEntry])],
     -- | the channels the plugins declare, by name
     bookChannelDecls :: !(Map Text ChannelDecl),
+    -- | Per-file overrides for heading levels and captions (Golem ADR 0372).
+    bookTitleSeparators :: !(Map (FileId, Maybe Int) Text),
     {- | the images plugins made for figures, by the source of the figure
     (docs/adr/0123); the outputs read them instead of a file of the project
     -} bookImages :: !(Map Text ByteString)
@@ -450,6 +452,7 @@ assemble cfg evalDeferred docs0 =
             bookChapterOf = acChapterOf cfg,
             bookChannels = channelLists (acChannels cfg) docs',
             bookChannelDecls = acChannels cfg,
+            bookTitleSeparators = Map.empty,
             bookImages = Map.empty
           },
         sortDiagnostics (nsDiags ns <> figureErrors <> unwritableErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags <> indexDiags)

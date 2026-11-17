@@ -363,6 +363,13 @@ Golem は、ある文字に当てられるスタイルのキーを狭めず、�
 処理系が文字の位置を決める箇所（注の印の高さなど）も、スタイルを当てた結果の書体と大きさから位置を求める。
 この原則に反する今の箇所は [docs/roadmap.md](roadmap.md) に挙げる（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 
+### CI の時間
+
+プルリクエストの CI は、版によらず常に 5 分以内に保つ。
+CI を待つ時間は変更を一つ入れるたびにかかるので、CI が遅いと開発そのものが遅くなる。
+測るのは、プルリクエストの `ci.yml` の成功した実行のうち `build` を省かなかった直近 20 回の時間の中央値で、ランナーの順番待ちは含めない（[ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)、計測のコマンドは `scripts/ci/ci-critical-path.sh`）。
+この時間が 300 秒を超えたら、ほかの作業より先に CI を改善する（CONTRIBUTING.md）。
+
 ## モジュール構成
 
 ### 依存の図
@@ -1272,17 +1279,37 @@ Git のコミットやビルドの環境は含めない。
 CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
-決定性を保証するのは、PDF、HTML、プレーンテキストである。
-EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、今は EPUB の決定性を保証しない（予定は [docs/roadmap.md](roadmap.md) の「EPUB の決定性」）。
+PDF、HTML、プレーンテキストに加え、EPUB もファイル全体のバイト一致を保証する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
+EPUB の一致の条件は、EPUB を作る圧縮器（zip-archive と zlib）の版を含む同じ Golem のビルドと、同じ設定、原稿、素材である。
+本からの相対位置を保ってプロジェクトを別のディレクトリに移しても、素材の列挙順や組んだ時刻が変わっても、EPUB は一致する。
+zip には、`mimetype`、`META-INF/container.xml`、パッケージ文書、ナビゲーション文書、`style.css`、本文の章（本の順）、素材（出力先の相対パスの順）をこの順に収め、どのエントリにも時刻 0 を書く。
+`mimetype` は圧縮せず、ほかのエントリは deflate で縮むときだけ deflate で収める。
+EPUB の識別子と更新日時（`dcterms:modified`）はマニフェストから作り、絶対パスや組んだ時刻は書かない。
+異なるビルドの間の一致は保証しないので、圧縮器の版を上げると、同じ入力からでも EPUB のバイト列は変わりうる。
+`cabal.project.freeze` が二つの圧縮器の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
+
+CFF の CharString の演算子 `random` の値も、出力を変えないように決める（[Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)）。
+同梱の FreeType は、`random` の値を擬似乱数から作り、そのシード値を既定ではメモリのアドレスから作る。
+そのため、Golem は、フォントごとの FreeType のライブラリを環境変数を読まずに作り、`cff` ドライバのシード値を 0 にしてから face を開く。
+シード値が 0 なら、サブフォントの乱数の状態は Private DICT の `initialRandomSeed` から決まり、それが 0 なら FreeType の既定の 987654321 から決まる。
+環境変数 `FREETYPE_PROPERTIES` は読まないので、出力を変えない。
+
+ただし、乱数の状態は `random` を実行するたびに進み、グリフごとには戻らない。
+そのため、FreeType の CFF ドライバで開いたフォント（`FT_Get_Font_Format` が `CFF` を返すフォント）のグリフの寸法は、そのグリフのために開き直した face で読む。
+開き直す face は、そのフォントの FreeType のライブラリで、フォントのバイト列から開く。
+読んだ寸法は、フォントとグリフの番号ごとに一度だけ読み、フォントごとに持つ。
+そのため、寸法はフォントのバイト列とグリフの番号だけで決まり、読む順、読む回数、前に開いた face の数、スレッドによらない。
+TrueType ドライバで開いたフォントは乱数を使わないので、開いた face で読む。
 
 ### 固定する依存
 
 シェイピングとフォントの処理に使う HarfBuzz と FreeType、プラグインの実行に使う wasmtime、PDF の圧縮に使う zlib はバージョンを固定する。
 これらのバージョンが変わるとグリフの配置が変わり、同じ入力から同じ出力が得られなくなるためである。
 使っているバージョンは README に記載し、バージョンを上げるときは ADR を作成する。
+FreeType は、版に加えて CFF の乱数のシード値を 0 に固定し、ドライバの性質を環境変数から読まない（「出力を決めるもの」の節、[Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)）。
 
 #### wasmtime のアドバイザリの照合
 
@@ -1367,8 +1394,7 @@ x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであ�
 小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
 すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
 `combined` は capability を二つにして組む。
-この検査は EPUB も比べるので、実際には EPUB にも決定性を求めている。
-しかし、仕様としては EPUB の決定性を約束しない。
+EPUB は zip のファイル全体のバイト列を比べる（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
 
 ### コミットをまたいだ出力の変化
 
@@ -1585,13 +1611,24 @@ HTML と EPUB の本文は、階層 l の見出しを `<h{l}>` で書く。
 番号の表記（「第 1 章」か「1.」か）はスタイルで決める。
 見出しの文字列は自由に付けてよく、処理系は文字列の中身を検査しない。
 
-番号と題のあいだには、本の言語で決まる区切りを置く（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）。
-`manifest.toml` の `[metadata] language` の主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` なら全角の空白（U+3000）、それ以外の言語なら半角の空白（U+0020）である。
-番号の文字列が空白（U+0020、U+3000、タブ）で終わるときは、区切りを足さない。
-`number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
-番号の書式は区切りを変えないので、同じ本の中では章も節も同じ区切りになる。
+番号と題のあいだの区切りは、スタイルの `number-title-separator` に文字列で書く（[Golem ADR 0372](adr/0372-number-title-separator.md)）。
+見出しの区切りは、その階層の `[headings.<階層>]` に書く。
+図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` に書く。
+`caption` のキーは `based-on` をたどって決まるので、`[paragraph-styles.body]` に書いた区切りはキャプションに届くが、見出しには届かない。
+原稿の `@style-def paragraph caption` に書いた区切りは、そのファイルのキャプションに当たる。
+区切りは、番号と題の両方が空でないときに、そのあいだに一度だけ置く。
+番号か題の少なくとも一方が空なら、区切りを置かない。
+空文字列を書けば、番号のすぐ後に題が続く。
+書いた区切りは、番号の文字列が空白で終わるときにも置く。
+値が文字列でなければ、`[headings.<階層>]` でも段落スタイルでも `@style-def` でも G03006 とする。
 
-この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、表のキャプション（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
+`number-title-separator` を書かない見出しとキャプションの区切りは、本の言語で決まる（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）。
+`manifest.toml` の `[metadata] language` の主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` なら全角の空白（U+3000）、それ以外の言語なら半角の空白（U+0020）である。
+この既定の区切りは、番号の文字列が空白（U+0020、U+3000、タブ）で終わるときには足さない。
+`number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
+
+この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、表のキャプション（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書、PDF のしおり）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
+目次の項目と柱は、元の見出しの階層の区切りを使う。
 HTML の見出しとキャプションでは、区切りを `<span class="number">` の外に、題の前のテキストとして書く。
 番号を持たない見出しと、番号のないキャプションには区切りを置かない。
 傍注の番号とリストの印の後の空きは、この規則によらない。
@@ -2466,6 +2503,7 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 | `regex-styles` | 正規表現スタイル（「正規表現スタイル」） |
 | `next-style`、`initial-style` | 次の段落の段落スタイルと、段落の先頭の一字の文字スタイル（「次の段落スタイルと先頭の文字スタイル」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
 | `opening-indent` | 始め括弧類で始まる段落の字下げ（「字下げ」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
+| `number-title-separator` | 番号と題のあいだの区切りの文字列。段落スタイル `caption` のものを、図版、コードブロック、表のキャプションに使う（「見出しの属性と番号」の節、[Golem ADR 0372](adr/0372-number-title-separator.md)） |
 
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 段落スタイルには行送りの欄を設けない。
@@ -3040,6 +3078,7 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 - 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 - PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` を、どの出力でも `regex-styles` を適用する。
 - PDF のキャプションと傍注の本文には、段落の組み方として、字下げ（`indent`、`first-line-indent`、`end-indent`）、`space-between`、`line-breaks` も適用する（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。組み方は、この節の後の段落で定める。
+- 図版、コードブロック、表のキャプションには、どの出力でも `caption` の `number-title-separator` を適用する（「見出しの属性と番号」の節、[Golem ADR 0372](adr/0372-number-title-separator.md)）。`sidenote` と `table` の `number-title-separator` は、どこにも適用しない。
 - 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 
 ただし、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
@@ -3051,7 +3090,7 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 `caption`、`sidenote`、`table` の三つに書けるキーと書けないキーは次のとおりである。
 
 - 書けないキー：`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）。`table` には、0 でない `indent`、`first-line-indent`、`end-indent` も書けない
-- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`。`caption` と `sidenote` には、`indent`、`first-line-indent`、`end-indent` も書ける
+- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`、`number-title-separator`。`caption` と `sidenote` には、`indent`、`first-line-indent`、`end-indent` も書ける
 
 `table` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと、`style.toml` でも `@style-def` でも G03006 とする。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
@@ -3821,6 +3860,11 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 前と後は、横組みでは上と下、縦組みでは行が進む向きの始まりと終わり（右と左）を指す。
 寄せ方を変えても、行取りの行数は変わらないので、後に続く本文の位置は変わらない。
 
+`[headings.<階層>]` の `number-title-separator` は、その階層の見出しの番号と題のあいだの区切りの文字列である（[Golem ADR 0372](adr/0372-number-title-separator.md)）。
+目次の項目と柱の `heading.<l>.numbered` も、この区切りを使う。
+値が文字列でなければ G03006 とする。
+書かなければ本の言語で決まる区切りを使い、段落スタイル `body` の区切りは引き継がない。
+
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G07024）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 一ページには入るが、空の段の残りの行より多くの格子の行を占める見出しは、その段の頭に置いたまま、notice（G07100）で知らせる（[golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)）。
 その見出しは、段の残りの外にはみ出して組まれる。
@@ -3944,7 +3988,7 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 | 差し込み | 値 |
 |---|---|
 | `{heading.<l>.short}` | 階層 l の見出しの短い題 |
-| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、本の言語で決まる区切り（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）、短い題。番号のない見出しは短い題だけ |
+| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、元の見出しの階層の区切り（`[headings.<l>]` の `number-title-separator`、[Golem ADR 0372](adr/0372-number-title-separator.md)）、短い題。番号のない見出しは短い題だけ |
 | `{heading.<l>.number}` | 階層 l の見出しの番号の表記だけ。番号のない見出しでは値がない |
 | 上の三つの末尾に `.last` | ページの中の見出しの選び方を「最後」にする |
 | `{meta.<キー>}` | マニフェストの `[metadata]` の値。キーは `title`、`title_reading`、`edition`、`publisher`、`date`、`language`、`id` |
@@ -4275,8 +4319,38 @@ CFF の表があるフォントは、サブセットを作る前に、表の中�
 wasm32 の 32 ビットの整数でも、64 ビットの処理系と同じ結果にするためである。
 使わないグリフの CharString は確かめない。
 スタックの不足のような、表の外を読まない誤りは G08107 にせず、その CharString をそれ以上たどらない。
-endchar の引数で別のグリフを合成する形（seac）の部品のグリフと、random の値で決まる参照は、たどらない。
+endchar の引数で別のグリフを合成する形（seac）の部品のグリフは、たどらない。
 G08003 はフォントを開けない場合、G08018 は CFF の表を取り出せない場合のままである。
+
+`random` の値で決まる参照は、`random` がとりうる値すべてで確かめる（[Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)）。
+値は、下端と上端に、それぞれ端を含むかを持つ区間として扱い、端は無限大でもよい。
+`random` は仕様の範囲どおり `(0, 1]` を積み、`random` に由来しない値は、両端を含む幅 0 の区間である。
+算術の演算子（`add`、`sub`、`neg`、`abs`、`mul`、`div`、`sqrt`）は、区間の演算で結果の区間と端の開閉を求める。
+除数の端が 0 に開いた `div` の結果の端は、無限大になる。
+比較と論理の演算子（`eq`、`and`、`or`、`not`）と `ifelse` で結果が一つに決まらないときは、とりうる結果ごとに別の枝としてたどる。
+幅を持つ区間を番号や位置に使う演算子（`callsubr`、`callgsubr`、`index`、`roll`、`get`、`put`）は、区間の下端の床から上端の天井までのすべての整数を、それぞれ別の枝としてたどる。
+`callsubr` と `callgsubr` では、それらの整数に偏りを足した位置が、すべて INDEX の中にあるかを先に確かめ、一つでも外なら G08107 とする。
+端が無限大の区間を番号に使えば、INDEX の外を含むので G08107 とする。
+枝は、スタック、ステムの数、一時の配列、読む位置をそれぞれ持つ。
+幅 0 の値では、番号や位置を 0 の方向へ丸め、0 での `div`、負の数の `sqrt` などではその CharString をそれ以上たどらない。
+
+参照を確かめきれないグリフは、エラー（G08108）とし、PDF を書かない。
+確かめきれない場合は次のとおりである。
+
+- 一つのグリフの実行の数が、すべての枝を足して上限（100000）を超えた場合。実行の数は、数と演算子をそれぞれ一つと数える。`random` を含むかによらない。
+- 幅を持つ区間の中のどれかの値が、0 での `div`、負の数の `sqrt`、スタックの深さを超える `index` の位置、負かスタックの深さを超える `roll` の数に当たる場合。
+- 端が無限大の区間を `mul` と `div` に使った場合と、位置（`index`、`roll`、`get`、`put`）に使った場合。
+
+枝は、番号や位置は小さい順、`ifelse` は最初の引数を選ぶ枝が先、比較と論理は結果 0 の枝が先、`roll` は数の小さい順で同じ数では量の小さい順にたどる。
+最初に見つかった INDEX の外の参照を G08107 とし、それより先に G08108 の場合に当たれば G08108 とする。
+G08107 はフォントごとに一つ、G08108 はフォントとグリフの番号の組ごとに一つ出し、互いに独立に出す。
+表の構造の確かめで G08107 になったフォントでは、グリフの参照を確かめないので、G08108 は出ない。
+
+組版に使うグリフのうち、FreeType が寸法を読めないもの（`FT_Load_Glyph` が失敗するもの）は、フォントの種類によらずエラー（G08109）とし、PDF を書かない（[Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)）。
+寸法の無いグリフを `/FontBBox` と幅の表から黙って除くと、出力が黙って変わるためである。
+たとえば、FreeType は `random` や算術で作った値を `callsubr` などの番号に受けつけないので、そのグリフは G08109 になる。
+G08109 は、フォントとグリフの番号の組ごとに一つ出し、G08107 と G08108 とは独立に出す。
+G08108 と G08109 は、G08107 と同じく PDF のビルドとプリフライトで出し、位置は `style.toml` の先頭である。
 
 ### ToUnicode と ActualText
 

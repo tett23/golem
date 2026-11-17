@@ -1,6 +1,6 @@
 # ADR 0392: プルリクエストの CI の時間を 5 分の予算にする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

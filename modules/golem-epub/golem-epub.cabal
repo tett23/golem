@@ -39,6 +39,7 @@ test-suite golem-epub-test
     , base
     , bytestring
     , containers
+    , directory
     , filepath
     , golem-assemble
     , golem-doc
