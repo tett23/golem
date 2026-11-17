@@ -1,6 +1,6 @@
 # ADR 0373: 行取りの中で見出しを前、中央、後ろに寄せる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

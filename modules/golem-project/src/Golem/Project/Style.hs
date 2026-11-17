@@ -80,6 +80,7 @@ module Golem.Project.Style
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
+    HeadingBlockAlign (..),
     NotesPlacement (..),
     Composition (..),
     RubyStyleDef (..),
@@ -1048,6 +1049,12 @@ validStyleName n = case T.uncons n of
   Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
   Nothing -> False
 
+data HeadingBlockAlign = HeadingStart | HeadingCenter | HeadingEnd
+  deriving stock (Eq, Show)
+
+headingBlockAlignValues :: [(Text, HeadingBlockAlign)]
+headingBlockAlignValues = [("start", HeadingStart), ("center", HeadingCenter), ("end", HeadingEnd)]
+
 data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
@@ -1057,7 +1064,8 @@ data HeadingStyle = HeadingStyle
     hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
-    hsRuleAfter :: !(Maybe RuleSpec)
+    hsRuleAfter :: !(Maybe RuleSpec),
+    hsBlockAlign :: !HeadingBlockAlign
   }
   deriving stock (Eq, Show)
 
@@ -2139,7 +2147,8 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
+    align <- enumKey "block-align" (map fst headingBlockAlignValues)
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)))
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -3582,6 +3591,7 @@ styleSchema =
           ("size", dim),
           ("number", str),
           ("page-break", enum pageBreakValues),
+          ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
           -- retired (golem-driver ADR 0014): G03019
           ("running-head", NRejected),
