@@ -235,7 +235,7 @@ adr0342Tests =
             (block "highlight=3,5-7", "highlight=3,5-7")
           ],
       testCase "ADR 0342 I2: a string returned by an expression is read as a word" $ do
-        let src = "set r = \"1-2,4-5\"\n\n" <> sevenListing "lines=[= r]"
+        let src = "@set r = \"1-2,4-5\"\n\n" <> sevenListing "lines=[= r]"
         sevenSites src @?= [("G02251", argStart src "lines=[= r]", argStart src "lines=[= r]" + T.length "lines=[= r]")]
         sevenCode src @?= []
         let hl = block "highlight=[= \"4-5\"]"
@@ -254,11 +254,11 @@ adr0342Tests =
         map fst3 (sevenSites (sevenListing "lines=\"1.,.3, 5..,7\"")) @?= ["G02105"]
         map fst3 (sevenSites (sevenListing "lines=5..7")) @?= ["G01100"],
       testCase "ADR 0342 I1: an evaluated end of 0 or -1 fails after evaluation" $ do
-        map fst3 (sevenSites ("set n = 0\n\n" <> sevenListing "lines=[= n]")) @?= ["G02037"]
-        map fst3 (sevenSites ("set n = 0 - 1\n\n" <> sevenListing "lines=[= n]")) @?= ["G02103"]
-        sevenCode ("set n = 0\n\n" <> sevenListing "lines=[= n]") @?= []
-        map fst3 (sevenSites ("set n = 0\n\n" <> block "highlight=[= n]")) @?= ["G02069"]
-        map fst3 (sevenSites ("set n = 0 - 1\n\n" <> block "highlight=[= n]")) @?= ["G02103"],
+        map fst3 (sevenSites ("@set n = 0\n\n" <> sevenListing "lines=[= n]")) @?= ["G02037"]
+        map fst3 (sevenSites ("@set n = 0 - 1\n\n" <> sevenListing "lines=[= n]")) @?= ["G02103"]
+        sevenCode ("@set n = 0\n\n" <> sevenListing "lines=[= n]") @?= []
+        map fst3 (sevenSites ("@set n = 0\n\n" <> block "highlight=[= n]")) @?= ["G02069"]
+        map fst3 (sevenSites ("@set n = 0 - 1\n\n" <> block "highlight=[= n]")) @?= ["G02103"],
       testCase "ADR 0342 I1: a negative end of a range in a general expression is unchanged" $
         ev "-2...3" @?= Right (VRange (-2) 3)
     ]
