@@ -311,7 +311,9 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 タグ付き PDF の構造の木では、相互参照は `Reference` になる。
-ルビの親文字の中の `[ref-number]` と `[ref-title]` も、読みのある区切りなら、親文字の `RB` の中の `Reference` になる（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
+ルビの親文字の中の `[ref-number]` と `[ref-title]` も `Reference` になる。
+読みのある区切りの参照は、親文字の `RB` の中に置く（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
+読みのない区切りの参照は、`Ruby` の外の、区切りの字が入る親の構造の要素の中に置く（[Golem ADR 0393](docs/adr/0393-references-in-ruby-segments-without-readings.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。
