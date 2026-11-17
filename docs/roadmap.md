@@ -71,7 +71,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
-- **読みのないルビの区切りの中の参照（未実装）**：読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後|まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならない。本文の中の参照と同じく `Reference` と `Link` にする。 [Golem ADR 0393](adr/0393-references-in-ruby-segments-without-readings.md)。
 - **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **CFF の random の決定性と参照の確かめ（未実装）**：同梱の FreeType は CharString の `random` のシード値をメモリのアドレスから作るので、`random` を含む CFF のフォントでは PDF の `/FontBBox` が実行ごとに変わる。環境変数 `FREETYPE_PROPERTIES` も PDF を変える。参照の確かめは `random` に出会うとそのグリフをたどらず、FreeType が読めないグリフは黙って幅の表から落ちる。 [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)。
 - **可変フォント（未実装）**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。 [Golem ADR 0358](adr/0358-font-instance-selection.md)。

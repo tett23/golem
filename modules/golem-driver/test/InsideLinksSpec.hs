@@ -373,6 +373,20 @@ sourceTests =
             inContents a @?= Just "題"
           other -> assertFailure (show other)
         other -> assertFailure (show other),
+    testCase "ADR 0393 I1: inv1_ruby_references_case_7: a reference in a ruby segment without a reading is one annotation over the face of its text" $ do
+      let src = "@label h\n# 題\n参照は[ruby: 前/[ref-title h]後|まえ/]。\n"
+      pdf <- pdfOf horizontalStyle src []
+      pages <- pageGlyphs pdf
+      case insides pdf of
+        -- 題 on the line of 参照は: the paragraph, not the heading
+        [a] -> case (inRect a, [d | (_, s) <- take 1 (glyphsOf '参' pages), (_, d) <- glyphsOf '題' pages, yOf d == yOf s]) of
+          ([x0, _, x1, _], d : _) -> do
+            -- the annotation is over 題 alone: neither 前 nor 後
+            near x0 (xOf d)
+            near (x1 - x0) 10
+            inContents a @?= Just "題"
+          other -> assertFailure (show other)
+        other -> assertFailure (show other),
     testCase "I3 a reference that ends at the end of the line, and one that runs one character over: one annotation a line" $ do
       -- 12 characters a line: 参照は then a title of 9 characters ends the line, of 10 runs over
       let exact = "@label h\n# " <> T.replicate 9 "題" <> "\n参照は[ref-title h]\n"
