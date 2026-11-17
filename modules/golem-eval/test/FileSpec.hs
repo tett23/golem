@@ -1,6 +1,7 @@
 module FileSpec (tests) where
 
 import Control.Exception (evaluate)
+import Control.Monad (forM_)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Either (lefts)
@@ -113,6 +114,18 @@ listingRequests src = do
   ref <- newIORef (0 :: Int)
   let counted a = unsafePerformIO (modifyIORef' ref (+ 1) >> pure a)
   _ <- evaluate (length (show (run (abCtx counted) src)))
+  readIORef ref
+
+-- | 'ctx' with the tables a.csv and b.csv, made by @f@ from their contents (ADR 0343 I2).
+abTableCtx :: (Asset -> Asset) -> EvalContext
+abTableCtx f = ctx {ctxAssets = ML.insert "a.csv" (f (AssetText (FileId 42) "h\nx\n")) (ML.insert "b.csv" (f (AssetText (FileId 43) "h\ny\n")) (ctxAssets ctx))}
+
+-- | How many of a.csv and b.csv the evaluation of a source asks for (ADR 0343 I2).
+tableRequests :: Text -> IO Int
+tableRequests src = do
+  ref <- newIORef (0 :: Int)
+  let counted a = unsafePerformIO (modifyIORef' ref (+ 1) >> pure a)
+  _ <- evaluate (length (show (run (abTableCtx counted) src)))
   readIORef ref
 
 -- | The code and message of each diagnostic.
@@ -1897,6 +1910,17 @@ diagnosticTests =
         errs "@listing src/Main.hs other.hs\n" @?= ["G02253"]
         errs "@listing src=src/Main.hs src=other.hs\n" @?= ["G02077"]
         errs "@listing src/Main.hs src=src/Main.hs src=other.hs\n" @?= ["G02077"],
+      testCase "ADR 0343 I1 I2: the code, the site and the table requests of each path form" $ do
+        let row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abTableCtx id) src],) <$> tableRequests src
+            expect src codes n = row src >>= (@?= (codes, n))
+            whole src = [("G02130", 0, T.length src)]
+        expect "@table\n" [("G02034", 0, 7)] 0
+        expect "@table a.csv\n" [] 1
+        let legacy = "@table src=a.csv\n"
+        expect legacy [("G02252", fst (spanOf legacy "src=a.csv"), snd (spanOf legacy "src=a.csv"))] 0
+        [(c, m) | (c, m, _, _) <- diagsWith (abTableCtx id) legacy] @?= [("G02252", "@table の src= は使えません。パスを最初の引数に移します")]
+        forM_ ["@table a.csv src=b.csv\n", "@table a.csv src=a.csv\n", "@table a.csv a.csv\n", "@table a.csv b.csv\n", "@table a.csv b.csv src=a.csv\n"] $ \src ->
+          expect src (whole src) 0,
       testCase "G02038: the number of prose slots" $ do
         msgs "[strong]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
         msgs "[strong: a|b]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
