@@ -42,7 +42,6 @@ import ManualEmetSpec (manualEmetTests)
 import NewPlanSpec (newPlanTests)
 #endif
 import NoteBodyStylesSpec (noteBodyStylesTests)
-import PageNoteNumbersSpec (pageNoteNumbersTests)
 import NotesSpec (notesTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
@@ -50,6 +49,7 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
+import PageNoteNumbersSpec (pageNoteNumbersTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
