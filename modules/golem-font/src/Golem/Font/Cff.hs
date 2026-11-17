@@ -20,6 +20,7 @@ glyphs give the same answer on every build.
 -}
 module Golem.Font.Cff
   ( CffCheck (..),
+    CffResult (..),
     sfntCffTable,
     checkCffTable,
     checkCffReferences,
@@ -48,6 +49,8 @@ data Stop
     OutOfTable
   | -- | malformed in another way: the part is not followed further
     Malformed
+  | -- | the references of a glyph cannot all be checked (G08108, Golem ADR 0390)
+    Unverifiable
   deriving stock (Eq, Show)
 
 type Check = Either Stop
@@ -71,14 +74,32 @@ sfntCffTable file = do
 {- | 'checkCffTable' on the CFF table of the font file; a font without one
 is left to the checks that report it (G08003, G08018).
 -}
-checkCffReferences :: ByteString -> [Int] -> CffCheck
-checkCffReferences file gids = maybe CffInTable (`checkCffTable` gids) (sfntCffTable file)
+checkCffReferences :: ByteString -> [Int] -> CffResult
+checkCffReferences file gids = maybe (CffResult CffInTable [] []) (`checkCffTable` gids) (sfntCffTable file)
+
+{- | The answer of the check of a CFF table for the glyphs used (Golem ADR
+0390): whether a reference leaves the table (G08107, one for the font), the
+glyphs whose references cannot all be checked (G08108), and the glyphs that
+run random, in the order of their numbers.
+-}
+data CffResult = CffResult
+  { cffCheck :: !CffCheck,
+    cffUnverifiable :: ![Int],
+    cffRandom :: ![Int]
+  }
+  deriving stock (Eq, Show)
 
 -- | Checks the references of a bare CFF table for the glyphs.
-checkCffTable :: ByteString -> [Int] -> CffCheck
-checkCffTable t gids = case structure t >>= \font -> mapM_ (glyph t font) (Set.toList (Set.fromList gids)) of
-  Left OutOfTable -> CffOutOfTable
-  _ -> CffInTable
+checkCffTable :: ByteString -> [Int] -> CffResult
+checkCffTable t gids = case structure t of
+  Left OutOfTable -> CffResult CffOutOfTable [] []
+  Left _ -> CffResult CffInTable [] []
+  Right font ->
+    let checked = [(g, glyph t font g) | g <- Set.toList (Set.fromList gids)]
+     in CffResult
+          (if any ((== Just OutOfTable) . fst . snd) checked then CffOutOfTable else CffInTable)
+          [g | (g, (Just Unverifiable, _)) <- checked]
+          [g | (g, (_, True)) <- checked]
 
 -- ------------------------------------------------------------------ reading
 
@@ -318,139 +339,365 @@ fdSelect t nGlyphs off =
       [] -> Nothing
       fds -> Just (last fds)
 
+-- ------------------------------------------------------------------ values
+
+{- | A value of a CharString run: one number, or the interval of the numbers
+a value made from random may take (Golem ADR 0390).
+-}
+data Val
+  = -- | one number: a value not made from random, or an interval of width 0
+    Pt !Double
+  | {- | an interval of width: the lower end and whether it belongs to the
+    interval (whether it is closed), then the upper end and the same; an end
+    may be infinite
+    -}
+    Wide !Double !Bool !Double !Bool
+  deriving stock (Eq)
+
+-- | The ends of a value, each with whether it belongs to the interval.
+data Iv = Iv !Double !Bool !Double !Bool
+
+-- | A value as an interval; NaN, which may come of an overflow, takes every number.
+toIv :: Val -> Iv
+toIv = \case
+  Pt v
+    | isNaN v -> Iv (negate infinity) False infinity False
+    | otherwise -> Iv v True v True
+  Wide a ai b bi -> Iv a ai b bi
+
+-- | An interval as a value: one of width 0 is one number.
+fromIv :: Iv -> Val
+fromIv (Iv a ai b bi)
+  | a == b = Pt a
+  | otherwise = Wide a ai b bi
+
+infinity :: Double
+infinity = 1 / 0
+
+-- | Whether an end of the interval is infinite.
+infiniteEnd :: Val -> Bool
+infiniteEnd v = let Iv a _ b _ = toIv v in isInfinite a || isInfinite b
+
+-- | Whether 0 belongs to the interval.
+holdsZero :: Iv -> Bool
+holdsZero (Iv a ai b bi) = (a < 0 || (a == 0 && ai)) && (b > 0 || (b == 0 && bi))
+
+-- | Whether a number other than 0 belongs to the interval.
+holdsNonZero :: Iv -> Bool
+holdsNonZero (Iv a _ b _) = a /= 0 || b /= 0
+
+addI, mulI, divI :: Iv -> Iv -> Iv
+addI (Iv a ai b bi) (Iv c ci d di) = Iv (a + c) (ai && ci) (b + d) (bi && di)
+-- the products of the ends; 0 is reached when it belongs to either interval
+mulI x@(Iv a ai b bi) y@(Iv c ci d di) = extremes (holdsZero x || holdsZero y) [(p * q, pin && qin) | (p, pin) <- [(a, ai), (b, bi)], (q, qin) <- [(c, ci), (d, di)]]
+{- the quotients of the ends by a divisor that does not hold 0: an end of the
+divisor open at 0 gives an infinite end; 0 is reached when it belongs to the
+dividend -}
+divI x@(Iv a ai b bi) (Iv c ci d di) = extremes (holdsZero x) [(quotient p q, pin && qin && q /= 0) | (p, pin) <- [(a, ai), (b, bi)], (q, qin) <- [(c, ci), (d, di)]]
+  where
+    positive = d > 0
+    quotient p q
+      | q /= 0 = p / q
+      | p == 0 = 0
+      | (p > 0) == positive = infinity
+      | otherwise = negate infinity
+
+negI, absI, sqrtI :: Iv -> Iv
+negI (Iv a ai b bi) = Iv (negate b) bi (negate a) ai
+absI i@(Iv a ai b bi)
+  | a >= 0 = i
+  | b <= 0 = negI i
+  | otherwise = let m = max (negate a) b in Iv 0 True m ((b == m && bi) || (negate a == m && ai))
+-- an interval of 0 or more
+sqrtI (Iv a ai b bi) = Iv (sqrt a) ai (sqrt b) bi
+
+{- | The interval from the smallest to the largest of the values at the ends,
+each end closed when a pair of closed ends reaches it; a product or a
+quotient of nonzero ends is reached only at the ends, and 0 is reached as
+the first argument says.
+-}
+extremes :: Bool -> [(Double, Bool)] -> Iv
+extremes zero cs =
+  let lo = minimum (map fst cs)
+      hi = maximum (map fst cs)
+      reached v = if v == 0 then zero else or [c | (x, c) <- cs, x == v]
+   in Iv lo (reached lo) hi (reached hi)
+
+{- | The integers from the floor of the lower end to the ceiling of the upper
+end, of an interval whose ends are finite, within ±2^29 as 'toInt'.
+-}
+integers :: Val -> (Int, Int)
+integers v =
+  let Iv a _ b _ = toIv v
+      bound f x = f (max (negate limit) (min limit x))
+      limit = 2 ^ (29 :: Int) :: Double
+   in (bound floor a, bound ceiling b)
+
 -- ------------------------------------------------------------------ CharStrings
 
--- | The state of a Type 2 CharString run.
+-- | The state of a branch of a Type 2 CharString run.
 data Run = Run
-  { rStack :: ![Double],
+  { rStack :: ![Val],
     rStems :: !Int,
-    rTransient :: !(Map.Map Int Double),
-    rSteps :: !Int
+    rTransient :: !(Map.Map Int Val)
   }
 
--- | How a CharString or a subroutine ended.
-data End = EndChar | Return | Fell
+{- | What the branches of a glyph share: the operators they ran (numbers and
+operators, all the branches added up) and whether one ran random.
+-}
+data Count = Count
+  { cSteps :: !Int,
+    cRandom :: !Bool
+  }
 
--- | The CharString of a glyph and the subroutines it calls.
-glyph :: ByteString -> Font -> Int -> Check ()
-glyph t font g = do
-  cs <- entry t (fCharStrings font) g
-  locals <- fLocals font g
-  -- a malformed CharString is not followed further: only an out-of-table reference counts
-  case run t font locals 0 cs (Run [] 0 Map.empty 0) of
-    Left OutOfTable -> Left OutOfTable
-    _ -> pure ()
+{- | How a branch ended: it went to its end or stopped as malformed (and the
+next branch is followed), or it stopped the check of the glyph with
+'OutOfTable' (G08107) or 'Unverifiable' (G08108).
+-}
+data Out
+  = Went !Count
+  | Halted !Stop !Count
 
--- | Runs a CharString, at a call depth (the limit of Type 2 is 10).
-run :: ByteString -> Font -> Maybe Index -> Int -> ByteString -> Run -> Check (End, Run)
-run t font locals depth = go
+-- | The rest of a run after a CharString or a subroutine returns or falls off its end.
+type Back = Run -> Count -> Out
+
+{- | The check of the CharString of a glyph and of the subroutines it calls:
+how it stopped, if it stopped the glyph, and whether it ran random.
+-}
+glyph :: ByteString -> Font -> Int -> (Maybe Stop, Bool)
+glyph t font g = case (,) <$> entry t (fCharStrings font) g <*> fLocals font g of
+  Left OutOfTable -> (Just OutOfTable, False)
+  Left _ -> (Nothing, False)
+  Right (cs, locals) -> case run t font locals 0 cs (Run [] 0 Map.empty) (Count 0 False) (\_ c -> Went c) of
+    Went c -> (Nothing, cRandom c)
+    Halted s c -> (Just s, cRandom c)
+
+{- | The branches one after another, adding up their operators; the first that
+stops the glyph stops it.
+-}
+branches :: [Count -> Out] -> Count -> Out
+branches [] c = Went c
+branches (b : bs) c = case b c of
+  Went c' -> branches bs c'
+  halted -> halted
+
+{- | Branches that differ only in the values they hold: one that runs no
+operator ran to the end of every CharString it was in, so every other
+branch runs none either and ends the same way, and they are not run.
+-}
+valueBranches :: [Count -> Out] -> Count -> Out
+valueBranches [] c = Went c
+valueBranches (b : bs) c = case b c of
+  Went c'
+    | cSteps c' == cSteps c -> Went c'
+    | otherwise -> valueBranches bs c'
+  halted -> halted
+
+-- | A read of the table in a run: a malformed one stops the branch alone.
+reading :: Check a -> Count -> (a -> Out) -> Out
+reading r c k = case r of
+  Right a -> k a
+  Left Malformed -> Went c
+  Left s -> Halted s c
+
+{- | Runs a CharString, at a call depth (the limit of Type 2 is 10), then
+the rest of the run.
+-}
+run :: ByteString -> Font -> Maybe Index -> Int -> ByteString -> Run -> Count -> Back -> Out
+run t font locals depth code st0 c0 back = go code st0 c0
   where
-    go b st
-      | rSteps st > stepLimit = Left Malformed
-      | otherwise = case BS.uncons b of
-          Nothing -> pure (Fell, st)
-          Just (b0, rest) -> step b0 rest st {rSteps = rSteps st + 1}
-    push v rest st
-      | length (rStack st) >= 48 = Left Malformed
-      | otherwise = go rest st {rStack = v : rStack st}
+    go b st c = case BS.uncons b of
+      Nothing -> back st c
+      Just (b0, rest)
+        | cSteps c >= stepLimit -> Halted Unverifiable c {cSteps = cSteps c + 1}
+        | otherwise -> step b0 rest st c {cSteps = cSteps c + 1}
+    push v rest st c
+      | length (rStack st) >= 48 = Went c
+      | otherwise = go rest st {rStack = v : rStack st} c
     clear rest st = go rest st {rStack = []}
-    step b0 rest st
-      | b0 == 28 = do
-          v <- inPart (u16 rest 0)
-          push (fromIntegral (if v >= 0x8000 then v - 0x10000 else v)) (BS.drop 2 rest) st
-      | b0 >= 32 && b0 <= 246 = push (fromIntegral b0 - 139) rest st
-      | b0 >= 247 && b0 <= 254 = do
-          b1 <- inPart (BS.indexMaybe rest 0)
+    step b0 rest st c
+      | b0 == 28 = reading (inPart (u16 rest 0)) c $ \v -> push (Pt (fromIntegral (if v >= 0x8000 then v - 0x10000 else v))) (BS.drop 2 rest) st c
+      | b0 >= 32 && b0 <= 246 = push (Pt (fromIntegral b0 - 139)) rest st c
+      | b0 >= 247 && b0 <= 254 = reading (inPart (BS.indexMaybe rest 0)) c $ \b1 ->
           let v = if b0 <= 250 then (fromIntegral b0 - 247) * 256 + fromIntegral b1 + 108 else negate ((fromIntegral b0 - 251) * 256 + fromIntegral b1 + 108)
-          push v (BS.drop 1 rest) st
-      | b0 == 255 = do
-          v <- inPart (uI 4 rest 0)
-          push (fromInteger (signed32 v) / 65536) (BS.drop 4 rest) st
-      | b0 `elem` [1, 3, 18, 23] = clear rest (stems st)
-      | b0 == 19 || b0 == 20 = do
+           in push (Pt v) (BS.drop 1 rest) st c
+      | b0 == 255 = reading (inPart (uI 4 rest 0)) c $ \v -> push (Pt (fromInteger (signed32 v) / 65536)) (BS.drop 4 rest) st c
+      | b0 `elem` [1, 3, 18, 23] = clear rest (stems st) c
+      | b0 == 19 || b0 == 20 =
           let st' = stems st
               n = (rStems st' + 7) `div` 8
-          when (BS.length rest < n) (Left Malformed)
-          clear (BS.drop n rest) st'
-      | b0 == 10 = call locals rest st
-      | b0 == 29 = call (Just (fGlobals font)) rest st
-      | b0 == 11 = pure (Return, st)
-      | b0 == 14 = pure (EndChar, st)
-      | b0 == 12 = do
-          (b1, rest') <- inPart (BS.uncons rest)
-          escape b1 rest' st
-      | otherwise = clear rest st
+           in if BS.length rest < n then Went c else clear (BS.drop n rest) st' c
+      | b0 == 10 = call locals rest st c
+      | b0 == 29 = call (Just (fGlobals font)) rest st c
+      | b0 == 11 = back st c
+      | b0 == 14 = Went c
+      | b0 == 12 = reading (inPart (BS.uncons rest)) c $ \(b1, rest') -> escape b1 rest' st c
+      | otherwise = clear rest st c
     -- the stem hints, two operands each; an odd one is the width
     stems st = st {rStems = rStems st + length (rStack st) `div` 2, rStack = []}
-    call subrs rest st = do
-      (v, st') <- pop st
-      ix <- maybe (Left OutOfTable) pure subrs
-      let n = ixCount ix
-          bias
-            | n < 1240 = 107
-            | n < 33900 = 1131
-            | otherwise = 32768
-      sub <- entry t ix (toInt v + bias)
-      when (depth >= 10) (Left Malformed)
-      (end, st'') <- run t font locals (depth + 1) sub st'
-      case end of
-        EndChar -> pure (EndChar, st'')
-        _ -> go rest st''
+    {- a subroutine: a number of width 0 rounded toward 0; an interval of
+    width, every integer from the floor of its lower end to the ceiling of its
+    upper end, each a branch once all are in the INDEX (Golem ADR 0390) -}
+    call subrs rest st c = case pop st of
+      Nothing -> Went c
+      Just (v, st') -> case subrs of
+        Nothing -> Halted OutOfTable c
+        Just ix ->
+          let count = ixCount ix
+              bias
+                | count < 1240 = 107
+                | count < 33900 = 1131
+                | otherwise = 32768
+              enter k cc = reading (entry t ix (k + bias)) cc $ \sub ->
+                if depth >= 10 then Went cc else run t font locals (depth + 1) sub st' cc (go rest)
+           in case v of
+                Pt x -> enter (toInt x) c
+                _
+                  | infiniteEnd v -> Halted OutOfTable c
+                  | otherwise ->
+                      let (lo, hi) = integers v
+                       in if lo + bias < 0 || hi + bias >= count
+                            then Halted OutOfTable c
+                            else branches (map enter [lo .. hi]) c
     pop st = case rStack st of
-      v : vs -> pure (v, st {rStack = vs})
-      [] -> Left Malformed
+      v : vs -> Just (v, st {rStack = vs})
+      [] -> Nothing
     pops k st = foldM (\(vs, s) _ -> pop s >>= \(v, s') -> pure (v : vs, s')) ([], st) [1 .. k :: Int]
-    -- the operands of an arithmetic operator, the first pushed first
-    with k rest st f = do
-      (vs, st') <- pops k st
-      r <- f vs st'
-      go rest r
-    pushed vs st = if length vs + length (rStack st) > 48 then Left Malformed else pure st {rStack = reverse vs ++ rStack st}
-    bool c = if c then 1 else 0
-    un f rest st = with 1 rest st $ \case
-      [a] -> f a
-      _ -> const (Left Malformed)
-    bin f rest st = with 2 rest st $ \case
-      [a, b] -> f a b
-      _ -> const (Left Malformed)
-    escape b1 rest st = case b1 of
-      3 -> bin (\a b -> pushed [bool (a /= 0 && b /= 0)]) rest st
-      4 -> bin (\a b -> pushed [bool (a /= 0 || b /= 0)]) rest st
-      5 -> un (\a -> pushed [bool (a == 0)]) rest st
-      9 -> un (\a -> pushed [abs a]) rest st
-      10 -> bin (\a b -> pushed [a + b]) rest st
-      11 -> bin (\a b -> pushed [a - b]) rest st
-      12 -> bin (\a b s -> if b == 0 then Left Malformed else pushed [a / b] s) rest st
-      14 -> un (\a -> pushed [negate a]) rest st
-      15 -> bin (\a b -> pushed [bool (a == b)]) rest st
-      18 -> un (const pure) rest st
-      20 -> bin (\v i s -> pure s {rTransient = Map.insert (toInt i) v (rTransient s)}) rest st
-      21 -> un (\i s -> pushed [Map.findWithDefault 0 (toInt i) (rTransient s)] s) rest st
-      22 -> with 4 rest st $ \case
-        [s1, s2, v1, v2] -> pushed [if v1 <= v2 then s1 else s2]
-        _ -> const (Left Malformed)
-      24 -> bin (\a b -> pushed [a * b]) rest st
-      26 -> un (\a s -> if a < 0 then Left Malformed else pushed [sqrt a] s) rest st
-      27 -> un (\a -> pushed [a, a]) rest st
-      28 -> bin (\a b -> pushed [b, a]) rest st
-      29 -> do
-        (i, st') <- pop st
-        let k = toInt i
+    pushed vs st = if length vs + length (rStack st) > 48 then Nothing else Just st {rStack = reverse vs ++ rStack st}
+    {- an operator of k operands, the first pushed first, and what it pushes:
+    one list of values, or several, each a branch, or how it stops -}
+    oper k rest st c f = case pops k st of
+      Nothing -> Went c
+      Just (vs, st') -> case f vs of
+        Left Malformed -> Went c
+        Left s -> Halted s c
+        Right alternatives -> valueBranches [\cc -> maybe (Went cc) (\st'' -> go rest st'' cc) (pushed out st') | out <- alternatives] c
+    one v = Right [[v]]
+    bool b = Pt (if b then 1 else 0)
+    -- the results 0 and 1 that may come, 0 first
+    outcomes canFalse canTrue = Right ([[Pt 0] | canFalse] <> [[Pt 1] | canTrue])
+    arith2 pointwise interval = \case
+      [Pt a, Pt b] -> one (Pt (pointwise a b))
+      [a, b] -> one (fromIv (interval (toIv a) (toIv b)))
+      _ -> Left Malformed
+    arith1 pointwise interval = \case
+      [Pt a] -> one (Pt (pointwise a))
+      [a] -> one (fromIv (interval (toIv a)))
+      _ -> Left Malformed
+    escape b1 rest st c = case b1 of
+      3 -> oper 2 rest st c $ \case
+        [Pt a, Pt b] -> one (bool (a /= 0 && b /= 0))
+        [a, b] -> outcomes (holdsZero (toIv a) || holdsZero (toIv b)) (holdsNonZero (toIv a) && holdsNonZero (toIv b))
+        _ -> Left Malformed
+      4 -> oper 2 rest st c $ \case
+        [Pt a, Pt b] -> one (bool (a /= 0 || b /= 0))
+        [a, b] -> outcomes (holdsZero (toIv a) && holdsZero (toIv b)) (holdsNonZero (toIv a) || holdsNonZero (toIv b))
+        _ -> Left Malformed
+      5 -> oper 1 rest st c $ \case
+        [Pt a] -> one (bool (a == 0))
+        [a] -> outcomes (holdsNonZero (toIv a)) (holdsZero (toIv a))
+        _ -> Left Malformed
+      9 -> oper 1 rest st c (arith1 abs absI)
+      10 -> oper 2 rest st c (arith2 (+) addI)
+      11 -> oper 2 rest st c (arith2 (-) (\a b -> addI a (negI b)))
+      12 -> oper 2 rest st c $ \case
+        [Pt a, Pt b] -> if b == 0 then Left Malformed else one (Pt (a / b))
+        [a, b]
+          | infiniteEnd a || infiniteEnd b -> Left Unverifiable
+          | b == Pt 0 -> Left Malformed
+          | holdsZero (toIv b) -> Left Unverifiable
+          | otherwise -> one (fromIv (divI (toIv a) (toIv b)))
+        _ -> Left Malformed
+      14 -> oper 1 rest st c (arith1 negate negI)
+      15 -> oper 2 rest st c $ \case
+        [Pt a, Pt b] -> one (bool (a == b))
+        [a, b] -> outcomes True (meets (toIv a) (toIv b))
+        _ -> Left Malformed
+      18 -> oper 1 rest st c (const (Right [[]]))
+      20 -> case pops 2 st of
+        Just ([v, i], st') -> place i c $ \k -> go rest st' {rTransient = Map.insert k v (rTransient st')}
+        _ -> Went c
+      21 -> case pops 1 st of
+        Just ([i], st') -> place i c $ \k cc -> maybe (Went cc) (\st'' -> go rest st'' cc) (pushed [Map.findWithDefault (Pt 0) k (rTransient st')] st')
+        _ -> Went c
+      22 -> oper 4 rest st c $ \case
+        [s1, s2, Pt v1, Pt v2] -> one (if v1 <= v2 then s1 else s2)
+        [s1, s2, v1, v2] ->
+          let Iv lo1 lo1in hi1 _ = toIv v1
+              Iv lo2 _ hi2 hi2in = toIv v2
+              -- v1 <= v2 for some pair, and v1 > v2 for some pair
+              first = lo1 < hi2 || (lo1 == hi2 && lo1in && hi2in)
+              second = hi1 > lo2
+           in Right ([[s1] | first] <> [[s2] | second, not (first && s1 == s2)])
+        _ -> Left Malformed
+      -- random: every number of (0, 1] (Golem ADR 0390)
+      23 -> push (Wide 0 False 1 True) rest st c {cRandom = True}
+      24 -> oper 2 rest st c $ \case
+        [Pt a, Pt b] -> one (Pt (a * b))
+        [a, b]
+          | infiniteEnd a || infiniteEnd b -> Left Unverifiable
+          | otherwise -> one (fromIv (mulI (toIv a) (toIv b)))
+        _ -> Left Malformed
+      26 -> oper 1 rest st c $ \case
+        [Pt a] -> if a < 0 then Left Malformed else one (Pt (sqrt a))
+        [a] -> let i@(Iv lo _ _ _) = toIv a in if lo < 0 then Left Unverifiable else one (fromIv (sqrtI i))
+        _ -> Left Malformed
+      27 -> oper 1 rest st c (\vs -> Right [vs <> vs])
+      28 -> oper 2 rest st c (\vs -> Right [reverse vs])
+      29 -> case pop st of
+        Nothing -> Went c
+        Just (Pt i, st') ->
+          let k = toInt i
+              vs = rStack st'
+           in case if k < 0 then safeHead vs else safeAt k vs of
+                Nothing -> Went c
+                Just v -> maybe (Went c) (\st'' -> go rest st'' c) (pushed [v] st')
+        Just (i, st')
+          | infiniteEnd i -> Halted Unverifiable c
+          | max 0 hi >= length vs -> Halted Unverifiable c
+          | otherwise -> valueBranches [\cc -> maybe (Went cc) (\st'' -> go rest st'' cc) (safeAt (max 0 k) vs >>= \v -> pushed [v] st') | k <- [lo .. hi]] c
+          where
+            (lo, hi) = integers i
             vs = rStack st'
-        v <- if k < 0 then inPart (safeHead vs) else inPart (safeAt k vs)
-        go rest =<< pushed [v] st'
-      30 -> do
-        (j, st1) <- pop st
-        (n, st2) <- pop st1
-        let k = toInt n
-        when (k < 0 || k > length (rStack st2)) (Left Malformed)
-        let (top, below) = splitAt k (rStack st2)
-            -- the stack holds the top first; roll moves values toward the top by j
-            rolled = if k == 0 then top else let s = toInt j `mod` k in drop s top ++ take s top
-        go rest st2 {rStack = rolled ++ below}
-      -- random: a value the check cannot know, so the CharString is not followed
-      23 -> Left Malformed
-      _ -> clear rest st
+      30 -> case pops 2 st of
+        Just ([n, j], st2)
+          | infiniteEnd n || infiniteEnd j -> Halted Unverifiable c
+          | otherwise ->
+              let depthNow = length (rStack st2)
+                  counts = case n of
+                    Pt x -> Right [toInt x]
+                    _ -> let (lo, hi) = integers n in if lo < 0 || hi > depthNow then Left Unverifiable else Right [lo .. hi]
+                  amounts = case j of
+                    Pt x -> [toInt x]
+                    _ -> let (lo, hi) = integers j in [lo .. hi]
+               in case counts of
+                    Left s -> Halted s c
+                    Right [k] | k < 0 || k > depthNow -> Went c
+                    Right ks -> valueBranches [go rest st2 {rStack = roll k a (rStack st2)} | k <- ks, a <- amounts] c
+        _ -> Went c
+      _ -> clear rest st c
+    -- the position of get and put: a number of width 0 rounded toward 0, or every integer of an interval of width
+    place i c k = case i of
+      Pt x -> k (toInt x) c
+      _
+        | infiniteEnd i -> Halted Unverifiable c
+        | otherwise -> let (lo, hi) = integers i in valueBranches (map k [lo .. hi]) c
+    -- the stack holds the top first; roll moves the top k values toward the top by a
+    roll k a vs =
+      let (top, below) = splitAt k vs
+          rolled = if k == 0 then top else let s = a `mod` k in drop s top ++ take s top
+       in rolled ++ below
+    -- whether two intervals have a number in common
+    meets (Iv a ai b bi) (Iv c ci d di) =
+      let (lo, loIn)
+            | a > c = (a, ai)
+            | c > a = (c, ci)
+            | otherwise = (a, ai && ci)
+          (hi, hiIn)
+            | b < d = (b, bi)
+            | d < b = (d, di)
+            | otherwise = (b, bi && di)
+       in lo < hi || (lo == hi && loIn && hiIn)
     safeHead = \case
       v : _ -> Just v
       [] -> Nothing
