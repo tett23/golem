@@ -1620,13 +1620,24 @@ HTML と EPUB の本文は、階層 l の見出しを `<h{l}>` で書く。
 番号の表記（「第 1 章」か「1.」か）はスタイルで決める。
 見出しの文字列は自由に付けてよく、処理系は文字列の中身を検査しない。
 
-番号と題のあいだには、本の言語で決まる区切りを置く（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）。
-`manifest.toml` の `[metadata] language` の主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` なら全角の空白（U+3000）、それ以外の言語なら半角の空白（U+0020）である。
-番号の文字列が空白（U+0020、U+3000、タブ）で終わるときは、区切りを足さない。
-`number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
-番号の書式は区切りを変えないので、同じ本の中では章も節も同じ区切りになる。
+番号と題のあいだの区切りは、スタイルの `number-title-separator` に文字列で書く（[Golem ADR 0372](adr/0372-number-title-separator.md)）。
+見出しの区切りは、その階層の `[headings.<階層>]` に書く。
+図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` に書く。
+`caption` のキーは `based-on` をたどって決まるので、`[paragraph-styles.body]` に書いた区切りはキャプションに届くが、見出しには届かない。
+原稿の `@style-def paragraph caption` に書いた区切りは、そのファイルのキャプションに当たる。
+区切りは、番号と題の両方が空でないときに、そのあいだに一度だけ置く。
+番号か題の少なくとも一方が空なら、区切りを置かない。
+空文字列を書けば、番号のすぐ後に題が続く。
+書いた区切りは、番号の文字列が空白で終わるときにも置く。
+値が文字列でなければ、`[headings.<階層>]` でも段落スタイルでも `@style-def` でも G03006 とする。
 
-この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、表のキャプション（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
+`number-title-separator` を書かない見出しとキャプションの区切りは、本の言語で決まる（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）。
+`manifest.toml` の `[metadata] language` の主の副タグ（最初の `-` の前を英小文字にしたもの）が `ja` なら全角の空白（U+3000）、それ以外の言語なら半角の空白（U+0020）である。
+この既定の区切りは、番号の文字列が空白（U+0020、U+3000、タブ）で終わるときには足さない。
+`number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
+
+この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、表のキャプション（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書、PDF のしおり）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
+目次の項目と柱は、元の見出しの階層の区切りを使う。
 HTML の見出しとキャプションでは、区切りを `<span class="number">` の外に、題の前のテキストとして書く。
 番号を持たない見出しと、番号のないキャプションには区切りを置かない。
 傍注の番号とリストの印の後の空きは、この規則によらない。
@@ -2505,6 +2516,7 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 | `regex-styles` | 正規表現スタイル（「正規表現スタイル」） |
 | `next-style`、`initial-style` | 次の段落の段落スタイルと、段落の先頭の一字の文字スタイル（「次の段落スタイルと先頭の文字スタイル」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
 | `opening-indent` | 始め括弧類で始まる段落の字下げ（「字下げ」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
+| `number-title-separator` | 番号と題のあいだの区切りの文字列。段落スタイル `caption` のものを、図版、コードブロック、表のキャプションに使う（「見出しの属性と番号」の節、[Golem ADR 0372](adr/0372-number-title-separator.md)） |
 
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 段落スタイルには行送りの欄を設けない。
@@ -3079,6 +3091,7 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 - 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 - PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` を、どの出力でも `regex-styles` を適用する。
 - PDF のキャプションと傍注の本文には、段落の組み方として、字下げ（`indent`、`first-line-indent`、`end-indent`）、`space-between`、`line-breaks` も適用する（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。組み方は、この節の後の段落で定める。
+- 図版、コードブロック、表のキャプションには、どの出力でも `caption` の `number-title-separator` を適用する（「見出しの属性と番号」の節、[Golem ADR 0372](adr/0372-number-title-separator.md)）。`sidenote` と `table` の `number-title-separator` は、どこにも適用しない。
 - 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 
 ただし、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
@@ -3090,7 +3103,7 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 `caption`、`sidenote`、`table` の三つに書けるキーと書けないキーは次のとおりである。
 
 - 書けないキー：`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）。`table` には、0 でない `indent`、`first-line-indent`、`end-indent` も書けない
-- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`。`caption` と `sidenote` には、`indent`、`first-line-indent`、`end-indent` も書ける
+- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`、`number-title-separator`。`caption` と `sidenote` には、`indent`、`first-line-indent`、`end-indent` も書ける
 
 `table` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと、`style.toml` でも `@style-def` でも G03006 とする。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
@@ -3860,6 +3873,11 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 前と後は、横組みでは上と下、縦組みでは行が進む向きの始まりと終わり（右と左）を指す。
 寄せ方を変えても、行取りの行数は変わらないので、後に続く本文の位置は変わらない。
 
+`[headings.<階層>]` の `number-title-separator` は、その階層の見出しの番号と題のあいだの区切りの文字列である（[Golem ADR 0372](adr/0372-number-title-separator.md)）。
+目次の項目と柱の `heading.<l>.numbered` も、この区切りを使う。
+値が文字列でなければ G03006 とする。
+書かなければ本の言語で決まる区切りを使い、段落スタイル `body` の区切りは引き継がない。
+
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G07024）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 一ページには入るが、空の段の残りの行より多くの格子の行を占める見出しは、その段の頭に置いたまま、notice（G07100）で知らせる（[golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)）。
 その見出しは、段の残りの外にはみ出して組まれる。
@@ -3983,7 +4001,7 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 | 差し込み | 値 |
 |---|---|
 | `{heading.<l>.short}` | 階層 l の見出しの短い題 |
-| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、本の言語で決まる区切り（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）、短い題。番号のない見出しは短い題だけ |
+| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、元の見出しの階層の区切り（`[headings.<l>]` の `number-title-separator`、[Golem ADR 0372](adr/0372-number-title-separator.md)）、短い題。番号のない見出しは短い題だけ |
 | `{heading.<l>.number}` | 階層 l の見出しの番号の表記だけ。番号のない見出しでは値がない |
 | 上の三つの末尾に `.last` | ページの中の見出しの選び方を「最後」にする |
 | `{meta.<キー>}` | マニフェストの `[metadata]` の値。キーは `title`、`title_reading`、`edition`、`publisher`、`date`、`language`、`id` |
