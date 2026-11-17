@@ -223,6 +223,9 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 ルビの読みだけに当てる文字スタイルは、`[composition.ruby]` の `reading-style` で選ぶ。
 文字スタイルが書かない書体と色は外側から引き継ぎ、大きさを書かなければ親文字の半分で組む（[Golem ADR 0369](docs/adr/0369-ruby-reading-style.md)）。
 
+PDF の柱とノンブルに当てる文字スタイルは、マスターページの `running-head` と `folio` の `character-style` で別々に選ぶ。
+書かなければ、本文の書体と版面の文字の大きさで組む（[Golem ADR 0364](docs/adr/0364-running-head-folio-style.md)）。
+
 強調と書体の切り替えも、文字スタイルで組む。
 `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic`、`code` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。
 指定がなければ合成の太字と斜体で組み、役割が和文か欧文の片方しか持たない場合は、持たない側の文字を合成で組む。

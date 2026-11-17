@@ -311,10 +311,86 @@ projectPdf manifest style sources = withSystemTempDirectory "golem-project" $ \t
     [p] -> BS.readFile p >>= fmap BS.concat . inflateAll
     _ -> assertFailure "no PDF"
 
+{- | The glyphs of the running heads (H on the odd page, E on the even one)
+and of the folios (1 and 2) of a two-page book whose master page writes
+the given keys into running-head and folio (docs/adr/0364), each with the
+fill colour in effect when it is drawn.
+-}
+masterGlyphs :: BS.ByteString -> BS.ByteString -> IO ([(Drawn, Maybe [BS.ByteString])], [(Drawn, Maybe [BS.ByteString])])
+masterGlyphs headKeys folioKeys = do
+  let style =
+        horizontalStyle
+          <> fakeBody
+          <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\nlatin = \"fonts/h.otf\"\n\n[color.swatches]\nred = {cmyk = [0, 100, 100, 0]}\nblue = {cmyk = [100, 100, 0, 0]}\n\n[character-styles.large]\nfont = \"heading\"\nsize = \"14pt\"\ncolor = \"red\"\n\n[character-styles.small]\nsize = \"0.6zw\"\ncolor = \"blue\"\n\n[character-styles.loud]\nbased-on = \"small\"\nsynthetic-bold = true\n\n[character-styles.tracked]\ntracking = 1000\n\n[masters.body]\nrunning-head = {position = \"top-center\", odd = [\"H\"], even = [\"E\"]"
+          <> headKeys
+          <> "}\nfolio = {position = \"bottom-center\", format = \"{n}\""
+          <> folioKeys
+          <> "}\n"
+  content <- miniPdf fakeProvider True style "文。\n\n@page-break\n\n文。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+  let glyphs = colouredGlyphs content
+      of' cs = [g | g@(d, _) <- glyphs, dGlyph d `elem` map fromEnum (cs :: String)]
+  pure (of' "HE", of' "12")
+
+{- | Every glyph drawn ('drawnGlyphs') with the CMYK fill colour in effect
+when it is drawn: q and Q save and restore it.
+-}
+colouredGlyphs :: BS.ByteString -> [(Drawn, Maybe [BS.ByteString])]
+colouredGlyphs content = go ("", Nothing, []) (BC.lines content)
+  where
+    go _ [] = []
+    go (tfLine, colour, saved) (l : rest) =
+      let ws = BC.words l
+          tf' = if "Tf" `elem` ws then l else tfLine
+          (colour', saved') = foldl step (colour, saved) (zip [0 :: Int ..] ws)
+          step (c, s) (i, w) = case w of
+            "q" -> (c, c : s)
+            "Q" -> case s of
+              c' : s' -> (c', s')
+              [] -> (c, s)
+            "k" -> (Just (take 4 (drop (i - 4) ws)), s)
+            _ -> (c, s)
+          here = [(d, colour') | "Tj" `elem` ws, d <- drawnGlyphs (tf' <> "\n" <> l)]
+       in here <> go (tf', colour', saved') rest
+
 -- | The running head tests (ADR 0014).
 runningHeadTests :: [TestTree]
 runningHeadTests =
-  [ testCase "first and last headings of a page" $ do
+  [ testCase "ADR 0364 I1: inv1_running_head_folio_style_property" $
+      -- every running head, the folio without and with a style of its own
+      forM_ ["", ", character-style = \"small\"", ", character-style = \"loud\""] $ \folio -> do
+        (_, plain) <- masterGlyphs "" folio
+        assertBool (show folio) (length plain == 2)
+        forM_ [", character-style = \"large\"", ", character-style = \"small\"", ", character-style = \"loud\""] $ \rh -> do
+          (heads, folios) <- masterGlyphs rh folio
+          assertBool (show (rh, folio)) (length heads == 2)
+          assertEqual (show (rh, folio)) plain folios,
+    testCase "ADR 0364 I1: inv1_running_head_folio_style_case_1" $ do
+      (heads, folios) <- masterGlyphs ", character-style = \"large\"" ""
+      (_, defaults) <- masterGlyphs "" ""
+      [(dSize d, c) | (d, c) <- heads] @?= replicate 2 ("14", Just ["0", "1", "1", "0"])
+      -- the folio: the body role at the size of the grid, uncoloured
+      [(dSize d, c) | (d, c) <- folios] @?= replicate 2 ("10", Nothing)
+      folios @?= defaults
+      assertBool "the heading role" (all (\((h, _), (f, _)) -> dFont h /= dFont f) (zip heads folios)),
+    testCase "ADR 0364 I1: inv1_running_head_folio_style_case_2" $ do
+      (heads, folios) <- masterGlyphs ", character-style = \"large\"" ", character-style = \"small\""
+      [(dSize d, c) | (d, c) <- heads] @?= replicate 2 ("14", Just ["0", "1", "1", "0"])
+      -- 0.6zw of the 10pt grid
+      [(dSize d, c) | (d, c) <- folios] @?= replicate 2 ("6", Just ["1", "1", "0", "0"]),
+    testCase "ADR 0364: odd and even pages take the same style though their contents differ" $ do
+      (heads, _) <- masterGlyphs ", character-style = \"large\"" ""
+      map (dGlyph . fst) heads @?= map fromEnum "HE"
+      nub [(dFont d, dSize d, c) | (d, c) <- heads] @?= take 1 [(dFont d, dSize d, c) | (d, c) <- heads],
+    testCase "ADR 0364: a centred folio is centred by its width in its character style, tracking included" $ do
+      (_, plain) <- masterGlyphs "" ""
+      (_, tracked) <- masterGlyphs "" ", character-style = \"tracked\""
+      let xs gs = [read (BC.unpack (dX d)) :: Double | (d, _) <- gs]
+      -- one character tracked by one em of 10pt: half of it to the left
+      map round (zipWith (-) (xs plain) (xs tracked)) @?= [5, 5 :: Int],
+    testCase "ADR 0364: without a character style, the body role at the size of the grid" $ do
+      (heads, folios) <- masterGlyphs "" ""
+      [(dSize d, c) | (d, c) <- heads <> folios] @?= replicate 4 ("10", Nothing),
+    testCase "first and last headings of a page" $ do
       let h1 = Map.fromList [(1, Just umi)]
           h12 = Map.fromList [(1, Just umi), (2, Just asa)]
           h12' = Map.fromList [(1, Just umi), (2, Just hiru)]

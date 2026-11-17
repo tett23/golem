@@ -38,6 +38,10 @@ module Golem.Typeset.Flow
     runningHeads,
     runningHeadNotices,
     plainWidth,
+    lookWidth,
+    runsOf,
+    isLatin,
+    masterLook,
     drawsFolio,
     hiddenFolios,
     TocGeometry (..),
@@ -1020,16 +1024,57 @@ runningHeadNotices inp geom fonts layout =
   | (n, t) <- sortOn id [(n, t) | (t, n) <- Map.toList (Map.fromListWith min wide)]
   ]
   where
+    masters = Map.fromList [(poNumber p, m) | ((p : _), Just m) <- zip (pagesOf (plPages layout)) (pageMasters inp geom layout)]
     wide =
       [ (t, n)
       | (n, ls) <- Map.toList (runningHeads inp geom layout),
         t <- ls,
-        plainWidth fonts (bodyRole (piStyle inp)) (pgFontSize geom) t > rectW (typeAreaFor geom n)
+        let look = masterLook (piStyle inp) (pgFontSize geom) (Map.lookup n masters >>= mgHeadStyle),
+        lookWidth fonts look t > rectW (typeAreaFor geom n)
       ]
+
+{- | The look of a running head or a folio (docs/adr/0364): the character
+style the component of the master names applied over the body role at the
+size of the grid, as 'restyle' applies one inside a paragraph; the body
+role at that size without one. A size in zw is measured against the size
+of the grid.
+-}
+masterLook :: Style -> Sp -> Maybe Text -> Look
+masterLook style grid name =
+  let base = plainLook (bodyRole style) grid
+   in maybe base (\n -> restyle style base (CharStyle (mkSpan (FileId 0) 0 0) n [])) name
 
 -- | The width of a text set in a role at a size, unjustified.
 plainWidth :: LoadedFonts -> Text -> Sp -> Text -> Sp
 plainWidth fonts role size txt = sum [L.zwToSp size (shAdvance g) | g <- lfShape fonts (Shaping role False [] False) txt]
+
+-- | Whether a character is Latin in a look: of the language of its span (docs/adr ADR 0187).
+isLatin :: Look -> Char -> Bool
+isLatin look = (== Western) . lookClass look
+
+{- the runs of a text in a look: its role and whether it is a Latin
+run; split into Latin and other runs where the two sides differ in
+role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
+a combining character stays with the character before it, variation
+selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
+runsOf :: Look -> Text -> [(Text, Text, Bool)]
+runsOf look txt
+  | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
+  | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin look a == isLatin look b) txt, not (T.null r), let latin = isLatin look (T.head r)]
+
+
+{- | The width of a horizontal text in a look, unjustified, as
+'Golem.Typeset.Draw' draws it: each run in the role of its side
+('runsOf'), shaped with the features of the look, and the tracking of
+the look after each character (docs/adr/0020, docs/adr/0364).
+-}
+lookWidth :: LoadedFonts -> Look -> Text -> Sp
+lookWidth fonts look txt =
+  sum [L.zwToSp size (shAdvance g) | (role, r, _) <- runsOf look txt, c <- take 1 (T.unpack r), g <- lfShape fonts ((shapingOf (lfRoleFeatures fonts) False look c) {shRole = role, shVertical = False}) r]
+    + Sp (round (fromIntegral (T.length txt) * unSp tr % 1000))
+  where
+    size = lkSize look
+    tr = fromIntegral (lkTracking look) * size
 
 {- | Whether a page gets its folio (golem-driver ADR 0021): not a blank
 page, and its master page has a folio. 'masterMarks' and 'hiddenFolios'
