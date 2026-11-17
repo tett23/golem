@@ -369,7 +369,6 @@ subsetTag gids =
   where
     letters x = toEnum (fromEnum 'A' + fromIntegral (x `mod` 26)) : letters (x `div` 26)
 
-
 {- | The instance of a variable font that a role asks for (Golem ADR 0358):
 a named instance of fvar, by its English subfamily name as it is written,
 and the coordinates of axes by their tags, which override those of the

@@ -75,7 +75,7 @@ tests =
                 ("G08112", "軸の値がフォントの範囲の外にあります: [fonts.body] の axes の wght = 1000（fonts/serif.ttf の wght は 200 から 900）")
               ]
         b <- buildMarksFilesWith "本文。\n" (\o -> o {optFonts = golemFontProvider}) (Just style) files
-        [(c, diagMessage d) | d <- bErrors b, let DiagnosticCode c = diagCode d] @?= expected
+        [(c, diagMessage d) | d <- bErrors b, DiagnosticCode c <- [diagCode d]] @?= expected
         map (whereIs b) (bErrors b) @?= replicate 3 (Just "style.toml", 0)
         bPdf b @?= Nothing
         c <- buildMarksFilesWith "本文。\n" (\o -> o {optFonts = golemFontProvider, optCheckOnly = True}) (Just style) files
@@ -86,7 +86,7 @@ tests =
         (sans, serif) <- realLatinFonts
         let style = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\ninstance = \"Bold\"\naxes = { wght = 700 }\n\n[fonts.heading]\nja = \"fonts/serif.ttf\"\nlatin = \"fonts/sans.otf\"\naxes = { wght = 700 }\n\n[character-styles.h]\nfont = \"heading\"\n"
         b <- buildMarksFilesWith "本文。[style h: 見出し]\n" (\o -> o {optFonts = golemFontProvider}) (Just style) [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
-        [(c, diagMessage d) | d <- bErrors b, let DiagnosticCode c = diagCode d]
+        [(c, diagMessage d) | d <- bErrors b, DiagnosticCode c <- [diagCode d]]
           @?= [ ("G08110", "可変フォントに名前付きインスタンスがありません: [fonts.body] の instance = \"Bold\"（fonts/sans.otf）"),
                 ("G08111", "フォントにない軸です: [fonts.body] の axes の wght（fonts/sans.otf）"),
                 ("G08111", "フォントにない軸です: [fonts.heading] の axes の wght（fonts/sans.otf）")

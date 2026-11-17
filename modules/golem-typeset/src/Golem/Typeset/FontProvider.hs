@@ -16,8 +16,8 @@ where
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
-import Data.List (nub)
 import Data.Functor ((<&>))
+import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
@@ -87,10 +87,11 @@ fontProvider memoise = FontProvider $ \files fid style locals ->
           loadedKeys <-
             Map.fromList
               <$> mapM
-                ( \k@(p, inst) -> (k,) <$> case Map.lookup p contents of
-                    Just (Right bytes) -> load bytes p inst
-                    Just (Left d) -> pure (Left (Left d))
-                    Nothing -> pure (Left (Right []))
+                ( \k@(p, inst) ->
+                    (k,) <$> case Map.lookup p contents of
+                      Just (Right bytes) -> load bytes p inst
+                      Just (Left d) -> pure (Left (Left d))
+                      Nothing -> pure (Left (Right []))
                 )
                 keys
           let side f fr = f fr >>= \p -> either (const Nothing) Just =<< Map.lookup (p, roleInstance fr) loadedKeys

@@ -23,9 +23,9 @@ import EmetSamplesSpec (emetSamplesTests)
 import ExceptionsSpec (exceptionsTests)
 import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)
-import FontInstanceSpec qualified
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
+import FontInstanceSpec qualified
 import ForceTableSpec (forceTableTests)
 import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)

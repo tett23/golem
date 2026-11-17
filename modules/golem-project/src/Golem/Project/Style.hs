@@ -251,8 +251,7 @@ data FontRole = FontRole
     {- | the coordinates of axes by their tags, over those of the instance,
     in the order of the tags (Golem ADR 0358); finite numbers, checked
     against the font when it is loaded
-    -}
-    frAxes :: ![(Text, Double)]
+    -} frAxes :: ![(Text, Double)]
   }
   deriving stock (Eq, Show)
 
