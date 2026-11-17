@@ -209,7 +209,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                       -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                       embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
                       -- a face used horizontally and vertically is reported once
-                      case nub (lefts (Map.elems embedded)) of
+                      case nub (concat (lefts (Map.elems embedded))) of
                         [] -> do
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
@@ -724,7 +724,7 @@ the table of contents, its number, the separator and its short title, as
 plain text, ruby its base alone.
 -}
 outlineTitle :: PdfInput -> TocEntry -> Text
-outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (numberedTitle (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
+outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (bookNumberedTitle (piBook inp) (Just (teLevel e)) (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
 
 {- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
 that none of the faces of its characters has, once for each font file and
