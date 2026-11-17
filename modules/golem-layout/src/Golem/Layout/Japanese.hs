@@ -701,10 +701,18 @@ walk env st@(LeafState next cur seen) inl = case inl of
                   assign (src, PRuby look kind base looks reading) =
                     (n, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
                   assign (src, other) = (n, src, other)
-                  own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
                in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase (NodeLeaf n : baseNodes), NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> map assign segPieces)
-            Nothing -> let LeafState _ c _ = s in (s, ns, ps <> [(c, src, p) | (src, p) <- segPieces])
+            {- the references of a segment without a reading are References in
+            the content around the ruby, as outside a ruby (docs/adr/0393) -}
+            Nothing ->
+              let LeafState n c sn = s
+                  (nextLeaf, lastLeaf, baseNodes, owners) = rubyBase c n (rsBase seg)
+                  assign (src, PRuby look kind base looks reading) =
+                    (c, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
+                  assign (src, other) = (c, src, other)
+               in (LeafState nextLeaf lastLeaf sn, ns <> baseNodes, ps <> map assign segPieces)
        in foldl' go (st, [], []) (zip segs (chunks (piecesOf env inl)))
+    own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
     rubyBase initial nextLeaf = foldl' visit (nextLeaf, initial, [], [])
       where
         visit (unused, current, nodes, owners) child =
