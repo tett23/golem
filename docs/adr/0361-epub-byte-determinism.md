@@ -1,6 +1,6 @@
 # ADR 0361: 同一入力から同じ EPUB のバイト列を生成する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

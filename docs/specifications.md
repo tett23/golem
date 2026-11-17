@@ -1272,8 +1272,14 @@ Git のコミットやビルドの環境は含めない。
 CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
-決定性を保証するのは、PDF、HTML、プレーンテキストである。
-EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、今は EPUB の決定性を保証しない（予定は [docs/roadmap.md](roadmap.md) の「EPUB の決定性」）。
+PDF、HTML、プレーンテキストに加え、EPUB もファイル全体のバイト一致を保証する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
+EPUB の一致の条件は、EPUB を作る圧縮器（zip-archive と zlib）の版を含む同じ Golem のビルドと、同じ設定、原稿、素材である。
+本からの相対位置を保ってプロジェクトを別のディレクトリに移しても、素材の列挙順や組んだ時刻が変わっても、EPUB は一致する。
+zip には、`mimetype`、`META-INF/container.xml`、パッケージ文書、ナビゲーション文書、`style.css`、本文の章（本の順）、素材（出力先の相対パスの順）をこの順に収め、どのエントリにも時刻 0 を書く。
+`mimetype` は圧縮せず、ほかのエントリは deflate で縮むときだけ deflate で収める。
+EPUB の識別子と更新日時（`dcterms:modified`）はマニフェストから作り、絶対パスや組んだ時刻は書かない。
+異なるビルドの間の一致は保証しないので、圧縮器の版を上げると、同じ入力からでも EPUB のバイト列は変わりうる。
+`cabal.project.freeze` が二つの圧縮器の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
@@ -1367,8 +1373,7 @@ x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであ�
 小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
 すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
 `combined` は capability を二つにして組む。
-この検査は EPUB も比べるので、実際には EPUB にも決定性を求めている。
-しかし、仕様としては EPUB の決定性を約束しない。
+EPUB は zip のファイル全体のバイト列を比べる（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
 
 ### コミットをまたいだ出力の変化
 
