@@ -98,12 +98,17 @@ PDF を作るには必須です。
 Golem は、コンピューターに入っているフォントを探しません。
 フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G08004）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）は PDF に埋め込めないので、PDF が使う役割に書くとエラー（G08019）になります。
+TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] と [code: axes] で選んだ太さや幅に固定して PDF に埋め込みます。
+どちらも書かなければ、フォントの既定の太さや幅に固定します。
+フォントにない名前はエラー（G08110）、フォントにない軸はエラー（G08111）、軸の範囲の外の値はエラー（G08112）になります。
 
 | キー | 意味 |
 |:---|:---|
 | [code: ja] | 和文のフォントのファイルです。 |
 | [code: latin] | 欧文のフォントのファイルです。 |
 | [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の仮名などを詰めて組みます。PDF では、括弧類、句読点、中点類には [code: palt] と [code: vpal] を当てません。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
+| [code: instance] | 可変フォントの名前付きインスタンスの名前です。たとえば [code: "Bold"] で、フォントの Bold の太さで組みます。名前はフォントに書かれた英語の名前で、大文字と小文字を区別します。和文と欧文の両方のフォントに当たります。PDF だけが使います。 |
+| [code: axes] | 可変フォントの軸の座標です。[code: { wght = 650 }] のように、軸のタグと数を書きます。[code: instance] の座標より優先します。書かない軸は、[code: instance] の座標か、フォントの既定の座標になります。PDF だけが使います。 |
 
 @nonumber
 ## [code: \[character-styles.名前\]]

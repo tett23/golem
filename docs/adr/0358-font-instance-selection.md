@@ -1,6 +1,6 @@
 # ADR 0358: 指定した可変フォントのインスタンスで組み、PDF に固定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -41,6 +41,7 @@ sample = \case
       LDimension -> Text "1pt"
       -- 0 skips a tier of resolution, so that warning-below is never below error-below
       LInteger -> Integer 0
+      LNumber -> Integer 0
       LBoolean -> Bool False
       LFalse -> Bool False
       LEnum (v : _) -> Text v

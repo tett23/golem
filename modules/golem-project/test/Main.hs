@@ -1235,6 +1235,14 @@ tests =
       testCase "a style's font files are listed by role name, Japanese before Latin (ADR 0004)" $
         fmap fontFiles (loadStyle (FileId 0) (Just "[fonts.mono]\nlatin = \"m.otf\"\n\n[fonts.body]\nja = \"b.otf\"\nlatin = \"l.otf\"\n"))
           @?= Right [("body", "b.otf"), ("body", "l.otf"), ("mono", "m.otf")],
+      testCase "ADR 0358: a role names an instance and the coordinates of axes" $ do
+        let role src = fmap (\s -> (\fr -> (frInstance fr, frAxes fr)) <$> Map.lookup "body" (stFonts s)) (parseStyle (FileId 0) ("[fonts.body]\nja = \"b.otf\"\n" <> src))
+        role "" @?= Right (Just (Nothing, []))
+        role "instance = \"Bold\"\naxes = { wght = 650, wdth = 87.5, opsz = -1 }\n" @?= Right (Just (Just "Bold", [("opsz", -1), ("wdth", 87.5), ("wght", 650)]))
+        role "axes = {}\n" @?= Right (Just (Nothing, [])),
+      testCase "ADR 0358: an instance that is not a string, axes that are not a table of finite numbers: G03006" $
+        forM_ ["instance = 3", "instance = [\"Bold\"]", "axes = 3", "axes = [650]", "axes = { wght = \"650\" }", "axes = { wght = true }", "axes = { wght = nan }", "axes = { wght = inf }", "axes = { wght = { v = 1 } }"] $ \kv ->
+          codes (parseStyle (FileId 0) ("[fonts.body]\nja = \"b.otf\"\n" <> kv <> "\n")) @?= ["G03006"],
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,

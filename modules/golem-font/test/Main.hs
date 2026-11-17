@@ -13,6 +13,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
 import Golem.TestSupport.CffRos (withRos)
+import InstanceSpec (instanceTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Parallel (raceFactor)
 import Test.Tasty
@@ -30,7 +31,7 @@ main = do
   race <- raceFactor
   -- the font files themselves, for the CFF checks (Golem ADR 0357)
   let cff f = (fontBytes f, fontNumGlyphs f)
-  defaultMain (testGroup "golem-font" [tests race han sans serif noto, cffTests (cff sans) (cff han) (cff noto)])
+  defaultMain (testGroup "golem-font" [tests race han sans serif noto, cffTests (cff sans) (cff han) (cff noto), instanceTests serif (fontBytes sans)])
 
 -- | Noto Serif JP of golem-driver's 蟹工船 fixture, which broken-cmap of scripts/wasm/compare.sh breaks too.
 notoPath :: FilePath

@@ -19,6 +19,7 @@
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
 #include FT_CID_H
+#include FT_MULTIPLE_MASTERS_H
 
 struct golem_font {
   uint8_t *bytes;
@@ -30,6 +31,12 @@ struct golem_font {
   hb_blob_t *blob;
   hb_face_t *hbface;
   hb_font_t *hbfont;
+  /* the coordinates of the axes, 16.16 in the order of fvar, that shaping,
+     the metrics and the subset are given (Golem ADR 0358); none for a font
+     that is not variable */
+  int ncoords;
+  uint32_t *tags;
+  int32_t *coords;
 };
 
 golem_font *golem_font_open(const uint8_t *data, size_t len) {
@@ -60,6 +67,8 @@ void golem_font_close(golem_font *f) {
   FT_Done_Face(f->face);
   FT_Done_FreeType(f->lib);
   pthread_mutex_destroy(&f->ft_lock);
+  free(f->tags);
+  free(f->coords);
   free(f->bytes);
   free(f);
 }
@@ -198,9 +207,133 @@ int golem_font_feature_tags(golem_font *f, uint32_t *out, int max) {
   return total;
 }
 
+/* A coordinate of 16.16 as a float, as HarfBuzz reads the values of fvar:
+   the integer as a float, divided by 65536 (Golem ADR 0358). */
+static float coord_float(int32_t c) { return (float)c / 65536.f; }
+
+/* Every axis of the subset is fixed at the coordinates of the font, so that
+   the subset keeps no variation data (Golem ADR 0358). */
+static void pin_axes(golem_font *f, hb_subset_input_t *input) {
+  for (int i = 0; i < f->ncoords; i++)
+    hb_subset_input_pin_axis_location(input, f->hbface, f->tags[i], coord_float(f->coords[i]));
+}
+
+/* The axes of fvar, 4 values for each (the tag, the minimum, the default
+   and the maximum in 16.16): the first max of them to out; returns the
+   number of axes, 0 for a font that is not variable (Golem ADR 0358). */
+int golem_font_axes(golem_font *f, int32_t *out, int max) {
+  FT_MM_Var *mm = NULL;
+  LOCK_FT(f);
+  int n = 0;
+  if (FT_HAS_MULTIPLE_MASTERS(f->face) && FT_Get_MM_Var(f->face, &mm) == 0) {
+    n = (int)mm->num_axis;
+    for (int i = 0; i < n && i < max; i++) {
+      out[4 * i] = (int32_t)(uint32_t)mm->axis[i].tag;
+      out[4 * i + 1] = (int32_t)mm->axis[i].minimum;
+      out[4 * i + 2] = (int32_t)mm->axis[i].def;
+      out[4 * i + 3] = (int32_t)mm->axis[i].maximum;
+    }
+    FT_Done_MM_Var(f->lib, mm);
+  }
+  UNLOCK_FT(f);
+  return n;
+}
+
+/* The named instances of fvar, 1 + the number of axes values for each (the
+   name ID of the subfamily name, then the coordinates in 16.16): the first
+   max values to out; returns the number of instances (Golem ADR 0358). */
+int golem_font_instances(golem_font *f, int32_t *out, int max) {
+  FT_MM_Var *mm = NULL;
+  LOCK_FT(f);
+  int n = 0;
+  if (FT_HAS_MULTIPLE_MASTERS(f->face) && FT_Get_MM_Var(f->face, &mm) == 0) {
+    n = (int)mm->num_namedstyles;
+    int per = 1 + (int)mm->num_axis, k = 0;
+    for (int i = 0; i < n; i++)
+      for (int j = 0; j < per; j++, k++)
+        if (k < max) out[k] = j == 0 ? (int32_t)mm->namedstyle[i].strid : (int32_t)mm->namedstyle[i].coords[j - 1];
+    FT_Done_MM_Var(f->lib, mm);
+  }
+  UNLOCK_FT(f);
+  return n;
+}
+
+/* The English name of a name ID in UTF-8, as HarfBuzz chooses it: the first
+   cap - 1 bytes and a NUL to buf; returns the length of the whole name. */
+int golem_font_name(golem_font *f, unsigned id, char *buf, int cap) {
+  unsigned size = (unsigned)cap;
+  return (int)hb_ot_name_get_utf8(f->hbface, id, hb_language_from_string("en", -1), &size, buf);
+}
+
+/* Sets the coordinates of every axis, in the order of fvar (Golem ADR
+   0358): HarfBuzz shapes with them, FreeType measures with them, and the
+   subset is fixed at them. Called once, before the font is used. */
+int golem_font_set_coords(golem_font *f, const int32_t *coords, int n) {
+  if (n <= 0) return 0;
+  int32_t axes[4 * 64];
+  int naxes = golem_font_axes(f, axes, 64);
+  if (naxes != n || n > 64) return -1;
+  f->tags = malloc(sizeof(uint32_t) * (size_t)n);
+  f->coords = malloc(sizeof(int32_t) * (size_t)n);
+  FT_Fixed *fixed = malloc(sizeof(FT_Fixed) * (size_t)n);
+  hb_variation_t *vars = malloc(sizeof(hb_variation_t) * (size_t)n);
+  if (!f->tags || !f->coords || !fixed || !vars) { free(fixed); free(vars); return -1; }
+  for (int i = 0; i < n; i++) {
+    f->tags[i] = (uint32_t)axes[4 * i];
+    f->coords[i] = coords[i];
+    fixed[i] = (FT_Fixed)coords[i];
+    vars[i].tag = f->tags[i];
+    vars[i].value = coord_float(coords[i]);
+  }
+  f->ncoords = n;
+  LOCK_FT(f);
+  int r = FT_Set_Var_Design_Coordinates(f->face, (FT_UInt)n, fixed) == 0 ? 0 : -1;
+  UNLOCK_FT(f);
+  hb_font_set_variations(f->hbfont, vars, (unsigned)n);
+  free(fixed);
+  free(vars);
+  return r;
+}
+
+/* The coordinates as each user holds them, as floats in the order of fvar
+   (Golem ADR 0358, I1): use 0 is the HarfBuzz font that shapes, 1 the
+   FreeType face that measures, 2 the input of the subset. The first max to
+   out; returns how many the user holds. */
+int golem_font_coords_for(golem_font *f, int use, float *out, int max) {
+  int n = 0;
+  if (use == 0) {
+    unsigned len = 0;
+    const float *c = hb_font_get_var_coords_design(f->hbfont, &len);
+    n = (int)len;
+    for (int i = 0; i < n && i < max; i++) out[i] = c[i];
+  } else if (use == 1) {
+    if (f->ncoords == 0) return 0;
+    FT_Fixed fixed[64];
+    LOCK_FT(f);
+    int ok = f->ncoords <= 64 && FT_Get_Var_Design_Coordinates(f->face, (FT_UInt)f->ncoords, fixed) == 0;
+    UNLOCK_FT(f);
+    if (!ok) return -1;
+    n = f->ncoords;
+    for (int i = 0; i < n && i < max; i++) out[i] = coord_float((int32_t)fixed[i]);
+  } else {
+    hb_subset_input_t *input = hb_subset_input_create_or_fail();
+    if (!input) return -1;
+    pin_axes(f, input);
+    for (int i = 0; i < f->ncoords; i++) {
+      float lo = 0, hi = 0, def = 0;
+      if (!hb_subset_input_get_axis_range(input, f->tags[i], &lo, &hi, &def)) { hb_subset_input_destroy(input); return -1; }
+      if (i < max) out[i] = def;
+    }
+    n = f->ncoords;
+    hb_subset_input_destroy(input);
+  }
+  return n;
+}
+
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len) {
   hb_subset_input_t *input = hb_subset_input_create_or_fail();
   if (!input) return NULL;
+  pin_axes(f, input);
   hb_set_t *glyphs = hb_subset_input_glyph_set(input);
   for (int i = 0; i < n; i++) hb_set_add(glyphs, gids[i]);
   hb_subset_input_set_flags(input, HB_SUBSET_FLAGS_RETAIN_GIDS);

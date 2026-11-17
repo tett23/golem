@@ -113,7 +113,7 @@ import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
-import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
+import Golem.Typeset.FontProvider (golemFontProvider, pdfFontDiagnostics)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
@@ -884,10 +884,11 @@ buildCore inMemory opts = do
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
       let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
           locals = Map.elems (localStylesOf e)
-      -- G08019: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
+      -- G08019: CFF2 fonts, which the PDF cannot embed (golem-font ADR 0003), and G08110, G08111, G08112:
+      -- instances that are not in their fonts (Golem ADR 0358); golem check reports them too
       cff2Diags <-
         if TargetPdf `elem` targets
-          then cff2FontDiagnostics (optFiles opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
+          then pdfFontDiagnostics (optFiles opts) diagFid [(r, fr {frJa = mfilter (`Map.notMember` missing) (frJa fr), frLatin = mfilter (`Map.notMember` missing) (frLatin fr)}) | (r, fr) <- pdfFontRoles fileStyle locals]
           else pure []
       let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
@@ -1088,8 +1089,12 @@ targetFileDiagnostics fid style locals missing = \case
       ]
 
 -- | The font files of the roles the PDF uses.
+-- | The roles that the PDF uses, with their files (Golem ADR 0358).
+pdfFontRoles :: Style -> [LocalStyles] -> [(Text, FontRole)]
+pdfFontRoles style locals = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
+
 pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
-pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole {frJa = ja, frLatin = la}) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
 {- | G07002 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
 trim line and the bleed line would be drawn on top of each other. Only when

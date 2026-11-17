@@ -245,7 +245,14 @@ data FontRole = FontRole
   { frJa :: !(Maybe FilePath),
     frLatin :: !(Maybe FilePath),
     -- | the OpenType features of the role, checked (docs/adr/0268)
-    frFeatures :: ![Feature]
+    frFeatures :: ![Feature],
+    -- | the named instance of a variable font that the role is set in (Golem ADR 0358)
+    frInstance :: !(Maybe Text),
+    {- | the coordinates of axes by their tags, over those of the instance,
+    in the order of the tags (Golem ADR 0358); finite numbers, checked
+    against the font when it is loaded
+    -}
+    frAxes :: ![(Text, Double)]
   }
   deriving stock (Eq, Show)
 
@@ -1942,7 +1949,24 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> optKey "instance" <*> axesKey
+
+{- | The axes of a role (Golem ADR 0358): a table of axis tags and finite
+numbers, in the order of the tags. Whether the font has the axes and the
+values lie in them is checked when the font is loaded (G08111, G08112).
+-}
+axesKey :: ParseTable l [(Text, Double)]
+axesKey =
+  fmap (fromMaybe []) . optKeyOf "axes" $ \case
+    Table' _ (MkTable t) -> sequence [(k,) <$> inKey k (number v) | (k, (_, v)) <- Map.toAscList t]
+    v -> failAt (valueAnn v) "axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます）"
+  where
+    number = \case
+      Integer' _ n -> pure (fromInteger n)
+      Double' l d
+        | isNaN d || isInfinite d -> failAt l "軸の値には有限の数を書きます"
+        | otherwise -> pure d
+      v -> failAt (valueAnn v) "軸の値には数を書きます"
 
 instance FromValue CharStyleDef where
   fromValue = parseTableFromValue $ do
@@ -3554,7 +3578,7 @@ loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
 
 -- | Font files named by [fonts]: role, then Japanese before Latin, roles in name order.
 fontFiles :: Style -> [(Text, FilePath)]
-fontFiles s = [(r, p) | (r, FontRole ja la _) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
+fontFiles s = [(r, p) | (r, FontRole {frJa = ja, frLatin = la}) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
 
 -- ------------------------------------------------------------------ the schema
 
@@ -3605,7 +3629,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("instance", str), ("axes", NNamed Nothing numberNode)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("headings", NNamed Nothing headingNode),
@@ -3858,6 +3882,10 @@ str = NValue LString
 dim = NValue LDimension
 int = NValue LInteger
 bool = NValue LBoolean
+
+-- | a finite number, integer or not (the coordinates of axes, Golem ADR 0358)
+numberNode :: Node
+numberNode = NValue LNumber
 
 enum :: [Text] -> Node
 enum = NValue . LEnum

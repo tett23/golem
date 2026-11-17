@@ -88,7 +88,7 @@ test-suite golem-font-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CffSpec CmapSpec ConcurrencySpec
+  other-modules:    CffSpec CmapSpec ConcurrencySpec InstanceSpec
   -- the number of the charmaps of FreeType, for CmapSpec only: not in the
   -- library (docs/adr/0238)
   include-dirs:     cbits/freetype/include
