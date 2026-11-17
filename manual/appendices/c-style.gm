@@ -204,7 +204,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
 | [code: line-breaks] | [code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [code: "join"] です。 |
 | [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。既定は [code: 0] です。 |
-| [code: number-title-separator] | 番号と題のあいだに入れる文字列です。[code: caption] と、[code: caption] が [code: based-on] で引き継ぐ段落スタイル（既定では [code: body]）に書くと、図版、コードブロック、表のキャプションの区切りになります。ほかの段落スタイルに書いても、キャプションのほかには効きません。[code: ""] にすると、番号のすぐ後に題が続きます。番号か題がなければ入れません。書かなければ、日本語の本では全角の空白、ほかの言語の本では半角の空白を入れ、番号の書式が空白で終われば何も入れません。 |
+| [code: number-title-separator] | 番号と題のあいだに入れる文字列です。[code: caption] と、[code: caption] が [code: based-on] で引き継ぐ段落スタイル（既定では [code: body]）に書くと、図版、コードブロック、表のキャプションの区切りになります。ほかの段落スタイルに書いても、キャプションのほかには適用されません。[code: ""] にすると、番号のすぐ後に題が続きます。番号か題がなければ入れません。書かなければ、日本語の本では全角の空白、ほかの言語の本では半角の空白を入れ、番号の書式が空白で終われば何も入れません。 |
 | [code: space-before] | 段落の前に空ける行の数です。既定は [code: 0] です。 |
 | [code: space-after] | 段落の後に空ける行の数です。前の段落の [code: space-after] と次の段落の [code: space-before] は、大きいほうを取ります。既定は [code: 0] です。 |
 | [code: aki-set] | 字間の空きを決めるアキ量のセットの名前です。[code: \[aki-sets.名前\]] で定義したものか、組み込みのセットを書きます。書かなければ [code: body] と同じセットです。 |

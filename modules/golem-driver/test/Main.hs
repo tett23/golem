@@ -9,7 +9,6 @@ import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
 import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
-import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
 import ChapterNotesSpec
 import CliSpec
@@ -45,6 +44,7 @@ import NewPlanSpec (newPlanTests)
 #endif
 import NoteBodyStylesSpec (noteBodyStylesTests)
 import NotesSpec (notesTests)
+import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec

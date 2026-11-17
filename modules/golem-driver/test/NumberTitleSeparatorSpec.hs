@@ -105,9 +105,11 @@ has :: T.Text -> T.Text -> Assertion
 has text part = assertBool (T.unpack part <> " in\n" <> T.unpack text) (part `T.isInfixOf` text)
 
 numberTitleSeparatorTests :: [TestTree]
-numberTitleSeparatorTests =
-  separatorKeyTests
-    <>
+numberTitleSeparatorTests = separatorKeyTests <> outputTests
+
+-- | The separators in the outputs.
+outputTests :: [TestTree]
+outputTests =
   [ testCase "ADR 0372 I1: PDF: the heading and @toc take the separator of [headings.1], the captions that of caption" $ do
       pl <- layoutOne (sepStyle "number-title-separator = \"：\"\n" "" "number-title-separator = \"／\"\n") captioned
       length (filter ("1：海" `T.isPrefixOf`) (lineTexts pl)) @?= 2
