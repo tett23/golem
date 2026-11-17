@@ -172,7 +172,7 @@ everyNoticeProjects =
           "@page-break\n\n@page-lines -4\n\n# H\n\ne\n\n", -- G07100
           "@style kept\n  " <> T.replicate 72 "あ" <> "\n\n", -- G07112 (docs/adr/0261)
           "@page-break\n\n@page-lines -4\n\n" <> T.replicate 36 "あ" <> "\n\n", -- G07113 (docs/adr/0261)
-          "``` highlight=1-1\nx\n```\n\n", -- G02108
+          "``` highlight=1...1\nx\n```\n\n",
           "@table t.csv\n\n",
           "@page-break\n\n@blank-line\n" -- G04008 and G04009
         ]
@@ -296,6 +296,21 @@ noticeTests =
         assertBool "outputs" (not (null (nOutputs n))),
       testCase "ADR 0341 I4: silence-notices with the retired G02065 is G03024" $ do
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02065\"]\n" "@listing code.hs\n") id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
+      testCase "ADR 0342 I2: --no-notices does not let a dash range build" $
+        forM_ ["@listing code.hs lines=1-1\n", "@listing code.hs lines=\"1-1, 1-1\"\n", "``` highlight=1-2,4-5\na\nb\nc\nd\ne\n```\n"] $ \src -> do
+          n <- buildNotified (noticeProject "" src) (\o -> o {optNoNotices = True})
+          codesOf (nDiagnostics n) @?= ["G02251"]
+          map diagSeverity (nDiagnostics n) @?= [Error]
+          nOutputs n @?= [],
+      testCase "ADR 0342 I1: a list of lines and ranges builds with no error" $
+        forM_ ["@listing code.hs lines=\"1, 1...1\"\n", "``` highlight=\"1...2, 4\"\na\nb\nc\nd\ne\n```\n"] $ \src -> do
+          n <- buildNotified (noticeProject "" src) id
+          [diagCode d | d <- nDiagnostics n, diagSeverity d == Error] @?= []
+          assertBool "outputs" (not (null (nOutputs n))),
+      testCase "ADR 0342 I4: silence-notices with the retired G02108 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02108\"]\n" "@listing code.hs\n") id
         codesOf (nDiagnostics n) @?= ["G03024"]
         nOutputs n @?= [],
       testCase "ADR 0343 I2: --no-notices does not let a legacy or doubled table path build" $
