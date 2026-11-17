@@ -862,7 +862,8 @@ fnv = foldl (\h c -> (h `xor` fromIntegral (ord c)) * 0x100000001b3) 0xcbf29ce48
 {- | R1 of docs/adr/0274: every run up to two parts, each input of lines up
 to 5 em, balanced and without a limit, broken and placed: the hash of
 'placedKey' of each. The golden file was written by the implementation
-before the ADR.
+before the ADR, and written again when root ADR 0362 took the stretch
+out of the glue between digits and between inseparable characters.
 -}
 balancedLines :: Text
 balancedLines =
