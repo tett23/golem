@@ -4,6 +4,7 @@
 
 Golem は、コマンドラインと CI で動く組版システムである。
 原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
+EPUB は、zip の圧縮に使うライブラリ（zip-archive と zlib）の版も同じ Golem のビルドなら、本からの相対位置を保ってプロジェクトを移しても、ファイル全体がバイト単位で一致する（[Golem ADR 0361](docs/adr/0361-epub-byte-determinism.md)）。
 
 Golem の振る舞いと計画は、次の文書に分けて書いている。
 
