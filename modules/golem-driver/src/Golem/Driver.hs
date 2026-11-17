@@ -1102,11 +1102,11 @@ targetFileDiagnostics fid style locals missing = \case
         let msg = if err == Missing then missingMsg else pathErrorMessage err
       ]
 
--- | The font files of the roles the PDF uses.
 -- | The roles that the PDF uses, with their files (Golem ADR 0358).
 pdfFontRoles :: Style -> [LocalStyles] -> [(Text, FontRole)]
 pdfFontRoles style locals = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
 
+-- | The font files of the roles the PDF uses.
 pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
 pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole {frJa = ja, frLatin = la}) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
