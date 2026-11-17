@@ -66,7 +66,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
-- **CFF の表を短く切ったフォント（未実装）**：`CFF ` の表の長さを、ファイルに収まる範囲で縮めたフォントは、diagnostic を出さずに、切れた CFF を埋め込んだ PDF を書く（[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md) の実装で、この振る舞いをテストで固定した）。書き手の入力と違う出力を黙って作らないように、埋め込む CFF を確かめてエラーにする。どのコードで報告するかは ADR で決める。 [Golem ADR 0357](adr/0357-validate-embedded-cff.md)。
+- **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **可変フォント（未実装）**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。 [Golem ADR 0358](adr/0358-font-instance-selection.md)。
 - **取り込む PDF の内容の上限とストリームのつなぎ（未実装）**：取り込む PDF の `Contents` が複数のストリームのとき、つなぐ改行も内容の大きさの上限（[docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)）に数える。そのため、ストリームの展開の合計が展開の上限（256 MiB）ちょうどの PDF は、内容の上限で拒まれる（[ADR 0068](adr/0068-accepting-side-of-limits.md) の実装で見つかった）。つなぎの改行を数えるかを決め、二つの上限の関係を仕様書に書く。 [Golem ADR 0359](adr/0359-imported-content-separators.md)。
 - **ルビの親文字の中の参照（未実装）**：ルビの親文字の中の `[ref-number]` と `[ref-title]` は、タグ付き PDF の構造の木で `Reference` にならない（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)、[docs/adr/0229](adr/0229-record-the-procedures-adr-0215-and-0217-departed-from.md)）。親文字の中の参照をどの構造の要素にするかを ADR で決める。 [Golem ADR 0360](adr/0360-ruby-base-references.md)。
@@ -98,7 +98,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### ページ分割
 
-- **`@no-page-break` で送る行の数の設定（未実装）**：今は、前の段落が 3 行以下なら全体を、4 行以上なら最後の 2 行を送る（草案の ADR で決める）。送る行の数を書き手が決められるようにする。 [Golem ADR 0376](adr/0376-no-page-break-lines.md)。
 - **ページと見開きをまたぐ泣き別れの禁止（未実装）**：表、図版とキャプション、箇条書きの項目、定義リストの用語と説明のように、ひとまとまりで読ませたいものが、ページの境や見開きの境で分かれないようにする。今の改ページがそれぞれをどこで分けているかを洗い出し、分けないものと、分けるときに残す量を ADR で決める。段落の単位の設定は仕様書の「改ページ」の節の段落スタイルの欄（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）で、見開きの単位の最適化は v2 以降の「改ページの大域の最適化」で扱うので、この項目はそれ以外のまとまりを扱う。 [Golem ADR 0377](adr/0377-keep-book-parts.md)。
 
 ### ルビと和文組版の拡張
@@ -260,7 +259,6 @@ v1 より後のバージョンのための事項には、そのバージョン�
 
 - **換算ページ数と実際の折り返し**：換算に使う 1 行文字数と 1 ページ行数を任意に指定できること、本文をマスターフレームに限定することは決まった。換算時に実際の版面の折り返しを引き継ぐかは未決である。現案は段落と明示改行を保ち、指定した字数で折り返し直す。[Golem ADR 0355](adr/0355-manuscript-statistics.md)
 - **段落スタイルの拡張の採択単位**：行送り、次スタイル、先頭文字スタイル、ドロップキャップ、字取り、始め括弧の字下げを一括で採択した。実装を機能ごとの修正 ADR に分ける必要があるかは、着手時に判断する。行数と字数の型を「0 より大きい自然数」とすることは決まった。[Golem ADR 0374](adr/0374-paragraph-style-controls.md)
-- **改ページで指定する行数の意味**：位置引数の自然数で行数を指定する記法は決まった。指定数を超えて段落を送ってよい条件を決める。現案では 4 行の段落に `@no-page-break 3` を指定すると、前に 1 行だけ残るのを避けるため 4 行とも送る。0 のときはこの命令による連動を追加しない。[Golem ADR 0376](adr/0376-no-page-break-lines.md)
 - **投稿用の文献スタイルを照合する雑誌**：書き手が投稿先に合わせて文献スタイルを自作できることは v1 の目標である。どの雑誌のどの投稿規定と書誌例を v1 の受け入れ例に採るかは未決である。[Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)
 
 ### その他の未決事項

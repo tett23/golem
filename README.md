@@ -204,6 +204,7 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 ### 書体とスタイル
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
+CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
@@ -278,6 +279,9 @@ PDF の図版、表、コードブロックのキャプションと傍注の本�
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
+
+`@no-page-break 3` で、改ページの際に前の段落の末尾 3 行を次の段落と同じ段に送る。
+前に 1 行しか残らなければ段落全体を送る（[Golem ADR 0376](docs/adr/0376-no-page-break-lines.md)）。
 
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 索引の項目には、`[index reading=くみはん range=begin: 組版]` と `range=end` でページの範囲を、`see=組版` で「（組版を見よ）」「（組版をも見よ）」の参照を書ける。

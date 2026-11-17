@@ -1,5 +1,6 @@
 module Main (main) where
 
+import CffSpec (cffTests)
 import CmapSpec (cmapTests)
 import ConcurrencySpec (concurrencyTests)
 import Control.Monad (void)
@@ -27,7 +28,9 @@ main = do
   -- the subset of Source Han Sans has no palt; Noto Serif JP of golem-driver's 蟹工船 fixture has
   noto <- BS.readFile notoPath >>= loadFont >>= either (fail . show) pure
   race <- raceFactor
-  defaultMain (tests race han sans serif noto)
+  -- the font files themselves, for the CFF checks (Golem ADR 0357)
+  let cff f = (fontBytes f, fontNumGlyphs f)
+  defaultMain (testGroup "golem-font" [tests race han sans serif noto, cffTests (cff sans) (cff han) (cff noto)])
 
 -- | Noto Serif JP of golem-driver's 蟹工船 fixture, which broken-cmap of scripts/wasm/compare.sh breaks too.
 notoPath :: FilePath

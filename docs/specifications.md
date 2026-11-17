@@ -4178,6 +4178,18 @@ OpenType に包んだ CFF（`/Subtype /OpenType`）は、ISO 32000-1 が認め�
 Chromium の PDF のビューアー（PDFium）が、OpenType に包んだ CID-keyed の CFF の文字のコードをグリフ ID として読み、和文を描かないためである。
 そのため、CFF の表を取り出せないフォントは、OpenType のまま埋め込まずにエラー（G08018）とし、PDF を書かない。
 
+CFF の表があるフォントは、サブセットを作る前に、表の中の参照が表の長さに収まるかを確かめる（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）。
+表の長さは、フォントのテーブルディレクトリが宣言する長さであり、コレクション（`.ttc`）では最初のフォントの表を読む。
+確かめるのは、ヘッダーに続く INDEX（Name、Top DICT、String、Global Subrs）の終端、Top DICT が指すデータ（CharStrings、charset、Encoding、Private DICT とその Subrs、FDArray、FDSelect、各 Font DICT の Private DICT とその Subrs）、使うグリフ（.notdef を含む）の CharString と、それが呼ぶサブルーチンである。
+サブルーチンの番号は、CharString を Type 2 の規則で実行して求める。
+参照の終端が表の長さを超える場合と、グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合は、エラー（G08107）とし、PDF を書かない。
+512 MiB（2 の 29 乗バイト）を超える位置や長さは、その値に丸めて読むので、表の外とする。
+wasm32 の 32 ビットの整数でも、64 ビットの処理系と同じ結果にするためである。
+使わないグリフの CharString は確かめない。
+スタックの不足のような、表の外を読まない誤りは G08107 にせず、その CharString をそれ以上たどらない。
+endchar の引数で別のグリフを合成する形（seac）の部品のグリフと、random の値で決まる参照は、たどらない。
+G08003 はフォントを開けない場合、G08018 は CFF の表を取り出せない場合のままである。
+
 ### ToUnicode と ActualText
 
 PDF の ToUnicode は、各グリフを、そのグリフが組んだクラスタ（シェイピングで一まとまりになった文字の並び）の文字列の全体に対応させる（[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)、[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
@@ -5175,7 +5187,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 
 引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
 
-- `@no-page-break` に引数を書けば G02096 を出す。
+- `@no-page-break N` は 0 以上の整数を一つ指定できる。キーワード引数や余分な引数は G02096、数でない値は G02156、負数は G02103、小数部のある数は G02104 を出す（[ADR 0376](adr/0376-no-page-break-lines.md)）。
 - `@need-lines` の引数が 1 以上の整数の一つでなければ G02070 を出す。
 - `@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G02099 を出す。
 - 三つのどれかに本体を書けば、本体の最初のブロックに G02097 を出す。
@@ -5185,9 +5197,11 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 PDF では、三つの印を次のように扱う。
 
 
-- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分と同じ段に置く。
+- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の末尾から指定行数（既定は 2 行）を次の段に送り、後の最初の部分と同じ段に置く。
   - 後の最初の部分は `nextNeed` と同じ量であり、3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
   - `@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は、段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。
+  - 前に残る行が 1 行以下なら全体を送る。送る行数は、指定行数と段落スタイルの `keep-last-lines`（孤立行を防ぐ最小行数）の大きい方とする。同じ位置に `keep-with-next` があれば、後の最初の部分はその行数と既定の大きい方とし、送る行数には足さない。
+  - `@no-page-break 0` は追加の連動を求めない。HTML と EPUB でもこの指定から改ページを抑える属性や CSS を書かない。
   - 空の段からは送らない。
   - 前が見出しなら、見出しの規則（「見出しと後に続くもの」）のとおりに置く。前がそのほかのブロックなら、置き方を変えない。
 - `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
