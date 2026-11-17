@@ -74,10 +74,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **ルビの親文字の中の参照（未実装）**：ルビの親文字の中の `[ref-number]` と `[ref-title]` は、タグ付き PDF の構造の木で `Reference` にならない（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)、[docs/adr/0229](adr/0229-record-the-procedures-adr-0215-and-0217-departed-from.md)）。親文字の中の参照をどの構造の要素にするかを ADR で決める。 [Golem ADR 0360](adr/0360-ruby-base-references.md)。
 - **EPUB の決定性（未実装）**：EPUB の出力のバイト列の一致を、仕様として保証する。今の実装は zip のエントリの時刻を 0 にし、並びも決めて書いており、CI の決定性の検査も EPUB のハッシュを比べているが、仕様書はまだ保証しないとしている（[ADR docs/adr/0002](adr/0002-determinism.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。保証すると決め直す ADR を書く。 [Golem ADR 0361](adr/0361-epub-byte-determinism.md)。
 
-### 行分割と禁則
-
-- **行の調整で空けない字間（未実装）**：JLReq の 3.1 の「行の調整処理で字間を空ける処理に使用しない箇所」に従い、分割禁止の字間（分離禁止文字の連続、連数字、前置省略記号と数、数と後置省略記号）を、行の調整で空けないようにする。今は分割の候補を消すだけで、漢字等どうしの 1/10 em の伸びが残るので、空いた行では `１２３` の字のあいだも他の字のあいだと同じだけ空く（[golem-layout ADR 0049](golem-layout/adr/0049-align-the-character-classes-and-unbreakable-pairs-with-jlreq.md)）。伸びを外すには、アキ量のセットの規則に分割禁止の組を表す方法が要り、`style.toml` のアキ量のセットの書き方も変わりうる。ADR で決める。 [Golem ADR 0362](adr/0362-unbreakable-spacing.md)。
-
 ### スタイル
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
