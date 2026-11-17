@@ -261,6 +261,8 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
 
+PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
+
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
 コードブロックは組み込みの段落スタイル `code` で組み、書体は `[fonts.code]` の役割、背景の色と内側の余白は `[paragraph-styles.code]` の `background` と `padding` で指定する（[golem-driver ADR 0017](./docs/golem-driver/adr/0017-pdf-code-blocks.md)）。
@@ -271,6 +273,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 `@listing` で取り込むファイルのパスは、`@listing src/Main.hs` のように最初の位置引数に一つ書く（[ADR 0341](docs/adr/0341-revise-retire-listing-src.md)）。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 
+CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイルのパスを最初の位置引数に置く（[ADR 0343](docs/adr/0343-revise-retire-table-src.md)）。
 表には `@caption` でキャプションを付けて表番号（既定 `表{chapter}-{n}`）を振り、`@column-widths 8zw auto` で列の幅を、`@style` でセルの段落スタイル（既定は組み込みの `table`）を指定できる。
 キャプションを表の上と下のどちらに置くかは `[tables]` の `caption-position` で決める（[docs/adr/0262](./docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 
