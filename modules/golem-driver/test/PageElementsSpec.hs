@@ -17,6 +17,7 @@ import Golem.Driver
 import Golem.Driver.Html (cssLength)
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.Look (Look (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -925,6 +926,21 @@ wrapTests =
 sidenotesOf :: PdfLayout -> [(Int, PlacedSidenote)]
 sidenotesOf pl = [(n, ps) | (n, pss) <- Map.toList (plSidenotes pl), ps <- pss]
 
+-- | sidenoteStyle with the symbol marker, character styles for it and more keys of [sidenotes] (docs/adr/0371).
+sideMarkStyle :: BS.ByteString -> BS.ByteString
+sideMarkStyle setting =
+  horizontalStyle
+    <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n[character-styles.accent]\ncolor = \"red\"\n[character-styles.large]\nsize = \"3zw\"\n[character-styles.heavy]\nsynthetic-bold = true\n[character-styles.loud]\ncolor = \"red\"\nsize = \"2zw\"\nsynthetic-bold = true\n"
+    <> "\n[paragraph-styles.sidenote]\nsize = \"8pt\"\n\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nmarker = \"symbol\"\n"
+    <> setting
+
+-- | The boxes of the text and of the sidenotes, with their looks, in the symbol marker and a [sidenotes] setting (docs/adr/0371).
+sideMarkBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [(T.Text, Look)])
+sideMarkBoxes setting source = do
+  (_, pl) <- layoutOk (sideMarkStyle setting) source []
+  let boxes l = [(bcText c, bcLook c) | Box _ c <- lineItems l, not (T.null (bcText c))]
+  pure (concatMap (boxes . slLine) (Map.elems (plLines pl)), concat [boxes l | (_, ps) <- sidenotesOf pl, l <- psLines ps])
+
 -- | The grid line of the line that holds the n-th sidenote marker of a page.
 slotOfMarker :: PdfLayout -> Int -> Int -> Maybe Int
 slotOfMarker pl page k =
@@ -1133,6 +1149,47 @@ sidenoteTests =
       case map snd (sidenotesOf none) of
         [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems l)] @?= ["注"]
         other -> assertFailure (show (length other)),
+    testCase "ADR 0371 I1: inv1_sidenote_marker_style_property" $
+      -- every marker style by sidenotes of one or more lines, several in a
+      -- paragraph, one with a character style, and one in a paragraph long
+      -- enough to break into lines
+      forM_ ["accent", "large", "heavy", "loud"] $ \name ->
+        forM_
+          [ "本文[sidenote: 注]。\n",
+            "本[sidenote: 注[strong: 強]注]文\n",
+            "一[sidenote: 甲]二[sidenote: 乙]三\n",
+            "本文[sidenote: 傍注の本文が二行にわたる長さです]。\n",
+            T.replicate 30 "本" <> "[sidenote: 注]" <> T.replicate 30 "文" <> "\n"
+          ]
+          $ \source -> do
+            (_, plainNotes) <- sideMarkBoxes "" source
+            (_, styledNotes) <- sideMarkBoxes ("marker-style = \"" <> TE.encodeUtf8 name <> "\"\n") source
+            assertBool (show (name, source)) (not (null plainNotes))
+            assertEqual (show (name, source)) plainNotes styledNotes,
+    testCase "ADR 0371 I1: inv1_sidenote_marker_style_case_1" $ do
+      (text, notes) <- sideMarkBoxes "" "本文[sidenote: 注]。\n"
+      [(t, lkColor look) | (t, look) <- text] @?= [("本", Nothing), ("文", Nothing), ("※", Nothing), ("。", Nothing)]
+      [lkLatinFace look | ("※", look) <- text] @?= [lkLatinFace look | ("本", look) <- text]
+      [(t, lkColor look) | (t, look) <- notes] @?= [("※", Nothing), ("注", Nothing)],
+    testCase "ADR 0371 I1: inv1_sidenote_marker_style_case_2" $ do
+      (text, notes) <- sideMarkBoxes "marker-style = \"accent\"\n" "本文[sidenote: 注]。\n"
+      [(t, lkColor look) | (t, look) <- text] @?= [("本", Nothing), ("文", Nothing), ("※", Just "red"), ("。", Nothing)]
+      [(t, lkColor look) | (t, look) <- notes] @?= [("※", Nothing), ("注", Nothing)],
+    testCase "ADR 0371: the width of the symbol is measured after applying the character style" $ do
+      let widths setting = do
+            (_, pl) <- layoutOk (sideMarkStyle setting) "本文[sidenote: 注]。\n" []
+            pure [w | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), bcText c == "※"]
+      plain <- widths ""
+      large <- widths "marker-style = \"large\"\n"
+      plain @?= [10 * pt]
+      large @?= [30 * pt],
+    testCase "ADR 0371: marker-style is for the symbol alone; a numbered marker keeps the look of mark-style" $ do
+      let looks setting = do
+            (_, pl) <- layoutOk (sidenoteStyle <> setting) "本文[sidenote: 注]。\n" []
+            pure [(bcText c, bcLook c) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl)]
+      plain <- looks ""
+      styled <- looks "marker-style = \"strong\"\n"
+      styled @?= plain,
     testCase "sidenotes need a horizontal page with a sidenote column, and the text flow" $ do
       a <- layoutMini horizontalStyle "本文[sidenote: 注]。\n" []
       either (map (\d -> (diagCode d, diagMessage d))) (const []) a @?= [(DiagnosticCode "G07034", "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません")]
