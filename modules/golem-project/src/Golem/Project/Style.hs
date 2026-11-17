@@ -1667,6 +1667,7 @@ data Style = Style
     stMasters :: !(Map Text MasterDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
+    -- | [printings] format: the format of a line of @printings, Nothing for the default (docs/adr ADR 0375)
     stPrintingsFormat :: !(Maybe [Piece Text]),
     -- | [lists]: the markers of lists, for the whole book (golem-driver ADR 0013)
     stLists :: !ListStyle,
@@ -2489,17 +2490,23 @@ instance FromValue IndexSec where
       v -> failAt (valueAnn v) "[index] の section-headings は真偽値です"
     pure (IndexSec (IndexStyle cs gap 0 (fromMaybe True headings)))
 
--- These slots are text even for numbers: an explicit printing format
--- always uses decimal digits, independently of the writing mode.
+{- | The format of [printings] (docs/adr ADR 0375), read as the other
+formats of style.toml are (docs/adr ADR 0177), with @{{@ and @}}@ as the
+current way of writing a brace: no notice. Every field is a text slot, so
+an explicit format writes decimal digits whatever the writing mode. A
+newline is an error: one printing is one line.
+-}
 printingTemplate :: l -> Text -> Matcher l [Piece Text]
 printingTemplate loc format
-  | T.any (`elem` ("\r\n" :: String)) format = failAt loc "[printings] の format は一行で書きます"
-  | otherwise = either (failAt loc . T.unpack) (pure . fst) (parseFormat DoubledOnly slot format)
+  -- the format is not repeated in the message: it would break the line
+  | T.any (`elem` ("\r\n" :: String)) format = failAt loc "[printings] の format が正しくありません（改行は書けません）"
+  | otherwise = either wrong (pure . fst) (parseFormat DoubledToo slot format)
   where
+    wrong why = failAt loc (T.unpack ("[printings] の format が正しくありません（" <> why <> "）: " <> format))
     slot name
       | name == "printing" = Right (TextSlot "number")
       | name `elem` ["year", "month", "day", "date", "edition"] = Right (TextSlot name)
-      | otherwise = Left ("[printings] の format にない欄です: {" <> name <> "}")
+      | otherwise = Left ("表にない欄です: {" <> name <> "}")
 
 -- | Substitute the fields of one printing, leaving literal text intact.
 renderPrintingTemplate :: (Text -> Text) -> [Piece Text] -> Text
