@@ -1873,23 +1873,22 @@ diagnosticTests =
       testCase "G02036: @listing without a path" $ do
         msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")],
       testCase "ADR 0341 I2: the code, the site and the asset requests of each path form" $ do
-        let at src a = spanOf src a
-            row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abCtx id) src],) <$> listingRequests src
+        let row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abCtx id) src],) <$> listingRequests src
             expect src codes n = row src >>= (@?= (codes, n))
         expect "@listing\n" [("G02036", 0, 9)] 0
         expect "@listing a.txt\n" [] 1
         let legacy = "@listing src=a.txt\n"
-        expect legacy [("G02250", fst (at legacy "src=a.txt"), snd (at legacy "src=a.txt"))] 0
+        expect legacy [("G02250", fst (spanOf legacy "src=a.txt"), snd (spanOf legacy "src=a.txt"))] 0
         let two = "@listing a.txt b.txt\n"
-        expect two [("G02253", fst (at two "b.txt"), snd (at two "b.txt"))] 0
+        expect two [("G02253", fst (spanOf two "b.txt"), snd (spanOf two "b.txt"))] 0
         let twice = "@listing src=a.txt src=b.txt\n"
-        expect twice [("G02077", fst (at twice "src=b.txt"), snd (at twice "src=b.txt"))] 0
+        expect twice [("G02077", fst (spanOf twice "src=b.txt"), snd (spanOf twice "src=b.txt"))] 0
         let thrice = "@listing src=a.txt src=b.txt src=a.txt\n"
         expect thrice [("G02077", 19, 28), ("G02077", 29, 38)] 0
         let same = "@listing a.txt src=a.txt\n"
-        expect same [("G02253", fst (at same "src=a.txt"), snd (at same "src=a.txt"))] 0
+        expect same [("G02253", fst (spanOf same "src=a.txt"), snd (spanOf same "src=a.txt"))] 0
         let other = "@listing a.txt src=b.txt\n"
-        expect other [("G02253", fst (at other "src=b.txt"), snd (at other "src=b.txt"))] 0
+        expect other [("G02253", fst (spanOf other "src=b.txt"), snd (spanOf other "src=b.txt"))] 0
         [(c, m) | (c, m, _, _) <- diagsWith (abCtx id) other] @?= [("G02253", "@listing のパスを二つ書いています: a.txt、b.txt。採用する一方だけを位置引数に残します")],
       testCase "ADR 0341 I2: reject legacy and ambiguous listing paths" $ do
         errs "@listing src=src/Main.hs\n" @?= ["G02250"]
