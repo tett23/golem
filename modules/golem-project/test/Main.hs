@@ -1516,6 +1516,11 @@ noteMarkTests =
       testCase "a character style that does not exist is G03013" $ do
         codes (parseStyle (FileId 0) "[notes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[notes]\nbody-mark-style = \"nothing\"\n") @?= ["G03013"],
+      testCase "ADR 0363: marker-style of [lists] takes a character style; one that does not exist is G03013" $ do
+        fmap (lsMarkerStyle . stLists) (first (const ()) (parseStyle (FileId 0) "[character-styles.accent]\nsynthetic-bold = true\n[lists]\nmarker-style = \"accent\"\n")) @?= Right (Just "accent")
+        fmap (lsMarkerStyle . stLists) (first (const ()) (parseStyle (FileId 0) "[lists]\nmarker-style = \"strong\"\n")) @?= Right (Just "strong")
+        fmap (lsMarkerStyle . stLists) (first (const ()) (parseStyle (FileId 0) "[lists]\ngap = \"1zw\"\n")) @?= Right Nothing
+        codes (parseStyle (FileId 0) "[lists]\nmarker-style = \"nothing\"\n") @?= ["G03013"],
       testCase "mark-size is G03117 and is the size of note-mark; with a mark-style of a size it is G03006" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03117", Notice, 20)]
