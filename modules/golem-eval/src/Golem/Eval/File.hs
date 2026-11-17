@@ -58,7 +58,7 @@ import Golem.Eval.Builtin
 import Golem.Eval.Expr
 import Golem.Eval.Functions
 import Golem.Eval.Number (exactText)
-import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
+import Golem.Eval.RegexStyle (applyInitialStyles, applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
@@ -67,7 +67,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Sp (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Text (isSpaceTab, tshow)
@@ -244,10 +244,12 @@ evalFile ctx0 (A.File fid blocks0) =
       (exceptions, exceptionDiags) = fileHyphenationExceptions header
       local = local0 {lsHyphenationExceptions = exceptions}
       ctx = (withFileStyles local ctx0) {ctxSource = source}
-      blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
+      blocks = splitLines (ctxSource ctx) (ctxParaStyles ctx) rest
+      -- the styles of style.toml with those of the file over them
+      fileStyle = withLocalStyles (ctxStyle ctx0) local
       -- meta and vars, which every file reads without @import (docs/adr/0185)
       st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] Map.empty
-      (bsEval, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bsEval, st) = runState (nextStyled ctx fileStyle blocks) st0
       (bsCollapsed, blankDiags) = collapseBlankLines (stBlankCounts st) bsEval
       -- the notes written by name take their bodies (docs/adr/0263)
       (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsCollapsed
@@ -258,17 +260,52 @@ evalFile ctx0 (A.File fid blocks0) =
         Left ds -> (doc0, ds)
         Right (d, ws) -> (fillFilterKenten ctx d, ws <> unknownParaStyles ctx d <> functionFilterNames ctx d)
       -- the regex styles last, so that the text of filters is matched too (docs/adr ADR 0015)
-      rules = regexRules (withLocalStyles (ctxStyle ctx0) local)
+      rules = regexRules fileStyle
+      -- the first characters after them, so that the regex styles match the text as written (docs/adr/0374)
+      styled = applyInitialStyles fileStyle (applyRegexStyles rules doc)
    in EvalResult
-        { erDocument = applyRegexStyles rules doc,
+        { erDocument = styled,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> unwritableText (applyRegexStyles rules doc),
+          erDiagnostics = stDiags st <> noteDiags <> breakDiags <> filterDiags <> unwritableText styled,
           erSource = ctxSource ctx,
           erStyles = local,
           erNumberSites = stNumberSites st,
           erImages = stImages st
         }
+
+{- | The blocks at the top of a file evaluated in order (docs/adr/0374):
+a paragraph without a paragraph style written takes the next-style of the
+paragraph style of the block right before it in the result, when that
+block is a paragraph. A block that puts out nothing (a variable) is not
+counted; any other block between them, a break of the attributes of the
+paragraph included, leaves the paragraph in body. The paragraph is
+evaluated as the body form of @style, so that a style that keeps its
+lines keeps those of the paragraph.
+-}
+nextStyled :: EvalContext -> Style -> [A.Located A.Block] -> M [Block]
+nextStyled ctx style = go Nothing
+  where
+    go _ [] = pure []
+    go next (b : bs) = do
+      let b' = case next of
+            Just n | implicit b -> withStyle n b
+            _ -> b
+      out <- evalBlock ctx (normalizeBlock b')
+      let next' = case reverse out of
+            [] -> next
+            Block {blockBody = Paragraph st _} : _ -> paraStyle style st >>= psNextStyle
+            _ -> Nothing
+      (out <>) <$> go next' bs
+    implicit = \case
+      A.Located _ (A.Paragraph _) -> True
+      A.Located _ (A.Attributed cmds (Just (A.Located _ (A.Paragraph _)))) -> not (any (\c -> isStyleCommand c || isBreakCommand c || isSettingCommand c) cmds)
+      _ -> False
+    styleCommand sp n = A.BlockCommand (A.Located sp "style") [A.Located sp (A.Positional (A.Word n))]
+    withStyle n (A.Located sp b) = A.Located sp $ case b of
+      A.Paragraph is -> styleCommand sp n [A.Located sp (A.Paragraph is)]
+      A.Attributed cmds t -> A.Attributed (cmds <> [A.Located sp (styleCommand sp n [])]) t
+      other -> other
 
 {- | The context with the styles of the file over those of style.toml
 (docs/adr ADR 0014): its character styles added, and whether each
