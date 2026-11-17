@@ -363,6 +363,13 @@ Golem は、ある文字に当てられるスタイルのキーを狭めず、�
 処理系が文字の位置を決める箇所（注の印の高さなど）も、スタイルを当てた結果の書体と大きさから位置を求める。
 この原則に反する今の箇所は [docs/roadmap.md](roadmap.md) に挙げる（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 
+### CI の時間
+
+プルリクエストの CI は、版によらず常に 5 分以内に保つ。
+CI を待つ時間は変更を一つ入れるたびにかかるので、CI が遅いと開発そのものが遅くなる。
+測るのは、プルリクエストの `ci.yml` の成功した実行のうち `build` を省かなかった直近 20 回の時間の中央値で、ランナーの順番待ちは含めない（[ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)、計測のコマンドは `scripts/ci/ci-critical-path.sh`）。
+この時間が 300 秒を超えたら、ほかの作業より先に CI を改善する（CONTRIBUTING.md）。
+
 ## モジュール構成
 
 ### 依存の図
