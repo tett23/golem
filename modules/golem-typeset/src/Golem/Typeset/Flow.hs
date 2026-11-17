@@ -1491,6 +1491,7 @@ composeEnv bookLang style geom fonts assumed look =
             Just "symbol" -> MarkerSymbol
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
+          ceSidenoteMarkStyle = stSidenotes style >>= snMarkerStyle,
           {- Latin words: the patterns of the language of their span, and
           outside one those of the language of the book, or US English when
           none is bundled for it (golem-layout ADR 0001, docs/adr ADR 0187,

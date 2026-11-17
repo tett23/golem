@@ -6852,7 +6852,11 @@ PDF の傍注の本文は、段落スタイル `sidenote` の `font` の役割�
 本文側の印は、番号、記号（※）、なしから `style.toml` で選ぶ。
 番号の印（`marker = "number"`）は、脚注の印と同じく `[notes]` の `mark-style` の文字スタイルで番号だけを組む（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 ただし、番号の印は `mark-format` の書式も表記も使わず、算用数字で書く。
-「※」は、本文の書体と大きさのまま組む。
+「※」は、`[sidenotes]` の `marker-style` に書いた文字スタイルで組み、省略すれば印を置いた位置の見た目のまま組む（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
+`marker-style` は本文の中の「※」にだけ当たり、傍注の本文とその先頭の「※」は段落スタイル `sidenote` の見た目のまま組む。
+PDF は文字スタイルを当てた後の幅で「※」を測るので、`marker-style` を変えると本文の折り返しが変わる場合がある。
+番号の印と印なしには、`marker-style` は当たらない。
+PDF のほかの媒体は「※」を使わないので、`marker-style` は PDF でだけ意味を持つ。
 印なしは、行の位置で本文と対応させる方式であり、PDF でだけ意味を持つ。
 傍注の本文の先頭には、本文側の印と同じ番号か「※」を付け、印なしでは何も付けない。
 
