@@ -75,10 +75,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
 - **HTML と EPUB へのフォントのライセンスの文書の同梱**：`golem build` の HTML と EPUB の出力は、`style.toml` が指すフォントのファイルだけを `fonts/` に写し、ライセンスの文書を写さない。そのため、OFL のフォントを使った HTML や EPUB をそのまま配ると、フォントの各コピーに著作権表示とライセンスを添えるという OFL 1.1 の条件 2 を満たさない。これはマニュアルに限らず、Golem を使うすべての本に起きる。どのファイルがライセンスの文書かを Golem が知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかを ADR で決める。[docs/adr/0082](adr/0082-manuals-under-cc0.md) は、マニュアルを組むスクリプトで足りる分だけを直し、本体の扱いは HTML の出力を XHTML から HTML Living Standard に変える予定とあわせて v1.0.0 のころに決めるとした。EPUB については、[OFL FAQ](https://openfontlicense.org/ofl-faq/) の 1.15 が、改変しないフォントを圧縮したフォルダの構造の文書に入れることを、埋め込みではなく同梱に近いとしている。
 
-### 行分割と禁則
-
-- **行の調整で空けない字間（未実装）**：JLReq の 3.1 の「行の調整処理で字間を空ける処理に使用しない箇所」に従い、分割禁止の字間（分離禁止文字の連続、連数字、前置省略記号と数、数と後置省略記号）を、行の調整で空けないようにする。今は分割の候補を消すだけで、漢字等どうしの 1/10 em の伸びが残るので、空いた行では `１２３` の字のあいだも他の字のあいだと同じだけ空く（[golem-layout ADR 0049](golem-layout/adr/0049-align-the-character-classes-and-unbreakable-pairs-with-jlreq.md)）。伸びを外すには、アキ量のセットの規則に分割禁止の組を表す方法が要り、`style.toml` のアキ量のセットの書き方も変わりうる。ADR で決める。 [Golem ADR 0362](adr/0362-unbreakable-spacing.md)。
-
 ### スタイル
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。

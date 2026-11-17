@@ -1,6 +1,6 @@
 # ADR 0362: 分割禁止の字間を行の調整で伸ばさない
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
