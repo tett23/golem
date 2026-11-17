@@ -116,6 +116,7 @@ bodyT = \case
 pageControlT :: PageControl -> Term
 pageControlT = \case
   NoBreak -> TList [int (0 :: Int)]
+  NoBreakLines n -> TList [int (3 :: Int), int n]
   NeedLines n -> TList [int (1 :: Int), int n]
   AdjustLines n -> TList [int (2 :: Int), int n]
 
@@ -427,6 +428,7 @@ termPageControl :: Term -> D PageControl
 termPageControl t =
   asList t >>= \case
     [k] | Right 0 <- asIntI k -> Right NoBreak
+    [k, n] | Right 3 <- asIntI k -> NoBreakLines <$> asNatural n
     [k, n] | Right 1 <- asIntI k -> NeedLines <$> asIntI n
     [k, n] | Right 2 <- asIntI k -> AdjustLines <$> asIntI n
     _ -> bad "改ページの制御"
