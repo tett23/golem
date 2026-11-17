@@ -126,7 +126,7 @@ PDF/X-4 では、上表の `Link` は文字を保持する `Span` になり、�
 表の対応には、次の補いがある。
 
 - 読みのない区切りの親文字は `Ruby` を作らない。
-- 読みのない区切りの親文字の中の `[ref-number]` と `[ref-title]` は、文字を描くが `Reference` も `Link` も作らず、親の構造の要素の文字の葉に入る（[docs/roadmap.md](roadmap.md) の「読みのないルビの区切りの中の参照」の項目）。
+- 読みのない区切りの親文字の中の `[ref-number]` と `[ref-title]` は、本文の中の参照と同じく、`Reference` の中の `Link` になる。その `Reference` は `Ruby` の中に置かず、区切りの字が入る親の構造の要素の中に、原稿の順に置く。リンクの矩形は、その参照の字を描いた位置から求める（[ADR 0393](adr/0393-references-in-ruby-segments-without-readings.md)）。
 - `RP` は使わない。
 - 章末の注の `Note` も、本文の注の印の直後に置く。
 - プラグインと `.gm` の関数が返したブロックも、同じ対応で構造の要素にする。
