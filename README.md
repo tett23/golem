@@ -258,6 +258,8 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
 
+PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
+
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
 コードブロックは組み込みの段落スタイル `code` で組み、書体は `[fonts.code]` の役割、背景の色と内側の余白は `[paragraph-styles.code]` の `background` と `padding` で指定する（[golem-driver ADR 0017](./docs/golem-driver/adr/0017-pdf-code-blocks.md)）。
