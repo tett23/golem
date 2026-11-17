@@ -83,10 +83,34 @@ checkCffTable t gids = case structure t >>= \font -> mapM_ (glyph t font) (Set.t
 -- ------------------------------------------------------------------ reading
 
 -- | Unsigned big-endian integers of n bytes at an offset, Nothing past the bytes.
-uN :: Int -> ByteString -> Int -> Maybe Int
-uN n b o
+uI :: Int -> ByteString -> Int -> Maybe Integer
+uI n b o
   | o < 0 || o + n > BS.length b = Nothing
   | otherwise = Just (BS.foldl' (\a w -> a `shiftL` 8 .|. fromIntegral w) 0 (BS.take n (BS.drop o b)))
+
+-- | 'uI' as an Int, clamped by 'clamp'.
+uN :: Int -> ByteString -> Int -> Maybe Int
+uN n b o = clamp <$> uI n b o
+
+-- | A signed 32-bit integer of four bytes.
+signed32 :: Integer -> Integer
+signed32 v = if v >= 0x80000000 then v - 0x100000000 else v
+
+{- | A number of the table as an Int within ±2^29. A larger offset or length
+lies past any table Golem reads either way, and the sums of a few such
+numbers stay within the 32-bit Int of wasm32, so the check gives the same
+answer there as on 64-bit processors.
+-}
+clamp :: Integer -> Int
+clamp = fromInteger . max (negate limit) . min limit
+  where
+    limit = 2 ^ (29 :: Int)
+
+-- | A number of a CharString run as an Int, within the same bounds; NaN is the lower bound.
+toInt :: Double -> Int
+toInt v = truncate (max (negate limit) (min limit v))
+  where
+    limit = 2 ^ (29 :: Int)
 
 u16, u32 :: ByteString -> Int -> Maybe Int
 u16 = uN 2
@@ -160,7 +184,9 @@ dict = go [] Map.empty
             go [] (Map.insert (1200 + fromIntegral b1) (reverse acc) m) rest'
         | b0 <= 21 -> go [] (Map.insert (fromIntegral b0) (reverse acc) m) rest
         | b0 == 28 -> num 2 rest (\v -> if v >= 0x8000 then v - 0x10000 else v)
-        | b0 == 29 -> num 4 rest (\v -> if v >= 0x80000000 then v - 0x100000000 else v)
+        | b0 == 29 -> do
+            v <- inPart (uI 4 rest 0)
+            go (Just (clamp (signed32 v)) : acc) m (BS.drop 4 rest)
         | b0 == 30 -> go (Nothing : acc) m (BS.drop 1 (BS.dropWhile (not . realEnd) rest))
         | b0 >= 32 && b0 <= 246 -> go (Just (fromIntegral b0 - 139) : acc) m rest
         | b0 >= 247 && b0 <= 254 -> do
@@ -338,9 +364,8 @@ run t font locals depth = go
           let v = if b0 <= 250 then (fromIntegral b0 - 247) * 256 + fromIntegral b1 + 108 else negate ((fromIntegral b0 - 251) * 256 + fromIntegral b1 + 108)
           push v (BS.drop 1 rest) st
       | b0 == 255 = do
-          v <- inPart (u32 rest 0)
-          let s = if v >= 0x80000000 then v - 0x100000000 else v
-          push (fromIntegral s / 65536) (BS.drop 4 rest) st
+          v <- inPart (uI 4 rest 0)
+          push (fromInteger (signed32 v) / 65536) (BS.drop 4 rest) st
       | b0 `elem` [1, 3, 18, 23] = clear rest (stems st)
       | b0 == 19 || b0 == 20 = do
           let st' = stems st
@@ -365,7 +390,7 @@ run t font locals depth = go
             | n < 1240 = 107
             | n < 33900 = 1131
             | otherwise = 32768
-      sub <- entry t ix (truncate v + bias)
+      sub <- entry t ix (toInt v + bias)
       when (depth >= 10) (Left Malformed)
       (end, st'') <- run t font locals (depth + 1) sub st'
       case end of
@@ -398,9 +423,9 @@ run t font locals depth = go
       12 -> bin (\a b s -> if b == 0 then Left Malformed else pushed [a / b] s) rest st
       14 -> un (\a -> pushed [negate a]) rest st
       15 -> bin (\a b -> pushed [bool (a == b)]) rest st
-      18 -> un (\_ -> pure) rest st
-      20 -> bin (\v i s -> pure s {rTransient = Map.insert (truncate i) v (rTransient s)}) rest st
-      21 -> un (\i s -> pushed [Map.findWithDefault 0 (truncate i) (rTransient s)] s) rest st
+      18 -> un (const pure) rest st
+      20 -> bin (\v i s -> pure s {rTransient = Map.insert (toInt i) v (rTransient s)}) rest st
+      21 -> un (\i s -> pushed [Map.findWithDefault 0 (toInt i) (rTransient s)] s) rest st
       22 -> with 4 rest st $ \case
         [s1, s2, v1, v2] -> pushed [if v1 <= v2 then s1 else s2]
         _ -> const (Left Malformed)
@@ -410,18 +435,18 @@ run t font locals depth = go
       28 -> bin (\a b -> pushed [b, a]) rest st
       29 -> do
         (i, st') <- pop st
-        let k = truncate i
+        let k = toInt i
             vs = rStack st'
         v <- if k < 0 then inPart (safeHead vs) else inPart (safeAt k vs)
         go rest =<< pushed [v] st'
       30 -> do
         (j, st1) <- pop st
         (n, st2) <- pop st1
-        let k = truncate n
+        let k = toInt n
         when (k < 0 || k > length (rStack st2)) (Left Malformed)
         let (top, below) = splitAt k (rStack st2)
             -- the stack holds the top first; roll moves values toward the top by j
-            rolled = if k == 0 then top else let s = truncate j `mod` k in drop s top ++ take s top
+            rolled = if k == 0 then top else let s = toInt j `mod` k in drop s top ++ take s top
         go rest st2 {rStack = rolled ++ below}
       -- random: a value the check cannot know, so the CharString is not followed
       23 -> Left Malformed

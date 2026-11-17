@@ -4170,6 +4170,8 @@ CFF の表があるフォントは、サブセットを作る前に、表の中�
 確かめるのは、ヘッダーに続く INDEX（Name、Top DICT、String、Global Subrs）の終端、Top DICT が指すデータ（CharStrings、charset、Encoding、Private DICT とその Subrs、FDArray、FDSelect、各 Font DICT の Private DICT とその Subrs）、使うグリフ（.notdef を含む）の CharString と、それが呼ぶサブルーチンである。
 サブルーチンの番号は、CharString を Type 2 の規則で実行して求める。
 参照の終端が表の長さを超える場合と、グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合は、エラー（G08107）とし、PDF を書かない。
+512 MiB（2 の 29 乗バイト）を超える位置や長さは、その値に丸めて読むので、表の外とする。
+wasm32 の 32 ビットの整数でも、64 ビットの処理系と同じ結果にするためである。
 使わないグリフの CharString は確かめない。
 スタックの不足のような、表の外を読まない誤りは G08107 にせず、その CharString をそれ以上たどらない。
 endchar の引数で別のグリフを合成する形（seac）の部品のグリフと、random の値で決まる参照は、たどらない。

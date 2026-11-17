@@ -73,6 +73,13 @@ cffTests (sansFile, sansGlyphs) (hanFile, hanGlyphs) (notoFile, notoGlyphs) =
         checkCffTable cff [0, 1] @?= CffOutOfTable,
       testCase "ADR 0357 I1: a glyph beyond the CharStrings INDEX" $
         checkCffTable (synthetic [[14]] [[11]] []) [0, 1] @?= CffOutOfTable,
+      testCase "ADR 0357 I1: a 32-bit offset past the table, on 32-bit and 64-bit Int alike" $ do
+        let cff = synthetic [[14]] [[11]] []
+            -- the CharStrings offset of the Top DICT: the four bytes after the 29 at 27
+            withOffset v = BS.take 28 cff <> BS.pack v <> BS.drop 32 cff
+        BS.index cff 27 @?= 29
+        checkCffTable (withOffset [0x7f, 0xff, 0xff, 0xff]) [0] @?= CffOutOfTable
+        checkCffTable (withOffset [0xff, 0xff, 0xff, 0xff]) [0] @?= CffOutOfTable,
       testCase "ADR 0357 I1: a Private DICT past the table" $ do
         let cff = synthetic [[14]] [] []
         -- without local subroutines the Private DICT is the end of the table
