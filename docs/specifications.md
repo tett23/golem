@@ -112,7 +112,7 @@ IR の要素は、次の構造の要素にする。
 | 索引（`@index`） | `Index`、見出しの文字と項目の行は `P`。ページ番号は、項目の行の `P` の中の `Reference` の中の `Link`（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)） |
 | 参考文献（`@bibliography`） | `L`（`/ListNumbering /None`）、項目は `LI`、番号は `Lbl`、項目の文は `LBody` の中の `BibEntry` |
 | プラグインのチャネルの一覧 | `Div`、項目は `P` |
-| ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
+| ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT`。親文字の中の `[ref-number]` と `[ref-title]` は、`RB` の中に原稿の順に並ぶ `Reference` で、その参照の文字だけを持つ（文字は相互参照の行と同じく、その中の `Link` に入る）。参照の前後の親文字の字は `RB` の直下に残り、読みは `Reference` に入らない（[ADR 0360](adr/0360-ruby-base-references.md)） |
 | 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の段落ごとの `P` を持つ。脚注と章末の注では、本文の印は `Reference` の中の注の本文への `Link`、注の側の印は `Lbl` の中の本文の印への `Link` である（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)） |
 | 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。相互参照の文字と、`@bibliography` のある本の引用の文献ごとの番号は、その中の `Link`（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
@@ -126,6 +126,7 @@ PDF/X-4 では、上表の `Link` は文字を保持する `Span` になり、�
 表の対応には、次の補いがある。
 
 - 読みのない区切りの親文字は `Ruby` を作らない。
+- 読みのない区切りの親文字の中の `[ref-number]` と `[ref-title]` は、文字を描くが `Reference` も `Link` も作らず、親の構造の要素の文字の葉に入る（[docs/roadmap.md](roadmap.md) の「読みのないルビの区切りの中の参照」の項目）。
 - `RP` は使わない。
 - 章末の注の `Note` も、本文の注の印の直後に置く。
 - プラグインと `.gm` の関数が返したブロックも、同じ対応で構造の要素にする。
@@ -1271,8 +1272,14 @@ Git のコミットやビルドの環境は含めない。
 CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
-決定性を保証するのは、PDF、HTML、プレーンテキストである。
-EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、今は EPUB の決定性を保証しない（予定は [docs/roadmap.md](roadmap.md) の「EPUB の決定性」）。
+PDF、HTML、プレーンテキストに加え、EPUB もファイル全体のバイト一致を保証する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
+EPUB の一致の条件は、EPUB を作る圧縮器（zip-archive と zlib）の版を含む同じ Golem のビルドと、同じ設定、原稿、素材である。
+本からの相対位置を保ってプロジェクトを別のディレクトリに移しても、素材の列挙順や組んだ時刻が変わっても、EPUB は一致する。
+zip には、`mimetype`、`META-INF/container.xml`、パッケージ文書、ナビゲーション文書、`style.css`、本文の章（本の順）、素材（出力先の相対パスの順）をこの順に収め、どのエントリにも時刻 0 を書く。
+`mimetype` は圧縮せず、ほかのエントリは deflate で縮むときだけ deflate で収める。
+EPUB の識別子と更新日時（`dcterms:modified`）はマニフェストから作り、絶対パスや組んだ時刻は書かない。
+異なるビルドの間の一致は保証しないので、圧縮器の版を上げると、同じ入力からでも EPUB のバイト列は変わりうる。
+`cabal.project.freeze` が二つの圧縮器の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
@@ -1366,8 +1373,7 @@ x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであ�
 小さな入力は、`scripts/determinism` の式、`sample`（HTML、EPUB、テキストと、B6 の縦組みの PDF）、diagnostics を出す入力と、機能を組み合わせた二冊（`complex-vertical` と `complex-horizontal`、四つのターゲット、[ADR 0175](adr/0175-complex-typesetting-fixture.md)）であり、プルリクエストの `--quick` でも検査する。
 すべての変化を同時に当てる `combined` は、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
 `combined` は capability を二つにして組む。
-この検査は EPUB も比べるので、実際には EPUB にも決定性を求めている。
-しかし、仕様としては EPUB の決定性を約束しない。
+EPUB は zip のファイル全体のバイト列を比べる（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
 
 ### コミットをまたいだ出力の変化
 
@@ -1537,6 +1543,9 @@ S0 はソースファイルごとに独立して評価し、S1 は各ファイ�
 番号を持つのは `@nonumber` のない見出し、`@nonumber` のない図版、`@nonumber` のない、キャプションのあるコードブロックであり（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）、題を持つのは見出し、図版（代替テキスト）、キャプションのあるコードブロック（キャプション）である。
 番号を持たない要素を `[ref-number ...]` で参照した場合と、題を持たない要素を `[ref-title ...]` で参照した場合は、コンパイルエラーとする（[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
 題名を識別子にすると、題を直すたびに参照が壊れるためである。
+
+ルビの親文字の中の `[ref-number]` と `[ref-title]` も、ほかの場所と同じく番号と題に置き換える（[ADR 0360](adr/0360-ruby-base-references.md)）。
+親文字の中にはルビを置けないので、ルビのある題を親文字の中に写すときは、そのルビの親文字だけを写す。
 
 ページ番号への参照は、テキストではなく表記の決まっていない数（Number）に解決する。
 ページ番号も数なので、縦書きと横書きでの表記の使い分けをほかの数と同じ経路で行う。
@@ -2462,6 +2471,8 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 | `line-adjustment`、`stretch-limit` | 行の調整（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節） |
 | `shrink-order`、`stretch-order` | 行の調整の順（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)、「行分割」の節） |
 | `regex-styles` | 正規表現スタイル（「正規表現スタイル」） |
+| `next-style`、`initial-style` | 次の段落の段落スタイルと、段落の先頭の一字の文字スタイル（「次の段落スタイルと先頭の文字スタイル」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
+| `opening-indent` | 始め括弧類で始まる段落の字下げ（「字下げ」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
 
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 段落スタイルには行送りの欄を設けない。
@@ -2831,6 +2842,46 @@ HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid
 `@style-def` の `shrink-order` と `stretch-order` は、`shrink-order=word-space,comma` のように名前をコンマで区切った一つの値で書き、名前のそれぞれが一つの段になる。
 一つの段に二つ以上の種類を置く順は、`style.toml` にだけ書ける。
 四つのキーは HTML と EPUB には書き出さない。
+
+#### 次の段落スタイルと先頭の文字スタイル
+
+段落スタイルの `next-style` は、その段落スタイルの段落の直後の段落に当てる段落スタイルの名前である（[ADR 0374](adr/0374-paragraph-style-controls.md)）。
+直後の段落が `@style` で段落スタイルを書いていなければ、その段落を `next-style` の段落スタイルで組む。
+`@style` で書いた段落スタイルは、`@style body` も含めて、`next-style` に優先する。
+`next-style` は直後の一段落にだけ当たり、その次の段落の段落スタイルは、直後の段落の段落スタイルの `next-style` で決まる。
+段落スタイルを付けない段落は `body` の段落なので、`body` に `next-style` を書けば、その段落の直後の段落にも当たる。
+`next-style` は自分の段落スタイルを指してもよく、指す先が循環しても誤りにならない。
+各段落は直前の段落の `next-style` だけを見て、その先をたどらないためである。
+`next-style` は、それだけでは段落を作らない。
+
+直後の段落とは、ファイルの最上位のブロックを評価した結果で、段落の直後に来るブロックが段落であるときのその段落である。
+変数の宣言のように何も出さないブロックは、間に数えない。
+リスト、見出し、`@blank-line` などのブロックが間にあれば、`next-style` は当たらない。
+段落の属性に `@page-break` などの改ページの命令を付けた場合も、命令のブロックが間に入るので当たらない。
+`@style` の本体の段落はすべて書いた段落スタイルで組み、本体の後の段落に、その段落スタイルの `next-style` が当たる。
+一行を一段落とする原稿では、`@style` を付けた段落の次の行が直後の段落になる。
+`next-style` の段落スタイルが改行を行の区切りにする（`line-breaks = "keep"`）なら、その段落の改行を行の区切りにする。
+リストの項目、表のセル、キャプション、注の本文の段落には当てない。
+
+段落スタイルの `initial-style` は、段落の先頭の一字に当てる文字スタイルの名前である（[ADR 0374](adr/0374-paragraph-style-controls.md)）。
+一字は、基底の文字とその後に続く結合文字（一般カテゴリが Mn、Mc、Me の文字）の組とする（[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）。
+一字の数え方は、正規表現スタイルの対象の文字と同じである。
+文字スタイル、圏点、色、リンク、言語の範囲の中の字と、ルビの親文字を数え、索引の印のように字を持たない要素は飛ばす。
+縦中横、数、参照のように分けられない要素は一字として数え、要素の全体に当てる。
+字のない段落には当てない。
+`initial-style` の文字スタイルは、原稿で書いた文字スタイルと正規表現スタイルの外側に置く。
+同じキーでは、内側のそれらが優先する。
+これは、正規表現スタイルを原稿で書いた文字スタイルの外側に置くのと同じ規則である。
+改行を行の区切りにする段落では、最初の行の先頭の一字にだけ当てる。
+`initial-style` を当てる段落は、文書の最上位の段落と `@style` の本体の段落であり、リストの項目、表のセル、キャプション、注の本文の段落には当てない。
+`initial-style` は意味の IR に文字スタイルとして置くので、PDF、HTML、EPUB で同じ字に当たる。
+
+`next-style` と `initial-style` の既定はなく、書かなければ当てない。
+どちらも `based-on` で引き継ぐ。
+`next-style` が段落スタイルを、`initial-style` が文字スタイルを指さなければ、エラー（G03013）とする。
+文字列でない値は、G03006 とする。
+`@style-def` にも、同じキーを同じ検査で書ける。
+`code` には書けない（G03006）。
 
 #### 段落の罫線
 
@@ -3256,11 +3307,14 @@ HTML と EPUB には印を出さない。
 - `first-line-indent`：最初の行に `indent` へ加える量（1 行目左インデント）。負ならぶら下げになる。
 - `end-indent`：すべての行の終わりの側の字下げ（InDesign の右インデント）。負の値は書けず、G03006 とする。
 
+始め括弧類で始まる段落の最初の行は、`opening-indent` でも変わる（この節の後の段落）。
+
 `indent` と `first-line-indent` は行の始まりの側から測るので、縦組みでは天からの距離になる。
 `end-indent` は、縦組みでは地からの距離になる。
 `zw` は段落の文字の大きさを一字とする。
 
 PDF の行長は、最初の行が「段の行長 − `indent` − `first-line-indent` − `end-indent`」、ほかの行が「段の行長 − `indent` − `end-indent`」である。
+`opening-indent` で最初の行の始まりを変えた段落では、最初の行の `indent` と `first-line-indent` の和の代わりに、変えた後の始まりを引く。
 回り込ませる図版の脇の行では、脇の行の長さから同じく引く。
 
 字下げの誤りは次のとおりである。
@@ -3295,6 +3349,20 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 段落の先頭の始め括弧類の位置は、字下げの方法で変わる。
 全角の空白で字下げした段落の先頭の始め括弧類は、全角の空白の直後に置かれる。
 `first-line-indent` で字下げした段落の先頭の始め括弧類は、`paragraph-start` の規則で二分下がる（[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md)）。
+
+段落スタイルの `opening-indent` は、始め括弧類で始まる段落の最初の行の字下げを決める（[ADR 0374](adr/0374-paragraph-style-controls.md)）。
+値は `"normal"` か `"half"` で、`body` の既定は `"normal"` であり、`based-on` で引き継ぐ。
+ほかの値と、文字列でない値は G03006 とする。
+`@style-def` にも、同じキーを同じ検査で書ける。
+`"normal"` は、字下げをそのまま使う。
+`"half"` は、最初の行の始まり（`indent` と `first-line-indent` の和）から段落の文字の大きさの半分を引き、引いた結果が負なら 0 とする。
+二行目からの行の始まりは変えない。
+`"half"` の段落でも、`paragraph-start` の規則の二分の空きは残るので、`first-line-indent = "1zw"` の段落の先頭の始め括弧類は一字下がりの位置に来る。
+始め括弧類かどうかは、段落の先頭の字の分類（「アキ量」の節の `opening`）で決める。
+先頭の字は、文字スタイル、圏点、色、リンク、言語の範囲、ルビの親文字の中の字も数え、索引の印のように字を持たない要素は飛ばす。
+`line-breaks = "keep"` の段落では、最初の行の字下げを受ける行のそれぞれを、その行の先頭の字で決める。
+`opening-indent` は、PDF の文書の最上位の段落と `@style` の本体の段落にだけ当たり、定義リストの説明の段落、キャプション、傍注の本文には当たらない。
+HTML と EPUB は `opening-indent` を使わない。
 
 プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、行の先頭に全角の空白を置く（[docs/adr/0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 
@@ -4758,6 +4826,7 @@ notice を出すのは、次のものである。
 - `keep` の段落の行頭のエスケープした空白（G02064）
 - `keep` の段落の行末のエスケープした空白（G02079）
 - `-` で区切った範囲（G02108、廃止予定）
+- 先頭に `@` を付けた変数宣言 `@set`（G02155、廃止予定）
 - 続けて書いた `@blank-line`（G02094）
 - `style.toml` のないプロジェクト（G03023）
 - `table` の 0 の字下げ（G03100）
@@ -4781,6 +4850,7 @@ notice を出すのは、次のものである。
 - 空の段で `keep-first-lines` か `keep-last-lines` より短くした段落の部分（G07113）
 - 前後が語の字でないので分割の候補にしなかったソフトハイフン（G07123）
 - 改行しない文字の中か隣にあるので分割の候補にしなかったソフトハイフン（G07124）
+- 同じ行の隣の字にかかる約物の字面（G07126）
 - `[fonts.code]` のない本のコード（G08008）
 - `.emet` の使われていない `where` の束縛（E02109）
 

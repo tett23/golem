@@ -4,6 +4,7 @@
 
 Golem は、コマンドラインと CI で動く組版システムである。
 原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
+EPUB は、zip の圧縮に使うライブラリ（zip-archive と zlib）の版も同じ Golem のビルドなら、本からの相対位置を保ってプロジェクトを移しても、ファイル全体がバイト単位で一致する（[Golem ADR 0361](docs/adr/0361-epub-byte-determinism.md)）。
 
 Golem の振る舞いと計画は、次の文書に分けて書いている。
 
@@ -224,6 +225,7 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 段落スタイルは、字下げ、行揃え、段落の前後の空きを決める。
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
 行の終わりの側の字下げは `end-indent`、行揃えは `align`（`left`、`center`、`right`、均等配置の三つ、`fully-justified`、ノド側と小口側）、段落の前後に空ける行の数は `space-before` と `space-after` で指定する（[docs/adr/0189](./docs/adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+`next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、PDF の `opening-indent = "half"` は始め括弧類で始まる段落の字下げを半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)）。
 
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
@@ -304,6 +306,8 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 
 どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
+タグ付き PDF の構造の木では、相互参照は `Reference` になる。
+ルビの親文字の中の `[ref-number]` と `[ref-title]` も、読みのある区切りなら、親文字の `RB` の中の `Reference` になる（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。

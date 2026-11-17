@@ -49,6 +49,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **画像の実効解像度と診断の境界**：整数の ppi がしきい値を下回る場合に G09006 が出ることを調べる。実効解像度が 1 ppi の入力に対し、しきい値 0、1、2 で native CLI を各 3 回動かすと、G09006 はそれぞれ 0、0、1 件だった。同じ述語を wasm32 のプリフライトのテストでも検査する。
 - **改行しない範囲の S1 を実際の書体の送りで確かめる**：[ADR 0305](adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) の S1 は、つないだ箱の幅を、つないだ文字列の送りで補正する。既存の回帰テストでは、試験用に作ったカーニングを使っている。字形と送りの性質が異なる 3 書体を当面の対象として、HarfBuzz で組んだ語の送りで S1 を確かめる。どの性質をどこまで網羅するかは改めて決める。
 
+- **パスの描画のベンチマーク**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは Emet（`.emet` の関数）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。
+
 ### 記法と設定の値
 
 - **原稿の変数の宣言を `@set` に戻す（未実装）**：今は行頭の `set 名前 = 式` を変数の宣言として読み、`@set` に廃止予定の notice G02155 を出す。`@` の無い宣言は本文と区別がつかないので、宣言を `@set` に戻し、G02155 を廃止する。 [Golem ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)。
@@ -67,13 +69,14 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
+- **読みのないルビの区切りの中の参照（未実装）**：読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後|まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならない。本文の中の参照と同じく `Reference` と `Link` にする。 [Golem ADR 0393](adr/0393-references-in-ruby-segments-without-readings.md)。
 - **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **CFF の random の決定性と参照の確かめ（未実装）**：同梱の FreeType は CharString の `random` のシード値をメモリのアドレスから作るので、`random` を含む CFF のフォントでは PDF の `/FontBBox` が実行ごとに変わる。環境変数 `FREETYPE_PROPERTIES` も PDF を変える。参照の確かめは `random` に出会うとそのグリフをたどらず、FreeType が読めないグリフは黙って幅の表から落ちる。 [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)。
 - **可変フォント（未実装）**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。 [Golem ADR 0358](adr/0358-font-instance-selection.md)。
-- **ルビの親文字の中の参照（未実装）**：ルビの親文字の中の `[ref-number]` と `[ref-title]` は、タグ付き PDF の構造の木で `Reference` にならない（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)、[docs/adr/0229](adr/0229-record-the-procedures-adr-0215-and-0217-departed-from.md)）。親文字の中の参照をどの構造の要素にするかを ADR で決める。 [Golem ADR 0360](adr/0360-ruby-base-references.md)。
-- **EPUB の決定性（未実装）**：EPUB の出力のバイト列の一致を、仕様として保証する。今の実装は zip のエントリの時刻を 0 にし、並びも決めて書いており、CI の決定性の検査も EPUB のハッシュを比べているが、仕様書はまだ保証しないとしている（[ADR docs/adr/0002](adr/0002-determinism.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。保証すると決め直す ADR を書く。 [Golem ADR 0361](adr/0361-epub-byte-determinism.md)。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
 - **HTML と EPUB へのフォントのライセンスの文書の同梱**：`golem build` の HTML と EPUB の出力は、`style.toml` が指すフォントのファイルだけを `fonts/` に写し、ライセンスの文書を写さない。そのため、OFL のフォントを使った HTML や EPUB をそのまま配ると、フォントの各コピーに著作権表示とライセンスを添えるという OFL 1.1 の条件 2 を満たさない。これはマニュアルに限らず、Golem を使うすべての本に起きる。どのファイルがライセンスの文書かを Golem が知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかを ADR で決める。[docs/adr/0082](adr/0082-manuals-under-cc0.md) は、マニュアルを組むスクリプトで足りる分だけを直し、本体の扱いは HTML の出力を XHTML から HTML Living Standard に変える予定とあわせて v1.0.0 のころに決めるとした。EPUB については、[OFL FAQ](https://openfontlicense.org/ofl-faq/) の 1.15 が、改変しないフォントを圧縮したフォルダの構造の文書に入れることを、埋め込みではなく同梱に近いとしている。
+
+- **プレーンな PDF 1.7 のターゲット**：PDF/X-4 の制約を持たない PDF 1.7 を出力のターゲットに足す。今の PDF は、`[color]` の `intent` の有無によらず版 1.6 で書き、`intent` があれば PDF/X-4 の出力インテントを書く（仕様書の「PDF/X-4 と出力インテント」の節）。ターゲットの名前、今の PDF との違い（色空間、透明、注釈、出力インテント）、PDF/A と PDF/UA の宣言との関係は ADR で決める。
 
 ### スタイル
 
@@ -89,7 +92,14 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **傍注の `※` の印**：`[sidenotes]` の `marker-style` で印の文字スタイルを指定できる。 [Golem ADR 0371](adr/0371-sidenote-marker-style.md)。
 - **柱とノンブルのスタイル（未実装）**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
 - **番号と題のあいだの区切りの設定（未実装）**：見出し、図版、コードブロック、表のキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
-- **段落スタイルの拡張（未実装）**：行送り、次のスタイル、ドロップキャップと字取り、先頭文字スタイル、`@style` の引数による段落ごとの上書き、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リストなどへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。
+- **段落スタイルの拡張（未実装）**：行送り（`line-height`）、ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` を除く部分であり、次の未決事項を決めてから組む。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。
+  - **行送りと行の格子（未決）**：仕様書は、PDF の本文を行の格子に載せるので段落スタイルに行送りの欄を設けないとしている。ADR は `line-height` を設けるが、格子の行との関係（格子に載せ直すか、格子から外れて組むか、その後の段落をどこから始めるか）と、HTML と EPUB の写し方を書いていない。
+  - **ドロップキャップの組み方（未決）**：ADR は「先頭 1 書記素を指定行数の高さで置き、その行だけ本文幅を減らす」と書く。指定行数の高さの字の脇では、その行数の行を短くしないと重なるので、「その行だけ」と食い違う。字の大きさの決め方（最初の行の字面の上端から最後の行のベースラインまでか）、字と本文のあいだの空き、HTML と EPUB の写し方も決まっていない。
+  - **字取りの範囲（未決）**：ADR は「指定字数の幅に字間を均等配分する」と書くが、段落の字数が指定字数を超えるとき、段落が二行以上になるとき、字取りを当てる段落の種類（見出しか、本文の段落か）を書いていない。
+  - **`drop-lines` と `fit-characters` の併用の誤りのコード（未決）**：ADR は併用を設定位置で拒むとするが、コードを決めていない。原因ごとにコードを分ける決まりから、新しいコードが要るかを決める。
+  - **段落ごとの上書きのキー（未決）**：`@style body line-height="16pt"` の名前付き引数に、どの段落スタイルのキーを書けるか（ADR の六つのキーだけか、`@style-def` と同じすべてのキーか）と、意味の IR での持ち方を決める。ADR の不変条件 1 の「段落ごとの指定」は、これが決まってから検査できる。
+  - **見出しとリストへの適用の方法（未決）**：見出しは段落スタイルでなく `[headings.<階層>]` で組み、リストの項目の段落は `body` で組む。ADR は「見出しとリストを含む段落」にキーを指定するとするが、見出しとリストにどの段落スタイルを結び付けるか（`[headings.<階層>]` にキーを足すか、段落スタイルの名前を指す欄を設けるか）を書いていない。
+  - **HTML と EPUB の始め括弧の字下げ（未決）**：`opening-indent` は PDF だけに当たる。HTML と EPUB で、段落ごとに先頭の字を見て `text-indent` を変えるかを決める。
 - **発行の履歴の書式（未実装）**：`@printings` は、奥付の発行の履歴の行（`2026年10月16日　初版第1刷発行` の形）を、日本語の一つの書式に固定して組む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。この書式を `style.toml` で変えられるようにする（`第1版第1刷` と書く本、日付と版の順を変える本など）。日本語でない本の書式も合わせて扱う。 [Golem ADR 0375](adr/0375-printings-format.md)。
 
 - **縦中横とルビの内部の字間**：縦中横の中の文字、ルビの親文字と読みのそれぞれに、書き手が字間を指定できるようにする。外側の箱どうしのトラッキングは [Golem ADR 0370](adr/0370-tracking-inline-boxes.md) で扱う。
@@ -262,6 +272,8 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **ページを持たない出力の注の番号**：[Golem ADR 0383](adr/0383-page-local-note-numbers.md) は、`numbering = "page"` の本をページを持たない出力（HTML、EPUB、プレーンテキスト）に組むと diagnostic を出すと定める。しかし、その重大度（出力を止めるか）と、出力を止めないときに振る番号を定めていない。実装は、警告（G03259）を出し、文書の組み立て（S1）の仮の番号である本の通し番号で組む。エラーにして出力を止めるか、ほかの範囲の番号にするかを決める。同じく、`placement = "chapter-end"` と組み合わせたとき、章末の一覧でページの違う注が同じ番号を持つことに diagnostic を出すか（`"file"` の [G03027](diagnostics.md#g03027) にあたるもの）も、ADR は定めていない。今は出さない。
 
 ### その他の未決事項
+
+- **ルビの区切りの記法**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `\/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改めるかを決める。
 
 - **奥付の多言語化と日本語の例外**：版と刷、日付、発行履歴の表記について、日本語の例外と他言語の奥付の実例を集め、書式で必要な条件分岐と数の表記を検討する。
 - **画像フレームの導入時期**：InDesign のように画像と画像を収めるフレームを別々に扱う方式へ移行するかを検討する。時期の候補は v1.x、v2、v3 である。

@@ -3,6 +3,7 @@ the structure tree of the PDF (docs/adr ADR 0183).
 -}
 module StructureSpec (structureTests) where
 
+import Control.Monad (replicateM)
 import Data.Text (Text)
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
@@ -23,11 +24,31 @@ txt = IR.Text sp
 leaves :: [Item] -> [(Text, Leaf)]
 leaves items = [(bcText c, bcLeaf c) | Box _ c <- items, bcText c /= ""]
 
+{- | ADR 0360 I1: a ruby base of a character and the parts given (Nothing
+a character, Just a reference of the kind) has one Reference under its RB
+per reference, and none under its RT.
+-}
+rubyBaseReferences :: [Maybe IR.RefKind] -> Assertion
+rubyBaseReferences parts = do
+  let part = \case
+        Nothing -> IR.Text sp "x"
+        Just IR.RefNumber -> IR.Resolved sp IR.RefNumber "h" [IR.Text sp "1"]
+        Just k -> IR.Resolved sp k "t" [IR.Text sp "題"]
+      base = IR.Text sp "a" : map part parts
+      (_, _, nodes) = composeInlinesTree env [IR.Ruby sp () [IR.RubySegment base (Just "reading")]]
+      inRb = [rb | NodeElem RoleRuby ruby <- nodes, NodeElem RoleRubyBase rb <- ruby]
+      inRt = [rt | NodeElem RoleRuby ruby <- nodes, NodeElem RoleRubyText rt <- ruby]
+      references ns = [() | NodeElem RoleReference _ <- ns]
+  assertEqual (show parts) [length (filter (/= Nothing) parts)] (map (length . references) inRb)
+  assertEqual (show parts) [0] (map (length . references) inRt)
+
 structureTests :: TestTree
 structureTests =
   testGroup
     "the structure of inlines (docs/adr ADR 0183)"
-    [ testCase "plain text is leaf 0 of the site" $ do
+    [ testCase "ADR 0360 I1: inv1_ruby_base_references_property: each number or title in a ruby base is one Reference under its RB" $
+        mapM_ rubyBaseReferences (concatMap (`replicateM` [Nothing, Just IR.RefNumber, Just IR.RefTitle]) [0 .. 4]),
+      testCase "plain text is leaf 0 of the site" $ do
         let (items, _, nodes) = composeInlinesTree env [txt "あい"]
         nodes @?= [NodeLeaf 0]
         leaves items @?= [("あ", Leaf [7, 0] 0), ("い", Leaf [7, 0] 0)],

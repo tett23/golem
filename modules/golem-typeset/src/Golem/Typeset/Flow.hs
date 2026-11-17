@@ -2026,6 +2026,42 @@ paraLook style geom st =
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
    in (withFeatures d (plainLook role size), Indent (sp' psIndent) (sp' psFirstLineIndent) (sp' psEndIndent) (fromMaybe ParaLeftJustified (d >>= psAlign)))
 
+{- | The indent of a paragraph that starts with an opening bracket
+(docs/adr/0374): with opening-indent = "half", the start of the first line
+(the indent and the first-line indent) less half the size of the
+paragraph, 0 at the least; otherwise the indent as it is. The bracket is
+the first character of the inlines, inside styles, links, language spans
+and the bases of ruby, past the elements without a character; its class
+is found in the language of the paragraph.
+-}
+openingIndent :: Maybe OpeningIndent -> Look -> Maybe Text -> Indent -> [Inline] -> Indent
+openingIndent oi face blang ind@(Indent s f e a) is
+  | oi == Just OpeningHalf,
+    Just (spanLang, c) <- firstCharOf Nothing is,
+    lookClass face {lkLang = spanLang <|> lkLang face <|> blang} c == Opening =
+      let Sp size = lkSize face in Indent s (max (negate s) (f - Sp (size `div` 2))) e a
+  | otherwise = ind
+
+-- | The first character of inlines, with the language of the span it is in.
+firstCharOf :: Maybe Text -> [InlineF r] -> Maybe (Maybe Text, Char)
+firstCharOf lang = \case
+  [] -> Nothing
+  x : xs ->
+    let inner l ys = firstCharOf l ys <|> firstCharOf lang xs
+     in case x of
+          Text _ t -> maybe (firstCharOf lang xs) (\(c, _) -> Just (lang, c)) (T.uncons t)
+          Kenten _ _ ys -> inner lang ys
+          Color _ _ ys -> inner lang ys
+          CharStyle _ _ ys -> inner lang ys
+          Link _ _ ys -> inner lang ys
+          Lang _ l ys -> inner (Just l) ys
+          Resolved _ _ _ ys -> inner lang ys
+          Ruby _ _ segs -> firstCharOf lang (concatMap rsBase segs) <|> firstCharOf lang xs
+          IndexMark {} -> firstCharOf lang xs
+          ProofComment {} -> firstCharOf lang xs
+          ChannelItem {} -> firstCharOf lang xs
+          _ -> Nothing
+
 {- | The look of code blocks (golem-driver ADR 0017): the role and size of
 the paragraph style code, no kerning.
 -}
@@ -2155,7 +2191,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       _ -> Just b
     -- a block with a language: the language of its characters and the /Lang of its element (docs/adr ADR 0187)
     block style ctx n b = withBlockLang (blockLang b) <$> blockUnits style ctx n b
-    blockUnits style ctx n (Block sp lbl _ body) =
+    blockUnits style ctx n (Block sp lbl blang body) =
       let unit kind l is face src = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing) Nothing src [] 0 Nothing Nothing
           -- the body role at the size of the grid (golem-cli ADR 0008)
           plainUnit kind l is = unit kind l is (bodyLook style fs) SourceGrid
@@ -2173,7 +2209,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                   rulesOf i = (if i == 0 then rb else Nothing, if i == length parts - 1 then ra else Nothing)
                   -- the verse lines of a paragraph without rules are one stanza (docs/adr/0180)
                   stanzaOf i = if keeps && (rb, ra) == (Nothing, Nothing) then Just i else Nothing
-                  us = [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i, uStanza = stanzaOf i} | (i, part) <- zip [0 :: Int ..] parts]
+                  -- each part starts as a paragraph, with the indent of an opening bracket (docs/adr/0374)
+                  indentOf = openingIndent (paraStyle style st >>= psOpeningIndent) face blang ind
+                  us = [(unit (UPara (if null ctx then indentOf part else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i, uStanza = stanzaOf i} | (i, part) <- zip [0 :: Int ..] parts]
                in -- the lines of the paragraph are one P (docs/adr ADR 0183)
                   if length parts > 1 then (n + 1, inFrame (frame n FPara) us) else (n, us)
             Heading l attrs is ->
