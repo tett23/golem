@@ -721,15 +721,15 @@ first-line indent and no end indent.
 tocStyleDefault :: Int -> ParaStyleDef
 tocStyleDefault l = noParaDef {psBasedOn = Just "body", psSize = Just (Zw 1), psIndent = Just (Zw (fromIntegral (l - 1))), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
-{- | The paragraph styles that never indent: caption, sidenote
-(golem-driver ADR 0043) and table (docs/adr/0262).
+{- | The paragraph styles that never indent: table (docs/adr/0262).
+caption and sidenote indent their parts (docs/adr/0367).
 -}
 unindentedStyles :: [Text]
-unindentedStyles = ["caption", "sidenote", "table"]
+unindentedStyles = ["table"]
 
-{- | The non-zero indent keys written for caption, sidenote or table, which
-do not indent (golem-driver ADR 0043, docs/adr/0262): (the name of the
-style, the key). A zero one is the notice G03100.
+{- | The non-zero indent keys written for table, which does not indent
+(docs/adr/0262): (the name of the style, the key). A zero one is the
+notice G03100.
 -}
 captionIndentKeys :: Map Text ParaStyleDef -> [(Text, Text)]
 captionIndentKeys styles =
@@ -740,7 +740,7 @@ captionIndentKeys styles =
     not (zeroDim v)
   ]
 
--- | The indent keys of a definition of caption or sidenote whose value is zero (G03100, golem-driver ADR 0043).
+-- | The indent keys of a definition of table whose value is zero (G03100, golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
 captionZeroIndentKeys n d = [k | n `elem` unindentedStyles, (k, Just v) <- indentKeysOf d, zeroDim v]
 
@@ -752,8 +752,8 @@ zeroDim = \case
   Abs x -> x == 0
   Zw r -> r == 0
 
-{- | The notices of style.toml: G03100 for a zero indent or
-first-line-indent of caption or sidenote, at the value, with the value as
+{- | The notices of style.toml: G03100 for a zero indent,
+first-line-indent or end-indent of table, at the value, with the value as
 written (golem-driver ADR 0043); the ways of writing to be retired
 (docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
 numbers, G03116 for a line of a running head format, G03117 for [notes]
@@ -803,17 +803,15 @@ styleNotices fid src = case Toml.parse src of
       Just off -> mkSpan fid off off
       Nothing -> mkSpan fid 0 0
 
--- | The message of G03100: a zero indent of caption or sidenote, with the value as written (golem-driver ADR 0043).
+-- | The message of G03100: a zero indent of table, with the value as written (golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentMessage :: Text -> Text -> Text -> Text
 captionZeroIndentMessage n k v = unindented n <> "は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
 
--- | What a paragraph style that never indents sets, in a message (golem-driver ADR 0043, docs/adr/0262).
+-- | What a paragraph style that never indents sets, in a message (docs/adr/0262, 0367).
 unindented :: Text -> Text
-unindented = \case
-  "table" -> "表のセル"
-  _ -> "キャプションと傍注"
+unindented _ = "表のセル"
 
--- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
+-- | The message of an indent key of table (golem-driver ADR 0043, docs/adr/0367).
 captionIndentMessage :: Text -> Text -> Text
 captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。" <> unindented n <> "は字下げをしません: " <> k
 
@@ -2503,7 +2501,7 @@ instance FromValue Style where
     page <- optKey "page"
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
-    -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+    -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
     pstyles <-
       fmap (fromMaybe Map.empty) . optKeyOf "paragraph-styles" $ \v -> do
         (styles :: Map Text ParaStyleDef) <- fromValue v
@@ -3458,7 +3456,7 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = checksOf s
-      -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+      -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
       indents = [("G03006", n, captionIndentMessage n k) | (n, k) <- captionIndentKeys (lsParaStyles ls)]
    in nub (indents <> [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base])
   where

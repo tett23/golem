@@ -8,6 +8,7 @@ import BookLanguageSpec (bookLanguageTests)
 import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
+import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
 import ChapterNotesSpec
 import CliSpec
 import CodeFontSpec (codeFontTests)
@@ -185,6 +186,7 @@ tests skips =
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
+             testGroup "the paragraphs of captions and sidenotes (docs/adr/0367)" captionSidenoteParagraphsTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,

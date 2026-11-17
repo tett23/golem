@@ -25,7 +25,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
+import Golem.Typeset (PartLine (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -1147,7 +1147,7 @@ sidenoteTests =
       let boxes pl = length [() | sl <- Map.elems (plLines pl), Box {} <- lineItems (slLine sl)]
       boxes none @?= boxes plain
       case map snd (sidenotesOf none) of
-        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems l)] @?= ["注"]
+        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems (ptLine l))] @?= ["注"]
         other -> assertFailure (show (length other)),
     testCase "ADR 0371 I1: inv1_sidenote_marker_style_property" $
       -- every marker style by sidenotes of one or more lines, several in a

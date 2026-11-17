@@ -6,6 +6,7 @@ module Golem.Typeset.Flow
     CodeInfo (..),
     CodeCaption (..),
     PlacedSidenote (..),
+    PartLine (..),
     PlacedFigure (..),
     TableGeometry (..),
     PdfLayout (..),
@@ -161,7 +162,7 @@ data SetLine = SetLine
     -- | the footnotes marked in the line, by their keys (golem-driver ADR 0018)
     slNotes :: ![(NoteId, [Line])],
     -- | the sidenotes marked in the line, in order (golem-driver ADR 0006)
-    slSidenotes :: ![(SrcSpan, [Line])],
+    slSidenotes :: ![(SrcSpan, [PartLine])],
     {- | a line aligned towards the spine (True) or away from it (False),
     shifted when its page is known (docs/adr/0189)
     -} slSpine :: !(Maybe Bool)
@@ -182,7 +183,7 @@ data CodeInfo = CodeInfo
     ciFirst :: !Int,
     ciRows :: !Int,
     -- | the lines of the caption, their size and pitch, and the grid lines they take
-    ciCaption :: ![Line],
+    ciCaption :: ![PartLine],
     ciCaptionSize :: !Sp,
     ciCaptionPitch :: !Sp,
     ciCaptionSpan :: !Int,
@@ -204,19 +205,62 @@ data CodeInfo = CodeInfo
 
 -- | The caption of a code block as set (golem-driver ADR 0023): its lines, size, pitch, grid lines and index marks.
 data CodeCaption = CodeCaption
-  { ccLines :: [Line],
+  { ccLines :: [PartLine],
     ccSize :: Sp,
     ccPitch :: Sp,
     ccSpan :: Int,
     ccMarks :: [SrcSpan]
   }
 
+{- | A line of a caption or of a sidenote (docs/adr/0367): its row from
+the first line of the part, the rows of space-between included; how far
+it starts from the line start of the part, by the indents of its
+paragraph style; and the line.
+-}
+data PartLine = PartLine
+  { ptRow :: !Int,
+    ptIndent :: !Sp,
+    ptLine :: !Line
+  }
+  deriving stock (Eq, Show)
+
+-- | The rows the lines of a part take: one after the row of its last line, none without a line.
+partRows :: [PartLine] -> Int
+partRows ls = case reverse ls of
+  l : _ -> ptRow l + 1
+  [] -> 0
+
+{- | The lines of the paragraphs of a caption or a sidenote in the
+paragraph style of the name, over the inner width of the part, set as the
+paragraphs of the body are (docs/adr/0367): every line less the end
+indent, the first line of a paragraph less the indent and the first-line
+indent, the others less the indent. A style that keeps its lines sets
+each line between line breaks as a paragraph of its own, with no
+space-between inside; otherwise a line break is a forced break. The
+paragraphs are space-between rows apart; an empty one has no line. The
+breaking takes the index of the part, the width of each of its lines and
+its inlines.
+-}
+partLines :: Style -> PageGeometry -> Text -> Sp -> (Int -> (Int -> Sp) -> [Inline] -> [Line]) -> [[Inline]] -> [PartLine]
+partLines st geom name inner breakPart paras =
+  let (_, Indent s f e _) = paraLook st geom (Just name)
+      d = paraStyle st (Just name)
+      keeps = (d >>= psLineBreaks) == Just KeepLines
+      between = maybe 0 (max 0) (d >>= psSpaceBetween)
+      startOf k = if k == (0 :: Int) then s + f else s
+      parts = [if keeps then splitAtLineBreaks p else [p] | p <- paras, not (null p)]
+      numbered = snd (mapAccumL (\j ps -> (j + length ps, zip [j ..] ps)) 0 parts)
+      linesOf (j, part) = zipWith (\k l -> (startOf k, l)) [0 ..] (breakPart j (\k -> inner - startOf k - e) part)
+      place _ [] = []
+      place row (ls : rest) = zipWith (\r (i, l) -> PartLine r i l) [row ..] ls <> place (row + length ls + between) rest
+   in place 0 (map (concatMap linesOf) numbered)
+
 -- | A sidenote placed in the sidenote column (golem-driver ADR 0006).
 data PlacedSidenote = PlacedSidenote
   { psSpan :: !SrcSpan,
     -- | from the top of the column
     psTop :: !Sp,
-    psLines :: ![Line]
+    psLines :: ![PartLine]
   }
   deriving stock (Show)
 
@@ -231,7 +275,7 @@ data PlacedFigure = PlacedFigure
     pfWrap :: !(Maybe Wrap),
     -- | the grid lines the image takes (m)
     pfImageLines :: !Int,
-    pfCaption :: ![Line],
+    pfCaption :: ![PartLine],
     -- | the size of the caption (cs; golem-driver ADR 0010)
     pfCaptionSize :: !Sp,
     -- | the line pitch of the caption (cp)
@@ -434,7 +478,8 @@ columnSetRects geom n set =
 {- | G07025: every paragraph style leaves 8 characters of its own size on a
 line of a column (docs/adr ADR 0006, golem-driver ADR 0005 and 0016), in
 style.toml and in the style of each file (docs/adr ADR 0014). caption and
-sidenote do not indent, and G07043 checks code (golem-driver ADR 0043).
+sidenote are set over the inner widths of their parts, not the column
+(docs/adr/0367), and G07043 checks code (golem-driver ADR 0043).
 -}
 indentDiagnostics :: FileId -> Style -> [LocalStyles] -> PageGeometry -> [Diagnostic]
 indentDiagnostics fid style locals geom =
@@ -537,10 +582,10 @@ punctuationInkNotices vertical fonts layout =
 layoutLines :: PdfLayout -> [Line]
 layoutLines layout =
   concat
-    [ concat [slLine sl : concatMap snd (slNotes sl) <> concatMap snd (slSidenotes sl) | sl <- Map.elems (plLines layout)],
+    [ concat [slLine sl : concatMap snd (slNotes sl) <> map ptLine (concatMap snd (slSidenotes sl)) | sl <- Map.elems (plLines layout)],
       [slLine sl | sls <- Map.elems (plTableLines layout), (_, sl) <- sls],
-      concatMap pfCaption (Map.elems (plFigures layout)),
-      concatMap psLines (concat (Map.elems (plSidenotes layout))),
+      map ptLine (concatMap pfCaption (Map.elems (plFigures layout))),
+      map ptLine (concatMap psLines (concat (Map.elems (plSidenotes layout)))),
       concat [[tpLeader tp, tpNumber tp] | tp <- Map.elems (plTocPages layout)]
     ]
 
@@ -1355,7 +1400,7 @@ placePageSidenotes geom metricsOf lineMap p =
           Just sl <- [Map.lookup lid lineMap],
           (sp, ls) <- slSidenotes sl
         ]
-      height sp ls = let (pitch, size) = metricsOf sp in fromIntegral (max 1 (length ls) - 1) * pitch + size
+      height sp ls = let (pitch, size) = metricsOf sp in fromIntegral (max 1 (partRows ls) - 1) * pitch + size
       columnH = maybe 0 rectH (sidenoteAreaFor geom (poNumber p))
       at i = case drop i notes of
         ((sp, _, _) : _) -> sp
@@ -2129,7 +2174,7 @@ data Composed = Composed
   { cLines :: [Line],
     cNotes :: [(NoteId, [Line])],
     -- | sidenote bodies: the item index of the marker, the span and the lines
-    cSidenotes :: [(Int, SrcSpan, [Line])],
+    cSidenotes :: [(Int, SrcSpan, [PartLine])],
     -- | index marks: the item index they belong to (a note's marks go with the note) and the mark
     cMarks :: [(Int, SrcSpan)],
     cAnchors :: [Golem.Layout.Japanese.Anchor],
@@ -2454,7 +2499,7 @@ footnoteLines fe env st k n ps =
     ]
 
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
-unitSidenotes :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan, [Line])]
+unitSidenotes :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan, [PartLine])]
 unitSidenotes fe u shift anchors = [(i + shift, sp, sidenoteLines fe (uStyle u) sp n (concat snBody)) | AnchorSidenote i n sp snBody <- anchors]
 
 -- | The index marks of a unit, those of its notes and sidenotes with the item of their marker.
@@ -2468,9 +2513,10 @@ unitMarks fe u shift anchors =
 
 {- | The lines of a sidenote body: their size, the column width, the marker
 first (golem-driver ADR 0006), in the role and size of the paragraph style
-sidenote of the document (docs/adr ADR 0014).
+sidenote of the document (docs/adr ADR 0014), set as a paragraph of
+sidenote (docs/adr/0367).
 -}
-sidenoteLines :: FlowEnv -> Style -> SrcSpan -> Int -> [Inline] -> [Line]
+sidenoteLines :: FlowEnv -> Style -> SrcSpan -> Int -> [Inline] -> [PartLine]
 sidenoteLines fe st sp n snBody =
   let geom = feGeom fe
       (_, snSize', _) = sidenoteMetrics st geom
@@ -2478,7 +2524,8 @@ sidenoteLines fe st sp n snBody =
       snEnv = (withFileExceptions fe (spanFile sp) (sidenoteEnv fe st)) {ceSite = sidenoteSite sp n, ceLabelInlines = length prefix}
       snParams = (adjustedParams st (Just "sidenote") (feParams fe)) {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition (piStyle (feInput fe))))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
-   in brLines (breakParagraph snParams (const snMeasure) (fst (composeInlines snEnv (prefix <> snBody))))
+   in -- the paragraph of the body, the number first, in the indents of sidenote (docs/adr/0367)
+      partLines st geom "sidenote" snMeasure (\j width is -> brLines (breakParagraph snParams width (fst (composeInlines (if j == 0 then snEnv else snEnv {ceLabelInlines = 0}) is)))) [prefix <> snBody]
 
 -- | The composition of sidenotes: the role and size of the paragraph style sidenote of the document (docs/adr ADR 0014).
 sidenoteEnv :: FlowEnv -> Style -> ComposeEnv
@@ -2496,7 +2543,7 @@ sidenotePrefix fe sp n = case ceSidenoteMarker (feBodyEnv fe) of
 {- | The notes, sidenotes and index marks of composed inlines in the body
 size of a document's style, by the line that holds them.
 -}
-anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -> [Line] -> (Map Int [(NoteId, [Line])], Map Int [(SrcSpan, [Line])], Map Int [SrcSpan])
+anchoredByLine :: FlowEnv -> Style -> [Item] -> [Golem.Layout.Japanese.Anchor] -> [Line] -> (Map Int [(NoteId, [Line])], Map Int [(SrcSpan, [PartLine])], Map Int [SrcSpan])
 anchoredByLine fe st items anchors ls =
   let lineOf = lineIndexOfItems items ls
       env = withDocStyle st (feBodyEnv fe)
@@ -2545,18 +2592,24 @@ placeFigure fe u fig content =
       -- across the lines for each sp along them
       ratio = if pgVertical geom then w / h else h / w
       number = Map.lookup (uSpan u) (bookFigures (piBook inp))
-      captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ _ (Paragraph _ is) <- figCaption fig])
+      -- the paragraphs of the caption, the number before the first (docs/adr/0367)
+      captionParas = case [is | Block _ _ _ (Paragraph _ is) <- figCaption fig] of
+        [] -> [numberedTitle (bookLanguage inp) (uSpan u) number []]
+        p : ps -> numberedTitle (bookLanguage inp) (uSpan u) number p : ps
+      captionInlines = concat captionParas
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
       (_, cs) = paraFace (uStyle u) geom "caption"
       captionParams = (adjustedParams style (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
-      (captionItems, captionAnchors) = composeInlines (captionEnv fe u) captionInlines
-      captionAt len = if null captionInlines then [] else brLines (breakParagraph captionParams (const len) captionItems)
+      captionAnchors = snd (composeInlines (captionEnv fe u) captionInlines)
+      -- the caption as paragraphs of caption over the inner width (docs/adr/0367)
+      captionAt len = partLines style geom "caption" len (\_ width is -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) is)))) captionParas
       -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
       captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
       -- the caption in the measure before fitting (golem-driver ADR 0034)
       caption = captionAt (if isJust (figWrap fig) then alongSp else lineLen)
       captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
-      n = length caption
+      -- the rows of the caption, those of space-between included (docs/adr/0367)
+      n = partRows caption
       (cp, span') = captionSpanOf n
       -- the grid lines of the column, or of the frame
       gridLines = if turned then frameLines else capacity
@@ -2568,7 +2621,7 @@ placeFigure fe u fig content =
       m = fromInteger (unSp (across + pitch - 1) `div` unSp pitch)
       -- the size the figure would take turned, to tell the writer (golem-driver ADR 0034)
       turnedArea =
-        let s = snd (captionSpanOf (length (captionAt frameAlong)))
+        let s = snd (captionSpanOf (partRows (captionAt frameAlong)))
             (a, c, _) = fitOf frameAlong frameLines s
          in if s >= frameLines then 0 else a * c
       hint = if not turned && turnedArea > alongFit * across then "。rotate=true で回して一ページに置くと、より大きく置けます" else ""
@@ -2617,13 +2670,13 @@ composeBeside fe widths unitAt i ex = go (i + 1) 0
 
 -- | A composed unit evaluated, so that the work is done where it is run.
 forceComposed :: Composed -> IO Composed
-forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (cNotes c) + length (show [map lineRatio ls | (_, _, ls) <- cSidenotes c]) + length (cAnchors c) + length (cItems c)) >> pure c
+forceComposed c = evaluate (length (show (map lineRatio (cLines c))) + length (cNotes c) + length (show [map (lineRatio . ptLine) ls | (_, _, ls) <- cSidenotes c]) + length (cAnchors c) + length (cItems c)) >> pure c
 
 {- | A table: every cell at the body size, no hanging punctuation
 (golem-driver ADR 0008), with the notes, sidenotes and index marks of each
 line of each row, the header row first.
 -}
-composeTable :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> Table -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTable :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> Table -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])
 composeTable fe i fid st lang t
   -- counted before any cell is composed (docs/adr/0224)
   | cells > maxTableCells = Left (TooManyCells cells)
@@ -2666,12 +2719,12 @@ forceTable r = evaluate (either refusal (table . fst) r) >> pure r
 {- | The tables of the book composed as 'flowLines' composes them, in their
 order, for the tests of 'forceTable' (docs/adr ADR 0299).
 -}
-composedTables :: PdfInput -> PageGeometry -> LoadedFonts -> [Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])]
+composedTables :: PdfInput -> PageGeometry -> LoadedFonts -> [Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])]
 composedTables inp geom fonts = [composeTable fe i (spanFile (uSpan u)) (uStyle u) (lkLang (uLook u)) t | (i, u@Unit {uKind = UTable t}) <- fst (flowUnits fe)]
   where
     fe = flowEnv inp geom fonts (Assumed Map.empty Map.empty)
 
-composeTableCells :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> Table -> Either [TableError] (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])
+composeTableCells :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> Table -> Either [TableError] (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])
 composeTableCells fe i fid st lang t =
   let env = withFileExceptions fe fid (tableEnv fe st lang t)
       h = tableHeader t
@@ -2717,9 +2770,10 @@ captionLinesOf fe u lead number = \case
         captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
         (_, cs) = paraFace (uStyle u) (feGeom fe) "caption"
         captionParams = (adjustedParams (piStyle inp) (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
-        (captionItems, captionAnchors) = composeInlines (captionEnv fe u) captionInlines
-        ls = brLines (breakParagraph captionParams (const (feMeasure fe - lead)) captionItems)
-        cb = headingBlock fs pitch cs (length ls) 1
+        captionAnchors = snd (composeInlines (captionEnv fe u) captionInlines)
+        -- a paragraph of caption over the measure less the lead (docs/adr/0367)
+        ls = partLines (piStyle inp) (feGeom fe) "caption" (feMeasure fe - lead) (\_ width xs -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) xs)))) [captionInlines]
+        cb = headingBlock fs pitch cs (partRows ls) 1
      in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
   where
     fs = pgFontSize (feGeom fe)
@@ -2757,7 +2811,7 @@ data ComposedUnits = ComposedUnits
     cuFigures :: Map Int (PlacedFigure, [Diagnostic], [Diagnostic], [SrcSpan]),
     -- | the other units of text
     cuSingles :: Map Int Composed,
-    cuTables :: Map Int (Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]])),
+    cuTables :: Map Int (Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])),
     cuCodeBlocks :: Map Int SetCode
   }
 
@@ -2857,7 +2911,7 @@ numberUnit fe cu nb (i, u) = case uKind u of
   _ -> headingAndTocLines (pgFontSize (feGeom fe)) cu (nuNext nb) i u (numberOther fe cu nb (i, u))
 
 -- | Numbers the lines of a table, or adds its errors (G07108, G07041, G07042, G07114, G07115, G07116).
-numberTable :: FlowEnv -> Unit -> Table -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [Line])], [SrcSpan])]]) -> Numbered -> Numbered
+numberTable :: FlowEnv -> Unit -> Table -> Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]]) -> Numbered -> Numbered
 numberTable fe u tbl r nb = case r of
   Left (TooManyCells n) ->
     nb {nuErrors = nuErrors nb <> [diagnostic "G07108" Error (uSpan u) ("表のセルが多すぎて PDF に組めません（" <> T.pack (show n) <> " 個、上限は " <> T.pack (show maxTableCells) <> " 個）")]}
@@ -3264,7 +3318,7 @@ buildFlow inp geom fonts images prev assumed = do
         UTable {} -> True
         _ -> False
       tableUnits = [(i, spanFile (uSpan u), uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
-  _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
+  _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map (lineRatio . ptLine) (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
   tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- 3. number the lines in document order
@@ -3815,7 +3869,7 @@ turnedFrame geom t ta pf =
       paper = unturnRect t ta (paperOf geom)
       depth
         | null (pfCaption pf) = pfAcross pf
-        | otherwise = fromIntegral (pfImageLines pf) * pgLinePitch geom + fromIntegral (length (pfCaption pf) - 1) * pfCaptionPitch pf + pfCaptionSize pf
+        | otherwise = fromIntegral (pfImageLines pf) * pgLinePitch geom + fromIntegral (partRows (pfCaption pf) - 1) * pfCaptionPitch pf + pfCaptionSize pf
       spare = max 0 ((if vertical then rectW turned else rectH turned) - depth)
       -- the end across the lines: the left of the frame in vertical text, its bottom in horizontal text
       endNearer
