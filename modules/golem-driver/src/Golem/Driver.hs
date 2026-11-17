@@ -26,6 +26,7 @@ module Golem.Driver
     functionPaths,
     loadBibliography,
     pdfStructure,
+    manuscriptLines,
     pdfLeafTexts,
     pdfWithTree,
     pdfWithDests,
@@ -1229,7 +1230,7 @@ htmlConfig dev e book missing bib =
       hcLists =
         if stLists style == defaultListStyle
           then Nothing
-          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)) (lsMarkerStyle (stLists style))),
       -- the rules of headings (golem-driver ADR 0027)
       hcHeadingRules =
         Map.fromList
@@ -1358,6 +1359,25 @@ pdfInputOf opts e diagFid book bib =
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
    in PdfInput (optFiles opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project))) (evStyleText e)
+
+-- | Evaluate and compose the body, without serializing or writing a PDF.
+manuscriptLines :: BuildOptions -> IO (Either (Map FileId SourceInfo, [Diagnostic]) ([Text], Integer))
+manuscriptLines opts = do
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
+  case ev of
+    Left failure -> pure (Left (pfSources failure, pfDiagnostics failure))
+    Right e -> do
+      let sources = withEvaluatedSources e (sourceInfos (evProject e))
+          failure ds = Left (sources, ds)
+      case evBook e of
+        Just book | not (hasErrors (evDiagnostics e)) -> do
+          (ds, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
+          if hasErrors ds
+            then pure (failure ds)
+            else do
+              result <- masterFlowText (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
+              pure (either failure Right result)
+        _ -> pure (failure (evDiagnostics e))
 
 {- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
 for the tests: what the PDF would be tagged with.

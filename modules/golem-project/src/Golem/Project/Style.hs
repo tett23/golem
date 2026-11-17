@@ -80,6 +80,7 @@ module Golem.Project.Style
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
+    HeadingBlockAlign (..),
     NotesPlacement (..),
     Composition (..),
     RubyStyleDef (..),
@@ -1048,6 +1049,12 @@ validStyleName n = case T.uncons n of
   Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
   Nothing -> False
 
+data HeadingBlockAlign = HeadingStart | HeadingCenter | HeadingEnd
+  deriving stock (Eq, Show)
+
+headingBlockAlignValues :: [(Text, HeadingBlockAlign)]
+headingBlockAlignValues = [("start", HeadingStart), ("center", HeadingCenter), ("end", HeadingEnd)]
+
 data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
@@ -1057,7 +1064,8 @@ data HeadingStyle = HeadingStyle
     hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
-    hsRuleAfter :: !(Maybe RuleSpec)
+    hsRuleAfter :: !(Maybe RuleSpec),
+    hsBlockAlign :: !HeadingBlockAlign
   }
   deriving stock (Eq, Show)
 
@@ -1284,13 +1292,14 @@ numbers, the default of the writing mode.
 data ListStyle = ListStyle
   { lsBullets :: !(Maybe (NonEmpty Text)),
     lsNumbers :: !(Maybe (NonEmpty NumberFormat)),
-    lsGap :: !(Maybe Dim)
+    lsGap :: !(Maybe Dim),
+    lsMarkerStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | No [lists]: the bullet of the output, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
-defaultListStyle = ListStyle Nothing Nothing Nothing
+defaultListStyle = ListStyle Nothing Nothing Nothing Nothing
 
 {- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
 or • without bullets (golem-driver ADR 0044).
@@ -2145,7 +2154,8 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
+    align <- enumKey "block-align" (map fst headingBlockAlignValues)
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)))
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2449,7 +2459,8 @@ instance FromValue ListsSec where
         Just d
           | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
-    pure (ListsSec (ListStyle bs fmts g))
+    markerStyle <- optKey "marker-style"
+    pure (ListsSec (ListStyle bs fmts g markerStyle))
 
 {- | [index] (docs/adr ADR 0025): every error is at its value, G03025 by
 its path. The position of columns is filled in by 'parseStyle'.
@@ -3176,6 +3187,7 @@ styleReferenceChecks owner s =
                | (k, Just n) <- [("body-style", stNotesBodyStyle s), ("heading-style", stNotesHeadingStyle s)],
                  Map.notMember n ps
                ]
+            <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3567,7 +3579,7 @@ styleSchema =
       ("masters", NNamed (Just Masters) masterNode),
       ("verse", NRejected),
       ("toc", NTable [("leader", enum leaderValues)]),
-      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
+      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim), ("marker-style", ref CharStyles)]),
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),
       ("index", NTable [("columns", int), ("column-gap", dim), ("section-headings", bool)]),
       ("code", codeNode),
@@ -3598,6 +3610,7 @@ styleSchema =
           ("size", dim),
           ("number", str),
           ("page-break", enum pageBreakValues),
+          ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
           -- retired (golem-driver ADR 0014): G03019
           ("running-head", NRejected),

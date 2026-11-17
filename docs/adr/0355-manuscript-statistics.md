@@ -1,6 +1,6 @@
 # ADR 0355: 本文の分量を数え、指定した字数と行数でページ数に換算する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
