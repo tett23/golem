@@ -4415,9 +4415,10 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 位置引数、キーワード引数、展開した引数のどれでも、この誤りになる。
 コマンドは何も組まない。
 位置はコマンドの行である。
-対象は `@column-break`、`@no-page-break`、`@printings` である。
+対象は `@column-break` と `@printings` である。
+`@no-page-break` にキーワード引数か余分な位置引数を書いたときも、このコードを出す。
 
-- メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
+- メッセージ: `<名前> は引数を取りません`。行数を取る場合は `@no-page-break の引数には行数を一つだけ指定できます`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
 - ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)、[docs/adr/0132](adr/0132-setting-command-codes-by-cause.md)
 
@@ -6052,6 +6053,29 @@ TSV の途中の空の行は消す。
 
 `@set x = 3` を `set x = 3` に書き換える。
 
+## G02156
+
+@no-page-break の行数が数ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@no-page-break` の位置引数が数ではない。
+
+- メッセージ: `@no-page-break の行数には 0 以上の整数を書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [Golem ADR 0376](adr/0376-no-page-break-lines.md)
+
+### 主な原因
+
+- `@no-page-break x` のように、行数に名前を書いた。
+
+### 直し方
+
+`@no-page-break 3` のように 0 以上の整数を書く。
+
 ## G02250
 
 @listing のパスは最初の位置引数に書きます
@@ -6496,6 +6520,7 @@ style.toml のスタイルの参照が不正です
 `[notes]` の `body-style` か `heading-style` が段落スタイルにない場合も、この誤りとする（[ADR 0366](adr/0366-note-body-styles.md)）。
 `[lists]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
 段落スタイルの `next-style` が段落スタイルにないか、`initial-style` が文字スタイルにない場合も、この誤りとする（[Golem ADR 0374](adr/0374-paragraph-style-controls.md)）。
+`[sidenotes]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
 段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`（ファイルの中の定義では `@style-def のスタイルの参照が不正です: <理由>`）。正規表現スタイルの理由は `正規表現スタイルの文字スタイルがありません: <名前>` か `正規表現スタイルの段落スタイルがありません: <名前>`
@@ -11374,17 +11399,21 @@ PDF の図版のページの `Contents` の配列のストリームを改行で�
 Golem は、同じストリームを何度も名指しするページでも、そのストリームを出力に一度だけ書き、名指しの位置から呼ぶ。
 ただし、そのストリームが `q` と `Q` の外でグラフィックスの状態やテキストの状態を変える場合や、ストリームの境目で演算子の被演算子やテキストオブジェクトがまたがる場合は、呼び出しに置き換えると描画が変わるので、ストリームをつないで写す。
 つないだ内容は名指しの回数に比例して大きくなるので、上限を設けている。
+つないだ内容の長さには、隣り合うストリームのあいだの改行を 1 バイトずつ数える（[Golem ADR 0359](adr/0359-imported-content-separators.md)）。
+展開の合計の上限（G08010）とは別の上限であり、二つのストリームの展開の合計がちょうど 256 MiB のページも、つなぐと 256 MiB と 1 バイトになるので、このコードになる。
+展開の合計が上限を超えれば、ページの資源の展開で超える場合も、つないだ内容の長さにかかわらず G08010 である。
 `@figure` ごとに一つ出し、PDF を書かない。
 PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出し、dev と prod の両方でエラーである。
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `図版の PDF のページの内容をつなぐと 256 MiB を超えます: <パス>`
 - 段階とモジュール: 出力（golem-pdf の `Golem.Pdf.Import`、golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)
+- ADR: [docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)、[Golem ADR 0359](adr/0359-imported-content-separators.md)
 
 ### 主な原因
 
 - 同じ内容のストリームを何度も名指しし、そのストリームが最上位で色や線の太さなどの状態を変えている PDF を、図版にした。
+- `Contents` が二つ以上のストリームで、展開の合計がちょうど 256 MiB か、それに近い PDF を、図版にした。
 
 ### 直し方
 
@@ -11764,6 +11793,33 @@ PDF のビルドとプリフライトで `@figure` の位置に一度出す。
 ### 直し方
 
 `@figure` の `page` に存在するページ番号を書く。
+
+## G08107
+
+CFF の内部参照が表の範囲を外れています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、CFF の表の中の参照が、テーブルディレクトリが宣言する表の長さを超える。
+INDEX の終端、Top DICT と Private DICT が指すデータ、使う字のグリフの CharString とそれが呼ぶサブルーチンを確かめる。
+グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合も、このエラーになる。
+PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `CFF の内部参照が表の範囲を外れています: <パス>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [Golem ADR 0357](adr/0357-validate-embedded-cff.md)
+
+### 主な原因
+
+フォントのファイルが途中で切れているか、CFF の表の長さや参照の値が壊れている。
+
+### 直し方
+
+表示されたパスのフォントを完全なファイルに差し替えてから、PDF を組み直す。
 
 ## G09001
 

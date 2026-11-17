@@ -1,6 +1,6 @@
 # ADR 0359: PDF の展開量と連結後の内容量を別々に制限する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

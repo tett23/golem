@@ -1135,7 +1135,9 @@ are the paragraph style sidenote's (golem-driver ADR 0011).
 data SidenoteStyle = SidenoteStyle
   { snWidth :: !Dim,
     snGap :: !Dim,
-    snMarker :: !Text
+    snMarker :: !Text,
+    -- | the character style of the symbol marker ※ in the text (docs/adr/0371)
+    snMarkerStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -2246,7 +2248,8 @@ instance FromValue SidenoteStyle where
       Just l -> failTableAt l "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
       Nothing -> pure ()
     m <- enumKey "marker" markerValues
-    pure (SidenoteStyle w g (fromMaybe "number" m))
+    markerStyle <- optKey "marker-style"
+    pure (SidenoteStyle w g (fromMaybe "number" m) markerStyle)
 
 -- | The positions of a running head and a folio (golem-driver ADR 0014).
 masterPositions :: [Text]
@@ -3216,6 +3219,7 @@ styleReferenceChecks owner s =
                  Map.notMember n ps
                ]
             <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
+            <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3609,7 +3613,7 @@ styleSchema =
       ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
       ("emphasis", NRejected),
       ("notes", notesNode),
-      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues)]),
+      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues), ("marker-style", ref CharStyles)]),
       ("figures", NTable [("number", str), ("wrap-gap", dim)]),
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
