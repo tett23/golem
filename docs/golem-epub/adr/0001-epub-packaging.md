@@ -1,6 +1,6 @@
 # ADR 0001: EPUB のパッケージング
 
-ステータス: 採択→`dc:contributor` と役割の写し方は [docs/adr ADR 0033](../../adr/0033-colophon-contributors-and-printings.md)、`@toc` がある場合のナビゲーション文書の深さは [ADR 0002](0002-nav-and-toc-depth.md)
+Status: superseded [{"by":["docs/adr/0033-colophon-contributors-and-printings.md"],"part":"`dc:contributor` と役割の写し方"},{"by":["docs/golem-epub/adr/0002-nav-and-toc-depth.md"],"part":"`@toc` がある場合のナビゲーション文書の深さ"}]
 
 ## 文脈
 

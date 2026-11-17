@@ -1,6 +1,6 @@
 # ADR 0132: `@manifest` と `@style-def` の引数の誤りを原因ごとのコードに分ける
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

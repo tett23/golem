@@ -1,6 +1,6 @@
 # ADR 0002: LSP の位置の単位に UTF-8 を交渉する
 
-ステータス: 採択→行の長さを超える列の扱いは [ADR 0003](0003-position-handling.md)、10 万行の往復のテストの時間切れは [ADR 0292](../../adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)
+Status: superseded [{"by":["docs/golem-lsp/adr/0003-position-handling.md"],"part":"行の長さを超える列の扱い"},{"by":["docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md"],"part":"10 万行の往復のテストの時間切れ"}]
 
 ## 文脈
 

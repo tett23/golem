@@ -1,6 +1,6 @@
 # ADR 0013: `**[式]` をキーワード引数と同じ位置に書けるようにする
 
-ステータス: 採択→設定の同じキーのコードは [docs/adr/0132](../../adr/0132-setting-command-codes-by-cause.md)
+Status: superseded [{"by":["docs/adr/0132-setting-command-codes-by-cause.md"],"part":"設定の同じキーのコード"}]
 
 ## 文脈
 

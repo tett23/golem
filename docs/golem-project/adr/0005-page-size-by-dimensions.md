@@ -1,6 +1,6 @@
 # ADR 0005: 判型を寸法で指定する
 
-ステータス: 採択→インチの単位は [ADR 0010](0010-inch-unit.md)
+Status: superseded [{"by":["docs/golem-project/adr/0010-inch-unit.md"],"part":"インチの単位"}]
 
 ## 文脈
 

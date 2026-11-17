@@ -17,7 +17,9 @@ Golem は CLI で動作する統合組版システムである。
 ADR と記録には、次の決まりがある。
 
 - ADR はコミット後、ステータスの行と、リンクを付ける、外す、リンク先を変えるだけの変更を除いて変更しない（[docs/adr/0032](adr/0032-update-adr-guard-to-v0.8.2.md)）。
-- ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
+- ADR は、行頭が `Status:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+- ステータスの行は `Status: <トークン>` の形で、トークンは `proposed`、`accepted-pending`、`accepted`、`rejected`、`discarded`、`deprecated`、`superseded [<変更の JSON 配列>]`、`superseded-pending [<変更の JSON 配列>]` のいずれかである（[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+- 新しい ADR は `Status: proposed` でコミットする。pre-commit と CI の `adr` ジョブは、ステータスの状態遷移を検査し、許されない遷移を拒否する（[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
 - 同じディレクトリの ADR に同じ番号を付けない（[docs/adr/0194](adr/0194-update-adr-guard-to-v0.10.0.md)）。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](adr/0012-update-adr-guard-to-v0.8.1.md)）。
 
@@ -8061,6 +8063,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
+| `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の分量を数え、指定した字数と行数でページ数に換算する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。「[golem stats](#golem-stats)」の節を参照 |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose] [--format human\|json]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
@@ -8135,6 +8138,22 @@ PDF は、フォントを置くまで G08002 で止まる。
 
 G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`）を位置として、人が読む形で標準エラー出力に書き、`golem explain` の案内の行を付ける。
 `<パス>` は、引数のパスと雛形のパスをつないで正規化したもので、`golem new .` なら `manifest.toml` になる。
+
+### golem stats
+
+`golem stats` は各ページのマスターフレームに流し込む本文を原稿順に集計し、PDF を書き出さずに文字数、ワード数、組版後の行数、換算ページ数を表示する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。
+本文にはルビの親文字を含め、読み、柱、ノンブル、独立したフレームのテキスト、組版で補ったハイフンを除く。
+文字数は段落の表示文字列の拡張書記素クラスタを数える。
+ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字を含む区間を数える。
+組版後の行数は、PDF と同じ組版で作る本文の行ボックスと、明示的な空行の数である。
+
+換算では段落の先頭と明示改行で新しい行を始め、1 行の字数を超えたところで折り返す。
+明示的な空行は 1 行として数える。
+傍注のように本文の外に置く文字だけを持つ段落は、空行に数えない。
+換算した総行数を 1 ページの行数で割り、端数を切り上げる。
+`--chars-per-line` と `--lines-per-page` は正の整数を取り、それぞれの既定値は 20 である。
+0、負数、小数を指定すると引数のエラー（終了コード 2）になり、集計しない。
+換算ページ数の行には、換算に使った字数と行数を併記する。
 
 ### golem check
 
@@ -8596,10 +8615,11 @@ wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、
 変更の一覧には、ADR の二つの見出しが続く（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
 
 - `## ADRs`：範囲で追加された ADR を並べる。
-- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
+- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` か `Status:` の最初の行。[ADR 0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
 
 `## ADRs whose status changed` の各行は、`- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形である。
-ステータスは、`ステータス:` の後の文字列から前後の空白を除いたものである。
+ステータスは、行頭の `ステータス:` か `Status:` の後の文字列から前後の空白を除いたものである。
+旧形式の行と新しい形の行は、同じ状態を表していても違う行とみなす。
 ステータスの中の相対リンクは、ADR のディレクトリから解いたパスの絶対 URL にする（`scripts/release/absolute-links.sh`、[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 URL が指す版は、そのステータスのタグ（前のステータスは前のタグ、タグのステータスはタグ）の版である。
 `#` だけのリンクは ADR 自身のその節を指し、スキームを持つリンクは変えない。

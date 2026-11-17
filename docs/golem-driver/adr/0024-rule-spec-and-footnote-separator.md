@@ -1,6 +1,6 @@
 # ADR 0024: 罫線の指定と脚注の区切り線
 
-ステータス: 採択→罫線の色と線の種類は [ADR 0028](0028-rule-colour-and-style.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0028-rule-colour-and-style.md"],"part":"罫線の色と線の種類"}]
 
 ## 文脈
 

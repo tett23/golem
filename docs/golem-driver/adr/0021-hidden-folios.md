@@ -1,6 +1,6 @@
 # ADR 0021: 隠しノンブル
 
-ステータス: 採択→（数字の列の幅と、仕上がりの線を越える誤りの G03006 から G03029 への分離）は [ADR 0041](0041-hidden-folio-overlap-check-by-size.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md"],"part":"（数字の列の幅と、仕上がりの線を越える誤りの G03006 から G03029 への分離）"}]
 
 ## 文脈
 

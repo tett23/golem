@@ -1,6 +1,6 @@
 # ADR 0007: プラグインの独自のチャネル
 
-ステータス: 採択→`description` の四つめの欄は [docs/adr/0105](../../adr/0105-plugin-data.md)、`description` の形は [docs/adr/0107](../../adr/0107-named-describe-fields.md)
+Status: superseded [{"by":["docs/adr/0105-plugin-data.md"],"part":"`description` の四つめの欄"},{"by":["docs/adr/0107-named-describe-fields.md"],"part":"`description` の形"}]
 
 ## 文脈
 

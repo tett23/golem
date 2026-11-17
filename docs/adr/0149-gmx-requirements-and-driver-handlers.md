@@ -1,6 +1,6 @@
 # ADR 0149: .gmx の関数の要求と driver のハンドラ
 
-ステータス: 破棄
+Status: discarded
 
 ## 文脈
 

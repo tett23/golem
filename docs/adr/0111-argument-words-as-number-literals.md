@@ -1,6 +1,6 @@
 # ADR 0111: 数のリテラルの形をした引数の語を数として読む
 
-ステータス: 採択→範囲を受け取らない箇所に `numbers` を含むことは [ADR 0134](0134-numbers-range-code-is-g02113.md)、範囲として成り立たない範囲の語のコードは [ADR 0135](0135-range-words-read-as-range-expressions.md)
+Status: superseded [{"by":["docs/adr/0134-numbers-range-code-is-g02113.md"],"part":"範囲を受け取らない箇所に `numbers` を含むこと"},{"by":["docs/adr/0135-range-words-read-as-range-expressions.md"],"part":"範囲として成り立たない範囲の語のコード"}]
 
 ## 文脈
 

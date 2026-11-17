@@ -326,6 +326,12 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
 
+### 原稿の分量を調べる
+
+プロジェクトのディレクトリで `golem stats` を実行すると、本文の文字数、ワード数、組版後の行数、400 字詰め原稿用紙でのページ数が分かる。
+40 字×32 行のページに換算するには `golem stats --chars-per-line 40 --lines-per-page 32` を実行する。
+組版後の行数を調べるため、プロジェクトで指定した書体を使う。
+
 ## Development
 
 変更の進め方と約束ごとは [CONTRIBUTING.md](./CONTRIBUTING.md) にある。
@@ -340,19 +346,21 @@ git config core.hooksPath .githooks
 ```
 
 `core.hooksPath` はクローンごとのローカル設定であり、リポジトリには保存されないため、クローンのたびに実行が必要になる。
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.10.0 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0194](./docs/adr/0194-update-adr-guard-to-v0.10.0.md)）。
-ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0` で入る。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.13.1 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1` で入る。
 
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
 `.githooks/pre-commit` は、次のものを含むコミットを拒否する。
 
 - コミット済みの ADR（`docs/adr/` と `docs/<モジュール>/adr/` の配下）への変更、削除、リネーム。
-  例外は `ステータス:` で始まる行で、この行だけは変更できる（`--allow-status`）。
+  例外はステータスの行（行頭が `Status:` の行）で、この行だけは変更できる（`--allow-status`）。
+  ただし、ステータスの変更は許された状態遷移に限る（[docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
   リンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。
   ADR の参照に限らず、画像のリンク先とリンクの参照定義の行（`[1]: URL`）も含む。
   リンクのテキスト、画像の追加と削除、自動リンク（`<URL>`）と本文の URL の変更は拒否する。
 - ステータスの行の数が一つでない ADR。
-  ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持たねばならない。
+  ADR は、行頭が `Status:` のステータスの行をちょうど一つ持たねばならない。
+  コードブロックの中の行も数えるので、ADR の本文には行頭が `Status:` の行を書かない。
   無い ADR と二つ以上ある ADR はフックが拒否し、`adr-guard check-status` で一覧にできる。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）のうち、コミット済みのものの変更、削除、移動。
   記録には `--allow-status` と `--allow-links` の例外も適用されない。
@@ -369,7 +377,7 @@ ADR の参照の書き方にも、決まりがある。
 マニュアルの変わらない変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
 `main` への push とブランチの削除は検査しない。
 
-フックと同じ検査は、CI の `adr` ジョブでも、adr-guard の v0.10.0 の action に `allow-status: true` と `allow-links: true` を付けて行う。
+フックと同じ検査は、CI の `adr` ジョブでも、adr-guard の v0.13.1 の action に `allow-status: true` と `allow-links: true` を付けて行う。
 この action は、ADR の参照のリンクと番号の重複も検査する。
 
 ### 固定しているネイティブライブラリ
@@ -673,7 +681,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 
 #### 文書のワークフロー（docs.yml）
 
-- `adr`：コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する。
+- `adr`：コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つこと、ステータスの変更が許された状態遷移であることを検査する。
 - `manual`：プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。
   `main` への push では省く。
 - `textlint`：`tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。

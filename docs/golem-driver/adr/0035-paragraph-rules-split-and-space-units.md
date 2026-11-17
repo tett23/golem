@@ -1,6 +1,6 @@
 # ADR 0035: 分けて組んだ段落の罫線と、罫線の間隔の単位
 
-ステータス: 採択→（ページの途中から始まる段の始まりの `keep-in-column = false` の罫線）は [ADR 0040](0040-rules-outside-column-only-at-type-area-edge.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md"],"part":"（ページの途中から始まる段の始まりの `keep-in-column = false` の罫線）"}]
 
 ## 文脈
 

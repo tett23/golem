@@ -1,6 +1,6 @@
 # ADR 0004: 回り込みのある図版
 
-ステータス: 採択→待っている図版があるときの回り込みの図版の送りは [golem-layout ADR 0015](0015-figure-order.md)
+Status: superseded [{"by":["docs/golem-layout/adr/0015-figure-order.md"],"part":"待っている図版があるときの回り込みの図版の送り"}]
 
 ## 文脈
 

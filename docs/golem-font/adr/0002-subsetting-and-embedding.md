@@ -1,6 +1,6 @@
 # ADR 0002: フォントのサブセット化と PDF への埋め込み
 
-ステータス: 採択→`CIDSystemInfo` と異体字セレクタの ToUnicode は [golem-pdf ADR 0006](../../golem-pdf/adr/0006-cid-system-info.md)、ToUnicode を作る処理は golem-driver に移した（[golem-driver ADR 0030](../../golem-driver/adr/0030-ligature-text-layer.md)）、`FontFile3` の `Subtype` は [golem-pdf ADR 0011](../../golem-pdf/adr/0011-cff-fontfile3-subtype.md)
+Status: superseded [{"by":["docs/golem-pdf/adr/0006-cid-system-info.md"],"part":"`CIDSystemInfo` と異体字セレクタの ToUnicode"},{"by":["docs/golem-driver/adr/0030-ligature-text-layer.md"],"note":"golem-driver に移した","part":"ToUnicode を作る処理"},{"by":["docs/golem-pdf/adr/0011-cff-fontfile3-subtype.md"],"part":"`FontFile3` の `Subtype`"}]
 
 ## 文脈
 

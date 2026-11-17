@@ -1,6 +1,6 @@
 # ADR 0299: 組んだ表を、文字列にせずに評価しきる
 
-ステータス: 採択→最大常駐の確かめ方は [ADR 0306](0306-measure-the-residency-of-forcing-a-table-by-heap-profiles.md)
+Status: superseded [{"by":["docs/adr/0306-measure-the-residency-of-forcing-a-table-by-heap-profiles.md"],"part":"最大常駐の確かめ方"}]
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0007: TOML の誤りの文言を日本語にする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

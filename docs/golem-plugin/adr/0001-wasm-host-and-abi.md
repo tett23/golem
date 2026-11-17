@@ -1,6 +1,6 @@
 # ADR 0001: wasm のホストと ABI
 
-ステータス: 採択→`golem_dealloc` は [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)、`golem_describe` のチャネルの宣言と、チャネルの項目の出力の検証は [golem-doc ADR 0007](../../golem-doc/adr/0007-plugin-channel-lists.md)、要求の `data` の欄は [docs/adr/0105](../../adr/0105-plugin-data.md)、最初の SDK（Rust）の置き場所は [docs/adr/0106](../../adr/0106-sample-plugins-in-rust.md)
+Status: superseded [{"by":["docs/adr/0031-adr-code-mismatches.md"],"part":"`golem_dealloc`"},{"by":["docs/golem-doc/adr/0007-plugin-channel-lists.md"],"part":"`golem_describe` のチャネルの宣言と、チャネルの項目の出力の検証"},{"by":["docs/adr/0105-plugin-data.md"],"part":"要求の `data` の欄"},{"by":["docs/adr/0106-sample-plugins-in-rust.md"],"part":"最初の SDK（Rust）の置き場所"}]
 
 ## 文脈
 
