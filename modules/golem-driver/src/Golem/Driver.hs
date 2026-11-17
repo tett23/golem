@@ -1247,6 +1247,7 @@ htmlConfig dev e book missing bib =
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+      hcRubyReadingStyle = rdReadingStyle ruby,
       hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
       hcNoBreak = or [keepsPageBreak c | Document _ bs <- bookDocs book, Block _ _ _ (PageControl c) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)
