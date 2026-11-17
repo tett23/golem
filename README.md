@@ -4,6 +4,7 @@
 
 Golem は、コマンドラインと CI で動く組版システムである。
 原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
+EPUB は、zip の圧縮に使うライブラリ（zip-archive と zlib）の版も同じ Golem のビルドなら、本からの相対位置を保ってプロジェクトを移しても、ファイル全体がバイト単位で一致する（[Golem ADR 0361](docs/adr/0361-epub-byte-determinism.md)）。
 
 Golem の振る舞いと計画は、次の文書に分けて書いている。
 
@@ -205,9 +206,12 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
+参照を確かめきれない字は G08108、FreeType が寸法を読めない字は G08109 とし、どちらも PDF を書かない（[Golem ADR 0390](docs/adr/0390-deterministic-and-exhaustive-cff-random.md)）。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
+見出しの番号と題のあいだの区切りの文字列は `[headings.<階層>]` の `number-title-separator` で選べ、目次、柱、PDF のしおりもその区切りを使う（[Golem ADR 0372](docs/adr/0372-number-title-separator.md)）。
+図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` の `number-title-separator` で選べる。
 
 文字と段落の見た目は、スタイルにまとめる。
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。

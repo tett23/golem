@@ -1,6 +1,6 @@
 # ADR 0390: CFF の random を決定的に読み、とりうる値すべてで参照を確かめる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
