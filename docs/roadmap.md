@@ -84,7 +84,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **脚注と章末の注の本文を別々の段落スタイルで組むこと（未決）**：`[notes]` の `body-style` は、ページの下の脚注と章末の注の本文に同じ段落スタイルを当てる。ADR は「脚注本文、章末注本文、章末注の一覧の見出しにそれぞれ段落スタイルを選ぶ」と書き、境界の入力の表に「脚注本文だけ指定すれば章末注は既定」を挙げる一方、キーは `body-style` と `heading-style` の二つだけを決めている。脚注と章末の注に別のキーを設けるかを決める。 [Golem ADR 0366](adr/0366-note-body-styles.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **正規表現スタイルの届かない文字（未実装）**：見出し、定義リストの用語、注の本文には正規表現スタイルを当てない。 [Golem ADR 0368](adr/0368-regex-style-scope.md)。
-  - **ルビの読み（未実装）**：外側の書体と色で、親文字の半分の大きさで組み、文字スタイルを当てる手段がない。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
+  - **ルビの読み**：読みだけに文字スタイルを指定できる。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
   - **トラッキングの届かない文字（未実装）**：縦中横の箱とルビにトラッキングを足さない。 [Golem ADR 0370](adr/0370-tracking-inline-boxes.md)。
   - **傍注の `※` の印**：`[sidenotes]` の `marker-style` で印の文字スタイルを指定できる。 [Golem ADR 0371](adr/0371-sidenote-marker-style.md)。
 - **柱とノンブルのスタイル（未実装）**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。

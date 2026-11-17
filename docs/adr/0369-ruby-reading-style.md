@@ -1,6 +1,6 @@
 # ADR 0369: ルビの読みの文字スタイルを選ぶ
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
