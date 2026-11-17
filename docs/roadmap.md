@@ -69,7 +69,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
-- **読みのないルビの区切りの中の参照（未実装）**：読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後|まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならない。本文の中の参照と同じく `Reference` と `Link` にする。 [Golem ADR 0393](adr/0393-references-in-ruby-segments-without-readings.md)。
 - **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
 - **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。

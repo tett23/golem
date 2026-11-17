@@ -139,6 +139,23 @@ quoted l = T.stripPrefix "\"" l >>= T.stripSuffix "\""
 baseParts :: [(T.Text, T.Text)]
 baseParts = [("字", "字"), ("[ref-number a]", "1"), ("[ref-title b]", "二章")]
 
+{- | The lines inside the last P of a structure tree, each with its depth
+below the P, for the tests of docs/adr/0393.
+-}
+lastParagraph :: T.Text -> [(Int, T.Text)]
+lastParagraph t =
+  let indented = [(T.length (T.takeWhile (== ' ') l) `div` 2, T.strip l) | l <- T.lines t]
+      starts = [i | (i, (_, l)) <- zip [0 :: Int ..] indented, l == "P"]
+   in case reverse starts of
+        i : _ ->
+          let d = fst (indented !! i)
+           in [(d' - d - 1, l) | (d', l) <- takeWhile ((> d) . fst) (drop (i + 1) indented)]
+        [] -> []
+
+-- | A one-chapter source of the tests of docs/adr/0393: two labelled headings, then a paragraph of the ruby given.
+labelledRuby :: T.Text -> T.Text
+labelledRuby ruby = "@label a\n# 一章\n\n@label b\n# 二章\n\n" <> ruby <> "。\n"
+
 structureTests :: [TestTree]
 structureTests =
   [ structureGolden "structure-sample.txt" "sample" (Just "pdf-style") Nothing,
@@ -200,6 +217,25 @@ structureTests =
       (base, reading) <- rubyParts <$> miniStructure horizontalStyle source
       filter (\l -> l == "Reference" || "\"" `T.isPrefixOf` l) base @?= ["\"前\"", "Reference", "\"一章\"", "Reference", "\"二章\"", "\"後\""]
       reading @?= ["\"よみ\""],
+    -- docs/adr/0393: a reference in a segment without a reading is a Reference outside the Ruby
+    testCase "ADR 0393 I1: inv1_ruby_references_case_1: a title in a segment without a reading after one with a reading is a Reference after the Ruby" $ do
+      p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: 前/[ref-title a]後|まえ/]")
+      p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "Reference"), (1, "Link"), (2, "\"一章\""), (2, "OBJR 1"), (0, "\"後。\"")],
+    testCase "ADR 0393 I2: inv2_ruby_references_case_2: a number in the first segment without a reading is a Reference before the Ruby" $ do
+      p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: [ref-number a]/後|/あと]")
+      p @?= [(0, "Reference"), (1, "Link"), (2, "\"1\""), (2, "OBJR 1"), (0, "Ruby"), (1, "RB"), (2, "\"後\""), (1, "RT"), (2, "\"あと\""), (0, "\"。\"")],
+    testCase "ADR 0393 I3: inv3_ruby_references_case_3: a title in a segment with a reading stays a Reference under its RB" $ do
+      p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: 前/[ref-title a]|まえ/えー]")
+      p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "Ruby"), (1, "RB"), (2, "Reference"), (3, "Link"), (4, "\"一章\""), (4, "OBJR 1"), (1, "RT"), (2, "\"えー\""), (0, "\"。\"")],
+    testCase "ADR 0393 I1: inv1_ruby_references_case_4: two references in a segment without a reading are two References in source order" $ do
+      p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: 前/[ref-title a][ref-title b]|まえ/]")
+      p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "Reference"), (1, "Link"), (2, "\"一章\""), (2, "OBJR 1"), (0, "Reference"), (1, "Link"), (2, "\"二章\""), (2, "OBJR 1"), (0, "\"。\"")],
+    testCase "ADR 0393 I1: inv1_ruby_references_case_5: a ruby without references has no Reference" $ do
+      p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: 前/後|まえ/]")
+      p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "\"後。\"")],
+    testCase "ADR 0393 I2: inv2_ruby_references_case_6: under PDF/X-4 a reference in a segment without a reading is a Reference of a Span, without an annotation" $ do
+      p <- lastParagraph <$> miniStructureWith intentStyle (labelledRuby "[ruby: 前/[ref-title a]後|まえ/]") intentFiles
+      p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "Reference"), (1, "Span"), (2, "\"一章\""), (0, "\"後。\"")],
     testCase "a Note follows the Reference of its mark; their IDs are one each" $ do
       t <- treeLines <$> miniStructure horizontalStyle "前[note: 一。]中[note: 二。]後。\n"
       let refs = [i | (i, l) <- zip [0 :: Int ..] t, l == "Reference"]
