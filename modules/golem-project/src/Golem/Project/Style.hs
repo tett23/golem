@@ -1641,6 +1641,10 @@ data Style = Style
     stNotesMarkStyle :: !Text,
     -- | [notes] body-mark-style: the character style of the marks at the start of note bodies in the PDF; Nothing is none (docs/adr/0177)
     stNotesBodyMarkStyle :: !(Maybe Text),
+    -- | [notes] body-style: the paragraph style of the bodies of footnotes and notes at the end of a chapter in the PDF; Nothing is the body (docs/adr/0366)
+    stNotesBodyStyle :: !(Maybe Text),
+    -- | [notes] heading-style: the paragraph style of the title of the list of notes at the end of a chapter in the PDF; Nothing is the heading of level 2 (docs/adr/0366)
+    stNotesHeadingStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     -- | [tables] number: the format of table numbers (docs/adr/0262)
@@ -1688,6 +1692,8 @@ defaultStyle =
       stNotesMarkFormat = defaultMarkFormat,
       stNotesMarkStyle = "note-mark",
       stNotesBodyMarkStyle = Nothing,
+      stNotesBodyStyle = Nothing,
+      stNotesHeadingStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stTableNumber = "表{chapter}-{n}",
@@ -2319,7 +2325,7 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text)
 
 instance FromValue Notes where
   fromValue =
@@ -2332,6 +2338,9 @@ instance FromValue Notes where
           <*> optKeyOf "mark-format" (withValue markFormat)
           <*> optKey "mark-style"
           <*> optKey "body-mark-style"
+          -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+          <*> optKey "body-style"
+          <*> optKey "heading-style"
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -2499,9 +2508,9 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf nmst nbst <-
-      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
-        notes@(Notes _ _ _ size _ markStyle _) <- fromValue v
+    Notes np nn nr nms nmf nmst nbst nbody nhead <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _ _ _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
@@ -2543,6 +2552,8 @@ instance FromValue Style where
           stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
           stNotesMarkStyle = fromMaybe (stNotesMarkStyle d) nmst,
           stNotesBodyMarkStyle = nbst,
+          stNotesBodyStyle = nbody,
+          stNotesHeadingStyle = nhead,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
@@ -3160,6 +3171,11 @@ styleReferenceChecks owner s =
             (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
             Map.notMember n cs
           ]
+            -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+            <> [ ("", styleKeys ["notes", k], "[notes] の " <> k <> " の段落スタイルがありません: " <> n)
+               | (k, Just n) <- [("body-style", stNotesBodyStyle s), ("heading-style", stNotesHeadingStyle s)],
+                 Map.notMember n ps
+               ]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3621,7 +3637,9 @@ styleSchema =
           ("mark-size", dim),
           ("mark-format", str),
           ("mark-style", ref CharStyles),
-          ("body-mark-style", ref CharStyles)
+          ("body-mark-style", ref CharStyles),
+          ("body-style", ref ParaStyles),
+          ("heading-style", ref ParaStyles)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]
     masterNode =

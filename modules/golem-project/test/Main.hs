@@ -1005,6 +1005,7 @@ tests =
         mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G03006"]) ["0zw", "1.5zw", "0pt"]
         codes (parseStyle (FileId 0) "[notes]\nmark-size = \"abc\"\n") @?= ["G03257"],
       noteMarkTests,
+      noteBodyStyleTests,
       indentTests,
       listTests,
       characterFeatureTests,
@@ -1467,6 +1468,31 @@ styleTests =
     noBase = fmap (\d -> d {psBasedOn = Nothing})
     messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
     hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
+
+-- | The paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366).
+noteBodyStyleTests :: TestTree
+noteBodyStyleTests =
+  testGroup
+    "the paragraph styles of notes (docs/adr/0366)"
+    [ testCase "ADR 0366 I1: without the keys, the body and the title take no paragraph style" $
+        case parseStyle (FileId 0) "" of
+          Left ds -> assertFailure (show ds)
+          Right s -> (stNotesBodyStyle s, stNotesHeadingStyle s) @?= (Nothing, Nothing),
+      testCase "ADR 0366 I1: body-style and heading-style are read each on its own" $ do
+        let keysOf src = either (const Nothing) (\s -> Just (stNotesBodyStyle s, stNotesHeadingStyle s)) (parseStyle (FileId 0) ("[paragraph-styles.small]\nsize = \"0.8zw\"\n[notes]\n" <> src))
+        keysOf "body-style = \"small\"\n" @?= Just (Just "small", Nothing)
+        keysOf "heading-style = \"small\"\n" @?= Just (Nothing, Just "small")
+        keysOf "body-style = \"small\"\nheading-style = \"caption\"\n" @?= Just (Just "small", Just "caption"),
+      testCase "ADR 0366: a paragraph style that does not exist is G03013 at the key" $ do
+        codes (parseStyle (FileId 0) "[notes]\nbody-style = \"nothing\"\n") @?= ["G03013"]
+        codes (parseStyle (FileId 0) "[notes]\nheading-style = \"nothing\"\n") @?= ["G03013"]
+        let ms = either (map diagMessage) (const []) (parseStyle (FileId 0) "[notes]\nheading-style = \"nothing\"\n")
+        assertBool (show ms) (any ("[notes] の heading-style の段落スタイルがありません: nothing" `T.isInfixOf`) ms)
+        -- a character style is not a paragraph style
+        codes (parseStyle (FileId 0) "[character-styles.mark]\nsize = \"0.5zw\"\n[notes]\nbody-style = \"mark\"\n") @?= ["G03013"],
+      testCase "ADR 0366: the values are strings" $
+        codes (parseStyle (FileId 0) "[notes]\nbody-style = 1\n") @?= ["G03006"]
+    ]
 
 -- | The marks of notes: their format, their character styles and mark-size (docs/adr/0177).
 noteMarkTests :: TestTree
