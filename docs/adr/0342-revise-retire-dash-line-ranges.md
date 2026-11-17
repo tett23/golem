@@ -1,6 +1,6 @@
 # ADR 0342: 行の範囲を三つのピリオドで区切る
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
