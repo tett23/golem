@@ -10,7 +10,12 @@ tests :: TestTree
 tests =
   testGroup
     "number separators (golem-html ADR 0002)"
-    [ testCase "J1: number separator uses the primary language subtag" $ do
+    [ testCase "inv1_number_title_separator_property" $
+        mapM_ (\(lang, conf, n, title) -> titleSeparator lang conf n title @?= "") [(lang, conf, n, t) | lang <- ["ja", "en"], conf <- [Nothing, Just "", Just "::"], (n, t) <- [("", "title"), ("1", ""), ("", "")]],
+      testCase "inv1_number_title_separator_case_1" $ titleSeparator "ja" (Just "") "1" "題" @?= "",
+      testCase "inv1_number_title_separator_case_2" $ titleSeparator "ja" (Just "|") "" "題" @?= "",
+      testCase "inv1_number_title_separator_case_3" $ titleSeparator "ja" (Just " | ") "1" "題" @?= " | ",
+      testCase "J1: number separator uses the primary language subtag" $ do
         let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
         mapM_ (\(lang, expected) -> (numberSeparator lang "1" == "\x3000") @?= expected) cases,
       testCase "J2: number separator ignores case" $ do
