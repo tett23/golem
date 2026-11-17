@@ -32,6 +32,7 @@ module Golem.Typeset
     PdfInput (..),
     SetLine (..),
     CodeInfo (..),
+    CodeCaption (..),
     PlacedFigure (..),
     PlacedSidenote (..),
     PartLine (..),
