@@ -2468,6 +2468,7 @@ localStyleTests =
               "stretch-limit" -> "2500"
               "shrink-order" -> "word-space,comma"
               "stretch-order" -> "word-space"
+              "opening-indent" -> "half"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

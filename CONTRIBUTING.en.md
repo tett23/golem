@@ -402,6 +402,9 @@ Keep CI within 5 minutes.
 Every change waits for CI, so slow CI slows down development itself.
 This project values the speed of development above all, so slow CI is never postponed.
 When CI on a pull request exceeds 5 minutes, stop other work and improve CI first (split jobs, cache, skip checks of unchanged modules, and so on).
+Whether CI exceeds 5 minutes is judged by the median time of the last 20 successful `ci.yml` runs for pull requests that did not skip `build` ([docs/adr/0392](./docs/adr/0392-budget-the-pull-request-ci-at-five-minutes.md)).
+The time of a run is the seconds of the longest path through the job dependencies (`needs`), without the wait for runners.
+`sh scripts/ci/ci-critical-path.sh` prints this median, and the list of budgets (`docs/budgets.md`) uses it as the measuring command of this budget.
 Record the times before and after the optimization in `docs/ci-timings/`.
 The exception is a pull request that changes the wasm toolchain (`scripts/fetch-ghc-wasm.sh`) or the wasm freeze (`cabal.project.wasm.freeze`): the first run of the `wasm` job has no cache, so it may exceed 5 minutes.
 Such a pull request records the times of the run without the cache and the run with it in `docs/ci-timings/`.
