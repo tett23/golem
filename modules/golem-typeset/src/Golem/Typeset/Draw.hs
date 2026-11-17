@@ -209,7 +209,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                       -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                       embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
                       -- a face used horizontally and vertically is reported once
-                      case nub (lefts (Map.elems embedded)) of
+                      case nub (concat (lefts (Map.elems embedded))) of
                         [] -> do
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
