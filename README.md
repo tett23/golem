@@ -275,6 +275,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印だけを書く。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
+PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 
 `@no-page-break 3` で、改ページの際に前の段落の末尾 3 行を次の段落と同じ段に送る。
 前に 1 行しか残らなければ段落全体を送る（[Golem ADR 0376](docs/adr/0376-no-page-break-lines.md)）。
