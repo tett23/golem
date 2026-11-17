@@ -295,4 +295,3 @@ golem-pdf-test	golem-pdf (ADR 0001).SVG drawings (ADR 0009).qpdf --check accepts
 golem-pdf-test	golem-pdf (ADR 0001).qpdf --check accepts the output	findExecutable (for qpdf, pdftoppm or pdfinfo) throws when PATH is not set; run-tests.mjs passes no PATH	test
 golem-project-test	golem-project.project diagnostic codes (ADR 0006).absolute paths and links out of the root are G03003	the test creates a symbolic link, which WASI refuses with Operation not permitted	test
 golem-project-test	golem-project.symbolic links are resolved to the same file	the test creates a symbolic link, which WASI refuses with Operation not permitted	test
-golem-svg-test	golem-svg (golem-pdf ADR 0009).security.security audit 2026-10-24.the segments markers draw are at most 1,000,000 (docs/adr ADR 0084).a path of 1,000,001 segments drawn by the drawing itself is not counted	the limit of 60 seconds of CPU time of the test is passed under node:wasi, which is slower than the native build	test
