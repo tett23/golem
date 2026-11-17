@@ -1,6 +1,6 @@
 # ADR 0388: wasm32 で走らせるテストの時間の上限を広げる
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
