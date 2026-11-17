@@ -2478,6 +2478,8 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 | `line-adjustment`、`stretch-limit` | 行の調整（[ADR 0274](adr/0274-prefer-pulling-in-and-limit-the-stretch-of-lines.md)、「行分割」の節） |
 | `shrink-order`、`stretch-order` | 行の調整の順（[ADR 0278](adr/0278-use-the-places-of-line-adjustment-in-the-order-of-jlreq.md)、「行分割」の節） |
 | `regex-styles` | 正規表現スタイル（「正規表現スタイル」） |
+| `next-style`、`initial-style` | 次の段落の段落スタイルと、段落の先頭の一字の文字スタイル（「次の段落スタイルと先頭の文字スタイル」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
+| `opening-indent` | 始め括弧類で始まる段落の字下げ（「字下げ」、[ADR 0374](adr/0374-paragraph-style-controls.md)） |
 
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G03011）とする。
 段落スタイルには行送りの欄を設けない。
@@ -2847,6 +2849,46 @@ HTML と EPUB の `style.css` には、既定でない値を `break-after: avoid
 `@style-def` の `shrink-order` と `stretch-order` は、`shrink-order=word-space,comma` のように名前をコンマで区切った一つの値で書き、名前のそれぞれが一つの段になる。
 一つの段に二つ以上の種類を置く順は、`style.toml` にだけ書ける。
 四つのキーは HTML と EPUB には書き出さない。
+
+#### 次の段落スタイルと先頭の文字スタイル
+
+段落スタイルの `next-style` は、その段落スタイルの段落の直後の段落に当てる段落スタイルの名前である（[ADR 0374](adr/0374-paragraph-style-controls.md)）。
+直後の段落が `@style` で段落スタイルを書いていなければ、その段落を `next-style` の段落スタイルで組む。
+`@style` で書いた段落スタイルは、`@style body` も含めて、`next-style` に優先する。
+`next-style` は直後の一段落にだけ当たり、その次の段落の段落スタイルは、直後の段落の段落スタイルの `next-style` で決まる。
+段落スタイルを付けない段落は `body` の段落なので、`body` に `next-style` を書けば、その段落の直後の段落にも当たる。
+`next-style` は自分の段落スタイルを指してもよく、指す先が循環しても誤りにならない。
+各段落は直前の段落の `next-style` だけを見て、その先をたどらないためである。
+`next-style` は、それだけでは段落を作らない。
+
+直後の段落とは、ファイルの最上位のブロックを評価した結果で、段落の直後に来るブロックが段落であるときのその段落である。
+変数の宣言のように何も出さないブロックは、間に数えない。
+リスト、見出し、`@blank-line` などのブロックが間にあれば、`next-style` は当たらない。
+段落の属性に `@page-break` などの改ページの命令を付けた場合も、命令のブロックが間に入るので当たらない。
+`@style` の本体の段落はすべて書いた段落スタイルで組み、本体の後の段落に、その段落スタイルの `next-style` が当たる。
+一行を一段落とする原稿では、`@style` を付けた段落の次の行が直後の段落になる。
+`next-style` の段落スタイルが改行を行の区切りにする（`line-breaks = "keep"`）なら、その段落の改行を行の区切りにする。
+リストの項目、表のセル、キャプション、注の本文の段落には当てない。
+
+段落スタイルの `initial-style` は、段落の先頭の一字に当てる文字スタイルの名前である（[ADR 0374](adr/0374-paragraph-style-controls.md)）。
+一字は、基底の文字とその後に続く結合文字（一般カテゴリが Mn、Mc、Me の文字）の組とする（[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）。
+一字の数え方は、正規表現スタイルの対象の文字と同じである。
+文字スタイル、圏点、色、リンク、言語の範囲の中の字と、ルビの親文字を数え、索引の印のように字を持たない要素は飛ばす。
+縦中横、数、参照のように分けられない要素は一字として数え、要素の全体に当てる。
+字のない段落には当てない。
+`initial-style` の文字スタイルは、原稿で書いた文字スタイルと正規表現スタイルの外側に置く。
+同じキーでは、内側のそれらが優先する。
+これは、正規表現スタイルを原稿で書いた文字スタイルの外側に置くのと同じ規則である。
+改行を行の区切りにする段落では、最初の行の先頭の一字にだけ当てる。
+`initial-style` を当てる段落は、文書の最上位の段落と `@style` の本体の段落であり、リストの項目、表のセル、キャプション、注の本文の段落には当てない。
+`initial-style` は意味の IR に文字スタイルとして置くので、PDF、HTML、EPUB で同じ字に当たる。
+
+`next-style` と `initial-style` の既定はなく、書かなければ当てない。
+どちらも `based-on` で引き継ぐ。
+`next-style` が段落スタイルを、`initial-style` が文字スタイルを指さなければ、エラー（G03013）とする。
+文字列でない値は、G03006 とする。
+`@style-def` にも、同じキーを同じ検査で書ける。
+`code` には書けない（G03006）。
 
 #### 段落の罫線
 
@@ -3272,11 +3314,14 @@ HTML と EPUB には印を出さない。
 - `first-line-indent`：最初の行に `indent` へ加える量（1 行目左インデント）。負ならぶら下げになる。
 - `end-indent`：すべての行の終わりの側の字下げ（InDesign の右インデント）。負の値は書けず、G03006 とする。
 
+始め括弧類で始まる段落の最初の行は、`opening-indent` でも変わる（この節の後の段落）。
+
 `indent` と `first-line-indent` は行の始まりの側から測るので、縦組みでは天からの距離になる。
 `end-indent` は、縦組みでは地からの距離になる。
 `zw` は段落の文字の大きさを一字とする。
 
 PDF の行長は、最初の行が「段の行長 − `indent` − `first-line-indent` − `end-indent`」、ほかの行が「段の行長 − `indent` − `end-indent`」である。
+`opening-indent` で最初の行の始まりを変えた段落では、最初の行の `indent` と `first-line-indent` の和の代わりに、変えた後の始まりを引く。
 回り込ませる図版の脇の行では、脇の行の長さから同じく引く。
 
 字下げの誤りは次のとおりである。
@@ -3311,6 +3356,20 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 段落の先頭の始め括弧類の位置は、字下げの方法で変わる。
 全角の空白で字下げした段落の先頭の始め括弧類は、全角の空白の直後に置かれる。
 `first-line-indent` で字下げした段落の先頭の始め括弧類は、`paragraph-start` の規則で二分下がる（[golem-layout ADR 0041](golem-layout/adr/0041-take-the-ideographic-space-out-of-japanese-characters-in-the-default-aki-set.md)）。
+
+段落スタイルの `opening-indent` は、始め括弧類で始まる段落の最初の行の字下げを決める（[ADR 0374](adr/0374-paragraph-style-controls.md)）。
+値は `"normal"` か `"half"` で、`body` の既定は `"normal"` であり、`based-on` で引き継ぐ。
+ほかの値と、文字列でない値は G03006 とする。
+`@style-def` にも、同じキーを同じ検査で書ける。
+`"normal"` は、字下げをそのまま使う。
+`"half"` は、最初の行の始まり（`indent` と `first-line-indent` の和）から段落の文字の大きさの半分を引き、引いた結果が負なら 0 とする。
+二行目からの行の始まりは変えない。
+`"half"` の段落でも、`paragraph-start` の規則の二分の空きは残るので、`first-line-indent = "1zw"` の段落の先頭の始め括弧類は一字下がりの位置に来る。
+始め括弧類かどうかは、段落の先頭の字の分類（「アキ量」の節の `opening`）で決める。
+先頭の字は、文字スタイル、圏点、色、リンク、言語の範囲、ルビの親文字の中の字も数え、索引の印のように字を持たない要素は飛ばす。
+`line-breaks = "keep"` の段落では、最初の行の字下げを受ける行のそれぞれを、その行の先頭の字で決める。
+`opening-indent` は、PDF の文書の最上位の段落と `@style` の本体の段落にだけ当たり、定義リストの説明の段落、キャプション、傍注の本文には当たらない。
+HTML と EPUB は `opening-indent` を使わない。
 
 プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、行の先頭に全角の空白を置く（[docs/adr/0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 
