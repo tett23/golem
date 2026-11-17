@@ -48,7 +48,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御、表、回り込む図版を、改ページの列挙の要素に足す。表と回り込む図版も含め、本文の各行と図版がそれぞれ一度ずつ出力されることを確かめる（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
   - **画像の実効解像度と診断の境界**：整数の ppi がしきい値を下回る場合に G09006 が出ることを調べる。実効解像度が 1 ppi の入力に対し、しきい値 0、1、2 で native CLI を各 3 回動かすと、G09006 はそれぞれ 0、0、1 件だった。同じ述語を wasm32 のプリフライトのテストでも検査する。
 - **改行しない範囲の S1 を実際の書体の送りで確かめる**：[ADR 0305](adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) の S1 は、つないだ箱の幅を、つないだ文字列の送りで補正する。既存の回帰テストでは、試験用に作ったカーニングを使っている。字形と送りの性質が異なる 3 書体を当面の対象として、HarfBuzz で組んだ語の送りで S1 を確かめる。どの性質をどこまで網羅するかは改めて決める。
-- **wasm32 のテストの時間の上限（未実装）**：[ADR 0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md) に従い、`hangLimits` を wasm32 でだけ CPU 時間 600 秒、実時間 1200 秒に広げ、golem-svg の「a path of 1,000,001 segments drawn by the drawing itself is not counted」を wasm の既知の失敗の一覧から外す。このテストは wasm32 で CPU 時間の上限 60 秒の境目にあり、毎晩の `wasm-tests.yml` を壊れやすくしている。
 
 ### 記法と設定の値
 
@@ -58,7 +57,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### diagnostics とビルドの結果
 
-- **一つのコードに一つの原因の監査（未実装）**：今の diagnostic のコードのうち、異なる原因を一つにまとめているものを洗い出し、コードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。 [Golem ADR 0356](adr/0356-diagnostic-cause-audit.md)。
+- **一つのコードに一つの原因に合わせたコードの分割**：[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) は、異なる原因を一つにまとめたコードを 62 件挙げ、候補ごとに分け方を提案した。どの提案を採るかを決め、ADR を作成してコードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。
 - **diagnostics の判定の近似の監査**：数値による診断の境界と、追加の近似を調べる手順を定めた。 [Golem ADR 0322](adr/0322-check-numeric-diagnostic-boundaries.md)（採択）。
 - **`golem check` が G01012 を二度出す件**：check と HTML ビルドで見出しの各位置を照合する回帰テストを定めた。 [Golem ADR 0323](adr/0323-heading-level-diagnostic-occurrences.md)（採択）。
 - **フォントにない字があるときの preflight の完走**：欠字を G09002 で報告し、独立した検査を続ける。 [Golem ADR 0325](adr/0325-preflight-glyph-severity.md)（採択）。
