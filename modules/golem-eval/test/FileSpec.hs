@@ -2117,10 +2117,10 @@ printingsTests =
         take 1 [plainOf is | Paragraph Nothing is <- bs] @?= ["{1} \\ {1}"]
         either (const (assertFailure "an error")) (const (pure ())) (parseStyle (FileId 9) "[printings]\nformat = '{{{edition}}}'\n"),
       testCase "ADR 0375 I1: an error of the format names [printings] and the format" $ do
-        let formatMsgs fmt = either (map (\d -> diagMessage d)) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
+        let formatMsgs fmt = either (map diagMessage) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
         formatMsgs "{unknown}" @?= ["[printings] の format が正しくありません（表にない欄です: {unknown}）: {unknown} (printings.format)"]
         formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {edition (printings.format)"]
-        either (map (\d -> diagMessage d)) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
+        either (map diagMessage) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
       testCase "ADR 0375 I1: without a format a book not in Japanese is still G02076" $
         run ((printingsCtx "en") {ctxStyle = either (error . show) id (parseStyle (FileId 9) "[printings]\n")}) "@printings\n" @?= ([], ["G02076"]),
       testCase "the year is kanji-digits, the other numbers follow the default" $
