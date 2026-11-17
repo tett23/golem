@@ -4178,6 +4178,18 @@ OpenType に包んだ CFF（`/Subtype /OpenType`）は、ISO 32000-1 が認め�
 Chromium の PDF のビューアー（PDFium）が、OpenType に包んだ CID-keyed の CFF の文字のコードをグリフ ID として読み、和文を描かないためである。
 そのため、CFF の表を取り出せないフォントは、OpenType のまま埋め込まずにエラー（G08018）とし、PDF を書かない。
 
+CFF の表があるフォントは、サブセットを作る前に、表の中の参照が表の長さに収まるかを確かめる（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）。
+表の長さは、フォントのテーブルディレクトリが宣言する長さであり、コレクション（`.ttc`）では最初のフォントの表を読む。
+確かめるのは、ヘッダーに続く INDEX（Name、Top DICT、String、Global Subrs）の終端、Top DICT が指すデータ（CharStrings、charset、Encoding、Private DICT とその Subrs、FDArray、FDSelect、各 Font DICT の Private DICT とその Subrs）、使うグリフ（.notdef を含む）の CharString と、それが呼ぶサブルーチンである。
+サブルーチンの番号は、CharString を Type 2 の規則で実行して求める。
+参照の終端が表の長さを超える場合と、グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合は、エラー（G08107）とし、PDF を書かない。
+512 MiB（2 の 29 乗バイト）を超える位置や長さは、その値に丸めて読むので、表の外とする。
+wasm32 の 32 ビットの整数でも、64 ビットの処理系と同じ結果にするためである。
+使わないグリフの CharString は確かめない。
+スタックの不足のような、表の外を読まない誤りは G08107 にせず、その CharString をそれ以上たどらない。
+endchar の引数で別のグリフを合成する形（seac）の部品のグリフと、random の値で決まる参照は、たどらない。
+G08003 はフォントを開けない場合、G08018 は CFF の表を取り出せない場合のままである。
+
 ### ToUnicode と ActualText
 
 PDF の ToUnicode は、各グリフを、そのグリフが組んだクラスタ（シェイピングで一まとまりになった文字の並び）の文字列の全体に対応させる（[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)、[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
