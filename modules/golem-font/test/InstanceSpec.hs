@@ -11,6 +11,7 @@ module InstanceSpec (instanceTests) where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Golem.Font
 import Hedgehog (annotateShow, evalIO, forAll, property, (===))
@@ -28,7 +29,7 @@ instanceTests serif sans =
         name <- forAll (Gen.maybe (Gen.element (map fst instances)))
         wght <- forAll (Gen.maybe (Gen.element [200, 900] `orDouble` Gen.double (Range.linearFrac 200 900)))
         f <- evalIO (loadFontAt (FontInstance name [("wght", w) | Just w <- [wght]]) serif) >>= either (fail . show) pure
-        let expected = maybe (maybe defaultWght (`lookupOr` instances) name) id wght
+        let expected = fromMaybe (maybe defaultWght (`lookupOr` instances) name) wght
         annotateShow (fontCoordinates f)
         map fst (fontCoordinates f) === ["wght"]
         -- the coordinates, in the precision of fvar (16.16); the three hold them as floats (HarfBuzz reads fvar so)
@@ -86,7 +87,7 @@ instanceTests serif sans =
         -- the instance shapes and measures at its own coordinates
         assertBool "Bold is wider than the default" (sum [a | (_, (_, _, (a, _, _, _))) <- zip [0 :: Int ..] (shapeUnits bold (shapeRequest "Hamburgefonstiv"))] > sum [a | (_, _, (a, _, _, _)) <- shapeUnits regular (shapeRequest "Hamburgefonstiv")])
         -- without kerning, the advances of shaping are those of the metrics
-        [a | (_, _, (a, _, _, _)) <- shapeUnits bold ((shapeRequest "Hamburgefonstiv") {srFeatures = ["-kern"]})] @?= [maybe 0 id a | (_, a) <- advances bold]
+        [a | (_, _, (a, _, _, _)) <- shapeUnits bold ((shapeRequest "Hamburgefonstiv") {srFeatures = ["-kern"]})] @?= [fromMaybe 0 a | (_, a) <- advances bold]
         sequence_
           [ do
               Just sub <- subsetFont f (gids f)
@@ -107,7 +108,7 @@ instanceTests serif sans =
     loaded io = io >>= either (assertFailure . show) pure
     instances :: [(Text, Double)]
     instances = [("ExtraLight", 200), ("Light", 300), ("Regular", 400), ("Semibold", 600), ("Bold", 700), ("Black", 900)]
-    lookupOr k xs = maybe defaultWght id (lookup k xs)
+    lookupOr k xs = fromMaybe defaultWght (lookup k xs)
     -- the default of wght in fvar (25516065 in 16.16)
     defaultWght = 389.34425354003906
     asFloat cs = [(t, realToFrac v :: Float) | (t, v) <- cs]

@@ -59,7 +59,7 @@ import Data.Array.Unboxed (UArray, bounds, inRange, listArray, (!))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
-import Data.Either (fromRight)
+import Data.Either (fromLeft, fromRight)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -491,4 +491,4 @@ fontCoordinates f = zip [t | (t, _, _, _) <- fontAxisRecords f] (map fromFixed (
 
 -- | Why the font cannot be set at the instance; none when it can (Golem ADR 0358).
 fontInstanceErrors :: Font -> FontInstance -> [InstanceError]
-fontInstanceErrors f inst = either id (const []) (resolveInstance (fontAxisRecords f) (fontNamedInstances f) inst)
+fontInstanceErrors f inst = fromLeft [] (resolveInstance (fontAxisRecords f) (fontNamedInstances f) inst)
