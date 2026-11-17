@@ -18,7 +18,7 @@ Golem への変更は、どれも ADR（Architecture Decision Record）から始
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.10.0 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0`）。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.13.1 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1`）。
 `.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
@@ -55,7 +55,7 @@ ADR は日本語で書く。
 ```markdown
 # ADR 0001: タイトル
 
-ステータス: 提案
+Status: proposed
 
 ## 文脈
 
@@ -68,10 +68,25 @@ ADR は日本語で書く。
 ## トレードオフ
 ```
 
-ステータスには、提案、採択、採択（未実装）、却下、破棄のいずれかを書く。
-採択（未実装）は、採択したがまだ実装していない ADR に使い、実装を終えたら採択に変える。
-採択（未実装）の ADR は `adr-guard unimplemented` で一覧にできる（[docs/adr/0048](./docs/adr/0048-update-adr-guard-to-v0.8.3.md)）。
-あとの ADR が一部を置き換えた場合は、「採択→○○（変更部分）は [ADR NNNN](...)」のように、置き換えた ADR をリンクで示す。
+ステータスの行は `Status: <トークン>` の形で書く（[docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+トークンは次のいずれかである。
+
+- `proposed`：提案。新しい ADR は、まずこのトークンでコミットする。
+- `accepted-pending`：採択したが、まだ実装していない。実装を終えたら `accepted` に変える。
+- `accepted`：採択して、実装を終えた。
+- `rejected`：却下。
+- `discarded`：破棄。
+- `deprecated`：かつて採択し、いまは効力がない。
+- `superseded [<変更の JSON 配列>]`：あとの ADR が一部か全部を変えた。実装を待つ ADR が変更を受けたときは `superseded-pending [<変更の JSON 配列>]` にする。
+
+変更は、変えた部分の名前（`part`）と、変えた ADR のリポジトリのルートからのパスの配列（`by`）を持つ JSON のオブジェクトである。
+部分を限らないときは `part` を `null` にする。
+`kind`（`replace`、`supplement`、`note`）と `note` を足せる。
+`kind` を省くと `replace` である。
+たとえば `Status: superseded [{"part":"CI の action の版","by":["docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md"]}]` と書く。
+`accepted-pending` と `superseded-pending` の ADR は `adr-guard unimplemented` で一覧にでき、修正の連なりは `adr-guard trace <パス>` で出せる。
+これより前の ADR は `ステータス: 採択` のような形（旧形式）で書いていたが、[docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md) ですべて新しい形に移した。
+旧形式で新しく書かない。
 
 ### 変更してはいけない
 
@@ -79,8 +94,11 @@ ADR は日本語で書く。
 `.githooks/pre-commit` と CI の `adr` ジョブが、変更、削除、リネームを拒否する。
 ステータスの行の変更（`--allow-status`）と、リンクを付ける、外す、リンク先を変えるだけの変更（`--allow-links`）は許す（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)、[docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)）。
 リンクのテキストの変更は許さない。
-ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ。
+ADR は、行頭が `Status:` のステータスの行をちょうど一つ持つ。
 無い ADR と二つ以上ある ADR は、フックと CI の `adr` ジョブが拒否する。
+コードブロックの中の行も数えるので、ADR の本文には行頭が `Status:` の行を書かない。
+フックと CI の `adr` ジョブは、ステータスの状態遷移も検査する。
+新しい ADR を `proposed` 以外でコミットするなど、許されない遷移は `--allow-status` を付けても拒否する。
 `adr-guard check-status` で一覧にできる（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
 文書の中の ADR の参照にはリンクを付ける。
 リンクのない参照は CI の `adr` ジョブが拒否する。
@@ -94,7 +112,7 @@ ADR は、行頭が `ステータス:` のステータスの行をちょうど�
 振りなおしのコミットには、一時的にフックと action に `--allow-renumber` を付ける。
 
 仕様を変えたくなったら、元の ADR を書き換えずに、新しい連番の ADR を書く。
-ADR をやめる場合は、ステータスを破棄にして、理由を [docs/specifications.md](./docs/specifications.md) に書く。
+ADR をやめる場合は、ステータスを `discarded` にして、理由を [docs/specifications.md](./docs/specifications.md) に書く。
 
 ADR はレビューを受けるまでコミットしない。
 提案の段階で内容を直せるのは、コミットするまでのあいだだけだからだ。
@@ -399,7 +417,7 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
    ジョブ `wasm` は、`golem.wasm` のアーカイブを作った直後に `scripts/release/check-wasm-archive.sh` でライセンスの文書と `.sha256` を確かめる。`workflow_dispatch` でも走る（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
    `release` ジョブは、下書きのリリースを作った後に、上げたアーカイブのそれぞれに `gh attestation verify` を走らせ、下書きの `SHA256SUMS` で `dist/` のファイルと照らす（[docs/adr/0230](./docs/adr/0230-check-the-release-workflow-and-ci-history-by-scripts.md)）。
 6. 下書きのリリースノートを読む。AI が書いたノートの分類やまとめ方がおかしければ、手で直す。AI の実行か検査に失敗したときは、`## Unsorted` に変更の一覧が残ったノートになるので、分類して書き直す。ワークフローの要約に、失敗の理由が書かれる。
-   v1.0.0 より前のリリースでは、リンクの注釈を含む PDF/X-4 の PDF を ISO 15930-7 と照合していないことを、ノートの既知の問題に書く（[docs/adr/0226](./docs/adr/0226-move-the-iso-15930-7-check-to-before-v1.md)）。
+   v1.0.0 より前のリリースでは、PDF/X-4 の本文リンクのクリック領域を省くことと、ISO 15930-7 の残る未照合事項をノートに書く ([Golem ADR 0350](./docs/adr/0350-omit-page-link-annotations-from-pdf-x-4.md))。
 7. GitHub の Releases の画面で、下書きを公開する。公開の操作はワークフローでは行わない。
 
 配布物を作って検査するところまでを試すときは、`gh workflow run release.yml --ref <ブランチ>` で `workflow_dispatch` から起動する。

@@ -1,6 +1,6 @@
 # ADR 0293: `golem.wasm` のパッケージのテストのスイートを、wasm32 で毎晩走らせる
 
-ステータス: 採択（未実装）
+Status: superseded [{"by":["docs/adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md"],"part":"3 の preopen"}]
 
 ## 文脈
 

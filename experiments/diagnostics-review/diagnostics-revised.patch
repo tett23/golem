@@ -1,0 +1,575 @@
+diff --git a/modules/golem-cli/app/Main.hs b/modules/golem-cli/app/Main.hs
+index 76b4d48a..af04337b 100644
+--- a/modules/golem-cli/app/Main.hs
++++ b/modules/golem-cli/app/Main.hs
+@@ -1,6 +1,7 @@
+ -- | The golem command (golem-cli ADR 0001): a thin layer over the modules.
+ module Main (main) where
+ 
++import Control.Exception (tryJust)
+ import Control.Monad (forM_, unless, when)
+ import Data.ByteString qualified as BS
+ import Data.Char (isSpace, toLower)
+@@ -38,9 +39,11 @@ import Golem.Syntax.ShowTree (showTree)
+ import Options.Applicative
+ import Options.Applicative.Extra (helperWith)
+ import System.Directory (doesFileExist, getCurrentDirectory)
++import System.IO.Error (isDoesNotExistError)
++import System.Posix.Files qualified as Posix
+ import System.Environment (getArgs)
+ import System.Exit (ExitCode (..), exitWith)
+-import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeExtension, (</>))
++import System.FilePath (isAbsolute, joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, takeFileName, (</>))
+ import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
+ import Text.Printf (printf)
+ 
+@@ -49,7 +52,7 @@ data Format = Human | Json
+ data InspectAs = AsCst | AsAst | AsIr | AsCbor
+ 
+ data Command
+-  = New FilePath Language Bool
++  = New FilePath Language Bool Bool
+   | Build [Target] Profile CropMarks Bool Bool Format
+   | Check Profile CropMarks Bool Bool Format
+   | Preflight (Maybe FilePath) CropMarks Format
+@@ -192,7 +195,7 @@ commands =
+   subparser
+     ( commandGroup "コマンド:"
+         <> metavar "COMMAND"
+-        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
++        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない") <*> switch (long "screen" <> help "入稿しない原稿を作る")) "プロジェクトを作る"
+         <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を build/ に書く"
+         <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を書かずに検査する"
+         <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
+@@ -243,8 +246,16 @@ localize = intercalate "\n" . go . lines
+ 
+ run :: Command -> IO ExitCode
+ run = \case
+-  New dir lang noFonts -> newProject dir lang noFonts
+-  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
++  New dir lang noFonts screen -> newProject dir lang noFonts screen
++  Build tgs profile marks quiet verbose fmt -> do
++    let targets = if null tgs then allTargets else tgs
++        output t = "build" </> case t of
++          TargetPdf -> "pdf"
++          TargetHtml -> "html"
++          TargetEpub -> "epub"
++          TargetText -> "text"
++    cleanFinderInfo ("." : "build" : map output targets)
++    report fmt =<< build (defaultOptions ".") {optTargets = Just targets, optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+   Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+   Preflight rules marks fmt -> preflightRun rules marks fmt
+   PluginFetch -> pluginFetch
+@@ -420,12 +431,12 @@ relativePath p = do
+   pure (makeRelative cwd (joinPath parts))
+ 
+ -- | golem new (golem-cli ADR 0003).
+-newProject :: FilePath -> Language -> Bool -> IO ExitCode
+-newProject dir lang noFonts = do
++newProject :: FilePath -> Language -> Bool -> Bool -> IO ExitCode
++newProject dir lang noFonts screen = do
+   uuid <- UUID.nextRandom
+   fetch <- httpsFetcher
+   let fonts = templateFonts lang
+-  r <- createProject dir (templateFiles lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
++  r <- createProject dir (templateFilesFor screen lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
+   case r of
+     Left (FetchFailed es) -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
+     Left (Conflicts cs) -> putNewDiagnostics (map conflictDiagnostic cs) >> pure (ExitFailure 1)
+@@ -456,6 +467,33 @@ putNewDiagnostics ds =
+   where
+     numbered = zip [0 ..] ds
+ 
++-- The prototype uses native lstat. Only an actual regular file in an
++-- explicitly visited project directory can be removed.
++cleanFinderInfo :: [FilePath] -> IO ()
++cleanFinderInfo paths = do
++  project <- doesFileExist "manifest.toml"
++  root <- getCurrentDirectory
++  when project $ forM_ (nubOrd paths) $ \p -> do
++    let relative = if isAbsolute p then makeRelative root p else p
++        parts = filter (/= ".") (splitDirectories relative)
++    unless (isAbsolute relative || any ("." `isPrefixOf`) parts) $ visit "." parts
++  where
++    missing e = if isDoesNotExistError e then Just () else Nothing
++    visit dir [] = do
++      let path = dir </> ".DS_Store"
++      found <- tryJust missing (Posix.getSymbolicLinkStatus path)
++      case found of
++        Right st | Posix.isRegularFile st -> do
++          _ <- tryJust missing (Posix.removeLink path)
++          pure ()
++        _ -> pure ()
++    visit dir (p : ps) = do
++      let next = dir </> p
++      found <- tryJust missing (Posix.getSymbolicLinkStatus next)
++      case found of
++        Right st | Posix.isDirectory st -> visit next ps
++        _ -> pure ()
++
+ -- | How golem fmt formats a file: as a source, or as a table file (docs/adr/0186).
+ data FmtKind = FmtSource | FmtTable
+ 
+@@ -478,7 +516,8 @@ formatFiles check files0 = do
+   case files of
+     Nothing -> pure (ExitFailure 1)
+     Just fs -> do
+-      results <- mapM (uncurry one) fs
++      unless check (cleanFinderInfo ("." : map (takeDirectory . fst) fs))
++      results <- mapM (uncurry one) [(f, k) | (f, k) <- fs, takeFileName f /= ".DS_Store"]
+       pure (if and results then ExitSuccess else ExitFailure 1)
+   where
+     -- a file given is a table file by its extension (docs/adr/0186)
+diff --git a/modules/golem-cli/golem-cli.cabal b/modules/golem-cli/golem-cli.cabal
+index 3945a1a2..436f5026 100644
+--- a/modules/golem-cli/golem-cli.cabal
++++ b/modules/golem-cli/golem-cli.cabal
+@@ -34,6 +34,7 @@ executable golem
+     , golem-syntax
+     , optparse-applicative  >=0.18 && <0.20
+     , text                  >=2.0  && <2.2
++    , unix
+     , uuid                  >=1.3  && <1.4
+   default-language: GHC2021
+ 
+diff --git a/modules/golem-driver/src-plugins/Golem/Driver/New.hs b/modules/golem-driver/src-plugins/Golem/Driver/New.hs
+index a4382a74..23ffa4a6 100644
+--- a/modules/golem-driver/src-plugins/Golem/Driver/New.hs
++++ b/modules/golem-driver/src-plugins/Golem/Driver/New.hs
+@@ -5,6 +5,7 @@ releases and checked against fixed hashes.
+ module Golem.Driver.New
+   ( Language (..),
+     templateFiles,
++    templateFilesFor,
+     FontSource (..),
+     templateFonts,
+     Entry (..),
+@@ -37,11 +38,14 @@ data Language = Japanese | English
+ 
+ -- | The files of a new project, given the UUID of its id.
+ templateFiles :: Language -> Text -> [(FilePath, Text)]
+-templateFiles lang uuid =
++templateFiles = templateFilesFor False
++
++templateFilesFor :: Bool -> Language -> Text -> [(FilePath, Text)]
++templateFilesFor screen lang uuid =
+   [ ("manifest.toml", manifest),
+     ("style.toml", style),
+     ("chapters/01.gm", chapter),
+-    ("preflight.toml", preflightToml lang),
++    ("preflight.toml", if screen then "based-on = \"screen\"\n" else preflightToml lang),
+     (".gitignore", "build/\n")
+   ]
+   where
+@@ -82,8 +86,8 @@ templateFiles lang uuid =
+       [ "[page]",
+         "size = \"" <> size <> "\"",
+         "binding = \"" <> binding <> "\"",
+-        "writing-mode = \"" <> mode <> "\"",
+-        "bleed = \"" <> bleed <> "\"",
++        "writing-mode = \"" <> mode <> "\""
++        ] <> ["bleed = \"" <> bleed <> "\"" | not screen] <> [
+         "",
+         "[page.grid]",
+         "font-size = \"" <> fontSize <> "\"",
+diff --git a/modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs b/modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs
+index 00ee5978..4f4f6042 100644
+--- a/modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs
++++ b/modules/golem-driver/src-plugins/Golem/Driver/Plugins.hs
+@@ -173,9 +173,9 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
+           filterError f = case fdSource f of
+             FilterFunction _ -> Nothing
+             FilterPlugin pname -> case lookupPlugin pname of
+-              Nothing -> Just ("宣言されていないプラグインです: " <> pname <> "（フィルタ " <> pname <> "." <> fdFilter f <> "）")
++              Nothing -> Just ("G06010", "宣言されていないプラグインです: " <> pname <> "（フィルタ " <> pname <> "." <> fdFilter f <> "）")
+               Just (_, _, p)
+-                | fdFilter f `notElem` pluginFilters p -> Just ("プラグインが提供していないフィルタです: " <> pname <> "." <> fdFilter f)
++                | fdFilter f `notElem` pluginFilters p -> Just ("G06107", "プラグインが提供していないフィルタです: " <> pname <> "." <> fdFilter f)
+                 | otherwise -> Nothing
+           lookupPlugin n = case [x | x@(n', _, _) <- plugins, n' == n] of
+             (x : _) -> Just x
+@@ -193,7 +193,7 @@ loadPlugins root overlay cacheDir mfid lfid lockText (FileId dataBase) context f
+               <> [err "G06006" ("複数のプラグインが同じブロックコマンドを提供しています: @" <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- blockCollisions]
+               <> [err "G06007" (collisionMessage u) | u <- undeclared]
+               <> [err "G06008" m | (_, Left m) <- checkedOverrides]
+-              <> [err "G06010" m | Just m <- map filterError (manifestFilters manifest)]
++              <> [err code m | Just (code, m) <- map filterError (manifestFilters manifest)]
+               <> [err "G06012" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
+               <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
+           call pname p name = PluginCommand $ \vals slots sp ->
+diff --git a/modules/golem-driver/src/Golem/Driver.hs b/modules/golem-driver/src/Golem/Driver.hs
+index 4fffa2da..c84c57c7 100644
+--- a/modules/golem-driver/src/Golem/Driver.hs
++++ b/modules/golem-driver/src/Golem/Driver.hs
+@@ -48,7 +48,7 @@ where
+ 
+ import Control.Applicative ((<|>))
+ import Control.Exception (SomeException, try)
+-import Control.Monad (filterM, forM, forM_, join, mfilter, when)
++import Control.Monad (forM, forM_, join, mfilter, when)
+ import Data.Bifunctor (first)
+ import Data.ByteString qualified as BS
+ import Data.ByteString.Lazy qualified as BL
+@@ -56,7 +56,7 @@ import Data.Either (fromRight, lefts, rights)
+ import Data.List (isPrefixOf, nub, sort)
+ import Data.Map.Strict (Map)
+ import Data.Map.Strict qualified as Map
+-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
++import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe)
+ import Data.Set qualified as Set
+ import Data.Text (Text)
+ import Data.Text qualified as T
+@@ -89,7 +89,7 @@ import Golem.Parser.AST qualified as A
+ import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
+ import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
+ import Golem.Pdf qualified as P
+-import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
++import Golem.Preflight (MissingGlyph (..), check, checkBleed, missingGlyphs)
+ import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
+ import Golem.Preflight.View (View)
+ import Golem.Project
+@@ -744,7 +744,24 @@ targetsOf m =
+    in [TargetHtml | tgHtml t] <> [TargetEpub | isJust (tgEpub t)] <> [TargetText | not (null (tgText t))] <> [TargetPdf | isJust (tgPdf t)]
+ 
+ build :: BuildOptions -> IO BuildResult
+-build opts = fst <$> buildCore False opts
++build opts = do
++  (r, _) <- buildCore False opts
++  let pdfDir = optRoot opts </> "build" </> "pdf"
++      wrotePdf = any ((== pdfDir) . takeDirectory) (brWritten r)
++  when (optProfile opts == Prod && not (optCheckOnly opts) && hasErrors (brDiagnostics r) && not wrotePdf) $ do
++    targets <- case optTargets opts of
++      Just explicit -> pure explicit
++      Nothing -> do
++        let manifest = optRoot opts </> "manifest.toml"
++        exists <- doesFileExist manifest
++        if exists then do
++          bytes <- BS.readFile manifest
++          pure (either (const [TargetPdf]) targetsOf (parseManifest (FileId 0) (TE.decodeUtf8Lenient bytes)))
++        else pure [TargetPdf]
++    when (TargetPdf `elem` targets) $ do
++      unsafe <- unsafeOutputDirs (optRoot opts) [TargetPdf]
++      when (null unsafe) (cleanDir pdfDir)
++  pure r
+ 
+ -- | The PDF of a project built from its files in memory (docs/adr/0199).
+ data BuildInMemory = BuildInMemory
+@@ -912,7 +929,7 @@ data PreflightResult = PreflightResult
+     prBasedOn :: !Text
+   }
+ 
+-{- | golem preflight (golem-cli ADR 0006): the rules first (G09001 stops
++{- | golem preflight (golem-cli ADR 0006): the rules first (a rules error stops
+ here), then the PDF as golem build --target pdf --profile prod makes it,
+ kept in memory, then the checks of the rules on its view.
+ -}
+@@ -926,12 +943,12 @@ preflight po = do
+       then
+         pure $
+           if isJust (poRules po)
+-            then Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
++            then Left ([diagnostic "G09100" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
+             else Right (printRules, "組み込みの print")
+       else do
+         bytes <- BS.readFile path
+         pure $ case TE.decodeUtf8' bytes of
+-          Left _ -> Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
++          Left _ -> Left ([diagnostic "G09101" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
+           Right src -> case parseRules rulesFid src of
+             Left ds -> Left (ds, src)
+             Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
+@@ -940,8 +957,16 @@ preflight po = do
+     Right (rules, label) -> do
+       let opts = (defaultOptions (poRoot po)) {optTargets = Just [TargetPdf], optProfile = Prod, optMarks = poMarks po, optFonts = poFonts po, optParallel = poParallel po}
+       (r, pdf) <- buildCore True opts
+-      let checks = maybe [] (check rules . snd) pdf
+-      pure (PreflightResult (sortDiagnostics (brDiagnostics r <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
++      checks <- case pdf of
++        Just (_, view) -> pure (check rules view)
++        Nothing -> case [fid | (fid, info) <- Map.toList (brSources r), siPath info == "style.toml"] of
++          fid : _ -> do
++            bytes <- BS.readFile (poRoot po </> "style.toml")
++            pure $ case TE.decodeUtf8' bytes of
++              Right source | Right style <- parseStyle fid source, Just page <- stPage style -> checkBleed rules (mkSpan fid 0 0) (pageBleed page)
++              _ -> []
++          [] -> pure []
++      pure (PreflightResult (sortDiagnostics (filter ((/= DiagnosticCode "G08100") . diagCode) (brDiagnostics r) <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
+ 
+ -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
+ missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
+@@ -1019,14 +1044,18 @@ writeTargets inMemory opts e diagFid book missing targets = do
+   unsafe <- if null written then pure [] else unsafeOutputDirs (optRoot opts) written
+   case unsafe of
+     [] -> writeTargetsChecked inMemory opts e diagFid book missing targets
+-    ps -> pure ([], [diagnostic "G08013" Error (mkSpan diagFid 0 0) ("出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: " <> T.pack p) | p <- ps], Nothing)
++    ps -> pure ([], [diagnostic code Error (mkSpan diagFid 0 0) (why <> ": " <> T.pack p) | (p, code, why) <- ps], Nothing)
+ 
+ {- | The output folders, relative to the root, that are symbolic links (to
+ anywhere, or nowhere) or files that are not folders: @build@ and the folder
+ of each target.
+ -}
+-unsafeOutputDirs :: FilePath -> [Target] -> IO [FilePath]
+-unsafeOutputDirs root targets = filterM unsafe ("build" : nub (map targetDir targets))
++unsafeOutputDirs :: FilePath -> [Target] -> IO [(FilePath, Text, Text)]
++unsafeOutputDirs root targets = do
++  parent <- unsafe "build"
++  case parent of
++    Nothing -> catMaybes <$> mapM unsafe (nub (map targetDir targets))
++    Just entry -> pure [entry]
+   where
+     targetDir = \case
+       TargetHtml -> "build/html"
+@@ -1036,7 +1065,10 @@ unsafeOutputDirs root targets = filterM unsafe ("build" : nub (map targetDir tar
+     unsafe rel = do
+       let p = root </> rel
+       link <- fromRight False <$> (try (pathIsSymbolicLink p) :: IO (Either SomeException Bool))
+-      if link then pure True else doesFileExist p
++      if link then pure (Just (rel, "G08013", "出力先がシンボリックリンクです"))
++      else do
++        file <- doesFileExist p
++        pure (if file then Just (rel, "G08104", "出力先に通常のファイルがあります") else Nothing)
+ 
+ {- | Writes each target in turn: the written files, the diagnostics of the
+ targets and the PDF kept in memory with its view. The HTML configuration
+diff --git a/modules/golem-eval/src/Golem/Eval/File.hs b/modules/golem-eval/src/Golem/Eval/File.hs
+index 865d7df3..7ac9f8f7 100644
+--- a/modules/golem-eval/src/Golem/Eval/File.hs
++++ b/modules/golem-eval/src/Golem/Eval/File.hs
+@@ -1822,7 +1822,7 @@ csvTable ctx sp args = do
+ 
+ -- | Why a table file gives no table.
+ data TableError
+-  = -- | G02082, G02083 or G02085, in the file
++  = -- | G02082, G02083, G02085 or G02154, in the file
+     TableInvalid !Diagnostic
+   | -- | G02088 (docs/adr ADR 0043)
+     TableOverLimit !TableLimit
+@@ -1989,7 +1989,7 @@ parseCsv fid t0@(TI.Text arr off0 len) = do
+ {- | The rows of a table file with their spans, as a table, read in order
+ and no further than the first error: a row over 'tableMaxRows' or with
+ cells over 'tableMaxCells' (G02088, docs/adr ADR 0043), a reading error
+-(G02083), or a row whose cells differ in number from the header's (G02085);
++(G02083), or a row whose cells differ in number from the header's (G02154);
+ G02085 also for no rows.
+ -}
+ tableFileRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
+@@ -2008,7 +2008,7 @@ tableFileRows fid name = \case
+           (s, e, cs) <- Bi.first TableInvalid r
+           withinCells n cs
+           unless (length cs == length h) $
+-            Left (TableInvalid (diagnostic "G02085" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
++            Left (TableInvalid (diagnostic "G02154" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
+           (cs :) <$> go (n + 1) h rs
+     withinCells n cs = unless (length cs <= tableMaxCells) (Left (TableOverLimit (OverCells n)))
+     count = T.pack . show . length
+diff --git a/modules/golem-preflight/src/Golem/Preflight.hs b/modules/golem-preflight/src/Golem/Preflight.hs
+index 3548c47c..80f98e08 100644
+--- a/modules/golem-preflight/src/Golem/Preflight.hs
++++ b/modules/golem-preflight/src/Golem/Preflight.hs
+@@ -5,6 +5,7 @@ reports a cause once, at its first place, with every page in the fact
+ -}
+ module Golem.Preflight
+   ( check,
++    checkBleed,
+     MissingGlyph (..),
+     missingGlyphs,
+     OverfullLine (..),
+@@ -316,10 +317,13 @@ imageIcc r v = case vwIntentProfile v of
+ 
+ -- | G09010: [page] bleed below min.
+ bleedSize :: Rules -> View -> [Diagnostic]
+-bleedSize r v =
++bleedSize r v = checkBleed r (vwStyleSpan v) (vwBleed v)
++
++checkBleed :: Rules -> SrcSpan -> Sp -> [Diagnostic]
++checkBleed r sp width =
+   [ d
+-  | vwBleed v < ruBleedMin r,
+-    d <- at (ruBleedSize r) "G09010" (vwStyleSpan v) ("塗り足しの幅が足りません: " <> mmText (vwBleed v) <> "（" <> mmText (ruBleedMin r) <> " 以上にします）") []
++  | width < ruBleedMin r,
++    d <- at (ruBleedSize r) "G09010" sp ("塗り足しの幅が足りません: " <> mmText width <> "（" <> mmText (ruBleedMin r) <> " 以上にします）") []
+   ]
+ 
+ {- | The distance of each edge of a rectangle from the same edge of the
+diff --git a/modules/golem-preflight/src/Golem/Preflight/Rules.hs b/modules/golem-preflight/src/Golem/Preflight/Rules.hs
+index c0b700ac..cdc3669a 100644
+--- a/modules/golem-preflight/src/Golem/Preflight/Rules.hs
++++ b/modules/golem-preflight/src/Golem/Preflight/Rules.hs
+@@ -1,7 +1,7 @@
+ {- | The preflight rules (golem-cli ADR 0006): which checks golem preflight
+ runs, with which severity and thresholds. A file of rules is TOML; what it
+ does not write comes from the built-in rules it is based on, key by key.
+-Every error of the file is G09001.
++Rule file errors retain their cause through parsing and schema checks.
+ -}
+ module Golem.Preflight.Rules
+   ( Level (..),
+@@ -26,7 +26,7 @@ import Control.Monad (when)
+ import Data.Maybe (fromMaybe)
+ import Data.Text (Text)
+ import Data.Text qualified as T
+-import Golem.Project.Manifest (decodeStrictWith, naturalOf)
++import Golem.Project.Manifest (decodeStrictWithCodes, naturalOf)
+ import Golem.Project.Style (Dim (..), Sp, parseDim)
+ import Golem.Project.TomlSchema (Leaf (..), Node (..))
+ import Golem.Syntax (Diagnostic, FileId)
+@@ -172,11 +172,11 @@ noneRules =
+     }
+ 
+ builtinRules :: [(Text, Rules)]
+-builtinRules = [("basic", basicRules), ("print", printRules), ("none", noneRules)]
++builtinRules = [("basic", basicRules), ("print", printRules), ("screen", basicRules {ruBasedOn = "screen", ruPdfX = LevelOff}), ("none", noneRules)]
+ 
+--- | Reads a file of rules; every error is G09001 at its place in the file.
++-- | Reads a file of rules, preserving the code and location of each cause.
+ parseRules :: FileId -> Text -> Either [Diagnostic] Rules
+-parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictWith rulesSchema "G09001" (const "G09001") fid src
++parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictWithCodes rulesSchema "G09001" "G09104" (const "G09102") (const "G09103") fid src
+ 
+ newtype RulesFile = RulesFile Rules
+ 
+diff --git a/modules/golem-preflight/test/Main.hs b/modules/golem-preflight/test/Main.hs
+index dd1623b3..df4515ce 100644
+--- a/modules/golem-preflight/test/Main.hs
++++ b/modules/golem-preflight/test/Main.hs
+@@ -385,6 +385,10 @@ checkTests =
+       lookup "pixels" (concatMap snd (res 6 4.5)) @?= Just (FactInts [1200, 900])
+       map fst (res 10 7.5) @?= [Error]
+       lookup "ppi" (concatMap snd (res 10 7.5)) @?= Just (FactInt 120),
++    testCase "A2: G09006 has identical facts at the rational cutoff on native and wasm32" $ do
++      let view = imagePage [placedAt CsCmyk 1 1 1 1]
++          report threshold = [(diagSeverity d, diagSpan d, lookup "ppi" (diagFacts d)) | d <- only "G09006" (check (noneRules {ruResolutionColor = Tier threshold threshold}) view)]
++      map report [0, 1, 2] @?= [[], [], [(Error, srcSpan, Just (FactInt 1))]],
+     testCase "G09006: the smaller of the two directions" $
+       [lookup "ppi" (diagFacts d) | d <- only "G09006" (check printRules (imagePage [placedAt CsCmyk 1200 600 4 3]))] @?= [Just (FactInt 200)],
+     testCase "G09006: a turned image divides its pixel width by the height of its rectangle (golem-driver ADR 0034)" $ do
+diff --git a/modules/golem-project/src/Golem/Project/Manifest.hs b/modules/golem-project/src/Golem/Project/Manifest.hs
+index 5cb3edfb..3dff3599 100644
+--- a/modules/golem-project/src/Golem/Project/Manifest.hs
++++ b/modules/golem-project/src/Golem/Project/Manifest.hs
+@@ -30,6 +30,7 @@ module Golem.Project.Manifest
+     decodeStrict,
+     decodeStrictBy,
+     decodeStrictWith,
++    decodeStrictWithCodes,
+     naturalOf,
+     naturalIntOf,
+     maxNaturalInt,
+@@ -38,7 +39,7 @@ module Golem.Project.Manifest
+   )
+ where
+ 
+-import Control.Monad (zipWithM_)
++import Control.Monad (when, zipWithM_)
+ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+ import Data.Int (Int32)
+ import Data.List (isPrefixOf, sortOn)
+@@ -54,6 +55,7 @@ import Golem.Assemble.Formats (Notation, notationName, notationNamed, notations)
+ import Golem.Parser.SourceSettings
+ import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
+ import Golem.Project.TomlSchema (Node, unknownKeys)
++import Golem.Syntax.LanguageTag (isLanguageTag)
+ import Golem.Syntax
+ import Numeric.Natural (Natural)
+ import Toml qualified
+@@ -746,12 +748,15 @@ does not hide an unknown key. The messages are in the order of their
+ positions in the file.
+ -}
+ decodeStrictWith :: (FromValue a) => Node -> Text -> ([Scope] -> Text) -> FileId -> Text -> Either [Diagnostic] a
+-decodeStrictWith schema code codeAt fid src = case parseToml src of
++decodeStrictWith schema code codeAt = decodeStrictWithCodes schema code code codeAt codeAt
++
++decodeStrictWithCodes :: (FromValue a) => Node -> Text -> Text -> ([Scope] -> Text) -> ([Scope] -> Text) -> FileId -> Text -> Either [Diagnostic] a
++decodeStrictWithCodes schema code semanticCode codeAt unknownCode fid src = case parseToml src of
+   Left (ErrSyntax (Located pos msg)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
+-  Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> semanticMessage kind key)]
++  Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic semanticCode Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> semanticMessage kind key)]
+   Right tab ->
+     let unknown = unknownKeys schema tab
+-        report = Left . tomlDiagnosticsBy codeAt fid src . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
++        report = Left . concatMap (\m -> tomlDiagnosticsBy (if "unexpected key: " `isPrefixOf` matchMessage m then unknownCode else codeAt) fid src [m]) . sortOn (fmap (\(Position _ l c) -> (l, c)) . matchAnn)
+      in case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
+           Failure es -> report (es <> unknown)
+           Success ws a -> case filter (not . isPrefixOf "unexpected key: " . matchMessage) ws <> unknown of
+@@ -800,6 +805,9 @@ parseManifest fid src = do
+     Right m -> Right m
+   let m = m0 {manifestChapters = withNumberingSpans sites (manifestChapters m0)}
+       t = manifestTargets m
++  let tag = mdLanguage (manifestMetadata m)
++      loc = fromMaybe (mkSpan fid 0 0) (manifestValueSpan fid src ["metadata", "language"])
++  when (not (isLanguageTag tag)) (Left [diagnostic "G03119" Error loc ("language を言語のタグの形で書きます: " <> tag)])
+   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
+     then Right m
+     else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
+diff --git a/modules/golem-typeset/src/Golem/Typeset/Draw.hs b/modules/golem-typeset/src/Golem/Typeset/Draw.hs
+index 5bdbacc0..af8f69bf 100644
+--- a/modules/golem-typeset/src/Golem/Typeset/Draw.hs
++++ b/modules/golem-typeset/src/Golem/Typeset/Draw.hs
+@@ -49,7 +49,6 @@ import Golem.Project
+ import Golem.Project.Feature (normalFeatures, parseFeature)
+ import Golem.Project.Style
+ import Golem.Syntax
+-import Golem.Syntax.LanguageTag (isLanguageTag)
+ import Golem.Typeset.Box (BoxPaint (..), boxArea, boxMarks)
+ import Golem.Typeset.Flow
+ import Golem.Typeset.Fonts
+@@ -331,8 +330,7 @@ overfullWarnings os =
+ 
+ {- | What a book that declares PDF/A or PDF/UA must meet before its PDF is
+ set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
+-(G03113, at the value of pdfa), [metadata] language in the form of a
+-language tag (G03119, at its value), and for PDF/UA headings that start at
++(G03113, at the value of pdfa), and for PDF/UA headings that start at
+ level 1 and never go two levels deeper (G07103, at the heading). The
+ document itself is level 0 before the first heading.
+ -}
+@@ -342,10 +340,6 @@ declarationErrors inp =
+   | isJust pdfA,
+     isNothing (stIntent (piStyle inp))
+   ]
+-    <> [ diagnostic "G03119" Error (valueSpan ["metadata", "language"]) ("PDF/A と PDF/UA には、language を言語のタグの形で書きます: " <> mdLanguage md)
+-       | isJust pdfA || isJust pdfUa,
+-         not (isLanguageTag (mdLanguage md))
+-       ]
+     <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
+        | isJust pdfUa,
+          let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ _ (Heading l _ _) <- blocksWithin bs],
+@@ -355,7 +349,6 @@ declarationErrors inp =
+   where
+     project = piProject inp
+     manifest = projectManifest project
+-    md = manifestMetadata manifest
+     pdfA = tgPdfA (manifestTargets manifest)
+     pdfUa = tgPdfUa (manifestTargets manifest)
+     fid = projectManifestFile project
+diff --git a/modules/golem-typeset/src/Golem/Typeset/Flow.hs b/modules/golem-typeset/src/Golem/Typeset/Flow.hs
+index 3d6cc8f9..b52ec005 100644
+--- a/modules/golem-typeset/src/Golem/Typeset/Flow.hs
++++ b/modules/golem-typeset/src/Golem/Typeset/Flow.hs
+@@ -3641,7 +3641,7 @@ figure cannot be drawn for, G08011, G08016, G08017 and G08101 (golem-pdf ADR
+ 0008, 0009, docs/adr ADR 0054, 0084), or G08015, the joined content of a PDF page over
+ 256 MiB (docs/adr ADR 0051).
+ -}
+-data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
++data Unplaced = Unplaced !Text | EncryptedFigure | MissingFigurePage !Int !Int | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
+ 
+ {- | The figures, read once by file and page; why one cannot be placed
+ (golem-pdf ADR 0008). The format follows the extension, as golem-eval
+@@ -3664,6 +3664,8 @@ loadFigures inp = do
+           | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
+               Left (P.ContentTooLarge _) -> Left ContentTooLarge
+               Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
++              Left P.Encrypted -> Left EncryptedFigure
++              Left (P.NoSuchPage n m) -> Left (MissingFigurePage n m)
+               Left e -> Left (Unplaced (P.importErrorText e))
+               Right ip -> Right (P.VectorFigure ip)
+           | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
+@@ -3691,6 +3693,8 @@ figureDiagnostics inp loaded =
+     Just (Left why) <- [Map.lookup (figureKey f) loaded],
+     d <- case why of
+       Unplaced reason -> [diagnostic "G08010" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
++      EncryptedFigure -> [diagnostic "G08105" Error sp ("暗号化された PDF は使えません: " <> figSource f)]
++      MissingFigurePage n m -> [diagnostic "G08106" Error sp (figSource f <> ": " <> P.importErrorText (P.NoSuchPage n m))]
+       UnsupportedSvg ps ->
+         [diagnostic "G08011" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
+           <> [diagnostic "G08016" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]

@@ -1,0 +1,21 @@
+{
+  "run": 42892137240,
+  "artifact": 13799726596,
+  "head": "0a8d21a091d830573fb6229111ed744f74162afd",
+  "sha256": "38c216a5b0403bf4b3e520ccadef7fd024fecb02b9b4799b6070d846f7d6d0cb",
+  "node": "v26.11.1",
+  "version": "0.1.0-rc4",
+  "exports": [
+    "_initialize",
+    "golem_alloc",
+    "golem_build_pdf",
+    "golem_free",
+    "golem_result_len",
+    "golem_version",
+    "hs_init",
+    "memory"
+  ],
+  "preflightFrontendExit": 2,
+  "usage": "usage: node run.mjs build WASM DIR PDF | node run.mjs check WASM DIR | node run.mjs frame DIR | node run.mjs result PDF | node run.mjs call WASM",
+  "A2": "未測定。WASM の公開 API と実行用 CLI に preflight がない。"
+}

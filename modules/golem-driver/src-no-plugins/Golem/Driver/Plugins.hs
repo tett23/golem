@@ -73,7 +73,7 @@ of manifest.toml, the filters of the .emet and the manifest are used.
 -}
 loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> HostContext -> FunctionFilter -> Manifest -> IO LoadedPlugins
 loadPlugins _ _ _ mfid _ _ _ _ functionFilter manifest
-  | Map.null (manifestPlugins manifest) && null [() | FilterDecl (FilterPlugin _) _ _ <- manifestFilters manifest] =
+  | Map.null (manifestPlugins manifest) && null [() | FilterDecl (FilterPlugin _) _ _ _ _ <- manifestFilters manifest] =
       pure (LoadedPlugins (Right noPlugins {phApplyFilters = filtersOver functionFilter manifest}) [] Map.empty)
   | otherwise =
       pure (LoadedPlugins (Left [diagnostic "G06106" Error (mkSpan mfid 0 0) "このビルドの Golem にはプラグインの機能がありません"]) [] Map.empty)

@@ -27,6 +27,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
@@ -163,10 +164,24 @@ tests =
         (code', _, _) <- readCreateProcessWithExitCode (proc "golem" ["fmt", "a.gm"]) {cwd = Just tmp} ""
         code' @?= ExitSuccess
         readFile (tmp </> "a.gm") >>= (@?= "@verse\n  Full fathom five\n"),
+      testCase "Golem ADR 0329 O3 and O4: fmt cleans only selected regular Finder files" $ withSystemTempDirectory "golem-cli" $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "chapters")
+        createDirectoryIfMissing True (tmp </> "other")
+        writeFile (tmp </> "chapters/a.gm") "本文。\n"
+        forM_ [tmp, tmp </> "chapters", tmp </> "other"] $ \dir -> writeFile (dir </> ".DS_Store") "finder"
+        let fmt args = readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+        (checked, _, _) <- fmt ["fmt", "--check", "chapters/a.gm"]
+        checked @?= ExitSuccess
+        forM_ [tmp, tmp </> "chapters", tmp </> "other"] $ \dir -> doesFileExist (dir </> ".DS_Store") >>= (@?= True)
+        (formatted, _, _) <- fmt ["fmt", "chapters/a.gm"]
+        formatted @?= ExitSuccess
+        forM_ [tmp, tmp </> "chapters"] $ \dir -> doesFileExist (dir </> ".DS_Store") >>= (@?= False)
+        doesFileExist (tmp </> "other/.DS_Store") >>= (@?= True),
       fmtCrTests,
       fmtTableTests,
       missingFontTests,
       marksTests,
+      shortFootnoteTests,
       preflightTests,
       explainTests,
       tomlMessageTests,
@@ -294,6 +309,26 @@ golemIn files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
   pure (code, err)
+
+shortFootnoteTests :: TestTree
+shortFootnoteTests =
+  testGroup
+    "Golem ADR 0353 I1/I2: short columns with PDF footnotes"
+    [ testCase "capacities 1 and 2 report G07125 at the note and write no PDF" $
+        forM_ ([1, 2] :: [Int]) $ \capacity -> withSystemTempDirectory "golem-short-note" $ \tmp -> do
+          createDirectoryIfMissing True (tmp </> "fonts")
+          BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" >>= BS.writeFile (tmp </> "fonts/latin.otf")
+          TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmLanguage = "en", tmTargets = ["pdf"]})
+          TIO.writeFile (tmp </> "style.toml") (T.pack ("[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = " <> show capacity <> "\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n"))
+          TIO.writeFile (tmp </> "a.gm") "A[note: B]\n"
+          result <- timeout 5000000 (readCreateProcessWithExitCode (proc "golem" ["build", "--target", "pdf"]) {cwd = Just tmp} "")
+          case result of
+            Nothing -> assertFailure ("capacity " <> show capacity <> ": CLI did not terminate")
+            Just (code, _, err) -> do
+              assertEqual err (ExitFailure 1) code
+              assertBool err ("a.gm:1:" `isInfixOf` err && "error[G07125]" `isInfixOf` err)
+          doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
+    ]
 
 marksTests :: TestTree
 marksTests =
@@ -538,7 +573,7 @@ tomlMessageTests =
           ["unexpected key", "missing key", "expected ", "lexical error", "parse error"],
       -- golem-project ADR 0008: the errors of style.toml are at their value
       testCase "a padding without a unit is at the value of padding" $ do
-        (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\n\n[paragraph-styles.code]\npadding = \"0\"\n"), ("a.gm", "本文。\n")] ["check"]
+        (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\n\n[paragraph-styles.code]\npadding = \"1\"\n"), ("a.gm", "本文。\n")] ["check"]
         assertEqual err (ExitFailure 1) code
         assertBool err (not ("style.toml:1:1" `isInfixOf` err))
         assertBool err ("style.toml:5:11: error[G03006]" `isPrefixOf` err),
@@ -720,12 +755,12 @@ preflightTests =
         (code, _, err, _) <- golemPreflight (("preflight.toml", "[bleed-size]\nseverity = \"warning\"\nmin = \"5mm\"\n") : preflightProject "Body text.\n") ["preflight"]
         assertEqual err ExitSuccess code
         assertBool err ("warning[G09010]" `isInfixOf` err),
-      testCase "G09002: 1" $ do
+      testCase "ADR 0325: preflight reports one error for a missing glyph" $ do
         (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight"]
         assertEqual err (ExitFailure 1) code
         assertBool err ("error[G09002]" `isInfixOf` err)
-        -- the build reports the same character (docs/adr 0081)
-        assertBool err ("error[G08100]" `isInfixOf` err),
+        assertBool err (not ("G08100" `isInfixOf` err))
+        assertBool err ("エラー 1、警告 0" `isInfixOf` err),
       testCase "golem build: G08100 is a warning in dev and an error without the PDF in prod (docs/adr 0081)" $ do
         (code, _, err, prodPdf) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["build", "--target", "pdf", "--format", "json"]
         assertEqual err ExitSuccess code
@@ -751,14 +786,18 @@ preflightTests =
           Right _ -> pure ()
         assertBool err (not ("プリフライト（" `isInfixOf` err))
         assertBool err ("\"code\":\"G09006\"" `isInfixOf` err && "\"facts\":{" `isInfixOf` err && "\"ppi\":" `isInfixOf` err),
-      testCase "--rules reads a file out of the project, and a missing one is G09001" $ withSystemTempDirectory "golem-rules" $ \other -> do
+      testCase "Golem ADR 0321 D1 and D2: explicit missing and invalid UTF-8 rules have distinct codes" $ withSystemTempDirectory "golem-rules" $ \other -> do
         writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"Printer\"\n"
         (code, _, err, _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "printer.toml"]
         assertEqual err ExitSuccess code
         assertBool err ("設定: Printer、基にした設定: none" `isInfixOf` err)
         (code', _, err', _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "missing.toml"]
         assertEqual err' (ExitFailure 1) code'
-        assertBool err' ("error[G09001]" `isInfixOf` err')
+        assertBool err' ("error[G09100]" `isInfixOf` err')
+        BS.writeFile (other </> "bad.toml") (BS.pack [0xff])
+        (code'', _, err'', _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "bad.toml"]
+        assertEqual err'' (ExitFailure 1) code''
+        assertBool err'' ("error[G09101]" `isInfixOf` err'')
     ]
 
 -- | Lower-case hexadecimal SHA-256.

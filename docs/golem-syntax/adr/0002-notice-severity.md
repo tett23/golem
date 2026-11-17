@@ -1,6 +1,6 @@
 # ADR 0002: 重大度のお知らせ（notice）
 
-ステータス: 採択→G02079 は [golem-parser ADR 0012](../../golem-parser/adr/0012-keep-trailing-escaped-space.md)、エラーと警告のあいだとお知らせどうしの並び順は [ADR 0003](0003-diagnostic-order.md)、notice の下の info と並び順の最後の段と `silence-info` は [docs/adr/0104](../../adr/0104-info-severity.md)
+Status: superseded [{"by":["docs/golem-parser/adr/0012-keep-trailing-escaped-space.md"],"part":"G02079"},{"by":["docs/golem-syntax/adr/0003-diagnostic-order.md"],"part":"エラーと警告のあいだとお知らせどうしの並び順"},{"by":["docs/adr/0104-info-severity.md"],"part":"notice の下の info と並び順の最後の段と `silence-info`"}]
 
 ## 文脈
 

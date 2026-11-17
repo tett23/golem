@@ -1,0 +1,5 @@
+U1/U2/U3 strings=88 boundaries=349
+family UTF8=[0,4,7,11,14,18,21,25] UTF16=[0,2,3,5,6,8,9,11] families=3
+SourceSansPro-Regular.otf H1/S1 cases=1814 AV adjustment=-14 fi glyphs=2 日 gid=[0] upem=1000
+SourceSerifVariable-Roman.ttf H1/S1 cases=1814 AV adjustment=-130 fi glyphs=1 日 gid=[0] upem=1000
+SourceHanSans-Regular_subset.otf H1/S1 cases=1814 AV adjustment=-15 fi glyphs=1 日 gid=[3949] upem=1000

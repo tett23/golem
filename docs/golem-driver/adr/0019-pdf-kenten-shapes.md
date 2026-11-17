@@ -1,6 +1,6 @@
 # ADR 0019: PDF の圏点の形と位置
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

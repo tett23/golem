@@ -1,0 +1,47 @@
+{
+  "check": 0,
+  "afterCheck": [
+    ".",
+    "chapters",
+    "build",
+    "build/pdf",
+    "build/html",
+    "unused",
+    ".git",
+    "nested",
+    "dir-entry/.DS_Store"
+  ],
+  "fmt": 0,
+  "afterFmt": [
+    ".",
+    "chapters",
+    "build",
+    "build/pdf",
+    "build/html",
+    "unused",
+    ".git",
+    "nested",
+    "dir-entry/.DS_Store"
+  ],
+  "again": 0,
+  "build": 1,
+  "afterBuild": [
+    ".",
+    "chapters",
+    "build",
+    "build/pdf",
+    "build/html",
+    "unused",
+    ".git",
+    "nested",
+    "dir-entry/.DS_Store"
+  ],
+  "protectedPaths": {
+    "foreign": "external",
+    "fileLink": true,
+    "directory": true,
+    "git": true,
+    "unused": true,
+    "unselectedHtml": true
+  }
+}

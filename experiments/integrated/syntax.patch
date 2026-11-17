@@ -1,0 +1,119 @@
+diff --git a/modules/golem-eval/src/Golem/Eval/File.hs b/modules/golem-eval/src/Golem/Eval/File.hs
+index 8aac7ce8..1967fe3d 100644
+--- a/modules/golem-eval/src/Golem/Eval/File.hs
++++ b/modules/golem-eval/src/Golem/Eval/File.hs
+@@ -1763,12 +1763,13 @@ align= (G02081) and cells= (G02084); the number of align= values is
+ checked against the header row.
+ -}
+ csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
++csvTable ctx sp args
++  | srcSpan : _ <- [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args] =
++      case [argText v | A.Located _ (A.Positional v) <- args] of
++        _ : _ -> err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []
++        [] -> err "G02252" srcSpan "@table のパスを最初の引数に書きます" >> pure []
+ csvTable ctx sp args = do
+   kw <- keywords ctx args
+-  -- G02129: the path as src= is to be retired (docs/adr/0184)
+-  mapM_
+-    (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
+-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
+   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
+       paths = [argText v | A.Located _ (A.Positional v) <- args] <> maybe [] (pure . argText) (lookup "src" kw)
+       src = listToMaybe paths
+@@ -2050,12 +2051,13 @@ missing :: SrcSpan -> Text -> M ()
+ missing sp p = err "G02033" sp ("ファイルがありません: " <> p)
+ 
+ listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
++listing ctx sp args
++  | (srcSpan, srcValue) : _ <- [(asp, argText v) | A.Located asp (A.Keyword (A.Located _ "src") v) <- args] =
++      case [argText v | A.Located _ (A.Positional v) <- args] of
++        p : _ -> err "G02253" srcSpan ("@listing のパスは一つです: " <> p <> " と " <> srcValue) >> pure []
++        [] -> err "G02250" srcSpan "@listing のパスを最初の引数に書きます" >> pure []
+ listing ctx sp args = do
+   kw <- keywords ctx args
+-  -- G02065: the path as src= is to be retired (golem-syntax ADR 0002)
+-  mapM_
+-    (\asp -> report (notice "G02065" asp "@listing の src= は廃止予定です。パスを最初の引数に書きます"))
+-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
+   let src = case [v | A.Located _ (A.Positional v) <- args] of
+         (v : _) -> Just (argText v)
+         [] -> argText <$> lookup "src" kw
+@@ -2945,9 +2947,8 @@ lineRanges ctx count what sp = \case
+         | count == OneRange && length items > 1 -> notOne t
+         | otherwise -> do
+             case [(x, y) | ItemDash x y _ _ <- items] of
+-              (x, y) : _ -> report (notice "G02108" sp ("- で区切った範囲は廃止予定です。" <> x <> "..." <> y <> " のように ... で区切ります"))
+-              [] -> pure ()
+-            naturals (map ends items) >>= maybe (pure Nothing) (done t)
++              (x, y) : _ -> err "G02251" sp ("範囲を " <> x <> "..." <> y <> " のように ... で区切ります") >> pure Nothing
++              [] -> naturals (map ends items) >>= maybe (pure Nothing) (done t)
+     ofValue = \case
+       VString s -> ofText s
+       VArray vs
+diff --git a/modules/golem-project/src/Golem/Project/Style.hs b/modules/golem-project/src/Golem/Project/Style.hs
+index 9a7a5d27..deea99bf 100644
+--- a/modules/golem-project/src/Golem/Project/Style.hs
++++ b/modules/golem-project/src/Golem/Project/Style.hs
+@@ -164,6 +164,7 @@ data Dim = Abs !Sp | Zw !Rational
+ exact rationals and rounds once, half to even.
+ -}
+ parseDim :: Text -> Maybe Dim
++parseDim t | T.strip t `elem` ["0", "-0"] = Just (Abs 0)
+ parseDim t =
+   let (num, unit) = T.span (\c -> isDigit c || c == '.') (T.strip t)
+    in do
+@@ -751,7 +752,10 @@ numbers, G03116 for a line of a running head format, G03117 for [notes]
+ mark-size. A style.toml that does not parse has none.
+ -}
+ styleNotices :: FileId -> Text -> [Diagnostic]
+-styleNotices fid src = case Toml.parse src of
++styleNotices fid src = filter ((== Notice) . diagSeverity) (styleFormDiagnostics fid src)
++
++styleFormDiagnostics :: FileId -> Text -> [Diagnostic]
++styleFormDiagnostics fid src = case Toml.parse src of
+   Left _ -> []
+   Right top ->
+     let root = Table' (Position 0 1 1) top
+@@ -763,13 +767,13 @@ styleNotices fid src = case Toml.parse src of
+           zeroDim v
+         ]
+           <> concat
+-            [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
+-                <> [notice "G03115" (spanAt pos) ("[lists] の numbers の {" <> w <> "} は廃止予定です。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
++            [ [diagnostic "G03250" Error (spanAt pos) ("[lists] の numbers の {{ と }} は使えません。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
++                <> [diagnostic "G03251" Error (spanAt pos) ("[lists] の numbers の {" <> w <> "} は使えません。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
+             | Just (List' _ xs) <- [lookupValue root ["lists", "numbers"]],
+               Text' pos t <- xs,
+               Right (_, legacy) <- [parseNumberFormatLegacy t]
+             ]
+-          <> [ notice "G03116" (spanAt pos) ("柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t)
++          <> [ diagnostic "G03252" Error (spanAt pos) ("柱の書式の {{ と }} は使えません。\\{ と \\} と書きます: " <> t)
+              | Just (Table' _ (MkTable masters)) <- [lookupValue root ["masters"]],
+                (_, master) <- Map.elems masters,
+                k <- ["content", "even", "odd"],
+@@ -778,7 +782,7 @@ styleNotices fid src = case Toml.parse src of
+                Right (_, legacy) <- [parseRunningFormatLegacy t],
+                LegacyBraces `elem` legacy
+              ]
+-          <> [ notice "G03117" (spanAt pos) "[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます"
++          <> [ diagnostic "G03253" Error (spanAt pos) "[notes] の mark-size は使えません。[character-styles.note-mark] の size に書きます"
+              | Just v <- [lookupValue root ["notes", "mark-size"]],
+                let pos = valueAnn v
+              ]
+@@ -1745,6 +1749,7 @@ instance FromValue PageSize where
+ newtype DimV = DimV Dim
+ 
+ instance FromValue DimV where
++  fromValue (Integer' _ 0) = pure (DimV (Abs 0))
+   fromValue (Text' l t) = case parseDim t of
+     Just d -> pure (DimV d)
+     Nothing
+@@ -2579,6 +2584,8 @@ checkPosition top path = valueAt path <|> (case reverse path of _ : parent@(_ :
+ filesystem.
+ -}
+ parseStyle :: FileId -> Text -> Either [Diagnostic] Style
++parseStyle fid src
++  | ds@(_ : _) <- filter ((== Error) . diagSeverity) (styleFormDiagnostics fid src) = Left ds
+ parseStyle fid src = do
+   s0 <- either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
+   let s = sited s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}

@@ -57,10 +57,10 @@ featureTests =
       ws <- openWorkspace root
       map (slice ws) (references ws "a.gm" (at ws "a.gm" "values.version" 8))
         @?= [("common/values.gm", "version"), ("a.gm", "values.version")],
-    testCase "definition of a variable of the file is its @set" $ do
+    testCase "ADR 0336 I1: definition of a variable of the file is its set" $ do
       ws0 <- openWorkspace root
-      ws <- updateFile ws0 "b.gm" "@set count = 3\n\n@label second\n# 次の章\n\n[= count]\n"
-      definition ws "b.gm" (at ws "b.gm" "count]" 1) @?= [Location "b.gm" 5 10],
+      ws <- updateFile ws0 "b.gm" "set count = 3\n\n@label second\n# 次の章\n\n[= count]\n"
+      definition ws "b.gm" (at ws "b.gm" "count]" 1) @?= [Location "b.gm" 4 9],
     testCase "references of a variable of the file are its @set and its uses" $ do
       ws0 <- openWorkspace root
       ws <- updateFile ws0 "b.gm" "@set count = 3\n\n@label second\n# 次の章\n\n[= count]と[= count + 1]\n"
@@ -173,10 +173,67 @@ sessionTests =
       r @?= []
   ]
 
+roadmapTests :: [TestTree]
+roadmapTests =
+  [ testCase "M1 expression operands and exclusions" $ do
+      ws <- openWorkspace root
+      let names suffix = do
+            edited <- updateFile ws "b.gm" suffix
+            pure (map cmpLabel (completions edited "b.gm" (BS.length (TE.encodeUtf8 suffix))))
+      mapM_ (\suffix -> names suffix >>= assertBool (T.unpack suffix) . elem "len") ["[= ", "[= le", "[= 1 + ", "[= len([1]) + "]
+      mapM_ (\suffix -> names suffix >>= (@?= [])) ["[= \"le", "[= unknown.", "[= len(1)]", "[= 1 ", "\\[", "[= \"meta.", "本文"],
+    testCase "M1 code block suppresses command and expression candidates through its closing fence" $ do
+      ws0 <- openWorkspace root
+      let source = "```text\n@\n[= \n```\n@\n"
+          names prefix ws = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 prefix)))
+      ws <- updateFile ws0 "b.gm" source
+      names "```text\n@" ws @?= []
+      names "```text\n@\n[= " ws @?= []
+      assertBool "block commands return after the closing fence" ("page-break" `elem` names "```text\n@\n[= \n```\n@" ws),
+    testCase "T1 manifest source enumeration inside quotes" $ do
+      items <- inSession $ \_ -> do
+        doc <- LT.openDoc "manifest.toml" "toml"
+        LT.getCompletions doc (L.Position 11 23)
+      map label items @?= ["blank-line", "line"],
+    testCase "T1 manifest unsaved PDF settings and free metadata" $ do
+      (pdfa, pdfua, lang) <- inSession $ \_ -> do
+        doc <- LT.openDoc "manifest.toml" "toml"
+        let text = "[targets.pdf]\npdfa = \npdfua = '1'\n[metadata]\nlanguage = \n"
+        LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument text))]
+        (,,)
+          <$> LT.getCompletions doc (L.Position 1 7)
+          <*> LT.getCompletions doc (L.Position 2 9)
+          <*> LT.getCompletions doc (L.Position 4 11)
+      (map label pdfa, map label pdfua, map label lang) @?= (["\"2a\""], ["1"], []),
+    testCase "M1 block command at the beginning of a line" $ do
+      items <- inSession $ \r -> LT.getCompletions (docOf r "a.gm") (L.Position 2 1)
+      assertBool "page-break among block commands" ("page-break" `elem` map label items)
+      assertBool "strong only occurs inline" ("strong" `notElem` map label items),
+    testCase "M1 D1 expression function with its explanation over UTF-16" $ do
+      items <- inSession $ \r -> LT.getCompletions (docOf r "a.gm") (L.Position 5 5)
+      [doc | L.CompletionItem "len" _ _ _ _ doc _ _ _ _ _ _ _ _ _ _ _ _ _ <- items]
+        @?= [Just (L.InL "文字列の文字数、または配列の要素数を返します。")]
+      assertBool "constant pi" ("pi" `elem` map label items)
+      assertBool "strong only occurs inline" ("strong" `notElem` map label items),
+    testCase "M1 D1 inline command after an emoji and prose outside a command" $ do
+      (inside, outside) <- inSession $ \r -> do
+        let doc = docOf r "a.gm"
+            prefix = "版は[= values.version]、合計は[= 1 + 2]。全[= doc.chapters.count]章。"
+        (,)
+          <$> LT.getCompletions doc (L.Position 5 (fromIntegral (T.length prefix + 3)))
+          <*> LT.getCompletions doc (L.Position 5 1)
+      assertBool "strong among inline commands" ("strong" `elem` map label inside)
+      assertBool "expression function absent" ("len" `notElem` map label inside)
+      outside @?= []
+  ]
+  where
+    label (L.CompletionItem n _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) = n
+
 editingTests :: TestTree
 editingTests =
   testGroup
     "renaming, formatting, closing and imports (ADR 0001)"
     [ testGroup "features" featureTests,
-      testGroup "protocol" sessionTests
+      testGroup "protocol" sessionTests,
+      testGroup "roadmap-completion" roadmapTests
     ]

@@ -9,10 +9,11 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
+import Control.Exception (evaluate)
 import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
@@ -20,22 +21,53 @@ import Golem.Layout.PageLabel (PageLabel (..), Section (..), pageLabelText)
 import Golem.Layout.Paginate
 import Golem.Layout.Paginate.State qualified as S
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
-import Golem.Length (Sp)
+import Golem.Length (Sp (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import PaginateEnum (Element (..), Input (..), controlSpan, enumFlows, noteOf, paginateInput, sectionFlow)
 import PaginateInvariants (Breach (..), Invariant (..), breaches, p11WaitingBeforeSpace, p9SpaceMoved, w3WaitingAlike, waitingFigures)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
+
+headingRoundingCases :: [(Integer, Integer, Integer, Int, Int)]
+headingRoundingCases =
+  [ (fontSize, bodyPitch, headingSize, linesCount, minimumLines)
+  | fontSize <- [1 .. 4],
+    bodyPitch <- [fontSize .. 6],
+    headingSize <- [1 .. 8],
+    linesCount <- [1 .. 3],
+    minimumLines <- [1 .. 3]
+  ]
 
 paginateTests :: TestTree
 paginateTests =
   testGroup
     "pagination boundaries (golem-layout ADR 0003)"
-    [ testGroup "a heading kept with what follows" keepWithNextTests,
+    [ testCase "L2 (Golem ADR 0312): heading pitches round within half a sp and ties to even" $
+        forM_ headingRoundingCases $ \(fontSize, bodyPitch, headingSize, linesCount, minimumLines) -> do
+          let HeadingBlock (Sp pitch) _ _ = headingBlock (Sp fontSize) (Sp bodyPitch) (Sp headingSize) linesCount minimumLines
+              distance = abs (pitch * fontSize - bodyPitch * headingSize)
+          assertBool
+            (show (fontSize, bodyPitch, headingSize, linesCount, minimumLines))
+            (2 * distance <= fontSize && (2 * distance /= fontSize || even pitch)),
+      testCase "L3 (Golem ADR 0312): heading span is minimal and vertical remainder is at most one sp" $
+        forM_ headingRoundingCases $ \(fontSize, bodyPitch, headingSize, linesCount, minimumLines) -> do
+          let HeadingBlock (Sp pitch) spanLines (Sp top) = headingBlock (Sp fontSize) (Sp bodyPitch) (Sp headingSize) linesCount minimumLines
+              extent = toInteger (linesCount - 1) * pitch + headingSize
+              area n = toInteger (n - 1) * bodyPitch + fontSize
+              remainder = area spanLines - extent - 2 * top
+          assertBool
+            (show (fontSize, bodyPitch, headingSize, linesCount, minimumLines))
+            ( spanLines >= minimumLines
+                && area spanLines >= extent
+                && (spanLines == minimumLines || area (spanLines - 1) < extent)
+                && remainder `elem` [0, 1]
+            ),
+      testGroup "a heading kept with what follows" keepWithNextTests,
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
       testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
@@ -63,8 +95,81 @@ paginateTests =
       testGroup "the spaces before need-lines are not counted with figures that wait between (golem-layout ADR 0047)" spaceBeforeWaitingTests,
       testGroup "the breaks before sections and the page labels (docs/adr/0260)" sectionTests,
       testGroup "the keep options of paragraph styles (docs/adr/0261)" keepOptionTests,
+      testGroup "the parts of a book kept in one unit (Golem ADR 0377)" bookPartTests,
       testGroup "invariants" propertyTests
     ]
+
+{- | The parts of a book that a page break keeps (Golem ADR 0377): a table
+with its header and its first row, a figure with its caption, a term with
+the first line of its description and a paragraph of keep-all-lines,
+after a paragraph of so many lines, then a paragraph of two lines.
+-}
+bookParts :: Int -> [(String, Flow -> [Flow])]
+bookParts c =
+  [ ("a paragraph of keep-all-lines of " <> show n <> " lines", \f -> [f, FParagraph (Keep 2 2 True) (lines' 100 n)])
+  | n <- [1 .. 2 * c + 1]
+  ]
+    <> [ ("a table of " <> show r <> " rows" <> captioned, \f -> [f, FTable 50 0 (lines' 100 1) [lines' (200 + i) 1 | i <- [0 .. r - 1]] capt below])
+       | r <- [1 .. 2 * c],
+         (captioned, capt, below) <- [("", [], False), (" with a caption above", lines' 300 1, False), (" with a caption below", lines' 300 1, True)]
+       ]
+    <> [("a figure of " <> show n <> " lines with its caption", \f -> [f, FFigure 1000 n [] []]) | n <- [1 .. c]]
+    <> [("a term and a description of " <> show n <> " lines", \f -> [f, FDefTerm (lines' 100 1), FParagraph defaultKeep (lines' 110 n)]) | n <- [1 .. 2 * c]]
+
+-- | Whether a column holds a line, a figure, a heading, a part of a code block or a part of a table.
+holdsSomething :: PageOut -> Bool
+holdsSomething p = not (null (poSlots p) && null (poTables p))
+
+-- | The columns a paginated input takes, at most one more than the bound.
+boundedColumns :: Int -> Int -> Int -> [Flow] -> [PageOut]
+boundedColumns cols c bound flows = take (bound + 1) (paginate cols c flows)
+
+bookPartTests :: [TestTree]
+bookPartTests =
+  [ testCase "ADR 0377 I1: inv1_keep_book_parts_property" $
+      sequence_
+        [ do
+            let flows = part (FParagraph defaultKeep (lines' 0 filler)) <> [FParagraph defaultKeep (lines' 900 2)]
+                -- every grid line of the input in a column of its own, and one more
+                bound = cols * (sum (map gridOf flows) + 1)
+                ps = boundedColumns cols c bound flows
+                what = name <> " after " <> show filler <> " lines in " <> show cols <> " columns of " <> show c
+            assertBool (what <> ": no more columns than grid lines") (length ps <= bound)
+            -- a part that failed in an empty column is not sent to another one: no column is left empty
+            assertEqual (what <> ": the empty columns") [] [(poNumber p, poColumn p) | p <- ps, not (holdsSomething p)]
+        | c <- [3 .. 6],
+          cols <- [1, 2],
+          filler <- [1 .. c - 1],
+          (name, part) <- bookParts c
+        ],
+    testCase "ADR 0377 I1: inv1_keep_book_parts_case_1: a part that just fits is not moved" $ do
+      let filler = FParagraph defaultKeep (lines' 0 2)
+      lineIds (paginate 1 5 [filler, FParagraph (Keep 2 2 True) (lines' 10 3)]) @?= [[0, 1, 10, 11, 12]]
+      contents (paginate 1 5 [filler, FFigure 1000 3 [] []]) @?= [[SLine 0, SLine 1, SFigure 1000]]
+      lineIds (paginate 1 5 [filler, FDefTerm (lines' 10 1), FParagraph defaultKeep (lines' 20 2)]) @?= [[0, 1, 10, 20, 21]]
+      let table = paginate 1 5 [filler, FTable 50 0 (lines' 10 1) [lines' 20 1, lines' 21 1] [] False]
+      lineIds table @?= [[0, 1, 10, 20, 21]]
+      map poTables table @?= [[TableSegment 50 2 (Just 2) 4]],
+    testCase "ADR 0377 I1: inv1_keep_book_parts_case_2: a part an empty column does not hold is moved once and broken where it may be" $ do
+      let filler = FParagraph defaultKeep (lines' 0 2)
+          kept = paginate 1 3 [filler, FParagraph (Keep 2 2 True) (lines' 10 7)]
+      -- moved to the next column once, then broken by keep-first-lines and keep-last-lines
+      lineIds kept @?= [[0, 1], [10, 11, 12], [13, 14], [15, 16]]
+      unmets kept @?= [SplitKept 10]
+      let table = paginate 1 3 [filler, FTable 50 0 (lines' 10 1) [lines' (20 + i) 1 | i <- [0 .. 5]] [] False]
+      -- the header and the first row do not fit after the paragraph: the table starts the next column and is broken between rows
+      map (map tsFirst . poTables) table @?= [[], [0], [0], [0]]
+      all holdsSomething (drop 1 table) @? "no empty column"
+  ]
+
+-- | The grid lines a flow of the tests of Golem ADR 0377 takes, its header repeated in each column.
+gridOf :: Flow -> Int
+gridOf = \case
+  FParagraph _ ls -> length ls
+  FDefTerm ls -> length ls
+  FFigure _ n _ _ -> n
+  FTable _ sp h rows capt _ -> sp + length capt + length h * (1 + length rows) + sum (map length rows)
+  _ -> 1
 
 -- | The examples of the keep options of paragraph styles (docs/adr/0261).
 keepOptionTests :: [TestTree]
@@ -284,7 +389,23 @@ noted i k = LineBox i [NoteBody (nid 900) k] [] [] 0
 
 keepNoteTests :: [TestTree]
 keepNoteTests =
-  [ testCase "a heading goes on with a line whose note does not fit after it" $ do
+  [ testCase "Golem ADR 0352 I4: a one-line note terminates at capacities 1, 2, and 3" $ do
+      results <-
+        mapM
+          (\capacity -> timeout 1000000 (evaluate (length (paginate 1 capacity [FParagraph defaultKeep [noted 0 1]]))))
+          [1 .. 3]
+      map isJust results @?= [True, True, True]
+      map (unmets . (\capacity -> paginate 1 capacity [FParagraph defaultKeep [noted 0 1]])) [1, 2]
+        @?= [[UnplaceableFootnote (nid 900) 1], [UnplaceableFootnote (nid 900) 2]],
+    testCase "Golem ADR 0353 I2: capacities 1 and 2 remain valid without footnotes" $
+      map (\capacity -> (contents (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]), unmets (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]))) [1, 2]
+        @?= [([[SLine 0]], []), ([[SLine 0]], [])],
+    testCase "Golem ADR 0353 I1: page-lines leaves marker and note together in the next full column" $ do
+      let ps = paginate 1 3 [FAdjustLines mk (-1), FParagraph defaultKeep [noted 0 1]]
+      [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps, not (null (poSlots p))]
+        @?= [(2, [nid 900])]
+      unmets ps @?= [],
+    testCase "a heading goes on with a line whose note does not fit after it" $ do
       -- 4 free: heading 1 + two lines + note 3 + separator > 4
       let ps = paginate 1 8 [FParagraph defaultKeep (lines' 0 4), heading 20, FParagraph defaultKeep (noted 30 3 : lines' 31 1)]
       contents ps @?= [map SLine [0 .. 3], [SHeading 20 1, SLine 30, SLine 31]]
@@ -535,17 +656,39 @@ columnsOf ps = [(poNumber p, poColumn p, [i | (_, SLine i) <- poSlots p]) | p <-
 
 pageControlTests :: [TestTree]
 pageControlTests =
-  [ testCase "no-break: the last two lines go on with the paragraph after" $ do
+  [ testCase "ADR 0376 I1: inv1_no_page_break_lines_property" $
+      mapM_
+        ( \(len, count) -> do
+            let make n k = FParagraph defaultKeep (lines' n k)
+                pages = lineIds (paginate 1 12 [make 100 (11 - len), make 0 len, FNoBreakLines mk count, make 200 2])
+                left = length [i | page <- take 1 pages, i <- page, i < 100]
+                want = len - max 2 count
+            left @?= if want < 2 then 0 else want
+        )
+        [(len, count) | len <- [2 .. 9], count <- [1 .. 10]],
+    testCase "ADR 0376 I1: inv1_no_page_break_lines_case_3: five lines send three" $
+      lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 4), FParagraph defaultKeep (lines' 20 5), FNoBreakLines mk 3, FParagraph defaultKeep (lines' 30 2)])
+        @?= [[0, 1, 2, 3, 20, 21], [22, 23, 24, 30, 31]],
+    testCase "ADR 0376 I1: inv1_no_page_break_lines_case_3: definition terms and co-located controls" $ do
+      let p n k = FParagraph defaultKeep (lines' n k)
+          place previous cs = lineIds (paginate 1 12 ([p 0 6, previous] ++ cs ++ [p 30 4]))
+          want = [[0 .. 5] ++ [20, 21], [22 .. 24] ++ [30 .. 33]]
+      place (FDefTerm (lines' 20 5)) [FNoBreakLines mk 3] @?= want
+      place (p 20 5) [FNoBreakLines mk 3, FKeepNext mk 2] @?= want
+      place (p 20 5) [FNoBreakLines mk 2, FKeepNext mk 3] @?= place (p 20 5) [FNoBreak mk, FKeepNext mk 3]
+      place (p 20 5) [FNoBreakLines mk maxBound] @?= [[0 .. 5], [20 .. 24] ++ [30 .. 33]]
+      place (p 20 5) [FNoBreakLines mk 0] @?= place (p 20 5) [],
+    testCase "no-break: the last two lines go on with the paragraph after" $ do
       lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 9), FParagraph defaultKeep (lines' 10 5)]) @?= [[0 .. 8], [10 .. 14]]
       let ps = paginate 1 10 [FParagraph defaultKeep (lines' 0 9), FNoBreak mk, FParagraph defaultKeep (lines' 10 5)]
       lineIds ps @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]]
       unmets ps @?= [],
-    testCase "no-break: a paragraph of two lines, or of three, goes whole" $ do
+    testCase "ADR 0376 I1: inv1_no_page_break_lines_case_1: a paragraph of two lines, or of three, goes whole" $ do
       lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 7), FParagraph defaultKeep (lines' 20 2), FNoBreak mk, FParagraph defaultKeep (lines' 30 5)])
         @?= [[0 .. 6], [20, 21, 30, 31, 32, 33, 34]]
       lineIds (paginate 1 10 [FParagraph defaultKeep (lines' 0 6), FParagraph defaultKeep (lines' 20 3), FNoBreak mk, FParagraph defaultKeep (lines' 30 5)])
         @?= [[0 .. 5], [20, 21, 22, 30, 31, 32, 33, 34]],
-    testCase "no-break: a paragraph of four lines leaves two and sends the last two (docs/adr ADR 0055)" $ do
+    testCase "ADR 0376 I1: inv1_no_page_break_lines_case_2: a paragraph of four lines leaves two and sends the last two (docs/adr ADR 0055)" $ do
       let ps = paginate 1 10 [FParagraph defaultKeep (lines' 0 5), FParagraph defaultKeep (lines' 20 4), FNoBreak mk, FParagraph defaultKeep (lines' 30 5)]
       lineIds ps @?= [[0, 1, 2, 3, 4, 20, 21], [22, 23, 30, 31, 32, 33, 34]]
       unmets ps @?= [],

@@ -1,0 +1,230 @@
+{
+  "rulesBefore": {
+    "exit": 1,
+    "ds": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "file": "./preflight.toml",
+        "line": 1,
+        "column": 8,
+        "message": "TOML の誤りです: ここに '@' は書けません"
+      }
+    ]
+  },
+  "rulesRecovered": {
+    "ds": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "file": "./preflight.toml",
+        "line": 1,
+        "column": 8,
+        "message": "TOML の誤りです: ここに '@' は書けません"
+      },
+      {
+        "code": "G09001",
+        "severity": "error",
+        "file": "./preflight.toml",
+        "line": 4,
+        "column": 12,
+        "message": "TOML の誤りです: ここに '?' は書けません"
+      },
+      {
+        "code": "G09102",
+        "severity": "error",
+        "file": "./preflight.toml",
+        "line": 6,
+        "column": 12,
+        "message": "severity の値が正しくありません: invalid（error、warning、off のどれかにします） (bleed-size.severity)"
+      },
+      {
+        "code": "G09103",
+        "severity": "error",
+        "file": "./preflight.toml",
+        "line": 2,
+        "column": 1,
+        "message": "知らないキーです: unknown-top"
+      }
+    ],
+    "complete": true
+  },
+  "opaque": {
+    "ds": [
+      {
+        "code": "G09001",
+        "severity": "error",
+        "file": "./preflight.toml",
+        "line": 1,
+        "column": 8,
+        "message": "TOML の誤りです: 複数行の文字列が閉じていません"
+      }
+    ],
+    "complete": false
+  },
+  "twoHeadings": {
+    "exit": 1,
+    "ds": [
+      {
+        "code": "G01012",
+        "severity": "error",
+        "file": "a.gm",
+        "line": 1,
+        "column": 7,
+        "message": "見出しの階層は 6 までです"
+      },
+      {
+        "code": "G01012",
+        "severity": "error",
+        "file": "a.gm",
+        "line": 3,
+        "column": 7,
+        "message": "見出しの階層は 6 までです"
+      }
+    ]
+  },
+  "language/ja-JP": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "ja-JP"
+    ]
+  },
+  "language/en-US": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "en-US"
+    ]
+  },
+  "language/JP": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "JP"
+    ]
+  },
+  "language/US": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "US"
+    ]
+  },
+  "language/DE": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "DE"
+    ]
+  },
+  "language/de": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "de"
+    ]
+  },
+  "language/jbo": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "jbo"
+    ]
+  },
+  "language/sl-rozaj": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "sl-rozaj"
+    ]
+  },
+  "language/ja-x-my-dialect": {
+    "exit": 0,
+    "ds": [],
+    "htmlLanguage": [
+      "ja-x-my-dialect"
+    ]
+  },
+  "language/ja_JP": {
+    "exit": 1,
+    "ds": [
+      {
+        "code": "G03119",
+        "severity": "error",
+        "file": "manifest.toml",
+        "line": 7,
+        "column": 12,
+        "message": "language を言語のタグの形で書きます: ja_JP"
+      }
+    ]
+  },
+  "stale/dev": {
+    "codes": [
+      "G08010"
+    ],
+    "exit": 1,
+    "pdfSame": true,
+    "pages": true,
+    "pagesSame": true
+  },
+  "stale/prod": {
+    "codes": [
+      "G08010"
+    ],
+    "exit": 1,
+    "pdfSame": false,
+    "pages": false,
+    "pagesSame": false
+  },
+  "missingView": {
+    "exit": 1,
+    "ds": [
+      {
+        "code": "G08010",
+        "severity": "error",
+        "file": "a.gm",
+        "line": 3,
+        "column": 1,
+        "message": "図版を PDF に置けません: broken.png（PNG の IHDR がありません）"
+      },
+      {
+        "code": "G09010",
+        "severity": "error",
+        "file": "style.toml",
+        "line": 1,
+        "column": 1,
+        "message": "塗り足しの幅が足りません: 0.00mm（3.00mm 以上にします）"
+      }
+    ]
+  },
+  "glyphAndBleed": {
+    "exit": 1,
+    "ds": [
+      {
+        "code": "G09002",
+        "severity": "error",
+        "file": "a.gm",
+        "line": 1,
+        "column": 1,
+        "message": "フォントにグリフのない文字です: U+E000「」（ja.otf、PDF の 1 ページ目）"
+      },
+      {
+        "code": "G09010",
+        "severity": "error",
+        "file": "style.toml",
+        "line": 1,
+        "column": 1,
+        "message": "塗り足しの幅が足りません: 0.00mm（3.00mm 以上にします）"
+      },
+      {
+        "code": "G09014",
+        "severity": "error",
+        "file": "style.toml",
+        "line": 1,
+        "column": 1,
+        "message": "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"
+      }
+    ]
+  }
+}

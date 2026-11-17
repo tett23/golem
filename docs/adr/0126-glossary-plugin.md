@@ -1,6 +1,6 @@
 # ADR 0126: 用語集のプラグイン
 
-ステータス: 採択→目次の写しから印を除く範囲（PDF、`[ref-title]`、入れ子）は [ADR 0145](0145-title-copies-drop-anchor-inlines.md)
+Status: superseded [{"by":["docs/adr/0145-title-copies-drop-anchor-inlines.md"],"part":"目次の写しから印を除く範囲（PDF、`[ref-title]`、入れ子）"}]
 
 ## 文脈
 

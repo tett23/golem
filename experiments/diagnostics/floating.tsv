@@ -1,0 +1,7 @@
+modules/golem-doc/src/Golem/Doc/Cbor.hs	41	import GHC.Float (float2Double)
+modules/golem-doc/src/Golem/Doc/Cbor.hs	321	THalf f -> exact (float2Double f)
+modules/golem-doc/src/Golem/Doc/Cbor.hs	322	TFloat f -> exact (float2Double f)
+modules/golem-doc/src/Golem/Doc/Cbor.hs	323	TDouble d -> exact d
+modules/golem-doc/src/Golem/Doc/Cbor.hs	327	| isNaN d = Left (FloatNotFinite "NaN")
+modules/golem-doc/src/Golem/Doc/Cbor.hs	328	| isInfinite d = Left (FloatNotFinite (if d > 0 then "Infinity" else "-Infinity"))
+modules/golem-project/src/Golem/Project/Manifest.hs	385	Double' pos _ -> unsupported path pos "浮動小数点数"

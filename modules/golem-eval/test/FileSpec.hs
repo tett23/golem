@@ -1,10 +1,13 @@
 module FileSpec (tests) where
 
 import Control.Exception (evaluate)
+import Control.Monad (forM_)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Either (lefts)
+import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List (sort)
+import Data.Map.Lazy qualified as ML
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Set qualified as Set
@@ -26,6 +29,7 @@ import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Support
+import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -99,6 +103,30 @@ g02113At src = [(st, e) | (c, _, st, e) <- diags src, c == "G02113"]
 -- | The start and end of the first occurrence of @a@ in an ASCII source.
 spanOf :: Text -> Text -> (Int, Int)
 spanOf src a = let n = T.length (fst (T.breakOn a src)) in (n, n + T.length a)
+
+-- | 'ctx' with the files a.txt and b.txt, made by @f@ from their contents (ADR 0341 I2).
+abCtx :: (Asset -> Asset) -> EvalContext
+abCtx f = ctx {ctxAssets = ML.insert "a.txt" (f (AssetText (FileId 40) "x\n")) (ML.insert "b.txt" (f (AssetText (FileId 41) "y\n")) (ctxAssets ctx))}
+
+-- | How many of a.txt and b.txt the evaluation of a source asks for (ADR 0341 I2).
+listingRequests :: Text -> IO Int
+listingRequests src = do
+  ref <- newIORef (0 :: Int)
+  let counted a = unsafePerformIO (modifyIORef' ref (+ 1) >> pure a)
+  _ <- evaluate (length (show (run (abCtx counted) src)))
+  readIORef ref
+
+-- | 'ctx' with the tables a.csv and b.csv, made by @f@ from their contents (ADR 0343 I2).
+abTableCtx :: (Asset -> Asset) -> EvalContext
+abTableCtx f = ctx {ctxAssets = ML.insert "a.csv" (f (AssetText (FileId 42) "h\nx\n")) (ML.insert "b.csv" (f (AssetText (FileId 43) "h\ny\n")) (ctxAssets ctx))}
+
+-- | How many of a.csv and b.csv the evaluation of a source asks for (ADR 0343 I2).
+tableRequests :: Text -> IO Int
+tableRequests src = do
+  ref <- newIORef (0 :: Int)
+  let counted a = unsafePerformIO (modifyIORef' ref (+ 1) >> pure a)
+  _ <- evaluate (length (show (run (abTableCtx counted) src)))
+  readIORef ref
 
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
@@ -353,16 +381,23 @@ tests =
       powDiagnosticTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
+      testCase "ADR 0336 I1 I3: unprefixed set keeps the value and old form has a one-byte fix" $ do
+        paraOf "set x = 2\n\n[= x * 3]\n" @?= ["6"]
+        let diagnostics = fst (evalSource ctx "@set x = 2\n\n[= x * 3]\n")
+        [(diagCode d, spanStart (diagSpan d), spanEnd (diagSpan d), [(spanStart sp, spanEnd sp, replacement) | Fix _ edits <- diagFixes d, (sp, replacement) <- edits]) | d <- diagnostics]
+          @?= [(DiagnosticCode "G02155", 0, 1, [(0, 1, "")])]
+        errs "set doc = 1\n" @?= ["G02023"]
+        errs "@set doc = 1\n" @?= ["G02155", "G02023"],
       testCase "redefinition and use before definition are errors" $ do
-        errs "@set x = 1\n\n@set x = 2\n" @?= ["G02024"]
-        errs "[= y]\n\n@set y = 1\n" @?= ["G02002"],
+        errs "set x = 1\n\nset x = 2\n" @?= ["G02024"]
+        errs "[= y]\n\nset y = 1\n" @?= ["G02002"],
       testCase "imports bind a namespace" $
         paraOf "@import common/values.gm as v\n\n[= v.price + 1]\n" @?= ["101"],
       testCase "an expression as the path of @import is G03009 (golem-project ADR 0006)" $ do
         errs "@import [= 1] as x\n" @?= ["G03009"]
         errs "@import \"common/values.gm\" as v\n" @?= [],
       testCase "doc becomes a deferred expression; forbidden in headings" $ do
-        paraOf "@set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
+        paraOf "set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
         errs "# 全 [= doc.chapters.count] 章\n" @?= ["G02014"]
         errs "# [ref-title intro]\n" @?= ["G02014"],
       testCase "notes are numbered per file" $
@@ -397,7 +432,7 @@ tests =
         errs "@label a\n@label b\n# x\n" @?= ["G02012"]
         errs "@label a\n" @?= ["G02010"]
         errs "@nonumber\n本文。\n" @?= ["G02013"]
-        errs "@label a\n@set x = 1\n# x\n" @?= ["G02011"],
+        errs "@label a\nset x = 1\n# x\n" @?= ["G02011"],
       -- docs/adr/0200
       testCase "@nonumber on a figure: figNoNumber, no diagnostic" $ do
         let src = "@nonumber\n@figure images/a.png alt=x\n  キャプション。\n"
@@ -616,7 +651,7 @@ styleTests =
         case blocksOf "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" of
           [Block _ (Just "fig") Nothing (FigureBlock _)] -> pure ()
           other -> assertFailure (show other)
-        errs "@label a\n@set x = 1\n@figure images/a.png alt=x\n" @?= ["G02011"],
+        errs "@label a\nset x = 1\n@figure images/a.png alt=x\n" @?= ["G02011"],
       testCase "a style inside a caption" $
         errs "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= ["G02013"],
       testCase "a filter must not invent paragraph styles" $ do
@@ -730,9 +765,9 @@ int64Tests =
         msgs "a[aki 99999999999999999999mm]b\n" @?= [("G02091", msg)]
         paraOf "a[aki 99999999999999999999mm]b\n" @?= ["ab"],
       testCase "a deferred expression with an integer beyond int64 is G02091" $ do
-        msgs "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [("G02091", msg)]
-        body "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [Paragraph Nothing []]
-        errs "@set n = 2 ** 62\n\n[= n + doc.chapters.count]\n" @?= []
+        msgs "set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [("G02091", msg)]
+        body "set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [Paragraph Nothing []]
+        errs "set n = 2 ** 62\n\n[= n + doc.chapters.count]\n" @?= []
         -- a value in prose is text, not an integer of the IR
         paraOf "[= 2 ** 70]\n" @?= ["1180591620717411303424"],
       -- docs/adr ADR 0101; the audit of 2026-10-28, F-05
@@ -1022,17 +1057,20 @@ noticeTests =
         [c | (c, _, _, _) <- diagsWith hctx "@style-def character bold font=heading\n\n[bold: x]\n"] @?= ["G02062"]
         at "@style-def paragraph letter indent=1zw\n@style-def paragraph quote indent=2zw\n\nx\n" @?= [("G02062", "ファイルの中の定義が段落スタイルの quote を上書きしています", 39)],
       -- golem-driver ADR 0043
-      testCase "G03100: a zero indent of caption or sidenote in @style-def, at the keyword" $ do
+      testCase "G03100: a zero indent of table in @style-def, at the keyword; none for caption and sidenote (docs/adr/0367)" $ do
         let at src = [(c, m, st) | (c, m, st, _) <- diagsWith sctx src, c == "G03100"]
-        at "@style-def paragraph caption indent=0zw\n\nx\n" @?= [("G03100", "キャプションと傍注は字下げを掛けないので、caption.indent = 0zw は効果がありません", 29)]
-        at "@style-def paragraph sidenote first-line-indent=\"0mm\"\n\nx\n" @?= [("G03100", "キャプションと傍注は字下げを掛けないので、sidenote.first-line-indent = \"0mm\" は効果がありません", 30)]
+        at "@style-def paragraph table indent=0zw\n\nx\n" @?= [("G03100", "表のセルは字下げを掛けないので、table.indent = 0zw は効果がありません", 27)]
+        at "@style-def paragraph table first-line-indent=\"0mm\"\n\nx\n" @?= [("G03100", "表のセルは字下げを掛けないので、table.first-line-indent = \"0mm\" は効果がありません", 27)]
+        at "@style-def paragraph caption indent=0zw\n\nx\n" @?= []
+        at "@style-def paragraph sidenote first-line-indent=\"0mm\"\n\nx\n" @?= []
         at "@style-def paragraph quote indent=0zw\n\nx\n" @?= []
-        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph caption indent=1zw\n\nx\n"] @?= ["G03006"]
-        let (_, ds, _) = runS sctx "@style-def paragraph caption indent=0zw\n\nx\n"
+        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph caption indent=1zw\n\nx\n", c /= "G02062"] @?= []
+        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph table indent=1zw\n\nx\n"] @?= ["G03006"]
+        let (_, ds, _) = runS sctx "@style-def paragraph table indent=0zw\n\nx\n"
         sort [(diagCode d, diagSeverity d) | d <- ds] @?= [(DiagnosticCode "G02062", Notice), (DiagnosticCode "G03100", Notice)],
       -- docs/adr/0189
-      testCase "G03100 for a zero end-indent of caption, G03118 for the spine in a vertical book, at the keyword" $ do
-        [(c, st) | (c, _, st, _) <- diagsWith sctx "@style-def paragraph caption end-indent=0zw\n\nx\n", c == "G03100"] @?= [("G03100", 29)]
+      testCase "G03100 for a zero end-indent of table, G03118 for the spine in a vertical book, at the keyword" $ do
+        [(c, st) | (c, _, st, _) <- diagsWith sctx "@style-def paragraph table end-indent=0zw\n\nx\n", c == "G03100"] @?= [("G03100", 27)]
         let vertical = either (error . show) id (parseStyle (FileId 0) "[page]\nsize = \"B6\"\nwriting-mode = \"vertical\"\n")
             vctx = ctx {ctxStyle = vertical, ctxCharStyles = Map.keysSet (stCharStyles vertical), ctxParaStyles = paraLineBreaks vertical}
         [(c, m, st) | (c, m, st, _) <- diagsWith vctx "@style-def paragraph quote size=1zw align=towards-spine\n\nx\n"]
@@ -1092,11 +1130,17 @@ noticeTests =
         errs "@style verse\n  a\\ b\n" @?= []
         -- the escaped space is dropped as before (golem-parser ADR 0010)
         verseOf "@style verse\n  a\n  \\ x\n" @?= [[["a"], ["x"]]],
-      testCase "G02065: @listing src=, and the content is the same" $ do
-        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G02065"]
-          @?= [("G02065", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]
+      testCase "ADR 0341 I1: positional @listing keeps its content" $ do
+        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G02250"]
+          @?= [("G02250", "@listing の src= は使えません。パスを最初の引数に移します", 9, 24)]
         errs "@listing src/Main.hs\n" @?= []
-        body "@listing src=src/Main.hs lines=2...3\n" @?= body "@listing src/Main.hs lines=2...3\n",
+        listingRequests "@listing a.txt lines=1...1\n" >>= (@?= 1),
+      testCase "ADR 0341 I1: a range in lines= is no error on the path" $ do
+        let src = "@listing src/Main.hs lines=1-2\n"
+            ds = diags src
+        [c | (c, _, _, _) <- ds, c `elem` ["G02250", "G02253"]] @?= []
+        -- the range gives its own code at lines=, apart from the path (G02251 after ADR 0342)
+        [(s, e) | (c, _, s, e) <- ds, c == "G02108"] @?= [spanOf src "lines=1-2"],
       testCase "the span of each @number by the span of its block" $ do
         let r = evalResult ctx "+ a\n@number 3\n+ b\n\n@number 2\n# h\n"
         Map.toList (erNumberSites r) @?= [(mkSpan (FileId 1) 14 18, mkSpan (FileId 1) 4 14), (mkSpan (FileId 1) 29 33, mkSpan (FileId 1) 19 29)]
@@ -1526,14 +1570,22 @@ pageControlTests =
         mapM_
           (\src -> assertEqual (T.unpack src) [("G02099", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")] (msgs src))
           ["@page-lines\n", "@page-lines 1\n", "@page-lines +0\n", "@page-lines +1 +2\n", "@page-lines n=+1\n"],
-      testCase "an argument of @no-page-break is G02096 (docs/adr ADR 0060)" $
-        msgs "@no-page-break x\n" @?= [("G02096", "@no-page-break は引数を取りません")],
+      testCase "ADR 0376 I1: inv1_no_page_break_lines_case_3: a count is optional and natural" $ do
+        errs "@no-page-break 3\n" @?= []
+        errs "@no-page-break 0\n" @?= []
+        errs "@no-page-break 1 2\n" @?= ["G02096"]
+        errs "@no-page-break lines=3\n" @?= ["G02096"]
+        errs "@no-page-break 9223372036854775808\n" @?= ["G02091"]
+        errs "@no-page-break -1\n" @?= ["G02103"]
+        errs "@no-page-break 1.5\n" @?= ["G02104"],
+      testCase "a nonnumeric argument of @no-page-break is G02156 (docs/adr ADR 0060)" $
+        msgs "@no-page-break x\n" @?= [("G02156", "@no-page-break の行数には 0 以上の整数を書きます")],
       testCase "a body under a control is G02097 (docs/adr ADR 0060)" $
         mapM_
           (\(src, name) -> assertEqual (T.unpack src) [("G02097", "@" <> name <> " は本体を持てません")] (msgs src))
           [("@no-page-break\n  a\n", "no-page-break"), ("@need-lines 3\n  a\n", "need-lines"), ("@page-lines +1\n  a\n", "page-lines")],
       testCase "a wrong argument and a body are both reported (docs/adr ADR 0060)" $ do
-        map fst (msgs "@no-page-break x\n  a\n") @?= ["G02096", "G02097"]
+        map fst (msgs "@no-page-break x\n  a\n") @?= ["G02156", "G02097"]
         map fst (msgs "@page-lines 1\n  a\n") @?= ["G02099", "G02097"],
       testCase "a control not at the top of the document is G02071 and dropped" $ do
         let (bs, es) = run ctx "- a\n\n  @no-page-break\n"
@@ -1573,8 +1625,7 @@ blankLineTests =
       testCase "wrong arguments and a body are G02092 and give no block" $
         mapM_
           (\src -> assertEqual (T.unpack src) ([], ["G02092"]) (outline ctx src))
-          [ "@blank-line 0\n",
-            "@blank-line x\n",
+          [ "@blank-line x\n",
             "@blank-line 1 2\n",
             "@blank-line lines=2\n",
             "@blank-line +1\n",
@@ -1583,8 +1634,32 @@ blankLineTests =
       testCase "an integer out of int64 is G02091" $
         outline ctx "@blank-line 9223372036854775808\n" @?= ([], ["G02091"]),
       testCase "the messages of G02092" $ do
-        msgs "@blank-line 0\n" @?= [("G02092", "@blank-line の引数は 1 以上の整数を一つだけ書きます")]
+        msgs "@blank-line x\n" @?= [("G02092", "@blank-line の引数は 0 以上の整数を一つだけ書きます")]
         msgs "@blank-line\n  あ\n" @?= [("G02092", "@blank-line は本体を持てません")],
+      testCase "ADR 0345 I3 I4: zero blank-line has no IR and one info per run" $ do
+        outline lineCtx "あ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254"])
+        outline ctx "@blank-line 0\n@blank-line 0\nあ\n" @?= (["p あ"], ["G02254"])
+        outline ctx "@blank-line 0\nあ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254", "G02254"])
+        let (_, ds, _) = runS ctx "@blank-line 0\n"
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- ds] @?= [(DiagnosticCode "G02254", Info, 0)]
+        assertBool "an info code" (DiagnosticCode "G02254" `elem` infoCodes),
+      testCase "ADR 0345 I3 I4: consecutive blank-line counts form one IR block" $ do
+        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
+        outline ctx "@blank-line 0\n@blank-line 2\n@blank-line 0\nあ\n" @?= (["blank 2", "p あ"], [])
+        outline ctx "@blank-line 1\n@blank-line 0\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
+        outline ctx "@blank-line 9223372036854775807\n@blank-line 1\nあ\n" @?= (["p あ"], ["G02094", "G02091"])
+        outline ctx "@blank-line 2\n@blank-line 9223372036854775808\nあ\n" @?= (["p あ"], ["G02094", "G02091"]),
+      testCase "ADR 0345 I3: page controls keep their order in an added run" $ do
+        let src = "@blank-line 0\n@need-lines 3\n@blank-line 2\n@no-page-break\n@blank-line 1\nあ\n"
+        case fst (blocksAndCodes src) of
+          [Block _ _ _ (PageControl (NeedLines 3)), Block _ _ _ (BlankLines 3), Block _ _ _ (PageControl NoBreak), Block _ _ _ (Paragraph _ _)] -> pure ()
+          other -> assertFailure (show other)
+        snd (blocksAndCodes src) @?= ["G02094"],
+      testCase "ADR 0345 I3: sum overflow points at the second argument" $ do
+        let src = "@blank-line 9223372036854775807\n@blank-line 1\n"
+            (_, ds, _) = runS ctx src
+            expected = T.length "@blank-line 9223372036854775807\n@blank-line "
+        [spanStart (diagSpan d) | d <- ds, diagCode d == DiagnosticCode "G02091"] @?= [expected],
       testCase "@blank-line not at the top of the document is G02093 and dropped" $ do
         mapM_
           ( \src -> do
@@ -1604,7 +1679,7 @@ blankLineTests =
         labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
         snd (labelled "@label x\n@blank-line\n") @?= ["G02010"],
       testCase "blank lines written in a row are the notice G02094 at the later ones" $ do
-        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 1", "blank 2", "p あ"], ["G02094"])
+        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
         [(c, m, s) | (c, m, s, _) <- diags "@blank-line\n@blank-line 2\nあ\n"] @?= [("G02094", "続けて書いた @blank-line は @blank-line <N> にまとめて書けます", 12)]
         snd (outline ctx "@blank-line\n@need-lines 3\n@blank-line\nあ\n") @?= ["G02094"]
         snd (outline ctx "@blank-line\n@no-page-break\n@page-lines +1\n@blank-line\nあ\n") @?= ["G02094"]
@@ -1788,7 +1863,7 @@ diagnosticTests =
   testGroup
     "diagnostic codes (golem-eval ADR 0003)"
     [ testCase "G02023: a reserved word as a name" $ do
-        diags "@set doc = 1\n" @?= [("G02023", "予約語は変数の名前に使えません: doc", 5, 8)]
+        diags "set doc = 1\n" @?= [("G02023", "予約語は変数の名前に使えません: doc", 4, 7)]
         diags "@import common/values.gm as meta\n" @?= [("G02023", "予約語は名前空間に使えません: meta", 28, 32)],
       testCase "G02025: the depth of @toc" $ do
         mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=7\n", "@toc depth=x\n"]
@@ -1818,11 +1893,45 @@ diagnosticTests =
       testCase "G02085: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
         msgs "@table empty.csv\n" @?= [("G02085", "CSV が空です")]
         msgs "@table blank.csv\n" @?= [("G02085", "CSV が空です")]
-        diags "@table ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+        diags "@table ragged.csv\n" @?= [("G02154", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G02036: @listing without a path" $ do
-        msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")]
-        -- src= is read, with the notice G02065 (golem-syntax ADR 0002)
-        errs "@listing src=src/Main.hs\n" @?= ["G02065"],
+        msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")],
+      testCase "ADR 0341 I2: the code, the site and the asset requests of each path form" $ do
+        let row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abCtx id) src],) <$> listingRequests src
+            expect src codes n = row src >>= (@?= (codes, n))
+        expect "@listing\n" [("G02036", 0, 9)] 0
+        expect "@listing a.txt\n" [] 1
+        let legacy = "@listing src=a.txt\n"
+        expect legacy [("G02250", fst (spanOf legacy "src=a.txt"), snd (spanOf legacy "src=a.txt"))] 0
+        let two = "@listing a.txt b.txt\n"
+        expect two [("G02253", fst (spanOf two "b.txt"), snd (spanOf two "b.txt"))] 0
+        let twice = "@listing src=a.txt src=b.txt\n"
+        expect twice [("G02077", fst (spanOf twice "src=b.txt"), snd (spanOf twice "src=b.txt"))] 0
+        let thrice = "@listing src=a.txt src=b.txt src=a.txt\n"
+        expect thrice [("G02077", 19, 28), ("G02077", 29, 38)] 0
+        let same = "@listing a.txt src=a.txt\n"
+        expect same [("G02253", fst (spanOf same "src=a.txt"), snd (spanOf same "src=a.txt"))] 0
+        let other = "@listing a.txt src=b.txt\n"
+        expect other [("G02253", fst (spanOf other "src=b.txt"), snd (spanOf other "src=b.txt"))] 0
+        [(c, m) | (c, m, _, _) <- diagsWith (abCtx id) other] @?= [("G02253", "@listing のパスを二つ書いています: a.txt、b.txt。採用する一方だけを位置引数に残します")],
+      testCase "ADR 0341 I2: reject legacy and ambiguous listing paths" $ do
+        errs "@listing src=src/Main.hs\n" @?= ["G02250"]
+        errs "@listing src/Main.hs src=src/Main.hs\n" @?= ["G02253"]
+        errs "@listing src/Main.hs src=other.hs\n" @?= ["G02253"]
+        errs "@listing src/Main.hs other.hs\n" @?= ["G02253"]
+        errs "@listing src=src/Main.hs src=other.hs\n" @?= ["G02077"]
+        errs "@listing src/Main.hs src=src/Main.hs src=other.hs\n" @?= ["G02077"],
+      testCase "ADR 0343 I1 I2: the code, the site and the table requests of each path form" $ do
+        let row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abTableCtx id) src],) <$> tableRequests src
+            expect src codes n = row src >>= (@?= (codes, n))
+            whole src = [("G02130", 0, T.length src)]
+        expect "@table\n" [("G02034", 0, 7)] 0
+        expect "@table a.csv\n" [] 1
+        let legacy = "@table src=a.csv\n"
+        expect legacy [("G02252", fst (spanOf legacy "src=a.csv"), snd (spanOf legacy "src=a.csv"))] 0
+        [(c, m) | (c, m, _, _) <- diagsWith (abTableCtx id) legacy] @?= [("G02252", "@table の src= は使えません。パスを最初の引数に移します")]
+        forM_ ["@table a.csv src=b.csv\n", "@table a.csv src=a.csv\n", "@table a.csv a.csv\n", "@table a.csv b.csv\n", "@table a.csv b.csv src=a.csv\n"] $ \src ->
+          expect src (whole src) 0,
       testCase "G02038: the number of prose slots" $ do
         msgs "[strong]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
         msgs "[strong: a|b]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
@@ -1888,8 +1997,8 @@ diagnosticTests =
         diags "@label a\n@notoc\n" @?= [("G02010", "属性の後にブロックがありません", 0, 16)]
         diags "@style verse\n" @?= [("G02010", "@style の後にブロックがありません", 0, 13)],
       testCase "G02011: the other commands of the group are evaluated" $ do
-        msgs "@label a\n@set x = 1\n# [= x]\n" @?= [("G02011", "属性のまとまりに属性でないコマンドがあります")]
-        case body "@label a\n@set x = 1\n# [= x]\n" of
+        msgs "@label a\nset x = 1\n# [= x]\n" @?= [("G02011", "属性のまとまりに属性でないコマンドがあります")]
+        case body "@label a\nset x = 1\n# [= x]\n" of
           [Heading 1 _ is] -> stripSpans is @?= ["1"]
           other -> assertFailure (show other),
       testCase "G02012: each repeated attribute line" $ do
@@ -1948,7 +2057,20 @@ printingsTests :: TestTree
 printingsTests =
   testGroup
     "@printings (docs/adr ADR 0033)"
-    [ testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
+    [ testCase "J1: G02076 follows the primary language subtag at every boundary" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+            ok lang = "G02076" `notElem` snd (run (printingsCtx lang) "@printings\n")
+        mapM_ (\(lang, expected) -> ok lang @?= expected) cases,
+      testCase "J2: case changes leave G02076 unchanged" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+            codes lang = snd (run (printingsCtx lang) "@printings\n")
+        mapM_ (\(lang, _) -> codes lang @?= codes (T.toUpper lang)) cases,
+      testCase "J1: missing or non-string language remains G02076" $ do
+        let withLanguage value = (printingsCtx "ja") {ctxMeta = Map.insert "language" value (ctxMeta (printingsCtx "ja"))}
+            withoutLanguage = (printingsCtx "ja") {ctxMeta = Map.delete "language" (ctxMeta (printingsCtx "ja"))}
+        snd (run withoutLanguage "@printings\n") @?= ["G02076"]
+        snd (run (withLanguage (VInt 1)) "@printings\n") @?= ["G02076"],
+      testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
         let (bs, es) = run (printingsCtx "ja") "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["2026年10月16日\x3000初版第1刷発行", "2027年4月1日\x3000初版第2刷発行", "2028年1月10日\x3000第2版第1刷発行"],
@@ -1960,7 +2082,7 @@ printingsTests =
         [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
       testCase "a book not in Japanese is G02076 alone and sets nothing" $ do
         run (printingsCtx "en") "@printings\n" @?= ([], ["G02076"])
-        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"],
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language の主の副タグが ja）でだけ使えます"],
       testCase "a Japanese book without printings is G02098 alone and sets nothing" $ do
         let noPrintings = (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]}
         run noPrintings "@printings\n" @?= ([], ["G02098"])

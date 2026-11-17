@@ -1,6 +1,6 @@
 # ADR 0002: 文書構造（S1）の集約
 
-ステータス: 採択→題を持たない要素への `ref-title` のエラーと G04002 を出す数は [ADR 0003](0003-document-diagnostic-codes.md)、複数の `@index` と `@bibliography` の範囲と参考文献の番号は [ADR 0008](0008-multiple-index-and-bibliography.md)、注の番号を振る範囲と振り直しは [golem-driver ADR 0018](../../golem-driver/adr/0018-footnote-marks-and-numbers.md)
+Status: superseded [{"by":["docs/golem-doc/adr/0003-document-diagnostic-codes.md"],"part":"題を持たない要素への `ref-title` のエラーと G04002 を出す数"},{"by":["docs/golem-doc/adr/0008-multiple-index-and-bibliography.md"],"part":"複数の `@index` と `@bibliography` の範囲と参考文献の番号"},{"by":["docs/golem-driver/adr/0018-footnote-marks-and-numbers.md"],"part":"注の番号を振る範囲と振り直し"}]
 
 ## 文脈
 

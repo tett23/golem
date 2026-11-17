@@ -1,0 +1,18 @@
+golem-cli (ADR 0004)
+  commands on a project
+    heading-limit
+      G3/H1/H2/C1: single check:                       OK
+      G3/H1/H2/C1: single build --target html:         OK
+      G3/H1/H2/C1: nested check:                       OK
+      G3/H1/H2/C1: nested build --target html:         OK
+      G3/H1/H2/C1: repeat check:                       OK
+      G3/H1/H2/C1: repeat build --target html:         OK
+      G3/H1/H2/C1: two check:                          OK
+      G3/H1/H2/C1: two build --target html:            OK
+      G3/H1/H2/C1: shared check:                       OK
+      G3/H1/H2/C1: shared build --target html:         OK
+      G3/H1/H2/C1: chapter-import check:               OK
+      G3/H1/H2/C1: chapter-import build --target html: OK
+
+All 12 tests passed (0.02s)
+golem child processes=0

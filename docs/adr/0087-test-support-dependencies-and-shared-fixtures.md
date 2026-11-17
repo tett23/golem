@@ -1,6 +1,6 @@
 # ADR 0087: golem-test-support が依存してよいパッケージと、パッケージをまたぐテストの値
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0004: style.toml が指すファイルの存在をターゲットごとに検査する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

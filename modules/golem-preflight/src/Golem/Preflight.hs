@@ -5,6 +5,8 @@ reports a cause once, at its first place, with every page in the fact
 -}
 module Golem.Preflight
   ( check,
+    checkBleed,
+    pageChecks,
     MissingGlyph (..),
     missingGlyphs,
     OverfullLine (..),
@@ -53,6 +55,36 @@ check r v =
       spotColors r v,
       cmyPlates r v
     ]
+
+-- | Enabled rules that need the page view, in the order used by 'check'.
+pageChecks :: Rules -> [Text]
+pageChecks r =
+  [ name
+  | (name, enabled) <-
+      [ ("glyph-missing", on ruGlyphMissing),
+        ("font-formats", on ruFontFormats),
+        ("type-size", on ruTypeSize),
+        ("image-resolution", any activeTier [ruResolutionColor r, ruResolutionGray r, ruResolutionBitmap r]),
+        ("image-resolution-max", on ruImageResolutionMax),
+        ("image-color-space", on ruImageColorSpace),
+        ("image-icc", on ruImageIcc),
+        ("bleed-trim-hazard", on ruBleedTrimHazard),
+        ("live-area", on ruLiveArea),
+        ("overfull-lines", on ruOverfullLines),
+        ("pdf-x", on ruPdfX),
+        ("ink-coverage", on ruInkCoverage),
+        ("page-count", on ruPageCount),
+        ("blank-pages", on ruBlankPages),
+        ("stroke-weight", on ruStrokeWeight),
+        ("font-embedding", on ruFontEmbedding),
+        ("spot-colors", on ruSpotColors),
+        ("cmy-plates", on ruCmyPlates)
+      ],
+    enabled
+  ]
+  where
+    on field = field r /= LevelOff
+    activeTier t = tierErrorBelow t > 0 || tierWarningBelow t > 0
 
 -- ------------------------------------------------------------------ helpers
 
@@ -316,10 +348,13 @@ imageIcc r v = case vwIntentProfile v of
 
 -- | G09010: [page] bleed below min.
 bleedSize :: Rules -> View -> [Diagnostic]
-bleedSize r v =
+bleedSize r v = checkBleed r (vwStyleSpan v) (vwBleed v)
+
+checkBleed :: Rules -> SrcSpan -> Sp -> [Diagnostic]
+checkBleed r sp bleed =
   [ d
-  | vwBleed v < ruBleedMin r,
-    d <- at (ruBleedSize r) "G09010" (vwStyleSpan v) ("塗り足しの幅が足りません: " <> mmText (vwBleed v) <> "（" <> mmText (ruBleedMin r) <> " 以上にします）") []
+  | bleed < ruBleedMin r,
+    d <- at (ruBleedSize r) "G09010" sp ("塗り足しの幅が足りません: " <> mmText bleed <> "（" <> mmText (ruBleedMin r) <> " 以上にします）") []
   ]
 
 {- | The distance of each edge of a rectangle from the same edge of the

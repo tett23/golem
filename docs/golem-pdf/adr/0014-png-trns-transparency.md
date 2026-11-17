@@ -1,6 +1,6 @@
 # ADR 0014: PNG の tRNS の透過を SMask で PDF に入れる
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

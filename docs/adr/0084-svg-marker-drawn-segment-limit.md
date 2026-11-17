@@ -1,6 +1,6 @@
 # ADR 0084: SVG の図版の `marker` が描くパスの区間の延べ数に上限を設ける
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

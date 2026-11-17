@@ -1,6 +1,6 @@
 # ADR 0254: PDF の内容ストリームのグリフの符号を `Text.Printf` を使わずに書く
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

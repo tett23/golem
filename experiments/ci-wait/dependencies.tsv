@@ -1,0 +1,21 @@
+strategy	artifact	ready	detected	delay	wait API calls
+poll-10s/jobs-10s	artifact-1	120	120	0	25
+poll-10s/jobs-10s	artifact-2	180	180	0	37
+poll-10s/jobs-10s	artifact-3	240	240	0	49
+poll-10s/jobs-10s	artifact-4	301	310	9	63
+poll-30s/jobs-120s	artifact-1	120	120	0	6
+poll-30s/jobs-120s	artifact-2	180	180	0	9
+poll-30s/jobs-120s	artifact-3	240	240	0	11
+poll-30s/jobs-120s	artifact-4	301	330	29	15
+needs-build-matrix	artifact-1	120	481	361	0
+needs-build-matrix	artifact-2	180	481	301	0
+needs-build-matrix	artifact-3	240	481	241	0
+needs-build-matrix	artifact-4	301	481	180	0
+needs-producer	artifact-1	120	386	266	0
+needs-producer	artifact-2	180	386	206	0
+needs-producer	artifact-3	240	386	146	0
+needs-producer	artifact-4	301	386	85	0
+needs-dedicated-upload-job	artifact-1	120	301	181	0
+needs-dedicated-upload-job	artifact-2	180	301	121	0
+needs-dedicated-upload-job	artifact-3	240	301	61	0
+needs-dedicated-upload-job	artifact-4	301	301	0	0

@@ -1,6 +1,6 @@
 # ADR 0085: CI とリリースのワークフローで、mise の版と SHA-256 を固定する
 
-ステータス: 採択→action を SHA で固定しないことは [ADR 0296](0296-pin-every-github-action-by-commit-sha.md)
+Status: superseded [{"by":["docs/adr/0296-pin-every-github-action-by-commit-sha.md"],"part":"action を SHA で固定しないこと"}]
 
 ## 文脈
 

@@ -432,6 +432,9 @@ pdfs "$CK/p"
 # wait-pdfs.sh makes it in jq or in the shell. It fails from
 # the 21st question for the artifact, so that a wait-pdfs.sh that never
 # stops fails instead.
+run sh "$HERE/../../experiments/ci-wait/compare.sh" --current
+expect "Golem ADR 0333 W1-W6: artifact polling and rate limits" 0
+
 WT=$WORK/wait
 fake "$WT/bin" gh 'printf "%s\n" "$*" >>"$GH_LOG"
 case "$*" in
@@ -777,8 +780,8 @@ if grep -qx 'specimens-vertical-marks-japanese build --target pdf --marks japane
 if grep -qx 'specimens-vertical build --target pdf' "$BR/golem.log" && ! grep -qx 'specimens-vertical bleed' "$BR/golem.log" &&
   grep -qx 'specimens-horizontal build --target pdf' "$BR/golem.log" && ! grep -qx 'specimens-horizontal bleed' "$BR/golem.log"; then ok; else ng "build: the specimens themselves have no marks and no bleed"; fi
 for m in manual manual-dev; do
-  if grep -qx "$m info @set commit = \"0000000000000000000000000000000000000000\"" "$BR/golem.log" &&
-    grep -qx "$m info @set edition = \"v0.0.0-visual\"" "$BR/golem.log"; then ok; else ng "build: $m is built with the fixed commit and tag"; fi
+  if grep -qx "$m info set commit = \"0000000000000000000000000000000000000000\"" "$BR/golem.log" &&
+    grep -qx "$m info set edition = \"v0.0.0-visual\"" "$BR/golem.log"; then ok; else ng "build: $m is built with the fixed commit and tag"; fi
 done
 if [ "$(find "$BR" -type d -name build | LC_ALL=C sort)" = "$(cat "$BR/builds-before")" ] &&
   [ -z "$(find "$BR/modules" "$BR/manual" "$BR/manual-dev" -path '*/build/*' -type f)" ]; then ok; else ng "build: nothing is written to a build/ of the repository"; fi

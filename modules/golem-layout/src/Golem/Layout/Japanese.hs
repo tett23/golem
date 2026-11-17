@@ -30,6 +30,7 @@ module Golem.Layout.Japanese
     MarkFormat (..),
     parseMarkFormat,
     composeInlines,
+    displayedInlines,
     composeInlinesTree,
     softHyphenSites,
     SoftHyphenNote (..),
@@ -156,6 +157,8 @@ data ComposeEnv = ComposeEnv
     ceRestyle :: Look -> Inline -> Look,
     -- | how a sidenote is marked in the text (golem-driver ADR 0006)
     ceSidenoteMarker :: !SidenoteMarker,
+    -- | the character style of the symbol marker ※ in the text, [sidenotes] marker-style (docs/adr/0371)
+    ceSidenoteMarkStyle :: !(Maybe Text),
     -- | the number of a cited work (golem-driver ADR 0007)
     ceCiteNumber :: SrcSpan -> Text -> Maybe Int,
     {- | the penalty of a break after a hyphen or dash in a Latin word;
@@ -236,6 +239,7 @@ defaultComposeEnv fs =
       ceLook = plainLook "body" fs,
       ceRestyle = const,
       ceSidenoteMarker = MarkerNumber,
+      ceSidenoteMarkStyle = Nothing,
       ceCiteNumber = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
       ceNumberUnitPenalty = 10000,
@@ -334,6 +338,25 @@ data WordShys = WordShys
     wsBreakAfter :: !Bool
   }
   deriving stock (Eq, Show)
+
+-- | Display text before line breaking, including resolved numbers and only the base of ruby.
+displayedInlines :: ComposeEnv -> [Inline] -> Text
+displayedInlines env = foldMap (foldMap (display . snd) . piecesOf env)
+  where
+    display = \case
+      PChar _ ch selectors -> T.cons ch selectors
+      PWord _ text _ _ -> text
+      PSpace {} -> " "
+      PBox _ text _ _ -> text
+      PRuby _ _ base _ _ -> base
+      PRubyBreak -> ""
+      PForcedBreak -> "\n"
+      PAki {} -> ""
+      PCode _ text _ _ -> text
+      PDashes _ text -> text
+      PMark _ _ parts _ _ -> markPartsText parts
+      PAnchor _ -> ""
+      PShy {} -> ""
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls = let (items, anchors, _) = composeInlinesTree env inls in (items, anchors)
@@ -824,7 +847,14 @@ piecesOf env inl = case inl of
     (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body))) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
       MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
-      MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
+      {- ※ in the look of its place, or in that of marker-style, measured
+      in it; the body of the sidenote does not take it (docs/adr/0371) -}
+      MarkerSymbol -> case ceSidenoteMarkStyle env of
+        Nothing -> at sp [PBox lk "※" KindText (lkSize lk)]
+        Just name ->
+          let styled = CharStyle sp name []
+              lk' = ceRestyle env lk styled
+           in [(((ceSizeSourceOf env (ceSizeSource env) styled, sp), const (spanStart sp)), PBox lk' "※" KindText (lkSize lk'))]
       MarkerNone -> []
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)

@@ -41,10 +41,10 @@ tests =
             "underline = { start-indent = \"1zw\" }\n",
             "underline = \"yes\"\n",
             "underline = 1\n",
-            "underline = { offset = \"abc\" }\n",
             "strikethrough = { weight = \"0pt\" }\n",
             "underline = { style = \"solid\", dash = \"1pt\" }\n"
-          ],
+          ]
+        codes "underline = { offset = \"abc\" }\n" @?= ["G03257"],
       testCase "a color that is not a swatch is G03013" $
         codes "underline = { color = \"nowhere\" }\n" @?= ["G03013"],
       testCase "@style-def takes true and false, not a table" $ do

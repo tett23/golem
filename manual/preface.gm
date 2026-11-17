@@ -1,5 +1,5 @@
-@set characters = 32
-@set lines = 29
+set characters = 32
+set lines = 29
 
 @nonumber
 @label preface

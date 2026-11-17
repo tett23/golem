@@ -101,8 +101,8 @@ tests =
         msgs "@blank-line 1.5\n" @?= [("G02104", "@blank-line の引数には 0 以上の整数を書きます（書かれた値 1.5 は整数ではありません）")]
         msgs "@blank-line [= 3 / 2]\n" @?= msgs "@blank-line 1.5\n"
         msgs "@blank-line [= 7 / 3]\n" @?= [("G02104", "@blank-line の引数には 0 以上の整数を書きます（書かれた値 7/3 は整数ではありません）")],
-      testCase "0 and a word that is no number stay G02092" $ do
-        codes "@blank-line 0\n" @?= ["G02092"]
+      testCase "ADR 0345 I4: a word that is no number stays G02092; zero has info" $ do
+        codes "@blank-line 0\n" @?= ["G02254"]
         codes "@blank-line x\n" @?= ["G02092"]
         -- .5 and 5. are no literals of the grammar of expressions (docs/adr ADR 0111)
         codes "@blank-line .5\n" @?= ["G02092"]

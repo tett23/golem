@@ -66,6 +66,9 @@ module Golem.Project.Style
     StyleKind (..),
     LocalValue (..),
     localStyleDef,
+    localStyleDefWithValues,
+    layoutValueNames,
+    layoutValueSites,
     withLocalStyles,
     checkLocalStyles,
     charStyleKeys,
@@ -77,6 +80,7 @@ module Golem.Project.Style
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
+    HeadingBlockAlign (..),
     NotesPlacement (..),
     Composition (..),
     RubyStyleDef (..),
@@ -122,11 +126,12 @@ module Golem.Project.Style
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (join, unless, when)
+import Control.Monad (foldM, join, unless, when)
 import Data.Bifunctor (bimap)
+import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
 import Data.Foldable (asum, toList)
-import Data.List (find, nub, nubBy)
+import Data.List (find, nub, nubBy, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -134,13 +139,14 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotName (..), Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
-import Golem.Project.Manifest (decodeStrictBy, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.Manifest (decodeStrictBy, decodeStrictTableWith, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
 import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
@@ -164,6 +170,7 @@ data Dim = Abs !Sp | Zw !Rational
 exact rationals and rounds once, half to even.
 -}
 parseDim :: Text -> Maybe Dim
+parseDim t | T.strip t == "0" || T.strip t == "-0" = Just (Abs 0)
 parseDim t =
   let (num, unit) = T.span (\c -> isDigit c || c == '.') (T.strip t)
    in do
@@ -563,6 +570,8 @@ value is in zw; negative amounts are not written.
 -}
 parseAki :: Text -> Maybe Rational
 parseAki t = case T.strip t of
+  "0" -> Just 0
+  "-0" -> Just 0
   "ベタ" -> Just 0
   "全角" -> Just 1
   "二分" -> Just (1 % 2)
@@ -712,15 +721,15 @@ first-line indent and no end indent.
 tocStyleDefault :: Int -> ParaStyleDef
 tocStyleDefault l = noParaDef {psBasedOn = Just "body", psSize = Just (Zw 1), psIndent = Just (Zw (fromIntegral (l - 1))), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
-{- | The paragraph styles that never indent: caption, sidenote
-(golem-driver ADR 0043) and table (docs/adr/0262).
+{- | The paragraph styles that never indent: table (docs/adr/0262).
+caption and sidenote indent their parts (docs/adr/0367).
 -}
 unindentedStyles :: [Text]
-unindentedStyles = ["caption", "sidenote", "table"]
+unindentedStyles = ["table"]
 
-{- | The non-zero indent keys written for caption, sidenote or table, which
-do not indent (golem-driver ADR 0043, docs/adr/0262): (the name of the
-style, the key). A zero one is the notice G03100.
+{- | The non-zero indent keys written for table, which does not indent
+(docs/adr/0262): (the name of the style, the key). A zero one is the
+notice G03100.
 -}
 captionIndentKeys :: Map Text ParaStyleDef -> [(Text, Text)]
 captionIndentKeys styles =
@@ -731,7 +740,7 @@ captionIndentKeys styles =
     not (zeroDim v)
   ]
 
--- | The indent keys of a definition of caption or sidenote whose value is zero (G03100, golem-driver ADR 0043).
+-- | The indent keys of a definition of table whose value is zero (G03100, golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
 captionZeroIndentKeys n d = [k | n `elem` unindentedStyles, (k, Just v) <- indentKeysOf d, zeroDim v]
 
@@ -743,8 +752,8 @@ zeroDim = \case
   Abs x -> x == 0
   Zw r -> r == 0
 
-{- | The notices of style.toml: G03100 for a zero indent or
-first-line-indent of caption or sidenote, at the value, with the value as
+{- | The notices of style.toml: G03100 for a zero indent,
+first-line-indent or end-indent of table, at the value, with the value as
 written (golem-driver ADR 0043); the ways of writing to be retired
 (docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
 numbers, G03116 for a line of a running head format, G03117 for [notes]
@@ -755,12 +764,11 @@ styleNotices fid src = case Toml.parse src of
   Left _ -> []
   Right top ->
     let root = Table' (Position 0 1 1) top
-     in [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
+     in [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k written)
         | n <- unindentedStyles,
           k <- ["indent", "first-line-indent", "end-indent"],
-          Just (Text' pos t) <- [lookupValue root ["paragraph-styles", n, k]],
-          Just v <- [parseSignedDim t],
-          zeroDim v
+          Just value <- [lookupValue root ["paragraph-styles", n, k]],
+          Just (pos, written) <- [zeroWritten value]
         ]
           <> concat
             [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
@@ -783,6 +791,10 @@ styleNotices fid src = case Toml.parse src of
                let pos = valueAnn v
              ]
   where
+    zeroWritten = \case
+      Text' pos t | maybe False zeroDim (parseSignedDim t) -> Just (pos, "\"" <> t <> "\"")
+      Integer' pos 0 -> Just (pos, "0")
+      _ -> Nothing
     lookupValue v = \case
       [] -> Just v
       k : rest | Table' _ (MkTable t) <- v -> Map.lookup k t >>= \(_, x) -> lookupValue x rest
@@ -791,17 +803,15 @@ styleNotices fid src = case Toml.parse src of
       Just off -> mkSpan fid off off
       Nothing -> mkSpan fid 0 0
 
--- | The message of G03100: a zero indent of caption or sidenote, with the value as written (golem-driver ADR 0043).
+-- | The message of G03100: a zero indent of table, with the value as written (golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentMessage :: Text -> Text -> Text -> Text
 captionZeroIndentMessage n k v = unindented n <> "は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
 
--- | What a paragraph style that never indents sets, in a message (golem-driver ADR 0043, docs/adr/0262).
+-- | What a paragraph style that never indents sets, in a message (docs/adr/0262, 0367).
 unindented :: Text -> Text
-unindented = \case
-  "table" -> "表のセル"
-  _ -> "キャプションと傍注"
+unindented _ = "表のセル"
 
--- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
+-- | The message of an indent key of table (golem-driver ADR 0043, docs/adr/0367).
 captionIndentMessage :: Text -> Text -> Text
 captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。" <> unindented n <> "は字下げをしません: " <> k
 
@@ -1037,6 +1047,12 @@ validStyleName n = case T.uncons n of
   Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
   Nothing -> False
 
+data HeadingBlockAlign = HeadingStart | HeadingCenter | HeadingEnd
+  deriving stock (Eq, Show)
+
+headingBlockAlignValues :: [(Text, HeadingBlockAlign)]
+headingBlockAlignValues = [("start", HeadingStart), ("center", HeadingCenter), ("end", HeadingEnd)]
+
 data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
@@ -1046,7 +1062,8 @@ data HeadingStyle = HeadingStyle
     hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
-    hsRuleAfter :: !(Maybe RuleSpec)
+    hsRuleAfter :: !(Maybe RuleSpec),
+    hsBlockAlign :: !HeadingBlockAlign
   }
   deriving stock (Eq, Show)
 
@@ -1095,7 +1112,9 @@ are the paragraph style sidenote's (golem-driver ADR 0011).
 data SidenoteStyle = SidenoteStyle
   { snWidth :: !Dim,
     snGap :: !Dim,
-    snMarker :: !Text
+    snMarker :: !Text,
+    -- | the character style of the symbol marker ※ in the text (docs/adr/0371)
+    snMarkerStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -1273,13 +1292,14 @@ numbers, the default of the writing mode.
 data ListStyle = ListStyle
   { lsBullets :: !(Maybe (NonEmpty Text)),
     lsNumbers :: !(Maybe (NonEmpty NumberFormat)),
-    lsGap :: !(Maybe Dim)
+    lsGap :: !(Maybe Dim),
+    lsMarkerStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | No [lists]: the bullet of the output, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
-defaultListStyle = ListStyle Nothing Nothing Nothing
+defaultListStyle = ListStyle Nothing Nothing Nothing Nothing
 
 {- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
 or • without bullets (golem-driver ADR 0044).
@@ -1522,6 +1542,7 @@ instance FromValue RuleSpec where
     pure (RuleSpec len w before after color style (fromMaybe (Zw 0) startIndent) endIndent (fromMaybe True keepIn))
     where
       ruleDim key check v = case v of
+        Integer' l 0 -> check l (Abs 0)
         Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
         _ -> failAt (valueAnn v) (T.unpack ("罫線の " <> key <> " は \"0.3pt\" のように文字列で書きます"))
       positiveDim = \case
@@ -1571,6 +1592,7 @@ lineKeys zwAllowed = do
   pure (LineKeys (snd <$> weight) color (name, multi) (snd <$> dash) (snd <$> gap))
   where
     ruleDim key check v = case v of
+      Integer' l 0 -> check l (Abs 0)
       Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
       _ -> failAt (valueAnn v) (T.unpack ("罫線の " <> key <> " は \"0.3pt\" のように文字列で書きます"))
 
@@ -1582,6 +1604,7 @@ instance FromValue DecorationSpec where
   fromValue = parseTableFromValue $ do
     LineKeys weight color style dash gap <- lineKeys True
     offset <- optKeyOf "offset" $ \case
+      Integer' _ 0 -> pure (Abs 0)
       Text' l t -> maybe (failAt l (T.unpack ("offset の長さの書き方が不正です: " <> t <> "（0.05zw や -1pt のように書きます）"))) pure (parseSignedDim t)
       v -> failAt (valueAnn v) "offset は \"0.05zw\" のように文字列で書きます"
     let d = defaultDecoration
@@ -1600,6 +1623,7 @@ newtype Swatch = Swatch (Int, Int, Int, Int)
 
 data Style = Style
   { stPage :: !(Maybe Page),
+    stLayoutValues :: !(Map Text (QuantityKind, QuantityValue)),
     stFonts :: !(Map Text FontRole),
     -- | the built-in character styles with the user's definitions over them
     stCharStyles :: !(Map Text CharStyleDef),
@@ -1626,6 +1650,10 @@ data Style = Style
     stNotesMarkStyle :: !Text,
     -- | [notes] body-mark-style: the character style of the marks at the start of note bodies in the PDF; Nothing is none (docs/adr/0177)
     stNotesBodyMarkStyle :: !(Maybe Text),
+    -- | [notes] body-style: the paragraph style of the bodies of footnotes and notes at the end of a chapter in the PDF; Nothing is the body (docs/adr/0366)
+    stNotesBodyStyle :: !(Maybe Text),
+    -- | [notes] heading-style: the paragraph style of the title of the list of notes at the end of a chapter in the PDF; Nothing is the heading of level 2 (docs/adr/0366)
+    stNotesHeadingStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     -- | [tables] number: the format of table numbers (docs/adr/0262)
@@ -1658,6 +1686,7 @@ defaultStyle :: Style
 defaultStyle =
   Style
     { stPage = Nothing,
+      stLayoutValues = Map.empty,
       stFonts = Map.empty,
       stCharStyles = builtinCharStyles,
       stParaStyles = builtinParaStyles,
@@ -1672,6 +1701,8 @@ defaultStyle =
       stNotesMarkFormat = defaultMarkFormat,
       stNotesMarkStyle = "note-mark",
       stNotesBodyMarkStyle = Nothing,
+      stNotesBodyStyle = Nothing,
+      stNotesHeadingStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stTableNumber = "表{chapter}-{n}",
@@ -1745,6 +1776,7 @@ instance FromValue PageSize where
 newtype DimV = DimV Dim
 
 instance FromValue DimV where
+  fromValue (Integer' _ 0) = pure (DimV (Abs 0))
   fromValue (Text' l t) = case parseDim t of
     Just d -> pure (DimV d)
     Nothing
@@ -1785,6 +1817,7 @@ akiError why = "アキの量の指定が正しくありません: " <> why
 newtype AkiV = AkiV Rational
 
 instance FromValue AkiV where
+  fromValue (Integer' _ 0) = pure (AkiV 0)
   fromValue (Text' l t) = maybe (failAt l (T.unpack (akiError ("アキの量として読めません: " <> t)))) (pure . AkiV) (parseAki t)
   fromValue v = failAt (valueAnn v) (T.unpack (akiError "アキの量は \"四分\" や \"25%\" のように文字列で書きます"))
 
@@ -1955,7 +1988,9 @@ featureKeysOf = do
       withValue $ \l n ->
         if n < -1000 || n > 10000 then wrong l "tracking" (T.pack (show n) <> "（-1000 から 10000 までです）") else pure n
   p <- optKey "proportional-metrics"
-  bs <- optKeyOf "baseline-shift" (withValue (\l v -> maybe (wrong l "baseline-shift" v) pure (parseSignedDim v)))
+  bs <- optKeyOf "baseline-shift" $ \case
+    Integer' _ 0 -> pure (Abs 0)
+    v -> withValue (\l raw -> maybe (wrong l "baseline-shift" raw) pure (parseSignedDim raw)) v
   pw <- optKeyOf "punctuation-width" (withValue (\l v -> maybe (wrong l "punctuation-width" v) pure (lookup v punctuationWidthValues)))
   pure (k, t, p, bs, pw)
 
@@ -2089,8 +2124,9 @@ boxSidesOf = \case
 at the value and names the key (golem-project ADR 0008).
 -}
 signedDimKey :: Text -> String -> ParseTable l (Maybe Dim)
-signedDimKey k example = optKeyOf k $ withValue $ \l v ->
-  maybe (failAt l ("長さの書き方が不正です: " <> T.unpack v <> example)) pure (parseSignedDim v)
+signedDimKey k example = optKeyOf k $ \case
+  Integer' _ 0 -> pure (Abs 0)
+  v -> withValue (\l t -> maybe (failAt l ("長さの書き方が不正です: " <> T.unpack t <> example)) pure (parseSignedDim t)) v
 
 {- | A paragraph or heading rule (golem-driver ADR 0027): a rule spec, or
 false for none; true is an error.
@@ -2118,7 +2154,8 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
+    align <- enumKey "block-align" (map fst headingBlockAlignValues)
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)))
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2184,7 +2221,8 @@ instance FromValue SidenoteStyle where
       Just l -> failTableAt l "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
       Nothing -> pure ()
     m <- enumKey "marker" markerValues
-    pure (SidenoteStyle w g (fromMaybe "number" m))
+    markerStyle <- optKey "marker-style"
+    pure (SidenoteStyle w g (fromMaybe "number" m) markerStyle)
 
 -- | The positions of a running head and a folio (golem-driver ADR 0014).
 masterPositions :: [Text]
@@ -2298,7 +2336,7 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text)
 
 instance FromValue Notes where
   fromValue =
@@ -2311,6 +2349,9 @@ instance FromValue Notes where
           <*> optKeyOf "mark-format" (withValue markFormat)
           <*> optKey "mark-style"
           <*> optKey "body-mark-style"
+          -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+          <*> optKey "body-style"
+          <*> optKey "heading-style"
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -2398,7 +2439,9 @@ instance FromValue ListsSec where
   fromValue = parseTableFromValue $ do
     bullets <- optKeyAt "bullets"
     numbers <- optKeyAt "numbers"
-    gap <- textAt "gap"
+    gap <- optKeyOf "gap" $ \v -> case v of
+      Integer' l 0 -> pure (l, "0")
+      _ -> (valueAnn v,) <$> fromValue v
     -- each error is at the value of its key (golem-project ADR 0008)
     let bad l key why = failTableAt l (T.unpack ("[lists] の " <> key <> " が正しくありません: " <> why))
         nonEmpty key = \case
@@ -2417,7 +2460,8 @@ instance FromValue ListsSec where
         Just d
           | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
-    pure (ListsSec (ListStyle bs fmts g))
+    markerStyle <- optKey "marker-style"
+    pure (ListsSec (ListStyle bs fmts g markerStyle))
 
 {- | [index] (docs/adr ADR 0025): every error is at its value, G03025 by
 its path. The position of columns is filled in by 'parseStyle'.
@@ -2434,6 +2478,7 @@ instance FromValue IndexSec where
           if n >= 1 && n <= maxNaturalInt then pure n else failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
       _ -> failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
     gap <- optKeyOf "column-gap" $ \v -> case v of
+      Integer' _ 0 -> pure (Abs 0)
       Text' _ t | Just d <- parseSignedDim t, not (negativeDim d) -> pure d
       _ -> failAt (valueAnn v) "[index] の column-gap が正しくありません"
     headings <- optKeyOf "section-headings" $ \case
@@ -2456,7 +2501,7 @@ instance FromValue Style where
     page <- optKey "page"
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
-    -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+    -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
     pstyles <-
       fmap (fromMaybe Map.empty) . optKeyOf "paragraph-styles" $ \v -> do
         (styles :: Map Text ParaStyleDef) <- fromValue v
@@ -2475,9 +2520,9 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf nmst nbst <-
-      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
-        notes@(Notes _ _ _ size _ markStyle _) <- fromValue v
+    Notes np nn nr nms nmf nmst nbst nbody nhead <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _ _ _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
@@ -2504,6 +2549,7 @@ instance FromValue Style where
     pure
       Style
         { stPage = page,
+          stLayoutValues = Map.empty,
           stFonts = fonts,
           stCharStyles = markSizeOver nms nmst (Map.unionWith overChar cstyles builtinCharStyles),
           stParaStyles = Map.unionWith overPara pstyles builtinParaStyles,
@@ -2518,6 +2564,8 @@ instance FromValue Style where
           stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
           stNotesMarkStyle = fromMaybe (stNotesMarkStyle d) nmst,
           stNotesBodyMarkStyle = nbst,
+          stNotesBodyStyle = nbody,
+          stNotesHeadingStyle = nhead,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
@@ -2578,10 +2626,198 @@ checkPosition top path = valueAt path <|> (case reverse path of _ : parent@(_ : 
 {- | Parses style.toml and checks what can be checked without the
 filesystem.
 -}
+
+{- | Resolve typed layout values in the TOML tree while retaining each use's
+original position (ADR 0346). The declaration table is removed only after
+its names and values have been checked.
+-}
+data QuantityKind = LengthKind | AkiKind | CountKind deriving stock (Eq, Show)
+
+data QuantityValue = QuantityText Text | QuantityCount Integer deriving stock (Eq, Show)
+
+resolveStyleValues :: FileId -> Text -> Table' Position -> Either Diagnostic (Table' Position, Map Text (QuantityKind, QuantityValue))
+resolveStyleValues fid src (MkTable root) = do
+  definitions <- case Map.lookup "values" root of
+    Nothing -> Right Map.empty
+    Just (_, Table' _ (MkTable kinds)) -> do
+      entries <- fmap concat . traverse typeEntries $ Map.toList kinds
+      foldM insert Map.empty (sortOn (place . third) entries)
+    Just (_, v) -> Left (bad "G03256" (valueAnn v) "values には length、aki、count の表を書きます")
+  resolved <- foldM (\cache name -> snd <$> resolveName definitions cache [] name) Map.empty (Map.keys definitions)
+  MkTable changed <- rewrite definitions [] resolved (MkTable (Map.delete "values" root))
+  pure (MkTable changed, resolved)
+  where
+    typeEntries (kindName, (_, v)) = case (kindName, v) of
+      ("length", Table' _ (MkTable entries)) -> Right [(name, LengthKind, pos, value) | (name, (pos, value)) <- Map.toList entries]
+      ("aki", Table' _ (MkTable entries)) -> Right [(name, AkiKind, pos, value) | (name, (pos, value)) <- Map.toList entries]
+      ("count", Table' _ (MkTable entries)) -> Right [(name, CountKind, pos, value) | (name, (pos, value)) <- Map.toList entries]
+      _ -> Left (bad "G03256" (valueAnn v) ("values." <> kindName <> " は length、aki、count の表にします"))
+    third (_, _, x, _) = x
+    place (Position _ line column) = (line, column)
+    insert defs (name, kind, pos, value)
+      | not (validName name) || reservedName name = Left (bad "G03255" pos ("値の名前が正しくありません: " <> name))
+      | Map.member name defs = Left (bad "G03254" pos ("値の名前を重複して登録しています: " <> name))
+      | otherwise = Right (Map.insert name (kind, value) defs)
+    validName name = case T.uncons name of
+      Just (first, rest) -> isAsciiLower first && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
+      Nothing -> False
+    reservedName name = name `elem` ["pt", "in", "mm", "Q", "H", "zw", "ベタ", "全角", "二分", "三分", "四分", "五分", "六分", "八分", "二分四分"]
+    bad code pos = diagnostic code Error (positionSpan fid src (Just pos))
+    resolveName defs cache stack name = case Map.lookup name cache of
+      Just result -> Right (result, cache)
+      Nothing -> case Map.lookup name defs of
+        Nothing -> Left (bad "G03257" (Position 0 1 1) ("値の名前がありません: " <> name))
+        Just (kind, value)
+          | name `elem` stack -> Left (bad "G03256" (valueAnn value) ("値の宣言が循環しています: " <> T.intercalate " → " (reverse (name : stack))))
+          | otherwise -> do
+              (resolved, cache') <- resolveValue defs cache (name : stack) kind value
+              let result = (kind, resolved)
+              Right (result, Map.insert name result cache')
+    resolveValue defs cache stack kind value = case value of
+      Integer' pos n
+        | kind == CountKind, n >= 0, n <= toInteger maxNaturalInt -> Right (QuantityCount n, cache)
+        | kind /= CountKind, n == 0 -> Right (QuantityText "0", cache)
+        | otherwise -> Left (bad "G03256" pos "宣言の値が種類に合いません")
+      Text' pos raw -> term defs cache stack kind pos (T.strip raw)
+      _ -> Left (bad "G03256" (valueAnn value) "宣言の値が種類に合いません")
+    term defs cache stack kind pos raw = case kind of
+      LengthKind
+        | Just _ <- parseSignedDim raw -> Right (QuantityText raw, cache)
+        | validName raw -> reference defs cache stack kind pos raw
+        | otherwise -> Left (bad "G03256" pos ("長さの宣言値が正しくありません: " <> raw))
+      AkiKind
+        | Just _ <- parseAki raw -> Right (QuantityText raw, cache)
+        | validName raw -> reference defs cache stack kind pos raw
+        | otherwise -> Left (bad "G03256" pos ("アキ量の宣言値が正しくありません: " <> raw))
+      CountKind -> do
+        (values, cache') <-
+          foldM
+            ( \(values, current) atom -> do
+                (n, next) <- countAtom current atom
+                Right (n : values, next)
+            )
+            ([], cache)
+            (T.splitOn "+" raw)
+        let total = sum values
+        if total <= toInteger maxNaturalInt then Right (QuantityCount total, cache') else Left (bad "G03256" pos "行数が上限を超えています")
+        where
+          countAtom current atom
+            | let t = T.strip atom, not (T.null t), T.all isDigit t = Right (read (T.unpack (T.strip atom)), current)
+            | validName (T.strip atom) = do
+                (v, next) <- reference defs current stack CountKind pos (T.strip atom)
+                case v of
+                  QuantityCount n -> Right (n, next)
+                  _ -> Left (bad "G03256" pos "行数の宣言値が正しくありません")
+            | otherwise = Left (bad "G03256" pos ("行数の宣言値が正しくありません: " <> raw))
+    reference defs cache stack wanted pos name = do
+      case Map.lookup name defs of
+        Nothing -> Left (bad (if null stack then "G03257" else "G03256") pos ("値の名前がありません: " <> name))
+        Just _ -> do
+          ((actual, resolved), next) <- resolveName defs cache stack name
+          if actual == wanted then Right (resolved, next) else Left (bad (if null stack then "G03258" else "G03256") pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
+    kindText = \case
+      LengthKind -> "length"
+      AkiKind -> "aki"
+      CountKind -> "count"
+    expected = quantityKindAt
+    rewrite defs path names (MkTable entries) = MkTable <$> Map.traverseWithKey (\key (pos, value) -> (pos,) <$> rewriteValue defs (path <> [key]) names value) entries
+    rewriteValue defs path names = \case
+      Table' pos entries -> Table' pos <$> rewrite defs path names entries
+      List' pos xs -> List' pos <$> traverse (rewriteValue defs path names) xs
+      Text' pos raw
+        | Just CountKind <- expected path,
+          T.all (\c -> isDigit c || c == '+' || c == ' ' || c == '-' || isAsciiLower c) raw,
+          not (T.null raw) -> do
+            result <- fst <$> term defs names [] CountKind pos (T.strip raw)
+            case result of
+              QuantityCount n -> Right (Integer' pos n)
+              _ -> Right (Text' pos raw)
+      Text' pos raw
+        | Just kind <- expected path,
+          validName raw -> case Map.lookup raw names of
+            Nothing -> Left (bad "G03257" pos ("値の名前がありません: " <> raw))
+            Just (actual, item)
+              | actual /= kind -> Left (bad "G03258" pos ("値 " <> raw <> " の種類が違います: 要求 " <> kindText kind <> "、実際 " <> kindText actual))
+              | otherwise -> Right (case item of QuantityText t -> Text' pos t; QuantityCount n -> Integer' pos n)
+      value -> Right value
+
+quantityKindAt :: [Text] -> Maybe QuantityKind
+quantityKindAt path = case nodeAt styleSchema path of
+  Just (NValue LDimension) -> Just LengthKind
+  Just (NValue LInteger) | lastMay path `elem` map Just ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just CountKind
+  _ | lastMay path `elem` map Just ["optimum", "minimum", "maximum"], "aki-sets" `elem` path -> Just AkiKind
+  _ -> Nothing
+  where
+    lastMay [] = Nothing
+    lastMay xs = Just (last xs)
+
+{- | Typed declaration and reference spans in style.toml, as UTF-8 byte
+offsets. The last flag marks a declaration (ADR 0346).
+-}
+layoutValueSites :: Text -> [(Text, Text, Int, Int, Bool)]
+layoutValueSites src = case Toml.parse src of
+  Left _ -> []
+  Right root -> declarations root <> uses [] root
+  where
+    declarations (MkTable root) = case Map.lookup "values" root of
+      Just (_, Table' _ (MkTable kinds)) ->
+        [ (kind, name, start, start + BS.length (TE.encodeUtf8 name), True)
+        | (kind, (_, Table' _ (MkTable entries))) <- Map.toList kinds,
+          kind `elem` ["length", "aki", "count"],
+          (name, (pos, _)) <- Map.toList entries,
+          Just start <- [findName pos (T.length name + 2) name]
+        ]
+      _ -> []
+    known = [(kind, name) | (kind, name, _, _, True) <- case Toml.parse src of Right root -> declarations root; Left _ -> []]
+    uses path (MkTable entries) =
+      concat
+        [ walk (path <> [key]) value
+        | (key, (_, value)) <- Map.toList entries
+        ]
+    walk path = \case
+      Table' _ tab -> uses path tab
+      List' _ xs -> concatMap (walk path) xs
+      Text' pos raw
+        | Just kind <- kindAt path ->
+            [ (kind, name, start, start + BS.length (TE.encodeUtf8 name), False)
+            | (kind', name) <- known,
+              kind' == kind,
+              start <- findNames pos (T.length raw + 2) name
+            ]
+      _ -> []
+    kindAt path = case path of
+      ["values", "length", _] -> Just "length"
+      ["values", "aki", _] -> Just "aki"
+      ["values", "count", _] -> Just "count"
+      _ -> fmap kindText (quantityKindAt path)
+    kindText = \case
+      LengthKind -> "length"
+      AkiKind -> "aki"
+      CountKind -> "count"
+    findName pos width name = case findNames pos width name of
+      x : _ -> Just x
+      [] -> Nothing
+    findNames pos width name = case positionSpan (FileId 0) src (Just pos) of
+      sp -> scan (spanStart sp) (T.take width (TE.decodeUtf8Lenient (BS.drop (spanStart sp) (TE.encodeUtf8 src))))
+      where
+        scan off text = case T.breakOn name text of
+          (_, rest) | T.null rest -> []
+          (before, rest) ->
+            let start = off + BS.length (TE.encodeUtf8 before)
+                after = T.drop (T.length name) rest
+                boundary c = isAsciiLower c || isDigit c || c == '-'
+                leftOk = T.null before || not (boundary (T.last before))
+                rightOk = T.null after || not (boundary (T.head after))
+             in [start | leftOk && rightOk] <> scan (start + BS.length (TE.encodeUtf8 name)) after
+
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
-  s0 <- either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
-  let s = sited s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
+  (s0, names) <- case Toml.parse src of
+    Left _ -> (,Map.empty) <$> either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
+    Right tab -> do
+      (resolved, values) <- either (Left . pure) Right (resolveStyleValues fid src tab)
+      (,values) <$> either (Left . map akiCode) Right (decodeStrictTableWith styleSchema codeAt fid src resolved)
+  let s = sited s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0, stLayoutValues = names}
   -- the same code and message once, at the path that comes first (golem-project ADR 0008)
   case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
@@ -2947,6 +3183,13 @@ styleReferenceChecks owner s =
             (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
             Map.notMember n cs
           ]
+            -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+            <> [ ("", styleKeys ["notes", k], "[notes] の " <> k <> " の段落スタイルがありません: " <> n)
+               | (k, Just n) <- [("body-style", stNotesBodyStyle s), ("heading-style", stNotesHeadingStyle s)],
+                 Map.notMember n ps
+               ]
+            <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
+            <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3108,6 +3351,54 @@ localStyleDef kind kvs = case kind of
   CharacterKind -> Left <$> readLocal kvs
   ParagraphKind -> Right <$> readLocal kvs
 
+-- | Read @style-def with the declarations loaded from style.toml (ADR 0346).
+localStyleDefWithValues :: Style -> StyleKind -> [(Text, LocalValue)] -> Either [(Text, Text)] (Either CharStyleDef ParaStyleDef)
+localStyleDefWithValues style kind kvs = do
+  values <- traverse replace kvs
+  localStyleDef kind values
+  where
+    prefix = case kind of CharacterKind -> "character-styles"; ParagraphKind -> "paragraph-styles"
+    replace (key, value) = case (quantityKindAt [prefix, "local", key], value) of
+      (Just wanted, LocalWord name) -> named key wanted name value
+      (Just wanted, LocalString name) -> named key wanted name value
+      _ -> Right (key, value)
+    named key CountKind expression _ | "+" `T.isInfixOf` expression = do
+      parts <- traverse countPart (T.splitOn "+" expression)
+      let total = sum parts
+      if total > toInteger maxNaturalInt
+        then Left [("G03256", "行数が上限を超えています")]
+        else Right (key, LocalWord (T.pack (show total)))
+    named key wanted name original = case Map.lookup name (stLayoutValues style) of
+      Nothing
+        | validName name -> Left [("G03257", "値の名前がありません: " <> name)]
+        | otherwise -> Right (key, original)
+      Just (actual, item)
+        | wanted /= actual -> Left [("G03258", "値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual)]
+        | otherwise -> Right (key, case item of QuantityText t -> LocalString t; QuantityCount n -> LocalWord (T.pack (show n)))
+    kindText LengthKind = "length"
+    kindText AkiKind = "aki"
+    kindText CountKind = "count"
+    validName name = case T.uncons name of
+      Just (first, rest) -> isAsciiLower first && T.all (\c -> isAsciiLower c || isDigit c || c == '-') rest
+      Nothing -> False
+    countPart part
+      | let digits = T.strip part, not (T.null digits), T.all isDigit digits = Right (read (T.unpack (T.strip part)))
+      | otherwise = case Map.lookup (T.strip part) (stLayoutValues style) of
+          Just (CountKind, QuantityCount n) -> Right n
+          Just (actual, _) -> Left [("G03258", "値 " <> T.strip part <> " の種類が違います: 要求 count、実際 " <> kindText actual)]
+          Nothing -> Left [("G03257", "値の名前がありません: " <> T.strip part)]
+
+-- | Names of declarations that a style key can accept (ADR 0346).
+layoutValueNames :: Style -> StyleKind -> Text -> [Text]
+layoutValueNames style kind key =
+  [ name
+  | Just wanted <- [quantityKindAt [prefix, "local", key]],
+    (name, (actual, _)) <- Map.toList (stLayoutValues style),
+    wanted == actual
+  ]
+  where
+    prefix = case kind of CharacterKind -> "character-styles"; ParagraphKind -> "paragraph-styles"
+
 -- | The keys of one @style-def regex (docs/adr ADR 0015), read as a regex style of style.toml.
 localRegexStyleDef :: [(Text, LocalValue)] -> Either [Text] RegexStyleDef
 localRegexStyleDef = either (Left . map snd) Right . readLocal
@@ -3165,7 +3456,7 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = checksOf s
-      -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+      -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
       indents = [("G03006", n, captionIndentMessage n k) | (n, k) <- captionIndentKeys (lsParaStyles ls)]
    in nub (indents <> [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base])
   where
@@ -3273,7 +3564,8 @@ does not read is caught by the test of the schema.
 styleSchema :: Node
 styleSchema =
   NTable
-    [ ("page", pageNode),
+    [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
+      ("page", pageNode),
       ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
@@ -3282,14 +3574,14 @@ styleSchema =
       ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
       ("emphasis", NRejected),
       ("notes", notesNode),
-      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues)]),
+      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues), ("marker-style", ref CharStyles)]),
       ("figures", NTable [("number", str), ("wrap-gap", dim)]),
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
       ("verse", NRejected),
       ("toc", NTable [("leader", enum leaderValues)]),
-      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
+      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim), ("marker-style", ref CharStyles)]),
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),
       ("index", NTable [("columns", int), ("column-gap", dim), ("section-headings", bool)]),
       ("code", codeNode),
@@ -3320,6 +3612,7 @@ styleSchema =
           ("size", dim),
           ("number", str),
           ("page-break", enum pageBreakValues),
+          ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
           -- retired (golem-driver ADR 0014): G03019
           ("running-head", NRejected),
@@ -3359,7 +3652,9 @@ styleSchema =
           ("mark-size", dim),
           ("mark-format", str),
           ("mark-style", ref CharStyles),
-          ("body-mark-style", ref CharStyles)
+          ("body-mark-style", ref CharStyles),
+          ("body-style", ref ParaStyles),
+          ("heading-style", ref ParaStyles)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]
     masterNode =

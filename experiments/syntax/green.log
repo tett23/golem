@@ -1,0 +1,20 @@
+✔ 315 I1 migration preserves location and only changes targeted codes (1.310666ms)
+✔ 316 I1 migration preserves location and only changes targeted codes (0.101458ms)
+✔ 317 I1 migration preserves location and only changes targeted codes (0.072625ms)
+✔ 318 I1 migration preserves location and only changes targeted codes (0.078167ms)
+✔ 317 I2 existing duplicate path error takes precedence (0.071417ms)
+✔ 319 I1 numeric and textual zero share canonical dimension (0.091958ms)
+✔ 319 I2 count and CSS remain distinct (0.050917ms)
+✔ 320 I1 use site resolves zw and enforces kind (0.150833ms)
+✔ 320 I2 completion and rename follow references (0.146792ms)
+✔ 315 I2, 317 I2 reject ambiguous input before file lookup (0.198542ms)
+✔ 320 I3 declarations reject duplicates, aliases and ill-typed literals (0.398417ms)
+✔ 320 I4 dimensional references expand only in eligible source fields (0.115833ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 61.768584

@@ -157,7 +157,7 @@ golem-lsp も golem-driver に依存し、ファイルの変更ごとに S0 と�
 ファイルをまたぐ操作には、性質の違う二つがある。
 章を並べて一冊にする内容の合成と、共通の変数を使えるようにする定義の取り込みである。
 内容の合成はマニフェストの章の配列で表し、原稿がほかの原稿の内容を取り込む記法は持たない。
-定義の取り込みは [code: @import path as ns] で書き、取り込めるのは [code: @set] の変数と、[code: .emet] の関数だけである（第[ref-number emet]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
+定義の取り込みは [code: @import path as ns] で書き、取り込めるのは [code: set] の変数と、[code: .emet] の関数だけである（第[ref-number emet]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
 
 この分け方のおかげで、内容の循環は構造の上で起こりえず、各ファイルは単独で検査できる単位になる。
 この単位が、並列のビルドと LSP の再評価の土台である。

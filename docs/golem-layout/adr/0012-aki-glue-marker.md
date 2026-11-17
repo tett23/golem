@@ -1,6 +1,6 @@
 # ADR 0012: `[aki]` の空きを箱で表す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

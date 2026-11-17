@@ -31,12 +31,12 @@ module Golem.Eval.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
 import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.Either (fromLeft, fromRight, isLeft)
+import Data.Either (fromLeft, fromRight, isLeft, lefts)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -193,7 +193,9 @@ data St = St
     -- | each [note name] in order: its span and its name (docs/adr/0263)
     stNoteRefs :: ![(SrcSpan, Text)],
     -- | each @note in order: its name, its span and its body, Nothing for one of a name already defined (docs/adr/0263)
-    stNoteDefs :: ![(Text, SrcSpan, [Block])]
+    stNoteDefs :: ![(Text, SrcSpan, [Block])],
+    -- | the argument span and exact count of each @blank-line (Golem ADR 0345)
+    stBlankCounts :: !(Map SrcSpan (SrcSpan, Integer))
   }
 
 type M = State St
@@ -244,12 +246,13 @@ evalFile ctx0 (A.File fid blocks0) =
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
       -- meta and vars, which every file reads without @import (docs/adr/0185)
-      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] []
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] Map.empty
       (bsEval, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bsCollapsed, blankDiags) = collapseBlankLines (stBlankCounts st) bsEval
       -- the notes written by name take their bodies (docs/adr/0263)
-      (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsEval
+      (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsCollapsed
       (bs, nestedDiags) = nestedBreaks bs0
-      breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
+      breakDiags = blankDiags <> nestedDiags <> conflictingBreaks bs
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
@@ -396,6 +399,8 @@ normalizeBlock (A.Located sp b) = A.Located sp $ case b of
   A.DefList gs -> A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map normalizeBlock) ds) | A.DefGroup ts ds <- gs]
   A.Table al h rows -> A.Table al (map joinSoftBreaks h) (map (map joinSoftBreaks) rows)
   A.BlockCommand n@(A.Located _ "style") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
+  -- the newlines of a caption are left to the paragraph style caption (docs/adr/0367)
+  A.BlockCommand n@(A.Located _ "figure") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
   A.BlockCommand n args body -> A.BlockCommand n (map normalizeArg args) (map normalizeBlock body)
   A.Attributed cs t
     | any isStyleCommand cs -> A.Attributed (map normalizeBlock cs) (styledBody <$> t)
@@ -438,10 +443,12 @@ splitLines source paraStyles
       A.OrderedList items -> A.OrderedList (map (concatMap splitBlock) items)
       A.DefList gs -> A.DefList [A.DefGroup ts (map (concatMap splitBlock) ds) | A.DefGroup ts ds <- gs]
       A.BlockCommand n args body
-        | keepsLines lb -> b
+        | keepsLines lb || captionKeeps n -> b
         | otherwise -> A.BlockCommand n args (concatMap splitBlock body)
       A.Attributed cmds t -> A.Attributed (map inside cmds) (inside <$> t)
       other -> other
+    -- the caption of @figure, when caption keeps its lines (docs/adr/0367)
+    captionKeeps (A.Located _ n) = n == "figure" && Map.lookup "caption" paraStyles == Just KeepLines
     -- @style with the name of a style that keeps its lines
     keepsLines = \case
       A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
@@ -498,7 +505,13 @@ evalBlock ctx (A.Located sp b) = case b of
         ca <- codeArgs ctx sp [] args
         c <- codeOf sp ca Nothing lang True [(lsp, t) | A.Located lsp t <- ls]
         pure [block sp (CodeBlock c)]
-  A.SetVar (A.Located nsp n) e -> do
+  A.SetVar prefix (A.Located nsp n) e -> do
+    forM_ prefix $ \asp ->
+      report
+        ( (notice "G02155" asp "@set の @ は廃止予定です。set で変数を宣言します")
+            { diagFixes = [Fix "先頭の @ を消す" [(asp, "")]]
+            }
+        )
     defined <- gets (Map.member n . stVars)
     if n `elem` reservedNames
       then err "G02023" nsp ("予約語は変数の名前に使えません: " <> n)
@@ -519,6 +532,10 @@ evalBlock ctx (A.Located sp b) = case b of
     | n == "import" -> standalone ctx sp name args body
     -- @style is read before the evaluation for the lines of its body: G02114 at each spread (docs/adr ADR 0112, ADR 0143)
     | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure []
+    | n == "listing",
+      srcDuplicates@(_ : _) <- [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"] -> do
+        mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) srcDuplicates
+        pure []
     | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
   A.Attributed cmds target -> attributed ctx sp cmds target
   A.ErrorBlock -> pure []
@@ -573,7 +590,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "printings" -> printingsBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
-  "no-page-break" -> pageControl sp name args body
+  "no-page-break" -> noPageBreak ctx sp args body
   "need-lines" -> needLines ctx sp name args body
   "page-lines" -> pageControl sp name args body
   "blank-line" -> blankLine ctx sp args body
@@ -632,10 +649,23 @@ pluginBlock ctx sp pb args body = do
 (docs/adr/0112), so a plugin never gets one.
 -}
 pluginArgs :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Either Diagnostic PluginArg]
-pluginArgs ctx sp args = forM args $ \(A.Located _ a) -> case a of
+pluginArgs ctx sp args = forM (firstKeywords args) $ \(A.Located _ a) -> case a of
   A.Positional v -> fmap PluginPositional <$> argValue ctx sp v
   A.Keyword (A.Located _ k) v -> fmap (PluginKeyword k) <$> argValue ctx sp v
   _ -> pure (Right (PluginPositional VNil))
+
+{- | A plugin receives the first value of a repeated key, as before ADR 0351;
+diagnostics are collected from the complete list before this call.
+-}
+firstKeywords :: [A.Located A.Argument] -> [A.Located A.Argument]
+firstKeywords args =
+  [ a
+  | (i, a) <- zip [0 :: Int ..] args,
+    let previous = take i args,
+    case a of
+      A.Located _ (A.Keyword (A.Located _ k) _) -> k `notElem` [p | A.Located _ (A.Keyword (A.Located _ p) _) <- previous]
+      _ -> True
+  ]
 
 -- ------------------------------------------------------------------ functions of .emet
 
@@ -669,25 +699,53 @@ functionArgs ctx sp name ps args = do
     A.Positional _ -> fmap (Nothing,) <$> plainArgValue ctx sp (argOf la)
     A.Keyword (A.Located _ k) _ -> fmap (Just k,) <$> plainArgValue ctx sp (argOf la)
     _ -> pure (Right (Nothing, VNil))
-  case sequence vals of
-    Left d -> report d >> pure Nothing
-    Right vs -> do
-      let known = map kpName (prKeywords ps)
-          unknown = [(asp, k) | (A.Located asp (A.Keyword (A.Located _ k) _)) <- args, k `notElem` known]
-      mapM_ (\(asp, k) -> err "G02119" asp ("シグネチャにないキーワード引数です: " <> k <> "（" <> name <> (if null known then " はキーワード引数を取りません）" else " のキーワード引数: " <> T.intercalate "、" known <> "）"))) unknown
-      if not (null unknown)
-        then pure Nothing
-        else case positionalValues ps [v | (Nothing, v) <- vs] of
-          Left e -> report (argErrorDiagnostic sp name e) >> pure Nothing
-          Right pos -> do
-            let given = [(k, v) | (Just k, v) <- vs]
-                keyword kp = case lookup (kpName kp) given of
-                  Nothing -> Right (kpDefault kp)
-                  Just v -> maybe (Left (diagnostic "G02121" Error sp ("引数の型が合いません: " <> name <> " のキーワード引数 " <> kpName kp <> " は " <> argTypeText (kpType kp) <> " を求めますが、" <> typeName v <> "です"))) Right (fitValue (kpType kp) v)
-            case mapM keyword (prKeywords ps) of
-              Left d -> report d >> pure Nothing
-              Right kws -> pure (Just (pos <> kws))
+  let known = map kpName (prKeywords ps)
+      unknown = [(ksp, k) | A.Located _ (A.Keyword (A.Located ksp k) _) <- args, k `notElem` known]
+      unknownDiagnostic (ksp, k) = diagnostic "G02119" Error ksp ("シグネチャにないキーワード引数です: " <> k <> "（" <> name <> (if null known then " はキーワード引数を取りません）" else " のキーワード引数: " <> T.intercalate "、" known <> "）"))
+      positionalArguments = [(asp, result) | (A.Located asp (A.Positional _), result) <- zip args vals]
+      positional = [(i, asp, v) | (i, (asp, Right (_, v))) <- zip [1 ..] positionalArguments]
+      positionalCount = length positionalArguments
+      requiredCount = length (prPositional ps)
+      missingSite = mkSpan (spanFile sp) (spanEnd sp) (spanEnd sp)
+      countError = argErrorDiagnostic missingSite name (WrongCount positionalCount requiredCount (isJust (prVarargs ps)))
+      countErrors
+        | positionalCount < requiredCount =
+            [ countError {diagMessage = diagMessage countError <> "。" <> tshow index <> " 番目の位置引数がありません"}
+            | index <- [positionalCount + 1 .. requiredCount]
+            ]
+        | positionalCount > requiredCount && isNothing (prVarargs ps) = [countError]
+        | otherwise = []
+      positionalTypeErrors =
+        [ argErrorDiagnostic asp name (WrongType i expected v)
+        | (i, asp, v) <- positional,
+          Just expected <- [if i <= requiredCount then Just (prPositional ps !! (i - 1)) else prVarargs ps],
+          isNothing (fitValue expected v)
+        ]
+      keywordValues =
+        [ (valueSpan asp ksp, k, v)
+        | (A.Located asp (A.Keyword (A.Located ksp k) _), Right (_, v)) <- zip args vals
+        ]
+      keywordTypeErrors =
+        [ diagnostic "G02121" Error vsp ("引数の型が合いません: " <> name <> " のキーワード引数 " <> k <> " は " <> argTypeText (kpType kp) <> " を求めますが、" <> typeName v <> "です")
+        | (vsp, k, v) <- keywordValues,
+          Just kp <- [lookupKeyword k],
+          isNothing (fitValue (kpType kp) v)
+        ]
+      errors = lefts vals <> map unknownDiagnostic unknown <> countErrors <> positionalTypeErrors <> keywordTypeErrors
+  mapM_ report errors
+  if not (null errors) || not (null (repeatedKeys args))
+    then pure Nothing
+    else case sequence vals of
+      Left _ -> pure Nothing
+      Right vs -> do
+        let given = [(k, v) | (Just k, v) <- vs]
+            keyword kp = maybe (kpDefault kp) (fromMaybe (kpDefault kp) . fitValue (kpType kp)) (lookup (kpName kp) given)
+        case positionalValues ps [v | (Nothing, v) <- vs] of
+          Left _ -> pure Nothing
+          Right pos -> pure (Just (pos <> map keyword (prKeywords ps)))
   where
+    lookupKeyword k = listToMaybe [kp | kp <- prKeywords ps, kpName kp == k]
+    valueSpan asp ksp = mkSpan (spanFile asp) (spanEnd ksp + 1) (spanEnd asp)
     argOf (A.Located asp a) = case a of
       A.Positional v -> A.Located asp v
       A.Keyword _ v -> A.Located asp v
@@ -1003,10 +1061,13 @@ printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta 
     printings = case Map.lookup "printings" (ctxMeta ctx) of
       Just (VArray (_ : _)) -> True
       _ -> False
+    japaneseBook = case Map.lookup "language" (ctxMeta ctx) of
+      Just (VString lang) -> T.toLower (T.takeWhile (/= '-') lang) == "ja"
+      _ -> False
     errors =
       [("G02096", sp, takesNoArguments "printings") | not (null args)]
         <> [("G02097", bsp, takesNoBody "printings") | A.Located bsp _ : _ <- [body]]
-        <> [("G02076", sp, "@printings は日本語の本（language = \"ja\"）でだけ使えます") | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja")]
+        <> [("G02076", sp, "@printings は日本語の本（language の主の副タグが ja）でだけ使えます") | not japaneseBook]
         <> [("G02098", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
     line = \case
       VHash h
@@ -1049,14 +1110,9 @@ forcedBreak sp name args body = breakCommand sp name body $ case (name, map A.lo
   ("column-break", _) -> Left ("G02096", takesNoArguments name)
   _ -> Left ("G02058", "@page-break の引数は recto か verso です")
 
-{- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030):
-G02096 for an argument of @no-page-break, G02070 for a wrong argument of
-@need-lines, G02099 for a wrong argument of @page-lines (docs/adr ADR 0060).
--}
+-- | @page-lines takes a signed, nonzero integer (docs/adr ADR 0060).
 pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
-  ("no-page-break", []) -> Right NoBreak
-  ("no-page-break", _) -> Left ("G02096", takesNoArguments name)
   ("page-lines", [A.Positional v])
     | Just w <- nameArg v,
       Just (s, digits) <- T.uncons w,
@@ -1070,6 +1126,19 @@ pageControl sp name args body = breakCommand sp name body . fmap PageControl $ c
     count w
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))
       | otherwise = Nothing
+
+noPageBreak :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+noPageBreak ctx sp args body = case args of
+  [] -> finish (Right (PageControl NoBreak))
+  [A.Located asp (A.Positional v)] ->
+    naturalArg ctx "@no-page-break の引数" sp (A.Located asp v) >>= \case
+      Right n | inInt64 (toInteger n) -> finish (Right (PageControl (NoBreakLines n)))
+      Right _ -> finish (Left ("G02091", outOfInt64Message))
+      Left NotANumber -> finish (Left ("G02156", "@no-page-break の行数には 0 以上の整数を書きます"))
+      Left NaturalReported -> mapM_ (\(A.Located bsp _) -> err "G02097" bsp (takesNoBody "no-page-break")) (take 1 body) >> pure []
+  _ -> finish (Left ("G02096", "@no-page-break の引数には行数を一つだけ指定できます"))
+  where
+    finish = breakCommand sp "no-page-break" body
 
 {- | @need-lines N (docs/adr ADR 0030): a natural number of 1 or more and
 of at most 9 digits, G02070 otherwise; a negative number or one that is
@@ -1086,8 +1155,8 @@ needLines ctx sp name args body = case args of
   where
     usage = breakCommand sp name body (Left ("G02070", "@need-lines の引数は 1 以上の整数です"))
 
-{- | @blank-line and @blank-line N (docs/adr ADR 0046): one positional
-natural number of 1 or more, G02092 otherwise; G02091 out of int64; a
+{- | @blank-line and @blank-line N (docs/adr ADR 0046, ADR 0345): one positional
+natural number; zero is kept until adjacent commands are combined. G02091 out of int64; a
 negative number or one that is not an integer is G02103 or G02104
 (docs/adr ADR 0102).
 -}
@@ -1095,35 +1164,73 @@ blankLine :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Bl
 blankLine ctx sp args body
   | not (null body) = bad "@blank-line は本体を持てません"
   | otherwise = case args of
-      [] -> ok 1
+      [] -> ok sp 1
       [A.Located asp (A.Positional v)] ->
         naturalArg ctx "@blank-line の引数" sp (A.Located asp v) >>= \case
-          Right n
-            | n < 1 -> bad usage
-            | inInt64 (toInteger n) -> ok (fromIntegral n)
-            | otherwise -> outOfInt64 sp >> pure []
+          Right n -> ok asp (toInteger n)
           Left NaturalReported -> pure []
           Left NotANumber -> bad usage
       _ -> bad usage
   where
-    usage = "@blank-line の引数は 1 以上の整数を一つだけ書きます"
-    ok n = pure [block sp (BlankLines n)]
+    usage = "@blank-line の引数は 0 以上の整数を一つだけ書きます"
+    ok asp n = do
+      modify' (\s -> s {stBlankCounts = Map.insert sp (asp, n) (stBlankCounts s)})
+      pure [block sp (BlankLines (if n < 2 ^ (63 :: Int) then fromInteger n else 0))]
     bad m = err "G02092" sp m >> pure []
 
-{- | G02094 (docs/adr ADR 0046): blank lines written in a row, with only
-need-lines, page-lines and no-page-break between them, at each one after
-the first.
+{- | A run of @blank-line commands becomes one IR block (Golem ADR 0345).
+Page controls keep their order without dividing the run.
 -}
-blankLinesInRow :: [Block] -> [Diagnostic]
-blankLinesInRow bs =
-  [ notice "G02094" sp "続けて書いた @blank-line は @blank-line <N> にまとめて書けます"
-  | (i, Block sp _ _ (BlankLines _)) <- zip [0 :: Int ..] bs,
-    Block _ _ _ (BlankLines _) : _ <- [dropWhile control (reverse (take i bs))]
-  ]
+collapseBlankLines :: Map.Map SrcSpan (SrcSpan, Integer) -> [Block] -> ([Block], [Diagnostic])
+collapseBlankLines counts = go
   where
-    control b = case blockBody b of
+    go [] = ([], [])
+    go bs = case span inRun bs of
+      ([], b : rest) -> let (out, ds) = go rest in (b : out, ds)
+      (run, rest) ->
+        let (out, ds) = collapseRun run
+            (following, later) = go rest
+         in (out <> following, ds <> later)
+
+    inRun b = case blockBody b of
+      BlankLines _ -> True
       PageControl _ -> True
       _ -> False
+
+    collapseRun run =
+      let blanks = [(b, n) | b <- run, BlankLines n <- [blockBody b]]
+          values = [(b, maybe (toInteger n) snd (Map.lookup (blockSpan b) counts)) | (b, n) <- blanks]
+          positives = [b | (b, n) <- values, n > 0]
+          total = sum [n | (_, n) <- values]
+          over = firstOverflow 0 values
+          notices =
+            [ notice "G02094" (blockSpan b) "続けて書いた @blank-line は @blank-line <N> にまとめて書けます"
+            | b <- drop 1 positives
+            ]
+          infoDiags = case (blanks, positives) of
+            ((b, _) : _, []) -> [infoDiagnostic "G02254" (blockSpan b) "行アキは 0 行です"]
+            _ -> []
+          errorDiags = case over of
+            Just b -> [diagnostic "G02091" Error (maybe (blockSpan b) fst (Map.lookup (blockSpan b) counts)) outOfInt64Message]
+            Nothing -> []
+          output = case (over, positives) of
+            (Just _, _) -> filter (not . isBlank) run
+            (Nothing, []) -> filter (not . isBlank) run
+            (Nothing, first : _) -> mapMaybe (combine first (fromInteger total)) run
+       in (output, infoDiags <> notices <> errorDiags)
+
+    isBlank b = case blockBody b of
+      BlankLines _ -> True
+      _ -> False
+    combine first total b = case blockBody b of
+      BlankLines _
+        | blockSpan b == blockSpan first -> Just b {blockBody = BlankLines total}
+        | otherwise -> Nothing
+      _ -> Just b
+    firstOverflow _ [] = Nothing
+    firstOverflow n ((b, count) : rest)
+      | n + toInteger count >= 2 ^ (63 :: Int) = Just b
+      | otherwise = firstOverflow (n + toInteger count) rest
 
 {- | G02072: a no-break next to a page or column break, with only need-lines
 and page-lines between them (docs/adr ADR 0030).
@@ -1131,12 +1238,14 @@ and page-lines between them (docs/adr ADR 0030).
 conflictingBreaks :: [Block] -> [Diagnostic]
 conflictingBreaks bs =
   [ diagnostic "G02072" Error sp ("@no-page-break と " <> breakName k <> " が同じ位置にあります")
-  | (i, Block sp _ _ (PageControl NoBreak)) <- zip [0 :: Int ..] bs,
+  | (i, Block sp _ _ (PageControl control)) <- zip [0 :: Int ..] bs,
+    keepsPageBreak control,
     side <- [reverse (take i bs), drop (i + 1) bs],
     Block _ _ _ (ForcedBreak k) : _ <- [dropWhile soft side]
   ]
   where
     soft b = case blockBody b of
+      PageControl (NoBreakLines 0) -> True
       PageControl (NeedLines _) -> True
       PageControl (AdjustLines _) -> True
       _ -> False
@@ -1623,7 +1732,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty [] []
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty [] [] Map.empty
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -1695,7 +1804,7 @@ figure ctx sp args body = do
                 Left NaturalReported -> pure (Left ())
                 _ -> wrongPage p
       fine <- (&& formats) <$> ok
-      caption <- captionParagraphs =<< evalBlocks ctx . concat =<< mapM unstyled body
+      caption <- captionParagraphs =<< evalCaption . concat =<< mapM unstyled body
       case look "alt" of
         Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
@@ -1722,6 +1831,18 @@ figure ctx sp args body = do
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
+    {- the paragraphs of a caption by the line-breaks of caption (docs/adr/0367):
+    with keep, each line of the source is a line, as in a paragraph of a style
+    that keeps its lines; the paragraphs have no style of their own -}
+    evalCaption bs
+      | Map.lookup "caption" (ctxParaStyles ctx) == Just KeepLines = concat <$> mapM keptCaption bs
+      | otherwise = evalBlocks ctx bs
+    keptCaption = \case
+      A.Located psp (A.Paragraph is) -> map unstyle <$> styledParagraph ctx psp (Just "caption") is
+      other -> evalBlocks ctx [other]
+    unstyle = \case
+      Block bsp l g (Paragraph _ is) -> Block bsp l g (Paragraph Nothing is)
+      other -> other
     -- a caption holds paragraphs only: G02118 at each other block, which is dropped (docs/adr/0144)
     captionParagraphs = fmap concat . mapM (\b -> maybe (pure [b]) (\k -> [] <$ err "G02118" (blockSpan b) ("図版のキャプションには段落だけを書けます: " <> k)) (notInCaption (blockBody b)))
     -- a forced break, a page control and blank lines are left to nestedBreaks (G02059, G02071, G02093)
@@ -1757,18 +1878,26 @@ figure ctx sp args body = do
 -- ------------------------------------------------------------------ tables (golem-eval ADR 0004)
 
 {- | @table: a table of a CSV or a TSV file. The path is the first argument;
-src= is to be retired (G02129), and two paths are G02130 (docs/adr/0184).
+src= is G02252, and two paths are G02130 (ADR 0343).
 The arguments are checked before the file is read: format= (G02080),
 align= (G02081) and cells= (G02084); the number of align= values is
 checked against the header row.
 -}
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
-csvTable ctx sp args = do
+csvTable ctx sp args
+  | Just asp <- listToMaybe legacy,
+    null positional =
+      err "G02252" asp "@table の src= は使えません。パスを最初の引数に移します" >> pure []
+  | not (null legacy) && not (null positional) || length positional > 1 =
+      err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []
+  | otherwise = csvTableValid ctx sp args
+  where
+    positional = [() | A.Located _ (A.Positional _) <- args]
+    legacy = [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
+
+csvTableValid :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
+csvTableValid ctx sp args = do
   kw <- keywords ctx args
-  -- G02129: the path as src= is to be retired (docs/adr/0184)
-  mapM_
-    (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
       paths = [argText v | A.Located _ (A.Positional v) <- args] <> maybe [] (pure . argText) (lookup "src" kw)
       src = listToMaybe paths
@@ -1819,7 +1948,7 @@ csvTable ctx sp args = do
 
 -- | Why a table file gives no table.
 data TableError
-  = -- | G02082, G02083 or G02085, in the file
+  = -- | G02082, G02083, G02085 or G02154, in the file
     TableInvalid !Diagnostic
   | -- | G02088 (docs/adr ADR 0043)
     TableOverLimit !TableLimit
@@ -1912,7 +2041,7 @@ cellReading = \case
 {- | A TSV file as rows of cells (IANA text/tab-separated-values): LF or
 CRLF ends a line, one line end at the end of the file is dropped, tabs
 separate the cells and nothing else is special. Left is G02085 (an empty
-file, or a row with another number of cells than the header), G02082, or
+file), G02154 (a row with another number of cells than the header), G02082, or
 a limit the file goes over (docs/adr ADR 0043).
 -}
 parseTsv :: FileId -> Text -> Either TableError [[Text]]
@@ -1930,7 +2059,7 @@ parseTsv fid t0 = do
 
 {- | A CSV file as rows of cells (RFC 4180): comma-separated, double-quoted
 fields with "" escapes, LF or CRLF ending a record; CRLF in quotes is LF
-in the cell, and empty lines are dropped. Left is G02085, G02082, G02083
+in the cell, and empty lines are dropped. Left is G02085, G02154, G02082, G02083
 (a quote not closed), or a limit the file goes over (docs/adr ADR 0043).
 The file is read as Text, a record at a time, by its UTF-8 bytes; a cell
 is a slice of the file unless it has quotes or CRLF to undo.
@@ -1986,7 +2115,7 @@ parseCsv fid t0@(TI.Text arr off0 len) = do
 {- | The rows of a table file with their spans, as a table, read in order
 and no further than the first error: a row over 'tableMaxRows' or with
 cells over 'tableMaxCells' (G02088, docs/adr ADR 0043), a reading error
-(G02083), or a row whose cells differ in number from the header's (G02085);
+(G02083), or a row whose cells differ in number from the header's (G02154);
 G02085 also for no rows.
 -}
 tableFileRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
@@ -2005,7 +2134,7 @@ tableFileRows fid name = \case
           (s, e, cs) <- Bi.first TableInvalid r
           withinCells n cs
           unless (length cs == length h) $
-            Left (TableInvalid (diagnostic "G02085" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
+            Left (TableInvalid (diagnostic "G02154" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
           (cs :) <$> go (n + 1) h rs
     withinCells n cs = unless (length cs <= tableMaxCells) (Left (TableOverLimit (OverCells n)))
     count = T.pack . show . length
@@ -2052,16 +2181,24 @@ missing sp p = err "G02033" sp ("ファイルがありません: " <> p)
 listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 listing ctx sp args = do
   kw <- keywords ctx args
-  -- G02065: the path as src= is to be retired (golem-syntax ADR 0002)
-  mapM_
-    (\asp -> report (notice "G02065" asp "@listing の src= は廃止予定です。パスを最初の引数に書きます"))
-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
-  let src = case [v | A.Located _ (A.Positional v) <- args] of
-        (v : _) -> Just (argText v)
-        [] -> argText <$> lookup "src" kw
-  case src of
-    Nothing -> err "G02036" sp "@listing にはファイルのパスが必要です" >> pure []
-    Just p ->
+  let paths = [(asp, argText v) | A.Located asp (A.Positional v) <- args]
+      legacy = [(asp, argText v) | A.Located asp (A.Keyword (A.Located _ "src") v) <- args]
+      duplicates = [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"]
+  case (duplicates, paths, legacy) of
+    (_ : _, _, _) -> do
+      mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) duplicates
+      pure []
+    ([], first : second : _, _) -> do
+      err "G02253" (fst second) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd second <> "。採用する一方だけを位置引数に残します")
+      pure []
+    ([], first : _, old : _) -> do
+      err "G02253" (fst old) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd old <> "。採用する一方だけを位置引数に残します")
+      pure []
+    ([], [], old : _) -> do
+      err "G02250" (fst old) "@listing の src= は使えません。パスを最初の引数に移します"
+      pure []
+    ([], [], []) -> err "G02036" sp "@listing にはファイルのパスが必要です" >> pure []
+    ([], [(_, p)], []) ->
       asset ctx sp p >>= \case
         Just found | Just content <- assetContent found -> do
           let ls = T.lines content
@@ -2555,7 +2692,7 @@ link ctx inHeading sp args slots = case (args, slots) of
 
 -- | What the amount of an [aki] may be (the message of G02055).
 akiAmounts :: Text
-akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
+akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、単位のない 0、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
 
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
@@ -2605,19 +2742,14 @@ repeatedKeys args = [(asp, k) | (i, (asp, k)) <- zip [0 :: Int ..] keyed, k `ele
   where
     keyed = [(asp, k) | A.Located asp (A.Keyword (A.Located _ k) _) <- args]
 
-{- | The arguments with 'duplicateKeys' reported and every repeated keyword
-argument dropped: the first of each key is used. The arguments are told
-apart by their place, since the keywords of one **[式] share its span.
--}
+-- | Report every repeated keyword while retaining every occurrence (ADR 0351 I7).
 uniqueKeys :: [A.Located A.Argument] -> M [A.Located A.Argument]
 uniqueKeys args = do
   mapM_ report (duplicateKeys args)
-  let keyed = [(i, k) | (i, A.Located _ (A.Keyword (A.Located _ k) _)) <- zip [0 :: Int ..] args]
-      repeated = [i | (n, (i, k)) <- zip [0 :: Int ..] keyed, k `elem` map snd (take n keyed)]
-  pure [a | (i, a) <- zip [0 :: Int ..] args, i `notElem` repeated]
+  pure args
 
 {- | The arguments of a command with *[式] and **[式] spread (docs/adr ADR 0112)
-and the repeated keys dropped ('uniqueKeys'). Each element of a spread is
+and the repeated keys reported ('uniqueKeys'). Each element of a spread is
 the argument written as a literal: a string as a string literal, another
 value as [= value]; the keys of a hash in code point order. A spread of
 the wrong type is G02111 or G02112 at the spread; then, as for an error of
@@ -3059,7 +3191,10 @@ rangeEnds t = case end t of
 0006).
 -}
 outOfInt64 :: SrcSpan -> M ()
-outOfInt64 sp = err "G02091" sp "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
+outOfInt64 sp = err "G02091" sp outOfInt64Message
+
+outOfInt64Message :: Text
+outOfInt64Message = "数が意味論 IR に書ける範囲を超えています（整数と、分数の分子と分母は -2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
 -- | The number literals of an expression.
 exprNumbers :: A.Located A.Expr -> [Rational]

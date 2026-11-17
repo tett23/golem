@@ -1,6 +1,6 @@
 # ADR 0218: コードブロックの途中で始まるページの `pages.json` に、そのページの最初の行の位置を書く
 
-ステータス: 採択→調べていない入力と見た目の参照は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"調べていない入力と見た目の参照"}]
 
 ## 文脈
 

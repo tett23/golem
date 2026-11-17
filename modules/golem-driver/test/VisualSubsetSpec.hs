@@ -202,7 +202,7 @@ prepareInput name tmp = case name of
     manualInput = do
       copyTree ("../.." </> name) tmp
       createDirectoryIfMissing True (tmp </> "common")
-      TIO.writeFile (tmp </> "common" </> "build-info.gm") "@set edition = \"v0.0.0-visual\"\n@set commit = \"0000000000000000000000000000000000000000\"\n@set uncommitted = \"\"\n"
+      TIO.writeFile (tmp </> "common" </> "build-info.gm") "set edition = \"v0.0.0-visual\"\nset commit = \"0000000000000000000000000000000000000000\"\nset uncommitted = \"\"\n"
       style <- TIO.readFile (tmp </> "style.toml")
       createDirectoryIfMissing True (tmp </> "fonts")
       let paths = [T.unpack p | l <- T.lines style, (_, rest) <- [T.breakOn "\"fonts/" l], not (T.null rest), let p = T.takeWhile (/= '"') (T.drop 1 rest)]

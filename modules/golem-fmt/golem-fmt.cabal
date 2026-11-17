@@ -32,8 +32,10 @@ test-suite golem-fmt-test
     , base
     , bytestring
     , golem-fmt
+    , golem-parser
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
+    , peg-grammar
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4
     , tasty-hedgehog >=1.4 && <1.5

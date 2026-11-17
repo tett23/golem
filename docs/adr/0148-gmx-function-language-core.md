@@ -1,6 +1,6 @@
 # ADR 0148: 関数を書く言語 .gmx の核
 
-ステータス: 破棄
+Status: discarded
 
 ## 文脈
 

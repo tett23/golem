@@ -29,7 +29,7 @@ import Golem.Project.Style
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d) (csFeatures d)) code background padding (elementOf (csPosition d)) (textDecoration style d) (csNoBreak d == Just True))
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d) (csFeatures d)) code background padding (elementOf (csPosition d)) (textDecoration style d) (csNoBreak d == Just True) (cssLength <$> csSize d))
     | n <- Map.keys (stCharStyles style),
       Just d <- [charStyle style n],
       let code = isCodeCharStyle style n
@@ -265,6 +265,8 @@ most four decimals (docs/adr ADR 0103).
 -}
 cssLength :: Dim -> Text
 cssLength = \case
+  Zw 0 -> "0"
+  Abs 0 -> "0"
   Zw r -> L.emText r <> "em"
   Abs sp -> L.ptText sp <> "pt"
 
@@ -274,6 +276,8 @@ without one.
 -}
 cssFontSize :: Style -> Dim -> Text
 cssFontSize style = \case
+  Zw 0 -> "0"
+  Abs 0 -> "0"
   Zw r -> L.emText r <> "em"
   Abs sp -> case stPage style >>= pageGrid of
     Just Grid {gridFontSize = Abs fs} | fs > 0 -> L.emText (toRational (unSp sp) / toRational (unSp fs)) <> "em"

@@ -1,0 +1,3 @@
+initialize fileOperations={"didRename":{"filters":[{"pattern":{"glob":"**/*"},"scheme":"file"}]},"willRename":{"filters":[{"pattern":{"glob":"**/*"},"scheme":"file"}]}}
+live didOpen version=7, on-disk imports=0, edits=[{"newText":"新章/a.gm","range":{"end":{"character":16,"line":1},"start":{"character":8,"line":1}}},{"newText":"\"新章/a.gm\"","range":{"end":{"character":16,"line":2},"start":{"character":8,"line":2}}}]
+duplicate=2 edits, conflict=-32600, empty=null, after didChange/rename/didRename=null

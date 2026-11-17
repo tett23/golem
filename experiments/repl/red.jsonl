@@ -1,0 +1,35 @@
+{"name":"R1 precedence","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R1 values","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R1 string escapes","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 unknown then arithmetic","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 syntax then arithmetic","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 type then arithmetic","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 evaluation then arithmetic","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 pure requirements","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R3 definitions do not persist","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R3 explicit multiline","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R3 unterminated block","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R4 blank and EOF","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R4 last line without newline","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 exact 4096 bytes","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 single-line overflow recovers","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 multiline overflow discards whole block","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 step limit","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 output bound","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 invalid UTF-8 recovers","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R1 exact rational, character, function","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 byte position after a multibyte literal","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 division error covers original input","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R3 declarations inside a block never run","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 exact output limit","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 oversize Unicode is counted by bytes","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 CRLF follows Emet source rules","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 BOM rejected at input boundary","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 overlong stream is drained","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 output 4097 bytes is discarded","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R5 adjacent work budgets","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R2 case exhaustiveness","ok":false,"status":2,"stdout":"","stderr":"未知の引数です: emet\n\n次のことですか？\n    fmt\n\n使い方: golem COMMAND\n\n  Golem の組版システム\n"}
+{"name":"R4 argument usage error","ok":true,"status":2}
+{"name":"R4 Japanese subcommand help","ok":false,"status":2}
+{"name":"R4 interactive prompts and EOF","ok":false,"status":1,"output":""}
+{"total":34,"passed":1,"failed":33}

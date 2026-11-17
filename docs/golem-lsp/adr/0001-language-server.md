@@ -1,6 +1,6 @@
 # ADR 0001: LSP サーバー
 
-ステータス: 採択→再評価の規則は [ADR 0004](0004-stale-s1-diagnostics.md)
+Status: superseded [{"by":["docs/golem-lsp/adr/0004-stale-s1-diagnostics.md"],"part":"再評価の規則"}]
 
 ## 文脈
 

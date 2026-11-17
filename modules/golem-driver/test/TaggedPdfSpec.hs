@@ -206,18 +206,17 @@ taggedPdfTests =
              d <- buildDeclared Dev (declaredManifest "ja" "pdfua = \"1\"\n") horizontalStyle "本文。\n" []
              errorsOf d @?= []
              hasPdf d @?= True,
-           testCase "a language not of the form of a tag is G03119 at the value with pdfua, and with pdfa" $ do
-             d <- buildDeclared Dev (declaredManifest "日本 語!" "pdfua = \"1\"\n") horizontalStyle "本文。\n" []
-             errorsOf d @?= ["G03119"]
-             [(diagMessage x, spanStart (diagSpan x)) | x <- dDiagnostics d, diagCode x == DiagnosticCode "G03119"]
-               @?= [("PDF/A と PDF/UA には、language を言語のタグの形で書きます: 日本 語!", offsetOf "\"日本 語!\"" (dManifest d))]
-             hasPdf d @?= False
-             e <- buildDeclared Dev (declaredManifest "日本 語!" "pdfa = \"2a\"\n") intentStyle "本文。\n" intentFiles
-             errorsOf e @?= ["G03119"],
-           testCase "without pdfa and pdfua a language of any form is no error" $ do
-             d <- buildDeclared Dev (declaredManifest "日本 語!" "") horizontalStyle "# 一\n\n### 二\n" []
-             errorsOf d @?= []
-             hasPdf d @?= True,
+           testCase "L2: G03119 has the same position for every target and profile (Golem ADR 0324)" $
+             forM_ [Dev, Prod] $ \profile ->
+               forM_ [("pdf", ""), ("pdf", "pdfa = \"2a\""), ("pdf", "pdfua = \"1\""), ("html", ""), ("epub", ""), ("text", "")] $ \(target, keys) ->
+                 withSystemTempDirectory "golem-language" $ \tmp -> do
+                   let manifest = manifestToml testManifest {tmLanguage = "ja_JP", tmTargets = [target]} <> keys
+                   writeProject tmp (TE.encodeUtf8 manifest) horizontalStyle "本文。\n" []
+                   forM_ [False, True] $ \checkOnly -> do
+                     r <- build (defaultOptions tmp) {optFonts = fakeProvider, optProfile = profile, optCheckOnly = checkOnly}
+                     [(diagCode d, diagMessage d, spanStart (diagSpan d)) | d <- brDiagnostics r, isError d]
+                       @?= [(DiagnosticCode "G03119", "language を言語のタグの形で書きます: ja_JP", offsetOf "\"ja_JP\"" manifest)]
+                     brWritten r @?= [],
            testCase "with pdfua a heading two levels deeper, and a first heading not of level 1, are G07103 at the heading" $ do
              let source = "# 一\n\n本文。\n\n### 三\n"
              d <- buildDeclared Dev (declaredManifest "ja" "pdfua = \"1\"\n") horizontalStyle source []

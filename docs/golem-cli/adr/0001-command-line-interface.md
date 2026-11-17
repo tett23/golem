@@ -1,6 +1,6 @@
 # ADR 0001: コマンドラインのインターフェース
 
-ステータス: 採択→`golem build` と `golem check` の `--marks` は[golem-pdf ADR 0004](../../golem-pdf/adr/0004-crop-marks-and-bleed.md)、`golem preflight` は[ADR 0006](0006-preflight.md)、`golem inspect` の診断、対象、表示の形は [ADR 0007](0007-inspect-output.md)、`golem inspect` のオプションは [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)、`golem new` の `--language` と `--no-fonts`、雛形の版面とフォントは [ADR 0003](0003-new-project-page-and-fonts.md)、`golem explain` と診断の後の案内の行は [ADR 0005](0005-explain-diagnostic-codes.md)、`golem new` の空でないディレクトリの扱いは [docs/adr/0273](../../adr/0273-golem-new-in-a-directory-without-a-project.md)
+Status: superseded [{"by":["docs/golem-pdf/adr/0004-crop-marks-and-bleed.md"],"part":"`golem build` と `golem check` の `--marks`"},{"by":["docs/golem-cli/adr/0006-preflight.md"],"part":"`golem preflight`"},{"by":["docs/golem-cli/adr/0007-inspect-output.md"],"part":"`golem inspect` の診断、対象、表示の形"},{"by":["docs/adr/0031-adr-code-mismatches.md"],"part":"`golem inspect` のオプション"},{"by":["docs/golem-cli/adr/0003-new-project-page-and-fonts.md"],"part":"`golem new` の `--language` と `--no-fonts`、雛形の版面とフォント"},{"by":["docs/golem-cli/adr/0005-explain-diagnostic-codes.md"],"part":"`golem explain` と診断の後の案内の行"},{"by":["docs/adr/0273-golem-new-in-a-directory-without-a-project.md"],"part":"`golem new` の空でないディレクトリの扱い"}]
 
 ## 文脈
 

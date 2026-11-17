@@ -7,6 +7,7 @@ module Golem.Parser.SourceSettings
     SourceSettings (..),
     defaultSourceSettings,
     sourceKeys,
+    paragraphSeparators,
   )
 where
 
@@ -25,13 +26,15 @@ newtype SourceSettings = SourceSettings
 defaultSourceSettings :: SourceSettings
 defaultSourceSettings = SourceSettings LineSeparated
 
+paragraphSeparators :: [(Text, ParagraphSeparator)]
+paragraphSeparators = [("blank-line", BlankLineSeparated), ("line", LineSeparated)]
+
 {- | The keys of [source] and how a string value of each changes the
 settings. An invalid value gives a message listing the accepted values.
 -}
 sourceKeys :: [(Text, Text -> Either Text (SourceSettings -> SourceSettings))]
 sourceKeys = [("paragraph-separator", paragraphSeparator)]
   where
-    paragraphSeparator = \case
-      "blank-line" -> Right (\s -> s {ssParagraphSeparator = BlankLineSeparated})
-      "line" -> Right (\s -> s {ssParagraphSeparator = LineSeparated})
-      v -> Left ("paragraph-separator は \"blank-line\" か \"line\" です: " <> v)
+    paragraphSeparator v = case lookup v paragraphSeparators of
+      Just separator -> Right (\s -> s {ssParagraphSeparator = separator})
+      Nothing -> Left ("paragraph-separator は \"blank-line\" か \"line\" です: " <> v)

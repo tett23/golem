@@ -17,6 +17,7 @@ module Golem.Fmt
 where
 
 import Data.Char (isAscii, isPunctuation, isSpace, isSymbol)
+import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -37,23 +38,19 @@ data FormatResult
 made one LF before the lone CRs, or it would become two line breaks.
 -}
 preprocess :: Text -> Text
-preprocess = T.intercalate "\n" . map untab . T.splitOn "\n" . formatTable
+preprocess = T.intercalate "\n" . map untab . T.splitOn "\n" . normalizeLineEndings . stripOneBOM
   where
+    stripOneBOM text = fromMaybe text (T.stripPrefix "\xFEFF" text)
     untab l =
       let (ind, rest) = T.span (\c -> c == ' ' || c == '\t') l
        in T.concatMap (\c -> if c == '\t' then "  " else T.singleton c) ind <> rest
 
-{- | The preprocessing of a table file of @table (docs/adr/0186): the BOM
-at the start is removed, one only, as the readers skip one only and read a
-second one as a character of the first cell (docs/adr/0211); CRLF
-becomes LF, then a lone CR becomes LF. Tabs, spaces, blank lines, quotes
-and separators are kept, so the reader makes the same table, and a lone
-CR in quotes becomes a line break in the cell.
--}
+-- | Remove the complete leading BOM run from a table file (Golem ADR 0354).
 formatTable :: Text -> Text
-formatTable t0 =
-  let t1 = fromMaybe t0 (T.stripPrefix "\xFEFF" t0)
-   in T.replace "\r" "\n" (T.replace "\r\n" "\n" t1)
+formatTable = normalizeLineEndings . T.dropWhile (== '\xFEFF')
+
+normalizeLineEndings :: Text -> Text
+normalizeLineEndings = T.replace "\r" "\n" . T.replace "\r\n" "\n"
 
 -- | The AST without source positions.
 astFingerprint :: Text -> Text
@@ -65,12 +62,21 @@ match made text (golem-parser ADR 0010).
 astFingerprintWith :: (Char -> Bool) -> Text -> Text
 astFingerprintWith p src =
   let (f, _, _) = parseAst (FileId 0) src
-   in eraseSpans (T.pack (show (plainEscapesIn p f)))
+   in T.pack (eraseSpans (show (plainEscapesIn p f)))
   where
-    eraseSpans t = case T.breakOn "SrcSpan {" t of
-      (pre, rest)
-        | T.null rest -> pre
-        | otherwise -> pre <> eraseSpans (T.drop 1 (T.dropWhile (/= '}') rest))
+    -- Skip records only outside the quoted Text and Char literals of Show.
+    eraseSpans input
+      | Just rest <- stripPrefix "SrcSpan {" input =
+          eraseSpans (drop 1 (dropWhile (/= '}') rest))
+    eraseSpans (c : rest)
+      | c == '"' || c == '\'' = c : quoted c rest
+      | otherwise = c : eraseSpans rest
+    eraseSpans [] = []
+    quoted delimiter ('\\' : c : rest) = '\\' : c : quoted delimiter rest
+    quoted delimiter (c : rest)
+      | c == delimiter = c : eraseSpans rest
+      | otherwise = c : quoted delimiter rest
+    quoted _ [] = []
 
 {- | Formats a source. The AST of the preprocessed source is what every
 rule must keep.
@@ -104,6 +110,7 @@ rulesWith =
   [ (none, blankLines),
     (none, trailingWhitespace),
     (none, commandSpacing),
+    (none, commentSpacing),
     (none, tableSpacing),
     (removableEscape, escapes),
     (none, finalNewline)
@@ -216,6 +223,49 @@ commandSpacing = rewrite
     startsLine = \case
       (e : _) -> isTok KNewline e || isTok KEquals e || isNode NCommandBody e
       [] -> True
+
+{- | Spaces around comments in argument lists and manuscript expressions
+(Golem ADR 0339). The trivia token itself is kept byte for byte.
+-}
+commentSpacing :: Node -> Node
+commentSpacing = go
+  where
+    go n =
+      let cs = map descend (nodeChildren n)
+          k = nodeKind n
+          eligible = k `elem` [NInlineCommand, NBlockCommand, NCodeBlock, NExpr, NRangeExpr, NBinaryExpr, NUnaryExpr, NCallExpr, NVarExpr, NArrayExpr, NHashExpr, NHashEntry, NParenExpr]
+       in node k (if eligible then adjust cs else cs)
+    descend (ElemNode n) = ElemNode (go n)
+    descend e = e
+    adjust cs = case cs of
+      (a : ElemToken (Token KWhitespace _) : b : rest)
+        | edgeLast a `elem` map Just [KExprOpen, KLParen, KLBracket, KLBrace], edgeFirst b == Just KComment -> a : adjust (b : rest)
+      (a : ElemToken (Token KWhitespace _) : b : rest)
+        | edgeLast a == Just KComment, edgeFirst b `elem` map Just [KRBracket, KRParen, KRBrace, KColon] -> a : adjust (b : rest)
+      (a : ElemToken (Token KWhitespace _) : b : rest)
+        | boundary a b -> a : token KWhitespace " " : adjust (b : rest)
+      (a : b : rest)
+        | boundary a b -> a : token KWhitespace " " : adjust (b : rest)
+      (a : rest) -> a : adjust rest
+      [] -> []
+    boundary a b =
+      let left = edgeLast a
+          right = edgeFirst b
+          comment = left == Just KComment || right == Just KComment
+          tight =
+            left `elem` map Just [KExprOpen, KLParen, KLBracket, KLBrace]
+              || right `elem` map Just [KRBracket, KRParen, KRBrace, KColon, KNewline]
+       in comment && not tight && left /= Just KWhitespace && right /= Just KWhitespace
+    edgeFirst = \case
+      ElemToken t -> Just (tokKind t)
+      ElemNode n -> case nodeChildren n of
+        (e : _) -> edgeFirst e
+        [] -> Nothing
+    edgeLast = \case
+      ElemToken t -> Just (tokKind t)
+      ElemNode n -> case reverse (nodeChildren n) of
+        (e : _) -> edgeLast e
+        [] -> Nothing
 
 {- | One space on each side of every @|@ of a table row; column widths are
 not aligned (golem-fmt ADR 0001).

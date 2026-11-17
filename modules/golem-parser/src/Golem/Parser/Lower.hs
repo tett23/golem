@@ -7,7 +7,7 @@ where
 
 import Data.ByteString qualified as BS
 import Data.Char (isDigit)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -157,7 +157,7 @@ blockCommand (PN _ sp cs) =
    in case [(s, t) | PT KIdent s t <- sig] of
         ((_, "set") : (vsp, var) : _)
           | any ((== KEquals) . pkind) sig ->
-              Located sp (SetVar (Located vsp var) (exprOf sp [c | c <- sig, isExprNode c]))
+              Located sp (SetVar (listToMaybe [asp | PT KAt asp _ <- sig]) (Located vsp var) (exprOf sp [c | c <- sig, isExprNode c]))
         ((nsp, name) : _) ->
           Located sp (BlockCommand (Located nsp name) (arguments sig) (concat [blocks bcs | PN NCommandBody _ bcs <- cs]))
         [] -> Located sp ErrorBlock

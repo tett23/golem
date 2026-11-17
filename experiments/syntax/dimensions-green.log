@@ -1,0 +1,14 @@
+(Just (Abs 0),[Just (Abs 0),Just (Abs 0),Just (Abs 0),Nothing])
+319 I1 parseDim "0" PASS
+319 I1 parseDim "-0" PASS
+319 I1 TOML bleed "0" PASS
+319 I1 TOML bleed "-0" PASS
+319 I1 TOML bleed "+0" PASS
+319 I1 TOML bleed "\"0\"" PASS
+319 I1 TOML bleed "\"-0\"" PASS
+319 I2 reject "1" PASS
+319 I2 reject "0.0" PASS
+319 I2 reject "\"00\"" PASS
+319 I2 reject "\"+0\"" PASS
+319 I2 reject "\"\"" PASS
+(12,12)

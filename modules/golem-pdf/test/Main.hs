@@ -473,8 +473,34 @@ linkTests tinyJpeg =
           framed = framePageWith (Just Japanese) b (100 * 65536, 100 * 65536) [] [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") Nothing Nothing]
           m = b + 2415027
       pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/") Nothing Nothing],
+    testCase "X1/X2/X3/X4: print links retain text and outline destinations without page annotations (Golem ADR 0350)" $ do
+      let aid = AnnotId [1]
+          leaf = LeafId [2]
+          frame = (annotated "https://example.com/") {pageContent = [Tagged leaf [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]}
+          links = [l {annotLink = Just aid} | l <- pageAnnots frame]
+          target = DestXyz 0 0
+          plain = (documentWith tinyJpeg [frame {pageAnnots = links <> [LinkAnnotation (Rect 0 0 65536 65536) (GoTo target) (Just aid) Nothing]}]) {docOutline = outlineFromLevels [(1, "outline", target)], docStructure = structElem SDocument [KidElem (structElem SLink [KidLeaf leaf, KidAnnot aid])]}
+          printDoc = plain {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
+          electronic = writePdf plain
+          printed = writePdf printDoc
+      forM_ ["/Annots", "/Subtype /Link", "/Type /OBJR", "/S /URI"] $ \marker -> do
+        assertBool (show marker) (marker `BS.isInfixOf` electronic)
+        assertBool (show marker) (not (marker `BS.isInfixOf` printed))
+      forM_ ["/S /Span", "/Outlines", "/Dest ["] $ \marker ->
+        assertBool (show marker) (marker `BS.isInfixOf` printed)
+      let objects = pdfObjects (documentObjects printDoc)
+      [lookup "K" kvs | ODict kvs <- objects, lookup "S" kvs == Just (OName "Span")] @?= [Just (OArr [OInt 0])]
+      let pages = [n | (n, ODict kvs) <- zip [1 ..] objects, lookup "Type" kvs == Just (OName "Page")]
+          outlineTargets = [n | ODict kvs <- objects, Just (OArr (ORef n : _)) <- [lookup "Dest" kvs]]
+      outlineTargets @?= pages
+      verify (documentObjects printDoc) @?= [],
     testCase "X4.verify: the URI of the action of a link annotation is not a forbidden name" $ do
-      let objs = documentObjects (documentWith tinyJpeg [annotated "https://example.com/"]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
+      let base = documentObjects (documentWith tinyJpeg [page []]) {docPdfX = Just (PdfX "fake" "JC200103" [] [] Nothing)}
+          objects = pdfObjects base
+          annotation = ODict [("Type", OName "Annot"), ("Subtype", OName "Link"), ("A", ODict [("S", OName "URI"), ("URI", OStr "https://example.com/")])]
+          attach (ODict kvs) | lookup "Type" kvs == Just (OName "Page") = ODict (("Annots", OArr [ORef (length objects + 1)]) : kvs)
+          attach o = o
+          objs = base {pdfObjects = map attach objects <> [annotation]}
       verify objs @?= []
       -- a /URI elsewhere (the base URI of the catalog) is reported as before
       let catalogUri = objs {pdfObjects = map (\case ODict kvs | lookup "Type" kvs == Just (OName "Catalog") -> ODict (kvs <> [("URI", ODict [("Base", OStr "https://example.com/")])]); o -> o) (pdfObjects objs)}

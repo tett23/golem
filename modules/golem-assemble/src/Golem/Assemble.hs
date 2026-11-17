@@ -233,10 +233,10 @@ bookChapters book = map (map snd) (groupOn fst (zip chapterKeys (bookDocs book))
       k -> let (same, rest) = span ((== k) . f) xs in (x : same) : groupOn f rest
 
 {- | The title of the list of notes at the end of a chapter (golem-driver
-ADR 0026): 注 in a book whose language starts with ja, Notes otherwise.
+ADR 0026): 注 in a book whose primary language subtag is ja, Notes otherwise.
 -}
 notesTitle :: Text -> Text
-notesTitle lang = if "ja" `T.isPrefixOf` T.toLower lang then "注" else "Notes"
+notesTitle lang = if T.toLower (T.takeWhile (/= '-') lang) == "ja" then "注" else "Notes"
 
 {- | The inlines of a block, the notes among them, in order, through lists,
 definition lists, tables and captions (golem-driver ADR 0018, 0026), each

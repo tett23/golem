@@ -14,8 +14,9 @@ docs/adr/0238). Deno runs the host of Node, scripts/wasm/run.mjs, as it is
 (deno run --allow-read --allow-write): its node:wasi runs the module, so
 no host of its own is needed. wasmtime runs it from a small C host,
 scripts/wasm/run-wasmtime.c, as the CLI of wasmtime cannot write the input
-into the memory of the module. The browsers run
-scripts/wasm/browser/run.html.
+into the memory of the module. In browsers, scripts/wasm/browser/run.html
+starts scripts/wasm/browser/worker.js as a module Worker. The Worker builds
+the PDF and sends its SHA-256, length, status, and diagnostics to the page.
 
 The module uses the standard exception handling of WebAssembly (the form
 with exnref: try_table, throw_ref), not the legacy one (try, catch,

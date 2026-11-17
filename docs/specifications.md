@@ -17,7 +17,9 @@ Golem は CLI で動作する統合組版システムである。
 ADR と記録には、次の決まりがある。
 
 - ADR はコミット後、ステータスの行と、リンクを付ける、外す、リンク先を変えるだけの変更を除いて変更しない（[docs/adr/0032](adr/0032-update-adr-guard-to-v0.8.2.md)）。
-- ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
+- ADR は、行頭が `Status:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+- ステータスの行は `Status: <トークン>` の形で、トークンは `proposed`、`accepted-pending`、`accepted`、`rejected`、`discarded`、`deprecated`、`superseded [<変更の JSON 配列>]`、`superseded-pending [<変更の JSON 配列>]` のいずれかである（[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+- 新しい ADR は `Status: proposed` でコミットする。pre-commit と CI の `adr` ジョブは、ステータスの状態遷移を検査し、許されない遷移を拒否する（[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
 - 同じディレクトリの ADR に同じ番号を付けない（[docs/adr/0194](adr/0194-update-adr-guard-to-v0.10.0.md)）。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](adr/0012-update-adr-guard-to-v0.8.1.md)）。
 
@@ -119,6 +121,8 @@ IR の要素は、次の構造の要素にする。
 | 文字スタイル `code`（と、それに行き着く文字スタイル） | `Code` |
 | ほかの文字スタイル、色、圏点の親文字、縦中横、数 | 親の構造の要素の中身のまま |
 
+PDF/X-4 では、上表の `Link` は文字を保持する `Span` になり、注釈への参照を持たない（[ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md)）。
+
 表の対応には、次の補いがある。
 
 - 読みのない区切りの親文字は `Ruby` を作らない。
@@ -186,7 +190,7 @@ PDF/A は PDF/X-4 の上にだけ書くので、`pdfa` には `style.toml` の `
 HTML、EPUB、プレーンテキストは書く。
 dev と prod の両方で同じである。
 
-- `pdfa` か `pdfua` を書いた本で、`language` が BCP 47 の言語のタグの形でなければ G03119 とする。
+- すべてのターゲットと `check` で、マニフェストの `language` が言語のタグの形に合わなければ、値の位置に G03119 を出す。通った値の綴りは出力に保つ（[Golem ADR 0324](adr/0324-manifest-language-form.md)）。
   形だけを調べ、登録簿は調べない。
 - `pdfua` を書いた本で、最初の見出しが 1 の段でないか、見出しが前の見出しより二つ以上深ければ G07103 とする。
   浅くなる向きには、いくつ段を戻ってもよい。
@@ -300,7 +304,7 @@ CI が生成した最新のゲラを URL で共有すれば、関係者は常に
 
 ## 設計原則
 
-Golem の設計は、次の七つの原則に従う。
+Golem の設計は、次の八つの原則に従う。
 
 ### 幾何の隔離
 
@@ -340,9 +344,19 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 書き手はコードから原因を引いて直し方を決めるので、一つのコードが複数の原因を持つと、コードを見ても何を直せばよいかが決まらず、書き手を迷わせるためである。
 原因が違えば、メッセージを変えるだけでなく、コードを分ける。
 
+### もぐらの数がわからないもぐら叩きをさせない
+
+一回の実行で判定できる独立した誤りは、その実行ですべて報告する。
+ある箇所で誤りを見つけても、同じ原稿の続きや、ほかのファイルを検査できる限り処理を続ける。
+一つの誤りから生じた派生エラーを重ねて、直すべき箇所の数を水増ししない。
+
+一件直して再実行するたびに次の一件が初めて分かると、書き手は残りの作業量を見積もれない。
+仕事で原稿を扱う人が、定時までに修正を終えられるか、残業が必要かを判断できるようにする。
+
 ### 組版の自由
 
-組版するすべての文字に、段落スタイルか文字スタイルを当てられる。
+文字を表示するすべての部品で、原則として段落に段落スタイルを、段落中の文字に文字スタイルを当てられるようにする。
+本文のほか、柱、ノンブル、番号や印など、組版時に生成する文字にもこの原則を適用する。
 Golem は、ある文字に当てられるスタイルのキーを狭めず、特定の文字のための専用の欄でスタイルの代わりをしない。
 専用の欄は欄の数だけ仕様と実装を増やし、書き手がすでに使っているスタイルの仕組みを、その文字にだけ使えなくするためである。
 処理系が文字の位置を決める箇所（注の印の高さなど）も、スタイルを当てた結果の書体と大きさから位置を求める。
@@ -485,6 +499,9 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
 - `Golem.TestSupport.ExternalTool`：外部ツールを使うテストの補助。
 - `Golem.TestSupport.Parallel`：いくつもの capability で動作を同時に走らせる補助。
 - `Golem.TestSupport.TimeLimit`：golem-pdf と golem-svg のテストの時間の上限を、プロセスの CPU 時間と実時間の二つで測る補助（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+  上限の `hangLimits` は、ネイティブでは CPU 時間 60 秒、実時間 300 秒である（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+  wasm32 では、CPU 時間 600 秒、実時間 1200 秒である。
+  どちらの値を使うかは、実行のときの環境の変数ではなく、コンパイルのときに `wasm32_HOST_ARCH` で決める（[docs/adr/0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md)）。
 - `Golem.TestSupport.Watchdog`（`watchTests`）：`-threaded` のテストのスイートが止まったときに、Haskell のランタイムの外の POSIX のスレッドで実時間を測り、走っていたテストの名前を書いてプロセスを止める補助。
   golem-driver-parallel-test がこれを使う（[docs/adr/0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。
   golem-emet-test も木の全体を `watchTests 300` で包み、aarch64 の GHC の不具合（GHC の issue #28001）を避けるために、`localOption (NumThreads 1)` でテストを一つずつ走らせる（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。
@@ -726,6 +743,9 @@ PID が書かれていなければ、断言は失敗する。
 
 夜ごとの `.github/workflows/browser.yml` は、同じ `golem.wasm` をほかの実行環境で動かす。
 Deno の `node:wasi`（`scripts/wasm/run.mjs` をそのまま `deno run` で動かす）と、wasmtime 50.0.1 の C API と、`browser_wasi_shim` を使う Chromium と Safari（`scripts/wasm/browser/run.html`）で動かし、`scripts/wasm/compare.sh` の `--deno`、`--wasmtime`、`--browser` の一覧を同じコミットのネイティブの一覧と比べる（[ADR 0234](adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[ADR 0238](adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+ブラウザのページは `scripts/wasm/browser/worker.js` の module Worker で `golem.wasm` を動かし、PDF の SHA-256、長さ、状態、diagnostics を受け取る（[ADR 0309](adr/0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)）。
+夜ごとの Safari の専用ランナーでは、打ち切りが WebContent のプロセスを入力の数だけ残さないことを確かめる。
+この検査に限り、実行前後の WebContent の PID の差を読み取る（[ADR 0303](adr/0303-check-only-the-processes-a-test-started.md) の例外）。
 
 wasmtime のホストは、`scripts/fetch-wasmtime.sh` が取る C API にリンクする C のプログラム `scripts/wasm/run-wasmtime.c` である。
 `golem.wasm` を一度だけコンパイルして直列化し、入力ごとに、`run.mjs frame` が書く入力の枠を `golem_build_pdf` に渡して結果の枠を書き、`run.mjs result` がそれを読む（`scripts/wasm/run-wasmtime.sh`）。
@@ -888,7 +908,11 @@ HTML、EPUB、プレーンテキストはページを持たないので、`page-
 プレーンテキストの設定がなければ、縦書きと横書きの両方を生成する。
 
 出力は、プロジェクトルートの `build` の下のターゲットごとのディレクトリ（`build/html` など）に、前の出力を消してから書く。
-`build` かターゲットのディレクトリがシンボリックリンクかディレクトリでないファイルなら、リンクの先を消さないように、何も消さず書かずに G08013 のエラーとする（[docs/adr/0035](adr/0035-security-hardening.md)）。
+`build` か選んだターゲットの出力フォルダーがシンボリックリンクなら、何も消さず書かずに G08013 のエラーとする（[docs/adr/0035](adr/0035-security-hardening.md)、[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
+同じパスに通常のファイルがあれば、上書きせず G08104 のエラーとする（[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
+`golem build` はプロジェクトのルート、`build` と今回選んだターゲットの出力フォルダーにある通常の `.DS_Store` を取り除く。
+`golem fmt` はプロジェクトのルートと整形対象の親フォルダーにある通常の `.DS_Store` を取り除く。
+検査だけのコマンドは取り除かず、リンク、隠しフォルダー、プロジェクト外には入らない（[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
 
 使うプラグインは人がマニフェストに宣言し、配布物のハッシュは処理系がロックファイル `plugins.lock` に書き出す。
 ロックファイルは手で編集せず、リポジトリにコミットする。
@@ -959,7 +983,7 @@ TOML の型は、式の値に次のように写す。
 ### 定義の取り込み
 
 定義の取り込みはソースファイルに `@import` で書く。
-取り込めるのは、`@set` で定義した変数と、`.emet` の関数である（「関数の言語 Emet」の節）。
+取り込めるのは、`set` で定義した変数と、`.emet` の関数である（「関数の言語 Emet」の節）。
 パスの拡張子が `.emet` なら関数の取り込み、そうでなければ変数の取り込みとする。
 名前色やスタイルは `style.toml` に置き、`@import` では扱わない。
 
@@ -988,9 +1012,9 @@ import には次の規則を適用する。
 
 名前のスコープは、次の三種類ある。
 
-- **`@set` の変数**：ファイル単位で有効であり、他のファイルからは import による名前空間を通してのみ見える。
+- **`set` の変数**：ファイル単位で有効であり、他のファイルからは import による名前空間を通してのみ見える。
 - **マニフェストの `[vars]` の変数**：予約した名前空間 `vars` を通して、どのファイルからも `@import` なしで見える（[docs/adr/0185](adr/0185-project-wide-variables.md)）。
-  `vars` は名前空間なので、`@set` の変数とも `meta` とも名前が重ならない。
+  `vars` は名前空間なので、`set` の変数とも `meta` とも名前が重ならない。
 - **相互参照のラベル**（章、節、図などへの参照先）：文書全体で一つの名前空間を持つ。
   ページ番号への参照や目次は、ファイルをまたいで参照先を解決する必要があるためである。
   ラベルの重複はコンパイルエラーとする。
@@ -1186,6 +1210,10 @@ Git のコミットやビルドの環境は含めない。
 
 ### 本文からの参照
 
+原稿のファイル内変数は、行頭の `set 名前 = 式` で宣言し、`[= 名前]` で参照する（[Golem ADR 0336](adr/0336-unprefixed-variable-declarations.md)）。
+旧記法の `@set 名前 = 式` も同じ値を定義するが、先頭の `@` に G02155 の notice と一字を消す修正を出す。
+宣言はコードブロックの内容、見出し、段落の途中では始まらない。
+
 メタデータは、式文脈[^contexts]から読み取り専用の名前空間 `meta` で参照できる（例：`[= meta.title]`）。
 奥付のように、メタデータを本文に並べるページをマニフェストと二重に書かずに済ませるためである。
 メタデータはマニフェストだけで決まり評価の前に確定しているので、`meta` はファイル内評価（S0）の値であり、見出しの中でも使える。
@@ -1195,9 +1223,9 @@ Git のコミットやビルドの環境は含めない。
 `meta` と同じく評価の前に決まるので、S0 の値であり、見出しの中でも使える。
 `[vars]` がなければ、`vars` は空の名前空間である。
 `[vars]` にないキーを引くと G02002 になる。
-`vars` は `doc`、`meta` と同じく予約語であり、`@set` の名前にも import の名前空間にも使えない（G02023）。
+`vars` は `doc`、`meta` と同じく予約語であり、`set` の名前にも import の名前空間にも使えない（G02023）。
 `vars.` を付けずにキーを読む手段はない。
-`@set product = "x"` と `[vars]` の `product = "y"` があれば、`[= product]` は `x`、`[= vars.product]` は `y` である。
+`set product = "x"` と `[vars]` の `product = "y"` があれば、`[= product]` は `x`、`[= vars.product]` は `y` である。
 `.emet` の関数は `vars` を直接読まず、引数として受け取る（`[= book.total(vars.prices)]`）。
 
 `meta` が持つ値は次のとおりである。
@@ -1226,7 +1254,7 @@ Git のコミットやビルドの環境は含めない。
 
 - 引数を書いた場合は G02096（`@printings は引数を取りません`）とする。
 - 本体を書いた場合は G02097（`@printings は本体を持てません`、位置は本体の最初のブロック）とする。
-- 日本語でない本（`language` が `ja` でない本）では G02076 とする。
+- 日本語でない本（`language` の主の副タグが `ja` でない本）では G02076 とする（[ADR 0308](adr/0308-tell-a-japanese-book-by-the-primary-subtag-of-its-language.md)）。
 - `printings` のない本では G02098 とする。
 
 四つは互いに独立に判定し、当たるものをすべてこの順に出す。
@@ -1399,6 +1427,11 @@ shem は ICC のプロファイルを使わず、拡大した小さい画像を�
 PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
 
 CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と決定性の検査の出力より先に PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)、[ADR 0140](adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)）。
+成果物は既定で 30 秒ごとに問い合わせる。
+見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
+GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
+集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](adr/0349-retry-ci-job-list-on-rate-limit.md)）。
+全ページを取得してから各ジョブのログを検査する。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
 
 比べる手順が失敗したときだけ、`scripts/visual/report.sh` が、変わったページの前と後の画像（150 dpi の PNG、最初の 100 ページ）と `shem diff` の差分の画像、`check.sh --accept` が書くはずの参照の一覧を成果物 `visual-diff` として上げ、変わったページの表（違う画素の数と矩形は 72 dpi で数える）をジョブの要約に書く（[ADR 0096](adr/0096-before-and-after-images-of-changed-pages.md)）。
@@ -2175,6 +2208,9 @@ W に傍注の領域は含めない。
 ### 寸法の単位
 
 寸法は、単位を付けた文字列で書く。
+ただし、長さを取る欄では TOML の整数 `0` と、文字列の `"0"`、`"-0"` も絶対長のゼロとして読む（[Golem ADR 0345](adr/0345-revise-unitless-zero-in-length-fields.md)）。
+アキ量の欄では同じ値をベタとして読む。
+文字列の `"+0"`、`"00"`、`"0.0"` と TOML の浮動小数点は、従来のエラーにする。
 単位は `mm`、`pt`、`Q`（級）、`H`（歯）、`in`（インチ。1in = 72pt = 25.4mm、[golem-project ADR 0010](golem-project/adr/0010-inch-unit.md)）、`zw`（全角一字分）である。
 処理系の内部では、寸法を整数の sp（1pt = 65536sp）に変換する。
 変換では、数を正確な有理数で読み、sp に一度だけ、等距離なら偶数の側へ丸める。
@@ -2185,11 +2221,45 @@ W に傍注の領域は含めない。
 書き方は、書く先ごとに次のとおりである。
 
 - diagnostic に書く長さは mm で、小数点以下 2 桁にし、末尾の 0 を残し、単位の前に空白を入れない（`0.06mm`、`3.00mm`）。負の値は絶対値を丸めてから `-` を付け、丸めた値が 0 なら符号を付けない。sp に丸める前の正確な長さ（G03029 の `size` の半分など）も、sp を経ずに同じ規則で書く（`Golem.Length` の `mmRationalText`。`mmText` は sp を正確な mm にしてこれで書く）。
-- PDF の座標と寸法、HTML と EPUB の CSS の長さは、pt と em（CSS の `rem` を含む）で小数点以下 4 桁までにし、末尾の 0 を書かない（`8.5039pt`、`0.7143em`）。
+- PDF の座標と寸法、HTML と EPUB の CSS の長さは、pt と em（CSS の `rem` を含む）で小数点以下 4 桁までにし、末尾の 0 を書かない（`8.5039pt`、`0.7143em`）。CSS の長さのゼロは単位なしの `0` と書く。
 
 この丸めは、式の言語の `round` と `fixed`（0 から遠い方向への四捨五入）と違う。
 式の関数は、書き手が値を決めるためのものなので、書き手の四捨五入の期待に合わせる。
 長さの変換と表記は、処理系が測った値を伝えるためのものなので、偏りのない偶数への丸めを使う。
+
+### 組版用の値の名前
+
+`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` には、長さ、アキ量、行数に名前を付けて書く（[ADR 0346](adr/0346-revise-named-layout-values.md)）。
+名前は英小文字で始まり、後には英小文字、数字、`-` を使う。
+三つの表を通じて同じ名前を二度登録できない。
+単位名とアキ量の組み込み名は、未参照でも宣言できない。
+宣言の順序は問わず、右辺から別の宣言を参照できる。
+
+```toml
+[values.length]
+indent = "1zw"
+
+[values.aki]
+half = "二分"
+
+[values.count]
+rows = 2
+more = "rows + 1"
+
+[paragraph-styles.quote]
+indent = "indent"
+keep-with-next = "more"
+```
+
+長さ、アキ量、行数を取る欄に、対応する種類の名前を引用符付きで書く。
+原稿の `@style-def` の同じ欄にも名前を書ける。
+`$` を付けた名前は値のエラーになる。
+整数の 0 は欄の種類に従って長さのゼロ、ベタ、行数のゼロになり、`zw` は使用する欄の文字サイズで解決する。
+参照先にも、欄が要求する正の値や単位などの条件を適用する。
+行数の宣言と式は 0 以上 2147483647 以下とし、式は足し算を受け付ける。
+`preflight.toml` は組版用の宣言を読まない。
+
+名前の重複は G03254、名前の字面の誤りは G03255、宣言値の誤りと循環は G03256、未定義の参照は G03257、違う種類の参照は G03258 とする。
 
 ### 判型と塗り足し
 
@@ -2920,25 +2990,37 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 
 図版のキャプション、傍注の本文、表のセルには、段落スタイルの欄の一部だけを適用する。
 
-- 図版のキャプションは、段落スタイル `caption` の `font` と `size` で組む。ほかの欄（`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ）はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
+- 図版のキャプションは、段落スタイル `caption` の `font` と `size` で組む。`space-before`、`space-after`、`align` はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 - 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 - PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` を、どの出力でも `regex-styles` を適用する。
+- PDF のキャプションと傍注の本文には、段落の組み方として、字下げ（`indent`、`first-line-indent`、`end-indent`）、`space-between`、`line-breaks` も適用する（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。組み方は、この節の後の段落で定める。
 - 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 
-ただし、`line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
+ただし、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
 
 `caption`、`sidenote`、`table` は、`body` の字下げを引き継がない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 組み込みの定義が `indent = "0zw"`、`first-line-indent = "0zw"`、`end-indent = "0zw"` を持ち、書いた値が引き継いだ値に勝つ `based-on` の規則により、`body` の字下げは及ばないからである。
-`@style caption` や `@style sidenote` を付けた原稿の段落も、字下げなしで組む。
+`caption` と `sidenote` に字下げを書けば、キャプションと傍注の本文をその字下げで組む（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。
 
 `caption`、`sidenote`、`table` の三つに書けるキーと書けないキーは次のとおりである。
 
-- 書けないキー：0 でない `indent`、`first-line-indent`、`end-indent`、`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）
-- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`
+- 書けないキー：`rule-before`、`rule-after` と、囲みの七つのキー（`background`、`padding`、`border`、`border-width`、`border-style`、`border-sides`、`border-radius`）。`table` には、0 でない `indent`、`first-line-indent`、`end-indent` も書けない
+- 書けるキー：`based-on`、`font`、`size`、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width`。`caption` と `sidenote` には、`indent`、`first-line-indent`、`end-indent` も書ける
 
-三つに 0 でない `indent`、`first-line-indent`、`end-indent` を書くと、`style.toml` でも `@style-def` でも G03006 とする。
+`table` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと、`style.toml` でも `@style-def` でも G03006 とする。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
 G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
+
+キャプションと傍注の段落は、次のとおり組む（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。
+PDF のキャプション（図版、表、コードブロックのもの）と傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` を、本文の段落と同じ順序で解決して組む。
+
+- 行長は、部品の内幅である。図版のキャプションは、回り込む図版では図版の幅、一ページに回した図版では枠の長さ、ほかは段の行長、表のキャプションは段の行長、コードブロックのキャプションはブロックの始まりから段の終わりまでの長さ、傍注は傍注の領域の幅である。
+- 各行の使える幅は、内幅から、その行の字下げと `end-indent` を引いた長さである。段落の最初の行の字下げは `indent` と `first-line-indent` の和、ほかの行の字下げは `indent` である。
+- キャプションの段落は、段落ごとに行を改める。段落のあいだには、`space-between` の数の行を空ける。改行の様式の原稿では、キャプションの一行が一つの段落になる。
+- `line-breaks = "keep"` なら、キャプションの原稿の改行と強制改行で行を分け、分けた各行に最初の行の字下げを掛ける。分けた行は一つの段落なので、あいだに `space-between` の行を空けない。`"join"` なら、強制改行の後の行に最初の行の字下げを掛けない。
+- 傍注の本文は一つの段落で、強制改行を書けないので、`space-between` と `line-breaks` は傍注の組版を変えない。
+- 空けた行を含めた行の数で、キャプションが占める行送りの数と、傍注の高さを決める。行の間隔は、キャプションと傍注の行送りである。
+- `align` は、キャプションと傍注には適用しない。
 
 HTML と EPUB でも、キャプション、傍注、表のセルの書体と大きさを CSS に書く。
 
@@ -3163,7 +3245,7 @@ PDF の行長は、最初の行が「段の行長 − `indent` − `first-line-i
 
 G07025 は `style.toml` だけで決まるので、PDF をターゲットに含むビルドと `golem check`[^check-pdf] が報告し、位置は `style.toml` の先頭とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 G07025 は、段落に字下げを掛ける段落スタイルだけを検査する（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
-字下げをしない `caption`、`sidenote`、`table`、G07043 が検査する `code`、G07117 が検査する `toc-1` から `toc-6` は除く。
+字下げをしない `table`、段の行長でなく部品の内幅で組む `caption` と `sidenote`、G07043 が検査する `code`、G07117 が検査する `toc-1` から `toc-6` は除く。
 一つの段落スタイルの字下げが大きすぎるとき、それを `based-on` で引き継ぐほかの段落スタイルにも G07025 を出す。
 
 `line-breaks = "keep"` の段落では、改行で区切った各行が、段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
@@ -3171,6 +3253,7 @@ G07025 は、段落に字下げを掛ける段落スタイルだけを検査す�
 
 字下げと行揃え（`align`）は、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に適用される。
 リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には適用されない。
+ただし、PDF のキャプションと傍注の本文には、`caption` と `sidenote` の字下げを適用する（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)、「組み込みの段落スタイル」の節）。
 
 リストの項目の段落は、段落スタイルの字下げを受けず、リストの字下げで組む（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 PDF では、項目の印を行の始まりにぶら下げ、項目の二行目以降、二つ目以降の段落、項目の中のコードブロックと定義リストの行を、本文の始まりにそろえる。
@@ -3328,6 +3411,7 @@ gap = "0.5zw"
 
 - **bullets**：箇条書きの印の文字列の配列。一段目のリストに最初の要素、二段目に二つ目の要素を使い、入れ子が配列より深ければ最後の要素を使い続ける。既定は、PDF と、`[lists]` を書いた本の HTML と EPUB の `@counter-style` では `["•"]`（U+2022）、プレーンテキストでは `["・"]` であり、本の言語によらない（[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。`bullets` を書けば、すべての経路がその値を使う。U+2022 を持たない書体で組む本は、`bullets` で書体が持つ字に変える。
 - **numbers**：番号付きリストの番号の書式の配列。深さの扱いは `bullets` と同じである。既定は、横組みの本で `["{n}."]`、縦組みの本で `["{n}、"]` である。
+- **marker-style**：箇条書きの印と、書式で付けた前後の文字を含む番号に使う文字スタイル。省略すると項目の段落の見た目を引き継ぐ。PDF は指定を適用した幅で印を測り、項目本文は段落の見た目で組む。HTML と EPUB は、`[lists]` から作るリストの印の `::marker` に文字スタイルを当てる。読書環境は、そのうち `::marker` が受け付ける性質（色、書体、大きさなど）だけを適用する。どの経路でも、印の文字スタイルは項目本文に及ばない（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
 - **gap**：PDF の印と本文の間の空き。寸法で書き、`zw` はその段落の文字の大きさで数える。
 
 入れ子の深さは、箇条書きと番号付きのどちらのリストも数える。
@@ -3505,6 +3589,7 @@ aki-set = "wide-waou"
 文字スタイルと段落スタイルは、原稿のファイルの先頭の `@style-def` でも定義できる（[docs/adr/0014](adr/0014-in-file-settings.md)）。
 `@style-def character 名前 key=value...` と `@style-def paragraph 名前 key=value...` の形で、一行に一つのスタイルを書く。
 キーと値の検査、名前の規則（英小文字で始まり、英小文字、数字、`-` だけからなる）、diagnostic のコードは `style.toml` と同じである。
+組版用の値の名前は、`style.toml` の宣言を参照する。
 
 ファイルの中の定義は、そのファイルにだけ適用され、`@import` の先にも元にも及ばない。
 `style.toml` と組み込みのスタイルと同じ名前を定義すると、そのファイルの中でだけ、書いたキーが `style.toml` の定義の同じキーを上書きする。
@@ -3634,10 +3719,19 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 
 本文より大きい見出しは、行の格子からずらさずに置く（行取り）。
 見出しの行送りは、本文の行送りと文字の大きさの比を保った値とする。
-見出しは、その全体を収める最も少ない数の格子の行を占め、その領域の中央に置く。
+見出しは、その全体を収める最も少ない数の格子の行を占める。
 `lines` を書いた見出しは、少なくともその数の格子の行を占める。
 見出しの大きさが版面の文字の大きさと同じで `lines` が 1 なら、見出しの各行は本文と同じ格子の位置に来る。
 行取りの空きは、ページや段の先頭でも削らない。
+
+見出しを行取りの領域のどこに置くかは、`[headings.<階層>]` の `block-align` で決める（[Golem ADR 0373](adr/0373-heading-block-alignment.md)）。
+値は `start`、`center`、`end` のどれかで、既定は `center` とする。
+ほかの値は G03006 とする。
+行取りの領域の寸法から見出しの寸法を引いた値を、行送り方向の余りとする。
+見出しの前の空きは、`start` なら 0、`center` なら余りの半分、`end` なら余りの全部であり、余りの残りが見出しの後の空きになる。
+余りが負なら、前の空きも後の空きも 0 とする。
+前と後は、横組みでは上と下、縦組みでは行が進む向きの始まりと終わり（右と左）を指す。
+寄せ方を変えても、行取りの行数は変わらないので、後に続く本文の位置は変わらない。
 
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G07024）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 一ページには入るが、空の段の残りの行より多くの格子の行を占める見出しは、その段の頭に置いたまま、notice（G07100）で知らせる（[golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)）。
@@ -3662,8 +3756,8 @@ PDF では、段落と見出しの罫線を、格子の行を単位とする罫�
 - 罫線は、罫線の指定の線の種類と色で、塗った矩形、円、曲線として描く。golem preflight には、種類「段落の罫線」と「見出しの罫線」の罫線として渡す。
 
 `size` と `lines` を省いた見出しは、キーごとに次の既定の値で組む（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
-本の言語（マニフェストの `language`）が `ja` で始まる本と、ほかの言語の本とで、`lines` の既定が違う。
-`language` は英小文字にしてから比べるので、`JA` で始まる本も `ja` の本として扱う。
+本の言語（マニフェストの `language`）の主の副タグが `ja` の本と、ほかの言語の本とで、`lines` の既定が違う（[ADR 0308](adr/0308-tell-a-japanese-book-by-the-primary-subtag-of-its-language.md)）。
+主の副タグは最初の `-` の前を英小文字にしたものであり、`JA` と `ja-JP` の本も日本語の本として扱う。
 `zw` は版面の文字の大きさを一字とする。
 
 | 階層 | `size` | `lines`（`ja`） | `lines`（ほかの言語） |
@@ -3766,14 +3860,14 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 | `{heading.<l>.number}` | 階層 l の見出しの番号の表記だけ。番号のない見出しでは値がない |
 | 上の三つの末尾に `.last` | ページの中の見出しの選び方を「最後」にする |
 | `{meta.<キー>}` | マニフェストの `[metadata]` の値。キーは `title`、`title_reading`、`edition`、`publisher`、`date`、`language`、`id` |
-| `{set.<名前>}` | そのページのファイルで `@set` した変数 |
+| `{set.<名前>}` | そのページのファイルで `set` した変数 |
 | `{set.<名前空間>.<名前>}` | そのページのファイルが `@import ... as <名前空間>` で取り込んだ変数 |
 | `{vars.<名前>}` | マニフェストの `[vars]` の変数。表の中の値は `{vars.author.short}` と書く（[docs/adr/0185](adr/0185-project-wide-variables.md)） |
 
 差し込みの l は、語彙の値と同じく 1 から 6 の整数であり、ほかの値は G03014 とする。
 見出しの選び方は、上の語彙の値と同じである。
 `meta.creators` は配列なので書けない。
-著者名を柱に出す場合は、`@set` で文字列の変数を作る。
+著者名を柱に出す場合は、`set` で文字列の変数を作る。
 `set` の変数は、そのページのファイル（マスターページを選ぶのに使うファイル）の変数である。
 本の全体で同じ値を出したい場合は、マニフェストの `[vars]` に置き、`{vars.<名前>}` で出す。
 変数の値は、文字列はそのまま、数は式文脈 `[= ...]` で本文に埋め込んだときと同じ文字列にする。
@@ -4084,6 +4178,18 @@ OpenType に包んだ CFF（`/Subtype /OpenType`）は、ISO 32000-1 が認め�
 Chromium の PDF のビューアー（PDFium）が、OpenType に包んだ CID-keyed の CFF の文字のコードをグリフ ID として読み、和文を描かないためである。
 そのため、CFF の表を取り出せないフォントは、OpenType のまま埋め込まずにエラー（G08018）とし、PDF を書かない。
 
+CFF の表があるフォントは、サブセットを作る前に、表の中の参照が表の長さに収まるかを確かめる（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）。
+表の長さは、フォントのテーブルディレクトリが宣言する長さであり、コレクション（`.ttc`）では最初のフォントの表を読む。
+確かめるのは、ヘッダーに続く INDEX（Name、Top DICT、String、Global Subrs）の終端、Top DICT が指すデータ（CharStrings、charset、Encoding、Private DICT とその Subrs、FDArray、FDSelect、各 Font DICT の Private DICT とその Subrs）、使うグリフ（.notdef を含む）の CharString と、それが呼ぶサブルーチンである。
+サブルーチンの番号は、CharString を Type 2 の規則で実行して求める。
+参照の終端が表の長さを超える場合と、グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合は、エラー（G08107）とし、PDF を書かない。
+512 MiB（2 の 29 乗バイト）を超える位置や長さは、その値に丸めて読むので、表の外とする。
+wasm32 の 32 ビットの整数でも、64 ビットの処理系と同じ結果にするためである。
+使わないグリフの CharString は確かめない。
+スタックの不足のような、表の外を読まない誤りは G08107 にせず、その CharString をそれ以上たどらない。
+endchar の引数で別のグリフを合成する形（seac）の部品のグリフと、random の値で決まる参照は、たどらない。
+G08003 はフォントを開けない場合、G08018 は CFF の表を取り出せない場合のままである。
+
 ### ToUnicode と ActualText
 
 PDF の ToUnicode は、各グリフを、そのグリフが組んだクラスタ（シェイピングで一まとまりになった文字の並び）の文字列の全体に対応させる（[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)、[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
@@ -4192,6 +4298,7 @@ HTML と EPUB は、透過を持つ PNG も、そのまま写す。
 ### PDF に置けない図版
 
 PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に、`@figure` ごとに G08010 のエラーとし、PDF を書かない（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+暗号化した PDF の図版は G08105、指定したページがない PDF の図版は G08106 とし、同じ `@figure` の位置を指す（[ADR 0331](adr/0331-encrypted-figure-and-missing-page.md)）。
 dev と prod の両方でエラーである。
 HTML、EPUB、プレーンテキストは G08010 を出さない。
 HTML と EPUB が図版のファイルを読むのは SVG だけであり、それは動的なコンテンツの検査（G08014、[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）のためである。
@@ -4210,6 +4317,10 @@ PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、
   - ページの木で一つのノードを二度指す PDF、相互参照の項目がすべての改訂を合わせて 8,388,607 を超える PDF、予測子の値が範囲の外にある PDF は、G08010 で拒む。
 - ページの `Contents` で同じストリームを何度も名指しすると、そのストリームを出力でも一度だけ書き、名指しの位置から呼ぶ（[docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
   そう書けないストリームはつないで写し、つないだ内容が 256 MiB を超えれば G08015 とする。
+  つないだ内容の長さは、各ストリームの長さの和に、隣り合うストリームのあいだに入れる改行を 1 バイトずつ足したものである（[Golem ADR 0359](adr/0359-imported-content-separators.md)）。
+  展開の合計とつないだ内容は、別々に 256 MiB までとし、どちらもつなぐ前に確かめる。
+  改行は展開の合計に数えないので、二つのストリームの展開がちょうど 256 MiB のページは、展開の上限に収まっても、つなぐと 256 MiB と 1 バイトになり、G08015 とする。
+  展開の合計が上限を超えるページは、ページの資源の展開で超える場合も、つないだ内容の長さにかかわらず G08010 とする。
   呼ぶ先にするストリームのオブジェクトの番号が 2147483647 を超えれば、G08020 とする（[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 - 内容のストリームは復号し、DeviceRGB を書き換えてから Flate で圧縮し直す。画像などのストリームはそのまま写す。
 - DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
@@ -4401,12 +4512,11 @@ HTML と EPUB は表を `<table>` として出力し、罫線と、列の幅の�
 
 `@table` は、CSV（RFC 4180）か TSV（IANA の `text/tab-separated-values`）のファイルから表を作る（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 表のファイルのパスは、`@figure` と `@listing` と同じく、最初の位置引数に語か文字列で書く（[ADR 0184](adr/0184-table-positional-path.md)）。
-パスは `src=` のキーワード引数でも書けるが、`src=` は廃止予定の書き方である。
-`src=` で書いた表も同じく組み、`src=` の引数に notice（G02129）を出す。
+`src=` だけで書いた場合は、その引数に G02252 を出して表のファイルを読まない（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 パスがなければ G02034 とする。
 パスが二つ以上あるとき（位置引数が二つ以上か、位置引数と `src=` の両方）は、どちらが正しいかを処理系は知らない。
 そのため、コマンドの行に G02130 を出して、表を組まない。
-ビルドが読むファイルを集める `assetRefs` は、`@table` の最初の位置引数と `src=` の両方を集める。
+ビルドが読むファイルを集める `assetRefs` は、パスが一つだけの有効な `@table` の位置引数を集める。
 
 形式は、`format` のキーワード引数（`csv` か `tsv`）があればその値で、なければパスの拡張子で決める。
 拡張子が `.tsv`（大文字と小文字を区別しない）なら TSV、それ以外は CSV とする。
@@ -4536,7 +4646,7 @@ docs/diagnostics.md は golem-driver に埋め込み、`golem explain <コード
 `@table` の表のファイル（CSV と TSV）の diagnostics は、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) が定める。
 `format` の値の誤りは G02080、`align` の誤りは G02081、`cells` の誤りは G02084 であり、どれも原稿の引数の位置を指す。
 表のファイルの中の誤りは、ファイルの位置を指す。
-空の表と、行のセルの数が見出しの行と違う行は G02085、閉じていない CSV の引用符は G02083 である。
+空の表は G02085、行のセルの数が見出しの行と違う行は G02154、閉じていない CSV の引用符は G02083 である（[ADR 0328](adr/0328-table-file-shape-diagnostics.md)）。
 表のファイルが大きさ、行の数、セルの数の上限を超えたときは G02088 とし、`@table` のブロックを指す（[docs/adr/0043](adr/0043-table-file-size-limits.md)）。
 G02035（`@table` のコマンドを指した CSV の誤り）は、G02085 に置き換えて廃止した。
 テキストとして読むファイル（`@table` と `@listing` のファイル）には、ファイルごとに `plugins.lock` の次から振る `FileId` がある。
@@ -4564,6 +4674,9 @@ CRLF は受け付け、LF の前にない CR（単独の CR）を G02082 とす�
 検査に通らないファイルからは表を作らない。
 同じファイルを複数の `@table` から参照しても、読み込みの段階の diagnostic は一度だけ出す。
 `@listing` のファイルには、この検査をしない。
+`@listing` のパスは最初の位置引数に一つ書く。
+`src=` だけなら G02250、位置引数と `src=` の併記または二つの位置引数なら G02253 とし、アセットの内容を要求する前にそのブロックの評価を終える（[ADR 0341](adr/0341-revise-retire-listing-src.md)）。
+`src=` を二つ以上書いた場合は、二つ目以降の各キーに G02077 を出す。
 LSP では、エディタで開いているファイルの BOM と CR も G01002 と G01003 にするが、プロジェクトの読み込みは止めない。
 
 プロジェクトの外のファイルに構文エラーがあるときは、構文の diagnostics だけを出し、評価の diagnostics を出さない。
@@ -4617,12 +4730,10 @@ notice を出すのは、次のものである。
 - 数字だけの縦中横（G02063）
 - `keep` の段落の行頭のエスケープした空白（G02064）
 - `keep` の段落の行末のエスケープした空白（G02079）
-- `@listing` の `src=`（G02065、廃止予定）
-- `@table` の `src=`（G02129、廃止予定）
 - `-` で区切った範囲（G02108、廃止予定）
 - 続けて書いた `@blank-line`（G02094）
 - `style.toml` のないプロジェクト（G03023）
-- `caption`、`sidenote`、`table` の 0 の字下げ（G03100）
+- `table` の 0 の字下げ（G03100）
 - `[lists]` の `numbers` の `{{` と `}}`（G03114、廃止予定）
 - `[lists]` の `numbers` の一字の見本の差し込み（G03115、廃止予定）
 - 柱の書式の `{{` と `}}`（G03116、廃止予定）
@@ -4724,6 +4835,14 @@ LSP は、docs/diagnostics.md にあるコードの diagnostic の `codeDescript
 校正用のコメントは dev ビルドでのみ出力され、prod ビルドに残っていると警告になる[^profile]。
 コメントは段落の境界（空行）を越えられず、段落内で閉じないコメントは構文エラーとする。
 
+命令の引数列と原稿内の式には通常コメントを書ける（[Golem ADR 0339](adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+インライン命令、ブロック命令、コードブロックの開始行では、引数の前、間、後に通常コメントを置ける。
+式ではトークンの前、間、後に置けるが、コメントの前後の識別子を連結しない。
+この位置の校正コメント `%%=` は G01101 となり、閉じていない通常コメントは G01018 となる。
+引数列の `key=%%注%%`、`key=%%=注記%%`、`key=x%%注%%` は値の引用符不足 G01102 となる。
+値として `%` を一文字だけ含む語は従来どおりである。
+既存の原稿で `%%注%%` を値にしたい場合は `"%%注%%"`、`key=x%%注%%` を値にしたい場合は `key="x%%注%%"` と書き換える。
+
 ## 段落内の改行
 
 段落内の改行の扱いは、段落の区切りの様式で変わる（「原稿の読み方」の節、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0193](adr/0193-line-paragraph-separator-by-default.md)）。
@@ -4768,6 +4887,7 @@ HTML と EPUB では強制改行を `<br/>` にし、プレーンテキストで
 ## 行アキ
 
 段落と段落のあいだの空き（行アキ）は、`@blank-line` と `@blank-line N` で書く（[docs/adr/0046](adr/0046-blank-line-command.md)）。
+`@blank-line 0` は行アキを足さず、ゼロの指定だけのまとまりでは info の G02254 を一件出す（[Golem ADR 0345](adr/0345-revise-unitless-zero-in-length-fields.md)）。
 空行は、段落の区切りの二つの様式のどちらでも、空きを生まない。
 空行の数で空きを表すと、段落の区切りと空きの区別が空行の数に依存し、空行を一つ足すだけで出力が変わるためである。
 記法、置ける位置、diagnostics は [markup.md](markup.md) の「行アキ」の節で定める。
@@ -4775,6 +4895,8 @@ HTML と EPUB では強制改行を `<br/>` にし、プレーンテキストで
 ### 意味論 IR の行アキ
 
 行アキは意味論 IR の最上位のブロック（`BlankLines`、CBOR のタグ 13）であり、1 以上の行数を持つ。
+ファイル内で連続する指定の行数は多倍長整数で足し、一つの `BlankLines` にする。
+合計がゼロならブロックを出さず、2 の 63 乗以上なら超過した引数に G02091 を出して、そのまとまりのブロックを出さない。
 行数は行の格子の行数という抽象的な数であり、ページの大きさや位置ではない。
 行アキは HTML、EPUB、プレーンテキストにも出力するので、PDF だけの指定である `PageControl` には入れない。
 改ページ（`ForcedBreak`）とも、量を持つ点で分けた。
@@ -4933,6 +5055,25 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
+### 表、図版、定義リストのまとまり
+
+改ページは、表、図版とキャプション、定義リストの用語と説明を、次の位置でだけ分ける（[ADR 0377](adr/0377-keep-book-parts.md)）。
+
+- 表は、行のあいだで分け、続きの段の先頭で見出しの行を繰り返す。見出しの行は、本体の最初の行と同じ段に置く（「PDF の表」の節）。
+- 図版とキャプションは、一つのまとまりとして置き、分けない。
+- 定義リストの用語は、説明の段落の最初の部分と同じ段に置く。最初の部分は、その段落の `keep-first-lines` の行（既定では 2 行）であり、説明の最初の行を含む。
+
+まとまりを保つ単位は段であり、一段組みの版面では段はページと同じである。
+段に収まらないまとまりは、次の段へ一度だけ送る。
+表のまとまりは、前の空き、キャプション（`"above"` のとき）、見出しの行、本体の最初の行であり、表の全体ではない。
+図版は、送った図版として次の段に置き、後に続く本文は今の段に組み続ける（「待つ図版と自ら送られる図版」の節）。
+送った先の空の段にも収まらなければ、通常の分割の位置（表の行のあいだ、段落の `keep-first-lines` と `keep-last-lines`）で分け、空の段から同じまとまりを再び送らない。
+段に収まらない図版を縮める規則は「図版」の節で、空の段に収まらない表の行とキャプションのエラー（G07042、G07116）は「PDF の表」の節で定める。
+ページか見開きを単位にする指定と、リストを項目のあいだで分ける規則は、まだ無い（[docs/roadmap.md](roadmap.md)）。
+
+空の段から同じまとまりを再び送らないことは、[ADR 0377](adr/0377-keep-book-parts.md) の「不変条件」の節の I1 として、golem-layout のテストが確かめる。
+テストは、段の行の数が 3 から 6、段の数が 1 と 2 の版面で、段落の後に置いた表、図版、定義リスト、`keep-all-lines` の段落を組み、空の段が残らないことを調べる。
+
 ### 不変条件による検査
 
 改ページの規則は、[docs/adr/0204](adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の「不変条件」の節の I1 から I8 として、golem-layout のテストで確かめる。
@@ -5069,7 +5210,7 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 
 引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
 
-- `@no-page-break` に引数を書けば G02096 を出す。
+- `@no-page-break N` は 0 以上の整数を一つ指定できる。キーワード引数や余分な引数は G02096、数でない値は G02156、負数は G02103、小数部のある数は G02104 を出す（[ADR 0376](adr/0376-no-page-break-lines.md)）。
 - `@need-lines` の引数が 1 以上の整数の一つでなければ G02070 を出す。
 - `@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G02099 を出す。
 - 三つのどれかに本体を書けば、本体の最初のブロックに G02097 を出す。
@@ -5079,9 +5220,11 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 PDF では、三つの印を次のように扱う。
 
 
-- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の最後の 2 行（3 行以下の段落では全体。[docs/adr/0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）を次の段に送り、後の最初の部分と同じ段に置く。
+- `@no-page-break` の前が段落か定義リストの用語なら、改ページは、前の末尾から指定行数（既定は 2 行）を次の段に送り、後の最初の部分と同じ段に置く。
   - 後の最初の部分は `nextNeed` と同じ量であり、3 行の段落では全体とする。その部分の行の注の本文と、その段で最初の注なら区切りの領域を含む（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[golem-layout ADR 0021](golem-layout/adr/0021-keep-with-next-counts-widow-and-orphan.md)）。
   - `@no-page-break` の前と後にある空き（`space-between`、`space-before`、`space-after`）の行も、後の最初の部分の量に足す。足した量は、段の行の格子の数を上限とする（[golem-layout ADR 0022](golem-layout/adr/0022-no-page-break-counts-spaces.md)）。
+  - 前に残る行が 1 行以下なら全体を送る。送る行数は、指定行数と段落スタイルの `keep-last-lines`（孤立行を防ぐ最小行数）の大きい方とする。同じ位置に `keep-with-next` があれば、後の最初の部分はその行数と既定の大きい方とし、送る行数には足さない。
+  - `@no-page-break 0` は追加の連動を求めない。HTML と EPUB でもこの指定から改ページを抑える属性や CSS を書かない。
   - 空の段からは送らない。
   - 前が見出しなら、見出しの規則（「見出しと後に続くもの」）のとおりに置く。前がそのほかのブロックなら、置き方を変えない。
 - `@need-lines` は、改ページの印と同じくためておき、次のブロックを置く直前に、改ページの印の後で判定する。次の段へ進んだら、送った図版と続きの脚注をその段に置いた後の残りで数え直し、N 行が空くか、段が空になるまで進む（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
@@ -5106,6 +5249,8 @@ HTML と EPUB では、`@no-page-break` の後の最初のブロックの要素�
 `pages.json` は、PDF の各ページの最初の行が、原稿のどのファイルの何行何列から始まるかを表す。
 エディタは、`pages.json` を読んで、改ページの位置の印を原稿に出す。
 `golem preflight` は PDF をファイルに書かないので、`pages.json` も書かない。
+ディスクに書く prod ビルドで PDF を対象に選び、エラーで今回の PDF を書けなければ、前の `build/pdf` と `pages.json` を片付ける（[ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)）。
+dev ビルド、`golem check`、`golem preflight`、PDF を選ばないビルドでは前の PDF を残す。
 
 `pages.json` は、ページの順に、ページごとに一つのオブジェクトを並べた配列である。
 配列は diagnostics と同じく一行に書き、改行で終える。
@@ -5916,7 +6061,7 @@ PDF の文字の様式は 26 を超えると `AA`、`BB` と同じ字を重ね�
 
 ### PDF の注釈
 
-PDF では、リンクの文字の上にリンクの注釈を置く。
+PDF/X-4 を宣言しない PDF では、リンクの文字の上にリンクの注釈を置く。
 リンクの範囲は、行分割の箱の見た目の `lkLink :: Maybe LinkTarget`（`data LinkTarget = LinkUri Text | LinkTo LinkDest`）が持ち、golem-typeset の `restyle` がインラインをたどるときに決める。
 `LinkTo` は文書の中の行先で、`LinkDest` は次のどれかである（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 
@@ -5957,14 +6102,15 @@ ASCII でない文字は UTF-8 のバイトの `%XX`（大文字の 16 進）に
 
 注釈のオブジェクトは、PDF/X-4 の出力インテントと XMP の後、文書情報の前に、ページの順、ページの中の順で番号を振る。
 リンクのない PDF のバイト列は変わらない。
-`[color] intent` のある本（PDF/X-4 の PDF）にも、リンクの注釈を書く。
+`[color] intent` のある本では、外部リンクと文書内リンクの文字を同じ位置に描き、ページのリンク注釈を省く（[ADR 0350](adr/0350-omit-page-link-annotations-from-pdf-x-4.md)）。
+構造ツリーではリンクの文字を読み順どおりの `Span` にし、しおりは元のページを指す。
 
 参考文献の URL は、`checkUrl` を通れば PDF でもリンクにし、通らなければ文字スタイル `url` の文字だけにする。
 本文の `[style url: ...]` はリンクにしない。
 
 ### PDF の文書の中のリンク
 
-次のものを、文書の中の行先へのリンクにする（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
+PDF/X-4 を宣言しない場合、次のものを文書の中の行先へのリンクにする（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)）。
 
 | リンクの元 | 矩形 | 行先 |
 | --- | --- | --- |
@@ -6059,9 +6205,12 @@ lint の規則はユーザーが変更も追加もできないので、誰もが
 `.gm` の lint の規則は次の四つである。
 
 - 段落内の改行の前後がともに欧文の文字である箇所（G05001、エラー）。改行は文字を生まないので、単語が空白なしに連結される。細則は下に書く。
-- 使われていない `@set` 変数（G05002、エラー）。そのファイルの中でも、そのファイルを import するどのファイルからも参照されていない変数を指す。
+- 使われていない `set` 変数（G05002、エラー）。そのファイルの中でも、そのファイルを import するどのファイルからも参照されていない変数を指す。
 - 使われていない `@import`（G05003、エラー）。
 - 参照されていない `@label`（G05004）。dev のプロファイルでは警告、prod のプロファイルではエラーとする。外部からのリンクの受け口として書きかけの原稿に置いておくラベルは許すが、入稿やデプロイのために組む本に参照されないラベルを残さないためである。
+
+さらに、引数列や式のコメントとの区切りに半角スペースがない一意な境界を G05100 の info として一か所ずつ報告する（[Golem ADR 0339](adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+この info は通常の `golem lint` でも表示し、`silence-info` で抑制できる。
 
 G05001 の改行の前後の文字は、言語の仕様が無視する行末と行頭の半角の空白とタブを除いて判定する。
 全角の空白とエスケープした空白は除かない（[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)）。
@@ -6097,6 +6246,10 @@ fmt は本文を折り返し直さず、構造だけを整形する。
 整形の対象は、コマンドの引数の空白、ブロックコマンドの書式、リストと定義リストのインデント、空行の数、行末の空白、エスケープの書き方である。
 本文の改行の位置は書き手が決めるものとして変更しない。
 
+引数列と式では通常コメントの内容と順序を保ち、コメントと引数やトークンの間を半角スペース一つに整える（[Golem ADR 0339](adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+インライン命令の末尾コメントと `]` または `:` の間、式の開始記号と先頭コメントの間、式の末尾コメントと終了記号の間は詰める。
+引用符不足の原稿は修正候補を自動適用せず、そのファイルを書き換えない。
+
 整形の前には、構文の解析より前の前処理として、次を直す（`Golem.Fmt.preprocess`）。
 
 - 先頭の BOM を取り除く。
@@ -6119,7 +6272,7 @@ AST はエスケープした文字を残すので、エスケープを外すと 
 引数に `.emet` のファイルを渡せばそのファイルを、引数がなければ、プロジェクトのソースに加えて、プロジェクトの使う `.emet` を整形する。
 整形の規則は golem-emet の仕様書の「fmt」の節に書く。
 
-### 引数なしの `golem fmt` と CR を含む原稿
+### 引数なしの `golem fmt` と回復できる原稿
 
 引数なしの `golem fmt` は、プロジェクトを読み込み、そのソース（章と、`@import` で読むファイル）を整形する。
 原稿の CR で読み込みが止まっても、CR を含む原稿を整形できる（[golem-fmt ADR 0004](golem-fmt/adr/0004-fmt-without-arguments-fixes-cr.md)）。
@@ -6132,25 +6285,27 @@ AST はエスケープした文字を残すので、エスケープを外すと 
 読み込み直すたびに差し替えるファイルが少なくとも一つ増えるので、繰り返しはプロジェクトのファイルの数で終わる。
 `--check` のときも同じ手順でソースを求め、CR を含むファイルを整形が必要なファイルとして示す。
 
-G01003 のほかのエラーで読み込みが失敗したら、diagnostic を出し、何も書き換えずに終了コード 1 とする。
+G01102 の引用符不足でも、元の値を保つ引用符を読み込み用の差し替えにだけ付け、章と参照先を列挙する（[Golem ADR 0339](adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+差し替えた値は原稿に書き戻さず、G01102 のあるファイルは整形せずに失敗として報告し、ほかのファイルは整形する。
+G01003 と G01102 以外のエラーで読み込みが失敗したら、diagnostic を出し、何も書き換えずに終了コード 1 とする。
 `manifest.toml` の CR もこれに当たる。
 `golem fmt` は TOML を整形しない。
 
 ### 表のファイル
 
 `golem fmt` は、`@table` が読む CSV と TSV のファイル（表のファイル）の BOM と改行も直す（[ADR 0186](adr/0186-fmt-table-files.md)）。
-表のファイルの前処理（`Golem.Fmt.formatTable`）は、先頭の BOM を一つ取り除き、CRLF を LF に直し、残った単独の CR を LF に直す。
+表のファイルの前処理（`Golem.Fmt.formatTable`）は、先頭に続く BOM をすべて取り除き、CRLF を LF に直し、残った単独の CR を LF に直す。
 CSV と TSV で前処理は同じである。
 
 表のファイルでは、BOM と改行のほかを直さない。
 空白、空行、タブ、引用符、セルの区切りには触れず、原稿の前処理と違って行頭のタブも空白に直さない。
 
-この前処理は、読み手が作る表をほとんど変えない。
-読み手は引用符の中の CRLF を LF にしてセルに入れるので、BOM と CRLF を直しても、読み手が作る表は変わらない。
-単独の CR を直したときだけ表が変わり、G02082 で止まっていた表が組めるようになり、引用符の中の単独の CR はセルの中の改行になる。
+読み手は引用符の中の CRLF を LF としてセルに入れる。
+単独の CR を直すと、G02082 で止まっていた表が組めるようになり、引用符の中の単独の CR はセルの中の改行になる。
 
-取り除く BOM は一つだけなので、二度かけても結果が変わらないのは、先頭の BOM が多くとも一つのファイルである（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
-先頭に BOM が二つ続くファイルは、一度目の `golem fmt` の後も BOM が一つ残り、`--check` が整形されていないファイルとして示す。
+先頭に BOM が二つ以上続く場合も一度の整形ですべて取り除き、二度目の整形で表は変わらない（[Golem ADR 0354](adr/0354-remove-leading-boms-from-table-files.md)）。
+読み手は先頭の BOM を一つ読み飛ばすので、整形前の最初のセルに含まれていた二つ目以降の U+FEFF は整形後に消える。
+CSV の最初のセルを引用符で囲むと、引用符の中の U+FEFF は保持される。
 また、`@listing` は表のファイルの BOM を読み飛ばさない。
 このため、`@listing` も読むファイルでは、BOM を取り除くと、取り込む最初の行の先頭の U+FEFF もなくなる（[ADR 0211](adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)）。
 
@@ -6179,7 +6334,7 @@ LSP は次の機能を持つ。
 - diagnostics（コンパイルエラーと lint）。重大度ごとの載せ方は下に書く。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）と、`.emet` の名前の変更（[docs/adr/0170](adr/0170-emet-editor-support.md)）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の `meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトラインと、`.emet` の宣言のアウトライン（[docs/adr/0170](adr/0170-emet-editor-support.md)）
@@ -6203,6 +6358,14 @@ UTF-32 は選ばない。
 範囲の外の位置は、LSP の仕様が定めている場合だけ丸める（[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 要求の列が、交渉した単位で数えた行の長さ（改行を含まない）より大きい場合は、LSP 3.17 の定めのとおり行末に丸める。
 行の番号が文書の行の数を超える場合と、列が文字の途中に当たる場合は、仕様が定めていないので丸めず、結果を空にする。
+
+### ファイルとフォルダの改名
+
+LSP は、ファイルとフォルダの改名前にクライアントが送る `workspace/willRenameFiles` に応じ、参照を指す値だけの編集を操作前の URI に対する `WorkspaceEdit.documentChanges` で返す（[docs/adr/0338](adr/0338-update-references-on-file-and-folder-renames.md)）。
+編集がなければ `null` を返し、LSP はディスクを変更しない。
+原稿の import、画像、表、コードのファイル引数、Emet のファイル引数、manifest の章とファイル欄、書体のパスを対象にする。
+Aleph が初期化時に指定した場合だけ、`plot.csv` の `file` 列とワークスペースの Markdown シートの Wiki リンクも対象にする。
+クライアントから `workspace/didRenameFiles` が届いた後は、旧パスの索引を捨ててプロジェクトを読み直す。
 
 ### 同期と評価し直し
 
@@ -6240,10 +6403,11 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 ### TOML の補完
 
 `style.toml` と `preflight.toml` の補完は、プロジェクトのルートからの相対パスがちょうど `style.toml` と `preflight.toml` のファイルだけで働く（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
-ルートより下の同じ名前のファイルと `manifest.toml` では補わない。
+`manifest.toml` では、段落区切り、ページ番号の表記、関係者の役割、PDF の宣言、テキスト出力の向き、抑制する diagnostic のコードに、欄ごとの候補を返す（[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
+ルートより下の同じ名前のファイルでは補わない。
 エディタがこれらのファイルを LSP に送るように設定する必要がある。
 
-補う位置は次の五つである。
+`style.toml` と `preflight.toml` で補う位置は次の五つである。
 
 - 表の見出し（次の段のキー、利用者が名前を決める段では名前）
 - 表の中のキー（その表にまだ書いていないキー）
@@ -6251,19 +6415,23 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 - 真偽の値
 - 名前の参照（`based-on`、`font`、`color`、`aki-set`、正規表現スタイルの `style` など）
 
-寸法、数、自由な文字列、ファイルのパスは補わない。
+寸法と数のリテラル、自由な文字列、ファイルのパスは補わない。
+組版用の値を取る欄では、同じ種類の宣言名を補う（[ADR 0346](adr/0346-revise-named-layout-values.md)）。
 文字列の値の候補は、カーソルが文字列の外にあれば引用符を付け、開いた引用符の中にあれば付けない。
 
 キーと値の候補は、`style.toml` とプリフライトの設定を読むスキーマから取る。
 参照する名前の候補は、組み込みのスタイルとアキ量のセットの名前に、編集中のファイルのテキストで定義した名前（`[fonts.<役割>]`、`[color.swatches.<名前>]`、`[character-styles.<名前>]`、`[paragraph-styles.<名前>]`、`[aki-sets.<名前>]`、`[masters.<名前>]`）を続けたものである。
+組版用の値を変更するときは、その宣言と、`style.toml` および読み込み対象の原稿の `@style-def` にある同じ宣言への参照を一つの編集で変える。
+コメント、本文、段落スタイルの名前は変更しない。
+変更先の名前がすでに宣言されていれば編集を返さない。
 段落スタイルの `based-on` の候補には、`code` とそのスタイル自身を含めない。
 
 カーソルの位置は、交渉した単位で受けて UTF-8 のバイト位置に変える。
 候補は、エディタが今持っているテキストのカーソルより前だけを、先頭から読んで決める。
 コメントと複数行の文字列の中、値の後では候補を返さない。
 
-補完のほかは、この二つのファイルを編集中の内容で扱わない。
-この二つのファイルの diagnostics は、ディスクの内容による。
+補完のほかは、この三つのファイルを編集中の内容で扱わない。
+これらのファイルの diagnostics は、ディスクの内容による。
 拡張子が `.gm` でない編集中のファイル（`style.toml`、`manifest.toml` など）は、原稿として構文解析も評価もしない。
 
 ### semantic tokens
@@ -6286,7 +6454,7 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 | インラインのコマンドの名前、式の呼び出しの名前（`book.liters` の `book` と `liters`） | `function` |
 | キーワード引数の名前 | `parameter` |
 | 式のハッシュのキーの名前（`{a: 1}` の `a`） | `property` |
-| `@set` の名前 | `variable`（修飾子 `declaration` を付ける） |
+| `set` の名前 | `variable`（修飾子 `declaration` を付ける） |
 | 引数の値、式の文字列 | `string` |
 | `[=`、式のキーワード | `keyword` |
 | 式の数、数の表記の中身 | `number` |
@@ -6294,7 +6462,7 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 | 式の演算子、数の表記の `##`、表の区切り | `operator` |
 | インラインのコマンドの `[`、`:`、`]`、散文スロットの区切りの `\|` | `operator` |
 | 式の `.`、括弧、`,`、`:`、`[`、`]`、`{`、`}`（閉じの `]` を含む） | `operator` |
-| キーワード引数の `=`、`@set` の `=`、`*[` と `**[` とその閉じの `]` | `operator` |
+| キーワード引数の `=`、`set` の `=`、`*[` と `**[` とその閉じの `]` | `operator` |
 | コマンドと式の中の空白（行頭の字下げを除き、ブロックのコマンドの行末の空白を含む） | `operator` |
 | エスケープ | `macro` |
 | 見出しの `#`、リストと定義リストの印（`=:` を含む）、コードブロックの囲み | `keyword` |
@@ -6303,7 +6471,7 @@ LSP は、`@table` が参照する表のファイルの変更を受けても評�
 
 コマンドと式の中では、散文スロットの中身、行頭の字下げ、改行、構文エラーの箇所を除くすべての文字が、どれかのトークンに入る。
 インラインのコマンドの角括弧と `:`、式の記号にもトークンを付ける（[golem-lsp ADR 0007](golem-lsp/adr/0007-semantic-tokens-for-command-punctuation.md)）。
-空白と、キーワード引数の `=`、`*[` と `**[`、ハッシュのキー、`@set` の名前、定義リストの `=:` にもトークンを付ける（[golem-lsp ADR 0008](golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
+空白と、キーワード引数の `=`、`*[` と `**[`、ハッシュのキー、`set` の名前、定義リストの `=:` にもトークンを付ける（[golem-lsp ADR 0008](golem-lsp/adr/0008-semantic-tokens-for-whitespace-and-remaining-punctuation.md)）。
 空白の型を `operator` とするのは標準の型を借りたもので、凡例に独自の型は足さない。
 
 一方、地の文、散文スロットの中身、コードブロックの中身、構文エラーの箇所には、トークンを作らない。
@@ -6354,7 +6522,7 @@ tree-sitter の文法は Golem の構文解析が受け付ける原稿を受け�
 - Neovim が受け取った diagnostic の列が、その行のバイト数を超えない。
 - notice が `INFO` の diagnostic になって quickfix に載り、マニフェストの `silence-notices` にそのコードを書いて保存すると消える。
 - コマンドと式の中の空白の semantic tokens の型が `operator` で、その位置の強調のグループが、既定の色の組で背景と下線を持たない。
-- ルートの `style.toml` と `preflight.toml` で補完の一覧が出て、引用符の外と内で選んだ後の行が期待の文字列になる。`manifest.toml` と、ルートより下の TOML と、ルートの外の TOML では一覧が出ない。
+- ルートの `style.toml`、`preflight.toml`、`manifest.toml` で定められた欄の補完が出て、引用符の外と内で選んだ後の行が期待の値になる。ルートより下の同名の TOML と、ルートの外の TOML では一覧が出ない。
 - `tools/editors/README.md` の nvim-treesitter を使わない手順（`sh` のブロックと最後の `lua` のブロック）で、`.gm` と `.emet` のファイルタイプが決まり、tree-sitter の色付けが始まる。
 
 `--self-test` は、各テストの期待を一つ反転して走らせ、どれも失敗することを確かめる。
@@ -6410,7 +6578,7 @@ Golem は決定性を重視する[note: 同じ入力からバイト単位で同�
 - 名前は `@label` と同じ字（英小文字、数字、`-`、`_`）の語で書く。名前はファイルごとに閉じ、ラベルとは別の名前の集まりである。
 - `[note 名前]` は、同じファイルの `@note 名前` を、`@note` の前でも後でも引ける。一つの `@note` を指せる `[note 名前]` は一つだけである。
 - `@note` はブロックを置ける場所ならどこにでも書け、出力に何も置かない。
-- 注の番号は `[note 名前]` の位置で振り、本体は `@note` の位置で評価する（その位置までの `@set` の値を読む）。
+- 注の番号は `[note 名前]` の位置で振り、本体は `@note` の位置で評価する（その位置までの `set` の値を読む）。
 - `@note` には属性を付けられず、本体の段落にも `@style` を付けられない（[G02013](diagnostics.md#g02013)）。本体の段落の `@lang` は書ける。
 - 本体に置けるのは段落だけである。段落でないブロックは報告して除く（[G02141](diagnostics.md#g02141)）。
 - 名前の未定義（[G02137](diagnostics.md#g02137)）、使われない本文（[G02138](diagnostics.md#g02138)）、一つの本文を二つの印から指すこと（[G02139](diagnostics.md#g02139)）、名前の重複（[G02140](diagnostics.md#g02140)）、名前の書き方の誤り（[G02142](diagnostics.md#g02142)）、本体のない `@note`（[G02143](diagnostics.md#g02143)）はエラーとする。
@@ -6538,6 +6706,45 @@ HTML と EPUB は、本文の参照（`noteref`）と注の一覧の戻りのリ
 PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、どれも書かない。
 記号の連なりが尽きた後に記号を重ねること、算用数字に戻ることはしない。
 
+#### 注の本文と一覧の見出しの段落スタイル
+
+PDF の注の本文と、章末の注の一覧の見出しには、`[notes]` の二つのキーで段落スタイルを当てる（[ADR 0366](adr/0366-note-body-styles.md)）。
+
+| キー | 型 | 意味 |
+| --- | --- | --- |
+| `body-style` | 文字列 | ページの下の脚注と章末の注の本文に当てる段落スタイルの名前。既定はなし（本文の役割と版面の文字の大きさ） |
+| `heading-style` | 文字列 | 章末の注の一覧の見出しに当てる段落スタイルの名前。既定はなし（2 の階層の見出しの役割と大きさ） |
+
+```toml
+[paragraph-styles.note]
+font = "gothic"
+size = "0.8zw"
+
+[notes]
+body-style = "note"
+heading-style = "note"
+```
+
+`body-style` の段落スタイルは、`font` の役割、`size` の大きさ、カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト、OpenType の機能、約物の幅、アキ量のセット、行の調整（`line-adjustment`、`shrink-order`、`stretch-order`、`stretch-limit`）を、`based-on` をたどって注の本文に当てる。
+章末の注の段落には、`keep-first-lines`、`keep-last-lines`、`keep-all-lines` も当てる。
+字下げ、段落の前後と段落のあいだの空き、行揃え、罫線、囲みは当てず、注の本文の組み方は「注の配置」と「ページの下の脚注」の節のとおりである。
+キーを書かなければ、注の本文は今までどおり本文の役割と版面の文字の大きさで組み、段落スタイル `body` の書体と大きさ以外のキーを当てる。
+
+`heading-style` の段落スタイルは、`body-style` が注の本文に当てるキーのうち、`keep-first-lines`、`keep-last-lines`、`keep-all-lines` を除くものを、一覧の見出しに当てる。
+行取りと、見出しの直後で改ページしない規則は、キーを書いても 2 の階層の見出しのままである。
+段落スタイルの `size` は版面の文字の大きさを超えられない（[G03011](diagnostics.md#g03011)）ので、見出しを本文より大きく組みたい本は、キーを書かずに `[headings.2]` の `size` を変える。
+
+二つのキーは互いに独立している。
+`body-style` だけを書いた本の一覧の見出しは既定のままであり、`heading-style` だけを書いた本の注の本文も既定のままである。
+どちらのキーも、本文の印（`mark-style` の文字スタイルで組む）と、傍注の本文（段落スタイル `sidenote` で組む）を変えない。
+[ADR 0366](adr/0366-note-body-styles.md) の「注の印には本文の指定を伝えない」は、本文の印についての規則である。
+注の本文の先頭の印は注の本文の行の中で組むので、`body-mark-style` を書かなければ、`body-style` の書体と大きさで組む。
+
+二つのキーの名前が、組み込みにも `style.toml` にもない段落スタイルなら、エラー（[G03013](diagnostics.md#g03013)）とする。
+`[notes]` は本に一つなので、原稿の `@style-def` の段落スタイルは指せない。
+ただし、ファイルが `@style-def` で同じ名前の段落スタイルを定義し直した場合は、ページの下の脚注は注のあるファイルの定義で、章末の注の一覧は章の最後のファイルの定義で組む。
+HTML、EPUB、プレーンテキストでは二つのキーを使わない。
+
 #### 注の配置
 
 注の配置は、媒体ごとに異なる。
@@ -6552,7 +6759,7 @@ PDF では、ページ下（脚注）か章末（章末注）かを `[notes]` �
 マニフェストの章に属さないファイルは、それぞれが一つの章になる。
 章末の注の一覧には、章の中のすべての注（本文、見出し、図版のキャプション、表のセル、定義リスト、リストの項目の中の注）を、文書の中の出現の順に並べる。
 注のない章には一覧を置かない。
-一覧の前には見出しを置き、その文言は、マニフェストの `language` を英小文字にしたものが `ja` で始まれば「注」、そうでなければ（空の言語を含む）「Notes」とする。
+一覧の前には見出しを置き、その文言は、マニフェストの `language` の主の副タグが `ja` なら「注」、そうでなければ（空の言語を含む）「Notes」とする（[ADR 0308](adr/0308-tell-a-japanese-book-by-the-primary-subtag-of-its-language.md)）。
 文言を変える設定はない。
 
 PDF の章末の注は、次のように組む。
@@ -6560,8 +6767,8 @@ PDF の章末の注は、次のように組む。
 - 本文の印は脚注と同じく組むが、注の本文をページ下に置かず、区切りの領域も取らない。`[notes.rule]` も使わない。
 - 一覧は、章の最後のファイルの最後のブロックの後に置く。そのファイルの末尾に改ページの印（`@page-break` など）が続く場合は、一覧をその印の前に置く。
 - 一覧は本文の終わりから続けて組み、前で改ページしない。
-- 一覧の見出しは、2 の階層の見出しの役割、大きさ、行取りで組む。番号を付けず、目次、柱の値、見出しの番号の数えには入れない。見出しの直後で改ページしない規則は、ほかの見出しと同じである。
-- 注は一つずつ段落として組み、先頭に脚注と同じ印と、ページの下の注と同じ伸び縮みしない四分アキを付ける。書体と大きさは本文の役割と版面の文字の大きさ、行長は段の行長とし、二行目以降を字下げせず、注のあいだに空きを入れない。段落は本文の段落と同じ規則でページをまたぐ。
+- 一覧の見出しは、2 の階層の見出しの役割、大きさ、行取りで組む。`heading-style` を書けば、役割と大きさはその段落スタイルのものになる。番号を付けず、目次、柱の値、見出しの番号の数えには入れない。見出しの直後で改ページしない規則は、ほかの見出しと同じである。
+- 注は一つずつ段落として組み、先頭に脚注と同じ印と、ページの下の注と同じ伸び縮みしない四分アキを付ける。書体と大きさは本文の役割と版面の文字の大きさ（`body-style` を書けばその段落スタイルの役割と大きさ）、行長は段の行長とし、二行目以降を字下げせず、注のあいだに空きを入れない。段落は本文の段落と同じ規則でページをまたぐ。
 - 二つ以上の段落の注は、一つめの段落を上のとおり組み、二つめ以降の段落を、印を付けずに、同じ書体、大きさ、行長で続けて組む。段落のあいだに空きを入れない。
 - 注の本文の中の索引の印は、一覧の行に置かれるので、索引のページ番号は一覧のページになる。
 
@@ -6613,6 +6820,11 @@ PDF のページ下の脚注は、注の印を含む行か見出しと同じペ�
 見出しの直後で改ページしない規則も、見出しの注の本文と、続く見出しと行の注の本文を数え、その段で最初の注なら区切りの領域を一度だけ足して判定する（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 注の本文を分けて次のページに続けるのは、ページ（段）の先頭に置いても注の本文が収まらない場合に限る。
 
+空の段にも脚注の印を含む行、区切りの領域、脚注本文の最初の一行が一緒に収まらない場合は、脚注を配置できないことをエラーとして報告し、PDF の生成を中止する（[Golem ADR 0353](adr/0353-reject-footnotes-in-too-short-columns.md)）。
+`@page-lines` で現在の段だけを短くした場合は、印のある行か見出しと脚注を一緒に次の段へ送り、その段の行数で配置できるかを判定する。
+たとえば区切りが一行なら、本文一行と脚注一行を同じ段に置くには三行必要になる。
+脚注のない原稿は、一行または二行の段でも通常どおり組む。
+
 ### 傍注
 
 ```
@@ -6657,7 +6869,11 @@ PDF の傍注の本文は、段落スタイル `sidenote` の `font` の役割�
 本文側の印は、番号、記号（※）、なしから `style.toml` で選ぶ。
 番号の印（`marker = "number"`）は、脚注の印と同じく `[notes]` の `mark-style` の文字スタイルで番号だけを組む（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 ただし、番号の印は `mark-format` の書式も表記も使わず、算用数字で書く。
-「※」は、本文の書体と大きさのまま組む。
+「※」は、`[sidenotes]` の `marker-style` に書いた文字スタイルで組み、省略すれば印を置いた位置の見た目のまま組む（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
+`marker-style` は本文の中の「※」にだけ当たり、傍注の本文とその先頭の「※」は段落スタイル `sidenote` の見た目のまま組む。
+PDF は文字スタイルを当てた後の幅で「※」を測るので、`marker-style` を変えると本文の折り返しが変わる場合がある。
+番号の印と印なしには、`marker-style` は当たらない。
+PDF のほかの媒体は「※」を使わないので、`marker-style` は PDF でだけ意味を持つ。
 印なしは、行の位置で本文と対応させる方式であり、PDF でだけ意味を持つ。
 傍注の本文の先頭には、本文側の印と同じ番号か「※」を付け、印なしでは何も付けない。
 
@@ -6984,6 +7200,17 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 
 ## 関数の言語 Emet
 
+`golem repl emet` は標準入力から Emet の式を読み、値を標準出力に一行ずつ書く（[Golem ADR 0348](adr/0348-revise-emet-expression-repl.md)）。
+未完の式では次の行を待つ。
+端末では Tab で名前や import のパスを補完でき、Ctrl-C で書きかけの入力を取り消せる。
+診断を出した場合も次の式を読み、セッションの終了時に終了コード 1 を返す。
+評価の手数と深さの上限は原稿から呼ぶ場合と同じで、式ごとに数え直す。
+
+関数や型の宣言は空行または入力の終わりで確定する。
+再定義を含む宣言のまとまりは、既存の宣言と一緒に型検査に通った場合だけ登録する。
+`import` は起動時の作業ディレクトリをルートとしてモジュールを読み込む。
+宣言と取り込んだ名前はセッションを終えるまで使える。
+
 関数は、社内の使い手や組版のオペレーターが、手元の小さな計算や書式の不便を解消するために `.emet` のファイルに書く（[docs/adr/0160](adr/0160-emet-function-language-core.md)）。
 関数を書く言語は Emet である。
 Emet は Haskell の方言であり、`.gm` の `[...]` と `@` の記法を使わない。
@@ -7116,6 +7343,8 @@ pub inline price :: Nat -> Inlines
 - `Inlines` と `Blocks` を位置引数の前に置くと E06102 とする。インラインのコマンドの `Blocks` と、ブロックコマンドの `Inlines` も E06102 である。
 - 最後の引数が `Blocks` のブロックコマンドは、字下げした本体を受け取る。そうでないブロックコマンドに本体を書けば G02123 とする。
 - 位置引数の数がシグネチャと合わなければ G02120、可変長引数を持つ関数で位置引数が可変長引数の前の数より少なければ G02120 とする。
+  原稿からのコマンド呼び出しで必須の位置引数が足りないときは、呼び出しの末尾に、不足した引数ごとの G02120 を宣言順に出す。
+  メッセージには引数が何番目かを書く（[Golem ADR 0351](./adr/0351-prove-parser-formatter-round-trips.md)）。
 - 値の型が写せなければ G02121 とし、メッセージに何番目の値か（キーワード引数ならその名前）と、求めた型と、渡した値の型を書く。
 - 散文スロットの数が合わなければ G02122 とする。
 
@@ -7866,6 +8095,7 @@ files = ["chapters/01.gm"]
 - `url` は配布物の URL、`path` はプロジェクトの中の `.wasm` のパス（下の `path` の説明）で、どちらか一方だけを書く。両方を書くか、どちらも書かなければ G03001 になる。
 - `overrides` は、上書きする組み込みのインラインのコマンドの名前の配列である。`data` は、プラグインに渡すデータ（「データ」の節）である。
 - `[[filters]]` は、フィルタを当てるファイルを、当てる順に書く。`plugin` は `[plugins.<名前>]` の名前、`filter`（必須）はそのプラグインのフィルタの名前、`files`（必須）はフィルタを当てる原稿のファイルの配列である。
+  未宣言の `plugin` は G06010 をその値に、プラグインが提供していない `filter` は G06107 をその値に出す（[ADR 0330](adr/0330-undeclared-plugin-and-missing-filter.md)）。
 - `[[filters]]` の `plugin` の代わりに `function` に `.emet` のパスを書けば、`.emet` のフィルタになる（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)、「.gm から関数を使う」）。`plugin` と `function` は、どちらか一方だけを書く。
 
 想定する配布元は GitHub などのリリースであり、URL はバージョンごとに固定されたものを書く。
@@ -7935,10 +8165,11 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 
 | コマンド | 内容 |
 |---|---|
-| `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。「[golem new](#golem-new)」の節を参照 |
+| `golem new <dir> [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。「[golem new](#golem-new)」の節を参照 |
 | `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
+| `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の分量を数え、指定した字数と行数でページ数に換算する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。「[golem stats](#golem-stats)」の節を参照 |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose] [--format human\|json]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
@@ -7963,6 +8194,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 この生成が、Golem が乱数を使う唯一の箇所である。
 
 `preflight.toml` は、`based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなる。
+`--screen` を付けた雛形では、`style.toml` の塗り足しを省き、`preflight.toml` に `based-on = "screen"` の一行を書く（[ADR 0327](adr/0327-screen-preflight-and-template.md)）。
 コメントの言語だけを雛形の言語に合わせる。
 例の後には、`page-count` の段落と、墨一色の本のための段落（`[cmy-plates]` の `severity = "error"` と `[image-color-space]` の `allowed = ["gray"]`）を、どちらもコメントで書く（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 `preflight.toml` は、`--no-fonts` を付けても作る。
@@ -8013,6 +8245,22 @@ PDF は、フォントを置くまで G08002 で止まる。
 G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`）を位置として、人が読む形で標準エラー出力に書き、`golem explain` の案内の行を付ける。
 `<パス>` は、引数のパスと雛形のパスをつないで正規化したもので、`golem new .` なら `manifest.toml` になる。
 
+### golem stats
+
+`golem stats` は各ページのマスターフレームに流し込む本文を原稿順に集計し、PDF を書き出さずに文字数、ワード数、組版後の行数、換算ページ数を表示する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。
+本文にはルビの親文字を含め、読み、柱、ノンブル、独立したフレームのテキスト、組版で補ったハイフンを除く。
+文字数は段落の表示文字列の拡張書記素クラスタを数える。
+ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字を含む区間を数える。
+組版後の行数は、PDF と同じ組版で作る本文の行ボックスと、明示的な空行の数である。
+
+換算では段落の先頭と明示改行で新しい行を始め、1 行の字数を超えたところで折り返す。
+明示的な空行は 1 行として数える。
+傍注のように本文の外に置く文字だけを持つ段落は、空行に数えない。
+換算した総行数を 1 ページの行数で割り、端数を切り上げる。
+`--chars-per-line` と `--lines-per-page` は正の整数を取り、それぞれの既定値は 20 である。
+0、負数、小数を指定すると引数のエラー（終了コード 2）になり、集計しない。
+換算ページ数の行には、換算に使った字数と行数を併記する。
+
 ### golem check
 
 `golem check` は、マニフェストのターゲットによらず、四つのターゲットを検査する。
@@ -8050,6 +8298,7 @@ G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`
 日本式のトンボは、仕上がりの線と塗り足しの線の間隔で塗り足しを示す。
 そのため、`--marks japanese` で塗り足しが 0 ならエラー（G07002）とし、PDF を出力しない。
 G07002 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
+G07002 は、`[page]` の `bleed` に 0 より大きい長さを書くよう案内する（[ADR 0332](adr/0332-positive-bleed-in-japanese-crop-mark-message.md)）。
 
 トンボを付けた PDF には、`style.toml` の `[hidden-folio]` に従って隠しノンブルが入る（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、「style.toml」の節を参照）。
 `--marks` が `japanese` か `western` のとき、PDF をターゲットに含むビルドと `golem check`（つねに PDF を含む）は、隠しノンブルが版面に重なる誤り（G07050）も検査する。
@@ -8143,14 +8392,17 @@ spark は純粋な値の計算を別の capability に委ねるだけなので�
 - `--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
 
 構文から出力までの段階の誤りは、`golem build` と同じコードで出す。
-そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
+PDF のページ情報を作れない場合も、読み取れた版面設定と有効な規則から塗り足しの幅を検査する（[Golem ADR 0325](adr/0325-preflight-glyph-severity.md)）。
+この場合の要約にはエラー件数と、実行できなかった有効な検査名と理由を載せる。
+JSON の診断配列では先頭の診断の `facts` に `error-count`、`skipped-checks`、同じ順の `skipped-reasons` を含める。
 逆に、LSP、`golem check`、`golem build` はプリフライトの検査をしない。
 
 ビルドとプリフライトの役割は、止める理由で分かれている。
 ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる。
-それでも、次の二つの問題は、両方の側から同じ位置に同じメッセージと事実で出る。
+ページ情報があるときは、フォントにない字を `glyph-missing` の重大度で G09002 として報告する。
+同じ字の G08100 は PDF ビルドの診断である（[Golem ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
+ほかにエラーがなければ、`glyph-missing` が `warning` または `off` の場合は終了コード 0 を返す。
 
-- フォントにない字は、プリフライトの検査の G09002 のほかに、ビルドの G08100 としても出る（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。プロファイルが prod なので、G08100 はエラーである。G08100 は PDF を組んだ後に出るので、プリフライトの検査は走る。プリフライトの設定の `glyph-missing` は G08100 に当たらないので、`glyph-missing` を `warning` か `off` にしても、フォントにない字があれば終了コードは 1 である。
 - 行長からはみ出す行は、プリフライトの検査の G09013 のほかに、ビルドの G07105 の警告としても出る（[docs/adr/0210](adr/0210-warn-overfull-lines-in-build.md)）。G09013 の重大度だけが、`overfull-lines` の `severity` による。
 
 #### プリフライトの設定
@@ -8162,7 +8414,7 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 
 設定のファイルの最上位のキーは、次の三種類である。
 
-- `based-on`：`basic`、`print`、`none` のどれか。省けば `print`
+- `based-on`：`basic`、`print`、`screen`、`none` のどれか。省けば `print`
 - `name`：要約に出す名前
 - 検査の名前の表
 
@@ -8171,15 +8423,22 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 notice は設定の値として選べない。
 長さは `style.toml` と同じ書き方で、`zw` は使えない。
 
-設定のファイルの誤りは、すべて G09001 である。
-G09001 があれば、PDF を組まずに終える。
+設定を読めない原因は、TOML の文法違反を G09001、明示したファイルの不在を G09100、UTF-8 の誤りを G09101、既知の値の誤りを G09102、未知のキーを G09103、TOML の定義の衝突を G09104 とする（[Golem ADR 0321](adr/0321-preflight-rule-error-causes.md)）。
+負の自然数には G02103 を優先する。
+以前 G09001 で報告した設定エラーは、この対応表の原因別のコードへ移る。
+設定を読むエラーがあれば PDF を組まず、その設定に依存する検査も成功扱いしない。
+設定の読み込みで出る六つのエラーは、プリフライトの設定で重大度を選べない。
+CI が設定エラーをすべて止めるには終了コード 1 を使い、原因別の案内をするには対応表のコードを使う。
 未知のキーは、`style.toml` と同じく、キーと列挙の値をデータとして書いたスキーマで決める。
 値の誤りと未知のキーが同じファイルにあれば、両方を報告する（[docs/adr/0169](adr/0169-lsp-completion-in-style-and-preflight-toml.md)）。
+文法の誤りがあっても、終わりを識別できる次の項目から解析を続ける。
+複数行の値の終わりが識別できない範囲は未検査と示し、そこから別のエラーを推測しない。
 
-組み込みの設定は、次の三つである。
+組み込みの設定は、次の四つである。
 
 - `basic`：InDesign の `[基本]` にあたり、ビルドを止めない項目だけを検査する。
 - `print`：しきい値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではない。
+- `screen`：`basic` の検査から PDF/X-4 の検査を外し、画面向けの本に使う（[ADR 0327](adr/0327-screen-preflight-and-template.md)）。
 - `none`：すべての検査を `off` にした設定で、一から設定を書くときの基にする。
 
 `basic` と `print` の検査と重大度は、次の表のとおりである。
@@ -8210,7 +8469,7 @@ G09001 があれば、PDF を組まずに終える。
 
 PDF に置けない図版は、プリフライトの検査では扱わない。
 それは G08010 のエラーであり、PDF を作れないので、プリフライトは何も検査しない。
-そのため、`image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09001）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+そのため、`image-unplaceable` の検査（G09005）は廃止し、`preflight.toml` に書くと知らないキー（G09103）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[Golem ADR 0321](adr/0321-preflight-rule-error-causes.md)）。
 
 図版の検査は、ページの図版の一覧に対して行う。
 一覧には、PNG と JPEG のほか、PDF と SVG の図版も載る。
@@ -8462,10 +8721,11 @@ wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、
 変更の一覧には、ADR の二つの見出しが続く（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
 
 - `## ADRs`：範囲で追加された ADR を並べる。
-- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
+- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` か `Status:` の最初の行。[ADR 0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
 
 `## ADRs whose status changed` の各行は、`- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形である。
-ステータスは、`ステータス:` の後の文字列から前後の空白を除いたものである。
+ステータスは、行頭の `ステータス:` か `Status:` の後の文字列から前後の空白を除いたものである。
+旧形式の行と新しい形の行は、同じ状態を表していても違う行とみなす。
 ステータスの中の相対リンクは、ADR のディレクトリから解いたパスの絶対 URL にする（`scripts/release/absolute-links.sh`、[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 URL が指す版は、そのステータスのタグ（前のステータスは前のタグ、タグのステータスはタグ）の版である。
 `#` だけのリンクは ADR 自身のその節を指し、スキームを持つリンクは変えない。
@@ -8719,6 +8979,7 @@ PDF 経路は、最重量の工程（フォントのサブセット化と PDF/X-
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **異なる原因を一つにまとめた diagnostic のコードが残っている**：設計原則の「一つのコードに一つの原因」に反し、異なる原因を一つのコードで報告する箇所が 62 件ある（G03026 の、参考文献のファイルがない場合と JSON として読めない場合など）。[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) が、コードごとの条件、再現の入力、旧コードを期待する試験、分け方の提案を挙げている。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因は未確認である。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

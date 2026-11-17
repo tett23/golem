@@ -15,6 +15,7 @@ import Golem.Driver
 import Golem.Emet.Lint (lintProgram)
 import Golem.Eval.File (EvalResult (..))
 import Golem.Lint
+import Golem.Parser (commentBoundaryInfos)
 import Golem.Project
 import Golem.Syntax
 
@@ -30,7 +31,10 @@ lintProject profile noNotices verbose root = do
     Left f -> (pfSources f, finish Set.empty Set.empty (pfDiagnostics f))
     Right e ->
       let m = projectManifest (evProject e)
-       in (withEvaluatedSources e (sourceInfos (evProject e)), finish (manifestSilencedNotices m) (manifestSilencedInfo m) (evDiagnostics e <> lintEvaluated e))
+          boundaryInfos = concat [commentBoundaryInfos fid (sfCst sf) | (fid, sf) <- Map.toList (projectSources (evProject e))]
+          regular = finish (manifestSilencedNotices m) (manifestSilencedInfo m) (evDiagnostics e <> lintEvaluated e)
+          visible = silenceInfo (manifestSilencedInfo m) boundaryInfos
+       in (withEvaluatedSources e (sourceInfos (evProject e)), sortDiagnostics (regular <> visible))
   where
     finish silenced silencedInfo =
       finishDiagnostics profile (if noNotices then Nothing else Just silenced) silencedInfo verbose

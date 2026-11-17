@@ -205,7 +205,7 @@ info() { sh "$HERE/build-info.sh" "$B/book"; }
 INFO=$B/book/common/build-info.gm
 # expected EDITION COMMIT UNCOMMITTED: the whole file that build-info.sh writes
 expected() {
-  printf '%%%% scripts/manual/build-info.sh が書いたファイル。手で編集しない %%%%\n@set edition = "%s"\n@set commit = "%s"\n@set uncommitted = "%s"\n' "$1" "$2" "$3"
+  printf '%%%% scripts/manual/build-info.sh が書いたファイル。手で編集しない %%%%\nset edition = "%s"\nset commit = "%s"\nset uncommitted = "%s"\n' "$1" "$2" "$3"
 }
 # same NAME EDITION COMMIT UNCOMMITTED: the file is the expected one
 same() {

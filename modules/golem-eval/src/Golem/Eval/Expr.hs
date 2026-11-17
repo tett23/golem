@@ -6,6 +6,7 @@ every operation is exact.
 module Golem.Eval.Expr
   ( Env (..),
     plainEnv,
+    builtinExpressionNames,
     splitNamespace,
     callsFunction,
     evalExpr,
@@ -102,8 +103,8 @@ integral v = case numberOf v of
   Just (t, q) | denominator q == 1 -> Just (t, numerator q)
   _ -> Nothing
 
-builtinNames :: [Name]
-builtinNames = ["pi", "e", "sqrt", "floor", "ceil", "round", "fixed", "abs", "min", "max", "len", "div", "join"]
+builtinExpressionNames :: [Name]
+builtinExpressionNames = ["pi", "e", "sqrt", "floor", "ceil", "round", "fixed", "abs", "min", "max", "len", "div", "join"]
 
 -- | Names referenced by an expression (first segment of each variable).
 freeNames :: Located Expr -> [Name]
@@ -348,7 +349,7 @@ call le f args = case (f, args) of
     | otherwise -> typeErr le "join の配列には文字列だけを並べます"
   ("join", [_, _]) -> typeErr le "join は文字列の配列と区切りの文字列に使えます"
   _
-    | f `elem` builtinNames -> err "G02007" le (f <> " の引数が不正です")
+    | f `elem` builtinExpressionNames -> err "G02007" le (f <> " の引数が不正です")
     | otherwise -> err "G02061" le ("未定義の関数 " <> f <> " です")
   where
     tooManyDigits = err "G02086" le "小数の桁数が多すぎます（1000 桁までです）"

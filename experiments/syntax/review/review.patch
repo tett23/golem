@@ -1,0 +1,139 @@
+--- a/modules/golem-eval/src/Golem/Eval/File.hs
++++ b/modules/golem-eval/src/Golem/Eval/File.hs
+@@ -519,7 +519,7 @@
+     | n == "import" -> standalone ctx sp name args body
+     -- @style is read before the evaluation for the lines of its body: G02114 at each spread (docs/adr ADR 0112, ADR 0143)
+     | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure []
+-    | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
++    | otherwise -> prepareArgsFor (n == "listing") args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
+   A.Attributed cmds target -> attributed ctx sp cmds target
+   A.ErrorBlock -> pure []
+   where
+@@ -1003,13 +1003,10 @@
+     printings = case Map.lookup "printings" (ctxMeta ctx) of
+       Just (VArray (_ : _)) -> True
+       _ -> False
+-    japaneseBook = case Map.lookup "language" (ctxMeta ctx) of
+-      Just (VString lang) -> T.toLower (T.takeWhile (/= '-') lang) == "ja"
+-      _ -> False
+     errors =
+       [("G02096", sp, takesNoArguments "printings") | not (null args)]
+         <> [("G02097", bsp, takesNoBody "printings") | A.Located bsp _ : _ <- [body]]
+-        <> [("G02076", sp, "@printings は日本語の本（language の主の副タグが ja）でだけ使えます") | not japaneseBook]
++        <> [("G02076", sp, "@printings は日本語の本（language = \"ja\"）でだけ使えます") | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja")]
+         <> [("G02098", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
+     line = \case
+       VHash h
+@@ -1102,7 +1099,7 @@
+       [A.Located asp (A.Positional v)] ->
+         naturalArg ctx "@blank-line の引数" sp (A.Located asp v) >>= \case
+           Right n
+-            | n < 1 -> bad usage
++            | n == 0 -> pure []
+             | inInt64 (toInteger n) -> ok (fromIntegral n)
+             | otherwise -> outOfInt64 sp >> pure []
+           Left NaturalReported -> pure []
+@@ -1766,12 +1763,13 @@
+ checked against the header row.
+ -}
+ csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
++csvTable ctx sp args
++  | srcSpan : _ <- [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args] =
++      case [argText v | A.Located _ (A.Positional v) <- args] of
++        _ : _ -> err "G02130" sp "@table にはファイルのパスを一つ書きます" >> pure []
++        [] -> err "G02252" srcSpan "@table のパスを最初の引数に書きます" >> pure []
+ csvTable ctx sp args = do
+   kw <- keywords ctx args
+-  -- G02129: the path as src= is to be retired (docs/adr/0184)
+-  mapM_
+-    (\asp -> report (notice "G02129" asp "@table の src= は廃止予定です。パスを最初の引数に書きます"))
+-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
+   let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
+       paths = [argText v | A.Located _ (A.Positional v) <- args] <> maybe [] (pure . argText) (lookup "src" kw)
+       src = listToMaybe paths
+@@ -2053,12 +2051,15 @@
+ missing sp p = err "G02033" sp ("ファイルがありません: " <> p)
+ 
+ listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
++listing ctx sp args
++  | _ : (second,_) : _ <- [(asp,argText v) | A.Located asp (A.Positional v) <- args] =
++      err "G02253" second "@listing のパスは一つです" >> pure []
++  | (srcSpan, srcValue) : _ <- [(asp, argText v) | A.Located asp (A.Keyword (A.Located _ "src") v) <- args] =
++      case [argText v | A.Located _ (A.Positional v) <- args] of
++        p : _ -> err "G02253" srcSpan ("@listing のパスは一つです: " <> p <> " と " <> srcValue) >> pure []
++        [] -> err "G02250" srcSpan "@listing のパスを最初の引数に書きます" >> pure []
+ listing ctx sp args = do
+   kw <- keywords ctx args
+-  -- G02065: the path as src= is to be retired (golem-syntax ADR 0002)
+-  mapM_
+-    (\asp -> report (notice "G02065" asp "@listing の src= は廃止予定です。パスを最初の引数に書きます"))
+-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
+   let src = case [v | A.Located _ (A.Positional v) <- args] of
+         (v : _) -> Just (argText v)
+         [] -> argText <$> lookup "src" kw
+@@ -2077,14 +2078,14 @@
+                 pure [block sp (CodeBlock c)]
+           -- the diagnostics of lines= are at the argument (docs/adr ADR 0113)
+           let lsp = fromMaybe sp (listToMaybe [asp | A.Located asp (A.Keyword (A.Located _ "lines") _) <- args])
+-          linesArg <- traverse (lineRanges ctx OneRange "@listing の lines" lsp) (lookup "lines" kw)
++          linesArg <- traverse (lineRanges ctx AnyRanges "@listing の lines" lsp) (lookup "lines" kw)
+           case linesArg of
+             Nothing -> code Nothing ls
+             Just Nothing -> pure []
+             Just (Just (r, rs)) -> case rs of
+-              [LineRange a b]
+-                | a >= 1 && b <= fromIntegral (length ls) ->
+-                    code (Just (toInteger a)) (take (fromIntegral (b - a + 1)) (drop (fromIntegral (a - 1)) ls))
++              items | all (\(LineRange a b) -> a >= 1 && b <= fromIntegral (length ls)) items ->
++                concat <$> mapM (\(LineRange a b) -> code (Just (toInteger a))
++                  (take (fromIntegral (b - a + 1)) (drop (fromIntegral (a - 1)) ls))) items
+               _ -> err "G02037" lsp ("@listing の lines の範囲がファイルの行（1〜" <> tshow (length ls) <> "）を外れています: " <> r) >> pure []
+         Just _ -> missing sp p >> pure []
+         Nothing -> pure []
+@@ -2627,9 +2628,15 @@
+ its expression, Nothing: the command is not run.
+ -}
+ prepareArgs :: [A.Located A.Argument] -> M (Maybe [A.Located A.Argument])
+-prepareArgs args = do
++prepareArgs = prepareArgsFor False
++
++prepareArgsFor :: Bool -> [A.Located A.Argument] -> M (Maybe [A.Located A.Argument])
++prepareArgsFor rejectDuplicateSource args = do
+   spread <- mapM one args
+-  traverse (uniqueKeys . concat) (sequence spread)
++  case concat <$> sequence spread of
++    Just items | rejectDuplicateSource, any ((== "src") . snd) (repeatedKeys items) ->
++      mapM_ report (duplicateKeys items) >> pure Nothing
++    items -> traverse uniqueKeys items
+   where
+     one la@(A.Located asp a) = case a of
+       A.SplatPositional e -> withValue e $ \case
+@@ -2940,7 +2947,7 @@
+       Right val -> ofValue val
+   A.CommandArg _ -> neither ""
+   where
+-    ofText t = case traverse rangeItem (T.splitOn "," t) of
++    ofText t = case traverse (rangeItem . T.strip) (T.splitOn "," t) of
+       Left (ItemBadEnd, i) -> report (rangeEndDiagnostic sp i) >> pure Nothing
+       Left (ItemReserved, _) -> err "G01100" sp "予約された記法です。今のバージョンでは使えません" >> pure Nothing
+       Left (ItemNeither, i) -> neither i
+@@ -2948,9 +2955,8 @@
+         | count == OneRange && length items > 1 -> notOne t
+         | otherwise -> do
+             case [(x, y) | ItemDash x y _ _ <- items] of
+-              (x, y) : _ -> report (notice "G02108" sp ("- で区切った範囲は廃止予定です。" <> x <> "..." <> y <> " のように ... で区切ります"))
+-              [] -> pure ()
+-            naturals (map ends items) >>= maybe (pure Nothing) (done t)
++              (x, y) : _ -> err "G02251" sp ("範囲を " <> x <> "..." <> y <> " のように ... で区切ります") >> pure Nothing
++              [] -> naturals (map ends items) >>= maybe (pure Nothing) (done t)
+     ofValue = \case
+       VString s -> ofText s
+       VArray vs
+@@ -2983,6 +2989,7 @@
+ -}
+ rangeItem :: Text -> Either (ItemError, Text) RangeItem
+ rangeItem i
++  | "-" `T.isPrefixOf` i || "...-" `T.isInfixOf` i || "--" `T.isInfixOf` i = Left (ItemBadEnd,i)
+   | (a, rest) <- T.breakOn "..." i,
+     not (T.null rest) =
+       case (rangeEndWord a, rangeEndWord (T.drop 3 rest)) of

@@ -1,0 +1,13 @@
+      G3/H1 heading-limit: two errors in source order at UTF-8 byte offsets: OK
+All 1 tests passed (0.00s)
+Test suite golem-parser-test: PASS
+    heading-limit
+      G3/H1/H2: check reports each shared heading once, in order:               OK (0.09s)
+      G3/H1/H2: build --target html reports each shared heading once, in order: OK (0.09s)
+All 2 tests passed (0.09s)
+Test suite golem-cli-test: PASS
+        G3/U2/H1 heading-limit: published ranges use UTF-16 columns: [Debug] LSP: set new config: {  }
+All 1 tests passed (0.17s)
+Test suite golem-lsp-test: PASS
+All 22 tests passed (0.20s)
+Test suite golem-lsp-test: PASS

@@ -12,6 +12,7 @@ module Golem.Doc.IR
     BlockBody (..),
     BreakKind (..),
     PageControl (..),
+    keepsPageBreak,
     ListItem (..),
     itemNumbers,
     DefGroup (..),
@@ -142,8 +143,13 @@ data BlockBody
 between the blocks around, go on in the next column unless this many
 grid lines are free, or change the grid lines of the current column.
 -}
-data PageControl = NoBreak | NeedLines !Int | AdjustLines !Int
+data PageControl = NoBreak | NoBreakLines !Natural | NeedLines !Int | AdjustLines !Int
   deriving stock (Eq, Show)
+
+keepsPageBreak :: PageControl -> Bool
+keepsPageBreak NoBreak = True
+keepsPageBreak (NoBreakLines n) = n > 0
+keepsPageBreak _ = False
 
 -- | The kind of a forced break (docs/adr ADR 0017).
 data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn

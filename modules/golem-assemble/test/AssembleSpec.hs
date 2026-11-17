@@ -38,6 +38,12 @@ tests =
     [ noticeTests,
       noteNumberTests,
       unwritableTests,
+      testCase "J1: chapter-end notes use the primary language subtag" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+        forM_ cases $ \(lang, expected) -> (notesTitle lang == "注") @?= expected,
+      testCase "J2: chapter-end notes ignore case" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+        forM_ cases $ \(lang, _) -> notesTitle lang @?= notesTitle (T.toUpper lang),
       testCase "kanji numerals" $ do
         map kanji [1, 10, 12, 120, 1000, 10000, 20005] @?= ["一", "十", "十二", "百二十", "千", "一万", "二万五"]
         kanjiDigits 120 @?= "一二〇",

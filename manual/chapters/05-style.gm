@@ -201,6 +201,7 @@ gap = "0.5zw"
 波括弧そのものは、[code: \\{] と [code: \\}] のようにバックスラッシュを付けて書きます。
 TOML の基本の文字列（[code: "..."]）ではバックスラッシュを重ねる必要があるので、[code: '\\{{n}\\}'] のようにリテラル文字列で書くと読みやすくなります。
 以前の書き方の [code: {{] と [code: }}]、[code: {一}] や [code: {a}] のような一字の見本の差し込みは、今も同じ意味に読みますが、廃止予定のお知らせ（G03114、G03115）が出ます。
+印の文字スタイルは [code: marker-style = "strong"] のように指定します。
 [code: gap] は印と本文の間の空きで、書かなければ印の最後の文字から決まります。
 
 [code: \[lists\]] は HTML、EPUB、プレーンテキストにも適用されます。
@@ -252,7 +253,10 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 段落スタイルを付けない段落は [code: body] で組みます。
 
 [code: caption]、[code: sidenote]、[code: table] は、[code: body] の字下げを引き継ぎません。
-図のキャプションと傍注の本文と表のセルには字下げをしないので、この三つに 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
+[code: caption] と [code: sidenote] に字下げ、[code: space-between]、[code: line-breaks] を書くと、PDF のキャプションと傍注の本文はそれに従って組みます。
+行の長さは、キャプションなら図版の幅か段の行長（コードブロックではブロックの幅）、傍注なら傍注の領域の幅です。
+キャプションの段落は段落ごとに行を改めるので、キャプションの占める行が増えることがあります。
+表のセルには字下げをしないので、[code: table] に 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
 
 表のセルは、表に [code: @style] を付けなければ [code: table] で組みます。
 [code: table] ははじめ本文と同じ書体と大きさなので、本文より小さい文字の表にするなら、[code: \[paragraph-styles.table\]] に [code: size] を書きます。
@@ -307,6 +311,35 @@ InDesign の段落スタイルとの違いは、次のとおりです。
 - 段落の前後のアキは、長さでなく行の数で書きます。格子からずれる半端な空きは作れません。前の段落の後のアキと次の段落の前のアキは足さず、大きいほうを取ります。
 - 最終行右インデントはありません。
 - 段落ごとに書いたスタイルの上書き（オーバーライド）はありません。体裁を変えたい段落には、別の段落スタイルを作って付けます。原稿にあるのはスタイルの名前だけなので、スタイルを直せば、それを使うすべての段落が変わります。
+
+## 組版用の値を名前で共有する
+
+同じ字下げ、アキ量、行数を複数のスタイルで使うときは、[code: style.toml] の [code: \[values.length\]]、[code: \[values.aki\]]、[code: \[values.count\]] に名前を付けます。
+スタイル同士を [code: based-on] で結ばなくても、同じ値を参照できます。
+
+```toml
+[values.length]
+indent = "1zw"
+
+[values.aki]
+half = "二分"
+
+[values.count]
+rows = 2
+more = "rows + 1"
+
+[paragraph-styles.quote]
+indent = "indent"
+keep-with-next = "more"
+```
+
+名前は英小文字で始め、後は英小文字、数字、ハイフンで書きます。
+三つの表で同じ名前を二度使えません。
+単位やアキ量の組み込み名は、名前に使えません。
+宣言の順番は自由で、行数の式には足し算を使えます。
+行数は 0 から 2147483647 までです。
+原稿の [code: @style-def paragraph letter indent=indent] でも、同じ宣言を参照できます。
+長さの [code: zw] は、値を使う欄の文字の大きさで決まります。
 
 ## 行揃えと段落の前後のアキ
 
@@ -754,16 +787,18 @@ regex-styles = [
 - [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] から [code: {5}] が上の階層の番号になります。上の階層の番号なので、[code: \[headings.3\]] には [code: {1}] と [code: {2}] だけを書けます。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
 - [code: lines]：見出しが占める行の数（行取り）の最小の値です。1 以上の整数を書きます。
 - [code: page-break]：[code: "recto"] にすると、その見出しを奇数ページから始めます。
+- [code: block-align]：行取りの中で見出しを置く位置です。[code: "start"] は前に、[code: "center"] は中央に、[code: "end"] は後ろに寄せます。既定は [code: "center"] です。前と後ろは、横組みでは上と下、縦組みでは右と左です。
 
 本文より大きい見出しも、行の格子からずらさずに置きます。
-見出しは、その大きさを収める行数を占め、その中の中央に組まれます（行取り）。
+見出しは、その大きさを収める行数を占め、[code: block-align] で決めた位置に組まれます（行取り）。
 [code: lines] を書くと、見出しは少なくともその行数を占めます。
-たとえば [code: lines = 3] の見出しは、本文の 3 行分を占め、その真ん中の行に組まれます。
+たとえば本文と同じ大きさの 1 行の見出しに [code: lines = 3] を書くと、見出しは本文の 3 行分を占めます。
+その見出しは、[code: block-align] が [code: "start"] なら 1 行目に、[code: "center"] なら 2 行目に、[code: "end"] なら 3 行目に組まれます。
 見出しの後の本文は、行の格子からずれません。
 
 [code: size] と [code: lines] を書かなければ、次の既定の値で組みます。
 [code: lines] の既定は、本の言語（[code: manifest.toml] の [code: language]）で変わります。
-[code: language] が [code: ja] で始まる本は日本語の本で、大文字と小文字は区別しません（[code: "JA"] も日本語の本です）。
+[code: language] の最初の [code: -] より前を英小文字にしたものが [code: ja] なら日本語の本です（[code: "JA"] と [code: "ja-JP"] も日本語の本です）。
 欧文の本は行送りが文字の大きさに近いので、行を多めに取ります。
 
 | 階層 | [code: size] | [code: lines]（日本語） | [code: lines]（ほかの言語） |
@@ -842,7 +877,7 @@ content = ["{meta.title}", "{heading.1.short}"]
 - [code: {heading.<階層>.short}]、[code: {heading.<階層>.numbered}]：上の値と同じ、見出しの題と、番号と題です。末尾に [code: .last] を付けられます。
 - [code: {heading.<階層>.number}]：見出しの番号だけです（「第3章」など）。
 - [code: {meta.title}]：[code: manifest.toml] の書名です。[code: title] のほかに [code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] を書けます。
-- [code: {set.名前}]：そのページの章のファイルで [code: @set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
+- [code: {set.名前}]：そのページの章のファイルで [code: set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
 - [code: {vars.名前}]：[code: manifest.toml] の [code: \[vars\]] の変数です。どの章のページにも同じ値が出ます。表の中の値は [code: {vars.author.short}] と書きます。[code: \[vars\]] にない名前は G03111、文字列でも数でもない値は G03112 です。
 
 値のない差し込みがあると、その行は描きません。
@@ -945,9 +980,11 @@ leader = "dots"
 - [code: \[notes\]] の [code: mark-format]：PDF の注の印の書式です。[code: {n}] が算用数字の注の番号になり、ちょうど一つ書きます。[code: "{n})"] なら [code: 1)]、[code: "注{n}"] なら [code: 注1] の形になります。[code: {n:kanji}] のように表記の名前を添えると、番号をその表記で書きます（表記の名前は「[ref-title lists-style]」の番号の書式と同じです）。[code: '（{n:kanji}）'] なら [code: （三）]、[code: "{n:note-symbols}"] なら [code: *]、[code: †]、[code: ‡] と続きます。表記で表せない番号の注（記号の八つめなど）があると、エラーになります。注の本文の先頭にも同じ印が付きます。省くと [code: "*{n}"] です。HTML と EPUB では、注へのリンクの文字が番号の表記になります（[code: '（{n:kanji}）'] なら [code: 三]）。プレーンテキストの印は変わりません。
 - [code: \[notes\]] の [code: mark-style]：PDF の本文の注の印に当てる文字スタイルの名前です。書体、大きさ、色、[code: baseline-shift] など、文字スタイルのどのキーも当たります。[code: size] の [code: zw] は印の位置の文字の大きさに対する比です。省くと組み込みの文字スタイル [code: note-mark]（[code: size = "0.5zw"]、本文の文字の半分）です。このマニュアルは [code: \[character-styles.note-mark\]] の [code: size] を [code: "0.65zw"] にして組んでいます。
 - [code: \[notes\]] の [code: body-mark-style]：PDF の注の本文の先頭の印に当てる文字スタイルの名前です。省くと、注の本文の文字のまま組みます。
+- [code: \[notes\]] の [code: body-style]：PDF のページの下の脚注と章の終わりの注の本文に当てる段落スタイルの名前です。書体、大きさ、カーニングとトラッキング、アキ量のセットが当たります。字下げと段落の前後の空きは当たりません。省くと、本文の書体と版面の文字の大きさで組みます。本文の注の印と傍注は変わりません。
+- [code: \[notes\]] の [code: heading-style]：章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。省くと、2 の階層の見出しの書体と大きさで組みます。行取りは 2 の階層の見出しのままです。段落スタイルの大きさは本文の文字の大きさを超えられないので、見出しを大きくしたいときは [code: \[headings.2\]] の [code: size] を変えます。
 - [code: \[notes\]] の [code: mark-size]：以前の書き方で、廃止予定です。書くとお知らせ（G03117）が出ます。[code: \[character-styles.note-mark\]] の [code: size] に書き換えてください。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
-- [code: \[sidenotes\]]：傍注の領域を、小口側の余白に設けます。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
+- [code: \[sidenotes\]]：傍注の領域を、小口側の余白に設けます。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
 
@@ -958,6 +995,7 @@ leader = "dots"
 [code: space-after] は書いたとおりの空きになり、余った分は線の上の空きに入ります。
 そのため、[code: space-before] は「少なくともこれだけ空ける」という意味になります。
 行が増えると、脚注のあるページの本文はその分だけ短くなります。
+脚注の印の行、区切りの領域、脚注本文の最初の行が空の段にも収まらないときは、G07125 を出して PDF を作りません。
 [code: length] は [code: zw] で書くと版面の文字の大きさを一字として数え、一行の長さ（段組みでは一段の長さ）より長いとエラーになります。
 このマニュアルは、脚注の前に 8 字分の区切り線を引いています。
 

@@ -222,7 +222,7 @@ sessionTests =
       (serverIn, clientOut) <- createPipe
       (clientIn, serverOut) <- createPipe
       void (forkIO (void (runGolemLspWithHandles serverIn serverOut)))
-      (tokens, names, hovered, renamedFiles) <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig LT.fullLatestClientCaps dir $ do
+      (tokens, names, hovered, renamedFiles, details) <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig LT.fullLatestClientCaps dir $ do
         doc <- LT.openDoc "fn/book.emet" "emet"
         rsp <- LT.request M.SMethod_TextDocumentSemanticTokensFull (L.SemanticTokensParams Nothing Nothing doc)
         let tokens = case rsp of
@@ -240,10 +240,14 @@ sessionTests =
         let renamedFiles = case edit of
               M.TResponseMessage _ _ (Right (L.InL (L.WorkspaceEdit (Just changes) _ _))) -> [drop (length dir + 1) p | u <- Map.keys changes, Just p <- [L.uriToFilePath u]]
               _ -> []
+        gm <- LT.openDoc "a.gm" "golem"
+        items <- LT.getCompletions gm (L.Position 6 8)
+        let details = [(n, d) | L.CompletionItem n _ _ _ _ d _ _ _ _ _ _ _ _ _ _ _ _ _ <- items]
         liftIO (pure ())
-        pure (tokens, names, hovered, sortOn id renamedFiles)
+        pure (tokens, names, hovered, sortOn id renamedFiles, details)
       hClose clientOut
       assertBool "tokens" (tokens > 10)
       names @?= ["fn/lib.emet", "taxIncluded", "rule", "total", "tidy"]
+      details @?= [("total", Just (L.InL "pub fn total :: List Nat -> <file \"w.tsv\"> Nat"))]
       hovered @?= Just "n :: Nat"
       renamedFiles @?= ["a.gm", "fn/book.emet"]

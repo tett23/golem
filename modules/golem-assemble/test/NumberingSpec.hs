@@ -1,6 +1,7 @@
 -- | numberSeparator (golem-html ADR 0002).
 module NumberingSpec (tests) where
 
+import Data.Text qualified as T
 import Golem.Assemble.Numbering
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -9,7 +10,13 @@ tests :: TestTree
 tests =
   testGroup
     "number separators (golem-html ADR 0002)"
-    [ testCase "an ideographic space in a Japanese book" $ do
+    [ testCase "J1: number separator uses the primary language subtag" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+        mapM_ (\(lang, expected) -> (numberSeparator lang "1" == "\x3000") @?= expected) cases,
+      testCase "J2: number separator ignores case" $ do
+        let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+        mapM_ (\(lang, _) -> numberSeparator lang "1" @?= numberSeparator (T.toUpper lang) "1") cases,
+      testCase "an ideographic space in a Japanese book" $ do
         numberSeparator "ja" "第3章" @?= "\x3000"
         numberSeparator "ja-JP" "1.2" @?= "\x3000"
         numberSeparator "JA" "1" @?= "\x3000",

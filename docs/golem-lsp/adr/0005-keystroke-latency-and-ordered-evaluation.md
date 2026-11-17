@@ -1,6 +1,6 @@
 # ADR 0005: キー入力を待たせない LSP（semantic tokens、diagnostics の送り方、評価の順序）
 
-ステータス: 採択→semantic tokens を知らせないことは [ADR 0006](0006-semantic-tokens-highlighting.md)
+Status: superseded [{"by":["docs/golem-lsp/adr/0006-semantic-tokens-highlighting.md"],"part":"semantic tokens を知らせないこと"}]
 
 ## 文脈
 

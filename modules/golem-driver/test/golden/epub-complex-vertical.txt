@@ -53,7 +53,7 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 3860 bytes)
+== OEBPS/style.css (deflate, time 315532800, 3838 bytes)
 @font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
 @font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
 @font-face { font-family: "golem-code-latin"; src: url("fonts/latin.otf"); }
@@ -85,17 +85,17 @@ rt { ruby-align: space-around; }
 ruby.mono rt { ruby-align: center; }
 .sidenote { font-size: 0.85em; }
 @media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }
-p { padding-inline-start: 0em; text-indent: 1em; }
-p.ps-box { padding-inline-start: 1em; text-indent: 0em; }
-p.ps-caption { padding-inline-start: 0em; text-indent: 0em; }
-p.ps-quote { padding-inline-start: 2em; text-indent: 0em; }
+p { padding-inline-start: 0; text-indent: 1em; }
+p.ps-box { padding-inline-start: 1em; text-indent: 0; }
+p.ps-caption { padding-inline-start: 0; text-indent: 0; }
+p.ps-quote { padding-inline-start: 2em; text-indent: 0; }
 p.ps-quote { padding-inline-end: 2em; }
 p.ps-quote + p.ps-quote { margin-block-start: 0; }
-p.ps-sidenote { padding-inline-start: 0em; text-indent: 0em; }
-p.ps-signature { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-sidenote { padding-inline-start: 0; text-indent: 0; }
+p.ps-signature { padding-inline-start: 0; text-indent: 0; }
 p.ps-signature { text-align: end; }
 p.ps-signature { padding-inline-end: 1em; }
-p.ps-title { padding-inline-start: 0em; text-indent: 0em; }
+p.ps-title { padding-inline-start: 0; text-indent: 0; }
 p.ps-title { text-align: center; }
 p.ps-verse { margin-block: 0; }
 p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }

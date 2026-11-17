@@ -7,6 +7,8 @@ that are rejected or artifacts that are already in the cache.
 module CommandsSpec (commandsTests) where
 
 import Control.Monad (forM_)
+import Data.Aeson qualified as J
+import Data.Aeson.Types (Parser, parseEither)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
@@ -14,14 +16,16 @@ import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
 import Golem.Doc.Cbor (encodeDocument)
-import Golem.Driver (Evaluated (..), evaluateProject)
+import Golem.Driver (CropMarks (NoMarks), Evaluated (..), Target (TargetHtml), evaluateProject)
 import Golem.Eval.File (EvalResult (..))
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
 import Golem.Syntax.ShowTree (showTree)
+import Golem.TestSupport.Heading (headingLimitSource)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory, removeDirectoryRecursive)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -34,7 +38,133 @@ commandsTests :: TestTree
 commandsTests =
   testGroup
     "commands on a project"
-    [newTests, templateBuildTests, tablePathTests, inspectTests, fmtTests, pluginTests, preflightTests]
+    [statsTests, replTests, newTests, templateBuildTests, tablePathTests, headingLimitTests, inspectTests, fmtTests, pluginTests, preflightTests]
+
+statsTests :: TestTree
+statsTests =
+  testGroup
+    "Golem ADR 0355"
+    [ testCase "ADR 0355 I1: inv1_grapheme_count: style boundaries, ruby base and emoji" $ project $ \run -> do
+        plain <- run "e\x301\n" []
+        styled <- run "e[lang en: \x301]\n" []
+        styled @?= plain
+        take 2 plain @?= ["本文文字数: 1", "ワード数: 1"]
+        ruby <- run "[ruby: air | reading]\n" []
+        take 2 ruby @?= ["本文文字数: 3", "ワード数: 1"]
+        family <- run "👨\x200d👩\x200d👧\x200d👦\n" (grid 1 1)
+        take 2 family @?= ["本文文字数: 1", "ワード数: 0"]
+        last family @?= pages 1 1 1,
+      testCase "ADR 0355 I2: inv2_grid_lines: empty line, exact width, overflow and distinct paragraphs" $ project $ \run -> do
+        forM_ [("a\n@blank-line\nb", 3), ("ab", 1), ("abc", 2), ("a\n\nb", 2)] $ \(source, count) -> do
+          result <- run (source <> "\n") (grid 2 1)
+          last result @?= pages count 2 1,
+      testCase "ADR 0355 I3: inv3_grid_pages: default grid, empty, exact and overflow" $ project $ \run -> do
+        let source = unlines (replicate 32 (replicate 40 'a' <> "\n"))
+        empty <- run "" []
+        empty @?= ["本文文字数: 0", "ワード数: 0", "組版後の行数: 0", pages 0 20 20]
+        emptyGrid <- run "" (grid 40 32)
+        last emptyGrid @?= pages 0 40 32
+        oneOver <- run (replicate 41 'a' <> "\n") (grid 40 1)
+        last oneOver @?= pages 2 40 1
+        defaults <- run source []
+        last defaults @?= pages 4 20 20
+        exact <- run source (grid 40 32)
+        last exact @?= pages 1 40 32
+        overflow <- run (replicate 40 'a' <> "\n@blank-line\n" <> unlines (replicate 31 (replicate 40 'a' <> "\n"))) (grid 40 32)
+        last overflow @?= pages 2 40 32,
+      testCase "ADR 0355 I3: inv3_grid_pages: reject non-positive and non-integer dimensions" $
+        withSystemTempDirectory "golem-stats" $ \root ->
+          forM_ ["0", "-1", "0.5"] $ \value -> forM_ ["--chars-per-line", "--lines-per-page"] $ \flag -> do
+            (invalid, _, _) <- golemAt root ["stats", flag, value]
+            invalid @?= ExitFailure 2,
+      testCase "ADR 0355 I4: inv4_independent_counts: dimensions affect only the estimate" $ project $ \run -> do
+        first <- run "don't stop 42!\n" (grid 1 1)
+        second <- run "don't stop 42!\n" (grid 40 32)
+        take 3 first @?= take 3 second
+        first !! 1 @?= "ワード数: 3"
+        assertBool "grid pages differ" (last first /= last second),
+      testCase "ADR 0355 I5: inv5_master_frame: sidenote is independent of the main text" $ project $ \run -> do
+        plain <- run "ab\n" []
+        beside <- run "ab[sidenote: xy]\n" []
+        first <- run "abxy\n" []
+        take 1 beside @?= take 1 plain
+        take 1 plain @?= ["本文文字数: 2"]
+        take 1 first @?= ["本文文字数: 4"]
+        alone <- run "[sidenote: xy]\n" (grid 40 32)
+        take 1 alone @?= ["本文文字数: 0"]
+        last alone @?= pages 0 40 32
+    ]
+  where
+    grid :: Int -> Int -> [String]
+    grid c l = ["--chars-per-line", show c, "--lines-per-page", show l]
+    pages :: Int -> Int -> Int -> String
+    pages n c l = "換算ページ数: " <> show n <> " (" <> show c <> "字 × " <> show l <> "行)"
+    project test = withSystemTempDirectory "golem-stats" $ \tmp -> do
+      let root = tmp </> "book"
+      (created, _, _) <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
+      created @?= ExitSuccess
+      font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+      createDirectoryIfMissing True (root </> "fonts")
+      BL.writeFile (root </> "fonts/SourceSerif4-Regular.otf") font
+      appendFile (root </> "style.toml") "\n[sidenotes]\nwidth = \"2zw\"\ngap = \"0.25zw\"\nmarker = \"none\"\n"
+      test $ \source args -> do
+        writeFiles root [("chapters/01.gm", source)]
+        (status, out, err) <- golemAt root ("stats" : args)
+        assertEqual err ExitSuccess status
+        outputs <- filesUnder root
+        assertBool "stats must not write a PDF" (not (any (".pdf" `isSuffixOf`) outputs))
+        pure (lines out)
+
+replTests :: TestTree
+replTests =
+  testGroup
+    "Emet REPL (Golem ADR 0348)"
+    [ testCase "R1/R3/R4: a pipe prints each complete value, including the final unterminated line" $
+        runRepl "1 +\n2\n9" >>= (@?= (ExitSuccess, "3\n9\n", "")),
+      testCase "R1: both input and displayed string can exceed 4096 bytes" $ do
+        let literal = "\"" <> replicate 4097 'a' <> "\""
+        runRepl literal >>= (@?= (ExitSuccess, literal <> "\n", "")),
+      testCase "R5: 100000000 steps and 10000 frames succeed; one more fails and the next input gets a fresh budget" $ do
+        (code, out, err) <-
+          runRepl $
+            unlines
+              [ "discard :: List Int -> Nat",
+                "discard xs = 7",
+                "work :: Int -> Nat",
+                "work n = discard (List.range 1 n)",
+                "depth :: Int -> Int",
+                "depth 0 = 0",
+                "depth n = 1 + depth (n - 1)",
+                "",
+                "work 99999995",
+                "work 99999996",
+                "depth 9999",
+                "depth 10000",
+                "42"
+              ]
+        (code, lines out) @?= (ExitFailure 1, ["7", "9999", "42"])
+        map (take 6) (lines err) @?= ["E04100", "E04101"],
+      testCase "R6: a rejected import preserves public functions and does not expose private names" $
+        withSystemTempDirectory "golem-repl" $ \dir -> do
+          writeFiles dir [("double.emet", "pub twice :: Nat -> Nat\ntwice n = hidden n\nhidden :: Nat -> Nat\nhidden n = n + n\n")]
+          (code, out, err) <-
+            readCreateProcessWithExitCode
+              (proc "golem" ["repl", "emet"]) {cwd = Just dir}
+              "import \"double.emet\"\ntwice 3\nimport \"../outside.emet\"\nhidden 2\ntwice 4\n"
+          (code, lines out) @?= (ExitFailure 1, ["6", "8"])
+          length (lines err) @?= 2
+          assertBool err ("G03003" `isInfixOf` err),
+      testCase "R6: failed replacement leaves the checked definition callable" $ do
+        (code, out, _) <- runRepl "twice :: Nat -> Nat\ntwice n = n + n\n\ntwice 3\ntwice :: Nat -> Nat\ntwice n = False\n\ntwice 4\n"
+        (code, out) @?= (ExitFailure 1, "6\n8\n"),
+      testCase "R2: recover after a syntax error without consuming the next expression" $ do
+        (code, out, err) <- runRepl "1 + )\n42\n"
+        (code, out) @?= (ExitFailure 1, "42\n")
+        assertBool err ("E01100" `isInfixOf` err)
+    ]
+  where
+    runRepl input = withSystemTempDirectory "golem-repl" $ \dir ->
+      readCreateProcessWithExitCode (proc "golem" ["repl", "emet"]) {cwd = Just dir} input
 
 -- ------------------------------------------------------------------ helpers
 
@@ -106,6 +236,46 @@ twoChapters = [("manifest.toml", manifestWith ["a.gm", "b.gm"]), ("style.toml", 
 manifestWith :: [T.Text] -> String
 manifestWith chapters = T.unpack (manifestToml testManifest {tmChapters = chapters})
 
+{- | Compare each command with literal source spans. In particular, do
+not deduplicate or sort its diagnostics before checking them.
+-}
+headingLimitTests :: TestTree
+headingLimitTests =
+  testGroup
+    "heading-limit"
+    [ testCase ("H1/H2/C1: " <> scenario <> " " <> name) $
+        withSystemTempDirectory "golem-heading" $ \dir -> do
+          let manifest = T.replace "chapters = [\"a.gm\"]" ("chapters = " <> chapters) (manifestToml testManifest)
+          writeFiles dir (("manifest.toml", T.unpack manifest) : [(file, T.unpack text) | (file, text) <- files])
+          (exit, err) <- jsonResult <$> runBuild dir mode Dev NoMarks False False
+          assertEqual (T.unpack err) (ExitFailure 1) exit
+          let decoded = J.eitherDecodeStrict (TE.encodeUtf8 err) :: Either String [J.Value]
+              spans = decoded >>= parseEither (mapM headingSpan)
+          fmap concat spans @?= Right wanted
+    | (scenario, chapters, files, wanted) <- scenarios,
+      (name, mode) <- [("check", CheckOnly), ("build --target html", WriteTargets [TargetHtml])]
+    ]
+  where
+    two file = [expected file 23 29 5, expected file 46 49 9]
+    one file = [expected file 23 29 5]
+    firstHeading = T.unlines (take 5 (T.lines headingLimitSource))
+    importing = "@import shared.gm as common\n"
+    scenarios =
+      [ ("identical files", "[\"a.gm\", \"b.gm\"]", [("a.gm", firstHeading), ("b.gm", firstHeading)], one "a.gm" <> one "b.gm"),
+        ("single", "[\"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
+        ("nested", "[[\"a.gm\"]]", [("a.gm", headingLimitSource)], two "a.gm"),
+        ("repeat", "[\"a.gm\", \"a.gm\"]", [("a.gm", headingLimitSource)], two "a.gm"),
+        ("two", "[\"a.gm\", \"b.gm\"]", [("a.gm", headingLimitSource), ("b.gm", firstHeading)], two "a.gm" <> one "b.gm"),
+        ("shared", "[\"a.gm\", \"b.gm\"]", [("a.gm", importing), ("b.gm", importing), ("shared.gm", firstHeading)], one "shared.gm"),
+        ("chapter-import", "[\"a.gm\", \"shared.gm\"]", [("a.gm", importing), ("shared.gm", firstHeading)], one "shared.gm")
+      ]
+    headingSpan :: J.Value -> Parser [J.Value]
+    headingSpan = J.withObject "diagnostic" $ \d -> do
+      code <- d J..: "code"
+      if code == ("G01012" :: T.Text) then pure <$> d J..: "span" else pure []
+    expected :: T.Text -> Int -> Int -> Int -> J.Value
+    expected file start end line = J.object ["file" J..= file, "start" J..= start, "end" J..= end, "line" J..= line, "column" J..= (7 :: Int)]
+
 -- ------------------------------------------------------------------ golem new (golem-cli ADR 0003, ADR 0006)
 
 newTests :: TestTree
@@ -117,6 +287,13 @@ newTests =
         assertEqual err ExitSuccess code
         files <- filesUnder (tmp </> "book")
         files @?= [".gitignore", "chapters/01.gm", "manifest.toml", "preflight.toml", "style.toml"],
+      testCase "Golem ADR 0327 S2: new --screen writes screen rules and no bleed" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts", "--screen"]
+        assertEqual err ExitSuccess code
+        rules <- readUtf8 (tmp </> "book/preflight.toml")
+        style <- readUtf8 (tmp </> "book/style.toml")
+        rules @?= "based-on = \"screen\"\n"
+        assertBool style (not ("bleed =" `isInfixOf` style)),
       testCase "--no-fonts names the Japanese font and its licence to place, with their URLs" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         (_, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
         lines err
@@ -277,18 +454,12 @@ templateBuildTests =
         ]
     ]
 
-{- | The path of @table as the first argument builds the same outputs as
-src=, byte for byte, in the four targets; src= gives the notice G02129
-(docs/adr/0184). The instance ID of the PDF (the second of /ID) is the
-hash of the bytes of every input (docs/adr/0002), the source among them,
-and differs with the source; it alone is left out of the comparison
-(docs/adr/0211).
--}
+-- | The path of @table is positional; src= is G02252 (ADR 0343).
 tablePathTests :: TestTree
 tablePathTests =
   testGroup
-    "the path of @table as the first argument (docs/adr/0184)"
-    [ testCase "golem build writes the same files for @table data/t.csv and @table src=data/t.csv" $ withSystemTempDirectory "golem-table" $ \tmp -> do
+    "the path of @table as the first argument (docs/adr/0184, ADR 0343)"
+    [ testCase "golem build accepts @table data/t.csv and rejects @table src=data/t.csv with G02252" $ withSystemTempDirectory "golem-table" $ \tmp -> do
         -- one project for both, as golem new gives each project its own identifier
         _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
         font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
@@ -298,30 +469,17 @@ tablePathTests =
         let buildWith line = do
               writeFiles (tmp </> "book") [("chapters/01.gm", chapter <> "\n" <> line <> "\n"), ("data/t.csv", "Name,Size\nA,1\nB,2\n")]
               (code, _, err) <- golemAt (tmp </> "book") ["build", "--format", "json"]
-              assertEqual err ExitSuccess code
-              files <- filesUnder (tmp </> "book/build")
-              outputs <- mapM (\p -> (p,) <$> BS.readFile (tmp </> "book/build" </> p)) files
-              removeDirectoryRecursive (tmp </> "book/build")
-              pure (Map.fromList outputs, err)
-        (positional, perr) <- buildWith "@table data/t.csv"
-        (keyword, kerr) <- buildWith "@table src=data/t.csv"
+              pure (code, err)
+        (pcode, perr) <- buildWith "@table data/t.csv"
+        pcode @?= ExitSuccess
         perr @?= "[]\n"
-        assertBool kerr ("G02129" `isInfixOf` kerr)
+        files <- filesUnder (tmp </> "book/build")
         forM_ ["html", "epub", "text", "pdf"] $ \t ->
-          assertBool ("no " <> t <> " output") (any ((t <> "/") `isPrefixOf`) (Map.keys positional))
-        Map.keys positional @?= Map.keys keyword
-        forM_ (Map.toList positional) $ \(p, bytes) -> assertBool p (fmap withoutInstanceId (Map.lookup p keyword) == Just (withoutInstanceId bytes))
+          assertBool ("no " <> t <> " output") (any ((t <> "/") `isPrefixOf`) files)
+        (kcode, kerr) <- buildWith "@table src=data/t.csv"
+        kcode @?= ExitFailure 1
+        assertBool kerr ("G02252" `isInfixOf` kerr)
     ]
-  where
-    -- /ID [<document ID> <instance ID>], the instance ID as zeros
-    withoutInstanceId bytes = case BS.breakSubstring "/ID [<" bytes of
-      (before, rest)
-        | not (BS.null rest) ->
-            let (docId, afterDoc) = BS.break (== 0x3E) (BS.drop 6 rest)
-                (sep, instanceAndRest) = BS.break (== 0x3C) afterDoc
-                (instanceId, afterInstance) = BS.break (== 0x3E) (BS.drop 1 instanceAndRest)
-             in BS.concat [before, "/ID [<", docId, sep, "<", BS.map (const 0x30) instanceId, afterInstance]
-      _ -> bytes
 
 -- ------------------------------------------------------------------ golem inspect (golem-cli ADR 0001)
 
@@ -464,7 +622,24 @@ fmtTests :: TestTree
 fmtTests =
   testGroup
     "golem fmt over the project (golem-fmt ADR 0001)"
-    [ testCase "--check names only the unformatted chapter on stdout and exits with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+    [ testCase "Golem ADR 0339 I3: lint shows boundary info without verbose and obeys silence-info" $ withSystemTempDirectory "golem-lint-comment" $ \tmp -> do
+        let chapter = "[strong%%注%%: 本文]\n"
+            manifest = manifestWith ["chapter.gm"]
+        writeFiles tmp [("manifest.toml", manifest), ("chapter.gm", chapter)]
+        (_, _, shown) <- golemAt tmp ["lint"]
+        assertBool shown ("G05100" `isInfixOf` shown)
+        writeFiles tmp [("manifest.toml", manifest <> "\n[diagnostics]\nsilence-info = [\"G05100\"]\n")]
+        (_, _, hidden) <- golemAt tmp ["lint"]
+        assertBool hidden (not ("G05100" `isInfixOf` hidden)),
+      testCase "Golem ADR 0339 I5: no-argument fmt recovers paths but does not rewrite quote errors" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        let bad = "[f key=x%%注%% other=%%=注記%%]\n"
+        writeFiles tmp [("manifest.toml", manifestWith ["chapters/01.gm", "chapters/02.gm"]), ("chapters/01.gm", bad), ("chapters/02.gm", "本文。  \n")]
+        (code, _, err) <- golemAt tmp ["fmt"]
+        code @?= ExitFailure 1
+        assertBool err ("G01102" `isInfixOf` err)
+        readUtf8 (tmp </> "chapters/01.gm") >>= (@?= bad)
+        readUtf8 (tmp </> "chapters/02.gm") >>= (@?= "本文。\n"),
+      testCase "--check names only the unformatted chapter on stdout and exits with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         writeFiles tmp fmtProject
         (code, out, _) <- golemAt tmp ["fmt", "--check"]
         (code, out) @?= (ExitFailure 1, "chapters/02.gm\n"),

@@ -69,9 +69,9 @@ Golem の原稿は、コミットのハッシュを読む手段を持たず、�
 
 ```text
 %% scripts/manual/build-info.sh が書いたファイル。手で編集しない %%
-@set edition = "0.1.0-rc1 の開発版"
-@set commit = "0123456789abcdef0123456789abcdef01234567"
-@set uncommitted = "（コミットしていない変更を含む）"
+set edition = "0.1.0-rc1 の開発版"
+set commit = "0123456789abcdef0123456789abcdef01234567"
+set uncommitted = "（コミットしていない変更を含む）"
 ```
 
 - [code: edition] は、組むコミットに [code: v] で始まるタグがあればそのタグ、なければ [code: VERSION] の内容に「の開発版」を続けた文字列である。
@@ -94,7 +94,7 @@ Golem の原稿は、コミットのハッシュを読む手段を持たず、�
 注記までコードにすると、注記もコードの書体で組まれ、ハッシュとの境や注記の字のあいだで改行した行の行末に、改行の印（[code: ⏎]）が付く。
 
 三つの変数は、どれも奥付で使う。
-使わない変数を書くと、lint の「使われていない [code: @set] 変数」のエラーになる。
+使わない変数を書くと、lint の「使われていない [code: set] 変数」のエラーになる。
 
 [code: build-info.gm] は生成物であり、[code: .gitignore] に入っている。
 これがないまま [code: golem check] や LSP でマニュアルを開くと、[code: @import] の先がないエラー（G03002）になる。

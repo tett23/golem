@@ -1,6 +1,6 @@
 # ADR 0023: 技術書のためのコードブロックの機能
 
-ステータス: 採択→（リスト番号とキャプションのあいだの区切り）は [ADR 0042](0042-listing-caption-number-separator.md)、`lines` と `highlight` の範囲の書き方（`N...M`）と、`highlight` の値の形の誤りと逆順の範囲を G02069 から外したのは [ADR 0113](../../adr/0113-closed-range-literal.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0042-listing-caption-number-separator.md"],"part":"（リスト番号とキャプションのあいだの区切り）"},{"by":["docs/adr/0113-closed-range-literal.md"],"part":"`lines` と `highlight` の範囲の書き方（`N...M`）と、`highlight` の値の形の誤りと逆順の範囲を G02069 から外したの"}]
 
 ## 文脈
 

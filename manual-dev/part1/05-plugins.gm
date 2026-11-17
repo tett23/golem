@@ -257,7 +257,7 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 
 ## プラグインの diagnostic
 
-プラグインの読み込みと実行の誤りは、G06002 から G06012 と G06101 から G06105 で報告する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G06002 から G06010）」）]
+プラグインの読み込みと実行の誤りは、G06002 から G06012 と G06101 から G06107 で報告する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G06002 から G06010）」）]
 
 | コード | 内容 |
 | --- | --- |
@@ -269,9 +269,10 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 | G06007 | 組み込みのコマンドとの衝突に [code: overrides] の宣言がない |
 | G06008 | [code: overrides] の名前が誤っている |
 | G06009 | 実行が失敗した（命令数、メモリ、不正な出力） |
-| G06010 | [code: \[\[filters\]\]] が誤ったプラグインかフィルタを指す |
+| G06010 | [code: \[\[filters\]\]] の [code: plugin] が未宣言のプラグインを指す |
 | G06011 | [code: plugins.lock] が TOML として読めない |
 | G06012 | チャネルの宣言が誤っている |
+| G06107 | [code: \[\[filters\]\]] の [code: filter] をプラグインが提供していない |
 | G06101 | [code: data] のファイルがない |
 | G06102 | [code: data] の名前をプラグインが受け取らない |
 | G06103 | [code: data] の大きさの合計が 64 MiB を超える |

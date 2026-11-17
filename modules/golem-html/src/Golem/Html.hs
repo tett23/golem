@@ -147,7 +147,8 @@ character of the marker).
 data HtmlLists = HtmlLists
   { hlBullets :: !(NonEmpty Text),
     hlNumbers :: !(NonEmpty NumberFormat),
-    hlGap :: !(Maybe Bool)
+    hlGap :: !(Maybe Bool),
+    hlMarkerStyle :: !(Maybe Text)
   }
 
 -- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
@@ -181,7 +182,8 @@ data HtmlCharStyle = HtmlCharStyle
     -- | the declarations of the underline and the strikethrough (docs/adr/0270)
     hcsTextDecoration :: ![Text],
     -- | the characters do not break between them (docs/adr ADR 0272)
-    hcsNoBreak :: !Bool
+    hcsNoBreak :: !Bool,
+    hcsSize :: !(Maybe Text)
   }
   deriving stock (Eq)
 
@@ -455,7 +457,7 @@ topBlocks c = go Nothing Nothing
     -- the break pending, and the blank lines pending after a block (Nothing before one)
     go _ _ [] = ""
     go _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
-    go _ blanks (Block _ _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go _ blanks (Block _ _ _ (PageControl control) : rest) | keepsPageBreak control = go (Just "avoid") blanks rest
     go pending blanks (Block _ _ _ (PageControl _) : rest) = go pending blanks rest
     go pending blanks (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
     -- the paragraphs of one box in its div (docs/adr/0271)
@@ -1128,6 +1130,7 @@ css cfg book =
       <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
       -- the markers of [lists] by depth (golem-driver ADR 0013)
       <> maybe [] (listRules cfg book) (hcLists cfg)
+      <> markerRules "" (hcCharStyles cfg)
       -- forced breaks, only the kinds the book uses (docs/adr ADR 0017)
       <> [ "[data-break-before=\"" <> name <> "\"] { page-break-before: always; break-before: " <> name <> "; }"
          | k <- Set.toAscList (hcBreakKinds cfg),
@@ -1237,6 +1240,12 @@ css cfg book =
             <> ["margin-inline-end: " <> i | Just i <- [hrEndIndent r]]
         )
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
+    markerRules prefix styles =
+      [ rule (prefix <> markerSelector) (["all: inherit" | not (T.null prefix)] <> declsOf "" cs <> ["font-size: " <> size | Just size <- [hcsSize cs]])
+      | Just name <- [hcLists cfg >>= hlMarkerStyle],
+        Just cs <- [Map.lookup name styles]
+      ]
+    markerSelector = ":is(ol, ul)[class^=\"list-\"] > li::marker"
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written
     {- the box of each style that has one, its paragraphs without their
@@ -1270,8 +1279,8 @@ css cfg book =
     {- the indent of a style is written when it differs from body's, and
     body's when it is not 0; text-indent is inherited by the lines, so
     each line of a style that keeps them hangs (docs/adr ADR 0006) -}
-    bodyIndent = maybe ("0em", "0em") (\b -> (hpsIndent b, hpsFirstLineIndent b)) (Map.lookup "body" (hcParaStyles cfg))
-    isZero l = T.dropWhile (== '-') l `elem` ["0em", "0pt"]
+    bodyIndent = maybe ("0", "0") (\b -> (hpsIndent b, hpsFirstLineIndent b)) (Map.lookup "body" (hcParaStyles cfg))
+    isZero l = T.dropWhile (== '-') l `elem` ["0", "0em", "0pt"]
     indentRule name ps
       | name == "body" = not (isZero (hpsIndent ps) && isZero (hpsFirstLineIndent ps))
       | otherwise = (hpsIndent ps, hpsFirstLineIndent ps) /= bodyIndent
@@ -1431,7 +1440,7 @@ css cfg book =
           boxLocal =
             [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
-       in charRules <> paraStyleRules <> faceRules <> boxLocal <> listRule
+       in charRules <> markerRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text

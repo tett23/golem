@@ -45,7 +45,7 @@ tests =
         inlinesOf "[link \"https://example.com/\"]\n" @?= [[Link z "https://example.com/" [CharStyle z "url" [Text z "https://example.com/"]]]],
       testCase "a string of an expression" $ do
         inlinesOf "[link [= \"https://example.com/\"]: 例]\n" @?= [[Link z "https://example.com/" [Text z "例"]]]
-        inlinesOf "@set site = \"https://example.com/\"\n\n[link [= site]: 例]\n" @?= [[Link z "https://example.com/" [Text z "例"]]],
+        inlinesOf "set site = \"https://example.com/\"\n\n[link [= site]: 例]\n" @?= [[Link z "https://example.com/" [Text z "例"]]],
       testCase "G02124: a URL written without quotes tells to quote it" $ do
         msgs "[link https://example.com/: 例]\n" @?= [("G02124", "link の引数が誤っています。URL は \"https://...\" のように引用符で囲みます")]
         inlinesOf "[link https://example.com/: 例]\n" @?= [[]],

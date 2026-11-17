@@ -1,0 +1,105 @@
+Build profile: -w ghc-9.10.3 -O1
+In order, the following will be built (use -v for more details):
+ - golem-eval-0.1.0 (lib) (file src/Golem/Eval/Expr.hs changed)
+ - golem-plugin-0.1.0 (lib) (dependency rebuilt)
+ - golem-lint-0.1.0 (lib) (dependency rebuilt)
+ - golem-emet-0.1.0 (lib) (dependency rebuilt)
+ - golem-driver-0.1.0 (lib) (dependency rebuilt)
+ - golem-lsp-0.1.0 (lib) (dependency rebuilt)
+ - golem-lsp-0.1.0 (test:golem-lsp-test) (dependency rebuilt)
+Preprocessing library for golem-eval-0.1.0...
+Building library for golem-eval-0.1.0...
+[7 of 9] Compiling Golem.Eval.Expr  ( src/Golem/Eval/Expr.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/Expr.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/Expr.dyn_o ) [Source file changed]
+[8 of 9] Compiling Golem.Eval.Analysis ( src/Golem/Eval/Analysis.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/Analysis.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/Analysis.dyn_o ) [Golem.Eval.Expr changed]
+[9 of 9] Compiling Golem.Eval.File  ( src/Golem/Eval/File.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/File.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-eval-0.1.0/build/Golem/Eval/File.dyn_o ) [Golem.Eval.Expr changed]
+Preprocessing library for golem-lint-0.1.0...
+Building library for golem-lint-0.1.0...
+Preprocessing library for golem-plugin-0.1.0...
+Building library for golem-plugin-0.1.0...
+Preprocessing library for golem-emet-0.1.0...
+Building library for golem-emet-0.1.0...
+[ 4 of 22] Compiling Golem.Emet.Prim  ( src/Golem/Emet/Prim.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-emet-0.1.0/build/Golem/Emet/Prim.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-emet-0.1.0/build/Golem/Emet/Prim.dyn_o ) [Golem.Eval.Expr changed]
+[12 of 22] Compiling Golem.Emet.Eval  ( src/Golem/Emet/Eval.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-emet-0.1.0/build/Golem/Emet/Eval.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-emet-0.1.0/build/Golem/Emet/Eval.dyn_o ) [Golem.Eval.Expr changed]
+[16 of 22] Compiling Golem.Emet.Check ( src/Golem/Emet/Check.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-emet-0.1.0/build/Golem/Emet/Check.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-emet-0.1.0/build/Golem/Emet/Check.dyn_o ) [Golem.Eval.Expr changed]
+Preprocessing library for golem-driver-0.1.0...
+Building library for golem-driver-0.1.0...
+[ 8 of 13] Compiling Golem.Driver.ProjectVars ( src/Golem/Driver/ProjectVars.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/ProjectVars.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver/ProjectVars.dyn_o ) [Golem.Eval.Expr changed]
+[12 of 13] Compiling Golem.Driver     ( src/Golem/Driver.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-driver-0.1.0/build/Golem/Driver.dyn_o ) [Golem.Eval.Expr changed]
+Preprocessing library for golem-lsp-0.1.0...
+Building library for golem-lsp-0.1.0...
+[3 of 4] Compiling Golem.Lsp.Features ( src/Golem/Lsp/Features.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Features.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Features.dyn_o ) [Source file changed]
+[4 of 4] Compiling Golem.Lsp.Server ( src/Golem/Lsp/Server.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Server.o, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/build/Golem/Lsp/Server.dyn_o ) [Source file changed]
+Preprocessing test suite 'golem-lsp-test' for golem-lsp-0.1.0...
+Building test suite 'golem-lsp-test' for golem-lsp-0.1.0...
+[1 of 9] Compiling EditingSpec      ( test/EditingSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/EditingSpec.o ) [Source file changed]
+[3 of 9] Compiling SemanticTokensSpec ( test/SemanticTokensSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/SemanticTokensSpec.o ) [Golem.Lsp.Features changed]
+[6 of 9] Compiling FunctionsLspSpec ( test/FunctionsLspSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/FunctionsLspSpec.o ) [Source file changed]
+[7 of 9] Compiling TableWatchSpec   ( test/TableWatchSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/TableWatchSpec.o ) [Golem.Lsp.Features changed]
+[8 of 9] Compiling TomlSpec         ( test/TomlSpec.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/TomlSpec.o ) [Source file changed]
+[9 of 9] Compiling Main             ( test/Main.hs, /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test-tmp/Main.o ) [Golem.Lsp.Features changed]
+[10 of 10] Linking /Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/build/golem-lsp-test/golem-lsp-test [Objects changed]
+ld: warning: -U option is redundant when using -undefined dynamic_lookup
+Running 1 test suites...
+Test suite golem-lsp-test: RUNNING...
+golem-lsp
+  golem-lsp (ADR 0001)
+    renaming, formatting, closing and imports (ADR 0001)
+      roadmap-completion
+        M1 expression operands and exclusions:                           [Info] Server starting
+OK (0.05s)
+        T1 manifest source enumeration inside quotes:                    [Debug] LSP: set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/manifest.toml
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[OK (0.01s)
+I[nIfnof]o         T1 manifest unsaved PDF settings and free metadata:              ]L SSPe:r vreerc esitvaerdt ienxgi
+t
+[Info] Se[rDveebru gs]t oLpSpPe:d 
+set new config: {  }
+[Debug] VFS: opening file:///Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/modules/golem-lsp/test/fixtures/proj/manifest.toml
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] LSP: received exit
+[InOK (0.01s)
+fo] Se        M1 block command at the beginning of a line:                     rver stopped
+[Info] Server starting
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[OK (0.01s)
+I        M1 D1 expression function with its explanation over UTF-16:      nfo] LSP: received ex[iItn
+fo[]I nSfeor]v eSre rsvtearr tsitnogp
+ped
+[Debug] LSP: set new config: {  }
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+[Info] Server starting
+[Debug] LSP: set new config: {  }
+[Info] LSP: received exit
+[IOK
+nf        M1 D1 inline command after an emoji and prose outside a command: o] Server stopped
+[Error] LSP: error when requesting configuration:  {
+  "code": -32803,
+  "message": "No configuration for requested sections: [\"golem\"]"
+}
+[Info] LSP: received shutdown
+OK
+[Info]
+ LSP: received exAll 6 tests passed (0.10s)
+it
+[Info] Test suite golem-lsp-test: PASS
+Test suite logged to:
+/Users/tett23/repositories/src/github.com/tett23/golem/.claude/worktrees/road-lsp-completion/dist-newstyle/build/aarch64-osx/ghc-9.10.3/golem-lsp-0.1.0/t/golem-lsp-test/test/golem-lsp-0.1.0-golem-lsp-test.log
+1 of 1 test suites (1 of 1 test cases) passed.

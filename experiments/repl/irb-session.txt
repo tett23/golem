@@ -1,0 +1,18 @@
+irb 1.16.0 (2025-12-17)
+ruby 4.0.7 (2026-09-15 revision 229531a6cf) +PRISM [arm64-darwin23]
+Switch to inspect mode.
+>> 1 +
+?> 2
+=> 3
+>> 1 / 0
+(irb):3:in 'Integer#/': divided by 0 (ZeroDivisionError)
+	from (irb):3:in '<main>'
+	from /Users/tett23/.local/share/mise/installs/ruby/4.0.7/lib/ruby/gems/4.0.0/gems/irb-1.16.0/exe/irb:9:in '<top (required)>'
+	from /Users/tett23/.local/share/mise/installs/ruby/4.0.7/lib/ruby/4.0.0/rubygems.rb:305:in 'Kernel#load'
+	from /Users/tett23/.local/share/mise/installs/ruby/4.0.7/lib/ruby/4.0.0/rubygems.rb:305:in 'Gem.activate_and_load_bin_path'
+	from /Users/tett23/.local/share/mise/installs/ruby/latest/bin/irb:33:in '<main>'
+>> 6
+=> 6
+>> _ + 1
+=> 7
+>> exit

@@ -5,10 +5,12 @@ import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar)
 import Control.Exception (evaluate)
 import Control.Monad (forM, forM_, void)
 import Data.Either (isRight)
+import Data.Functor.Identity (runIdentity)
 import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Emet
 import Golem.Emet.Gm (filterFuel)
 import Golem.Emet.Prim (PrimStop (..), PrimValue (..), primList, runPrim)
@@ -503,7 +505,20 @@ limitTests :: TestTree
 limitTests =
   testGroup
     "the limit of steps"
-    [ testCase "the measured work is a third of the limit or less" $ do
+    [ testCase "R5: a manuscript call and its REPL expression share the last available step" $ do
+        let source = "discard :: List Int -> Nat\ndiscard xs = 7\nwork :: Int -> Nat\nwork n = discard (List.range 1 n)\n"
+        (_, base) <- stepsOf source "work" [int 1]
+        let lastArg = toInteger (stepLimit - base + 1)
+        forM_ [(lastArg, stepLimit), (lastArg + 1, stepLimit + 1)] $ \(n, expected) -> do
+          (value, consumed) <- stepsOf source "work" [int n]
+          consumed @?= expected
+          let session = snd (runIdentity (loadProgram (\_ -> pure (Right (FileId 1, TE.encodeUtf8 source))) [sessionPath]))
+              result = evaluateExpression session stepLimit (TE.encodeUtf8 ("work " <> T.pack (show n)))
+          either (map diagCode) (const []) result @?= either (pure . diagCode) (const []) value
+          case value of
+            Right v -> result @?= Right v
+            Left d -> diagCode d @?= DiagnosticCode "E04100",
+      testCase "the measured work is a third of the limit or less" $ do
         (k, ks) <- stepsOf kansujiSrc "kansuji" [nat 9876543210123456789]
         k @?= Right (str "九百八十七京六千五百四十三兆二千百一億二千三百四十五万六千七百八十九")
         let vocabulary = [str ("語" <> T.pack (show i)) | i <- [1 .. 50 :: Int]]

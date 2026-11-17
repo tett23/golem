@@ -14,8 +14,10 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
+import Golem.Driver.Html (cssLength)
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.Look (Look (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -23,7 +25,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
+import Golem.Typeset (PartLine (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -368,7 +370,7 @@ runningHeadTests =
       runningHeadLines meta Map.empty (Map.fromList [(["revision"], "r1")]) (fmt [["{set.revision}"]]) Map.empty [] @?= ["r1"]
       runningHeadLines meta Map.empty (Map.fromList [(["values", "price"], "100")]) (fmt [["{set.values.price}"]]) Map.empty [] @?= ["100"]
       forM_ [("\"r1\"", "r1"), ("3", "3"), ("0.5", "0.5")] $ \(v, shown) -> do
-        (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = " <> v <> "\n\n" <> twoChapters)]
+        (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "set revision = " <> v <> "\n\n" <> twoChapters)]
         Map.lookup 2 heads @?= Just [shown],
     testCase "even pages the title, odd pages the chapter; none on recto and blank pages" $ do
       (heads, _) <- layoutHeads miniManifest (headsStyle "even = \"title\", odd = \"heading.1.short\"") [("a.gm", twoChapters)]
@@ -417,10 +419,10 @@ runningHeadTests =
       (ds', _, _) <- buildHeads (headsStyle "content = [\"{set.revision?}\"]") [("a.gm", twoChapters)] Nothing
       [d | d <- ds', isError d] @?= [],
     testCase "a variable that is not a string or a number is G02068 (ADR 0022)" $ do
-      (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = true\n\n" <> twoChapters)] Nothing
+      (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "set revision = true\n\n" <> twoChapters)] Nothing
       [(described d, fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs)) | d <- ds, isError d] @?= [(("G02068", "柱に出せるのは文字列と数です: revision は 真偽値", FileId 1, 0, 0), Just "a.gm")],
     testCase "an imported variable (ADR 0022)" $ do
-      (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "@set price = 100\n")]
+      (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "set price = 100\n")]
       Map.lookup 2 heads @?= Just ["100"],
     testCase "no G02067 in a build without the PDF (ADR 0022)" $ do
       (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", twoChapters)] (Just [TargetHtml])
@@ -593,6 +595,14 @@ headingTests =
       errs @?= [DiagnosticCode "G07024"]
       pdf @?= Nothing
       layoutMini style "# A\n\nx\n" [] >>= (@?= [("G07024", "見出しが版面に入りません（1 の見出し: A）", FileId 1, 0, 4)]) . layoutErrors,
+    testCase "J1: heading defaults use the primary language subtag" $ do
+      let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+          jaDefaults = map (headingDefaults "ja") [1, 2]
+          otherDefaults = map (headingDefaults "en") [1, 2]
+      forM_ cases $ \(lang, expected) -> map (headingDefaults lang) [1, 2] @?= if expected then jaDefaults else otherDefaults,
+    testCase "J2: heading defaults ignore case" $ do
+      let cases = [("", False), ("j", False), ("ja", True), ("JA", True), ("ja-JP", True), ("ja-", True), ("jam", False), ("ja_JP", False), ("en", False), ("en-ja", False)]
+      forM_ cases $ \(lang, _) -> map (headingDefaults lang) [1, 2] @?= map (headingDefaults (T.toUpper lang)) [1, 2],
     testCase "the default size and lines of a heading by language and level (golem-driver ADR 0032)" $ do
       headingDefaults "ja" 1 @?= (Zw (3 % 2), 5)
       headingDefaults "ja-JP" 3 @?= (Zw 1, 2)
@@ -613,6 +623,11 @@ headingTests =
           manifest = replaceIn "language = \"ja\"" "language = \"en\"" miniManifest
       (_, pl) <- layoutMiniWith manifest style "# Heading\n\nbody.\n" [] >>= either (assertFailure . show) pure
       headingGap pl @?= [6],
+    testCase "ADR 0373 I1: inv1_heading_block_alignment_case_2: end leaves two body pitches before a one-line heading in both writing directions" $
+      forM_ [horizontalStyle, replaceIn "lines = 30" "lines = 12" (replaceIn "horizontal" "vertical" horizontalStyle)] $ \base -> do
+        let style = base <> "\n[headings.1]\nsize = \"1zw\"\nlines = 3\nblock-align = \"end\"\n"
+        (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
+        map (\hb -> hbOffset hb == 2 * hbPitch hb) (Map.elems (plHeadings pl)) @?= [True],
     testCase "size 1zw and lines 1 keep each line of a heading on the body grid (golem-driver ADR 0032)" $ do
       let style = horizontalStyle <> "\n[headings.1]\nsize = \"1zw\"\nlines = 1\n"
       (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
@@ -911,6 +926,21 @@ wrapTests =
 sidenotesOf :: PdfLayout -> [(Int, PlacedSidenote)]
 sidenotesOf pl = [(n, ps) | (n, pss) <- Map.toList (plSidenotes pl), ps <- pss]
 
+-- | sidenoteStyle with the symbol marker, character styles for it and more keys of [sidenotes] (docs/adr/0371).
+sideMarkStyle :: BS.ByteString -> BS.ByteString
+sideMarkStyle setting =
+  horizontalStyle
+    <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n[character-styles.accent]\ncolor = \"red\"\n[character-styles.large]\nsize = \"3zw\"\n[character-styles.heavy]\nsynthetic-bold = true\n[character-styles.loud]\ncolor = \"red\"\nsize = \"2zw\"\nsynthetic-bold = true\n"
+    <> "\n[paragraph-styles.sidenote]\nsize = \"8pt\"\n\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nmarker = \"symbol\"\n"
+    <> setting
+
+-- | The boxes of the text and of the sidenotes, with their looks, in the symbol marker and a [sidenotes] setting (docs/adr/0371).
+sideMarkBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [(T.Text, Look)])
+sideMarkBoxes setting source = do
+  (_, pl) <- layoutOk (sideMarkStyle setting) source []
+  let boxes l = [(bcText c, bcLook c) | Box _ c <- lineItems l, not (T.null (bcText c))]
+  pure (concatMap (boxes . slLine) (Map.elems (plLines pl)), concat [boxes l | (_, ps) <- sidenotesOf pl, l <- map ptLine (psLines ps)])
+
 -- | The grid line of the line that holds the n-th sidenote marker of a page.
 slotOfMarker :: PdfLayout -> Int -> Int -> Maybe Int
 slotOfMarker pl page k =
@@ -1062,6 +1092,9 @@ captionTests =
       cssFontSize s13 (dim "0.85zw") @?= "0.85em"
       none <- styleOf ""
       cssFontSize none (dim "9pt") @?= "9pt"
+      cssLength (Abs 0) @?= "0"
+      cssLength (Zw 0) @?= "0"
+      cssFontSize s13 (Abs 0) @?= "0"
   ]
 
 sidenoteTests :: [TestTree]
@@ -1114,8 +1147,49 @@ sidenoteTests =
       let boxes pl = length [() | sl <- Map.elems (plLines pl), Box {} <- lineItems (slLine sl)]
       boxes none @?= boxes plain
       case map snd (sidenotesOf none) of
-        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems l)] @?= ["注"]
+        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems (ptLine l))] @?= ["注"]
         other -> assertFailure (show (length other)),
+    testCase "ADR 0371 I1: inv1_sidenote_marker_style_property" $
+      -- every marker style by sidenotes of one or more lines, several in a
+      -- paragraph, one with a character style, and one in a paragraph long
+      -- enough to break into lines
+      forM_ ["accent", "large", "heavy", "loud"] $ \name ->
+        forM_
+          [ "本文[sidenote: 注]。\n",
+            "本[sidenote: 注[strong: 強]注]文\n",
+            "一[sidenote: 甲]二[sidenote: 乙]三\n",
+            "本文[sidenote: 傍注の本文が二行にわたる長さです]。\n",
+            T.replicate 30 "本" <> "[sidenote: 注]" <> T.replicate 30 "文" <> "\n"
+          ]
+          $ \source -> do
+            (_, plainNotes) <- sideMarkBoxes "" source
+            (_, styledNotes) <- sideMarkBoxes ("marker-style = \"" <> TE.encodeUtf8 name <> "\"\n") source
+            assertBool (show (name, source)) (not (null plainNotes))
+            assertEqual (show (name, source)) plainNotes styledNotes,
+    testCase "ADR 0371 I1: inv1_sidenote_marker_style_case_1" $ do
+      (text, notes) <- sideMarkBoxes "" "本文[sidenote: 注]。\n"
+      [(t, lkColor look) | (t, look) <- text] @?= [("本", Nothing), ("文", Nothing), ("※", Nothing), ("。", Nothing)]
+      [lkLatinFace look | ("※", look) <- text] @?= [lkLatinFace look | ("本", look) <- text]
+      [(t, lkColor look) | (t, look) <- notes] @?= [("※", Nothing), ("注", Nothing)],
+    testCase "ADR 0371 I1: inv1_sidenote_marker_style_case_2" $ do
+      (text, notes) <- sideMarkBoxes "marker-style = \"accent\"\n" "本文[sidenote: 注]。\n"
+      [(t, lkColor look) | (t, look) <- text] @?= [("本", Nothing), ("文", Nothing), ("※", Just "red"), ("。", Nothing)]
+      [(t, lkColor look) | (t, look) <- notes] @?= [("※", Nothing), ("注", Nothing)],
+    testCase "ADR 0371: the width of the symbol is measured after applying the character style" $ do
+      let widths setting = do
+            (_, pl) <- layoutOk (sideMarkStyle setting) "本文[sidenote: 注]。\n" []
+            pure [w | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), bcText c == "※"]
+      plain <- widths ""
+      large <- widths "marker-style = \"large\"\n"
+      plain @?= [10 * pt]
+      large @?= [30 * pt],
+    testCase "ADR 0371: marker-style is for the symbol alone; a numbered marker keeps the look of mark-style" $ do
+      let looks setting = do
+            (_, pl) <- layoutOk (sidenoteStyle <> setting) "本文[sidenote: 注]。\n" []
+            pure [(bcText c, bcLook c) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl)]
+      plain <- looks ""
+      styled <- looks "marker-style = \"strong\"\n"
+      styled @?= plain,
     testCase "sidenotes need a horizontal page with a sidenote column, and the text flow" $ do
       a <- layoutMini horizontalStyle "本文[sidenote: 注]。\n" []
       either (map (\d -> (diagCode d, diagMessage d))) (const []) a @?= [(DiagnosticCode "G07034", "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません")]

@@ -8,6 +8,7 @@ Golem は、コマンドラインと CI で動く組版システムである。
 Golem の振る舞いと計画は、次の文書に分けて書いている。
 
 - 仕様：[docs/specifications.md](./docs/specifications.md) と [docs/markup.md](./docs/markup.md)
+- 文字を表示する部品に段落スタイルと文字スタイルを適用する設計原則：[組版の自由](./docs/specifications.md#組版の自由)
 - 用語：[docs/glossary.md](./docs/glossary.md)
 - どのバージョンで何を扱うか：[docs/roadmap.md](./docs/roadmap.md)
 - 互換の約束：[docs/compatibility.md](./docs/compatibility.md)
@@ -26,6 +27,7 @@ Golem は 1.0.0 から、原稿の記法、設定、CLI、出力、プラグイ�
 マニュアルの読み手と書き方の方針は [docs/manual-policy.md](./docs/manual-policy.md) にある。
 
 関数とプラグインには、それぞれ見本がある。
+`golem repl emet` で Emet の式を一つずつ試せる。
 本を作る人が自分の本のために書く関数（Emet の `.emet`）の見本は [`functions/`](./functions/) に、プログラムを書く技術者が作って配るプラグインの見本は [`plugins/`](./plugins/) にある。
 関数の見本の使い方は [functions/README.md](./functions/README.md) にある。
 
@@ -103,6 +105,7 @@ ca-certificates の入っていない最小構成のコンテナでは、ca-cert
 
 Node の `node:wasi` で動くことは、CI で確かめている。
 夜ごとの `.github/workflows/browser.yml` が、Deno 2.9.8 の `node:wasi` と、wasmtime 50.0.1 の C API のホスト（`scripts/wasm/run-wasmtime.c`）と、`browser_wasi_shim` を使う Chromium（Chrome for Testing 157.0.8103.50）と Safari（macOS のランナーのもの）でも、ネイティブの `golem` と同じ PDF と diagnostics を返すことを確かめている（[docs/adr/0234](./docs/adr/0234-check-html-and-golem-wasm-in-a-pinned-headless-chromium.md)、[docs/adr/0238](./docs/adr/0238-build-golem-wasm-with-the-standard-exception-handling-and-run-it-under-wasmtime.md)）。
+Chromium と Safari では、ページの Worker の中で `golem.wasm` を動かす（[docs/adr/0309](./docs/adr/0309-run-golem-wasm-in-a-worker-of-the-browser-page.md)）。
 
 エクスポートは C の ABI の次の五つと `hs_init` で、ホストは `_initialize` を一度、`hs_init(0, 0)` を一度呼んでから使う。
 
@@ -141,23 +144,39 @@ golem new mybook
 
 | コマンド | 内容 |
 |---|---|
-| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る（下に詳しく書く） |
+| `golem new DIR [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る（下に詳しく書く） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
-| `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。最後に検査した PDF の SHA-256 を出す |
+| `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。PDF を組めた場合は SHA-256、組めなかった場合はエラー件数と未検査の項目を出す |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
-| `golem fmt [--check] [FILE...]` | 原稿を整形し、表のファイルの BOM と改行を直す |
-| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
+| `golem fmt [--check] [FILE...]` | 原稿を整形し、表ファイルの先頭に続く BOM をすべて取り除き、改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
+命令の引数列と原稿内の式には通常コメント `%%注%%` を書ける（[Golem ADR 0339](./docs/adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
+たとえば `[f %%理由%% x key=y]` と `[= 1+%%理由%%2]` のコメントは値に入らない。
+既存の原稿で `%%注%%` を引数の値にしていた場合は `"%%注%%"` と書く。
+`key=x%%注%%` を値にしていた場合は `key="x%%注%%"` と書く。
+引用符不足のファイルは `golem fmt` でも自動修正されず、ほかの整形可能なファイルは整形される。
+
+プリフライトの設定を読めない場合は、原因に応じて G09001 または G09100〜G09104 を出す（[Golem ADR 0321](./docs/adr/0321-preflight-rule-error-causes.md)）。
+設定のエラーを検出した実行は PDF を組まず、終了コード 1 で終わる。
+
+`golem lsp` は原稿の命令と式、プロジェクト直下の `style.toml`、`preflight.toml`、`manifest.toml` に入力候補を返す。
+説明のある候補では、その説明と Emet の公開関数の署名も表示する（[Golem ADR 0347](docs/adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）。
+
 `golem new` が作るプロジェクトは、版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。
 `--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない）。
+`--screen` は塗り足しを省き、プリフライトに `based-on = "screen"` を設定する（[ADR 0327](./docs/adr/0327-screen-preflight-and-template.md)）。
 `DIR` は空でなくてよく、`manifest.toml` と `style.toml` のないディレクトリ（Markdown の原稿のリポジトリなど）なら、ほかのファイルを残したまま作る。
 雛形のファイルと同じパスに何かあれば何も書かず、既存の `.gitignore` は書き換えない（[docs/adr/0273](./docs/adr/0273-golem-new-in-a-directory-without-a-project.md)）。
+
+マニフェストの `[metadata].language` は `ja-JP` や `en-US` のように書く。
+`ja_JP` はどの出力形式でも G03119 になる。
 
 `golem explain` は、コードを省くと一覧を表示する。
 複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。
@@ -177,16 +196,25 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 
+### 原稿の変数
+
+行頭の `set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[Golem ADR 0336](docs/adr/0336-unprefixed-variable-declarations.md)）。
+旧記法の `@set x = "abc"` も使えるが、先頭の `@` に移行用の notice が出る。
+
 ### 書体とスタイル
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
+CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
+見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
 
 文字と段落の見た目は、スタイルにまとめる。
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+字下げなどの長さ、アキ量、行数を複数の欄で共有するときは、`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` に名前を付ける。
+たとえば `[values.length]` の `indent = "1zw"` は、段落スタイルの `indent = "indent"` と原稿の `@style-def paragraph letter indent=indent` から参照できる（[ADR 0346](docs/adr/0346-revise-named-layout-values.md)）。
 
 強調と書体の切り替えも、文字スタイルで組む。
 `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic`、`code` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。
@@ -211,6 +239,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
+長さとアキ量のゼロは、設定では `0` または `"0"` と書ける。
+`@blank-line 0` は行アキを作らず、info の G02254 を出す（[Golem ADR 0345](./docs/adr/0345-revise-unitless-zero-in-length-fields.md)）。
 
 原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
 PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
@@ -226,6 +256,9 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
+同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
+
+PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
 
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
@@ -234,21 +267,30 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 
 技術書のためには、コードブロックに行番号などを付けられる。
 ```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
+`@listing` で取り込むファイルのパスは、`@listing src/Main.hs` のように最初の位置引数に一つ書く（[ADR 0341](docs/adr/0341-revise-retire-listing-src.md)）。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 
+CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイルのパスを最初の位置引数に置く（[ADR 0343](docs/adr/0343-revise-retire-table-src.md)）。
 表には `@caption` でキャプションを付けて表番号（既定 `表{chapter}-{n}`）を振り、`@column-widths 8zw auto` で列の幅を、`@style` でセルの段落スタイル（既定は組み込みの `table`）を指定できる。
 キャプションを表の上と下のどちらに置くかは `[tables]` の `caption-position` で決める（[docs/adr/0262](./docs/adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 
 ### 注、索引、リンク
 
-傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印だけを書く。
+傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印と、その「※」の文字スタイル（`marker-style`）だけを書く。
+PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
+脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
+PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
+
+`@no-page-break 3` で、改ページの際に前の段落の末尾 3 行を次の段落と同じ段に送る。
+前に 1 行しか残らなければ段落全体を送る（[Golem ADR 0376](docs/adr/0376-no-page-break-lines.md)）。
 
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 索引の項目には、`[index reading=くみはん range=begin: 組版]` と `range=end` でページの範囲を、`see=組版` で「（組版を見よ）」「（組版をも見よ）」の参照を書ける。
 続くページは「5–6」のように範囲にまとめ、項目は「あ」「か」のような行の見出しの下に並べる（見出しは `[index]` の `section-headings = false` で外せる。[docs/adr/0265](./docs/adr/0265-index-cross-references-page-ranges-and-section-headings.md)）。
 
-外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
+PDF/X-4 ではリンクの文字としおりを保ち、本文のクリック領域を省く。
+外部の URL へのリンクは `[link "https://www.w3.org/TR/jlreq/": 日本語組版処理の要件]` と書き、出力インテントのない PDF ではリンクの注釈に、HTML と EPUB では `a` 要素になる。
 リンクは見た目を変えない（[docs/adr/0182](./docs/adr/0182-external-links.md)）。
 
 文書の中の参照も、行先へのリンクになる。
@@ -261,6 +303,9 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
+prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。
+通常の `golem build` は、プロジェクトのルートと今回選んだ出力フォルダーにある通常の `.DS_Store` を片付ける（[ADR 0329](./docs/adr/0329-output-path-file-diagnostic.md)）。
+出力フォルダーと同じパスがリンクなら G08013、通常のファイルなら G08104 を出し、上書きしない。
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
 
@@ -289,7 +334,15 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 コードは `G` と、段階の 2 桁と番号の 3 桁からなる 5 桁の数字である（[docs/adr/0061](./docs/adr/0061-five-digit-diagnostic-codes.md)）。
 関数を書く言語 Emet のコードは `E` で始まる（[docs/adr/0160](./docs/adr/0160-emet-function-language-core.md)）。
 
+原稿から Emet のコマンドを呼ぶとき、位置引数が足りなければ、`golem check` は不足した引数が何番目かを一つずつ表示する（[Golem ADR 0351](./docs/adr/0351-prove-parser-formatter-round-trips.md)）。
+
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
+
+### 原稿の分量を調べる
+
+プロジェクトのディレクトリで `golem stats` を実行すると、本文の文字数、ワード数、組版後の行数、400 字詰め原稿用紙でのページ数が分かる。
+40 字×32 行のページに換算するには `golem stats --chars-per-line 40 --lines-per-page 32` を実行する。
+組版後の行数を調べるため、プロジェクトで指定した書体を使う。
 
 ## Development
 
@@ -305,19 +358,21 @@ git config core.hooksPath .githooks
 ```
 
 `core.hooksPath` はクローンごとのローカル設定であり、リポジトリには保存されないため、クローンのたびに実行が必要になる。
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.10.0 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0194](./docs/adr/0194-update-adr-guard-to-v0.10.0.md)）。
-ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0` で入る。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.13.1 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1` で入る。
 
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
 `.githooks/pre-commit` は、次のものを含むコミットを拒否する。
 
 - コミット済みの ADR（`docs/adr/` と `docs/<モジュール>/adr/` の配下）への変更、削除、リネーム。
-  例外は `ステータス:` で始まる行で、この行だけは変更できる（`--allow-status`）。
+  例外はステータスの行（行頭が `Status:` の行）で、この行だけは変更できる（`--allow-status`）。
+  ただし、ステータスの変更は許された状態遷移に限る（[docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
   リンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。
   ADR の参照に限らず、画像のリンク先とリンクの参照定義の行（`[1]: URL`）も含む。
   リンクのテキスト、画像の追加と削除、自動リンク（`<URL>`）と本文の URL の変更は拒否する。
 - ステータスの行の数が一つでない ADR。
-  ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持たねばならない。
+  ADR は、行頭が `Status:` のステータスの行をちょうど一つ持たねばならない。
+  コードブロックの中の行も数えるので、ADR の本文には行頭が `Status:` の行を書かない。
   無い ADR と二つ以上ある ADR はフックが拒否し、`adr-guard check-status` で一覧にできる。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）のうち、コミット済みのものの変更、削除、移動。
   記録には `--allow-status` と `--allow-links` の例外も適用されない。
@@ -334,7 +389,7 @@ ADR の参照の書き方にも、決まりがある。
 マニュアルの変わらない変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
 `main` への push とブランチの削除は検査しない。
 
-フックと同じ検査は、CI の `adr` ジョブでも、adr-guard の v0.10.0 の action に `allow-status: true` と `allow-links: true` を付けて行う。
+フックと同じ検査は、CI の `adr` ジョブでも、adr-guard の v0.13.1 の action に `allow-status: true` と `allow-links: true` を付けて行う。
 この action は、ADR の参照のリンクと番号の重複も検査する。
 
 ### 固定しているネイティブライブラリ
@@ -638,7 +693,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 
 #### 文書のワークフロー（docs.yml）
 
-- `adr`：コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する。
+- `adr`：コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つこと、ステータスの変更が許された状態遷移であることを検査する。
 - `manual`：プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。
   `main` への push では省く。
 - `textlint`：`tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
@@ -721,6 +776,11 @@ x86-64 の一覧からマニュアルの行を除いたものを、コミット�
 
 `visual` は見た目の回帰テストである。
 `changes` だけを待って `build` と同時に始まり、`build` の x86-64 の `outputs` が成果物 `visual-pdfs` を上げるのを `scripts/visual/wait-pdfs.sh` で待つ（上限は 60 分、ジョブは 75 分。`outputs` が上げずに終わると失敗する、[docs/adr/0099](./docs/adr/0099-visual-job-waits-only-for-visual-pdfs.md)）。
+成果物は既定で 30 秒ごとに問い合わせる。
+見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
+GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](./docs/adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
+集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](./docs/adr/0349-retry-ci-job-list-on-rate-limit.md)）。
+全ページを取得してから各ジョブのログを検査する。
 
 上がった `visual-pdfs` を取り寄せ、固定した版の shem で 72 dpi の PPM に描き、ページごとの SHA-256 が `scripts/visual/pages/` の参照と一致することを `scripts/visual/check.sh` で確かめる。
 shem は、shem のアーカイブを `third_party/downloads` に `scripts/visual/fetch-shem.sh` のハッシュをキーにキャッシュし、`fetch-shem.sh` を 10 分の上限で実行して取る。

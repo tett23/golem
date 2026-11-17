@@ -1,6 +1,6 @@
 # ADR 0220: 機能を組み合わせた二冊のページの数の範囲を 16 から 32 に改め、テストで確かめる
 
-ステータス: 採択→N2 の確かめ方と `--accept` は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"N2 の確かめ方と `--accept`"}]
 
 ## 文脈
 

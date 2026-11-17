@@ -1,0 +1,35 @@
+{"name":"R1 precedence","ok":true,"status":0,"stdout":"7\n","stderr":""}
+{"name":"R1 values","ok":true,"status":0,"stdout":"True\n\"猫\"\n[1, 2]\n(1, False)\n(Just 2)\n","stderr":""}
+{"name":"R1 string escapes","ok":true,"status":0,"stdout":"\"a\\nb\"\n","stderr":""}
+{"name":"R2 unknown then arithmetic","ok":true,"status":1,"stdout":"5\n","stderr":"E02100 [0,7): 未定義の名前 missing です\n"}
+{"name":"R2 syntax then arithmetic","ok":true,"status":1,"stdout":"4\n","stderr":"E01101 [2,2): 閉じていない ( があります。) が要ります\n"}
+{"name":"R2 type then arithmetic","ok":true,"status":1,"stdout":"5\n","stderr":"E02101 [0,7): + は 数（Nat、Int、Rat） にだけ使えます（String があります）\n"}
+{"name":"R2 evaluation then arithmetic","ok":true,"status":1,"stdout":"6\n","stderr":"G02003 [0,5): 0 で割っています\n"}
+{"name":"R2 pure requirements","ok":true,"status":1,"stdout":"7\n","stderr":"E05101 [0,22): シグネチャにない要求を使っています: file \"secret.txt\"\n"}
+{"name":"R3 definitions do not persist","ok":true,"status":1,"stdout":"8\n","stderr":"E01100 [2,3): 構文の誤りです。'\"'、'%'、'&&'、'('、'*'、'**'、'+'、'++'、'-'、'--'、'/'、'/='、':'、'<'、'<='、'=='、'>'、'>='、'?'、'['、'\\''、'\\n'、'where'、'||'、[ \\t]、[0-9]、[A-Z]、[a-z_] が要ります\nE02100 [0,1): 未定義の名前 x です\n"}
+{"name":"R3 explicit multiline","ok":true,"status":0,"stdout":"3\n","stderr":""}
+{"name":"R3 unterminated block","ok":true,"status":1,"stdout":"","stderr":":} で入力を閉じる必要があります\n"}
+{"name":"R4 blank and EOF","ok":true,"status":0,"stdout":"","stderr":""}
+{"name":"R4 last line without newline","ok":true,"status":0,"stdout":"9\n","stderr":""}
+{"name":"R5 exact 4096 bytes","ok":true,"status":0,"stdout":"1\n","stderr":""}
+{"name":"R5 single-line overflow recovers","ok":true,"status":1,"stdout":"9\n","stderr":"REPL の入力が 4096 バイトを超えました\n"}
+{"name":"R5 multiline overflow discards whole block","ok":true,"status":1,"stdout":"3\n","stderr":"REPL の入力が 4096 バイトを超えました\n"}
+{"name":"R5 step limit","ok":true,"status":1,"stdout":"42\n","stderr":"E04100 [0,20): 関数の評価の手数が上限（100000 手）を超えました: 入力した式（<repl>:1）\n"}
+{"name":"R5 output bound","ok":true,"status":1,"stdout":"1\n","stderr":"REPL の出力が 4096 バイトを超えました\n"}
+{"name":"R5 invalid UTF-8 recovers","ok":true,"status":1,"stdout":"1\n","stderr":"G01001 [0,1): UTF-8 として不正なバイト列があります\n"}
+{"name":"R1 exact rational, character, function","ok":true,"status":0,"stdout":"1/3\n'猫'\n<function>\n","stderr":""}
+{"name":"R2 byte position after a multibyte literal","ok":true,"status":1,"stdout":"1\n","stderr":"E02100 [9,16): 未定義の名前 unknown です\n"}
+{"name":"R2 division error covers original input","ok":true,"status":1,"stdout":"1\n","stderr":"G02003 [0,5): 0 で割っています\n"}
+{"name":"R3 declarations inside a block never run","ok":true,"status":1,"stdout":"","stderr":"E01100 [0,0): REPL には Emet の式を一つ入力してください\nE02100 [0,5): 未定義の名前 other です\n"}
+{"name":"R5 exact output limit","ok":true,"status":0,"stdout":"\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx","stderr":""}
+{"name":"R5 oversize Unicode is counted by bytes","ok":true,"status":1,"stdout":"0\n","stderr":"REPL の入力が 4096 バイトを超えました\n"}
+{"name":"R2 CRLF follows Emet source rules","ok":true,"status":1,"stdout":"2\n","stderr":"G01003 [1,2): 改行に CR が含まれています。改行は LF に限ります\n"}
+{"name":"R2 BOM rejected at input boundary","ok":true,"status":1,"stdout":"2\n","stderr":"G01002 [0,3): ファイルの先頭に BOM があります。BOM を取り除いてください\n"}
+{"name":"R5 overlong stream is drained","ok":true,"status":1,"stdout":"11\n","stderr":"REPL の入力が 4096 バイトを超えました\n"}
+{"name":"R5 output 4097 bytes is discarded","ok":true,"status":1,"stdout":"4\n","stderr":"REPL の出力が 4096 バイトを超えました\n"}
+{"name":"R5 adjacent work budgets","ok":true,"status":1,"stdout":"99996\n1\n","stderr":"E04100 [0,32): 関数の評価の手数が上限（100000 手）を超えました: 入力した式（<repl>:1）\n"}
+{"name":"R2 case exhaustiveness","ok":true,"status":1,"stdout":"2\n","stderr":"E03100 [0,26): 網羅していないパターンマッチです。False に当たる選択肢がありません（case の選択肢）\n"}
+{"name":"R4 argument usage error","ok":true,"status":2}
+{"name":"R4 Japanese subcommand help","ok":true,"status":0}
+{"name":"R4 interactive prompts and EOF","ok":true,"status":0,"output":"emet> :{\r\n....> 1+2\r\n....> :}\r\n3\r\nemet> "}
+{"total":34,"passed":34,"failed":0}

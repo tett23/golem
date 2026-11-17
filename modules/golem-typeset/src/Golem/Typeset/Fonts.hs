@@ -663,7 +663,7 @@ headingLines lang style capacity level =
 
 {- | The default size and least grid lines of a heading by the book's
 language and the level (golem-driver ADR 0032): a book whose language
-starts with ja takes fewer lines, its pitch being farther from its size.
+has primary language subtag ja takes fewer lines, its pitch being farther from its size.
 -}
 headingDefaults :: Text -> Int -> (Dim, Int)
 headingDefaults lang level = case level of
@@ -672,7 +672,7 @@ headingDefaults lang level = case level of
   3 -> (Zw 1, 2)
   _ -> (Zw 1, 1)
   where
-    ja = "ja" `T.isPrefixOf` T.toLower lang
+    ja = spanIsJapanese lang
 
 {- | The role and size of a font role and a size of style.toml: the body
 role and the size of the grid when they are not given (golem-driver ADR

@@ -7,10 +7,25 @@ author:             tett23
 maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
+extra-source-files: cbits/letter-number.h
+                    cbits/libgrapheme/SOURCE
+                    cbits/libgrapheme/LICENSE
+                    cbits/libgrapheme/UNICODE-LICENSE
+                    cbits/libgrapheme/grapheme.h
+                    cbits/libgrapheme/gen/*.h
+                    cbits/libgrapheme/src/util.h
 
 executable golem
-  hs-source-dirs:   app
+  hs-source-dirs:   app shared
+  other-modules:    Golem.Cli.BuildCommand
   main-is:          Main.hs
+  other-modules:    Repl
+                    Stats
+  c-sources:        cbits/stats.c
+                    cbits/libgrapheme/src/character.c
+                    cbits/libgrapheme/src/word.c
+                    cbits/libgrapheme/src/util.c
+                    cbits/libgrapheme/src/utf8.c
   -- -N: every processor, so that paragraphs are composed on several OS
   -- threads at once (golem-driver ADR 0002); -A64m: an allocation area of
   -- 64 MB for each capability, so that the collections of the youngest
@@ -25,6 +40,7 @@ executable golem
     , filepath              >=1.4  && <1.6
     , golem-doc
     , golem-driver
+    , golem-emet
     , golem-eval
     , golem-fmt
     , golem-lsp
@@ -32,6 +48,7 @@ executable golem
     , golem-parser
     , golem-plugin
     , golem-syntax
+    , haskeline             >=0.8 && <0.9
     , optparse-applicative  >=0.18 && <0.20
     , text                  >=2.0  && <2.2
     , uuid                  >=1.3  && <1.4
@@ -39,9 +56,10 @@ executable golem
 
 test-suite golem-cli-test
   type:             exitcode-stdio-1.0
-  hs-source-dirs:   test
+  hs-source-dirs:   test shared
   main-is:          Main.hs
-  other-modules:    CommandsSpec
+  other-modules:    Golem.Cli.BuildCommand
+                    CommandsSpec
                     FmtTableSpec
                     LocaleSpec
                     RtsSpec
