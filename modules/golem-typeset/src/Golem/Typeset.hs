@@ -34,6 +34,7 @@ module Golem.Typeset
     CodeInfo (..),
     PlacedFigure (..),
     PlacedSidenote (..),
+    PartLine (..),
     PdfLayout (..),
     TableGeometry (..),
     styleLayoutDiagnostics,

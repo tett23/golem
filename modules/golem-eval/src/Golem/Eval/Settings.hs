@@ -230,7 +230,7 @@ fileStyles style header =
       kindName = \case
         CharacterKind -> "文字スタイル"
         ParagraphKind -> "段落スタイル"
-      -- G03100: a zero indent of caption or sidenote has no effect (golem-driver ADR 0043)
+      -- G03100: a zero indent of table has no effect (golem-driver ADR 0043, docs/adr/0367)
       zeroIndents =
         [ notice "G03100" ksp (captionZeroIndentMessage n k (written v))
         | (Def _ ParagraphKind n (Right d), kvs) <- defKeys,
