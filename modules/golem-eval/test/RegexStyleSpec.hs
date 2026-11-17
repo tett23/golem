@@ -67,7 +67,7 @@ tests =
         property $ do
           ps <- forAll (Gen.list (Range.linear 1 4) genParagraph)
           kind <- forAll (Gen.element [minBound .. maxBound :: Target])
-          let asBody p = para scopeRules p
+          let asBody = para scopeRules
               notePara p = Block sp Nothing Nothing (Paragraph Nothing p)
           case kind of
             AHeading -> bodies scopeRules [Heading 1 noHeadingAttrs p | p <- ps] === [Heading 1 noHeadingAttrs (asBody p) | p <- ps]
