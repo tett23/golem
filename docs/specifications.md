@@ -112,7 +112,7 @@ IR の要素は、次の構造の要素にする。
 | 索引（`@index`） | `Index`、見出しの文字と項目の行は `P`。ページ番号は、項目の行の `P` の中の `Reference` の中の `Link`（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)） |
 | 参考文献（`@bibliography`） | `L`（`/ListNumbering /None`）、項目は `LI`、番号は `Lbl`、項目の文は `LBody` の中の `BibEntry` |
 | プラグインのチャネルの一覧 | `Div`、項目は `P` |
-| ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT` |
+| ルビ（読みのある区切り一つ） | `Ruby`、親文字は `RB`、読みは `RT`。親文字の中の `[ref-number]` と `[ref-title]` は、`RB` の中に原稿の順に並ぶ `Reference` で、その参照の文字だけを持つ（文字は相互参照の行と同じく、その中の `Link` に入る）。参照の前後の親文字の字は `RB` の直下に残り、読みは `Reference` に入らない（[ADR 0360](adr/0360-ruby-base-references.md)） |
 | 脚注、傍注、章末の注 | 本文の注の印は `Reference`、その直後に `Note`。`Note` は `ID`（`note-1` から文書の順）、注の側の印の `Lbl`、注の本文の段落ごとの `P` を持つ。脚注と章末の注では、本文の印は `Reference` の中の注の本文への `Link`、注の側の印は `Lbl` の中の本文の印への `Link` である（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)） |
 | 相互参照（`[ref-number]`、`[ref-title]`、`[ref-page]`）、引用の印（`[cite]`） | `Reference`（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。相互参照の文字と、`@bibliography` のある本の引用の文献ごとの番号は、その中の `Link`（[ADR 0267](adr/0267-pdf-bookmarks-and-links-inside-the-document.md)） |
 | 外部のリンク（`[link]`、[docs/adr/0182](adr/0182-external-links.md)） | `Link`。リンクの文字と、行ごとのリンクの注釈の `OBJR` を持つ |
@@ -126,6 +126,7 @@ PDF/X-4 では、上表の `Link` は文字を保持する `Span` になり、�
 表の対応には、次の補いがある。
 
 - 読みのない区切りの親文字は `Ruby` を作らない。
+- 読みのない区切りの親文字の中の `[ref-number]` と `[ref-title]` は、文字を描くが `Reference` も `Link` も作らず、親の構造の要素の文字の葉に入る（[docs/roadmap.md](roadmap.md) の「読みのないルビの区切りの中の参照」の項目）。
 - `RP` は使わない。
 - 章末の注の `Note` も、本文の注の印の直後に置く。
 - プラグインと `.gm` の関数が返したブロックも、同じ対応で構造の要素にする。
@@ -1551,6 +1552,9 @@ S0 はソースファイルごとに独立して評価し、S1 は各ファイ�
 番号を持つのは `@nonumber` のない見出し、`@nonumber` のない図版、`@nonumber` のない、キャプションのあるコードブロックであり（[docs/adr/0200](adr/0200-figures-and-listings-without-numbers.md)）、題を持つのは見出し、図版（代替テキスト）、キャプションのあるコードブロック（キャプション）である。
 番号を持たない要素を `[ref-number ...]` で参照した場合と、題を持たない要素を `[ref-title ...]` で参照した場合は、コンパイルエラーとする（[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
 題名を識別子にすると、題を直すたびに参照が壊れるためである。
+
+ルビの親文字の中の `[ref-number]` と `[ref-title]` も、ほかの場所と同じく番号と題に置き換える（[ADR 0360](adr/0360-ruby-base-references.md)）。
+親文字の中にはルビを置けないので、ルビのある題を親文字の中に写すときは、そのルビの親文字だけを写す。
 
 ページ番号への参照は、テキストではなく表記の決まっていない数（Number）に解決する。
 ページ番号も数なので、縦書きと横書きでの表記の使い分けをほかの数と同じ経路で行う。
@@ -4800,6 +4804,7 @@ notice を出すのは、次のものである。
 - `keep` の段落の行頭のエスケープした空白（G02064）
 - `keep` の段落の行末のエスケープした空白（G02079）
 - `-` で区切った範囲（G02108、廃止予定）
+- 先頭に `@` を付けた変数宣言 `@set`（G02155、廃止予定）
 - 続けて書いた `@blank-line`（G02094）
 - `style.toml` のないプロジェクト（G03023）
 - `table` の 0 の字下げ（G03100）
@@ -4823,6 +4828,7 @@ notice を出すのは、次のものである。
 - 空の段で `keep-first-lines` か `keep-last-lines` より短くした段落の部分（G07113）
 - 前後が語の字でないので分割の候補にしなかったソフトハイフン（G07123）
 - 改行しない文字の中か隣にあるので分割の候補にしなかったソフトハイフン（G07124）
+- 同じ行の隣の字にかかる約物の字面（G07126）
 - `[fonts.code]` のない本のコード（G08008）
 - `.emet` の使われていない `where` の束縛（E02109）
 
