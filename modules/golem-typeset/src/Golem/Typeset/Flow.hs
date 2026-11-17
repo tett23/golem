@@ -1508,9 +1508,9 @@ alone, whose book numbers are then not checked.
 noteNumberDiagnostics :: Bool -> Style -> Book -> [Diagnostic]
 noteNumberDiagnostics pdfOnly style book =
   [ diagnostic "G07102" Error sp ("注の番号 " <> T.pack (show n) <> " は、[notes] の mark-format " <> renderMarkFormat fmt <> " で表せません")
-  | d <- bookDocs book,
-    -- numbered per page, the numbers of the pages are checked once they are known (docs/adr/0383)
+  | -- numbered per page, the numbers of the pages are checked once they are known (docs/adr/0383)
     not pdfOnly || stNotesNumbering style /= NumberPerPage,
+    d <- bookDocs book,
     (sp, n, _) <- documentNotes d,
     null (writeNumber (mfNotation fmt) (toInteger n))
   ]
