@@ -13,8 +13,8 @@ import Hedgehog (Gen, forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Test.Tasty
-import Test.Tasty.Hedgehog (testProperty)
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog (testProperty)
 
 sp :: SrcSpan
 sp = mkSpan (FileId 1) 0 0
