@@ -983,6 +983,10 @@ tests =
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G03006"],
+      testCase "ADR 0373: block-align is set per heading level, defaults to center, and rejects other values" $ do
+        let src = "[headings.1]\nblock-align = \"start\"\n[headings.2]\nlines = 3\n[headings.3]\nblock-align = \"end\"\n"
+        fmap (map hsBlockAlign . Map.elems . stHeadings) (parseStyle (FileId 0) src) @?= Right [HeadingStart, HeadingCenter, HeadingEnd]
+        codes (parseStyle (FileId 0) "[headings.1]\nblock-align = \"left\"\n") @?= ["G03006"],
       testCase "the lines of a heading (golem-driver ADR 0032)" $ do
         let linesOf src = either (const Nothing) (\s -> Just (hsLines <$> Map.lookup 2 (stHeadings s))) (parseStyle (FileId 0) src)
         linesOf "[headings.2]\nlines = 3\n" @?= Just (Just (Just 3))
@@ -1512,6 +1516,11 @@ noteMarkTests =
       testCase "a character style that does not exist is G03013" $ do
         codes (parseStyle (FileId 0) "[notes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
         codes (parseStyle (FileId 0) "[notes]\nbody-mark-style = \"nothing\"\n") @?= ["G03013"],
+      testCase "ADR 0363: marker-style of [lists] takes a character style; one that does not exist is G03013" $ do
+        fmap (lsMarkerStyle . stLists) (first (const ()) (parseStyle (FileId 0) "[character-styles.accent]\nsynthetic-bold = true\n[lists]\nmarker-style = \"accent\"\n")) @?= Right (Just "accent")
+        fmap (lsMarkerStyle . stLists) (first (const ()) (parseStyle (FileId 0) "[lists]\nmarker-style = \"strong\"\n")) @?= Right (Just "strong")
+        fmap (lsMarkerStyle . stLists) (first (const ()) (parseStyle (FileId 0) "[lists]\ngap = \"1zw\"\n")) @?= Right Nothing
+        codes (parseStyle (FileId 0) "[lists]\nmarker-style = \"nothing\"\n") @?= ["G03013"],
       testCase "mark-size is G03117 and is the size of note-mark; with a mark-style of a size it is G03006" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03117", Notice, 20)]
