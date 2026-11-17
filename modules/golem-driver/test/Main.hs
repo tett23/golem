@@ -8,6 +8,7 @@ import BookLanguageSpec (bookLanguageTests)
 import BoxesSpec (boxesTests)
 import BuildSpec
 import CallsSpec (callsTests)
+import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
 import ChapterNotesSpec
 import CliSpec
@@ -189,6 +190,7 @@ tests skips =
              testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
              testGroup "the paragraphs of captions and sidenotes (docs/adr/0367)" captionSidenoteParagraphsTests,
              testGroup "the paragraph style controls (docs/adr/0374)" paragraphStyleControlsTests,
+             testGroup "the indents of captions and sidenotes that leave no character (docs/adr/0389)" captionSidenoteIndentTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
