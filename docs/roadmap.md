@@ -83,7 +83,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **柱とノンブル（未実装）**：本文の役割の書体と版面の文字の大きさで描く。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
   - **隠しノンブル（未実装）**：本文の役割の書体で、`[hidden-folio]` の `size` だけを変えられる。 [Golem ADR 0365](adr/0365-hidden-folio-style.md)。
   - **脚注と章末の注の本文を別々の段落スタイルで組むこと（未決）**：`[notes]` の `body-style` は、ページの下の脚注と章末の注の本文に同じ段落スタイルを当てる。ADR は「脚注本文、章末注本文、章末注の一覧の見出しにそれぞれ段落スタイルを選ぶ」と書き、境界の入力の表に「脚注本文だけ指定すれば章末注は既定」を挙げる一方、キーは `body-style` と `heading-style` の二つだけを決めている。脚注と章末の注に別のキーを設けるかを決める。 [Golem ADR 0366](adr/0366-note-body-styles.md)。
-  - **キャプションと傍注の行の幅を使い切る字下げ（未実装）**：`caption` と `sidenote` の字下げで行の使える幅が 1 字分に満たなくなっても、誤りにしない。ファイルのスタイルの `caption` の字下げは、キャプションに当たらない。字下げが行の幅を使い切るキャプションを G07127、傍注を G07128 とし、dev では警告、prod ではエラーにする。 [Golem ADR 0389](adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **正規表現スタイルの届かない文字（未実装）**：見出し、定義リストの用語、注の本文には正規表現スタイルを当てない。 [Golem ADR 0368](adr/0368-regex-style-scope.md)。
   - **ルビの読み（未実装）**：外側の書体と色で、親文字の半分の大きさで組み、文字スタイルを当てる手段がない。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。

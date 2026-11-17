@@ -39,6 +39,7 @@ module Golem.Typeset
     PdfLayout (..),
     TableGeometry (..),
     styleLayoutDiagnostics,
+    sidenoteIndentDiagnostics,
     noteNumberDiagnostics,
     layoutPdf,
     layoutPdfWith,

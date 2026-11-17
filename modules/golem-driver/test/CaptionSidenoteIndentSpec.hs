@@ -238,9 +238,10 @@ captionSidenoteIndentTests =
     testCase "ADR 0389 I1: inv1_caption_indent_case_9: a caption of its number alone with m < z: G07127" $
       figure120 "indent = \"6zw\"\nend-indent = \"6zw\"\n" "@figure images/wide.svg alt=\"t\"\n" >>= (@?= 1),
     testCase "ADR 0389 I1: G07127 is at the block of the caption, once for each caption" $ do
+      -- the block of a table starts at its rows and that of a code block at its fence, after @caption
       let src = "前。\n\n@figure images/wide.svg alt=\"t\"\n  図\n\n@caption 表\n| a | b |\n|---|---|\n| 1 | 2 |\n\n@caption 例\n```\na\n```\n"
       ds <- diagnosticsOf "G07127" <$> layoutDiagnostics (withCaption numbered 10 "indent = \"6zw\"\nend-indent = \"6zw\"\n") src wideSvg
-      map (spanStart . diagSpan) ds @?= map (\p -> BS.length (TE.encodeUtf8 (fst (T.breakOn p src)))) ["@figure", "@caption 表", "@caption 例"]
+      map (spanStart . diagSpan) ds @?= map (\p -> BS.length (TE.encodeUtf8 (fst (T.breakOn p src)))) ["@figure", "| a |", "```"]
       map diagMessage ds @?= replicate 3 "キャプションの字下げが行の幅を使い切ります。段落スタイル caption の字下げを小さくしてください",
     testCase "ADR 0389 I2: inv2_sidenote_indent_property: G07128 exactly when w >= z and m < z for the sidenote column, in golem check" $
       -- widths in zw of the grid, 10pt; the size of sidenote is at most that of the grid (G03011)
