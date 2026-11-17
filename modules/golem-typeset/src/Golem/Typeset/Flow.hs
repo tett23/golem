@@ -30,6 +30,7 @@ module Golem.Typeset.Flow
     gridLine,
     runningHeadLines,
     numberedTitle,
+    bookNumberedTitle,
     pagesOf,
     bookSections,
     layoutLabels,
@@ -114,7 +115,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Assemble.Numbering (titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
@@ -939,7 +940,10 @@ empty; a line is trimmed of spaces (U+0020, U+3000) and left out when
 nothing is left.
 -}
 runningHeadLines :: Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
-runningHeadLines meta projectVars vars content start started = case content of
+runningHeadLines = runningHeadLinesWith (const Nothing)
+
+runningHeadLinesWith :: (HeadingInfo -> Maybe Text) -> Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
+runningHeadLinesWith separator meta projectVars vars content start started = case content of
   RunningNone -> []
   RunningLines ls -> mapMaybe line (toList ls)
   where
@@ -966,7 +970,7 @@ runningHeadLines meta projectVars vars content start started = case content of
             render h = case form of
               HeadShort -> Just (short h)
               -- the separator of the language of the book (golem-html ADR 0002)
-              HeadNumbered -> Just (maybe (short h) (\n -> n <> numberSeparator (Map.findWithDefault "" "language" meta) n <> short h) (hiNumberText h))
+              HeadNumbered -> Just (maybe (short h) (\n -> n <> titleSeparator (Map.findWithDefault "" "language" meta) (separator h) n (short h) <> short h) (hiNumberText h))
               HeadNumber -> hiNumberText h
          in chosen >>= render
 
@@ -975,7 +979,23 @@ separator of the language of the book and the title; the title alone
 without a number.
 -}
 numberedTitle :: Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
-numberedTitle lang sp num is = maybe [] (\n -> [Text sp (n <> numberSeparator lang n)]) num <> is
+numberedTitle lang sp num is = numberedTitleWith Nothing lang sp num is is
+
+{- | 'numberedTitle' with the separator the style of the file of the span
+gives for the level of a heading, or for a caption with no level (Golem
+ADR 0372).
+-}
+bookNumberedTitle :: Book -> Maybe Int -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
+bookNumberedTitle book level lang sp num is = numberPrefix book level lang sp num is <> is
+
+{- | The number and the separator alone; the separator is left out when the
+title (the last argument, only its text is read) is empty (Golem ADR 0372).
+-}
+numberPrefix :: Book -> Maybe Int -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
+numberPrefix book level lang sp num title = numberedTitleWith (Map.lookup (spanFile sp, level) (bookTitleSeparators book)) lang sp num title []
+
+numberedTitleWith :: Maybe Text -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline] -> [Inline]
+numberedTitleWith separator lang sp num title is = maybe [] (\n -> [Text sp (n <> titleSeparator lang separator n (foldMap inlineText title))]) num <> is
 
 {- | The sections of the book (docs/adr/0260): the page-numbering of each
 chapter file, by its place among the chapter files.
@@ -1072,7 +1092,7 @@ runningHeads inp geom layout =
         | otherwise = case m >>= mgRunningHead of
             Nothing -> []
             Just (co, ce, _, _) ->
-              runningHeadLines meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
+              runningHeadLinesWith (\h -> Map.lookup (hiFile h, Just (hiLevel h)) (bookTitleSeparators (piBook inp))) meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
 
 {- | G07051 (golem-driver ADR 0022): a line of a running head wider than the
@@ -2217,7 +2237,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   -- the number is at the heading (golem-cli ADR 0008)
-                  title = numberedTitle lang sp (if haNoNumber attrs then Nothing else num) is
+                  title = bookNumberedTitle book (Just l) lang sp (if haNoNumber attrs then Nothing else num) is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
                   rules = maybe (Nothing, Nothing) (\h -> (hsRuleBefore h, hsRuleAfter h)) (Map.lookup l (stHeadings style))
                in (n, [(unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace lang style geom l)) (SourceHeading l)) {uRules = rules}])
@@ -2241,7 +2261,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                   entryUnit e =
                     let st = styleOf' e
                         (face, ind) = paraLook style geom st
-                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
+                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (bookNumberedTitle book (Just (teLevel e)) lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
                   spaceOf key st = fromMaybe 0 (paraStyle style st >>= key)
                   gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | g > 0]
                   -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
@@ -2827,10 +2847,13 @@ placeFigure fe u fig content =
       -- across the lines for each sp along them
       ratio = if pgVertical geom then w / h else h / w
       number = Map.lookup (uSpan u) (bookFigures (piBook inp))
-      -- the paragraphs of the caption, the number before the first (docs/adr/0367)
-      captionParas = case [is | Block _ _ _ (Paragraph _ is) <- figCaption fig] of
-        [] -> [numberedTitle (bookLanguage inp) (uSpan u) number []]
-        p : ps -> numberedTitle (bookLanguage inp) (uSpan u) number p : ps
+      -- the paragraphs of the caption, the number before the first (docs/adr/0367);
+      -- the separator only when some paragraph has text (Golem ADR 0372)
+      paras = [is | Block _ _ _ (Paragraph _ is) <- figCaption fig]
+      prefix = numberPrefix (piBook inp) Nothing (bookLanguage inp) (uSpan u) number (concat paras)
+      captionParas = case paras of
+        [] -> [prefix]
+        p : ps -> (prefix <> p) : ps
       captionInlines = concat captionParas
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
       (_, cs) = paraFace (uStyle u) geom "caption"
@@ -3003,7 +3026,7 @@ captionLinesOf fe u lead number = \case
   Nothing -> CodeCaption [] fs pitch 0 []
   Just is ->
     let inp = feInput fe
-        captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
+        captionInlines = bookNumberedTitle (piBook inp) Nothing (bookLanguage inp) (uSpan u) number is
         (_, cs) = paraFace (uStyle u) (feGeom fe) "caption"
         captionParams = (adjustedParams (piStyle inp) (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
         captionAnchors = snd (composeInlines (captionEnv fe u) captionInlines)

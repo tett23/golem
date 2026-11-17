@@ -48,6 +48,7 @@ renderBlocks bib cites listings bodies =
             bookChapterOf = [],
             bookChannels = [],
             bookChannelDecls = Map.empty,
+            bookTitleSeparators = Map.empty,
             bookImages = Map.empty
           }
    in renderText "ja" "kanji" False (const (const (0, 0))) lists False bib Horizontal ft book

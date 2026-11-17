@@ -784,10 +784,11 @@ regex-styles = [
 @listing style.toml lines=55...68
 
 - [code: font]、[code: size]：フォントの役割と文字の大きさです。
-- [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] から [code: {5}] が上の階層の番号になります。上の階層の番号なので、[code: \[headings.3\]] には [code: {1}] と [code: {2}] だけを書けます。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
+- [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] から [code: {5}] が上の階層の番号になります。上の階層の番号なので、[code: \[headings.3\]] には [code: {1}] と [code: {2}] だけを書けます。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。[code: number-title-separator] を書かなければ、番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
 - [code: lines]：見出しが占める行の数（行取り）の最小の値です。1 以上の整数を書きます。
 - [code: page-break]：[code: "recto"] にすると、その見出しを奇数ページから始めます。
 - [code: block-align]：行取りの中で見出しを置く位置です。[code: "start"] は前に、[code: "center"] は中央に、[code: "end"] は後ろに寄せます。既定は [code: "center"] です。前と後ろは、横組みでは上と下、縦組みでは右と左です。
+- [code: number-title-separator]：番号と題のあいだに入れる文字列です。たとえば [code: number-title-separator = "："] と書くと、「第3章：原稿の記法」のように組みます。[code: ""] にすると、番号のすぐ後に題が続きます。書かなければ、上の [code: number] の区切りが入ります。目次、柱、PDF のしおりも、この区切りを使います。
 
 本文より大きい見出しも、行の格子からずらさずに置きます。
 見出しは、その大きさを収める行数を占め、[code: block-align] で決めた位置に組まれます（行取り）。
@@ -836,7 +837,7 @@ regex-styles = [
 [code: <階層>] は見出しの階層の数です。
 
 - [code: "heading.<階層>.short"]：その階層の見出しの題です。ページの中で始まった最初の見出しを使い、なければその前から続く見出しを使います。
-- [code: "heading.<階層>.numbered"]：番号と題を、見出しの番号と同じ本の言語で決まる区切りでつないだものです（日本語の本なら「第3章　原稿の記法」など）。
+- [code: "heading.<階層>.numbered"]：番号と題を、元の見出しと同じ区切りでつないだものです（日本語の本なら「第3章　原稿の記法」など）。
 - [code: "heading.<階層>.short.last"]、[code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。辞書の柱のような使い方です。
 - [code: "title"]：[code: manifest.toml] の書名です。
 - [code: "none"]：柱を出しません。
@@ -986,6 +987,7 @@ leader = "dots"
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注の領域を、小口側の余白に設けます。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
+- [code: \[paragraph-styles.caption\]] の [code: number-title-separator]：図版、コードブロック、表のキャプションで、番号と題のあいだに入れる文字列です。書き方は見出しの [code: number-title-separator] と同じです。[code: \[paragraph-styles.body\]] に書いた区切りも、キャプションに届きます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
 
 本文と脚注のあいだは、行の格子の一行分だけ空いています。

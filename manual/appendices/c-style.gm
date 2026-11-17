@@ -225,6 +225,13 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: padding] | 囲みの内側の余白です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0.5zw"] です。 |
 | [code: border-radius] | 囲みの角の丸みの半径です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0pt"] です。 |
 
+段落スタイルには、番号と題のあいだに入れる文字列 [code: number-title-separator] も書けます。
+[code: caption] と、[code: caption] が [code: based-on] で引き継ぐ段落スタイル（既定では [code: body]）に書くと、図版、コードブロック、表のキャプションの区切りになります。
+ほかの段落スタイルに書いても、キャプションのほかには適用されません。
+[code: ""] にすると、番号のすぐ後に題が続きます。
+番号か題がなければ、区切りは入れません。
+書かなければ、日本語の本では全角の空白、ほかの言語の本では半角の空白を入れ、番号の書式が空白で終われば何も入れません。
+
 段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: punctuation-width]、[code: features] も書けます。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
 [code: aki-set]、[code: line-adjustment]、[code: stretch-limit]、[code: shrink-order]、[code: stretch-order] は [code: body] から引き継ぐので、[code: body] に書けば本の全体が変わります。
@@ -272,6 +279,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
 キャプションと傍注の本文と表のセルに適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
 PDF のキャプションと傍注の本文には、[code: caption] と [code: sidenote] の字下げ、[code: space-between]、[code: line-breaks] も適用されます。
+キャプションには、[code: caption] の [code: number-title-separator] も適用されます。
 表のセルには、[code: @style] で付けた段落スタイルのこれらのキーを当て、字下げなどのほかのキーは当てません。
 PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表も行の格子を崩しません。
 [code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
@@ -304,10 +312,16 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: font] | フォントの役割の名前です。書かなければ本文の書体です。 |
 | [code: size] | 文字の大きさです。書かなければ、1 の階層は [code: "1.5zw"]、2 の階層は [code: "1.25zw"]、3 から 6 の階層は [code: "1zw"] です。 |
 | [code: lines] | 見出しが占める行の数（行取り）の最小の値で、1 以上の整数です。書かなければ、日本語の本では 1 の階層から順に 5、3、2、ほかの言語の本では 6、4、2 で、4 から 6 の階層はどちらも 1 です。既定の値は版面の行数に切り詰めます。書いた値が版面の行数を超えるとエラー（G07024）です。 |
-| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
+| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。[code: number-title-separator] を書かなければ、番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
 | [code: page-break] | [code: "recto"] にすると、その見出しを奇数ページから始めます。既定は [code: "any"] です。 |
 | [code: rule-before] | 見出しの前に引く罫線です。段落スタイルと同じ表を書きます。[code: length] と字下げの [code: zw] は見出しの文字の大きさを、間隔の [code: zw] は版面の文字の大きさを一字とし、間隔は見出しが占める行の領域から測ります。 |
 | [code: rule-after] | 見出しの後に引く罫線です。見出しの下の罫線に使います。 |
+
+[code: number-title-separator] には、見出しの番号と題のあいだに入れる文字列を書きます。
+目次、柱の [code: heading.<階層>.numbered]、PDF のしおりも、この区切りを使います。
+[code: ""] にすると、番号のすぐ後に題が続きます。
+書かなければ、[code: number] の行で説明した区切り（日本語の本では全角の空白、ほかの言語の本では半角の空白）が入ります。
+段落スタイル [code: body] の区切りは引き継ぎません。
 
 柱に出す見出しは、ここではなく [code: \[masters.名前\]] の [code: running-head] で決めます。
 
