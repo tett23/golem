@@ -618,7 +618,7 @@ run t font locals depth code st0 c0 back = go code st0 c0
         Just ([v, i], st') -> place i c $ \k -> go rest st' {rTransient = Map.insert k v (rTransient st')}
         _ -> Went c
       21 -> case pops 1 st of
-        Just ([i], st') -> place i c $ \k -> \cc -> maybe (Went cc) (\st'' -> go rest st'' cc) (pushed [Map.findWithDefault (Pt 0) k (rTransient st')] st')
+        Just ([i], st') -> place i c $ \k cc -> maybe (Went cc) (\st'' -> go rest st'' cc) (pushed [Map.findWithDefault (Pt 0) k (rTransient st')] st')
         _ -> Went c
       22 -> oper 4 rest st c $ \case
         [s1, s2, Pt v1, Pt v2] -> one (if v1 <= v2 then s1 else s2)
@@ -673,7 +673,7 @@ run t font locals depth code st0 c0 back = go code st0 c0
                in case counts of
                     Left s -> Halted s c
                     Right [k] | k < 0 || k > depthNow -> Went c
-                    Right ks -> valueBranches [\cc -> go rest st2 {rStack = roll k a (rStack st2)} cc | k <- ks, a <- amounts] c
+                    Right ks -> valueBranches [go rest st2 {rStack = roll k a (rStack st2)} | k <- ks, a <- amounts] c
         _ -> Went c
       _ -> clear rest st c
     -- the position of get and put: a number of width 0 rounded toward 0, or every integer of an interval of width
@@ -689,8 +689,14 @@ run t font locals depth code st0 c0 back = go code st0 c0
        in rolled ++ below
     -- whether two intervals have a number in common
     meets (Iv a ai b bi) (Iv c ci d di) =
-      let (lo, loIn) = if a > c then (a, ai) else if c > a then (c, ci) else (a, ai && ci)
-          (hi, hiIn) = if b < d then (b, bi) else if d < b then (d, di) else (b, bi && di)
+      let (lo, loIn)
+            | a > c = (a, ai)
+            | c > a = (c, ci)
+            | otherwise = (a, ai && ci)
+          (hi, hiIn)
+            | b < d = (b, bi)
+            | d < b = (d, di)
+            | otherwise = (b, bi && di)
        in lo < hi || (lo == hi && loIn && hiIn)
     safeHead = \case
       v : _ -> Just v

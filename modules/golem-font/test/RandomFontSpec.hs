@@ -35,6 +35,7 @@ module RandomFontSpec
 where
 
 import Control.Monad (forM, forM_)
+import Data.Bifunctor (bimap)
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -42,7 +43,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Digest.Pure.SHA (sha256, showDigest)
 import Data.List (isInfixOf, sort)
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 import Data.Word (Word8)
 import Golem.Font
 import Golem.Font.Cff (CffResult (..), checkCffReferences, sfntCffTable)
@@ -105,7 +106,7 @@ randomFont original = rename (foldl rewrite original rewrites)
        in if length program > len
             then error ("the CharString of glyph " <> show gid <> " is shorter than its program")
             else BS.take off font <> BS.pack program <> BS.replicate (len - length program) 14 <> BS.drop (off + len) font
-    rename font = foldl (\f (from, to) -> replaceAll from to f) font (names <> map (\(a, b) -> (utf16 a, utf16 b)) names)
+    rename font = foldl (\f (from, to) -> replaceAll from to f) font (names <> map (bimap utf16 utf16) names)
     names = [("Source Sans Pro", "Random Sans Pro"), ("SourceSansPro", "RandomSansPro")]
     utf16 = BS.concatMap (\c -> BS.pack [0, c])
 
@@ -268,6 +269,6 @@ randomFontTests =
                     r = checkCffReferences bytes gids
                 assertEqual (path <> ": G08108") [] (cffUnverifiable r)
                 assertEqual (path <> ": random") [] (cffRandom r)
-                assertEqual (path <> ": G08109") [] [g | g <- gids, not (isJust (glyphMetrics f g))]
+                assertEqual (path <> ": G08109") [] [g | g <- gids, isNothing (glyphMetrics f g)]
           ]
     ]
