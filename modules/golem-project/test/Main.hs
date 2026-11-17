@@ -1073,10 +1073,10 @@ tests =
           ["10001", "-10000", "1.5", "\"10\""],
       testCase "[composition.ruby] (golem-layout ADR 0009)" $ do
         let rubyOf = fmap (compRuby . stComposition) . parseStyle (FileId 0)
-        rubyOf "" @?= Right (RubyStyleDef "center" "1:2:1" "1:2:1" (Zw 0.5) "kana")
+        rubyOf "" @?= Right (RubyStyleDef "center" "1:2:1" "1:2:1" (Zw 0.5) "kana" Nothing)
         rubyOf "[composition.ruby]\nmono-align = \"start\"\ngroup-align = \"0:1:0\"\nbase-spacing = \"center\"\noverhang = \"1zw\"\noverhang-onto = \"none\"\n"
-          @?= Right (RubyStyleDef "start" "0:1:0" "center" (Zw 1) "none")
-        rubyOf "[composition.ruby]\ngroup-align = \"center\"\n" @?= Right (RubyStyleDef "center" "center" "1:2:1" (Zw 0.5) "kana")
+          @?= Right (RubyStyleDef "start" "0:1:0" "center" (Zw 1) "none" Nothing)
+        rubyOf "[composition.ruby]\ngroup-align = \"center\"\n" @?= Right (RubyStyleDef "center" "center" "1:2:1" (Zw 0.5) "kana" Nothing)
         codes (parseStyle (FileId 0) "[composition.ruby]\ngroup-align = \"justify\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[composition.ruby]\nmono-align = \"1:2:1\"\n") @?= ["G03006"]
         codes (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["G03006"]
@@ -1553,6 +1553,14 @@ noteMarkTests =
         fmap (fmap snMarkerStyle . stSidenotes) (first (const ()) (parseStyle (FileId 0) (sn <> "marker-style = \"strong\"\n"))) @?= Right (Just (Just "strong"))
         fmap (fmap snMarkerStyle . stSidenotes) (first (const ()) (parseStyle (FileId 0) sn)) @?= Right (Just Nothing)
         codes (parseStyle (FileId 0) (sn <> "marker-style = \"nothing\"\n")) @?= ["G03013"],
+      testCase "ADR 0369: reading-style of [composition.ruby] takes a character style; one that does not exist is G03013" $ do
+        let readingOf = fmap (rdReadingStyle . compRuby . stComposition) . first (const ()) . parseStyle (FileId 0)
+        readingOf "[character-styles.accent]\nsynthetic-bold = true\n[composition.ruby]\nreading-style = \"accent\"\n" @?= Right (Just "accent")
+        readingOf "[composition.ruby]\nreading-style = \"strong\"\n" @?= Right (Just "strong")
+        readingOf "[composition.ruby]\nmono-align = \"start\"\n" @?= Right Nothing
+        codes (parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n") @?= ["G03013"]
+        [diagMessage d | Left ds <- [parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n"], d <- ds]
+          @?= ["style.toml のスタイルの参照が不正です: [composition.ruby] の reading-style の文字スタイルがありません: nothing"],
       testCase "mark-size is G03117 and is the size of note-mark; with a mark-style of a size it is G03006" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- styleNotices (FileId 0) src] @?= [(DiagnosticCode "G03117", Notice, 20)]
