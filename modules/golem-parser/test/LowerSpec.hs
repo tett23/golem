@@ -17,6 +17,10 @@ fid = FileId 0
 ast :: Text -> [Block]
 ast src = let (File _ bs, _, _) = parseAst fid src in map locValue bs
 
+-- | The codes of the diagnostics of the parse.
+codes :: Text -> [DiagnosticCode]
+codes src = let (_, _, ds) = parseAst fid src in map diagCode ds
+
 inl :: [Located Inline] -> [Inline]
 inl = map locValue
 
@@ -218,32 +222,48 @@ tests =
             assertBool (show is) (not ("blank-line" `isInfixOf` show (inl is)))
           other -> assertFailure (show other),
       testCase "set and attributed blocks" $ case ast "@set price = 100\n\n@label intro\n@nonumber\n# はじめに\n" of
-        [SetVar (Just _) n _, Attributed cmds (Just (Located _ (Heading 1 _)))] -> do
+        [SetVar n _, Attributed cmds (Just (Located _ (Heading 1 _)))] -> do
           locValue n @?= "price"
           length cmds @?= 2
         other -> assertFailure (show other),
-      testCase "ADR 0336 I1 I2: only a complete line-start declaration omits @" $ do
-        case ast "set x = 3\n\n[= x]\n" of
-          [SetVar Nothing n _, Paragraph _] -> locValue n @?= "x"
+      testCase "ADR 0391 I1 I2: only a line-start @set is a declaration" $ do
+        case ast "@set x = 3\n\n[= x]\n" of
+          [SetVar n _, Paragraph _] -> locValue n @?= "x"
           other -> assertFailure (show other)
-        case ast "set up is easy\n" of
-          [Paragraph _] -> pure ()
+        case ast "set x = 3\n\n[= x]\n" of
+          [Paragraph _, Paragraph _] -> pure ()
           other -> assertFailure (show other)
         case ast "set x == 3\n" of
           [Paragraph _] -> pure ()
           other -> assertFailure (show other)
-        case ast "set x =3\n" of
-          [Paragraph _] -> pure ()
-          other -> assertFailure (show other)
         case ast "# set x = 3\n" of
           [Heading 1 _] -> pure ()
-          other -> assertFailure (show other)
-        case ast "前置 set x = 3\n" of
-          [Paragraph _] -> pure ()
-          other -> assertFailure (show other)
-        case ast "```\nset x = 3\n```\n" of
-          [CodeBlock {}] -> pure ()
           other -> assertFailure (show other),
+      testCase "ADR 0391 I1: @set x = \"abc\" then [= x] is a SetVar and no diagnostic" $ do
+        case ast "@set x = \"abc\"\n\n[= x]\n" of
+          [SetVar n _, Paragraph _] -> locValue n @?= "x"
+          other -> assertFailure (show other)
+        codes "@set x = \"abc\"\n\n[= x]\n" @?= [],
+      testCase "ADR 0391 I1: @set x = without an expression is G01020" $
+        codes "@set x =\n" @?= [DiagnosticCode "G01020"],
+      testCase "ADR 0391 I2: set x = \"abc\" is a paragraph" $ do
+        case ast "set x = \"abc\"\n\n[= x]\n" of
+          [Paragraph is, Paragraph _] -> inl is @?= [Text "set x = \"abc\""]
+          other -> assertFailure (show other)
+        codes "set x = \"abc\"\n\n[= x]\n" @?= [],
+      testCase "ADR 0391 I2: set up is easy is a paragraph" $
+        case ast "set up is easy\n" of
+          [Paragraph is] -> inl is @?= [Text "set up is easy"]
+          other -> assertFailure (show other),
+      testCase "ADR 0391 I2: set xs = [1, 2] is a paragraph with G01021" $ do
+        codes "set xs = [1, 2]\n" @?= [DiagnosticCode "G01021"]
+        assertBool "no SetVar" (null [() | SetVar _ _ <- ast "set xs = [1, 2]\n"]),
+      testCase "ADR 0391 I2: @set x = 3 in a code block is a line of it" $
+        case ast "```\n@set x = 3\n```\n\n[= x]\n" of
+          [CodeBlock _ _ ls, Paragraph _] -> map locValue ls @?= ["@set x = 3"]
+          other -> assertFailure (show other),
+      testCase "ADR 0391 I5: [= @x] is G01020" $
+        codes "@set x = 1\n\n[= @x]\n" @?= [DiagnosticCode "G01020"],
       testCase "lists with nesting" $ case ast "- a\n- b\n  - c\n" of
         [BulletList [[Located _ (Paragraph _)], [Located _ (Paragraph _), Located _ (BulletList [_])]]] -> pure ()
         other -> assertFailure (show other),

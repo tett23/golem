@@ -157,7 +157,6 @@ everyNoticeProjects =
     source =
       T.concat
         [ TE.decodeUtf8 noticeSource,
-          "\n@set legacy = 1\n\n", -- G02155 (Golem ADR 0336)
           "\n本文。\n\n@blank-line 0\n\n", -- G02254 (an info)
           "@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
@@ -313,6 +312,14 @@ noticeTests =
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02129\"]\n" "@table t.csv\n" <> [("t.csv", "a,b\nc,d\n")]) id
         codesOf (nDiagnostics n) @?= ["G03024"]
         nOutputs n @?= [],
+      testCase "ADR 0391 I4: silence-notices with the retired G02155 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02155\"]\n" "@set x = 1\n\n[= x]\n") id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
+      testCase "ADR 0391 I3: @set builds with no diagnostics" $ do
+        n <- buildNotified (noticeProject "" "@set x = 1\n\n[= x]\n") id
+        codesOf (nDiagnostics n) @?= []
+        assertBool "outputs" (not (null (nOutputs n))),
       testCase "G03023: no style.toml, at the start of manifest.toml" $ do
         let files = [("manifest.toml", TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["html", "epub", "text"]})), ("a.gm", "x\n")]
         n <- buildNotified files id
