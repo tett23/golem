@@ -15,6 +15,7 @@ module UnbreakableSpacingSpec
   )
 where
 
+import Control.Monad (replicateM)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -38,7 +39,7 @@ unbreakableSpacingTests =
           ( \(name, set) -> do
               let r = run False set "１２３"
               assertEqual name [True, True] (map fst (bounds r))
-              mapM_ (\l -> assertEqual name [0, 0] (protectedAmounts r l)) (lines' r)
+              mapM_ (assertEqual name [0, 0] . protectedAmounts r) (lines' r)
               assertEqual name [0, 0] [unSp (itemStretch g) | (True, gs) <- bounds r, g <- gs]
           )
           sets,
@@ -95,7 +96,7 @@ alphabet = "１２〇三￥％℃€№′…‥あ漢、（5A"
 
 -- | Every run of one to three characters of 'alphabet'.
 inputs :: [Text]
-inputs = [T.pack s | n <- [1 .. 3], s <- sequence (replicate n alphabet)]
+inputs = [T.pack s | n <- [1 .. 3], s <- replicateM n alphabet]
 
 {- | The aki sets: the built-in ones, and one of its own where every pair
 of positions has an optimum of a quarter em, a minimum of 0 and a maximum
