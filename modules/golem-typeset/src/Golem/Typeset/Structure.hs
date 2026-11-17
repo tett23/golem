@@ -56,10 +56,10 @@ structureTree fe units figureAttrs tocNumber =
     book = piBook inp
     lang = bookLanguage inp
     atEnd = feNotesAtEnd fe
-    isEndNote u = any (\case Frame _ (FEndNote _ _) _ -> True; Frame _ (FEndNoteMore _) _ -> True; _ -> False) (uFrames u)
+    isEndNote u = any (\case Frame _ (FEndNote _ _ _) _ -> True; Frame _ (FEndNoteMore _) _ -> True; _ -> False) (uFrames u)
     -- the units of the notes at the end of chapters by their spans, in order: each note its first paragraph and the others (docs/adr/0263)
     endNotes = Map.map groupNotes (Map.fromListWith (flip (<>)) [(sp, [(isFirst, (i, u))]) | (i, u) <- units, (sp, isFirst) <- endNoteOf u])
-    endNoteOf u = [(sp, True) | Frame _ (FEndNote sp _) _ <- uFrames u] <> [(sp, False) | Frame _ (FEndNoteMore sp) _ <- uFrames u]
+    endNoteOf u = [(sp, True) | Frame _ (FEndNote sp _ _) _ <- uFrames u] <> [(sp, False) | Frame _ (FEndNoteMore sp) _ <- uFrames u]
     groupNotes = \case
       [] -> []
       (_, x) : rest -> let (more, others) = break fst rest in (x : map snd more) : groupNotes others
@@ -222,7 +222,7 @@ structureTree fe units figureAttrs tocNumber =
         ]
       -- the lines of a paragraph of a style that keeps its lines: one P
       FPara -> [elemNode (P.structElem P.SP (concat [if P.seType e == P.SP then P.seKids e else [P.KidElem e] | P.KidElem e <- concatMap nodeKids inner]))]
-      FEndNote _ _ -> []
+      FEndNote _ _ _ -> []
       FEndNoteMore _ -> []
     elemNode = NKid . P.KidElem
     withLang = \case

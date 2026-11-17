@@ -1088,7 +1088,10 @@ tests =
         fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"file\"\n") @?= Right NumberPerFile
         fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"chapter\"\n") @?= Right NumberPerChapter
         fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"book\"\n") @?= Right NumberPerBook
-        codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= ["G03006"],
+        codes (parseStyle (FileId 0) "[notes]\nnumbering = \"week\"\n") @?= ["G03006"],
+      testCase "ADR 0383: [notes] numbering = \"page\" numbers the notes per page" $ do
+        codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= []
+        fmap (show . stNotesNumbering) (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= Right "NumberPerPage",
       testCase "the rule spec, read apart from its users (golem-driver ADR 0024)" $ do
         parseRuleSpec (FileId 0) "length = \"30mm\"\nweight = \"0.5pt\"\n" @?= Right (RuleSpec (parseDim "30mm") 32768 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True)
         -- whether length is required is for the user to decide

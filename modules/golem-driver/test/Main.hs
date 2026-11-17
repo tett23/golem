@@ -41,6 +41,7 @@ import ManualEmetSpec (manualEmetTests)
 import NewPlanSpec (newPlanTests)
 #endif
 import NoteBodyStylesSpec (noteBodyStylesTests)
+import PageNoteNumbersSpec (pageNoteNumbersTests)
 import NotesSpec (notesTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
@@ -186,6 +187,7 @@ tests skips =
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
+             testGroup "notes numbered per page (docs/adr/0383)" pageNoteNumbersTests,
              testGroup "the paragraphs of captions and sidenotes (docs/adr/0367)" captionSidenoteParagraphsTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
