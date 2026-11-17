@@ -3,6 +3,7 @@
 -}
 module Main (main) where
 
+import CffRandomSpec (cffRandomTests)
 import CommandsSpec (commandsTests)
 import Control.Monad (forM_)
 import Data.Aeson qualified as J
@@ -187,6 +188,7 @@ tests =
       tomlMessageTests,
       noticeTests,
       commandsTests,
+      cffRandomTests,
       localeTests,
       rtsTests,
       testCase "golem lint reports G05001 after the spaces at the end of a line (golem-lint ADR 0002)" $ do
