@@ -165,6 +165,7 @@ data Flow
     FRestoreColumns
   | -- | no page or column break between the flows around (docs/adr ADR 0030)
     FNoBreak !SrcSpan
+  | FNoBreakLines !SrcSpan !Int
   | -- | go to the next column unless this many grid lines are free
     FNeedLines !SrcSpan !Int
   | -- | change the grid lines of the current column
