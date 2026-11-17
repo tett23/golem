@@ -2197,17 +2197,18 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
           pk = breakClass lastChar lastClass p
           ck = startClass c next
           strict = ceKinsokuStrict env
+          inseparable = pk == Just Inseparable && ck == Just Inseparable
           noBreak =
             maybe False (lineStartProhibited strict) ck
               || maybe False lineEndProhibited pk
-              || (pk == Just Inseparable && ck == Just Inseparable)
+              || inseparable
               || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
           noAkiHere = latinDual p (lastChar p) || latinDual c (firstChar c)
           {- the pairs of JLReq 3.1.10 (golem-layout ADR 0049): two Arabic
           digits in horizontal writing, a prefixed abbreviation and a
           numeral, a numeral and a postfixed abbreviation; not between two
           boxes of code or of a URL, nor at the edge of a ruby. The break
-          is taken out as an infinite penalty, the glue left as it is -}
+          is taken out as an infinite penalty -}
           pairKept =
             not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
               (Just a, Just b) ->
@@ -2250,7 +2251,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               | not noAkiHere,
                 aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
-                  pen <> glueOf (akiKind a b) (base a b) aki
+                  {- the adjustment of a line widens neither two
+                  inseparable characters nor a pair of golem-layout ADR
+                  0049, in every set (root ADR 0362): the width and the
+                  shrink of the set are kept, the stretch is 0 -}
+                  let adjusted
+                        | inseparable || pairKept = aki {A.akiMaximum = A.akiOptimum aki}
+                        | otherwise = aki
+                   in pen <> glueOf (akiKind a b) (base a b) adjusted
             Just _ -> [Penalty 0 candidate NoHyphen | not noBreak]
             Nothing -> if noBreak then [] else [Penalty 0 candidate NoHyphen | not (bcExpandable p && bcExpandable c)]
 
