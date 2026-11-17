@@ -232,7 +232,6 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 
 親文字の中にも、[code: \[ref-number ...\]] と [code: \[ref-title ...\]] を書けます（「[ref-title cross-references]」、[ref-page cross-references] ページ）。
 その参照の文字だけが参照先へのリンクになり、読みはリンクに入りません。
-ただし PDF では、読みを空にした区切りの中の参照はリンクになりません。
 
 ## 数と式
 
