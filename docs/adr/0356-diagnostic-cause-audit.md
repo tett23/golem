@@ -1,6 +1,6 @@
 # ADR 0356: 原因ごとに diagnostic のコードを点検する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

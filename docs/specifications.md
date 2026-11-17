@@ -499,6 +499,9 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
 - `Golem.TestSupport.ExternalTool`：外部ツールを使うテストの補助。
 - `Golem.TestSupport.Parallel`：いくつもの capability で動作を同時に走らせる補助。
 - `Golem.TestSupport.TimeLimit`：golem-pdf と golem-svg のテストの時間の上限を、プロセスの CPU 時間と実時間の二つで測る補助（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+  上限の `hangLimits` は、ネイティブでは CPU 時間 60 秒、実時間 300 秒である（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
+  wasm32 では、CPU 時間 600 秒、実時間 1200 秒である。
+  どちらの値を使うかは、実行のときの環境の変数ではなく、コンパイルのときに `wasm32_HOST_ARCH` で決める（[docs/adr/0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md)）。
 - `Golem.TestSupport.Watchdog`（`watchTests`）：`-threaded` のテストのスイートが止まったときに、Haskell のランタイムの外の POSIX のスレッドで実時間を測り、走っていたテストの名前を書いてプロセスを止める補助。
   golem-driver-parallel-test がこれを使う（[docs/adr/0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。
   golem-emet-test も木の全体を `watchTests 300` で包み、aarch64 の GHC の不具合（GHC の issue #28001）を避けるために、`localOption (NumThreads 1)` でテストを一つずつ走らせる（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。
@@ -4643,6 +4646,9 @@ CRLF は受け付け、LF の前にない CR（単独の CR）を G02082 とす�
 検査に通らないファイルからは表を作らない。
 同じファイルを複数の `@table` から参照しても、読み込みの段階の diagnostic は一度だけ出す。
 `@listing` のファイルには、この検査をしない。
+`@listing` のパスは最初の位置引数に一つ書く。
+`src=` だけなら G02250、位置引数と `src=` の併記または二つの位置引数なら G02253 とし、アセットの内容を要求する前にそのブロックの評価を終える（[ADR 0341](adr/0341-revise-retire-listing-src.md)）。
+`src=` を二つ以上書いた場合は、二つ目以降の各キーに G02077 を出す。
 LSP では、エディタで開いているファイルの BOM と CR も G01002 と G01003 にするが、プロジェクトの読み込みは止めない。
 
 プロジェクトの外のファイルに構文エラーがあるときは、構文の diagnostics だけを出し、評価の diagnostics を出さない。
@@ -4696,7 +4702,6 @@ notice を出すのは、次のものである。
 - 数字だけの縦中横（G02063）
 - `keep` の段落の行頭のエスケープした空白（G02064）
 - `keep` の段落の行末のエスケープした空白（G02079）
-- `@listing` の `src=`（G02065、廃止予定）
 - `@table` の `src=`（G02129、廃止予定）
 - `-` で区切った範囲（G02108、廃止予定）
 - 続けて書いた `@blank-line`（G02094）
@@ -6653,6 +6658,45 @@ HTML と EPUB は、本文の参照（`noteref`）と注の一覧の戻りのリ
 PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、どれも書かない。
 記号の連なりが尽きた後に記号を重ねること、算用数字に戻ることはしない。
 
+#### 注の本文と一覧の見出しの段落スタイル
+
+PDF の注の本文と、章末の注の一覧の見出しには、`[notes]` の二つのキーで段落スタイルを当てる（[ADR 0366](adr/0366-note-body-styles.md)）。
+
+| キー | 型 | 意味 |
+| --- | --- | --- |
+| `body-style` | 文字列 | ページの下の脚注と章末の注の本文に当てる段落スタイルの名前。既定はなし（本文の役割と版面の文字の大きさ） |
+| `heading-style` | 文字列 | 章末の注の一覧の見出しに当てる段落スタイルの名前。既定はなし（2 の階層の見出しの役割と大きさ） |
+
+```toml
+[paragraph-styles.note]
+font = "gothic"
+size = "0.8zw"
+
+[notes]
+body-style = "note"
+heading-style = "note"
+```
+
+`body-style` の段落スタイルは、`font` の役割、`size` の大きさ、カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト、OpenType の機能、約物の幅、アキ量のセット、行の調整（`line-adjustment`、`shrink-order`、`stretch-order`、`stretch-limit`）を、`based-on` をたどって注の本文に当てる。
+章末の注の段落には、`keep-first-lines`、`keep-last-lines`、`keep-all-lines` も当てる。
+字下げ、段落の前後と段落のあいだの空き、行揃え、罫線、囲みは当てず、注の本文の組み方は「注の配置」と「ページの下の脚注」の節のとおりである。
+キーを書かなければ、注の本文は今までどおり本文の役割と版面の文字の大きさで組み、段落スタイル `body` の書体と大きさ以外のキーを当てる。
+
+`heading-style` の段落スタイルは、`body-style` が注の本文に当てるキーのうち、`keep-first-lines`、`keep-last-lines`、`keep-all-lines` を除くものを、一覧の見出しに当てる。
+行取りと、見出しの直後で改ページしない規則は、キーを書いても 2 の階層の見出しのままである。
+段落スタイルの `size` は版面の文字の大きさを超えられない（[G03011](diagnostics.md#g03011)）ので、見出しを本文より大きく組みたい本は、キーを書かずに `[headings.2]` の `size` を変える。
+
+二つのキーは互いに独立している。
+`body-style` だけを書いた本の一覧の見出しは既定のままであり、`heading-style` だけを書いた本の注の本文も既定のままである。
+どちらのキーも、本文の印（`mark-style` の文字スタイルで組む）と、傍注の本文（段落スタイル `sidenote` で組む）を変えない。
+[ADR 0366](adr/0366-note-body-styles.md) の「注の印には本文の指定を伝えない」は、本文の印についての規則である。
+注の本文の先頭の印は注の本文の行の中で組むので、`body-mark-style` を書かなければ、`body-style` の書体と大きさで組む。
+
+二つのキーの名前が、組み込みにも `style.toml` にもない段落スタイルなら、エラー（[G03013](diagnostics.md#g03013)）とする。
+`[notes]` は本に一つなので、原稿の `@style-def` の段落スタイルは指せない。
+ただし、ファイルが `@style-def` で同じ名前の段落スタイルを定義し直した場合は、ページの下の脚注は注のあるファイルの定義で、章末の注の一覧は章の最後のファイルの定義で組む。
+HTML、EPUB、プレーンテキストでは二つのキーを使わない。
+
 #### 注の配置
 
 注の配置は、媒体ごとに異なる。
@@ -6675,8 +6719,8 @@ PDF の章末の注は、次のように組む。
 - 本文の印は脚注と同じく組むが、注の本文をページ下に置かず、区切りの領域も取らない。`[notes.rule]` も使わない。
 - 一覧は、章の最後のファイルの最後のブロックの後に置く。そのファイルの末尾に改ページの印（`@page-break` など）が続く場合は、一覧をその印の前に置く。
 - 一覧は本文の終わりから続けて組み、前で改ページしない。
-- 一覧の見出しは、2 の階層の見出しの役割、大きさ、行取りで組む。番号を付けず、目次、柱の値、見出しの番号の数えには入れない。見出しの直後で改ページしない規則は、ほかの見出しと同じである。
-- 注は一つずつ段落として組み、先頭に脚注と同じ印と、ページの下の注と同じ伸び縮みしない四分アキを付ける。書体と大きさは本文の役割と版面の文字の大きさ、行長は段の行長とし、二行目以降を字下げせず、注のあいだに空きを入れない。段落は本文の段落と同じ規則でページをまたぐ。
+- 一覧の見出しは、2 の階層の見出しの役割、大きさ、行取りで組む。`heading-style` を書けば、役割と大きさはその段落スタイルのものになる。番号を付けず、目次、柱の値、見出しの番号の数えには入れない。見出しの直後で改ページしない規則は、ほかの見出しと同じである。
+- 注は一つずつ段落として組み、先頭に脚注と同じ印と、ページの下の注と同じ伸び縮みしない四分アキを付ける。書体と大きさは本文の役割と版面の文字の大きさ（`body-style` を書けばその段落スタイルの役割と大きさ）、行長は段の行長とし、二行目以降を字下げせず、注のあいだに空きを入れない。段落は本文の段落と同じ規則でページをまたぐ。
 - 二つ以上の段落の注は、一つめの段落を上のとおり組み、二つめ以降の段落を、印を付けずに、同じ書体、大きさ、行長で続けて組む。段落のあいだに空きを入れない。
 - 注の本文の中の索引の印は、一覧の行に置かれるので、索引のページ番号は一覧のページになる。
 
@@ -8887,6 +8931,7 @@ PDF 経路は、最重量の工程（フォントのサブセット化と PDF/X-
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **異なる原因を一つにまとめた diagnostic のコードが残っている**：設計原則の「一つのコードに一つの原因」に反し、異なる原因を一つのコードで報告する箇所が 62 件ある（G03026 の、参考文献のファイルがない場合と JSON として読めない場合など）。[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) が、コードごとの条件、再現の入力、旧コードを期待する試験、分け方の提案を挙げている。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因は未確認である。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合

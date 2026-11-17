@@ -1903,11 +1903,16 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       [] -> []
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
-         in Unit (UNotesTitle title) Nothing [Text sp title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing) Nothing (SourceHeading 2) [] 0 Nothing Nothing
+            -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
+            (titleLook, titleSource) = notesTitleLook lang style geom
+            bodyStyle = stNotesBodyStyle style
+            look = noteBodyLook style geom
+            source = noteBodySource style
+         in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
               -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
               : concat
-                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing Nothing
-                    : [Unit (UPara noIndent) Nothing more nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
+                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing Nothing
+                    : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
                 | (nsp, n, para0 : rest) <- ns
                 ]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
@@ -2393,9 +2398,36 @@ tableStyleName = fromMaybe "table" . tableStyle
 tableCellSize :: FlowEnv -> Style -> Table -> Sp
 tableCellSize fe st t = snd (paraFace st (feGeom fe) (tableStyleName t))
 
--- | The composition of the notes and sidenotes of a unit: the body size of its document's style.
+{- | The composition of the notes of a unit: the paragraph style of
+[notes] body-style in its document's style, or the body size of its
+document's style without one (docs/adr/0366).
+-}
 noteEnv :: FlowEnv -> Style -> ComposeEnv
-noteEnv fe st = (withDocStyle st (lookEnv fe (bodyLook st (pgFontSize (feGeom fe))))) {ceAkiSet = akiSetOf st Nothing}
+noteEnv fe st = (withDocStyle st (lookEnv fe (noteBodyLook st (feGeom fe)))) {ceAkiSet = akiSetOf st (stNotesBodyStyle st), ceSizeSource = noteBodySource st}
+
+{- | The look of the bodies of footnotes and of notes at the end of a
+chapter (docs/adr/0366): the role, the size and the keys of the paragraph
+style of [notes] body-style; the body role at the size of the grid without
+one. The marks in the text do not take it.
+-}
+noteBodyLook :: Style -> PageGeometry -> Look
+noteBodyLook st geom = case stNotesBodyStyle st of
+  Nothing -> bodyLook st (pgFontSize geom)
+  Just n -> uncurry (styleLook st (Just n)) (paraFace st geom n)
+
+-- | The definition that decides the size of the bodies of notes (docs/adr/0366).
+noteBodySource :: Style -> SizeSource
+noteBodySource st = maybe SourceGrid (paraSizeSource st . Just) (stNotesBodyStyle st)
+
+{- | The look of the title of the list of notes at the end of a chapter
+and the definition of its size (docs/adr/0366): the role, the size and the
+keys of the paragraph style of [notes] heading-style; those of the
+headings of level 2 without one.
+-}
+notesTitleLook :: Text -> Style -> PageGeometry -> (Look, SizeSource)
+notesTitleLook lang st geom = case stNotesHeadingStyle st of
+  Nothing -> (uncurry (styleLook st Nothing) (headingFace lang st geom 2), SourceHeading 2)
+  Just n -> (uncurry (styleLook st (Just n)) (paraFace st geom n), paraSizeSource st (Just n))
 
 -- | The footnotes of a unit, each a paragraph of its own; none when the notes are at the end of the chapter (golem-driver ADR 0026).
 unitNotes :: FlowEnv -> Unit -> [Golem.Layout.Japanese.Anchor] -> [(NoteId, [Line])]
@@ -2413,7 +2445,7 @@ the line without a mark, no indent and no space between them.
 footnoteLines :: FlowEnv -> ComposeEnv -> Style -> NoteId -> Int -> [[Inline]] -> [Line]
 footnoteLines fe env st k n ps =
   concat
-    [ brLines (breakParagraph (adjustedParams st Nothing (feParams fe)) (const (feMeasure fe)) (fst (composeInlines env' is)))
+    [ brLines (breakParagraph (adjustedParams st (stNotesBodyStyle st) (feParams fe)) (const (feMeasure fe)) (fst (composeInlines env' is)))
     | (j, para) <- zip [0 :: Int ..] ps,
       let (env', is) =
             if j == 0
