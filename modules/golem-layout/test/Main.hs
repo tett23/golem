@@ -44,7 +44,7 @@ import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
 import Golem.Length (zwToSp)
-import Golem.Project.Style (Dim (..), dimToSp)
+import Golem.Project.Style (Dim (..), HeadingBlockAlign (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Hedgehog
@@ -980,6 +980,31 @@ tests =
             headingBlock (Sp bfs) (Sp bp) (Sp s) 2 1 @?= expect (2 :: Int)
             hbSpan (headingBlock (Sp bfs) (Sp bp) (Sp s) 1 1) @?= 2
             hbSpan (headingBlock (Sp bfs) (Sp bp) (Sp s) 2 1) @?= 3,
+          testCase "ADR 0373 I1: inv1_heading_block_alignment_case_1: with no remainder every alignment gives the same block" $
+            map (\a -> headingBlockAligned a 10 13 10 3 3) [HeadingStart, HeadingCenter, HeadingEnd] @?= replicate 3 (HeadingBlock 13 3 0),
+          testCase "ADR 0373 I1: inv1_heading_block_alignment_case_2: end with a remainder of two lines leaves two lines before the heading" $
+            map (\a -> hbOffset (headingBlockAligned a 10 13 10 1 3)) [HeadingStart, HeadingCenter, HeadingEnd] @?= [0, 13, 26],
+          testProperty "ADR 0373 I1: inv1_heading_block_alignment_property: the leading and trailing spaces add up to the remainder" $ property $ do
+            body <- forAll (Gen.integral (Range.linear 1 100))
+            pitch <- forAll (Gen.integral (Range.linear body (3 * body)))
+            size <- forAll (Gen.integral (Range.linear 1 (4 * body)))
+            count <- forAll (Gen.int (Range.linear 1 8))
+            least <- forAll (Gen.int (Range.linear 1 12))
+            alignment <- forAll (Gen.element [HeadingStart, HeadingCenter, HeadingEnd])
+            let block a = headingBlockAligned a (Sp body) (Sp pitch) (Sp size) count least
+                hb = block alignment
+                extent = toInteger (count - 1) * unSp (hbPitch hb) + size
+                area = toInteger (hbSpan hb - 1) * pitch + body
+                leading = unSp (hbOffset hb)
+                trailing = area - extent - leading
+            assert (leading >= 0 && trailing >= 0)
+            leading + trailing === max 0 (area - extent)
+            leading === case alignment of
+              HeadingStart -> 0
+              HeadingCenter -> max 0 (area - extent) `div` 2
+              HeadingEnd -> max 0 (area - extent)
+            -- the alignment moves the heading only within the same grid lines
+            map (\a -> (hbPitch (block a), hbSpan (block a))) [HeadingStart, HeadingCenter, HeadingEnd] === replicate 3 (hbPitch hb, hbSpan hb),
           testCase "a heading of the body size sits on the grid" $
             mapM_ (\m -> headingBlock fs (Sp (unSp fs * 3 `div` 2)) fs m 1 @?= HeadingBlock (Sp (unSp fs * 3 `div` 2)) m 0) [1, 2, 3],
           testProperty "a least span of one gives the block of golem-driver ADR 0003 (golem-driver ADR 0032)" $ property $ do

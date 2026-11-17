@@ -3398,6 +3398,7 @@ gap = "0.5zw"
 
 - **bullets**：箇条書きの印の文字列の配列。一段目のリストに最初の要素、二段目に二つ目の要素を使い、入れ子が配列より深ければ最後の要素を使い続ける。既定は、PDF と、`[lists]` を書いた本の HTML と EPUB の `@counter-style` では `["•"]`（U+2022）、プレーンテキストでは `["・"]` であり、本の言語によらない（[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。`bullets` を書けば、すべての経路がその値を使う。U+2022 を持たない書体で組む本は、`bullets` で書体が持つ字に変える。
 - **numbers**：番号付きリストの番号の書式の配列。深さの扱いは `bullets` と同じである。既定は、横組みの本で `["{n}."]`、縦組みの本で `["{n}、"]` である。
+- **marker-style**：箇条書きの印と、書式で付けた前後の文字を含む番号に使う文字スタイル。省略すると項目の段落の見た目を引き継ぐ。PDF は指定を適用した幅で印を測り、項目本文は段落の見た目で組む。HTML と EPUB は、`[lists]` から作るリストの印の `::marker` に文字スタイルを当てる。読書環境は、そのうち `::marker` が受け付ける性質（色、書体、大きさなど）だけを適用する。どの経路でも、印の文字スタイルは項目本文に及ばない（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
 - **gap**：PDF の印と本文の間の空き。寸法で書き、`zw` はその段落の文字の大きさで数える。
 
 入れ子の深さは、箇条書きと番号付きのどちらのリストも数える。
@@ -3705,10 +3706,19 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 
 本文より大きい見出しは、行の格子からずらさずに置く（行取り）。
 見出しの行送りは、本文の行送りと文字の大きさの比を保った値とする。
-見出しは、その全体を収める最も少ない数の格子の行を占め、その領域の中央に置く。
+見出しは、その全体を収める最も少ない数の格子の行を占める。
 `lines` を書いた見出しは、少なくともその数の格子の行を占める。
 見出しの大きさが版面の文字の大きさと同じで `lines` が 1 なら、見出しの各行は本文と同じ格子の位置に来る。
 行取りの空きは、ページや段の先頭でも削らない。
+
+見出しを行取りの領域のどこに置くかは、`[headings.<階層>]` の `block-align` で決める（[Golem ADR 0373](adr/0373-heading-block-alignment.md)）。
+値は `start`、`center`、`end` のどれかで、既定は `center` とする。
+ほかの値は G03006 とする。
+行取りの領域の寸法から見出しの寸法を引いた値を、行送り方向の余りとする。
+見出しの前の空きは、`start` なら 0、`center` なら余りの半分、`end` なら余りの全部であり、余りの残りが見出しの後の空きになる。
+余りが負なら、前の空きも後の空きも 0 とする。
+前と後は、横組みでは上と下、縦組みでは行が進む向きの始まりと終わり（右と左）を指す。
+寄せ方を変えても、行取りの行数は変わらないので、後に続く本文の位置は変わらない。
 
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G07024）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 一ページには入るが、空の段の残りの行より多くの格子の行を占める見出しは、その段の頭に置いたまま、notice（G07100）で知らせる（[golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)）。
@@ -8066,6 +8076,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
+| `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の分量を数え、指定した字数と行数でページ数に換算する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。「[golem stats](#golem-stats)」の節を参照 |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose] [--format human\|json]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
@@ -8140,6 +8151,22 @@ PDF は、フォントを置くまで G08002 で止まる。
 
 G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`）を位置として、人が読む形で標準エラー出力に書き、`golem explain` の案内の行を付ける。
 `<パス>` は、引数のパスと雛形のパスをつないで正規化したもので、`golem new .` なら `manifest.toml` になる。
+
+### golem stats
+
+`golem stats` は各ページのマスターフレームに流し込む本文を原稿順に集計し、PDF を書き出さずに文字数、ワード数、組版後の行数、換算ページ数を表示する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。
+本文にはルビの親文字を含め、読み、柱、ノンブル、独立したフレームのテキスト、組版で補ったハイフンを除く。
+文字数は段落の表示文字列の拡張書記素クラスタを数える。
+ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字を含む区間を数える。
+組版後の行数は、PDF と同じ組版で作る本文の行ボックスと、明示的な空行の数である。
+
+換算では段落の先頭と明示改行で新しい行を始め、1 行の字数を超えたところで折り返す。
+明示的な空行は 1 行として数える。
+傍注のように本文の外に置く文字だけを持つ段落は、空行に数えない。
+換算した総行数を 1 ページの行数で割り、端数を切り上げる。
+`--chars-per-line` と `--lines-per-page` は正の整数を取り、それぞれの既定値は 20 である。
+0、負数、小数を指定すると引数のエラー（終了コード 2）になり、集計しない。
+換算ページ数の行には、換算に使った字数と行数を併記する。
 
 ### golem check
 
@@ -8859,6 +8886,7 @@ PDF 経路は、最重量の工程（フォントのサブセット化と PDF/X-
 - **`[ref-number]` の図番号とリスト番号と表番号が、`[figures]` と `[code]` と `[tables]` の `number` の書式に従わない**：`[ref-number]` は、図版とキャプションのあるコードブロックと番号のある表を `章の番号-番号`（`2-2` の形）で返す。`[figures]` の `number` を `"図{chapter}.{n}"` にすると、キャプションの図番号は「図 2.2」、本文の `[ref-number ...]` は「2-2」になり、二つが食い違う。`[code]` の `number` とリスト番号、`[tables]` の `number` と表番号も同じである。仕様は、書式を変えたときの `[ref-number]` の表記を定めていない。`complex-horizontal`（[ADR 0175](adr/0175-complex-typesetting-fixture.md)）が、今の表記を固定している。
 - **HTML で本文の段落の前の空きが、すべての段落に当たる**：`style.toml` の本文（`[paragraph-styles.body]`）の `space-before` は、HTML の `style.css` で `p` の規則として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1183-L1192)）。`p` はどの段落スタイルの段落にも当たるので、`space-before = 0` を書いた段落スタイルの段落にも、本文の前の空きが付く。PDF では付かない（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
 - **HTML で本文の段落のあいだの空きが、どのスタイルの段落の後にも当たる**：本文の `space-between` と、前後の空きを 0 に戻す規則は、`p + p` として書かれる（[`Html.hs`](https://github.com/tett23/golem/blob/16045dd620f382484894d4fa817f4731e52972e0/modules/golem-html/src/Golem/Html.hs#L1153-L1166)）。この規則は、本文の段落どうしだけでなく、どの段落スタイルの段落の後の段落にも当たる（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md) の実装で見つかった）。
+- **異なる原因を一つにまとめた diagnostic のコードが残っている**：設計原則の「一つのコードに一つの原因」に反し、異なる原因を一つのコードで報告する箇所が 62 件ある（G03026 の、参考文献のファイルがない場合と JSON として読めない場合など）。[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) が、コードごとの条件、再現の入力、旧コードを期待する試験、分け方の提案を挙げている。
 - **SVG の回転の行列の最後の桁がずれる**：SVG の `transform="rotate(-15)"` を PDF に書くと、行列が `0.965927 -0.25882 0.25882 0.965927` になる。cos 15° と sin 15° を小数 6 桁に丸めた値は 0.965926 と 0.258819 であり、どちらも最後の桁が 1 大きい。見た目に分かる差ではない。原因は未確認である。golem-driver の `test/golden/pdf-figures.txt` は、今の値を固定している。
 
 ## 仕様が不明瞭な場合
