@@ -6566,6 +6566,7 @@ style.toml のスタイルの参照が不正です
 `[lists]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
 段落スタイルの `next-style` が段落スタイルにないか、`initial-style` が文字スタイルにない場合も、この誤りとする（[Golem ADR 0374](adr/0374-paragraph-style-controls.md)）。
 `[sidenotes]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
+`[composition.ruby]` の `reading-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0369](adr/0369-ruby-reading-style.md)）。
 段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`（ファイルの中の定義では `@style-def のスタイルの参照が不正です: <理由>`）。正規表現スタイルの理由は `正規表現スタイルの文字スタイルがありません: <名前>` か `正規表現スタイルの段落スタイルがありません: <名前>`
