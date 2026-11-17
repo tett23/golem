@@ -939,7 +939,7 @@ sideMarkBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [(T.Text, Look
 sideMarkBoxes setting source = do
   (_, pl) <- layoutOk (sideMarkStyle setting) source []
   let boxes l = [(bcText c, bcLook c) | Box _ c <- lineItems l, not (T.null (bcText c))]
-  pure (concatMap (boxes . slLine) (Map.elems (plLines pl)), concat [boxes l | (_, ps) <- sidenotesOf pl, l <- psLines ps])
+  pure (concatMap (boxes . slLine) (Map.elems (plLines pl)), concat [boxes l | (_, ps) <- sidenotesOf pl, l <- map ptLine (psLines ps)])
 
 -- | The grid line of the line that holds the n-th sidenote marker of a page.
 slotOfMarker :: PdfLayout -> Int -> Int -> Maybe Int
