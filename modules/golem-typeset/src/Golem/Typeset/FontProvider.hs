@@ -25,6 +25,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
+import Golem.Font.Cff (CffCheck (..), checkCffReferences)
 import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
@@ -251,7 +252,8 @@ provide memoise fid faces body roles =
           [] -> []
           x : xs -> let (same, rest) = span ((== k x) . k) xs in (x : same) : groupOn k rest
     {- IO: the subset is made as the PDF is written (docs/adr ADR 0034); a CFF
-    font without a CFF table is G08018 (golem-pdf ADR 0011) -}
+    font whose used references leave its CFF table is G08107 (Golem ADR
+    0357), and one without a CFF table is G08018 (golem-pdf ADR 0011) -}
     embed ix vertical used = do
       let (f, path) = faceAt ix
           upem = toInteger (fontUnitsPerEm f)
@@ -262,24 +264,28 @@ provide memoise fid faces body roles =
           (asc, desc, cap) = fontExtents f
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
-      program <- fromMaybe (fontBytes f) <$> subsetFont f gids
-      pure $
-        (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
-          P.Font
-            { P.fontName = name,
-              P.fontProgram = fontProgram,
-              P.fontVertical = vertical,
-              P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
-              P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
-              P.fontAscent = per1000 asc,
-              P.fontDescent = per1000 desc,
-              P.fontCapHeight = per1000 cap,
-              P.fontStemV = 80,
-              P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
-              P.fontItalicAngle = 0,
-              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
-              P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
-            }
+      -- the used references of the CFF table, before the subset (Golem ADR 0357)
+      if fontIsCff f && checkCffReferences (fontBytes f) (0 : gids) == CffOutOfTable
+        then pure (Left (diagnostic "G08107" Error (mkSpan fid 0 0) ("CFF の内部参照が表の範囲を外れています: " <> T.pack path)))
+        else do
+          program <- fromMaybe (fontBytes f) <$> subsetFont f gids
+          pure $
+            (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
+              P.Font
+                { P.fontName = name,
+                  P.fontProgram = fontProgram,
+                  P.fontVertical = vertical,
+                  P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
+                  P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
+                  P.fontAscent = per1000 asc,
+                  P.fontDescent = per1000 desc,
+                  P.fontCapHeight = per1000 cap,
+                  P.fontStemV = 80,
+                  P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
+                  P.fontItalicAngle = 0,
+                  P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
+                  P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
+                }
 
 {- | The program of a CFF font: its bare CFF table, embedded in FontFile3 with
 the subtype CIDFontType0C (golem-pdf ADR 0011). PDFium takes the codes of a
