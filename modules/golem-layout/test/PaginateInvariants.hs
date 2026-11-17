@@ -632,6 +632,7 @@ passedByKeep = \case
   FNeedLines {} -> True
   FAdjustLines {} -> True
   FNoBreak _ -> True
+  FNoBreakLines {} -> True
   FKeepNext {} -> True
   FBlank {} -> True
   FBreak _ -> True
@@ -741,6 +742,7 @@ waits = \case
   FBreak _ -> True
   FSection {} -> True
   FNoBreak _ -> True
+  FNoBreakLines {} -> True
   FNeedLines _ _ -> True
   FAdjustLines _ _ -> True
   FBlank _ _ -> True
@@ -1261,6 +1263,7 @@ manual = \case
   FBreak _ -> True
   FSection {} -> True
   FNoBreak _ -> True
+  FNoBreakLines {} -> True
   FAdjustLines _ _ -> True
   _ -> False
 
