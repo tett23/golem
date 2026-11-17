@@ -4,13 +4,14 @@ XMP of the PDF.
 -}
 module TaggedPdfSpec (taggedPdfTests, fixtureBooks, prepareFixtureBook) where
 
-import Control.Monad (filterM, forM_, unless)
+import Control.Monad (filterM, forM_, replicateM, unless)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isSpace)
 import Data.Either (isRight)
 import Data.List (isInfixOf, isSuffixOf)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
@@ -120,6 +121,24 @@ orderStyle = horizontal30 (fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\
 treeLines :: T.Text -> [T.Text]
 treeLines = map T.strip . T.lines
 
+-- | The lines inside the first RB of a structure tree, and inside the RT after it, without their indentation (docs/adr/0360).
+rubyParts :: T.Text -> ([T.Text], [T.Text])
+rubyParts t =
+  let indented = [(T.length (T.takeWhile (== ' ') l), T.strip l) | l <- T.lines t]
+      inside name ls = case dropWhile ((/= name) . snd) ls of
+        (d, _) : xs -> let (kids, after) = span ((> d) . fst) xs in (map snd kids, after)
+        [] -> ([], [])
+      (base, rest) = inside "RB" indented
+   in (base, fst (inside "RT" rest))
+
+-- | The text of a text line of a structure tree.
+quoted :: T.Text -> Maybe T.Text
+quoted l = T.stripPrefix "\"" l >>= T.stripSuffix "\""
+
+-- | The parts of a ruby base in the tests of docs/adr/0360: what is written, and the text it draws.
+baseParts :: [(T.Text, T.Text)]
+baseParts = [("字", "字"), ("[ref-number a]", "1"), ("[ref-title b]", "二章")]
+
 structureTests :: [TestTree]
 structureTests =
   [ structureGolden "structure-sample.txt" "sample" (Just "pdf-style") Nothing,
@@ -163,6 +182,24 @@ structureTests =
       t <- treeLines <$> miniStructure horizontalStyle "前[ruby: 漢字 | かんじ]後。\n"
       let after = drop 1 (dropWhile (/= "Ruby") t)
       take 4 after @?= ["RB", "\"漢字\"", "RT", "\"かんじ\""],
+    -- docs/adr/0360: the references in a ruby base are References under its RB
+    testCase "ADR 0360 I1: inv1_ruby_base_references_property: the RB holds one Reference per valid reference of the base, in source order" $
+      forM_ (concatMap (`replicateM` baseParts) [0 .. 3]) $ \parts -> do
+        let source = "@label a\n# 一章\n\n@label b\n# 二章\n\n[ruby: 前" <> T.concat (map fst parts) <> "後 | よみ]。\n"
+        (base, reading) <- rubyParts <$> miniStructure horizontalStyle source
+        assertEqual (T.unpack source) (length (filter (/= "字") (map fst parts))) (length (filter (== "Reference") base))
+        -- each character of the base is drawn once, in the order of the base; the reading is not in the RB
+        assertEqual (T.unpack source) ("前" <> T.concat (map snd parts) <> "後") (T.concat (mapMaybe quoted base))
+        assertEqual (T.unpack source) ["\"よみ\""] reading,
+    testCase "ADR 0360 I1: inv1_ruby_base_references_case_1: a base without references has no Reference" $ do
+      (base, reading) <- rubyParts <$> miniStructure horizontalStyle "[ruby: 漢字 | かんじ]。\n"
+      base @?= ["\"漢字\""]
+      reading @?= ["\"かんじ\""],
+    testCase "ADR 0360 I1: inv1_ruby_base_references_case_2: two adjacent references in a base are two References in source order" $ do
+      let source = "@label a\n# 一章\n\n@label b\n# 二章\n\n[ruby: 前[ref-title a][ref-title b]後 | よみ]。\n"
+      (base, reading) <- rubyParts <$> miniStructure horizontalStyle source
+      filter (\l -> l == "Reference" || "\"" `T.isPrefixOf` l) base @?= ["\"前\"", "Reference", "\"一章\"", "Reference", "\"二章\"", "\"後\""]
+      reading @?= ["\"よみ\""],
     testCase "a Note follows the Reference of its mark; their IDs are one each" $ do
       t <- treeLines <$> miniStructure horizontalStyle "前[note: 一。]中[note: 二。]後。\n"
       let refs = [i | (i, l) <- zip [0 :: Int ..] t, l == "Reference"]

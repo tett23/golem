@@ -281,6 +281,8 @@ CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイル�
 
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印と、その「※」の文字スタイル（`marker-style`）だけを書く。
 PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
+キャプションの字下げは、そのキャプションを含むファイルのスタイルから引く。
+字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
@@ -304,6 +306,8 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 
 どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
+タグ付き PDF の構造の木では、相互参照は `Reference` になる。
+ルビの親文字の中の `[ref-number]` と `[ref-title]` も、読みのある区切りなら、親文字の `RB` の中の `Reference` になる（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。
