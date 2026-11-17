@@ -174,7 +174,7 @@ everyNoticeProjects =
           "@style kept\n  " <> T.replicate 72 "あ" <> "\n\n", -- G07112 (docs/adr/0261)
           "@page-break\n\n@page-lines -4\n\n" <> T.replicate 36 "あ" <> "\n\n", -- G07113 (docs/adr/0261)
           "``` highlight=1-1\nx\n```\n\n", -- G02108
-          "@table src=t.csv\n\n", -- G02129 (docs/adr/0184)
+          "@table t.csv\n\n",
           "@page-break\n\n@blank-line\n" -- G04008 and G04009
         ]
 
@@ -299,6 +299,20 @@ noticeTests =
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02065\"]\n" "@listing code.hs\n") id
         codesOf (nDiagnostics n) @?= ["G03024"]
         nOutputs n @?= [],
+      testCase "ADR 0343 I2: --no-notices does not let a legacy or doubled table path build" $
+        forM_ [("@table src=t.csv\n", "G02252"), ("@table t.csv src=t.csv\n", "G02130"), ("@table t.csv t.csv\n", "G02130")] $ \(src, code) -> do
+          n <- buildNotified (noticeProject "" src <> [("t.csv", "a,b\nc,d\n")]) (\o -> o {optNoNotices = True})
+          codesOf (nDiagnostics n) @?= [code]
+          map diagSeverity (nDiagnostics n) @?= [Error]
+          nOutputs n @?= [],
+      testCase "ADR 0343 I1: a positional @table path builds with no diagnostics" $ do
+        n <- buildNotified (noticeProject "" "@table t.csv\n" <> [("t.csv", "a,b\nc,d\n")]) id
+        codesOf (nDiagnostics n) @?= []
+        assertBool "outputs" (not (null (nOutputs n))),
+      testCase "ADR 0343 I4: silence-notices with the retired G02129 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02129\"]\n" "@table t.csv\n" <> [("t.csv", "a,b\nc,d\n")]) id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
       testCase "G03023: no style.toml, at the start of manifest.toml" $ do
         let files = [("manifest.toml", TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["html", "epub", "text"]})), ("a.gm", "x\n")]
         n <- buildNotified files id
@@ -398,6 +412,16 @@ explainTests =
                 isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
             assertBool "some profile-dependent codes" (not (null dependent))
             sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "ADR 0389 A1: the paragraph of the profile-dependent codes names every code of profileDependentCodes, G07127 and G07128 among them" $ do
+            let dependent = [c | DiagnosticCode c <- profileDependentCodes]
+                -- the line after the one that names profileDependentCodes
+                listed = case dropWhile (not . ("重大度がプロファイルで変わるコードは" `T.isPrefixOf`)) (T.lines documentText) of
+                  _ : l : _ -> l
+                  _ -> ""
+            assertBool "G07127 and G07128 are profile-dependent" (all (`elem` dependent) ["G07127", "G07128"])
+            [c | c <- dependent, not (("[" <> c <> "](#" <> T.toLower c <> ")") `T.isInfixOf` listed)] @?= []
+            fmap exTitle (lookupExplanation "G07127") @?= Just "キャプションの字下げが行の幅を使い切ります"
+            fmap exTitle (lookupExplanation "G07128") @?= Just "傍注の字下げが傍注の領域の幅を使い切ります",
           testCase "the infos of the catalog are infoCodes (docs/adr 0104)" $ do
             let isInfo e = "- 重大度: 情報" `elem` T.lines (exBody e)
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isInfo e] @?= sort [c | DiagnosticCode c <- infoCodes],

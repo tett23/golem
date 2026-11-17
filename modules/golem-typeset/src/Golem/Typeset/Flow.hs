@@ -15,6 +15,7 @@ module Golem.Typeset.Flow
     pageColumnSet,
     columnSetRects,
     checkedGeometry,
+    sidenoteIndentDiagnostics,
     kentenGlyphDiagnostics,
     dashInkNotices,
     punctuationInkNotices,
@@ -402,7 +403,9 @@ data Built = Built
     -- | the boxes by their ids (docs/adr/0271)
     bBoxes :: Map Int BoxInfo,
     -- | where the destinations of links are drawn (docs/adr/0267)
-    bDestAnchors :: Map LinkDest DestAnchor
+    bDestAnchors :: Map LinkDest DestAnchor,
+    -- | G07127: the captions whose indents leave no character, also when the layout stops (docs/adr/0389)
+    bCaptionWarnings :: [Diagnostic]
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -411,6 +414,48 @@ data Built = Built
 -}
 styleLayoutDiagnostics :: FileId -> Bool -> Style -> [LocalStyles] -> [Diagnostic]
 styleLayoutDiagnostics fid marks style locals = either id (\geom -> indentDiagnostics fid style locals geom <> indexDiagnostics fid style geom <> codeMeasureDiagnostics fid style locals geom) (pageGeometry fid marks style)
+
+{- | Whether indents leave no character of the size @z@ on a line of a
+part of the inner width @w@ (docs/adr/0389): @w@ holds one, and the
+narrowest line, @w@ less the indent, a positive first-line indent and the
+end indent, does not. A negative first-line indent only widens the first
+line.
+-}
+leavesNoCharacter :: Sp -> Indent -> Sp -> Bool
+leavesNoCharacter w (Indent s f e _) z = w >= z && w - s - max 0 f - e < z
+
+{- | G07128 (docs/adr/0389): the indents of the paragraph style sidenote
+leave no character on a line of the sidenote column, in style.toml or in
+the style of a file; at most once, at the top of @fid@. Neither a page
+without [sidenotes] nor a vertical page is checked (G07034, G07032). It
+does not stop the layout: neither 'checkedGeometry' nor the driver holds
+the PDF back before the layout for it.
+-}
+sidenoteIndentDiagnostics :: FileId -> Bool -> Style -> [LocalStyles] -> [Diagnostic]
+sidenoteIndentDiagnostics fid marks style locals = case pageGeometry fid marks style of
+  Right geom
+    | not (pgVertical geom),
+      Just (area, _) <- pgSidenotes geom ->
+        take
+          1
+          [ diagnostic "G07128" Warning (mkSpan fid 0 0) "傍注の字下げが傍注の領域の幅を使い切ります。字下げを小さくするか、[sidenotes] の width を広げてください"
+          | st <- style : map (withLocalStyles style) locals,
+            let (lk, ind) = paraLook st geom (Just "sidenote"),
+            leavesNoCharacter (rectW area) ind (lkSize lk)
+          ]
+  _ -> []
+
+{- | G07127 (docs/adr/0389): a caption of a unit with a line or more, set
+over the inner width @w@, whose indents of caption in the style of its
+file leave no character; at the block of the unit.
+-}
+captionIndentWarnings :: FlowEnv -> Unit -> Sp -> [PartLine] -> [Diagnostic]
+captionIndentWarnings fe u w ls =
+  [ diagnostic "G07127" Warning (uSpan u) "キャプションの字下げが行の幅を使い切ります。段落スタイル caption の字下げを小さくしてください"
+  | not (null ls),
+    let (lk, ind) = paraLook (uStyle u) (feGeom fe) (Just "caption"),
+    leavesNoCharacter w ind (lkSize lk)
+  ]
 
 {- | G07043 (golem-driver ADR 0017): the measure of a column less the padding
 on both sides leaves 8 characters of code, in style.toml and in the style
@@ -656,7 +701,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
         built <- buildFlow inp geom fonts figures (if reuse then prev else Nothing) assumed
         pure $
           if not (null (bErrors built))
-            then Left (bErrors built)
+            then Left (bErrors built <> bCaptionWarnings built)
             else
               let pages = paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)
                   errors =
@@ -664,15 +709,15 @@ layoutFigures reuse numbered inp geom fonts figures = do
                     | p <- pages,
                       UnplaceableFootnote (NoteId sp _) n <- poUnmet p
                     ]
-               in if null errors then Right (built, pages) else Left errors
+               in if null errors then Right (built, pages) else Left (errors <> bCaptionWarnings built)
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
   result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
   pure $ case result of
     Left ds -> Left ds
     -- the ranges of the index on the settled pages stop the PDF (docs/adr/0265)
-    Right (_, pages)
-      | ds@(_ : _) <- indexRangeDiagnostics (piBook inp) (`Map.lookup` markPages (bookSections inp) pages) -> Left (sortDiagnostics ds)
+    Right (built, pages)
+      | ds@(_ : _) <- indexRangeDiagnostics (piBook inp) (`Map.lookup` markPages (bookSections inp) pages) -> Left (sortDiagnostics ds <> bCaptionWarnings built)
     Right (built0, pages) ->
       -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
       -- in the size of the document of each sidenote (docs/adr ADR 0014)
@@ -699,8 +744,8 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
-            ds -> Left ds
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
+            ds -> Left (ds <> bCaptionWarnings built)
 
 {- | The marks of notes numbered per page with their numbers (docs/adr/0383),
 on the settled pages: each page numbers the notes and the sidenotes it
@@ -2754,7 +2799,8 @@ placeFigure fe u fig content =
       captionParams = (adjustedParams style (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
       captionAnchors = snd (composeInlines (captionEnv fe u) captionInlines)
       -- the caption as paragraphs of caption over the inner width (docs/adr/0367)
-      captionAt len = partLines style geom "caption" len (\_ width is -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) is)))) captionParas
+      -- in the style of the file of the caption (docs/adr/0389)
+      captionAt len = partLines (uStyle u) geom "caption" len (\_ width is -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) is)))) captionParas
       -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
       captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
       -- the caption in the measure before fitting (golem-driver ADR 0034)
@@ -2924,7 +2970,8 @@ captionLinesOf fe u lead number = \case
         captionParams = (adjustedParams (piStyle inp) (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
         captionAnchors = snd (composeInlines (captionEnv fe u) captionInlines)
         -- a paragraph of caption over the measure less the lead (docs/adr/0367)
-        ls = partLines (piStyle inp) (feGeom fe) "caption" (feMeasure fe - lead) (\_ width xs -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) xs)))) [captionInlines]
+        -- in the style of the file of the caption (docs/adr/0389)
+        ls = partLines (uStyle u) (feGeom fe) "caption" (feMeasure fe - lead) (\_ width xs -> brLines (breakParagraph captionParams width (fst (composeInlines (captionEnv fe u) xs)))) [captionInlines]
         cb = headingBlock fs pitch cs (partRows ls) 1
      in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
   where
@@ -3490,6 +3537,16 @@ buildFlow inp geom fonts images prev assumed = do
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
       codeNotices = concatMap cbNotices (Map.elems codeBlocks)
+      -- G07127: each caption over its inner width, in the order of the units (docs/adr/0389)
+      captionWarnings =
+        concat
+          [ case uKind u of
+              UFigure _ | Just (pf, _, _, _) <- Map.lookup i figures -> captionIndentWarnings fe u (pfFullAlong pf) (pfCaption pf)
+              UTable t -> captionIndentWarnings fe u (feMeasure fe) (ccLines (tableCaptionOf fe u t))
+              UCode lead _ | Just cb <- Map.lookup i codeBlocks -> captionIndentWarnings fe u (feMeasure fe - lead) (ciCaption (cbInfo cb))
+              _ -> []
+          | (i, u) <- units
+          ]
       -- the paragraphs one after the other in one box (docs/adr/0271)
       (boxedFlow, boxes) = joinBoxes (nuBoxes numbered) flow
       flow' = ruledLinks (spaceAfterCode (pgLinePitch geom) (pgFontSize geom) (map cbInfo (Map.elems codeBlocks)) boxedFlow)
@@ -3499,7 +3556,7 @@ buildFlow inp geom fonts images prev assumed = do
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow'))
+  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings)
 
 {- | Where the destinations of links inside the document are drawn first
 (docs/adr/0267): a label at the line or the figure that carries it, an

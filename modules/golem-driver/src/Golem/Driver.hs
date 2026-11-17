@@ -709,8 +709,12 @@ assetRefs (A.File _ bs) = concatMap blk bs
           kw k = [t | A.Located _ (A.Keyword (A.Located _ k') v) <- args, k' == k, Just t <- [txt v]]
        in case name of
             "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
-            -- the first argument, and src= to be retired (docs/adr/0184)
-            "table" -> [(T.unpack p, UseTable) | p <- take 1 pos <> kw "src"]
+            "table" ->
+              [ (T.unpack p, UseTable)
+              | not (any isSrc args),
+                [A.Located _ (A.Positional v)] <- [filter isPositional args],
+                Just p <- [txt v]
+              ]
             "listing" ->
               [ (T.unpack p, UseListing)
               | not (any isSrc args),
@@ -873,6 +877,8 @@ buildCore inMemory opts = do
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
               <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
+          -- G07128: reported, but it holds back neither the layout nor, in dev, the PDF (docs/adr/0389)
+          sidenoteDiags = if TargetPdf `elem` targets then pdfSidenoteIndents opts e diagFid else []
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optFiles opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
@@ -909,8 +915,8 @@ buildCore inMemory opts = do
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
-        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, bleed, Just targets)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags)) infos [], Nothing, bleed, Just targets)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
@@ -1358,8 +1364,9 @@ writePdfTarget inMemory opts e diagFid book bib = do
     Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
-      -- G08100 and G08103 are errors in prod and stop the PDF; the PDF of an earlier build goes too (docs/adr 0081, docs/adr/0268)
-      | hasErrors (map (adjustForProfile (optProfile opts)) (glyphs <> notices)) -> do
+      -- G08100, G08103, G07127 and G07128 are errors in prod and stop the PDF; the PDF of an earlier build goes too (docs/adr 0081, docs/adr/0268, docs/adr/0389)
+      -- G07128 is reported by buildCore, and only stops the PDF here
+      | hasErrors (map (adjustForProfile (optProfile opts)) (glyphs <> notices <> pdfSidenoteIndents opts e diagFid)) -> do
           cleanDir dir
           pure ([], notices <> fontNotice <> glyphs, Nothing)
       | otherwise -> do
@@ -1372,6 +1379,10 @@ writePdfTarget inMemory opts e diagFid book bib = do
       where
         -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
         glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
+
+-- | G07128 of an evaluated project, as the PDF is set (docs/adr/0389).
+pdfSidenoteIndents :: BuildOptions -> Evaluated -> FileId -> [Diagnostic]
+pdfSidenoteIndents opts e diagFid = sidenoteIndentDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e))
 
 -- | The input of the PDF of an evaluated project.
 pdfInputOf :: BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> PdfInput

@@ -76,7 +76,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 `.gm` から関数を呼ぶときの `.gm` の側の誤り（引数の数と型、散文スロットと本体）は、`G` のコード（[G02119](#g02119) から [G02123](#g02123)）である（[docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)）。
 
 重大度がプロファイルで変わるコードは `Golem.Syntax.Diagnostic.profileDependentCodes` にまとめてあり、dev では警告、prod ではエラーになる。
-今は [G03010](#g03010)、[G05004](#g05004)、[G08100](#g08100) の三つである。
+今は [G03010](#g03010)、[G05004](#g05004)、[G07127](#g07127)、[G07128](#g07128)、[G08100](#g08100)、[G08103](#g08103) の六つである。
 [G02005](#g02005) は、prod でだけ出る警告である。
 
 09 のコードは、`golem preflight` だけが出す（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
@@ -95,7 +95,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 人が読む形式と JSON の形式では、エラーと警告の後、情報の前に並ぶ。
 
 お知らせのコードは `Golem.Syntax.Diagnostic.noticeCodes` にまとめてある。
-今は次の三十二である。
+今は次の三十一である。
 
 | コード | 種類 | 段階 |
 | --- | --- | --- |
@@ -105,7 +105,6 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G02079](#g02079) | 効果のない書き方 | 評価 |
 | [G02094](#g02094) | 一般的でない書き方 | 評価 |
 | [G02108](#g02108) | 廃止予定 | 評価 |
-| [G02129](#g02129) | 廃止予定 | 評価 |
 | [G03023](#g03023) | 既定の使用 | プロジェクト |
 | [G03100](#g03100) | 効果のない書き方 | プロジェクト、評価 |
 | [G03114](#g03114) | 廃止予定 | プロジェクト |
@@ -2670,7 +2669,7 @@ wrap は start か end です
 
 `@table` に表のファイルのパスがない。
 パスは最初の引数に書く。
-廃止予定の `src=` で書いたパスも、パスとして数える。
+`src=` だけでパスを書いたときは、このコードでなく [G02252](#g02252) を出す（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 
 - メッセージ: `@table にはファイルのパスが必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -5315,17 +5314,15 @@ URL のホストは ASCII で書きます
 脚注、相互参照、引用は、リンクの外に書く。
 ## G02129
 
-@table の src= は廃止予定です
+@table の src= は廃止されました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
 `@table` の表のファイルのパスを `src=` で書いた。
-パスは最初の引数に書くのを正とし、`src=` は廃止する予定である。
-今は `src=` でも同じ表を組む。
-位置は `src=` の引数である。
+このコードは廃止され、`src=` だけなら [G02252](#g02252)、位置引数と併記すれば [G02130](#g02130) だけを出す（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 
 - メッセージ: `@table の src= は廃止予定です。パスを最初の引数に書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -5364,12 +5361,12 @@ URL のホストは ASCII で書きます
 `@table` に表のファイルのパスを二つ以上書いた。
 位置引数のパスが二つ以上あるときと、位置引数のパスと `src=` の両方があるときである。
 どちらのパスが正しいかは処理系には分からないので、表を組まない。
-`src=` を書いたときは、その引数に [G02129](#g02129) の notice も出す。
+`src=` を併記した場合も、このコードだけを出す（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 位置はコマンドの行である。
 
 - メッセージ: `@table にはファイルのパスを一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0184](adr/0184-table-positional-path.md)
+- ADR: [docs/adr/0184](adr/0184-table-positional-path.md)（定めた）、[ADR 0343](adr/0343-revise-retire-table-src.md)（`src=` との併記をこのコードだけにした）
 
 ### 主な原因
 
@@ -6100,6 +6097,31 @@ TSV の途中の空の行は消す。
 ### 直し方
 
 `@listing src=src/Main.hs` を `@listing src/Main.hs` に書き換える。
+
+## G02252
+
+@table のパスは最初の位置引数に書きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` のパスを `src=` だけで書いた。
+表のファイルの内容を読まず、そのブロックの評価を終える。
+位置は `src=` の引数である。
+
+- メッセージ: `@table の src= は使えません。パスを最初の引数に移します`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [ADR 0343](adr/0343-revise-retire-table-src.md)
+
+### 主な原因
+
+- `@table src=data/sizes.tsv` のように、パスをキーワードで書いた。
+
+### 直し方
+
+`@table src=data/sizes.tsv` を `@table data/sizes.tsv` に書き換える。
 
 ## G02253
 
@@ -10335,6 +10357,7 @@ HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LS
 はみ出しを測る位置の箱が改行しない範囲（文字スタイルの `no-break` が真の文字）の箱なら、このコードではなく [G07122](#g07122) を出す（[docs/adr/0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 引用の印の頁の文言（`p.`、`pp.`）と値のあいだでは改行しないので、文言と値を合わせた幅が行長より長い行も、このコードで報告する（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
 書き手が改行しない範囲を付けたのではないので、印が改行しない範囲の中になければ、G07122 ではなくこのコードを出す。
+キャプションの字下げが行の幅を使い切るときは、そのキャプションに [G07127](#g07127) を出し、溢れた行ごとのこのコードも重ねて出す（[ADR 0389](adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 
 - メッセージ: `行が行長から <量> はみ出しています（PDF の <ページ> ページ目）`（例: `行が行長から 1.24mm はみ出しています（PDF の 1 ページ目）`）。`<量>` は mm で、小数点以下 2 桁に切り上げて書く（1sp のはみ出しは `0.01mm`）。事実の `overfull` は、メッセージと同じ表記の `<量>` で、`pdf-pages` はそのページである
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-preflight の `Golem.Preflight`）
@@ -10976,6 +10999,83 @@ HTML、EPUB、プレーンテキストだけのビルドと、`golem check`、LS
 約物の字面が送りの中にあるフォントを、`[fonts]` の役割に指定する。
 重なりが目立たなければ、そのままでよい。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に `"G07126"` を加えると、このお知らせを出さなくなる。
+
+## G07127
+
+キャプションの字下げが行の幅を使い切ります
+
+- 重大度: dev では警告、prod ではエラー
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含む `golem build` で、図版、表、コードブロックのキャプションの段落スタイル `caption` の字下げが、キャプションの行の幅を使い切った。
+部品の内幅を `w`、`caption` の `indent`、`first-line-indent`、`end-indent` を `s`、`f`、`e`、文字の大きさを `z` とする。
+字下げと文字の大きさは、そのキャプションを含むファイルのスタイルから引き、ファイルのスタイルが無ければ本の全体のスタイルから引く。
+行の最も狭い幅 `m` を `w` − `s` − max(0, `f`) − `e` とし、`w` が `z` 以上で `m` が `z` に満たないときに出す。
+1 字分に満たない行には、全角の字が一字も収まらないためである。
+負の `first-line-indent`（ぶら下げ）は最初の行を広げるだけなので、`m` に入れない。
+`w` が `z` に満たないときは、字下げではなく部品そのものが 1 字分より狭いので、出さない。
+内幅は、回り込む図版では図版の幅、一ページに回した図版では枠の長さ、ほかの図版と表では段の行長、コードブロックではブロックの始まりから段の終わりまでの長さである。
+組む行が一つ以上あるキャプション（番号だけのものを含む）を検査し、置くキャプションごとに一度出す。
+行の割り付けは変えないので、同じキャプションの溢れた行ごとに [G07105](#g07105) も出る。
+図版のキャプションが段の行数を超えれば [G07038](#g07038) も出る。
+レイアウトの中で検査するので、`golem check` と LSP では出さない。
+dev では警告で、PDF を書き、終了コードを変えない。
+prod ではエラーなので PDF を書かず（前のビルドの PDF も消す）、終了コードは 1 になる。
+位置は、そのキャプションを持つブロック（`@figure`、表、コードブロック）である。
+
+- メッセージ: `キャプションの字下げが行の幅を使い切ります。段落スタイル caption の字下げを小さくしてください`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-driver の `Golem.Driver`）
+- ADR: [ADR 0389](adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)
+
+### 主な原因
+
+- `caption` の `indent` と `end-indent` が、図版や表の幅に比べて大きい。
+- 回り込む図版の `width` が狭く、キャプションの字下げを引くと 1 字分も残らない。
+- リストの中のコードブロックで、リストの字下げと `caption` の字下げを合わせると 1 字分も残らない。
+
+### 直し方
+
+`style.toml` か `@style-def` の段落スタイル `caption` の `indent`、`first-line-indent`、`end-indent` を小さくする。
+
+## G07128
+
+傍注の字下げが傍注の領域の幅を使い切ります
+
+- 重大度: dev では警告、prod ではエラー
+- 状態: 使用中
+
+### 意味
+
+段落スタイル `sidenote` の字下げが、傍注の領域の幅を使い切った。
+傍注の領域の幅を `w`、`sidenote` の `indent`、`first-line-indent`、`end-indent` を `s`、`f`、`e`、文字の大きさを `z` とする。
+行の最も狭い幅 `m` を `w` − `s` − max(0, `f`) − `e` とし、`w` が `z` 以上で `m` が `z` に満たないときに出す。
+負の `first-line-indent` は `m` に入れず、`w` が `z` に満たないときは出さない（[G07127](#g07127) と同じ）。
+傍注の領域の幅は `style.toml` の `[sidenotes]` の `width` だけで決まるので、`style.toml` と各ファイルのスタイルの `sidenote` を検査する。
+`[sidenotes]` の無い版面と、縦組みの版面では検査しない。
+PDF をターゲットに含むときは、ビルドと `golem check` の両方で報告する。
+LSP は出さない。
+一回のビルドで高々一度出す。
+[G07025](#g07025) と違い、レイアウトを止めない。
+prod でも、ほかにレイアウトを止める diagnostic が無ければレイアウトを行い、[G07127](#g07127) などのレイアウトの diagnostic を dev と同じに出す。
+dev では警告で、PDF を書き、終了コードを変えない。
+prod ではエラーなので PDF を書かず（前のビルドの PDF も消す）、終了コードは 1 になる。
+`golem check` での重大度は、`--profile` に従う。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+
+- メッセージ: `傍注の字下げが傍注の領域の幅を使い切ります。字下げを小さくするか、[sidenotes] の width を広げてください`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
+- ADR: [ADR 0389](adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)
+
+### 主な原因
+
+- `sidenote` の `indent` と `end-indent` が、`[sidenotes]` の `width` に比べて大きい。
+- `[sidenotes]` の `width` が狭い。
+
+### 直し方
+
+段落スタイル `sidenote` の `indent`、`first-line-indent`、`end-indent` を小さくするか、`[sidenotes]` の `width` を広げる。
 
 ## G08001
 

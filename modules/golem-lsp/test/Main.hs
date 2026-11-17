@@ -335,6 +335,16 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
+      testCase "ADR 0389 I10: inv10_lsp: the LSP reports neither G07127 nor G07128" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf"]}))
+        -- a caption of 2zw of 10pt and a sidenote of 6zw, each with indents that take the whole line
+        BS.writeFile
+          (tmp </> "style.toml")
+          "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[paragraph-styles.caption]\nsize = \"10pt\"\nindent = \"6zw\"\nend-indent = \"6zw\"\n\n[paragraph-styles.sidenote]\nsize = \"10pt\"\nindent = \"3zw\"\nend-indent = \"3zw\"\n\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
+        TIO.writeFile (tmp </> "a.gm") "本文[sidenote: 注]。\n\n@caption 表\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        ws <- openWorkspace tmp
+        let codes = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
+        filter (`elem` ["G07127", "G07128"]) codes @?= [],
       testCase "a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "A.\n"

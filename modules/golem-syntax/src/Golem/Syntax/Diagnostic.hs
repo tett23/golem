@@ -117,7 +117,6 @@ noticeCodes =
       "G02079", -- an escaped space at the end of a line in a paragraph that keeps its lines
       "G02094", -- @blank-line written in a row (docs/adr ADR 0046)
       "G02108", -- a range of lines separated by - (to be retired; docs/adr ADR 0113)
-      "G02129", -- @table src= (to be retired; docs/adr/0184)
       "G02155", -- @set's @ (to be retired; ADR 0336)
       "G03023", -- no style.toml
       "G03100", -- a zero indent of caption or sidenote (golem-driver ADR 0043)
@@ -195,7 +194,9 @@ profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
     DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
     DiagnosticCode "G08100", -- a character the font of the PDF has not (docs/adr 0081)
-    DiagnosticCode "G08103" -- an OpenType feature the font of the PDF has not (docs/adr/0268)
+    DiagnosticCode "G08103", -- an OpenType feature the font of the PDF has not (docs/adr/0268)
+    DiagnosticCode "G07127", -- caption indents that leave no character (docs/adr/0389)
+    DiagnosticCode "G07128" -- sidenote indents that leave no character (docs/adr/0389)
   ]
 
 {- | The codes of golem preflight whose severity the preflight rules decide,
