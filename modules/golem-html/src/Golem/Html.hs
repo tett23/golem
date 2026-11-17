@@ -35,7 +35,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -1377,7 +1377,7 @@ css cfg book =
         inherited cs =
           [ property <> ": inherit"
           | not (T.null prefix),
-            (property, missing) <- [("font-family", hcsFont cs == Nothing), ("color", hcsColor cs == Nothing), ("font-weight", not (hcsBold cs)), ("font-style", not (hcsItalic cs))],
+            (property, missing) <- [("font-family", isNothing (hcsFont cs)), ("color", isNothing (hcsColor cs)), ("font-weight", not (hcsBold cs)), ("font-style", not (hcsItalic cs))],
             missing
           ]
     localRules n l =
