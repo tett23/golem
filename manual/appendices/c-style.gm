@@ -264,13 +264,14 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 - [code: sidenote]：傍注の本文です。[code: caption] と同じく、字下げは 0 です。
 - [code: table]：表のセルです。[code: caption] と同じく、字下げは 0 です。既定では本文と同じ書体と大きさで組みます。表に [code: @style] を付けなかったときに当てます。本文より小さい文字の表にするなら、ここに [code: size] を書きます。
 
-[code: caption]、[code: sidenote]、[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
+[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
 書くとエラー（G03006）です。
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
 キャプションと傍注の本文と表のセルに適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
+PDF のキャプションと傍注の本文には、[code: caption] と [code: sidenote] の字下げ、[code: space-between]、[code: line-breaks] も適用されます。
 表のセルには、[code: @style] で付けた段落スタイルのこれらのキーを当て、字下げなどのほかのキーは当てません。
 PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表も行の格子を崩しません。
-[code: line-breaks]、[code: space-between]、[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
+[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
 段落スタイル [code: code] に書けるキーは、次の六つと、[code: border-style]、[code: border-sides]、[code: border-radius] だけです。

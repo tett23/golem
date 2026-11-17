@@ -399,6 +399,8 @@ normalizeBlock (A.Located sp b) = A.Located sp $ case b of
   A.DefList gs -> A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map normalizeBlock) ds) | A.DefGroup ts ds <- gs]
   A.Table al h rows -> A.Table al (map joinSoftBreaks h) (map (map joinSoftBreaks) rows)
   A.BlockCommand n@(A.Located _ "style") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
+  -- the newlines of a caption are left to the paragraph style caption (docs/adr/0367)
+  A.BlockCommand n@(A.Located _ "figure") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
   A.BlockCommand n args body -> A.BlockCommand n (map normalizeArg args) (map normalizeBlock body)
   A.Attributed cs t
     | any isStyleCommand cs -> A.Attributed (map normalizeBlock cs) (styledBody <$> t)
@@ -441,10 +443,12 @@ splitLines source paraStyles
       A.OrderedList items -> A.OrderedList (map (concatMap splitBlock) items)
       A.DefList gs -> A.DefList [A.DefGroup ts (map (concatMap splitBlock) ds) | A.DefGroup ts ds <- gs]
       A.BlockCommand n args body
-        | keepsLines lb -> b
+        | keepsLines lb || captionKeeps n -> b
         | otherwise -> A.BlockCommand n args (concatMap splitBlock body)
       A.Attributed cmds t -> A.Attributed (map inside cmds) (inside <$> t)
       other -> other
+    -- the caption of @figure, when caption keeps its lines (docs/adr/0367)
+    captionKeeps (A.Located _ n) = n == "figure" && Map.lookup "caption" paraStyles == Just KeepLines
     -- @style with the name of a style that keeps its lines
     keepsLines = \case
       A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
@@ -1800,7 +1804,7 @@ figure ctx sp args body = do
                 Left NaturalReported -> pure (Left ())
                 _ -> wrongPage p
       fine <- (&& formats) <$> ok
-      caption <- captionParagraphs =<< evalBlocks ctx . concat =<< mapM unstyled body
+      caption <- captionParagraphs =<< evalCaption . concat =<< mapM unstyled body
       case look "alt" of
         Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
@@ -1827,6 +1831,18 @@ figure ctx sp args body = do
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
+    {- the paragraphs of a caption by the line-breaks of caption (docs/adr/0367):
+    with keep, each line of the source is a line, as in a paragraph of a style
+    that keeps its lines; the paragraphs have no style of their own -}
+    evalCaption bs
+      | Map.lookup "caption" (ctxParaStyles ctx) == Just KeepLines = concat <$> mapM keptCaption bs
+      | otherwise = evalBlocks ctx bs
+    keptCaption = \case
+      A.Located psp (A.Paragraph is) -> map unstyle <$> styledParagraph ctx psp (Just "caption") is
+      other -> evalBlocks ctx [other]
+    unstyle = \case
+      Block bsp l g (Paragraph _ is) -> Block bsp l g (Paragraph Nothing is)
+      other -> other
     -- a caption holds paragraphs only: G02118 at each other block, which is dropped (docs/adr/0144)
     captionParagraphs = fmap concat . mapM (\b -> maybe (pure [b]) (\k -> [] <$ err "G02118" (blockSpan b) ("図版のキャプションには段落だけを書けます: " <> k)) (notInCaption (blockBody b)))
     -- a forced break, a page control and blank lines are left to nestedBreaks (G02059, G02071, G02093)

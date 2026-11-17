@@ -257,7 +257,7 @@ evaluateProjectWith files overlay profile root = do
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
       let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
           styleText = fromRight Nothing styleRead
-          -- G03100: a zero indent of caption or sidenote (golem-driver ADR 0043)
+          -- G03100: a zero indent of table (golem-driver ADR 0043, docs/adr/0367)
           styleNoticeDiags = maybe [] (styleNotices styleFid) styleText
           synDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
