@@ -30,7 +30,7 @@ fs = 655360
 
 headingLevelsTests :: [TestTree]
 headingLevelsTests =
-  [ testCase "Golem ADR 0372: HTML and EPUB reuse the heading separator in navigation" $
+  [ testCase "ADR 0372 I1: HTML and EPUB reuse the heading separator in the tables of contents" $
       withSystemTempDirectory "golem-separator" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n[targets.epub]\n")
         BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[headings.1]\nnumber = \"{n}\"\nnumber-title-separator = \"<&>\"\n")

@@ -512,6 +512,9 @@ outlineTests =
       map (\(d, t, _) -> (d, t)) (outlineOf deep) @?= [(1, "1　一"), (2, "1.1　二")]
       shallow <- pdfOf horizontalStyle "@toc depth=1\n\n# 一\n## 二\n本文。\n" []
       map (\(d, t, _) -> (d, t)) (outlineOf shallow) @?= [(1, "1　一")],
+    testCase "ADR 0372 I1: the outline takes the separator of the level of each heading" $ do
+      pdf <- pdfOf (horizontalStyle <> TE.encodeUtf8 "\n[headings.2]\nnumber = \"{1}.{n}\"\nnumber-title-separator = \"：\"\n") "# 一\n## 二\n本文。\n" []
+      map (\(_, t, _) -> t) (outlineOf pdf) @?= ["1　一", "1.1：二"],
     testCase "I8 no entry: no /Outlines and no /PageMode" $ do
       none <- pdfOf horizontalStyle "@toc depth=1\n\n## 二\n本文。\n" []
       outlineOf none @?= []
