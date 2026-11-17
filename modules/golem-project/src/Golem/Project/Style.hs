@@ -37,6 +37,8 @@ module Golem.Project.Style
     ParaStart (..),
     paraStartValues,
     LineAdjustment (..),
+    OpeningIndent (..),
+    openingIndentValues,
     lineAdjustmentValues,
     adjustPlaceNames,
     CodeStyle (..),
@@ -391,9 +393,26 @@ data ParaStyleDef = ParaStyleDef
     -} psShrinkOrder :: !(Maybe [[Text]]),
     psStretchOrder :: !(Maybe [[Text]]),
     -- | whether Golem shapes JLReq's punctuation with fwid (docs/adr/0302)
-    psPunctuationWidth :: !(Maybe PunctuationWidth)
+    psPunctuationWidth :: !(Maybe PunctuationWidth),
+    -- | the paragraph style of the paragraph right after one of this style, unless it has one written (docs/adr/0374)
+    psNextStyle :: !(Maybe Text),
+    -- | the character style of the first character of a paragraph (docs/adr/0374)
+    psInitialStyle :: !(Maybe Text),
+    -- | the indent of a paragraph that starts with an opening bracket (docs/adr/0374)
+    psOpeningIndent :: !(Maybe OpeningIndent)
   }
   deriving stock (Eq, Show)
+
+{- | The first-line indent of a paragraph that starts with an opening
+bracket (docs/adr/0374): the indent as it is, or less half a character,
+0 at the least.
+-}
+data OpeningIndent = OpeningNormal | OpeningHalf
+  deriving stock (Eq, Show, Enum, Bounded)
+
+-- | The values of opening-indent, in the order of 'OpeningIndent' (docs/adr/0374).
+openingIndentValues :: [Text]
+openingIndentValues = ["normal", "half"]
 
 {- | A side of a box (docs/adr/0271): before (the top, the right in
 vertical text), after, the start of the lines and their end.
@@ -530,7 +549,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -546,6 +565,7 @@ bodyDefaults =
       psProportional = Just False,
       psBaselineShift = Just (Abs 0),
       psPunctuationWidth = Just PunctuationFullWidth,
+      psOpeningIndent = Just OpeningNormal,
       psAlign = Just ParaLeftJustified,
       psSpaceBefore = Just 0,
       psSpaceAfter = Just 0,
@@ -915,6 +935,9 @@ overPara u b =
     (psShrinkOrder u <|> psShrinkOrder b)
     (psStretchOrder u <|> psStretchOrder b)
     (psPunctuationWidth u <|> psPunctuationWidth b)
+    (psNextStyle u <|> psNextStyle b)
+    (psInitialStyle u <|> psInitialStyle b)
+    (psOpeningIndent u <|> psOpeningIndent b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -2045,10 +2068,14 @@ instance FromValue ParaStyleDef where
     -- the order of the places of line adjustment (docs/adr/0278)
     sord <- optKeyOf "shrink-order" (adjustOrderOf "shrink-order")
     tord <- optKeyOf "stretch-order" (adjustOrderOf "stretch-order")
+    -- the paragraph style of the next paragraph, the character style of the first character and the indent of an opening bracket (docs/adr/0374)
+    nxt <- optKey "next-style"
+    ini <- optKey "initial-style"
+    oind <- enumKey "opening-indent" openingIndentValues
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])))
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -3110,7 +3137,10 @@ codeStyleChecks s =
             ("line-adjustment", isJust (psLineAdjustment d)),
             ("stretch-limit", isJust (psStretchLimit d)),
             ("shrink-order", isJust (psShrinkOrder d)),
-            ("stretch-order", isJust (psStretchOrder d))
+            ("stretch-order", isJust (psStretchOrder d)),
+            ("next-style", isJust (psNextStyle d)),
+            ("initial-style", isJust (psInitialStyle d)),
+            ("opening-indent", isJust (psOpeningIndent d))
           ],
         written
       ]
@@ -3208,6 +3238,15 @@ styleReferenceChecks owner s =
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
                  n `notElem` ["body", "code"],
                  Map.notMember b ps
+               ]
+            -- the styles next-style and initial-style name (docs/adr/0374)
+            <> [ (n, paraKey n "next-style", "段落スタイル " <> n <> " の next-style の段落スタイルがありません: " <> x)
+               | (n, ParaStyleDef {psNextStyle = Just x}) <- Map.toList ps,
+                 Map.notMember x ps
+               ]
+            <> [ (n, paraKey n "initial-style", "段落スタイル " <> n <> " の initial-style の文字スタイルがありません: " <> x)
+               | (n, ParaStyleDef {psInitialStyle = Just x}) <- Map.toList ps,
+                 Map.notMember x cs
                ]
             -- code is not a base of other styles (golem-driver ADR 0017)
             <> [ (n, paraKey n "based-on", "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
@@ -3758,7 +3797,10 @@ paraStyleNode =
         ("line-adjustment", enum lineAdjustmentValues),
         ("stretch-limit", int),
         ("shrink-order", adjustOrderNode),
-        ("stretch-order", adjustOrderNode)
+        ("stretch-order", adjustOrderNode),
+        ("next-style", ref ParaStyles),
+        ("initial-style", ref CharStyles),
+        ("opening-indent", enum openingIndentValues)
       ]
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),

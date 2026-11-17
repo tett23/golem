@@ -6563,6 +6563,7 @@ style.toml のスタイルの参照が不正です
 `[notes]` の `mark-style` か `body-mark-style` が文字スタイルにない場合も、この誤りとする（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 `[notes]` の `body-style` か `heading-style` が段落スタイルにない場合も、この誤りとする（[ADR 0366](adr/0366-note-body-styles.md)）。
 `[lists]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
+段落スタイルの `next-style` が段落スタイルにないか、`initial-style` が文字スタイルにない場合も、この誤りとする（[Golem ADR 0374](adr/0374-paragraph-style-controls.md)）。
 `[sidenotes]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
 段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
@@ -6583,6 +6584,7 @@ style.toml のスタイルの参照が不正です
 - `[notes]` の `mark-style` か `body-mark-style` に、組み込みにも `style.toml` にもない文字スタイルを書いた。理由は `[notes] の mark-style の文字スタイルがありません: <名前>` か `[notes] の body-mark-style の文字スタイルがありません: <名前>` である。`[notes]` は本に一つなので、`@style-def` の文字スタイルは指せない。
 - `[notes]` の `body-style` か `heading-style` に、組み込みにも `style.toml` にもない段落スタイルを書いた。理由は `[notes] の body-style の段落スタイルがありません: <名前>` か `[notes] の heading-style の段落スタイルがありません: <名前>` である。`[notes]` は本に一つなので、`@style-def` の段落スタイルは指せない。
 - 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。
+- 段落スタイルの `next-style` に、組み込みにも `style.toml` にも同じファイルの `@style-def paragraph` にもない段落スタイルを書いたか、`initial-style` に、同じくどこにもない文字スタイルを書いた。理由は `段落スタイル <名前> の next-style の段落スタイルがありません: <名前>` か `段落スタイル <名前> の initial-style の文字スタイルがありません: <名前>` である。
 - `[aki-sets.<名前>]` の `based-on` が循環する。
 - 段落スタイルの `based-on` に `code` を書いた。`code` はほかの段落スタイルの元にならない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - 段落スタイルの `background` が `[color.swatches]` にない（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）。
@@ -6592,7 +6594,7 @@ style.toml のスタイルの参照が不正です
 
 ### 直し方
 
-理由の示すスタイルの `based-on`、`color`、`aki-set`、正規表現スタイルの `style` か段落スタイルの名前、アキ量のセットの `based-on` を直す。
+理由の示すスタイルの `based-on`、`color`、`aki-set`、`next-style`、`initial-style`、正規表現スタイルの `style` か段落スタイルの名前、アキ量のセットの `based-on` を直す。
 誤りのある正規表現スタイルの組だけを捨て、ほかの組は適用する。
 
 ## G03014
