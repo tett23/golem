@@ -247,6 +247,7 @@ encodeBlock (Block sp lbl blang body) = do
       BreakColumn -> "BreakColumn"
     pageControl = \case
       NoBreak -> con "NoBreak" []
+      NoBreakLines n -> con "NoBreakLines" [nat n]
       NeedLines n -> con "NeedLines" [nat n]
       AdjustLines n -> con "AdjustLines" [int n]
 
@@ -518,6 +519,7 @@ blockD cx = \case
       r -> bad ("改ページの種類ではない値です: " <> shown r)
     pageControl = \case
       RCon "NoBreak" [] -> pure NoBreak
+      RCon "NoBreakLines" [n] -> NoBreakLines <$> natD n
       RCon "NeedLines" [n] -> NeedLines <$> smallD n
       RCon "AdjustLines" [n] -> AdjustLines <$> smallD n
       r -> bad ("改ページの制御ではない値です: " <> shown r)
