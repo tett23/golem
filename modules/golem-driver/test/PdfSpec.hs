@@ -21,7 +21,7 @@ import Golem.Driver.New (Language (..), createProject, templateFiles)
 #endif
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
-import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
+import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook, readingLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
@@ -775,9 +775,102 @@ marksTests =
 glyphXs :: BS.ByteString -> BS.ByteString -> [Double]
 glyphXs size content = [read (BC.unpack (dX d)) | d <- drawnGlyphs content, dSize d == size]
 
+-- | The style of the tests of the reading style of ruby, with character styles for it and a [composition.ruby] setting (docs/adr/0369).
+readingStyleToml :: BS.ByteString -> BS.ByteString
+readingStyleToml name =
+  horizontalStyle
+    <> fakeBody
+    <> "\n[fonts.gothic]\nja = \"fonts/w.otf\"\n\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n"
+    <> "\n[character-styles.accent]\ncolor = \"red\"\n\n[character-styles.large]\nsize = \"8pt\"\n\n[character-styles.wide]\nsize = \"0.8zw\"\n"
+    <> "\n[character-styles.heavy]\nsynthetic-bold = true\n\n[character-styles.gothic]\nfont = \"gothic\"\n\n[character-styles.loud]\ncolor = \"red\"\nsize = \"1.2zw\"\nfont = \"gothic\"\n"
+    <> (if BS.null name then "" else "\n[composition.ruby]\nreading-style = \"" <> name <> "\"\n")
+
+-- | The boxes of the lines of a source in 'readingStyleToml': the text, the look and the looks of the base characters.
+readingBoxes :: BS.ByteString -> T.Text -> IO [(T.Text, Look, [Look])]
+readingBoxes name source = do
+  (_, pl) <- layoutOk (readingStyleToml name) source fakeFontFiles
+  pure [(bcText c, bcLook c, bcBaseLooks c) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), not (T.null (bcText c))]
+
+-- | The ruby boxes of 'readingBoxes': their width and their look.
+rubyBoxes :: BS.ByteString -> T.Text -> IO [(Sp, Look)]
+rubyBoxes name source = do
+  (_, pl) <- layoutOk (readingStyleToml name) source fakeFontFiles
+  pure [(w, bcLook c) | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), "|" `T.isInfixOf` bcText c]
+
+-- | The glyphs drawn for a source in 'readingStyleToml', and the content streams.
+readingDrawn :: BS.ByteString -> T.Text -> IO ([Drawn], BS.ByteString)
+readingDrawn name source = do
+  content <- BS.concat <$> (miniPdf fakeProvider True (readingStyleToml name) source fakeFontFiles >>= inflateAll)
+  pure (drawnGlyphs content, content)
+
+-- | The sizes the glyph of a character is drawn in.
+drawnSizes :: Char -> [Drawn] -> [BS.ByteString]
+drawnSizes ch ds = [dSize d | d <- ds, dGlyph d == fromEnum ch]
+
 rubyTests :: [TestTree]
 rubyTests =
-  [ testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
+  [ testCase "ADR 0369 I1: inv1_ruby_reading_style_property" $
+      {- every reading style (colour, size absolute and in zw, synthetic bold,
+      font, all of them) on mono and group ruby, ruby with a character style
+      in the base or around it, and ruby in a paragraph long enough to break -}
+      forM_ ["accent", "large", "wide", "heavy", "gothic", "loud"] $ \name ->
+        forM_
+          [ "[ruby: 漢|かん]字\n",
+            "[ruby: 五月雨|さみだれ]が降る。\n",
+            "[ruby: 漢/字|かん/じ]を読む。\n",
+            "前[ruby: [strong: 漢]字|かんじ]後\n",
+            "[strong: [ruby: 漢|かん]]字\n",
+            T.replicate 12 "[ruby: 漢|かん]字" <> "\n"
+          ]
+          $ \source -> do
+            let base (t, lk, ls) = (t, lk {lkRubyReading = Nothing}, ls)
+            plain <- readingBoxes "" source
+            styled <- readingBoxes name source
+            assertBool (show (name, source)) (any (\(t, _, _) -> "|" `T.isInfixOf` t) plain)
+            assertEqual (show (name, source)) (map base plain) (map base styled)
+            (plainDrawn, _) <- readingDrawn "" source
+            (styledDrawn, _) <- readingDrawn name source
+            let baseGlyphs ds = [(dGlyph d, dFont d, dSize d) | d <- ds, dGlyph d `notElem` map fromEnum ("かんじさみだれ" :: String)]
+            assertEqual (show (name, source)) (sort (baseGlyphs plainDrawn)) (sort (baseGlyphs styledDrawn)),
+    testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1" $ do
+      -- no reading style: half the base, in the font and the colour around
+      boxes <- rubyBoxes "" "[ruby: 漢|か]字\n"
+      [(lkSize r, lkColor r, lkFace r) | (_, lk) <- boxes, let r = readingLook lk] @?= [(5 * pt, Nothing, "body")]
+      (ds, _) <- readingDrawn "" "[ruby: 漢|か]字\n"
+      drawnSizes 'か' ds @?= ["5"],
+    testCase "ADR 0369 I1: inv1_ruby_reading_style_case_2" $ do
+      -- a colour alone: half the base, in the colour of the style and the font around
+      boxes <- rubyBoxes "accent" "[ruby: 漢|か]字\n"
+      [(lkSize r, lkColor r, lkFace r) | (_, lk) <- boxes, let r = readingLook lk] @?= [(5 * pt, Just "red", "body")]
+      (ds, content) <- readingDrawn "accent" "[ruby: 漢|か]字\n"
+      drawnSizes 'か' ds @?= ["5"]
+      assertBool "red" ("0 1 1 0 k" `BS.isInfixOf` content)
+      (_, plainContent) <- readingDrawn "" "[ruby: 漢|か]字\n"
+      assertBool "not red" (not ("0 1 1 0 k" `BS.isInfixOf` plainContent)),
+    testCase "ADR 0369 I1: inv1_ruby_reading_style_case_3" $ do
+      -- a size: that size; zw is counted in the size of the base
+      forM_ ["large", "wide"] $ \name -> do
+        boxes <- rubyBoxes name "[ruby: 漢|か]字\n"
+        [lkSize (readingLook lk) | (_, lk) <- boxes] @?= [8 * pt]
+        (ds, _) <- readingDrawn name "[ruby: 漢|か]字\n"
+        drawnSizes 'か' ds @?= ["8"]
+        drawnSizes '漢' ds @?= ["10"],
+    testCase "ADR 0369: the reading is placed by its advances in its own size" $ do
+      -- two 5pt kana fit the base of 10pt; two of 8pt make the box 16pt between kanji
+      plain <- rubyBoxes "" "漢[ruby: 字|かな]漢\n"
+      large <- rubyBoxes "large" "漢[ruby: 字|かな]漢\n"
+      map fst plain @?= [10 * pt]
+      map fst large @?= [16 * pt]
+      (ds, _) <- readingDrawn "large" "漢[ruby: 字|かな]漢\n"
+      drawnSizes 'か' ds @?= ["8"]
+      drawnSizes 'な' ds @?= ["8"],
+    testCase "ADR 0369: a file that defines the reading style with @style-def sets its readings in that definition" $ do
+      boxes <- rubyBoxes "large" "@style-def character large size=\"6pt\"\n\n[ruby: 漢|か]字\n"
+      [lkSize (readingLook lk) | (_, lk) <- boxes] @?= [6 * pt],
+    testCase "ADR 0369: a font of the reading style is the font of the reading alone" $ do
+      boxes <- rubyBoxes "gothic" "[ruby: 漢|か]字\n"
+      [(lkFace lk, lkFace (readingLook lk)) | (_, lk) <- boxes] @?= [("body", "gothic")],
+    testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
       let source = "[ruby: 五月雨|さみだれ]が降る。\n"
           drawnAt align = do
             content <- miniPdf fakeProvider True (horizontalStyle <> "\n[composition.ruby]\ngroup-align = \"" <> align <> "\"\n") source [] >>= fmap BS.concat . inflateAll

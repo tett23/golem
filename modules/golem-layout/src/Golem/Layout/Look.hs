@@ -45,8 +45,11 @@ font and the colour of the base, half its size, its baseline shift. In a
 range of superscript or subscript it takes no position (docs/adr/0269):
 half the size outside the range, the nominal size, not of the shrunk
 base, and no glyphs of sups or subs. Outside a range it is half 'lkSize'.
+A ruby box whose reading has a character style carries its look in
+'lkRubyReading' (docs/adr/0369).
 -}
 readingLook :: Look -> Look
+readingLook lk | Just reading <- lkRubyReading lk = reading
 readingLook lk =
   lk
     { lkSize = half,
@@ -185,7 +188,11 @@ data Look = Look
     -} lkNoBreak :: !Bool,
     {- | JLReq's punctuation is shaped with fwid unless a width feature is
     written (docs/adr/0302): punctuation-width = "full-width"
-    -} lkFullWidthPunctuation :: !Bool
+    -} lkFullWidthPunctuation :: !Bool,
+    {- | the look of the reading in the character style of [composition.ruby]
+    reading-style, set on the look of a composed ruby box alone; Nothing
+    is 'readingLook' of the look (docs/adr/0369)
+    -} lkRubyReading :: !(Maybe Look)
   }
   deriving stock (Eq, Ord, Show)
 
@@ -243,4 +250,4 @@ outside a language span, no wrap mark, no features, the normal position and
 breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True Nothing
