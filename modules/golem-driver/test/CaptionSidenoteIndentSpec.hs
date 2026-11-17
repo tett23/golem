@@ -4,7 +4,7 @@ and the indents of a caption from the style of its file.
 -}
 module CaptionSidenoteIndentSpec (captionSidenoteIndentTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, join)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -100,7 +100,7 @@ data Kind = Kind
 figureLines, tableLines, codeLines :: PdfLayout -> [PartLine]
 figureLines pl = concatMap pfCaption (Map.elems (plFigures pl))
 tableLines pl = concatMap ccLines (Map.elems (plTableCaptions pl))
-codeLines pl = take 1 [ciCaption ci | ci <- Map.elems (plCodes pl), not (null (ciCaption ci))] >>= id
+codeLines pl = concat (take 1 [ciCaption ci | ci <- Map.elems (plCodes pl), not (null (ciCaption ci))])
 
 {- | The six kinds of captions of I1: the settings are the characters of a
 line, the width in pt of a wrapped figure or the lines of a page. The size
@@ -109,12 +109,12 @@ figure is narrower than a character.
 -}
 kinds :: [Kind]
 kinds =
-  [ Kind "a figure" (\c -> gridOf c 30) (const "@figure images/wide.svg alt=\"t\"\n  図\n") [8, 12] [10, 7] figureLines,
+  [ Kind "a figure" (`gridOf` 30) (const "@figure images/wide.svg alt=\"t\"\n  図\n") [8, 12] [10, 7] figureLines,
     Kind "a wrapped figure" (const (gridOf 24 30)) wrappedSource [6, 10, 24] [10, 7] figureLines,
     Kind "a figure turned onto a page" (gridOf 12) (const "@figure images/wide.svg alt=\"t\" rotate=true\n  図\n") [8, 12] [10, 7] figureLines,
-    Kind "a table" (\c -> gridOf c 30) (const "@caption 表\n| a | b |\n|---|---|\n| 1 | 2 |\n") [8, 12] [10, 7] tableLines,
-    Kind "a code block" (\c -> gridOf c 30) (const "@caption 例\n```\na\n```\n") [10, 12] [10, 7] codeLines,
-    Kind "a code block in a list" (\c -> gridOf c 30) (const "- 項目\n\n  @caption 例\n  ```\n  a\n  ```\n") [12, 16] [10, 7] codeLines
+    Kind "a table" (`gridOf` 30) (const "@caption 表\n| a | b |\n|---|---|\n| 1 | 2 |\n") [8, 12] [10, 7] tableLines,
+    Kind "a code block" (`gridOf` 30) (const "@caption 例\n```\na\n```\n") [10, 12] [10, 7] codeLines,
+    Kind "a code block in a list" (`gridOf` 30) (const "- 項目\n\n  @caption 例\n  ```\n  a\n  ```\n") [12, 16] [10, 7] codeLines
   ]
 
 -- | A figure wrapped beside a paragraph, of a width in pt.
@@ -205,7 +205,7 @@ layoutChapters style chapters = case chapters of
   (_, first) : rest -> do
     let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf"], tmChapters = map (T.pack . fst) chapters})
     r <- withMiniInput fakeProvider manifest style first (wideSvg <> [(p, TE.encodeUtf8 t) | (p, t) <- rest]) layoutPdf
-    either (assertFailure . show . map diagCode) pure (either Left id r)
+    either (assertFailure . show . map diagCode) pure (join r)
   [] -> assertFailure "no chapter"
 
 captionSidenoteIndentTests :: [TestTree]
