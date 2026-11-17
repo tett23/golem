@@ -1,6 +1,6 @@
 # ADR 0011: CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む
 
-ステータス: 採択、テスト設計の二つめの項目と、輪郭の表のないフォントの扱いは [ADR 0013](0013-renamed-cff-table-is-g08003.md)
+Status: superseded [{"by":["docs/golem-pdf/adr/0013-renamed-cff-table-is-g08003.md"],"part":"テスト設計の二つめの項目と、輪郭の表のないフォントの扱い"}]
 
 ## 文脈
 

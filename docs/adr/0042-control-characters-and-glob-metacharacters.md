@@ -1,6 +1,6 @@
 # ADR 0042: 制御文字と glob のメタ文字の扱い
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

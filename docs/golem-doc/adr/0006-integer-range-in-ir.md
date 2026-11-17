@@ -1,6 +1,6 @@
 # ADR 0006: 意味論 IR の大きな整数
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

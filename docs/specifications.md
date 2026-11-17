@@ -17,7 +17,9 @@ Golem は CLI で動作する統合組版システムである。
 ADR と記録には、次の決まりがある。
 
 - ADR はコミット後、ステータスの行と、リンクを付ける、外す、リンク先を変えるだけの変更を除いて変更しない（[docs/adr/0032](adr/0032-update-adr-guard-to-v0.8.2.md)）。
-- ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
+- ADR は、行頭が `Status:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+- ステータスの行は `Status: <トークン>` の形で、トークンは `proposed`、`accepted-pending`、`accepted`、`rejected`、`discarded`、`deprecated`、`superseded [<変更の JSON 配列>]`、`superseded-pending [<変更の JSON 配列>]` のいずれかである（[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
+- 新しい ADR は `Status: proposed` でコミットする。pre-commit と CI の `adr` ジョブは、ステータスの状態遷移を検査し、許されない遷移を拒否する（[docs/adr/0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）。
 - 同じディレクトリの ADR に同じ番号を付けない（[docs/adr/0194](adr/0194-update-adr-guard-to-v0.10.0.md)）。
 - 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](adr/0012-update-adr-guard-to-v0.8.1.md)）。
 
@@ -8608,10 +8610,11 @@ wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、
 変更の一覧には、ADR の二つの見出しが続く（[docs/adr/0246](adr/0246-bound-the-prompt-of-the-release-notes.md)）。
 
 - `## ADRs`：範囲で追加された ADR を並べる。
-- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` の最初の行）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
+- `## ADRs whose status changed`：範囲で変更された ADR のうち、ステータスの行（行頭が `ステータス:` か `Status:` の最初の行。[ADR 0387](adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)）が前のタグとタグで違うものを、`LC_ALL=C sort` のパスの順に並べる。
 
 `## ADRs whose status changed` の各行は、`- [<パス>](https://github.com/tett23/golem/blob/<タグ>/<パス>): <前のステータス> → <タグのステータス>` の形である。
-ステータスは、`ステータス:` の後の文字列から前後の空白を除いたものである。
+ステータスは、行頭の `ステータス:` か `Status:` の後の文字列から前後の空白を除いたものである。
+旧形式の行と新しい形の行は、同じ状態を表していても違う行とみなす。
 ステータスの中の相対リンクは、ADR のディレクトリから解いたパスの絶対 URL にする（`scripts/release/absolute-links.sh`、[ADR 0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 URL が指す版は、そのステータスのタグ（前のステータスは前のタグ、タグのステータスはタグ）の版である。
 `#` だけのリンクは ADR 自身のその節を指し、スキームを持つリンクは変えない。

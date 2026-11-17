@@ -1,6 +1,6 @@
 # ADR 0002: --target を省いた golem build はすべてのターゲットを作る
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

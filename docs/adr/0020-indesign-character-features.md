@@ -1,6 +1,6 @@
 # ADR 0020: カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフト
 
-ステータス: 採択→和文のペアカーニングから除く一覧への分離禁止文字の追加は [golem-driver ADR 0020](../golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)、`palt` と `vpal` を約物に当てないことは [ADR 0053](0053-no-palt-on-jlreq-punctuation.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md"],"part":"和文のペアカーニングから除く一覧への分離禁止文字の追加"},{"by":["docs/adr/0053-no-palt-on-jlreq-punctuation.md"],"part":"`palt` と `vpal` を約物に当てないこと"}]
 
 ## 文脈
 

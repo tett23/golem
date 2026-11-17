@@ -1,6 +1,6 @@
 # ADR 0335: golem repl emet で Emet の式を対話的に評価する
 
-ステータス: 採択→[ADR 0348](0348-revise-emet-expression-repl.md)
+Status: superseded [{"by":["docs/adr/0348-revise-emet-expression-repl.md"],"part":null}]
 
 ## 文脈
 

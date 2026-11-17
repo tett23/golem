@@ -1,6 +1,6 @@
 # ADR 0046: `@blank-line` で段落のあいだに行アキを入れる
 
-ステータス: 採択→G07047 の重大度は [ADR 0104](0104-info-severity.md)
+Status: superseded [{"by":["docs/adr/0104-info-severity.md"],"part":"G07047 の重大度"}]
 
 ## 文脈
 

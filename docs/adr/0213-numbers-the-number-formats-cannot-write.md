@@ -1,6 +1,6 @@
 # ADR 0213: 見出し、図版、コードブロック、ノンブルの番号を書式の表記で表せないときにエラーにする
 
-ステータス: 採択→`piStyleText` と見た目の参照は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"`piStyleText` と見た目の参照"}]
 
 ## 文脈
 

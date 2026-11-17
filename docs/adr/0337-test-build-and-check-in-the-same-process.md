@@ -1,6 +1,6 @@
 # ADR 0337: check と HTML ビルドの diagnostics を一つのテストプロセスで調べる
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

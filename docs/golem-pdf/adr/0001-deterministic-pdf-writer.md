@@ -1,6 +1,6 @@
 # ADR 0001: 決定的な PDF の直列化
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

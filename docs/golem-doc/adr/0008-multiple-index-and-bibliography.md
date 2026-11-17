@@ -1,6 +1,6 @@
 # ADR 0008: 複数の `@index` と `@bibliography`
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 
