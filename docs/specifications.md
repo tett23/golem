@@ -2993,10 +2993,10 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 - 図版のキャプションは、段落スタイル `caption` の `font` と `size` で組む。`space-before`、`space-after`、`align` はキャプションには適用されない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 - 傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 - PDF のキャプションと傍注の本文には、ほかに `aki-set`、`line-adjustment`、`stretch-limit`、`shrink-order`、`stretch-order`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、`punctuation-width` を、どの出力でも `regex-styles` を適用する。
-- PDF のキャプションと傍注の本文には、段落の組み方として、字下げ（`indent`、`first-line-indent`、`end-indent`）、`space-between`、`line-breaks` も適用する（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。組み方は、この節の後の「キャプションと傍注の段落」で定める。
+- PDF のキャプションと傍注の本文には、段落の組み方として、字下げ（`indent`、`first-line-indent`、`end-indent`）、`space-between`、`line-breaks` も適用する（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。組み方は、この節の後の段落で定める。
 - 表のセルには、セルの段落スタイル（`@style` を付けた表はその段落スタイル、ほかは `table`）の同じ欄を適用し、`line-breaks`、`space-between`、`space-before`、`space-after`、`align`、字下げ、罫線、背景は適用しない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。セルの揃えは列の揃えで決め、`@style` で字下げを持つ段落スタイルを当てても字下げは適用しない。
 
-ただし、`line-breaks`、`space-between`、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
+ただし、`space-before`、`space-after`、`align` は、`@style caption` や `@style sidenote` を付けた原稿の段落には適用される。
 
 `caption`、`sidenote`、`table` は、`body` の字下げを引き継がない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 組み込みの定義が `indent = "0zw"`、`first-line-indent = "0zw"`、`end-indent = "0zw"` を持ち、書いた値が引き継いだ値に勝つ `based-on` の規則により、`body` の字下げは及ばないからである。
@@ -3009,18 +3009,18 @@ EPUB の読書環境が論理的な指定（`border-block-start` など）を読
 
 `table` に 0 でない `indent`、`first-line-indent`、`end-indent` を書くと、`style.toml` でも `@style-def` でも G03006 とする。
 値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
+G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
 
 キャプションと傍注の段落は、次のとおり組む（[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)）。
 PDF のキャプション（図版、表、コードブロックのもの）と傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` を、本文の段落と同じ順序で解決して組む。
 
-- 行長は、部品の内幅である。図版のキャプションは図版のキャプションの行長（回り込む図版では図版の幅、一ページに回した図版では枠の長さ、ほかは段の行長）、表のキャプションは段の行長、コードブロックのキャプションはブロックの始まりから段の終わりまでの長さ、傍注は傍注の領域の幅である。
+- 行長は、部品の内幅である。図版のキャプションは、回り込む図版では図版の幅、一ページに回した図版では枠の長さ、ほかは段の行長、表のキャプションは段の行長、コードブロックのキャプションはブロックの始まりから段の終わりまでの長さ、傍注は傍注の領域の幅である。
 - 各行の使える幅は、内幅から、その行の字下げと `end-indent` を引いた長さである。段落の最初の行の字下げは `indent` と `first-line-indent` の和、ほかの行の字下げは `indent` である。
 - キャプションの段落は、段落ごとに行を改める。段落のあいだには、`space-between` の数の行を空ける。改行の様式の原稿では、キャプションの一行が一つの段落になる。
 - `line-breaks = "keep"` なら、キャプションの原稿の改行と強制改行で行を分け、分けた各行に最初の行の字下げを掛ける。分けた行は一つの段落なので、あいだに `space-between` の行を空けない。`"join"` なら、強制改行の後の行に最初の行の字下げを掛けない。
 - 傍注の本文は一つの段落で、強制改行を書けないので、`space-between` と `line-breaks` は傍注の組版を変えない。
 - 空けた行を含めた行の数で、キャプションが占める行送りの数と、傍注の高さを決める。行の間隔は、キャプションと傍注の行送りである。
 - `align` は、キャプションと傍注には適用しない。
-G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
 
 HTML と EPUB でも、キャプション、傍注、表のセルの書体と大きさを CSS に書く。
 
