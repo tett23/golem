@@ -230,6 +230,10 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 読みが親文字より長いときは、前後の仮名に読みを少しかけて、親文字の字間が空きすぎないようにします。
 かけ方は [code: style.toml] で変えられます（「[ref-title composition]」、[ref-page composition] ページ）。
 
+親文字の中にも、[code: \[ref-number ...\]] と [code: \[ref-title ...\]] を書けます（「[ref-title cross-references]」、[ref-page cross-references] ページ）。
+その参照の文字だけが参照先へのリンクになり、読みはリンクに入りません。
+ただし PDF では、読みを空にした区切りの中の参照はリンクになりません。
+
 ## 数と式
 
 本文に計算の結果を埋め込むときは、[code: \[= 式\]] と書きます。
@@ -809,6 +813,7 @@ PDF で、図版とキャプションを一緒に 90 度回し、本文のない
 HTML と EPUB では回さずに置きます。
 [code: rotate=true] と [code: wrap] は一緒に書けず、エラー（G02087）になります。
 
+@label cross-references
 ## 相互参照
 
 本の中のほかの箇所を指すときは、指される側に [code: @label] で名前を付け、指す側でその名前を使います。[index reading=そうごさんしょう: 相互参照]

@@ -1,6 +1,6 @@
 # ADR 0360: タグ付き PDF のルビの親文字に Reference を残す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

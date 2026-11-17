@@ -686,10 +686,35 @@ walk env st@(LeafState next cur seen) inl = case inl of
       let go (s, ns, ps) (seg, segPieces) = case rsReading seg of
             Just _ ->
               let LeafState n c sn = s
-                  (s', after) = freshLeaf (LeafState (n + 2) c sn)
-               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase [NodeLeaf n], NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> [(n, src, p) | (src, p) <- segPieces])
+                  -- Keep n+1 for the reading, independently of the references in RB.
+                  (nextLeaf, _, baseNodes, owners) = rubyBase n (n + 2) (rsBase seg)
+                  (s', after) = freshLeaf (LeafState nextLeaf c sn)
+                  assign (src, PRuby look kind base looks reading) =
+                    (n, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
+                  assign (src, other) = (n, src, other)
+                  own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
+               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase (NodeLeaf n : baseNodes), NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> map assign segPieces)
             Nothing -> let LeafState _ c _ = s in (s, ns, ps <> [(c, src, p) | (src, p) <- segPieces])
        in foldl' go (st, [], []) (zip segs (chunks (piecesOf env inl)))
+    rubyBase initial nextLeaf = foldl' visit (nextLeaf, initial, [], [])
+      where
+        visit (unused, current, nodes, owners) child =
+          let chars = baseChars env lk child
+              continue xs =
+                let (end, lastLeaf, nested, inners) = rubyBase current unused xs
+                 in (end, lastLeaf, nodes <> nested, owners <> inners)
+           in case child of
+                Resolved _ kind _ xs
+                  | kind == RefNumber || kind == RefTitle ->
+                      let link = started (lkLink (ceRestyle env lk (withRuby child)))
+                          content = NodeElem RoleReference (linkedNodes link (map withRuby xs) [NodeLeaf unused])
+                       in (unused + 2, unused + 1, nodes <> [content, NodeLeaf (unused + 1)], owners <> replicate (length chars) (unused, link))
+                CharStyle _ _ xs -> continue xs
+                Color _ _ xs -> continue xs
+                Kenten _ _ xs -> continue xs
+                Link _ _ xs -> continue xs
+                Lang _ _ xs -> continue xs
+                _ -> (unused, current, nodes, owners <> replicate (length chars) (current, Nothing))
     -- the pieces of each segment: each ends with its PRuby, the break before it included
     chunks ps = case break isRuby ps of
       (pre, r : rest) -> (pre <> [r]) : chunks rest
@@ -2172,17 +2197,18 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
           pk = breakClass lastChar lastClass p
           ck = startClass c next
           strict = ceKinsokuStrict env
+          inseparable = pk == Just Inseparable && ck == Just Inseparable
           noBreak =
             maybe False (lineStartProhibited strict) ck
               || maybe False lineEndProhibited pk
-              || (pk == Just Inseparable && ck == Just Inseparable)
+              || inseparable
               || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
           noAkiHere = latinDual p (lastChar p) || latinDual c (firstChar c)
           {- the pairs of JLReq 3.1.10 (golem-layout ADR 0049): two Arabic
           digits in horizontal writing, a prefixed abbreviation and a
           numeral, a numeral and a postfixed abbreviation; not between two
           boxes of code or of a URL, nor at the edge of a ruby. The break
-          is taken out as an infinite penalty, the glue left as it is -}
+          is taken out as an infinite penalty -}
           pairKept =
             not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
               (Just a, Just b) ->
@@ -2225,7 +2251,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               | not noAkiHere,
                 aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
-                  pen <> glueOf (akiKind a b) (base a b) aki
+                  {- the adjustment of a line widens neither two
+                  inseparable characters nor a pair of golem-layout ADR
+                  0049, in every set (root ADR 0362): the width and the
+                  shrink of the set are kept, the stretch is 0 -}
+                  let adjusted
+                        | inseparable || pairKept = aki {A.akiMaximum = A.akiOptimum aki}
+                        | otherwise = aki
+                   in pen <> glueOf (akiKind a b) (base a b) adjusted
             Just _ -> [Penalty 0 candidate NoHyphen | not noBreak]
             Nothing -> if noBreak then [] else [Penalty 0 candidate NoHyphen | not (bcExpandable p && bcExpandable c)]
 

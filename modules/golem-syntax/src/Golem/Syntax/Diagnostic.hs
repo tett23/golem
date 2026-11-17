@@ -193,7 +193,9 @@ profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
     DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
     DiagnosticCode "G08100", -- a character the font of the PDF has not (docs/adr 0081)
-    DiagnosticCode "G08103" -- an OpenType feature the font of the PDF has not (docs/adr/0268)
+    DiagnosticCode "G08103", -- an OpenType feature the font of the PDF has not (docs/adr/0268)
+    DiagnosticCode "G07127", -- caption indents that leave no character (docs/adr/0389)
+    DiagnosticCode "G07128" -- sidenote indents that leave no character (docs/adr/0389)
   ]
 
 {- | The codes of golem preflight whose severity the preflight rules decide,

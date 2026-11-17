@@ -43,7 +43,7 @@ adjustOrderTests =
       testGroup "A3 to A8 on lines made by hand" lineTests,
       testGroup "A1 to A6 on every small input (docs/adr/0209)" enumerationTests,
       goldenVsString
-        "A9: the items of every input up to 2 parts, the kinds and the sizes of the glue left out, are those before the ADR (test/golden/adjust-order-items.tsv)"
+        "A9: the items of every input up to 2 parts, the kinds and the sizes of the glue left out, have the recorded spacing (test/golden/adjust-order-items.tsv)"
         "test/golden/adjust-order-items.tsv"
         (pure (BL.fromStrict (TE.encodeUtf8 itemLines)))
     ]
@@ -58,8 +58,8 @@ alone, the kind and the size it has after docs/adr/0278 left out.
 itemKey :: Item -> String
 itemKey = \case
   Glue {itemWidth = w, itemStretch = y, itemShrink = z} -> "G" <> show (unSp w, unSp y, unSp z)
-  -- the field of the look docs/adr/0302 added, left out as the file was written before it
-  it -> T.unpack (T.replace ", lkFullWidthPunctuation = True" "" (T.pack (show it)))
+  -- Omit later default fields absent from the original line-adjustment snapshots.
+  it -> T.unpack (T.replace ", lkRubyBaseLeaf = Nothing" "" (T.replace ", lkFullWidthPunctuation = True" "" (T.pack (show it))))
 
 {- | A9 of docs/adr/0278: the items of every run up to two parts, in every
 setting of its normal form, at the start and not, at the end and not, in
