@@ -705,6 +705,7 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   [code: align] を [code: "left"] や [code: "right"] などに変えてください。
 = [strong: G03013 [code: style.toml のスタイルの参照が不正です: …]]
   [code: based-on] の先のスタイルがないか、引き継ぎが輪になっているか、[code: body] に [code: based-on] があるか、文字スタイルの [code: color] の色が定義されていないか、[code: regex-styles] の文字スタイルがありません。
+  段落スタイルの [code: next-style] の段落スタイルや、[code: initial-style] の文字スタイルがないときも、この誤りです。
 = [strong: G03014 [code: 柱の内容が正しくありません: …]]、[strong: [code: 柱の書式が正しくありません: …]]
   [code: \[masters.名前\]] の [code: running-head] には、[code: content = "heading.1.short"] のように内容を一つ書くか、[code: even] と [code: odd] の両方を書いてください。
   書式は [code: content = \["{meta.title}　{heading.1.short}"\]] のように文字列の配列で書きます。

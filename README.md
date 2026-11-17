@@ -225,6 +225,7 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 段落スタイルは、字下げ、行揃え、段落の前後の空きを決める。
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
 行の終わりの側の字下げは `end-indent`、行揃えは `align`（`left`、`center`、`right`、均等配置の三つ、`fully-justified`、ノド側と小口側）、段落の前後に空ける行の数は `space-before` と `space-after` で指定する（[docs/adr/0189](./docs/adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+`next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、PDF の `opening-indent = "half"` は始め括弧類で始まる段落の字下げを半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)）。
 
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
