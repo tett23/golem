@@ -111,8 +111,9 @@ data LoadedFonts = LoadedFonts
     {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text; IO, since the
     subset is made as the PDF is written (docs/adr ADR 0034); a font that
-    cannot be embedded is a diagnostic (G08018, golem-pdf ADR 0011)
-    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO (Either Diagnostic P.Font),
+    cannot be embedded is its diagnostics (G08018, golem-pdf ADR 0011;
+    G08107, Golem ADR 0357; G08108 and G08109, Golem ADR 0390)
+    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO (Either [Diagnostic] P.Font),
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
     -} lfEmBoxCentral :: Int -> Rational,

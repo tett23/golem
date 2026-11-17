@@ -19,13 +19,24 @@
 #include FT_FREETYPE_H
 #include FT_TRUETYPE_TABLES_H
 #include FT_CID_H
+#include FT_DRIVER_H
+#include FT_FONT_FORMATS_H
+#include FT_MODULE_H
 #include FT_MULTIPLE_MASTERS_H
 
 struct golem_font {
   uint8_t *bytes;
   size_t len;
+  /* the library of the font, with its own memory (Golem ADR 0390) */
   FT_Library lib;
+  struct FT_MemoryRec_ *memory;
   FT_Face face;
+  /* the metrics of the glyphs of a font of the CFF driver, each read once
+     from a face opened for the glyph (Golem ADR 0390): NULL for another
+     font; 0 not read yet, 1 read, -1 not readable */
+  signed char *read;
+  int32_t *metrics;
+  int num_glyphs;
   /* held while the face is used; the HarfBuzz objects need no lock */
   pthread_mutex_t ft_lock;
   hb_blob_t *blob;
@@ -39,6 +50,45 @@ struct golem_font {
   int32_t *coords;
 };
 
+static void *ft_alloc(FT_Memory memory, long size) { (void)memory; return malloc((size_t)size); }
+static void ft_free(FT_Memory memory, void *block) { (void)memory; free(block); }
+static void *ft_realloc(FT_Memory memory, long cur_size, long new_size, void *block) {
+  (void)memory;
+  (void)cur_size;
+  return realloc(block, (size_t)new_size);
+}
+
+/* The library of a font, made without reading the environment (Golem ADR
+   0390): FT_New_Library with a memory of malloc, realloc and free, and the
+   drivers of golem_ftmodule.h. The FREETYPE_PROPERTIES of the environment
+   is read only by the default initialisation, which Golem does not call. The
+   random seed of the cff driver is 0 before any face is opened, so that a
+   subfont starts its random state from initialRandomSeed of its Private
+   DICT (987654321 when that is 0) and the driver seed never moves: every
+   face opened in the library starts from the same state. */
+static int open_library(golem_font *f) {
+  f->memory = malloc(sizeof *f->memory);
+  if (!f->memory) return -1;
+  f->memory->user = NULL;
+  f->memory->alloc = ft_alloc;
+  f->memory->free = ft_free;
+  f->memory->realloc = ft_realloc;
+  if (FT_New_Library(f->memory, &f->lib)) { free(f->memory); return -1; }
+  FT_Add_Default_Modules(f->lib);
+  FT_Int32 seed = 0;
+  if (FT_Property_Set(f->lib, "cff", "random-seed", &seed)) {
+    FT_Done_Library(f->lib);
+    free(f->memory);
+    return -1;
+  }
+  return 0;
+}
+
+static void close_library(golem_font *f) {
+  FT_Done_Library(f->lib);
+  free(f->memory);
+}
+
 golem_font *golem_font_open(const uint8_t *data, size_t len) {
   golem_font *f = calloc(1, sizeof *f);
   if (!f) return NULL;
@@ -46,9 +96,20 @@ golem_font *golem_font_open(const uint8_t *data, size_t len) {
   if (!f->bytes) { free(f); return NULL; }
   memcpy(f->bytes, data, len);
   f->len = len;
-  if (FT_Init_FreeType(&f->lib)) { free(f->bytes); free(f); return NULL; }
+  if (open_library(f)) { free(f->bytes); free(f); return NULL; }
   if (FT_New_Memory_Face(f->lib, f->bytes, (FT_Long)len, 0, &f->face)) {
-    FT_Done_FreeType(f->lib); free(f->bytes); free(f); return NULL;
+    close_library(f); free(f->bytes); free(f); return NULL;
+  }
+  /* the fonts of the CFF driver: CFF in sfnt, CFF2 and bare CFF (Golem ADR 0390) */
+  const char *format = FT_Get_Font_Format(f->face);
+  f->num_glyphs = f->face->num_glyphs > 0 ? (int)f->face->num_glyphs : 0;
+  if (format && strcmp(format, "CFF") == 0 && f->num_glyphs > 0) {
+    f->read = calloc((size_t)f->num_glyphs, 1);
+    f->metrics = malloc(sizeof(int32_t) * 6 * (size_t)f->num_glyphs);
+    if (!f->read || !f->metrics) {
+      free(f->read); free(f->metrics);
+      FT_Done_Face(f->face); close_library(f); free(f->bytes); free(f); return NULL;
+    }
   }
   pthread_mutex_init(&f->ft_lock, NULL);
   f->blob = hb_blob_create((const char *)f->bytes, (unsigned)len, HB_MEMORY_MODE_READONLY, NULL, NULL);
@@ -65,17 +126,28 @@ void golem_font_close(golem_font *f) {
   hb_face_destroy(f->hbface);
   hb_blob_destroy(f->blob);
   FT_Done_Face(f->face);
-  FT_Done_FreeType(f->lib);
+  close_library(f);
   pthread_mutex_destroy(&f->ft_lock);
+  free(f->read);
+  free(f->metrics);
   free(f->tags);
   free(f->coords);
   free(f->bytes);
   free(f);
 }
 
+
 int golem_font_upem(golem_font *f) { return (int)hb_face_get_upem(f->hbface); }
 #define LOCK_FT(f) pthread_mutex_lock(&(f)->ft_lock)
 #define UNLOCK_FT(f) pthread_mutex_unlock(&(f)->ft_lock)
+
+/* Sets the coordinates of the font on a face of FreeType (Golem ADR 0358). */
+static int set_face_coords(golem_font *f, FT_Face face) {
+  FT_Fixed fixed[64];
+  if (f->ncoords > 64) return -1;
+  for (int i = 0; i < f->ncoords; i++) fixed[i] = (FT_Fixed)f->coords[i];
+  return FT_Set_Var_Design_Coordinates(face, (FT_UInt)f->ncoords, fixed) == 0 ? 0 : -1;
+}
 
 int golem_font_fstype(golem_font *f) {
   LOCK_FT(f);
@@ -122,20 +194,47 @@ int golem_font_embox_central(golem_font *f) {
   return (int)coord;
 }
 
-/* FT_Load_Glyph loads into the face's one glyph slot: the lock is held
-   until the metrics are read from it. */
-int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out) {
-  LOCK_FT(f);
-  if (FT_Load_Glyph(f->face, gid, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING)) { UNLOCK_FT(f); return -1; }
-  FT_Glyph_Metrics *m = &f->face->glyph->metrics;
+/* The metrics of the glyph in a face: 0 on success. */
+static int load_metrics(FT_Face face, uint32_t gid, int32_t *out) {
+  if (FT_Load_Glyph(face, gid, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING)) return -1;
+  FT_Glyph_Metrics *m = &face->glyph->metrics;
   out[0] = (int32_t)m->horiAdvance;
   out[1] = (int32_t)m->vertAdvance;
   out[2] = (int32_t)m->horiBearingX;
   out[3] = (int32_t)(m->horiBearingY - m->height);
   out[4] = (int32_t)(m->horiBearingX + m->width);
   out[5] = (int32_t)m->horiBearingY;
-  UNLOCK_FT(f);
   return 0;
+}
+
+/* FT_Load_Glyph loads into the face's one glyph slot: the lock is held
+   until the metrics are read from it. The random state of the cff driver
+   moves with each random a CharString runs and is never set back, so a
+   glyph of a font of the CFF driver is read from a face opened for it,
+   whose state is that of a face just opened, and once (Golem ADR 0390):
+   its metrics depend on the bytes of the font and the glyph only. */
+int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out) {
+  LOCK_FT(f);
+  int r;
+  if (!f->read) {
+    r = load_metrics(f->face, gid, out);
+  } else if (gid >= (uint32_t)f->num_glyphs) {
+    r = -1;
+  } else {
+    if (f->read[gid] == 0) {
+      FT_Face face = NULL;
+      int ok = FT_New_Memory_Face(f->lib, f->bytes, (FT_Long)f->len, 0, &face) == 0;
+      /* at the coordinates of the font, as its own face (Golem ADR 0358) */
+      if (ok && f->ncoords > 0) ok = set_face_coords(f, face) == 0;
+      if (ok) ok = load_metrics(face, gid, f->metrics + 6 * (size_t)gid) == 0;
+      if (face) FT_Done_Face(face);
+      f->read[gid] = ok ? 1 : -1;
+    }
+    r = f->read[gid] == 1 ? 0 : -1;
+    if (r == 0) memcpy(out, f->metrics + 6 * (size_t)gid, sizeof(int32_t) * 6);
+  }
+  UNLOCK_FT(f);
+  return r;
 }
 
 void golem_font_v_origin(golem_font *f, uint32_t gid, int32_t *x, int32_t *y) {
@@ -275,22 +374,19 @@ int golem_font_set_coords(golem_font *f, const int32_t *coords, int n) {
   if (naxes != n || n > 64) return -1;
   f->tags = malloc(sizeof(uint32_t) * (size_t)n);
   f->coords = malloc(sizeof(int32_t) * (size_t)n);
-  FT_Fixed *fixed = malloc(sizeof(FT_Fixed) * (size_t)n);
   hb_variation_t *vars = malloc(sizeof(hb_variation_t) * (size_t)n);
-  if (!f->tags || !f->coords || !fixed || !vars) { free(fixed); free(vars); return -1; }
+  if (!f->tags || !f->coords || !vars) { free(vars); return -1; }
   for (int i = 0; i < n; i++) {
     f->tags[i] = (uint32_t)axes[4 * i];
     f->coords[i] = coords[i];
-    fixed[i] = (FT_Fixed)coords[i];
     vars[i].tag = f->tags[i];
     vars[i].value = coord_float(coords[i]);
   }
   f->ncoords = n;
   LOCK_FT(f);
-  int r = FT_Set_Var_Design_Coordinates(f->face, (FT_UInt)n, fixed) == 0 ? 0 : -1;
+  int r = set_face_coords(f, f->face);
   UNLOCK_FT(f);
   hb_font_set_variations(f->hbfont, vars, (unsigned)n);
-  free(fixed);
   free(vars);
   return r;
 }

@@ -26,7 +26,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
-import Golem.Font.Cff (CffCheck (..), checkCffReferences)
+import Golem.Font.Cff (CffCheck (..), CffResult (..), checkCffReferences)
 import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
@@ -305,24 +305,34 @@ provide memoise fid faces body roles =
           x : xs -> let (same, rest) = span ((== k x) . k) xs in (x : same) : groupOn k rest
     {- IO: the subset is made as the PDF is written (docs/adr ADR 0034); a CFF
     font whose used references leave its CFF table is G08107 (Golem ADR
-    0357), and one without a CFF table is G08018 (golem-pdf ADR 0011) -}
+    0357), a glyph whose references cannot all be checked is G08108, a glyph
+    used whose metrics FreeType cannot read is G08109 (Golem ADR 0390), and
+    a font without a CFF table is G08018 (golem-pdf ADR 0011) -}
     embed ix vertical used = do
       let (f, path) = faceAt ix
           upem = toInteger (fontUnitsPerEm f)
           per1000 v = fromInteger (round (toInteger v * 1000 % upem))
           gids = Map.keys (Map.fromList [(g, ()) | (g, _) <- used])
           cid = glyphCid f
-          metrics = [(g, m) | g <- gids, Just m <- [glyphMetrics f g]]
+          read' = [(g, glyphMetrics f g) | g <- gids]
+          metrics = [(g, m) | (g, Just m) <- read']
           (asc, desc, cap) = fontExtents f
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
-      -- the used references of the CFF table, before the subset (Golem ADR 0357)
-      if fontIsCff f && checkCffReferences (fontBytes f) (0 : gids) == CffOutOfTable
-        then pure (Left (diagnostic "G08107" Error (mkSpan fid 0 0) ("CFF の内部参照が表の範囲を外れています: " <> T.pack path)))
+          -- the used references of the CFF table, before the subset (Golem ADR 0357, Golem ADR 0390)
+          checked = if fontIsCff f then checkCffReferences (fontBytes f) (0 : gids) else CffResult CffInTable [] []
+          at = mkSpan fid 0 0
+          glyphText g = T.pack path <> " のグリフ " <> T.pack (show g)
+          errors =
+            [diagnostic "G08107" Error at ("CFF の内部参照が表の範囲を外れています: " <> T.pack path) | cffCheck checked == CffOutOfTable]
+              <> [diagnostic "G08108" Error at ("CFF の参照を確かめきれません: " <> glyphText g) | g <- cffUnverifiable checked]
+              <> [diagnostic "G08109" Error at ("フォントのグリフの寸法を読めません: " <> glyphText g) | (g, Nothing) <- read']
+      if not (null errors)
+        then pure (Left errors)
         else do
           program <- fromMaybe (fontBytes f) <$> subsetFont f gids
           pure $
-            (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
+            (if fontIsCff f then either (Left . pure) Right (cffFontProgram fid path program) else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
               P.Font
                 { P.fontName = name,
                   P.fontProgram = fontProgram,

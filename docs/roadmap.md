@@ -51,8 +51,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **パスの描画のベンチマーク**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは Emet（`.emet` の関数）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。
 
-- **プルリクエストの CI の時間の予算（未実装）**：プルリクエストの `ci.yml` の時間の中央値を 300 秒以下とする予算を、計測のコマンド `scripts/ci/ci-critical-path.sh` で確かめられるようにする。今の CI はこの予算を超えており、収める組み替えは別の ADR で決める。 [Golem ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)。
-
 ### 記法と設定の値
 
 - **原稿の変数の宣言を `@set` に戻す（未実装）**：今は行頭の `set 名前 = 式` を変数の宣言として読み、`@set` に廃止予定の notice G02155 を出す。`@` の無い宣言は本文と区別がつかないので、宣言を `@set` に戻し、G02155 を廃止する。 [Golem ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)。
@@ -73,7 +71,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **読みのないルビの区切りの中の参照（未実装）**：読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後|まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならない。本文の中の参照と同じく `Reference` と `Link` にする。 [Golem ADR 0393](adr/0393-references-in-ruby-segments-without-readings.md)。
 - **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
-- **CFF の random の決定性と参照の確かめ（未実装）**：同梱の FreeType は CharString の `random` のシード値をメモリのアドレスから作るので、`random` を含む CFF のフォントでは PDF の `/FontBBox` が実行ごとに変わる。環境変数 `FREETYPE_PROPERTIES` も PDF を変える。参照の確かめは `random` に出会うとそのグリフをたどらず、FreeType が読めないグリフは黙って幅の表から落ちる。 [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)。
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
 - **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
@@ -94,7 +91,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **トラッキングの届かない文字（未実装）**：縦中横の箱とルビにトラッキングを足さない。 [Golem ADR 0370](adr/0370-tracking-inline-boxes.md)。
   - **傍注の `※` の印**：`[sidenotes]` の `marker-style` で印の文字スタイルを指定できる。 [Golem ADR 0371](adr/0371-sidenote-marker-style.md)。
 - **柱とノンブルのスタイル（未実装）**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
-- **番号と題のあいだの区切りの設定（未実装）**：見出し、図版、コードブロック、表のキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
+- **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
 - **段落スタイルの拡張（未実装）**：行送り（`line-height`）、ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` を除く部分であり、次の未決事項を決めてから組む。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。
   - **行送りと行の格子（未決）**：仕様書は、PDF の本文を行の格子に載せるので段落スタイルに行送りの欄を設けないとしている。ADR は `line-height` を設けるが、格子の行との関係（格子に載せ直すか、格子から外れて組むか、その後の段落をどこから始めるか）と、HTML と EPUB の写し方を書いていない。
   - **ドロップキャップの組み方（未決）**：ADR は「先頭 1 書記素を指定行数の高さで置き、その行だけ本文幅を減らす」と書く。指定行数の高さの字の脇では、その行数の行を短くしないと重なるので、「その行だけ」と食い違う。字の大きさの決め方（最初の行の字面の上端から最後の行のベースラインまでか）、字と本文のあいだの空き、HTML と EPUB の写し方も決まっていない。

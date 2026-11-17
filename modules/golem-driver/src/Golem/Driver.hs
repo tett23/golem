@@ -350,7 +350,21 @@ assembleResults channels style manifest project projectDiags results
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
-       in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
+          -- the separators between numbers and titles, by file: a heading's from
+          -- its [headings.<l>], a caption's from the paragraph style caption (Golem ADR 0372)
+          separators =
+            Map.fromList
+              ( [ ((fid, Nothing), separator)
+                | (fid, r) <- Map.toList results,
+                  Just separator <- [paraStyle (withLocalStyles style (erStyles r)) (Just "caption") >>= psNumberTitleSeparator]
+                ]
+                  <> [ ((fid, Just l), separator)
+                     | fid <- Map.keys results,
+                       (l, h) <- Map.toList (stHeadings style),
+                       Just separator <- [hsNumberTitleSeparator h]
+                     ]
+              )
+       in (Just book {bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: Files -> FilePath -> IO (Maybe Text)
 readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p

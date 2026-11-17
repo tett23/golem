@@ -45,6 +45,7 @@ import NewPlanSpec (newPlanTests)
 #endif
 import NoteBodyStylesSpec (noteBodyStylesTests)
 import NotesSpec (notesTests)
+import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
 import NumberUnitBuildSpec (numberUnitBuildTests)
 import OpenTypeFeaturesSpec (openTypeFeaturesTests)
 import OutputGoldenSpec
@@ -193,6 +194,7 @@ tests skips =
              testGroup "the paragraph style controls (docs/adr/0374)" paragraphStyleControlsTests,
              FontInstanceSpec.tests,
              testGroup "the indents of captions and sidenotes that leave no character (docs/adr/0389)" captionSidenoteIndentTests,
+             testGroup "the separator between a number and its title (Golem ADR 0372)" numberTitleSeparatorTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
