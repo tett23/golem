@@ -1,6 +1,6 @@
 # ADR 0341: @listing のパスを位置引数にそろえる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
