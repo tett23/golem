@@ -78,6 +78,7 @@ import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
 import UnbreakablePairsSpec (unbreakablePairsTests)
+import UnbreakableSpacingSpec (unbreakableSpacingTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
@@ -409,6 +410,7 @@ tests =
       pullInTests,
       adjustOrderTests,
       unbreakablePairsTests,
+      unbreakableSpacingTests,
       numberUnitTests,
       linkTests,
       featuresTests,

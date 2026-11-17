@@ -238,6 +238,7 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 ### 字間と言語
 
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
+横組みの `１２３` や `￥１００` の内側など、分割禁止の字間は行の調整で伸ばさない（[ADR 0362](docs/adr/0362-unbreakable-spacing.md)）。
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
 長さとアキ量のゼロは、設定では `0` または `"0"` と書ける。
 `@blank-line 0` は行アキを作らず、info の G02254 を出す（[Golem ADR 0345](./docs/adr/0345-revise-unitless-zero-in-length-fields.md)）。
@@ -279,6 +280,8 @@ CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイル�
 
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印と、その「※」の文字スタイル（`marker-style`）だけを書く。
 PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
+キャプションの字下げは、そのキャプションを含むファイルのスタイルから引く。
+字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
