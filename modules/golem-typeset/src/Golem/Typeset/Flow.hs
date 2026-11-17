@@ -2053,7 +2053,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                   -- the verse lines of a paragraph without rules are one stanza (docs/adr/0180)
                   stanzaOf i = if keeps && (rb, ra) == (Nothing, Nothing) then Just i else Nothing
                   -- each part starts as a paragraph, with the indent of an opening bracket (docs/adr/0374)
-                  indentOf part = openingIndent (paraStyle style st >>= psOpeningIndent) face blang ind part
+                  indentOf = openingIndent (paraStyle style st >>= psOpeningIndent) face blang ind
                   us = [(unit (UPara (if null ctx then indentOf part else noIndent)) (if i == 0 then lbl else Nothing) part face (paraSizeSource style st)) {uParaStyle = st, uRules = rulesOf i, uStanza = stanzaOf i} | (i, part) <- zip [0 :: Int ..] parts]
                in -- the lines of the paragraph are one P (docs/adr ADR 0183)
                   if length parts > 1 then (n + 1, inFrame (frame n FPara) us) else (n, us)

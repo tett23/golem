@@ -301,7 +301,7 @@ nextStyled ctx style = go Nothing
       A.Located _ (A.Paragraph _) -> True
       A.Located _ (A.Attributed cmds (Just (A.Located _ (A.Paragraph _)))) -> not (any (\c -> isStyleCommand c || isBreakCommand c || isSettingCommand c) cmds)
       _ -> False
-    styleCommand sp n body = A.BlockCommand (A.Located sp "style") [A.Located sp (A.Positional (A.Word n))] body
+    styleCommand sp n = A.BlockCommand (A.Located sp "style") [A.Located sp (A.Positional (A.Word n))]
     withStyle n (A.Located sp b) = A.Located sp $ case b of
       A.Paragraph is -> styleCommand sp n [A.Located sp (A.Paragraph is)]
       A.Attributed cmds t -> A.Attributed (cmds <> [A.Located sp (styleCommand sp n [])]) t
