@@ -183,7 +183,7 @@ tests =
               isCodeShape c && stage (DiagnosticCode c) `elem` stages (T.take 1 c)
         [c | c <- noticeCodes <> infoCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
-        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "02", "02", "03", "03", "03", "03", "03", "03", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "07", "07", "07", "07", "07", "08", "02"]
+        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "02", "02", "03", "03", "03", "03", "03", "03", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "07", "07", "07", "07", "07", "08", "02"]
         map stage infoCodes @?= ["02", "05", "07", "05"]
         map stage profileDependentCodes @?= ["05", "03", "08", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
@@ -210,12 +210,12 @@ noticeTests =
         Error < Warning @?= True
         Warning < Notice @?= True,
       testCase "notices alone are no errors" $
-        hasErrors [notice "G02065" sp0 "a", notice "G02062" sp0 "b"] @?= False,
+        hasErrors [notice "G02063" sp0 "a", notice "G02062" sp0 "b"] @?= False,
       testCase "notice builds a diagnostic of severity Notice" $ do
-        let d = notice "G02065" sp0 "m"
-        (diagCode d, diagSeverity d, diagMessage d) @?= (DiagnosticCode "G02065", Notice, "m"),
+        let d = notice "G02063" sp0 "m"
+        (diagCode d, diagSeverity d, diagMessage d) @?= (DiagnosticCode "G02063", Notice, "m"),
       testCase "the profile does not change a notice" $ do
-        let d = notice "G02065" sp0 "m"
+        let d = notice "G02063" sp0 "m"
         diagSeverity (adjustForProfile Prod d) @?= Notice
         diagSeverity (adjustForProfile Dev d) @?= Notice,
       testCase "no code is a notice and profile-dependent" $
@@ -225,9 +225,9 @@ noticeTests =
       testCase "the wording of the shape of a code names G and E (docs/adr/0176)" $
         map (`T.isInfixOf` codeShapeWording) ["G", "E", "5 桁の数字"] @?= [True, True, True],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G02108", "G02129", "G02155", "G03023", "G03100", "G03114", "G03115", "G03116", "G03117", "G03120", "G03134", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G07101", "G07112", "G07113", "G07123", "G07124", "G07126", "G08008", "E02109"],
+        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02079", "G02094", "G02108", "G02129", "G02155", "G03023", "G03100", "G03114", "G03115", "G03116", "G03117", "G03120", "G03134", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G07101", "G07112", "G07113", "G07123", "G07124", "G07126", "G08008", "E02109"],
       testCase "a notice early in the file comes after an error late in it" $ do
-        let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
+        let n = notice "G02063" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"
         sortDiagnostics [n, e] @?= [e, n],
       testCase "errors and warnings stay mixed in the order of their codes" $ do
@@ -244,7 +244,7 @@ noticeTests =
         dropWhile (== Notice) (dropWhile (/= Notice) sevs) === [],
       testCase "silencing some codes drops their notices only" $ do
         let n1 = notice "G02062" sp0 "a"
-            n2 = notice "G02065" sp0 "b"
+            n2 = notice "G02063" sp0 "b"
             e = diagnostic "G02062" Error sp0 "error with a silenced code"
             w = diagnostic "G02062" Warning sp0 "warning with a silenced code"
         silenceNotices (Just (Set.singleton (DiagnosticCode "G02062"))) [n1, n2, e, w] @?= [n2, e, w],
@@ -254,16 +254,16 @@ noticeTests =
       testCase "human rendering of a notice" $ do
         let src = "@listing src=a.hs\n"
             files = Map.fromList [(FileId 0, SourceInfo "chapters/01.gm" (mkLineIndex src))]
-        renderHuman files [notice "G02065" (mkSpan (FileId 0) 9 17) "@listing の src= は廃止予定です。パスを最初の引数に書きます"]
-          @?= "chapters/01.gm:1:10: notice[G02065]: @listing の src= は廃止予定です。パスを最初の引数に書きます\n  | @listing src=a.hs\n",
+        renderHuman files [notice "G02063" (mkSpan (FileId 0) 9 17) "@listing の src= は廃止予定です。パスを最初の引数に書きます"]
+          @?= "chapters/01.gm:1:10: notice[G02063]: @listing の src= は廃止予定です。パスを最初の引数に書きます\n  | @listing src=a.hs\n",
       testCase "json rendering of a notice, after the errors" $ do
         let src = "ab\ncd\n"
             files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex src))]
-            n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
+            n = notice "G02063" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 0) 3 4) "e"
         renderJson files [n, e]
           @?= "[{\"code\":\"G02001\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"e\",\"related\":[],\"fixes\":[]},"
-            <> "{\"code\":\"G02065\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]}]\n"
+            <> "{\"code\":\"G02063\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]}]\n"
     ]
   where
     sp0 = mkSpan (FileId 0) 0 1
@@ -344,9 +344,9 @@ infoTests =
         let src = "ab\ncd\n"
             files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex src))]
             i = infoDiagnostic "G02001" (mkSpan (FileId 0) 0 1) "i"
-            n = notice "G02065" (mkSpan (FileId 0) 3 4) "n"
+            n = notice "G02063" (mkSpan (FileId 0) 3 4) "n"
         renderJson files [i, n]
-          @?= "[{\"code\":\"G02065\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]},"
+          @?= "[{\"code\":\"G02063\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]},"
             <> "{\"code\":\"G02001\",\"severity\":\"info\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"i\",\"related\":[],\"fixes\":[]}]\n"
     ]
   where
