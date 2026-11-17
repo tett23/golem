@@ -835,13 +835,13 @@ rubyTests =
     testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1" $ do
       -- no reading style: half the base, in the font and the colour around
       boxes <- rubyBoxes "" "[ruby: 漢|か]字\n"
-      [(lkSize r, lkColor r, lkFace r) | (_, lk) <- boxes, let r = readingLook lk] @?= [(5 * pt, Nothing, "body")]
+      [(lkSize r, lkColor r, lkFace r) | r <- map (readingLook . snd) boxes] @?= [(5 * pt, Nothing, "body")]
       (ds, _) <- readingDrawn "" "[ruby: 漢|か]字\n"
       drawnSizes 'か' ds @?= ["5"],
     testCase "ADR 0369 I1: inv1_ruby_reading_style_case_2" $ do
       -- a colour alone: half the base, in the colour of the style and the font around
       boxes <- rubyBoxes "accent" "[ruby: 漢|か]字\n"
-      [(lkSize r, lkColor r, lkFace r) | (_, lk) <- boxes, let r = readingLook lk] @?= [(5 * pt, Just "red", "body")]
+      [(lkSize r, lkColor r, lkFace r) | r <- map (readingLook . snd) boxes] @?= [(5 * pt, Just "red", "body")]
       (ds, content) <- readingDrawn "accent" "[ruby: 漢|か]字\n"
       drawnSizes 'か' ds @?= ["5"]
       assertBool "red" ("0 1 1 0 k" `BS.isInfixOf` content)
