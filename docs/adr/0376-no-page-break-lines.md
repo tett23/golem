@@ -1,6 +1,6 @@
 # ADR 0376: 改ページで前の段落から送る行数を指定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

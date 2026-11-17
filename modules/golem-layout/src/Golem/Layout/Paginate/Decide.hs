@@ -84,6 +84,7 @@ nextNeed env = \case
   (FSection {} : _) -> mempty
   -- the controls of page breaks are skipped (docs/adr ADR 0030)
   (FNoBreak _ : rest) -> nextNeed env rest
+  (FNoBreakLines _ _ : rest) -> nextNeed env rest
   (FKeepNext _ _ : rest) -> nextNeed env rest
   (FNeedLines _ _ : rest) -> nextNeed env rest
   (FAdjustLines _ _ : rest) -> nextNeed env rest
@@ -120,25 +121,26 @@ the no-break and the first part of what follows it, its spaces too, at
 most a column (golem-layout ADR 0022).
 -}
 keptNeed :: Env -> [Flow] -> Maybe Need
-keptNeed env rest = (\(before, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env n after)) <$> keepAhead rest
+keptNeed env rest = (\(before, _, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env n after)) <$> keepAhead rest
 
 {- | The flows before a no-break or a keep-with-next (docs/adr/0261) that
-the paragraph before waits past, the lines of the keep-with-next (0 for a
-no-break alone; the larger of two at one place), and the flows after
-them; nothing when the paragraph does not wait.
+the paragraph waits past, the tail lines of that paragraph, the first
+lines requested by keep-with-next for the following block, and the
+remaining flows. Repeated controls take the maximum in each direction.
 -}
-keepAhead :: [Flow] -> Maybe ([Flow], Int, [Flow])
+keepAhead :: [Flow] -> Maybe ([Flow], Int, Int, [Flow])
 keepAhead rest = case span soft rest of
-  (before, c : after) | Just n <- control c -> Just (go before n after)
+  (before, c : after) | Just (lastLines, firstLines) <- control c -> Just (go before lastLines firstLines after)
   _ -> Nothing
   where
     control = \case
-      FNoBreak _ -> Just 0
-      FKeepNext _ n -> Just n
+      FNoBreak _ -> Just (2, 0)
+      FNoBreakLines _ n -> Just (n, 0)
+      FKeepNext _ n -> Just (0, n)
       _ -> Nothing
-    go before n after = case span soft after of
-      (more, c : after') | Just m <- control c -> go (before <> more) (max n m) after'
-      _ -> (before, n, after)
+    go before lastLines firstLines after = case span soft after of
+      (more, c : after') | Just (lastMore, firstMore) <- control c -> go (before <> more) (max lastLines lastMore) (max firstLines firstMore) after'
+      _ -> (before, lastLines, firstLines, after)
 
 {- | The first part of what follows a keep-with-next of @n@ lines
 (docs/adr/0261): of a paragraph or a stanza, its first part made at
@@ -165,7 +167,7 @@ chained :: Env -> Int -> Int -> (Int -> Need) -> [Flow] -> Need
 chained env total k needOf more =
   let base = needOf k
    in case keepAhead more of
-        Just (before, m, after')
+        Just (before, _, m, after')
           | k >= total,
             m > 0 ->
               let r = spaced env (sum [max 0 x | FSpace x <- before]) (followNeed env m after')
@@ -193,6 +195,7 @@ nextFirstLines n after = case dropWhile skipped after of
       FNeedLines {} -> True
       FAdjustLines {} -> True
       FNoBreak _ -> True
+      FNoBreakLines {} -> True
       FKeepNext {} -> True
       FBlank {} -> True
       _ -> False
@@ -228,6 +231,7 @@ firstPart kp isStart n
 -- | The flows a no-break looks past.
 soft :: Flow -> Bool
 soft = \case
+  FNoBreakLines _ 0 -> True
   FNeedLines {} -> True
   FAdjustLines {} -> True
   FSpace _ -> True
