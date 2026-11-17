@@ -1,6 +1,6 @@
 # ADR 0389: キャプションと傍注の行の幅を字下げが使い切るときの diagnostic
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

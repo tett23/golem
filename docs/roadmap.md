@@ -49,6 +49,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **画像の実効解像度と診断の境界**：整数の ppi がしきい値を下回る場合に G09006 が出ることを調べる。実効解像度が 1 ppi の入力に対し、しきい値 0、1、2 で native CLI を各 3 回動かすと、G09006 はそれぞれ 0、0、1 件だった。同じ述語を wasm32 のプリフライトのテストでも検査する。
 - **改行しない範囲の S1 を実際の書体の送りで確かめる**：[ADR 0305](adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) の S1 は、つないだ箱の幅を、つないだ文字列の送りで補正する。既存の回帰テストでは、試験用に作ったカーニングを使っている。字形と送りの性質が異なる 3 書体を当面の対象として、HarfBuzz で組んだ語の送りで S1 を確かめる。どの性質をどこまで網羅するかは改めて決める。
 
+- **パスの描画のベンチマーク**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは shem（[tett23/shem](https://github.com/tett23/shem)）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。
+
 ### 記法と設定の値
 
 - **原稿の変数の宣言を `@set` に戻す（未実装）**：今は行頭の `set 名前 = 式` を変数の宣言として読み、`@set` に廃止予定の notice G02155 を出す。`@` の無い宣言は本文と区別がつかないので、宣言を `@set` に戻し、G02155 を廃止する。 [Golem ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)。
@@ -75,9 +77,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
 - **HTML と EPUB へのフォントのライセンスの文書の同梱**：`golem build` の HTML と EPUB の出力は、`style.toml` が指すフォントのファイルだけを `fonts/` に写し、ライセンスの文書を写さない。そのため、OFL のフォントを使った HTML や EPUB をそのまま配ると、フォントの各コピーに著作権表示とライセンスを添えるという OFL 1.1 の条件 2 を満たさない。これはマニュアルに限らず、Golem を使うすべての本に起きる。どのファイルがライセンスの文書かを Golem が知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかを ADR で決める。[docs/adr/0082](adr/0082-manuals-under-cc0.md) は、マニュアルを組むスクリプトで足りる分だけを直し、本体の扱いは HTML の出力を XHTML から HTML Living Standard に変える予定とあわせて v1.0.0 のころに決めるとした。EPUB については、[OFL FAQ](https://openfontlicense.org/ofl-faq/) の 1.15 が、改変しないフォントを圧縮したフォルダの構造の文書に入れることを、埋め込みではなく同梱に近いとしている。
 
-### 行分割と禁則
-
-- **行の調整で空けない字間（未実装）**：JLReq の 3.1 の「行の調整処理で字間を空ける処理に使用しない箇所」に従い、分割禁止の字間（分離禁止文字の連続、連数字、前置省略記号と数、数と後置省略記号）を、行の調整で空けないようにする。今は分割の候補を消すだけで、漢字等どうしの 1/10 em の伸びが残るので、空いた行では `１２３` の字のあいだも他の字のあいだと同じだけ空く（[golem-layout ADR 0049](golem-layout/adr/0049-align-the-character-classes-and-unbreakable-pairs-with-jlreq.md)）。伸びを外すには、アキ量のセットの規則に分割禁止の組を表す方法が要り、`style.toml` のアキ量のセットの書き方も変わりうる。ADR で決める。 [Golem ADR 0362](adr/0362-unbreakable-spacing.md)。
+- **プレーンな PDF 1.7 のターゲット**：PDF/X-4 の制約を持たない PDF 1.7 を出力のターゲットに足す。今の PDF は、`[color]` の `intent` の有無によらず版 1.6 で書き、`intent` があれば PDF/X-4 の出力インテントを書く（仕様書の「PDF/X-4 と出力インテント」の節）。ターゲットの名前、今の PDF との違い（色空間、透明、注釈、出力インテント）、PDF/A と PDF/UA の宣言との関係は ADR で決める。
 
 ### スタイル
 
@@ -86,7 +86,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **柱とノンブル（未実装）**：本文の役割の書体と版面の文字の大きさで描く。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
   - **隠しノンブル（未実装）**：本文の役割の書体で、`[hidden-folio]` の `size` だけを変えられる。 [Golem ADR 0365](adr/0365-hidden-folio-style.md)。
   - **脚注と章末の注の本文を別々の段落スタイルで組むこと（未決）**：`[notes]` の `body-style` は、ページの下の脚注と章末の注の本文に同じ段落スタイルを当てる。ADR は「脚注本文、章末注本文、章末注の一覧の見出しにそれぞれ段落スタイルを選ぶ」と書き、境界の入力の表に「脚注本文だけ指定すれば章末注は既定」を挙げる一方、キーは `body-style` と `heading-style` の二つだけを決めている。脚注と章末の注に別のキーを設けるかを決める。 [Golem ADR 0366](adr/0366-note-body-styles.md)。
-  - **キャプションと傍注の行の幅を使い切る字下げ（未実装）**：`caption` と `sidenote` の字下げで行の使える幅が 1 字分に満たなくなっても、誤りにしない。ファイルのスタイルの `caption` の字下げは、キャプションに当たらない。字下げが行の幅を使い切るキャプションを G07127、傍注を G07128 とし、dev では警告、prod ではエラーにする。 [Golem ADR 0389](adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **正規表現スタイルの届かない文字（未実装）**：見出し、定義リストの用語、注の本文には正規表現スタイルを当てない。 [Golem ADR 0368](adr/0368-regex-style-scope.md)。
   - **ルビの読み（未実装）**：外側の書体と色で、親文字の半分の大きさで組み、文字スタイルを当てる手段がない。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
