@@ -253,7 +253,10 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 段落スタイルを付けない段落は [code: body] で組みます。
 
 [code: caption]、[code: sidenote]、[code: table] は、[code: body] の字下げを引き継ぎません。
-図のキャプションと傍注の本文と表のセルには字下げをしないので、この三つに 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
+[code: caption] と [code: sidenote] に字下げ、[code: space-between]、[code: line-breaks] を書くと、PDF のキャプションと傍注の本文はそれに従って組みます。
+行の長さは、キャプションなら図版の幅か段の行長（コードブロックではブロックの幅）、傍注なら傍注の領域の幅です。
+キャプションの段落は段落ごとに行を改めるので、キャプションの占める行が増えることがあります。
+表のセルには字下げをしないので、[code: table] に 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書くとエラー（G03006）になります。
 
 表のセルは、表に [code: @style] を付けなければ [code: table] で組みます。
 [code: table] ははじめ本文と同じ書体と大きさなので、本文より小さい文字の表にするなら、[code: \[paragraph-styles.table\]] に [code: size] を書きます。
