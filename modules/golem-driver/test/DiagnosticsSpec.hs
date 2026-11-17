@@ -412,6 +412,16 @@ explainTests =
                 isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
             assertBool "some profile-dependent codes" (not (null dependent))
             sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "ADR 0389 A1: the paragraph of the profile-dependent codes names every code of profileDependentCodes, G07127 and G07128 among them" $ do
+            let dependent = [c | DiagnosticCode c <- profileDependentCodes]
+                -- the line after the one that names profileDependentCodes
+                listed = case dropWhile (not . ("重大度がプロファイルで変わるコードは" `T.isPrefixOf`)) (T.lines documentText) of
+                  _ : l : _ -> l
+                  _ -> ""
+            assertBool "G07127 and G07128 are profile-dependent" (all (`elem` dependent) ["G07127", "G07128"])
+            [c | c <- dependent, not (("[" <> c <> "](#" <> T.toLower c <> ")") `T.isInfixOf` listed)] @?= []
+            fmap exTitle (lookupExplanation "G07127") @?= Just "キャプションの字下げが行の幅を使い切ります"
+            fmap exTitle (lookupExplanation "G07128") @?= Just "傍注の字下げが傍注の領域の幅を使い切ります",
           testCase "the infos of the catalog are infoCodes (docs/adr 0104)" $ do
             let isInfo e = "- 重大度: 情報" `elem` T.lines (exBody e)
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isInfo e] @?= sort [c | DiagnosticCode c <- infoCodes],
