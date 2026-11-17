@@ -276,9 +276,54 @@ listText style src variant = withVerseProject style src $ \tmp -> do
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   TIO.readFile (tmp </> "build/text" </> variant </> "v.txt")
 
+markerBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [Sp])
+markerBoxes setting source = do
+  let style = horizontal24 <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n[character-styles.accent]\ncolor = \"red\"\n[character-styles.large]\nsize = \"3zw\"\n[character-styles.heavy]\nsynthetic-bold = true\n[character-styles.loud]\ncolor = \"red\"\nsize = \"2zw\"\nsynthetic-bold = true\n[lists]\nnumbers = [\"({n})\"]\n" <> setting
+  (_, layout) <- layoutOk style source []
+  let ls = Map.elems (plLines layout)
+  pure ([(bcText c, bcLook c) | sl <- ls, Box _ c <- lineItems (slLine sl), not (T.null (bcText c))], map slIndent ls)
+
+-- | The boxes of the text of the items: all but the markers • ( 1 2 3 ).
+itemTextLooks :: [(T.Text, Look)] -> [(T.Text, Look)]
+itemTextLooks = filter ((`notElem` ["•", "(", ")", "1", "2", "3"]) . fst)
+
 listTests :: [TestTree]
 listTests =
-  [ testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
+  [ testCase "ADR 0363 I1: inv1_list_marker_style_property" $
+      -- every marker style by every list: bullets, numbers, nested, several
+      -- items, an item of two paragraphs, an item with a character style, and
+      -- an item long enough to break into lines
+      forM_ ["accent", "large", "heavy", "loud"] $ \name ->
+        forM_
+          [ "- 本\n",
+            "+ 本\n",
+            "- 本\n  - 文\n",
+            "+ 本\n+ 文字\n+ 字\n",
+            "- 本。\n  文。\n",
+            "+ 本[strong: 強]文\n",
+            "- " <> T.replicate 60 "本" <> "\n"
+          ]
+          $ \source -> do
+            (plain, _) <- markerBoxes "" source
+            (styled, _) <- markerBoxes ("marker-style = \"" <> TE.encodeUtf8 name <> "\"\n") source
+            assertBool (show (name, source, plain)) (not (null (itemTextLooks plain)))
+            assertEqual (show (name, source)) (itemTextLooks plain) (itemTextLooks styled),
+    testCase "ADR 0363 I1: inv1_list_marker_style_case_1" $ do
+      (boxes, _) <- markerBoxes "" "- 本\n"
+      map (lkLatinFace . snd) boxes @?= ["body", "body"]
+      (numbered, _) <- markerBoxes "" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- numbered] @?= [("(", Nothing), ("1", Nothing), (")", Nothing), ("本", Nothing)],
+    testCase "ADR 0363 I1: inv1_list_marker_style_case_2" $ do
+      (boxes, _) <- markerBoxes "marker-style = \"accent\"\n" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- boxes] @?= [("(", Just "red"), ("1", Just "red"), (")", Just "red"), ("本", Nothing)]
+      (bullet, _) <- markerBoxes "marker-style = \"accent\"\n" "- 本\n"
+      [(t, lkColor look) | (t, look) <- bullet] @?= [("•", Just "red"), ("本", Nothing)],
+    testCase "ADR 0363: marker width is measured after applying the character style" $ do
+      let source = "- " <> T.replicate 25 "本" <> "\n"
+      (_, a) <- markerBoxes "" source
+      (_, b) <- markerBoxes "marker-style = \"large\"\n" source
+      assertBool (show (a, b)) (maximum b > maximum a),
+    testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
       (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
       -- the bullet • is a character and fs / 2 (golem-driver ADR 0044)
       ls @?= [(120 * pt, 0), (100 * pt, 20 * pt)],
