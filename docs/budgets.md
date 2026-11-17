@@ -37,7 +37,8 @@
 | 毎晩の列挙の和 | すべての範囲の段の和が 60 分。ジョブの上限は 90 分 | `.github/workflows/enum.yml` の `timeout-minutes`（90 分の側だけ） | [ADR 0208](adr/0208-widen-lightweight-formal-methods.md) 4、[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) 2、[ADR 0304](adr/0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md) |
 | テストスイートごとの時間 | `max(10, ceil(2 × m))` 秒。m は main の直近 20 回の中央値。テストを足して伸びたスイートは、プルリクエストの CI の秒 t から `max(10, ceil(2 × t))` 秒 | `scripts/ci/suite-timeout.sh` と、スイートごとの値の表 `scripts/ci/suite-limits.tsv` | [ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)、[ADR 0301](adr/0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md) 1 |
 | テストスイートの止まりの検出 | 600 秒 | `scripts/ci/suite-timeout.sh`（`SUITE_TIMEOUT` の既定） | [ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md) |
-| golem-pdf と golem-svg のテストの時間 | CPU 60 秒、実時間 300 秒。時間の上限を付けるテストは、単独の CPU 時間で 10 秒以内 | `hangLimits` | [ADR 0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md) |
+| golem-pdf と golem-svg のテストの時間（ネイティブ） | CPU 60 秒、実時間 300 秒。時間の上限を付けるテストは、単独の CPU 時間で 10 秒以内 | `hangLimits` | [ADR 0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md) |
+| golem-pdf と golem-svg のテストの時間（wasm32、未実装） | CPU 600 秒、実時間 1200 秒 | `hangLimits` の wasm32 の値 | [ADR 0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md) I2 |
 | golem-driver-test の止まりの検出 | 300 秒 | `hangTimeout` | [ADR 0237](adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md) |
 | threaded のテストの見張り | `300 × GOLEM_RACE_TESTS` 秒 | ランタイムの外の見張りのスレッド | [ADR 0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md) |
 | Alloy のモデルの CI | `models.yml` は 30 分。毎晩のジョブは 1 コマンド 5.5 時間、ジョブ 345 分 | `check.sh` の `TIMEOUT` | [ADR 0242](adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md) |
