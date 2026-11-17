@@ -9,9 +9,9 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isSpace)
 import Data.Either (isRight)
-import Data.Maybe (mapMaybe)
 import Data.List (isInfixOf, isSuffixOf)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver

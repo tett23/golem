@@ -110,7 +110,7 @@ tests =
                             Text (sp 1 8) "後"
                           ]
                           (Just "よみ")
-                    ]
+                      ]
                   ]
           other -> assertFailure (show other)
         codes (snd (assemble cfg noEval [Document (FileId 1) [para 1 0 [Ruby (sp 1 0) () [RubySegment [Ref (sp 1 0) RefTitle "nope"] (Just "よみ")]]]])) @?= ["G04003"],
