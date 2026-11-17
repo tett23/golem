@@ -66,9 +66,9 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
+- **読みのないルビの区切りの中の参照**：読みのある区切りの親文字の中の `[ref-number]` と `[ref-title]` は、`RB` の中の `Reference` になる（[Golem ADR 0360](adr/0360-ruby-base-references.md)）。読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後 | まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならず、親の構造の要素（段落なら `P`）の文字の葉に入る。[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md) の R3（参照の一つずつがちょうど一つの `Reference` になる）を満たすように、どの構造の要素にするかを ADR で決める。
 - **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **可変フォント（未実装）**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。 [Golem ADR 0358](adr/0358-font-instance-selection.md)。
-- **ルビの親文字の中の参照（未実装）**：ルビの親文字の中の `[ref-number]` と `[ref-title]` は、タグ付き PDF の構造の木で `Reference` にならない（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)、[docs/adr/0229](adr/0229-record-the-procedures-adr-0215-and-0217-departed-from.md)）。親文字の中の参照をどの構造の要素にするかを ADR で決める。 [Golem ADR 0360](adr/0360-ruby-base-references.md)。
 - **EPUB の決定性（未実装）**：EPUB の出力のバイト列の一致を、仕様として保証する。今の実装は zip のエントリの時刻を 0 にし、並びも決めて書いており、CI の決定性の検査も EPUB のハッシュを比べているが、仕様書はまだ保証しないとしている（[ADR docs/adr/0002](adr/0002-determinism.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。保証すると決め直す ADR を書く。 [Golem ADR 0361](adr/0361-epub-byte-determinism.md)。
 
 ### 行分割と禁則
