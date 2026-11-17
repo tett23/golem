@@ -51,8 +51,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **パスの描画のベンチマーク**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは Emet（`.emet` の関数）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。
 
-- **プルリクエストの CI の時間の予算（未実装）**：プルリクエストの `ci.yml` の時間の中央値を 300 秒以下とする予算を、計測のコマンド `scripts/ci/ci-critical-path.sh` で確かめられるようにする。今の CI はこの予算を超えており、収める組み替えは別の ADR で決める。 [Golem ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)。
-
 ### 記法と設定の値
 
 - **原稿の変数の宣言を `@set` に戻す（未実装）**：今は行頭の `set 名前 = 式` を変数の宣言として読み、`@set` に廃止予定の notice G02155 を出す。`@` の無い宣言は本文と区別がつかないので、宣言を `@set` に戻し、G02155 を廃止する。 [Golem ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)。
@@ -71,10 +69,9 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
-- **読みのないルビの区切りの中の参照**：読みのある区切りの親文字の中の `[ref-number]` と `[ref-title]` は、`RB` の中の `Reference` になる（[Golem ADR 0360](adr/0360-ruby-base-references.md)）。読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後 | まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならず、親の構造の要素（段落なら `P`）の文字の葉に入る。[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md) の R3（参照の一つずつがちょうど一つの `Reference` になる）を満たすように、どの構造の要素にするかを ADR で決める。
+- **読みのないルビの区切りの中の参照（未実装）**：読みのない区切りは `Ruby` を作らないので、`[ruby: 前/[ref-title a]後|まえ/]` の `[ref-title a]` は、文字を描くが `Reference` にもリンクにもならない。本文の中の参照と同じく `Reference` と `Link` にする。 [Golem ADR 0393](adr/0393-references-in-ruby-segments-without-readings.md)。
 - **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **可変フォント（未実装）**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。 [Golem ADR 0358](adr/0358-font-instance-selection.md)。
-- **EPUB の決定性（未実装）**：EPUB の出力のバイト列の一致を、仕様として保証する。今の実装は zip のエントリの時刻を 0 にし、並びも決めて書いており、CI の決定性の検査も EPUB のハッシュを比べているが、仕様書はまだ保証しないとしている（[ADR docs/adr/0002](adr/0002-determinism.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。保証すると決め直す ADR を書く。 [Golem ADR 0361](adr/0361-epub-byte-determinism.md)。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
 - **HTML と EPUB へのフォントのライセンスの文書の同梱**：`golem build` の HTML と EPUB の出力は、`style.toml` が指すフォントのファイルだけを `fonts/` に写し、ライセンスの文書を写さない。そのため、OFL のフォントを使った HTML や EPUB をそのまま配ると、フォントの各コピーに著作権表示とライセンスを添えるという OFL 1.1 の条件 2 を満たさない。これはマニュアルに限らず、Golem を使うすべての本に起きる。どのファイルがライセンスの文書かを Golem が知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかを ADR で決める。[docs/adr/0082](adr/0082-manuals-under-cc0.md) は、マニュアルを組むスクリプトで足りる分だけを直し、本体の扱いは HTML の出力を XHTML から HTML Living Standard に変える予定とあわせて v1.0.0 のころに決めるとした。EPUB については、[OFL FAQ](https://openfontlicense.org/ofl-faq/) の 1.15 が、改変しないフォントを圧縮したフォルダの構造の文書に入れることを、埋め込みではなく同梱に近いとしている。
 
@@ -273,6 +270,8 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **部品を保つ単位の指定**：[Golem ADR 0377](adr/0377-keep-book-parts.md) は、ページを単位とする指定では各ページの、見開きの指定では対向する 2 ページの外側だけで保持の条件を課すと定める。しかし、書き手が単位をどこに書くか（部品ごとのスタイルか、本の全体の設定か）と、書かないときにどちらを使うかを定めていない。今の改ページは段を単位に保つので、段組みの版面でページを単位にするとき、段のあいだで部品を分けてよいかも決まっていない。リストを項目のあいだで分ける規則も、この単位で課すので、同じく待つ。項目の中で分けるときに、`keep-all-lines` の段落と同じく notice を出すかも決まっていない。
 
 ### その他の未決事項
+
+- **ルビの区切りの記法**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `\/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改めるかを決める。
 
 - **奥付の多言語化と日本語の例外**：版と刷、日付、発行履歴の表記について、日本語の例外と他言語の奥付の実例を集め、書式で必要な条件分岐と数の表記を検討する。
 - **画像フレームの導入時期**：InDesign のように画像と画像を収めるフレームを別々に扱う方式へ移行するかを検討する。時期の候補は v1.x、v2、v3 である。
