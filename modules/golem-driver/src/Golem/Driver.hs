@@ -912,6 +912,7 @@ buildCore inMemory opts = do
             evDiagnostics e
               <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
               <> maybe [] (chapterNoteDiagnostics (evStyle e) targets infos) (evBook e)
+              <> maybe [] (pageNumberingDiagnostics (evStyle e) targets) (evBook e)
       case evBook e of
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
@@ -923,7 +924,7 @@ buildCore inMemory opts = do
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (evStyle e) book
+                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (all (== TargetPdf) targets) (evStyle e) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
@@ -989,6 +990,17 @@ chapterNoteDiagnostics style targets infos book
   where
     gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
     pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
+
+{- | G03259 (docs/adr/0383): notes numbered per page, and a target without
+fixed pages (HTML, EPUB, plain text), which numbers them in the order of
+the book. Once, at the first note or sidenote of the book; none for a
+book without them.
+-}
+pageNumberingDiagnostics :: Style -> [Target] -> Book -> [Diagnostic]
+pageNumberingDiagnostics style targets book
+  | stNotesNumbering style /= NumberPerPage || not (any (`elem` targets) [TargetHtml, TargetEpub, TargetText]) = []
+  | otherwise =
+      take 1 [diagnostic "G03259" Warning sp "[notes] の numbering = \"page\" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります" | (_, _, sp) <- bookNoteSites book]
 
 data PreflightOptions = PreflightOptions
   { poRoot :: !FilePath,
