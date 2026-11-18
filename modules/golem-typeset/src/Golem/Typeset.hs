@@ -44,6 +44,8 @@ module Golem.Typeset
     noteNumberDiagnostics,
     layoutPdf,
     layoutPdfWith,
+    layoutPdfUnnumbered,
+    bookNoteSites,
     layoutPages,
     IndexLine (..),
     indexLines,
