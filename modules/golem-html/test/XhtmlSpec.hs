@@ -60,6 +60,7 @@ cfg0 =
       hcRubyMonoAlign = "center",
       hcRubyGroupAlign = "space-between",
       hcRubyBaseSpacing = "center",
+      hcRubyReadingStyle = Nothing,
       hcBreakKinds = Set.empty,
       hcNoBreak = False,
       hcLists = Nothing,
@@ -87,6 +88,7 @@ bookOf bs =
       bookChapterOf = [],
       bookChannels = [],
       bookChannelDecls = Map.empty,
+      bookTitleSeparators = Map.empty,
       bookImages = Map.empty
     }
 
@@ -476,6 +478,27 @@ tests =
           let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
            in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1 no reading style writes no rule for rt" $
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False Nothing
+              cfg = cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("accent", accent)]}
+           in cssLines "ruby > rt" cfg @?= [],
+        testCase "ADR 0369 I1: inv1_ruby_reading_style_case_2 a colour alone: the colour and half the size" $
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False Nothing
+              cfg = cfg0 {hcRubyReadingStyle = Just "accent", hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("accent", accent)]}
+           in cssLines "ruby > rt" cfg @?= ["ruby > rt { color: rgb(255, 51, 0); font-size: 0.5em; }"],
+        testCase "ADR 0369 I1: inv1_ruby_reading_style_case_3 a size: that size" $
+          let large = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] False (Just "8pt")
+              cfg = cfg0 {hcRubyReadingStyle = Just "large", hcCharStyles = Map.fromList [("large", large)]}
+           in cssLines "ruby > rt" cfg @?= ["ruby > rt { font-size: 8pt; }"],
+        testCase "ADR 0369 I1: the reading style is on rt alone, not on the base" $
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False (Just "0.8em")
+              cfg = cfg0 {hcRubyReadingStyle = Just "accent", hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("accent", accent)]}
+           in [l | l <- cssLines "ruby" cfg, not ("ruby > rt " `T.isPrefixOf` l)] @?= cssLines "ruby" cfg {hcRubyReadingStyle = Nothing},
+        testCase "ADR 0369 I1: a local reading style inherits only character properties" $
+          let local = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] False Nothing
+              cfg = cfg0 {hcRubyReadingStyle = Just "reading", hcLocalStyles = Map.singleton fidA (HtmlLocalStyles (Map.singleton "reading" local) Map.empty Nothing Nothing Map.empty)}
+           in cssLines "body.file-1 ruby > rt" cfg
+                @?= ["body.file-1 ruby > rt { font-family: inherit; color: inherit; font-weight: inherit; font-style: inherit; font-size: 0.5em; }"],
         testCase "a file's code style without a background resets them: transparent and 0" $
           let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing Map.empty)]}

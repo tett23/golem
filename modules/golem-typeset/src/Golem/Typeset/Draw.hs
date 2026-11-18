@@ -209,7 +209,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                       -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                       embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
                       -- a face used horizontally and vertically is reported once
-                      case nub (lefts (Map.elems embedded)) of
+                      case nub (concat (lefts (Map.elems embedded))) of
                         [] -> do
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
@@ -724,7 +724,7 @@ the table of contents, its number, the separator and its short title, as
 plain text, ruby its base alone.
 -}
 outlineTitle :: PdfInput -> TocEntry -> Text
-outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (numberedTitle (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
+outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (bookNumberedTitle (piBook inp) (Just (teLevel e)) (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
 
 {- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
 that none of the faces of its characters has, once for each font file and
@@ -1289,7 +1289,7 @@ drawLineAt env (x0, y0) sl =
                             | lkColor lk /= lkColor look, Just sw <- swatchOf env lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                             | otherwise = (marks, glyphs)
                           placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
-                          placed2 = [runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                          placed2 = [inColour rlook (runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch)) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
                           bases = zipWith (\lk marks -> (leafOf (rubyBaseLeaf (bcLeaf c) lk), marks)) baseLooks placed1
                        in ([(owner, fst marks) | (owner, marks) <- bases] <> [(readingLeaf, concatMap fst placed2)], concat [inLeaf owner (snd marks) | (owner, marks) <- bases] <> inLeaf readingLeaf (concatMap snd placed2))

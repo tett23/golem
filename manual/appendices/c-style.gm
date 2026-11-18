@@ -225,6 +225,13 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: padding] | 囲みの内側の余白です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0.5zw"] です。 |
 | [code: border-radius] | 囲みの角の丸みの半径です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0pt"] です。 |
 
+段落スタイルには、番号と題のあいだに入れる文字列 [code: number-title-separator] も書けます。
+[code: caption] と、[code: caption] が [code: based-on] で引き継ぐ段落スタイル（既定では [code: body]）に書くと、図版、コードブロック、表のキャプションの区切りになります。
+ほかの段落スタイルに書いても、キャプションのほかには適用されません。
+[code: ""] にすると、番号のすぐ後に題が続きます。
+番号か題がなければ、区切りは入れません。
+書かなければ、日本語の本では全角の空白、ほかの言語の本では半角の空白を入れ、番号の書式が空白で終われば何も入れません。
+
 段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: punctuation-width]、[code: features] も書けます。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
 [code: aki-set]、[code: line-adjustment]、[code: stretch-limit]、[code: shrink-order]、[code: stretch-order] は [code: body] から引き継ぐので、[code: body] に書けば本の全体が変わります。
@@ -272,6 +279,7 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
 キャプションと傍注の本文と表のセルに適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
 PDF のキャプションと傍注の本文には、[code: caption] と [code: sidenote] の字下げ、[code: space-between]、[code: line-breaks] も適用されます。
+キャプションには、[code: caption] の [code: number-title-separator] も適用されます。
 表のセルには、[code: @style] で付けた段落スタイルのこれらのキーを当て、字下げなどのほかのキーは当てません。
 PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表も行の格子を崩しません。
 [code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
@@ -304,10 +312,16 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: font] | フォントの役割の名前です。書かなければ本文の書体です。 |
 | [code: size] | 文字の大きさです。書かなければ、1 の階層は [code: "1.5zw"]、2 の階層は [code: "1.25zw"]、3 から 6 の階層は [code: "1zw"] です。 |
 | [code: lines] | 見出しが占める行の数（行取り）の最小の値で、1 以上の整数です。書かなければ、日本語の本では 1 の階層から順に 5、3、2、ほかの言語の本では 6、4、2 で、4 から 6 の階層はどちらも 1 です。既定の値は版面の行数に切り詰めます。書いた値が版面の行数を超えるとエラー（G07024）です。 |
-| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
+| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。[code: number-title-separator] を書かなければ、番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
 | [code: page-break] | [code: "recto"] にすると、その見出しを奇数ページから始めます。既定は [code: "any"] です。 |
 | [code: rule-before] | 見出しの前に引く罫線です。段落スタイルと同じ表を書きます。[code: length] と字下げの [code: zw] は見出しの文字の大きさを、間隔の [code: zw] は版面の文字の大きさを一字とし、間隔は見出しが占める行の領域から測ります。 |
 | [code: rule-after] | 見出しの後に引く罫線です。見出しの下の罫線に使います。 |
+
+[code: number-title-separator] には、見出しの番号と題のあいだに入れる文字列を書きます。
+目次、柱の [code: heading.<階層>.numbered]、PDF のしおりも、この区切りを使います。
+[code: ""] にすると、番号のすぐ後に題が続きます。
+書かなければ、[code: number] の行で説明した区切り（日本語の本では全角の空白、ほかの言語の本では半角の空白）が入ります。
+段落スタイル [code: body] の区切りは引き継ぎません。
 
 柱に出す見出しは、ここではなく [code: \[masters.名前\]] の [code: running-head] で決めます。
 
@@ -362,13 +376,13 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: placement] | [code: "page-foot"] | PDF の注の位置です。[code: "page-foot"]（ページの下）か [code: "chapter-end"]（マニフェストの章の終わり）を書きます。章の終わりの一覧の見出しは、日本語の本では「注」、ほかの言語の本では「Notes」に決まっています。HTML、EPUB、プレーンテキストは、値によらず章の終わりにまとめます。 |
-| [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選びます。 |
+| [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）、[code: "page"]（PDF のページごと）から選びます。 |
 | [code: mark-format] | [code: "*{n}"] | PDF の注の印の書式です。番号の差し込み [code: {n}]（算用数字）か [code: {n:<表記>}] をちょうど一つ書きます。表記の名前は「寸法と番号の書式」の表のとおりです。注の本文の先頭の印にも使います。番号の傍注の印は番号だけです。表記で表せない番号の注があるとエラーになります。HTML と EPUB では、注へのリンクの文字が番号の表記になります。 |
 | [code: mark-style] | [code: "note-mark"] | PDF の本文の注の印と、番号の傍注の印に当てる文字スタイルの名前です。文字スタイルのどのキーも当たります。組み込みの [code: note-mark] は [code: size = "0.5zw"] です。 |
 | [code: body-mark-style] | なし | PDF の注の本文の先頭の印に当てる文字スタイルの名前です。なければ注の本文の文字のまま組みます。 |
 | [code: body-style] | なし | PDF のページの下の脚注と章の終わりの注の本文に当てる段落スタイルの名前です。なければ本文の書体と版面の文字の大きさで組みます。 |
 | [code: heading-style] | なし | PDF の章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。なければ 2 の階層の見出しの書体と大きさで組みます。行取りは変わりません。 |
-| [code: mark-size] | なし | 廃止予定です。書くとお知らせ（G03117）が出ます。本文の注の印の文字スタイルの [code: size] として読みます。組み込みの文字スタイル [code: note-mark] の [code: size] に書き換えます。 |
+| [code: mark-size] | なし | 使えません（G03253）。本文の注の印の大きさは、[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書きます。 |
 
 @nonumber
 ## [code: \[notes.rule\]]
@@ -536,7 +550,7 @@ PDF、HTML、EPUB、プレーンテキストのどれにも適用されます。
 [code: {n:<表記>}] の表記の名前は「寸法と番号の書式」の表のとおりです。
 波括弧そのものは、[code: \\{] と [code: \\}] と書きます。
 
-以前の書き方の [code: {{] と [code: }}]、一字の見本の差し込み（[code: {1}]、[code: {一}]、[code: {①}]、[code: {a}]、[code: {A}]、[code: {i}]、[code: {I}]、[code: {ア}]、[code: {イ}]）は、今も同じ意味に読みますが、廃止予定のお知らせ（G03114、G03115）が出ます。
+以前の書き方の [code: {{] と [code: }}]、一字の見本の差し込み（[code: {1}]、[code: {一}]、[code: {①}]、[code: {a}]、[code: {A}]、[code: {i}]、[code: {I}]、[code: {ア}]、[code: {イ}]）は使えず、書くとエラー（G03250、G03251）になります。
 見本の差し込みは、[code: {n:arabic}]、[code: {n:kanji}]、[code: {n:circled}]、[code: {n:lower-alpha}]、[code: {n:upper-alpha}]、[code: {n:lower-roman}]、[code: {n:upper-roman}]、[code: {n:aiueo}]、[code: {n:iroha}] に書き換えます。
 
 @nonumber
@@ -647,7 +661,7 @@ PDF でだけ有効です。
 差し込みの値がない行は描きません。
 差し込みの末尾に [code: ?] を付けると、値がないときに空になり、行の前後の空白（半角と全角）を取り除きます。
 [code: {] と [code: }] そのものは [code: \\{] と [code: \\}] と書きます。
-以前の書き方の [code: {{] と [code: }}] は、今も同じ意味に読みますが、廃止予定のお知らせ（G03116）が出ます。
+以前の書き方の [code: {{] と [code: }}] は使えず、書くとエラー（G03252）になります。
 柱の行が版面の幅を超えると警告（G07051）が出ます。
 行が多すぎてページからはみ出すとエラー（G07052）になります。
 

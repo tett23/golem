@@ -95,7 +95,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 人が読む形式と JSON の形式では、エラーと警告の後、情報の前に並ぶ。
 
 お知らせのコードは `Golem.Syntax.Diagnostic.noticeCodes` にまとめてある。
-今は次の三十二である。
+今は次の二十七である。
 
 | コード | 種類 | 段階 |
 | --- | --- | --- |
@@ -104,14 +104,9 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G02064](#g02064) | 効果のない書き方 | 評価 |
 | [G02079](#g02079) | 効果のない書き方 | 評価 |
 | [G02094](#g02094) | 一般的でない書き方 | 評価 |
-| [G02108](#g02108) | 廃止予定 | 評価 |
 | [G02155](#g02155) | 廃止予定 | 評価 |
 | [G03023](#g03023) | 既定の使用 | プロジェクト |
 | [G03100](#g03100) | 効果のない書き方 | プロジェクト、評価 |
-| [G03114](#g03114) | 廃止予定 | プロジェクト |
-| [G03115](#g03115) | 廃止予定 | プロジェクト |
-| [G03116](#g03116) | 廃止予定 | プロジェクト |
-| [G03117](#g03117) | 廃止予定 | プロジェクト |
 | [G03120](#g03120) | 既定の使用 | プロジェクト |
 | [G03134](#g03134) | 処理系による調整 | プロジェクト |
 | [G04007](#g04007) | 効果のない書き方 | 文書の組み立て |
@@ -2746,8 +2741,8 @@ lines の範囲がファイルの行を外れています
 位置は `lines` の引数である。
 
 `lines` のほかの誤りは、原因ごとのコードになる（[docs/adr/0113](adr/0113-closed-range-literal.md)）。
-行の番号でも範囲でもない値は [G02105](#g02105)、始めが終わりより大きい範囲は [G02106](#g02106)、二つ以上の項目か配列は [G02107](#g02107)、端のない範囲か端の読めない範囲は [G02110](#g02110) である。
-端が負の数なら [G02103](#g02103)、整数でない数なら [G02104](#g02104)、式の評価の上限を超える数なら [G02086](#g02086) になる（[docs/adr/0102](adr/0102-natural-number-type.md)）。
+行の番号でも範囲でもない値は [G02105](#g02105)、始めが終わりより大きい範囲は [G02106](#g02106)、`-` で区切った範囲は [G02251](#g02251)、端のない範囲か端の読めない範囲は [G02110](#g02110) である。
+式の値の端が負の数なら [G02103](#g02103)（語と文字列の負の端は [G02110](#g02110)）、整数でない数なら [G02104](#g02104)、式の評価の上限を超える数なら [G02086](#g02086) になる（[docs/adr/0102](adr/0102-natural-number-type.md)）。
 
 - メッセージ: `@listing の lines の範囲がファイルの行（1〜<行数>）を外れています: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -4581,6 +4576,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 原稿で自然数を求める箇所は、`@toc` の `depth`、`@need-lines`、`@blank-line`、`@number`、図版の `page`、`@listing` の `lines` の両端、コードブロックの `numbers` と `highlight` の両端、`round` と `fixed` の桁数である。
 語で書いても式で書いても、同じコードとメッセージになる。
+ただし、`@listing` の `lines` とコードブロックの `highlight` では、語と文字列に書いた負の端は [G02110](#g02110) にし、このコードは式の値の負の端にだけ出す（[ADR 0342](adr/0342-revise-retire-dash-line-ranges.md)）。
 `doc` を参照しない式の値は、評価の前の解析で調べる。
 `doc` を参照する式の値は、文書構造（S1）で評価するときに調べ、同じ位置に出す。
 位置は、コマンドの引数ならコマンド、`round` と `fixed` の桁数なら桁数の式である。
@@ -4707,14 +4703,12 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 @listing の lines には範囲を一つだけ書きます
 
 - 重大度: エラー
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`@listing` の `lines` に、カンマで区切った二つ以上の項目か、配列を書いた（[docs/adr/0113](adr/0113-closed-range-literal.md)）。
-`lines` が受け取るのは、一つの範囲か一つの行である。
-配列は要素が一つでも、このエラーになる。
-位置は引数である。
+以前は、`@listing` の `lines` にカンマで区切った二つ以上の項目か配列を書くと、このコードを出した。
+[ADR 0342](adr/0342-revise-retire-dash-line-ranges.md) により廃止され、現在はどちらも受け付ける。
 
 - メッセージ: `@listing の lines には範囲を一つだけ書きます: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -4727,25 +4721,20 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 ### 直し方
 
-範囲を一つだけ書く（`lines=1...3`、`lines=[= 1...2]`）。
-離れた行を取り込むときは、`@listing` を分ける。
+範囲をカンマで並べる（`lines=1...3,5...7`）。
 
 ## G02108
 
-範囲の - の区切りは廃止予定です
+範囲の - の区切りは廃止されました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
 `@listing` の `lines` かコードブロックの `highlight` の語か文字列に、両端を `-` で区切った範囲（`3-5`）を書いた（[docs/adr/0113](adr/0113-closed-range-literal.md)）。
 範囲は `...` で区切る（`3...5`）。
-`-` の区切りは、負の端の `-` と同じ字なので読みにくく、廃止する予定である。
-今は `-` で区切った範囲も同じ行を取り込み、強調する。
-お知らせは引数ごとに一つであり、メッセージの範囲はその引数の最初の `-` の範囲である。
-位置は引数である。
-`-` の範囲をエラーにする時期は、[docs/compatibility.md](compatibility.md) の「廃止予定の書き方」にある。
+このコードは [ADR 0342](adr/0342-revise-retire-dash-line-ranges.md) により廃止され、現在は [G02251](#g02251) を出す。
 
 - メッセージ: `- で区切った範囲は廃止予定です。<a>...<b> のように ... で区切ります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -4785,6 +4774,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 式の構文では、端のない範囲（`[= 5...]`、`[= ...5]`）、端の読めない範囲（`[= 1....2]`）、端の後に点が続く範囲（`[= 1...2...3]`、`[= 1...2..3]`）である。
 式の評価では、端の値が数でない範囲（`[= "a"...3]`、`[= true...3]`）である。
 `lines` と `highlight` の語と文字列では、端が空の項目（`1...`、`...3`）と、端が数のリテラルとして読めない項目（`a...3`、`1-2...3`、`1....2`、`1...2...3`、`1...2..3`）である。
+語と文字列の負の端（`-1`、`3...-1`）もこのコードにする（[ADR 0342](adr/0342-revise-retire-dash-line-ranges.md)）。
 位置は、式の構文ではその誤りの位置、式の評価ではその範囲の式、語と文字列では引数である。
 
 - メッセージ: `範囲の端には数を書きます: <値>`。式の構文の誤りでは `範囲の端には数を書きます`。
@@ -6099,6 +6089,33 @@ TSV の途中の空の行は消す。
 
 `@listing src=src/Main.hs` を `@listing src/Main.hs` に書き換える。
 
+## G02251
+
+行の範囲は三つのピリオドで区切ります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@listing` の `lines` かコードブロックの `highlight` に、`-` で区切った範囲を書いた。
+ほかの項目がすべて読める引数に、引数全体で一つだけ出す。
+`@listing` はコードブロックを作らず、コードブロックは強調せずに組む。
+エラーなので、ビルドは失敗する。
+位置は引数である。
+
+- メッセージ: `- で区切った範囲は使えません。<始め>...<終わり> のように両端を残して ... で区切ります`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [ADR 0342](adr/0342-revise-retire-dash-line-ranges.md)
+
+### 主な原因
+
+- `@listing` の `lines` またはコードブロックの `highlight` に `1-3` のような範囲を書いた。
+
+### 直し方
+
+`lines=1-3` を `lines=1...3` に書き換える。
+
 ## G02252
 
 @table のパスは最初の位置引数に書きます
@@ -6333,7 +6350,7 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[notes] の mark-size と、mark-style <名前> の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`[notes] の mark-size と、注の印の文字スタイル note-mark の size（[character-styles.<定義>] に書いたもの）は一緒に書けません。mark-size を消します`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル table には 0 でない indent、first-line-indent、end-indent を書けません。表のセルは字下げをしません: <キー>`、`[tables] の number には {n} などの差し込みを書きます: <書式>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル table には 0 でない indent、first-line-indent、end-indent を書けません。表のセルは字下げをしません: <キー>`、`[tables] の number には {n} などの差し込みを書きます: <書式>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)（`caption` と `sidenote` の字下げを外した）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -6365,7 +6382,6 @@ style.toml の誤りです
 - 段落スタイルか `[headings.N]` の `rule-before`、`rule-after` に、表と `false` のほかの値（`true` を含む）を書いた。組み込みの段落スタイル `caption`、`sidenote`、`code` に書いた。`@style-def` に書いた。`length` と `end-indent` を一緒に書いた。`start-indent` と `end-indent` を引くと罫線の長さが 0 以下になる。`[notes.rule]` に `start-indent`、`end-indent`、`keep-in-column` を書いた（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 - `[headings.N]` の N に 1 から 6 のほかの値を書いた。見出しの番号の書式に、その見出しの階層より小さくない `{k}` を書いた（`[headings.2]` の `{2}`、`[headings.1]` の `{1}` など）。図版、コードブロック、ノンブルの番号の書式に `{3}` から `{5}` を書いた（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 - `[notes]` の `mark-format` に数の差し込みを書かなかったか、二つ以上書いたか、表にない差し込みか表記の名前を書いたか、`{{`、閉じていない `{`、対応のない `}`、誤ったエスケープ（`\a`、末尾の `\`）を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-- `[notes]` の `mark-size` と、`size` を持つ文字スタイルを指す `mark-style` を一緒に書いた。`mark-style` を書かずに `[character-styles.note-mark]` の `size` と `mark-size` を一緒に書いた場合も同じである（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - 見出し、図版、コードブロック、ノンブルの番号の書式に、表にない差し込みか表記の名前、閉じていない `{`、対応のない `}`、誤ったエスケープを書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 
 ### 直し方
@@ -6544,6 +6560,7 @@ style.toml のスタイルの参照が不正です
 `[lists]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0363](adr/0363-list-marker-style.md)）。
 段落スタイルの `next-style` が段落スタイルにないか、`initial-style` が文字スタイルにない場合も、この誤りとする（[Golem ADR 0374](adr/0374-paragraph-style-controls.md)）。
 `[sidenotes]` の `marker-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0371](adr/0371-sidenote-marker-style.md)）。
+`[composition.ruby]` の `reading-style` が存在しない文字スタイルを指す場合も、このエラーを出す（[Golem ADR 0369](adr/0369-ruby-reading-style.md)）。
 段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`（ファイルの中の定義では `@style-def のスタイルの参照が不正です: <理由>`）。正規表現スタイルの理由は `正規表現スタイルの文字スタイルがありません: <名前>` か `正規表現スタイルの段落スタイルがありません: <名前>`
@@ -7331,20 +7348,16 @@ dev と prod の両方でエラーである。
 PDF/A が要らなければ、`pdfa` を消す。
 ## G03114
 
-[lists] の numbers の {{ と }} は廃止予定です
+[lists] の numbers の {{ と }} は廃止されました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
 `style.toml` の `[lists]` の `numbers` の書式に、括弧そのものを表す `{{` か `}}` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 書式の括弧そのものは、原稿と同じくバックスラッシュのエスケープ（`\{` と `\}`）で書く。
-`{{` と `}}` は書式だけの例外なので、廃止する予定である。
-今は `{{` と `}}` を `{` と `}` に読み、組みは変わらない。
-お知らせは書式ごとに一つである。
-位置はその書式の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
+このコードは [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md) により廃止され、現在は [G03250](#g03250) を出す。
 
 - メッセージ: `[lists] の numbers の {{ と }} は廃止予定です。\{ と \} と書きます: <書式>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
@@ -7375,20 +7388,16 @@ numbers = ['\{{n}\}']
 
 ## G03115
 
-[lists] の numbers の一字の見本の差し込みは廃止予定です
+[lists] の numbers の一字の見本の差し込みは廃止されました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
 `style.toml` の `[lists]` の `numbers` の書式に、表記を一字の見本で選ぶ差し込み（`{1}`、`{一}`、`{①}`、`{a}`、`{A}`、`{i}`、`{I}`、`{イ}`、`{ア}`）を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 表記は、表記の表の名前で `{n:<名前>}` と選ぶ。
-見本の字は、表記を足すと決めにくく、`{1}` は見出しの番号の書式の第 1 階層と食い違うので、廃止する予定である。
-今は見本の差し込みを `{n:<名前>}` と同じに読み、組みは変わらない。
-お知らせは書式ごとに一つである。
-位置はその書式の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
+このコードは [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md) により廃止され、現在は [G03251](#g03251) を出す。
 
 - メッセージ: `[lists] の numbers の {<見本>} は廃止予定です。{n:<名前>} と書きます: <書式>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
@@ -7419,19 +7428,16 @@ numbers = ["{n}.", "({n:lower-alpha})", "{n:kanji}、"]
 
 ## G03116
 
-柱の書式の {{ と }} は廃止予定です
+柱の書式の {{ と }} は廃止されました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
 `style.toml` のマスターページの柱の書式の行に、括弧そのものを表す `{{` か `}}` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 書式の括弧そのものは、バックスラッシュのエスケープ（`\{` と `\}`）で書く。
-今は `{{` と `}}` を `{` と `}` に読み、組みは変わらない。
-お知らせは行ごとに一つである。
-位置はその行の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
+このコードは [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md) により廃止され、現在は [G03252](#g03252) を出す。
 
 - メッセージ: `柱の書式の {{ と }} は廃止予定です。\{ と \} と書きます: <書式>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
@@ -7461,19 +7467,16 @@ running-head = { position = "top-outside", content = ['\{{meta.title}\}'] }
 
 ## G03117
 
-[notes] の mark-size は廃止予定です
+[notes] の mark-size は廃止されました
 
 - 重大度: お知らせ
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
 `style.toml` の `[notes]` に `mark-size` を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 注の印の大きさは、印の文字スタイル（`[notes]` の `mark-style`、既定は組み込みの `note-mark`）の `size` で決める。
-同じ値を二つのキーで書ける形を残さないため、`mark-size` を廃止する予定である。
-今は `mark-size` を本文の印の文字スタイルの `size` の省略形として読み、組みは変わらない。
-位置は `mark-size` の値である。
-エラーにする時期は、「廃止予定の手順」と互換性の文書 [docs/compatibility.md](compatibility.md) の「廃止予定の書き方」に従う。
+このコードは [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md) により廃止され、現在は [G03253](#g03253) を出す。
 
 - メッセージ: `[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.styleNotices`）
@@ -8005,6 +8008,180 @@ HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` �
 すでに書いてあれば、直す必要はない。
 `golem new` は `--no-notices` を受け付けないので、このお知らせは消せない。
 
+## G03250
+
+[lists] の numbers の {{ と }} は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[lists]` の `numbers` の書式に、括弧そのものを表す `{{` か `}}` を書いた。
+書式の括弧そのものは、原稿と同じくバックスラッシュのエスケープ（`\{` と `\}`）で書く。
+エラーは書式ごとに一つであり、同じ書式に一字の見本の差し込みもあれば、[G03251](#g03251) も出す。
+エラーなので、ビルドは `--no-notices` を付けても失敗する。
+位置はその書式の値である。
+
+- メッセージ: `[lists] の numbers の {{ と }} は使えません。\{ と \} と書きます: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.parseStyle`）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 主な原因
+
+- 以前の書き方に合わせて、括弧を `{{` と `}}` と書いた。
+
+### 直し方
+
+`{{` を `\{` に、`}}` を `\}` に書き換える。
+TOML の基本の文字列（`"..."`）では `\` を `\\` と書くので、リテラル文字列（`'...'`）を使う。
+
+書き換える前：
+
+```toml
+[lists]
+numbers = ["{{{n}}}"]
+```
+
+書き換えた後：
+
+```toml
+[lists]
+numbers = ['\{{n}\}']
+```
+
+## G03251
+
+[lists] の numbers の一字の見本の差し込みは使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[lists]` の `numbers` の書式に、表記を一字の見本で選ぶ差し込み（`{1}`、`{一}`、`{①}`、`{a}`、`{A}`、`{i}`、`{I}`、`{イ}`、`{ア}`）を書いた。
+表記は、`{n:<名前>}` と名前で選ぶ（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
+見本と名前の対応は「直し方」にある。
+エラーは書式ごとに一つであり、メッセージは書式の最初の見本の書き換え先を示す。
+同じ書式に `{{` か `}}` もあれば、[G03250](#g03250) も出す。
+エラーなので、ビルドは `--no-notices` を付けても失敗する。
+位置はその書式の値である。
+
+- メッセージ: `[lists] の numbers の {<見本>} は使えません。{n:<名前>} と書きます: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.parseStyle`）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 主な原因
+
+- 以前の書き方に合わせて、表記を一字の見本で選んだ。
+
+### 直し方
+
+見本の差し込みを、メッセージの `{n:<名前>}` に書き換える。
+`{1}` は `{n:arabic}`、`{一}` は `{n:kanji}`、`{①}` は `{n:circled}`、`{a}` と `{A}` は `{n:lower-alpha}` と `{n:upper-alpha}`、`{i}` と `{I}` は `{n:lower-roman}` と `{n:upper-roman}`、`{イ}` は `{n:iroha}`、`{ア}` は `{n:aiueo}` である。
+
+書き換える前：
+
+```toml
+[lists]
+numbers = ["{n}.", "({a})", "{一}、"]
+```
+
+書き換えた後：
+
+```toml
+[lists]
+numbers = ["{n}.", "({n:lower-alpha})", "{n:kanji}、"]
+```
+
+## G03252
+
+柱の書式の {{ と }} は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のマスターページの柱の書式の行に、括弧そのものを表す `{{` か `}}` を書いた。
+書式の括弧そのものは、バックスラッシュのエスケープ（`\{` と `\}`）で書く。
+エラーは行ごとに一つである。
+エラーなので、ビルドは `--no-notices` を付けても失敗する。
+位置はその行の値である。
+
+- メッセージ: `柱の書式の {{ と }} は使えません。\{ と \} と書きます: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.parseStyle`）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 主な原因
+
+- 以前の書き方に合わせて、柱の書式の括弧を `{{` と `}}` と書いた。
+
+### 直し方
+
+`{{` を `\{` に、`}}` を `\}` に書き換え、リテラル文字列（`'...'`）で書く。
+
+書き換える前：
+
+```toml
+[masters.body]
+running-head = { position = "top-outside", content = ["{{{meta.title}}}"] }
+```
+
+書き換えた後：
+
+```toml
+[masters.body]
+running-head = { position = "top-outside", content = ['\{{meta.title}\}'] }
+```
+
+## G03253
+
+[notes] の mark-size は使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[notes]` に `mark-size` を書いた。
+注の印の大きさは、印の文字スタイル（`[notes]` の `mark-style`、既定は組み込みの `note-mark`）の `size` で決める。
+メッセージは、`mark-style` を書いた本ではその文字スタイルを、書いていない本では `note-mark` を移す先として示す。
+`mark-size` と印の文字スタイルの `size` を両方書いた本でも、このエラーだけを出し、以前の競合の [G03006](#g03006)（[docs/adr/0214](adr/0214-mark-size-conflict-names-the-style-that-writes-the-size.md)）は出さない。
+四つの旧記法（[G03250](#g03250) から [G03253](#g03253)）のどれかがある `style.toml` は、ほかの検査をせずに旧記法のエラーだけを報告する。
+エラーなので、ビルドは `--no-notices` を付けても失敗する。
+位置は `mark-size` の値である。
+
+- メッセージ: `[notes] の mark-size は使えません。[character-styles.<印の文字スタイル>] の size に移します`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.parseStyle`）
+- ADR: [ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)
+
+### 主な原因
+
+- 以前の書き方に合わせて、印の大きさを `mark-size` で書いた。
+
+### 直し方
+
+`mark-size` を消し、同じ値を印の文字スタイルの `size` に書く。
+`mark-style` を書いていない本では `[character-styles.note-mark]` の `size` に書く。
+`mark-style` で別の文字スタイルを指す本では、その文字スタイルの `size` に書く。
+`mark-size` は、絶対の寸法が印の位置の文字の大きさを超えると、その文字の大きさで組んだ。
+文字スタイルの `size` にはこの上限がなく、印の位置の文字より大きい値もそのまま組む。
+
+書き換える前：
+
+```toml
+[notes]
+mark-size = "0.65zw"
+```
+
+書き換えた後：
+
+```toml
+[character-styles.note-mark]
+size = "0.65zw"
+```
+
 ## G03254
 
 組版用の値の名前が重複しています
@@ -8128,6 +8305,37 @@ HarfBuzz が読めるほかの形（`kern[3:5]` のような範囲、`aalt=on` �
 ### 直し方
 
 欄と同じ種類の宣言を参照する。
+
+## G03259
+
+ページを持たない出力では、注にページごとの番号を振れません
+
+- 重大度: 警告
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[notes]` の `numbering` が `"page"` の本を、HTML、EPUB、プレーンテキストのいずれかに組む（[ADR 0383](adr/0383-page-local-note-numbers.md)）。
+これらの出力は固定したページを持たないので、注の番号をページごとに振れない。
+出力は止めず、文書の組み立て（S1）の仮の番号、つまり本の全体の通し番号で、脚注と傍注を組む。
+PDF だけのビルドでは出さない。
+`golem check` は四つのターゲットを検査するので、注のある本では出る。
+注も傍注もない本では出さない。
+一つのビルドに一度だけ出し、位置は本の最初の注（脚注か傍注）である。
+
+- メッセージ: `[notes] の numbering = "page" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.pageNumberingDiagnostics`）。`golem check` とビルドが出す
+- ADR: [docs/adr/0383](adr/0383-page-local-note-numbers.md)
+
+### 主な原因
+
+- `numbering = "page"` の本のターゲットに、HTML、EPUB、プレーンテキストを含めた。
+
+### 直し方
+
+PDF でだけページごとの番号が要るなら、直さなくてよい。
+HTML、EPUB、プレーンテキストの注は本の通し番号になる。
+どの出力でも同じ番号が要るなら、`numbering` を `"chapter"`（既定）か `"book"` にする。
 
 ## G04001
 
@@ -10225,6 +10433,8 @@ PDF で、和文の中の全角のダッシュの連なり（二倍ダッシュ�
 記号の連なりが尽きた後に記号を重ねること、算用数字に戻ること、最初に戻ることはしない。
 番号は文書の組み立て（S1）で決まるので、[G07029](#g07029) と同じく出力の段階で報告する。
 PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、どれも書かない。
+ただし、`[notes]` の `numbering` が `"page"` のとき、PDF はページごとの番号を、改ページの後で調べる（[ADR 0383](adr/0383-page-local-note-numbers.md)）。
+このとき、S1 の仮の番号（本の全体の通し番号）は、HTML、EPUB、プレーンテキストのいずれかをターゲットに含むビルドでだけ調べる。
 同じ入力から同じ diagnostics が出るようにするためである。
 位置はその注である。
 リストの番号の [G07029](#g07029) とは、直すキーが違うのでコードを分ける。
@@ -11922,6 +12132,68 @@ PDF のビルドとプリフライトで出し、PDF を書かない。
 
 表示されたパスのフォントを完全なファイルに差し替えてから、PDF を組み直す。
 
+## G08108
+
+CFF の参照を確かめきれません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの CharString が参照するサブルーチンを、確かめきれない。
+CharString の演算子 `random` がとりうる値すべてでたどり、たどる枝の実行の数（数と演算子を一つずつ数え、すべての枝を足す）が 100000 を超えた場合に、このエラーになる。
+`random` を含まないグリフでも、実行の数が上限を超えればこのエラーになる。
+`random` から作った値で 0 を割りうる場合、負の数の平方根をとりうる場合、スタックの外を指しうる場合と、無限大になりうる値を掛け算、割り算、位置に使う場合も、このエラーになる。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+G08107 とは独立に出す。
+表の構造の確かめで G08107 になったフォントでは、このエラーは出ない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `CFF の参照を確かめきれません: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)
+
+### 主な原因
+
+グリフの輪郭が、とても長い命令の列を持っているか、`random` から作った値で 0 を割りうるなど、値によっては結果が定まらない計算をしている。
+仕様に合っていても、Golem が確かめきれないフォントはこのエラーになる。
+
+### 直し方
+
+メッセージの番号は、フォントの中のグリフの番号である。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08109
+
+フォントのグリフの寸法を読めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+組版に使うグリフの寸法を、FreeType が読めない（`FT_Load_Glyph` が失敗する）。
+フォントの種類によらない。
+寸法の無いグリフを `/FontBBox` と幅の表から黙って除くと、出力が黙って変わるので、エラーにする。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+G08107 と G08108 とは独立に出す。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `フォントのグリフの寸法を読めません: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font`）
+- ADR: [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)
+
+### 主な原因
+
+グリフの輪郭が壊れている。
+CFF の輪郭のフォントで、`random` や算術で作った値をサブルーチンの番号に使うグリフは、仕様に合っていても FreeType が読めない。
+
+### 直し方
+
+メッセージの番号は、フォントの中のグリフの番号である。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
 ## G09001
 
 プリフライトの設定に誤りがあります
@@ -12025,7 +12297,7 @@ PDF に埋め込んだフォントの形式が、プリフライトの設定の 
 版のずれで、小さな文字がにじむからである。
 ルビと圏点も文字に含める。
 大きさの出どころ、字の種類、色の組ごとに一つにまとめる。
-大きさの出どころは、その文字の大きさを決めた `style.toml` の定義であり、段落スタイルか文字スタイルか見出しの `size`、`[notes]` の `mark-size`、`[page.grid]` の `font-size`（どの定義も `size` を書かずに組んだ文字。柱とノンブルを含む）、`[hidden-folio]` の `size` のどれかである。
+大きさの出どころは、その文字の大きさを決めた `style.toml` の定義であり、段落スタイルか文字スタイルか見出しの `size`、`[page.grid]` の `font-size`（どの定義も `size` を書かずに組んだ文字。柱とノンブルを含む）、`[hidden-folio]` の `size` のどれかである。
 `based-on` で `size` を引き継ぐスタイルの文字は、`size` を書いた引き継ぎ元の定義にまとめる。
 字の種類は、親文字、ルビ、圏点のどれかである。
 色は、スウォッチの名前である。
@@ -12038,7 +12310,7 @@ diagnostics は、位置の原稿の順に並べる。
 改ページで変わるのは、メッセージのページの列だけである。
 diagnostic の事実（JSON の `facts`）に、大きさの出どころの `style.toml` のキー（`source`、`paragraph-styles.a.size` など）と字の種類（`part`、`base`、`ruby`、`kenten` のどれか）と、メッセージと同じ表記の大きさ（`size`、`1.41mm` など）を持つ。
 
-- メッセージ: `文字が小さすぎます: <大きさ>（<min-size> 未満、<出どころ>、色 <スウォッチの名前>、PDF の <ページ> ページ目）`（例: `文字が小さすぎます: 1.41mm（1.76mm 未満、段落スタイル a の size、色 rich、PDF の 1 ページ目）`）。`<出どころ>` は `段落スタイル a の size`、`文字スタイル b の size のルビ`、`[headings.1] の size の圏点`、`[notes] の mark-size`、`[page.grid] の font-size` のように書く。スウォッチを持たない文字の色は `なし` と書く
+- メッセージ: `文字が小さすぎます: <大きさ>（<min-size> 未満、<出どころ>、色 <スウォッチの名前>、PDF の <ページ> ページ目）`（例: `文字が小さすぎます: 1.41mm（1.76mm 未満、段落スタイル a の size、色 rich、PDF の 1 ページ目）`）。`<出どころ>` は `段落スタイル a の size`、`文字スタイル b の size のルビ`、`[headings.1] の size の圏点`、`[page.grid] の font-size` のように書く。スウォッチを持たない文字の色は `なし` と書く
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)（まとめの単位と位置）
 

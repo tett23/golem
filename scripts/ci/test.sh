@@ -4603,5 +4603,126 @@ else
   ng "browser-leftovers: refuses to launch Safari outside its dedicated runner (docs/adr/0309)"
 fi
 
+# ---------------------------------------------------------------- ci-critical-path.sh
+# The time of a run of ci.yml for a pull request, the longest path through
+# the needs of its jobs, and the median of the runs (docs/adr ADR 0392)
+cpath() { sh "$HERE/ci-critical-path.sh" "$@"; }
+CPD=$HERE/testdata/ci-critical-path
+CP=$WORK/ci-critical-path
+mkdir -p "$CP"
+# cp_job NAME SECONDS [CONCLUSION [WAIT]]: one job of the jobs API, created
+# at a fixed time, started WAIT seconds later (0 unless given), and run for
+# SECONDS seconds, with the conclusion CONCLUSION (success unless given)
+cp_job() {
+  jq -cn --arg n "$1" --argjson s "$2" --arg c "${3:-success}" --argjson w "${4:-0}" \
+    '{name: $n, status: "completed", conclusion: $c, created_at: (1800000000 | todate),
+      started_at: (1800000000 + $w | todate), completed_at: (1800000000 + $w + $s | todate)}'
+}
+# cp_run FILE JOB...: FILE is the response of the jobs API of a run of JOBs
+cp_run() {
+  f=$1
+  shift
+  printf '%s\n' "$@" | jq -s '{total_count: length, jobs: .}' >"$f"
+}
+# cp_all SECONDS [NAME:SECONDS[:CONCLUSION[:WAIT]]]...: the jobs of
+# testdata/ci-critical-path/ci.yml, one per line, each of SECONDS seconds
+# but those given after it; a NAME of build (or build (RUNNER)) is a runner
+# of build, which is not there unless given
+cp_all() {
+  d=$1
+  shift
+  for j in changes scripts-linux wasm determinism visual release-scripts scripts-macos format plugins editors editors-lsp verapdf caches ci; do
+    printf "%s\n" "$@" | grep -q "^$j:" || cp_job "$j" "$d"
+  done
+  for o in "$@"; do
+    # shellcheck disable=SC2086 # split at the colons
+    (IFS=:; set -- $o; cp_job "$@")
+  done
+}
+# cp_files FILE LINES: cp_run FILE with the lines of LINES as the jobs
+cp_files() {
+  f=$1
+  shift
+  printf '%s\n' "$1" | jq -s '{total_count: length, jobs: .}' >"$f"
+}
+: >"$WORK/in"
+
+# needs read from the ci.yml of now are those of the ADR: changes,
+# scripts-linux and editors wait for no job; ci waits for all but caches
+cp_norm() {
+  while read -r job deps; do
+    printf '%s %s\n' "$job" "$(printf '%s\n' $deps | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+  done | sed 's/ $//' | LC_ALL=C sort
+}
+CP_NEEDS='build: changes
+caches: build changes wasm
+changes:
+ci: build changes determinism editors editors-lsp format plugins release-scripts scripts-linux scripts-macos verapdf visual wasm
+determinism: build
+editors-lsp: changes
+editors:
+format: changes
+plugins: changes
+release-scripts: changes
+scripts-linux:
+scripts-macos: changes
+verapdf: changes
+visual: changes
+wasm: changes'
+run cpath --needs
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
+# the three forms of needs (a word, a list in brackets, the lines of a list),
+# quoted or not, with a comment after them
+run cpath --workflow "$CPD/ci.yml" --needs
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: needs is read in each of its three forms"; fi
+
+# a run of jobs that wait for no job takes the seconds of ci
+cp_run "$CP/flat.json" "$(cp_job changes 50)" "$(cp_job editors 70)" "$(cp_job ci 7)"
+run cpath --workflow "$CPD/flat.yml" "$CP/flat.json"
+expect "ADR 0392 I1: a run of jobs with no needs takes the seconds of ci" 0 7
+
+# changes 10, build 200, determinism 30, the others 5: ci ends at 10 + 200 + 30 + 5
+cp_files "$CP/path.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30')"
+run cpath --workflow "$CPD/ci.yml" "$CP/path.json"
+expect "ADR 0392 I1: ci ends at changes 10 + build 200 + determinism 30 + ci 5" 0 245
+
+# a job that is not on the longest path does not count: caches is not a need of ci
+cp_files "$CP/caches.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30' 'caches:900')"
+run cpath --workflow "$CPD/ci.yml" "$CP/caches.json"
+expect "ADR 0392 I1: caches, which ci does not wait for, does not count" 0 245
+
+# a run whose build was skipped is left out
+cp_files "$CP/docs.json" "$(cp_all 5 'build:0:skipped')"
+run cpath --workflow "$CPD/ci.yml" "$CP/docs.json" "$CP/path.json"
+expect "ADR 0392 I2: a run that skipped build is left out" 0 245
+run cpath --workflow "$CPD/ci.yml" "$CP/docs.json"
+if [ "$CODE" = 1 ] && grep -qF 'no run that ran build' "$WORK/err"; then ok; else ng "ADR 0392 I2: no run left fails"; fi
+
+# a skipped job takes 0 seconds, whatever its times say
+cp_files "$CP/skipped.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30' 'scripts-macos:1000:skipped')"
+run cpath --workflow "$CPD/ci.yml" "$CP/skipped.json"
+expect "ADR 0392 I2: a skipped job takes 0 seconds" 0 245
+
+# build of runners of 100 and 300 seconds takes 300 seconds
+cp_files "$CP/matrix.json" "$(cp_all 5 'build (a):100' 'build (b):300')"
+run cpath --workflow "$CPD/ci.yml" "$CP/matrix.json"
+expect "ADR 0392 I2: build of runners of 100 and 300 seconds takes 300" 0 315
+
+# scripts-macos waits 2 hours for a runner, then runs 60 seconds: 60
+cp_files "$CP/queue.json" "$(cp_all 5 'changes:10' 'build (a):20' 'scripts-macos:60:success:7200')"
+run cpath --workflow "$CPD/ci.yml" "$CP/queue.json"
+expect "ADR 0392 I3: the wait of scripts-macos for its runner does not count" 0 75
+
+# the median of 1, 2, 3, 4 is 2.5; of 1, 2, 3 is 2; the order of the files does not matter
+for s in 1 2 3 4; do cp_run "$CP/m$s.json" "$(cp_job changes 0)" "$(cp_job ci "$s")"; done
+run cpath --workflow "$CPD/flat.yml" "$CP/m3.json" "$CP/m1.json" "$CP/m4.json" "$CP/m2.json"
+expect "ADR 0392 I4: the median of 1, 2, 3, 4 is 2.5" 0 2.5
+run cpath --workflow "$CPD/flat.yml" "$CP/m2.json" "$CP/m3.json" "$CP/m1.json"
+expect "ADR 0392 I4: the median of 1, 2, 3 is 2" 0 2
+# a workflow without the job ci is refused
+printf 'jobs:\n  a:\n    steps: []\n' >"$CP/noci.yml"
+run cpath --workflow "$CP/noci.yml" "$CP/m1.json"
+if [ "$CODE" = 1 ] && grep -qF 'no job ci' "$WORK/err"; then ok; else ng "ADR 0392 I1: a workflow without the job ci fails"; fi
+
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]

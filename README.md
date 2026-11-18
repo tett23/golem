@@ -4,6 +4,7 @@
 
 Golem は、コマンドラインと CI で動く組版システムである。
 原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
+EPUB は、zip の圧縮に使うライブラリ（zip-archive と zlib）の版も同じ Golem のビルドなら、本からの相対位置を保ってプロジェクトを移しても、ファイル全体がバイト単位で一致する（[Golem ADR 0361](docs/adr/0361-epub-byte-determinism.md)）。
 
 Golem の振る舞いと計画は、次の文書に分けて書いている。
 
@@ -205,9 +206,12 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
+参照を確かめきれない字は G08108、FreeType が寸法を読めない字は G08109 とし、どちらも PDF を書かない（[Golem ADR 0390](docs/adr/0390-deterministic-and-exhaustive-cff-random.md)）。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
+見出しの番号と題のあいだの区切りの文字列は `[headings.<階層>]` の `number-title-separator` で選べ、目次、柱、PDF のしおりもその区切りを使う（[Golem ADR 0372](docs/adr/0372-number-title-separator.md)）。
+図版、コードブロック、表のキャプションの区切りは、段落スタイル `caption` の `number-title-separator` で選べる。
 
 文字と段落の見た目は、スタイルにまとめる。
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
@@ -215,6 +219,9 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 字下げなどの長さ、アキ量、行数を複数の欄で共有するときは、`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` に名前を付ける。
 たとえば `[values.length]` の `indent = "1zw"` は、段落スタイルの `indent = "indent"` と原稿の `@style-def paragraph letter indent=indent` から参照できる（[ADR 0346](docs/adr/0346-revise-named-layout-values.md)）。
+
+ルビの読みだけに当てる文字スタイルは、`[composition.ruby]` の `reading-style` で選ぶ。
+文字スタイルが書かない書体と色は外側から引き継ぎ、大きさを書かなければ親文字の半分で組む（[Golem ADR 0369](docs/adr/0369-ruby-reading-style.md)）。
 
 強調と書体の切り替えも、文字スタイルで組む。
 `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic`、`code` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。
@@ -234,6 +241,8 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 文字スタイルと段落スタイルの `punctuation-width = "font"` で、フォントの字形のまま組む（[ADR 0302](docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
+見出し、定義リストの用語、注の本文には、`body` の正規表現スタイルを当てる。
+見出しと用語は一つずつ、注の本文は段落ごとに、別々の段落として照合する（[ADR 0368](docs/adr/0368-regex-style-scope.md)）。
 
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 
@@ -260,6 +269,8 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
+番号の表記は `{n:kanji}` のように名前で選ぶ。
+文字の波括弧は `\{` と `\}` で書く（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 
 PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
 
@@ -271,6 +282,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 技術書のためには、コードブロックに行番号などを付けられる。
 ```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
 `@listing` で取り込むファイルのパスは、`@listing src/Main.hs` のように最初の位置引数に一つ書く（[ADR 0341](docs/adr/0341-revise-retire-listing-src.md)）。
+`@listing src/Main.hs lines="1...3, 5...7"` は指定した行を順に取り込み、コードブロックの `highlight=1...3,5...7` は指定した行を強調する（[ADR 0342](docs/adr/0342-revise-retire-dash-line-ranges.md)）。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 
 CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイルのパスを最初の位置引数に置く（[ADR 0343](docs/adr/0343-revise-retire-table-src.md)）。
@@ -284,6 +296,7 @@ PDF の図版、表、コードブロックのキャプションと傍注の本�
 キャプションの字下げは、そのキャプションを含むファイルのスタイルから引く。
 字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
+本文の注の印の大きさは、`[notes]` の `mark-style` が指す文字スタイル（既定は `note-mark`）の `size` で指定する（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 
@@ -307,7 +320,9 @@ HTML と EPUB では、`[ref-number]` と `[ref-title]` もラベルの行先へ
 どの PDF もタグ付き PDF で、`manifest.toml` の `[targets.pdf]` に `pdfa = "2a"` と `pdfua = "1"` を書けば PDF/A-2a と PDF/UA-1 に準拠させる。
 CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 タグ付き PDF の構造の木では、相互参照は `Reference` になる。
-ルビの親文字の中の `[ref-number]` と `[ref-title]` も、読みのある区切りなら、親文字の `RB` の中の `Reference` になる（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
+ルビの親文字の中の `[ref-number]` と `[ref-title]` も `Reference` になる。
+読みのある区切りの参照は、親文字の `RB` の中に置く（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
+読みのない区切りの参照は、`Ruby` の外の、区切りの字が入る親の構造の要素の中に置く（[Golem ADR 0393](docs/adr/0393-references-in-ruby-segments-without-readings.md)）。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。

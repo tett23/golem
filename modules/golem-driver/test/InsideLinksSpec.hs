@@ -373,6 +373,20 @@ sourceTests =
             inContents a @?= Just "題"
           other -> assertFailure (show other)
         other -> assertFailure (show other),
+    testCase "ADR 0393 I1: inv1_ruby_references_case_7: a reference in a ruby segment without a reading is one annotation over the face of its text" $ do
+      let src = "@label h\n# 題\n参照は[ruby: 前/[ref-title h]後|まえ/]。\n"
+      pdf <- pdfOf horizontalStyle src []
+      pages <- pageGlyphs pdf
+      case insides pdf of
+        -- 題 on the line of 参照は: the paragraph, not the heading
+        [a] -> case (inRect a, [d | (_, s) <- take 1 (glyphsOf '参' pages), (_, d) <- glyphsOf '題' pages, yOf d == yOf s]) of
+          ([x0, _, x1, _], d : _) -> do
+            -- the annotation is over 題 alone: neither 前 nor 後
+            near x0 (xOf d)
+            near (x1 - x0) 10
+            inContents a @?= Just "題"
+          other -> assertFailure (show other)
+        other -> assertFailure (show other),
     testCase "I3 a reference that ends at the end of the line, and one that runs one character over: one annotation a line" $ do
       -- 12 characters a line: 参照は then a title of 9 characters ends the line, of 10 runs over
       let exact = "@label h\n# " <> T.replicate 9 "題" <> "\n参照は[ref-title h]\n"
@@ -512,6 +526,9 @@ outlineTests =
       map (\(d, t, _) -> (d, t)) (outlineOf deep) @?= [(1, "1　一"), (2, "1.1　二")]
       shallow <- pdfOf horizontalStyle "@toc depth=1\n\n# 一\n## 二\n本文。\n" []
       map (\(d, t, _) -> (d, t)) (outlineOf shallow) @?= [(1, "1　一")],
+    testCase "ADR 0372 I1: the outline takes the separator of the level of each heading" $ do
+      pdf <- pdfOf (horizontalStyle <> TE.encodeUtf8 "\n[headings.2]\nnumber = \"{1}.{n}\"\nnumber-title-separator = \"：\"\n") "# 一\n## 二\n本文。\n" []
+      map (\(_, t, _) -> t) (outlineOf pdf) @?= ["1　一", "1.1：二"],
     testCase "I8 no entry: no /Outlines and no /PageMode" $ do
       none <- pdfOf horizontalStyle "@toc depth=1\n\n## 二\n本文。\n" []
       outlineOf none @?= []

@@ -350,7 +350,21 @@ assembleResults channels style manifest project projectDiags results
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
-       in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
+          -- the separators between numbers and titles, by file: a heading's from
+          -- its [headings.<l>], a caption's from the paragraph style caption (Golem ADR 0372)
+          separators =
+            Map.fromList
+              ( [ ((fid, Nothing), separator)
+                | (fid, r) <- Map.toList results,
+                  Just separator <- [paraStyle (withLocalStyles style (erStyles r)) (Just "caption") >>= psNumberTitleSeparator]
+                ]
+                  <> [ ((fid, Just l), separator)
+                     | fid <- Map.keys results,
+                       (l, h) <- Map.toList (stHeadings style),
+                       Just separator <- [hsNumberTitleSeparator h]
+                     ]
+              )
+       in (Just book {bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: Files -> FilePath -> IO (Maybe Text)
 readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p
@@ -898,6 +912,7 @@ buildCore inMemory opts = do
             evDiagnostics e
               <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
               <> maybe [] (chapterNoteDiagnostics (evStyle e) targets infos) (evBook e)
+              <> maybe [] (pageNumberingDiagnostics (evStyle e) targets) (evBook e)
       case evBook e of
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
@@ -909,7 +924,7 @@ buildCore inMemory opts = do
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (evStyle e) book
+                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (all (== TargetPdf) targets) (evStyle e) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
@@ -975,6 +990,17 @@ chapterNoteDiagnostics style targets infos book
   where
     gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
     pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
+
+{- | G03259 (docs/adr/0383): notes numbered per page, and a target without
+fixed pages (HTML, EPUB, plain text), which numbers them in the order of
+the book. Once, at the first note or sidenote of the book; none for a
+book without them.
+-}
+pageNumberingDiagnostics :: Style -> [Target] -> Book -> [Diagnostic]
+pageNumberingDiagnostics style targets book
+  | stNotesNumbering style /= NumberPerPage || not (any (`elem` targets) [TargetHtml, TargetEpub, TargetText]) = []
+  | otherwise =
+      take 1 [diagnostic "G03259" Warning sp "[notes] の numbering = \"page\" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります" | (_, _, sp) <- bookNoteSites book]
 
 data PreflightOptions = PreflightOptions
   { poRoot :: !FilePath,
@@ -1221,6 +1247,7 @@ htmlConfig dev e book missing bib =
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+      hcRubyReadingStyle = rdReadingStyle ruby,
       hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
       hcNoBreak = or [keepsPageBreak c | Document _ bs <- bookDocs book, Block _ _ _ (PageControl c) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)

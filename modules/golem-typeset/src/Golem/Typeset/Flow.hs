@@ -25,9 +25,12 @@ module Golem.Typeset.Flow
     composedTables,
     layoutPdf,
     layoutPdfWith,
+    layoutPdfUnnumbered,
+    bookNoteSites,
     gridLine,
     runningHeadLines,
     numberedTitle,
+    bookNumberedTitle,
     pagesOf,
     bookSections,
     layoutLabels,
@@ -112,7 +115,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Assemble.Numbering (titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
@@ -660,20 +663,32 @@ reused between the rounds of S2 or not (docs/adr ADR 0251): the result is
 the same, and the tests compare the two.
 -}
 layoutPdfWith :: Bool -> PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
-layoutPdfWith reuse inp0 geom fonts =
+layoutPdfWith reuse = layoutPdfNumbering reuse True
+
+{- | 'layoutPdf' without numbering the notes per page once the pages are
+settled (docs/adr/0383): the marks keep the numbers of the book. The
+tests compare it with 'layoutPdf' to see that numbering the pages lays
+out nothing again.
+-}
+layoutPdfUnnumbered :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
+layoutPdfUnnumbered = layoutPdfNumbering True False
+
+-- | 'layoutPdfWith', numbering the notes per page or not (docs/adr/0383).
+layoutPdfNumbering :: Bool -> Bool -> PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
+layoutPdfNumbering reuse numbered inp0 geom fonts =
   let inp = codeInput inp0
-   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) <> noteNumberDiagnostics (piStyle inp) (piBook inp) of
+   in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (lsNumbers (stLists (piStyle inp))) (pgVertical geom) (piBook inp) <> noteNumberDiagnostics True (piStyle inp) (piBook inp) of
         ds@(_ : _) -> pure (Left ds)
         [] -> do
           loaded <- loadFigures inp
           -- a figure that cannot be placed stops the PDF (G08010, golem-pdf ADR 0008)
           case figureDiagnostics inp loaded of
             ds@(_ : _) -> pure (Left ds)
-            [] -> layoutFigures reuse inp geom fonts (Map.mapMaybe (either (const Nothing) Just) loaded)
+            [] -> layoutFigures reuse numbered inp geom fonts (Map.mapMaybe (either (const Nothing) Just) loaded)
 
 -- | 'layoutPdf' with the figures read.
-layoutFigures :: Bool -> PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
-layoutFigures reuse inp geom fonts figures = do
+layoutFigures :: Bool -> Bool -> PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
+layoutFigures reuse numbered inp geom fonts figures = do
   -- S2: compose with assumed page numbers until they settle
   -- the names of the marks for G07021: the terms of the index, the bodies of the entries of channels (golem-doc ADR 0007)
   let terms =
@@ -708,7 +723,8 @@ layoutFigures reuse inp geom fonts figures = do
       -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
       -- in the size of the document of each sidenote (docs/adr ADR 0014)
       let -- the lines towards and away from the spine on their pages (docs/adr/0189)
-          built = built0 {bLines = alignToSpine geom pages (bLines built0)}
+          -- numbered per page, the marks take the numbers of their pages, once the pages are settled (docs/adr/0383)
+          built = (if numbered then renumberPageNotes pages else id) (built0 {bLines = alignToSpine geom pages (bLines built0)})
           metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
           placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
           -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
@@ -728,9 +744,79 @@ layoutFigures reuse inp geom fonts figures = do
           tocPages = Map.fromList [(lid, tp) | (lid, _, tp) <- tocEntries]
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
-       in case concat [ds | (_, Left ds) <- placed] of
+       in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
             [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
+
+{- | The marks of notes numbered per page with their numbers (docs/adr/0383),
+on the settled pages: each page numbers the notes and the sidenotes it
+calls apart, from 1 in the order of the book, which is that of their
+numbers before the pages were known; the mark at the start of the body
+takes the number of its mark in the text. A mark keeps the width it
+reserved, so no line and no page changes: nothing is laid out again. A
+layout of another numbering has no such marks and is as it is.
+-}
+renumberPageNotes :: [PageOut] -> Built -> Built
+renumberPageNotes pages built
+  | isNothing (feMarkReserve fe) = built
+  | otherwise =
+      built
+        { bLines = Map.map setLine (bLines built),
+          bTableLines = Map.map (map (fmap setLine)) (bTableLines built),
+          bFigures = Map.map (\pf -> pf {pfCaption = map partLine (pfCaption pf)}) (bFigures built),
+          bCodes = Map.map (\ci -> ci {ciCaption = map partLine (ciCaption ci), ciContinued = line <$> ciContinued ci}) (bCodes built),
+          bTableCaptions = Map.map (\cc -> cc {ccLines = map partLine (ccLines cc)}) (bTableCaptions built)
+        }
+  where
+    fe = bFlowEnv built
+    numbers = pageNoteNumbers pages built
+    numberOf ch n = Map.findWithDefault n (ch, n) numbers
+    env = feBodyEnv fe
+    line l = l {lineItems = map item (lineItems l)}
+    item = \case
+      Box w c -> Box w (renumberMark env numberOf c)
+      other -> other
+    partLine pl = pl {ptLine = line (ptLine pl)}
+    setLine sl = sl {slLine = line (slLine sl), slNotes = [(k, map line ls) | (k, ls) <- slNotes sl], slSidenotes = [(sp, map partLine ls) | (sp, ls) <- slSidenotes sl]}
+
+{- | The number each note and sidenote takes on its page (docs/adr/0383),
+by its channel and its number in the book: its place among the marks in
+the text of its channel on the page where its mark is first set (a
+header row of a table is set again on later pages), in the order of the
+book. The marks are those of the lines of the text, the headings, the
+tables and their captions, the captions of figures and code blocks.
+-}
+pageNoteNumbers :: [PageOut] -> Built -> Map (NoteChannel, Int) Int
+pageNoteNumbers pages built =
+  Map.fromList
+    [ ((ch, n), k)
+    | (_, calls) <- Map.toAscList byPage,
+      (ch, ns) <- Map.toList (Map.fromListWith (<>) [(ch, [n]) | (ch, n) <- calls]),
+      (k, n) <- zip [1 ..] (Set.toAscList (Set.fromList ns))
+    ]
+  where
+    -- the first page of each call, then the calls of each page
+    firstPages = Map.fromListWith min [(call, poNumber p) | p <- pages, l <- columnLines p, call <- callsIn l]
+    byPage = Map.fromListWith (<>) [(pg, [call]) | (call, pg) <- Map.toList firstPages]
+    callsIn l = [(mnChannel mn, mnNumber mn) | Box _ c <- lineItems l, Just mb <- [bcMark c], Just mn <- [mbNumber mb], mnCall mn]
+    lineAt lid = slLine <$> Map.lookup lid (bLines built)
+    columnLines p =
+      concat
+        [ case s of
+            SLine lid ->
+              maybe [] pure (lineAt lid)
+                <> map (slLine . snd) (Map.findWithDefault [] lid (bTableLines built))
+                <> maybe [] (map ptLine . ccLines) (Map.lookup lid (bTableCaptions built))
+            SHeading lid m -> mapMaybe lineAt [lid .. lid + m - 1]
+            SCode lid k _ ->
+              mapMaybe lineAt [lid .. lid + k - 1]
+                <> [ptLine pl | Just ci <- [Map.lookup lid (bCodes built)], lid == ciFirst ci, pl <- ciCaption ci]
+            SFigure fid -> figureCaption fid
+            SWrapped fid -> figureCaption fid
+            SPageFigure fid -> figureCaption fid
+        | (_, s) <- sortOn fst (poSlots p)
+        ]
+    figureCaption fid = maybe [] (map ptLine . pfCaption) (Map.lookup fid (bFigures built))
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
 0030): the grid goes on past the type area in the direction of the
@@ -854,7 +940,10 @@ empty; a line is trimmed of spaces (U+0020, U+3000) and left out when
 nothing is left.
 -}
 runningHeadLines :: Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
-runningHeadLines meta projectVars vars content start started = case content of
+runningHeadLines = runningHeadLinesWith (const Nothing)
+
+runningHeadLinesWith :: (HeadingInfo -> Maybe Text) -> Map Text Text -> Map [Text] Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
+runningHeadLinesWith separator meta projectVars vars content start started = case content of
   RunningNone -> []
   RunningLines ls -> mapMaybe line (toList ls)
   where
@@ -881,7 +970,7 @@ runningHeadLines meta projectVars vars content start started = case content of
             render h = case form of
               HeadShort -> Just (short h)
               -- the separator of the language of the book (golem-html ADR 0002)
-              HeadNumbered -> Just (maybe (short h) (\n -> n <> numberSeparator (Map.findWithDefault "" "language" meta) n <> short h) (hiNumberText h))
+              HeadNumbered -> Just (maybe (short h) (\n -> n <> titleSeparator (Map.findWithDefault "" "language" meta) (separator h) n (short h) <> short h) (hiNumberText h))
               HeadNumber -> hiNumberText h
          in chosen >>= render
 
@@ -890,7 +979,23 @@ separator of the language of the book and the title; the title alone
 without a number.
 -}
 numberedTitle :: Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
-numberedTitle lang sp num is = maybe [] (\n -> [Text sp (n <> numberSeparator lang n)]) num <> is
+numberedTitle lang sp num is = numberedTitleWith Nothing lang sp num is is
+
+{- | 'numberedTitle' with the separator the style of the file of the span
+gives for the level of a heading, or for a caption with no level (Golem
+ADR 0372).
+-}
+bookNumberedTitle :: Book -> Maybe Int -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
+bookNumberedTitle book level lang sp num is = numberPrefix book level lang sp num is <> is
+
+{- | The number and the separator alone; the separator is left out when the
+title (the last argument, only its text is read) is empty (Golem ADR 0372).
+-}
+numberPrefix :: Book -> Maybe Int -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
+numberPrefix book level lang sp num title = numberedTitleWith (Map.lookup (spanFile sp, level) (bookTitleSeparators book)) lang sp num title []
+
+numberedTitleWith :: Maybe Text -> Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline] -> [Inline]
+numberedTitleWith separator lang sp num title is = maybe [] (\n -> [Text sp (n <> titleSeparator lang separator n (foldMap inlineText title))]) num <> is
 
 {- | The sections of the book (docs/adr/0260): the page-numbering of each
 chapter file, by its place among the chapter files.
@@ -987,7 +1092,7 @@ runningHeads inp geom layout =
         | otherwise = case m >>= mgRunningHead of
             Nothing -> []
             Just (co, ce, _, _) ->
-              runningHeadLines meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
+              runningHeadLinesWith (\h -> Map.lookup (hiFile h, Just (hiLevel h)) (bookTitleSeparators (piBook inp))) meta projectVars (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
 
 {- | G07051 (golem-driver ADR 0022): a line of a running head wider than the
@@ -1414,14 +1519,35 @@ labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs |
         _ -> []
 
 {- | Numbers of notes that the notation of [notes] mark-format cannot
-write (docs/adr/0177): G07102 at the note, whatever the target.
+write (docs/adr/0177): G07102 at the note, whatever the target. Numbered
+per page, the numbers of the book are those of HTML, EPUB and plain text
+alone, and the PDF checks the numbers of its pages once it knows them
+(docs/adr/0383): the first argument says whether the targets are the PDF
+alone, whose book numbers are then not checked.
 -}
-noteNumberDiagnostics :: Style -> Book -> [Diagnostic]
-noteNumberDiagnostics style book =
+noteNumberDiagnostics :: Bool -> Style -> Book -> [Diagnostic]
+noteNumberDiagnostics pdfOnly style book =
   [ diagnostic "G07102" Error sp ("注の番号 " <> T.pack (show n) <> " は、[notes] の mark-format " <> renderMarkFormat fmt <> " で表せません")
-  | d <- bookDocs book,
+  | -- numbered per page, the numbers of the pages are checked once they are known (docs/adr/0383)
+    not pdfOnly || stNotesNumbering style /= NumberPerPage,
+    d <- bookDocs book,
     (sp, n, _) <- documentNotes d,
     null (writeNumber (mfNotation fmt) (toInteger n))
+  ]
+  where
+    fmt = stNotesMarkFormat style
+
+{- | G07102 for notes numbered per page (docs/adr/0383): a number of a page
+that the notation of [notes] mark-format cannot write, at the note.
+-}
+pageNoteNumberDiagnostics :: Style -> Book -> Map (NoteChannel, Int) Int -> [Diagnostic]
+pageNoteNumberDiagnostics style book numbers =
+  [ diagnostic "G07102" Error sp ("注の番号 " <> T.pack (show k) <> " は、[notes] の mark-format " <> renderMarkFormat fmt <> " で表せません")
+  | stNotesNumbering style == NumberPerPage,
+    d <- bookDocs book,
+    (sp, n, _) <- documentNotes d,
+    Just k <- [Map.lookup (ChannelNote, n) numbers],
+    null (writeNumber (mfNotation fmt) (toInteger k))
   ]
   where
     fmt = stNotesMarkFormat style
@@ -1527,6 +1653,7 @@ composeEnv bookLang style geom fonts assumed look =
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
           ceNumberUnitPenalty = compNumberUnitPenalty comp,
           ceRuby = rubyStyleOf style (lkSize look),
+          ceRubyReading = styledReading style,
           ceVerticalNumbers = verticalNumbersNamed (stNumbersVertical style),
           ceRefPageNumbers = case fromMaybe (stNumbersVertical style) (stNumbersRefPage style) of
             "sideways" -> Nothing
@@ -1603,8 +1730,14 @@ body apart from the mark: it neither stretches nor breaks (golem-layout
 ADR 0018).
 -}
 withNoteMark :: Style -> Bool -> SrcSpan -> Int -> [Inline] -> [Inline]
-withNoteMark style vertical sp n body = styled (markInlines sp (markParts vertical pre notation (toInteger n) suf)) <> (Aki sp (AkiZw (1 / 4)) : body)
+withNoteMark style vertical sp n body = styled mark <> (Aki sp (AkiZw (1 / 4)) : body)
   where
+    parts = markParts vertical pre notation (toInteger n) suf
+    {- numbered per page, the mark is one text, which 'markLabelBox' makes one
+    box of the reserved width (docs/adr/0383) -}
+    mark
+      | stNotesNumbering style == NumberPerPage = [Text sp (markPartsText parts)]
+      | otherwise = markInlines sp parts
     MarkFormat pre notation suf = stNotesMarkFormat style
     -- in the character style of [notes] body-mark-style (docs/adr/0177)
     styled xs = maybe xs (\name -> [CharStyle sp name xs]) (stNotesBodyMarkStyle style)
@@ -1612,6 +1745,23 @@ withNoteMark style vertical sp n body = styled (markInlines sp (markParts vertic
 -- | How many inlines the mark of a note is in 'withNoteMark': the label of the Note (docs/adr ADR 0183).
 noteMarkCount :: Style -> Bool -> SrcSpan -> Int -> Int
 noteMarkCount style vertical sp n = length (withNoteMark style vertical sp n []) - 1
+
+{- | The look of the reading of a ruby set in a look, in the character style
+of [composition.ruby] reading-style (docs/adr/0369); Nothing without one,
+for 'readingLook'. The style is applied over the look of the reading: the
+font and the colour the style does not write are those around, and the
+size it does not write is half the base. A size it writes, in zw too, is
+measured against the base (its nominal size in a range of superscript or
+subscript), not against the half.
+-}
+styledReading :: Style -> Look -> Maybe Look
+styledReading style outer = do
+  name <- rdReadingStyle (compRuby (stComposition style))
+  def <- charStyle style name
+  let reading = readingLook outer {lkRubyReading = Nothing}
+      full = if lkPosition outer == PositionNormal then lkSize outer else lkNominalSize outer
+      under = if isJust (csSize def) then reading {lkSize = full, lkNominalSize = full} else reading
+  pure (restyle style under (CharStyle (mkSpan (FileId 0) 0 0) name [])) {lkRubyReading = Nothing}
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -1752,10 +1902,10 @@ data FrameKind
   | FChannel
   | -- | the lines of a paragraph of a style that keeps its lines
     FPara
-  | {- | a note at the end of a chapter, by its span, and how many inlines
-    its mark is: in the tree after its mark
+  | {- | a note at the end of a chapter, by its span, how many inlines its
+    mark is and its number: in the tree after its mark
     -}
-    FEndNote !SrcSpan !Int
+    FEndNote !SrcSpan !Int !Int
   | {- | a paragraph after the first of a note at the end of a chapter, by
     the span of the note (docs/adr/0263): in the tree after the first
     -}
@@ -2037,7 +2187,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
          in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
               -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
               : concat
-                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n))] 0 Nothing Nothing
+                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
                     : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
                 | (nsp, n, para0 : rest) <- ns
                 ]
@@ -2105,7 +2255,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   -- the number is at the heading (golem-cli ADR 0008)
-                  title = numberedTitle lang sp (if haNoNumber attrs then Nothing else num) is
+                  title = bookNumberedTitle book (Just l) lang sp (if haNoNumber attrs then Nothing else num) is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
                   rules = maybe (Nothing, Nothing) (\h -> (hsRuleBefore h, hsRuleAfter h)) (Map.lookup l (stHeadings style))
                in (n, [(unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace lang style geom l)) (SourceHeading l)) {uRules = rules}])
@@ -2129,7 +2279,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                   entryUnit e =
                     let st = styleOf' e
                         (face, ind) = paraLook style geom st
-                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (numberedTitle lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
+                     in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (bookNumberedTitle book (Just (teLevel e)) lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
                   spaceOf key st = fromMaybe 0 (paraStyle style st >>= key)
                   gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | g > 0]
                   -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
@@ -2286,7 +2436,9 @@ data FlowEnv = FlowEnv
     -- | the reserve for the page number of a table of contents entry: W and two em (golem-driver ADR 0009)
     feTocReserve :: Sp,
     -- | where the characters of a text are in the sources (docs/adr ADR 0195)
-    feSourceAt :: SrcSpan -> Text -> Int -> Int
+    feSourceAt :: SrcSpan -> Text -> Int -> Int,
+    -- | with notes numbered per page, how many notes and sidenotes the book has (docs/adr/0383)
+    feMarkReserve :: Maybe (Int, Int)
   }
 
 flowEnv :: PdfInput -> PageGeometry -> LoadedFonts -> Assumed -> FlowEnv
@@ -2306,12 +2458,37 @@ flowEnv inp geom fonts assumed = fe
           feNotesAtEnd = stNotesPlacement style == PlaceChapterEnd,
           feBodyEnv = body,
           feTocReserve = fst (tocMetrics body) + 2 * fs,
-          feSourceAt = sourceAt (Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp)))
+          feSourceAt = sourceAt (Map.map (TE.encodeUtf8 . sfText) (projectSources (piProject inp))),
+          feMarkReserve = if stNotesNumbering style == NumberPerPage then Just (noteCounts (piBook inp)) else Nothing
         }
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe}
+lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe}
+
+{- | How many notes and how many sidenotes the book has (docs/adr/0383):
+numbered per page, the book numbers them in its order before the pages
+are known, so the largest number of each is how many there are.
+-}
+noteCounts :: Book -> (Int, Int)
+noteCounts book =
+  let found = bookNoteSites book
+   in (maximum (0 : [n | (ChannelNote, n, _) <- found]), maximum (0 : [n | (ChannelSidenote, n, _) <- found]))
+
+-- | The notes and the sidenotes of the book in its order: the channel, the number and the span of each (docs/adr/0383).
+bookNoteSites :: Book -> [(NoteChannel, Int, SrcSpan)]
+bookNoteSites book = concatMap (concatMap inlineNotes) (concatMap blockInlineLists (concat [bs | Document _ bs <- bookDocs book]))
+  where
+    inlineNotes = \case
+      Note sp n nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      Sidenote sp n nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      Kenten _ _ xs -> concatMap inlineNotes xs
+      Color _ _ xs -> concatMap inlineNotes xs
+      CharStyle _ _ xs -> concatMap inlineNotes xs
+      Lang _ _ xs -> concatMap inlineNotes xs
+      Link _ _ xs -> concatMap inlineNotes xs
+      Resolved _ _ _ xs -> concatMap inlineNotes xs
+      _ -> []
 
 {- | The link of the number of a cited work (docs/adr/0267): to its entry
 in the @bibliography its mark belongs to; none without @bibliography.
@@ -2323,7 +2500,7 @@ citeLink book sp k = case Map.lookup (spanFile sp, sp) (bookCiteMarks book) of
 
 -- | A composition with the character styles of the style of a document (docs/adr ADR 0014).
 withDocStyle :: Style -> ComposeEnv -> ComposeEnv
-withDocStyle st e = e {ceRestyle = restyle st, ceSizeSourceOf = restyleSource st}
+withDocStyle st e = e {ceRestyle = restyle st, ceRubyReading = styledReading st, ceSizeSourceOf = restyleSource st}
 
 -- | The composition of the text of a unit: its look, its document's style and the aki set of its paragraph style.
 unitEnv :: FlowEnv -> Unit -> ComposeEnv
@@ -2369,7 +2546,7 @@ number of an entry of the bibliography.
 unitLabelInlines :: Unit -> Int
 unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
   ks
-    | (k : _) <- [k | FEndNote _ k <- ks] -> k
+    | (k : _) <- [k | FEndNote _ k _ <- ks] -> k
     | FBibliography `elem` ks -> 1
     | otherwise -> 0
 
@@ -2377,7 +2554,7 @@ unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
 the end of a chapter goes back to its mark in the text.
 -}
 unitLabelLink :: Unit -> Maybe LinkTarget
-unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FEndNote sp _) _ <- uFrames u]
+unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FEndNote sp _ _) _ <- uFrames u]
 
 {- | The units of the body in order, numbered from 0, and the marker width
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
@@ -2485,7 +2662,11 @@ composeUnit fe widths lineWidth u =
       marker = markerItems env (listInner widths u) u
       -- the anchors count the items of the text; the marker comes first
       shift = length marker
-      (textItems, anchors) = composeInlines env (uInlines u)
+      (textItems0, anchors) = composeInlines env (uInlines u)
+      -- numbered per page, the mark of a note at the end of a chapter is one box of the reserved width (docs/adr/0383)
+      textItems = case [n | Frame _ (FEndNote _ _ n) _ <- uFrames u] of
+        n : _ | isJust (feMarkReserve fe) -> markLabelBox env ChannelNote n textItems0
+        _ -> textItems0
       items = marker <> textItems
       lines' = brLines (A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items)
    in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift
@@ -2574,12 +2755,14 @@ the line without a mark, no indent and no space between them.
 footnoteLines :: FlowEnv -> ComposeEnv -> Style -> NoteId -> Int -> [[Inline]] -> [Line]
 footnoteLines fe env st k n ps =
   concat
-    [ brLines (breakParagraph (adjustedParams st (stNotesBodyStyle st) (feParams fe)) (const (feMeasure fe)) (fst (composeInlines env' is)))
+    [ brLines (breakParagraph (adjustedParams st (stNotesBodyStyle st) (feParams fe)) (const (feMeasure fe)) (labelled (fst (composeInlines env' is))))
     | (j, para) <- zip [0 :: Int ..] ps,
       let (env', is) =
             if j == 0
               then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n, ceLabelLink = Just (LinkTo (DestNoteMark k))}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
-              else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para)
+              else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para),
+      -- numbered per page, the mark at the start is one box of the reserved width (docs/adr/0383)
+      let labelled = if j == 0 && isJust (feMarkReserve fe) then markLabelBox env' ChannelNote n else id
     ]
 
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
@@ -2608,8 +2791,12 @@ sidenoteLines fe st sp n snBody =
       snEnv = (withFileExceptions fe (spanFile sp) (sidenoteEnv fe st)) {ceSite = sidenoteSite sp n, ceLabelInlines = length prefix}
       snParams = (adjustedParams st (Just "sidenote") (feParams fe)) {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition (piStyle (feInput fe))))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
+      -- numbered per page, the number at the start is one box of the reserved width (docs/adr/0383)
+      labelled j = case ceSidenoteMarker (feBodyEnv fe) of
+        MarkerNumber | j == 0, isJust (feMarkReserve fe) -> markLabelBox snEnv ChannelSidenote n
+        _ -> id
    in -- the paragraph of the body, the number first, in the indents of sidenote (docs/adr/0367)
-      partLines st geom "sidenote" snMeasure (\j width is -> brLines (breakParagraph snParams width (fst (composeInlines (if j == 0 then snEnv else snEnv {ceLabelInlines = 0}) is)))) [prefix <> snBody]
+      partLines st geom "sidenote" snMeasure (\j width is -> brLines (breakParagraph snParams width (labelled j (fst (composeInlines (if j == 0 then snEnv else snEnv {ceLabelInlines = 0}) is))))) [prefix <> snBody]
 
 -- | The composition of sidenotes: the role and size of the paragraph style sidenote of the document (docs/adr ADR 0014).
 sidenoteEnv :: FlowEnv -> Style -> ComposeEnv
@@ -2620,6 +2807,8 @@ sidenoteEnv fe st =
 -- | The number of a sidenote before its body; it is at the sidenote (golem-cli ADR 0008).
 sidenotePrefix :: FlowEnv -> SrcSpan -> Int -> [Inline]
 sidenotePrefix fe sp n = case ceSidenoteMarker (feBodyEnv fe) of
+  -- numbered per page, the number is an inline of its own, the label (docs/adr/0383)
+  MarkerNumber | isJust (feMarkReserve fe) -> [Text sp (T.pack (show n)), Text sp " "]
   MarkerNumber -> [Text sp (T.pack (show n) <> " ")]
   MarkerSymbol -> [Text sp "※ "]
   MarkerNone -> []
@@ -2676,10 +2865,13 @@ placeFigure fe u fig content =
       -- across the lines for each sp along them
       ratio = if pgVertical geom then w / h else h / w
       number = Map.lookup (uSpan u) (bookFigures (piBook inp))
-      -- the paragraphs of the caption, the number before the first (docs/adr/0367)
-      captionParas = case [is | Block _ _ _ (Paragraph _ is) <- figCaption fig] of
-        [] -> [numberedTitle (bookLanguage inp) (uSpan u) number []]
-        p : ps -> numberedTitle (bookLanguage inp) (uSpan u) number p : ps
+      -- the paragraphs of the caption, the number before the first (docs/adr/0367);
+      -- the separator only when some paragraph has text (Golem ADR 0372)
+      paras = [is | Block _ _ _ (Paragraph _ is) <- figCaption fig]
+      prefix = numberPrefix (piBook inp) Nothing (bookLanguage inp) (uSpan u) number (concat paras)
+      captionParas = case paras of
+        [] -> [prefix]
+        p : ps -> (prefix <> p) : ps
       captionInlines = concat captionParas
       -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
       (_, cs) = paraFace (uStyle u) geom "caption"
@@ -2852,7 +3044,7 @@ captionLinesOf fe u lead number = \case
   Nothing -> CodeCaption [] fs pitch 0 []
   Just is ->
     let inp = feInput fe
-        captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
+        captionInlines = bookNumberedTitle (piBook inp) Nothing (bookLanguage inp) (uSpan u) number is
         (_, cs) = paraFace (uStyle u) (feGeom fe) "caption"
         captionParams = (adjustedParams (piStyle inp) (Just "caption") (feParams fe)) {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition (piStyle inp)))}
         captionAnchors = snd (composeInlines (captionEnv fe u) captionInlines)

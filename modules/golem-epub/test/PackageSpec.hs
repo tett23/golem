@@ -7,18 +7,20 @@ module PackageSpec (packageTests) where
 import Codec.Archive.Zip
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.List (sort)
+import Data.List (permutations, sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (fromGregorian)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Golem.Assemble (Book (..), TocEntry (..))
 import Golem.Assemble.Formats (arabic)
 import Golem.Doc.IR
 import Golem.Epub
 import Golem.Html
 import Golem.Syntax.Span
+import System.Directory (setModificationTime)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -76,6 +78,7 @@ emptyBook =
       bookChapterOf = [],
       bookChannels = [],
       bookChannelDecls = Map.empty,
+      bookTitleSeparators = Map.empty,
       bookImages = Map.empty
     }
 
@@ -84,7 +87,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
+  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -94,9 +97,61 @@ written = withSystemTempDirectory "golem-epub" $ \tmp -> do
   -- read strictly: the directory is removed on return
   toArchive . BL.fromStrict <$> BS.readFile out
 
+{- | Builds the same book in a fresh project root (a new temporary
+directory each call), with the given modification time on the assets
+and the assets in the given order, as an asset producer may list them.
+Returns the root and the bytes of the EPUB (Golem ADR 0361).
+-}
+archiveBytes :: Integer -> [FilePath] -> IO (FilePath, BS.ByteString)
+archiveBytes epoch names = withSystemTempDirectory "epub-project" $ \root -> do
+  let site = (renderXhtml htmlConfig ft emptyBook) {siteAssets = [(name, name) | name <- names]}
+      out = root </> "book.epub"
+  mapM_
+    ( \name -> do
+        BS.writeFile (root </> name) (BS.pack (map (fromIntegral . fromEnum) name))
+        setModificationTime (root </> name) (posixSecondsToUTCTime (fromInteger epoch))
+    )
+    names
+  writeEpub root out cfg0 ft emptyBook site
+  -- read strictly: the directory is removed on return
+  bytes <- BS.readFile out
+  pure (root, bytes)
+
+-- | The bytes do not contain the project root.
+withoutRoot :: (FilePath, BS.ByteString) -> Assertion
+withoutRoot (root, bytes) =
+  assertBool ("the EPUB records " <> root) (not (BS.isInfixOf (BS.pack (map (fromIntegral . fromEnum) root)) bytes))
+
+determinism :: TestTree
+determinism =
+  testGroup
+    "Golem ADR 0361"
+    [ testCase "ADR 0361 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
+        let names = ["a.png", "b.png", "c.png"]
+        expected <- archiveBytes 1000000000 names
+        withoutRoot expected
+        mapM_
+          ( \order -> do
+              actual <- archiveBytes 1700000000 order
+              withoutRoot actual
+              snd actual @?= snd expected
+          )
+          (permutations names),
+      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
+        expected <- archiveBytes 1000000000 ["a.png"]
+        actual <- archiveBytes 1700000000 ["a.png"]
+        assertBool "the roots differ" (fst actual /= fst expected)
+        snd actual @?= snd expected,
+      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
+        expected <- archiveBytes 1000000000 ["a.png", "b.png"]
+        actual <- archiveBytes 1000000000 ["b.png", "a.png"]
+        snd actual @?= snd expected
+    ]
+
 tests :: [TestTree]
 tests =
-  [ testGroup
+  [ determinism,
+    testGroup
       "package document"
       [ testCase "the identifier is the given ISBN" $
           linesWith "<dc:identifier" (opf cfg0) @?= ["<dc:identifier id=\"bookid\">urn:isbn:9784000000000</dc:identifier>"],

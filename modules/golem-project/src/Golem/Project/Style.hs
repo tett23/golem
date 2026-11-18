@@ -399,7 +399,9 @@ data ParaStyleDef = ParaStyleDef
     -- | the character style of the first character of a paragraph (docs/adr/0374)
     psInitialStyle :: !(Maybe Text),
     -- | the indent of a paragraph that starts with an opening bracket (docs/adr/0374)
-    psOpeningIndent :: !(Maybe OpeningIndent)
+    psOpeningIndent :: !(Maybe OpeningIndent),
+    -- | the string between a number and its title (Golem ADR 0372)
+    psNumberTitleSeparator :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -549,7 +551,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -774,13 +776,17 @@ zeroDim = \case
 
 {- | The notices of style.toml: G03100 for a zero indent,
 first-line-indent or end-indent of table, at the value, with the value as
-written (golem-driver ADR 0043); the ways of writing to be retired
-(docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
-numbers, G03116 for a line of a running head format, G03117 for [notes]
-mark-size. A style.toml that does not parse has none.
+written (golem-driver ADR 0043). A style.toml that does not parse has none.
 -}
 styleNotices :: FileId -> Text -> [Diagnostic]
-styleNotices fid src = case Toml.parse src of
+styleNotices fid src = filter ((== Notice) . diagSeverity) (styleSyntaxDiagnostics fid src)
+
+-- | The retired forms of style.toml fail before the style is decoded (ADR 0344).
+styleLegacyErrors :: FileId -> Text -> [Diagnostic]
+styleLegacyErrors fid src = filter ((== Error) . diagSeverity) (styleSyntaxDiagnostics fid src)
+
+styleSyntaxDiagnostics :: FileId -> Text -> [Diagnostic]
+styleSyntaxDiagnostics fid src = case Toml.parse src of
   Left _ -> []
   Right top ->
     let root = Table' (Position 0 1 1) top
@@ -791,13 +797,13 @@ styleNotices fid src = case Toml.parse src of
           Just (pos, written) <- [zeroWritten value]
         ]
           <> concat
-            [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
-                <> [notice "G03115" (spanAt pos) ("[lists] の numbers の {" <> w <> "} は廃止予定です。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
+            [ [diagnostic "G03250" Error (spanAt pos) ("[lists] の numbers の {{ と }} は使えません。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
+                <> [diagnostic "G03251" Error (spanAt pos) ("[lists] の numbers の {" <> w <> "} は使えません。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
             | Just (List' _ xs) <- [lookupValue root ["lists", "numbers"]],
               Text' pos t <- xs,
               Right (_, legacy) <- [parseNumberFormatLegacy t]
             ]
-          <> [ notice "G03116" (spanAt pos) ("柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t)
+          <> [ diagnostic "G03252" Error (spanAt pos) ("柱の書式の {{ と }} は使えません。\\{ と \\} と書きます: " <> t)
              | Just (Table' _ (MkTable masters)) <- [lookupValue root ["masters"]],
                (_, master) <- Map.elems masters,
                k <- ["content", "even", "odd"],
@@ -806,9 +812,12 @@ styleNotices fid src = case Toml.parse src of
                Right (_, legacy) <- [parseRunningFormatLegacy t],
                LegacyBraces `elem` legacy
              ]
-          <> [ notice "G03117" (spanAt pos) "[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます"
+          <> [ diagnostic "G03253" Error (spanAt pos) ("[notes] の mark-size は使えません。[character-styles." <> markStyle <> "] の size に移します")
              | Just v <- [lookupValue root ["notes", "mark-size"]],
-               let pos = valueAnn v
+               let pos = valueAnn v,
+               let markStyle = case lookupValue root ["notes", "mark-style"] of
+                     Just (Text' _ name) -> name
+                     _ -> "note-mark"
              ]
   where
     zeroWritten = \case
@@ -938,6 +947,7 @@ overPara u b =
     (psNextStyle u <|> psNextStyle b)
     (psInitialStyle u <|> psInitialStyle b)
     (psOpeningIndent u <|> psOpeningIndent b)
+    (psNumberTitleSeparator u <|> psNumberTitleSeparator b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1086,7 +1096,9 @@ data HeadingStyle = HeadingStyle
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
     hsRuleAfter :: !(Maybe RuleSpec),
-    hsBlockAlign :: !HeadingBlockAlign
+    hsBlockAlign :: !HeadingBlockAlign,
+    -- | the string between the number and the title of a heading (Golem ADR 0372)
+    hsNumberTitleSeparator :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -1121,13 +1133,14 @@ data RubyStyleDef = RubyStyleDef
     rdBaseSpacing :: !Text,
     rdOverhang :: !Dim,
     -- | "kana" | "none"
-    rdOverhangOnto :: !Text
+    rdOverhangOnto :: !Text,
+    rdReadingStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | JLReq's usual setting.
 defaultRubyStyleDef :: RubyStyleDef
-defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana"
+defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana" Nothing
 
 {- | [sidenotes]: the sidenote column and the marker. The font and the size
 are the paragraph style sidenote's (golem-driver ADR 0011).
@@ -1369,13 +1382,13 @@ runningMetaKeys = ["title", "title_reading", "edition", "publisher", "date", "la
 
 {- | One line of a running head format (golem-driver ADR 0022): text and
 slots in braces, escapes for braces (docs/adr/0177); @{{@ and @}}@ are
-read as braces until they are retired (G03116). 'Left' is the reason of
+read as braces, and style.toml reports them as G03252 (ADR 0344). 'Left' is the reason of
 G03014.
 -}
 parseRunningFormat :: Text -> Either Text [RunningPart]
 parseRunningFormat = fmap fst . parseRunningFormatLegacy
 
--- | 'parseRunningFormat' with the forms to be retired the line uses (G03116).
+-- | 'parseRunningFormat' with the retired forms the line uses (G03252, ADR 0344).
 parseRunningFormatLegacy :: Text -> Either Text ([RunningPart], [Legacy])
 parseRunningFormatLegacy t0
   | T.null t0 = Left "空の行があります"
@@ -2075,7 +2088,8 @@ instance FromValue ParaStyleDef where
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])))
+    separator <- optKey "number-title-separator"
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -2181,8 +2195,9 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
+    separator <- optKey "number-title-separator"
     align <- enumKey "block-align" (map fst headingBlockAlignValues)
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)))
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)) separator)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2191,6 +2206,7 @@ instance FromValue RubyStyleDef where
     b <- enumKey "base-spacing" baseSpacingValues
     o <- dimKey "overhang"
     onto <- enumKey "overhang-onto" overhangOntoValues
+    reading <- optKey "reading-style"
     let d = defaultRubyStyleDef
     pure
       RubyStyleDef
@@ -2198,7 +2214,8 @@ instance FromValue RubyStyleDef where
           rdGroupAlign = fromMaybe (rdGroupAlign d) g,
           rdBaseSpacing = fromMaybe (rdBaseSpacing d) b,
           rdOverhang = fromMaybe (rdOverhang d) o,
-          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto
+          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto,
+          rdReadingStyle = reading
         }
 
 data Expansion = Expansion Int Int
@@ -2407,6 +2424,8 @@ instance FromValue Notes where
       numbering = \case
         "file" -> NumberPerFile
         "book" -> NumberPerBook
+        -- per page of the PDF (docs/adr/0383)
+        "page" -> NumberPerPage
         _ -> NumberPerChapter
 
 -- | [code] (golem-driver ADR 0023): an unknown key or kind is G03006.
@@ -2839,6 +2858,9 @@ layoutValueSites src = case Toml.parse src of
 
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
+  case styleLegacyErrors fid src of
+    [] -> pure ()
+    ds -> Left ds
   (s0, names) <- case Toml.parse src of
     Left _ -> (,Map.empty) <$> either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
     Right tab -> do
@@ -3117,6 +3139,7 @@ codeStyleChecks s =
           [ ("based-on", isJust (psBasedOn d)),
             ("line-breaks", isJust (psLineBreaks d)),
             ("space-between", isJust (psSpaceBetween d)),
+            ("number-title-separator", isJust (psNumberTitleSeparator d)),
             ("indent", isJust (psIndent d)),
             ("first-line-indent", isJust (psFirstLineIndent d)),
             ("regex-styles", isJust (psRegexStyles d)),
@@ -3220,6 +3243,7 @@ styleReferenceChecks owner s =
                ]
             <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
             <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
+            <> [("", styleKeys ["composition", "ruby", "reading-style"], "[composition.ruby] の reading-style の文字スタイルがありません: " <> n) | Just n <- [rdReadingStyle (compRuby (stComposition s))], Map.notMember n cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3576,7 +3600,7 @@ markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
 refPageValues = verticalValues <> ["sideways"]
 placementValues = ["page-foot", "chapter-end"]
-numberingValues = ["chapter", "file", "book"]
+numberingValues = ["chapter", "file", "book", "page"]
 leaderValues = ["dots", "none"]
 
 -- | [tables] caption-position (docs/adr/0262).
@@ -3650,6 +3674,7 @@ styleSchema =
         [ ("font", ref FontRoles),
           ("size", dim),
           ("number", str),
+          ("number-title-separator", str),
           ("page-break", enum pageBreakValues),
           ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
@@ -3668,7 +3693,8 @@ styleSchema =
                 ("group-align", enum groupAlignValues),
                 ("base-spacing", enum baseSpacingValues),
                 ("overhang", dim),
-                ("overhang-onto", enum overhangOntoValues)
+                ("overhang-onto", enum overhangOntoValues),
+                ("reading-style", ref CharStyles)
               ]
           ),
           ("kenten", enum kentenShapeNames),
@@ -3781,6 +3807,7 @@ paraStyleNode =
         ("size", dim),
         ("line-breaks", enum lineBreaksValues),
         ("space-between", int),
+        ("number-title-separator", str),
         ("space-before", int),
         ("space-after", int),
         ("align", enum alignValues),
