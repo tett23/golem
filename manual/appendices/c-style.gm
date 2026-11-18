@@ -632,6 +632,7 @@ PDF でだけ有効です。
 |:---|:---|
 | [code: running-head] | 柱です。[code: { position = "top-outside", content = "heading.1.short" }] のように、位置と内容を書きます。左右のページで変えるときは、[code: content] の代わりに [code: even]（偶数ページ）と [code: odd]（奇数ページ）の両方を書きます。書かなければ柱を組みません。 |
 | [code: folio] | ノンブルです。[code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
+| [code: character-style] | [code: running-head] と [code: folio] の中に書くキーです。柱、ノンブルの文字に当てる文字スタイルの名前を、[code: { position = "bottom-outside", format = "{n}", character-style = "folio" }] のように書きます。この例の [code: folio] は、[code: \[character-styles.folio\]] に定義した文字スタイルです。書かなければ、本文の書体と版面の文字の大きさで組みます。柱とノンブルには別々の文字スタイルを指定でき、左右のページの柱には同じ文字スタイルを当てます。 |
 
 位置には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
 [code: top] は天、[code: bottom] は地、[code: outside] は小口の側、[code: inside] はノドの側、[code: center] は中央です。
