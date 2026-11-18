@@ -628,6 +628,11 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   一つの章を複数のファイルに分け、[code: \[notes\]] の [code: numbering] を [code: "file"] にしたため、章の終わりの注の一覧に同じ番号が二度現れます。
   これは警告で、出力は止まりません。
   [code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
+= [strong: G03259 [code: \[notes\] の numbering = "page" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります]]
+  注の番号をページごとに振る本を、HTML、EPUB、プレーンテキストに組んでいます。
+  これらの出力にはページがないので、本の全体の通し番号で注を組みます。
+  これは警告で、出力は止まりません。
+  どの出力でも同じ番号にしたいときは、[code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
 = [strong: G03004 [code: 大文字と小文字だけが異なるパスです: …]]
   大文字と小文字だけが違う二つのパスを使っています。
   コンピューターによって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。
@@ -804,6 +809,8 @@ PDF を組むときに出るエラーです。
   [code: {n:note-symbols}] の記号（7 まで）や [code: {n:circled}] の丸数字（50 まで）のように、表せる数に限りのある表記で、それを超える番号の注があります。
   [code: \[notes\]] の [code: numbering] で番号を振り直す範囲を狭めるか、[code: mark-format] を算用数字などの表記に替えてください。
   PDF、HTML、EPUB、プレーンテキストのどれも書きません。
+  [code: numbering = "page"] の PDF では、ページごとに振った番号で調べます。
+  ターゲットに HTML、EPUB、プレーンテキストを含むときは、本の全体の通し番号でも調べます。
 = [strong: G04012 [code: \[headings.…\] の number … の {…} では、… を表せません]]、[strong: G04013 [code: \[figures\] の number … の {…} では、… を表せません]]、[strong: G04014 [code: \[code\] の number … の {…} では、… を表せません]]、[strong: G04100 [code: \[tables\] の number … の {…} では、… を表せません]]
   見出し、図版、コードブロック、表の番号の書式の表記で表せない番号があります。
   たとえば [code: {n:circled}] の丸数字は 50 まで、[code: {n:note-symbols}] の記号は 7 までで、どちらも 0 を表せません。

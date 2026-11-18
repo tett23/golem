@@ -2421,6 +2421,8 @@ instance FromValue Notes where
       numbering = \case
         "file" -> NumberPerFile
         "book" -> NumberPerBook
+        -- per page of the PDF (docs/adr/0383)
+        "page" -> NumberPerPage
         _ -> NumberPerChapter
 
 -- | [code] (golem-driver ADR 0023): an unknown key or kind is G03006.
@@ -3619,7 +3621,7 @@ markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
 refPageValues = verticalValues <> ["sideways"]
 placementValues = ["page-foot", "chapter-end"]
-numberingValues = ["chapter", "file", "book"]
+numberingValues = ["chapter", "file", "book", "page"]
 leaderValues = ["dots", "none"]
 
 -- | [tables] caption-position (docs/adr/0262).
