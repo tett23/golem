@@ -15,6 +15,7 @@ import CliSpec
 import CodeFontSpec (codeFontTests)
 import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
+import CompressedNoteMarksSpec (compressedNoteMarksTests)
 import DecorationsSpec (decorationsTests)
 import DiagnosticSitesSpec
 import DiagnosticsSpec
@@ -192,6 +193,7 @@ tests skips =
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
              testGroup "notes numbered per page (docs/adr/0383)" pageNoteNumbersTests,
+             testGroup "the kanji numbers of note marks set flat (docs/adr/0381)" compressedNoteMarksTests,
              testGroup "the paragraphs of captions and sidenotes (docs/adr/0367)" captionSidenoteParagraphsTests,
              testGroup "the paragraph style controls (docs/adr/0374)" paragraphStyleControlsTests,
              FontInstanceSpec.tests,
