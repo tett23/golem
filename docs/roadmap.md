@@ -109,7 +109,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### 本の部品の拡張
 
-- **平字の注の印（未実装）**：縦組みで注の番号に漢数字を使うとき、上下の外枠を 50% にした漢数字（平字）で組めるようにする（JLReq の 4.2.2、[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「実装しないこと」）。字形を行の方向にだけ縮める描き方は二倍ダッシュ（[ADR 0172](adr/0172-continuous-double-dashes.md)）にあるが、印の箱の長さと字の位置の決め方が変わるので、要るときに ADR で決める。 [Golem ADR 0381](adr/0381-compressed-note-marks.md)。
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
 - **ページを持たない出力でのページごとの注の番号（未実装）**：`[notes]` の `numbering = "page"` は、PDF ではページごとに番号を振る（[docs/specifications.md の「ページごとの注の番号」](specifications.md#ページごとの注の番号)）。HTML、EPUB、プレーンテキストには ADR が diagnostic を出すことだけを定め、その重大度と、その出力に振る番号を定めていない。今は警告（G03259）を出し、本の通し番号で組む。未決事項の「ページを持たない出力の注の番号」を決めてから、ADR の状態を `accepted` にする。 [Golem ADR 0383](adr/0383-page-local-note-numbers.md)。
 - **韻文の拡張（未実装）**：[言語と文化ごとの詩行と組版の例](research/verse-layout.md) を参照する。行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。 [Golem ADR 0384](adr/0384-verse-line-numbers.md)。
