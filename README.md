@@ -241,6 +241,7 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 文字の詰めと送りも、スタイルで指定する。
 文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
 既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
+PDF では、縦中横とルビ（親文字と読みのまとまり）のトラッキングを、中の字の間には足さず、まとまりの後ろに一度だけ足す（[ADR 0370](docs/adr/0370-tracking-inline-boxes.md)）。
 括弧類、句読点、中点類は、PDF で既定でフォントの全角の字形（`fwid`）で組み、全角の字形がなければ全角の字幅の箱の中に字形を置く。
 文字スタイルと段落スタイルの `punctuation-width = "font"` で、フォントの字形のまま組む（[ADR 0302](docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 PDF の本文の横組みで約物にもプロポーショナルメトリクス（`palt`）を当てるには、`[fonts.body]` に `punctuation-proportional = true` と `features = ["palt"]` を指定する。
