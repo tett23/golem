@@ -1,6 +1,6 @@
 # ADR 0391: 原稿の変数の宣言を @set に戻す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

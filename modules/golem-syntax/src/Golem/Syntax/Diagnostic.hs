@@ -116,7 +116,6 @@ noticeCodes =
       "G02064", -- an escaped space at the start of a line in a paragraph that keeps its lines
       "G02079", -- an escaped space at the end of a line in a paragraph that keeps its lines
       "G02094", -- @blank-line written in a row (docs/adr ADR 0046)
-      "G02155", -- @set's @ (to be retired; ADR 0336)
       "G03023", -- no style.toml
       "G03100", -- a zero indent of caption or sidenote (golem-driver ADR 0043)
       "G03120", -- no paragraph-separator in [source] (docs/adr/0193)

@@ -111,7 +111,7 @@ nextStyleTests =
         let s = styleOf "[paragraph-styles.lead]\nnext-style = \"after\"\n\n[paragraph-styles.after]\n"
         map fst (paragraphs s "@style lead\n一\n\n- 項目\n\n二\n") @?= [Just "lead", Nothing]
         map fst (paragraphs s "@style lead\n一\n\n@blank-line\n\n二\n") @?= [Just "lead", Nothing]
-        map fst (paragraphs s "@style lead\n一\n\nset x = 1\n\n二\n") @?= [Just "lead", Just "after"],
+        map fst (paragraphs s "@style lead\n一\n\n@set x = 1\n\n二\n") @?= [Just "lead", Just "after"],
       testCase "ADR 0374: a paragraph with other attributes takes the next-style" $ do
         let s = styleOf "[paragraph-styles.lead]\nnext-style = \"after\"\n\n[paragraph-styles.after]\n"
             r = evalResult (ctxOf s) "@style lead\n一\n\n@label p\n二\n"

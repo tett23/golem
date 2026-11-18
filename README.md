@@ -201,8 +201,8 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 
 ### 原稿の変数
 
-行頭の `set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[Golem ADR 0336](docs/adr/0336-unprefixed-variable-declarations.md)）。
-旧記法の `@set x = "abc"` も使えるが、先頭の `@` に移行用の notice が出る。
+行頭の `@set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[ADR 0391](docs/adr/0391-keep-the-at-sign-on-variable-declarations.md)）。
+`@` の無い行頭の `set x = "abc"` は宣言にならず、本文になる。
 
 ### 書体とスタイル
 
