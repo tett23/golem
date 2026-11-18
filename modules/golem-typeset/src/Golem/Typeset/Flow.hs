@@ -1024,12 +1024,12 @@ runningHeadNotices inp geom fonts layout =
   | (n, t) <- sortOn id [(n, t) | (t, n) <- Map.toList (Map.fromListWith min wide)]
   ]
   where
-    masters = Map.fromList [(poNumber p, m) | ((p : _), Just m) <- zip (pagesOf (plPages layout)) (pageMasters inp geom layout)]
+    masters = Map.fromList [(poNumber p, m) | (p : _, Just m) <- zip (pagesOf (plPages layout)) (pageMasters inp geom layout)]
     wide =
       [ (t, n)
       | (n, ls) <- Map.toList (runningHeads inp geom layout),
-        t <- ls,
         let look = masterLook (piStyle inp) (pgFontSize geom) (Map.lookup n masters >>= mgHeadStyle),
+        t <- ls,
         lookWidth fonts look t > rectW (typeAreaFor geom n)
       ]
 
