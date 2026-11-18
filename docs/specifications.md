@@ -4403,6 +4403,9 @@ G08107 はフォントごとに一つ、G08108 はフォントとグリフの番
 たとえば、FreeType は `random` や算術で作った値を `callsubr` などの番号に受けつけないので、そのグリフは G08109 になる。
 G08109 は、フォントとグリフの番号の組ごとに一つ出し、G08107 と G08108 とは独立に出す。
 G08108 と G08109 は、G08107 と同じく PDF のビルドとプリフライトで出し、位置は `style.toml` の先頭である。
+G08108 と G08109 は、ほかの diagnostics と同じ規則で並べる（[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+同じコードのものは位置が同じなので、メッセージの文字列の順に並び、フォントのパスの文字列の順、同じフォントではグリフの番号の文字列の順になる。
+このため、同じフォントのグリフ 10 はグリフ 9 より先に出る。
 
 ### ToUnicode と ActualText
 
