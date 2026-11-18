@@ -84,9 +84,11 @@ data ChannelEntry = ChannelEntry
   deriving stock (Eq, Show)
 
 {- | The range over which footnotes and sidenotes are numbered from 1
-(golem-driver ADR 0018): a file, a chapter of the manifest, or the book.
+(golem-driver ADR 0018): a file, a chapter of the manifest, or the book;
+or each page of the PDF (docs/adr/0383), which the layout numbers once
+the pages are known: the book numbers them before as it does the book.
 -}
-data NoteNumbering = NumberPerFile | NumberPerChapter | NumberPerBook
+data NoteNumbering = NumberPerFile | NumberPerChapter | NumberPerBook | NumberPerPage
   deriving stock (Eq, Show)
 
 -- | The values of the @doc@ namespace.
@@ -747,6 +749,8 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
     restart i ch prev = case acNoteNumbering cfg of
       NumberPerFile -> True
       NumberPerBook -> i == 0
+      -- in the order of the book until the pages are known (docs/adr/0383)
+      NumberPerPage -> i == 0
       NumberPerChapter -> i == 0 || isNothing ch || ch /= prev
     doc fresh (Document fid bs) = do
       when fresh (put (0, 0))
