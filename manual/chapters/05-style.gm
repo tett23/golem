@@ -201,7 +201,7 @@ gap = "0.5zw"
 表記ごとの表せる番号の範囲は「[ref-title app-style]」（[ref-page app-style] ページ）にあります。
 波括弧そのものは、[code: \\{] と [code: \\}] のようにバックスラッシュを付けて書きます。
 TOML の基本の文字列（[code: "..."]）ではバックスラッシュを重ねる必要があるので、[code: '\\{{n}\\}'] のようにリテラル文字列で書くと読みやすくなります。
-以前の書き方の [code: {{] と [code: }}]、[code: {一}] や [code: {a}] のような一字の見本の差し込みは、今も同じ意味に読みますが、廃止予定のお知らせ（G03114、G03115）が出ます。
+以前の書き方の [code: {{] と [code: }}]、[code: {一}] や [code: {a}] のような一字の見本の差し込みは使えず、書くとエラー（G03250、G03251）になります。
 印の文字スタイルは [code: marker-style = "strong"] のように指定します。
 [code: gap] は印と本文の間の空きで、書かなければ印の最後の文字から決まります。
 
@@ -902,7 +902,7 @@ content = ["{meta.title}", "{heading.1.short}"]
 差し込みの末尾に [code: ?] を付けると（[code: {heading.2.short?}]）、値がないときに空になり、行の前後の空白は取り除かれます。
 [code: \["{heading.1.short}　{heading.2.short?}"\]] は、節のないページでは章の題だけになります。
 [code: {] や [code: }] そのものは、[code: \\{] と [code: \\}] と書きます。
-以前の書き方の [code: {{] と [code: }}] は、今も同じ意味に読みますが、廃止予定のお知らせ（G03116）が出ます。
+以前の書き方の [code: {{] と [code: }}] は使えず、書くとエラー（G03252）になります。
 
 章の始まりのページ（[code: page-break = "recto"] の見出しのあるページ）と白ページには、柱を出しません。
 章ごとに別のマスターページを使うときは、[code: manifest.toml] の章の項目に [code: { file = "front.gm", master = "front" }] のように [code: master] を書きます。
@@ -999,7 +999,7 @@ leader = "dots"
 - [code: \[notes\]] の [code: body-mark-style]：PDF の注の本文の先頭の印に当てる文字スタイルの名前です。省くと、注の本文の文字のまま組みます。
 - [code: \[notes\]] の [code: body-style]：PDF のページの下の脚注と章の終わりの注の本文に当てる段落スタイルの名前です。書体、大きさ、カーニングとトラッキング、アキ量のセットが当たります。字下げと段落の前後の空きは当たりません。省くと、本文の書体と版面の文字の大きさで組みます。本文の注の印と傍注は変わりません。
 - [code: \[notes\]] の [code: heading-style]：章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。省くと、2 の階層の見出しの書体と大きさで組みます。行取りは 2 の階層の見出しのままです。段落スタイルの大きさは本文の文字の大きさを超えられないので、見出しを大きくしたいときは [code: \[headings.2\]] の [code: size] を変えます。
-- [code: \[notes\]] の [code: mark-size]：以前の書き方で、廃止予定です。書くとお知らせ（G03117）が出ます。[code: \[character-styles.note-mark\]] の [code: size] に書き換えてください。
+- [code: \[notes\]] の [code: mark-size]：以前の書き方で、エラー（G03253）になります。[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書き換えてください。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注の領域を、小口側の余白に設けます。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
