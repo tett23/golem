@@ -25,6 +25,7 @@ import Golem.Layout.Aki qualified as A
 import Golem.Layout.CharClass
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
+import Golem.Length qualified as L
 import LineBreakEnum (Setting (..), composeEnv)
 import LineBreakInvariants (refArabicDigit, refNumeral, refPostfixed, refPrefixed)
 import Test.Tasty
@@ -82,11 +83,36 @@ unbreakableSpacingTests =
         assertBool
           "the unprotected boundaries of the custom set stretch"
           (and [itemStretch g > 0 | r <- checked, rSet r == custom, (False, gs) <- bounds r, g <- gs]),
-      testCase "ADR 0362 I1: outside a run of digits the set applies, and digits in vertical writing stretch" $ do
+      testCase "ADR 0362 I1: outside a run of digits the set applies" $ do
         let stretches v t = [unSp (itemStretch g) | (_, gs) <- bounds (run v custom t), g <- gs]
-        stretches False "１漢" @?= [unSp fs `div` 2]
-        stretches True "１２" @?= [unSp fs `div` 2]
+        stretches False "１漢" @?= [unSp fs `div` 2],
+      -- two full-width digits in vertical writing are no pair of B2, so the
+      -- glue between them stretches as the set says (root ADR 0396)
+      testCase "root ADR 0396 I2: two full-width digits in vertical writing stretch as the set says" $ do
+        let stretches t = [unSp (itemStretch g) | (_, gs) <- bounds (run True custom t), g <- gs]
+        stretches "１２" @?= [unSp fs `div` 2]
+        mapM_
+          ( \(name, set) -> do
+              let (w, y, z) = digitsAki set
+              assertBool (name <> ": the set stretches between two digits") (y > 0)
+              assertEqual name [(False, [(w, y, z)])] [(b, map glueOf gs) | (b, gs) <- bounds (run True set "１１")]
+          )
+          sets,
+      testCase "root ADR 0396 I3: two full-width digits in horizontal writing do not stretch, and keep the width and the shrink of the set" $
+        mapM_
+          ( \(name, set) -> do
+              let (w, _, z) = digitsAki set
+              assertEqual name [(True, [(w, 0, z)])] [(b, map glueOf gs) | (b, gs) <- bounds (run False set "１１")]
+          )
+          sets
     ]
+  where
+    glueOf g = (unSp (itemWidth g), unSp (itemStretch g), unSp (itemShrink g))
+    -- the width, the stretch and the shrink the set gives between two full-width digits
+    digitsAki set =
+      let A.Aki n o m = A.akiBetween set (A.AkiChar (charClass '１')) (A.AkiChar (charClass '１'))
+          size = L.zwToSp fs
+       in (unSp (size o), unSp (size m - size o), unSp (size o - size n))
 
 -- * the inputs
 
