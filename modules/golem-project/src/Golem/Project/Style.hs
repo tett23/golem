@@ -1684,6 +1684,10 @@ data Style = Style
     -} stNotesMarkSize :: !(Maybe Dim),
     -- | [notes] mark-format: the text of note marks in the PDF, the number in a notation (golem-driver ADR 0025, docs/adr/0177)
     stNotesMarkFormat :: !MarkFormat,
+    {- | [notes] mark-shape = "flat": in vertical text the kanji of the
+    numbers of the marks in the PDF are set flat (docs/adr/0381); False
+    when it is not written
+    -} stNotesMarkFlat :: !Bool,
     -- | [notes] mark-style: the character style of the marks in the text in the PDF (docs/adr/0177)
     stNotesMarkStyle :: !Text,
     -- | [notes] body-mark-style: the character style of the marks at the start of note bodies in the PDF; Nothing is none (docs/adr/0177)
@@ -1737,6 +1741,7 @@ defaultStyle =
       stNotesRule = Nothing,
       stNotesMarkSize = Nothing,
       stNotesMarkFormat = defaultMarkFormat,
+      stNotesMarkFlat = False,
       stNotesMarkStyle = "note-mark",
       stNotesBodyMarkStyle = Nothing,
       stNotesBodyStyle = Nothing,
@@ -2384,7 +2389,7 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text)
 
 instance FromValue Notes where
   fromValue =
@@ -2400,6 +2405,8 @@ instance FromValue Notes where
           -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
           <*> optKey "body-style"
           <*> optKey "heading-style"
+          -- the kanji of the numbers of the marks set flat in vertical text (docs/adr/0381)
+          <*> enumKey "mark-shape" markShapeValues
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -2570,9 +2577,9 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf nmst nbst nbody nhead <-
-      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
-        notes@(Notes _ _ _ size _ markStyle _ _ _) <- fromValue v
+    Notes np nn nr nms nmf nmst nbst nbody nhead nshape <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _ _ _ _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
@@ -2612,6 +2619,7 @@ instance FromValue Style where
           stNotesRule = nr,
           stNotesMarkSize = nms,
           stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
+          stNotesMarkFlat = nshape == Just "flat",
           stNotesMarkStyle = fromMaybe (stNotesMarkStyle d) nmst,
           stNotesBodyMarkStyle = nbst,
           stNotesBodyStyle = nbody,
@@ -3590,7 +3598,7 @@ fontFiles s = [(r, p) | (r, FontRole ja la _) <- Map.toAscList (stFonts s), Just
 {- | The values of the enumerations of style.toml, written once for the
 decoder and the schema (docs/adr ADR 0169).
 -}
-bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, leaderValues :: [Text]
+bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
 bindingValues = ["right", "left"]
 writingModeValues = ["vertical", "horizontal"]
 lineBreaksValues = ["join", "keep"]
@@ -3606,6 +3614,8 @@ verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
 refPageValues = verticalValues <> ["sideways"]
 placementValues = ["page-foot", "chapter-end"]
 numberingValues = ["chapter", "file", "book", "page"]
+-- [notes] mark-shape (docs/adr/0381): "flat" alone; the usual marks are set without the key
+markShapeValues = ["flat"]
 leaderValues = ["dots", "none"]
 
 -- | [tables] caption-position (docs/adr/0262).
@@ -3724,7 +3734,8 @@ styleSchema =
           ("mark-style", ref CharStyles),
           ("body-mark-style", ref CharStyles),
           ("body-style", ref ParaStyles),
-          ("heading-style", ref ParaStyles)
+          ("heading-style", ref ParaStyles),
+          ("mark-shape", enum markShapeValues)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]
     masterNode =

@@ -950,6 +950,45 @@ dashesAt env look v (bx, by) txt =
   where
     fonts = deFonts env
 
+{- | A kanji of the number of a note mark set flat in vertical text
+(docs/adr/0381), from the top of its half em down the line: its glyph
+shaped alone in the look of the mark and scaled to half along the line by
+the text matrix, its em box from the top of the half em to its end;
+across the line, as an unscaled glyph. Upright with the vertical font, or
+turned as other text when the font turns it (golem-driver ADR 0015); not
+one glyph, drawn as other text at the top of its half em.
+-}
+flatAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)])
+flatAt env look (bx, by) txt =
+  let size = lkSize look
+      x0 = bx + lkBaselineShift look
+      syn = lkSynthetic look
+      slant = if synSlant syn then syntheticSlant else 0
+      stroke = if synBold syn then syntheticStroke syntheticStrokeJa size else 0
+      em = toSp size
+      s = 1 / 2 :: Rational
+      drawn = case T.unpack txt of
+        [ch] | [g] <- dashShaped fonts True look ch -> Right (glyph g)
+        _ -> Left (runAt env look True False 0 (bx, by) txt)
+      glyph g@Shaped {shFace = ix, shGlyph = gl, shText = t, shPart = part} =
+        let turned = shTurned g
+            r = ref ix (not turned)
+            (matrix, origin)
+              -- the x of the glyph goes down the line, its baseline left of the centre line (golem-driver ADR 0015)
+              | turned = ((0, negate s, 1, negate slant), (x0 - em (lfEmBoxCentral fonts ix), by))
+              -- Identity-V: the glyph origin at the top of the em box, which the matrix scales with it (golem-pdf W2)
+              | otherwise = ((1, 0, slant * s, s), (x0, by))
+            replacement = case actualTextOf (Map.findWithDefault Map.empty r (deTextEntries env)) [(gl, t, part)] of
+              [(_, Just t')] -> Just t'
+              _ -> Nothing
+            run = P.TransformedGlyphRun r size stroke [(matrix, lfCode fonts ix gl, fst origin, snd origin)]
+         in (maybe run (\t' -> P.ActualText t' [run]) replacement, (r, gl, t, part))
+   in case drawn of
+        Left (ms, us) -> (ms, us)
+        Right (m, u) -> ([m], [u])
+  where
+    fonts = deFonts env
+
 {- the mark of a kenten shape in a role at a size, the centre of the
 ink box of its glyph at a point (golem-driver ADR 0019): horizontal,
 in the vertical font (its glyph origin at (1/2, 0.88) em of the
@@ -1314,6 +1353,8 @@ drawLineAt env (x0, y0) sl =
                         -- a tate-chu-yoko of the size of the mark, centred on its column (golem-driver ADR 0045)
                         | toEnum tag == KindTcy = usesOf (whoOf V.PartBase c) look (tcyAt env look (column, oy - o) t)
                         | toEnum tag == KindRotated = runAtU env (whoOf V.PartBase c) look True True 0 (column - Sp (unSp (size * 3) `div` 10), oy - o) t
+                        -- a kanji of the number set flat: half along the line, as wide across it (docs/adr/0381)
+                        | toEnum tag == KindFlat = usesOf (whoOf V.PartBase c) look (flatAt env look (column, oy - o) t)
                         | otherwise = runAtU env (whoOf V.PartBase c) look True False 0 (column, oy - o) t
                    in whole $
                         if vertical
