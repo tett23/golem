@@ -1177,7 +1177,8 @@ rubyPositions env w c =
         Nothing -> 0
       baseAdv = zipWith advOf baseLooks baseUnits
       readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
-      excess = max 0 (sum readAdv - w)
+      -- the tracking after the box is outside the ruby (docs/adr/0370)
+      excess = max 0 (sum readAdv - (w - Sp (round (toInteger (lkTracking look) * unSp (lkSize look) % 1000))))
       rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
    in (rt, rlook, baseLooks, baseUnits, baseAdv, rp)
 

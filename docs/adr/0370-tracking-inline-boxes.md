@@ -1,6 +1,6 @@
 # ADR 0370: 縦中横とルビの外側の字間にトラッキングを適用する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
