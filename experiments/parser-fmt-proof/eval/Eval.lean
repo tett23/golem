@@ -1,0 +1,396 @@
+/- A finite evaluation model for Golem ADR 0351, invariant 5.
+   The environment and step budget are explicit; source comments and layout
+   are absent from the expression passed to evaluation. -/
+namespace GolemEval
+
+inductive Value where
+  | boolean : Bool → Value
+  | nat : Nat → Value
+  | string : String → Value
+  deriving DecidableEq, Repr
+
+inductive Expr where
+  | literal : Value → Expr
+  | variable : String → Expr
+  | add : Expr → Expr → Expr
+  | quotient : Expr → Expr → Expr
+  | ternary : Expr → Expr → Expr → Expr
+  | append : Expr → Expr → Expr
+  | external : String → Expr
+  | call : String → Expr → Expr → Expr
+  deriving DecidableEq, Repr
+
+inductive Failure where
+  | unknownName | missingFile | typeError | divisionByZero | overLimit | noEquation
+  deriving DecidableEq, Repr
+
+structure Environment where
+  variables : List (String × Value)
+  files : List (String × String)
+  deriving Repr
+
+def lookup (bindings : List (String × α)) (name : String) : Option α :=
+  (bindings.find? (fun entry => entry.1 == name)).map Prod.snd
+
+def spend (cost budget : Nat) : Except Failure Nat :=
+  if cost ≤ budget then .ok (budget - cost) else .error .overLimit
+
+def run : Expr → Environment → Nat → Except Failure (Value × Nat)
+  | .literal value, _, budget => .ok (value, budget)
+  | .variable name, env, budget =>
+      match lookup env.variables name with
+      | some value => .ok (value, budget)
+      | none => .error .unknownName
+  | .external path, env, budget => do
+      let left ← spend 1 budget
+      match lookup env.files path with
+      | some value => .ok (.string value, left)
+      | none => .error .missingFile
+  | .add a b, env, budget => do
+      let (x, afterA) ← run a env budget
+      let (y, afterB) ← run b env afterA
+      match x, y with
+      | .nat m, .nat n => return (.nat (m + n), ← spend 1 afterB)
+      | _, _ => .error .typeError
+  | .quotient a b, env, budget => do
+      let (x, afterA) ← run a env budget
+      let (y, afterB) ← run b env afterA
+      let left ← spend 1 afterB
+      match x, y with
+      | .nat _, .nat 0 => .error .divisionByZero
+      | .nat m, .nat (n + 1) => return (.nat (m / (n + 1)), left)
+      | _, _ => .error .typeError
+  | .ternary c a b, env, budget => do
+      let (value, afterCondition) ← run c env budget
+      let left ← spend 1 afterCondition
+      match value with
+      | .boolean true => run a env left
+      | _ => run b env left
+  | .append a b, env, budget => do
+      let (x, afterA) ← run a env budget
+      let (y, afterB) ← run b env afterA
+      match x, y with
+      | .string m, .string n => do
+          let left ← spend (1 + m.length + n.length) afterB
+          return (.string (m ++ n), left)
+      | _, _ => .error .typeError
+  | .call name arg body, env, budget => do
+      let (value, afterArg) ← run arg env budget
+      -- Entering the function and selecting its matching equation each cost one step.
+      let left ← spend 2 afterArg
+      run body { env with variables := (name, value) :: env.variables } left
+
+def eval (budget : Nat) (env : Environment) (expression : Expr) : Except Failure Value := do
+  let (value, _) ← run expression env budget
+  return value
+
+/- The resolved expression tree retains trivia at each subexpression.
+   The grammar model separately checks how source text reaches this tree. -/
+inductive SourceExpr where
+  | literal : Value → SourceExpr
+  | variable : String → SourceExpr
+  | external : String → SourceExpr
+  | add : SourceExpr → SourceExpr → SourceExpr
+  | quotient : SourceExpr → SourceExpr → SourceExpr
+  | ternary : SourceExpr → SourceExpr → SourceExpr → SourceExpr
+  | append : SourceExpr → SourceExpr → SourceExpr
+  | call : String → SourceExpr → SourceExpr → SourceExpr
+  | whitespace : String → SourceExpr → SourceExpr
+  | comment : String → SourceExpr → SourceExpr
+
+def parsed : SourceExpr → Expr
+  | .literal v => .literal v
+  | .variable name => .variable name
+  | .external path => .external path
+  | .add a b => .add (parsed a) (parsed b)
+  | .quotient a b => .quotient (parsed a) (parsed b)
+  | .ternary c a b => .ternary (parsed c) (parsed a) (parsed b)
+  | .append a b => .append (parsed a) (parsed b)
+  | .call name arg body => .call name (parsed arg) (parsed body)
+  | .whitespace _ x | .comment _ x => parsed x
+
+-- At this abstraction level the printer's changes to whitespace are
+-- represented by one canonical spelling. Comments retain their text.
+def format : SourceExpr → SourceExpr
+  | .literal v => .literal v
+  | .variable name => .variable name
+  | .external path => .external path
+  | .add a b => .add (format a) (format b)
+  | .quotient a b => .quotient (format a) (format b)
+  | .ternary c a b => .ternary (format c) (format a) (format b)
+  | .append a b => .append (format a) (format b)
+  | .call name arg body => .call name (format arg) (format body)
+  | .whitespace _ x => .whitespace " " (format x)
+  | .comment text x => .comment text (format x)
+
+@[simp] theorem parsed_format (source : SourceExpr) : parsed (format source) = parsed source := by
+  induction source <;> simp_all [parsed, format]
+
+-- Forget only the spelling of whitespace. Unlike parsed, this projection
+-- retains each comment at its original subexpression, including nested ones.
+def withoutWhitespace : SourceExpr → SourceExpr
+  | .literal v => .literal v
+  | .variable name => .variable name
+  | .external path => .external path
+  | .add a b => .add (withoutWhitespace a) (withoutWhitespace b)
+  | .quotient a b => .quotient (withoutWhitespace a) (withoutWhitespace b)
+  | .ternary c a b => .ternary (withoutWhitespace c) (withoutWhitespace a) (withoutWhitespace b)
+  | .append a b => .append (withoutWhitespace a) (withoutWhitespace b)
+  | .call name arg body => .call name (withoutWhitespace arg) (withoutWhitespace body)
+  | .whitespace _ x => withoutWhitespace x
+  | .comment text x => .comment text (withoutWhitespace x)
+
+theorem I2_expressionCommentPlacement (source : SourceExpr) :
+    withoutWhitespace (format source) = withoutWhitespace source := by
+  induction source <;> simp_all [format, withoutWhitespace]
+
+theorem I3_expressionFormatIdempotent (source : SourceExpr) :
+    format (format source) = format source := by
+  induction source <;> simp_all [format]
+
+/- A derivation records how a successful value is obtained, including
+   argument evaluation and the body of a user function. -/
+inductive Derives : Nat → Environment → Expr → Value → Nat → Prop where
+  | literal : Derives n env (.literal value) value n
+  | variable (found : lookup env.variables name = some value) :
+      Derives n env (.variable name) value n
+  | external (found : lookup env.files path = some value) :
+      Derives (n + 1) env (.external path) (.string value) n
+  | add (left : Derives n env a (.nat x) i)
+        (right : Derives i env b (.nat y) (k + 1)) :
+      Derives n env (.add a b) (.nat (x + y)) k
+  | quotient (left : Derives n env a (.nat x) i)
+             (right : Derives i env b (.nat (y + 1)) (k + 1)) :
+      Derives n env (.quotient a b) (.nat (x / (y + 1))) k
+  | ternaryTrue (condition : Derives n env c (.boolean true) (i + 1))
+        (branch : Derives i env a value k) : Derives n env (.ternary c a b) value k
+  | ternaryElse (condition : Derives n env c test (i + 1))
+        (otherwise : test ≠ .boolean true)
+        (branch : Derives i env b value k) : Derives n env (.ternary c a b) value k
+  | append (left : Derives n env a (.string x) i)
+        (right : Derives i env b (.string y) (k + (1 + x.length + y.length))) :
+      Derives n env (.append a b) (.string (x ++ y)) k
+  | call (argument : Derives n env a value (i + 2))
+         (body : Derives i { env with variables := (name, value) :: env.variables } b result k) :
+      Derives n env (.call name a b) result k
+
+@[simp] theorem spend_exact (n cost : Nat) : spend cost (n + cost) = .ok n := by
+  simp [spend, Nat.le_add_left]
+
+theorem derives_sound (derivation : Derives n env expression value k) :
+    run expression env n = .ok (value, k) := by
+  induction derivation <;> simp_all [run, Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+theorem spend_ok_iff {cost budget left : Nat} :
+    spend cost budget = .ok left ↔ budget = left + cost := by
+  simp only [spend]
+  split <;> simp_all <;> omega
+
+private theorem bind_ok {x : Except Failure α} {f : α → Except Failure β} {b : β} :
+    (x >>= f) = .ok b ↔ ∃ a, x = .ok a ∧ f a = .ok b := by
+  cases x <;> simp [Bind.bind, Except.bind]
+
+theorem derives_complete (h : run expression env n = .ok (value, k)) :
+    Derives n env expression value k := by
+  induction expression generalizing env n value k with
+  | literal => simp [run] at h; obtain ⟨rfl, rfl⟩ := h; constructor
+  | «variable» => simp only [run] at h; split at h <;> first | contradiction | cases h; exact .variable (by assumption)
+  | external =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨left, rfl, h⟩ := h
+    split at h <;> first | contradiction | cases h; exact .external (by assumption)
+  | call name arg body ihArg ihBody =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨⟨v, afterArg⟩, argOk, left, rfl, bodyOk⟩ := h
+    exact .call (ihArg argOk) (ihBody bodyOk)
+  | ternary c a b ihC ihA ihB =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨⟨v, afterC⟩, cOk, left, rfl, branchOk⟩ := h
+    dsimp only at branchOk
+    split at branchOk
+    · exact .ternaryTrue (ihC cOk) (ihA branchOk)
+    · exact .ternaryElse (ihC cOk) (by assumption) (ihB branchOk)
+  | add a b ihA ihB =>
+    simp only [run, bind_ok] at h
+    obtain ⟨⟨x, i⟩, ha, ⟨y, j⟩, hb, h⟩ := h
+    dsimp only at h
+    split at h <;> try contradiction
+    simp only [bind_ok, spend_ok_iff, Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨left, rfl, rfl, rfl⟩ := h
+    exact .add (ihA ha) (ihB hb)
+  | append a b ihA ihB =>
+    simp only [run, bind_ok] at h
+    obtain ⟨⟨x, i⟩, ha, ⟨y, j⟩, hb, h⟩ := h
+    dsimp only at h
+    split at h <;> try contradiction
+    simp only [bind_ok, spend_ok_iff, Pure.pure, Except.pure, Except.ok.injEq, Prod.mk.injEq] at h
+    obtain ⟨left, rfl, rfl, rfl⟩ := h
+    exact .append (ihA ha) (ihB hb)
+  | quotient a b ihA ihB =>
+    simp only [run, bind_ok, spend_ok_iff] at h
+    obtain ⟨⟨x, i⟩, ha, ⟨y, j⟩, hb, left, rfl, h⟩ := h
+    dsimp only at h
+    split at h <;> try contradiction
+    cases h
+    exact .quotient (ihA ha) (ihB hb)
+
+theorem remaining_le_budget (derivation : Derives budget env expression value remaining) :
+    remaining ≤ budget := by
+  induction derivation <;> omega
+
+-- Increasing a successful evaluation's budget by any amount leaves all
+-- steps of the derivation intact. The entire increase remains unspent.
+theorem I5_surplusBudget (d : Derives budget env expression value remaining) (extra : Nat) :
+    Derives (extra + budget) env expression value (extra + remaining) := by
+  induction d with
+  | literal => exact .literal
+  | «variable» found => exact .variable found
+  | external found => exact .external found
+  | add _ _ left right => exact .add left right
+  | quotient _ _ left right => exact .quotient left right
+  | ternaryTrue _ _ cond branch => exact .ternaryTrue cond branch
+  | ternaryElse _ otherwise _ cond branch => exact .ternaryElse cond otherwise branch
+  | append _ _ left right => exact .append left (by simpa [Nat.add_assoc] using right)
+  | call _ _ arg body => exact .call arg body
+
+-- Two successful evaluations of the same expression and environment
+-- yield the same value and consume the same steps, even at different limits.
+theorem I5_uniqueValueAndCost
+    (first : Derives budget₁ env expression value₁ left₁)
+    (second : Derives budget₂ env expression value₂ left₂) :
+    value₁ = value₂ ∧ budget₁ - left₁ = budget₂ - left₂ := by
+  have h₁ := derives_sound (I5_surplusBudget first budget₂)
+  have h₂ := derives_sound (I5_surplusBudget second budget₁)
+  rw [Nat.add_comm budget₂ budget₁] at h₁
+  have same := h₁.symm.trans h₂
+  injection same with pair
+  have values := congrArg Prod.fst pair
+  have remaining := congrArg Prod.snd pair
+  simp only [Prod.fst, Prod.snd] at values remaining
+  exact ⟨values, by omega⟩
+
+private theorem remove_unused (d : Derives budget env expression value remaining)
+    (extra : Nat) (unused : extra ≤ remaining) :
+    Derives (budget - extra) env expression value (remaining - extra) := by
+  have shift (n c : Nat) (h : extra ≤ n) : n + c - extra = n - extra + c := by omega
+  induction d with
+  | literal => exact .literal
+  | «variable» found => exact .variable found
+  | external found =>
+    rw [shift _ _ unused]; exact .external found
+  | add _ r il ir =>
+    have hr := remaining_le_budget r
+    exact .add (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
+  | quotient _ r il ir =>
+    have hr := remaining_le_budget r
+    exact .quotient (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
+  | append _ r il ir =>
+    have hr := remaining_le_budget r
+    exact .append (il (by omega)) (by simpa only [shift _ _ unused] using ir (by omega))
+  | ternaryTrue _ b ic ib =>
+    have hb := remaining_le_budget b
+    exact .ternaryTrue (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) (ib unused)
+  | ternaryElse _ other b ic ib =>
+    have hb := remaining_le_budget b
+    exact .ternaryElse (by simpa only [shift _ 1 (Nat.le_trans unused hb)] using ic (by omega)) other (ib unused)
+  | call _ b ia ib =>
+    have hb := remaining_le_budget b
+    exact .call (by simpa only [shift _ 2 (Nat.le_trans unused hb)] using ia (by omega)) (ib unused)
+
+theorem I5_minimumBudget (ok : run expression env budget = .ok (value, remaining)) :
+    run expression env (budget - remaining) = .ok (value, 0) ∧
+    ∀ smaller < budget - remaining, ∀ result left,
+      run expression env smaller ≠ .ok (result, left) := by
+  have d := derives_complete ok
+  constructor
+  · simpa using derives_sound (remove_unused d remaining (by omega))
+  · intro smaller below result left h
+    have cost := (I5_uniqueValueAndCost d (derives_complete h)).2
+    omega
+
+-- Operand evaluation may itself call functions or consume steps. Once both
+-- finish, charging the division step precedes the zero-divisor diagnostic.
+theorem I5_zeroDivisor (left : Derives budget env a (.nat x) afterA)
+    (right : Derives afterA env b (.nat 0) afterB) :
+    run (.quotient a b) env budget =
+      .error (if afterB = 0 then .overLimit else .divisionByZero) := by
+  have enough (n : Nat) : 1 ≤ n.succ := by omega
+  cases afterB <;>
+    simp [run, derives_sound left, derives_sound right, spend, enough,
+      Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+theorem I5_appendBudget (left : Derives budget env a (.string x) afterA)
+    (right : Derives afterA env b (.string y) afterB) :
+    run (.append a b) env budget =
+      if 1 + x.length + y.length ≤ afterB then
+        .ok (.string (x ++ y), afterB - (1 + x.length + y.length))
+      else .error .overLimit := by
+  by_cases enough : 1 + x.length + y.length ≤ afterB <;>
+    simp [run, derives_sound left, derives_sound right, spend, enough,
+      Bind.bind, Except.bind, Pure.pure, Except.pure]
+
+theorem I5_eval_format (fuel : Nat) (env : Environment) (source : SourceExpr) :
+    eval fuel env (parsed (format source)) = eval fuel env (parsed source) := by
+  rw [parsed_format]
+
+theorem I5_derivation_format (fuel : Nat) (env : Environment)
+    (source : SourceExpr) (value : Value)
+    (derivation : Derives fuel env (parsed source) value remaining) :
+    Derives fuel env (parsed (format source)) value remaining := by
+  simpa using derivation
+
+example : eval 3 ⟨[("x", .nat 2)], []⟩ (.add (.variable "x") (.literal (.nat 3)))
+    = .ok (.nat 5) := by rfl
+
+example : eval 3 ⟨[("x", .string "a")], []⟩ (.add (.variable "x") (.literal (.nat 3)))
+    = .error .typeError := by rfl
+
+example : eval 3 ⟨[], []⟩ (.call "x" (.literal (.nat 2))
+    (.add (.variable "x") (.literal (.nat 3)))) = .ok (.nat 5) := by rfl
+
+example : eval 0 ⟨[], []⟩ (.add (.literal (.nat 2)) (.literal (.nat 3)))
+    = .error .overLimit := by rfl
+
+example : eval 2 ⟨[], []⟩ (.add (.literal (.nat 2)) (.literal (.nat 3)))
+    = .ok (.nat 5) := by rfl
+
+example : eval 4 ⟨[], [("data/a.tsv", "a")]⟩
+    (.append (.external "data/a.tsv") (.literal (.string "b")))
+    = .ok (.string "ab") := by rfl
+
+example : eval 1 ⟨[], []⟩ (.external "data/a.tsv")
+    = .error .missingFile := by rfl
+
+-- Literal evaluation spends no reductions. Sibling operations share one budget.
+example : eval 0 ⟨[], []⟩ (.literal (.nat 1)) = .ok (.nat 1) := by rfl
+example : eval 2 ⟨[], []⟩ (.add (.add (.literal (.nat 1)) (.literal (.nat 1)))
+    (.add (.literal (.nat 1)) (.literal (.nat 1)))) = .error .overLimit := by rfl
+example : eval 2 ⟨[], []⟩ (.append (.literal (.string "鰍")) (.literal (.string "𠮷")))
+    = .error .overLimit := by rfl
+
+example : eval 3 ⟨[], []⟩ (.add (.add (.literal (.nat 1)) (.literal (.nat 1)))
+    (.add (.literal (.nat 1)) (.literal (.nat 1)))) = .ok (.nat 4) := by rfl
+example : eval 3 ⟨[], []⟩ (.append (.literal (.string "鰍")) (.literal (.string "𠮷")))
+    = .ok (.string "鰍𠮷") := by rfl
+
+example : eval 1 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 0)))
+    = .error .divisionByZero := by rfl
+example : eval 0 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 0)))
+    = .error .overLimit := by rfl
+example : eval 1 ⟨[], []⟩ (.quotient (.literal (.nat 3)) (.literal (.nat 2)))
+    = .ok (.nat 1) := by rfl
+
+-- Formatting spaces inside a nested expression must preserve its operands.
+example (left right : SourceExpr) (spaces : String) :
+    parsed (format (.add (.whitespace spaces left) right)) =
+      .add (parsed left) (parsed right) := by rw [parsed_format]; rfl
+
+-- A failing branch costs nothing when it is not selected.
+example : eval 1 ⟨[], []⟩ (.ternary (.literal (.boolean true)) (.literal (.nat 7))
+    (.quotient (.literal (.nat 1)) (.literal (.nat 0)))) = .ok (.nat 7) := by rfl
+example : eval 0 ⟨[], []⟩ (.ternary (.literal (.boolean false))
+    (.external "missing") (.literal (.nat 7))) = .error .overLimit := by rfl
+example : eval 1 ⟨[], []⟩ (.ternary (.literal (.boolean false))
+    (.external "missing") (.literal (.nat 7))) = .ok (.nat 7) := by rfl
+
+end GolemEval
