@@ -1,6 +1,6 @@
 # ADR 0390: CFF の random を決定的に読み、とりうる値すべてで参照を確かめる
 
-Status: accepted
+Status: superseded [{"part":"G08108 と G08109 の並べ方","by":["docs/adr/0394-order-cff-glyph-diagnostics-like-the-others.md"]}]
 
 ## 文脈
 
