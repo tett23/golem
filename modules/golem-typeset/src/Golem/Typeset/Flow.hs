@@ -1062,7 +1062,6 @@ runsOf look txt
   | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
   | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin look a == isLatin look b) txt, not (T.null r), let latin = isLatin look (T.head r)]
 
-
 {- | The width of a horizontal text in a look, unjustified, as
 'Golem.Typeset.Draw' draws it: each run in the role of its side
 ('runsOf'), shaped with the features of the look, and the tracking of
