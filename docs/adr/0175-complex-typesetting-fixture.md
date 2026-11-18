@@ -1,6 +1,6 @@
 # ADR 0175: 機能を組み合わせた二冊の fixture で、機能のあいだの相互作用を固定する
 
-ステータス: 採択→diagnostics の条件（G07030 と G07046 を止めること）は [ADR 0198](0198-silenced-notices-of-complex-fixtures.md)、ページの数の範囲は [ADR 0220](0220-page-count-range-of-complex-fixtures.md)
+Status: superseded [{"by":["docs/adr/0198-silenced-notices-of-complex-fixtures.md"],"part":"diagnostics の条件（G07030 と G07046 を止めること）"},{"by":["docs/adr/0220-page-count-range-of-complex-fixtures.md"],"part":"ページの数の範囲"}]
 
 ## 文脈
 

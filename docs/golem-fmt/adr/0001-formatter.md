@@ -1,6 +1,6 @@
 # ADR 0001: 整形
 
-ステータス: 採択→移行の段階は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) で加え、[ADR 0002](0002-remove-verse-migration.md) で外した。エスケープの規則の出力の不変の確かめ方は [golem-parser ADR 0010](../../golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)、単独の CR の扱いは [ADR 0003](0003-lone-cr-to-lf.md)、引数なしの `golem fmt` が CR を含む原稿を読む手順は [ADR 0004](0004-fmt-without-arguments-fixes-cr.md)
+Status: superseded [{"by":["docs/adr/0005-character-and-paragraph-styles.md"],"note":"で加えた","part":"移行の段階"},{"by":["docs/golem-fmt/adr/0002-remove-verse-migration.md"],"note":"で外した","part":"移行の段階"},{"by":["docs/golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md"],"part":"エスケープの規則の出力の不変の確かめ方"},{"by":["docs/golem-fmt/adr/0003-lone-cr-to-lf.md"],"part":"単独の CR の扱い"},{"by":["docs/golem-fmt/adr/0004-fmt-without-arguments-fixes-cr.md"],"part":"引数なしの `golem fmt` が CR を含む原稿を読む手順"}]
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0384: 韻文の原稿行を一定間隔で番号付けする
 
-ステータス: 採択（未実装）
+Status: accepted-pending
 
 ## 文脈
 
@@ -44,7 +44,7 @@
 
 ## 参考文献
 
-- [言語と文化ごとの詩行と組版の例](../reserch/verse-layout.md)
+- [言語と文化ごとの詩行と組版の例](../research/verse-layout.md)
 
 - [Golem のロードマップ「本の部品の拡張」](../roadmap.md)
 - [docs/adr/0003](../adr/0003-verse-line-breaks.md)

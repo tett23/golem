@@ -1,6 +1,6 @@
 # ADR 0014: 柱の内容
 
-ステータス: 採択→内容の書式は [golem-driver ADR 0022](0022-running-head-formats.md)、番号と題のあいだの区切りは [golem-html ADR 0002](../../golem-html/adr/0002-heading-number-spacing.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0022-running-head-formats.md"],"part":"内容の書式"},{"by":["docs/golem-html/adr/0002-heading-number-spacing.md"],"part":"番号と題のあいだの区切り"}]
 
 ## 文脈
 

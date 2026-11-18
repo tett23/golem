@@ -1,6 +1,6 @@
 # ADR 0316: 行の範囲を三つのピリオドで区切る
 
-ステータス: 採択→[ADR 0342](0342-revise-retire-dash-line-ranges.md)
+Status: superseded [{"by":["docs/adr/0342-revise-retire-dash-line-ranges.md"],"part":null}]
 
 ## 文脈
 

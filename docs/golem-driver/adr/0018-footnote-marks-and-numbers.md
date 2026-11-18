@@ -1,6 +1,6 @@
 # ADR 0018: 脚注の印と番号
 
-ステータス: 採択→章末の注（`placement = "chapter-end"`）は [golem-driver ADR 0026](0026-chapter-end-notes.md)、注の印の大きさと書式は [ADR 0025](0025-note-mark-size-and-format.md)、注の本文の先頭の印の後の空きは [golem-layout ADR 0018](../../golem-layout/adr/0018-url-line-breaks.md)、縦組みの印の向きは [ADR 0177](../../adr/0177-note-mark-style-and-numerals.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0026-chapter-end-notes.md"],"part":"章末の注（`placement = \"chapter-end\"`）"},{"by":["docs/golem-driver/adr/0025-note-mark-size-and-format.md"],"part":"注の印の大きさと書式"},{"by":["docs/golem-layout/adr/0018-url-line-breaks.md"],"part":"注の本文の先頭の印の後の空き"},{"by":["docs/adr/0177-note-mark-style-and-numerals.md"],"part":"縦組みの印の向き"}]
 
 ## 文脈
 

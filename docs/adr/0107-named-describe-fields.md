@@ -1,6 +1,6 @@
 # ADR 0107: golem_describe の欄に名前を付ける
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -20,7 +20,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 | ジョブ | 内容 |
 | --- | --- |
-| [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること |
+| [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること、ステータスの変更が許された状態遷移であること |
 | [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること、この本の図が原稿から作られていること |
 | [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
@@ -354,7 +354,7 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## adr、manual、textlint
 
-[code: docs.yml] の [code: adr] は、adr-guard の v0.10.0 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数、ADR の番号の重複を検査する（第[ref-number adr]章）。
+[code: docs.yml] の [code: adr] は、adr-guard の v0.13.1 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数と状態遷移、ADR の番号の重複を検査する（第[ref-number adr]章）。
 プルリクエストではベースからヘッドまで、[code: main] への push では push の前から後までの変更を見る。
 
 [code: manual] は、プルリクエストのときだけ、[code: scripts/manual/check-updated.sh] でマニュアルの更新を検査する（第[ref-number docs]章）。
