@@ -67,7 +67,7 @@ import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Text (isSpaceTab, tshow)
@@ -1104,10 +1104,16 @@ printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta 
     errors =
       [("G02096", sp, takesNoArguments "printings") | not (null args)]
         <> [("G02097", bsp, takesNoBody "printings") | A.Located bsp _ : _ <- [body]]
-        <> [("G02076", sp, "@printings は日本語の本（language の主の副タグが ja）でだけ使えます") | not japaneseBook]
+        <> [("G02076", sp, "@printings は日本語の本（language の主の副タグが ja）でだけ使えます") | not japaneseBook, isNothing format]
         <> [("G02098", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
+    format = stPrintingsFormat (ctxStyle ctx)
+    field h name = case Map.lookup name h of
+      Just (VString t) -> t
+      Just (VInt n) -> T.pack (show n)
+      _ -> ""
     line = \case
       VHash h
+        | Just pieces <- format -> Just (block sp (Paragraph Nothing [txt (renderPrintingTemplate (field h) pieces)]))
         | Just [e, n, y, m, d] <- traverse (\k -> Map.lookup k h >>= intOf) ["edition", "number", "year", "month", "day"] ->
             Just . block sp . Paragraph Nothing $
               [num y (Just StyleKanjiDigits), txt "年", num m Nothing, txt "月", num d Nothing, txt "日\x3000"]
