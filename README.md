@@ -271,6 +271,8 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
+番号の表記は `{n:kanji}` のように名前で選ぶ。
+文字の波括弧は `\{` と `\}` で書く（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 
 PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
 
@@ -296,6 +298,7 @@ PDF の図版、表、コードブロックのキャプションと傍注の本�
 キャプションの字下げは、そのキャプションを含むファイルのスタイルから引く。
 字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
+本文の注の印の大きさは、`[notes]` の `mark-style` が指す文字スタイル（既定は `note-mark`）の `size` で指定する（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 
