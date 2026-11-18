@@ -20,6 +20,16 @@ module Golem.Font
   ( Font,
     FontError (..),
     loadFont,
+    loadFontAt,
+    FontInstance (..),
+    defaultInstance,
+    InstanceError (..),
+    Axis (..),
+    fontAxes,
+    fontCoordinates,
+    CoordinatesUse (..),
+    fontCoordinatesFor,
+    fontInstanceErrors,
     fontUnitsPerEm,
     fontIsCff,
     fontIsCff2,
@@ -49,8 +59,9 @@ import Data.Array.Unboxed (UArray, bounds, inRange, listArray, (!))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
-import Data.Either (fromRight)
+import Data.Either (fromLeft, fromRight)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -102,6 +113,16 @@ foreign import capi unsafe "golem_font.h golem_font_ros" c_ros :: Ptr CFont -> P
 
 foreign import capi unsafe "golem_font.h golem_font_free" c_free :: Ptr Word8 -> IO ()
 
+foreign import capi unsafe "golem_font.h golem_font_axes" c_axes :: Ptr CFont -> Ptr Int32 -> CInt -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_instances" c_instances :: Ptr CFont -> Ptr Int32 -> CInt -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_name" c_name :: Ptr CFont -> CUInt -> CString -> CInt -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_set_coords" c_setCoords :: Ptr CFont -> Ptr Int32 -> CInt -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_coords_for" c_coordsFor :: Ptr CFont -> CInt -> Ptr CFloat -> CInt -> IO CInt
+
 data Font = Font
   { fontPtr :: !(ForeignPtr CFont),
     fontBytes :: !ByteString,
@@ -123,7 +144,13 @@ data Font = Font
     -- | the CID of every glyph of a CID-keyed font, read while loading (docs/adr ADR 0034)
     fontCids :: !(Maybe (UArray Int Int)),
     -- | the tags of the FeatureList of GSUB and GPOS, read while loading (docs/adr/0268)
-    fontFeatureTags :: !(Set.Set Text)
+    fontFeatureTags :: !(Set.Set Text),
+    -- | the axes of fvar: tag, minimum, default, maximum in 16.16 (Golem ADR 0358)
+    fontAxisRecords :: ![(Text, Int32, Int32, Int32)],
+    -- | the named instances of fvar by their English names, with their coordinates (Golem ADR 0358)
+    fontNamedInstances :: ![(Text, [Int32])],
+    -- | the coordinates the font is set at, in 16.16 in the order of fvar (Golem ADR 0358)
+    fontCoordinateValues :: ![Int32]
   }
 
 -- | The Registry, Ordering and Supplement of a CID-keyed font.
@@ -138,55 +165,71 @@ data FontError
   = Unreadable
   | -- | the OS/2 fsType forbids embedding (restricted licence or bitmap only)
     EmbeddingRestricted !Int
+  | InstanceErrors ![InstanceError]
   deriving stock (Eq, Show)
 
 {- | Reads a font from its bytes (never from a path, ADR 0001). IO, called
 where the bytes are read (docs/adr ADR 0034).
 -}
 loadFont :: ByteString -> IO (Either FontError Font)
-loadFont bytes = do
+loadFont = loadFontAt defaultInstance
+
+{- | Reads a font from its bytes and sets it at the instance (Golem ADR
+0358): shaping, the metrics and the subset all take the same coordinates.
+A font that is not variable takes the default instance alone.
+-}
+loadFontAt :: FontInstance -> ByteString -> IO (Either FontError Font)
+loadFontAt inst bytes = do
   p <- BU.unsafeUseAsCStringLen bytes $ \(ptr, len) -> c_open (castPtr ptr) (fromIntegral len)
   if p == nullPtr
     then pure (Left Unreadable)
     else do
       fp <- newForeignPtr c_close p
       fsType <- fromIntegral <$> c_fstype p
-      upem <- fromIntegral <$> c_upem p
-      cff <- (/= 0) <$> c_isCff p
-      cff2 <- (/= 0) <$> c_isCff2 p
-      n <- fromIntegral <$> c_numGlyphs p
-      ext <- allocaArray 3 $ \arr -> do
-        c_extents p arr (arr `plusPtr` 4) (arr `plusPtr` 8)
-        [a, d, c] <- peekArray 3 arr
-        pure (fromIntegral a, fromIntegral d, fromIntegral c)
-      ps <- T.pack <$> (c_psName p >>= peekCString)
-      ros <- alloca $ \rp -> alloca $ \op -> alloca $ \sp -> do
-        r <- c_ros p rp op sp
-        if r /= 0
-          then pure Nothing
-          else do
-            registry <- peek rp >>= peekCString . unConstPtr
-            ordering <- peek op >>= peekCString . unConstPtr
-            supplement <- fromIntegral <$> peek sp
-            pure (cidSystemInfo registry ordering supplement)
-      central <- fromIntegral <$> c_emboxCentral p
-      cidKeyed <- (/= 0) <$> c_isCidKeyed p
-      cids <-
-        if cidKeyed && n > 0
-          then Just . listArray (0, n - 1) <$> mapM (fmap fromIntegral . c_cid p . fromIntegral) [0 .. n - 1]
-          else pure Nothing
-      -- the feature list, of any script and language system (docs/adr/0268)
-      count <- fromIntegral <$> c_featureTags p nullPtr 0
-      tags <- allocaArray (max 1 count) $ \arr -> do
-        _ <- c_featureTags p arr (fromIntegral count)
-        Set.fromList . map tagText <$> peekArray count arr
-      touchForeignPtr fp
-      pure $
-        if embeddingRestricted fsType
-          then Left (EmbeddingRestricted fsType)
-          else Right (Font fp bytes upem cff cff2 n ext ps ros central cids tags)
-  where
-    tagText w = T.pack [toEnum (fromIntegral ((w `shiftR` s) .&. 0xFF)) | s <- [24, 16, 8, 0]]
+      (axes, named) <- readVariations p
+      case resolveInstance axes named inst of
+        _ | embeddingRestricted fsType -> pure (Left (EmbeddingRestricted fsType))
+        Left errs -> pure (Left (InstanceErrors errs))
+        Right coords -> do
+          set <- if null coords then pure 0 else withArrayLen coords (\n arr -> c_setCoords p arr (fromIntegral n))
+          if set /= 0 then pure (Left Unreadable) else loadRest fp p bytes fsType axes named coords
+
+loadRest :: ForeignPtr CFont -> Ptr CFont -> ByteString -> Int -> [(Text, Int32, Int32, Int32)] -> [(Text, [Int32])] -> [Int32] -> IO (Either FontError Font)
+loadRest fp p bytes fsType axes named coords = do
+  upem <- fromIntegral <$> c_upem p
+  cff <- (/= 0) <$> c_isCff p
+  cff2 <- (/= 0) <$> c_isCff2 p
+  n <- fromIntegral <$> c_numGlyphs p
+  ext <- allocaArray 3 $ \arr -> do
+    c_extents p arr (arr `plusPtr` 4) (arr `plusPtr` 8)
+    [a, d, c] <- peekArray 3 arr
+    pure (fromIntegral a, fromIntegral d, fromIntegral c)
+  ps <- T.pack <$> (c_psName p >>= peekCString)
+  ros <- alloca $ \rp -> alloca $ \op -> alloca $ \sp -> do
+    r <- c_ros p rp op sp
+    if r /= 0
+      then pure Nothing
+      else do
+        registry <- peek rp >>= peekCString . unConstPtr
+        ordering <- peek op >>= peekCString . unConstPtr
+        supplement <- fromIntegral <$> peek sp
+        pure (cidSystemInfo registry ordering supplement)
+  central <- fromIntegral <$> c_emboxCentral p
+  cidKeyed <- (/= 0) <$> c_isCidKeyed p
+  cids <-
+    if cidKeyed && n > 0
+      then Just . listArray (0, n - 1) <$> mapM (fmap fromIntegral . c_cid p . fromIntegral) [0 .. n - 1]
+      else pure Nothing
+  -- the feature list, of any script and language system (docs/adr/0268)
+  count <- fromIntegral <$> c_featureTags p nullPtr 0
+  tags <- allocaArray (max 1 count) $ \arr -> do
+    _ <- c_featureTags p arr (fromIntegral count)
+    Set.fromList . map tagText <$> peekArray count arr
+  touchForeignPtr fp
+  pure $
+    if embeddingRestricted fsType
+      then Left (EmbeddingRestricted fsType)
+      else Right (Font fp bytes upem cff cff2 n ext ps ros central cids tags axes named coords)
 
 {- | Whether fsType forbids Golem to embed the font (golem-driver ADR 0016),
 as the OpenType specification reads it: bits 0 to 3 are usage permissions
@@ -325,3 +368,127 @@ subsetTag gids =
    in T.pack (take 6 (letters h))
   where
     letters x = toEnum (fromEnum 'A' + fromIntegral (x `mod` 26)) : letters (x `div` 26)
+
+{- | The instance of a variable font that a role asks for (Golem ADR 0358):
+a named instance of fvar, by its English subfamily name as it is written,
+and the coordinates of axes by their tags, which override those of the
+instance. The axes written neither by the instance nor by a coordinate are
+at their defaults.
+-}
+data FontInstance = FontInstance
+  { fiName :: !(Maybe Text),
+    fiAxes :: ![(Text, Double)]
+  }
+  deriving stock (Eq, Ord, Show)
+
+-- | No instance and no coordinate: the default of every axis.
+defaultInstance :: FontInstance
+defaultInstance = FontInstance Nothing []
+
+-- | Why a font cannot be set at an instance (Golem ADR 0358).
+data InstanceError
+  = -- | the font has no named instance of the name (a font that is not variable has none)
+    UnknownInstance !Text
+  | -- | the font has no axis of the tag
+    UnknownAxis !Text
+  | -- | the value lies outside the minimum and the maximum of the axis
+    AxisOutOfRange !Text !Double !(Double, Double)
+  deriving stock (Eq, Show)
+
+-- | An axis of fvar; the values are its 16.16 numbers.
+data Axis = Axis
+  { axisTag :: !Text,
+    axisMinimum :: !Double,
+    axisDefault :: !Double,
+    axisMaximum :: !Double
+  }
+  deriving stock (Eq, Show)
+
+-- | The holders of the coordinates (Golem ADR 0358, I1).
+data CoordinatesUse
+  = -- | the font of HarfBuzz that shapes
+    CoordinatesShaping
+  | -- | the face of FreeType that gives the metrics
+    CoordinatesMetrics
+  | -- | the input of the subset that the PDF embeds
+    CoordinatesSubset
+  deriving stock (Eq, Show)
+
+{- | The coordinates of every axis, in the order of fvar, as 16.16 numbers;
+or every reason the instance is not in the font, the name first and then
+the axes in the order they are written.
+-}
+resolveInstance :: [(Text, Int32, Int32, Int32)] -> [(Text, [Int32])] -> FontInstance -> Either [InstanceError] [Int32]
+resolveInstance axes named (FontInstance name written) =
+  case nameErrors <> concatMap axisErrors written of
+    [] -> Right [maybe base fixedOf (lookup tag written) | ((tag, _, _, _), base) <- zip axes start]
+    errs -> Left errs
+  where
+    defaults = [d | (_, _, d, _) <- axes]
+    start = maybe defaults (\n -> fromMaybe defaults (lookup n named)) name
+    nameErrors = [UnknownInstance n | Just n <- [name], Nothing <- [lookup n named]]
+    axisErrors (tag, v) = case [(lo, hi) | (t, lo, _, hi) <- axes, t == tag] of
+      [] -> [UnknownAxis tag]
+      (lo, hi) : _
+        | v < fromFixed lo || v > fromFixed hi -> [AxisOutOfRange tag v (fromFixed lo, fromFixed hi)]
+        | otherwise -> []
+    -- in the precision of fvar; within the axis, so within Int32
+    fixedOf v = fromInteger (round (toRational v * 65536))
+
+fromFixed :: Int32 -> Double
+fromFixed c = fromIntegral c / 65536
+
+tagText :: Word32 -> Text
+tagText w = T.pack [toEnum (fromIntegral ((w `shiftR` s) .&. 0xFF)) | s <- [24, 16, 8, 0]]
+
+-- | The axes of fvar and the named instances with their English names.
+readVariations :: Ptr CFont -> IO ([(Text, Int32, Int32, Int32)], [(Text, [Int32])])
+readVariations p = do
+  count <- fromIntegral <$> c_axes p nullPtr 0
+  axes <- allocaArray (max 1 (4 * count)) $ \arr -> do
+    _ <- c_axes p arr (fromIntegral count)
+    vs <- peekArray (4 * count) arr
+    pure [(tagText (fromIntegral t), lo, d, hi) | [t, lo, d, hi] <- chunks 4 vs]
+  n <- fromIntegral <$> c_instances p nullPtr 0
+  let per = 1 + count
+  insts <- allocaArray (max 1 (per * n)) $ \arr -> do
+    _ <- c_instances p arr (fromIntegral (per * n))
+    vs <- peekArray (per * n) arr
+    sequence [(,cs) <$> nameOf (fromIntegral i) | i : cs <- chunks per vs]
+  pure (axes, insts)
+  where
+    chunks k xs = case splitAt k xs of
+      (a, rest) | length a == k -> a : chunks k rest
+      _ -> []
+    nameOf i = do
+      len <- c_name p i nullPtr 0
+      allocaBytes (fromIntegral len + 1) $ \buf -> do
+        _ <- c_name p i buf (len + 1)
+        TE.decodeUtf8Lenient <$> BS.packCStringLen (buf, fromIntegral len)
+
+{- | The coordinates as one of shaping, the metrics and the subset holds
+them, as floats (Golem ADR 0358, I1): HarfBuzz reads the 16.16 values of
+fvar so. IO: the subset's are read from an input made for it.
+-}
+fontCoordinatesFor :: CoordinatesUse -> Font -> IO [(Text, Float)]
+fontCoordinatesFor use f = withForeignPtr (fontPtr f) $ \p -> do
+  let n = length (fontAxes f)
+      which = case use of CoordinatesShaping -> 0; CoordinatesMetrics -> 1; CoordinatesSubset -> 2
+  allocaArray (max 1 n) $ \arr -> do
+    got <- fromIntegral <$> c_coordsFor p which arr (fromIntegral n)
+    vs <- peekArray (max 0 (min n got)) arr
+    pure (zip (map axisTag (fontAxes f)) [realToFrac v | v <- vs])
+
+-- | The axes of fvar, in its order; none for a font that is not variable (Golem ADR 0358).
+fontAxes :: Font -> [Axis]
+fontAxes f = [Axis t (fromFixed lo) (fromFixed d) (fromFixed hi) | (t, lo, d, hi) <- fontAxisRecords f]
+
+{- | The coordinates the font is set at, every axis in the order of fvar, in
+the precision of fvar (16.16) (Golem ADR 0358).
+-}
+fontCoordinates :: Font -> [(Text, Double)]
+fontCoordinates f = zip [t | (t, _, _, _) <- fontAxisRecords f] (map fromFixed (fontCoordinateValues f))
+
+-- | Why the font cannot be set at the instance; none when it can (Golem ADR 0358).
+fontInstanceErrors :: Font -> FontInstance -> [InstanceError]
+fontInstanceErrors f inst = fromLeft [] (resolveInstance (fontAxisRecords f) (fontNamedInstances f) inst)

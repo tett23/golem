@@ -26,6 +26,7 @@ import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
+import FontInstanceSpec qualified
 import ForceTableSpec (forceTableTests)
 import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)
@@ -195,6 +196,7 @@ tests skips =
              testGroup "the kanji numbers of note marks set flat (docs/adr/0381)" compressedNoteMarksTests,
              testGroup "the paragraphs of captions and sidenotes (docs/adr/0367)" captionSidenoteParagraphsTests,
              testGroup "the paragraph style controls (docs/adr/0374)" paragraphStyleControlsTests,
+             FontInstanceSpec.tests,
              testGroup "the indents of captions and sidenotes that leave no character (docs/adr/0389)" captionSidenoteIndentTests,
              testGroup "the separator between a number and its title (Golem ADR 0372)" numberTitleSeparatorTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,

@@ -937,6 +937,23 @@ PDF を組むときに出るエラーです。
   メッセージの番号は、フォントの中のグリフの番号です。
   その字を使わないように文字を替えるか、別のフォントに替えて、PDF を組み直してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08110 [code: 可変フォントに名前付きインスタンスがありません: …]]
+  役割の [code: instance] に書いた名前のインスタンスが、その役割のフォントにありません。
+  名前は大文字と小文字を区別します。
+  可変でないフォントには、名前付きインスタンスがありません。
+  フォントのインスタンスの名前を書くか、[code: instance] の代わりに [code: axes] で座標を書いてください。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。
+  HTML と EPUB では出ません。
+= [strong: G08111 [code: フォントにない軸です: …]]
+  役割の [code: axes] に書いた軸が、その役割のフォントにありません。
+  フォントが持つ軸のタグ（[code: wght] など）を書くか、その軸を消してください。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。
+  HTML と EPUB では出ません。
+= [strong: G08112 [code: 軸の値がフォントの範囲の外にあります: …]]
+  役割の [code: axes] に書いた値が、フォントの軸の最小と最大の外にあります。
+  メッセージに出る最小と最大のあいだの値を書いてください。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。
+  HTML と EPUB では出ません。
 = [strong: G08019 [code: CFF2 の輪郭のフォントは PDF に埋め込めません: …]]
   PDF が使う役割に、CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）を書いています。
   同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）に替えてください。

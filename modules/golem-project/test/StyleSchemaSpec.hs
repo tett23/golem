@@ -102,6 +102,7 @@ sample here node = case (reverse here, node) of
       LString -> Text "x"
       LDimension -> Text "1pt"
       LInteger -> Integer 1
+      LNumber -> Double 1.5
       LBoolean -> Bool False
       LFalse -> Bool False
       LEnum (v : _) -> Text v

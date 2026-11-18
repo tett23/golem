@@ -248,7 +248,7 @@ body role has no file, at the top of @fid@.
 bodyFontDiagnostics :: FileId -> Style -> [Diagnostic]
 bodyFontDiagnostics fid style
   | Map.null (stFonts style) = [err "style.toml に本文のフォントがありません。[fonts.body] を書いてください"]
-  | Just (FontRole Nothing Nothing _ _) <- Map.lookup body (stFonts style) = [err ("[fonts." <> body <> "] にフォントのファイルがありません")]
+  | Just (FontRole {frJa = Nothing, frLatin = Nothing}) <- Map.lookup body (stFonts style) = [err ("[fonts." <> body <> "] にフォントのファイルがありません")]
   | otherwise = []
   where
     body = bodyRole style
