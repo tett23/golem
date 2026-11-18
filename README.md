@@ -223,6 +223,9 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 ルビの読みだけに当てる文字スタイルは、`[composition.ruby]` の `reading-style` で選ぶ。
 文字スタイルが書かない書体と色は外側から引き継ぎ、大きさを書かなければ親文字の半分で組む（[Golem ADR 0369](docs/adr/0369-ruby-reading-style.md)）。
 
+PDF の柱とノンブルに当てる文字スタイルは、マスターページの `running-head` と `folio` の `character-style` で別々に選ぶ。
+書かなければ、本文の書体と版面の文字の大きさで組む（[Golem ADR 0364](docs/adr/0364-running-head-folio-style.md)）。
+
 強調と書体の切り替えも、文字スタイルで組む。
 `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic`、`code` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。
 指定がなければ合成の太字と斜体で組み、役割が和文か欧文の片方しか持たない場合は、持たない側の文字を合成で組む。
@@ -770,9 +773,16 @@ x86-64 では、さらに次のことを行う。
   プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。
 
 ジョブは、アーキテクチャごとに複数のランナーに分かれる（[docs/adr/0140](./docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)、[docs/adr/0155](./docs/adr/0155-split-aarch64-test-runner.md)）。
-x86-64 では同じコミットを四つのランナーでビルドする。
-`tests-driver` が golem-driver のテストのスイートを、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）、`outputs` が見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、epubcheck、決定性の検査の出力、マニュアルを、`env` が環境を変える検査を受け持つ。
+x86-64 では同じコミットを五つのランナーでビルドする。
+`tests-driver` が golem-driver のテストのスイートを、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ。
+`outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
+`outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 aarch64 では三つのランナーでビルドし、x86-64 と同じく `tests-driver` と `tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
+
+ランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
+`dist-newstyle` を保存する `tests-driver` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
+`tests-rest` は自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+ビルドの計画を読む検査（`scripts/ci/test-only-deps.sh` と `scripts/ci/doc-deps.sh`）がどのランナーでもすべての部品を見るよう、計画を `cabal build all` のものに作り直し、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 
 テストの道具は、ビルドと並べて入れる。
 テストのラッパーは、すべての `cabal` のコマンドが同じ設定を読むように `cabal.project.local` に書き、qpdf と epubcheck はビルドの裏で入れる（[docs/adr/0037](./docs/adr/0037-ci-build-job-speedup.md)）。
@@ -783,8 +793,10 @@ zip は版と SHA-256 をキーにキャッシュする（[docs/adr/0062](./docs
 `env` は日本語のロケールを作り、マニュアルのフォントをキャッシュか `scripts/manual/fetch-fonts.sh` で取る。
 cabal は `PATH` をすべてのパッケージの設定に含めるので、`cabal build` より前に `PATH` を変えるのは、どのランナーでも同じディレクトリを足す GHC の手順だけとし、epubcheck は `cabal build` の後で `PATH` に足す（[docs/adr/0097](./docs/adr/0097-ci-same-path-before-build-and-env-check-runner.md)）。
 
-`dist-newstyle` は、`main` への push で GHC がモジュールをコンパイルしたときに、アーキテクチャごとに一つのランナー（どちらのアーキテクチャでも `tests-driver`）が保存する。
-プルリクエストは `main` の最新の `dist-newstyle` を戻すだけで、保存しない（[docs/adr/0045](./docs/adr/0045-split-x86-build-and-pull-request-cache.md)、[docs/adr/0228](./docs/adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md)）。
+`dist-newstyle` は、`main` への push とプルリクエストで GHC がモジュールをコンパイルしたときに、アーキテクチャごとに一つのランナー（どちらのアーキテクチャでも `tests-driver`）が保存する。
+プルリクエストのキーは、`main` の族の後に `pr-<番号>-` とコミットのハッシュを続けたもので、`main` のキー（族の後にコミットのハッシュ）と前の部分で区別できる。
+プルリクエストの次の push は、自分の最新の `dist-newstyle` を戻し、それが無ければ `main` の最新を戻す（[docs/adr/0045](./docs/adr/0045-split-x86-build-and-pull-request-cache.md)、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
+プルリクエストのキャッシュは、ワークフロー `pr-caches.yml` が消す（[docs/adr/0228](./docs/adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I1 を [docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md) が置き換えた）。
 
 ##### `determinism`
 
@@ -1031,6 +1043,20 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
   組めなかったスイートも要約に書き、ジョブを失敗にする。
 - `native`：同じスイートをネイティブの GHC で、外部の道具（qpdf、cddl、pdfinfo、pdftoppm）を `PATH` に置かずに走らせる。
 - `skips`：wasm32 の SKIP がネイティブの SKIP に含まれること、一覧のテストがネイティブで通ることを `scripts/wasm/check-skips.sh` で確かめる。
+
+#### プルリクエストのキャッシュのワークフロー（pr-caches.yml）
+
+`pr-caches.yml` は、プルリクエストのキャッシュを、リポジトリのキャッシュの上限の下に保つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
+`ci.yml` の実行が終わったとき（`workflow_run`）と、プルリクエストが閉じたとき（マージを含む、`pull_request_target`）に走り、`scripts/ci/pr-caches.sh` が選んだキャッシュを `gh cache delete` で消す。
+消すのは次のものである。
+
+- 開いていないプルリクエストの ref（`refs/pull/N/merge`）のキャッシュのすべて。`main` のキャッシュは消さない。
+- 開いているプルリクエストの `dist-` のキャッシュのうち、アーキテクチャごとに作った日時の最も新しいもの以外。
+- 合計が 9 GB（10^9 バイト）を超えていれば、開いているプルリクエストの `dist-` のキャッシュを、作った日時の古いものから、9 GB 以下になるまで。
+
+二つの契機は、どちらも既定のブランチの定義で走るので、プルリクエストはこのワークフローを書き換えられない。
+ワークフローは何もチェックアウトせず、`pr-caches.sh` を既定のブランチから API で取る。
+トークンに `actions: write` を与えるのは、このワークフローのジョブと、`main` への push だけで走る `ci.yml` の `caches` だけで、プルリクエストで走る `ci.yml` のジョブには与えない。
 
 #### リリースのワークフロー（release.yml）
 

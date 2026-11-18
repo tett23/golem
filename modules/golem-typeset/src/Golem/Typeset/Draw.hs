@@ -786,20 +786,6 @@ ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
 toSp :: Sp -> Rational -> Sp
 toSp = zwToSp
 
--- | Whether a character is Latin in a look: of the language of its span (docs/adr ADR 0187).
-isLatin :: Look -> Char -> Bool
-isLatin look = (== Western) . lookClass look
-
-{- the runs of a text in a look: its role and whether it is a Latin
-run; split into Latin and other runs where the two sides differ in
-role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
-a combining character stays with the character before it, variation
-selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
-runsOf :: Look -> Text -> [(Text, Text, Bool)]
-runsOf look txt
-  | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-  | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin look a == isLatin look b) txt, not (T.null r), let latin = isLatin look (T.head r)]
-
 -- the synthetic bold and slant of a run
 syntheticOf :: Look -> Bool -> Synthetic
 syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
@@ -1473,18 +1459,24 @@ rubyTextLeaf :: Leaf -> Leaf
 rubyTextLeaf (Leaf site k) = Leaf site (k + 1)
 
 -- | A running head or a folio: an artifact of pagination (docs/adr ADR 0183).
-textAt :: DrawEnv -> Text -> LS.Anchor -> Sp -> Text -> (LineRec, ([P.Content], [GlyphUse]))
-textAt env kind anchor size txt =
-  let w = plainWidth fonts body size txt
+textAt :: DrawEnv -> Text -> LS.Anchor -> Maybe Text -> Text -> (LineRec, ([P.Content], [GlyphUse]))
+textAt env kind anchor name txt =
+  let style = piStyle (deInput env)
+      look = masterLook style (pgFontSize (deGeom env)) name
+      size = lkSize look
+      source = maybe SourceGrid SourceCharacterStyle (name >>= charSizeSource style)
+      w = lookWidth fonts look txt
       x0 = case anAlign anchor of
         LS.AlignStart -> anX anchor
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+      paint marks = case swatchOf env look of
+        Nothing -> marks
+        Just sw -> [P.Saved (P.SetColor sw : marks)]
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination . paint) (runAtU env (source, V.PartBase, styleSpan) look False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
-    body = bodyRole (piStyle (deInput env))
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
 {- one column of a page, against the rectangle of the column (docs/adr
@@ -1908,11 +1900,10 @@ masterMarks env n blank master headLines = case master of
   Nothing -> []
   Just m ->
     let pick a1 a2 = if odd n then a1 else a2
-        size = pgFontSize geom
-        folio = [textAt env "ノンブル" (pick a1 a2) size t | drawsFolio blank master, Just (_, a1, a2) <- [mgFolio m], Right t <- [folioText (deLabels env) m n]]
+        folio = [textAt env "ノンブル" (pick a1 a2) (mgFolioStyle m) t | drawsFolio blank master, Just (_, a1, a2) <- [mgFolio m], Right t <- [folioText (deLabels env) m n]]
         -- the lines of the running head from the type area out (golem-driver ADR 0022)
         runningHead =
-          [ textAt env "柱" a {anY = hy} size h
+          [ textAt env "柱" a {anY = hy} (mgHeadStyle m) h
           | not blank,
             Just (_, _, a1, a2) <- [mgRunningHead m],
             let a = pick a1 a2,
@@ -1921,7 +1912,7 @@ masterMarks env n blank master headLines = case master of
      in runningHead <> folio
   where
     geom = deGeom env
-    ph = snd (pgPageSize (deGeom env))
+    ph = snd (pgPageSize geom)
 
 -- | The image of a figure: the content of its Figure (docs/adr ADR 0183).
 figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Content
