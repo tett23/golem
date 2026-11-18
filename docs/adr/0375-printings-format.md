@@ -1,6 +1,6 @@
 # ADR 0375: 奥付の発行履歴をテンプレートで組む
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
