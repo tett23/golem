@@ -1,6 +1,6 @@
 # ADR 0371: 傍注の印に文字スタイルを指定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

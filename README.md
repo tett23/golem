@@ -259,6 +259,8 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
 
+PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
+
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
 コードブロックは組み込みの段落スタイル `code` で組み、書体は `[fonts.code]` の役割、背景の色と内側の余白は `[paragraph-styles.code]` の `background` と `padding` で指定する（[golem-driver ADR 0017](./docs/golem-driver/adr/0017-pdf-code-blocks.md)）。
@@ -274,7 +276,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 
 ### 注、索引、リンク
 
-傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印だけを書く。
+傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印と、その「※」の文字スタイル（`marker-style`）だけを書く。
 PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
