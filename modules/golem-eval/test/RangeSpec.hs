@@ -28,7 +28,7 @@ exprOf src =
         ([], [A.Paragraph [A.Located _ (A.Expr e)]]) -> e
         other -> error (show other)
 
--- | An environment with r = 2...3, as set r = 2...3 makes it.
+-- | An environment with r = 2...3, as @set r = 2...3 makes it.
 rangeEnv :: Env
 rangeEnv = plainEnv (Map.fromList [("r", VRange 2 3)]) Map.empty
 
@@ -98,18 +98,18 @@ tests =
           testCase "an end that is no number is G02110" $ do
             codes "[= \"a\"...3]\n" @?= ["G02110"]
             codes "[= true...3]\n" @?= ["G02110"]
-            codes "set x = \"a\"\n\nset r = x...3\n" @?= ["G02110"],
+            codes "@set x = \"a\"\n\n@set r = x...3\n" @?= ["G02110"],
           testCase "an end that is not an integer is G02104" $ do
-            codes "set r = 1.5...3\n" @?= ["G02104"]
-            codes "set r = 1...7 / 2\n" @?= ["G02104"]
-            msgs "set r = 1...7 / 2\n" @?= [("G02104", "範囲の端には整数を書きます（書かれた値 3.5 は整数ではありません）")],
+            codes "@set r = 1.5...3\n" @?= ["G02104"]
+            codes "@set r = 1...7 / 2\n" @?= ["G02104"]
+            msgs "@set r = 1...7 / 2\n" @?= [("G02104", "範囲の端には整数を書きます（書かれた値 3.5 は整数ではありません）")],
           testCase "ends of an integral value and negative ends are taken" $ do
-            codes "set r = 1...4 / 2\n" @?= []
-            codes "set r = -2...3\n" @?= [],
+            codes "@set r = 1...4 / 2\n" @?= []
+            codes "@set r = -2...3\n" @?= [],
           testCase "the start after the end is G02106" $
-            msgs "set r = 7...3\n" @?= [("G02106", "範囲の始め 7 が終わり 3 より大きくなっています")],
+            msgs "@set r = 7...3\n" @?= [("G02106", "範囲の始め 7 が終わり 3 より大きくなっています")],
           testCase "a range of a name is not embedded either" $
-            codes "set r = 1...3\n\n[= r]\n" @?= ["G02008"]
+            codes "@set r = 1...3\n\n[= r]\n" @?= ["G02008"]
         ],
       testGroup
         "lines="
@@ -119,8 +119,8 @@ tests =
               [ listing "lines=2...3",
                 listing "lines=\"2...3\"",
                 listing "lines=[= 2...3]",
-                "set n = 2\n\n" <> listing "lines=[= n...n + 1]",
-                "set r = 2...3\n\n" <> listing "lines=[= r]"
+                "@set n = 2\n\n" <> listing "lines=[= n...n + 1]",
+                "@set r = 2...3\n\n" <> listing "lines=[= r]"
               ],
           testCase "one line" $
             mapM_ (\src -> (src, codeOf src) @?= (src, [(["l2"], [], Just 2)])) [listing "lines=2", listing "lines=[= 2]", listing "lines=2...2"],
@@ -235,7 +235,7 @@ adr0342Tests =
             (block "highlight=3,5-7", "highlight=3,5-7")
           ],
       testCase "ADR 0342 I2: a string returned by an expression is read as a word" $ do
-        let src = "set r = \"1-2,4-5\"\n\n" <> sevenListing "lines=[= r]"
+        let src = "@set r = \"1-2,4-5\"\n\n" <> sevenListing "lines=[= r]"
         sevenSites src @?= [("G02251", argStart src "lines=[= r]", argStart src "lines=[= r]" + T.length "lines=[= r]")]
         sevenCode src @?= []
         let hl = block "highlight=[= \"4-5\"]"
@@ -254,11 +254,11 @@ adr0342Tests =
         map fst3 (sevenSites (sevenListing "lines=\"1.,.3, 5..,7\"")) @?= ["G02105"]
         map fst3 (sevenSites (sevenListing "lines=5..7")) @?= ["G01100"],
       testCase "ADR 0342 I1: an evaluated end of 0 or -1 fails after evaluation" $ do
-        map fst3 (sevenSites ("set n = 0\n\n" <> sevenListing "lines=[= n]")) @?= ["G02037"]
-        map fst3 (sevenSites ("set n = 0 - 1\n\n" <> sevenListing "lines=[= n]")) @?= ["G02103"]
-        sevenCode ("set n = 0\n\n" <> sevenListing "lines=[= n]") @?= []
-        map fst3 (sevenSites ("set n = 0\n\n" <> block "highlight=[= n]")) @?= ["G02069"]
-        map fst3 (sevenSites ("set n = 0 - 1\n\n" <> block "highlight=[= n]")) @?= ["G02103"],
+        map fst3 (sevenSites ("@set n = 0\n\n" <> sevenListing "lines=[= n]")) @?= ["G02037"]
+        map fst3 (sevenSites ("@set n = 0 - 1\n\n" <> sevenListing "lines=[= n]")) @?= ["G02103"]
+        sevenCode ("@set n = 0\n\n" <> sevenListing "lines=[= n]") @?= []
+        map fst3 (sevenSites ("@set n = 0\n\n" <> block "highlight=[= n]")) @?= ["G02069"]
+        map fst3 (sevenSites ("@set n = 0 - 1\n\n" <> block "highlight=[= n]")) @?= ["G02103"],
       testCase "ADR 0342 I1: a negative end of a range in a general expression is unchanged" $
         ev "-2...3" @?= Right (VRange (-2) 3)
     ]
