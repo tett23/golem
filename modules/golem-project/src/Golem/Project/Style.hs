@@ -246,6 +246,7 @@ data FontRole = FontRole
     frLatin :: !(Maybe FilePath),
     -- | the OpenType features of the role, checked (docs/adr/0268)
     frFeatures :: ![Feature],
+    frPunctuationProportional :: !Bool,
     -- | the named instance of a variable font that the role is set in (Golem ADR 0358)
     frInstance :: !(Maybe Text),
     {- | the coordinates of axes by their tags, over those of the instance,
@@ -1966,7 +1967,7 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> optKey "instance" <*> axesKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> optKey "instance" <*> axesKey
 
 {- | The axes of a role (Golem ADR 0358): a table of axis tags and finite
 numbers, in the order of the tags. Whether the font has the axes and the
@@ -3662,7 +3663,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("instance", str), ("axes", NNamed Nothing numberNode)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("headings", NNamed Nothing headingNode),
