@@ -1,6 +1,6 @@
 # ADR 0381: 縦組みの漢数字の注番号を平字で組む
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
