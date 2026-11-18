@@ -218,7 +218,7 @@ notice には、ほかの二つと違う性質が三つある。
 - 出力のバイト列を変えない。抑制しても、しなくても、PDF は同じである。
 
 人が読む形式では [code: notice\[G07030\]] のように書き、JSON では [code: "severity":"notice"] と書く。
-今の notice は次の三十である。
+今の notice は次の二十六である。
 
 | コード | 内容 |
 | --- | --- |
@@ -229,10 +229,6 @@ notice には、ほかの二つと違う性質が三つある。
 | G02094 | 続けて書いた [code: @blank-line] |
 | G03023 | [code: style.toml] のないプロジェクト |
 | G03100 | [code: table] の字下げ 0 |
-| G03114 | [code: \[lists\]] の [code: numbers] の [code: {{] と [code: }}]（廃止予定） |
-| G03115 | [code: \[lists\]] の [code: numbers] の一字の見本の差し込み（廃止予定） |
-| G03116 | 柱の書式の [code: {{] と [code: }}]（廃止予定） |
-| G03117 | [code: \[notes\]] の [code: mark-size]（廃止予定） |
 | G03120 | [code: \[source\]] に [code: paragraph-separator] のないプロジェクト |
 | G03134 | [code: golem new] が書かずに残した既存の [code: .gitignore] |
 | G04007 | 自動の番号と同じ [code: @number] |
@@ -329,7 +325,7 @@ LSP には [code: --no-notices] に当たる設定はなく、[code: silence-not
 
 ## 廃止予定の notice
 
-記法と設定のキーを廃止するときは、まず廃止予定の notice を出す（G03114 がその例である）。[index reading="はいしよてい": 廃止予定]
+記法と設定のキーを廃止するときは、まず廃止予定の notice を出す。[index reading="はいしよてい": 廃止予定]
 手順は互換性の文書 [code: docs/compatibility.md] の「廃止の手順」が決めている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/compatibility.md]（互換性の文書。ADR 0174「1.0.0 から互換を守る範囲と、廃止の手順」で決めた）]
 
 + 廃止を決める ADR で、廃止予定の notice のコードを決める。メッセージは「〜は廃止予定です」で始め、代わりの書き方を続ける。
@@ -338,7 +334,7 @@ LSP には [code: --no-notices] に当たる設定はなく、[code: silence-not
 
 1.0.0 より前は、minor のリリースがないので、二つ目の手順の「minor のバージョン」を「プレリリースを含むリリース」と読み替える。
 notice を一つのリリースで出した後なら、次のリリースでエラーにしてよい。
-今の四つの廃止予定の書き方（G03114、G03115、G03116、G03117）は、どれも 1.0.0 までにエラーにする。
+今、廃止を予告している書き方はない。
 
 CI で [code: --no-notices] を付けていると、廃止予定の notice も見えなくなる。
 notice を抑制する CI は、少なくともバージョンを上げるときに、抑制せずに一度組んで確かめておくとよい。

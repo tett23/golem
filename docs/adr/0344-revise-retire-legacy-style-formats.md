@@ -1,6 +1,6 @@
 # ADR 0344: 番号と柱の旧書式および注番号の旧サイズ指定を廃止する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
