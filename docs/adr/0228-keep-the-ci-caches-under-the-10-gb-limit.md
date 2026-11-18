@@ -1,6 +1,6 @@
 # ADR 0228: CI のキャッシュの量を 10 GB の上限の下に保つ
 
-Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"記録の時期"},{"by":["docs/adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md"],"part":"`release.yml` の `ci` の呼び出しの権限"}]
+Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"記録の時期"},{"by":["docs/adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md"],"part":"`release.yml` の `ci` の呼び出しの権限"},{"by":["docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md"],"part":"不変条件 I1"}]
 
 ## 文脈
 
