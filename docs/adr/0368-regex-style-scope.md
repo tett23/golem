@@ -1,6 +1,6 @@
 # ADR 0368: 見出し、定義リストの用語、注の本文を正規表現スタイルの対象にする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

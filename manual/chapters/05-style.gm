@@ -752,7 +752,8 @@ regex-styles = [
 
 [code: regex-styles] は [code: based-on] で引き継がれます。
 引き継いだ段落スタイルで [code: regex-styles = \[\]] と書くと、引き継がなくなります。
-見出し、脚注の本文には当たりません。
+見出しと定義リストの用語、注の本文には、[code: body] の [code: regex-styles] が当たります。
+見出しの番号と注の番号は、一致を探す文字に入りません。
 図のキャプションには [code: caption] の、傍注の本文には [code: sidenote] の、表のセルにはセルの段落スタイルの [code: regex-styles] が当たります。
 
 使える正規表現は、InDesign の正規表現の主なものです。
