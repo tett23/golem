@@ -1534,7 +1534,10 @@ itemsFor env lead prev p next = case p of
         stretches, and no line breaks before a range (docs/adr/0269); nor at a
         space held, between the label of a page and its value (docs/adr/0277) -}
         [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [space]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+  -- a tate-chu-yoko is one box from outside: the tracking after it, given back at the line end (docs/adr/0370)
+  PBox lk t kind w ->
+    let extra = if kind == KindTcy then tracking lk else 0
+     in [Box (w + extra) (BoxContent t False 0 0 (fromEnum kind) lk 0 (negate extra) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
         -- the reading measured and drawn in its character style (docs/adr/0369)
@@ -1560,7 +1563,10 @@ itemsFor env lead prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+        -- one box from outside: the tracking after it, nothing of it inside the base or the reading,
+        -- given back at the line end (docs/adr/0370)
+        outer = tracking lk
+     in [Box (rpWidth rp + outer) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) (rpOverhang rp) (rpOverhang rp - outer) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
