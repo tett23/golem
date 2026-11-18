@@ -55,7 +55,13 @@ readingTests =
     testCase "an empty expression is one G01020" $
       withChapters "" [("a.gm", "[=]\n")] [] $ \tmp -> do
         (codes, _) <- checked tmp
-        codes @?= [DiagnosticCode "G01020"]
+        codes @?= [DiagnosticCode "G01020"],
+    testCase "ADR 0344 I2 I3: retired style forms stop every target even with --no-notices" $
+      withChapters "[lists]\nnumbers = [\"{{{a}}}\"]\n[notes]\nmark-size = \"0.5zw\"\n[masters.book]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n" [("a.gm", "一。\n")] [] $ \tmp ->
+        forM_ [TargetPdf, TargetHtml, TargetEpub, TargetText] $ \target -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [target], optNoNotices = True}
+          map diagCode (filter isError (brDiagnostics r)) @?= map DiagnosticCode ["G03250", "G03251", "G03252", "G03253"]
+          brWritten r @?= []
   ]
   where
     checked tmp = do
@@ -151,8 +157,7 @@ everyNoticeProjects =
         <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
         -- the role overhang of the fake fonts draws ink past the box of ” (G07126, docs/adr/0302)
         <> "\n[fonts.overhang]\nja = \"fonts/b.otf\"\n\n[character-styles.overhang]\nfont = \"overhang\"\n"
-        -- the ways of writing to be retired of docs/adr/0177: G03114, G03115, G03116 and G03117
-        <> "\n[lists]\nnumbers = [\"{{{n}}}\", \"{a}.\"]\n\n[notes]\nmark-size = \"0.5zw\"\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n"
+        <> "\n[lists]\nnumbers = [\"{n:lower-alpha}.\"]\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"x\"] }\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
     source =
       T.concat
@@ -314,6 +319,11 @@ noticeTests =
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02108\"]\n" "@listing code.hs\n") id
         codesOf (nDiagnostics n) @?= ["G03024"]
         nOutputs n @?= [],
+      testCase "ADR 0344 I4: silence-notices with each retired code of the style formats is G03024" $
+        forM_ ["G03114", "G03115", "G03116", "G03117"] $ \code -> do
+          n <- buildNotified (noticeProject ("\n[diagnostics]\nsilence-notices = [\"" <> code <> "\"]\n") "a.\n") id
+          codesOf (nDiagnostics n) @?= ["G03024"]
+          nOutputs n @?= [],
       testCase "ADR 0343 I2: --no-notices does not let a legacy or doubled table path build" $
         forM_ [("@table src=t.csv\n", "G02252"), ("@table t.csv src=t.csv\n", "G02130"), ("@table t.csv t.csv\n", "G02130")] $ \(src, code) -> do
           n <- buildNotified (noticeProject "" src <> [("t.csv", "a,b\nc,d\n")]) (\o -> o {optNoNotices = True})
