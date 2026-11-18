@@ -11,6 +11,7 @@ import CodeSpaceSpec (codeSpaceTests)
 import CodeStopSpec (codeStopTests)
 import ColumnWidthInvariantsSpec (columnWidthInvariantTests)
 import CombiningSpec (combiningTests)
+import CompressedNoteMarksSpec (compressedNoteMarksTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
@@ -401,6 +402,7 @@ tests =
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
+      testGroup "the kanji numbers of note marks set flat (docs/adr/0381)" compressedNoteMarksTests,
       narrowPunctuationTests,
       codeSpaceTests,
       codeJapaneseTests,

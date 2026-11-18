@@ -1089,6 +1089,10 @@ tests =
         fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"chapter\"\n") @?= Right NumberPerChapter
         fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"book\"\n") @?= Right NumberPerBook
         codes (parseStyle (FileId 0) "[notes]\nnumbering = \"week\"\n") @?= ["G03006"],
+      testCase "ADR 0381: [notes] mark-shape = \"flat\" sets the kanji of the marks flat; no other value" $ do
+        fmap stNotesMarkFlat (parseStyle (FileId 0) "[notes]\nmark-shape = \"flat\"\n") @?= Right True
+        fmap stNotesMarkFlat (parseStyle (FileId 0) "") @?= Right False
+        codes (parseStyle (FileId 0) "[notes]\nmark-shape = \"square\"\n") @?= ["G03006"],
       testCase "ADR 0383: [notes] numbering = \"page\" numbers the notes per page" $ do
         codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= []
         fmap (show . stNotesNumbering) (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= Right "NumberPerPage",
