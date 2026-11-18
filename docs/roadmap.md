@@ -40,6 +40,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### テストと CI
 
+- **プルリクエストの CI の時間を測り直す**：[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 1 から 6 を入れた後の、成功したプルリクエストの `ci.yml` の 20 回（`build` を省いた実行を除く）で、`scripts/ci/ci-critical-path.sh` の中央値を測り、`docs/ci-timings/` に記録する（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 7 と A2）。中央値が 300 秒を超えるか、300 秒との差が 30 秒に満たなければ、コンパイルの時間を縮める変更を、測った値を添えて別の ADR で決める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 8）。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲では、試作で調べた入力を回帰テストに取り込み、CI で常時調べる範囲を実行時間から決める。
   - **パーサーと `golem fmt` の往復（未実装）**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。[ADR 0351](adr/0351-prove-parser-formatter-round-trips.md) に従い、実際の文法から作った Lean モデルの結果を、パーサーと整形処理の出力に照らして確かめる。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。家族の絵文字では、ゼロ幅接合子（ZWJ）の前後の文字境界と、一つのサロゲートペアの途中を区別する。
@@ -79,13 +80,11 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### スタイル
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
-  - **柱とノンブル（未実装）**：本文の役割の書体と版面の文字の大きさで描く。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
   - **隠しノンブル（未実装）**：本文の役割の書体で、`[hidden-folio]` の `size` だけを変えられる。 [Golem ADR 0365](adr/0365-hidden-folio-style.md)。
   - **脚注と章末の注の本文を別々の段落スタイルで組むこと（未決）**：`[notes]` の `body-style` は、ページの下の脚注と章末の注の本文に同じ段落スタイルを当てる。ADR は「脚注本文、章末注本文、章末注の一覧の見出しにそれぞれ段落スタイルを選ぶ」と書き、境界の入力の表に「脚注本文だけ指定すれば章末注は既定」を挙げる一方、キーは `body-style` と `heading-style` の二つだけを決めている。脚注と章末の注に別のキーを設けるかを決める。 [Golem ADR 0366](adr/0366-note-body-styles.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **ルビの読み**：読みだけに文字スタイルを指定できる。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
   - **トラッキングの届かない文字（未実装）**：縦中横の箱とルビにトラッキングを足さない。 [Golem ADR 0370](adr/0370-tracking-inline-boxes.md)。
-- **柱とノンブルのスタイル（未実装）**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。 [Golem ADR 0364](adr/0364-running-head-folio-style.md)。
 - **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
 - **段落スタイルの拡張（未実装）**：行送り（`line-height`）、ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` を除く部分であり、次の未決事項を決めてから組む。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。
   - **行送りと行の格子（未決）**：仕様書は、PDF の本文を行の格子に載せるので段落スタイルに行送りの欄を設けないとしている。ADR は `line-height` を設けるが、格子の行との関係（格子に載せ直すか、格子から外れて組むか、その後の段落をどこから始めるか）と、HTML と EPUB の写し方を書いていない。
@@ -114,7 +113,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **ページを持たない出力でのページごとの注の番号（未実装）**：`[notes]` の `numbering = "page"` は、PDF ではページごとに番号を振る（[docs/specifications.md の「ページごとの注の番号」](specifications.md#ページごとの注の番号)）。HTML、EPUB、プレーンテキストには ADR が diagnostic を出すことだけを定め、その重大度と、その出力に振る番号を定めていない。今は警告（G03259）を出し、本の通し番号で組む。未決事項の「ページを持たない出力の注の番号」を決めてから、ADR の状態を `accepted` にする。 [Golem ADR 0383](adr/0383-page-local-note-numbers.md)。
 - **韻文の拡張（未実装）**：[言語と文化ごとの詩行と組版の例](research/verse-layout.md) を参照する。行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。 [Golem ADR 0384](adr/0384-verse-line-numbers.md)。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
-- **ページ番号と柱の拡張（未実装）**：EPUB の `page-list`、柱とノンブルを見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。 [Golem ADR 0386](adr/0386-page-list-and-page-colors.md)。
+- **ページ番号と柱の拡張（未実装）**：EPUB の `page-list`、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。 [Golem ADR 0386](adr/0386-page-list-and-page-colors.md)。
 
 ### 機能をそろえた後の確かめ
 

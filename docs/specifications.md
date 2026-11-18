@@ -370,6 +370,28 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 測るのは、プルリクエストの `ci.yml` の成功した実行のうち `build` を省かなかった直近 20 回の時間の中央値で、ランナーの順番待ちは含めない（[ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)、計測のコマンドは `scripts/ci/ci-critical-path.sh`）。
 この時間が 300 秒を超えたら、ほかの作業より先に CI を改善する（CONTRIBUTING.md）。
 
+CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
+`build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。
+`dist-newstyle` を保存するランナー（`tests-driver`）は `cabal build all` で、`tests-rest` は自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+ビルドの計画を読む検査は、どのランナーでも `cabal build all` の計画を読み、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
+x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョブ（`visual`、`verapdf`、`wasm`、`editors-lsp`）が待つ成果物を、`outputs-checks` がそのほかの手順を受け持つ。
+プルリクエストの実行が走らせる検査は、[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の実装の前のコミット（`e5dcfc660`）と等しい。
+`scripts/ci/ci-checks.sh` が `ci.yml` から `cabal build` の後の手順とそれを走らせるアーキテクチャ、`cabal test` のスイート、`ci` が待つジョブを一覧にし、`scripts/ci/test.sh` がそのコミットで作った一覧（`scripts/ci/testdata/ci-checks/before-0395.txt`）と比べる（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の A1）。
+
+プルリクエストも、GHC がモジュールをコンパイルしたときに `dist-newstyle` を保存する（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)、[ADR 0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I1 を置き換えた）。
+キーは、`main` の族（キーからコミットのハッシュを除いた前の部分）の後に `pr-<番号>-` とコミットのハッシュを続けたものである（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の I4）。
+同じプルリクエストの次の push は、`restore-keys` の前方一致で自分の最新のものを戻し、それが無ければ `main` の最新を戻す。
+ワークフロー `pr-caches.yml` は、`ci.yml` の実行が終わったときとプルリクエストが閉じたときに、`scripts/ci/pr-caches.sh` が選んだキャッシュを消す。
+次の番号は [ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の不変条件の番号で、I2 の「族ごと」と同じ日時の扱いは、ADR の調査の「一組（約 970 MB）」に合わせてこの仕様が決めたものである。
+
+- I1: 開いていないプルリクエストの ref（`refs/pull/N/merge`）のキャッシュはすべて消し、`refs/heads/main` のものは消さない。
+- I2: 開いているプルリクエストの `dist-` のキャッシュは、族ごとに作った日時の最も新しいものだけを残す。日時が同じものは ID の大きいほうを残す。
+- I3: 残りの合計が 9 GB（10^9 バイト）を超えれば、開いているプルリクエストの `dist-` のキャッシュを作った日時の古いものから、合計が 9 GB 以下になる最小の個数だけ消す。
+
+`pr-caches.yml` の契機（`workflow_run` と `pull_request_target`）は既定のブランチの定義で走るので、プルリクエストはこのワークフローを書き換えられない。
+ワークフローは何もチェックアウトせず、`pr-caches.sh` を既定のブランチから API で取る。
+`actions: write` は、このワークフローのジョブと `ci.yml` の `caches`（`main` への push だけで走る）にだけ与える。
+
 ## モジュール構成
 
 ### 依存の図
@@ -3277,7 +3299,7 @@ PDF では、本文の中のコードの背景と余白を次のように扱う�
 - 背景は、行ごとに、同じ背景を持つ箱の並びを一つの矩形で塗る。行の方向は、並びの最初の箱の始まり（前の余白を含む）から最後の箱の終わり（後の余白を含む）までで、並びの中の空白も塗る。行と直交する方向は、その行の字面（横組みでは行の大きさの字面の上端から下端、縦組みでは中心線から左右に行の大きさの半分）である。
 - コードが空白か `/` の後で次の行に分かれた場合は、行ごとに別の矩形を塗る。前の余白は最初の行の始まりにだけ、後の余白は最後の行の終わりにだけあり、分かれた側は箱の端で切る。
 - 背景はその行の文字より先に、スウォッチの CMYK を DeviceCMYK で塗る。ルビの読みと圏点は字面の外に描くので、背景と重ならない。
-- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに適用される。柱とノンブルは文字スタイルで組まないので、背景を持たない。
+- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに適用される。柱とノンブルには、文字スタイルを指定しても背景を描かない（[Golem ADR 0364](adr/0364-running-head-folio-style.md)）。
 - 背景のスウォッチは、golem preflight の使ったスウォッチに入り、総インキ量の検査（G09015）の対象になる。
 
 文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF で本文と違う規則で行に分ける。
@@ -4085,7 +4107,19 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 マスターページが一つもなければ、柱もノンブルも描かない。
 前付けの目次のページなどで柱を消したい場合は、`running-head` のないマスターページを章の項目の `master` に指定する。
 
-柱は本文の書体と版面の文字の大きさで、縦組みの本でも横書きで描く。
+柱とノンブルは、マスターページの `running-head` と `folio` のそれぞれの `character-style` に書いた文字スタイルで組む（[Golem ADR 0364](adr/0364-running-head-folio-style.md)）。
+文字スタイルは、本文の役割の書体と版面の文字の大きさの上に当てる。
+書体、文字の大きさ、色のほか、合成の太字と斜体、トラッキング、ベースラインシフト、OpenType の機能も、段落の中の文字スタイルと同じく当たる。
+文字スタイルの下線、取り消し線、背景は、柱とノンブルには描かない。
+`size` を `zw` で書けば、版面の文字の大きさを基準にする。
+`character-style` を書かなければ、本文の役割の書体と版面の文字の大きさで、色を付けずに組む。
+柱の文字スタイルはノンブルの見た目を変えず、ノンブルの文字スタイルは柱の見た目を変えない。
+奇数ページと偶数ページの柱は、内容が違っても同じ文字スタイルで組む。
+柱とノンブルの横の位置（中央や行末へのそろえ）と G07051 の柱の幅は、文字スタイルを当てた書体、文字の大きさ、OpenType の機能、トラッキングで測る。
+G07052 の柱の字の外枠は、文字スタイルを当てた文字の大きさで測る。
+`character-style` に `[character-styles]` にない名前を書くと、`style.toml` を読むときに G03013 とする。
+`size` を書くか `based-on` で引き継ぐ文字スタイルで組んだ柱とノンブルの文字は、G09003 の大きさの出どころを、`size` を書いた定義とする。
+縦組みの本でも柱は横書きで描く。
 柱は行の格子の外に描き、改ページに影響しない。
 
 ### HTML と EPUB が使う設定
