@@ -1,6 +1,6 @@
 # ADR 0378: 約物にも palt と vpal を適用できるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

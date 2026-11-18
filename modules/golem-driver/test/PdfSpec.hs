@@ -180,6 +180,42 @@ pdfPipelineTests =
           -- FreeType cannot read T either: G08109 as well (Golem ADR 0390)
           map diagCode (bErrors b) @?= [DiagnosticCode "G08107", DiagnosticCode "G08109"]
           bPdf b @?= Nothing,
+      testCase "ADR 0394 I1: G08109 of the glyphs 9 and 10 of one font come in the order of their messages, 10 first" $ do
+        (sans, _) <- realLatinFonts
+        -- H (gid 9) and I (gid 10) have three-byte CharStrings; both call
+        -- the local subroutine 1131, past the INDEX and a number FreeType
+        -- does not take (G08107 once, G08109 for each)
+        map (\o -> BS.unpack (BS.take 3 (BS.drop o sans))) [51415, 51418] @?= [[247, 2, 29], [242, 29, 14]]
+        let call = BS.pack [250, 255, 10]
+            bad = BS.take 51415 sans <> call <> call <> BS.drop 51421 sans
+        b <- buildMarksFilesWith "HI\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        [diagMessage d | d <- bErrors b, diagCode d == DiagnosticCode "G08109"]
+          @?= ["フォントのグリフの寸法を読めません: fonts/sans.otf のグリフ 10", "フォントのグリフの寸法を読めません: fonts/sans.otf のグリフ 9"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0394 I1: G08108 of the glyphs of two fonts come in the order of the font paths, not of their use" $ do
+        (sans, _) <- realLatinFonts
+        -- b (gid 29): 1 random 0.5 sub div drop 100 0 rmoveto 500 0 rlineto
+        -- 0 500 rlineto endchar, divided by an interval holding 0 (G08108),
+        -- the rest of its 56 bytes endchar
+        BS.take 3 (BS.drop 51650 sans) @?= BS.pack [134, 248, 81]
+        let program = [140, 12, 23, 255, 0, 0, 0x80, 0, 12, 11, 12, 12, 12, 18, 239, 139, 21, 28, 1, 0xf4, 139, 5, 139, 28, 1, 0xf4, 5, 14]
+            bad = BS.take 51650 sans <> BS.pack program <> BS.replicate (56 - length program) 14 <> BS.drop 51706 sans
+            -- the same bytes would be one face, and the same PostScript name
+            -- a clash: the second font is named Second Sans Pro, SecondSansPro
+            -- in its name table (UTF-16) and its CFF table
+            rename from to = BS.intercalate to . splitOn from
+            splitOn pat x = case BS.breakSubstring pat x of
+              (before, rest) | BS.null rest -> [before]
+              (before, rest) -> before : splitOn pat (BS.drop (BS.length pat) rest)
+            utf16 = BS.concatMap (\c -> BS.pack [0, c])
+            other = foldl (\f (from, to) -> rename from to f) bad [(n, m) | (from, to) <- [("Source Sans Pro", "Second Sans Pro"), ("SourceSansPro", "SecondSansPro")], (n, m) <- [(from, to), (utf16 from, utf16 to)]]
+            -- the body uses fonts/z.otf first, the style s fonts/a.otf after it
+            style = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/z.otf\"\n\n[fonts.other]\nlatin = \"fonts/a.otf\"\n\n[character-styles.s]\nfont = \"other\"\n"
+        b <- buildMarksFilesWith "b[style s: b]\n" (\o -> o {optFonts = golemFontProvider}) (Just style) [("fonts/z.otf", bad), ("fonts/a.otf", other)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08108", DiagnosticCode "G08108"]
+        map diagMessage (bErrors b)
+          @?= ["CFF の参照を確かめきれません: fonts/a.otf のグリフ 29", "CFF の参照を確かめきれません: fonts/z.otf のグリフ 29"]
+        bPdf b @?= Nothing,
       testCase "ADR 0357 I1: used local subroutine endpoint exceeds the table" $ do
         (sans, _) <- realLatinFonts
         -- T calls local subroutine 270. Its end offset occupies two bytes.
