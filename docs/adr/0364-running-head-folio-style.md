@@ -1,6 +1,6 @@
 # ADR 0364: 柱とノンブルの文字スタイルを個別に選ぶ
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -506,10 +506,10 @@ runningHeadTests =
     "running heads (golem-driver ADR 0014)"
     [ testCase "content is both pages" $
         runningHead "content = \"heading.1.short\""
-          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefHeading 1 HeadShort PickFirst)]))),
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefHeading 1 HeadShort PickFirst)]) Nothing)),
       testCase "even and odd" $ do
         runningHead "even = \"title\", odd = \"heading.2.numbered.last\""
-          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 2 HeadNumbered PickLast)]) (one [ref (RefMeta "title")])))
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 2 HeadNumbered PickLast)]) (one [ref (RefMeta "title")]) Nothing))
         fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone)
         fmap (fmap rhEven) (runningHead "content = \"heading.3.short.last\"") @?= Right (Just (one [ref (RefHeading 3 HeadShort PickLast)])),
       testCase "wrong values are G03014" $ do
@@ -557,7 +557,7 @@ runningHeadTests =
         fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone),
       testCase "a string and an array together (ADR 0022)" $
         runningHead "even = \"title\", odd = [\"{heading.1.short}\"]"
-          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefMeta "title")]))),
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefMeta "title")]) Nothing)),
       testCase "wrong formats are G03014 at the value (ADR 0022)" $
         forM_
           [ "[\"{heading.1.short\"]",
@@ -1570,6 +1570,16 @@ noteMarkTests =
         fmap (fmap snMarkerStyle . stSidenotes) (first (const ()) (parseStyle (FileId 0) (sn <> "marker-style = \"strong\"\n"))) @?= Right (Just (Just "strong"))
         fmap (fmap snMarkerStyle . stSidenotes) (first (const ()) (parseStyle (FileId 0) sn)) @?= Right (Just Nothing)
         codes (parseStyle (FileId 0) (sn <> "marker-style = \"nothing\"\n")) @?= ["G03013"],
+      testCase "ADR 0364: running-head and folio of a master take a character style each; one that does not exist is G03013" $ do
+        let masterOf = fmap (\s -> [(fmap rhCharacterStyle (mdRunningHead m), mdFolioCharacterStyle m) | m <- Map.elems (stMasters s)]) . first (const ()) . parseStyle (FileId 0)
+            master rh fo = "[masters.body]\nrunning-head = {position = \"top-outside\", content = \"title\"" <> rh <> "}\nfolio = {position = \"bottom-outside\", format = \"{n}\"" <> fo <> "}\n"
+        masterOf ("[character-styles.accent]\nsynthetic-bold = true\n" <> master ", character-style = \"accent\"" ", character-style = \"strong\"") @?= Right [(Just (Just "accent"), Just "strong")]
+        masterOf (master ", character-style = \"strong\"" "") @?= Right [(Just (Just "strong"), Nothing)]
+        masterOf (master "" "") @?= Right [(Just Nothing, Nothing)]
+        codes (parseStyle (FileId 0) (master ", character-style = \"nothing\"" "")) @?= ["G03013"]
+        codes (parseStyle (FileId 0) (master "" ", character-style = \"nothing\"")) @?= ["G03013"]
+        [diagMessage d | Left ds <- [parseStyle (FileId 0) (master "" ", character-style = \"nothing\"")], d <- ds]
+          @?= ["style.toml のスタイルの参照が不正です: マスター body の folio の文字スタイルがありません: nothing"],
       testCase "ADR 0369: reading-style of [composition.ruby] takes a character style; one that does not exist is G03013" $ do
         let readingOf = fmap (rdReadingStyle . compRuby . stComposition) . first (const ()) . parseStyle (FileId 0)
         readingOf "[character-styles.accent]\nsynthetic-bold = true\n[composition.ruby]\nreading-style = \"accent\"\n" @?= Right (Just "accent")
