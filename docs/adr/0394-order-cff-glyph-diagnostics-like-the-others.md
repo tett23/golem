@@ -1,6 +1,6 @@
 # ADR 0394: CFF のグリフの diagnostic をほかと同じ規則で並べる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

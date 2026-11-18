@@ -12156,10 +12156,11 @@ CharString の演算子 `random` がとりうる値すべてでたどり、た�
 G08107 とは独立に出す。
 表の構造の確かめで G08107 になったフォントでは、このエラーは出ない。
 位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
 
 - メッセージ: `CFF の参照を確かめきれません: <パス> のグリフ <番号>`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
-- ADR: [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)
+- ADR: [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
 
 ### 主な原因
 
@@ -12186,10 +12187,11 @@ G08107 とは独立に出す。
 フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
 G08107 と G08108 とは独立に出す。
 位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
 
 - メッセージ: `フォントのグリフの寸法を読めません: <パス> のグリフ <番号>`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font`）
-- ADR: [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)
+- ADR: [Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
 
 ### 主な原因
 
