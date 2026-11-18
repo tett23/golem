@@ -24,6 +24,7 @@ module Golem.Layout.Japanese
     shapedWrapMark,
     MarkPart (..),
     markParts,
+    markPartsShaped,
     markInlines,
     markPartsText,
     markReserve,
@@ -75,7 +76,7 @@ import Golem.Layout.Ruby
 import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
-import Golem.Numerals.Notation (Notation, arabic, writeNumber)
+import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNotation, writeNumber)
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
@@ -177,6 +178,10 @@ data ComposeEnv = ComposeEnv
     ceAkiSet :: !AkiSet,
     -- | [notes] mark-format: the text of a note mark, its number in a notation (golem-driver ADR 0025, docs/adr/0177)
     ceNoteMarkFormat :: !MarkFormat,
+    {- | [notes] mark-shape = "flat" (docs/adr/0381): in vertical text the
+    kanji of the number of a note mark are set flat, each half its advance
+    along the line
+    -} ceNoteMarkFlat :: !Bool,
     -- | the look of a mark in the text from the look of its place: [notes] mark-style applied (docs/adr/0177)
     ceNoteMarkLook :: Look -> Look,
     -- | the size source of a mark in the text from that of its place (golem-cli ADR 0008, docs/adr/0177)
@@ -256,6 +261,7 @@ defaultComposeEnv fs =
       ceNumberUnitPenalty = 10000,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkFormat = defaultMarkFormat,
+      ceNoteMarkFlat = False,
       ceScriptGlyphs = \_ _ -> False,
       ceNoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
       ceNoteMarkSource = const SourceNoteMark,
@@ -306,11 +312,13 @@ data Anchor
 {- | What a box shows (kept in 'bcTag').
 'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
 'KindAki' is the empty box of an [aki] (golem-layout ADR 0012) and
-'KindNoteMark' the mark of a note (golem-driver ADR 0018) and 'KindDashes'
-a run of full-width dashes (docs/adr ADR 0172); they come last so that
-the values before them keep their 'fromEnum'.
+'KindNoteMark' the mark of a note (golem-driver ADR 0018), 'KindDashes'
+a run of full-width dashes (docs/adr ADR 0172) and 'KindFlat' a kanji of
+the number of a note mark set flat, a part of the box of the mark only
+(docs/adr/0381); they come last so that the values before them keep their
+'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes | KindFlat
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -887,7 +895,7 @@ piecesOf env inl = case inl of
   -- a mark is set in the character style of [notes] mark-style (docs/adr/0177)
   Note sp n body ->
     let MarkFormat pre notation suf = ceNoteMarkFormat env
-     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (noteParagraphsIn lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelNote n) (markParts (ceVertical env) pre notation (toInteger n) suf))]
+     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (noteParagraphsIn lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelNote n) (markPartsShaped (ceVertical env) (ceNoteMarkFlat env) pre notation (toInteger n) suf))]
   Sidenote sp n body ->
     (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body))) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
@@ -938,8 +946,10 @@ the text.
 noteMarkSize :: Dim -> Sp -> Sp
 noteMarkSize d s = max 1 (min s (dimToSp s d))
 
--- | A part of a mark (docs/adr/0177): text set as other text, or a number set tate-chu-yoko.
-data MarkPart = MarkText !Text | MarkTcy !Text
+{- | A part of a mark (docs/adr/0177): text set as other text, a number set
+tate-chu-yoko, or a number in kanji set flat (docs/adr/0381).
+-}
+data MarkPart = MarkText !Text | MarkTcy !Text | MarkFlat !Text
   deriving stock (Eq, Show)
 
 {- | The parts of a mark of a number (docs/adr/0177): the text before, the
@@ -959,15 +969,34 @@ markParts vertical pre notation n suf =
         MarkText t -> [MarkText (pre <> t <> suf)]
         _ -> [MarkText pre | not (T.null pre)] <> [number] <> [MarkText suf | not (T.null suf)]
 
--- | The parts of a mark as inlines: text, and tate-chu-yoko (docs/adr/0177).
+{- | The parts of a mark in vertical text with [notes] mark-shape = "flat"
+or not (docs/adr/0381): flat, a number in kanji (the notations kanji and
+kanji-digits) is a part of its own, which the box of the mark sets flat;
+the text before and after it is as 'markParts' sets it. Horizontal text,
+Arabic numbers and the other notations are as 'markParts' sets them.
+-}
+markPartsShaped :: Bool -> Bool -> Text -> Notation -> Integer -> Text -> [MarkPart]
+markPartsShaped vertical flat pre notation n suf
+  | vertical,
+    flat,
+    notation `elem` [kanjiNotation, kanjiDigitsNotation],
+    Just written <- writeNumber notation n =
+      [MarkText pre | not (T.null pre)] <> [MarkFlat written] <> [MarkText suf | not (T.null suf)]
+  | otherwise = markParts vertical pre notation n suf
+
+{- | The parts of a mark as inlines: text, and tate-chu-yoko (docs/adr/0177).
+A number set flat is text here: only the box of a mark sets it flat
+(docs/adr/0381).
+-}
 markInlines :: SrcSpan -> [MarkPart] -> [Inline]
 markInlines sp = map $ \case
   MarkText t -> Text sp t
   MarkTcy t -> Tcy sp t
+  MarkFlat t -> Text sp t
 
 -- | The text of the parts of a mark.
 markPartsText :: [MarkPart] -> Text
-markPartsText = T.concat . map (\case MarkText t -> t; MarkTcy t -> t)
+markPartsText = T.concat . map (\case MarkText t -> t; MarkTcy t -> t; MarkFlat t -> t)
 
 {- | The source of a piece of a text at a character of it: the run of
 dashes itself when the text is its source byte for byte (G07101, docs/adr
@@ -1589,6 +1618,8 @@ markLayout env lk parts ps pe =
       vertical = \case
         MarkTcy t -> [(KindTcy, t, m, 1)]
         MarkText t -> concatMap units' (groupBy (\a b -> latin a == latin b) (clusters t))
+        -- each kanji of a number set flat: half its advance along the line (docs/adr/0381)
+        MarkFlat t -> [(KindFlat, u, Sp (unSp (advanceOf u) `div` 2), T.length u) | u <- clusters t]
       -- a run of Latin text is turned as one; each other character stands in its own box
       units' us@(u : _)
         | latin u = let run = T.concat us in [(KindRotated, run, L.zwToSp m (ceWordAdvance env lk run), T.length run)]
@@ -1609,7 +1640,7 @@ in [notes] mark-format, a sidenote its number alone in Arabic numerals.
 -}
 channelMarkParts :: ComposeEnv -> NoteChannel -> Int -> [MarkPart]
 channelMarkParts env ch n = case ch of
-  ChannelNote -> let MarkFormat pre notation suf = ceNoteMarkFormat env in markParts (ceVertical env) pre notation (toInteger n) suf
+  ChannelNote -> let MarkFormat pre notation suf = ceNoteMarkFormat env in markPartsShaped (ceVertical env) (ceNoteMarkFlat env) pre notation (toInteger n) suf
   ChannelSidenote -> markParts (ceVertical env) "" arabic (toInteger n) ""
 
 {- | The width a mark of a channel reserves when notes are numbered per
@@ -1637,19 +1668,20 @@ renumberMark env numberOf c = case bcMark c of
   _ -> c
 
 {- | The mark at the start of the body of a note or a sidenote numbered per
-page (docs/adr/0383), as one box that reserves the widest number of its
-channel: the boxes of the first inline of the composed items (the mark,
-in the look of its character style) and what is between them become one
-box in the look of the first of them, set on its own baseline, which the
-layout numbers again as the marks in the text. Items without a box of
-the first inline are as they are.
+page (docs/adr/0383), or of a note whose number in kanji is set flat
+(docs/adr/0381), as one box: the boxes of the first inline of the
+composed items (the mark, in the look of its character style) and what is
+between them become one box in the look of the first of them, set on its
+own baseline. Numbered per page, the box reserves the widest number of
+its channel, and the layout numbers it again as the marks in the text.
+Items without a box of the first inline are as they are.
 -}
 markLabelBox :: ComposeEnv -> NoteChannel -> Int -> [Item] -> [Item]
 markLabelBox env ch n items =
   case [i | (i, Box _ c) <- zip [0 :: Int ..] items, isLabel c] of
     ixs@(i0 : _)
       | (before, Box _ c : _) <- splitAt i0 items,
-        Box w c' <- markItem env (bcLook c) (bcLook c) (channelMarkParts env ch n) 0 0 (Just (MarkNumber ch n False)) ->
+        Box w c' <- markItem env (bcLook c) (bcLook c) (channelMarkParts env ch n) 0 0 (MarkNumber ch n False <$ ceMarkReserve env) ->
           before <> [Box w c' {bcSource = bcSource c, bcLeaf = bcLeaf c, bcAt = bcAt c}] <> drop (maximum ixs + 1) items
     _ -> items
   where
