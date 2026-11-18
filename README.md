@@ -204,8 +204,10 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 ### 書体とスタイル
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
+CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
+見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
 
 文字と段落の見た目は、スタイルにまとめる。
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
@@ -255,6 +257,7 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
+同じ表の `marker-style` で、印だけに文字スタイルを指定できる。
 
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
@@ -263,6 +266,7 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 
 技術書のためには、コードブロックに行番号などを付けられる。
 ```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
+`@listing` で取り込むファイルのパスは、`@listing src/Main.hs` のように最初の位置引数に一つ書く（[ADR 0341](docs/adr/0341-revise-retire-listing-src.md)）。
 色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 
 表には `@caption` でキャプションを付けて表番号（既定 `表{chapter}-{n}`）を振り、`@column-widths 8zw auto` で列の幅を、`@style` でセルの段落スタイル（既定は組み込みの `table`）を指定できる。
@@ -271,8 +275,13 @@ PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折�
 ### 注、索引、リンク
 
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印だけを書く。
+PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
+PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
+
+`@no-page-break 3` で、改ページの際に前の段落の末尾 3 行を次の段落と同じ段に送る。
+前に 1 行しか残らなければ段落全体を送る（[Golem ADR 0376](docs/adr/0376-no-page-break-lines.md)）。
 
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 索引の項目には、`[index reading=くみはん range=begin: 組版]` と `range=end` でページの範囲を、`see=組版` で「（組版を見よ）」「（組版をも見よ）」の参照を書ける。
@@ -326,6 +335,12 @@ diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagn
 原稿から Emet のコマンドを呼ぶとき、位置引数が足りなければ、`golem check` は不足した引数が何番目かを一つずつ表示する（[Golem ADR 0351](./docs/adr/0351-prove-parser-formatter-round-trips.md)）。
 
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
+
+### 原稿の分量を調べる
+
+プロジェクトのディレクトリで `golem stats` を実行すると、本文の文字数、ワード数、組版後の行数、400 字詰め原稿用紙でのページ数が分かる。
+40 字×32 行のページに換算するには `golem stats --chars-per-line 40 --lines-per-page 32` を実行する。
+組版後の行数を調べるため、プロジェクトで指定した書体を使う。
 
 ## Development
 

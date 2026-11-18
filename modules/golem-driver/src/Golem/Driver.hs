@@ -26,6 +26,7 @@ module Golem.Driver
     functionPaths,
     loadBibliography,
     pdfStructure,
+    manuscriptLines,
     pdfLeafTexts,
     pdfWithTree,
     pdfWithDests,
@@ -256,7 +257,7 @@ evaluateProjectWith files overlay profile root = do
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
       let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
           styleText = fromRight Nothing styleRead
-          -- G03100: a zero indent of caption or sidenote (golem-driver ADR 0043)
+          -- G03100: a zero indent of table (golem-driver ADR 0043, docs/adr/0367)
           styleNoticeDiags = maybe [] (styleNotices styleFid) styleText
           synDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
@@ -710,8 +711,17 @@ assetRefs (A.File _ bs) = concatMap blk bs
             "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
             -- the first argument, and src= to be retired (docs/adr/0184)
             "table" -> [(T.unpack p, UseTable) | p <- take 1 pos <> kw "src"]
-            "listing" -> [(T.unpack p, UseListing) | p <- take 1 pos <> kw "src"]
+            "listing" ->
+              [ (T.unpack p, UseListing)
+              | not (any isSrc args),
+                [A.Located _ (A.Positional v)] <- [filter isPositional args],
+                Just p <- [txt v]
+              ]
             _ -> []
+    isSrc (A.Located _ (A.Keyword (A.Located _ "src") _)) = True
+    isSrc _ = False
+    isPositional (A.Located _ (A.Positional _)) = True
+    isPositional _ = False
     txt = \case
       A.Word t -> Just t
       A.StringLit t -> Just t
@@ -1206,7 +1216,7 @@ htmlConfig dev e book missing bib =
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
       hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
-      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ _ (PageControl NoBreak) <- bs],
+      hcNoBreak = or [keepsPageBreak c | Document _ bs <- bookDocs book, Block _ _ _ (PageControl c) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)
       -- the paragraph style code for pre (golem-driver ADR 0017)
       hcCode =
@@ -1229,7 +1239,7 @@ htmlConfig dev e book missing bib =
       hcLists =
         if stLists style == defaultListStyle
           then Nothing
-          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)) (lsMarkerStyle (stLists style))),
       -- the rules of headings (golem-driver ADR 0027)
       hcHeadingRules =
         Map.fromList
@@ -1358,6 +1368,25 @@ pdfInputOf opts e diagFid book bib =
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
    in PdfInput (optFiles opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project))) (evStyleText e)
+
+-- | Evaluate and compose the body, without serializing or writing a PDF.
+manuscriptLines :: BuildOptions -> IO (Either (Map FileId SourceInfo, [Diagnostic]) ([Text], Integer))
+manuscriptLines opts = do
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
+  case ev of
+    Left failure -> pure (Left (pfSources failure, pfDiagnostics failure))
+    Right e -> do
+      let sources = withEvaluatedSources e (sourceInfos (evProject e))
+          failure ds = Left (sources, ds)
+      case evBook e of
+        Just book | not (hasErrors (evDiagnostics e)) -> do
+          (ds, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
+          if hasErrors ds
+            then pure (failure ds)
+            else do
+              result <- masterFlowText (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
+              pure (either failure Right result)
+        _ -> pure (failure (evDiagnostics e))
 
 {- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
 for the tests: what the PDF would be tagged with.

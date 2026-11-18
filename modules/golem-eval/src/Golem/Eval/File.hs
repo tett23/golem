@@ -399,6 +399,8 @@ normalizeBlock (A.Located sp b) = A.Located sp $ case b of
   A.DefList gs -> A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map normalizeBlock) ds) | A.DefGroup ts ds <- gs]
   A.Table al h rows -> A.Table al (map joinSoftBreaks h) (map (map joinSoftBreaks) rows)
   A.BlockCommand n@(A.Located _ "style") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
+  -- the newlines of a caption are left to the paragraph style caption (docs/adr/0367)
+  A.BlockCommand n@(A.Located _ "figure") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
   A.BlockCommand n args body -> A.BlockCommand n (map normalizeArg args) (map normalizeBlock body)
   A.Attributed cs t
     | any isStyleCommand cs -> A.Attributed (map normalizeBlock cs) (styledBody <$> t)
@@ -441,10 +443,12 @@ splitLines source paraStyles
       A.OrderedList items -> A.OrderedList (map (concatMap splitBlock) items)
       A.DefList gs -> A.DefList [A.DefGroup ts (map (concatMap splitBlock) ds) | A.DefGroup ts ds <- gs]
       A.BlockCommand n args body
-        | keepsLines lb -> b
+        | keepsLines lb || captionKeeps n -> b
         | otherwise -> A.BlockCommand n args (concatMap splitBlock body)
       A.Attributed cmds t -> A.Attributed (map inside cmds) (inside <$> t)
       other -> other
+    -- the caption of @figure, when caption keeps its lines (docs/adr/0367)
+    captionKeeps (A.Located _ n) = n == "figure" && Map.lookup "caption" paraStyles == Just KeepLines
     -- @style with the name of a style that keeps its lines
     keepsLines = \case
       A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional v)] _) | Just n <- nameArg v -> Map.lookup n paraStyles == Just KeepLines
@@ -528,6 +532,10 @@ evalBlock ctx (A.Located sp b) = case b of
     | n == "import" -> standalone ctx sp name args body
     -- @style is read before the evaluation for the lines of its body: G02114 at each spread (docs/adr ADR 0112, ADR 0143)
     | n == "style", ssps@(_ : _) <- spreadsOf args -> mapM_ (report . styleSpread) ssps >> pure []
+    | n == "listing",
+      srcDuplicates@(_ : _) <- [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"] -> do
+        mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) srcDuplicates
+        pure []
     | otherwise -> prepareArgs args >>= maybe (pure []) (\args' -> standalone ctx sp name args' body)
   A.Attributed cmds target -> attributed ctx sp cmds target
   A.ErrorBlock -> pure []
@@ -582,7 +590,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "printings" -> printingsBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
-  "no-page-break" -> pageControl sp name args body
+  "no-page-break" -> noPageBreak ctx sp args body
   "need-lines" -> needLines ctx sp name args body
   "page-lines" -> pageControl sp name args body
   "blank-line" -> blankLine ctx sp args body
@@ -1102,14 +1110,9 @@ forcedBreak sp name args body = breakCommand sp name body $ case (name, map A.lo
   ("column-break", _) -> Left ("G02096", takesNoArguments name)
   _ -> Left ("G02058", "@page-break の引数は recto か verso です")
 
-{- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030):
-G02096 for an argument of @no-page-break, G02070 for a wrong argument of
-@need-lines, G02099 for a wrong argument of @page-lines (docs/adr ADR 0060).
--}
+-- | @page-lines takes a signed, nonzero integer (docs/adr ADR 0060).
 pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
-  ("no-page-break", []) -> Right NoBreak
-  ("no-page-break", _) -> Left ("G02096", takesNoArguments name)
   ("page-lines", [A.Positional v])
     | Just w <- nameArg v,
       Just (s, digits) <- T.uncons w,
@@ -1123,6 +1126,19 @@ pageControl sp name args body = breakCommand sp name body . fmap PageControl $ c
     count w
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))
       | otherwise = Nothing
+
+noPageBreak :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+noPageBreak ctx sp args body = case args of
+  [] -> finish (Right (PageControl NoBreak))
+  [A.Located asp (A.Positional v)] ->
+    naturalArg ctx "@no-page-break の引数" sp (A.Located asp v) >>= \case
+      Right n | inInt64 (toInteger n) -> finish (Right (PageControl (NoBreakLines n)))
+      Right _ -> finish (Left ("G02091", outOfInt64Message))
+      Left NotANumber -> finish (Left ("G02156", "@no-page-break の行数には 0 以上の整数を書きます"))
+      Left NaturalReported -> mapM_ (\(A.Located bsp _) -> err "G02097" bsp (takesNoBody "no-page-break")) (take 1 body) >> pure []
+  _ -> finish (Left ("G02096", "@no-page-break の引数には行数を一つだけ指定できます"))
+  where
+    finish = breakCommand sp "no-page-break" body
 
 {- | @need-lines N (docs/adr ADR 0030): a natural number of 1 or more and
 of at most 9 digits, G02070 otherwise; a negative number or one that is
@@ -1222,12 +1238,14 @@ and page-lines between them (docs/adr ADR 0030).
 conflictingBreaks :: [Block] -> [Diagnostic]
 conflictingBreaks bs =
   [ diagnostic "G02072" Error sp ("@no-page-break と " <> breakName k <> " が同じ位置にあります")
-  | (i, Block sp _ _ (PageControl NoBreak)) <- zip [0 :: Int ..] bs,
+  | (i, Block sp _ _ (PageControl control)) <- zip [0 :: Int ..] bs,
+    keepsPageBreak control,
     side <- [reverse (take i bs), drop (i + 1) bs],
     Block _ _ _ (ForcedBreak k) : _ <- [dropWhile soft side]
   ]
   where
     soft b = case blockBody b of
+      PageControl (NoBreakLines 0) -> True
       PageControl (NeedLines _) -> True
       PageControl (AdjustLines _) -> True
       _ -> False
@@ -1786,7 +1804,7 @@ figure ctx sp args body = do
                 Left NaturalReported -> pure (Left ())
                 _ -> wrongPage p
       fine <- (&& formats) <$> ok
-      caption <- captionParagraphs =<< evalBlocks ctx . concat =<< mapM unstyled body
+      caption <- captionParagraphs =<< evalCaption . concat =<< mapM unstyled body
       case look "alt" of
         Nothing -> err "G02028" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
@@ -1813,6 +1831,18 @@ figure ctx sp args body = do
     _ -> err "G02032" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
+    {- the paragraphs of a caption by the line-breaks of caption (docs/adr/0367):
+    with keep, each line of the source is a line, as in a paragraph of a style
+    that keeps its lines; the paragraphs have no style of their own -}
+    evalCaption bs
+      | Map.lookup "caption" (ctxParaStyles ctx) == Just KeepLines = concat <$> mapM keptCaption bs
+      | otherwise = evalBlocks ctx bs
+    keptCaption = \case
+      A.Located psp (A.Paragraph is) -> map unstyle <$> styledParagraph ctx psp (Just "caption") is
+      other -> evalBlocks ctx [other]
+    unstyle = \case
+      Block bsp l g (Paragraph _ is) -> Block bsp l g (Paragraph Nothing is)
+      other -> other
     -- a caption holds paragraphs only: G02118 at each other block, which is dropped (docs/adr/0144)
     captionParagraphs = fmap concat . mapM (\b -> maybe (pure [b]) (\k -> [] <$ err "G02118" (blockSpan b) ("図版のキャプションには段落だけを書けます: " <> k)) (notInCaption (blockBody b)))
     -- a forced break, a page control and blank lines are left to nestedBreaks (G02059, G02071, G02093)
@@ -2143,16 +2173,24 @@ missing sp p = err "G02033" sp ("ファイルがありません: " <> p)
 listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 listing ctx sp args = do
   kw <- keywords ctx args
-  -- G02065: the path as src= is to be retired (golem-syntax ADR 0002)
-  mapM_
-    (\asp -> report (notice "G02065" asp "@listing の src= は廃止予定です。パスを最初の引数に書きます"))
-    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
-  let src = case [v | A.Located _ (A.Positional v) <- args] of
-        (v : _) -> Just (argText v)
-        [] -> argText <$> lookup "src" kw
-  case src of
-    Nothing -> err "G02036" sp "@listing にはファイルのパスが必要です" >> pure []
-    Just p ->
+  let paths = [(asp, argText v) | A.Located asp (A.Positional v) <- args]
+      legacy = [(asp, argText v) | A.Located asp (A.Keyword (A.Located _ "src") v) <- args]
+      duplicates = [(asp, k) | (asp, k) <- repeatedKeys args, k == "src"]
+  case (duplicates, paths, legacy) of
+    (_ : _, _, _) -> do
+      mapM_ (\(asp, k) -> err "G02077" asp ("同じキーを二度書いています: " <> k)) duplicates
+      pure []
+    ([], first : second : _, _) -> do
+      err "G02253" (fst second) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd second <> "。採用する一方だけを位置引数に残します")
+      pure []
+    ([], first : _, old : _) -> do
+      err "G02253" (fst old) ("@listing のパスを二つ書いています: " <> snd first <> "、" <> snd old <> "。採用する一方だけを位置引数に残します")
+      pure []
+    ([], [], old : _) -> do
+      err "G02250" (fst old) "@listing の src= は使えません。パスを最初の引数に移します"
+      pure []
+    ([], [], []) -> err "G02036" sp "@listing にはファイルのパスが必要です" >> pure []
+    ([], [(_, p)], []) ->
       asset ctx sp p >>= \case
         Just found | Just content <- assetContent found -> do
           let ls = T.lines content

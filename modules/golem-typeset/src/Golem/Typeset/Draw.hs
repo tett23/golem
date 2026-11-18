@@ -2,6 +2,7 @@
 module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
+    masterFlowText,
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
@@ -133,6 +134,47 @@ reused between the rounds of S2 or not, for the tests that compare the two
 -}
 renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllReusing reuse = renderPdfAllUsing reuse untouched
+
+-- | The logical lines before wrapping and the line boxes composed in the master flow.
+masterFlowText :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Text], Integer))
+masterFlowText provider input = case checkedGeometry inp of
+  Left ds -> pure (Left ds)
+  Right geom -> do
+    loaded <- loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    case loaded of
+      Left ds -> pure (Left ds)
+      Right fonts -> fmap counts <$> layoutPdf inp geom fonts
+  where
+    inp = codeInput input
+    counts layout =
+      let units = map snd (plUnits layout)
+          blank = sum [toInteger n | Unit {uKind = UBlank n} <- units]
+          boxes =
+            Map.size (plLines layout)
+              + sum (map length (Map.elems (plTableLines layout)))
+              + sum (map (length . pfCaption) (Map.elems (plFigures layout)))
+              + sum (map (length . ccLines) (Map.elems (plTableCaptions layout)))
+              + sum [length (ciCaption code) | (i, code) <- Map.toList (plCodes layout), i == ciFirst code]
+       in (concatMap (logicalLines (plFlowEnv layout)) units, toInteger boxes + blank)
+    logicalLines flow unit = case uKind unit of
+      UBlank n -> replicate (fromIntegral n) ""
+      UFigure fig -> concatMap (concatMap paragraph . blockInlineLists) (figCaption fig)
+      UCode _ code -> maybe [] paragraph (codeCaption code) <> map clText (codeLines code)
+      UTable table -> concatMap paragraph (maybe [] pure (tableCaption table) <> tableHeader table <> concat (tableRows table))
+      UPara {} -> paragraph (uInlines unit)
+      UTerm {} -> paragraph (uInlines unit)
+      UHeading {} -> paragraph (uInlines unit)
+      UNotesTitle {} -> paragraph (uInlines unit)
+      UTocEntry {} -> paragraph (uInlines unit)
+      UIndexEntry {} -> paragraph (uInlines unit)
+      _ -> []
+      where
+        -- A paragraph with no text of its own in the master flow (only a
+        -- sidenote, say) is not an explicit empty line (Golem ADR 0355).
+        paragraph inls = case displayedInlines (unitEnv flow unit) inls of
+          t
+            | T.null t -> []
+            | otherwise -> T.splitOn "\n" t
 
 renderPdfAllUsing :: Bool -> Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
@@ -1427,20 +1469,20 @@ drawColumn env p =
              ]
           <> [orAgain lid (entry env "表の行" (spanOfLine env lid) ta (tableLineAt env slot j cell) cell) | (slot, SLine lid) <- poSlots p, (j, cell) <- Map.findWithDefault [] lid (plTableLines layout)]
           -- the caption of a table, from its first grid line (docs/adr/0262)
-          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) j) (SetLine l (ccSize cc) 0 [] [] Nothing))
+          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) (ptRow pl')) (SetLine (ptLine pl') (ccSize cc) (ptIndent pl') [] [] Nothing))
              | (slot, SLine lid) <- poSlots p,
                Just cc <- [Map.lookup lid (plTableCaptions layout)],
-               (j, l) <- zip [0 ..] (ccLines cc)
+               pl' <- ccLines cc
              ]
           <> [ anchoredAt (lid + j) (entry env "見出しの行" (spanOfLine env lid) ta (headingLineAt env slot hb j sl) sl)
              | (slot, SHeading lid m) <- poSlots p,
                Just hb <- [Map.lookup lid (plHeadings layout)],
                (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
              ]
-          <> [ entry env "キャプションの行" (pfSpan pf) ta (captionLineAt env slot pf j) (SetLine l (pfCaptionSize pf) (captionIndent env ta pf) [] [] Nothing)
+          <> [ entry env "キャプションの行" (pfSpan pf) ta (captionLineAt env slot pf (ptRow pl')) (SetLine (ptLine pl') (pfCaptionSize pf) (captionIndent env ta pf + ptIndent pl') [] [] Nothing)
              | (slot, fid) <- placedFigures p,
                Just pf <- [Map.lookup fid (plFigures layout)],
-               (j, l) <- zip [0 ..] (pfCaption pf)
+               pl' <- pfCaption pf
              ]
           -- the rows of code blocks (golem-driver ADR 0017)
           <> [ anchoredAt (lid + j) (entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' j sl) sl)
@@ -1458,11 +1500,11 @@ drawColumn env p =
                Just l <- [ciContinued ci],
                let sl = SetLine l (ciSize ci) (ciIndent ci) [] [] Nothing
              ]
-          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [] Nothing))
+          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci (ptRow pl')) (SetLine (ptLine pl') (ciCaptionSize ci) (ciStart ci + ptIndent pl') [] [] Nothing))
              | (slot, SCode lid _ _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
                lid == ciFirst ci,
-               (j, l) <- zip [0 ..] (ciCaption ci)
+               pl' <- ciCaption ci
              ]
       -- the backgrounds, the bands and the borders of code blocks, drawn before everything (golem-driver ADR 0017, 0023)
       backgrounds =
@@ -1501,7 +1543,7 @@ drawColumn env p =
         [ let pageTa = typeAreaFor geom n
               (paper, area) = turnedFrame geom t pageTa pf
               imageR = imageRect geom paper area 0 pf
-              captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] [] Nothing) | (j, l) <- zip [0 ..] (pfCaption pf)]
+              captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf (ptRow pl')) (SetLine (ptLine pl') (pfCaptionSize pf) (ptIndent pl') [] [] Nothing) | pl' <- pfCaption pf]
               onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, lf, sp, P.turnRect t pageTa r) | (lt, lf, sp, r) <- lrLinks rec]}, ([], uses))
            in (P.Moved (P.MoveTurn t pageTa) (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
         | (_, SPageFigure fid) <- poSlots p,
@@ -1557,11 +1599,11 @@ drawPage env ps master = case ps of
         hiddenParts = hiddenMarks env n
         -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
         sidenoteParts =
-          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral j * snPitch + zwToSp snSize' baselineRatio)) (SetLine l snSize' 0 [] [] Nothing)
+          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral (ptRow pl') * snPitch + zwToSp snSize' baselineRatio)) (SetLine (ptLine pl') snSize' (ptIndent pl') [] [] Nothing)
           | Just area <- [sidenoteAreaFor geom n],
             ps' <- Map.findWithDefault [] n (plSidenotes layout),
             let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,
-            (j, l) <- zip [0 :: Int ..] (psLines ps')
+            pl' <- psLines ps'
           ]
         columnParts = concat [t | (t, _, _, _) <- columns]
         allParts = columnParts <> sidenoteParts <> masterParts

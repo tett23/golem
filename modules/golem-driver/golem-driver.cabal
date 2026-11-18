@@ -92,6 +92,8 @@ test-suite golem-driver-test
     BuildSpec
     CallsSpec
     ChapterNotesSpec
+    NoteBodyStylesSpec
+    CaptionSidenoteParagraphsSpec
     ColophonSpec
     CliSpec
     ComplexFixtureSpec

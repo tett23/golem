@@ -24,7 +24,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
+import Golem.Typeset (PartLine (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Support
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
@@ -622,6 +622,11 @@ headingTests =
           manifest = replaceIn "language = \"ja\"" "language = \"en\"" miniManifest
       (_, pl) <- layoutMiniWith manifest style "# Heading\n\nbody.\n" [] >>= either (assertFailure . show) pure
       headingGap pl @?= [6],
+    testCase "ADR 0373 I1: inv1_heading_block_alignment_case_2: end leaves two body pitches before a one-line heading in both writing directions" $
+      forM_ [horizontalStyle, replaceIn "lines = 30" "lines = 12" (replaceIn "horizontal" "vertical" horizontalStyle)] $ \base -> do
+        let style = base <> "\n[headings.1]\nsize = \"1zw\"\nlines = 3\nblock-align = \"end\"\n"
+        (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
+        map (\hb -> hbOffset hb == 2 * hbPitch hb) (Map.elems (plHeadings pl)) @?= [True],
     testCase "size 1zw and lines 1 keep each line of a heading on the body grid (golem-driver ADR 0032)" $ do
       let style = horizontalStyle <> "\n[headings.1]\nsize = \"1zw\"\nlines = 1\n"
       (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
@@ -1126,7 +1131,7 @@ sidenoteTests =
       let boxes pl = length [() | sl <- Map.elems (plLines pl), Box {} <- lineItems (slLine sl)]
       boxes none @?= boxes plain
       case map snd (sidenotesOf none) of
-        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems l)] @?= ["注"]
+        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems (ptLine l))] @?= ["注"]
         other -> assertFailure (show (length other)),
     testCase "sidenotes need a horizontal page with a sidenote column, and the text flow" $ do
       a <- layoutMini horizontalStyle "本文[sidenote: 注]。\n" []

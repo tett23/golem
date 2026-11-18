@@ -367,6 +367,13 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   次の行から、空白二つで字下げして本文を書いてください。
 = [strong: G02036 [code: @listing にはファイルのパスが必要です]]
   最初の引数に、載せるファイルのパスを書いてください。
+= [strong: G02250 [code: @listing の src= は使えません。パスを最初の引数に移します]]
+  [code: @listing src=src/Main.hs] は [code: @listing src/Main.hs] と書き換えてください。
+  ファイルの中身は読みません。
+= [strong: G02253 [code: @listing のパスを二つ書いています: …]]
+  [code: @listing] に位置引数を二つ書いたか、位置引数と [code: src=] を両方書いています。
+  同じパスを二度書いてもこのエラーになります。
+  載せるファイルのパスを一つだけ、最初の引数に残してください。
 = [strong: G02037 [code: @listing の lines の範囲がファイルの行（1〜…）を外れています: …]]
   [code: lines] の範囲が 0 から始まるか、ファイルの行数より先まであります。
   [code: lines=3...10] のように、1 からファイルの行数までの範囲を書いてください。
@@ -679,8 +686,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   キーの綴り、値の種類、単位、選べる値を、付録C と見比べてください。
   知らないキーは、[code: 知らないキーです: page.bindng] のように、テーブルとキーをつなげた名前で示します。
   廃止した [code: \[emphasis\]]、[code: \[verse\]] などを書いたときは、書き換え先がメッセージに出ます。
-  段落スタイル [code: caption] と [code: sidenote] に [code: indent] か [code: first-line-indent] を書いたときも、この誤りです。
-  キャプションと傍注は字下げをしません。
+  段落スタイル [code: table] に 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書いたときも、この誤りです。
+  表のセルは字下げをしません。
 = [strong: G03017 [code: 未知の判型です: …]] など
   [code: \[page\]] の [code: size] が違います。
   表の名前を書くか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書いてください。
@@ -887,8 +894,13 @@ PDF を組むときに出るエラーです。
 = [strong: G08018 [code: フォントから CFF の表を取り出せません: …]]
   CFF の輪郭のフォントを PDF に埋め込むとき、字の輪郭を収めた表を読み出せません。
   プロジェクトのフォントからは通常は起きません。埋め込みの処理の不具合を防ぐためのエラーです。
-  壊れたフォントのファイルは、このエラーより前に G08003 になります。
+  開けないフォントのファイルは、このエラーより前に G08003 になります。
   このエラーが出たら、Golem の不具合として報告してください。
+  PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08107 [code: CFF の内部参照が表の範囲を外れています: …]]
+  CFF の輪郭のフォントで、使う字の輪郭が、フォントのファイルにないデータを参照しています。
+  ファイルが途中で切れているか、壊れています。
+  表示されたパスのフォントを完全なファイルに差し替えて、PDF を組み直してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
 = [strong: G08019 [code: CFF2 の輪郭のフォントは PDF に埋め込めません: …]]
   PDF が使う役割に、CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）を書いています。
@@ -1264,9 +1276,6 @@ PDF を組むときに出るエラーです。
   [code: verse] のように改行をそのまま残す段落で、行の頭の空白の前にバックスラッシュを付けています。
   行頭の空白は捨てられます。
   字下げには全角の空白を使ってください。
-= [strong: G02065 [code: @listing の src= は廃止予定です。パスを最初の引数に書きます]]
-  [code: @listing src=src/Main.hs] は [code: @listing src/Main.hs] と書き換えてください。
-  今のバージョンでは同じ内容を取り込みますが、今後のバージョンでは使えなくなります。
 = [strong: G02129 [code: @table の src= は廃止予定です。パスを最初の引数に書きます]]
   [code: @table src=data/sizes.csv] は [code: @table data/sizes.csv] と書き換えてください。
   今のバージョンでは同じ表を組みますが、今後のバージョンでは使えなくなります。
@@ -1285,9 +1294,9 @@ PDF を組むときに出るエラーです。
 = [strong: G03023 [code: style.toml がないので、既定の体裁で組みます]]
   プロジェクトのフォルダに [code: style.toml] がありません。
   既定の体裁でよければ、そのままでかまいません。
-= [strong: G03100 [code: キャプションと傍注は字下げを掛けないので、… は効果がありません]]
-  段落スタイル [code: caption] か [code: sidenote] に、0 の [code: indent] か [code: first-line-indent] を書いています。
-  キャプションと傍注ははじめから字下げをしないので、組んだ結果は変わりません。
+= [strong: G03100 [code: 表のセルは字下げを掛けないので、… は効果がありません]]
+  段落スタイル [code: table] に、0 の [code: indent]、[code: first-line-indent]、[code: end-indent] を書いています。
+  表のセルははじめから字下げをしないので、組んだ結果は変わりません。
   そのキーを消してください。
 = [strong: G03114 [code: \[lists\] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
   [code: \[lists\]] の [code: numbers] の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。

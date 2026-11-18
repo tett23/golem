@@ -36,6 +36,7 @@ module Golem.Layout.Paginate
     splitAtBreak,
     firstPart,
     headingBlock,
+    headingBlockAligned,
     Need (..),
     lookAhead,
     keptLookAhead,
@@ -64,6 +65,7 @@ import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd)
 import Golem.Length (Sp (..))
+import Golem.Project.Style (HeadingBlockAlign (..))
 import Golem.Syntax (SrcSpan)
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
@@ -73,12 +75,20 @@ least @least@ (golem-driver ADR 0032), and the heading is centred in
 them. One rounding.
 -}
 headingBlock :: Sp -> Sp -> Sp -> Int -> Int -> HeadingBlock
-headingBlock (Sp fs) (Sp p) (Sp s) m least =
+headingBlock = headingBlockAligned HeadingCenter
+
+headingBlockAligned :: HeadingBlockAlign -> Sp -> Sp -> Sp -> Int -> Int -> HeadingBlock
+headingBlockAligned alignment (Sp fs) (Sp p) (Sp s) m least =
   let hp = round (p * s % fs)
       extent = toInteger (max 1 m - 1) * hp + s
       n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
-   in HeadingBlock (Sp hp) (fromInteger n) (Sp ((area - extent) `div` 2))
+      availableSpace = max 0 (area - extent)
+      offset = case alignment of
+        HeadingStart -> 0
+        HeadingCenter -> availableSpace `div` 2
+        HeadingEnd -> availableSpace
+   in HeadingBlock (Sp hp) (fromInteger n) (Sp offset)
 
 {- | The first part of what follows that a heading keeps with it, in a
 column of @capacity@ grid lines: its grid lines and the lines of its
@@ -172,6 +182,8 @@ box, those of its body and those after the box (docs/adr/0271).
 step :: Env -> St -> Flow -> [Flow] -> St
 step env st f rest = case f of
   -- a no-break with nothing before it, or after a figure sent on, cannot be met
+  FNoBreakLines _ 0 -> st
+  FNoBreakLines sp _ -> step env st (FNoBreak sp) rest
   FNoBreak sp
     | not (sSeen st) || sLastDeferred st -> addUnmet (UnmetNoBreak sp) st
     | otherwise -> waitFor (UnmetNoBreak sp) (1, False) st
@@ -302,6 +314,7 @@ waitsFor = \case
   FBreak _ -> True
   FSection {} -> True
   FNoBreak _ -> True
+  FNoBreakLines {} -> True
   FKeepNext {} -> True
   FNeedLines _ _ -> True
   FAdjustLines _ _ -> True
@@ -363,12 +376,22 @@ adjustLines env st sp k =
 -- | A paragraph before a no-break or a keep-with-next keeps its last lines with what follows.
 placeFlow :: Env -> St -> Flow -> [Flow] -> St
 placeFlow env st f rest = case (f, keptNeed env rest) of
-  (FParagraph kp ls, Just n) -> placeKept env kp (placeLines env kp) st True ls n
+  (FParagraph kp ls, Just n) -> placeKept env (previousKeep kp) (placeLines env kp) st True ls n
   -- a stanza keeps its last verse lines as a paragraph its last lines (docs/adr/0205)
   (FStanza kp vs, Just n) -> placeKept env kp (placeStanza env kp) st True vs n
-  (FContinued kp ls, Just n) -> placeKept env kp (placeLines env kp) st False ls n
-  (FDefTerm ls, Just n) -> placeKept env defaultKeep (placeLines env defaultKeep) (keep env st (\s -> needIn env s (termNeed ls) (nextNeed env rest))) True ls n
+  (FContinued kp ls, Just n) -> placeKept env (previousKeep kp) (placeLines env kp) st False ls n
+  (FDefTerm ls, Just n) ->
+    let initial = case keepAhead rest of
+          Just (_, requested, _, _) | requested > 0 -> st
+          _ -> keep env st (\s -> needIn env s (termNeed ls) (nextNeed env rest))
+     in placeKept env (previousKeep defaultKeep) (placeLines env defaultKeep) initial True ls n
   _ -> place env st f rest
+  where
+    previousKeep kp = case keepAhead rest of
+      Just (_, requested, _, _)
+        | requested > 0 ->
+            kp {kLast = max (kLast kp) requested, kFirst = max 2 (kFirst kp)}
+      _ -> kp
 
 {- | The last kLast lines, or the whole paragraph of kLast lines or fewer
 or of fewer than kFirst + kLast, go to the next column, not from an
@@ -379,7 +402,7 @@ placeKept :: Env -> Keep -> (St -> Bool -> [a] -> St) -> St -> Bool -> [a] -> Ne
 placeKept env kp placeIn st isStart ls n =
   let st1 = placeIn st isStart ls
       len = length ls
-      (front, back) = splitAt (len - (if kAll kp || len <= kLast kp || len < kFirst kp + kLast kp then len else kLast kp)) ls
+      (front, back) = splitAt (len - (if kAll kp || len <= kLast kp || len - kLast kp < kFirst kp then len else kLast kp)) ls
       stA = placeIn st isStart front
       here = placeIn stA (isStart && null front) back
       fits s = needIn env s mempty n <= free env s
@@ -525,6 +548,7 @@ place env st f rest = case f of
     | otherwise -> st {sUsed = sUsed st + max 0 (min n (free env st))}
   -- the controls of page breaks are handled in placeAll (docs/adr ADR 0030)
   FNoBreak _ -> st
+  FNoBreakLines {} -> st
   FKeepNext {} -> st
   FNeedLines _ _ -> st
   FAdjustLines _ _ -> st
@@ -674,7 +698,7 @@ placeRuled env st fr rest = case sJoin st of
     let st1 = if isRecto (frBody fr) then parityStart env odd st else st
         -- a ruled paragraph of keep-with-next goes whole with the first part of what follows (docs/adr/0261)
         keepNext = case (frBody fr, keepAhead rest) of
-          (RuledLines {}, Just (_, n, _)) | n > 0 -> keptNeed env rest
+          (RuledLines {}, Just (_, _, n, _)) | n > 0 -> keptNeed env rest
           _ -> Nothing
         st2
           | isHeadingBody (frBody fr) && not (isRecto (frBody fr)) = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) (nextNeed env rest))

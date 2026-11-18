@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 {- | Time limits of tests that stop a test that does not end (docs/adr
 ADR 0091).
 
@@ -35,12 +37,26 @@ data TimeLimits = TimeLimits
   }
   deriving stock (Eq, Show)
 
-{- | The limits of the tests of golem-pdf and golem-svg: 60 seconds of CPU
-time and 300 seconds of wall-clock time. A test under them takes at most
-10 seconds of CPU time alone.
+{- | The limits of the tests of golem-pdf and golem-svg. A test under them
+takes at most 10 seconds of CPU time alone, natively (docs/adr ADR 0091).
+
+* Natively: 60 seconds of CPU time and 300 seconds of wall-clock time
+  (docs/adr ADR 0091).
+* On wasm32: 600 seconds of CPU time and 1200 seconds of wall-clock time
+  (docs/adr ADR 0388). A test runs there many times slower than natively,
+  and a test near 60 seconds would pass on one night and fail on another.
+  The wall-clock time stays under the 1800 seconds after which
+  wasm-tests.yml stops a suite, so that this limit stops a test first and
+  its name comes out. The value is chosen when the package is compiled,
+  not by the environment, which run-tests.mjs passes to WASI only in part
+  (docs/adr ADR 0293).
 -}
 hangLimits :: TimeLimits
+#if defined(wasm32_HOST_ARCH)
+hangLimits = TimeLimits {cpuSeconds = 600, wallSeconds = 1200}
+#else
 hangLimits = TimeLimits {cpuSeconds = 60, wallSeconds = 300}
+#endif
 
 -- | The action used more than its seconds of CPU time.
 newtype CpuTimeExceeded = CpuTimeExceeded Integer

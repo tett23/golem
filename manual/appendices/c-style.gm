@@ -264,13 +264,14 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 - [code: sidenote]：傍注の本文です。[code: caption] と同じく、字下げは 0 です。
 - [code: table]：表のセルです。[code: caption] と同じく、字下げは 0 です。既定では本文と同じ書体と大きさで組みます。表に [code: @style] を付けなかったときに当てます。本文より小さい文字の表にするなら、ここに [code: size] を書きます。
 
-[code: caption]、[code: sidenote]、[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
+[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
 書くとエラー（G03006）です。
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
 キャプションと傍注の本文と表のセルに適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
+PDF のキャプションと傍注の本文には、[code: caption] と [code: sidenote] の字下げ、[code: space-between]、[code: line-breaks] も適用されます。
 表のセルには、[code: @style] で付けた段落スタイルのこれらのキーを当て、字下げなどのほかのキーは当てません。
 PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表も行の格子を崩しません。
-[code: line-breaks]、[code: space-between]、[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
+[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
 段落スタイル [code: code] に書けるキーは、次の六つと、[code: border-style]、[code: border-sides]、[code: border-radius] だけです。
@@ -362,6 +363,8 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: mark-format] | [code: "*{n}"] | PDF の注の印の書式です。番号の差し込み [code: {n}]（算用数字）か [code: {n:<表記>}] をちょうど一つ書きます。表記の名前は「寸法と番号の書式」の表のとおりです。注の本文の先頭の印にも使います。番号の傍注の印は番号だけです。表記で表せない番号の注があるとエラーになります。HTML と EPUB では、注へのリンクの文字が番号の表記になります。 |
 | [code: mark-style] | [code: "note-mark"] | PDF の本文の注の印と、番号の傍注の印に当てる文字スタイルの名前です。文字スタイルのどのキーも当たります。組み込みの [code: note-mark] は [code: size = "0.5zw"] です。 |
 | [code: body-mark-style] | なし | PDF の注の本文の先頭の印に当てる文字スタイルの名前です。なければ注の本文の文字のまま組みます。 |
+| [code: body-style] | なし | PDF のページの下の脚注と章の終わりの注の本文に当てる段落スタイルの名前です。なければ本文の書体と版面の文字の大きさで組みます。 |
+| [code: heading-style] | なし | PDF の章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。なければ 2 の階層の見出しの書体と大きさで組みます。行取りは変わりません。 |
 | [code: mark-size] | なし | 廃止予定です。書くとお知らせ（G03117）が出ます。本文の注の印の文字スタイルの [code: size] として読みます。組み込みの文字スタイル [code: note-mark] の [code: size] に書き換えます。 |
 
 @nonumber

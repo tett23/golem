@@ -80,6 +80,7 @@ module Golem.Project.Style
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
+    HeadingBlockAlign (..),
     NotesPlacement (..),
     Composition (..),
     RubyStyleDef (..),
@@ -720,15 +721,15 @@ first-line indent and no end indent.
 tocStyleDefault :: Int -> ParaStyleDef
 tocStyleDefault l = noParaDef {psBasedOn = Just "body", psSize = Just (Zw 1), psIndent = Just (Zw (fromIntegral (l - 1))), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
-{- | The paragraph styles that never indent: caption, sidenote
-(golem-driver ADR 0043) and table (docs/adr/0262).
+{- | The paragraph styles that never indent: table (docs/adr/0262).
+caption and sidenote indent their parts (docs/adr/0367).
 -}
 unindentedStyles :: [Text]
-unindentedStyles = ["caption", "sidenote", "table"]
+unindentedStyles = ["table"]
 
-{- | The non-zero indent keys written for caption, sidenote or table, which
-do not indent (golem-driver ADR 0043, docs/adr/0262): (the name of the
-style, the key). A zero one is the notice G03100.
+{- | The non-zero indent keys written for table, which does not indent
+(docs/adr/0262): (the name of the style, the key). A zero one is the
+notice G03100.
 -}
 captionIndentKeys :: Map Text ParaStyleDef -> [(Text, Text)]
 captionIndentKeys styles =
@@ -739,7 +740,7 @@ captionIndentKeys styles =
     not (zeroDim v)
   ]
 
--- | The indent keys of a definition of caption or sidenote whose value is zero (G03100, golem-driver ADR 0043).
+-- | The indent keys of a definition of table whose value is zero (G03100, golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
 captionZeroIndentKeys n d = [k | n `elem` unindentedStyles, (k, Just v) <- indentKeysOf d, zeroDim v]
 
@@ -751,8 +752,8 @@ zeroDim = \case
   Abs x -> x == 0
   Zw r -> r == 0
 
-{- | The notices of style.toml: G03100 for a zero indent or
-first-line-indent of caption or sidenote, at the value, with the value as
+{- | The notices of style.toml: G03100 for a zero indent,
+first-line-indent or end-indent of table, at the value, with the value as
 written (golem-driver ADR 0043); the ways of writing to be retired
 (docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
 numbers, G03116 for a line of a running head format, G03117 for [notes]
@@ -802,17 +803,15 @@ styleNotices fid src = case Toml.parse src of
       Just off -> mkSpan fid off off
       Nothing -> mkSpan fid 0 0
 
--- | The message of G03100: a zero indent of caption or sidenote, with the value as written (golem-driver ADR 0043).
+-- | The message of G03100: a zero indent of table, with the value as written (golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentMessage :: Text -> Text -> Text -> Text
 captionZeroIndentMessage n k v = unindented n <> "は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
 
--- | What a paragraph style that never indents sets, in a message (golem-driver ADR 0043, docs/adr/0262).
+-- | What a paragraph style that never indents sets, in a message (docs/adr/0262, 0367).
 unindented :: Text -> Text
-unindented = \case
-  "table" -> "表のセル"
-  _ -> "キャプションと傍注"
+unindented _ = "表のセル"
 
--- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
+-- | The message of an indent key of table (golem-driver ADR 0043, docs/adr/0367).
 captionIndentMessage :: Text -> Text -> Text
 captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。" <> unindented n <> "は字下げをしません: " <> k
 
@@ -1048,6 +1047,12 @@ validStyleName n = case T.uncons n of
   Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
   Nothing -> False
 
+data HeadingBlockAlign = HeadingStart | HeadingCenter | HeadingEnd
+  deriving stock (Eq, Show)
+
+headingBlockAlignValues :: [(Text, HeadingBlockAlign)]
+headingBlockAlignValues = [("start", HeadingStart), ("center", HeadingCenter), ("end", HeadingEnd)]
+
 data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
@@ -1057,7 +1062,8 @@ data HeadingStyle = HeadingStyle
     hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
-    hsRuleAfter :: !(Maybe RuleSpec)
+    hsRuleAfter :: !(Maybe RuleSpec),
+    hsBlockAlign :: !HeadingBlockAlign
   }
   deriving stock (Eq, Show)
 
@@ -1284,13 +1290,14 @@ numbers, the default of the writing mode.
 data ListStyle = ListStyle
   { lsBullets :: !(Maybe (NonEmpty Text)),
     lsNumbers :: !(Maybe (NonEmpty NumberFormat)),
-    lsGap :: !(Maybe Dim)
+    lsGap :: !(Maybe Dim),
+    lsMarkerStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | No [lists]: the bullet of the output, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
-defaultListStyle = ListStyle Nothing Nothing Nothing
+defaultListStyle = ListStyle Nothing Nothing Nothing Nothing
 
 {- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
 or • without bullets (golem-driver ADR 0044).
@@ -1641,6 +1648,10 @@ data Style = Style
     stNotesMarkStyle :: !Text,
     -- | [notes] body-mark-style: the character style of the marks at the start of note bodies in the PDF; Nothing is none (docs/adr/0177)
     stNotesBodyMarkStyle :: !(Maybe Text),
+    -- | [notes] body-style: the paragraph style of the bodies of footnotes and notes at the end of a chapter in the PDF; Nothing is the body (docs/adr/0366)
+    stNotesBodyStyle :: !(Maybe Text),
+    -- | [notes] heading-style: the paragraph style of the title of the list of notes at the end of a chapter in the PDF; Nothing is the heading of level 2 (docs/adr/0366)
+    stNotesHeadingStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     -- | [tables] number: the format of table numbers (docs/adr/0262)
@@ -1688,6 +1699,8 @@ defaultStyle =
       stNotesMarkFormat = defaultMarkFormat,
       stNotesMarkStyle = "note-mark",
       stNotesBodyMarkStyle = Nothing,
+      stNotesBodyStyle = Nothing,
+      stNotesHeadingStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stTableNumber = "表{chapter}-{n}",
@@ -2139,7 +2152,8 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
+    align <- enumKey "block-align" (map fst headingBlockAlignValues)
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)))
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2319,7 +2333,7 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text)
 
 instance FromValue Notes where
   fromValue =
@@ -2332,6 +2346,9 @@ instance FromValue Notes where
           <*> optKeyOf "mark-format" (withValue markFormat)
           <*> optKey "mark-style"
           <*> optKey "body-mark-style"
+          -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+          <*> optKey "body-style"
+          <*> optKey "heading-style"
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -2440,7 +2457,8 @@ instance FromValue ListsSec where
         Just d
           | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
-    pure (ListsSec (ListStyle bs fmts g))
+    markerStyle <- optKey "marker-style"
+    pure (ListsSec (ListStyle bs fmts g markerStyle))
 
 {- | [index] (docs/adr ADR 0025): every error is at its value, G03025 by
 its path. The position of columns is filled in by 'parseStyle'.
@@ -2480,7 +2498,7 @@ instance FromValue Style where
     page <- optKey "page"
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
-    -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+    -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
     pstyles <-
       fmap (fromMaybe Map.empty) . optKeyOf "paragraph-styles" $ \v -> do
         (styles :: Map Text ParaStyleDef) <- fromValue v
@@ -2499,9 +2517,9 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf nmst nbst <-
-      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
-        notes@(Notes _ _ _ size _ markStyle _) <- fromValue v
+    Notes np nn nr nms nmf nmst nbst nbody nhead <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _ _ _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
@@ -2543,6 +2561,8 @@ instance FromValue Style where
           stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
           stNotesMarkStyle = fromMaybe (stNotesMarkStyle d) nmst,
           stNotesBodyMarkStyle = nbst,
+          stNotesBodyStyle = nbody,
+          stNotesHeadingStyle = nhead,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
@@ -3160,6 +3180,12 @@ styleReferenceChecks owner s =
             (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
             Map.notMember n cs
           ]
+            -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+            <> [ ("", styleKeys ["notes", k], "[notes] の " <> k <> " の段落スタイルがありません: " <> n)
+               | (k, Just n) <- [("body-style", stNotesBodyStyle s), ("heading-style", stNotesHeadingStyle s)],
+                 Map.notMember n ps
+               ]
+            <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3426,7 +3452,7 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = checksOf s
-      -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+      -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
       indents = [("G03006", n, captionIndentMessage n k) | (n, k) <- captionIndentKeys (lsParaStyles ls)]
    in nub (indents <> [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base])
   where
@@ -3551,7 +3577,7 @@ styleSchema =
       ("masters", NNamed (Just Masters) masterNode),
       ("verse", NRejected),
       ("toc", NTable [("leader", enum leaderValues)]),
-      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
+      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim), ("marker-style", ref CharStyles)]),
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),
       ("index", NTable [("columns", int), ("column-gap", dim), ("section-headings", bool)]),
       ("code", codeNode),
@@ -3582,6 +3608,7 @@ styleSchema =
           ("size", dim),
           ("number", str),
           ("page-break", enum pageBreakValues),
+          ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
           -- retired (golem-driver ADR 0014): G03019
           ("running-head", NRejected),
@@ -3621,7 +3648,9 @@ styleSchema =
           ("mark-size", dim),
           ("mark-format", str),
           ("mark-style", ref CharStyles),
-          ("body-mark-style", ref CharStyles)
+          ("body-mark-style", ref CharStyles),
+          ("body-style", ref ParaStyles),
+          ("heading-style", ref ParaStyles)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]
     masterNode =
