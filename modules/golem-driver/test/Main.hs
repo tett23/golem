@@ -52,6 +52,7 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
+import PageNoteNumbersSpec (pageNoteNumbersTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
 import ParagraphSpec
@@ -190,6 +191,7 @@ tests skips =
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
+             testGroup "notes numbered per page (docs/adr/0383)" pageNoteNumbersTests,
              testGroup "the paragraphs of captions and sidenotes (docs/adr/0367)" captionSidenoteParagraphsTests,
              testGroup "the paragraph style controls (docs/adr/0374)" paragraphStyleControlsTests,
              FontInstanceSpec.tests,
