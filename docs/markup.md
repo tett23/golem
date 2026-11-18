@@ -280,7 +280,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@index`：索引を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の印を載せる（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 - `@channel 名前 style=段落スタイル`：プラグインが宣言したチャネルの一覧を出力する。`style` は項目を組む段落スタイルで、省けば `body` である。宣言されていない名前は G02090 になる（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 - `@bibliography`：参考文献の一覧を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の引用を載せ、番号を一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
-- `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
+- `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。書式は `style.toml` の `[printings]` の `format` で変えられる。書式を書かない本では、日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[ADR 0375](adr/0375-printings-format.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
 - `@table path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。パスは最初の位置引数に一つ書く。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。`src=path` だけなら G02252、パスを二つ書くと G02130 になる（[ADR 0343](adr/0343-revise-retire-table-src.md)）。
 - `@listing path lines=N...M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。`lines` は `N...M` で N 行めから M 行めまで、`N` で N 行めだけを取り込む。パスは最初の位置引数に一つ書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` は G02250、パスを二つ書くと G02253 になる（[ADR 0341](adr/0341-revise-retire-listing-src.md)）。

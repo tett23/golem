@@ -145,7 +145,8 @@
 = [strong: [code: @printings]]
   [code: manifest.toml] の [code: \[\[metadata.printings\]\]] から、発行の履歴を「2026年10月16日　初版第1刷発行」のような段落にして、項目ごとに組みます。
   引数は取りません。
-  日本語の本でだけ使えます。
+  書式は [code: style.toml] の [code: \[printings\]] で変えられます（「[ref-title colophon]」）。
+  書式を変えない本では、日本語の本でだけ使えます。
 = [strong: [code: @figure 画像 alt="…"]]
   図版を置きます。
   次の行から空白二つで字下げして、キャプションを書きます。

@@ -2066,7 +2066,9 @@ diagnosticTests =
 -- | A printing as meta.printings has it (docs/adr ADR 0033).
 printingValue :: Integer -> Integer -> (Integer, Integer, Integer) -> Value
 printingValue e n (y, m, d) =
-  VHash (Map.fromList [("edition", VInt e), ("number", VInt n), ("year", VInt y), ("month", VInt m), ("day", VInt d), ("date", VString "")])
+  VHash (Map.fromList [("edition", VInt e), ("number", VInt n), ("year", VInt y), ("month", VInt m), ("day", VInt d), ("date", VString (T.pack (show y) <> "-" <> pad m <> "-" <> pad d))])
+  where
+    pad = T.justifyRight 2 '0' . T.pack . show
 
 -- | The context of a book of a language with three printings.
 printingsCtx :: Text -> EvalContext
@@ -2100,10 +2102,57 @@ printingsTests =
             withoutLanguage = (printingsCtx "ja") {ctxMeta = Map.delete "language" (ctxMeta (printingsCtx "ja"))}
         snd (run withoutLanguage "@printings\n") @?= ["G02076"]
         snd (run (withLanguage (VInt 1)) "@printings\n") @?= ["G02076"],
-      testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
+      testCase "ADR 0375 I1: inv1_printings_format_case_1: without a format the first edition is 初版" $ do
         let (bs, es) = run (printingsCtx "ja") "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["2026年10月16日\x3000初版第1刷発行", "2027年4月1日\x3000初版第2刷発行", "2028年1月10日\x3000第2版第1刷発行"],
+      testCase "ADR 0375 I1: inv1_printings_format_case_2: 第{edition}版 is 第1版 for the first edition" $ do
+        let (bs, es) = run ((printingsCtx "ja") {ctxStyle = printingsStyle "第{edition}版"}) "@printings\n"
+        es @?= []
+        [plainOf is | Paragraph Nothing is <- bs] @?= ["第1版", "第1版", "第2版"],
+      testCase "ADR 0375 I1: inv1_printings_format_case_3: an unknown field is G03006" $ do
+        let codes fmt = either (map (\d -> let DiagnosticCode c = diagCode d in c)) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
+        codes "{unknown}" @?= ["G03006"]
+        codes "第{edition}版{edition:kanji}" @?= ["G03006"]
+        codes "{edition}{Year}" @?= ["G03006"],
+      testCase "ADR 0375 I1: inv1_printings_format_property: an explicit format sets one line for each printing, whatever the language" $ do
+        let formats = ["{edition}", "", " ", "第{edition}版", "{date}  第{edition}版 第{printing}刷", "{{{year}}}/{month}/{day}", "\t{printing}\x3000"]
+            languages = [Just "ja", Just "ja-JP", Just "en", Just "fr-CA", Just "", Nothing]
+            rowsOf count = [printingValue (toInteger (1 + i `div` 2)) (toInteger (1 + i `mod` 2)) (2026, 2, 3) | i <- [0 .. count - 1]]
+            render fmt lang count =
+              let c = printingsCtx "ja"
+                  meta = maybe (Map.delete "language") (Map.insert "language" . VString) lang (Map.insert "printings" (VArray (rowsOf count)) (ctxMeta c))
+               in run (c {ctxStyle = printingsStyle fmt, ctxMeta = meta}) "@printings\n"
+            cases = [(fmt, lang, count) | fmt <- formats, lang <- languages, count <- [1 .. 4 :: Int]]
+        -- every case sets something: the property is not vacuous
+        assertBool "cases" (length cases == 168)
+        forM_ cases $ \(fmt, lang, count) ->
+          let (bs, es) = render fmt lang count
+           in assertEqual (show (fmt, lang, count)) (count, []) (length [() | Paragraph {} <- bs], es),
+      testCase "ADR 0375 I1: the fields keep the order, the spaces and the literal braces of the format" $ do
+        let (bs, es) = run ((printingsCtx "en") {ctxStyle = printingsStyle "  第{edition}版  {{刷}}{printing} {year}/{month}/{day} {date}  "}) "@printings\n"
+        es @?= []
+        [plainOf is | Paragraph Nothing is <- bs] @?= ["  第1版  {刷}1 2026/10/16 2026-10-16  ", "  第1版  {刷}2 2027/4/1 2027-04-01  ", "  第2版  {刷}1 2028/1/10 2028-01-10  "],
+      testCase "ADR 0375 I1: the fields of an explicit format are decimal digits, not numbers of the writing mode" $
+        [[t | Text _ t <- is] | Paragraph _ is <- fst (run ((printingsCtx "ja") {ctxStyle = printingsStyle "{year}年{edition}"}) "@printings\n")]
+          @?= [["2026年1"], ["2027年1"], ["2028年2"]],
+      testCase "ADR 0375 I1: braces that do not pair are G03006" $ do
+        let codes fmt = either (map (\d -> let DiagnosticCode c = diagCode d in c)) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
+        mapM_ (\fmt -> codes fmt @?= ["G03006"]) ["{", "}", "{}", "{edition", "edition}", "{{edition}", "\\{edition}"]
+        mapM_ (\fmt -> codes fmt @?= []) ["{{", "}}", "{{}}", "\\{edition\\}", "\\\\", ""]
+        mapM_ (\fmt -> codes fmt @?= ["G03006"]) ["\\a", "a\\"],
+      testCase "ADR 0375 I1: the escapes of the other formats are read too, and {{ is current: no notice" $ do
+        let (bs, es) = run ((printingsCtx "ja") {ctxStyle = printingsStyle "\\{{edition}\\} \\\\ {{{printing}}}"}) "@printings\n"
+        es @?= []
+        take 1 [plainOf is | Paragraph Nothing is <- bs] @?= ["{1} \\ {1}"]
+        either (const (assertFailure "an error")) (const (pure ())) (parseStyle (FileId 9) "[printings]\nformat = '{{{edition}}}'\n"),
+      testCase "ADR 0375 I1: an error of the format names [printings] and the format" $ do
+        let formatMsgs fmt = either (map diagMessage) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
+        formatMsgs "{unknown}" @?= ["[printings] の format が正しくありません（表にない欄です: {unknown}）: {unknown} (printings.format)"]
+        formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {edition (printings.format)"]
+        either (map diagMessage) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
+      testCase "ADR 0375 I1: without a format a book not in Japanese is still G02076" $
+        run ((printingsCtx "en") {ctxStyle = either (error . show) id (parseStyle (FileId 9) "[printings]\n")}) "@printings\n" @?= ([], ["G02076"]),
       testCase "the year is kanji-digits, the other numbers follow the default" $
         case run (printingsCtx "ja") "@printings\n" of
           (Paragraph _ is : _, _) -> [(n, st) | Number _ n st <- is] @?= [(2026, Just StyleKanjiDigits), (10, Nothing), (16, Nothing), (1, Nothing)]
@@ -2143,3 +2192,7 @@ powDiagnosticTests =
         alone = cm (diags (e <> "\n"))
     cm (diags ("[= 1 + 1] [= 2.0 ** 3]\n\n" <> e <> "\n")) === alone
     cm (diags (e <> "\n\n" <> e <> "\n")) === alone <> alone
+
+-- | A style with the printing format of [printings] (root ADR 0375).
+printingsStyle :: Text -> Style
+printingsStyle fmt = either (error . show) id (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
