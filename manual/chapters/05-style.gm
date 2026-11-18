@@ -139,7 +139,8 @@ OpenType のフォントは、字形の置き換えや字送りの調整を、�
 
 役割ごとに使う機能を、[code: features = \["palt"\]] のように指定できます。
 [code: palt] は、和文の仮名などを字面に合わせて詰めて組む機能です。
-PDF では、括弧類、句読点、中点類（[code: ・]、[code: ：]、[code: ；]）には [code: palt] と [code: vpal] を当てず、全角のまま、日本語組版の規則で前後の空きを詰めます。
+既定では、PDF の括弧類、句読点、中点類（[code: ・]、[code: ：]、[code: ；]）には [code: palt] と [code: vpal] を当てず、全角のまま、日本語組版の規則で前後の空きを詰めます。
+この既定は、フォントの役割の [code: punctuation-proportional] で変えられます（「[ref-title punctuation-width]」、[ref-page punctuation-width] ページ）。
 同じ詰めは、文字スタイルと段落スタイルの [code: proportional-metrics] でも指定できます（「[ref-title kerning]」、[ref-page kerning] ページ）。
 
 縦組みの本では、フォントの縦書き用の字形（[code: vert]）を使います。
@@ -531,7 +532,7 @@ InDesign のカーニング、トラッキング、プロポーショナルメ�
   PDF では、縦中横と、ルビ（親文字と読みのまとまり）は、それぞれを一つのまとまりとして扱い、まとまりの後ろに一度だけ足します。
   まとまりの中の字の間には足しません。
   行末に来たまとまりの後ろにも足しません。
-- [code: proportional-metrics]：[code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。OpenType の [code: palt]（縦組みでは [code: vpal]）の機能を使います。括弧類、句読点、中点類（[code: ・]、[code: ：]、[code: ；]）は全角のまま組みます。フォントの役割の [code: features] に [code: palt] を書いても同じです。HTML と EPUB では、これらの約物にも字面に合わせた送りが当たります。
+- [code: proportional-metrics]：[code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。OpenType の [code: palt]（縦組みでは [code: vpal]）の機能を使います。既定では、括弧類、句読点、中点類（[code: ・]、[code: ：]、[code: ；]）は全角のまま組みます。フォントの役割の [code: features] に [code: palt] を書いても同じです。この既定は、フォントの役割の [code: punctuation-proportional] で変えられます（「[ref-title punctuation-width]」）。HTML と EPUB では、これらの約物にも字面に合わせた送りが当たります。
 - [code: baseline-shift]：文字を、横組みでは上へ、縦組みでは右へずらす量（ベースラインシフト）です。[code: "1pt"] や [code: "-0.25zw"] のように書きます。行の位置は変わりません。
 
 ```toml
@@ -575,7 +576,21 @@ punctuation-width = "font"
 始め括弧類は箱の後ろに、終わり括弧類と句読点は箱の前に、中点類は箱の中央に寄せるので、空白の隣や行の端でも、字形が隣の字に重なりません。
 フォントの役割、段落スタイル、文字スタイルの [code: features] に [code: fwid]、[code: hwid]、[code: pwid]、[code: twid]、[code: qwid] のどれかを書いたときは、書いた機能のとおりに組みます。
 約物の字形の字面が隣の字にかかるときは、お知らせ（G07126）が出ます。
+
 HTML と EPUB では、[code: punctuation-width] を使わず、閲覧環境のフォントの字形で組みます。
+
+PDF の本文で、括弧類、句読点、中点類にも字面に合わせた送りを使うには、[code: \[fonts.body\]] に次の設定を書きます。
+このとき、これらの約物は全角の字形に替えず、フォントの字形を字面に合わせて詰めます。
+
+```toml
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+punctuation-proportional = true
+features = ["palt"]
+```
+
+縦組みでは [code: palt] の代わりに [code: vpal] を指定します。
+[code: kerning = "japanese-equal-width"] を指定した範囲では、全角の送りを優先します。
 
 @label opentype-features
 ## OpenType の機能

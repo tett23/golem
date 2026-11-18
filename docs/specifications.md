@@ -2548,7 +2548,7 @@ PDF では、四つのキーを次のように扱う。
 - ペアの一方が別の見た目（別の文字スタイルなど）のときは、カーニングしない。
 - 縦組みの段落の和文は、縦書きの方向でシェイピングして送りを測るので、`vpal` と `vkrn` が送りに入る。縦組みの中で回転して組む欧文は、横書きの方向で測る。
 - トラッキングは、和文の一字、欧文の語の各文字（Unicode のスカラー値の数）、語間の空白に足す。二倍ダッシュの箱には、箱の後ろに一度だけ足す（[docs/adr/0172](adr/0172-continuous-double-dashes.md)）。ルビと縦中横は、それぞれを外から見て一つの箱として、箱の後ろに一度だけ足す（[ADR 0370](adr/0370-tracking-inline-boxes.md)）。トラッキングの値が異なるルビと縦中横の箱が隣り合うときは、先の箱の値を足す。親文字の間、読みの間、縦中横の中の字の間には足さない。行末に来た箱の後ろにも足さない。注の印には、印の文字スタイルのトラッキングを、印の最後の字の後を除いて足す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。行の最後の文字の後ろの空きは、行分割の幅にも描画にも入れない。版面の端をそろえることを優先するためである。
-- プロポーショナルメトリクスは、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には適用しない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。これらの約物の幅は全角を前提に空きを決めるためである。中点類には `・` のほかに `：` と `；` が入る。区切り約物（`？`、`！`）、ハイフン類、分離禁止文字、長音記号は除かない。フォントの役割の `features` に書いた `palt` と `vpal` も、これらの約物には当たらない。
+- 既定では、プロポーショナルメトリクスを JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には適用しない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。これらの約物の幅は全角を前提に空きを決めるためである。中点類には `・` のほかに `：` と `；` が入る。区切り約物（`？`、`！`）、ハイフン類、分離禁止文字、長音記号は除かない。フォントの役割の `punctuation-proportional` で、約物への適用を許せる（「フォント」の節の「役割と OpenType の機能」）。
 - ベースラインシフトは、行分割にも行送りにも影響しない。縦組みで回転して組む欧文も、行の方向に直交する向き（右）にずらす。ルビと圏点は、親文字と同じ量だけずらす。
 - 描画では、HarfBuzz が返す配置のずらし（GPOS の `XPlacement` と `YPlacement`）だけグリフを動かす（[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）。`palt` と `vpal` で縮めた箱の中で、字は正しい側に寄る。縦書きの方向のシェイピングでは、HarfBuzz がずらしから引いて返す縦組みの原点を足し戻す。伸縮した行の欧文では、x のずらしにも水平比率をかける。ずらしは送りを変えないので、行分割と改ページは変わらない。
 
@@ -2584,6 +2584,9 @@ HTML と EPUB の組み方は、CSS で書けないところで PDF と違う。
 二つの値のほかは G03021 とする。
 HTML と EPUB では、`fwid` を約物だけに当てられないので、CSS に書かない。
 どちらの値でも、役割と段落スタイルと文字スタイルの `features` に書いた幅の機能が当たる（「フォント」の節の「全角の字形と全角より狭い字形」）。
+
+フォントの役割の `punctuation-proportional` を `true` にすると、これらの約物にもプロポーショナルメトリクスを当てられる（「フォント」の節の「役割と OpenType の機能」）。
+`true` の役割で、`kerning` が `"japanese-equal-width"` でなく、横組みで `palt` が、縦組みで `vpal` が当たる約物には、`"full-width"` でも `fwid` を足さない。
 
 #### OpenType の機能
 
@@ -4183,8 +4186,18 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 縦書きの役割では、縦書き用の字形を既定で有効にする。
 
 役割の `features` は、機能をそのままシェイピングに渡す。
-ただし、`palt` と `vpal` だけは、JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
+ただし、役割の `punctuation-proportional` が既定の `false` なら、`palt` と `vpal` は JLReq の規則で前後の空きを決める約物に当てない（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` に書けるのは、文字スタイルの `features` と同じ四つの形（「style.toml」の節）だけであり、読めない要素は G03124 とする（[ADR 0268](adr/0268-opentype-features-on-character-styles.md)）。
+
+役割の `punctuation-proportional` は、JLReq の規則で前後の空きを決める約物に `palt` と `vpal` を当てることを許す真偽値である（[ADR 0378](adr/0378-punctuation-proportional-features.md)）。
+既定は `false` で、約物には `palt` と `vpal` を当てない。
+`true` にしても、それだけでは機能を足さない。
+`true` の役割の約物では、Golem は `-palt` と `-vpal` を足さず、役割、段落スタイル、文字スタイルの `features` に書いた `palt` と `vpal` や、`proportional-metrics` が足す `palt` と `vpal` がそのまま当たる。
+さらに、横組みで `palt` が、縦組みで `vpal` が当たる約物には、Golem は `fwid` を足さない（「全角の字形と全角より狭い字形」）。
+書き手が `features` に書いた幅の機能は、そのまま当たる。
+`kerning = "japanese-equal-width"` の文字では、`true` の役割でも全角の送りを優先し、`-palt` と `-vpal` を足す。
+この指定は PDF の計測と描画の両方のシェイピングに当たる。
+HTML と EPUB は、この指定を使わず、`features` と `proportional-metrics` から作る CSS の機能の指定に従う。
 
 縦書き用の字形がない文字のうち、UAX #50 の縦組みの向き（Vertical_Orientation）が R か Tr のもの（`U+2014` のダッシュなど）は、PDF では横組みの字形を時計回りに 90 度回転し、仮想ボディの中心を行の中心線にそろえて描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 ただし、フォントに縦書き用の字形があれば、R の文字でもその字形を正立で使う。
@@ -4205,9 +4218,9 @@ HarfBuzz では後ろの機能が前の同じ機能を上書きするので、�
 - 欧文：`none` のときに `-kern` を足す。
 - 和文：`none` のときに `-kern` と `-vkrn` を、`japanese-equal-width` のときに `-kern`、`-vkrn`、`-palt`、`-vpal` を足す。`japanese-equal-width` 以外で `proportional-metrics` が真なら、横組みで `palt` を、縦組みで `vpal` を足す。
 
-ただし、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には、カーニングの方式と `proportional-metrics` によらず、`palt` と `vpal` を足さずに `-palt` と `-vpal` を足す（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
+ただし、役割の `punctuation-proportional` が `false` なら、JLReq の規則で前後の空きを決める約物（始め括弧類、終わり括弧類、句点類、読点類、中点類）には、カーニングの方式と `proportional-metrics` によらず、`palt` と `vpal` を足さずに `-palt` と `-vpal` を足す（[docs/adr/0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 役割の `features` の `palt` と `vpal` も、この `-palt` と `-vpal` が上書きする。
-これらの約物に足す機能は、`metrics` で `-palt` と `-vpal`、`none` と `japanese-equal-width` で `-kern`、`-vkrn`、`-palt`、`-vpal` である。
+この既定の設定で約物に足す機能は、`metrics` で `-palt` と `-vpal`、`none` と `japanese-equal-width` で `-kern`、`-vkrn`、`-palt`、`-vpal` である。
 
 ### 機能の並び
 
@@ -4221,7 +4234,7 @@ PDF で字をシェイピングする機能の並びは、次の順につない�
 
 つないだ並びは、タグごとに最後の値だけを、その最後の位置に正規の形で残してから HarfBuzz に渡す。
 渡す機能の数に上限はない。
-Golem が足す機能を最後に置くので、`features = ["palt"]` の文字スタイルでも、`kerning = "japanese-equal-width"` の和文は全角で組み、JLReq の約物には `palt` が当たらない。
+Golem が足す機能を最後に置くので、`features = ["palt"]` の文字スタイルでも、`kerning = "japanese-equal-width"` の和文は全角で組み、役割の `punctuation-proportional` が `false` なら、JLReq の約物には `palt` が当たらない。
 約物の字形を半角の幅にする機能 `halt`、`vhal`、`chws`、`vchw` も、JLReq の規則で前後の空きを決める約物には当てない。
 これらの機能は Golem の約物の空きと同じことを書体の側で行うので、重ねると空きが二重に詰まるためである。
 並び（役割、段落スタイル、文字スタイル）がこれらを有効にしている字が約物のときだけ、4 の段で `-halt`、`-vhal`、`-chws`、`-vchw` のうち有効なものを足す。
@@ -4237,6 +4250,7 @@ Golem が足す機能を最後に置くので、`features = ["palt"]` の文字�
 
 JLReq の規則で前後の空きを決める約物には、`punctuation-width` が `"full-width"`（既定）なら、Golem が `fwid` も足す（[ADR 0302](adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)）。
 Noto CJK の `“”‘’` のように全角でない字形を既定に持つフォントでも、全角の字形で組むためである。
+ただし、役割の `punctuation-proportional` が `true` で、`kerning` が `"japanese-equal-width"` でなく、横組みで `palt` が、縦組みで `vpal` が当たる約物には足さない（[ADR 0378](adr/0378-punctuation-proportional-features.md)）。
 役割、段落スタイル、文字スタイルの `features` をつないだ並びが、幅の機能 `fwid`、`hwid`、`pwid`、`twid`、`qwid` のどれかを値によらず含めば、Golem は `fwid` を足さず、書いた機能が当たる。
 書体が `fwid` を持つかは調べない。
 HarfBuzz は書体の持たない機能を無視するので、`fwid` を持たない書体の字形は変わらない。
