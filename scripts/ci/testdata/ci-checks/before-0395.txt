@@ -1,0 +1,124 @@
+needs	build
+needs	changes
+needs	determinism
+needs	editors
+needs	editors-lsp
+needs	format
+needs	plugins
+needs	release-scripts
+needs	scripts-linux
+needs	scripts-macos
+needs	verapdf
+needs	visual
+needs	wasm
+step	ubuntu-24.04	- name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)\n  uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n  with:\n    path: |\n      manual/fonts\n      manual-dev/fonts\n    key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
+step	ubuntu-24.04	- name: Copy golem for the job editors-lsp (docs/adr/0231)\n  run: mkdir golem-linux-x86_64 && cp "$(cabal list-bin -v0 golem)" golem-linux-x86_64/golem
+step	ubuntu-24.04	- name: Generated modules match VERSION and docs/diagnostics.md\n  run: |\n    sh scripts/gen-embedded.sh\n    git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
+step	ubuntu-24.04	- name: Generated parser matches the grammar\n  run: |\n    scripts/gen-parser.sh\n    git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-emet/src/Golem/Emet/Generated.hs
+step	ubuntu-24.04	- name: Japanese locales for the environment check\n  run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
+step	ubuntu-24.04	- name: Only the test suites depend on golem-test-support (docs/adr/0028)\n  run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
+step	ubuntu-24.04	- name: Outputs for the determinism check; the manuals build without diagnostics\n  run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
+step	ubuntu-24.04	- name: The EPUB of epub-forms passes epubcheck (docs/adr/0232)\n  working-directory: modules/golem-driver/test/fixtures/epub-forms\n  run: |\n    cache="$RUNNER_TEMP/epub-forms-cache"\n    mkdir -p "$cache/golem/plugins"\n    sha=$(sed -n 's/^sha256 = "\([0-9a-f]*\)"$/\1/p' plugins.lock)\n    cp "$GITHUB_WORKSPACE/plugins/wasm/glossary.wasm" "$cache/golem/plugins/$sha.wasm"\n    XDG_CACHE_HOME="$cache" "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
+step	ubuntu-24.04	- name: The EPUB of several bibliographies passes epubcheck\n  working-directory: modules/golem-driver/test/fixtures/bibliographies\n  run: |\n    "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
+step	ubuntu-24.04	- name: The EPUB passes epubcheck\n  working-directory: modules/golem-driver/test/fixtures/sample\n  run: |\n    "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
+step	ubuntu-24.04	- name: The EPUB with languages passes epubcheck\n  working-directory: modules/golem-driver/test/fixtures/languages\n  run: |\n    "$(cabal list-bin -v0 golem)" build --target epub\n    epubcheck build/epub/book.epub
+step	ubuntu-24.04	- name: The PDFs of the visual regression test (docs/adr/0095)\n  run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs
+step	ubuntu-24.04	- name: The PDFs that declare PDF/A-2a and PDF/UA-1 (docs/adr/0183)\n  run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/ci/conformance-pdfs.sh conformance-pdfs
+step	ubuntu-24.04	- name: The bars of the code of the developer manual (docs/adr/0233)\n  run: |\n    for pdf in manual-dev/build/pdf/*.pdf; do\n      sh scripts/ci/pdf-text.sh "$pdf" \\n        --has '次の行の最初が | 、' \\n        --has 'と ||' \\n        --has 'ガードの | の前' \\n        --has '] 、 | 、 [ は \ で' \\n        --lacks '\|'\n    done
+step	ubuntu-24.04	- name: The developer manual (docs/adr/0024)\n  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: manual-dev\n    path: |\n      manual-dev/build/pdf\n      manual-dev/build/html
+step	ubuntu-24.04	- name: The direction of the packages split from golem-doc (docs/adr/0173)\n  run: sh scripts/ci/doc-deps.sh dist-newstyle/cache/plan.json
+step	ubuntu-24.04	- name: The fonts of the manuals for the environment check\n  timeout-minutes: 5\n  run: |\n    sh scripts/manual/fetch-fonts.sh manual/fonts\n    sh scripts/manual/fetch-fonts.sh manual-dev/fonts
+step	ubuntu-24.04	- name: The native list of the comparison with golem.wasm (docs/adr/0199)\n  run: sh scripts/wasm/compare.sh --native "$(cabal list-bin -v0 golem)" > wasm-native-list.txt
+step	ubuntu-24.04	- name: The outputs do not change with the environment (docs/adr/0029, docs/adr/0038)\n  env:\n    QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}\n  run: |\n    GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh $QUICK
+step	ubuntu-24.04	- name: The preflight of the manuals (docs/adr/0232)\n  run: |\n    GOLEM="$(cabal list-bin -v0 golem)"\n    for project in manual manual-dev; do\n      (cd "$project" && "$GOLEM" preflight --rules ../scripts/ci/manual-preflight.toml)\n    done
+step	ubuntu-24.04	- name: The test suites of the runner (docs/adr/0140)\n  timeout-minutes: 20\n  env:\n    SUITES: ${{ matrix.suites }}\n    GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"\n    GOLEM_PD_BOOKS: "1"\n    TASTY_NO_CREATE: "true"\n  run: |\n    cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
+step	ubuntu-24.04	- name: The typefaces of the manuals are their fonts (docs/adr/0232)\n  run: |\n    for project in manual manual-dev; do\n      fonts=$(for f in "$project"/fonts/*.otf; do basename "$f" .otf; done)\n      for pdf in "$project"/build/pdf/*.pdf; do\n        sh scripts/ci/pdf-fonts.sh "$pdf" $fonts\n      done\n    done
+step	ubuntu-24.04	- name: The user manual (docs/adr/0022)\n  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: manual\n    path: |\n      manual/build/pdf\n      manual/build/html
+step	ubuntu-24.04	- name: Upload golem for the job editors-lsp (docs/adr/0231)\n  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: golem-linux-x86_64\n    path: golem-linux-x86_64
+step	ubuntu-24.04	- name: Upload the PDFs of the visual regression test\n  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: visual-pdfs\n    path: visual-pdfs
+step	ubuntu-24.04	- name: Upload the PDFs that declare PDF/A-2a and PDF/UA-1\n  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: conformance-pdfs\n    path: conformance-pdfs
+step	ubuntu-24.04	- name: Upload the native list of the comparison with golem.wasm\n  uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: wasm-native-list\n    path: wasm-native-list.txt
+step	ubuntu-24.04	- name: epubcheck is installed\n  timeout-minutes: 5\n  run: |\n    sh scripts/ci/bg.sh wait epubcheck\n    echo "$RUNNER_TEMP/epubcheck/bin" >> "$GITHUB_PATH"
+step	ubuntu-24.04	- name: golem is linked with the wasmtime of fetch-wasmtime.sh (docs/adr/0156)\n  run: sh scripts/check-wasmtime-linked.sh "$(cabal list-bin -v0 golem)"
+step	ubuntu-24.04	- name: qpdf is installed\n  timeout-minutes: 5\n  run: sh scripts/ci/bg.sh wait apt
+step	ubuntu-24.04	- uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: determinism-${{ matrix.runner }}\n    path: determinism-${{ matrix.runner }}.txt
+step	ubuntu-24.04-arm	- name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)\n  uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n  with:\n    path: |\n      manual/fonts\n      manual-dev/fonts\n    key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
+step	ubuntu-24.04-arm	- name: Generated modules match VERSION and docs/diagnostics.md\n  run: |\n    sh scripts/gen-embedded.sh\n    git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
+step	ubuntu-24.04-arm	- name: Generated parser matches the grammar\n  run: |\n    scripts/gen-parser.sh\n    git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-emet/src/Golem/Emet/Generated.hs
+step	ubuntu-24.04-arm	- name: Only the test suites depend on golem-test-support (docs/adr/0028)\n  run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
+step	ubuntu-24.04-arm	- name: Outputs for the determinism check; the manuals build without diagnostics\n  run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
+step	ubuntu-24.04-arm	- name: The direction of the packages split from golem-doc (docs/adr/0173)\n  run: sh scripts/ci/doc-deps.sh dist-newstyle/cache/plan.json
+step	ubuntu-24.04-arm	- name: The test suites of the runner (docs/adr/0140)\n  timeout-minutes: 20\n  env:\n    SUITES: ${{ matrix.suites }}\n    GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"\n    GOLEM_PD_BOOKS: "1"\n    TASTY_NO_CREATE: "true"\n  run: |\n    cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
+step	ubuntu-24.04-arm	- name: golem is linked with the wasmtime of fetch-wasmtime.sh (docs/adr/0156)\n  run: sh scripts/check-wasmtime-linked.sh "$(cabal list-bin -v0 golem)"
+step	ubuntu-24.04-arm	- name: qpdf is installed\n  timeout-minutes: 5\n  run: sh scripts/ci/bg.sh wait apt
+step	ubuntu-24.04-arm	- uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n  with:\n    name: determinism-${{ matrix.runner }}\n    path: determinism-${{ matrix.runner }}.txt
+suites	ubuntu-24.04	golem-assemble:test:golem-assemble-test
+suites	ubuntu-24.04	golem-bibliography:test:golem-bibliography-test
+suites	ubuntu-24.04	golem-cli:test:golem-cli-test
+suites	ubuntu-24.04	golem-doc-gen:test:golem-doc-gen-test
+suites	ubuntu-24.04	golem-doc:test:golem-doc-test
+suites	ubuntu-24.04	golem-driver:test:golem-driver-global-test
+suites	ubuntu-24.04	golem-driver:test:golem-driver-parallel-test
+suites	ubuntu-24.04	golem-driver:test:golem-driver-test
+suites	ubuntu-24.04	golem-emet:test:golem-emet-test
+suites	ubuntu-24.04	golem-epub:test:golem-epub-test
+suites	ubuntu-24.04	golem-eval:test:golem-eval-test
+suites	ubuntu-24.04	golem-fixtures:test:golem-fixtures-test
+suites	ubuntu-24.04	golem-fmt:test:golem-fmt-test
+suites	ubuntu-24.04	golem-font:test:golem-font-race-test
+suites	ubuntu-24.04	golem-font:test:golem-font-test
+suites	ubuntu-24.04	golem-html:test:golem-html-test
+suites	ubuntu-24.04	golem-layout-spec:test:golem-layout-spec-test
+suites	ubuntu-24.04	golem-layout:test:golem-layout-test
+suites	ubuntu-24.04	golem-length:test:golem-length-test
+suites	ubuntu-24.04	golem-lint:test:golem-lint-test
+suites	ubuntu-24.04	golem-lsp:test:golem-lsp-test
+suites	ubuntu-24.04	golem-numerals:test:golem-numerals-test
+suites	ubuntu-24.04	golem-parser:test:golem-parser-test
+suites	ubuntu-24.04	golem-pdf:test:golem-pdf-test
+suites	ubuntu-24.04	golem-plugin:test:golem-plugin-test
+suites	ubuntu-24.04	golem-preflight:test:golem-preflight-test
+suites	ubuntu-24.04	golem-project:test:golem-project-test
+suites	ubuntu-24.04	golem-regex:test:golem-regex-test
+suites	ubuntu-24.04	golem-svg:test:golem-svg-test
+suites	ubuntu-24.04	golem-syntax:test:golem-syntax-test
+suites	ubuntu-24.04	golem-test-support:test:golem-test-support-par-test
+suites	ubuntu-24.04	golem-test-support:test:golem-test-support-test
+suites	ubuntu-24.04	golem-text:test:golem-text-test
+suites	ubuntu-24.04	golem-typeset:test:golem-typeset-test
+suites	ubuntu-24.04	golem-wasm:test:golem-wasm-test
+suites	ubuntu-24.04-arm	golem-assemble:test:golem-assemble-test
+suites	ubuntu-24.04-arm	golem-bibliography:test:golem-bibliography-test
+suites	ubuntu-24.04-arm	golem-cli:test:golem-cli-test
+suites	ubuntu-24.04-arm	golem-doc-gen:test:golem-doc-gen-test
+suites	ubuntu-24.04-arm	golem-doc:test:golem-doc-test
+suites	ubuntu-24.04-arm	golem-driver:test:golem-driver-global-test
+suites	ubuntu-24.04-arm	golem-driver:test:golem-driver-parallel-test
+suites	ubuntu-24.04-arm	golem-driver:test:golem-driver-test
+suites	ubuntu-24.04-arm	golem-emet:test:golem-emet-test
+suites	ubuntu-24.04-arm	golem-epub:test:golem-epub-test
+suites	ubuntu-24.04-arm	golem-eval:test:golem-eval-test
+suites	ubuntu-24.04-arm	golem-fixtures:test:golem-fixtures-test
+suites	ubuntu-24.04-arm	golem-fmt:test:golem-fmt-test
+suites	ubuntu-24.04-arm	golem-font:test:golem-font-race-test
+suites	ubuntu-24.04-arm	golem-font:test:golem-font-test
+suites	ubuntu-24.04-arm	golem-html:test:golem-html-test
+suites	ubuntu-24.04-arm	golem-layout-spec:test:golem-layout-spec-test
+suites	ubuntu-24.04-arm	golem-layout:test:golem-layout-test
+suites	ubuntu-24.04-arm	golem-length:test:golem-length-test
+suites	ubuntu-24.04-arm	golem-lint:test:golem-lint-test
+suites	ubuntu-24.04-arm	golem-lsp:test:golem-lsp-test
+suites	ubuntu-24.04-arm	golem-numerals:test:golem-numerals-test
+suites	ubuntu-24.04-arm	golem-parser:test:golem-parser-test
+suites	ubuntu-24.04-arm	golem-pdf:test:golem-pdf-test
+suites	ubuntu-24.04-arm	golem-plugin:test:golem-plugin-test
+suites	ubuntu-24.04-arm	golem-preflight:test:golem-preflight-test
+suites	ubuntu-24.04-arm	golem-project:test:golem-project-test
+suites	ubuntu-24.04-arm	golem-regex:test:golem-regex-test
+suites	ubuntu-24.04-arm	golem-svg:test:golem-svg-test
+suites	ubuntu-24.04-arm	golem-syntax:test:golem-syntax-test
+suites	ubuntu-24.04-arm	golem-test-support:test:golem-test-support-par-test
+suites	ubuntu-24.04-arm	golem-test-support:test:golem-test-support-test
+suites	ubuntu-24.04-arm	golem-text:test:golem-text-test
+suites	ubuntu-24.04-arm	golem-typeset:test:golem-typeset-test
+suites	ubuntu-24.04-arm	golem-wasm:test:golem-wasm-test
