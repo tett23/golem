@@ -600,7 +600,7 @@ punctuationInkNotices vertical fonts layout =
         [ch] <- [T.unpack (bcText c)],
         let look = bcLook c
             size = lkSize look
-            gs = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look ch) (T.singleton ch),
+            gs = lfShape fonts (shapingForFonts fonts vertical look ch) (T.singleton ch),
         g : _ <- [gs],
         Just (lo, hi) <- [inkAlong g],
         let x = s - punctuationPre fonts vertical look ch
@@ -1530,7 +1530,7 @@ manifest, docs/adr ADR 0276).
 composeEnv :: Text -> Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
 composeEnv bookLang style geom fonts assumed look =
   let comp = stComposition style
-      shaping = shapingOf (lfRoleFeatures fonts) (pgVertical geom)
+      shaping = shapingForFonts fonts (pgVertical geom)
    in (defaultComposeEnv (lkSize look))
         { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
           ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) t,
@@ -3643,7 +3643,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
       cs = stCode st
       toSp = L.zwToSp size
       -- the shaping of each side: Latin, or Japanese ('漢')
-      side latin = shapingOf (lfRoleFeatures fonts) vertical lk (if latin then 'a' else '\x6F22')
+      side latin = shapingForFonts fonts vertical lk (if latin then 'a' else '\x6F22')
       shape latin r =
         let gs = lfShape fonts (side latin) r
             starts = Set.toAscList (Set.fromList (map shCluster gs))

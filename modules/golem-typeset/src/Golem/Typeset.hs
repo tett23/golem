@@ -16,6 +16,7 @@ module Golem.Typeset
     offsetOrigin,
     Shaping (..),
     shapingOf,
+    shapingForFonts,
     normalTexts,
     noFontProvider,
     bodyRole,
