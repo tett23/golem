@@ -904,6 +904,22 @@ rubyTests =
     testCase "ADR 0369: a file that defines the reading style with @style-def sets its readings in that definition" $ do
       boxes <- rubyBoxes "large" "@style-def character large size=\"6pt\"\n\n[ruby: 漢|か]字\n"
       [lkSize (readingLook lk) | (_, lk) <- boxes] @?= [6 * pt],
+    testCase "ADR 0370 I1: the tracking after a ruby box moves neither its base nor its reading, and the next character by the tracking once" $ do
+      {- mono and group ruby, with a reading longer than the base, one that
+      overhangs the kana around it, and one that fits; in a character style
+      of tracking 200 (2pt at 10pt) -}
+      let toml = readingStyleToml "" <> "\n[character-styles.spaced]\ntracking = 200\n"
+          drawn source = drawnGlyphs . BS.concat <$> (miniPdf fakeProvider True toml source fakeFontFiles >>= inflateAll)
+          xOf ds ch = [read (BC.unpack (dX d)) :: Double | d <- ds, dGlyph d == fromEnum ch]
+          relative ds first chars = [x - x0 | x0 <- take 1 (xOf ds first), ch <- chars, x <- xOf ds ch]
+      forM_ [("漢", "かんじ", "字"), ("漢", "かんじ", "あ"), ("漢", "か", "字"), ("五月雨", "さみだれ", "が")] $ \(base, reading, next) -> do
+        let ruby = "[ruby: " <> base <> "|" <> reading <> "]"
+        plain <- drawn ("い" <> ruby <> next <> "\n")
+        spaced <- drawn ("い[style spaced: " <> ruby <> "]" <> next <> "\n")
+        let inside ds = relative ds (T.head base) (T.unpack (T.tail base) <> T.unpack reading)
+        assertBool (T.unpack base) (not (null (inside plain)))
+        assertEqual (T.unpack base) (inside plain) (inside spaced)
+        assertEqual (T.unpack base) (map (+ 2) (relative plain (T.head base) (T.unpack next))) (relative spaced (T.head base) (T.unpack next)),
     testCase "ADR 0369: a font of the reading style is the font of the reading alone" $ do
       boxes <- rubyBoxes "gothic" "[ruby: 漢|か]字\n"
       [(lkFace lk, lkFace (readingLook lk)) | (_, lk) <- boxes] @?= [("body", "gothic")],
