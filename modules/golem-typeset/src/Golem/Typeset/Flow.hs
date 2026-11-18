@@ -1675,6 +1675,8 @@ composeEnv bookLang style geom fonts assumed look =
           ceAkiSet = akiSetOf style Nothing,
           -- the text of note marks (golem-driver ADR 0025) and their character style (docs/adr/0177)
           ceNoteMarkFormat = stNotesMarkFormat style,
+          -- the kanji of the numbers set flat in vertical text (docs/adr/0381)
+          ceNoteMarkFlat = stNotesMarkFlat style,
           {- a range of superscript or subscript is in the glyphs of the font when
           sups (subs) changes the glyph of every character of it (docs/adr/0269) -}
           ceScriptGlyphs = \pos cs ->
@@ -1732,15 +1734,27 @@ ADR 0018).
 withNoteMark :: Style -> Bool -> SrcSpan -> Int -> [Inline] -> [Inline]
 withNoteMark style vertical sp n body = styled mark <> (Aki sp (AkiZw (1 / 4)) : body)
   where
-    parts = markParts vertical pre notation (toInteger n) suf
+    parts = markPartsShaped vertical (stNotesMarkFlat style) pre notation (toInteger n) suf
     {- numbered per page, the mark is one text, which 'markLabelBox' makes one
-    box of the reserved width (docs/adr/0383) -}
+    box of the reserved width (docs/adr/0383); a mark whose number is set
+    flat too, which the box sets flat (docs/adr/0381) -}
     mark
-      | stNotesNumbering style == NumberPerPage = [Text sp (markPartsText parts)]
+      | noteMarkBoxed style vertical n = [Text sp (markPartsText parts)]
       | otherwise = markInlines sp parts
     MarkFormat pre notation suf = stNotesMarkFormat style
     -- in the character style of [notes] body-mark-style (docs/adr/0177)
     styled xs = maybe xs (\name -> [CharStyle sp name xs]) (stNotesBodyMarkStyle style)
+
+{- | Whether the mark at the start of the body of a note n is one box that
+'markLabelBox' makes: numbered per page (docs/adr/0383), or with its
+number in kanji set flat in vertical text (docs/adr/0381).
+-}
+noteMarkBoxed :: Style -> Bool -> Int -> Bool
+noteMarkBoxed style vertical n =
+  stNotesNumbering style == NumberPerPage
+    || any (\case MarkFlat _ -> True; _ -> False) (markPartsShaped vertical (stNotesMarkFlat style) pre notation (toInteger n) suf)
+  where
+    MarkFormat pre notation suf = stNotesMarkFormat style
 
 -- | How many inlines the mark of a note is in 'withNoteMark': the label of the Note (docs/adr ADR 0183).
 noteMarkCount :: Style -> Bool -> SrcSpan -> Int -> Int
@@ -2663,9 +2677,11 @@ composeUnit fe widths lineWidth u =
       -- the anchors count the items of the text; the marker comes first
       shift = length marker
       (textItems0, anchors) = composeInlines env (uInlines u)
-      -- numbered per page, the mark of a note at the end of a chapter is one box of the reserved width (docs/adr/0383)
+      {- numbered per page, the mark of a note at the end of a chapter is one
+      box of the reserved width (docs/adr/0383); one box too when its
+      number is set flat (docs/adr/0381) -}
       textItems = case [n | Frame _ (FEndNote _ _ n) _ <- uFrames u] of
-        n : _ | isJust (feMarkReserve fe) -> markLabelBox env ChannelNote n textItems0
+        n : _ | noteMarkBoxed (uStyle u) (ceVertical env) n -> markLabelBox env ChannelNote n textItems0
         _ -> textItems0
       items = marker <> textItems
       lines' = brLines (A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items)
@@ -2761,8 +2777,8 @@ footnoteLines fe env st k n ps =
             if j == 0
               then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n, ceLabelLink = Just (LinkTo (DestNoteMark k))}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
               else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para),
-      -- numbered per page, the mark at the start is one box of the reserved width (docs/adr/0383)
-      let labelled = if j == 0 && isJust (feMarkReserve fe) then markLabelBox env' ChannelNote n else id
+      -- numbered per page, the mark at the start is one box of the reserved width (docs/adr/0383); set flat, one box too (docs/adr/0381)
+      let labelled = if j == 0 && noteMarkBoxed st (ceVertical env) n then markLabelBox env' ChannelNote n else id
     ]
 
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
