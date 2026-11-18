@@ -53,6 +53,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### 記法と設定の値
 
+- **ルビの区切りの記法（仕様を検討中）**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改める。記法が変わるので v1.0.0 までに仕様を決める。
 - **原稿の変数の宣言を `@set` に戻す（未実装）**：今は行頭の `set 名前 = 式` を変数の宣言として読み、`@set` に廃止予定の notice G02155 を出す。`@` の無い宣言は本文と区別がつかないので、宣言を `@set` に戻し、G02155 を廃止する。 [Golem ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)。
 - **単位のない 0**：長さとアキ量の欄、`@blank-line 0` は [Golem ADR 0345](adr/0345-revise-unitless-zero-in-length-fields.md) に従って実装した。
 - **長さと量の名前**：段落スタイル、文字スタイル、長さの量などに名前を付け、スタイルやほかの設定から名前で指せるようにする。今の `style.toml` で名前を付けられるのは、段落スタイル、文字スタイル、アキ量のセット、色のスウォッチ、フォントの役割、マスターページであり、長さと量には名前を付けられない。字下げ、罫線の間隔、コードの余白、段間などの寸法は、どの欄にも `"1zw"` や `"3mm"` のような値をじかに書く。本の全体で同じ量を使うには同じ値を欄ごとに書き写すことになり、量を変えるときに直し漏れが起きる。アキの量の名前（`"二分"` など）は組み込みのもので、書き手は足せない。名前を付ける値の種類（絶対の寸法と `zw`、アキの量、行の数のような整数）、宣言の置き場所と名前の書き方、名前を指せる欄（`style.toml`、`@style-def`、`preflight.toml`）、`zw` の名前をどの文字の大きさで解決するか、組み込みの名前や単位と重なったときの扱い、LSP の補完と名前の変更を ADR で決める。段落スタイルと文字スタイルはすでに名前を持つので、スタイルについては、今の名前と `based-on` で足りないことがあるかを ADR で確かめる。`manifest.toml` の `[vars]` のプロジェクト全体の変数（[docs/adr/0185](adr/0185-project-wide-variables.md)）は原稿から読む値の名前であり、この項目は組版の設定の値の名前を扱う。
@@ -112,6 +113,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### 本の部品の拡張
 
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
+  - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **ページを持たない出力でのページごとの注の番号（未実装）**：`[notes]` の `numbering = "page"` は、PDF ではページごとに番号を振る（[docs/specifications.md の「ページごとの注の番号」](specifications.md#ページごとの注の番号)）。HTML、EPUB、プレーンテキストには ADR が diagnostic を出すことだけを定め、その重大度と、その出力に振る番号を定めていない。今は警告（G03259）を出し、本の通し番号で組む。未決事項の「ページを持たない出力の注の番号」を決めてから、ADR の状態を `accepted` にする。 [Golem ADR 0383](adr/0383-page-local-note-numbers.md)。
 - **韻文の拡張（未実装）**：[言語と文化ごとの詩行と組版の例](research/verse-layout.md) を参照する。行番号（5 行ごとの番号など）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。 [Golem ADR 0384](adr/0384-verse-line-numbers.md)。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
@@ -266,8 +268,6 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **ページを持たない出力の注の番号**：[Golem ADR 0383](adr/0383-page-local-note-numbers.md) は、`numbering = "page"` の本をページを持たない出力（HTML、EPUB、プレーンテキスト）に組むと diagnostic を出すと定める。しかし、その重大度（出力を止めるか）と、出力を止めないときに振る番号を定めていない。実装は、警告（G03259）を出し、文書の組み立て（S1）の仮の番号である本の通し番号で組む。エラーにして出力を止めるか、ほかの範囲の番号にするかを決める。同じく、`placement = "chapter-end"` と組み合わせたとき、章末の一覧でページの違う注が同じ番号を持つことに diagnostic を出すか（`"file"` の [G03027](diagnostics.md#g03027) にあたるもの）も、ADR は定めていない。今は出さない。
 
 ### その他の未決事項
-
-- **ルビの区切りの記法**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `\/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改めるかを決める。
 
 - **奥付の多言語化と日本語の例外**：版と刷、日付、発行履歴の表記について、日本語の例外と他言語の奥付の実例を集め、書式で必要な条件分岐と数の表記を検討する。
 - **画像フレームの導入時期**：InDesign のように画像と画像を収めるフレームを別々に扱う方式へ移行するかを検討する。時期の候補は v1.x、v2、v3 である。
