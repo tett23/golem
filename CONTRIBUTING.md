@@ -464,6 +464,9 @@ CI を待つ時間は、変更を一つ入れるたびにかかるので、CI �
 一回の実行の時間は、ランナーの順番待ちを含めず、ジョブの依存（`needs`）をたどった最も長い道の秒である。
 `sh scripts/ci/ci-critical-path.sh` がこの中央値を出し、予算の一覧（`docs/budgets.md`）は、このコマンドをこの予算の計測のコマンドとする。
 最適化の前後の時間は `docs/ci-timings/` に記録する。
+CI は検査を減らさずに縮める（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
+`build` のランナーは自分が使うものだけを組み、プルリクエストは自分の `dist-newstyle` を保存して次の push で戻す。
+プルリクエストのキャッシュは `pr-caches.yml` が消すので、手で消さなくてよい。
 例外は、wasm のツールチェーン（`scripts/fetch-ghc-wasm.sh`）か wasm の freeze（`cabal.project.wasm.freeze`）を替えるプルリクエストで、`wasm` ジョブの最初の実行はキャッシュがないので 5 分を超えてよい。
 そのプルリクエストは、キャッシュのない実行とキャッシュのある実行の時間を `docs/ci-timings/` に記録する。
 キャッシュが消されて 5 分を超えた実行は、この例外に当たらないので、CI を直す（キャッシュの量を減らす）作業を先にする（[docs/adr/0219](./docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md)）。

@@ -1,0 +1,52 @@
+# a workflow for the tests of ci-checks.sh (docs/adr/0395 A1)
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: a
+            tests: true
+            x: true
+            suites: driver
+          - runner: b
+            tests: true
+            x: false
+            suites: rest
+          - runner: b
+            tests: false
+            x: true
+            suites: none
+    steps:
+      - name: Before the build
+        run: echo not listed
+      - id: build
+        run: cabal build
+      # a comment, not listed
+      - name: On every runner
+        run: echo every
+      - name: Where x
+        if: matrix.x
+        run: |
+          echo x
+          echo more
+      - name: On b without x
+        if: ${{ matrix.runner == 'b' && !matrix.x }}
+        run: echo b
+      - name: Tests
+        if: matrix.tests
+        env:
+          SUITES: ${{ matrix.suites }}
+        run: cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
+      - name: Pull requests only
+        if: (matrix.x || matrix.runner != 'a') && github.event_name == 'pull_request' && success()
+        run: echo pr
+      - name: Pushes only
+        if: github.event_name == 'push'
+        run: echo push
+      - name: A save
+        if: steps.build.outputs.compiled == 'true'
+        uses: actions/cache/save@v6
+  ci:
+    needs: [build, other]
+    steps:
+      - run: true

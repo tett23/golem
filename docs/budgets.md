@@ -27,6 +27,7 @@
 上の計測のコマンドは、同じ計算機で 4 回走らせた中央値を出すので、CI の値とは計算機の分だけ違う。
 和の中央値は、回ごとの和の中央値であり、範囲ごとの中央値の和ではない（[ADR 0286](adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md) の M2）。
 キャッシュの予算は、[ADR 0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) では「10 GB の下にある」と書かれており、ちょうど 10 GB は予算を超える。
+プルリクエストも `dist-newstyle` を保存するので、`pr-caches.yml` が、キャッシュの合計が 9 GB を超えたときに開いているプルリクエストの `dist-` のキャッシュを古いものから消し、予算との間に 1 GB を残す（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の I3）。
 プルリクエストの CI の時間の計測のコマンドは、GitHub の API を `gh` で読むので、ネットワークと `gh` の認証が要る（[ADR 0392](adr/0392-budget-the-pull-request-ci-at-five-minutes.md)）。
 
 ## テストと CI の中で強制する上限
