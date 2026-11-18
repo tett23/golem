@@ -1,6 +1,6 @@
 # ADR 0396: [ADR 0362](0362-unbreakable-spacing.md) が [golem-layout ADR 0049](../golem-layout/adr/0049-align-the-character-classes-and-unbreakable-pairs-with-jlreq.md) の B6 の伸びを変えたことを記録し、毎晩の列挙のテストの述語を直す
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
