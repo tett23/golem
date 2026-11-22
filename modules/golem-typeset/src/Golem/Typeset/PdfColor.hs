@@ -273,13 +273,14 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
     height <- positive "Height"
     bits <- positive "BitsPerComponent"
     (space, components, profile, colored) <- pdfImageSpace fields state
-    if bits /= 8 then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
+    if bits `notElem` [1, 2, 4, 8, 16] then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
     if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
     ranges <- unitDecode components fields state
     if ranges == concat (replicate components [False, True]) then Right () else Left "PDF 図版の画像の Decode に対応していません"
     let pixels = width * height
-        inputBytes = pixels * toInteger components
-        outputBytes = pixels * 4
+        inputBytes = ((width * toInteger components * bits + 7) `div` 8) * height
+        outputBits = if bits == 16 then 16 else 8
+        outputBytes = pixels * 4 * (outputBits `div` 8)
     if inputBytes + outputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
       then Left budgetError
       else Right ()
@@ -287,14 +288,14 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
     if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
     (alpha, masked) <- pdfImageAlpha width height fields decoded
     reserved <- charge (fromInteger outputBytes) masked
-    let input = P.ImageData (fromInteger width) (fromInteger height) 8 space profile bytes False False alpha
+    let input = P.ImageData (fromInteger width) (fromInteger height) (fromInteger bits) space profile bytes False False alpha
     analysis <- rasterAnalyzer reserved input
     case raImage analysis of
       Nothing | raKind analysis `elem` [Unpainted, Multicolor] -> Right ()
       Just converted
         | P.imgWidth converted == P.imgWidth input,
           P.imgHeight converted == P.imgHeight input,
-          P.imgBits converted == 8,
+          P.imgBits converted == fromInteger outputBits,
           P.imgColor converted == P.CsCmyk,
           isNothing (P.imgIcc converted),
           not (P.imgDct converted),
@@ -415,7 +416,7 @@ convertPdfImage key fields state = case Map.lookup key (convertedImages state) o
       Nothing -> Right (key, decoded)
       Just image -> do
         fresh <- freshObject decoded
-        let fieldsOut = [(name, value) | (name, value) <- fields, name `notElem` ["Length", "Filter", "DecodeParms", "DL", "Decode", "ColorSpace", "BitsPerComponent", "Resources"]] <> [("ColorSpace", P.OName "DeviceCMYK"), ("BitsPerComponent", P.OInt 8)]
+        let fieldsOut = [(name, value) | (name, value) <- fields, name `notElem` ["Length", "Filter", "DecodeParms", "DL", "Decode", "ColorSpace", "BitsPerComponent", "Resources"]] <> [("ColorSpace", P.OName "DeviceCMYK"), ("BitsPerComponent", P.OInt (toInteger (P.imgBits image)))]
         Right (fresh, decoded {convertedImages = Map.insert key fresh (convertedImages decoded), convertedObjects = Map.insert fresh (P.OStream fieldsOut (P.imgData image)) (convertedObjects decoded)})
 
 freshObject :: Resources -> Either Text P.ObjNum

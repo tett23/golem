@@ -13,7 +13,34 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: an ICCBased PDF image uses the shared real raster analyzer" $ do
+  [ testCase "root ADR 0403 I1: packed PDF gray samples preserve padding at each row" $ do
+      let fields = [("ColorSpace", P.OName "DeviceGray"), ("BitsPerComponent", P.OInt 1), ("Height", P.OInt 2)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "BitsPerComponent", "Height"]) (imageFields 3)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [0x40, 0xa0]))]}
+          ink = [0, 255, 255, 0]
+          white = [0, 0, 0, 0]
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> convertedImagePixels result @?= [BS.pack (ink <> white <> ink <> white <> ink <> white)]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: two- and four-bit PDF gray samples preserve row padding" $ do
+      let cases = [(2, BS.pack [0x1c, 0xe0], [255, 170, 0, 0, 85, 255]), (4, BS.pack [0x08, 0xf0, 0xf7, 0x00], [255, 119, 0, 0, 136, 255])]
+      mapM_
+        ( \(bits, samples, tones) -> do
+            let fields = [("ColorSpace", P.OName "DeviceGray"), ("BitsPerComponent", P.OInt bits), ("Height", P.OInt 2)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "BitsPerComponent", "Height"]) (imageFields 3)
+                original = imagePage {P.ipObjects = [(1, P.OStream fields samples)]}
+            case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+              Right (Just result) -> convertedImagePixels result @?= [BS.pack (concatMap (\tone -> [0, tone, tone, 0]) tones)]
+              other -> assertFailure (show (bits, other))
+        )
+        cases,
+    testCase "root ADR 0403 I1: 16-bit PDF gray retains precision when recolored" $ do
+      let fields = [("ColorSpace", P.OName "DeviceGray"), ("BitsPerComponent", P.OInt 16)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "BitsPerComponent"]) (imageFields 3)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [0, 0, 128, 0, 255, 255]))]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> do
+          convertedImagePixels result @?= [BS.pack [0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 127, 255, 127, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+          [lookup "BitsPerComponent" entries | (key, P.OStream entries _) <- P.ipObjects result, key < 0, lookup "Subtype" entries == Just (P.OName "Image")] @?= [Just (P.OInt 16)]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: an ICCBased PDF image uses the shared real raster analyzer" $ do
       let profile = P.OStream [("N", P.OInt 3), ("Filter", P.OName "FlateDecode")] (flate P.srgbProfile)
           fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
           original = imagePage {P.ipObjects = [(1, P.OStream fields rgbPixels), (3, profile)]}
