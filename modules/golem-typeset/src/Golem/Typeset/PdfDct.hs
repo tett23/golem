@@ -15,7 +15,7 @@ import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Internal qualified as BSI
 import Data.List (nub, sortOn)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector.Storable qualified as V
@@ -70,6 +70,7 @@ decodePdfDct spec bytes = do
   unless (length (nub [BS.index bytes (a + 15) | (a, _) <- adobeMarkers]) <= 1) (Left "PDF の JPEG に矛盾する Adobe ColorTransform があります")
   unless (width == dctWidth spec && height == dctHeight spec && components == dctComponents spec) (Left "PDF と JPEG の寸法または成分数が一致しません")
   unless (components == 1 || maybe True (\a -> a `elem` (if components == 3 then [0, 1] else [0, 2])) adobe) (Left "PDF の Adobe JPEG ColorTransform と成分数が一致しません")
+  unless (components == 1 || isJust adobe || maybe True (`elem` [0, 1]) (dctColorTransform spec)) (Left "PDF の JPEG ColorTransform は 0 か 1 でなければなりません")
   let transform = fromMaybe (fromMaybe (if components == 3 then 1 else 0) (dctColorTransform spec)) adobe
       pixels = toInteger width * toInteger height
       maxH = maximum (map fst sampling)

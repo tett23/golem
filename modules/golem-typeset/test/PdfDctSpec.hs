@@ -54,6 +54,9 @@ pdfDctTests =
         bytes <- withoutAdobe <$> BS.readFile "test/fixtures/pdf-adobe-ycck.jpg"
         d <- either (assertFailure . show) pure (decodePdfDct (PdfDctSpec 4 (Just 1) 24 8 (1024 * 1024)) bytes)
         BS.take 4 (P.imgData (dctImage d)) @?= BS.pack [255, 255, 255, 0],
+      testCase "root ADR 0403 I1: dictionary ColorTransform two is not an Adobe marker" $ do
+        bytes <- withoutAdobe <$> BS.readFile "test/fixtures/pdf-adobe-ycck.jpg"
+        assertBool "invalid dictionary value" (isLeft (decodePdfDct (PdfDctSpec 4 (Just 2) 24 8 (1024 * 1024)) bytes)),
       testCase "root ADR 0403 I1: arbitrary four-component identifiers do not imply RGBA" $ do
         bytes <- BS.readFile "test/fixtures/pdf-adobe-cmyk.jpg"
         let pos tag = BS.length (fst (BS.breakSubstring (BS.pack [255, tag]) bytes))
