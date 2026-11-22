@@ -86,96 +86,18 @@ library
   else
     hs-source-dirs:  src-no-plugins
 
-test-suite golem-driver-test
-  import:           warnings
-  type:             exitcode-stdio-1.0
+-- What the four suites that golem-driver-test was split into share: the
+-- options and the dependencies; each lists its own modules, and the
+-- modules that help the tests (Support and the Specs that others import)
+-- are built in each suite that uses them (root ADR 0416).
+-- -threaded: tasty runs the tests at the same time on every processor;
+-- none of them changes the state of the process, and those that do are
+-- in golem-driver-global-test (docs/adr/0146). -N: one capability per
+-- processor from the start (scripts/ci/rts-capabilities.sh)
+-- wasm32 has no threaded runtime: -threaded does not link there, and
+-- -N needs it (docs/adr/0293)
+common driver-suite
   hs-source-dirs:   test
-  main-is:          Main.hs
-  other-modules:
-    AlignSpaceSpec
-    ParagraphPitchSpec
-    ParagraphWrapPitchSpec
-    FontInstanceSpec
-    BookLanguageSpec
-    BuildSpec
-    CallsSpec
-    ChapterNotesSpec
-    NoteBodyStylesSpec
-    PageNoteNumbersSpec
-    CompressedNoteMarksSpec
-    CaptionSidenoteIndentSpec
-    VerseLineNumbersSpec
-    NumberTitleSeparatorSpec
-    CaptionSidenoteParagraphsSpec
-    ParagraphStyleControlsSpec
-    ColophonSpec
-    CliSpec
-    ComplexFixtureSpec
-    DiagnosticSitesSpec
-    ReuseSpec
-    CodeFontSpec
-    DiagnosticsSpec
-    DoubleDashSpec
-    EmetSamplesSpec
-    ExpansionSpec
-    FigureExternalSpec
-    FigureSpec
-    FileSpacesSpec
-    ForceTableSpec
-    FunctionLibrarySpec
-    FunctionsSpec
-    HeadingLevelsSpec
-    InMemorySpec
-    ManualEmetSpec
-    InsideLinksSpec
-    LinkSpec
-    NestedFiguresSpec
-    NotesSpec
-    OutputGoldenSpec
-    DecorationsSpec
-    ExceptionsSpec
-    OpenTypeFeaturesSpec
-    PunctuationWidthSpec
-    ScriptsSpec
-    OverflowSpec
-    SoftHyphenSpec
-    PageElementsSpec
-    PageMapSpec
-    PageStartsSpec
-    ParagraphRuleSpec
-    SeparatorSpec
-    ParagraphSpec
-    PdfSpec
-    PlatesSpec
-    PopplerSpec
-    ReferencesSpec
-    SecuritySpec
-    BoxesSpec
-    KeepOptionsSpec
-    LineAdjustmentSpec
-    AdjustOrderSpec
-    NumberUnitBuildSpec
-    SinglePageSpec
-    PageLabelsSpec
-    IndexRangeSpec
-    ShapingMemoSpec
-    SpecimenGeometrySpec
-    TateChuYokoSpec
-    StylesSpec
-    TableCaptionsSpec
-    TableFilesSpec
-    TaggedPdfSpec
-    TocStylesSpec
-    UnwritableNumbersSpec
-    VarsSpec
-    VisualSubsetSpec
-    Support
-  -- -threaded: tasty runs the tests at the same time on every processor;
-  -- none of them changes the state of the process, and those that do are
-  -- in golem-driver-global-test (docs/adr/0146). -N: one capability per
-  -- processor from the start (scripts/ci/rts-capabilities.sh)
-  -- wasm32 has no threaded runtime: -threaded does not link there, and
-  -- -N needs it (docs/adr/0293)
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N"
   build-depends:
@@ -219,8 +141,128 @@ test-suite golem-driver-test
   -- tests that use them are not built
   if flag(plugins)
     cpp-options:   -DGOLEM_PLUGINS
-    other-modules: NewPlanSpec
     build-depends: golem-plugin
+
+-- The tests of the PDF: its structure, its tags, its fonts and the figures
+-- that other tools wrote (root ADR 0416).
+test-suite golem-driver-pdf-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          PdfMain.hs
+  other-modules:
+    CodeFontSpec
+    DecorationsSpec
+    DoubleDashSpec
+    ExpansionSpec
+    FigureExternalSpec
+    FontInstanceSpec
+    LinkSpec
+    OpenTypeFeaturesSpec
+    PdfSpec
+    PlatesSpec
+    PopplerSpec
+    PunctuationWidthSpec
+    ScriptsSpec
+    ShapingMemoSpec
+    SpecimenGeometrySpec
+    Support
+    TaggedPdfSpec
+    TateChuYokoSpec
+    VisualSubsetSpec
+
+-- The tests of the pages: paragraphs, headings, notes, figures and their
+-- placement, and page breaks (root ADR 0416).
+test-suite golem-driver-page-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          PageMain.hs
+  other-modules:
+    AdjustOrderSpec
+    AlignSpaceSpec
+    BoxesSpec
+    CaptionSidenoteIndentSpec
+    CaptionSidenoteParagraphsSpec
+    ChapterNotesSpec
+    CompressedNoteMarksSpec
+    FigureSpec
+    FileSpacesSpec
+    HeadingLevelsSpec
+    KeepOptionsSpec
+    LineAdjustmentSpec
+    LinkSpec
+    NestedFiguresSpec
+    NoteBodyStylesSpec
+    NotesSpec
+    NumberTitleSeparatorSpec
+    OverflowSpec
+    PageElementsSpec
+    PageLabelsSpec
+    PageMapSpec
+    PageNoteNumbersSpec
+    PageStartsSpec
+    ParagraphPitchSpec
+    ParagraphRuleSpec
+    ParagraphSpec
+    ParagraphStyleControlsSpec
+    ParagraphWrapPitchSpec
+    ReuseSpec
+    SeparatorSpec
+    SinglePageSpec
+    SoftHyphenSpec
+    StylesSpec
+    Support
+    VerseLineNumbersSpec
+
+-- The tests of the outputs: HTML, EPUB and plain text, the goldens of the
+-- four targets, bibliographies, indexes and cross references (root ADR
+-- 0416).
+test-suite golem-driver-output-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          OutputMain.hs
+  other-modules:
+    BookLanguageSpec
+    BuildSpec
+    ColophonSpec
+    ComplexFixtureSpec
+    EmetSamplesSpec
+    ForceTableSpec
+    InMemorySpec
+    IndexRangeSpec
+    InsideLinksSpec
+    ManualEmetSpec
+    OutputGoldenSpec
+    ReferencesSpec
+    Support
+    TableCaptionsSpec
+    TableFilesSpec
+    TocStylesSpec
+
+-- The tests of diagnostics, functions, plugins, projects and the commands
+-- near the CLI (root ADR 0416).
+test-suite golem-driver-cli-test
+  import:           warnings
+  import:           driver-suite
+  type:             exitcode-stdio-1.0
+  main-is:          CliMain.hs
+  other-modules:
+    CallsSpec
+    CliSpec
+    DiagnosticSitesSpec
+    DiagnosticsSpec
+    ExceptionsSpec
+    FunctionLibrarySpec
+    FunctionsSpec
+    NumberUnitBuildSpec
+    SecuritySpec
+    Support
+    UnwritableNumbersSpec
+    VarsSpec
+  if flag(plugins)
+    other-modules: NewPlanSpec
 
 -- The tests of golem-driver that change the state of the process (the
 -- environment variable XDG_CACHE_HOME, the locale encoding), in a suite
