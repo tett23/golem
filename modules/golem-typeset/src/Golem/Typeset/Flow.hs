@@ -740,6 +740,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
                     | p <- pages,
                       UnplaceableFootnote (NoteId sp _) n <- poUnmet p
                     ]
+                      <> separatorHoldErrors built pages
                in case pagesResult of
                     Left ds -> Left (ds <> bCaptionWarnings built)
                     Right _ -> if null errors then Right (built, pages) else Left (errors <> bCaptionWarnings built)
@@ -779,6 +780,41 @@ layoutFigures reuse numbered inp geom fonts figures = do
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
             [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
+
+-- Ordinary paragraph keep options may fall back when no empty column fits.
+-- A visible separator instead requires its whole chain and the first display
+-- line of the next block in one column (root ADR 0398 I7).
+separatorHoldErrors :: Built -> [PageOutAt Sp] -> [Diagnostic]
+separatorHoldErrors built pages =
+  [ diagnostic "G07134" Error site "区切りと後続ブロックの最初の行を同じ段に配置できません"
+  | (site, identifiers) <- groups [] (bUnits built),
+    placed : remaining <- [mapMaybe (`Map.lookup` places) identifiers],
+    any (/= placed) remaining
+  ]
+  where
+    places = Map.fromListWith (\_ old -> old) [(ident, (poNumber page, poColumn page)) | page <- pages, (_, slot) <- poSlots page, ident <- ids slot]
+    ids = \case
+      SLine ident -> [ident]
+      SFigure ident -> [ident]
+      SWrapped ident -> [ident]
+      SPageFigure ident -> [ident]
+      SHeading ident count -> take count [ident ..]
+      SCode ident count _ -> take count [ident ..]
+    groups _ [] = []
+    groups pending ((index, unit) : rest) = case uKind unit of
+      USeparator _ -> case Map.lookup index (bUnitFirsts built) of
+        Just ident -> groups ((uSpan unit, ident) : pending) rest
+        Nothing -> groups pending rest
+      UBreak _ -> groups [] rest
+      USection _ _ -> groups [] rest
+      UColumns _ -> groups [] rest
+      UGap _ -> groups pending rest
+      UBlank _ -> groups pending rest
+      UKeepNext _ -> groups pending rest
+      UPageControl _ -> groups pending rest
+      _ -> case (reverse pending, Map.lookup index (bUnitFirsts built)) of
+        ((site, _) : _, Just ident) -> (site, reverse (map snd pending) <> [ident]) : groups [] rest
+        _ -> groups pending rest
 
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
 paginateBuilt inp geom capacity built

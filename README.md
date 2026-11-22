@@ -200,6 +200,8 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 原稿の独立した一行に `---` と書くと、区切りスタイル `default` を使う。
 別の名前は `@separator 名前` で指定し、`[separators.名前]` を `style.toml` に定義する。
 定義がない `default` は一行アキであり、`kind = "blank"` と `lines = 2` に替えれば二行アキ、`kind = "text"` と `text = "＊　＊　＊"` に替えれば約物、`kind = "rule"` に替えれば罫線になる（[root ADR 0398](docs/adr/0398-styled-separators-in-manuscripts.md)）。
+PDF では約物と罫線の区切りを後続の最初の行と同じ段に置く。
+空の段へ送っても保持できなければ、[G07134](docs/diagnostics.md#g07134) で生成を止める。
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 

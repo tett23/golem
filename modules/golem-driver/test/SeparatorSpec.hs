@@ -7,7 +7,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Layout.Paginate (PageOutAt (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), typeAreaFor)
 import Golem.Length (Unit (Pt), fromSp)
-import Golem.Syntax (DiagnosticCode (..))
+import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), SrcSpan (..))
 import Golem.Typeset (PdfLayout (..))
 import Support
 import Test.Tasty
@@ -15,7 +15,15 @@ import Test.Tasty.HUnit
 
 visibleSeparatorTests :: [TestTree]
 visibleSeparatorTests =
-  [ testCase "root ADR 0398 I4: visible separator owns one line and both spaces" $ do
+  [ testCase "root ADR 0398 I7: a free separator hold moves to the next column when that empty column fits" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (replaceIn "lines = 30" "lines = 4" horizontalStyle) <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+      (_, layout) <- layoutOk style "前。\n\n中。\n---\n後。\n" []
+      map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 15], [0, 15]],
+    testCase "root ADR 0398 I4: free separators preserve fractional cursor positions and base-pitch spaces" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle <> "\n[paragraph-styles.body]\nline-pitch = \"12.5pt\"\n[separators.default]\nkind = \"text\"\ntext = \"*\"\nspace-before = 1\nspace-after = 1\n"
+      (_, layout) <- layoutOk style "前。\n---\n後。\n" []
+      map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 27.5, 57.5]],
+    testCase "root ADR 0398 I4: visible separator owns one line and both spaces" $ do
       let style = horizontalStyle <> TE.encodeUtf8 "\n[separators.default]\nkind = \"text\"\ntext = \"＊\"\nspace-before = 1\nspace-after = 1\n"
       (_, layout) <- layoutOk style "前。\n---\n後。\n" []
       map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 2, 4]]
@@ -73,4 +81,36 @@ visibleSeparatorTests =
              other -> assertFailure (show other)
        | mode <- ["grid", "free"],
          direction <- ["horizontal", "vertical"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: an impossible empty-column separator hold is an error in " <> T.unpack mode) $ do
+           let base = replaceIn "lines = 30" (if mode == "grid" then "lines = 1" else "lines = 2") horizontalStyle
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+           (errors, result) <- buildMiniErrors fakeProvider True style "lead\n---\n後。\n" []
+           let failed = filter ((== DiagnosticCode "G07134") . diagCode) errors
+           map (spanStart . diagSpan) failed @?= [5]
+           assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: separator hold respects the document end and explicit break in " <> T.unpack mode) $ do
+           let base = replaceIn "lines = 30" (if mode == "grid" then "lines = 1" else "lines = 2") horizontalStyle
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\nspace-after = 2\n"
+           (_, ending) <- layoutOk style "---\n" []
+           map (length . poSlots) (plPages ending) @?= [1]
+           (_, broken) <- layoutOk style "---\n@page-break\n後。\n" []
+           map (length . poSlots) (plPages broken) @?= [1, 1]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: separator and following line fit an exact empty column in " <> T.unpack mode) $ do
+           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" "lines = 2" horizontalStyle)
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+           (_, layout) <- layoutOk style "---\n後。\n" []
+           map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 15]]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: consecutive visible separators move as one chain in " <> T.unpack mode) $ do
+           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" "lines = 3" horizontalStyle)
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+           (_, layout) <- layoutOk style "前。\n---\n---\n後。\n" []
+           map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 15, 30]]
+       | mode <- ["grid", "free"]
        ]
