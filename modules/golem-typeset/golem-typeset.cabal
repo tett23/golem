@@ -23,6 +23,7 @@ library
                     Golem.Typeset.GlyphRuns
                     Golem.Typeset.Memo
                     Golem.Typeset.Overhang
+                    Golem.Typeset.PdfColor
                     Golem.Typeset.RuleShape
                     Golem.Typeset.Svg
                     Golem.Typeset.Tcy
@@ -70,12 +71,14 @@ test-suite golem-typeset-test
     GlyphRunsSpec
     MemoSpec
     RuleShapeSpec
+    PdfColorSpec
     SvgColorSpec
     TcySpec
     WrapMarkSpec
   build-depends:
     , JuicyPixels ==3.3.9
     , base
+    , bytestring
     , golem-layout-spec
     , golem-pdf
     , golem-project
