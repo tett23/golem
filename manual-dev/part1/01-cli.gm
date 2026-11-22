@@ -26,6 +26,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem plugin lock] | [code: plugins.lock] を更新する |
 | [code: golem inspect FILE] | CST、AST、IR を表示し、IR の CBOR を書き出す |
 | [code: golem explain] | diagnostic のコードの説明を表示する |
+| [code: golem kinsoku \[PATH\]] | プロジェクトの禁則とぶら下げの設定を、一行の JSON で表示する |
 | [code: golem --version] | バージョンを表示する |
 
 オプションはコマンドごとに決まっている。
@@ -145,6 +146,28 @@ $ golem build --target pdf --format json 2> diagnostics.json
 ```
 
 [code: golem inspect] の表示、[code: golem explain] の説明、[code: golem fmt --check] のパスの一覧は標準出力に出る。
+
+[code: golem kinsoku] は、[code: --format] を持たず、いつも一行の JSON を標準出力に書く。[index reading="golem kinsoku": golem kinsoku][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0417-print-resolved-kinsoku-settings.md]（root ADR 0417「解決した禁則とぶら下げの設定を JSON で出す」）]
+JSON は、エディタが Golem と同じ禁則とぶら下げで折り返すために読む。
+[code: PATH] のファイルかフォルダから親へたどり、最も近い [code: manifest.toml] のフォルダをプロジェクトとして、その [code: style.toml] だけを読む。
+[code: PATH] を省くと今のフォルダから探し、まだ無いファイルのパスを渡すと、存在する最も近い親のフォルダから探す。
+次の例は、一行の出力を [code: jq] で整形して示す。
+
+```sh
+$ golem kinsoku chapters/01.gm | jq .
+{
+  "schema": 1,
+  "project": "/home/me/book",
+  "composition": {
+    "kinsoku": "strict",
+    "hangingPunctuation": false
+  }
+}
+```
+
+[code: project] はプロジェクトの絶対パスで、見つからないときは [code: null] になり、[code: composition] は既定値になる。
+[code: style.toml] の誤りは、diagnostics を [code: style.toml] の絶対パスで標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
+notice だけなら、標準エラー出力に書いたうえで JSON を書き、終了コード 0 で終える。
 
 [code: golem explain] にはコードをいくつでも渡せる。
 CI のログの JSON からコードを抜き出し、まとめて説明を引くこともできる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0009-explain-several-codes.md]（golem-cli ADR 0009「golem explain に複数のコードを渡す」）]
