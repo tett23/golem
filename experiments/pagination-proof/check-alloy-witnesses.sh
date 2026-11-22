@@ -53,6 +53,15 @@ run tallFigureFixture {
   no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]
 } for 5 but 5 Int, 14 Placement
 
+run strictAfterHeadingsFixture {
+  inDomain and no Recto
+  Col.cap = 3 and Col.used = 0
+  #Heading = 1 and #Line = 3 and #Para = 1
+  no Figure and no Blank and no Space and no Need
+  all h: Heading | h.pos = 0
+  no p: Placement | base[p] and orphan[p] and widow[p] and keepHeading21[p] and lineAfterHeadings[p]
+} for 5 but 5 Int, 14 Placement
+
 run decidedFixture {
   inDomain
   Col.cap = 3 and Col.used = 0
@@ -221,7 +230,8 @@ run needAcrossWaitingFigureFixture {
 EOF
 
 for command in someFitsFixture noneMeetsAllFixture greedyOrphanFixture \
-    greedyWidowFixture greedyKeepHeadingFixture tallFigureFixture decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
+    greedyWidowFixture greedyKeepHeadingFixture tallFigureFixture \
+    strictAfterHeadingsFixture decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
     rectoRunDifferenceFixture headingRunFixture \

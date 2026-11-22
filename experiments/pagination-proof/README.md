@@ -306,7 +306,18 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 容量の 6 行以下という条件と項目の数の上限は使わない。
 容量 0 行の空の段に本文 1 行を置く入力では 7 規則を同時に満たす配置がないことを、具体例で検査した。
 この入力は容量 3 行以上という `fact input` の条件を満たさないので、Alloy のコマンドの反例ではない。
-後の群の述語を書き写すことと、既存の宣言をこの書き写しへ結び付けることは残る。
+
+第 2 群として、[docs/adr/0206](../../docs/adr/0206-pagination-points-the-invariants-did-not-decide.md) の述語も書き写した。
+`alloyAfterHeadingsOnly`、`alloyLineAfterHeadingsRule`、`alloyOrphanH`、`alloyWidowH`、`alloyKeptLines`、`alloyKeepHeading21`、`alloyKeepHeadingR`、`alloyRecto`、`alloyBase` が、元の述語に一つずつ対応する。
+既存の `alloyLineAfterHeadings` は見出しの役割の列だけを見る別の宣言なので、書き写しには `Rule` を付けた名前を使う。
+`keepHeading21` と `keepHeadingR` は、見出しの連なりを始め、続ける項目の種類だけが異なるので、`alloyKeepRun` を共有する。
+解のある `alloy_strictAfterHeadings` と `alloy_decidedSome` は具体的な入力で示し、同じ入力を Alloy に固定して解を確かめた。
+解のない `alloy_keep21` は、第 1 群の配置が置く見出しがいつも段の先頭にあることから、上限なしに示す。
+`relaxedAfterHeadings`、`rectoKept`、`rectoEnds` の上限なしの証明は残る。
+見出しの後に行を一行置く規則があるので、第 1 群の配置では足りず、見出しと図版の位置で区切りを場合分けする必要がある。
+`EnumerateSmall.lean` は、項目 4 個以下、容量 3〜4 行の入力 18,099 個で、この 4 コマンドに解がないことを書き写した述語の上で確かめる。
+これは書き写しの有限の照合であり、証明ではない。
+既存の宣言を書き写しへ結び付けることも残る。
 
 既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
@@ -320,6 +331,9 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 lean experiments/pagination-proof/Pagination.lean
 sh experiments/pagination-proof/check.sh
 ```
+
+書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `lean experiments/pagination-proof/EnumerateSmall.lean` を実行する。
+4 件の一覧がすべて空なら照合は通る。
 
 ライブラリをビルドした後、実装の改行結果を Lean に渡して照合する。
 次のコマンドでは、現在の `golem-layout` のローカルのパッケージを明示し、別にインストール済みの同名パッケージとの混同を避ける。

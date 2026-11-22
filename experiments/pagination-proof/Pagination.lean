@@ -16435,4 +16435,147 @@ theorem alloy_greedyFigure (inp : AlloyInput) (domain : alloyInDomain inp = true
       exact greedy
   simp [alloyConflict,some]
 
+/-! ### Part 2: the decisions of docs/adr/0206 -/
+
+section
+variable (inp : AlloyInput) (p : AlloyPlacement)
+
+def alloyIsHeading (i : Nat) : Bool := inp.has AlloyItem.isHeading i
+def alloyIsPlainHeading (i : Nat) : Bool :=
+  inp.has AlloyItem.isHeading i && !inp.has AlloyItem.isRecto i
+
+/-- pred afterHeadingsOnly -/
+def alloyAfterHeadingsOnly (i : Nat) : Bool :=
+  decide (inp.used = 0) &&
+  inp.positions.all (fun t => !(alloyText inp t && decide (t < i) && alloyHere inp p t) ||
+    alloyIsHeading inp t) &&
+  (p.kept.isEmpty || decide (alloyKeptPosSum p > i))
+
+def alloyAfterHeadingsOnlyOpt : Option Nat → Bool
+  | some i => alloyAfterHeadingsOnly inp p i
+  | none => alloyAfterHeadingsOnly inp p 0
+
+/-- pred lineAfterHeadings -/
+def alloyLineAfterHeadingsRule : Bool :=
+  !(decide (inp.used = 0) && decide (p.brk ≥ 1) && p.kept.isEmpty &&
+    inp.positions.all (fun t => !(alloyText inp t && alloyHere inp p t) || alloyIsHeading inp t)) ||
+  inp.positions.all (fun l => !(inp.has AlloyItem.isLine l && decide (inp.tpos l = p.brk)))
+
+def alloyOrphanH : Bool :=
+  inp.paras.all fun q =>
+    !(decide (2 ≤ (inp.paraLines q).length) && alloyHereOpt inp p (inp.first q) &&
+      !alloyHereOpt inp p (inp.second q)) || alloyAfterHeadingsOnlyOpt inp p (inp.first q)
+
+def alloyWidowH : Bool :=
+  inp.paras.all fun q =>
+    !(decide (2 ≤ (inp.paraLines q).length) && alloyHereOpt inp p (inp.beforeLast q) &&
+      !alloyHereOpt inp p (inp.last q)) || alloyAfterHeadingsOnlyOpt inp p (inp.first q)
+
+/-- pred keptLines: `A implies B else C`. -/
+def alloyKeptLines (q : Nat) : Bool :=
+  if (inp.paraLines q).length ≤ 3 then (inp.paraLines q).all (alloyHere inp p)
+  else alloyHereOpt inp p (inp.first q) && alloyHereOpt inp p (inp.second q)
+
+/-- The common shape of keepHeading21 and keepHeadingR: the heading kinds
+    that start and continue a run, and what a line after the run keeps. -/
+def alloyKeepRun (starts : Nat → Bool) : Bool :=
+  inp.positions.all fun h =>
+    !(starts h && alloyHere inp p h && !alloyStartsColumn inp p h) ||
+    inp.positions.all fun t =>
+      !(alloyText inp t && decide (t > h) &&
+        inp.positions.all (fun i => !(decide (h < i) && decide (i < t)) || starts i)) ||
+      ((!starts t || alloyHere inp p t) &&
+       (match inp.paraOfAt t with
+        | none => true
+        | some q => alloyKeptLines inp p q))
+
+def alloyKeepHeading21 : Bool := alloyKeepRun inp p (alloyIsHeading inp)
+def alloyKeepHeadingR : Bool := alloyKeepRun inp p (alloyIsPlainHeading inp)
+
+/-- pred recto -/
+def alloyRecto : Bool :=
+  inp.positions.all fun r => !(inp.has AlloyItem.isRecto r && alloyHere inp p r) ||
+    alloyStartsColumn inp p r
+
+def alloyBase : Bool :=
+  alloyFits inp p && alloyOrder inp p && alloyFigure inp p && alloyNoSendFromEmpty inp p
+end
+
+def alloyNoRecto (inp : AlloyInput) : Bool := (inp.where_ AlloyItem.isRecto).isEmpty
+
+/-- The all-but-greedy placement puts text only at position zero of an
+    empty column, where the column starts. -/
+theorem alloy_all_but_greedy_starts (inp : AlloyInput) (oneFig : inp.figures.length ≤ 1)
+    (t : Nat) (h : alloyHere inp (alloyAllButGreedyPlacement inp) t = true) :
+    t = 0 ∧ alloyStartsColumn inp (alloyAllButGreedyPlacement inp) 0 = true := by
+  generalize pEq : alloyAllButGreedyPlacement inp = p at h ⊢
+  have brkEq : p.brk = alloyAllButGreedyBreak inp := by rw [← pEq]; rfl
+  have keptEq : p.kept = alloyFigureRuleKept inp p.brk := by rw [← pEq]; rfl
+  rw [here_brk,decide_eq_true_eq,brkEq] at h
+  unfold alloyAllButGreedyBreak at h
+  split at h
+  · rename_i c
+    have zero : t = 0 := by
+      by_cases zero : t = 0
+      · exact zero
+      · have := inp.tpos_pos c.2 t (by omega); omega
+    refine ⟨zero,?_⟩
+    simp only [alloyStartsColumn,Bool.and_eq_true,Bool.or_eq_true,decide_eq_true_eq,List.all_eq_true]
+    refine ⟨⟨c.1,?_⟩,?_⟩
+    · intro t _
+      cases alloyText inp t <;> cases alloyHere inp p t <;> simp
+    · have keptShape : p.kept = [] ∨ ∃ f, p.kept = [f] ∧ f ∈ inp.figures ∧ _ := by
+        rw [keptEq]; exact amFilterAtMostOne _ _ oneFig
+      rcases keptShape with none | ⟨f,one,m,_⟩
+      · exact Or.inl (by rw [none]; rfl)
+      · refine Or.inr ?_
+        have nonzero : f ≠ 0 := by
+          intro z; subst z
+          exact inp.text_figure_disjoint 0 c.2 ((inp.mem_where _ 0).mp m)
+        show p.kept.foldl (· + ·) 0 > 0
+        rw [one]
+        simp; omega
+  · omega
+
+/-- run keep21 has no instance without the Alloy scope: the placement of
+    `alloy_noneMeetsAllButGreedy` also meets keepHeading21, since every
+    heading it places starts the column. -/
+theorem alloy_keep21 (inp : AlloyInput) (domain : alloyInDomain inp = true)
+    (capPos : 1 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap) :
+    alloySome inp (fun p => alloyBase inp p && alloyOrphan inp p && alloyWidow inp p &&
+      alloyKeepHeading21 inp p) = true := by
+  have meets := alloy_all_but_greedy_meets inp domain capPos usedFits
+  have oneFig : inp.figures.length ≤ 1 := by
+    simp only [alloyInDomain,Bool.and_eq_true,decide_eq_true_eq] at domain
+    exact domain.1.1.1.2
+  refine List.any_eq_true.mpr ⟨_,alloy_all_but_greedy_placement_exists inp,?_⟩
+  simp only [alloyAllButGreedy,Bool.and_eq_true] at meets
+  obtain ⟨⟨⟨⟨⟨⟨fits,order⟩,figure⟩,orphan⟩,widow⟩,_⟩,noSend⟩ := meets
+  simp only [alloyBase,Bool.and_eq_true]
+  refine ⟨⟨⟨⟨⟨⟨fits,order⟩,figure⟩,noSend⟩,orphan⟩,widow⟩,?_⟩
+  simp only [alloyKeepHeading21,alloyKeepRun,List.all_eq_true]
+  intro h _
+  cases here : alloyHere inp (alloyAllButGreedyPlacement inp) h
+  · simp
+  · have s := alloy_all_but_greedy_starts inp oneFig h here
+    rw [s.1] at here ⊢
+    simp [s.2]
+
+/-- run strictAfterHeadings: a heading before a three-line paragraph in an
+    empty column of three lines. -/
+theorem alloy_strictAfterHeadings :
+    ∃ inp, alloyInputFact inp = true ∧
+      (alloyInDomain inp && alloyNoRecto inp &&
+        !alloySome inp (fun p => alloyBase inp p && alloyOrphan inp p && alloyWidow inp p &&
+          alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p)) = true :=
+  ⟨⟨3,0,[.heading,.line 0,.line 0,.line 0]⟩,by decide,by decide⟩
+
+/-- run decidedSome: a recto heading and a line in an empty column. -/
+theorem alloy_decidedSome :
+    ∃ inp, alloyInputFact inp = true ∧
+      (alloyInDomain inp && !alloyNoRecto inp && !(inp.where_ AlloyItem.isLine).isEmpty &&
+        alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+          alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = true :=
+  ⟨⟨3,0,[.recto,.line 0]⟩,by decide,by decide⟩
+
 end GolemPagination
