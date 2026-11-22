@@ -36,10 +36,10 @@ inputs =
     [ [ Input columns capacity unit second filler k
       | columns <- [1, 2],
         capacity <- [3 .. 5],
+        k <= 4 * columns * capacity + 1,
         unit <- [KeepColumn, KeepPage, KeepSpread],
         second <- [False, True],
-        filler <- [0 .. 2 * columns * capacity],
-        k <= 4 * columns * capacity + 1
+        filler <- [0 .. 2 * columns * capacity]
       ]
     | k <- [0 .. 41]
     ]
