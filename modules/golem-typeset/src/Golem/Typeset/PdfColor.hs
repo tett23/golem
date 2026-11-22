@@ -331,7 +331,7 @@ decimal bytes =
         _ -> (1, bytes)
       (whole, fraction) = BC.break (== '.') body
    in if BS.null fraction
-        then (fromInteger . (sign *)) <$> int whole
+        then fromInteger . (sign *) <$> int whole
         else do
           let tailDigits = BS.drop 1 fraction
           if BS.null whole && BS.null tailDigits || not (BC.all isDigit whole && BC.all isDigit tailDigits)
