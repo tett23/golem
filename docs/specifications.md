@@ -375,7 +375,7 @@ CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-
 `build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。
 テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
 `tests-rest` は、生成したパーサーを確かめるための `peg-hs` と、`golem` のほかの実行ファイルも組む。
-これらの実行ファイルを組むテストのスイートはないので、`ci` が待つジョブで `-Werror` のコンパイルを確かめるためである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+`tests-rest` がこれらも組むのは、これらを組むテストのスイートがなく、`ci` が待つジョブで `-Werror` のコンパイルを確かめるためである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 `cabal build all` を組んで `dist-newstyle` を保存するのは、アーキテクチャごとに一つ動くジョブ `cache-dist` で、`ci` はこのジョブを待たない（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I3）。
 ビルドの計画を読む検査は、どのランナーでも `cabal build all` の計画を読み、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョブ（`visual`、`verapdf`、`wasm`、`editors-lsp`）が待つ成果物を、`outputs-checks` がそのほかの手順を受け持つ。
@@ -389,7 +389,7 @@ golem-driver のテストのスイートは、どちらのアーキテクチャ�
 | `tests-driver-b` | golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test |
 
 四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
-四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `Spec`）を、それぞれの `other-modules` に挙げて組む。
+四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `PdfSpec`、`LinkSpec` などの `*Spec` のモジュール）を、それぞれの `other-modules` に挙げて組む。
 テストを助けるモジュールをパッケージの内部のライブラリにしないので、テストだけの依存の検査（`scripts/ci/test-only-deps.sh`）は変わらない。
 
 プルリクエストの実行が走らせる検査は、[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の実装の前のコミット（`e5dcfc660`）と等しい。
@@ -747,7 +747,7 @@ wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が w
 wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
 golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
 golem-pdf のテストは、`Int` に収まらない PDF のオブジェクトの番号を `Int64` で書き、`Int` のリテラルは wasm32 の `Int` に収める（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
-golem-driver のテストのスイートは、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依る。
+共通の stanza `driver-suite` を読む四つのスイートと golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依る。
 golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）は golem-driver-cli-test と golem-driver-global-test にあり、そのフラグのときだけ組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 `cabal.project.wasm` は `plugins` を外すので、wasm32 ではそれらのテストを組まない。
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。

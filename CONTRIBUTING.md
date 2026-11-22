@@ -137,7 +137,7 @@ ADR のテスト設計に書いたテストを先に書き、失敗すること�
 これは golem-pdf、golem-svg、golem-driver の外のテストの規則である。
 golem-pdf と golem-svg のテストでは、時間の上限に `modules/golem-test-support` の `Golem.TestSupport.TimeLimit` にある `withinTimeLimits hangLimits` を使い、プロセスの CPU 時間の 60 秒と実時間の 300 秒の二つで止める。
 時間の上限を付けるテストの CPU 時間は、単独で走らせて 10 秒以内に収める（[docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
-golem-driver の四つの `-threaded` のスイート（golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test）のテストでは、時間の上限に `modules/golem-driver/test/Support.hs` の `hangTimeout`（実時間の 300 秒）を使い、値をテストに書かない。
+golem-driver の `-threaded` のスイートのうち、プロセスの状態を変えないテストを置く四つ（golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test）のテストでは、時間の上限に `modules/golem-driver/test/Support.hs` の `hangTimeout`（実時間の 300 秒）を使い、値をテストに書かない。
 テストは threaded の RTS で同時に走るので、CPU 時間では測らない（[docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)）。
 `Support.hs` の外に `mkTimeout` があると、`scripts/ci/test.sh` が失敗する。
 
@@ -344,7 +344,7 @@ tasty 1.5.4 も、capability がプロセッサより少ないと起動の時点
 `-threaded` のテストのスイートでは、tasty がテストを同時に走らせる。
 環境変数、ロケールの符号化、カレントディレクトリのようなプロセスの状態を変えるテストは、ほかのテストが途中の状態を読むので、`-threaded` のスイートに置かない。
 golem-driver では、そうしたテストを `-threaded` でない `golem-driver-global-test` に書く（[docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)）。
-golem-driver の四つの `-threaded` のスイートのモジュールが `withEnv`、`setEnv`、`setLocaleEncoding`、`setCurrentDirectory` などを使うと、CI の `scripts-linux` ジョブ（`scripts/ci/test.sh`）が失敗する。
+golem-driver の `-threaded` のスイートのうち golem-driver-parallel-test を除く四つのモジュールが `withEnv`、`setEnv`、`setLocaleEncoding`、`setCurrentDirectory` などを使うと、CI の `scripts-linux` ジョブ（`scripts/ci/test.sh`）が失敗する。
 
 golem-driver のプロセスの状態を変えないテストは、領域に合う一つのスイートに置く（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 PDF の構造、タグ、フォント、ほかのツールが書いた図版は `golem-driver-pdf-test` に、段落、見出し、注、図版とその配置、改ページは `golem-driver-page-test` に置く。

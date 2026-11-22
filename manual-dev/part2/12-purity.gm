@@ -255,7 +255,7 @@ PDF の経路の [code: buildFlow]（[code: Golem.Driver.Pdf]）は IO の関数
 このため、どのスレッドが先に終わっても、組版の結果のリストは同じになる。
 golem-driver のテストは、並列と逐次で組んだ PDF のバイト列が一致することを、機能ごとに確かめている（[code: PdfSpec] の「the features in parallel and in sequence give the same bytes」など）。
 
-golem-driver の四つのテストのスイート（golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test）は [code: -threaded] と [code: -with-rtsopts=-N] でビルドし、マシンのすべてのプロセッサを capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）にする。
+golem-driver のテストのスイートのうち、プロセスの状態を変えないテストを置く四つ（golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test）は [code: -threaded] と [code: -with-rtsopts=-N] でビルドし、マシンのすべてのプロセッサを capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）にする。
 [code: mapConcurrently] のスレッドは別々のプロセッサで同時に動き、C の関数の呼び出しも重なりうる。
 tasty もこれらのスイートのテストを同時に走らせるので、環境変数やロケールの符号化のようなプロセスの状態を変えるテストは、[code: -threaded] でない別のスイート [code: golem-driver-global-test] に置く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0146-threaded-golem-driver-test.md]（docs/adr の ADR 0146「golem-driver-test を threaded の RTS で並べて走らせ、プロセスの状態を変えるテストを別のスイートに分ける」）]
 並列に組む回数を増やして競合を探すのは、同じく [code: -threaded] でビルドするテストのスイート [code: golem-driver-parallel-test] である。

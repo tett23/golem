@@ -127,7 +127,7 @@ A check that the test design of an accepted ADR states as a time, such as "withi
 This is the rule for the tests outside golem-pdf, golem-svg and golem-driver.
 The tests of golem-pdf and golem-svg bound their time with `withinTimeLimits hangLimits` of `Golem.TestSupport.TimeLimit` in `modules/golem-test-support`, which stops them at 60 seconds of CPU time of the process or 300 seconds of real time.
 A test with a time bound takes at most 10 seconds of CPU time when run alone ([docs/adr/0091](./docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)).
-The tests of the four `-threaded` suites of golem-driver (golem-driver-pdf-test, golem-driver-page-test, golem-driver-output-test and golem-driver-cli-test) bound their time with `hangTimeout` of `modules/golem-driver/test/Support.hs` (300 seconds of real time), and do not write the value themselves.
+The tests of the four `-threaded` suites of golem-driver that hold the tests that do not change the state of the process (golem-driver-pdf-test, golem-driver-page-test, golem-driver-output-test and golem-driver-cli-test) bound their time with `hangTimeout` of `modules/golem-driver/test/Support.hs` (300 seconds of real time), and do not write the value themselves.
 The tests run at the same time on the threaded RTS, so they are not measured by CPU time ([docs/adr/0237](./docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)).
 If a module other than `Support.hs` has `mkTimeout`, `scripts/ci/test.sh` fails.
 
@@ -288,7 +288,7 @@ If either rule is broken, the `changes` job of CI (`scripts/ci/rts-capabilities.
 In a test suite built with `-threaded`, tasty runs the tests at the same time.
 A test that changes the state of the process (an environment variable, the locale encoding, the current directory) is not put in such a suite, as the other tests would read the state half changed.
 In golem-driver, such tests go to `golem-driver-global-test`, which is not built with `-threaded` ([docs/adr/0146](./docs/adr/0146-threaded-golem-driver-test.md)).
-If a module of the four `-threaded` suites of golem-driver uses `withEnv`, `setEnv`, `setLocaleEncoding`, `setCurrentDirectory` or the like, the `scripts-linux` job of CI (`scripts/ci/test.sh`) fails.
+If a module of the four `-threaded` suites of golem-driver other than golem-driver-parallel-test uses `withEnv`, `setEnv`, `setLocaleEncoding`, `setCurrentDirectory` or the like, the `scripts-linux` job of CI (`scripts/ci/test.sh`) fails.
 
 A test of golem-driver that does not change the state of the process goes to the one suite of its area ([docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)).
 The structure, the tags and the fonts of the PDF, and the figures that other tools wrote, go to `golem-driver-pdf-test`; paragraphs, headings, notes, figures and their placement, and page breaks go to `golem-driver-page-test`.
