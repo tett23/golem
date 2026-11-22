@@ -93,7 +93,7 @@ private theorem one_choice (sequence : List Expr → ParseResult) (items : List 
   | error reason => simp [runChoices, foldChoice, List.foldlM, result]
   | ok value => simp [runChoices, foldChoice, List.foldlM, result]
 
-private theorem regroup (grammar : Grammar) (env : Params) (fuel : Nat)
+theorem regroup (grammar : Grammar) (env : Params) (fuel : Nat)
     (alts : List (List Expr)) (input : List Char) :
     recognizeEnv grammar env (fuel + 1) (.choice alts) input =
       runChoices (fun items => recognizeEnv grammar env (fuel + 1) (.choice [items]) input) alts := by

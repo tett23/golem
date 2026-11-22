@@ -481,8 +481,34 @@ const rangeProved = expressionSpaceProved &&
   unitAlternativesMatch(ast?.rules.find(r => r.name === 'AddExpr'), ['AddExpr ES AddOp ES MulExpr', 'MulExpr']) &&
   unitAlternativesMatch(ast?.rules.find(r => r.name === 'CompareExpr'), ['AddExpr ES CmpOp ES AddExpr', 'AddExpr']) &&
   unitAlternativesMatch(ast?.rules.find(r => r.name === 'RangeExpr'), expectedRanges);
+// ArgumentsComposition preserves the positional/keyword split, comment
+// repetitions and the labelled ordering/closing guards of these exact rules.
+const positionalProved = wordFullyProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Eq'), "'='") &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'Splat'), ["'**['", "'*['"]) &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'SplatArgument'), 'Splat ExprBody (RBr)^close') &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Argument'), 'ArgValue') &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'ArgValue'),
+    ['StringLit', 'ExprCtx', 'ReservedBracket', 'InlineCommand(0)', 'Word']) &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'PosArg'),
+    ["!'%%' !(Word Eq) !'**[' SplatArgument", "!'%%' !(Word Eq) !Splat Argument"]);
+const argumentListProved = positionalProved && spUsesWs && lineLeavesProved &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'ArgComment'), ['ProofComment', 'Comment']) &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'KeywordArgument'), 'Word Eq ArgValue') &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'KwArg'), ['KeywordArgument', "&'**[' SplatArgument"]) &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Arguments'),
+    '(Sp ArgComment)* (Sp PosArg (Sp ArgComment)*)* (Sp KwArg (Sp ArgComment)*)* (!(Sp PosArg))^arg_order');
+const inlineCommandProved = argumentListProved && proseSlotsProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Ident'), lexicalRules.get('Ident')) &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'LBr'), "'['") &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'RBr'), "']'") &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'InlineCommand'),
+    'LBr Ident Arguments ProseSlots(ind)? (Sp RBr)^close');
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (positionalProved && rule.name === 'PosArg') continue;
+    if (argumentListProved && rule.name === 'Arguments') continue;
+    if (inlineCommandProved && rule.name === 'InlineCommand') continue;
     if (callProved && rule.name === 'CallExpr') continue;
     if (rangeProved && rule.name === 'RangeExpr') continue;
     if (variableProved && rule.name === 'VarExpr') continue;

@@ -29,7 +29,9 @@ try {
     'root ADR 0351 I1/I2: variables, prose slots and continuations require recognition proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (CallExpr|RangeExpr) choice /m,
     'root ADR 0351 I1/I2: calls and complete range alternatives require recognition proofs');
-  assert.ok(baselineUnsupported <= 30, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (InlineCommand|Arguments|PosArg) choice /m,
+    'root ADR 0351 I1/I2: ordered arguments and inline commands require recognition proofs');
+  assert.ok(baselineUnsupported <= 26, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -159,6 +161,24 @@ try {
   const astRuleCount = [...model.matchAll(/^private def pegRule\d+ : PegModel.Rule := /gm)].length;
   assert.equal(astRuleCount, sourceRuleCount, 'the canonical PEG AST must emit every Lean rule');
 
+  const argumentParserCases = [
+    ['[f]', { Argument: 0, KeywordArgument: 0 }], ['[f x]', { Argument: 1 }],
+    ['[f ""]', { Argument: 1 }], ['[f x y]', { Argument: 2 }],
+    ['[f key=x]', { KeywordArgument: 1, Argument: 0 }], ['[f x key=y]', { Argument: 1, KeywordArgument: 1 }],
+    ['[f key=x more=y]', { KeywordArgument: 2 }], ['[f key=x key=x]', { KeywordArgument: 2 }],
+    ['[f %%a%%]', { Argument: 0, KeywordArgument: 0, Comment: 1 }],
+    ['[f %%=a%% x]', { Argument: 1, ProofComment: 1 }],
+    ['[f %%a%% x %%b%% key=y %%=c%%]', { Argument: 1, KeywordArgument: 1, Comment: 2, ProofComment: 1 }],
+    ['[f key=%%=abc]', { KeywordArgument: 1, ProofComment: 0 }],
+    ['[f *[xs]]', { SplatArgument: 1 }], ['[f **[h]]', { SplatArgument: 1 }],
+    ['[f *[xs] **[h]]', { SplatArgument: 2 }],
+    ['[f x *[xs] key=y **[h]]', { Argument: 1, KeywordArgument: 1, SplatArgument: 2 }],
+    ['[f [= 1+2] key=[= 3*4]]', { Argument: 1, KeywordArgument: 1 }],
+    ['[f [g: x] key=[h: y]]', { Argument: 1, KeywordArgument: 1, InlineCommand: 3 }],
+    ['[f x: text|more]', { Argument: 1, ProseSlot: 2 }],
+    ['[f key=x: y]', { KeywordArgument: 1, ProseSlot: 1 }],
+    ['[f x  ]', { Argument: 1 }], ['- [f: a\n  b]', { ProseSlot: 1 }],
+  ];
   const parserCases = [
     ['', null, 0],
     ['# Title\n', 'Heading', 0],
@@ -210,9 +230,11 @@ try {
       [`[= ${call}]\n`, 'Paragraph', 0, `CallExpr@3..${3 + call.length}\n`]),
     ...['1...2', '1+2...3*4', '-1...2', '1...-2', '(1+2)...(3+4)', '1...2**3',
       '1 < 2', '(1...2) == (1...2)', '1.5...2e3', '1 ... %%a%% 2'].map(expr =>
-      [`[= ${expr}]\n`, 'Paragraph', 0, `RangeExpr@3..${3 + expr.length}\n`])
+      [`[= ${expr}]\n`, 'Paragraph', 0, `RangeExpr@3..${3 + expr.length}\n`]),
+    ...argumentParserCases.map(([body, counts]) => [body + '\n', body.startsWith('- ') ? 'BulletList' : 'Paragraph', 0,
+      `InlineCommand@${body.startsWith('- ') ? 2 : 0}..${body.length}\n`, undefined, counts])
   ];
-  for (const [sample, node, cells, chosen, slots] of parserCases) {
+  for (const [sample, node, cells, chosen, slots, counts] of parserCases) {
     const samplePath = join(work, 'sample.gm');
     writeFileSync(samplePath, sample);
     const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
@@ -226,6 +248,10 @@ try {
     assert.equal([...parsed.stdout.matchAll(/cs: TableCellAndPipe@/g)].length, cells);
     if (slots !== undefined) assert.equal([...parsed.stdout.matchAll(/^ +ProseSlot@/gm)].length, slots,
       'root ADR 0351 I1/I2: every empty and nonempty prose slot occurs in the committed CST');
+    for (const [kind, count] of Object.entries(counts ?? {})) {
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${kind}@`, 'gm'))].length, count,
+        `root ADR 0351 I1/I2: ${kind} must retain every argument and comment occurrence`);
+    }
   }
   // The PEG accepts this token; Golem.Parser reports G01102 for the value.
   // Keep syntax acceptance separate from a valid manuscript round trip.
@@ -285,6 +311,66 @@ try {
       { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
     assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid composition ${JSON.stringify(sample)}`);
     assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+
+  const argumentRejectedCases = ['[f key=x y]', '[f **[h] x]', '[f key=x *[xs]]', '[f %%=bad]',
+    '[f "x]', '[f *[xs] **[h] x]', '[f **[h] *[xs]]', '[f key=]', '[f **[]]'];
+  for (const body of argumentRejectedCases) {
+    const samplePath = join(work, 'bad-argument-order.gm');
+    writeFileSync(samplePath, body + '\n');
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid argument order/body ${body}`);
+    assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+  const argumentMutations = [
+    ['PosSplatGuard', "PosArg <- !'%%' !(Word Eq) !'**[' SplatArgument", "PosArg <- !'%%' !(Word Eq) SplatArgument", 'PosArg'],
+    ['PosKeywordGuard', "/ !'%%' !(Word Eq) !Splat Argument", "/ !'%%' !Splat Argument", 'PosArg'],
+    ['ArgsNeedComment', 'Arguments <- (Sp ArgComment)*', 'Arguments <- (Sp ArgComment)+', 'Arguments'],
+    ['ArgsPosNoComments', '(Sp PosArg (Sp ArgComment)*)*', '(Sp PosArg)*', 'Arguments'],
+    ['ArgsKwNoComments', '(Sp KwArg (Sp ArgComment)*)*', '(Sp KwArg)*', 'Arguments'],
+    ['ArgsAllowTailPos', '(Sp KwArg (Sp ArgComment)*)* (!(Sp PosArg))^arg_order', '(Sp KwArg (Sp ArgComment)*)* (Sp PosArg)* (!(Sp PosArg))^arg_order', 'Arguments'],
+    ['InlineProseZero', 'InlineCommand <- LBr Ident Arguments ProseSlots(ind)?', 'InlineCommand <- LBr Ident Arguments ProseSlots(0)?', 'InlineCommand'],
+    ['InlineNoCloseSpace', 'ProseSlots(ind)? (Sp RBr)^close', 'ProseSlots(ind)? (RBr)^close', 'InlineCommand'],
+    ['ArgCommentOrder', 'ArgComment <- ProofComment { () } / Comment { () }', 'ArgComment <- Comment { () } / ProofComment { () }', 'Arguments'],
+    ['ArgEqDependency', "Eq <- '='", "Eq <- '=='", 'Arguments'],
+  ];
+  for (const [name, before, after, rule] of argumentMutations) {
+    const changed = original.replace(before, after);
+    assert.notEqual(changed, original, `root ADR 0351 I1/I2: ${name} must alter an argument production or dependency`);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+      `root ADR 0351 I1/I2: ${name} must invalidate the argument recognition proof`);
+  }
+  const nativeArgumentMutations = [
+    ['PosSplatGuard', '[f **[h] x]\n', true, { SplatArgument: 1, Argument: 1 }],
+    ['PosKeywordGuard', '[f key=x]\n', false],
+    ['ArgsAllowTailPos', '[f key=x y]\n', true, { KeywordArgument: 1, Argument: 1 }],
+    ['InlineNoCloseSpace', '[f x  ]\n', false],
+    ['ArgCommentOrder', '[f %%=a%% x]\n', true, { ProofComment: 0, Comment: 1 }],
+    ['InlineProseZero', '- [f: a\n  b]\n', true, {}, 'SlotText@8..11 "  b"', 'Ind@8..10 "  "'],
+  ];
+  for (const [name, sample, accepted, counts, chosen, absent] of nativeArgumentMutations) {
+    const [, before, after] = argumentMutations.find(([mutationName]) => mutationName === name);
+    const changedPath = join(work, 'Native' + name + '.hpeg');
+    const samplePath = join(work, 'native-argument-order.gm');
+    writeFileSync(changedPath, original.replace(before, after));
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', changedPath, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted,
+      `root ADR 0351 I1/I2: ${name} must change the committed argument boundary: ${parsed.stderr}`);
+    for (const [kind, count] of Object.entries(counts ?? {})) {
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${kind}@`, 'gm'))].length, count,
+        `root ADR 0351 I1/I2: ${name} must change ${kind} occurrences`);
+    }
+    if (chosen) assert.ok(parsed.stdout.includes(chosen), `root ADR 0351 I1/I2: ${name} must change the slot text`);
+    if (absent) assert.ok(!parsed.stdout.includes(absent), `root ADR 0351 I1/I2: ${name} must change indentation consumption`);
   }
 
   const expressionRejectedCases = ['foo(,1)', 'foo(1,)', 'foo.bar.baz(1)', 'foo(1, ,2)', 'foo(',
@@ -815,7 +901,9 @@ try {
   copyFileSync(join(here, 'LexicalTotal.lean'), lexicalSource);
   const lexicalProof = spawnSync(lean, ['-o', join(work, 'LexicalTotal.olean'), lexicalSource], growthEnv);
   assert.equal(lexicalProof.status, 0, lexicalProof.stdout + lexicalProof.stderr);
-  const compositionProof = spawnSync(lean, [join(here, 'SyntaxComposition.lean')], growthEnv);
+  const compositionSource = join(work, 'SyntaxComposition.lean');
+  copyFileSync(join(here, 'SyntaxComposition.lean'), compositionSource);
+  const compositionProof = spawnSync(lean, ['-o', join(work, 'SyntaxComposition.olean'), compositionSource], growthEnv);
   assert.equal(compositionProof.status, 0, compositionProof.stdout + compositionProof.stderr);
   const markerProof = spawnSync(lean, [join(here, 'IndentedMarkerLine.lean')], growthEnv);
   assert.equal(markerProof.status, 0, markerProof.stdout + markerProof.stderr);
@@ -854,8 +942,12 @@ try {
   const throwingPrefixProof = spawnSync(lean, ['-o', join(work, 'ThrowingPrefixTotal.olean'), throwingSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(throwingPrefixProof.status, 0, throwingPrefixProof.stderr);
-  const expressionProof = spawnSync(lean, [join(here, 'ExpressionComposition.lean')], growthEnv);
+  const expressionSource = join(work, 'ExpressionComposition.lean');
+  copyFileSync(join(here, 'ExpressionComposition.lean'), expressionSource);
+  const expressionProof = spawnSync(lean, ['-o', join(work, 'ExpressionComposition.olean'), expressionSource], growthEnv);
   assert.equal(expressionProof.status, 0, expressionProof.stdout + expressionProof.stderr);
+  const argumentGrammarProof = spawnSync(lean, [join(here, 'ArgumentsComposition.lean')], growthEnv);
+  assert.equal(argumentGrammarProof.status, 0, argumentGrammarProof.stdout + argumentGrammarProof.stderr);
   const indentedLabel = spawnSync(lean, [join(here, 'IndentedLabelTotal.lean')], growthEnv);
   assert.equal(indentedLabel.status, 0, indentedLabel.stdout + indentedLabel.stderr);
   const backslashProof = spawnSync(lean, [join(here, 'BackslashTotal.lean')],
@@ -875,7 +967,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 25, negative mutations 84, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 26, negative mutations 94, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
