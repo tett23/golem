@@ -108,6 +108,23 @@ LSP は元の URI と文書の版を付けた参照の編集を返し、編集�
 クライアントは編集を適用してからファイルを改名し、成功後に [code: workspace/didRenameFiles] を一度送る。
 LSP は改名後に旧パスの索引を捨て、プロジェクトを読み直す。
 
+## プロジェクトをまたぐ移動の計画
+
+Aleph はファイルやフォルダを移す前に、章登録と参照の編集計画を [code: golem/planFileMove] で取得する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0399-plan-moves-across-project-boundaries.md]（root ADR 0399「プロジェクトをまたぐ移動の章登録と参照編集を計画する」）]
+この要求に対応する LSP は、初期化の応答に [code: capabilities.experimental.golem.planFileMove] の版 [code: 1] を返す。
+クライアントは初期化で [code: initializationOptions.golem.fileMove] に版と対象のワークスペースの URI を渡す。
+
+クライアントは移動元と移動先の URI、プロジェクトと可視シートの一覧、開いている文書の本文と版を送る。
+各プロジェクトには更新対象のプロットの URI、各シートにはタイトルを添え、プロットやタイトルがなければ [code: null] を渡す。
+プロジェクトとシートの列挙を終えた場合だけ、[code: inventoryComplete] を [code: true] にする。
+列挙が終わっていなければ、LSP はエラーを返す。
+LSP は移動後の所属を仮定して参照先を検査し、必要な章登録と参照の編集を操作前の URI と位置で返す。
+参照先を新しい所属から指せないときや索引がそろわないときは、対象と理由を持つエラーを返す。
+
+クライアントは応答に含まれる文書、ディレクトリ、プロジェクト一覧、可視シート一覧のスナップショットを適用直前に照合する。
+変化を見つけたときは編集を適用する前に計画を取り直す。
+クライアントが編集と移動を適用し、移動後に接続を再構築する。
+
 ## 文書の同期と再評価
 
 文書の同期は全文の同期である。[index reading="ぜんぶんのどうき": 全文の同期]
