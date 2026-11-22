@@ -720,7 +720,9 @@ cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GH
 
 `golem.wasm` のパッケージのテストのスイートは、夜ごとの `.github/workflows/wasm-tests.yml` が wasm32 でも走らせる（[ADR 0293](adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。
 wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が wasm32 で落ちたところが、`Int` の幅に依るコードの候補になる。
-走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートで、`scripts/ci/test-suites.sh wasm` が求める。
+走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートと、golem-test-support の `golem-test-support-test` で、`scripts/ci/test-suites.sh wasm` が求める（[root ADR 0415](adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md)）。
+`golem-test-support-test` は、wasm32 のテストの時間の上限（[ADR 0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md) の I2）を確かめる。
+`-threaded` で組む `golem-test-support-par-test` は走らせない。
 組むのは `cabal.project.wasm-tests` で、`cabal.project.wasm` と `cabal.project.wasm.freeze` を取りこみ、テストを組む。
 テストだけが使う golem-test-support と golem-doc-gen を `packages:` に足す。
 `skylighting` と `skylighting-core` のテストは組まない。
@@ -7759,8 +7761,33 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 `golem repl emet` は標準入力から Emet の式を読み、値を標準出力に一行ずつ書く（[Golem ADR 0348](adr/0348-revise-emet-expression-repl.md)）。
 未完の式では次の行を待つ。
 端末では Tab で名前や import のパスを補完でき、Ctrl-C で書きかけの入力を取り消せる。
-診断を出した場合も次の式を読み、セッションの終了時に終了コード 1 を返す。
-評価の手数と深さの上限は原稿から呼ぶ場合と同じで、式ごとに数え直す。
+エラーを報告した場合も次の式を読む。
+評価の手数と深さの上限は原稿から呼ぶ場合と同じで、式ごとに数え直す（下の E04100 と E04101 を参照）。
+
+REPL は、標準入力と標準エラー出力がともに端末のときだけ、端末として振る舞う。
+端末では、式を待つときに `emet> `、続きを待つときに `....> ` を標準エラー出力に書き、値の前に `=> ` を付ける。
+パイプではプロンプトと補完の候補を出さず、標準出力には値だけを書く。
+補完の候補の一覧は、プロンプトと同じ標準エラー出力に書き、値を書く標準出力には混ぜない。
+
+一行を受け取るたびに構文を調べ、式が完結していればその場で型検査と評価に進む。
+式では、パーサーが入力の末尾で次のトークンか閉じ記号を求めているときだけ、LF を一つ挟んで次の行を足す。
+入力の途中の文字を指す構文エラー、型エラー、評価エラーは、その場で報告し、次の行を新しい式として読む。
+入力の末尾で続きを求める構文エラー（E01100 か E01101 で、位置がすべて入力の末尾の空の範囲のもの）は、次の行を待つあいだ保留する。
+EOF では、完成した最終行を、末尾の LF の有無によらず一度評価する。
+未完の式のまま EOF を受けたときは、保留していた構文エラーを一度報告する。
+エラーは、元のコードとメッセージに、入力した式の先頭からの UTF-8 のバイトの範囲 `[start,end)` を添えて報告する。
+
+終了コードは、エラーを報告したセッションでは 1、すべて成功したか取り消しだけのセッションでは 0、引数の誤りでは 2 である。
+
+値は、正確な数値の表記、`True` と `False`、引用符付きの文字と文字列、リスト、タプル、コンストラクタで書く。
+文字と文字列では、区切りの引用符とバックスラッシュをエスケープし、LF を `\n`、タブを `\t`、そのほかの制御文字を `\u{16進数}` と書く。
+引数を持つコンストラクタは `(Just 2)` のように括弧で囲み、関数の値は `<function>` と書く。
+入力の長さと表示の長さに、REPL だけの上限はない。
+
+式に許す要求の集合は空である。
+たとえば `File.read "secret.txt"` は E05101 となり、ファイルを開かない。
+手数の上限は評価器の `stepLimit`（1 億手）、末尾でない呼び出しの深さの上限は `depthLimit`（1 万）で、超えるとそれぞれ E04100 と E04101 になる。
+文字コード、BOM、CR は Emet のファイルと同じ規則で読み、不正な UTF-8 は G01001 とする。
 
 関数や型の宣言は空行または入力の終わりで確定する。
 再定義を含む宣言のまとまりは、既存の宣言と一緒に型検査に通った場合だけ登録する。
@@ -8726,6 +8753,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の分量を数え、指定した字数と行数でページ数に換算する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。「[golem stats](#golem-stats)」の節を参照 |
+| `golem repl emet` | 標準入力から Emet の式を読み、値を標準出力に一行ずつ書く。端末ではプロンプトと補完を出す（[Golem ADR 0348](adr/0348-revise-emet-expression-repl.md)）。「[関数の言語 Emet](#関数の言語-emet)」の節を参照 |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose] [--format human\|json]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
