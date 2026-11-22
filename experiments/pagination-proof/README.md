@@ -2,7 +2,7 @@
 
 このディレクトリは、[Golem ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の改ページ証明を作る場所である。
 `check.sh` は Alloy の 42 コマンドと期待値の一覧が一致することを確かめ、各コマンドに対応する Lean の宣言を要求する。
-書き写しの上で述べた 23 コマンドには、名前空間 `Alloy` の中の同名の定理も要求する。
+書き写しの上で述べた 29 コマンドには、名前空間 `Alloy` の中の同名の定理も要求する。
 
 現在の `Pagination.lean` には、42 コマンドすべてと同名の宣言がある。
 `blankFigureOrder` は、本文を置かない境界の配置を構成し、図版が 0〜2 枚で行アキが 0〜1 個の入力について、図版規則、行アキ規則、段容量を同時に満たすことを証明する。
@@ -331,7 +331,19 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 `check.sh` は、この 23 コマンドについて `Alloy` の中の同名の定理も要求する。
 名前空間の外にある同名の既存の宣言は、それぞれ独自の抽象化の上の命題として残す。
 既存の宣言とこの書き写しの同値は証明していない。
-第 3 群以降のコマンドは、まだ既存の宣言だけに対応する。
+
+第 3 群として、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の待機図版と空行の述語も書き写した。
+`alloyWaiting`、`alloyNextOf`、`alloyNextOf25`、`alloyInColumn`、`alloyBlankAtTop`、`alloyFigures`、`alloyFigureOrder`、`alloyBlankWithNext`、`alloyBlankWithNext25`、`alloyBase26` が、元の述語に一つずつ対応する。
+解のある `alloy_waitingBlankSome` と `alloy_blankBeforeWaiting25` は具体的な入力で示し、同じ入力を Alloy に固定して解を確かめた。
+解のない 4 コマンドには `alloyPlacement26` を使う。
+空の段の最初の項目が本文ならその本文だけを置き、そうでなければ本文を置かない。
+空行と行数指定のほかの最初の項目を、最初の項目として扱う。
+図版は原稿順に、それまでに置いた図版で図版規則を読んで置き、空行は与えた次のブロックの規則で置く。
+`alloy_placement26_meets` は、図版が高々二つで空きと行数指定のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、この配置が `base26`、空行の規則、孤立行、寡婦行、見出しの規則を満たすことを示す。
+次のブロックの規則は、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の `nextOf` でも、それ以前の `nextOf25` でもよい。
+`alloy_waitingBlankAllButGreedy`、`alloy_blankRules25`、`alloy_blankFigureOrder` はこの定理から導き、`waitingBlankNone` は最初のものから導く。
+図版が二つ以下という条件は `fact input` から導かれ、`alloy_input_fact_two_figures` が示す。
+第 4 群以降のコマンドは、まだ既存の宣言だけに対応する。
 
 既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。

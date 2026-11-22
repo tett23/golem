@@ -62,6 +62,28 @@ run strictAfterHeadingsFixture {
   no p: Placement | base[p] and orphan[p] and widow[p] and keepHeading21[p] and lineAfterHeadings[p]
 } for 5 but 5 Int, 14 Placement
 
+run waitingBlankSomeFixture {
+  inDomain26
+  Col.cap = 3 and Col.used = 1
+  no Heading and #Line = 1 and #Para = 1 and #Blank = 1 and #Figure = 2
+  some disj f, g: Figure | f.pos = 0 and f.size = 3 and g.pos = 2 and g.size = 1
+  all b: Blank | b.pos = 1
+  all l: Line | l.pos = 3
+  some p: Placement, b: Blank, f: Figure, t: Text |
+    base26[p] and blankWithNext[p] and f in waitingIn[p] and b.pos < f.pos and f.pos < t.pos and here[p, t] and b in p.placed
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+run blankBeforeWaiting25Fixture {
+  inDomain26
+  Col.cap = 3 and Col.used = 2
+  no Heading and #Line = 1 and #Para = 1 and #Blank = 1 and #Figure = 2
+  some disj f, g: Figure | f.pos = 0 and f.size = 2 and g.pos = 2 and g.size = 1
+  all b: Blank | b.pos = 1
+  all l: Line | l.pos = 3
+  some p: Placement, b: Blank, f: Figure, t: Text |
+    base26[p] and blankWithNext25[p] and f in waitingIn[p] and nextOf25[b] = f and f.pos < t.pos and here[p, t] and b not in p.placed
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
 run decidedFixture {
   inDomain
   Col.cap = 3 and Col.used = 0
@@ -231,7 +253,8 @@ EOF
 
 for command in someFitsFixture noneMeetsAllFixture greedyOrphanFixture \
     greedyWidowFixture greedyKeepHeadingFixture tallFigureFixture \
-    strictAfterHeadingsFixture decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
+    strictAfterHeadingsFixture waitingBlankSomeFixture blankBeforeWaiting25Fixture \
+    decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
     rectoRunDifferenceFixture headingRunFixture \
