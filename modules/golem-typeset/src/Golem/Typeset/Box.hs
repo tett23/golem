@@ -10,6 +10,7 @@ module Golem.Typeset.Box
     boxLinesAround,
     boxLineRange,
     boxArea,
+    boxAreaAt,
     Corners (..),
     cornerRadius,
     boxCorners,
@@ -73,10 +74,12 @@ grid line, its after side in the middle of the space below its last
 (docs/adr/0271).
 -}
 boxArea :: Bool -> Rect -> Sp -> Sp -> Int -> Int -> Sp -> Sp -> Rect
-boxArea vertical ta p fs slot n start end =
-  let areaTop = fromIntegral slot * p - Sp (unSp (p - fs) `div` 2)
-      across = fromIntegral n * p
-      measure = if vertical then rectH ta else rectW ta
+boxArea vertical ta p fs slot n = boxAreaAt vertical ta (fromIntegral slot * p - Sp (unSp (p - fs) `div` 2)) (fromIntegral n * p)
+
+-- | A box specified by physical start and extent, without grid conversion.
+boxAreaAt :: Bool -> Rect -> Sp -> Sp -> Sp -> Sp -> Rect
+boxAreaAt vertical ta areaTop across start end =
+  let measure = if vertical then rectH ta else rectW ta
    in if vertical
         then Rect (rectX ta + rectW ta - areaTop - across) (rectY ta + rectH ta - measure + end) across (measure - start - end)
         else Rect (rectX ta + start) (rectY ta + rectH ta - areaTop - across) (measure - start - end) across

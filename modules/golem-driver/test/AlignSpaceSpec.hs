@@ -8,7 +8,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Project.Style (dimToSp, parseDim)
 import Golem.Syntax
@@ -22,7 +22,7 @@ import Test.Tasty.HUnit
 slotsOf :: BS.ByteString -> T.Text -> IO [[Int]]
 slotsOf style src = do
   (_, pl) <- layoutOk style src []
-  pure (map (map fst . poSlots) (plPages pl))
+  pure (map (map fst . poSlots) (gridPages pl))
 
 -- | horizontalStyle with paragraph styles.
 styled :: BS.ByteString -> BS.ByteString
@@ -33,7 +33,7 @@ fs = 655360
 
 -- | The indents of the lines of each page: (page number, indents).
 indentsByPage :: PdfLayout -> [(Int, [Sp])]
-indentsByPage pl = [(poNumber p, [slIndent sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)]]) | p <- plPages pl]
+indentsByPage pl = [(poNumber p, [slIndent sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)]]) | p <- gridPages pl]
 
 alignSpaceTests :: [TestTree]
 alignSpaceTests =
@@ -67,12 +67,12 @@ alignSpaceTests =
       slotsOf style "あ\n\n@blank-line\n\n@style quote\nい\n\n@blank-line\n\nう\n" >>= (@?= [[0, 2, 4]]),
     testCase "PDF: the space before at the top of a column is dropped, with no diagnostic" $ do
       (_, pl) <- layoutOk (styled "[paragraph-styles.quote]\nspace-before = 2\n") "@style quote\nあ\n" []
-      map (map fst . poSlots) (plPages pl) @?= [[0]]
+      map (map fst . poSlots) (gridPages pl) @?= [[0]]
       plNotices pl @?= [],
     testCase "PDF: the space after at the end of a column is dropped at the top of the next" $ do
       let style = fiveLines <> "\n[paragraph-styles.quote]\nspace-after = 2\n"
       (_, pl) <- layoutOk style "あ\n\nい\n\nう\n\nえ\n\n@style quote\nお\n\nか\n" []
-      map (map fst . poSlots) (plPages pl) @?= [[0, 1, 2, 3, 4], [0]]
+      map (map fst . poSlots) (gridPages pl) @?= [[0, 1, 2, 3, 4], [0]]
       plNotices pl @?= [],
     -- A2 of docs/adr/0211: no space after right before a break or a
     -- control of page breaks, and none across the boundary of two files
@@ -94,8 +94,8 @@ alignSpaceTests =
           manifest = TE.encodeUtf8 (manifestToml testManifest {tmChapters = ["a.gm", "b.gm"], tmTargets = ["pdf"]})
       (_, two) <- layoutMiniWith manifest style "@style quote\nあ\n" [("b.gm", "い\n")] >>= either (assertFailure . show) pure
       (_, one) <- layoutMiniWith manifest style "@style quote\nあ\n\nい\n" [("b.gm", "う\n")] >>= either (assertFailure . show) pure
-      take 1 (map (map fst . poSlots) (plPages one)) @?= [[0, 3, 4]]
-      map (map fst . poSlots) (plPages two) @?= [[0, 1]],
+      take 1 (map (map fst . poSlots) (gridPages one)) @?= [[0, 3, 4]]
+      map (map fst . poSlots) (gridPages two) @?= [[0, 1]],
     testCase "PDF: a paragraph that keeps its lines has its spaces before the first line and after the last" $
       slotsOf (styled "[paragraph-styles.poem]\nline-breaks = \"keep\"\nspace-before = 1\nspace-after = 2\n") "あ\n\n@style poem\nい\nろ\nは\n\nう\n" >>= (@?= [[0, 2, 3, 4, 7]]),
     testCase "PDF: the spaces of a paragraph with rules are outside the area of its rules" $ do

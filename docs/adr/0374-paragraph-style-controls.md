@@ -1,6 +1,6 @@
 # ADR 0374: 段落ごとの上書きと先頭文字の組み方を定める
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"行送りのキー名と通常の段落への適用範囲","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

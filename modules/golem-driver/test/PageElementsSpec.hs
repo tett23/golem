@@ -18,7 +18,7 @@ import Golem.Driver.Html (cssLength)
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..))
-import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (HeadingBlock (..), PageOutAt (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Length (Sp (..))
@@ -533,11 +533,11 @@ runningHeadTests =
     testCase "running heads do not move page breaks" $ do
       (_, a) <- layoutHeads miniManifest (headsStyle "content = \"heading.1.short\"") [("a.gm", twoChapters)]
       (_, b) <- layoutHeads miniManifest (headsStyle "even = \"title\", odd = \"heading.1.numbered.last\"") [("a.gm", twoChapters)]
-      plPages a @?= plPages b,
+      gridPages a @?= gridPages b,
     testCase "formats do not move page breaks (ADR 0022)" $ do
       (_, a) <- layoutHeads miniManifest (headsStyle "content = [\"{heading.1.short}\"]") [("a.gm", twoChapters)]
       (_, b) <- layoutHeads miniManifest (headsStyle "content = [\"{meta.title}\", \"PROOF {heading.1.numbered}\"]") [("a.gm", twoChapters)]
-      plPages a @?= plPages b,
+      gridPages a @?= gridPages b,
     testCase "parallel and sequential builds agree, and twice" $ do
       let style = headsStyle "even = \"title\", odd = \"heading.1.short\""
       (_, p1) <- buildMini fakeProvider True style twoChapters []
@@ -752,7 +752,7 @@ headingTests =
     -- the grid lines from each heading to the line after it on its page
     headingGap pl =
       [ next - h
-      | p <- plPages pl,
+      | p <- gridPages pl,
         (h, SHeading {}) <- poSlots p,
         next <- take 1 [l | (l, SLine _) <- poSlots p, l > h]
       ]
@@ -923,7 +923,7 @@ wrapTests =
       (_, pl) <- layoutOk horizontal24 (longPara 60 <> wrapped "end" "4zw" <> longPara 30) img
       (_, _, p, slot) <- theFigure pl
       (poNumber p, slot) @?= (2, 0)
-      case plPages pl of
+      case gridPages pl of
         (first : _) -> assertBool (show (poSlots first)) (all ((< 26) . fst) (poSlots first))
         [] -> assertFailure "no pages",
     testCase "vertical: the image hangs from the top at its grid line; lines beside it are indented" $ do
@@ -984,7 +984,7 @@ wrapTests =
     testCase "a page reference beside a wrapped figure converges" $ do
       img <- tinyImage
       (_, pl) <- layoutOk horizontal24 (wrapped "end" "4zw" <> "参照は[ref-page later]ページ。" <> longPara 10 <> longPara 60 <> "@label later\n後の段落。\n") img
-      assertBool "pages" (length (plPages pl) >= 2),
+      assertBool "pages" (length (gridPages pl) >= 2),
     testCase "wrapped figures: parallel and sequential, and two builds, give the same bytes" $ do
       img <- tinyImage
       let source = wrapped "start" "4zw" <> longPara 20 <> wrapped "end" "6zw" <> "短い。\n\n" <> longPara 20
@@ -1018,7 +1018,7 @@ sideMarkBoxes setting source = do
 -- | The grid line of the line that holds the n-th sidenote marker of a page.
 slotOfMarker :: PdfLayout -> Int -> Int -> Maybe Int
 slotOfMarker pl page k =
-  case [slot | p <- plPages pl, poNumber p == page, (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], _ <- slSidenotes sl] of
+  case [slot | p <- gridPages pl, poNumber p == page, (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], _ <- slSidenotes sl] of
     xs | k < length xs -> Just (xs !! k)
     _ -> Nothing
 
@@ -1209,7 +1209,7 @@ sidenoteTests =
       let source body = fillers 20 <> "本文[sidenote: " <> body <> "]。" <> longPara 20
       (_, a) <- layoutOk sidenoteStyle (source "短い。") []
       (_, b) <- layoutOk sidenoteStyle (source (T.replicate 4 "長い傍注の本文。")) []
-      plPages a @?= plPages b,
+      gridPages a @?= gridPages b,
     testCase "a sidenote follows its line to the next page" $ do
       (_, pl) <- layoutOk sidenoteStyle (fillers 28 <> T.replicate 3 "あいうえおかきくけこさし" <> "あいう[sidenote: 注]え\n") []
       map fst (sidenotesOf pl) @?= [2],

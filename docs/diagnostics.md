@@ -9658,11 +9658,13 @@ PDF を書かない。
 
 ### 意味
 
-回り込む図版とキャプションの占める行数が、一ページの行数を超える。
+格子モードでは、回り込む図版とキャプションの占める行数が、一ページの行数を超える。
 
-- メッセージ: `回り込む図版の除外領域が一ページの行数を超えます（<行数> 行）`
+自由な配置では、図版とキャプション、回り込みの間隔を含む除外領域の長さが、段の長さを超える。
+
+- メッセージ: `回り込む図版の除外領域が一ページの行数を超えます（<行数> 行）`。自由な配置では `回り込む図版の除外領域（長さ <長さ>pt）が段の長さ <段長>pt を超えます`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)
+- ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -9682,12 +9684,13 @@ PDF を書かない。
 ### 意味
 
 見出しの占める行数が、一ページの行数を超える。
+自由な配置では、占有行数に版面の行送りを掛けた長さが、調整前の段の長さを超える場合にも、このエラーになる。
 見出しはページをまたいで分けない。
 一ページには入るが、`@page-lines` で行数を減らした段に入らない見出しは、このエラーではなく、お知らせの [G07100](#g07100) である。
 
-- メッセージ: `見出しが版面に入りません（<階層> の見出し: <題>）`
+- メッセージ: `見出しが版面に入りません（<階層> の見出し: <題>）`。自由な配置の実寸検査では `見出しが版面に入りません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)
+- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -9984,9 +9987,12 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 - `@need-lines`：求めた行数が、段の行の格子の数を超える。段の格子の数として扱い、今の段が空でなければ次の段から続けた。
 - `@page-lines`：増減の結果の行数が、裁ち落としを除いたページの内側に収まる行数を超えるか、その段にすでに置いた行の数より少ない。収まる数に切り詰めた。
 
-- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
+自由な配置では、`@need-lines` の行数を版面の行送りで長さへ直し、段の長さと比べる。
+`@page-lines` の増減も版面の行送り単位で行い、すでに配置した本文と脚注を収める範囲へ切り詰める。
+
+- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`（自由な配置では `@need-lines <N> の長さ <要求長>pt は段の長さ <段長>pt を超えます`）、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
-- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10098,12 +10104,13 @@ PDF は書く。
 ### 意味
 
 表の見出しの行とある本体の行の高さの和が、一ページの行数を超える。
+自由な配置では、見出しの行と本体の一行を版面の行送りで長さに直し、段の長さと比べる。
 表の行の途中では改ページしない。
 キャプションの行を加えて初めて収まらなくなる場合は、このコードではなく [G07116](#g07116) である（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 
-- メッセージ: `表の <番号> 行目が見出しの行とともに一ページに収まりません`
+- メッセージ: `表の <番号> 行目が見出しの行とともに一ページに収まりません`。自由な配置の実寸検査では `表の最小部分が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)
+- ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10127,11 +10134,12 @@ PDF のコードブロックについて、行長から左右の `padding` を�
 `[code]` の `continued` を書いた本では、コードの一行、続きの表示の行、上下の `padding` が一ページに収まらない場合も、この誤りとする（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 `style.toml` とファイルの中の定義だけで決まる最上位のコードブロックの行長の不足は、PDF をターゲットに含むときに、ビルドと `golem check` の両方でレイアウトの前に報告し、位置は `style.toml` の先頭（なければ `manifest.toml` の先頭）である。
 リストの深い入れ子の中の行長の不足と、一ページに収まらない場合は、レイアウトで報告し、位置はコードブロックの始まりである。
+自由な配置では、先頭に必要なコードの行、キャプション、続きの表示、上下の `padding` を含む最小部分を、版面の行送りで長さに直して段と比べる。
 PDF を書かない。
 
-- メッセージ: `コードブロックの行長が足りません` または `コードブロックの一行が一ページに収まりません`
+- メッセージ: `コードブロックの行長が足りません` または `コードブロックの一行が一ページに収まりません`。自由な配置の実寸検査では `コードの最小部分が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
+- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10143,6 +10151,7 @@ PDF を書かない。
 ### 直し方
 
 `padding` か `size` を小さくするか、コードブロックをリストの浅いところに移す。
+
 ## G07044
 
 索引の段の行長が足りません
@@ -10371,7 +10380,8 @@ PDF を書かない。
 
 ### 意味
 
-PDF で、見出しが占める格子の行が、見出しを置いた空の段に残る行より多い。
+PDF の格子モードで、見出しが占める格子の行が、見出しを置いた空の段に残る行より多い。
+自由な配置では、見出しの占める長さが、縮めた段の残りの長さを超える。
 見出しはページをまたいで分けず、空の段には入らなくても置くので、見出しは段の頭から書いたとおりの行取りで組まれ、段の残りの外にはみ出す。
 置き方は変えない。
 見出しは一ページの行数には収まるので（収まらなければ [G07024](#g07024)）、この場面は `@page-lines` で段の行数を減らしたときに起きる。
@@ -10382,9 +10392,9 @@ PDF で、見出しが占める格子の行が、見出しを置いた空の段�
 `golem check` はページ分けを行わないので、このお知らせを出さない。
 お知らせなので、ビルドの成否と出力に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
-- メッセージ: `見出しが段に入りません（<階層> の見出し: <題>。見出しは <n> 行、段の残りは <m> 行）`。注の一覧の見出しでは、括弧の中の前半を `注の一覧の見出し: <題>` とする。
+- メッセージ: `見出しが段に入りません（<階層> の見出し: <題>。見出しは <n> 行、段の残りは <m> 行）`。自由な配置では、長さの部分を `見出しの長さ <長さ>pt、段の残り <残り>pt` とする。注の一覧の見出しでは、括弧の中の前半を `注の一覧の見出し: <題>` とする。
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
-- ADR: [golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)
+- ADR: [golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10878,12 +10888,13 @@ PDF を組むときにだけ出す。
 表のキャプションと、キャプションと同じ段に置く行が、空の段に収まらない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 `[tables]` の `caption-position` が `"above"` ならキャプション、見出しの行、本体の最初の行であり、`"below"` なら見出しの行、本体の最後の行、キャプションである。
 キャプションのない同じ表なら収まる場合だけをこのコードとし、キャプションがなくても収まらない行は [G07042](#g07042) である。
+自由な配置では、これらの占有行数を版面の行送りで長さに直し、段の長さと比べる。
 表を組まない。
 位置は表のブロックである。
 
-- メッセージ: `表のキャプションが、見出しの行と本体の最初の行とともに一つの段に収まりません`、`表のキャプションが、見出しの行と本体の最後の行とともに一つの段に収まりません`
+- メッセージ: `表のキャプションが、見出しの行と本体の最初の行とともに一つの段に収まりません`、`表のキャプションが、見出しの行と本体の最後の行とともに一つの段に収まりません`。自由な配置の実寸検査では `表とキャプションの最小部分が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)
+- ADR: [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -11018,13 +11029,14 @@ dev と prod の両方でエラーである。
 PDF をターゲットに含む `golem build` で、囲みを持つ段落スタイル（`background` か `border` を持つ段落スタイル）の段落について、空の段に、囲みの前の k 行、一行、囲みの後の k 行が入らない。
 k は、`padding` を収めるために囲みが最初の行の前と最後の行の後に足す格子の行の数であり、行送りを p、格子の字面の高さを h、`padding` を d として、`(p − h)/2 + k × p ≥ d` を満たす最も小さい 0 以上の整数である。
 2k + 1 が段の行の数を超えると、どの段にも囲みの部分を置けない。
-版面と `padding` だけで決まるので、組む前に検査する。
+自由な配置では、段落の一行の行ボックスと、先頭と末尾の字面から求めた padding の追加量の和を、段の長さと比べる。
+格子への配置では版面と `padding` だけで決まり、自由な配置では段落の行送りと文字の大きさも使い、組む前に検査する。
 位置は、その段落スタイルの最初の段落であり、同じ段落スタイルには一度だけ出す。
 PDF を書かない。
 
-- メッセージ: `段落スタイル <名前> の囲みの一行と上下の padding が段に収まりません`
+- メッセージ: `段落スタイル <名前> の囲みの一行と上下の padding が段に収まりません`。自由な配置の配置検査では `囲みの一行と padding が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)
+- ADR: [docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -11266,6 +11278,86 @@ prod ではエラーなので PDF を書かず（前のビルドの PDF も消�
 ### 直し方
 
 段落スタイル `sidenote` の `indent`、`first-line-indent`、`end-indent` を小さくするか、`[sidenotes]` の `width` を広げる。
+
+## G07129
+
+段落の一行が段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+自由な配置で、通常の段落の一行の行ボックスが、調整前の空の段より長い。
+位置はその段落である。
+PDF の組版を止める。
+格子への配置には適用しない。
+
+- メッセージ: `段落スタイル <名前> の一行が段に収まりません`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+
+### 主な原因
+
+- 段落の `line-pitch` が段の長さを超えている。
+
+### 直し方
+
+段落の `line-pitch` を短くするか、版面の行数を増やして段を長くする。
+
+## G07130
+
+脚注の最小のまとまりが段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+自由な配置で、本文の最小のまとまり、脚注の区切り、注の最初の一行が、調整前の空の段にも収まらない。
+囲みでは必要な padding も含む。
+注の続きだけを置く段でも、区切りと注一行が調整前の空の段に収まらなければ、このエラーになる。
+位置は注の参照印である。
+PDF の組版を止める。
+格子への配置には適用しない。
+
+- メッセージ: `脚注の最初の一行を段に配置できません`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+
+### 主な原因
+
+- 本文、囲みの padding、脚注の区切り、注一行の合計が段の長さを超えている。
+
+### 直し方
+
+本文の行送りや囲みの padding、脚注の区切りを小さくするか、段を長くする。
+
+## G07131
+
+図版の一行分の領域が段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+自由な配置で、段の長さが版面の行送りより短く、図版の配置に一行分も使えない。
+位置は図版である。
+PDF の組版を止める。
+格子への配置には適用しない。
+
+- メッセージ: `図版の一行分の領域が段に収まりません`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+
+### 主な原因
+
+- 版面の行数が少なく、段の長さが版面の行送りに満たない。
+
+### 直し方
+
+版面の行数を増やすなどして、段に版面の行送り一つ分以上を確保する。
 
 ## G08001
 

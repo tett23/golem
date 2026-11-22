@@ -71,7 +71,7 @@ decorationsTests =
           c <- layoutOf horizontal (source ("漢字" <> sep <> "abc"))
           map (map bcText) (boxesOf a) @?= map (map bcText) (boxesOf c)
           [lineTarget (slLine sl) | sl <- Map.elems (plLines a)] @?= [lineTarget (slLine sl) | sl <- Map.elems (plLines c)]
-          length (plPages a) @?= length (plPages c),
+          length (gridPages a) @?= length (gridPages c),
       testCase "I5, I6: the styles inside the basis do not change the line" $ do
         pl <- layoutOf horizontal "[style u: 漢[style big: 字][style up: 漢][style superscript: 2]字]\n"
         let ds = [lkUnderline (bcLook c) | cs <- boxesOf pl, c <- cs, isJust (lkUnderline (bcLook c))]

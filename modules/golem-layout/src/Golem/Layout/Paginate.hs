@@ -16,17 +16,23 @@ page.
 -}
 module Golem.Layout.Paginate
   ( LineBox (..),
-    ColumnSet (..),
+    ColumnSet,
+    ColumnSetAt (..),
     NoteId (..),
     NoteBody (..),
-    Flow (..),
+    Flow,
+    FlowAt (..),
     Slotted (..),
-    PageOut (..),
+    PageOut,
+    PageOutAt (..),
     Unmet (..),
     AdjustLimit (..),
-    TableSegment (..),
-    BoxSegment (..),
-    RuledBody (..),
+    TableSegment,
+    TableSegmentAt (..),
+    BoxSegment,
+    BoxSegmentAt (..),
+    RuledBody,
+    RuledBodyAt (..),
     PlacedRule (..),
     HeadingBlock (..),
     Keep (..),
@@ -146,7 +152,7 @@ paginateWithin maxLines separatorLines base capacity flows =
 (docs/adr/0260). A section whose page has no column, the book ending
 there, has no page.
 -}
-withSections :: [(Int, Int)] -> [PageOut] -> [PageOut]
+withSections :: [(Int, Int)] -> [PageOutAt position] -> [PageOutAt position]
 withSections starts = go Nothing
   where
     firsts = sectionFirstPages starts
@@ -784,18 +790,18 @@ placeTable env st i h rows capt below =
 {- | The label of each page by its number (docs/adr/0260), from the
 sections given and the first pages the pagination recorded.
 -}
-pageLabels :: Map Int Section -> [PageOut] -> Map Int PageLabel
+pageLabels :: Map Int Section -> [PageOutAt position] -> Map Int PageLabel
 pageLabels sections ps =
   pageLabelsOf sections (Map.fromListWith (flip (<>)) [(poNumber p, poSections p) | p <- ps]) (maximum (0 : map poNumber ps))
 
 -- | The page label of each label (docs/adr/0260).
-labelPages :: Map Int Section -> [PageOut] -> Map Text PageLabel
+labelPages :: Map Int Section -> [PageOutAt position] -> Map Text PageLabel
 labelPages sections ps =
   let labels = pageLabels sections ps
    in Map.fromList [(l, Map.findWithDefault (plainLabel (poNumber p)) (poNumber p) labels) | p <- ps, l <- poLabels p]
 
 -- | The page label of each index mark (golem-driver ADR 0007, docs/adr/0260).
-markPages :: Map Int Section -> [PageOut] -> Map SrcSpan PageLabel
+markPages :: Map Int Section -> [PageOutAt position] -> Map SrcSpan PageLabel
 markPages sections ps =
   let labels = pageLabels sections ps
    in Map.fromList [(m, Map.findWithDefault (plainLabel (poNumber p)) (poNumber p) labels) | p <- ps, m <- poMarks p]

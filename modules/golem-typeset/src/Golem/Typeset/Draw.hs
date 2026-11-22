@@ -32,6 +32,7 @@ import GHC.Conc (pseq)
 import Golem.Assemble (Book (..), TocEntry (..), inlineText, tocWithinDepth)
 import Golem.Doc.IR
 import Golem.Layout.Code
+import Golem.Layout.FreeGeometry (faceOffset)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -50,7 +51,7 @@ import Golem.Project
 import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Typeset.Box (BoxPaint (..), boxArea, boxMarks)
+import Golem.Typeset.Box (BoxPaint (..), boxAreaAt, boxMarks)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 import Golem.Typeset.GlyphRuns (glyphRuns)
@@ -494,7 +495,7 @@ data DrawEnv = DrawEnv
     -- | the running head of each page (golem-driver ADR 0014)
     deHeads :: Map Int [Text],
     -- | the column set of the page geometry; the pages of an index may set another (docs/adr ADR 0025)
-    deBaseSet :: ColumnSet,
+    deBaseSet :: ColumnSetAt Sp,
     -- | the ToUnicode entries the marks are checked against for ActualText (golem-driver ADR 0030)
     deTextEntries :: Map P.FontRef (Map Int Text),
     -- | the lines of each footnote by its key (golem-driver ADR 0018)
@@ -533,7 +534,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
             deFonts = fonts,
             deLayout = layout,
             deHeads = runningHeads inp geom layout,
-            deBaseSet = pageColumnSet (piStyle inp) geom,
+            deBaseSet = fmap (\n -> fromIntegral n * pgLinePitch geom) (pageColumnSet (piStyle inp) geom),
             deTextEntries = textEntries,
             deNoteBodies = Map.fromList [note | sl <- Map.elems (plLines layout), note <- slNotes sl],
             deTableInks = Map.mapWithKey (tableInk env) (plTables layout),
@@ -1482,7 +1483,34 @@ textAt env kind anchor name txt =
 
 {- one column of a page, against the rectangle of the column (docs/adr
 ADR 0018): its text, its images and its rules -}
-drawColumn :: DrawEnv -> PageOut -> ([(LineRec, ([P.Content], [GlyphUse]))], ([P.Content], [(Rect, PlacedFigure)]), ([P.Content], [(Text, Rect, Sp)]), ([P.Content], [P.Swatch]))
+
+{- | Grid output was converted to sp at the pagination boundary. Free output
+uses line boxes; its text is centered in each box before drawing.
+-}
+freePlacement :: DrawEnv -> Bool
+freePlacement env = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (deInput env)) >>= pageGrid)
+
+blockStart :: DrawEnv -> Sp -> Sp
+blockStart env position = position + if freePlacement env then faceOffset (pgLinePitch (deGeom env)) (pgFontSize (deGeom env)) else 0
+
+-- Wrapped figures use their own origin, independently of the body row box.
+figureStart :: DrawEnv -> Sp -> PlacedFigure -> Sp
+figureStart env position pf
+  | freePlacement env, Just _ <- pfWrap pf = position
+  | otherwise = blockStart env position
+
+linePosition :: DrawEnv -> Int -> Sp -> SetLine -> Sp
+linePosition env lid position sl
+  | freePlacement env =
+      let pitch = Map.findWithDefault (pgLinePitch geom) lid (plLinePitches (deLayout env))
+          size = slSize sl
+          baseline = if pgVertical geom then Sp (unSp size `div` 2) else zwToSp size baselineRatio
+       in position + faceOffset pitch size + baseline
+  | otherwise = position + gridLine geom 0
+  where
+    geom = deGeom env
+
+drawColumn :: DrawEnv -> PageOutAt Sp -> ([(LineRec, ([P.Content], [GlyphUse]))], ([P.Content], [(Rect, PlacedFigure)]), ([P.Content], [(Text, Rect, Sp)]), ([P.Content], [P.Swatch]))
 drawColumn env p =
   let n = poNumber p
       -- the columns of the page, or of the index (docs/adr ADR 0025)
@@ -1511,7 +1539,7 @@ drawColumn env p =
                 ([], []) -> []
            in (rec {lrLinks = links}, x)
       lineParts =
-        [withTocLink slot lid (orAgain lid (entry env (if Map.member lid (plTocPages layout) then "目次の行" else "本文の行") (spanOfLine env lid) ta (gridAt slot) sl)) | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
+        [withTocLink slot lid (orAgain lid (entry env (if Map.member lid (plTocPages layout) then "目次の行" else "本文の行") (spanOfLine env lid) ta (linePosition env lid slot sl) sl)) | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
           {- the leader and page number of a table of contents entry (golem-driver
           ADR 0009): the page number in the leaf of the end of the entry, the
           leader an artifact (docs/adr ADR 0183); their link is that of the line (docs/adr/0267) -}
@@ -1541,14 +1569,14 @@ drawColumn env p =
           <> [ anchoredAt (lid + j) (entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' j sl) sl)
              | (slot, SCode lid k _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
-               let (_, codeSlot, k', _) = codePartOf slot lid k ci,
+               let (_, codeSlot, k', _) = codePartOf (pgLinePitch geom) slot lid k ci,
                (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. k - 1]]
              ]
           -- the text at the end of a part that continues (an artifact, docs/adr ADR 0183), and the caption above the first part (golem-driver ADR 0023)
           <> [ asArtifact P.Pagination (entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' k sl) sl)
              | (slot, SCode lid k _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
-               let (_, codeSlot, k', cont) = codePartOf slot lid k ci,
+               let (_, codeSlot, k', cont) = codePartOf (pgLinePitch geom) slot lid k ci,
                cont,
                Just l <- [ciContinued ci],
                let sl = SetLine l (ciSize ci) (ciIndent ci) [] [] Nothing
@@ -1572,7 +1600,7 @@ drawColumn env p =
               <> border
           | (slot, SCode lid k spanLines) <- poSlots p,
             Just ci <- [Map.lookup lid (plCodes layout)],
-            let (isFirst, codeSlot, k', _) = codePartOf slot lid k ci
+            let (isFirst, codeSlot, k', _) = codePartOf (pgLinePitch geom) slot lid k ci
                 here = lid - ciFirst ci
                 rect = codeRect env ta codeSlot (spanLines - (if isFirst then ciCaptionSpan ci else 0)) (ciStart ci)
                 -- the background and the border as those of a box (docs/adr/0271)
@@ -1585,10 +1613,10 @@ drawColumn env p =
             | seg <- poBoxes p,
               Just bi <- [Map.lookup (bsBox seg) (plBoxes layout)],
               let ids = [lid | (g, SLine lid) <- poSlots p, g >= bsFirst seg, g <= bsLast seg]
-                  rect = boxArea vertical ta (pgLinePitch geom) (pgFontSize geom) (bsFirst seg) (bsLast seg - bsFirst seg + 1) (bxStart bi) (bxEnd bi)
+                  rect = boxAreaAt vertical ta (bsFirst seg - if freePlacement env then 0 else Sp (unSp (pgLinePitch geom - pgFontSize geom) `div` 2)) (bsLast seg - bsFirst seg) (bxStart bi) (bxEnd bi)
                   (painted, border) = boxMarks vertical rect (bxPaint bi) (bxFirst bi `elem` ids) (bxLast bi `elem` ids)
             ]
-      figures = [(fid, figureRect geom n ta slot pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
+      figures = [(fid, figureRectAt geom n ta (figureStart env slot pf) pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
       {- a figure turned onto the page (golem-driver ADR 0034): its image
       and caption in its frame, turned into the type area; the view
       sees them where they land -}
@@ -1607,7 +1635,7 @@ drawColumn env p =
       -- one note's lines are in one line of the flow (golem-driver ADR 0018)
       noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid (deNoteBodies env)))] | (nid, from, cnt) <- poFootnotes p]
       -- the foot of the column, of its lines with @page-lines (docs/adr ADR 0030)
-      bottomSlots = drop (poLines p - length noteLines) [0 .. poLines p - 1]
+      bottomSlots = [poLines p - fromIntegral k * pgLinePitch geom | k <- [length noteLines, length noteLines - 1 .. 1]]
       noteParts = [entry env "脚注の行" (noteSpan env nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] [] Nothing) | (slot, (nid, l)) <- zip bottomSlots noteLines]
       {- each rule with its band, the weight of its thinnest part, its
       marks and its swatch (golem-driver ADR 0028) -}
@@ -1624,7 +1652,7 @@ drawColumn env p =
           <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
              | not (null noteLines),
                Just rule <- [stNotesRule style],
-               let (r, t) = noteRule env ta rule (poLines p - length noteLines)
+               let (r, t) = noteRule env ta rule (poLines p - fromIntegral (length noteLines) * pgLinePitch geom)
                    sw = ruleSwatch env rule
              ]
    in ( lineParts <> noteParts <> concat [cs | (_, _, cs) <- turnedOut],
@@ -1638,10 +1666,10 @@ drawColumn env p =
     layout = deLayout env
     style = piStyle (deInput env)
     vertical = pgVertical (deGeom env)
-    gridAt = gridLine (deGeom env)
+    gridAt slot = gridLine geom 0 + blockStart env slot
 
 -- the columns of a page, its sidenotes and, once, its running head and folio
-drawPage :: DrawEnv -> [PageOut] -> Maybe MasterGeometry -> PageDrawn
+drawPage :: DrawEnv -> [PageOutAt Sp] -> Maybe MasterGeometry -> PageDrawn
 drawPage env ps master = case ps of
   [] -> PageDrawn [] [] [] [] [] True 0 [] []
   (p : _) ->
@@ -1711,15 +1739,15 @@ ruleSwatch env rule = do
 before; with them space-after above the em box of the first
 footnote line. From the start of the line of the column, its near
 edge and far edge measured from the top (the right in vertical text). -}
-noteRule :: DrawEnv -> Rect -> RuleSpec -> Int -> (Rect, Sp)
+noteRule :: DrawEnv -> Rect -> RuleSpec -> Sp -> (Rect, Sp)
 noteRule env ta rule firstLine =
   let p = pgLinePitch geom
       fs = pgFontSize geom
       w = rsWeight rule
       len = maybe 0 (dimToSp fs) (rsLength rule)
       far = case rsSpaceAfter rule of
-        Nothing -> fromIntegral (firstLine - 1) * p + Sp (unSp fs `div` 2) - Sp (unSp w `div` 2)
-        Just a -> fromIntegral firstLine * p - dimToSp fs a - w
+        Nothing -> (blockStart env firstLine - p) + Sp (unSp fs `div` 2) - Sp (unSp w `div` 2)
+        Just a -> blockStart env firstLine - dimToSp fs a - w
    in if vertical
         then (Rect (rectX ta + rectW ta - far - w) (rectY ta + rectH ta - len) w len, w)
         else (Rect (rectX ta) (rectY ta + rectH ta - far - w) len w, w)
@@ -1730,7 +1758,7 @@ noteRule env ta rule firstLine =
 {- the rules of a table on a page (golem-driver ADR 0008, 0031): c
 outside the ink of the table, half the space between the ink of two
 lines; in vertical text the ink is the em box -}
-tableRules :: DrawEnv -> Rect -> TableSegment -> TableGeometry -> [(Rect, Sp)]
+tableRules :: DrawEnv -> Rect -> TableSegmentAt Sp -> TableGeometry -> [(Rect, Sp)]
 tableRules env ta seg tg =
   let p = pgLinePitch geom
       fs = pgFontSize geom
@@ -1738,7 +1766,7 @@ tableRules env ta seg tg =
         | vertical = (Sp (unSp fs `div` 2), fs - Sp (unSp fs `div` 2))
         | otherwise = (tgAscent tg, tgDescent tg)
       c = max 0 (Sp (unSp (p - a - d) `div` 2))
-      base k = fromIntegral k * p + (if vertical then Sp (unSp fs `div` 2) else zwToSp fs baselineRatio)
+      base k = blockStart env k + (if vertical then Sp (unSp fs `div` 2) else zwToSp fs baselineRatio)
       before k = base k - a - c
       after k = base k + d + c
       w = tgWidth tg
@@ -1773,10 +1801,10 @@ tableInk env tid tg =
 {- row j of the k rows of a code block from grid line slot: the area
 starts half the leading above the grid line, and the rows are centred
 in it (golem-driver ADR 0017) -}
-codeRowAt :: DrawEnv -> Int -> CodeGeometry -> Int -> Int -> SetLine -> Sp
+codeRowAt :: DrawEnv -> Sp -> CodeGeometry -> Int -> Int -> SetLine -> Sp
 codeRowAt env slot g k j sl =
   let s = slSize sl
-      areaTop = fromIntegral slot * pgLinePitch geom - Sp (unSp (pgLinePitch geom - pgFontSize geom) `div` 2)
+      areaTop = blockStart env slot - Sp (unSp (pgLinePitch geom - pgFontSize geom) `div` 2)
       top = areaTop + codeRowsTop g k + fromIntegral j * cgPitch g
    in top + (if vertical then Sp (unSp s `div` 2) else zwToSp s baselineRatio)
   where
@@ -1787,42 +1815,41 @@ codeRowAt env slot g k j sl =
 ADR 0023): whether it is the first part, the grid line of its rows
 (after the caption), the rows it is centred as and whether it ends
 with the text that it continues -}
-codePartOf :: Int -> Int -> Int -> CodeInfo -> (Bool, Int, Int, Bool)
-codePartOf slot lid k ci =
+codePartOf :: Sp -> Sp -> Int -> Int -> CodeInfo -> (Bool, Sp, Int, Bool)
+codePartOf pitch slot lid k ci =
   let isFirst = lid == ciFirst ci
       cont = isJust (ciContinued ci) && lid + k < ciFirst ci + ciRows ci
-   in (isFirst, slot + (if isFirst then ciCaptionSpan ci else 0), k + (if cont then 1 else 0), cont)
+   in (isFirst, slot + fromIntegral (if isFirst then ciCaptionSpan ci else 0) * pitch, k + (if cont then 1 else 0), cont)
 
 -- line j of the caption of a code block: from the top of its grid line, j caption pitches on
-codeCaptionLineAt :: DrawEnv -> Int -> CodeInfo -> Int -> Sp
+codeCaptionLineAt :: DrawEnv -> Sp -> CodeInfo -> Int -> Sp
 codeCaptionLineAt env slot ci = codeCaptionTop env slot (ciCaptionPitch ci) (ciCaptionSize ci)
 
 -- line j of lines of a size and a pitch from the top of grid line slot (golem-driver ADR 0023, docs/adr/0262)
-codeCaptionTop :: DrawEnv -> Int -> Sp -> Sp -> Int -> Sp
+codeCaptionTop :: DrawEnv -> Sp -> Sp -> Sp -> Int -> Sp
 codeCaptionTop env slot pitch cs j =
-  let top = fromIntegral slot * pgLinePitch geom + fromIntegral j * pitch
+  let top = blockStart env slot + fromIntegral j * pitch
    in top + (if vertical then Sp (unSp cs `div` 2) else zwToSp cs baselineRatio)
   where
-    geom = deGeom env
     vertical = pgVertical (deGeom env)
 
 {- the j-th line of a row of a table from grid line slot (docs/adr/0262):
 a line at the size of the grid on its grid line, a line of another size
 from the top of the first grid line of its row, a pitch of its size on
 for each line before it, as the lines of a caption -}
-tableLineAt :: DrawEnv -> Int -> Int -> SetLine -> Sp
+tableLineAt :: DrawEnv -> Sp -> Int -> SetLine -> Sp
 tableLineAt env slot j sl
-  | slSize sl == fs = gridLine geom slot
+  | slSize sl == fs = gridLine geom 0 + blockStart env slot
   | otherwise = codeCaptionTop env slot (Sp (round (toRational (unSp (pgLinePitch geom)) * toRational (unSp (slSize sl)) / toRational (unSp fs)))) (slSize sl) j
   where
     geom = deGeom env
     fs = pgFontSize geom
 
 -- the band of m rows from row j of the k rows of a part, a code pitch each, from start to the end of the line
-codeBand :: DrawEnv -> Rect -> Int -> CodeGeometry -> Int -> Int -> Int -> Sp -> Rect
+codeBand :: DrawEnv -> Rect -> Sp -> CodeGeometry -> Int -> Int -> Int -> Sp -> Rect
 codeBand env ta slot g k j m start =
   let p = pgLinePitch geom
-      areaTop = fromIntegral slot * p - Sp (unSp (p - pgFontSize geom) `div` 2)
+      areaTop = blockStart env slot - Sp (unSp (p - pgFontSize geom) `div` 2)
       top = areaTop + codeRowsTop g k + fromIntegral j * cgPitch g - Sp (unSp (cgPitch g - cgSize g) `div` 2)
       depth = fromIntegral m * cgPitch g
       measure = if vertical then rectH ta else rectW ta
@@ -1834,10 +1861,10 @@ codeBand env ta slot g k j m start =
     vertical = pgVertical (deGeom env)
 
 -- the area of a code block of n grid lines from grid line slot, from start to the end of the line
-codeRect :: DrawEnv -> Rect -> Int -> Int -> Sp -> Rect
+codeRect :: DrawEnv -> Rect -> Sp -> Int -> Sp -> Rect
 codeRect env ta slot n start =
   let p = pgLinePitch geom
-      areaTop = fromIntegral slot * p - Sp (unSp (p - pgFontSize geom) `div` 2)
+      areaTop = blockStart env slot - Sp (unSp (p - pgFontSize geom) `div` 2)
       across = fromIntegral n * p
       measure = if vertical then rectH ta else rectW ta
    in if vertical
@@ -1848,24 +1875,23 @@ codeRect env ta slot n start =
     vertical = pgVertical (deGeom env)
 
 -- line j of a heading block from grid line k (golem-driver ADR 0003)
-headingLineAt :: DrawEnv -> Int -> HeadingBlock -> Int -> SetLine -> Sp
+headingLineAt :: DrawEnv -> Sp -> HeadingBlock -> Int -> SetLine -> Sp
 headingLineAt env k hb j sl =
   let s = slSize sl
-      top = fromIntegral k * pgLinePitch geom + hbOffset hb + fromIntegral j * hbPitch hb
+      top = blockStart env k + hbOffset hb + fromIntegral j * hbPitch hb
    in top + (if vertical then Sp (unSp s `div` 2) else zwToSp s baselineRatio)
   where
-    geom = deGeom env
     vertical = pgVertical (deGeom env)
 
-placedFigures :: PageOut -> [(Int, Int)]
+placedFigures :: PageOutAt Sp -> [(Sp, Int)]
 placedFigures p = [(slot, fid) | (slot, s) <- poSlots p, fid <- case s of SFigure f -> [f]; SWrapped f -> [f]; _ -> []]
 
 {- line j of a caption: from the top of the grid line after the image,
 j caption pitches on, at the top of its lines (golem-driver ADR 0010) -}
-captionLineAt :: DrawEnv -> Int -> PlacedFigure -> Int -> Sp
+captionLineAt :: DrawEnv -> Sp -> PlacedFigure -> Int -> Sp
 captionLineAt env slot pf j =
   let cs = pfCaptionSize pf
-      top = fromIntegral (slot + pfImageLines pf) * pgLinePitch geom + fromIntegral (j :: Int) * pfCaptionPitch pf
+      top = figureStart env slot pf + fromIntegral (pfImageLines pf) * pgLinePitch geom + fromIntegral (j :: Int) * pfCaptionPitch pf
    in top + (if vertical then Sp (unSp cs `div` 2) else zwToSp cs baselineRatio)
   where
     geom = deGeom env
@@ -1917,9 +1943,10 @@ masterMarks env n blank master headLines = case master of
 
 -- | The image of a figure: the content of its Figure (docs/adr ADR 0183).
 figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Content
-figureMark env fid r pf = P.Tagged (P.LeafId (figureSite (pfUnit pf) <> [0])) $ pure $ case pfContent pf of
-  P.RasterFigure _ -> P.Image (P.ImageRef fid) r
-  _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) (deFormRefs env)) r
+figureMark env fid r pf = P.Tagged (P.LeafId (figureSite (pfUnit pf) <> [0])) $
+  pure $ case pfContent pf of
+    P.RasterFigure _ -> P.Image (P.ImageRef fid) r
+    _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) (deFormRefs env)) r
 
 -- | A line drawn for a line of the flow, where it can be the destination of a link (docs/adr/0267).
 anchoredAt :: Int -> (LineRec, a) -> (LineRec, a)

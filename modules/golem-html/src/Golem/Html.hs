@@ -6,6 +6,7 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlPhysicalParagraph (..),
     HtmlBox (..),
     defaultAlignDecls,
     HtmlRule (..),
@@ -232,9 +233,36 @@ data HtmlParaStyle = HtmlParaStyle
     break-after, break-inside, orphans, widows, break-before (docs/adr/0261)
     -} hpsBreaks :: ![Text],
     -- | the box of the style (docs/adr/0271)
-    hpsBox :: !(Maybe HtmlBox)
+    hpsBox :: !(Maybe HtmlBox),
+    -- | Resolved absolute lengths in free placement (root ADR 0397).
+    hpsPhysical :: !(Maybe HtmlPhysicalParagraph)
   }
   deriving stock (Eq)
+
+{- | Absolute pitch and additional boundary gaps. Legacy styles retain their
+integer em spacing, so grid output remains byte-for-byte unchanged.
+-}
+data HtmlPhysicalParagraph = HtmlPhysicalParagraph
+  { hppPitch :: !L.Sp,
+    hppBefore :: !L.Sp,
+    hppAfter :: !L.Sp,
+    hppBetween :: !L.Sp
+  }
+  deriving stock (Eq)
+
+spaceBefore :: HtmlParaStyle -> L.Sp
+spaceBefore ps = maybe (fromIntegral (hpsSpaceBefore ps)) hppBefore (hpsPhysical ps)
+
+spaceAfter :: HtmlParaStyle -> L.Sp
+spaceAfter ps = maybe (fromIntegral (hpsSpaceAfter ps)) hppAfter (hpsPhysical ps)
+
+spaceBetween :: HtmlParaStyle -> L.Sp
+spaceBetween ps = maybe (fromIntegral (hpsSpaceBetween ps)) hppBetween (hpsPhysical ps)
+
+spaceText :: HtmlParaStyle -> L.Sp -> Text
+spaceText ps n = case hpsPhysical ps of
+  Nothing -> T.pack (show (L.unSp n)) <> "em"
+  Just _ -> L.ptText n <> "pt"
 
 {- | The box of a paragraph style (docs/adr/0271): paragraphs of equal keys
 one after the other are in one div.box, of the class of the first; the
@@ -1103,6 +1131,8 @@ css cfg book =
       <> [ faceRule ".sidenote" (hcSidenoteFace cfg) {faSize = Just (fromMaybe "0.85em" (faSize (hcSidenoteFace cfg)))},
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
+      -- Ordinary paragraph pitch never changes the inside of a note.
+      <> ["section.notes aside p { line-height: normal; }" | any (isJust . hpsPhysical) (Map.elems (hcParaStyles cfg) <> concatMap (Map.elems . hlParaStyles) (Map.elems (hcLocalStyles cfg)))]
       -- the captions of tables below them (docs/adr/0262)
       <> ["table > caption { caption-side: bottom; }" | hcTableCaptionBelow cfg]
       -- the font and size of the cells of tables (docs/adr/0262)
@@ -1265,13 +1295,13 @@ css cfg book =
             ]
           | not (null boxed)
           ]
-        <> ["div.box:has(> " <> paraSelOf n <> ":first-child) { margin-block-start: " <> tshow (hpsSpaceBefore ps) <> "em; }" | (n, ps, _) <- boxed, hpsSpaceBefore ps > 0]
-        <> ["div.box:has(> " <> paraSelOf n <> ":last-child) { margin-block-end: " <> tshow (hpsSpaceAfter ps) <> "em; }" | (n, ps, _) <- boxed, hpsSpaceAfter ps > 0]
-        <> [ paraSelOf a <> " + div.box:has(> " <> paraSelOf b <> ":first-child) { margin-block-start: " <> tshow (max x y) <> "em; }"
+        <> ["div.box:has(> " <> paraSelOf n <> ":first-child) { margin-block-start: " <> spaceText ps (spaceBefore ps) <> "; }" | (n, ps, _) <- boxed, spaceBefore ps > 0]
+        <> ["div.box:has(> " <> paraSelOf n <> ":last-child) { margin-block-end: " <> spaceText ps (spaceAfter ps) <> "; }" | (n, ps, _) <- boxed, spaceAfter ps > 0]
+        <> [ paraSelOf a <> " + div.box:has(> " <> paraSelOf b <> ":first-child) { margin-block-start: " <> spaceText pb (max x y) <> "; }"
            | (a, pa) <- allStyles,
              (b, pb, _) <- boxed,
-             let x = hpsSpaceAfter pa
-                 y = hpsSpaceBefore pb,
+             let x = spaceAfter pa
+                 y = spaceBefore pb,
              x > 0,
              y > 0
            ]
@@ -1299,18 +1329,20 @@ css cfg book =
     paraRules name ps =
       let sel = if name == "body" then "p" else "p.ps-" <> name
           -- the same style in a row: space-between, also 0 against the spaces before and after (docs/adr/0189)
-          spaced = hpsSpaceBefore ps > 0 || hpsSpaceAfter ps > 0
+          spaced = spaceBefore ps > 0 || spaceAfter ps > 0
+          adjacent = if name == "body" && isJust (hpsPhysical ps) then "p:where(:not([class]))" else sel
        in ["p.ps-" <> name <> " { font-family: " <> fontStack role <> "; }" | name /= "body", Just role <- [hpsFont ps]]
             -- the entries of the table of contents in the font of toc-<l> (docs/adr/0264)
             <> ["nav.toc li." <> name <> " { font-family: " <> fontStack role <> "; }" | "toc-" `T.isPrefixOf` name, Just role <- [hpsFont ps]]
-            <> [sel <> " { margin-block: 0; }" | hpsKeepLines ps]
+            <> [sel <> " { line-height: " <> L.ptText (hppPitch physical) <> "pt; margin-block: 0; }" | Just physical <- [hpsPhysical ps]]
+            <> [sel <> " { margin-block: 0; }" | hpsKeepLines ps, isNothing (hpsPhysical ps)]
             <> [ sel <> " { padding-inline-start: " <> hpsIndent ps <> "; text-indent: " <> hpsFirstLineIndent ps <> "; }"
                | indentRule name ps
                ]
             <> [rule sel (hpsAlign ps) | alignRule name ps]
             <> [sel <> " { padding-inline-end: " <> hpsEndIndent ps <> "; }" | endIndentRule name ps]
-            <> [ prefixed (outside [name | name /= "body"]) (sel <> " + " <> sel) <> " { margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else "0") <> "; }"
-               | hpsSpaceBetween ps > 0 || spaced
+            <> [ prefixed (outside [name | name /= "body"]) (adjacent <> " + " <> adjacent) <> " { margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else "0") <> "; }"
+               | spaceBetween ps > 0 || spaced || isJust (hpsPhysical ps)
                ]
             <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
             <> [rule sel (hpsBreaks ps) | not (null (hpsBreaks ps))]
@@ -1324,8 +1356,7 @@ css cfg book =
     of body above, take no prefix: with one, they would win over the
     spaces before of other styles on other pages (docs/adr/0236) -}
     spaceRules preOf withBefore styles pairs =
-      let em n = tshow n <> "em"
-          at ns = prefixed (preOf ns)
+      let at ns = prefixed (preOf ns)
           -- the rule p of body and the rule after a blank line that goes with it are on every page
           atBefore n = if n == "body" && global then prefixed "" else at [n]
           -- the rules of style.toml, not those of a file
@@ -1340,17 +1371,17 @@ css cfg book =
           pairSel a b
             | a == "body" = own a <> " + " <> own b
             | otherwise = own a <> " + " <> own b <> ":not(.ps-" <> a <> ")"
-       in [atBefore n (beforeSel n) <> " { margin-block-start: " <> em b <> "; }" | withBefore, (n, ps) <- styles, let b = hpsSpaceBefore ps, b > 0]
-            <> [at [n] (afterSel n) <> " { margin-block-start: " <> em a <> "; }" | (n, ps) <- styles, let a = hpsSpaceAfter ps, a > 0]
-            <> [ at [a, b] (pairSel a b) <> " { margin-block-start: " <> em (max x y) <> "; }"
+       in [atBefore n (beforeSel n) <> " { margin-block-start: " <> spaceText ps b <> "; }" | withBefore, (n, ps) <- styles, let b = spaceBefore ps, b > 0]
+            <> [at [n] (afterSel n) <> " { margin-block-start: " <> spaceText ps a <> "; }" | (n, ps) <- styles, let a = spaceAfter ps, a > 0]
+            <> [ at [a, b] (pairSel a b) <> " { margin-block-start: " <> spaceText pb (max x y) <> "; }"
                | ((a, pa), (b, pb)) <- pairs,
                  a /= b,
-                 let x = hpsSpaceAfter pa
-                     y = hpsSpaceBefore pb,
+                 let x = spaceAfter pa
+                     y = spaceBefore pb,
                  x > 0,
                  y > 0
                ]
-            <> [atBefore n ("div.blank-line + " <> beforeSel n) <> " { margin-block-start: 0; }" | (n, ps) <- styles, hpsSpaceBefore ps > 0]
+            <> [atBefore n ("div.blank-line + " <> beforeSel n) <> " { margin-block-start: 0; }" | (n, ps) <- styles, spaceBefore ps > 0]
     {- a selector list under a prefix: each selector of the list starts
     with it -}
     prefixed pre sel = if T.null pre then sel else T.intercalate ", " [pre <> " " <> x | x <- T.splitOn ", " sel]
@@ -1408,9 +1439,12 @@ css cfg book =
                 )
             | (name, cs) <- Map.toAscList (hlCharStyles l)
             ]
-          paraOf name = if name == "body" then "p:not([class])" else "p.ps-" <> name
+          paraOf name
+            | name /= "body" = "p.ps-" <> name
+            | maybe False (isJust . hpsPhysical) (Map.lookup name merged) = "p:where(:not([class]))"
+            | otherwise = "p:not([class])"
           paraSel name = pre <> " " <> paraOf name
-          margin ps = if hpsKeepLines ps then "0" else "1em"
+          margin ps = if hpsKeepLines ps || isJust (hpsPhysical ps) then "0" else "1em"
           -- the alignment of the file's body, the default written as the initial values (docs/adr/0189)
           fileBodyAlign = maybe defaultAlignDecls hpsAlign (Map.lookup "body" merged)
           -- the styles of the page: the file's over those of style.toml
@@ -1419,7 +1453,7 @@ css cfg book =
           alignOf ps
             | hpsAlign ps == defaultAlignDecls && fileBodyAlign == defaultAlignDecls = ["text-align: start", "text-align-last: auto"]
             | otherwise = hpsAlign ps
-          spaced ps = hpsSpaceBefore ps > 0 || hpsSpaceAfter ps > 0
+          spaced ps = spaceBefore ps > 0 || spaceAfter ps > 0
           locals = [(name, ps) | (name, ps) <- Map.toAscList (hlParaStyles l), name /= "code"]
           paraStyleRules =
             concat
@@ -1428,7 +1462,8 @@ css cfg book =
                     ( [ "font-family: " <> stackOr (hpsFont ps),
                         "margin-block: " <> margin ps
                       ]
-                        <> ["margin-block-start: " <> tshow (hpsSpaceBefore ps) <> "em" | hpsSpaceBefore ps > 0]
+                        <> ["line-height: " <> L.ptText (hppPitch physical) <> "pt" | Just physical <- [hpsPhysical ps]]
+                        <> ["margin-block-start: " <> spaceText ps (spaceBefore ps) <> "" | spaceBefore ps > 0]
                         <> [ "padding-inline-start: " <> hpsIndent ps,
                              "text-indent: " <> hpsFirstLineIndent ps,
                              "padding-inline-end: " <> hpsEndIndent ps
@@ -1436,7 +1471,7 @@ css cfg book =
                         <> alignOf ps
                         <> featureDecls (hpsFeatures ps)
                     ),
-                  rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else if spaced ps then "0" else margin ps)]
+                  rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else if spaced ps then "0" else margin ps)]
                 ]
               | (name, ps) <- locals
               ]

@@ -11,7 +11,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (PageOut (..))
+import Golem.Layout.Paginate (PageOutAt (..))
 import Golem.Syntax (diagCode, isError)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Golem.Typeset (PdfLayout (..), SetLine (..))
@@ -57,7 +57,7 @@ notesTests =
     testCase "I6: a footnote too long for a page goes on to the next, at a line between or inside its paragraphs" $ do
       let paras = T.concat ["  段" <> T.pack (show i) <> "。\n\n" | i <- [1 .. 6 :: Int]]
       pl <- layout fiveLines ("本文[note k]。\n\n@note k\n" <> paras)
-      let pages = [(poNumber p, n) | p <- plPages pl, (_, _, n) <- poFootnotes p]
+      let pages = [(poNumber p, n) | p <- gridPages pl, (_, _, n) <- poFootnotes p]
       assertBool (show pages) (length pages >= 2)
       sum (map snd pages) @?= 6,
     testCase "I5: the notes at the end of a chapter: the mark on the first paragraph, the others after it" $ do
