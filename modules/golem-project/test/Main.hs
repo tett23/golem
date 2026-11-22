@@ -903,7 +903,7 @@ tests =
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
-      testCase "ADR 0319 I1 I2: unitless zero is a typed zero" $ do
+      testCase "root ADR 0345 I1, I2: unitless zero is a typed zero" $ do
         map parseDim ["0", "-0", "0pt"] @?= replicate 3 (Just (Abs 0))
         map parseDim ["", "1", "0.0", "+0", "00"] @?= replicate 5 Nothing
         map parseAki ["0", "-0", "0pt"] @?= [Just 0, Just 0, Nothing]
@@ -911,7 +911,7 @@ tests =
           Left ds -> assertFailure (show ds)
           Right _ -> pure ()
         codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = \"0\"\n") @?= [],
-      testCase "ADR 0319 I1: zero reaches style length fields" $ do
+      testCase "root ADR 0345 I1: zero reaches style length fields" $ do
         mapM_
           (\src -> codes (parseStyle (FileId 0) src) @?= [])
           [ "[paragraph-styles.quote]\nindent = 0\nfirst-line-indent = \"-0\"\n",

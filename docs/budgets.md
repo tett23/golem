@@ -37,7 +37,7 @@
 
 | 名前 | 上限 | 強制するもの | ADR |
 | --- | --- | --- | --- |
-| 毎晩の列挙の和 | すべての範囲の段の和が 60 分。ジョブの上限は 90 分 | `.github/workflows/enum.yml` の `timeout-minutes`（90 分の側だけ） | [ADR 0208](adr/0208-widen-lightweight-formal-methods.md) 4、[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) 2、[ADR 0304](adr/0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md) |
+| 毎晩の列挙の和 | 時間を量る段とすべての範囲の段の和が 60 分。ジョブの上限は 90 分 | 60 分は `.github/workflows/enum.yml` の最後の段の `scripts/ci/enum-budget.sh judge`（実行ごとの和、[root ADR 0415](adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md) 3）、90 分は `timeout-minutes` | [ADR 0208](adr/0208-widen-lightweight-formal-methods.md) 4、[ADR 0281](adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md) 2、[ADR 0304](adr/0304-check-the-keep-options-up-to-4-elements-and-draw-5-every-night.md) |
 | テストスイートごとの時間 | `max(10, ceil(2 × m))` 秒。m は main の直近 20 回の中央値。テストを足して伸びたスイートは、プルリクエストの CI の秒 t から `max(10, ceil(2 × t))` 秒 | `scripts/ci/suite-timeout.sh` と、スイートごとの値の表 `scripts/ci/suite-limits.tsv` | [ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)、[ADR 0301](adr/0301-make-the-suite-limits-follow-a-suite-that-grew-by-added-tests.md) 1 |
 | テストスイートの止まりの検出 | 600 秒 | `scripts/ci/suite-timeout.sh`（`SUITE_TIMEOUT` の既定） | [ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md) |
 | golem-pdf と golem-svg のテストの時間（ネイティブ） | CPU 60 秒、実時間 300 秒。時間の上限を付けるテストは、単独の CPU 時間で 10 秒以内 | `hangLimits` | [ADR 0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md) |
@@ -47,6 +47,3 @@
 | Alloy のモデルの CI | `models.yml` は 30 分。毎晩のジョブは 1 コマンド 5.5 時間、ジョブ 345 分 | `check.sh` の `TIMEOUT` | [ADR 0242](adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md) |
 | CI の warning | 許可の一覧に無い warning が 0 行 | `scripts/ci/log-warnings.sh` と `scripts/ci/warnings-allowed.tsv` | [ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md) |
 | 取得の `curl` の時間 | 1 回 120 秒。3 回まで試す | `FETCH_MAX_TIME` | [ADR 0243](adr/0243-retry-every-download-and-cache-the-archives-checked-by-sha-256.md) |
-
-毎晩の列挙の 60 分は、ジョブが自分では落ちない。
-ジョブが落ちるのは 90 分の上限を超えたときだけで、60 分は README の毎晩の時間の表で確かめる。

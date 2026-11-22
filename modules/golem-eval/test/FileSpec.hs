@@ -570,7 +570,7 @@ tests =
         msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G02087", "rotate は true か false です: yes")]
         msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G02087", "回して置く図版は回り込ませられません")],
       -- docs/adr/0190
-      testCase "G02133: a width that is neither a length nor a percentage of the measure, or 0, at the width, for every kind of figure" $
+      testCase "root ADR 0345 I2: G02133: a width that is neither a length nor a percentage of the measure, or 0, at the width, for every kind of figure" $
         mapM_
           ( \(extra, w) -> do
               let src = "@figure images/a.png alt=x" <> extra <> " width=" <> w <> "\n"
