@@ -46,7 +46,7 @@ tests :: TestTree
 tests =
   testGroup
     "root ADR 0400"
-    [ testCase "A1/A2: physical right folios and multiline heads keep their anchors on three pages" $
+    [ testCase "root ADR 0400 A1, A2: physical right folios and multiline heads keep their anchors on three pages" $
         forM_ ["horizontal", "vertical"] $ \mode -> do
           let style = replaceIn "writing-mode = \"horizontal\"" ("writing-mode = \"" <> mode <> "\"") (if mode == "vertical" then replaceIn "lines = 30" "lines = 20" singleStyle else singleStyle) <> "\n[masters.body]\nrunning-head = { position = \"top-left\", content = [\"Heading\", \"Second\"] }\nfolio = { position = \"bottom-right\", format = \"{n}\" }\n"
           result <- withMiniInput fakeProvider miniManifest (withBodyFont style) "甲。\n@page-break\n乙。\n@page-break\n丙。\n" fakeFontFiles $ \inp _ _ -> renderPdfView "test" fakeProvider inp
@@ -61,7 +61,7 @@ tests =
               assertBool (show heads) (any ((== 2) . length) heads)
               length (nub [hs | hs <- heads, length hs == 2]) @?= 1
             other -> assertFailure (either show (either show (const "unexpected PDF result")) other),
-      testCase "I2: index columns stay inside the same asymmetric type area across page parities" $ do
+      testCase "root ADR 0400 I2: index columns stay inside the same asymmetric type area across page parities" $ do
         let wide = replaceIn "characters = 12" "characters = 30" singleStyle <> "\n[index]\ncolumns = 2\ncolumn-gap = \"10pt\"\n"
             source = T.unlines ["[index reading=あ: 項目" <> T.pack (show n) <> "]本文。" | n <- [1 .. 120 :: Int]] <> "@index\n"
         result <- withMiniInput fakeProvider miniManifest (withBodyFont wide) source fakeFontFiles $ \inp geom fonts -> do
@@ -78,7 +78,7 @@ tests =
                 let r = V.lvRect line
                 assertBool (show r) (rectX r >= rectX area && rectX r + rectW r <= rectX area + rectW area)
           other -> assertFailure (either show (either show (const "unexpected index output")) other),
-      testCase "A6: the fixed excerpt reproduces a 9 to 11 page PDF without blanks" $ do
+      testCase "root ADR 0400 A6: the fixed excerpt reproduces a 9 to 11 page PDF without blanks" $ do
         original <- TIO.readFile "test/fixtures/kanikosen/kanikosen.gm"
         source <- TIO.readFile "test/fixtures/single-page/kanikosen.gm"
         source @?= T.unlines (take 164 (T.lines original))
@@ -101,7 +101,7 @@ tests =
               length furniture @?= 1
               assertBool (show furniture) (all centered furniture)
           other -> assertFailure (either show (either show (const "unexpected PDF result")) other),
-      testCase "A3: labels and page references restart without a parity blank" $ do
+      testCase "root ADR 0400 A3: labels and page references restart without a parity blank" $ do
         let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", { file = \"b.gm\", page-numbering = { start = 1 } }]" miniManifest
         result <- withMiniInput fakeProvider manifest (withBodyFont singleStyle) "甲。\n" (("b.gm", TE.encodeUtf8 "@label here\n参照[ref-page here]。\n") : fakeFontFiles) $ \inp geom fonts -> do
           pl <- layoutPdf inp geom fonts
@@ -112,17 +112,17 @@ tests =
             assertBool (show (lineTexts pl)) ("参照1。" `elem` lineTexts pl)
             assertBool "no blank pages" (not (any poBlank (plPages pl)))
           other -> assertFailure (either show (either show (const "unexpected layout")) other),
-      testCase "I5: section start parity adds no blank page after body contents" $ do
+      testCase "root ADR 0400 I5: section start parity adds no blank page after body contents" $ do
         one <- sectionBook 1 "前の章。\n" "次の章。\n"
         two <- sectionBook 2 "前の章。\n" "次の章。\n"
         forM_ [one, two] $ \r -> expectLayout r $ \pl -> do
           sectionPages pl @?= [(1, 2)]
           assertBool "no blank pages" (not (any poBlank (plPages pl))),
-      testCase "I5: section start parity is irrelevant on an empty page" $ do
+      testCase "root ADR 0400 I5: section start parity is irrelevant on an empty page" $ do
         one <- sectionBook 1 "" "次の章。\n"
         two <- sectionBook 2 "" "次の章。\n"
         forM_ [one, two] $ \r -> expectLayout r $ \pl -> sectionPages pl @?= [(1, 1)],
-      testCase "I5/I6: continued notes and deferred figures finish before a later heading regardless of label parity" $ do
+      testCase "root ADR 0400 I5, I6: continued notes and deferred figures finish before a later heading regardless of label parity" $ do
         image <- tinyImage
         let figure = T.replicate 29 "本文。\n" <> "@nonumber\n@figure images/tiny.jpg width=30pt alt=図\n  図の説明。\n"
             note = "本文[note: " <> T.replicate 1000 "注" <> "]。\n"
@@ -135,19 +135,19 @@ tests =
               map poBlank (plPages a) @?= map poBlank (plPages b)
               maximum (map poNumber (plPages a)) @?= maximum (map poNumber (plPages b))
             other -> assertFailure (either show (const "layout one succeeded") (fst other) <> "; " <> either show (const "layout two succeeded") (snd other)),
-      testCase "I6: subsequent explicit recto and verso refer to physical page parity" $
+      testCase "root ADR 0400 I6: subsequent explicit recto and verso refer to physical page parity" $
         forM_ [("recto", 3), ("verso", 2)] $ \(kind, page) -> do
           result <- layoutMini singleStyle ("甲。\n@page-break " <> kind <> "\n乙。\n") []
           expectLayout result $ \pl -> maximum (map poNumber (plPages pl)) @?= page,
-      testCase "I6: a labelled section does not change the parity of later breaks" $ do
+      testCase "root ADR 0400 I6: a labelled section does not change the parity of later breaks" $ do
         result <- sectionBook 2 "" "甲。\n@page-break recto\n乙。\n"
         expectLayout result $ \pl -> maximum (map poNumber (plPages pl)) @?= 3,
-      testCase "I4: an unused manuscript style definition cannot introduce a spine alignment" $ do
+      testCase "root ADR 0400 I4: an unused manuscript style definition cannot introduce a spine alignment" $ do
         result <- layoutMini singleStyle "@style-def paragraph unused align=towards-spine\n本文。\n" []
         case result of
           Left ds -> codesOf ds @?= ["G03006"]
           Right _ -> assertFailure "accepted a spine alignment in an unused definition",
-      testCase "I4: local inheritance reports the defining forbidden alignment once" $ do
+      testCase "root ADR 0400 I4: local inheritance reports the defining forbidden alignment once" $ do
         let prefix = "@style-def paragraph valid align=left\n"
             source = prefix <> "@style-def paragraph parent align=towards-spine\n@style-def paragraph child based-on=parent\n@style-def paragraph grandchild based-on=child\n本文。\n"
         result <- layoutMini singleStyle source []
@@ -156,7 +156,7 @@ tests =
             codesOf ds @?= ["G03006"]
             map (spanStart . diagSpan) ds @?= [BS.length (TE.encodeUtf8 prefix)]
           Right _ -> assertFailure "accepted a locally inherited spine alignment",
-      testCase "I7: all crop mark styles and ordinary folio choices leave hidden folios absent" $
+      testCase "root ADR 0400 I7: all crop mark styles and ordinary folio choices leave hidden folios absent" $
         forM_ [Nothing, Just P.Western, Just P.Japanese] $ \marks -> forM_ [False, True] $ \folio -> do
           let page = replaceIn "layout = \"single\"" "layout = \"single\"\nbleed = \"3mm\"" singleStyle
               style = page <> if folio then "\n[masters.body]\nfolio = { position = \"bottom-right\", format = \"{n}\" }\n" else ""
@@ -164,7 +164,7 @@ tests =
           case result of
             Right (Right (_, _, view, _)) -> assertBool "hidden folios were drawn" (all (all ((/= SourceHiddenFolio) . V.gvSizeSource) . V.pvGlyphs) (V.vwPages view))
             other -> assertFailure (either show (either show (const "unexpected PDF result")) other),
-      testCase "I8: rendered single-page views report the physical left edge on both parities" $ do
+      testCase "root ADR 0400 I8: rendered single-page views report the physical left edge on both parities" $ do
         result <- withMiniInput fakeProvider miniManifest (withBodyFont singleStyle) "甲。\n@page-break\n乙。\n" fakeFontFiles $ \inp _ _ -> renderPdfView "test" fakeProvider inp
         case result of
           Right (Right (_, _, view, _)) -> do

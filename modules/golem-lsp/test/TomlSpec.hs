@@ -36,11 +36,17 @@ contextOf t = let (src, off) = cursor t in contextAt src off
 
 -- | The candidates of a row are exactly these.
 exactly :: FilePath -> Text -> [Text] -> TestTree
-exactly path t want = testCase (show t) (labelsIn path t @?= want)
+exactly path t = exactlyNamed (show t) path t
+
+exactlyNamed :: String -> FilePath -> Text -> [Text] -> TestTree
+exactlyNamed name path t want = testCase name (labelsIn path t @?= want)
 
 -- | The candidates of a row include some and exclude others.
 including :: FilePath -> Text -> [Text] -> [Text] -> TestTree
-including path t yes no = testCase (show t) $ do
+including path t = includingNamed (show t) path t
+
+includingNamed :: String -> FilePath -> Text -> [Text] -> [Text] -> TestTree
+includingNamed name path t yes no = testCase name $ do
   let got = labelsIn path t
   mapM_ (\x -> assertBool ("missing " <> T.unpack x <> " in " <> show got) (x `elem` got)) yes
   mapM_ (\x -> assertBool ("unexpected " <> T.unpack x <> " in " <> show got) (x `notElem` got)) no
@@ -77,10 +83,10 @@ tomlTests =
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           testGroup
             "root ADR 0400 A4"
-            [ exactly "style.toml" "[page]\nlayout = ▮" ["\"single\"", "\"facing\""],
-              including "style.toml" "[page.grid.position]\n▮" ["top", "left", "right", "gutter"] [],
-              exactly "style.toml" "[sidenotes]\nside = ▮" ["\"outside\"", "\"left\"", "\"right\""],
-              including "style.toml" "[masters.default.folio]\nposition = ▮" ["\"top-left\"", "\"top-right\"", "\"bottom-left\"", "\"bottom-right\"", "\"top-center\"", "\"bottom-center\""] []
+            [ exactlyNamed "root ADR 0400 A4: complete the layout modes" "style.toml" "[page]\nlayout = ▮" ["\"single\"", "\"facing\""],
+              includingNamed "root ADR 0400 A4: complete physical reference edges" "style.toml" "[page.grid.position]\n▮" ["top", "left", "right", "gutter"] [],
+              exactlyNamed "root ADR 0400 A4: complete sidenote sides" "style.toml" "[sidenotes]\nside = ▮" ["\"outside\"", "\"left\"", "\"right\""],
+              includingNamed "root ADR 0400 A4: complete physical and central master positions" "style.toml" "[masters.default.folio]\nposition = ▮" ["\"top-left\"", "\"top-right\"", "\"bottom-left\"", "\"bottom-right\"", "\"top-center\"", "\"bottom-center\""] []
             ],
           exactly "style.toml" "[page]\nbinding = \"▮" ["right", "left"],
           exactly "style.toml" "[character-styles.em]\nsynthetic-bold = ▮" ["true", "false"],

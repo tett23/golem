@@ -1022,7 +1022,7 @@ tests =
       boxStyleTests,
       captionSidenoteTests,
       alignSpaceTests,
-      testCase "side of [sidenotes] defaults to outside and also accepts physical sides (root ADR 0400)" $ do
+      testCase "root ADR 0400 I4: side of [sidenotes] defaults to outside and also accepts physical sides" $ do
         let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
             sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
         sidenotesOf (sn <> "side = \"outside\"\n") @?= sidenotesOf sn
