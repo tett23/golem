@@ -14,6 +14,7 @@ import Control.Monad (unless)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Internal qualified as BSI
+import Data.List (nub, sortOn)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -58,8 +59,17 @@ decodePdfDct spec bytes = do
       adobe = case reverse adobeMarkers of
         (a, _) : _ -> Just (fromIntegral (BS.index bytes (a + 15)))
         [] -> Nothing
-      clean = BS.concat (strip 2 adobeMarkers)
+      frameIds = [(BS.index bytes (start + 10 + n * 3), fromIntegral (n + 1)) | n <- [0 .. components - 1]]
+      canonicalEdits =
+        if components /= 4
+          then []
+          else
+            [(start + 10 + n * 3, start + 11 + n * 3, BS.singleton (fromIntegral (n + 1))) | n <- [0 .. 3]]
+              <> [(a + 5 + n * 2, a + 6 + n * 2, BS.singleton (fromMaybe old (lookup old frameIds))) | (kind, a, _) <- markers, kind == 218, n <- [0 .. fromIntegral (BS.index bytes (a + 4)) - 1], let old = BS.index bytes (a + 5 + n * 2)]
+      clean = BS.concat (strip 2 (sortOn (\(a, _, _) -> a) ([(a, b, BS.empty) | (a, b) <- adobeMarkers] <> canonicalEdits)))
+  unless (length (nub [BS.index bytes (a + 15) | (a, _) <- adobeMarkers]) <= 1) (Left "PDF の JPEG に矛盾する Adobe ColorTransform があります")
   unless (width == dctWidth spec && height == dctHeight spec && components == dctComponents spec) (Left "PDF と JPEG の寸法または成分数が一致しません")
+  unless (components == 1 || maybe True (\a -> a `elem` (if components == 3 then [0, 1] else [0, 2])) adobe) (Left "PDF の Adobe JPEG ColorTransform と成分数が一致しません")
   let transform = fromMaybe (fromMaybe (if components == 3 then 1 else 0) (dctColorTransform spec)) adobe
       pixels = toInteger width * toInteger height
       maxH = maximum (map fst sampling)
@@ -68,15 +78,16 @@ decodePdfDct spec bytes = do
       coefficients = mcus * sum [h * v | (h, v) <- sampling] * 64 * 2
       cost = coefficients + pixels * toInteger components * 3 + toInteger (BS.length bytes) * 32 + 65536
   unless (cost <= toInteger (dctBudget spec)) (Left "PDF の JPEG 復号予算を超えます")
-  unless (components == 1 || components == 3) (Left "PDF の4成分 JPEG の復号はまだ扱えません")
-  unless (components == 1 || transform `elem` [0, 1]) (Left "PDF の JPEG ColorTransform を扱えません")
-  let marker = BS.pack [255, 238, 0, 14, 65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, if components == 1 then 0 else fromIntegral transform]
+  unless (components `elem` [1, 3, 4]) (Left "PDF の JPEG の成分数を扱えません")
+  unless (components == 1 || (components == 3 && transform `elem` [0, 1]) || (components == 4 && transform `elem` [0, 1, 2])) (Left "PDF の JPEG ColorTransform を扱えません")
+  let marker = BS.pack [255, 238, 0, 14, 65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, if components == 3 then fromIntegral transform else 0]
       controlled = BS.take 2 bytes <> marker <> clean
   decoded <- either (Left . T.pack) Right (Jpeg.decodeJpeg controlled)
   image <- case decoded of
     J.ImageY8 p | components == 1 -> pure (unpack P.CsGray p)
     J.ImageRGB8 p | components == 3 && transform == 0 -> pure (unpack P.CsRgb p)
     J.ImageYCbCr8 p | components == 3 && transform == 1 -> pure (unpack P.CsRgb (J.convertImage p :: J.Image J.PixelRGB8))
+    J.ImageCMYK8 p | components == 4 -> pure (unpack P.CsCmyk (if transform == 0 then p else J.pixelMap ycck p))
     _ -> Left "PDF の JPEG 復号結果の画素形式が一致しません"
   unless (P.imgWidth image == width && P.imgHeight image == height) (Left "PDF の JPEG 復号結果の寸法が一致しません")
   pure (DctSamples image (fromInteger cost))
@@ -106,7 +117,11 @@ decodePdfDct spec bytes = do
       where
         kind = BS.index bytes (i + 1)
     strip start [] = [BS.drop start bytes]
-    strip start ((a, b) : rest) = BS.take (a - start) (BS.drop start bytes) : strip b rest
+    strip start ((a, b, replacement) : rest) = BS.take (a - start) (BS.drop start bytes) : replacement : strip b rest
+    -- Unlike standalone Adobe normalization, PDF DCT preserves K and returns
+    -- complemented YCbCr-to-RGB channels before the separate Decode array.
+    ycck (J.PixelCMYK8 y cb cr k) = case J.convertPixel (J.PixelYCbCr8 y cb cr) of
+      J.PixelRGB8 r g b -> J.PixelCMYK8 (255 - r) (255 - g) (255 - b) k
 
 unpack :: (J.PixelBaseComponent pixel ~ Word8) => P.ColorSpace -> J.Image pixel -> P.ImageData
 unpack color pixels =
