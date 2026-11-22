@@ -2233,22 +2233,24 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       USection {} -> True
       _ -> False
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
-    notesList style docs = case concatMap documentNotes docs of
-      [] -> []
-      ns@((sp, _, _) : _) ->
-        let title = notesTitle lang
-            -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
-            (titleLook, titleSource) = notesTitleLook lang style geom
-            bodyStyle = stNotesBodyStyle style
-            look = noteBodyLook style geom
-            source = noteBodySource style
-         in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
-              -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
-              : concat
-                [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
-                    : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
-                | (nsp, n, para0 : rest) <- ns
-                ]
+    notesList style0 docs =
+      let style = noteStyleFor PlaceChapterEnd style0
+       in case concatMap documentNotes docs of
+            [] -> []
+            ns@((sp, _, _) : _) ->
+              let title = notesTitle lang
+                  -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
+                  (titleLook, titleSource) = notesTitleLook lang style geom
+                  bodyStyle = stNotesBodyStyle style
+                  look = noteBodyLook style geom
+                  source = noteBodySource style
+               in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
+                    -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
+                    : concat
+                      [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
+                          : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
+                      | (nsp, n, para0 : rest) <- ns
+                      ]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their
@@ -2773,7 +2775,7 @@ tableCellSize fe st t = snd (paraFace st (feGeom fe) (tableStyleName t))
 document's style without one (docs/adr/0366).
 -}
 noteEnv :: FlowEnv -> Style -> ComposeEnv
-noteEnv fe st = (withDocStyle st (lookEnv fe (noteBodyLook st (feGeom fe)))) {ceAkiSet = akiSetOf st (stNotesBodyStyle st), ceSizeSource = noteBodySource st}
+noteEnv fe st0 = let st = noteStyleFor PlaceFoot st0 in (withDocStyle st (lookEnv fe (noteBodyLook st (feGeom fe)))) {ceAkiSet = akiSetOf st (stNotesBodyStyle st), ceSizeSource = noteBodySource st}
 
 {- | The look of the bodies of footnotes and of notes at the end of a
 chapter (docs/adr/0366): the role, the size and the keys of the paragraph
@@ -2813,17 +2815,18 @@ start of the first (golem-driver ADR 0018), the others from the start of
 the line without a mark, no indent and no space between them.
 -}
 footnoteLines :: FlowEnv -> ComposeEnv -> Style -> NoteId -> Int -> [[Inline]] -> [Line]
-footnoteLines fe env st k n ps =
-  concat
-    [ brLines (breakParagraph (adjustedParams st (stNotesBodyStyle st) (feParams fe)) (const (feMeasure fe)) (labelled (fst (composeInlines env' is))))
-    | (j, para) <- zip [0 :: Int ..] ps,
-      let (env', is) =
-            if j == 0
-              then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n, ceLabelLink = Just (LinkTo (DestNoteMark k))}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
-              else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para),
-      -- numbered per page, the mark at the start is one box of the reserved width (docs/adr/0383); set flat, one box too (docs/adr/0381)
-      let labelled = if j == 0 && noteMarkBoxed st (ceVertical env) n then markLabelBox env' ChannelNote n else id
-    ]
+footnoteLines fe env st0 k n ps =
+  let st = noteStyleFor PlaceFoot st0
+   in concat
+        [ brLines (breakParagraph (adjustedParams st (stNotesBodyStyle st) (feParams fe)) (const (feMeasure fe)) (labelled (fst (composeInlines env' is))))
+        | (j, para) <- zip [0 :: Int ..] ps,
+          let (env', is) =
+                if j == 0
+                  then (env {ceSite = noteSite k, ceLabelInlines = noteMarkCount st (ceVertical env) (noteIdSpan k) n, ceLabelLink = Just (LinkTo (DestNoteMark k))}, withNoteMark st (ceVertical env) (noteIdSpan k) n para)
+                  else (env {ceSite = noteParagraphSite k j, ceLabelInlines = 0}, para),
+          -- numbered per page, the mark at the start is one box of the reserved width (docs/adr/0383); set flat, one box too (docs/adr/0381)
+          let labelled = if j == 0 && noteMarkBoxed st (ceVertical env) n then markLabelBox env' ChannelNote n else id
+        ]
 
 -- | The sidenotes of a unit: the item index of the marker after the list marker, the span and the lines.
 unitSidenotes :: FlowEnv -> Unit -> Int -> [Golem.Layout.Japanese.Anchor] -> [(Int, SrcSpan, [PartLine])]

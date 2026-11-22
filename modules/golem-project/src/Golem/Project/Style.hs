@@ -85,6 +85,7 @@ module Golem.Project.Style
     HeadingStyle (..),
     HeadingBlockAlign (..),
     NotesPlacement (..),
+    noteStyleFor,
     Composition (..),
     RubyStyleDef (..),
     kentenShapeNames,
@@ -1707,6 +1708,9 @@ data Style = Style
     stNotesBodyStyle :: !(Maybe Text),
     -- | [notes] heading-style: the paragraph style of the title of the list of notes at the end of a chapter in the PDF; Nothing is the heading of level 2 (docs/adr/0366)
     stNotesHeadingStyle :: !(Maybe Text),
+    stFootnoteBodyStyle :: !(Maybe Text),
+    stChapterEndBodyStyle :: !(Maybe Text),
+    stChapterEndHeadingStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     -- | [tables] number: the format of table numbers (docs/adr/0262)
@@ -1759,6 +1763,9 @@ defaultStyle =
       stNotesBodyMarkStyle = Nothing,
       stNotesBodyStyle = Nothing,
       stNotesHeadingStyle = Nothing,
+      stFootnoteBodyStyle = Nothing,
+      stChapterEndBodyStyle = Nothing,
+      stChapterEndHeadingStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stTableNumber = "表{chapter}-{n}",
@@ -2421,7 +2428,20 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text) NoteStyle NoteStyle
+
+data NoteStyle = NoteStyle (Maybe Text) (Maybe Text)
+
+instance FromValue NoteStyle where
+  fromValue = parseTableFromValue (NoteStyle <$> optKey "body-style" <*> optKey "heading-style")
+
+-- | Resolve placement overrides while preserving common defaults (root ADR 0404).
+noteStyleFor :: NotesPlacement -> Style -> Style
+noteStyleFor placement st =
+  st
+    { stNotesBodyStyle = (case placement of PlaceFoot -> stFootnoteBodyStyle st; PlaceChapterEnd -> stChapterEndBodyStyle st) <|> stNotesBodyStyle st,
+      stNotesHeadingStyle = (case placement of PlaceFoot -> Nothing; PlaceChapterEnd -> stChapterEndHeadingStyle st) <|> stNotesHeadingStyle st
+    }
 
 instance FromValue Notes where
   fromValue =
@@ -2439,6 +2459,8 @@ instance FromValue Notes where
           <*> optKey "heading-style"
           -- the kanji of the numbers of the marks set flat in vertical text (docs/adr/0381)
           <*> enumKey "mark-shape" markShapeValues
+          <*> (fromMaybe (NoteStyle Nothing Nothing) <$> optKey "footnote")
+          <*> (fromMaybe (NoteStyle Nothing Nothing) <$> optKey "chapter-end")
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -2634,9 +2656,9 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf nmst nbst nbody nhead nshape <-
-      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
-        notes@(Notes _ _ _ size _ markStyle _ _ _ _) <- fromValue v
+    Notes np nn nr nms nmf nmst nbst nbody nhead nshape (NoteStyle fbody _) (NoteStyle ebody ehead) <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing (NoteStyle Nothing Nothing) (NoteStyle Nothing Nothing))) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _ _ _ _ _ _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
@@ -2682,6 +2704,9 @@ instance FromValue Style where
           stNotesBodyMarkStyle = nbst,
           stNotesBodyStyle = nbody,
           stNotesHeadingStyle = nhead,
+          stFootnoteBodyStyle = fbody,
+          stChapterEndBodyStyle = ebody,
+          stChapterEndHeadingStyle = ehead,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
@@ -3313,6 +3338,10 @@ styleReferenceChecks owner s =
                | (k, Just n) <- [("body-style", stNotesBodyStyle s), ("heading-style", stNotesHeadingStyle s)],
                  Map.notMember n ps
                ]
+            <> [ ("", styleKeys ["notes", placement, key], "[notes." <> placement <> "] の " <> key <> " の段落スタイルがありません: " <> n)
+               | (placement, key, Just n) <- [("footnote", "body-style", stFootnoteBodyStyle s), ("chapter-end", "body-style", stChapterEndBodyStyle s), ("chapter-end", "heading-style", stChapterEndHeadingStyle s)],
+                 Map.notMember n ps
+               ]
             <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
             <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
             <> [("", styleKeys ["composition", "ruby", "reading-style"], "[composition.ruby] の reading-style の文字スタイルがありません: " <> n) | Just n <- [rdReadingStyle (compRuby (stComposition s))], Map.notMember n cs]
@@ -3796,6 +3825,8 @@ styleSchema =
           ("body-mark-style", ref CharStyles),
           ("body-style", ref ParaStyles),
           ("heading-style", ref ParaStyles),
+          ("footnote", NTable [("body-style", ref ParaStyles)]),
+          ("chapter-end", NTable [("body-style", ref ParaStyles), ("heading-style", ref ParaStyles)]),
           ("mark-shape", enum markShapeValues)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]

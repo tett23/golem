@@ -1495,7 +1495,22 @@ noteBodyStyleTests :: TestTree
 noteBodyStyleTests =
   testGroup
     "the paragraph styles of notes (docs/adr/0366)"
-    [ testCase "ADR 0366 I1: without the keys, the body and the title take no paragraph style" $
+    [ testCase "root ADR 0404 I1: footnote and chapter-end accept separate paragraph styles" $
+        codes (parseStyle (FileId 0) "[notes.footnote]\nbody-style = \"caption\"\n[notes.chapter-end]\nbody-style = \"sidenote\"\nheading-style = \"caption\"\n") @?= [],
+      testCase "root ADR 0404 I1: placement overrides are independent" $ do
+        let st = defaultStyle {stNotesBodyStyle = Just "body", stNotesHeadingStyle = Just "caption", stFootnoteBodyStyle = Just "sidenote"}
+        stNotesBodyStyle (noteStyleFor PlaceFoot st) @?= Just "sidenote"
+        stNotesBodyStyle (noteStyleFor PlaceChapterEnd st) @?= Just "body"
+        stNotesHeadingStyle (noteStyleFor PlaceChapterEnd st) @?= Just "caption",
+      testCase "root ADR 0404 I2: omitted placement overrides preserve common defaults" $
+        forM_ [Nothing, Just "body", Just "caption"] $ \body ->
+          forM_ [Nothing, Just "caption"] $ \heading ->
+            forM_ [PlaceFoot, PlaceChapterEnd] $ \placement -> do
+              let st = defaultStyle {stNotesBodyStyle = body, stNotesHeadingStyle = heading}
+              (stNotesBodyStyle (noteStyleFor placement st), stNotesHeadingStyle (noteStyleFor placement st)) @?= (body, heading),
+      testCase "root ADR 0404 I1: unknown placement styles are diagnosed at configuration reading" $
+        codes (parseStyle (FileId 0) "[notes.chapter-end]\nbody-style = \"absent\"\n") @?= ["G03013"],
+      testCase "ADR 0366 I1: without the keys, the body and the title take no paragraph style" $
         case parseStyle (FileId 0) "" of
           Left ds -> assertFailure (show ds)
           Right s -> (stNotesBodyStyle s, stNotesHeadingStyle s) @?= (Nothing, Nothing),
