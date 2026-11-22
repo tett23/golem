@@ -259,7 +259,10 @@ inline c = \case
 segments without a reading are written as they are.
 -}
 ruby :: Ctx -> [RubySegment] -> Text
-ruby c = go
+ruby c segs
+  | any (isJust . rsOtherReading) segs =
+      T.concat [inlines c (rsBase seg) <> maybe "" (\t -> "（" <> t <> "）") (rsReading seg) <> maybe "" (\t -> "（" <> t <> "）") (rsOtherReading seg) | seg <- segs]
+ruby c segments = go segments
   where
     go [] = ""
     go segs@(RubySegment _ (Just _) : _) =

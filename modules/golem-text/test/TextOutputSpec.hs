@@ -163,7 +163,10 @@ tests =
        in only (horizontal book) @?= "本文※1。\n※1 補足。\n\n次。\n",
     testGroup
       "ruby is base（reading）"
-      [ testCase "group ruby" $
+      [ testCase "root ADR 0379 I1: both readings remain in text output" $
+          let seg = (RubySegment [Text (at 1) "漢"] (Just "かん")) {rsOtherReading = Just "Kan", rsOptions = defaultRubyOptions {roSide = RubyBoth}}
+           in only (horizontal (bookOf [para 0 [Ruby (at 1) () [seg]]])) @?= "漢（かん）（Kan）\n",
+        testCase "group ruby" $
           only (horizontal (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢字"] (Just "かんじ")]]])) @?= "漢字（かんじ）\n",
         testCase "mono ruby joins the readings of consecutive segments" $
           only (horizontal (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢"] (Just "かん"), RubySegment [Text (at 2) "字"] (Just "じ")]]])) @?= "漢字（かんじ）\n",
