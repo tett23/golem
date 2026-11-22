@@ -2983,6 +2983,28 @@ if [ "$(grep -c 'cabal test' "$RACE_YML")" = 2 ] &&
 fi
 if grep -qF 'one font from many threads' "$HERE/../../modules/golem-font/test/ConcurrencySpec.hs"; then ok; else ng "race.yml: the pattern names the group of ConcurrencySpec"; fi
 if awk -v c="if: steps.needed.outputs.run == 'true'" 'index($0, "name: The race tests") { getline; if (index($0, c)) f = 1 } END { exit !f }' "$RACE_YML"; then ok; else ng "race.yml: the tests run only when race-needed.sh says so"; fi
+# after the race tests, the golem of the commit against rc4 and in a
+# terminal (root ADR 0415, items 4 and 5): the archive of rc4 is checked
+# against SHA256SUMS and against a SHA-256 pinned in race.yml before it is
+# unpacked, every experiments/syntax/*-release.mjs runs, and no ruby fails
+RC=$WORK/race-rc4
+awk '/name: "root ADRs 0341 to 0344 I3, I4: / { on = 1; print; next } on && /^      - / { on = 0 } on' "$RACE_YML" >"$RC"
+sums_at=$(grep -n 'sha256sum -c SHA256SUMS.archive' "$RC" | cut -d: -f1)
+pin_at=$(grep -n 'echo "$RC4_SHA256  $D/$RC4_ARCHIVE" | sha256sum -c -' "$RC" | cut -d: -f1)
+tar_at=$(grep -n 'tar -xzf' "$RC" | cut -d: -f1)
+if grep -qxE '          RC4_SHA256: [0-9a-f]{64}' "$RC" && grep -qx '          RC4_ARCHIVE: golem-v0.1.0-rc4-x86_64-linux.tar.gz' "$RC" &&
+  [ -n "$sums_at" ] && [ -n "$pin_at" ] && [ -n "$tar_at" ] && [ "$sums_at" -lt "$tar_at" ] && [ "$pin_at" -lt "$tar_at" ]; then ok; else
+  ng "race.yml: the archive of rc4 is checked against SHA256SUMS and a pinned SHA-256 before it is unpacked (root ADR 0415)"
+fi
+rel=$(cd "$HERE/../../experiments/syntax" && for f in *-release.mjs; do printf '%s ' "${f%-release.mjs}"; done)
+if grep -qxF "          for t in ${rel% }; do" "$RC" && grep -qF 'node experiments/syntax/$t-release.mjs "$D/golem-v0.1.0-rc4-x86_64-linux/golem" "$GOLEM"' "$RC"; then ok; else
+  ng "race.yml: every experiments/syntax/*-release.mjs compares rc4 with the golem of the commit (root ADR 0415)"
+fi
+if grep -qF -e '- name: "root ADR 0348 I4, I7: ' "$RACE_YML" &&
+  grep -qF 'command -v ruby > /dev/null || { echo "root ADR 0348 I4, I7: no ruby on the runner" >&2; exit 1; }' "$RACE_YML" &&
+  grep -qF 'ruby modules/golem-cli/test/repl/terminal.rb "$GOLEM"' "$RACE_YML"; then ok; else
+  ng "race.yml: terminal.rb runs, and no ruby fails the step (root ADR 0415)"
+fi
 
 # ---------------------------------------------------------------- enum.yml
 # (docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)

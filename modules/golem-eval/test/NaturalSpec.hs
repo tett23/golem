@@ -94,7 +94,7 @@ tests =
             "[= round(1.25, 0 - 1)]\n",
             "```haskell numbers=[= 0 - 1]\nx\n```\n"
           ],
-      testCase "a word and an expression of the same negative value give the same diagnostic" $ do
+      testCase "root ADR 0345 I2: a word and an expression of the same negative value give the same diagnostic" $ do
         msgs "@blank-line -1\n" @?= [("G02103", "@blank-line の引数には 0 以上の整数を書きます（書かれた値は -1）")]
         msgs "@blank-line [= 0 - 1]\n" @?= msgs "@blank-line -1\n",
       testCase "a number that is not an integer is G02104, with its value" $ do
