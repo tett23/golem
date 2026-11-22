@@ -51,6 +51,7 @@ test-suite golem-cli-test
                     CffRandomSpec
                     CommandsSpec
                     FmtTableSpec
+                    KinsokuSpec
                     LocaleSpec
                     RtsSpec
   -- -N: one capability per processor from the start, so that the count

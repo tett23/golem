@@ -2,13 +2,14 @@
 module Main (main) where
 
 import Control.Monad (forM_, unless, when)
+import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (isDigit, isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Either (partitionEithers, rights)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, sortOn, stripPrefix)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isNothing)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Ord (Down (..))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -28,13 +29,14 @@ import Golem.Fmt (FormatResult (..), format, formatTable, preprocess)
 import Golem.Lsp.Server (runGolemLsp)
 import Golem.Parser (parseAst, parseFile)
 import Golem.Parser.CST (pretty)
-import Golem.Parser.Read (readInfo)
+import Golem.Parser.Read (ReadFailure (..), readInfo, readSourceFile)
 import Golem.Plugin (pluginCodeForm)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProjectWith)
 import Golem.Project.Files (diskFiles)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), PluginSource (..), parseManifest)
-import Golem.Project.Paths (resolveInRoot)
+import Golem.Project.Paths (findProjectRoot, resolveInRoot)
+import Golem.Project.Style (Composition (..), Style (..), defaultStyle, loadStyle, styleNotices)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.ShowTree (showTree)
@@ -42,10 +44,10 @@ import Options.Applicative
 import Options.Applicative.Extra (helperWith)
 import Repl qualified
 import Stats (printStats)
-import System.Directory (doesFileExist, getCurrentDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory, makeAbsolute)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath (joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, (</>))
+import System.FilePath (isPathSeparator, joinPath, makeRelative, normalise, splitDirectories, takeDirectory, takeExtension, (</>))
 import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
@@ -67,6 +69,7 @@ data Command
   | EmetRepl
   | Lsp
   | Explain [T.Text]
+  | Kinsoku (Maybe FilePath)
 
 main :: IO ()
 main = do
@@ -229,6 +232,7 @@ commands =
         <> cmd "stats" (Stats <$> statsDimension "chars-per-line" "換算する1行の文字数" <*> statsDimension "lines-per-page" "換算する1ページの行数") "本文の文字数、ワード数、組版行数と換算ページ数を表示する"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
         <> cmd "explain" (Explain <$> many (strArgument (metavar "CODE..."))) "診断のコードの説明を表示する"
+        <> cmd "kinsoku" (Kinsoku <$> optional (strArgument (metavar "PATH"))) "プロジェクトの禁則とぶら下げの設定を JSON で表示する"
     )
   where
     cmd name p desc = command name (info (p <**> helpOption) (progDesc desc))
@@ -281,6 +285,7 @@ run = \case
   Fmt check files -> formatFiles check files
   Lsp -> (\c -> if c == 0 then ExitSuccess else ExitFailure c) <$> runGolemLsp
   Explain code -> explain code
+  Kinsoku path -> kinsoku (fromMaybe "." path)
 
 {- | golem explain (golem-cli ADR 0005, 0009): the sections of the codes in
 the order given, each once (by 'dedupKey', docs/adr/0164), a blank
@@ -428,6 +433,61 @@ inspect path mode =
     finishWith sources ds = do
       putHuman sources (dropInfo ds)
       pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+
+{- | golem kinsoku (root ADR 0417): the kinsoku and the hanging punctuation
+of the nearest project upwards from the path, resolved from its style.toml
+alone, as one line of JSON on stdout. Without a project, the defaults and a
+null project. An error of style.toml writes its diagnostics, at the absolute
+path of style.toml, and nothing on stdout: 1.
+-}
+kinsoku :: FilePath -> IO ExitCode
+kinsoku path =
+  startDirectory path >>= findProjectRoot >>= \case
+    Nothing -> json Nothing (stComposition defaultStyle)
+    Just root -> do
+      let file = root </> "style.toml"
+          fid = FileId 0
+      exists <- doesFileExist file
+      bytes <- if exists then Just <$> BS.readFile file else pure Nothing
+      let sources = Map.singleton fid (maybe (SourceInfo file (mkLineIndex "")) (readInfo file) bytes)
+          -- style.toml passes the reading stage first, as in evaluateProject
+          text = first rfDiagnostics (traverse (readSourceFile fid file) bytes)
+      case text >>= \t -> (t,) <$> loadStyle fid t of
+        Left ds -> putHuman sources ds >> pure (ExitFailure 1)
+        Right (t, resolved) -> do
+          putHuman sources (maybe [] (styleNotices fid) t)
+          json (Just root) (stComposition resolved)
+  where
+    json root c = do
+      TIO.putStr $
+        "{\"schema\":1,\"project\":"
+          <> maybe "null" (jsonString . T.pack) root
+          <> ",\"composition\":{\"kinsoku\":"
+          <> (if compKinsokuStrict c then "\"strict\"" else "\"loose\"")
+          <> ",\"hangingPunctuation\":"
+          <> (if compHanging c then "true" else "false")
+          <> "}}\n"
+      pure ExitSuccess
+
+{- | Where golem kinsoku starts to look for the project (root ADR 0417): the
+path made absolute, with @.@, @..@ and a trailing separator taken away
+lexically, if it is a directory, or else the nearest directory that exists
+above it. A path that is not there yet, such as a file not saved, is in its
+project.
+-}
+startDirectory :: FilePath -> IO FilePath
+startDirectory p = makeAbsolute p >>= climb . lexical
+  where
+    lexical a = joinPath (reverse (foldl step [] (splitDirectories a)))
+    step acc = \case
+      "." -> acc
+      ".." -> case acc of
+        [r] | all isPathSeparator r -> acc
+        _ -> drop 1 acc
+      s -> s : acc
+    climb d = do
+      isDir <- doesDirectoryExist d
+      if isDir || takeDirectory d == d then pure d else climb (takeDirectory d)
 
 {- | The bytes of a file named on the command line; Nothing when it is not
 there or is not a regular file (golem-cli ADR 0007).

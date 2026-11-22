@@ -21,6 +21,7 @@ import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
+import KinsokuSpec (kinsokuTests)
 import LocaleSpec (localeTests)
 import RtsSpec (rtsTests)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
@@ -188,6 +189,7 @@ tests =
       tomlMessageTests,
       noticeTests,
       commandsTests,
+      kinsokuTests,
       cffRandomTests,
       localeTests,
       rtsTests,
