@@ -261,13 +261,15 @@ alphaAt image alpha pixel = (sampleAt (P.alphaSamples alpha) (P.imgWidth image) 
 
 decodeDct :: P.ImageData -> Either Text P.ImageData
 decodeDct image = do
-  checkJpegFrames (P.imgData image)
+  adobeCmyk <- checkJpegFrames (P.imgData image)
   decoded <- either (Left . T.pack) Right (Jpeg.decodeJpeg (P.imgData image))
   unpacked <- case decoded of
     J.ImageY8 pixels -> pure (fromPixels P.CsGray pixels)
     J.ImageRGB8 pixels -> pure (fromPixels P.CsRgb pixels)
     J.ImageYCbCr8 pixels -> pure (fromPixels P.CsRgb (J.convertImage pixels :: J.Image J.PixelRGB8))
-    J.ImageCMYK8 pixels -> pure (fromPixels P.CsCmyk pixels)
+    J.ImageCMYK8 pixels ->
+      let normalized = if adobeCmyk then pixels {J.imageData = V.map (255 -) (J.imageData pixels)} else pixels
+       in pure (fromPixels P.CsCmyk normalized)
     _ -> Left "JPEG の画素の形式を扱えません"
   unless (P.imgWidth unpacked == P.imgWidth image && P.imgHeight unpacked == P.imgHeight image) (Left "JPEG の画素と宣言した寸法が一致しません")
   pure unpacked
@@ -277,27 +279,30 @@ decodeDct image = do
       let (pointer, offset, size) = V.unsafeToForeignPtr (J.imageData pixels)
        in image {P.imgWidth = J.imageWidth pixels, P.imgHeight = J.imageHeight pixels, P.imgBits = 8, P.imgColor = color, P.imgIcc = Nothing, P.imgData = BSI.fromForeignPtr pointer offset size, P.imgDct = False, P.imgInvertedCmyk = False}
 
--- | Check every frame before the external decoder can allocate its coefficient arrays.
-checkJpegFrames :: BS.ByteString -> Either Text ()
+{- | Check every frame before the external decoder can allocate its coefficient arrays.
+The result identifies Adobe transform-0 CMYK samples, which JuicyPixels leaves
+inverted. Transform-2 YCCK is already normalized by that decoder.
+-}
+checkJpegFrames :: BS.ByteString -> Either Text Bool
 checkJpegFrames bytes = do
   unless (BS.take 2 bytes == BS.pack [255, 216]) (Left "JPEG の SOI がありません")
-  go 2 0 Nothing False
+  go 2 0 Nothing False False
   where
     size = BS.length bytes
     byte = BS.index bytes
     word i = fromIntegral (byte i) * 256 + fromIntegral (byte (i + 1)) :: Int
     failJpeg = Left "JPEG のマーカーが途中で終わっています"
-    go i total frame scan
+    go i total frame scan adobe
       | i >= size = failJpeg
-      | byte i /= 255 = if scan then go (i + 1) total frame scan else Left "JPEG のマーカーが不正です"
-      | otherwise = marker (i + 1) total frame scan
-    marker i total frame scan
+      | byte i /= 255 = if scan then go (i + 1) total frame scan adobe else Left "JPEG のマーカーが不正です"
+      | otherwise = marker (i + 1) total frame scan adobe
+    marker i total frame scan adobe
       | i >= size = failJpeg
-      | byte i == 255 = marker (i + 1) total frame scan
-      | byte i == 0 = if scan then go (i + 1) total frame scan else Left "JPEG のエスケープが不正です"
-      | byte i == 217 = unless (maybe False (const scan) frame) (Left "JPEG にフレームか走査がありません")
+      | byte i == 255 = marker (i + 1) total frame scan adobe
+      | byte i == 0 = if scan then go (i + 1) total frame scan adobe else Left "JPEG のエスケープが不正です"
+      | byte i == 217 = unless (maybe False (const scan) frame) (Left "JPEG にフレームか走査がありません") >> pure adobe
       | byte i == 216 = Left "JPEG の SOI が重複しています"
-      | byte i == 1 || (byte i >= 208 && byte i <= 215) = go (i + 1) total frame scan
+      | byte i == 1 || (byte i >= 208 && byte i <= 215) = go (i + 1) total frame scan adobe
       | i + 2 >= size = failJpeg
       | otherwise = do
           let length' = word (i + 1)
@@ -318,7 +323,7 @@ checkJpegFrames bytes = do
                   sampling = [byte (i + 10 + 3 * component) | component <- [0 .. components - 1]]
                   tables = [byte (i + 11 + 3 * component) | component <- [0 .. components - 1]]
               unless (length (nub selectors) == components && all (\v -> v `shiftR` 4 >= 1 && v `shiftR` 4 <= 4 && v .&. 15 >= 1 && v .&. 15 <= 4) sampling && all (<= 3) tables) (Left "JPEG のフレームの成分が不正です")
-              go end total' (Just (selectors, byte i == 194)) False
+              go end total' (Just (selectors, byte i == 194)) False adobe
             else
               if byte i == 218
                 then do
@@ -335,5 +340,7 @@ checkJpegFrames bytes = do
                       al = approximation .&. 15
                   unless (length (nub selectors) == count && all (`elem` frameIds) selectors && all (\v -> v `shiftR` 4 <= 3 && v .&. 15 <= 3) tables) (Left "JPEG の走査がフレームにない成分を参照しています")
                   unless (if progressive then low <= high && high <= 63 && (if low == 0 then high == 0 else count == 1) && ah <= 13 && al <= 13 && (ah == 0 || ah == al + 1) else low == 0 && high == 63 && approximation == 0) (Left "JPEG の走査の範囲が不正です")
-                  go end total frame True
-                else go end total frame scan
+                  go end total frame True adobe
+                else
+                  let adobe' = if byte i == 238 && length' >= 14 && BS.take 5 (BS.drop (i + 3) bytes) == "Adobe" then byte (i + 14) == 0 else adobe
+                   in go end total frame scan adobe'

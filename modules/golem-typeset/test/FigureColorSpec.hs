@@ -61,6 +61,26 @@ figureColorTests =
         result <- either (assertFailure . show) pure (analyzeRaster red original)
         raKind result @?= Grayscale
         fmap (\i -> (P.imgWidth i, P.imgHeight i, P.imgDct i)) (raImage result) @?= Just (16, 8, False),
+      testCase "root ADR 0403 I1: unmarked CMYK JPEG keeps its ordinary sample polarity" $ do
+        let bytes = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\x _ -> if x < 8 then J.PixelCMYK8 0 0 0 0 else J.PixelCMYK8 0 0 0 255) 16 8))
+        original <- either assertFailure pure (P.readImage bytes)
+        assertBool "ordinary samples" (not (P.imgInvertedCmyk original))
+        result <- either (assertFailure . show) pure (analyzeRaster red original)
+        raKind result @?= Grayscale
+        let samples = maybe BS.empty P.imgData (raImage result)
+        BS.take 4 samples @?= BS.pack [0, 0, 0, 0]
+        BS.take 4 (BS.drop (8 * 4) samples) @?= BS.pack [0, 255, 255, 0],
+      testCase "root ADR 0403 I1: Adobe CMYK JPEG preserves white and black tone polarity" $ do
+        let raw = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\x _ -> if x < 8 then J.PixelCMYK8 255 255 255 255 else J.PixelCMYK8 255 255 255 0) 16 8))
+            adobe = BS.pack [0xff, 0xee, 0, 14, 65, 100, 111, 98, 101, 0, 100, 0, 0, 0, 0, 0]
+            bytes = BS.take 2 raw <> adobe <> BS.drop 2 raw
+        original <- either assertFailure pure (P.readImage bytes)
+        assertBool "Adobe samples are inverted" (P.imgInvertedCmyk original)
+        result <- either (assertFailure . show) pure (analyzeRaster red original)
+        raKind result @?= Grayscale
+        let samples = maybe BS.empty P.imgData (raImage result)
+        BS.take 4 samples @?= BS.pack [0, 0, 0, 0]
+        BS.take 4 (BS.drop (8 * 4) samples) @?= BS.pack [0, 255, 255, 0],
       testCase "root ADR 0403 I1: one-component JPEG is decoded and written as PNG for the web" $ do
         let bytes = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 0 :: Word8) 2 1))
         changed <- either (assertFailure . show) pure (recolorRasterBytes red bytes)
