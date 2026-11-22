@@ -414,6 +414,17 @@ const indentedLabels = new Map([
   ['OrphanDef', "Ind(ind) &'=:' (&{ False } '=:')^def_orphan"],
   ['ReservedBlock', "Ind(ind) &'@!' (&{ False } '@!')^reserved"],
 ]);
+// LexicalTotal preserves complete optional groups and the identifier guard;
+// digit/name runs have arbitrary-input maximal-prefix proofs.
+const lexicalRules = new Map([
+  ['Number', "[0-9]+ ('.' [0-9]+)? ('e' [+\\-]? [0-9]+)?"],
+  ['Ident', "[a-z] [a-z0-9\\-]* ('.' [a-z] [a-z0-9\\-]*)? !('.' [a-z])"],
+  ['ES', '(Ws? ExprComment)* Ws?'],
+]);
+const expressionComments = ast?.rules.find(r => r.name === 'ExprComment');
+const expressionCommentsProved = orderedRefNames.has('ExprComment') && expressionComments?.params.length === 0 &&
+  expressionComments.alts.length === 2 && describeItems(expressionComments.alts[0].items) === 'ProofComment' &&
+  describeItems(expressionComments.alts[1].items) === 'Comment';
 // TableDelimiterTotal proves the canonical delimiter for every input and the
 // row's indentation, one-or-more repetition, trailing pipe and whitespace.
 const delimiterProved = spUsesWs && lineLeavesProved && singleUnitRuleMatches(
@@ -427,6 +438,8 @@ const tableDelimiterProved = delimiterProved && indentFullyProved &&
   describeItems(tableDelimiterRule.alts[0].items) === 'Ind(ind) (Pipe Delim)+ Pipe Sp';
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (lexicalRules.has(rule.name) && singleUnitRuleMatches(rule, lexicalRules.get(rule.name)) &&
+        (rule.name !== 'ES' || (lineLeavesProved && expressionCommentsProved))) continue;
     if (delimiterProved && rule.name === 'Delim') continue;
     if (tableDelimiterProved && rule.name === 'TableDelimiter') continue;
     if (lineLeavesProved && rule.params.length === 0 && rule.templateParams.length === 0 &&

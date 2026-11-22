@@ -23,7 +23,9 @@ try {
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.doesNotMatch(strict.stderr, /^unsupported (Delim|TableDelimiter) choice /m,
     'root ADR 0351 I1/I2: delimiter and indented delimiter rows require arbitrary-input proofs');
-  assert.ok(baselineUnsupported <= 38, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (Number|Ident|ES) choice /m,
+    'root ADR 0351 I1/I2: numeric literals, command identifiers and expression trivia require recognition proofs');
+  assert.ok(baselineUnsupported <= 35, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -172,7 +174,16 @@ try {
     ['| a | b |\n|---|---|\n| c | d |\n', 'Table', 4],
     ...['-', ':-', '-:', ':-:', '---', '  :-:  ', '\t-\t'].map(delim =>
       [`| a |\n|${delim}|\n`, 'Table', 1]),
-    ['@foo\n  | a |\n  |:-:|\n', 'BlockGroup', 1]
+    ['@foo\n  | a |\n  |:-:|\n', 'BlockGroup', 1],
+    ...['0', '01', '1.25', '1e2', '1e+2', '1e-2', '1.2e-3'].map(value =>
+      [`@set x = ${value}\n`, 'BlockCommand', 0, `Number@9..${9 + value.length} "${value}"`]),
+    ...['a', 'a0', 'a-b', 'book.tax-included', 'foo.bar0', 'foo.bar-z'].map(name =>
+      [`[${name}]\n`, 'Paragraph', 0, `Ident@1..${1 + name.length} "${name}"`]),
+    ['[a..b]\n', 'Paragraph', 0, 'Word@2..5 "..b"'],
+    ['[a.]\n', 'Paragraph', 0, 'Word@2..3 "."'],
+    ...['[=1+2]\n', '[= 1 + 2 ]\n', '[=\t1\t+\t2\t]\n', '[=%%a%%1+2]\n',
+      ].map(sample => [sample, 'Paragraph', 0]),
+    ['[=%%=a%%1%%b%%+%%=c%%2]\n', 'Paragraph', 0, 'ProofComment@2..8 "%%=a%%"']
   ];
   for (const [sample, node, cells, chosen] of parserCases) {
     const samplePath = join(work, 'sample.gm');
@@ -216,6 +227,60 @@ try {
       { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
     assert.notEqual(parsed.status, 0, 'root ADR 0351 I1/I2: delimiter requires a contiguous nonempty dash run');
     assert.match(parsed.stderr, /^2:\d+: expected /m);
+  }
+
+  const lexicalRejectedCases = [
+    ...['.5', '1.', '1e', '1e+', '1E2'].map(value => `@set x = ${value}\n`),
+    ...['A', '_a', '1a', 'a.b.c'].map(name => `[${name}]\n`),
+    '[=1%%a+2]\n', '[=1%%=a+2]\n',
+  ];
+  for (const sample of lexicalRejectedCases) {
+    const samplePath = join(work, 'bad-lexical.gm');
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid lexical boundary ${JSON.stringify(sample)}`);
+    assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+
+  const lexicalMutations = [
+    ['NumberRequiredFraction', "Number <- [0-9]+ ('.' [0-9]+)?", "Number <- [0-9]+ ('.' [0-9]+)", 'Number'],
+    ['NumberUpperExponent', "('e' [+\\-]? [0-9]+)?", "('E' [+\\-]? [0-9]+)?", 'Number'],
+    ['IdentLeadingDigit', 'Ident <- [a-z]', 'Ident <- [a-z0-9]', 'Ident'],
+    ['IdentNoGuard', " !('.' [a-z]) { () }", ' { () }', 'Ident'],
+    ['ESNonempty', 'ES <- (Ws? ExprComment)* Ws?', 'ES <- (Ws? ExprComment)+ Ws?', 'ES'],
+    ['ESNoProofComment', 'ExprComment <- ProofComment { () } / Comment { () }', 'ExprComment <- Comment { () }', 'ES'],
+  ];
+  for (const [name, before, after, rule] of lexicalMutations) {
+    const changed = original.replace(before, after);
+    assert.notEqual(changed, original, `root ADR 0351 I1/I2: ${name} must alter the canonical production`);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+      `root ADR 0351 I1/I2: ${name} must invalidate its recognition proof`);
+  }
+
+  const nativeLexicalMutations = [
+    ['NumberRequiredFraction', '@set x = 0\n', false, null],
+    ['IdentNoGuard', '[a.b.c]\n', true, 'Word@4..6 ".c"'],
+    ['ESNoProofComment', '[=%%=a%%1+2]\n', true, 'Comment@2..8 "%%=a%%"'],
+  ];
+  for (const [name, sample, accepted, chosen] of nativeLexicalMutations) {
+    const [, before, after] = lexicalMutations.find(([mutationName]) => mutationName === name);
+    const changedPath = join(work, 'Native' + name + '.hpeg');
+    const samplePath = join(work, 'native-lexical-boundary.gm');
+    writeFileSync(changedPath, original.replace(before, after));
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', changedPath, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted,
+      `root ADR 0351 I1/I2: ${name} must change the native boundary: ${parsed.stderr}`);
+    if (chosen) assert.ok(parsed.stdout.includes(chosen),
+      `root ADR 0351 I1/I2: ${name} must expose its changed committed CST path`);
   }
 
   const delimiterMutations = [
@@ -599,6 +664,8 @@ try {
   assert.equal(indentProof.status, 0, indentProof.stdout + indentProof.stderr);
   const delimiterProof = spawnSync(lean, [join(here, 'TableDelimiterTotal.lean')], growthEnv);
   assert.equal(delimiterProof.status, 0, delimiterProof.stdout + delimiterProof.stderr);
+  const lexicalProof = spawnSync(lean, [join(here, 'LexicalTotal.lean')], growthEnv);
+  assert.equal(lexicalProof.status, 0, lexicalProof.stdout + lexicalProof.stderr);
   const markerProof = spawnSync(lean, [join(here, 'IndentedMarkerLine.lean')], growthEnv);
   assert.equal(markerProof.status, 0, markerProof.stdout + markerProof.stderr);
   const growthProof = spawnSync(lean, [growthSource], growthEnv);
@@ -655,7 +722,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 22, negative mutations 60, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples 1, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 23, negative mutations 66, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
