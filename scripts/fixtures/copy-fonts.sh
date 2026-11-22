@@ -19,4 +19,5 @@ for book in koya-hijiri ichiaku-no-suna haru-to-shura taira-no-masakado ushiyama
 done
 
 mkdir -p "$FIX/single-page/fonts"
-cp "$FIX/kanikosen/fonts/NotoSerifJP-Regular.otf" "$FIX/kanikosen/fonts/LICENSE-NotoSerifJP.txt" "$FIX/single-page/fonts/"
+cp "$FIX/kanikosen/fonts/NotoSerifJP-Regular.otf" "$FIX/single-page/fonts/ja.otf"
+cp "$FIX/kanikosen/fonts/LICENSE-NotoSerifJP.txt" "$FIX/single-page/fonts/"

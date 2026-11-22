@@ -85,7 +85,7 @@ tests =
         manifest <- replaceIn "kanikosen.gm" "a.gm" <$> BS.readFile "test/fixtures/single-page/manifest.toml"
         style <- BS.readFile "test/fixtures/single-page/style.toml"
         noto <- notoBytes
-        result <- withMiniInput realProvider manifest style source [("fonts/NotoSerifJP-Regular.otf", noto)] $ \inp geom _ -> do
+        result <- withMiniInput realProvider manifest style source [("fonts/ja.otf", noto)] $ \inp geom _ -> do
           typeAreaFor geom 1 @?= typeAreaFor geom 2
           drawn <- renderPdfView "test" realProvider inp
           pure ((geom,) <$> drawn)

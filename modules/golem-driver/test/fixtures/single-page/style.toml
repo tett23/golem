@@ -15,4 +15,4 @@ running-head = { position = "top-center", content = "title" }
 folio = { position = "bottom-center", format = "{n}" }
 
 [fonts.body]
-ja = "fonts/NotoSerifJP-Regular.otf"
+ja = "fonts/ja.otf"

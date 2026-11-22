@@ -26,7 +26,7 @@ git show f2a0e3b8949593063ed1888535d7ed48e690c782:modules/golem-driver/test/fixt
 
 ```sh
 mkdir -p fonts
-cp ../kanikosen/fonts/NotoSerifJP-Regular.otf fonts/
+cp ../kanikosen/fonts/NotoSerifJP-Regular.otf fonts/ja.otf
 cp ../kanikosen/fonts/LICENSE-NotoSerifJP.txt fonts/
 golem build --target pdf
 ```
