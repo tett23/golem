@@ -496,7 +496,7 @@ topBlocks c = go Nothing Nothing 0 False
     -- blank lines are written before the next block unless a break or the end
     -- comes first; the block before them keeps no margin on their side, so the
     -- default margin of a paragraph is not added to them (root ADR 0398)
-    blankFollows rest = case span (not . displayed) rest of
+    blankFollows rest = case break displayed rest of
       (_, Block _ _ _ (ForcedBreak _) : _) -> False
       (hidden, _ : _) -> sum [toInteger n | Block _ _ _ (BlankLines n) <- hidden] > 0
       _ -> False
