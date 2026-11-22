@@ -11,6 +11,7 @@ import Data.Maybe (isNothing)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
 import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
@@ -169,8 +170,8 @@ externalGraphics :: P.ObjOf P.ObjNum -> Graphics -> (ByteString, [ByteString]) -
 externalGraphics resources current ("gs", args) state = do
   name <- resourceName args
   entries <- dictionary resources state
-  states <- maybe (Left "PDF 図版の ExtGState がありません") (\value -> dictionary value state) (lookup "ExtGState" entries)
-  selected <- maybe (Left "PDF 図版の描画状態が見つかりません") (\value -> dictionary value state) (lookup name states)
+  states <- maybe (Left "PDF 図版の ExtGState がありません") (`dictionary` state) (lookup "ExtGState" entries)
+  selected <- maybe (Left "PDF 図版の描画状態が見つかりません") (`dictionary` state) (lookup name states)
   fill <- alpha "ca" (fillAlpha current) selected
   stroke <- alpha "CA" (strokeAlpha current) selected
   Right current {fillAlpha = fill, strokeAlpha = stroke}
@@ -205,7 +206,7 @@ sourceTable scope resources state = case Map.lookup scope (sourceTables state) o
   Just table -> Right (table, state)
   Nothing -> do
     values <- dictionary resources state
-    objects <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" values)
+    objects <- maybe (Right []) (`dictionary` state) (lookup "XObject" values)
     let table = Map.fromList objects
     Right (table, state {sourceTables = Map.insert scope table (sourceTables state)})
 
@@ -278,13 +279,8 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
       _ -> Left "PDF 図版の画像の色空間に対応していません"
     if bits /= 8 then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
     if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
-    case lookup "Decode" fields of
-      Nothing -> Right ()
-      Just value -> do
-        resolved <- dereference Set.empty value state
-        if resolved == P.OArr (concat (replicate components [P.OInt 0, P.OInt 1]))
-          then Right ()
-          else Left "PDF 図版の画像の Decode に対応していません"
+    ranges <- unitDecode components fields state
+    if ranges == concat (replicate components [False, True]) then Right () else Left "PDF 図版の画像の Decode に対応していません"
     let pixels = width * height
         inputBytes = pixels * toInteger components
         outputBytes = pixels * 4
@@ -293,8 +289,9 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
       else Right ()
     (bytes, decoded) <- decodePdfStream key fields state
     if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
-    reserved <- charge (fromInteger outputBytes) decoded
-    let input = P.ImageData (fromInteger width) (fromInteger height) 8 space Nothing bytes False False Nothing
+    (alpha, masked) <- pdfImageAlpha width height fields decoded
+    reserved <- charge (fromInteger outputBytes) masked
+    let input = P.ImageData (fromInteger width) (fromInteger height) 8 space Nothing bytes False False alpha
     analysis <- rasterAnalyzer reserved input
     case raImage analysis of
       Nothing | raKind analysis `elem` [Unpainted, Multicolor] -> Right ()
@@ -306,7 +303,7 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
           isNothing (P.imgIcc converted),
           not (P.imgDct converted),
           not (P.imgInvertedCmyk converted),
-          isNothing (P.imgAlpha converted),
+          P.imgAlpha converted == P.imgAlpha input,
           toInteger (BS.length (P.imgData converted)) == outputBytes ->
             Right ()
       _ -> Left "PDF 図版の画像の色置換結果が不正です"
@@ -319,9 +316,69 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
         P.OInt n | n > 0 -> Right n
         _ -> Left "PDF 図版の画像の寸法が不正です"
     unsupportedMask ("ImageMask", P.OBool False) = False
-    unsupportedMask ("SMask", P.OName "None") = False
-    unsupportedMask ("SMask", P.ONull) = False
-    unsupportedMask (name, _) = name `elem` ["ImageMask", "Mask", "SMask"]
+    unsupportedMask (name, _) = name `elem` ["ImageMask", "Mask"]
+
+-- Only the default sample range and its reversal are needed here. Reading
+-- their endpoints as zero or one avoids constructing huge decimal rationals.
+unitDecode :: Int -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text [Bool]
+unitDecode components fields state = case lookup "Decode" fields of
+  Nothing -> Right (concat (replicate components [False, True]))
+  Just value -> do
+    resolved <- dereference Set.empty value state
+    case resolved of
+      P.OArr values | length values == 2 * components -> traverse endpoint values
+      _ -> Left invalid
+  where
+    invalid = "PDF 図版の画像の Decode を解釈できません"
+    endpoint value = do
+      resolved <- dereference Set.empty value state
+      case resolved of
+        P.OInt 0 -> Right False
+        P.OInt 1 -> Right True
+        P.OReal number ->
+          let (negative, body) = case T.uncons number of Just ('-', rest) -> (True, rest); Just ('+', rest) -> (False, rest); _ -> (False, number)
+              (whole, tailPart) = T.breakOn "." body
+              fraction = if T.null tailPart then "" else T.drop 1 tailPart
+              normalized = T.dropWhile (== '0') whole
+           in if T.null body || body == "." || not (T.all (== '0') fraction)
+                then Left invalid
+                else if T.null normalized then Right False else if normalized == "1" && not negative then Right True else Left invalid
+        _ -> Left invalid
+
+-- The original mask remains referenced by the converted image. Its decoded
+-- samples are used only to classify visible pixels; no mask object is rewritten.
+pdfImageAlpha :: Integer -> Integer -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Maybe P.Alpha, Resources)
+pdfImageAlpha width height fields state = case lookup "SMask" fields of
+  Nothing -> Right (Nothing, state)
+  Just P.ONull -> Right (Nothing, state)
+  Just (P.OName "None") -> Right (Nothing, state)
+  Just reference -> do
+    (key, maskFields) <- streamReference Set.empty reference
+    dimensions <- traverse (\name -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name maskFields)) ["Width", "Height", "BitsPerComponent", "ColorSpace", "Subtype"]
+    if dimensions /= [P.OInt width, P.OInt height, P.OInt 8, P.OName "DeviceGray", P.OName "Image"] || any (`isJustField` maskFields) ["Mask", "SMask", "Matte"] || maybe False (/= P.OBool False) (lookup "ImageMask" maskFields)
+      then Left invalid
+      else Right ()
+    let pixels = width * height
+    if pixels > toInteger (remainingBytes state) then Left budgetError else Right ()
+    ranges <- unitDecode 1 maskFields state
+    (bytes, decoded) <- decodePdfStream key maskFields state
+    if toInteger (BS.length bytes) /= pixels then Left invalid else Right ()
+    case ranges of
+      [False, True] -> Right (Just (P.Alpha 8 bytes), decoded)
+      [True, False] -> do
+        reserved <- charge (BS.length bytes) decoded
+        Right (Just (P.Alpha 8 (BS.map (255 -) bytes)), reserved)
+      _ -> Left invalid
+  where
+    invalid = "PDF 図版のソフトマスクを保って色を置き換えられません"
+    isJustField name entries = case lookup name entries of Nothing -> False; Just _ -> True
+    streamReference seen (P.ORef key) = do
+      guardForm seen key
+      case Map.lookup key (sourceObjects state) of
+        Just (P.OStream entries _) -> Right (key, entries)
+        Just next@(P.ORef _) -> streamReference (Set.insert key seen) next
+        _ -> Left invalid
+    streamReference _ _ = Left invalid
 
 convertPdfImage :: P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ObjNum, Resources)
 convertPdfImage key fields state = case Map.lookup key (convertedImages state) of

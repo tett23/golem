@@ -52,6 +52,27 @@ pdfColorTests =
           length (P.ipObjects result) @?= 4
           lookup 1 (P.ipObjects result) @?= Just form
         other -> assertFailure (show other),
+    testCase "root ADR 0403 I2: PDF image recoloring preserves a shared grayscale soft mask" $ do
+      let samples = BS.pack [0, 128, 255]
+          original = softMaskPage [] samples
+          analyzer input
+            | P.imgAlpha input == Just (P.Alpha 8 samples) = rgbAnalyzer input
+            | otherwise = Left "unexpected alpha samples"
+      case recolorImportedPage (0, 100, 100, 0) analyzer original of
+        Right (Just result) -> do
+          convertedImagePixels result @?= [cmykPixels]
+          lookup 2 (P.ipObjects result) @?= lookup 2 (P.ipObjects original)
+          let masks = [lookup "SMask" fields | (key, P.OStream fields _) <- P.ipObjects result, key < 0, lookup "Subtype" fields == Just (P.OName "Image")]
+          masks @?= [Just (P.ORef 2)]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I2: inverse Decode on a PDF soft mask is used only for visibility analysis" $ do
+      let original = softMaskPage [("Decode", P.OArr [P.OInt 1, P.OInt 0])] (BS.pack [0, 128, 255])
+          analyzer input
+            | P.imgAlpha input == Just (P.Alpha 8 (BS.pack [255, 127, 0])) = rgbAnalyzer input
+            | otherwise = Left "unexpected inverse alpha"
+      case recolorImportedPage (0, 100, 100, 0) analyzer original of
+        Right (Just result) -> lookup 2 (P.ipObjects result) @?= lookup 2 (P.ipObjects original)
+        other -> assertFailure (show other),
     testCase "root ADR 0403 I3: a multicolor PDF image preserves the complete original page" $
       recolorImportedPage (0, 100, 100, 0) (const (Right (RasterAnalysis Multicolor Nothing))) imagePage @?= Right Nothing,
     testCase "root ADR 0403 I2: a PDF image reserves decode and output space before invoking the raster analyzer" $ do
@@ -214,3 +235,6 @@ rgbAnalyzer input
 
 convertedImagePixels :: P.ImportedPage -> [ByteString]
 convertedImagePixels result = [bytes | (key, P.OStream fields bytes) <- P.ipObjects result, key < 0, lookup "Subtype" fields == Just (P.OName "Image")]
+
+softMaskPage :: [(T.Text, P.ObjOf P.ObjNum)] -> ByteString -> P.ImportedPage
+softMaskPage extra samples = imagePage {P.ipObjects = [(1, P.OStream (("SMask", P.ORef 2) : imageFields 3) rgbPixels), (2, P.OStream ([("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("BitsPerComponent", P.OInt 8), ("ColorSpace", P.OName "DeviceGray"), ("Filter", P.OName "FlateDecode")] <> extra) (flate samples))]}
