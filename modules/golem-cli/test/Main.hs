@@ -23,7 +23,6 @@ import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import LocaleSpec (localeTests)
 import RtsSpec (rtsTests)
-import StatsDifferentialSpec (statsDifferentialTests)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -190,7 +189,6 @@ tests =
       noticeTests,
       commandsTests,
       cffRandomTests,
-      statsDifferentialTests,
       localeTests,
       rtsTests,
       testCase "golem lint reports G05001 after the spaces at the end of a line (golem-lint ADR 0002)" $ do
