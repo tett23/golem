@@ -11,7 +11,6 @@ import CallsSpec (callsTests)
 import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
 import ChapterNotesSpec
-import EndnotesSpec (endnoteTests)
 import CliSpec
 import CodeFontSpec (codeFontTests)
 import ColophonSpec
@@ -22,6 +21,7 @@ import DiagnosticSitesSpec
 import DiagnosticsSpec
 import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
+import EndnotesSpec (endnoteTests)
 import ExceptionsSpec (exceptionsTests)
 import ExpansionSpec (expansionTests)
 import FigureExternalSpec (figureExternalTests)

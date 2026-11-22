@@ -2406,20 +2406,20 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
     notesList ch title style notes =
       case notes of
-            [] -> []
-            ns@((sp, _, _) : _) ->
-              let -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
-                  (titleLook, titleSource) = notesTitleLook lang style geom
-                  bodyStyle = stNotesBodyStyle style
-                  look = noteBodyLook style geom
-                  source = noteBodySource style
-               in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
-                    -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
-                    : concat
-                      [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote ch nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
-                          : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
-                      | (nsp, n, para0 : rest) <- ns
-                      ]
+        [] -> []
+        ns@((sp, _, _) : _) ->
+          let -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
+              (titleLook, titleSource) = notesTitleLook lang style geom
+              bodyStyle = stNotesBodyStyle style
+              look = noteBodyLook style geom
+              source = noteBodySource style
+           in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
+                -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
+                : concat
+                  [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote ch nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
+                      : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
+                  | (nsp, n, para0 : rest) <- ns
+                  ]
     {- a list of blocks inside the lists @ctx@, from the list number @n@,
     with the spaces before and after of paragraphs when @spaced@ (not in a
     definition list): in a list item, paragraphs are not indented by their

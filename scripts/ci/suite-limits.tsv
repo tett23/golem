@@ -6,7 +6,7 @@ aarch64	golem-doc-gen-test	12
 aarch64	golem-doc-test	10
 aarch64	golem-driver-global-test	36
 aarch64	golem-driver-parallel-test	25
-aarch64	golem-driver-test	170
+aarch64	golem-driver-test	314
 aarch64	golem-emet-test	198
 aarch64	golem-epub-test	10
 aarch64	golem-eval-test	10
@@ -41,7 +41,7 @@ x86_64	golem-doc-gen-test	22
 x86_64	golem-doc-test	13
 x86_64	golem-driver-global-test	50
 x86_64	golem-driver-parallel-test	30
-x86_64	golem-driver-test	181
+x86_64	golem-driver-test	420
 x86_64	golem-emet-test	270
 x86_64	golem-epub-test	10
 x86_64	golem-eval-test	10
