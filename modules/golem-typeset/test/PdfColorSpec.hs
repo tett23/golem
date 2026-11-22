@@ -17,7 +17,45 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: PDF DCT gray samples are decoded before recoloring" $ do
+  [ testCase "root ADR 0403 I1: a lossless filter prefix keeps the DCT ColorTransform parameters aligned" $ do
+      let jpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> J.PixelRGB8 100 128 128) 8 8))
+          fields = [("Filter", P.OArr [P.OName "FlateDecode", P.OName "DCTDecode"]), ("DecodeParms", P.OArr [P.ONull, P.ODict [("ColorTransform", P.OInt 0)]]), ("Height", P.OInt 8)] <> filter ((/= "Height") . fst) (imageFields 8)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (flate jpeg))]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> convertedImagePixels result @?= [BS.concat (replicate 64 (BS.pack [0, 255, 255, 0]))]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: PDF Adobe CMYK and YCCK Decode inversion each happens once" $ do
+      mapM_
+        ( \name -> do
+            jpeg <- BS.readFile ("test/fixtures/" <> name)
+            let fields = [("Filter", P.OName "DCTDecode"), ("ColorSpace", P.OName "DeviceCMYK"), ("Height", P.OInt 8), ("Decode", P.OArr (concat (replicate 4 [P.OInt 1, P.OInt 0])))] <> filter (\(key, _) -> key `notElem` ["ColorSpace", "Height"]) (imageFields 24)
+                original = imagePage {P.ipObjects = [(1, P.OStream fields jpeg)]}
+            case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+              Right (Just result) -> case convertedImagePixels result of
+                [pixels] -> [BS.take 4 (BS.drop (x * 4) pixels) | x <- [0, 8, 16]] @?= map BS.pack [[0, 255, 255, 0], [0, 128, 128, 0], [0, 0, 0, 0]]
+                other -> assertFailure (show other)
+              other -> assertFailure (show other)
+        )
+        ["pdf-adobe-cmyk.jpg", "pdf-adobe-ycck.jpg"],
+    testCase "root ADR 0403 I2: repeated PDF DCT paints share their decoded allocation" $ do
+      let jpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 128 :: Word8) 8 8))
+          fields = [("Filter", P.OName "DCTDecode"), ("ColorSpace", P.OName "DeviceGray"), ("Height", P.OInt 8)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "Height"]) (imageFields 8)
+          original = imagePage {P.ipContent = "/Im Do /Im Do /Im Do", P.ipDecodedBytes = P.maxDecodedBytes - 200000, P.ipObjects = [(1, P.OStream fields jpeg)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> length (convertedImagePixels result) @?= 1
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a PDF DCT soft mask retains its original stream" $ do
+      let jpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 128 :: Word8) 8 8))
+          fields = ("SMask", P.ORef 2) : ("Height", P.OInt 8) : filter ((/= "Height") . fst) (imageFields 8)
+          mask = P.OStream [("Filter", P.OName "DCTDecode"), ("Subtype", P.OName "Image"), ("ColorSpace", P.OName "DeviceGray"), ("Width", P.OInt 8), ("Height", P.OInt 8), ("BitsPerComponent", P.OInt 8)] jpeg
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.replicate (8 * 8 * 3) 128)), (2, mask)]}
+          analyze input
+            | P.imgAlpha input == Just (P.Alpha 8 (BS.replicate 64 128)) = analyzeRaster (0, 100, 100, 0) input
+            | otherwise = Left "DCT mask was lost"
+      case recolorImportedPage (0, 100, 100, 0) analyze original of
+        Right (Just result) -> lookup 2 (P.ipObjects result) @?= Just mask
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: PDF DCT gray samples are decoded before recoloring" $ do
       let jpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 128 :: Word8) 8 8))
           fields = [("Filter", P.OName "DCTDecode"), ("ColorSpace", P.OName "DeviceGray"), ("Height", P.OInt 8)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "Height"]) (imageFields 8)
           original = imagePage {P.ipObjects = [(1, P.OStream fields jpeg)]}
