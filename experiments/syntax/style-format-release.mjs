@@ -50,7 +50,7 @@ function build(bin, styleTail, rules = "", flags = [], target = "text") {
 
 const sites = (result) => result.diagnostics.map((d) => [d.code, d.severity, d.span.file, d.span.start]);
 
-test("I3: one old form changes from an rc4 notice to a v1 error at the value", () => {
+test("root ADR 0344 I3: one old form changes from an rc4 notice to a v1 error at the value", () => {
   assert.match(spawnSync(rc4, ["--version"], { encoding: "utf8" }).stdout, /0\.1\.0-rc4\b/);
   for (const [name, tail, notice, error, at] of rows) {
     const before = build(rc4, tail);
@@ -64,7 +64,7 @@ test("I3: one old form changes from an rc4 notice to a v1 error at the value", (
   }
 });
 
-test("I4: only rc4 accepts the retired codes in silence-notices", () => {
+test("root ADR 0344 I4: only rc4 accepts the retired codes in silence-notices", () => {
   for (const [, , notice] of rows) {
     const rules = `\n[diagnostics]\nsilence-notices = ["${notice}"]\n`;
     const before = build(rc4, "", rules);
@@ -75,7 +75,7 @@ test("I4: only rc4 accepts the retired codes in silence-notices", () => {
   }
 });
 
-test("I5: the size conflicts of ADR 0214 are G03006 in rc4 and G03253 in v1", () => {
+test("root ADR 0344 I5: the size conflicts of ADR 0214 are G03006 in rc4 and G03253 in v1", () => {
   const conflicts = [
     ['[character-styles.note-mark]\nsize = "0.6zw"\n', ""],
     ['[character-styles.big]\nsize = "0.6zw"\n[character-styles.note-mark]\nbased-on = "big"\n', ""],
@@ -94,7 +94,7 @@ test("I5: the size conflicts of ADR 0214 are G03006 in rc4 and G03253 in v1", ()
   }
 });
 
-test("I2: every target fails with each error once, also with --no-notices", () => {
+test("root ADR 0344 I2: every target fails with each error once, also with --no-notices", () => {
   const tail = '\n[lists]\nnumbers = ["{{{n}}}", "({a})"]\n' + rows.slice(2).map(([, t]) => t).join("");
   for (const target of allTargets) {
     const result = build(candidate, tail, "", ["--no-notices"], target);
@@ -104,7 +104,7 @@ test("I2: every target fails with each error once, also with --no-notices", () =
   }
 });
 
-test("I1: the new forms build every target with none of the four errors", () => {
+test("root ADR 0344 I1: the new forms build every target with none of the four errors", () => {
   const tail = "\n[lists]\nnumbers = ['\\{{n:lower-alpha}\\}']\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = ['\\{title\\}'] }\n[character-styles.note-mark]\nsize = \"0.5zw\"\n";
   for (const target of allTargets) {
     const result = build(candidate, tail, "", [], target);
