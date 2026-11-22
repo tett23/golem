@@ -311,6 +311,7 @@ PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight
 本文の注の印の大きさは、`[notes]` の `mark-style` が指す文字スタイル（既定は `note-mark`）の `size` で指定する（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
+脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
 
 `@no-page-break 3` で、改ページの際に前の段落の末尾 3 行を次の段落と同じ段に送る。
 前に 1 行しか残らなければ段落全体を送る（[Golem ADR 0376](docs/adr/0376-no-page-break-lines.md)）。

@@ -1,6 +1,6 @@
 # ADR 0366: 注の本文と章末の注の見出しに段落スタイルを指定する
 
-Status: accepted-pending
+Status: superseded [{"part":"配置先別の設定と注の印の適用範囲","by":["docs/adr/0404-separate-footnote-and-chapter-end-styles.md"],"kind":"supplement"}]
 
 ## 文脈
 
