@@ -156,6 +156,7 @@ golem new mybook
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画する |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
+| `golem kinsoku [PATH]` | `PATH`（省くと今のフォルダ）から親へたどって最も近いプロジェクトの、`style.toml` から解決した禁則（`kinsoku`）とぶら下げ（`hangingPunctuation`）を、一行の JSON で標準出力に書く。プロジェクトが無ければ `project` を `null` とし、既定値を書く |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
 命令の引数列と原稿内の式には通常コメント `%%注%%` を書ける（[Golem ADR 0339](./docs/adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
