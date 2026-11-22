@@ -14886,4 +14886,488 @@ example :
     some (4,[],[(4,2,3,[(3,3),(1,2)])]) := by rfl
 
 
+
+/-- Inside the after/skip run that follows a break, a later break lands
+    on the same stopping point: the skipped run continues past it. -/
+theorem I1_caption_discard_inside_same_start (items : List CaptionItemKind) (k : Nat)
+    (inside : k < captionDiscardCount items) :
+    k + 1 + captionDiscardCount (items.drop (k+1)) = captionDiscardCount items := by
+  induction items generalizing k with
+  | nil => exact absurd inside (Nat.not_lt_zero _)
+  | cons head tail ih =>
+    cases head with
+    | box => exact absurd inside (Nat.not_lt_zero _)
+    | glue =>
+      simp only [captionDiscardCount] at inside ⊢
+      cases k with
+      | zero => simp only [List.drop_succ_cons,List.drop_zero]; try omega
+      | succ k =>
+        have := ih k (by omega)
+        simp only [List.drop_succ_cons] at this ⊢
+        omega
+    | penalty value flag =>
+      by_cases forced : value ≤ -10000
+      · simp only [captionDiscardCount,forced,if_true] at inside
+        exact absurd inside (Nat.not_lt_zero _)
+      · simp only [captionDiscardCount,forced,if_false] at inside ⊢
+        cases k with
+        | zero => simp only [List.drop_succ_cons,List.drop_zero]; try omega
+        | succ k =>
+          have := ih k (by omega)
+          simp only [List.drop_succ_cons] at this ⊢
+          omega
+
+/-- Chosen breaks in source order, encoded by the anchor e: zero at the
+    paragraph start, otherwise one past the previous break. Each break is
+    a real non-box item and the last one is the final source item. -/
+def CaptionBreaksFrom (kinds : List CaptionItemKind) : Nat → List Nat → Prop
+  | e, [] => e = kinds.length
+  | e, b :: bs => e ≤ b ∧ b < kinds.length ∧ kinds.get? b ≠ some .box ∧
+      CaptionBreaksFrom kinds (b+1) bs
+
+private theorem afterEncoded_succ (items : List CaptionItemKind) (b : Nat) :
+    captionAfterEncoded items (b+1) = b+1+captionDiscardCount (items.drop (b+1)) := by
+  simp [captionAfterEncoded,captionNextSourceStart]
+
+private theorem map_drop' {α β : Type} (f : α → β) (xs : List α) (n : Nat) :
+    (xs.drop n).map f = (xs.map f).drop n := by
+  induction xs generalizing n with
+  | nil => simp
+  | cons h t ih => cases n <;> simp [ih]
+
+private theorem drop_drop' {α : Type} (xs : List α) (m n : Nat) :
+    (xs.drop m).drop n = xs.drop (n+m) := by
+  induction xs generalizing m with
+  | nil => simp
+  | cons h t ih =>
+    cases m with
+    | zero => rfl
+    | succ m => simpa [Nat.add_succ] using ih m
+
+private theorem drop_get_cons {α : Type} (xs : List α) (b : Nat) (inside : b < xs.length) :
+    xs.drop b = xs.get ⟨b,inside⟩ :: xs.drop (b+1) := by
+  induction xs generalizing b with
+  | nil => exact absurd inside (Nat.not_lt_zero _)
+  | cons h t ih =>
+    cases b with
+    | zero => rfl
+    | succ b => simpa using ih b (by simp at inside; omega)
+
+/-- Any source-ordered sequence of non-box breaks ending at the last item
+    passes the whole-source assembly check, including breaks that fall in
+    the previous break's discarded run and so make an empty display line. -/
+theorem I1_caption_ordered_breaks_assemble {α : Type} (kind : α → CaptionItemKind)
+    (original : List α) (breaks : List Nat) (e : Nat)
+    (valid : CaptionBreaksFrom (original.map kind) e breaks) :
+    ∃ lines, captionAssembleFrom kind original
+      (original.drop (captionAfterEncoded (original.map kind) e))
+      (captionAfterEncoded (original.map kind) e) breaks = some lines := by
+  induction breaks generalizing e with
+  | nil =>
+    have last : e = original.length := by simpa [CaptionBreaksFrom] using valid
+    have ge := captionAfterEncoded_ge (original.map kind) e
+    have empty : original.drop (captionAfterEncoded (original.map kind) e) = [] :=
+      List.drop_eq_nil_of_le (by omega)
+    refine ⟨[],?_⟩
+    simp only [captionAssembleFrom,empty,List.isEmpty,if_true]
+  | cons b bs ih =>
+    obtain ⟨anchored,inside,notBox,rest⟩ := valid
+    have inside' : b < original.length := by simpa using inside
+    have split := drop_get_cons original b inside'
+    have kindNotBox : kind (original.get ⟨b,inside'⟩) ≠ .box := by
+      intro isBox
+      apply notBox
+      simp [List.get?_map, List.get?_eq_get inside', isBox]
+    have notBoxB : (kind (original.get ⟨b,inside'⟩) == .box) = false := by
+      cases eq : kind (original.get ⟨b,inside'⟩) <;> simp_all <;> rfl
+    have nextStart : b+1+captionDiscardCount ((original.drop (b+1)).map kind) =
+        captionAfterEncoded (original.map kind) (b+1) := by
+      rw [afterEncoded_succ, map_drop']
+    obtain ⟨later,laterEq⟩ := ih (b+1) rest
+    let start := captionAfterEncoded (original.map kind) e
+    by_cases ordered : start ≤ b
+    · have dropped : (original.drop start).drop (b-start) = original.drop b := by
+        rw [drop_drop']; congr 1; omega
+      have restDrop : (original.drop (b+1)).drop
+          (captionDiscardCount ((original.drop (b+1)).map kind)) =
+          original.drop (captionAfterEncoded (original.map kind) (b+1)) := by
+        rw [drop_drop', ← nextStart]; congr 1; omega
+      refine ⟨(original.drop start).take (b-start) :: later,?_⟩
+      show captionAssembleFrom kind original (original.drop start) start (b :: bs) = _
+      simp only [captionAssembleFrom,ordered,if_true,dropped,split,notBoxB]
+      simp only [if_false]
+      rw [restDrop,nextStart,laterEq]
+    · -- b lies inside the discarded run that follows the previous break.
+      have positive : e ≠ 0 := by
+        intro zero
+        apply ordered
+        simp [start,captionAfterEncoded,zero]
+      have startEq : start = e + captionDiscardCount ((original.map kind).drop e) := by
+        simp [start,captionAfterEncoded,positive,captionNextSourceStart]
+      have within : b - e < captionDiscardCount ((original.map kind).drop e) := by omega
+      have same := I1_caption_discard_inside_same_start ((original.map kind).drop e) (b-e) within
+      rw [drop_drop'] at same
+      have sameStart : captionAfterEncoded (original.map kind) (b+1) = start := by
+        rw [afterEncoded_succ, startEq]
+        have : b - e + 1 + e = b + 1 := by omega
+        rw [this] at same
+        omega
+      have nextEq : b+1+captionDiscardCount ((original.drop (b+1)).map kind) = start := by
+        rw [nextStart,sameStart]
+      refine ⟨[] :: later,?_⟩
+      show captionAssembleFrom kind original (original.drop start) start (b :: bs) = _
+      simp only [captionAssembleFrom,ordered,if_false,split,notBoxB]
+      simp only [if_false,nextEq,if_true]
+      rw [← sameStart,laterEq]
+
+/-- One past the last break of a reverse history; zero at the paragraph
+    start. This is the encoded node position in the scan. -/
+def captionLastAnchor : List (Nat × Nat) → Nat
+  | [] => 0
+  | (b,_) :: _ => b+1
+
+/-- The history of an active node in the scan: strictly ordered actual
+    candidates, its line count, and a position that is exactly one past
+    its own last break. -/
+def CaptionNodeHistory (candidates : List Nat) (node : CaptionActiveNode) : Prop :=
+  CaptionHistoryOrdered node.position node.history ∧
+  node.lineCount = node.history.length ∧
+  (∀ entry ∈ node.history, entry.1 ∈ candidates) ∧
+  node.position = captionLastAnchor node.history
+
+/-- Scan invariant on histories, beside the rank invariant CaptionScanValid:
+    remaining candidates are actual candidates and no active node lies
+    after a candidate still to be scanned. -/
+def CaptionScanHistory (context : CaptionScanContext) (state : CaptionScanState) : Prop :=
+  (∀ c ∈ state.remaining, c ∈ context.candidates) ∧
+  ∀ node ∈ state.actives, CaptionNodeHistory context.candidates node ∧
+    ∀ c ∈ state.remaining, node.position ≤ c
+
+private theorem candidatesOrdered_lower (lower upper : Nat) (candidates : List Nat)
+    (ordered : CaptionCandidatesOrdered lower upper candidates) :
+    ∀ c ∈ candidates, lower ≤ c := by
+  induction candidates generalizing lower with
+  | nil => simp
+  | cons head tail ih =>
+    intro c member
+    simp only [List.mem_cons] at member
+    rcases member with rfl | later
+    · exact ordered.1
+    · have := ih (head+1) ordered.2.2 c later
+      have := ordered.1
+      omega
+
+private theorem successorsAnchored (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode) :
+    ∀ node ∈ captionActiveSuccessors position flagged evaluate actives,
+      node.position = captionLastAnchor node.history := by
+  induction actives with
+  | nil => simp [captionActiveSuccessors]
+  | cons head tail ih =>
+    simp only [captionActiveSuccessors]
+    split
+    · intro node member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · rfl
+      · exact ih node later
+    · exact ih
+
+private theorem activeStepHistory (position : Nat) (forced flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (candidates : List Nat) (candidate : position ∈ candidates)
+    (old : ∀ node ∈ actives, CaptionNodeHistory candidates node ∧ node.position ≤ position) :
+    ∀ node ∈ captionActiveStep position forced flagged evaluate actives,
+      CaptionNodeHistory candidates node ∧ node.position ≤ position+1 := by
+  have valid := I1_caption_active_step_history position forced flagged evaluate actives candidates
+    candidate (fun node member =>
+      let h := old node member
+      ⟨h.2,h.1.2.1,h.1.1,h.1.2.2.1⟩)
+  have fresh := successorsAnchored position flagged evaluate actives
+  have folded := captionFold_preserves
+    (captionActiveSuccessors position flagged evaluate actives) [] fresh (by simp)
+  intro node member
+  have v := valid node member
+  have anchored : node.position = captionLastAnchor node.history := by
+    simp only [captionActiveStep,captionMemberAppend] at member
+    rcases member with survived | created
+    · split at survived
+      · contradiction
+      · exact (old node (List.mem_filter.mp survived).1).1.2.2.2
+    · exact folded node created
+  exact ⟨⟨v.2.2.1,v.2.1,v.2.2.2,anchored⟩,v.1⟩
+
+private theorem mem_of_mem_reverse' {α : Type} {x : α} {xs : List α}
+    (member : x ∈ xs.reverse) : x ∈ xs := by
+  induction xs with
+  | nil => simp at member
+  | cons h t ih =>
+    rw [List.reverse_cons] at member
+    rcases captionMemberAppend x t.reverse [h] |>.mp member with left | right
+    · exact List.Mem.tail _ (ih left)
+    · simp only [List.mem_cons,List.not_mem_nil,or_false] at right
+      subst right
+      exact List.Mem.head _
+
+private theorem pushOptionsHistory (items : List CaptionItemKind) (candidates : List Nat)
+    (before : Nat) (flagged : Nat → Bool)
+    (evaluate : CaptionActiveNode → Nat → CaptionActiveEval)
+    (finite : CaptionActiveNode → Nat → Bool) (actives : List CaptionActiveNode)
+    (old : ∀ node ∈ actives, CaptionNodeHistory candidates node) :
+    ∀ option ∈ captionPushOptions items candidates before flagged evaluate finite actives,
+      CaptionNodeHistory candidates option.node := by
+  induction actives with
+  | nil => simp [captionPushOptions]
+  | cons prior rest ih =>
+    have headOk := old prior (List.Mem.head _)
+    have tailOk : ∀ node ∈ rest, CaptionNodeHistory candidates node :=
+      fun node member => old node (List.Mem.tail _ member)
+    simp only [captionPushOptions]
+    split
+    · exact ih tailOk
+    · rename_i position selected
+      have source := captionFindPushBreak_sound (captionAfterEncoded items prior.position)
+        before (finite prior) candidates.reverse position selected
+      have after := captionAfterEncoded_ge items prior.position
+      intro option member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · refine ⟨⟨Nat.lt_succ_self _,?_⟩,?_,?_,rfl⟩
+        · exact captionHistoryOrdered_mono prior.position position prior.history headOk.1 (by omega)
+        · simp only [List.length_cons]; exact congrArg Nat.succ headOk.2.1
+        · intro entry entryMember
+          simp only [List.mem_cons] at entryMember
+          rcases entryMember with rfl | older
+          · exact mem_of_mem_reverse' source.1
+          · exact headOk.2.2.1 entry older
+      · exact ih tailOk option later
+
+/-- Every branch of the real scan (ordinary update, pushOut restart over
+    all candidates after the chosen break, overfull rescue) keeps each
+    active history a strictly ordered list of actual candidates, anchored
+    at the node's position, with the node's exact line count. -/
+theorem I1_caption_scan_history_step (context : CaptionScanContext)
+    (state next : CaptionScanState)
+    (valid : CaptionScanValid context state)
+    (history : CaptionScanHistory context state)
+    (advanced : captionScanNext context state = some next) :
+    CaptionScanHistory context next := by
+  cases source : state.remaining with
+  | nil => simp [captionScanNext,source] at advanced
+  | cons position rest =>
+    have ordered : CaptionCandidatesOrdered state.lower context.items.length (position::rest) :=
+      by simpa [source] using valid.2.2.1
+    have restAbove : ∀ c ∈ rest, position+1 ≤ c :=
+      candidatesOrdered_lower (position+1) _ rest ordered.2.2
+    have candidate : position ∈ context.candidates :=
+      history.1 position (by rw [source]; exact List.Mem.head _)
+    have restCandidates : ∀ c ∈ rest, c ∈ context.candidates :=
+      fun c member => history.1 c (by rw [source]; exact List.Mem.tail _ member)
+    have old : ∀ node ∈ state.actives,
+        CaptionNodeHistory context.candidates node ∧ node.position ≤ position := by
+      intro node member
+      have h := history.2 node member
+      exact ⟨h.1,h.2 position (by rw [source]; exact List.Mem.head _)⟩
+    simp only [captionScanNext,source] at advanced
+    split at advanced
+    · split at advanced
+      · rename_i selected chosen
+        cases advanced
+        have member := captionChoosePush_member _ selected chosen
+        have nodeOk := pushOptionsHistory context.items context.candidates position context.flagged
+          (fun prior p => context.evaluate p prior) context.finite state.actives
+          (fun node member => (old node member).1) selected member
+        refine ⟨fun c member => (List.mem_filter.mp member).1,?_⟩
+        intro node nodeMember
+        simp only [List.mem_cons,List.not_mem_nil,or_false] at nodeMember
+        subst node
+        refine ⟨nodeOk,?_⟩
+        intro c member
+        exact of_decide_eq_true (List.mem_filter.mp member).2
+      · cases advanced
+        refine ⟨restCandidates,?_⟩
+        split
+        · simp
+        · rename_i prior chosen
+          intro node nodeMember
+          simp only [List.mem_cons,List.not_mem_nil,or_false] at nodeMember
+          subst node
+          have valid := I1_caption_rescue_history position (context.flagged position)
+            context.candidates candidate (context.overflow position) state.actives prior
+            (fun node member =>
+              let h := old node member
+              ⟨h.2,h.1.2.1,h.1.1,h.1.2.2.1⟩) chosen
+          exact ⟨⟨valid.2.2.1,valid.2.1,valid.2.2.2,rfl⟩,restAbove⟩
+    · cases advanced
+      refine ⟨restCandidates,?_⟩
+      have step := activeStepHistory position (context.forced position) (context.flagged position)
+        (context.evaluate position) state.actives context.candidates candidate old
+      intro node member
+      have h := step node member
+      exact ⟨h.1,fun c cm => Nat.le_trans h.2 (restAbove c cm)⟩
+
+theorem I1_caption_scan_history_start (context : CaptionScanContext) :
+    CaptionScanHistory context ⟨0,context.candidates,[captionInitialActive]⟩ := by
+  refine ⟨fun _ member => member,?_⟩
+  intro node member
+  simp only [List.mem_cons,List.not_mem_nil,or_false] at member
+  subst node
+  exact ⟨⟨True.intro,rfl,by simp [captionInitialActive],rfl⟩,fun _ _ => Nat.zero_le _⟩
+
+/-- A complete run of the scan: steps until captionScanNext stops, which
+    happens exactly when no candidate remains (`go` returns its actives). -/
+inductive CaptionScanRuns (context : CaptionScanContext) :
+    CaptionScanState → CaptionScanState → Prop where
+  | done (state : CaptionScanState) (stops : captionScanNext context state = none) :
+      CaptionScanRuns context state state
+  | step (state next final : CaptionScanState)
+      (advanced : captionScanNext context state = some next)
+      (rest : CaptionScanRuns context next final) :
+      CaptionScanRuns context state final
+
+/-- From any valid state the scan reaches a final state; there is no
+    fuel or retry limit, only the rank that every branch lowers. -/
+theorem I1_caption_scan_reaches_final (context : CaptionScanContext)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (state : CaptionScanState) (valid : CaptionScanValid context state) :
+    ∃ final, CaptionScanRuns context state final := by
+  generalize rankEq : captionStateRank context state = rank
+  induction rank using Nat.strongInductionOn generalizing state with
+  | _ rank ih =>
+    cases advanced : captionScanNext context state with
+    | none => exact ⟨state,CaptionScanRuns.done state advanced⟩
+    | some next =>
+      have step := I1_caption_full_scan_step context state next original valid advanced
+      obtain ⟨final,runs⟩ := ih _ (rankEq ▸ step.2) next step.1 rfl
+      exact ⟨final,CaptionScanRuns.step state next final advanced runs⟩
+
+theorem I1_caption_scan_runs_history (context : CaptionScanContext)
+    (state final : CaptionScanState) (runs : CaptionScanRuns context state final)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (valid : CaptionScanValid context state) (history : CaptionScanHistory context state) :
+    CaptionScanHistory context final ∧ final.remaining = [] := by
+  induction runs with
+  | done state stops =>
+    refine ⟨history,?_⟩
+    cases remaining : state.remaining with
+    | nil => rfl
+    | cons position rest =>
+      simp only [captionScanNext,remaining] at stops
+      split at stops
+      · split at stops <;> contradiction
+      · contradiction
+  | step state next _ advanced _ ih =>
+    exact ih (I1_caption_full_scan_step context state next original valid advanced).1
+      (I1_caption_scan_history_step context state next valid history advanced)
+
+private theorem breakIndices_not_box (patterns prevBox : Bool) (start pos : Nat)
+    (items : List CaptionItemKind) (member : pos ∈ captionBreakIndices patterns prevBox start items) :
+    items.get? (pos-start) ≠ some .box := by
+  induction items generalizing start prevBox with
+  | nil => simp [captionBreakIndices] at member
+  | cons item tail ih =>
+    have range := I1_caption_break_index_range patterns prevBox start pos (item :: tail) member
+    simp only [captionBreakIndices] at member
+    split at member
+    · rename_i accepted
+      rcases List.mem_cons.mp member with eq | rest
+      · subst pos
+        simp only [Nat.sub_self,List.get?]
+        intro isBox
+        cases isBox
+        simp [captionBreakCandidate] at accepted
+      · have later := ih _ _ rest
+        have inner := I1_caption_break_index_range _ _ _ _ _ rest
+        have shift : pos - start = (pos - (start+1)) + 1 := by omega
+        rw [shift]
+        simpa only [List.get?] using later
+    · have later := ih _ _ member
+      have inner := I1_caption_break_index_range _ _ _ _ _ member
+      have shift : pos - start = (pos - (start+1)) + 1 := by omega
+      rw [shift]
+      simpa only [List.get?] using later
+
+private theorem historyBreaks (kinds : List CaptionItemKind) (candidates : List Nat)
+    (good : ∀ c ∈ candidates, c < kinds.length ∧ kinds.get? c ≠ some .box)
+    (ceiling : Nat) (history : List (Nat × Nat))
+    (ordered : CaptionHistoryOrdered ceiling history)
+    (source : ∀ entry ∈ history, entry.1 ∈ candidates) (rest : List Nat)
+    (tail : CaptionBreaksFrom kinds (captionLastAnchor history) rest) :
+    CaptionBreaksFrom kinds 0 (history.reverse.map Prod.fst ++ rest) := by
+  induction history generalizing ceiling rest with
+  | nil => simpa [captionLastAnchor] using tail
+  | cons head older ih =>
+    obtain ⟨b,f⟩ := head
+    have bGood := good b (source (b,f) (List.Mem.head _))
+    have olderSource : ∀ entry ∈ older, entry.1 ∈ candidates :=
+      fun entry member => source entry (List.Mem.tail _ member)
+    have shifted : CaptionBreaksFrom kinds (captionLastAnchor older) (b :: rest) := by
+      refine ⟨?_,bGood.1,bGood.2,by simpa [captionLastAnchor] using tail⟩
+      cases older with
+      | nil => exact Nat.zero_le _
+      | cons prior _ => exact ordered.2.1
+    have := ih b ordered.2 olderSource (b :: rest) shifted
+    simpa [List.reverse_cons,List.map_append,List.append_assoc] using this
+
+/-- Caption candidate generation and the chosen history. Run the actual
+    scan (ordinary update, pushOut restart, overfull rescue) to its end on
+    the item-derived candidates. Whatever end node the final selection
+    takes among those at the last source item, its history passes the
+    whole-source assembly check: every source box is emitted exactly once
+    in order, and the number of display lines is the node's line count. -/
+theorem I1_caption_chosen_history_assembles {α : Type} (kind : α → CaptionItemKind)
+    (source : List α) (context : CaptionScanContext) (patterns : Bool)
+    (items : context.items = source.map kind)
+    (generated : context.candidates = captionBreakIndices patterns false 0 context.items)
+    (final : CaptionScanState)
+    (runs : CaptionScanRuns context ⟨0,context.candidates,[captionInitialActive]⟩ final)
+    (node : CaptionActiveNode) (member : node ∈ final.actives)
+    (atEnd : node.position = context.items.length) :
+    ∃ lines, captionAssembleWhole kind source (node.history.reverse.map Prod.fst) = some lines ∧
+      lines.length = node.lineCount ∧
+      (lines.map (captionBoxes kind)).join = captionBoxes kind source := by
+  have original : CaptionCandidatesOrdered 0 context.items.length context.candidates := by
+    rw [generated]
+    simpa only [Nat.zero_add] using I1_caption_generated_scan_order patterns false 0 context.items
+  have reached := I1_caption_scan_runs_history context _ final runs original
+    (I1_caption_full_scan_start_valid context original) (I1_caption_scan_history_start context)
+  have nodeOk := (reached.1.2 node member).1
+  have good : ∀ c ∈ context.candidates, c < (source.map kind).length ∧
+      (source.map kind).get? c ≠ some .box := by
+    intro c cm
+    rw [generated] at cm
+    have range := I1_caption_break_index_range patterns false 0 c context.items cm
+    have notBox := breakIndices_not_box patterns false 0 c context.items cm
+    rw [items] at range notBox
+    exact ⟨by simpa using range.2,by simpa using notBox⟩
+  have breaks : CaptionBreaksFrom (source.map kind) 0 (node.history.reverse.map Prod.fst) := by
+    have := historyBreaks (source.map kind) context.candidates good node.position node.history
+      nodeOk.1 nodeOk.2.2.1 []
+      (by show captionLastAnchor node.history = (source.map kind).length
+          rw [← nodeOk.2.2.2, atEnd, items])
+    simpa using this
+  obtain ⟨lines,assembled⟩ := I1_caption_ordered_breaks_assemble kind source _ 0 breaks
+  have whole : captionAssembleWhole kind source (node.history.reverse.map Prod.fst) = some lines := by
+    simpa [captionAssembleWhole,captionAfterEncoded] using assembled
+  have shape := I1_caption_assemble_with_empty_lines kind _ source source 0 lines whole
+  refine ⟨lines,whole,?_,I1_caption_whole_payload_exact kind source _ lines whole⟩
+  rw [shape.2,nodeOk.2.1]
+  simp
+
+/-- The whole pass: the scan from the item-derived candidates always
+    reaches a final state, so the chosen-history theorem is not vacuous. -/
+theorem I1_caption_generated_scan_completes (context : CaptionScanContext) (patterns : Bool)
+    (generated : context.candidates = captionBreakIndices patterns false 0 context.items) :
+    ∃ final, CaptionScanRuns context ⟨0,context.candidates,[captionInitialActive]⟩ final := by
+  have original : CaptionCandidatesOrdered 0 context.items.length context.candidates := by
+    rw [generated]
+    simpa only [Nat.zero_add] using I1_caption_generated_scan_order patterns false 0 context.items
+  exact I1_caption_scan_reaches_final context original _ (I1_caption_full_scan_start_valid context original)
+
+/-- The restart fixture above ends with the history [(3,3),(1,2)]; its
+    breaks, read forwards, assemble the source into two one-box lines. -/
+example : captionAssembleWhole id [.box,.glue,.box,.penalty (-10000) false]
+    ([(3,3),(1,2)].reverse.map Prod.fst) = some [[.box],[.box]] := by decide
+
+
 end GolemPagination
