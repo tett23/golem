@@ -1,6 +1,6 @@
 # ADR 0342: 行の範囲を三つのピリオドで区切る
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0419-report-a-negative-end-of-a-range-as-a-negative-natural.md"],"part":"負の端のコード","kind":"supplement"}]
 
 ## 文脈
 
