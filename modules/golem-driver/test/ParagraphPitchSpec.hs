@@ -1,5 +1,6 @@
 module ParagraphPitchSpec (paragraphPitchTests) where
 
+import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
@@ -8,6 +9,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Driver (BuildOptions (..))
 import Golem.Layout.KnuthPlass (Line (..))
 import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
+import Golem.LayoutSpec (typeAreaFor)
 import Golem.Length (Sp (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), FileId (..), isError, spanFile)
 import Golem.Typeset (PdfLayout (..), SetLine (..))
@@ -25,7 +27,36 @@ paragraphPitchTests :: TestTree
 paragraphPitchTests =
   testGroup
     "physical paragraph layout"
-    [ testCase "root ADR 0397 I3: same-style dialogue uses its own pitch and gap" $ do
+    [ testCase "root ADR 0397 I14, root ADR 0400 I2 I3: free single-page layout keeps physical left and right fixed" $
+        forM_ ["horizontal", "vertical"] $ \mode -> forM_ ["left", "right"] $ \edge -> do
+          let base = if mode == "vertical" then replaceIn "lines = 30" "lines = 20" freeStyle else freeStyle
+              style =
+                replaceIn "binding = \"left\"" "layout = \"single\"" (replaceIn "gutter =" (edge <> " =") (replaceIn "writing-mode = \"horizontal\"" ("writing-mode = \"" <> mode <> "\"") base))
+                  <> "\n[paragraph-styles.dialogue]\nline-pitch = \"18pt\"\n"
+              source = "@style dialogue\nあ\n@page-break\n@style dialogue\nい\n@page-break\n@style dialogue\nう\n"
+          (geom, layout) <- layoutOk style source []
+          map poNumber (plPages layout) @?= [1, 2, 3]
+          map poBlank (plPages layout) @?= [False, False, False]
+          map (map fst . poSlots) (plPages layout) @?= replicate 3 [0]
+          map (typeAreaFor geom) [1, 2, 3] @?= replicate 3 (typeAreaFor geom 1)
+          Map.elems (plLinePitches layout) @?= replicate 3 (pt 18),
+      testCase "root ADR 0397 I14, root ADR 0400 I5: free section starts ignore label parity including carried notes" $
+        forM_ ["", "前。\n", "前[note: " <> T.replicate 120 "注" <> "]。\n"] $ \first -> do
+          let style =
+                replaceIn "binding = \"left\"" "layout = \"single\"" (replaceIn "gutter =" "left =" (replaceIn "lines = 30" "lines = 4" freeStyle))
+                  <> "\n[paragraph-styles.body]\nline-pitch = \"18pt\"\n"
+              run start = do
+                let manifest = replaceIn "chapters = [\"a.gm\"]" ("chapters = [\"a.gm\", { file = \"b.gm\", page-numbering = { start = " <> T.pack (show start) <> " } }]") miniManifest
+                result <- layoutMiniWith manifest style first [("b.gm", TE.encodeUtf8 "後。\n")]
+                either (assertFailure . show) (pure . snd) result
+          one <- run (1 :: Int)
+          two <- run (2 :: Int)
+          let starts layout = [(ident, poNumber page) | page <- plPages layout, ident <- poSections page]
+          starts one @?= starts two
+          map poBlank (plPages one) @?= map poBlank (plPages two)
+          assertBool "single sections insert no parity blanks" (not (any poBlank (plPages one)))
+          assertBool "the new section has a physical start" (not (null (starts one))),
+      testCase "root ADR 0397 I3: same-style dialogue uses its own pitch and gap" $ do
         (_, layout) <- layoutOk (freeStyle <> "\n[paragraph-styles.dialogue]\nline-pitch = \"18pt\"\nspace-between = \"6pt\"\n") "@style dialogue\nあ\n\n@style dialogue\nい\n" []
         map (map fst . poSlots) (plPages layout) @?= [[0, pt 24]],
       testCase "root ADR 0397 I3: mixed styles compare resolved dimensional spacing" $ do
