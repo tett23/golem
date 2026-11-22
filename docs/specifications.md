@@ -3429,7 +3429,7 @@ PDF では、本文の中のコードの背景と余白を次のように扱う�
 - 背景は、行ごとに、同じ背景を持つ箱の並びを一つの矩形で塗る。行の方向は、並びの最初の箱の始まり（前の余白を含む）から最後の箱の終わり（後の余白を含む）までで、並びの中の空白も塗る。行と直交する方向は、その行の字面（横組みでは行の大きさの字面の上端から下端、縦組みでは中心線から左右に行の大きさの半分）である。
 - コードが空白か `/` の後で次の行に分かれた場合は、行ごとに別の矩形を塗る。前の余白は最初の行の始まりにだけ、後の余白は最後の行の終わりにだけあり、分かれた側は箱の端で切る。
 - 背景はその行の文字より先に、スウォッチの CMYK を DeviceCMYK で塗る。ルビの読みと圏点は字面の外に描くので、背景と重ならない。
-- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに適用される。柱とノンブルには、文字スタイルを指定しても背景を描かない（[Golem ADR 0364](adr/0364-running-head-folio-style.md)）。
+- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに適用される。柱とノンブルにも、`code` か、`based-on` をたどって `code` に行き着く文字スタイルを指定すれば、横組みの本文の行と同じ規則で背景を描く（[Golem ADR 0410](adr/0410-draw-decorations-of-running-heads-and-folios.md)）。
 - 背景のスウォッチは、golem preflight の使ったスウォッチに入り、総インキ量の検査（G09015）の対象になる。
 
 文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF で本文と違う規則で行に分ける。
@@ -4277,7 +4277,14 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 柱とノンブルは、マスターページの `running-head` と `folio` のそれぞれの `character-style` に書いた文字スタイルで組む（[Golem ADR 0364](adr/0364-running-head-folio-style.md)）。
 文字スタイルは、本文の役割の書体と版面の文字の大きさの上に当てる。
 書体、文字の大きさ、色のほか、合成の太字と斜体、トラッキング、ベースラインシフト、OpenType の機能も、段落の中の文字スタイルと同じく当たる。
-文字スタイルの下線、取り消し線、背景は、柱とノンブルには描かない。
+文字スタイルの下線、取り消し線、背景も、柱とノンブルに描く（[Golem ADR 0410](adr/0410-draw-decorations-of-running-heads-and-folios.md)）。
+柱とノンブルの下線、取り消し線、背景は、同じ文字スタイルと文字列を横組みの本文の一行に置いたときと同じものを、本文の行と同じ順（背景、下線、字、取り消し線）で描く。
+縦組みの本でも柱とノンブルは横書きなので、これらも横組みの行の規則で描く。
+背景の余白（`padding`）と、下線と取り消し線の位置、太さ、線種、色は、本文の行と同じ規則で決める。
+ただし、背景の余白は字の前後に重ねて塗るだけで、柱とノンブルの字の位置も、行の高さと位置も変えない。
+下線、取り消し線、背景は、柱とノンブルの字と同じく `Pagination` のアーティファクトとして描く。
+golem preflight では、背景のスウォッチが使ったスウォッチに入って G09015 の対象になり、下線と取り消し線が本文の下線と取り消し線と同じく罫線の検査の対象になる。
+隠しノンブル（[Golem ADR 0365](adr/0365-hidden-folio-style.md)）には、下線、取り消し線、背景を描かない。
 `size` を `zw` で書けば、版面の文字の大きさを基準にする。
 `character-style` を書かなければ、本文の役割の書体と版面の文字の大きさで、色を付けずに組む。
 柱の文字スタイルはノンブルの見た目を変えず、ノンブルの文字スタイルは柱の見た目を変えない。
@@ -8839,6 +8846,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。「[golem inspect](#golem-inspect)」の節を参照 |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。「[golem explain](#golem-explain)」の節を参照 |
+| `golem kinsoku [PATH]` | `PATH` から親へたどって最も近いプロジェクトの、解決した禁則とぶら下げの設定を、一行の JSON で標準出力に書く（[root ADR 0417](adr/0417-print-resolved-kinsoku-settings.md)）。「[golem kinsoku](#golem-kinsoku)」の節を参照 |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 ### golem new
@@ -9007,6 +9015,48 @@ G07002 は、`[page]` の `bleed` に 0 より大きい長さを書くよう案�
 diagnostics は、ほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コード 1 とする。
 表示は、diagnostics があっても、作れる限り標準出力に書く。
 引数のファイルがないか通常のファイルでなければ、G03002 とし、何も表示しない。
+
+### golem kinsoku
+
+`golem kinsoku [PATH]` は、プロジェクトの解決した組版の設定のうち、禁則の強さ（`kinsoku`）とぶら下げ（`hanging-punctuation`）を JSON で出す（[root ADR 0417](adr/0417-print-resolved-kinsoku-settings.md)）。
+エディタが、`style.toml` を自分で読まずに、Golem が解決した値を折り返しに使うためのコマンドである。
+出力はいつも JSON で、`--format` は持たない。
+
+プロジェクトの根は、`PATH` から親へたどって探す。
+`PATH` はプロジェクトのフォルダか、その中のファイルであり、省くと今のフォルダになる。
+`PATH` を絶対パスにし、字面の上で `.` と末尾の区切りを除き、`..` をその前の名前と打ち消した後、それがフォルダならそこから、そうでなければ存在する最も近い親のフォルダから探し始める。
+そのため、まだ保存していないファイルのパスも渡せる。
+始めのフォルダから親へたどり、最初に `manifest.toml` を持つフォルダを根とする。
+この探し方は LSP がワークスペースの根を探すのと同じで、golem-project の `findProjectRoot` が持つ。
+ほかのコマンドは、今のフォルダを根とし、親へたどらない。
+
+根が見つかったら、根の `style.toml` だけを読み、`loadStyle` で解決する。
+マニフェストの中身と原稿は読まない。
+そのため、章のファイルが無いことやマニフェストの誤りは、結果を変えない。
+`style.toml` が無いときは既定値とし、G03023 の notice は書かない。
+
+標準出力には、次の形の JSON を一行で書き、末尾に改行を一つ置く。
+キーの順は `schema`、`project`、`composition` である。
+
+```json
+{"schema":1,"project":"/path/to/project","composition":{"kinsoku":"strict","hangingPunctuation":false}}
+```
+
+各キーの値は次のとおりである。
+
+- `schema`：出力の形の版で、今は 1 である。キーを足すときは上げず、キーを除くか意味を変えるときに上げる。
+- `project`：根の絶対パスである。シンボリックリンクは解かず、末尾に区切りを付けない。根が見つからないときは `null` とし、`composition` を既定値にする。
+- `composition.kinsoku`：`"strict"` か `"loose"` である。既定は `"strict"` である。
+- `composition.hangingPunctuation`：ぶら下げるかどうかの真偽である。既定は偽である。
+
+`composition` の値は、`style.toml` に書いた値か、省いたときの既定値であり、どちらなのかは区別しない。
+値を書いたときの終了コードは 0 である。
+
+`style.toml` の誤りは、値を出さずに終わらせる。
+`loadStyle` が誤りを返したとき（TOML として読めない、`kinsoku = "medium"` など）は、diagnostics を human の形で標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
+notice（G03100 など）だけのときは、それを標準エラー出力に書き、JSON を書いて終了コード 0 とする。
+diagnostic のファイルのパスは、今のフォルダが根とは限らないので、`style.toml` の絶対パスとする。
+引数が二つ以上あるなどの使い方の誤りは、終了コード 2 とする。
 
 ### golem explain
 

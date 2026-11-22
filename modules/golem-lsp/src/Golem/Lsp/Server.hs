@@ -48,7 +48,7 @@ import Golem.Lsp.Features qualified as F
 import Golem.Lsp.FileMove qualified as Move
 import Golem.Lsp.FileRename qualified as R
 import Golem.Lsp.Workspace
-import Golem.Project.Paths (normalizeRelative, resolveInRoot)
+import Golem.Project.Paths (findProjectRoot, normalizeRelative, resolveInRoot)
 import Golem.Syntax qualified as S
 import Language.LSP.Logging (defaultClientLogger)
 import Language.LSP.Protocol.Message
@@ -62,14 +62,11 @@ import System.IO (BufferMode (..), Handle, hFlush, hSetBuffering, hSetEncoding, 
 
 newtype State = State {stRoot :: FilePath}
 
--- | The nearest directory upwards that has manifest.toml.
+-- | The nearest directory upwards that has manifest.toml, or the directory itself when none has (root ADR 0417).
 findRoot :: FilePath -> IO FilePath
 findRoot dir0 = do
   dir <- makeAbsolute dir0
-  let go d = do
-        e <- doesFileExist (d </> "manifest.toml")
-        if e || takeDirectory d == d then pure (if e then d else dir) else go (takeDirectory d)
-  go dir
+  fromMaybe dir <$> findProjectRoot dir
 
 -- | Waits this long after the last change before evaluating (golem-lsp ADR 0005).
 debounceMicros :: Int

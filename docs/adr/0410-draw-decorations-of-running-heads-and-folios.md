@@ -1,6 +1,6 @@
 # ADR 0410: 柱とノンブルにも、文字スタイルの下線、取り消し線、背景を描く
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
