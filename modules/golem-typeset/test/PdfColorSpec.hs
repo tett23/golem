@@ -1,9 +1,13 @@
 module PdfColorSpec (pdfColorTests) where
 
+import Codec.Picture.Jpg qualified as Jpeg
+import Codec.Picture.Types qualified as J
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BL
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Word (Word8)
 import Golem.Pdf qualified as P
 import Golem.Pdf.Image (flate)
 import Golem.Typeset.FigureColor (RasterAnalysis (..), RasterKind (..), analyzeRaster)
@@ -13,7 +17,23 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: image DeviceRGB honours a resource DefaultRGB profile" $ do
+  [ testCase "root ADR 0403 I1: PDF DCT gray samples are decoded before recoloring" $ do
+      let jpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 128 :: Word8) 8 8))
+          fields = [("Filter", P.OName "DCTDecode"), ("ColorSpace", P.OName "DeviceGray"), ("Height", P.OInt 8)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "Height"]) (imageFields 8)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields jpeg)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> do
+          convertedImagePixels result @?= [BS.concat (replicate 64 (BS.pack [0, 127, 127, 0]))]
+          lookup 1 (P.ipObjects result) @?= lookup 1 (P.ipObjects original)
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: PDF DCT Decode inversion is applied exactly once" $ do
+      let jpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 128 :: Word8) 8 8))
+          fields = [("Filter", P.OName "DCTDecode"), ("ColorSpace", P.OName "DeviceGray"), ("Height", P.OInt 8), ("Decode", P.OArr [P.OInt 1, P.OInt 0])] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "Height"]) (imageFields 8)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields jpeg)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> convertedImagePixels result @?= [BS.concat (replicate 64 (BS.pack [0, 128, 128, 0]))]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: image DeviceRGB honours a resource DefaultRGB profile" $ do
       let original = imagePage {P.ipResources = P.ODict [("ColorSpace", P.ORef 4), ("XObject", P.ODict [("Im", P.ORef 1)])], P.ipObjects = P.ipObjects imagePage <> [(3, P.OStream [("N", P.OInt 3)] P.srgbProfile), (4, P.ODict [("DefaultRGB", P.OArr [P.OName "ICCBased", P.ORef 3])])]}
           analyze input
             | P.imgIcc input == Just P.srgbProfile = analyzeRaster (0, 100, 100, 0) input

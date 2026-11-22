@@ -16,6 +16,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
 import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
+import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
 
 -- A colour is kept in the source space until an operator actually paints it.
 data Color = Gray !Rational | Rgb !Rational !Rational !Rational | CmykColor !Rational !Rational !Rational !Rational
@@ -285,7 +286,7 @@ analyzePdfImage scope resources key fields state = case Map.lookup (key, scope) 
     if inputBytes + minimumOutputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
       then Left budgetError
       else Right ()
-    (bytes, decoded) <- decodePdfStream key fields colored
+    (bytes, decoded) <- decodePdfImageStream key width height bits components fields colored
     if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
     (samples, sampled) <-
       if reversed
@@ -323,6 +324,55 @@ analyzePdfImage scope resources key fields state = case Map.lookup (key, scope) 
         _ -> Left "PDF 図版の画像の寸法が不正です"
     unsupportedMask ("ImageMask", P.OBool False) = False
     unsupportedMask (name, _) = name == "ImageMask"
+
+-- Decode the lossless filter prefix first, then DCT into native device samples.
+-- The common stream cache holds the final samples, never a second JPEG decode.
+decodePdfImageStream :: P.ObjNum -> Integer -> Integer -> Integer -> Int -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (ByteString, Resources)
+decodePdfImageStream key width height bits components fields state = case Map.lookup key (decodedStreams state) of
+  Just samples -> Right (samples, state)
+  Nothing -> do
+    filters <- case lookup "Filter" fields of
+      Nothing -> Right []
+      Just value -> do
+        resolved <- dereference Set.empty value state
+        case resolved of
+          P.OArr values -> traverse (\entry -> dereference Set.empty entry state) values
+          other -> Right [other]
+    case reverse filters of
+      P.OName "DCTDecode" : reversedPrefix -> do
+        if bits == 8 then Right () else Left invalid
+        parameters <- case lookup "DecodeParms" fields of
+          Nothing -> Right (replicate (length filters) P.ONull)
+          Just value -> do
+            resolved <- dereference Set.empty value state
+            case resolved of
+              P.ONull -> Right (replicate (length filters) P.ONull)
+              P.OArr values | length values == length filters -> Right values
+              P.ODict _ | length filters == 1 -> Right [resolved]
+              _ -> Left invalid
+        (prefixParameters, jpegParameters) <- case reverse parameters of
+          value : rest -> Right (reverse rest, value)
+          [] -> Left invalid
+        resolved <- dereference Set.empty jpegParameters state
+        jpegFields <- case resolved of P.ONull -> Right []; P.ODict entries -> Right entries; _ -> Left invalid
+        transform <- case lookup "ColorTransform" jpegFields of
+          Nothing -> Right Nothing
+          Just value -> do
+            resolvedTransform <- dereference Set.empty value state
+            case resolvedTransform of
+              P.OInt n | n >= toInteger (minBound :: Int), n <= toInteger (maxBound :: Int) -> Right (Just (fromInteger n))
+              _ -> Left invalid
+        let prefix = reverse reversedPrefix
+            plainFields = filter (\(name, _) -> name `notElem` ["Filter", "DecodeParms"]) fields
+            prefixFields = if null prefix then plainFields else ("Filter", P.OArr prefix) : ("DecodeParms", P.OArr prefixParameters) : plainFields
+        (encoded, decoded) <- decodePdfStream key prefixFields state
+        samples <- decodePdfDct (PdfDctSpec components transform (fromInteger width) (fromInteger height) (remainingBytes decoded)) encoded
+        charged <- charge (dctDecodedBytes samples) decoded
+        let bytes = P.imgData (dctImage samples)
+        Right (bytes, charged {decodedStreams = Map.insert key bytes (decodedStreams charged)})
+      _ -> decodePdfStream key fields state
+  where
+    invalid = "PDF 図版の JPEG フィルターの指定が不正です"
 
 -- ICC profile streams share the same bounded decoder and cache as image data.
 -- Range affects the default image Decode; non-unit ranges must not silently
@@ -424,7 +474,7 @@ pdfImageAlpha width height imageBits components raw fields state = case lookup "
     let sampleBytes = ((width * bits + 7) `div` 8) * height
     if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
     ranges <- unitDecode 1 maskFields state
-    (bytes, decoded) <- decodePdfStream key maskFields state
+    (bytes, decoded) <- decodePdfImageStream key width height bits 1 maskFields state
     if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
     case ranges of
       [False, True] -> Right (Just (P.Alpha (fromInteger bits) bytes), decoded)
