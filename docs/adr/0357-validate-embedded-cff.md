@@ -1,6 +1,6 @@
 # ADR 0357: 範囲外を参照する CFF を PDF への埋め込み前に拒む
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0420-validate-the-seac-components-of-embedded-cff.md"],"part":"確かめる対象のグリフ","kind":"supplement"}]
 
 ## 文脈
 

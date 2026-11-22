@@ -1,6 +1,6 @@
 # ADR 0383: ページ別の注番号を幅の予約後に振る
 
-Status: superseded [{"part":"固定ページを持たない出力と章末一覧の警告","by":["docs/adr/0402-define-page-local-note-fallback-diagnostics.md"],"kind":"supplement"}]
+Status: superseded [{"part":"固定ページを持たない出力と章末一覧の警告","by":["docs/adr/0402-define-page-local-note-fallback-diagnostics.md"],"kind":"supplement"},{"by":["docs/adr/0422-references-to-notes.md"],"part":"注を参照する箇所の予約幅","kind":"supplement"}]
 
 ## 文脈
 
