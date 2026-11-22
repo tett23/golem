@@ -4302,7 +4302,7 @@ markBookParts unit units firsts flows = special (wrapLists 0 annotated)
       Nothing ->
         let (plain, rest) = span (isNothing . key depth) allFlows
          in map snd plain <> wrapLists depth rest
-    retained source kind ids body = FBookPart unit source kind ids body
+    retained = FBookPart unit
     sourceOf f = case owner f of
       Just u -> case uKind u of
         UTerm _ -> maybe (uSpan u) inlineSpan (listToMaybe (uInlines u))

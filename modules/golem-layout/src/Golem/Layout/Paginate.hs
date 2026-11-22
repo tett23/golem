@@ -58,6 +58,7 @@ module Golem.Layout.Paginate
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Bifunctor (bimap)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -190,7 +191,7 @@ box, those of its body and those after the box (docs/adr/0271).
 step :: Env -> St -> Flow -> [Flow] -> St
 step env st f rest = case f of
   FBookPart unit sp kind retained body ->
-    let run state = go state
+    let run = go
           where
             go here [] = here
             go here (g : more) = go (step env {envKeepParts = unit, envBookPartSpan = Just sp} here g (more <> rest)) more
@@ -820,7 +821,7 @@ placeTableAcross env initial ident header rows caption below =
            in case reverse (sTables state) of
                 previous : earlier
                   | tsTable previous == ident && tsLast previous + 1 == first ->
-                      state {sTables = reverse earlier <> [previous {tsLast = tsLast segment, tsHeaderEnd = case tsHeaderEnd previous of Just h -> Just h; Nothing -> headerEnd}]}
+                      state {sTables = reverse earlier <> [previous {tsLast = tsLast segment, tsHeaderEnd = tsHeaderEnd previous <|> headerEnd}]}
                 _ -> state {sTables = sTables state <> [segment]}
     finish (state, first, headerEnd) = record state first headerEnd
     go _ state first headerEnd [] = (state, first, headerEnd)
@@ -846,7 +847,10 @@ placeTableAcross env initial ident header rows caption below =
                   bordered = if isCaption && below then record here beginning headingEnd else here
                   after = foldl' (putLine env) bordered lines'
                   beginning' = if isCaption then sUsed after else beginning
-                  headingEnd' = if isCaption then Nothing else if isHeader then Just (sUsed after - 1) else headingEnd
+                  headingEnd'
+                    | isCaption = Nothing
+                    | isHeader = Just (sUsed after - 1)
+                    | otherwise = headingEnd
                in go retain after beginning' headingEnd' remaining
           | otherwise =
               let closed = record here beginning headingEnd

@@ -15,7 +15,21 @@ tests :: TestTree
 tests =
   testGroup
     "root ADR 0401 book-part integration"
-    [ testCase "root ADR 0401 I1: figures and captions retain their existing indivisible placement" $ do
+    [ testCase "root ADR 0401 I2: a list item keeps its deferred figure inside its page" $ do
+        let files = [("images/tiny.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\"/></svg>")]
+            manuscript = T.intercalate "\\\n" (replicate 3 "f") <> "\n\n- a\\\n  a\n\n  @nonumber\n  @figure images/tiny.svg width=1zw alt=\"tiny\"\n    caption\n"
+        (_, layout) <- layoutOk (style "page" 2) manuscript files
+        let textPages = [poNumber p | p <- plPages layout, (_, SLine ident) <- poSlots p, Just line <- [Map.lookup ident (plLines layout)], "a" `T.isSuffixOf` setLineText line]
+            figurePages = [poNumber p | p <- plPages layout, (_, SFigure _) <- poSlots p]
+        assertEqual (show (plPages layout, plNotices layout)) ([2, 2], [2]) (textPages, figurePages)
+        filter ((== DiagnosticCode "G07133") . diagCode) (plNotices layout) @?= [],
+      testCase "root ADR 0401 I3: nested list source frames retain the inner item after outer fallback" $ do
+        (_, layout) <- layoutOk (style "page" 2) "- f\\\n  f\\\n  f\\\n  f\n\n  - x\\\n    x\\\n    x\n" []
+        positions layout @?= replicate 3 (2, 0)
+        let notices = filter ((== DiagnosticCode "G07133") . diagCode) (plNotices layout)
+        length notices @?= 1
+        map (spanStart . diagSpan) notices @?= [0],
+      testCase "root ADR 0401 I1: figures and captions retain their existing indivisible placement" $ do
         let files = [("images/tiny.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\"/></svg>")]
             manuscript = T.intercalate "\\\n" (replicate 5 "f") <> "\n\n@nonumber\n@figure images/tiny.svg width=1zw alt=\"tiny\"\n  caption\n"
         (_, ordinary) <- layoutOk (style "column" 2) manuscript files

@@ -26,6 +26,19 @@ tests =
         identifiers H.=== [10 .. 10 + count - 1]
         H.assert (length pages <= count + columns)
         H.assert (length (concatMap poUnmet pages) <= 1),
+      testCase "root ADR 0401 I2: exact capacity moves once and a line beyond capacity reports once" $ do
+        let exact = paginate 2 3 [para 0 1, part KeepPage 10 6]
+            over = paginate 2 3 [para 0 1, part KeepPage 10 7]
+        slots exact @?= [(1, 0, [0]), (2, 0, [10, 11, 12]), (2, 1, [13, 14, 15])]
+        concatMap poUnmet exact @?= []
+        slots over @?= [(1, 0, [0]), (2, 0, [10, 11, 12]), (2, 1, [13, 14, 15]), (3, 0, [16])]
+        concatMap poUnmet over @?= [SplitBookPart sp "list item" KeepPage],
+      testCase "root ADR 0401 I3: a nested item retains its page after its outer item falls back" $ do
+        let nested = FBookPart KeepPage sp "nested item" [10, 11, 12] [para 10 3]
+            outer = FBookPart KeepPage sp "outer item" ([0 .. 3] <> [10 .. 12]) [para 0 4, nested]
+            pages = paginate 2 3 [outer]
+        slots pages @?= [(1, 0, [0, 1, 2]), (1, 1, [3]), (2, 0, [10, 11, 12])]
+        concatMap poUnmet pages @?= [SplitBookPart sp "outer item" KeepPage],
       testCase "root ADR 0401 I3: an empty first page retries the larger following spread" $ do
         let pages = paginate 1 3 [part KeepSpread 10 5]
         slots pages @?= [(2, 0, [10, 11, 12]), (3, 0, [13, 14])]

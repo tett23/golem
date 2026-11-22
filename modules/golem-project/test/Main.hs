@@ -182,6 +182,8 @@ silenceTests =
     "[diagnostics] silence-notices (golem-syntax ADR 0002)"
     [ testCase "the codes of notices are read" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G02062\"]\n") @?= Right (Set.fromList [DiagnosticCode "G02062"]),
+      testCase "root ADR 0401: the retention notice G07133 can be silenced" $
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G07133\"]\n") @?= Right (Set.fromList [DiagnosticCode "G07133"]),
       testCase "the notice of .emet E02109 is read (docs/adr/0160)" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"E02109\"]\n") @?= Right (Set.fromList [DiagnosticCode "E02109"]),
       testCase "ADR 0344 I4: retired notice codes are not accepted in silence-notices" $
