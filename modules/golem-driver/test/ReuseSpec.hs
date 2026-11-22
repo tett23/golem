@@ -13,12 +13,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Driver
 import Golem.Driver.Version (golemVersion)
-import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
+import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..))
 import Golem.LayoutSpec (pageGeometry)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Syntax
-import Golem.Typeset (PdfInput (..), PdfLayout (..), fixpoint, layoutPdfWith, renderPdfAllReusing)
+import Golem.Typeset (PdfInput (..), fixpoint, layoutPdfWith, renderPdfAllReusing)
 import Support
 import System.IO.Temp (withSystemTempDirectory)
 import System.IO.Unsafe (unsafePerformIO)
@@ -81,7 +81,7 @@ countsWith reuse inp = do
   r <- layoutPdfWith reuse inp geom (measuringFonts ref)
   case r of
     Left ds -> assertFailure (show ds)
-    Right pl -> length (plPages pl) `seq` readIORef ref
+    Right pl -> length (gridPages pl) `seq` readIORef ref
 
 -- | Pages with the labels given, page n holding the nth list.
 pagesWith :: [[Text]] -> [PageOut]

@@ -14,7 +14,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
 import Golem.Driver.Explain.Embedded (documentText)
-import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
+import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)

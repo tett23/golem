@@ -23,7 +23,7 @@ import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook, readingLook)
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
 import Golem.Length (Sp (..))
@@ -605,7 +605,7 @@ hiddenFolioTests =
       Map.keys hf @?= [1 .. 6],
     testCase "without master pages, every page; and a page whose master page has no folio" $ do
       (_, layout, hf) <- layoutHidden (Just P.Western) miniManifest shortGrid [("a.gm", twoChapters)]
-      Map.keys hf @?= nub (map poNumber (plPages layout))
+      Map.keys hf @?= nub (map poNumber (gridPages layout))
       let manifest = BS.concat ["chapters = [{ file = \"front.gm\", master = \"front\" }, \"a.gm\"]\n", BS.drop (BS.length "chapters = [\"a.gm\"]\n") miniManifest]
           style =
             BS.concat
@@ -635,7 +635,7 @@ hiddenFolioTests =
       (_, a, _) <- layoutHidden Nothing miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
       (_, b, hf) <- layoutHidden (Just P.Western) miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
       Map.keys hf @?= [1 .. 6]
-      plPages a @?= plPages b,
+      gridPages a @?= gridPages b,
     testCase "bleed and marks: placed against the trimmed page, moved with it in the content" $ do
       pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) (bleedStyle <> allPages)
       (w, h) <- a5Size
@@ -1293,7 +1293,7 @@ turnedTests =
 codeRows :: PdfLayout -> [[(Sp, T.Text)]]
 codeRows pl =
   [ [(slIndent sl + off, bcText c) | (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))]
-  | p <- plPages pl,
+  | p <- gridPages pl,
     (_, SCode lid k _) <- poSlots p,
     j <- [0 .. k - 1],
     Just sl <- [Map.lookup (lid + j) (plLines pl)]
@@ -1301,7 +1301,7 @@ codeRows pl =
 
 -- | The code slots of each page and column.
 codeSlots :: PdfLayout -> [[(Int, Slotted)]]
-codeSlots pl = [[x | x@(_, SCode {}) <- poSlots p] | p <- plPages pl]
+codeSlots pl = [[x | x@(_, SCode {}) <- poSlots p] | p <- gridPages pl]
 
 -- | The rectangles filled in a content stream: x, y, width and height in pt.
 filledRects :: BS.ByteString -> [[Double]]
@@ -1356,7 +1356,7 @@ codeTests =
       diagnosticsOf "G07030" (brDiagnostics r') @?= [],
     testCase "the grid: three rows of 11Q code on 13Q and 22H take three lines; the text after is on the grid" $ do
       (_, pl) <- layoutOk (grid13 <> "\n[paragraph-styles.code]\nsize = \"11Q\"\n") "```\na\nb\nc\n```\n\n本文。\n" []
-      case plPages pl of
+      case gridPages pl of
         (p : _) -> case poSlots p of
           (s0 : s1 : _) -> do
             s0 @?= (0, SCode 0 3 3)
@@ -1371,7 +1371,7 @@ codeTests =
           set style src = do
             (_, pl) <- layoutOk style src []
             drawn <- miniPdf fakeProvider True style src [] >>= pageContents
-            pure (map poSlots (plPages pl), drawn)
+            pure (map poSlots (gridPages pl), drawn)
       toml <- set (base <> "\n[paragraph-styles.code]\n" <> TE.encodeUtf8 (T.concat [k <> " = " <> v <> "\n" | (k, v, _) <- keys])) source
       local <- set base ("@style-def paragraph code" <> T.concat [" " <> k <> "=" <> v | (k, _, v) <- keys] <> "\n\n" <> source)
       plain <- set base source
@@ -1410,7 +1410,7 @@ codeTests =
       codeSlots pl @?= [[], [(0, SCode 4 1 2)]],
     testCase "columns: the rows break at the end of a column as at a page" $ do
       (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2) "一。\n\n二。\n\n三。\n\n```\na\nb\nc\n```\n" []
-      [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- plPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
+      [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- gridPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
     testCase "in a list: the background and the text start at the text of the item" $ do
       (geom, pl) <- layoutOk (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" []
       -- the bullet • and its gap take two characters (golem-driver ADR 0044)
@@ -2110,7 +2110,7 @@ codeBlockRubyTests =
       assertBool (show (filledRects content, map vbox readings)) (not (any (\d -> any (overlaps (vbox d)) (filledRects content)) readings)),
     testCase "a code block that ends a column: the paragraph with ruby starts the next one, with no space line" $ do
       (_, pl) <- layoutOk (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\n```\n\n[ruby: 漢|かん]字。\n" []
-      case plPages pl of
+      case gridPages pl of
         [_, p2] -> take 1 [s | (s, SLine _) <- poSlots p2] @?= [0]
         ps -> assertFailure (show (map poSlots ps)),
     testCase "a blank line after a code block with a background takes the place of the space line (docs/adr ADR 0046)" $ do
@@ -2128,7 +2128,7 @@ codeBlockRubyTests =
     lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
     rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0)
-    firstPage pl = take 1 (plPages pl)
+    firstPage pl = take 1 (gridPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
     firstLineSlot pl = case [s | p <- firstPage pl, (s, SLine _) <- poSlots p] of

@@ -19,6 +19,11 @@ module Golem.Project.Style
     PageSize (..),
     pageTrimSize,
     Grid (..),
+    GridAlignment (..),
+    ParagraphPitch (..),
+    ParagraphSpacing (..),
+    resolvedParagraphPitch,
+    resolvedParagraphSpacing,
     GridPosition (..),
     FontRole (..),
     Feature (..),
@@ -143,7 +148,7 @@ import Data.List (find, nub, nubBy, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -222,12 +227,49 @@ data Grid = Grid
     gridCharacters :: !Natural,
     gridLines :: !Natural,
     gridLinePitch :: !Dim,
+    gridAlignment :: !GridAlignment,
     gridColumns :: !Natural,
     gridColumnGap :: !(Maybe Dim),
     gridTop :: !Dim,
     gridPosition :: !GridPosition
   }
   deriving stock (Eq, Show)
+
+data GridAlignment = AlignGrid | AlignFree
+  deriving stock (Eq, Show)
+
+data ParagraphPitch = PitchAuto | PitchDim !Dim
+  deriving stock (Eq, Show)
+
+data ParagraphSpacing = SpacingLines !Int | SpacingDim !Dim
+  deriving stock (Eq, Show)
+
+spacingLines :: ParagraphSpacing -> Maybe Int
+spacingLines (SpacingLines n) = Just n
+spacingLines _ = Nothing
+
+spacingDim :: ParagraphSpacing -> Maybe Dim
+spacingDim (SpacingDim d) = Just d
+spacingDim _ = Nothing
+
+resolvedParagraphPitch :: Style -> ParaStyleDef -> Maybe Sp
+resolvedParagraphPitch s d = do
+  g <- stPage s >>= pageGrid
+  let fs = dimToSp 0 (gridFontSize g)
+      size = maybe fs (dimToSp fs) (psSize d)
+  pure $ case fromMaybe PitchAuto (psLinePitch d) of
+    PitchAuto -> dimToSp fs (gridLinePitch g)
+    PitchDim x -> dimToSp size x
+
+resolvedParagraphSpacing :: Style -> ParaStyleDef -> ParagraphSpacing -> Maybe Sp
+resolvedParagraphSpacing s d spacing = do
+  g <- stPage s >>= pageGrid
+  let fs = dimToSp 0 (gridFontSize g)
+      size = maybe fs (dimToSp fs) (psSize d)
+      pitch = dimToSp fs (gridLinePitch g)
+  pure $ case spacing of
+    SpacingLines n -> fromIntegral n * pitch
+    SpacingDim x -> dimToSp size x
 
 -- | The physical reference edge of the type area (root ADR 0400).
 data GridPosition = GutterPosition !Dim | LeftPosition !Dim | RightPosition !Dim
@@ -362,7 +404,9 @@ data ParaStyleDef = ParaStyleDef
     psFont :: !(Maybe Text),
     psSize :: !(Maybe Dim),
     psLineBreaks :: !(Maybe LineBreaks),
+    psLinePitch :: !(Maybe ParagraphPitch),
     psSpaceBetween :: !(Maybe Int),
+    psSpaceBetweenDim :: !(Maybe Dim),
     -- | the start of every line (docs/adr ADR 0006)
     psIndent :: !(Maybe Dim),
     -- | added to the indent on the first line; negative hangs
@@ -397,7 +441,9 @@ data ParaStyleDef = ParaStyleDef
     psAlign :: !(Maybe ParaAlign),
     -- | the grid lines before and after the paragraph (docs/adr/0189)
     psSpaceBefore :: !(Maybe Int),
+    psSpaceBeforeDim :: !(Maybe Dim),
     psSpaceAfter :: !(Maybe Int),
+    psSpaceAfterDim :: !(Maybe Dim),
     -- | the end of every line (docs/adr/0189)
     psEndIndent :: !(Maybe Dim),
     -- | the OpenType features, added after the parent's (docs/adr/0268)
@@ -580,13 +626,14 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
 bodyDefaults =
   noParaDef
     { psLineBreaks = Just JoinLines,
+      psLinePitch = Just PitchAuto,
       psSpaceBetween = Just 0,
       psIndent = Just (Zw 0),
       psFirstLineIndent = Just (Zw 0),
@@ -940,7 +987,9 @@ overPara u b =
     (psFont u <|> psFont b)
     (psSize u <|> psSize b)
     (psLineBreaks u <|> psLineBreaks b)
-    (psSpaceBetween u <|> psSpaceBetween b)
+    (psLinePitch u <|> psLinePitch b)
+    (if isJust (psSpaceBetweenDim u) then Nothing else psSpaceBetween u <|> psSpaceBetween b)
+    (if isJust (psSpaceBetween u) then Nothing else psSpaceBetweenDim u <|> psSpaceBetweenDim b)
     (psIndent u <|> psIndent b)
     (psFirstLineIndent u <|> psFirstLineIndent b)
     (psRegexStyles u <|> psRegexStyles b)
@@ -959,8 +1008,10 @@ overPara u b =
     (psRuleBefore u <|> psRuleBefore b)
     (psRuleAfter u <|> psRuleAfter b)
     (psAlign u <|> psAlign b)
-    (psSpaceBefore u <|> psSpaceBefore b)
-    (psSpaceAfter u <|> psSpaceAfter b)
+    (if isJust (psSpaceBeforeDim u) then Nothing else psSpaceBefore u <|> psSpaceBefore b)
+    (if isJust (psSpaceBefore u) then Nothing else psSpaceBeforeDim u <|> psSpaceBeforeDim b)
+    (if isJust (psSpaceAfterDim u) then Nothing else psSpaceAfter u <|> psSpaceAfter b)
+    (if isJust (psSpaceAfter u) then Nothing else psSpaceAfterDim u <|> psSpaceAfterDim b)
     (psEndIndent u <|> psEndIndent b)
     (psFeatures b <> psFeatures u)
     (psKeepWithNext u <|> psKeepWithNext b)
@@ -1974,6 +2025,7 @@ gridOf layout = parseTableFromValue $ do
   ch <- reqKeyOf "characters" naturalIntOf
   ls <- reqKeyOf "lines" naturalIntOf
   lp <- reqDim "line-pitch"
+  alignment <- enumKey "alignment" ["grid", "free"]
   colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
   let cols = maybe 1 snd colsAt
   gap <- dimKey "column-gap"
@@ -1981,7 +2033,7 @@ gridOf layout = parseTableFromValue $ do
   case colsAt of
     Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
     _ -> pure ()
-  pure (Grid fs ch ls lp cols gap top pos)
+  pure (Grid fs ch ls lp (if alignment == Just "free" then AlignFree else AlignGrid) cols gap top pos)
 
 -- | Validate the mode before constructing an unambiguous physical position.
 positionOf :: PageLayout -> Value' l -> Matcher l (Dim, GridPosition)
@@ -2128,13 +2180,39 @@ featureKeysOf = do
 featureKeys :: [Text]
 featureKeys = ["kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width"]
 
+paragraphPitchOf :: Value' l -> Matcher l ParagraphPitch
+paragraphPitchOf v = case v of
+  Text' _ "auto" -> pure PitchAuto
+  Text' l raw -> case parseDim raw of
+    Just d | positivePitchDim d -> pure (PitchDim d)
+    _ -> failAt l ("line-pitch は正の寸法か auto です: " <> T.unpack raw)
+  _ -> failAt (valueAnn v) "line-pitch は正の寸法か auto です"
+
+paragraphSpacingOf :: Text -> Value' l -> Matcher l ParagraphSpacing
+paragraphSpacingOf key v = case v of
+  Integer' l n
+    | n >= 0 && n <= toInteger (maxBound :: Int) -> pure (SpacingLines (fromInteger n))
+    | otherwise -> failAt l (T.unpack key <> " は 0 以上です（整数行か寸法）")
+  Text' l raw -> case parseSignedDim raw of
+    Just d | not (negativeDim d) -> pure (SpacingDim d)
+    _ -> failAt l (T.unpack key <> " は 0 以上の整数か寸法です: " <> T.unpack raw)
+  _ -> failAt (valueAnn v) (T.unpack key <> " は 0 以上の整数か寸法です")
+
+positivePitchDim :: Dim -> Bool
+positivePitchDim = \case
+  Abs n -> n > 0
+  Zw r -> r > 0
+
 instance FromValue ParaStyleDef where
   fromValue = parseTableFromValue $ do
     b <- optKey "based-on"
     f <- optKey "font"
     s <- dimKey "size"
     lb <- enumKey "line-breaks" lineBreaksValues
-    sb <- optKeyOf "space-between" (withValue (\l x -> if x < 0 then failAt l "space-between は 0 以上です" else pure x))
+    pitch <- optKeyOf "line-pitch" paragraphPitchOf
+    sb' <- optKeyOf "space-between" (paragraphSpacingOf "space-between")
+    let sb = spacingLines =<< sb'
+        sbDim = spacingDim =<< sb'
     ind <- dimKey "indent"
     fli' <- signedDimKey "first-line-indent" "（1zw や -1zw のように書きます）"
     rs <- optKey "regex-styles"
@@ -2159,8 +2237,12 @@ instance FromValue ParaStyleDef where
     ra <- optKeyOf "rule-after" ruleOrFalse
     -- the alignment, the spaces before and after and the end indent (docs/adr/0189)
     al <- enumKey "align" alignValues
-    sbefore <- optKeyOf "space-before" (withValue (\l x -> if x < 0 then failAt l "space-before は 0 以上です" else pure x))
-    safter <- optKeyOf "space-after" (withValue (\l x -> if x < 0 then failAt l "space-after は 0 以上です" else pure x))
+    sbefore' <- optKeyOf "space-before" (paragraphSpacingOf "space-before")
+    safter' <- optKeyOf "space-after" (paragraphSpacingOf "space-after")
+    let sbefore = spacingLines =<< sbefore'
+        sbeforeDim = spacingDim =<< sbefore'
+        safter = spacingLines =<< safter'
+        safterDim = spacingDim =<< safter'
     endInd <- dimKey "end-indent"
     fs <- featuresKey
     -- the keep options (docs/adr/0261): a negative number is G02103, as of any natural number
@@ -2184,7 +2266,7 @@ instance FromValue ParaStyleDef where
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
     separator <- optKey "number-title-separator"
     interval <- optKeyOf "line-number-interval" (keepCount 1 Nothing)
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -2922,6 +3004,23 @@ resolveStyleValues fid src (MkTable root) = do
       Table' pos entries -> Table' pos <$> rewrite defs path names entries
       List' pos xs -> List' pos <$> traverse (rewriteValue defs path names) xs
       Text' pos raw
+        | isParagraphSpacingPath path,
+          isJust (parseSignedDim raw) ->
+            Right (Text' pos raw)
+      Text' pos "auto"
+        | lastMayText path == Just "line-pitch",
+          "paragraph-styles" `elem` path ->
+            Right (Text' pos "auto")
+      Text' pos raw
+        | isParagraphSpacingPath path,
+          Just (LengthKind, QuantityText value) <- Map.lookup raw names ->
+            Right (Text' pos value)
+      Text' pos raw
+        | isParagraphSpacingPath path || isParagraphPitchPath path,
+          validName raw,
+          Map.notMember raw names ->
+            Right (Text' pos raw)
+      Text' pos raw
         | Just CountKind <- expected path,
           T.all (\c -> isDigit c || c == '+' || c == ' ' || c == '-' || isAsciiLower c) raw,
           not (T.null raw) -> do
@@ -2941,12 +3040,24 @@ resolveStyleValues fid src (MkTable root) = do
 quantityKindAt :: [Text] -> Maybe QuantityKind
 quantityKindAt path = case nodeAt styleSchema path of
   Just (NValue LDimension) -> Just LengthKind
+  Just (NEither [NValue (LEnum ["auto"]), NValue LDimension]) -> Just LengthKind
+  Just (NEither [NValue LInteger, NValue LDimension]) -> Just CountKind
   Just (NValue LInteger) | lastMay path `elem` map Just ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just CountKind
   _ | lastMay path `elem` map Just ["optimum", "minimum", "maximum"], "aki-sets" `elem` path -> Just AkiKind
   _ -> Nothing
   where
     lastMay [] = Nothing
     lastMay xs = Just (last xs)
+
+isParagraphSpacingPath :: [Text] -> Bool
+isParagraphSpacingPath path = "paragraph-styles" `elem` path && lastMayText path `elem` map Just ["space-before", "space-after", "space-between"]
+
+isParagraphPitchPath :: [Text] -> Bool
+isParagraphPitchPath path = "paragraph-styles" `elem` path && lastMayText path == Just "line-pitch"
+
+lastMayText :: [a] -> Maybe a
+lastMayText [] = Nothing
+lastMayText xs = Just (last xs)
 
 {- | Typed declaration and reference spans in style.toml, as UTF-8 byte
 offsets. The last flag marks a declaration (ADR 0346).
@@ -2974,13 +3085,13 @@ layoutValueSites src = case Toml.parse src of
     walk path = \case
       Table' _ tab -> uses path tab
       List' _ xs -> concatMap (walk path) xs
-      Text' pos raw
-        | Just kind <- kindAt path ->
-            [ (kind, name, start, start + BS.length (TE.encodeUtf8 name), False)
-            | (kind', name) <- known,
-              kind' == kind,
-              start <- findNames pos (T.length raw + 2) name
-            ]
+      Text' pos raw ->
+        [ (kind, name, start, start + BS.length (TE.encodeUtf8 name), False)
+        | kind <- if isParagraphSpacingPath path then ["length", "count"] else catMaybes [kindAt path],
+          (kind', name) <- known,
+          kind' == kind,
+          start <- findNames pos (T.length raw + 2) name
+        ]
       _ -> []
     kindAt path = case path of
       ["values", "length", _] -> Just "length"
@@ -3085,6 +3196,7 @@ styleChecks owner s =
     <> compositionChecks s
     <> hyphenationExceptionChecks s
     <> codeStyleChecks s
+    <> paragraphDimensionChecks s
     <> ruleStyleChecks s
     <> singlePageChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
@@ -3096,6 +3208,38 @@ styleChecks owner s =
     <> opticalKerningChecks s
     <> spineAlignChecks s
     <> markPositionChecks s
+
+paragraphDimensionChecks :: Style -> [(Text, Text, [Scope], Text)]
+paragraphDimensionChecks s =
+  [ ("G03006", "code", paraKey "code" "line-pitch", "code に line-pitch は指定できません")
+  | Just d <- [Map.lookup "code" (stParaStyles s)],
+    isJust (psLinePitch d)
+  ]
+    <> [ ("G03006", n, paraKey (writtenBy n key) key, "格子モードでは " <> key <> " に寸法を指定できません。page.grid.alignment = \"free\" を選んでください")
+       | maybe True ((== AlignGrid) . gridAlignment) (stPage s >>= pageGrid),
+         n <- Map.keys (stParaStyles s),
+         n /= "code",
+         Just d <- [paraStyle s (Just n)],
+         (key, present) <- [("line-pitch", isPitchDim (psLinePitch d)), ("space-between", isJust (psSpaceBetweenDim d)), ("space-before", isJust (psSpaceBeforeDim d)), ("space-after", isJust (psSpaceAfterDim d))],
+         present
+       ]
+    <> [ ("G03006", n, paraKey n "line-pitch", "line-pitch は sp に変換した後も正の値が必要です")
+       | n <- Map.keys (stParaStyles s),
+         Just d <- [paraStyle s (Just n)],
+         isPitchDim (psLinePitch d),
+         maybe False (<= 0) (resolvedParagraphPitch s d)
+       ]
+  where
+    isPitchDim (Just (PitchDim _)) = True
+    isPitchDim _ = False
+    writtenBy n key = case [name | (name, d) <- namedChainOf paraParent (stParaStyles s) n, hasKey key d] of
+      name : _ -> name
+      [] -> n
+    hasKey "line-pitch" = isJust . psLinePitch
+    hasKey "space-between" = isJust . psSpaceBetweenDim
+    hasKey "space-before" = isJust . psSpaceBeforeDim
+    hasKey "space-after" = isJust . psSpaceAfterDim
+    hasKey _ = const False
 
 {- | G03125 (docs/adr/0269): the character style of the marks of notes in
 the text (mark-style, or else note-mark) whose based-on chain resolves
@@ -3290,7 +3434,7 @@ codeStyleChecks s =
       | (k, written) <-
           [ ("based-on", isJust (psBasedOn d)),
             ("line-breaks", isJust (psLineBreaks d)),
-            ("space-between", isJust (psSpaceBetween d)),
+            ("space-between", isJust (psSpaceBetween d) || isJust (psSpaceBetweenDim d)),
             ("number-title-separator", isJust (psNumberTitleSeparator d)),
             ("line-number-interval", isJust (psLineNumberInterval d)),
             ("indent", isJust (psIndent d)),
@@ -3302,8 +3446,8 @@ codeStyleChecks s =
             ("proportional-metrics", isJust (psProportional d)),
             ("baseline-shift", isJust (psBaselineShift d)),
             ("align", isJust (psAlign d)),
-            ("space-before", isJust (psSpaceBefore d)),
-            ("space-after", isJust (psSpaceAfter d)),
+            ("space-before", isJust (psSpaceBefore d) || isJust (psSpaceBeforeDim d)),
+            ("space-after", isJust (psSpaceAfter d) || isJust (psSpaceAfterDim d)),
             ("end-indent", isJust (psEndIndent d)),
             ("keep-with-next", isJust (psKeepWithNext d)),
             ("keep-all-lines", isJust (psKeepAllLines d)),
@@ -3593,6 +3737,10 @@ localStyleDefWithValues style kind kvs = do
   where
     prefix = case kind of CharacterKind -> "character-styles"; ParagraphKind -> "paragraph-styles"
     replace (key, value) = case (quantityKindAt [prefix, "local", key], value) of
+      (_, LocalWord "auto") | kind == ParagraphKind && key == "line-pitch" -> Right (key, value)
+      (_, LocalString "auto") | kind == ParagraphKind && key == "line-pitch" -> Right (key, value)
+      (_, LocalWord name) | kind == ParagraphKind && key `elem` ["space-between", "space-before", "space-after"], Just (LengthKind, QuantityText lengthText) <- Map.lookup name (stLayoutValues style) -> Right (key, LocalString lengthText)
+      (_, LocalString name) | kind == ParagraphKind && key `elem` ["space-between", "space-before", "space-after"], Just (LengthKind, QuantityText lengthText) <- Map.lookup name (stLayoutValues style) -> Right (key, LocalString lengthText)
       (Just wanted, LocalWord name) -> named key wanted name value
       (Just wanted, LocalString name) -> named key wanted name value
       _ -> Right (key, value)
@@ -3626,9 +3774,8 @@ localStyleDefWithValues style kind kvs = do
 layoutValueNames :: Style -> StyleKind -> Text -> [Text]
 layoutValueNames style kind key =
   [ name
-  | Just wanted <- [quantityKindAt [prefix, "local", key]],
-    (name, (actual, _)) <- Map.toList (stLayoutValues style),
-    wanted == actual
+  | (name, (actual, _)) <- Map.toList (stLayoutValues style),
+    actual `elem` (if isParagraphSpacingPath [prefix, "local", key] then [LengthKind, CountKind] else catMaybes [quantityKindAt [prefix, "local", key]])
   ]
   where
     prefix = case kind of CharacterKind -> "character-styles"; ParagraphKind -> "paragraph-styles"
@@ -3840,6 +3987,7 @@ styleSchema =
           ("characters", int),
           ("lines", int),
           ("line-pitch", dim),
+          ("alignment", enum ["grid", "free"]),
           ("columns", int),
           ("column-gap", dim),
           ("position", NTable [("top", dim), ("gutter", dim), ("left", dim), ("right", dim)])
@@ -3985,10 +4133,11 @@ paraStyleNode =
         ("size", dim),
         ("line-breaks", enum lineBreaksValues),
         ("line-number-interval", int),
-        ("space-between", int),
+        ("line-pitch", NEither [enum ["auto"], dim]),
+        ("space-between", NEither [int, dim]),
         ("number-title-separator", str),
-        ("space-before", int),
-        ("space-after", int),
+        ("space-before", NEither [int, dim]),
+        ("space-after", NEither [int, dim]),
         ("align", enum alignValues),
         ("indent", dim),
         ("first-line-indent", dim),

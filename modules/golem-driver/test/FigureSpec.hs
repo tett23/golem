@@ -21,7 +21,7 @@ import Data.Word (Word8)
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.PageLabel (PageLabel (..))
-import Golem.Layout.Paginate (PageOut (..), Slotted (..), labelPages)
+import Golem.Layout.Paginate (PageOut, PageOutAt (..), Slotted (..), labelPages)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Length (Sp (..))
@@ -553,7 +553,7 @@ horizontal20 binding = pageStyle "horizontal" binding 24 20 1 20
 figuresIn :: PdfLayout -> [(PlacedFigure, PageOut, Int)]
 figuresIn pl =
   [ (pf, p, slot)
-  | p <- plPages pl,
+  | p <- gridPages pl,
     (slot, s) <- poSlots p,
     fid <- case s of
       SFigure f -> [f]
@@ -949,7 +949,7 @@ turnedFigureTests =
           turnedPage = [poNumber p | (_, p, _) <- placed, (_, SPageFigure _) <- poSlots p]
       [T.take 2 (captionText (ptLine l)) | (pf, _, _) <- placed, l <- take 1 (pfCaption pf)] @?= ["F1", "F2"]
       turnedPage @?= [2]
-      fmap plIndex (Map.lookup "turned" (labelPages Map.empty (plPages pl))) @?= Just 2,
+      fmap plIndex (Map.lookup "turned" (labelPages Map.empty (gridPages pl))) @?= Just 2,
     testCase "HTML and EPUB place a turned figure as any other" $ do
       let build' r = notifiedWith "\n[targets.html]\n\n[targets.epub]\n" (horizontal20 "left" 20) (fig "wide" r "キャプション。") (\o -> o {optTargets = Just [TargetHtml, TargetEpub]})
       turned <- build' " rotate=true"

@@ -40,7 +40,9 @@ import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
 import ManualEmetSpec (manualEmetTests)
+import ParagraphPitchSpec (paragraphPitchTests)
 import ParagraphStyleControlsSpec (paragraphStyleControlsTests)
+import ParagraphWrapPitchSpec (paragraphWrapPitchTests)
 import VerseLineNumbersSpec (verseLineNumberTests)
 #ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
@@ -204,6 +206,8 @@ tests skips =
              testGroup "the separator between a number and its title (Golem ADR 0372)" numberTitleSeparatorTests,
              testGroup "verse line numbers (root ADR 0384)" verseLineNumberTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
+             paragraphPitchTests,
+             paragraphWrapPitchTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
              publicDomainTests skips,

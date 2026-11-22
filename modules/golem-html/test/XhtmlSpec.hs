@@ -293,11 +293,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -305,7 +305,37 @@ alignSpaceLines cfg = [l | l <- cssLines "" cfg, not (".align-" `T.isPrefixOf` l
 
 alignSpaceTests :: [TestTree]
 alignSpaceTests =
-  [ testCase "the defaults write no rule" $
+  [ testCase "root ADR 0397 A3: physical pitch and spacing are emitted independently" $ do
+      let ps = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 65536 262144 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "dialogue" ps}
+      assertBool (show rendered) ("p.ps-dialogue { line-height: 18pt; margin-block: 0; }" `elem` rendered)
+      assertBool (show rendered) ("p.ps-dialogue + p.ps-dialogue { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "root ADR 0397 A3: unequal styles use the larger absolute gap" $ do
+      let a = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 393216 0)}
+          b = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1048576 262144 0 0)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.fromList [("a", a), ("b", b)]}
+      assertBool (show rendered) ("p.ps-a + p.ps-b:not(.ps-a) { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "root ADR 0397 A3: zero physical gap overrides browser paragraph margins" $ do
+      let ps = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 0)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "dialogue" ps}
+      assertBool (show rendered) ("p.ps-dialogue { line-height: 18pt; margin-block: 0; }" `elem` rendered)
+      assertBool (show rendered) ("p.ps-dialogue + p.ps-dialogue { margin-block-start: 0; }" `elem` rendered),
+    testCase "root ADR 0397 A3: body spacing does not select other paragraph styles" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "body" body}
+      assertBool (show rendered) ("p:where(:not([class])) + p:where(:not([class])) { margin-block-start: 6pt; }" `elem` rendered)
+      assertBool (show rendered) ("p + p { margin-block-start: 6pt; }" `notElem` rendered),
+    testCase "root ADR 0397 A3: note interiors retain browser line height" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "body" body}
+      assertBool (show rendered) ("section.notes aside p { line-height: normal; }" `elem` rendered),
+    testCase "root ADR 0397 A3: file-local body pitch resets margins without matching styled paragraphs" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          local = HtmlLocalStyles Map.empty (Map.singleton "body" body) Nothing Nothing Map.empty
+          rendered = cssLines "" cfg0 {hcLocalStyles = Map.singleton fidA local}
+      assertBool (show rendered) (any (T.isInfixOf "margin-block: 0; line-height: 18pt;") rendered)
+      assertBool (show rendered) ("body.file-1 p:where(:not([class])) + p:where(:not([class])) { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "the defaults write no rule" $
       alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)]} @?= [],
     testCase "the alignment of body when it is not the default, of another style when it is not that of body" $ do
       let centre = plainPara {hpsAlign = ["text-align: center"]}
@@ -773,13 +803,14 @@ tests =
     testCase "one page per source file, named .xhtml" $
       map fst (sitePages (renderXhtml cfg0 ft (bookOf []) {bookDocs = [Document fidA [], Document fidB []]})) @?= ["a.xhtml", "b.xhtml"],
     -- a round trip: an escape that drops or rewrites characters fails too (docs/adr/0066)
-    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $ property $ do
-      t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
-      let e = escapeXml t
-      unescapeXml e === t
-      T.filter (`elem` ("<>\"" :: String)) e === ""
-      -- every & starts one of the four references
-      filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
+    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $
+      property $ do
+        t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
+        let e = escapeXml t
+        unescapeXml e === t
+        T.filter (`elem` ("<>\"" :: String)) e === ""
+        -- every & starts one of the four references
+        filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
   ]
 
 -- | The references escapeXml writes, without their &.

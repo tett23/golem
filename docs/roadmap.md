@@ -84,12 +84,12 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **ルビの読み**：読みだけに文字スタイルを指定できる。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
 - **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
-- **段落スタイルの拡張（未実装）**：行送り（`line-height`）、ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` を除く部分であり、次の未決事項を決めてから組む。 [Golem ADR 0374](adr/0374-paragraph-style-controls.md)。
-  - **行送りと行の格子（未決）**：仕様書は、PDF の本文を行の格子に載せるので段落スタイルに行送りの欄を設けないとしている。ADR は `line-height` を設けるが、格子の行との関係（格子に載せ直すか、格子から外れて組むか、その後の段落をどこから始めるか）と、HTML と EPUB の写し方を書いていない。
+- **段落ごとの行送りと寸法によるアキ（確認待ち）**：自由な配置、段落スタイルの `line-pitch`、寸法による段落間のアキと、改ページ、脚注、図版、囲みの実寸による配置は実装した。横組みと縦組みの PDF と生成 CSS は確認した。受けいれ条件 A3 の、HTML をブラウザーで表示し段落間の余白が二重に入らないことの確認だけが残る。指示者のブラウザー不使用の指示に従い、この確認は後回しにしている。 [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)。
+- **段落スタイルの拡張（未実装）**：ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` と、後の ADR が変更した行送りを除く部分であり、次の未決事項を決めてから組む。 [root ADR 0374](adr/0374-paragraph-style-controls.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)。
   - **ドロップキャップの組み方（未決）**：ADR は「先頭 1 書記素を指定行数の高さで置き、その行だけ本文幅を減らす」と書く。指定行数の高さの字の脇では、その行数の行を短くしないと重なるので、「その行だけ」と食い違う。字の大きさの決め方（最初の行の字面の上端から最後の行のベースラインまでか）、字と本文のあいだの空き、HTML と EPUB の写し方も決まっていない。
   - **字取りの範囲（未決）**：ADR は「指定字数の幅に字間を均等配分する」と書くが、段落の字数が指定字数を超えるとき、段落が二行以上になるとき、字取りを当てる段落の種類（見出しか、本文の段落か）を書いていない。
   - **`drop-lines` と `fit-characters` の併用の誤りのコード（未決）**：ADR は併用を設定位置で拒むとするが、コードを決めていない。原因ごとにコードを分ける決まりから、新しいコードが要るかを決める。
-  - **段落ごとの上書きのキー（未決）**：`@style body line-height="16pt"` の名前付き引数に、どの段落スタイルのキーを書けるか（ADR の六つのキーだけか、`@style-def` と同じすべてのキーか）と、意味の IR での持ち方を決める。ADR の不変条件 1 の「段落ごとの指定」は、これが決まってから検査できる。
+  - **段落ごとの上書きのキー（未決）**：`@style body line-pitch="16pt"` の名前付き引数に、どの段落スタイルのキーを書けるか（ADR の六つのキーだけか、`@style-def` と同じすべてのキーか）と、意味の IR での持ち方を決める。ADR の不変条件 1 の「段落ごとの指定」は、これが決まってから検査できる。
   - **見出しとリストへの適用の方法（未決）**：見出しは段落スタイルでなく `[headings.<階層>]` で組み、リストの項目の段落は `body` で組む。ADR は「見出しとリストを含む段落」にキーを指定するとするが、見出しとリストにどの段落スタイルを結び付けるか（`[headings.<階層>]` にキーを足すか、段落スタイルの名前を指す欄を設けるか）を書いていない。
   - **HTML と EPUB の始め括弧の字下げ（未決）**：`opening-indent` は PDF だけに当たる。HTML と EPUB で、段落ごとに先頭の字を見て `text-indent` を変えるかを決める。
 

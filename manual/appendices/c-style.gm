@@ -60,7 +60,7 @@ TOML の基本の文字列（[code: "..."]）ではバックスラッシュを�
 
 判型と組み方向です。
 PDF を作るには必須です。
-HTML と EPUB の組み方には [code: writing-mode] だけを反映します。
+HTML と EPUB は組み方向を使い、自由な配置の段落の寸法を解決するときは版面の文字の大きさと行送りも使います。
 設定の組み合わせは、出力によらず検査します。
 
 | キー | 既定 | 意味 |
@@ -76,7 +76,7 @@ HTML と EPUB の組み方には [code: writing-mode] だけを反映します�
 
 版面です。
 PDF を作るには必須です。
-[code: columns] と [code: column-gap] のほかのキーも必須です。
+[code: columns]、[code: column-gap]、[code: alignment] のほかのキーは必須です。
 
 | キー | 意味 |
 |:---|:---|
@@ -85,7 +85,8 @@ PDF を作るには必須です。
 | [code: lines] | 一ページの行数です。段組みでは一段の行数です。 |
 | [code: columns] | 段数です。省くと 1 段です。2 以上にすると段組みになり、傍注と図版の回り込みは使えなくなります。 |
 | [code: column-gap] | 段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必須です。 |
-| [code: line-pitch] | 行送りです。文字の大きさ以上にします。 |
+| [code: line-pitch] | 版面の行送りです。文字の大きさ以上にします。 |
+| [code: alignment] | [code: "grid"]（既定）は格子への配置、[code: "free"] は段落ごとの行送りと寸法のアキを使う配置です。 |
 | [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。左右固定モードでは [code: gutter] の代わりに [code: left] または [code: right] のちょうど一方で、仕上がりの物理的な端から版面の同じ側の端までの距離を書きます。 |
 
 @nonumber
@@ -211,10 +212,11 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 | [code: first-line-indent] | 最初の行に [code: indent] へ加える字下げです。負の値はぶら下げになります。[code: indent] との和は 0 以上にします。既定は [code: "0zw"] です。 |
 | [code: end-indent] | すべての行の終わりの側の字下げです。縦組みでは地からの距離です。既定は [code: "0zw"] です。 |
 | [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは見開きモードの横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
+| [code: line-pitch] | [code: "auto"]（既定）は版面の行送りです。自由な配置では正の寸法も書けます。[code: zw] はその段落の文字の大きさを基準とします。 |
 | [code: line-breaks] | [code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [code: "join"] です。 |
-| [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。既定は [code: 0] です。 |
-| [code: space-before] | 段落の前に空ける行の数です。既定は [code: 0] です。 |
-| [code: space-after] | 段落の後に空ける行の数です。前の段落の [code: space-after] と次の段落の [code: space-before] は、大きいほうを取ります。既定は [code: 0] です。 |
+| [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに追加するアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。既定は [code: 0] です。 |
+| [code: space-before] | 段落の前の追加のアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。既定は [code: 0] です。 |
+| [code: space-after] | 段落の後の追加のアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。前の段落の [code: space-after] と次の段落の [code: space-before] は、大きいほうを取ります。既定は [code: 0] です。 |
 | [code: aki-set] | 字間の空きを決めるアキ量のセットの名前です。[code: \[aki-sets.名前\]] で定義したものか、組み込みのセットを書きます。書かなければ [code: body] と同じセットです。 |
 | [code: line-adjustment] | 行に字が収まらないときの組み方です。[code: "pull-in-first"] は、約物の空きや語間を詰めて字を前の行に入れること（追い込み）を優先します。[code: "balanced"] は、詰める行と字間を空ける行を同じ基準で比べます。既定は [code: "pull-in-first"] です。 |
 | [code: stretch-limit] | 行の字間を空ける量の上限を、伸びの最大に対する千分率の整数で書きます。上限を超える分は行末に残します。既定は上限なしです。 |
@@ -257,8 +259,9 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 | [code: end-indent] | なし | 段の行の終わりから罫線の終わりまでの距離です。負の値は段の外に出します。 |
 | [code: keep-in-column] | [code: true] | ページの頭と終わりの罫線を段の中に収めるかです。[code: false] にすると余白に出します。 |
 
-間隔は、段落の行が載る行の格子の字面から測ります。
-罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、外側の空きは、罫線の領域が行の格子の行の数にそろうまで広がります。
+間隔は、格子への配置では段落の行が載る格子の字面から、自由な配置では行ボックス内の文字の仮想ボディから測ります。
+罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、外側の空きは、格子への配置では罫線の領域が行の格子の行の数にそろうまで広がります。
+自由な配置では、必要な追加の長さだけを取り、格子の単位には切り上げません。
 間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: in]、[code: zw] のどれでも書けます。
 間隔の [code: zw] は、PDF でも HTML と EPUB でも、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
 罫線が仕上がりの線か段間の半分を超えると、版面を計算できないエラー（G07001）です。

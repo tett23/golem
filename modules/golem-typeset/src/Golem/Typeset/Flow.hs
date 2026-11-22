@@ -65,6 +65,7 @@ module Golem.Typeset.Flow
     BoxInfo (..),
     fitFigure,
     figureRect,
+    figureRectAt,
     imageRect,
     turnedFrame,
     pdfXPeople,
@@ -128,6 +129,7 @@ import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Align qualified as A
 import Golem.Layout.Code
+import Golem.Layout.FreeGeometry (boxExtras, faceOffset, intersects, rowExtent)
 import Golem.Layout.Hyphenation.Languages (exceptionPatterns)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
@@ -135,12 +137,13 @@ import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.Look qualified as L
 import Golem.Layout.PageLabel
 import Golem.Layout.Paginate
+import Golem.Layout.Paginate.Physical (PhysicalFailure (..), PhysicalPart (..), PhysicalSettings (..), PhysicalWrap (..), beginPhysicalWrapAfter, endPhysicalWrap, finishPhysicalCursor, finishPhysicalUnit, fitsPhysicalFollowing, keepPhysicalNext, movePhysicalCursor, paginatePhysical, physicalCursorIsEmpty, physicalCursorPosition, physicalFollowingRows, physicalKeepAhead, physicalParagraphOrigin, recordPhysicalUnmet, startPhysicalCursor, stepPhysicalCursor, stepPhysicalPrefix, trialParagraphPart, trialParagraphPartLimit)
 import Golem.Layout.Ruby (RubyStyle (..))
 import Golem.Layout.Ruby qualified as R
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
-import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
+import Golem.Layout.Wrap (Exclusion (..), exclusion)
 import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, pgBindingRight, sidenoteAreaFor, typeAreaFor)
 import Golem.Length qualified as L
 import Golem.Numerals (circled)
@@ -292,6 +295,7 @@ data PlacedFigure = PlacedFigure
     pfCaptionSpan :: !Int,
     -- | the exclusion area of a wrapped figure
     pfExclusion :: !(Maybe Exclusion),
+    pfExclusionLength :: !Sp,
     -- | the path of the image and the @figure block (golem-cli ADR 0006)
     pfSource :: !Text,
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
@@ -320,7 +324,8 @@ data TableGeometry = TableGeometry
 
 -- | The result of the layout, read by the writer and the tests.
 data PdfLayout = PdfLayout
-  { plPages :: ![PageOut],
+  { plPages :: ![PageOutAt Sp],
+    plLinePitches :: !(Map Int Sp),
     plLines :: !(Map Int SetLine),
     plFigures :: !(Map Int PlacedFigure),
     -- | heading blocks by their first line (golem-driver ADR 0003)
@@ -373,7 +378,7 @@ data DestAnchor = AnchorLine !Int | AnchorFigure !Int
   deriving stock (Eq, Show)
 
 data Built = Built
-  { bFlow :: [Flow],
+  { bFlow :: [FlowAt Sp],
     bLines :: Map Int SetLine,
     bFigures :: Map Int PlacedFigure,
     -- | heading blocks by their first line
@@ -410,7 +415,12 @@ data Built = Built
     -- | where the destinations of links are drawn (docs/adr/0267)
     bDestAnchors :: Map LinkDest DestAnchor,
     -- | G07127: the captions whose indents leave no character, also when the layout stops (docs/adr/0389)
-    bCaptionWarnings :: [Diagnostic]
+    bCaptionWarnings :: [Diagnostic],
+    bLinePitches :: Map Int Sp,
+    bBoxPadding :: Map Int Sp,
+    bWrappedBefore :: Map Int Sp,
+    bFreePages :: Maybe (Either PhysicalFailure [PageOutAt Sp]),
+    bUnitFirsts :: Map Int Int
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -518,7 +528,7 @@ indexDiagnostics fid style geom =
 0025): in the type area, left to right in horizontal writing and top to
 bottom in vertical writing.
 -}
-columnSetRects :: PageGeometry -> Int -> ColumnSet -> [Rect]
+columnSetRects :: PageGeometry -> Int -> ColumnSetAt position -> [Rect]
 columnSetRects geom n set =
   let Rect x y w h = typeAreaFor geom n
       m = csMeasure set
@@ -656,7 +666,7 @@ layoutLines layout =
 {- | The flow and its lines as (line length, indent), in order, laid out
 with no page numbers assumed (for tests).
 -}
-flowLines :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Flow], [(Sp, Sp)]))
+flowLines :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([FlowAt Sp], [(Sp, Sp)]))
 flowLines provider inp0 = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
@@ -720,13 +730,16 @@ layoutFigures reuse numbered inp geom fonts figures = do
           if not (null (bErrors built))
             then Left (bErrors built <> bCaptionWarnings built)
             else
-              let pages = paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)
+              let pagesResult = paginateBuilt inp geom capacity built
+                  pages = fromRight [] pagesResult
                   errors =
                     [ diagnostic "G07125" Error sp ("脚注の印、区切りの領域と脚注本文の一行が " <> T.pack (show n) <> " 行の段に収まりません")
                     | p <- pages,
                       UnplaceableFootnote (NoteId sp _) n <- poUnmet p
                     ]
-               in if null errors then Right (built, pages) else Left (errors <> bCaptionWarnings built)
+               in case pagesResult of
+                    Left ds -> Left (ds <> bCaptionWarnings built)
+                    Right _ -> if null errors then Right (built, pages) else Left (errors <> bCaptionWarnings built)
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
   result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -761,8 +774,59 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
+            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
+
+paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
+paginateBuilt inp geom capacity built
+  | free = either (Left . pure . physicalError) Right (fromMaybe (paginatePhysical settings (bFlow built)) (bFreePages built))
+  | otherwise = Right (map normalize (paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bFlow built))))
+  where
+    pitch = pgLinePitch geom
+    face = pgFontSize geom
+    height = fromIntegral (max 0 (capacity - 1)) * pitch + face
+    free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)
+    gridUnits n = fromInteger (unSp n `div` unSp pitch)
+    normalize page =
+      let scaled = fmap (\n -> fromIntegral n * pitch) page
+       in scaled {poBoxes = [b {bsLast = bsLast b + pitch} | b <- poBoxes scaled]}
+    settings = physicalSettings inp geom capacity built
+    atLine ident = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) ident (bLineSpans built)
+    physicalError failure = case failure of
+      PhysicalLineTooTall ident ->
+        let (sp, name) = fromMaybe (atLine ident, "body") (paraOfLine built ident)
+         in diagnostic "G07129" Error sp ("段落スタイル " <> name <> " の一行が段に収まりません")
+      PhysicalFootnoteTooTall (NoteId sp _) -> diagnostic "G07130" Error sp "脚注の最初の一行を段に配置できません"
+      PhysicalHeadingTooTall ident -> diagnostic "G07024" Error (atLine ident) "見出しが版面に入りません"
+      PhysicalTableTooTall ident -> diagnostic "G07042" Error (atLine ident) "表の最小部分が段に収まりません"
+      PhysicalTableCaptionTooTall ident -> diagnostic "G07116" Error (atLine ident) "表とキャプションの最小部分が段に収まりません"
+      PhysicalCodeTooTall ident -> diagnostic "G07043" Error (atLine ident) "コードの最小部分が段に収まりません"
+      PhysicalBoxTooTall ident -> diagnostic "G07121" Error (atLine ident) "囲みの一行と padding が段に収まりません"
+      PhysicalFigureTooTall ident -> diagnostic (if height < pitch then "G07131" else "G07038") Error (atLine ident) "図版の一行分の領域が段に収まりません"
+
+-- | Resolve the same physical geometry for a causal trial and final pagination.
+physicalSettings :: PdfInput -> PageGeometry -> Int -> Built -> PhysicalSettings
+physicalSettings inp geom capacity built =
+  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds
+  where
+    pitch = pgLinePitch geom
+    face = pgFontSize geom
+    height = fromIntegral (max 0 (capacity - 1)) * pitch + face
+    headingBounds = Map.fromList (concatMap boundsInFlow (bFlow built))
+    boundsInFlow flow = case flow of
+      FHeading {fhLines = rows} -> boundsOf rows
+      FRuled {frBody = RuledHeading {rhLines = rows}} -> boundsOf rows
+      FBoxed {fbBody = body} -> concatMap boundsInFlow body
+      _ -> []
+    boundsOf rows = case rows of
+      firstRow : _
+        | Just block <- Map.lookup (lbId firstRow) (bHeadings built),
+          Just lastRow <- listToMaybe (reverse rows),
+          Just lastSet <- Map.lookup (lbId lastRow) (bLines built) ->
+            let firstOffset = faceOffset pitch face + hbOffset block
+                lastEnd = firstOffset + fromIntegral (length rows - 1) * hbPitch block + slSize lastSet
+             in [(lbId firstRow, (firstOffset, lastEnd))]
+      _ -> []
 
 -- | Warn once per chapter when its collected notes repeat a page-local number (root ADR 0402).
 chapterPageNoteWarnings :: PdfInput -> Map (NoteChannel, Int) Int -> [Diagnostic]
@@ -790,7 +854,7 @@ takes the number of its mark in the text. A mark keeps the width it
 reserved, so no line and no page changes: nothing is laid out again. A
 layout of another numbering has no such marks and is as it is.
 -}
-renumberPageNotes :: [PageOut] -> Built -> Built
+renumberPageNotes :: [PageOutAt Sp] -> Built -> Built
 renumberPageNotes pages built
   | isNothing (feMarkReserve fe) = built
   | otherwise =
@@ -820,7 +884,7 @@ header row of a table is set again on later pages), in the order of the
 book. The marks are those of the lines of the text, the headings, the
 tables and their captions, the captions of figures and code blocks.
 -}
-pageNoteNumbers :: [PageOut] -> Built -> Map (NoteChannel, Int) Int
+pageNoteNumbers :: [PageOutAt Sp] -> Built -> Map (NoteChannel, Int) Int
 pageNoteNumbers pages built =
   Map.fromList
     [ ((ch, n), k)
@@ -899,19 +963,32 @@ paraOfLine built lid = (\(_, sp) -> (sp, styleAtSpan built sp)) <$> Map.lookupLE
 styleAtSpan :: Built -> SrcSpan -> Text
 styleAtSpan built sp = fromMaybe "body" (listToMaybe [n | (_, u) <- bUnits built, uSpan u == sp, Just n <- [uParaStyle u]])
 
-unmetWarnings :: Map Int (SrcSpan, Text) -> (Int -> Maybe (SrcSpan, Text)) -> (SrcSpan -> Text) -> [PageOut] -> [Diagnostic]
-unmetWarnings names paraOf styleAt pages =
+unmetWarnings :: Sp -> Bool -> Map Int (SrcSpan, Text) -> (Int -> Maybe (SrcSpan, Text)) -> (SrcSpan -> Text) -> [PageOutAt Sp] -> [Diagnostic]
+unmetWarnings pagePitch free names paraOf styleAt pages =
   [ d
   | p <- pages,
     u <- poUnmet p,
     d <- case u of
       UnmetNoBreak sp -> [diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"]
-      UnmetNeedLines sp k -> [diagnostic "G07037" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")]
+      UnmetNeedLines sp k ->
+        [ diagnostic
+            "G07037"
+            Warning
+            sp
+            ( if free
+                then "@need-lines " <> T.pack (show k) <> " の長さ " <> L.ptText (fromIntegral k * pagePitch) <> "pt は段の長さ " <> L.ptText (poLines p) <> "pt を超えます"
+                else "@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (unSp (poLines p) `div` unSp pagePitch)) <> " を超えます"
+            )
+        ]
       UnmetAdjust sp k limit -> [diagnostic "G07037" Warning sp (adjustReason limit <> "@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")]
       -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046), an info (docs/adr 0104)
       DroppedBlank sp -> [infoDiagnostic "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"]
       TallHeading i n room ->
         [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
+        | Just (sp, name) <- [Map.lookup i names]
+        ]
+      TallHeadingExtent i extent remaining ->
+        [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しの長さ " <> L.ptText extent <> "pt、段の残り " <> L.ptText remaining <> "pt）")
         | Just (sp, name) <- [Map.lookup i names]
         ]
       -- G07111, G07112, G07113: the keep options not met (docs/adr/0261)
@@ -928,7 +1005,7 @@ unmetWarnings names paraOf styleAt pages =
 columns, or a ruled heading that lost a rule, because an empty column
 could not hold its block.
 -}
-ruledNotices :: [Flow] -> Map Int RuledInfo -> [PageOut] -> [Diagnostic]
+ruledNotices :: [FlowAt Sp] -> Map Int RuledInfo -> [PageOutAt Sp] -> [Diagnostic]
 ruledNotices flow infos pages =
   [ if riHeading info
       then notice "G07046" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
@@ -947,14 +1024,14 @@ ruledNotices flow infos pages =
 {- | The page of each heading (golem-driver ADR 0009): the page where the
 first line of its block is placed, keyed by the span of the block.
 -}
-headingPages :: Map Int SrcSpan -> [PageOut] -> Map SrcSpan Integer
+headingPages :: Map Int SrcSpan -> [PageOutAt Sp] -> Map SrcSpan Integer
 headingPages spans ps =
   Map.fromList [(hs, toInteger (poNumber p)) | p <- ps, (_, SHeading lid _) <- poSlots p, Just hs <- [Map.lookup lid spans]]
 
 {- | The headings that start on each page (golem-driver ADR 0014), in the
 order they are placed, looked up by the first line of their block.
 -}
-headingsOnPages :: (Int -> Maybe HeadingInfo) -> [PageOut] -> Map Int [HeadingInfo]
+headingsOnPages :: (Int -> Maybe HeadingInfo) -> [PageOutAt Sp] -> Map Int [HeadingInfo]
 headingsOnPages infoOf ps =
   -- the columns of a page in their order (docs/adr ADR 0018)
   Map.fromListWith (flip (<>)) [(poNumber p, [h | (_, SHeading lid _) <- poSlots p, Just h <- [infoOf lid]]) | p <- ps]
@@ -1046,7 +1123,7 @@ layoutLabels :: PdfInput -> PdfLayout -> Map Int PageLabel
 layoutLabels inp layout = pageLabels (bookSections inp) (plPages layout)
 
 -- | The columns of each page, in order (docs/adr ADR 0018).
-pagesOf :: [PageOut] -> [[PageOut]]
+pagesOf :: [PageOutAt Sp] -> [[PageOutAt Sp]]
 pagesOf = groupBy (\a b -> poNumber a == poNumber b)
 
 {- | The file of each page, in order (golem-driver ADR 0014): the file of
@@ -1631,7 +1708,7 @@ ADR 0006): each wants the top of the line of its marker; they keep their
 order, half a body pitch apart. Takes the sidenote pitch and size of a
 sidenote by its span (docs/adr ADR 0014).
 -}
-placePageSidenotes :: PageGeometry -> (SrcSpan -> (Sp, Sp)) -> Map Int SetLine -> PageOut -> Either [Diagnostic] [PlacedSidenote]
+placePageSidenotes :: PageGeometry -> (SrcSpan -> (Sp, Sp)) -> Map Int SetLine -> PageOutAt Sp -> Either [Diagnostic] [PlacedSidenote]
 placePageSidenotes geom metricsOf lineMap p =
   let bodyPitch = pgLinePitch geom
       lineIds = \case
@@ -1639,7 +1716,7 @@ placePageSidenotes geom metricsOf lineMap p =
         SHeading lid m -> [lid .. lid + m - 1]
         _ -> []
       notes =
-        [ (sp, fromIntegral slot * bodyPitch, ls)
+        [ (sp, slot, ls)
         | (slot, s) <- sortOn fst (poSlots p),
           lid <- lineIds s,
           Just sl <- [Map.lookup lid lineMap],
@@ -1676,7 +1753,7 @@ after 'maxIterations' rounds, G07021 names what still moves and is at the
 first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
 or an index mark.
 -}
-fixpoint :: Map Int Section -> (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
+fixpoint :: Map Int Section -> (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOutAt position]))) -> IO (Either [Diagnostic] (b, [PageOutAt position]))
 fixpoint sections labelSpan termOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty Map.empty)
   where
     -- each round is given the value of the round just before it, and of no other (docs/adr ADR 0251)
@@ -2099,7 +2176,7 @@ they are set on (docs/adr/0189): to the side of the spine of the page or
 to the other side, by 'gutterSide' as the running heads and sidenotes.
 The books are horizontal, so the start of a line is its left.
 -}
-alignToSpine :: PageGeometry -> [PageOut] -> Map Int SetLine -> Map Int SetLine
+alignToSpine :: PageGeometry -> [PageOutAt Sp] -> Map Int SetLine -> Map Int SetLine
 alignToSpine geom pages lines' = foldl' move lines' [(lid, poNumber p) | p <- pages, (_, SLine lid) <- poSlots p]
   where
     move m (lid, n) = Map.adjust (at n) lid m
@@ -2120,7 +2197,7 @@ data UnitKind
   | UFigure Figure
   | UTable Table
   | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
-    UGap Int
+    UGap Sp
   | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
     UTocEntry Int SrcSpan Indent Sp
   | -- | a forced break (docs/adr ADR 0017)
@@ -2151,6 +2228,12 @@ paraLook style geom st =
       (role, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
    in (withFeatures d (plainLook role size), Indent (sp' psIndent) (sp' psFirstLineIndent) (sp' psEndIndent) (fromMaybe ParaLeftJustified (d >>= psAlign)))
+
+paragraphSpace :: Style -> Maybe Text -> (ParaStyleDef -> Maybe Int) -> (ParaStyleDef -> Maybe Dim) -> Sp
+paragraphSpace style name countOf dimOf = fromMaybe 0 $ do
+  d <- paraStyle style name
+  amount <- (SpacingDim <$> dimOf d) <|> (SpacingLines <$> countOf d)
+  resolvedParagraphSpacing style d amount
 
 {- | The indent of a paragraph that starts with an opening bracket
 (docs/adr/0374): with opening-indent = "half", the start of the first line
@@ -2307,11 +2390,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       (_, BlankLines _) -> 0
       (_, ForcedBreak _) -> 0
       (_, PageControl _) -> 0
-      (Paragraph s1 _, Paragraph s2 _) | s1 == s2 -> fromMaybe 0 (paraStyle style s2 >>= psSpaceBetween)
-      _ -> max (spaceOf psSpaceAfter a) (spaceOf psSpaceBefore b)
+      (Paragraph s1 _, Paragraph s2 _) | s1 == s2 -> paragraphSpace style s2 psSpaceBetween psSpaceBetweenDim
+      _ -> max (spaceOf psSpaceAfter psSpaceAfterDim a) (spaceOf psSpaceBefore psSpaceBeforeDim b)
       where
-        spaceOf key = \case
-          Paragraph st _ | spaced, null ctx -> fromMaybe 0 (paraStyle style st >>= key)
+        spaceOf key dimKey = \case
+          Paragraph st _ | spaced, null ctx -> paragraphSpace style st key dimKey
           _ -> 0
     -- the block before, past the controls of page breaks (docs/adr ADR 0030)
     before prev b = case blockBody b of
@@ -2370,25 +2453,25 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                     let st = styleOf' e
                         (face, ind) = paraLook style geom st
                      in (unit (UTocEntry (teLevel e) (teSpan e) ind 0) Nothing (bookNumberedTitle book (Just (teLevel e)) lang (teSpan e) (teNumber e) (teTitle e)) face {lkLink = Just (LinkTo (DestHeading (teSpan e)))} SourceGrid) {uParaStyle = st, uRules = paraRules style st}
-                  spaceOf key st = fromMaybe 0 (paraStyle style st >>= key)
+                  spaceOf key dimKey st = paragraphSpace style st key dimKey
                   gapUnit g = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | g > 0]
                   -- the spaces before the first entry, between the entries and after the last (docs/adr/0264)
                   between a b
-                    | styleOf' a == styleOf' b = spaceOf psSpaceBetween (styleOf' b)
-                    | otherwise = max (spaceOf psSpaceAfter (styleOf' a)) (spaceOf psSpaceBefore (styleOf' b))
+                    | styleOf' a == styleOf' b = spaceOf psSpaceBetween psSpaceBetweenDim (styleOf' b)
+                    | otherwise = max (spaceOf psSpaceAfter psSpaceAfterDim (styleOf' a)) (spaceOf psSpaceBefore psSpaceBeforeDim (styleOf' b))
                   tocUnits = \case
                     [] -> []
                     es@(e0 : _) ->
-                      gapUnit (spaceOf psSpaceBefore (styleOf' e0))
+                      gapUnit (spaceOf psSpaceBefore psSpaceBeforeDim (styleOf' e0))
                         <> [entryUnit e0]
                         <> concat [gapUnit (between a b) <> [entryUnit b] | (a, b) <- zip es (drop 1 es)]
-                        <> concat [gapUnit (spaceOf psSpaceAfter (styleOf' l)) | l : _ <- [reverse es]]
+                        <> concat [gapUnit (spaceOf psSpaceAfter psSpaceAfterDim (styleOf' l)) | l : _ <- [reverse es]]
                in (n + 1, inFrame (frame n FToc) (tocUnits entries))
             {- a heading a paragraph of the kind of the entries kept with the first of them,
             a grid line before every heading but the first (docs/adr/0265) -}
             ChannelOutput IndexOutput ->
               let lineUnits kind seen = \case
-                    IndexHeadingLine is -> (seen + 1, [plainUnit (UGap 1) Nothing [] | seen > (0 :: Int)] <> [plainUnit kind Nothing is, plainUnit (UKeepNext 1) Nothing []])
+                    IndexHeadingLine is -> (seen + 1, [plainUnit (UGap (pgLinePitch geom)) Nothing [] | seen > (0 :: Int)] <> [plainUnit kind Nothing is, plainUnit (UKeepNext 1) Nothing []])
                     IndexEntryLine is -> (seen, [plainUnit kind Nothing is])
                   ls = indexLines (pgVertical geom) (indexSectionHeadings style) pageOf (indexAt book sp)
                   entries kind = inFrame (frame n FIndex) (concat (snd (mapAccumL (lineUnits kind) 0 ls)))
@@ -2504,7 +2587,13 @@ data Composed = Composed
     cAnchors :: [Golem.Layout.Japanese.Anchor],
     cItems :: [Item],
     -- | the items of a list marker before the text: the item indices of the anchors are shifted by it (golem-driver ADR 0013)
-    cShift :: Int
+    cShift :: Int,
+    -- | Original shaped-item break positions, including discarded glue and penalties.
+    cBreakPositions :: [Int],
+    -- | The source prefix already committed by causal free wrapping.
+    cItemStart :: Int,
+    cReflowed :: Bool,
+    cActualIndents :: Maybe [Sp]
   }
 
 {- | The environment in which the units of the body are set (docs/adr/0173):
@@ -2760,8 +2849,9 @@ composeUnit fe widths lineWidth u =
         n : _ | noteMarkBoxed (uStyle u) (ceVertical env) n -> markLabelBox env ChannelNote n textItems0
         _ -> textItems0
       items = marker <> textItems
-      lines' = brLines (A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items)
-   in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift
+      breaks = A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items
+      lines' = brLines breaks
+   in Composed lines' (unitNotes fe u anchors) (unitSidenotes fe u shift anchors) (unitMarks fe u shift anchors) anchors items shift (brPositions breaks) 0 False Nothing
 
 {- | The place of the text of a unit in the structure tree (docs/adr ADR
 0183): none for the title of the notes at the end of a chapter, which is
@@ -2943,6 +3033,8 @@ placeFigure fe u fig content =
       fs = pgFontSize geom
       pitch = pgLinePitch geom
       capacity = length (pgLineGrid geom)
+      free = maybe False ((== AlignFree) . gridAlignment) (stPage style >>= pageGrid)
+      height = fromIntegral (max 0 (capacity - 1)) * pitch + fs
       measure = feMeasure fe
       (frameAlong, frameLines) = figurePageFrame geom
       -- a figure turned onto a page of its own is set in its frame (golem-driver ADR 0034)
@@ -2982,7 +3074,10 @@ placeFigure fe u fig content =
       n = partRows caption
       (cp, span') = captionSpanOf n
       -- the grid lines of the column, or of the frame
-      gridLines = if turned then frameLines else capacity
+      gridLines
+        | turned = frameLines
+        | free = fromInteger (unSp height `div` unSp pitch)
+        | otherwise = capacity
       fitOf len k s = fitFigure ratio len k pitch fs (if s == 0 then Nothing else Just s)
       -- step 1 of golem-driver ADR 0034 as docs/adr/0190 has it: along1 is along0 within the measure; fitted when the last along is shorter than along0
       (alongFit, across, fitted) = case figWrap fig of
@@ -3006,13 +3101,15 @@ placeFigure fe u fig content =
       gap = dimToSp fs (stWrapGap style)
       ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
       errs = case (figWrap fig, ex) of
+        (Nothing, _) | free && gridLines == 0 -> [diagnostic "G07131" Error (uSpan u) "図版の一行分の領域が段に収まりません"]
         -- no wrapping on a page of columns (docs/adr ADR 0018)
         (Just _, _)
           | length (pgColumns geom) > 1 -> [diagnostic "G07026" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
         (Just _, Just e)
           | isNothing written || measure - exWidth e < 8 * fs ->
               [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
-          | exLines e > capacity -> [diagnostic "G07023" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
+          | (if free then depth + gap > height else exLines e > capacity) ->
+              [diagnostic "G07023" Error (uSpan u) (if free then "回り込む図版の除外領域（長さ " <> L.ptText (depth + gap) <> "pt）が段の長さ " <> L.ptText height <> "pt を超えます" else "回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
         -- a caption that leaves no line for the image (golem-driver ADR 0034)
         _
           | tooDeep -> [diagnostic "G07038" Error (uSpan u) ("図版のキャプションが" <> place' <> "の行数に達します（" <> T.pack (show span') <> " 行。" <> place' <> "は " <> T.pack (show gridLines) <> " 行）")]
@@ -3021,22 +3118,61 @@ placeFigure fe u fig content =
         | not turned = Nothing
         | pgVertical geom = Just P.TurnedRight
         | otherwise = Just P.TurnedLeft
-   in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn (uIndex u), errs, notices, captionMarks)
+   in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (depth + gap) (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn (uIndex u), errs, notices, captionMarks)
 
 {- | The paragraphs right after a wrapped figure, in order, composed beside
 its exclusion: each by its index, with the line of the exclusion it starts
 at. A paragraph with rules is not set beside a figure (golem-driver ADR
 0027).
 -}
-composeBeside :: FlowEnv -> Map Int Sp -> Map Int Unit -> Int -> Exclusion -> IO [(Int, (Composed, Int))]
-composeBeside fe widths unitAt i ex = go (i + 1) 0
+composeBeside :: FlowEnv -> Map Int Sp -> Map Int Unit -> Int -> PlacedFigure -> IO [(Int, (Composed, Int))]
+composeBeside fe widths unitAt i pf = go (i + 1) 0 0
   where
-    go j offset
-      | offset >= exLines ex = pure []
+    ex = fromMaybe (error "composeBeside: figure without exclusion") (pfExclusion pf)
+    pagePitch = pgLinePitch (feGeom fe)
+    pageFace = pgFontSize (feGeom fe)
+    free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
+    outside = (0, pfExclusionLength pf)
+    unitPitch u = fromMaybe pagePitch (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+    narrowed u distance k =
+      if free
+        then intersects (rowExtent (distance + fromIntegral k * unitPitch u) (unitPitch u) (lkSize (uLook u))) outside
+        else distance + fromIntegral k * pagePitch < fromIntegral (exLines ex) * pagePitch
+    go j offset distance
+      | not free && offset >= exLines ex = pure []
       | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing), uBox = Nothing} <- Map.lookup j unitAt = do
-          c <- forceComposed (composeUnit fe widths (\k -> wrappedLineWidth (feMeasure fe) ex offset k - unitLineIndent (pgFontSize (feGeom fe)) (uKind u) k - unitEndIndent (uKind u)) u)
-          ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
+          c <- forceComposed (composeUnit fe widths (\k -> feMeasure fe - (if narrowed u distance k then exWidth ex else 0) - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u)) u)
+          ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c)) (distance + fromIntegral (length (cLines c)) * unitPitch u)
+      | free, Just u <- Map.lookup j unitAt, Just controls <- besideControlFlow u = go (j + 1) offset (distance + sum [gap | FSpace gap <- controls])
       | otherwise = pure []
+
+-- | Paragraphs in one figure's side job; physical paragraph gaps may lie between them.
+besideParagraphs :: Map Int Unit -> Map Int (Composed, Int) -> Int -> [Int]
+besideParagraphs units beside = go . (+ 1)
+  where
+    go j
+      | Map.member j beside = j : go (j + 1)
+      | Just u <- Map.lookup j units, isJust (besideControlFlow u) = go (j + 1)
+      | otherwise = []
+
+{- | Controls with no shaped content preserve an active exclusion. Hard
+layout blocks such as rules, boxes, tables and column changes end it.
+-}
+besideControlFlow :: Unit -> Maybe [FlowAt Sp]
+besideControlFlow u = case uKind u of
+  UGap n -> Just [FSpace n]
+  UBreak kind -> Just [FBreak kind]
+  UPageControl control ->
+    Just
+      [ case control of
+          NoBreak -> FNoBreak (uSpan u)
+          NoBreakLines n -> FNoBreakLines (uSpan u) (fromInteger (min (toInteger n) (toInteger (maxBound :: Int))))
+          NeedLines n -> FNeedLines (uSpan u) n
+          AdjustLines n -> FAdjustLines (uSpan u) n
+      ]
+  UBlank n -> Just [FBlank (uSpan u) (fromIntegral n)]
+  UKeepNext n -> Just [FKeepNext (uSpan u) n]
+  _ -> Nothing
 
 -- | A composed unit evaluated, so that the work is done where it is run.
 forceComposed :: Composed -> IO Composed
@@ -3183,7 +3319,8 @@ data ComposedUnits = ComposedUnits
     -- | the other units of text
     cuSingles :: Map Int Composed,
     cuTables :: Map Int (Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])),
-    cuCodeBlocks :: Map Int SetCode
+    cuCodeBlocks :: Map Int SetCode,
+    cuBesideControls :: Set.Set Int
   }
 
 {- | The flow numbered so far, in document order (golem-driver ADR 0009):
@@ -3193,7 +3330,7 @@ tables, and the headings and the table of contents entries by their lines.
 -}
 data Numbered = Numbered
   { nuNext :: Int,
-    nuFlow :: [Flow],
+    nuFlow :: [FlowAt Sp],
     nuLines :: Map Int SetLine,
     nuFigures :: Map Int PlacedFigure,
     nuHeadings :: Map Int HeadingBlock,
@@ -3206,7 +3343,8 @@ data Numbered = Numbered
     -- | the caption of each table by its first grid line (docs/adr/0262)
     nuTableCaptions :: Map Int CodeCaption,
     -- | each box by its id, and its settings (docs/adr/0271)
-    nuBoxes :: Map Int (BoxInfo, UnitBox)
+    nuBoxes :: Map Int (BoxInfo, UnitBox),
+    nuWrappedBefore :: Map Int Sp
   }
 
 -- | The label of a unit, on its first line.
@@ -3226,14 +3364,16 @@ numberedLines fe nextId u c indentOf =
       ids = [nextId .. nextId + length ls - 1]
       size = lkSize (uLook u)
       -- notes belong to the line containing their anchor
-      lineOfItem = lineIndexOfItems (cItems c) ls
-      noteLines = Map.fromListWith (flip (<>)) [(lineOfItem (i + cShift c), [(k, nls)]) | ((i, _, _, _), (k, nls)) <- zip (noteAnchors (cAnchors c)) (cNotes c)]
-      sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
-      marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
-      boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then unitLabel u else []) (Map.findWithDefault [] k marksOf) (lineReach fe l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+      lineOfItem index
+        | cReflowed c = min (max 0 (length ls - 1)) (length (takeWhile (< index) (cBreakPositions c)))
+        | otherwise = lineIndexOfItems (cItems c) ls index
+      noteLines = Map.fromListWith (flip (<>)) [(lineOfItem (i + cShift c), [(k, nls)]) | ((i, _, _, _), (k, nls)) <- zip (noteAnchors (cAnchors c)) (cNotes c), not (cReflowed c) || i + cShift c >= cItemStart c]
+      sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c, not (cReflowed c) || i >= cItemStart c]
+      marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c, not (cReflowed c) || i >= cItemStart c]
+      boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 && cItemStart c == 0 then unitLabel u else []) (Map.findWithDefault [] k marksOf) (lineReach fe l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
       -- a line not justified moves by its alignment (docs/adr/0189)
       shiftOf k = A.lineShift (layoutAlign (uKind u)) (k == length ls - 1)
-      set = Map.fromList [(lid, SetLine l size (indentOf k + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (spineOf (uKind u))) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+      set = Map.fromList [(lid, SetLine l size (maybe (indentOf k) (!! k) (cActualIndents c) + shiftOf k l) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf) (spineOf (uKind u))) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
    in (boxes, set)
 
 {- | A rule of a paragraph or heading for pagination (golem-driver ADR
@@ -3252,10 +3392,10 @@ ruleSide geom before spec =
 border whose next line reaches it with ruby or kenten (golem-driver ADR
 0033); the code blocks of the flow are those of the units, in order.
 -}
-spaceAfterCode :: Sp -> Sp -> [CodeInfo] -> [Flow] -> [Flow]
+spaceAfterCode :: Sp -> Sp -> [CodeInfo] -> [FlowAt Sp] -> [FlowAt Sp]
 spaceAfterCode pitch fs infos = \case
   f@FCode {} : remaining -> case infos of
-    ci : more -> f : [FSpace 1 | painted ci, reaches ci remaining] <> spaceAfterCode pitch fs more remaining
+    ci : more -> f : [FSpace pitch | painted ci, reaches ci remaining] <> spaceAfterCode pitch fs more remaining
     [] -> f : spaceAfterCode pitch fs [] remaining
   f : remaining -> f : spaceAfterCode pitch fs infos remaining
   [] -> []
@@ -3323,6 +3463,7 @@ numberTable fe u tbl r nb = case r of
             captionBoxes = [LineBox lid [] (if lid == nextId then unitLabel u else []) (if k == (0 :: Int) then ccMarks cap else []) 0 | (k, lid) <- zip [0 ..] capIds]
             {- a grid line of space before and after a table; none
             after a heading, one between two tables (golem-driver ADR 0031) -}
+            spaceBefore :: Int
             spaceBefore = case reverse (nuFlow nb) of
               (FHeading {} : _) -> 0
               (FRuled {frBody = RuledHeading {}} : _) -> 0
@@ -3330,7 +3471,7 @@ numberTable fe u tbl r nb = case r of
               _ -> 1
          in nb
               { nuNext = nextId + capN + sum heights,
-                nuFlow = nuFlow nb <> [FTable rowsStart spaceBefore headerBoxes rowBoxes captionBoxes below, FSpace 1],
+                nuFlow = nuFlow nb <> [FTable rowsStart (fromIntegral spaceBefore * pitch) headerBoxes rowBoxes captionBoxes below, FSpace pitch],
                 nuLines = Map.unions (nuLines nb : Map.fromList [(lid, SetLine emptyLine fs 0 [] [] Nothing) | lid <- capIds] : [m | (_, m, _) <- rowsOut]),
                 nuTableLines = Map.unions (nuTableLines nb : [m | (_, _, m) <- rowsOut]),
                 nuTables = Map.insert rowsStart (TableGeometry (stWidth t) 0 0 (sum heights)) (nuTables nb),
@@ -3386,11 +3527,16 @@ headingAndTocLines fs cu nextId i u nb = case uKind u of
 -- | Numbers the lines of a unit that is not a table: figures, code blocks, the controls of the flow and the units of text.
 numberOther :: FlowEnv -> ComposedUnits -> Numbered -> (Int, Unit) -> Numbered
 numberOther fe cu nb (i, u)
+  | Set.member i (cuBesideControls cu) = nb
   | Map.member i (cuBesides cu) = nb -- set beside its figure
+  | Just Unit {uKind = UGap _} <- Map.lookup i (cuUnits cu),
+    Map.member (i - 1) (cuBesides cu) || Map.member (i - 1) (cuFigures cu),
+    Map.member (i + 1) (cuBesides cu) =
+      nb -- included in the figure's side job
   | otherwise = case uKind u of
       UFigure _ -> maybe nb (\placed -> numberFigure fe cu i u placed nb) (Map.lookup i (cuFigures cu))
       UGap n -> nb {nuFlow = nuFlow nb <> [FSpace n]}
-      UCode {} -> maybe nb (\cb -> numberCode u cb nb) (Map.lookup i (cuCodeBlocks cu))
+      UCode {} -> maybe nb (\cb -> numberCode (pgLinePitch (feGeom fe)) u cb nb) (Map.lookup i (cuCodeBlocks cu))
       UBreak k -> nb {nuFlow = nuFlow nb <> [FBreak k]}
       -- Facing pages align start parity; single pages start normally (root ADR 0400).
       USection k start -> nb {nuFlow = nuFlow nb <> [FSection (OfSection k) (if pgLayout (feGeom fe) == SinglePage then BreakPage else maybe BreakPage (\s -> if odd s then BreakRecto else BreakVerso) start)]}
@@ -3401,7 +3547,7 @@ numberOther fe cu nb (i, u)
               NeedLines k -> FNeedLines (uSpan u) k
               AdjustLines k -> FAdjustLines (uSpan u) k
          in nb {nuFlow = nuFlow nb <> [control]}
-      UColumns set -> nb {nuFlow = nuFlow nb <> [maybe FRestoreColumns FSwitchColumns set]}
+      UColumns set -> nb {nuFlow = nuFlow nb <> [maybe FRestoreColumns (FSwitchColumns . fmap (\n -> fromIntegral n * pgLinePitch (feGeom fe))) set]}
       UBlank k -> nb {nuFlow = nuFlow nb <> [FBlank (uSpan u) (fromIntegral k)]}
       UKeepNext k -> nb {nuFlow = nuFlow nb <> [FKeepNext (uSpan u) k]}
       _ -> numberText fe (partsAround cu i u) u (cuSingles cu Map.! i) nb
@@ -3416,44 +3562,67 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
         let besides = cuBesides cu
             unitAt = cuUnits cu
             fs = pgFontSize (feGeom fe)
-            paras = [(j, c, off) | j <- takeWhile (`Map.member` besides) [i + 1 ..], let (c, off) = besides Map.! j]
-            indentOf off k = if pfWrap pf == Just WrapStart && off + k < exLines ex then exWidth ex else 0
+            pagePitch = pgLinePitch (feGeom fe)
+            free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
+            excluded = (0, pfExclusionLength pf)
+            unitPitch j = fromMaybe pagePitch (paraStyle (uStyle (unitAt Map.! j)) (uParaStyle (unitAt Map.! j)) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
+            paras = [(j, c, off) | j <- besideParagraphs unitAt besides i, let (c, off) = besides Map.! j]
+            gapBetween prior j = sum [gap | k <- [prior + 1 .. j - 1], Just Unit {uKind = UGap gap} <- [Map.lookup k unitAt]]
+            parasAt =
+              snd
+                ( mapAccumL
+                    ( \(prior, distance) (j, c, off) ->
+                        let gap = gapBetween prior j
+                            start = distance + gap
+                         in ((j, start + fromIntegral (length (cLines c)) * unitPitch j), (j, c, off, start, gap))
+                    )
+                    (i, 0)
+                    paras
+                )
+            narrowed j off distance k
+              | free = intersects (rowExtent (distance + fromIntegral k * unitPitch j) (unitPitch j) (lkSize (uLook (unitAt Map.! j)))) excluded
+              | otherwise = off + k < exLines ex
+            indentOf j off distance k = if pfWrap pf == Just WrapStart && narrowed j off distance k then exWidth ex else 0
             -- beside the figure the paragraph indent adds to the exclusion (docs/adr ADR 0006)
-            go (nid, boxAcc, setAcc) (j, c, off) =
-              let (bs, set) = numberedLines fe nid (unitAt Map.! j) c (\k -> indentOf off k + unitLineIndent fs (uKind (unitAt Map.! j)) k)
-               in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
+            go (nid, boxAcc, setAcc, gapAcc) (j, c, off, distance, gap) =
+              let (bs, set) = numberedLines fe nid (unitAt Map.! j) c (\k -> indentOf j off distance k + unitLineIndent fs (uKind (unitAt Map.! j)) k)
+                  before = if gap > 0 && not (null bs) then Map.singleton nid gap else Map.empty
+               in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set, Map.union gapAcc before)
             tooNarrow =
               [ if null (uLists (unitAt Map.! j))
                   then diagnostic "G07028" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
                   else listTooDeep (uSpan (unitAt Map.! j))
-              | (j, c, off) <- paras,
-                any (\k -> wrappedLineWidth (feMeasure fe) ex off k - unitLineIndent fs (uKind (unitAt Map.! j)) k - unitEndIndent (uKind (unitAt Map.! j)) <= 0) [0 .. length (cLines c) - 1]
+              | (j, c, off, distance, _) <- parasAt,
+                any (\k -> if free && isJust (cActualIndents c) then lineTarget (cLines c !! k) <= 0 else feMeasure fe - (if narrowed j off distance k then exWidth ex else 0) - unitLineIndent fs (uKind (unitAt Map.! j)) k - unitEndIndent (uKind (unitAt Map.! j)) <= 0) [0 .. length (cLines c) - 1]
               ]
-            (nextId', allBoxes, sets) = foldl go (nextId + 1, [], Map.empty) paras
-            (beside, continued) = splitAt (exLines ex) allBoxes
+            (nextId', allBoxes, sets, wrappedBefore) = foldl go (nextId + 1, [], Map.empty, Map.empty) parasAt
+            narrowCount = if free then length (takeWhile id [narrowed j off distance k | (j, c, off, distance, _) <- parasAt, k <- [0 .. length (cLines c) - 1]]) else exLines ex
+            (beside, continued) = splitAt narrowCount allBoxes
+            extent = if free then pfExclusionLength pf else fromIntegral (exLines ex) * pagePitch
          in nb
               { nuNext = nextId',
-                nuFlow = nuFlow nb <> [FWrapped nextId (exLines ex) (unitLabel u) fmarks beside] <> [FContinued (maybe defaultKeep (\(j, _, _) -> keepOf (unitAt Map.! j)) (listToMaybe (reverse paras))) continued | not (null continued)],
+                nuFlow = nuFlow nb <> [FWrapped nextId extent (unitLabel u) fmarks beside] <> [FContinued (maybe defaultKeep (\(j, _, _) -> keepOf (unitAt Map.! j)) (listToMaybe (reverse paras))) continued | not (null continued)],
                 nuLines = Map.union (nuLines nb) sets,
                 nuFigures = Map.insert nextId pf (nuFigures nb),
-                nuErrors = nuErrors nb <> tooNarrow
+                nuErrors = nuErrors nb <> tooNarrow,
+                nuWrappedBefore = Map.union (nuWrappedBefore nb) wrappedBefore
               }
   -- a turned figure takes a page of its own (golem-driver ADR 0034)
   _ | isJust (pfTurn pf) -> placed (FPageFigure nextId (unitLabel u) fmarks)
-  _ -> placed (FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (unitLabel u) fmarks)
+  _ -> placed (FFigure nextId (fromIntegral (pfImageLines pf + pfCaptionSpan pf) * pgLinePitch (feGeom fe)) (unitLabel u) fmarks)
   where
     nextId = nuNext nb
     placed f = nb {nuNext = nextId + 1, nuFlow = nuFlow nb <> [f], nuFigures = Map.insert nextId pf (nuFigures nb), nuErrors = nuErrors nb <> ferrs}
 
 -- | Numbers the rows of a code block; the label and the index marks of the caption on the first row (golem-driver ADR 0023).
-numberCode :: Unit -> SetCode -> Numbered -> Numbered
-numberCode u cb nb =
+numberCode :: Sp -> Unit -> SetCode -> Numbered -> Numbered
+numberCode pitch u cb nb =
   let nextId = nuNext nb
       ids = [nextId .. nextId + length (cbRows cb) - 1]
       boxes = [LineBox lid [] (if k == 0 then unitLabel u else []) (if k == 0 then cbMarks cb else []) 0 | (k, lid) <- zip [0 :: Int ..] ids]
       set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) [] [] Nothing) | (lid, l) <- zip ids (cbRows cb)]
       info = cbInfo cb
-   in nb {nuNext = nextId + length ids, nuFlow = nuFlow nb <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], nuLines = Map.union (nuLines nb) set}
+   in nb {nuNext = nextId + length ids, nuFlow = nuFlow nb <> [FCode (ciGeometry info) (fromIntegral (ciCaptionSpan info) * pitch) (cbFirstRows cb) (isJust (ciContinued info)) boxes], nuLines = Map.union (nuLines nb) set}
 
 {- | Numbers the lines of a unit of text: a paragraph, a heading, the title
 of the notes, a term, an entry; a heading too large for the type area is
@@ -3527,12 +3696,12 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
       ruledOf = FRuled nextId (ruleSide geom True <$> fst (uRules u)) (ruleSide geom False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
       kp = keepOf u
       flowOf = case uKind u of
-        UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
+        UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (fromIntegral (hbSpan hb) * pitch) boxes)]
         UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
         -- an entry of the table of contents with the rules of its style (docs/adr/0264)
         UTocEntry {} | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines kp boxes)]
-        UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
-        UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
+        UHeading l _ recto -> [FHeading l recto (fromIntegral (hbSpan hb) * pitch) boxes]
+        UNotesTitle _ -> [FHeading 2 False (fromIntegral (hbSpan hb) * pitch) boxes]
         UTerm _ -> [FDefTerm boxes]
         _ -> [FParagraph kp boxes]
       -- the start before the first part of a paragraph and the keep-with-next after its last (docs/adr/0261)
@@ -3544,7 +3713,7 @@ numberText fe (firstOfBlock, lastOfBlock) u c nb =
       -- a paragraph with a box is a box of its own; joinBoxes joins those one after the other (docs/adr/0271)
       around = maybe 0 (boxLinesAround pitch fs . ubPadding) (uBox u)
       boxed fs' = case uBox u of
-        Just _ -> [FBoxed nextId around around fs']
+        Just _ -> [FBoxed nextId (fromIntegral around * pitch) (fromIntegral around * pitch) fs']
         Nothing -> fs'
       lastLine = nextId + length ls - 1
       -- a verse line after the first joins the stanza of the lines before it (docs/adr/0180)
@@ -3587,7 +3756,7 @@ around paragraphs and keep-with-next between them, are one box, those
 between them in it. The box joined keeps the id of the first and the
 last line of the last.
 -}
-joinBoxes :: Map Int (BoxInfo, UnitBox) -> [Flow] -> ([Flow], Map Int BoxInfo)
+joinBoxes :: Map Int (BoxInfo, UnitBox) -> [FlowAt Sp] -> ([FlowAt Sp], Map Int BoxInfo)
 joinBoxes boxes flow =
   let keyOf = \case
         FBoxed {fbId = i} -> snd <$> Map.lookup i boxes
@@ -3619,11 +3788,20 @@ boxErrors :: FlowEnv -> [(Int, Unit)] -> [Diagnostic]
 boxErrors fe units =
   let geom = feGeom fe
       capacity = length (pgLineGrid geom)
+      pagePitch = pgLinePitch geom
+      height = fromIntegral (max 0 (capacity - 1)) * pagePitch + pgFontSize geom
+      free u = maybe False ((== AlignFree) . gridAlignment) (stPage (uStyle u) >>= pageGrid)
+      exceeds u ub
+        | free u =
+            let pitch = fromMaybe pagePitch (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+                (before, after) = boxExtras pitch (lkSize (uLook u)) pitch (lkSize (uLook u)) (ubPadding ub)
+             in before + pitch + after > height
+        | otherwise = 2 * boxLinesAround pagePitch (pgFontSize geom) (ubPadding ub) + 1 > capacity
       tooTall =
         [ (fromMaybe "body" (uParaStyle u), uSpan u)
         | (_, u) <- units,
           Just ub <- [uBox u],
-          2 * boxLinesAround (pgLinePitch geom) (pgFontSize geom) (ubPadding ub) + 1 > capacity
+          exceeds u ub
         ]
    in [diagnostic "G07121" Error sp ("段落スタイル " <> name <> " の囲みの一行と上下の padding が段に収まりません") | (name, sp) <- nubOrdOn fst tooTall]
 
@@ -3657,18 +3835,17 @@ buildFlow inp geom fonts images prev assumed = do
       reusedBeside i = do
         p <- prev
         let before = cuBesides (bComposed p)
-            js = takeWhile (`Map.member` before) [i + 1 ..]
+            js = besideParagraphs unitAt before i
             -- the figure, the paragraphs beside it, and the unit after them, if there is one
-            around = [k | k <- [i .. i + length js + 1], k < length units]
+            around = [k | k <- [i .. maybe (i + 1) (+ 1) (listToMaybe (reverse js))], k < length units]
         if all (`Set.member` unchanged) around then Just [(j, before Map.! j) | j <- js] else Nothing
       mapper :: (a -> IO b) -> [a] -> IO [b]
       mapper = if piParallel inp then mapConcurrently else mapM
       -- figures: the image, its size, its caption and its exclusion (golem-driver ADR 0005)
       figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [placeFigure fe u fig <$> Map.lookup (figureKey fig) images]]
-      figureNotices = concat [ns | (_, _, ns, _) <- Map.elems figures]
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
-      jobs = [(i, ex) | (i, (pf, [], _, _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
-  besides <- Map.fromList . concat <$> mapper (\(i, ex) -> maybe (composeBeside fe widths unitAt i ex) pure (reusedBeside i)) jobs
+      jobs = [(i, pf) | (i, (pf, [], _, _)) <- Map.toList figures, isJust (pfExclusion pf)]
+  besides <- Map.fromList . concat <$> mapper (\(i, pf) -> maybe (composeBeside fe widths unitAt i pf) pure (reusedBeside i)) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u), not (isGap u)]
       -- gaps and breaks are not composed
@@ -3693,18 +3870,70 @@ buildFlow inp geom fonts images prev assumed = do
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map (lineRatio . ptLine) (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
   tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
-  -- 3. number the lines in document order
-  let codeBlocks = codeBlocksOf fe units
-      composed = ComposedUnits unitAt besides figures singles tables codeBlocks
+  -- Numbering is pure and can be repeated for an uncommitted physical
+  -- paragraph trial without reshaping its source or changing a snapshot.
+  let ownedControls =
+        if not free
+          then Set.empty
+          else
+            Set.fromList
+              [k | (i, _) <- jobs, let paras = besideParagraphs unitAt besides i, lastPara <- maybe [] pure (listToMaybe (reverse paras)), k <- [i + 1 .. lastPara - 1], Just u <- [Map.lookup k unitAt], isJust (besideControlFlow u)]
+      composed = ComposedUnits unitAt besides figures singles tables (codeBlocksOf fe units) ownedControls
+      built = numberComposedFlow inp geom fe units widths composed
+      free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)
+  pure $
+    if free && not (null jobs)
+      then case causalFreeFlow inp geom fe units widths (map fst jobs) built of
+        Left err -> built {bFreePages = Just (Left err)}
+        Right final -> final
+      else built
+
+numberComposedFlow :: PdfInput -> PageGeometry -> FlowEnv -> [(Int, Unit)] -> Map Int Sp -> ComposedUnits -> Built
+numberComposedFlow inp geom fe units widths composed =
+  let unitAt = cuUnits composed
+      besides = cuBesides composed
+      figures = cuFigures composed
+      singles = cuSingles composed
+      codeBlocks = cuCodeBlocks composed
+      figureNotices = concat [ns | (_, _, ns, _) <- Map.elems figures]
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
+      dimensionalBetween st name = maybe False (isJust . psSpaceBetweenDim) (paraStyle st (Just name))
+      internalSpacingErrors =
+        [ diagnostic "G03006" Error (uSpan u) "キャプション内部の space-between には整数行を指定してください"
+        | (_, u) <- units,
+          dimensionalBetween (uStyle u) "caption",
+          case uKind u of
+            UFigure fig -> not (null (figCaption fig))
+            UTable tbl -> isJust (tableCaption tbl)
+            UCode _ code -> isJust (codeCaption code)
+            _ -> False
+        ]
+          <> [ diagnostic "G03006" Error sp "傍注内部の space-between には整数行を指定してください"
+             | (i, c) <- Map.toList singles <> [(i, c) | (i, (c, _)) <- Map.toList besides],
+               Just u <- [Map.lookup i unitAt],
+               dimensionalBetween (uStyle u) "sidenote",
+               (_, sp, _) <- cSidenotes c
+             ]
       {- the block (and so the file) of each unit that has an id, by its first
       id (golem-driver ADR 0014), and the first id of each such unit (docs/adr/0267) -}
       stepFiles (nb, spans, firsts) iu@(i, u) =
         let nb' = numberUnit fe composed nb iu
          in if nuNext nb' > nuNext nb then (nb', Map.insert (nuNext nb) (uSpan u) spans, Map.insert i (nuNext nb) firsts) else (nb', spans, firsts)
       lineFiles = Map.map spanFile lineSpans
-      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> tocLineErrors fe units <> boxErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
-      (numbered, lineSpans, unitFirsts) = foldl stepFiles (start, Map.empty, Map.empty) units
+      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> internalSpacingErrors <> tocLineErrors fe units <> boxErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
+      (numbered, baseSpans, baseFirsts) = foldl stepFiles (start, Map.empty, Map.empty) units
+      free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)
+      besideFirsts =
+        if not free
+          then []
+          else
+            concat
+              [ snd (mapAccumL (\ident j -> let (c, _) = cuBesides composed Map.! j in (ident + length (cLines c), (j, ident))) (firstId + 1) (besideParagraphs unitAt besides i))
+              | (i, firstId) <- Map.toList baseFirsts,
+                Map.member i figures
+              ]
+      unitFirsts = Map.union (Map.fromList besideFirsts) baseFirsts
+      lineSpans = Map.union (Map.fromList [(ident, uSpan (unitAt Map.! i)) | (i, ident) <- besideFirsts]) baseSpans
       flow = nuFlow numbered
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
@@ -3728,7 +3957,305 @@ buildFlow inp geom fonts images prev assumed = do
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
-  pure (Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings)
+      normalPitch u = case uKind u of
+        UPara _
+          | not (madeByGolem u),
+            all (\(Frame _ k _) -> case k of FEndNote {} -> False; FEndNoteMore {} -> False; _ -> True) (uFrames u) ->
+              paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u)
+        _ -> Nothing
+      ordinaryPitches =
+        [ (lid, pitch)
+        | (i, u) <- units,
+          Just pitch <- [normalPitch u],
+          Just firstId <- [Map.lookup i unitFirsts],
+          Just c <- [Map.lookup i (cuSingles composed)],
+          lid <- take (length (cLines c)) [firstId ..]
+        ]
+      wrappedPitches =
+        concat
+          [ snd
+              ( mapAccumL
+                  ( \lid j ->
+                      let (c, _) = cuBesides composed Map.! j
+                          count = length (cLines c)
+                          u' = cuUnits composed Map.! j
+                          p = fromMaybe (pgLinePitch geom) (normalPitch u')
+                       in (lid + count, [(n, p) | n <- take count [lid ..]])
+                  )
+                  (firstId + 1)
+                  paras
+              )
+          | (i, u) <- units,
+            UFigure _ <- [uKind u],
+            Just firstId <- [Map.lookup i unitFirsts],
+            Just (pf, ferrs, _, _) <- [Map.lookup i figures],
+            isJust (pfExclusion pf),
+            null ferrs,
+            let paras = besideParagraphs (cuUnits composed) (cuBesides composed) i
+          ]
+      pitches = Map.fromList (ordinaryPitches <> concat wrappedPitches)
+      padding = Map.map (ubPadding . snd) (nuBoxes numbered)
+   in Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings pitches padding (nuWrappedBefore numbered) Nothing unitFirsts
+
+{- | Rebreak only unconsumed original items. The positions returned by the
+breaker stay in the original item coordinate system, so discarded glue,
+discretionary hyphens and forced breaks are consumed exactly once.
+-}
+rebreakComposed :: FlowEnv -> Unit -> (Int -> Sp) -> Int -> Composed -> Composed
+rebreakComposed fe u width start source =
+  let boxed = isJust (uBox u)
+      params = if boxed then (feParams fe) {pProtrusion = compProtrusion (stComposition (piStyle (feInput fe)))} else feParams fe
+      result = A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) width (drop start (cItems source))
+   in source {cLines = brLines result, cBreakPositions = map (+ start) (brPositions result), cItemStart = start, cReflowed = True, cActualIndents = Nothing}
+
+itemAfterBreak :: Composed -> Int -> Int
+itemAfterBreak source index = skip (index + 1) (drop (index + 1) (cItems source))
+  where
+    skip n [] = n
+    skip n (Box {} : _) = n
+    skip n (Penalty _ penalty _ : _) | penalty <= negate infPenalty = n
+    skip n (_ : rest) = skip (n + 1) rest
+
+{- | Commit physical paragraph parts in document order. Each width is read
+from the current placement snapshot; moving to another column rebreaks
+only the original source suffix that has not been committed.
+-}
+causalFreeFlow :: PdfInput -> PageGeometry -> FlowEnv -> [(Int, Unit)] -> Map Int Sp -> [Int] -> Built -> Either PhysicalFailure Built
+causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing initialBuilt (startPhysicalCursor (settings initialBuilt)) jobs
+  where
+    settings = physicalSettings inp geom (length (pgLineGrid geom))
+    rebuild = numberComposedFlow inp geom fe units widths
+    remaining prior built = case prior >>= (`Map.lookup` bUnitFirsts built) of
+      Nothing -> bFlow built
+      Just ident -> case dropWhile (not . isWrapped ident) (bFlow built) of
+        [] -> []
+        _ : FContinued {} : rest -> rest
+        _ : rest -> rest
+    isWrapped ident = \case FWrapped {fwId = candidate} -> ident == candidate; _ -> False
+    jobsFrom prior built cursor [] = do
+      finalCursor <- stepPhysicalCursor (settings built) cursor (remaining prior built)
+      Right built {bFreePages = Just (Right (finishPhysicalCursor (settings built) finalCursor))}
+    jobsFrom prior built cursor (job : rest) = do
+      let composed = bComposed built
+          (pf, _, _, marks) = cuFigures composed Map.! job
+          unit = cuUnits composed Map.! job
+          ident = bUnitFirsts built Map.! job
+          prefix = takeWhile (not . isWrapped ident) (remaining prior built)
+          cfg = settings built
+      (anchored, region) <- beginPhysicalWrapAfter cfg cursor prefix ident (pfExclusionLength pf) (unitLabel unit) marks
+      let (_, _, origin) = physicalCursorPosition anchored
+          paras = besideParagraphs (cuUnits composed) (cuBesides composed) job
+      (placedBuilt, placedCursor) <- paragraphs job pf origin region job built anchored paras
+      jobsFrom (Just job) placedBuilt (endPhysicalWrap (Just region) placedCursor) rest
+    controlsBetween composed prior index = concat [flows | i <- [prior + 1 .. index - 1], Just u <- [Map.lookup i (cuUnits composed)], Just flows <- [besideControlFlow u]]
+    bindingAfter index composed styleWanted =
+      let later = takeWhile (isJust . besideControlFlow . snd) (Map.toAscList (Map.filterWithKey (\i _ -> i > index) (cuUnits composed)))
+          controls = concat [flows | (_, u) <- later, Just flows <- [besideControlFlow u]]
+       in case physicalKeepAhead controls of
+            Nothing -> (0, styleWanted)
+            Just (lastCount, firstCount, _) -> (lastCount, max firstCount styleWanted)
+    paragraphs _ _ _ _ _ built cursor [] = Right (built, cursor)
+    paragraphs job pf origin region prior built cursor (index : later) = do
+      let composed = bComposed built
+          unit = cuUnits composed Map.! index
+          controls = controlsBetween composed prior index
+          (startBreak, _) = paraStartAndKeep unit
+          prefix = controls <> [FSection (OfParagraph (uSpan unit)) kind | kind <- maybe [] pure startBreak]
+      preliminary <- stepPhysicalCursor (settings built) cursor prefix
+      case uStanza unit of
+        Nothing -> do
+          let source = fst (cuBesides composed Map.! index)
+              (trial, indents) = composeAt pf origin region unit preliminary 0 0 source
+              updated = rebuild (composed {cuBesides = Map.adjust (\(_, offset) -> (trial {cActualIndents = Just indents}, offset)) index (cuBesides composed)})
+              (rows, _) = numberedLines fe (bUnitFirsts updated Map.! index) unit trial (indents !!)
+              (lastWanted, wanted) = bindingAfter index composed (snd (paraStartAndKeep unit))
+          ready <- stepPhysicalPrefix (settings updated) cursor prefix [FParagraph (keepOf unit) rows]
+          (nextBuilt, nextCursor) <- paragraph job pf origin region index later unit (keepOf unit) lastWanted wanted built ready
+          paragraphs job pf origin region index nextBuilt nextCursor later
+        Just _ -> do
+          let sameVerse i = let v = cuUnits composed Map.! i in isJust (uStanza v) && uSpan v == uSpan unit
+              (verseIndices, afterVerses) = span sameVerse (index : later)
+          trials <- tryVerses job pf origin region built preliminary verseIndices
+          let trialBuilt = maybe built fst (listToMaybe (reverse trials))
+              rowsAt i = let c = fst (cuBesides (bComposed trialBuilt) Map.! i); u = cuUnits composed Map.! i in fst (numberedLines fe (bUnitFirsts trialBuilt Map.! i) u c (maybe (unitLineIndent (pgFontSize geom) (uKind u)) (!!) (cActualIndents c)))
+          ready <- stepPhysicalPrefix (settings trialBuilt) cursor prefix [FStanza (keepOf unit) (map rowsAt verseIndices)]
+          (nextBuilt, nextCursor) <- stanza job pf origin region verseIndices afterVerses (keepOf unit) True built ready
+          paragraphs job pf origin region (last verseIndices) nextBuilt nextCursor afterVerses
+    composeAt pf origin region unit at countBefore start source =
+      let PhysicalWrap page column end = region
+          (actualPage, actualColumn, _) = physicalCursorPosition at
+          pitch = fromMaybe (pgLinePitch geom) (paraStyle (uStyle unit) (uParaStyle unit) >>= resolvedParagraphPitch (uStyle unit))
+          face = lkSize (uLook unit)
+          exclusionWidth = maybe 0 exWidth (pfExclusion pf)
+          narrowed k = (page, column) == (actualPage, actualColumn) && intersects (rowExtent (physicalParagraphOrigin at + fromIntegral k * pitch) pitch face) (origin, end)
+          indent k = unitLineIndent (pgFontSize geom) (uKind unit) (countBefore + k)
+          width k = feMeasure fe - (if narrowed k then exclusionWidth else 0) - indent k - unitEndIndent (uKind unit)
+          tailComposed = rebreakComposed fe unit width start source
+          tailIndents = [indent k + if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth else 0 | k <- [0 .. length (cLines tailComposed) - 1]]
+       in (tailComposed, tailIndents)
+    probeNext job pf origin region index later built cursor wanted = case later of
+      [] ->
+        let following = remaining (Just job) built
+            closed = endPhysicalWrap (Just region) cursor
+            (required, linesOnly) = physicalFollowingRows wanted following
+         in Right (required, linesOnly, fitsPhysicalFollowing (settings built) closed wanted following)
+      nextIndex : more -> do
+        let composed = bComposed built
+            unit = cuUnits composed Map.! nextIndex
+            controls = controlsBetween composed index nextIndex
+            (startBreak, _) = paraStartAndKeep unit
+            sameColumn a b = let (p, c, _) = physicalCursorPosition a; (p', c', _) = physicalCursorPosition b in (p, c) == (p', c')
+        ready <- stepPhysicalCursor (settings built) cursor (controls <> [FSection (OfParagraph (uSpan unit)) kind | kind <- maybe [] pure startBreak])
+        case uStanza unit of
+          Just _ -> do
+            let sameVerse i = let v = cuUnits composed Map.! i in isJust (uStanza v) && uSpan v == uSpan unit
+                (verses, afterVerses) = span sameVerse (nextIndex : more)
+                wantedVerses = max (firstPart (keepOf unit) True (length verses)) (min wanted (length verses))
+            trials <- tryVerses job pf origin region built ready verses
+            let actual = maybe built fst (listToMaybe (reverse (take wantedVerses trials)))
+                required = sum [length (cLines c) | i <- take wantedVerses verses, let (c, _) = cuBesides (bComposed actual) Map.! i]
+                prefixFits = sameColumn cursor ready && length trials >= wantedVerses
+            chainFits <-
+              if prefixFits && wantedVerses == length verses
+                then case listToMaybe (reverse trials) of
+                  Just (updated, placed) -> probeChain job pf origin region (last verses) afterVerses updated placed
+                  Nothing -> Right True
+                else Right True
+            Right (required, True, prefixFits && chainFits)
+          Nothing -> do
+            let source = fst (cuBesides composed Map.! nextIndex)
+                (trial, indents) = composeAt pf origin region unit ready 0 0 source
+                updated = rebuild (composed {cuBesides = Map.adjust (\(_, offset) -> (trial {cActualIndents = Just indents}, offset)) nextIndex (cuBesides composed)})
+                keep = keepOf unit
+                required = fst (physicalFollowingRows wanted [FParagraph keep rows])
+                (rows, _) = numberedLines fe (bUnitFirsts updated Map.! nextIndex) unit trial (indents !!)
+            result <- trialParagraphPart (settings updated) (Just region) keep {kFirst = max (kFirst keep) required} True ready rows
+            case result of
+              PhysicalMoved {} -> Right (required, True, False)
+              PhysicalPlaced count placed _ -> do
+                let prefixFits = sameColumn cursor ready && sameColumn ready placed && count >= required
+                chainFits <- if prefixFits && count == length rows then probeChain job pf origin region nextIndex more updated placed else Right True
+                Right (required, True, prefixFits && chainFits)
+    probeChain job pf origin region index later built cursor =
+      let unit = cuUnits (bComposed built) Map.! index
+          (lastWanted, wanted) = bindingAfter index (bComposed built) (snd (paraStartAndKeep unit))
+       in if wanted > 0 || lastWanted > 0
+            then (\(_, _, fits) -> fits) <$> probeNext job pf origin region index later built cursor wanted
+            else Right True
+    -- Whole verse lines are the counting units of a stanza. Each trial is
+    -- composed at its own actual cursor, and its snapshot is committed only
+    -- after the original-verse keep has selected a legal prefix.
+    tryVerses _ _ _ _ _ _ [] = Right []
+    tryVerses job pf origin region built cursor (index : later) = do
+      let composed = bComposed built
+          unit = cuUnits composed Map.! index
+          source = fst (cuBesides composed Map.! index)
+          (trial, indents) = composeAt pf origin region unit cursor 0 0 source
+          updated = rebuild (composed {cuBesides = Map.adjust (\(_, offset) -> (trial {cActualIndents = Just indents}, offset)) index (cuBesides composed)})
+          (rows, _) = numberedLines fe (bUnitFirsts updated Map.! index) unit trial (indents !!)
+          sameColumn a b = let (p, c, _) = physicalCursorPosition a; (p', c', _) = physicalCursorPosition b in (p, c) == (p', c')
+      result <- trialParagraphPart (settings updated) (Just region) (Keep 1 1 False) True cursor rows
+      case result of
+        PhysicalPlaced count placed _ | count == length rows && sameColumn cursor placed -> ((updated, placed) :) <$> tryVerses job pf origin region updated placed later
+        _ -> Right []
+    stanza _ _ _ _ [] _ _ _ built cursor = Right (built, finishPhysicalUnit cursor)
+    stanza job pf origin region indices@(firstIndex : _) later keep isStart built cursor = do
+      trials <- tryVerses job pf origin region built cursor indices
+      let whole = length trials
+          total = length indices
+          selected = splitAtBreak keep isStart total whole
+          firstId = bUnitFirsts built Map.! firstIndex
+          firstUnit = cuUnits (bComposed built) Map.! firstIndex
+          move = stanza job pf origin region indices later keep isStart built (movePhysicalCursor (settings built) (Just region) cursor)
+          accept count problems =
+            let (chosenBuilt, placed) = trials !! (count - 1)
+                warned = recordPhysicalUnmet problems placed
+                remainingVerses = drop count indices
+             in if null remainingVerses
+                  then do
+                    let settled = finishPhysicalUnit warned
+                        lastIndex = last indices
+                        lastUnit = cuUnits (bComposed chosenBuilt) Map.! lastIndex
+                        (lastWanted, wanted) = bindingAfter lastIndex (bComposed chosenBuilt) (snd (paraStartAndKeep lastUnit))
+                    (required, linesOnly, fits) <- if wanted > 0 || lastWanted > 0 then probeNext job pf origin region lastIndex later chosenBuilt settled wanted else Right (0, True, True)
+                    let held = if snd (paraStartAndKeep lastUnit) > 0 then keepPhysicalNext (uSpan lastUnit) required linesOnly settled else settled
+                        front = count - max lastWanted (max 1 (kLast keep))
+                    if fits
+                      then Right (chosenBuilt, held)
+                      else
+                        if front >= (if isStart then max 1 (kFirst keep) else 1) && not (kAll keep)
+                          then accept front []
+                          else if not (physicalCursorIsEmpty cursor) then move else Right (chosenBuilt, held)
+                  else stanza job pf origin region remainingVerses later keep False chosenBuilt (movePhysicalCursor (settings chosenBuilt) (Just region) warned)
+      if kAll keep && isStart && whole < total
+        then
+          if physicalCursorIsEmpty cursor
+            then stanza job pf origin region indices later keep {kAll = False} isStart built (recordPhysicalUnmet [SplitKept firstId] cursor)
+            else move
+        else
+          if selected > 0
+            then accept selected []
+            else
+              if not (physicalCursorIsEmpty cursor)
+                then move
+                else
+                  if whole > 0
+                    then accept whole ([ShortPart FirstPart firstId (kFirst keep) whole | isStart, whole < kFirst keep] <> [ShortPart LastPart firstId (kLast keep) (total - whole) | total - whole < kLast keep])
+                    else do
+                      -- One original verse itself exceeds an empty column; use the
+                      -- existing display-row fallback, then consume that verse.
+                      (nextBuilt, nextCursor) <- paragraph job pf origin region firstIndex (drop 1 indices <> later) firstUnit defaultKeep 0 0 built cursor
+                      stanza job pf origin region (drop 1 indices) later keep False nextBuilt nextCursor
+    paragraph job pf origin region index later unit initialKeep lastWanted wanted built cursor = parts Nothing initialKeep True 0 [] [] [] built cursor
+      where
+        source = fst (cuBesides (bComposed built) Map.! index)
+        -- Every retry reduces the uncommitted prefix bound, consumes source
+        -- items, or moves the current holding group to its next column.
+        parts prefixLimit keep isStart start committed breaks indents current at = do
+          let countBefore = length committed
+              (tailComposed, tailIndents) = composeAt pf origin region unit at countBefore start source
+              combined = source {cLines = committed <> cLines tailComposed, cBreakPositions = breaks <> cBreakPositions tailComposed, cItemStart = 0, cReflowed = True, cActualIndents = Just (indents <> tailIndents)}
+              updated = rebuild ((bComposed current) {cuBesides = Map.adjust (\(_, offset) -> (combined, offset)) index (cuBesides (bComposed current))})
+              cfg = settings updated
+              firstId = bUnitFirsts updated Map.! index + countBefore
+              (rows, _) = numberedLines fe firstId unit tailComposed (tailIndents !!)
+              retry limit = parts limit keep isStart start committed breaks indents current at
+              movePart = parts Nothing keep isStart start committed breaks indents current (movePhysicalCursor cfg (Just region) at)
+              minimumFront = if isStart then max (if lastWanted > 0 then 2 else 1) (kFirst keep) else 1
+          result <- trialParagraphPartLimit cfg (Just region) prefixLimit keep isStart at rows
+          case result of
+            PhysicalMoved moved relaxed -> parts Nothing relaxed isStart start committed breaks indents current moved
+            PhysicalPlaced count placed relaxed
+              | count >= length rows -> do
+                  let settled = finishPhysicalUnit placed
+                  (required, linesOnly, followingFits) <- if wanted > 0 || lastWanted > 0 then probeNext job pf origin region index later updated settled wanted else Right (0, True, True)
+                  let held = if snd (paraStartAndKeep unit) > 0 then keepPhysicalNext (uSpan unit) required linesOnly settled else settled
+                      front = count - max lastWanted (max 1 (kLast relaxed))
+                  if followingFits || null rows
+                    then Right (updated, held)
+                    else
+                      if front >= minimumFront && not (kAll relaxed)
+                        then retry (Just front)
+                        else
+                          if not (physicalCursorIsEmpty at)
+                            then movePart
+                            else Right (updated, held)
+              | otherwise ->
+                  let consumedBreaks = take count (cBreakPositions tailComposed)
+                      nextStart = itemAfterBreak source (last consumedBreaks)
+                      next = movePhysicalCursor cfg (Just region) placed
+                      (remainder, _) = composeAt pf origin region unit next (countBefore + count) nextStart source
+                   in if length (cLines remainder) < kLast relaxed
+                        then
+                          if count > minimumFront
+                            then retry (Just (count - 1))
+                            else
+                              if not (physicalCursorIsEmpty at)
+                                then movePart
+                                else continue consumedBreaks nextStart next
+                        else continue consumedBreaks nextStart next
+              where
+                continue consumedBreaks nextStart = parts Nothing relaxed False nextStart (committed <> take count (cLines tailComposed)) (breaks <> consumedBreaks) (indents <> take count tailIndents) updated
 
 {- | Where the destinations of links inside the document are drawn first
 (docs/adr/0267): a label at the line or the figure that carries it, an
@@ -3736,7 +4263,7 @@ index mark at the line or the figure it is placed with, a heading at its
 first line, an entry of a @bibliography at the first line of its unit,
 each the first in the order of the flow.
 -}
-destAnchors :: Book -> [(Int, Unit)] -> Map Int Int -> Map Int PlacedFigure -> Map Int SrcSpan -> [Flow] -> Map LinkDest DestAnchor
+destAnchors :: Book -> [(Int, Unit)] -> Map Int Int -> Map Int PlacedFigure -> Map Int SrcSpan -> [FlowAt Sp] -> Map LinkDest DestAnchor
 destAnchors book units firsts figs headingSpans flow =
   Map.fromListWith (\_ old -> old) (concatMap ofFlow flow <> headings <> entries)
   where
@@ -3800,7 +4327,7 @@ inlinesReferToPage = any $ \case
 rule before follows right after a block with a rule after shares its
 area; each block knows the overhang of the first line after it.
 -}
-ruledLinks :: [Flow] -> [Flow]
+ruledLinks :: [FlowAt Sp] -> [FlowAt Sp]
 ruledLinks = go Nothing
   where
     go prev = \case
@@ -4195,11 +4722,14 @@ page of its own is in the type area @ta@ turned, and its rectangle is
 where it lands on the page.
 -}
 figureRect :: PageGeometry -> Int -> Rect -> Int -> PlacedFigure -> Rect
-figureRect geom _ ta slot pf = case pfTurn pf of
-  Nothing -> imageRect geom (paperOf geom) ta slot pf
+figureRect geom n ta slot = figureRectAt geom n ta (fromIntegral slot * pgLinePitch geom)
+
+figureRectAt :: PageGeometry -> Int -> Rect -> Sp -> PlacedFigure -> Rect
+figureRectAt geom _ ta slot pf = case pfTurn pf of
+  Nothing -> imageRectAt geom (paperOf geom) ta slot pf
   Just t ->
     let (paper, area) = turnedFrame geom t ta pf
-     in P.turnRect t ta (imageRect geom paper area slot pf)
+     in P.turnRect t ta (imageRectAt geom paper area slot pf)
 
 -- | The trimmed page.
 paperOf :: PageGeometry -> Rect
@@ -4213,9 +4743,11 @@ whose edge is nearer the edge of the @paper@, to the start when they are
 as near.
 -}
 imageRect :: PageGeometry -> Rect -> Rect -> Int -> PlacedFigure -> Rect
-imageRect geom paper ta slot pf =
-  let d = fromIntegral slot * pgLinePitch geom
-      along = pfAlong pf
+imageRect geom paper ta slot = imageRectAt geom paper ta (fromIntegral slot * pgLinePitch geom)
+
+imageRectAt :: PageGeometry -> Rect -> Rect -> Sp -> PlacedFigure -> Rect
+imageRectAt geom paper ta d pf =
+  let along = pfAlong pf
       across = pfAcross pf
       atEnd = case pfWrap pf of
         Just WrapEnd -> True

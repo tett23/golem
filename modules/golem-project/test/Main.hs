@@ -33,6 +33,7 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import ParagraphPitchSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
 import SinglePageSpec qualified
@@ -777,7 +778,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-project"
-    [ -- golem-parser ADR 0011
+    [ ParagraphPitchSpec.tests,
+      -- golem-parser ADR 0011
       testCase "[numbers] vertical takes auto and auto-digits" $ do
         let vertical src = stNumbersVertical <$> parseStyle (FileId 0) src
         vertical "[numbers]\nvertical = \"auto\"\n" @?= Right "auto"
@@ -2489,6 +2491,7 @@ localStyleTests =
               "synthetic-italic" -> "true"
               "no-break" -> "true"
               "line-breaks" -> "keep"
+              "line-pitch" -> "auto"
               "space-between" -> "1"
               "space-before" -> "1"
               "space-after" -> "1"

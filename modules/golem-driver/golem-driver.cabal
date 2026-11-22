@@ -89,6 +89,8 @@ test-suite golem-driver-test
   main-is:          Main.hs
   other-modules:
     AlignSpaceSpec
+    ParagraphPitchSpec
+    ParagraphWrapPitchSpec
     FontInstanceSpec
     BookLanguageSpec
     BuildSpec
