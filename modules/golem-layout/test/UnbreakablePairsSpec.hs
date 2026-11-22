@@ -28,10 +28,10 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word64)
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
-import Golem.Layout.CharClass
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.TestSupport.Enum (Tiers (..), listsOf, upTo)
+import Golem.Unicode.CharClass
 import LineBreakEnum (Setting (..), codeEnv, composeEnv, normalSettings, partsBefore0275)
 import LineBreakInvariants (forbidPairs, refArabicDigit, refNumeral, refPostfixed, refPrefixed, withoutNumberUnits)
 import Numeric (showHex)

@@ -12,12 +12,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, look0, sp)
 import Golem.Doc.IR qualified as IR
-import Golem.Layout.CharClass (charClassIn, dualCharacters)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
+import Golem.Unicode.CharClass (charClassIn, dualCharacters)
 import Test.Tasty
 import Test.Tasty.HUnit
 
