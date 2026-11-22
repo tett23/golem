@@ -1,6 +1,6 @@
 # ADR 0407: 色を置き換えられない SVG 図版はエラーにする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
