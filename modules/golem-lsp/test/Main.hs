@@ -15,6 +15,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import EditingSpec (editingTests)
+import FileMoveSpec (fileMoveTests)
 import FileRenameSpec (fileRenameTests)
 import FunctionsLspSpec (functionsLspTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
@@ -112,6 +113,7 @@ tests =
   testGroup
     "golem-lsp (ADR 0001)"
     [ fileRenameTests,
+      fileMoveTests,
       positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
@@ -536,7 +538,7 @@ tests =
         encodingKind Utf16 @?= L.PositionEncodingKind_UTF16,
       testCase "only the matching initialize response gets its positionEncoding replaced (ADR 0002)" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1}},\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value
         (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected
         rewriteInitializeResponse (M.IdInt 2) Utf8 resp @?= Nothing

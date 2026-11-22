@@ -31,8 +31,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### エディタとの連携
 
-- **プロジェクトをまたぐ移動の計画（未実装）**：章登録の移管と参照編集を Golem LSP から取得できるようにし、Aleph のフォルダ移動で使う。索引の取得失敗を編集 0 件と区別する（[root ADR 0399](adr/0399-plan-moves-across-project-boundaries.md)）。
-
 ### IR、ABI、レイアウトエンジンの基盤
 
 - **IR と ABI の設計と妥当性の検査**：意味論の IR とプラグインの ABI を設計し、その設計が妥当であることを検査する。どちらも v1.0.0 の後に変えると互換を壊すので、v1.0.0 の前に扱う。検査の方法は、着手するときに ADR で決める。記法、IR、ABI を変えるほかの項目は、この項目の後に扱う。
@@ -221,6 +219,7 @@ v3 の GUI は、次の原則に従って作る。
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
+- **プロジェクトをまたぐ移動の計画**：公開する Golem の実行ファイルを Aleph の試験用ワークスペースに接続し、章を含むフォルダの移動、Wiki リンクの追従、参照を更新できないときの中止を確かめる（[root ADR 0399](adr/0399-plan-moves-across-project-boundaries.md) A1〜A3）。
 - **エディタ向けの構文の定義の読み込み**：`tools/editors/README.md` の読み込ませ方のうち、Visual Studio Code の手順（手元の拡張機能の `package.json` を VS Code が読むこと）を、実際のエディタで確かめていない。文法そのものは、VS Code と同じ `vscode-textmate` で読む `vscode-tmgrammar-test` が、CI の `editors` ジョブで確かめている。Neovim の手順のうち nvim-treesitter を使わないものは CI の `editors-lsp` ジョブが、Helix の手順は `editors` ジョブが確かめる。nvim-treesitter で GitHub から入れる手順は、Neovim 0.12.6 と nvim-treesitter の main ブランチの `e289100` で、ヘッドレスで確かめた（[docs/adr/0170](adr/0170-emet-editor-support.md)、[docs/adr/0171](adr/0171-neovim-setup-from-github-and-emet-lsp.md)、[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 - **CIDSystemInfo と異体字**（v1.0.0 のリリースで確かめる）：Adobe-Japan1 の ROS を持つ実際のフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、IVS の異体字が出ることと、InDesign の書き出しと同じであることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。フォントの `ROS` が `CIDSystemInfo` に写ることは、`ROS` を Adobe-Japan1-7 に書き換えた Source Han Sans のサブセットで、golem-font と golem-driver のテストが確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
 - **プリフライトと商用のプリフライトの差**（v1.0.0 のリリースで確かめる）：Golem の G09014 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
