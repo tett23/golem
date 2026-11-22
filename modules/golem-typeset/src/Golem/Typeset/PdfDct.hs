@@ -21,7 +21,7 @@ import Data.Text qualified as T
 import Data.Vector.Storable qualified as V
 import Data.Word (Word8)
 import Golem.Pdf qualified as P
-import Golem.Typeset.FigureColor (checkJpegFrames)
+import Golem.Typeset.JpegFrames (checkJpegFrames)
 
 data PdfDctSpec = PdfDctSpec
   { dctComponents :: !Int,

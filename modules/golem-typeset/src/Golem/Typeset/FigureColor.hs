@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
-
 -- | Monochrome figure colours shared by raster and PDF import (root ADR 0403).
 module Golem.Typeset.FigureColor
   ( Cmyk,
@@ -17,23 +15,22 @@ module Golem.Typeset.FigureColor
   )
 where
 
-import Codec.Picture.Jpg qualified as Jpeg
 import Codec.Picture.Png qualified as Png
 import Codec.Picture.Types qualified as J
 import Control.Exception (SomeAsyncException, SomeException, evaluate, fromException, tryJust)
 import Control.Monad (unless)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
-import Data.ByteString.Internal qualified as BSI
 import Data.ByteString.Lazy qualified as BL
-import Data.List (nub)
+import Data.Maybe (isJust)
 import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector.Storable qualified as V
-import Data.Word (Word8)
 import Golem.Pdf qualified as P
 import Golem.Pdf.Object (ObjOf (..))
+import Golem.Typeset.JpegFrames (JpegFrameInfo (..), checkJpegFrames, inspectJpegFrames, maxColorBytes)
+import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
 
 -- | The selected swatch, each component as a percentage from zero to one hundred.
 type Cmyk = (Int, Int, Int, Int)
@@ -58,10 +55,6 @@ data Pixel = Gray !Int !Int | Rgb !Int !Int !Int !Int | Cmyk !Int !Int !Int !Int
   deriving stock (Eq)
 
 data Seen = NoPixels | Grays | One !Pixel | Many
-
--- | The existing PNG expansion limit also bounds colour conversion and JPEG decoding.
-maxColorBytes :: Integer
-maxColorBytes = 512 * 1024 * 1024
 
 analyzeRaster :: Cmyk -> P.ImageData -> Either Text RasterAnalysis
 analyzeRaster swatch image = fst <$> recolorRaster swatch image
@@ -262,86 +255,16 @@ alphaAt image alpha pixel = (sampleAt (P.alphaSamples alpha) (P.imgWidth image) 
 
 decodeDct :: P.ImageData -> Either Text P.ImageData
 decodeDct image = do
-  adobeCmyk <- checkJpegFrames (P.imgData image)
-  decoded <- either (Left . T.pack) Right (Jpeg.decodeJpeg (P.imgData image))
-  unpacked <- case decoded of
-    J.ImageY8 pixels -> pure (fromPixels P.CsGray pixels)
-    J.ImageRGB8 pixels -> pure (fromPixels P.CsRgb pixels)
-    J.ImageYCbCr8 pixels -> pure (fromPixels P.CsRgb (J.convertImage pixels :: J.Image J.PixelRGB8))
-    J.ImageCMYK8 pixels ->
-      let normalized = if adobeCmyk then pixels {J.imageData = V.map (255 -) (J.imageData pixels)} else pixels
-       in pure (fromPixels P.CsCmyk normalized)
-    _ -> Left "JPEG の画素の形式を扱えません"
-  unless (P.imgWidth unpacked == P.imgWidth image && P.imgHeight unpacked == P.imgHeight image) (Left "JPEG の画素と宣言した寸法が一致しません")
-  pure unpacked
-  where
-    fromPixels :: (J.PixelBaseComponent pixel ~ Word8) => P.ColorSpace -> J.Image pixel -> P.ImageData
-    fromPixels color pixels =
-      let (pointer, offset, size) = V.unsafeToForeignPtr (J.imageData pixels)
-       in image {P.imgWidth = J.imageWidth pixels, P.imgHeight = J.imageHeight pixels, P.imgBits = 8, P.imgColor = color, P.imgIcc = Nothing, P.imgData = BSI.fromForeignPtr pointer offset size, P.imgDct = False, P.imgInvertedCmyk = False}
-
-{- | Check every frame before the external decoder can allocate its coefficient arrays.
-The result identifies Adobe transform-0 CMYK samples, which JuicyPixels leaves
-inverted. Transform-2 YCCK is already normalized by that decoder.
--}
-checkJpegFrames :: BS.ByteString -> Either Text Bool
-checkJpegFrames bytes = do
-  unless (BS.take 2 bytes == BS.pack [255, 216]) (Left "JPEG の SOI がありません")
-  go 2 0 Nothing False False
-  where
-    size = BS.length bytes
-    byte = BS.index bytes
-    word i = fromIntegral (byte i) * 256 + fromIntegral (byte (i + 1)) :: Int
-    failJpeg = Left "JPEG のマーカーが途中で終わっています"
-    go i total frame scan adobe
-      | i >= size = failJpeg
-      | byte i /= 255 = if scan then go (i + 1) total frame scan adobe else Left "JPEG のマーカーが不正です"
-      | otherwise = marker (i + 1) total frame scan adobe
-    marker i total frame scan adobe
-      | i >= size = failJpeg
-      | byte i == 255 = marker (i + 1) total frame scan adobe
-      | byte i == 0 = if scan then go (i + 1) total frame scan adobe else Left "JPEG のエスケープが不正です"
-      | byte i == 217 = unless (maybe False (const scan) frame) (Left "JPEG にフレームか走査がありません") >> pure adobe
-      | byte i == 216 = Left "JPEG の SOI が重複しています"
-      | byte i == 1 || (byte i >= 208 && byte i <= 215) = go (i + 1) total frame scan adobe
-      | i + 2 >= size = failJpeg
-      | otherwise = do
-          let length' = word (i + 1)
-              end = i + 1 + length'
-              sof = byte i >= 192 && byte i <= 207 && byte i `notElem` [196, 200, 204]
-          unless (length' >= 2 && end <= size) failJpeg
-          if sof
-            then do
-              unless (length' >= 8) failJpeg
-              let precision = byte (i + 3)
-                  height = word (i + 4)
-                  width = word (i + 6)
-                  components = fromIntegral (byte (i + 8)) :: Int
-                  total' = total + toInteger width * toInteger height * 4
-              unless (byte i `elem` [192, 193, 194] && precision == 8 && width > 0 && height > 0 && components >= 1 && components <= 4 && length' == 8 + 3 * components) (Left "JPEG のフレームの画素形式を扱えません")
-              unless (total' <= maxColorBytes) (Left "JPEG の展開後サイズが 512 MiB を超えます")
-              let selectors = [byte (i + 9 + 3 * component) | component <- [0 .. components - 1]]
-                  sampling = [byte (i + 10 + 3 * component) | component <- [0 .. components - 1]]
-                  tables = [byte (i + 11 + 3 * component) | component <- [0 .. components - 1]]
-              unless (length (nub selectors) == components && all (\v -> v `shiftR` 4 >= 1 && v `shiftR` 4 <= 4 && v .&. 15 >= 1 && v .&. 15 <= 4) sampling && all (<= 3) tables) (Left "JPEG のフレームの成分が不正です")
-              go end total' (Just (selectors, byte i == 194)) False adobe
-            else
-              if byte i == 218
-                then do
-                  (frameIds, progressive) <- maybe (Left "JPEG の走査より前にフレームがありません") Right frame
-                  unless (length' >= 6) failJpeg
-                  let count = fromIntegral (byte (i + 3)) :: Int
-                  unless (count >= 1 && count <= length frameIds && length' == 6 + 2 * count) (Left "JPEG の走査の成分数が不正です")
-                  let selectors = [byte (i + 4 + 2 * component) | component <- [0 .. count - 1]]
-                      tables = [byte (i + 5 + 2 * component) | component <- [0 .. count - 1]]
-                      low = byte (i + 4 + 2 * count)
-                      high = byte (i + 5 + 2 * count)
-                      approximation = byte (i + 6 + 2 * count)
-                      ah = approximation `shiftR` 4
-                      al = approximation .&. 15
-                  unless (length (nub selectors) == count && all (`elem` frameIds) selectors && all (\v -> v `shiftR` 4 <= 3 && v .&. 15 <= 3) tables) (Left "JPEG の走査がフレームにない成分を参照しています")
-                  unless (if progressive then low <= high && high <= 63 && (if low == 0 then high == 0 else count == 1) && ah <= 13 && al <= 13 && (ah == 0 || ah == al + 1) else low == 0 && high == 63 && approximation == 0) (Left "JPEG の走査の範囲が不正です")
-                  go end total frame True adobe
-                else
-                  let adobe' = if byte i == 238 && length' >= 14 && BS.take 5 (BS.drop (i + 3) bytes) == "Adobe" then byte (i + 14) == 0 else adobe
-                   in go end total frame scan adobe'
+  info <- inspectJpegFrames (P.imgData image)
+  let components = length (jpegComponentIds info)
+      names = BS.pack (jpegComponentIds info)
+      implicitYcck = names == "YCcK"
+      adobe = jpegAdobeTransform info
+      hint
+        | components == 3 && names == "RGB" = Just 0
+        | components == 4 && implicitYcck = Just 1
+        | otherwise = Nothing
+  unless (isJust adobe || names `notElem` ["YCc", "RGBA", "YCcA"]) (Left "JPEG の画素の形式を扱えません")
+  native <- dctImage <$> decodePdfDct (PdfDctSpec components hint (P.imgWidth image) (P.imgHeight image) (fromInteger maxColorBytes)) (P.imgData image)
+  let inverted = components == 4 && (isJust adobe || implicitYcck)
+  pure native {P.imgData = if inverted then BS.map (255 -) (P.imgData native) else P.imgData native}

@@ -21,7 +21,22 @@ figureColorTests :: TestTree
 figureColorTests =
   testGroup
     "root ADR 0403 raster tones"
-    [ testCase "root ADR 0403: codec exceptions do not expose machine-specific call stacks" $ do
+    [ testCase "root ADR 0406 I3: unmarked RGB component identifiers retain standalone grayscale" $ do
+        let originalBytes = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> J.PixelRGB8 100 100 100) 8 8))
+            (prefix, rest) = BS.breakSubstring (BS.pack [255, 238]) originalBytes
+            bytes = if BS.null rest then originalBytes else prefix <> BS.drop (2 + fromIntegral (BS.index rest 2) * 256 + fromIntegral (BS.index rest 3)) rest
+        imageData <- either assertFailure pure (P.readImage bytes)
+        result <- safeAnalyzeRaster red imageData >>= either (assertFailure . show) pure
+        raKind result @?= Grayscale
+        fmap (BS.take 4 . P.imgData) (raImage result) @?= Just (BS.pack [0, 155, 155, 0]),
+      testCase "root ADR 0406 I3: genuine standalone Adobe YCCK preserves neutral black gray and white" $ do
+        bytes <- BS.readFile "test/fixtures/pdf-adobe-ycck.jpg"
+        original <- either assertFailure pure (P.readImage bytes)
+        result <- safeAnalyzeRaster red original >>= either (assertFailure . show) pure
+        raKind result @?= Grayscale
+        let samples = maybe BS.empty P.imgData (raImage result)
+        [BS.take 4 (BS.drop (x * 4) samples) | x <- [0, 8, 16]] @?= map BS.pack [[0, 255, 255, 0], [0, 128, 128, 0], [0, 0, 0, 0]],
+      testCase "root ADR 0403: codec exceptions do not expose machine-specific call stacks" $ do
         let conversion location = guardColorConversion (\() -> throw (ErrorCallWithLocation "codec failed" location)) (Right ())
         first <- conversion "/tmp/build-a/Image.hs:13"
         second <- conversion "/home/build-b/Image.hs:42"

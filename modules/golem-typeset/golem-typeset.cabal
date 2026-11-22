@@ -32,7 +32,8 @@ library
                     Golem.Typeset.Tcy
                     Golem.Typeset.TextLayer
                     Golem.Typeset.WrapMark
-  other-modules:    Golem.Typeset.Draw
+  other-modules:    Golem.Typeset.JpegFrames
+                    Golem.Typeset.Draw
                     Golem.Typeset.Structure
                     Golem.Typeset.Flow
                     Golem.Typeset.Fonts
