@@ -276,7 +276,8 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
     if bits `notElem` [1, 2, 4, 8, 16] then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
     if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
     ranges <- unitDecode components fields state
-    if ranges == concat (replicate components [False, True]) then Right () else Left "PDF 図版の画像の Decode に対応していません"
+    let reversed = ranges == concat (replicate components [True, False])
+    if ranges == concat (replicate components [False, True]) || reversed then Right () else Left "PDF 図版の画像の Decode に対応していません"
     let pixels = width * height
         inputBytes = ((width * toInteger components * bits + 7) `div` 8) * height
         minimumOutputBytes = pixels * 4 * (if bits == 16 then 2 else 1)
@@ -285,11 +286,17 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
       else Right ()
     (bytes, decoded) <- decodePdfStream key fields colored
     if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
-    (alpha, masked) <- pdfImageAlpha width height fields decoded
+    (samples, sampled) <-
+      if reversed
+        then do
+          inverted <- charge (BS.length bytes) decoded
+          Right (BS.map (255 -) bytes, inverted)
+        else Right (bytes, decoded)
+    (alpha, masked) <- pdfImageAlpha width height fields sampled
     let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8
         outputBytes = pixels * 4 * (outputBits `div` 8)
     reserved <- charge (fromInteger outputBytes) masked
-    let input = P.ImageData (fromInteger width) (fromInteger height) (fromInteger bits) space profile bytes False False alpha
+    let input = P.ImageData (fromInteger width) (fromInteger height) (fromInteger bits) space profile samples False False alpha
     analysis <- rasterAnalyzer reserved input
     case raImage analysis of
       Nothing | raKind analysis `elem` [Unpainted, Multicolor] -> Right ()

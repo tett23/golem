@@ -13,7 +13,13 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: a 16-bit PDF soft mask retains its original precision and object" $ do
+  [ testCase "root ADR 0403 I1: reversed PDF image Decode is applied before recoloring" $ do
+      let fields = ("Decode", P.OArr (map P.OInt [1, 0, 1, 0, 1, 0])) : imageFields 3
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.map (255 -) rgbPixels))]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> convertedImagePixels result @?= [cmykPixels]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a 16-bit PDF soft mask retains its original precision and object" $ do
       let alpha = BS.pack [255, 255, 128, 0, 255, 255]
           originalMask = P.OStream [("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("BitsPerComponent", P.OInt 16), ("ColorSpace", P.OName "DeviceGray")] alpha
           original = imagePage {P.ipObjects = [(1, P.OStream (("SMask", P.ORef 2) : imageFields 3) rgbPixels), (2, originalMask)]}
