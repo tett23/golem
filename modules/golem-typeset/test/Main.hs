@@ -6,6 +6,7 @@ import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
 import PdfColorSpec (pdfColorTests)
+import PdfDctSpec (pdfDctTests)
 import RuleShapeSpec (ruleShapeTests)
 import SvgColorSpec (svgColorTests)
 import TcySpec (tcyTests)
@@ -20,7 +21,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-typeset"
-    [ figureColorTests,
+    [ pdfDctTests,
+      figureColorTests,
       svgColorTests,
       testGroup "PDF figure colors" pdfColorTests,
       memoTests,

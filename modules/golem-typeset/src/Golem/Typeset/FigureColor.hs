@@ -13,6 +13,7 @@ module Golem.Typeset.FigureColor
     forceImportedPage,
     recolorRasterBytes,
     rgbTone,
+    checkJpegFrames,
   )
 where
 

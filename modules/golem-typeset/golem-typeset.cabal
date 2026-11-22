@@ -26,6 +26,7 @@ library
                     Golem.Typeset.Memo
                     Golem.Typeset.Overhang
                     Golem.Typeset.PdfColor
+                    Golem.Typeset.PdfDct
                     Golem.Typeset.RuleShape
                     Golem.Typeset.Svg
                     Golem.Typeset.Tcy
@@ -74,6 +75,7 @@ test-suite golem-typeset-test
     MemoSpec
     RuleShapeSpec
     PdfColorSpec
+    PdfDctSpec
     SvgColorSpec
     TcySpec
     WrapMarkSpec
