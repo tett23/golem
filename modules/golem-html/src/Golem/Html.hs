@@ -519,7 +519,7 @@ topBlocks c = go Nothing Nothing 0 False
               followingSeparator = nextSeparator rest' || blankFollows rest'
               blanksBefore = max 0 (fromMaybe 0 blanks - after)
               start = previous || blanksBefore > 0
-           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (start && i == 0)(followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
+           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (start && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
       | Just (before, after') <- separatorSpace b =
           let explicit = fromMaybe 0 blanks
               extra = if not previous && explicit > max after before then explicit - after else 0
