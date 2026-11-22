@@ -1,6 +1,6 @@
 # ADR 0379: ルビのかけ方、置く側、両側の読みを指定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
