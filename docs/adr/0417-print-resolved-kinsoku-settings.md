@@ -1,6 +1,6 @@
 # ADR 0417: 解決した禁則とぶら下げの設定を JSON で出す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
@@ -100,7 +100,7 @@ Aleph が `style.toml` を自分で読むと、既定値と誤りの扱いを Go
 
 - I1 から I5 は、CLI の統合テストで、境界の表の行ごとに一時のプロジェクトを作って確かめる。I1 は、同じプロジェクトを `evaluateProject Dev root` で解決した `stComposition (evStyle e)` とも比べる。出力は JSON として読んで比べ、I5 だけは文字列で比べる。
 - テストの名前は、モノレポのルートの ADR の決まりに従い、`root ADR 0417 I1: …` のようにする。
-- A1 は、Aleph の [ADR 0090](0090-html-settings-conversion-stays-in-driver.md) の実装で確かめる。
+- A1 は、Aleph の [ADR 0090](https://github.com/tett23/aleph/blob/8a36f1754613c4cc9eb62d5f8645b50616b3dc6d/docs/adr/0090-editor-composition-settings.md) の実装で確かめる。
 
 ## トレードオフ
 
