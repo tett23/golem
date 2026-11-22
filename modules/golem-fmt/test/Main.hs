@@ -295,7 +295,7 @@ tableTests =
       testCase "tabs, spaces, blank lines and quotes are kept" $ do
         formatTable "a\tb\n\tz  \n" @?= "a\tb\n\tz  \n"
         formatTable "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n" @?= "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n",
-      testCase "Golem ADR 0354 I1/I2: strip the whole leading run, keep interior BOMs" $ do
+      testCase "Golem ADR 0354 I1, I2: strip the whole leading run, keep interior BOMs" $ do
         formatTable "" @?= ""
         formatTable "\xFEFF\xFEFF" @?= ""
         formatTable "\xFEFF\xFEFF\xFEFF\&a\xFEFF\xFEFF\&b" @?= "a\xFEFF\xFEFF\&b"

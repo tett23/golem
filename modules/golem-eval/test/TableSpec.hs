@@ -220,7 +220,7 @@ positionalTests =
         snd (run "@table data/t.csv\n") @?= []
         fmap (\(_, h, rs) -> (h, rs)) (table "@table data/t.csv\n") @?= Just ([["a"], ["b"], ["c"]], [[["1"], ["2"], ["3"]]])
         table "@table \"data/t.csv\"\n" @?= table "@table data/t.csv\n",
-      testCase "ADR 0343 I1 I2: legacy and duplicated table paths stop before the asset" $ do
+      testCase "ADR 0343 I1, I2: legacy and duplicated table paths stop before the asset" $ do
         snd (run "@table src=data/t.csv\n") @?= [("G02252", "@table の src= は使えません。パスを最初の引数に移します", 7, 21)]
         tableOf "@table src=data/t.csv\n" @?= Nothing
         snd (run "@table data/t.csv src=data/t.csv\n") @?= [("G02130", "@table にはファイルのパスを一つ書きます", 0, 33)]
