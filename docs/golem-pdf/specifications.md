@@ -87,14 +87,14 @@ tRNS の置き場所（PLTE の前や IDAT の後）は調べない。
 
 上限は、図版のファイル一つの取り込み（`importPage` の一回の呼び出し）の中で数える（[docs/adr/0040](../adr/0040-pdf-import-resource-limits.md)）。
 上限を超えた取り込みは G08010 とし、`PDF として読めません（理由）` の括弧の中に理由を書く。
-つないだページの内容の上限だけは、G08015 とする（[docs/adr/0051](../adr/0051-reuse-repeated-pdf-content-streams.md)）。
+つないだページの内容の上限だけは、G08015 とする（[docs/adr/0051](../adr/0051-reuse-repeated-pdf-content-streams.md)、[root ADR 0409](../adr/0409-limit-the-outer-content-of-reused-pdf-streams.md)）。
 内側の Form にするストリームの番号の上限は、G08020 とする（[docs/adr/0259](../adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 
 | 対象 | 上限 | 理由 |
 |---|---|---|
 | 展開したバイト数の合計 | 256 MiB（2^28 バイト） | `展開した大きさが上限を超えました` |
 | 一つのストリームの展開 | 256 MiB | `展開した大きさが上限を超えました` |
-| ページの内容（`Contents` の配列をつないだもの。繰り返し名指したストリームを使い回せないページに限る） | 256 MiB | G08015（[docs/adr/0051](../adr/0051-reuse-repeated-pdf-content-streams.md)） |
+| ページの内容（`Contents` の配列をつないだもの。使い回すページでは、外側の内容） | 256 MiB | G08015（[docs/adr/0051](../adr/0051-reuse-repeated-pdf-content-streams.md)、[root ADR 0409](../adr/0409-limit-the-outer-content-of-reused-pdf-streams.md)） |
 | 内側の Form にするストリームのオブジェクトの番号 | 2,147,483,647（2^31 − 1） | G08020（[docs/adr/0259](../adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)） |
 | ページの木の深さ | 64 | `ページの木` |
 | 相互参照の項目の数 | 8,388,607 | `相互参照` |
@@ -126,6 +126,8 @@ tRNS の置き場所（PLTE の前や IDAT の後）は調べない。
   - 二回以上名指したストリームが、`q` と `Q` の外で、グラフィックスの状態とテキストの状態を変える演算子（`cm`、`w`、`J`、`j`、`M`、`d`、`ri`、`i`、`gs`、色の演算子、`W`、`W*`、`Tc`、`Tw`、`Tz`、`TL`、`Tf`、`Tr`、`Ts`、`"`）を使わない。
   - ページの `XObject` の資源に、足す名前がまだない。
 - 使い回せないページは、ストリームを改行でつなぐ。つないだ内容（各ストリームの書き換える前の長さの和と、あいだの改行の数）が 256 MiB を超えれば G08015 とする。長さはつなぐ前に計算し、超える内容をメモリに作らない。
+- 使い回すページの外側の内容にも、同じ上限をかける（[root ADR 0409](../adr/0409-limit-the-outer-content-of-reused-pdf-streams.md)）。外側の内容の長さは、書き換えた後の使い回さないストリームの長さと `/GolemC<番号> Do` の行の長さの和に、あいだの改行の数を足したものである。これが 256 MiB を超えれば G08015 とする。長さはつなぐ前に計算し、超える内容をメモリに作らない。
+- 使い回せないページの内容と、使い回すページの外側の内容は、どちらも同じ関数（`joinContent`）でつなぐ。この関数は、長さを計算してから上限を確かめ、収まるときだけつなぐ。
 - 展開の合計とつないだ内容の長さは、別々の上限である（[Golem ADR 0359](../adr/0359-imported-content-separators.md)）。あいだの改行は、つないだ内容の長さにだけ数え、展開の合計には数えない。そのため、二つのストリームの展開の合計がちょうど 256 MiB のページは、展開の上限に収まり、つないだ内容の上限で G08015 になる。
 - 内容のストリームのほか、Form XObject などの内容と ICC プロファイルも、つなぐ前に展開する。展開の合計が上限を超えれば、つないだ内容の長さにかかわらず、`展開した大きさが上限を超えました` の理由で G08010 とする。
 
