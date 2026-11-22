@@ -31,6 +31,7 @@ import Golem.Project.Style
 import Golem.Syntax
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
+import KeepPartsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
@@ -880,6 +881,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       FeaturesSpec.tests,
+      KeepPartsSpec.tests,
       PositionSpec.tests,
       UnderlineSpec.tests,
       OutputCharsSpec.tests,

@@ -1,0 +1,88 @@
+module KeepBookPartsSpec (tests) where
+
+import Data.ByteString qualified as BS
+import Data.Map.Strict qualified as Map
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Syntax
+import Golem.Typeset (PdfLayout (..))
+import Support (buildMini, fakeProvider, horizontalStyle, layoutOk, replaceIn, setLineText)
+import Test.Tasty
+import Test.Tasty.HUnit
+
+tests :: TestTree
+tests =
+  testGroup
+    "root ADR 0401 book-part integration"
+    [ testCase "root ADR 0401 I1: figures and captions retain their existing indivisible placement" $ do
+        let files = [("images/tiny.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\"/></svg>")]
+            manuscript = T.intercalate "\\\n" (replicate 5 "f") <> "\n\n@nonumber\n@figure images/tiny.svg width=1zw alt=\"tiny\"\n  caption\n"
+        (_, ordinary) <- layoutOk (style "column" 2) manuscript files
+        (_, page) <- layoutOk (style "page" 2) manuscript files
+        (_, spread) <- layoutOk (style "spread" 2) manuscript files
+        plPages page @?= plPages ordinary
+        plPages spread @?= plPages ordinary
+        (codes, _) <- buildMini fakeProvider True (style "page" 2) "@nonumber\n@figure images/tiny.svg width=1zw alt=\"tiny\"\n  c\\\n  c\\\n  c\n" files
+        assertBool "caption-only overflow keeps existing dimension error" (DiagnosticCode "G07038" `elem` codes),
+      testCase "root ADR 0401 I3: a caption pair larger than a page falls back with one notice" $ do
+        let manuscript = "@nonumber\n@caption " <> T.replicate 30 "題" <> "\n@column-widths 4zw\n| " <> T.replicate 8 "h " <> "|\n| --- |\n| " <> T.replicate 8 "x " <> "|\n"
+        (_, layout) <- layoutOk (style "page" 2) manuscript []
+        let notices = filter ((== DiagnosticCode "G07133") . diagCode) (plNotices layout)
+            tablePages = [poNumber p | p <- plPages layout, (_, SLine ident) <- poSlots p, Map.member ident (plTableLines layout)]
+        length notices @?= 1
+        map (spanStart . diagSpan) notices @?= [BS.length (TE.encodeUtf8 (fst (T.breakOn "| " manuscript)))]
+        tablePages @?= [1, 1, 2, 2, 2, 2],
+      testCase "root ADR 0401 I2: a table caption and first row may fill a whole spread" $ do
+        let manuscript = "@page-break\n\n@nonumber\n@caption " <> T.replicate 30 "題" <> "\n@column-widths 4zw\n| " <> T.replicate 8 "h " <> "|\n| --- |\n| " <> T.replicate 8 "x " <> "|\n"
+        (_, layout) <- layoutOk (style "spread" 2) manuscript []
+        let tablePages = [poNumber p | p <- plPages layout, (_, SLine ident) <- poSlots p, Map.member ident (plTableLines layout)]
+        assertBool "table spans only physical pages two and three" (all (`elem` [2, 3]) tablePages && 2 `elem` tablePages && 3 `elem` tablePages),
+      testCase "root ADR 0401 I2: a definition term follows its first description into a new page" $ do
+        (_, layout) <- layoutOk (style "page" 2) (T.intercalate "\\\n" (replicate 5 "f") <> "\n\n= term\n  x\\\n  x\n") []
+        positions layout @?= [(2, 0), (2, 0)]
+        let terms = [(poNumber p, poColumn p) | p <- plPages layout, (_, SLine ident) <- poSlots p, Just line <- [Map.lookup ident (plLines layout)], setLineText line == "term"]
+        terms @?= [(2, 0)],
+      testCase "root ADR 0401 I2: a definition preserves nested table header and first row" $ do
+        let sourceText = T.intercalate "\\\n" (replicate 3 "f") <> "\n\n= term\n  @column-widths 4zw\n  | h |\n  | --- |\n  | " <> T.replicate 8 "x " <> "|\n"
+        (_, layout) <- layoutOk (style "page" 2) sourceText []
+        let kept = [(poNumber p, poColumn p) | p <- plPages layout, (_, SLine ident) <- poSlots p, Just line <- [Map.lookup ident (plLines layout)], setLineText line == "term" || Map.member ident (plTableLines layout)]
+        map fst kept @?= replicate 4 2,
+      testCase "root ADR 0401 I2: table header and first row may occupy separate columns" $ do
+        (_, layout) <- layoutOk (style "page" 2) ("@column-widths 4zw\n| " <> T.replicate 8 "h " <> "|\n| --- |\n| " <> T.replicate 8 "x " <> "|\n") []
+        let tableSlots = [(poNumber page, poColumn page, ident) | page <- plPages layout, (_, SLine ident) <- poSlots page, Map.member ident (plTableLines layout)]
+        map (\(page, column, _) -> (page, column)) tableSlots @?= [(1, 0), (1, 0), (1, 1), (1, 1)],
+      testCase "root ADR 0401 I1: default and explicit column preserve item placement" $ do
+        (_, omitted) <- layoutOk (style "" 2) (source 4 3) []
+        (_, explicit) <- layoutOk (style "column" 2) (source 4 3) []
+        positions omitted @?= positions explicit
+        positions explicit @?= [(1, 1), (1, 1), (2, 0)],
+      testCase "root ADR 0401 I2: page retains a whole list item across columns" $ do
+        (_, layout) <- layoutOk (style "page" 2) (source 2 3) []
+        positions layout @?= [(1, 0), (1, 1), (1, 1)],
+      testCase "root ADR 0401 I2: page moves a list item that would cross a page" $ do
+        (_, layout) <- layoutOk (style "page" 2) (source 4 3) []
+        positions layout @?= replicate 3 (2, 0),
+      testCase "root ADR 0401 I2: spread retains an item on physical pages two and three" $ do
+        (_, layout) <- layoutOk (style "spread" 1) ("@page-break\n\n" <> source 2 3) []
+        positions layout @?= [(2, 0), (3, 0), (3, 0)],
+      testCase "root ADR 0401 I2: spread moves an item across physical pages three and four" $ do
+        (_, layout) <- layoutOk (style "spread" 1) ("@page-break\n\n" <> source 5 2) []
+        positions layout @?= replicate 2 (4, 0),
+      testCase "root ADR 0401 I3: oversized item notice occurs once at its original source span" $ do
+        (_, layout) <- layoutOk (style "page" 1) (source 2 7) []
+        positions layout @?= [(2, 0), (2, 0), (2, 0), (3, 0), (3, 0), (3, 0), (4, 0)]
+        let notices = filter ((== DiagnosticCode "G07133") . diagCode) (plNotices layout)
+        length notices @?= 1
+        case notices of
+          [d] -> spanStart (diagSpan d) @?= BS.length (TE.encodeUtf8 (fst (T.breakOn "- " (source 2 7))))
+          other -> assertFailure (show (length other))
+    ]
+  where
+    style :: T.Text -> Int -> BS.ByteString
+    style unit columns =
+      replaceIn "lines = 30" "lines = 3" (replaceIn "columns = 1" ("columns = " <> T.pack (show columns) <> "\ncolumn-gap = \"1zw\"") horizontalStyle)
+        <> (if T.null unit then BS.empty else TE.encodeUtf8 ("\n[composition]\nkeep-parts = \"" <> unit <> "\"\n"))
+        <> "\n[paragraph-styles.body]\nkeep-first-lines = 1\nkeep-last-lines = 1\n"
+    source filler count = T.intercalate "\\\n" (replicate filler "f") <> "\n\n- " <> T.intercalate "\\\n  " (replicate count "x") <> "\n"
+    positions layout = [(poNumber p, poColumn p) | p <- plPages layout, (_, SLine ident) <- poSlots p, Just line <- [Map.lookup ident (plLines layout)], "x" `T.isSuffixOf` setLineText line]
