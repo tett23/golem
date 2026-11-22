@@ -275,7 +275,8 @@ PDF の本文の横組みで約物にもプロポーショナルメトリクス�
 
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 画像や図版の RGB は、印刷用の PDF を作るという理由だけで CMYK に変換しない。
-元の色を近似する色空間変換と、書き手が指定した CMYK スウォッチへの図版の塗り替えを区別する（[root ADR 0408](docs/adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
+元の色を近似する色空間変換と、書き手が `[figures].color` で指定した CMYK スウォッチへの図版の色置換を区別する。
+色置換は白黒の濃淡か一色の図版だけに当てはめ、多色の図版と、色を指定しない図版は元の色のまま書く（[root ADR 0408](docs/adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 ### 字間と言語
 
