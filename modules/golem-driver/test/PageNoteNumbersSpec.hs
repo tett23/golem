@@ -104,14 +104,14 @@ pageNoteNumbersTests =
       let src = "甲[note: 一。]\n\n@page-break\n\n乙[note: 二。]\n"
       (ds, files) <- buildFor [TargetHtml, TargetEpub, TargetText] pageStyle src
       (_, reference) <- buildFor [TargetText] (replaceIn "numbering = \"page\"" "numbering = \"book\"" pageStyle) src
-      map diagSeverity [d | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [Warning]
+      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [Warning]
       [d | d <- ds, diagCode d == DiagnosticCode "G07132"] @?= []
       [b | (p, b) <- files, ".txt" `isSuffixOf` p] @?= [b | (p, b) <- reference, ".txt" `isSuffixOf` p],
     testCase "root ADR 0402 I2: adding HTML leaves the generated PDF unchanged" $ do
       let src = "甲[note: 一。]\n\n@page-break\n\n乙[note: 二。]\n"
       (_, alone) <- buildFor [TargetPdf] pageStyle src
       (ds, combined) <- buildFor [TargetPdf, TargetHtml] pageStyle src
-      map diagSeverity [d | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [Warning]
+      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [Warning]
       [b | (p, b) <- alone, ".pdf" `isSuffixOf` p] @?= [b | (p, b) <- combined, ".pdf" `isSuffixOf` p],
     testCase "ADR 0383 I1: inv1_page_local_note_numbers_property" $ do
       -- the sources put two marks of a channel or more on one page, and marks on several pages
