@@ -4812,7 +4812,14 @@ loadFigures inp = do
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
-figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- bs]
+figureBlocks book = concat [concatMap collect bs | Document _ bs <- bookDocs book]
+  where
+    collect (Block sp _ _ body) = case body of
+      FigureBlock figure -> [(sp, figure)]
+      BulletList items -> concatMap (concatMap collect . itemBlocks) items
+      OrderedList items -> concatMap (concatMap collect . itemBlocks) items
+      DefList groups -> concatMap (concatMap (concatMap collect) . dgDefs) groups
+      _ -> []
 
 {- | G08010: a figure that cannot be placed in the PDF; G08011: an SVG figure
 with things outside the subset, G08016: with markers in a cycle, G08017: with
