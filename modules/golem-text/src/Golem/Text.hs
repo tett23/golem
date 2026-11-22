@@ -88,16 +88,34 @@ their empty lines between two blocks, and nothing before the first
 block, after a break or after the last block (docs/adr ADR 0046).
 -}
 topText :: Ctx -> [Block] -> Text
-topText c = T.concat . go False Nothing
+topText c = T.concat . go False Nothing Nothing
   where
-    -- whether a block was written, and the empty lines pending after a block (Nothing after a break)
-    go _ _ [] = []
-    go written _ (Block _ _ _ (ForcedBreak _) : rest) = go written Nothing rest
-    go written blanks (Block _ _ _ (BlankLines n) : rest) = go written ((+ toInteger n) <$> blanks) rest
-    go written blanks (b : rest) =
+    -- whether a block was written, explicit blank lines, and a visible separator's trailing space
+    go _ _ _ [] = []
+    go written _ _ (Block _ _ _ (ForcedBreak _) : rest) = go written Nothing Nothing rest
+    go written blanks after (Block _ _ _ (BlankLines n) : rest) = go written ((+ toInteger n) <$> blanks) after rest
+    go written blanks after (b@(Block sp _ _ (Separator name)) : rest) =
+      let appearance = Map.lookup (sp, name) (bookSeparators (cBook c))
+          before = case appearance of
+            Just (SeparatorTextAppearance n _ _ _ _) -> n
+            Just (SeparatorRuleAppearance n _ _ _ _ _ _) -> n
+            Nothing -> 0
+          trailing = case appearance of
+            Just (SeparatorTextAppearance _ n _ _ _) -> n
+            Just (SeparatorRuleAppearance _ n _ _ _ _ _) -> n
+            Nothing -> 0
+          gap = max (toInteger before) (max (fromMaybe 0 blanks) (fromMaybe 0 after))
+          sep = if written then "\n" <> T.replicate (fromInteger gap) "\n" else ""
+       in sep : block c 0 b : go True (Just 0) (Just (toInteger trailing)) rest
+    go written blanks after (b : rest) =
       let t = block c 0 b
-          sep = if written then "\n\n" <> T.replicate (fromInteger (fromMaybe 0 blanks)) "\n" else ""
-       in if T.null t then go written blanks rest else sep : t : go True (Just 0) rest
+          sep =
+            if written
+              then case after of
+                Just n -> "\n" <> T.replicate (fromInteger (max n (fromMaybe 0 blanks))) "\n"
+                Nothing -> "\n\n" <> T.replicate (fromInteger (fromMaybe 0 blanks)) "\n"
+              else ""
+       in if T.null t then go written blanks after rest else sep : t : go True (Just 0) Nothing rest
 
 -- | A file and, after it, the notes of the documents of its chapter.
 file :: Ctx -> Document -> [Document] -> Text
@@ -169,6 +187,10 @@ block c ind (Block sp _ _ body) = case body of
   PageControl _ -> ""
   -- placed by topText (docs/adr ADR 0046)
   BlankLines _ -> ""
+  Separator name -> case Map.lookup (sp, name) (bookSeparators (cBook c)) of
+    Just (SeparatorTextAppearance _ _ _ content _) -> content
+    Just SeparatorRuleAppearance {} -> "---"
+    Nothing -> ""
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]

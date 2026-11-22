@@ -38,7 +38,13 @@ docWith steps leaf = go [] steps
   where
     go here = \case
       [] -> leaf
-      SKey k : rest -> Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- requiredFor here k, k' /= k]))
+      SKey k : rest ->
+        let extras = case (here, k, leaf) of
+              (["separators", _], "kind", Text' _ "blank") -> [("lines", Integer 1)]
+              (["separators", _], "kind", Text' _ "text") -> [("text", Text "x")]
+              (["separators", _], "kind", Text' _ "rule") -> []
+              _ -> requiredFor here k
+         in Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- extras, k' /= k]))
       SName : rest ->
         let n = if here == ["headings"] then "1" else "x"
          in Table (table [(n, go (here <> [n]) rest)])
@@ -75,6 +81,15 @@ required here k = case here of
       _ -> [("content", Text "title")]
   ["masters", _, "folio"] -> [("position", Text "bottom-center")]
   ["color", "swatches", _] -> [("cmyk", cmyk)]
+  ["separators", _] -> case k of
+    "kind" -> [("lines", Integer 1)]
+    "lines" -> [("kind", Text "blank")]
+    "text" -> [("kind", Text "text")]
+    "character-style" -> [("kind", Text "text"), ("text", Text "x")]
+    "function" -> [("command", Text "separator")]
+    "command" -> [("function", Text "separator.emet")]
+    _ -> [("kind", Text "rule")]
+  ["separators", _, "rule"] -> dashed
   ["notes", "rule"] -> ("length", Text "10mm") : dashed
   _ | take 1 (reverse here) `elem` [["rule-before"], ["rule-after"], ["underline"], ["strikethrough"]] -> dashed
   _ -> []
@@ -91,6 +106,7 @@ sample here node = case (reverse here, node) of
   (k : _, _) | k `elem` ["content", "even", "odd"], "running-head" `elem` here -> Text "title"
   ("cmyk" : _, _) -> cmyk
   (k : "[]" : "rules" : _, _) | k `elem` ["optimum", "minimum", "maximum"] -> Text "四分"
+  ("function" : _ : "separators" : _, _) -> Text "separator.emet"
   ("mark-format" : _, _) -> Text "{n}"
   ("numbers" : "lists" : _, _) -> List [Text "{n}"]
   -- an OpenType feature (docs/adr/0268)

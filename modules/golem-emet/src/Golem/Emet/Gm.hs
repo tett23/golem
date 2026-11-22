@@ -10,6 +10,7 @@ a plugin is (E06104).
 -}
 module Golem.Emet.Gm
   ( functionNamespaces,
+    separatorFunction,
     filterOf,
     filterFuel,
   )
@@ -21,7 +22,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
-import Golem.Doc.Validate (validateBlocks, validateDocument, validateInlines)
+import Golem.Doc.Validate (validateCommandBlocks, validateDocument, validateInlines)
 import Golem.Emet
 import Golem.Emet.IR
 import Golem.Emet.Types (Ty (..))
@@ -108,9 +109,30 @@ blockFunction hs p e = BlockFunction (paramsOf e) (not (null [() | ArgBody <- ex
           Left why -> Left [invalid sp e why]
           Right out ->
             let made = filter (`notElem` body) out
-             in case concatMap blockKind made <> validateBlocks (const (Just maxBound)) (carriedDeferred carried) out of
+             in case concatMap blockKind made <> validateCommandBlocks (const (Just maxBound)) (carriedDeferred carried) out of
                   [] -> Right out
                   errs -> Left [invalid sp e (T.intercalate "、" errs)]
+
+-- | A separator renderer may return top-level blank lines, but no separator.
+separatorFunction :: Handlers -> Program -> Export -> BlockFunction
+separatorFunction hs p e = BlockFunction (paramsOf e) False (exSignature e) $ \_ _ sp ->
+  case callFunction hs p sp (exPath e) (exFunction e) [] of
+    Left d -> Left [d]
+    Right r -> case decodeBlocks emptyCarried sp r of
+      Left why -> Left [invalid sp e why]
+      Right out ->
+        let kinds = concatMap (\b -> case blockBody b of BlankLines _ -> []; _ -> blockKind b) out
+            recursive = ["区切りの定義から区切りを返せません" | any hasSeparator out]
+            errs = kinds <> recursive <> validateDocument (const (Just maxBound)) [] (Document (spanFile sp) out)
+         in if null errs then Right out else Left [invalid sp e (T.intercalate "、" errs)]
+  where
+    hasSeparator b = case blockBody b of
+      Separator _ -> True
+      BulletList xs -> any (any hasSeparator . itemBlocks) xs
+      OrderedList xs -> any (any hasSeparator . itemBlocks) xs
+      DefList xs -> any (any (any hasSeparator) . dgDefs) xs
+      FigureBlock f -> any hasSeparator (figCaption f)
+      _ -> False
 
 exprFunction :: Handlers -> Program -> Export -> Maybe ExprFunction
 exprFunction hs p e = case gmResult (exResult e) of
@@ -150,6 +172,7 @@ blockKind (Block _ _ _ body) = case body of
   ForcedBreak _ -> refuse "改ページ"
   PageControl _ -> refuse "改ページの制御"
   BlankLines _ -> refuse "行アキ"
+  Separator _ -> []
   where
     refuse k = ["ブロックコマンドが返せないブロックです: " <> k]
 

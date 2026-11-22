@@ -10,7 +10,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
+import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), assemble)
 import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
@@ -44,6 +44,7 @@ cfg0 =
     { hcTitle = "本",
       hcLanguage = "ja",
       hcVertical = False,
+      hcSeparatorPitch = Nothing,
       hcNumberDefault = "kanji",
       hcSwatches = Map.empty,
       hcFonts = Map.empty,
@@ -89,7 +90,8 @@ bookOf bs =
       bookChannels = [],
       bookChannelDecls = Map.empty,
       bookTitleSeparators = Map.empty,
-      bookImages = Map.empty
+      bookImages = Map.empty,
+      bookSeparators = Map.empty
     }
 
 para :: Int -> [Inline] -> Block
@@ -476,7 +478,70 @@ ruleTests =
 
 tests :: [TestTree]
 tests =
-  [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
+  [ testCase "root ADR 0398 A2: text and rule separators are distinct XHTML blocks" $ do
+      let a = Block (at 1) Nothing Nothing (Separator "scene")
+          b = Block (at 2) Nothing Nothing (Separator "rule")
+          appearances = Map.fromList [((at 1, "scene"), SeparatorTextAppearance 1 1 "center" "＊" Nothing), ((at 2, "rule"), SeparatorRuleAppearance 1 1 "end" Nothing 19660 Nothing StrokeSolid)]
+          body = bodyA cfg0 ((bookOf [a, b]) {bookSeparators = appearances})
+      assertBool "text" ("class=\"separator separator-text\"" `T.isInfixOf` body)
+      assertBool "rule" ("class=\"separator separator-rule\"" `T.isInfixOf` body)
+      assertBool "one line, margins" ("block-size: 1lh" `T.isInfixOf` siteCss (renderXhtml cfg0 ft ((bookOf [a, b]) {bookSeparators = appearances}))),
+    testCase "root ADR 0398 I4: separator boundaries override global and file paragraph margins" $ do
+      let sep = Block (at 2) Nothing Nothing (Separator "scene")
+          ps = plainPara {hpsSpaceBefore = 2, hpsSpaceAfter = 3, hpsSpaceBetween = 4}
+          cfg = cfg0 {hcParaStyles = Map.fromList [("body", ps), ("quote", ps)], hcLocalStyles = Map.singleton fidA (HtmlLocalStyles Map.empty (Map.singleton "quote" ps) Nothing Nothing Map.empty)}
+          book = (bookOf [styled 1 "quote", sep, para 3 [txt "after"]]) {bookSeparators = Map.singleton (at 2, "scene") (SeparatorTextAppearance 0 0 "center" "*" Nothing)}
+          body = bodyA cfg book
+      assertBool "preceding paragraph has no boundary margin" ("<p class=\"ps-quote\" style=\"margin-block-end:0\">" `T.isInfixOf` body)
+      assertBool "following paragraph has no boundary margin" ("<p style=\"margin-block-start:0\">" `T.isInfixOf` body),
+    testCase "root ADR 0398 I4: generated paragraphs sharing a source span retain non-boundary spacing" $ do
+      let paragraph text = Block (at 1) Nothing Nothing (Paragraph Nothing [txt text])
+          sep = Block (at 2) Nothing Nothing (Separator "scene")
+          book = (bookOf [paragraph "first", paragraph "before", sep, paragraph "after", paragraph "last"]) {bookSeparators = Map.singleton (at 2, "scene") (SeparatorTextAppearance 0 0 "center" "*" Nothing)}
+          body = bodyA cfg0 book
+      assertBool "first paragraph is unchanged" ("<p>first</p>" `T.isInfixOf` body)
+      assertBool "last paragraph is unchanged" ("<p>last</p>" `T.isInfixOf` body),
+    testCase "root ADR 0398 I4: adjacent visible separators serialize one maximum margin in both writing modes" $ do
+      let a = Block (at 1) Nothing Nothing (Separator "a")
+          b = Block (at 3) Nothing Nothing (Separator "b")
+          blank = Block (at 2) Nothing Nothing (BlankLines 4)
+          appearances = Map.fromList [((at 1, "a"), SeparatorTextAppearance 0 2 "center" "A" Nothing), ((at 3, "b"), SeparatorTextAppearance 3 0 "center" "B" Nothing)]
+      mapM_
+        ( \vertical ->
+            mapM_
+              ( \(between, margin) -> do
+                  let body = bodyA (cfg0 {hcVertical = vertical}) ((bookOf ([a] <> between <> [b])) {bookSeparators = appearances})
+                  assertBool "first separator ends at zero" ("margin-block-start:0lh;margin-block-end:0lh\"><span>A" `T.isInfixOf` body)
+                  assertBool "next separator owns the maximum" (("margin-block-start:" <> margin <> "lh;margin-block-end:0lh\"><span>B") `T.isInfixOf` body)
+                  T.count "<br/>" body @?= 0
+              )
+              [([], "3"), ([blank], "4")]
+        )
+        [False, True],
+    testCase "root ADR 0398 I4: explicit blank lines and visible margins use the maximum" $ do
+      let sep = Block (at 2) Nothing Nothing (Separator "scene")
+          before = Block (at 1) Nothing Nothing (Paragraph Nothing [Text (at 1) "前"])
+          lastPara = Block (at 4) Nothing Nothing (Paragraph Nothing [Text (at 4) "後"])
+          blank = Block (at 3) Nothing Nothing (BlankLines 2)
+          appearances = Map.singleton (at 2, "scene") (SeparatorTextAppearance 1 1 "center" "＊" Nothing)
+          body = bodyA cfg0 ((bookOf [before, blank, sep, blank, lastPara]) {bookSeparators = appearances})
+      assertBool "before max" ("class=\"blank-line\"" `T.isInfixOf` body)
+      T.count "<br/>" body @?= 3,
+    testCase "root ADR 0398 A2 A4: rule stroke parameters and vertical direction remain in SVG" $ do
+      let rule stroke = (bookOf [Block (at 1) Nothing Nothing (Separator "scene")]) {bookSeparators = Map.singleton (at 1, "scene") (SeparatorRuleAppearance 0 0 "center" (Just 655360) 32768 Nothing stroke)}
+          dashed = bodyA cfg0 (rule (StrokeDashed 131072 65536))
+          dotted = bodyA cfg0 (rule (StrokeDotted 65536))
+          japanese = bodyA cfg0 (rule (StrokeJapaneseDots 65536))
+          multiple = bodyA cfg0 (rule (StrokeMulti [1, 1, 1]))
+          wavy = bodyA cfg0 (rule StrokeWavy)
+          vertical = bodyA (cfg0 {hcVertical = True}) (rule (StrokeDashed 131072 65536))
+      assertBool "dash and gap" ("stroke-dasharray=\"2pt 1pt\"" `T.isInfixOf` dashed)
+      assertBool "round dots" ("stroke-linecap=\"round\"" `T.isInfixOf` dotted)
+      assertBool "square dots" ("stroke-linecap=\"square\"" `T.isInfixOf` japanese)
+      assertBool "multiple strokes" (T.count "<line" multiple == 2)
+      assertBool "wavy path" ("<path" `T.isInfixOf` wavy)
+      assertBool "vertical path" ("y2=\"100\"" `T.isInfixOf` vertical),
+    testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
     testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
     testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
     testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpaceTests,

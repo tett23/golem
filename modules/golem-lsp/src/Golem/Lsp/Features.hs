@@ -592,6 +592,7 @@ completions ws path off = case sourceOf ws path of
         -- code is the style of code blocks, not of @style, based-on or regex styles (golem-driver ADR 0017)
         paraNames = filter (/= "code") (nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind))
         charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
+        separatorNames = nub ("default" : Map.keys (stSeparators style))
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
         -- the dotted name before the cursor in an expression
         metaPath = case T.stripPrefix "=" (T.stripStart lastOpen) of
@@ -619,24 +620,27 @@ completions ws path off = case sourceOf ws path of
                           if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                             then [Completion n CkParaStyle | n <- paraNames]
                             else
-                              if isNothing open
-                                then []
-                                else case metaPath of
-                                  -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                                  Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                                  Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                                  -- the keys of [vars] and of its tables (docs/adr/0185)
-                                  Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
-                                  Just [_] | inOperand lastOpen -> expressionNames
-                                  Just _ -> []
-                                  _ -> case ws' of
-                                    [] -> commandNames
-                                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                                    (cmd : _)
-                                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                      | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                      | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                                    _ -> []
+                              if "@separator " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                                then [Completion n CkSettingValue | n <- separatorNames]
+                                else
+                                  if isNothing open
+                                    then []
+                                    else case metaPath of
+                                      -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                                      Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                                      Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                                      -- the keys of [vars] and of its tables (docs/adr/0185)
+                                      Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
+                                      Just [_] | inOperand lastOpen -> expressionNames
+                                      Just _ -> []
+                                      _ -> case ws' of
+                                        [] -> commandNames
+                                        [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                        (cmd : _)
+                                          | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                          | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                          | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                        _ -> []
   where
     nameChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
     inOperand expression =

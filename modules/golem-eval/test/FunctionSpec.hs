@@ -35,6 +35,7 @@ book =
         Map.fromList
           [ ("word-table", BlockFunction (Params [ArgString] Nothing []) True "" (\_ body _ -> Right body)),
             ("rule", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Paragraph Nothing [Text sp "―"])])),
+            ("two-separators", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Separator "scene"), Block sp Nothing Nothing (Separator "rule")])),
             ("styled", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Paragraph (Just "nonexistent") [Text sp "x"])]))
           ],
       fnExpr =
@@ -72,7 +73,12 @@ tests :: TestTree
 tests =
   testGroup
     "the functions of .emet in .gm (docs/adr/0162)"
-    [ testCase "an inline command of a namespace gets its values" $ do
+    [ testCase "root ADR 0398 I6: two Emet separators share a span but keep distinct names" $ do
+        let bs = resultBlocks (evalResult functionCtx (withImport "@book.two-separators\n"))
+        case bs of
+          [Block a _ _ (Separator "scene"), Block b _ _ (Separator "rule")] -> a @?= b
+          other -> assertFailure (show other),
+      testCase "an inline command of a namespace gets its values" $ do
         texts "[book.tax-included 1000]\n" @?= ["N1000"]
         codesOf "[book.tax-included 1000]\n" @?= [],
       testCase "the namespace is the file's: without @import, G02022" $ do
