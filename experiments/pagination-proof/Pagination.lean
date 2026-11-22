@@ -14287,4 +14287,195 @@ theorem I1_caption_ordinary_line_bound (upper : Nat) (candidates : List Nat)
   rw [valid.2.1]
   exact Nat.le_trans bounded valid.1
 
+
+/-- pushOut examines source candidates from latest to earliest, accepts
+    only a finite line ending strictly after after(prior), and stops at
+    the first such candidate for that predecessor. -/
+def captionFindPushBreak (start before : Nat) (finite : Nat → Bool) :
+    List Nat → Option Nat
+  | [] => none
+  | position :: rest =>
+      if start < position ∧ position < before ∧ finite position = true then some position
+      else captionFindPushBreak start before finite rest
+
+private theorem captionFindPushBreak_sound (start before : Nat)
+    (finite : Nat → Bool) (candidates : List Nat) (position : Nat)
+    (found : captionFindPushBreak start before finite candidates = some position) :
+    position ∈ candidates ∧ start < position ∧ position < before ∧ finite position = true := by
+  induction candidates with
+  | nil => simp [captionFindPushBreak] at found
+  | cons head tail ih =>
+    simp only [captionFindPushBreak] at found
+    split at found
+    · rename_i accepted
+      cases found
+      exact ⟨List.Mem.head _,accepted⟩
+    · have fromTail := ih found
+      exact ⟨List.Mem.tail _ fromTail.1,fromTail.2⟩
+
+def captionAfterEncoded (items : List CaptionItemKind) (position : Nat) : Nat :=
+  if position = 0 then 0 else captionNextSourceStart items position
+
+private theorem captionAfterEncoded_ge (items : List CaptionItemKind) (position : Nat) :
+    position ≤ captionAfterEncoded items position := by
+  unfold captionAfterEncoded
+  split
+  · omega
+  · simp only [captionNextSourceStart]; omega
+
+structure CaptionPushOption where
+  predecessor : Nat
+  node : CaptionActiveNode
+  deriving DecidableEq
+
+def captionPushOptions (items : List CaptionItemKind) (candidates : List Nat)
+    (before : Nat) (flagged : Nat → Bool)
+    (evaluate : CaptionActiveNode → Nat → CaptionActiveEval)
+    (finite : CaptionActiveNode → Nat → Bool) :
+    List CaptionActiveNode → List CaptionPushOption
+  | [] => []
+  | prior :: rest =>
+      let later := captionPushOptions items candidates before flagged evaluate finite rest
+      match captionFindPushBreak (captionAfterEncoded items prior.position) before
+          (finite prior) candidates.reverse with
+      | none => later
+      | some position =>
+          let ev := evaluate prior position
+          let node : CaptionActiveNode :=
+            { position := position+1, lineCount := prior.lineCount+1,
+              fitness := ev.fitness, flagged := flagged position,
+              demerits := prior.demerits+ev.demerits,
+              history := (position,ev.fitness) :: prior.history }
+          { predecessor := prior.position, node := node } :: later
+
+/-- The ordering is exactly (Down position, total cost, Down predecessor).
+    A tie keeps the first option, matching the stable sort in pushOut. -/
+def captionPushBeforeOrEqual (left right : CaptionPushOption) : Bool :=
+  decide (right.node.position < left.node.position) ||
+    (decide (left.node.position = right.node.position) &&
+      (decide (left.node.demerits < right.node.demerits) ||
+        (decide (left.node.demerits = right.node.demerits) &&
+          decide (right.predecessor ≤ left.predecessor))))
+
+def captionChoosePush : List CaptionPushOption → Option CaptionPushOption
+  | [] => none
+  | head :: tail =>
+      match captionChoosePush tail with
+      | none => some head
+      | some later => some (if captionPushBeforeOrEqual head later then head else later)
+
+private theorem captionChoosePush_member (options : List CaptionPushOption)
+    (selected : CaptionPushOption) (chosen : captionChoosePush options = some selected) :
+    selected ∈ options := by
+  induction options with
+  | nil => simp [captionChoosePush] at chosen
+  | cons head tail ih =>
+    simp only [captionChoosePush] at chosen
+    split at chosen
+    · cases chosen; exact List.Mem.head _
+    · rename_i later laterEq
+      split at chosen
+      · cases chosen; exact List.Mem.head _
+      · cases chosen; exact List.Mem.tail _ (ih laterEq)
+
+private theorem captionPushOptions_progress (items : List CaptionItemKind)
+    (candidates : List Nat) (before lower : Nat) (flagged : Nat → Bool)
+    (evaluate : CaptionActiveNode → Nat → CaptionActiveEval)
+    (finite : CaptionActiveNode → Nat → Bool) (actives : List CaptionActiveNode)
+    (old : ∀ prior ∈ actives, lower ≤ prior.position) :
+    ∀ option ∈ captionPushOptions items candidates before flagged evaluate finite actives,
+      lower < option.node.position ∧ option.node.position ≤ before := by
+  induction actives with
+  | nil => simp [captionPushOptions]
+  | cons prior rest ih =>
+    have headLower := old prior (List.Mem.head _)
+    have tailLower : ∀ node ∈ rest, lower ≤ node.position :=
+      fun node member => old node (List.Mem.tail _ member)
+    simp only [captionPushOptions]
+    split
+    · exact ih tailLower
+    · rename_i position selected
+      have source := captionFindPushBreak_sound (captionAfterEncoded items prior.position)
+        before (finite prior) candidates.reverse position selected
+      have after := captionAfterEncoded_ge items prior.position
+      intro option member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · exact ⟨by simp only; omega,by simp only; omega⟩
+      · exact ih tailLower option later
+
+/-- The actual pushOut choice strictly raises a common lower bound on
+    active source positions, even though it restarts earlier candidates.
+    This is derived from the candidate search and selection, not assumed
+    as a property of a caller-supplied restart node. -/
+theorem I1_caption_push_out_advances (items : List CaptionItemKind)
+    (candidates : List Nat) (before lower : Nat) (flagged : Nat → Bool)
+    (evaluate : CaptionActiveNode → Nat → CaptionActiveEval)
+    (finite : CaptionActiveNode → Nat → Bool) (actives : List CaptionActiveNode)
+    (selected : CaptionPushOption)
+    (old : ∀ prior ∈ actives, lower ≤ prior.position)
+    (chosen : captionChoosePush
+      (captionPushOptions items candidates before flagged evaluate finite actives) = some selected) :
+    lower < selected.node.position ∧ selected.node.position ≤ before :=
+  captionPushOptions_progress items candidates before lower flagged evaluate finite actives old
+    selected (captionChoosePush_member _ selected chosen)
+
+/-- The first component of a finite-source scan rank decreases on an
+    actual pushOut restart; the candidate count may increase freely. -/
+theorem I1_caption_push_out_rank (items : List CaptionItemKind)
+    (candidates : List Nat) (before lower sourceLength : Nat) (flagged : Nat → Bool)
+    (evaluate : CaptionActiveNode → Nat → CaptionActiveEval)
+    (finite : CaptionActiveNode → Nat → Bool) (actives : List CaptionActiveNode)
+    (selected : CaptionPushOption)
+    (inside : before < sourceLength)
+    (old : ∀ prior ∈ actives, lower ≤ prior.position)
+    (chosen : captionChoosePush
+      (captionPushOptions items candidates before flagged evaluate finite actives) = some selected) :
+    sourceLength+1-selected.node.position < sourceLength+1-lower := by
+  have advances := I1_caption_push_out_advances items candidates before lower flagged
+    evaluate finite actives selected old chosen
+  omega
+
+
+/-- A natural-number scan rank, with room for every candidate after a
+    restart. The candidate/source sizes are arbitrary parameters. -/
+def captionScanRank (sourceLength candidateCount lower remainingCount : Nat) : Nat :=
+  (sourceLength+1-lower)*(candidateCount+1)+remainingCount
+
+theorem I1_caption_ordinary_scan_rank (sourceLength candidateCount lower remainingCount : Nat) :
+    captionScanRank sourceLength candidateCount lower remainingCount <
+      captionScanRank sourceLength candidateCount lower (remainingCount+1) := by
+  unfold captionScanRank
+  omega
+
+/-- No fixed retry cap is needed: a source-advancing restart lowers the
+    rank even when every original candidate is scanned again. -/
+theorem I1_caption_restart_scan_rank (sourceLength candidateCount oldLower newLower
+    oldRemaining newRemaining : Nat)
+    (advanced : oldLower < newLower) (inside : newLower ≤ sourceLength+1)
+    (restartBound : newRemaining ≤ candidateCount) :
+    captionScanRank sourceLength candidateCount newLower newRemaining <
+      captionScanRank sourceLength candidateCount oldLower oldRemaining := by
+  have gap : sourceLength+1-newLower+1 ≤ sourceLength+1-oldLower := by omega
+  have scaled := Nat.mul_le_mul_right (candidateCount+1) gap
+  simp only [Nat.add_mul,Nat.one_mul] at scaled
+  unfold captionScanRank
+  omega
+
+example : captionFindPushBreak 4 8 (fun _ => true) [7,6,5,4,3] = some 7 := by decide
+example : captionFindPushBreak 4 8 (fun p => decide (p ≤ 6)) [7,6,5,4,3] = some 6 := by decide
+example : captionFindPushBreak 4 8 (fun _ => true) [4,3,2] = none := by decide
+
+/-- At an exact key tie stable sort preserves the first predecessor. -/
+example : captionChoosePush
+    [⟨2,⟨6,2,1,false,9,[(5,1),(1,2)]⟩⟩,
+     ⟨2,⟨6,2,3,false,9,[(5,3),(1,2)]⟩⟩] =
+    some ⟨2,⟨6,2,1,false,9,[(5,1),(1,2)]⟩⟩ := by decide
+
+/-- Later source position wins before demerits are considered. -/
+example : captionChoosePush
+    [⟨2,⟨5,2,1,false,0,[(4,1),(1,2)]⟩⟩,
+     ⟨2,⟨6,2,3,false,99,[(5,3),(1,2)]⟩⟩] =
+    some ⟨2,⟨6,2,3,false,99,[(5,3),(1,2)]⟩⟩ := by decide
+
 end GolemPagination
