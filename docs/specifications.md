@@ -7104,6 +7104,12 @@ heading-style = "note"
 行取りと、見出しの直後で改ページしない規則は、キーを書いても 2 の階層の見出しのままである。
 段落スタイルの `size` は版面の文字の大きさを超えられない（[G03011](diagnostics.md#g03011)）ので、見出しを本文より大きく組みたい本は、キーを書かずに `[headings.2]` の `size` を変える。
 
+配置先別の設定では、`[notes.footnote]` の `body-style` を脚注本文に、`[notes.chapter-end]` の `body-style` を章末注本文に当てる（[root ADR 0404](adr/0404-separate-footnote-and-chapter-end-styles.md)）。
+章末注一覧の見出しは `[notes.chapter-end]` の `heading-style` で指定する。
+配置先の指定を共通の `[notes]` の指定より優先する。
+両方を省略した場合は、本文の役割と版面の文字の大きさ、または第 2 階層見出しの既定を使う。
+配置先別のキーにも、共通のキーと同じ適用範囲とスタイル参照の検査を用いる。
+
 二つのキーは互いに独立している。
 `body-style` だけを書いた本の一覧の見出しは既定のままであり、`heading-style` だけを書いた本の注の本文も既定のままである。
 どちらのキーも、本文の印（`mark-style` の文字スタイルで組む）と、傍注の本文（段落スタイル `sidenote` で組む）を変えない。
