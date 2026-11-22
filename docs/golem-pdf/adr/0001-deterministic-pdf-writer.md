@@ -1,6 +1,6 @@
 # ADR 0001: 決定的な PDF の直列化
 
-Status: accepted
+Status: superseded [{"part":"RGB の自動 CMYK 化の禁止と明示的な図版の色置換の区別","by":["docs/adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md"],"kind":"supplement"}]
 
 ## 文脈
 
