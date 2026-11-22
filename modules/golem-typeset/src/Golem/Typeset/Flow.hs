@@ -2409,7 +2409,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                   [] -> u
                 gap
                   | visibleBoundary && spacing > 0 =
-                      [source {uKind = if isJust previous then UGap (fromIntegral spacing) else UBlank spacing, uInlines = []}]
+                      [source {uKind = if isJust previous then UGap (fromIntegral spacing * pgLinePitch geom) else UBlank spacing, uInlines = []}]
                   | visibleBoundary = []
                   | otherwise = pending
                 keep = case previous of
@@ -3925,18 +3925,6 @@ buildFlow inp geom fonts images prev assumed = do
       tableUnits = [(i, spanFile (uSpan u), uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map (lineRatio . ptLine) (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
-  let separatorErrors =
-        concat
-          [ case appearance of
-              SeparatorTextAppearance {} ->
-                [diagnostic "G07134" Error (uSpan u) "区切りの約物が一行に収まりません" | length ls /= 1 || any ((> 0) . lineOverflow) ls]
-                  <> [diagnostic "G07134" Error (uSpan u) "区切りの文字サイズが行送りを超えます" | maximum (lkSize (uLook u) : [lkSize (bcLook c) | l <- ls, Box _ c <- lineItems l]) > pgLinePitch geom]
-              SeparatorRuleAppearance _ _ _ len weight _ _ ->
-                [diagnostic "G07134" Error (uSpan u) "区切りの罫線が行長または行送りを超えます" | maybe False (> unSp (feMeasure fe)) len || weight > unSp (pgLinePitch geom)]
-          | (i, u) <- units,
-            let ls = maybe [] cLines (Map.lookup i singles),
-            USeparator appearance <- [uKind u]
-          ]
   tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- Numbering is pure and can be repeated for an uncommitted physical
   -- paragraph trial without reshaping its source or changing a snapshot.
@@ -3988,6 +3976,18 @@ numberComposedFlow inp geom fe units widths composed =
         let nb' = numberUnit fe composed nb iu
          in if nuNext nb' > nuNext nb then (nb', Map.insert (nuNext nb) (uSpan u) spans, Map.insert i (nuNext nb) firsts) else (nb', spans, firsts)
       lineFiles = Map.map spanFile lineSpans
+      separatorErrors =
+        concat
+          [ case appearance of
+              SeparatorTextAppearance {} ->
+                [diagnostic "G07134" Error (uSpan u) "区切りの約物が一行に収まりません" | length ls /= 1 || any ((> 0) . lineOverflow) ls]
+                  <> [diagnostic "G07134" Error (uSpan u) "区切りの文字サイズが行送りを超えます" | maximum (lkSize (uLook u) : [lkSize (bcLook c) | l <- ls, Box _ c <- lineItems l]) > pgLinePitch geom]
+              SeparatorRuleAppearance _ _ _ len weight _ _ ->
+                [diagnostic "G07134" Error (uSpan u) "区切りの罫線が行長または行送りを超えます" | maybe False (> unSp (feMeasure fe)) len || weight > unSp (pgLinePitch geom)]
+          | (i, u) <- units,
+            let ls = maybe [] cLines (Map.lookup i (cuSingles composed)),
+            USeparator appearance <- [uKind u]
+          ]
       start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> internalSpacingErrors <> tocLineErrors fe units <> boxErrors fe units <> separatorErrors) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
       (numbered, baseSpans, baseFirsts) = foldl stepFiles (start, Map.empty, Map.empty) units
       free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)

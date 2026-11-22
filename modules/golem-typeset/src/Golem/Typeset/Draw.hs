@@ -1694,7 +1694,7 @@ drawColumn env p =
                      "start" -> 0
                      "end" -> measure - length'
                      _ -> Sp (unSp (measure - length') `div` 2)
-                   across = gridAt slot + Sp (unSp (pgLinePitch geom - Sp weight) `div` 2)
+                   across = slot + Sp (unSp (pgLinePitch geom - Sp weight) `div` 2)
                    band =
                      if vertical
                        then Rect (rectX ta + rectW ta - across - Sp weight) (rectY ta + rectH ta - along - length') (Sp weight) length'
