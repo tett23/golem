@@ -64,6 +64,12 @@ test-suite golem-cli-test
                     FmtTableSpec
                     LocaleSpec
                     RtsSpec
+                    StatsDifferentialSpec
+  c-sources:        cbits/stats.c
+                    cbits/libgrapheme/src/character.c
+                    cbits/libgrapheme/src/word.c
+                    cbits/libgrapheme/src/util.c
+                    cbits/libgrapheme/src/utf8.c
   -- -N: one capability per processor from the start, so that the count
   -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
   ghc-options: -threaded "-with-rtsopts=-N" -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
@@ -83,6 +89,7 @@ test-suite golem-cli-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , process
     , tasty          >=1.4 && <1.6
