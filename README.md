@@ -227,6 +227,8 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 
 ルビの読みだけに当てる文字スタイルは、`[composition.ruby]` の `reading-style` で選ぶ。
 文字スタイルが書かない書体と色は外側から引き継ぎ、大きさを書かなければ親文字の半分で組む（[Golem ADR 0369](docs/adr/0369-ruby-reading-style.md)）。
+`[ruby side=both size=0.75zw overhang-side=start: 東京|とうきょう|Tokyo]` のように、個々のルビの側、大きさ、かける側も選べる。
+`side=before` は横組みの上と縦組みの右、`after` は反対側で、`both` は第 3 スロットの読みを反対側に置く（[Golem ADR 0379](docs/adr/0379-extended-ruby-placement.md)）。
 
 PDF の柱とノンブルに当てる文字スタイルは、マスターページの `running-head` と `folio` の `character-style` で別々に選ぶ。
 書かなければ、本文の書体と版面の文字の大きさで組む（[Golem ADR 0364](docs/adr/0364-running-head-folio-style.md)）。

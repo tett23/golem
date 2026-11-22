@@ -229,6 +229,25 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 
 読みが親文字より長いときは、前後の仮名に読みを少しかけて、親文字の字間が空きすぎないようにします。
 かけ方は [code: style.toml] で変えられます（「[ref-title composition]」、[ref-page composition] ページ）。
+個々のルビでは、読みを置く側とかける側、大きさ、配置も選べます。
+
+```
+[ruby side=after overhang-side=start: 東|とう]
+[ruby size=0.75zw: 東京|とうきょう]
+[ruby side=both: 東京|とうきょう|Tokyo]
+```
+
+[code: side=before]（既定）は横組みでは上、縦組みでは右に読みを置きます。
+[code: side=after] は反対側に置き、[code: side=both] は第 3 スロットの読みを反対側に置きます。
+両側に置くときは、どちらの読みも空にせず、親文字と同じ数に区切ります。
+[code: overhang-side] には、かけない [code: none]、始まりの側だけの [code: start]、終わりの側だけの [code: end]、両側の [code: both]（既定）を書きます。
+[code: size] には [code: 6pt] や [code: 0.75zw] のような正の寸法を書き、[code: zw] は親文字の大きさで数えます。
+この指定は読みの文字スタイルの大きさより優先し、どちらにも大きさを書かなければ親文字の半分にします。
+[code: align] には [code: start]、[code: center]、[code: 1-2-1]、[code: 0-1-0] を書きます。
+読みを [code: \[kenten: ...\]] で囲むと、読みの外側に圏点を置きます。
+ルビ全体を囲むと、各側の読みの外側に圏点を置きます。
+両側の読みや圏点が隣の行と重なるときは、版面の行送りを広げます。
+
 
 親文字の中にも、[code: \[ref-number ...\]] と [code: \[ref-title ...\]] を書けます（「[ref-title cross-references]」、[ref-page cross-references] ページ）。
 その参照の文字だけが参照先へのリンクになり、読みはリンクに入りません。

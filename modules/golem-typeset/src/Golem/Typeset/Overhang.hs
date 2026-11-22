@@ -15,6 +15,7 @@ module Golem.Typeset.Overhang
 where
 
 import Data.Text qualified as T
+import Golem.Doc.IR (RubyOptions (..), RubySide (..))
 import Golem.Layout.Japanese (BoxKind (..), boxKind, clusters)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), readingLook)
@@ -72,7 +73,12 @@ lineOverhang vertical h central l = maximum (0 : concatMap boxOverhang (lineItem
               let look = bcLook c
                   looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                   big = if null looks then lkSize look else maximum (map lkSize looks)
-               in [rubyOverhang vertical h big (lkSize (readingLook look)) (lkBaselineShift look)]
+                  opts = lkRubyOptions look
+                  rsize = lkSize (readingLook look)
+                  plain = rubyOverhang vertical h big rsize (lkBaselineShift look)
+                  marked = any (/= Nothing) (roReadingKenten opts)
+                  extra = if marked then Sp (unSp rsize `div` 2) else 0
+               in [plain + extra | roSide opts /= RubyAfter]
         KindKenten
           | Just _ <- lkKenten (bcLook c) ->
               let look = bcLook c
