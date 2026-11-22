@@ -25,7 +25,9 @@ try {
     'root ADR 0351 I1/I2: delimiter and indented delimiter rows require arbitrary-input proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (Number|Ident|ES) choice /m,
     'root ADR 0351 I1/I2: numeric literals, command identifiers and expression trivia require recognition proofs');
-  assert.ok(baselineUnsupported <= 35, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (VarExpr|ProseSlots|LineContinuation) choice /m,
+    'root ADR 0351 I1/I2: variables, prose slots and continuations require recognition proofs');
+  assert.ok(baselineUnsupported <= 32, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -183,9 +185,25 @@ try {
     ['[a.]\n', 'Paragraph', 0, 'Word@2..3 "."'],
     ...['[=1+2]\n', '[= 1 + 2 ]\n', '[=\t1\t+\t2\t]\n', '[=%%a%%1+2]\n',
       ].map(sample => [sample, 'Paragraph', 0]),
-    ['[=%%=a%%1%%b%%+%%=c%%2]\n', 'Paragraph', 0, 'ProofComment@2..8 "%%=a%%"']
+    ['[=%%=a%%1%%b%%+%%=c%%2]\n', 'Paragraph', 0, 'ProofComment@2..8 "%%=a%%"'],
+    ...['x', '_x', 'x0', 'x.y', 'x.y.z', 'truex'].map(name =>
+      [`[= ${name}]\n`, 'Paragraph', 0, `VarExpr@3..${3 + name.length}\n`]),
+    ['[= foo %%a%% . bar]\n', 'Paragraph', 0, 'VarExpr@3..18\n'],
+    ...[['[f:]\n', 1], ['[f:|]\n', 2], ['[f:x]\n', 1], ['[f:x|y]\n', 2],
+      ['[f:|x|]\n', 3], ['[f : x | y]\n', 2]].map(([sample, slots]) =>
+      [sample, 'Paragraph', 0, `ProseSlots@2..${sample.length - 2}\n`, slots]),
+    ['- [f:x|y]\n', 'BulletList', 0, 'ProseSlots@4..8\n', 2],
+    ['- [f: a\n  b|c]\n', 'BulletList', 0, 'Ind@8..10 "  "', 2],
+    ['a\nb\n', 'Paragraph', 0, 'LineContinuation@1..2\n'],
+    ['a\\\nb\n', 'Paragraph', 0, 'LineContinuation@2..3\n'],
+    ['a\n\nb\n', 'Paragraph', 0, 'Paragraph@3..5\n'],
+    ['a\n# h\n', 'Heading', 0, 'Heading@2..6\n'],
+    ['- a\n  b\n', 'BulletList', 0, 'Ind@4..6 "  "'],
+    ['- a\n- b\n', 'BulletList', 0, 'ListItem@4..8\n'],
+    ['a\n@foo\n', 'BlockGroup', 0, 'BlockCommand@2..7\n'],
+    ['a\n \t\nb\n', 'Paragraph', 0, 'Paragraph@5..7\n']
   ];
-  for (const [sample, node, cells, chosen] of parserCases) {
+  for (const [sample, node, cells, chosen, slots] of parserCases) {
     const samplePath = join(work, 'sample.gm');
     writeFileSync(samplePath, sample);
     const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
@@ -197,6 +215,8 @@ try {
     if (node) assert.match(parsed.stdout, new RegExp(`^ +${node}@`, 'm'));
     if (chosen) assert.ok(parsed.stdout.includes(chosen), `${chosen} was not chosen by the generated parser`);
     assert.equal([...parsed.stdout.matchAll(/cs: TableCellAndPipe@/g)].length, cells);
+    if (slots !== undefined) assert.equal([...parsed.stdout.matchAll(/^ +ProseSlot@/gm)].length, slots,
+      'root ADR 0351 I1/I2: every empty and nonempty prose slot occurs in the committed CST');
   }
   // The PEG accepts this token; Golem.Parser reports G01102 for the value.
   // Keep syntax acceptance separate from a valid manuscript round trip.
@@ -242,6 +262,66 @@ try {
       { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
     assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid lexical boundary ${JSON.stringify(sample)}`);
     assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+
+  const compositionRejectedCases = [
+    '[= .x]\n', '[= x.]\n', '[= x..y]\n', '[f:x|y\n',
+    'a\\\n', 'a\\\n\nb\n', 'a\\\n# h\n', '- a\\\n b\n',
+  ];
+  for (const sample of compositionRejectedCases) {
+    const samplePath = join(work, 'bad-composition.gm');
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid composition ${JSON.stringify(sample)}`);
+    assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+
+  const compositionMutations = [
+    ['VarNeedsDot', 'VarExpr <- !Keyword ExprIdent (ES Dot ES ExprIdent)*', 'VarExpr <- !Keyword ExprIdent (ES Dot ES ExprIdent)+', 'VarExpr'],
+    ['VarComma', 'VarExpr <- !Keyword ExprIdent (ES Dot ES ExprIdent)*', 'VarExpr <- !Keyword ExprIdent (ES Comma ES ExprIdent)*', 'VarExpr'],
+    ['SlotsNeedMore', 'ProseSlot(ind) (Sp Pipe Sp ProseSlot(ind))*', 'ProseSlot(ind) (Sp Pipe Sp ProseSlot(ind))+', 'ProseSlots'],
+    ['SlotsColon', 'ProseSlot(ind) (Sp Pipe Sp ProseSlot(ind))*', 'ProseSlot(ind) (Sp Colon Sp ProseSlot(ind))*', 'ProseSlots'],
+    ['ContinuationBlank', 'LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart', 'LineContinuation <- Nl Ind(ind) !BlockStart', 'LineContinuation'],
+    ['ContinuationBlock', 'LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart', 'LineContinuation <- Nl !BlankLine Ind(ind)', 'LineContinuation'],
+    ['ContinuationIndent', 'LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart', 'LineContinuation <- Nl !BlankLine Ind(0) !BlockStart', 'LineContinuation'],
+    ['VarDotDependency', "Dot <- '.'", "Dot <- ','", 'VarExpr'],
+    ['SlotsBodyDependency', 'ProseSlot <- SlotInline(ind)*', 'ProseSlot <- SlotInline(ind)+', 'ProseSlots'],
+    ['ContinuationMarkerDependency', "/ '@!' { () }", "/ '@?' { () }", 'LineContinuation'],
+  ];
+  for (const [name, before, after, rule] of compositionMutations) {
+    const changed = original.replace(before, after);
+    assert.notEqual(changed, original, `root ADR 0351 I1/I2: ${name} must alter a canonical production or dependency`);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+      `root ADR 0351 I1/I2: ${name} must invalidate its dependent recognition proof`);
+  }
+
+  const nativeCompositionMutations = [
+    ['VarNeedsDot', '[= x]\n', false],
+    ['SlotsNeedMore', '[f:x]\n', false],
+    ['ContinuationBlank', 'a\n\nb\n', true, { Paragraph: 1 }],
+    ['ContinuationBlock', 'a\\\n# h\n', true, { Paragraph: 1, Heading: 0 }],
+  ];
+  for (const [name, sample, accepted, counts] of nativeCompositionMutations) {
+    const [, before, after] = compositionMutations.find(([mutationName]) => mutationName === name);
+    const changedPath = join(work, 'Native' + name + '.hpeg');
+    const samplePath = join(work, 'native-composition.gm');
+    writeFileSync(changedPath, original.replace(before, after));
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', changedPath, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted,
+      `root ADR 0351 I1/I2: ${name} must change the native boundary: ${parsed.stderr}`);
+    for (const [node, count] of Object.entries(counts ?? {})) {
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${node}@`, 'gm'))].length, count,
+        `root ADR 0351 I1/I2: ${name} must expose changed block boundaries in the committed CST`);
+    }
   }
 
   const lexicalMutations = [
@@ -664,8 +744,12 @@ try {
   assert.equal(indentProof.status, 0, indentProof.stdout + indentProof.stderr);
   const delimiterProof = spawnSync(lean, [join(here, 'TableDelimiterTotal.lean')], growthEnv);
   assert.equal(delimiterProof.status, 0, delimiterProof.stdout + delimiterProof.stderr);
-  const lexicalProof = spawnSync(lean, [join(here, 'LexicalTotal.lean')], growthEnv);
+  const lexicalSource = join(work, 'LexicalTotal.lean');
+  copyFileSync(join(here, 'LexicalTotal.lean'), lexicalSource);
+  const lexicalProof = spawnSync(lean, ['-o', join(work, 'LexicalTotal.olean'), lexicalSource], growthEnv);
   assert.equal(lexicalProof.status, 0, lexicalProof.stdout + lexicalProof.stderr);
+  const compositionProof = spawnSync(lean, [join(here, 'SyntaxComposition.lean')], growthEnv);
+  assert.equal(compositionProof.status, 0, compositionProof.stdout + compositionProof.stderr);
   const markerProof = spawnSync(lean, [join(here, 'IndentedMarkerLine.lean')], growthEnv);
   assert.equal(markerProof.status, 0, markerProof.stdout + markerProof.stderr);
   const growthProof = spawnSync(lean, [growthSource], growthEnv);
@@ -722,7 +806,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 23, negative mutations 66, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 24, negative mutations 76, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }

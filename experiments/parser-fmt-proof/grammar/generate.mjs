@@ -436,8 +436,37 @@ const tableDelimiterProved = delimiterProved && indentFullyProved &&
   tableDelimiterRule.templateParams.length === 0 && tableDelimiterRule.alts.length === 1 &&
   tableDelimiterRule.alts[0].action?.trim() === '()' && tableDelimiterRule.alts[0].constructor === null &&
   describeItems(tableDelimiterRule.alts[0].items) === 'Ind(ind) (Pipe Delim)+ Pipe Sp';
+// SyntaxComposition proves these exact guarded sequences and repetitions.
+function indentedUnitRuleMatches(r, expected) {
+  return r?.params.length === 1 && r.params[0] === 'ind' && r.templateParams.length === 0 &&
+    r.alts.length === 1 && r.alts[0].action?.trim() === '()' && r.alts[0].constructor === null &&
+    describeItems(r.alts[0].items) === expected;
+}
+const expressionSpaceProved = lineLeavesProved && expressionCommentsProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'ES'), lexicalRules.get('ES'));
+const variableProved = expressionSpaceProved && keywordFullyProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'ExprIdent'), '[a-zA-Z_] [a-zA-Z0-9_]*') &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Dot'), "'.'") &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'VarExpr'), '!Keyword ExprIdent (ES Dot ES ExprIdent)*');
+const proseSlotsProved = spUsesWs && lineLeavesProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Colon'), "':'") &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Pipe'), "'|'") &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'ProseSlot'), 'SlotInline(ind)*') &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'ProseSlots'), 'Sp Colon Sp ProseSlot(ind) (Sp Pipe Sp ProseSlot(ind))*');
+const expectedBlockStarts = [String.raw`!NumberOpen '#'`, String.raw`'-' [ \t]`, String.raw`'+' [ \t]`,
+  String.raw`'=' [ \t:]`, "'|'", "'```'", String.raw`'@' [a-z]`, "'@!'"];
+const blockStartRule = ast?.rules.find(r => r.name === 'BlockStart');
+const blockStartsProved = numberOpenFullyProved && blockStartRule?.params.length === 0 &&
+  blockStartRule.templateParams.length === 0 && blockStartRule.alts.length === expectedBlockStarts.length &&
+  blockStartRule.alts.every((alt, index) => alt.action?.trim() === '()' && alt.constructor === null &&
+    describeItems(alt.items) === expectedBlockStarts[index]);
+const continuationProved = lineLeavesProved && blankLineProved && indentFullyProved && blockStartsProved &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'LineContinuation'), 'Nl !BlankLine Ind(ind) !BlockStart');
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (variableProved && rule.name === 'VarExpr') continue;
+    if (proseSlotsProved && rule.name === 'ProseSlots') continue;
+    if (continuationProved && rule.name === 'LineContinuation') continue;
     if (lexicalRules.has(rule.name) && singleUnitRuleMatches(rule, lexicalRules.get(rule.name)) &&
         (rule.name !== 'ES' || (lineLeavesProved && expressionCommentsProved))) continue;
     if (delimiterProved && rule.name === 'Delim') continue;
