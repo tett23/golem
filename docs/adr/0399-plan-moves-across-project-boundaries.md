@@ -1,6 +1,6 @@
 # ADR 0399: プロジェクトをまたぐ移動の章登録と参照編集を計画する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
