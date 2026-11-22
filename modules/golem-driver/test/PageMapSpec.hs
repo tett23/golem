@@ -267,6 +267,7 @@ pageMapTests =
           bookChannels = [],
           bookChannelDecls = Map.empty,
           bookTitleSeparators = Map.empty,
+          bookSeparators = Map.empty,
           bookImages = Map.empty
         }
     hex = T.pack . concatMap (\byte -> let h = showHex byte "" in replicate (2 - length h) '0' <> h) . BS.unpack
