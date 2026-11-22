@@ -304,7 +304,7 @@ tests =
           other -> assertFailure (show other),
       testCase "root ADR 0398 I2: escaped hyphens and code are not separators" $ do
         case ast "\\---\n```\n---\n```\n" of
-          [Paragraph _, CodeBlock _ _ _] -> pure ()
+          [Paragraph _, CodeBlock {}] -> pure ()
           other -> assertFailure (show other),
       -- golem-parser ADR 0009
       testCase "an expression slot with no expression is an error at the slot" $ do

@@ -3934,8 +3934,8 @@ buildFlow inp geom fonts images prev assumed = do
               SeparatorRuleAppearance _ _ _ len weight _ _ ->
                 [diagnostic "G07134" Error (uSpan u) "区切りの罫線が行長または行送りを超えます" | maybe False (> unSp (feMeasure fe)) len || weight > unSp (pgLinePitch geom)]
           | (i, u) <- units,
-            USeparator appearance <- [uKind u],
-            let ls = maybe [] cLines (Map.lookup i singles)
+            let ls = maybe [] cLines (Map.lookup i singles),
+            USeparator appearance <- [uKind u]
           ]
   tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- Numbering is pure and can be repeated for an uncommitted physical

@@ -484,7 +484,7 @@ tests =
           body = bodyA cfg0 ((bookOf [a, b]) {bookSeparators = appearances})
       assertBool "text" ("class=\"separator separator-text\"" `T.isInfixOf` body)
       assertBool "rule" ("class=\"separator separator-rule\"" `T.isInfixOf` body)
-      assertBool "one line, margins" ("block-size: 1lh" `T.isInfixOf` (siteCss (renderXhtml cfg0 ft ((bookOf [a, b]) {bookSeparators = appearances})))),
+      assertBool "one line, margins" ("block-size: 1lh" `T.isInfixOf` siteCss (renderXhtml cfg0 ft ((bookOf [a, b]) {bookSeparators = appearances}))),
     testCase "root ADR 0398 I4: explicit blank lines and visible margins use the maximum" $ do
       let sep = Block (at 2) Nothing Nothing (Separator "scene")
           before = Block (at 1) Nothing Nothing (Paragraph Nothing [Text (at 1) "前"])

@@ -377,7 +377,7 @@ resolveSeparators :: Handlers -> Maybe Program -> Style -> FileId -> Text -> [Do
 resolveSeparators handlers program style styleFid styleText docs =
   let (docs', pairs) = unzip [let (bss, entries) = unzip (map resolveBlock bs) in (Document fid (concat bss), concat entries) | Document fid bs <- docs]
       appearances = Map.fromList [(key, appearance) | Right (key, appearance) <- concat pairs]
-      diagnostics = [d | Left d <- concat pairs]
+      diagnostics = lefts (concat pairs)
    in (docs', appearances, diagnostics)
   where
     fontSize = maybe 0 (dimToSp 0 . gridFontSize) (stPage style >>= pageGrid)
@@ -663,7 +663,7 @@ fmt without arguments.
 functionPaths :: FilePath -> Project -> IO [FilePath]
 functionPaths root project = do
   let files = diskFiles root
-  style <- maybe defaultStyle (either (const defaultStyle) id . parseStyle (styleFileId project) . TE.decodeUtf8Lenient) <$> readMaybeBytes files "style.toml"
+  style <- maybe defaultStyle (fromRight defaultStyle . parseStyle (styleFileId project) . TE.decodeUtf8Lenient) <$> readMaybeBytes files "style.toml"
   (_, roots) <- functionRoots files project style
   if null roots
     then pure []

@@ -1768,8 +1768,8 @@ instance FromValue SeparatorDef where
           let b = fromMaybe 0 before
               a = fromMaybe 0 after
               centered = fromMaybe "center" align
-              noVisual = before == Nothing && after == Nothing && content == Nothing && characterStyleName == Nothing && align == Nothing && rule == Nothing
-              noLines = lines' == Nothing
+              noVisual = isNothing before && isNothing after && isNothing content && isNothing characterStyleName && isNothing align && isNothing rule
+              noLines = isNothing lines'
               bad = failTableAt (valueAnn v) "区切りの種類に合わないキーがあります"
           case (kind :: Maybe Text, function :: Maybe Text, command :: Maybe Text) of
             (Nothing, Just path, Just cmd)
@@ -1777,13 +1777,13 @@ instance FromValue SeparatorDef where
             (Just "blank", Nothing, Nothing)
               | Just n <- lines', n > 0, noVisual -> pure (SeparatorBlank n)
             (Just "rule", Nothing, Nothing)
-              | noLines && content == Nothing && characterStyleName == Nothing && b >= 0 && a >= 0 && centered `elem` ["start", "center", "end"] ->
+              | noLines && isNothing content && isNothing characterStyleName && b >= 0 && a >= 0 && centered `elem` ["start", "center", "end"] ->
                   pure (SeparatorRule b a centered (fromMaybe (RuleSpec Nothing defaultRuleWeight Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True) rule))
             (Just "text", Nothing, Nothing)
               | Just txt <- content,
                 not (T.null txt),
                 not (T.any (`elem` ['\n', '\r']) txt),
-                noLines && rule == Nothing && b >= 0 && a >= 0 && centered `elem` ["start", "center", "end"] ->
+                noLines && isNothing rule && b >= 0 && a >= 0 && centered `elem` ["start", "center", "end"] ->
                   pure (SeparatorText b a centered txt characterStyleName)
             _ -> bad
       )
