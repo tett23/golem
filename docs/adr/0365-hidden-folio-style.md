@@ -1,6 +1,6 @@
 # ADR 0365: 隠しノンブルの書体と色を選ぶ
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
