@@ -293,6 +293,9 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 - 行を分けない範囲は、組み込みの文字スタイル `no-break` で `[style no-break: 100 円]` と書く。
 - 語の分け方の例外は、`style.toml` の `[composition.hyphenation-exceptions]` と原稿のファイルの `@hyphenation-exceptions` に言語ごとに書く。
 
+EPUB は `[targets.epub].page-map` に原稿の SHA-256 と本文位置を持つ JSON 対応表を指定した場合だけ、固定ページ版の表示ノンブルをページ一覧に載せる（[Golem ADR 0386](docs/adr/0386-page-list-and-page-colors.md)）。
+`[figures].color` は単色 SVG 図版の色を独立に指定し、多色 SVG、PNG、JPEG、取り込んだ PDF の色を保持する。
+
 ### リスト、図版、コード、表
 
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。

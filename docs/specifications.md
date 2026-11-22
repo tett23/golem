@@ -1159,6 +1159,38 @@ isbn = "978-..."
 プロジェクトを作るときに一度だけ生成し、以後は変えない。
 書名と著者の読み（`title-reading`、`reading`）は任意の項目であり、EPUB では電子書店での並べ替えや検索に使われる。
 
+### EPUB の固定ページ対応表
+
+`[targets.epub]` の `page-map` に JSON ファイルのパスを指定すると、対応する固定ページ版のページ一覧を EPUB のナビゲーション文書に書く（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
+指定を省くとページ一覧を作らない。
+リフロー後の画面番号は推定しない。
+
+```toml
+[targets.epub]
+page-map = "fixed-pages.json"
+```
+
+対応表の `sources` はプロジェクトルートからの原稿パスと、小文字の 16 進数 64 桁の SHA-256 の対応であり、文書を構成するすべての原稿を含める。
+`pages` は固定ページの物理順の配列で、`page` は正の整数の物理ページ、`label` は表示ノンブルである。
+`file`、`line`、`character` は原稿の本文位置を表し、行と UTF-16 の列は 0 から数える。
+この三つをすべて省いたページと、本文の文字に一意に対応しないページは一覧から除く。
+同じ原稿位置を本文に複数回展開した場合や、式の値など原稿の文字列をそのまま出力しない位置は、一意に対応しない位置として扱う。
+原稿の SHA-256 が一致しない対応表、範囲外の位置、逆順の位置はエラーにする。
+本文位置は XHTML の空のページ区切り要素に解決し、ページ一覧からその ID にリンクする。
+HTML とプレーンテキストにはページ一覧を出さない。
+
+```json
+{
+  "sources": {"chapter.gm": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "pages": [
+    {"page": 1, "label": "i", "file": "chapter.gm", "line": 0, "character": 0},
+    {"page": 2, "label": "ii"}
+  ]
+}
+```
+
+上のハッシュは形式を示す仮の値であり、使うときは実際の原稿の SHA-256 に置き換える。
+
 ### 関係者と刷
 
 `creators` は主たる著作者（著者、訳者など）を、`contributors` はそのほかの関係者（編集者、印刷所、製本所、装丁者など）を書く表の配列である（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
@@ -4368,7 +4400,7 @@ PDF/X-4 はこの形の画像を許している。
 - プロファイルのない RGB の画像には、sRGB のプロファイルを付けて埋め込む。
 - PDF の図版の DeviceRGB は、同じ考え方で、sRGB のプロファイルの ICCBased に置き換える（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 - PDF の図版の DeviceCMYK は、変換せずにそのまま書くので、本の出力インテントの値として印刷される。
-- SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased で書き、CMYK に変換しない（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+- SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased で書き、CMYK に変換しない（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。単色図版の `[figures].color` を指定した場合は、そのスウォッチの CMYK を RGB に換算してから、この色空間で書く（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
 
 ## フォント
 
@@ -4819,7 +4851,9 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - x86-64 と aarch64 で同じ出力にするため、数は有理数で計算する（[docs/adr/0002](adr/0002-determinism.md)）。三角関数と平方根は、有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
 
-HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。
+HTML と EPUB は、SVG の図版を `<img>` で置く（`web` があればそれを置く）。
+`[figures].color` を指定した単色 SVG は、その色に置き換えた描画を SVG として書く。
+それ以外は元の SVG をそのまま写す（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
 EPUB の `media-type` は `image/svg+xml` である。
 写す前に検査するのは、次に定める動的なコンテンツだけである（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。
 PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
@@ -4882,6 +4916,22 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
   - 回せばより大きく置ける図版では、メッセージに `rotate=true` の案内を足す。
   - G07039 を抑制する単位は、`silence-notices` と `--no-notices` による本の全体である。
 - キャプションが占める格子の行の数が段の行の数に達し、画像を置く行が残らない場合はエラー（G07038）とする。
+
+### 単色 SVG 図版の色
+
+`[figures]` の `color` にスウォッチ名を指定すると、単一色の SVG 図版の fill と stroke をその色に置き換える（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
+対象は Golem が PDF に取り込める SVG の描画要素であり、グループ内も含め、fill と stroke の色の集合が一つの場合だけ置き換える。
+多色 SVG、PNG、JPEG、取り込んだ PDF の色は変えない。
+この指定は柱とノンブルの文字スタイル、罫線の色とは独立している。
+SVG は sRGB の描画なので、指定スウォッチの CMYK を HTML と同じ換算で RGB にして使う。
+
+```toml
+[figures]
+color = "accent"
+
+[color.swatches.accent]
+cmyk = [0, 80, 60, 0]
+```
 
 ### HTML と EPUB の図版の大きさ
 

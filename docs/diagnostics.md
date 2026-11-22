@@ -8434,6 +8434,150 @@ PDF でだけページごとの番号が要るなら、直さなくてよい。
 HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 どの出力でも同じ番号が要るなら、`numbering` を `"chapter"`（既定）か `"book"` にする。
 
+## G03260
+
+ページ対応表がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+EPUB のページ一覧に使う対応表を解決できないので、EPUB 生成を止める。
+page-map のファイルが存在しない。
+
+- メッセージ: `EPUB の page-map を読み込めません: ...`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.writeEpubTarget`）。EPUB のビルドが出す
+- ADR: [docs/adr/0386](adr/0386-page-list-and-page-colors.md)
+
+### 主な原因
+
+page-map のファイルが存在しない。
+
+### 直し方
+
+page-map のパスを直すか、対応表を置く。
+
+## G03261
+
+ページ対応表を読み込めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+EPUB のページ一覧に使う対応表を解決できないので、EPUB 生成を止める。
+ページ対応表の読み取りに失敗した。
+
+- メッセージ: `EPUB の page-map を読み込めません: ...`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.writeEpubTarget`）。EPUB のビルドが出す
+- ADR: [docs/adr/0386](adr/0386-page-list-and-page-colors.md)
+
+### 主な原因
+
+ページ対応表の読み取りに失敗した。
+
+### 直し方
+
+ファイルの権限と読み取り先を確かめる。
+
+## G03262
+
+ページ対応表の JSON が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+EPUB のページ一覧に使う対応表を解決できないので、EPUB 生成を止める。
+対応表を JSON として読み取れない。
+
+- メッセージ: `EPUB の page-map を読み込めません: ...`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.writeEpubTarget`）。EPUB のビルドが出す
+- ADR: [docs/adr/0386](adr/0386-page-list-and-page-colors.md)
+
+### 主な原因
+
+対応表を JSON として読み取れない。
+
+### 直し方
+
+JSON の構文を直す。
+
+## G03263
+
+ページ対応表の項目が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+EPUB のページ一覧に使う対応表を解決できないので、EPUB 生成を止める。
+必要な項目がないか、型、表示ノンブル、物理ページ順が不正である。
+
+- メッセージ: `EPUB の page-map を読み込めません: ...`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.writeEpubTarget`）。EPUB のビルドが出す
+- ADR: [docs/adr/0386](adr/0386-page-list-and-page-colors.md)
+
+### 主な原因
+
+必要な項目がないか、型、表示ノンブル、物理ページ順が不正である。
+
+### 直し方
+
+sources と pages の項目と型を確かめ、物理ページを正の整数の昇順にする。
+
+## G03264
+
+ページ対応表が古い原稿を指しています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+EPUB のページ一覧に使う対応表を解決できないので、EPUB 生成を止める。
+sources の SHA-256 が今の原稿と一致しないか、原稿にないファイルを含む。
+
+- メッセージ: `EPUB の page-map を読み込めません: ...`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.writeEpubTarget`）。EPUB のビルドが出す
+- ADR: [docs/adr/0386](adr/0386-page-list-and-page-colors.md)
+
+### 主な原因
+
+sources の SHA-256 が今の原稿と一致しないか、原稿にないファイルを含む。
+
+### 直し方
+
+今の固定ページ版と原稿から対応表を作り直す。
+
+## G03265
+
+ページ対応表の本文位置が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+EPUB のページ一覧に使う対応表を解決できないので、EPUB 生成を止める。
+本文位置が原稿の範囲外か、原稿の文書順に並んでいない。
+
+- メッセージ: `EPUB の page-map を読み込めません: ...`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.writeEpubTarget`）。EPUB のビルドが出す
+- ADR: [docs/adr/0386](adr/0386-page-list-and-page-colors.md)
+
+### 主な原因
+
+本文位置が原稿の範囲外か、原稿の文書順に並んでいない。
+
+### 直し方
+
+file、line、character と原稿の文書順を確かめる。
+
 ## G04001
 
 ラベルが重複しています

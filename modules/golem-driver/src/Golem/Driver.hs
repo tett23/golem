@@ -52,7 +52,7 @@ module Golem.Driver
 where
 
 import Control.Applicative ((<|>))
-import Control.Exception (SomeException, try)
+import Control.Exception (IOException, SomeException, try)
 #if !defined(wasm32_HOST_ARCH)
 import Control.Exception qualified as Exception
 #endif
@@ -84,6 +84,7 @@ import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
+import Golem.Driver.PageMap (PageMapError (..), decodePageMap, resolvePageMap)
 import Golem.Driver.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
@@ -110,11 +111,13 @@ import Golem.Project
 import Golem.Project.Files (Files (..), diskFiles, memoryFiles)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style
+import Golem.Svg qualified as Svg
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
 import Golem.Typeset.FontProvider (golemFontProvider, pdfFontDiagnostics)
+import Golem.Typeset.Svg (drawingSvg, figureColor, recolorFigure, svgDrawing)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
@@ -560,7 +563,8 @@ epubConfig md isbn vertical =
       epPublisher = mdPublisher md,
       epCreators = people (mdCreators md),
       epContributors = people (mdContributors md),
-      epVertical = vertical
+      epVertical = vertical,
+      epPageList = []
     }
   where
     people cs = [EpubCreator (crName c) (crReading c) (marcRelator (crRole c)) | c <- cs, inMetadata (crRole c)]
@@ -1266,9 +1270,10 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
   (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
   let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
       site = renderXhtml hcfg ft book
+  webBook <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book site else pure book
   results <- forM targets $ \case
-    TargetHtml -> writeHtmlTarget root hcfg ft book site
-    TargetEpub -> writeEpubTarget root e ft book site
+    TargetHtml -> writeHtmlTarget root hcfg ft webBook site
+    TargetEpub -> writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
     TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
   pure (concat [w | (w, _, _) <- results], concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
@@ -1396,19 +1401,67 @@ writeHtmlTarget root hcfg ft book site = do
     pure (dir </> o)
   pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
 
+-- | Keep unchanged image bytes; normalize only SVG drawings whose sole colour changes.
+recolorWebFigures :: BuildOptions -> Style -> Book -> XhtmlSite -> IO Book
+recolorWebFigures opts style book site = case figureColor style of
+  Nothing -> pure book
+  Just color -> do
+    changed <- forM (nub (map snd (siteAssets site))) $ \path ->
+      if not (".svg" `T.isSuffixOf` T.toLower (T.pack path))
+        then pure Nothing
+        else do
+          readResult <- try (maybe (filesRead (optFiles opts) path) pure (Map.lookup (T.pack path) (bookImages book))) :: IO (Either IOException BS.ByteString)
+          pure $ case readResult of
+            Left _ -> Nothing
+            Right bytes -> case Svg.readSvg bytes of
+              Left _ -> Nothing
+              Right svg ->
+                let original = P.SvgFigure (svgDrawing svg)
+                 in case recolorFigure color original of
+                      P.SvgFigure drawing | P.SvgFigure drawing /= original -> Just (T.pack path, TE.encodeUtf8 (drawingSvg drawing))
+                      _ -> Nothing
+    pure book {bookImages = Map.union (Map.fromList (catMaybes changed)) (bookImages book)}
+
 -- | Writes the EPUB of the site to build/epub/book.epub.
-writeEpubTarget :: FilePath -> Evaluated -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
-writeEpubTarget root e ft book site = do
-  let manifest = projectManifest (evProject e)
+writeEpubTarget :: BuildOptions -> Evaluated -> HtmlConfig -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeEpubTarget opts e hcfg ft book site = do
+  let project = evProject e
+      manifest = projectManifest project
       style = evStyle e
+      root = optRoot opts
       dir = root </> "build" </> "epub"
       out = dir </> "book.epub"
       isbn = fromMaybe Nothing (tgEpub (manifestTargets manifest))
       cfg = epubConfig (manifestMetadata manifest) isbn (maybe False pageVertical (stPage style))
-  cleanDir dir
-  createDirectoryIfMissing True dir
-  writeEpub root out cfg ft book site
-  pure ([out], [], Nothing)
+      report (code, message) = ([], [diagnostic code Error (mkSpan (projectManifestFile project) 0 0) ("EPUB の page-map を読み込めません: " <> message)], Nothing)
+  pageMap <- case tgEpubPageMap (manifestTargets manifest) of
+    Nothing -> pure (Right (Map.empty, []))
+    Just path -> do
+      resolved <- filesResolve (optFiles opts) path
+      case resolved of
+        Left err -> pure (Left (if err == Missing then "G03260" else "G03261", T.pack path <> ": " <> T.pack (pathErrorMessage err)))
+        Right rel -> do
+          readResult <- try (filesRead (optFiles opts) rel) :: IO (Either IOException BS.ByteString)
+          pure $ do
+            bytes <- first (\err -> ("G03261", T.pack path <> ": " <> T.pack (show err))) readResult
+            mapping <- first pageMapFailure (decodePageMap (BL.fromStrict bytes))
+            first pageMapFailure $ resolvePageMap (Map.map (\source -> (sfPath source, sfText source)) (projectSources project)) ft book mapping
+  case pageMap of
+    Left problem -> cleanDir dir >> pure (report problem)
+    Right (anchors, links) -> do
+      let epubSite = if Map.null anchors then site else renderXhtmlWithPageBreaks hcfg ft book anchors
+      cleanDir dir
+      createDirectoryIfMissing True dir
+      writeEpub root out cfg {epPageList = links} ft book epubSite
+      pure ([out], [], Nothing)
+
+-- | Distinct causes of an invalid page map (root ADR 0386).
+pageMapFailure :: PageMapError -> (Text, Text)
+pageMapFailure = \case
+  PageMapJson why -> ("G03262", why)
+  PageMapSchema why -> ("G03263", why)
+  PageMapStale why -> ("G03264", why)
+  PageMapPosition why -> ("G03265", why)
 
 -- | Writes the plain text of each variant to build/text; @dev@ for the profile dev.
 writeTextTarget :: FilePath -> Bool -> Evaluated -> Map Text [EntryPart] -> FileTable -> Book -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))

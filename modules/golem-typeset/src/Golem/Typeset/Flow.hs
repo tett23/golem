@@ -161,7 +161,7 @@ import Golem.Typeset.Box (BoxPaint (..), boxLineRange, boxLinesAround, groupBoxe
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
-import Golem.Typeset.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
+import Golem.Typeset.Svg (figureColor, markerMessage, markerSegmentsMessage, recolorFigure, svgDrawing, unsupportedMessage)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -4788,7 +4788,7 @@ loadFigures inp = do
           | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
               Left (S.SvgMalformed why) -> Left (Unplaced why)
               Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
-              Right svg -> Right (P.SvgFigure (svgDrawing svg))
+              Right svg -> Right (maybe id recolorFigure (figureColor (piStyle inp)) (P.SvgFigure (svgDrawing svg)))
           | otherwise -> either (Left . Unplaced . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
 
 -- | The @figure blocks of a book, with their spans.
