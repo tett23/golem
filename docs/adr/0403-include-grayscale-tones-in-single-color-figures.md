@@ -1,6 +1,6 @@
 # ADR 0403: 単色図版の色指定に白黒の濃淡を含める
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
