@@ -220,6 +220,7 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 文字と段落の見た目は、スタイルにまとめる。
 文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
+`[paragraph-styles.verse]` の `line-number-interval = 5` で、空行を除く原稿の 5 行目ごとに行番号を付ける（[root ADR 0384](docs/adr/0384-verse-line-numbers.md)）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 `[warichu: 注記]` で小さい二行の割注を、`[upright: ABC]` で縦組みの正立欧文を書ける。
 傍線の `side` で左右を選び、`[page.grid]` の `character-advance` で字形の大きさを変えずに字送りを指定する（[root ADR 0380](docs/adr/0380-extended-japanese-composition.md)）。
