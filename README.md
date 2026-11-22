@@ -230,6 +230,11 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 `[ruby side=both size=0.75zw overhang-side=start: 東京|とうきょう|Tokyo]` のように、個々のルビの側、大きさ、かける側も選べる。
 `side=before` は横組みの上と縦組みの右、`after` は反対側で、`both` は第 3 スロットの読みを反対側に置く（[Golem ADR 0379](docs/adr/0379-extended-ruby-placement.md)）。
 
+綴じない配布資料は、`[page]` の `layout = "single"` で左右固定にする。
+`binding` を省き、版面の `position` には `top` と、`left` または `right` のちょうど一方を書く。
+柱とノンブルの `top-left`、`bottom-right` などは物理的な左右を表し、`top-center` と `bottom-center` は版面の中央にそろう。
+`layout` を省略すると既存の見開きモード `"facing"` になる（[root ADR 0400](docs/adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+
 PDF の柱とノンブルに当てる文字スタイルは、マスターページの `running-head` と `folio` の `character-style` で別々に選ぶ。
 書かなければ、本文の書体と版面の文字の大きさで組む（[Golem ADR 0364](docs/adr/0364-running-head-folio-style.md)）。
 
@@ -303,7 +308,7 @@ CSV や TSV の表は `@table data/sizes.csv` のように書き、ファイル�
 
 ### 注、索引、リンク
 
-傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、本文側の印と、その「※」の文字スタイル（`marker-style`）だけを書く。
+傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注の領域の幅、版面との間隔、置く側（`side`）、本文側の印と、その「※」の文字スタイル（`marker-style`）を書く。
 PDF の図版、表、コードブロックのキャプションと傍注の本文は、段落スタイル `caption` と `sidenote` の字下げ、`space-between`、`line-breaks` も当てて、部品の幅で組む（[ADR 0367](./docs/adr/0367-caption-sidenote-paragraphs.md)）。
 キャプションの字下げは、そのキャプションを含むファイルのスタイルから引く。
 字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
@@ -354,7 +359,8 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 - 欧文の一重のトンボは `--marks western` で付ける。
 - 閲覧用の PDF は `--marks` を付けずに作る。
 
-トンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
+見開きモードでトンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
+左右固定モードでは隠しノンブルを入れない。
 中綴じの本では `style.toml` の `[hidden-folio]` に `enabled = false` を書く（[golem-driver ADR 0021](docs/golem-driver/adr/0021-hidden-folios.md)）。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 

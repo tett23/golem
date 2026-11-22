@@ -18,11 +18,11 @@ import Test.Tasty.HUnit
 
 -- | A5, left binding, horizontal.
 a5 :: Grid -> Style
-a5 g = defaultStyle {stPage = Just (Page (NamedSize "A5") False False (Just g) 0)}
+a5 g = defaultStyle {stPage = Just (Page (NamedSize "A5") FacingLeft False (Just g) 0)}
 
 -- | A page of the given size in sp, left binding, horizontal.
 sized :: Sp -> Sp -> Grid -> Style
-sized w h g = defaultStyle {stPage = Just (Page (CustomSize w h) False False (Just g) 0)}
+sized w h g = defaultStyle {stPage = Just (Page (CustomSize w h) FacingLeft False (Just g) 0)}
 
 -- | The message of the one G07001, or what came instead.
 g07001 :: Style -> Either Text [Sp]

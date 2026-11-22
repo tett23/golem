@@ -31,7 +31,8 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 [code: \[page\]] には、紙面そのものを書きます。
 
 - [code: size]：判型[index reading=はんけい: 判型]です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"]（ペーパーバック）から選びます。寸法は「[ref-title tables]」（[ref-page tables] ページ）に載せています。表にない判型は、[code: size = { width = "148mm", height = "210mm" }] のように幅と高さで書きます。英語の本の判型は、[code: size = { width = "5.5in", height = "8.5in" }] のようにインチでも書けます。
-- [code: binding]：綴じる側です。縦組みの本は右綴じ（[code: "right"]）、横組みの本は左綴じ（[code: "left"]）が普通です。
+- [code: layout]：ページの配置です。省略すると見開きを前提とする [code: "facing"] になり、[code: "single"] は綴じない資料の左右を固定します。
+- [code: binding]：見開きモードで綴じる側です。縦組みの本は右綴じ（[code: "right"]）、横組みの本は左綴じ（[code: "left"]）が普通です。
 - [code: writing-mode]：縦組み（[code: "vertical"]）か横組み（[code: "horizontal"]）かです。
 - [code: bleed]：塗り足しの幅です（「[ref-title print-pdf]」、[ref-page print-pdf] ページ）。
 
@@ -42,7 +43,7 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 - [code: characters]：一行の字数です。
 - [code: lines]：一ページの行数です。
 - [code: line-pitch]：行送り（ある行から次の行までの距離）です。
-- [code: position]：版面の位置です。[code: top] は天（ページの上端）から、[code: gutter] はノド（綴じる側の端）からの距離です。
+- [code: position]：版面の位置です。[code: top] は天（ページの上端）から、[code: gutter] は見開きモードでノド（綴じる側の端）からの距離です。左右固定モードでは、[code: left] で仕上がりの左端から版面の左端まで、または [code: right] で右端から版面の右端までの距離を指定します。
 - [code: columns]：段数です。省略すると 1 段になります。
 - [code: column-gap]：段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必ず書きます。
 
@@ -68,6 +69,44 @@ Golem には、テキストフレームを描いて置く操作がありませ�
 章の終わりでは、後ろの段が空いたまま残ることがあります。
 段組みの版面では、傍注の領域（[code: \[sidenotes\]]）と図版の回り込み（[code: wrap]）は使えず、エラーになります。
 HTML と EPUB は、段組みにしません。
+
+綴じない配布資料で、全ページの左の余白を広く取りたいときは、左右固定モードを使います。
+次は、A4 の横組みで左の余白を 25mm に固定し、柱とノンブルを版面の中央に置く例です。
+書体とフォントの設定は、今のプロジェクトのまま残します。
+
+```toml
+[page]
+size = "A4"
+layout = "single"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 40
+lines = 40
+line-pitch = "16pt"
+position = { top = "20mm", left = "25mm" }
+
+[masters.body]
+running-head = { position = "top-center", content = "title" }
+folio = { position = "bottom-center", format = "{n}" }
+```
+
+左右固定モードに移すときは、[code: binding] を消し、[code: gutter] を [code: left] または [code: right] に置き換えます。
+左右は紙面を正立させたときの側であり、縦組みでも同じです。
+両方の余白を指定するのではなく、どちらか一方を書き、反対側の余白は字数などから求めた版面の幅で決まります。
+柱とノンブルの [code: position] は、例えば [code: "top-outside"] を [code: "top-right"] に、[code: "bottom-inside"] を [code: "bottom-left"] に置き換えます。
+段落の [code: towards-spine] と [code: away-from-spine] は [code: left] などに置き換えます。
+使わないマスターページや段落スタイルにも、古い指定を残せません。
+引き継いだ値のエラーは、元の定義で直します。
+傍注を使う場合も、[code: \[sidenotes\]] の [code: side] に [code: "left"] または [code: "right"] を明記します。
+左右固定モードでは、トンボを付けても隠しノンブルは入りません。
+
+明示した [code: recto] と [code: verso] の改丁は、左右固定モードでもページの通し番号の偶奇をそろえるので、白ページが入ることがあります。
+見出しを次のページから始めるだけなら、[code: page-break = "page"] に変えます。
+一方、[code: page-numbering.start] でノンブルの開始番号だけを変えても、左右固定モードでは偶奇合わせの白ページを入れません。
+左右固定モードは、印刷機の片面印刷や PDF ビューアーの表示方法を指定するものではありません。
+HTML と EPUB のレイアウトは変えません。
 
 @label fonts
 ## 書体とフォント
@@ -366,7 +405,7 @@ keep-with-next = "more"
 - [code: "left-justified"]：両端を揃え、最後の行を行の始まりに寄せます。既定の値で、これまでの組み方です。
 - [code: "center-justified"]、[code: "right-justified"]：両端を揃え、最後の行を中央か行の終わりに寄せます。
 - [code: "fully-justified"]：最後の行も両端を揃えます。
-- [code: "towards-spine"]、[code: "away-from-spine"]：行をページのノドの側か小口の側に寄せます。横組みの本でだけ使えます。
+- [code: "towards-spine"]、[code: "away-from-spine"]：行をページのノドの側か小口の側に寄せます。見開きモードの横組みの本でだけ使えます。
 
 揃えは、字下げを引いた残りの長さの中で決まります。
 両端を揃えない行は、字間を広げずに組み、余った長さを行の端に回します。
@@ -859,7 +898,10 @@ regex-styles = [
 
 @listing style.toml lines=93...98
 
-[code: position] には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
+[code: position] には、上に置く [code: top-] または下に置く [code: bottom-] に、[code: outside]、[code: inside]、[code: center]、[code: left]、[code: right] を続けた値を書きます。
+[code: left] と [code: right] は版面の物理的な端にそれぞれ左揃えと右揃えで置き、[code: center] は用紙でなく版面の左右の中央に中央揃えで置きます。
+柱とノンブルのどちらにも、上下と左右のすべての組み合わせを使えます。
+左右固定モードでは、[code: inside] と [code: outside] を使えません。
 [code: top] と [code: bottom] は天と地の余白、[code: outside] は小口の側、[code: inside] はノドの側です。
 [code: content] は、柱に出す内容です。
 [code: "heading.1.short"] なら、そのページの章の題が入ります。
@@ -932,7 +974,7 @@ content = ["{meta.title}", "{heading.1.short}"]
 見出しの [code: \[headings.<階層>\]] には [code: running-head] を書けません。
 
 マスターページが [code: folio] を持たないページと白ページには、ノンブルを組みません。
-トンボを付けた入稿用の PDF では、このようなページに隠しノンブルが入ります（「[ref-title print-pdf]」、[ref-page print-pdf] ページ）。
+見開きモードでトンボを付けた入稿用の PDF では、このようなページに隠しノンブルが入ります（「[ref-title print-pdf]」、[ref-page print-pdf] ページ）。
 
 @label front-matter-folios
 ### 前付けのノンブル
@@ -966,8 +1008,9 @@ file = "chapters/02.gm"
 [code: page-numbering] を書かない [code: toc.gm] は、前のセクションの番号を続けるので、目次のページも ii、iii と数えます。
 
 [code: page-numbering] を書いたファイルは、新しいページから始まります。
-[code: start] が奇数なら奇数ページから、偶数なら偶数ページから始まり、途中のページは白ページになります。
-ノンブルの番号の偶数と奇数は、いつもページの左右と合います。
+左右固定モードでは、今のページが空ならそのページを使い、開始番号の偶奇をそろえる白ページは入れません。
+見開きモードでは、[code: start] が奇数なら奇数ページから、偶数なら偶数ページから始まり、途中のページは白ページになります。
+見開きモードのノンブルの番号の偶数と奇数は、いつもページの左右と合います。
 
 マスターページの [code: format] の [code: {n}] は、セクションの表記で書かれます。
 目次、索引、[code: \[ref-page\]] のページ番号も同じ番号になります。
@@ -1025,7 +1068,7 @@ leader = "dots"
 - [code: \[notes.chapter-end\]] の [code: body-style] と [code: heading-style]：章末注の本文と一覧見出しだけに当てる段落スタイルです。省いた値には共通の [code: \[notes\]] の指定を使います。
 - [code: \[notes\]] の [code: mark-size]：以前の書き方で、エラー（G03253）になります。[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書き換えてください。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
-- [code: \[sidenotes\]]：傍注の領域を、小口側の余白に設けます。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
+- [code: \[sidenotes\]]：傍注の領域を設けます。見開きモードでは既定で小口側、左右固定モードでは明記した [code: side] の側の余白を使います。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[paragraph-styles.caption\]] の [code: number-title-separator]：図版、コードブロック、表のキャプションで、番号と題のあいだに入れる文字列です。書き方は見出しの [code: number-title-separator] と同じです。[code: \[paragraph-styles.body\]] に書いた区切りも、キャプションに届きます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。

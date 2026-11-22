@@ -146,6 +146,7 @@ test-suite golem-driver-test
     LineAdjustmentSpec
     AdjustOrderSpec
     NumberUnitBuildSpec
+    SinglePageSpec
     PageLabelsSpec
     IndexRangeSpec
     ShapingMemoSpec

@@ -38,7 +38,7 @@ import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.PageLabel
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRubyAtEdges, rubyStyleWith)
-import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
 import Golem.Numerals.Format (Unwritable (..), formatNumberIn)
@@ -627,7 +627,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   V.gvSpan = guSpan u,
                   V.gvLineSpan = sp
                 }
-            bindingRight = maybe False pageBindingRight (stPage style)
+            layoutMode = pgLayout geom
             pageView i pd =
               V.PageView
                 { V.pvIndex = i,
@@ -637,7 +637,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
                   V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],
                   V.pvBlank = pdBlank pd,
-                  V.pvGutterLeft = gutterSide bindingRight (pdNumber pd) == SideLeft
+                  V.pvGutterLeft = (== SideLeft) <$> LS.gutterSideFor layoutMode (pdNumber pd)
                 }
             swatchName sw = listToMaybe [n | (n, Swatch (c, m, y', k)) <- Map.toList (stSwatches style), P.Swatch c m y' k == sw]
             used' = nub ([c | pd <- drawn, u <- pdUses pd, Just c <- [guColor u]] <> [n | pd <- drawn, sw <- pdBackgrounds pd, Just n <- [swatchName sw]])

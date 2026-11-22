@@ -141,7 +141,7 @@ import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, pgBindingRight, sidenoteAreaFor, typeAreaFor)
 import Golem.Length qualified as L
 import Golem.Numerals (circled)
 import Golem.Numerals.Format (renderMarkFormat)
@@ -3392,8 +3392,8 @@ numberOther fe cu nb (i, u)
       UGap n -> nb {nuFlow = nuFlow nb <> [FSpace n]}
       UCode {} -> maybe nb (\cb -> numberCode u cb nb) (Map.lookup i (cuCodeBlocks cu))
       UBreak k -> nb {nuFlow = nuFlow nb <> [FBreak k]}
-      -- the break before a section by the parity of its start (docs/adr/0260)
-      USection k start -> nb {nuFlow = nuFlow nb <> [FSection (OfSection k) (maybe BreakPage (\s -> if odd s then BreakRecto else BreakVerso) start)]}
+      -- Facing pages align start parity; single pages start normally (root ADR 0400).
+      USection k start -> nb {nuFlow = nuFlow nb <> [FSection (OfSection k) (if pgLayout (feGeom fe) == SinglePage then BreakPage else maybe BreakPage (\s -> if odd s then BreakRecto else BreakVerso) start)]}
       UPageControl c ->
         let control = case c of
               NoBreak -> FNoBreak (uSpan u)

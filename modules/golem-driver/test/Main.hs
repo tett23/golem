@@ -67,6 +67,7 @@ import ReuseSpec
 import ScriptsSpec (scriptsTests)
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
+import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec
@@ -103,6 +104,7 @@ tests skips =
         varsTests,
         visualSubsetTests,
         unwritableNumbersTests,
+        SinglePageSpec.tests,
         pageLabelsTests,
         indexRangeTests,
         tocStylesTests,
