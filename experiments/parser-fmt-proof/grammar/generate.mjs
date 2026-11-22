@@ -414,8 +414,21 @@ const indentedLabels = new Map([
   ['OrphanDef', "Ind(ind) &'=:' (&{ False } '=:')^def_orphan"],
   ['ReservedBlock', "Ind(ind) &'@!' (&{ False } '@!')^reserved"],
 ]);
+// TableDelimiterTotal proves the canonical delimiter for every input and the
+// row's indentation, one-or-more repetition, trailing pipe and whitespace.
+const delimiterProved = spUsesWs && lineLeavesProved && singleUnitRuleMatches(
+  ast?.rules.find(r => r.name === 'Delim'), "Sp ':'? '-'+ ':'? Sp");
+const tableDelimiterRule = ast?.rules.find(r => r.name === 'TableDelimiter');
+const tableDelimiterProved = delimiterProved && indentFullyProved &&
+  literalNames.has('Pipe') && rule('Pipe') === "'|'" &&
+  tableDelimiterRule?.params.length === 1 && tableDelimiterRule.params[0] === 'ind' &&
+  tableDelimiterRule.templateParams.length === 0 && tableDelimiterRule.alts.length === 1 &&
+  tableDelimiterRule.alts[0].action?.trim() === '()' && tableDelimiterRule.alts[0].constructor === null &&
+  describeItems(tableDelimiterRule.alts[0].items) === 'Ind(ind) (Pipe Delim)+ Pipe Sp';
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (delimiterProved && rule.name === 'Delim') continue;
+    if (tableDelimiterProved && rule.name === 'TableDelimiter') continue;
     if (lineLeavesProved && rule.params.length === 0 && rule.templateParams.length === 0 &&
         rule.alts.every(alt => alt.action?.trim() === '()' && alt.constructor === null)) {
       if (rule.name === 'BlankLine' && blankLineProved) continue;

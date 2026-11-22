@@ -21,7 +21,9 @@ function generate(grammar) {
 try {
   const strict = spawnSync(process.execPath, [join(here, 'generate.mjs'), source, generated], { encoding: 'utf8' });
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
-  assert.ok(baselineUnsupported <= 42, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (Delim|TableDelimiter) choice /m,
+    'root ADR 0351 I1/I2: delimiter and indented delimiter rows require arbitrary-input proofs');
+  assert.ok(baselineUnsupported <= 40, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -167,7 +169,10 @@ try {
     ['[= 1>=0]\n', 'Paragraph', 0, 'CmpOp@4..6 ">="'],
     ['[foo *[1]]\n', 'Paragraph', 0, 'Splat@5..7 "*["'],
     ['```en-US\nx\n```\n', 'CodeBlock', 0, 'CodeLine@9..11 "x\\n"'],
-    ['| a | b |\n|---|---|\n| c | d |\n', 'Table', 4]
+    ['| a | b |\n|---|---|\n| c | d |\n', 'Table', 4],
+    ...['-', ':-', '-:', ':-:', '---', '  :-:  ', '\t-\t'].map(delim =>
+      [`| a |\n|${delim}|\n`, 'Table', 1]),
+    ['@foo\n  | a |\n  |:-:|\n', 'BlockGroup', 1]
   ];
   for (const [sample, node, cells, chosen] of parserCases) {
     const samplePath = join(work, 'sample.gm');
@@ -201,6 +206,52 @@ try {
     assert.notEqual(parsed.status, 0, 'the proof comment prefix cannot start a plain keyword name');
     assert.match(parsed.stderr, /expected '%%'/);
   }
+
+  const badDelimiterCases = ['', ':', '::', '--x', '-:x', ': -', '- -'];
+  for (const delim of badDelimiterCases) {
+    const samplePath = join(work, 'bad-delimiter.gm');
+    writeFileSync(samplePath, `| a |\n|${delim}|\n`);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, 'root ADR 0351 I1/I2: delimiter requires a contiguous nonempty dash run');
+    assert.match(parsed.stderr, /^2:\d+: expected /m);
+  }
+
+  const delimiterMutations = [
+    ['DelimLeadingColon', "Delim <- Sp ':'? '-'+ ':'? Sp", "Delim <- Sp ':' '-'+ ':'? Sp", 'Delim'],
+    ['DelimEmptyDashes', "Delim <- Sp ':'? '-'+ ':'? Sp", "Delim <- Sp ':'? '-'* ':'? Sp", 'Delim'],
+    ['TableDelimiterEmpty', 'TableDelimiter <- Ind(ind) (Pipe Delim)+ Pipe Sp', 'TableDelimiter <- Ind(ind) (Pipe Delim)* Pipe Sp', 'TableDelimiter'],
+    ['TableDelimiterEnd', 'TableDelimiter <- Ind(ind) (Pipe Delim)+ Pipe Sp', 'TableDelimiter <- Ind(ind) (Pipe Delim)+ Sp', 'TableDelimiter'],
+  ];
+  for (const [name, before, after, rule] of delimiterMutations) {
+    const changed = original.replace(before, after);
+    assert.notEqual(changed, original, `root ADR 0351 I1/I2: ${name} must alter the canonical production`);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+      `root ADR 0351 I1/I2: ${name} must invalidate its recognition proof`);
+    if (rule === 'Delim') assert.match(rejected.stderr, /^unsupported TableDelimiter choice /m,
+      'root ADR 0351 I1/I2: a changed delimiter must invalidate the dependent row proof');
+  }
+
+  const emptyRowSource = join(work, 'EmptyDelimiterRow.hpeg');
+  writeFileSync(emptyRowSource, original.replace('TableDelimiter <- Ind(ind) (Pipe Delim)+ Pipe Sp',
+    'TableDelimiter <- Ind(ind) (Pipe Delim)* Pipe Sp'));
+  const emptyRowInput = join(work, 'empty-delimiter-row.gm');
+  writeFileSync(emptyRowInput, '| a |\n|\n');
+  const parseEmptyRow = grammar => spawnSync(process.env.PEG_HS ?? 'peg-hs',
+    ['parse', '--format', 'cst', grammar, emptyRowInput],
+    { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+  const emptyRow = parseEmptyRow(source);
+  assert.notEqual(emptyRow.status, 0, 'root ADR 0351 I1/I2: an empty delimiter row must fail');
+  assert.match(emptyRow.stderr, /^2:\d+: expected /m);
+  const weakenedEmptyRow = parseEmptyRow(emptyRowSource);
+  assert.equal(weakenedEmptyRow.status, 0, weakenedEmptyRow.stderr);
+  assert.match(weakenedEmptyRow.stdout, /^ +Table@/m,
+    'root ADR 0351 I1/I2: weakening plus to star must expose the native parser boundary');
 
   const reversed = original.replace(/^(StringLit <- )'"' \('\\\\' \. \/ !\["\\n\] \.\)\* '"'/m, '$1\'"\' (!["\\n] . / \'\\\\\' .)* \'"\'');
   assert.notEqual(reversed, original, 'the negative test must change StringLit');
@@ -526,7 +577,9 @@ try {
   assert.equal(wordProof.status, 0, wordProof.stderr);
   const growthSource = join(here, 'LeftRecursionTotal.lean');
   const growthEnv = { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' };
-  const repetitionProof = spawnSync(lean, [join(here, 'RuleRepetition.lean')], growthEnv);
+  const repetitionSource = join(work, 'RuleRepetition.lean');
+  copyFileSync(join(here, 'RuleRepetition.lean'), repetitionSource);
+  const repetitionProof = spawnSync(lean, ['-o', join(work, 'RuleRepetition.olean'), repetitionSource], growthEnv);
   assert.equal(repetitionProof.status, 0, repetitionProof.stdout + repetitionProof.stderr);
   const chainProof = spawnSync(lean, [join(here, 'ReferenceSequence.lean')], growthEnv);
   assert.equal(chainProof.status, 0, chainProof.stdout + chainProof.stderr);
@@ -544,6 +597,8 @@ try {
   copyFileSync(join(here, 'IndentTotal.lean'), indentSource);
   const indentProof = spawnSync(lean, ['-o', join(work, 'IndentTotal.olean'), indentSource], growthEnv);
   assert.equal(indentProof.status, 0, indentProof.stdout + indentProof.stderr);
+  const delimiterProof = spawnSync(lean, [join(here, 'TableDelimiterTotal.lean')], growthEnv);
+  assert.equal(delimiterProof.status, 0, delimiterProof.stdout + delimiterProof.stderr);
   const markerProof = spawnSync(lean, [join(here, 'IndentedMarkerLine.lean')], growthEnv);
   assert.equal(markerProof.status, 0, markerProof.stdout + markerProof.stderr);
   const growthProof = spawnSync(lean, [growthSource], growthEnv);
@@ -600,7 +655,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 21, negative mutations 56, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, rejected parser cases ${rejectedParserCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 22, negative mutations 60, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples 1, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
