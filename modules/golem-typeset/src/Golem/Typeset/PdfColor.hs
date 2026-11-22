@@ -80,8 +80,8 @@ data Resources = Resources
     sourceTables :: !(Map.Map Scope (Map.Map Text (P.ObjOf P.ObjNum))),
     clonedResources :: !(Map.Map Scope P.ObjNum),
     rasterAnalyzer :: !(P.ImageData -> Either Text RasterAnalysis),
-    rasterResults :: !(Map.Map P.ObjNum RasterAnalysis),
-    convertedImages :: !(Map.Map P.ObjNum P.ObjNum),
+    rasterResults :: !(Map.Map (P.ObjNum, Scope) RasterAnalysis),
+    convertedImages :: !(Map.Map (P.ObjNum, Scope) P.ObjNum),
     remainingBytes :: !Int
   }
 
@@ -112,7 +112,7 @@ scanForms swatch emit active scope resources graphics content state = do
                 if fillAlpha current == 0
                   then Right (Just Unpainted, prepared)
                   else do
-                    (analysis, decoded) <- analyzePdfImage key fields prepared
+                    (analysis, decoded) <- analyzePdfImage childScope childResources key fields prepared
                     Right (Just (raKind analysis), decoded)
               else do
                 let cacheKey = (key, childScope, current)
@@ -144,7 +144,7 @@ renderForms swatch active scope resources graphics content state = do
             (key, fields, childResources, childScope, prepared) <- xObjectResource resources scope args st
             (clone, child) <-
               if lookup "Subtype" fields == Just (P.OName "Image")
-                then if fillAlpha current == 0 then Right (key, prepared) else convertPdfImage key fields prepared
+                then if fillAlpha current == 0 then Right (key, prepared) else convertPdfImage childScope childResources key fields prepared
                 else case Map.lookup (key, childScope) (convertedForms prepared) of
                   Just converted -> Right (converted, prepared)
                   Nothing -> do
@@ -266,14 +266,14 @@ decodePdfStream key fields state = case Map.lookup key (decodedStreams state) of
 
 -- The raster analyzer is shared with standalone figures. Reserve both decoded
 -- samples and converted pixels before calling it, including on 32-bit targets.
-analyzePdfImage :: P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Resources)
-analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
+analyzePdfImage :: Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Resources)
+analyzePdfImage scope resources key fields state = case Map.lookup (key, scope) (rasterResults state) of
   Just analysis -> Right (analysis, state)
   Nothing -> do
     width <- positive "Width"
     height <- positive "Height"
     bits <- positive "BitsPerComponent"
-    (space, components, profile, colored) <- pdfImageSpace fields state
+    (space, components, profile, colored) <- pdfImageSpace resources fields state
     if bits `notElem` [1, 2, 4, 8, 16] then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
     if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
     ranges <- unitDecode components fields state
@@ -313,7 +313,7 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
           toInteger (BS.length (P.imgData converted)) == outputBytes ->
             Right ()
       _ -> Left "PDF 図版の画像の色置換結果が不正です"
-    Right (analysis, reserved {rasterResults = Map.insert key analysis (rasterResults reserved)})
+    Right (analysis, reserved {rasterResults = Map.insert (key, scope) analysis (rasterResults reserved)})
   where
     positive name = do
       value <- maybe (Left "PDF 図版の画像の寸法がありません") Right (lookup name fields)
@@ -327,30 +327,48 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
 -- ICC profile streams share the same bounded decoder and cache as image data.
 -- Range affects the default image Decode; non-unit ranges must not silently
 -- be interpreted as ordinary device samples.
-pdfImageSpace :: [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ColorSpace, Int, Maybe BS.ByteString, Resources)
-pdfImageSpace fields state = do
+pdfImageSpace :: P.ObjOf P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ColorSpace, Int, Maybe BS.ByteString, Resources)
+pdfImageSpace resources fields state = do
   value <- maybe (Left invalid) Right (lookup "ColorSpace" fields)
-  resolved <- dereference Set.empty value state
-  case resolved of
-    P.OName "DeviceGray" -> plain P.CsGray 1
-    P.OName "DeviceRGB" -> plain P.CsRgb 3
-    P.OName "DeviceCMYK" -> plain P.CsCmyk 4
-    P.OArr [P.OName "ICCBased", reference] -> do
-      (key, entries) <- pdfStreamReference invalid state Set.empty reference
-      count <- maybe (Left invalid) (\n -> dereference Set.empty n state) (lookup "N" entries)
-      (space, components) <- case count of
-        P.OInt 1 -> Right (P.CsGray, 1)
-        P.OInt 3 -> Right (P.CsRgb, 3)
-        P.OInt 4 -> Right (P.CsCmyk, 4)
-        _ -> Left invalid
-      ranges <- unitDecode components [("Decode", range) | Just range <- [lookup "Range" entries]] state
-      if ranges == concat (replicate components [False, True]) then Right () else Left invalid
-      (profile, decoded) <- decodePdfStream key entries state
-      Right (space, components, Just profile, decoded)
-    _ -> Left invalid
+  resolve Set.empty True value
   where
     invalid = "PDF 図版の画像の色空間に対応していません"
     plain space components = Right (space, components, Nothing, state)
+    colorResource name = do
+      entries <- dictionary resources state
+      spaces <- maybe (Right []) (`dictionary` state) (lookup "ColorSpace" entries)
+      Right (lookup name spaces)
+    named seen defaults name value
+      | Set.member name seen || Set.size seen >= P.maxNesting = Left invalid
+      | otherwise = resolve (Set.insert name seen) defaults value
+    device seen defaults name space components
+      | not defaults = plain space components
+      | otherwise = do
+          replacement <- colorResource name
+          result@(_, count, _, _) <- maybe (plain space components) (named seen False name) replacement
+          if count == components then Right result else Left invalid
+    resolve seen defaults value = do
+      resolved <- dereference Set.empty value state
+      case resolved of
+        P.OName "DeviceGray" -> device seen defaults "DefaultGray" P.CsGray 1
+        P.OName "DeviceRGB" -> device seen defaults "DefaultRGB" P.CsRgb 3
+        P.OName "DeviceCMYK" -> device seen defaults "DefaultCMYK" P.CsCmyk 4
+        P.OName name -> do
+          selected <- colorResource name >>= maybe (Left invalid) Right
+          named seen defaults name selected
+        P.OArr [P.OName "ICCBased", reference] -> do
+          (key, entries) <- pdfStreamReference invalid state Set.empty reference
+          count <- maybe (Left invalid) (\n -> dereference Set.empty n state) (lookup "N" entries)
+          (space, components) <- case count of
+            P.OInt 1 -> Right (P.CsGray, 1)
+            P.OInt 3 -> Right (P.CsRgb, 3)
+            P.OInt 4 -> Right (P.CsCmyk, 4)
+            _ -> Left invalid
+          ranges <- unitDecode components [("Decode", range) | Just range <- [lookup "Range" entries]] state
+          if ranges == concat (replicate components [False, True]) then Right () else Left invalid
+          (profile, decoded) <- decodePdfStream key entries state
+          Right (space, components, Just profile, decoded)
+        _ -> Left invalid
 
 pdfStreamReference :: Text -> Resources -> Set.Set P.ObjNum -> P.ObjOf P.ObjNum -> Either Text (P.ObjNum, [(Text, P.ObjOf P.ObjNum)])
 pdfStreamReference invalid state seen (P.ORef key) = do
@@ -467,18 +485,18 @@ convertedImageMask image fields state
     withoutKey = filter ((/= "Mask") . fst) fields
     hasSoftMask = case lookup "SMask" fields of Nothing -> False; Just P.ONull -> False; Just (P.OName "None") -> False; Just _ -> True
 
-convertPdfImage :: P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ObjNum, Resources)
-convertPdfImage key fields state = case Map.lookup key (convertedImages state) of
+convertPdfImage :: Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ObjNum, Resources)
+convertPdfImage scope resources key fields state = case Map.lookup (key, scope) (convertedImages state) of
   Just converted -> Right (converted, state)
   Nothing -> do
-    (analysis, decoded) <- analyzePdfImage key fields state
+    (analysis, decoded) <- analyzePdfImage scope resources key fields state
     case raImage analysis of
       Nothing -> Right (key, decoded)
       Just image -> do
         (maskedFields, masked) <- convertedImageMask image fields decoded
         fresh <- freshObject masked
         let fieldsOut = [(name, value) | (name, value) <- maskedFields, name `notElem` ["Length", "Filter", "DecodeParms", "DL", "Decode", "ColorSpace", "BitsPerComponent", "Resources"]] <> [("ColorSpace", P.OName "DeviceCMYK"), ("BitsPerComponent", P.OInt (toInteger (P.imgBits image)))]
-        Right (fresh, masked {convertedImages = Map.insert key fresh (convertedImages masked), convertedObjects = Map.insert fresh (P.OStream fieldsOut (P.imgData image)) (convertedObjects masked)})
+        Right (fresh, masked {convertedImages = Map.insert (key, scope) fresh (convertedImages masked), convertedObjects = Map.insert fresh (P.OStream fieldsOut (P.imgData image)) (convertedObjects masked)})
 
 freshObject :: Resources -> Either Text P.ObjNum
 freshObject state =

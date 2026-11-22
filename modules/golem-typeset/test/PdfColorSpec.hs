@@ -13,7 +13,33 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: a colour-key mask compares samples before inverse Decode" $ do
+  [ testCase "root ADR 0403 I1: image DeviceRGB honours a resource DefaultRGB profile" $ do
+      let original = imagePage {P.ipResources = P.ODict [("ColorSpace", P.ORef 4), ("XObject", P.ODict [("Im", P.ORef 1)])], P.ipObjects = P.ipObjects imagePage <> [(3, P.OStream [("N", P.OInt 3)] P.srgbProfile), (4, P.ODict [("DefaultRGB", P.OArr [P.OName "ICCBased", P.ORef 3])])]}
+          analyze input
+            | P.imgIcc input == Just P.srgbProfile = analyzeRaster (0, 100, 100, 0) input
+            | otherwise = Left "default profile was lost"
+      case recolorImportedPage (0, 100, 100, 0) analyze original of
+        Right (Just result) -> convertedImagePixels result @?= [cmykPixels]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: cycles in named image colour spaces terminate with an error" $ do
+      let fields = ("ColorSpace", P.OName "First") : filter ((/= "ColorSpace") . fst) (imageFields 3)
+          original = imagePage {P.ipResources = P.ODict [("ColorSpace", P.ODict [("First", P.OName "Second"), ("Second", P.OName "First")]), ("XObject", P.ODict [("Im", P.ORef 1)])], P.ipObjects = [(1, P.OStream fields rgbPixels)]}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Left _ -> pure ()
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: an image resolves its named colour space in each Form scope" $ do
+      let own space = P.ODict [("ColorSpace", P.ODict [("Neutral", P.OName space)]), ("XObject", P.ODict [("Im", P.ORef 3)])]
+          form space = P.OStream [("Subtype", P.OName "Form"), ("Resources", own space)] "/Im Do"
+          fields = [("ColorSpace", P.OName "Neutral"), ("BitsPerComponent", P.OInt 1)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "BitsPerComponent"]) (imageFields 1)
+          original = (page "/A Do /B Do") {P.ipResources = P.ODict [("XObject", P.ODict [("A", P.ORef 1), ("B", P.ORef 2)])], P.ipObjects = [(1, form "DeviceGray"), (2, form "DeviceCMYK"), (3, P.OStream fields (BS.pack [0xe0]))]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> do
+          let outputs = convertedImagePixels result
+          length outputs @?= 2
+          assertBool "gray white" (BS.pack [0, 0, 0, 0] `elem` outputs)
+          assertBool "CMYK neutral black" (BS.pack [0, 255, 255, 0] `elem` outputs)
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a colour-key mask compares samples before inverse Decode" $ do
       let fields = [("Mask", P.OArr (map P.OInt [255, 255, 0, 0, 0, 0])), ("Decode", P.OArr (map P.OInt [1, 0, 1, 0, 1, 0]))] <> imageFields 2
           original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [255, 0, 0, 127, 127, 127]))]}
           analyze input
