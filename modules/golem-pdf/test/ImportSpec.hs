@@ -153,7 +153,34 @@ tests :: TestTree
 tests =
   testGroup
     "PDF figures (ADR 0008)"
-    [ testGroup "the cross-reference" xrefTests,
+    [ testCase "root ADR 0403 A1: imported stream decoding counts Flate and predictor separately" $ do
+        let payload = BL.toStrict (Z.compress "\0abc")
+            fields = [("Filter", OName "FlateDecode"), ("DecodeParms", ODict [("Predictor", OInt 15), ("Colors", OInt 1), ("BitsPerComponent", OInt 8), ("Columns", OInt 3)])]
+        decodeImportedStream 7 fields payload @?= Right ("abc", 7)
+        assertBool "one byte below the cumulative cost is refused" (either (const True) (const False) (decodeImportedStream 6 fields payload)),
+      testCase "root ADR 0403 A1: imported pages retain their already spent decoding budget" $ do
+        let bytes =
+              xrefStreamPdf
+                [catalog, (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << >> /Contents 4 0 R >>")]
+                [(4, stream "/Filter /FlateDecode" (BL.toStrict (Z.compress "0 0 0 1 k 1 1 2 2 re f")))]
+        page <- importOk 1 bytes
+        assertBool "the decoded xref, object stream, and content are charged" (ipDecodedBytes page > BS.length (ipContent page)),
+      testCase "root ADR 0403 A1: recoloring decoder rejects unresolved and malformed filter metadata" $
+        mapM_
+          (\fields -> assertBool (show fields) (either (const True) (const False) (decodeImportedStream 3 fields "abc")))
+          [ [("Filter", ORef 7)],
+            [("Filter", OArr [OInt 1])],
+            [("Filter", OName "FlateDecode"), ("DecodeParms", ODict [("Predictor", ORef 7)])],
+            [("Filter", OName "FlateDecode"), ("DecodeParms", OStream [] "")]
+          ],
+      testCase "root ADR 0403 A1: recoloring decoder enforces zero and exact remaining budgets" $ do
+        decodeImportedStream 0 [] "" @?= Right ("", 0)
+        decodeImportedStream 3 [] "abc" @?= Right ("abc", 0)
+        mapM_ (\remaining -> assertBool (show remaining) (either (const True) (const False) (decodeImportedStream remaining [] "abc"))) [-1, 0, 2],
+      testCase "root ADR 0403 A1: recoloring decoder limits nested parameter metadata" $ do
+        let nested = iterate (\inner -> ODict [("nested", inner)]) ONull !! 257
+        assertBool "deep metadata is refused" (either (const True) (const False) (decodeImportedStream 3 [("DecodeParms", nested)] "abc")),
+      testGroup "the cross-reference" xrefTests,
       testGroup "pages" pageTests,
       testGroup "what is refused" refusalTests,
       testGroup "colours" colourTests,
