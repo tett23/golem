@@ -75,11 +75,12 @@ tomlTests =
           exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse", "quote"],
           including "style.toml" "[page]\nbinding = \"right\"\n▮" ["size", "writing-mode", "grid", "bleed"] ["binding"],
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],
-          testGroup "root ADR 0400 A4"
+          testGroup
+            "root ADR 0400 A4"
             [ exactly "style.toml" "[page]\nlayout = ▮" ["\"single\"", "\"facing\""],
-            including "style.toml" "[page.grid.position]\n▮" ["top", "left", "right", "gutter"] [],
-            exactly "style.toml" "[sidenotes]\nside = ▮" ["\"outside\"", "\"left\"", "\"right\""],
-            including "style.toml" "[masters.default.folio]\nposition = ▮" ["\"top-left\"", "\"top-right\"", "\"bottom-left\"", "\"bottom-right\"", "\"top-center\"", "\"bottom-center\""] []
+              including "style.toml" "[page.grid.position]\n▮" ["top", "left", "right", "gutter"] [],
+              exactly "style.toml" "[sidenotes]\nside = ▮" ["\"outside\"", "\"left\"", "\"right\""],
+              including "style.toml" "[masters.default.folio]\nposition = ▮" ["\"top-left\"", "\"top-right\"", "\"bottom-left\"", "\"bottom-right\"", "\"top-center\"", "\"bottom-center\""] []
             ],
           exactly "style.toml" "[page]\nbinding = \"▮" ["right", "left"],
           exactly "style.toml" "[character-styles.em]\nsynthetic-bold = ▮" ["true", "false"],

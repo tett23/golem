@@ -4000,7 +4000,7 @@ PDF では、段落と見出しの罫線を、格子の行を単位とする罫�
 ほかの値は、`style.toml` を読むときに、その `position` の値の位置で G03018 とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 柱の内容は、`content` に両方のページの値を一つ書くか、`even`（偶数ページ）と `odd`（奇数ページ）の両方に書く。
-偶数と奇数は、ノンブルと同じくページの通し番号で決める。
+柱の偶数と奇数はページの通し番号で決め、ノンブルのラベルの値を使わない。
 見開きモードのセクションの改ページは `start` の偶奇に合わせるので、通し番号の偶奇はノンブルの番号の偶奇と等しい（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)）。
 
 ノンブルの `folio` の `format` の差し込みは、ページの通し番号ではなく、ページラベルの番号を書く（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)、「プロジェクトの構成と import」の節）。
@@ -7298,9 +7298,9 @@ Golem は決定性を重視する[sidenote: 同じ入力から同じ出力を得
 `numbering = "page"` では、傍注の番号も PDF のページごとに振る（「脚注」の節の「ページごとの注の番号」）。
 
 PDF では、傍注を版面の外の傍注の領域に置く。
-傍注の領域は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
+傍注の領域は、`style.toml` の `[sidenotes]` で、置く側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
 `[sidenotes]` には、ほかに、本文側の印（`marker`）と、傍注の領域を置く側（`side`）を書く（[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
-`side` は `"outside"`（小口の側）、`"left"`（物理的な左）、`"right"`（物理的な右）をとり、見開きモードの既定は `"outside"` である。
+`side` は `"outside"`（小口[^fore-edge]の側）、`"left"`（物理的な左）、`"right"`（物理的な右）をとり、見開きモードの既定は `"outside"` である。
 左右固定モードでは `"left"` または `"right"` を明記し、省略と `"outside"` は G03006 とする（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 
 傍注は、本文の組み方を変えない。

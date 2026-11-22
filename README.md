@@ -231,9 +231,9 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 `side=before` は横組みの上と縦組みの右、`after` は反対側で、`both` は第 3 スロットの読みを反対側に置く（[Golem ADR 0379](docs/adr/0379-extended-ruby-placement.md)）。
 
 綴じない配布資料は、`[page]` の `layout = "single"` で左右固定にする。
-`binding` を省き、版面の `position` には `top` と `left` または `right` のちょうど一方を書く。
+`binding` を省き、版面の `position` には `top` と、`left` または `right` のちょうど一方を書く。
 柱とノンブルの `top-left`、`bottom-right` などは物理的な左右を表し、`top-center` と `bottom-center` は版面の中央にそろう。
-省略時は既存の見開きモード `"facing"` である（[root ADR 0400](docs/adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+`layout` を省略すると既存の見開きモード `"facing"` になる（[root ADR 0400](docs/adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 
 PDF の柱とノンブルに当てる文字スタイルは、マスターページの `running-head` と `folio` の `character-style` で別々に選ぶ。
 書かなければ、本文の書体と版面の文字の大きさで組む（[Golem ADR 0364](docs/adr/0364-running-head-folio-style.md)）。

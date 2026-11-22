@@ -170,7 +170,26 @@ fileStyles style header =
       checked ls acc =
         let cs = checkLocalStyles style ls
             ds = [err code (positionFor code ls name) m | (code, name, m) <- cs]
-            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013", "G03118"]]
+            -- Drop dependants of a forbidden single-page alignment together:
+            -- keeping them would turn one defining error into missing-parent errors.
+            forbiddenSpineRoots =
+              [ name
+              | ("G03006", name, _) <- cs,
+                singlePage style,
+                Just d <- [Map.lookup name (lsParaStyles ls)],
+                psAlign d `elem` [Just ParaTowardsSpine, Just ParaAwayFromSpine]
+              ]
+            wrong =
+              [ let (ps, chars) = localsOf ls name
+                    dependants =
+                      [ child
+                      | child <- Map.keys (lsParaStyles ls),
+                        any (`elem` chainBy (\m -> Map.lookup m (lsParaStyles ls) >>= paraParentOf m) child) forbiddenSpineRoots
+                      ]
+                 in (nub (ps <> dependants), chars)
+              | (code, name, _) <- cs,
+                code `elem` ["G03006", "G03008", "G03013", "G03118"]
+              ]
             ls' =
               ls
                 { lsCharStyles = foldr Map.delete (lsCharStyles ls) (concatMap snd wrong),

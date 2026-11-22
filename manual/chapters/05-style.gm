@@ -95,7 +95,10 @@ folio = { position = "bottom-center", format = "{n}" }
 左右固定モードに移すときは、[code: binding] を消し、[code: gutter] を [code: left] または [code: right] に置き換えます。
 左右は紙面を正立させたときの側であり、縦組みでも同じです。
 両方の余白を指定するのではなく、どちらか一方を書き、反対側の余白は字数などから求めた版面の幅で決まります。
-柱とノンブルの [code: inside] と [code: outside] は [code: left]、[code: right]、[code: center] に、段落の [code: towards-spine] と [code: away-from-spine] は [code: left] などに置き換えます。
+柱とノンブルの [code: position] は、例えば [code: "top-outside"] を [code: "top-right"] に、[code: "bottom-inside"] を [code: "bottom-left"] に置き換えます。
+段落の [code: towards-spine] と [code: away-from-spine] は [code: left] などに置き換えます。
+使わないマスターページや段落スタイルにも、古い指定を残せません。
+引き継いだ値のエラーは、元の定義で直します。
 傍注を使う場合も、[code: \[sidenotes\]] の [code: side] に [code: "left"] または [code: "right"] を明記します。
 左右固定モードでは、トンボを付けても隠しノンブルは入りません。
 
@@ -1006,8 +1009,8 @@ file = "chapters/02.gm"
 
 [code: page-numbering] を書いたファイルは、新しいページから始まります。
 左右固定モードでは、今のページが空ならそのページを使い、開始番号の偶奇をそろえる白ページは入れません。
-[code: start] が奇数なら奇数ページから、偶数なら偶数ページから始まり、途中のページは白ページになります。
-ノンブルの番号の偶数と奇数は、いつもページの左右と合います。
+見開きモードでは、[code: start] が奇数なら奇数ページから、偶数なら偶数ページから始まり、途中のページは白ページになります。
+見開きモードのノンブルの番号の偶数と奇数は、いつもページの左右と合います。
 
 マスターページの [code: format] の [code: {n}] は、セクションの表記で書かれます。
 目次、索引、[code: \[ref-page\]] のページ番号も同じ番号になります。

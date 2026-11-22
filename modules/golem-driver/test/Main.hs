@@ -54,7 +54,6 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
-import SinglePageSpec qualified
 import PageNoteNumbersSpec (pageNoteNumbersTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
@@ -68,6 +67,7 @@ import ReuseSpec
 import ScriptsSpec (scriptsTests)
 import SecuritySpec
 import ShapingMemoSpec (shapingMemoTests)
+import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
 import SpecimenGeometrySpec (specimenGeometryTests)
 import StylesSpec

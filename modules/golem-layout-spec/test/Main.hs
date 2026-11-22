@@ -7,11 +7,11 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Fixtures (geom, grid, mm18, mm20, pt)
 import GeometrySpec (geometryTests)
-import SinglePageSpec qualified
 import Golem.LayoutSpec
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
+import SinglePageSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 

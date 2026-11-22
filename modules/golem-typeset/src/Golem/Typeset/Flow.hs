@@ -141,7 +141,7 @@ import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pgBindingRight, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, pageGeometry, pgBindingRight, sidenoteAreaFor, typeAreaFor)
 import Golem.Length qualified as L
 import Golem.Numerals (circled)
 import Golem.Numerals.Format (renderMarkFormat)

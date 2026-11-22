@@ -1970,18 +1970,18 @@ instance FromValue Grid where
 
 gridOf :: PageLayout -> Value' l -> Matcher l Grid
 gridOf layout = parseTableFromValue $ do
-    fs <- reqDim "font-size"
-    ch <- reqKeyOf "characters" naturalIntOf
-    ls <- reqKeyOf "lines" naturalIntOf
-    lp <- reqDim "line-pitch"
-    colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
-    let cols = maybe 1 snd colsAt
-    gap <- dimKey "column-gap"
-    (top, pos) <- reqKeyOf "position" (positionOf layout)
-    case colsAt of
-      Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
-      _ -> pure ()
-    pure (Grid fs ch ls lp cols gap top pos)
+  fs <- reqDim "font-size"
+  ch <- reqKeyOf "characters" naturalIntOf
+  ls <- reqKeyOf "lines" naturalIntOf
+  lp <- reqDim "line-pitch"
+  colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
+  let cols = maybe 1 snd colsAt
+  gap <- dimKey "column-gap"
+  (top, pos) <- reqKeyOf "position" (positionOf layout)
+  case colsAt of
+    Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
+    _ -> pure ()
+  pure (Grid fs ch ls lp cols gap top pos)
 
 -- | Validate the mode before constructing an unambiguous physical position.
 positionOf :: PageLayout -> Value' l -> Matcher l (Dim, GridPosition)
@@ -2609,13 +2609,13 @@ instance FromValue ListsSec where
             | otherwise -> pure (Just (l, x :| rest))
     bs <- fmap snd <$> nonEmpty "bullets" bullets
     ns <- nonEmpty "numbers" numbers
-    fmts <- traverse (\(l, fs) -> traverse (\f -> either (\why -> failTableAt l "numbers" (why <> ": " <> f)) pure (parseNumberFormat f)) fs) ns
+    fmts <- traverse (\(l, fs) -> traverse (\f -> either (\why -> bad l "numbers" (why <> ": " <> f)) pure (parseNumberFormat f)) fs) ns
     g <- case gap of
       Nothing -> pure Nothing
       Just (l, t) -> case parseSignedDim t of
-        Nothing -> failTableAt l "gap" ("寸法として読めません: " <> t)
+        Nothing -> bad l "gap" ("寸法として読めません: " <> t)
         Just d
-          | negativeDim d -> failTableAt l "gap" ("負の寸法です: " <> t)
+          | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
     markerStyle <- optKey "marker-style"
     pure (ListsSec (ListStyle bs fmts g markerStyle))
@@ -3530,7 +3530,7 @@ singlePageChecks s
   | otherwise =
       [("G03006", "", styleKeys ["sidenotes", "side"], "左右固定モードの傍注には side = \"left\" または \"right\" を明記します") | Just sn <- [stSidenotes s], snSide sn == "outside"]
         <> [("G03006", "", styleKeys ["hidden-folio", "enabled"], "左右固定モードでは隠しノンブルを有効にできません") | hfEnabled (stHiddenFolio s)]
-        <> [ ("G03018", "", styleKeys ["masters", name, kind, "position"], "左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います")
+        <> [ ("G03018", "", styleKeys ["masters", name, kind, "position"], "左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います（masters." <> name <> "." <> kind <> ".position）")
            | (name, md) <- Map.toList (stMasters s),
              (kind, Just pos) <- [("running-head", rhPosition <$> mdRunningHead md), ("folio", fst <$> mdFolio md)],
              any (`T.isSuffixOf` pos) ["-inside", "-outside"]

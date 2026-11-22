@@ -6384,7 +6384,8 @@ style.toml の誤りです
 左右固定モードと禁止値の組み合わせにも出る（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 `single` に書いた `binding` と `gutter`、`facing` に書いた版面の `left` と `right`、左右固定モードの左右基準の重複と不足を拒む。
 左右固定モードでは、傍注の `side` の省略と `outside`、段落のノド基準の揃え、隠しノンブルの明示有効化も拒む。
-未使用の定義と原稿内の定義も対象とし、継承した禁止値は、その値を書いた継承元の位置で一度だけ報告する。
+ノド基準の揃えは、未使用の段落スタイルと原稿内の定義も対象とする。
+継承した禁止値は、その値を書いた継承元の位置で一度だけ報告する。
 位置は明示した禁止値の位置であり、必須キーが足りなければ親テーブルの位置である。
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
@@ -6774,7 +6775,7 @@ manifest.toml がありません
 `style.toml` を読むときに検査するので、ターゲットにかかわらず、`golem check` と LSP も報告する。
 位置は `position` の値の位置である。
 
-- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。左右固定モードの禁止値は `左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います`。
+- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。左右固定モードの禁止値は `左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います（masters.<名前>.<running-head または folio>.position）`。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
