@@ -293,6 +293,12 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 - 行を分けない範囲は、組み込みの文字スタイル `no-break` で `[style no-break: 100 円]` と書く。
 - 語の分け方の例外は、`style.toml` の `[composition.hyphenation-exceptions]` と原稿のファイルの `@hyphenation-exceptions` に言語ごとに書く。
 
+EPUB は `[targets.epub].page-map` に原稿の SHA-256 と本文位置を持つ JSON 対応表を指定した場合だけ、固定ページ版の表示ノンブルをページ一覧に載せる（[Golem ADR 0386](docs/adr/0386-page-list-and-page-colors.md)）。
+`[figures].color` は単色図版の色を独立に指定する。
+白黒の濃淡は白を白、黒を指定色、灰色をその中間の濃度にし、写真などの多色画像は元の色を保持する（[root ADR 0403](docs/adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+取り込む PDF の色置換は段階的に実装しており、未対応の描画や画像のために変換できない場合は G08113 で生成を止める。
+[現在の対応範囲](docs/specifications.md#単色図版の色) と [残る対応](docs/roadmap.md#本の部品の拡張) を参照。
+
 ### リスト、図版、コード、表
 
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。

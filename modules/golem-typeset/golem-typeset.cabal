@@ -7,6 +7,8 @@ author:             tett23
 maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
+extra-source-files: test/fixtures/gray-progressive.jpg
+                    test/fixtures/README.md
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
@@ -18,21 +20,26 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Typeset
                     Golem.Typeset.Box
+                    Golem.Typeset.FigureColor
                     Golem.Typeset.FontProvider
                     Golem.Typeset.GlyphRuns
                     Golem.Typeset.Memo
                     Golem.Typeset.Overhang
+                    Golem.Typeset.PdfColor
+                    Golem.Typeset.PdfDct
                     Golem.Typeset.RuleShape
                     Golem.Typeset.Svg
                     Golem.Typeset.Tcy
                     Golem.Typeset.TextLayer
                     Golem.Typeset.WrapMark
-  other-modules:    Golem.Typeset.Draw
+  other-modules:    Golem.Typeset.JpegFrames
+                    Golem.Typeset.Draw
                     Golem.Typeset.Structure
                     Golem.Typeset.Flow
                     Golem.Typeset.Fonts
                     Golem.Typeset.Pages
   build-depends:
+    , JuicyPixels   ==3.3.9
     , async         >=2.2  && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
@@ -65,18 +72,27 @@ test-suite golem-typeset-test
   main-is:          Main.hs
   other-modules:
     BoxSpec
+    FigureColorSpec
     GlyphRunsSpec
     MemoSpec
     RuleShapeSpec
+    PdfColorRangeSpec
+    PdfColorSpec
+    PdfDctSpec
+    SvgColorSpec
     TcySpec
     WrapMarkSpec
   build-depends:
+    , JuicyPixels ==3.3.9
     , base
+    , bytestring
     , golem-layout-spec
     , golem-pdf
     , golem-project
     , golem-typeset
     , golem-test-support
+    , golem-svg
+    , bytestring
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-hedgehog >=1.4 && <1.5
