@@ -40,7 +40,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### テストと CI
 
-- **プルリクエストの CI の時間を測り直す**：[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 1 から 6 を入れた後の、成功したプルリクエストの `ci.yml` の 20 回（`build` を省いた実行を除く）で、`scripts/ci/ci-critical-path.sh` の中央値を測り、`docs/ci-timings/` に記録する（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 7 と A2）。中央値が 300 秒を超えるか、300 秒との差が 30 秒に満たなければ、コンパイルの時間を縮める変更を、測った値を添えて別の ADR で決める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 8）。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲では、試作で調べた入力を回帰テストに取り込み、CI で常時調べる範囲を実行時間から決める。
   - **パーサーと `golem fmt` の往復（未実装）**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。[ADR 0351](adr/0351-prove-parser-formatter-round-trips.md) に従い、実際の文法から作った Lean モデルの結果を、パーサーと整形処理の出力に照らして確かめる。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。家族の絵文字では、ゼロ幅接合子（ZWJ）の前後の文字境界と、一つのサロゲートペアの途中を区別する。
