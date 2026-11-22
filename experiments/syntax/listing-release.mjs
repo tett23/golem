@@ -38,7 +38,7 @@ function build(bin, line, rules = "", flags = [], target = "text") {
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 }
 
-test("ADR 0341 I3: rc4 retains the notice and v1 rejects each legacy path at its argument", () => {
+test("root ADR 0341 I3: rc4 retains the notice and v1 rejects each legacy path at its argument", () => {
   assert.match(spawnSync(rc4, ["--version"], {encoding:"utf8"}).stdout, /0\.1\.0-rc4\b/);
   for (const [line, code] of [["@listing src=a.txt", "G02250"], ["@listing a.txt src=missing.txt", "G02253"]]) {
     for (const [bin, flags, exit, expected, severity] of [[rc4, [], 0, "G02065", "notice"], [candidate, [], 1, code, "error"], [candidate, ["--no-notices"], 1, code, "error"]]) {
@@ -49,7 +49,7 @@ test("ADR 0341 I3: rc4 retains the notice and v1 rejects each legacy path at its
   }
 });
 
-test("ADR 0341 I4: silencing only the retired notice is accepted by rc4 and rejected by v1", () => {
+test("root ADR 0341 I4: silencing only the retired notice is accepted by rc4 and rejected by v1", () => {
   const rules = '\n[diagnostics]\nsilence-notices = ["G02065"]\n';
   assert.deepEqual(build(rc4, "@listing a.txt", rules), { exit: 0, diagnostics: [] });
   const result = build(candidate, "@listing a.txt", rules);
@@ -57,7 +57,7 @@ test("ADR 0341 I4: silencing only the retired notice is accepted by rc4 and reje
   assert.deepEqual(result.diagnostics.map(d => d.code), ["G03024"]);
 });
 
-test("ADR 0341 I2: duplicate src points to each repeated argument on every target", () => {
+test("root ADR 0341 I2: duplicate src points to each repeated argument on every target", () => {
   const line = "@listing src=a.txt src=b.txt src=c.txt";
   for (const target of ["pdf", "html", "text", "epub"]) {
     const result = build(candidate, line, "", ["--no-notices"], target);

@@ -40,7 +40,7 @@ function build(bin, line, rules = "", flags = [], target = "text") {
 }
 
 
-test("I3: rc4 and v1 report the notice and errors for one or two table paths", () => {
+test("root ADR 0343 I3: rc4 and v1 report the notice and errors for one or two table paths", () => {
   assert.match(spawnSync(rc4, ["--version"], { encoding: "utf8" }).stdout, /0\.1\.0-rc4\b/);
   for (const [line, oldExit, oldCodes, newCode] of [
     ["@table src=t.csv", 0, [["G02129", "notice"]], "G02252"],
@@ -61,7 +61,7 @@ test("I3: rc4 and v1 report the notice and errors for one or two table paths", (
   }
 });
 
-test("I4: rc4 accepts suppressing G02129, and v1 rejects the retired code", () => {
+test("root ADR 0343 I4: rc4 accepts suppressing G02129, and v1 rejects the retired code", () => {
   const rules = '\n[diagnostics]\nsilence-notices = ["G02129"]\n';
   assert.deepEqual(build(rc4, "@table t.csv", rules), { exit: 0, diagnostics: [] });
   const result = build(candidate, "@table t.csv", rules);

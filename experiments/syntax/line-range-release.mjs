@@ -42,7 +42,7 @@ function build(bin, line, rules = "", flags = [], target = "text") {
 }
 
 
-test("I3: a single old separator changes from an rc4 notice to a v1 error", () => {
+test("root ADR 0342 I3: a single old separator changes from an rc4 notice to a v1 error", () => {
   assert.match(spawnSync(rc4, ["--version"], { encoding: "utf8" }).stdout, /0\.1\.0-rc4\b/);
   const line = "@listing a.txt lines=1-2";
   for (const [bin, code, severity, exit] of [
@@ -55,7 +55,7 @@ test("I3: a single old separator changes from an rc4 notice to a v1 error", () =
   }
 });
 
-test("I4: only rc4 accepts G02108 in silence-notices", () => {
+test("root ADR 0342 I4: only rc4 accepts G02108 in silence-notices", () => {
   const rules = '\n[diagnostics]\nsilence-notices = ["G02108"]\n';
   const before = build(rc4, "@listing a.txt", rules);
   assert.deepEqual([before.exit, before.diagnostics], [0, []]);
@@ -64,7 +64,7 @@ test("I4: only rc4 accepts G02108 in silence-notices", () => {
   assert.deepEqual(result.diagnostics.map(d => d.code), ["G03024"]);
 });
 
-test("I2: each target rejects the entire legacy line argument once", () => {
+test("root ADR 0342 I2: each target rejects the entire legacy line argument once", () => {
   const line = "@listing a.txt lines=1-2,4-5";
   for (const target of ["pdf", "epub", "html", "text"]) {
     const result = build(candidate, line, "", ["--no-notices"], target);
@@ -74,7 +74,7 @@ test("I2: each target rejects the entire legacy line argument once", () => {
   }
 });
 
-test("I1: each target builds a list of lines and ranges in the order written", () => {
+test("root ADR 0342 I1: each target builds a list of lines and ranges in the order written", () => {
   const line = '@listing a.txt lines="4...5, 1"';
   for (const target of ["pdf", "epub", "html", "text"]) {
     const result = build(candidate, line, "", [], target);
