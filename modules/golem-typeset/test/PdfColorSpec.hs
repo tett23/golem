@@ -97,6 +97,36 @@ pdfColorTests =
           assertBool "gray white" (BS.pack [0, 0, 0, 0] `elem` outputs)
           assertBool "CMYK neutral black" (BS.pack [0, 255, 255, 0] `elem` outputs)
         other -> assertFailure (show other),
+    testCase "root ADR 0403 I1, I2: explicit PDF masks retain their bytes and references in both Decode directions" $ do
+      mapM_
+        ( \(maskByte, decode, bits) -> do
+            let maskFields = [("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("ImageMask", P.OBool True), ("Filter", P.OName "FlateDecode")] <> decode <> bits
+                mask = P.OStream maskFields (flate (BS.pack [maskByte]))
+                original = imagePage {P.ipObjects = [(1, P.OStream (("Mask", P.ORef 2) : imageFields 3) (BS.pack [255, 0, 0, 128, 128, 128, 0, 0, 255])), (2, mask)]}
+            case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+              Right (Just result) -> do
+                lookup 1 (P.ipObjects result) @?= lookup 1 (P.ipObjects original)
+                lookup 2 (P.ipObjects result) @?= Just mask
+                let outputs = [(fields, pixels) | (key, P.OStream fields pixels) <- P.ipObjects result, key < 0, lookup "ColorSpace" fields == Just (P.OName "DeviceCMYK")]
+                case outputs of
+                  [(fields, pixels)] -> do
+                    lookup "Mask" fields @?= Just (P.ORef 2)
+                    lookup "SMask" fields @?= Nothing
+                    BS.take 4 (BS.drop 4 pixels) @?= BS.pack [0, 127, 127, 0]
+                  other -> assertFailure (show other)
+              other -> assertFailure (show other)
+        )
+        [(0xa0, [], []), (0x40, [("Decode", P.OArr [P.OInt 1, P.OInt 0])], [("BitsPerComponent", P.OInt 1)])],
+    testCase "root ADR 0403 I2: an explicit PDF mask hiding every pixel leaves the source unchanged" $ do
+      let mask = P.OStream [("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("ImageMask", P.OBool True)] (BS.pack [0xe0])
+          original = imagePage {P.ipObjects = [(1, P.OStream (("Mask", P.ORef 2) : imageFields 3) rgbPixels), (2, mask)]}
+      recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original @?= Right Nothing,
+    testCase "root ADR 0403 I1: a truncated explicit PDF mask fails before raster analysis" $ do
+      let mask = P.OStream [("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("ImageMask", P.OBool True)] BS.empty
+          original = imagePage {P.ipObjects = [(1, P.OStream (("Mask", P.ORef 2) : imageFields 3) rgbPixels), (2, mask)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Left _ -> pure ()
+        other -> assertFailure (show other),
     testCase "root ADR 0403 I1: a colour-key mask compares samples before inverse Decode" $ do
       let fields = [("Mask", P.OArr (map P.OInt [255, 255, 0, 0, 0, 0])), ("Decode", P.OArr (map P.OInt [1, 0, 1, 0, 1, 0]))] <> imageFields 2
           original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [255, 0, 0, 127, 127, 127]))]}

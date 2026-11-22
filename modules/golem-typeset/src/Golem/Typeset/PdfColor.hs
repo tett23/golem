@@ -1,6 +1,7 @@
 -- | Process-colour conversion of imported figures (root ADR 0403).
 module Golem.Typeset.PdfColor (recolorImportedPage) where
 
+import Control.Applicative ((<|>))
 import Control.Monad (foldM)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString (ByteString)
@@ -8,7 +9,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -460,9 +461,9 @@ unitDecode components fields state = case lookup "Decode" fields of
 -- samples are used only to classify visible pixels; no mask object is rewritten.
 pdfImageAlpha :: Integer -> Integer -> Integer -> Int -> ByteString -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Maybe P.Alpha, Resources)
 pdfImageAlpha width height imageBits components raw fields state = case lookup "SMask" fields of
-  Nothing -> colorKeyAlpha width height imageBits components raw fields state
-  Just P.ONull -> colorKeyAlpha width height imageBits components raw fields state
-  Just (P.OName "None") -> colorKeyAlpha width height imageBits components raw fields state
+  Nothing -> imageMaskAlpha width height imageBits components raw fields state
+  Just P.ONull -> imageMaskAlpha width height imageBits components raw fields state
+  Just (P.OName "None") -> imageMaskAlpha width height imageBits components raw fields state
   Just reference -> do
     (key, maskFields) <- pdfStreamReference invalid state Set.empty reference
     dimensions <- traverse (\name -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name maskFields)) ["Width", "Height", "BitsPerComponent", "ColorSpace", "Subtype"]
@@ -485,6 +486,49 @@ pdfImageAlpha width height imageBits components raw fields state = case lookup "
   where
     invalid = "PDF 図版のソフトマスクを保って色を置き換えられません"
     isJustField name entries = case lookup name entries of Nothing -> False; Just _ -> True
+
+-- ISO 32000-1:2008 8.9.6.2-3: a one-bit stencil paints zero
+-- samples with the default Decode. Keep the mask stream attached to the
+-- converted image; only the visibility used by classification is decoded.
+imageMaskAlpha :: Integer -> Integer -> Integer -> Int -> ByteString -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Maybe P.Alpha, Resources)
+imageMaskAlpha width height bits components raw fields state = case lookup "Mask" fields of
+  Nothing -> Right (Nothing, state)
+  Just reference -> do
+    resolved <- dereference Set.empty reference state
+    case resolved of
+      P.OStream _ _ -> explicitMaskAlpha width height fields reference state
+      _ -> colorKeyAlpha width height bits components raw fields state
+
+explicitMaskAlpha :: Integer -> Integer -> [(Text, P.ObjOf P.ObjNum)] -> P.ObjOf P.ObjNum -> Resources -> Either Text (Maybe P.Alpha, Resources)
+explicitMaskAlpha width height imageFields reference state = do
+  (key, fields) <- pdfStreamReference invalid state Set.empty reference
+  values <- traverse (\(name, fallback) -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name fields <|> fallback)) [("Subtype", Nothing), ("Width", Nothing), ("Height", Nothing), ("ImageMask", Nothing), ("BitsPerComponent", Just (P.OInt 1))]
+  case values of
+    [P.OName "Image", P.OInt w, P.OInt h, P.OBool True, P.OInt 1] | w == width, h == height -> Right ()
+    _ -> Left invalid
+  if any (\name -> isJust (lookup name fields)) ["ColorSpace", "Mask", "SMask", "Matte"] then Left invalid else Right ()
+  -- Interpolation can expose samples whose mask-centre is transparent.
+  -- Its visibility analysis remains separate work; do not erase such colours.
+  noInterpolation imageFields
+  noInterpolation fields
+  let sampleBytes = ((width + 7) `div` 8) * height
+  if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
+  ranges <- unitDecode 1 fields state
+  (bytes, decoded) <- decodePdfImageStream key width height 1 1 fields state
+  if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
+  case ranges of
+    [False, True] -> do
+      reserved <- charge (BS.length bytes) decoded
+      Right (Just (P.Alpha 1 (BS.map (255 -) bytes)), reserved)
+    [True, False] -> Right (Just (P.Alpha 1 bytes), decoded)
+    _ -> Left invalid
+  where
+    invalid = "PDF 図版の明示マスクを保って色を置き換えられません"
+    noInterpolation fields = case lookup "Interpolate" fields of
+      Nothing -> Right ()
+      Just value -> do
+        resolved <- dereference Set.empty value state
+        if resolved == P.OBool False then Right () else Left invalid
 
 -- Colour-key ranges compare the original integer samples, before Decode.
 -- Their component count changes on recoloring, so emit an equivalent gray
@@ -525,6 +569,9 @@ colorKeyAlpha width height bits components raw fields state = case lookup "Mask"
 convertedImageMask :: P.ImageData -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text ([(Text, P.ObjOf P.ObjNum)], Resources)
 convertedImageMask image fields state
   | hasSoftMask = Right (withoutKey, state)
+  | Just reference <- lookup "Mask" fields,
+    Right (P.OStream _ _) <- dereference Set.empty reference state =
+      Right (fields, state)
   | Just _ <- lookup "Mask" fields,
     Just alpha <- P.imgAlpha image = do
       fresh <- freshObject state
