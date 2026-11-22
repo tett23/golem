@@ -6,14 +6,45 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
 import Golem.Pdf.Image (flate)
-import Golem.Typeset.FigureColor (RasterAnalysis (..), RasterKind (..))
+import Golem.Typeset.FigureColor (RasterAnalysis (..), RasterKind (..), analyzeRaster)
 import Golem.Typeset.PdfColor (recolorImportedPage)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: a PDF RGB image is decoded and recolored through the shared raster analyzer" $ do
+  [ testCase "root ADR 0403 I1: an ICCBased PDF image uses the shared real raster analyzer" $ do
+      let profile = P.OStream [("N", P.OInt 3), ("Filter", P.OName "FlateDecode")] (flate P.srgbProfile)
+          fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields rgbPixels), (3, profile)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> do
+          convertedImagePixels result @?= [cmykPixels]
+          lookup 3 (P.ipObjects result) @?= Just profile
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I3: a coloured ICCBased image remains unchanged" $ do
+      let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 2)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [255, 0, 0, 0, 0, 255])), (3, P.OStream [("N", P.OInt 3)] P.srgbProfile)]}
+      recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original @?= Right Nothing,
+    testCase "root ADR 0403 I2: an ICC profile is decoded once across image paints" $ do
+      let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
+          original = imagePage {P.ipContent = "/Im Do /Second Do", P.ipResources = P.ODict [("XObject", P.ODict [("Im", P.ORef 1), ("Second", P.ORef 2)])], P.ipDecodedBytes = P.maxDecodedBytes - BS.length P.srgbProfile - 500, P.ipObjects = [(1, P.OStream fields rgbPixels), (2, P.OStream fields rgbPixels), (3, P.OStream [("N", P.OInt 3), ("Filter", P.OName "FlateDecode")] (flate P.srgbProfile))]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> convertedImagePixels result @?= [cmykPixels, cmykPixels]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a non-unit ICC Range is not silently treated as ordinary samples" $ do
+      let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields rgbPixels), (3, P.OStream [("N", P.OInt 3), ("Range", P.OArr (map P.OInt [0, 2, 0, 1, 0, 1]))] P.srgbProfile)]}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Left _ -> pure ()
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: cyclic ICC profile references are rejected" $ do
+      let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
+          original = imagePage {P.ipObjects = [(1, P.OStream fields rgbPixels), (3, P.ORef 4), (4, P.ORef 3)]}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Left _ -> pure ()
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a PDF RGB image is decoded and recolored through the shared raster analyzer" $ do
       let original = imagePage
           analyzer input
             | P.imgColor input == P.CsRgb && P.imgData input == rgbPixels = Right (RasterAnalysis Grayscale (Just input {P.imgColor = P.CsCmyk, P.imgData = cmykPixels}))

@@ -272,11 +272,7 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
     width <- positive "Width"
     height <- positive "Height"
     bits <- positive "BitsPerComponent"
-    (space, components) <- case lookup "ColorSpace" fields of
-      Just (P.OName "DeviceGray") -> Right (P.CsGray, 1)
-      Just (P.OName "DeviceRGB") -> Right (P.CsRgb, 3)
-      Just (P.OName "DeviceCMYK") -> Right (P.CsCmyk, 4)
-      _ -> Left "PDF 図版の画像の色空間に対応していません"
+    (space, components, profile, colored) <- pdfImageSpace fields state
     if bits /= 8 then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
     if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
     ranges <- unitDecode components fields state
@@ -284,14 +280,14 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
     let pixels = width * height
         inputBytes = pixels * toInteger components
         outputBytes = pixels * 4
-    if inputBytes + outputBytes > toInteger (remainingBytes state) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
+    if inputBytes + outputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
       then Left budgetError
       else Right ()
-    (bytes, decoded) <- decodePdfStream key fields state
+    (bytes, decoded) <- decodePdfStream key fields colored
     if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
     (alpha, masked) <- pdfImageAlpha width height fields decoded
     reserved <- charge (fromInteger outputBytes) masked
-    let input = P.ImageData (fromInteger width) (fromInteger height) 8 space Nothing bytes False False alpha
+    let input = P.ImageData (fromInteger width) (fromInteger height) 8 space profile bytes False False alpha
     analysis <- rasterAnalyzer reserved input
     case raImage analysis of
       Nothing | raKind analysis `elem` [Unpainted, Multicolor] -> Right ()
@@ -317,6 +313,43 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
         _ -> Left "PDF 図版の画像の寸法が不正です"
     unsupportedMask ("ImageMask", P.OBool False) = False
     unsupportedMask (name, _) = name `elem` ["ImageMask", "Mask"]
+
+-- ICC profile streams share the same bounded decoder and cache as image data.
+-- Range affects the default image Decode; non-unit ranges must not silently
+-- be interpreted as ordinary device samples.
+pdfImageSpace :: [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ColorSpace, Int, Maybe BS.ByteString, Resources)
+pdfImageSpace fields state = do
+  value <- maybe (Left invalid) Right (lookup "ColorSpace" fields)
+  resolved <- dereference Set.empty value state
+  case resolved of
+    P.OName "DeviceGray" -> plain P.CsGray 1
+    P.OName "DeviceRGB" -> plain P.CsRgb 3
+    P.OName "DeviceCMYK" -> plain P.CsCmyk 4
+    P.OArr [P.OName "ICCBased", reference] -> do
+      (key, entries) <- pdfStreamReference invalid state Set.empty reference
+      count <- maybe (Left invalid) (\n -> dereference Set.empty n state) (lookup "N" entries)
+      (space, components) <- case count of
+        P.OInt 1 -> Right (P.CsGray, 1)
+        P.OInt 3 -> Right (P.CsRgb, 3)
+        P.OInt 4 -> Right (P.CsCmyk, 4)
+        _ -> Left invalid
+      ranges <- unitDecode components [("Decode", range) | Just range <- [lookup "Range" entries]] state
+      if ranges == concat (replicate components [False, True]) then Right () else Left invalid
+      (profile, decoded) <- decodePdfStream key entries state
+      Right (space, components, Just profile, decoded)
+    _ -> Left invalid
+  where
+    invalid = "PDF 図版の画像の色空間に対応していません"
+    plain space components = Right (space, components, Nothing, state)
+
+pdfStreamReference :: Text -> Resources -> Set.Set P.ObjNum -> P.ObjOf P.ObjNum -> Either Text (P.ObjNum, [(Text, P.ObjOf P.ObjNum)])
+pdfStreamReference invalid state seen (P.ORef key) = do
+  guardForm seen key
+  case Map.lookup key (sourceObjects state) of
+    Just (P.OStream entries _) -> Right (key, entries)
+    Just next@(P.ORef _) -> pdfStreamReference invalid state (Set.insert key seen) next
+    _ -> Left invalid
+pdfStreamReference invalid _ _ _ = Left invalid
 
 -- Only the default sample range and its reversal are needed here. Reading
 -- their endpoints as zero or one avoids constructing huge decimal rationals.
@@ -353,7 +386,7 @@ pdfImageAlpha width height fields state = case lookup "SMask" fields of
   Just P.ONull -> Right (Nothing, state)
   Just (P.OName "None") -> Right (Nothing, state)
   Just reference -> do
-    (key, maskFields) <- streamReference Set.empty reference
+    (key, maskFields) <- pdfStreamReference invalid state Set.empty reference
     dimensions <- traverse (\name -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name maskFields)) ["Width", "Height", "BitsPerComponent", "ColorSpace", "Subtype"]
     if dimensions /= [P.OInt width, P.OInt height, P.OInt 8, P.OName "DeviceGray", P.OName "Image"] || any (`isJustField` maskFields) ["Mask", "SMask", "Matte"] || maybe False (/= P.OBool False) (lookup "ImageMask" maskFields)
       then Left invalid
@@ -372,13 +405,6 @@ pdfImageAlpha width height fields state = case lookup "SMask" fields of
   where
     invalid = "PDF 図版のソフトマスクを保って色を置き換えられません"
     isJustField name entries = case lookup name entries of Nothing -> False; Just _ -> True
-    streamReference seen (P.ORef key) = do
-      guardForm seen key
-      case Map.lookup key (sourceObjects state) of
-        Just (P.OStream entries _) -> Right (key, entries)
-        Just next@(P.ORef _) -> streamReference (Set.insert key seen) next
-        _ -> Left invalid
-    streamReference _ _ = Left invalid
 
 convertPdfImage :: P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (P.ObjNum, Resources)
 convertPdfImage key fields state = case Map.lookup key (convertedImages state) of
