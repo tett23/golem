@@ -53,4 +53,23 @@ int golem_font_is_cid_keyed(golem_font *f);
 int golem_font_ros(golem_font *f, const char **registry, const char **ordering,
                    int *supplement);
 void golem_font_free(void *p);
+
+/* Variable fonts (Golem ADR 0358). The axes of fvar, 4 values each (tag,
+   minimum, default, maximum; 16.16): the first max to out; returns the
+   number of axes, 0 for a font that is not variable. */
+int golem_font_axes(golem_font *f, int32_t *out, int max);
+/* The named instances of fvar, 1 + axes values each (the subfamily name
+   ID, then the coordinates in 16.16): the first max values to out; returns
+   the number of instances. */
+int golem_font_instances(golem_font *f, int32_t *out, int max);
+/* The English name of a name ID in UTF-8: the first cap - 1 bytes and a NUL
+   to buf; returns the length of the whole name. */
+int golem_font_name(golem_font *f, unsigned id, char *buf, int cap);
+/* Sets the coordinates of every axis (16.16, in the order of fvar) for
+   shaping, the metrics and the subset; before the font is used. 0 on
+   success. */
+int golem_font_set_coords(golem_font *f, const int32_t *coords, int n);
+/* The coordinates as the shaping (0), the metrics (1) or the subset (2)
+   holds them, as floats: the first max to out; returns their number. */
+int golem_font_coords_for(golem_font *f, int use, float *out, int max);
 #endif

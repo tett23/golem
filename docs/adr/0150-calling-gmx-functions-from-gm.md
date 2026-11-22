@@ -1,6 +1,6 @@
 # ADR 0150: .gm から .gmx の関数をコマンドとして呼ぶ
 
-ステータス: 破棄
+Status: discarded
 
 ## 文脈
 

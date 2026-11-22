@@ -36,6 +36,7 @@ break-kind = 0..3                                  ; page, recto, verso, column
 page-control = [0]                                 ; no page break
              / [1, 1..9223372036854775807]         ; need lines
              / [2, -9223372036854775808..-1 / 1..9223372036854775807] ; adjust the lines of the column
+             / [3, uint64]              ; explicit no-page-break line count
 alignment = 0..3                                   ; default, left, center, right
 table = [aligns: [* alignment], widths: [* column-width], caption: inlines / null, nonumber: bool, style: tstr / null, header: [* inlines], rows: [* [* inlines]]] ; style: null is table (docs/adr/0262)
 column-width = [0] / [1, rational] / [2, uint64] / [3, rational]  ; auto, zw, sp, percent
@@ -50,7 +51,9 @@ inlines-no-ruby = [* inline-no-ruby]
 
 inline = ruby / inline-no-ruby
 ruby = [4, span, [+ ruby-segment]]
-ruby-segment = [base: inlines-no-ruby, reading: tstr / null]
+ruby-segment = [base: inlines-no-ruby, reading: tstr / null, ? (other-reading: tstr / null, options: ruby-options)]
+ruby-options = [side: 0..2, overhang-side: 0..3, size: ruby-size / null, align: tstr / null, reading-kenten: [* tstr / null], other-kenten: [* tstr / null]]
+ruby-size = [0, int64] / [1, rational]
 
 inline-no-ruby =
     [0, span, tstr]                                ; text

@@ -17,6 +17,8 @@ module Golem.Layout.KnuthPlass
     Leaf (..),
     noLeaf,
     MarkBox (..),
+    MarkNumber (..),
+    NoteChannel (..),
     Params (..),
     defaultParams,
     Line (..),
@@ -97,7 +99,28 @@ and where it starts along the line from the start of the box.
 -}
 data MarkBox = MarkBox
   { mbPlace :: !Look,
-    mbParts :: ![(Int, Text, Sp)]
+    mbParts :: ![(Int, Text, Sp)],
+    {- | with notes numbered per page (docs/adr/0383): the channel and the
+    number of the mark, which the layout numbers again once the pages are
+    settled; Nothing otherwise
+    -} mbNumber :: !(Maybe MarkNumber)
+  }
+  deriving stock (Eq, Show)
+
+{- | The channel of a note mark numbered per page (docs/adr/0383): the
+notes and the sidenotes count apart.
+-}
+data NoteChannel = ChannelNote | ChannelSidenote
+  deriving stock (Eq, Ord, Show)
+
+{- | The number of a mark of a channel (docs/adr/0383): before the pages
+are settled, its place in the book; and whether it is the mark in the
+text (the call), not the one at the start of the body.
+-}
+data MarkNumber = MarkNumber
+  { mnChannel :: !NoteChannel,
+    mnNumber :: !Int,
+    mnCall :: !Bool
   }
   deriving stock (Eq, Show)
 

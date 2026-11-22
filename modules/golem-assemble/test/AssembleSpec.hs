@@ -90,6 +90,30 @@ tests =
             b @?= resolved 11
             c @?= resolved 21
           other -> assertFailure (show other),
+      testCase "ADR 0360 I1: inv1_ruby_base_references_property: the references in a ruby base resolve as elsewhere; a ruby of a title keeps its base; a missing label is G04003" $ do
+        let title = [Text (sp 1 1) "組版の", Ruby (sp 1 2) () [RubySegment [Text (sp 1 2) "設計"] (Just "せっけい")]]
+            h = Block (sp 1 1) (Just "h") Nothing (Heading 1 noHeadingAttrs title)
+            base = [Text (sp 1 5) "前", Ref (sp 1 6) RefNumber "h", CharStyle (sp 1 7) "strong" [Ref (sp 1 7) RefTitle "h"], Text (sp 1 8) "後"]
+            docs = [Document (FileId 1) [h, para 1 4 [Ruby (sp 1 4) () [RubySegment base (Just "よみ")]]]]
+            (book, ds) = assemble cfg noEval docs
+        ds @?= []
+        case bookDocs book of
+          [Document _ [_, Block _ _ _ (Paragraph _ is)]] ->
+            is
+              @?= [ Ruby
+                      (sp 1 4)
+                      ()
+                      [ RubySegment
+                          [ Text (sp 1 5) "前",
+                            Resolved (sp 1 6) RefNumber "h" [Number (sp 1 6) 1 Nothing],
+                            CharStyle (sp 1 7) "strong" [Resolved (sp 1 7) RefTitle "h" [Text (sp 1 7) "組版の", Text (sp 1 2) "設計"]],
+                            Text (sp 1 8) "後"
+                          ]
+                          (Just "よみ")
+                      ]
+                  ]
+          other -> assertFailure (show other)
+        codes (snd (assemble cfg noEval [Document (FileId 1) [para 1 0 [Ruby (sp 1 0) () [RubySegment [Ref (sp 1 0) RefTitle "nope"] (Just "よみ")]]]])) @?= ["G04003"],
       testCase "deferred expressions see the chapter count" $ do
         let docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "a", heading 1 5 1 noHeadingAttrs Nothing "b", para 1 9 [Deferred (sp 1 9) (DeferredExpr undefined)]]]
         case bookDocs (fst (assemble cfg noEval docs)) of

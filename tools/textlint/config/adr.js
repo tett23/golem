@@ -5,7 +5,7 @@
 
 const { prh, words, markdownRules, golemRules } = require("./common");
 
-// An ADR has the status line "ステータス: 提案" (adr-guard checks it) and
+// An ADR has the status line "Status: proposed" (adr-guard checks it) and
 // "なし" for no references, neither ending with 。, so the check of the
 // sentence end is off.
 module.exports = {

@@ -9,6 +9,7 @@ module SecuritySpec (tests) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (replicateM)
 import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -147,7 +148,7 @@ xrefIndexPdf index =
 -- ------------------------------------------------------------------ tests
 
 tests :: TestTree
-tests = testGroup "security" [tests2018, auditTests]
+tests = testGroup "security" [tests2018, auditTests, separatorTests]
 
 tests2018 :: TestTree
 tests2018 =
@@ -430,3 +431,54 @@ auditTests =
         many <- allocationOf (sharedOffsetPdf 200 (256 * 1024))
         assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one)
     ]
+
+-- ------------------------------------------------------------------ ADR 0359: the decoded total and the joined content
+
+{- | The decoded total and the joined content of a page are limited
+separately, each to 256 MiB, and both are checked before the content is
+joined; the newline between two streams counts in the joined content only
+(Golem ADR 0359).
+-}
+separatorTests :: TestTree
+separatorTests =
+  testGroup
+    "the decoded total and the joined content are limited separately (Golem ADR 0359)"
+    [ testCase "ADR 0359 I1: inv1_imported_content_separators_property: n streams join to the sum of their lengths and n - 1" $
+        mapM_
+          ( \sizes -> do
+              let streams = zip [4 ..] (map nulStream sizes)
+                  refs = BC.unwords [BC.pack (show k) <> " 0 R" | (k, _) <- streams]
+              imported 1 (contentsOf refs streams) >>= (@?= Right (sum sizes + length sizes - 1, 0))
+          )
+          (concat [replicateM count [0, 1, 3] | count <- [1 .. 4]]),
+      testCase "ADR 0359 I1: inv1_imported_content_separators_case_1: one stream of 256 MiB is read"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R" [(4, nulStream (256 * mib))]) >>= (@?= Right (256 * mib, 0)),
+      testCase "ADR 0359 I1: inv1_imported_content_separators_case_2: two streams of 256 MiB less one byte are read"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib - 1))])
+          >>= (@?= Right (256 * mib, 0)),
+      testCase "ADR 0359 I1: inv1_imported_content_separators_case_3: two streams of 256 MiB are refused with ContentTooLarge"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib))])
+          >>= (@?= Left (ContentTooLarge (256 * mib + 1))),
+      -- the joined content is 256 MiB and 31 bytes, beyond its limit; the
+      -- Form alone decodes beyond the decoded total's limit, which is checked first
+      testCase "ADR 0359: a Form decoding beyond the limit fails for the decoded total whatever the joined length"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (grayNamedWith "/XObject << /F 6 0 R >>" (stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Filter /FlateDecode" (zeros (257 * mib)))) >>= refusedFor tooLarge,
+      testCase "ADR 0359: an ICC profile decoding beyond the limit fails for the decoded total whatever the joined length"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (grayNamedWith "/ColorSpace << /A [/ICCBased 6 0 R] >>" (stream "/N 3 /Filter /FlateDecode" (zeros (257 * mib)))) >>= refusedFor tooLarge
+    ]
+  where
+    -- 'grayNamed' 32, whose joined content is beyond its limit, with the resources and the object 6 given
+    grayNamedWith res obj =
+      classicPdf
+        ""
+        [ catalog,
+          (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+          (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << " <> res <> " >> /Contents [" <> BC.unwords (replicate 32 "4 0 R") <> "] >>"),
+          (4, grayStream (8 * mib)),
+          (6, obj)
+        ]

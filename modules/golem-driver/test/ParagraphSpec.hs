@@ -276,9 +276,54 @@ listText style src variant = withVerseProject style src $ \tmp -> do
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   TIO.readFile (tmp </> "build/text" </> variant </> "v.txt")
 
+markerBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [Sp])
+markerBoxes setting source = do
+  let style = horizontal24 <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n[character-styles.accent]\ncolor = \"red\"\n[character-styles.large]\nsize = \"3zw\"\n[character-styles.heavy]\nsynthetic-bold = true\n[character-styles.loud]\ncolor = \"red\"\nsize = \"2zw\"\nsynthetic-bold = true\n[lists]\nnumbers = [\"({n})\"]\n" <> setting
+  (_, layout) <- layoutOk style source []
+  let ls = Map.elems (plLines layout)
+  pure ([(bcText c, bcLook c) | sl <- ls, Box _ c <- lineItems (slLine sl), not (T.null (bcText c))], map slIndent ls)
+
+-- | The boxes of the text of the items: all but the markers • ( 1 2 3 ).
+itemTextLooks :: [(T.Text, Look)] -> [(T.Text, Look)]
+itemTextLooks = filter ((`notElem` ["•", "(", ")", "1", "2", "3"]) . fst)
+
 listTests :: [TestTree]
 listTests =
-  [ testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
+  [ testCase "ADR 0363 I1: inv1_list_marker_style_property" $
+      -- every marker style by every list: bullets, numbers, nested, several
+      -- items, an item of two paragraphs, an item with a character style, and
+      -- an item long enough to break into lines
+      forM_ ["accent", "large", "heavy", "loud"] $ \name ->
+        forM_
+          [ "- 本\n",
+            "+ 本\n",
+            "- 本\n  - 文\n",
+            "+ 本\n+ 文字\n+ 字\n",
+            "- 本。\n  文。\n",
+            "+ 本[strong: 強]文\n",
+            "- " <> T.replicate 60 "本" <> "\n"
+          ]
+          $ \source -> do
+            (plain, _) <- markerBoxes "" source
+            (styled, _) <- markerBoxes ("marker-style = \"" <> TE.encodeUtf8 name <> "\"\n") source
+            assertBool (show (name, source, plain)) (not (null (itemTextLooks plain)))
+            assertEqual (show (name, source)) (itemTextLooks plain) (itemTextLooks styled),
+    testCase "ADR 0363 I1: inv1_list_marker_style_case_1" $ do
+      (boxes, _) <- markerBoxes "" "- 本\n"
+      map (lkLatinFace . snd) boxes @?= ["body", "body"]
+      (numbered, _) <- markerBoxes "" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- numbered] @?= [("(", Nothing), ("1", Nothing), (")", Nothing), ("本", Nothing)],
+    testCase "ADR 0363 I1: inv1_list_marker_style_case_2" $ do
+      (boxes, _) <- markerBoxes "marker-style = \"accent\"\n" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- boxes] @?= [("(", Just "red"), ("1", Just "red"), (")", Just "red"), ("本", Nothing)]
+      (bullet, _) <- markerBoxes "marker-style = \"accent\"\n" "- 本\n"
+      [(t, lkColor look) | (t, look) <- bullet] @?= [("•", Just "red"), ("本", Nothing)],
+    testCase "ADR 0363: marker width is measured after applying the character style" $ do
+      let source = "- " <> T.replicate 25 "本" <> "\n"
+      (_, a) <- markerBoxes "" source
+      (_, b) <- markerBoxes "marker-style = \"large\"\n" source
+      assertBool (show (a, b)) (maximum b > maximum a),
+    testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
       (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
       -- the bullet • is a character and fs / 2 (golem-driver ADR 0044)
       ls @?= [(120 * pt, 0), (100 * pt, 20 * pt)],
@@ -360,9 +405,9 @@ listTests =
       length (nub keys) @?= 2
       sort placed @?= sort keys,
     testCase "PDF: [lists] numbers set the marker, and its width" $ do
-      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") "+ 一\n+ 二\n"
+      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({n:arabic})\"]\n") "+ 一\n+ 二\n"
       ts @?= ["(1)一", "(2)二"]
-      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
+      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({n:arabic})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
       map snd ls @?= [0, 20 * pt],
     testCase "PDF: [lists] bullets by depth, the last one for deeper lists, with a gap" $ do
       let style = horizontalStyle <> TE.encodeUtf8 "\n[lists]\nbullets = [\"■\", \"□\"]\n"
@@ -372,13 +417,13 @@ listTests =
       -- 1 character and fs / 2, rounded up to whole characters
       map snd ls @?= [0, 20 * pt],
     testCase "a number its format cannot write is G07029, at the item" $ do
-      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
+      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{n:circled}\"]\n") "+ 一\n@number 51\n+ 二\n" []
       layoutErrors r @?= [("G07029", "リストの番号 51 は、書式 {n:circled} で表せません", FileId 1, 17, 23)]
-      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
+      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{n:circled}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
         [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G07029"],
     testCase "HTML: [lists] writes a @counter-style for each depth" $
-      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{①}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
+      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:circled}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
         page <- TIO.readFile (tmp </> "build/html/v.xhtml")
@@ -398,7 +443,7 @@ listTests =
         assertBool "css" (not ("@counter-style" `T.isInfixOf` css))
         assertBool "page" ("<ul>" `T.isInfixOf` page && "<ol>" `T.isInfixOf` page),
     testCase "plain text: [lists] markers by depth" $ do
-      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{a}.\"]\n"
+      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:lower-alpha}.\"]\n"
       t <- listText style "- 一\n  - 二\n    - 三\n\n+ 一\n  + 二\n" "horizontal"
       t @?= "■ 一\n　□ 二\n　　□ 三\n\n(1) 一\n　a. 二\n"
       t' <- listText "" "- 一\n\n+ 一\n" "horizontal"
@@ -443,6 +488,11 @@ pageControlTests =
       (page', css') <- htmlMini horizontalStyle "a\n\n@need-lines 3\n\n@page-lines +1\n\nb\n"
       assertBool (T.unpack page') ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page')
       assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css')),
+    testCase "ADR 0376 I1: inv1_no_page_break_lines_case_3: HTML omits the zero control and keeps a positive count" $ do
+      (zero, css) <- htmlMini horizontalStyle "a\n\n@no-page-break 0\n\nb\n"
+      assertBool "zero has no avoid attribute or rule" (not ("data-break-before" `T.isInfixOf` zero || "data-break-before" `T.isInfixOf` css))
+      (three, _) <- htmlMini horizontalStyle "a\n\n@no-page-break 3\n\nb\n"
+      assertBool "positive count retains avoid" ("data-break-before=\"avoid\"" `T.isInfixOf` three),
     testCase "plain text: the controls write nothing" $ do
       let text src = withVerseProject "" src $ \tmp -> do
             _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}

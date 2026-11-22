@@ -1,6 +1,6 @@
 # ADR 0034: 回り込ませない図版を段に収め、回して置けるようにする
 
-ステータス: 採択→（縦組みの枠の行の送りの向き）は [golem-driver ADR 0038](0038-turned-figure-line-progression.md)、（待っている回した図版と改段、回した図版のページの後の改ページ）は [golem-driver ADR 0039](0039-breaks-around-turned-figures.md)、（「図版の大きさ」の手順 1）は [docs/adr/0190](../../adr/0190-non-wrapping-figure-width.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0038-turned-figure-line-progression.md"],"part":"（縦組みの枠の行の送りの向き）"},{"by":["docs/golem-driver/adr/0039-breaks-around-turned-figures.md"],"part":"（待っている回した図版と改段、回した図版のページの後の改ページ）"},{"by":["docs/adr/0190-non-wrapping-figure-width.md"],"part":"（「図版の大きさ」の手順 1）"},{"part":"自由な配置での図版の実効行数と最小領域の検査","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

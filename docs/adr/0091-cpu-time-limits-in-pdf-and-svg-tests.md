@@ -1,6 +1,6 @@
 # ADR 0091: golem-pdf と golem-svg のテストの時間切れを CPU 時間で測り、実時間の上限を歯止めに残す
 
-ステータス: 採択
+Status: superseded [{"part":"時間の上限の補助（wasm32 の値）","by":["docs/adr/0388-widen-the-time-limits-of-tests-on-wasm32.md"],"kind":"supplement"}]
 
 ## 文脈
 

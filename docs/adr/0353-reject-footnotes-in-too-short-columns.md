@@ -1,6 +1,6 @@
 # ADR 0353: 脚注を置けない段の diagnostic
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

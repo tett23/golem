@@ -1,6 +1,6 @@
 # ADR 0010: キャプションを段落スタイル caption の書体と大きさで組む
 
-ステータス: 採択→キャプションと傍注が引き継ぐキーは [ADR 0043](0043-caption-sidenote-do-not-inherit-indent.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md"],"part":"キャプションと傍注が引き継ぐキー"}]
 
 ## 文脈
 

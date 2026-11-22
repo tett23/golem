@@ -1,6 +1,6 @@
 # ADR 0007: golem inspect の診断、終了コード、表示の対象と形を直す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

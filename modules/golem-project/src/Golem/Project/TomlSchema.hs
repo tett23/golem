@@ -48,6 +48,8 @@ data Leaf
   = LString
   | LDimension
   | LInteger
+  | -- | a number, integer or float (the coordinates of axes, Golem ADR 0358)
+    LNumber
   | LBoolean
   | -- | false alone: no rule, no background (true is an error)
     LFalse

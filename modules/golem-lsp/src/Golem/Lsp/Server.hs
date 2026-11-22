@@ -36,6 +36,7 @@ import Data.Either (fromRight)
 import Data.Foldable (foldlM)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Proxy (Proxy (..))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -44,6 +45,7 @@ import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Emet.Outline (emetOutline)
 import Golem.Emet.Outline qualified as O
 import Golem.Lsp.Features qualified as F
+import Golem.Lsp.FileMove qualified as Move
 import Golem.Lsp.FileRename qualified as R
 import Golem.Lsp.Workspace
 import Golem.Project.Paths (normalizeRelative, resolveInRoot)
@@ -128,7 +130,9 @@ rewriteInitializeResponse lid enc bytes = do
   guard (i == J.toJSON lid)
   J.Object result <- KM.lookup "result" msg
   J.Object caps <- KM.lookup "capabilities" result
-  let caps' = KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps
+  let caps' =
+        KM.insert "experimental" (J.object ["golem" J..= J.object ["planFileMove" J..= (1 :: Int)]]) $
+          KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps
       result' = KM.insert "capabilities" (J.Object caps') result
   pure (J.encode (J.Object (KM.insert "result" (J.Object result') msg)))
 
@@ -139,6 +143,7 @@ serverDefinition encVar initIdVar = do
   rootVar <- newTVarIO "."
   plotVar <- newTVarIO Nothing
   wikiVar <- newTVarIO Nothing
+  moveWorkspace <- newTVarIO Nothing
   watchVar <- newTVarIO Nothing
   lock <- newMVar ()
   dirtyVar <- newTVarIO Set.empty
@@ -156,10 +161,11 @@ serverDefinition encVar initIdVar = do
             writeTVar rootVar root
             writeTVar plotVar (alephPlot root params)
             writeTVar wikiVar (alephWiki root params)
+            writeTVar moveWorkspace (Move.fileMoveRegistration (J.toJSON params))
             writeTVar encVar (F.chooseEncoding (offeredEncodings params))
             writeTVar initIdVar (Just lid)
           pure (Right env),
-        staticHandlers = \_ -> handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar,
+        staticHandlers = \_ -> handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock dirtyVar pubVar,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
@@ -242,8 +248,8 @@ offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ gener
 -- | The registration of the watched table files (golem-eval ADR 0004).
 type WatchToken = RegistrationToken Method_WorkspaceDidChangeWatchedFiles
 
-handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe FilePath) -> TVar (Maybe (FilePath, [(FilePath, Maybe Text)])) -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
-handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar =
+handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe FilePath) -> TVar (Maybe (FilePath, [(FilePath, Maybe Text)])) -> TVar (Maybe FilePath) -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> MVar () -> TVar (Set.Set FilePath) -> TVar (Map.Map FilePath [Diagnostic]) -> Handlers (LspM ())
+handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock dirtyVar pubVar =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_ -> do
         root <- liftIO (readTVarIO rootVar)
@@ -293,6 +299,11 @@ handlers encVar rootVar plotVar wikiVar wsVar gen watchVar lock dirtyVar pubVar 
         forM_ (relPath st uri) $ \p -> serially $ withWs $ \ws -> do
           ws' <- liftIO (closeFile ws p)
           commit Set.empty ws',
+      requestHandler (SMethod_CustomMethod (Proxy @"golem/planFileMove")) $ \(TRequestMessage _ _ _ params) respond -> do
+        enc <- encoding
+        registration <- liftIO (readTVarIO moveWorkspace)
+        result <- liftIO (Move.planFileMove enc registration params)
+        respond (either (Left . TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan file move" . Just) Right result),
       requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
         st <- state
         enc <- encoding

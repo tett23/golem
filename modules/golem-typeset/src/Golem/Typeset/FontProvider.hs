@@ -7,7 +7,7 @@ module Golem.Typeset.FontProvider
   ( golemFontProvider,
     unmemoisedFontProvider,
     cffFontProgram,
-    cff2FontDiagnostics,
+    pdfFontDiagnostics,
     toUnicodeOf,
     actualTextOf,
   )
@@ -17,6 +17,7 @@ import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Functor ((<&>))
+import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
@@ -25,6 +26,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
+import Golem.Font.Cff (CffCheck (..), CffResult (..), checkCffReferences)
 import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
@@ -37,6 +39,7 @@ import Golem.Syntax
 import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, normalTexts, usedRoles)
 import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
+import Numeric (showFFloat)
 import Text.Printf (printf)
 
 {- | Every file that cannot be loaded is reported, once per path (G08002,
@@ -57,37 +60,55 @@ fontProvider :: Bool -> FontProvider
 fontProvider memoise = FontProvider $ \files fid style locals ->
   let body = bodyRole style
       err code = diagnostic code Error (mkSpan fid 0 0)
-      load path = do
+      read' path = do
         r <- filesResolve files path
         case r of
           -- reported by the driver before the fonts are loaded; kept for a provider used alone
           Left e -> pure (Left (err "G08002" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
-          Right rel -> do
-            bytes <- filesRead files rel
-            loaded <- loadFont bytes
-            pure $ case loaded of
-              Right f
-                | fontIsCff2 f -> Left (cff2Diagnostic fid path)
-                | otherwise -> Right (bytes, f, path)
-              Left Unreadable -> Left (err "G08003" ("フォントを読み込めません: " <> T.pack path))
-              Left (EmbeddingRestricted t) -> Left (err "G08004" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
+          Right rel -> Right <$> filesRead files rel
+      -- a file at the instance of a role (Golem ADR 0358): Left of a file's diagnostic, or Right of why the instance is not in it
+      load bytes path inst = do
+        loaded <- loadFontAt inst bytes
+        pure $ case loaded of
+          Right f
+            | fontIsCff2 f -> Left (Left (cff2Diagnostic fid path))
+            | otherwise -> Right (bytes, f, path)
+          Left Unreadable -> Left (Left (err "G08003" ("フォントを読み込めません: " <> T.pack path)))
+          Left (EmbeddingRestricted t) -> Left (Left (err "G08004" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path)))
+          Left (InstanceErrors es) -> Left (Right es)
    in case bodyFontDiagnostics fid style of
         -- reported by the driver before the fonts are loaded; kept for a provider used alone
         ds@(_ : _) -> pure (Left ds)
         [] -> do
           let roles = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
               paths = nubOrd (concat [catMaybes [frJa fr, frLatin fr] | (_, fr) <- roles])
-          loadedPaths <- Map.fromList <$> mapM (\p -> (p,) <$> load p) paths
-          let side f fr = f fr >>= \p -> either (const Nothing) Just =<< Map.lookup p loadedPaths
+              keys = nubOrd [(p, roleInstance fr) | (_, fr) <- roles, Just p <- [frJa fr, frLatin fr]]
+          contents <- Map.fromList <$> mapM (\p -> (p,) <$> read' p) paths
+          loadedKeys <-
+            Map.fromList
+              <$> mapM
+                ( \k@(p, inst) ->
+                    (k,) <$> case Map.lookup p contents of
+                      Just (Right bytes) -> load bytes p inst
+                      Just (Left d) -> pure (Left (Left d))
+                      Nothing -> pure (Left (Right []))
+                )
+                keys
+          let side f fr = f fr >>= \p -> either (const Nothing) Just =<< Map.lookup (p, roleInstance fr) loadedKeys
               roleFiles = [(r, fr, side frJa fr, side frLatin fr) | (r, fr) <- roles]
-          pure $ case [d | p <- paths, Just (Left d) <- [Map.lookup p loadedPaths]] of
+              -- each file that cannot be loaded once, in the order of the files (G08002, G08003, G08004, G08019)
+              fileErrors = nub [d | p <- paths, ((p', _), Left (Left d)) <- Map.toList loadedKeys, p' == p]
+              -- the instances of each role and face (G08110, G08111, G08112; Golem ADR 0358)
+              roleErrors = [d | (r, fr) <- roles, p <- nubOrd (catMaybes [frJa fr, frLatin fr]), Just (Left (Right es)) <- [Map.lookup (p, roleInstance fr) loadedKeys], d <- instanceDiagnostics fid r p es]
+          pure $ case fileErrors <> roleErrors of
             ds@(_ : _) -> Left ds
             [] ->
-              let -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
+              let -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes at the same coordinates are one face
                   ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- roleFiles]
-                  faces = nubOrdOn (\(b, _, _) -> b) ordered
-                  faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
-                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, normalFeatureTexts (frFeatures fr))) | (r, fr, ja, la) <- roleFiles]
+                  faces = nubOrdOn faceKey ordered
+                  faceKey (b, f, _) = (b, fontCoordinates f)
+                  faceOf x = length (takeWhile (\y -> faceKey y /= faceKey x) faces)
+                  roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, normalFeatureTexts (frFeatures fr), frPunctuationProportional fr)) | (r, fr, ja, la) <- roleFiles]
                   clashes =
                     [ (n, p1, p2)
                     | ((_, f1, p1), i) <- zip faces [0 :: Int ..],
@@ -108,20 +129,53 @@ cff2Diagnostic :: FileId -> FilePath -> Diagnostic
 cff2Diagnostic fid path =
   diagnostic "G08019" Error (mkSpan fid 0 0) ("CFF2 の輪郭のフォントは PDF に埋め込めません: " <> T.pack path <> "。CFF か TrueType の輪郭のフォントを使ってください")
 
-{- | G08019 for the given font files of the PDF, before it is laid out, so
-that golem check reports it too (golem-font ADR 0003). A file that cannot
-be read or loaded is left to the font provider (G08002, G08003, G08004).
+{- | The diagnostics of the font files of the PDF, before it is laid out,
+so that golem check reports them too: G08019 for each CFF2 font (golem-font
+ADR 0003), then G08110, G08111 and G08112 for each role and face whose
+instance is not in its font (Golem ADR 0358). The roles come with their
+files that exist; a file that cannot be read or loaded is left to the font
+provider (G08002, G08003, G08004).
 -}
-cff2FontDiagnostics :: Files -> FileId -> [FilePath] -> IO [Diagnostic]
-cff2FontDiagnostics files fid paths = concat <$> mapM one (nubOrd paths)
+pdfFontDiagnostics :: Files -> FileId -> [(Text, FontRole)] -> IO [Diagnostic]
+pdfFontDiagnostics files fid roles = do
+  let paths = nubOrd [p | (_, fr) <- roles, Just p <- [frJa fr, frLatin fr]]
+  loaded <- Map.fromList . catMaybes <$> mapM one paths
+  pure $
+    [cff2Diagnostic fid p | p <- paths, Just f <- [Map.lookup p loaded], fontIsCff2 f]
+      <> [ d
+         | (r, fr) <- roles,
+           p <- nubOrd (catMaybes [frJa fr, frLatin fr]),
+           Just f <- [Map.lookup p loaded],
+           d <- instanceDiagnostics fid r p (fontInstanceErrors f (roleInstance fr))
+         ]
   where
     one path = do
       r <- filesResolve files path
       case r of
-        Left _ -> pure []
+        Left _ -> pure Nothing
         Right rel -> do
           loaded <- filesRead files rel >>= loadFont
-          pure [cff2Diagnostic fid path | Right f <- [loaded], fontIsCff2 f]
+          pure (either (const Nothing) (Just . (path,)) loaded)
+
+-- | The instance a role names (Golem ADR 0358).
+roleInstance :: FontRole -> FontInstance
+roleInstance fr = FontInstance (frInstance fr) (frAxes fr)
+
+{- | G08110, G08111 and G08112 for a face of a role, at the top of @fid@ as
+the other font diagnostics (Golem ADR 0358).
+-}
+instanceDiagnostics :: FileId -> Text -> FilePath -> [InstanceError] -> [Diagnostic]
+instanceDiagnostics fid role path = map $ \case
+  UnknownInstance n -> at "G08110" ("可変フォントに名前付きインスタンスがありません: " <> key <> " の instance = \"" <> n <> "\"（" <> T.pack path <> "）")
+  UnknownAxis t -> at "G08111" ("フォントにない軸です: " <> key <> " の axes の " <> t <> "（" <> T.pack path <> "）")
+  AxisOutOfRange t v (lo, hi) -> at "G08112" ("軸の値がフォントの範囲の外にあります: " <> key <> " の axes の " <> t <> " = " <> number v <> "（" <> T.pack path <> " の " <> t <> " は " <> number lo <> " から " <> number hi <> "）")
+  where
+    at code = diagnostic code Error (mkSpan fid 0 0)
+    key = "[fonts." <> role <> "]"
+    -- an integer without a point; any other number in the shortest decimal that reads back
+    number v
+      | v == fromInteger (round v) = T.pack (show (round v :: Integer))
+      | otherwise = T.pack (showFFloat Nothing v "")
 
 -- | The form of a face for golem preflight (golem-cli ADR 0006, golem-font ADR 0003).
 faceForm :: Font -> Text
@@ -135,7 +189,7 @@ and its OpenType features. A role that is not loaded is the body role.
 The measures are kept by the shaping too: its features change them
 (docs/adr/0020).
 -}
-provide :: Bool -> FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
+provide :: Bool -> FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text], Bool) -> LoadedFonts
 provide memoise fid faces body roles =
   LoadedFonts
     { lfAdvance = advance,
@@ -154,7 +208,8 @@ provide memoise fid faces body roles =
         let f = fontAt ix
             em v = toInteger v % toInteger (fontUnitsPerEm f)
          in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g,
-      lfRoleFeatures = \role -> let (_, _, fs) = roleOf role in fs,
+      lfRoleFeatures = \role -> let (_, _, fs, _) = roleOf role in fs,
+      lfPunctuationProportional = \role -> let (_, _, _, allowed) = roleOf role in allowed,
       -- the feature list of GSUB and GPOS, of any script and language (docs/adr/0268)
       lfHasFeature = fontHasFeature . fontAt
     }
@@ -175,13 +230,13 @@ provide memoise fid faces body roles =
     faceAt i = faces !! max 0 (min (length faces - 1) i)
     fontAt = fst . faceAt
     roleOf role = case Map.lookup role roles of
-      Just (Nothing, Nothing, _) -> roleOf body
+      Just (Nothing, Nothing, _, _) -> roleOf body
       Just r -> r
-      Nothing -> fromMaybe (Just 0, Nothing, []) (Map.lookup body roles)
+      Nothing -> fromMaybe (Just 0, Nothing, [], False) (Map.lookup body roles)
     -- a character of both scripts is Latin in a Latin span (docs/adr ADR 0187)
     latinIn dual c = charClass c == Western || (dual && isDualCharacter c)
     fontFor dual role c =
-      let (ja, la, _) = roleOf role
+      let (ja, la, _, _) = roleOf role
        in fromMaybe 0 (if latinIn dual c then la <|> ja else ja <|> la)
     -- a combining character stays with the character before it, variation selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036)
     runs dual role t = [(fontFor dual role (T.head r), r) | r <- T.groupBy (\a b -> isExtending b || fontFor dual role a == fontFor dual role b) t, not (T.null r)]
@@ -191,7 +246,7 @@ provide memoise fid faces body roles =
     UAX #50, is turned: its horizontal glyphs and advances (golem-driver ADR
     0015). The clusters are numbered by character in the whole text. -}
     shapeText (Shaping role vertical extra dual) t =
-      let (_, la, roleFeatures) = roleOf role
+      let (_, la, roleFeatures, _) = roleOf role
           -- the last value of each tag, in the normal form (docs/adr/0268)
           features = normalTexts (roleFeatures <> extra)
           shapeIn f r dir = shapeUnits f ((shapeRequest r) {srDirection = dir, srFeatures = features})
@@ -251,35 +306,50 @@ provide memoise fid faces body roles =
           [] -> []
           x : xs -> let (same, rest) = span ((== k x) . k) xs in (x : same) : groupOn k rest
     {- IO: the subset is made as the PDF is written (docs/adr ADR 0034); a CFF
-    font without a CFF table is G08018 (golem-pdf ADR 0011) -}
+    font whose used references leave its CFF table is G08107 (Golem ADR
+    0357), a glyph whose references cannot all be checked is G08108, a glyph
+    used whose metrics FreeType cannot read is G08109 (Golem ADR 0390), and
+    a font without a CFF table is G08018 (golem-pdf ADR 0011) -}
     embed ix vertical used = do
       let (f, path) = faceAt ix
           upem = toInteger (fontUnitsPerEm f)
           per1000 v = fromInteger (round (toInteger v * 1000 % upem))
           gids = Map.keys (Map.fromList [(g, ()) | (g, _) <- used])
           cid = glyphCid f
-          metrics = [(g, m) | g <- gids, Just m <- [glyphMetrics f g]]
+          read' = [(g, glyphMetrics f g) | g <- gids]
+          metrics = [(g, m) | (g, Just m) <- read']
           (asc, desc, cap) = fontExtents f
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
-      program <- fromMaybe (fontBytes f) <$> subsetFont f gids
-      pure $
-        (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
-          P.Font
-            { P.fontName = name,
-              P.fontProgram = fontProgram,
-              P.fontVertical = vertical,
-              P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
-              P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
-              P.fontAscent = per1000 asc,
-              P.fontDescent = per1000 desc,
-              P.fontCapHeight = per1000 cap,
-              P.fontStemV = 80,
-              P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
-              P.fontItalicAngle = 0,
-              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
-              P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
-            }
+          -- the used references of the CFF table, before the subset (Golem ADR 0357, Golem ADR 0390)
+          checked = if fontIsCff f then checkCffReferences (fontBytes f) (0 : gids) else CffResult CffInTable [] []
+          at = mkSpan fid 0 0
+          glyphText g = T.pack path <> " のグリフ " <> T.pack (show g)
+          errors =
+            [diagnostic "G08107" Error at ("CFF の内部参照が表の範囲を外れています: " <> T.pack path) | cffCheck checked == CffOutOfTable]
+              <> [diagnostic "G08108" Error at ("CFF の参照を確かめきれません: " <> glyphText g) | g <- cffUnverifiable checked]
+              <> [diagnostic "G08109" Error at ("フォントのグリフの寸法を読めません: " <> glyphText g) | (g, Nothing) <- read']
+      if not (null errors)
+        then pure (Left errors)
+        else do
+          program <- fromMaybe (fontBytes f) <$> subsetFont f gids
+          pure $
+            (if fontIsCff f then either (Left . pure) Right (cffFontProgram fid path program) else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
+              P.Font
+                { P.fontName = name,
+                  P.fontProgram = fontProgram,
+                  P.fontVertical = vertical,
+                  P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
+                  P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
+                  P.fontAscent = per1000 asc,
+                  P.fontDescent = per1000 desc,
+                  P.fontCapHeight = per1000 cap,
+                  P.fontStemV = 80,
+                  P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
+                  P.fontItalicAngle = 0,
+                  P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
+                  P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
+                }
 
 {- | The program of a CFF font: its bare CFF table, embedded in FontFile3 with
 the subtype CIDFontType0C (golem-pdf ADR 0011). PDFium takes the codes of a

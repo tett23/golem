@@ -38,11 +38,17 @@ docWith steps leaf = go [] steps
   where
     go here = \case
       [] -> leaf
-      SKey k : rest -> Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- required here k, k' /= k]))
+      SKey k : rest -> Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- requiredFor here k, k' /= k]))
       SName : rest ->
         let n = if here == ["headings"] then "1" else "x"
          in Table (table [(n, go (here <> [n]) rest)])
       SIndex : rest -> List [go (here <> ["[]"]) rest]
+    -- Physical anchors are meaningful only without a gutter in single mode.
+    physical = keysOf steps `elem` [["page", "grid", "position", "left"], ["page", "grid", "position", "right"]]
+    requiredFor here k
+      | physical && here == ["page"] = ("layout", Text "single") : required here k
+      | physical && here == ["page", "grid", "position"] = [("top", Text "10mm")]
+      | otherwise = required here k
 
 -- | The keys a table at a path needs besides the key written there.
 required :: [Text] -> Text -> [(Text, Value)]
@@ -102,6 +108,7 @@ sample here node = case (reverse here, node) of
       LString -> Text "x"
       LDimension -> Text "1pt"
       LInteger -> Integer 1
+      LNumber -> Double 1.5
       LBoolean -> Bool False
       LFalse -> Bool False
       LEnum (v : _) -> Text v
@@ -203,7 +210,7 @@ tests =
           @?= [("G03021", "kerning の値が正しくありません: x (character-styles.em.kerning)", 2, 11)],
       testCase "the keys of @style-def are those of the schema, in its order" $ do
         charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width", "background", "padding", "wrap-mark", "no-break", "position", "features", "underline", "strikethrough"]
-        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "space-between", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "keep-with-next", "keep-all-lines", "keep-first-lines", "keep-last-lines", "page-break", "line-adjustment", "stretch-limit", "kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width", "background", "padding", "border", "border-width", "border-style", "border-radius", "features", "border-sides", "shrink-order", "stretch-order"]
+        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "line-number-interval", "space-between", "number-title-separator", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "keep-with-next", "keep-all-lines", "keep-first-lines", "keep-last-lines", "page-break", "line-adjustment", "stretch-limit", "next-style", "initial-style", "opening-indent", "kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width", "background", "padding", "border", "border-width", "border-style", "border-radius", "features", "border-sides", "shrink-order", "stretch-order"]
         regexStyleKeys @?= ["pattern", "style"],
       testCase "the values of line-breaks are those the decoder reads" $
         lineBreaksValues @?= ["join", "keep"],

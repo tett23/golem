@@ -1,6 +1,6 @@
 # ADR 0193: 段落の区切り方の既定を改行の様式にする
 
-ステータス: 採択→決定性の検査の期待値の一行は [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"決定性の検査の期待値の一行"}]
 
 ## 文脈
 

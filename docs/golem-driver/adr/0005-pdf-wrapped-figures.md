@@ -1,6 +1,6 @@
 # ADR 0005: 回り込みの図版を PDF のパイプラインにつなぐ
 
-ステータス: 採択→段組みの版面での回り込みの扱いは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、回り込ませない図版の大きさは [ADR 0034](0034-fit-figures-to-column.md)、キャプションの書体、大きさ、行の送りは [ADR 0010](0010-caption-style.md)、キャプションの図番号と内容のあいだの区切りは [golem-html ADR 0002](../../golem-html/adr/0002-heading-number-spacing.md)
+Status: superseded [{"by":["docs/adr/0018-multi-column-layout.md"],"part":"段組みの版面での回り込みの扱い"},{"by":["docs/golem-driver/adr/0034-fit-figures-to-column.md"],"part":"回り込ませない図版の大きさ"},{"by":["docs/golem-driver/adr/0010-caption-style.md"],"part":"キャプションの書体、大きさ、行の送り"},{"by":["docs/golem-html/adr/0002-heading-number-spacing.md"],"part":"キャプションの図番号と内容のあいだの区切り"},{"part":"自由な配置での回り込みの実寸配置","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

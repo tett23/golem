@@ -1,6 +1,6 @@
 # ADR 0013: PDF のリストの字下げ
 
-ステータス: 採択→`bullets` の既定は [ADR 0044](0044-default-bullet-u2022.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0044-default-bullet-u2022.md"],"part":"`bullets` の既定"}]
 
 ## 文脈
 

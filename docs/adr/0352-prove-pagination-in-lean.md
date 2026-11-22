@@ -1,6 +1,6 @@
 # ADR 0352: 改ページの規則と終了を Lean 4 で証明する
 
-ステータス: 採択（未実装）
+Status: accepted-pending
 
 ## 文脈
 

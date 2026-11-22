@@ -1,6 +1,6 @@
 # ADR 0010: `golem check` の G07002 の条件と、雛形の塗り足し
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

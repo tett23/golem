@@ -1,6 +1,6 @@
 # ADR 0001: 式の言語と数の規則
 
-ステータス: 採択→組み込み関数の `join` は [docs/adr ADR 0033](../../adr/0033-colophon-contributors-and-printings.md)、累乗、整数と浮動小数点数の比較、整数から浮動小数点数への変換は [ADR 0005](0005-float-overflow.md)、値の型、数の規則、`pi` と `e` の定義、本文への表記は [docs/adr ADR 0101](../../adr/0101-rational-numbers-in-expressions.md)、実装しないことの「ユーザー定義の関数」は [docs/adr ADR 0162](../../adr/0162-calling-emet-functions-from-gm.md) が改めた
+Status: superseded [{"by":["docs/adr/0033-colophon-contributors-and-printings.md"],"part":"組み込み関数の `join`"},{"by":["docs/golem-eval/adr/0005-float-overflow.md"],"part":"累乗、整数と浮動小数点数の比較、整数から浮動小数点数への変換"},{"by":["docs/adr/0101-rational-numbers-in-expressions.md"],"part":"値の型、数の規則、`pi` と `e` の定義、本文への表記"},{"by":["docs/adr/0162-calling-emet-functions-from-gm.md"],"note":"が改めた","part":"実装しないことの「ユーザー定義の関数」"}]
 
 ## 文脈
 

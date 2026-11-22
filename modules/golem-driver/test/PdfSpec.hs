@@ -15,13 +15,14 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.IR (defaultRubyOptions)
 import Golem.Driver
 #ifdef GOLEM_PLUGINS
 import Golem.Driver.New (Language (..), createProject, templateFiles)
 #endif
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
-import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
+import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook, readingLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
@@ -35,7 +36,7 @@ import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.CffRos (withRos)
 import Golem.TestSupport.ExternalTool (needsTool)
-import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Typeset (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PartLine (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Typeset.FontProvider (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
 import Golem.Typeset.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Numeric (readHex)
@@ -132,7 +133,7 @@ pdfPipelineTests =
         -- is known to reach G08018 through the real provider (golem-pdf ADR 0013)
         let failing =
               FontProvider $ \files fid style locals ->
-                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
+                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left [diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"])})
                   <$> loadFonts golemFontProvider files fid style locals
         b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just sansStyle) [("fonts/sans.otf", sans)]
         map diagCode (bErrors b) @?= [DiagnosticCode "G08018"]
@@ -159,11 +160,113 @@ pdfPipelineTests =
         codes (setCffRecord 8 0 sans) >>= (@?= unreadable)
         codes (setCffRecord 12 (n * 2) sans) >>= (@?= unreadable)
         codes (setCffRecord 12 0 sans) >>= (@?= unreadable)
-        -- a length cut short but within the file opens: no error, and the
-        -- truncated table is embedded as it is
-        codes (setCffRecord 12 4 sans) >>= (@?= ([], True))
+        -- a length cut short but within the file opens, and the embedding
+        -- rejects the truncated table (Golem ADR 0357)
+        codes (setCffRecord 12 4 sans) >>= (@?= ([DiagnosticCode "G08107"], False))
         -- a collection (.ttc) holding the CFF font is opened and subset: no error
         codes (asCollection sans) >>= (@?= ([], True)),
+      testCase "ADR 0357 I1: a header without the required indexes is rejected" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 4 sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0357 I1: used local and global subroutine targets must exist" $ do
+        (sans, _) <- realLatinFonts
+        -- T (gid 21) has a three-byte CharString in this fixture. Keep its
+        -- length and replace the operand with 1131, beyond either subr INDEX.
+        BS.take 3 (BS.drop 51558 sans) @?= BS.pack [247, 55, 10]
+        forM_ [10, 29] $ \call -> do
+          let bad = BS.take 51558 sans <> BS.pack [250, 255, call] <> BS.drop 51561 sans
+          b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+          -- FreeType cannot read T either: G08109 as well (Golem ADR 0390)
+          map diagCode (bErrors b) @?= [DiagnosticCode "G08107", DiagnosticCode "G08109"]
+          bPdf b @?= Nothing,
+      testCase "ADR 0394 I1: G08109 of the glyphs 9 and 10 of one font come in the order of their messages, 10 first" $ do
+        (sans, _) <- realLatinFonts
+        -- H (gid 9) and I (gid 10) have three-byte CharStrings; both call
+        -- the local subroutine 1131, past the INDEX and a number FreeType
+        -- does not take (G08107 once, G08109 for each)
+        map (\o -> BS.unpack (BS.take 3 (BS.drop o sans))) [51415, 51418] @?= [[247, 2, 29], [242, 29, 14]]
+        let call = BS.pack [250, 255, 10]
+            bad = BS.take 51415 sans <> call <> call <> BS.drop 51421 sans
+        b <- buildMarksFilesWith "HI\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        [diagMessage d | d <- bErrors b, diagCode d == DiagnosticCode "G08109"]
+          @?= ["フォントのグリフの寸法を読めません: fonts/sans.otf のグリフ 10", "フォントのグリフの寸法を読めません: fonts/sans.otf のグリフ 9"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0394 I1: G08108 of the glyphs of two fonts come in the order of the font paths, not of their use" $ do
+        (sans, _) <- realLatinFonts
+        -- b (gid 29): 1 random 0.5 sub div drop 100 0 rmoveto 500 0 rlineto
+        -- 0 500 rlineto endchar, divided by an interval holding 0 (G08108),
+        -- the rest of its 56 bytes endchar
+        BS.take 3 (BS.drop 51650 sans) @?= BS.pack [134, 248, 81]
+        let program = [140, 12, 23, 255, 0, 0, 0x80, 0, 12, 11, 12, 12, 12, 18, 239, 139, 21, 28, 1, 0xf4, 139, 5, 139, 28, 1, 0xf4, 5, 14]
+            bad = BS.take 51650 sans <> BS.pack program <> BS.replicate (56 - length program) 14 <> BS.drop 51706 sans
+            -- the same bytes would be one face, and the same PostScript name
+            -- a clash: the second font is named Second Sans Pro, SecondSansPro
+            -- in its name table (UTF-16) and its CFF table
+            rename from to = BS.intercalate to . splitOn from
+            splitOn pat x = case BS.breakSubstring pat x of
+              (before, rest) | BS.null rest -> [before]
+              (before, rest) -> before : splitOn pat (BS.drop (BS.length pat) rest)
+            utf16 = BS.concatMap (\c -> BS.pack [0, c])
+            other = foldl (\f (from, to) -> rename from to f) bad [(n, m) | (from, to) <- [("Source Sans Pro", "Second Sans Pro"), ("SourceSansPro", "SecondSansPro")], (n, m) <- [(from, to), (utf16 from, utf16 to)]]
+            -- the body uses fonts/z.otf first, the style s fonts/a.otf after it
+            style = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/z.otf\"\n\n[fonts.other]\nlatin = \"fonts/a.otf\"\n\n[character-styles.s]\nfont = \"other\"\n"
+        b <- buildMarksFilesWith "b[style s: b]\n" (\o -> o {optFonts = golemFontProvider}) (Just style) [("fonts/z.otf", bad), ("fonts/a.otf", other)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08108", DiagnosticCode "G08108"]
+        map diagMessage (bErrors b)
+          @?= ["CFF の参照を確かめきれません: fonts/a.otf のグリフ 29", "CFF の参照を確かめきれません: fonts/z.otf のグリフ 29"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0357 I1: used local subroutine endpoint exceeds the table" $ do
+        (sans, _) <- realLatinFonts
+        -- T calls local subroutine 270. Its end offset occupies two bytes.
+        let bad = BS.take 120473 sans <> BS.replicate 2 255 <> BS.drop 120475 sans
+        b <- buildMarksFilesWith "T" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0357 I1: G08107 is specific to out-of-bounds CFF references" $ do
+        (sans, _) <- realLatinFonts
+        -- An add with an empty operand stack is malformed but reads no offset.
+        let bad = BS.take 51558 sans <> BS.pack [12, 10, 14] <> BS.drop 51561 sans
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        assertBool "stack underflow must not be diagnosed as a table bounds error" (DiagnosticCode "G08107" `notElem` map diagCode (bErrors b)),
+      testCase "ADR 0357 I1: private dictionary extends past the declared table" $ do
+        (sans, _) <- realLatinFonts
+        -- The Top DICT locates the 66-byte Private DICT at offset 103526.
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 103591 sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0357 I1: used CharString endpoint exceeds the table" $ do
+        (sans, _) <- realLatinFonts
+        -- Offset 22 is the end of the CharString for T (gid 21).
+        let bad = BS.take 45509 sans <> BS.replicate 3 255 <> BS.drop 45512 sans
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      testCase "ADR 0357 I1: a broken reference of a glyph the text does not use is not checked" $ do
+        (sans, _) <- realLatinFonts
+        -- the local subroutine 270 broken as above is called by T only
+        let bad = BS.take 120473 sans <> BS.replicate 2 255 <> BS.drop 120475 sans
+        b <- buildMarksFilesWith "ext.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", bad)]
+        map diagCode (bErrors b) @?= []
+        assertBool "PDF is written" (isJust (bPdf b)),
+      testCase "ADR 0357 I1: the CFF table of a collection is checked" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", asCollection (setCffRecord 12 114179 sans))]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
+      -- In this fixture the last offset of the Local Subrs INDEX is exactly
+      -- the end of the CFF table (114180 bytes).
+      testCase "ADR 0357 I1: inv1_validate_embedded_cff_case_1" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 114180 sans)]
+        map diagCode (bErrors b) @?= []
+        assertBool "PDF is written" (isJust (bPdf b)),
+      testCase "ADR 0357 I1: inv1_validate_embedded_cff_case_2" $ do
+        (sans, _) <- realLatinFonts
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", setCffRecord 12 114179 sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08107"]
+        bPdf b @?= Nothing,
       testCase "ruby readings, emphasis dots and line-end hyphens are drawn" $ do
         pdf <- withSystemTempDirectory "golem-driver" $ \tmp -> do
           copyTree fixture tmp
@@ -710,9 +813,140 @@ marksTests =
 glyphXs :: BS.ByteString -> BS.ByteString -> [Double]
 glyphXs size content = [read (BC.unpack (dX d)) | d <- drawnGlyphs content, dSize d == size]
 
+-- | The style of the tests of the reading style of ruby, with character styles for it and a [composition.ruby] setting (docs/adr/0369).
+readingStyleToml :: BS.ByteString -> BS.ByteString
+readingStyleToml name =
+  horizontalStyle
+    <> fakeBody
+    <> "\n[fonts.gothic]\nja = \"fonts/w.otf\"\n\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n"
+    <> "\n[character-styles.accent]\ncolor = \"red\"\n\n[character-styles.large]\nsize = \"8pt\"\n\n[character-styles.wide]\nsize = \"0.8zw\"\n"
+    <> "\n[character-styles.heavy]\nsynthetic-bold = true\n\n[character-styles.gothic]\nfont = \"gothic\"\n\n[character-styles.loud]\ncolor = \"red\"\nsize = \"1.2zw\"\nfont = \"gothic\"\n"
+    <> (if BS.null name then "" else "\n[composition.ruby]\nreading-style = \"" <> name <> "\"\n")
+
+-- | The boxes of the lines of a source in 'readingStyleToml': the text, the look and the looks of the base characters.
+readingBoxes :: BS.ByteString -> T.Text -> IO [(T.Text, Look, [Look])]
+readingBoxes name source = do
+  (_, pl) <- layoutOk (readingStyleToml name) source fakeFontFiles
+  pure [(bcText c, bcLook c, bcBaseLooks c) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), not (T.null (bcText c))]
+
+-- | The ruby boxes of 'readingBoxes': their width and their look.
+rubyBoxes :: BS.ByteString -> T.Text -> IO [(Sp, Look)]
+rubyBoxes name source = do
+  (_, pl) <- layoutOk (readingStyleToml name) source fakeFontFiles
+  pure [(w, bcLook c) | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), "|" `T.isInfixOf` bcText c]
+
+-- | The glyphs drawn for a source in 'readingStyleToml', and the content streams.
+readingDrawn :: BS.ByteString -> T.Text -> IO ([Drawn], BS.ByteString)
+readingDrawn name source = do
+  content <- BS.concat <$> (miniPdf fakeProvider True (readingStyleToml name) source fakeFontFiles >>= inflateAll)
+  pure (drawnGlyphs content, content)
+
+-- | The sizes the glyph of a character is drawn in.
+drawnSizes :: Char -> [Drawn] -> [BS.ByteString]
+drawnSizes ch ds = [dSize d | d <- ds, dGlyph d == fromEnum ch]
+
 rubyTests :: [TestTree]
 rubyTests =
-  [ testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
+  [ testCase "root ADR 0379 I1, root ADR 0369 I1: reading styles preserve base characters across regrouping" $
+      {- every reading style (colour, size absolute and in zw, synthetic bold,
+      font, all of them) on mono and group ruby, ruby with a character style
+      in the base or around it, and ruby in a paragraph long enough to break -}
+      forM_ ["accent", "large", "wide", "heavy", "gothic", "loud"] $ \name ->
+        forM_
+          [ "[ruby: 漢|かん]字\n",
+            "[ruby: 五月雨|さみだれ]が降る。\n",
+            "[ruby: 漢/字|かん/じ]を読む。\n",
+            "前[ruby: [strong: 漢]字|かんじ]後\n",
+            "[strong: [ruby: 漢|かん]]字\n",
+            T.replicate 12 "[ruby: 漢|かん]字" <> "\n"
+          ]
+          $ \source -> do
+            let clearRuby lk = lk {lkRubyReading = Nothing, lkRubyOptions = defaultRubyOptions, lkRubyOtherReading = Nothing}
+                bases = concatMap (\(text, lk, looks) -> [(ch, clearRuby look) | (ch, look) <- zip (T.unpack (T.takeWhile (/= '|') text)) (if null looks then repeat lk else looks)])
+            plain <- readingBoxes "" source
+            styled <- readingBoxes name source
+            assertBool (show (name, source)) (any (\(t, _, _) -> "|" `T.isInfixOf` t) plain)
+            assertEqual (show (name, source)) (bases plain) (bases styled)
+            (plainDrawn, _) <- readingDrawn "" source
+            (styledDrawn, _) <- readingDrawn name source
+            let baseGlyphs ds = [(dGlyph d, dFont d, dSize d) | d <- ds, dGlyph d `notElem` map fromEnum ("かんじさみだれ" :: String)]
+            assertEqual (show (name, source)) (sort (baseGlyphs plainDrawn)) (sort (baseGlyphs styledDrawn)),
+    testCase "root ADR 0379 I1: PDF line edges keep the reading inside and align the base" $ do
+      (plain, _) <- readingDrawn "" "漢字\n"
+      (start, _) <- readingDrawn "" "[ruby: 漢|かなかな]字\n"
+      (final, _) <- readingDrawn "" "漢[ruby: 字|かなかな]\n"
+      let xs ch ds = [ptToRational (dX d) | d <- ds, dGlyph d == fromEnum ch]
+      xs '漢' start @?= xs '漢' plain
+      assertBool "no reading outside the start" (minimum (xs 'か' start <> xs 'な' start) >= minimum (xs '漢' start))
+      maximum (xs '字' final) + 10 @?= maximum (xs 'な' final) + 5,
+    testCase "root ADR 0379 I1: inline size overrides reading-style and uses the nominal size in scripts" $ do
+      (styled, _) <- readingDrawn "large" "[ruby size=0.75zw: 漢|か]字\n"
+      drawnSizes 'か' styled @?= ["7.5"]
+      (script, _) <- readingDrawn "" "[style superscript: [ruby size=0.75zw: 漢|か]]字\n"
+      drawnSizes 'か' script @?= ["7.5"],
+    testCase "root ADR 0379 I1: both readings use the inline size on opposite sides" $ do
+      (ds, _) <- readingDrawn "" "[ruby side=both size=0.75zw: 漢|か|な]字\n"
+      drawnSizes 'か' ds @?= ["7.5"]
+      drawnSizes 'な' ds @?= ["7.5"]
+      let ys ch = [ptToRational (dY d) | d <- ds, dGlyph d == fromEnum ch]
+      case (ys 'か', ys '漢', ys 'な') of
+        ([beforeY], [baseY], [afterY]) -> assertBool "opposite sides of base" ((beforeY - baseY) * (afterY - baseY) < 0)
+        other -> assertFailure (show other),
+    testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1" $ do
+      -- no reading style: half the base, in the font and the colour around
+      boxes <- rubyBoxes "" "[ruby: 漢|か]字\n"
+      [(lkSize r, lkColor r, lkFace r) | r <- map (readingLook . snd) boxes] @?= [(5 * pt, Nothing, "body")]
+      (ds, _) <- readingDrawn "" "[ruby: 漢|か]字\n"
+      drawnSizes 'か' ds @?= ["5"],
+    testCase "ADR 0369 I1: inv1_ruby_reading_style_case_2" $ do
+      -- a colour alone: half the base, in the colour of the style and the font around
+      boxes <- rubyBoxes "accent" "[ruby: 漢|か]字\n"
+      [(lkSize r, lkColor r, lkFace r) | r <- map (readingLook . snd) boxes] @?= [(5 * pt, Just "red", "body")]
+      (ds, content) <- readingDrawn "accent" "[ruby: 漢|か]字\n"
+      drawnSizes 'か' ds @?= ["5"]
+      assertBool "red" ("0 1 1 0 k" `BS.isInfixOf` content)
+      (_, plainContent) <- readingDrawn "" "[ruby: 漢|か]字\n"
+      assertBool "not red" (not ("0 1 1 0 k" `BS.isInfixOf` plainContent)),
+    testCase "ADR 0369 I1: inv1_ruby_reading_style_case_3" $ do
+      -- a size: that size; zw is counted in the size of the base
+      forM_ ["large", "wide"] $ \name -> do
+        boxes <- rubyBoxes name "[ruby: 漢|か]字\n"
+        [lkSize (readingLook lk) | (_, lk) <- boxes] @?= [8 * pt]
+        (ds, _) <- readingDrawn name "[ruby: 漢|か]字\n"
+        drawnSizes 'か' ds @?= ["8"]
+        drawnSizes '漢' ds @?= ["10"],
+    testCase "ADR 0369: the reading is placed by its advances in its own size" $ do
+      -- two 5pt kana fit the base of 10pt; two of 8pt make the box 16pt between kanji
+      plain <- rubyBoxes "" "漢[ruby: 字|かな]漢\n"
+      large <- rubyBoxes "large" "漢[ruby: 字|かな]漢\n"
+      map fst plain @?= [10 * pt]
+      map fst large @?= [16 * pt]
+      (ds, _) <- readingDrawn "large" "漢[ruby: 字|かな]漢\n"
+      drawnSizes 'か' ds @?= ["8"]
+      drawnSizes 'な' ds @?= ["8"],
+    testCase "ADR 0369: a file that defines the reading style with @style-def sets its readings in that definition" $ do
+      boxes <- rubyBoxes "large" "@style-def character large size=\"6pt\"\n\n[ruby: 漢|か]字\n"
+      [lkSize (readingLook lk) | (_, lk) <- boxes] @?= [6 * pt],
+    testCase "ADR 0370 I1: the tracking after a ruby box moves neither its base nor its reading, and the next character by the tracking once" $ do
+      {- mono and group ruby, with a reading longer than the base, one that
+      overhangs the kana around it, and one that fits; in a character style
+      of tracking 200 (2pt at 10pt) -}
+      let toml = readingStyleToml "" <> "\n[character-styles.spaced]\ntracking = 200\n"
+          drawn source = drawnGlyphs . BS.concat <$> (miniPdf fakeProvider True toml source fakeFontFiles >>= inflateAll)
+          xOf ds ch = [read (BC.unpack (dX d)) :: Double | d <- ds, dGlyph d == fromEnum ch]
+          relative ds first chars = [x - x0 | x0 <- take 1 (xOf ds first), ch <- chars, x <- xOf ds ch]
+      forM_ [("漢", "かんじ", "字"), ("漢", "かんじ", "あ"), ("漢", "か", "字"), ("五月雨", "さみだれ", "が")] $ \(base, reading, next) -> do
+        let ruby = "[ruby: " <> base <> "|" <> reading <> "]"
+        plain <- drawn ("い" <> ruby <> next <> "\n")
+        spaced <- drawn ("い[style spaced: " <> ruby <> "]" <> next <> "\n")
+        let inside ds = relative ds (T.head base) (T.unpack (T.tail base) <> T.unpack reading)
+        assertBool (T.unpack base) (not (null (inside plain)))
+        assertEqual (T.unpack base) (inside plain) (inside spaced)
+        assertEqual (T.unpack base) (map (+ 2) (relative plain (T.head base) (T.unpack next))) (relative spaced (T.head base) (T.unpack next)),
+    testCase "ADR 0369: a font of the reading style is the font of the reading alone" $ do
+      boxes <- rubyBoxes "gothic" "[ruby: 漢|か]字\n"
+      [(lkFace lk, lkFace (readingLook lk)) | (_, lk) <- boxes] @?= [("body", "gothic")],
+    testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
       let source = "[ruby: 五月雨|さみだれ]が降る。\n"
           drawnAt align = do
             content <- miniPdf fakeProvider True (horizontalStyle <> "\n[composition.ruby]\ngroup-align = \"" <> align <> "\"\n") source [] >>= fmap BS.concat . inflateAll
@@ -959,11 +1193,15 @@ kentenTests =
       n <- buildNotified [("manifest.toml", miniManifest), ("style.toml", horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n"), ("a.gm", TE.encodeUtf8 "[kenten shape=open-sesame: 漢]\n"), ("fonts/sans.otf", sans)] (\o -> o {optFonts = golemFontProvider})
       [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G08009"]
         @?= [("G08009", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
-    testCase "G07045: kenten in a ruby base, and ruby in kenten, are a notice; the PDF is written" $
-      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7), ("[kenten: [ruby: 漢|かん]]\n", 9)] $ \(src, at) -> do
+    testCase "G07045: kenten in a ruby base is a notice; the PDF is written" $
+      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7)] $ \(src, at) -> do
         n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
         [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= [("G07045", Notice, at)]
         assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
+    testCase "root ADR 0379 I1: outside kenten follows both readings without G07045" $ do
+      n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten shape=dot: [ruby side=both: 漢|か|な]]\n")] <> fakeFontFiles) id
+      [c | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= []
+      assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "HTML: the class of the shape; no shape is sesame" $ do
       n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
       case [b | (p, b) <- nOutputs n, ".xhtml" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
@@ -1439,7 +1677,7 @@ codeTests =
         (ci : _) -> do
           ciCaptionSize ci @?= 8 * pt
           ciCaptionSpan ci @?= 1
-          [T.concat [bcText c | Box _ c <- lineItems l] | l <- ciCaption ci] @?= ["L1　設定"]
+          [T.concat [bcText c | Box _ c <- lineItems (ptLine l)] | l <- ciCaption ci] @?= ["L1　設定"]
         [] -> assertFailure "no code"
       contents <- miniPdf fakeProvider True style "@caption 設定\n```\na\n```\n" [] >>= pageContents
       let ta = firstColumn geom

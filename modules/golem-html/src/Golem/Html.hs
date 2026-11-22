@@ -35,14 +35,14 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Assemble
 import Golem.Assemble.ListMarkers
-import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Assemble.Numbering (titleSeparator)
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.Citation (CitePiece (..), citationPieces)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
@@ -87,6 +87,7 @@ data HtmlConfig = HtmlConfig
     hcRubyMonoAlign :: !Text,
     hcRubyGroupAlign :: !Text,
     hcRubyBaseSpacing :: !Text,
+    hcRubyReadingStyle :: !(Maybe Text),
     -- | the kinds of forced break the book uses (docs/adr ADR 0017)
     hcBreakKinds :: !(Set BreakKind),
     -- | whether the book uses @no-page-break (docs/adr ADR 0030)
@@ -147,7 +148,8 @@ character of the marker).
 data HtmlLists = HtmlLists
   { hlBullets :: !(NonEmpty Text),
     hlNumbers :: !(NonEmpty NumberFormat),
-    hlGap :: !(Maybe Bool)
+    hlGap :: !(Maybe Bool),
+    hlMarkerStyle :: !(Maybe Text)
   }
 
 -- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
@@ -181,7 +183,8 @@ data HtmlCharStyle = HtmlCharStyle
     -- | the declarations of the underline and the strikethrough (docs/adr/0270)
     hcsTextDecoration :: ![Text],
     -- | the characters do not break between them (docs/adr ADR 0272)
-    hcsNoBreak :: !Bool
+    hcsNoBreak :: !Bool,
+    hcsSize :: !(Maybe Text)
   }
   deriving stock (Eq)
 
@@ -455,7 +458,7 @@ topBlocks c = go Nothing Nothing
     -- the break pending, and the blank lines pending after a block (Nothing before one)
     go _ _ [] = ""
     go _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
-    go _ blanks (Block _ _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go _ blanks (Block _ _ _ (PageControl control) : rest) | keepsPageBreak control = go (Just "avoid") blanks rest
     go pending blanks (Block _ _ _ (PageControl _) : rest) = go pending blanks rest
     go pending blanks (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
     -- the paragraphs of one box in its div (docs/adr/0271)
@@ -508,7 +511,7 @@ blockHtml c (Block sp lbl blang body) = case body of
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
-        num = numberSpan c (info >>= hiNumberText)
+        num = numberSpan c sp (Just l) (foldMap inlineText is) (info >>= hiNumberText)
      in "<" <> tag <> " id=\"" <> escapeXml anchor <> "\">" <> num <> inlines c is <> "</" <> tag <> ">\n"
   BulletList items -> "<ul" <> idAttr lbl <> listClass (NE.length . hlBullets) <> ">\n" <> T.concat (map (item inList Nothing) items) <> "</ul>\n"
   OrderedList items ->
@@ -537,7 +540,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         styleClass = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") (tableStyle t)
         -- the caption, the first child whichever side it is on (docs/adr/0262)
         caption = case tableCaption t of
-          Just is -> "<caption>" <> numberSpan c (Map.lookup sp (bookTables (cBook c))) <> inlines c is <> "</caption>\n"
+          Just is -> "<caption>" <> numberSpan c sp Nothing (foldMap inlineText is) (Map.lookup sp (bookTables (cBook c))) <> inlines c is <> "</caption>\n"
           Nothing -> ""
         colgroup
           | null (tableWidths t) = ""
@@ -550,7 +553,7 @@ blockHtml c (Block sp lbl blang body) = case body of
         -- a caption or a file name: a figure (golem-driver ADR 0023)
         wrapped = isJust (codeCaption code) || isJust (codeFile code)
         caption =
-          [ "<figcaption>" <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
+          [ "<figcaption>" <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, Nothing) (bookTitleSeparators (cBook c))) n (foldMap inlineText is))) (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
           | Just is <- [codeCaption code]
           ]
         file = ["<div class=\"code-file\">" <> escapeXml f <> "</div>" | Just f <- [codeFile code]]
@@ -572,7 +575,7 @@ blockHtml c (Block sp lbl blang body) = case body of
           then "<figure class=\"listing\"" <> idAttr lbl <> ">" <> T.concat (caption <> file) <> pre <> "</figure>\n"
           else pre <> "\n"
   FigureBlock f ->
-    let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
+    let num = numberSpan c sp Nothing (T.concat [foldMap inlineText is | Block _ _ _ (Paragraph _ is) <- figCaption f]) (Map.lookup sp (bookFigures (cBook c)))
         -- a paragraph of the caption with a language is a span of it (docs/adr ADR 0187)
         cap = T.concat [maybe id (\l x -> "<span" <> langAttrs l <> ">" <> x <> "</span>") pl (inlines c is) | Block _ _ pl (Paragraph _ is) <- figCaption f]
         -- no figcaption without a number and a caption (docs/adr/0200)
@@ -609,8 +612,8 @@ blockHtml c (Block sp lbl blang body) = case body of
 {- | The number of a heading or a caption in its span, and the separator
 of the language of the book after it as text (golem-html ADR 0002).
 -}
-numberSpan :: Ctx -> Maybe Text -> Text
-numberSpan c = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>" <> escapeXml (numberSeparator (hcLanguage (cCfg c)) n))
+numberSpan :: Ctx -> SrcSpan -> Maybe Int -> Text -> Maybe Text -> Text
+numberSpan c sp level title = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>" <> escapeXml (titleSeparator (hcLanguage (cCfg c)) (Map.lookup (spanFile sp, level) (bookTitleSeparators (cBook c))) n title))
 
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
@@ -632,7 +635,7 @@ toc c depth =
           <> "\"><a href=\""
           <> linkTo c (teFile e) (teAnchor e)
           <> "\">"
-          <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (teNumber e)
+          <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators (cBook c))) n (foldMap inlineText (teTitle e)))) (teNumber e)
           <> inlines c {cInLink = True} (teTitle e)
           <> "</a></li>\n"
       | e <- bookToc (cBook c),
@@ -735,13 +738,59 @@ inlines c = T.concat . map (inline c)
 inline :: Ctx -> InlineF r -> Text
 inline c = \case
   Text _ t -> escapeXml t
+  Ruby _ _ segs
+    | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->
+        T.concat (map extendedRuby segs)
+    where
+      extendedRuby seg =
+        let options = rsOptions seg
+            monoClass = if length segs >= 2 || T.length (foldMap inlineText (rsBase seg)) == 1 then " class=\"mono\"" else ""
+            alignment = case roAlign options of
+              Just "1-2-1" -> "ruby-align:space-around;"
+              Just "0-1-0" -> "ruby-align:space-between;"
+              Just value -> "ruby-align:" <> value <> ";"
+              Nothing -> ""
+            readingSize = case roSize options of
+              Just (RubySizeAbsolute size) -> " style=\"font-size:" <> L.ptText size <> "pt;\""
+              Just (RubySizeRelative size) -> " style=\"font-size:" <> L.emText size <> "em;\""
+              Nothing -> ""
+            readingHtml side readingText marks = T.concat [case mark of Nothing -> escapeXml (T.singleton ch); Just shape -> "<span style=\"text-emphasis-position:" <> (if side == "under" then "under left" else "over right") <> ";\" class=\"kenten kenten-" <> escapeXml shape <> "\">" <> escapeXml (T.singleton ch) <> "</span>" | (ch, mark) <- zip (T.unpack (fromMaybe "" readingText)) (marks <> repeat Nothing)]
+            wrap side baseText readingText marks = "<ruby" <> monoClass <> " style=\"ruby-position:" <> side <> ";" <> alignment <> "\">" <> baseText <> "<rp>（</rp><rt" <> readingSize <> ">" <> readingHtml side readingText marks <> "</rt><rp>）</rp></ruby>"
+            base = inlines c (rsBase seg)
+         in case roSide options of
+              RubyBefore -> wrap "over" base (rsReading seg) (roReadingKenten options)
+              RubyAfter -> wrap "under" base (rsReading seg) (roReadingKenten options)
+              RubyBoth -> wrap "under" (wrap "over" base (rsReading seg) (roReadingKenten options)) (rsOtherReading seg) (roOtherKenten options)
   Ruby _ _ segs ->
     -- several segments, or one base character, are mono ruby (golem-layout ADR 0009)
     (if length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1 then "<ruby class=\"mono\">" else "<ruby>")
       <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
       <> "</ruby>"
   -- the shape of the IR; none (from a plugin) is sesame (golem-driver ADR 0019)
-  Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inlines c xs <> "</span>"
+  Kenten _ sh xs ->
+    if any containsRuby xs
+      then T.concat (map emphasized xs)
+      else "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inlines c xs <> "</span>"
+    where
+      containsRuby = \case
+        Ruby {} -> True
+        Color _ _ ys -> any containsRuby ys
+        CharStyle _ _ ys -> any containsRuby ys
+        Link _ _ ys -> any containsRuby ys
+        Lang _ _ ys -> any containsRuby ys
+        Resolved _ _ _ ys -> any containsRuby ys
+        _ -> False
+      emphasized (Ruby sp unit segs) = inline c (Ruby sp unit (map markSegment segs))
+      emphasized (Color sp name ys) = inline c (Color sp name [Kenten sp sh ys])
+      emphasized (CharStyle sp name ys) = inline c (CharStyle sp name [Kenten sp sh ys])
+      emphasized (Link sp target ys) = inline c (Link sp target [Kenten sp sh ys])
+      emphasized (Lang sp lang ys) = inline c (Lang sp lang [Kenten sp sh ys])
+      emphasized (Resolved sp kind label ys) = inline c (Resolved sp kind label [Kenten sp sh ys])
+      emphasized x = "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inline c x <> "</span>"
+      markSegment seg =
+        let opts = rsOptions seg
+            marks reading previous = take (maybe 0 T.length reading) (map (Just . fromMaybe (fromMaybe "sesame" sh)) (previous <> repeat Nothing))
+         in seg {rsOptions = opts {roReadingKenten = marks (rsReading seg) (roReadingKenten opts), roOtherKenten = marks (rsOtherReading seg) (roOtherKenten opts)}}
   Color _ s xs -> "<span class=\"swatch-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   -- the built-in character styles keep their elements (docs/adr ADR 0005)
   CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
@@ -1127,7 +1176,9 @@ css cfg book =
          ]
       <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
       -- the markers of [lists] by depth (golem-driver ADR 0013)
+      <> readingRules "" (hcCharStyles cfg)
       <> maybe [] (listRules cfg book) (hcLists cfg)
+      <> markerRules "" (hcCharStyles cfg)
       -- forced breaks, only the kinds the book uses (docs/adr ADR 0017)
       <> [ "[data-break-before=\"" <> name <> "\"] { page-break-before: always; break-before: " <> name <> "; }"
          | k <- Set.toAscList (hcBreakKinds cfg),
@@ -1237,6 +1288,12 @@ css cfg book =
             <> ["margin-inline-end: " <> i | Just i <- [hrEndIndent r]]
         )
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
+    markerRules prefix styles =
+      [ rule (prefix <> markerSelector) (["all: inherit" | not (T.null prefix)] <> declsOf "" cs <> ["font-size: " <> size | Just size <- [hcsSize cs]])
+      | Just name <- [hcLists cfg >>= hlMarkerStyle],
+        Just cs <- [Map.lookup name styles]
+      ]
+    markerSelector = ":is(ol, ul)[class^=\"list-\"] > li::marker"
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written
     {- the box of each style that has one, its paragraphs without their
@@ -1357,6 +1414,18 @@ css cfg book =
     fontStack role = T.intercalate ", " (families role <> ["serif"])
     {- the rules of the styles of a file: every property they handle, as a
     property left out would keep the value of the rule of style.toml -}
+    readingRules prefix styles =
+      [ rule (prefix <> "ruby > rt") (declsOf "" cs <> inherited cs <> ["font-size: " <> fromMaybe "0.5em" (hcsSize cs)])
+      | Just name <- [hcRubyReadingStyle cfg],
+        Just cs <- [Map.lookup name styles]
+      ]
+      where
+        inherited cs =
+          [ property <> ": inherit"
+          | not (T.null prefix),
+            (property, missing) <- [("font-family", isNothing (hcsFont cs)), ("color", isNothing (hcsColor cs)), ("font-weight", not (hcsBold cs)), ("font-style", not (hcsItalic cs))],
+            missing
+          ]
     localRules n l =
       let pre = "body.file-" <> tshow n
           stackOr = maybe "inherit" fontStack
@@ -1431,7 +1500,7 @@ css cfg book =
           boxLocal =
             [rule (pre <> " div.box-" <> name) (hbDecls hb) | (name, ps) <- locals, Just hb <- [hpsBox ps]]
               <> [pre <> " div.box > p { padding-inline-start: 0; padding-inline-end: 0; }" | not (Map.null (hlParaStyles l)), any (isJust . hpsBox . snd) mergedList]
-       in charRules <> paraStyleRules <> faceRules <> boxLocal <> listRule
+       in charRules <> markerRules (pre <> " ") (hlCharStyles l) <> readingRules (pre <> " ") (hlCharStyles l) <> paraStyleRules <> faceRules <> boxLocal <> listRule
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text
@@ -1445,7 +1514,7 @@ indexPage cfg ft book =
               <> "#"
               <> escapeXml (teAnchor te)
               <> "\">"
-              <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
+              <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage cfg) (Map.lookup (teFile te, Just (teLevel te)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle te)))) (teNumber te)
               <> titleWithLanguages (teTitle te)
               <> "</a></li>\n"
           | -- within the depth of @toc (golem-epub ADR 0002)

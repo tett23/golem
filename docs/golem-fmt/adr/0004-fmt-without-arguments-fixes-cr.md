@@ -1,6 +1,6 @@
 # ADR 0004: 引数なしの `golem fmt` で、CR を含む原稿も整形できるようにする
 
-ステータス: 採択→引数なしの `golem fmt` が整形するファイルに表のファイルを加えることは [docs/adr/0186](../../adr/0186-fmt-table-files.md)
+Status: superseded [{"by":["docs/adr/0186-fmt-table-files.md"],"part":"引数なしの `golem fmt` が整形するファイルに表のファイルを加えること"}]
 
 ## 文脈
 

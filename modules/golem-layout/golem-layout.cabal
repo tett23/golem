@@ -93,10 +93,12 @@ test-suite golem-layout-test
                     CodeSpaceSpec
                     CodeStopSpec
                     CombiningSpec
+                    CompressedNoteMarksSpec
                     DoubleDashSpec
                     EnumSplitSpec
                     ExceptionsSpec
                     ExpansionStepSpec
+                    TrackingBoxesSpec
                     FeaturesSpec
                     ScriptSpec
                     Fixtures
@@ -129,6 +131,7 @@ test-suite golem-layout-test
                     StructureSpec
                     TableCaptionSpec
                     UnbreakablePairsSpec
+                    UnbreakableSpacingSpec
                     UrlBreakSpec
   build-depends:
     , base

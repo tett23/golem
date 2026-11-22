@@ -15,7 +15,17 @@ tests :: TestTree
 tests =
   testGroup
     "OpenType features (docs/adr/0268)"
-    [ testCase "I4: every form reads and its normal form reads back the same" $ do
+    [ testCase "root ADR 0384 I1: verse numbering interval is accepted" $
+        codes (parseStyle (FileId 0) "[paragraph-styles.verse]\nline-number-interval = 5\n") @?= [],
+      testCase "root ADR 0384 I1: interval inherits and a child can override it" $
+        case parseStyle (FileId 0) "[paragraph-styles.verse]\nline-number-interval = 5\n[paragraph-styles.stanza]\nbased-on = \"verse\"\nline-number-interval = 2\n" of
+          Left ds -> assertFailure (show ds)
+          Right style -> do
+            (paraStyle style (Just "verse") >>= psLineNumberInterval) @?= Just 5
+            (paraStyle style (Just "stanza") >>= psLineNumberInterval) @?= Just 2,
+      testCase "ADR 0378 I1: a role accepts punctuation-proportional without enabling any feature" $
+        codes (parseStyle (FileId 0) "[fonts.body]\nja = \"a.otf\"\npunctuation-proportional = true\n") @?= [],
+      testCase "I4: every form reads and its normal form reads back the same" $ do
         let forms = [("smcp", ("smcp", 1)), ("+smcp", ("smcp", 1)), ("-smcp", ("smcp", 0)), ("smcp=0", ("smcp", 0)), ("smcp=1", ("smcp", 1)), ("salt=2", ("salt", 2)), ("salt=65535", ("salt", 65535)), ("ss01", ("ss01", 1)), ("jp90", ("jp90", 1))]
         mapM_ (\(s, f) -> parseFeature s @?= Just f) forms
         mapM_ (\(_, f) -> parseFeature (featureText f) @?= Just f) forms

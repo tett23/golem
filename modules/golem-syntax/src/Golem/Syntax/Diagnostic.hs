@@ -114,18 +114,10 @@ noticeCodes =
     [ "G02062", -- a @style-def overrides a style of style.toml or a built-in one
       "G02063", -- [tcy: ...] of ASCII digits only
       "G02064", -- an escaped space at the start of a line in a paragraph that keeps its lines
-      "G02065", -- @listing src= (to be retired)
       "G02079", -- an escaped space at the end of a line in a paragraph that keeps its lines
       "G02094", -- @blank-line written in a row (docs/adr ADR 0046)
-      "G02108", -- a range of lines separated by - (to be retired; docs/adr ADR 0113)
-      "G02129", -- @table src= (to be retired; docs/adr/0184)
-      "G02155", -- @set's @ (to be retired; ADR 0336)
       "G03023", -- no style.toml
       "G03100", -- a zero indent of caption or sidenote (golem-driver ADR 0043)
-      "G03114", -- {{ and }} in [lists] numbers (to be retired; docs/adr/0177)
-      "G03115", -- a sample in braces in [lists] numbers (to be retired; docs/adr/0177)
-      "G03116", -- {{ and }} in a running head format (to be retired; docs/adr/0177)
-      "G03117", -- [notes] mark-size (to be retired; docs/adr/0177)
       "G03120", -- no paragraph-separator in [source] (docs/adr/0193)
       "G03134", -- golem new kept an existing .gitignore (docs/adr/0273)
       "G04007", -- @number equal to the automatic number
@@ -196,7 +188,9 @@ profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
     DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
     DiagnosticCode "G08100", -- a character the font of the PDF has not (docs/adr 0081)
-    DiagnosticCode "G08103" -- an OpenType feature the font of the PDF has not (docs/adr/0268)
+    DiagnosticCode "G08103", -- an OpenType feature the font of the PDF has not (docs/adr/0268)
+    DiagnosticCode "G07127", -- caption indents that leave no character (docs/adr/0389)
+    DiagnosticCode "G07128" -- sidenote indents that leave no character (docs/adr/0389)
   ]
 
 {- | The codes of golem preflight whose severity the preflight rules decide,

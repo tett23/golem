@@ -1,6 +1,6 @@
 # ADR 0049: 文字クラスと分割禁止の字の組を JLReq の文字クラスに合わせる
 
-ステータス: 採択→（縦組みの全角の数字の並び）は [ADR 0282](../../adr/0282-record-what-the-implementations-of-adr-0274-and-0275-decided.md)
+Status: superseded [{"by":["docs/adr/0282-record-what-the-implementations-of-adr-0274-and-0275-decided.md"],"part":"（縦組みの全角の数字の並び）"},{"by":["docs/adr/0362-unbreakable-spacing.md","docs/adr/0396-record-that-adr-0362-changed-the-stretch-of-adr-0049-b6.md"],"part":"（B6 のグルーの伸び縮み）"}]
 
 ## 文脈
 

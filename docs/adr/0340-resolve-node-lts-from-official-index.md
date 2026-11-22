@@ -1,6 +1,6 @@
 # ADR 0340: CI で使う Node.js の最新 LTS を公式のリリース一覧から選ぶ
 
-ステータス: 却下
+Status: rejected
 
 ## 文脈
 

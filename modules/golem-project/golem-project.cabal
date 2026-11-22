@@ -56,6 +56,7 @@ test-suite golem-project-test
                     HyphenationExceptionsSpec
                     OutputCharsSpec
                     NaturalKeySpec
+                    SinglePageSpec
                     StylePositionSpec
                     StyleSchemaSpec
                     SharedValuesSpec

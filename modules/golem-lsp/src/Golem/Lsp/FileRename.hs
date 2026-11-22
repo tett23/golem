@@ -1,9 +1,10 @@
 -- | Path component matching for file and folder rename operations (Golem ADR 0338).
-module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetImports, planManifest, planStyle, planPlotCsv, planWiki) where
+module Golem.Lsp.FileRename (renamePath, validateRenames, planImports, planEmetImports, planManifest, planStyle, planPlotCsv, planWiki, PathIssue (..), planImportsMove, planEmetMove, planManifestWith, planStyleWith, planPlotWith, planWikiMove, quotedToml) where
 
-import Control.Monad (forM)
+import Control.Monad (forM, when)
+import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
-import Data.Char (isAlphaNum, toLower)
+import Data.Char (isAlphaNum, isControl, ord, toLower)
 import Data.Either (fromRight)
 import Data.List
   ( nub,
@@ -22,10 +23,27 @@ import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Project.Manifest (positionSpan, readTomlTable)
 import Golem.Project.Paths (normalizeRelative)
-import Golem.Syntax (FileId (..), SrcSpan (..))
-import System.FilePath (joinPath, splitDirectories, takeBaseName, takeDirectory, takeExtension, (</>))
+import Golem.Syntax (Diagnostic (..), FileId (..), Severity (Error), SrcSpan (..))
+import System.FilePath (joinPath, splitDirectories, takeBaseName, takeDirectory, takeExtension, takeFileName, (</>))
+import Text.Printf (printf)
 import Toml.Semantics (Table' (..), Value' (..))
 import Toml.Syntax (Position)
+
+data PathIssue = PathIssue !Int !Int !FilePath !String
+  deriving stock (Eq, Show)
+
+type Rewrite = Int -> Int -> FilePath -> Either String (Maybe FilePath)
+
+runRename :: (Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]) -> [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
+runRename planner operations = first (\(PathIssue _ _ _ reason) -> reason) . planner rewrite
+  where
+    rewrite _ _ written = do
+      original <- first show (normalizeRelative written)
+      destination <- renamePath operations written
+      pure (if destination == original then Nothing else Just destination)
+
+atSite :: Rewrite -> Int -> Int -> FilePath -> Either PathIssue (Maybe Text)
+atSite rewrite start end path = fmap (fmap T.pack) (first (PathIssue start end path) (rewrite start end path))
 
 data CsvCell = CsvCell !Int !Int !Text !Bool
 
@@ -67,8 +85,14 @@ validateRenames pairs = do
 converts ranges to the client's negotiated position encoding.
 -}
 planImports :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
-planImports operations source = do
-  let (ast, _, _) = parseAst (FileId 0) source
+planImports = runRename (planImportsWith False)
+
+planImportsMove :: Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planImportsMove = planImportsWith True
+
+planImportsWith :: Bool -> Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planImportsWith strict rewrite source = do
+  let (ast, _, diagnostics) = parseAst (FileId 0) source
       bytes = TE.encodeUtf8 source
       raw sp = TE.decodeUtf8 (BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) bytes))
       sites (A.Located _ (A.BlockCommand (A.Located _ name) args body)) = commandSites name args <> concatMap sites body
@@ -94,19 +118,20 @@ planImports operations source = do
                 spaces = BS.length (BS.takeWhile (== 32) suffix)
              in Just (sp {spanStart = spanStart sp + equals + 1 + spaces}, path)
       keyword _ _ = Nothing
+  when strict (checkDiagnostics diagnostics)
   concat
     <$> forM
       (concatMap sites (A.fileBlocks ast))
       ( \(sp, written) -> do
-          original <- either (Left . show) Right (normalizeRelative (T.unpack written))
-          destination <- renamePath operations (T.unpack written)
-          let oldToken = raw sp
-              newText = T.pack destination
-              replacement =
+          let start = spanStart sp
+              end = spanEnd sp
+              oldToken = raw sp
+              replacement newText =
                 if T.isPrefixOf "\"" oldToken || not (T.all bareChar newText)
                   then quoted newText
                   else newText
-          pure [(spanStart sp, spanEnd sp, replacement) | destination /= original]
+          target <- atSite rewrite start end (T.unpack written)
+          pure [(start, end, replacement newText) | Just newText <- [target]]
       )
   where
     bareChar c = isAlphaNum c || c `elem` ("./_-" :: String)
@@ -119,19 +144,30 @@ planImports operations source = do
 
 -- | Emet's parsed import declarations carry the path literal's byte range.
 planEmetImports :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
-planEmetImports operations source = do
+planEmetImports = runRename (planEmetWith False)
+
+planEmetMove :: Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planEmetMove = planEmetWith True
+
+planEmetWith :: Bool -> Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planEmetWith strict rewrite source = do
   let bytes = TE.encodeUtf8 source
-      imports = case parseModule (FileId 0) source of
-        Right (Module decls) -> [(path, locStart loc, locEnd loc) | DImport _ path loc <- decls] <> concatMap (declSites bytes) decls
-        Left _ -> []
+  imports <- case parseModule (FileId 0) source of
+    Right (Module decls) -> pure ([(path, locStart loc, locEnd loc) | DImport _ path loc <- decls] <> concatMap (declSites bytes) decls)
+    Left diagnostics -> when strict (checkDiagnostics diagnostics) >> pure []
+
   concat
     <$> forM
       imports
       ( \(path, start, end) -> do
-          original <- either (Left . show) Right (normalizeRelative (T.unpack path))
-          destination <- renamePath operations (T.unpack path)
-          pure [(start, end, quoted (T.pack destination)) | destination /= original]
+          target <- atSite rewrite start end (T.unpack path)
+          pure [(start, end, quoted newText) | Just newText <- [target]]
       )
+
+checkDiagnostics :: [Diagnostic] -> Either PathIssue ()
+checkDiagnostics diagnostics = case filter ((== Error) . diagSeverity) diagnostics of
+  d : _ -> let sp = diagSpan d in Left (PathIssue (spanStart sp) (spanEnd sp) "" (T.unpack (diagMessage d)))
+  [] -> Right ()
 
 declSites :: BS.ByteString -> E.Decl -> [(Text, Int, Int)]
 declSites bytes = \case
@@ -215,40 +251,54 @@ quoted value = "\"" <> T.concatMap quoteChar value <> "\""
     quoteChar '"' = "\\\""
     quoteChar c = T.singleton c
 
+-- | A TOML basic string, including paths with control characters.
+quotedToml :: Text -> Text
+quotedToml value = "\"" <> T.concatMap quoteChar value <> "\""
+  where
+    quoteChar '\\' = "\\\\"
+    quoteChar '"' = "\\\""
+    quoteChar c
+      | isControl c = T.pack (printf "\\u%04X" (ord c))
+      | otherwise = T.singleton c
+
 {- | The individual chapter path values of manifest.toml, including nested
 arrays and table entries. A token range is found from each TOML value's
 parser position, so repeated values remain separate edits.
 -}
 planManifest :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
-planManifest = planToml manifestPaths
+planManifest = runRename (planToml False (manifestPaths True))
+
+planManifestWith :: Bool -> Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planManifestWith chapters = planToml True (manifestPaths chapters)
 
 planStyle :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
-planStyle = planToml stylePaths
+planStyle = runRename (planToml False stylePaths)
 
-planToml :: (Table' Position -> [(Position, Text)]) -> [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
-planToml sites operations source = do
-  table <- maybe (Left "invalid manifest TOML") Right (readTomlTable source)
+planStyleWith :: Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planStyleWith = planToml True stylePaths
+
+planToml :: Bool -> (Table' Position -> [(Position, Text)]) -> Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planToml escapeControls sites rewrite source = do
+  table <- maybe (Left (PathIssue 0 0 "" "invalid manifest TOML")) Right (readTomlTable source)
   let bytes = TE.encodeUtf8 source
   sortOn (\(start, _, _) -> start) . concat
     <$> forM
       (sites table)
       ( \(pos, written) -> do
-          original <- either (Left . show) Right (normalizeRelative (T.unpack written))
-          destination <- renamePath operations (T.unpack written)
-          if destination == original
-            then pure []
-            else do
-              let start = spanStart (positionSpan (FileId 0) source (Just pos))
-              end <- maybe (Left "invalid chapter path token") (Right . (+ start)) (tomlStringLength (BS.drop start bytes))
-              let value = T.pack destination
-              if T.any (`elem` ("\n\r\t" :: String)) value
-                then Left "unsupported chapter path"
-                else pure [(start, end, quoted value)]
+          let start = spanStart (positionSpan (FileId 0) source (Just pos))
+              path = T.unpack written
+          end <- maybe (Left (PathIssue start start path "invalid chapter path token")) (Right . (+ start)) (tomlStringLength (BS.drop start bytes))
+          target <- atSite rewrite start end path
+          case target of
+            Nothing -> pure []
+            Just value
+              | not escapeControls && T.any (`elem` ("\n\r\t" :: String)) value -> Left (PathIssue start end path "unsupported chapter path")
+              | otherwise -> pure [(start, end, if escapeControls then quotedToml value else quoted value)]
       )
 
-manifestPaths :: Table' Position -> [(Position, Text)]
-manifestPaths top =
-  maybe [] chapterEntries (lookupValue "chapters" top)
+manifestPaths :: Bool -> Table' Position -> [(Position, Text)]
+manifestPaths chapters top =
+  (if chapters then maybe [] chapterEntries (lookupValue "chapters" top) else [])
     <> maybe [] textValues (lookupValue "bibliography" top)
     <> maybe [] (\functions -> maybe [] (maybe [] textValues . lookupValue "file") (asTable =<< lookupValue "requires" functions)) (asTable =<< lookupValue "functions" top)
     <> maybe [] pluginPaths (asTable =<< lookupValue "plugins" top)
@@ -309,24 +359,31 @@ tomlStringLength bytes = do
 Only an explicitly enabled plot file is passed to this function.
 -}
 planPlotCsv :: [(FilePath, FilePath)] -> Text -> Either String [(Int, Int, Text)]
-planPlotCsv operations source = do
-  rows <- csvRows (TE.encodeUtf8 source)
+planPlotCsv operations = first (\(PathIssue _ _ _ reason) -> reason) . planPlotWith rewrite
+  where
+    rewrite _ _ written = case normalizeRelative written of
+      Left _ -> Right Nothing
+      Right original -> do
+        destination <- renamePath operations written
+        pure (if destination == original then Nothing else Just destination)
+
+planPlotWith :: Rewrite -> Text -> Either PathIssue [(Int, Int, Text)]
+planPlotWith rewrite source = do
+  rows <- first (PathIssue 0 0 "") (csvRows (TE.encodeUtf8 source))
   case rows of
     [] -> Right []
     header : body -> case [index | (index, CsvCell _ _ name _) <- zip [0 ..] header, T.strip name == "file"] of
       [] -> Right []
       [column] -> sortOn (\(start, _, _) -> start) . concat <$> traverse (oneCell column) body
-      _ -> Left "duplicate plot file column"
+      _ -> Left (PathIssue 0 0 "" "duplicate plot file column")
   where
     oneCell column cells = case drop column cells of
       CsvCell start end raw wasQuoted : _
         | let written = T.strip raw,
-          not (T.null written),
-          Right original <- normalizeRelative (T.unpack written) -> do
-            destination <- renamePath operations (T.unpack written)
-            let value = T.pack destination
-                replacement = if wasQuoted || T.any (`elem` (",\"\n\r" :: String)) value then "\"" <> T.replace "\"" "\"\"" value <> "\"" else value
-            pure [(start, end, replacement) | destination /= original]
+          not (T.null written) -> do
+            target <- atSite rewrite start end (T.unpack written)
+            let replacement value = if wasQuoted || T.any (`elem` (",\"\n\r" :: String)) value then "\"" <> T.replace "\"" "\"\"" value <> "\"" else value
+            pure [(start, end, replacement value) | Just value <- [target]]
       _ -> Right []
 
 csvRows :: BS.ByteString -> Either String [[CsvCell]]
@@ -395,6 +452,100 @@ planWiki operations sourcePath sheets source = do
           pure [(start, end, replacement) | not resolvesSame && replacement /= written]
     dropExtension path = take (length path - length (takeExtension path)) path
 
+{- | Resolve using the same kind and distance priority as Aleph's Wiki links.
+The older rename request keeps its existing ambiguity behavior.
+-}
+planWikiMove :: [(FilePath, FilePath)] -> FilePath -> [(FilePath, Maybe Text)] -> Text -> Either PathIssue [(Int, Int, Text)]
+planWikiMove operations sourcePath sheets source = do
+  nextSource <- first (PathIssue 0 0 sourcePath) (renamePath operations sourcePath)
+  nextSheets <-
+    traverse
+      (\(path, title) -> first (PathIssue 0 0 path) ((,title) <$> renamePath operations path))
+      sheets
+  concat <$> traverse (planLink nextSource nextSheets) (wikiLinks source)
+  where
+    planLink nextSource nextSheets (start, end, written) =
+      case moveWikiCandidates sourcePath sheets written of
+        (_, []) | any moved (wikiPathCandidates sourcePath written) -> Left (issue "Wiki link target is absent from the inventory")
+        (mode, [before]) -> do
+          target <- first (PathIssue start end before) (renamePath operations before)
+          let resolves spelling = snd (moveWikiCandidates nextSource nextSheets spelling) == [target]
+          if resolves written
+            then Right []
+            else
+              let relative = wikiRelative (takeDirectory nextSource) target
+                  preserveExtension path
+                    | null (takeExtension (T.unpack written)) && takeExtension path == ".md" = T.unpack (T.dropEnd 3 (T.pack path))
+                    | otherwise = path
+                  preferred = case mode of
+                    WikiName -> wikiStem target
+                    WikiTitle -> wikiStem target
+                    WikiRelative -> explicit (preserveExtension relative)
+                    WikiRooted -> preserveExtension target
+                  choices = map T.pack [preferred, explicit relative, target]
+               in case filter resolves choices of
+                    spelling : _ -> Right [(start, end, spelling)]
+                    [] -> Left (PathIssue start end before "Wiki link cannot keep the same target")
+        (_, candidates)
+          | length candidates > 1 && (nextSource /= sourcePath || any moved candidates || snd (moveWikiCandidates nextSource nextSheets written) /= candidates) ->
+              Left (issue "ambiguous Wiki link")
+          | otherwise -> Right []
+      where
+        issue = PathIssue start end (T.unpack written)
+        moved path = renamePath operations path /= Right path
+        explicit path = if '/' `elem` path then path else "./" <> path
+
+data WikiMatch = WikiRelative | WikiRooted | WikiName | WikiTitle
+
+wikiStem :: FilePath -> FilePath
+wikiStem path =
+  let basename = takeFileName path
+   in if null (takeExtension basename) then basename else takeBaseName basename
+
+wikiPathCandidates :: FilePath -> Text -> [FilePath]
+wikiPathCandidates source written
+  | T.any (== '/') written || wikiExtension path =
+      let withExt = if wikiExtension path then path else path <> ".md"
+       in mapMaybe wikiPath [takeDirectory source </> withExt, withExt]
+  | otherwise = []
+  where
+    path = T.unpack (normalize NFC written)
+
+moveWikiCandidates :: FilePath -> [(FilePath, Maybe Text)] -> Text -> (WikiMatch, [FilePath])
+moveWikiCandidates source sheets written
+  | T.any (== '/') target || wikiExtension (T.unpack target) =
+      let withExt = T.unpack (if wikiExtension (T.unpack target) then target else target <> ".md")
+          paths = Map.fromList [(normalize NFC (T.pack path), path) | (path, _) <- sheets]
+          present path = wikiPath path >>= (\p -> Map.lookup (normalize NFC (T.pack p)) paths)
+       in case present (takeDirectory source </> withExt) of
+            Just path -> (WikiRelative, [path])
+            Nothing -> (WikiRooted, maybe [] pure (present withExt))
+  | not (null names) = (WikiName, best (\path -> (kind path, distance path)) names)
+  | otherwise = (WikiTitle, best distance titles)
+  where
+    target = normalize NFC written
+    names = [path | (path, _) <- sheets, normalize NFC (T.pack (wikiStem path)) == target]
+    titles = [path | (path, Just title) <- sheets, normalize NFC title == target]
+    kind path
+      | takeExtension path == ".md" = 0 :: Int
+      | takeExtension path == ".gm" = 1
+      | otherwise = 2
+    directories path =
+      let dir = takeDirectory path
+       in if dir == "." then [] else splitDirectories dir
+    sourceDirs = directories source
+    distance path =
+      let targetDirs = directories path
+          common = length (takeWhile id (zipWith (==) sourceDirs targetDirs))
+       in length sourceDirs + length targetDirs - 2 * common
+    best _ [] = []
+    best score paths =
+      let highest = minimum (map score paths)
+       in sortOn id (filter ((== highest) . score) paths)
+
+wikiExtension :: FilePath -> Bool
+wikiExtension path = map toLower (takeExtension path) `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
+
 wikiResolve :: FilePath -> [(FilePath, Maybe Text)] -> Text -> Maybe (FilePath, Bool, Bool)
 wikiResolve source sheets written
   | T.any (== '/') written || hasKnownExtension text =
@@ -417,7 +568,7 @@ wikiResolve source sheets written
   where
     text = T.unpack written
     nfc = normalize NFC
-    hasKnownExtension path = map toLower (takeExtension path) `elem` [".md", ".gm", ".emet", ".txt", ".toml", ".csv", ".tsv", ".svg", ".mmd", ".json", ".jsonc", ".json5", ".jsonl", ".png", ".jpg", ".jpeg", ".gif", ".webp"]
+    hasKnownExtension = wikiExtension
 
 wikiRelative :: FilePath -> FilePath -> FilePath
 wikiRelative base target =

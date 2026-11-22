@@ -1,6 +1,6 @@
 # ADR 0237: golem-driver-test の止まりの検出の時間切れを 300 秒にする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

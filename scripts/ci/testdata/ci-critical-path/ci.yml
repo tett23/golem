@@ -1,0 +1,84 @@
+# The jobs and needs of .github/workflows/ci.yml on 2026-11-18 (docs/adr ADR
+# 0392), in each of the three forms of needs, for the tests of
+# scripts/ci/ci-critical-path.sh
+on:
+  pull_request:
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+  scripts-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: "true"
+  build:
+    needs: changes
+    strategy:
+      matrix:
+        runner: [a, b]
+    name: build (${{ matrix.runner }})
+    steps:
+      - name: needs is a key of the job, not of a step
+        run: "true"
+  wasm:
+    needs: changes # a comment
+    steps:
+      - run: "true"
+  determinism:
+    needs: build
+    steps:
+      - run: "true"
+  visual:
+    needs: [changes]
+    steps:
+      - run: "true"
+  release-scripts:
+    needs: 'changes'
+    steps:
+      - run: "true"
+  scripts-macos:
+    needs:
+      - changes
+    steps:
+      - run: "true"
+  format:
+    needs: "changes"
+    steps:
+      - run: "true"
+  plugins:
+    needs: changes
+    steps:
+      - run: "true"
+  editors:
+    steps:
+      - run: "true"
+  editors-lsp:
+    needs: [ changes ]
+    steps:
+      - run: "true"
+  verapdf:
+    needs: [changes]
+    steps:
+      - run: "true"
+  caches:
+    needs: [changes, build, wasm]
+    steps:
+      - run: "true"
+  ci:
+    needs:
+      - changes
+      - scripts-linux
+      - build
+      - determinism
+      - visual
+      - release-scripts
+      - scripts-macos
+      - format
+      - plugins
+      - editors
+      - editors-lsp
+      - verapdf
+      - wasm
+    steps:
+      - run: "true"

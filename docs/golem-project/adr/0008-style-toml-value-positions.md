@@ -1,6 +1,6 @@
 # ADR 0008: style.toml の値の誤りの位置
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

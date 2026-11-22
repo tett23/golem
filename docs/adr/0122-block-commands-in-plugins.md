@@ -1,6 +1,6 @@
 # ADR 0122: プラグインのブロックコマンド
 
-ステータス: 採択
+Status: superseded [{"part":"区切りをブロック結果に許すこと","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]}]
 
 ## 文脈
 

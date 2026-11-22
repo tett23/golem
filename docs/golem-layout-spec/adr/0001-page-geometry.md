@@ -1,6 +1,6 @@
 # ADR 0001: ページの幾何
 
-ステータス: 採択→奇数ページのノドの向きは [ADR 0002](0002-gutter-side-of-odd-pages.md)
+Status: superseded [{"by":["docs/golem-layout-spec/adr/0002-gutter-side-of-odd-pages.md"],"part":"奇数ページのノドの向き"},{"part":"左右固定モードのページの幾何","by":["docs/adr/0400-single-page-layout-with-fixed-left-and-right.md"],"kind":"supplement"}]
 
 ## 文脈
 

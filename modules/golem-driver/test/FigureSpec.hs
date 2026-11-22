@@ -28,7 +28,7 @@ import Golem.Length (Sp (..))
 import Golem.Pdf (FigureContent (..), ImportedPage (..), Mark (..), Turn (..), contentStream)
 import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), View (..))
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..), PlacedFigure (..), figureRect, fitFigure)
+import Golem.Typeset (PartLine (..), PdfLayout (..), PlacedFigure (..), figureRect, fitFigure)
 import LinkSpec (annotations)
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
@@ -796,7 +796,7 @@ figureWidthTests =
           (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " width=10zw" (T.replicate 30 "あ")) boxes
           (pf, _, _) <- single (figuresIn pl)
           length (pfCaption pf) @?= 2
-          map lineTarget (pfCaption pf) @?= [240 * pt, 240 * pt]
+          map (lineTarget . ptLine) (pfCaption pf) @?= [240 * pt, 240 * pt]
           v <- viewOf (horizontal20 "left" 40) (fig "wide" " width=10zw" "キャプション。") boxes
           (geom, _) <- layoutOk (horizontal20 "left" 40) (fig "wide" " width=10zw" "キャプション。") boxes
           [rectX (lvRect l) | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"] @?= [rectX (typeAreaFor geom 1)],
@@ -878,10 +878,10 @@ turnedFigureTests =
       (geom, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " rotate=true" (T.replicate 40 "あ")) boxes
       (pf, _, _) <- single (figuresIn pl)
       length (pfCaption pf) @?= 2
-      map lineTarget (pfCaption pf) @?= map (const (rectH (pgTypeArea geom))) (pfCaption pf)
+      map (lineTarget . ptLine) (pfCaption pf) @?= map (const (rectH (pgTypeArea geom))) (pfCaption pf)
       (geom', pl') <- layoutOk (vertical10 60) (fig "wide" " rotate=true" (T.replicate 40 "あ")) boxes
       (pf', _, _) <- single (figuresIn pl')
-      map lineTarget (pfCaption pf') @?= map (const (rectW (pgTypeArea geom'))) (pfCaption pf')
+      map (lineTarget . ptLine) (pfCaption pf') @?= map (const (rectW (pgTypeArea geom'))) (pfCaption pf')
       length (pfCaption pf') @?= 3,
     testCase "the frame has (Fd - h) / p + 1 lines; a figure that does not fit it is fitted with G07039 for the page" $ do
       -- horizontal24: Fm 445pt, Fd 240pt, 16 lines
@@ -947,7 +947,7 @@ turnedFigureTests =
       (_, pl) <- layoutOk (horizontal20 "left" 20) source boxes
       let placed = figuresIn pl
           turnedPage = [poNumber p | (_, p, _) <- placed, (_, SPageFigure _) <- poSlots p]
-      [T.take 2 (captionText l) | (pf, _, _) <- placed, l <- take 1 (pfCaption pf)] @?= ["F1", "F2"]
+      [T.take 2 (captionText (ptLine l)) | (pf, _, _) <- placed, l <- take 1 (pfCaption pf)] @?= ["F1", "F2"]
       turnedPage @?= [2]
       fmap plIndex (Map.lookup "turned" (labelPages Map.empty (plPages pl))) @?= Just 2,
     testCase "HTML and EPUB place a turned figure as any other" $ do

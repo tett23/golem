@@ -578,6 +578,7 @@ fakeFonts =
           (pre, post) -> Just (pre + 1 / 20, -(1 / 10), 1 - post - 1 / 20, 8 / 10),
       -- no role has features, and every face has every feature (docs/adr/0268)
       lfRoleFeatures = const [],
+      lfPunctuationProportional = const False,
       lfHasFeature = \_ _ -> True,
       lfEmbed = \_ vertical used ->
         pure . Right $

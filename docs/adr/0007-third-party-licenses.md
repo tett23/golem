@@ -1,6 +1,6 @@
 # ADR 0007: 配布物の THIRD_PARTY_LICENSES にリンクしたものをすべて入れる
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

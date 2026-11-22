@@ -1,6 +1,6 @@
 # ADR 0267: PDF のしおりと文書の中のリンク
 
-ステータス: 採択→PDF/X-4 の本文リンク注釈は [ADR 0350](0350-omit-page-link-annotations-from-pdf-x-4.md)
+Status: superseded [{"by":["docs/adr/0350-omit-page-link-annotations-from-pdf-x-4.md"],"part":"PDF/X-4 の本文リンク注釈"}]
 
 ## 文脈
 

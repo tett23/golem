@@ -1,6 +1,6 @@
 # ADR 0002: 奇数ページのノドの向きの訂正
 
-ステータス: 採択
+Status: superseded [{"part":"左右固定モードではノドを持たない","by":["docs/adr/0400-single-page-layout-with-fixed-left-and-right.md"],"kind":"supplement"}]
 
 ## 文脈
 

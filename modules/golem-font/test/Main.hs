@@ -1,5 +1,6 @@
 module Main (main) where
 
+import CffSpec (cffTests, randomCffTests)
 import CmapSpec (cmapTests)
 import ConcurrencySpec (concurrencyTests)
 import Control.Monad (void)
@@ -14,6 +15,9 @@ import Golem.Font
 import Golem.TestSupport.CffRos (withRos)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Parallel (raceFactor)
+import InstanceSpec (instanceTests)
+import RandomFontSpec (metricsChild, randomFontTests)
+import System.Environment (lookupEnv)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
@@ -21,13 +25,20 @@ import Test.Tasty.HUnit
 main :: IO ()
 main = do
   enterPackageDirectory
+  -- the suite run again to read a glyph in another environment (Golem ADR 0390, I1)
+  lookupEnv "GOLEM_FONT_TEST_METRICS" >>= maybe suite metricsChild
+
+suite :: IO ()
+suite = do
   han <- load "SourceHanSans-Regular_subset.otf"
   sans <- load "SourceSansPro-Regular.otf"
   serif <- BS.readFile "test/fonts/SourceSerifVariable-Roman.ttf"
   -- the subset of Source Han Sans has no palt; Noto Serif JP of golem-driver's 蟹工船 fixture has
   noto <- BS.readFile notoPath >>= loadFont >>= either (fail . show) pure
   race <- raceFactor
-  defaultMain (tests race han sans serif noto)
+  -- the font files themselves, for the CFF checks (Golem ADR 0357)
+  let cff f = (fontBytes f, fontNumGlyphs f)
+  defaultMain (testGroup "golem-font" [tests race han sans serif noto, cffTests (cff sans) (cff han) (cff noto), randomCffTests, randomFontTests, instanceTests serif (fontBytes sans)])
 
 -- | Noto Serif JP of golem-driver's 蟹工船 fixture, which broken-cmap of scripts/wasm/compare.sh breaks too.
 notoPath :: FilePath

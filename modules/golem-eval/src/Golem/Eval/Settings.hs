@@ -170,7 +170,26 @@ fileStyles style header =
       checked ls acc =
         let cs = checkLocalStyles style ls
             ds = [err code (positionFor code ls name) m | (code, name, m) <- cs]
-            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013", "G03118"]]
+            -- Drop dependants of a forbidden single-page alignment together:
+            -- keeping them would turn one defining error into missing-parent errors.
+            forbiddenSpineRoots =
+              [ name
+              | singlePage style,
+                ("G03006", name, _) <- cs,
+                Just d <- [Map.lookup name (lsParaStyles ls)],
+                psAlign d `elem` [Just ParaTowardsSpine, Just ParaAwayFromSpine]
+              ]
+            wrong =
+              [ let (ps, chars) = localsOf ls name
+                    dependants =
+                      [ child
+                      | child <- Map.keys (lsParaStyles ls),
+                        any (`elem` chainBy (\m -> Map.lookup m (lsParaStyles ls) >>= paraParentOf m) child) forbiddenSpineRoots
+                      ]
+                 in (nub (ps <> dependants), chars)
+              | (code, name, _) <- cs,
+                code `elem` ["G03006", "G03008", "G03013", "G03118"]
+              ]
             ls' =
               ls
                 { lsCharStyles = foldr Map.delete (lsCharStyles ls) (concatMap snd wrong),
@@ -230,7 +249,7 @@ fileStyles style header =
       kindName = \case
         CharacterKind -> "文字スタイル"
         ParagraphKind -> "段落スタイル"
-      -- G03100: a zero indent of caption or sidenote has no effect (golem-driver ADR 0043)
+      -- G03100: a zero indent of table has no effect (golem-driver ADR 0043, docs/adr/0367)
       zeroIndents =
         [ notice "G03100" ksp (captionZeroIndentMessage n k (written v))
         | (Def _ ParagraphKind n (Right d), kvs) <- defKeys,

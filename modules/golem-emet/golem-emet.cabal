@@ -61,6 +61,7 @@ test-suite golem-emet-test
     , base
     , bytestring
     , containers
+    , golem-doc
     , golem-eval
     , golem-emet
     , golem-syntax

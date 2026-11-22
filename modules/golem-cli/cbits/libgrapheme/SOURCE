@@ -1,0 +1,8 @@
+libgrapheme 3.0.0
+https://dl.suckless.org/libgrapheme/libgrapheme-3.0.0.tar.gz
+SHA-256 32585af73dda62fbcc0fed14f199aa1bc988ad01dad0bfbd06cf175d9cf3d68c
+The character and word implementations and their UTF-8 reader are unchanged.
+Build the two lookup tables in the extracted source with:
+    make gen/character.h gen/word.h
+The adjacent letter-number.h contains merged consecutive ranges with a
+General_Category starting with L or N in data/UnicodeData.txt (Unicode 17.0.0).

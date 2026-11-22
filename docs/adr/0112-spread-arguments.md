@@ -1,6 +1,6 @@
 # ADR 0112: `*[式]` と `**[式]` をすべてのコマンドの引数に展開する
 
-ステータス: 採択→`@import` を展開しないことの実装は [ADR 0142](0142-import-arguments-are-not-spread.md)、`@style` の G02114 の数は [ADR 0143](0143-style-spread-diagnostic-per-argument.md)
+Status: superseded [{"by":["docs/adr/0142-import-arguments-are-not-spread.md"],"part":"`@import` を展開しないことの実装"},{"by":["docs/adr/0143-style-spread-diagnostic-per-argument.md"],"part":"`@style` の G02114 の数"}]
 
 ## 文脈
 

@@ -1,5 +1,5 @@
-set characters = 32
-set lines = 29
+@set characters = 32
+@set lines = 29
 
 @nonumber
 @label preface
@@ -181,7 +181,7 @@ Golem はフォントをプロジェクトの中のファイルからだけ読�
 決定性は Golem の設計で最も優先している性質で、Golem の振る舞いを定めた文書（仕様書）の冒頭に掲げています[note: 仕様書の「Golem が強いるワークフロー」の節。[code: https://github.com/tett23/golem/blob/main/docs/specifications.md]]。
 Golem の開発では、x86-64 と aarch64 という二種類の CPU のコンピューターで同じ原稿を組み、出力のバイト列が一致することを、変更のたびに自動の検査で確かめています[note: Golem のリポジトリで変更のたびに動く自動の検査のうち、[code: determinism] のジョブ。[code: https://github.com/tett23/golem/blob/main/.github/workflows/ci.yml]]。
 このマニュアルの PDF も、その検査の対象です。
-決定性を保証しているのは PDF、HTML、プレーンテキストで、EPUB はまだ保証していません。
+決定性を保証しているのは PDF、EPUB、HTML、プレーンテキストです。
 
 決定性があると、組んだ結果が変わったとき、その原因は必ず入力の側にあります。
 原稿か、設定か、フォントか、Golem のバージョンのどれかを変えたのです。

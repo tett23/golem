@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.10.0 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.10.0`).
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.13.1 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1`).
 This setting is not stored in the repository, so run it in every clone.
 `.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
 
@@ -55,7 +55,7 @@ ADRs are written in Japanese.
 ```markdown
 # ADR 0001: タイトル
 
-ステータス: 提案
+Status: proposed
 
 ## 文脈
 
@@ -68,17 +68,33 @@ ADRs are written in Japanese.
 ## トレードオフ
 ```
 
-The status (ステータス) is one of 提案 (proposed), 採択 (accepted), 採択（未実装） (accepted, not implemented), 却下 (rejected), or 破棄 (abandoned).
-Use 採択（未実装） for an ADR that is accepted but not implemented yet, and change it to 採択 when the implementation is done.
-`adr-guard unimplemented` lists the ADRs with 採択（未実装） ([docs/adr/0048](./docs/adr/0048-update-adr-guard-to-v0.8.3.md)).
-When a later ADR replaces part of one, the status names it, as in "採択→○○（変更部分）は [ADR NNNN](...)", with a link.
+Write the status line as `Status: <token>` ([docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md)).
+The token is one of the following.
+
+- `proposed`: proposed. Commit a new ADR with this token first.
+- `accepted-pending`: accepted, not implemented yet. Change it to `accepted` when the implementation is done.
+- `accepted`: accepted and implemented.
+- `rejected`: rejected.
+- `discarded`: abandoned.
+- `deprecated`: once accepted, no longer in effect.
+- `superseded [<JSON array of changes>]`: a later ADR changed part or all of it. Use `superseded-pending [<JSON array of changes>]` for an ADR changed while its implementation is pending.
+
+A change is a JSON object with the name of the changed part (`part`) and the array of the paths, from the repository root, of the ADRs that changed it (`by`).
+Set `part` to `null` when the change is not limited to a part.
+A change may add `kind` (`replace`, `supplement` or `note`) and `note`; `kind` defaults to `replace`.
+For example, write `Status: superseded [{"part":"CI の action の版","by":["docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md"]}]`.
+`adr-guard unimplemented` lists the ADRs with `accepted-pending` and `superseded-pending`, and `adr-guard trace <path>` shows the chain of changes.
+Older ADRs used lines such as `ステータス: 採択` (the legacy form); [docs/adr/0387](./docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md) migrated all of them to the canonical form.
+Do not write new lines in the legacy form.
 
 ### ADRs are immutable
 
 Once committed, an ADR cannot be changed except for its status line.
 `.githooks/pre-commit` and the `adr` job in CI reject edits, deletions, and renames.
 Changes to the status line (`--allow-status`) and changes that only add, remove, or retarget links (`--allow-links`) are allowed ([docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md), [docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)); changes to link text are not.
-Every ADR must have exactly one status line starting with `ステータス:`; the hook and the `adr` job in CI reject ADRs with none or more than one, and `adr-guard check-status` lists them ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
+Every ADR must have exactly one status line starting with `Status:`; the hook and the `adr` job in CI reject ADRs with none or more than one, and `adr-guard check-status` lists them ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
+Lines in code blocks count too, so do not start a line of an ADR body with `Status:`.
+The hook and the `adr` job in CI also check status transitions, and reject a transition that is not allowed (a new ADR committed with a token other than `proposed`, for example) even with `--allow-status`.
 ADR references in documents must link to the ADR file; the `adr` job in CI rejects unlinked ones, and `adr-guard links --fix` fixes them.
 Refer to a module ADR with the module name right before it, as in `golem-driver ADR 0015`, and put the module name inside the link text (`[golem-driver ADR 0015](...)`); the same goes for a directory qualifier such as `docs/adr ADR 0003`.
 The `adr` job in CI also rejects a qualifier outside the link, a link that points to an ADR other than the qualified one, and a qualified reference whose target does not exist.
@@ -86,7 +102,7 @@ Link an ADR of another repository with an absolute link that includes the whole 
 Two ADRs in the same directory must not share a number; the `adr` job in CI rejects duplicates, `adr-guard check-numbers` lists them, and `adr-guard renumber` fixes them ([docs/adr/0194](./docs/adr/0194-update-adr-guard-to-v0.10.0.md)). The renumbering commit needs `--allow-renumber` on the hook and the action, added temporarily.
 
 To change the specification, do not rewrite the old ADR; write a new one with the next number.
-To abandon an ADR, set its status to 破棄 and record the reason in [docs/specifications.md](./docs/specifications.md).
+To abandon an ADR, set its status to `discarded` and record the reason in [docs/specifications.md](./docs/specifications.md).
 
 Do not commit an ADR until it has been reviewed.
 A proposal can only be revised until it is committed.
@@ -386,6 +402,9 @@ Keep CI within 5 minutes.
 Every change waits for CI, so slow CI slows down development itself.
 This project values the speed of development above all, so slow CI is never postponed.
 When CI on a pull request exceeds 5 minutes, stop other work and improve CI first (split jobs, cache, skip checks of unchanged modules, and so on).
+Whether CI exceeds 5 minutes is judged by the median time of the last 20 successful `ci.yml` runs for pull requests that did not skip `build` ([docs/adr/0392](./docs/adr/0392-budget-the-pull-request-ci-at-five-minutes.md)).
+The time of a run is the seconds of the longest path through the job dependencies (`needs`), without the wait for runners.
+`sh scripts/ci/ci-critical-path.sh` prints this median, and the list of budgets (`docs/budgets.md`) uses it as the measuring command of this budget.
 Record the times before and after the optimization in `docs/ci-timings/`.
 The exception is a pull request that changes the wasm toolchain (`scripts/fetch-ghc-wasm.sh`) or the wasm freeze (`cabal.project.wasm.freeze`): the first run of the `wasm` job has no cache, so it may exceed 5 minutes.
 Such a pull request records the times of the run without the cache and the run with it in `docs/ci-timings/`.

@@ -1,0 +1,17 @@
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: a
+            tests: false
+    steps:
+      - id: build
+        run: cabal build
+      - name: Unknown
+        if: steps.x.outputs.y == 'true'
+        run: echo unknown
+  ci:
+    needs: build
+    steps:
+      - run: true

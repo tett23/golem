@@ -1,6 +1,6 @@
 # ADR 0008: PDF の図版と置けない図版の診断
 
-ステータス: 採択→図版の形式の SVG は [ADR 0009](0009-svg-figures.md)、取り込みの資源の上限は [docs/adr/0040](../../adr/0040-pdf-import-resource-limits.md)
+Status: superseded [{"by":["docs/golem-pdf/adr/0009-svg-figures.md"],"part":"図版の形式の SVG"},{"by":["docs/adr/0040-pdf-import-resource-limits.md"],"part":"取り込みの資源の上限"},{"part":"RGB の自動 CMYK 化の禁止と明示的な図版の色置換の区別","by":["docs/adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md"],"kind":"supplement"}]
 
 ## 文脈
 

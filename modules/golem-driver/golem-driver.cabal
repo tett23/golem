@@ -33,6 +33,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Driver
+                    Golem.Driver.Verse
                     Golem.Driver.Explain
                     Golem.Driver.Explain.Catalog
                     Golem.Driver.Explain.Embedded
@@ -88,10 +89,19 @@ test-suite golem-driver-test
   main-is:          Main.hs
   other-modules:
     AlignSpaceSpec
+    FontInstanceSpec
     BookLanguageSpec
     BuildSpec
     CallsSpec
     ChapterNotesSpec
+    NoteBodyStylesSpec
+    PageNoteNumbersSpec
+    CompressedNoteMarksSpec
+    CaptionSidenoteIndentSpec
+    VerseLineNumbersSpec
+    NumberTitleSeparatorSpec
+    CaptionSidenoteParagraphsSpec
+    ParagraphStyleControlsSpec
     ColophonSpec
     CliSpec
     ComplexFixtureSpec
@@ -136,6 +146,7 @@ test-suite golem-driver-test
     LineAdjustmentSpec
     AdjustOrderSpec
     NumberUnitBuildSpec
+    SinglePageSpec
     PageLabelsSpec
     IndexRangeSpec
     ShapingMemoSpec

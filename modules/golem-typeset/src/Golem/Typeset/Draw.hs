@@ -2,6 +2,7 @@
 module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
+    masterFlowText,
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
@@ -36,8 +37,8 @@ import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.PageLabel
 import Golem.Layout.Paginate
-import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRuby)
-import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
+import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), placeRubyAtEdges, rubyStyleWith)
+import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Length (zwToSp)
 import Golem.Numerals.Format (Unwritable (..), formatNumberIn)
@@ -134,6 +135,47 @@ reused between the rounds of S2 or not, for the tests that compare the two
 renderPdfAllReusing :: Bool -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllReusing reuse = renderPdfAllUsing reuse untouched
 
+-- | The logical lines before wrapping and the line boxes composed in the master flow.
+masterFlowText :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Text], Integer))
+masterFlowText provider input = case checkedGeometry inp of
+  Left ds -> pure (Left ds)
+  Right geom -> do
+    loaded <- loadFonts provider (piFiles inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    case loaded of
+      Left ds -> pure (Left ds)
+      Right fonts -> fmap counts <$> layoutPdf inp geom fonts
+  where
+    inp = codeInput input
+    counts layout =
+      let units = map snd (plUnits layout)
+          blank = sum [toInteger n | Unit {uKind = UBlank n} <- units]
+          boxes =
+            Map.size (plLines layout)
+              + sum (map length (Map.elems (plTableLines layout)))
+              + sum (map (length . pfCaption) (Map.elems (plFigures layout)))
+              + sum (map (length . ccLines) (Map.elems (plTableCaptions layout)))
+              + sum [length (ciCaption code) | (i, code) <- Map.toList (plCodes layout), i == ciFirst code]
+       in (concatMap (logicalLines (plFlowEnv layout)) units, toInteger boxes + blank)
+    logicalLines flow unit = case uKind unit of
+      UBlank n -> replicate (fromIntegral n) ""
+      UFigure fig -> concatMap (concatMap paragraph . blockInlineLists) (figCaption fig)
+      UCode _ code -> maybe [] paragraph (codeCaption code) <> map clText (codeLines code)
+      UTable table -> concatMap paragraph (maybe [] pure (tableCaption table) <> tableHeader table <> concat (tableRows table))
+      UPara {} -> paragraph (uInlines unit)
+      UTerm {} -> paragraph (uInlines unit)
+      UHeading {} -> paragraph (uInlines unit)
+      UNotesTitle {} -> paragraph (uInlines unit)
+      UTocEntry {} -> paragraph (uInlines unit)
+      UIndexEntry {} -> paragraph (uInlines unit)
+      _ -> []
+      where
+        -- A paragraph with no text of its own in the master flow (only a
+        -- sidenote, say) is not an explicit empty line (Golem ADR 0355).
+        paragraph inls = case displayedInlines (unitEnv flow unit) inls of
+          t
+            | T.null t -> []
+            | otherwise -> T.splitOn "\n" t
+
 renderPdfAllUsing :: Bool -> Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
@@ -167,7 +209,7 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                       -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                       embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
                       -- a face used horizontally and vertically is reported once
-                      case nub (lefts (Map.elems embedded)) of
+                      case nub (concat (lefts (Map.elems embedded))) of
                         [] -> do
                           let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
                           -- G07101: dashes without ink (docs/adr ADR 0172)
@@ -585,7 +627,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   V.gvSpan = guSpan u,
                   V.gvLineSpan = sp
                 }
-            bindingRight = maybe False pageBindingRight (stPage style)
+            layoutMode = pgLayout geom
             pageView i pd =
               V.PageView
                 { V.pvIndex = i,
@@ -595,7 +637,7 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
                   V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],
                   V.pvBlank = pdBlank pd,
-                  V.pvGutterLeft = gutterSide bindingRight (pdNumber pd) == SideLeft
+                  V.pvGutterLeft = (== SideLeft) <$> LS.gutterSideFor layoutMode (pdNumber pd)
                 }
             swatchName sw = listToMaybe [n | (n, Swatch (c, m, y', k)) <- Map.toList (stSwatches style), P.Swatch c m y' k == sw]
             used' = nub ([c | pd <- drawn, u <- pdUses pd, Just c <- [guColor u]] <> [n | pd <- drawn, sw <- pdBackgrounds pd, Just n <- [swatchName sw]])
@@ -682,7 +724,7 @@ the table of contents, its number, the separator and its short title, as
 plain text, ruby its base alone.
 -}
 outlineTitle :: PdfInput -> TocEntry -> Text
-outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (numberedTitle (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
+outlineTitle inp e = T.filter (/= '\xAD') (T.concat (map inlineText (bookNumberedTitle (piBook inp) (Just (teLevel e)) (bookLanguage inp) (teSpan e) (teNumber e) (teTitle e))))
 
 {- | G08103 (docs/adr/0268): an OpenType feature that a run turns on and
 that none of the faces of its characters has, once for each font file and
@@ -744,20 +786,6 @@ ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
 toSp :: Sp -> Rational -> Sp
 toSp = zwToSp
 
--- | Whether a character is Latin in a look: of the language of its span (docs/adr ADR 0187).
-isLatin :: Look -> Char -> Bool
-isLatin look = (== Western) . lookClass look
-
-{- the runs of a text in a look: its role and whether it is a Latin
-run; split into Latin and other runs where the two sides differ in
-role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
-a combining character stays with the character before it, variation
-selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
-runsOf :: Look -> Text -> [(Text, Text, Bool)]
-runsOf look txt
-  | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-  | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin look a == isLatin look b) txt, not (T.null r), let latin = isLatin look (T.head r)]
-
 -- the synthetic bold and slant of a run
 syntheticOf :: Look -> Bool -> Synthetic
 syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
@@ -775,7 +803,7 @@ runAtSqueezed env look v rotated scale squeeze (bx, by) txt =
       (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
       -- shaped with the features of the look; rotated Latin is shaped horizontally
       vv = v && not rotated
-      shapingFor role r = (shapingOf (lfRoleFeatures fonts) vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
+      shapingFor role r = (shapingForFonts fonts vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
       {- the tracking after the last glyph of each cluster, for each of its
       characters, as the boxes count it (docs/adr/0020) -}
       tr = fromIntegral (lkTracking look) * size
@@ -859,7 +887,7 @@ tcyAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Tex
 tcyAt env look (xc, y0) txt =
   let s = lkSize look
       flat = look {lkTracking = 0, lkBaselineShift = 0}
-      shapingFor role r = (shapingOf (lfRoleFeatures fonts) False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
+      shapingFor role r = (shapingForFonts fonts False flat (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = False}
       advances = [unSp (toSp s (shAdvance g)) | (role, r, _) <- runsOf flat txt, g <- lfShape fonts (shapingFor role r) r]
       fit = tcyFit (unSp s) advances
       left = xc + lkBaselineShift look - Sp (tfWidth fit `div` 2)
@@ -919,6 +947,45 @@ dashesAt env look v (bx, by) txt =
            in P.TransformedGlyphRun r size stroke (e : [e' | Right (_, _, e', _) <- same]) : marksOf rest'
       uses = concat [either snd (\(_, _, _, u) -> [u]) c | c <- cells]
    in (marksOf cells, uses)
+  where
+    fonts = deFonts env
+
+{- | A kanji of the number of a note mark set flat in vertical text
+(docs/adr/0381), from the top of its half em down the line: its glyph
+shaped alone in the look of the mark and scaled to half along the line by
+the text matrix, its em box from the top of the half em to its end;
+across the line, as an unscaled glyph. Upright with the vertical font, or
+turned as other text when the font turns it (golem-driver ADR 0015); not
+one glyph, drawn as other text at the top of its half em.
+-}
+flatAt :: DrawEnv -> Look -> (Sp, Sp) -> Text -> ([P.Mark], [(P.FontRef, Int, Text, ClusterPart)])
+flatAt env look (bx, by) txt =
+  let size = lkSize look
+      x0 = bx + lkBaselineShift look
+      syn = lkSynthetic look
+      slant = if synSlant syn then syntheticSlant else 0
+      stroke = if synBold syn then syntheticStroke syntheticStrokeJa size else 0
+      em = toSp size
+      s = 1 / 2 :: Rational
+      drawn = case T.unpack txt of
+        [ch] | [g] <- dashShaped fonts True look ch -> Right (glyph g)
+        _ -> Left (runAt env look True False 0 (bx, by) txt)
+      glyph g@Shaped {shFace = ix, shGlyph = gl, shText = t, shPart = part} =
+        let turned = shTurned g
+            r = ref ix (not turned)
+            (matrix, origin)
+              -- the x of the glyph goes down the line, its baseline left of the centre line (golem-driver ADR 0015)
+              | turned = ((0, negate s, 1, negate slant), (x0 - em (lfEmBoxCentral fonts ix), by))
+              -- Identity-V: the glyph origin at the top of the em box, which the matrix scales with it (golem-pdf W2)
+              | otherwise = ((1, 0, slant * s, s), (x0, by))
+            replacement = case actualTextOf (Map.findWithDefault Map.empty r (deTextEntries env)) [(gl, t, part)] of
+              [(_, Just t')] -> Just t'
+              _ -> Nothing
+            run = P.TransformedGlyphRun r size stroke [(matrix, lfCode fonts ix gl, fst origin, snd origin)]
+         in (maybe run (\t' -> P.ActualText t' [run]) replacement, (r, gl, t, part))
+   in case drawn of
+        Left (ms, us) -> (ms, us)
+        Right (m, u) -> ([m], [u])
   where
     fonts = deFonts env
 
@@ -1045,11 +1112,14 @@ decorationBands env (x0, y0) sl =
       kind
         | kind `elem` [KindRuby, KindGroupRuby],
           (base, reading) <- T.breakOn "|" (bcText c),
-          T.length reading > 1 ->
+          T.length reading > 1,
+          roSide (lkRubyOptions (bcLook c)) /= RubyAfter ->
             let look = bcLook c
                 looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                 big = if null looks then lkSize look else maximum (map lkSize looks)
-             in [rubyOverhang True 0 big (lkSize (readingLook look)) (lkBaselineShift look)]
+                rsize = lkSize (readingLook look)
+                extra = if any isJust (roReadingKenten (lkRubyOptions look)) then half rsize else 0
+             in [rubyOverhang True 0 big rsize (lkBaselineShift look) + extra]
       KindKenten | Just _ <- lkKenten (bcLook c) -> let look = bcLook c in [kentenOverhang True 0 (lkSize look) 0 (lkBaselineShift look)]
       _ -> []
 
@@ -1091,19 +1161,68 @@ faceRect vertical size (x0, y0) s0 e0
   | vertical = Rect (x0 - Sp (unSp size `div` 2)) (y0 - e0) size (e0 - s0)
   | otherwise = Rect (x0 + s0) (y0 - (size - zwToSp size baselineRatio)) (e0 - s0) size
 
+-- | Positions and advances used both for drawing a ruby and for its link rectangles.
+rubyPositions :: DrawEnv -> (Bool, Bool) -> Sp -> BoxContent -> (Text, Look, [Look], [Text], [Sp], RubyPlacement)
+rubyPositions env edges w c = rubyPositionsFor env edges w c Nothing
+
+rubyPositionsFor :: DrawEnv -> (Bool, Bool) -> Sp -> BoxContent -> Maybe Text -> (Text, Look, [Look], [Text], [Sp], RubyPlacement)
+rubyPositionsFor env edges w c replacement =
+  let look = bcLook c
+      fonts = deFonts env
+      vertical = pgVertical (deGeom env)
+      style = piStyle (deInput env)
+      kind = boxKind c
+      (base, reading) = T.breakOn "|" (bcText c)
+      rt = fromMaybe (T.drop 1 reading) replacement
+      rlook = readingLook look
+      baseUnits = clusters base
+      baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
+      advOf lk u = case T.uncons u of
+        Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingForFonts fonts vertical lk ch) ch)
+        Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingForFonts fonts vertical lk ch) u)
+        Nothing -> 0
+      baseAdv = zipWith advOf baseLooks baseUnits
+      readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
+      -- the tracking after the box is outside the ruby (docs/adr/0370)
+      outer = Sp (round (toInteger (lkTracking look) * unSp (lkSize look) % 1000))
+      rp = placeRubyAtEdges edges (w - if snd edges then 0 else outer) (rubyStyleWith (lkRubyOptions look) (rubyStyleOf style (lkSize look))) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (bcEdgeStart c, bcEdgeEnd c + outer)
+   in (rt, rlook, baseLooks, baseUnits, baseAdv, rp)
+
+-- Recover the outer allowance only for ruby boxes at the physical edges.
+-- Shared by PDF glyphs and link rectangles, without moving interior boxes.
+rubyEdgeGeometry :: Line -> Int -> Sp -> BoxContent -> (Sp, Sp, (Bool, Bool))
+rubyEdgeGeometry line index width c =
+  let boxes = [i | (i, Box {}) <- zip [0 :: Int ..] (lineItems line)]
+      atStart = case boxes of i : _ -> i == index; [] -> False
+      atEnd = case reverse boxes of i : _ -> i == index; [] -> False
+      (start, end) = lineEdge line
+      before = if atStart then max 0 start else 0
+      after = if atEnd then end else 0
+   in if boxKind c `elem` [KindRuby, KindGroupRuby] then (negate before, width + before + after, (atStart, atEnd)) else (0, width, (False, False))
+
+rubyBaseLeaf :: Leaf -> Look -> Leaf
+rubyBaseLeaf base@(Leaf site _) look = maybe base (Leaf site) (lkRubyBaseLeaf look)
+
 {- the links on a line (docs/adr ADR 0182): each run of boxes of one
 target, with the glue between them, from the start of its first box to
 the end of its last, across the face of the line, as 'codeBackgrounds';
 the reading of a ruby is not in it -}
+
 linkRects :: DrawEnv -> (Sp, Sp) -> SetLine -> [(LinkTarget, Maybe Leaf, SrcSpan, Rect)]
 linkRects env start sl =
-  [ (t, Just (bcLeaf c), snd (bcSource c), faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
-  | run@((s0, _, c) : _) <- groupWhen (\(_, _, p) (_, _, c) -> lkLink (bcLook p) == lkLink (bcLook c)) boxes,
-    let e0 = maximum [o + w | (o, w, _) <- run],
-    Just t <- [lkLink (bcLook c)]
+  [ (t, Just owner, source, faceRect vertical (slSize sl) start (slIndent sl + s0) (slIndent sl + e0))
+  | run@((s0, _, Just t, owner, source, _) : _) <- groupWhen sameLink boxes,
+    let e0 = maximum [o + w | (o, w, _, _, _, _) <- run]
   ]
   where
-    boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
+    boxes = concat [let (shift, width, edges) = rubyEdgeGeometry (slLine sl) i w c in parts edges (off + shift) width c | (i, (Box w c, off)) <- zip [0 :: Int ..] (placeLine (slLine sl))]
+    sameLink (_, _, x, _, _, a) (_, _, y, _, _, b) = x == y && a == b
+    parts edges off w c
+      | boxKind c `elem` [KindRuby, KindGroupRuby],
+        any (isJust . lkRubyBaseLeaf) (bcBaseLooks c) =
+          let (_, _, looks, _, advances, rp) = rubyPositions env edges w c
+           in [(off + pos, width, lkLink lk, rubyBaseLeaf (bcLeaf c) lk, snd (bcSource c), if isJust (lkLink (bcLook c)) then Nothing else Just (rubyBaseLeaf (bcLeaf c) lk)) | (lk, pos, width) <- zip3 looks (rpBase rp) advances]
+      | otherwise = [(off, w, lkLink (bcLook c), bcLeaf c, snd (bcSource c), Nothing)]
     vertical = pgVertical (deGeom env)
 
 -- the face of a line: from its first box to the end of its last, the height of its size
@@ -1203,22 +1322,10 @@ drawLineAt env (x0, y0) sl =
                   | kind `elem` [KindRuby, KindGroupRuby] ->
                       -- each base and reading character where placeRuby puts it (golem-layout ADR 0009);
                       -- each base character in its own look (golem-layout ADR 0011)
-                      let (base, reading) = T.breakOn "|" (bcText c)
-                          rt = T.drop 1 reading
-                          -- the reading takes no position of a range of superscript or subscript (docs/adr/0269)
-                          rlook = readingLook look
+                      let (shift, rubyWidth, edges) = rubyEdgeGeometry l i w c
+                          rubyOff = off + shift
+                          (rt, rlook, baseLooks, baseUnits, _, rp) = rubyPositions env edges rubyWidth c
                           rsize = lkSize rlook
-                          -- a base character with its combining characters is one base (golem-driver ADR 0036)
-                          baseUnits = clusters base
-                          baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
-                          advOf lk u = case T.uncons u of
-                            Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) ch)
-                            Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical lk ch) u)
-                            Nothing -> 0
-                          baseAdv = zipWith advOf baseLooks baseUnits
-                          readAdv = map (advOf rlook . T.singleton) (T.unpack rt)
-                          excess = max 0 (sum readAdv - w)
-                          rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (Sp (unSp excess `div` 2), Sp (unSp excess `div` 2))
                           -- the reading sits beside the largest base character
                           big = if null baseLooks then size else maximum (map lkSize baseLooks)
                           across = rubyAcross vertical big rsize
@@ -1226,10 +1333,27 @@ drawLineAt env (x0, y0) sl =
                           inColour lk (marks, glyphs)
                             | lkColor lk /= lkColor look, Just sw <- swatchOf env lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                             | otherwise = (marks, glyphs)
-                          placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
-                          placed2 = [runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                          placed1 = [inColour lk (runAtU env (whoOf V.PartBase c) lk vertical False 0 (origin (rubyOff + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
+                          primarySide = if roSide (lkRubyOptions look) == RubyAfter then RubyAfter else RubyBefore
+                          afterAcross = if vertical then negate across else negate (zwToSp (big + rsize) (1 - baselineRatio) + zwToSp rsize baselineRatio)
+                          readingRuns = (primarySide, rt, rp) : [(RubyAfter, other, otherPlacement) | roSide (lkRubyOptions look) == RubyBoth, Just other <- [lkRubyOtherReading look], let (_, _, _, _, _, otherPlacement) = rubyPositionsFor env edges rubyWidth c (Just other)]
+                          placed2 = [inColour rlook (runAtU env (whoOf V.PartRuby c) rlook vertical False 0 (beside (origin (rubyOff + pos)) (if side == RubyBefore then across else afterAcross)) (T.singleton ch)) | (side, text, placement) <- readingRuns, (ch, pos) <- zip (T.unpack text) (rpReading placement)]
+                          readingMarks side = if side == primarySide then roReadingKenten (lkRubyOptions look) else roOtherKenten (lkRubyOptions look)
+                          markSize = Sp (unSp rsize `div` 2)
+                          marked =
+                            [ inColour rlook (usesOf (whoOf V.PartKenten c) (rlook {lkSize = markSize}) (kentenMark env (lkFace rlook) shape markSize centre))
+                            | (side, text, placement) <- readingRuns,
+                              (ch, pos, Just shapeName) <- zip3 (T.unpack text) (rpReading placement) (readingMarks side <> repeat Nothing),
+                              takesKenten ch,
+                              let advance = lfAdvance fonts (shapingForFonts fonts vertical rlook ch) ch
+                                  along = rubyOff + pos + zwToSp rsize (advance / 2)
+                                  distance = if side == RubyBefore then across + kentenAcross vertical rsize (if vertical then 0 else 38 / 100) markSize else afterAcross - (if vertical then Sp (unSp rsize `div` 2) + Sp (unSp markSize `div` 2) else zwToSp rsize (1 - baselineRatio) + Sp (unSp markSize `div` 2))
+                                  centre = beside (origin along) distance,
+                              Just shape <- [kentenShapeFromName shapeName]
+                            ]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
-                       in ([(leaf, concatMap fst placed1), (readingLeaf, concatMap fst placed2)], inLeaf leaf (concatMap snd placed1) <> inLeaf readingLeaf (concatMap snd placed2))
+                          bases = zipWith (\lk marks -> (leafOf (rubyBaseLeaf (bcLeaf c) lk), marks)) baseLooks placed1
+                       in ([(owner, fst marks) | (owner, marks) <- bases] <> [(readingLeaf, concatMap fst placed2), (Nothing, concatMap fst marked)], concat [inLeaf owner (snd marks) | (owner, marks) <- bases] <> inLeaf readingLeaf (concatMap snd placed2) <> concatMap snd marked)
                 KindKenten ->
                   {- the character, and the mark of its shape, half its size, the
                   centre of its ink box beside the em box (golem-driver ADR 0019):
@@ -1238,7 +1362,7 @@ drawLineAt env (x0, y0) sl =
                   let (b1, u1) = runAtU env (whoOf V.PartBase c) look vertical False 0 (origin off) (bcText c)
                       d = lkSize half
                       shift = lkBaselineShift look
-                      parent = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look (T.head (bcText c))) (bcText c)
+                      parent = lfShape fonts (shapingForFonts fonts vertical look (T.head (bcText c))) (bcText c)
                       centre
                         | vertical = beside (origin (off + Sp (unSp size `div` 2))) (shift + kentenAcross True size 0 d)
                         | otherwise =
@@ -1266,6 +1390,8 @@ drawLineAt env (x0, y0) sl =
                         -- a tate-chu-yoko of the size of the mark, centred on its column (golem-driver ADR 0045)
                         | toEnum tag == KindTcy = usesOf (whoOf V.PartBase c) look (tcyAt env look (column, oy - o) t)
                         | toEnum tag == KindRotated = runAtU env (whoOf V.PartBase c) look True True 0 (column - Sp (unSp (size * 3) `div` 10), oy - o) t
+                        -- a kanji of the number set flat: half along the line, as wide across it (docs/adr/0381)
+                        | toEnum tag == KindFlat = usesOf (whoOf V.PartBase c) look (flatAt env look (column, oy - o) t)
                         | otherwise = runAtU env (whoOf V.PartBase c) look True False 0 (column, oy - o) t
                    in whole $
                         if vertical
@@ -1355,7 +1481,6 @@ drawLineAt env (x0, y0) sl =
    in (backs <> linesOf True <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces) <> linesOf False, concatMap (snd . snd) parts)
   where
     fonts = deFonts env
-    style = piStyle (deInput env)
     vertical = pgVertical (deGeom env)
     body = bodyRole (piStyle (deInput env))
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
@@ -1371,18 +1496,24 @@ rubyTextLeaf :: Leaf -> Leaf
 rubyTextLeaf (Leaf site k) = Leaf site (k + 1)
 
 -- | A running head or a folio: an artifact of pagination (docs/adr ADR 0183).
-textAt :: DrawEnv -> Text -> LS.Anchor -> Sp -> Text -> (LineRec, ([P.Content], [GlyphUse]))
-textAt env kind anchor size txt =
-  let w = plainWidth fonts body size txt
+textAt :: DrawEnv -> Text -> LS.Anchor -> Maybe Text -> Text -> (LineRec, ([P.Content], [GlyphUse]))
+textAt env kind anchor name txt =
+  let style = piStyle (deInput env)
+      look = masterLook style (pgFontSize (deGeom env)) name
+      size = lkSize look
+      source = maybe SourceGrid SourceCharacterStyle (name >>= charSizeSource style)
+      w = lookWidth fonts look txt
       x0 = case anAlign anchor of
         LS.AlignStart -> anX anchor
         LS.AlignCenter -> anX anchor - Sp (unSp w `div` 2)
         LS.AlignEnd -> anX anchor - w
       face = Rect x0 (anY anchor - (size - zwToSp size baselineRatio)) w size
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination) (runAtU env (SourceGrid, V.PartBase, styleSpan) (plainLook body size) False False 0 (x0, anY anchor) txt))
+      paint marks = case swatchOf env look of
+        Nothing -> marks
+        Just sw -> [P.Saved (P.SetColor sw : marks)]
+   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination . paint) (runAtU env (source, V.PartBase, styleSpan) look False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
-    body = bodyRole (piStyle (deInput env))
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
 {- one column of a page, against the rectangle of the column (docs/adr
@@ -1427,20 +1558,20 @@ drawColumn env p =
              ]
           <> [orAgain lid (entry env "表の行" (spanOfLine env lid) ta (tableLineAt env slot j cell) cell) | (slot, SLine lid) <- poSlots p, (j, cell) <- Map.findWithDefault [] lid (plTableLines layout)]
           -- the caption of a table, from its first grid line (docs/adr/0262)
-          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) j) (SetLine l (ccSize cc) 0 [] [] Nothing))
+          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionTop env slot (ccPitch cc) (ccSize cc) (ptRow pl')) (SetLine (ptLine pl') (ccSize cc) (ptIndent pl') [] [] Nothing))
              | (slot, SLine lid) <- poSlots p,
                Just cc <- [Map.lookup lid (plTableCaptions layout)],
-               (j, l) <- zip [0 ..] (ccLines cc)
+               pl' <- ccLines cc
              ]
           <> [ anchoredAt (lid + j) (entry env "見出しの行" (spanOfLine env lid) ta (headingLineAt env slot hb j sl) sl)
              | (slot, SHeading lid m) <- poSlots p,
                Just hb <- [Map.lookup lid (plHeadings layout)],
                (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
              ]
-          <> [ entry env "キャプションの行" (pfSpan pf) ta (captionLineAt env slot pf j) (SetLine l (pfCaptionSize pf) (captionIndent env ta pf) [] [] Nothing)
+          <> [ entry env "キャプションの行" (pfSpan pf) ta (captionLineAt env slot pf (ptRow pl')) (SetLine (ptLine pl') (pfCaptionSize pf) (captionIndent env ta pf + ptIndent pl') [] [] Nothing)
              | (slot, fid) <- placedFigures p,
                Just pf <- [Map.lookup fid (plFigures layout)],
-               (j, l) <- zip [0 ..] (pfCaption pf)
+               pl' <- pfCaption pf
              ]
           -- the rows of code blocks (golem-driver ADR 0017)
           <> [ anchoredAt (lid + j) (entry env "コードの行" (spanOfLine env lid) ta (codeRowAt env codeSlot (ciGeometry ci) k' j sl) sl)
@@ -1458,11 +1589,11 @@ drawColumn env p =
                Just l <- [ciContinued ci],
                let sl = SetLine l (ciSize ci) (ciIndent ci) [] [] Nothing
              ]
-          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [] Nothing))
+          <> [ anchoredAt lid (entry env "キャプションの行" (spanOfLine env lid) ta (codeCaptionLineAt env slot ci (ptRow pl')) (SetLine (ptLine pl') (ciCaptionSize ci) (ciStart ci + ptIndent pl') [] [] Nothing))
              | (slot, SCode lid _ _) <- poSlots p,
                Just ci <- [Map.lookup lid (plCodes layout)],
                lid == ciFirst ci,
-               (j, l) <- zip [0 ..] (ciCaption ci)
+               pl' <- ciCaption ci
              ]
       -- the backgrounds, the bands and the borders of code blocks, drawn before everything (golem-driver ADR 0017, 0023)
       backgrounds =
@@ -1501,7 +1632,7 @@ drawColumn env p =
         [ let pageTa = typeAreaFor geom n
               (paper, area) = turnedFrame geom t pageTa pf
               imageR = imageRect geom paper area 0 pf
-              captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] [] Nothing) | (j, l) <- zip [0 ..] (pfCaption pf)]
+              captions = [entry env "キャプションの行" (pfSpan pf) area (captionLineAt env 0 pf (ptRow pl')) (SetLine (ptLine pl') (pfCaptionSize pf) (ptIndent pl') [] [] Nothing) | pl' <- pfCaption pf]
               onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec, lrLinks = [(lt, lf, sp, P.turnRect t pageTa r) | (lt, lf, sp, r) <- lrLinks rec]}, ([], uses))
            in (P.Moved (P.MoveTurn t pageTa) (figureMark env fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
         | (_, SPageFigure fid) <- poSlots p,
@@ -1557,11 +1688,11 @@ drawPage env ps master = case ps of
         hiddenParts = hiddenMarks env n
         -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
         sidenoteParts =
-          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral j * snPitch + zwToSp snSize' baselineRatio)) (SetLine l snSize' 0 [] [] Nothing)
+          [ entryAt env "傍注の行" (psSpan ps') (rectX area, rectY area + rectH area - (psTop ps' + fromIntegral (ptRow pl') * snPitch + zwToSp snSize' baselineRatio)) (SetLine (ptLine pl') snSize' (ptIndent pl') [] [] Nothing)
           | Just area <- [sidenoteAreaFor geom n],
             ps' <- Map.findWithDefault [] n (plSidenotes layout),
             let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,
-            (j, l) <- zip [0 :: Int ..] (psLines ps')
+            pl' <- psLines ps'
           ]
         columnParts = concat [t | (t, _, _, _) <- columns]
         allParts = columnParts <> sidenoteParts <> masterParts
@@ -1806,11 +1937,10 @@ masterMarks env n blank master headLines = case master of
   Nothing -> []
   Just m ->
     let pick a1 a2 = if odd n then a1 else a2
-        size = pgFontSize geom
-        folio = [textAt env "ノンブル" (pick a1 a2) size t | drawsFolio blank master, Just (_, a1, a2) <- [mgFolio m], Right t <- [folioText (deLabels env) m n]]
+        folio = [textAt env "ノンブル" (pick a1 a2) (mgFolioStyle m) t | drawsFolio blank master, Just (_, a1, a2) <- [mgFolio m], Right t <- [folioText (deLabels env) m n]]
         -- the lines of the running head from the type area out (golem-driver ADR 0022)
         runningHead =
-          [ textAt env "柱" a {anY = hy} size h
+          [ textAt env "柱" a {anY = hy} (mgHeadStyle m) h
           | not blank,
             Just (_, _, a1, a2) <- [mgRunningHead m],
             let a = pick a1 a2,
@@ -1819,7 +1949,7 @@ masterMarks env n blank master headLines = case master of
      in runningHead <> folio
   where
     geom = deGeom env
-    ph = snd (pgPageSize (deGeom env))
+    ph = snd (pgPageSize geom)
 
 -- | The image of a figure: the content of its Figure (docs/adr ADR 0183).
 figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Content

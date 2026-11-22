@@ -1,6 +1,6 @@
 # ADR 0006: プロジェクトの段階の診断のコード G03001 から G03009 を定める
 
-ステータス: 採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)、G03005 の経路が空の分岐は [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、Golem の文言の誤りと読み込んだ後の検査の位置は [ADR 0008](0008-style-toml-value-positions.md)、未知の判型の G03006 から G03017 への移動は [ADR 0005](0005-page-size-by-dimensions.md)
+Status: superseded [{"by":["docs/golem-project/adr/0007-toml-messages-in-japanese.md"],"part":"toml-parser の文言の扱い"},{"by":["docs/adr/0027-exhaustive-command-dispatch-by-types.md"],"part":"G03005 の経路が空の分岐"},{"by":["docs/golem-project/adr/0008-style-toml-value-positions.md"],"part":"Golem の文言の誤りと読み込んだ後の検査の位置"},{"by":["docs/golem-project/adr/0005-page-size-by-dimensions.md"],"part":"未知の判型の G03006 から G03017 への移動"}]
 
 ## 文脈
 

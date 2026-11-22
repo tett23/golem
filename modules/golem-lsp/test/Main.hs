@@ -15,6 +15,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import EditingSpec (editingTests)
+import FileMoveSpec (fileMoveTests)
 import FileRenameSpec (fileRenameTests)
 import FunctionsLspSpec (functionsLspTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
@@ -112,6 +113,7 @@ tests =
   testGroup
     "golem-lsp (ADR 0001)"
     [ fileRenameTests,
+      fileMoveTests,
       positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
@@ -335,6 +337,16 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
+      testCase "ADR 0389 I10: inv10_lsp: the LSP reports neither G07127 nor G07128" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf"]}))
+        -- a caption of 2zw of 10pt and a sidenote of 6zw, each with indents that take the whole line
+        BS.writeFile
+          (tmp </> "style.toml")
+          "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[paragraph-styles.caption]\nsize = \"10pt\"\nindent = \"6zw\"\nend-indent = \"6zw\"\n\n[paragraph-styles.sidenote]\nsize = \"10pt\"\nindent = \"3zw\"\nend-indent = \"3zw\"\n\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
+        TIO.writeFile (tmp </> "a.gm") "本文[sidenote: 注]。\n\n@caption 表\n| a | b |\n|---|---|\n| 1 | 2 |\n"
+        ws <- openWorkspace tmp
+        let codes = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
+        filter (`elem` ["G07127", "G07128"]) codes @?= [],
       testCase "a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "A.\n"
@@ -427,7 +439,7 @@ tests =
         wsFullEvaluations ws1 @?= n0
         ws2 <- updateFile ws1 "b.gm" "@label second\n# 別の題\n\n[ref-title intro]と[ref-page intro]を読む。\n"
         wsFullEvaluations ws2 @?= n0 + 1
-        ws3 <- updateFile ws2 "common/values.gm" "set version = \"2.0\"\n"
+        ws3 <- updateFile ws2 "common/values.gm" "@set version = \"2.0\"\n"
         wsFullEvaluations ws3 @?= n0 + 2
         hover ws3 "a.gm" (at ws3 "a.gm" "values.version" 2) @?= Just "2.0",
       testCase "hover: S0 values, S1 values, and page numbers left to S2" $ do
@@ -526,7 +538,7 @@ tests =
         encodingKind Utf16 @?= L.PositionEncodingKind_UTF16,
       testCase "only the matching initialize response gets its positionEncoding replaced (ADR 0002)" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1}},\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value
         (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected
         rewriteInitializeResponse (M.IdInt 2) Utf8 resp @?= Nothing

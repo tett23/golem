@@ -1,6 +1,6 @@
 # ADR 0005: PDF の Producer に Golem の版を書く
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

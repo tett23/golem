@@ -1,6 +1,6 @@
 # ADR 0026: 待つ図版は、前の `@need-lines` と行アキの「次のブロック」にならない
 
-ステータス: 採択→「実装すること」の 3 の待つ図版の定義は [golem-layout ADR 0033](0033-read-waiting-figures-from-the-placement.md)、Alloy のスコープと行アキを捨てる段は [ADR 0236](../../adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/golem-layout/adr/0033-read-waiting-figures-from-the-placement.md"],"part":"「実装すること」の 3 の待つ図版の定義"},{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"Alloy のスコープと行アキを捨てる段"}]
 
 ## 文脈
 

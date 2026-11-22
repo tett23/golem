@@ -1631,24 +1631,29 @@ if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' 
 # check; aarch64 builds twice, for the tests and for the outputs. One runner
 # of each architecture saves dist-newstyle (docs/adr/0045, docs/adr/0097,
 # docs/adr/0140)
-matrix_rows() { # the runner, part, tests, outputs, env, suites and save of each row of the matrix
+# the runner, part, tests, outputs, artifacts, env, suites, build and save
+# of each row of the matrix; save is the last key of a row
+matrix_rows() {
   awk '/^        include:/ { on = 1; next }
     on && /^    [a-z]/ { on = 0 }
-    on && /- runner:/ { r = $3 } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
-    on && /outputs:/ { o = $2 } on && /env:/ { e = $2 } on && /suites:/ { u = $2 }
-    on && /save:/ { print r, p, t, o, e, u, $2 }' "$1"
+    on && /- runner:/ { r = $3; a = "-"; b = "-" } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
+    on && /outputs:/ { o = $2 } on && /artifacts:/ { a = $2 } on && /env:/ { e = $2 } on && /suites:/ { u = $2 }
+    on && /build:/ { b = $2 } on && /save:/ { print r, p, t, o, a, e, u, b, $2 }' "$1"
 }
-if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver true false false driver true
-ubuntu-24.04 tests-rest true false false rest false
-ubuntu-24.04 outputs false true false none false
-ubuntu-24.04 env false false true none false
-ubuntu-24.04-arm tests-driver true false false driver true
-ubuntu-24.04-arm tests-rest true false false rest false
-ubuntu-24.04-arm outputs false true false none false" ]; then ok; else ng "ci.yml: the matrix of build has two runners of the tests on each architecture, the outputs of both, and the environment check of x86-64 (docs/adr/0155)"; fi
+# the x86-64 outputs are split in two runners: outputs makes the artifacts
+# that other jobs wait for, outputs-checks the rest (docs/adr/0395)
+if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver true false false false driver all true
+ubuntu-24.04 tests-rest true false false false rest rest false
+ubuntu-24.04 outputs false false true false none golem false
+ubuntu-24.04 outputs-checks false true false false none golem false
+ubuntu-24.04 env false false false true none golem false
+ubuntu-24.04-arm tests-driver true false false false driver all true
+ubuntu-24.04-arm tests-rest true false false false rest rest false
+ubuntu-24.04-arm outputs false true false false none golem false" ]; then ok; else ng "ci.yml: the matrix of build has two runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395)"; fi
 # one runner of each architecture saves dist-newstyle (docs/adr/0045,
 # docs/adr/0140, docs/adr/0155)
-if [ "$(matrix_rows "$CI_YML" | awk '$7 == "true" { print $1 }' | sort | uniq -c | awk '{ print $1 }' | sort -u)" = 1 ] &&
-  [ "$(matrix_rows "$CI_YML" | awk '$7 == "true"' | wc -l | tr -d ' ')" = 2 ]; then ok; else
+if [ "$(matrix_rows "$CI_YML" | awk '$9 == "true" { print $1 }' | sort | uniq -c | awk '{ print $1 }' | sort -u)" = 1 ] &&
+  [ "$(matrix_rows "$CI_YML" | awk '$9 == "true"' | wc -l | tr -d ' ')" = 2 ]; then ok; else
   ng "ci.yml: one runner of each architecture has save: true"
 fi
 # the step that starts at a line that matches $1 has a line that matches $2
@@ -1843,7 +1848,8 @@ if grep -qF 'run: timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_
   ng "ci.yml: visual runs check.sh under timeout -k 10 600, with pipefail"
 fi
 if grep -q 'SHEM' "$VJ"; then ng "ci.yml: CI does not use SHEM"; else ok; fi
-VISUAL_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
+# the runner of the artifacts, the x86-64 outputs (docs/adr/0395)
+VISUAL_IF="if: matrix.artifacts"
 if step_if "name: The PDFs of the visual regression test" "$VISUAL_IF" &&
   step_has "name: The PDFs of the visual regression test" 'GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs'; then ok; else
   ng "ci.yml: the x86-64 runner of the outputs builds the PDFs of the visual regression test"
@@ -1865,26 +1871,10 @@ if [ -n "$DET_AT" ] && [ -n "$EPUB_AT" ] && [ -n "$VB_AT" ] && [ -n "$VU_AT" ] &
 fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?visual([],].*)?$'; then ok; else ng "ci.yml: ci needs visual"; fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi
-# no step of actions/cache/save has a condition on pull_request: a pull
-# request saves no dist- cache, and restores those of main (docs/adr/0228, I1)
-cache_saves_on_pull_requests() {
-  awk '
-    function flush() { if (save && pr) print at; save = 0; pr = 0 }
-    /^      - / { flush(); at = FNR }
-    /^  [a-z]/ { flush() }
-    /uses: actions\/cache\/save@/ { save = 1 }
-    /github\.event_name == .pull_request./ { pr = 1 }
-    END { flush() }
-  ' "$1"
-}
-if [ -z "$(cache_saves_on_pull_requests "$CI_YML")" ]; then ok; else ng "ci.yml: no step of actions/cache/save runs on pull requests (docs/adr/0228, I1)"; fi
-printf '      - name: Save\n        if: github.event_name == '"'"'pull_request'"'"'\n        uses: actions/cache/save@v6\n      - name: Restore\n        if: github.event_name == '"'"'pull_request'"'"'\n        uses: actions/cache/restore@v6\n' >"$WORK/saves.yml"
-if [ "$(cache_saves_on_pull_requests "$WORK/saves.yml")" = 1 ]; then ok; else
-  ng "test.sh: cache_saves_on_pull_requests finds the save on pull requests, and not the restore"
-fi
 # a push to main saves dist-newstyle only when GHC compiled a module
-# (docs/adr/0228, I2)
-if step_if "name: Save dist-newstyle (docs/adr/0009)" "if: success() && matrix.save && steps.build.outputs.compiled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves, when GHC compiled (docs/adr/0140, docs/adr/0228, I2)"; fi
+# (docs/adr/0228, I2); a pull request saves it in the same way, under a key
+# of its own (docs/adr/0395, which replaced I1 of docs/adr/0228)
+if step_if "name: Save dist-newstyle (docs/adr/0009" "if: success() && matrix.save && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves, when GHC compiled (docs/adr/0140, docs/adr/0228, I2)"; fi
 if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng "ci.yml: the saves of dist-newstyle do not depend on matrix.tests"; else ok; fi
 
 # ---------------------------------------------------------------- ci.yml and verapdf
@@ -4602,6 +4592,347 @@ if [ "$CODE" = 2 ] && grep -qF 'requires the dedicated GitHub-hosted Safari job'
 else
   ng "browser-leftovers: refuses to launch Safari outside its dedicated runner (docs/adr/0309)"
 fi
+
+# ---------------------------------------------------------------- ci-critical-path.sh
+# The time of a run of ci.yml for a pull request, the longest path through
+# the needs of its jobs, and the median of the runs (docs/adr ADR 0392)
+cpath() { sh "$HERE/ci-critical-path.sh" "$@"; }
+CPD=$HERE/testdata/ci-critical-path
+CP=$WORK/ci-critical-path
+mkdir -p "$CP"
+# cp_job NAME SECONDS [CONCLUSION [WAIT]]: one job of the jobs API, created
+# at a fixed time, started WAIT seconds later (0 unless given), and run for
+# SECONDS seconds, with the conclusion CONCLUSION (success unless given)
+cp_job() {
+  jq -cn --arg n "$1" --argjson s "$2" --arg c "${3:-success}" --argjson w "${4:-0}" \
+    '{name: $n, status: "completed", conclusion: $c, created_at: (1800000000 | todate),
+      started_at: (1800000000 + $w | todate), completed_at: (1800000000 + $w + $s | todate)}'
+}
+# cp_run FILE JOB...: FILE is the response of the jobs API of a run of JOBs
+cp_run() {
+  f=$1
+  shift
+  printf '%s\n' "$@" | jq -s '{total_count: length, jobs: .}' >"$f"
+}
+# cp_all SECONDS [NAME:SECONDS[:CONCLUSION[:WAIT]]]...: the jobs of
+# testdata/ci-critical-path/ci.yml, one per line, each of SECONDS seconds
+# but those given after it; a NAME of build (or build (RUNNER)) is a runner
+# of build, which is not there unless given
+cp_all() {
+  d=$1
+  shift
+  for j in changes scripts-linux wasm determinism visual release-scripts scripts-macos format plugins editors editors-lsp verapdf caches ci; do
+    printf "%s\n" "$@" | grep -q "^$j:" || cp_job "$j" "$d"
+  done
+  for o in "$@"; do
+    # shellcheck disable=SC2086 # split at the colons
+    (IFS=:; set -- $o; cp_job "$@")
+  done
+}
+# cp_files FILE LINES: cp_run FILE with the lines of LINES as the jobs
+cp_files() {
+  f=$1
+  shift
+  printf '%s\n' "$1" | jq -s '{total_count: length, jobs: .}' >"$f"
+}
+: >"$WORK/in"
+
+# needs read from the ci.yml of now are those of the ADR: changes,
+# scripts-linux and editors wait for no job; ci waits for all but caches
+cp_norm() {
+  while read -r job deps; do
+    printf '%s %s\n' "$job" "$(printf '%s\n' $deps | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+  done | sed 's/ $//' | LC_ALL=C sort
+}
+CP_NEEDS='build: changes
+caches: build changes wasm
+changes:
+ci: build changes determinism editors editors-lsp format plugins release-scripts scripts-linux scripts-macos verapdf visual wasm
+determinism: build
+editors-lsp: changes
+editors:
+format: changes
+plugins: changes
+release-scripts: changes
+scripts-linux:
+scripts-macos: changes
+verapdf: changes
+visual: changes
+wasm: changes'
+run cpath --needs
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
+# the three forms of needs (a word, a list in brackets, the lines of a list),
+# quoted or not, with a comment after them
+run cpath --workflow "$CPD/ci.yml" --needs
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: needs is read in each of its three forms"; fi
+
+# a run of jobs that wait for no job takes the seconds of ci
+cp_run "$CP/flat.json" "$(cp_job changes 50)" "$(cp_job editors 70)" "$(cp_job ci 7)"
+run cpath --workflow "$CPD/flat.yml" "$CP/flat.json"
+expect "ADR 0392 I1: a run of jobs with no needs takes the seconds of ci" 0 7
+
+# changes 10, build 200, determinism 30, the others 5: ci ends at 10 + 200 + 30 + 5
+cp_files "$CP/path.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30')"
+run cpath --workflow "$CPD/ci.yml" "$CP/path.json"
+expect "ADR 0392 I1: ci ends at changes 10 + build 200 + determinism 30 + ci 5" 0 245
+
+# a job that is not on the longest path does not count: caches is not a need of ci
+cp_files "$CP/caches.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30' 'caches:900')"
+run cpath --workflow "$CPD/ci.yml" "$CP/caches.json"
+expect "ADR 0392 I1: caches, which ci does not wait for, does not count" 0 245
+
+# a run whose build was skipped is left out
+cp_files "$CP/docs.json" "$(cp_all 5 'build:0:skipped')"
+run cpath --workflow "$CPD/ci.yml" "$CP/docs.json" "$CP/path.json"
+expect "ADR 0392 I2: a run that skipped build is left out" 0 245
+run cpath --workflow "$CPD/ci.yml" "$CP/docs.json"
+if [ "$CODE" = 1 ] && grep -qF 'no run that ran build' "$WORK/err"; then ok; else ng "ADR 0392 I2: no run left fails"; fi
+
+# a skipped job takes 0 seconds, whatever its times say
+cp_files "$CP/skipped.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30' 'scripts-macos:1000:skipped')"
+run cpath --workflow "$CPD/ci.yml" "$CP/skipped.json"
+expect "ADR 0392 I2: a skipped job takes 0 seconds" 0 245
+
+# build of runners of 100 and 300 seconds takes 300 seconds
+cp_files "$CP/matrix.json" "$(cp_all 5 'build (a):100' 'build (b):300')"
+run cpath --workflow "$CPD/ci.yml" "$CP/matrix.json"
+expect "ADR 0392 I2: build of runners of 100 and 300 seconds takes 300" 0 315
+
+# scripts-macos waits 2 hours for a runner, then runs 60 seconds: 60
+cp_files "$CP/queue.json" "$(cp_all 5 'changes:10' 'build (a):20' 'scripts-macos:60:success:7200')"
+run cpath --workflow "$CPD/ci.yml" "$CP/queue.json"
+expect "ADR 0392 I3: the wait of scripts-macos for its runner does not count" 0 75
+
+# the median of 1, 2, 3, 4 is 2.5; of 1, 2, 3 is 2; the order of the files does not matter
+for s in 1 2 3 4; do cp_run "$CP/m$s.json" "$(cp_job changes 0)" "$(cp_job ci "$s")"; done
+run cpath --workflow "$CPD/flat.yml" "$CP/m3.json" "$CP/m1.json" "$CP/m4.json" "$CP/m2.json"
+expect "ADR 0392 I4: the median of 1, 2, 3, 4 is 2.5" 0 2.5
+run cpath --workflow "$CPD/flat.yml" "$CP/m2.json" "$CP/m3.json" "$CP/m1.json"
+expect "ADR 0392 I4: the median of 1, 2, 3 is 2" 0 2
+# a workflow without the job ci is refused
+printf 'jobs:\n  a:\n    steps: []\n' >"$CP/noci.yml"
+run cpath --workflow "$CP/noci.yml" "$CP/m1.json"
+if [ "$CODE" = 1 ] && grep -qF 'no job ci' "$WORK/err"; then ok; else ng "ADR 0392 I1: a workflow without the job ci fails"; fi
+
+
+# ---------------------------------------------------------------- the CI of pull requests under five minutes
+# (docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)
+
+# pr-caches.sh: the IDs of the caches to delete, from the caches of the
+# repository as gh api --paginate .../actions/caches writes them and the
+# numbers of the open pull requests
+prc() { sh "$HERE/pr-caches.sh" "$@"; }
+# prc_cache ID REF KEY SIZE CREATED: one cache of the API
+prc_cache() {
+  printf '{"id":%s,"ref":"%s","key":"%s","size_in_bytes":%s,"created_at":"%s","last_accessed_at":"%s"}\n' "$1" "$2" "$3" "$4" "$5" "$5"
+}
+# prc_page CACHE...: a page of the API with these caches
+prc_page() { printf '%s\n' "$@" | jq -s '{total_count: length, actions_caches: .}'; }
+PRX=dist-Linux-X64-ghc-9.10.3-aaaa-bbbb-
+PRA=dist-Linux-ARM64-ghc-9.10.3-aaaa-bbbb-
+GB=1000000000
+prc_page "$(prc_cache 101 refs/pull/5/merge "${PRX}pr-5-sha1" 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 102 refs/pull/5/merge ghc-wasm-x 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 103 refs/pull/5/merge cabal-store-x 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 104 refs/pull/7/merge "${PRX}pr-7-sha1" 100 2026-11-18T01:00:00Z)" >"$WORK/in"
+run prc 7
+expect "ADR 0395 I1: the three caches of a closed pull request are all deleted" 0 "101
+102
+103"
+prc_page "$(prc_cache 111 refs/heads/main "${PRX}sha1" 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 112 refs/heads/main "${PRX}sha2" 100 2026-11-18T02:00:00Z)" \
+  "$(prc_cache 113 refs/heads/main ghc-x 100 2026-11-18T01:00:00Z)" >"$WORK/in"
+run prc
+expect "ADR 0395 I1: no cache of main is deleted, even with no open pull request" 0 ""
+prc_page "$(prc_cache 201 refs/pull/7/merge "${PRX}pr-7-sha1" 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 202 refs/pull/7/merge "${PRX}pr-7-sha2" 100 2026-11-18T02:00:00Z)" \
+  "$(prc_cache 203 refs/pull/8/merge "${PRX}pr-8-sha1" 100 2026-11-18T00:00:00Z)" >"$WORK/in"
+run prc 7 8
+expect "ADR 0395 I2: of two dist- caches of a pull request, the older is deleted" 0 "201"
+prc_page "$(prc_cache 211 refs/pull/7/merge "${PRX}pr-7-sha1" 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 212 refs/pull/7/merge ghc-wasm-x 100 2026-11-18T00:00:00Z)" >"$WORK/in"
+run prc 7
+expect "ADR 0395 I2: one dist- cache of a pull request is kept" 0 ""
+# the set of a pull request is one dist-newstyle of each architecture
+# (about 970 MB, the section of the ADR on the amount)
+prc_page "$(prc_cache 221 refs/pull/7/merge "${PRX}pr-7-sha1" 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 222 refs/pull/7/merge "${PRA}pr-7-sha1" 100 2026-11-18T01:00:01Z)" \
+  "$(prc_cache 223 refs/pull/7/merge "${PRA}pr-7-sha2" 100 2026-11-18T02:00:00.5Z)" \
+  "$(prc_cache 224 refs/pull/7/merge "${PRX}pr-7-sha2" 100 2026-11-18T02:00:00.25Z)" >"$WORK/in"
+run prc 7
+expect "ADR 0395 I2: the newest dist- cache of each architecture of a pull request is kept" 0 "221
+222"
+prc_page "$(prc_cache 232 refs/pull/7/merge "${PRX}pr-7-sha1" 100 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 231 refs/pull/7/merge "${PRX}pr-7-sha2" 100 2026-11-18T01:00:00Z)" >"$WORK/in"
+run prc 7
+expect "ADR 0395 I2: of two made at the same time, the smaller ID is deleted" 0 "231"
+prc_page "$(prc_cache 301 refs/heads/main "${PRX}sha1" $((8 * GB)) 2026-11-18T00:00:00Z)" \
+  "$(prc_cache 302 refs/pull/7/merge "${PRX}pr-7-sha1" $((GB / 2)) 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 303 refs/pull/8/merge "${PRX}pr-8-sha1" $((GB / 2)) 2026-11-18T02:00:00Z)" >"$WORK/in"
+run prc 7 8
+expect "ADR 0395 I3: a total of exactly 9 GB deletes nothing" 0 ""
+prc_page "$(prc_cache 311 refs/heads/main "${PRX}sha1" $((8 * GB + 1)) 2026-11-18T00:00:00Z)" \
+  "$(prc_cache 312 refs/pull/8/merge "${PRX}pr-8-sha1" $((GB / 2)) 2026-11-18T02:00:00Z)" \
+  "$(prc_cache 313 refs/pull/7/merge "${PRX}pr-7-sha1" $((GB / 2)) 2026-11-18T01:00:00Z)" >"$WORK/in"
+run prc 7 8
+expect "ADR 0395 I3: a total of 9 GB and 1 byte deletes the oldest dist- cache of an open pull request, and only it" 0 "313"
+prc_page "$(prc_cache 321 refs/heads/main "${PRX}sha1" $((8 * GB)) 2026-11-18T00:00:00Z)" \
+  "$(prc_cache 322 refs/pull/5/merge "${PRX}pr-5-sha1" $((2 * GB)) 2026-11-18T00:30:00Z)" \
+  "$(prc_cache 323 refs/pull/7/merge "${PRX}pr-7-sha1" $((GB / 2)) 2026-11-18T01:00:00Z)" >"$WORK/in"
+run prc 7
+expect "ADR 0395 I3: the caches deleted by I1 and I2 count, before the oldest are deleted" 0 "322"
+prc_page "$(prc_cache 331 refs/heads/main "${PRX}sha1" $((8 * GB)) 2026-11-18T00:00:00Z)" \
+  "$(prc_cache 332 refs/pull/7/merge ghc-wasm-x $((2 * GB)) 2026-11-17T00:00:00Z)" \
+  "$(prc_cache 333 refs/pull/7/merge "${PRX}pr-7-sha1" $((GB / 2)) 2026-11-18T01:00:00Z)" \
+  "$(prc_cache 334 refs/pull/8/merge "${PRX}pr-8-sha1" $((GB / 2)) 2026-11-18T02:00:00Z)" >"$WORK/in"
+run prc 7 8
+expect "ADR 0395 I3: only the dist- caches of open pull requests are deleted for the total, the oldest first" 0 "333
+334"
+# the pages of gh api --paginate, one after the other, as one list
+{
+  prc_page "$(prc_cache 341 refs/pull/5/merge "${PRX}pr-5-sha1" 100 2026-11-18T01:00:00Z)"
+  prc_page "$(prc_cache 342 refs/pull/6/merge "${PRX}pr-6-sha1" 100 2026-11-18T01:00:00Z)"
+} >"$WORK/in"
+run prc
+expect "ADR 0395 I1: the caches of every page are read" 0 "341
+342"
+: >"$WORK/in"
+run prc 7
+expect "pr-caches: no cache deletes nothing" 0 ""
+run prc 7x
+expect "pr-caches: a number of a pull request that is not a number" 2
+
+# I4: a pull request saves its dist-newstyle under the family of main with
+# pr-NUMBER- after it; the key of main has the commit hash there, which
+# never starts with pr-
+ci_step() { awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML"; }
+I4_FAMILY="dist-\${{ runner.os }}-\${{ runner.arch }}-ghc-\${{ env.GHC_VERSION }}-\${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-\${{ hashFiles('scripts/fetch-wasmtime.sh') }}-"
+I4_PR="\${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.pull_request.number) || '' }}"
+I4_SAVE=$(ci_step "name: Save dist-newstyle (docs/adr/0009" | sed -n 's/^          key: //p')
+if [ "$I4_SAVE" = "$I4_FAMILY$I4_PR\${{ github.sha }}" ]; then ok; else
+  ng "ADR 0395 I4: the key that saves dist-newstyle is the family of main, pr-NUMBER- on a pull request, and the commit"
+  printf '  got: %s\n' "$I4_SAVE"
+fi
+if ci_step "name: Save dist-newstyle (docs/adr/0009" | grep -qxF "        if: success() && matrix.save && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))"; then ok; else
+  ng "ADR 0395 I4: a pull request saves dist-newstyle as a push to main does, when GHC compiled"
+fi
+# the next push of the pull request restores its own newest, and then the
+# newest of main
+if ci_step "name: Restore dist-newstyle (docs/adr/0009" | grep -qxF "          key: $I4_FAMILY$I4_PR\${{ github.sha }}" &&
+  [ "$(ci_step "name: Restore dist-newstyle (docs/adr/0009" | sed -n '/^          restore-keys: |$/,$p' | sed 1d | grep '^            [^ #]' | sed 's/^ *//')" = "$I4_FAMILY$I4_PR
+$I4_FAMILY" ]; then ok; else
+  ng "ADR 0395 I4: dist-newstyle is restored from the pull request first, then from main"
+fi
+# the family of main has the commit hash after it, in hexadecimal
+if printf 'pr-962-\n' | grep -q '^[0-9a-f]*$'; then ng "ADR 0395 I4: pr- is not a commit hash"; else ok; fi
+
+# the workflow that deletes the caches of pull requests runs on main's
+# definition (workflow_run and pull_request_target), checks out nothing,
+# and alone has actions: write (docs/adr/0395)
+PRC_YML=$HERE/../../.github/workflows/pr-caches.yml
+if [ -f "$PRC_YML" ] &&
+  [ "$(sed -n '/^on:$/,/^[a-z]/p' "$PRC_YML" | grep -v '^ *#' | sed '$d')" = "on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  pull_request_target:
+    types: [closed]" ]; then ok; else
+  ng "pr-caches.yml: runs when CI completes and when a pull request is closed (docs/adr/0395)"
+fi
+if [ -f "$PRC_YML" ] && ! grep -q 'uses:' "$PRC_YML" && ! grep -q 'github.event.pull_request.head' "$PRC_YML"; then ok; else
+  ng "pr-caches.yml: checks out nothing and uses no action (docs/adr/0395)"
+fi
+if [ -f "$PRC_YML" ] && grep -qx 'permissions: {}' "$PRC_YML" && [ "$(grep -c 'actions: write' "$PRC_YML")" = 1 ] &&
+  [ "$(grep -n 'actions: write' "$PRC_YML" | cut -d: -f2-)" = "      actions: write" ]; then ok; else
+  ng "pr-caches.yml: no permission but in its job, which has actions: write (docs/adr/0395)"
+fi
+if [ -f "$PRC_YML" ] && grep -qF 'sh "$RUNNER_TEMP/pr-caches.sh"' "$PRC_YML" && grep -qF 'gh cache delete' "$PRC_YML" &&
+  grep -qF 'contents/scripts/ci/pr-caches.sh?ref=$BRANCH' "$PRC_YML" && grep -qxF '          BRANCH: ${{ github.event.repository.default_branch }}' "$PRC_YML"; then ok; else
+  ng "pr-caches.yml: deletes the caches that pr-caches.sh of the default branch writes (docs/adr/0395)"
+fi
+# no workflow of a pull request has actions: write: ci.yml gives it to the
+# job caches, which runs on pushes to main only (docs/adr/0228)
+for wf in "$HERE"/../../.github/workflows/*.yml; do
+  case "$wf" in */pr-caches.yml | */release.yml | */ci.yml) continue ;; esac
+  if grep -q 'actions: write' "$wf"; then ng "$(basename "$wf"): has no actions: write (docs/adr/0395)"; else ok; fi
+done
+
+# build-targets.sh: the targets of cabal build of each runner of build
+bt() { sh "$HERE/build-targets.sh" "$@"; }
+: >"$WORK/in"
+run bt all "$TS"
+expect "build-targets: all builds everything and peg-hs" 0 "all
+peg-cli:exe:peg-hs"
+run bt rest "$TS"
+expect "build-targets: rest builds the suites of rest and peg-hs" 0 "$(test_suites rest "$TS")
+peg-cli:exe:peg-hs"
+run bt golem "$TS"
+expect "build-targets: golem builds the executable golem alone" 0 "golem-cli:exe:golem"
+run bt driver "$TS"
+expect "build-targets: an unknown part" 2
+# the runners of the outputs and the environment check build golem; the
+# runner that saves dist-newstyle builds everything, so that the cache has
+# it all; tests-rest builds the suites it runs (docs/adr/0395)
+if [ "$(matrix_rows "$CI_YML" | awk '{ print $1, $2, $8, $9 }')" = "ubuntu-24.04 tests-driver all true
+ubuntu-24.04 tests-rest rest false
+ubuntu-24.04 outputs golem false
+ubuntu-24.04 outputs-checks golem false
+ubuntu-24.04 env golem false
+ubuntu-24.04-arm tests-driver all true
+ubuntu-24.04-arm tests-rest rest false
+ubuntu-24.04-arm outputs golem false" ]; then ok; else ng "ci.yml: the runners build their targets, and those that save build all (docs/adr/0395)"; fi
+if ci_step "name: cabal build (docs/adr/0395)" | grep -qF 'cabal build $(sh scripts/ci/build-targets.sh "$TARGETS")' &&
+  ci_step "name: cabal build (docs/adr/0395)" | grep -qxF '          TARGETS: ${{ matrix.build }}'; then ok; else
+  ng "ci.yml: cabal build builds the targets of build-targets.sh for the runner (docs/adr/0395)"
+fi
+
+# same-plan.sh: the plan that the checks read is the plan of cabal build all
+SP=$WORK/same-plan
+mkdir -p "$SP"
+printf '{"install-plan":[{"id":"a"},{"id":"b"},{"id":"c"}]}\n' >"$SP/one.json"
+printf '{"install-plan":[{"id":"c"},{"id":"a"},{"id":"b"}]}\n' >"$SP/two.json"
+printf '{"install-plan":[{"id":"a"},{"id":"b"}]}\n' >"$SP/short.json"
+run sh "$HERE/same-plan.sh" "$SP/one.json" "$SP/two.json"
+expect "same-plan: the same elements in another order" 0 ""
+run sh "$HERE/same-plan.sh" "$SP/one.json" "$SP/short.json"
+if [ "$CODE" = 1 ] && grep -qx '< c' "$WORK/out"; then ok; else ng "same-plan: an element missing from the second plan"; fi
+run sh "$HERE/same-plan.sh" "$SP/one.json"
+expect "same-plan: one plan is a usage error" 2
+PLAN_STEP="name: The plan of the build is that of cabal build all (docs/adr/0395)"
+if ci_step "$PLAN_STEP" | grep -qF 'cabal build -v0 --dry-run all peg-cli:exe:peg-hs' &&
+  ci_step "$PLAN_STEP" | grep -qF 'sh scripts/ci/same-plan.sh "$RUNNER_TEMP/plan.json" dist-newstyle/cache/plan.json'; then ok; else
+  ng "ci.yml: the plan of the build is compared with that of cabal build all (docs/adr/0395)"
+fi
+PLAN_AT=$(grep -n "$PLAN_STEP" "$CI_YML" | head -1 | cut -d: -f1)
+DEPS_AT=$(grep -n 'run: sh scripts/ci/test-only-deps.sh' "$CI_YML" | head -1 | cut -d: -f1)
+if [ -n "$PLAN_AT" ] && [ -n "$DEPS_AT" ] && [ "$PLAN_AT" -lt "$DEPS_AT" ]; then ok; else ng "ci.yml: the plan is compared before test-only-deps.sh reads it (docs/adr/0395)"; fi
+
+# the x86-64 outputs in two runners: the artifacts that visual, verapdf,
+# wasm and editors-lsp wait for on build (ubuntu-24.04, outputs), every
+# other step of the outputs on outputs-checks (docs/adr/0395)
+for s in "name: Copy golem for the job editors-lsp" "name: Upload golem for the job editors-lsp" \
+  "name: The PDFs of the visual regression test" "name: Upload the PDFs of the visual regression test" \
+  "name: The native list of the comparison with golem.wasm" "name: Upload the native list of the comparison with golem.wasm" \
+  "name: The PDFs that declare PDF/A-2a and PDF/UA-1" "name: Upload the PDFs that declare PDF/A-2a and PDF/UA-1"; do
+  if step_if "$s" "if: matrix.artifacts"; then ok; else ng "ci.yml: $s on the runner of the artifacts (docs/adr/0395)"; fi
+done
+
+# A1: the checks of a pull request are those before the ADR. Each step
+# after cabal build of build is written with the runners it runs on, the
+# suites of cabal test with their runners, and the needs of ci; the list of
+# the commit before the ADR is testdata. The one step more is the check of
+# the plan, item 1 of the ADR
+CC=$HERE/testdata/ci-checks
+run sh "$HERE/ci-checks.sh" "$CI_YML"
+grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
+if [ "$CODE" = 0 ] && diff "$CC/before-0395.txt" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
+  ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
+  sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40
+fi
+run sh "$HERE/ci-checks.sh" "$CC/small.yml" "$TS"
+expect "ADR 0395 A1: a step is listed with the runners whose row of the matrix meets its if" 0 "$(cat "$CC/small.txt")"
+run sh "$HERE/ci-checks.sh" "$CC/unknown.yml" "$TS"
+if [ "$CODE" = 1 ] && grep -qF 'steps.x.outputs.y' "$WORK/err"; then ok; else ng "ADR 0395 A1: an if with a term that the list cannot decide fails"; fi
 
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]

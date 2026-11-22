@@ -1,6 +1,6 @@
 module DiagnosticsSpec (explainTests, noticeTests, projectDiagnosticTests, readingTests, evalDiagnosticTests, outputDiagnosticTests) where
 
-import Control.Monad (filterM, forM)
+import Control.Monad (filterM, forM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
@@ -55,7 +55,13 @@ readingTests =
     testCase "an empty expression is one G01020" $
       withChapters "" [("a.gm", "[=]\n")] [] $ \tmp -> do
         (codes, _) <- checked tmp
-        codes @?= [DiagnosticCode "G01020"]
+        codes @?= [DiagnosticCode "G01020"],
+    testCase "ADR 0344 I2 I3: retired style forms stop every target even with --no-notices" $
+      withChapters "[lists]\nnumbers = [\"{{{a}}}\"]\n[notes]\nmark-size = \"0.5zw\"\n[masters.book]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n" [("a.gm", "一。\n")] [] $ \tmp ->
+        forM_ [TargetPdf, TargetHtml, TargetEpub, TargetText] $ \target -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [target], optNoNotices = True}
+          map diagCode (filter isError (brDiagnostics r)) @?= map DiagnosticCode ["G03250", "G03251", "G03252", "G03253"]
+          brWritten r @?= []
   ]
   where
     checked tmp = do
@@ -105,7 +111,7 @@ noticeManifest extra = miniManifest <> "\n[targets.html]\n\n[targets.epub]\n\n[t
 -- | A source that gives every notice but G03023.
 noticeSource :: BS.ByteString
 noticeSource =
-  "@style-def paragraph body indent=1zw\n\n# A\n\n[tcy: 10]\n\n@style verse\n  \\ x\n  y\n\n@listing src=code.hs\n\n@number 1\n+ a\n+ b\n\n@page-break\n"
+  "@style-def paragraph body indent=1zw\n\n# A\n\n[tcy: 10]\n\n@style verse\n  \\ x\n  y\n\n@listing code.hs\n\n@number 1\n+ a\n+ b\n\n@page-break\n"
 
 noticeProject :: BS.ByteString -> BS.ByteString -> [(FilePath, BS.ByteString)]
 noticeProject extra source =
@@ -140,24 +146,22 @@ everyNoticeProjects =
       ]
   ]
   where
-    -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
+    -- five lines of 12 characters, a paragraph style with rules, and a zero indent of table (G03100)
     -- the role inkless of the fake fonts draws dashes without ink (G07101)
     style =
       replaceIn "lines = 30" "lines = 5" horizontalStyle
-        <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+        <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.table]\nindent = \"0zw\"\n"
         -- a paragraph style that is not broken (G07112, docs/adr/0261)
         <> "\n[paragraph-styles.kept]\nkeep-all-lines = true\n"
         <> fakeBody
         <> "\n[fonts.inkless]\nja = \"fonts/b.otf\"\n\n[character-styles.inkless]\nfont = \"inkless\"\n"
         -- the role overhang of the fake fonts draws ink past the box of ” (G07126, docs/adr/0302)
         <> "\n[fonts.overhang]\nja = \"fonts/b.otf\"\n\n[character-styles.overhang]\nfont = \"overhang\"\n"
-        -- the ways of writing to be retired of docs/adr/0177: G03114, G03115, G03116 and G03117
-        <> "\n[lists]\nnumbers = [\"{{{n}}}\", \"{a}.\"]\n\n[notes]\nmark-size = \"0.5zw\"\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n"
+        <> "\n[lists]\nnumbers = [\"{n:lower-alpha}.\"]\n\n[masters.extra]\nrunning-head = { position = \"top-outside\", content = [\"x\"] }\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
     source =
       T.concat
         [ TE.decodeUtf8 noticeSource,
-          "\n@set legacy = 1\n\n", -- G02155 (Golem ADR 0336)
           "\n本文。\n\n@blank-line 0\n\n", -- G02254 (an info)
           "@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
@@ -165,7 +169,7 @@ everyNoticeProjects =
           "[style overhang: あ\x201Dい]\n\n", -- G07126 (docs/adr/0302)
           "a\xAD. [code: x[shy]y]\n\n", -- G07123 and G07124 (docs/adr ADR 0272)
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
-          "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
+          "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046
           "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047 (an info)
           "@blank-line\n@blank-line\n\nc\n\n", -- G02094
@@ -173,8 +177,8 @@ everyNoticeProjects =
           "@page-break\n\n@page-lines -4\n\n# H\n\ne\n\n", -- G07100
           "@style kept\n  " <> T.replicate 72 "あ" <> "\n\n", -- G07112 (docs/adr/0261)
           "@page-break\n\n@page-lines -4\n\n" <> T.replicate 36 "あ" <> "\n\n", -- G07113 (docs/adr/0261)
-          "``` highlight=1-1\nx\n```\n\n", -- G02108
-          "@table src=t.csv\n\n", -- G02129 (docs/adr/0184)
+          "``` highlight=1...1\nx\n```\n\n",
+          "@table t.csv\n\n",
           "@page-break\n\n@blank-line\n" -- G04008 and G04009
         ]
 
@@ -193,21 +197,21 @@ noticeTests =
     [ testCase "the notices of a project" $ do
         n <- buildNotified (noticeProject "" noticeSource) id
         -- the @listing is code and style.toml has no [fonts.code]: G08008 (golem-driver ADR 0017)
-        codesOf (nDiagnostics n) @?= ["G02062", "G02063", "G02064", "G02065", "G04007", "G04008", "G08008"]
-        map diagSeverity (nDiagnostics n) @?= replicate 7 Notice,
+        codesOf (nDiagnostics n) @?= ["G02062", "G02063", "G02064", "G04007", "G04008", "G08008"]
+        map diagSeverity (nDiagnostics n) @?= replicate 6 Notice,
       -- golem-driver ADR 0043
-      testCase "G03100: a zero indent of caption in style.toml is a notice at style.toml; silence-notices drops it" $ do
-        let style = withBodyFont horizontalStyle <> "\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+      testCase "G03100: a zero indent of table in style.toml is a notice at style.toml; silence-notices drops it (docs/adr/0367)" $ do
+        let style = withBodyFont horizontalStyle <> "\n[paragraph-styles.table]\nindent = \"0zw\"\n"
             files extra = [("manifest.toml", noticeManifest extra), ("style.toml", style), ("a.gm", "abc\n")] <> fakeFontFiles
         n <- buildNotified (files "") id
         [(diagCode d, diagSeverity d, diagMessage d) | d <- nDiagnostics n]
-          @?= [(DiagnosticCode "G03100", Notice, "キャプションと傍注は字下げを掛けないので、caption.indent = \"0zw\" は効果がありません")]
+          @?= [(DiagnosticCode "G03100", Notice, "表のセルは字下げを掛けないので、table.indent = \"0zw\" は効果がありません")]
         assertBool "outputs" (not (null (nOutputs n)))
         quiet <- buildNotified (files "\n[diagnostics]\nsilence-notices = [\"G03100\"]\n") id
         nDiagnostics quiet @?= [],
       testCase "silence-notices drops those notices only" $ do
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02063\", \"G04008\"]\n" noticeSource) id
-        codesOf (nDiagnostics n) @?= ["G02062", "G02064", "G02065", "G04007", "G08008"],
+        codesOf (nDiagnostics n) @?= ["G02062", "G02064", "G04007", "G08008"],
       -- golem-parser ADR 0012
       testCase "G02079: an escaped space at the end of a verse line is dropped, and silence-notices drops G02079" $ do
         let verse = "@style verse\n  ab\\ \n  cd\n"
@@ -275,13 +279,72 @@ noticeTests =
         sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort (filter (/= DiagnosticCode "G05100") infoCodes)
         let written = concatMap (\(_, _, w) -> w) raised
         assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
-      testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
-        let (pre, post) = BS.breakSubstring "src=code.hs" noticeSource
-            positional = pre <> "code.hs" <> BS.drop (BS.length "src=code.hs") post
-        a <- buildNotified (noticeProject "" noticeSource) id
-        b <- buildNotified (noticeProject "" positional) id
-        map withoutInstanceId (nOutputs b) @?= map withoutInstanceId (nOutputs a)
-        assertBool "no G02065" ("G02065" `notElem` codesOf (nDiagnostics b)),
+      testCase "ADR 0341 I2: legacy listing path stops before reading its asset" $ do
+        n <- buildNotified (noticeProject "" "@listing src=missing.hs\n") id
+        codesOf (nDiagnostics n) @?= ["G02250"]
+        both <- buildNotified (noticeProject "" "@listing missing-a.hs src=missing-b.hs\n") id
+        codesOf (nDiagnostics both) @?= ["G02253"]
+        positional <- buildNotified (noticeProject "" "@listing missing-a.hs missing-b.hs\n") id
+        codesOf (nDiagnostics positional) @?= ["G02253"]
+        twice <- buildNotified (noticeProject "" "@listing src=missing-a.hs src=missing-b.hs\n") id
+        codesOf (nDiagnostics twice) @?= ["G02077"]
+        quiet <- buildNotified (noticeProject "" "@listing src=missing.hs\n") (\o -> o {optNoNotices = True})
+        codesOf (nDiagnostics quiet) @?= ["G02250"],
+      testCase "ADR 0341 I2: --no-notices does not let a legacy listing path build" $
+        forM_ ["@listing src=code.hs\n", "@listing code.hs src=code.hs\n", "@listing code.hs code.hs\n"] $ \src -> do
+          n <- buildNotified (noticeProject "" src) (\o -> o {optNoNotices = True})
+          map diagSeverity (nDiagnostics n) @?= [Error]
+          nOutputs n @?= [],
+      testCase "ADR 0341 I1: a positional @listing path builds with no path error" $ do
+        n <- buildNotified (noticeProject "" "@listing code.hs\n") (\o -> o {optNoNotices = True})
+        [c | c <- codesOf (nDiagnostics n), c `elem` ["G02250", "G02253"]] @?= []
+        assertBool "outputs" (not (null (nOutputs n))),
+      testCase "ADR 0341 I4: silence-notices with the retired G02065 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02065\"]\n" "@listing code.hs\n") id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
+      testCase "ADR 0342 I2: --no-notices does not let a dash range build" $
+        forM_ ["@listing code.hs lines=1-1\n", "@listing code.hs lines=\"1-1, 1-1\"\n", "``` highlight=1-2,4-5\na\nb\nc\nd\ne\n```\n"] $ \src -> do
+          n <- buildNotified (noticeProject "" src) (\o -> o {optNoNotices = True})
+          codesOf (nDiagnostics n) @?= ["G02251"]
+          map diagSeverity (nDiagnostics n) @?= [Error]
+          nOutputs n @?= [],
+      testCase "ADR 0342 I1: a list of lines and ranges builds with no error" $
+        forM_ ["@listing code.hs lines=\"1, 1...1\"\n", "``` highlight=\"1...2, 4\"\na\nb\nc\nd\ne\n```\n"] $ \src -> do
+          n <- buildNotified (noticeProject "" src) id
+          [diagCode d | d <- nDiagnostics n, diagSeverity d == Error] @?= []
+          assertBool "outputs" (not (null (nOutputs n))),
+      testCase "ADR 0342 I4: silence-notices with the retired G02108 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02108\"]\n" "@listing code.hs\n") id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
+      testCase "ADR 0344 I4: silence-notices with each retired code of the style formats is G03024" $
+        forM_ ["G03114", "G03115", "G03116", "G03117"] $ \code -> do
+          n <- buildNotified (noticeProject ("\n[diagnostics]\nsilence-notices = [\"" <> code <> "\"]\n") "a.\n") id
+          codesOf (nDiagnostics n) @?= ["G03024"]
+          nOutputs n @?= [],
+      testCase "ADR 0343 I2: --no-notices does not let a legacy or doubled table path build" $
+        forM_ [("@table src=t.csv\n", "G02252"), ("@table t.csv src=t.csv\n", "G02130"), ("@table t.csv t.csv\n", "G02130")] $ \(src, code) -> do
+          n <- buildNotified (noticeProject "" src <> [("t.csv", "a,b\nc,d\n")]) (\o -> o {optNoNotices = True})
+          codesOf (nDiagnostics n) @?= [code]
+          map diagSeverity (nDiagnostics n) @?= [Error]
+          nOutputs n @?= [],
+      testCase "ADR 0343 I1: a positional @table path builds with no diagnostics" $ do
+        n <- buildNotified (noticeProject "" "@table t.csv\n" <> [("t.csv", "a,b\nc,d\n")]) id
+        codesOf (nDiagnostics n) @?= []
+        assertBool "outputs" (not (null (nOutputs n))),
+      testCase "ADR 0343 I4: silence-notices with the retired G02129 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02129\"]\n" "@table t.csv\n" <> [("t.csv", "a,b\nc,d\n")]) id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
+      testCase "ADR 0391 I4: silence-notices with the retired G02155 is G03024" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02155\"]\n" "@set x = 1\n\n[= x]\n") id
+        codesOf (nDiagnostics n) @?= ["G03024"]
+        nOutputs n @?= [],
+      testCase "ADR 0391 I3: @set builds with no diagnostics" $ do
+        n <- buildNotified (noticeProject "" "@set x = 1\n\n[= x]\n") id
+        codesOf (nDiagnostics n) @?= []
+        assertBool "outputs" (not (null (nOutputs n))),
       testCase "G03023: no style.toml, at the start of manifest.toml" $ do
         let files = [("manifest.toml", TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["html", "epub", "text"]})), ("a.gm", "x\n")]
         n <- buildNotified files id
@@ -381,6 +444,16 @@ explainTests =
                 isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
             assertBool "some profile-dependent codes" (not (null dependent))
             sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "ADR 0389 A1: the paragraph of the profile-dependent codes names every code of profileDependentCodes, G07127 and G07128 among them" $ do
+            let dependent = [c | DiagnosticCode c <- profileDependentCodes]
+                -- the line after the one that names profileDependentCodes
+                listed = case dropWhile (not . ("重大度がプロファイルで変わるコードは" `T.isPrefixOf`)) (T.lines documentText) of
+                  _ : l : _ -> l
+                  _ -> ""
+            assertBool "G07127 and G07128 are profile-dependent" (all (`elem` dependent) ["G07127", "G07128"])
+            [c | c <- dependent, not (("[" <> c <> "](#" <> T.toLower c <> ")") `T.isInfixOf` listed)] @?= []
+            fmap exTitle (lookupExplanation "G07127") @?= Just "キャプションの字下げが行の幅を使い切ります"
+            fmap exTitle (lookupExplanation "G07128") @?= Just "傍注の字下げが傍注の領域の幅を使い切ります",
           testCase "the infos of the catalog are infoCodes (docs/adr 0104)" $ do
             let isInfo e = "- 重大度: 情報" `elem` T.lines (exBody e)
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isInfo e] @?= sort [c | DiagnosticCode c <- infoCodes],

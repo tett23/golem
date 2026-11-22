@@ -1,6 +1,6 @@
 # ADR 0336: 原稿の変数を set 名前 = 式 で宣言する
 
-ステータス: 採択
+Status: superseded [{"by":["docs/adr/0391-keep-the-at-sign-on-variable-declarations.md"],"part":null}]
 
 ## 文脈
 

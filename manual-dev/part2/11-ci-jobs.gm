@@ -20,7 +20,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 | ジョブ | 内容 |
 | --- | --- |
-| [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること |
+| [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること、ステータスの変更が許された状態遷移であること |
 | [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること、この本の図が原稿から作られていること |
 | [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
@@ -109,31 +109,38 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 ## build
 
 [code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）のランナーで実行する。
-x86-64 では同じコミットを四つのランナーでビルドし、[code: tests-driver] と [code: tests-rest] がテストを、[code: outputs] が出力を作る手順を、[code: env] が実行の環境を変える検査を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
+x86-64 では同じコミットを五つのランナーでビルドし、[code: tests-driver] と [code: tests-rest] がテストを、[code: outputs] と [code: outputs-checks] が出力を作る手順を、[code: env] が実行の環境を変える検査を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
 aarch64 では三つのランナーでビルドし、x86-64 と同じく [code: tests-driver] と [code: tests-rest] がテストを、[code: outputs] が出力を作る手順を受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md]（docs/adr の ADR 0140「build のテストを四つのランナーに分け、visual-pdfs を決定性の検査の出力より先に組む」）]
+x86-64 の出力の手順は二つに分ける。
+[code: outputs] は、ほかのジョブ（[code: visual]、[code: verapdf]、[code: wasm]、[code: editors-lsp]）が待つ成果物を作り、[code: outputs-checks] はそのほかの手順を受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md]（docs/adr の ADR 0395「プルリクエストの CI を 5 分の予算に収める」）]
 主な手順は次のとおりである。
 
-+ テストを受け持つランナーでは qpdf を、x86-64 の [code: outputs] では epubcheck を、裏で入れ始める。入れ終わるのを待つのは、ビルドの直後である。
++ テストを受け持つランナーでは qpdf を、x86-64 の [code: outputs-checks] では epubcheck を、裏で入れ始める。入れ終わるのを待つのは、ビルドの直後である。
 + テストのラッパー [code: scripts/ci/suite-timeout.sh] を [code: cabal.project.local] に書く。
 + GHC 9.10.3 と cabal-install 3.18.2.0 を用意する。その前に [code: CABAL_DIR] を [code: $HOME/.cabal] にして、cabal が設定ファイル、Hackage の索引、store をすべて [code: ~/.cabal] の下に置くようにする。用意した後で、[code: cabal path] が答えるディレクトリが [code: ~/.cabal] の下にあることを確かめる。[code: ~/.cabal] と [code: ~/.config/cabal/config] の両方があると、cabal は [code: ~/.cabal] を読まず、キャッシュから戻した索引を見つけられないからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0201-pin-cabal-dir-in-ci.md]（docs/adr の ADR 0201「CI の cabal に CABAL_DIR を与え、~/.cabal の配置に固定する」）]GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。GHC のキャッシュには、CI が読まない文書とプロファイリング用のライブラリを入れない。キャッシュが外れたときは、GHC を入れた後にそれらを消してから保存する。Hackage の索引のキャッシュには、cabal がビルドの計画に使わない圧縮した索引（[code: 01-index.tar.gz]）を入れない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0141-smaller-ghc-and-hackage-index-caches.md]（docs/adr の ADR 0141「GHC と Hackage の索引のキャッシュから、CI が読まないファイルを除く」）]キャッシュが外れたときは、[code: cabal update] の後に [code: 01-index.tar.gz] を消してから保存する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0152-remove-hackage-index-tar-gz-before-cache.md]（docs/adr の ADR 0152「Hackage の索引のキャッシュから 01-index.tar.gz を rm で除く」）]
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を用意する。そのアーカイブは、キャッシュから [code: third_party/downloads] に戻し、SHA-256 を照合してから展開する。キャッシュになければ取得し、[code: main] への push では [code: tests-driver] のランナーが保存する。
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test] を実行する。どちらのアーキテクチャでも、[code: tests-driver] は golem-driver のスイートを、[code: tests-rest] はそのほかのすべてのスイートを実行する。二つへの振り分けは [code: scripts/ci/test-suites.sh] が [code: modules/] の [code: .cabal] のファイルから決めるので、新しいスイートは [code: tests-rest] で走る。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。終わったスイートも、[code: scripts/ci/suite-limits.tsv] に書いたアーキテクチャごとの上限の秒を超えれば失敗にし、表に行のないスイートは走らせずに失敗にする。上限は、直近の [code: main] への push の 20 回の秒の中央値の 2 倍（10 秒より小さければ 10 秒）である。新しいスイートを足すときは、表に x86-64 と aarch64 の二行を足す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md]（docs/adr の ADR 0292「テストのスイートごとの時間に、main の中央値から決めた上限を置く」）]手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
++ ランナーが使うものだけを [code: cabal build] で組み（[code: scripts/ci/build-targets.sh]）、テストを受け持つランナーでは続けて [code: cabal test] を実行する。[code: tests-driver] は [code: dist-newstyle] を保存するので、キャッシュがすべてを含むよう [code: cabal build all] で組む。[code: tests-rest] は自分が走らせるスイートを、出力と [code: env] のランナーは実行ファイルの [code: golem] だけを組む。どちらのアーキテクチャでも、[code: tests-driver] は golem-driver のスイートを、[code: tests-rest] はそのほかのすべてのスイートを実行する。二つへの振り分けは [code: scripts/ci/test-suites.sh] が [code: modules/] の [code: .cabal] のファイルから決めるので、新しいスイートは [code: tests-rest] で走る。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。終わったスイートも、[code: scripts/ci/suite-limits.tsv] に書いたアーキテクチャごとの上限の秒を超えれば失敗にし、表に行のないスイートは走らせずに失敗にする。上限は、直近の [code: main] への push の 20 回の秒の中央値の 2 倍（10 秒より小さければ 10 秒）である。新しいスイートを足すときは、表に x86-64 と aarch64 の二行を足す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md]（docs/adr の ADR 0292「テストのスイートごとの時間に、main の中央値から決めた上限を置く」）]手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、計画を [code: cabal build all] のものに作り直し、組んだときの計画と要素の一覧が等しいことを [code: scripts/ci/same-plan.sh] で確かめる。続けて [code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
 + テストを受け持つランナー（[code: tests-driver] を除く）では、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。続けて [code: scripts/gen-embedded.sh] で golem-driver の二つのモジュールを生成し直し、同じく差分がないことを確かめる。
 + 出力を受け持つランナーと [code: env] では、二つのマニュアルのフォントをキャッシュから戻す。
-+ x86-64 の出力を受け持つランナーでは、[code: scripts/visual/build.sh] で見た目の回帰テストの 23 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブで、この成果物だけを待つので、出力の手順のうちで最初に組む。
-+ x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
++ x86-64 の [code: outputs] では、[code: scripts/visual/build.sh] で見た目の回帰テストの 23 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブで、この成果物だけを待つので、出力の手順のうちで最初に組む。
++ x86-64 の [code: outputs-checks] では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + 出力を受け持つランナーでは、[code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
-+ [code: env] では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: scripts/manual/fetch-fonts.sh] で二つのマニュアルのフォントを取る（キャッシュにあれば取らない）。[code: outputs] では [code: scripts/manual/build.sh] がフォントを取るが、[code: env] はマニュアルを組まないからである。続けて[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
++ [code: env] では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: scripts/manual/fetch-fonts.sh] で二つのマニュアルのフォントを取る（キャッシュにあれば取らない）。出力を受け持つランナーでは [code: scripts/manual/build.sh] がフォントを取るが、[code: env] はマニュアルを組まないからである。続けて[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
 プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
-+ x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
++ x86-64 の [code: outputs-checks] では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
 キャッシュのキーは、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
 [code: dist-newstyle] のキャッシュは、[code: main] への push と、プルリクエストで GHC がモジュールをコンパイルしたときに保存する。
 保存するのは、どちらのアーキテクチャでも [code: tests-driver] の、アーキテクチャごとに一つのランナーである。
 プルリクエストのキャッシュは、そのプルリクエストの次の push と再実行だけが使える。
 キャッシュを戻すときは、そのプルリクエストのキャッシュを先に探し、なければ [code: main] のキャッシュを使う。
+プルリクエストのキーは、[code: main] のキーのコミットのハッシュの前に [code: pr-<番号>-] を挟んだものなので、二つは前の部分で区別できる。
 何もコンパイルしなかった実行は、戻したキャッシュのままなので保存しない。
+プルリクエストのキャッシュは、ワークフロー [code: pr-caches.yml] が消す。
+[code: ci.yml] の実行が終わったときと、プルリクエストが閉じたときに走り、閉じたプルリクエストのキャッシュのすべてと、開いているプルリクエストの [code: dist-] のキャッシュのうちアーキテクチャごとの最新のもの以外を消す。
+キャッシュの合計が 9 GB を超えていれば、開いているプルリクエストの [code: dist-] のキャッシュを古いものから消す。
+このワークフローは既定のブランチの定義で走り、何もチェックアウトしないので、プルリクエストは消すものを変えられない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md]（docs/adr の ADR 0395「プルリクエストの CI を 5 分の予算に収める」）]
 マニュアルのフォントのキャッシュのキーは、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
 フォントの URL と SHA-256 はこのスクリプトに書いてあるので、フォントを変えればキーも変わる。
 
@@ -224,7 +231,8 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 ## visual
 
 [code: visual] は、見た目の回帰テスト（第[ref-number determinism]章）を動かす。
-x86-64 の [code: outputs] のランナーが、ビルドの直後、epubcheck と [code: scripts/determinism.sh] より先に、[code: scripts/visual/build.sh] で 23 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
+x86-64 の [code: outputs] のランナーが、ビルドの直後、ほかの成果物より先に、[code: scripts/visual/build.sh] で 23 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
+epubcheck と [code: scripts/determinism.sh] は、別のランナー [code: outputs-checks] で走る。
 [code: scripts/visual/build.sh] は入力を一時ディレクトリに写して組み、マニュアルのフォントも自分で取るので、ほかの出力を待たない。
 [code: visual] は [code: changes] だけを待ち、[code: build] と同時に [code: ubuntu-24.04] で走り始め、次の順に進む。
 
@@ -354,7 +362,7 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## adr、manual、textlint
 
-[code: docs.yml] の [code: adr] は、adr-guard の v0.10.0 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数、ADR の番号の重複を検査する（第[ref-number adr]章）。
+[code: docs.yml] の [code: adr] は、adr-guard の v0.13.1 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数と状態遷移、ADR の番号の重複を検査する（第[ref-number adr]章）。
 プルリクエストではベースからヘッドまで、[code: main] への push では push の前から後までの変更を見る。
 
 [code: manual] は、プルリクエストのときだけ、[code: scripts/manual/check-updated.sh] でマニュアルの更新を検査する（第[ref-number docs]章）。
@@ -433,7 +441,9 @@ L7 は、分割の候補の部分集合をすべて調べる素朴な探索と�
 
 [code: build] は 30 分で打ち切る。
 CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scripts/ci/timings.sh] で作る。
-CI の所要時間は 5 分以内を保つ。
+CI の所要時間は、版によらず常に 5 分以内を保つ。
+測るのは、プルリクエストの [code: ci.yml] の成功した実行のうち [code: build] を省かなかった直近 20 回の時間の中央値で、ランナーの順番待ちは含めない。
+計測のコマンドは [code: scripts/ci/ci-critical-path.sh] である。
 CI を待つ時間は変更を一つ入れるたびにかかるので、CI が遅いと開発そのものが遅くなる。
 このプロジェクトは開発の速さをいちばん大事にしているので、CI の遅さを後回しにしない。
 プルリクエストの CI が 5 分を超えたら、ほかの作業を止めて、まず CI を改善する。

@@ -1,6 +1,6 @@
 # ADR 0023: fixture の変換を Python から移す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

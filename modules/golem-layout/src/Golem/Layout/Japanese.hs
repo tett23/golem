@@ -24,12 +24,17 @@ module Golem.Layout.Japanese
     shapedWrapMark,
     MarkPart (..),
     markParts,
+    markPartsShaped,
     markInlines,
     markPartsText,
+    markReserve,
+    renumberMark,
+    markLabelBox,
     -- | the format of [notes] mark-format, for the users of 'ComposeEnv' (docs/adr/0177)
     MarkFormat (..),
     parseMarkFormat,
     composeInlines,
+    displayedInlines,
     composeInlinesTree,
     softHyphenSites,
     SoftHyphenNote (..),
@@ -42,6 +47,7 @@ module Golem.Layout.Japanese
     protrusionRatio,
     verticalSidenotes,
     punctSpace,
+    takesKenten,
     narrowPunctuation,
   )
 where
@@ -71,7 +77,7 @@ import Golem.Layout.Ruby
 import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
-import Golem.Numerals.Notation (Notation, arabic, writeNumber)
+import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNotation, writeNumber)
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
@@ -141,6 +147,8 @@ data ComposeEnv = ComposeEnv
     ceProtrusion :: !Bool,
     -- | the placement of ruby (golem-layout ADR 0009)
     ceRuby :: !RubyStyle,
+    -- | the look of the reading of a ruby in a look, [composition.ruby] reading-style (docs/adr/0369)
+    ceRubyReading :: Look -> Maybe Look,
     -- | the number notation of vertical text when the source names none
     ceVerticalNumbers :: !VerticalNumbers,
     -- | the notation of a page reference in vertical text; Nothing sets the digits sideways (docs/adr/0118)
@@ -156,6 +164,8 @@ data ComposeEnv = ComposeEnv
     ceRestyle :: Look -> Inline -> Look,
     -- | how a sidenote is marked in the text (golem-driver ADR 0006)
     ceSidenoteMarker :: !SidenoteMarker,
+    -- | the character style of the symbol marker ※ in the text, [sidenotes] marker-style (docs/adr/0371)
+    ceSidenoteMarkStyle :: !(Maybe Text),
     -- | the number of a cited work (golem-driver ADR 0007)
     ceCiteNumber :: SrcSpan -> Text -> Maybe Int,
     {- | the penalty of a break after a hyphen or dash in a Latin word;
@@ -169,6 +179,10 @@ data ComposeEnv = ComposeEnv
     ceAkiSet :: !AkiSet,
     -- | [notes] mark-format: the text of a note mark, its number in a notation (golem-driver ADR 0025, docs/adr/0177)
     ceNoteMarkFormat :: !MarkFormat,
+    {- | [notes] mark-shape = "flat" (docs/adr/0381): in vertical text the
+    kanji of the number of a note mark are set flat, each half its advance
+    along the line
+    -} ceNoteMarkFlat :: !Bool,
     -- | the look of a mark in the text from the look of its place: [notes] mark-style applied (docs/adr/0177)
     ceNoteMarkLook :: Look -> Look,
     -- | the size source of a mark in the text from that of its place (golem-cli ADR 0008, docs/adr/0177)
@@ -209,7 +223,12 @@ data ComposeEnv = ComposeEnv
     after it in the run of the characters of the paragraph, characters of
     both scripts outside a span skipped, are Latin (docs/adr ADR 0283); set
     by 'composeInlines' for each inline, False at the ends of the paragraph
-    -} ceTextEdges :: !(Bool, Bool)
+    -} ceTextEdges :: !(Bool, Bool),
+    {- | with notes numbered per page (docs/adr/0383): how many notes and
+    how many sidenotes the book has, the most a mark can take; the marks
+    reserve the widest of the numbers up to it. Nothing for any other
+    numbering.
+    -} ceMarkReserve :: !(Maybe (Int, Int))
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -229,6 +248,7 @@ defaultComposeEnv fs =
       ceHanging = False,
       ceProtrusion = False,
       ceRuby = defaultRubyStyle fs,
+      ceRubyReading = const Nothing,
       ceVerticalNumbers = VerticalFixed StyleKanji,
       ceRefPageNumbers = Just (VerticalFixed StyleKanji),
       cePatterns = const Nothing,
@@ -236,11 +256,13 @@ defaultComposeEnv fs =
       ceLook = plainLook "body" fs,
       ceRestyle = const,
       ceSidenoteMarker = MarkerNumber,
+      ceSidenoteMarkStyle = Nothing,
       ceCiteNumber = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
       ceNumberUnitPenalty = 10000,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkFormat = defaultMarkFormat,
+      ceNoteMarkFlat = False,
       ceScriptGlyphs = \_ _ -> False,
       ceNoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
       ceNoteMarkSource = const SourceNoteMark,
@@ -254,7 +276,8 @@ defaultComposeEnv fs =
       ceLabelInlines = 0,
       ceLabelLink = Nothing,
       ceCiteLink = \_ _ -> Nothing,
-      ceTextEdges = (False, False)
+      ceTextEdges = (False, False),
+      ceMarkReserve = Nothing
     }
   where
     defaultAdvance c
@@ -290,11 +313,13 @@ data Anchor
 {- | What a box shows (kept in 'bcTag').
 'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
 'KindAki' is the empty box of an [aki] (golem-layout ADR 0012) and
-'KindNoteMark' the mark of a note (golem-driver ADR 0018) and 'KindDashes'
-a run of full-width dashes (docs/adr ADR 0172); they come last so that
-the values before them keep their 'fromEnum'.
+'KindNoteMark' the mark of a note (golem-driver ADR 0018), 'KindDashes'
+a run of full-width dashes (docs/adr ADR 0172) and 'KindFlat' a kanji of
+the number of a note mark set flat, a part of the box of the mark only
+(docs/adr/0381); they come last so that the values before them keep their
+'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes | KindFlat
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -314,7 +339,7 @@ data Piece
   | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
   | PCode !Look !Text !Sp !Sp -- a run of code without spaces and tabs (golem-driver ADR 0017), the padding before and after it (golem-driver ADR 0029)
   | PDashes !Look !Text -- a run of two or more full-width dashes: one box, an em for each (docs/adr ADR 0172)
-  | PMark !Look !Look ![MarkPart] !Sp !Sp -- the mark of a note in the text: the look of its place, its own, its parts and the padding of code before and after it (docs/adr/0177)
+  | PMark !Look !Look ![MarkPart] !Sp !Sp !(Maybe MarkNumber) -- the mark of a note in the text: the look of its place, its own, its parts, the padding of code before and after it (docs/adr/0177) and its number when notes are numbered per page (docs/adr/0383)
   | PAnchor (Int -> Anchor)
   | {- | a soft hyphen (docs/adr ADR 0272): the look of its text, whether it
     is in the word piece before it, and why it is not a break, when it is
@@ -334,6 +359,25 @@ data WordShys = WordShys
     wsBreakAfter :: !Bool
   }
   deriving stock (Eq, Show)
+
+-- | Display text before line breaking, including resolved numbers and only the base of ruby.
+displayedInlines :: ComposeEnv -> [Inline] -> Text
+displayedInlines env = foldMap (foldMap (display . snd) . piecesOf env)
+  where
+    display = \case
+      PChar _ ch selectors -> T.cons ch selectors
+      PWord _ text _ _ -> text
+      PSpace {} -> " "
+      PBox _ text _ _ -> text
+      PRuby _ _ base _ _ -> base
+      PRubyBreak -> ""
+      PForcedBreak -> "\n"
+      PAki {} -> ""
+      PCode _ text _ _ -> text
+      PDashes _ text -> text
+      PMark _ _ parts _ _ _ -> markPartsText parts
+      PAnchor _ -> ""
+      PShy {} -> ""
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls = let (items, anchors, _) = composeInlinesTree env inls in (items, anchors)
@@ -663,10 +707,47 @@ walk env st@(LeafState next cur seen) inl = case inl of
       let go (s, ns, ps) (seg, segPieces) = case rsReading seg of
             Just _ ->
               let LeafState n c sn = s
-                  (s', after) = freshLeaf (LeafState (n + 2) c sn)
-               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase [NodeLeaf n], NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> [(n, src, p) | (src, p) <- segPieces])
-            Nothing -> let LeafState _ c _ = s in (s, ns, ps <> [(c, src, p) | (src, p) <- segPieces])
-       in foldl' go (st, [], []) (zip segs (chunks (piecesOf env inl)))
+                  -- Keep n+1 for the reading, independently of the references in RB.
+                  (nextLeaf, _, baseNodes, owners) = rubyBase n (n + 2) (rsBase seg)
+                  (s', after) = freshLeaf (LeafState nextLeaf c sn)
+                  assign (src, PRuby look kind base looks reading) =
+                    (n, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
+                  assign (src, other) = (n, src, other)
+               in (s', ns <> [NodeElem RoleRuby [NodeElem RoleRubyBase (NodeLeaf n : baseNodes), NodeElem RoleRubyText [NodeLeaf (n + 1)]], after], ps <> map assign segPieces)
+            {- the references of a segment without a reading are References in
+            the content around the ruby, as outside a ruby (docs/adr/0393) -}
+            Nothing ->
+              let LeafState n c sn = s
+                  (nextLeaf, lastLeaf, baseNodes, owners) = rubyBase c n (rsBase seg)
+                  assign (src, PRuby look kind base looks reading) =
+                    (c, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
+                  assign (src, other) = (c, src, other)
+               in (LeafState nextLeaf lastLeaf sn, ns <> baseNodes, ps <> map assign segPieces)
+       in let groups = chunks (piecesOf env inl)
+              effective = case (segs, groups) of
+                (first : _ : _, [_]) -> [first {rsBase = concatMap rsBase segs, rsReading = Just (T.concat [fromMaybe "" (rsReading seg) | seg <- segs])}]
+                _ -> segs
+           in foldl' go (st, [], []) (zip effective groups)
+    own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
+    rubyBase initial nextLeaf = foldl' visit (nextLeaf, initial, [], [])
+      where
+        visit (unused, current, nodes, owners) child =
+          let chars = baseChars env lk child
+              continue xs =
+                let (end, lastLeaf, nested, inners) = rubyBase current unused xs
+                 in (end, lastLeaf, nodes <> nested, owners <> inners)
+           in case child of
+                Resolved _ kind _ xs
+                  | kind == RefNumber || kind == RefTitle ->
+                      let link = started (lkLink (ceRestyle env lk (withRuby child)))
+                          content = NodeElem RoleReference (linkedNodes link (map withRuby xs) [NodeLeaf unused])
+                       in (unused + 2, unused + 1, nodes <> [content, NodeLeaf (unused + 1)], owners <> replicate (length chars) (unused, link))
+                CharStyle _ _ xs -> continue xs
+                Color _ _ xs -> continue xs
+                Kenten _ _ xs -> continue xs
+                Link _ _ xs -> continue xs
+                Lang _ _ xs -> continue xs
+                _ -> (unused, current, nodes, owners <> replicate (length chars) (current, Nothing))
     -- the pieces of each segment: each ends with its PRuby, the break before it included
     chunks ps = case break isRuby ps of
       (pre, r : rest) -> (pre <> [r]) : chunks rest
@@ -819,12 +900,19 @@ piecesOf env inl = case inl of
   -- a mark is set in the character style of [notes] mark-style (docs/adr/0177)
   Note sp n body ->
     let MarkFormat pre notation suf = ceNoteMarkFormat env
-     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (noteParagraphsIn lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) pre notation (toInteger n) suf))]
+     in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (noteParagraphsIn lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelNote n) (markPartsShaped (ceVertical env) (ceNoteMarkFlat env) pre notation (toInteger n) suf))]
   Sidenote sp n body ->
     (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body))) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
-      MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (markParts (ceVertical env) "" arabic (toInteger n) ""))]
-      MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
+      MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelSidenote n) (markParts (ceVertical env) "" arabic (toInteger n) ""))]
+      {- ※ in the look of its place, or in that of marker-style, measured
+      in it; the body of the sidenote does not take it (docs/adr/0371) -}
+      MarkerSymbol -> case ceSidenoteMarkStyle env of
+        Nothing -> at sp [PBox lk "※" KindText (lkSize lk)]
+        Just name ->
+          let styled = CharStyle sp name []
+              lk' = ceRestyle env lk styled
+           in [(((ceSizeSourceOf env (ceSizeSource env) styled, sp), const (spanStart sp)), PBox lk' "※" KindText (lkSize lk'))]
       MarkerNone -> []
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
@@ -842,7 +930,9 @@ piecesOf env inl = case inl of
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl})
     -- the mark of a note or a numbered sidenote (golem-driver ADR 0018) in the look of mark-style (docs/adr/0177)
-    markPiece parts = PMark lk (ceNoteMarkLook env lk) parts 0 0
+    markPiece num parts = PMark lk (ceNoteMarkLook env lk) parts 0 0 num
+    -- the number of a mark when notes are numbered per page (docs/adr/0383)
+    numbered ch n = MarkNumber ch n True <$ ceMarkReserve env
     markSource = ceNoteMarkSource env (ceSizeSource env)
 
 {- | The paragraphs of the body of a note, each in the language of its
@@ -861,8 +951,10 @@ the text.
 noteMarkSize :: Dim -> Sp -> Sp
 noteMarkSize d s = max 1 (min s (dimToSp s d))
 
--- | A part of a mark (docs/adr/0177): text set as other text, or a number set tate-chu-yoko.
-data MarkPart = MarkText !Text | MarkTcy !Text
+{- | A part of a mark (docs/adr/0177): text set as other text, a number set
+tate-chu-yoko, or a number in kanji set flat (docs/adr/0381).
+-}
+data MarkPart = MarkText !Text | MarkTcy !Text | MarkFlat !Text
   deriving stock (Eq, Show)
 
 {- | The parts of a mark of a number (docs/adr/0177): the text before, the
@@ -882,15 +974,34 @@ markParts vertical pre notation n suf =
         MarkText t -> [MarkText (pre <> t <> suf)]
         _ -> [MarkText pre | not (T.null pre)] <> [number] <> [MarkText suf | not (T.null suf)]
 
--- | The parts of a mark as inlines: text, and tate-chu-yoko (docs/adr/0177).
+{- | The parts of a mark in vertical text with [notes] mark-shape = "flat"
+or not (docs/adr/0381): flat, a number in kanji (the notations kanji and
+kanji-digits) is a part of its own, which the box of the mark sets flat;
+the text before and after it is as 'markParts' sets it. Horizontal text,
+Arabic numbers and the other notations are as 'markParts' sets them.
+-}
+markPartsShaped :: Bool -> Bool -> Text -> Notation -> Integer -> Text -> [MarkPart]
+markPartsShaped vertical flat pre notation n suf
+  | vertical,
+    flat,
+    notation `elem` [kanjiNotation, kanjiDigitsNotation],
+    Just written <- writeNumber notation n =
+      [MarkText pre | not (T.null pre)] <> [MarkFlat written] <> [MarkText suf | not (T.null suf)]
+  | otherwise = markParts vertical pre notation n suf
+
+{- | The parts of a mark as inlines: text, and tate-chu-yoko (docs/adr/0177).
+A number set flat is text here: only the box of a mark sets it flat
+(docs/adr/0381).
+-}
 markInlines :: SrcSpan -> [MarkPart] -> [Inline]
 markInlines sp = map $ \case
   MarkText t -> Text sp t
   MarkTcy t -> Tcy sp t
+  MarkFlat t -> Text sp t
 
 -- | The text of the parts of a mark.
 markPartsText :: [MarkPart] -> Text
-markPartsText = T.concat . map (\case MarkText t -> t; MarkTcy t -> t)
+markPartsText = T.concat . map (\case MarkText t -> t; MarkTcy t -> t; MarkFlat t -> t)
 
 {- | The source of a piece of a text at a character of it: the run of
 dashes itself when the text is its source byte for byte (G07101, docs/adr
@@ -1148,15 +1259,42 @@ group ruby (golem-layout ADR 0009). Mono ruby may break between bases.
 The width is decided with the neighbours ('itemsFor').
 -}
 rubyPieces :: ComposeEnv -> [RubySegment] -> [Piece]
-rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
+rubyPieces env segs
+  | length parts > 1 && all (isJust . rsReading) segs && any tooLong parts && totalReading > totalBase =
+      let firstLook = case parts of (look, _, _, _) : _ -> look; [] -> lk
+          other = T.concat [fromMaybe "" (lkRubyOtherReading look) | (look, _, _, _) <- parts]
+          groupedLook = firstLook {lkRubyOtherReading = if roSide (lkRubyOptions firstLook) == RubyBoth then Just other else Nothing, lkRubyOptions = (lkRubyOptions firstLook) {roReadingKenten = concat [take (maybe 0 T.length reading) (roReadingKenten (lkRubyOptions look) <> repeat Nothing) | (look, _, _, reading) <- parts], roOtherKenten = concat [take (maybe 0 T.length (lkRubyOtherReading look)) (roOtherKenten (lkRubyOptions look) <> repeat Nothing) | (look, _, _, _) <- parts]}}
+       in [PRuby groupedLook GroupRuby (T.concat [base | (_, base, _, _) <- parts]) (concat [looks | (_, _, looks, _) <- parts]) (Just (T.concat [fromMaybe "" reading | (_, _, _, reading) <- parts]))]
+  | otherwise = concat (zipWith piece [0 :: Int ..] parts)
   where
-    -- no kenten on a ruby base (golem-layout ADR 0011, golem-driver ADR 0019)
     lk = (ceLook env) {lkKenten = Nothing}
-    piece i (RubySegment base reading) =
-      let chars = concatMap (baseChars env lk) base
-          baseStr = T.concat (map fst chars)
-          kind = if length segs >= 2 || length chars == 1 then MonoRuby else GroupRuby
-       in [PRubyBreak | i > 0] <> [PRuby lk kind baseStr (map snd chars) reading]
+    parts =
+      [ let opts = rsOptions seg
+            inheritMarks reading marks = case lkKenten (ceLook env) of
+              Nothing -> marks
+              Just shape -> take (maybe 0 T.length reading) (map (Just . fromMaybe (kentenShapeName shape)) (marks <> repeat Nothing))
+            styled = lk {lkRubyOptions = opts {roReadingKenten = inheritMarks (rsReading seg) (roReadingKenten opts), roOtherKenten = inheritMarks (rsOtherReading seg) (roOtherKenten opts)}, lkRubyOtherReading = rsOtherReading seg}
+            chars = concatMap (baseChars env styled) (rsBase seg)
+         in (styled, T.concat (map fst chars), map snd chars, rsReading seg)
+      | seg <- segs
+      ]
+    widths (look, base, looks, reading) =
+      (sum (baseAdvances env look looks base), max (sum (readingAdvances env (withRubyReading env look) reading)) (sum (readingAdvances env (withRubyReading env look) (lkRubyOtherReading look))))
+    tooLong part = let (base, reading) = widths part in reading > base
+    totalBase = sum (map (fst . widths) parts)
+    totalReading = max (sum [sum (readingAdvances env (withRubyReading env look) reading) | (look, _, _, reading) <- parts]) (sum [sum (readingAdvances env (withRubyReading env look) (lkRubyOtherReading look)) | (look, _, _, _) <- parts])
+    piece i (look, base, looks, reading) =
+      let kind = if length segs >= 2 || length looks == 1 then MonoRuby else GroupRuby
+       in [PRubyBreak | i > 0] <> [PRuby look kind base looks reading]
+
+withRubyReading :: ComposeEnv -> Look -> Look
+withRubyReading env look =
+  let reading = fromMaybe (readingLook look) (ceRubyReading env look)
+      size = case roSize (lkRubyOptions look) of
+        Nothing -> lkSize reading
+        Just (RubySizeAbsolute n) -> n
+        Just (RubySizeRelative r) -> L.zwToSp (if isScript look then lkNominalSize look else lkSize look) r
+   in look {lkRubyReading = Just reading {lkSize = size, lkNominalSize = size}}
 
 {- | The characters of a ruby base, each with its look (golem-layout ADR
 0011): a character style or colour inside restyles its characters as
@@ -1323,7 +1461,7 @@ pieceLook = \case
   PAki lk _ -> Just lk
   PCode lk _ _ _ -> Just lk
   PDashes lk _ -> Just lk
-  PMark _ lk _ _ _ -> Just lk
+  PMark _ lk _ _ _ _ -> Just lk
   _ -> Nothing
 
 {- | The ranges of superscript and subscript (docs/adr/0269): the longest
@@ -1428,31 +1566,61 @@ itemsFor env lead prev p next = case p of
         stretches, and no line breaks before a range (docs/adr/0269); nor at a
         space held, between the label of a page and its value (docs/adr/0277) -}
         [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [space]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+  -- a tate-chu-yoko is one box from outside: the tracking after it, given back at the line end (docs/adr/0370)
+  PBox lk t kind w ->
+    let extra = if kind == KindTcy then tracking lk else 0
+     in [Box (w + extra) (BoxContent t False 0 0 (fromEnum kind) lk 0 (negate extra) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRuby lk kind base looks reading ->
-    let style = ceRuby env
-        rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
+    let style = rubyStyleWith (lkRubyOptions lk) (ceRuby env)
+        -- the reading measured and drawn in its character style (docs/adr/0369)
+        withReading = withRubyReading env
+        baseWidths = baseAdvances env lk looks base
+        bounds = (allowance True prev, allowance False next)
+        firstWidths = readingAdvances env (withReading lk) reading
+        otherWidths = readingAdvances env (withReading lk) (lkRubyOtherReading lk)
+        width = max (rpWidth (placeRuby style kind baseWidths firstWidths bounds)) (rpWidth (placeRuby style kind baseWidths otherWidths bounds))
+        rp = placeRubyMinimum width style kind baseWidths firstWidths bounds
+        otherPlacement = placeRubyMinimum width style kind baseWidths otherWidths bounds
+        startOverhang = max (rpOverhangStart rp) (rpOverhangStart otherPlacement)
+        endOverhang = max (rpOverhangEnd rp) (rpOverhangEnd otherPlacement)
         -- how far the reading may overhang a neighbour: kana up to half its
         -- advance, the free space of a neighbouring reading, nothing else;
         -- a neighbouring base is measured in the looks of its characters
         allowance before = \case
+          _ | let side = roOverhangSide (lkRubyOptions lk), side == RubyOverhangNone || (before && side == RubyOverhangEnd) || (not before && side == RubyOverhangStart) -> 0
           _ | not (rsOverhangOntoKana style) -> 0
-          Just (PChar lk' c _) | isNothing (lkKenten lk'), isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lk' c) `div` 2))
+          Just (PChar lk' c _)
+            | isNothing (lkKenten lk') ->
+                let cls = lookClass lk' c
+                    (pre, post) = punctSpace cls
+                    room
+                      | isKanaClass cls = Sp (unSp (advance env lk' c) `div` 2)
+                      | Just (punctWidth, offset) <- narrowPunctuation cls (lkSize lk') (advance env lk' c) = if before then punctWidth - offset - advance env lk' c else offset
+                      | otherwise = L.zwToSp (lkSize lk') (if before then post else pre)
+                 in min (rsOverhang style) room
           Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (map T.head (clusters b)) (ls <> repeat lk')) of
             (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lc c) `div` 2))
             _ -> 0
           Just (PRuby lk' k b ls r@(Just _)) ->
-            let ras = readingAdvances env lk' r
-                placed = placeRuby style k (baseAdvances env lk' ls b) ras (0, 0)
-                room = case (rpReading placed, reverse (zip (rpReading placed) ras)) of
-                  (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth placed - (lastPos + lastAdv) else firstPos
-                  _ -> 0
+            let style' = rubyStyleWith (lkRubyOptions lk') (ceRuby env)
+                baseAdv = baseAdvances env lk' ls b
+                readings = [readingAdvances env (withReading lk') x | x <- r : [lkRubyOtherReading lk' | isJust (lkRubyOtherReading lk')]]
+                width' = maximum (sum baseAdv : map sum readings)
+                free ras =
+                  let placed = placeRubyMinimum width' style' k baseAdv ras (0, 0)
+                   in case (rpReading placed, reverse (zip (rpReading placed) ras)) of
+                        (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth placed - (lastPos + lastAdv) else firstPos
+                        _ -> 0
+                room = minimum (map free readings)
              in min (rsOverhang style) (max 0 room)
           _ -> 0
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+        -- one box from outside: the tracking after it, nothing of it inside the base or the reading,
+        -- given back at the line end (docs/adr/0370)
+        outer = tracking lk
+     in [Box (rpWidth rp + outer) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) startOverhang (endOverhang - outer) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -1470,7 +1638,7 @@ itemsFor env lead prev p next = case p of
     let t = tracking lk
         w = lkSize lk * fromIntegral (T.length d)
      in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
-  PMark place lk parts ps pe -> [markItem env place lk parts ps pe]
+  PMark place lk parts ps pe num -> [markItem env place lk parts ps pe num]
   PAnchor _ -> []
   PShy {} -> []
 
@@ -1482,8 +1650,19 @@ Across in horizontal text, as wide as its text; along the line in
 vertical text, each part in its own box: a Japanese character upright,
 Latin text turned, a tate-chu-yoko number an em of the mark.
 -}
-markItem :: ComposeEnv -> Look -> Look -> [MarkPart] -> Sp -> Sp -> Item
-markItem env place lk parts ps pe =
+markItem :: ComposeEnv -> Look -> Look -> [MarkPart] -> Sp -> Sp -> Maybe MarkNumber -> Item
+markItem env place lk parts ps pe num =
+  let (txt, parts', w) = markLayout env lk parts ps pe
+      -- numbered per page, the widest number the mark can take (docs/adr/0383)
+      reserved = maybe w (\mn -> max w (markReserve env lk (mnChannel mn) ps pe)) num
+   in Box reserved (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts' num)) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))
+
+{- | The text of a mark, its parts, each with the kind of its box, its
+text and where it starts along the line from the start of the box, and
+its width (golem-driver ADR 0018, docs/adr/0177).
+-}
+markLayout :: ComposeEnv -> Look -> [MarkPart] -> Sp -> Sp -> (Text, [(Int, Text, Sp)], Sp)
+markLayout env lk parts ps pe =
   let m = lkSize lk
       tr = tracking lk
       txt = markPartsText parts
@@ -1493,6 +1672,8 @@ markItem env place lk parts ps pe =
       vertical = \case
         MarkTcy t -> [(KindTcy, t, m, 1)]
         MarkText t -> concatMap units' (groupBy (\a b -> latin a == latin b) (clusters t))
+        -- each kanji of a number set flat: half its advance along the line (docs/adr/0381)
+        MarkFlat t -> [(KindFlat, u, Sp (unSp (advanceOf u) `div` 2), T.length u) | u <- clusters t]
       -- a run of Latin text is turned as one; each other character stands in its own box
       units' us@(u : _)
         | latin u = let run = T.concat us in [(KindRotated, run, L.zwToSp m (ceWordAdvance env lk run), T.length run)]
@@ -1506,7 +1687,59 @@ markItem env place lk parts ps pe =
       starts = scanl (\o (_, _, u, k) -> o + u + tr * fromIntegral k) ps units
       parts' = [(fromEnum kind, t, o) | ((kind, t, _, _), o) <- zip units starts]
       w = sum [u | (_, _, u, _) <- units] + tr * fromIntegral (max 0 (chars - 1)) + ps + pe
-   in Box w (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts')) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))
+   in (txt, parts', w)
+
+{- | The parts of the mark of a number of a channel (docs/adr/0177): a note
+in [notes] mark-format, a sidenote its number alone in Arabic numerals.
+-}
+channelMarkParts :: ComposeEnv -> NoteChannel -> Int -> [MarkPart]
+channelMarkParts env ch n = case ch of
+  ChannelNote -> let MarkFormat pre notation suf = ceNoteMarkFormat env in markPartsShaped (ceVertical env) (ceNoteMarkFlat env) pre notation (toInteger n) suf
+  ChannelSidenote -> markParts (ceVertical env) "" arabic (toInteger n) ""
+
+{- | The width a mark of a channel reserves when notes are numbered per
+page (docs/adr/0383): the widest of the marks of the numbers from 1 to
+the number of notes of the channel in the book, measured in the look of
+the mark, with its padding; 0 when the channel has none. The key of the
+reserve is the look (the effective style), the direction of the text
+and the text around the number, which the format of the channel gives.
+-}
+markReserve :: ComposeEnv -> Look -> NoteChannel -> Sp -> Sp -> Sp
+markReserve env lk ch ps pe =
+  let count = maybe 0 (\(notes, sidenotes) -> if ch == ChannelNote then notes else sidenotes) (ceMarkReserve env)
+   in maximum (0 : [w | k <- [1 .. count], let (_, _, w) = markLayout env lk (channelMarkParts env ch k) ps pe])
+
+{- | A mark numbered per page with the number its page gives it
+(docs/adr/0383): its text and parts are those of the new number, its
+width the one it reserved. Any other box is as it is.
+-}
+renumberMark :: ComposeEnv -> (NoteChannel -> Int -> Int) -> BoxContent -> BoxContent
+renumberMark env numberOf c = case bcMark c of
+  Just mb@(MarkBox _ _ (Just num@(MarkNumber ch n _))) ->
+    let n' = numberOf ch n
+        (txt, parts', _) = markLayout env (bcLook c) (channelMarkParts env ch n') (bcPadStart c) (bcPadEnd c)
+     in c {bcText = txt, bcMark = Just mb {mbParts = parts', mbNumber = Just num {mnNumber = n'}}}
+  _ -> c
+
+{- | The mark at the start of the body of a note or a sidenote numbered per
+page (docs/adr/0383), or of a note whose number in kanji is set flat
+(docs/adr/0381), as one box: the boxes of the first inline of the
+composed items (the mark, in the look of its character style) and what is
+between them become one box in the look of the first of them, set on its
+own baseline. Numbered per page, the box reserves the widest number of
+its channel, and the layout numbers it again as the marks in the text.
+Items without a box of the first inline are as they are.
+-}
+markLabelBox :: ComposeEnv -> NoteChannel -> Int -> [Item] -> [Item]
+markLabelBox env ch n items =
+  case [i | (i, Box _ c) <- zip [0 :: Int ..] items, isLabel c] of
+    ixs@(i0 : _)
+      | (before, Box _ c : _) <- splitAt i0 items,
+        Box w c' <- markItem env (bcLook c) (bcLook c) (channelMarkParts env ch n) 0 0 (MarkNumber ch n False <$ ceMarkReserve env) ->
+          before <> [Box w c' {bcSource = bcSource c, bcLeaf = bcLeaf c, bcAt = bcAt c}] <> drop (maximum ixs + 1) items
+    _ -> items
+  where
+    isLabel c = bcLeaf c == Leaf (ceSite env) 0
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin
 text, cut after each slash and run of low lines, and in code after each
@@ -1605,7 +1838,7 @@ padCode = \case
       PCode l _ _ _ -> key l
       PSpace l _ -> key l
       PChar l _ _ -> key l
-      PMark _ l _ _ _ -> key l
+      PMark _ l _ _ _ _ -> key l
       PRuby l _ _ _ _ -> key l
       PRubyBreak -> Nothing
       _ -> Nothing
@@ -1625,7 +1858,7 @@ padCode = \case
         let lastIx = last ixs
             set i = \case
               PCode l t _ _ -> PCode l t (if i == firstIx then lkPadding l else 0) (if i == lastIx then lkPadding l else 0)
-              PMark p l parts _ _ -> PMark p l parts (if i == firstIx then lkPadding l else 0) (if i == lastIx then lkPadding l else 0)
+              PMark p l parts _ _ num -> PMark p l parts (if i == firstIx then lkPadding l else 0) (if i == lastIx then lkPadding l else 0) num
               q -> q
          in zipWith set [0 ..] run
 
@@ -2142,17 +2375,18 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
           pk = breakClass lastChar lastClass p
           ck = startClass c next
           strict = ceKinsokuStrict env
+          inseparable = pk == Just Inseparable && ck == Just Inseparable
           noBreak =
             maybe False (lineStartProhibited strict) ck
               || maybe False lineEndProhibited pk
-              || (pk == Just Inseparable && ck == Just Inseparable)
+              || inseparable
               || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
           noAkiHere = latinDual p (lastChar p) || latinDual c (firstChar c)
           {- the pairs of JLReq 3.1.10 (golem-layout ADR 0049): two Arabic
           digits in horizontal writing, a prefixed abbreviation and a
           numeral, a numeral and a postfixed abbreviation; not between two
           boxes of code or of a URL, nor at the edge of a ruby. The break
-          is taken out as an infinite penalty, the glue left as it is -}
+          is taken out as an infinite penalty -}
           pairKept =
             not (breaksAsCode (bcLook p) && breaksAsCode (bcLook c)) && case (lastChar p, firstChar c) of
               (Just a, Just b) ->
@@ -2195,7 +2429,14 @@ normalize env codeSpaces = go (0 :: Int) AtStart True
               | not noAkiHere,
                 aki <- akiBetween set (AkiChar a) (AkiChar b),
                 aki /= noAki ->
-                  pen <> glueOf (akiKind a b) (base a b) aki
+                  {- the adjustment of a line widens neither two
+                  inseparable characters nor a pair of golem-layout ADR
+                  0049, in every set (root ADR 0362): the width and the
+                  shrink of the set are kept, the stretch is 0 -}
+                  let adjusted
+                        | inseparable || pairKept = aki {A.akiMaximum = A.akiOptimum aki}
+                        | otherwise = aki
+                   in pen <> glueOf (akiKind a b) (base a b) adjusted
             Just _ -> [Penalty 0 candidate NoHyphen | not noBreak]
             Nothing -> if noBreak then [] else [Penalty 0 candidate NoHyphen | not (bcExpandable p && bcExpandable c)]
 
