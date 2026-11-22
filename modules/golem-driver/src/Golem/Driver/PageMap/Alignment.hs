@@ -26,7 +26,7 @@ sourceOffset ast source span' output offset = do
   (here : after) <- pure hereAndAfter
   let ends = foldr backward (IS.singleton outputLength) after
       candidates = case here of
-        Part _ Nothing -> case (fst <$> IS.maxView ends) of
+        Part _ Nothing -> case fst <$> IS.maxView ends of
           Nothing -> IS.empty
           Just end -> IS.filter (<= end) starts
         Part _ (Just known) -> matching known (IS.intersection starts (IS.map (subtract (T.length known)) ends))
@@ -72,13 +72,13 @@ sourceOffset ast source span' output offset = do
       let chars = V.fromList (T.unpack known)
           size = V.length chars
        in start >= 0 && start + size <= outputLength && V.and (V.imap (\i c -> outputVector V.! (start + i) == c) chars)
-    forward states (Part _ Nothing) = case (fst <$> IS.minView states) of
+    forward states (Part _ Nothing) = case fst <$> IS.minView states of
       Nothing -> IS.empty
       Just start
         | IS.size states == outputLength - start + 1 -> states
         | otherwise -> IS.fromDistinctAscList [start .. outputLength]
     forward states (Part _ (Just known)) = IS.map (+ T.length known) (matching known states)
-    backward (Part _ Nothing) states = case (fst <$> IS.maxView states) of
+    backward (Part _ Nothing) states = case fst <$> IS.maxView states of
       Nothing -> IS.empty
       Just end
         | IS.size states == end + 1 -> states

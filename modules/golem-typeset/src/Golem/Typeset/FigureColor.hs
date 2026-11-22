@@ -236,7 +236,7 @@ pixelAt :: P.ImageData -> Int -> Pixel
 pixelAt image pixel =
   let bits = P.imgBits image
       top = 2 ^ bits - 1
-      at channels channel = sampleAt (P.imgData image) (P.imgWidth image) channels bits pixel channel
+      at channels = sampleAt (P.imgData image) (P.imgWidth image) channels bits pixel
    in case P.imgColor image of
         P.CsGray -> Gray (at 1 0) top
         P.CsRgb -> Rgb (at 3 0) (at 3 1) (at 3 2) top

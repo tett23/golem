@@ -6,7 +6,7 @@ import Codec.Picture.Png qualified as Png
 import Codec.Picture.Types qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.Either (isLeft)
+import Data.Either (fromLeft, isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified as T
@@ -134,7 +134,7 @@ pageMapTests =
           bytes <- BS.readFile (root </> "build/html/gray.png")
           case Png.decodePng bytes of
             Right (J.ImageRGBA8 pixels) -> J.pixelAt pixels 0 0 @?= J.PixelRGBA8 255 128 128 128
-            other -> assertFailure (either id (const "unexpected pixels") other),
+            other -> assertFailure (fromLeft "unexpected pixels" other),
       testCase "root ADR 0386 I1: EPUB links resolve to actual body anchors" $
         withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
           manifest <- TIO.readFile (root </> "manifest.toml")

@@ -16,9 +16,10 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Aeson.Types (parseEither)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -59,7 +60,7 @@ instance J.FromJSON PageMap where
     unless (all validHash (Map.elems sources)) (fail "source hashes must have 64 lowercase hexadecimal digits")
     PageMap sources <$> o J..: "pages"
     where
-      validHash hash = T.length hash == 64 && T.all (\c -> ('0' <= c && c <= '9') || c `elem` ("abcdef" :: String)) hash
+      validHash hash = T.length hash == 64 && T.all (\c -> isDigit c || c `elem` ("abcdef" :: String)) hash
 
 instance J.FromJSON FixedPage where
   parseJSON = J.withObject "fixed page" $ \o -> do
@@ -69,7 +70,7 @@ instance J.FromJSON FixedPage where
     file <- o J..:? "file"
     line <- o J..:? "line"
     character <- o J..:? "character"
-    unless (number > 0 && not (T.null (T.strip label)) && firstUnwritable label == Nothing) (fail "page must be positive and label must be nonempty")
+    unless (number > 0 && not (T.null (T.strip label)) && isNothing (firstUnwritable label)) (fail "page must be positive and label must be nonempty")
     position <- case (file, line, character) of
       (Nothing, Nothing, Nothing) -> pure Nothing
       (Just f, Just l, Just c) | l >= 0 && c >= 0 -> pure (Just (f, l, c))
@@ -104,13 +105,13 @@ resolvePageMapWithAst asts sources files book mapping = do
     verifySource (path, expected) = case Map.lookup path byPath of
       Nothing -> Left (PageMapStale ("source is not part of the manuscript: " <> T.pack path))
       Just (_, source) ->
-        unless (hex (sha256 (TE.encodeUtf8 (source))) == expected) (Left (PageMapStale ("source has changed: " <> T.pack path)))
+        unless (hex (sha256 (TE.encodeUtf8 source)) == expected) (Left (PageMapStale ("source has changed: " <> T.pack path)))
     resolve page = case fpPosition page of
       Nothing -> pure Nothing
       Just (path, line, character) -> do
         unless (Map.member path (pmSources mapping)) (Left (PageMapSchema ("source hash is missing: " <> T.pack path)))
         (fid, source) <- maybe (Left (PageMapPosition ("unknown source: " <> T.pack path))) Right (Map.lookup path byPath)
-        off <- maybe (Left (PageMapPosition ("invalid source position: " <> T.pack path))) Right (utf16LineColToOffset (mkLineIndex (source)) (LineCol line character))
+        off <- maybe (Left (PageMapPosition ("invalid source position: " <> T.pack path))) Right (utf16LineColToOffset (mkLineIndex source) (LineCol line character))
         let candidates = [(order, destination, sp, text) | (order, (destination, sp, text)) <- zip [0 :: Int ..] (bodyTexts book), spanFile sp == fid, spanStart sp <= off, off < spanEnd sp]
         case candidates of
           [(bodyOrder, destination, sp, text)] -> case Map.lookup fid asts >>= \ast -> sourceOffset ast source sp text off of

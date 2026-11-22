@@ -8,7 +8,7 @@ import Control.Monad (forM_)
 import Data.Bits (xor)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.Either (isLeft)
+import Data.Either (fromLeft, isLeft)
 import Data.Text qualified as T
 import Data.Word (Word16, Word8)
 import Golem.Pdf qualified as P
@@ -64,7 +64,7 @@ figureColorTests =
             assertBool "PNG signature" (BS.take 8 png == BS.pack [137, 80, 78, 71, 13, 10, 26, 10])
             case Png.decodePng png of
               Right (J.ImageRGBA8 pixels) -> J.pixelAt pixels 0 0 @?= J.PixelRGBA8 255 0 0 255
-              other -> assertFailure (either id (const "unexpected PNG pixel type") other),
+              other -> assertFailure (fromLeft "unexpected PNG pixel type" other),
       testCase "root ADR 0403 I3: coloured JPEG bytes require no rewriting" $
         recolorRasterBytes red (rgbJpeg (\x _ -> if x < 8 then J.PixelRGB8 255 0 0 else J.PixelRGB8 0 0 255)) @?= Right Nothing,
       testCase "root ADR 0403 I2: JPEG declared dimensions must match the codestream" $ do
@@ -81,7 +81,7 @@ figureColorTests =
             P.imgAlpha image' @?= Just (P.Alpha 16 (BS.pack [0x12, 0x34]))
             case Png.decodePng png of
               Right (J.ImageRGBA16 pixels) -> J.pixelAt pixels 0 0 @?= J.PixelRGBA16 65535 32768 32768 0x1234
-              other -> assertFailure (either id (const "unexpected PNG pixel type") other),
+              other -> assertFailure (fromLeft "unexpected PNG pixel type" other),
       testCase "root ADR 0403 I2: transparent chromatic pixels do not make a gray PNG multi-colour" $ do
         let source = BL.toStrict (Png.encodePng (J.generateImage (\x _ -> case x of 0 -> J.PixelRGBA8 255 0 0 0; 1 -> J.PixelRGBA8 128 128 128 128; _ -> J.PixelRGBA8 255 255 255 255) 3 1))
         changed <- either (assertFailure . show) pure (recolorRasterBytes red source)
@@ -93,7 +93,7 @@ figureColorTests =
               J.pixelAt pixels 2 0 @?= J.PixelRGBA8 255 255 255 255
               let J.PixelRGBA8 _ _ _ alpha = J.pixelAt pixels 0 0
               alpha @?= 0
-            other -> assertFailure (either id (const "unexpected PNG pixel type") other),
+            other -> assertFailure (fromLeft "unexpected PNG pixel type" other),
       testCase "root ADR 0403 I2: truncated and mutated JPEG inputs return without exceptions" $ do
         let bytes = rgbJpeg (\_ _ -> J.PixelRGB8 0 0 0)
             indices = [i * (BS.length bytes - 1) `div` 40 | i <- [0 .. 40]]
