@@ -4787,13 +4787,15 @@ loadFigures inp = do
             Left e -> pure (Left (Unplaced (P.importErrorText e)))
             Right ip -> recolorPdf (P.VectorFigure ip) ip
         | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
-            Left (S.SvgMalformed why) -> pure (Left (Unplaced why))
-            Left (S.SvgUnsupported us) -> pure (Left (UnsupportedSvg us))
+            Left (S.SvgMalformed why) -> pure (Left (unreadable why))
+            Left (S.SvgUnsupported us) -> pure $ Left $ case figureColor (piStyle inp) of
+              Nothing -> UnsupportedSvg us
+              Just _ -> ColorConversion "SVG の色の変換で扱えない要素または属性があります"
             Right svg ->
               let drawing = svgDrawing svg
                in recolorPdf (P.SvgFigure drawing) (drawingImportedPage drawing)
         | otherwise -> case P.readImage bytes of
-            Left why -> pure (Left (Unplaced (T.pack why)))
+            Left why -> pure (Left (unreadable (T.pack why)))
             Right image -> case figureColor (piStyle inp) of
               Nothing -> pure (Right (P.RasterFigure image))
               Just swatch -> do
@@ -4801,6 +4803,10 @@ loadFigures inp = do
                 pure $ case analysis of
                   Left why -> Left (ColorConversion why)
                   Right result -> Right (P.RasterFigure (fromMaybe image (raImage result)))
+
+    unreadable why = case figureColor (piStyle inp) of
+      Nothing -> Unplaced why
+      Just _ -> ColorConversion why
 
     recolorPdf original page = case figureColor (piStyle inp) of
       Nothing -> pure (Right original)

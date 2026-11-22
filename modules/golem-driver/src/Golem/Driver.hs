@@ -992,7 +992,9 @@ buildCore inMemory opts = do
               -- and G08102, a figure of the source where they put the images of plugins (docs/adr/0123)
               activeDiags <-
                 if any (`elem` writable) [TargetHtml, TargetEpub]
-                  then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optFiles opts) book
+                  then do
+                    svgDiags <- if isJust (figureColor (evStyle e)) then pure [] else activeContentDiagnostics (optFiles opts) book
+                    pure (pluginImagePathDiagnostics book <> svgDiags)
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
@@ -1423,6 +1425,9 @@ recolorWebFigures opts style book site = case figureColor style of
             case readResult of
               Left problem -> pure (Left (T.pack (show problem)))
               Right bytes
+                -- With a swatch this check belongs to the conversion boundary:
+                -- G08113 also removes stale target outputs (root ADR 0407).
+                | svg, Just why <- activeMessage (T.pack path) (activeContent bytes) -> pure (Left why)
                 | svg -> pure $ case Svg.readSvg bytes of
                     Left problem -> Left $ case problem of
                       Svg.SvgMalformed why -> why

@@ -139,6 +139,31 @@ pageMapTests =
           codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
           doesFileExist (root </> "build/html/a.xhtml") >>= (@?= False)
           doesFileExist (root </> "build/epub/book.epub") >>= (@?= False),
+      testCase "root ADR 0406 I1: JPEG broken before SOF reports G08113 and removes stale PDF" $
+        withChapters "" [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
+          writeStyleWithFont root (pdfStyle <> colorStyle)
+          BS.writeFile (root </> "gray.jpg") grayJpeg
+          let options = (defaultOptions root) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+          good <- build options
+          codesOf (filter isError (brDiagnostics good)) @?= []
+          BS.writeFile (root </> "gray.jpg") (BS.take 24 grayJpeg)
+          bad <- build options
+          codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
+          brWritten bad @?= []
+          forM_ (brWritten good) $ \path -> doesFileExist path >>= (@?= False),
+      testCase "root ADR 0407 I1: malformed and unsupported SVG stop every target and remove stale outputs" $
+        forM_ [textSvg, "<svg><path", "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>alert(1)</script></svg>"] $ \broken ->
+          forM_ [TargetPdf, TargetHtml, TargetEpub] $ \target ->
+            withChapters "" [("a.gm", "@nonumber\n@figure mono.svg alt=\"mono\"\n")] [("mono.svg", monoSvg)] $ \root -> do
+              writeStyleWithFont root (pdfStyle <> colorStyle)
+              let options = (defaultOptions root) {optTargets = Just [target], optFonts = fakeProvider}
+              good <- build options
+              codesOf (filter isError (brDiagnostics good)) @?= []
+              TIO.writeFile (root </> "mono.svg") broken
+              bad <- build options
+              codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
+              brWritten bad @?= []
+              forM_ (brWritten good) $ \path -> doesFileExist path >>= (@?= False),
       testCase "root ADR 0406 I1: failed JPEG colour conversion removes a stale PDF and page map" $
         withChapters "" [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
           writeStyleWithFont root (pdfStyle <> colorStyle)
