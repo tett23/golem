@@ -92,7 +92,7 @@ tests =
           Right (Right (_, _, view, _)) -> do
             let pages = V.vwPages view
             assertBool (show (length pages)) (length pages >= 9 && length pages <= 11)
-            assertBool "no blank pages" (all (not . V.pvBlank) pages)
+            assertBool "no blank pages" (not (any V.pvBlank pages))
           other -> assertFailure (either show (either show (const "unexpected PDF result")) other),
       testCase "A3: labels and page references restart without a parity blank" $ do
         let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", { file = \"b.gm\", page-numbering = { start = 1 } }]" miniManifest
@@ -103,14 +103,14 @@ tests =
           Right (Right (pl, labels)) -> do
             Map.lookup 2 labels @?= Just "1"
             assertBool (show (lineTexts pl)) ("参照1。" `elem` lineTexts pl)
-            assertBool "no blank pages" (all (not . poBlank) (plPages pl))
+            assertBool "no blank pages" (not (any poBlank (plPages pl)))
           other -> assertFailure (either show (either show (const "unexpected layout")) other),
       testCase "I5: section start parity adds no blank page after body contents" $ do
         one <- sectionBook 1 "前の章。\n" "次の章。\n"
         two <- sectionBook 2 "前の章。\n" "次の章。\n"
         forM_ [one, two] $ \r -> expectLayout r $ \pl -> do
           sectionPages pl @?= [(1, 2)]
-          assertBool "no blank pages" (all (not . poBlank) (plPages pl)),
+          assertBool "no blank pages" (not (any poBlank (plPages pl))),
       testCase "I5: section start parity is irrelevant on an empty page" $ do
         one <- sectionBook 1 "" "次の章。\n"
         two <- sectionBook 2 "" "次の章。\n"
@@ -155,7 +155,7 @@ tests =
               style = page <> if folio then "\n[masters.body]\nfolio = { position = \"bottom-right\", format = \"{n}\" }\n" else ""
           result <- withMiniInput fakeProvider miniManifest (withBodyFont style) "本文。\n" fakeFontFiles $ \inp _ _ -> renderPdfView "test" fakeProvider inp {piMarks = marks}
           case result of
-            Right (Right (_, _, view, _)) -> assertBool "hidden folios were drawn" (all ((/= SourceHiddenFolio) . V.gvSizeSource) (concatMap V.pvGlyphs (V.vwPages view)))
+            Right (Right (_, _, view, _)) -> assertBool "hidden folios were drawn" (all (all ((/= SourceHiddenFolio) . V.gvSizeSource) . V.pvGlyphs) (V.vwPages view))
             other -> assertFailure (either show (either show (const "unexpected PDF result")) other),
       testCase "I8: rendered single-page views report the physical left edge on both parities" $ do
         result <- withMiniInput fakeProvider miniManifest (withBodyFont singleStyle) "甲。\n@page-break\n乙。\n" fakeFontFiles $ \inp _ _ -> renderPdfView "test" fakeProvider inp

@@ -174,8 +174,8 @@ fileStyles style header =
             -- keeping them would turn one defining error into missing-parent errors.
             forbiddenSpineRoots =
               [ name
-              | ("G03006", name, _) <- cs,
-                singlePage style,
+              | singlePage style,
+                ("G03006", name, _) <- cs,
                 Just d <- [Map.lookup name (lsParaStyles ls)],
                 psAlign d `elem` [Just ParaTowardsSpine, Just ParaAwayFromSpine]
               ]

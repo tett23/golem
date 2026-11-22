@@ -2014,7 +2014,10 @@ instance FromValue Page where
     size <- reqKey "size"
     layout <- enumKey "layout" ["single", "facing"]
     binding <- enumKey "binding" bindingValues
-    let mode = if layout == Just "single" then SinglePage else if binding == Just "right" then FacingRight else FacingLeft
+    let mode
+          | layout == Just "single" = SinglePage
+          | binding == Just "right" = FacingRight
+          | otherwise = FacingLeft
     when (mode == SinglePage && isJust binding) $
       failTableAt (keyPosition v "binding") "左右固定モードでは binding を書けません"
     wm <- enumKey "writing-mode" writingModeValues
