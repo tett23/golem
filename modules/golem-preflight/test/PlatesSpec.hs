@@ -25,7 +25,7 @@ styleSpan = mkSpan (FileId 9) 0 0
 viewWith :: [Paint] -> [Text] -> [Text] -> View
 viewWith paints fonts spots =
   View
-    { vwPages = [PageView n (Rect 0 0 (Sp 1000) (Sp 1000)) [] [] [] [] False True | n <- [1 .. 3]],
+    { vwPages = [PageView n (Rect 0 0 (Sp 1000) (Sp 1000)) [] [] [] [] False (Just True) | n <- [1 .. 3]],
       vwFonts = [],
       vwSwatchesUsed = Map.empty,
       vwBleed = Sp 1000000,

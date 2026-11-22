@@ -1,0 +1,16 @@
+chapters = ["kanikosen.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000400"
+title = "蟹工船（左右固定の配布資料）"
+language = "ja"
+date = 2026-11-22
+
+[[metadata.creators]]
+name = "小林多喜二"
+role = "author"
+
+[source]
+paragraph-separator = "line"
+
+[targets.pdf]

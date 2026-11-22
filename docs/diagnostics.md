@@ -6381,6 +6381,12 @@ style.toml の誤りです
 文字スタイルと段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の誤りには使わない（[G03021](#g03021)）。
 フォントの役割、文字スタイル、段落スタイルの `features` の要素の誤りには使わない（[G03124](#g03124)）。
 隠しノンブルの `gutter` と `size` の関係の誤りには使わない（[G03029](#g03029)）。
+左右固定モードと禁止値の組み合わせにも出る（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+`single` に書いた `binding` と `gutter`、`facing` に書いた版面の `left` と `right`、左右固定モードの左右基準の重複と不足を拒む。
+左右固定モードでは、傍注の `side` の省略と `outside`、段落のノド基準の揃え、隠しノンブルの明示有効化も拒む。
+ノド基準の揃えは、未使用の段落スタイルと原稿内の定義も対象とする。
+継承した禁止値は、その値を書いた継承元の位置で一度だけ報告する。
+位置は明示した禁止値の位置であり、必須キーが足りなければ親テーブルの位置である。
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
@@ -6763,11 +6769,13 @@ manifest.toml がありません
 
 ### 意味
 
-`style.toml` の `[masters.<名前>]` の `running-head` か `folio` の `position` が、`top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれでもない。
+`style.toml` の `[masters.<名前>]` の `running-head` か `folio` の `position` が、`top-` または `bottom-` に `outside`、`inside`、`center`、`left`、`right` を続けた位置でない。
+左右固定モードでは `inside` と `outside` を含む位置も、このコードで拒む（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+未使用のマスターも対象である。
 `style.toml` を読むときに検査するので、ターゲットにかかわらず、`golem check` と LSP も報告する。
 位置は `position` の値の位置である。
 
-- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。
+- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。左右固定モードの禁止値は `左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います（masters.<名前>.<running-head または folio>.position）`。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -6778,7 +6786,8 @@ manifest.toml がありません
 
 ### 直し方
 
-`position` に上の 6 つのどれかを書く。
+`position` に上の値を書く。
+左右固定モードでは、`top-left`、`bottom-right` のように `left`、`right`、`center` を使う。
 
 ## G03019
 
@@ -7552,7 +7561,8 @@ size = "0.65zw"
 
 ### 意味
 
-`[page]` の `writing-mode` が `"vertical"` の本で、段落スタイルの `align` に `"towards-spine"` か `"away-from-spine"` を書いた。
+見開きモードで `[page]` の `writing-mode` が `"vertical"` の本で、段落スタイルの `align` に `"towards-spine"` か `"away-from-spine"` を書いた。
+左右固定モードでは書字方向によらず [G03006](#g03006) とし、このコードを重ねない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 二つは、行をページのノドの側か小口の側に寄せる値である。
 縦組みの行は天から地へ進むので、ノドと小口は行の方向に交わらず、行をノドの側に寄せることが意味を持たない。
 InDesign は縦組みのフレームではこの二つを適用しないが、Golem は書いた値を黙って適用しない出力を作らずに止める。
@@ -9569,7 +9579,7 @@ wasm の Golem で組むときは、`[plugins]` とプラグインのフィル�
 2. `[page.grid]` がない。
 3. `[page.grid]` の `font-size` が正の絶対的な寸法でない。
 4. 字数か行数か段数が 0 以下か、行送りが文字の大きさより小さい。
-5. 版面が判型からはみ出す。
+5. 版面が判型からはみ出す。左右固定モードの負の余白も含み、ちょうど収まる版面は許す（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 6. 縦組みの版面に `[sidenotes]` がある。
 7. 段組みの版面に `[sidenotes]` がある。
 8. 傍注の領域が判型からはみ出す。
@@ -12743,6 +12753,9 @@ CMYK の画像が ICC プロファイルを埋め込んでおり、そのバイ�
 `@figure` ごとに一つ出す。
 v1 の図版は版面の中に置くので、版面の余白が `distance` 以上ある本では何も出さない。
 
+左右固定モードでは、横方向の辺を「左」「右」と表示する。
+検査順は天、地、左、右であり、距離、しきい値、重大度は変えない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+
 - メッセージ: `図版が仕上がりの線の近くにあり、塗り足しまで届いていません: <パス>（<辺>、仕上がりの線から <e>、PDF の <ページ> ページ目）`
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
@@ -12769,6 +12782,9 @@ v1 の図版は版面の中に置くので、版面の余白が `distance` 以�
 トンボは対象にしない。
 要素の種類と辺の組ごとに一つにまとめるので、柱とノンブルは一つになる。
 位置は、本文の行では原稿のブロック、柱とノンブルでは `style.toml` の先頭である。
+
+左右固定モードでは、横方向の辺を「左」「右」と表示する。
+検査順は天、地、左、右であり、距離、しきい値、重大度は変えない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 
 - メッセージ: `文字が仕上がりの線に近すぎます: <要素>（<辺>、仕上がりの線から <距離>、PDF の <ページ> ページ目）`
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）

@@ -61,11 +61,13 @@ TOML の基本の文字列（[code: "..."]）ではバックスラッシュを�
 判型と組み方向です。
 PDF を作るには必須です。
 HTML と EPUB は組み方向を使い、自由な配置の段落の寸法を解決するときは版面の文字の大きさと行送りも使います。
+設定の組み合わせは、出力によらず検査します。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。英語の本の判型は [code: { width = "5.5in", height = "8.5in" }] のようにインチでも書けます。幅と高さに [code: zw] は使えません。 |
-| [code: binding] | [code: "left"] | 綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。 |
+| [code: layout] | [code: "facing"] | 見開きモードです。[code: "single"] は、綴じない資料の左右を全ページで固定します。 |
+| [code: binding] | 見開きモードは [code: "left"] | 見開きモードで綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。左右固定モードでは省きます。 |
 | [code: writing-mode] | [code: "horizontal"] | [code: "vertical"]（縦組み）か [code: "horizontal"]（横組み）です。 |
 | [code: bleed] | [code: "0mm"] | 塗り足しの幅です。[code: zw] は使えません。 |
 
@@ -85,7 +87,7 @@ PDF を作るには必須です。
 | [code: column-gap] | 段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必須です。 |
 | [code: line-pitch] | 版面の行送りです。文字の大きさ以上にします。 |
 | [code: alignment] | [code: "grid"]（既定）は格子への配置、[code: "free"] は段落ごとの行送りと寸法のアキを使う配置です。 |
-| [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。 |
+| [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。左右固定モードでは [code: gutter] の代わりに [code: left] または [code: right] のちょうど一方で、仕上がりの物理的な端から版面の同じ側の端までの距離を書きます。 |
 
 @nonumber
 ## [code: \[fonts.役割\]]
@@ -209,7 +211,7 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 | [code: indent] | すべての行の始まりの字下げです。既定は [code: "0zw"] です。 |
 | [code: first-line-indent] | 最初の行に [code: indent] へ加える字下げです。負の値はぶら下げになります。[code: indent] との和は 0 以上にします。既定は [code: "0zw"] です。 |
 | [code: end-indent] | すべての行の終わりの側の字下げです。縦組みでは地からの距離です。既定は [code: "0zw"] です。 |
-| [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
+| [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは見開きモードの横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
 | [code: line-pitch] | [code: "auto"]（既定）は版面の行送りです。自由な配置では正の寸法も書けます。[code: zw] はその段落の文字の大きさを基準とします。 |
 | [code: line-breaks] | [code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [code: "join"] です。 |
 | [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに追加するアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。既定は [code: 0] です。 |
@@ -446,7 +448,7 @@ HTML、EPUB、プレーンテキストには線を出しません。
 | [code: width] | （必須） | 傍注の領域の幅です。 |
 | [code: gap] | （必須） | 版面と傍注の領域のあいだの空きです。 |
 | [code: marker] | [code: "number"] | 本文の側の印です。[code: "number"]（番号）、[code: "symbol"]（※）、[code: "none"]（なし）から選びます。 |
-| [code: side] | [code: "outside"] | 傍注の領域を置く側です。今は [code: "outside"]（小口の側）だけを書けます。 |
+| [code: side] | 見開きモードは [code: "outside"] | 傍注の領域を置く側です。[code: "outside"] は小口の側、[code: "left"] と [code: "right"] は物理的な左右です。左右固定モードでは左右のどちらかを必ず明記します。 |
 
 @nonumber
 ## [code: \[figures\]]
@@ -548,7 +550,7 @@ HTML と EPUB には適用されません。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: enabled] | [code: true] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。 |
+| [code: enabled] | 見開きモードは [code: true]、左右固定モードは [code: false] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。左右固定モードで [code: true] を書くとエラーになります。 |
 | [code: pages] | [code: "unnumbered"] | 入れるページです。[code: "unnumbered"] はノンブルを組まないページ（白ページ、マスターページのないページ、[code: folio] のないマスターページのページ）、[code: "all"] はすべてのページです。 |
 | [code: size] | [code: "6pt"] | 数字の大きさです。 |
 | [code: gutter] | [code: "1.5mm"] | ノドの仕上がりの線から、数字の列の中心までの距離です。 |
@@ -659,8 +661,10 @@ PDF でだけ有効です。
 | [code: folio] | ノンブルです。[code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
 | [code: character-style] | [code: running-head] と [code: folio] の中に書くキーです。柱、ノンブルの文字に当てる文字スタイルの名前を、[code: { position = "bottom-outside", format = "{n}", character-style = "folio" }] のように書きます。この例の [code: folio] は、[code: \[character-styles.folio\]] に定義した文字スタイルです。書かなければ、本文の書体と版面の文字の大きさで組みます。柱とノンブルには別々の文字スタイルを指定でき、左右のページの柱には同じ文字スタイルを当てます。 |
 
-位置には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
-[code: top] は天、[code: bottom] は地、[code: outside] は小口の側、[code: inside] はノドの側、[code: center] は中央です。
+位置には、[code: top-] または [code: bottom-] に [code: outside]、[code: inside]、[code: center]、[code: left]、[code: right] を続けた値を書きます。
+左右固定モードでは [code: inside] と [code: outside] を使えません。
+[code: top] は天、[code: bottom] は地、[code: outside] は小口の側、[code: inside] はノドの側、[code: center] は版面の左右の中央です。
+[code: left] と [code: right] は版面の物理的な左端と右端に、それぞれ左揃えと右揃えで置きます。
 
 柱の内容には、次のどれかを書きます。
 [code: <階層>] には見出しの階層の数を、1 から 6 で書きます。

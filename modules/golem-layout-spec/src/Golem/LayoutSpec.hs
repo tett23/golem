@@ -10,6 +10,8 @@ module Golem.LayoutSpec
     Anchor (..),
     MasterGeometry (..),
     PageGeometry (..),
+    pgBindingRight,
+    gutterSideFor,
     HiddenFolioGeometry (..),
     pageGeometry,
     gutterSide,
@@ -55,7 +57,7 @@ data MasterGeometry = MasterGeometry
 data PageGeometry = PageGeometry
   { pgPageSize :: !(Sp, Sp),
     pgVertical :: !Bool,
-    pgBindingRight :: !Bool,
+    pgLayout :: !PageLayout,
     pgFontSize :: !Sp,
     pgLinePitch :: !Sp,
     -- | the type area of odd pages
@@ -107,6 +109,14 @@ gutterSide bindingRight page
   | bindingRight == odd page = SideRight
   | otherwise = SideLeft
 
+-- | Single pages have no binding edge (root ADR 0400).
+gutterSideFor :: PageLayout -> Int -> Maybe Side
+gutterSideFor SinglePage _ = Nothing
+gutterSideFor layout p = Just (gutterSide (layout == FacingRight) p)
+
+pgBindingRight :: PageGeometry -> Bool
+pgBindingRight = (== FacingRight) . pgLayout
+
 typeAreaFor :: PageGeometry -> Int -> Rect
 typeAreaFor g p = if odd p then pgTypeArea g else pgTypeAreaEven g
 
@@ -145,13 +155,16 @@ pageGeometry fid marks style = case stPage style of
             | vertical = (lineDepth, fromInteger cols * columnLength + fromInteger (cols - 1) * gap)
             | otherwise = (fromInteger cols * columnLength + fromInteger (cols - 1) * gap, lineDepth)
           top = dimToSp fs (gridTop grid)
-          gutter = dimToSp fs (gridGutter grid)
+          layout = pageLayout page
           bindingRight = pageBindingRight page
           areaOn p =
             let y = ph - top - taH
-                x = case gutterSide bindingRight p of
-                  SideLeft -> gutter
-                  SideRight -> pw - gutter - taW
+                x = case gridPosition grid of
+                  LeftPosition d -> dimToSp fs d
+                  RightPosition d -> pw - dimToSp fs d - taW
+                  GutterPosition d -> case gutterSide bindingRight p of
+                    SideLeft -> dimToSp fs d
+                    SideRight -> pw - dimToSp fs d - taW
              in Rect x y taW taH
           odd' = areaOn 1
           even' = areaOn 2
@@ -178,9 +191,12 @@ pageGeometry fid marks style = case stPage style of
                 Just sn -> do
                   let w = dimToSp fs (snWidth sn)
                       g = dimToSp fs (snGap sn)
-                      placeOn p r@(Rect x y _ h) = case gutterSide bindingRight p of
-                        SideLeft -> Rect (x + rectW r + g) y w h -- fore-edge on the right
-                        SideRight -> Rect (x - g - w) y w h
+                      placeOn p r@(Rect x y _ h)
+                        | snSide sn == "left" = Rect (x - g - w) y w h
+                        | snSide sn == "right" = Rect (x + rectW r + g) y w h
+                        | otherwise = case gutterSide bindingRight p of
+                            SideLeft -> Rect (x + rectW r + g) y w h -- fore-edge on the right
+                            SideRight -> Rect (x - g - w) y w h
                       so = placeOn 1 odd'
                       se = placeOn 2 even'
                   if overflow so || overflow se
@@ -202,12 +218,12 @@ pageGeometry fid marks style = case stPage style of
               mapM_ (\m -> Left [err m]) (take 1 (ruleChecks style fs columnLength (cols > 1) gap vertical margins))
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
               runningHeadFits style fid ph fs pitch masters
-              hidden <- hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
+              hidden <- if layout == SinglePage then Right Nothing else hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
               Right
                 PageGeometry
                   { pgPageSize = (pw, ph),
                     pgVertical = vertical,
-                    pgBindingRight = bindingRight,
+                    pgLayout = layout,
                     pgFontSize = fs,
                     pgLinePitch = pitch,
                     pgTypeArea = odd',
@@ -350,6 +366,8 @@ masterGeometry ph bindingRight oddArea evenArea md =
           ay = if vert == "top" then Sp (unSp (y + h + ph) `div` 2) else Sp (unSp y `div` 2)
           gutterLeft = gutterSide bindingRight p == SideLeft
           (ax, al) = case horiz of
+            "-left" -> (x, AlignStart)
+            "-right" -> (x + w, AlignEnd)
             "-outside" -> if gutterLeft then (x + w, AlignEnd) else (x, AlignStart)
             "-inside" -> if gutterLeft then (x, AlignStart) else (x + w, AlignEnd)
             _ -> (x + Sp (unSp w `div` 2), AlignCenter)

@@ -36,6 +36,7 @@ import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
+import SinglePageSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -883,6 +884,7 @@ tests =
       UnderlineSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
+      SinglePageSpec.tests,
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
       HyphenationExceptionsSpec.tests,
@@ -1022,13 +1024,13 @@ tests =
       boxStyleTests,
       captionSidenoteTests,
       alignSpaceTests,
-      testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
+      testCase "root ADR 0400 I4: side of [sidenotes] defaults to outside and also accepts physical sides" $ do
         let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
             sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
         sidenotesOf (sn <> "side = \"outside\"\n") @?= sidenotesOf sn
         assertBool "without side" (isJust (sidenotesOf sn))
         codes (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["G03006"]
-        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside のどれか） (sidenotes.side)"]
+        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside, left, right のどれか） (sidenotes.side)"]
         codes (parseStyle (FileId 0) (sn <> "side = 1\n")) @?= ["G03006"],
       testCase "ADR 0345 I1: unitless zero in sidenote dimensions equals 0pt" $ do
         let sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)

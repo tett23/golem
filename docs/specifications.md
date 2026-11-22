@@ -1981,6 +1981,23 @@ G03126 から G03130 の位置はその値であり、どれもエラーとし�
 字数と行数を整数で決めるので、行頭と行末が字送りの格子にそろう。
 余白は、版面をページのどこに置くか（`position`）から決まる従属的な値である。
 
+`[page]` の `layout` は `"facing"`（既定）と `"single"` をとる（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+`facing` は見開きを前提とし、`binding` と `position` の `top`、`gutter` で版面を置く。
+`single` は綴じない資料の左右固定モードであり、縦組みでも横組みでも、仕上がりを正立させたときの物理的な左右を使う。
+左右固定モードは文書全体に適用し、本文、段、傍注、柱、ノンブルの横方向の配置をページの偶奇では反転しない。
+印刷機の片面印刷、PDF ビューアーの表示方法、面付けを指定するものではない。
+HTML と EPUB のレイアウトには反映しないが、スタイルの設定検査はすべての出力で行う。
+左右固定モードのプリフライトは、天、地、左、右の順に端を検査し、横方向の端を「左」「右」と表示する。
+距離、しきい値、重大度は見開きモードと同じである。
+
+左右固定モードの `[page.grid].position` には `top` と、`left` または `right` のちょうど一方を書く。
+`left` は仕上がりの左端から版面の左端まで、`right` は仕上がりの右端から版面の右端までの距離である。
+版面の幅と高さを字数、行数、文字の大きさ、行送り、段数、段間から求め、反対側の余白は残りとする。
+負の余白と仕上がりからのはみ出しは G07001 とし、ちょうど収まる場合は許す。
+`single` に `binding` や `gutter`、`facing` に版面の `left` や `right` を書くと G03006 とする。
+左右固定モードの `left` と `right` の重複と不足も G03006 とする。
+位置の必須検査は `[page.grid]` がある場合に行い、従来どおりそのテーブルを省ける出力では省いてよい。
+
 `[page.grid]` の `characters`、`lines`、`columns` と、見出しのスタイルの `lines` は、2147483647（2 の 31 乗から 1 を引いた数）以下の整数とする。
 それより大きい値は、その値の位置で G03006 とする。
 この上限はどのターゲットでも同じであり、wasm32 の `Int` に収まる範囲である（[ADR 0247](adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)）。
@@ -2393,13 +2410,15 @@ EPUB と HTML は `bleed` を無視する。
 
 | キー | 型 | 既定 | 意味 |
 | --- | --- | --- | --- |
-| `enabled` | 真偽値 | `true` | トンボを付けた PDF に隠しノンブルを入れるか |
+| `enabled` | 真偽値 | 見開きモードは `true`、左右固定モードは `false` | トンボを付けた PDF に隠しノンブルを入れるか |
 | `pages` | `"unnumbered"` か `"all"` | `"unnumbered"` | 入れるページ |
 | `size` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"6pt"` | 数字の大きさ |
 | `gutter` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"1.5mm"` | ノドの仕上がりの線から、数字の列の中心線までの距離 |
 
-`[hidden-folio]` を書かない本は、すべてのキーが既定の値になり、トンボを付けた PDF には隠しノンブルが入る。
+見開きモードで `[hidden-folio]` を書かない本は、すべてのキーが既定の値になり、トンボを付けた PDF には隠しノンブルが入る。
 中綴じの本ではノドが見開きの中央に見えるので、`enabled = false` を書く。
+左右固定モードでは隠しノンブルを描かず、`enabled = true` はトンボの有無によらず G03006 とする（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+明示した `false` は許し、ほかの値の型と範囲はモードによらず検査する。
 
 `[hidden-folio]` の値の誤りは、`style.toml` を読むときに報告する。
 `size` と `gutter` は文字の大きさに依存しない長さなので、`zw` で書くとエラー（G03006）とする。
@@ -3533,7 +3552,9 @@ HTML と EPUB は `opening-indent` を使わない。
 ずらしても改ページは変わらず、二つのページにまたがる段落では、ページごとに寄せる側が変わる。
 段組みの版面でも、段によらずページのノドの側に寄せる。
 
-縦組みの本でこの二つを書くと、エラー（G03118）とする。
+左右固定モードでは書字方向によらず、この二つを G03006 とし、G03118 を重ねない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+未使用の段落スタイルと原稿内の `@style-def` も検査し、継承した禁止値はその値を書いた継承元の位置で一度だけ報告する。
+見開きモードの縦組みの本でこの二つを書くと、エラー（G03118）とする。
 縦組みの行は天から地へ進み、ノドと小口が行の方向に交わらないためである。
 位置は `align` の値（`@style-def` ではそのキーの引数）とする。
 
@@ -4001,17 +4022,25 @@ PDF では、段落と見出しの罫線を、格子の行を単位とする罫�
 
 柱[^running-head]とノンブルは、マスターページ（`[masters.<名前>]`）の `running-head` と `folio` で置く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 `running-head` の `position` は柱の位置であり、`folio` の `position` と同じ値（`"top-outside"` など）をとる。
-値は `top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれかである。
+値は `top-` または `bottom-` に `outside`、`inside`、`center`、`left`、`right` を続けたものである（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+`left` は版面の左端に左揃え、`right` は版面の右端に右揃え、`center` は版面の左右の中央に中央揃えで置く。
+左右非対称の余白でも中央の基準は用紙でなく版面であり、複数行の柱の各行にも同じ揃えを適用する。
+上下のアンカーは、天または地の余白の中央である。
+左右固定モードでは `inside` と `outside` を含む位置を G03018 とし、未使用のマスターも検査する。
 ほかの値は、`style.toml` を読むときに、その `position` の値の位置で G03018 とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 柱の内容は、`content` に両方のページの値を一つ書くか、`even`（偶数ページ）と `odd`（奇数ページ）の両方に書く。
-偶数と奇数は、ノンブルと同じくページの通し番号で決める。
-セクションの改ページは `start` の偶奇に合わせるので、通し番号の偶奇はノンブルの番号の偶奇と等しい（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)）。
+柱の偶数と奇数はページの通し番号で決め、ノンブルのラベルの値を使わない。
+見開きモードのセクションの改ページは `start` の偶奇に合わせるので、通し番号の偶奇はノンブルの番号の偶奇と等しい（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)）。
 
 ノンブルの `folio` の `format` の差し込みは、ページの通し番号ではなく、ページラベルの番号を書く（[ADR 0260](adr/0260-front-matter-folios-and-page-labels.md)、「プロジェクトの構成と import」の節）。
 表記を書かない `{n}` は、ページのセクションの表記で書き、表記を決めていないセクションでは算用数字で書く。
 `{n:upper-roman}` のように表記を書いた差し込みは、セクションによらずその表記で書く。
 白ページ、柱を描かないページ、`drawsFolio` の判定は、ページラベルでなく通し番号で決める。
+
+左右固定モードの `page-numbering.start` はラベルの値だけを指定し、開始番号の偶奇を合わせる白ページを入れない。
+セクションは、今のページが空ならそこで、内容があれば次のページで始まる。
+明示した `@page-break recto` と `verso`、段落と見出しの `page-break` は、両モードともページの通し番号の偶奇を使い、必要なら白ページを入れる（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 
 ```toml
 [masters.book]
@@ -7304,9 +7333,10 @@ Golem は決定性を重視する[sidenote: 同じ入力から同じ出力を得
 `numbering = "page"` では、傍注の番号も PDF のページごとに振る（「脚注」の節の「ページごとの注の番号」）。
 
 PDF では、傍注を版面の外の傍注の領域に置く。
-傍注の領域は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
+傍注の領域は、`style.toml` の `[sidenotes]` で、置く側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
 `[sidenotes]` には、ほかに、本文側の印（`marker`）と、傍注の領域を置く側（`side`）を書く（[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
-`side` は `"outside"`（小口の側）だけを書け、既定も `"outside"` である。
+`side` は `"outside"`（小口[^fore-edge]の側）、`"left"`（物理的な左）、`"right"`（物理的な右）をとり、見開きモードの既定は `"outside"` である。
+左右固定モードでは `"left"` または `"right"` を明記し、省略と `"outside"` は G03006 とする（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 
 傍注は、本文の組み方を変えない。
 本文の版面は字詰めのとおりに組み、傍注は本文の行の長さに影響しない。
