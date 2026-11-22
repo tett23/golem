@@ -1,6 +1,6 @@
 # ADR 0157: 固定した wasmtime の版を、上流のアドバイザリと毎日照合する
 
-ステータス: 採択→範囲、修正版、パッケージの読み方は [ADR 0166](0166-read-wasmtime-advisory-ranges-as-written.md)
+Status: superseded [{"by":["docs/adr/0166-read-wasmtime-advisory-ranges-as-written.md"],"part":"範囲、修正版、パッケージの読み方"}]
 
 ## 文脈
 

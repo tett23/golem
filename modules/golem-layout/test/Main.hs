@@ -11,6 +11,7 @@ import CodeSpaceSpec (codeSpaceTests)
 import CodeStopSpec (codeStopTests)
 import ColumnWidthInvariantsSpec (columnWidthInvariantTests)
 import CombiningSpec (combiningTests)
+import CompressedNoteMarksSpec (compressedNoteMarksTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
@@ -26,6 +27,7 @@ import ExceptionsSpec (exceptionsTests)
 import ExpansionStepSpec (expansionStepTests)
 import FeaturesSpec (featuresTests)
 import Fixtures (compose, fs, look0, sp, sp0)
+import FreeGeometrySpec (freeGeometryTests)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
 import Golem.Layout.Aki qualified as Aki
@@ -44,7 +46,7 @@ import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
 import Golem.Length (zwToSp)
-import Golem.Project.Style (Dim (..), dimToSp)
+import Golem.Project.Style (Dim (..), HeadingBlockAlign (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Hedgehog
@@ -67,6 +69,7 @@ import OverflowSpec (overflowTests)
 import PaginateElementsEnum (paginateElementsTests)
 import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
+import PhysicalPaginateSpec (physicalPaginateTests)
 import PullInSpec (pullInTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
@@ -77,7 +80,9 @@ import TableCaptionSpec (tableCaptionTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import TrackingBoxesSpec qualified
 import UnbreakablePairsSpec (unbreakablePairsTests)
+import UnbreakableSpacingSpec (unbreakableSpacingTests)
 import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
@@ -400,6 +405,7 @@ tests =
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,
+      testGroup "the kanji numbers of note marks set flat (docs/adr/0381)" compressedNoteMarksTests,
       narrowPunctuationTests,
       codeSpaceTests,
       codeJapaneseTests,
@@ -407,8 +413,11 @@ tests =
       codeStopTests,
       urlBreakTests,
       pullInTests,
+      physicalPaginateTests,
+      freeGeometryTests,
       adjustOrderTests,
       unbreakablePairsTests,
+      unbreakableSpacingTests,
       numberUnitTests,
       linkTests,
       featuresTests,
@@ -421,6 +430,7 @@ tests =
       combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
+      TrackingBoxesSpec.tests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       akiTableTests,
       testGroup
@@ -980,6 +990,31 @@ tests =
             headingBlock (Sp bfs) (Sp bp) (Sp s) 2 1 @?= expect (2 :: Int)
             hbSpan (headingBlock (Sp bfs) (Sp bp) (Sp s) 1 1) @?= 2
             hbSpan (headingBlock (Sp bfs) (Sp bp) (Sp s) 2 1) @?= 3,
+          testCase "ADR 0373 I1: inv1_heading_block_alignment_case_1: with no remainder every alignment gives the same block" $
+            map (\a -> headingBlockAligned a 10 13 10 3 3) [HeadingStart, HeadingCenter, HeadingEnd] @?= replicate 3 (HeadingBlock 13 3 0),
+          testCase "ADR 0373 I1: inv1_heading_block_alignment_case_2: end with a remainder of two lines leaves two lines before the heading" $
+            map (\a -> hbOffset (headingBlockAligned a 10 13 10 1 3)) [HeadingStart, HeadingCenter, HeadingEnd] @?= [0, 13, 26],
+          testProperty "ADR 0373 I1: inv1_heading_block_alignment_property: the leading and trailing spaces add up to the remainder" $ property $ do
+            body <- forAll (Gen.integral (Range.linear 1 100))
+            pitch <- forAll (Gen.integral (Range.linear body (3 * body)))
+            size <- forAll (Gen.integral (Range.linear 1 (4 * body)))
+            count <- forAll (Gen.int (Range.linear 1 8))
+            least <- forAll (Gen.int (Range.linear 1 12))
+            alignment <- forAll (Gen.element [HeadingStart, HeadingCenter, HeadingEnd])
+            let block a = headingBlockAligned a (Sp body) (Sp pitch) (Sp size) count least
+                hb = block alignment
+                extent = toInteger (count - 1) * unSp (hbPitch hb) + size
+                area = toInteger (hbSpan hb - 1) * pitch + body
+                leading = unSp (hbOffset hb)
+                trailing = area - extent - leading
+            assert (leading >= 0 && trailing >= 0)
+            leading + trailing === max 0 (area - extent)
+            leading === case alignment of
+              HeadingStart -> 0
+              HeadingCenter -> max 0 (area - extent) `div` 2
+              HeadingEnd -> max 0 (area - extent)
+            -- the alignment moves the heading only within the same grid lines
+            map (\a -> (hbPitch (block a), hbSpan (block a))) [HeadingStart, HeadingCenter, HeadingEnd] === replicate 3 (hbPitch hb, hbSpan hb),
           testCase "a heading of the body size sits on the grid" $
             mapM_ (\m -> headingBlock fs (Sp (unSp fs * 3 `div` 2)) fs m 1 @?= HeadingBlock (Sp (unSp fs * 3 `div` 2)) m 0) [1, 2, 3],
           testProperty "a least span of one gives the block of golem-driver ADR 0003 (golem-driver ADR 0032)" $ property $ do
@@ -1426,10 +1461,10 @@ characterFeatureTests =
           gluesOf e = [w | Glue w _ _ _ _ <- take 3 (compose e "abc def")]
       wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
       gluesOf env @?= [w + tenth | w <- gluesOf plain],
-    testCase "ruby and tate-chu-yoko get no tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
+    testCase "tate-chu-yoko has outer tracking; a note mark gets it after each character but the last (docs/adr/0177)" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           half = Sp (unSp fs `div` 2)
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs + tenth, negate tenth)]
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 (noteBody sp [])])] @?= [(half + Sp (unSp half `div` 10), 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
@@ -1483,14 +1518,11 @@ rubyBaseTests =
     testCase "kenten in the base: the character's look is the look around it, without kenten" $ do
       let (looks, _) = baseOf [rubyIn [([Kenten sp Nothing [t "漢"], t "字"], Just "かんじ")]]
       looks @?= [[outer, outer]],
-    testCase "mono ruby: the allowance onto the neighbour is measured in the neighbour's base looks" $ do
-      let style = rubyStyle R.AlignCenter
-          env' = env {ceRuby = style}
-          boxesOf segs = rubyBoxes env' [rubyIn segs, t "の"]
-          -- the first base in the heading role is 1200 wide: 350 free beside its reading of 500
-          expected room = let p = placeRuby style MonoRuby [1000] [500, 500, 500, 500] (room, 500) in (rpWidth p, (rpOverhang p, rpOverhang p))
-      drop 1 (boxesOf [([CharStyle sp "h" [t "東"]], Just "ひ"), ([t "京"], Just "きょうと")]) @?= [expected 350]
-      assertBool "the look matters" (expected 350 /= expected 250),
+    testCase "root ADR 0379 I1: overlong jukugo readings regroup with all base looks" $ do
+      let env' = env {ceRuby = rubyStyle R.AlignCenter}
+          items = fst (composeInlines env' [rubyIn [([CharStyle sp "h" [t "東"]], Just "ひ"), ([t "京"], Just "きょうと")], t "の"])
+          grouped = [(boxKind c, bcText c, bcBaseLooks c) | Box _ c <- items, boxKind c `elem` [KindRuby, KindGroupRuby]]
+      grouped @?= [(KindGroupRuby, "東京|ひきょうと", [heading, outer])],
     testCase "boxes other than ruby have no base looks" $ do
       let items = fst (composeInlines env [t "前", rubyIn [([t "字"], Just "じ")], CharStyle sp "h" [t "後"], Tcy sp "12"])
       [bcBaseLooks c | Box _ c <- items, boxKind c `notElem` [KindRuby, KindGroupRuby]] @?= [[], [], []]
@@ -1575,7 +1607,33 @@ boxSpans l =
 
 rubyTests :: [TestTree]
 rubyTests =
-  [ testCase "a group ruby shorter than its base, in each alignment" $ do
+  [ testProperty "root ADR 0379 I1: inv1_extended_ruby_placement_property" $ property $ do
+      a <- Sp <$> forAll (Gen.integral (Range.linear 0 1000))
+      b <- Sp <$> forAll (Gen.integral (Range.linear 0 1000))
+      width <- Sp <$> forAll (Gen.integral (Range.linear 1 5000))
+      let rp = placeRuby (rubyStyle R.AlignCenter) GroupRuby [1000] [width] (a, b)
+      assert (rpOverhangStart rp >= 0 && rpOverhangStart rp <= min 500 a)
+      assert (rpOverhangEnd rp >= 0 && rpOverhangEnd rp <= min 500 b),
+    testCase "root ADR 0379 I1: a start-only allowance never overhangs the end" $ do
+      let rp = placeRuby (rubyStyle R.AlignCenter) GroupRuby [1000] [500, 500, 500, 500] (500, 0)
+      (rpOverhangStart rp, rpOverhangEnd rp) @?= (500, 0)
+      take 1 (rpReading rp) @?= [-500],
+    testCase "root ADR 0379 I1: each side stays inside its own allowance" $
+      forM_ [0, 100, 500] $ \a -> forM_ [0, 100, 500] $ \b -> do
+        let rp = placeRuby (rubyStyle R.AlignCenter) GroupRuby [1000] [500, 500, 500] (a, b)
+        assertBool "start bounded" (rpOverhangStart rp >= 0 && rpOverhangStart rp <= a)
+        assertBool "end bounded" (rpOverhangEnd rp >= 0 && rpOverhangEnd rp <= b),
+    testCase "root ADR 0379 I1: physical line edges have zero outward overhang and aligned bases" $ do
+      let style = rubyStyle R.AlignCenter
+          start = placeRubyAtEdges (True, False) 2500 style GroupRuby [1000, 1000] [500, 500, 500, 500, 500, 500] (500, 500)
+          final = placeRubyAtEdges (False, True) 2500 style GroupRuby [1000, 1000] [500, 500, 500, 500, 500, 500] (500, 500)
+      rpOverhangStart start @?= 0
+      take 1 (rpBase start) @?= [0]
+      rpOverhangEnd final @?= 0
+      last (rpBase final) + 1000 @?= rpWidth final
+      let spread = placeRubyAtEdges (True, False) 2500 (rubyStyle R.Align010) GroupRuby [1000, 1000] [500, 500, 500, 500, 500, 500] (500, 500)
+      rpBase spread @?= [0, 1500],
+    testCase "a group ruby shorter than its base, in each alignment" $ do
       let at a = placeRuby (rubyStyle a) GroupRuby [1000, 1000, 1000] [500, 500] (0, 0)
       rpReading (at R.Align121) @?= [500, 2000]
       rpReading (at R.Align010) @?= [0, 2500]
@@ -1589,7 +1647,7 @@ rubyTests =
     testCase "a mono ruby: centred or at the start" $ do
       rpReading (placeRuby (rubyStyle R.AlignCenter) MonoRuby [1000] [500] (0, 0)) @?= [250]
       rpReading (placeRuby (rubyStyle R.AlignStart) MonoRuby [1000] [500] (0, 0)) @?= [0],
-    testCase "a long reading overhangs, then spaces the base" $ do
+    testCase "root ADR 0379 I1: a long reading overhangs on each allowed side, then spaces the base" $ do
       let reading = replicate 6 500
           full = placeRuby (rubyStyle R.Align121) GroupRuby [1000, 1000] reading (500, 500)
       (rpOverhang full, rpWidth full, take 1 (rpReading full), rpBase full) @?= (500, 2000, [-500], [0, 1000])
@@ -1599,7 +1657,7 @@ rubyTests =
       rpBase (at R.Align010) @?= [0, 1500]
       rpBase (at R.AlignCenter) @?= [250, 1250]
       let oneSide = placeRuby (rubyStyle R.Align121) GroupRuby [1000, 1000] reading (500, 0)
-      (rpOverhang oneSide, rpWidth oneSide) @?= (0, 3000),
+      (rpOverhang oneSide, rpWidth oneSide) @?= (500, 2500),
     testProperty "ruby placement: the box holds the base, the reading fits the overhang, positions increase" $ property $ do
       base <- forAll (Gen.list (Range.linear 1 5) (Sp <$> Gen.integral (Range.linear 100 2000)))
       reading <- forAll (Gen.list (Range.linear 1 8) (Sp <$> Gen.integral (Range.linear 50 1000)))
@@ -1615,14 +1673,20 @@ rubyTests =
       assert (last (rpBase r) + last base <= rpWidth r),
     testCase "a reading overhangs kana on both sides" $
       rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1000, (250, 250))],
-    testCase "no overhang onto a kanji, a kenten character or with overhang-onto none" $ do
-      rubyBoxes (defaultComposeEnv 1000) [sp0 "漢", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
-      rubyBoxes (defaultComposeEnv 1000) [Kenten sp Nothing [sp0 "の"], rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
+    testCase "root ADR 0379 I1: disallowed neighbours constrain only their own side" $ do
+      rubyBoxes (defaultComposeEnv 1000) [sp0 "漢", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1000, (0, 500))]
+      rubyBoxes (defaultComposeEnv 1000) [Kenten sp Nothing [sp0 "の"], rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1000, (0, 500))]
       let none = (defaultComposeEnv 1000) {ceRuby = (defaultRubyStyle 1000) {rsOverhangOntoKana = False}}
       map fst (rubyBoxes none [sp0 "の", rubyOf [("字", Just "あいう")], sp0 "の"]) @?= [1500],
-    testCase "mono ruby overhangs only the free space of the next reading" $ do
-      map fst (rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("東", Just "とう"), ("京", Just "きょう")], sp0 "の"]) @?= [1000, 1500]
+    testCase "root ADR 0379 I1: jukugo regroups when the total reading is too wide and otherwise uses free space" $ do
+      map fst (rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("東", Just "とう"), ("京", Just "きょう")], sp0 "の"]) @?= [2000]
       rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("東", Just "ひ"), ("京", Just "きょう")], sp0 "の"] @?= [(1000, (0, 0)), (1000, (250, 250))],
+    testCase "root ADR 0379 I1: punctuation overhang uses actual room, not a half em for narrow glyphs" $ do
+      let env = defaultComposeEnv 1000
+          narrow = env {ceAdvance = \_ ch -> if ch == '。' then 1 / 2 else 1}
+          items e = rubyBoxes e [sp0 "。", rubyOf [("字", Just "あいう")], sp0 "漢"]
+      items env @?= [(1000, (500, 0))]
+      items narrow @?= [(1500, (0, 0))],
     testCase "a Latin reading is measured with the advances" $
       map fst (rubyBoxes (defaultComposeEnv 1000) [rubyOf [("字", Just "abcde")]]) @?= [1250],
     testCase "the edges of a box at the line start, inside and at the line end" $

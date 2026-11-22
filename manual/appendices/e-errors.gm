@@ -16,7 +16,7 @@
 
 ほとんどはエラーで、一つでもあれば出力を書きません。
 警告になるものは、項目の中にそう書いています。
-G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
+G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
 [code: golem preflight] だけが出す G09 で始まる診断の重さは、プリフライトの設定で決まります。
 お知らせと情報は、最後の二つの節にまとめています。
 この付録にない番号は、今のバージョンの Golem では出ません。
@@ -206,7 +206,7 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   値の種類をそろえてください。
 = [strong: G02002 [code: 未定義の名前 … です]]、[strong: [code: 未定義の名前空間 … です]]
   定義していない変数か、取り込んでいない名前を使っています。
-  [code: set] と [code: @import] を書いたか、綴りが合っているかを確かめてください。
+  [code: @set] と [code: @import] を書いたか、綴りが合っているかを確かめてください。
 = [strong: G02003 [code: 0 で割っています]]
   割る数が 0 になる計算です。
 = [strong: G02101 [code: 負の数の平方根は求められません]]
@@ -247,7 +247,7 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G02023 [code: 予約語は変数の名前に使えません: …]]、[strong: [code: 予約語は名前空間に使えません: …]]
   [code: doc]、[code: meta]、[code: true]、[code: false]、[code: nil] は、変数や [code: @import] の名前に使えません。
 = [strong: G02024 [code: 変数を二度定義しています: …]]
-  同じファイルで、同じ名前の変数を二度 [code: set] しています。
+  同じファイルで、同じ名前の変数を二度 [code: @set] しています。
 = [strong: G03009 [code: @import は「@import パス as 名前空間」の形で書きます]]
   [code: @import common/values.gm as values] のように書いてください。
 = [strong: G03005 [code: import が循環しています: …]]
@@ -308,6 +308,9 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   最初の引数と [code: src=] の両方に書いたときも、このエラーになります。
   表は組みません。
   組みたい表のファイルのパスを一つだけ、最初の引数に書いてください。
+= [strong: G02252 [code: @table の src= は使えません。パスを最初の引数に移します]]
+  [code: @table src=data/sizes.csv] は [code: @table data/sizes.csv] と書き換えてください。
+  表のファイルは読みません。
 = [strong: G02131 [code: lang には言語のタグを一つ書きます]]
   [code: \[lang\]] か [code: @lang] に言語のタグを書いていないか、二つ以上書いています。
   [code: \[lang en: ...\]] のように、タグを一つだけ書いてください。
@@ -367,6 +370,13 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   次の行から、空白二つで字下げして本文を書いてください。
 = [strong: G02036 [code: @listing にはファイルのパスが必要です]]
   最初の引数に、載せるファイルのパスを書いてください。
+= [strong: G02250 [code: @listing の src= は使えません。パスを最初の引数に移します]]
+  [code: @listing src=src/Main.hs] は [code: @listing src/Main.hs] と書き換えてください。
+  ファイルの中身は読みません。
+= [strong: G02253 [code: @listing のパスを二つ書いています: …]]
+  [code: @listing] に位置引数を二つ書いたか、位置引数と [code: src=] を両方書いています。
+  同じパスを二度書いてもこのエラーになります。
+  載せるファイルのパスを一つだけ、最初の引数に残してください。
 = [strong: G02037 [code: @listing の lines の範囲がファイルの行（1〜…）を外れています: …]]
   [code: lines] の範囲が 0 から始まるか、ファイルの行数より先まであります。
   [code: lines=3...10] のように、1 からファイルの行数までの範囲を書いてください。
@@ -377,13 +387,16 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G02106 [code: 範囲の始め … が終わり … より大きくなっています]]
   [code: 7...3] のように、始めが終わりより大きい範囲を書いています。
   [code: 3...7] のように、小さいほうを先に書いてください。
-= [strong: G02107 [code: @listing の lines には範囲を一つだけ書きます: …]]
-  [code: @listing] の [code: lines] に、[code: 1,3] のようにカンマで二つ以上の項目を書いたか、配列を書いています。
-  載せる範囲は一つだけ書けます。
-  離れた行を載せるときは、[code: @listing] を分けてください。
 = [strong: G02110 [code: 範囲の端には数を書きます: …]]
   [code: 1...] や [code: ...3] のように範囲の端がないか、[code: a...3] や [code: 1...2...3] のように端が数として読めません。
+  [code: lines] と [code: highlight] に [code: 3...-1] のように負の端を書いたときも、このエラーになります。
   [code: 1...3] のように、両端に数を書いてください。
+  [code: lines] と [code: highlight] では 1 以上の数を書きます。
+= [strong: G02251 [code: - で区切った範囲は使えません。…...… のように両端を残して ... で区切ります]]
+  [code: lines=10-20] や [code: highlight=3,5-7] のように、行の範囲を [code: -] で区切っています。
+  [code: -] で区切った範囲がいくつあっても、エラーは引数ごとに一つです。
+  [code: lines=10...20]、[code: highlight=3,5...7] と書き換えてください。
+  [code: ...] に書き換えると、同じ範囲の行を取り込み、強調します。
 = [strong: G02111 [code: *\[式\] の値は配列でなければなりません: …]]
   [code: *\[式\]] の式の値が配列ではありません。
   [code: *\[\[12\]\]] のように、配列を書いてください。
@@ -419,8 +432,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   [code: @printings] や改ページのコマンドのような、本体を持てないコマンドの次の行を字下げしています。
   字下げをやめて、別の段落として書いてください。
 = [strong: G02076 [code: @printings は日本語の本（language の主の副タグが ja）でだけ使えます]]
-  [code: manifest.toml] の [code: language] の最初の [code: -] より前を英小文字にしたものが [code: ja] でない本に [code: @printings] を書いています。
-  日本語でない本では、[code: @printings] を消し、[code: meta.printing] の値から一行ずつ書いてください。
+  [code: style.toml] の [code: \[printings\]] に [code: format] を書かずに、[code: manifest.toml] の [code: language] の最初の [code: -] より前を英小文字にしたものが [code: ja] でない本に [code: @printings] を書いています。
+  日本語でない本では、[code: style.toml] の [code: \[printings\]] に [code: format] を書いてください（「[ref-title colophon]」）。
 = [strong: G02098 [code: マニフェストに \[\[metadata.printings\]\] がありません]]
   [code: manifest.toml] に [code: \[\[metadata.printings\]\]] がない本に [code: @printings] を書いています。
   [code: \[\[metadata.printings\]\]] に版、刷、日付を書いてください。
@@ -567,7 +580,7 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   欧文の文は一行に書いてください。
   行分けを残したい詩などには、段落スタイル [code: verse] を付けます。
 = [strong: G05002 [code: 使われていない変数です: …]]
-  [code: set] の変数がどこからも使われていません。
+  [code: @set] の変数がどこからも使われていません。
   消すか、使ってください。
 = [strong: G05003 [code: 使われていない import です: …]]
   [code: @import] した名前が使われていません。
@@ -615,6 +628,11 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   一つの章を複数のファイルに分け、[code: \[notes\]] の [code: numbering] を [code: "file"] にしたため、章の終わりの注の一覧に同じ番号が二度現れます。
   これは警告で、出力は止まりません。
   [code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
+= [strong: G03259 [code: \[notes\] の numbering = "page" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります]]
+  注の番号をページごとに振る本を、HTML、EPUB、プレーンテキストに組んでいます。
+  これらの出力にはページがないので、本の全体の通し番号で注を組みます。
+  これは警告で、出力は止まりません。
+  どの出力でも同じ番号にしたいときは、[code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
 = [strong: G03004 [code: 大文字と小文字だけが異なるパスです: …]]
   大文字と小文字だけが違う二つのパスを使っています。
   コンピューターによって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。
@@ -628,7 +646,7 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   コードは大文字の [code: G] か [code: E] の後に 5 桁の数字を続けて書きます。
 = [strong: G03109 [code: … に浮動小数点数は書けません。\[vars\] の値は文字列、整数、真偽値、日付、配列、表のどれかです]] など
   [code: \[vars\]] に、[code: 1.5] のような小数か、時刻か、日時を書いています。
-  小数は文字列で書くか、[code: set] の式で作ってください。
+  小数は文字列で書くか、[code: @set] の式で作ってください。
   日付は、時刻を付けずに [code: 2026-11-06] と書きます。
 = [strong: G03110 [code: … のキー … は式の名前の形（英字か _ で始まり、英数字と _ が続く）で書きます]]
   [code: \[vars\]] のキーに、[code: -] を含む名前や、数字で始まる名前を書いています。
@@ -679,8 +697,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   キーの綴り、値の種類、単位、選べる値を、付録C と見比べてください。
   知らないキーは、[code: 知らないキーです: page.bindng] のように、テーブルとキーをつなげた名前で示します。
   廃止した [code: \[emphasis\]]、[code: \[verse\]] などを書いたときは、書き換え先がメッセージに出ます。
-  段落スタイル [code: caption] と [code: sidenote] に [code: indent] か [code: first-line-indent] を書いたときも、この誤りです。
-  キャプションと傍注は字下げをしません。
+  段落スタイル [code: table] に 0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書いたときも、この誤りです。
+  表のセルは字下げをしません。
 = [strong: G03017 [code: 未知の判型です: …]] など
   [code: \[page\]] の [code: size] が違います。
   表の名前を書くか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書いてください。
@@ -691,16 +709,17 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
 = [strong: G03012 [code: 段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: …]]
   ぶら下げの分だけ [code: indent] を大きくしてください。
 = [strong: G03118 [code: 縦組みの本では、段落スタイル … の align に … を書けません。…]]
-  ノドの側と小口の側に寄せる揃えは、横組みの本でだけ使えます。
+  ノドの側と小口の側に寄せる揃えは、見開きモードの横組みの本でだけ使えます。
   [code: align] を [code: "left"] や [code: "right"] などに変えてください。
 = [strong: G03013 [code: style.toml のスタイルの参照が不正です: …]]
   [code: based-on] の先のスタイルがないか、引き継ぎが輪になっているか、[code: body] に [code: based-on] があるか、文字スタイルの [code: color] の色が定義されていないか、[code: regex-styles] の文字スタイルがありません。
+  段落スタイルの [code: next-style] の段落スタイルや、[code: initial-style] の文字スタイルがないときも、この誤りです。
 = [strong: G03014 [code: 柱の内容が正しくありません: …]]、[strong: [code: 柱の書式が正しくありません: …]]
   [code: \[masters.名前\]] の [code: running-head] には、[code: content = "heading.1.short"] のように内容を一つ書くか、[code: even] と [code: odd] の両方を書いてください。
   書式は [code: content = \["{meta.title}　{heading.1.short}"\]] のように文字列の配列で書きます。
   書ける内容と差し込みは付録C にあります。
 = [strong: G02067 [code: 柱が参照する変数 … が、このファイルにありません（マスターページ …）]]
-  柱の書式の [code: {set.名前}] の変数を、その章のファイルで [code: set] するか、[code: @import] で取り込んでください。
+  柱の書式の [code: {set.名前}] の変数を、その章のファイルで [code: @set] するか、[code: @import] で取り込んでください。
   変数のない章で柱の行を出さなくてよいなら、[code: {set.名前?}] と書きます。
 = [strong: G02068 [code: 柱に出せるのは文字列と数です: …]]
   柱の書式で参照する変数を、文字列か数にしてください。
@@ -712,7 +731,8 @@ G03010、G05004、G08100、G08103 は、[code: --profile dev] では警告、[co
   柱の書式の [code: {vars.名前}] の値が、真偽値、配列、表のどれかです。
   表の中の値なら、[code: {vars.author.short}] のように値まで書いてください。
 = [strong: G03018 [code: 未知の位置です: …]]
-  柱かノンブルの [code: position] を、[code: top-outside] などの六つのどれかにしてください。
+  柱かノンブルの [code: position] を、[code: top-outside] や [code: bottom-left] などの値にしてください。
+  左右固定モードでは [code: inside] と [code: outside] を使わず、[code: left]、[code: right]、[code: center] の位置を選びます。
 = [strong: G03019 [code: \[headings.… \] の running-head は廃止しました。…]]
   見出しの [code: running-head] の行を消し、柱に出す見出しは [code: \[masters.名前\]] の [code: running-head] の [code: content] で選んでください。
 = [strong: G03015 [code: 正規表現を解釈できません: …]]
@@ -770,6 +790,30 @@ PDF を組むときに出るエラーです。
 = [strong: G07025 [code: 段落スタイルの字下げが大きすぎます。…]]
   字下げの後に、一行の長さが文字八つ分も残りません。
   段落スタイルの [code: indent]、[code: first-line-indent]、[code: end-indent] を小さくしてください。
+= [strong: G07127 [code: キャプションの字下げが行の幅を使い切ります。…]]（[code: --profile dev] では警告）
+  図版、表、コードブロックのキャプションで、段落スタイル [code: caption] の字下げを引くと、行に文字一つ分も残りません。
+  字下げには、そのキャプションを書いたファイルの [code: @style-def] が [code: caption] に書いた値を、書いていなければ [code: style.toml] の値を使います。
+  [code: caption] の [code: indent]、[code: first-line-indent]、[code: end-indent] を小さくしてください。
+  [code: --profile prod] ではエラーになり、PDF を書きません。
+  [code: golem build] の PDF でだけ出ます。[code: golem check] では出ません。
+= [strong: G07128 [code: 傍注の字下げが傍注の領域の幅を使い切ります。…]]（[code: --profile dev] では警告）
+  段落スタイル [code: sidenote] の字下げを引くと、傍注の領域の行に文字一つ分も残りません。
+  [code: sidenote] の字下げを小さくするか、[code: \[sidenotes\]] の [code: width] を広げてください。
+  [code: --profile prod] ではエラーになり、PDF を書きません。
+  [code: golem build] の PDF と [code: golem check] で出ます。
+= [strong: G07129 [code: 段落スタイル … の一行が段に収まりません]]
+  自由な配置で、段落の一行の行送りが、調整前の空の段より長くなっています。
+  段落の [code: line-pitch] を短くするか、版面の行数を増やしてください。
+  PDF は書きません。
+= [strong: G07130 [code: 脚注の最初の一行を段に配置できません]]
+  自由な配置で、脚注の区切りと注一行、必要な本文や囲みの余白が、調整前の空の段にも収まりません。
+  囲みの中に参照印があるときは、囲みの余白も必要です。
+  本文の行送り、囲みの [code: padding]、脚注の区切りを小さくするか、版面の行数を増やしてください。
+  PDF は書きません。
+= [strong: G07131 [code: 図版の一行分の領域が段に収まりません]]
+  自由な配置で、段の長さが版面の行送りより短く、図版を置く一行分の領域を取れません。
+  版面の行数を増やしてください。
+  PDF は書きません。
 = [strong: G07027 [code: リストの入れ子が深く、項目の本文の行長が足りません。…]]
   リストの入れ子を浅くするか、[code: \[lists\]] の印を短くするか、[code: gap] を小さくしてください。
 = [strong: G07029 [code: リストの番号 … は、書式 … で表せません]]
@@ -779,6 +823,8 @@ PDF を組むときに出るエラーです。
   [code: {n:note-symbols}] の記号（7 まで）や [code: {n:circled}] の丸数字（50 まで）のように、表せる数に限りのある表記で、それを超える番号の注があります。
   [code: \[notes\]] の [code: numbering] で番号を振り直す範囲を狭めるか、[code: mark-format] を算用数字などの表記に替えてください。
   PDF、HTML、EPUB、プレーンテキストのどれも書きません。
+  [code: numbering = "page"] の PDF では、ページごとに振った番号で調べます。
+  ターゲットに HTML、EPUB、プレーンテキストを含むときは、本の全体の通し番号でも調べます。
 = [strong: G04012 [code: \[headings.…\] の number … の {…} では、… を表せません]]、[strong: G04013 [code: \[figures\] の number … の {…} では、… を表せません]]、[strong: G04014 [code: \[code\] の number … の {…} では、… を表せません]]、[strong: G04100 [code: \[tables\] の number … の {…} では、… を表せません]]
   見出し、図版、コードブロック、表の番号の書式の表記で表せない番号があります。
   たとえば [code: {n:circled}] の丸数字は 50 まで、[code: {n:note-symbols}] の記号は 7 までで、どちらも 0 を表せません。
@@ -803,8 +849,9 @@ PDF を組むときに出るエラーです。
   回り込ませる図版の脇に、本文の文字が八つ以上入りません。
   図版の [code: width] を小さくしてください。
   [code: width] が読めないときは、このエラーではなく、G02133 になります。
-= [strong: G07023 [code: 回り込む図版の除外領域が一ページの行数を超えます（…）]]
-  回り込ませた図版とキャプションが一ページに収まりません。
+= [strong: G07023 [code: 回り込む図版の除外領域…]]
+  回り込ませた図版とキャプションが段に収まりません。
+  自由な配置では、回り込みの間隔も含めた領域を寸法で比べ、領域の長さと段の長さをメッセージに出します。
   図版を小さくするか、キャプションを短くしてください。
 = [strong: G07038 [code: 図版のキャプションが段の行数に達します（…）]]、[strong: [code: 図版のキャプションがページの行数に達します（…）]]
   キャプションだけで段（[code: rotate=true] の図版では回したページ）の行をすべて使い、画像を置く行が残りません。
@@ -887,9 +934,41 @@ PDF を組むときに出るエラーです。
 = [strong: G08018 [code: フォントから CFF の表を取り出せません: …]]
   CFF の輪郭のフォントを PDF に埋め込むとき、字の輪郭を収めた表を読み出せません。
   プロジェクトのフォントからは通常は起きません。埋め込みの処理の不具合を防ぐためのエラーです。
-  壊れたフォントのファイルは、このエラーより前に G08003 になります。
+  開けないフォントのファイルは、このエラーより前に G08003 になります。
   このエラーが出たら、Golem の不具合として報告してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08107 [code: CFF の内部参照が表の範囲を外れています: …]]
+  CFF の輪郭のフォントで、使う字の輪郭が、フォントのファイルにないデータを参照しています。
+  ファイルが途中で切れているか、壊れています。
+  表示されたパスのフォントを完全なファイルに差し替えて、PDF を組み直してください。
+  PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08108 [code: CFF の参照を確かめきれません: …]]
+  CFF の輪郭のフォントで、使う字の輪郭の命令が多すぎるか、乱数の値によっては計算が定まらないので、Golem が中身を確かめきれません。
+  メッセージの番号は、フォントの中のグリフの番号です。
+  その字を使わないように文字を替えるか、別のフォントに替えて、PDF を組み直してください。
+  PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08109 [code: フォントのグリフの寸法を読めません: …]]
+  使う字の輪郭を、フォントのファイルから読めません。
+  メッセージの番号は、フォントの中のグリフの番号です。
+  その字を使わないように文字を替えるか、別のフォントに替えて、PDF を組み直してください。
+  PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08110 [code: 可変フォントに名前付きインスタンスがありません: …]]
+  役割の [code: instance] に書いた名前のインスタンスが、その役割のフォントにありません。
+  名前は大文字と小文字を区別します。
+  可変でないフォントには、名前付きインスタンスがありません。
+  フォントのインスタンスの名前を書くか、[code: instance] の代わりに [code: axes] で座標を書いてください。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。
+  HTML と EPUB では出ません。
+= [strong: G08111 [code: フォントにない軸です: …]]
+  役割の [code: axes] に書いた軸が、その役割のフォントにありません。
+  フォントが持つ軸のタグ（[code: wght] など）を書くか、その軸を消してください。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。
+  HTML と EPUB では出ません。
+= [strong: G08112 [code: 軸の値がフォントの範囲の外にあります: …]]
+  役割の [code: axes] に書いた値が、フォントの軸の最小と最大の外にあります。
+  メッセージに出る最小と最大のあいだの値を書いてください。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。
+  HTML と EPUB では出ません。
 = [strong: G08019 [code: CFF2 の輪郭のフォントは PDF に埋め込めません: …]]
   PDF が使う役割に、CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）を書いています。
   同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）に替えてください。
@@ -956,7 +1035,8 @@ PDF を組むときに出るエラーです。
   原稿の画像をこのフォルダーに置くと取り違えるので、別のフォルダーに移して [code: @figure] のパスを直してください。
   HTML と EPUB を組むときにだけ出て、このエラーがあれば HTML と EPUB を書きません。
 = [strong: G08015 [code: 図版の PDF のページの内容をつなぐと 256 MiB を超えます: …]]
-  PDF の図版のページが、描く命令の同じかたまりを何度も使い回していて、つなぐと 256 MiB を超えます。
+  PDF の図版のページの描く命令のかたまりを、あいだの改行を入れてつなぐと 256 MiB を超えます。
+  同じかたまりを何度も使い回すページや、ほどいた中身がちょうど 256 MiB でかたまりが二つ以上あるページで出ます。
   図版を作ったツールで PDF を書き出し直すか、図版を SVG か PNG にしてください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
 = [strong: G08020 [code: 図版の PDF のページが二度以上名指すストリームのオブジェクトの番号が 2147483647 を超えます: …]]
@@ -1264,12 +1344,6 @@ PDF を組むときに出るエラーです。
   [code: verse] のように改行をそのまま残す段落で、行の頭の空白の前にバックスラッシュを付けています。
   行頭の空白は捨てられます。
   字下げには全角の空白を使ってください。
-= [strong: G02065 [code: @listing の src= は廃止予定です。パスを最初の引数に書きます]]
-  [code: @listing src=src/Main.hs] は [code: @listing src/Main.hs] と書き換えてください。
-  今のバージョンでは同じ内容を取り込みますが、今後のバージョンでは使えなくなります。
-= [strong: G02129 [code: @table の src= は廃止予定です。パスを最初の引数に書きます]]
-  [code: @table src=data/sizes.csv] は [code: @table data/sizes.csv] と書き換えてください。
-  今のバージョンでは同じ表を組みますが、今後のバージョンでは使えなくなります。
 = [strong: G02079 [code: 行末のエスケープした空白は無視されます]]
   [code: verse] のように改行をそのまま残す段落で、行末の空白の前にバックスラッシュを付けています。
   行末の空白は捨てられます。
@@ -1278,36 +1352,29 @@ PDF を組むときに出るエラーです。
   [code: @blank-line] を続けて書いています。
   行アキの量は足し合わされるので、組んだ結果は変わりません。
   [code: @blank-line 2] のように一つにまとめてください。
-= [strong: G02108 [code: - で区切った範囲は廃止予定です。…...… のように ... で区切ります]]
-  [code: lines=10-20] や [code: highlight=3,5-7] のように、行の範囲を [code: -] で区切っています。
-  [code: lines=10...20]、[code: highlight=3,5...7] と書き換えてください。
-  今のバージョンでは同じ行を取り込み、強調しますが、今後のバージョンでは使えなくなります。
 = [strong: G03023 [code: style.toml がないので、既定の体裁で組みます]]
   プロジェクトのフォルダに [code: style.toml] がありません。
   既定の体裁でよければ、そのままでかまいません。
-= [strong: G03100 [code: キャプションと傍注は字下げを掛けないので、… は効果がありません]]
-  段落スタイル [code: caption] か [code: sidenote] に、0 の [code: indent] か [code: first-line-indent] を書いています。
-  キャプションと傍注ははじめから字下げをしないので、組んだ結果は変わりません。
+= [strong: G03100 [code: 表のセルは字下げを掛けないので、… は効果がありません]]
+  段落スタイル [code: table] に、0 の [code: indent]、[code: first-line-indent]、[code: end-indent] を書いています。
+  表のセルははじめから字下げをしないので、組んだ結果は変わりません。
   そのキーを消してください。
-= [strong: G03114 [code: \[lists\] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
-  [code: \[lists\]] の [code: numbers] の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
-  [code: '\\{{n}\\}'] のように、[code: \\{] と [code: \\}] をリテラル文字列で書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
-= [strong: G03115 [code: \[lists\] の numbers の {…} は廃止予定です。{n:…} と書きます: …]]
-  [code: \[lists\]] の [code: numbers] の書式で、[code: {一}] や [code: {a}] のような一字の見本で表記を選んでいます。
-  [code: {n:kanji}] や [code: {n:lower-alpha}] のように、表記の名前で書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
-= [strong: G03116 [code: 柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: …]]
-  柱の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
-  [code: \\{] と [code: \\}] をリテラル文字列で書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
-= [strong: G03117 [code: \[notes\] の mark-size は廃止予定です。\[character-styles.note-mark\] の size に書きます]]
-  [code: \[notes\]] の [code: mark-size] を消し、同じ値を [code: \[character-styles.note-mark\]] の [code: size] に書いてください。
-  今のバージョンでは同じに組みますが、今後のバージョンでは使えなくなります。
 = [strong: G03120 [code: 段落の区切り方を書いていないので、改行の様式（paragraph-separator = "line"）で読みます]]
   [code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator] を書いていないので、改行ひとつで段落を区切って読みます。
   空行で段落を区切って書いた原稿なら、[code: \[source\]] に [code: paragraph-separator = "blank-line"] と書いてください。
   改行で段落を区切って書いた原稿なら、[code: paragraph-separator = "line"] と書くと、このお知らせは出なくなります。
+= [strong: G03250 [code: \[lists\] の numbers の {{ と }} は使えません。\\{ と \\} と書きます: …]]
+  [code: \[lists\]] の [code: numbers] の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
+  [code: '\\{{n}\\}'] のように、[code: \\{] と [code: \\}] をリテラル文字列で書いてください。
+= [strong: G03251 [code: \[lists\] の numbers の {…} は使えません。{n:…} と書きます: …]]
+  [code: \[lists\]] の [code: numbers] の書式で、[code: {一}] や [code: {a}] のような一字の見本で表記を選んでいます。
+  [code: {n:kanji}] や [code: {n:lower-alpha}] のように、表記の名前で書いてください。
+= [strong: G03252 [code: 柱の書式の {{ と }} は使えません。\\{ と \\} と書きます: …]]
+  柱の書式で、括弧そのものを [code: {{] と [code: }}] で書いています。
+  [code: \\{] と [code: \\}] をリテラル文字列で書いてください。
+= [strong: G03253 [code: \[notes\] の mark-size は使えません。\[character-styles.…\] の size に移します]]
+  [code: \[notes\]] の [code: mark-size] を消し、同じ値を印の文字スタイルの [code: size] に書いてください。
+  印の文字スタイルは、[code: \[notes\]] の [code: mark-style] に書いた名前で、書いていなければ [code: note-mark] です。
 = [strong: G04007 [code: @number … は自動で振られる番号と同じです]]
   見出しやリストの項目の [code: @number] が、書かなくても振られる番号と同じです。
   項目を入れ替えたときに番号が固定されてしまうので、消してください。
@@ -1341,9 +1408,10 @@ PDF を組むときに出るエラーです。
   分けて組んだ段落には、前の罫線も後の罫線も引きません。
   罫線を持つ見出しでは、入らない罫線を省きます。
   分けてよければ、そのままでかまいません。
-= [strong: G07100 [code: 見出しが段に入りません（…。見出しは … 行、段の残りは … 行）]]
+= [strong: G07100 [code: 見出しが段に入りません（…）]]
   [code: @page-lines] で行数を減らした段の先頭に、段に残る行より高い見出しが来ました。
   見出しは段の頭に書いたとおりの行取りで組まれ、減らした行にはみ出します。
+  自由な配置では、見出しと段の残りの長さを寸法で表示します。
   段を減らして大きな見出しを置く組み方を意図したなら、そのままでかまいません。
   意図していなければ、[code: @page-lines] で減らす行を少なくするか、[code: @page-lines] を見出しの後に移すか、[code: \[headings\]] の [code: lines] を減らしてください。
 = [strong: G08008 [code: コードの書体の役割 code がないので、本文の書体で組みます]]

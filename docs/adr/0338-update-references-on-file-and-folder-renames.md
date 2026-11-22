@@ -1,6 +1,6 @@
 # ADR 0338: ファイルとフォルダの改名に伴う参照の編集を Golem LSP が返す
 
-ステータス: 採択
+Status: superseded [{"part":"ファイルの同一性と失敗時の扱いの複数プロジェクトにまたがる移動の対象外","by":["docs/adr/0399-plan-moves-across-project-boundaries.md"],"kind":"replace"}]
 
 ## 文脈
 

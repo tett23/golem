@@ -1,6 +1,6 @@
 # ADR 0081: フォントにない字を、golem build の dev では warning、prod ではエラーにする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0351: 原稿の整形と再パースの往復を Lean で証明する
 
-ステータス: 採択（未実装）
+Status: superseded-pending [{"by":["docs/adr/0354-remove-leading-boms-from-table-files.md"],"part":"不変条件 9 の先頭の連続 BOM"}]
 
 ## 文脈
 

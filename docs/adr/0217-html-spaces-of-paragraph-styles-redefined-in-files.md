@@ -1,6 +1,6 @@
 # ADR 0217: ファイルの `@style-def` で改めた段落の前後のアキを、HTML と EPUB にも当てる
 
-ステータス: 採択→カスケードの評価器の置き場所は [ADR 0248](0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)、接頭辞を付けない `body` の規則、同じスタイルの段落のあいだの規則、H2 の基準は [ADR 0236](0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md"],"part":"カスケードの評価器の置き場所"},{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"接頭辞を付けない `body` の規則、同じスタイルの段落のあいだの規則、H2 の基準"}]
 
 ## 文脈
 

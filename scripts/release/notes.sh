@@ -74,15 +74,16 @@ git diff --name-only --diff-filter=A "$BASE" "$TAG" |
   sed "s|.*|- [&]($REPO_URL/blob/$TAG/&)|" || true
 
 # The ADRs changed in the range whose status line (the first line that
-# starts with "ステータス:") differs between the two tags
-# (docs/adr/0246-bound-the-prompt-of-the-release-notes.md). The first
+# starts with "ステータス:" or "Status:") differs between the two tags
+# (docs/adr/0246-bound-the-prompt-of-the-release-notes.md, docs/adr/0387). The first
 # release has no changed ADR. The relative links of a status line become
 # absolute, at the tag of the line (docs/adr/0259).
 status_line() { # status_line REV PATH: the status line of PATH at REV
-  git show "$1:$2" | LC_ALL=C awk '/^ステータス:/ { print; exit }'
+  git show "$1:$2" | LC_ALL=C awk '/^(ステータス|Status):/ { print; exit }'
 }
-status_of() { # status_of LINE: the status, without the spaces around it
-  printf '%s\n' "$1" | LC_ALL=C sed 's/^ステータス://; s/^[[:space:]]*//; s/[[:space:]]*$//'
+status_of() { # status_of LINE: the status, without the label nor the spaces around it
+  printf '%s\n' "$1" | LC_ALL=C sed -e 's/^ステータス://' -e 't trim' -e 's/^Status://' -e ':trim' \
+    -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 CHANGED=
 if [ -n "$PREVIOUS" ]; then

@@ -1,6 +1,6 @@
 # ADR 0002: golem fmt の移行の段階を外す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

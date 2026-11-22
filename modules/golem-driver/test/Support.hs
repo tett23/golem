@@ -22,7 +22,7 @@ import Golem.Driver
 import Golem.Layout.CharClass (charClass)
 import Golem.Layout.Japanese (punctSpace)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (BoxSegmentAt (..), Flow, PageOut, PageOutAt (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
@@ -31,7 +31,7 @@ import Golem.Project.Style (Sp (..), parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
-import Golem.Typeset (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
+import Golem.Typeset (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPageGeometry, layoutPages, layoutPdf, runningHeads)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -137,7 +137,8 @@ verseLines style src = withVerseProject style src $ \tmp -> do
       Nothing -> assertFailure (show (map diagCode (evDiagnostics e)))
       Just book -> do
         r <- flowLines (FontProvider (\_ _ _ _ -> pure (Right fakeFonts))) (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e))
-        either (assertFailure . show) pure r
+        geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) False (evStyle e))
+        either (assertFailure . show) (\(flows, ls) -> pure (map (fmap (gridCount (pgLinePitch geom))) flows, ls)) r
 
 -- | horizontalStyle with 30 characters a line (300pt), and more.
 horizontal30 :: BS.ByteString -> BS.ByteString
@@ -454,7 +455,7 @@ longPara n = T.replicate n "あいうえおかきくけこ" <> "\n\n"
 
 -- | The only figure of a layout, the page it is on and its first grid line.
 theFigure :: PdfLayout -> IO (Int, PlacedFigure, PageOut, Int)
-theFigure pl = case [(fid, pf, p, slot) | (fid, pf) <- Map.toList (plFigures pl), p <- plPages pl, (slot, s) <- poSlots p, s `elem` [SWrapped fid, SFigure fid]] of
+theFigure pl = case [(fid, pf, p, slot) | (fid, pf) <- Map.toList (plFigures pl), p <- gridPages pl, (slot, s) <- poSlots p, s `elem` [SWrapped fid, SFigure fid]] of
   [x] -> pure x
   other -> assertFailure (show [(f, n, sl) | (f, _, PageOut {poNumber = n}, sl) <- other])
 
@@ -578,6 +579,7 @@ fakeFonts =
           (pre, post) -> Just (pre + 1 / 20, -(1 / 10), 1 - post - 1 / 20, 8 / 10),
       -- no role has features, and every face has every feature (docs/adr/0268)
       lfRoleFeatures = const [],
+      lfPunctuationProportional = const False,
       lfHasFeature = \_ _ -> True,
       lfEmbed = \_ vertical used ->
         pure . Right $
@@ -810,3 +812,18 @@ qpdfExpanded pdf = do
       (code, out, err) <- readProcessWithExitCode exe ["--qdf", "--object-streams=disable", dir </> "in.pdf", dir </> "out.pdf"] ""
       assertEqual (out <> err) ExitSuccess code
       Just <$> BS.readFile (dir </> "out.pdf")
+
+{- | Existing grid-coordinate assertions remain exact after the typesetter
+normalizes positions to sp. Reject any non-grid result in these fixtures.
+-}
+gridPages :: PdfLayout -> [PageOut]
+gridPages layout = map restore (plPages layout)
+  where
+    pitch = pgLinePitch (layoutPageGeometry layout)
+    count = gridCount pitch
+    restore page = fmap count page {poBoxes = [seg {bsLast = bsLast seg - pitch} | seg <- poBoxes page]}
+
+gridCount :: Sp -> Sp -> Int
+gridCount pitch (Sp n)
+  | n `mod` unSp pitch == 0 = fromInteger (n `div` unSp pitch)
+  | otherwise = error "grid fixture produced a non-grid position"

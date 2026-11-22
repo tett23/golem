@@ -1,6 +1,6 @@
 # ADR 0248: テストの CSS の評価器を golem-test-support に移す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

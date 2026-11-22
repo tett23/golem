@@ -191,12 +191,14 @@ keyOf w ps its = (unSp w, map item its, pExpansion ps, pProtrusion ps)
       Penalty (Sp pw) p h -> (2, pw, case h of NoHyphen -> 0; ExplicitHyphen -> 1; PatternHyphen _ -> 2; WrapMark _ -> 3; SoftHyphen _ -> 4, 0, "", False, case h of PatternHyphen (Sp q) -> q; SoftHyphen (Sp q) -> q; _ -> 0, 0, 0, 0, p)
 
 {- | The values 'breakParagraph' is given for the inputs of a group in
-vertical writing, with no break between two digits, as in horizontal
-writing (golem-layout ADR 0049, B2).
+vertical writing, with the pairs of horizontal writing kept as there
+(root ADR 0396, I1): no break between two digits (golem-layout ADR 0049,
+B2), and no stretch of the glue between them (root ADR 0362).
 -}
 keysOfDigitsKept :: Group -> [Key]
 keysOfDigitsKept g =
-  let its = forbidPairs False (T.replicate (gPre g) "あ" <> T.concat (gRun g) <> T.replicate (gPost g) "い") (itemsOf True (gSetting g) (gPre g) (gRun g) (gPost g))
+  let text = T.replicate (gPre g) "あ" <> T.concat (gRun g) <> T.replicate (gPost g) "い"
+      its = unstretchPairs text (forbidPairs False text (itemsOf True (gSetting g) (gPre g) (gRun g) (gPost g)))
    in [keyOf (fromIntegral w * fs) (paramsOf (gSetting g) e its) its | (w, e) <- gCases g]
 
 -- | The values 'breakParagraph' is given for the inputs of a group, vertical or not.
@@ -257,7 +259,7 @@ enumerationTests =
       let d = formDepth depth
       checkAllPar d runsT (normalFormMisses (maxWidthAt depth))
         @?= Passed (length (concat (upTo d runsT))),
-    testCase "vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values, but between two digits (golem-layout ADR 0049, B2)" $ do
+    testCase "root ADR 0396 I1: vertical writing: up to 2 parts (1 on pull requests), it gives 'breakParagraph' the same values, but between two digits (golem-layout ADR 0049, B2, and root ADR 0362)" $ do
       depth <- linesDepth
       let d = formDepth depth
       checkAllPar d runsT (\run -> [Violation "vertical" (show g) | g <- normalGroups (maxWidthAt depth) run, keysOfDigitsKept g /= keysOf False g])
@@ -610,7 +612,13 @@ restoreAfter t = \case
 
 regressionTests :: [TestTree]
 regressionTests =
-  [ testCase "docs/adr ADR 0272: the output before it, a box of the soft hyphen of と\xADいう, is broken by L1 (I1)" $ do
+  [ testCase "root ADR 0396 I1: two digits in a row (１１), at the depth of pull requests, give 'breakParagraph' in vertical writing the values of horizontal writing once the pairs are kept as there" $ do
+      -- the nightly enumeration drew it (2026-11-18): the pull requests check
+      -- vertical writing up to 1 part, which never puts two digits in a row
+      let groups = normalGroups (maxWidthAt linesPrDepth) ["１", "１"]
+      assertBool "there are groups to check" (not (null groups))
+      [show g | g <- groups, keysOfDigitsKept g /= keysOf False g] @?= [],
+    testCase "docs/adr ADR 0272: the output before it, a box of the soft hyphen of と\xADいう, is broken by L1 (I1)" $ do
       let p = paragraphIn plain False 5 ["と", "\xAD", "い", "う"]
           withShyBox = \case
             b@(Box _ c) : rest | bcText c == "と" -> b : Box 0 c {bcText = "\xAD"} : rest
@@ -862,7 +870,8 @@ fnv = foldl (\h c -> (h `xor` fromIntegral (ord c)) * 0x100000001b3) 0xcbf29ce48
 {- | R1 of docs/adr/0274: every run up to two parts, each input of lines up
 to 5 em, balanced and without a limit, broken and placed: the hash of
 'placedKey' of each. The golden file was written by the implementation
-before the ADR.
+before the ADR, and written again when root ADR 0362 took the stretch
+out of the glue between digits and between inseparable characters.
 -}
 balancedLines :: Text
 balancedLines =

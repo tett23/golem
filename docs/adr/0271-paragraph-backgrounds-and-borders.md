@@ -1,6 +1,6 @@
 # ADR 0271: 段落の背景と囲み罫
 
-ステータス: 採択
+Status: superseded [{"part":"自由な配置での padding と囲みの占有範囲","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

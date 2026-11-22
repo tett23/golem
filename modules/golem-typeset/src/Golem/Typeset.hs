@@ -16,6 +16,7 @@ module Golem.Typeset
     offsetOrigin,
     Shaping (..),
     shapingOf,
+    shapingForFonts,
     normalTexts,
     noFontProvider,
     bodyRole,
@@ -32,14 +33,20 @@ module Golem.Typeset
     PdfInput (..),
     SetLine (..),
     CodeInfo (..),
+    CodeCaption (..),
     PlacedFigure (..),
     PlacedSidenote (..),
+    PartLine (..),
     PdfLayout (..),
+    layoutPageGeometry,
     TableGeometry (..),
     styleLayoutDiagnostics,
+    sidenoteIndentDiagnostics,
     noteNumberDiagnostics,
     layoutPdf,
     layoutPdfWith,
+    layoutPdfUnnumbered,
+    bookNoteSites,
     layoutPages,
     IndexLine (..),
     indexLines,
@@ -65,6 +72,7 @@ module Golem.Typeset
     renderPdf,
     renderPdfAllReusing,
     renderPdfView,
+    masterFlowText,
     renderPdfStructure,
     renderPdfLeafTexts,
     renderPdfWithTree,
@@ -83,8 +91,13 @@ module Golem.Typeset
 where
 
 import Golem.Layout.Look (LinkDest (..))
+import Golem.LayoutSpec (PageGeometry)
 import Golem.Typeset.Draw
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
 import Golem.Typeset.Pages (pagesJson)
 import Golem.Typeset.TextLayer (ClusterPart (..))
+
+-- | The geometry against which physical page positions are measured.
+layoutPageGeometry :: PdfLayout -> PageGeometry
+layoutPageGeometry = feGeom . plFlowEnv

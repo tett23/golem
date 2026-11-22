@@ -38,7 +38,7 @@ data Slot a
     TextSlot a
   | -- | a number: @{<name>}@ or @{<name>:<notation>}@
     NumberSlot a
-  | -- | a number in the notation of a sample (@{一}@ of [lists]): read, but to be retired (G03115)
+  | -- | a number in the notation of a sample (@{一}@ of [lists]): read, so that style.toml can report it as the retired form G03251 (ADR 0344)
     SampleSlot a Notation
 
 -- | A piece of a format read: text, a text slot or a number slot with the notation written.
@@ -49,7 +49,7 @@ data Piece a
   deriving stock (Eq, Show)
 
 {- | How braces themselves are written: by the escapes only, or also as
-@{{@ and @}}@, which are read but to be retired (G03114, G03116).
+@{{@ and @}}@, which are read so that style.toml can report them as the retired forms G03250 and G03252 (ADR 0344).
 -}
 data Braces = EscapesOnly | DoubledToo
   deriving stock (Eq, Show)

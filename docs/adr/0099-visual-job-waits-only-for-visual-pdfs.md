@@ -1,6 +1,6 @@
 # ADR 0099: visual ジョブを build と同時に始め、成果物 visual-pdfs だけを待つ
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -1,0 +1,72 @@
+name: Caches of pull requests
+
+# The caches of pull requests under the limit of the repository
+# (docs/adr/0395): a pull request saves its dist-newstyle in ci.yml, and
+# this workflow deletes, when a run of CI ends and when a pull request is
+# closed (merged or not), every cache of the pull requests that are not
+# open, the dist- caches of an open one but its newest of each
+# architecture, and, while the caches are more than 9 GB in all, the
+# oldest dist- caches of open pull requests (scripts/ci/pr-caches.sh).
+#
+# Both events run the definition of the default branch, which a pull
+# request cannot change. Nothing is checked out: pr-caches.sh comes from
+# the default branch through the API, and no code of a pull request runs.
+# Its job alone has the write permission of the actions scope, to delete
+# caches
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  pull_request_target:
+    types: [closed]
+
+permissions: {}
+
+# one at a time, so that two runs do not delete the same cache
+concurrency:
+  group: pr-caches
+  cancel-in-progress: false
+
+jobs:
+  delete:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+    steps:
+      - name: Delete the caches of closed pull requests and the stale dist- caches of open ones (docs/adr/0395)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          usage() { gh api "repos/$GH_REPO/actions/cache/usage" --jq '"\(.active_caches_size_in_bytes) bytes in \(.active_caches_count) caches"'; }
+          gh api -H 'Accept: application/vnd.github.raw' "repos/$GH_REPO/contents/scripts/ci/pr-caches.sh?ref=$BRANCH" >"$RUNNER_TEMP/pr-caches.sh"
+          BEFORE=$(usage)
+          gh api --paginate "repos/$GH_REPO/actions/caches?per_page=100" >"$RUNNER_TEMP/caches.json"
+          OPEN=$(gh pr list --state open --limit 1000 --json number --jq '.[].number')
+          # one number per word
+          # shellcheck disable=SC2086
+          sh "$RUNNER_TEMP/pr-caches.sh" $OPEN <"$RUNNER_TEMP/caches.json" >"$RUNNER_TEMP/delete.txt"
+          {
+            echo "## The caches of pull requests (docs/adr/0395)"
+            echo
+            echo "Before: $BEFORE"
+            echo
+          } >>"$GITHUB_STEP_SUMMARY"
+          while IFS= read -r id; do
+            what=$(jq -rs --argjson id "$id" '[.[] | if type == "object" and has("actions_caches") then .actions_caches[] else . end | select(.id == $id) | "\(.ref) \(.key)"][0]' "$RUNNER_TEMP/caches.json")
+            gh cache delete "$id" </dev/null
+            echo "Deleted $id $what"
+            echo "- deleted \`$what\` ($id)" >>"$GITHUB_STEP_SUMMARY"
+          done <"$RUNNER_TEMP/delete.txt"
+          if [ ! -s "$RUNNER_TEMP/delete.txt" ]; then echo "- nothing to delete" >>"$GITHUB_STEP_SUMMARY"; fi
+          # the usage of the API is updated about every five minutes, and
+          # may not show the deletions yet
+          {
+            echo
+            echo "After: $(usage)"
+          } >>"$GITHUB_STEP_SUMMARY"

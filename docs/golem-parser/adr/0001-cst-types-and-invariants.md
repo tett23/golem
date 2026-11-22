@@ -1,6 +1,6 @@
 # ADR 0001: CST の型と不変条件
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

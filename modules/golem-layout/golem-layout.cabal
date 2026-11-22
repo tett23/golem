@@ -48,6 +48,8 @@ library
                     Golem.Layout.Orientation
                     Golem.Layout.PageLabel
                     Golem.Layout.Paginate
+                    Golem.Layout.FreeGeometry
+                    Golem.Layout.Paginate.Physical
                     Golem.Layout.Paginate.State
                     Golem.Layout.Ruby
                     Golem.Layout.RuleArea
@@ -93,12 +95,16 @@ test-suite golem-layout-test
                     CodeSpaceSpec
                     CodeStopSpec
                     CombiningSpec
+                    CompressedNoteMarksSpec
                     DoubleDashSpec
                     EnumSplitSpec
                     ExceptionsSpec
                     ExpansionStepSpec
+                    TrackingBoxesSpec
                     FeaturesSpec
                     ScriptSpec
+                    PhysicalPaginateSpec
+                    FreeGeometrySpec
                     Fixtures
                     InseparableSpec
                     KnuthPlassBrute
@@ -129,6 +135,7 @@ test-suite golem-layout-test
                     StructureSpec
                     TableCaptionSpec
                     UnbreakablePairsSpec
+                    UnbreakableSpacingSpec
                     UrlBreakSpec
   build-depends:
     , base

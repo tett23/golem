@@ -1,4 +1,5 @@
 {-# LANGUAGE CApiFFI #-}
+{-# LANGUAGE CPP #-}
 
 {- | Tests of "Golem.TestSupport.ExternalTool" (docs/adr/0028).
 
@@ -389,9 +390,25 @@ timeLimitTests =
       testCase "the messages" $ do
         show (CpuTimeExceeded 60) @?= "used more than 60 seconds of CPU time"
         show (WallTimeExceeded 300) @?= "took more than 300 seconds of wall-clock time",
-      testCase "hangLimits: 60 seconds of CPU time, 300 of wall-clock time" $
-        (cpuSeconds hangLimits, wallSeconds hangLimits) @?= (60, 300)
+      hangLimitsTest
     ]
+
+{- | The value of 'hangLimits' on the platform the suite is built for
+(docs/adr ADR 0388): the native build runs it in the CI, a build for
+wasm32 the one for wasm32.
+-}
+hangLimitsTest :: TestTree
+#if defined(wasm32_HOST_ARCH)
+hangLimitsTest =
+  testCase "root ADR 0388 I2, I3: on wasm32, hangLimits is 600 seconds of CPU time and 1200 of wall-clock time" $ do
+    hangLimits @?= TimeLimits {cpuSeconds = 600, wallSeconds = 1200}
+    assertBool "the wall-clock time is longer than the CPU time" (wallSeconds hangLimits > cpuSeconds hangLimits)
+#else
+hangLimitsTest =
+  testCase "root ADR 0388 I1, I3: natively, hangLimits is 60 seconds of CPU time and 300 of wall-clock time" $ do
+    hangLimits @?= TimeLimits {cpuSeconds = 60, wallSeconds = 300}
+    assertBool "the wall-clock time is longer than the CPU time" (wallSeconds hangLimits > cpuSeconds hangLimits)
+#endif
 
 -- * the watchdog (docs/adr ADR 0117)
 

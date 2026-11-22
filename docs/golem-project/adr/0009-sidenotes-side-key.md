@@ -1,6 +1,6 @@
 # ADR 0009: `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

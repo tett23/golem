@@ -1,6 +1,7 @@
 -- | style.toml (golem-project ADR 0002).
 module Golem.Project.Style
   ( Style (..),
+    renderPrintingTemplate,
     Dim (..),
     Sp (..),
     parseDim,
@@ -12,9 +13,18 @@ module Golem.Project.Style
     defaultAkiSetName,
     akiClassNames,
     Page (..),
+    PageLayout (..),
+    pageBindingRight,
+    singlePage,
     PageSize (..),
     pageTrimSize,
     Grid (..),
+    GridAlignment (..),
+    ParagraphPitch (..),
+    ParagraphSpacing (..),
+    resolvedParagraphPitch,
+    resolvedParagraphSpacing,
+    GridPosition (..),
     FontRole (..),
     Feature (..),
     FeatureSite (..),
@@ -37,6 +47,8 @@ module Golem.Project.Style
     ParaStart (..),
     paraStartValues,
     LineAdjustment (..),
+    OpeningIndent (..),
+    openingIndentValues,
     lineAdjustmentValues,
     adjustPlaceNames,
     CodeStyle (..),
@@ -80,7 +92,9 @@ module Golem.Project.Style
     builtinAkiSetNames,
     lineBreaksValues,
     HeadingStyle (..),
+    HeadingBlockAlign (..),
     NotesPlacement (..),
+    noteStyleFor,
     Composition (..),
     RubyStyleDef (..),
     kentenShapeNames,
@@ -134,7 +148,7 @@ import Data.List (find, nub, nubBy, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -213,12 +227,63 @@ data Grid = Grid
     gridCharacters :: !Natural,
     gridLines :: !Natural,
     gridLinePitch :: !Dim,
+    gridAlignment :: !GridAlignment,
     gridColumns :: !Natural,
     gridColumnGap :: !(Maybe Dim),
     gridTop :: !Dim,
-    gridGutter :: !Dim
+    gridPosition :: !GridPosition
   }
   deriving stock (Eq, Show)
+
+data GridAlignment = AlignGrid | AlignFree
+  deriving stock (Eq, Show)
+
+data ParagraphPitch = PitchAuto | PitchDim !Dim
+  deriving stock (Eq, Show)
+
+data ParagraphSpacing = SpacingLines !Int | SpacingDim !Dim
+  deriving stock (Eq, Show)
+
+spacingLines :: ParagraphSpacing -> Maybe Int
+spacingLines (SpacingLines n) = Just n
+spacingLines _ = Nothing
+
+spacingDim :: ParagraphSpacing -> Maybe Dim
+spacingDim (SpacingDim d) = Just d
+spacingDim _ = Nothing
+
+resolvedParagraphPitch :: Style -> ParaStyleDef -> Maybe Sp
+resolvedParagraphPitch s d = do
+  g <- stPage s >>= pageGrid
+  let fs = dimToSp 0 (gridFontSize g)
+      size = maybe fs (dimToSp fs) (psSize d)
+  pure $ case fromMaybe PitchAuto (psLinePitch d) of
+    PitchAuto -> dimToSp fs (gridLinePitch g)
+    PitchDim x -> dimToSp size x
+
+resolvedParagraphSpacing :: Style -> ParaStyleDef -> ParagraphSpacing -> Maybe Sp
+resolvedParagraphSpacing s d spacing = do
+  g <- stPage s >>= pageGrid
+  let fs = dimToSp 0 (gridFontSize g)
+      size = maybe fs (dimToSp fs) (psSize d)
+      pitch = dimToSp fs (gridLinePitch g)
+  pure $ case spacing of
+    SpacingLines n -> fromIntegral n * pitch
+    SpacingDim x -> dimToSp size x
+
+-- | The physical reference edge of the type area (root ADR 0400).
+data GridPosition = GutterPosition !Dim | LeftPosition !Dim | RightPosition !Dim
+  deriving stock (Eq, Show)
+
+-- | Binding exists only in facing-page mode (root ADR 0400).
+data PageLayout = FacingLeft | FacingRight | SinglePage
+  deriving stock (Eq, Show)
+
+pageBindingRight :: Page -> Bool
+pageBindingRight = (== FacingRight) . pageLayout
+
+singlePage :: Style -> Bool
+singlePage = maybe False ((== SinglePage) . pageLayout) . stPage
 
 -- | [page] の size。名前は読み込みで表と照合済みである（ADR 0005）。
 data PageSize
@@ -230,7 +295,7 @@ data PageSize
 
 data Page = Page
   { pageSizeSpec :: !PageSize,
-    pageBindingRight :: !Bool,
+    pageLayout :: !PageLayout,
     pageVertical :: !Bool,
     pageGrid :: !(Maybe Grid),
     -- | the bleed around the trimmed page (golem-pdf ADR 0004); 0 by default
@@ -242,7 +307,14 @@ data FontRole = FontRole
   { frJa :: !(Maybe FilePath),
     frLatin :: !(Maybe FilePath),
     -- | the OpenType features of the role, checked (docs/adr/0268)
-    frFeatures :: ![Feature]
+    frFeatures :: ![Feature],
+    frPunctuationProportional :: !Bool,
+    -- | the named instance of a variable font that the role is set in (Golem ADR 0358)
+    frInstance :: !(Maybe Text),
+    {- | the coordinates of axes by their tags, over those of the instance,
+    in the order of the tags (Golem ADR 0358); finite numbers, checked
+    against the font when it is loaded
+    -} frAxes :: ![(Text, Double)]
   }
   deriving stock (Eq, Show)
 
@@ -332,7 +404,9 @@ data ParaStyleDef = ParaStyleDef
     psFont :: !(Maybe Text),
     psSize :: !(Maybe Dim),
     psLineBreaks :: !(Maybe LineBreaks),
+    psLinePitch :: !(Maybe ParagraphPitch),
     psSpaceBetween :: !(Maybe Int),
+    psSpaceBetweenDim :: !(Maybe Dim),
     -- | the start of every line (docs/adr ADR 0006)
     psIndent :: !(Maybe Dim),
     -- | added to the indent on the first line; negative hangs
@@ -367,7 +441,9 @@ data ParaStyleDef = ParaStyleDef
     psAlign :: !(Maybe ParaAlign),
     -- | the grid lines before and after the paragraph (docs/adr/0189)
     psSpaceBefore :: !(Maybe Int),
+    psSpaceBeforeDim :: !(Maybe Dim),
     psSpaceAfter :: !(Maybe Int),
+    psSpaceAfterDim :: !(Maybe Dim),
     -- | the end of every line (docs/adr/0189)
     psEndIndent :: !(Maybe Dim),
     -- | the OpenType features, added after the parent's (docs/adr/0268)
@@ -390,9 +466,30 @@ data ParaStyleDef = ParaStyleDef
     -} psShrinkOrder :: !(Maybe [[Text]]),
     psStretchOrder :: !(Maybe [[Text]]),
     -- | whether Golem shapes JLReq's punctuation with fwid (docs/adr/0302)
-    psPunctuationWidth :: !(Maybe PunctuationWidth)
+    psPunctuationWidth :: !(Maybe PunctuationWidth),
+    -- | the paragraph style of the paragraph right after one of this style, unless it has one written (docs/adr/0374)
+    psNextStyle :: !(Maybe Text),
+    -- | the character style of the first character of a paragraph (docs/adr/0374)
+    psInitialStyle :: !(Maybe Text),
+    -- | the indent of a paragraph that starts with an opening bracket (docs/adr/0374)
+    psOpeningIndent :: !(Maybe OpeningIndent),
+    -- | the string between a number and its title (Golem ADR 0372)
+    psNumberTitleSeparator :: !(Maybe Text),
+    -- | number every nth nonempty source line of a paragraph that keeps lines (root ADR 0384)
+    psLineNumberInterval :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
+
+{- | The first-line indent of a paragraph that starts with an opening
+bracket (docs/adr/0374): the indent as it is, or less half a character,
+0 at the least.
+-}
+data OpeningIndent = OpeningNormal | OpeningHalf
+  deriving stock (Eq, Show, Enum, Bounded)
+
+-- | The values of opening-indent, in the order of 'OpeningIndent' (docs/adr/0374).
+openingIndentValues :: [Text]
+openingIndentValues = ["normal", "half"]
 
 {- | A side of a box (docs/adr/0271): before (the top, the right in
 vertical text), after, the start of the lines and their end.
@@ -529,13 +626,14 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
 bodyDefaults =
   noParaDef
     { psLineBreaks = Just JoinLines,
+      psLinePitch = Just PitchAuto,
       psSpaceBetween = Just 0,
       psIndent = Just (Zw 0),
       psFirstLineIndent = Just (Zw 0),
@@ -545,6 +643,7 @@ bodyDefaults =
       psProportional = Just False,
       psBaselineShift = Just (Abs 0),
       psPunctuationWidth = Just PunctuationFullWidth,
+      psOpeningIndent = Just OpeningNormal,
       psAlign = Just ParaLeftJustified,
       psSpaceBefore = Just 0,
       psSpaceAfter = Just 0,
@@ -720,15 +819,15 @@ first-line indent and no end indent.
 tocStyleDefault :: Int -> ParaStyleDef
 tocStyleDefault l = noParaDef {psBasedOn = Just "body", psSize = Just (Zw 1), psIndent = Just (Zw (fromIntegral (l - 1))), psFirstLineIndent = Just (Zw 0), psEndIndent = Just (Zw 0)}
 
-{- | The paragraph styles that never indent: caption, sidenote
-(golem-driver ADR 0043) and table (docs/adr/0262).
+{- | The paragraph styles that never indent: table (docs/adr/0262).
+caption and sidenote indent their parts (docs/adr/0367).
 -}
 unindentedStyles :: [Text]
-unindentedStyles = ["caption", "sidenote", "table"]
+unindentedStyles = ["table"]
 
-{- | The non-zero indent keys written for caption, sidenote or table, which
-do not indent (golem-driver ADR 0043, docs/adr/0262): (the name of the
-style, the key). A zero one is the notice G03100.
+{- | The non-zero indent keys written for table, which does not indent
+(docs/adr/0262): (the name of the style, the key). A zero one is the
+notice G03100.
 -}
 captionIndentKeys :: Map Text ParaStyleDef -> [(Text, Text)]
 captionIndentKeys styles =
@@ -739,7 +838,7 @@ captionIndentKeys styles =
     not (zeroDim v)
   ]
 
--- | The indent keys of a definition of caption or sidenote whose value is zero (G03100, golem-driver ADR 0043).
+-- | The indent keys of a definition of table whose value is zero (G03100, golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
 captionZeroIndentKeys n d = [k | n `elem` unindentedStyles, (k, Just v) <- indentKeysOf d, zeroDim v]
 
@@ -751,15 +850,19 @@ zeroDim = \case
   Abs x -> x == 0
   Zw r -> r == 0
 
-{- | The notices of style.toml: G03100 for a zero indent or
-first-line-indent of caption or sidenote, at the value, with the value as
-written (golem-driver ADR 0043); the ways of writing to be retired
-(docs/adr/0177), at the value: G03114 and G03115 for a format of [lists]
-numbers, G03116 for a line of a running head format, G03117 for [notes]
-mark-size. A style.toml that does not parse has none.
+{- | The notices of style.toml: G03100 for a zero indent,
+first-line-indent or end-indent of table, at the value, with the value as
+written (golem-driver ADR 0043). A style.toml that does not parse has none.
 -}
 styleNotices :: FileId -> Text -> [Diagnostic]
-styleNotices fid src = case Toml.parse src of
+styleNotices fid src = filter ((== Notice) . diagSeverity) (styleSyntaxDiagnostics fid src)
+
+-- | The retired forms of style.toml fail before the style is decoded (ADR 0344).
+styleLegacyErrors :: FileId -> Text -> [Diagnostic]
+styleLegacyErrors fid src = filter ((== Error) . diagSeverity) (styleSyntaxDiagnostics fid src)
+
+styleSyntaxDiagnostics :: FileId -> Text -> [Diagnostic]
+styleSyntaxDiagnostics fid src = case Toml.parse src of
   Left _ -> []
   Right top ->
     let root = Table' (Position 0 1 1) top
@@ -770,13 +873,13 @@ styleNotices fid src = case Toml.parse src of
           Just (pos, written) <- [zeroWritten value]
         ]
           <> concat
-            [ [notice "G03114" (spanAt pos) ("[lists] の numbers の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
-                <> [notice "G03115" (spanAt pos) ("[lists] の numbers の {" <> w <> "} は廃止予定です。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
+            [ [diagnostic "G03250" Error (spanAt pos) ("[lists] の numbers の {{ と }} は使えません。\\{ と \\} と書きます: " <> t) | LegacyBraces `elem` legacy]
+                <> [diagnostic "G03251" Error (spanAt pos) ("[lists] の numbers の {" <> w <> "} は使えません。{n:" <> notationName n <> "} と書きます: " <> t) | LegacySample w n <- take 1 [l | l@LegacySample {} <- legacy]]
             | Just (List' _ xs) <- [lookupValue root ["lists", "numbers"]],
               Text' pos t <- xs,
               Right (_, legacy) <- [parseNumberFormatLegacy t]
             ]
-          <> [ notice "G03116" (spanAt pos) ("柱の書式の {{ と }} は廃止予定です。\\{ と \\} と書きます: " <> t)
+          <> [ diagnostic "G03252" Error (spanAt pos) ("柱の書式の {{ と }} は使えません。\\{ と \\} と書きます: " <> t)
              | Just (Table' _ (MkTable masters)) <- [lookupValue root ["masters"]],
                (_, master) <- Map.elems masters,
                k <- ["content", "even", "odd"],
@@ -785,9 +888,12 @@ styleNotices fid src = case Toml.parse src of
                Right (_, legacy) <- [parseRunningFormatLegacy t],
                LegacyBraces `elem` legacy
              ]
-          <> [ notice "G03117" (spanAt pos) "[notes] の mark-size は廃止予定です。[character-styles.note-mark] の size に書きます"
+          <> [ diagnostic "G03253" Error (spanAt pos) ("[notes] の mark-size は使えません。[character-styles." <> markStyle <> "] の size に移します")
              | Just v <- [lookupValue root ["notes", "mark-size"]],
-               let pos = valueAnn v
+               let pos = valueAnn v,
+               let markStyle = case lookupValue root ["notes", "mark-style"] of
+                     Just (Text' _ name) -> name
+                     _ -> "note-mark"
              ]
   where
     zeroWritten = \case
@@ -802,17 +908,15 @@ styleNotices fid src = case Toml.parse src of
       Just off -> mkSpan fid off off
       Nothing -> mkSpan fid 0 0
 
--- | The message of G03100: a zero indent of caption or sidenote, with the value as written (golem-driver ADR 0043).
+-- | The message of G03100: a zero indent of table, with the value as written (golem-driver ADR 0043, docs/adr/0367).
 captionZeroIndentMessage :: Text -> Text -> Text -> Text
 captionZeroIndentMessage n k v = unindented n <> "は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
 
--- | What a paragraph style that never indents sets, in a message (golem-driver ADR 0043, docs/adr/0262).
+-- | What a paragraph style that never indents sets, in a message (docs/adr/0262, 0367).
 unindented :: Text -> Text
-unindented = \case
-  "table" -> "表のセル"
-  _ -> "キャプションと傍注"
+unindented _ = "表のセル"
 
--- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
+-- | The message of an indent key of table (golem-driver ADR 0043, docs/adr/0367).
 captionIndentMessage :: Text -> Text -> Text
 captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent、first-line-indent、end-indent を書けません。" <> unindented n <> "は字下げをしません: " <> k
 
@@ -883,7 +987,9 @@ overPara u b =
     (psFont u <|> psFont b)
     (psSize u <|> psSize b)
     (psLineBreaks u <|> psLineBreaks b)
-    (psSpaceBetween u <|> psSpaceBetween b)
+    (psLinePitch u <|> psLinePitch b)
+    (if isJust (psSpaceBetweenDim u) then Nothing else psSpaceBetween u <|> psSpaceBetween b)
+    (if isJust (psSpaceBetween u) then Nothing else psSpaceBetweenDim u <|> psSpaceBetweenDim b)
     (psIndent u <|> psIndent b)
     (psFirstLineIndent u <|> psFirstLineIndent b)
     (psRegexStyles u <|> psRegexStyles b)
@@ -902,8 +1008,10 @@ overPara u b =
     (psRuleBefore u <|> psRuleBefore b)
     (psRuleAfter u <|> psRuleAfter b)
     (psAlign u <|> psAlign b)
-    (psSpaceBefore u <|> psSpaceBefore b)
-    (psSpaceAfter u <|> psSpaceAfter b)
+    (if isJust (psSpaceBeforeDim u) then Nothing else psSpaceBefore u <|> psSpaceBefore b)
+    (if isJust (psSpaceBefore u) then Nothing else psSpaceBeforeDim u <|> psSpaceBeforeDim b)
+    (if isJust (psSpaceAfterDim u) then Nothing else psSpaceAfter u <|> psSpaceAfter b)
+    (if isJust (psSpaceAfter u) then Nothing else psSpaceAfterDim u <|> psSpaceAfterDim b)
     (psEndIndent u <|> psEndIndent b)
     (psFeatures b <> psFeatures u)
     (psKeepWithNext u <|> psKeepWithNext b)
@@ -916,6 +1024,11 @@ overPara u b =
     (psShrinkOrder u <|> psShrinkOrder b)
     (psStretchOrder u <|> psStretchOrder b)
     (psPunctuationWidth u <|> psPunctuationWidth b)
+    (psNextStyle u <|> psNextStyle b)
+    (psInitialStyle u <|> psInitialStyle b)
+    (psOpeningIndent u <|> psOpeningIndent b)
+    (psNumberTitleSeparator u <|> psNumberTitleSeparator b)
+    (psLineNumberInterval u <|> psLineNumberInterval b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -1048,6 +1161,12 @@ validStyleName n = case T.uncons n of
   Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
   Nothing -> False
 
+data HeadingBlockAlign = HeadingStart | HeadingCenter | HeadingEnd
+  deriving stock (Eq, Show)
+
+headingBlockAlignValues :: [(Text, HeadingBlockAlign)]
+headingBlockAlignValues = [("start", HeadingStart), ("center", HeadingCenter), ("end", HeadingEnd)]
+
 data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
@@ -1057,7 +1176,10 @@ data HeadingStyle = HeadingStyle
     hsLines :: !(Maybe Natural),
     -- | the rules before and after the heading (golem-driver ADR 0027)
     hsRuleBefore :: !(Maybe RuleSpec),
-    hsRuleAfter :: !(Maybe RuleSpec)
+    hsRuleAfter :: !(Maybe RuleSpec),
+    hsBlockAlign :: !HeadingBlockAlign,
+    -- | the string between the number and the title of a heading (Golem ADR 0372)
+    hsNumberTitleSeparator :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -1092,13 +1214,14 @@ data RubyStyleDef = RubyStyleDef
     rdBaseSpacing :: !Text,
     rdOverhang :: !Dim,
     -- | "kana" | "none"
-    rdOverhangOnto :: !Text
+    rdOverhangOnto :: !Text,
+    rdReadingStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | JLReq's usual setting.
 defaultRubyStyleDef :: RubyStyleDef
-defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana"
+defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana" Nothing
 
 {- | [sidenotes]: the sidenote column and the marker. The font and the size
 are the paragraph style sidenote's (golem-driver ADR 0011).
@@ -1106,7 +1229,10 @@ are the paragraph style sidenote's (golem-driver ADR 0011).
 data SidenoteStyle = SidenoteStyle
   { snWidth :: !Dim,
     snGap :: !Dim,
-    snMarker :: !Text
+    snMarker :: !Text,
+    -- | the character style of the symbol marker ※ in the text (docs/adr/0371)
+    snMarkerStyle :: !(Maybe Text),
+    snSide :: !Text
   }
   deriving stock (Eq, Show)
 
@@ -1266,13 +1392,15 @@ runningRefs = \case
 data RunningHeadDef = RunningHeadDef
   { rhPosition :: !Text,
     rhOdd :: !RunningContent,
-    rhEven :: !RunningContent
+    rhEven :: !RunningContent,
+    rhCharacterStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 data MasterDef = MasterDef
   { mdRunningHead :: !(Maybe RunningHeadDef),
-    mdFolio :: !(Maybe (Text, Text)) -- position, format
+    mdFolio :: !(Maybe (Text, Text)), -- position, format
+    mdFolioCharacterStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -1284,13 +1412,14 @@ numbers, the default of the writing mode.
 data ListStyle = ListStyle
   { lsBullets :: !(Maybe (NonEmpty Text)),
     lsNumbers :: !(Maybe (NonEmpty NumberFormat)),
-    lsGap :: !(Maybe Dim)
+    lsGap :: !(Maybe Dim),
+    lsMarkerStyle :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
 -- | No [lists]: the bullet of the output, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
-defaultListStyle = ListStyle Nothing Nothing Nothing
+defaultListStyle = ListStyle Nothing Nothing Nothing Nothing
 
 {- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
 or • without bullets (golem-driver ADR 0044).
@@ -1337,13 +1466,13 @@ runningMetaKeys = ["title", "title_reading", "edition", "publisher", "date", "la
 
 {- | One line of a running head format (golem-driver ADR 0022): text and
 slots in braces, escapes for braces (docs/adr/0177); @{{@ and @}}@ are
-read as braces until they are retired (G03116). 'Left' is the reason of
+read as braces, and style.toml reports them as G03252 (ADR 0344). 'Left' is the reason of
 G03014.
 -}
 parseRunningFormat :: Text -> Either Text [RunningPart]
 parseRunningFormat = fmap fst . parseRunningFormatLegacy
 
--- | 'parseRunningFormat' with the forms to be retired the line uses (G03116).
+-- | 'parseRunningFormat' with the retired forms the line uses (G03252, ADR 0344).
 parseRunningFormatLegacy :: Text -> Either Text ([RunningPart], [Legacy])
 parseRunningFormatLegacy t0
   | T.null t0 = Left "空の行があります"
@@ -1637,10 +1766,21 @@ data Style = Style
     -} stNotesMarkSize :: !(Maybe Dim),
     -- | [notes] mark-format: the text of note marks in the PDF, the number in a notation (golem-driver ADR 0025, docs/adr/0177)
     stNotesMarkFormat :: !MarkFormat,
+    {- | [notes] mark-shape = "flat": in vertical text the kanji of the
+    numbers of the marks in the PDF are set flat (docs/adr/0381); False
+    when it is not written
+    -} stNotesMarkFlat :: !Bool,
     -- | [notes] mark-style: the character style of the marks in the text in the PDF (docs/adr/0177)
     stNotesMarkStyle :: !Text,
     -- | [notes] body-mark-style: the character style of the marks at the start of note bodies in the PDF; Nothing is none (docs/adr/0177)
     stNotesBodyMarkStyle :: !(Maybe Text),
+    -- | [notes] body-style: the paragraph style of the bodies of footnotes and notes at the end of a chapter in the PDF; Nothing is the body (docs/adr/0366)
+    stNotesBodyStyle :: !(Maybe Text),
+    -- | [notes] heading-style: the paragraph style of the title of the list of notes at the end of a chapter in the PDF; Nothing is the heading of level 2 (docs/adr/0366)
+    stNotesHeadingStyle :: !(Maybe Text),
+    stFootnoteBodyStyle :: !(Maybe Text),
+    stChapterEndBodyStyle :: !(Maybe Text),
+    stChapterEndHeadingStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     -- | [tables] number: the format of table numbers (docs/adr/0262)
@@ -1653,6 +1793,8 @@ data Style = Style
     stMasters :: !(Map Text MasterDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
+    -- | [printings] format: the format of a line of @printings, Nothing for the default (docs/adr ADR 0375)
+    stPrintingsFormat :: !(Maybe [Piece Text]),
     -- | [lists]: the markers of lists, for the whole book (golem-driver ADR 0013)
     stLists :: !ListStyle,
     -- | [aki-sets.<name>]: the user's aki sets, not the built-in ones (docs/adr ADR 0019)
@@ -1686,8 +1828,14 @@ defaultStyle =
       stNotesRule = Nothing,
       stNotesMarkSize = Nothing,
       stNotesMarkFormat = defaultMarkFormat,
+      stNotesMarkFlat = False,
       stNotesMarkStyle = "note-mark",
       stNotesBodyMarkStyle = Nothing,
+      stNotesBodyStyle = Nothing,
+      stNotesHeadingStyle = Nothing,
+      stFootnoteBodyStyle = Nothing,
+      stChapterEndBodyStyle = Nothing,
+      stChapterEndHeadingStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stTableNumber = "表{chapter}-{n}",
@@ -1697,6 +1845,7 @@ defaultStyle =
       stSwatches = Map.empty,
       stMasters = Map.empty,
       stTocLeader = "dots",
+      stPrintingsFormat = Nothing,
       stLists = defaultListStyle,
       stAkiSets = Map.empty,
       stIndex = Nothing,
@@ -1868,43 +2017,91 @@ enumKey k allowed =
       else pure x
 
 instance FromValue Grid where
-  fromValue = parseTableFromValue $ do
-    fs <- reqDim "font-size"
-    ch <- reqKeyOf "characters" naturalIntOf
-    ls <- reqKeyOf "lines" naturalIntOf
-    lp <- reqDim "line-pitch"
-    colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
-    let cols = maybe 1 snd colsAt
-    gap <- dimKey "column-gap"
-    pos <- reqKey "position"
-    case colsAt of
-      Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
-      _ -> pure ()
-    let Position2 t g = pos
-    pure (Grid fs ch ls lp cols gap t g)
+  fromValue = gridOf FacingLeft
 
-data Position2 = Position2 Dim Dim
+gridOf :: PageLayout -> Value' l -> Matcher l Grid
+gridOf layout = parseTableFromValue $ do
+  fs <- reqDim "font-size"
+  ch <- reqKeyOf "characters" naturalIntOf
+  ls <- reqKeyOf "lines" naturalIntOf
+  lp <- reqDim "line-pitch"
+  alignment <- enumKey "alignment" ["grid", "free"]
+  colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
+  let cols = maybe 1 snd colsAt
+  gap <- dimKey "column-gap"
+  (top, pos) <- reqKeyOf "position" (positionOf layout)
+  case colsAt of
+    Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
+    _ -> pure ()
+  pure (Grid fs ch ls lp (if alignment == Just "free" then AlignFree else AlignGrid) cols gap top pos)
 
-instance FromValue Position2 where
-  fromValue = parseTableFromValue (Position2 <$> reqDim "top" <*> reqDim "gutter")
+-- | Validate the mode before constructing an unambiguous physical position.
+positionOf :: PageLayout -> Value' l -> Matcher l (Dim, GridPosition)
+positionOf layout v = flip parseTableFromValue v $ do
+  DimV top <- reqKeyOf "top" (positionDim layout)
+  gutter <- optKeyOf "gutter" (\x -> (valueAnn x,) <$> positionDim layout x)
+  left <- optKeyOf "left" (\x -> (valueAnn x,) <$> positionDim layout x)
+  right <- optKeyOf "right" (\x -> (valueAnn x,) <$> positionDim layout x)
+  pos <- case layout of
+    SinglePage -> case gutter of
+      Just (l, DimV _) -> failTableAt l "左右固定モードでは gutter を書けません。left または right を使います"
+      Nothing -> case (left, right) of
+        (Just (_, DimV d), Nothing) -> pure (LeftPosition d)
+        (Nothing, Just (_, DimV d)) -> pure (RightPosition d)
+        _ -> failTableAt (valueAnn v) "左右固定モードの position には left または right のちょうど一方を書きます"
+    _ -> case left <|> right of
+      Just (l, DimV _) -> failTableAt l "見開きモードでは left と right を書けません。gutter を使います"
+      Nothing -> case gutter of
+        Just (_, DimV d) -> pure (GutterPosition d)
+        Nothing -> failTableAt (valueAnn v) "必須のキーがありません: page.grid.position.gutter"
+  pure (top, pos)
+
+-- | Negative physical margins reach the geometric G07001 check.
+positionDim :: PageLayout -> Value' l -> Matcher l DimV
+positionDim SinglePage v@(Text' _ text) = maybe (fromValue v) (pure . DimV) (parseSignedDim text)
+positionDim _ v = fromValue v
 
 instance FromValue Page where
-  fromValue = parseTableFromValue $ do
+  fromValue v = flip parseTableFromValue v $ do
     size <- reqKey "size"
+    layout <- enumKey "layout" ["single", "facing"]
     binding <- enumKey "binding" bindingValues
+    let mode
+          | layout == Just "single" = SinglePage
+          | binding == Just "right" = FacingRight
+          | otherwise = FacingLeft
+    when (mode == SinglePage && isJust binding) $
+      failTableAt (keyPosition v "binding") "左右固定モードでは binding を書けません"
     wm <- enumKey "writing-mode" writingModeValues
-    grid <- optKey "grid"
+    grid <- optKeyOf "grid" (gridOf mode)
     bleed <-
       fmap (fromMaybe 0) . optKeyOf "bleed" . withValue $ \l -> \case
         DimV (Abs s) -> pure s
         -- the bleed does not depend on the size of the type (golem-pdf ADR 0004)
         DimV (Zw _) -> failAt l "塗り足しには zw を使えません"
-    pure (Page size (binding == Just "right") (wm == Just "vertical") grid bleed)
+    pure (Page size mode (wm == Just "vertical") grid bleed)
 
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> optKey "instance" <*> axesKey
+
+{- | The axes of a role (Golem ADR 0358): a table of axis tags and finite
+numbers, in the order of the tags. Whether the font has the axes and the
+values lie in them is checked when the font is loaded (G08111, G08112).
+-}
+axesKey :: ParseTable l [(Text, Double)]
+axesKey =
+  fmap (fromMaybe []) . optKeyOf "axes" $ \case
+    Table' _ (MkTable t) -> sequence [(k,) <$> inKey k (number v) | (k, (_, v)) <- Map.toAscList t]
+    v -> failAt (valueAnn v) "axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます）"
+  where
+    number = \case
+      Integer' _ n -> pure (fromInteger n)
+      Double' l d
+        | isNaN d || isInfinite d -> failAt l "軸の値には有限の数を書きます"
+        | otherwise -> pure d
+      v -> failAt (valueAnn v) "軸の値には数を書きます"
 
 instance FromValue CharStyleDef where
   fromValue = parseTableFromValue $ do
@@ -1983,13 +2180,39 @@ featureKeysOf = do
 featureKeys :: [Text]
 featureKeys = ["kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width"]
 
+paragraphPitchOf :: Value' l -> Matcher l ParagraphPitch
+paragraphPitchOf v = case v of
+  Text' _ "auto" -> pure PitchAuto
+  Text' l raw -> case parseDim raw of
+    Just d | positivePitchDim d -> pure (PitchDim d)
+    _ -> failAt l ("line-pitch は正の寸法か auto です: " <> T.unpack raw)
+  _ -> failAt (valueAnn v) "line-pitch は正の寸法か auto です"
+
+paragraphSpacingOf :: Text -> Value' l -> Matcher l ParagraphSpacing
+paragraphSpacingOf key v = case v of
+  Integer' l n
+    | n >= 0 && n <= toInteger (maxBound :: Int) -> pure (SpacingLines (fromInteger n))
+    | otherwise -> failAt l (T.unpack key <> " は 0 以上です（整数行か寸法）")
+  Text' l raw -> case parseSignedDim raw of
+    Just d | not (negativeDim d) -> pure (SpacingDim d)
+    _ -> failAt l (T.unpack key <> " は 0 以上の整数か寸法です: " <> T.unpack raw)
+  _ -> failAt (valueAnn v) (T.unpack key <> " は 0 以上の整数か寸法です")
+
+positivePitchDim :: Dim -> Bool
+positivePitchDim = \case
+  Abs n -> n > 0
+  Zw r -> r > 0
+
 instance FromValue ParaStyleDef where
   fromValue = parseTableFromValue $ do
     b <- optKey "based-on"
     f <- optKey "font"
     s <- dimKey "size"
     lb <- enumKey "line-breaks" lineBreaksValues
-    sb <- optKeyOf "space-between" (withValue (\l x -> if x < 0 then failAt l "space-between は 0 以上です" else pure x))
+    pitch <- optKeyOf "line-pitch" paragraphPitchOf
+    sb' <- optKeyOf "space-between" (paragraphSpacingOf "space-between")
+    let sb = spacingLines =<< sb'
+        sbDim = spacingDim =<< sb'
     ind <- dimKey "indent"
     fli' <- signedDimKey "first-line-indent" "（1zw や -1zw のように書きます）"
     rs <- optKey "regex-styles"
@@ -2014,8 +2237,12 @@ instance FromValue ParaStyleDef where
     ra <- optKeyOf "rule-after" ruleOrFalse
     -- the alignment, the spaces before and after and the end indent (docs/adr/0189)
     al <- enumKey "align" alignValues
-    sbefore <- optKeyOf "space-before" (withValue (\l x -> if x < 0 then failAt l "space-before は 0 以上です" else pure x))
-    safter <- optKeyOf "space-after" (withValue (\l x -> if x < 0 then failAt l "space-after は 0 以上です" else pure x))
+    sbefore' <- optKeyOf "space-before" (paragraphSpacingOf "space-before")
+    safter' <- optKeyOf "space-after" (paragraphSpacingOf "space-after")
+    let sbefore = spacingLines =<< sbefore'
+        sbeforeDim = spacingDim =<< sbefore'
+        safter = spacingLines =<< safter'
+        safterDim = spacingDim =<< safter'
     endInd <- dimKey "end-indent"
     fs <- featuresKey
     -- the keep options (docs/adr/0261): a negative number is G02103, as of any natural number
@@ -2030,10 +2257,16 @@ instance FromValue ParaStyleDef where
     -- the order of the places of line adjustment (docs/adr/0278)
     sord <- optKeyOf "shrink-order" (adjustOrderOf "shrink-order")
     tord <- optKeyOf "stretch-order" (adjustOrderOf "stretch-order")
+    -- the paragraph style of the next paragraph, the character style of the first character and the indent of an opening bracket (docs/adr/0374)
+    nxt <- optKey "next-style"
+    ini <- optKey "initial-style"
+    oind <- enumKey "opening-indent" openingIndentValues
     let align = al >>= \v -> lookup v (zip alignValues [minBound .. maxBound])
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw)
+    separator <- optKey "number-title-separator"
+    interval <- optKeyOf "line-number-interval" (keepCount 1 Nothing)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) pitch sb sbDim ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore sbeforeDim safter safterDim endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -2139,7 +2372,9 @@ instance FromValue HeadingStyle where
       ]
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
-    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
+    separator <- optKey "number-title-separator"
+    align <- enumKey "block-align" (map fst headingBlockAlignValues)
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra) (fromMaybe HeadingCenter (align >>= flip lookup headingBlockAlignValues)) separator)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2148,6 +2383,7 @@ instance FromValue RubyStyleDef where
     b <- enumKey "base-spacing" baseSpacingValues
     o <- dimKey "overhang"
     onto <- enumKey "overhang-onto" overhangOntoValues
+    reading <- optKey "reading-style"
     let d = defaultRubyStyleDef
     pure
       RubyStyleDef
@@ -2155,7 +2391,8 @@ instance FromValue RubyStyleDef where
           rdGroupAlign = fromMaybe (rdGroupAlign d) g,
           rdBaseSpacing = fromMaybe (rdBaseSpacing d) b,
           rdOverhang = fromMaybe (rdOverhang d) o,
-          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto
+          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto,
+          rdReadingStyle = reading
         }
 
 data Expansion = Expansion Int Int
@@ -2196,7 +2433,7 @@ instance FromValue Composition where
 
 instance FromValue SidenoteStyle where
   fromValue = parseTableFromValue $ do
-    _ <- enumKey "side" sideValues
+    side <- enumKey "side" sideValues
     w <- reqDim "width"
     g <- reqDim "gap"
     f <- textAt "font"
@@ -2205,11 +2442,12 @@ instance FromValue SidenoteStyle where
       Just l -> failTableAt l "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
       Nothing -> pure ()
     m <- enumKey "marker" markerValues
-    pure (SidenoteStyle w g (fromMaybe "number" m))
+    markerStyle <- optKey "marker-style"
+    pure (SidenoteStyle w g (fromMaybe "number" m) markerStyle (fromMaybe "outside" side))
 
 -- | The positions of a running head and a folio (golem-driver ADR 0014).
 masterPositions :: [Text]
-masterPositions = ["top-outside", "top-inside", "top-center", "bottom-outside", "bottom-inside", "bottom-center"]
+masterPositions = [v <> "-" <> h | v <- ["top", "bottom"], h <- ["outside", "inside", "center", "left", "right"]]
 
 {- | A position of a master page; an unknown one is an error at its value,
 which makes it G03018 (golem-driver ADR 0016).
@@ -2226,14 +2464,14 @@ instance FromValue MasterPosition where
 reqPosition :: ParseTable l Text
 reqPosition = (\(MasterPosition p) -> p) <$> reqKey "position"
 
-data PosContent = PosContent Text Text
+data PosContent = PosContent Text Text (Maybe Text)
 
 instance FromValue PosContent where
   fromValue = parseTableFromValue $ do
     p <- reqPosition
     c <- optKey "content"
     f <- optKey "format"
-    pure (PosContent p (fromMaybe "" (c <> f)))
+    PosContent p (fromMaybe "" (c <> f)) <$> optKey "character-style"
 
 -- | The message of G03014 (golem-driver ADR 0014).
 runningContentMessage :: Text -> String
@@ -2273,6 +2511,7 @@ G03014.
 instance FromValue RunningHeadDef where
   fromValue v = flip parseTableFromValue v $ do
     p <- reqPosition
+    char <- optKey "character-style"
     c <- optKeyOf "content" runningContentOf
     e <- optKeyOf "even" runningContentOf
     o <- optKeyOf "odd" runningContentOf
@@ -2280,8 +2519,8 @@ instance FromValue RunningHeadDef where
         -- at the value of the key, or at the running head when the key is not written (golem-project ADR 0008)
         wrong k = liftMatcher (inKey k (failAt (keyPosition v k) (runningContentMessage (if T.null written then "（なし）" else written))))
     case (c, e, o) of
-      (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x)
-      (Nothing, Just (_, x), Just (_, y)) -> pure (RunningHeadDef p y x)
+      (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x char)
+      (Nothing, Just (_, x), Just (_, y)) -> pure (RunningHeadDef p y x char)
       (Just _, _, _) -> wrong "content"
       (Nothing, Just _, Nothing) -> wrong "odd"
       (Nothing, Nothing, Just _) -> wrong "even"
@@ -2291,8 +2530,9 @@ instance FromValue MasterDef where
   fromValue = parseTableFromValue $ do
     rh <- optKey "running-head"
     fo <- optKey "folio"
-    let pc (PosContent a b) = (a, b)
-    pure (MasterDef rh (pc <$> fo))
+    let pc (PosContent a b _) = (a, b)
+        cs (PosContent _ _ n) = n
+    pure (MasterDef rh (pc <$> fo) (fo >>= cs))
 
 instance FromValue Swatch where
   fromValue = parseTableFromValue $ do
@@ -2319,7 +2559,20 @@ instance FromValue EmphasisV where
 data NotesPlacement = PlaceFoot | PlaceChapterEnd
   deriving stock (Eq, Show)
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe MarkFormat) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text) (Maybe Text) NoteStyle NoteStyle
+
+data NoteStyle = NoteStyle (Maybe Text) (Maybe Text)
+
+instance FromValue NoteStyle where
+  fromValue = parseTableFromValue (NoteStyle <$> optKey "body-style" <*> optKey "heading-style")
+
+-- | Resolve placement overrides while preserving common defaults (root ADR 0404).
+noteStyleFor :: NotesPlacement -> Style -> Style
+noteStyleFor placement st =
+  st
+    { stNotesBodyStyle = (case placement of PlaceFoot -> stFootnoteBodyStyle st; PlaceChapterEnd -> stChapterEndBodyStyle st) <|> stNotesBodyStyle st,
+      stNotesHeadingStyle = (case placement of PlaceFoot -> Nothing; PlaceChapterEnd -> stChapterEndHeadingStyle st) <|> stNotesHeadingStyle st
+    }
 
 instance FromValue Notes where
   fromValue =
@@ -2332,6 +2585,13 @@ instance FromValue Notes where
           <*> optKeyOf "mark-format" (withValue markFormat)
           <*> optKey "mark-style"
           <*> optKey "body-mark-style"
+          -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+          <*> optKey "body-style"
+          <*> optKey "heading-style"
+          -- the kanji of the numbers of the marks set flat in vertical text (docs/adr/0381)
+          <*> enumKey "mark-shape" markShapeValues
+          <*> (fromMaybe (NoteStyle Nothing Nothing) <$> optKey "footnote")
+          <*> (fromMaybe (NoteStyle Nothing Nothing) <$> optKey "chapter-end")
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
@@ -2360,6 +2620,8 @@ instance FromValue Notes where
       numbering = \case
         "file" -> NumberPerFile
         "book" -> NumberPerBook
+        -- per page of the PDF (docs/adr/0383)
+        "page" -> NumberPerPage
         _ -> NumberPerChapter
 
 -- | [code] (golem-driver ADR 0023): an unknown key or kind is G03006.
@@ -2440,7 +2702,8 @@ instance FromValue ListsSec where
         Just d
           | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
-    pure (ListsSec (ListStyle bs fmts g))
+    markerStyle <- optKey "marker-style"
+    pure (ListsSec (ListStyle bs fmts g markerStyle))
 
 {- | [index] (docs/adr ADR 0025): every error is at its value, G03025 by
 its path. The position of columns is filled in by 'parseStyle'.
@@ -2465,6 +2728,31 @@ instance FromValue IndexSec where
       v -> failAt (valueAnn v) "[index] の section-headings は真偽値です"
     pure (IndexSec (IndexStyle cs gap 0 (fromMaybe True headings)))
 
+{- | The format of [printings] (docs/adr ADR 0375), read as the other
+formats of style.toml are (docs/adr ADR 0177), with @{{@ and @}}@ as the
+current way of writing a brace: no notice. Every field is a text slot, so
+an explicit format writes decimal digits whatever the writing mode. A
+newline is an error: one printing is one line.
+-}
+printingTemplate :: l -> Text -> Matcher l [Piece Text]
+printingTemplate loc format
+  -- the format is not repeated in the message: it would break the line
+  | T.any (`elem` ("\r\n" :: String)) format = failAt loc "[printings] の format が正しくありません（改行は書けません）"
+  | otherwise = either wrong (pure . fst) (parseFormat DoubledToo slot format)
+  where
+    wrong why = failAt loc (T.unpack ("[printings] の format が正しくありません（" <> why <> "）: " <> format))
+    slot name
+      | name == "printing" = Right (TextSlot "number")
+      | name `elem` ["year", "month", "day", "date", "edition"] = Right (TextSlot name)
+      | otherwise = Left ("表にない欄です: {" <> name <> "}")
+
+-- | Substitute the fields of one printing, leaving literal text intact.
+renderPrintingTemplate :: (Text -> Text) -> [Piece Text] -> Text
+renderPrintingTemplate field = foldMap $ \case
+  PLit literal -> literal
+  PText name -> field name
+  PNumber name _ -> field name
+
 newtype TocSec = TocSec (Maybe Text)
 
 instance FromValue TocSec where
@@ -2480,7 +2768,7 @@ instance FromValue Style where
     page <- optKey "page"
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
-    -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+    -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
     pstyles <-
       fmap (fromMaybe Map.empty) . optKeyOf "paragraph-styles" $ \v -> do
         (styles :: Map Text ParaStyleDef) <- fromValue v
@@ -2499,9 +2787,9 @@ instance FromValue Style where
     Numbers nv nrp <- fromMaybe (Numbers Nothing Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr nms nmf nmst nbst <-
-      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing)) . optKeyOf "notes" $ \v -> do
-        notes@(Notes _ _ _ size _ markStyle _) <- fromValue v
+    Notes np nn nr nms nmf nmst nbst nbody nhead nshape (NoteStyle fbody _) (NoteStyle ebody ehead) <-
+      fmap (fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing (NoteStyle Nothing Nothing) (NoteStyle Nothing Nothing))) . optKeyOf "notes" $ \v -> do
+        notes@(Notes _ _ _ size _ markStyle _ _ _ _ _ _) <- fromValue v
         -- two values that decide the size of the marks: neither wins (docs/adr/0177)
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
@@ -2513,6 +2801,7 @@ instance FromValue Style where
     masters <- fromMaybe Map.empty <$> optKey "masters"
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
+    printingFormat <- optKeyOf "printings" (parseTableFromValue (optKeyOf "format" (withValue printingTemplate)))
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     -- the built-in sets cannot be defined again (docs/adr ADR 0019); the error is at the set
     akiSets <-
@@ -2523,7 +2812,13 @@ instance FromValue Style where
           [] -> pure sets
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
     CodeSec code <- fromMaybe (CodeSec defaultCodeStyle) <$> optKey "code"
-    hidden <- fromMaybe defaultHiddenFolio <$> optKey "hidden-folio"
+    let hiddenDefault = defaultHiddenFolio {hfEnabled = maybe True ((/= SinglePage) . pageLayout) page}
+    hidden <- fmap (fromMaybe hiddenDefault) . optKeyOf "hidden-folio" $ \v -> do
+      h <- fromValue v
+      let enabledWritten = case v of
+            Table' _ (MkTable t) -> Map.member "enabled" t
+            _ -> False
+      pure (if not enabledWritten then h {hfEnabled = hfEnabled hiddenDefault} else h)
     let d = defaultStyle
     pure
       Style
@@ -2541,8 +2836,14 @@ instance FromValue Style where
           stNotesRule = nr,
           stNotesMarkSize = nms,
           stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
+          stNotesMarkFlat = nshape == Just "flat",
           stNotesMarkStyle = fromMaybe (stNotesMarkStyle d) nmst,
           stNotesBodyMarkStyle = nbst,
+          stNotesBodyStyle = nbody,
+          stNotesHeadingStyle = nhead,
+          stFootnoteBodyStyle = fbody,
+          stChapterEndBodyStyle = ebody,
+          stChapterEndHeadingStyle = ehead,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
@@ -2552,6 +2853,7 @@ instance FromValue Style where
           stSwatches = swatches,
           stMasters = masters,
           stTocLeader = fromMaybe (stTocLeader d) leader,
+          stPrintingsFormat = fromMaybe Nothing printingFormat,
           stLists = lists,
           stAkiSets = akiSets,
           stIndex = index,
@@ -2702,6 +3004,23 @@ resolveStyleValues fid src (MkTable root) = do
       Table' pos entries -> Table' pos <$> rewrite defs path names entries
       List' pos xs -> List' pos <$> traverse (rewriteValue defs path names) xs
       Text' pos raw
+        | isParagraphSpacingPath path,
+          isJust (parseSignedDim raw) ->
+            Right (Text' pos raw)
+      Text' pos "auto"
+        | lastMayText path == Just "line-pitch",
+          "paragraph-styles" `elem` path ->
+            Right (Text' pos "auto")
+      Text' pos raw
+        | isParagraphSpacingPath path,
+          Just (LengthKind, QuantityText value) <- Map.lookup raw names ->
+            Right (Text' pos value)
+      Text' pos raw
+        | isParagraphSpacingPath path || isParagraphPitchPath path,
+          validName raw,
+          Map.notMember raw names ->
+            Right (Text' pos raw)
+      Text' pos raw
         | Just CountKind <- expected path,
           T.all (\c -> isDigit c || c == '+' || c == ' ' || c == '-' || isAsciiLower c) raw,
           not (T.null raw) -> do
@@ -2721,12 +3040,24 @@ resolveStyleValues fid src (MkTable root) = do
 quantityKindAt :: [Text] -> Maybe QuantityKind
 quantityKindAt path = case nodeAt styleSchema path of
   Just (NValue LDimension) -> Just LengthKind
+  Just (NEither [NValue (LEnum ["auto"]), NValue LDimension]) -> Just LengthKind
+  Just (NEither [NValue LInteger, NValue LDimension]) -> Just CountKind
   Just (NValue LInteger) | lastMay path `elem` map Just ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just CountKind
   _ | lastMay path `elem` map Just ["optimum", "minimum", "maximum"], "aki-sets" `elem` path -> Just AkiKind
   _ -> Nothing
   where
     lastMay [] = Nothing
     lastMay xs = Just (last xs)
+
+isParagraphSpacingPath :: [Text] -> Bool
+isParagraphSpacingPath path = "paragraph-styles" `elem` path && lastMayText path `elem` map Just ["space-before", "space-after", "space-between"]
+
+isParagraphPitchPath :: [Text] -> Bool
+isParagraphPitchPath path = "paragraph-styles" `elem` path && lastMayText path == Just "line-pitch"
+
+lastMayText :: [a] -> Maybe a
+lastMayText [] = Nothing
+lastMayText xs = Just (last xs)
 
 {- | Typed declaration and reference spans in style.toml, as UTF-8 byte
 offsets. The last flag marks a declaration (ADR 0346).
@@ -2754,13 +3085,13 @@ layoutValueSites src = case Toml.parse src of
     walk path = \case
       Table' _ tab -> uses path tab
       List' _ xs -> concatMap (walk path) xs
-      Text' pos raw
-        | Just kind <- kindAt path ->
-            [ (kind, name, start, start + BS.length (TE.encodeUtf8 name), False)
-            | (kind', name) <- known,
-              kind' == kind,
-              start <- findNames pos (T.length raw + 2) name
-            ]
+      Text' pos raw ->
+        [ (kind, name, start, start + BS.length (TE.encodeUtf8 name), False)
+        | kind <- if isParagraphSpacingPath path then ["length", "count"] else catMaybes [kindAt path],
+          (kind', name) <- known,
+          kind' == kind,
+          start <- findNames pos (T.length raw + 2) name
+        ]
       _ -> []
     kindAt path = case path of
       ["values", "length", _] -> Just "length"
@@ -2789,6 +3120,9 @@ layoutValueSites src = case Toml.parse src of
 
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
+  case styleLegacyErrors fid src of
+    [] -> pure ()
+    ds -> Left ds
   (s0, names) <- case Toml.parse src of
     Left _ -> (,Map.empty) <$> either (Left . map akiCode) Right (decodeStrictWith styleSchema "G03006" codeAt fid src)
     Right tab -> do
@@ -2862,7 +3196,9 @@ styleChecks owner s =
     <> compositionChecks s
     <> hyphenationExceptionChecks s
     <> codeStyleChecks s
+    <> paragraphDimensionChecks s
     <> ruleStyleChecks s
+    <> singlePageChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
     <> fontRoleChecks s
     <> styleReferenceChecks owner s
@@ -2872,6 +3208,38 @@ styleChecks owner s =
     <> opticalKerningChecks s
     <> spineAlignChecks s
     <> markPositionChecks s
+
+paragraphDimensionChecks :: Style -> [(Text, Text, [Scope], Text)]
+paragraphDimensionChecks s =
+  [ ("G03006", "code", paraKey "code" "line-pitch", "code に line-pitch は指定できません")
+  | Just d <- [Map.lookup "code" (stParaStyles s)],
+    isJust (psLinePitch d)
+  ]
+    <> [ ("G03006", n, paraKey (writtenBy n key) key, "格子モードでは " <> key <> " に寸法を指定できません。page.grid.alignment = \"free\" を選んでください")
+       | maybe True ((== AlignGrid) . gridAlignment) (stPage s >>= pageGrid),
+         n <- Map.keys (stParaStyles s),
+         n /= "code",
+         Just d <- [paraStyle s (Just n)],
+         (key, present) <- [("line-pitch", isPitchDim (psLinePitch d)), ("space-between", isJust (psSpaceBetweenDim d)), ("space-before", isJust (psSpaceBeforeDim d)), ("space-after", isJust (psSpaceAfterDim d))],
+         present
+       ]
+    <> [ ("G03006", n, paraKey n "line-pitch", "line-pitch は sp に変換した後も正の値が必要です")
+       | n <- Map.keys (stParaStyles s),
+         Just d <- [paraStyle s (Just n)],
+         isPitchDim (psLinePitch d),
+         maybe False (<= 0) (resolvedParagraphPitch s d)
+       ]
+  where
+    isPitchDim (Just (PitchDim _)) = True
+    isPitchDim _ = False
+    writtenBy n key = case [name | (name, d) <- namedChainOf paraParent (stParaStyles s) n, hasKey key d] of
+      name : _ -> name
+      [] -> n
+    hasKey "line-pitch" = isJust . psLinePitch
+    hasKey "space-between" = isJust . psSpaceBetweenDim
+    hasKey "space-before" = isJust . psSpaceBeforeDim
+    hasKey "space-after" = isJust . psSpaceAfterDim
+    hasKey _ = const False
 
 {- | G03125 (docs/adr/0269): the character style of the marks of notes in
 the text (mark-style, or else note-mark) whose based-on chain resolves
@@ -3066,7 +3434,9 @@ codeStyleChecks s =
       | (k, written) <-
           [ ("based-on", isJust (psBasedOn d)),
             ("line-breaks", isJust (psLineBreaks d)),
-            ("space-between", isJust (psSpaceBetween d)),
+            ("space-between", isJust (psSpaceBetween d) || isJust (psSpaceBetweenDim d)),
+            ("number-title-separator", isJust (psNumberTitleSeparator d)),
+            ("line-number-interval", isJust (psLineNumberInterval d)),
             ("indent", isJust (psIndent d)),
             ("first-line-indent", isJust (psFirstLineIndent d)),
             ("regex-styles", isJust (psRegexStyles d)),
@@ -3076,8 +3446,8 @@ codeStyleChecks s =
             ("proportional-metrics", isJust (psProportional d)),
             ("baseline-shift", isJust (psBaselineShift d)),
             ("align", isJust (psAlign d)),
-            ("space-before", isJust (psSpaceBefore d)),
-            ("space-after", isJust (psSpaceAfter d)),
+            ("space-before", isJust (psSpaceBefore d) || isJust (psSpaceBeforeDim d)),
+            ("space-after", isJust (psSpaceAfter d) || isJust (psSpaceAfterDim d)),
             ("end-indent", isJust (psEndIndent d)),
             ("keep-with-next", isJust (psKeepWithNext d)),
             ("keep-all-lines", isJust (psKeepAllLines d)),
@@ -3087,7 +3457,10 @@ codeStyleChecks s =
             ("line-adjustment", isJust (psLineAdjustment d)),
             ("stretch-limit", isJust (psStretchLimit d)),
             ("shrink-order", isJust (psShrinkOrder d)),
-            ("stretch-order", isJust (psStretchOrder d))
+            ("stretch-order", isJust (psStretchOrder d)),
+            ("next-style", isJust (psNextStyle d)),
+            ("initial-style", isJust (psInitialStyle d)),
+            ("opening-indent", isJust (psOpeningIndent d))
           ],
         written
       ]
@@ -3160,6 +3533,19 @@ styleReferenceChecks owner s =
             (k, Just n) <- [("mark-style", Just (stNotesMarkStyle s)), ("body-mark-style", stNotesBodyMarkStyle s)],
             Map.notMember n cs
           ]
+            -- the paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366)
+            <> [ ("", styleKeys ["notes", k], "[notes] の " <> k <> " の段落スタイルがありません: " <> n)
+               | (k, Just n) <- [("body-style", stNotesBodyStyle s), ("heading-style", stNotesHeadingStyle s)],
+                 Map.notMember n ps
+               ]
+            <> [ ("", styleKeys ["notes", placement, key], "[notes." <> placement <> "] の " <> key <> " の段落スタイルがありません: " <> n)
+               | (placement, key, Just n) <- [("footnote", "body-style", stFootnoteBodyStyle s), ("chapter-end", "body-style", stChapterEndBodyStyle s), ("chapter-end", "heading-style", stChapterEndHeadingStyle s)],
+                 Map.notMember n ps
+               ]
+            <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
+            <> [("", styleKeys ["sidenotes", "marker-style"], "[sidenotes] の marker-style の文字スタイルがありません: " <> n) | Just n <- [stSidenotes s >>= snMarkerStyle], Map.notMember n cs]
+            <> [("", styleKeys ["composition", "ruby", "reading-style"], "[composition.ruby] の reading-style の文字スタイルがありません: " <> n) | Just n <- [rdReadingStyle (compRuby (stComposition s))], Map.notMember n cs]
+            <> [("", styleKeys ["masters", master, part, "character-style"], "マスター " <> master <> " の " <> part <> " の文字スタイルがありません: " <> name) | (master, def) <- Map.toList (stMasters s), (part, Just name) <- [("running-head", mdRunningHead def >>= rhCharacterStyle), ("folio", mdFolioCharacterStyle def)], Map.notMember name cs]
             <> [ (n, charKey n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
                  Map.notMember b cs
@@ -3178,6 +3564,15 @@ styleReferenceChecks owner s =
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
                  n `notElem` ["body", "code"],
                  Map.notMember b ps
+               ]
+            -- the styles next-style and initial-style name (docs/adr/0374)
+            <> [ (n, paraKey n "next-style", "段落スタイル " <> n <> " の next-style の段落スタイルがありません: " <> x)
+               | (n, ParaStyleDef {psNextStyle = Just x}) <- Map.toList ps,
+                 Map.notMember x ps
+               ]
+            <> [ (n, paraKey n "initial-style", "段落スタイル " <> n <> " の initial-style の文字スタイルがありません: " <> x)
+               | (n, ParaStyleDef {psInitialStyle = Just x}) <- Map.toList ps,
+                 Map.notMember x cs
                ]
             -- code is not a base of other styles (golem-driver ADR 0017)
             <> [ (n, paraKey n "based-on", "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
@@ -3268,12 +3663,25 @@ opticalKerningChecks s =
 -- | G03118: the spine is beside the lines only in horizontal writing (docs/adr/0189).
 spineAlignChecks :: Style -> [(Text, Text, [Scope], Text)]
 spineAlignChecks s =
-  [ ("G03118", n, paraKey n "align", "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
-  | maybe False pageVertical (stPage s),
+  [ (if singlePage s then "G03006" else "G03118", n, paraKey n "align", if singlePage s then "左右固定モードでは、段落スタイル " <> n <> " の align に " <> v <> " を書けません。left、right、center などを使います" else "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
+  | singlePage s || maybe False pageVertical (stPage s),
     (n, ParaStyleDef {psAlign = Just a}) <- Map.toList (stParaStyles s),
     (v, a') <- [("towards-spine", ParaTowardsSpine), ("away-from-spine", ParaAwayFromSpine)],
     a == a'
   ]
+
+-- | Constraints independent of the body or whether a master is used.
+singlePageChecks :: Style -> [(Text, Text, [Scope], Text)]
+singlePageChecks s
+  | not (singlePage s) = []
+  | otherwise =
+      [("G03006", "", styleKeys ["sidenotes", "side"], "左右固定モードの傍注には side = \"left\" または \"right\" を明記します") | Just sn <- [stSidenotes s], snSide sn == "outside"]
+        <> [("G03006", "", styleKeys ["hidden-folio", "enabled"], "左右固定モードでは隠しノンブルを有効にできません") | hfEnabled (stHiddenFolio s)]
+        <> [ ("G03018", "", styleKeys ["masters", name, kind, "position"], "左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います（masters." <> name <> "." <> kind <> ".position）")
+           | (name, md) <- Map.toList (stMasters s),
+             (kind, Just pos) <- [("running-head", rhPosition <$> mdRunningHead md), ("folio", fst <$> mdFolio md)],
+             any (`T.isSuffixOf` pos) ["-inside", "-outside"]
+           ]
 
 -- ------------------------------------------------------------------ styles in a file
 
@@ -3329,6 +3737,10 @@ localStyleDefWithValues style kind kvs = do
   where
     prefix = case kind of CharacterKind -> "character-styles"; ParagraphKind -> "paragraph-styles"
     replace (key, value) = case (quantityKindAt [prefix, "local", key], value) of
+      (_, LocalWord "auto") | kind == ParagraphKind && key == "line-pitch" -> Right (key, value)
+      (_, LocalString "auto") | kind == ParagraphKind && key == "line-pitch" -> Right (key, value)
+      (_, LocalWord name) | kind == ParagraphKind && key `elem` ["space-between", "space-before", "space-after"], Just (LengthKind, QuantityText lengthText) <- Map.lookup name (stLayoutValues style) -> Right (key, LocalString lengthText)
+      (_, LocalString name) | kind == ParagraphKind && key `elem` ["space-between", "space-before", "space-after"], Just (LengthKind, QuantityText lengthText) <- Map.lookup name (stLayoutValues style) -> Right (key, LocalString lengthText)
       (Just wanted, LocalWord name) -> named key wanted name value
       (Just wanted, LocalString name) -> named key wanted name value
       _ -> Right (key, value)
@@ -3362,9 +3774,8 @@ localStyleDefWithValues style kind kvs = do
 layoutValueNames :: Style -> StyleKind -> Text -> [Text]
 layoutValueNames style kind key =
   [ name
-  | Just wanted <- [quantityKindAt [prefix, "local", key]],
-    (name, (actual, _)) <- Map.toList (stLayoutValues style),
-    wanted == actual
+  | (name, (actual, _)) <- Map.toList (stLayoutValues style),
+    actual `elem` (if isParagraphSpacingPath [prefix, "local", key] then [LengthKind, CountKind] else catMaybes [quantityKindAt [prefix, "local", key]])
   ]
   where
     prefix = case kind of CharacterKind -> "character-styles"; ParagraphKind -> "paragraph-styles"
@@ -3426,7 +3837,7 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = checksOf s
-      -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+      -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
       indents = [("G03006", n, captionIndentMessage n k) | (n, k) <- captionIndentKeys (lsParaStyles ls)]
    in nub (indents <> [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base])
   where
@@ -3485,14 +3896,14 @@ loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
 
 -- | Font files named by [fonts]: role, then Japanese before Latin, roles in name order.
 fontFiles :: Style -> [(Text, FilePath)]
-fontFiles s = [(r, p) | (r, FontRole ja la _) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
+fontFiles s = [(r, p) | (r, FontRole {frJa = ja, frLatin = la}) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
 
 -- ------------------------------------------------------------------ the schema
 
 {- | The values of the enumerations of style.toml, written once for the
 decoder and the schema (docs/adr ADR 0169).
 -}
-bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, leaderValues :: [Text]
+bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
 bindingValues = ["right", "left"]
 writingModeValues = ["vertical", "horizontal"]
 lineBreaksValues = ["join", "keep"]
@@ -3502,12 +3913,14 @@ groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
 baseSpacingValues = ["1:2:1", "0:1:0", "center"]
 overhangOntoValues = ["kana", "none"]
 kinsokuValues = ["strict", "loose"]
-sideValues = ["outside"]
+sideValues = ["outside", "left", "right"]
 markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
 refPageValues = verticalValues <> ["sideways"]
 placementValues = ["page-foot", "chapter-end"]
-numberingValues = ["chapter", "file", "book"]
+numberingValues = ["chapter", "file", "book", "page"]
+-- [notes] mark-shape (docs/adr/0381): "flat" alone; the usual marks are set without the key
+markShapeValues = ["flat"]
 leaderValues = ["dots", "none"]
 
 -- | [tables] caption-position (docs/adr/0262).
@@ -3536,7 +3949,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("headings", NNamed Nothing headingNode),
@@ -3544,14 +3957,15 @@ styleSchema =
       ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
       ("emphasis", NRejected),
       ("notes", notesNode),
-      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues)]),
+      ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues), ("marker-style", ref CharStyles)]),
       ("figures", NTable [("number", str), ("wrap-gap", dim)]),
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
       ("verse", NRejected),
+      ("printings", NTable [("format", str)]),
       ("toc", NTable [("leader", enum leaderValues)]),
-      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim)]),
+      ("lists", NTable [("bullets", NArray str), ("numbers", NArray str), ("gap", dim), ("marker-style", ref CharStyles)]),
       ("aki-sets", NNamed (Just AkiSets) akiSetNode),
       ("index", NTable [("columns", int), ("column-gap", dim), ("section-headings", bool)]),
       ("code", codeNode),
@@ -3562,6 +3976,7 @@ styleSchema =
       NTable
         [ ("size", NEither [enum (map fst pageSizes), NTable [("width", dim), ("height", dim)]]),
           ("binding", enum bindingValues),
+          ("layout", enum ["single", "facing"]),
           ("writing-mode", enum writingModeValues),
           ("grid", gridNode),
           ("bleed", dim)
@@ -3572,16 +3987,19 @@ styleSchema =
           ("characters", int),
           ("lines", int),
           ("line-pitch", dim),
+          ("alignment", enum ["grid", "free"]),
           ("columns", int),
           ("column-gap", dim),
-          ("position", NTable [("top", dim), ("gutter", dim)])
+          ("position", NTable [("top", dim), ("gutter", dim), ("left", dim), ("right", dim)])
         ]
     headingNode =
       NTable
         [ ("font", ref FontRoles),
           ("size", dim),
           ("number", str),
+          ("number-title-separator", str),
           ("page-break", enum pageBreakValues),
+          ("block-align", enum (map fst headingBlockAlignValues)),
           ("lines", int),
           -- retired (golem-driver ADR 0014): G03019
           ("running-head", NRejected),
@@ -3598,7 +4016,8 @@ styleSchema =
                 ("group-align", enum groupAlignValues),
                 ("base-spacing", enum baseSpacingValues),
                 ("overhang", dim),
-                ("overhang-onto", enum overhangOntoValues)
+                ("overhang-onto", enum overhangOntoValues),
+                ("reading-style", ref CharStyles)
               ]
           ),
           ("kenten", enum kentenShapeNames),
@@ -3621,15 +4040,20 @@ styleSchema =
           ("mark-size", dim),
           ("mark-format", str),
           ("mark-style", ref CharStyles),
-          ("body-mark-style", ref CharStyles)
+          ("body-mark-style", ref CharStyles),
+          ("body-style", ref ParaStyles),
+          ("heading-style", ref ParaStyles),
+          ("footnote", NTable [("body-style", ref ParaStyles)]),
+          ("chapter-end", NTable [("body-style", ref ParaStyles), ("heading-style", ref ParaStyles)]),
+          ("mark-shape", enum markShapeValues)
         ]
     columnKeys = ["start-indent", "end-indent", "keep-in-column"]
     masterNode =
       NTable
         [ ( "running-head",
-            NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent)]
+            NTable [("position", enum masterPositions), ("content", runningContent), ("even", runningContent), ("odd", runningContent), ("character-style", ref CharStyles)]
           ),
-          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str)])
+          ("folio", NTable [("position", enum masterPositions), ("content", str), ("format", str), ("character-style", ref CharStyles)])
         ]
     runningContent = NEither [str, NArray str]
     akiSetNode =
@@ -3708,9 +4132,12 @@ paraStyleNode =
         ("font", ref FontRoles),
         ("size", dim),
         ("line-breaks", enum lineBreaksValues),
-        ("space-between", int),
-        ("space-before", int),
-        ("space-after", int),
+        ("line-number-interval", int),
+        ("line-pitch", NEither [enum ["auto"], dim]),
+        ("space-between", NEither [int, dim]),
+        ("number-title-separator", str),
+        ("space-before", NEither [int, dim]),
+        ("space-after", NEither [int, dim]),
         ("align", enum alignValues),
         ("indent", dim),
         ("first-line-indent", dim),
@@ -3725,7 +4152,10 @@ paraStyleNode =
         ("line-adjustment", enum lineAdjustmentValues),
         ("stretch-limit", int),
         ("shrink-order", adjustOrderNode),
-        ("stretch-order", adjustOrderNode)
+        ("stretch-order", adjustOrderNode),
+        ("next-style", ref ParaStyles),
+        ("initial-style", ref CharStyles),
+        ("opening-indent", enum openingIndentValues)
       ]
         <> featureNodes
         <> [ ("background", NEither [ref Swatches, NValue LFalse]),
@@ -3783,6 +4213,10 @@ str = NValue LString
 dim = NValue LDimension
 int = NValue LInteger
 bool = NValue LBoolean
+
+-- | a finite number, integer or not (the coordinates of axes, Golem ADR 0358)
+numberNode :: Node
+numberNode = NValue LNumber
 
 enum :: [Text] -> Node
 enum = NValue . LEnum

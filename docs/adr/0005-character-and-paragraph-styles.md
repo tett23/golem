@@ -1,6 +1,6 @@
 # ADR 0005: 強調を文字スタイルへ、韻文を段落スタイルへ統合する
 
-ステータス: 採択→fmt の移行の段階と G02048 は [golem-fmt ADR 0002](../golem-fmt/adr/0002-remove-verse-migration.md)、文字の送りの欄は [docs/adr/0020](0020-indesign-character-features.md)
+Status: superseded [{"by":["docs/golem-fmt/adr/0002-remove-verse-migration.md"],"part":"fmt の移行の段階と G02048"},{"by":["docs/adr/0020-indesign-character-features.md"],"part":"文字の送りの欄"},{"part":"自由な配置での段落の行送りと寸法の間隔","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

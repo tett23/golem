@@ -1,8 +1,9 @@
 #!/bin/sh
 # Copies the fonts of the fixtures 『蟹工船』 and The Tempest into the ten
-# books of modules/golem-driver/test/fixtures/pd/, which do not commit their
-# fonts (docs/adr/0026). The Japanese books get Noto Serif JP, the English
-# ones Source Serif, each with its licence.
+# books of modules/golem-driver/test/fixtures/pd/ and the single-page
+# excerpt, which do not commit their fonts (docs/adr/0026, docs/adr/0400).
+# The Japanese books get Noto Serif JP, the English ones Source Serif,
+# each with its licence.
 #
 # Usage: scripts/fixtures/copy-fonts.sh
 set -eu
@@ -16,3 +17,7 @@ for book in koya-hijiri ichiaku-no-suna haru-to-shura taira-no-masakado ushiyama
   mkdir -p "$FIX/pd/$book/fonts"
   cp "$FIX/kanikosen/fonts/NotoSerifJP-Regular.otf" "$FIX/kanikosen/fonts/LICENSE-NotoSerifJP.txt" "$FIX/pd/$book/fonts/"
 done
+
+mkdir -p "$FIX/single-page/fonts"
+cp "$FIX/kanikosen/fonts/NotoSerifJP-Regular.otf" "$FIX/single-page/fonts/ja.otf"
+cp "$FIX/kanikosen/fonts/LICENSE-NotoSerifJP.txt" "$FIX/single-page/fonts/"

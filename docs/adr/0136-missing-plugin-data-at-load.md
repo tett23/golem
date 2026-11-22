@@ -1,6 +1,6 @@
 # ADR 0136: 渡されていないデータを `golem_check_data` で読み込みのときに報告する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -144,7 +144,7 @@ occurrences (File _ bs) = concatMap block bs
       OrderedList items -> concatMap (concatMap block) items
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
-      SetVar _ (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
+      SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
       BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | T.isInfixOf "." name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       _ -> []
@@ -820,20 +820,22 @@ tomlCompletions schema text off = case contextAt text off of
     defined = definedPaths text
     layoutNames path q
       | schema /= styleSchema = []
-      | Just kind <- layoutKind path =
+      | otherwise =
           [ Completion (if q == Bare then "\"" <> name <> "\"" else name) CkSettingValue
           | ["values", declaredKind, name] <- defined,
-            declaredKind == kind,
-            path /= ["values", kind, name]
+            declaredKind `elem` layoutKinds path,
+            path /= ["values", declaredKind, name]
           ]
-      | otherwise = []
-    layoutKind path = case path of
-      ["values", kind, _] | kind `elem` ["length", "aki", "count"] -> Just kind
-      _ -> case nodeAt styleSchema path of
-        Just (NValue LDimension) -> Just "length"
-        Just (NValue LInteger) | last path `elem` ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just "count"
-        _ | "aki-sets" `elem` path, last path `elem` ["optimum", "minimum", "maximum"] -> Just "aki"
-        _ -> Nothing
+    layoutKinds path = case path of
+      ["values", kind, _] | kind `elem` ["length", "aki", "count"] -> [kind]
+      _ | "aki-sets" `elem` path, last path `elem` ["optimum", "minimum", "maximum"] -> ["aki"]
+      _ -> maybe [] kinds (nodeAt styleSchema path)
+      where
+        kinds = \case
+          NValue LDimension -> ["length"]
+          NValue LInteger | last path `elem` ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> ["count"]
+          NEither ns -> concatMap kinds ns
+          _ -> []
     -- the names a namespace has: the built-in ones, then those of the file in its order
     names ns = nub (builtinNames ns <> [n | (ns', n) <- concatMap (namesOn schema) defined, ns' == ns])
     namesUnder ns path = case ns of

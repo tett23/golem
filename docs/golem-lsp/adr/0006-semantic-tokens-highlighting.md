@@ -1,6 +1,6 @@
 # ADR 0006: semantic tokens で `.gm` の原稿を色付けする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

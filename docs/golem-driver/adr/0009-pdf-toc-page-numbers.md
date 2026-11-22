@@ -1,6 +1,6 @@
 # ADR 0009: PDF の目次にページ番号を出す
 
-ステータス: 採択→目次の項目の番号と題のあいだの区切りは [golem-html ADR 0002](../../golem-html/adr/0002-heading-number-spacing.md)
+Status: superseded [{"by":["docs/golem-html/adr/0002-heading-number-spacing.md"],"part":"目次の項目の番号と題のあいだの区切り"}]
 
 ## 文脈
 

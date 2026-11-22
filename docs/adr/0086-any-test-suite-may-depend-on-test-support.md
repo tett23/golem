@@ -1,6 +1,6 @@
 # ADR 0086: どのテストスイートも golem-test-support に依存してよいとする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

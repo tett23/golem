@@ -1,6 +1,6 @@
 # ADR 0001: マニフェストの読み込みと import のグラフ
 
-ステータス: 採択→読み込みの失敗の型は [ADR 0006](0006-project-diagnostic-codes.md)
+Status: superseded [{"by":["docs/golem-project/adr/0006-project-diagnostic-codes.md"],"part":"読み込みの失敗の型"}]
 
 ## 文脈
 

@@ -32,7 +32,7 @@ import Golem.Project.Style (HeadForm (..), HeadPick (..), RunningContent (..), R
 import Golem.Syntax
 import Golem.TestSupport.Env (envFlag)
 import Golem.TestSupport.Skipped (Skips, countSkipped)
-import Golem.Typeset (CodeInfo (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
+import Golem.Typeset (CodeInfo (..), PartLine (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
@@ -439,7 +439,7 @@ numberSeparatorTests =
             (_, pl) <- layoutHeads (langManifest lang) (horizontal30 ("\n[code]\nnumber = \"" <> number <> "\"\n")) [("a.gm", "@caption Settings\n```\na\n```\n")]
             case Map.elems (plCodes pl) of
               -- the boxes, and the glues as spaces: the space of a separator is a glue
-              (ci : _) -> pure (T.strip (T.concat [item it | l <- take 1 (ciCaption ci), it <- lineItems l]), T.concat [bcText c | l <- ciCaption ci, Box _ c <- lineItems l])
+              (ci : _) -> pure (T.strip (T.concat [item it | l <- take 1 (ciCaption ci), it <- lineItems (ptLine l)]), T.concat [bcText c | l <- ciCaption ci, Box _ c <- lineItems (ptLine l)])
               [] -> assertFailure "no code"
           item = \case
             Box _ c -> bcText c

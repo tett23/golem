@@ -1,6 +1,6 @@
 # ADR 0317: @table のパスを位置引数にそろえる
 
-ステータス: 採択→[ADR 0343](0343-revise-retire-table-src.md)
+Status: superseded [{"by":["docs/adr/0343-revise-retire-table-src.md"],"part":null}]
 
 ## 文脈
 

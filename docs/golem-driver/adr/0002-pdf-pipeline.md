@@ -1,6 +1,6 @@
 # ADR 0002: PDF の経路のパイプライン
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

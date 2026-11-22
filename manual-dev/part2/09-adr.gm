@@ -55,7 +55,7 @@ ADR は日本語で、次の形で書く。
 ```markdown numbers=true
 # ADR 0001: タイトル
 
-ステータス: 提案
+Status: proposed
 
 ## 文脈
 
@@ -77,16 +77,32 @@ ADR は日本語で、次の形で書く。
 
 ## ステータス
 
-ステータスの行は、行頭が [code: ステータス:] の行で、ADR はこれをちょうど一つ持つ。[index reading=すてーたす: ステータスの行]
-値は、提案、採択、採択（未実装）、却下、破棄のどれかである。
-採択（未実装）は、採択したがまだ実装していない ADR に使い、実装を終えたら採択に変える。
-後の ADR が一部を置き換えた場合は、「採択→○○は ADR NNNN」のように、置き換えた ADR をリンクで示す。
+ステータスの行は、行頭が [code: Status:] の行で、ADR はこれをちょうど一つ持つ。[index reading=すてーたす: ステータスの行]
+コードブロックの中の行も数えるので、ADR の本文には行頭が [code: Status:] の行を書かない。
+値は [code: Status: <トークン>] の形で、トークンは次のどれかである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md]（docs/adr の ADR 0387「adr-guard を v0.13.1 に上げ、ADR のステータスの行を新しい形に移す」）]
+
+- [code: proposed]：提案。新しい ADR は、まずこのトークンでコミットする。
+- [code: accepted-pending]：採択したが、まだ実装していない。実装を終えたら [code: accepted] に変える。
+- [code: accepted]：採択して、実装を終えた。
+- [code: rejected]：却下。
+- [code: discarded]：破棄。
+- [code: deprecated]：かつて採択し、いまは効力がない。
+- [code: superseded] と変更の JSON 配列：後の ADR が一部か全部を変えた。実装を待つ ADR が変更を受けたときは [code: superseded-pending] にする。
+
+変更は、変えた部分の名前（[code: part]）と、変えた ADR のリポジトリのルートからのパスの配列（[code: by]）を持つ JSON のオブジェクトである。
+部分を限らないときは [code: part] を [code: null] にする。
+[code: kind]（[code: replace]、[code: supplement]、[code: note]）と [code: note] を足せる。
+[code: kind] を省くと [code: replace] である。
 
 ```markdown
-ステータス: 採択→行の長さを超える列の扱いは [ADR 0003](0003-position-handling.md)
+Status: superseded [{"part":"列の扱い","by":["docs/adr/0003-columns.md"]}]
 ```
 
-ADR をやめる場合は、ステータスを破棄にして、理由を [code: docs/specifications.md] に書く。
+修正の連なりは [code: adr-guard trace <パス>] で出せる。
+これより前の ADR は [code: ステータス: 採択] のような形（旧形式）で書いていたが、すべて新しい形に移した。
+旧形式で新しく書かない。
+
+ADR をやめる場合は、ステータスを [code: discarded] にして、理由を [code: docs/specifications.md] に書く。
 破棄した ADR のファイルは消さない。
 
 ## コミットした ADR は変えない
@@ -104,7 +120,7 @@ ADR はレビューを受けるまでコミットしない。
 ## adr-guard
 
 この規則は、adr-guard が自動で強制する。[index reading=adr-guard: adr-guard]
-今使っているバージョンは v0.10.0 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0194-update-adr-guard-to-v0.10.0.md]（docs/adr の ADR 0194「adr-guard を v0.10.0 に上げ、ADR の番号の重複と修飾子付きの参照を検査する」）]
+今使っているバージョンは v0.13.1 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0387-update-adr-guard-to-v0.13.1-and-migrate-status-lines.md]（docs/adr の ADR 0387「adr-guard を v0.13.1 に上げ、ADR のステータスの行を新しい形に移す」）]
 
 [code: .githooks/pre-commit] の中身は一行である。
 
@@ -115,6 +131,8 @@ exec adr-guard pre-commit --allow-status --allow-links
 
 このフックは、コミット済みの ADR（[code: docs/adr/] と [code: docs/<モジュール>/adr/] の下）への変更、削除、リネームを含むコミットを拒む。
 例外は二つで、ステータスの行の変更（[code: --allow-status]）と、リンクを付ける、外す、リンク先を変えるだけの変更（[code: --allow-links]）である。
+ステータスの行の変更は、許された状態遷移に限る。
+新しい ADR を [code: proposed] 以外でコミットするなど、許されない遷移は [code: --allow-status] を付けても拒む。
 リンクは ADR の参照に限らない。
 リンクのテキストの変更は拒む。
 ステータスの行のない ADR と、二つ以上ある ADR も拒む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0010-update-adr-guard-to-v0.5.0.md]（docs/adr の ADR 0010「adr-guard を v0.5.0 に上げ、ステータスの行の変更を --allow-status で許可する」）]
@@ -122,7 +140,7 @@ exec adr-guard pre-commit --allow-status --allow-links
 監査の記録（[code: docs/audit/]、[code: docs/audits/]）と性能計測の記録（[code: docs/benchmarks/]、[code: docs/benchmark/]）も、コミットした後の変更、削除、移動を拒む。
 記録には、[code: --allow-status] と [code: --allow-links] の例外も適用されない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
 
-同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.10.0 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
+同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.13.1 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
 フックは手元の設定なので外せるが、CI の検査は外せない。
 
 ## ADR の参照にはリンクを付ける
@@ -143,7 +161,8 @@ adr-guard には、一覧を出す命令と直す命令がある。
 $ adr-guard links          # リンクのない ADR の参照の一覧
 $ adr-guard links --fix    # リンクを付ける
 $ adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
-$ adr-guard unimplemented  # ステータスが採択（未実装）の ADR の一覧
+$ adr-guard unimplemented  # 実装を待つ ADR の一覧
+$ adr-guard trace <パス>   # ADR の修正の連なり
 $ adr-guard check-numbers  # 番号が重複した ADR の一覧
 $ adr-guard renumber       # 重複した番号を振りなおす
 ```

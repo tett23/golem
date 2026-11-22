@@ -1,6 +1,6 @@
 # ADR 0225: golem.wasm の入力の枠で、空のパスを断る
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

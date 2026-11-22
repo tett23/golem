@@ -1,6 +1,6 @@
 # ADR 0325: プリフライトでは欠けた字の重大度を glyph-missing で決める
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

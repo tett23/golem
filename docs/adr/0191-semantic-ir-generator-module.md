@@ -1,6 +1,6 @@
 # ADR 0191: 意味論 IR の生成器を、テストだけが使うパッケージにする
 
-ステータス: 採択→golem-doc のテストの生成器の写しを消し、生成器を使う性質を golem-doc-gen のテストに移すことは [ADR 0197](0197-move-generator-properties-to-golem-doc-gen.md)
+Status: superseded [{"by":["docs/adr/0197-move-generator-properties-to-golem-doc-gen.md"],"part":"golem-doc のテストの生成器の写しを消し、生成器を使う性質を golem-doc-gen のテストに移すこと"}]
 
 ## 文脈
 

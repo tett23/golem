@@ -1,6 +1,6 @@
 # ADR 0260: 前付けのノンブルとページラベル
 
-ステータス: 採択
+Status: superseded [{"part":"左右固定モードのセクション開始時の偶奇合わせ","by":["docs/adr/0400-single-page-layout-with-fixed-left-and-right.md"],"kind":"replace"}]
 
 ## 文脈
 

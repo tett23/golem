@@ -1,6 +1,6 @@
 # ADR 0197: golem-doc のテストの生成器を使う性質を、golem-doc-gen のテストに移す
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

@@ -9,8 +9,12 @@ import Golem.Eval.RegexStyle
 import Golem.Project.Style (ParaStyleDef (..), RegexStyleDef (..), Style (..), defaultStyle, noParaDef)
 import Golem.Regex (compile)
 import Golem.Syntax
+import Hedgehog (Gen, forAll, property, (===))
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog (testProperty)
 
 sp :: SrcSpan
 sp = mkSpan (FileId 1) 0 0
@@ -40,11 +44,67 @@ doc = Document (FileId 1) . map (Block sp Nothing Nothing)
 bodies :: RegexRules -> [BlockBody] -> [BlockBody]
 bodies r = map blockBody . docBlocks . applyRegexStyles r . doc
 
+-- | The blocks whose inlines ADR 0368 brought under the regex styles.
+data Target = AHeading | ATerm | ANote
+  deriving (Bounded, Enum, Show)
+
+-- | Rules whose matches can run over the end of a paragraph, nested and written by hand.
+scopeRules :: RegexRules
+scopeRules = rules [("body", [("1+2", "n"), ("2a?", "m"), ("^a", "f")])]
+
+-- | A short paragraph: text of a small alphabet, sometimes inside a style written by hand.
+genParagraph :: Gen [Inline]
+genParagraph = Gen.list (Range.linear 0 3) piece
+  where
+    piece = Gen.choice [t <$> chunk, cs "manual" . pure . t <$> chunk]
+    chunk = Gen.text (Range.linear 1 3) (Gen.element ("12a" :: String))
+
 tests :: TestTree
 tests =
   testGroup
     "regex styles (docs/adr ADR 0015)"
-    [ testCase "a match is wrapped in the character style" $
+    [ testProperty "ADR 0368 I1: inv1_regex_style_scope_property: headings, terms and note paragraphs match one paragraph at a time, as body does" $
+        property $ do
+          ps <- forAll (Gen.list (Range.linear 1 4) genParagraph)
+          kind <- forAll (Gen.element [minBound .. maxBound :: Target])
+          let asBody = para scopeRules
+              notePara p = Block sp Nothing Nothing (Paragraph Nothing p)
+          case kind of
+            AHeading -> bodies scopeRules [Heading 1 noHeadingAttrs p | p <- ps] === [Heading 1 noHeadingAttrs (asBody p) | p <- ps]
+            ATerm ->
+              bodies scopeRules [DefList [DefGroup ps [map notePara ps]]]
+                === [DefList [DefGroup (map asBody ps) [map (notePara . asBody) ps]]]
+            ANote -> do
+              -- the mark is one character of the paragraph around it; the body is matched apart
+              let notesOf is = [bs | Note _ _ bs <- is]
+                  restOf is = [i | i <- is, null (notesOf [i])]
+                  out = para scopeRules [t "1", Note sp 1 (map notePara ps), t "2"]
+              notesOf out === [map (notePara . asBody) ps]
+              restOf out === restOf (para scopeRules [t "1", Note sp 1 [], t "2"]),
+      testCase "ADR 0368 I1: inv1_regex_style_scope_case_1: a match within one paragraph: only the match" $ do
+        bodies digits [Heading 1 noHeadingAttrs [t "第12章"]] @?= [Heading 1 noHeadingAttrs [t "第", cs "n" [t "12"], t "章"]]
+        bodies digits [DefList [DefGroup [[t "a12"]] []]] @?= [DefList [DefGroup [[t "a", cs "n" [t "12"]]] []]]
+        para digits [t "x", Note sp 1 (noteBody sp [t "b12"])] @?= [t "x", Note sp 1 (noteBody sp [t "b", cs "n" [t "12"]])],
+      testCase "ADR 0368 I1: inv1_regex_style_scope_case_2: a match only across two paragraphs: none" $ do
+        let onlyPair = rules [("body", [("12", "n")])]
+            definition = DefList [DefGroup [[t "1"], [t "2"]] [[Block sp Nothing Nothing (Paragraph Nothing [t "2"])]]]
+            notes = [Block sp Nothing Nothing (Paragraph Nothing [t "1"]), Block sp Nothing Nothing (Paragraph Nothing [t "2"])]
+            headings = [Heading 1 noHeadingAttrs [t "1"], Heading 2 noHeadingAttrs [t "2"]]
+        bodies onlyPair headings @?= headings
+        bodies onlyPair [definition] @?= [definition]
+        para onlyPair [Note sp 1 notes] @?= [Note sp 1 notes]
+        -- the mark of a note and its body are apart: the mark is one replacement character
+        para onlyPair [t "1", Note sp 1 (noteBody sp [t "2"])] @?= [t "1", Note sp 1 (noteBody sp [t "2"])],
+      testCase "ADR 0368 I1: the hand-written styles stay inside and the generated number of a heading is not matched" $ do
+        let attrs = noHeadingAttrs {haNumber = Just 12}
+        bodies digits [Heading 1 attrs [cs "manual" [t "34"]]] @?= [Heading 1 attrs [cs "n" [cs "manual" [t "34"]]]]
+        bodies digits [Heading 1 attrs [t "a"]] @?= [Heading 1 attrs [t "a"]]
+        para digits [Note sp 1 (noteBody sp [cs "manual" [t "56"]])] @?= [Note sp 1 (noteBody sp [cs "n" [cs "manual" [t "56"]]])],
+      testCase "ADR 0368 I1: headings, terms and notes take the rules of body, not those of another paragraph style" $ do
+        let other = rules [("memo", [("[0-9]+", "n")])]
+        bodies other [Heading 1 noHeadingAttrs [t "1"], DefList [DefGroup [[t "2"]] []]] @?= [Heading 1 noHeadingAttrs [t "1"], DefList [DefGroup [[t "2"]] []]]
+        bodies other [Paragraph (Just "memo") [t "3", Note sp 1 (noteBody sp [t "4"])]] @?= [Paragraph (Just "memo") [cs "n" [t "3"], Note sp 1 (noteBody sp [t "4"])]],
+      testCase "a match is wrapped in the character style" $
         para digits [t "第12章"] @?= [t "第", cs "n" [t "12"], t "章"],
       testCase "a later rule is inside an earlier one" $
         para (rules [("body", [("[0-9]+", "n"), ("2", "m")])]) [t "12"] @?= [cs "n" [t "1"], cs "n" [cs "m" [t "2"]]],
@@ -69,10 +129,10 @@ tests =
         para digits [t "a", Tcy sp "12", t "b"] @?= [t "a", Tcy sp "12", t "b"]
         para (rules [("body", [(".", "n")])]) [Tcy sp "12"] @?= [cs "n" [Tcy sp "12"]]
         para (rules [("body", [("a.b", "n")])]) [t "a", Number sp 3 Nothing, t "b"] @?= [cs "n" [t "a", Number sp 3 Nothing, t "b"]],
-      testCase "the body of a note is not matched" $
-        para digits [t "a", Note sp 1 (noteBody sp [t "12"])] @?= [t "a", Note sp 1 (noteBody sp [t "12"])],
+      testCase "the body of a note is matched separately" $
+        para digits [t "a", Note sp 1 (noteBody sp [t "12"])] @?= [t "a", Note sp 1 (noteBody sp [cs "n" [t "12"]])],
       testCase "a note is not wrapped and cuts a run" $
-        para (rules [("body", [(".+", "n")])]) [t "a", Note sp 1 (noteBody sp [t "x"]), t "b"] @?= [cs "n" [t "a"], Note sp 1 (noteBody sp [t "x"]), cs "n" [t "b"]],
+        para (rules [("body", [(".+", "n")])]) [t "a", Note sp 1 (noteBody sp [t "x"]), t "b"] @?= [cs "n" [t "a"], Note sp 1 (noteBody sp [cs "n" [t "x"]]), cs "n" [t "b"]],
       testCase "an index mark and a proof comment cut a run" $
         para (rules [("body", [(".+", "n")])]) [t "a", IndexMark sp (IndexEntry ["k"] [] IndexPoint), t "b"]
           @?= [cs "n" [t "a"], IndexMark sp (IndexEntry ["k"] [] IndexPoint), cs "n" [t "b"]],
@@ -88,15 +148,15 @@ tests =
             out = para r [t "a1", LineBreak sp, t "2b"]
         out @?= [t "a", cs "n" [t "1"], LineBreak sp, cs "n" [t "2"], t "b"]
         validateDocument (const (Just 100)) [] (doc [Paragraph Nothing out]) @?= [],
-      testCase "headings, table cells and terms are not matched; list items are" $ do
+      testCase "headings and terms use body; table cells use table" $ do
         let h = Heading 1 noHeadingAttrs [t "1"]
             tbl = TableBlock (plainTable [AlignDefault] [[t "1"]] [[[t "2"]]])
             dl = DefList [DefGroup [[t "1"]] [[Block sp Nothing Nothing (Paragraph Nothing [t "2"])]]]
             ul = BulletList [ListItem Nothing [Block sp Nothing Nothing (Paragraph Nothing [t "3"])]]
         bodies digits [h, tbl, dl, ul]
-          @?= [ h,
+          @?= [ Heading 1 noHeadingAttrs [cs "n" [t "1"]],
                 tbl,
-                DefList [DefGroup [[t "1"]] [[Block sp Nothing Nothing (Paragraph Nothing [cs "n" [t "2"]])]]],
+                DefList [DefGroup [[cs "n" [t "1"]]] [[Block sp Nothing Nothing (Paragraph Nothing [cs "n" [t "2"]])]]],
                 BulletList [ListItem Nothing [Block sp Nothing Nothing (Paragraph Nothing [cs "n" [t "3"]])]]
               ],
       testCase "a paragraph style uses its own rules" $ do

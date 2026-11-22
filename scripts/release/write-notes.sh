@@ -47,7 +47,8 @@ fallback() {
 
 # adrs HEADING: the path, the URL, the title (the first "# " line) and the
 # status line of each ADR that the list of notes.sh has under HEADING,
-# and none of the other lines (docs/adr/0246); the relative links of the
+# and none of the other lines (docs/adr/0246); the status line starts with
+# "ステータス:" or "Status:" (docs/adr/0387); the relative links of the
 # title and the status line are absolute (docs/adr/0259)
 adrs() {
   LC_ALL=C awk -v h="$1" '
@@ -58,7 +59,7 @@ adrs() {
       printf '\n## %s (https://github.com/tett23/golem/blob/%s/%s)\n\n' "$path" "$TAG" "$path"
       git show "$TAG:$path" | LC_ALL=C awk '
         /^# / && !t { print; t = 1 }
-        /^ステータス:/ && !s { print; s = 1 }
+        /^(ステータス|Status):/ && !s { print; s = 1 }
         t && s { exit }' | sh "$HERE/absolute-links.sh" "$TAG" "$path"
     done
 }

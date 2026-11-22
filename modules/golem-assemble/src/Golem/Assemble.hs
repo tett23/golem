@@ -84,9 +84,11 @@ data ChannelEntry = ChannelEntry
   deriving stock (Eq, Show)
 
 {- | The range over which footnotes and sidenotes are numbered from 1
-(golem-driver ADR 0018): a file, a chapter of the manifest, or the book.
+(golem-driver ADR 0018): a file, a chapter of the manifest, or the book;
+or each page of the PDF (docs/adr/0383), which the layout numbers once
+the pages are known: the book numbers them before as it does the book.
 -}
-data NoteNumbering = NumberPerFile | NumberPerChapter | NumberPerBook
+data NoteNumbering = NumberPerFile | NumberPerChapter | NumberPerBook | NumberPerPage
   deriving stock (Eq, Show)
 
 -- | The values of the @doc@ namespace.
@@ -182,6 +184,8 @@ data Book = Book
     -} bookChannels :: ![(ListAt, Text, [ChannelEntry])],
     -- | the channels the plugins declare, by name
     bookChannelDecls :: !(Map Text ChannelDecl),
+    -- | Per-file overrides for heading levels and captions (Golem ADR 0372).
+    bookTitleSeparators :: !(Map (FileId, Maybe Int) Text),
     {- | the images plugins made for figures, by the source of the figure
     (docs/adr/0123); the outputs read them instead of a file of the project
     -} bookImages :: !(Map Text ByteString)
@@ -450,6 +454,7 @@ assemble cfg evalDeferred docs0 =
             bookChapterOf = acChapterOf cfg,
             bookChannels = channelLists (acChannels cfg) docs',
             bookChannelDecls = acChannels cfg,
+            bookTitleSeparators = Map.empty,
             bookImages = Map.empty
           },
         sortDiagnostics (nsDiags ns <> figureErrors <> unwritableErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags <> indexDiags)
@@ -672,6 +677,28 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         other -> pure other
     item (ListItem n bs') = ListItem n <$> mapM blk bs'
     inls is = concat <$> mapM inl is
+    baseRefs :: InlineNoRuby -> R [InlineNoRuby]
+    baseRefs = \case
+      Ref sp kind target | kind == RefNumber || kind == RefTitle -> do
+        refs <- inl (Ref sp kind target)
+        pure [Resolved pos k name (concatMap baseOnly xs) | Resolved pos k name xs <- refs]
+      Kenten sp style xs -> pure . Kenten sp style <$> baseList xs
+      Color sp color xs -> pure . Color sp color <$> baseList xs
+      CharStyle sp style xs -> pure . CharStyle sp style <$> baseList xs
+      Lang sp lang xs -> pure . Lang sp lang <$> baseList xs
+      Link sp target xs -> pure . Link sp target <$> baseList xs
+      other -> pure [other]
+    baseList xs = concat <$> mapM baseRefs xs
+    -- A title can contain ruby itself. Only its base fits inside another ruby.
+    baseOnly = \case
+      Ruby _ _ segs -> concatMap rsBase segs
+      Kenten sp style xs -> [Kenten sp style (concatMap baseOnly xs)]
+      Color sp color xs -> [Color sp color (concatMap baseOnly xs)]
+      CharStyle sp style xs -> [CharStyle sp style (concatMap baseOnly xs)]
+      Lang sp lang xs -> [Lang sp lang (concatMap baseOnly xs)]
+      Link sp target xs -> [Link sp target (concatMap baseOnly xs)]
+      Resolved sp kind target xs -> [Resolved sp kind target (concatMap baseOnly xs)]
+      other -> maybe [] pure (noRuby other)
     inl :: Inline -> R [Inline]
     inl = \case
       Ref sp k l -> do
@@ -692,6 +719,9 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
               pure []
             title -> pure [Resolved sp RefTitle l (map (relocate sp) title)]
           (Just _, RefPage) -> pure [Ref sp k l]
+      Ruby sp annotation segments -> do
+        resolved <- mapM (\segment -> (\xs -> segment {rsBase = xs}) <$> baseList (rsBase segment)) segments
+        pure [Ruby sp annotation resolved]
       Deferred sp e -> case evalDeferred dv sp e of
         Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []
         Right t -> pure [Text sp t]
@@ -719,6 +749,8 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
     restart i ch prev = case acNoteNumbering cfg of
       NumberPerFile -> True
       NumberPerBook -> i == 0
+      -- in the order of the book until the pages are known (docs/adr/0383)
+      NumberPerPage -> i == 0
       NumberPerChapter -> i == 0 || isNothing ch || ch /= prev
     doc fresh (Document fid bs) = do
       when fresh (put (0, 0))

@@ -11,7 +11,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Look (..), Synthetic (..))
-import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), defaultKeep, paginate)
+import Golem.Layout.Paginate (Flow, FlowAt (..), LineBox (..), PageOutAt (..), Slotted (..), defaultKeep, paginate)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
@@ -276,9 +276,54 @@ listText style src variant = withVerseProject style src $ \tmp -> do
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   TIO.readFile (tmp </> "build/text" </> variant </> "v.txt")
 
+markerBoxes :: BS.ByteString -> T.Text -> IO ([(T.Text, Look)], [Sp])
+markerBoxes setting source = do
+  let style = horizontal24 <> "\n[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n[character-styles.accent]\ncolor = \"red\"\n[character-styles.large]\nsize = \"3zw\"\n[character-styles.heavy]\nsynthetic-bold = true\n[character-styles.loud]\ncolor = \"red\"\nsize = \"2zw\"\nsynthetic-bold = true\n[lists]\nnumbers = [\"({n})\"]\n" <> setting
+  (_, layout) <- layoutOk style source []
+  let ls = Map.elems (plLines layout)
+  pure ([(bcText c, bcLook c) | sl <- ls, Box _ c <- lineItems (slLine sl), not (T.null (bcText c))], map slIndent ls)
+
+-- | The boxes of the text of the items: all but the markers • ( 1 2 3 ).
+itemTextLooks :: [(T.Text, Look)] -> [(T.Text, Look)]
+itemTextLooks = filter ((`notElem` ["•", "(", ")", "1", "2", "3"]) . fst)
+
 listTests :: [TestTree]
 listTests =
-  [ testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
+  [ testCase "ADR 0363 I1: inv1_list_marker_style_property" $
+      -- every marker style by every list: bullets, numbers, nested, several
+      -- items, an item of two paragraphs, an item with a character style, and
+      -- an item long enough to break into lines
+      forM_ ["accent", "large", "heavy", "loud"] $ \name ->
+        forM_
+          [ "- 本\n",
+            "+ 本\n",
+            "- 本\n  - 文\n",
+            "+ 本\n+ 文字\n+ 字\n",
+            "- 本。\n  文。\n",
+            "+ 本[strong: 強]文\n",
+            "- " <> T.replicate 60 "本" <> "\n"
+          ]
+          $ \source -> do
+            (plain, _) <- markerBoxes "" source
+            (styled, _) <- markerBoxes ("marker-style = \"" <> TE.encodeUtf8 name <> "\"\n") source
+            assertBool (show (name, source, plain)) (not (null (itemTextLooks plain)))
+            assertEqual (show (name, source)) (itemTextLooks plain) (itemTextLooks styled),
+    testCase "ADR 0363 I1: inv1_list_marker_style_case_1" $ do
+      (boxes, _) <- markerBoxes "" "- 本\n"
+      map (lkLatinFace . snd) boxes @?= ["body", "body"]
+      (numbered, _) <- markerBoxes "" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- numbered] @?= [("(", Nothing), ("1", Nothing), (")", Nothing), ("本", Nothing)],
+    testCase "ADR 0363 I1: inv1_list_marker_style_case_2" $ do
+      (boxes, _) <- markerBoxes "marker-style = \"accent\"\n" "+ 本\n"
+      [(t, lkColor look) | (t, look) <- boxes] @?= [("(", Just "red"), ("1", Just "red"), (")", Just "red"), ("本", Nothing)]
+      (bullet, _) <- markerBoxes "marker-style = \"accent\"\n" "- 本\n"
+      [(t, lkColor look) | (t, look) <- bullet] @?= [("•", Just "red"), ("本", Nothing)],
+    testCase "ADR 0363: marker width is measured after applying the character style" $ do
+      let source = "- " <> T.replicate 25 "本" <> "\n"
+      (_, a) <- markerBoxes "" source
+      (_, b) <- markerBoxes "marker-style = \"large\"\n" source
+      assertBool (show (a, b)) (maximum b > maximum a),
+    testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
       (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
       -- the bullet • is a character and fs / 2 (golem-driver ADR 0044)
       ls @?= [(120 * pt, 0), (100 * pt, 20 * pt)],
@@ -355,14 +400,14 @@ listTests =
       let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", \"b.gm\"]" miniManifest
       (_, pl) <- layoutHeads manifest horizontalStyle [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: " <> T.replicate 30 "乙" <> "]\n")]
       let keys = [nid | sl <- Map.elems (plLines pl), (nid, _) <- slNotes sl]
-          placed = [nid | p <- plPages pl, (nid, _, _) <- poFootnotes p]
+          placed = [nid | p <- gridPages pl, (nid, _, _) <- poFootnotes p]
       length keys @?= 2
       length (nub keys) @?= 2
       sort placed @?= sort keys,
     testCase "PDF: [lists] numbers set the marker, and its width" $ do
-      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") "+ 一\n+ 二\n"
+      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({n:arabic})\"]\n") "+ 一\n+ 二\n"
       ts @?= ["(1)一", "(2)二"]
-      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
+      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({n:arabic})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
       map snd ls @?= [0, 20 * pt],
     testCase "PDF: [lists] bullets by depth, the last one for deeper lists, with a gap" $ do
       let style = horizontalStyle <> TE.encodeUtf8 "\n[lists]\nbullets = [\"■\", \"□\"]\n"
@@ -372,13 +417,13 @@ listTests =
       -- 1 character and fs / 2, rounded up to whole characters
       map snd ls @?= [0, 20 * pt],
     testCase "a number its format cannot write is G07029, at the item" $ do
-      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
+      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{n:circled}\"]\n") "+ 一\n@number 51\n+ 二\n" []
       layoutErrors r @?= [("G07029", "リストの番号 51 は、書式 {n:circled} で表せません", FileId 1, 17, 23)]
-      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
+      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{n:circled}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
         [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G07029"],
     testCase "HTML: [lists] writes a @counter-style for each depth" $
-      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{①}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
+      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:circled}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
         page <- TIO.readFile (tmp </> "build/html/v.xhtml")
@@ -398,7 +443,7 @@ listTests =
         assertBool "css" (not ("@counter-style" `T.isInfixOf` css))
         assertBool "page" ("<ul>" `T.isInfixOf` page && "<ol>" `T.isInfixOf` page),
     testCase "plain text: [lists] markers by depth" $ do
-      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{a}.\"]\n"
+      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({n:arabic})\", \"{n:lower-alpha}.\"]\n"
       t <- listText style "- 一\n  - 二\n    - 三\n\n+ 一\n  + 二\n" "horizontal"
       t @?= "■ 一\n　□ 二\n　　□ 三\n\n(1) 一\n　a. 二\n"
       t' <- listText "" "- 一\n\n+ 一\n" "horizontal"
@@ -423,7 +468,7 @@ pageControlTests =
       let style = replaceIn "lines = 30" "lines = 36" horizontalStyle
       r <- layoutMini style "@page-lines +1\n\n一\n" []
       (_, layout) <- either (assertFailure . show) pure r
-      map poLines (plPages layout) @?= [36]
+      map poLines (gridPages layout) @?= [36]
       map described (plNotices layout) @?= [("G07037", "段に余りがないため、@page-lines の増減を 0 行に切り詰めました", FileId 1, 0, 15)],
     testCase "PDF: a no-break that cannot be met and need-lines past the column are G07037, and the PDF is written" $ do
       r <- layoutMini fiveLines "@no-page-break\n\n一\n\n@need-lines 9\n\n二\n" []
@@ -443,6 +488,11 @@ pageControlTests =
       (page', css') <- htmlMini horizontalStyle "a\n\n@need-lines 3\n\n@page-lines +1\n\nb\n"
       assertBool (T.unpack page') ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page')
       assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css')),
+    testCase "ADR 0376 I1: inv1_no_page_break_lines_case_3: HTML omits the zero control and keeps a positive count" $ do
+      (zero, css) <- htmlMini horizontalStyle "a\n\n@no-page-break 0\n\nb\n"
+      assertBool "zero has no avoid attribute or rule" (not ("data-break-before" `T.isInfixOf` zero || "data-break-before" `T.isInfixOf` css))
+      (three, _) <- htmlMini horizontalStyle "a\n\n@no-page-break 3\n\nb\n"
+      assertBool "positive count retains avoid" ("data-break-before=\"avoid\"" `T.isInfixOf` three),
     testCase "plain text: the controls write nothing" $ do
       let text src = withVerseProject "" src $ \tmp -> do
             _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -460,19 +510,19 @@ blankLineTests =
   [ testCase "PDF: @blank-line 2 puts the next paragraph three grid lines after, horizontal and vertical" $
       forM_ [horizontalStyle, pdfStyle] $ \style -> do
         (_, layout) <- layoutMini style "あ\n@blank-line 2\nい\n" [] >>= either (assertFailure . show) pure
-        map (map fst . poSlots) (plPages layout) @?= [[0, 3]]
+        map (map fst . poSlots) (gridPages layout) @?= [[0, 3]]
         plNotices layout @?= [],
     testCase "PDF: a blank line at the top of a column is dropped with the info G07047 at its line (docs/adr 0104)" $ do
       let src = "あ\n\n@page-break\n\n@blank-line\n\nい\n"
       (_, layout) <- layoutMini fiveLines src [] >>= either (assertFailure . show) pure
-      map (map fst . poSlots) (plPages layout) @?= [[0], [0]]
+      map (map fst . poSlots) (gridPages layout) @?= [[0], [0]]
       [(diagCode d, diagSeverity d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout]
         @?= [(DiagnosticCode "G07047", Info, "段の先頭に来た @blank-line の空きを捨てました", 18)],
     testCase "PDF: blank lines between two stanzas take the place of space-between, not more" $ do
       (_, layout) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@blank-line\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
-      map (map fst . poSlots) (plPages layout) @?= [[0, 2]]
+      map (map fst . poSlots) (gridPages layout) @?= [[0, 2]]
       (_, plain) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
-      map (map fst . poSlots) (plPages plain) @?= [[0, 2]],
+      map (map fst . poSlots) (gridPages plain) @?= [[0, 2]],
     testCase "HTML: a div of a br for each blank line between the paragraphs" $ do
       (page, _) <- htmlMini horizontalStyle "あ\n@blank-line 2\nい\n"
       assertBool (T.unpack page) ("<p>あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p>い</p>\n" `T.isInfixOf` page),
@@ -608,7 +658,7 @@ columnTests :: [TestTree]
 columnTests =
   [ testCase "PDF: a paragraph longer than two columns is set in the measure of a column" $ do
       (_, pl) <- layoutOk horizontal2 (longPara 80) []
-      assertBool "column 1" (any ((== 1) . poColumn) (plPages pl))
+      assertBool "column 1" (any ((== 1) . poColumn) (gridPages pl))
       nub [lineTarget (slLine sl) | sl <- Map.elems (plLines pl)] @?= [12 * 10 * pt],
     testCase "PDF: the second column starts at the left edge of column 1, on the lines of column 0" $ do
       geom <- geometryOf horizontal2
@@ -630,11 +680,11 @@ columnTests =
     testCase "PDF: sixty lines fill the two columns of one page" $ do
       (_, pl) <- layoutOk horizontal2 (longPara 72) []
       Map.size (plLines pl) @?= 60
-      map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)],
+      map (\p -> (poNumber p, poColumn p)) (gridPages pl) @?= [(1, 0), (1, 1)],
     testCase "PDF: the running head of a page takes the headings of its columns in order (golem-driver ADR 0014)" $ do
       let style = horizontal2 <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.short\" }\n"
       (heads, pl) <- layoutHeads miniManifest style [("a.gm", "# 一\n\n" <> longPara 33 <> "# 二\n\n" <> longPara 2)]
-      map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)]
+      map (\p -> (poNumber p, poColumn p)) (gridPages pl) @?= [(1, 0), (1, 1)]
       Map.lookup 1 heads @?= Just ["一"]
       (heads', _) <- layoutHeads miniManifest style [("a.gm", longPara 36 <> "# 二\n\n" <> longPara 2)]
       Map.lookup 1 heads' @?= Just ["二"],
@@ -655,8 +705,8 @@ columnTests =
       (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2 <> "\n[index]\nsection-headings = false\n") source []
       let indexIn p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
       -- (page, column, index lines): two lines after the text, five in column 1, the rest on page 2
-      [(poNumber p, poColumn p, length (indexIn p)) | p <- plPages pl, not (null (indexIn p))] @?= [(1, 0, 2), (1, 1, 5), (2, 0, 3)]
-      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexIn p] @?= [12 * 10 * pt],
+      [(poNumber p, poColumn p, length (indexIn p)) | p <- gridPages pl, not (null (indexIn p))] @?= [(1, 0, 2), (1, 1, 5), (2, 0, 3)]
+      nub [lineTarget (slLine sl) | p <- gridPages pl, sl <- indexIn p] @?= [12 * 10 * pt],
     testCase "PDF: two columns, parallel and sequential, and two builds, give the same bytes" $ do
       let source = "# 一\n\n本文[note: 注。]。\n\n" <> longPara 80
       a <- miniPdf fakeProvider True horizontal2 source []

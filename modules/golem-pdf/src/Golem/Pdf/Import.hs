@@ -1105,6 +1105,14 @@ importM n bytes = do
   let roots = resources : maybe [] pure group
       values = roots <> [o | (_, o, _) <- objs]
   checkObjects doc objs values
+  -- every other stream decoded before the content is joined, so that the
+  -- decoded total and the joined content are both checked before joining (Golem ADR 0359)
+  rewritten <-
+    Map.fromList
+      <$> traverse
+        (\(k, o) -> case o of VStream dict body -> (k,) <$> (decodedObject doc k dict body >>= liftR . rewriteContent); _ -> badM "内容のストリーム")
+        [(k, o) | (k, o, Content) <- objs]
+  uses <- objectUses doc values
   -- the content streams decoded, checked and with DeviceRGB replaced; a stream named more than once is written once (docs/adr ADR 0051)
   shared <- reusedContent doc resources parts
   (pageBytes, pageChanged, pageUses, inner) <- case shared of
@@ -1116,11 +1124,6 @@ importM n bytes = do
       pure (b, ch, us, [])
   -- the key of an inner Form, -(k * 2^32 + n), holds a stream number k below 2^31 only (docs/adr ADR 0259)
   mapM_ (\(k, _) -> when (k > maxInnerFormStream) (liftR (Left (StreamNumberTooLarge k)))) inner
-  rewritten <-
-    Map.fromList
-      <$> traverse
-        (\(k, o) -> case o of VStream dict body -> (k,) <$> (decodedObject doc k dict body >>= liftR . rewriteContent); _ -> badM "内容のストリーム")
-        [(k, o) | (k, o, Content) <- objs]
   let contentNeeds = pageChanged || any (\(_, c, _) -> c) (Map.elems rewritten)
       objectNeeds = any hasDeviceRgb values
       withProfile = contentNeeds || objectNeeds
@@ -1164,7 +1167,6 @@ importM n bytes = do
                     _ -> []
                in ODict (filter ((/= "XObject") . fst) kv <> [("XObject", ODict (xobjects <> calledForms))])
         other -> other
-  uses <- objectUses doc values
   pure
     ImportedPage
       { ipFile = sha256 bytes,

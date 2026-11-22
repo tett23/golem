@@ -1,6 +1,6 @@
 # ADR 0177: 注の印の文字スタイルと数字の表記
 
-ステータス: 採択→見出し、図版、コードブロック、ノンブルの表せない番号は [ADR 0213](0213-numbers-the-number-formats-cannot-write.md)、`mark-size` と文字スタイルの `size` のエラーの範囲とメッセージは [ADR 0214](0214-mark-size-conflict-names-the-style-that-writes-the-size.md)
+Status: superseded [{"by":["docs/adr/0213-numbers-the-number-formats-cannot-write.md"],"part":"見出し、図版、コードブロック、ノンブルの表せない番号"},{"by":["docs/adr/0214-mark-size-conflict-names-the-style-that-writes-the-size.md"],"part":"`mark-size` と文字スタイルの `size` のエラーの範囲とメッセージ"}]
 
 ## 文脈
 

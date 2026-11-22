@@ -52,6 +52,7 @@
 | [code: note-symbols] | [code: *]、[code: †]、[code: ‡]、[code: ¶]、[code: §]、[code: ‖]、[code: #] の順の記号です。7 までです。 |
 
 波括弧そのものは、[code: \\{] と [code: \\}] のようにバックスラッシュを付けて書き、バックスラッシュそのものは [code: \\\\] と書きます。
+[code: \[printings\]] の [code: format] では、[code: {{] と [code: }}] とも書けます。
 TOML の基本の文字列（[code: "..."]）ではバックスラッシュを重ねる必要があるので、リテラル文字列（[code: '...']）で書くと読みやすくなります。
 
 @nonumber
@@ -59,12 +60,14 @@ TOML の基本の文字列（[code: "..."]）ではバックスラッシュを�
 
 判型と組み方向です。
 PDF を作るには必須です。
-HTML と EPUB は [code: writing-mode] だけを使います。
+HTML と EPUB は組み方向を使い、自由な配置の段落の寸法を解決するときは版面の文字の大きさと行送りも使います。
+設定の組み合わせは、出力によらず検査します。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。英語の本の判型は [code: { width = "5.5in", height = "8.5in" }] のようにインチでも書けます。幅と高さに [code: zw] は使えません。 |
-| [code: binding] | [code: "left"] | 綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。 |
+| [code: layout] | [code: "facing"] | 見開きモードです。[code: "single"] は、綴じない資料の左右を全ページで固定します。 |
+| [code: binding] | 見開きモードは [code: "left"] | 見開きモードで綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。左右固定モードでは省きます。 |
 | [code: writing-mode] | [code: "horizontal"] | [code: "vertical"]（縦組み）か [code: "horizontal"]（横組み）です。 |
 | [code: bleed] | [code: "0mm"] | 塗り足しの幅です。[code: zw] は使えません。 |
 
@@ -73,7 +76,7 @@ HTML と EPUB は [code: writing-mode] だけを使います。
 
 版面です。
 PDF を作るには必須です。
-[code: columns] と [code: column-gap] のほかのキーも必須です。
+[code: columns]、[code: column-gap]、[code: alignment] のほかのキーは必須です。
 
 | キー | 意味 |
 |:---|:---|
@@ -82,8 +85,9 @@ PDF を作るには必須です。
 | [code: lines] | 一ページの行数です。段組みでは一段の行数です。 |
 | [code: columns] | 段数です。省くと 1 段です。2 以上にすると段組みになり、傍注と図版の回り込みは使えなくなります。 |
 | [code: column-gap] | 段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必須です。 |
-| [code: line-pitch] | 行送りです。文字の大きさ以上にします。 |
-| [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。 |
+| [code: line-pitch] | 版面の行送りです。文字の大きさ以上にします。 |
+| [code: alignment] | [code: "grid"]（既定）は格子への配置、[code: "free"] は段落ごとの行送りと寸法のアキを使う配置です。 |
+| [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。左右固定モードでは [code: gutter] の代わりに [code: left] または [code: right] のちょうど一方で、仕上がりの物理的な端から版面の同じ側の端までの距離を書きます。 |
 
 @nonumber
 ## [code: \[fonts.役割\]]
@@ -98,12 +102,18 @@ PDF を作るには必須です。
 Golem は、コンピューターに入っているフォントを探しません。
 フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G08004）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）は PDF に埋め込めないので、PDF が使う役割に書くとエラー（G08019）になります。
+TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] と [code: axes] で選んだ太さや幅に固定して PDF に埋め込みます。
+どちらも書かなければ、フォントの既定の太さや幅に固定します。
+フォントにない名前はエラー（G08110）、フォントにない軸はエラー（G08111）、軸の範囲の外の値はエラー（G08112）になります。
 
 | キー | 意味 |
 |:---|:---|
 | [code: ja] | 和文のフォントのファイルです。 |
 | [code: latin] | 欧文のフォントのファイルです。 |
-| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の仮名などを詰めて組みます。PDF では、括弧類、句読点、中点類には [code: palt] と [code: vpal] を当てません。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
+| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の仮名などを詰めて組みます。PDF では、[code: punctuation-proportional] が [code: true] でなければ、括弧類、句読点、中点類には [code: palt] と [code: vpal] を当てません。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
+| [code: punctuation-proportional] | 真偽値です。[code: true] にすると、PDF で括弧類、句読点、中点類にも、[code: features] や [code: proportional-metrics] で指定した [code: palt]（縦組みでは [code: vpal]）を当てます。当てた約物には、Golem が全角の字形の機能（[code: fwid]）を足しません。これだけでは機能を足しません。[code: kerning = "japanese-equal-width"] の文字は全角の送りのままです。既定は [code: false] です。 |
+| [code: instance] | 可変フォントの名前付きインスタンスの名前です。たとえば [code: "Bold"] で、フォントの Bold の太さで組みます。名前はフォントに書かれた英語の名前で、大文字と小文字を区別します。和文と欧文の両方のフォントに当たります。PDF だけが使います。 |
+| [code: axes] | 可変フォントの軸の座標です。[code: { wght = 650 }] のように、軸のタグと数を書きます。[code: instance] の座標より優先します。書かない軸は、[code: instance] の座標か、フォントの既定の座標になります。PDF だけが使います。 |
 
 @nonumber
 ## [code: \[character-styles.名前\]]
@@ -201,17 +211,21 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: indent] | すべての行の始まりの字下げです。既定は [code: "0zw"] です。 |
 | [code: first-line-indent] | 最初の行に [code: indent] へ加える字下げです。負の値はぶら下げになります。[code: indent] との和は 0 以上にします。既定は [code: "0zw"] です。 |
 | [code: end-indent] | すべての行の終わりの側の字下げです。縦組みでは地からの距離です。既定は [code: "0zw"] です。 |
-| [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
+| [code: align] | 行揃えです。[code: "left"]、[code: "center"]、[code: "right"]、[code: "left-justified"]、[code: "center-justified"]、[code: "right-justified"]、[code: "fully-justified"]、[code: "towards-spine"]、[code: "away-from-spine"] のどれかを書きます。縦組みでは [code: "left"] が天付き、[code: "right"] が地付きです。最後の二つは見開きモードの横組みの本でだけ書けます。既定は [code: "left-justified"] です。 |
+| [code: line-pitch] | [code: "auto"]（既定）は版面の行送りです。自由な配置では正の寸法も書けます。[code: zw] はその段落の文字の大きさを基準とします。 |
 | [code: line-breaks] | [code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [code: "join"] です。 |
-| [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。既定は [code: 0] です。 |
-| [code: space-before] | 段落の前に空ける行の数です。既定は [code: 0] です。 |
-| [code: space-after] | 段落の後に空ける行の数です。前の段落の [code: space-after] と次の段落の [code: space-before] は、大きいほうを取ります。既定は [code: 0] です。 |
+| [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに追加するアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。既定は [code: 0] です。 |
+| [code: space-before] | 段落の前の追加のアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。既定は [code: 0] です。 |
+| [code: space-after] | 段落の後の追加のアキです。0 以上の整数行を使い、自由な配置では 0 以上の寸法も書けます。前の段落の [code: space-after] と次の段落の [code: space-before] は、大きいほうを取ります。既定は [code: 0] です。 |
 | [code: aki-set] | 字間の空きを決めるアキ量のセットの名前です。[code: \[aki-sets.名前\]] で定義したものか、組み込みのセットを書きます。書かなければ [code: body] と同じセットです。 |
 | [code: line-adjustment] | 行に字が収まらないときの組み方です。[code: "pull-in-first"] は、約物の空きや語間を詰めて字を前の行に入れること（追い込み）を優先します。[code: "balanced"] は、詰める行と字間を空ける行を同じ基準で比べます。既定は [code: "pull-in-first"] です。 |
 | [code: stretch-limit] | 行の字間を空ける量の上限を、伸びの最大に対する千分率の整数で書きます。上限を超える分は行末に残します。既定は上限なしです。 |
 | [code: shrink-order] | 行を詰める空きの種類の順です。名前か、同じ段で詰める名前の配列を、使う順に配列で書きます。名前は [code: word-space]、[code: middle-dot]、[code: brackets]、[code: comma]、[code: full-stop]、[code: paragraph-start]、[code: japanese-western]、[code: between-characters] です。書かなかった種類は最後に使います。既定は [code: \["word-space", "middle-dot", \["brackets", "comma"\], "japanese-western"\]] です。 |
 | [code: stretch-order] | 行を空ける空きの種類の順です。書き方は [code: shrink-order] と同じです。既定は [code: \["word-space", "japanese-western", "between-characters"\]] です。 |
 | [code: regex-styles] | 正規表現に一致した文字に文字スタイルを当てる組の配列です。[code: { pattern = '\[0-9\]+', style = "bold" }] のように書きます。既定は [code: \[\]] です。 |
+| [code: next-style] | この段落スタイルの段落の次の段落に当てる段落スタイルの名前です。次の段落に [code: @style] を付けていなければ、その段落を、ここに書いた名前の段落スタイルで組みます。当たるのは次の一段落だけで、あいだにリストや見出しなどがあれば当たりません。既定はなしです。 |
+| [code: initial-style] | 段落の先頭の一字に当てる文字スタイルの名前です。既定はなしです。 |
+| [code: opening-indent] | 段落が始め括弧類で始まるときの字下げです。[code: "half"] にすると、最初の行の字下げから、文字の大きさの半分を引きます（0 より小さくはしません）。[code: "normal"] は字下げをそのまま使います。PDF にだけ当たります。既定は [code: "normal"] です。 |
 | [code: rule-before] | 段落の前に引く罫線です。罫線の表（次の表）か [code: false] を書きます。[code: false] は引き継いだ罫線を引きません。 |
 | [code: rule-after] | 段落の後に引く罫線です。書き方は [code: rule-before] と同じです。 |
 | [code: background] | 囲みの背景の色の名前です。[code: false] は引き継いだ背景を塗りません。既定はなしです。 |
@@ -221,6 +235,13 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: border-sides] | 枠を描く辺の配列です。[code: "before"]、[code: "after"]、[code: "start"]、[code: "end"] から書きます。既定は四つすべてです。 |
 | [code: padding] | 囲みの内側の余白です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0.5zw"] です。 |
 | [code: border-radius] | 囲みの角の丸みの半径です。[code: zw] は段落スタイルの文字の大きさを一字とします。既定は [code: "0pt"] です。 |
+
+段落スタイルには、番号と題のあいだに入れる文字列 [code: number-title-separator] も書けます。
+[code: caption] と、[code: caption] が [code: based-on] で引き継ぐ段落スタイル（既定では [code: body]）に書くと、図版、コードブロック、表のキャプションの区切りになります。
+ほかの段落スタイルに書いても、キャプションのほかには適用されません。
+[code: ""] にすると、番号のすぐ後に題が続きます。
+番号か題がなければ、区切りは入れません。
+書かなければ、日本語の本では全角の空白、ほかの言語の本では半角の空白を入れ、番号の書式が空白で終われば何も入れません。
 
 段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]、[code: punctuation-width]、[code: features] も書けます。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
@@ -238,8 +259,9 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 | [code: end-indent] | なし | 段の行の終わりから罫線の終わりまでの距離です。負の値は段の外に出します。 |
 | [code: keep-in-column] | [code: true] | ページの頭と終わりの罫線を段の中に収めるかです。[code: false] にすると余白に出します。 |
 
-間隔は、段落の行が載る行の格子の字面から測ります。
-罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、外側の空きは、罫線の領域が行の格子の行の数にそろうまで広がります。
+間隔は、格子への配置では段落の行が載る格子の字面から、自由な配置では行ボックス内の文字の仮想ボディから測ります。
+罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、外側の空きは、格子への配置では罫線の領域が行の格子の行の数にそろうまで広がります。
+自由な配置では、必要な追加の長さだけを取り、格子の単位には切り上げません。
 間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: in]、[code: zw] のどれでも書けます。
 間隔の [code: zw] は、PDF でも HTML と EPUB でも、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
 罫線が仕上がりの線か段間の半分を超えると、版面を計算できないエラー（G07001）です。
@@ -264,13 +286,15 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 - [code: sidenote]：傍注の本文です。[code: caption] と同じく、字下げは 0 です。
 - [code: table]：表のセルです。[code: caption] と同じく、字下げは 0 です。既定では本文と同じ書体と大きさで組みます。表に [code: @style] を付けなかったときに当てます。本文より小さい文字の表にするなら、ここに [code: size] を書きます。
 
-[code: caption]、[code: sidenote]、[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
+[code: table] には、0 でない [code: indent]、[code: first-line-indent]、[code: end-indent] を書けません。
 書くとエラー（G03006）です。
 0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
 キャプションと傍注の本文と表のセルに適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
+PDF のキャプションと傍注の本文には、[code: caption] と [code: sidenote] の字下げ、[code: space-between]、[code: line-breaks] も適用されます。
+キャプションには、[code: caption] の [code: number-title-separator] も適用されます。
 表のセルには、[code: @style] で付けた段落スタイルのこれらのキーを当て、字下げなどのほかのキーは当てません。
 PDF では、表の行がセルの全体を収める最も少ない行を占めるので、小さい文字の表も行の格子を崩しません。
-[code: line-breaks]、[code: space-between]、[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
+[code: space-before]、[code: space-after]、[code: align] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
 段落スタイル [code: code] に書けるキーは、次の六つと、[code: border-style]、[code: border-sides]、[code: border-radius] だけです。
@@ -300,10 +324,16 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | [code: font] | フォントの役割の名前です。書かなければ本文の書体です。 |
 | [code: size] | 文字の大きさです。書かなければ、1 の階層は [code: "1.5zw"]、2 の階層は [code: "1.25zw"]、3 から 6 の階層は [code: "1zw"] です。 |
 | [code: lines] | 見出しが占める行の数（行取り）の最小の値で、1 以上の整数です。書かなければ、日本語の本では 1 の階層から順に 5、3、2、ほかの言語の本では 6、4、2 で、4 から 6 の階層はどちらも 1 です。既定の値は版面の行数に切り詰めます。書いた値が版面の行数を超えるとエラー（G07024）です。 |
-| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
+| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。[code: number-title-separator] を書かなければ、番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
 | [code: page-break] | [code: "recto"] にすると、その見出しを奇数ページから始めます。既定は [code: "any"] です。 |
 | [code: rule-before] | 見出しの前に引く罫線です。段落スタイルと同じ表を書きます。[code: length] と字下げの [code: zw] は見出しの文字の大きさを、間隔の [code: zw] は版面の文字の大きさを一字とし、間隔は見出しが占める行の領域から測ります。 |
 | [code: rule-after] | 見出しの後に引く罫線です。見出しの下の罫線に使います。 |
+
+[code: number-title-separator] には、見出しの番号と題のあいだに入れる文字列を書きます。
+目次、柱の [code: heading.<階層>.numbered]、PDF のしおりも、この区切りを使います。
+[code: ""] にすると、番号のすぐ後に題が続きます。
+書かなければ、[code: number] の行で説明した区切り（日本語の本では全角の空白、ほかの言語の本では半角の空白）が入ります。
+段落スタイル [code: body] の区切りは引き継ぎません。
 
 柱に出す見出しは、ここではなく [code: \[masters.名前\]] の [code: running-head] で決めます。
 
@@ -358,11 +388,14 @@ PDF では、表の行がセルの全体を収める最も少ない行を占め�
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: placement] | [code: "page-foot"] | PDF の注の位置です。[code: "page-foot"]（ページの下）か [code: "chapter-end"]（マニフェストの章の終わり）を書きます。章の終わりの一覧の見出しは、日本語の本では「注」、ほかの言語の本では「Notes」に決まっています。HTML、EPUB、プレーンテキストは、値によらず章の終わりにまとめます。 |
-| [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選びます。 |
+| [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）、[code: "page"]（PDF のページごと）から選びます。 |
 | [code: mark-format] | [code: "*{n}"] | PDF の注の印の書式です。番号の差し込み [code: {n}]（算用数字）か [code: {n:<表記>}] をちょうど一つ書きます。表記の名前は「寸法と番号の書式」の表のとおりです。注の本文の先頭の印にも使います。番号の傍注の印は番号だけです。表記で表せない番号の注があるとエラーになります。HTML と EPUB では、注へのリンクの文字が番号の表記になります。 |
 | [code: mark-style] | [code: "note-mark"] | PDF の本文の注の印と、番号の傍注の印に当てる文字スタイルの名前です。文字スタイルのどのキーも当たります。組み込みの [code: note-mark] は [code: size = "0.5zw"] です。 |
 | [code: body-mark-style] | なし | PDF の注の本文の先頭の印に当てる文字スタイルの名前です。なければ注の本文の文字のまま組みます。 |
-| [code: mark-size] | なし | 廃止予定です。書くとお知らせ（G03117）が出ます。本文の注の印の文字スタイルの [code: size] として読みます。組み込みの文字スタイル [code: note-mark] の [code: size] に書き換えます。 |
+| [code: mark-shape] | なし | [code: "flat"] だけを書けます。縦組みの PDF の注の印の漢数字（表記 [code: kanji] と [code: kanji-digits]）を、行の方向に半分に縮めた平字で組みます。本文の印と注の本文の先頭の印の両方に当たり、番号の前後の文字と算用数字は縮みません。 |
+| [code: body-style] | なし | PDF のページの下の脚注と章の終わりの注の本文に当てる段落スタイルの名前です。なければ本文の書体と版面の文字の大きさで組みます。 |
+| [code: heading-style] | なし | PDF の章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。なければ 2 の階層の見出しの書体と大きさで組みます。行取りは変わりません。 |
+| [code: mark-size] | なし | 使えません（G03253）。本文の注の印の大きさは、[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書きます。 |
 
 @nonumber
 ## [code: \[notes.rule\]]
@@ -415,7 +448,7 @@ HTML、EPUB、プレーンテキストには線を出しません。
 | [code: width] | （必須） | 傍注の領域の幅です。 |
 | [code: gap] | （必須） | 版面と傍注の領域のあいだの空きです。 |
 | [code: marker] | [code: "number"] | 本文の側の印です。[code: "number"]（番号）、[code: "symbol"]（※）、[code: "none"]（なし）から選びます。 |
-| [code: side] | [code: "outside"] | 傍注の領域を置く側です。今は [code: "outside"]（小口の側）だけを書けます。 |
+| [code: side] | 見開きモードは [code: "outside"] | 傍注の領域を置く側です。[code: "outside"] は小口の側、[code: "left"] と [code: "right"] は物理的な左右です。左右固定モードでは左右のどちらかを必ず明記します。 |
 
 @nonumber
 ## [code: \[figures\]]
@@ -479,6 +512,22 @@ string = "code-st"
 | [code: leader] | [code: "dots"] | PDF の目次のリーダーです。[code: "dots"]（点線）か [code: "none"]（なし）です。 |
 
 @nonumber
+## [code: \[printings\]]
+
+奥付の発行の履歴（[code: @printings]）の書式です（「[ref-title colophon]」）。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| [code: format] | なし | 発行の履歴の一行の書式です。省くと「2026年10月16日　初版第1刷発行」の形で組み、日本語の本でだけ使えます。 |
+
+書式には、[code: {year}]（年）、[code: {month}]（月）、[code: {day}]（日）、[code: {date}]（「2026-10-16」の形の日付）、[code: {edition}]（版の番号）、[code: {printing}]（刷の番号）を書けます。
+数は算用数字で組み、縦組みでも漢数字にしません。
+書式の文字と空白は、書いた順のまま段落に入ります。
+文字としての波括弧は [code: {{] と [code: }}] で書きます。
+ほかの書式と同じく、[code: \\{] と [code: \\}] とも書けます。
+表にない欄、空の [code: {}]、対にならない波括弧、誤ったバックスラッシュ（文字の [code: \\] は [code: \\\\] と書きます）、改行を書くと、エラー（G03006）になります。
+
+@nonumber
 ## [code: \[index\]]
 
 索引の段組みと見出しです。
@@ -501,7 +550,7 @@ HTML と EPUB には適用されません。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: enabled] | [code: true] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。 |
+| [code: enabled] | 見開きモードは [code: true]、左右固定モードは [code: false] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。左右固定モードで [code: true] を書くとエラーになります。 |
 | [code: pages] | [code: "unnumbered"] | 入れるページです。[code: "unnumbered"] はノンブルを組まないページ（白ページ、マスターページのないページ、[code: folio] のないマスターページのページ）、[code: "all"] はすべてのページです。 |
 | [code: size] | [code: "6pt"] | 数字の大きさです。 |
 | [code: gutter] | [code: "1.5mm"] | ノドの仕上がりの線から、数字の列の中心までの距離です。 |
@@ -530,7 +579,7 @@ PDF、HTML、EPUB、プレーンテキストのどれにも適用されます。
 [code: {n:<表記>}] の表記の名前は「寸法と番号の書式」の表のとおりです。
 波括弧そのものは、[code: \\{] と [code: \\}] と書きます。
 
-以前の書き方の [code: {{] と [code: }}]、一字の見本の差し込み（[code: {1}]、[code: {一}]、[code: {①}]、[code: {a}]、[code: {A}]、[code: {i}]、[code: {I}]、[code: {ア}]、[code: {イ}]）は、今も同じ意味に読みますが、廃止予定のお知らせ（G03114、G03115）が出ます。
+以前の書き方の [code: {{] と [code: }}]、一字の見本の差し込み（[code: {1}]、[code: {一}]、[code: {①}]、[code: {a}]、[code: {A}]、[code: {i}]、[code: {I}]、[code: {ア}]、[code: {イ}]）は使えず、書くとエラー（G03250、G03251）になります。
 見本の差し込みは、[code: {n:arabic}]、[code: {n:kanji}]、[code: {n:circled}]、[code: {n:lower-alpha}]、[code: {n:upper-alpha}]、[code: {n:lower-roman}]、[code: {n:upper-roman}]、[code: {n:aiueo}]、[code: {n:iroha}] に書き換えます。
 
 @nonumber
@@ -610,9 +659,12 @@ PDF でだけ有効です。
 |:---|:---|
 | [code: running-head] | 柱です。[code: { position = "top-outside", content = "heading.1.short" }] のように、位置と内容を書きます。左右のページで変えるときは、[code: content] の代わりに [code: even]（偶数ページ）と [code: odd]（奇数ページ）の両方を書きます。書かなければ柱を組みません。 |
 | [code: folio] | ノンブルです。[code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
+| [code: character-style] | [code: running-head] と [code: folio] の中に書くキーです。柱、ノンブルの文字に当てる文字スタイルの名前を、[code: { position = "bottom-outside", format = "{n}", character-style = "folio" }] のように書きます。この例の [code: folio] は、[code: \[character-styles.folio\]] に定義した文字スタイルです。書かなければ、本文の書体と版面の文字の大きさで組みます。柱とノンブルには別々の文字スタイルを指定でき、左右のページの柱には同じ文字スタイルを当てます。 |
 
-位置には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
-[code: top] は天、[code: bottom] は地、[code: outside] は小口の側、[code: inside] はノドの側、[code: center] は中央です。
+位置には、[code: top-] または [code: bottom-] に [code: outside]、[code: inside]、[code: center]、[code: left]、[code: right] を続けた値を書きます。
+左右固定モードでは [code: inside] と [code: outside] を使えません。
+[code: top] は天、[code: bottom] は地、[code: outside] は小口の側、[code: inside] はノドの側、[code: center] は版面の左右の中央です。
+[code: left] と [code: right] は版面の物理的な左端と右端に、それぞれ左揃えと右揃えで置きます。
 
 柱の内容には、次のどれかを書きます。
 [code: <階層>] には見出しの階層の数を、1 から 6 で書きます。
@@ -634,14 +686,14 @@ PDF でだけ有効です。
 | [code: {heading.<階層>.numbered}] | 番号と題を並べたものです。[code: "heading.<階層>.numbered"] と同じです。 |
 | [code: {heading.<階層>.number}] | 見出しの番号だけです。番号のない見出しでは値がありません。 |
 | [code: {meta.キー}] | [code: manifest.toml] の [code: \[metadata\]] の値です。キーは [code: title]、[code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] です。 |
-| [code: {set.名前}] | そのページの章のファイルで [code: set] した変数です。 |
+| [code: {set.名前}] | そのページの章のファイルで [code: @set] した変数です。 |
 | [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... as 名前空間] で取り込んだ変数です。 |
 
 見出しの差し込みの末尾には [code: .last] を付けられます。
 差し込みの値がない行は描きません。
 差し込みの末尾に [code: ?] を付けると、値がないときに空になり、行の前後の空白（半角と全角）を取り除きます。
 [code: {] と [code: }] そのものは [code: \\{] と [code: \\}] と書きます。
-以前の書き方の [code: {{] と [code: }}] は、今も同じ意味に読みますが、廃止予定のお知らせ（G03116）が出ます。
+以前の書き方の [code: {{] と [code: }}] は使えず、書くとエラー（G03252）になります。
 柱の行が版面の幅を超えると警告（G07051）が出ます。
 行が多すぎてページからはみ出すとエラー（G07052）になります。
 

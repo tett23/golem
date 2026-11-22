@@ -1,6 +1,6 @@
 # ADR 0283: 両用の字の役割と語の頭のアポストロフィを、インラインの境目をまたいで決める
 
-ステータス: 採択→引用の印で探すのをやめることは [ADR 0298](0298-read-the-text-of-a-citation-mark-for-characters-of-both-scripts.md)
+Status: superseded [{"by":["docs/adr/0298-read-the-text-of-a-citation-mark-for-characters-of-both-scripts.md"],"part":"引用の印で探すのをやめること"}]
 
 ## 文脈
 

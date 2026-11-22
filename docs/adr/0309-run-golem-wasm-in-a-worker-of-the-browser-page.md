@@ -1,6 +1,6 @@
 # ADR 0309: ブラウザのページで golem.wasm を Worker の中で動かす
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

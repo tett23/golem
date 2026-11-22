@@ -1,6 +1,6 @@
 # ADR 0036: 文書の表記を textlint で検査する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

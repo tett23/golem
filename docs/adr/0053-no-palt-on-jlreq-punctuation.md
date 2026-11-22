@@ -1,6 +1,6 @@
 # ADR 0053: `palt` と `vpal` を、JLReq が空きを決める約物に当てない
 
-ステータス: 採択→全角でない字形の約物の箱と既定の `fwid` は [ADR 0302](0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md)
+Status: superseded [{"by":["docs/adr/0302-full-width-glyphs-for-punctuation-and-boxes-for-narrower-ones.md"],"part":"全角でない字形の約物の箱と既定の `fwid`"}]
 
 ## 文脈
 

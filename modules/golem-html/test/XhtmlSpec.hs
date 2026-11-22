@@ -60,6 +60,7 @@ cfg0 =
       hcRubyMonoAlign = "center",
       hcRubyGroupAlign = "space-between",
       hcRubyBaseSpacing = "center",
+      hcRubyReadingStyle = Nothing,
       hcBreakKinds = Set.empty,
       hcNoBreak = False,
       hcLists = Nothing,
@@ -87,6 +88,7 @@ bookOf bs =
       bookChapterOf = [],
       bookChannels = [],
       bookChannelDecls = Map.empty,
+      bookTitleSeparators = Map.empty,
       bookImages = Map.empty
     }
 
@@ -291,11 +293,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -303,7 +305,37 @@ alignSpaceLines cfg = [l | l <- cssLines "" cfg, not (".align-" `T.isPrefixOf` l
 
 alignSpaceTests :: [TestTree]
 alignSpaceTests =
-  [ testCase "the defaults write no rule" $
+  [ testCase "root ADR 0397 A3: physical pitch and spacing are emitted independently" $ do
+      let ps = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 65536 262144 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "dialogue" ps}
+      assertBool (show rendered) ("p.ps-dialogue { line-height: 18pt; margin-block: 0; }" `elem` rendered)
+      assertBool (show rendered) ("p.ps-dialogue + p.ps-dialogue { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "root ADR 0397 A3: unequal styles use the larger absolute gap" $ do
+      let a = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 393216 0)}
+          b = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1048576 262144 0 0)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.fromList [("a", a), ("b", b)]}
+      assertBool (show rendered) ("p.ps-a + p.ps-b:not(.ps-a) { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "root ADR 0397 A3: zero physical gap overrides browser paragraph margins" $ do
+      let ps = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 0)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "dialogue" ps}
+      assertBool (show rendered) ("p.ps-dialogue { line-height: 18pt; margin-block: 0; }" `elem` rendered)
+      assertBool (show rendered) ("p.ps-dialogue + p.ps-dialogue { margin-block-start: 0; }" `elem` rendered),
+    testCase "root ADR 0397 A3: body spacing does not select other paragraph styles" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "body" body}
+      assertBool (show rendered) ("p:where(:not([class])) + p:where(:not([class])) { margin-block-start: 6pt; }" `elem` rendered)
+      assertBool (show rendered) ("p + p { margin-block-start: 6pt; }" `notElem` rendered),
+    testCase "root ADR 0397 A3: note interiors retain browser line height" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "body" body}
+      assertBool (show rendered) ("section.notes aside p { line-height: normal; }" `elem` rendered),
+    testCase "root ADR 0397 A3: file-local body pitch resets margins without matching styled paragraphs" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          local = HtmlLocalStyles Map.empty (Map.singleton "body" body) Nothing Nothing Map.empty
+          rendered = cssLines "" cfg0 {hcLocalStyles = Map.singleton fidA local}
+      assertBool (show rendered) (any (T.isInfixOf "margin-block: 0; line-height: 18pt;") rendered)
+      assertBool (show rendered) ("body.file-1 p:where(:not([class])) + p:where(:not([class])) { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "the defaults write no rule" $
       alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)]} @?= [],
     testCase "the alignment of body when it is not the default, of another style when it is not that of body" $ do
       let centre = plainPara {hpsAlign = ["text-align: center"]}
@@ -458,56 +490,82 @@ tests =
         testCase "a swatch is a CSS rule with rgb()" $
           -- 255 × 0.2 = 51
           cssLines ".swatch-" cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))]} @?= [".swatch-accent { color: rgb(255, 51, 0); }"],
+        testCase "ADR 0363: the list marker alone takes the colour and size" $ do
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False (Just "2em")
+              cfg = cfg0 {hcSwatches = Map.singleton "accent" (0, 80, 100, 0), hcCharStyles = Map.singleton "accent" accent, hcLists = Just (HtmlLists ("•" :| []) (defaultNumberFormat False :| []) Nothing (Just "accent"))}
+          cssLines ":is(ol, ul)" cfg @?= [":is(ol, ul)[class^=\"list-\"] > li::marker { color: rgb(255, 51, 0); font-size: 2em; }"]
+          cssLines ":is(ol, ul)" cfg0 @?= [],
         testCase "a character style with a swatch has its rgb() colour" $
-          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False
+          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("term", term)]}
            in cssLines ".cs-term" cfg @?= [".cs-term { color: rgb(255, 51, 0); }"],
         -- the background and the padding of inline code (golem-driver ADR 0029)
         testCase "code with a background: background-color and padding-inline" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a style based on code with a background: the same two in its cs- rule" $
-          let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False
+          let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
            in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1 no reading style writes no rule for rt" $
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False Nothing
+              cfg = cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("accent", accent)]}
+           in cssLines "ruby > rt" cfg @?= [],
+        testCase "ADR 0369 I1: inv1_ruby_reading_style_case_2 a colour alone: the colour and half the size" $
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False Nothing
+              cfg = cfg0 {hcRubyReadingStyle = Just "accent", hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("accent", accent)]}
+           in cssLines "ruby > rt" cfg @?= ["ruby > rt { color: rgb(255, 51, 0); font-size: 0.5em; }"],
+        testCase "ADR 0369 I1: inv1_ruby_reading_style_case_3 a size: that size" $
+          let large = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] False (Just "8pt")
+              cfg = cfg0 {hcRubyReadingStyle = Just "large", hcCharStyles = Map.fromList [("large", large)]}
+           in cssLines "ruby > rt" cfg @?= ["ruby > rt { font-size: 8pt; }"],
+        testCase "ADR 0369 I1: the reading style is on rt alone, not on the base" $
+          let accent = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing Nothing [] False (Just "0.8em")
+              cfg = cfg0 {hcRubyReadingStyle = Just "accent", hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("accent", accent)]}
+           in [l | l <- cssLines "ruby" cfg, not ("ruby > rt " `T.isPrefixOf` l)] @?= cssLines "ruby" cfg {hcRubyReadingStyle = Nothing},
+        testCase "ADR 0369 I1: a local reading style inherits only character properties" $
+          let local = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] False Nothing
+              cfg = cfg0 {hcRubyReadingStyle = Just "reading", hcLocalStyles = Map.singleton fidA (HtmlLocalStyles (Map.singleton "reading" local) Map.empty Nothing Nothing Map.empty)}
+           in cssLines "body.file-1 ruby > rt" cfg
+                @?= ["body.file-1 ruby > rt { font-family: inherit; color: inherit; font-weight: inherit; font-style: inherit; font-size: 0.5em; }"],
         testCase "a file's code style without a background resets them: transparent and 0" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing Nothing [] False
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing Map.empty)]}
            in cssLines "body.file-1 code" cfg
                 @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: transparent; padding-inline: 0; }"],
         testCase "a file's code style with a background has its rgb() and padding" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing Map.empty)]}
            in cssLines "body.file-1 code" cfg
                 @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
         testCase "a file's character style that is not code has no background" $
-          let term = HtmlCharStyle Nothing False False Nothing noFeatures False (Just "code-bg") (Just "0.25em") Nothing [] False
+          let term = HtmlCharStyle Nothing False False Nothing noFeatures False (Just "code-bg") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("term", term)]) Map.empty Nothing Nothing Map.empty)]}
            in cssLines "body.file-1 .cs-term" cfg
                 @?= ["body.file-1 .cs-term { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; }"],
         testCase "a background swatch that is not defined writes no background-color" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "nowhere") (Just "0.25em") Nothing [] False
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "nowhere") (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
         -- a range that does not break (docs/adr ADR 0272)
         testCase "a character style that does not break: white-space: nowrap in its cs- rule" $
-          let nb = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] True
+          let nb = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing Nothing [] True Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("no-break", nb)]}
            in cssLines ".cs-no-break" cfg @?= [".cs-no-break { white-space: nowrap; }"],
         testCase "a soft hyphen stays as it is in the HTML (docs/adr ADR 0272)" $
           bodyA cfg0 (bookOf [para 0 [txt "in\xAD\&com"]]) @?= "<p>in\xAD\&com</p>\n",
         testCase "code without a background: padding-inline only" $
-          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em") Nothing [] False
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em") Nothing [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
            in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
         -- the OpenType features of a style (docs/adr/0268)
         testCase "features are one font-feature-settings" $
-          let sc = HtmlCharStyle Nothing False False Nothing noFeatures {hfOpenType = [("smcp", 1), ("liga", 0)]} False Nothing Nothing Nothing [] False
+          let sc = HtmlCharStyle Nothing False False Nothing noFeatures {hfOpenType = [("smcp", 1), ("liga", 0)]} False Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("sc", sc)]}
            in cssLines ".cs-sc" cfg @?= [".cs-sc { font-feature-settings: \"smcp\" 1, \"liga\" 0; }"],
         testCase "proportional-metrics adds palt to the end of the same declaration" $
-          let sc = HtmlCharStyle Nothing False False Nothing noFeatures {hfOpenType = [("smcp", 1), ("liga", 0), ("salt", 2)], hfProportional = Just True} False Nothing Nothing Nothing [] False
+          let sc = HtmlCharStyle Nothing False False Nothing noFeatures {hfOpenType = [("smcp", 1), ("liga", 0), ("salt", 2)], hfProportional = Just True} False Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("sc", sc)]}
            in cssLines ".cs-sc" cfg @?= [".cs-sc { font-feature-settings: \"smcp\" 1, \"liga\" 0, \"salt\" 2, \"palt\" 1; }"],
         testCase "a paragraph style's features are in its rule" $
@@ -515,17 +573,17 @@ tests =
               cfg = cfg0 {hcParaStyles = Map.fromList [("table-cell", ps)]}
            in assertBool (show (cssLines "p.ps-table-cell" cfg)) (any ("font-feature-settings: \"tnum\" 1;" `T.isInfixOf`) (cssLines "p.ps-table-cell" cfg)),
         testCase "a style without features has the CSS of before" $
-          let tight = HtmlCharStyle Nothing False False Nothing noFeatures {hfProportional = Just True} False Nothing Nothing Nothing [] False
+          let tight = HtmlCharStyle Nothing False False Nothing noFeatures {hfProportional = Just True} False Nothing Nothing Nothing [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("tight", tight)]}
            in cssLines ".cs-tight" cfg @?= [".cs-tight { font-feature-settings: \"palt\" 1; }"],
         -- superscript and subscript (docs/adr/0269)
         testCase "the built-in superscript and subscript are sup and sub without a class" $
-          let pos e = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing (Just e) [] False
+          let pos e = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing (Just e) [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("superscript", pos "sup"), ("subscript", pos "sub")]}
            in bodyA cfg (bookOf [para 0 [txt "m", CharStyle (at 1) "superscript" [txt "2"], txt "H", CharStyle (at 2) "subscript" [txt "2"], txt "O"]])
                 @?= "<p>m<sup>2</sup>H<sub>2</sub>O</p>\n",
         testCase "another style of a position is sup or sub with its class" $
-          let x = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing (Just "sup") [] False
+          let x = HtmlCharStyle Nothing False False Nothing noFeatures False Nothing Nothing (Just "sup") [] False Nothing
               cfg = cfg0 {hcCharStyles = Map.fromList [("x", x)]}
            in bodyA cfg (bookOf [para 0 [CharStyle (at 1) "x" [txt "2"]]]) @?= "<p><sup class=\"cs-x\">2</sup></p>\n",
         testCase "coloured text is a span with the class of its swatch" $
@@ -563,7 +621,12 @@ tests =
     testGroup "notes at the end of the chapter (golem-driver ADR 0026)" chapterNoteTests,
     testGroup
       "ruby"
-      [ testCase "group ruby is one rt between rp" $
+      [ testCase "root ADR 0379 I1: both readings, size, alignment, and outside kenten survive XHTML" $ do
+          let opts = defaultRubyOptions {roSide = RubyBoth, roSize = Just (RubySizeRelative (3 / 4)), roAlign = Just "start", roOtherKenten = [Just "dot"]}
+              seg = (RubySegment [Text (at 1) "漢"] (Just "かん")) {rsOtherReading = Just "K", rsOptions = opts}
+              html = bodyA cfg0 (bookOf [para 0 [Ruby (at 1) () [seg]]])
+          mapM_ (\piece -> assertBool (T.unpack piece) (piece `T.isInfixOf` html)) ["ruby-position:under", "ruby-position:over", "ruby-align:start", "font-size:0.75em", "かん", "kenten-dot", "text-emphasis-position:under left"],
+        testCase "group ruby is one rt between rp" $
           bodyA cfg0 (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢字"] (Just "かんじ")]]])
             @?= "<p><ruby>漢字<rp>（</rp><rt>かんじ</rt><rp>）</rp></ruby></p>\n",
         testCase "mono ruby has one rt per segment" $
@@ -740,13 +803,14 @@ tests =
     testCase "one page per source file, named .xhtml" $
       map fst (sitePages (renderXhtml cfg0 ft (bookOf []) {bookDocs = [Document fidA [], Document fidB []]})) @?= ["a.xhtml", "b.xhtml"],
     -- a round trip: an escape that drops or rewrites characters fails too (docs/adr/0066)
-    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $ property $ do
-      t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
-      let e = escapeXml t
-      unescapeXml e === t
-      T.filter (`elem` ("<>\"" :: String)) e === ""
-      -- every & starts one of the four references
-      filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
+    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $
+      property $ do
+        t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
+        let e = escapeXml t
+        unescapeXml e === t
+        T.filter (`elem` ("<>\"" :: String)) e === ""
+        -- every & starts one of the four references
+        filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
   ]
 
 -- | The references escapeXml writes, without their &.
@@ -810,7 +874,7 @@ blockTests =
       bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (OrderedList [ListItem Nothing [para 1 [txt "一"]], ListItem Nothing [para 2 [txt "二"]]])])
         @?= "<ol>\n<li>一</li>\n<li>二</li>\n</ol>\n",
     testCase "an item of more than one block has its blocks inside; lists inside take the class of their depth, up to the last marker" $
-      let lists = Just (HtmlLists ("・" :| ["◦"]) (defaultNumberFormat False :| []) Nothing)
+      let lists = Just (HtmlLists ("・" :| ["◦"]) (defaultNumberFormat False :| []) Nothing Nothing)
           ul n bs = Block (at n) Nothing Nothing (BulletList [ListItem Nothing bs])
           book = bookOf [ul 0 [para 1 [txt "a"], ul 2 [para 3 [txt "b"], ul 4 [para 5 [txt "c"]]]]]
        in bodyA cfg0 {hcLists = lists} book

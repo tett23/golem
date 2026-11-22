@@ -26,6 +26,7 @@ module Golem.Driver
     functionPaths,
     loadBibliography,
     pdfStructure,
+    manuscriptLines,
     pdfLeafTexts,
     pdfWithTree,
     pdfWithDests,
@@ -86,6 +87,7 @@ import Golem.Driver.Html
 import Golem.Driver.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
+import Golem.Driver.Verse (numberVerseDocument)
 import Golem.Driver.Version (golemVersion)
 import Golem.Emet (Handlers (..), Program)
 import Golem.Emet.Gm (filterOf, functionNamespaces)
@@ -112,7 +114,7 @@ import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
-import Golem.Typeset.FontProvider (cff2FontDiagnostics, golemFontProvider)
+import Golem.Typeset.FontProvider (golemFontProvider, pdfFontDiagnostics)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
@@ -256,7 +258,7 @@ evaluateProjectWith files overlay profile root = do
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
       let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
           styleText = fromRight Nothing styleRead
-          -- G03100: a zero indent of caption or sidenote (golem-driver ADR 0043)
+          -- G03100: a zero indent of table (golem-driver ADR 0043, docs/adr/0367)
           styleNoticeDiags = maybe [] (styleNotices styleFid) styleText
           synDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
@@ -349,7 +351,25 @@ assembleResults channels style manifest project projectDiags results
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
-       in (Just book {bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
+          -- the separators between numbers and titles, by file: a heading's from
+          -- its [headings.<l>], a caption's from the paragraph style caption (Golem ADR 0372)
+          separators =
+            Map.fromList
+              ( [ ((fid, Nothing), separator)
+                | (fid, r) <- Map.toList results,
+                  Just separator <- [paraStyle (withLocalStyles style (erStyles r)) (Just "caption") >>= psNumberTitleSeparator]
+                ]
+                  <> [ ((fid, Just l), separator)
+                     | fid <- Map.keys results,
+                       (l, h) <- Map.toList (stHeadings style),
+                       Just separator <- [hsNumberTitleSeparator h]
+                     ]
+              )
+          numberedDocs =
+            [ numberVerseDocument (maybe style (withLocalStyles style . erStyles) (Map.lookup fid results)) doc
+            | doc@(Document fid _) <- bookDocs book
+            ]
+       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: Files -> FilePath -> IO (Maybe Text)
 readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p
@@ -515,7 +535,7 @@ runningVars e =
       ImportGraph graph = projectImports project
       masterOf name = (name >>= \n -> (n,) <$> Map.lookup n masters) <|> (("body",) <$> Map.lookup "body" masters) <|> Map.lookupMin masters
       perFile (fid, name) = case (masterOf name, Map.lookup fid (evResults e)) of
-        (Just (mname, MasterDef (Just rh) _), Just r) ->
+        (Just (mname, MasterDef {mdRunningHead = Just rh}), Just r) ->
           let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
               lookupVar = \case
                 [v] -> Map.lookup v (erExports r)
@@ -708,10 +728,23 @@ assetRefs (A.File _ bs) = concatMap blk bs
           kw k = [t | A.Located _ (A.Keyword (A.Located _ k') v) <- args, k' == k, Just t <- [txt v]]
        in case name of
             "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
-            -- the first argument, and src= to be retired (docs/adr/0184)
-            "table" -> [(T.unpack p, UseTable) | p <- take 1 pos <> kw "src"]
-            "listing" -> [(T.unpack p, UseListing) | p <- take 1 pos <> kw "src"]
+            "table" ->
+              [ (T.unpack p, UseTable)
+              | not (any isSrc args),
+                [A.Located _ (A.Positional v)] <- [filter isPositional args],
+                Just p <- [txt v]
+              ]
+            "listing" ->
+              [ (T.unpack p, UseListing)
+              | not (any isSrc args),
+                [A.Located _ (A.Positional v)] <- [filter isPositional args],
+                Just p <- [txt v]
+              ]
             _ -> []
+    isSrc (A.Located _ (A.Keyword (A.Located _ "src") _)) = True
+    isSrc _ = False
+    isPositional (A.Located _ (A.Positional _)) = True
+    isPositional _ = False
     txt = \case
       A.Word t -> Just t
       A.StringLit t -> Just t
@@ -863,15 +896,18 @@ buildCore inMemory opts = do
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
               <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
+          -- G07128: reported, but it holds back neither the layout nor, in dev, the PDF (docs/adr/0389)
+          sidenoteDiags = if TargetPdf `elem` targets then pdfSidenoteIndents opts e diagFid else []
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optFiles opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
       let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
           locals = Map.elems (localStylesOf e)
-      -- G08019: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
+      -- G08019: CFF2 fonts, which the PDF cannot embed (golem-font ADR 0003), and G08110, G08111, G08112:
+      -- instances that are not in their fonts (Golem ADR 0358); golem check reports them too
       cff2Diags <-
         if TargetPdf `elem` targets
-          then cff2FontDiagnostics (optFiles opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
+          then pdfFontDiagnostics (optFiles opts) diagFid [(r, fr {frJa = mfilter (`Map.notMember` missing) (frJa fr), frLatin = mfilter (`Map.notMember` missing) (frLatin fr)}) | (r, fr) <- pdfFontRoles fileStyle locals]
           else pure []
       let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
@@ -882,6 +918,7 @@ buildCore inMemory opts = do
             evDiagnostics e
               <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
               <> maybe [] (chapterNoteDiagnostics (evStyle e) targets infos) (evBook e)
+              <> maybe [] (pageNumberingDiagnostics (evStyle e) targets) (evBook e)
       case evBook e of
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
@@ -893,13 +930,13 @@ buildCore inMemory opts = do
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (evStyle e) book
+                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (all (== TargetPdf) targets) (evStyle e) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
-        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing, bleed, Just targets)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags <> activeDiags <> outDiags)) infos written, pdf, bleed, Just targets)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> sidenoteDiags)) infos [], Nothing, bleed, Just targets)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
@@ -959,6 +996,17 @@ chapterNoteDiagnostics style targets infos book
   where
     gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
     pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
+
+{- | G03259 (docs/adr/0383): notes numbered per page, and a target without
+fixed pages (HTML, EPUB, plain text), which numbers them in the order of
+the book. Once, at the first note or sidenote of the book; none for a
+book without them.
+-}
+pageNumberingDiagnostics :: Style -> [Target] -> Book -> [Diagnostic]
+pageNumberingDiagnostics style targets book
+  | stNotesNumbering style /= NumberPerPage || not (any (`elem` targets) [TargetHtml, TargetEpub, TargetText]) = []
+  | otherwise =
+      take 1 [diagnostic "G03259" Warning sp "[notes] の numbering = \"page\" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります" | (_, _, sp) <- bookNoteSites book]
 
 data PreflightOptions = PreflightOptions
   { poRoot :: !FilePath,
@@ -1071,9 +1119,13 @@ targetFileDiagnostics fid style locals missing = \case
         let msg = if err == Missing then missingMsg else pathErrorMessage err
       ]
 
+-- | The roles that the PDF uses, with their files (Golem ADR 0358).
+pdfFontRoles :: Style -> [LocalStyles] -> [(Text, FontRole)]
+pdfFontRoles style locals = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
+
 -- | The font files of the roles the PDF uses.
 pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
-pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole {frJa = ja, frLatin = la}) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
 {- | G07002 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
 trim line and the bleed line would be drawn on top of each other. Only when
@@ -1205,8 +1257,9 @@ htmlConfig dev e book missing bib =
       hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
       hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
       hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+      hcRubyReadingStyle = rdReadingStyle ruby,
       hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ _ (ForcedBreak k) <- bs],
-      hcNoBreak = or [True | Document _ bs <- bookDocs book, Block _ _ _ (PageControl NoBreak) <- bs],
+      hcNoBreak = or [keepsPageBreak c | Document _ bs <- bookDocs book, Block _ _ _ (PageControl c) <- bs],
       -- only a book with [lists] changes the markers (golem-driver ADR 0013)
       -- the paragraph style code for pre (golem-driver ADR 0017)
       hcCode =
@@ -1229,7 +1282,7 @@ htmlConfig dev e book missing bib =
       hcLists =
         if stLists style == defaultListStyle
           then Nothing
-          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+          else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)) (lsMarkerStyle (stLists style))),
       -- the rules of headings (golem-driver ADR 0027)
       hcHeadingRules =
         Map.fromList
@@ -1336,8 +1389,9 @@ writePdfTarget inMemory opts e diagFid book bib = do
     Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
-      -- G08100 and G08103 are errors in prod and stop the PDF; the PDF of an earlier build goes too (docs/adr 0081, docs/adr/0268)
-      | hasErrors (map (adjustForProfile (optProfile opts)) (glyphs <> notices)) -> do
+      -- G08100, G08103, G07127 and G07128 are errors in prod and stop the PDF; the PDF of an earlier build goes too (docs/adr 0081, docs/adr/0268, docs/adr/0389)
+      -- G07128 is reported by buildCore, and only stops the PDF here
+      | hasErrors (map (adjustForProfile (optProfile opts)) (glyphs <> notices <> pdfSidenoteIndents opts e diagFid)) -> do
           cleanDir dir
           pure ([], notices <> fontNotice <> glyphs, Nothing)
       | otherwise -> do
@@ -1351,6 +1405,10 @@ writePdfTarget inMemory opts e diagFid book bib = do
         -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
         glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
 
+-- | G07128 of an evaluated project, as the PDF is set (docs/adr/0389).
+pdfSidenoteIndents :: BuildOptions -> Evaluated -> FileId -> [Diagnostic]
+pdfSidenoteIndents opts e diagFid = sidenoteIndentDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e))
+
 -- | The input of the PDF of an evaluated project.
 pdfInputOf :: BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> PdfInput
 pdfInputOf opts e diagFid book bib =
@@ -1358,6 +1416,25 @@ pdfInputOf opts e diagFid book bib =
       -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
       inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
    in PdfInput (optFiles opts) project (evStyle e) book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)) (projectVarTexts (manifestVars (projectManifest project))) (evStyleText e)
+
+-- | Evaluate and compose the body, without serializing or writing a PDF.
+manuscriptLines :: BuildOptions -> IO (Either (Map FileId SourceInfo, [Diagnostic]) ([Text], Integer))
+manuscriptLines opts = do
+  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
+  case ev of
+    Left failure -> pure (Left (pfSources failure, pfDiagnostics failure))
+    Right e -> do
+      let sources = withEvaluatedSources e (sourceInfos (evProject e))
+          failure ds = Left (sources, ds)
+      case evBook e of
+        Just book | not (hasErrors (evDiagnostics e)) -> do
+          (ds, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
+          if hasErrors ds
+            then pure (failure ds)
+            else do
+              result <- masterFlowText (optFonts opts) (pdfInputOf opts e (evStyleFile e) book bib)
+              pure (either failure Right result)
+        _ -> pure (failure (evDiagnostics e))
 
 {- | The structure tree of the PDF of a project as text (docs/adr ADR 0183),
 for the tests: what the PDF would be tagged with.

@@ -1,0 +1,12 @@
+# Jobs with no needs, for the tests of scripts/ci/ci-critical-path.sh
+# (docs/adr ADR 0392 I1)
+jobs:
+  changes:
+    steps:
+      - run: "true"
+  editors:
+    steps:
+      - run: "true"
+  ci:
+    steps:
+      - run: "true"

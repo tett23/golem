@@ -31,7 +31,7 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Golem.Font
+  exposed-modules:  Golem.Font Golem.Font.Cff
   build-depends:
     , array         >=0.5  && <0.6
     , base          >=4.20 && <4.21
@@ -88,7 +88,7 @@ test-suite golem-font-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CmapSpec ConcurrencySpec
+  other-modules:    CffSpec CmapSpec ConcurrencySpec InstanceSpec RandomFontSpec
   -- the number of the charmaps of FreeType, for CmapSpec only: not in the
   -- library (docs/adr/0238)
   include-dirs:     cbits/freetype/include
@@ -107,9 +107,12 @@ test-suite golem-font-test
     , base
     , bytestring
     , containers
+    , directory
     , golem-font
     , golem-test-support
     , hedgehog       >=1.4 && <1.6
+    , process
+    , SHA
     , tasty          >=1.4 && <1.6
     , tasty-hedgehog >=1.4 && <1.5
     , tasty-golden   >=2.3 && <2.4

@@ -1,5 +1,5 @@
 {- | EPUB 3.3 packaging over the XHTML output (golem-epub ADR 0001).
-Determinism of the zip container is deferred to v2.
+The same inputs produce the same bytes with the same build (Golem ADR 0361).
 -}
 module Golem.Epub
   ( EpubConfig (..),
@@ -15,13 +15,14 @@ import Codec.Archive.Zip
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (toLower)
+import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (Day, showGregorian)
 import Golem.Assemble
-import Golem.Assemble.Numbering (numberSeparator)
+import Golem.Assemble.Numbering (titleSeparator)
 import Golem.Html
 import Golem.Syntax.Span
 import System.FilePath (takeExtension, (</>))
@@ -127,7 +128,7 @@ navDocument cfg ft book =
         <> "#"
         <> escapeXml (teAnchor e)
         <> "\">"
-        <> maybe "" (\n -> escapeXml (n <> numberSeparator (epLanguage cfg) n)) (teNumber e)
+        <> maybe "" (\n -> escapeXml (n <> titleSeparator (epLanguage cfg) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators book)) n (foldMap inlineText (teTitle e)))) (teNumber e)
         -- the language spans stay, for assistive technologies (docs/adr ADR 0187)
         <> titleWithLanguages (teTitle e)
         <> "</a>"
@@ -142,7 +143,9 @@ navDocument cfg ft book =
 writeEpub :: FilePath -> FilePath -> EpubConfig -> FileTable -> Book -> XhtmlSite -> IO ()
 writeEpub root out cfg ft book site = do
   -- the images plugins made come from the book (docs/adr/0123)
-  assets <- mapM (\(o, src) -> (o,) <$> maybe (BS.readFile (root </> src)) pure (Map.lookup (T.pack src) (bookImages book))) (siteAssets site)
+  -- the assets go in by their output path, whatever order the site lists them in (Golem ADR 0361)
+  let orderedAssets = sortOn fst (siteAssets site)
+  assets <- mapM (\(o, src) -> (o,) <$> maybe (BS.readFile (root </> src)) pure (Map.lookup (T.pack src) (bookImages book))) orderedAssets
   let pages = map fst (sitePages site)
       others = "style.css" : map fst assets
       text p t = toEntry ("OEBPS" </> p) 0 (BL.fromStrict (TE.encodeUtf8 t))

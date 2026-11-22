@@ -1,6 +1,6 @@
 # ADR 0005: 浮動小数点数の桁あふれ
 
-ステータス: 採択→累乗の判定の順序と G02086 の累乗の上限は [golem-eval ADR 0006](0006-exact-power-limit-before-range.md)、整数から浮動小数点数への変換、整数どうしの `/`、累乗の丸めは [docs/adr ADR 0101](../../adr/0101-rational-numbers-in-expressions.md)
+Status: superseded [{"by":["docs/golem-eval/adr/0006-exact-power-limit-before-range.md"],"part":"累乗の判定の順序と G02086 の累乗の上限"},{"by":["docs/adr/0101-rational-numbers-in-expressions.md"],"part":"整数から浮動小数点数への変換、整数どうしの `/`、累乗の丸め"}]
 
 ## 文脈
 

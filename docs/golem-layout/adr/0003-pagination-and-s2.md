@@ -1,6 +1,6 @@
 # ADR 0003: 改ページ、脚注、ページ番号の解決
 
-ステータス: 採択→原稿の改ページは [docs/adr/0017](../../adr/0017-forced-page-breaks.md)、柱の内容の決め方は [golem-driver ADR 0014](../../golem-driver/adr/0014-running-heads.md)、改ページの単位を段にすることは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、図版の順序の規則は [golem-layout ADR 0015](0015-figure-order.md)、見出しが続くときの改ページは [golem-driver ADR 0032](../../golem-driver/adr/0032-default-heading-styles.md)、見出しの注の扱いは [golem-layout ADR 0013](0013-heading-footnotes.md)、改ページの手での制御は [docs/adr/0030](../../adr/0030-manual-page-break-control.md)、章末の注の置き場所は [golem-driver ADR 0026](../../golem-driver/adr/0026-chapter-end-notes.md)、見出しと用語の後の部分の量に注の本文を数えることは [ADR 0019](0019-keep-with-next-counts-footnotes.md)
+Status: superseded [{"by":["docs/adr/0017-forced-page-breaks.md"],"part":"原稿の改ページ"},{"by":["docs/golem-driver/adr/0014-running-heads.md"],"part":"柱の内容の決め方"},{"by":["docs/adr/0018-multi-column-layout.md"],"part":"改ページの単位を段にすること"},{"by":["docs/golem-layout/adr/0015-figure-order.md"],"part":"図版の順序の規則"},{"by":["docs/golem-driver/adr/0032-default-heading-styles.md"],"part":"見出しが続くときの改ページ"},{"by":["docs/golem-layout/adr/0013-heading-footnotes.md"],"part":"見出しの注の扱い"},{"by":["docs/adr/0030-manual-page-break-control.md"],"part":"改ページの手での制御"},{"by":["docs/golem-driver/adr/0026-chapter-end-notes.md"],"part":"章末の注の置き場所"},{"by":["docs/golem-layout/adr/0019-keep-with-next-counts-footnotes.md"],"part":"見出しと用語の後の部分の量に注の本文を数えること"},{"part":"自由な配置での実寸による本文配置と使用量","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

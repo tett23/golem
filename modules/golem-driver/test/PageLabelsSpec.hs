@@ -17,7 +17,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.PageLabel (PageLabel (..), pageLabelText)
-import Golem.Layout.Paginate (PageOut (..), labelPages, markPages)
+import Golem.Layout.Paginate (PageOutAt (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry, pageGeometry)
 import Golem.Pdf qualified as P
 import Golem.Project
@@ -123,12 +123,12 @@ pageLabelsTests =
         -- the table of contents: i for the preface, 1 for chapter 1
         map (boxText . tpNumber) (Map.elems (plTocPages pl)) @?= ["i", "1"]
         -- [ref-page]: the front page in lower-roman, the body page in Arabic numerals
-        let refs = labelPages (bookSections inp) (plPages pl)
+        let refs = labelPages (bookSections inp) (gridPages pl)
             textOf l = maybe "?" pageLabelText (Map.lookup l refs)
         (textOf "pre", textOf "body") @?= ("ii", "2")
         linesStarting "参照は" pl @?= ["参照は" <> textOf "pre" <> "と" <> textOf "body" <> "。"]
         -- the index: the pages of the marks of 前付け in the order of the book, the front page in lower-roman (the space after the comma is glue)
-        let marks = map pageLabelText (sortOn plIndex (Map.elems (markPages (bookSections inp) (plPages pl))))
+        let marks = map pageLabelText (sortOn plIndex (Map.elems (markPages (bookSections inp) (gridPages pl))))
         marks @?= ["ii", "2", "3"]
         [t | t <- linesStarting "前付け" pl, "　" `T.isInfixOf` t] @?= ["前付け　ii,3"],
       testCase "I5: in vertical text a label of no notation is in the notation of [numbers], one of lower-roman its letters" $ do
@@ -195,7 +195,7 @@ pageLabelsTests =
           style <- TIO.readFile (tmp </> "style.toml")
           createDirectoryIfMissing True (tmp </> "fonts")
           mapM_ (\f -> doesFileExist (tmp </> f) >>= \there -> if there then pure () else BS.writeFile (tmp </> f) "") (fontPaths style)
-          TIO.writeFile (tmp </> "common" </> "build-info.gm") "set edition = \"0.0.0\"\nset commit = \"0000000\"\nset uncommitted = \"\"\n"
+          TIO.writeFile (tmp </> "common" </> "build-info.gm") "@set edition = \"0.0.0\"\n@set commit = \"0000000\"\n@set uncommitted = \"\"\n"
           manifest <- TE.decodeUtf8 <$> BS.readFile (tmp </> "manifest.toml")
           assertBool "the preface in lower-roman" ("file = \"preface.gm\"\npage-numbering = { style = \"lower-roman\" }" `T.isInfixOf` manifest)
           assertBool "chapter 1 from 1" ("file = \"chapters/01-first-book.gm\"\npage-numbering = { style = \"arabic\", start = 1 }" `T.isInfixOf` manifest)
@@ -215,7 +215,7 @@ pageLabelsTests =
             hidden = hiddenFoliosOf inp pl
         -- the front matter of one page, the blank page 2, chapter 1 on page 3
         [(plIndex l, pageLabelText l) | l <- Map.elems labels] @?= [(1, "i"), (2, "ii"), (3, "1")]
-        [poBlank p | p <- sortOn poNumber (plPages pl)] @?= [False, True, False]
+        [poBlank p | p <- sortOn poNumber (gridPages pl)] @?= [False, True, False]
         Map.toList (Map.map (map fst) hidden) @?= [(1, "1"), (2, "2"), (3, "3")]
     ]
   where

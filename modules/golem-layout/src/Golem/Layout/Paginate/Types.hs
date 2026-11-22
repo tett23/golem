@@ -4,17 +4,23 @@ flows that go in and the columns of pages that come out.
 -}
 module Golem.Layout.Paginate.Types
   ( LineBox (..),
-    ColumnSet (..),
+    ColumnSet,
+    ColumnSetAt (..),
     NoteId (..),
     NoteBody (..),
-    Flow (..),
+    Flow,
+    FlowAt (..),
     Slotted (..),
-    PageOut (..),
+    PageOut,
+    PageOutAt (..),
     Unmet (..),
     AdjustLimit (..),
-    TableSegment (..),
-    BoxSegment (..),
-    RuledBody (..),
+    TableSegment,
+    TableSegmentAt (..),
+    BoxSegment,
+    BoxSegmentAt (..),
+    RuledBody,
+    RuledBodyAt (..),
     PlacedRule (..),
     HeadingBlock (..),
     Keep (..),
@@ -71,7 +77,9 @@ data Part = FirstPart | LastPart
 data StartOf = OfSection !Int | OfParagraph !SrcSpan
   deriving stock (Eq, Show)
 
-data Flow
+type Flow = FlowAt Int
+
+data FlowAt position
   = -- | a paragraph and how it is broken (docs/adr/0261)
     FParagraph !Keep [LineBox]
   | {- | a stanza of verse, a paragraph of line-breaks = "keep": its verse
@@ -81,12 +89,12 @@ data Flow
     -}
     FStanza !Keep [[LineBox]]
   | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
-    FHeading {fhLevel :: !Int, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
+    FHeading {fhLevel :: !Int, fhRecto :: !Bool, fhSpan :: !position, fhLines :: [LineBox]}
   | FDefTerm [LineBox]
   | -- | a figure with its caption, in grid lines
-    FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text], ffMarks :: ![SrcSpan]}
+    FFigure {ffId :: !Int, ffLines :: !position, ffLabels :: ![Text], ffMarks :: ![SrcSpan]}
   | -- | a wrapped figure and the shortened lines set beside it (ADR 0004)
-    FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwMarks :: ![SrcSpan], fwBeside :: [LineBox]}
+    FWrapped {fwId :: !Int, fwLines :: !position, fwLabels :: ![Text], fwMarks :: ![SrcSpan], fwBeside :: [LineBox]}
   | {- | a figure turned onto a page of its own (golem-driver ADR 0034): on
     the page if nothing is on it, else waiting with the figures sent on,
     at the start of a later page
@@ -102,11 +110,11 @@ data Flow
     (none without one), before the header row or, with 'ftCaptionBelow',
     after the last row (docs/adr/0262)
     -}
-    FTable {ftId :: !Int, ftSpaceBefore :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]], ftCaption :: ![LineBox], ftCaptionBelow :: !Bool}
+    FTable {ftId :: !Int, ftSpaceBefore :: !position, ftHeader :: ![LineBox], ftRows :: ![[LineBox]], ftCaption :: ![LineBox], ftCaptionBelow :: !Bool}
   | {- | empty grid lines, as between stanzas of verse (docs/adr ADR 0003);
     nothing at the top of a page
     -}
-    FSpace !Int
+    FSpace !position
   | -- | a forced break before what follows (docs/adr ADR 0017)
     FBreak !BreakKind
   | {- | a start before what follows (docs/adr/0260, docs/adr/0261): of a
@@ -132,7 +140,7 @@ data Flow
     -}
     FCode
       { fcGeometry :: !CodeGeometry,
-        fcCaption :: !Int,
+        fcCaption :: !position,
         fcFirst :: !Int,
         fcContinued :: !Bool,
         fcRows :: [LineBox]
@@ -151,20 +159,21 @@ data Flow
         frJoined :: !Bool,
         frGrid :: !RuleGrid,
         frNextOverhang :: !Sp,
-        frBody :: !RuledBody
+        frBody :: !(RuledBodyAt position)
       }
   | {- | paragraphs in one box (docs/adr/0271): each part of the box in a
     column takes 'fbBefore' grid lines before its first line and
     'fbAfter' after its last; the body holds paragraphs, stanzas and the
     spaces between them, broken as they are outside a box
     -}
-    FBoxed {fbId :: !Int, fbBefore :: !Int, fbAfter :: !Int, fbBody :: ![Flow]}
+    FBoxed {fbId :: !Int, fbBefore :: !position, fbAfter :: !position, fbBody :: ![FlowAt position]}
   | -- | the start of the index in its own columns (docs/adr ADR 0025)
-    FSwitchColumns !ColumnSet
+    FSwitchColumns !(ColumnSetAt position)
   | -- | the end of the index: the next page, in the columns of the page
     FRestoreColumns
   | -- | no page or column break between the flows around (docs/adr ADR 0030)
     FNoBreak !SrcSpan
+  | FNoBreakLines !SrcSpan !Int
   | -- | go to the next column unless this many grid lines are free
     FNeedLines !SrcSpan !Int
   | -- | change the grid lines of the current column
@@ -173,15 +182,17 @@ data Flow
     column; dropped at the top of a column
     -}
     FBlank !SrcSpan !Int
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 {- | What a ruled block holds (golem-driver ADR 0027): the lines of a
 paragraph, or a heading (recto, grid lines, lines) as 'FHeading'.
 -}
-data RuledBody
+type RuledBody = RuledBodyAt Int
+
+data RuledBodyAt position
   = RuledLines !Keep ![LineBox]
-  | RuledHeading {rhRecto :: !Bool, rhSpan :: !Int, rhLines :: ![LineBox]}
-  deriving stock (Eq, Show)
+  | RuledHeading {rhRecto :: !Bool, rhSpan :: !position, rhLines :: ![LineBox]}
+  deriving stock (Eq, Show, Functor)
 
 {- | A rule placed in a column (golem-driver ADR 0027): the block it
 belongs to, whether it is the rule before, and the place of the start of
@@ -194,7 +205,9 @@ data PlacedRule = PlacedRule {prId :: !Int, prBefore :: !Bool, prAt :: !Sp}
 {- | A set of columns (docs/adr ADR 0025): from which grid line of the
 page, how many columns, of which measure and gap.
 -}
-data ColumnSet = ColumnSet
+type ColumnSet = ColumnSetAt Int
+
+data ColumnSetAt position = ColumnSet
   { -- | the number of columns
     csColumns :: !Int,
     -- | the measure of a column (sp)
@@ -202,9 +215,9 @@ data ColumnSet = ColumnSet
     -- | the gap between columns (sp)
     csGap :: !Sp,
     -- | the grid line of the page where the columns start, from 0
-    csFirstLine :: !Int
+    csFirstLine :: !position
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 data Slotted
   = SLine !Int
@@ -230,35 +243,37 @@ data HeadingBlock = HeadingBlock
   deriving stock (Eq, Show)
 
 -- | One column of a page (docs/adr ADR 0018).
-data PageOut = PageOut
+type PageOut = PageOutAt Int
+
+data PageOutAt position = PageOut
   { poNumber :: !Int,
     -- | the column, from 0 in the order of 'pgColumns'
     poColumn :: !Int,
     poBlank :: !Bool,
     -- | grid line index and what starts there
-    poSlots :: ![(Int, Slotted)],
+    poSlots :: ![(position, Slotted)],
     -- | note id, first line of the body shown here, number of lines
     poFootnotes :: ![(NoteId, Int, Int)],
     poLabels :: ![Text],
     -- | the index marks placed on the page (golem-driver ADR 0007)
     poMarks :: ![SrcSpan],
     -- | the parts of tables on the page (golem-driver ADR 0008)
-    poTables :: ![TableSegment],
+    poTables :: ![TableSegmentAt position],
     -- | the set of columns the column belongs to (docs/adr ADR 0025)
-    poColumnSet :: !ColumnSet,
+    poColumnSet :: !(ColumnSetAt position),
     -- | the rules of paragraphs and headings in the column (golem-driver ADR 0027)
     poRules :: ![PlacedRule],
     -- | the grid lines of the column, changed by 'FAdjustLines' (docs/adr ADR 0030)
-    poLines :: !Int,
+    poLines :: !position,
     -- | the manual controls of page breaks not met in the column
     poUnmet :: ![Unmet],
     {- | the sections whose first page this is, in the order of the
     manifest, on the first column of the page (docs/adr/0260)
     -} poSections :: ![Int],
     -- | the parts of boxes in the column (docs/adr/0271)
-    poBoxes :: ![BoxSegment]
+    poBoxes :: ![BoxSegmentAt position]
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 -- | Why @page-lines was cut short (docs/adr ADR 0030).
 data AdjustLimit
@@ -284,6 +299,8 @@ data Unmet
     lines left in the column
     -}
     TallHeading !Int !Int !Int
+  | -- | The same overhang in free placement: heading length and remaining length in sp.
+    TallHeadingExtent !Int !Sp !Sp
   | -- | a keep-with-next not met: the span of the paragraph (docs/adr/0261)
     UnmetKeepNext !SrcSpan
   | -- | a footnote cannot make progress even in an empty column (Golem ADR 0353)
@@ -298,22 +315,26 @@ data Unmet
   deriving stock (Eq, Show)
 
 -- | The part of a table on a page, in grid lines.
-data TableSegment = TableSegment
+type TableSegment = TableSegmentAt Int
+
+data TableSegmentAt position = TableSegment
   { tsTable :: !Int,
-    tsFirst :: !Int,
+    tsFirst :: !position,
     -- | the last grid line of the header row; none for a table without one (golem-driver ADR 0031)
-    tsHeaderEnd :: !(Maybe Int),
-    tsLast :: !Int
+    tsHeaderEnd :: !(Maybe position),
+    tsLast :: !position
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)
 
 {- | The part of a box in a column (docs/adr/0271): the box, and the first
 and the last grid line it takes, the grid lines before its first line
 and after its last included.
 -}
-data BoxSegment = BoxSegment
+type BoxSegment = BoxSegmentAt Int
+
+data BoxSegmentAt position = BoxSegment
   { bsBox :: !Int,
-    bsFirst :: !Int,
-    bsLast :: !Int
+    bsFirst :: !position,
+    bsLast :: !position
   }
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Show, Functor)

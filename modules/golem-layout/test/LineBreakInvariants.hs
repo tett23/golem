@@ -38,6 +38,7 @@ module LineBreakInvariants
     pairForbidden,
     adjacentPairs,
     forbidPairs,
+    unstretchPairs,
     penalizePairs,
     withoutNumberUnits,
     numberUnitOf,
@@ -803,6 +804,21 @@ before.
 -}
 forbidPairs :: Bool -> Text -> [Item] -> [Item]
 forbidPairs vertical = penalizePairs (\a b -> if pairForbidden vertical a b then Just infPenalty else Nothing)
+
+{- | The items as root ADR 0362 changed B6 of golem-layout ADR 0049
+(root ADR 0396): between the boxes of each pair of 'adjacentPairs' that
+may not be broken in horizontal writing, the stretch of every glue made
+0, its width and its shrink kept. In vertical writing it changes only the
+pairs of two Arabic digits (B2): the glue of B3 and B4 has no stretch
+there already.
+-}
+unstretchPairs :: Text -> [Item] -> [Item]
+unstretchPairs text its = zipWith change [0 ..] its
+  where
+    kept = [(i1, i2) | (i1, i2, a, b) <- adjacentPairs text its, pairForbidden False a b]
+    change k it = case it of
+      Glue {} | any (\(i1, i2) -> k > i1 && k < i2) kept -> it {itemStretch = 0}
+      _ -> it
 
 {- | The items with the penalty given to the pairs of 'adjacentPairs' it
 gives one: between their boxes, every penalty under the infinite one made

@@ -31,6 +31,7 @@ module Golem.Typeset.Fonts
     withFeatures,
     punctuationPre,
     shapingOf,
+    shapingForFonts,
     normalTexts,
     thickRule,
     thinRule,
@@ -111,8 +112,9 @@ data LoadedFonts = LoadedFonts
     {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text; IO, since the
     subset is made as the PDF is written (docs/adr ADR 0034); a font that
-    cannot be embedded is a diagnostic (G08018, golem-pdf ADR 0011)
-    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO (Either Diagnostic P.Font),
+    cannot be embedded is its diagnostics (G08018, golem-pdf ADR 0011;
+    G08107, Golem ADR 0357; G08108 and G08109, Golem ADR 0390)
+    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO (Either [Diagnostic] P.Font),
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
     -} lfEmBoxCentral :: Int -> Rational,
@@ -125,6 +127,8 @@ data LoadedFonts = LoadedFonts
     {- | the features of a role in the normal form (docs/adr/0268); a role that
     is not loaded is the body role
     -} lfRoleFeatures :: Text -> [Text],
+    -- | whether a role lets palt and vpal on JLReq's punctuation (docs/adr ADR 0378)
+    lfPunctuationProportional :: Text -> Bool,
     -- | whether the GSUB or GPOS table of a face number lists a feature tag (docs/adr/0268)
     lfHasFeature :: Int -> Text -> Bool
   }
@@ -244,7 +248,7 @@ body role has no file, at the top of @fid@.
 bodyFontDiagnostics :: FileId -> Style -> [Diagnostic]
 bodyFontDiagnostics fid style
   | Map.null (stFonts style) = [err "style.toml に本文のフォントがありません。[fonts.body] を書いてください"]
-  | Just (FontRole Nothing Nothing _) <- Map.lookup body (stFonts style) = [err ("[fonts." <> body <> "] にフォントのファイルがありません")]
+  | Just (FontRole {frJa = Nothing, frLatin = Nothing}) <- Map.lookup body (stFonts style) = [err ("[fonts." <> body <> "] にフォントのファイルがありません")]
   | otherwise = []
   where
     body = bodyRole style
@@ -354,7 +358,7 @@ alone in the look of the run: a ligature of the font for two dashes is
 never used.
 -}
 dashShaped :: LoadedFonts -> Bool -> Look -> Char -> [Shaped]
-dashShaped fonts vertical look c = lfShape fonts (shapingOf (lfRoleFeatures fonts) vertical look c) (T.singleton c)
+dashShaped fonts vertical look c = lfShape fonts (shapingForFonts fonts vertical look c) (T.singleton c)
 
 {- | The ink of a glyph of a dash along the line, in em of the glyph
 (docs/adr ADR 0172): x of a horizontal glyph, and of a glyph turned in
@@ -367,9 +371,9 @@ dashInk fonts vertical g = do
   let (a, b) = if vertical && not (shTurned g) then (y0, y1) else (x0, x1)
   if b > a then Just (a, b) else Nothing
 
-{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at the
-kenten, and ruby in kenten, at the ruby. The PDF draws no kenten there;
-HTML and EPUB draw both.
+{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at
+that kenten. The PDF draws no kenten on the base; outside kenten instead
+marks each reading (root ADR 0379).
 -}
 kentenRubyNotices :: Book -> [Diagnostic]
 kentenRubyNotices book =
@@ -383,7 +387,7 @@ kentenRubyNotices book =
     sites :: Bool -> Inline -> [SrcSpan]
     sites inKenten = \case
       Kenten _ _ xs -> concatMap (sites True) xs
-      Ruby sp _ segs -> [sp | inKenten] <> concat [concatMap kentenIn b | RubySegment b _ <- segs]
+      Ruby _ _ segs -> concat [concatMap kentenIn b | RubySegment b _ <- segs]
       Color _ _ xs -> concatMap (sites inKenten) xs
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
       Link _ _ xs -> concatMap (sites inKenten) xs
@@ -578,7 +582,21 @@ look writes a width feature (docs/adr/0302).
 The first argument gives the features of a role.
 -}
 shapingOf :: (Text -> [Text]) -> Bool -> Look -> Char -> Shaping
-shapingOf roleFeatures vertical lk c
+shapingOf = shapingWith (const False)
+
+{- | How a character of a look is shaped with the loaded fonts: as
+'shapingOf' with the features of the roles, except that in a role whose
+punctuation-proportional is true palt and vpal stay on JLReq's punctuation,
+and fwid is not added to it when the palt (horizontal) or vpal (vertical)
+of its direction is on, unless its kerning is japanese-equal-width
+(docs/adr ADR 0378). Measuring and drawing both shape with it.
+-}
+shapingForFonts :: LoadedFonts -> Bool -> Look -> Char -> Shaping
+shapingForFonts fonts = shapingWith (lfPunctuationProportional fonts) (lfRoleFeatures fonts)
+
+-- | 'shapingOf' with whether a role lets palt and vpal on JLReq's punctuation (docs/adr ADR 0378).
+shapingWith :: (Text -> Bool) -> (Text -> [Text]) -> Bool -> Look -> Char -> Shaping
+shapingWith allowed roleFeatures vertical lk c
   | lookClass lk c == Western = Shaping (lkLatinFace lk) False (normalTexts (lkFeatures lk <> script <> ["-kern" | lkKerning lk == L.KernNone])) latinSpan
   | otherwise = Shaping (lkFace lk) vertical (normalTexts (lkFeatures lk <> script <> extra <> narrowed <> widened)) latinSpan
   where
@@ -597,13 +615,15 @@ shapingOf roleFeatures vertical lk c
     on t = maybe False (/= 0) (lookup t (reverse written))
     -- the full-width glyph, unless a width feature is written (docs/adr/0302)
     widened
-      | spaced && lkFullWidthPunctuation lk && not (any ((`elem` ["fwid", "hwid", "pwid", "twid", "qwid"]) . fst) written) = ["fwid"]
+      | spaced && lkFullWidthPunctuation lk && not (permitted && (on directionTag || lkProportional lk)) && not (any ((`elem` ["fwid", "hwid", "pwid", "twid", "qwid"]) . fst) written) = ["fwid"]
       | otherwise = []
     -- the characters of both scripts in a Latin span are Latin (docs/adr ADR 0187)
     latinSpan = maybe False (not . spanIsJapanese) (lkLang lk)
     spaced = punctSpace (lookClass lk c) /= (0, 0)
+    directionTag = if vertical then "vpal" else "palt"
+    permitted = allowed (lkFace lk) && lkKerning lk /= L.KernJapaneseEqualWidth
     proportional
-      | spaced = ["-palt", "-vpal"]
+      | spaced && not permitted = ["-palt", "-vpal"]
       | otherwise = [if vertical then "vpal" else "palt" | lkProportional lk]
     extra = case lkKerning lk of
       L.KernJapaneseEqualWidth -> ["-kern", "-vkrn", "-palt", "-vpal"]
@@ -618,7 +638,7 @@ punctuationPre :: LoadedFonts -> Bool -> Look -> Char -> Sp
 punctuationPre fonts vertical look ch =
   let size = lkSize look
       cls = lookClass look ch
-      a = zwToSp size (lfAdvance fonts (shapingOf (lfRoleFeatures fonts) vertical look ch) ch)
+      a = zwToSp size (lfAdvance fonts (shapingForFonts fonts vertical look ch) ch)
    in maybe (zwToSp size (fst (punctSpace cls))) (negate . snd) (narrowPunctuation cls size a)
 
 -- | The rules at the top and bottom of a table: 0.6pt (golem-driver ADR 0008).

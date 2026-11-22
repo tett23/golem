@@ -1,6 +1,6 @@
 # ADR 0307: wasm32 のテストのスイートに、走らせるごとの一時のディレクトリを `/tmp` として preopen する
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

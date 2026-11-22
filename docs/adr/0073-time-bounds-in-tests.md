@@ -1,6 +1,6 @@
 # ADR 0073: テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く
 
-ステータス: 採択→golem-pdf と golem-svg のテストの時間切れと `linearTime` は [ADR 0091](0091-cpu-time-limits-in-pdf-and-svg-tests.md)、golem-driver-test の時間切れは [ADR 0237](0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)、スイート全体の時間の上限は [ADR 0292](0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)
+Status: superseded [{"by":["docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md"],"part":"golem-pdf と golem-svg のテストの時間切れと `linearTime`"},{"by":["docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md"],"part":"golem-driver-test の時間切れ"},{"by":["docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md"],"part":"スイート全体の時間の上限"}]
 
 ## 文脈
 

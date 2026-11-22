@@ -15,7 +15,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, pageGeometry, typeAreaFor)
 import Golem.Length (Sp (..))
 import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
@@ -75,7 +75,7 @@ specimenGeometryTests =
         forM_ [specimensHorizontal, specimensVertical] $ \input -> withInput input $ \dir -> do
           (geom, pl) <- layoutOf dir
           v <- viewOf dir
-          assertBool (inputName input <> " has footnotes in its second columns") (any (\p -> poColumn p == 1 && not (null (poFootnotes p))) (plPages pl))
+          assertBool (inputName input <> " has footnotes in its second columns") (any (\p -> poColumn p == 1 && not (null (poFootnotes p))) (gridPages pl))
           assertNone (inputName input) (notesAwayFromMarks pl)
           assertNone (inputName input) (noteLinesOutOfColumns geom pl v)
           -- broken: the footnotes of each first column set in the column after it
@@ -270,7 +270,7 @@ paragraphRulesOffGrid geom v =
 notesAwayFromMarks :: PdfLayout -> [String]
 notesAwayFromMarks pl =
   [ show (nid, poNumber p, poColumn p)
-  | p <- plPages pl,
+  | p <- gridPages pl,
     (nid, 0, _) <- poFootnotes p,
     nid `notElem` marked p
   ]
@@ -284,7 +284,7 @@ as the layout gives it.
 noteLinesOutOfColumns :: PageGeometry -> PdfLayout -> View -> [String]
 noteLinesOutOfColumns geom pl v =
   [ show (n, c, length here, expected, map lvRect here)
-  | p <- plPages pl,
+  | p <- gridPages pl,
     let n = poNumber p
         c = poColumn p
         col = columnsFor geom n !! c
@@ -318,7 +318,7 @@ noteLinesOutOfColumns geom pl v =
       | otherwise = rectY (lvRect l) + rectH (lvRect l) <= rectY (lvRect t)
 
 -- | The footnotes of each first column moved to the column after it.
-shiftNotes :: [PageOut] -> [PageOut]
+shiftNotes :: [PageOutAt position] -> [PageOutAt position]
 shiftNotes ps =
   [ case poColumn p of
       0 -> p {poFootnotes = []}

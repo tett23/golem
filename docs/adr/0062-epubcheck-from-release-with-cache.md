@@ -1,6 +1,6 @@
 # ADR 0062: epubcheck を apt ではなく配布元の release から取り、キャッシュする
 
-ステータス: 採択
+Status: accepted
 
 ## 文脈
 

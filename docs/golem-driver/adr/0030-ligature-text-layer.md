@@ -1,6 +1,6 @@
 # ADR 0030: 合字のテキスト層
 
-ステータス: 採択→結合文字を基底の字と一つのクラスタに組むことは [golem-driver ADR 0036](0036-combining-characters.md)
+Status: superseded [{"by":["docs/golem-driver/adr/0036-combining-characters.md"],"part":"結合文字を基底の字と一つのクラスタに組むこと"}]
 
 ## 文脈
 

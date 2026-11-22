@@ -1,6 +1,6 @@
 # ADR 0189: 段落スタイルに行揃え、段落の前後のアキ、行の終わりの側の字下げを加える
 
-ステータス: 採択→見出しの先読みが空きの行を後の量に数えることは [ADR 0205](0205-rules-added-by-the-implementation-of-adr-0180.md)、ファイルの定義で改めた空きの HTML の規則は [ADR 0217](0217-html-spaces-of-paragraph-styles-redefined-in-files.md)、fully-justified の行分割、HTML の組の規則のセレクター、改ページの前とファイルの境の空きは [ADR 0211](0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md)
+Status: superseded [{"by":["docs/adr/0205-rules-added-by-the-implementation-of-adr-0180.md"],"part":"見出しの先読みが空きの行を後の量に数えること"},{"by":["docs/adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md"],"part":"ファイルの定義で改めた空きの HTML の規則"},{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"fully-justified の行分割、HTML の組の規則のセレクター、改ページの前とファイルの境の空き"},{"part":"自由な配置での寸法の段落間隔","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]},{"part":"左右固定モードでのノド基準の揃え","by":["docs/adr/0400-single-page-layout-with-fixed-left-and-right.md"],"kind":"supplement"}]
 
 ## 文脈
 

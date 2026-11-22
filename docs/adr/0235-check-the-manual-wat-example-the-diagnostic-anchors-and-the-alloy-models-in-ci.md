@@ -1,6 +1,6 @@
 # ADR 0235: マニュアルの wat の例、diagnostic の説明への節のリンク、Alloy のモデルを CI で確かめる
 
-ステータス: 採択→重いコマンドの毎晩の検査は [ADR 0242](0242-run-the-heavy-commands-of-the-alloy-models-every-night.md)
+Status: superseded [{"by":["docs/adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md"],"part":"重いコマンドの毎晩の検査"}]
 
 ## 文脈
 

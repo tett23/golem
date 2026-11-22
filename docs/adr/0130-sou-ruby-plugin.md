@@ -1,6 +1,6 @@
 # ADR 0130: 総ルビのプラグイン
 
-ステータス: 採択→diagnostic のコードは後ろの部分（`no-words`、`dict`、`unread`）を返すことは [ADR 0153](0153-sample-plugin-codes-are-tails.md)
+Status: superseded [{"by":["docs/adr/0153-sample-plugin-codes-are-tails.md"],"part":"diagnostic のコードは後ろの部分（`no-words`、`dict`、`unread`）を返すこと"}]
 
 ## 文脈
 

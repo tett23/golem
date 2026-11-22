@@ -1,6 +1,6 @@
 # ADR 0162: .gm から Emet の関数を使う
 
-ステータス: 採択
+Status: superseded [{"part":"区切りをブロック結果に許すことと区切り用関数の行アキ","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]}]
 
 ## 文脈
 
