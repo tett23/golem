@@ -14113,4 +14113,178 @@ theorem I1_caption_whole_grid_span {α : Type} (kind : α → CaptionItemKind)
       captionGridSpan body pitch size breaks.length := by
   rw [(I1_caption_assemble_with_empty_lines kind breaks source source 0 lines assembled).2]
 
+
+/-- Reverse predecessor history: every older break is strictly earlier. -/
+def CaptionHistoryOrdered : Nat → List (Nat × Nat) → Prop
+  | _, [] => True
+  | ceiling, (position,_) :: rest =>
+      position < ceiling ∧ CaptionHistoryOrdered position rest
+
+private theorem captionHistoryOrdered_mono (old new : Nat)
+    (history : List (Nat × Nat)) (ordered : CaptionHistoryOrdered old history)
+    (later : old ≤ new) : CaptionHistoryOrdered new history := by
+  cases history with
+  | nil => trivial
+  | cons head tail => exact ⟨by have := ordered.1; omega,ordered.2⟩
+
+def CaptionNodeValid (ceiling : Nat) (candidates : List Nat)
+    (node : CaptionActiveNode) : Prop :=
+  node.position ≤ ceiling ∧ node.lineCount = node.history.length ∧
+  CaptionHistoryOrdered node.position node.history ∧
+  (∀ entry ∈ node.history, entry.1 ∈ candidates)
+
+private theorem captionSuccessors_valid (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (candidates : List Nat) (candidate : position ∈ candidates)
+    (old : ∀ node ∈ actives, CaptionNodeValid position candidates node) :
+    ∀ node ∈ captionActiveSuccessors position flagged evaluate actives,
+      CaptionNodeValid (position+1) candidates node := by
+  induction actives with
+  | nil => simp [captionActiveSuccessors]
+  | cons head tail ih =>
+    have headOk := old head (List.Mem.head _)
+    have tailOk : ∀ node ∈ tail, CaptionNodeValid position candidates node :=
+      fun node member => old node (List.Mem.tail _ member)
+    simp only [captionActiveSuccessors]
+    split
+    · intro node member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · refine ⟨Nat.le_refl _,?_,?_,?_⟩
+        · simp only [List.length_cons]; exact congrArg Nat.succ headOk.2.1
+        · exact ⟨Nat.lt_succ_self _,
+            captionHistoryOrdered_mono head.position position head.history headOk.2.2.1 headOk.1⟩
+        · intro entry entryMember
+          simp only [List.mem_cons] at entryMember
+          rcases entryMember with rfl | prior
+          · exact candidate
+          · exact headOk.2.2.2 entry prior
+      · exact ih tailOk node later
+    · exact ih tailOk
+
+private theorem captionNodeValid_mono (old new : Nat) (candidates : List Nat)
+    (node : CaptionActiveNode) (valid : CaptionNodeValid old candidates node)
+    (later : old ≤ new) : CaptionNodeValid new candidates node :=
+  ⟨Nat.le_trans valid.1 later,valid.2⟩
+
+/-- One ordinary active step preserves the actual source candidate
+    provenance and strictly ordered predecessor history, not only counts. -/
+theorem I1_caption_active_step_history (position : Nat) (forced flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (candidates : List Nat) (candidate : position ∈ candidates)
+    (old : ∀ node ∈ actives, CaptionNodeValid position candidates node) :
+    ∀ node ∈ captionActiveStep position forced flagged evaluate actives,
+      CaptionNodeValid (position+1) candidates node := by
+  have successors := captionSuccessors_valid position flagged evaluate actives candidates candidate old
+  have folded := captionFold_preserves
+    (captionActiveSuccessors position flagged evaluate actives) [] successors (by simp)
+  intro node member
+  simp only [captionActiveStep,captionMemberAppend] at member
+  rcases member with survived | created
+  · split at survived
+    · contradiction
+    · exact captionNodeValid_mono position (position+1) candidates node
+        (old node (List.mem_filter.mp survived).1) (Nat.le_succ _)
+  · exact folded node created
+
+/-- The ordinary passes call step on the remaining candidates once, in
+    source order. Pass four's pushOut restart is deliberately separate. -/
+def captionRunOrdinary (forced flagged : Nat → Bool)
+    (evaluate : Nat → CaptionActiveNode → CaptionActiveEval) :
+    List Nat → List CaptionActiveNode → List CaptionActiveNode
+  | [], actives => actives
+  | position :: rest, actives =>
+      captionRunOrdinary forced flagged evaluate rest
+        (captionActiveStep position (forced position) (flagged position) (evaluate position) actives)
+
+def CaptionCandidatesOrdered : Nat → Nat → List Nat → Prop
+  | _, _, [] => True
+  | lower, upper, position :: rest =>
+      lower ≤ position ∧ position < upper ∧
+      CaptionCandidatesOrdered (position+1) upper rest
+
+/-- For arbitrary candidate counts and arbitrary context-dependent
+    evaluation, every ordinary pass terminates by consuming the candidate
+    list. All resulting histories refer only to actual candidates, in
+    strictly decreasing source order, and retain their exact line count. -/
+theorem I1_caption_ordinary_pass_history (lower upper : Nat)
+    (allCandidates candidates : List Nat) (forced flagged : Nat → Bool)
+    (evaluate : Nat → CaptionActiveNode → CaptionActiveEval)
+    (actives : List CaptionActiveNode)
+    (ordered : CaptionCandidatesOrdered lower upper candidates)
+    (source : ∀ position ∈ candidates, position ∈ allCandidates)
+    (within : lower ≤ upper)
+    (initial : ∀ node ∈ actives, CaptionNodeValid lower allCandidates node) :
+    ∀ node ∈ captionRunOrdinary forced flagged evaluate candidates actives,
+      CaptionNodeValid upper allCandidates node := by
+  induction candidates generalizing lower actives with
+  | nil =>
+    intro node member
+    exact captionNodeValid_mono lower upper allCandidates node (initial node member) within
+  | cons position rest ih =>
+    have old : ∀ node ∈ actives, CaptionNodeValid position allCandidates node :=
+      fun node member => captionNodeValid_mono lower position allCandidates node
+        (initial node member) ordered.1
+    have next := I1_caption_active_step_history position (forced position) (flagged position)
+      (evaluate position) actives allCandidates (source position (List.Mem.head _)) old
+    exact ih (position+1) _ ordered.2.2
+      (fun p member => source p (List.Mem.tail _ member)) (by have := ordered.2.1; omega) next
+
+/-- The actual initial node has encoded position zero, line zero,
+    fitness two, no predecessor and zero accumulated demerits. -/
+def captionInitialActive : CaptionActiveNode := ⟨0,0,2,false,0,[]⟩
+
+theorem I1_caption_ordinary_pass_from_start (upper : Nat) (candidates : List Nat)
+    (forced flagged : Nat → Bool)
+    (evaluate : Nat → CaptionActiveNode → CaptionActiveEval)
+    (ordered : CaptionCandidatesOrdered 0 upper candidates) :
+    ∀ node ∈ captionRunOrdinary forced flagged evaluate candidates [captionInitialActive],
+      CaptionNodeValid upper candidates node := by
+  apply I1_caption_ordinary_pass_history 0 upper candidates candidates forced flagged evaluate
+    [captionInitialActive] ordered (fun _ member => member) (Nat.zero_le _)
+  intro node member
+  simp only [List.mem_cons,List.not_mem_nil,or_false] at member
+  subst node
+  exact ⟨Nat.le_refl _,rfl,True.intro,by simp [captionInitialActive]⟩
+
+
+/-- Reversing candidate order really breaks the history invariant; the
+    ordered-source precondition of the ordinary-pass theorem is needed. -/
+example : (captionRunOrdinary (fun _ => true) (fun _ => false)
+    (fun _ _ => ⟨2,0,true,true⟩) [1,0] [captionInitialActive]).map
+      (fun node => node.history) = [[(0,2),(1,2)]] := by decide
+
+example : ¬ CaptionHistoryOrdered 1 [(0,2),(1,2)] := by simp [CaptionHistoryOrdered]
+
+example : (captionRunOrdinary (fun _ => true) (fun _ => false)
+    (fun _ _ => ⟨2,0,true,true⟩) [0,1] [captionInitialActive]).map
+      (fun node => node.history) = [[(1,2),(0,2)]] := by decide
+
+example : CaptionHistoryOrdered 2 [(1,2),(0,2)] := by simp [CaptionHistoryOrdered]
+
+private theorem captionHistoryOrdered_length (ceiling : Nat) (history : List (Nat × Nat))
+    (ordered : CaptionHistoryOrdered ceiling history) : history.length ≤ ceiling := by
+  induction history generalizing ceiling with
+  | nil => exact Nat.zero_le _
+  | cons head tail ih =>
+    have shorter := ih head.1 ordered.2
+    simp only [List.length_cons]
+    have earlier := ordered.1
+    omega
+
+/-- Even negative penalties cannot produce unboundedly many lines in an
+    ordinary pass: each predecessor break strictly advances in the finite
+    source. The source length itself is unrestricted. -/
+theorem I1_caption_ordinary_line_bound (upper : Nat) (candidates : List Nat)
+    (forced flagged : Nat → Bool)
+    (evaluate : Nat → CaptionActiveNode → CaptionActiveEval)
+    (ordered : CaptionCandidatesOrdered 0 upper candidates) :
+    ∀ node ∈ captionRunOrdinary forced flagged evaluate candidates [captionInitialActive],
+      node.lineCount ≤ upper := by
+  intro node member
+  have valid := I1_caption_ordinary_pass_from_start upper candidates forced flagged evaluate ordered node member
+  have bounded := captionHistoryOrdered_length node.position node.history valid.2.2.1
+  rw [valid.2.1]
+  exact Nat.le_trans bounded valid.1
+
 end GolemPagination
