@@ -1,13 +1,14 @@
 module KeepBookPartsSpec (tests) where
 
 import Data.ByteString qualified as BS
+import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..), folioTexts, layoutPdf)
-import Support (buildMini, fakeProvider, horizontalStyle, layoutOk, miniManifest, replaceIn, setLineText, withMiniInput)
+import Support (buildMini, fakeProvider, horizontalStyle, layoutOk, miniManifest, replaceIn, setLineText, tinyImage, withMiniInput)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -19,6 +20,24 @@ tests =
         let free = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (style "page" 2)
         (_, layout) <- layoutOk free (source 3 3) []
         positions layout @?= [(2, 0), (2, 0), (2, 1)],
+      testCase "root ADR 0401 I2: free page moves a whole item with a wrapped figure to the next page" $ do
+        files <- tinyImage
+        let free unit = replaceIn "lines = 3" "lines = 6" (replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (style unit 1))
+            manuscript = T.intercalate "\\\n" (replicate 4 "f") <> "\n\n- x\\\n  x\n\n  @nonumber\n  @figure images/tiny.jpg alt=\"t\" wrap=start width=2zw\n\n  x\\\n  x\n"
+            figures layout = [poNumber p | p <- plPages layout, (_, SWrapped _) <- poSlots p]
+        (_, column) <- layoutOk (free "column") manuscript files
+        (_, page) <- layoutOk (free "page") manuscript files
+        assertBool ("column splits the item: " <> show (positions column)) (length (nub (map fst (positions column))) > 1)
+        assertEqual (show (plPages page)) (replicate 4 (2, 0)) (positions page)
+        figures page @?= [2]
+        filter ((== DiagnosticCode "G07133") . diagCode) (plNotices page) @?= [],
+      testCase "root ADR 0401 I3: free page item with a wrapped figure larger than a page falls back once" $ do
+        files <- tinyImage
+        let free = replaceIn "lines = 3" "lines = 6" (replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (style "page" 1))
+            manuscript = "f\n\n- x\\\n  x\n\n  @nonumber\n  @figure images/tiny.jpg alt=\"t\" wrap=start width=2zw\n\n  " <> T.intercalate "\\\n  " (replicate 6 "x") <> "\n"
+        (_, layout) <- layoutOk free manuscript files
+        assertEqual (show (plPages layout)) 8 (length (positions layout))
+        length (filter ((== DiagnosticCode "G07133") . diagCode) (plNotices layout)) @?= 1,
       testCase "root ADR 0401 I2: single-page folio resets do not change physical spread boundaries" $ do
         let single = replaceIn "binding = \"left\"" "layout = \"single\"" (replaceIn "gutter = \"20mm\"" "left = \"20mm\"" (style "spread" 1)) <> "\n[masters.body]\nfolio = { position = \"bottom-right\", format = \"{n}\" }\n"
             manifest = TE.encodeUtf8 ("chapters = [{ file = \"a.gm\", page-numbering = { style = \"lower-roman\", start = 40 } }]\n" <> T.dropWhile (/= '\n') (TE.decodeUtf8 miniManifest))
