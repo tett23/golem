@@ -6,6 +6,7 @@ module Golem.Layout.Paginate.Physical
     PhysicalFailure (..),
     paginatePhysical,
     PhysicalCursor,
+    retainPhysicalPart,
     PhysicalPart (..),
     PhysicalWrap (..),
     startPhysicalCursor,
@@ -31,6 +32,7 @@ module Golem.Layout.Paginate.Physical
 where
 
 import Control.Applicative ((<|>))
+import Data.IntSet qualified as IS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -38,10 +40,12 @@ import Data.Text qualified
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
 import Golem.Layout.FreeGeometry (boxExtras, faceOffset, ruleAfterEdge, ruleAfterGap, ruleBeforeEdge, ruleBeforeGap, rulesSharedGap)
+import Golem.Layout.Paginate.BookParts (slotIds)
 import Golem.Layout.Paginate.Decide qualified as Decide
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleSide (..))
 import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax qualified
 
 {- | Page geometry and resolved body line pitches. A missing pitch uses the
@@ -102,6 +106,58 @@ data PhysicalState = PhysicalState
 marks, diagnostics, deferred figures and the columns already closed.
 -}
 newtype PhysicalCursor = PhysicalCursor PhysicalState
+
+-- | Retry a source composition from a complete immutable cursor snapshot.
+retainPhysicalPart :: PhysicalSettings -> KeepParts -> Golem.Syntax.SrcSpan -> Data.Text.Text -> PhysicalCursor -> (PhysicalCursor -> Either PhysicalFailure (a, [Int], PhysicalCursor)) -> Either PhysicalFailure (a, PhysicalCursor)
+retainPhysicalPart cfg unit source kind cursor@(PhysicalCursor initialState) compose = do
+  ordinary <- trial cursor
+  if unit == KeepColumn
+    then do
+      emptyTrial <- if emptyUnit initialState then pure ordinary else trial (nextUnit initialState)
+      pure (if fits emptyTrial then accepted ordinary else report ordinary)
+    else
+      if fits ordinary
+        then pure (accepted ordinary)
+        else do
+          movedTrial <- trial (nextUnit initialState)
+          if fits movedTrial
+            then pure (accepted movedTrial)
+            else
+              pure (report (if emptyUnit initialState then ordinary else movedTrial))
+  where
+    trial at@(PhysicalCursor starting) = do
+      (value, identifiers, PhysicalCursor placed) <- compose at
+      let wanted = IS.fromList identifiers
+          settle st
+            | any (\(ident, _, _, _) -> IS.member ident wanted) (psDeferred st) = settle (nextColumn cfg st)
+            | otherwise = st
+      pure (value, wanted, settle placed, key (psPage starting) (psColumn starting))
+    accepted (value, _, placed, _) = (value, PhysicalCursor placed)
+    report (value, _, placed, _) = (value, PhysicalCursor placed {psUnmet = psUnmet placed <> [SplitBookPart source kind unit]})
+    key p c = case unit of
+      KeepColumn -> (p, c)
+      KeepPage -> (p, 0)
+      KeepSpread -> (if p == 1 then 0 else p `div` 2, 0)
+    fits (_, wanted, state, expectedUnit)
+      | IS.null wanted = True
+      | otherwise =
+          let columns = takeWhile ((>= psPage initialState) . poNumber) (psDone state)
+              entries = [(poNumber p, poColumn p, poSlots p) | p <- columns] <> [(psPage state, psColumn state, psSlots state)]
+              found = Map.fromListWith min [(ident, key p c) | (p, c, slots) <- entries, (_, slot) <- slots, ident <- slotIds slot, IS.member ident wanted]
+           in IS.size wanted == Map.size found && case Map.elems found of
+                [] -> True
+                first : rest -> first == expectedUnit && all (== first) rest
+    emptyUnit st =
+      empty st && psUsed st == 0 && case unit of
+        KeepColumn -> True
+        KeepPage -> psColumn st == 0
+        KeepSpread -> psColumn st == 0 && (psPage st == 1 || even (psPage st))
+    nextUnit st = PhysicalCursor (advance (nextColumn cfg st))
+      where
+        wanted = key (psPage st) (psColumn st)
+        advance current
+          | key (psPage current) (psColumn current) == wanted = advance (nextColumn cfg current)
+          | otherwise = current
 
 data PhysicalPart
   = PhysicalMoved !PhysicalCursor !Keep
@@ -776,6 +832,19 @@ placeStanzaWithNext cfg keep st verses lastCount firstCount later = do
 
 placeFlow :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> Either PhysicalFailure PhysicalState
 placeFlow cfg st = \case
+  FBookPart unit source kind identifiers body -> do
+    (_, PhysicalCursor placed) <-
+      retainPhysicalPart
+        cfg
+        unit
+        source
+        kind
+        (PhysicalCursor st)
+        ( \(PhysicalCursor at) -> do
+            final <- placeAll cfg at body
+            pure ((), identifiers, PhysicalCursor final)
+        )
+    pure placed
   FParagraph keep lines' -> placeLines cfg keep True st lines'
   FContinued keep lines' -> placeLines cfg keep False st lines'
   FDefTerm lines' -> placeLines cfg defaultKeep True st lines'

@@ -1,5 +1,5 @@
 -- | Retain book parts by trying only their flow at the current pagination state.
-module Golem.Layout.Paginate.BookParts (placeBookPart, flattenBookParts, flowSlotIds) where
+module Golem.Layout.Paginate.BookParts (placeBookPart, flattenBookParts, flowSlotIds, slotIds) where
 
 import Data.IntSet qualified as IS
 import Data.Map.Strict qualified as Map

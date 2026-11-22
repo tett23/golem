@@ -9,6 +9,7 @@ import Golem.Layout.Paginate
 import Golem.Layout.Paginate.Physical
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp)
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
@@ -35,7 +36,65 @@ physicalPaginateTests :: TestTree
 physicalPaginateTests =
   testGroup
     "physical pagination"
-    [ testCase "root ADR 0397 I9 I10: cursor trials discard failed labels, marks and notes when a paragraph moves" $ do
+    [ testCase "root ADR 0401 I2: discarded source callbacks preserve only accepted ids notes labels and marks" $ do
+        let cfg = settings {physicalCapacity = 64, physicalMaxCapacity = 64, physicalColumns = ColumnSet 2 0 0 0}
+        cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 6])])
+        (acceptedPage, chosen) <-
+          either
+            (assertFailure . show)
+            pure
+            ( retainPhysicalPart
+                cfg
+                KeepPage
+                span0
+                "item"
+                cursor
+                ( \at -> do
+                    let (page, _, _) = physicalCursorPosition at
+                        ident = page * 10
+                        first = (noteLine ident) {lbLabels = [if page == 1 then "discarded" else "accepted"], lbMarks = [span0]}
+                    placed <- stepPhysicalCursor cfg at [FParagraph defaultKeep (first : map line [ident + 1, ident + 2])]
+                    pure (page, [ident .. ident + 2], placed)
+                )
+            )
+        acceptedPage @?= 2
+        let pages = finishPhysicalCursor cfg chosen
+        concatMap poLabels pages @?= ["accepted"]
+        concatMap poMarks pages @?= [span0]
+        concatMap poFootnotes pages @?= [(NoteId span0 0, 0, 1)]
+        [n | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [20, 21, 22],
+      testCase "root ADR 0401 I2: a retained callback re-composes source at the accepted cursor" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+        cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 2])])
+        (sourcePage, chosen) <-
+          either
+            (assertFailure . show)
+            pure
+            ( retainPhysicalPart
+                cfg
+                KeepPage
+                span0
+                "item"
+                cursor
+                ( \at -> do
+                    let (page, _, _) = physicalCursorPosition at
+                    placed <- stepPhysicalCursor cfg at [FParagraph defaultKeep (map line [10 .. 12])]
+                    pure (page, [10 .. 12], placed)
+                )
+            )
+        sourcePage @?= 2
+        [poNumber p | p <- finishPhysicalCursor cfg chosen, (_, SLine n) <- poSlots p, n >= 10] @?= [2, 2, 2],
+      testCase "root ADR 0401 I2: free page keeps a list item across columns in one page" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "list item" [10, 11, 12] [FParagraph defaultKeep (map line [10 .. 12])]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep (map line [0 .. 2]), part])
+        [(poNumber p, poColumn p) | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [(2, 0), (2, 0), (2, 1)],
+      testCase "root ADR 0401 I3: free oversized item produces one notice without losing rows" $ do
+        let part = FBookPart KeepPage span0 "list item" [10 .. 14] [FParagraph defaultKeep (map line [10 .. 14])]
+        pages <- either (assertFailure . show) pure (paginatePhysical settings [FParagraph defaultKeep [line 0], part])
+        [n | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [10 .. 14]
+        [u | p <- pages, u@SplitBookPart {} <- poUnmet p] @?= [SplitBookPart span0 "list item" KeepPage],
+      testCase "root ADR 0397 I9 I10: cursor trials discard failed labels, marks and notes when a paragraph moves" $ do
         let cfg = settings {physicalSeparator = 10}
             row = (noteLine 0) {lbLabels = ["body"], lbMarks = [span0]}
         (wrapped, region) <- either (assertFailure . show) pure (beginPhysicalWrap cfg (startPhysicalCursor cfg) 9 30 ["figure"] [])

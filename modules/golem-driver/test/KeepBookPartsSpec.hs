@@ -4,7 +4,7 @@ import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..), folioTexts, layoutPdf)
 import Support (buildMini, fakeProvider, horizontalStyle, layoutOk, miniManifest, replaceIn, setLineText, withMiniInput)
@@ -15,7 +15,11 @@ tests :: TestTree
 tests =
   testGroup
     "root ADR 0401 book-part integration"
-    [ testCase "root ADR 0401 I2: single-page folio resets do not change physical spread boundaries" $ do
+    [ testCase "root ADR 0401 I2: free page retention keeps a whole item across columns" $ do
+        let free = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (style "page" 2)
+        (_, layout) <- layoutOk free (source 3 3) []
+        positions layout @?= [(2, 0), (2, 0), (2, 1)],
+      testCase "root ADR 0401 I2: single-page folio resets do not change physical spread boundaries" $ do
         let single = replaceIn "binding = \"left\"" "layout = \"single\"" (replaceIn "gutter = \"20mm\"" "left = \"20mm\"" (style "spread" 1)) <> "\n[masters.body]\nfolio = { position = \"bottom-right\", format = \"{n}\" }\n"
             manifest = TE.encodeUtf8 ("chapters = [{ file = \"a.gm\", page-numbering = { style = \"lower-roman\", start = 40 } }]\n" <> T.dropWhile (/= '\n') (TE.decodeUtf8 miniManifest))
         result <- withMiniInput fakeProvider manifest single ("@page-break\n\n" <> source 2 3) [] $ \inp geometry fonts -> do
