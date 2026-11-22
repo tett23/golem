@@ -16578,4 +16578,616 @@ theorem alloy_decidedSome :
           alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = true :=
   ⟨⟨3,0,[.recto,.line 0]⟩,by decide,by decide⟩
 
+/-! ### A placement for the line-after-headings rule -/
+
+/-- Some line is the second text item. -/
+def alloySecondTextIsLine (inp : AlloyInput) : Bool :=
+  inp.positions.any fun l => inp.has AlloyItem.isLine l && decide (inp.tpos l = 1)
+
+/-- In an empty column whose first item is a text, place it alone, unless
+    it is a heading directly followed by a line and no figure stands kept
+    between them; then place the heading with that line. Otherwise place
+    no text. The figure is kept exactly as the figure rule asks. -/
+def alloyHeadingBreak (inp : AlloyInput) : Nat :=
+  if inp.used = 0 ∧ inp.has AlloyItem.isText 0 = true then
+    (if inp.has AlloyItem.isHeading 0 = true ∧ alloySecondTextIsLine inp = true ∧
+        alloyFigureRuleKept inp 1 = [] then 2 else 1)
+  else 0
+
+def alloyHeadingPlacement (inp : AlloyInput) : AlloyPlacement :=
+  alloyFigureRulePlacement inp (alloyHeadingBreak inp)
+
+private theorem amFilterTrue {α : Type} (l : List α) : (l.filter fun _ => true).length = l.length := by
+  induction l with
+  | nil => rfl
+  | cons _ t ih => simp [List.filter,ih]
+
+private theorem amRangeHeadLe (P : Nat → Bool) (n u : Nat) (rest : List Nat)
+    (head : (alloyRange n).filter P = u :: rest) : ∀ x ∈ u :: rest, u ≤ x := by
+  induction n generalizing u rest with
+  | zero => simp [alloyRange] at head
+  | succ n ih =>
+    simp only [alloyRange,amFilterAppend] at head
+    cases e : (alloyRange n).filter P with
+    | nil =>
+      rw [e,List.nil_append] at head
+      intro x m
+      rw [← head] at m
+      have := (List.mem_filter.mp m).1
+      simp only [List.mem_cons,List.not_mem_nil,or_false] at this
+      have := (List.mem_filter.mp (show u ∈ [n].filter P by rw [head]; exact List.Mem.head _)).1
+      simp only [List.mem_cons,List.not_mem_nil,or_false] at this
+      omega
+    | cons a rest' =>
+      rw [e,List.cons_append] at head
+      cases head
+      have below := ih u rest' e
+      have uLt : u < n := (alloyRange_mem u n).mp (List.mem_filter.mp (show u ∈ (alloyRange n).filter P by
+          rw [e]; exact List.Mem.head _)).1
+      intro x m
+      rcases List.mem_cons.mp m with xu | xr
+      · omega
+      · rcases (amMemAppend _ _ _).mp xr with l | r
+        · exact below x (List.Mem.tail _ l)
+        · have xn := (List.mem_filter.mp r).1
+          simp only [List.mem_cons,List.not_mem_nil,or_false] at xn
+          omega
+
+namespace AlloyInput
+variable (inp : AlloyInput)
+
+theorem kinds_disjoint (i : Nat) (P Q : AlloyItem → Bool)
+    (apart : ∀ item, P item = true → Q item = true → False)
+    (p : inp.has P i = true) (q : inp.has Q i = true) : False := by
+  simp only [has] at p q
+  cases e : inp.itemAt i with
+  | none => rw [e] at p; cases p
+  | some item => rw [e] at p q; exact apart item p q
+
+theorem line_text (i : Nat) (l : inp.has AlloyItem.isLine i = true) : inp.has AlloyItem.isText i = true := by
+  simp only [has] at l ⊢
+  cases e : inp.itemAt i with
+  | none => rw [e] at l; cases l
+  | some item => rw [e] at l; cases item <;> simp_all [AlloyItem.isLine,AlloyItem.isText,Option.any]
+
+theorem heading_text (i : Nat) (h : inp.has AlloyItem.isHeading i = true) :
+    inp.has AlloyItem.isText i = true := by
+  simp only [has] at h ⊢
+  cases e : inp.itemAt i with
+  | none => rw [e] at h; cases h
+  | some item => rw [e] at h; cases item <;> simp_all [AlloyItem.isHeading,AlloyItem.isText,Option.any]
+
+theorem recto_heading (i : Nat) (h : inp.has AlloyItem.isRecto i = true) :
+    inp.has AlloyItem.isHeading i = true := by
+  simp only [has] at h ⊢
+  cases e : inp.itemAt i with
+  | none => rw [e] at h; cases h
+  | some item => rw [e] at h; cases item <;> simp_all [AlloyItem.isHeading,AlloyItem.isRecto,Option.any]
+
+theorem line_not_heading (i : Nat) (l : inp.has AlloyItem.isLine i = true)
+    (h : inp.has AlloyItem.isHeading i = true) : False :=
+  inp.kinds_disjoint i _ _ (fun item a b => by cases item <;> simp_all [AlloyItem.isLine,AlloyItem.isHeading]) l h
+
+theorem tpos_inj (t u : Nat) (tt : inp.has AlloyItem.isText t = true)
+    (ut : inp.has AlloyItem.isText u = true) (same : inp.tpos t = inp.tpos u) : t = u := by
+  by_cases tu : t < u
+  · have := inp.tpos_strict t u tt tu; omega
+  · by_cases ut' : u < t
+    · have := inp.tpos_strict u t ut ut'; omega
+    · omega
+
+theorem tpos_zero : inp.tpos 0 = 0 := by
+  unfold tpos
+  rw [amFilterNil _ _ (fun x _ => by simp)]; rfl
+
+theorem tpos_lt_count (t : Nat) (tt : inp.has AlloyItem.isText t = true) : inp.tpos t < inp.textCount := by
+  have := amFilterStrict (fun x => decide (x < t)) (fun _ => true) (inp.where_ AlloyItem.isText)
+    (fun _ _ _ => rfl) t ((inp.mem_where _ t).mpr tt) rfl (by simp)
+  rw [amFilterTrue] at this
+  exact this
+end AlloyInput
+
+theorem alloy_here_count_le (inp : AlloyInput) (b : Nat) : alloyHereCount inp b ≤ b := by
+  induction b with
+  | zero =>
+    unfold alloyHereCount
+    rw [amFilterNil _ _ (fun t _ => by cases alloyText inp t <;> simp)]; exact Nat.le_refl _
+  | succ b ih => have := hereCountStep inp b; simp only [Nat.succ_eq_add_one]; omega
+
+private theorem startsColumn_afterHeadings (inp : AlloyInput) (p : AlloyPlacement) (i : Nat)
+    (s : alloyStartsColumn inp p i = true) : alloyAfterHeadingsOnly inp p i = true := by
+  simp only [alloyStartsColumn,alloyAfterHeadingsOnly,Bool.and_eq_true,List.all_eq_true] at s ⊢
+  refine ⟨⟨s.1.1,fun t m => ?_⟩,s.2⟩
+  have := s.1.2 t m
+  simp only [Bool.or_eq_true] at this ⊢
+  exact Or.inl this
+
+private theorem figureRuleOrder (inp : AlloyInput) (b : Nat) :
+    alloyOrder inp (alloyFigureRulePlacement inp b) = true := by
+  simp only [alloyOrder,List.all_eq_true]
+  intro f m
+  have := (List.mem_filter.mp m).2
+  simp only [Bool.and_eq_true] at this
+  exact this.1
+
+/-- Every rule of docs/adr/0206 with the greedy fill left out, for both
+    heading-run rules and the recto rule, holds at one placement. -/
+theorem alloy_heading_placement_meets (inp : AlloyInput)
+    (domain : alloyInDomain inp = true) (capTwo : 2 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap) :
+    let p := alloyHeadingPlacement inp
+    alloyBase inp p = true ∧ alloyOrphanH inp p = true ∧ alloyWidowH inp p = true ∧
+      alloyKeepHeading21 inp p = true ∧ alloyKeepHeadingR inp p = true ∧
+      alloyLineAfterHeadingsRule inp p = true ∧ alloyRecto inp p = true := by
+  intro p
+  simp only [alloyInDomain,Bool.and_eq_true,decide_eq_true_eq] at domain
+  obtain ⟨⟨⟨⟨figFit,oneFig⟩,noBlank⟩,_⟩,noNeed⟩ := domain
+  have blankFalse := inp.has_none _ noBlank
+  have needFalse := inp.has_none _ noNeed
+  generalize bEq : alloyHeadingBreak inp = b at p
+  have pEq : p = alloyFigureRulePlacement inp b := by
+    show alloyFigureRulePlacement inp (alloyHeadingBreak inp) = _; rw [bEq]
+  rw [pEq]
+  have hereEq : ∀ t, alloyHere inp (alloyFigureRulePlacement inp b) t = decide (inp.tpos t < b) :=
+    fun _ => rfl
+  have keptEq : (alloyFigureRulePlacement inp b).kept = alloyFigureRuleKept inp b := rfl
+  have figNotText : ∀ f, f ∈ inp.figures → inp.has AlloyItem.isText f = true → False :=
+    fun f m t => inp.text_figure_disjoint f t ((inp.mem_where _ f).mp m)
+  -- the break and the input
+  have bCases : (inp.used = 0 ∧ inp.has AlloyItem.isText 0 = true ∧
+        (inp.has AlloyItem.isHeading 0 = true ∧ alloySecondTextIsLine inp = true ∧
+          alloyFigureRuleKept inp 1 = []) ∧ b = 2) ∨
+      (inp.used = 0 ∧ inp.has AlloyItem.isText 0 = true ∧
+        ¬(inp.has AlloyItem.isHeading 0 = true ∧ alloySecondTextIsLine inp = true ∧
+          alloyFigureRuleKept inp 1 = []) ∧ b = 1) ∨
+      (¬(inp.used = 0 ∧ inp.has AlloyItem.isText 0 = true) ∧ b = 0) := by
+    unfold alloyHeadingBreak at bEq
+    by_cases c1 : inp.used = 0 ∧ inp.has AlloyItem.isText 0 = true
+    · rw [if_pos c1] at bEq
+      by_cases c2 : inp.has AlloyItem.isHeading 0 = true ∧ alloySecondTextIsLine inp = true ∧
+          alloyFigureRuleKept inp 1 = []
+      · rw [if_pos c2] at bEq; exact Or.inl ⟨c1.1,c1.2,c2,bEq.symm⟩
+      · rw [if_neg c2] at bEq; exact Or.inr (Or.inl ⟨c1.1,c1.2,c2,bEq.symm⟩)
+    · rw [if_neg c1] at bEq; exact Or.inr (Or.inr ⟨c1,bEq.symm⟩)
+  have startCase : 1 ≤ b → inp.used = 0 ∧ inp.has AlloyItem.isText 0 = true := by
+    intro pos
+    rcases bCases with ⟨u,t,_,_⟩ | ⟨u,t,_,_⟩ | ⟨_,z⟩
+    · exact ⟨u,t⟩
+    · exact ⟨u,t⟩
+    · omega
+  have bRange : b ≤ 2 := by
+    rcases bCases with ⟨_,_,_,e⟩ | ⟨_,_,_,e⟩ | ⟨_,e⟩ <;> omega
+  -- the second text when two texts are placed
+  have twoCase : b = 2 → inp.has AlloyItem.isHeading 0 = true ∧ alloyFigureRuleKept inp 1 = [] ∧
+      ∃ l, l ∈ inp.positions ∧ inp.has AlloyItem.isLine l = true ∧ inp.tpos l = 1 := by
+    intro two
+    rcases bCases with ⟨_,_,c,_⟩ | ⟨_,_,_,e⟩ | ⟨_,e⟩
+    · obtain ⟨l,lm,ll⟩ := List.any_eq_true.mp c.2.1
+      simp only [Bool.and_eq_true,decide_eq_true_eq] at ll
+      exact ⟨c.1,c.2.2,l,lm,ll⟩
+    · omega
+    · omega
+  -- a placed text is position zero, or the line after a leading heading
+  have placed : ∀ t, inp.has AlloyItem.isText t = true → inp.tpos t < b →
+      t = 0 ∨ (b = 2 ∧ inp.has AlloyItem.isLine t = true ∧ inp.tpos t = 1) := by
+    intro t tt lt
+    have text0 := (startCase (by omega)).2
+    by_cases z : inp.tpos t = 0
+    · left; exact inp.tpos_inj t 0 tt text0 (by rw [z,inp.tpos_zero])
+    · right
+      have two : b = 2 := by omega
+      obtain ⟨_,_,l,_,ll,lt1⟩ := twoCase two
+      have same := inp.tpos_inj t l tt (inp.line_text l ll) (by omega)
+      subst same
+      exact ⟨two,ll,lt1⟩
+  have keptShape := keptShapeAt inp oneFig b
+  -- column starts used by the rules
+  have keptAfter : ∀ i, (∀ f, alloyFigureRuleKept inp b = [f] → i < f) →
+      ((alloyFigureRulePlacement inp b).kept.isEmpty || decide (alloyKeptPosSum (alloyFigureRulePlacement inp b) > i)) = true := by
+    intro i after
+    show ((alloyFigureRuleKept inp b).isEmpty ||
+      decide ((alloyFigureRuleKept inp b).foldl (· + ·) 0 > i)) = true
+    rcases keptShape with none | ⟨f,one,_,_⟩
+    · rw [none]; rfl
+    · have := after f one
+      rw [one]
+      show (false || decide (0 + f > i)) = true
+      simp; omega
+  have keptNonzero : 1 ≤ b → ∀ f, alloyFigureRuleKept inp b = [f] → 0 < f := by
+    intro pos f one
+    have m : f ∈ inp.figures := (List.mem_filter.mp (show f ∈ alloyFigureRuleKept inp b by
+      rw [one]; exact List.Mem.head _)).1
+    apply Nat.pos_of_ne_zero
+    intro z; subst z
+    exact figNotText 0 m (startCase pos).2
+  have start0 : 1 ≤ b → alloyStartsColumn inp (alloyFigureRulePlacement inp b) 0 = true := by
+    intro pos
+    simp only [alloyStartsColumn,Bool.and_eq_true,decide_eq_true_eq,List.all_eq_true]
+    refine ⟨⟨(startCase pos).1,fun t _ => by
+      cases alloyText inp t <;> simp [show ¬ t < 0 from Nat.not_lt_zero t]⟩,keptAfter 0 (keptNonzero pos)⟩
+  -- with two texts placed the figure, if kept, comes after the line
+  have keptAfterLine : b = 2 → ∀ l, inp.has AlloyItem.isLine l = true → inp.tpos l = 1 →
+      ∀ f, alloyFigureRuleKept inp b = [f] → l < f := by
+    intro two l ll lt1 f one
+    obtain ⟨_,none1,_⟩ := twoCase two
+    have mf : f ∈ alloyFigureRuleKept inp b := by rw [one]; exact List.Mem.head _
+    have fig := (List.mem_filter.mp mf).1
+    have cond := (List.mem_filter.mp mf).2
+    simp only [Bool.and_eq_true] at cond
+    apply Nat.lt_of_not_le
+    intro le
+    have ne : f ≠ l := by intro e; subst e; exact figNotText f fig (inp.line_text f ll)
+    have lt : f < l := by omega
+    have in1 : f ∈ alloyFigureRuleKept inp 1 := by
+      refine List.mem_filter.mpr ⟨fig,?_⟩
+      simp only [Bool.and_eq_true]
+      refine ⟨?_,cond.2⟩
+      simp only [alloyTextBeforeHere,List.all_eq_true]
+      intro t _
+      simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff,decide_eq_false_iff_not]
+      cases tt : alloyText inp t
+      · left; left; rfl
+      · by_cases tf : t < f
+        · right
+          have := inp.tpos_strict t l tt (by omega)
+          show decide (inp.tpos t < 1) = true
+          simp; omega
+        · left; right; exact tf
+    rw [none1] at in1; cases in1
+  have afterLine : b = 2 → ∀ l, inp.has AlloyItem.isLine l = true → inp.tpos l = 1 →
+      alloyAfterHeadingsOnly inp (alloyFigureRulePlacement inp b) l = true := by
+    intro two l ll lt1
+    simp only [alloyAfterHeadingsOnly,Bool.and_eq_true,decide_eq_true_eq,List.all_eq_true]
+    refine ⟨⟨(startCase (by omega)).1,fun t _ => ?_⟩,keptAfter l (keptAfterLine two l ll lt1)⟩
+    simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff]
+    cases tt : alloyText inp t
+    · left; left; left; rfl
+    · by_cases tl : t < l
+      · right
+        have := inp.tpos_strict t l tt tl
+        have z : t = 0 := inp.tpos_inj t 0 tt (startCase (by omega)).2 (by rw [inp.tpos_zero]; omega)
+        subst z
+        exact (twoCase two).1
+      · left; left; right; simp [tl]
+  -- the start of a paragraph some of whose lines are placed
+  have paraStart : ∀ q u v, inp.first q = some u → v ∈ inp.paraLines q →
+      inp.tpos v < b → alloyAfterHeadingsOnly inp (alloyFigureRulePlacement inp b) u = true := by
+    intro q u v fu vm vlt
+    have lineOf : ∀ x, x ∈ inp.paraLines q → inp.has AlloyItem.isLine x = true := by
+      intro x xm
+      have := (List.mem_filter.mp xm).2
+      simp only [AlloyInput.isLineOf,AlloyInput.has] at this ⊢
+      cases e : inp.itemAt x with
+      | none => rw [e] at this; cases this
+      | some item => rw [e] at this; cases item <;> simp_all [AlloyItem.paraOf,AlloyItem.isLine,Option.any]
+    have um : u ∈ inp.paraLines q := by
+      unfold AlloyInput.first at fu
+      cases e : inp.paraLines q with
+      | nil => rw [e] at fu; cases fu
+      | cons a r => rw [e] at fu; cases fu; exact List.Mem.head _
+    have uv : u ≤ v := by
+      unfold AlloyInput.first at fu
+      cases e : inp.paraLines q with
+      | nil => rw [e] at fu; cases fu
+      | cons a r =>
+        rw [e] at fu vm; cases fu
+        exact amRangeHeadLe _ _ _ _ e v vm
+    have ut := inp.line_text u (lineOf u um)
+    have ult : inp.tpos u < b := by
+      rcases Nat.lt_or_eq_of_le uv with lt | eq
+      · have := inp.tpos_strict u v ut lt; omega
+      · rw [eq]; exact vlt
+    rcases placed u ut ult with z | ⟨two,ul,u1⟩
+    · subst z; exact startsColumn_afterHeadings _ _ 0 (start0 (by omega))
+    · exact afterLine two u ul u1
+  -- a placed heading is position zero
+  have headingZero : ∀ h, inp.has AlloyItem.isHeading h = true → inp.tpos h < b → h = 0 := by
+    intro h hh lt
+    rcases placed h (inp.heading_text h hh) lt with z | ⟨_,hl,_⟩
+    · exact z
+    · exact (inp.line_not_heading h hl hh).elim
+  have keepRun : ∀ starts : Nat → Bool, (∀ h, starts h = true → inp.has AlloyItem.isHeading h = true) →
+      alloyKeepRun inp (alloyFigureRulePlacement inp b) starts = true := by
+    intro starts heading
+    simp only [alloyKeepRun,List.all_eq_true]
+    intro h _
+    simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff,Bool.not_eq_false']
+    left
+    cases sh : starts h
+    · left; left; rfl
+    · cases e : alloyHere inp (alloyFigureRulePlacement inp b) h
+      · left; right; rfl
+      · right
+        have lt : inp.tpos h < b := by rw [hereEq] at e; simpa using e
+        have z := headingZero h (heading h sh) lt
+        subst z
+        exact start0 (by omega)
+  refine ⟨?base,?orphan,?widow,?k21,?kR,?line,?recto⟩
+  case k21 => exact keepRun _ (fun h e => e)
+  case kR =>
+    exact keepRun _ (fun h e => by
+      simp only [alloyIsPlainHeading,Bool.and_eq_true] at e; exact e.1)
+  case recto =>
+    simp only [alloyRecto,List.all_eq_true]
+    intro r _
+    simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff]
+    cases rr : inp.has AlloyItem.isRecto r
+    · left; left; rfl
+    · cases e : alloyHere inp (alloyFigureRulePlacement inp b) r
+      · left; right; rfl
+      · right
+        have lt : inp.tpos r < b := by rw [hereEq] at e; simpa using e
+        have z := headingZero r (inp.recto_heading r rr) lt
+        subst z
+        exact start0 (by omega)
+  case orphan =>
+    simp only [alloyOrphanH,List.all_eq_true]
+    intro q _
+    simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff,Bool.not_eq_false']
+    cases fq : inp.first q with
+    | none =>
+      left; left; left
+      have empty : inp.paraLines q = [] := by
+        cases e : inp.paraLines q with
+        | nil => rfl
+        | cons _ _ => simp [AlloyInput.first,e] at fq
+      simp [empty]
+    | some u =>
+      cases h : alloyHere inp (alloyFigureRulePlacement inp b) u
+      · left; left; right; simp [alloyHereOpt,h]
+      · right
+        simp only [alloyAfterHeadingsOnlyOpt]
+        have um : u ∈ inp.paraLines q := by
+          unfold AlloyInput.first at fq
+          cases e : inp.paraLines q with
+          | nil => rw [e] at fq; cases fq
+          | cons a r => rw [e] at fq; cases fq; exact List.Mem.head _
+        exact paraStart q u u fq um (by rw [hereEq] at h; simpa using h)
+  case widow =>
+    simp only [alloyWidowH,List.all_eq_true]
+    intro q _
+    simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff,Bool.not_eq_false']
+    by_cases short : (inp.paraLines q).length < 2
+    · left; left; left; simp only [decide_eq_false_iff_not]; omega
+    · cases bq : inp.beforeLast q with
+      | none =>
+        have := List.get?_eq_none.mp (show (inp.paraLines q).reverse.get? 1 = none from bq)
+        rw [List.length_reverse] at this; omega
+      | some v =>
+        cases h : alloyHere inp (alloyFigureRulePlacement inp b) v
+        · left; left; right; simp [alloyHereOpt,h]
+        · right
+          have vm : v ∈ inp.paraLines q := amMemReverse _ _ (amGetMem _ 1 v bq)
+          cases fq : inp.first q with
+          | none =>
+            have : inp.paraLines q = [] := by
+              cases e : inp.paraLines q with
+              | nil => rfl
+              | cons _ _ => simp [AlloyInput.first,e] at fq
+            rw [this] at vm; cases vm
+          | some u =>
+            simp only [alloyAfterHeadingsOnlyOpt]
+            exact paraStart q u v fq vm (by rw [hereEq] at h; simpa using h)
+  case line =>
+    simp only [alloyLineAfterHeadingsRule,Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff]
+    by_cases zero : b = 0
+    · left; left; left; right
+      show decide (b ≥ 1) = false
+      simp; omega
+    by_cases two : b = 2
+    · left; right
+      obtain ⟨_,_,l,lm,ll,lt1⟩ := twoCase two
+      cases e : List.all inp.positions
+          (fun t => !(alloyText inp t && alloyHere inp (alloyFigureRulePlacement inp b) t) ||
+            alloyIsHeading inp t)
+      · rfl
+      · have := List.all_eq_true.mp e l lm
+        have lh : alloyHere inp (alloyFigureRulePlacement inp b) l = true := by
+          rw [hereEq]; simp; omega
+        simp only [alloyText,inp.line_text l ll,lh,Bool.true_and,Bool.not_true,Bool.false_or,
+          alloyIsHeading] at this
+        exact (inp.line_not_heading l ll this).elim
+    · have one : b = 1 := by omega
+      have text0 := (startCase (by omega)).2
+      by_cases h0 : inp.has AlloyItem.isHeading 0 = true
+      · -- a leading heading placed alone: no line follows, or a figure is kept
+        have notTwo : ¬(alloySecondTextIsLine inp = true ∧ alloyFigureRuleKept inp 1 = []) := by
+          intro c
+          rcases bCases with ⟨_,_,_,e⟩ | ⟨_,_,n,_⟩ | ⟨n,_⟩
+          · omega
+          · exact n ⟨h0,c.1,c.2⟩
+          · exact n (startCase (by omega))
+        by_cases k : alloyFigureRuleKept inp 1 = []
+        · right
+          have noLine : alloySecondTextIsLine inp = false := by
+            cases e : alloySecondTextIsLine inp
+            · rfl
+            · exact (notTwo ⟨e,k⟩).elim
+          simp only [List.all_eq_true]
+          intro l lm
+          simp only [Bool.not_eq_true',Bool.and_eq_false_iff,decide_eq_false_iff_not]
+          cases ll : inp.has AlloyItem.isLine l
+          · left; rfl
+          · right
+            intro lt1
+            have lt1' : inp.tpos l = 1 := by rw [lt1]; show b = 1; exact one
+            have : alloySecondTextIsLine inp = true :=
+              List.any_eq_true.mpr ⟨l,lm,by simp [ll,lt1']⟩
+            rw [noLine] at this; cases this
+        · left; left; right
+          show (alloyFigureRuleKept inp b).isEmpty = false
+          rw [one]
+          cases e : alloyFigureRuleKept inp 1 with
+          | nil => exact (k e).elim
+          | cons _ _ => rfl
+      · -- a leading line placed alone
+        left; right
+        cases e : List.all inp.positions
+            (fun t => !(alloyText inp t && alloyHere inp (alloyFigureRulePlacement inp b) t) ||
+              alloyIsHeading inp t)
+        · rfl
+        · have := List.all_eq_true.mp e 0 ((alloyRange_mem 0 _).mpr (inp.has_lt _ 0 text0))
+          have h0here : alloyHere inp (alloyFigureRulePlacement inp b) 0 = true := by
+            rw [hereEq,inp.tpos_zero]; simp; omega
+          simp only [alloyText,text0,h0here,Bool.true_and,Bool.not_true,Bool.false_or,
+            alloyIsHeading] at this
+          exact (h0 this).elim
+  case base =>
+    simp only [alloyBase,Bool.and_eq_true]
+    refine ⟨⟨⟨?fits,figureRuleOrder inp b⟩,alloy_figure_rule_kept_meets inp b⟩,?noSend⟩
+    case fits =>
+      simp only [alloyFits,decide_eq_true_eq]
+      rw [figureRuleLoad]
+      have count := alloy_here_count_le inp b
+      rcases keptShape with none | ⟨f,one,_,cond⟩
+      · rw [keptSizeNone inp b none]
+        by_cases zero : b = 0
+        · subst zero; omega
+        · have := (startCase (by omega)).1; omega
+      · rw [keptSizeOf inp b f one]
+        simp only [Bool.and_eq_true,decide_eq_true_eq] at cond
+        by_cases zero : b = 0
+        · subst zero; omega
+        · have used := (startCase (by omega)).1
+          -- every placed text comes before the kept figure
+          have bound : alloyHereCount inp b ≤
+              (inp.positions.filter fun t => alloyText inp t && decide (t < f)).length :=
+            amFilterMono _ _ _ (fun t _ h => by
+              simp only [Bool.and_eq_true,decide_eq_true_eq] at h ⊢
+              refine ⟨h.1,?_⟩
+              rcases placed t h.1 h.2 with z | ⟨two,tl,t1⟩
+              · subst z; exact keptNonzero (by omega) f one
+              · exact keptAfterLine two t tl t1 f one)
+          omega
+    case noSend =>
+      simp only [alloyNoSendFromEmpty,Bool.or_eq_true,Bool.not_eq_true',decide_eq_false_iff_not,
+        List.all_eq_true]
+      by_cases used : inp.used = 0
+      · right
+        intro i im
+        have iLt := (alloyRange_mem i _).mp im
+        simp only [Bool.or_eq_true,Bool.not_eq_true',Bool.and_eq_false_iff,blankFalse,needFalse,
+          Bool.not_false,List.all_eq_true]
+        by_cases zero : i = 0
+        · subst zero
+          right
+          by_cases text : alloyText inp 0 = true
+          · simp only [text,if_true,decide_eq_true_eq]
+            show b ≥ 1
+            rcases bCases with ⟨_,_,_,e⟩ | ⟨_,_,_,e⟩ | ⟨n,_⟩
+            · omega
+            · omega
+            · exact (n ⟨used,text⟩).elim
+          · simp only [text,if_false]
+            have notText : inp.has AlloyItem.isText 0 = false := by
+              cases e : inp.has AlloyItem.isText 0
+              · rfl
+              · exact (text e).elim
+            have isFig : inp.has AlloyItem.isFigure 0 = true := by
+              have b0 := blankFalse 0
+              have n0 := needFalse 0
+              have t0 := notText
+              simp only [AlloyInput.has] at b0 n0 t0 ⊢
+              cases e : inp.itemAt 0 with
+              | none => simp [AlloyInput.itemAt,List.get?_eq_none] at e; omega
+              | some item =>
+                rw [e] at b0 n0 t0
+                cases item <;> simp [AlloyItem.isText,AlloyItem.isFigure,AlloyItem.isBlank,
+                  AlloyItem.isNeed,Option.any] at b0 n0 t0 ⊢
+            have m := (inp.mem_where _ 0).mpr isFig
+            show (alloyFigureRuleKept inp b).contains 0 = true
+            unfold alloyFigureRuleKept
+            rw [amElemFilter _ inp.figures 0 m]
+            simp only [Bool.and_eq_true,decide_eq_true_eq]
+            refine ⟨?_,?_⟩
+            · simp only [alloyTextBeforeHere,List.all_eq_true]
+              intro t _
+              cases alloyText inp t <;> simp
+            · have fit := List.all_eq_true.mp figFit 0 m
+              simp only [decide_eq_true_eq] at fit
+              have none : (inp.positions.filter fun t => alloyText inp t && decide (t < 0)) = [] :=
+                amFilterNil _ _ (fun t _ => by cases alloyText inp t <;> simp)
+              rw [none,used]; simpa using fit
+        · left
+          right
+          cases e : List.all inp.positions (fun j => !(true && true && decide (j < i)))
+          · rfl
+          · have := List.all_eq_true.mp e 0 ((alloyRange_mem 0 _).mpr (by omega))
+            simp at this
+            omega
+      · left; exact used
+
+theorem alloy_heading_placement_exists (inp : AlloyInput) :
+    alloyHeadingPlacement inp ∈ alloyPlacements inp := by
+  unfold alloyPlacements alloyHeadingPlacement alloyFigureRulePlacement
+  rw [amMemBind]
+  refine ⟨alloyHeadingBreak inp,?_,?_⟩
+  · rw [alloyRange_mem]
+    unfold alloyHeadingBreak
+    split
+    · rename_i c
+      have one := amPosLength 0 _ ((inp.mem_where _ 0).mpr c.2)
+      split
+      · rename_i d
+        obtain ⟨l,_,ll⟩ := List.any_eq_true.mp d.2.1
+        simp only [Bool.and_eq_true,decide_eq_true_eq] at ll
+        have := inp.tpos_lt_count l (inp.line_text l ll.1)
+        omega
+      · simp only [AlloyInput.textCount]; omega
+    · omega
+  · rw [amMemBind]
+    exact ⟨_,amSubsetsFilter _ _,List.mem_map.mpr ⟨[],amSubsetsNil _,rfl⟩⟩
+
+private theorem headingPlacementSome (inp : AlloyInput) (domain : alloyInDomain inp = true)
+    (capTwo : 2 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap)
+    (P : AlloyPlacement → Bool)
+    (imp : alloyBase inp (alloyHeadingPlacement inp) = true ∧
+      alloyOrphanH inp (alloyHeadingPlacement inp) = true ∧
+      alloyWidowH inp (alloyHeadingPlacement inp) = true ∧
+      alloyKeepHeading21 inp (alloyHeadingPlacement inp) = true ∧
+      alloyKeepHeadingR inp (alloyHeadingPlacement inp) = true ∧
+      alloyLineAfterHeadingsRule inp (alloyHeadingPlacement inp) = true ∧
+      alloyRecto inp (alloyHeadingPlacement inp) = true → P (alloyHeadingPlacement inp) = true) :
+    alloySome inp P = true :=
+  List.any_eq_true.mpr ⟨_,alloy_heading_placement_exists inp,
+    imp (alloy_heading_placement_meets inp domain capTwo usedFits)⟩
+
+/-- `fact input` bounds the capacity below by three lines. -/
+theorem alloy_input_fact_cap_two (inp : AlloyInput) (fact : alloyInputFact inp = true) :
+    2 ≤ inp.cap := by
+  unfold alloyInputFact at fact
+  simp only [Bool.and_eq_true] at fact
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨three,_⟩,_⟩,_⟩,_⟩,_⟩,_⟩,_⟩,_⟩,_⟩ := fact
+  have := of_decide_eq_true three; omega
+
+/-- run relaxedAfterHeadings has no instance without the Alloy scope. -/
+theorem alloy_relaxedAfterHeadings (inp : AlloyInput) (domain : alloyInDomain inp = true)
+    (capTwo : 2 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap) :
+    alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+      alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p) = true :=
+  headingPlacementSome inp domain capTwo usedFits _ (fun h => by simp [h.1,h.2.1,h.2.2.1,h.2.2.2.1,h.2.2.2.2.2.1])
+
+/-- run rectoKept has no instance without the Alloy scope. -/
+theorem alloy_rectoKept (inp : AlloyInput) (domain : alloyInDomain inp = true)
+    (capTwo : 2 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap) :
+    alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+      alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p) = true :=
+  headingPlacementSome inp domain capTwo usedFits _ (fun h => by
+    simp [h.1,h.2.1,h.2.2.1,h.2.2.2.1,h.2.2.2.2.2.1,h.2.2.2.2.2.2])
+
+/-- run rectoEnds has no instance without the Alloy scope. -/
+theorem alloy_rectoEnds (inp : AlloyInput) (domain : alloyInDomain inp = true)
+    (capTwo : 2 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap) :
+    alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+      alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p) = true :=
+  headingPlacementSome inp domain capTwo usedFits _ (fun h => by
+    simp [h.1,h.2.1,h.2.2.1,h.2.2.2.2.1,h.2.2.2.2.2.1,h.2.2.2.2.2.2])
+
+/-- A capacity of two lines is needed: a heading and a line in an empty
+    column of one line meet the relaxed rules nowhere. `fact input`
+    excludes this input (capacity 3..6). -/
+example : alloySome ⟨1,0,[.heading,.line 0]⟩ (fun p =>
+    alloyBase ⟨1,0,[.heading,.line 0]⟩ p && alloyOrphanH ⟨1,0,[.heading,.line 0]⟩ p &&
+    alloyWidowH ⟨1,0,[.heading,.line 0]⟩ p && alloyKeepHeading21 ⟨1,0,[.heading,.line 0]⟩ p &&
+    alloyLineAfterHeadingsRule ⟨1,0,[.heading,.line 0]⟩ p) = false := by decide
+
 end GolemPagination

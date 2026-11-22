@@ -313,8 +313,14 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 `keepHeading21` と `keepHeadingR` は、見出しの連なりを始め、続ける項目の種類だけが異なるので、`alloyKeepRun` を共有する。
 解のある `alloy_strictAfterHeadings` と `alloy_decidedSome` は具体的な入力で示し、同じ入力を Alloy に固定して解を確かめた。
 解のない `alloy_keep21` は、第 1 群の配置が置く見出しがいつも段の先頭にあることから、上限なしに示す。
-`relaxedAfterHeadings`、`rectoKept`、`rectoEnds` の上限なしの証明は残る。
-見出しの後に行を一行置く規則があるので、第 1 群の配置では足りず、見出しと図版の位置で区切りを場合分けする必要がある。
+見出しの後に行を一行置く規則があるので、残る 3 コマンドには第 1 群の配置では足りない。
+`alloyHeadingPlacement` は、空の段の先頭が見出しで、次の本文が行で、その間に置く図版がなければ、見出しとその行を置く。
+それ以外は第 1 群と同じく、空の段の先頭の本文だけを置くか、本文を置かない。
+`alloy_heading_placement_meets` は、図版が高々一つで空行と空きと行数指定のない任意の入力で、容量が 2 行以上かつ使用済み行数が容量以下なら、この配置が第 2 群のすべての規則を満たすことを示す。
+`alloy_relaxedAfterHeadings`、`alloy_rectoKept`、`alloy_rectoEnds` はこの定理から導く。
+容量 2 行以上の条件は `fact input` から導かれ、`alloy_input_fact_cap_two` が示す。
+容量 1 行の空の段に見出しと行を続ける入力では、緩めた規則を同時に満たす配置がないことを具体例で検査した。
+この入力は `fact input` の条件を満たさないので、Alloy のコマンドの反例ではない。
 `EnumerateSmall.lean` は、項目 4 個以下、容量 3〜4 行の入力 18,099 個で、この 4 コマンドに解がないことを書き写した述語の上で確かめる。
 これは書き写しの有限の照合であり、証明ではない。
 既存の宣言を書き写しへ結び付けることも残る。
