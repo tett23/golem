@@ -1,6 +1,6 @@
 # ADR 0387: adr-guard を v0.13.1 に上げ、ADR のステータスの行を新しい形に移す
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"テストの名前の番号","kind":"supplement"}]
 
 ## 文脈
 
