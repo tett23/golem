@@ -298,6 +298,7 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       Kenten _ _ xs -> any (inlineHas st) xs
       Note _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
       Sidenote _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
+      Endnote _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
       -- the title a [ref-title] copies may hold code (docs/adr/0215)
       Resolved _ _ _ xs -> any (inlineHas st) xs
       Ruby _ _ segs -> or [any (inlineHas st) b | RubySegment b _ <- segs]
@@ -394,6 +395,7 @@ kentenRubyNotices book =
       Resolved _ _ _ xs -> concatMap (sites inKenten) xs
       Note _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
       Sidenote _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
+      Endnote _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
       _ -> []
     -- the outermost kenten in a base
     kentenIn :: InlineF r -> [SrcSpan]
@@ -516,6 +518,8 @@ restyle style lk = \case
   Resolved _ _ l _ -> lk {lkLink = Just (L.LinkTo (L.DestLabel l))}
   Ref _ RefPage l -> lk {lkLink = Just (L.LinkTo (L.DestLabel l))}
   Note sp _ _ -> lk {lkLink = Just (L.LinkTo (L.DestNote (L.NoteId sp 0)))}
+  -- the mark of an endnote to its body in the list (root ADR 0412)
+  Endnote sp _ _ -> lk {lkLink = Just (L.LinkTo (L.DestNote (L.NoteId sp 0)))}
   _ -> lk
 
 {- | The size source inside an inline element (golem-cli ADR 0008), as

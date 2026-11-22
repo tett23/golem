@@ -11,6 +11,7 @@ import CallsSpec (callsTests)
 import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
 import ChapterNotesSpec
+import EndnotesSpec (endnoteTests)
 import CliSpec
 import CodeFontSpec (codeFontTests)
 import ColophonSpec
@@ -197,6 +198,7 @@ tests skips =
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
+             testGroup "endnotes (root ADR 0412)" endnoteTests,
              testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
              testGroup "notes numbered per page (docs/adr/0383)" pageNoteNumbersTests,
              testGroup "the kanji numbers of note marks set flat (docs/adr/0381)" compressedNoteMarksTests,

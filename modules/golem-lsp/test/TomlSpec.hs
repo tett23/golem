@@ -78,6 +78,10 @@ tomlTests =
       testGroup
         "style.toml"
         [ including "style.toml" "[▮" ["page", "fonts", "character-styles", "paragraph-styles", "color"] ["emphasis", "verse"],
+          -- the table of the endnotes, its keys those of [notes] without placement and the tables of placement (root ADR 0412)
+          including "style.toml" "[▮" ["notes", "endnotes"] [],
+          exactlyNamed "root ADR 0412: complete the keys of [endnotes]" "style.toml" "[endnotes]\n▮" ["numbering", "mark-format", "mark-style", "body-mark-style", "body-style", "heading-style", "mark-shape"],
+          exactlyNamed "root ADR 0412 I5: complete the values of [endnotes] numbering without page" "style.toml" "[endnotes]\nnumbering = ▮" ["\"chapter\"", "\"file\"", "\"book\""],
           exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse", "quote"],
           including "style.toml" "[page]\nbinding = \"right\"\n▮" ["size", "writing-mode", "grid", "bleed"] ["binding"],
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],

@@ -396,6 +396,11 @@
   二つ以上の段落の脚注です。
   本文は、同じファイルの [code: @note 名前] の本体に書きます。
   名前の [code: @note] がないとエラー（G02137）、一つの [code: @note] を二つの [code: \[note\]] で指すとエラー（G02139）になります。
+= [strong: [code: \[endnote: 注の本文\]]]
+  章の終わりの注です。
+  どの出力でも章の終わりの一覧に置き、脚注と別に番号を振ります（[code: style.toml] の [code: \[endnotes\]] の [code: numbering] で変えられます）。
+  二つ以上の段落の注は、[code: \[endnote 名前\]] と、同じファイルの [code: @endnote 名前] で書きます。
+  名前は [code: @note] と別に数えるので、[code: \[endnote 名前\]] から [code: @note] は引けません（G02137）。
 = [strong: [code: \[sidenote: 傍注の本文\]]]
   傍注です。
   横組みの本でだけ使えます。

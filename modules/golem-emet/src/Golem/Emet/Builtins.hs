@@ -64,6 +64,7 @@ inlineSource =
       "  | Deferred Deferred",
       "  | Note Blocks",
       "  | Sidenote Blocks",
+      "  | Endnote Blocks",
       "  | IndexMark (List String) (List String) IndexKind",
       "  | Cite (List CiteItem)",
       "  | ProofComment String",

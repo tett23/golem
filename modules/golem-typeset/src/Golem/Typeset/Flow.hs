@@ -1690,6 +1690,7 @@ sidenoteDiagnostics geom book
     inlineSites flow = \case
       Sidenote sp _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
       Note _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
+      Endnote _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
@@ -1877,7 +1878,12 @@ composeEnv bookLang style geom fonts assumed look =
                    in glyphs s c /= glyphs s {shExtra = normalTexts (shExtra s <> [feature])} c
              in all replaced cs,
           ceNoteMarkLook = noteMarkLook style,
-          ceNoteMarkSource = noteMarkSource style
+          ceNoteMarkSource = noteMarkSource style,
+          -- the marks of the endnotes, of [endnotes] (root ADR 0412)
+          ceEndnoteMarkFormat = stNotesMarkFormat (endnoteStyle style),
+          ceEndnoteMarkFlat = stNotesMarkFlat (endnoteStyle style),
+          ceEndnoteMarkLook = noteMarkLook (endnoteStyle style),
+          ceEndnoteMarkSource = noteMarkSource (endnoteStyle style)
         }
 
 {- | The look of the mark of a note in the text from the look of its place
@@ -2106,10 +2112,11 @@ data FrameKind
   | FChannel
   | -- | the lines of a paragraph of a style that keeps its lines
     FPara
-  | {- | a note at the end of a chapter, by its span, how many inlines its
-    mark is and its number: in the tree after its mark
+  | {- | a note at the end of a chapter, by its channel (a note or an
+    endnote, root ADR 0412), its span, how many inlines its mark is and its
+    number: in the tree after its mark
     -}
-    FEndNote !SrcSpan !Int !Int
+    FEndNote !NoteChannel !SrcSpan !Int !Int
   | {- | a paragraph after the first of a note at the end of a chapter, by
     the span of the note (docs/adr/0263): in the tree after the first
     -}
@@ -2380,9 +2387,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
           us = concat uss
        in (n',) $ case reverse docs of
             (Document fid _ : _)
-              | stNotesPlacement (styleOf fid) == PlaceChapterEnd ->
+              | let notes = [notesList ChannelNote (notesTitle lang) (noteStyleFor PlaceChapterEnd (styleOf fid)) (concatMap documentNotes docs) | stNotesPlacement (styleOf fid) == PlaceChapterEnd]
+                    -- the endnotes after the notes, always (root ADR 0412)
+                    endnotes = notesList ChannelEndnote (endnotesTitle lang) (endnoteStyle (styleOf fid)) (concatMap documentEndnotes docs),
+                not (null (concat notes)) || not (null endnotes) ->
                   let (breaks, body) = span isBreakUnit (reverse us)
-                   in reverse body <> notesList (styleOf fid) docs <> reverse breaks
+                   in reverse body <> concat notes <> endnotes <> reverse breaks
             _ -> us
     -- blank lines at the end of a file go before the first block of the next (docs/adr ADR 0046)
     isBreakUnit u = case uKind u of
@@ -2392,13 +2402,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       USection {} -> True
       _ -> False
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
-    notesList style0 docs =
-      let style = noteStyleFor PlaceChapterEnd style0
-       in case concatMap documentNotes docs of
+    notesList ch title style notes =
+      case notes of
             [] -> []
             ns@((sp, _, _) : _) ->
-              let title = notesTitle lang
-                  -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
+              let -- the paragraph styles of [notes] heading-style and body-style (docs/adr/0366)
                   (titleLook, titleSource) = notesTitleLook lang style geom
                   bodyStyle = stNotesBodyStyle style
                   look = noteBodyLook style geom
@@ -2406,7 +2414,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                in Unit (UNotesTitle title) Nothing [Text sp title] sp titleLook style [] Nothing (stNotesHeadingStyle style) (Nothing, Nothing) Nothing titleSource [] 0 Nothing Nothing
                     -- the first paragraph after the mark, the others without one and without space between (docs/adr/0263)
                     : concat
-                      [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
+                      [ Unit (UPara noIndent) Nothing (withNoteMark style (pgVertical geom) nsp n para0) nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNote ch nsp (noteMarkCount style (pgVertical geom) nsp n) n)] 0 Nothing Nothing
                           : [Unit (UPara noIndent) Nothing more nsp look style [] Nothing bodyStyle (Nothing, Nothing) Nothing source [frame 0 (FEndNoteMore nsp)] 0 Nothing Nothing | more <- rest]
                       | (nsp, n, para0 : rest) <- ns
                       ]
@@ -2753,6 +2761,8 @@ bookNoteSites book = concatMap (concatMap inlineNotes) (concatMap blockInlineLis
     inlineNotes = \case
       Note sp n nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
       Sidenote sp n nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      -- the endnotes are not numbered per page: their bodies alone (root ADR 0412)
+      Endnote _ _ nb -> concatMap inlineNotes (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap inlineNotes xs
       Color _ _ xs -> concatMap inlineNotes xs
       CharStyle _ _ xs -> concatMap inlineNotes xs
@@ -2817,7 +2827,7 @@ number of an entry of the bibliography.
 unitLabelInlines :: Unit -> Int
 unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
   ks
-    | (k : _) <- [k | FEndNote _ k _ <- ks] -> k
+    | (k : _) <- [k | FEndNote _ _ k _ <- ks] -> k
     | FBibliography `elem` ks -> 1
     | otherwise -> 0
 
@@ -2825,7 +2835,7 @@ unitLabelInlines u = case [k | Frame _ k _ <- uFrames u] of
 the end of a chapter goes back to its mark in the text.
 -}
 unitLabelLink :: Unit -> Maybe LinkTarget
-unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FEndNote sp _ _) _ <- uFrames u]
+unitLabelLink u = listToMaybe [LinkTo (DestNoteMark (NoteId sp 0)) | Frame _ (FEndNote _ sp _ _) _ <- uFrames u]
 
 {- | The units of the body in order, numbered from 0, and the marker width
 M of each list; a unit in lists is indented by them (golem-driver ADR 0013).
@@ -2937,8 +2947,8 @@ composeUnit fe widths lineWidth u =
       {- numbered per page, the mark of a note at the end of a chapter is one
       box of the reserved width (docs/adr/0383); one box too when its
       number is set flat (docs/adr/0381) -}
-      textItems = case [n | Frame _ (FEndNote _ _ n) _ <- uFrames u] of
-        n : _ | noteMarkBoxed (uStyle u) (ceVertical env) n -> markLabelBox env ChannelNote n textItems0
+      textItems = case [(ch, n) | Frame _ (FEndNote ch _ _ n) _ <- uFrames u] of
+        (ch, n) : _ | noteMarkBoxed (uStyle u) (ceVertical env) n -> markLabelBox env ch n textItems0
         _ -> textItems0
       items = marker <> textItems
       breaks = A.breakAligned (layoutAlign (uKind u)) (adjustedParams (uStyle u) (uParaStyle u) params) lineWidth items
@@ -4423,6 +4433,7 @@ inlinesReferToPage = any $ \case
   CharStyle _ _ is -> inlinesReferToPage is
   Note _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
   Sidenote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Endnote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
   Link _ _ is -> inlinesReferToPage is
   Lang _ _ is -> inlinesReferToPage is
   ChannelItem _ ci -> inlinesReferToPage (ciBody ci)

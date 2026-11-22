@@ -7100,17 +7100,23 @@ G03026 はそれらの後に並ぶ。
 出力は止めず、重なった番号のまま組む。
 HTML と EPUB では、注の id に章の中のファイルの順番を入れて（`note-2-1` など）、一つの文書の中で id が重ならないようにする。
 
-- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`
+章末の注（`[endnote]`）も、同じ規則で出す（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+`[endnotes]` の `numbering` が `"file"` で、二つ以上のファイルからなる章の、二つ以上のファイルに章末の注があるときに出る。
+章末の注はどの出力でも章の末尾にまとめるので、ターゲットによらず出す。
+HTML と EPUB の id は `endnote-2-1` などになる。
+脚注と章末の注の両方が重なる章では、それぞれに一度ずつ出す。
+
+- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`（章末の注では `[endnotes] の numbering`）
 - 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.chapterNoteDiagnostics`）。位置は、その章で注を持つ二つ目のファイルの最初の注である。`golem check` とビルドが出す
-- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)
+- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)、[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)
 
 ### 主な原因
 
-- 一つの章を複数のファイルに分け、`[notes]` の `numbering` を `"file"` にした。
+- 一つの章を複数のファイルに分け、`[notes]` か `[endnotes]` の `numbering` を `"file"` にした。
 
 ### 直し方
 
-`[notes]` の `numbering` を `"chapter"`（既定）か `"book"` にする。
+メッセージが示す表の `numbering` を `"chapter"`（既定）か `"book"` にする。
 
 ## G03028
 
@@ -8433,6 +8439,32 @@ PDF だけのビルドでは出さない。
 PDF でだけページごとの番号が要るなら、直さなくてよい。
 HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 どの出力でも同じ番号が要るなら、`numbering` を `"chapter"`（既定）か `"book"` にする。
+
+## G03278
+
+章末の注にはページごとの番号を使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[endnotes]` の `numbering` に `"page"` を書いた（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+章末の注（`[endnote]`）は、どの出力でも章の末尾の一覧にまとめるので、印を置いた物理ページの番号を振る意味がない。
+`style.toml` を読む段階で誤りとし、ビルドを止める。
+`[notes]` の `numbering = "page"`（[ADR 0383](adr/0383-page-local-note-numbers.md)）は、この誤りにならない。
+
+- メッセージ: `章末の注にはページごとの番号を使えません。[endnotes] の numbering には "chapter"、"file"、"book" のどれかを書きます`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.endnoteChecks`）。位置は `numbering` の値である
+- ADR: [docs/adr/0412](adr/0412-a-separate-channel-for-endnotes.md)
+
+### 主な原因
+
+- `[notes]` の設定を写して、`[endnotes]` にも `numbering = "page"` を書いた。
+
+### 直し方
+
+`[endnotes]` の `numbering` を `"chapter"`（既定）、`"file"`、`"book"` のどれかにする。
 
 ## G04001
 
