@@ -3062,6 +3062,85 @@ if grep -qF '          name: enum-timings-${{ matrix.job }}' "$ENUM_YML" &&
   ng "enum.yml: each job keeps its table, and the job medians writes their medians into the summary"
 fi
 
+# the sum of the times of the areas, judged on every run (root ADR 0415):
+# the step that times the areas and the step of every area record their
+# start and end in $RUNNER_TEMP through enum-budget.sh step, and the last
+# step of the job sums them with enum-budget.sh judge
+enum_budget() { sh "$HERE/enum-budget.sh" "$@"; }
+EB=$WORK/enum-budget
+mkdir -p "$EB"
+: >"$WORK/in"
+# I2 the boundaries of the table of the ADR: steps of 1800 and 1799, 1800
+# and 1800, 1800 and 1801 seconds, and a run whose steps were all left out
+printf '100\t1900\n5000\t6799\n' >"$EB/3599"
+printf '100\t1900\n5000\t6800\n' >"$EB/3600"
+printf '100\t1900\n5000\t6801\n' >"$EB/3601"
+: >"$EB/none"
+run enum_budget judge "$EB/3599"
+expect "root ADR 0415 I2: a sum of 59 minutes 59 seconds does not fail" 0
+run enum_budget judge "$EB/3600"
+expect "root ADR 0415 I2: a sum of exactly 60 minutes does not fail" 0
+run enum_budget judge "$EB/3601"
+expect "root ADR 0415 I2: a sum of 60 minutes 1 second fails" 1
+if grep -qF '3601' "$WORK/err"; then ok; else ng "root ADR 0415 I2: the failure says the sum"; fi
+run enum_budget judge "$EB/none"
+expect "root ADR 0415 I2: a run whose steps were all left out sums to 0 and does not fail" 0
+if grep -qx 'the areas took 0 seconds of 3600' "$WORK/out"; then ok; else ng "root ADR 0415 I2: the sum of no step is 0"; fi
+# no file: no step wrote one, as when main has not changed
+run enum_budget judge "$EB/no-such-file"
+expect "root ADR 0415 I2: a run with no record sums to 0 and does not fail" 0
+# a line that is not two times is an error, not a time of 0
+printf '100\tx\n' >"$EB/bad"
+run enum_budget judge "$EB/bad"
+expect "root ADR 0415 I2: a line that is not two times fails" 2
+printf '200\t100\n' >"$EB/back"
+run enum_budget judge "$EB/back"
+expect "root ADR 0415 I2: an end before its start fails" 2
+run enum_budget
+expect "root ADR 0415 I2: enum-budget.sh needs a command" 2
+# step: the script of the step runs under sh -e with the exit code of the
+# step, and one line of its start and its end is added to the record,
+# whether the script passes or fails
+printf 'echo ran\n' >"$EB/pass.sh"
+printf 'false\necho not reached\n' >"$EB/fail.sh"
+rm -f "$EB/steps.tsv"
+run env RUNNER_TEMP="$EB" sh "$HERE/enum-budget.sh" step "$EB/pass.sh"
+if [ "$CODE" = 0 ] && grep -qx ran "$WORK/out"; then ok; else ng "root ADR 0415 I2: step runs the script of the step"; fi
+run env RUNNER_TEMP="$EB" sh "$HERE/enum-budget.sh" step "$EB/fail.sh"
+if [ "$CODE" = 1 ] && ! grep -q 'not reached' "$WORK/out"; then ok; else ng "root ADR 0415 I2: step fails with the script, under sh -e"; fi
+if [ "$(wc -l <"$EB/enum-steps.tsv" | tr -d ' ')" = 2 ] &&
+  awk -F '\t' 'NF != 2 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ || $2 < $1 { bad = 1 } END { exit bad }' "$EB/enum-steps.tsv"; then ok; else
+  ng "root ADR 0415 I2: step adds the start and the end of each run to \$RUNNER_TEMP/enum-steps.tsv"
+fi
+run env -u RUNNER_TEMP sh "$HERE/enum-budget.sh" step "$EB/pass.sh"
+expect "root ADR 0415 I2: step needs RUNNER_TEMP" 2
+# the workflow: the step that times the areas and the step of every area
+# run through enum-budget.sh step, and the last step of the job enum
+# judges, unless the run is cancelled
+EJ=$WORK/enum-job
+awk '$0 == "  enum:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$ENUM_YML" >"$EJ"
+awk '
+  function flush() { if (step != "") { if (timed && !shell) bad = 1; if (shell) n++ } step = ""; timed = 0; shell = 0 }
+  /^      - / { flush(); step = $0 }
+  /^          GOLEM_ENUM_[A-Z0-9_]*DEPTH:/ || index($0, "sh scripts/ci/enum-timings.sh > ") { timed = 1 }
+  $0 == "        shell: sh scripts/ci/enum-budget.sh step {0}" { shell = 1 }
+  { step = step "\n" $0 }
+  END { flush(); print (bad ? "bad" : n) }
+' "$EJ" >"$EB/shells"
+if [ -s "$EA" ] && [ "$(cat "$EB/shells")" = "$(($(wc -l <"$EA" | tr -d ' ') + 1))" ]; then ok; else
+  ng "root ADR 0415 I2: enum.yml: the step that times the areas and the step of every area, and no other, run through enum-budget.sh step"
+fi
+last=$(awk '/^      - / { s = "" } { s = s $0 "\n" } END { printf "%s", s }' "$EJ")
+if printf '%s\n' "$last" | grep -qx "        if: \${{ !cancelled() }}" &&
+  printf '%s\n' "$last" | grep -qxF '        run: sh scripts/ci/enum-budget.sh judge "$RUNNER_TEMP/enum-steps.tsv"'; then ok; else
+  ng "root ADR 0415 I2: enum.yml: the last step of the job enum judges the sum, if: \${{ !cancelled() }}"
+fi
+if grep -q 'gh api\|github-api-read' "$EJ"; then ng "root ADR 0415 I2: enum.yml: the judgement reads no API"; else ok; fi
+# I3 (root ADR 0415): no test has the replaced ADR in its name
+if git -C "$HERE/../.." grep -n -e 'ADR 031[9]' -- modules scripts experiments ':!*.md' >"$WORK/out" 2>"$WORK/err"; then
+  ng "root ADR 0415 I3: no test has in its name the ADR that root ADR 0345 replaced"
+else ok; fi
+
 # enum-timings.sh on workflows of its own: a cabal whose list-bin names a
 # test executable that says what it was given, and a clock that gives the
 # times of a list, one per call; the three write what they did, in order,
@@ -3297,12 +3376,14 @@ if [ -s "$WORK/ts-driver" ] && [ -s "$WORK/ts-rest" ] &&
   ! grep -qv '^golem-driver:' "$WORK/ts-driver"; then ok; else
   ng "test-suites: driver and rest of modules/ split every test suite in two"
 fi
-# (docs/adr/0293 A1): wasm is every suite of the golem packages that the
-# packages: of cabal.project.wasm, next to MODULES, lists, and no other
+# (docs/adr/0293 A1, root ADR 0415 I1): wasm is every suite of the golem
+# packages that the packages: of cabal.project.wasm, next to MODULES,
+# lists, and golem-test-support-test, and no other
 printf 'packages:\n  modules/golem-pdf\n  modules/other-dir\n  third_party/wasm-packages/skylighting-0.15\n\ntests: False\n\npackage golem-driver\n  flags: -plugins\n' >"$WORK/cabal.project.wasm"
 run test_suites wasm "$TS"
-expect "A1 test-suites: wasm has the suites of the golem packages of cabal.project.wasm" 0 "golem-pdf:test:golem-pdf-test
-golem-renamed:test:renamed-test"
+expect "root ADR 0415 I1: test-suites: wasm has the suites of the golem packages of cabal.project.wasm and golem-test-support-test" 0 "golem-pdf:test:golem-pdf-test
+golem-renamed:test:renamed-test
+golem-test-support:test:golem-test-support-test"
 rm -f "$WORK/cabal.project.wasm"
 run test_suites wasm "$TS"
 expect "A1 test-suites: wasm without cabal.project.wasm" 1
@@ -3311,9 +3392,16 @@ for d in $(sed -n 's|^  modules/\([a-z0-9-]*\)[[:space:]]*$|\1|p' "$HERE/../../c
   f="$HERE/../../modules/$d/$d.cabal"
   pkg=$(awk 'tolower($1) == "name:" { print $2; exit }' "$f")
   awk -v p="$pkg" 'tolower($1) == "test-suite" { print p ":test:" $2 }' "$f"
-done | LC_ALL=C sort >"$WORK/ts-wasm-every"
+done >"$WORK/ts-wasm-every"
+# (root ADR 0415 I1) and golem-test-support-test, the suite of the limits
+# of time on wasm32 (root ADR 0388 I2), without golem-test-support-par-test
+if grep -qx 'test-suite golem-test-support-test' "$HERE/../../modules/golem-test-support/golem-test-support.cabal"; then ok; else
+  ng "root ADR 0415 I1: golem-test-support has the suite golem-test-support-test"
+fi
+echo golem-test-support:test:golem-test-support-test >>"$WORK/ts-wasm-every"
+LC_ALL=C sort -o "$WORK/ts-wasm-every" "$WORK/ts-wasm-every"
 if [ -s "$WORK/ts-wasm-every" ] && [ "$(LC_ALL=C sort "$WORK/ts-wasm")" = "$(cat "$WORK/ts-wasm-every")" ]; then ok; else
-  ng "A1 test-suites: wasm is every suite of the golem packages of cabal.project.wasm"
+  ng "root ADR 0415 I1: test-suites: wasm is every suite of the golem packages of cabal.project.wasm and golem-test-support-test"
 fi
 if grep -qF 'sh scripts/ci/test-suites.sh wasm' "$HERE/../../.github/workflows/wasm-tests.yml" 2>/dev/null; then ok; else
   ng "A1 wasm-tests.yml: runs the suites of test-suites.sh wasm"
