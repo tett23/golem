@@ -1,6 +1,6 @@
 # ADR 0009: 構文の段階の診断コード
 
-Status: superseded [{"by":["docs/golem-parser/adr/0013-splat-after-keyword-arguments.md"],"part":"G01019 の条件とメッセージ"}]
+Status: superseded [{"by":["docs/golem-parser/adr/0013-splat-after-keyword-arguments.md"],"part":"G01019 の条件とメッセージ"},{"by":[],"part":"既知の問題の 4","kind":"note","note":"evaluateLoose は構文のエラーのあるファイルでは評価の diagnostic を返さないので、G01020 は二度出ない"}]
 
 ## 文脈
 

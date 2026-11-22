@@ -1,6 +1,6 @@
 # ADR 0281: 小さな入力のすべてを調べるテストの予算の量り方と、予算を超えた検査を毎晩のジョブへ移す規則を決める
 
-Status: superseded [{"by":["docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md"],"part":"範囲の時間の量り方と、予算と比べるジョブの時間（四つのジョブの中央値）"},{"by":["docs/adr/0351-prove-parser-formatter-round-trips.md"],"part":"パーサーと fmt の往復の予算"}]
+Status: superseded [{"by":["docs/adr/0286-leave-the-start-of-cabal-out-of-the-time-of-an-enumeration-area.md"],"part":"範囲の時間の量り方と、予算と比べるジョブの時間（四つのジョブの中央値）"},{"by":["docs/adr/0351-prove-parser-formatter-round-trips.md"],"part":"パーサーと fmt の往復の予算"},{"by":["docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md"],"part":"60 分の判定のしかた","kind":"supplement"}]
 
 ## 文脈
 
