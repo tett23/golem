@@ -25,7 +25,7 @@ import Test.Tasty.Hedgehog (testProperty)
 
 -- | Words of the given widths separated by glue of width 6, stretch 3 and shrink 2.
 paragraph :: [Sp] -> [Item]
-paragraph ws = concat [Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) : [glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
+paragraph ws = concat [Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing) : [glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 -- | Where the last box of a set line ends.
 lastBoxEnd :: Line -> Sp
@@ -330,7 +330,7 @@ codeTrailingSpaceTests =
         codeShapes [code "a b"] @?= ["a", quarter, "b"] <> paragraphEnd
         codeShapes [code "漢 ", txt "い"] @?= ["漢", quarter, "い"] <> paragraphEnd,
       testCase "B4: with no space of code before a line end, nothing is dropped: the items are those of before" $ do
-        let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+        let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
             codeSpace = glue (Sp (unSp fs `div` 4)) 0 0
             wordSpace = glue (Sp (unSp fs `div` 3)) (Sp (unSp fs `div` 6)) (Sp (unSp fs `div` 9))
         trailingSpaces (IntSet.singleton 1) ([box, codeSpace, box] <> finish) @?= IntSet.empty
@@ -338,7 +338,7 @@ codeTrailingSpaceTests =
         trailingSpaces IntSet.empty ([box, wordSpace, box] <> finish) @?= IntSet.empty
         trailingSpaces (IntSet.singleton 1) [box, codeSpace, box] @?= IntSet.empty,
       testCase "B6: glue that neither stretches nor shrinks and is not a space of code stays before the end" $ do
-        let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+        let box = Box fs (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
             fixed = glue (Sp (unSp fs `div` 4)) 0 0
         trailingSpaces IntSet.empty [box, fixed] @?= IntSet.empty
         trailingSpaces IntSet.empty ([box, fixed] <> finish) @?= IntSet.empty
@@ -384,7 +384,7 @@ penaltyWidthTests =
     em = fs
     half = Sp (unSp fs `div` 2)
     quarter = Sp (unSp fs `div` 4)
-    box w = Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+    box w = Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
     itemsWith lastBox penW = [box em, Penalty penW 0 NoHyphen, box half, Penalty penW 0 NoHyphen, box lastBox] <> finish
     breakWidths lastBox penW = breakParagraph defaultParams (const (2 * em)) (itemsWith lastBox penW)
     boxesOf l = [w | Box w _ <- lineItems l]

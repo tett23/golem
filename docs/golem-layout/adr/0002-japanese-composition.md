@@ -1,6 +1,6 @@
 # ADR 0002: 日本語組版の規則
 
-Status: superseded [{"by":["docs/golem-layout/adr/0009-ruby-placement.md"],"part":"ルビの配置"},{"by":["docs/golem-pdf/adr/0006-cid-system-info.md"],"part":"異体字セレクタの箱"},{"by":["docs/golem-driver/adr/0015-vertical-dashes.md"],"part":"縦書き用の字形がない文字の回転"},{"by":["docs/adr/0019-aki-settings.md"],"part":"字間の空きの量"},{"by":["docs/golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md"],"part":"PDF の縦中横の描き方"}]
+Status: superseded [{"by":["docs/golem-layout/adr/0009-ruby-placement.md"],"part":"ルビの配置"},{"by":["docs/golem-pdf/adr/0006-cid-system-info.md"],"part":"異体字セレクタの箱"},{"by":["docs/golem-driver/adr/0015-vertical-dashes.md"],"part":"縦書き用の字形がない文字の回転"},{"by":["docs/adr/0019-aki-settings.md"],"part":"字間の空きの量"},{"by":["docs/golem-driver/adr/0045-draw-tate-chu-yoko-horizontally-in-pdf.md"],"part":"PDF の縦中横の描き方"},{"part":"割注と縦組みの正立欧文","by":["docs/adr/0380-extended-japanese-composition.md"],"kind":"supplement"}]
 
 ## 文脈
 

@@ -40,6 +40,8 @@ genInlineWith mr =
     Gen.choice
     ( [ Text <$> genSpan <*> genText,
         Tcy <$> genSpan <*> genText,
+        Warichu <$> genSpan <*> genText,
+        Upright <$> genSpan <*> genText,
         Number <$> genSpan <*> genInt64 <*> Gen.maybe Gen.enumBounded,
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),

@@ -66,7 +66,8 @@ cfg0 =
       hcLists = Nothing,
       hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
       hcHeadingRules = Map.empty,
-      hcNoteNotation = arabic
+      hcNoteNotation = arabic,
+      hcCharacterAdvance = Nothing
     }
 
 -- | A book of one document, a.gm, with nothing assembled.

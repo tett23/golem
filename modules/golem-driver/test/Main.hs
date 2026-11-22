@@ -23,6 +23,7 @@ import DoubleDashSpec (doubleDashTests)
 import EmetSamplesSpec (emetSamplesTests)
 import ExceptionsSpec (exceptionsTests)
 import ExpansionSpec (expansionTests)
+import ExtendedJapaneseOutputsSpec (extendedJapaneseOutputTests)
 import FigureExternalSpec (figureExternalTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
@@ -91,7 +92,8 @@ tests :: Skips -> TestTree
 tests skips =
   testGroup
     "golem-driver (ADR 0001)"
-    ( [ qpdfInstalled,
+    ( [ testGroup "extended Japanese composition (root ADR 0380)" extendedJapaneseOutputTests,
+        qpdfInstalled,
         explainTests,
         noticeTests,
         testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,

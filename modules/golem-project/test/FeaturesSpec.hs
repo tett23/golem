@@ -15,7 +15,15 @@ tests :: TestTree
 tests =
   testGroup
     "OpenType features (docs/adr/0268)"
-    [ testCase "ADR 0378 I1: a role accepts punctuation-proportional without enabling any feature" $
+    [ testCase "root ADR 0380 I1: a positive grid character advance is accepted and zero is rejected" $ do
+        let source value = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = 20\nline-pitch = \"15pt\"\nposition = { top = \"20mm\", gutter = \"20mm\" }\ncharacter-advance = " <> value <> "\n"
+        codes (parseStyle (FileId 0) (source "\"8pt\"")) @?= []
+        codes (parseStyle (FileId 0) (source "\"0pt\"")) @?= ["G03006"],
+      testCase "root ADR 0380 I1: underline accepts either side and rejects unknown sides" $ do
+        codes (parseStyle (FileId 0) "[character-styles.left]\nunderline = { side = \"left\" }\n") @?= []
+        codes (parseStyle (FileId 0) "[character-styles.right]\nunderline = { side = \"right\" }\n") @?= []
+        codes (parseStyle (FileId 0) "[character-styles.invalid]\nunderline = { side = \"above\" }\n") @?= ["G03006"],
+      testCase "ADR 0378 I1: a role accepts punctuation-proportional without enabling any feature" $
         codes (parseStyle (FileId 0) "[fonts.body]\nja = \"a.otf\"\npunctuation-proportional = true\n") @?= [],
       testCase "I4: every form reads and its normal form reads back the same" $ do
         let forms = [("smcp", ("smcp", 1)), ("+smcp", ("smcp", 1)), ("-smcp", ("smcp", 0)), ("smcp=0", ("smcp", 0)), ("smcp=1", ("smcp", 1)), ("salt=2", ("salt", 2)), ("salt=65535", ("salt", 65535)), ("ss01", ("ss01", 1)), ("jp90", ("jp90", 1))]

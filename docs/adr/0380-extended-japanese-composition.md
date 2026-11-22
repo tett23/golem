@@ -1,6 +1,6 @@
 # ADR 0380: 割注、左傍線、縦組みの正立欧文と字送りを扱う
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

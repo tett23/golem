@@ -97,6 +97,7 @@ import Golem.Eval.File
 import Golem.Eval.Functions (FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Length qualified as GL
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
@@ -1286,7 +1287,12 @@ htmlConfig dev e book missing bib =
             isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
           ],
       -- the links of notes in the notation of [notes] mark-format (docs/adr/0177)
-      hcNoteNotation = mfNotation (stNotesMarkFormat style)
+      hcNoteNotation = mfNotation (stNotesMarkFormat style),
+      hcCharacterAdvance = do
+        grid <- stPage style >>= pageGrid
+        advance <- gridCharacterAdvance grid
+        let fs = dimToSp 1 (gridFontSize grid)
+        if fs <= 0 then Nothing else Just (GL.emText (toRational (GL.unSp (dimToSp fs advance)) / toRational (GL.unSp fs)) <> "em")
     }
   where
     style = evStyle e

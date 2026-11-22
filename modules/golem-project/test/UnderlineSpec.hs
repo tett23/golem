@@ -20,7 +20,7 @@ tests =
     [ testCase "true is the default line, the same as {}" $ do
         underlineOf "underline = true\n" @?= Just (Just defaultDecoration)
         underlineOf "underline = {}\n" @?= Just (Just defaultDecoration)
-        defaultDecoration @?= DecorationSpec (Zw 0.05) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing,
+        defaultDecoration @?= DecorationSpec (Zw 0.05) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing "right",
       testCase "false is the inner Nothing" $
         underlineOf "underline = false\n" @?= Just Nothing,
       testCase "weight in zw and dashed: the dash from the weight" $
@@ -31,7 +31,7 @@ tests =
           other -> assertFailure (show other),
       testCase "offset, color and strikethrough are read" $
         either (const Nothing) (\s -> charStyle s "x" >>= csStrikethrough) (parseStyle (FileId 0) "[color.swatches]\nred = { cmyk = [0, 100, 100, 0] }\n\n[character-styles.x]\nstrikethrough = { weight = \"0.5pt\", color = \"red\", offset = \"-0.05zw\" }\n")
-          @?= Just (Just (DecorationSpec (Abs 32768) (Zw (-0.05)) ("solid", Nothing) Nothing Nothing (Just "red"))),
+          @?= Just (Just (DecorationSpec (Abs 32768) (Zw (-0.05)) ("solid", Nothing) Nothing Nothing (Just "red") "right")),
       testCase "the keys of the length and the place of a rule, true-likes and an offset that does not read are G03006" $ do
         mapM_
           (\src -> codes src @?= ["G03006"])

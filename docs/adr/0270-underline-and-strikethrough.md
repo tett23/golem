@@ -1,6 +1,6 @@
 # ADR 0270: 下線と打ち消し線
 
-Status: accepted
+Status: superseded [{"part":"縦組みの傍線の側","by":["docs/adr/0380-extended-japanese-composition.md"],"kind":"supplement"}]
 
 ## 文脈
 

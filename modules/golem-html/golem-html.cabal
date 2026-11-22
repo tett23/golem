@@ -23,6 +23,7 @@ library
     , golem-assemble
     , golem-bibliography
     , golem-doc
+    , golem-layout
     , golem-length
     , golem-numerals
     , golem-syntax

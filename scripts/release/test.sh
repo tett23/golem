@@ -1194,9 +1194,9 @@ mkdir -p "$L/root/modules/golem-font/cbits/harfbuzz" "$L/root/modules/golem-font
   "$L/root/modules/golem-layout/data/hyphenation" "$L/root/dist-newstyle/src/peg-hs-0123/packages/peg-runtime" \
   "$L/ghcdoc/base-4.20.2.0" "$L/ghcdoc/ghc-9.10.3" "$L/gmp/gmp-6.3.0"
 echo MIT >"$L/root/LICENSE"
-mkdir -p "$L/root/modules/golem-cli/cbits/libgrapheme"
-echo libgrapheme >"$L/root/modules/golem-cli/cbits/libgrapheme/LICENSE"
-echo unicode >"$L/root/modules/golem-cli/cbits/libgrapheme/UNICODE-LICENSE"
+mkdir -p "$L/root/modules/golem-syntax/cbits/libgrapheme"
+echo libgrapheme >"$L/root/modules/golem-syntax/cbits/libgrapheme/LICENSE"
+echo unicode >"$L/root/modules/golem-syntax/cbits/libgrapheme/UNICODE-LICENSE"
 echo harfbuzz >"$L/root/modules/golem-font/cbits/harfbuzz/COPYING"
 echo freetype >"$L/root/modules/golem-font/cbits/freetype/LICENSE.TXT"
 echo ftl >"$L/root/modules/golem-font/cbits/freetype/docs/FTL.TXT"
@@ -1436,6 +1436,7 @@ expect "licenses --wasm: all found" 0
 for f in README LICENSE-golem haskell/foo-1.0/LICENSE haskell/base-4.20.2.0/LICENSE ghc/LICENSE \
   haskell/cborg-0.2.10.0/LICENSE.txt haskell/cborg-0.2.10.0/SOURCE haskell/skylighting-0.15/LICENSE \
   haskell/skylighting-0.15/skylighting-0.15.patch haskell/skylighting-0.15/SOURCE harfbuzz/COPYING \
+  libgrapheme/LICENSE libgrapheme/UNICODE-LICENSE \
   freetype/LICENSE.TXT freetype/FTL.TXT hyph-en-us/LICENSE-hyph-en-us.txt hyph-fr/LICENSE-hyph-fr.txt \
   hyph-de-1996/LICENSE-hyph-de-1996.txt hyph-it/LICENSE-hyph-it.txt gmp/COPYINGv3 gmp/COPYING.LESSERv3 \
   wasi-sdk/wasi-libc/LICENSE-MIT wasi-sdk/llvm/libcxx-LICENSE.TXT wasi-sdk/libffi-wasm/LICENSE; do

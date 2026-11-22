@@ -42,6 +42,7 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 - [code: characters]：一行の字数です。
 - [code: lines]：一ページの行数です。
 - [code: line-pitch]：行送り（ある行から次の行までの距離）です。
+- [code: character-advance]：字形の大きさを保ったまま、和文の文字枠の送りを正の寸法で指定します。省くと従来の送りです。
 - [code: position]：版面の位置です。[code: top] は天（ページの上端）から、[code: gutter] はノド（綴じる側の端）からの距離です。
 - [code: columns]：段数です。省略すると 1 段になります。
 - [code: column-gap]：段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必ず書きます。
@@ -707,7 +708,8 @@ offset = "0.05zw"
 
 縦組みの下線は、文字の右に引く傍線[index reading=ぼうせん: 傍線]になります。
 ルビや圏点がある範囲では、傍線をルビと圏点の外に引きます。
-左の傍線は、まだ引けません。
+[code: underline = { side = "left" }] と書けば、左に引けます。
+[code: side = "right"] が既定で、横組みの下線には側の指定を使いません。
 
 PDF では、下線を文字の前に、打ち消し線を文字の後に描くので、下線は文字を隠さず、打ち消し線は文字に隠れません。
 HTML と EPUB では、CSS の [code: text-decoration] で表します。

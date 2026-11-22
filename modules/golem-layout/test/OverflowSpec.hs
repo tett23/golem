@@ -111,4 +111,4 @@ box :: Int -> Sp -> Item
 box t w = Box w (content t)
 
 content :: Int -> BoxContent
-content t = BoxContent (T.pack (show t)) False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0
+content t = BoxContent (T.pack (show t)) False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing

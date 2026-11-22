@@ -45,6 +45,8 @@ data InlineKind
   | KColor
   | KCharStyle
   | KTcy
+  | KWarichu
+  | KUpright
   | KNumber
   | KRef
   | KDeferred
@@ -84,6 +86,8 @@ inlineKind = \case
   Color {} -> KColor
   CharStyle {} -> KCharStyle
   Tcy {} -> KTcy
+  Warichu {} -> KWarichu
+  Upright {} -> KUpright
   Number {} -> KNumber
   Ref {} -> KRef
   Deferred {} -> KDeferred
@@ -136,6 +140,8 @@ kinds = foldMap block . docBlocks
       Resolved _ _ _ is -> inlines is
       Text {} -> mempty
       Tcy {} -> mempty
+      Warichu {} -> mempty
+      Upright {} -> mempty
       Number {} -> mempty
       Ref {} -> mempty
       Deferred {} -> mempty

@@ -136,7 +136,7 @@ defaultOrder =
 
 -- | A box of no content of a width.
 boxOf :: Sp -> Item
-boxOf w = Box w (BoxContent "" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+boxOf w = Box w (BoxContent "" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
 
 -- | A line of items set to a target, of an order, with no expansion, protrusion nor limit.
 lineOf :: AdjustOrder -> Sp -> [Item] -> Line

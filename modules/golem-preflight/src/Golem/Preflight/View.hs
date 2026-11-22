@@ -130,7 +130,7 @@ data GlyphView = GlyphView
 {- | What a glyph is (golem-cli ADR 0008): a ruby and a kenten mark take a
 size from the character they are on, so small ones are a cause of their own.
 -}
-data GlyphPart = PartBase | PartRuby | PartKenten
+data GlyphPart = PartBase | PartRuby | PartKenten | PartWarichu
   deriving stock (Eq, Ord, Show)
 
 -- | A rule Golem draws (table rules); crop marks are not in a view.

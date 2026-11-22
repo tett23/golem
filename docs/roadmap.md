@@ -103,7 +103,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### ルビと和文組版の拡張
 
 - **ルビの拡張（未実装）**：熟語の全体の読みが長い熟語ルビをグループルビとして配置し直すこと、片側だけのかけ、約物へのかけ、行頭と行末で親文字を行の端にそろえる配置、ルビの文字の大きさとルビを置く側の設定、ルビごとに配置を指定する記法、両側ルビ、ルビの中の圏点（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。 [Golem ADR 0379](adr/0379-extended-ruby-placement.md)。
-- **和文組版の拡張（未実装）**：割注、左の傍線（[ADR 0270](adr/0270-underline-and-strikethrough.md) は右の傍線だけを引く）、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。 [Golem ADR 0380](adr/0380-extended-japanese-composition.md)。
 
 ### 本の部品の拡張
 

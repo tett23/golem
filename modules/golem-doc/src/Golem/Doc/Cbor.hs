@@ -167,6 +167,8 @@ inlineT rt = \case
   Color s c xs -> tagged 6 [spanT s, text c, sub xs]
   CharStyle s c xs -> tagged 7 [spanT s, text c, sub xs]
   Tcy s t -> tagged 8 [spanT s, text t]
+  Warichu s t -> tagged 26 [spanT s, text t]
+  Upright s t -> tagged 27 [spanT s, text t]
   Number s n st -> tagged 9 [spanT s, int n, opt (int . fromEnum) st]
   Ref s k l -> tagged 10 [spanT s, int (fromEnum k), text l]
   Deferred s (DeferredExpr e) -> tagged 11 [spanT s, exprT e]
@@ -530,6 +532,8 @@ termInline rd t =
         (6, [c, x]) -> Color s <$> asText c <*> sub x
         (7, [c, x]) -> CharStyle s <$> asText c <*> sub x
         (8, [x]) -> Tcy s <$> asText x
+        (26, [x]) -> Warichu s <$> asText x
+        (27, [x]) -> Upright s <$> asText x
         (9, [n, st]) -> Number s <$> asInt n <*> asOpt asEnum st
         (10, [k, l]) -> Ref s <$> asEnum k <*> asText l
         (11, [e]) -> Deferred s . DeferredExpr <$> termExpr e

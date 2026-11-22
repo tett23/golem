@@ -50,6 +50,7 @@ import Golem.Project
 import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
+import Golem.Syntax.Grapheme (graphemeClusters)
 import Golem.Typeset.Box (BoxPaint (..), boxArea, boxMarks)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
@@ -1101,7 +1102,10 @@ decorationBands env (x0, y0) sl =
                   -- the right edge of the readings and the kenten of the run, if any
                   readings = concat [overRight c | (_, _, c) <- run]
                   left = (if null readings then centre + half s else x0 + maximum readings) + off
-                  x = if under then left else centre + off - half w
+                  x
+                    | under && decSideLeft d = centre - half s - off - w
+                    | under = left
+                    | otherwise = centre + off - half w
                in Rect x (y0 - e0) w (e0 - s0)
             else
               let bottom = y0 + decShift d - (s - zwToSp s baselineRatio)
@@ -1362,6 +1366,34 @@ drawLineAt env (x0, y0) sl =
                           then mconcat (map part (maybe [(fromEnum KindText, bcText c, bcPadStart c)] mbParts (bcMark c)))
                           else runAtU env (whoOf V.PartBase c) look False False 0 (ox + bcPadStart c, oy + above) (bcText c)
                 -- a tate-chu-yoko in vertical text: horizontal in its box of one character (golem-driver ADR 0045)
+                KindUpright
+                  | vertical ->
+                      let (ox, oy) = origin off
+                          flat = look {lkTracking = 0, lkBaselineShift = 0}
+                          width = lookWidth fonts flat (bcText c)
+                          baseline = oy - Sp (unSp size `div` 2) - toSp size (lfEmBoxCentral fonts (japaneseFace env look))
+                       in whole (runAtU env (whoOf V.PartBase c) flat False False 0 (ox + lkBaselineShift look - Sp (unSp width `div` 2), baseline) (bcText c))
+                KindWarichu ->
+                  let (a, b) = fromMaybe (bcText c, "") (bcWarichu c)
+                      quarter = Sp (unSp size `div` 4)
+                      firstRow = if vertical then beside (origin off) quarter else beside (origin off) (toSp size (lfEmBoxCentral fonts (japaneseFace env look) / 2 + 1 / 4))
+                      second = beside firstRow (negate (lkSize half))
+                      row pt text =
+                        let units = graphemeClusters text
+                            measure u = case T.uncons u of
+                              Nothing -> 0
+                              Just (ch, _) -> toSp (lkSize half) (lfWordAdvance fonts (shapingForFonts fonts vertical half ch) u) + toSp (lkSize half) (toRational (lkTracking half) / 1000)
+                            placedUnits = zip units (scanl (+) 0 (map measure units))
+                            run (u, pos) =
+                              let (ox, oy) = pt
+                                  rotated = vertical && maybe False (isLatin half . fst) (T.uncons u)
+                                  at
+                                    | rotated = (ox - Sp (unSp (lkSize half * 3) `div` 10), oy - pos)
+                                    | vertical = (ox, oy - pos)
+                                    | otherwise = (ox + pos, oy)
+                               in runAtU env (whoOf V.PartWarichu c) half vertical rotated 0 at u
+                         in mconcat (map run placedUnits)
+                   in whole (row firstRow a <> row second b)
                 KindTcy | vertical -> whole (usesOf (whoOf V.PartBase c) look (tcyAt env look (origin (off + bcPadStart c)) (bcText c)))
                 -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
                 KindAki -> ([], [])
