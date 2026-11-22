@@ -6,8 +6,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Syntax
-import Golem.Typeset (PdfLayout (..))
-import Support (buildMini, fakeProvider, horizontalStyle, layoutOk, replaceIn, setLineText)
+import Golem.Typeset (PdfLayout (..), folioTexts, layoutPdf)
+import Support (buildMini, fakeProvider, horizontalStyle, layoutOk, miniManifest, replaceIn, setLineText, withMiniInput)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -15,7 +15,19 @@ tests :: TestTree
 tests =
   testGroup
     "root ADR 0401 book-part integration"
-    [ testCase "root ADR 0401 I2: a list item keeps its deferred figure inside its page" $ do
+    [ testCase "root ADR 0401 I2: single-page folio resets do not change physical spread boundaries" $ do
+        let single = replaceIn "binding = \"left\"" "layout = \"single\"" (replaceIn "gutter = \"20mm\"" "left = \"20mm\"" (style "spread" 1)) <> "\n[masters.body]\nfolio = { position = \"bottom-right\", format = \"{n}\" }\n"
+            manifest = TE.encodeUtf8 ("chapters = [{ file = \"a.gm\", page-numbering = { style = \"lower-roman\", start = 40 } }]\n" <> T.dropWhile (/= '\n') (TE.decodeUtf8 miniManifest))
+        result <- withMiniInput fakeProvider manifest single ("@page-break\n\n" <> source 2 3) [] $ \inp geometry fonts -> do
+          actual <- layoutPdf inp geometry fonts
+          case actual of
+            Left diagnostics -> assertFailure (show diagnostics)
+            Right layout -> do
+              positions layout @?= [(2, 0), (3, 0), (3, 0)]
+              let labels = folioTexts inp geometry layout
+              map (`Map.lookup` labels) [2, 3] @?= [Just "xli", Just "xlii"]
+        either (assertFailure . show) pure result,
+      testCase "root ADR 0401 I2: a list item keeps its deferred figure inside its page" $ do
         let files = [("images/tiny.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"10\" height=\"10\"/></svg>")]
             manuscript = T.intercalate "\\\n" (replicate 3 "f") <> "\n\n- a\\\n  a\n\n  @nonumber\n  @figure images/tiny.svg width=1zw alt=\"tiny\"\n    caption\n"
         (_, layout) <- layoutOk (style "page" 2) manuscript files
