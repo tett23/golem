@@ -47,6 +47,7 @@ import VerseLineNumbersSpec (verseLineNumberTests)
 #ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
 #endif
+import NestedFiguresSpec qualified
 import NoteBodyStylesSpec (noteBodyStylesTests)
 import NotesSpec (notesTests)
 import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
@@ -56,6 +57,7 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
+import PageMapSpec (pageMapTests)
 import PageNoteNumbersSpec (pageNoteNumbersTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
@@ -97,6 +99,7 @@ tests skips =
   testGroup
     "golem-driver (ADR 0001)"
     ( [ qpdfInstalled,
+        NestedFiguresSpec.tests,
         explainTests,
         noticeTests,
         testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
@@ -172,6 +175,7 @@ tests skips =
              testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
              testGroup "double dashes drawn as one line (docs/adr ADR 0172)" doubleDashTests,
              pageStartsTests,
+             pageMapTests,
              testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
              testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
              testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -190,6 +194,7 @@ tests skips =
              testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
              testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
              testGroup "running heads (ADR 0014)" runningHeadTests,
+             testGroup "the decorations of running heads and folios (docs/adr/0410)" runningHeadDecorationTests,
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
              testGroup "the plates of the PDF and G09019 to G09021 (docs/adr ADR 0232)" platesTests,
              testGroup "the PDF as Poppler reads it (docs/adr ADR 0232)" popplerTests,

@@ -148,7 +148,7 @@ xrefIndexPdf index =
 -- ------------------------------------------------------------------ tests
 
 tests :: TestTree
-tests = testGroup "security" [tests2018, auditTests, separatorTests]
+tests = testGroup "security" [tests2018, auditTests, separatorTests, reusedOuterTests]
 
 tests2018 :: TestTree
 tests2018 =
@@ -482,3 +482,55 @@ separatorTests =
           (4, grayStream (8 * mib)),
           (6, obj)
         ]
+
+-- ------------------------------------------------------------------ root ADR 0409: the outer content of reused streams
+
+{- | The outer content of a page whose repeated streams are written once as
+inner Forms (docs/adr ADR 0051) is limited to 256 MiB as the joined content
+is: the pieces, the @Do@ lines and the newlines between them all count
+(root ADR 0409).
+-}
+reusedOuterTests :: TestTree
+reusedOuterTests =
+  testGroup
+    "the outer content of reused streams is limited to 256 MiB (root ADR 0409)"
+    [ testCase "root ADR 0409 I1: one stream of 256 MiB is read"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R" [(4, nulStream (256 * mib))]) >>= (@?= Right (256 * mib, 0)),
+      testCase "root ADR 0409 I1: the content is as long as its pieces and the newlines between them, reused or not" $
+        mapM_
+          ( \(overlap, sizes) -> do
+              let streams = zip [4 ..] (map nulStream sizes)
+                  names = [k | (k, _) <- streams]
+                  -- with the overlap, the first stream is named twice more, and written once as a Form
+                  named = if overlap then 4 : 4 : names else names
+                  refs = BC.unwords [BC.pack (show k) <> " 0 R" | k <- named]
+                  piece k = if overlap && k == 4 then BS.length "/GolemC4 Do" else sizes !! fromIntegral (k - 4)
+                  expected = sum (map piece named) + length named - 1
+              r <- imported 1 (contentsOf refs streams)
+              fmap fst r @?= Right expected
+          )
+          [(overlap, sizes) | overlap <- [False, True], count <- [1 .. 4], sizes <- replicateM count [0, 1, 3]],
+      testCase "root ADR 0409 I1: joinContent returns content as long as its pieces and the newlines between them" $
+        mapM_
+          (\sizes -> fmap BS.length (joinContent [BS.replicate n 0x20 | n <- sizes]) @?= Right (sum sizes + length sizes - 1))
+          (concat [replicateM count [0, 1, 3] | count <- [1 .. 4]]),
+      testCase "root ADR 0409 I2: an empty stream named twice and one of 256 MiB are refused for the Do lines and the newlines"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 4 0 R 5 0 R" [(4, nulStream 0), (5, nulStream (256 * mib))])
+          >>= (@?= Left (ContentTooLarge (256 * mib + 2 * doLine + 2))),
+      testCase "root ADR 0409 I2: two streams of 128 MiB, not reused, are refused for the newline"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib))])
+          >>= (@?= Left (ContentTooLarge (256 * mib + 1))),
+      testCase "root ADR 0409 I1, I3: a reused page whose outer content is just 256 MiB is read"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 4 0 R 5 0 R" [(4, nulStream 0), (5, nulStream (256 * mib - 2 * doLine - 2))])
+          >>= (@?= Right (256 * mib, 1)),
+      testCase "root ADR 0409 I2: a reused page whose outer content is 256 MiB and one byte is refused"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (contentsOf "4 0 R 4 0 R 5 0 R" [(4, nulStream 0), (5, nulStream (256 * mib - 2 * doLine - 1))])
+          >>= (@?= Left (ContentTooLarge (256 * mib + 1)))
+    ]
+  where
+    doLine = BS.length "/GolemC4 Do"

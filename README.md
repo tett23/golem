@@ -156,6 +156,7 @@ golem new mybook
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画する |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
+| `golem kinsoku [PATH]` | `PATH`（省くと今のフォルダ）から親へたどって最も近いプロジェクトの、`style.toml` から解決した禁則（`kinsoku`）とぶら下げ（`hangingPunctuation`）を、一行の JSON で標準出力に書く。プロジェクトが無ければ `project` を `null` とし、既定値を書く |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
 命令の引数列と原稿内の式には通常コメント `%%注%%` を書ける（[Golem ADR 0339](./docs/adr/0339-comments-in-arguments-and-manuscript-expressions.md)）。
@@ -293,6 +294,12 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 - 行を分けない範囲は、組み込みの文字スタイル `no-break` で `[style no-break: 100 円]` と書く。
 - 語の分け方の例外は、`style.toml` の `[composition.hyphenation-exceptions]` と原稿のファイルの `@hyphenation-exceptions` に言語ごとに書く。
 
+EPUB は `[targets.epub].page-map` に原稿の SHA-256 と本文位置を持つ JSON 対応表を指定した場合だけ、固定ページ版の表示ノンブルをページ一覧に載せる（[Golem ADR 0386](docs/adr/0386-page-list-and-page-colors.md)）。
+`[figures].color` は単色図版の色を独立に指定する。
+白黒の濃淡は白を白、黒を指定色、灰色をその中間の濃度にし、写真などの多色画像は元の色を保持する（[root ADR 0403](docs/adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+取り込む PDF の色置換は段階的に実装しており、未対応の描画や画像のために変換できない場合は G08113 で生成を止める。
+[現在の対応範囲](docs/specifications.md#単色図版の色) と [残る対応](docs/roadmap.md#本の部品の拡張) を参照。
+
 ### リスト、図版、コード、表
 
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
@@ -302,6 +309,7 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 文字の波括弧は `\{` と `\}` で書く（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 
 PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
+同じストリームを何度も名指しするページで、そのストリームを一度だけ書いて呼ぶときも、呼び出しの行と改行を含めたページの内容を 256 MiB までとする（[ADR 0409](./docs/adr/0409-limit-the-outer-content-of-reused-pdf-streams.md)）。
 
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 

@@ -19,6 +19,7 @@ module Golem.Html
     codeTokens,
     XhtmlSite (..),
     renderXhtml,
+    renderXhtmlWithPageBreaks,
     allFigures,
     webSource,
     pagePath,
@@ -336,7 +337,8 @@ data Ctx = Ctx
     cCharStyles :: Map Text HtmlCharStyle,
     {- | the text is inside a link: a resolved reference in it is its text
     alone (docs/adr/0267)
-    -} cInLink :: Bool
+    -} cInLink :: Bool,
+    cPageBreaks :: Map SrcSpan [(Int, Text, Text)]
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -367,9 +369,13 @@ chapterNotes docs =
    in [(d, ChapterNotes home key (if f == home then keyed else [])) | (f, key, d) <- keyed]
 
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
-renderXhtml cfg ft book =
+renderXhtml cfg ft book = renderXhtmlWithPageBreaks cfg ft book Map.empty
+
+-- | EPUB page breaks in body text, indexed by its source span and character offset.
+renderXhtmlWithPageBreaks :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> XhtmlSite
+renderXhtmlWithPageBreaks cfg ft book pageBreaks =
   XhtmlSite
-    { sitePages = [(pagePath ft fid, page cfg ft book notes d) | chapter <- bookChapters book, (d@(Document fid _), notes) <- chapterNotes chapter],
+    { sitePages = [(pagePath ft fid, page cfg ft book pageBreaks notes d) | chapter <- bookChapters book, (d@(Document fid _), notes) <- chapterNotes chapter],
       siteCss = css cfg book,
       siteAssets =
         sortOn fst
@@ -408,11 +414,11 @@ relLink from to =
   let depth = length (splitDirectories (takeDirectory from)) - (if takeDirectory from == "." then 1 else 0)
    in T.pack (concat (replicate depth "../") <> makeRelative "." to)
 
-page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
-page cfg ft book notes (Document fid bs) =
+page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> ChapterNotes -> Document -> Text
+page cfg ft book pageBreaks notes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c
@@ -493,6 +499,13 @@ topBlocks c = go Nothing Nothing 0 False
     nextSeparator rest = case filter displayed rest of
       next : _ -> isJust (separatorSpace next)
       _ -> False
+    -- blank lines are written before the next block unless a break or the end
+    -- comes first; the block before them keeps no margin on their side, so the
+    -- default margin of a paragraph is not added to them (root ADR 0398)
+    blankFollows rest = case break displayed rest of
+      (_, Block _ _ _ (ForcedBreak _) : _) -> False
+      (hidden, _ : _) -> sum [toInteger n | Block _ _ _ (BlankLines n) <- hidden] > 0
+      _ -> False
     styledBoundary before after html = case ["margin-block-start:0" | before] <> ["margin-block-end:0" | after] of
       [] -> html
       declarations -> let (open, rest) = T.breakOn ">" html in open <> " style=\"" <> T.intercalate ";" declarations <> "\"" <> rest
@@ -509,8 +522,10 @@ topBlocks c = go Nothing Nothing 0 False
       | Just (name, key) <- boxOf b =
           let (more, rest') = span (\x -> fmap snd (boxOf x) == Just key && not (startsPage x)) rest
               lastIndex = length more
-              followingSeparator = nextSeparator rest'
-           in blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (styledBoundary previous followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (previous && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
+              followingSeparator = nextSeparator rest' || blankFollows rest'
+              blanksBefore = max 0 (fromMaybe 0 blanks - after)
+              start = previous || blanksBefore > 0
+           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (start && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
       | Just (before, after') <- separatorSpace b =
           let explicit = fromMaybe 0 blanks
               extra = if not previous && explicit > max after before then explicit - after else 0
@@ -524,7 +539,9 @@ topBlocks c = go Nothing Nothing 0 False
                   . T.replace ("margin-block-start:" <> tshow before <> "lh") ("margin-block-start:" <> tshow marginBefore <> "lh")
                   $ block c b
            in blankLines extra <> withBreak pending html <> go Nothing (Just 0) after' True rest
-      | otherwise = blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (render previous (nextSeparator rest) b) <> go Nothing (Just 0) 0 False rest
+      | otherwise =
+          let blanksBefore = max 0 (fromMaybe 0 blanks - after)
+           in blankLines blanksBefore <> withBreak pending (render (previous || blanksBefore > 0) (nextSeparator rest || blankFollows rest) b) <> go Nothing (Just 0) 0 False rest
     separatorSpace (Block sp _ _ (Separator name)) = case Map.lookup (sp, name) (bookSeparators (cBook c)) of
       Just (SeparatorTextAppearance before after _ _ _) -> Just (toInteger before, toInteger after)
       Just (SeparatorRuleAppearance before after _ _ _ _ _) -> Just (toInteger before, toInteger after)
@@ -698,7 +715,7 @@ separatorRuleSvg c sp name len weight color stroke =
         Just sw -> let (r, g, b) = cmykToRgb sw in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
         Nothing -> "currentColor"
       segment pos thick extra =
-        let coords = if vertical then " x1=\"" <> pos <> "%\" y1=\"0\" x2=\"" <> pos <> "%\" y2=\"100\"" else " x1=\"0\" y1=\"" <> pos <> "%\" x2=\"100\" y2=\"" <> pos <> "%\""
+        let coords = if vertical then " x1=\"" <> pos <> "%\" y1=\"0\" x2=\"" <> pos <> "%\" y2=\"100%\"" else " x1=\"0\" y1=\"" <> pos <> "%\" x2=\"100%\" y2=\"" <> pos <> "%\""
          in "<line" <> coords <> " stroke=\"" <> ink <> "\" stroke-width=\"" <> pt thick <> "\"" <> extra <> "/>"
       base = segment "50" weight ""
       svgBody = case stroke of
@@ -747,7 +764,7 @@ toc c depth =
           <> linkTo c (teFile e) (teAnchor e)
           <> "\">"
           <> maybe "" (\n -> escapeXml (n <> titleSeparator (hcLanguage (cCfg c)) (Map.lookup (teFile e, Just (teLevel e)) (bookTitleSeparators (cBook c))) n (foldMap inlineText (teTitle e)))) (teNumber e)
-          <> inlines c {cInLink = True} (teTitle e)
+          <> inlines c {cInLink = True, cPageBreaks = Map.empty} (teTitle e)
           <> "</a></li>\n"
       | e <- bookToc (cBook c),
         maybe True (teLevel e <=) depth
@@ -847,8 +864,20 @@ inlines :: Ctx -> [InlineF r] -> Text
 inlines c = T.concat . map (inline c)
 
 inline :: Ctx -> InlineF r -> Text
-inline c = \case
-  Text _ t -> escapeXml t
+inline c value = anchor <> inlineBody c value
+  where
+    anchor = maybe "" (\sp -> pageText (Map.findWithDefault [] sp (cPageBreaks c)) "") atom
+    atom = case value of
+      Tcy sp _ -> Just sp
+      Number sp _ _ -> Just sp
+      Ref sp _ _ -> Just sp
+      Cite sp _ -> Just sp
+      ChannelItem sp _ -> Just sp
+      _ -> Nothing
+
+inlineBody :: Ctx -> InlineF r -> Text
+inlineBody c = \case
+  Text sp t -> pageText (Map.findWithDefault [] sp (cPageBreaks c)) t
   Ruby _ _ segs
     | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->
         T.concat (map extendedRuby segs)
@@ -921,7 +950,7 @@ inline c = \case
         StyleKanjiDigits -> kanjiDigits n
         StyleTcy -> "<span class=\"tcy\">" <> T.pack (show n) <> "</span>"
   Ref _ _ l -> case Map.lookup l (bookLabels (cBook c)) of
-    Just t -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c (ltTitle t) <> "</a>"
+    Just t -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cPageBreaks = Map.empty} (ltTitle t) <> "</a>"
     Nothing -> ""
   Deferred {} -> ""
   Note _ n _ ->
@@ -962,6 +991,20 @@ inline c = \case
       Just t <- Map.lookup l (bookLabels (cBook c)) ->
         "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cInLink = True} xs <> "</a>"
   Resolved _ _ _ xs -> inlines c xs
+
+-- | Insert page-break spans without changing the surrounding text or its styles.
+pageText :: [(Int, Text, Text)] -> Text -> Text
+pageText breaks text = go 0 (sortOn (\(offset, _, _) -> offset) breaks)
+  where
+    go start [] = escapeXml (T.drop start text)
+    go start ((offset, ident, label) : rest) =
+      escapeXml (T.take (offset - start) (T.drop start text))
+        <> "<span epub:type=\"pagebreak\" role=\"doc-pagebreak\" id=\""
+        <> escapeXml ident
+        <> "\" aria-label=\""
+        <> escapeXml label
+        <> "\"></span>"
+        <> go offset rest
 
 {- | The CSS length of an aki: zw in em, an absolute amount in pt, at most
 four decimals (docs/adr ADR 0103).

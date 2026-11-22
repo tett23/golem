@@ -1,10 +1,15 @@
 module Main (main) where
 
 import BoxSpec (boxTests)
+import FigureColorSpec (figureColorTests)
 import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
+import PdfColorRangeSpec (pdfColorRangeTests)
+import PdfColorSpec (pdfColorTests)
+import PdfDctSpec (pdfDctTests)
 import RuleShapeSpec (ruleShapeTests)
+import SvgColorSpec (svgColorTests)
 import TcySpec (tcyTests)
 import Test.Tasty
 import WrapMarkSpec (wrapMarkTests)
@@ -17,7 +22,12 @@ tests :: TestTree
 tests =
   testGroup
     "golem-typeset"
-    [ memoTests,
+    [ pdfDctTests,
+      figureColorTests,
+      svgColorTests,
+      testGroup "PDF figure colors" pdfColorTests,
+      testGroup "PDF figure colour range" pdfColorRangeTests,
+      memoTests,
       testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
       testGroup "the glyph runs of a box in the order of its text (docs/adr ADR 0227)" glyphRunsTests,
       testGroup "the fit of a tate-chu-yoko in its box (golem-driver ADR 0045)" tcyTests,

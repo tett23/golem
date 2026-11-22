@@ -430,9 +430,9 @@ boxTests =
       body
         @?= T.concat
           [ "<div class=\"box box-col\" data-break-before=\"page\">\n<p class=\"ps-col\">x</p>\n</div>\n",
-            "<div class=\"box box-top\">\n<p class=\"ps-top\">x</p>\n</div>\n",
+            "<div class=\"box box-top\" style=\"margin-block-end:0\">\n<p class=\"ps-top\" style=\"margin-block-end:0\">x</p>\n</div>\n",
             "<div class=\"blank-line\"><br/></div>\n",
-            "<div class=\"box box-col\">\n<p class=\"ps-col\">x</p>\n</div>\n"
+            "<div class=\"box box-col\" style=\"margin-block-start:0\">\n<p class=\"ps-col\" style=\"margin-block-start:0\">x</p>\n</div>\n"
           ],
     testCase "the rule of the box; no indent and no outer margin of the paragraphs in a box; the spaces before and after on the box" $ do
       let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceAfter = 2}), ("col", (boxed "a") {hpsSpaceBefore = 1, hpsSpaceAfter = 3})]}
@@ -540,7 +540,26 @@ tests =
       assertBool "square dots" ("stroke-linecap=\"square\"" `T.isInfixOf` japanese)
       assertBool "multiple strokes" (T.count "<line" multiple == 2)
       assertBool "wavy path" ("<path" `T.isInfixOf` wavy)
-      assertBool "vertical path" ("y2=\"100\"" `T.isInfixOf` vertical),
+      assertBool "vertical path" ("y2=\"100%\"" `T.isInfixOf` vertical),
+    testCase "root ADR 0398 A2: a rule line spans the whole SVG, the measure, in both writing modes" $ do
+      let rule = (bookOf [Block (at 1) Nothing Nothing (Separator "scene")]) {bookSeparators = Map.singleton (at 1, "scene") (SeparatorRuleAppearance 1 1 "center" Nothing 32768 Nothing StrokeSolid)}
+          horizontal = bodyA cfg0 rule
+          vertical = bodyA (cfg0 {hcVertical = True}) rule
+      assertBool (T.unpack horizontal) ("inline-size:100%" `T.isInfixOf` horizontal)
+      assertBool (T.unpack horizontal) ("<line x1=\"0\" y1=\"50%\" x2=\"100%\" y2=\"50%\"" `T.isInfixOf` horizontal)
+      assertBool (T.unpack vertical) ("<line x1=\"50%\" y1=\"0\" x2=\"50%\" y2=\"100%\"" `T.isInfixOf` vertical),
+    testCase "root ADR 0398 A4: paragraphs next to blank lines drop their margin on that side in both writing modes" $
+      mapM_
+        ( \vertical -> do
+            let blank n = Block (at 2) Nothing Nothing (BlankLines n)
+                body = bodyA (cfg0 {hcVertical = vertical}) (bookOf [para 1 [txt "a"], blank 2, para 3 [txt "b"], para 4 [txt "c"]])
+            assertBool (T.unpack body) ("<p style=\"margin-block-end:0\">a</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p style=\"margin-block-start:0\">b</p>\n<p>c</p>\n" `T.isInfixOf` body)
+        )
+        [False, True],
+    testCase "root ADR 0398 A4: no blank line is written before a break, so the paragraph keeps its margin" $ do
+      let body = bodyA cfg0 (bookOf [para 1 [txt "a"], Block (at 2) Nothing Nothing (BlankLines 2), Block (at 3) Nothing Nothing (ForcedBreak BreakPage), para 4 [txt "b"]])
+      assertBool (T.unpack body) ("<p>a</p>" `T.isInfixOf` body)
+      T.count "<br/>" body @?= 0,
     testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
     testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
     testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
@@ -1067,4 +1086,14 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests])
+
+-- | Fixed-page positions are empty anchors in the original text (root ADR 0386).
+pageBreakTests :: TestTree
+pageBreakTests = testCase "root ADR 0386 I1: each page-list destination occurs once in body order" $ do
+  let sp = mkSpan fidA 0 4
+      book = bookOf [Block sp Nothing Nothing (Paragraph Nothing [Text sp "日本語句"])]
+      anchors = Map.singleton sp [(0, "GolemFixedPage-1", "i"), (2, "GolemFixedPage-2", "1")]
+      body = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtmlWithPageBreaks cfg0 ft book anchors)))
+  [T.takeWhile (/= '"') piece | piece <- drop 1 (T.splitOn "id=\"" body)] @?= ["GolemFixedPage-1", "GolemFixedPage-2"]
+  assertBool "body text retains its order" ("日本<span" `T.isInfixOf` body && "></span>語句" `T.isInfixOf` body)
