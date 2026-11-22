@@ -2436,8 +2436,9 @@ EPUB と HTML は `bleed` を無視する。
 | --- | --- | --- | --- |
 | `enabled` | 真偽値 | 見開きモードは `true`、左右固定モードは `false` | トンボを付けた PDF に隠しノンブルを入れるか |
 | `pages` | `"unnumbered"` か `"all"` | `"unnumbered"` | 入れるページ |
-| `size` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"6pt"` | 数字の大きさ |
+| `size` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | 文字スタイルのサイズ、未指定なら `"6pt"` | 数字の大きさ |
 | `gutter` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"1.5mm"` | ノドの仕上がりの線から、数字の列の中心線までの距離 |
+| `character-style` | 文字スタイル名 | なし | 隠しノンブルの書体と色 |
 
 隠しノンブルの `character-style` には文字スタイル名を指定する（[Golem ADR 0365](adr/0365-hidden-folio-style.md)）。
 書体と色を隠しノンブルに適用する。

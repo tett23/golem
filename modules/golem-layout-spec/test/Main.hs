@@ -267,11 +267,11 @@ tests =
           codesOf (withFolio bindingRight (m - pt 3)) @?= []
           -- with an advance of 0.55em the digits would still be 1pt off the type area
           codesOf (withFolio bindingRight (m - pt 3 + 1)) @?= [DiagnosticCode "G07050"],
-      testCase "Golem ADR 0365 inv1: overlap geometry uses the character style size" $ do
+      testCase "root ADR 0365 I1: overlap geometry uses the character style size" $ do
         let margin = 2786570
             base =
               defaultStyle
-                { stPage = Just (Page (NamedSize "A5") False False (Just ((grid 30 30 1 Nothing) {gridGutter = Abs margin})) 0),
+                { stPage = Just (Page (NamedSize "A5") FacingLeft False (Just ((grid 30 30 1 Nothing) {gridPosition = GutterPosition (Abs margin)})) 0),
                   stCharStyles = Map.insert "hidden" noCharDef {csSize = Just (Abs (pt 12))} (stCharStyles defaultStyle),
                   stHiddenFolio = (stHiddenFolio defaultStyle) {hfCharacterStyle = Just "hidden", hfGutter = Abs (margin - pt 4)}
                 }
