@@ -1,6 +1,6 @@
 # ADR 0361: 同一入力から同じ EPUB のバイト列を生成する
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md"],"part":"一致の条件（同じビルド）"}]
 
 ## 文脈
 
