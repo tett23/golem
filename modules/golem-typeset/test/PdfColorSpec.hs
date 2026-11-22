@@ -13,7 +13,24 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: packed PDF gray samples preserve padding at each row" $ do
+  [ testCase "root ADR 0403 I1: a 16-bit PDF soft mask retains its original precision and object" $ do
+      let alpha = BS.pack [255, 255, 128, 0, 255, 255]
+          originalMask = P.OStream [("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("BitsPerComponent", P.OInt 16), ("ColorSpace", P.OName "DeviceGray")] alpha
+          original = imagePage {P.ipObjects = [(1, P.OStream (("SMask", P.ORef 2) : imageFields 3) rgbPixels), (2, originalMask)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> do
+          lookup 2 (P.ipObjects result) @?= Just originalMask
+          convertedImagePixels result @?= [BS.pack [0, 0, 255, 255, 255, 255, 0, 0, 0, 0, 127, 127, 127, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+          [lookup "SMask" entries | (key, P.OStream entries _) <- P.ipObjects result, key < 0, lookup "Subtype" entries == Just (P.OName "Image")] @?= [Just (P.ORef 2)]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a packed reversed PDF soft mask is used only for visibility" $ do
+      let samples = BS.pack [255, 0, 0, 128, 128, 128, 0, 0, 255]
+          originalMask = P.OStream [("Subtype", P.OName "Image"), ("Width", P.OInt 3), ("Height", P.OInt 1), ("BitsPerComponent", P.OInt 1), ("ColorSpace", P.OName "DeviceGray"), ("Decode", P.OArr [P.OInt 1, P.OInt 0])] (BS.pack [0xa0])
+          original = imagePage {P.ipObjects = [(1, P.OStream (("SMask", P.ORef 2) : imageFields 3) samples), (2, originalMask)]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> lookup 2 (P.ipObjects result) @?= Just originalMask
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: packed PDF gray samples preserve padding at each row" $ do
       let fields = [("ColorSpace", P.OName "DeviceGray"), ("BitsPerComponent", P.OInt 1), ("Height", P.OInt 2)] <> filter (\(name, _) -> name `notElem` ["ColorSpace", "BitsPerComponent", "Height"]) (imageFields 3)
           original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [0x40, 0xa0]))]}
           ink = [0, 255, 255, 0]

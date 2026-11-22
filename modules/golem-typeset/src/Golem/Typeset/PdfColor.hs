@@ -279,14 +279,15 @@ analyzePdfImage key fields state = case Map.lookup key (rasterResults state) of
     if ranges == concat (replicate components [False, True]) then Right () else Left "PDF 図版の画像の Decode に対応していません"
     let pixels = width * height
         inputBytes = ((width * toInteger components * bits + 7) `div` 8) * height
-        outputBits = if bits == 16 then 16 else 8
-        outputBytes = pixels * 4 * (outputBits `div` 8)
-    if inputBytes + outputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
+        minimumOutputBytes = pixels * 4 * (if bits == 16 then 2 else 1)
+    if inputBytes + minimumOutputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
       then Left budgetError
       else Right ()
     (bytes, decoded) <- decodePdfStream key fields colored
     if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
     (alpha, masked) <- pdfImageAlpha width height fields decoded
+    let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8
+        outputBytes = pixels * 4 * (outputBits `div` 8)
     reserved <- charge (fromInteger outputBytes) masked
     let input = P.ImageData (fromInteger width) (fromInteger height) (fromInteger bits) space profile bytes False False alpha
     analysis <- rasterAnalyzer reserved input
@@ -389,19 +390,21 @@ pdfImageAlpha width height fields state = case lookup "SMask" fields of
   Just reference -> do
     (key, maskFields) <- pdfStreamReference invalid state Set.empty reference
     dimensions <- traverse (\name -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name maskFields)) ["Width", "Height", "BitsPerComponent", "ColorSpace", "Subtype"]
-    if dimensions /= [P.OInt width, P.OInt height, P.OInt 8, P.OName "DeviceGray", P.OName "Image"] || any (`isJustField` maskFields) ["Mask", "SMask", "Matte"] || maybe False (/= P.OBool False) (lookup "ImageMask" maskFields)
-      then Left invalid
-      else Right ()
-    let pixels = width * height
-    if pixels > toInteger (remainingBytes state) then Left budgetError else Right ()
+    bits <- case dimensions of
+      [P.OInt w, P.OInt h, P.OInt depth, P.OName "DeviceGray", P.OName "Image"]
+        | w == width, h == height, depth `elem` [1, 2, 4, 8, 16] -> Right depth
+      _ -> Left invalid
+    if any (`isJustField` maskFields) ["Mask", "SMask", "Matte"] || maybe False (/= P.OBool False) (lookup "ImageMask" maskFields) then Left invalid else Right ()
+    let sampleBytes = ((width * bits + 7) `div` 8) * height
+    if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
     ranges <- unitDecode 1 maskFields state
     (bytes, decoded) <- decodePdfStream key maskFields state
-    if toInteger (BS.length bytes) /= pixels then Left invalid else Right ()
+    if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
     case ranges of
-      [False, True] -> Right (Just (P.Alpha 8 bytes), decoded)
+      [False, True] -> Right (Just (P.Alpha (fromInteger bits) bytes), decoded)
       [True, False] -> do
         reserved <- charge (BS.length bytes) decoded
-        Right (Just (P.Alpha 8 (BS.map (255 -) bytes)), reserved)
+        Right (Just (P.Alpha (fromInteger bits) (BS.map (255 -) bytes)), reserved)
       _ -> Left invalid
   where
     invalid = "PDF 図版のソフトマスクを保って色を置き換えられません"
