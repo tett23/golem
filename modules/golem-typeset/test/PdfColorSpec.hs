@@ -2,7 +2,10 @@ module PdfColorSpec (pdfColorTests) where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
+import Golem.Pdf.Image (flate)
 import Golem.Typeset.FigureColor (RasterAnalysis (..), RasterKind (..))
 import Golem.Typeset.PdfColor (recolorImportedPage)
 import Test.Tasty
@@ -10,7 +13,38 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: PDF white black and gray become CMYK tints" $ do
+  [ testCase "root ADR 0403 I1: a nested PDF Form is recolored" $ do
+      result <- requireConverted (formPage ".5 g 0 0 10 10 re f" "/F Do")
+      let content = newFormContent result
+      assertBool "nested gray" ("0 0.5 0.5 0 k" `BS.isInfixOf` content),
+    testCase "root ADR 0403 I1: a PDF Form inherits the caller paint" $ do
+      result <- requireConverted (formPage "0 0 10 10 re f" ".5 g /F Do")
+      assertBool "inherited paint is not reset to black" (not ("0 1 1 0 k" `BS.isInfixOf` newFormContent result)),
+    testCase "root ADR 0403 I3: a reused Form in two colors keeps the original PDF" $
+      recolor (formPage "0 0 10 10 re f" "1 0 0 rg /F Do 0 0 1 rg /F Do") @?= Right Nothing,
+    testCase "root ADR 0403 I2: converted Forms are cloned without changing soft-mask resources" $ do
+      let base = formPage "0 g 0 0 10 10 re f" "/Alpha gs /F Do"
+          original = base {P.ipResources = P.ODict [("XObject", P.ODict [("F", P.ORef 1)]), ("ExtGState", P.ODict [("Alpha", P.ODict [("SMask", P.ODict [("S", P.OName "Luminosity"), ("G", P.ORef 1)])])])]}
+      result <- requireConverted original
+      lookup 1 (P.ipObjects result) @?= lookup 1 (P.ipObjects original)
+      assertBool "original object not reused for paint" (P.ipResources result /= P.ipResources original),
+    testCase "root ADR 0403 I2: a cyclic PDF Form graph is rejected" $ do
+      let cyclic = formPage "/F Do" "/F Do"
+      case recolor cyclic of
+        Left _ -> pure ()
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I2: a shared PDF Form graph is summarized without expansion" $ do
+      result <- requireConverted sharedForms
+      length (P.ipObjects result) @?= 80,
+    testCase "root ADR 0403 I1: a compressed PDF Form uses its indirect filter" $ do
+      let original = (formPage "unused" "/F Do") {P.ipObjects = [(1, P.OStream [("Subtype", P.OName "Form"), ("Filter", P.ORef 2)] (flate ".5 g 0 0 10 10 re f")), (2, P.OName "FlateDecode")]}
+      result <- requireConverted original
+      assertBool "decoded and recolored" ("0 0.5 0.5 0 k" `BS.isInfixOf` newFormContent result),
+    testCase "root ADR 0403 I1: fully transparent PDF paint does not make a gray figure multicolor" $ do
+      let original = (page "/Hide gs 1 0 0 rg 0 0 10 10 re f /Show gs .5 g 10 0 10 10 re f") {P.ipResources = P.ODict [("ExtGState", P.ODict [("Hide", P.ODict [("ca", P.OInt 0)]), ("Show", P.ODict [("ca", P.OInt 1)])])]}
+      _ <- requireConverted original
+      pure (),
+    testCase "root ADR 0403 I1: PDF white black and gray become CMYK tints" $ do
       p <- converted "1 g 0 0 10 10 re f 0 g 10 0 10 10 re f .5 g 20 0 10 10 re f"
       assertBool "white" ("0 0 0 0 k" `BS.isInfixOf` P.ipContent p)
       assertBool "black" ("0 1 1 0 k" `BS.isInfixOf` P.ipContent p)
@@ -22,7 +56,7 @@ pdfColorTests =
       p <- converted "0 0 10 10 re f"
       assertBool "default black converted" ("0 1 1 0 k" `BS.isPrefixOf` P.ipContent p),
     testCase "root ADR 0403 I2: PDF geometry transparency and resource objects stay intact" $ do
-      let original = (page "0 g /Alpha gs 0 0 10 10 re f") {P.ipBox = (2, 3, 12, 23), P.ipRotate = 90, P.ipSize = (20, 10)}
+      let original = (page "0 g /Alpha gs 0 0 10 10 re f") {P.ipBox = (2, 3, 12, 23), P.ipRotate = 90, P.ipSize = (20, 10), P.ipResources = P.ODict [("ExtGState", P.ODict [("Alpha", P.ODict [("ca", P.OReal "0.5"), ("CA", P.OReal "0.5")])])]}
       p <- requireConverted original
       P.ipBox p @?= P.ipBox original
       P.ipRotate p @?= P.ipRotate original
@@ -63,3 +97,28 @@ pdfColorTests =
 
 page :: ByteString -> P.ImportedPage
 page content = P.ImportedPage "source" 1 (0, 0, 30, 10) 0 (30, 10) (P.ODict []) Nothing content [] [P.UseGray] 0
+
+formPage :: ByteString -> ByteString -> P.ImportedPage
+formPage form content =
+  (page content)
+    { P.ipResources = P.ODict [("XObject", P.ODict [("F", P.ORef 1)])],
+      P.ipObjects = [(1, P.OStream [("Type", P.OName "XObject"), ("Subtype", P.OName "Form"), ("BBox", P.OArr (map P.OInt [0, 0, 10, 10]))] form)]
+    }
+
+newFormContent :: P.ImportedPage -> ByteString
+newFormContent p = case P.ipResources p of
+  P.ODict fields
+    | Just (P.ODict objects) <- lookup "XObject" fields,
+      Just (P.ORef key) <- lookup "F" objects,
+      Just (P.OStream _ content) <- lookup key (P.ipObjects p) ->
+        content
+  _ -> "missing converted Form"
+
+sharedForms :: P.ImportedPage
+sharedForms =
+  (page "/F1 Do")
+    { P.ipResources = P.ODict [("XObject", P.ODict [(name n, P.ORef n) | n <- [1 .. 40]])],
+      P.ipObjects = [(n, P.OStream [("Subtype", P.OName "Form")] (if n == 40 then "0 g 0 0 10 10 re f" else TE.encodeUtf8 ("/" <> name (n + 1) <> " Do /" <> name (n + 1) <> " Do"))) | n <- [1 .. 40]]
+    }
+  where
+    name n = "F" <> T.pack (show n)

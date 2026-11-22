@@ -1,12 +1,13 @@
 -- | Process-colour conversion of imported figures (root ADR 0403).
 module Golem.Typeset.PdfColor (recolorImportedPage) where
 
-import Control.Monad (foldM)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
+import Data.Map.Strict qualified as Map
 import Data.Ratio ((%))
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
@@ -14,55 +15,223 @@ import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis, RasterKind (..))
 
 -- A colour is kept in the source space until an operator actually paints it.
 data Color = Gray !Rational | Rgb !Rational !Rational !Rational | CmykColor !Rational !Rational !Rational !Rational
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data Space = GraySpace | RgbSpace | CmykSpace
+  deriving stock (Eq, Ord, Show)
 
 data Graphics = Graphics
   { fillColor :: !Color,
     strokeColor :: !Color,
     fillSpace :: !Space,
     strokeSpace :: !Space,
-    textMode :: !Int
+    textMode :: !Int,
+    fillAlpha :: !Rational,
+    strokeAlpha :: !Rational
   }
+  deriving stock (Eq, Ord, Show)
 
 data Scan = Scan !Graphics ![Graphics] !RasterKind ![ByteString] !(Maybe Int)
 
 {- | Nothing means that actual painting uses multiple colours, or paints nothing.
-Form XObjects and raster resources are added to this traversal separately.
+Form resources are cloned so that references from soft masks remain unchanged.
 -}
 recolorImportedPage :: Cmyk -> (P.ImageData -> Either Text RasterAnalysis) -> P.ImportedPage -> Either Text (Maybe P.ImportedPage)
 recolorImportedPage swatch _ page = do
   if P.ipDecodedBytes page < 0 || P.ipDecodedBytes page > P.maxDecodedBytes
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
-  operations <- maybe (Left "PDF 図版の描画命令を読めません") Right (P.contentOperations (P.ipContent page))
-  Scan _ stack kind _ _ <- analyze (Scan initial [] Unpainted [] Nothing) operations
-  -- A multicolour page is kept verbatim, including the rest of a saved state.
-  if kind /= Multicolor && not (null stack)
-    then Left "PDF 図版の描画状態が閉じていません"
-    else case kind of
-      Multicolor -> Right Nothing
-      Unpainted -> Right Nothing
-      _ -> do
-        let prefix = BC.unlines [paint swatch (Gray 0) False, paint swatch (Gray 0) True]
-            available = P.maxDecodedBytes - P.ipDecodedBytes page
-        if BS.length prefix > available then Left budgetError else Right ()
-        Scan _ _ _ reversed rest <- foldM (step swatch) (Scan initial [] Unpainted [] (Just (available - BS.length prefix))) operations
-        let content = prefix <> BC.unlines (reverse reversed)
-            identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 content)
-        Right (Just page {P.ipContent = content, P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = maybe (P.ipDecodedBytes page) (P.maxDecodedBytes -) rest})
+  let source = Map.fromList (P.ipObjects page)
+      initialState = Resources source Map.empty Map.empty Map.empty Map.empty (P.maxDecodedBytes - P.ipDecodedBytes page)
+  (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty Nothing (P.ipResources page) initial (P.ipContent page) initialState
+  case kind of
+    Multicolor -> Right Nothing
+    Unpainted -> Right Nothing
+    _ -> do
+      let prefix = BC.unlines [paint swatch (Gray 0) False, paint swatch (Gray 0) True]
+      charged <- charge (BS.length prefix) analyzed
+      (content, resources, rendered) <- renderForms swatch Set.empty Nothing (P.ipResources page) initial (P.ipContent page) charged
+      let result = prefix <> content
+          identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 result)
+      Right (Just page {P.ipContent = result, P.ipResources = resources, P.ipObjects = P.ipObjects page <> Map.toAscList (convertedObjects rendered), P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = P.maxDecodedBytes - remainingBytes rendered})
   where
-    initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0
-    analyze state@(Scan _ _ Multicolor _ _) _ = Right state
-    analyze state [] = Right state
-    analyze state (operation : rest) = step swatch state operation >>= \next -> analyze next rest
+    initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1
+
+-- Original objects remain intact: a paint resource may also be a soft mask.
+data Resources = Resources
+  { sourceObjects :: !(Map.Map P.ObjNum (P.ObjOf P.ObjNum)),
+    decodedForms :: !(Map.Map P.ObjNum ByteString),
+    formSummaries :: !(Map.Map (P.ObjNum, Maybe P.ObjNum, Graphics) RasterKind),
+    convertedForms :: !(Map.Map (P.ObjNum, Maybe P.ObjNum) P.ObjNum),
+    convertedObjects :: !(Map.Map P.ObjNum (P.ObjOf P.ObjNum)),
+    remainingBytes :: !Int
+  }
+
+charge :: Int -> Resources -> Either Text Resources
+charge bytes state
+  | bytes < 0 || bytes > remainingBytes state = Left budgetError
+  | otherwise = Right state {remainingBytes = remainingBytes state - bytes}
+
+-- The same saved graphics context reuses a summary; shared Form graphs are
+-- not expanded once for every path through them.
+scanForms :: Cmyk -> Bool -> Set.Set P.ObjNum -> Maybe P.ObjNum -> P.ObjOf P.ObjNum -> Graphics -> ByteString -> Resources -> Either Text (Scan, Resources)
+scanForms swatch emit active scope resources graphics content state = do
+  operations <- maybe (Left "PDF 図版の描画命令を読めません") Right (P.contentOperations content)
+  go (Scan graphics [] Unpainted [] (if emit then Just (remainingBytes state) else Nothing)) state operations
+  where
+    go scan@(Scan _ _ Multicolor _ _) st _ | not emit = Right (scan, st)
+    go scan@(Scan _ saved _ _ _) st []
+      | null saved = Right (scan, st)
+      | otherwise = Left "PDF 図版の描画状態が閉じていません"
+    go (Scan before saved seen output _) st (operation@(operator, args) : rest) = do
+      current <- externalGraphics resources before operation st
+      (external, updated) <-
+        if operator == "Do"
+          then do
+            (key, fields, childResources, childScope) <- formResource resources scope args st
+            let cacheKey = (key, childScope, current)
+            case Map.lookup cacheKey (formSummaries st) of
+              Just kind -> Right (Just kind, st)
+              Nothing -> do
+                guardForm active key
+                (body, decoded) <- decodeForm key fields st
+                (Scan _ _ kind _ _, child) <- scanForms swatch False (Set.insert key active) childScope childResources current body decoded
+                Right (Just kind, child {formSummaries = Map.insert cacheKey kind (formSummaries child)})
+          else Right (Nothing, st)
+      let synced = Scan current saved seen output (if emit then Just (remainingBytes updated) else Nothing)
+      next@(Scan _ _ _ _ budget) <- stepWith external swatch synced operation
+      go next (case budget of Nothing -> updated; Just remaining -> updated {remainingBytes = remaining}) rest
+
+renderForms :: Cmyk -> Set.Set P.ObjNum -> Maybe P.ObjNum -> P.ObjOf P.ObjNum -> Graphics -> ByteString -> Resources -> Either Text (ByteString, P.ObjOf P.ObjNum, Resources)
+renderForms swatch active scope resources graphics content state = do
+  operations <- maybe (Left "PDF 図版の描画命令を読めません") Right (P.contentOperations content)
+  go (Scan graphics [] Unpainted [] (Just (remainingBytes state))) resources state operations
+  where
+    go (Scan _ saved _ output _) bound st []
+      | null saved = Right (BC.unlines (reverse output), bound, st)
+      | otherwise = Left "PDF 図版の描画状態が閉じていません"
+    go (Scan before saved seen output _) bound st (operation@(operator, args) : rest) = do
+      current <- externalGraphics resources before operation st
+      (external, rebound, updated) <-
+        if operator == "Do"
+          then do
+            (key, fields, childResources, childScope) <- formResource resources scope args st
+            (clone, child) <- case Map.lookup (key, childScope) (convertedForms st) of
+              Just converted -> Right (converted, st)
+              Nothing -> do
+                guardForm active key
+                (body, decoded) <- decodeForm key fields st
+                (painted, childBound, rendered) <- renderForms swatch (Set.insert key active) childScope childResources current body decoded
+                fresh <- freshObject rendered
+                let fieldsOut = [(k, v) | (k, v) <- fields, k `notElem` ["Length", "Filter", "DecodeParms", "DL", "Resources"]] <> [("Resources", childBound)]
+                Right (fresh, rendered {convertedForms = Map.insert (key, childScope) fresh (convertedForms rendered), convertedObjects = Map.insert fresh (P.OStream fieldsOut painted) (convertedObjects rendered)})
+            name <- resourceName args
+            rebound <- replaceXObject bound name clone child
+            Right (Just Unpainted, rebound, child)
+          else Right (Nothing, bound, st)
+      next@(Scan _ _ _ _ budget) <- stepWith external swatch (Scan current saved seen output (Just (remainingBytes updated))) operation
+      go next rebound (case budget of Nothing -> updated; Just remaining -> updated {remainingBytes = remaining}) rest
+
+-- Use the importer's existing nesting boundary for reference and Form graphs.
+guardForm :: Set.Set P.ObjNum -> P.ObjNum -> Either Text ()
+guardForm active key
+  | Set.member key active || Set.size active >= P.maxNesting = Left "PDF 図版の Form 参照が循環しているか深すぎます"
+  | otherwise = Right ()
+
+externalGraphics :: P.ObjOf P.ObjNum -> Graphics -> (ByteString, [ByteString]) -> Resources -> Either Text Graphics
+externalGraphics resources current ("gs", args) state = do
+  name <- resourceName args
+  entries <- dictionary resources state
+  states <- maybe (Left "PDF 図版の ExtGState がありません") (\value -> dictionary value state) (lookup "ExtGState" entries)
+  selected <- maybe (Left "PDF 図版の描画状態が見つかりません") (\value -> dictionary value state) (lookup name states)
+  fill <- alpha "ca" (fillAlpha current) selected
+  stroke <- alpha "CA" (strokeAlpha current) selected
+  Right current {fillAlpha = fill, strokeAlpha = stroke}
+  where
+    alpha name fallback fields = case lookup name fields of
+      Nothing -> Right fallback
+      Just value -> do
+        resolved <- dereference Set.empty value state
+        amount <- case resolved of
+          P.OInt number -> Right (fromInteger number)
+          P.OReal number -> maybe (Left "PDF 図版の不透明度が不正です") Right (decimal (TE.encodeUtf8 number))
+          _ -> Left "PDF 図版の不透明度が不正です"
+        if amount < 0 || amount > 1 then Left "PDF 図版の不透明度が範囲外です" else Right amount
+externalGraphics _ current _ _ = Right current
+
+resourceName :: [ByteString] -> Either Text Text
+resourceName [name] | BS.take 1 name == "/" = Right (TE.decodeLatin1 (BS.drop 1 name))
+resourceName _ = Left "PDF 図版の資源名が不正です"
+
+formResource :: P.ObjOf P.ObjNum -> Maybe P.ObjNum -> [ByteString] -> Resources -> Either Text (P.ObjNum, [(Text, P.ObjOf P.ObjNum)], P.ObjOf P.ObjNum, Maybe P.ObjNum)
+formResource resources scope args state = do
+  name <- resourceName args
+  values <- dictionary resources state
+  objects <- maybe (Left "PDF 図版に XObject の資源がありません") (\value -> dictionary value state) (lookup "XObject" values)
+  key <- case lookup name objects of
+    Just (P.ORef key) -> Right key
+    _ -> Left "PDF 図版の XObject が見つかりません"
+  object <- maybe (Left "PDF 図版の XObject の参照先がありません") Right (Map.lookup key (sourceObjects state))
+  fields <- case object of
+    P.OStream fields _ | lookup "Subtype" fields == Just (P.OName "Form") -> Right fields
+    _ -> Left "PDF 図版の画像 XObject の色変換は未完了です"
+  case lookup "Resources" fields of
+    Nothing -> Right (key, fields, resources, scope)
+    Just own -> do
+      ownFields <- dictionary own state
+      Right (key, fields, P.ODict ownFields, Just key)
+
+dictionary :: P.ObjOf P.ObjNum -> Resources -> Either Text [(Text, P.ObjOf P.ObjNum)]
+dictionary object state = do
+  resolved <- dereference Set.empty object state
+  case resolved of
+    P.ODict fields -> Right fields
+    _ -> Left "PDF 図版の資源辞書が不正です"
+
+dereference :: Set.Set P.ObjNum -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
+dereference seen (P.ORef key) state = do
+  guardForm seen key
+  object <- maybe (Left "PDF 図版の資源の参照先がありません") Right (Map.lookup key (sourceObjects state))
+  dereference (Set.insert key seen) object state
+dereference _ object _ = Right object
+
+decodeForm :: P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (ByteString, Resources)
+decodeForm key fields state = case Map.lookup key (decodedForms state) of
+  Just body -> Right (body, state)
+  Nothing -> do
+    source <- case Map.lookup key (sourceObjects state) of
+      Just (P.OStream _ bytes) -> Right bytes
+      _ -> Left "PDF 図版の Form ストリームがありません"
+    filters <- traverse (\(name, value) -> (name,) <$> deep 0 Set.empty value) [(name, value) | (name, value) <- fields, name `elem` ["Filter", "DecodeParms"]]
+    (body, cost) <- either (const (Left "PDF 図版の Form を展開できません")) Right (P.decodeImportedStream (remainingBytes state) filters source)
+    charged <- charge (max cost (BS.length body)) state
+    Right (body, charged {decodedForms = Map.insert key body (decodedForms charged)})
+  where
+    deep depth _ _ | depth > P.maxNesting = Left "PDF 図版のフィルターの辞書が深すぎます"
+    deep depth seen (P.ORef reference) = do
+      guardForm seen reference
+      value <- maybe (Left "PDF 図版のフィルターの参照先がありません") Right (Map.lookup reference (sourceObjects state))
+      deep (depth + 1) (Set.insert reference seen) value
+    deep depth seen (P.OArr values) = P.OArr <$> traverse (deep (depth + 1) seen) values
+    deep depth seen (P.ODict values) = P.ODict <$> traverse (\(name, value) -> (name,) <$> deep (depth + 1) seen value) values
+    deep _ _ value = Right value
+
+freshObject :: Resources -> Either Text P.ObjNum
+freshObject state =
+  let lowest = min 0 (min (maybe 0 fst (Map.lookupMin (sourceObjects state))) (maybe 0 fst (Map.lookupMin (convertedObjects state))))
+   in if lowest == minBound then Left "PDF 図版の変換用オブジェクト番号がありません" else Right (lowest - 1)
+
+replaceXObject :: P.ObjOf P.ObjNum -> Text -> P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
+replaceXObject resources name clone state = do
+  values <- dictionary resources state
+  objects <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" values)
+  Right (P.ODict ([(k, v) | (k, v) <- values, k /= "XObject"] <> [("XObject", P.ODict ([(k, v) | (k, v) <- objects, k /= name] <> [(name, P.ORef clone)]))]))
 
 budgetError :: Text
 budgetError = "PDF 図版の色変換が展開上限を超えます"
 
-step :: Cmyk -> Scan -> (ByteString, [ByteString]) -> Either Text Scan
-step swatch (Scan graphics stack kind output budget) (operator, args) = do
+stepWith :: Maybe RasterKind -> Cmyk -> Scan -> (ByteString, [ByteString]) -> Either Text Scan
+stepWith external swatch (Scan graphics stack kind output budget) (operator, args) = do
   let keep state saved seen bytes = case budget of
         Nothing -> Right (Scan state saved seen [] Nothing)
         Just remaining
@@ -89,6 +258,7 @@ step swatch (Scan graphics stack kind output budget) (operator, args) = do
             state = if isStroke then graphics {strokeSpace = space, strokeColor = zero} else graphics {fillSpace = space, fillColor = zero}
         keep state stack kind (paint swatch zero isStroke)
   case operator of
+    "Do" | Just used <- external -> keep graphics stack (mergeKind kind used) original
     "q" -> keep graphics (graphics : stack) kind original
     "Q" -> case stack of
       saved : rest -> keep saved rest kind original
@@ -109,10 +279,10 @@ step swatch (Scan graphics stack kind output budget) (operator, args) = do
       [value] | Just n <- int value, n >= 0 && n <= 7 -> keep graphics {textMode = fromInteger n} stack kind original
       _ -> Left "PDF 図版のテキスト描画モードが不正です"
     _
-      | operator `elem` ["f", "F", "f*"] -> painted [fillColor graphics]
-      | operator `elem` ["S", "s"] -> painted [strokeColor graphics]
-      | operator `elem` ["B", "B*", "b", "b*"] -> painted [fillColor graphics, strokeColor graphics]
-      | operator `elem` ["Tj", "TJ", "'", "\""] -> painted ([fillColor graphics | textMode graphics `elem` [0, 2, 4, 6]] <> [strokeColor graphics | textMode graphics `elem` [1, 2, 5, 6]])
+      | operator `elem` ["f", "F", "f*"] -> painted [fillColor graphics | fillAlpha graphics > 0]
+      | operator `elem` ["S", "s"] -> painted [strokeColor graphics | strokeAlpha graphics > 0]
+      | operator `elem` ["B", "B*", "b", "b*"] -> painted ([fillColor graphics | fillAlpha graphics > 0] <> [strokeColor graphics | strokeAlpha graphics > 0])
+      | operator `elem` ["Tj", "TJ", "'", "\""] -> painted ([fillColor graphics | textMode graphics `elem` [0, 2, 4, 6], fillAlpha graphics > 0] <> [strokeColor graphics | textMode graphics `elem` [1, 2, 5, 6], strokeAlpha graphics > 0])
       | operator `elem` ["Do", "sh", "BI"] -> Left "PDF 図版の画像・Form・シェーディングの色変換は未完了です"
       | otherwise -> same
 
