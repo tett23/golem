@@ -1,6 +1,6 @@
 # ADR 0348: golem repl emet で Emet の式を対話的に評価する
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"テストの名前の番号","kind":"supplement"}]
 
 ## 文脈
 
