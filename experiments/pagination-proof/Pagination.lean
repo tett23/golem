@@ -18896,4 +18896,48 @@ theorem keepDefaultDiffers : ∀ inp k, alloyInputFact inp = true → alloyKeeps
 
 end Alloy
 
+
+/-! ### Toward needSpaceNone and needMoreNone
+
+The placements that the two remaining commands need: a break, the
+figures kept in order by the rule of `figures27` read on the figures kept
+before, and the blank line placed by `blankWithNext`. The candidate breaks
+are the break of `alloyPlacement26` and, for each need-lines, the breaks
+just before and just after the text position of its next block (rule P7).
+`EnumerateSmall.lean` checks on small inputs that one candidate meets
+every rule of the two commands; the unbounded proof is not written yet. -/
+
+def alloyFigureCond27 (inp : AlloyInput) (brk : Nat) (acc : List Nat) (f : Nat) : Bool :=
+  let q : AlloyPlacement := ⟨brk,acc,[]⟩
+  alloyFigureCond inp brk acc f &&
+    (alloyNeeds inp).all (fun n => !(alloyNeedNext inp q n == some f) ||
+      alloyNeedRoom inp (alloyPlacedBefore inp q f) (alloyLinesAt inp n) || alloyFirstInColumn inp q f)
+
+def alloyKept27 (inp : AlloyInput) (brk : Nat) : List Nat :=
+  inp.figures.foldl (fun acc f => if alloyFigureCond27 inp brk acc f then acc ++ [f] else acc) []
+
+def alloyPlacement27 (inp : AlloyInput) (brk : Nat) : AlloyPlacement :=
+  let q : AlloyPlacement := ⟨brk,alloyKept27 inp brk,[]⟩
+  ⟨brk,alloyKept27 inp brk,inp.blanks.filter fun b =>
+    (alloyNextOf inp q b).isSome && (alloyNextOf inp q b).any (alloyInColumn inp q) &&
+      !alloyBlankAtTop inp q b⟩
+
+def alloyNeedCandidates (inp : AlloyInput) : List Nat :=
+  let b0 := alloyBreak26 inp
+  b0 :: (alloyNeeds inp).bind fun n =>
+    match alloyNeedNext inp (alloyPlacement27 inp b0) n with
+    | none => []
+    | some b => [inp.tpos b + 1,inp.tpos b]
+
+/-- A candidate break whose placement meets base27, needMet and the given
+    P7 rule. -/
+def alloyRules27 (inp : AlloyInput) (keeps : AlloyInput → AlloyPlacement → Bool) : Bool :=
+  (alloyNeedCandidates inp).any fun b => decide (b ≤ inp.textCount) &&
+    (alloyBase27 inp (alloyPlacement27 inp b) && alloyNeedMet inp (alloyPlacement27 inp b) &&
+      keeps inp (alloyPlacement27 inp b))
+
+example : alloyRules27 ⟨3,1,[.need 2,.space,.line 0]⟩ alloySpaceKeeps = true := by decide
+example : alloyRules27 ⟨3,1,[.need 2,.space,.figure 2]⟩ alloySpaceKeeps = true := by decide
+example : alloyRules27 ⟨4,1,[.need 1,.space,.need 3,.line 0]⟩ alloySpaceKeeps35 = true := by decide
+
 end GolemPagination

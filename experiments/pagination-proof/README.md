@@ -355,8 +355,11 @@ Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap
 
 `needSpaceNone` と `needMoreNone` の上限なしの証明は残る。
 行数指定の次のブロックを段に残す規則（P7）があるので、これまでの配置では足りず、行数指定の後のブロックまで置く配置を作る必要がある。
-項目 4 個以下、容量 3〜4 行の入力 66,744 個で、この 2 コマンドに解がないことを書き写した述語の上で照合した。
+`alloyPlacement27` は区切りを受け取り、図版を `figures27` の規則で原稿順に置き、空行を `blankWithNext` で置く。
+`alloyNeedCandidates` は、`alloyPlacement26` の区切りと、各行数指定の次のブロックの本文位置の直前と直後の区切りを候補にする。
+`EnumerateSmall.lean` は、項目 4 個以下、容量 3〜4 行の入力 66,744 個で、候補のどれかの配置が 2 コマンドの規則をすべて満たすことを照合する。
 これは有限の照合であり、証明ではない。
+候補の配置が規則を満たすことの上限なしの証明が残る。
 
 既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
