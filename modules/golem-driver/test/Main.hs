@@ -48,6 +48,7 @@ import VerseLineNumbersSpec (verseLineNumberTests)
 #ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
 #endif
+import NestedFiguresSpec qualified
 import NoteBodyStylesSpec (noteBodyStylesTests)
 import NotesSpec (notesTests)
 import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
@@ -98,6 +99,7 @@ tests skips =
     "golem-driver (ADR 0001)"
     ( [ KeepBookPartsSpec.tests,
         qpdfInstalled,
+        NestedFiguresSpec.tests,
         explainTests,
         noticeTests,
         testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
