@@ -13602,4 +13602,157 @@ theorem relaxedAfterHeadings (d : RectoInput) (twoFit : 2 ≤ d.cap)
   obtain ⟨b, keep, base, orphan, widow, heading, after, _⟩ := rectoKept d twoFit keptLines
   exact ⟨b, keep, base, orphan, widow, heading, after⟩
 
+
+/-- The source payload carried by boxes; unlike kinds alone, this keeps
+    every item identity and its measured data. Glue and penalties are
+    not text boxes and are not part of this projection. -/
+def captionBoxes {α : Type} (kind : α → CaptionItemKind) (items : List α) : List α :=
+  items.filter (fun item => kind item == .box)
+
+
+private theorem captionBoxes_append {α : Type} (kind : α → CaptionItemKind)
+    (xs ys : List α) :
+    captionBoxes kind (xs ++ ys) = captionBoxes kind xs ++ captionBoxes kind ys := by
+  induction xs with
+  | nil => rfl
+  | cons h t ih =>
+    simp only [List.cons_append,captionBoxes,List.filter_cons] at *
+    split <;> simp_all
+
+/-- The actual after/skip scan stops at the first box or forced penalty.
+    In particular it cannot hide a source box, even after arbitrary
+    glue and optional penalty runs. -/
+theorem I1_caption_discard_preserves_boxes {α : Type} (kind : α → CaptionItemKind)
+    (items : List α) :
+    captionBoxes kind (items.drop (captionDiscardCount (items.map kind))) =
+      captionBoxes kind items := by
+  induction items with
+  | nil => rfl
+  | cons h t ih =>
+    cases eq : kind h with
+    | box => simp [captionDiscardCount,eq]
+    | glue => simpa [captionDiscardCount,eq,Nat.one_add,captionBoxes] using ih
+    | penalty value flag =>
+      by_cases forced : value ≤ -10000
+      · simp [captionDiscardCount,eq,forced]
+      · simpa [captionDiscardCount,eq,forced,Nat.one_add,captionBoxes] using ih
+
+/-- A concrete source decomposition at each chosen break. The break
+    item cannot be a box (isBreak only admits glue or penalties); the
+    suffix starts exactly where after/skip starts the next line.
+    The empty case means the source is exhausted, not that its content
+    has been assumed to vanish. -/
+inductive CaptionAssembly {α : Type} (kind : α → CaptionItemKind) :
+    List α → List (List α) → Prop where
+  | done : CaptionAssembly kind [] []
+  | line (before : List α) (atBreak : α) (rest : List α) (later : List (List α))
+      (breakItem : kind atBreak ≠ .box)
+      (tail : CaptionAssembly kind
+        (rest.drop (captionDiscardCount (rest.map kind))) later) :
+      CaptionAssembly kind (before ++ atBreak :: rest) (before :: later)
+
+/-- mkLine selects items [start, break), then optionally appends the
+    penalty at the break. Since that penalty is never a box, flattening
+    the assembled line payloads emits every source box exactly once,
+    in its source order, including identical-looking boxes. -/
+theorem I1_caption_assembly_boxes_exact {α : Type} (kind : α → CaptionItemKind)
+    (source : List α) (lines : List (List α)) (valid : CaptionAssembly kind source lines) :
+    (lines.map (captionBoxes kind)).join = captionBoxes kind source := by
+  induction valid with
+  | done => rfl
+  | line before atBreak rest later notBox _tail ih =>
+    have gone : (kind atBreak == CaptionItemKind.box) = false := by
+      cases eq : kind atBreak <;> simp_all <;> rfl
+    simp only [List.map_cons,List.join_cons,ih]
+    rw [I1_caption_discard_preserves_boxes]
+    rw [captionBoxes_append]
+    simp [captionBoxes,gone]
+
+/-- A positive penalty width may be appended for drawing a hyphen or
+    wrap mark, but it adds no source text box to the line projection. -/
+theorem I1_caption_break_penalty_adds_no_box {α : Type} (kind : α → CaptionItemKind)
+    (line : List α) (penalty : α) (value : Int) (pattern : Bool)
+    (isPenalty : kind penalty = .penalty value pattern) :
+    captionBoxes kind (line ++ [penalty]) = captionBoxes kind line := by
+  rw [captionBoxes_append]
+  simp [captionBoxes,isPenalty]
+
+example : captionBoxes id
+    (([.glue,.penalty 20 false,.box,.box] : List CaptionItemKind).drop
+      (captionDiscardCount [.glue,.penalty 20 false,.box,.box])) = [.box,.box] := by decide
+
+example : captionDiscardCount [.glue,.penalty (-10000) false,.box] = 1 := by decide
+
+
+/-- Check the concrete absolute break positions before projecting line
+    items. This is the same half-open item slice and after/skip offset
+    as mkLine/assemble. Overlapping ranges, breaks on boxes, and an
+    incompletely consumed source are rejected. Pass-specific candidate
+    admissibility is a separate obligation of the active-node producer. -/
+def captionAssembleAt {α : Type} (kind : α → CaptionItemKind)
+    (items : List α) (start : Nat) : List Nat → Option (List (List α))
+  | [] => if items.isEmpty then some [] else none
+  | b :: bs =>
+    if start ≤ b then
+      match items.drop (b-start) with
+      | [] => none
+      | atBreak :: rest =>
+        if kind atBreak == .box then none else
+          let skip := captionDiscardCount (rest.map kind)
+          match captionAssembleAt kind (rest.drop skip) (b+1+skip) bs with
+          | none => none
+          | some later => some (items.take (b-start) :: later)
+    else none
+
+theorem I1_caption_assemble_checked {α : Type} (kind : α → CaptionItemKind)
+    (breaks : List Nat) (items : List α) (start : Nat) (lines : List (List α))
+    (assembled : captionAssembleAt kind items start breaks = some lines) :
+    CaptionAssembly kind items lines := by
+  induction breaks generalizing items start lines with
+  | nil =>
+    simp only [captionAssembleAt] at assembled
+    split at assembled
+    · have empty : items = [] := by
+        cases items <;> simp_all [List.isEmpty]
+      subst items
+      cases assembled
+      exact CaptionAssembly.done
+    · contradiction
+  | cons b bs ih =>
+    simp only [captionAssembleAt] at assembled
+    split at assembled
+    · rename_i ordered
+      split at assembled
+      · contradiction
+      · rename_i atBreak rest tailEq
+        split at assembled
+        · contradiction
+        · rename_i notBox
+          split at assembled
+          · contradiction
+          · rename_i later laterEq
+            have validTail := ih _ _ _ laterEq
+            have nb : kind atBreak ≠ .box := by
+              intro eq
+              simp [eq] at notBox
+            cases assembled
+            have source : items.take (b-start) ++ atBreak :: rest = items := by
+              rw [← tailEq]
+              exact List.take_append_drop _ _
+            simpa only [source] using
+              (CaptionAssembly.line (items.take (b-start)) atBreak rest later nb validTail)
+    · contradiction
+
+theorem I1_caption_checked_payload_exact {α : Type} (kind : α → CaptionItemKind)
+    (breaks : List Nat) (items : List α) (start : Nat) (lines : List (List α))
+    (assembled : captionAssembleAt kind items start breaks = some lines) :
+    (lines.map (captionBoxes kind)).join = captionBoxes kind items :=
+  I1_caption_assembly_boxes_exact _ _ _ (I1_caption_assemble_checked kind breaks items start lines assembled)
+
+example : captionAssembleAt Prod.fst
+    [(.box,7),(.glue,0),(.penalty 0 true,0),(.box,8),(.penalty (-10000) false,0)]
+    0 [1,4] = some [[(.box,7)],[ (.box,8)]] := by decide
+
+example : captionAssembleAt id [.box,.penalty (-10000) false] 0 [0,1] = none := by decide
+
 end GolemPagination
