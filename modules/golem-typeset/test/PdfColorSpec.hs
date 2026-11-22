@@ -13,7 +13,53 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: a nested PDF Form is recolored" $ do
+  [ testCase "root ADR 0403 I1: a PDF RGB image is decoded and recolored through the shared raster analyzer" $ do
+      let original = imagePage
+          analyzer input
+            | P.imgColor input == P.CsRgb && P.imgData input == rgbPixels = Right (RasterAnalysis Grayscale (Just input {P.imgColor = P.CsCmyk, P.imgData = cmykPixels}))
+            | otherwise = Left "unexpected raster input"
+      case recolorImportedPage (0, 100, 100, 0) analyzer original of
+        Right (Just result) -> do
+          let images = [(fields, bytes) | (key, P.OStream fields bytes) <- P.ipObjects result, key < 0, lookup "Subtype" fields == Just (P.OName "Image")]
+          case images of
+            [(fields, bytes)] -> do
+              lookup "ColorSpace" fields @?= Just (P.OName "DeviceCMYK")
+              lookup "BitsPerComponent" fields @?= Just (P.OInt 8)
+              bytes @?= cmykPixels
+            other -> assertFailure (show other)
+          lookup 1 (P.ipObjects result) @?= lookup 1 (P.ipObjects original)
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a PDF image uses the existing Flate and predictor decoder" $ do
+      let parms = P.ODict [("Predictor", P.OInt 2), ("Colors", P.OInt 3), ("Columns", P.OInt 3), ("BitsPerComponent", P.OInt 8)]
+          predicted = BS.pack [0, 0, 0, 128, 128, 128, 127, 127, 127]
+          original = imagePage {P.ipObjects = [(1, P.OStream (("Filter", P.OName "FlateDecode") : ("DecodeParms", parms) : imageFields 3) (flate predicted))]}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Right (Just result) -> convertedImagePixels result @?= [cmykPixels]
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I2: repeated image paints share one converted image object" $ do
+      let original = imagePage {P.ipContent = "/Im Do /Im Do /Im Do", P.ipDecodedBytes = P.maxDecodedBytes - 120}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Right (Just result) -> do
+          convertedImagePixels result @?= [cmykPixels]
+          length (P.ipObjects result) @?= 2
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: an image in a Form inherits its own resource scope" $ do
+      let form = P.OStream [("Subtype", P.OName "Form"), ("Resources", P.ODict [("XObject", P.ODict [("Im", P.ORef 2)])])] "/Im Do"
+          original = (page "/F Do") {P.ipResources = P.ODict [("XObject", P.ODict [("F", P.ORef 1)])], P.ipObjects = [(1, form), (2, P.OStream (imageFields 3) rgbPixels)]}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Right (Just result) -> do
+          convertedImagePixels result @?= [cmykPixels]
+          length (P.ipObjects result) @?= 4
+          lookup 1 (P.ipObjects result) @?= Just form
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I3: a multicolor PDF image preserves the complete original page" $
+      recolorImportedPage (0, 100, 100, 0) (const (Right (RasterAnalysis Multicolor Nothing))) imagePage @?= Right Nothing,
+    testCase "root ADR 0403 I2: a PDF image reserves decode and output space before invoking the raster analyzer" $ do
+      let oversized = imagePage {P.ipObjects = [(1, P.OStream (imageFields 1073741824) rgbPixels)]}
+      case recolorImportedPage (0, 100, 100, 0) (const (Left "analyzer must not run")) oversized of
+        Left message -> assertBool (T.unpack message) ("上限" `T.isInfixOf` message)
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a nested PDF Form is recolored" $ do
       result <- requireConverted (formPage ".5 g 0 0 10 10 re f" "/F Do")
       let content = newFormContent result
       assertBool "nested gray" ("0 0.5 0.5 0 k" `BS.isInfixOf` content),
@@ -148,3 +194,23 @@ sharedForms =
     }
   where
     name n = "F" <> T.pack (show n)
+
+rgbPixels :: ByteString
+rgbPixels = BS.pack [0, 0, 0, 128, 128, 128, 255, 255, 255]
+
+cmykPixels :: ByteString
+cmykPixels = BS.pack [0, 255, 255, 0, 0, 127, 127, 0, 0, 0, 0, 0]
+
+imageFields :: Integer -> [(T.Text, P.ObjOf P.ObjNum)]
+imageFields width = [("Type", P.OName "XObject"), ("Subtype", P.OName "Image"), ("Width", P.OInt width), ("Height", P.OInt 1), ("BitsPerComponent", P.OInt 8), ("ColorSpace", P.OName "DeviceRGB")]
+
+imagePage :: P.ImportedPage
+imagePage = (page "/Im Do") {P.ipResources = P.ODict [("XObject", P.ODict [("Im", P.ORef 1)])], P.ipObjects = [(1, P.OStream (imageFields 3) rgbPixels)]}
+
+rgbAnalyzer :: P.ImageData -> Either T.Text RasterAnalysis
+rgbAnalyzer input
+  | P.imgColor input == P.CsRgb && P.imgData input == rgbPixels = Right (RasterAnalysis Grayscale (Just input {P.imgColor = P.CsCmyk, P.imgData = cmykPixels}))
+  | otherwise = Left "unexpected raster input"
+
+convertedImagePixels :: P.ImportedPage -> [ByteString]
+convertedImagePixels result = [bytes | (key, P.OStream fields bytes) <- P.ipObjects result, key < 0, lookup "Subtype" fields == Just (P.OName "Image")]
