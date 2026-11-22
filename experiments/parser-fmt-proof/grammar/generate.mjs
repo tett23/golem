@@ -504,8 +504,37 @@ const inlineCommandProved = argumentListProved && proseSlotsProved &&
   singleUnitRuleMatches(ast?.rules.find(r => r.name === 'RBr'), "']'") &&
   indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'InlineCommand'),
     'LBr Ident Arguments ProseSlots(ind)? (Sp RBr)^close');
+// BlockComposition keeps the guarded paragraph/term sequences and the
+// code fence's closing lookahead/repetition/label in their canonical order.
+function indentedAlternativesMatch(r, expected) {
+  return r?.params.length === 1 && r.params[0] === 'ind' && r.templateParams.length === 0 &&
+    r.type.trim() === '()' && r.alts.length === expected.length &&
+    r.alts.every((alt, index) => alt.action?.trim() === '()' && alt.constructor === null &&
+      describeItems(alt.items) === expected[index]);
+}
+const headInlineBranches = ['Escape', 'ProofComment', 'Comment', 'ExprCtx', 'ReservedBracket',
+  'InlineCommand(ind)', 'BadBracket', 'BadBreak', 'NumberShorthand', 'Text'];
+const inlineBranches = ['Escape', 'HardBreak(ind)', ...headInlineBranches.slice(1), 'LineContinuation(ind)'];
+const paragraphProved = indentFullyProved && lineLeavesProved && blockStartsProved && inlineCommandProved &&
+  indentedAlternativesMatch(ast?.rules.find(r => r.name === 'Inline'), inlineBranches) &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'Paragraph'),
+    String.raw`Ind(ind) ![ \t] !BlockStart Inline(ind)+ (Nl / !.)`);
+const definitionTermProved = indentFullyProved && lineLeavesProved && inlineCommandProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'TermMark'), "'='") &&
+  indentedAlternativesMatch(ast?.rules.find(r => r.name === 'HeadInline'), headInlineBranches) &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'DefTerm'),
+    'Ind(ind) TermMark Ws HeadInline(ind + 2)+ (Nl / !.)');
+const codeBlockProved = indentFullyProved && lineLeavesProved && argumentListProved && codeLineFullyProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Fence'), "'```'") &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Lang'), String.raw`[a-zA-Z0-9_+\-]+`) &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'CodeClose'), 'Ind(ind) Fence Sp (Nl / !.)') &&
+  indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'CodeBlock'),
+    'Ind(ind) Fence Lang? Arguments Sp Nl (!CodeClose(ind) CodeLine)* (CodeClose(ind))^code_close');
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (paragraphProved && rule.name === 'Paragraph') continue;
+    if (definitionTermProved && rule.name === 'DefTerm') continue;
+    if (codeBlockProved && rule.name === 'CodeBlock') continue;
     if (positionalProved && rule.name === 'PosArg') continue;
     if (argumentListProved && rule.name === 'Arguments') continue;
     if (inlineCommandProved && rule.name === 'InlineCommand') continue;
