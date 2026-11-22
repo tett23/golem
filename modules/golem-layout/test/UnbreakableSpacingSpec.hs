@@ -25,7 +25,6 @@ import Golem.Layout.Aki qualified as A
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Length qualified as L
-import Golem.Unicode.CharClass
 import LineBreakEnum (Setting (..), composeEnv)
 import LineBreakInvariants (refArabicDigit, refNumeral, refPostfixed, refPrefixed)
 import Test.Tasty
