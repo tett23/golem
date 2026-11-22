@@ -1,6 +1,6 @@
 # ADR 0383: ページ別の注番号を幅の予約後に振る
 
-Status: accepted-pending
+Status: superseded [{"part":"固定ページを持たない出力と章末一覧の警告","by":["docs/adr/0402-define-page-local-note-fallback-diagnostics.md"],"kind":"supplement"}]
 
 ## 文脈
 

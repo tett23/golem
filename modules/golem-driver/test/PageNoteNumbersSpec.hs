@@ -6,6 +6,7 @@ import Data.ByteString qualified as BS
 import Data.List (isSuffixOf, nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
@@ -81,7 +82,38 @@ sources =
 
 pageNoteNumbersTests :: [TestTree]
 pageNoteNumbersTests =
-  [ testCase "ADR 0383 I1: inv1_page_local_note_numbers_property" $ do
+  [ testCase "root ADR 0402 I3: chapter-end page numbering warns once at the first repeated number" $ do
+      let prefix = "甲[note: 一。]\n\n@page-break\n\n乙"
+          src = prefix <> "[note: 二。]\n\n@page-break\n\n丙[note: 三。]\n"
+      (ds, files) <- buildFor [TargetPdf] (pageStyle <> "placement = \"chapter-end\"\n") src
+      let warnings = [d | d <- ds, diagCode d == DiagnosticCode "G07132"]
+      map diagSeverity warnings @?= [Warning]
+      map (spanStart . diagSpan) warnings @?= [BS.length (TE.encodeUtf8 prefix)]
+      assertBool "PDF is still written" (any ((".pdf" `isSuffixOf`) . fst) files),
+    testCase "root ADR 0402 I3: chapter-end notes on one page have no duplicate warning" $ do
+      (ds, _) <- buildFor [TargetPdf] (pageStyle <> "placement = \"chapter-end\"\n") "甲[note: 一。]乙[note: 二。]\n"
+      [d | d <- ds, diagCode d == DiagnosticCode "G07132"] @?= [],
+    testCase "root ADR 0402 I3: repeated numbers warn independently for each chapter" $ do
+      let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", \"b.gm\"]" miniManifest
+          src = "甲[note: 一。]\n\n@page-break\n\n乙[note: 二。]\n"
+      (ds, _) <- buildForFiles [TargetPdf] manifest (pageStyle <> "placement = \"chapter-end\"\n") [("a.gm", src), ("b.gm", "@page-break\n\n" <> src)]
+      let warnings = [d | d <- ds, diagCode d == DiagnosticCode "G07132"]
+      map diagSeverity warnings @?= [Warning, Warning]
+      length (nub (map (spanFile . diagSpan) warnings)) @?= 2,
+    testCase "root ADR 0402 I1: outputs without fixed pages use book numbering and warn once" $ do
+      let src = "甲[note: 一。]\n\n@page-break\n\n乙[note: 二。]\n"
+      (ds, files) <- buildFor [TargetHtml, TargetEpub, TargetText] pageStyle src
+      (_, reference) <- buildFor [TargetText] (replaceIn "numbering = \"page\"" "numbering = \"book\"" pageStyle) src
+      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [Warning]
+      [d | d <- ds, diagCode d == DiagnosticCode "G07132"] @?= []
+      [b | (p, b) <- files, ".txt" `isSuffixOf` p] @?= [b | (p, b) <- reference, ".txt" `isSuffixOf` p],
+    testCase "root ADR 0402 I2: adding HTML leaves the generated PDF unchanged" $ do
+      let src = "甲[note: 一。]\n\n@page-break\n\n乙[note: 二。]\n"
+      (_, alone) <- buildFor [TargetPdf] pageStyle src
+      (ds, combined) <- buildFor [TargetPdf, TargetHtml] pageStyle src
+      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [Warning]
+      [b | (p, b) <- alone, ".pdf" `isSuffixOf` p] @?= [b | (p, b) <- combined, ".pdf" `isSuffixOf` p],
+    testCase "ADR 0383 I1: inv1_page_local_note_numbers_property" $ do
       -- the sources put two marks of a channel or more on one page, and marks on several pages
       pls <- mapM (layoutOf . sourceOf) sources
       assertBool "two on a page" (or [length [() | (c, _) <- calls, c] >= 2 | pl <- pls, (_, calls) <- callsByPage pl])
@@ -163,11 +195,14 @@ pageNoteNumbersTests =
 
 -- | Builds a one-file book for targets: the diagnostics and the files written.
 buildFor :: [Target] -> BS.ByteString -> T.Text -> IO ([Diagnostic], [(FilePath, BS.ByteString)])
-buildFor targets style source = withSystemTempDirectory "golem-page-notes" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")
+buildFor targets style source = buildForFiles targets miniManifest style [("a.gm", source)]
+
+buildForFiles :: [Target] -> BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO ([Diagnostic], [(FilePath, BS.ByteString)])
+buildForFiles targets manifest style sourceFiles = withSystemTempDirectory "golem-page-notes" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")
   BS.writeFile (tmp </> "style.toml") (withBodyFont style)
   writeFiles tmp (bodyFontFiles style)
-  writeTexts tmp [("a.gm", source)]
+  writeTexts tmp sourceFiles
   r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider}
   files <- mapM (\p -> (drop (length tmp + 1) p,) <$> BS.readFile p) (brWritten r)
   pure (brDiagnostics r, files)
