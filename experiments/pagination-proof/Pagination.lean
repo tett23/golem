@@ -18256,4 +18256,644 @@ theorem blankRules25 : ∀ inp, alloyInputFact inp = true →
 
 end Alloy
 
+/-! ### Part 4: need-lines and spaces (golem-layout ADR 0027, 0035, 0046) -/
+
+section
+variable (inp : AlloyInput) (p : AlloyPlacement)
+
+def alloyNeeds : List Nat := inp.where_ AlloyItem.isNeed
+def alloyLinesAt (n : Nat) : Nat := ((inp.itemAt n).map AlloyItem.needLines).getD 0
+
+/-- pred inDomain27 -/
+def alloyInDomain27 : Bool :=
+  alloyFiguresFit inp && decide ((alloyNeeds inp).length ≤ 1) &&
+    (alloyNeeds inp).all (fun n => alloyLinesAt inp n == 2)
+
+/-- pred inDomain35 -/
+def alloyInDomain35 : Bool := alloyFiguresFit inp && decide ((alloyNeeds inp).length = 2)
+
+/-- fun needNext: the first item after the need that is not a space, a
+    blank line, a need or a waiting figure. -/
+def alloyNeedNext (n : Nat) : Option Nat :=
+  (inp.positions.filter fun i => decide (n < i) && !inp.has AlloyItem.isSpace i &&
+    !inp.has AlloyItem.isBlank i && !inp.has AlloyItem.isNeed i && !alloyWaiting inp p i).head?
+
+def alloyKeptSizeBefore (i : Nat) : Nat :=
+  ((p.kept.filter fun g => decide (g < i)).map inp.sizeAt).foldl (· + ·) 0
+
+/-- fun placedBefore -/
+def alloyPlacedBefore (i : Nat) : Nat :=
+  inp.used + (inp.positions.filter fun t => alloyText inp t && !inp.has AlloyItem.isSpace t &&
+    decide (t < i) && alloyHere inp p t).length + alloyKeptSizeBefore inp p i
+
+/-- fun loadBefore -/
+def alloyLoadBefore (i : Nat) : Nat :=
+  inp.used + (inp.positions.filter fun t => alloyText inp t && decide (t < i) && alloyHere inp p t).length +
+    alloyKeptSizeBefore inp p i +
+    (inp.blanks.filter fun b => decide (b < i) && !alloyBlankAtTop inp p b).length
+
+/-- fun firstPart -/
+def alloyFirstPart (i : Nat) : Nat :=
+  match inp.paraOfAt i with
+  | some q => if (inp.paraLines q).length ≤ 3 then (inp.paraLines q).length else 2
+  | none => if inp.has AlloyItem.isFigure i then inp.sizeAt i else 1
+
+/-- pred firstInColumn -/
+def alloyFirstInColumn (i : Nat) : Bool :=
+  decide (inp.used = 0) &&
+  inp.positions.all (fun t => !(alloyText inp t && !inp.has AlloyItem.isSpace t && decide (t < i) &&
+    alloyHere inp p t)) &&
+  p.kept.all (fun g => !decide (g < i))
+
+/-- `minus[Col.cap, x] >= l` on Alloy integers, written without subtraction. -/
+def alloyNeedRoom (x l : Nat) : Bool := decide (x + l ≤ inp.cap)
+
+/-- pred needMet -/
+def alloyNeedMet : Bool :=
+  (alloyNeeds inp).all fun n =>
+    match alloyNeedNext inp p n with
+    | none => true
+    | some b => !(alloyInColumn inp p b && !alloyFirstInColumn inp p b) ||
+        alloyNeedRoom inp (alloyPlacedBefore inp p b) (alloyLinesAt inp n)
+
+/-- The conjuncts shared by spaceKeeps, spaceKeepsFirst and spaceKeeps35
+    after their need-lines condition. -/
+def alloySpaceRest (n b : Nat) : Bool :=
+  inp.positions.all (fun t => !(alloyText inp t && decide (t < n)) || alloyHere inp p t) &&
+  inp.figures.all (fun g => alloyWaiting inp p g || !decide (g < n) || p.kept.contains g) &&
+  decide (alloyLoadBefore inp p b + alloyFirstPart inp b ≤ inp.cap) &&
+  (match inp.paraOfAt b with
+   | some q => inp.first q == some b
+   | none => true)
+
+def alloySpaceKeepsBy (cond : Nat → Nat → Bool) : Bool :=
+  (alloyNeeds inp).all fun n =>
+    match alloyNeedNext inp p n with
+    | none => true
+    | some b => !(cond n b && alloySpaceRest inp p n b) || alloyInColumn inp p b
+
+/-- pred spaceKeeps -/
+def alloySpaceKeeps : Bool :=
+  alloySpaceKeepsBy inp p fun n _ => alloyNeedRoom inp (alloyPlacedBefore inp p n) (alloyLinesAt inp n)
+
+/-- fun needsBefore -/
+def alloyNeedsBefore (n b : Nat) : List Nat :=
+  (alloyNeeds inp).filter fun m => decide (m < n) && alloyNeedNext inp p m == some b
+
+/-- pred spaceKeepsFirst -/
+def alloySpaceKeepsFirst : Bool :=
+  alloySpaceKeepsBy inp p fun n b => (alloyNeedsBefore inp p n b).isEmpty &&
+    alloyNeedRoom inp (alloyPlacedBefore inp p n) (alloyLinesAt inp n)
+
+/-- pred spaceKeeps35 -/
+def alloySpaceKeeps35 : Bool :=
+  alloySpaceKeepsBy inp p fun _ b => (alloyNeeds inp).all fun m =>
+    !(alloyNeedNext inp p m == some b &&
+      (alloyNeedsBefore inp p m b).all (fun k => !decide (alloyLinesAt inp k ≥ alloyLinesAt inp m))) ||
+    alloyNeedRoom inp (alloyPlacedBefore inp p m) (alloyLinesAt inp m)
+
+/-- pred figures27 -/
+def alloyFigures27 : Bool :=
+  inp.figures.all fun f =>
+    p.kept.contains f ==
+      (alloyTextBeforeHere inp p f &&
+        inp.figures.all (fun g => !decide (g < f) || p.kept.contains g) &&
+        decide (inp.used + (inp.positions.filter fun t => alloyText inp t && decide (t < f)).length +
+          ((inp.figures.filter fun g => decide (g < f)).map inp.sizeAt).foldl (· + ·) 0 +
+          (inp.blanks.filter fun b => decide (b < f) && !alloyBlankAtTop inp p b).length +
+          inp.sizeAt f ≤ inp.cap) &&
+        (alloyNeeds inp).all (fun n => !(alloyNeedNext inp p n == some f) ||
+          alloyNeedRoom inp (alloyPlacedBefore inp p f) (alloyLinesAt inp n) ||
+          alloyFirstInColumn inp p f))
+
+/-- pred base27 -/
+def alloyBase27 : Bool :=
+  alloyFits inp p && alloyOrder inp p && alloyFigures27 inp p && alloyFigureOrder inp p &&
+    alloyNoSendFromEmpty inp p && alloyBlankWithNext inp p
+end
+
+/-! ### Part 5: the keep options of paragraph styles (docs/adr/0261) -/
+
+/-- sig Kept with kf and kl, and sig AllLines: paragraphs by their id. -/
+structure AlloyKeeps where
+  kept : List (Nat × Nat × Nat)
+  allLines : List Nat
+  deriving DecidableEq, Repr
+
+/-- fact keeps, with Kept and AllLines subsets of Para, each once. -/
+def alloyKeepsFact (inp : AlloyInput) (k : AlloyKeeps) : Bool :=
+  k.kept.all (fun e => inp.paras.contains e.1 && decide (1 ≤ e.2.1) && decide (e.2.1 ≤ 3) &&
+    decide (1 ≤ e.2.2) && decide (e.2.2 ≤ 3)) &&
+  (k.kept.map Prod.fst).eraseDups.length == k.kept.length &&
+  k.allLines.all inp.paras.contains && k.allLines.eraseDups.length == k.allLines.length
+
+section
+variable (inp : AlloyInput) (k : AlloyKeeps) (p : AlloyPlacement)
+
+def alloyKFirst (q : Nat) : Nat := ((k.kept.find? (·.1 == q)).map (·.2.1)).getD 2
+def alloyKLast (q : Nat) : Nat := ((k.kept.find? (·.1 == q)).map (·.2.2)).getD 2
+def alloyLinesHere (q : Nat) : Nat := ((inp.paraLines q).filter (alloyHere inp p)).length
+def alloyLinesNext (q : Nat) : Nat := (inp.paraLines q).length - alloyLinesHere inp p q
+def alloyBroken (q : Nat) : Bool := decide (0 < alloyLinesHere inp p q) && decide (0 < alloyLinesNext inp p q)
+
+def alloyKeepFirst : Bool :=
+  inp.paras.all fun q => !(alloyBroken inp p q && !alloyStartsColumnOpt inp p (inp.first q)) ||
+    decide (alloyLinesHere inp p q ≥ alloyKFirst k q)
+def alloyKeepLast : Bool :=
+  inp.paras.all fun q => !(alloyBroken inp p q && !alloyStartsColumnOpt inp p (inp.first q)) ||
+    decide (alloyLinesNext inp p q ≥ alloyKLast k q)
+def alloyKeepAll : Bool :=
+  k.allLines.all fun q => !alloyBroken inp p q || alloyStartsColumnOpt inp p (inp.first q)
+end
+
+/-- The body of needMoreSpace46 and needMoreSpace46Here, with the
+    paragraph placed (`here`) or not. -/
+def alloyNeedMore46 (inp : AlloyInput) (placed : Bool) : Bool :=
+  decide (inp.cap = 4) && decide (inp.used = 1) && inp.figures.isEmpty && inp.blanks.isEmpty &&
+  (inp.where_ AlloyItem.isHeading).isEmpty && (inp.where_ AlloyItem.isLine).length == 1 &&
+  (alloyNeeds inp).length == 2 && (inp.where_ AlloyItem.isSpace).length == 1 &&
+  (alloyPlacements inp).any fun p =>
+    inp.has AlloyItem.isSpace 1 && inp.has AlloyItem.isNeed 0 && inp.has AlloyItem.isNeed 2 &&
+    inp.has AlloyItem.isLine 3 && alloyLinesAt inp 0 == 1 && alloyLinesAt inp 2 == 3 &&
+    alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps35 inp p && alloyHere inp p 1 &&
+    alloyHere inp p 3 == placed
+
+theorem alloy_needSpaceSome : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp && (alloyPlacements inp).any fun p =>
+      alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p &&
+      (alloyNeeds inp).any fun n => inp.positions.any fun sp => inp.positions.any fun b =>
+        inp.has AlloyItem.isSpace sp && alloyText inp b && !inp.has AlloyItem.isSpace b &&
+        decide (n < sp) && decide (sp < b) && alloyNeedNext inp p n == some b &&
+        alloyHere inp p sp && alloyHere inp p b) = true :=
+  ⟨⟨3,1,[.need 2,.space,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_needFigure : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp &&
+      alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p) &&
+      alloySome inp (fun p => alloyFits inp p && alloyNeedMet inp p) &&
+      !alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p &&
+        alloyNeedMet inp p)) = true :=
+  ⟨⟨5,4,[.need 2,.figure 1]⟩,by decide,by decide⟩
+
+theorem alloy_needMoreSome : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain35 inp && (alloyPlacements inp).any fun p =>
+      alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps35 inp p &&
+      (alloyNeeds inp).any fun n => (alloyNeeds inp).any fun m => inp.positions.any fun sp =>
+        inp.positions.any fun b =>
+          inp.has AlloyItem.isSpace sp && alloyText inp b && !inp.has AlloyItem.isSpace b &&
+          decide (n < sp) && decide (sp < m) && decide (alloyLinesAt inp m > alloyLinesAt inp n) &&
+          decide (alloyLinesAt inp m ≤ inp.cap) && alloyNeedNext inp p n == some b &&
+          alloyNeedNext inp p m == some b && alloyHere inp p sp && alloyHere inp p b &&
+          !alloyFirstInColumn inp p b) = true :=
+  ⟨⟨4,1,[.need 1,.space,.need 3,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_needMore27 : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain35 inp &&
+      ((alloyNeeds inp).any fun n => (alloyNeeds inp).any fun m => inp.positions.any fun sp =>
+        inp.has AlloyItem.isSpace sp && decide (n < sp) && decide (sp < m)) &&
+      !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeepsFirst inp p)) = true :=
+  ⟨⟨3,1,[.need 1,.space,.need 3,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_needMoreSpace46Here : ∃ inp, alloyInputFact inp = true ∧ alloyNeedMore46 inp true = true :=
+  ⟨⟨4,1,[.need 1,.space,.need 3,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_keepAllSome : ∃ inp k, alloyInputFact inp = true ∧ alloyKeepsFact inp k = true ∧
+    (alloyInDomain inp && !k.allLines.isEmpty && decide (inp.used > 0) &&
+      alloySome inp (fun p => alloyBase inp p && alloyKeepFirst inp k p && alloyKeepLast inp k p &&
+        alloyKeepAll inp k p)) = true :=
+  ⟨⟨3,1,[.line 0]⟩,⟨[],[0]⟩,by decide,by decide,by decide⟩
+
+def amSorted : List Nat → Prop
+  | [] => True
+  | a :: t => (∀ y ∈ t, a < y) ∧ amSorted t
+
+theorem amSortedAppend (xs : List Nat) (n : Nat) (s : amSorted xs) (below : ∀ x ∈ xs, x < n) :
+    amSorted (xs ++ [n]) := by
+  induction xs with
+  | nil => exact ⟨fun y m => (by cases m),trivial⟩
+  | cons a t ih =>
+    refine ⟨fun y m => ?_,ih s.2 (fun x m => below x (List.Mem.tail _ m))⟩
+    rcases (amMemAppend _ _ _).mp m with l | r
+    · exact s.1 y l
+    · simp only [List.mem_cons,List.not_mem_nil,or_false] at r
+      subst r; exact below a (List.Mem.head _)
+
+theorem amRangeFilterSorted (P : Nat → Bool) (n : Nat) : amSorted ((alloyRange n).filter P) := by
+  induction n with
+  | zero => trivial
+  | succ n ih =>
+    simp only [alloyRange,amFilterAppend]
+    simp only [List.filter]
+    split
+    · exact amSortedAppend _ n ih (fun x m => (alloyRange_mem x n).mp (List.mem_filter.mp m).1)
+    · simpa using ih
+
+/-- In a sorted list, a predicate closed downwards holds exactly on the
+    positions below the number of elements that satisfy it. -/
+theorem amPrefixGet (P : Nat → Bool) (L : List Nat) (s : amSorted L)
+    (down : ∀ x ∈ L, ∀ y ∈ L, x < y → P y = true → P x = true) :
+    ∀ i x, L.get? i = some x → (P x = true ↔ i < (L.filter P).length) := by
+  induction L with
+  | nil => intro i x g; cases g
+  | cons a t ih =>
+    have downT : ∀ x ∈ t, ∀ y ∈ t, x < y → P y = true → P x = true :=
+      fun x xm y ym => down x (List.Mem.tail _ xm) y (List.Mem.tail _ ym)
+    intro i x g
+    by_cases pa : P a = true
+    · rw [List.filter_cons,if_pos pa]
+      cases i with
+      | zero => cases g; simp [pa]
+      | succ i =>
+        have := ih s.2 downT i x g
+        simp only [List.length_cons]; rw [this]; omega
+    · have none : t.filter P = [] := amFilterNil _ _ (fun y ym => by
+        cases py : P y
+        · rfl
+        · exact absurd (down a (List.Mem.head _) y (List.Mem.tail _ ym) (s.1 y ym) py) pa)
+      rw [List.filter_cons,if_neg pa,none]
+      simp only [List.length_nil,Nat.not_lt_zero,iff_false]
+      intro px
+      cases i with
+      | zero => cases g; exact pa px
+      | succ i =>
+        have xm : x ∈ t := amGetMem _ i x g
+        exact pa (down a (List.Mem.head _) x (List.Mem.tail _ xm) (s.1 x xm) px)
+
+private theorem paraLinesText (inp : AlloyInput) (q x : Nat) (xm : x ∈ inp.paraLines q) :
+    inp.has AlloyItem.isText x = true := by
+  have := (List.mem_filter.mp xm).2
+  simp only [AlloyInput.isLineOf,AlloyInput.has] at this ⊢
+  cases e : inp.itemAt x with
+  | none => rw [e] at this; cases this
+  | some item => rw [e] at this; cases item <;> simp_all [AlloyItem.paraOf,AlloyItem.isText,Option.any]
+
+/-- Placed lines of a paragraph are its first lines. -/
+theorem alloy_here_prefix (inp : AlloyInput) (p : AlloyPlacement) (q : Nat) :
+    ∀ i x, (inp.paraLines q).get? i = some x →
+      (alloyHere inp p x = true ↔ i < alloyLinesHere inp p q) :=
+  amPrefixGet _ _ (amRangeFilterSorted _ _) (fun x xm y _ xy hy => by
+    have := inp.tpos_strict x y (paraLinesText inp q x xm) xy
+    simp only [alloyHere,decide_eq_true_eq] at hy ⊢; omega)
+
+private theorem linesHereLe (inp : AlloyInput) (p : AlloyPlacement) (q : Nat) :
+    alloyLinesHere inp p q ≤ (inp.paraLines q).length := by
+  unfold alloyLinesHere
+  have := amFilterMono (alloyHere inp p) (fun _ => true) (inp.paraLines q) (fun _ _ _ => rfl)
+  rw [amFilterTrue] at this; exact this
+
+private theorem getReverse (L : List Nat) (i : Nat) (h : i < L.length) :
+    L.reverse.get? i = L.get? (L.length - 1 - i) := List.get?_reverse i h
+
+private theorem getSome (L : List Nat) (i : Nat) (h : i < L.length) : ∃ x, L.get? i = some x := by
+  cases e : L.get? i with
+  | none => have := List.get?_eq_none.mp e; omega
+  | some x => exact ⟨x,rfl⟩
+
+private theorem boolOfIff (A : Bool) (P : Prop) [Decidable P] (h : A = true ↔ P) : A = decide P := by
+  cases A <;> simp_all
+private theorem orphArith (h n : Nat) (le : h ≤ n) (two : 2 ≤ n) :
+    (!(decide (2 ≤ n) && decide (0 < h) && !decide (1 < h))) =
+      (!(decide (0 < h) && decide (0 < n - h)) || decide (h ≥ 2)) := by
+  match h, le with
+  | 0, _ => simp
+  | 1, _ => simp [two, show 0 < n - 1 by omega]
+  | h+2, _ => simp [show 1 < h + 2 by omega, show 2 ≤ h + 2 by omega]
+private theorem widArith (h n : Nat) (le : h ≤ n) (two : 2 ≤ n) :
+    (!(decide (2 ≤ n) && decide (n - 2 < h) && !decide (n - 1 < h))) =
+      (!(decide (0 < h) && decide (0 < n - h)) || decide (n - h ≥ 2)) := by
+  by_cases e : h = n
+  · subst e
+    simp [show h - 2 < h by omega, show h - 1 < h by omega, show ¬ 0 < h - h by omega]
+  · by_cases f : h = n - 1
+    · subst f
+      simp [two, show n - 2 < n - 1 by omega, show 0 < n - 1 by omega, show 0 < n - (n - 1) by omega,
+        show ¬ n - (n - 1) ≥ 2 by omega]
+    · simp [show ¬ n - 2 < h by omega, show n - h ≥ 2 by omega]
+private theorem shortArith (h n : Nat) (le : h ≤ n) (short : ¬ 2 ≤ n) (X : Bool) :
+    (!(decide (0 < h) && decide (0 < n - h)) || X) = true := by
+  by_cases z : 0 < h
+  · simp [z, show ¬ 0 < n - h by omega]
+  · simp [z]
+
+/-- With the keeps of 2 and 2, K1 and K2 are the orphan and widow rules,
+    paragraph by paragraph, for every placement. -/
+theorem alloy_keep_default (inp : AlloyInput) (p : AlloyPlacement) :
+    (alloyOrphan inp p && alloyWidow inp p) =
+      (alloyKeepFirst inp ⟨[],[]⟩ p && alloyKeepLast inp ⟨[],[]⟩ p) := by
+  have kf : ∀ q, alloyKFirst ⟨[],[]⟩ q = 2 := fun _ => rfl
+  have kl : ∀ q, alloyKLast ⟨[],[]⟩ q = 2 := fun _ => rfl
+  have orphanEq : alloyOrphan inp p = alloyKeepFirst inp ⟨[],[]⟩ p := by
+    unfold alloyOrphan alloyKeepFirst
+    congr 1; funext q
+    have pre := alloy_here_prefix inp p q
+    have le := linesHereLe inp p q
+    rw [kf]
+    cases alloyStartsColumnOpt inp p (inp.first q)
+    · simp only [Bool.or_false,Bool.not_false,Bool.and_true,alloyBroken,alloyLinesNext]
+      by_cases two : 2 ≤ (inp.paraLines q).length
+      · obtain ⟨a,ga⟩ := getSome (inp.paraLines q) 0 (by omega)
+        obtain ⟨b,gb⟩ := getSome (inp.paraLines q) 1 (by omega)
+        have fa : inp.first q = some a := by
+          unfold AlloyInput.first; cases e : inp.paraLines q with
+          | nil => rw [e] at ga; cases ga
+          | cons x r => rw [e] at ga; cases ga; rfl
+        have sb : inp.second q = some b := gb
+        rw [fa,sb]
+        show (!(decide (2 ≤ (inp.paraLines q).length) && alloyHere inp p a && !alloyHere inp p b)) = _
+        rw [boolOfIff _ _ (pre 0 a ga),boolOfIff _ _ (pre 1 b gb)]
+        exact orphArith _ _ le two
+      · rw [shortArith _ _ le two]
+        simp [two]
+    · simp
+  have widowEq : alloyWidow inp p = alloyKeepLast inp ⟨[],[]⟩ p := by
+    unfold alloyWidow alloyKeepLast
+    congr 1; funext q
+    have pre := alloy_here_prefix inp p q
+    have le := linesHereLe inp p q
+    rw [kl]
+    cases alloyStartsColumnOpt inp p (inp.first q)
+    · simp only [Bool.or_false,Bool.not_false,Bool.and_true,alloyBroken,alloyLinesNext]
+      by_cases two : 2 ≤ (inp.paraLines q).length
+      · obtain ⟨a,ga⟩ := getSome (inp.paraLines q) ((inp.paraLines q).length - 2) (by omega)
+        obtain ⟨b,gb⟩ := getSome (inp.paraLines q) ((inp.paraLines q).length - 1) (by omega)
+        have ba : inp.beforeLast q = some a := by
+          show (inp.paraLines q).reverse.get? 1 = _
+          rw [getReverse _ 1 (by omega)]
+          rw [show (inp.paraLines q).length - 1 - 1 = (inp.paraLines q).length - 2 by omega]; exact ga
+        have lb : inp.last q = some b := by
+          show (inp.paraLines q).reverse.head? = _
+          have : (inp.paraLines q).reverse.head? = (inp.paraLines q).reverse.get? 0 := by
+            cases (inp.paraLines q).reverse <;> rfl
+          rw [this,getReverse _ 0 (by omega)]
+          rw [show (inp.paraLines q).length - 1 - 0 = (inp.paraLines q).length - 1 by omega]; exact gb
+        rw [ba,lb]
+        show (!(decide (2 ≤ (inp.paraLines q).length) && alloyHere inp p a && !alloyHere inp p b)) = _
+        rw [boolOfIff _ _ (pre _ a ga),boolOfIff _ _ (pre _ b gb)]
+        exact widArith _ _ le two
+      · rw [shortArith _ _ le two]
+        simp [two]
+    · simp
+  rw [orphanEq,widowEq]
+
+theorem alloy_all_but_greedy_broken (inp : AlloyInput) (oneFig : inp.figures.length ≤ 1) (q : Nat)
+    (broken : alloyBroken inp (alloyAllButGreedyPlacement inp) q = true) :
+    alloyStartsColumnOpt inp (alloyAllButGreedyPlacement inp) (inp.first q) = true := by
+  simp only [alloyBroken,Bool.and_eq_true,decide_eq_true_eq] at broken
+  have pos := broken.1
+  unfold alloyLinesHere at pos
+  cases e : (inp.paraLines q).filter (alloyHere inp (alloyAllButGreedyPlacement inp)) with
+  | nil => rw [e] at pos; cases pos
+  | cons l rest =>
+    have lm : l ∈ (inp.paraLines q).filter (alloyHere inp (alloyAllButGreedyPlacement inp)) := by
+      rw [e]; exact List.Mem.head _
+    obtain ⟨z,start⟩ := alloy_all_but_greedy_starts inp oneFig l (List.mem_filter.mp lm).2
+    subst z
+    have head := amRangeHeadZero (inp.isLineOf q) inp.items.length (List.mem_filter.mp lm).1
+    have first : inp.first q = some 0 := head
+    rw [first]; exact start
+
+/-- run keepNone has no instance without the Alloy scope: the placement of
+    `alloy_noneMeetsAllButGreedy` breaks a paragraph only where its first
+    line starts the column. -/
+theorem alloy_keepNone (inp : AlloyInput) (k : AlloyKeeps) (domain : alloyInDomain inp = true)
+    (capPos : 1 ≤ inp.cap) (usedFits : inp.used ≤ inp.cap) :
+    alloySome inp (fun p => alloyBase inp p && alloyKeepFirst inp k p && alloyKeepLast inp k p &&
+      alloyKeepAll inp k p) = true := by
+  have meets := alloy_all_but_greedy_meets inp domain capPos usedFits
+  have oneFig : inp.figures.length ≤ 1 := by
+    simp only [alloyInDomain,Bool.and_eq_true,decide_eq_true_eq] at domain
+    exact domain.1.1.1.2
+  have starts := alloy_all_but_greedy_broken inp oneFig
+  refine List.any_eq_true.mpr ⟨_,alloy_all_but_greedy_placement_exists inp,?_⟩
+  simp only [alloyAllButGreedy,Bool.and_eq_true] at meets
+  obtain ⟨⟨⟨⟨⟨⟨fits,order⟩,figure⟩,_⟩,_⟩,_⟩,noSend⟩ := meets
+  simp only [alloyBase,alloyKeepFirst,alloyKeepLast,alloyKeepAll,Bool.and_eq_true,List.all_eq_true]
+  refine ⟨⟨⟨⟨⟨⟨fits,order⟩,figure⟩,noSend⟩,fun q _ => ?_⟩,fun q _ => ?_⟩,fun q _ => ?_⟩
+  all_goals
+    cases b : alloyBroken inp (alloyAllButGreedyPlacement inp) q
+    · simp
+    · simp [starts q b]
+
+private theorem noneBeq (q : Nat) : ((none : Option Nat) == some q) = false := rfl
+
+/-- On the only input of needMoreSpace46, for any paragraph id, the
+    paragraph is in the column in every placement meeting the rules. -/
+theorem alloy_needMoreSpace46_input (q : Nat) :
+    alloyNeedMore46 ⟨4,1,[.need 1,.space,.need 3,.line q]⟩ false = false := by
+  simp (config := {decide := true}) [alloyNeedMore46, alloyPlacements, alloySubsets, alloyRange,
+    AlloyInput.textCount, AlloyInput.where_, AlloyInput.positions, AlloyInput.has, AlloyInput.itemAt,
+    AlloyInput.figures, AlloyInput.blanks, alloyNeeds, List.filter, AlloyItem.isText, AlloyItem.isFigure,
+    AlloyItem.isBlank, AlloyItem.isSpace, AlloyItem.isNeed, AlloyItem.isLine, AlloyItem.isHeading,
+    Option.any, alloyLinesAt, AlloyItem.needLines, alloyHere, AlloyInput.tpos, alloyBase27,
+    alloyFits, alloyLoad, alloyText, alloyOrder, alloyFigures27, alloyFigureOrder, alloyNoSendFromEmpty,
+    alloyBlankWithNext, alloyBlankWithNextBy, alloyNeedMet, alloySpaceKeeps35, alloySpaceKeepsBy,
+    alloyNeedNext, alloyWaiting, alloyNeedsBefore, alloyNeedRoom, alloyPlacedBefore, alloyKeptSizeBefore,
+    alloyInColumn, alloyFirstInColumn, alloySpaceRest, alloyLoadBefore, alloyFirstPart, AlloyInput.paraOfAt,
+    AlloyItem.paraOf, AlloyInput.paraLines, AlloyInput.isLineOf, AlloyInput.first, AlloyInput.sizeAt,
+    alloyTextBeforeHere, AlloyItem.size, alloyBlankAtTop, noneBeq, beq_self_eq_true]
+
+private theorem twoMembers (L : List Nat) (x y : Nat) (xm : x ∈ L) (ym : y ∈ L) (ne : x ≠ y) :
+    2 ≤ L.length := by
+  match L with
+  | [] => cases xm
+  | [a] =>
+    simp only [List.mem_cons,List.not_mem_nil,or_false] at xm ym
+    exact absurd (xm.trans ym.symm) ne
+  | _ :: _ :: _ => simp only [List.length_cons]; omega
+
+private theorem threeMembers (L : List Nat) (x y z : Nat) (xm : x ∈ L) (ym : y ∈ L) (zm : z ∈ L)
+    (xy : x ≠ y) (xz : x ≠ z) (yz : y ≠ z) : 3 ≤ L.length := by
+  match L with
+  | [] => cases xm
+  | [a] =>
+    simp only [List.mem_cons,List.not_mem_nil,or_false] at xm ym
+    exact absurd (xm.trans ym.symm) xy
+  | [a,b] =>
+    simp only [List.mem_cons,List.not_mem_nil,or_false] at xm ym zm
+    rcases xm with rfl | rfl <;> rcases ym with rfl | rfl <;> rcases zm with rfl | rfl <;> simp_all
+  | _ :: _ :: _ :: _ => simp only [List.length_cons]; omega
+
+/-- run needMoreSpace46 has no instance: its constraints leave one input
+    up to the paragraph id, and on it the paragraph is in the column. -/
+theorem alloy_needMoreSpace46 (inp : AlloyInput) : alloyNeedMore46 inp false = false := by
+  cases body : alloyNeedMore46 inp false
+  · rfl
+  · exfalso
+    have b := body
+    unfold alloyNeedMore46 at b
+    simp only [Bool.and_eq_true,decide_eq_true_eq,beq_iff_eq] at b
+    obtain ⟨⟨⟨⟨⟨⟨⟨⟨cap,used⟩,noFig⟩,noBlank⟩,noHead⟩,_⟩,twoNeeds⟩,_⟩,anyP⟩ := b
+    obtain ⟨p,_,h⟩ := List.any_eq_true.mp anyP
+    simp only [Bool.and_eq_true,beq_iff_eq] at h
+    obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨sp1,n0⟩,n2⟩,l3⟩,lines0⟩,lines2⟩,_⟩,_⟩,_⟩,_⟩,_⟩ := h
+    have len4 : 3 < inp.items.length := inp.has_lt _ 3 l3
+    -- no fifth item
+    have len : inp.items.length = 4 := by
+      apply Nat.le_antisymm _ len4
+      apply Nat.le_of_not_lt
+      intro five
+      have i4 : ∃ item, inp.itemAt 4 = some item := by
+        cases e : inp.itemAt 4 with
+        | none => simp [AlloyInput.itemAt,List.get?_eq_none] at e; omega
+        | some item => exact ⟨item,rfl⟩
+      obtain ⟨item,e4⟩ := i4
+      have at4 : ∀ P : AlloyItem → Bool, P item = true → inp.has P 4 = true := by
+        intro P h; simp [AlloyInput.has,e4,Option.any,h]
+      cases item with
+      | line r =>
+        have := twoMembers _ 3 4 ((inp.mem_where _ 3).mpr l3)
+          ((inp.mem_where _ 4).mpr (at4 _ rfl)) (by decide)
+        omega
+      | heading =>
+        have m := (inp.mem_where _ 4).mpr (at4 AlloyItem.isHeading rfl)
+        cases e : inp.where_ AlloyItem.isHeading with
+        | nil => rw [e] at m; cases m
+        | cons _ _ => rw [e] at noHead; cases noHead
+      | recto =>
+        have m := (inp.mem_where _ 4).mpr (at4 AlloyItem.isHeading rfl)
+        cases e : inp.where_ AlloyItem.isHeading with
+        | nil => rw [e] at m; cases m
+        | cons _ _ => rw [e] at noHead; cases noHead
+      | figure s =>
+        have m := (inp.mem_where _ 4).mpr (at4 AlloyItem.isFigure rfl)
+        cases e : inp.where_ AlloyItem.isFigure with
+        | nil => rw [e] at m; cases m
+        | cons _ _ =>
+          have := noFig; unfold AlloyInput.figures at this; rw [e] at this; cases this
+      | blank =>
+        have m := (inp.mem_where _ 4).mpr (at4 AlloyItem.isBlank rfl)
+        cases e : inp.where_ AlloyItem.isBlank with
+        | nil => rw [e] at m; cases m
+        | cons _ _ =>
+          have := noBlank; unfold AlloyInput.blanks at this; rw [e] at this; cases this
+      | space =>
+        have := twoMembers _ 1 4 ((inp.mem_where _ 1).mpr sp1)
+          ((inp.mem_where _ 4).mpr (at4 _ rfl)) (by decide)
+        omega
+      | need l =>
+        have := threeMembers _ 0 2 4 ((inp.mem_where _ 0).mpr n0) ((inp.mem_where _ 2).mpr n2)
+          ((inp.mem_where _ 4).mpr (at4 _ rfl)) (by decide) (by decide) (by decide)
+        unfold alloyNeeds at twoNeeds
+        omega
+    -- the four items
+    obtain ⟨c,u,items⟩ := inp
+    simp only at cap used len
+    subst cap; subst used
+    match items, len, sp1, n0, n2, l3, lines0, lines2 with
+    | [a0,a1,a2,a3], _, sp1, n0, n2, l3, lines0, lines2 =>
+      cases a0 <;> simp [AlloyInput.has,AlloyInput.itemAt,Option.any,AlloyItem.isNeed] at n0
+      cases a1 <;> simp [AlloyInput.has,AlloyInput.itemAt,Option.any,AlloyItem.isSpace] at sp1
+      cases a2 <;> simp [AlloyInput.has,AlloyInput.itemAt,Option.any,AlloyItem.isNeed] at n2
+      cases a3 <;> simp [AlloyInput.has,AlloyInput.itemAt,Option.any,AlloyItem.isLine] at l3
+      simp [alloyLinesAt,AlloyInput.itemAt,AlloyItem.needLines] at lines0 lines2
+      subst lines0; subst lines2
+      rw [alloy_needMoreSpace46_input] at body
+      cases body
+
+theorem alloy_needSpaceAllButGreedy : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp &&
+      !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p &&
+        alloyOrphan inp p && alloyWidow inp p && alloyKeepHeading21 inp p)) = true :=
+  ⟨⟨3,1,[.need 2,.heading,.line 0,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_needGreedy : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp &&
+      alloySome inp (fun p => alloyFits inp p && alloyGreedy inp p) &&
+      alloySome inp (fun p => alloyFits inp p && alloyNeedMet inp p) &&
+      !alloySome inp (fun p => alloyFits inp p && alloyGreedy inp p && alloyNeedMet inp p)) = true :=
+  ⟨⟨3,2,[.need 2,.line 0]⟩,by decide,by decide⟩
+
+namespace Alloy
+
+theorem needSpaceSome : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp && (alloyPlacements inp).any fun p =>
+      alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p &&
+      (alloyNeeds inp).any fun n => inp.positions.any fun sp => inp.positions.any fun b =>
+        inp.has AlloyItem.isSpace sp && alloyText inp b && !inp.has AlloyItem.isSpace b &&
+        decide (n < sp) && decide (sp < b) && alloyNeedNext inp p n == some b &&
+        alloyHere inp p sp && alloyHere inp p b) = true :=
+  alloy_needSpaceSome
+theorem needSpaceAllButGreedy : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp &&
+      !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p &&
+        alloyOrphan inp p && alloyWidow inp p && alloyKeepHeading21 inp p)) = true :=
+  alloy_needSpaceAllButGreedy
+theorem needFigure : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp &&
+      alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p) &&
+      alloySome inp (fun p => alloyFits inp p && alloyNeedMet inp p) &&
+      !alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p &&
+        alloyNeedMet inp p)) = true :=
+  alloy_needFigure
+theorem needGreedy : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain27 inp &&
+      alloySome inp (fun p => alloyFits inp p && alloyGreedy inp p) &&
+      alloySome inp (fun p => alloyFits inp p && alloyNeedMet inp p) &&
+      !alloySome inp (fun p => alloyFits inp p && alloyGreedy inp p && alloyNeedMet inp p)) = true :=
+  alloy_needGreedy
+theorem needMoreSome : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain35 inp && (alloyPlacements inp).any fun p =>
+      alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps35 inp p &&
+      (alloyNeeds inp).any fun n => (alloyNeeds inp).any fun m => inp.positions.any fun sp =>
+        inp.positions.any fun b =>
+          inp.has AlloyItem.isSpace sp && alloyText inp b && !inp.has AlloyItem.isSpace b &&
+          decide (n < sp) && decide (sp < m) && decide (alloyLinesAt inp m > alloyLinesAt inp n) &&
+          decide (alloyLinesAt inp m ≤ inp.cap) && alloyNeedNext inp p n == some b &&
+          alloyNeedNext inp p m == some b && alloyHere inp p sp && alloyHere inp p b &&
+          !alloyFirstInColumn inp p b) = true :=
+  alloy_needMoreSome
+theorem needMore27 : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain35 inp &&
+      ((alloyNeeds inp).any fun n => (alloyNeeds inp).any fun m => inp.positions.any fun sp =>
+        inp.has AlloyItem.isSpace sp && decide (n < sp) && decide (sp < m)) &&
+      !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeepsFirst inp p)) = true :=
+  alloy_needMore27
+theorem needMoreSpace46Here : ∃ inp, alloyInputFact inp = true ∧ alloyNeedMore46 inp true = true :=
+  alloy_needMoreSpace46Here
+theorem keepAllSome : ∃ inp k, alloyInputFact inp = true ∧ alloyKeepsFact inp k = true ∧
+    (alloyInDomain inp && !k.allLines.isEmpty && decide (inp.used > 0) &&
+      alloySome inp (fun p => alloyBase inp p && alloyKeepFirst inp k p && alloyKeepLast inp k p &&
+        alloyKeepAll inp k p)) = true :=
+  alloy_keepAllSome
+
+theorem needMoreSpace46 : ∀ inp, alloyInputFact inp = true → alloyNeedMore46 inp false = false :=
+  fun inp _ => alloy_needMoreSpace46 inp
+
+theorem keepNone : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k = true →
+    (alloyInDomain inp &&
+      !alloySome inp (fun p => alloyBase inp p && alloyKeepFirst inp k p && alloyKeepLast inp k p &&
+        alloyKeepAll inp k p)) = false := by
+  intro inp k fact _
+  cases d : alloyInDomain inp
+  · rfl
+  · have bounds := alloy_input_fact_bounds inp fact
+    simp [alloy_keepNone inp k d bounds.1 bounds.2]
+
+theorem keepDefaultDiffers : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k = true →
+    (alloyInDomain inp && k.kept.isEmpty && k.allLines.isEmpty &&
+      alloySome inp (fun p => alloyBase inp p &&
+        ((alloyOrphan inp p && alloyWidow inp p) == !(alloyKeepFirst inp k p && alloyKeepLast inp k p)))) = false := by
+  intro inp k _ _
+  obtain ⟨kept,all⟩ := k
+  cases kept with
+  | cons _ _ => simp [List.isEmpty]
+  | nil =>
+    cases all with
+    | cons _ _ => simp [List.isEmpty]
+    | nil =>
+      have none : alloySome inp (fun p => alloyBase inp p &&
+          ((alloyOrphan inp p && alloyWidow inp p) ==
+            !(alloyKeepFirst inp ⟨[],[]⟩ p && alloyKeepLast inp ⟨[],[]⟩ p))) = false := by
+        cases e : alloySome inp (fun p => alloyBase inp p &&
+            ((alloyOrphan inp p && alloyWidow inp p) ==
+              !(alloyKeepFirst inp ⟨[],[]⟩ p && alloyKeepLast inp ⟨[],[]⟩ p)))
+        · rfl
+        · obtain ⟨p,_,h⟩ := List.any_eq_true.mp e
+          rw [alloy_keep_default inp p] at h
+          generalize (alloyKeepFirst inp ⟨[],[]⟩ p && alloyKeepLast inp ⟨[],[]⟩ p) = x at h
+          cases x <;> simp at h
+      simp [none]
+
+end Alloy
+
 end GolemPagination

@@ -28,14 +28,16 @@ if [ "$missing" -gt 0 ]; then
   exit 1
 fi
 
-# The commands of docs/adr/0204, docs/adr/0206 and golem-layout ADR 0026 are also stated on the
+# All commands but needSpaceNone and needMoreNone are also stated on the
 # transcribed predicates, in namespace Alloy.
 transcribed='someFits noneMeetsAll noneMeetsAllButGreedy greedyOrphan greedyWidow
 greedyKeepHeading greedyFigure orphanEmpty widowEmpty keepHeadingEmpty orphanWidow
 keepHeadingOrphan keepHeadingWidow keepHeadingFigure figureOrder figureEmpty tallFigure
 strictAfterHeadings relaxedAfterHeadings rectoKept rectoEnds keep21 decidedSome
 waitingBlankSome waitingBlankNone waitingBlankAllButGreedy blankFigureOrder
-blankBeforeWaiting25 blankRules25'
+blankBeforeWaiting25 blankRules25
+needSpaceSome needSpaceAllButGreedy needFigure needGreedy needMoreSome needMore27
+needMoreSpace46 needMoreSpace46Here keepNone keepDefaultDiffers keepAllSome'
 sed -n '/^namespace Alloy$/,/^end Alloy$/p' "$proof" > "$tmp/alloy"
 for name in $transcribed; do
   grep -Eq "^theorem ${name}([[:space:]]|:)" "$tmp/alloy" || {
@@ -55,4 +57,4 @@ fi
 
 lean=${LEAN:-lean}
 "$lean" "$proof"
-echo "42 Alloy commands have checked Lean counterparts, 29 of them on the transcription"
+echo "42 Alloy commands have checked Lean counterparts, 40 of them on the transcription"

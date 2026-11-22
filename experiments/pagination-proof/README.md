@@ -2,7 +2,7 @@
 
 このディレクトリは、[Golem ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の改ページ証明を作る場所である。
 `check.sh` は Alloy の 42 コマンドと期待値の一覧が一致することを確かめ、各コマンドに対応する Lean の宣言を要求する。
-書き写しの上で述べた 29 コマンドには、名前空間 `Alloy` の中の同名の定理も要求する。
+書き写しの上で述べた 40 コマンドには、名前空間 `Alloy` の中の同名の定理も要求する。
 
 現在の `Pagination.lean` には、42 コマンドすべてと同名の宣言がある。
 `blankFigureOrder` は、本文を置かない境界の配置を構成し、図版が 0〜2 枚で行アキが 0〜1 個の入力について、図版規則、行アキ規則、段容量を同時に満たすことを証明する。
@@ -343,7 +343,20 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 次のブロックの規則は、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の `nextOf` でも、それ以前の `nextOf25` でもよい。
 `alloy_waitingBlankAllButGreedy`、`alloy_blankRules25`、`alloy_blankFigureOrder` はこの定理から導き、`waitingBlankNone` は最初のものから導く。
 図版が二つ以下という条件は `fact input` から導かれ、`alloy_input_fact_two_figures` が示す。
-第 4 群以降のコマンドは、まだ既存の宣言だけに対応する。
+
+第 4 群と第 5 群として、行数指定と空きの述語（[golem-layout ADR 0027](../../docs/golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)、[golem-layout ADR 0035](../../docs/golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)、[golem-layout ADR 0046](../../docs/golem-layout/adr/0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)）と、段落の保持の述語（[docs/adr/0261](../../docs/adr/0261-keep-options-of-paragraph-styles.md)）を書き写した。
+Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap` と書く。
+`Kept` と `AllLines` は段落の番号で `AlloyKeeps` に持ち、`alloyKeepsFact` が `fact keeps` を検査する。
+解のある 8 コマンドは具体的な入力で示し、Alloy に固定して解を確かめた。
+`alloy_needMoreSpace46` は、コマンドの条件から入力が段落の番号を除いて一つに決まることを示し、その入力で段落が段に入ることを段落の番号によらず示す。
+`alloy_keepNone` は、第 1 群の配置が段落を段の先頭でしか分けないことから導く。
+`alloy_keep_default` は、保持行数が 2 と 2 のとき、どの配置でも孤立行と寡婦行の規則が K1 と K2 と段落ごとに一致することを示し、`keepDefaultDiffers` を導く。
+段に置いた行が段落の先頭の行の並びになることを、`alloy_here_prefix` が示す。
+
+`needSpaceNone` と `needMoreNone` の上限なしの証明は残る。
+行数指定の次のブロックを段に残す規則（P7）があるので、これまでの配置では足りず、行数指定の後のブロックまで置く配置を作る必要がある。
+項目 4 個以下、容量 3〜4 行の入力 66,744 個で、この 2 コマンドに解がないことを書き写した述語の上で照合した。
+これは有限の照合であり、証明ではない。
 
 既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。

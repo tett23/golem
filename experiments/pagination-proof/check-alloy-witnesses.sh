@@ -84,6 +84,29 @@ run blankBeforeWaiting25Fixture {
     base26[p] and blankWithNext25[p] and f in waitingIn[p] and nextOf25[b] = f and f.pos < t.pos and here[p, t] and b not in p.placed
 } for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
 
+run needSpaceAllButGreedyFixture {
+  inDomain27
+  Col.cap = 3 and Col.used = 1
+  no Figure and no Blank and no Space and no Recto
+  #Need = 1 and #Heading = 1 and #Line = 2 and #Para = 1
+  all n: Need | n.pos = 0 and n.lines = 2
+  all h: Heading | h.pos = 1
+  all l: Line | l.pos >= 2
+  no p: Placement | base27[p] and needMet[p] and spaceKeeps[p] and orphan[p] and widow[p] and keepHeading21[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
+run needGreedyFixture {
+  inDomain27
+  Col.cap = 3 and Col.used = 2
+  no Figure and no Blank and no Space and no Heading
+  #Need = 1 and #Line = 1
+  all n: Need | n.pos = 0 and n.lines = 2
+  all l: Line | l.pos = 1
+  (some p: Placement | fits[p] and greedy[p])
+  (some p: Placement | fits[p] and needMet[p])
+  no p: Placement | fits[p] and greedy[p] and needMet[p]
+} for 5 but 5 Int, 24 Placement, 2 Figure, 1 Blank
+
 run decidedFixture {
   inDomain
   Col.cap = 3 and Col.used = 0
@@ -254,6 +277,7 @@ EOF
 for command in someFitsFixture noneMeetsAllFixture greedyOrphanFixture \
     greedyWidowFixture greedyKeepHeadingFixture tallFigureFixture \
     strictAfterHeadingsFixture waitingBlankSomeFixture blankBeforeWaiting25Fixture \
+    needSpaceAllButGreedyFixture needGreedyFixture \
     decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
