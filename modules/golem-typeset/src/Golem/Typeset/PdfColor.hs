@@ -26,30 +26,48 @@ data Graphics = Graphics
     textMode :: !Int
   }
 
-data Scan = Scan !Graphics ![Graphics] !RasterKind ![ByteString]
+data Scan = Scan !Graphics ![Graphics] !RasterKind ![ByteString] !(Maybe Int)
 
 {- | Nothing means that actual painting uses multiple colours, or paints nothing.
 Form XObjects and raster resources are added to this traversal separately.
 -}
 recolorImportedPage :: Cmyk -> (P.ImageData -> Either Text RasterAnalysis) -> P.ImportedPage -> Either Text (Maybe P.ImportedPage)
 recolorImportedPage swatch _ page = do
+  if P.ipDecodedBytes page < 0 || P.ipDecodedBytes page > P.maxDecodedBytes
+    then Left "PDF 図版の展開済みサイズが不正です"
+    else Right ()
   operations <- maybe (Left "PDF 図版の描画命令を読めません") Right (P.contentOperations (P.ipContent page))
-  Scan _ stack kind reversed <- foldM (step swatch) (Scan initial [] Unpainted []) operations
-  if not (null stack)
+  Scan _ stack kind _ _ <- analyze (Scan initial [] Unpainted [] Nothing) operations
+  -- A multicolour page is kept verbatim, including the rest of a saved state.
+  if kind /= Multicolor && not (null stack)
     then Left "PDF 図版の描画状態が閉じていません"
     else case kind of
       Multicolor -> Right Nothing
       Unpainted -> Right Nothing
-      _ ->
-        let content = BC.unlines (paint swatch (Gray 0) False : paint swatch (Gray 0) True : reverse reversed)
+      _ -> do
+        let prefix = BC.unlines [paint swatch (Gray 0) False, paint swatch (Gray 0) True]
+            available = P.maxDecodedBytes - P.ipDecodedBytes page
+        if BS.length prefix > available then Left budgetError else Right ()
+        Scan _ _ _ reversed rest <- foldM (step swatch) (Scan initial [] Unpainted [] (Just (available - BS.length prefix))) operations
+        let content = prefix <> BC.unlines (reverse reversed)
             identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 content)
-         in Right (Just page {P.ipContent = content, P.ipFile = identity, P.ipColors = [P.UseCmyk]})
+        Right (Just page {P.ipContent = content, P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = maybe (P.ipDecodedBytes page) (P.maxDecodedBytes -) rest})
   where
     initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0
+    analyze state@(Scan _ _ Multicolor _ _) _ = Right state
+    analyze state [] = Right state
+    analyze state (operation : rest) = step swatch state operation >>= \next -> analyze next rest
+
+budgetError :: Text
+budgetError = "PDF 図版の色変換が展開上限を超えます"
 
 step :: Cmyk -> Scan -> (ByteString, [ByteString]) -> Either Text Scan
-step swatch (Scan graphics stack kind output) (operator, args) = do
-  let keep state saved seen bytes = Right (Scan state saved seen (bytes : output))
+step swatch (Scan graphics stack kind output budget) (operator, args) = do
+  let keep state saved seen bytes = case budget of
+        Nothing -> Right (Scan state saved seen [] Nothing)
+        Just remaining
+          | BS.length bytes >= remaining -> Left budgetError
+          | otherwise -> Right (Scan state saved seen (bytes : output) (Just (remaining - BS.length bytes - 1)))
       original = BC.unwords (args <> [operator])
       same = keep graphics stack kind original
       painted colors = keep graphics stack (foldl mergeKind kind (map colorKind colors)) original

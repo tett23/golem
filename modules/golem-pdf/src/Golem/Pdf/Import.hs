@@ -26,6 +26,7 @@ module Golem.Pdf.Import
     contentOperations,
     unescapeName,
     decodeImportedStream,
+    maxDecodedBytes,
   )
 where
 
