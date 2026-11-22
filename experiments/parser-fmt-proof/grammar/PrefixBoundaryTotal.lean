@@ -1,4 +1,5 @@
 import PegModelTest
+import LineBoundaryTotal
 
 open PegModelTest
 set_option maxHeartbeats 1000000
@@ -154,11 +155,11 @@ theorem marker_sequence (marker : Marker) (grammar : PegModel.Grammar) (env : Pe
       exact literal_class_sequence grammar env boundLength value written cls ranges input fuel
 
 private def blockMarkers : List (Nat × Marker) :=
-  [(1, .followedBy "-" "'-'" [(32, 32), (9, 9)] "[ \\t]"),
-   (2, .followedBy "+" "'+'" [(32, 32), (9, 9)] "[ \\t]"),
-   (3, .followedBy "=" "'='" [(32, 32), (9, 9), (58, 58)] "[ \\t:]"),
-   (4, .literal "|" "'|'"), (5, .literal "```" "'```'"),
-   (6, .followedBy "@" "'@'" [(97, 122)] "[a-z]"), (7, .literal "@!" "'@!'")]
+  [(2, .followedBy "-" "'-'" [(32, 32), (9, 9)] "[ \\t]"),
+   (3, .followedBy "+" "'+'" [(32, 32), (9, 9)] "[ \\t]"),
+   (4, .followedBy "=" "'='" [(32, 32), (9, 9), (58, 58)] "[ \\t:]"),
+   (5, .literal "|" "'|'"), (6, .literal "```" "'```'"),
+   (7, .followedBy "@" "'@'" [(97, 122)] "[a-z]"), (8, .literal "@!" "'@!'")]
 
 theorem generated_block_marker_shapes :
     ((Generated.pegGrammar.rules.find? (fun r => r.name == "BlockStart")).map
@@ -170,7 +171,7 @@ private def headingStartItems : List PegModel.Expr :=
 
 theorem generated_heading_start_shape :
     ((Generated.pegGrammar.rules.find? (fun r => r.name == "BlockStart")).bind
-      (fun r => r.alts[0]?.map PegModel.Alt.items)) = some headingStartItems := by rfl
+      (fun r => r.alts[1]?.map PegModel.Alt.items)) = some headingStartItems := by rfl
 
 theorem heading_start_sequence (input : List Char) (fuel : Nat)
     (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat)) :
@@ -192,5 +193,53 @@ theorem heading_start_sequence (input : List Char) (fuel : Nat)
   cases h : (classExpected "##" [(48, 57)] input).isSome <;>
     cases l : "#".toList.isPrefixOf input <;>
     simp [headingStartItems, PegModel.runSequence, look, lit, h, l] <;> rfl
+
+/-- The separator line start of root ADR 0398: three hyphens, optional
+    spaces or tabs, and a newline or the end of input. -/
+private def separatorStartItems : List PegModel.Expr :=
+  [.lit "---" "'---'", .ref "Sp" [], .choice [[.ref "Nl" []], [.notPred .any]]]
+
+theorem generated_separator_start_shape :
+    ((Generated.pegGrammar.rules.find? (fun r => r.name == "BlockStart")).bind
+      (fun r => r.alts[0]?.map PegModel.Alt.items)) = some separatorStartItems := by rfl
+
+def separatorStartExpected (input : List Char) : Option (List Char) :=
+  if "---".toList.isPrefixOf input then
+    match (input.drop 3).dropWhile LineBoundaryTotal.whitespace with
+    | [] => some [] | '\n' :: rest => some rest | _ :: _ => none
+  else none
+
+theorem separator_start_sequence (input : List Char) (extra : Nat)
+    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat)) :
+    PegModel.runSequence
+      (fun sc e rest => PegModel.recognizeEnv Generated.pegGrammar sc (input.length + 7 + extra) e rest)
+      boundLength [] separatorStartItems input = .ok (separatorStartExpected input) := by
+  have lit := PegModelTest.literal_total Generated.pegGrammar [] (input.length + 6 + extra) "---" "'---'" input
+  rw [show input.length + 6 + extra + 1 = input.length + 7 + extra by omega] at lit
+  cases hp : "---".toList.isPrefixOf input with
+  | false =>
+      simp [separatorStartItems, PegModel.runSequence, lit, hp, separatorStartExpected] <;> rfl
+  | true =>
+      have short : (input.drop 3).length ≤ input.length := by simp [Nat.sub_le]
+      have sp := LineBoundaryTotal.generated_sp [] (input.drop 3) (input.length - (input.drop 3).length + extra)
+      rw [show (input.drop 3).length + 7 + (input.length - (input.drop 3).length + extra) =
+        input.length + 7 + extra by omega] at sp
+      have ending := PegModelTest.generated_newline_or_eof [] (input.length + 1 + extra)
+        ((input.drop 3).dropWhile LineBoundaryTotal.whitespace)
+      rw [show input.length + 1 + extra + 6 = input.length + 7 + extra by omega] at ending
+      have drop3 : input.drop "---".toList.length = input.drop 3 := rfl
+      cases suffix : (input.drop 3).dropWhile LineBoundaryTotal.whitespace with
+      | nil =>
+          rw [suffix] at ending
+          simp [separatorStartItems, PegModel.runSequence, lit, hp, drop3, sp, suffix, ending,
+            separatorStartExpected] <;> rfl
+      | cons c rest =>
+          rw [suffix] at ending
+          by_cases line : c = '\n'
+          · subst line
+            simp [separatorStartItems, PegModel.runSequence, lit, hp, drop3, sp, suffix, ending,
+              separatorStartExpected] <;> rfl
+          · simp [separatorStartItems, PegModel.runSequence, lit, hp, drop3, sp, suffix, ending, line,
+              separatorStartExpected] <;> rfl
 
 end PrefixBoundaryTotal

@@ -404,7 +404,7 @@ function singleUnitRuleMatches(rule, expected) {
 }
 const numberBodyProved = singleUnitRuleMatches(ast?.rules.find(r => r.name === 'NumberBody'), textRuns.get('NumberBody'));
 const attributedBranches = ['Heading', 'BulletList', 'OrderedList', 'DefList', 'Table', 'CodeBlock', 'Paragraph'];
-const blockBranches = ['BadIndent', 'OrphanDef', 'ReservedBlock', 'BlockGroup', ...attributedBranches];
+const blockBranches = ['BadIndent', 'OrphanDef', 'ReservedBlock', 'SeparatorLine', 'BlockGroup', ...attributedBranches];
 const blockDispatch = new Map([
   ['AttributedBlock', '(' + attributedBranches.map(name => name + '(ind)').join(' / ') + ')'],
   ['Block', '(' + blockBranches.map(name => name + '(ind)').join(' / ') + ')^block'],
@@ -453,7 +453,7 @@ const proseSlotsProved = spUsesWs && lineLeavesProved &&
   singleUnitRuleMatches(ast?.rules.find(r => r.name === 'Pipe'), "'|'") &&
   indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'ProseSlot'), 'SlotInline(ind)*') &&
   indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'ProseSlots'), 'Sp Colon Sp ProseSlot(ind) (Sp Pipe Sp ProseSlot(ind))*');
-const expectedBlockStarts = [String.raw`!NumberOpen '#'`, String.raw`'-' [ \t]`, String.raw`'+' [ \t]`,
+const expectedBlockStarts = ["'---' Sp (Nl / !.)", String.raw`!NumberOpen '#'`, String.raw`'-' [ \t]`, String.raw`'+' [ \t]`,
   String.raw`'=' [ \t:]`, "'|'", "'```'", String.raw`'@' [a-z]`, "'@!'"];
 const blockStartRule = ast?.rules.find(r => r.name === 'BlockStart');
 const blockStartsProved = numberOpenFullyProved && blockStartRule?.params.length === 0 &&
@@ -618,6 +618,13 @@ if (!fragment && ast) {
       if (singleUnitRuleMatches(ast.rules.find(r => r.name === marker), literal) &&
           describeItems(rule.alts[0].items) === 'Ind(ind) ' + marker + ' Sp (Nl / !.)') continue;
     }
+    // IndentedMarkerLine.separator_total proves the separator line for every input.
+    if (rule.name === 'SeparatorLine' && indentFullyProved && lineLeavesProved && spUsesWs &&
+        rule.params.length === 1 && rule.params[0] === 'ind' && rule.templateParams.length === 0 &&
+        rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' && rule.alts[0].constructor === null &&
+        describeItems(rule.alts[0].items) === "Ind(ind) '---' EOL" &&
+        rule.alts[0].items[2].expr.tag === 'ref' && ast.rules.some(r => r.name === 'EOL' &&
+          r.alts.length === 1 && describeItems(r.alts[0].items) === 'Sp (Nl / !.)')) continue;
     if (indentedLabels.has(rule.name) && rule.params.length === 1 && rule.params[0] === 'ind' &&
         rule.templateParams.length === 0 && rule.alts.length === 1 && rule.alts[0].action?.trim() === '()' &&
         rule.alts[0].constructor === null && describeItems(rule.alts[0].items) === indentedLabels.get(rule.name) &&
@@ -672,7 +679,13 @@ if (!fragment && ast) {
           alt.action?.trim() === '()' && alt.constructor === null && alt.items.length > 0 &&
           alt.items.every(item => item.bind === null && item.expr.tag === 'ref' && item.expr.args.length === 0) &&
           alt.items[0].expr.name !== rule.name) continue;
-      if (rule.name === 'BlockStart' && numberOpenFullyProved && alt === rule.alts[0] &&
+      // PrefixBoundaryTotal.separator_start_sequence gives the separator start
+      // of root ADR 0398 for every input.
+      if (rule.name === 'BlockStart' && spUsesWs && lineLeavesProved && alt === rule.alts[0] &&
+          rule.params.length === 0 && rule.templateParams.length === 0 &&
+          alt.action?.trim() === '()' && alt.constructor === null &&
+          describeItems(alt.items) === "'---' Sp (Nl / !.)") continue;
+      if (rule.name === 'BlockStart' && numberOpenFullyProved && alt === rule.alts[1] &&
           rule.params.length === 0 && rule.templateParams.length === 0 &&
           alt.action?.trim() === '()' && alt.constructor === null &&
           describeItems(alt.items) === "!NumberOpen '#'") continue;

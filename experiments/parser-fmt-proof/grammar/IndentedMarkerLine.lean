@@ -87,4 +87,52 @@ theorem total (m : Marker) (ind extra : Nat) (input : List Char) :
           cases e : endLine (tail.dropWhile LineBoundaryTotal.whitespace) <;>
             simp [items, runChoices, foldChoice, runSequence, indAt, i, mark, t, space, lineEnd, e, expected] <;> rfl
 
+/-- The separator line of root ADR 0398: `Ind(ind) '---' EOL`. -/
+def separatorExpected (ind : Nat) (input : List Char) : Option (List Char) := do
+  let rest ← IndentTotal.expected ind input
+  let tail ← if "---".toList.isPrefixOf rest then some (rest.drop 3) else none
+  endLine (tail.dropWhile LineBoundaryTotal.whitespace)
+
+theorem separator_total (ind extra : Nat) (input : List Char) :
+    let n := input.length + 2 * ind + 9 + extra
+    recognizeEnv Generated.pegGrammar [("ind", ind)] (n + 2) (.ref "SeparatorLine" ["ind"]) input =
+      .ok (separatorExpected ind input) := by
+  let n := input.length + 2 * ind + 9 + extra
+  let env : Params := [("ind", ind)]
+  let items : List Expr := [.ref "Ind" ["ind"], .lit "---" "'---'", .ref "EOL" []]
+  change recognizeEnv Generated.pegGrammar env (n + 2) (.ref "SeparatorLine" ["ind"]) input = _
+  have shape : recognizeEnv Generated.pegGrammar env (n+2) (.ref "SeparatorLine" ["ind"]) input =
+      recognizeEnv Generated.pegGrammar env (n+1) (.choice [items]) input := rfl
+  rw [shape]
+  change runChoices (fun xs => runSequence (fun scope e x => recognizeEnv Generated.pegGrammar scope n e x) _ env xs input) [items] = _
+  have indAt := IndentTotal.generated_indent ind input env "ind" (n - (2*ind+3)) (by rfl)
+  rw [show 2*ind+3 + (n - (2*ind+3)) = n by dsimp [n]; omega] at indAt
+  cases i : IndentTotal.expected ind input with
+  | none => simp [items, runChoices, foldChoice, runSequence, indAt, i, separatorExpected]; rfl
+  | some rest =>
+      have limit := indentBound ind input rest i
+      have mark := PegModelTest.literal_total Generated.pegGrammar env (n-1) "---" "'---'" rest
+      rw [show n-1+1=n by dsimp [n]; omega] at mark
+      cases hp : "---".toList.isPrefixOf rest with
+      | false =>
+          simp [items, runChoices, foldChoice, runSequence, indAt, i, mark, hp, separatorExpected]; rfl
+      | true =>
+          have drop3 : rest.drop "---".toList.length = rest.drop 3 := rfl
+          have bound : (rest.drop 3).length ≤ rest.length := by simp [Nat.sub_le]
+          have eol := LineBoundaryTotal.generated_eol env (rest.drop 3) (n - ((rest.drop 3).length + 9))
+          rw [show (rest.drop 3).length + 9 + (n - ((rest.drop 3).length + 9)) = n by dsimp [n]; omega] at eol
+          cases suffix : (rest.drop 3).dropWhile LineBoundaryTotal.whitespace with
+          | nil =>
+              rw [suffix] at eol
+              simp [items, runChoices, foldChoice, runSequence, indAt, i, mark, hp, drop3, eol, suffix,
+                separatorExpected, endLine] <;> rfl
+          | cons c cs =>
+              rw [suffix] at eol
+              by_cases line : c = '\n'
+              · subst line
+                simp [items, runChoices, foldChoice, runSequence, indAt, i, mark, hp, drop3, eol, suffix,
+                  separatorExpected, endLine] <;> rfl
+              · simp [items, runChoices, foldChoice, runSequence, indAt, i, mark, hp, drop3, eol, suffix,
+                  line, separatorExpected, endLine] <;> rfl
+
 end IndentedMarkerLine

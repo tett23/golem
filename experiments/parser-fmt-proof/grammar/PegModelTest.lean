@@ -357,7 +357,7 @@ theorem generated_nested_ref_shapes :
     leadingChoice "AttributedBlock" = some (.choice (refAlternatives blockRefs)) ∧
     leadingChoice "HashEntry" = some (.choice (refAlternatives hashKeyRefs)) ∧
     leadingChoice "Block" = some (.label (.choice (refAlternatives
-      ((["BadIndent", "OrphanDef", "ReservedBlock", "BlockGroup"].map
+      ((["BadIndent", "OrphanDef", "ReservedBlock", "SeparatorLine", "BlockGroup"].map
         (fun name => (name, ["ind"]))) ++ blockRefs))) "block") := by
   exact ⟨rfl, rfl, rfl⟩
 
@@ -387,7 +387,7 @@ theorem attributed_block_dispatch (n : Nat) (input : List Char) (fuel : Nat) :
   exact interpreted_ref_choices _ _ _ _ _
 
 private def allBlockRefs : List (String × List String) :=
-  (["BadIndent", "OrphanDef", "ReservedBlock", "BlockGroup"].map
+  (["BadIndent", "OrphanDef", "ReservedBlock", "SeparatorLine", "BlockGroup"].map
     (fun name => (name, ["ind"]))) ++ blockRefs
 
 theorem block_dispatch (n : Nat) (input : List Char) (fuel : Nat) :

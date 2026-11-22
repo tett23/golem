@@ -510,6 +510,8 @@ try {
     ['VarDotDependency', "Dot <- '.'", "Dot <- ','", 'VarExpr'],
     ['SlotsBodyDependency', 'ProseSlot <- SlotInline(ind)*', 'ProseSlot <- SlotInline(ind)+', 'ProseSlots'],
     ['ContinuationMarkerDependency', "/ '@!' { () }", "/ '@?' { () }", 'LineContinuation'],
+    ['ContinuationSeparatorDependency', "BlockStart <- '---' Sp (Nl / !.)", "BlockStart <- '---' (Nl / !.)", 'LineContinuation'],
+    ['SeparatorLineEnd', "SeparatorLine <- Ind(ind) '---' EOL", "SeparatorLine <- Ind(ind) '---' Sp", 'SeparatorLine'],
   ];
   for (const [name, before, after, rule] of compositionMutations) {
     const changed = original.replace(before, after);
@@ -527,6 +529,7 @@ try {
     ['SlotsNeedMore', '[f:x]\n', false],
     ['ContinuationBlank', 'a\n\nb\n', true, { Paragraph: 1 }],
     ['ContinuationBlock', 'a\\\n# h\n', true, { Paragraph: 1, Heading: 0 }],
+    ['ContinuationSeparatorDependency', 'a\n--- \n', true, { Paragraph: 1, SeparatorLine: 0 }],
   ];
   for (const [name, sample, accepted, counts] of nativeCompositionMutations) {
     const [, before, after] = compositionMutations.find(([mutationName]) => mutationName === name);
@@ -738,7 +741,9 @@ try {
   assert.match(strictNumberOpen.stderr, /^unsupported BlockStart .*: !NumberOpen '#'$/m,
     'the heading prefix proof depends on the exact NumberOpen grammar');
   const changedHeadingPrefix = join(work, 'ChangedHeadingPrefix.hpeg');
-  writeFileSync(changedHeadingPrefix, original.replace("BlockStart <- !NumberOpen '#'", "BlockStart <- !NumberOpen '##'"));
+  const headingPrefixMutation = original.replace("/ !NumberOpen '#' {", "/ !NumberOpen '##' {");
+  assert.notEqual(headingPrefixMutation, original);
+  writeFileSync(changedHeadingPrefix, headingPrefixMutation);
   const strictHeadingPrefix = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedHeadingPrefix, generated], { encoding: 'utf8' });
   assert.match(strictHeadingPrefix.stderr, /^unsupported BlockStart .*: !NumberOpen '##'$/m);
@@ -1041,7 +1046,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 28, negative mutations 104, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 28, negative mutations 106, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length + nativeArgumentMutations.length + nativeBlockLeafMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length + argumentRejectedCases.length + blockLeafRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
