@@ -1387,7 +1387,7 @@ runningHeadDecorationTests =
                 drawn = decorationsOn marks page
             -- I1: the same as the body line of the style and the text
             forM_ marks $ \c -> assertEqual (what <> " page " <> show n <> " " <> [c]) (Map.findWithDefault [] c reference) (Map.findWithDefault [] c drawn)
-            assertEqual (what <> " drawn") (combo /= (False, False, False)) (any (not . null) (Map.elems drawn))
+            assertEqual (what <> " drawn") (combo /= (False, False, False)) (not (all null (Map.elems drawn)))
             -- I2: the glyphs where and as they are without the decorations
             sort (drawnGlyphs page) @?= sort (drawnGlyphs bare),
     testCase "root ADR 0410 I1, I3: an underline on the running head only; the folio as before" $ do
