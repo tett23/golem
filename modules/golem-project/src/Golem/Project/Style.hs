@@ -409,7 +409,9 @@ data ParaStyleDef = ParaStyleDef
     -- | the indent of a paragraph that starts with an opening bracket (docs/adr/0374)
     psOpeningIndent :: !(Maybe OpeningIndent),
     -- | the string between a number and its title (Golem ADR 0372)
-    psNumberTitleSeparator :: !(Maybe Text)
+    psNumberTitleSeparator :: !(Maybe Text),
+    -- | number every nth nonempty source line of a paragraph that keeps lines (root ADR 0384)
+    psLineNumberInterval :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
 
@@ -559,7 +561,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020, 0189).
 bodyDefaults :: ParaStyleDef
@@ -956,6 +958,7 @@ overPara u b =
     (psInitialStyle u <|> psInitialStyle b)
     (psOpeningIndent u <|> psOpeningIndent b)
     (psNumberTitleSeparator u <|> psNumberTitleSeparator b)
+    (psLineNumberInterval u <|> psLineNumberInterval b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -2124,7 +2127,8 @@ instance FromValue ParaStyleDef where
         start = pbk >>= \v -> lookup v (zip paraStartValues [minBound .. maxBound])
         adjustment = ladj >>= \v -> lookup v (zip lineAdjustmentValues [minBound .. maxBound])
     separator <- optKey "number-title-separator"
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator)
+    interval <- optKeyOf "line-number-interval" (keepCount 1 Nothing)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw bst bsides brad rb ra align sbefore safter endInd fs kwn kal kfl kll start adjustment slim sord tord pw nxt ini (oind >>= \v -> lookup v (zip openingIndentValues [minBound .. maxBound])) separator interval)
     where
       keepCount :: Natural -> Maybe Natural -> Value' l -> Matcher l Int
       keepCount lo hi v =
@@ -3207,6 +3211,7 @@ codeStyleChecks s =
             ("line-breaks", isJust (psLineBreaks d)),
             ("space-between", isJust (psSpaceBetween d)),
             ("number-title-separator", isJust (psNumberTitleSeparator d)),
+            ("line-number-interval", isJust (psLineNumberInterval d)),
             ("indent", isJust (psIndent d)),
             ("first-line-indent", isJust (psFirstLineIndent d)),
             ("regex-styles", isJust (psRegexStyles d)),
@@ -3878,6 +3883,7 @@ paraStyleNode =
         ("font", ref FontRoles),
         ("size", dim),
         ("line-breaks", enum lineBreaksValues),
+        ("line-number-interval", int),
         ("space-between", int),
         ("number-title-separator", str),
         ("space-before", int),
