@@ -1,6 +1,6 @@
 # ADR 0400: 綴じない資料の左右を固定するページモード
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
