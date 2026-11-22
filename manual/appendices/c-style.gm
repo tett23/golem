@@ -197,6 +197,49 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 [code: color] と [code: background] は一緒に書けます。
 
 @nonumber
+## [code: \[separators.名前\]]
+
+原稿の [code: ---] は [code: default] の定義を、[code: @separator 名前] はその名前の定義を使います。
+定義のない [code: default] は一行アキになります。
+名前の規則は段落スタイルと同じです。
+
+| キー | 意味 |
+|:---|:---|
+| [code: kind] | [code: blank]、[code: text]、[code: rule] のいずれかです。[code: function] を使う場合は書けません。 |
+| [code: lines] | [code: blank] の行アキの行数です。正の整数で書きます。 |
+| [code: text] | [code: text] の一行の約物です。原稿のコマンドとしては評価しません。 |
+| [code: character-style] | 約物に当てる文字スタイルの名前です。 |
+| [code: align] | 可視の区切りの行方向の位置です。[code: start]、[code: center]、[code: end] から選び、既定は [code: center] です。 |
+| [code: space-before]、[code: space-after] | 可視の区切りの前後の行アキです。0 以上の整数で、既定は 0 です。 |
+| [code: rule] | [code: rule] の罫線です。[code: length]、[code: weight]、[code: color]、[code: style]、[code: dash]、[code: gap] を書けます。 |
+| [code: function]、[code: command] | プロジェクト内の [code: .emet] ファイルと、引数のない公開ブロック関数のコマンド名です。[code: kind] とほかの見た目のキーとは併用できません。 |
+
+可視の区切りは一行を占めます。
+[code: rule.length] の [code: zw] は版面の文字の大きさを一字とし、長さを省くと段の行長いっぱいに引きます。
+関数は原稿の見た目を自由に生成でき、空の結果や複数のブロックも返せます。
+
+次の設定では、[code: ---] を三行のアキにし、[code: @separator scene] を約物と前後一行のアキにします。
+
+```toml
+[separators.default]
+kind = "blank"
+lines = 3
+
+[separators.scene]
+kind = "text"
+text = "＊　＊　＊"
+space-before = 1
+space-after = 1
+```
+
+[code: kind = "rule"] と [code: \[separators.scene.rule\]] を使えば、同じ原稿を罫線の区切りに替えられます。
+隣の段落スタイルの間隔は区切りの間隔へ足さず、明示した [code: @blank-line] が同じ境界にあれば大きい行数を使います。
+可視の区切りは後に続く本文の一行と一緒に段へ置きます。
+連続する可視の区切りは、後続の通常のブロックまでまとめて同じ段へ置きます。
+空の段へ送っても、区切りと後ろのアキ、後続の最初の行を同じ段に置けないときは、エラー（G07134）になり、PDF は書きません。
+本の末尾や明示した改ページの直前では、区切りを残し、後ろのアキを捨てます。
+
+@nonumber
 ## [code: \[paragraph-styles.名前\]]
 
 段落スタイルです。
@@ -553,13 +596,14 @@ HTML と EPUB には適用されません。
 |:---|:---|:---|
 | [code: enabled] | 見開きモードは [code: true]、左右固定モードは [code: false] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。左右固定モードで [code: true] を書くとエラーになります。 |
 | [code: pages] | [code: "unnumbered"] | 入れるページです。[code: "unnumbered"] はノンブルを組まないページ（白ページ、マスターページのないページ、[code: folio] のないマスターページのページ）、[code: "all"] はすべてのページです。 |
-| [code: size] | [code: "6pt"] | 数字の大きさです。 |
+| [code: size] | 文字スタイルのサイズ。なければ [code: "6pt"] | 数字の大きさです。直接指定すると文字スタイルのサイズより優先します。 |
 | [code: gutter] | [code: "1.5mm"] | ノドの仕上がりの線から、数字の列の中心までの距離です。 |
+| [code: character-style] | なし | 隠しノンブルの書体と色に使う文字スタイルの名前です。 |
 
 [code: size] と [code: gutter] には [code: zw] を使えません。
 [code: gutter] が [code: size] の半分より小さいと、数字が仕上がりの線を越えるので、エラー（G03029）になります。
 数字の列が版面か傍注の領域に重なると、エラー（G07050）になります。
-どちらの検査も、数字の列の幅を [code: size] と同じとして測ります。
+どちらの検査も、数字の列の幅を、上の優先順位で決めた文字サイズと同じとして測ります。
 実際の数字の幅より広く測るので、余白がぎりぎりの設定では、重ならない数字でもエラーになることがあります。
 
 @nonumber

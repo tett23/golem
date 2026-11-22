@@ -70,6 +70,7 @@ import ReferencesSpec
 import ReuseSpec
 import ScriptsSpec (scriptsTests)
 import SecuritySpec
+import SeparatorSpec (visibleSeparatorTests)
 import ShapingMemoSpec (shapingMemoTests)
 import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
@@ -212,6 +213,7 @@ tests skips =
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              paragraphPitchTests,
              paragraphWrapPitchTests,
+             testGroup "root ADR 0398: visible separators" visibleSeparatorTests,
              testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
              testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpacesTests,
              publicDomainTests skips,

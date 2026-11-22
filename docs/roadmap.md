@@ -80,7 +80,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### スタイル
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
-  - **隠しノンブル（未実装）**：本文の役割の書体で、`[hidden-folio]` の `size` だけを変えられる。 [Golem ADR 0365](adr/0365-hidden-folio-style.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **ルビの読み**：読みだけに文字スタイルを指定できる。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
 - **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
@@ -213,6 +212,8 @@ v3 の GUI は、次の原則に従って作る。
 
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
+
+- **原稿の区切りの HTML 表示（確認待ち）**：横組みと縦組みの HTML をブラウザーで描画する確認が残る。[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md) のテスト設計で受けいれ条件 A1、A2、A4 に指定した手作業であり、指示者のブラウザー不使用の指示に従い後回しにしている。PDF と生成した HTML、EPUB の検査を、この表示確認の代わりにはしない。
 
 - **エディタ向けの構文の定義の読み込み**：`tools/editors/README.md` の読み込ませ方のうち、Visual Studio Code の手順（手元の拡張機能の `package.json` を VS Code が読むこと）を、実際のエディタで確かめていない。文法そのものは、VS Code と同じ `vscode-textmate` で読む `vscode-tmgrammar-test` が、CI の `editors` ジョブで確かめている。Neovim の手順のうち nvim-treesitter を使わないものは CI の `editors-lsp` ジョブが、Helix の手順は `editors` ジョブが確かめる。nvim-treesitter で GitHub から入れる手順は、Neovim 0.12.6 と nvim-treesitter の main ブランチの `e289100` で、ヘッドレスで確かめた（[docs/adr/0170](adr/0170-emet-editor-support.md)、[docs/adr/0171](adr/0171-neovim-setup-from-github-and-emet-lsp.md)、[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 - **CIDSystemInfo と異体字**（v1.0.0 のリリースで確かめる）：Adobe-Japan1 の ROS を持つ実際のフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、IVS の異体字が出ることと、InDesign の書き出しと同じであることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。フォントの `ROS` が `CIDSystemInfo` に写ることは、`ROS` を Adobe-Japan1-7 に書き換えた Source Han Sans のサブセットで、golem-font と golem-driver のテストが確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。

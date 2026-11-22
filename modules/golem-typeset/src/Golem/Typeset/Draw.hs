@@ -29,7 +29,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (toGregorian)
 import GHC.Conc (pseq)
-import Golem.Assemble (Book (..), TocEntry (..), inlineText, tocWithinDepth)
+import Golem.Assemble (Book (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), inlineText, tocWithinDepth)
 import Golem.Doc.IR
 import Golem.Layout.Code
 import Golem.Layout.FreeGeometry (faceOffset)
@@ -1685,6 +1685,32 @@ drawColumn env p =
                let band = paragraphRule env ta (riSize info) spec (prAt pr)
                    sw = ruleSwatch env spec
              ]
+          <> [ ("区切りの罫線", band, ruleThinnest (Sp weight) lineStyle, ruleMarks sw (ruleShapes vertical band lineStyle), sw)
+             | (slot, SLine lid) <- poSlots p,
+               Just (SeparatorRuleAppearance _ _ align len weight color stroke) <- [Map.lookup lid (plSeparatorRules layout)],
+               let measure = if vertical then rectH ta else rectW ta
+                   length' = maybe measure Sp len
+                   along = case align of
+                     "start" -> 0
+                     "end" -> measure - length'
+                     _ -> Sp (unSp (measure - length') `div` 2)
+                   across = slot + Sp (unSp (pgLinePitch geom - Sp weight) `div` 2)
+                   band =
+                     if vertical
+                       then Rect (rectX ta + rectW ta - across - Sp weight) (rectY ta + rectH ta - along - length') (Sp weight) length'
+                       else Rect (rectX ta + along) (rectY ta + rectH ta - across - Sp weight) length' (Sp weight)
+                   lineStyle = case stroke of
+                     StrokeSolid -> RuleSolid
+                     StrokeMulti ratios -> RuleMulti ratios
+                     StrokeDashed dash gap -> RuleDashed (Sp dash) (Sp gap)
+                     StrokeDotted gap -> RuleDotted (Sp gap)
+                     StrokeJapaneseDots gap -> RuleJapaneseDots (Sp gap)
+                     StrokeWavy -> RuleWavy
+                   sw = do
+                     name <- color
+                     Swatch (c, m, y, k) <- Map.lookup name (stSwatches style)
+                     pure (P.Swatch c m y k)
+             ]
           <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
              | not (null noteLines),
                Just rule <- [stNotesRule style],
@@ -1944,18 +1970,23 @@ captionIndent env ta pf
 -- each digit of a hidden folio, its advance centred on its point (golem-driver ADR 0021)
 hiddenMarks :: DrawEnv -> Int -> [([P.Content], [GlyphUse])]
 hiddenMarks env n =
-  [ first (pure . P.Artifact P.Pagination) $
-      runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) (plainLook body size) False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
+  [ first (pure . P.Artifact P.Pagination . paint look) $
+      runAtU env (SourceHiddenFolio, V.PartBase, styleSpan) look False False 0 (cx - Sp (unSp w `div` 2), cy + Sp (unSp size `div` 2) - zwToSp size baselineRatio) txt
   | Just hg <- [pgHiddenFolio geom],
-    let size = hgSize hg,
+    let size = hgSize hg
+        look = (maybe (plainLook body size) (\name -> restyle style (plainLook body size) (CharStyle styleSpan name [])) (hfCharacterStyle (stHiddenFolio style))) {lkSize = size, lkNominalSize = size},
     (c, (cx, cy)) <- Map.findWithDefault [] n (deHidden env),
     let txt = T.singleton c
-        w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False [] False) txt]
+        w = sum [toSp size (shAdvance g) | g <- lfShape fonts (shapingOf (lfRoleFeatures fonts) False look c) txt]
   ]
   where
+    paint look marks = case swatchOf env look of
+      Nothing -> marks
+      Just sw -> [P.Saved (P.SetColor sw : marks)]
     geom = deGeom env
     fonts = deFonts env
-    body = bodyRole (piStyle (deInput env))
+    style = piStyle (deInput env)
+    body = bodyRole style
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0
 
 masterMarks :: DrawEnv -> Int -> Bool -> Maybe MasterGeometry -> [Text] -> [(LineRec, ([P.Content], [GlyphUse]))]

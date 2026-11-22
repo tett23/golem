@@ -1263,6 +1263,17 @@ tests =
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,
+      testCase "root ADR 0398 A1: separator styles load by name" $ do
+        let src = "[separators.default]\nkind = \"blank\"\nlines = 2\n\n[separators.scene]\nkind = \"text\"\ntext = \"＊\"\nspace-before = 1\nspace-after = 1\n"
+        fmap stSeparators (parseStyle (FileId 0) src)
+          @?= Right (Map.fromList [("default", SeparatorBlank 2), ("scene", SeparatorText 1 1 "center" "＊" Nothing)]),
+      testCase "root ADR 0398 A5: invalid separator definitions report G03006" $ do
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"blank\"\nlines = 0\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"text\"\ntext = \"x\\ny\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nspace-before = \"0pt\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nkeep-in-column = true\n") @?= ["G03006"],
+      testCase "root ADR 0398 A5: separator function path stays inside the project" $
+        codes (parseStyle (FileId 0) "[separators.default]\nfunction = \"../scene.emet\"\ncommand = \"scene\"\n") @?= ["G03006"],
       runningHeadTests,
       localStyleTests,
       akiTests,
@@ -1325,10 +1336,16 @@ hiddenFolioTests =
   testGroup
     "[hidden-folio] (golem-driver ADR 0021)"
     [ testCase "the defaults without [hidden-folio]" $
-        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False),
+        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False Nothing False),
+      testCase "root ADR 0365 I1: gutter uses the effective size" $ do
+        let source explicit = "[character-styles.hidden]\nsize = \"12pt\"\n[hidden-folio]\ncharacter-style = \"hidden\"\ngutter = \"4pt\"\n" <> explicit
+        codes (parseStyle (FileId 0) (source "")) @?= ["G03029"]
+        codes (parseStyle (FileId 0) (source "size = \"6pt\"\n")) @?= [],
+      testCase "root ADR 0365 I1: unknown character style is diagnosed" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\ncharacter-style = \"absent\"\n") @?= ["G03013"],
       testCase "the four keys are read" $
         fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
-          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True),
+          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True Nothing True),
       testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G03006" $ do
         mapM_
           (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G03006"])

@@ -356,6 +356,9 @@ cbor =
         decodeDocument (encodeDocument d) @?= Right d
         decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 13, TInt 2]]]])))
           @?= Right (Document (FileId 0) [Block sp Nothing Nothing (BlankLines 2)]),
+      testCase "root ADR 0398 I5: named separators survive the CBOR round trip" $ do
+        let d = Document (FileId 0) [Block sp Nothing Nothing (Separator "scene")]
+        decodeDocument (encodeDocument d) @?= Right d,
       testCase "blank lines only at the top of a document, without a label, of one line or more (docs/adr ADR 0046)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing

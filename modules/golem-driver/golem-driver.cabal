@@ -138,6 +138,7 @@ test-suite golem-driver-test
     PageElementsSpec
     PageStartsSpec
     ParagraphRuleSpec
+    SeparatorSpec
     ParagraphSpec
     PdfSpec
     PlatesSpec

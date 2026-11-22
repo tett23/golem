@@ -507,6 +507,26 @@ autoTcyTests =
             lookedUp Map.empty tmp >>= \(is, ds) -> pure (shapes is, ds)
       ordered (function "add" <> filters) >>= (@?= (["本文。", "#12", "1"], []))
       ordered (filters <> function "add") >>= (@?= (["本文。", "12", "0"], [])),
+    testCase "root ADR 0398 A3 I8: separators expand once after Emet and plugin filters in either order" $ do
+      let emet =
+            TE.encodeUtf8 . T.unlines $
+              [ "pub filter add :: Blocks -> Blocks",
+                "add bs = bs ++ Block.paragraph (Inline.text \"12\") ++ Block.separator \"default\""
+              ]
+          definition = "pub block scene :: Blocks\nscene = Block.paragraph (Inline.text \"12\")\n"
+          style = verticalStyle <> "\n[separators.default]\nfunction = \"scene.emet\"\ncommand = \"scene\"\n"
+          function = "\n[[filters]]\nfunction = \"f.emet\"\nfilter = \"add\"\nfiles = [\"a.gm\"]\n"
+          ordered order = withSample style "auto-tcy" "" order "本文。\n---\n" [("f.emet", emet), ("scene.emet", definition)] $ \tmp -> do
+            e <- evaluateProjectWith (diskFiles tmp) Map.empty Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+            let s0Names = [name | r <- Map.elems (evResults e), b <- docBlocks (erDocument r), Separator name <- [blockBody b]]
+                blocks = [b | assembled <- maybe [] pure (evBook e), doc <- bookDocs assembled, b <- docBlocks doc]
+                inls = [i | b <- blocks, Paragraph _ is <- [blockBody b], i <- is]
+                s1Names = [name | b <- blocks, Separator name <- [blockBody b]]
+            s0Names @?= ["default", "default"]
+            s1Names @?= []
+            pure (shapes inls, [(diagCode d, diagMessage d) | d <- evDiagnostics e])
+      ordered (function <> filters) >>= (@?= (["本文。", "12", "#12", "12"], []))
+      ordered (filters <> function) >>= (@?= (["本文。", "12", "12", "12"], [])),
     testCase "an error of the config points at the top of the file, in horizontal writing too" $
       withSample horizontalStyle "auto-tcy" "data = { config = \"bad.conf\" }\n" filters "12\n" [("bad.conf", "digits = 9\n")] $ \tmp -> do
         r <- build (defaultOptions tmp)

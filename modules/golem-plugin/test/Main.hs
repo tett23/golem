@@ -214,6 +214,22 @@ tests =
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         fmap fst (applyFilter p "same" codeBlockDoc) @?= Right codeBlockDoc,
+      testCase "root ADR 0398 A3: a named separator survives a plugin filter unchanged" $ do
+        p <- load =<< compile =<< wat "identity.wat"
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Separator "scene")]
+        fmap fst (applyFilter p "same" doc) @?= Right doc,
+      testCase "root ADR 0398 A3: a plugin may remove a separator" $ do
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Separator "scene")]
+            empty = Document (FileId 1) []
+        p <- load =<< fixed abi (responseWith (documentTerm empty))
+        fmap fst (applyFilter p "upper" doc) @?= Right empty,
+      testCase "root ADR 0398 A3: a language on a separator returned by a plugin is rejected" $ do
+        let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Separator "scene")]
+            invalid = Document (FileId 1) [Block callSpan Nothing (Just "en") (Separator "scene")]
+        p <- load =<< fixed abi (responseWith (documentTerm invalid))
+        case applyFilter p "upper" doc of
+          Left (BadOutput _) -> pure ()
+          other -> assertFailure (show other),
       testCase "a paragraph with aki survives a filter unchanged (docs/adr ADR 0019)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         let doc = Document (FileId 1) [Block callSpan Nothing Nothing (Paragraph Nothing [Text callSpan "a", Aki callSpan (AkiZw (1 / 5)), Aki callSpan (AkiAbs 65536)])]
