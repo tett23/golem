@@ -1,6 +1,7 @@
 module Main (main) where
 
 import BoxSpec (boxTests)
+import FigureColorSpec (figureColorTests)
 import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
@@ -18,7 +19,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-typeset"
-    [ svgColorTests,
+    [ figureColorTests,
+      svgColorTests,
       memoTests,
       testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
       testGroup "the glyph runs of a box in the order of its text (docs/adr ADR 0227)" glyphRunsTests,

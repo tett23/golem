@@ -34,6 +34,7 @@ library
                     Golem.Typeset.Fonts
                     Golem.Typeset.Pages
   build-depends:
+    , JuicyPixels   ==3.3.9
     , async         >=2.2  && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
@@ -65,6 +66,7 @@ test-suite golem-typeset-test
   main-is:          Main.hs
   other-modules:
     BoxSpec
+    FigureColorSpec
     GlyphRunsSpec
     MemoSpec
     RuleShapeSpec
@@ -72,6 +74,7 @@ test-suite golem-typeset-test
     TcySpec
     WrapMarkSpec
   build-depends:
+    , JuicyPixels ==3.3.9
     , base
     , golem-layout-spec
     , golem-pdf
