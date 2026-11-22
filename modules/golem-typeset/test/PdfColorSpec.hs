@@ -56,6 +56,10 @@ pdfColorTests =
       assertBool "white" ("0 0 0 0 k" `BS.isInfixOf` P.ipContent p)
       assertBool "black" ("0 1 1 0 k" `BS.isInfixOf` P.ipContent p)
       assertBool "half" ("0 0.5 0.5 0 k" `BS.isInfixOf` P.ipContent p),
+    testCase "root ADR 0403 I1: neutral CMYK and its RGB approximation use the same tint" $ do
+      cmyk <- converted ".5 .5 .5 .5 k 0 0 10 10 re f"
+      rgb <- converted ".25 .25 .25 rg 0 0 10 10 re f"
+      P.ipContent cmyk @?= P.ipContent rgb,
     testCase "root ADR 0403 I1: unused non-gray color does not make PDF multicolor" $ do
       _ <- converted "1 0 0 rg 0 g 0 0 10 10 re f"
       pure (),

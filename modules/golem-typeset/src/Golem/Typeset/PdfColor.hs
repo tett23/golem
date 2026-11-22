@@ -366,7 +366,7 @@ paint (c, m, y, k) source isStroke =
   let amount = case source of
         Gray g -> 1 - g
         Rgb r g b | r == g && g == b -> 1 - g
-        CmykColor a b d e | a == b && b == d -> min 1 (a + e)
+        CmykColor a b d e | a == b && b == d -> 1 - (1 - a) * (1 - e)
         _ -> 1
       values = [fromIntegral component / 100 * amount | component <- [c, m, y, k]]
    in BC.unwords (map (TE.encodeUtf8 . P.showRationalDigits 8) values <> [if isStroke then "K" else "k"])
