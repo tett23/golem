@@ -1,6 +1,6 @@
 # ADR 0404: 脚注と章末注の段落スタイルを別々に指定する
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0412-a-separate-channel-for-endnotes.md"],"part":"新しい注チャネルや、注ごとに配置先を選ぶ記法を追加しないこと"}]
 
 ## 文脈
 
