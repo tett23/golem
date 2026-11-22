@@ -525,7 +525,7 @@ blankLineTests =
       map (map fst . poSlots) (gridPages plain) @?= [[0, 2]],
     testCase "HTML: a div of a br for each blank line between the paragraphs" $ do
       (page, _) <- htmlMini horizontalStyle "あ\n@blank-line 2\nい\n"
-      assertBool (T.unpack page) ("<p>あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p>い</p>\n" `T.isInfixOf` page),
+      assertBool (T.unpack page) ("<p style=\"margin-block-end:0\">あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p style=\"margin-block-start:0\">い</p>\n" `T.isInfixOf` page),
     testCase "HTML: nothing before the first block, after a page break or after the last block" $ do
       (page, _) <- htmlMini horizontalStyle "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line 3\n"
       assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
