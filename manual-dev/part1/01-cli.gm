@@ -151,10 +151,18 @@ $ golem build --target pdf --format json 2> diagnostics.json
 JSON は、エディタが Golem と同じ禁則とぶら下げで折り返すために読む。
 [code: PATH] のファイルかフォルダから親へたどり、最も近い [code: manifest.toml] のフォルダをプロジェクトとして、その [code: style.toml] だけを読む。
 [code: PATH] を省くと今のフォルダから探し、まだ無いファイルのパスを渡すと、存在する最も近い親のフォルダから探す。
+次の例は、一行の出力を [code: jq] で整形して示す。
 
 ```sh
-$ golem kinsoku chapters/01.gm
-{"schema":1,"project":"/home/me/book","composition":{"kinsoku":"strict","hangingPunctuation":false}}
+$ golem kinsoku chapters/01.gm | jq .
+{
+  "schema": 1,
+  "project": "/home/me/book",
+  "composition": {
+    "kinsoku": "strict",
+    "hangingPunctuation": false
+  }
+}
 ```
 
 [code: project] はプロジェクトの絶対パスで、見つからないときは [code: null] になり、[code: composition] は既定値になる。
