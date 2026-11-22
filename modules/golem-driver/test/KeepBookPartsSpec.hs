@@ -101,6 +101,12 @@ tests =
         (_, layout) <- layoutOk (style "page" 2) ("@column-widths 4zw\n| " <> T.replicate 8 "h " <> "|\n| --- |\n| " <> T.replicate 8 "x " <> "|\n") []
         let tableSlots = [(poNumber page, poColumn page, ident) | page <- plPages layout, (_, SLine ident) <- poSlots page, Map.member ident (plTableLines layout)]
         map (\(page, column, _) -> (page, column)) tableSlots @?= [(1, 0), (1, 0), (1, 1), (1, 1)],
+      testCase "root ADR 0401 I2: in one column a spread still needs the header and each row in one column" $ do
+        let manuscript = "@page-break\n\n@column-widths 4zw\n| " <> T.replicate 8 "h " <> "|\n| --- |\n| " <> T.replicate 8 "x " <> "|\n| " <> T.replicate 8 "y " <> "|\n"
+        (codes, _) <- buildMini fakeProvider True (style "spread" 1) manuscript []
+        assertBool (show codes) (DiagnosticCode "G07042" `elem` codes)
+        (twoColumns, _) <- buildMini fakeProvider True (style "spread" 2) manuscript []
+        assertBool (show twoColumns) (DiagnosticCode "G07042" `notElem` twoColumns),
       testCase "root ADR 0401 I1: default and explicit column preserve item placement" $ do
         (_, omitted) <- layoutOk (style "" 2) (source 4 3) []
         (_, explicit) <- layoutOk (style "column" 2) (source 4 3) []

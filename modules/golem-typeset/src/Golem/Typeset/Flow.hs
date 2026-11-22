@@ -3608,8 +3608,8 @@ numberTable fe u tbl r nb = case r of
     div' a b = fromInteger (a `div` b)
     below = stTableCaption (piStyle (feInput fe)) == CaptionBelow
     capacity = length (pgLineGrid (feGeom fe))
-    -- A single-column spread with a repeated header needs a separate specification decision.
-    -- Keep its existing dimensional check until that boundary is decided.
+    -- In one column the header repeats on every continuation page, so the header
+    -- and each row must fit one column even within page or spread retention.
     retentionCapacity = toInteger capacity * toInteger columns
     columns = case compKeepParts (stComposition (piStyle (feInput fe))) of
       KeepColumn -> 1
