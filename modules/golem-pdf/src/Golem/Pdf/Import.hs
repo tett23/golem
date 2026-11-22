@@ -24,7 +24,11 @@ module Golem.Pdf.Import
     importPage,
     importErrorText,
     contentOperations,
+    inlineImageParts,
     unescapeName,
+    decodeImportedStream,
+    maxDecodedBytes,
+    maxNesting,
   )
 where
 
@@ -105,7 +109,9 @@ data ImportedPage = ImportedPage
     ipContent :: !ByteString,
     -- | the objects reached from the resources, in the order they are reached
     ipObjects :: ![(ObjNum, ObjOf ObjNum)],
-    ipColors :: ![ColorUse]
+    ipColors :: ![ColorUse],
+    -- | Bytes already decoded by this import, carried into optional recoloring (root ADR 0403).
+    ipDecodedBytes :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -400,8 +406,9 @@ parseObj depth s0
 
 {- | The operations of a content stream, read with the lexing above
 (docs/adr ADR 0232): each operator with its operands as written. An
-inline image is the operator @BI@ alone; its dictionary and data are
-skipped. Nothing when the stream is broken.
+inline image is the operator @BI@ with one operand: the bytes from after
+@BI@ to the end of its @EI@, read by 'inlineImageParts'. Nothing when the
+stream is broken.
 -}
 contentOperations :: ByteString -> Maybe [(ByteString, [ByteString])]
 contentOperations = go [] []
@@ -421,7 +428,7 @@ contentOperations = go [] []
                   let (kw, rest) = BS.span isRegular s
                    in if
                         | kw `elem` ["true", "false", "null"] -> go acc (kw : ops) rest
-                        | kw == "BI" -> skipInline rest >>= go (("BI", []) : acc) []
+                        | kw == "BI" -> skipInline rest >>= \after -> go (("BI", [BS.take (BS.length rest - BS.length after) rest]) : acc) [] after
                         | otherwise -> go ((kw, reverse ops) : acc) [] rest
               | otherwise -> Nothing
     -- the rest after the EI of an inline image: its dictionary to ID, then its data
@@ -435,6 +442,47 @@ contentOperations = go [] []
         | BS.null found -> Nothing
         | maybe True (isWs . snd) (BS.unsnoc before) && maybe True (not . isRegular . fst) (BS.uncons (BS.drop 2 found)) -> Just (BS.drop 2 found)
         | otherwise -> findEi (BS.drop 2 found)
+
+{- | The dictionary and the data of an inline image, from the operand of
+@BI@ that 'contentOperations' gives. The abbreviated keys and filter and
+colour-space names are written in full (ISO 32000-1:2008 8.9.7). The data
+ends before the white space that precedes @EI@. Nothing when it is broken.
+-}
+inlineImageParts :: ByteString -> Maybe ([(Text, ObjOf ObjNum)], ByteString)
+inlineImageParts = entries []
+  where
+    entries acc t0 =
+      let t = skipWs t0
+       in if "ID" `BS.isPrefixOf` t && maybe False (isWs . fst) (BS.uncons (BS.drop 2 t))
+            then do
+              body <- BS.stripSuffix "EI" (BS.drop 3 t)
+              let trimmed = maybe body fst (BS.unsnoc body >>= \(front, w) -> if isWs w then Just (front, w) else Nothing)
+              Just (reverse acc, trimmed)
+            else case BS.uncons t of
+              Just (47, r) -> do
+                let (k, r') = BS.span isRegular r
+                (v, r'') <- either (const Nothing) Just (parseObj 0 r')
+                entries ((expandKey (unescapeName k), expandValue (unescapeName k) v) : acc) r''
+              _ -> Nothing
+    expandKey k = fromMaybe (nameText k) (lookup k abbreviatedKeys)
+    expandValue k v
+      | k `elem` ["F", "Filter"] = inlineObject filterName v
+      | k `elem` ["CS", "ColorSpace"] = inlineObject spaceName v
+      | otherwise = inlineObject id v
+    inlineObject f = \case
+      VName n -> OName (nameText (f n))
+      VArr xs -> OArr (map (inlineObject f) xs)
+      VDict kv -> ODict [(nameText key, inlineObject id value) | (key, value) <- kv]
+      VNull -> ONull
+      VBool b -> OBool b
+      VInt i -> OInt i
+      VReal t -> OReal (TE.decodeLatin1 t)
+      VStr s -> OStr s
+      VRef k -> ORef k
+      VStream kv body -> OStream [(nameText key, inlineObject id value) | (key, value) <- kv] body
+    abbreviatedKeys = [("BPC", "BitsPerComponent"), ("CS", "ColorSpace"), ("D", "Decode"), ("DP", "DecodeParms"), ("F", "Filter"), ("H", "Height"), ("IM", "ImageMask"), ("I", "Interpolate"), ("W", "Width"), ("L", "Length")]
+    filterName n = fromMaybe n (lookup n [("AHx", "ASCIIHexDecode"), ("A85", "ASCII85Decode"), ("LZW", "LZWDecode"), ("Fl", "FlateDecode"), ("RL", "RunLengthDecode"), ("CCF", "CCITTFaxDecode"), ("DCT", "DCTDecode")])
+    spaceName n = fromMaybe n (lookup n [("G", "DeviceGray"), ("RGB", "DeviceRGB"), ("CMYK", "DeviceCMYK"), ("I", "Indexed")])
 
 -- | A name with its #xx escapes undone.
 unescapeName :: ByteString -> ByteString
@@ -784,6 +832,53 @@ lastOccurrence needle hay = go 0 Nothing
 
 -- ------------------------------------------------------------------ decoding
 
+{- | Decode a stream whose Filter and DecodeParms have been resolved by
+the caller. Return the bytes and the cumulative cost of all decoding
+stages, so recoloring shares the import budget (root ADR 0040, root ADR
+0403). References and nested streams in these two fields are refused.
+-}
+decodeImportedStream :: Int -> [(Text, ObjOf ObjNum)] -> ByteString -> Either ImportError (ByteString, Int)
+decodeImportedStream remaining fields body
+  | remaining < 0 = bad tooLarge
+  | otherwise = do
+      dict <- traverse (\(key, value) -> (TE.encodeUtf8 key,) <$> direct 0 value) [(key, value) | (key, value) <- fields, key `elem` ["Filter", "DecodeParms"]]
+      names <- case lookup "Filter" dict of
+        Nothing -> Right []
+        Just VNull -> Right []
+        Just (VName name) -> Right [name]
+        Just (VArr values) -> traverse filterName values
+        _ -> bad "フィルター"
+      parms <- case lookup "DecodeParms" dict of
+        Nothing -> Right []
+        Just VNull -> Right []
+        Just (VDict values) -> Right [values]
+        Just (VArr values) -> traverse parameters values
+        _ -> bad "フィルターのパラメーター"
+      let available = min maxDecodedBytes remaining
+      (out, state) <- runM (decodeWith (zip names (parms <> repeat [])) body) (St available Map.empty Map.empty Map.empty Set.empty)
+      when (BS.length out > available) (bad tooLarge)
+      pure (out, available - stLeft state)
+  where
+    filterName (VName name) = Right name
+    filterName _ = bad "フィルター"
+    parameters VNull = Right []
+    parameters (VDict values) = Right values
+    parameters _ = bad "フィルターのパラメーター"
+    direct :: Int -> ObjOf ObjNum -> R V
+    direct depth _ | depth > maxNesting = bad "フィルターの辞書が深すぎます"
+    direct depth inputObj = case inputObj of
+      ODict values -> VDict <$> traverse (\(key, value) -> (TE.encodeUtf8 key,) <$> direct (depth + 1) value) values
+      OArr values -> VArr <$> traverse (direct (depth + 1)) values
+      OName name -> Right (VName (TE.encodeUtf8 name))
+      OInt value -> Right (VInt value)
+      OReal value -> Right (VReal (TE.encodeUtf8 value))
+      OStr value -> Right (VStr value)
+      OHex value -> Right (VStr value)
+      OBool value -> Right (VBool value)
+      ONull -> Right VNull
+      ORef {} -> bad "フィルターの参照が解決されていません"
+      OStream {} -> bad "フィルターにストリームがあります"
+
 -- | The filters of a stream whose Filter and DecodeParms are direct.
 filtersDirect :: Dict -> [(ByteString, Dict)]
 filtersDirect dict = zip names (parms <> repeat [])
@@ -1074,7 +1169,9 @@ boxOf d v =
 it (golem-pdf ADR 0008).
 -}
 importPage :: Int -> ByteString -> Either ImportError ImportedPage
-importPage n bytes = fst <$> runM (importM n bytes) (St maxDecodedBytes Map.empty Map.empty Map.empty Set.empty)
+importPage n bytes = do
+  (page, state) <- runM (importM n bytes) (St maxDecodedBytes Map.empty Map.empty Map.empty Set.empty)
+  pure page {ipDecodedBytes = maxDecodedBytes - stLeft state}
 
 importM :: Int -> ByteString -> M ImportedPage
 importM n bytes = do
@@ -1178,7 +1275,8 @@ importM n bytes = do
         ipGroup = conv <$> group,
         ipContent = pageBytes,
         ipObjects = map object objs <> [(innerKey k, innerForm body) | (k, body) <- inner] <> [(0, profile) | withProfile],
-        ipColors = nub (pageUses <> concat [u | (_, _, u) <- Map.elems rewritten] <> uses)
+        ipColors = nub (pageUses <> concat [u | (_, _, u) <- Map.elems rewritten] <> uses),
+        ipDecodedBytes = 0
       }
 
 -- | @%PDF-1.0@ to @%PDF-1.7@ and @%PDF-2.0@.

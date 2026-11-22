@@ -1067,4 +1067,14 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests])
+
+-- | Fixed-page positions are empty anchors in the original text (root ADR 0386).
+pageBreakTests :: TestTree
+pageBreakTests = testCase "root ADR 0386 I1: each page-list destination occurs once in body order" $ do
+  let sp = mkSpan fidA 0 4
+      book = bookOf [Block sp Nothing Nothing (Paragraph Nothing [Text sp "日本語句"])]
+      anchors = Map.singleton sp [(0, "GolemFixedPage-1", "i"), (2, "GolemFixedPage-2", "1")]
+      body = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtmlWithPageBreaks cfg0 ft book anchors)))
+  [T.takeWhile (/= '"') piece | piece <- drop 1 (T.splitOn "id=\"" body)] @?= ["GolemFixedPage-1", "GolemFixedPage-2"]
+  assertBool "body text retains its order" ("日本<span" `T.isInfixOf` body && "></span>語句" `T.isInfixOf` body)
