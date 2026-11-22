@@ -1424,7 +1424,9 @@ recolorWebFigures opts style book site = case figureColor style of
               Left problem -> pure (Left (T.pack (show problem)))
               Right bytes
                 | svg -> pure $ case Svg.readSvg bytes of
-                    Left _ -> Right Nothing
+                    Left problem -> Left $ case problem of
+                      Svg.SvgMalformed why -> why
+                      Svg.SvgUnsupported _ -> "SVG の色の変換で扱えない要素または属性があります"
                     Right parsed ->
                       let original = P.SvgFigure (svgDrawing parsed)
                        in case recolorFigure swatch original of
@@ -1538,7 +1540,9 @@ writePdfTarget inMemory opts e diagFid book bib = do
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
   case r of
-    Left ds -> pure ([], ds <> fontNotice, Nothing)
+    Left ds -> do
+      when (not inMemory && any ((== DiagnosticCode "G08113") . diagCode) ds) (cleanDir dir)
+      pure ([], ds <> fontNotice, Nothing)
     Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))

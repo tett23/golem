@@ -19,7 +19,7 @@ where
 import Codec.Picture.Jpg qualified as Jpeg
 import Codec.Picture.Png qualified as Png
 import Codec.Picture.Types qualified as J
-import Control.Exception (SomeAsyncException, SomeException, displayException, evaluate, fromException, tryJust)
+import Control.Exception (SomeAsyncException, SomeException, evaluate, fromException, tryJust)
 import Control.Monad (unless)
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString qualified as BS
@@ -80,7 +80,7 @@ guardColorConversion :: (a -> ()) -> Either Text a -> IO (Either Text a)
 guardColorConversion force result = do
   caught <- tryJust synchronous (evaluate evaluated)
   pure $ case caught of
-    Left problem -> Left (T.pack (displayException problem))
+    Left _ -> Left "図版の色変換中に復号処理が失敗しました"
     Right value -> value
   where
     synchronous :: SomeException -> Maybe SomeException

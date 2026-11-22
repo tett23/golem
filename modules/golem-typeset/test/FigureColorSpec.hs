@@ -3,7 +3,7 @@ module FigureColorSpec (figureColorTests) where
 import Codec.Picture.Jpg qualified as Jpeg
 import Codec.Picture.Png qualified as Png
 import Codec.Picture.Types qualified as J
-import Control.Exception (AsyncException (ThreadKilled), SomeException, evaluate, throw, try)
+import Control.Exception (AsyncException (ThreadKilled), ErrorCall (ErrorCallWithLocation), SomeException, evaluate, throw, try)
 import Control.Monad (forM_)
 import Data.Bits (xor)
 import Data.ByteString qualified as BS
@@ -21,7 +21,13 @@ figureColorTests :: TestTree
 figureColorTests =
   testGroup
     "root ADR 0403 raster tones"
-    [ testCase "root ADR 0403 I1: gray black and white map to swatch and paper" $ do
+    [ testCase "root ADR 0403: codec exceptions do not expose machine-specific call stacks" $ do
+        let conversion location = guardColorConversion (\() -> throw (ErrorCallWithLocation "codec failed" location)) (Right ())
+        first <- conversion "/tmp/build-a/Image.hs:13"
+        second <- conversion "/home/build-b/Image.hs:42"
+        first @?= Left "図版の色変換中に復号処理が失敗しました"
+        second @?= first,
+      testCase "root ADR 0403 I1: gray black and white map to swatch and paper" $ do
         result <- either (assertFailure . show) pure (analyzeRaster red (image P.CsGray [0, 255]))
         raKind result @?= Grayscale
         fmap P.imgColor (raImage result) @?= Just P.CsCmyk

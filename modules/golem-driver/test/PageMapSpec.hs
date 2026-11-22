@@ -4,6 +4,7 @@ import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Codec.Picture.Jpg qualified as Jpeg
 import Codec.Picture.Png qualified as Png
 import Codec.Picture.Types qualified as J
+import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (fromLeft, isLeft)
@@ -24,9 +25,9 @@ import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Numeric (showHex)
-import Support (codesOf, withChapters)
+import Support (codesOf, fakeProvider, pdfStyle, withChapters, writeStyleWithFont)
 import System.Directory (doesFileExist, listDirectory)
-import System.FilePath ((</>))
+import System.FilePath (takeExtension, (</>))
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
@@ -97,6 +98,18 @@ pageMapTests =
           archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
           fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/mono.svg" archive) @?= Just mono
           fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/multi.svg" archive) @?= Just multi,
+      testCase "root ADR 0403 I1: SVG outside the drawing subset fails when recolouring is requested" $
+        withChapters colorStyle [("a.gm", "@nonumber\n@figure text.svg alt=\"text\"\n")] [("text.svg", textSvg)] $ \root -> do
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= ["G08113"]
+          brWritten result @?= [],
+      testCase "root ADR 0403 I2: SVG outside the drawing subset retains original bytes without recolouring" $
+        withChapters "" [("a.gm", "@nonumber\n@figure text.svg alt=\"text\"\n")] [("text.svg", textSvg)] $ \root -> do
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= []
+          BS.readFile (root </> "build/html/text.svg") >>= (@?= TE.encodeUtf8 textSvg)
+          archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
+          fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/text.svg" archive) @?= Just (TE.encodeUtf8 textSvg),
       testCase "root ADR 0403 I1: JPEG becomes linked PNG in HTML and EPUB while multi-colour bytes remain" $
         withChapters colorStyle [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n\n@nonumber\n@figure multi.jpg alt=\"multi\"\n")] [] $ \root -> do
           BS.writeFile (root </> "gray.jpg") grayJpeg
@@ -126,6 +139,36 @@ pageMapTests =
           codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
           doesFileExist (root </> "build/html/a.xhtml") >>= (@?= False)
           doesFileExist (root </> "build/epub/book.epub") >>= (@?= False),
+      testCase "root ADR 0406 I1: failed JPEG colour conversion removes a stale PDF and page map" $
+        withChapters "" [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
+          writeStyleWithFont root (pdfStyle <> colorStyle)
+          BS.writeFile (root </> "gray.jpg") grayJpeg
+          let options = (defaultOptions root) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+          good <- build options
+          codesOf (filter isError (brDiagnostics good)) @?= []
+          let pdfs = filter ((== ".pdf") . takeExtension) (brWritten good)
+          assertBool "a PDF was written before failure" (not (null pdfs))
+          case unsupportedJpegs of
+            bytes : _ -> BS.writeFile (root </> "gray.jpg") bytes
+            [] -> assertFailure "missing unsupported JPEG fixture"
+          bad <- build options
+          codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
+          brWritten bad @?= []
+          forM_ (pdfs <> [root </> "build/pdf/pages.json"]) $ \path -> doesFileExist path >>= (@?= False),
+      testCase "root ADR 0406 I1: unsupported JPEG coding stops web targets with G08113" $
+        forM_ unsupportedJpegs $ \bytes -> withChapters colorStyle [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
+          BS.writeFile (root </> "gray.jpg") bytes
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= ["G08113"]
+          brWritten result @?= [],
+      testCase "root ADR 0406 I2: without a swatch unsupported JPEG bytes remain unchanged" $
+        forM_ unsupportedJpegs $ \bytes -> withChapters "" [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
+          BS.writeFile (root </> "gray.jpg") bytes
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= []
+          BS.readFile (root </> "build/html/gray.jpg") >>= (@?= bytes)
+          archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
+          fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/gray.jpg" archive) @?= Just bytes,
       testCase "root ADR 0403 I2: PNG opacity is preserved in copied web output" $
         withChapters colorStyle [("a.gm", "@nonumber\n@figure gray.png alt=\"gray\"\n")] [] $ \root -> do
           BS.writeFile (root </> "gray.png") alphaPng
@@ -158,7 +201,13 @@ pageMapTests =
     colorStyle = "[figures]\ncolor = \"accent\"\n[color.swatches.accent]\ncmyk = [0, 100, 100, 0]\n"
     grayJpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 0 :: Word8) 2 1))
     multiJpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\x _ -> if x < 8 then J.PixelRGB8 255 0 0 else J.PixelRGB8 0 0 255) 16 8))
+    unsupportedJpegs =
+      let (before, frame) = BS.breakSubstring (BS.pack [0xff, 0xc0]) grayJpeg
+          twelve = before <> BS.take 4 frame <> BS.singleton 12 <> BS.drop 5 frame
+          marker code = before <> BS.pack [0xff, code] <> BS.drop 2 frame
+       in [twelve, marker 0xc3, marker 0xc9]
     alphaPng = BL.toStrict (Png.encodePng (J.generateImage (\_ _ -> J.PixelRGBA8 128 128 128 128) 1 1))
+    textSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><text x=\"0\" y=\"10\">text</text></svg>"
     monoSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><path fill=\"black\" d=\"M 0 0 L 10 10\"/></svg>"
     multiSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><path fill=\"black\" d=\"M 0 0 L 10 10\"/><path fill=\"blue\" d=\"M 1 1 L 8 8\"/></svg>"
     checkFailure json unreadable expected = withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
