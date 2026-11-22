@@ -109,7 +109,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
 - **PDF 図版の色置換の残り（未実装）**：PDF のシェーディング、インライン画像、線や文字で使う任意の名前付き色空間、CalRGB、Indexed、Separation、DeviceN、Pattern などの色空間への対応が残っている。
-  画像の明示マスク、Matte を持つソフトマスク、異寸法や DeviceGray 以外のソフトマスク、成分ごとに異なる Decode、単位範囲以外の ICCBased Range も残る。
+  明示マスクの異寸法や Interpolate = true など、まだ扱えない指定、Matte を持つソフトマスク、異寸法や DeviceGray 以外のソフトマスク、成分ごとに異なる Decode、単位範囲以外の ICCBased Range も残る。
   LZW、CCITT、JBIG2、JPX など、色置換の経路でまだ展開できない画像フィルターへの対応も残っている。
   Group の色空間と複雑な透明合成を含む判定は、実装との照合が残っている。
   これらは採択した範囲から除外せず、[root ADR 0386](adr/0386-page-list-and-page-colors.md) と [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の残実装として進める。

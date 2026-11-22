@@ -4949,7 +4949,10 @@ Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフト
 画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
 画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
 ICCBased の Range は各成分の単位範囲だけを扱い、画像の Decode は全成分が通常の範囲、または全成分が逆の範囲の場合を扱う。
-同寸法の DeviceGray のソフトマスクと色キーのマスクを保ち、JPEG を含む DCTDecode の画像も、PDF の Decode を適用する前のサンプルへ復号する。
+同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
+明示マスクは ImageMask = true で、画像とマスクの Interpolate を省くか false にした場合に扱う。
+マスクの Decode は既定の範囲か逆の範囲を受け入れ、元のオブジェクトと参照を変えずに可視画素の判定だけに使う。
+JPEG を含む DCTDecode の画像も、PDF の Decode を適用する前のサンプルへ復号する。
 DCTDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
 取り込み時に展開した量に、色変換で見積もる復号量と出力量を加えて 256 MiB を超える変換は拒む。
 未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
