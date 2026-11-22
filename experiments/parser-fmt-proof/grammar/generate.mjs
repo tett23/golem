@@ -462,8 +462,29 @@ const blockStartsProved = numberOpenFullyProved && blockStartRule?.params.length
     describeItems(alt.items) === expectedBlockStarts[index]);
 const continuationProved = lineLeavesProved && blankLineProved && indentFullyProved && blockStartsProved &&
   indentedUnitRuleMatches(ast?.rules.find(r => r.name === 'LineContinuation'), 'Nl !BlankLine Ind(ind) !BlockStart');
+// ExpressionComposition retains every alternative, its priority, and both
+// range_end labels. ReservedRange recovery itself remains unsupported.
+function unitAlternativesMatch(r, expected) {
+  return r?.params.length === 0 && r.templateParams.length === 0 && r.type.trim() === '()' &&
+    r.alts.length === expected.length && r.alts.every((alt, index) => alt.action?.trim() === '()' &&
+      alt.constructor === null && describeItems(alt.items) === expected[index]);
+}
+const callProved = expressionSpaceProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'ExprIdent'), '[a-zA-Z_] [a-zA-Z0-9_]*') &&
+  [['Dot', "'.'"], ['Comma', "','"], ['LParen', "'('"], ['RParen', "')'"]].every(([name, rhs]) =>
+    singleUnitRuleMatches(ast?.rules.find(r => r.name === name), rhs)) &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'CallExpr'), 'ExprIdent (ES Dot ES ExprIdent)? ES LParen ES (Expr ES (Comma ES Expr ES)*)? RParen');
+const expectedRanges = ["&'...' (&{ False } '...')^range_end", 'ReservedRange', 'AddExpr ES ReservedRange',
+  "AddExpr ES RangeOp ES (AddExpr)^range_end (!(ES '..'))^range_end", 'CompareExpr'];
+const rangeProved = expressionSpaceProved &&
+  singleUnitRuleMatches(ast?.rules.find(r => r.name === 'RangeOp'), "'...'") &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'AddExpr'), ['AddExpr ES AddOp ES MulExpr', 'MulExpr']) &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'CompareExpr'), ['AddExpr ES CmpOp ES AddExpr', 'AddExpr']) &&
+  unitAlternativesMatch(ast?.rules.find(r => r.name === 'RangeExpr'), expectedRanges);
 if (!fragment && ast) {
   for (const rule of ast.rules) {
+    if (callProved && rule.name === 'CallExpr') continue;
+    if (rangeProved && rule.name === 'RangeExpr') continue;
     if (variableProved && rule.name === 'VarExpr') continue;
     if (proseSlotsProved && rule.name === 'ProseSlots') continue;
     if (continuationProved && rule.name === 'LineContinuation') continue;

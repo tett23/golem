@@ -84,16 +84,16 @@ private def optional (input : List Char) : ParseResult → ParseResult
 private def separatedTail (element : String) : Expr :=
   .choice [[.ref "Comma" [], .ref "ES" [], .ref element [], .ref "ES" []]]
 
-private def entries (element : String) : Expr :=
+def entries (element : String) : Expr :=
   .opt (.choice [[.ref element [], .ref "ES" [], .star (separatedTail element)]])
 
-private def readEntries (element : String) (fuel : Nat) (input : List Char) : ParseResult :=
+def readEntries (element : String) (fuel : Nat) (input : List Char) : ParseResult :=
   let read := recognizeEnv Generated.pegGrammar [] fuel
   optional input (next (read (.ref element []) input) (fun rest =>
     next (read (.ref "ES" []) rest)
       (scan (fun n => recognizeEnv Generated.pegGrammar [] n (separatedTail element)) fuel)))
 
-private theorem entries_eq (element : String) (fuel : Nat) (input : List Char) :
+theorem entries_eq (element : String) (fuel : Nat) (input : List Char) :
     recognizeEnv Generated.pegGrammar [] (fuel+2) (entries element) input = readEntries element fuel input := by
   have group : recognizeEnv Generated.pegGrammar [] (fuel+1)
       (.choice [[.ref element [], .ref "ES" [], .star (separatedTail element)]]) input =

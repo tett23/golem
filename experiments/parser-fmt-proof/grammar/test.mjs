@@ -27,7 +27,9 @@ try {
     'root ADR 0351 I1/I2: numeric literals, command identifiers and expression trivia require recognition proofs');
   assert.doesNotMatch(strict.stderr, /^unsupported (VarExpr|ProseSlots|LineContinuation) choice /m,
     'root ADR 0351 I1/I2: variables, prose slots and continuations require recognition proofs');
-  assert.ok(baselineUnsupported <= 32, 'the full grammar model must not regress in unsupported choices');
+  assert.doesNotMatch(strict.stderr, /^unsupported (CallExpr|RangeExpr) choice /m,
+    'root ADR 0351 I1/I2: calls and complete range alternatives require recognition proofs');
+  assert.ok(baselineUnsupported <= 30, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -201,7 +203,14 @@ try {
     ['- a\n  b\n', 'BulletList', 0, 'Ind@4..6 "  "'],
     ['- a\n- b\n', 'BulletList', 0, 'ListItem@4..8\n'],
     ['a\n@foo\n', 'BlockGroup', 0, 'BlockCommand@2..7\n'],
-    ['a\n \t\nb\n', 'Paragraph', 0, 'Paragraph@5..7\n']
+    ['a\n \t\nb\n', 'Paragraph', 0, 'Paragraph@5..7\n'],
+    ...['foo()', 'foo(1)', 'foo(1,2)', 'foo(1,2,3)', 'foo.bar(1)',
+      'foo(%%a%%1,%%=b%%2)', 'foo(bar(1),2)', 'foo([1, 2], {a: 3})',
+      'foo(%%a%%)', 'foo . bar ( 1 )'].map(call =>
+      [`[= ${call}]\n`, 'Paragraph', 0, `CallExpr@3..${3 + call.length}\n`]),
+    ...['1...2', '1+2...3*4', '-1...2', '1...-2', '(1+2)...(3+4)', '1...2**3',
+      '1 < 2', '(1...2) == (1...2)', '1.5...2e3', '1 ... %%a%% 2'].map(expr =>
+      [`[= ${expr}]\n`, 'Paragraph', 0, `RangeExpr@3..${3 + expr.length}\n`])
   ];
   for (const [sample, node, cells, chosen, slots] of parserCases) {
     const samplePath = join(work, 'sample.gm');
@@ -276,6 +285,64 @@ try {
       { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
     assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid composition ${JSON.stringify(sample)}`);
     assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+
+  const expressionRejectedCases = ['foo(,1)', 'foo(1,)', 'foo.bar.baz(1)', 'foo(1, ,2)', 'foo(',
+    '...2', '1...', '1...2...3', '1..2', '1...2..3', '1....2', '1...2<3'];
+  for (const expr of expressionRejectedCases) {
+    const samplePath = join(work, 'bad-expression.gm');
+    writeFileSync(samplePath, `[= ${expr}]\n`);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', source, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.notEqual(parsed.status, 0, `root ADR 0351 I1/I2: reject invalid call/range ${expr}`);
+    assert.match(parsed.stderr, /^\d+:\d+: expected /m);
+  }
+
+  const closedAlternative = "           / AddExpr ES RangeOp ES (AddExpr)^range_end (!(ES '..'))^range_end { () }";
+  const compareAlternative = '           / CompareExpr { () }';
+  const expressionMutations = [
+    ['CallNamespaceMany', 'CallExpr <- ExprIdent (ES Dot ES ExprIdent)?', 'CallExpr <- ExprIdent (ES Dot ES ExprIdent)*', 'CallExpr'],
+    ['CallRequiredArgs', '(Expr ES (Comma ES Expr ES)*)? RParen', '(Expr ES (Comma ES Expr ES)*) RParen', 'CallExpr'],
+    ['CallMoreArgs', '(Expr ES (Comma ES Expr ES)*)? RParen', '(Expr ES (Comma ES Expr ES)+)? RParen', 'CallExpr'],
+    ['CallDotDependency', "Dot <- '.'", "Dot <- ':'", 'CallExpr'],
+    ['RangeEndExpr', '(AddExpr)^range_end', '(Expr)^range_end', 'RangeExpr'],
+    ['RangePriority', closedAlternative + '\n' + compareAlternative, compareAlternative + '\n' + closedAlternative, 'RangeExpr'],
+    ['RangePrefixLabel', "(&{ False } '...')^range_end", "(&{ False } '...')^reserved", 'RangeExpr'],
+    ['RangeOpDependency', "RangeOp <- '...'", "RangeOp <- '....'", 'RangeExpr'],
+  ];
+  for (const [name, before, after, rule] of expressionMutations) {
+    const changed = original.replace(before, after);
+    assert.notEqual(changed, original, `root ADR 0351 I1/I2: ${name} must alter a canonical production or dependency`);
+    const changedPath = join(work, name + '.hpeg');
+    writeFileSync(changedPath, changed);
+    const rejected = spawnSync(process.execPath, [join(here, 'generate.mjs'), changedPath, generated], { encoding: 'utf8' });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, new RegExp(`^unsupported ${rule} choice `, 'm'),
+      `root ADR 0351 I1/I2: ${name} must invalidate its recognition proof`);
+  }
+
+  const nativeExpressionMutations = [
+    ['CallNamespaceMany', '[= foo.bar.baz(1)]\n', true, { CallExpr: 1, ExprIdent: 3 }],
+    ['CallRequiredArgs', '[= foo()]\n', false],
+    ['RangeEndExpr', '[= 1...2...3]\n', true, { RangeExpr: 3, RangeOp: 2, Number: 3 }],
+    ['RangePriority', '[= 1...2]\n', false],
+  ];
+  for (const [name, sample, accepted, counts] of nativeExpressionMutations) {
+    const [, before, after] = expressionMutations.find(([mutationName]) => mutationName === name);
+    const changedPath = join(work, 'Native' + name + '.hpeg');
+    const samplePath = join(work, 'native-expression.gm');
+    writeFileSync(changedPath, original.replace(before, after));
+    writeFileSync(samplePath, sample);
+    const parsed = spawnSync(process.env.PEG_HS ?? 'peg-hs',
+      ['parse', '--format', 'cst', changedPath, samplePath],
+      { encoding: 'utf8', env: { ...process.env, XDG_CACHE_HOME: join(work, 'cache') } });
+    assert.equal(parsed.status === 0, accepted,
+      `root ADR 0351 I1/I2: ${name} must change the native boundary: ${parsed.stderr}`);
+    for (const [node, count] of Object.entries(counts ?? {})) {
+      assert.equal([...parsed.stdout.matchAll(new RegExp(`^ +${node}@`, 'gm'))].length, count,
+        `root ADR 0351 I1/I2: ${name} must change the committed call/range CST`);
+    }
   }
 
   const compositionMutations = [
@@ -787,6 +854,8 @@ try {
   const throwingPrefixProof = spawnSync(lean, ['-o', join(work, 'ThrowingPrefixTotal.olean'), throwingSource],
     { cwd: work, env: { ...process.env, LEAN_PATH: work }, encoding: 'utf8' });
   assert.equal(throwingPrefixProof.status, 0, throwingPrefixProof.stderr);
+  const expressionProof = spawnSync(lean, [join(here, 'ExpressionComposition.lean')], growthEnv);
+  assert.equal(expressionProof.status, 0, expressionProof.stdout + expressionProof.stderr);
   const indentedLabel = spawnSync(lean, [join(here, 'IndentedLabelTotal.lean')], growthEnv);
   assert.equal(indentedLabel.status, 0, indentedLabel.stdout + indentedLabel.stderr);
   const backslashProof = spawnSync(lean, [join(here, 'BackslashTotal.lean')],
@@ -806,7 +875,7 @@ try {
   assert.match(refuted.stdout + refuted.stderr, /unsolved goals/, 'the mutation must refute the theorem, not fail to load a file');
   const unsupportedChoices = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.equal(unsupportedChoices, baselineUnsupported, 'strict report count must remain stable through mutation tests');
-  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 24, negative mutations 76, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length}`);
+  console.log(`grammar: source and AST rules ${emittedRuleCount}/${astRuleCount}/${sourceRuleCount}, unsupported choices ${unsupportedChoices}, positive proof modules 25, negative mutations 84, implementation parser cases ${parserCases.length}, syntax-only parser cases 1, native parser counterexamples ${1 + nativeLexicalMutations.length + nativeCompositionMutations.length + nativeExpressionMutations.length}, rejected parser cases ${rejectedParserCases.length + badDelimiterCases.length + 1 + lexicalRejectedCases.length + compositionRejectedCases.length + expressionRejectedCases.length}`);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
