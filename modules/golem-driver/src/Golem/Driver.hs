@@ -87,6 +87,7 @@ import Golem.Driver.Html
 import Golem.Driver.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
+import Golem.Driver.Verse (numberVerseDocument)
 import Golem.Driver.Version (golemVersion)
 import Golem.Emet (Handlers (..), Program)
 import Golem.Emet.Gm (filterOf, functionNamespaces)
@@ -364,7 +365,11 @@ assembleResults channels style manifest project projectDiags results
                        Just separator <- [hsNumberTitleSeparator h]
                      ]
               )
-       in (Just book {bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
+          numberedDocs =
+            [ numberVerseDocument (maybe style (withLocalStyles style . erStyles) (Map.lookup fid results)) doc
+            | doc@(Document fid _) <- bookDocs book
+            ]
+       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
 
 readMaybeText :: Files -> FilePath -> IO (Maybe Text)
 readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p

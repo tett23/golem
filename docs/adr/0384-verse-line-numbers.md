@@ -1,6 +1,6 @@
 # ADR 0384: 韻文の原稿行を一定間隔で番号付けする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

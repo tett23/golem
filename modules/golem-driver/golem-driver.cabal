@@ -33,6 +33,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Driver
+                    Golem.Driver.Verse
                     Golem.Driver.Explain
                     Golem.Driver.Explain.Catalog
                     Golem.Driver.Explain.Embedded
@@ -97,6 +98,7 @@ test-suite golem-driver-test
     PageNoteNumbersSpec
     CompressedNoteMarksSpec
     CaptionSidenoteIndentSpec
+    VerseLineNumbersSpec
     NumberTitleSeparatorSpec
     CaptionSidenoteParagraphsSpec
     ParagraphStyleControlsSpec
