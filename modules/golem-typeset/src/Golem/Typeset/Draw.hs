@@ -1063,9 +1063,23 @@ entry :: DrawEnv -> Text -> SrcSpan -> Rect -> Sp -> SetLine -> (LineRec, ([P.Co
 entry env kind sp ta cross = entryAt env kind sp (lineStart env ta cross)
 
 entryAt :: DrawEnv -> Text -> SrcSpan -> (Sp, Sp) -> SetLine -> (LineRec, ([P.Content], [GlyphUse]))
-entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) decorated (overfullInRange sl) Nothing, drawLineAt env start sl)
+entryAt env kind sp start sl = (LineRec kind sp (lineFace env start sl) (overfullOf sp sl) (map fst (codeBackgrounds env start sl)) (linkRects env start sl) (decorationRecords env start sl) (overfullInRange sl) Nothing, drawLineAt env start sl)
+
+-- | The underlines and strikethroughs of a line as golem preflight sees them (docs/adr/0270).
+decorationRecords :: DrawEnv -> (Sp, Sp) -> SetLine -> [(Text, Rect, Sp, Maybe P.Swatch)]
+decorationRecords env start sl = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
+
+{- | What a line draws besides its characters: the backgrounds of inline
+code (golem-driver ADR 0029), the underlines and the strikethroughs,
+filled shapes of the line styles (docs/adr/0270). The backgrounds and the
+underlines are drawn before the characters, the strikethroughs after
+them; a running head and a folio draw them too (docs/adr/0410).
+-}
+decorationMarks :: DrawEnv -> (Sp, Sp) -> SetLine -> ([P.Mark], [P.Mark], [P.Mark])
+decorationMarks env start sl = ([P.Saved [P.SetColor sw, P.Rule rr] | (sw, rr) <- codeBackgrounds env start sl], linesOf True, linesOf False)
   where
-    decorated = [(k, band, ruleThinnest w st, decorationSwatch env (decColor d)) | (k, d, band, w, st) <- decorationBands env start sl]
+    vertical = pgVertical (deGeom env)
+    linesOf under = concat [ruleMarks (decorationSwatch env (decColor d)) (ruleShapes vertical band st) | (k, d, band, _, st) <- decorationBands env start sl, (k == "下線") == under]
 
 {- | The underlines and strikethroughs of a line (docs/adr/0270): each run
 of boxes of one value, with the glue between them, from the start of its
@@ -1473,13 +1487,9 @@ drawLineAt env (x0, y0) sl =
         let ms = concatMap coloured (groupBy (\(_, a, _) (_, b, _) -> a == b) grp)
          in maybe (P.Artifact P.Layout ms) (`P.Tagged` ms) lf
       contentOf [] = P.Artifact P.Layout []
-      -- the backgrounds of inline code before the text of the line (golem-driver ADR 0029)
-      backs = [P.Artifact P.Layout [P.Saved [P.SetColor sw, P.Rule rr] | (sw, rr) <- codeBackgrounds env (x0, y0) sl] | not (null (codeBackgrounds env (x0, y0) sl))]
-      {- the underlines before the text, the strikethroughs after it, as
-      artifacts: filled shapes of the line styles (docs/adr/0270) -}
-      bands = decorationBands env (x0, y0) sl
-      linesOf under = [P.Artifact P.Layout ms | let ms = concat [ruleMarks (decorationSwatch env (decColor d)) (ruleShapes vertical band st) | (k, d, band, _, st) <- bands, (k == "下線") == under], not (null ms)]
-   in (backs <> linesOf True <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces) <> linesOf False, concatMap (snd . snd) parts)
+      (backMarks, underMarks, strikeMarks) = decorationMarks env (x0, y0) sl
+      layer ms = [P.Artifact P.Layout ms | not (null ms)]
+   in (layer backMarks <> layer underMarks <> map contentOf (groupBy (\(a, _, _) (b, _, _) -> a == b) pieces) <> layer strikeMarks, concatMap (snd . snd) parts)
   where
     fonts = deFonts env
     vertical = pgVertical (deGeom env)
@@ -1496,7 +1506,12 @@ leafOf = \case
 rubyTextLeaf :: Leaf -> Leaf
 rubyTextLeaf (Leaf site k) = Leaf site (k + 1)
 
--- | A running head or a folio: an artifact of pagination (docs/adr ADR 0183).
+{- | A running head or a folio: an artifact of pagination (docs/adr ADR 0183).
+The background, the underline and the strikethrough of its character
+style are drawn as those of a horizontal line of the body of one box of
+its text (docs/adr/0410), in vertical books too: the padding of code
+before and after the text, which does not move the characters.
+-}
 textAt :: DrawEnv -> Text -> LS.Anchor -> Maybe Text -> Text -> (LineRec, ([P.Content], [GlyphUse]))
 textAt env kind anchor name txt =
   let style = piStyle (deInput env)
@@ -1512,7 +1527,14 @@ textAt env kind anchor name txt =
       paint marks = case swatchOf env look of
         Nothing -> marks
         Just sw -> [P.Saved (P.SetColor sw : marks)]
-   in (LineRec kind styleSpan (Just face) Nothing [] [] [] False Nothing, first (pure . P.Artifact P.Pagination . paint) (runAtU env (source, V.PartBase, styleSpan) look False False 0 (x0, anY anchor) txt))
+      pad = lkPadding look
+      box = BoxContent txt False 0 0 (fromEnum KindText) look 0 0 [] pad pad noBoxSource Nothing noLeaf 0
+      line = SetLine (Line [Box (w + 2 * pad) box | not (T.null txt)] 0 (w + 2 * pad) 0 (0, 0) 0 (0, 0) Nothing AdjustUniform) size 0 [] [] Nothing
+      horizontal = env {deGeom = (deGeom env) {pgVertical = False}}
+      start = (x0 - pad, anY anchor)
+      (backs, unders, strikes) = decorationMarks horizontal start line
+      record = LineRec kind styleSpan (Just face) Nothing (map fst (codeBackgrounds horizontal start line)) [] (decorationRecords horizontal start line) False Nothing
+   in (record, first (\marks -> [P.Artifact P.Pagination (backs <> unders <> paint marks <> strikes)]) (runAtU env (source, V.PartBase, styleSpan) look False False 0 (x0, anY anchor) txt))
   where
     fonts = deFonts env
     styleSpan = mkSpan (piStyleFile (deInput env)) 0 0

@@ -7,8 +7,9 @@
 #   test-suites.sh all [MODULES]     all, for cabal test all
 #   test-suites.sh wasm [MODULES]    the suites of the golem packages of
 #                                    cabal.project.wasm, the packages of
-#                                    golem.wasm, which wasm-tests.yml runs
-#                                    on wasm32 (docs/adr/0293 A1)
+#                                    golem.wasm, and golem-test-support-test,
+#                                    which wasm-tests.yml runs on wasm32
+#                                    (docs/adr/0293 A1, root ADR 0415)
 #
 # A target is PACKAGE:test:SUITE, read from the test-suite sections of
 # MODULES/*/*.cabal (MODULES is the modules/ of the repository unless
@@ -17,7 +18,11 @@
 # suite-limits.tsv, docs/adr ADR 0292). wasm reads the lines
 # modules/NAME of the packages: of the cabal.project.wasm next to MODULES,
 # and the suites of MODULES/NAME/*.cabal, so that a suite added to a
-# package of golem.wasm runs on wasm32 too.
+# package of golem.wasm runs on wasm32 too. wasm adds the one suite
+# golem-test-support-test, which checks the limits of time of the tests
+# on wasm32 (root ADR 0388 I2, root ADR 0415); golem-test-support is a
+# package of cabal.project.wasm-tests only, and its other suite, built
+# with -threaded, is not run there.
 set -eu
 usage() { echo "usage: test-suites.sh driver|rest|all|wasm [MODULES]" >&2; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
@@ -49,3 +54,4 @@ printf '%s\n' "$CABALS" | while IFS= read -r cabal; do
       for (i = 1; i <= n; i++) print pkg ":test:" suites[i]
     }' "$cabal"
 done
+if [ "$PART" = wasm ]; then echo golem-test-support:test:golem-test-support-test; fi

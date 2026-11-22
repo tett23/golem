@@ -40,7 +40,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### テストと CI
 
-- **プルリクエストの CI の時間を測り直す**：[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 1 から 6 を入れた後の、成功したプルリクエストの `ci.yml` の 20 回（`build` を省いた実行を除く）で、`scripts/ci/ci-critical-path.sh` の中央値を測り、`docs/ci-timings/` に記録する（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 7 と A2）。中央値が 300 秒を超えるか、300 秒との差が 30 秒に満たなければ、コンパイルの時間を縮める変更を、測った値を添えて別の ADR で決める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の項目 8）。
 - **軽量な形式手法の残りの範囲**：規則を不変条件として書き、小さな入力のすべてで確かめる手法を、範囲ごとに一つの ADR と一つのプルリクエストで広げる（[docs/adr/0208](adr/0208-widen-lightweight-formal-methods.md) の 1）。次の範囲では、試作で調べた入力を回帰テストに取り込み、CI で常時調べる範囲を実行時間から決める。
   - **パーサーと `golem fmt` の往復（未実装）**：文法から作る短い原稿を列挙し、`golem fmt` の往復と diagnostics の位置の不変条件で確かめる。[ADR 0351](adr/0351-prove-parser-formatter-round-trips.md) に従い、実際の文法から作った Lean モデルの結果を、パーサーと整形処理の出力に照らして確かめる。
   - **位置の変換**：UTF-16 の列、`pages.json`、LSP の位置の変換を、サロゲートペアを含む短い文字列の列挙で確かめる。家族の絵文字では、ゼロ幅接合子（ZWJ）の前後の文字境界と、一つのサロゲートペアの途中を区別する。
@@ -106,7 +105,15 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
-- **ページ番号と柱の拡張（未実装）**：EPUB の `page-list`、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。 [Golem ADR 0386](adr/0386-page-list-and-page-colors.md)。 単色図版には白黒の濃淡を含め、JPEG の色変換は対応方式を限定し、非対応方式はエラーにする（[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)）。 色を指定した SVG の判定や置換ができない場合も、対象媒体をエラーで止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
+- **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+  これらは採択した範囲から除外せず、二つの ADR の残実装として進める。
+  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。シェーディングの色は関数（PostScript の計算機の関数を含む）やメッシュの頂点で決まるので、濃淡か一色かを判定する方法の決めが要る。
+  - CalGray、CalRGB、Lab、Separation、DeviceN の色空間。特色の網の濃さを白黒の濃淡と一色のどちらとして扱うかなど、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の規則をどう当てはめるかの決めが要る。
+  - 単位範囲以外の ICCBased の Range。
+  - 異寸法のマスク、Interpolate = true の明示マスク、Matte を持つソフトマスク、DeviceGray 以外のソフトマスク。拡大縮小したマスクで見える画素の決め方が要る。
+  - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。CCITT の復号が要る。
+  - Normal 以外の合成の方式（BM）と転送関数（TR、TR2）。物体ごとの置き換えが濃淡の規則と一致しないので、合成した結果で判定するかどうかの決めが要る。
+  - 自分の色を指定する Type 3 フォントの字形（d0）。
 - **入力色の保存と明示的な色置換（未実装）**：RGB を自動で CMYK にしない既存の規則を設計原則にも書き、書き手が選んだスウォッチへの図版の色置換と区別する。図版色の実装後に、入力の色の保持と各出力を照合する（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 ### 機能をそろえた後の確かめ

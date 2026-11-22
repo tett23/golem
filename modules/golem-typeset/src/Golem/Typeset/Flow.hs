@@ -158,10 +158,12 @@ import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
 import Golem.Typeset.Box (BoxPaint (..), boxLineRange, boxLinesAround, groupBoxes)
+import Golem.Typeset.FigureColor (RasterAnalysis (..), analyzeRaster, forceImportedPage, guardColorConversion, safeAnalyzeRaster)
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
-import Golem.Typeset.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
+import Golem.Typeset.PdfColor (recolorImportedPage)
+import Golem.Typeset.Svg (drawingImportedPage, figureColor, markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -4769,7 +4771,7 @@ figure cannot be drawn for, G08011, G08016, G08017 and G08101 (golem-pdf ADR
 0008, 0009, docs/adr ADR 0054, 0084), or G08015, the joined content of a PDF page over
 256 MiB (docs/adr ADR 0051).
 -}
-data Unplaced = Unplaced !Text | EncryptedPdf | MissingPdfPage !Int !Int | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
+data Unplaced = Unplaced !Text | ColorConversion !Text | EncryptedPdf | MissingPdfPage !Int !Int | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -4787,24 +4789,54 @@ loadFigures inp = do
       -- the path as golem-eval resolved it, normalised (docs/adr/0199)
       let path = T.unpack s
       bytes <- maybe (filesRead (piFiles inp) (fromRight path (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
-      pure $
-        if
-          | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
-              Left P.Encrypted -> Left EncryptedPdf
-              Left (P.NoSuchPage requested count) -> Left (MissingPdfPage requested count)
-              Left (P.ContentTooLarge _) -> Left ContentTooLarge
-              Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
-              Left e -> Left (Unplaced (P.importErrorText e))
-              Right ip -> Right (P.VectorFigure ip)
-          | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
-              Left (S.SvgMalformed why) -> Left (Unplaced why)
-              Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
-              Right svg -> Right (P.SvgFigure (svgDrawing svg))
-          | otherwise -> either (Left . Unplaced . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
+      if
+        | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
+            Left P.Encrypted -> pure (Left EncryptedPdf)
+            Left (P.NoSuchPage requested count) -> pure (Left (MissingPdfPage requested count))
+            Left (P.ContentTooLarge _) -> pure (Left ContentTooLarge)
+            Left (P.StreamNumberTooLarge k) -> pure (Left (StreamNumberTooLarge k))
+            Left e -> pure (Left (Unplaced (P.importErrorText e)))
+            Right ip -> recolorPdf (P.VectorFigure ip) ip
+        | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
+            Left (S.SvgMalformed why) -> pure (Left (unreadable why))
+            Left (S.SvgUnsupported us) -> pure $ Left $ case figureColor (piStyle inp) of
+              Nothing -> UnsupportedSvg us
+              Just _ -> ColorConversion "SVG の色の変換で扱えない要素または属性があります"
+            Right svg ->
+              let drawing = svgDrawing svg
+               in recolorPdf (P.SvgFigure drawing) (drawingImportedPage drawing)
+        | otherwise -> case P.readImage bytes of
+            Left why -> pure (Left (unreadable (T.pack why)))
+            Right image -> case figureColor (piStyle inp) of
+              Nothing -> pure (Right (P.RasterFigure image))
+              Just swatch -> do
+                analysis <- safeAnalyzeRaster swatch image
+                pure $ case analysis of
+                  Left why -> Left (ColorConversion why)
+                  Right result -> Right (P.RasterFigure (fromMaybe image (raImage result)))
+
+    unreadable why = case figureColor (piStyle inp) of
+      Nothing -> Unplaced why
+      Just _ -> ColorConversion why
+
+    recolorPdf original page = case figureColor (piStyle inp) of
+      Nothing -> pure (Right original)
+      Just swatch -> do
+        changed <- guardColorConversion (maybe () forceImportedPage) (recolorImportedPage swatch (analyzeRaster swatch) page)
+        pure $ case changed of
+          Left why -> Left (ColorConversion why)
+          Right result -> Right (maybe original P.VectorFigure result)
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
-figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- bs]
+figureBlocks book = concat [concatMap collect bs | Document _ bs <- bookDocs book]
+  where
+    collect (Block sp _ _ body) = case body of
+      FigureBlock figure -> [(sp, figure)]
+      BulletList items -> concatMap (concatMap collect . itemBlocks) items
+      OrderedList items -> concatMap (concatMap collect . itemBlocks) items
+      DefList groups -> concatMap (concatMap (concatMap collect) . dgDefs) groups
+      _ -> []
 
 {- | G08010: a figure that cannot be placed in the PDF; G08011: an SVG figure
 with things outside the subset, G08016: with markers in a cycle, G08017: with
@@ -4821,6 +4853,7 @@ figureDiagnostics inp loaded =
     Just (Left why) <- [Map.lookup (figureKey f) loaded],
     d <- case why of
       Unplaced reason -> [diagnostic "G08010" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
+      ColorConversion reason -> [diagnostic "G08113" Error sp ("図版の色を変換できません: " <> figSource f <> "（" <> reason <> "）")]
       EncryptedPdf -> [diagnostic "G08105" Error sp ("暗号化された PDF の図版は使えません: " <> figSource f)]
       MissingPdfPage requested count -> [diagnostic "G08106" Error sp ("図版の PDF に " <> T.pack (show requested) <> " ページ目がありません（全 " <> T.pack (show count) <> " ページ）: " <> figSource f)]
       UnsupportedSvg ps ->

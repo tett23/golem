@@ -720,7 +720,9 @@ cabal 3.14.2.0 は、`build-tool-depends` の `alex` と `happy` も wasm の GH
 
 `golem.wasm` のパッケージのテストのスイートは、夜ごとの `.github/workflows/wasm-tests.yml` が wasm32 でも走らせる（[ADR 0293](adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。
 wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が wasm32 で落ちたところが、`Int` の幅に依るコードの候補になる。
-走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートで、`scripts/ci/test-suites.sh wasm` が求める。
+走らせるスイートは、`cabal.project.wasm` の `packages:` にある golem のパッケージのすべてのスイートと、golem-test-support の `golem-test-support-test` で、`scripts/ci/test-suites.sh wasm` が求める（[root ADR 0415](adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md)）。
+`golem-test-support-test` は、wasm32 のテストの時間の上限（[ADR 0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md) の I2）を確かめる。
+`-threaded` で組む `golem-test-support-par-test` は走らせない。
 組むのは `cabal.project.wasm-tests` で、`cabal.project.wasm` と `cabal.project.wasm.freeze` を取りこみ、テストを組む。
 テストだけが使う golem-test-support と golem-doc-gen を `packages:` に足す。
 `skylighting` と `skylighting-core` のテストは組まない。
@@ -1158,6 +1160,40 @@ isbn = "978-..."
 `id` は本の識別子であり、必須とする。
 プロジェクトを作るときに一度だけ生成し、以後は変えない。
 書名と著者の読み（`title-reading`、`reading`）は任意の項目であり、EPUB では電子書店での並べ替えや検索に使われる。
+
+### EPUB の固定ページ対応表
+
+`[targets.epub]` の `page-map` に JSON ファイルのパスを指定すると、対応する固定ページ版のページ一覧を EPUB のナビゲーション文書に書く（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
+指定を省くとページ一覧を作らない。
+リフロー後の画面番号は推定しない。
+
+```toml
+[targets.epub]
+page-map = "fixed-pages.json"
+```
+
+対応表の `sources` はプロジェクトルートからの原稿パスと、小文字の 16 進数 64 桁の SHA-256 の対応であり、文書を構成するすべての原稿を含める。
+`pages` は固定ページの物理順の配列で、`page` は正の整数の物理ページ、`label` は表示ノンブルである。
+`file`、`line`、`character` は原稿の本文位置を表し、行と UTF-16 の列は 0 から数える。
+この三つをすべて省いたページと、本文の文字に一意に対応しないページは一覧から除く。
+元の AST の文字、エスケープ、式の区間を、出力の文字列に照合する。
+式の結果や数の表記など文字ごとの対応がない部品は、その部品の先頭を指す。
+同じ原稿位置を本文に複数回展開した場合や、式の出力の境界を一意に定められない場合は、対応しない位置として扱う。
+原稿の SHA-256 が一致しない対応表、範囲外の位置、逆順の位置はエラーにする。
+本文位置は XHTML の空のページ区切り要素に解決し、ページ一覧からその ID にリンクする。
+HTML とプレーンテキストにはページ一覧を出さない。
+
+```json
+{
+  "sources": {"chapter.gm": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "pages": [
+    {"page": 1, "label": "i", "file": "chapter.gm", "line": 0, "character": 0},
+    {"page": 2, "label": "ii"}
+  ]
+}
+```
+
+上のハッシュは形式を示す仮の値であり、使うときは実際の原稿の SHA-256 に置き換える。
 
 ### 関係者と刷
 
@@ -3398,7 +3434,7 @@ PDF では、本文の中のコードの背景と余白を次のように扱う�
 - 背景は、行ごとに、同じ背景を持つ箱の並びを一つの矩形で塗る。行の方向は、並びの最初の箱の始まり（前の余白を含む）から最後の箱の終わり（後の余白を含む）までで、並びの中の空白も塗る。行と直交する方向は、その行の字面（横組みでは行の大きさの字面の上端から下端、縦組みでは中心線から左右に行の大きさの半分）である。
 - コードが空白か `/` の後で次の行に分かれた場合は、行ごとに別の矩形を塗る。前の余白は最初の行の始まりにだけ、後の余白は最後の行の終わりにだけあり、分かれた側は箱の端で切る。
 - 背景はその行の文字より先に、スウォッチの CMYK を DeviceCMYK で塗る。ルビの読みと圏点は字面の外に描くので、背景と重ならない。
-- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに適用される。柱とノンブルには、文字スタイルを指定しても背景を描かない（[Golem ADR 0364](adr/0364-running-head-folio-style.md)）。
+- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに適用される。柱とノンブルにも、`code` か、`based-on` をたどって `code` に行き着く文字スタイルを指定すれば、横組みの本文の行と同じ規則で背景を描く（[Golem ADR 0410](adr/0410-draw-decorations-of-running-heads-and-folios.md)）。
 - 背景のスウォッチは、golem preflight の使ったスウォッチに入り、総インキ量の検査（G09015）の対象になる。
 
 文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF で本文と違う規則で行に分ける。
@@ -4246,7 +4282,14 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 柱とノンブルは、マスターページの `running-head` と `folio` のそれぞれの `character-style` に書いた文字スタイルで組む（[Golem ADR 0364](adr/0364-running-head-folio-style.md)）。
 文字スタイルは、本文の役割の書体と版面の文字の大きさの上に当てる。
 書体、文字の大きさ、色のほか、合成の太字と斜体、トラッキング、ベースラインシフト、OpenType の機能も、段落の中の文字スタイルと同じく当たる。
-文字スタイルの下線、取り消し線、背景は、柱とノンブルには描かない。
+文字スタイルの下線、取り消し線、背景も、柱とノンブルに描く（[Golem ADR 0410](adr/0410-draw-decorations-of-running-heads-and-folios.md)）。
+柱とノンブルの下線、取り消し線、背景は、同じ文字スタイルと文字列を横組みの本文の一行に置いたときと同じものを、本文の行と同じ順（背景、下線、字、取り消し線）で描く。
+縦組みの本でも柱とノンブルは横書きなので、これらも横組みの行の規則で描く。
+背景の余白（`padding`）と、下線と取り消し線の位置、太さ、線種、色は、本文の行と同じ規則で決める。
+ただし、背景の余白は字の前後に重ねて塗るだけで、柱とノンブルの字の位置も、行の高さと位置も変えない。
+下線、取り消し線、背景は、柱とノンブルの字と同じく `Pagination` のアーティファクトとして描く。
+golem preflight では、背景のスウォッチが使ったスウォッチに入って G09015 の対象になり、下線と取り消し線が本文の下線と取り消し線と同じく罫線の検査の対象になる。
+隠しノンブル（[Golem ADR 0365](adr/0365-hidden-folio-style.md)）には、下線、取り消し線、背景を描かない。
 `size` を `zw` で書けば、版面の文字の大きさを基準にする。
 `character-style` を書かなければ、本文の役割の書体と版面の文字の大きさで、色を付けずに組む。
 柱の文字スタイルはノンブルの見た目を変えず、ノンブルの文字スタイルは柱の見た目を変えない。
@@ -4357,7 +4400,7 @@ HTML と EPUB は、文字スタイルの宣言を `ruby > rt` の CSS に書き
 名前と CMYK 値の対応は、出力インテント（`style.toml` の `[color]` の `intent` に指定する ICC プロファイル）に束縛して定義する。
 Golem が想定する出力インテントは、Japan Color 2001 Coated である。
 
-色を変換する向きは、CMYK から RGB だけである。
+色空間を換算する向きは CMYK から RGB だけであり、RGB の元の見た目に近い CMYK の値は推定しない。
 印刷を第一の媒体とするためである。
 そのため、EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
 
@@ -4371,15 +4414,21 @@ RGB への変換も、特色の色空間も使わない。
 レジストレーションの色を使えるのは golem-pdf の中のトンボだけであり、`style.toml` のスウォッチから使う手段はない。
 
 しかし、写真などの画像の色は、ここまでの規則の例外とする。
-Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込む。
+図版の描画色を指定しない場合、Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込む。
 印刷用の色への変換は、印刷所の RIP[^rip] に任せる。
 PDF/X-4 はこの形の画像を許している。
-画像と図版の色は、次のように書く。
+図版の明示的な色置換は、この色空間の換算とは区別する。
+書き手が選んだ CMYK スウォッチで単色図版を描き直す場合は、元の一色か白黒の濃淡を、指定色へ置き換える。
+多色の図版と、色を指定しない図版の色は保つ（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
+
+色を指定しない画像と図版は、次のように書く。
 
 - プロファイルのない RGB の画像には、sRGB のプロファイルを付けて埋め込む。
 - PDF の図版の DeviceRGB は、同じ考え方で、sRGB のプロファイルの ICCBased に置き換える（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 - PDF の図版の DeviceCMYK は、変換せずにそのまま書くので、本の出力インテントの値として印刷される。
 - SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased で書き、CMYK に変換しない（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+
+`[figures].color` を指定した図版は、対応する単色か白黒の濃淡をスウォッチの CMYK で直接描く（[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
 
 ## フォント
 
@@ -4829,12 +4878,14 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
   - 延べ数が上限を超えれば、メッセージに延べ数を書いた G08101 にし、図版を置かず、PDF を書かない。HTML と EPUB は `marker` を展開しないので、G08101 を出さない。
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - x86-64 と aarch64 で同じ出力にするため、数は有理数で計算する（[docs/adr/0002](adr/0002-determinism.md)）。三角関数と平方根は、有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。
-- 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
+- 色を指定しない SVG は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
 
-HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。
+HTML と EPUB は、SVG の図版を `<img>` で置く（`web` があればそれを置く）。
+`[figures].color` を指定した SVG は、単色または白黒の濃淡なら、その色と濃度に置き換えた描画を SVG として書く。
+色を指定しない SVG と、判定した多色の SVG は元の SVG をそのまま写す（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
 EPUB の `media-type` は `image/svg+xml` である。
-写す前に検査するのは、次に定める動的なコンテンツだけである（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。
-PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
+色を指定せず元の SVG を写す場合、検査するのは次に定める動的なコンテンツだけである（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。
+色を指定しなければ、PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は HTML と EPUB では許す。
 
 動的なコンテンツとは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。
 HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、処理命令、要素、属性を文書の順にたどる。
@@ -4894,6 +4945,65 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
   - 回せばより大きく置ける図版では、メッセージに `rotate=true` の案内を足す。
   - G07039 を抑制する単位は、`silence-notices` と `--no-notices` による本の全体である。
 - キャプションが占める格子の行の数が段の行の数に達し、画像を置く行が残らない場合はエラー（G07038）とする。
+
+### 単色図版の色
+
+`[figures]` の `color` にスウォッチ名を指定すると、単色図版をその色で描く（[ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+SVG、PNG、JPEG、取り込んだ PDF の描画を対象とし、白黒の濃淡と、一つの有彩色だけで描いた図版を扱う。
+白黒の濃淡を優先し、白は白、黒は指定色、灰色はその中間の濃度にする。
+RGB の三つの成分が等しい画素も白黒の濃淡である。
+一つの有彩色の図版は指定色に置き換え、それ以外の多色の図版は元の色のままにする。
+不透明度が 0 の画素は色の判定から除き、透過の度合いと図版の寸法は変えない。
+この指定は柱とノンブルの文字スタイル、罫線の色とは独立している。
+HTML と EPUB はスウォッチの CMYK を RGB に換算し、色を変えた JPEG は PNG として書く。
+PDF は指定スウォッチの CMYK を直接使い、SVG を RGB の近似へ変換してから CMYK に戻すことはしない。
+元のファイルは変更しない。
+画像の復号や安全なサイズでの変換ができない場合は G08113 を出し、影響する出力を削除する。
+JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended sequential、progressive の DCT 方式を扱う（[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)）。
+12-bit、lossless、arithmetic coding などの非対応方式は、G08113 にする。
+色を指定しない場合は、この復号方式の制限を適用せず、従来と同じように元の JPEG を扱う。
+
+PDF 図版の色置換は段階的な実装である。
+現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
+線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ ICCBased（成分数 1、3、4）と Indexed に対応する。
+Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
+ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
+インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
+画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
+Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
+画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
+ICCBased の Range は各成分の単位範囲だけを扱う。
+画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
+Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
+同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
+明示マスクは ImageMask = true で、画像とマスクの Interpolate を省くか false にした場合に扱う。
+マスクの Decode は既定の範囲か逆の範囲を受け入れ、元のオブジェクトと参照を変えずに可視画素の判定だけに使う。
+JPEG を含む DCTDecode の画像も、PDF の Decode を適用する前のサンプルへ復号する。
+RunLengthDecode の画像は復号してから判定する。
+CCITTFaxDecode の画像は 1-bit の DeviceGray か成分数 1 の ICCBased で、マスクを持たない場合に扱う。
+この画像は白と黒だけを持つので、復号せずに白黒の濃淡と判定する。
+置き換えた画像は元の符号化したデータを保ち、黒と白に指定色と白を割り当てた DeviceCMYK の Indexed の色空間で描く。
+DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
+取り込み時に展開した量に、色変換で見積もる復号量と出力量を加えて 256 MiB を超える変換は拒む。
+
+PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
+通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
+そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。
+ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、物体ごとの置き換えが濃淡の規則と一致しないので、G08113 とする。
+字形の中で自分の色を指定する Type 3 フォント（d0 の字形）を使う PDF も、字形の色を判定できないので G08113 とする。
+未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
+[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+
+色を指定した SVG は、判定か置換ができなければ PDF、HTML、EPUB の対象媒体を G08113 で止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
+色を指定しない SVG の受け入れ範囲は変えない。
+
+```toml
+[figures]
+color = "accent"
+
+[color.swatches.accent]
+cmyk = [0, 80, 60, 0]
+```
 
 ### HTML と EPUB の図版の大きさ
 
@@ -7835,8 +7945,33 @@ S1 は、一覧ごとに、キーが同じ項目を一つのエントリにま�
 `golem repl emet` は標準入力から Emet の式を読み、値を標準出力に一行ずつ書く（[Golem ADR 0348](adr/0348-revise-emet-expression-repl.md)）。
 未完の式では次の行を待つ。
 端末では Tab で名前や import のパスを補完でき、Ctrl-C で書きかけの入力を取り消せる。
-診断を出した場合も次の式を読み、セッションの終了時に終了コード 1 を返す。
-評価の手数と深さの上限は原稿から呼ぶ場合と同じで、式ごとに数え直す。
+エラーを報告した場合も次の式を読む。
+評価の手数と深さの上限は原稿から呼ぶ場合と同じで、式ごとに数え直す（下の E04100 と E04101 を参照）。
+
+REPL は、標準入力と標準エラー出力がともに端末のときだけ、端末として振る舞う。
+端末では、式を待つときに `emet> `、続きを待つときに `....> ` を標準エラー出力に書き、値の前に `=> ` を付ける。
+パイプではプロンプトと補完の候補を出さず、標準出力には値だけを書く。
+補完の候補の一覧は、プロンプトと同じ標準エラー出力に書き、値を書く標準出力には混ぜない。
+
+一行を受け取るたびに構文を調べ、式が完結していればその場で型検査と評価に進む。
+式では、パーサーが入力の末尾で次のトークンか閉じ記号を求めているときだけ、LF を一つ挟んで次の行を足す。
+入力の途中の文字を指す構文エラー、型エラー、評価エラーは、その場で報告し、次の行を新しい式として読む。
+入力の末尾で続きを求める構文エラー（E01100 か E01101 で、位置がすべて入力の末尾の空の範囲のもの）は、次の行を待つあいだ保留する。
+EOF では、完成した最終行を、末尾の LF の有無によらず一度評価する。
+未完の式のまま EOF を受けたときは、保留していた構文エラーを一度報告する。
+エラーは、元のコードとメッセージに、入力した式の先頭からの UTF-8 のバイトの範囲 `[start,end)` を添えて報告する。
+
+終了コードは、エラーを報告したセッションでは 1、すべて成功したか取り消しだけのセッションでは 0、引数の誤りでは 2 である。
+
+値は、正確な数値の表記、`True` と `False`、引用符付きの文字と文字列、リスト、タプル、コンストラクタで書く。
+文字と文字列では、区切りの引用符とバックスラッシュをエスケープし、LF を `\n`、タブを `\t`、そのほかの制御文字を `\u{16進数}` と書く。
+引数を持つコンストラクタは `(Just 2)` のように括弧で囲み、関数の値は `<function>` と書く。
+入力の長さと表示の長さに、REPL だけの上限はない。
+
+式に許す要求の集合は空である。
+たとえば `File.read "secret.txt"` は E05101 となり、ファイルを開かない。
+手数の上限は評価器の `stepLimit`（1 億手）、末尾でない呼び出しの深さの上限は `depthLimit`（1 万）で、超えるとそれぞれ E04100 と E04101 になる。
+文字コード、BOM、CR は Emet のファイルと同じ規則で読み、不正な UTF-8 は G01001 とする。
 
 関数や型の宣言は空行または入力の終わりで確定する。
 再定義を含む宣言のまとまりは、既存の宣言と一緒に型検査に通った場合だけ登録する。
@@ -8803,6 +8938,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の分量を数え、指定した字数と行数でページ数に換算する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。「[golem stats](#golem-stats)」の節を参照 |
+| `golem repl emet` | 標準入力から Emet の式を読み、値を標準出力に一行ずつ書く。端末ではプロンプトと補完を出す（[Golem ADR 0348](adr/0348-revise-emet-expression-repl.md)）。「[関数の言語 Emet](#関数の言語-emet)」の節を参照 |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose] [--format human\|json]` | lint を実行する |
 | `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G03002 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
@@ -8810,6 +8946,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。「[golem inspect](#golem-inspect)」の節を参照 |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。「[golem explain](#golem-explain)」の節を参照 |
+| `golem kinsoku [PATH]` | `PATH` から親へたどって最も近いプロジェクトの、解決した禁則とぶら下げの設定を、一行の JSON で標準出力に書く（[root ADR 0417](adr/0417-print-resolved-kinsoku-settings.md)）。「[golem kinsoku](#golem-kinsoku)」の節を参照 |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 ### golem new
@@ -8978,6 +9115,48 @@ G07002 は、`[page]` の `bleed` に 0 より大きい長さを書くよう案�
 diagnostics は、ほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コード 1 とする。
 表示は、diagnostics があっても、作れる限り標準出力に書く。
 引数のファイルがないか通常のファイルでなければ、G03002 とし、何も表示しない。
+
+### golem kinsoku
+
+`golem kinsoku [PATH]` は、プロジェクトの解決した組版の設定のうち、禁則の強さ（`kinsoku`）とぶら下げ（`hanging-punctuation`）を JSON で出す（[root ADR 0417](adr/0417-print-resolved-kinsoku-settings.md)）。
+エディタが、`style.toml` を自分で読まずに、Golem が解決した値を折り返しに使うためのコマンドである。
+出力はいつも JSON で、`--format` は持たない。
+
+プロジェクトの根は、`PATH` から親へたどって探す。
+`PATH` はプロジェクトのフォルダか、その中のファイルであり、省くと今のフォルダになる。
+`PATH` を絶対パスにし、字面の上で `.` と末尾の区切りを除き、`..` をその前の名前と打ち消した後、それがフォルダならそこから、そうでなければ存在する最も近い親のフォルダから探し始める。
+そのため、まだ保存していないファイルのパスも渡せる。
+始めのフォルダから親へたどり、最初に `manifest.toml` を持つフォルダを根とする。
+この探し方は LSP がワークスペースの根を探すのと同じで、golem-project の `findProjectRoot` が持つ。
+ほかのコマンドは、今のフォルダを根とし、親へたどらない。
+
+根が見つかったら、根の `style.toml` だけを読み、`loadStyle` で解決する。
+マニフェストの中身と原稿は読まない。
+そのため、章のファイルが無いことやマニフェストの誤りは、結果を変えない。
+`style.toml` が無いときは既定値とし、G03023 の notice は書かない。
+
+標準出力には、次の形の JSON を一行で書き、末尾に改行を一つ置く。
+キーの順は `schema`、`project`、`composition` である。
+
+```json
+{"schema":1,"project":"/path/to/project","composition":{"kinsoku":"strict","hangingPunctuation":false}}
+```
+
+各キーの値は次のとおりである。
+
+- `schema`：出力の形の版で、今は 1 である。キーを足すときは上げず、キーを除くか意味を変えるときに上げる。
+- `project`：根の絶対パスである。シンボリックリンクは解かず、末尾に区切りを付けない。根が見つからないときは `null` とし、`composition` を既定値にする。
+- `composition.kinsoku`：`"strict"` か `"loose"` である。既定は `"strict"` である。
+- `composition.hangingPunctuation`：ぶら下げるかどうかの真偽である。既定は偽である。
+
+`composition` の値は、`style.toml` に書いた値か、省いたときの既定値であり、どちらなのかは区別しない。
+値を書いたときの終了コードは 0 である。
+
+`style.toml` の誤りは、値を出さずに終わらせる。
+`loadStyle` が誤りを返したとき（TOML として読めない、`kinsoku = "medium"` など）は、diagnostics を human の形で標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
+notice（G03100 など）だけのときは、それを標準エラー出力に書き、JSON を書いて終了コード 0 とする。
+diagnostic のファイルのパスは、今のフォルダが根とは限らないので、`style.toml` の絶対パスとする。
+引数が二つ以上あるなどの使い方の誤りは、終了コード 2 とする。
 
 ### golem explain
 
