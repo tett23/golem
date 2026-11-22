@@ -1,6 +1,6 @@
 # ADR 0367: キャプションと傍注に段落の組み方も適用する
 
-Status: accepted
+Status: superseded [{"part":"キャプションと傍注の内部の間隔を整数行に限定すること","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 

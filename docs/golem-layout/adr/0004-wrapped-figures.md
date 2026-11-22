@@ -1,6 +1,6 @@
 # ADR 0004: 回り込みのある図版
 
-Status: superseded [{"by":["docs/golem-layout/adr/0015-figure-order.md"],"part":"待っている図版があるときの回り込みの図版の送り"}]
+Status: superseded [{"by":["docs/golem-layout/adr/0015-figure-order.md"],"part":"待っている図版があるときの回り込みの図版の送り"},{"part":"自由な配置での回り込みの除外領域と脇の行位置","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
 
 ## 文脈
 
