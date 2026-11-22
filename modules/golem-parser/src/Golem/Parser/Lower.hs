@@ -60,6 +60,7 @@ blocks = mapMaybe block
 
 block :: P -> Maybe (Located Block)
 block p@(PN k sp cs) = case k of
+  NSeparatorLine -> Just (Located sp (Separator "default"))
   NParagraph -> case inlines cs of
     [] -> Nothing
     is -> Just (Located sp (Paragraph is))
@@ -94,7 +95,7 @@ items cs = [item ics | PN NListItem _ ics <- cs]
 
 isBlockNode :: P -> Bool
 isBlockNode = \case
-  PN k _ _ -> k `elem` [NParagraph, NHeading, NBulletList, NOrderedList, NDefList, NTable, NCodeBlock, NAttributed, NBlockCommand, NErrorNode]
+  PN k _ _ -> k `elem` [NParagraph, NSeparatorLine, NHeading, NBulletList, NOrderedList, NDefList, NTable, NCodeBlock, NAttributed, NBlockCommand, NErrorNode]
   PT KError _ _ -> True
   _ -> False
 

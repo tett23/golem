@@ -144,6 +144,8 @@ data BlockBody
     PageControl !PageControl
   | -- | blank lines before what follows (docs/adr ADR 0046)
     BlankLines !Int64
+  | -- | a named project separator, resolved after all filters (root ADR 0398)
+    Separator !Text
   deriving stock (Eq, Show)
 
 {- | A manual control of page breaks (docs/adr ADR 0030): no break

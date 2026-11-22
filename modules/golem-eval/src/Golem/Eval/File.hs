@@ -348,6 +348,7 @@ unwritableText = concatMap blockDiags . docBlocks
       ForcedBreak _ -> []
       PageControl _ -> []
       BlankLines _ -> []
+      Separator _ -> []
     inlines :: [InlineF r] -> [Diagnostic]
     inlines = concatMap inline
     inline :: InlineF r -> [Diagnostic]
@@ -525,6 +526,7 @@ block sp = Block sp Nothing Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
 evalBlock ctx (A.Located sp b) = case b of
+  A.Separator name -> pure [block sp (Separator name)]
   -- items, definitions and captions break their lines by the same rule (docs/adr ADR 0016)
   A.Paragraph is -> styledParagraph ctx sp Nothing is
   A.Heading l is -> one . Heading l noHeadingAttrs <$> evalInlines ctx True is
@@ -619,6 +621,9 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
   "channel" -> channelBlock ctx sp args
   "printings" -> printingsBlock ctx sp args body
+  "separator" -> case (map A.locValue args, body) of
+    ([A.Positional v], []) | Just name' <- nameArg v, not (T.null name') -> pure [block sp (Separator name')]
+    _ -> err "G02158" sp "@separator には名前を一つ書き、本体は付けません" >> pure []
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
   "no-page-break" -> noPageBreak ctx sp args body
@@ -992,7 +997,7 @@ attributedWith ctx sp cmds target
 
 isBreakCommand :: A.Located A.Block -> Bool
 isBreakCommand = \case
-  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines", "blank-line"]
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines", "blank-line", "separator"]
   _ -> False
 
 attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
@@ -1346,6 +1351,7 @@ nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
       ForcedBreak _ -> ([], [b])
       PageControl _ -> ([], [b])
       BlankLines _ -> ([], [b])
+      Separator _ -> ([], [b])
       _ -> belowTop b
 
 -- | The diagnostics and what is left of a block below the top of the document ('nestedBreaks').
@@ -1357,6 +1363,7 @@ belowTop = inner
       ForcedBreak _ -> ([diagnostic "G02059" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
       PageControl _ -> ([diagnostic "G02071" Error sp "@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます"], [])
       BlankLines _ -> ([diagnostic "G02093" Error sp "@blank-line は文書の最上位にだけ置けます"], [])
+      Separator _ -> ([diagnostic "G02159" Error sp "区切りは文書の最上位にだけ置けます"], [])
       BulletList items -> rebuild BulletList <$> traverse item items
       OrderedList items -> rebuild OrderedList <$> traverse item items
       DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
@@ -1888,6 +1895,7 @@ figure ctx sp args body = do
       ForcedBreak _ -> Nothing
       PageControl _ -> Nothing
       BlankLines _ -> Nothing
+      Separator _ -> Nothing
       FigureBlock _ -> Just "図版"
       BulletList _ -> Just "箇条書き"
       OrderedList _ -> Just "番号付きリスト"
