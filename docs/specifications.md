@@ -4386,8 +4386,7 @@ HTML と EPUB は、文字スタイルの宣言を `ruby > rt` の CSS に書き
 名前と CMYK 値の対応は、出力インテント（`style.toml` の `[color]` の `intent` に指定する ICC プロファイル）に束縛して定義する。
 Golem が想定する出力インテントは、Japan Color 2001 Coated である。
 
-色空間を換算する向きは、CMYK から RGB だけである。
-RGB の元の見た目に近い CMYK の値は推定しない。
+色空間を換算する向きは CMYK から RGB だけであり、RGB の元の見た目に近い CMYK の値は推定しない。
 印刷を第一の媒体とするためである。
 そのため、EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
 
@@ -4950,17 +4949,33 @@ JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended 
 色を指定しない場合は、この復号方式の制限を適用せず、従来と同じように元の JPEG を扱う。
 
 PDF 図版の色置換は段階的な実装である。
-現在は DeviceGray、DeviceRGB、DeviceCMYK の線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
+現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
+線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ ICCBased（成分数 1、3、4）と Indexed に対応する。
 Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
+ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
+インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
 画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
+Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
 画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
-ICCBased の Range は各成分の単位範囲だけを扱い、画像の Decode は全成分が通常の範囲、または全成分が逆の範囲の場合を扱う。
+ICCBased の Range は各成分の単位範囲だけを扱う。
+画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
+Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
 同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
 明示マスクは ImageMask = true で、画像とマスクの Interpolate を省くか false にした場合に扱う。
 マスクの Decode は既定の範囲か逆の範囲を受け入れ、元のオブジェクトと参照を変えずに可視画素の判定だけに使う。
 JPEG を含む DCTDecode の画像も、PDF の Decode を適用する前のサンプルへ復号する。
-DCTDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
+RunLengthDecode の画像は復号してから判定する。
+CCITTFaxDecode の画像は 1-bit の DeviceGray か成分数 1 の ICCBased で、マスクを持たない場合に扱う。
+この画像は白と黒だけを持つので、復号せずに白黒の濃淡と判定する。
+置き換えた画像は元の符号化したデータを保ち、黒と白に指定色と白を割り当てた DeviceCMYK の Indexed の色空間で描く。
+DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
 取り込み時に展開した量に、色変換で見積もる復号量と出力量を加えて 256 MiB を超える変換は拒む。
+
+PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
+通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
+そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。
+ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、物体ごとの置き換えが濃淡の規則と一致しないので、G08113 とする。
+字形の中で自分の色を指定する Type 3 フォント（d0 の字形）を使う PDF も、字形の色を判定できないので G08113 とする。
 未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
 [残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の未実装部分であり、採択した対象からの除外ではない。
 
