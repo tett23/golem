@@ -36,6 +36,7 @@ unspan f (Located _ a) = Located noSpan (f a)
 block :: Block -> Block
 block = \case
   Paragraph is -> Paragraph (inlines is)
+  Separator n -> Separator n
   Heading n is -> Heading n (inlines is)
   BulletList items -> BulletList (map (map (unspan block)) items)
   OrderedList items -> OrderedList (map (map (unspan block)) items)

@@ -96,12 +96,21 @@ tomlTests =
           exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"toc-page-number\"", "\"url\"", "\"em\""],
           exactly "style.toml" "[page]\n# binding = ▮" [],
           exactly "style.toml" "[page]\nbinding = \"\"\"\n▮" [],
-          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "columns", "column-gap", "position"],
+          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "alignment", "columns", "column-gap", "position"],
           exactly "style.toml" "# 日本語のコメント😀\n[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           exactly "style.toml" "[page]\nsize = { width = \"100mm\", ▮" ["height"],
           exactly "style.toml" "[headings.1]\nrunning-head = ▮" [],
           including "style.toml" "[headings.1]\n▮" ["font", "page-break", "rule-before"] ["running-head"],
           exactly "style.toml" "[paragraph-styles.body]\nrule-before = ▮" ["false"],
+          testCase "root ADR 0397 A2: completion offers grid and free alignment" $
+            labelsIn "style.toml" "[page.grid]\nalignment = ▮" @?= ["\"grid\"", "\"free\""],
+          testCase "root ADR 0397 A2: completion offers paragraph pitch and spacing" $ do
+            let keys = labelsIn "style.toml" "[paragraph-styles.quote]\n▮"
+            mapM_ (\key -> assertBool (T.unpack key) (key `elem` keys)) ["line-pitch", "space-between", "space-before", "space-after"],
+          testCase "root ADR 0397 A2: pitch completion includes auto and named lengths" $
+            labelsIn "style.toml" "[values.length]\npitch = \"2zw\"\n[paragraph-styles.body]\nline-pitch = ▮" @?= ["\"auto\"", "\"pitch\""],
+          testCase "root ADR 0397 A2: spacing completion includes named lengths and counts" $
+            labelsIn "style.toml" "[values.length]\ngap = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.body]\nspace-between = ▮" @?= ["\"gap\"", "\"rows\""],
           -- docs/adr/0189
           exactly "style.toml" "[paragraph-styles.quote]\nalign = ▮" ["\"left\"", "\"center\"", "\"right\"", "\"left-justified\"", "\"center-justified\"", "\"right-justified\"", "\"fully-justified\"", "\"towards-spine\"", "\"away-from-spine\""],
           including "style.toml" "[paragraph-styles.quote]\n▮" ["align", "space-before", "space-after", "end-indent"] [],

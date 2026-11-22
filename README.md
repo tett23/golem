@@ -197,6 +197,12 @@ Golem のコードは大文字に直して同じになるものを、プラグ�
 `[source]` に `paragraph-separator` を書かなければ、notice の G03120 が出る。
 `golem new` の雛形は `paragraph-separator = "line"` を書く。
 
+原稿の独立した一行に `---` と書くと、区切りスタイル `default` を使う。
+別の名前は `@separator 名前` で指定し、`[separators.名前]` を `style.toml` に定義する。
+定義がない `default` は一行アキであり、`kind = "blank"` と `lines = 2` に替えれば二行アキ、`kind = "text"` と `text = "＊　＊　＊"` に替えれば約物、`kind = "rule"` に替えれば罫線になる（[root ADR 0398](docs/adr/0398-styled-separators-in-manuscripts.md)）。
+PDF では約物と罫線の区切りを後続の最初の行と同じ段に置く。
+空の段へ送っても保持できなければ、[G07134](docs/diagnostics.md#g07134) で生成を止める。
+
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 
 ### 原稿の変数
@@ -245,7 +251,13 @@ PDF の柱とノンブルに当てる文字スタイルは、マスターペー�
 
 段落スタイルは、字下げ、行揃え、段落の前後の空きを決める。
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
-行の終わりの側の字下げは `end-indent`、行揃えは `align`（`left`、`center`、`right`、均等配置の三つ、`fully-justified`、ノド側と小口側）、段落の前後に空ける行の数は `space-before` と `space-after` で指定する（[docs/adr/0189](./docs/adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+行の終わりの側の字下げは `end-indent`、行揃えは `align`（`left`、`center`、`right`、均等配置の三つ、`fully-justified`、ノド側と小口側）、段落の前後の追加のアキは `space-before` と `space-after` で指定する（[docs/adr/0189](./docs/adr/0189-paragraph-alignment-spacing-and-end-indent.md)）。
+台本などで段落ごとの行送りを変えるには、`[page.grid]` を `alignment = "free"` にし、段落スタイルの `line-pitch` に寸法を書く。
+`space-between` は同じスタイルの段落間、`space-before` と `space-after` は異なるスタイルの段落や非段落ブロックとの境界の追加のアキである。
+自由な配置では、整数行のほか寸法で指定できる（[root ADR 0397](./docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）。
+これらの値やインデント、文字色はプロジェクトのスタイルにまとめ、Emet のブロック関数からそのスタイルを付けられる。
+台本専用の固定値は設けない。
+
 `next-style` は次の段落の段落スタイルを、`initial-style` は段落の先頭の一字の文字スタイルを決め、PDF の `opening-indent = "half"` は始め括弧類で始まる段落の字下げを半角減らす（[ADR 0374](./docs/adr/0374-paragraph-style-controls.md)）。
 
 文字の詰めと送りも、スタイルで指定する。
@@ -361,6 +373,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 
 見開きモードでトンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
 左右固定モードでは隠しノンブルを入れない。
+隠しノンブルの書体と色は `[hidden-folio]` の `character-style` で選ぶ（[Golem ADR 0365](docs/adr/0365-hidden-folio-style.md)）。
 中綴じの本では `style.toml` の `[hidden-folio]` に `enabled = false` を書く（[golem-driver ADR 0021](docs/golem-driver/adr/0021-hidden-folios.md)）。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 

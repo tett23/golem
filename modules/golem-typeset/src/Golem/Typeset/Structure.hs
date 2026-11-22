@@ -135,6 +135,7 @@ structureTree fe units figureAttrs tocNumber =
        in marker <> map own (unitKids i u text)
     unitKids i u text = case uKind u of
       UPara _ -> [NKid (P.KidElem (P.structElem P.SP text))]
+      USeparator _ -> [NKid (P.KidElem (P.structElem P.SDiv text))]
       UIndexEntry _ -> [NKid (P.KidElem (P.structElem P.SP text))]
       UHeading l _ _ -> [NKid (P.KidElem (P.structElem (headingType l) text))]
       UTerm _ -> [NTerm text]

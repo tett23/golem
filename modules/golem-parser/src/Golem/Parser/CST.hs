@@ -88,6 +88,7 @@ data SyntaxKind
   | NAttributed
   | NCommandBody
   | NBlankLines
+  | NSeparatorLine
   | NDefGroup
   | NDefNew
   | NTableCell

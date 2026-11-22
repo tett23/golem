@@ -5,6 +5,7 @@ module Golem.Doc.Validate
   ( validateInlines,
     validateDocument,
     validateBlocks,
+    validateCommandBlocks,
     captionErrors,
     linkErrors,
     langErrors,
@@ -39,6 +40,12 @@ break, page control or blank lines.
 validateBlocks :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Block] -> [Text]
 validateBlocks fileSize allowed = blocksAt fileSize allowed False
 
+-- | A command result may contain a separator at its outermost level.
+validateCommandBlocks :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Block] -> [Text]
+validateCommandBlocks fileSize allowed = concatMap $ \b -> case blockBody b of
+  Separator _ -> validateDocument fileSize allowed (Document (spanFile (blockSpan b)) [b])
+  _ -> validateBlocks fileSize allowed [b]
+
 blocksAt :: (FileId -> Maybe Int) -> [DeferredExpr] -> Bool -> [Block] -> [Text]
 blocksAt fileSize allowed top0 = concatMap (blockAt top0)
   where
@@ -62,6 +69,11 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
           ["行アキは文書の最上位にだけ置けます" | not top]
             <> ["行アキはラベルを持てません" | Just _ <- [lbl]]
             <> ["行アキの行数は 1 以上です" | n < 1]
+        Separator name ->
+          ["区切りは文書の最上位にだけ置けます" | not top]
+            <> ["区切りはラベルを持てません" | isJust lbl]
+            <> ["区切りは言語を持てません" | isJust lang]
+            <> ["区切りの名前は空にできません" | T.null name]
         _ -> bodyErrors body
     inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
@@ -92,6 +104,7 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       ForcedBreak _ -> []
       PageControl _ -> []
       BlankLines _ -> []
+      Separator _ -> []
 
 {- | The invariants of a table (docs/adr/0262): as many cells in each row
 as in the header row, no widths or one for each column, every width but

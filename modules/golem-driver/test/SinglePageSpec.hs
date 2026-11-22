@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Layout.PageLabel (pageLabelText)
-import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
+import Golem.Layout.Paginate (ColumnSetAt (..), PageOutAt (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), typeAreaFor)
 import Golem.Pdf qualified as P
 import Golem.Preflight qualified as V

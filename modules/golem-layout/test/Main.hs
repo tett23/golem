@@ -27,6 +27,7 @@ import ExceptionsSpec (exceptionsTests)
 import ExpansionStepSpec (expansionStepTests)
 import FeaturesSpec (featuresTests)
 import Fixtures (compose, fs, look0, sp, sp0)
+import FreeGeometrySpec (freeGeometryTests)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
 import Golem.Layout.Aki qualified as Aki
@@ -68,6 +69,7 @@ import OverflowSpec (overflowTests)
 import PaginateElementsEnum (paginateElementsTests)
 import PaginateInvariantsSpec (invariantTests)
 import PaginateSpec (paginateTests)
+import PhysicalPaginateSpec (physicalPaginateTests)
 import PullInSpec (pullInTests)
 import PunctuationSpec (punctuationTests)
 import RuleAreaSpec (ruleAreaTests)
@@ -411,6 +413,8 @@ tests =
       codeStopTests,
       urlBreakTests,
       pullInTests,
+      physicalPaginateTests,
+      freeGeometryTests,
       adjustOrderTests,
       unbreakablePairsTests,
       unbreakableSpacingTests,

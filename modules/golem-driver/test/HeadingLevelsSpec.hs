@@ -10,7 +10,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Length (Sp (..))
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..), SetLine (..))
@@ -46,7 +46,7 @@ headingLevelsTests =
       (_, pl) <- layoutOk horizontalStyle sixLevels []
       -- the size of each heading, and the grid lines from it to the next slot of its page
       [ (next - h, slSize <$> Map.lookup lid (plLines pl))
-        | p <- plPages pl,
+        | p <- gridPages pl,
           let slots = sortOn fst (poSlots p),
           ((h, SHeading lid _), next) <- zip slots (map fst (drop 1 slots))
         ]
@@ -54,7 +54,7 @@ headingLevelsTests =
     testCase "PDF: the entries of the levels 4 to 6 in the table of contents are indented 3 to 5 characters" $ do
       -- 30 characters a line: each entry takes one line
       (_, pl) <- layoutOk (replaceIn "characters = 12" "characters = 30" horizontalStyle) ("@toc depth=6\n\n" <> sixLevels) []
-      take 6 [slIndent sl | p <- plPages pl, (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)]]
+      take 6 [slIndent sl | p <- gridPages pl, (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)]]
         @?= [0, fs, 2 * fs, 3 * fs, 4 * fs, 5 * fs],
     testCase "PDF: heading.5.short shows the heading of level 5 of the page" $ do
       let style =

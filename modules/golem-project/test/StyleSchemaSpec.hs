@@ -38,7 +38,13 @@ docWith steps leaf = go [] steps
   where
     go here = \case
       [] -> leaf
-      SKey k : rest -> Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- requiredFor here k, k' /= k]))
+      SKey k : rest ->
+        let extras = case (here, k, leaf) of
+              (["separators", _], "kind", Text' _ "blank") -> [("lines", Integer 1)]
+              (["separators", _], "kind", Text' _ "text") -> [("text", Text "x")]
+              (["separators", _], "kind", Text' _ "rule") -> []
+              _ -> requiredFor here k
+         in Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- extras, k' /= k]))
       SName : rest ->
         let n = if here == ["headings"] then "1" else "x"
          in Table (table [(n, go (here <> [n]) rest)])
@@ -75,6 +81,15 @@ required here k = case here of
       _ -> [("content", Text "title")]
   ["masters", _, "folio"] -> [("position", Text "bottom-center")]
   ["color", "swatches", _] -> [("cmyk", cmyk)]
+  ["separators", _] -> case k of
+    "kind" -> [("lines", Integer 1)]
+    "lines" -> [("kind", Text "blank")]
+    "text" -> [("kind", Text "text")]
+    "character-style" -> [("kind", Text "text"), ("text", Text "x")]
+    "function" -> [("command", Text "separator")]
+    "command" -> [("function", Text "separator.emet")]
+    _ -> [("kind", Text "rule")]
+  ["separators", _, "rule"] -> dashed
   ["notes", "rule"] -> ("length", Text "10mm") : dashed
   _ | take 1 (reverse here) `elem` [["rule-before"], ["rule-after"], ["underline"], ["strikethrough"]] -> dashed
   _ -> []
@@ -91,6 +106,7 @@ sample here node = case (reverse here, node) of
   (k : _, _) | k `elem` ["content", "even", "odd"], "running-head" `elem` here -> Text "title"
   ("cmyk" : _, _) -> cmyk
   (k : "[]" : "rules" : _, _) | k `elem` ["optimum", "minimum", "maximum"] -> Text "四分"
+  ("function" : _ : "separators" : _, _) -> Text "separator.emet"
   ("mark-format" : _, _) -> Text "{n}"
   ("numbers" : "lists" : _, _) -> List [Text "{n}"]
   -- an OpenType feature (docs/adr/0268)
@@ -210,7 +226,7 @@ tests =
           @?= [("G03021", "kerning の値が正しくありません: x (character-styles.em.kerning)", 2, 11)],
       testCase "the keys of @style-def are those of the schema, in its order" $ do
         charStyleKeys @?= ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic", "kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width", "background", "padding", "wrap-mark", "no-break", "position", "features", "underline", "strikethrough"]
-        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "line-number-interval", "space-between", "number-title-separator", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "keep-with-next", "keep-all-lines", "keep-first-lines", "keep-last-lines", "page-break", "line-adjustment", "stretch-limit", "next-style", "initial-style", "opening-indent", "kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width", "background", "padding", "border", "border-width", "border-style", "border-radius", "features", "border-sides", "shrink-order", "stretch-order"]
+        paraStyleKeys @?= ["based-on", "font", "size", "line-breaks", "line-number-interval", "line-pitch", "space-between", "number-title-separator", "space-before", "space-after", "align", "indent", "first-line-indent", "end-indent", "aki-set", "keep-with-next", "keep-all-lines", "keep-first-lines", "keep-last-lines", "page-break", "line-adjustment", "stretch-limit", "next-style", "initial-style", "opening-indent", "kerning", "tracking", "proportional-metrics", "baseline-shift", "punctuation-width", "background", "padding", "border", "border-width", "border-style", "border-radius", "features", "border-sides", "shrink-order", "stretch-order"]
         regexStyleKeys @?= ["pattern", "style"],
       testCase "the values of line-breaks are those the decoder reads" $
         lineBreaksValues @?= ["join", "keep"],

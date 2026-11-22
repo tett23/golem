@@ -144,7 +144,7 @@ tests =
         codeOf (withHead footGrid "bottom-center" 3) @?= Just (DiagnosticCode "G07052", mkSpan (FileId 3) 0 0)
         codeOf (withHead footGrid "bottom-center" 1) @?= Nothing,
       testCase "G07001: the footnote rule longer than a line (golem-driver ADR 0024)" $ do
-        let small chars cols gap = Grid (Abs (pt 8)) chars 30 (Abs (pt 14)) cols gap (Abs mm18) (GutterPosition (Abs mm20))
+        let small chars cols gap = Grid (Abs (pt 8)) chars 30 (Abs (pt 14)) AlignGrid cols gap (Abs mm18) (GutterPosition (Abs mm20))
             ruled len g = (styleWith False False g) {stNotesRule = Just (RuleSpec (Just len) 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True)}
             isG07001 = \case
               Left [d] -> diagCode d == DiagnosticCode "G07001"
@@ -155,7 +155,7 @@ tests =
         assertBool "20zw on columns of 20 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 20) (small 20 2 (Just (Zw 2))))))),
       testCase "G07001: paragraph and heading rules out of the trim or over half the column gap (golem-driver ADR 0027)" $ do
         let mm x = Sp (round (x * 72 / 25.4 * 65536 :: Rational))
-            gridOf size chars cols gap top gutter = Grid (Abs (pt size)) chars 30 (Abs (pt (size + 6))) cols gap (Abs top) (GutterPosition (Abs gutter))
+            gridOf size chars cols gap top gutter = Grid (Abs (pt size)) chars 30 (Abs (pt (size + 6))) AlignGrid cols gap (Abs top) (GutterPosition (Abs gutter))
             rule = RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True
             withRule g size r = (styleWith False False g) {stParaStyles = Map.insert "a" noParaDef {psSize = size, psRuleBefore = Just (Just r)} (stParaStyles defaultStyle)}
             onPage w st = st {stPage = fmap (\p -> p {pageSizeSpec = CustomSize w a5H}) (stPage st)}
@@ -213,13 +213,13 @@ tests =
         pgNoteSeparator (geom (withRule (Just (Zw 1.5)) 19661 (Just (Zw 1)))) @?= 2,
       testCase "G07001: rule-after takes its space across from the margin after the lines (golem-driver ADR 0027)" $ do
         -- 30 lines of 8pt on 14pt: 414pt from a head margin of 18mm (51.02pt) leave 130.26pt below
-        let g = Grid (Abs (pt 8)) 40 30 (Abs (pt 14)) 1 Nothing (Abs mm18) (GutterPosition (Abs mm20))
+        let g = Grid (Abs (pt 8)) 40 30 (Abs (pt 14)) AlignGrid 1 Nothing (Abs mm18) (GutterPosition (Abs mm20))
             spacedBelow inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
         ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 100)) @?= []
         ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 131)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
       testCase "G07001: in vertical text a rule runs from the head margin and reaches right before the lines (golem-driver ADR 0027)" $ do
         -- 40 characters of 9pt from a head margin of 18mm (51.02pt); 20 lines of 9pt on 15pt (294pt) from a gutter of 20mm (56.69pt) on A5
-        let g = Grid (Abs (pt 9)) 40 20 (Abs (pt 15)) 1 Nothing (Abs mm18) (GutterPosition (Abs mm20))
+        let g = Grid (Abs (pt 9)) 40 20 (Abs (pt 15)) AlignGrid 1 Nothing (Abs mm18) (GutterPosition (Abs mm20))
             vertical = styleWith True True g
             indent x = rule0 {rsStartIndent = Abs (negate (pt x))}
             out x = rule0 {rsKeepInColumn = False, rsSpaceAfter = Just (Abs (pt x))}
@@ -231,11 +231,11 @@ tests =
         ruleMessages (withParaRule True vertical (out 57)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
       testCase "G07001: a rule into the column gap is named as over half the gap (golem-driver ADR 0027)" $ do
         -- two columns of 20 characters of 8pt with a gap of 1zw: 21zw reaches 8pt into a gap of 8pt
-        let g = Grid (Abs (pt 8)) 20 30 (Abs (pt 14)) 2 (Just (Zw 1)) (Abs mm18) (GutterPosition (Abs mm20))
+        let g = Grid (Abs (pt 8)) 20 30 (Abs (pt 14)) AlignGrid 2 (Just (Zw 1)) (Abs mm18) (GutterPosition (Abs mm20))
         ruleMessages (withParaRule True (styleWith False False g) rule0 {rsLength = Just (Zw 21)}) @?= ["段落スタイル a の罫線が段間の半分を超えます"],
       testCase "G07001: across the lines, keep-in-column = false is checked against the margin, not half the gap (golem-driver ADR 0040)" $ do
         -- two columns of 8pt with a gap of 1zw (half 4pt); 130.26pt below the lines
-        let g = Grid (Abs (pt 8)) 20 30 (Abs (pt 14)) 2 (Just (Zw 1)) (Abs mm18) (GutterPosition (Abs mm20))
+        let g = Grid (Abs (pt 8)) 20 30 (Abs (pt 14)) AlignGrid 2 (Just (Zw 1)) (Abs mm18) (GutterPosition (Abs mm20))
             spacedBelow inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
         ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 10)) @?= []
         ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 100)) @?= []
@@ -267,6 +267,17 @@ tests =
           codesOf (withFolio bindingRight (m - pt 3)) @?= []
           -- with an advance of 0.55em the digits would still be 1pt off the type area
           codesOf (withFolio bindingRight (m - pt 3 + 1)) @?= [DiagnosticCode "G07050"],
+      testCase "root ADR 0365 I1: overlap geometry uses the character style size" $ do
+        let margin = 2786570
+            base =
+              defaultStyle
+                { stPage = Just (Page (NamedSize "A5") FacingLeft False (Just ((grid 30 30 1 Nothing) {gridPosition = GutterPosition (Abs margin)})) 0),
+                  stCharStyles = Map.insert "hidden" noCharDef {csSize = Just (Abs (pt 12))} (stCharStyles defaultStyle),
+                  stHiddenFolio = (stHiddenFolio defaultStyle) {hfCharacterStyle = Just "hidden", hfGutter = Abs (margin - pt 4)}
+                }
+            codes st = either (map diagCode) (const []) (pageGeometry (FileId 0) True st)
+        codes base @?= [DiagnosticCode "G07050"]
+        codes base {stHiddenFolio = (stHiddenFolio base) {hfSize = Abs (pt 6), hfSizeWritten = True}} @?= [],
       testCase "the hidden folio geometry is there only with crop marks and when enabled (golem-driver ADR 0021)" $ do
         let s = styleWith False False (grid 30 30 1 Nothing)
         pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s)) @?= Just (HiddenFolioGeometry (pt 6) 278657 False)

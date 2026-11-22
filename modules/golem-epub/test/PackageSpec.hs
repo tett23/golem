@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Golem.Assemble (Book (..), TocEntry (..))
+import Golem.Assemble (Book (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..))
 import Golem.Assemble.Formats (arabic)
 import Golem.Doc.IR
 import Golem.Epub
@@ -79,7 +79,8 @@ emptyBook =
       bookChannels = [],
       bookChannelDecls = Map.empty,
       bookTitleSeparators = Map.empty,
-      bookImages = Map.empty
+      bookImages = Map.empty,
+      bookSeparators = Map.empty
     }
 
 entry :: Int -> FileId -> Text -> Text -> TocEntry
@@ -87,7 +88,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
+  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -263,7 +264,19 @@ tests =
       ],
     testGroup
       "container"
-      [ testCase "the first entry is mimetype, stored without compression" $ do
+      [ testCase "root ADR 0398 A2: EPUB preserves the separator rule SVG" $
+          withSystemTempDirectory "golem-epub-separator" $ \root -> do
+            let sp = mkSpan fidA 1 2
+                sep = Block sp Nothing Nothing (Separator "scene")
+                book = emptyBook {bookDocs = [Document fidA [sep], Document fidB []], bookSeparators = Map.singleton (sp, "scene") (SeparatorRuleAppearance 1 1 "center" (Just 655360) 32768 Nothing (StrokeDashed 131072 65536))}
+                site = renderXhtml htmlConfig ft book
+                out = root </> "book.epub"
+            writeEpub root out cfg0 ft book site
+            archive <- toArchive . BL.fromStrict <$> BS.readFile out
+            case findEntryByPath "OEBPS/a.xhtml" archive of
+              Just archiveEntry -> assertBool "dash and gap in EPUB XHTML" ("stroke-dasharray=\"2pt 1pt\"" `BS.isInfixOf` BL.toStrict (fromEntry archiveEntry))
+              Nothing -> assertFailure "a.xhtml is missing",
+        testCase "the first entry is mimetype, stored without compression" $ do
           archive <- written
           take 1 [(eRelativePath e, eCompressionMethod e, fromEntry e) | e <- zEntries archive] @?= [("mimetype", NoCompression, "application/epub+zip")],
         testCase "the container, the package, the navigation, the CSS and the pages are in the archive" $ do
