@@ -23,6 +23,7 @@ module Golem.Pdf.Import
     FormContent (..),
     importPage,
     importErrorText,
+    joinContent,
     contentOperations,
     inlineImageParts,
     unescapeName,
@@ -1215,9 +1216,8 @@ importM n bytes = do
   (pageBytes, pageChanged, pageUses, inner) <- case shared of
     Just r -> pure r
     Nothing -> do
-      let total = sum (map (BS.length . snd) parts) + max 0 (length parts - 1)
-      when (total > maxStreamBytes) (liftR (Left (ContentTooLarge total)))
-      (b, ch, us) <- liftR (rewriteContent (BS.intercalate "\n" (map snd parts)))
+      joined <- liftR (joinContent (map snd parts))
+      (b, ch, us) <- liftR (rewriteContent joined)
       pure (b, ch, us, [])
   -- the key of an inner Form, -(k * 2^32 + n), holds a stream number k below 2^31 only (docs/adr ADR 0259)
   mapM_ (\(k, _) -> when (k > maxInnerFormStream) (liftR (Left (StreamNumberTooLarge k)))) inner
@@ -1313,6 +1313,19 @@ contentParts d page = case lookup "Contents" page of
 innerName :: ObjNum -> Text
 innerName k = "GolemC" <> T.pack (show k)
 
+{- | The pieces of a page's content joined by newlines, or ContentTooLarge
+when the joined length, the lengths of the pieces and the newlines between
+them, passes 'maxStreamBytes'. The length is computed before joining, so
+that content beyond the limit is never built. Both the joined content and
+the outer content of reused streams are joined by it (root ADR 0409).
+-}
+joinContent :: [ByteString] -> R ByteString
+joinContent pieces
+  | total > maxStreamBytes = Left (ContentTooLarge total)
+  | otherwise = Right (BS.intercalate "\n" pieces)
+  where
+    total = sum (map BS.length pieces) + max 0 (length pieces - 1)
+
 {- | The content of a page whose Contents names a stream more than once,
 when each such stream can be written once as an inner Form XObject and
 called by Do (docs/adr ADR 0051): every stream ends clean, every stream
@@ -1329,7 +1342,7 @@ reusedContent d resources parts
       let taken = [k | k <- Map.keys repeated, isJust (look (TE.encodeUtf8 (innerName k)) xobjects)]
           once = Map.fromList [(k, rewriteContentShaped b) | (Just k, b) <- parts]
           shaped = [maybe (rewriteContentShaped b) (\k -> Map.findWithDefault (rewriteContentShaped b) k once) key | (key, b) <- parts]
-      pure $ case sequence shaped of
+      case sequence shaped of
         Right rs
           | null taken,
             all (\(_, _, _, sh) -> shClean sh && not (shDangling sh)) rs,
@@ -1338,13 +1351,18 @@ reusedContent d resources parts
                     Just k | Map.member k repeated -> TE.encodeUtf8 ("/" <> innerName k <> " Do")
                     _ -> b
                   firsts = nubOrdOn fst [(k, b) | ((Just k, _), (b, _, _, _)) <- zip parts rs, Map.member k repeated]
-               in Just
-                    ( BS.intercalate "\n" (zipWith piece parts rs),
-                      any (\(_, ch, _, _) -> ch) rs,
-                      foldl (\acc u -> if u `elem` acc then acc else acc <> [u]) [] (concat [us | (_, _, us, _) <- rs]),
-                      firsts
-                    )
-        _ -> Nothing
+               in do
+                    -- the outer content is limited as the joined content is (root ADR 0409)
+                    outer <- liftR (joinContent (zipWith piece parts rs))
+                    pure
+                      ( Just
+                          ( outer,
+                            any (\(_, ch, _, _) -> ch) rs,
+                            foldl (\acc u -> if u `elem` acc then acc else acc <> [u]) [] (concat [us | (_, _, us, _) <- rs]),
+                            firsts
+                          )
+                      )
+        _ -> pure Nothing
   where
     repeated = Map.filter (>= (2 :: Int)) (Map.fromListWith (+) [(k, 1) | (Just k, _) <- parts])
     nubOrdOn f = go Set.empty
