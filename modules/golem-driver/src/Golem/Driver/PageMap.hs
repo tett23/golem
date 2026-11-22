@@ -5,6 +5,7 @@ module Golem.Driver.PageMap
     PageMapError (..),
     decodePageMap,
     resolvePageMap,
+    resolvePageMapWithAst,
   )
 where
 
@@ -23,7 +24,10 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble (Book (..))
 import Golem.Doc.IR
+import Golem.Driver.PageMap.Alignment (sourceOffset)
 import Golem.Html (pagePath)
+import Golem.Parser (parseAst)
+import Golem.Parser.AST qualified as A
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
 import Numeric (showHex)
@@ -79,7 +83,11 @@ decodePageMap bytes = do
 
 -- | Each returned link has an anchor in body text; unmapped pages are omitted.
 resolvePageMap :: Map FileId (FilePath, Text) -> FileTable -> Book -> PageMap -> Either PageMapError (Map SrcSpan [(Int, Text, Text)], [(Text, FilePath, Text)])
-resolvePageMap sources files book mapping = do
+resolvePageMap sources = resolvePageMapWithAst (Map.mapWithKey (\fid (_, source) -> let (ast, _, _) = parseAst fid source in ast) sources) sources
+
+-- | Reuse the project's original AST so that merged text keeps source positions.
+resolvePageMapWithAst :: Map FileId A.File -> Map FileId (FilePath, Text) -> FileTable -> Book -> PageMap -> Either PageMapError (Map SrcSpan [(Int, Text, Text)], [(Text, FilePath, Text)])
+resolvePageMapWithAst asts sources files book mapping = do
   let required = [path | (path, _) <- Map.elems sources]
   unless (all (`Map.member` pmSources mapping) required) (Left (PageMapSchema "source hashes must cover every manuscript document"))
   mapM_ verifySource (Map.toList (pmSources mapping))
@@ -104,15 +112,12 @@ resolvePageMap sources files book mapping = do
         (fid, source) <- maybe (Left (PageMapPosition ("unknown source: " <> T.pack path))) Right (Map.lookup path byPath)
         off <- maybe (Left (PageMapPosition ("invalid source position: " <> T.pack path))) Right (utf16LineColToOffset (mkLineIndex (source)) (LineCol line character))
         let candidates = [(order, destination, sp, text) | (order, (destination, sp, text)) <- zip [0 :: Int ..] (bodyTexts book), spanFile sp == fid, spanStart sp <= off, off < spanEnd sp]
-            literal (_, _, sp, text) =
-              let raw = BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) (TE.encodeUtf8 (source)))
-               in raw == TE.encodeUtf8 text
-        case filter literal candidates of
-          [(bodyOrder, destination, sp, _)] ->
-            let prefix = BS.take (off - spanStart sp) (BS.drop (spanStart sp) (TE.encodeUtf8 (source)))
-                offset = T.length (TE.decodeUtf8 prefix)
-                ident = "GolemFixedPage-" <> T.pack (show (fpPage page))
-             in pure (Just (fpLabel page, destination, sp, offset, ident, bodyOrder))
+        case candidates of
+          [(bodyOrder, destination, sp, text)] -> case Map.lookup fid asts >>= \ast -> sourceOffset ast source sp text off of
+            Nothing -> pure Nothing
+            Just offset ->
+              let ident = "GolemFixedPage-" <> T.pack (show (fpPage page))
+               in pure (Just (fpLabel page, destination, sp, offset, ident, bodyOrder))
           _ -> pure Nothing
     strictlyIncreasing xs = and (zipWith (<) xs (drop 1 xs))
 
@@ -134,6 +139,11 @@ bodyTexts book = [(destination, sp, text) | Document destination blocks <- bookD
     inlineTexts :: InlineF r -> [(SrcSpan, Text)]
     inlineTexts = \case
       Text sp text -> [(sp, text)]
+      Tcy sp _ -> [(sp, "")]
+      Number sp _ _ -> [(sp, "")]
+      Ref sp _ _ -> [(sp, "")]
+      Cite sp _ -> [(sp, "")]
+      ChannelItem sp _ -> [(sp, "")]
       Ruby _ _ segments -> concatMap (concatMap inlineTexts . rsBase) segments
       Kenten _ _ xs -> concatMap inlineTexts xs
       Color _ _ xs -> concatMap inlineTexts xs

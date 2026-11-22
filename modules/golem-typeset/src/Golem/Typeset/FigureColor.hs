@@ -10,6 +10,7 @@ module Golem.Typeset.FigureColor
     safeRecolorRasterBytes,
     guardColorConversion,
     forceRasterAnalysis,
+    forceImportedPage,
     recolorRasterBytes,
     rgbTone,
   )
@@ -25,12 +26,13 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Internal qualified as BSI
 import Data.ByteString.Lazy qualified as BL
 import Data.List (nub)
-import Data.Ratio ((%))
+import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector.Storable qualified as V
 import Data.Word (Word8)
 import Golem.Pdf qualified as P
+import Golem.Pdf.Object (ObjOf (..))
 
 -- | The selected swatch, each component as a percentage from zero to one hundred.
 type Cmyk = (Int, Int, Int, Int)
@@ -90,10 +92,44 @@ guardColorConversion force result = do
       Right value -> force value `seq` Right value
 
 forceRasterAnalysis :: RasterAnalysis -> ()
-forceRasterAnalysis analysis = raKind analysis `seq` maybe () forceImage (raImage analysis)
+forceRasterAnalysis analysis = forceKind (raKind analysis) `seq` maybe () forceImage (raImage analysis)
+  where
+    forceKind (SolidRgb (r, g, b)) = tone r `seq` tone g `seq` tone b
+    forceKind (SolidCmyk (c, m, y, k)) = tone c `seq` tone m `seq` tone y `seq` tone k
+    forceKind other = other `seq` ()
+    tone value = numerator value `seq` denominator value `seq` ()
 
 forceImage :: P.ImageData -> ()
 forceImage image = BS.length (P.imgData image) `seq` maybe () (\alpha -> BS.length (P.alphaSamples alpha) `seq` ()) (P.imgAlpha image)
+
+-- | Force converted PDF streams and nested resources before leaving the codec boundary.
+forceImportedPage :: P.ImportedPage -> ()
+forceImportedPage page =
+  BS.length (P.ipFile page)
+    `seq` BS.length (P.ipContent page)
+    `seq` box (P.ipBox page)
+    `seq` size (P.ipSize page)
+    `seq` object (P.ipResources page)
+    `seq` maybe () object (P.ipGroup page)
+    `seq` foldr (\(key, value) rest -> key `seq` object value `seq` rest) () (P.ipObjects page)
+    `seq` foldr (\color rest -> case color of P.UseIcc n bytes -> n `seq` BS.length bytes `seq` rest; _ -> color `seq` rest) () (P.ipColors page)
+  where
+    tone value = numerator value `seq` denominator value `seq` ()
+    box (a, b, c, d) = tone a `seq` tone b `seq` tone c `seq` tone d
+    size (w, h) = tone w `seq` tone h
+    dictionary = foldr (\(key, value) rest -> T.length key `seq` object value `seq` rest) ()
+    object = \case
+      ODict pairs -> dictionary pairs
+      OArr values -> foldr (\value rest -> object value `seq` rest) () values
+      OStream pairs bytes -> dictionary pairs `seq` BS.length bytes `seq` ()
+      OStr bytes -> BS.length bytes `seq` ()
+      OHex bytes -> BS.length bytes `seq` ()
+      OName name -> T.length name `seq` ()
+      OReal number -> T.length number `seq` ()
+      OInt number -> number `seq` ()
+      ORef key -> key `seq` ()
+      OBool value -> value `seq` ()
+      ONull -> ()
 
 -- | Return PNG only for a figure whose colour changes. A multi-colour source is not re-encoded.
 recolorRasterBytes :: Cmyk -> BS.ByteString -> Either Text (Maybe (P.ImageData, BS.ByteString))

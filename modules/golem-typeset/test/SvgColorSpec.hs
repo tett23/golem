@@ -13,11 +13,13 @@ svgColorTests =
   testGroup
     "root ADR 0386 figure colours"
     [ testCase "root ADR 0386 I1: one SVG colour changes independently" $
-        recolorFigure (30, 60, 90) (P.SvgFigure (drawing [black])) @?= P.SvgFigure (drawing [(30, 60, 90)]),
+        recolorFigure (0, 100, 100, 0) (P.SvgFigure (drawing [black])) @?= P.SvgFigure (drawing [(255, 0, 0)]),
       testCase "root ADR 0386 I1: grouped strokes keep their geometry and line style" $ do
         let stroke = P.PathStroke black 2 1 2 4 [1, 2] 1
             drawing' color = P.Drawing (10, 10) [P.DrawGroup [1, 0, 0, 1, 2, 3] (Just (0, 0, 8, 8)) [P.DrawPath (P.PathPaint Nothing False (Just stroke {P.psColor = color})) [P.SegMove (0, 0), P.SegLine (10, 10)]]]
-        recolorFigure (30, 60, 90) (P.SvgFigure (drawing' black)) @?= P.SvgFigure (drawing' (30, 60, 90)),
+        recolorFigure (0, 100, 100, 0) (P.SvgFigure (drawing' black)) @?= P.SvgFigure (drawing' (255, 0, 0)),
+      testCase "root ADR 0403 I1: SVG white gray and black preserve their tone" $
+        recolorFigure (0, 100, 100, 0) (P.SvgFigure (drawing [(255, 255, 255), (128, 128, 128), black])) @?= P.SvgFigure (drawing [(255, 255, 255), (255, 128, 128), (255, 0, 0)]),
       testCase "root ADR 0386 I1: normalized SVG retains its geometry and paint" $ do
         let d = drawing [(30, 60, 90)]
         case S.readSvg (TE.encodeUtf8 (drawingSvg d)) of
@@ -25,13 +27,13 @@ svgColorTests =
           Right svg -> svgDrawing svg @?= d,
       testCase "root ADR 0386 I1: raster image bytes are unchanged" $ do
         let figure = P.RasterFigure (P.ImageData 1 1 8 P.CsRgb Nothing "RGB" False False Nothing)
-        recolorFigure (30, 60, 90) figure @?= figure,
+        recolorFigure (0, 100, 100, 0) figure @?= figure,
       testCase "root ADR 0386 I1: imported PDF page is unchanged" $ do
-        let figure = P.VectorFigure (P.ImportedPage "hash" 1 (0, 0, 10, 10) 0 (10, 10) (O.ODict []) Nothing "content" [] [])
-        recolorFigure (30, 60, 90) figure @?= figure,
+        let figure = P.VectorFigure (P.ImportedPage "hash" 1 (0, 0, 10, 10) 0 (10, 10) (O.ODict []) Nothing "content" [] [] 0)
+        recolorFigure (0, 100, 100, 0) figure @?= figure,
       testCase "root ADR 0386 I1: multiple SVG colours are unchanged" $ do
         let figure = P.SvgFigure (drawing [black, (255, 0, 0)])
-        recolorFigure (30, 60, 90) figure @?= figure
+        recolorFigure (0, 100, 100, 0) figure @?= figure
     ]
   where
     black = (0, 0, 0)

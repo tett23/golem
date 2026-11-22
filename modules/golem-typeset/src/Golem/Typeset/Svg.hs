@@ -18,11 +18,11 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Html (cmykToRgb)
 import Golem.Length.Decimal (showRationalDigits)
 import Golem.Pdf qualified as P
 import Golem.Project.Style (Style (..), Swatch (..))
 import Golem.Svg qualified as S
+import Golem.Typeset.FigureColor (Cmyk, rgbTone)
 
 -- | The drawing of an SVG in the terms of golem-pdf.
 svgDrawing :: S.Svg -> P.Drawing
@@ -100,16 +100,21 @@ markers draw; no line and column, since the count is of the whole drawing.
 markerSegmentsMessage :: Text -> Integer -> Text
 markerSegmentsMessage path n = "SVG の図版の marker が描くパスの区間が 1000000 を超えます: " <> path <> "（" <> T.pack (show n) <> "）"
 
--- | Only single-colour SVG figures participate in root ADR 0386.
-recolorFigure :: (Int, Int, Int) -> P.FigureContent -> P.FigureContent
-recolorFigure color figure@(P.SvgFigure drawing)
-  | Set.size (Set.fromList (concatMap colors (P.drItems drawing))) == 1 = P.SvgFigure drawing {P.drItems = map replace (P.drItems drawing)}
+-- | Grayscale has priority over a single chromatic colour (root ADR 0403).
+recolorFigure :: Cmyk -> P.FigureContent -> P.FigureContent
+recolorFigure swatch figure@(P.SvgFigure drawing)
+  | Set.null used = figure
+  | all gray (Set.toList used) = paint (\(r, _, _) -> rgbTone swatch (fromIntegral r / 255))
+  | Set.size used == 1 = paint (const (rgbTone swatch 0))
   | otherwise = figure
   where
-    colors (P.DrawPath paint _) = maybe [] pure (P.ppFill paint) <> maybe [] (pure . P.psColor) (P.ppStroke paint)
+    used = Set.fromList (concatMap colors (P.drItems drawing))
+    gray (r, g, b) = r == g && g == b
+    colors (P.DrawPath p _) = maybe [] pure (P.ppFill p) <> maybe [] (pure . P.psColor) (P.ppStroke p)
     colors (P.DrawGroup _ _ items) = concatMap colors items
-    replace (P.DrawPath paint segments) = P.DrawPath paint {P.ppFill = color <$ P.ppFill paint, P.ppStroke = (\stroke -> stroke {P.psColor = color}) <$> P.ppStroke paint} segments
-    replace (P.DrawGroup matrix clip items) = P.DrawGroup matrix clip (map replace items)
+    paint convert = P.SvgFigure drawing {P.drItems = map (replace convert) (P.drItems drawing)}
+    replace convert (P.DrawPath p segments) = P.DrawPath p {P.ppFill = convert <$> P.ppFill p, P.ppStroke = (\stroke -> stroke {P.psColor = convert (P.psColor stroke)}) <$> P.ppStroke p} segments
+    replace convert (P.DrawGroup matrix clip items) = P.DrawGroup matrix clip (map (replace convert) items)
 recolorFigure _ figure = figure
 
 -- | A self-contained SVG of the supported drawing subset, preserving geometry.
@@ -153,8 +158,8 @@ drawingSvg (P.Drawing (width, height) items) =
         <> attribute "stroke-dashoffset" (number (P.psDashOffset s))
 
 -- | The explicitly selected swatch, independent of page furniture and rules.
-figureColor :: Style -> Maybe (Int, Int, Int)
+figureColor :: Style -> Maybe Cmyk
 figureColor style = do
   name <- stFigureColor style
   Swatch components <- Map.lookup name (stSwatches style)
-  pure (cmykToRgb components)
+  pure components

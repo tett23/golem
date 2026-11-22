@@ -853,7 +853,19 @@ inlines :: Ctx -> [InlineF r] -> Text
 inlines c = T.concat . map (inline c)
 
 inline :: Ctx -> InlineF r -> Text
-inline c = \case
+inline c value = anchor <> inlineBody c value
+  where
+    anchor = maybe "" (\sp -> pageText (Map.findWithDefault [] sp (cPageBreaks c)) "") atom
+    atom = case value of
+      Tcy sp _ -> Just sp
+      Number sp _ _ -> Just sp
+      Ref sp _ _ -> Just sp
+      Cite sp _ -> Just sp
+      ChannelItem sp _ -> Just sp
+      _ -> Nothing
+
+inlineBody :: Ctx -> InlineF r -> Text
+inlineBody c = \case
   Text sp t -> pageText (Map.findWithDefault [] sp (cPageBreaks c)) t
   Ruby _ _ segs
     | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->

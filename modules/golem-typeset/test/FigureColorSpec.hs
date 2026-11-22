@@ -12,6 +12,7 @@ import Data.Either (isLeft)
 import Data.Text qualified as T
 import Data.Word (Word16, Word8)
 import Golem.Pdf qualified as P
+import Golem.Pdf.Object (ObjOf (..))
 import Golem.Typeset.FigureColor
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -106,6 +107,13 @@ figureColorTests =
         forM_ [delayedPixels, delayedAlpha] $ \value -> do
           result <- guardColorConversion forceRasterAnalysis (Right (RasterAnalysis Grayscale (Just value)))
           assertBool "synchronous failure returned" (isLeft result),
+      testCase "root ADR 0403 I2: codec boundary forces deferred colour classification" $ do
+        result <- guardColorConversion forceRasterAnalysis (Right (RasterAnalysis (SolidRgb (error "deferred tone", 0, 0)) Nothing))
+        assertBool "synchronous classification failure returned" (isLeft result),
+      testCase "root ADR 0403 I2: PDF conversion boundary forces deferred resource streams" $ do
+        let page = P.ImportedPage "hash" 1 (0, 0, 1, 1) 0 (1, 1) (ODict []) Nothing "content" [(1, ODict [("nested", OArr [OStream [] (error "deferred stream")])])] [] 0
+        result <- guardColorConversion (maybe () forceImportedPage) (Right (Just page))
+        assertBool "synchronous PDF stream failure returned" (isLeft result),
       testCase "root ADR 0403 I2: cancellation is rethrown by the codec boundary" $ do
         result <- try (guardColorConversion (\() -> throw ThreadKilled) (Right ())) :: IO (Either AsyncException (Either T.Text ()))
         result @?= Left ThreadKilled,

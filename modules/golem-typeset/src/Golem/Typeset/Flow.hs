@@ -158,6 +158,7 @@ import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
 import Golem.Typeset.Box (BoxPaint (..), boxLineRange, boxLinesAround, groupBoxes)
+import Golem.Typeset.FigureColor (RasterAnalysis (..), safeAnalyzeRaster)
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
@@ -4758,7 +4759,7 @@ figure cannot be drawn for, G08011, G08016, G08017 and G08101 (golem-pdf ADR
 0008, 0009, docs/adr ADR 0054, 0084), or G08015, the joined content of a PDF page over
 256 MiB (docs/adr ADR 0051).
 -}
-data Unplaced = Unplaced !Text | EncryptedPdf | MissingPdfPage !Int !Int | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
+data Unplaced = Unplaced !Text | ColorConversion !Text | EncryptedPdf | MissingPdfPage !Int !Int | UnsupportedSvg !S.SvgProblems | ContentTooLarge | StreamNumberTooLarge !Int64
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -4776,20 +4777,27 @@ loadFigures inp = do
       -- the path as golem-eval resolved it, normalised (docs/adr/0199)
       let path = T.unpack s
       bytes <- maybe (filesRead (piFiles inp) (fromRight path (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
-      pure $
-        if
-          | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
-              Left P.Encrypted -> Left EncryptedPdf
-              Left (P.NoSuchPage requested count) -> Left (MissingPdfPage requested count)
-              Left (P.ContentTooLarge _) -> Left ContentTooLarge
-              Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
-              Left e -> Left (Unplaced (P.importErrorText e))
-              Right ip -> Right (P.VectorFigure ip)
-          | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
-              Left (S.SvgMalformed why) -> Left (Unplaced why)
-              Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
-              Right svg -> Right (maybe id recolorFigure (figureColor (piStyle inp)) (P.SvgFigure (svgDrawing svg)))
-          | otherwise -> either (Left . Unplaced . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
+      if
+        | ".pdf" `T.isSuffixOf` T.toLower s -> pure $ case P.importPage page bytes of
+            Left P.Encrypted -> Left EncryptedPdf
+            Left (P.NoSuchPage requested count) -> Left (MissingPdfPage requested count)
+            Left (P.ContentTooLarge _) -> Left ContentTooLarge
+            Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
+            Left e -> Left (Unplaced (P.importErrorText e))
+            Right ip -> Right (P.VectorFigure ip)
+        | ".svg" `T.isSuffixOf` T.toLower s -> pure $ case S.readSvg bytes of
+            Left (S.SvgMalformed why) -> Left (Unplaced why)
+            Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
+            Right svg -> Right (maybe id recolorFigure (figureColor (piStyle inp)) (P.SvgFigure (svgDrawing svg)))
+        | otherwise -> case P.readImage bytes of
+            Left why -> pure (Left (Unplaced (T.pack why)))
+            Right image -> case figureColor (piStyle inp) of
+              Nothing -> pure (Right (P.RasterFigure image))
+              Just swatch -> do
+                analysis <- safeAnalyzeRaster swatch image
+                pure $ case analysis of
+                  Left why -> Left (ColorConversion why)
+                  Right result -> Right (P.RasterFigure (fromMaybe image (raImage result)))
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
@@ -4810,6 +4818,7 @@ figureDiagnostics inp loaded =
     Just (Left why) <- [Map.lookup (figureKey f) loaded],
     d <- case why of
       Unplaced reason -> [diagnostic "G08010" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
+      ColorConversion reason -> [diagnostic "G08113" Error sp ("図版の色を変換できません: " <> figSource f <> "（" <> reason <> "）")]
       EncryptedPdf -> [diagnostic "G08105" Error sp ("暗号化された PDF の図版は使えません: " <> figSource f)]
       MissingPdfPage requested count -> [diagnostic "G08106" Error sp ("図版の PDF に " <> T.pack (show requested) <> " ページ目がありません（全 " <> T.pack (show count) <> " ページ）: " <> figSource f)]
       UnsupportedSvg ps ->

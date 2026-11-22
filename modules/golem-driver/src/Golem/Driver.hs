@@ -84,7 +84,7 @@ import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
-import Golem.Driver.PageMap (PageMapError (..), decodePageMap, resolvePageMap)
+import Golem.Driver.PageMap (PageMapError (..), decodePageMap, resolvePageMapWithAst)
 import Golem.Driver.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
@@ -116,8 +116,10 @@ import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
+import Golem.Typeset.FigureColor (safeRecolorRasterBytes)
 import Golem.Typeset.FontProvider (golemFontProvider, pdfFontDiagnostics)
 import Golem.Typeset.Svg (drawingSvg, figureColor, recolorFigure, svgDrawing)
+import Numeric (showHex)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
@@ -1269,14 +1271,17 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
       ft = projectFiles (evProject e)
   (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
   let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
-      site = renderXhtml hcfg ft book
-  webBook <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book site else pure book
+      originalSite = renderXhtml hcfg ft book
+  (webBook, webDiags) <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book originalSite else pure (book, [])
+  let site = if isJust (figureColor (evStyle e)) then renderXhtml hcfg ft webBook else originalSite
   results <- forM targets $ \case
+    TargetHtml | not (null webDiags) -> cleanDir (root </> "build" </> "html") >> pure ([], [], Nothing)
+    TargetEpub | not (null webDiags) -> cleanDir (root </> "build" </> "epub") >> pure ([], [], Nothing)
     TargetHtml -> writeHtmlTarget root hcfg ft webBook site
     TargetEpub -> writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
     TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
-  pure (concat [w | (w, _, _) <- results], concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
+  pure (concat [w | (w, _, _) <- results], webDiags <> concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
 
 {- | The configuration of the HTML of a book from its style.toml and the
 styles of its files: @dev@ for the profile dev, the fonts that are
@@ -1401,26 +1406,56 @@ writeHtmlTarget root hcfg ft book site = do
     pure (dir </> o)
   pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
 
--- | Keep unchanged image bytes; normalize only SVG drawings whose sole colour changes.
-recolorWebFigures :: BuildOptions -> Style -> Book -> XhtmlSite -> IO Book
+-- | Convert only monochrome assets; generated PNG paths cannot shadow an existing asset.
+recolorWebFigures :: BuildOptions -> Style -> Book -> XhtmlSite -> IO (Book, [Diagnostic])
 recolorWebFigures opts style book site = case figureColor style of
-  Nothing -> pure book
-  Just color -> do
-    changed <- forM (nub (map snd (siteAssets site))) $ \path ->
-      if not (".svg" `T.isSuffixOf` T.toLower (T.pack path))
-        then pure Nothing
-        else do
-          readResult <- try (maybe (filesRead (optFiles opts) path) pure (Map.lookup (T.pack path) (bookImages book))) :: IO (Either IOException BS.ByteString)
-          pure $ case readResult of
-            Left _ -> Nothing
-            Right bytes -> case Svg.readSvg bytes of
-              Left _ -> Nothing
-              Right svg ->
-                let original = P.SvgFigure (svgDrawing svg)
-                 in case recolorFigure color original of
-                      P.SvgFigure drawing | P.SvgFigure drawing /= original -> Just (T.pack path, TE.encodeUtf8 (drawingSvg drawing))
-                      _ -> Nothing
-    pure book {bookImages = Map.union (Map.fromList (catMaybes changed)) (bookImages book)}
+  Nothing -> pure (book, [])
+  Just swatch -> do
+    checked <- forM (nub (map snd (siteAssets site))) $ \path -> do
+      let lower = T.toLower (T.pack path)
+          svg = ".svg" `T.isSuffixOf` lower
+          raster = any (`T.isSuffixOf` lower) [".png", ".jpg", ".jpeg"]
+      result <-
+        if not (svg || raster)
+          then pure (Right Nothing)
+          else do
+            readResult <- try (maybe (filesRead (optFiles opts) path) pure (Map.lookup (T.pack path) (bookImages book))) :: IO (Either IOException BS.ByteString)
+            case readResult of
+              Left problem -> pure (Left (T.pack (show problem)))
+              Right bytes
+                | svg -> pure $ case Svg.readSvg bytes of
+                    Left _ -> Right Nothing
+                    Right parsed ->
+                      let original = P.SvgFigure (svgDrawing parsed)
+                       in case recolorFigure swatch original of
+                            P.SvgFigure drawing | P.SvgFigure drawing /= original -> Right (Just (False, TE.encodeUtf8 (drawingSvg drawing)))
+                            _ -> Right Nothing
+                | otherwise -> fmap (fmap (fmap (\(_, png) -> (True, png)))) (safeRecolorRasterBytes swatch bytes)
+      pure (T.pack path, result)
+    let failures = Map.fromList [(path, why) | (path, Left why) <- checked]
+        diagnostics = [diagnostic "G08113" Error sp ("図版の色を変換できません: " <> webSource f <> "（" <> why <> "）") | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- allFigures bs, Just why <- [Map.lookup (webSource f) failures]]
+        taken = Set.fromList (Map.keys (bookImages book) <> [T.pack path | (out, src) <- siteAssets site, path <- [out, src]])
+        (paths, images, _) = foldl' allocate (Map.empty, Map.empty, taken) [(path, png, bytes) | (path, Right (Just (png, bytes))) <- checked]
+        allocate (pathMap, imageMap, used) (path, png, bytes) =
+          let jpeg = any (`T.isSuffixOf` T.toLower path) [".jpg", ".jpeg"]
+              base = "images/golem-color/" <> hex (P.sha256 bytes)
+              candidate n = base <> (if n == (0 :: Int) then "" else "-" <> T.pack (show n)) <> ".png"
+              unused n = if Set.member (candidate n) used then unused (n + 1) else candidate n
+              target = if png && jpeg then unused 0 else path
+           in (Map.insert path target pathMap, Map.insert target bytes imageMap, Set.insert target used)
+        rewrite block' =
+          block'
+            { blockBody = case blockBody block' of
+                FigureBlock f -> let old = webSource f; target = Map.findWithDefault old old paths in FigureBlock f {figWeb = if target == old then figWeb f else Just target, figCaption = map rewrite (figCaption f)}
+                BulletList items -> BulletList [item {itemBlocks = map rewrite (itemBlocks item)} | item <- items]
+                OrderedList items -> OrderedList [item {itemBlocks = map rewrite (itemBlocks item)} | item <- items]
+                DefList groups -> DefList [group {dgDefs = map (map rewrite) (dgDefs group)} | group <- groups]
+                other -> other
+            }
+        docs = [Document fid (map rewrite bs) | Document fid bs <- bookDocs book]
+    pure (book {bookDocs = docs, bookImages = Map.union images (bookImages book)}, diagnostics)
+  where
+    hex = T.pack . concatMap (\byte -> let value = showHex byte "" in replicate (2 - length value) '0' <> value) . BS.unpack
 
 -- | Writes the EPUB of the site to build/epub/book.epub.
 writeEpubTarget :: BuildOptions -> Evaluated -> HtmlConfig -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
@@ -1445,7 +1480,7 @@ writeEpubTarget opts e hcfg ft book site = do
           pure $ do
             bytes <- first (\err -> ("G03261", T.pack path <> ": " <> T.pack (show err))) readResult
             mapping <- first pageMapFailure (decodePageMap (BL.fromStrict bytes))
-            first pageMapFailure $ resolvePageMap (Map.map (\source -> (sfPath source, sfText source)) (projectSources project)) ft book mapping
+            first pageMapFailure $ resolvePageMapWithAst (Map.map sfAst (projectSources project)) (Map.map (\source -> (sfPath source, sfText source)) (projectSources project)) ft book mapping
   case pageMap of
     Left problem -> cleanDir dir >> pure (report problem)
     Right (anchors, links) -> do

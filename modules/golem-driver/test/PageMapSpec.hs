@@ -1,6 +1,9 @@
 module PageMapSpec (pageMapTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
+import Codec.Picture.Jpg qualified as Jpeg
+import Codec.Picture.Png qualified as Png
+import Codec.Picture.Types qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (isLeft)
@@ -9,6 +12,7 @@ import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Data.Word (Word8)
 import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.Driver
@@ -21,6 +25,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Numeric (showHex)
 import Support (codesOf, withChapters)
+import System.Directory (doesFileExist, listDirectory)
 import System.FilePath ((</>))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -52,6 +57,15 @@ pageMapTests =
             links @?= [("i", "a.xhtml", "GolemFixedPage-1"), ("1", "a.xhtml", "GolemFixedPage-2")]
             Map.lookup spanA anchors @?= Just [(0, "GolemFixedPage-1", "i"), (2, "GolemFixedPage-2", "1")]
           Left problem -> assertFailure (show problem),
+      testCase "root ADR 0386 I1: merged escapes and expression output retain their positions" $ do
+        let raw = "a\\[b [= 1 + 1]"
+            sp = mkSpan fid 0 (BS.length (TE.encodeUtf8 raw))
+            merged = book {bookDocs = [Document fid [Block sp Nothing Nothing (Paragraph Nothing [Text sp "a[b 2"])]]}
+            sourceMap = Map.singleton fid ("a.gm", raw)
+            mapping = PageMap (Map.singleton "a.gm" (hex (sha256 (TE.encodeUtf8 raw)))) [FixedPage 1 "a" (Just ("a.gm", 0, 3)), FixedPage 2 "b" (Just ("a.gm", 0, 5))]
+        case resolvePageMap sourceMap files merged mapping of
+          Left problem -> assertFailure (show problem)
+          Right (anchors, _) -> Map.lookup sp anchors @?= Just [(2, "GolemFixedPage-1", "a"), (4, "GolemFixedPage-2", "b")],
       testCase "root ADR 0386 I1: repeated source positions have no ambiguous anchor" $ do
         let duplicated = book {bookDocs = bookDocs book <> bookDocs book}
         resolvePageMap sources files duplicated (PageMap hashes [FixedPage 1 "1" (Just ("a.gm", 0, 0))]) @?= Right (Map.empty, []),
@@ -83,6 +97,44 @@ pageMapTests =
           archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
           fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/mono.svg" archive) @?= Just mono
           fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/multi.svg" archive) @?= Just multi,
+      testCase "root ADR 0403 I1: JPEG becomes linked PNG in HTML and EPUB while multi-colour bytes remain" $
+        withChapters colorStyle [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n\n@nonumber\n@figure multi.jpg alt=\"multi\"\n")] [] $ \root -> do
+          BS.writeFile (root </> "gray.jpg") grayJpeg
+          BS.writeFile (root </> "multi.jpg") multiJpeg
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= []
+          names <- listDirectory (root </> "build/html/images/golem-color")
+          name <- case names of
+            [one] -> pure one
+            _ -> assertFailure ("expected one generated PNG, got " <> show names) >> pure "missing"
+          let path = "images/golem-color/" <> name
+          png <- BS.readFile (root </> "build/html" </> path)
+          assertBool "PNG signature" (BS.take 8 png == BS.pack [137, 80, 78, 71, 13, 10, 26, 10])
+          html <- TIO.readFile (root </> "build/html/a.xhtml")
+          assertBool "HTML links to generated PNG" (T.pack path `T.isInfixOf` html)
+          BS.readFile (root </> "build/html/multi.jpg") >>= (@?= multiJpeg)
+          archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
+          fmap (BL.toStrict . fromEntry) (findEntryByPath ("OEBPS/" <> path) archive) @?= Just png
+          fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/multi.jpg" archive) @?= Just multiJpeg,
+      testCase "root ADR 0403 I2: malformed recolouring removes stale web outputs with G08113" $
+        withChapters colorStyle [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
+          BS.writeFile (root </> "gray.jpg") grayJpeg
+          good <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics good)) @?= []
+          BS.writeFile (root </> "gray.jpg") (BS.take 24 grayJpeg)
+          bad <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
+          doesFileExist (root </> "build/html/a.xhtml") >>= (@?= False)
+          doesFileExist (root </> "build/epub/book.epub") >>= (@?= False),
+      testCase "root ADR 0403 I2: PNG opacity is preserved in copied web output" $
+        withChapters colorStyle [("a.gm", "@nonumber\n@figure gray.png alt=\"gray\"\n")] [] $ \root -> do
+          BS.writeFile (root </> "gray.png") alphaPng
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
+          codesOf (filter isError (brDiagnostics result)) @?= []
+          bytes <- BS.readFile (root </> "build/html/gray.png")
+          case Png.decodePng bytes of
+            Right (J.ImageRGBA8 pixels) -> J.pixelAt pixels 0 0 @?= J.PixelRGBA8 255 128 128 128
+            other -> assertFailure (either id (const "unexpected pixels") other),
       testCase "root ADR 0386 I1: EPUB links resolve to actual body anchors" $
         withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
           manifest <- TIO.readFile (root </> "manifest.toml")
@@ -103,6 +155,10 @@ pageMapTests =
         assertBool "schema rejected" (isLeft (decodePageMap "{\"sources\":{},\"pages\":[{\"page\":0,\"label\":\"x\"}]}"))
     ]
   where
+    colorStyle = "[figures]\ncolor = \"accent\"\n[color.swatches.accent]\ncmyk = [0, 100, 100, 0]\n"
+    grayJpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\_ _ -> 0 :: Word8) 2 1))
+    multiJpeg = BL.toStrict (Jpeg.encodeDirectJpegAtQualityWithMetadata 100 mempty (J.generateImage (\x _ -> if x < 8 then J.PixelRGB8 255 0 0 else J.PixelRGB8 0 0 255) 16 8))
+    alphaPng = BL.toStrict (Png.encodePng (J.generateImage (\_ _ -> J.PixelRGBA8 128 128 128 128) 1 1))
     monoSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><path fill=\"black\" d=\"M 0 0 L 10 10\"/></svg>"
     multiSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><path fill=\"black\" d=\"M 0 0 L 10 10\"/><path fill=\"blue\" d=\"M 1 1 L 8 8\"/></svg>"
     checkFailure json unreadable expected = withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
