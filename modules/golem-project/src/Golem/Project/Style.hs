@@ -143,6 +143,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (foldM, join, unless, when)
 import Data.Bifunctor (bimap)
+import Data.Bifunctor qualified as Bifunctor
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
 import Data.Foldable (asum, toList)
@@ -156,12 +157,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble (NoteNumbering (..))
-import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotName (..), Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText)
+import Golem.Assemble.Formats (Braces (..), FormatCause (..), FormatError (..), Legacy (..), MarkFormat, NumberSlotName (..), Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText, unknownSlot)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
-import Golem.Project.Manifest (decodeStrictBy, decodeStrictTableWith, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.Manifest (codedMessage, decodeStrictBy, decodeStrictTableWith, decodeStrictWith, failAtCode, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
@@ -173,7 +174,7 @@ import Numeric.Natural (Natural)
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.Matcher (inIndex, inKey)
-import Toml.Semantics (valueAnn)
+import Toml.Semantics (valueAnn, valueType)
 import Toml.Syntax (Position (..))
 import Prelude hiding (fail)
 
@@ -1493,7 +1494,7 @@ parseRunningFormatLegacy t0
   | T.null t0 = Left "空の行があります"
   | T.any (== '\n') t0 = Left "行の中に改行があります。行は配列の要素で分けてください"
   | otherwise = do
-      (ps, legacy) <- parseFormat DoubledToo (fmap TextSlot . slot) t0
+      (ps, legacy) <- Bifunctor.first formatReason (parseFormat DoubledToo (bimap unknownSlot TextSlot . slot) t0)
       pure (merge [part p | p <- ps], legacy)
   where
     part = \case
@@ -2147,24 +2148,34 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> optKey "instance" <*> axesKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> instanceKey <*> axesKey
+
+-- | The named instance of a role (Golem ADR 0358): a string; anything else is G03260 (root ADR 0413).
+instanceKey :: ParseTable l (Maybe Text)
+instanceKey =
+  optKeyOf "instance" $ \case
+    Text' _ t -> pure t
+    v -> failAtCode (valueAnn v) "G03260" ("expected string but got " <> valueType v)
 
 {- | The axes of a role (Golem ADR 0358): a table of axis tags and finite
 numbers, in the order of the tags. Whether the font has the axes and the
 values lie in them is checked when the font is loaded (G08111, G08112).
+Each error has its code (root ADR 0413): axes that are not a table
+G03261, a value that is not a number G03262, one that is not finite
+G03263.
 -}
 axesKey :: ParseTable l [(Text, Double)]
 axesKey =
   fmap (fromMaybe []) . optKeyOf "axes" $ \case
     Table' _ (MkTable t) -> sequence [(k,) <$> inKey k (number v) | (k, (_, v)) <- Map.toAscList t]
-    v -> failAt (valueAnn v) "axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます）"
+    v -> failAtCode (valueAnn v) "G03261" "axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます）"
   where
     number = \case
       Integer' _ n -> pure (fromInteger n)
       Double' l d
-        | isNaN d || isInfinite d -> failAt l "軸の値には有限の数を書きます"
+        | isNaN d || isInfinite d -> failAtCode l "G03263" "軸の値には有限の数を書きます"
         | otherwise -> pure d
-      v -> failAt (valueAnn v) "軸の値には数を書きます"
+      v -> failAtCode (valueAnn v) "G03262" "軸の値には数を書きます"
 
 instance FromValue CharStyleDef where
   fromValue = parseTableFromValue $ do
@@ -2795,19 +2806,38 @@ instance FromValue IndexSec where
 formats of style.toml are (docs/adr ADR 0177), with @{{@ and @}}@ as the
 current way of writing a brace: no notice. Every field is a text slot, so
 an explicit format writes decimal digits whatever the writing mode. A
-newline is an error: one printing is one line.
+newline is an error: one printing is one line. Each cause has its code
+(root ADR 0413): a newline first, then the first cause read from the
+front.
 -}
 printingTemplate :: l -> Text -> Matcher l [Piece Text]
 printingTemplate loc format
   -- the format is not repeated in the message: it would break the line
-  | T.any (`elem` ("\r\n" :: String)) format = failAt loc "[printings] の format が正しくありません（改行は書けません）"
+  | T.any (`elem` ("\r\n" :: String)) format = failAtCode loc "G03264" "[printings] の format が正しくありません（改行は書けません）"
   | otherwise = either wrong (pure . fst) (parseFormat DoubledToo slot format)
   where
-    wrong why = failAt loc (T.unpack ("[printings] の format が正しくありません（" <> why <> "）: " <> format))
+    wrong (FormatError cause why) = failAtCode loc (printingFormatCode cause) (T.unpack ("[printings] の format が正しくありません（" <> why <> "）: " <> format))
     slot name
       | name == "printing" = Right (TextSlot "number")
       | name `elem` ["year", "month", "day", "date", "edition"] = Right (TextSlot name)
-      | otherwise = Left ("表にない欄です: {" <> name <> "}")
+      | otherwise = Left (unknownSlot ("表にない欄です: {" <> name <> "}"))
+
+{- | The code of a cause of an error of the format of [printings] (root
+ADR 0413). Every field is a text slot, so a notation on one is
+'NotationOnText'; the causes of number slots and samples cannot come from
+this table, and take the code of a notation written on a field.
+-}
+printingFormatCode :: FormatCause -> Text
+printingFormatCode = \case
+  UnknownSlot -> "G03265"
+  NotationOnText -> "G03266"
+  UnknownNotation -> "G03266"
+  NotationOnSample -> "G03266"
+  UnclosedBrace -> "G03267"
+  UnopenedBrace -> "G03268"
+  EmptySlot -> "G03269"
+  BadEscape -> "G03270"
+  TrailingBackslash -> "G03271"
 
 -- | Substitute the fields of one printing, leaving literal text intact.
 renderPrintingTemplate :: (Text -> Text) -> [Piece Text] -> Text
@@ -3879,7 +3909,9 @@ readLocal kvs = run (Table (table [(k, value k v) | (k, v) <- kvs]))
       Success [] a -> Right a
       Success ws _ -> Left (map message ws)
     -- a negative number at a natural key is G02103 (docs/adr ADR 0102, docs/adr/0261)
-    message (MatchMessage _ path msg) = (if msg == "integer out of range for Natural" then "G02103" else codeOf path, schemaMessage path msg)
+    message (MatchMessage _ path coded) =
+      let (own, msg) = codedMessage coded
+       in (fromMaybe (if msg == "integer out of range for Natural" then "G02103" else codeOf path) own, schemaMessage path msg)
     codeOf = \case
       ScopeKey k : _ | k `elem` featureKeys -> "G03021"
       -- an element of features that does not read (docs/adr/0268)

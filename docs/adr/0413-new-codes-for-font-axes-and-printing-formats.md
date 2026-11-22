@@ -1,6 +1,6 @@
 # ADR 0413: フォントの軸と刷の書式の誤りに、原因ごとの新しいコードを振る
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

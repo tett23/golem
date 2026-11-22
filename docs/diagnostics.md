@@ -6429,6 +6429,8 @@ style.toml の誤りです
 見出しの `running-head` には使わない（[G03019](#g03019)）。
 文字スタイルと段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の誤りには使わない（[G03021](#g03021)）。
 フォントの役割、文字スタイル、段落スタイルの `features` の要素の誤りには使わない（[G03124](#g03124)）。
+フォントの役割の `instance` と `axes` の誤りには使わない（[G03260](#g03260) から [G03263](#g03263)）。
+`[printings]` の `format` の誤りには使わない（[G03264](#g03264) から [G03271](#g03271)、[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
 隠しノンブルの `gutter` と `size` の関係の誤りには使わない（[G03029](#g03029)）。
 左右固定モードと禁止値の組み合わせにも出る（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 `single` に書いた `binding` と `gutter`、`facing` に書いた版面の `left` と `right`、左右固定モードの左右基準の重複と不足を拒む。
@@ -6439,7 +6441,7 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`[printings] の format が正しくありません（<理由>）: <書式>`、`[printings] の format が正しくありません（改行は書けません）`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル table には 0 でない indent、first-line-indent、end-indent を書けません。表のセルは字下げをしません: <キー>`、`[tables] の number には {n} などの差し込みを書きます: <書式>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1 から 6 のどれかです: <段>`、`見出しの番号の書式の {<k>} は上の階層の番号です。階層 <段> の見出しには書けません: <書式>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-format が正しくありません（<理由>）: <書式>`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル table には 0 でない indent、first-line-indent、end-indent を書けません。表のセルは字下げをしません: <キー>`、`[tables] の number には {n} などの差し込みを書きます: <書式>`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください`、`文字スタイルの wrap-mark は code と based-on で code に行き着く文字スタイルにだけ書けます: <名前>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)、[docs/adr/0118](adr/0118-ref-page-numerals-in-vertical-text.md)（`[numbers]` の `ref-page`）、[ADR 0367](adr/0367-caption-sidenote-paragraphs.md)（`caption` と `sidenote` の字下げを外した）、[ADR 0188](adr/0188-headings-beyond-level-3.md)（`[headings.N]` の階層と見出しの番号の書式の `{k}`）、[ADR 0375](adr/0375-printings-format.md)（`[printings]` の `format`）である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -6473,7 +6475,6 @@ style.toml の誤りです
 - `[headings.N]` の N に 1 から 6 のほかの値を書いた。見出しの番号の書式に、その見出しの階層より小さくない `{k}` を書いた（`[headings.2]` の `{2}`、`[headings.1]` の `{1}` など）。図版、コードブロック、ノンブルの番号の書式に `{3}` から `{5}` を書いた（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 - `[notes]` の `mark-format` に数の差し込みを書かなかったか、二つ以上書いたか、表にない差し込みか表記の名前を書いたか、`{{`、閉じていない `{`、対応のない `}`、誤ったエスケープ（`\a`、末尾の `\`）を書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
 - 見出し、図版、コードブロック、ノンブルの番号の書式に、表にない差し込みか表記の名前、閉じていない `{`、対応のない `}`、誤ったエスケープを書いた（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
-- `[printings]` の `format` に、表にない欄、表記つきの欄（`{edition:kanji}` など）、空の欄 `{}`、閉じていない `{`、対応のない `}`、誤ったエスケープ（`\a`、末尾の `\`）、改行を書いた（[ADR 0375](adr/0375-printings-format.md)）。
 
 ### 直し方
 
@@ -8433,6 +8434,318 @@ PDF だけのビルドでは出さない。
 PDF でだけページごとの番号が要るなら、直さなくてよい。
 HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 どの出力でも同じ番号が要るなら、`numbering` を `"chapter"`（既定）か `"book"` にする。
+
+## G03260
+
+フォントの役割の instance が文字列ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のフォントの役割（`[fonts.<役割>]`）の `instance` に、文字列でない値を書いた（[docs/adr/0358](adr/0358-font-instance-selection.md)）。
+位置は `instance` の値である。
+
+- メッセージ: `fonts.<役割>.instance には文字列を書きます（<型>が書かれています）`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0358](adr/0358-font-instance-selection.md)
+
+### 主な原因
+
+- `instance = 1` のように、名前付きインスタンスの名前を引用符で囲まなかった。
+- `instance = ["Bold"]` のように、配列で書いた。
+
+### 直し方
+
+名前付きインスタンスの名前を、`instance = "Bold"` のように文字列で書く。
+
+## G03261
+
+フォントの役割の axes が表ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のフォントの役割（`[fonts.<役割>]`）の `axes` に、表でない値を書いた（[docs/adr/0358](adr/0358-font-instance-selection.md)）。
+位置は `axes` の値である。
+
+- メッセージ: `axes には軸のタグと数の表を書きます（{ wght = 650 } のように書きます） (fonts.<役割>.axes)`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0358](adr/0358-font-instance-selection.md)
+
+### 主な原因
+
+- `axes = 650` のように、軸のタグを書かずに数だけを書いた。
+- `axes = [650]` のように、配列で書いた。
+
+### 直し方
+
+`axes = { wght = 650 }` のように、軸のタグと数の表を書く。
+
+## G03262
+
+軸の値が数ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のフォントの役割（`[fonts.<役割>]`）の `axes` の軸の値に、数でない値を書いた（[docs/adr/0358](adr/0358-font-instance-selection.md)）。
+位置はその軸の値である。
+
+- メッセージ: `軸の値には数を書きます (fonts.<役割>.axes.<タグ>)`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0358](adr/0358-font-instance-selection.md)
+
+### 主な原因
+
+- `axes = { wght = "650" }` のように、数を引用符で囲んだ。
+- 軸の値に真偽値や表を書いた。
+
+### 直し方
+
+`axes = { wght = 650 }` のように、軸の値を数で書く。
+
+## G03263
+
+軸の値が有限の数ではありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のフォントの役割（`[fonts.<役割>]`）の `axes` の軸の値に、無限大か NaN（`inf`、`-inf`、`nan`）を書いた（[docs/adr/0358](adr/0358-font-instance-selection.md)）。
+位置はその軸の値である。
+
+- メッセージ: `軸の値には有限の数を書きます (fonts.<役割>.axes.<タグ>)`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0358](adr/0358-font-instance-selection.md)
+
+### 主な原因
+
+- 軸の値に `inf` か `nan` を書いた。
+
+### 直し方
+
+軸の値を有限の数で書く。
+フォントの軸の範囲は、フォントを読むときに確かめる（[G08112](#g08112)）。
+
+## G03264
+
+[printings] の format に改行があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に改行を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+刷は一行に一つなので、書式に改行は書けない。
+
+- メッセージ: `[printings] の format が正しくありません（改行は書けません） (printings.format)`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- `format` に `\n` を書いたか、複数行の文字列で書いた。
+
+### 直し方
+
+改行を消し、書式を一行にする。
+
+## G03265
+
+[printings] の format に表にない欄があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、欄の表（`printing`、`year`、`month`、`day`、`date`、`edition`）にない名前の欄を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+
+- メッセージ: `[printings] の format が正しくありません（表にない欄です: {<名前>}）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- `{volume}` のように、表にない名前を書いた。
+- `{Year}` のように、名前の大文字と小文字を誤った。
+- `{:kanji}` のように、名前を書かずに表記だけを書いた。
+
+### 直し方
+
+欄の名前を、表の名前に直す。
+文字の `{` は `\{` か `{{` と書く。
+
+## G03266
+
+[printings] の format の欄に表記を書いています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、欄に表記を付けた（`{edition:kanji}` や `{year:}`）（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+刷の書式の欄は、どれも文字の欄なので、表記を書けない。
+
+- メッセージ: `[printings] の format が正しくありません（数でない差し込みには表記を書けません: {<欄>}）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- `{edition:kanji}` のように、ほかの書式の数の差し込みと同じく表記を書いた。
+- `{year:}` のように、空の表記を書いた。
+
+### 直し方
+
+`:` と表記を消す。
+欄はいつも算用数字で書く。
+
+## G03267
+
+[printings] の format に閉じていない { があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、閉じていない `{` を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+
+- メッセージ: `[printings] の format が正しくありません（閉じていない { があります。文字の { は \{ と書きます）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- `{year` のように、欄の `}` を書き忘れた。
+- 文字の `{` をエスケープしなかった。
+
+### 直し方
+
+欄を `}` で閉じるか、文字の `{` を `\{` と書く。
+
+## G03268
+
+[printings] の format に対応する { のない } があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、対応する `{` のない `}` を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+
+- メッセージ: `[printings] の format が正しくありません（対応する { のない } があります。文字の } は \} と書きます）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- `year}` のように、欄の `{` を書き忘れた。
+- 文字の `}` をエスケープしなかった。
+
+### 直し方
+
+欄の `{` を足すか、文字の `}` を `\}` と書く。
+
+## G03269
+
+[printings] の format に空の欄 {} があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、空の欄 `{}` を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+
+- メッセージ: `[printings] の format が正しくありません（空の差し込み {} があります）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- 欄の名前を書き忘れた。
+- 文字の `{}` をエスケープしなかった。
+
+### 直し方
+
+欄の名前を書くか、文字の `{` と `}` を `\{` と `\}` と書く。
+
+## G03270
+
+[printings] の format の \ の後の字が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、`\` の後に `{`、`}`、`\` のどれでもない字を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+
+- メッセージ: `[printings] の format が正しくありません（\ の後には {、}、\ のどれかを書きます: \<字>）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- `\a` のように、エスケープできない字の前に `\` を書いた。
+- 文字の `\` を一つだけ書いた。
+
+### 直し方
+
+文字の `\` は `\\` と書く。
+`\` の後に書けるのは `{`、`}`、`\` だけである。
+
+## G03271
+
+[printings] の format の末尾に \ があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[printings]` の `format` に、書式の末尾に `\` を書いた（[docs/adr/0375](adr/0375-printings-format.md)）。
+位置は `format` の値である。
+書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+
+- メッセージ: `[printings] の format が正しくありません（書式の末尾に \ があります。文字の \ は \\ と書きます）: <書式>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+
+### 主な原因
+
+- 書式の最後の文字の `\` を一つだけ書いた。
+
+### 直し方
+
+文字の `\` は `\\` と書く。
 
 ## G04001
 
