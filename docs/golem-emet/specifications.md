@@ -177,7 +177,7 @@ pub fn total :: List Nat -> Nat
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
 | `Inline.AkiAmount` | `Zw Rat`、`Sp Nat` |
 | `Inline.Deferred` | なし（中身の読めない値） |
-| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat` |
+| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat`、`Separator String` |
 | `Block.HeadingAttrs` | `HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }` |
 | `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
 | `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
@@ -194,6 +194,12 @@ pub fn total :: List Nat -> Nat
 | `Block.PageControl` | `NoBreak`、`NeedLines Nat`、`AdjustLines Int` |
 
 ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の注の本文はインラインの列なので、`Inlines` にした。
+
+`Block.Separator String` は、原稿の `---` や `@separator 名前` と同じ名前付き区切りを作る（[root ADR 0398](../adr/0398-styled-separators-in-manuscripts.md)）。
+通常の公開ブロック関数は従来どおり `BlankLines` を返せない。
+`[separators.名前]` の `function` と `command` で指定した区切り関数だけは、返す列の最上位に `BlankLines` を置ける。
+区切り関数の返す列が空でもよいが、入れ子の `BlankLines` と、深さによらず `Separator` は拒否する。
+区切り関数の結果は原稿の区切り位置に展開し、再帰的な区切りの展開はしない。
 
 コードの行の原稿の範囲（[docs/adr/0218](../adr/0218-page-starts-inside-code-blocks.md)）は、ブロックの範囲と同じく `CodeLine` の欄に出さない。
 受け取ったまま返したコードの行は範囲を保ち、関数が作ったコードの行は範囲を持たない（`Nothing`）。
@@ -212,6 +218,7 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 | `Inline.plain` | `Inlines -> String` | テキスト、ルビの親文字、圏点と色と文字スタイルの中身、縦中横、数をつないだ文字列 |
 | `Block.paragraph` | `Inlines -> Blocks` | 段落 |
 | `Block.styled` | `String -> Inlines -> Blocks` | 段落スタイルを付けた段落 |
+| `Block.separator` | `String -> Blocks` | 名前を持つ区切りのブロック |
 | `Block.bullets`、`Block.numbered` | `List Blocks -> Blocks` | 箇条書き、番号付きリスト |
 | `Block.table` | `List Inlines -> List (List Inlines) -> Blocks` | 見出しの行と本体の行の表 |
 | `Block.definitions` | `List (Inlines, Blocks) -> Blocks` | 定義リスト |
@@ -221,6 +228,8 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 パターンは宣言の欄だけを照合するので、関数からは見えない。
 関数が作ったノードは添字を持たず、呼び出しの位置（フィルタではファイルの先頭）を持つ。
 関数が作ったブロックは言語を持たず、外のブロックの言語を受け継ぐ。
+ただし、`Separator` は言語を持てず、外の `@lang` により言語が付いた結果は不正な IR として拒否する。
+`style.toml` の区切り関数として呼ぶ場合は、言語のない最上位の結果として展開する。
 `Inline.Deferred` のコンストラクタ `Opaque` は利用者に見せず、値は遅延した式の添字である。
 
 高階の関数は、渡された関数の要求をそのまま自分の要求にする型を持つ（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)）。

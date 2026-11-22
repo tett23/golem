@@ -16,6 +16,7 @@ kindForRule :: Text -> Maybe SyntaxKind
 kindForRule = \case
   "File" -> Just NFile
   "BlankLines" -> Just NBlankLines
+  "SeparatorLine" -> Just NSeparatorLine
   "Heading" -> Just NHeading
   "Paragraph" -> Just NParagraph
   "InlineCommand" -> Just NInlineCommand

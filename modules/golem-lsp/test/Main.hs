@@ -192,6 +192,12 @@ tests =
         map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse"]
         map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 12 CkParaStyle
         map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "code", "italic", "no-break", "note-mark", "strong", "subscript", "superscript", "toc-page-number", "url"],
+      testCase "root ADR 0398 A5: separator name completion" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@separator \n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm" (offsetIn src "@separator " 11)
+        assertBool "root ADR 0398 A5: default separator name" (not (null [x | x <- found, cmpLabel x == "default"])),
       testCase "completion: the kinds of a page break (docs/adr ADR 0017)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@page-break \n"

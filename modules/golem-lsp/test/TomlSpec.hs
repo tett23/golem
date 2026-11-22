@@ -36,11 +36,17 @@ contextOf t = let (src, off) = cursor t in contextAt src off
 
 -- | The candidates of a row are exactly these.
 exactly :: FilePath -> Text -> [Text] -> TestTree
-exactly path t want = testCase (show t) (labelsIn path t @?= want)
+exactly path t = exactlyNamed (show t) path t
+
+exactlyNamed :: String -> FilePath -> Text -> [Text] -> TestTree
+exactlyNamed name path t want = testCase name (labelsIn path t @?= want)
 
 -- | The candidates of a row include some and exclude others.
 including :: FilePath -> Text -> [Text] -> [Text] -> TestTree
-including path t yes no = testCase (show t) $ do
+including path t = includingNamed (show t) path t
+
+includingNamed :: String -> FilePath -> Text -> [Text] -> [Text] -> TestTree
+includingNamed name path t yes no = testCase name $ do
   let got = labelsIn path t
   mapM_ (\x -> assertBool ("missing " <> T.unpack x <> " in " <> show got) (x `elem` got)) yes
   mapM_ (\x -> assertBool ("unexpected " <> T.unpack x <> " in " <> show got) (x `notElem` got)) no
@@ -75,6 +81,13 @@ tomlTests =
           exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse", "quote"],
           including "style.toml" "[page]\nbinding = \"right\"\n▮" ["size", "writing-mode", "grid", "bleed"] ["binding"],
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],
+          testGroup
+            "root ADR 0400 A4"
+            [ exactlyNamed "root ADR 0400 A4: complete the layout modes" "style.toml" "[page]\nlayout = ▮" ["\"single\"", "\"facing\""],
+              includingNamed "root ADR 0400 A4: complete physical reference edges" "style.toml" "[page.grid.position]\n▮" ["top", "left", "right", "gutter"] [],
+              exactlyNamed "root ADR 0400 A4: complete sidenote sides" "style.toml" "[sidenotes]\nside = ▮" ["\"outside\"", "\"left\"", "\"right\""],
+              includingNamed "root ADR 0400 A4: complete physical and central master positions" "style.toml" "[masters.default.folio]\nposition = ▮" ["\"top-left\"", "\"top-right\"", "\"bottom-left\"", "\"bottom-right\"", "\"top-center\"", "\"bottom-center\""] []
+            ],
           exactly "style.toml" "[page]\nbinding = \"▮" ["right", "left"],
           exactly "style.toml" "[character-styles.em]\nsynthetic-bold = ▮" ["true", "false"],
           exactly "style.toml" "[paragraph-styles.quote]\nbased-on = ▮" ["\"body\"", "\"caption\"", "\"sidenote\"", "\"table\"", "\"toc-1\"", "\"toc-2\"", "\"toc-3\"", "\"toc-4\"", "\"toc-5\"", "\"toc-6\"", "\"verse\""],
@@ -83,12 +96,21 @@ tomlTests =
           exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"toc-page-number\"", "\"url\"", "\"em\""],
           exactly "style.toml" "[page]\n# binding = ▮" [],
           exactly "style.toml" "[page]\nbinding = \"\"\"\n▮" [],
-          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "columns", "column-gap", "position"],
+          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "alignment", "columns", "column-gap", "position"],
           exactly "style.toml" "# 日本語のコメント😀\n[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           exactly "style.toml" "[page]\nsize = { width = \"100mm\", ▮" ["height"],
           exactly "style.toml" "[headings.1]\nrunning-head = ▮" [],
           including "style.toml" "[headings.1]\n▮" ["font", "page-break", "rule-before"] ["running-head"],
           exactly "style.toml" "[paragraph-styles.body]\nrule-before = ▮" ["false"],
+          testCase "root ADR 0397 A2: completion offers grid and free alignment" $
+            labelsIn "style.toml" "[page.grid]\nalignment = ▮" @?= ["\"grid\"", "\"free\""],
+          testCase "root ADR 0397 A2: completion offers paragraph pitch and spacing" $ do
+            let keys = labelsIn "style.toml" "[paragraph-styles.quote]\n▮"
+            mapM_ (\key -> assertBool (T.unpack key) (key `elem` keys)) ["line-pitch", "space-between", "space-before", "space-after"],
+          testCase "root ADR 0397 A2: pitch completion includes auto and named lengths" $
+            labelsIn "style.toml" "[values.length]\npitch = \"2zw\"\n[paragraph-styles.body]\nline-pitch = ▮" @?= ["\"auto\"", "\"pitch\""],
+          testCase "root ADR 0397 A2: spacing completion includes named lengths and counts" $
+            labelsIn "style.toml" "[values.length]\ngap = \"1zw\"\n[values.count]\nrows = 2\n[paragraph-styles.body]\nspace-between = ▮" @?= ["\"gap\"", "\"rows\""],
           -- docs/adr/0189
           exactly "style.toml" "[paragraph-styles.quote]\nalign = ▮" ["\"left\"", "\"center\"", "\"right\"", "\"left-justified\"", "\"center-justified\"", "\"right-justified\"", "\"fully-justified\"", "\"towards-spine\"", "\"away-from-spine\""],
           including "style.toml" "[paragraph-styles.quote]\n▮" ["align", "space-before", "space-after", "end-indent"] [],

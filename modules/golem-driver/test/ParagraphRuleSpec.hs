@@ -8,7 +8,7 @@ import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (HeadingBlock (..), PageOutAt (..), Slotted (..))
 import Golem.Syntax
 import Golem.Typeset (PdfLayout (..))
 import Support
@@ -119,7 +119,7 @@ paragraphRuleTests =
           source = "# 章\n\n本文。\n"
       (_, pl) <- layoutOk style source []
       content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
-      (slot, span') <- case [(s, hbSpan hb) | p <- take 1 (plPages pl), (s, SHeading lid _) <- poSlots p, Just hb <- [Map.lookup lid (plHeadings pl)]] of
+      (slot, span') <- case [(s, hbSpan hb) | p <- take 1 (gridPages pl), (s, SHeading lid _) <- poSlots p, Just hb <- [Map.lookup lid (plHeadings pl)]] of
         (x : _) -> pure x
         [] -> assertFailure "no heading"
       let top = 595.2756 - mmPt 18

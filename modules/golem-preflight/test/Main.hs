@@ -39,7 +39,7 @@ manifestSpan = mkSpan (FileId 8) 0 0
 srcSpan = mkSpan (FileId 0) 10 20
 
 emptyPage :: Int -> PageView
-emptyPage n = PageView n trim [] [] [] [] False (odd n)
+emptyPage n = PageView n trim [] [] [] [] False (Just (odd n))
 
 emptyView :: View
 emptyView =

@@ -48,6 +48,8 @@ library
                     Golem.Layout.Orientation
                     Golem.Layout.PageLabel
                     Golem.Layout.Paginate
+                    Golem.Layout.FreeGeometry
+                    Golem.Layout.Paginate.Physical
                     Golem.Layout.Paginate.State
                     Golem.Layout.Ruby
                     Golem.Layout.RuleArea
@@ -101,6 +103,8 @@ test-suite golem-layout-test
                     TrackingBoxesSpec
                     FeaturesSpec
                     ScriptSpec
+                    PhysicalPaginateSpec
+                    FreeGeometrySpec
                     Fixtures
                     InseparableSpec
                     KnuthPlassBrute

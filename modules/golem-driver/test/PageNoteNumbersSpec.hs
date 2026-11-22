@@ -10,7 +10,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Project.Style (Sp (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), Severity (..), SrcSpan (..))
 import Golem.Typeset (PdfLayout (..), SetLine (..), layoutPdf, layoutPdfUnnumbered)
@@ -48,14 +48,14 @@ its number.
 callsByPage :: PdfLayout -> [(Int, [(Bool, Int)])]
 callsByPage pl =
   [ (poNumber p, [(T.isPrefixOf "*" t, read (T.unpack (T.dropWhile (== '*') t))) | (_, SLine lid) <- sortOn fst (poSlots p), Just sl <- [Map.lookup lid (plLines pl)], (_, t) <- marksIn (slLine sl)])
-  | p <- plPages pl
+  | p <- gridPages pl
   ]
 
 -- | The number of each footnote at the start of its body, on the page that shows the start.
 bodyMarksByPage :: PdfLayout -> [(Int, [Int])]
 bodyMarksByPage pl =
   [ (poNumber p, [read (T.unpack (T.dropWhile (== '*') t)) | (nid, 0, _) <- poFootnotes p, Just (l : _) <- [Map.lookup nid bodies], (_, t) <- take 1 (marksIn l)])
-  | p <- plPages pl
+  | p <- gridPages pl
   ]
   where
     bodies = Map.fromList [(k, ls) | sl <- Map.elems (plLines pl), (k, ls) <- slNotes sl]
@@ -133,7 +133,7 @@ pageNoteNumbersTests =
       -- no mark, and the lines as wide as without the numbering per page
       concatMap (marksIn . slLine) (Map.elems (plLines pl)) @?= []
       map (lineWidths . slLine) (Map.elems (plLines pl)) @?= map (lineWidths . slLine) (Map.elems (plLines ref))
-      plPages pl @?= plPages ref,
+      gridPages pl @?= gridPages ref,
     testCase "ADR 0383 I1: inv1_page_local_note_numbers_case_2: two notes on one page are 1 and 2" $ do
       pl <- layoutOf (sourceOf [WithNote, Filler, WithNote])
       callsByPage pl @?= [(1, [(True, 1), (True, 2)])]
@@ -156,7 +156,7 @@ pageNoteNumbersTests =
       case r of
         Right (Right unnumbered, Right numbered) -> do
           -- the pages, the lines and every width are those before the numbers
-          plPages numbered @?= plPages unnumbered
+          gridPages numbered @?= gridPages unnumbered
           map (lineWidths . slLine) (Map.elems (plLines numbered)) @?= map (lineWidths . slLine) (Map.elems (plLines unnumbered))
           [map lineWidths ls | sl <- Map.elems (plLines numbered), (_, ls) <- slNotes sl] @?= [map lineWidths ls | sl <- Map.elems (plLines unnumbered), (_, ls) <- slNotes sl]
           -- only the numbers change: the marks before run to 12, those after start again on each page

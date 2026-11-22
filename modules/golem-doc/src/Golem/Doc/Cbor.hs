@@ -113,6 +113,7 @@ bodyT = \case
   ForcedBreak k -> tagged 11 [int (fromEnum k)]
   PageControl c -> tagged 12 [pageControlT c]
   BlankLines n -> tagged 13 [int n]
+  Separator name -> tagged 15 [text name]
 
 pageControlT :: PageControl -> Term
 pageControlT = \case
@@ -433,6 +434,7 @@ termBody t =
         11 | [k] <- fs -> ForcedBreak <$> asEnum k
         12 | [c] <- fs -> PageControl <$> termPageControl c
         13 | [n] <- fs -> BlankLines . fromInteger <$> asInt n
+        15 | [name] <- fs -> Separator <$> asText name
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"

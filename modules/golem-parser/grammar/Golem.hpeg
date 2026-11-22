@@ -172,6 +172,7 @@ Block(ind :: Int) :: ()
 Block <- ( BadIndent(ind)
          / OrphanDef(ind)
          / ReservedBlock(ind)
+         / SeparatorLine(ind)
          / BlockGroup(ind)
          / Heading(ind)
          / BulletList(ind)
@@ -227,7 +228,8 @@ ParaEnd <- Nl (BlankLine / !.) { () }
 
 # Characters that start a block at the beginning of a line.
 BlockStart :: ()
-BlockStart <- !NumberOpen '#' { () }
+BlockStart <- '---' Sp (Nl / !.) { () }
+            / !NumberOpen '#' { () }
             / '-' [ \t] { () }
             / '+' [ \t] { () }
             / '=' [ \t:] { () }
@@ -237,6 +239,9 @@ BlockStart <- !NumberOpen '#' { () }
             / '@!' { () }
 
 # ------------------------------------------------------------ headings
+
+SeparatorLine(ind :: Int) :: ()
+SeparatorLine <- Ind(ind) '---' EOL { () }
 
 Heading(ind :: Int) :: ()
 Heading <- Ind(ind) HashMark (TooDeep / Ws HeadInline(ind)* EOL) { () }

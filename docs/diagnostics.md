@@ -6098,6 +6098,55 @@ TSV の途中の空の行は消す。
 `size` には `6pt` や `0.75zw` のような正の寸法を書く。
 `side=both` では両側の各セグメントに空でない読みを書く。
 
+## G02158
+
+@separator の名前または本体が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@separator` には区切りスタイルの名前を位置引数として一つだけ書く。
+本体とほかの引数は書けない。
+位置はその命令である（[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)）。
+
+- メッセージ: `@separator には名前を一つ書き、本体は付けません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)
+
+### 主な原因
+
+名前を省くか、余分な引数か本体を付けた。
+
+### 直し方
+
+`@separator 名前` と書く。
+
+## G02159
+
+区切りを入れ子に置けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`---` と `@separator` は文書の最上位にだけ置く。
+位置は区切りを置いた命令または行である（[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)）。
+
+- メッセージ: `区切りは文書の最上位にだけ置けます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)
+
+### 主な原因
+
+リストの項目、説明、注、キャプションなどに区切りを書いた。
+
+### 直し方
+
+区切りを文書の最上位へ移す。
+
 ## G02250
 
 @listing のパスは最初の位置引数に書きます
@@ -6381,6 +6430,12 @@ style.toml の誤りです
 文字スタイルと段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の誤りには使わない（[G03021](#g03021)）。
 フォントの役割、文字スタイル、段落スタイルの `features` の要素の誤りには使わない（[G03124](#g03124)）。
 隠しノンブルの `gutter` と `size` の関係の誤りには使わない（[G03029](#g03029)）。
+左右固定モードと禁止値の組み合わせにも出る（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+`single` に書いた `binding` と `gutter`、`facing` に書いた版面の `left` と `right`、左右固定モードの左右基準の重複と不足を拒む。
+左右固定モードでは、傍注の `side` の省略と `outside`、段落のノド基準の揃え、隠しノンブルの明示有効化も拒む。
+ノド基準の揃えは、未使用の段落スタイルと原稿内の定義も対象とする。
+継承した禁止値は、その値を書いた継承元の位置で一度だけ報告する。
+位置は明示した禁止値の位置であり、必須キーが足りなければ親テーブルの位置である。
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
@@ -6393,6 +6448,7 @@ style.toml の誤りです
 - TOML の文法を誤った。
 - キーの綴り、値の型、単位、列挙の値を誤った。
 - 値が範囲の外にある。
+- `[separators.名前]` の `kind` と合わないキーを書いたか、`blank` の `lines` を正の整数にしていない。文字スタイルの名前が存在しないか、`function` のパス、公開コマンド名、引数の数が区切りの定義に合わない（[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)）。
 - 文字スタイルの `position` に `"normal"`、`"superscript"`、`"subscript"` のほかの値を書いた（[ADR 0269](adr/0269-superscript-and-subscript.md)）。
 - 文字スタイルの `underline` か `strikethrough` に、`true`、`false`、表のほかの値を書いた。表に、罫線の長さと位置のキー（`length`、`space-before`、`space-after`、`start-indent`、`end-indent`、`keep-in-column`）か未知のキーを書いた。`weight`、`dash`、`gap` が寸法として読めないか 0 以下であるか、`offset` が寸法として読めない。`dash` と `gap` を、それを使わない線の種類に書いた（[ADR 0270](adr/0270-underline-and-strikethrough.md)）。
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
@@ -6763,11 +6819,13 @@ manifest.toml がありません
 
 ### 意味
 
-`style.toml` の `[masters.<名前>]` の `running-head` か `folio` の `position` が、`top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれでもない。
+`style.toml` の `[masters.<名前>]` の `running-head` か `folio` の `position` が、`top-` または `bottom-` に `outside`、`inside`、`center`、`left`、`right` を続けた位置でない。
+左右固定モードでは `inside` と `outside` を含む位置も、このコードで拒む（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+未使用のマスターも対象である。
 `style.toml` を読むときに検査するので、ターゲットにかかわらず、`golem check` と LSP も報告する。
 位置は `position` の値の位置である。
 
-- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。
+- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。左右固定モードの禁止値は `左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います（masters.<名前>.<running-head または folio>.position）`。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
@@ -6778,7 +6836,8 @@ manifest.toml がありません
 
 ### 直し方
 
-`position` に上の 6 つのどれかを書く。
+`position` に上の値を書く。
+左右固定モードでは、`top-left`、`bottom-right` のように `left`、`right`、`center` を使う。
 
 ## G03019
 
@@ -7552,7 +7611,8 @@ size = "0.65zw"
 
 ### 意味
 
-`[page]` の `writing-mode` が `"vertical"` の本で、段落スタイルの `align` に `"towards-spine"` か `"away-from-spine"` を書いた。
+見開きモードで `[page]` の `writing-mode` が `"vertical"` の本で、段落スタイルの `align` に `"towards-spine"` か `"away-from-spine"` を書いた。
+左右固定モードでは書字方向によらず [G03006](#g03006) とし、このコードを重ねない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 二つは、行をページのノドの側か小口の側に寄せる値である。
 縦組みの行は天から地へ進むので、ノドと小口は行の方向に交わらず、行をノドの側に寄せることが意味を持たない。
 InDesign は縦組みのフレームではこの二つを適用しないが、Golem は書いた値を黙って適用しない出力を作らずに止める。
@@ -8604,6 +8664,8 @@ HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 ### 意味
 
 本の最後のブロックの後に、`@blank-line` しかない。
+`kind = "blank"` の区切りは解決後に行アキになるため、同じ診断を受ける。
+メッセージの `@blank-line` は内部の行アキを指す。
 間とその後に改ページ（`@page-break`、`@column-break`）、`@need-lines`、`@page-lines`、`@no-page-break` があっても同じである。
 本の最後の行アキは、すべての出力で捨てる。
 ファイルの末尾の `@blank-line` は次のファイルの最初のブロックの前に置かれるので、本の全体で後にブロックがないものだけを対象にする。
@@ -8617,10 +8679,12 @@ HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 ### 主な原因
 
 - 最後の章の末尾に、空きを残すつもりで `@blank-line` を書いた。
+- 最後の章の末尾に、`kind = "blank"` の区切りを置いた。
 
 ### 直し方
 
 本の最後の `@blank-line` を消す。
+末尾の blank 区切りも、空きが不要なら消す。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に `"G04009"` を加えると、このお知らせを出さなくなる。
 
 ## G04010
@@ -8633,6 +8697,7 @@ HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 ### 意味
 
 `@blank-line` の直後に、ほかのブロックを挟まずに `@page-break` か `@column-break` がある。
+`kind = "blank"` の区切りが改ページの直前にある場合も同じで、メッセージの `@blank-line` は内部の行アキを指す。
 間に `@need-lines`、`@page-lines`、ほかの `@blank-line` があっても同じ位置とみなす。
 ファイルの末尾の `@blank-line` と、次のファイルの先頭の改ページの組み合わせも対象にする。
 行アキは次のブロックの前に置くので、改ページの前の行アキは、PDF では必ず改ページの後の段の先頭に移って捨てられる。
@@ -8647,11 +8712,13 @@ HTML、EPUB、プレーンテキストで空きが出ると媒体のあいだで
 ### 主な原因
 
 - 章の終わりに空きを入れてから改ページした。
+- `kind = "blank"` の区切りの直後に明示的な改ページを書いた。
 - 改ページの後の本文を下げるつもりで、改ページの前に `@blank-line` を書いた。
 
 ### 直し方
 
 改ページの前の `@blank-line` を消す。
+blank 区切りも、改ページの直前では効果がなければ消す。
 改ページの後の段の先頭の行アキも捨てられるので、改ページの後の本文を下げる用途には使えない。
 
 ## G04011
@@ -8916,6 +8983,31 @@ HTML、EPUB、プレーンテキストに残ると、媒体のあいだで結果
 ### 直し方
 
 範囲の始めに、終わりと同じ語と読みで `range=begin` の印を置く。
+
+## G04105
+
+参照した区切りスタイルがありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@separator 名前` が、`style.toml` の `[separators.名前]` に定義されていない名前を参照した。
+`default` だけは定義を省ける。
+位置は原稿または Emet が生成した区切りの位置である（[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)）。
+
+- メッセージ: `区切りスタイルがありません: <名前>`
+- 段階とモジュール: 文書の組み立て（golem-driver の `Golem.Driver`）
+- ADR: [root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)
+
+### 主な原因
+
+名前の綴りが違うか、設定の表を書いていない。
+
+### 直し方
+
+名前の綴りを合わせ、`style.toml` に `[separators.名前]` を書く。
 
 ## G05001
 
@@ -9569,7 +9661,7 @@ wasm の Golem で組むときは、`[plugins]` とプラグインのフィル�
 2. `[page.grid]` がない。
 3. `[page.grid]` の `font-size` が正の絶対的な寸法でない。
 4. 字数か行数か段数が 0 以下か、行送りが文字の大きさより小さい。
-5. 版面が判型からはみ出す。
+5. 版面が判型からはみ出す。左右固定モードの負の余白も含み、ちょうど収まる版面は許す（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 6. 縦組みの版面に `[sidenotes]` がある。
 7. 段組みの版面に `[sidenotes]` がある。
 8. 傍注の領域が判型からはみ出す。
@@ -9691,11 +9783,13 @@ PDF を書かない。
 
 ### 意味
 
-回り込む図版とキャプションの占める行数が、一ページの行数を超える。
+格子モードでは、回り込む図版とキャプションの占める行数が、一ページの行数を超える。
 
-- メッセージ: `回り込む図版の除外領域が一ページの行数を超えます（<行数> 行）`
+自由な配置では、図版とキャプション、回り込みの間隔を含む除外領域の長さが、段の長さを超える。
+
+- メッセージ: `回り込む図版の除外領域が一ページの行数を超えます（<行数> 行）`。自由な配置では `回り込む図版の除外領域（長さ <長さ>pt）が段の長さ <段長>pt を超えます`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)
+- ADR: [golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -9715,12 +9809,13 @@ PDF を書かない。
 ### 意味
 
 見出しの占める行数が、一ページの行数を超える。
+自由な配置では、占有行数に版面の行送りを掛けた長さが、調整前の段の長さを超える場合にも、このエラーになる。
 見出しはページをまたいで分けない。
 一ページには入るが、`@page-lines` で行数を減らした段に入らない見出しは、このエラーではなく、お知らせの [G07100](#g07100) である。
 
-- メッセージ: `見出しが版面に入りません（<階層> の見出し: <題>）`
+- メッセージ: `見出しが版面に入りません（<階層> の見出し: <題>）`。自由な配置の実寸検査では `見出しが版面に入りません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)
+- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10017,9 +10112,12 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 - `@need-lines`：求めた行数が、段の行の格子の数を超える。段の格子の数として扱い、今の段が空でなければ次の段から続けた。
 - `@page-lines`：増減の結果の行数が、裁ち落としを除いたページの内側に収まる行数を超えるか、その段にすでに置いた行の数より少ない。収まる数に切り詰めた。
 
-- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
+自由な配置では、`@need-lines` の行数を版面の行送りで長さへ直し、段の長さと比べる。
+`@page-lines` の増減も版面の行送り単位で行い、すでに配置した本文と脚注を収める範囲へ切り詰める。
+
+- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`（自由な配置では `@need-lines <N> の長さ <要求長>pt は段の長さ <段長>pt を超えます`）、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
-- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10131,12 +10229,13 @@ PDF は書く。
 ### 意味
 
 表の見出しの行とある本体の行の高さの和が、一ページの行数を超える。
+自由な配置では、見出しの行と本体の一行を版面の行送りで長さに直し、段の長さと比べる。
 表の行の途中では改ページしない。
 キャプションの行を加えて初めて収まらなくなる場合は、このコードではなく [G07116](#g07116) である（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 
-- メッセージ: `表の <番号> 行目が見出しの行とともに一ページに収まりません`
+- メッセージ: `表の <番号> 行目が見出しの行とともに一ページに収まりません`。自由な配置の実寸検査では `表の最小部分が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)
+- ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10160,11 +10259,12 @@ PDF のコードブロックについて、行長から左右の `padding` を�
 `[code]` の `continued` を書いた本では、コードの一行、続きの表示の行、上下の `padding` が一ページに収まらない場合も、この誤りとする（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 `style.toml` とファイルの中の定義だけで決まる最上位のコードブロックの行長の不足は、PDF をターゲットに含むときに、ビルドと `golem check` の両方でレイアウトの前に報告し、位置は `style.toml` の先頭（なければ `manifest.toml` の先頭）である。
 リストの深い入れ子の中の行長の不足と、一ページに収まらない場合は、レイアウトで報告し、位置はコードブロックの始まりである。
+自由な配置では、先頭に必要なコードの行、キャプション、続きの表示、上下の `padding` を含む最小部分を、版面の行送りで長さに直して段と比べる。
 PDF を書かない。
 
-- メッセージ: `コードブロックの行長が足りません` または `コードブロックの一行が一ページに収まりません`
+- メッセージ: `コードブロックの行長が足りません` または `コードブロックの一行が一ページに収まりません`。自由な配置の実寸検査では `コードの最小部分が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
+- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10176,6 +10276,7 @@ PDF を書かない。
 ### 直し方
 
 `padding` か `size` を小さくするか、コードブロックをリストの浅いところに移す。
+
 ## G07044
 
 索引の段の行長が足りません
@@ -10300,7 +10401,8 @@ PDF で、行アキが段の先頭に来たので、空きを取らずに捨て�
 ### 直し方
 
 捨ててよければ、そのままでよい。
-区切りを必ず見せたい場合は、＊などの印を原稿に書くか、`@page-lines` などで改ページの位置を変える。
+区切りを必ず見せたい場合は、原稿の `---` または `@separator 名前` に `kind = "text"` か `kind = "rule"` の可視の区切りを定義する。
+＊などの印を原稿に書くか、`@page-lines` などで改ページの位置を変えてもよい。
 `--verbose` を付けたときにこの情報を出したくなければ、`manifest.toml` の `[diagnostics]` の `silence-info` に `"G07047"` を加える。
 `silence-notices` に書くと [G03024](#g03024) になる。
 
@@ -10404,7 +10506,8 @@ PDF を書かない。
 
 ### 意味
 
-PDF で、見出しが占める格子の行が、見出しを置いた空の段に残る行より多い。
+PDF の格子モードで、見出しが占める格子の行が、見出しを置いた空の段に残る行より多い。
+自由な配置では、見出しの占める長さが、縮めた段の残りの長さを超える。
 見出しはページをまたいで分けず、空の段には入らなくても置くので、見出しは段の頭から書いたとおりの行取りで組まれ、段の残りの外にはみ出す。
 置き方は変えない。
 見出しは一ページの行数には収まるので（収まらなければ [G07024](#g07024)）、この場面は `@page-lines` で段の行数を減らしたときに起きる。
@@ -10415,9 +10518,9 @@ PDF で、見出しが占める格子の行が、見出しを置いた空の段�
 `golem check` はページ分けを行わないので、このお知らせを出さない。
 お知らせなので、ビルドの成否と出力に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
-- メッセージ: `見出しが段に入りません（<階層> の見出し: <題>。見出しは <n> 行、段の残りは <m> 行）`。注の一覧の見出しでは、括弧の中の前半を `注の一覧の見出し: <題>` とする。
+- メッセージ: `見出しが段に入りません（<階層> の見出し: <題>。見出しは <n> 行、段の残りは <m> 行）`。自由な配置では、長さの部分を `見出しの長さ <長さ>pt、段の残り <残り>pt` とする。注の一覧の見出しでは、括弧の中の前半を `注の一覧の見出し: <題>` とする。
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
-- ADR: [golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)
+- ADR: [golem-layout ADR 0020](golem-layout/adr/0020-heading-taller-than-column.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -10911,12 +11014,13 @@ PDF を組むときにだけ出す。
 表のキャプションと、キャプションと同じ段に置く行が、空の段に収まらない（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。
 `[tables]` の `caption-position` が `"above"` ならキャプション、見出しの行、本体の最初の行であり、`"below"` なら見出しの行、本体の最後の行、キャプションである。
 キャプションのない同じ表なら収まる場合だけをこのコードとし、キャプションがなくても収まらない行は [G07042](#g07042) である。
+自由な配置では、これらの占有行数を版面の行送りで長さに直し、段の長さと比べる。
 表を組まない。
 位置は表のブロックである。
 
-- メッセージ: `表のキャプションが、見出しの行と本体の最初の行とともに一つの段に収まりません`、`表のキャプションが、見出しの行と本体の最後の行とともに一つの段に収まりません`
+- メッセージ: `表のキャプションが、見出しの行と本体の最初の行とともに一つの段に収まりません`、`表のキャプションが、見出しの行と本体の最後の行とともに一つの段に収まりません`。自由な配置の実寸検査では `表とキャプションの最小部分が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)
+- ADR: [docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -11051,13 +11155,14 @@ dev と prod の両方でエラーである。
 PDF をターゲットに含む `golem build` で、囲みを持つ段落スタイル（`background` か `border` を持つ段落スタイル）の段落について、空の段に、囲みの前の k 行、一行、囲みの後の k 行が入らない。
 k は、`padding` を収めるために囲みが最初の行の前と最後の行の後に足す格子の行の数であり、行送りを p、格子の字面の高さを h、`padding` を d として、`(p − h)/2 + k × p ≥ d` を満たす最も小さい 0 以上の整数である。
 2k + 1 が段の行の数を超えると、どの段にも囲みの部分を置けない。
-版面と `padding` だけで決まるので、組む前に検査する。
+自由な配置では、段落の一行の行ボックスと、先頭と末尾の字面から求めた padding の追加量の和を、段の長さと比べる。
+格子への配置では版面と `padding` だけで決まり、自由な配置では段落の行送りと文字の大きさも使い、組む前に検査する。
 位置は、その段落スタイルの最初の段落であり、同じ段落スタイルには一度だけ出す。
 PDF を書かない。
 
-- メッセージ: `段落スタイル <名前> の囲みの一行と上下の padding が段に収まりません`
+- メッセージ: `段落スタイル <名前> の囲みの一行と上下の padding が段に収まりません`。自由な配置の配置検査では `囲みの一行と padding が段に収まりません`
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`）
-- ADR: [docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)
+- ADR: [docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
 
 ### 主な原因
 
@@ -11300,6 +11405,86 @@ prod ではエラーなので PDF を書かず（前のビルドの PDF も消�
 
 段落スタイル `sidenote` の `indent`、`first-line-indent`、`end-indent` を小さくするか、`[sidenotes]` の `width` を広げる。
 
+## G07129
+
+段落の一行が段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+自由な配置で、通常の段落の一行の行ボックスが、調整前の空の段より長い。
+位置はその段落である。
+PDF の組版を止める。
+格子への配置には適用しない。
+
+- メッセージ: `段落スタイル <名前> の一行が段に収まりません`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+
+### 主な原因
+
+- 段落の `line-pitch` が段の長さを超えている。
+
+### 直し方
+
+段落の `line-pitch` を短くするか、版面の行数を増やして段を長くする。
+
+## G07130
+
+脚注の最小のまとまりが段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+自由な配置で、本文の最小のまとまり、脚注の区切り、注の最初の一行が、調整前の空の段にも収まらない。
+囲みでは必要な padding も含む。
+注の続きだけを置く段でも、区切りと注一行が調整前の空の段に収まらなければ、このエラーになる。
+位置は注の参照印である。
+PDF の組版を止める。
+格子への配置には適用しない。
+
+- メッセージ: `脚注の最初の一行を段に配置できません`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+
+### 主な原因
+
+- 本文、囲みの padding、脚注の区切り、注一行の合計が段の長さを超えている。
+
+### 直し方
+
+本文の行送りや囲みの padding、脚注の区切りを小さくするか、段を長くする。
+
+## G07131
+
+図版の一行分の領域が段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+自由な配置で、段の長さが版面の行送りより短く、図版の配置に一行分も使えない。
+位置は図版である。
+PDF の組版を止める。
+格子への配置には適用しない。
+
+- メッセージ: `図版の一行分の領域が段に収まりません`
+- 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+
+### 主な原因
+
+- 版面の行数が少なく、段の長さが版面の行送りに満たない。
+
+### 直し方
+
+版面の行数を増やすなどして、段に版面の行送り一つ分以上を確保する。
+
 ## G07132
 
 章末の注の一覧でページ別の番号が重なります
@@ -11326,6 +11511,37 @@ HTML、EPUB、プレーンテキストには、この警告を出さない。
 
 章末一覧の番号を区別したい場合は、`[notes]` の `numbering` を `"chapter"` か `"book"` にする。
 ページ別の番号が必要なら、警告があっても生成した PDF を使える。
+
+## G07134
+
+可視の区切りを段に配置できません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+約物が折り返されるか行長からはみ出す、文字サイズが版面の行送りを超える、または罫線の太さが一行の領域を超える。
+空の段へ送っても、区切りの連続と後ろのアキ、後続ブロックの最初の表示行を同じ段に置けない場合も、このエラーになる。
+位置は区切りの原稿の位置である。
+PDF を書かない。
+`style.toml` の `[separators.名前]` の文字、文字スタイル、罫線指定を小さくする（[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)）。
+
+罫線の長さが版面の行長を超える設定は、組版の前に [G03006](#g03006) で拒む。
+
+- メッセージ: `区切りの約物が一行に収まりません`、`区切りの文字サイズが行送りを超えます`、`区切りの罫線が行長または行送りを超えます`、`区切りと後続ブロックの最初の行を同じ段に配置できません`
+- 段階とモジュール: PDF 組版（golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)
+
+### 主な原因
+
+約物、文字サイズ、罫線の長さか太さが版面に対して大きい。
+または、区切りと後続の行を保持するための長さが空の段にも収まらない。
+
+### 直し方
+
+`[separators.名前]` の値を一行に収まるように小さくする。
+保持できない場合は、区切りの後ろのアキや連続する区切りの数を減らすか、版面の行数を増やす。
 
 ## G08001
 
@@ -12651,6 +12867,9 @@ CMYK の画像が ICC プロファイルを埋め込んでおり、そのバイ�
 `@figure` ごとに一つ出す。
 v1 の図版は版面の中に置くので、版面の余白が `distance` 以上ある本では何も出さない。
 
+左右固定モードでは、横方向の辺を「左」「右」と表示する。
+検査順は天、地、左、右であり、距離、しきい値、重大度は変えない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
+
 - メッセージ: `図版が仕上がりの線の近くにあり、塗り足しまで届いていません: <パス>（<辺>、仕上がりの線から <e>、PDF の <ページ> ページ目）`
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）
 - ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
@@ -12677,6 +12896,9 @@ v1 の図版は版面の中に置くので、版面の余白が `distance` 以�
 トンボは対象にしない。
 要素の種類と辺の組ごとに一つにまとめるので、柱とノンブルは一つになる。
 位置は、本文の行では原稿のブロック、柱とノンブルでは `style.toml` の先頭である。
+
+左右固定モードでは、横方向の辺を「左」「右」と表示する。
+検査順は天、地、左、右であり、距離、しきい値、重大度は変えない（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 
 - メッセージ: `文字が仕上がりの線に近すぎます: <要素>（<辺>、仕上がりの線から <距離>、PDF の <ページ> ページ目）`
 - 段階とモジュール: プリフライト（golem-preflight の `Golem.Preflight`）

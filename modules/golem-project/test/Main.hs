@@ -33,8 +33,10 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import ParagraphPitchSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
+import SinglePageSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -776,7 +778,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-project"
-    [ -- golem-parser ADR 0011
+    [ ParagraphPitchSpec.tests,
+      -- golem-parser ADR 0011
       testCase "[numbers] vertical takes auto and auto-digits" $ do
         let vertical src = stNumbersVertical <$> parseStyle (FileId 0) src
         vertical "[numbers]\nvertical = \"auto\"\n" @?= Right "auto"
@@ -881,6 +884,7 @@ tests =
       UnderlineSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
+      SinglePageSpec.tests,
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
       HyphenationExceptionsSpec.tests,
@@ -1020,13 +1024,13 @@ tests =
       boxStyleTests,
       captionSidenoteTests,
       alignSpaceTests,
-      testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
+      testCase "root ADR 0400 I4: side of [sidenotes] defaults to outside and also accepts physical sides" $ do
         let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
             sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
         sidenotesOf (sn <> "side = \"outside\"\n") @?= sidenotesOf sn
         assertBool "without side" (isJust (sidenotesOf sn))
         codes (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["G03006"]
-        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside のどれか） (sidenotes.side)"]
+        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside, left, right のどれか） (sidenotes.side)"]
         codes (parseStyle (FileId 0) (sn <> "side = 1\n")) @?= ["G03006"],
       testCase "ADR 0345 I1: unitless zero in sidenote dimensions equals 0pt" $ do
         let sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
@@ -1255,6 +1259,17 @@ tests =
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,
+      testCase "root ADR 0398 A1: separator styles load by name" $ do
+        let src = "[separators.default]\nkind = \"blank\"\nlines = 2\n\n[separators.scene]\nkind = \"text\"\ntext = \"＊\"\nspace-before = 1\nspace-after = 1\n"
+        fmap stSeparators (parseStyle (FileId 0) src)
+          @?= Right (Map.fromList [("default", SeparatorBlank 2), ("scene", SeparatorText 1 1 "center" "＊" Nothing)]),
+      testCase "root ADR 0398 A5: invalid separator definitions report G03006" $ do
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"blank\"\nlines = 0\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"text\"\ntext = \"x\\ny\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nspace-before = \"0pt\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nkeep-in-column = true\n") @?= ["G03006"],
+      testCase "root ADR 0398 A5: separator function path stays inside the project" $
+        codes (parseStyle (FileId 0) "[separators.default]\nfunction = \"../scene.emet\"\ncommand = \"scene\"\n") @?= ["G03006"],
       runningHeadTests,
       localStyleTests,
       akiTests,
@@ -1317,10 +1332,16 @@ hiddenFolioTests =
   testGroup
     "[hidden-folio] (golem-driver ADR 0021)"
     [ testCase "the defaults without [hidden-folio]" $
-        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False),
+        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False Nothing False),
+      testCase "root ADR 0365 I1: gutter uses the effective size" $ do
+        let source explicit = "[character-styles.hidden]\nsize = \"12pt\"\n[hidden-folio]\ncharacter-style = \"hidden\"\ngutter = \"4pt\"\n" <> explicit
+        codes (parseStyle (FileId 0) (source "")) @?= ["G03029"]
+        codes (parseStyle (FileId 0) (source "size = \"6pt\"\n")) @?= [],
+      testCase "root ADR 0365 I1: unknown character style is diagnosed" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\ncharacter-style = \"absent\"\n") @?= ["G03013"],
       testCase "the four keys are read" $
         fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
-          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True),
+          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True Nothing True),
       testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G03006" $ do
         mapM_
           (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G03006"])
@@ -2487,6 +2508,7 @@ localStyleTests =
               "synthetic-italic" -> "true"
               "no-break" -> "true"
               "line-breaks" -> "keep"
+              "line-pitch" -> "auto"
               "space-between" -> "1"
               "space-before" -> "1"
               "space-after" -> "1"

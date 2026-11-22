@@ -4,7 +4,7 @@ an .emet that does not load.
 -}
 module CallsSpec (callsTests) where
 
-import Control.Monad (forM)
+import Control.Monad (forM, forM_)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.List (sort)
@@ -13,6 +13,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Assemble (Book (..))
 import Golem.Doc.IR
 import Golem.DocGen (genDocument, genInline)
 import Golem.Driver
@@ -122,7 +123,45 @@ callsTests :: TestTree
 callsTests =
   testGroup
     "the functions of .emet in a book (docs/adr/0162)"
-    [ testProperty "the data types of the IR give back any IR, with its spans, labels and numbers of notes" $ property $ do
+    [ testCase "root ADR 0398 I6: two generated separator names at one span resolve separately" $
+        withBook [("a.gm", "@import functions/scene.emet as scene\n\n@scene.two\n")] [("style.toml", "[separators.scene]\nkind = \"text\"\ntext = \"＊\"\n[separators.rule]\nkind = \"rule\"\n"), ("functions/scene.emet", "pub block two :: Blocks\ntwo = Block.separator \"scene\" ++ Block.separator \"rule\"\n")] "" $ \tmp -> do
+          e <- evaluated tmp
+          codesIn e @?= []
+          map (Map.size . bookSeparators) (maybe [] pure (evBook e)) @?= [2],
+      testCase "root ADR 0398 A3: Emet filters preserve or remove a separator before resolution" $ do
+        let style = "[separators.default]\nkind = \"text\"\ntext = \"＊\"\n"
+            filterFile = "pub filter keep :: Blocks -> Blocks\nkeep bs = bs\n\npub filter omit :: Blocks -> Blocks\nomit bs = []\n"
+        forM_ [("keep", 1), ("omit", 0)] $ \(filterName, expected) ->
+          withBook [("a.gm", "前\n---\n後\n")] [("style.toml", style), ("functions/filter.emet", filterFile)] ("[[filters]]\nfunction = \"functions/filter.emet\"\nfilter = \"" <> filterName <> "\"\nfiles = [\"a.gm\"]\n") $ \tmp -> do
+            e <- evaluated tmp
+            codesIn e @?= []
+            map (Map.size . bookSeparators) (maybe [] pure (evBook e)) @?= [expected],
+      testCase "root ADR 0398 A5: function paths include a style separator definition" $
+        withBook [("a.gm", "前\n")] [("style.toml", "[separators.default]\nfunction = \"functions/scene.emet\"\ncommand = \"scene-break\"\n"), ("functions/scene.emet", "pub block \"scene-break\" sceneBreak :: Blocks\nsceneBreak = []\n")] "" $ \tmp -> do
+          e <- evaluated tmp
+          functionPaths tmp (evProject e) >>= (@?= ["functions/scene.emet"]),
+      testCase "root ADR 0398 A5: missing separator function points to style.toml" $
+        withBook [("a.gm", "前\n---\n後\n")] [("style.toml", "[separators.default]\nfunction = \"functions/missing.emet\"\ncommand = \"scene-break\"\n")] "" $ \tmp -> do
+          e <- evaluated tmp
+          assertEqual (show (evDiagnostics e)) [("G03006", evStyleFile e)] [(code, spanFile (diagSpan d)) | d <- evDiagnostics e, let DiagnosticCode code = diagCode d, code == "G03006"],
+      testCase "root ADR 0398 A5: invalid separator function signature points to style.toml" $
+        withBook [("a.gm", "前\n---\n後\n")] [("style.toml", "[separators.default]\nfunction = \"functions/scene.emet\"\ncommand = \"scene-break\"\n"), ("functions/scene.emet", "pub block \"scene-break\" sceneBreak :: String -> Blocks\nsceneBreak name = []\n")] "" $ \tmp -> do
+          e <- evaluated tmp
+          [("G03006", evStyleFile e)] @?= [(code, spanFile (diagSpan d)) | d <- evDiagnostics e, let DiagnosticCode code = diagCode d, code == "G03006"],
+      testCase "root ADR 0398 I8 A6: separator function expands empty, blank and multiple blocks" $ do
+        let style = "[separators.default]\nfunction = \"functions/scene.emet\"\ncommand = \"scene-break\"\n"
+            cases =
+              [ ("[]", ["前", "後"]),
+                ("[Block.BlankLines 1]", ["前", "blank", "後"]),
+                ("Block.paragraph (Inline.text \"A\") ++ Block.paragraph (Inline.text \"B\")", ["前", "A", "B", "後"])
+              ]
+        forM_ cases $ \(result, expected) ->
+          withBook [("a.gm", "前\n---\n後\n")] [("style.toml", style), ("functions/scene.emet", "pub block \"scene-break\" sceneBreak :: Blocks\nsceneBreak = " <> result <> "\n")] "" $ \tmp -> do
+            e <- evaluated tmp
+            codesIn e @?= []
+            let kinds = [case blockBody b of BlankLines _ -> "blank"; Paragraph _ xs -> T.concat [t | Text _ t <- xs]; _ -> "other" | assembled <- maybe [] pure (evBook e), doc <- bookDocs assembled, b <- docBlocks doc]
+            kinds @?= expected,
+      testProperty "the data types of the IR give back any IR, with its spans, labels and numbers of notes" $ property $ do
         doc <- forAll genDocument
         let sp = mkSpan (FileId 9) 1 2
             (r, carried) = runEnc (encodeBlocks (docBlocks doc))
