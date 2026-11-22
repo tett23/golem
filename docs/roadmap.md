@@ -108,7 +108,11 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
-- **単色図版の色の対象拡大（未実装）**：取り込んだ PDF の単色判定と色の指定、SVG の CMYK 指定、JPEG の符号化方式ごとの検証が残っている（[Golem ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)）。 色を指定した SVG の判定や置換ができない場合も、対象媒体をエラーで止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
+- **PDF 図版の色置換の残り（未実装）**：PDF のシェーディング、インライン画像、線や文字で使う任意の名前付き色空間、CalRGB、Indexed、Separation、DeviceN、Pattern などの色空間への対応が残っている。
+  画像の明示マスク、Matte を持つソフトマスク、異寸法や DeviceGray 以外のソフトマスク、成分ごとに異なる Decode、単位範囲以外の ICCBased Range も残る。
+  LZW、CCITT、JBIG2、JPX など、色置換の経路でまだ展開できない画像フィルターへの対応も残っている。
+  Group の色空間と複雑な透明合成を含む判定は、実装との照合が残っている。
+  これらは採択した範囲から除外せず、[root ADR 0386](adr/0386-page-list-and-page-colors.md) と [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の残実装として進める。
 - **入力色の保存と明示的な色置換（未実装）**：RGB を自動で CMYK にしない既存の規則を設計原則にも書き、書き手が選んだスウォッチへの図版の色置換と区別する。図版色の実装後に、入力の色の保持と各出力を照合する（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 ### 機能をそろえた後の確かめ
