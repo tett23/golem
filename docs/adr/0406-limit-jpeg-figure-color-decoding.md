@@ -1,6 +1,6 @@
 # ADR 0406: JPEG 図版の色変換で復号する方式を定める
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

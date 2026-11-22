@@ -1851,6 +1851,8 @@ data Style = Style
     stChapterEndHeadingStyle :: !(Maybe Text),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
+    -- | [figures] color: the swatch of single-colour SVG figures (root ADR 0386).
+    stFigureColor :: !(Maybe Text),
     -- | [tables] number: the format of table numbers (docs/adr/0262)
     stTableNumber :: !Text,
     -- | [tables] caption-position: the side of the captions of tables (docs/adr/0262)
@@ -1907,6 +1909,7 @@ defaultStyle =
       stChapterEndHeadingStyle = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
+      stFigureColor = Nothing,
       stTableNumber = "表{chapter}-{n}",
       stTableCaption = CaptionAbove,
       stWrapGap = Zw 1,
@@ -2717,7 +2720,7 @@ instance FromValue CodeSec where
           [] -> pure cs
     pure (CodeSec (CodeStyle (fromMaybe (cdNumber d) number) (fromMaybe False ln) lnc hl added removed (fromMaybe "" wm) (fromMaybe "" cont) colors))
 
-data Figures = Figures (Maybe Text) (Maybe Dim)
+data Figures = Figures (Maybe Text) (Maybe Dim) (Maybe Text)
 
 {- | The side of the captions of tables (docs/adr/0262): above is before
 the table (on its right in vertical text), below after it (on its left).
@@ -2732,7 +2735,7 @@ instance FromValue TablesSec where
   fromValue = parseTableFromValue (TablesSec <$> optKey "number" <*> enumKey "caption-position" captionPositionValues)
 
 instance FromValue Figures where
-  fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap")
+  fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap" <*> optKey "color")
 
 -- | The retired [verse] (docs/adr ADR 0005, 0006): an error that names its replacement.
 data VerseV
@@ -2867,7 +2870,7 @@ instance FromValue Style where
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
           _ -> pure notes
     side <- optKey "sidenotes"
-    Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
+    Figures fnum fgap fcolor <- fromMaybe (Figures Nothing Nothing Nothing) <$> optKey "figures"
     TablesSec tnum tcap <- fromMaybe (TablesSec Nothing Nothing) <$> optKey "tables"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
@@ -2919,6 +2922,7 @@ instance FromValue Style where
           stChapterEndHeadingStyle = ehead,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
+          stFigureColor = fcolor,
           stTableNumber = fromMaybe (stTableNumber d) tnum,
           stTableCaption = if tcap == Just "below" then CaptionBelow else CaptionAbove,
           stWrapGap = fromMaybe (stWrapGap d) fgap,
@@ -3676,6 +3680,7 @@ styleReferenceChecks owner s =
             -- the swatch of a background (golem-driver ADR 0017)
             <> [(n, paraKey n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just (Just c)}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             <> [(n, paraKey n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just (Just c)}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [("", styleKeys ["figures", "color"], "[figures] の color のスウォッチがありません: " <> c) | Just c <- [stFigureColor s], Map.notMember c (stSwatches s)]
             -- the swatch of a rule (golem-driver ADR 0028)
             <> [("", styleKeys ["notes", "rule", "color"], "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
             <> [ (n, styleKeys ["paragraph-styles", n, k, "color"], "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
@@ -4054,7 +4059,7 @@ styleSchema =
       ("emphasis", NRejected),
       ("notes", notesNode),
       ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues), ("marker-style", ref CharStyles)]),
-      ("figures", NTable [("number", str), ("wrap-gap", dim)]),
+      ("figures", NTable [("number", str), ("wrap-gap", dim), ("color", str)]),
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
       ("color", NTable [("intent", str), ("swatches", NNamed (Just Swatches) (NTable [("cmyk", NArray int)]))]),
       ("masters", NNamed (Just Masters) masterNode),
