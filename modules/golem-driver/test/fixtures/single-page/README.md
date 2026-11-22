@@ -22,6 +22,7 @@ git show f2a0e3b8949593063ed1888535d7ed48e690c782:modules/golem-driver/test/fixt
 フォントは既存 fixture と同じ Noto Serif CJK JP 2.003 の日本語サブセット OTF（SIL Open Font License 1.1）を使う。
 取得方法と配布元は [fixture 全体の README](../README.md) のフォントの節にある。
 取得済みのフォントとライセンスをコピーしてから、このフォルダで通常の CLI により PDF を作る。
+リポジトリのルートの `scripts/fixtures/copy-fonts.sh` も、この fixture にフォントをコピーする。
 
 ```sh
 mkdir -p fonts

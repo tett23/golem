@@ -87,12 +87,19 @@ tests =
         noto <- notoBytes
         result <- withMiniInput realProvider manifest style source [("fonts/NotoSerifJP-Regular.otf", noto)] $ \inp geom _ -> do
           typeAreaFor geom 1 @?= typeAreaFor geom 2
-          renderPdfView "test" realProvider inp
+          drawn <- renderPdfView "test" realProvider inp
+          pure ((geom,) <$> drawn)
         case result of
-          Right (Right (_, _, view, _)) -> do
+          Right (Right (geom, (_, _, view, _))) -> do
             let pages = V.vwPages view
+                area = typeAreaFor geom 1
+                centered r = abs (2 * rectX r + rectW r - (2 * rectX area + rectW area)) <= 1
             assertBool (show (length pages)) (length pages >= 9 && length pages <= 11)
             assertBool "no blank pages" (not (any V.pvBlank pages))
+            forM_ pages $ \page -> forM_ ["柱", "ノンブル"] $ \kind -> do
+              let furniture = [V.lvRect line | line <- V.pvLines page, V.lvKind line == kind]
+              length furniture @?= 1
+              assertBool (show furniture) (all centered furniture)
           other -> assertFailure (either show (either show (const "unexpected PDF result")) other),
       testCase "A3: labels and page references restart without a parity blank" $ do
         let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", { file = \"b.gm\", page-numbering = { start = 1 } }]" miniManifest
