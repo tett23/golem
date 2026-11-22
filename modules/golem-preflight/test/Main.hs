@@ -71,7 +71,7 @@ placed img r = ImageView r (RasterFigure img) srcSpan "images/photo.jpg" False
 vector :: [ColorUse] -> ImageView
 vector cs = ImageView (Rect (mm 20) (mm 20) (inch 4) (inch 3)) (VectorFigure page) srcSpan "images/figure.pdf" False
   where
-    page = ImportedPage "file" 1 (0, 0, 288, 216) 0 (288, 216) (ODict []) Nothing "" [] cs
+    page = ImportedPage "file" 1 (0, 0, 288, 216) 0 (288, 216) (ODict []) Nothing "" [] cs 0
 
 -- | An image of w × h pixels placed at w' × h' inches well inside the page.
 placedAt :: ColorSpace -> Int -> Int -> Rational -> Rational -> ImageView

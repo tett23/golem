@@ -11,6 +11,7 @@ module Golem.Pdf.Drawing
     PathStroke (..),
     PathSeg (..),
     drawingContent,
+    drawingContentForRecoloring,
   )
 where
 
@@ -68,15 +69,24 @@ fixed :: Rational -> B.Builder
 fixed v = B.byteString (TE.encodeUtf8 (showRationalDigits 6 (round (v * 65536) % 65536)))
 
 -- | A colour component from 0 to 255 as 0 to 1.
-component :: Int -> B.Builder
-component c = B.byteString (TE.encodeUtf8 (showRationalDigits 4 (toInteger c % 255)))
+component :: Int -> Int -> B.Builder
+component digits c = B.byteString (TE.encodeUtf8 (showRationalDigits digits (toInteger c % 255)))
 
 {- | The content stream of a drawing: y turned upwards over its height,
 then each item. Fill colours use @sc@ and stroke colours @SC@ in the
 colour space GolemSRGB, which the resources must name.
 -}
 drawingContent :: Drawing -> ByteString
-drawingContent (Drawing (_, h) items) =
+drawingContent = drawingContentWithPrecision 4
+
+{- | Avoid an intermediate four-digit RGB rounding before process-colour conversion.
+The ordinary writer retains its historical precision and byte output.
+-}
+drawingContentForRecoloring :: Drawing -> ByteString
+drawingContentForRecoloring = drawingContentWithPrecision 12
+
+drawingContentWithPrecision :: Int -> Drawing -> ByteString
+drawingContentWithPrecision digits (Drawing (_, h) items) =
   BL.toStrict (B.toLazyByteString ("1 0 0 -1 0 " <> fixed h <> " cm\n/GolemSRGB cs /GolemSRGB CS\n" <> mconcat (map item items)))
   where
     sp = B.char7 ' '
@@ -93,7 +103,7 @@ drawingContent (Drawing (_, h) items) =
           <> "Q"
           <> nl
       DrawPath p segs ->
-        let rgb (r, g, b) = component r <> sp <> component g <> sp <> component b
+        let rgb (r, g, b) = component digits r <> sp <> component digits g <> sp <> component digits b
             fill = maybe mempty (\c -> rgb c <> " sc" <> nl) (ppFill p)
             stroke = case ppStroke p of
               Nothing -> mempty

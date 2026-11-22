@@ -46,7 +46,8 @@ cfg0 =
       epPublisher = Just "出版社",
       epCreators = [EpubCreator "著者" (Just "ちょしゃ") "aut"],
       epContributors = [],
-      epVertical = False
+      epVertical = False,
+      epPageList = []
     }
 
 -- | The lines of a document that start with a prefix.
@@ -248,6 +249,12 @@ tests =
           assertBool "no URL in the navigation document" (not ("example.com" `T.isInfixOf` nav)),
         testCase "the nav element is the toc" $
           linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"],
+        testCase "root ADR 0386 I1: no page map preserves the navigation bytes" $
+          assertBool "no extra navigation element or blank line" ("</nav>\n</body>" `T.isInfixOf` navDocument cfg0 ft emptyBook),
+        testCase "root ADR 0386 I1: a mapped page is a page-list link" $ do
+          let nav = navDocument cfg0 {epPageList = [("xii", "a.xhtml", "page-12")]} ft emptyBook
+          assertBool "page-list navigation" ("epub:type=\"page-list\"" `T.isInfixOf` nav)
+          assertBool "the actual body anchor" ("href=\"a.xhtml#page-12\">xii</a>" `T.isInfixOf` nav),
         -- golem-epub ADR 0002
         testCase "@toc depth=1: only the headings of level 1, no nested ol" $
           linesWith "<ol>" (navDocument cfg0 ft (threeLevels (Just 1)))

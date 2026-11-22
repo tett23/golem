@@ -43,7 +43,8 @@ data EpubConfig = EpubConfig
     epCreators :: ![EpubCreator],
     -- | dc:contributor, with the role as a MARC relator code (docs/adr ADR 0033)
     epContributors :: ![EpubCreator],
-    epVertical :: !Bool
+    epVertical :: !Bool,
+    epPageList :: ![(Text, FilePath, Text)]
   }
 
 containerXml :: Text
@@ -107,7 +108,7 @@ packageDocument cfg pages others =
 -- | The navigation document: the TOC channel, nested by level.
 navDocument :: EpubConfig -> FileTable -> Book -> Text
 navDocument cfg ft book =
-  T.unlines
+  T.unlines $
     [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
       "<!DOCTYPE html>",
       "<html xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:epub=\"http://www.idpf.org/2007/ops\" lang=\"" <> escapeXml (epLanguage cfg) <> "\" xml:lang=\"" <> escapeXml (epLanguage cfg) <> "\">",
@@ -117,11 +118,17 @@ navDocument cfg ft book =
       "<h1>" <> escapeXml (epTitle cfg) <> "</h1>",
       -- within the depth of @toc (golem-epub ADR 0002)
       nested (tocWithinDepth book),
-      "</nav>",
-      "</body>",
-      "</html>"
+      "</nav>"
     ]
+      <> [pageList | not (null (epPageList cfg))]
+      <> ["</body>", "</html>"]
   where
+    pageList
+      | null (epPageList cfg) = ""
+      | otherwise =
+          "<nav epub:type=\"page-list\" id=\"page-list\"><ol>"
+            <> T.concat ["<li><a href=\"" <> escapeXml (T.pack file) <> "#" <> escapeXml anchor <> "\">" <> escapeXml label <> "</a></li>" | (label, file, anchor) <- epPageList cfg]
+            <> "</ol></nav>"
     entry e =
       "<a href=\""
         <> escapeXml (T.pack (pagePath ft (teFile e)))

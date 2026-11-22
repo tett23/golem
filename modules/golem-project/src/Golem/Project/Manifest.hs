@@ -251,7 +251,8 @@ data Targets = Targets
     -- | [targets.pdf] pdfa: the PDF/A the PDF declares (docs/adr ADR 0183)
     tgPdfA :: !(Maybe PdfAPart),
     -- | [targets.pdf] pdfua: the PDF/UA the PDF declares (docs/adr ADR 0183)
-    tgPdfUa :: !(Maybe PdfUaPart)
+    tgPdfUa :: !(Maybe PdfUaPart),
+    tgEpubPageMap :: !(Maybe FilePath)
   }
   deriving stock (Eq, Show)
 
@@ -538,7 +539,7 @@ manifestCode = \case
   _ -> "G03001"
 
 defaultTargets :: Targets
-defaultTargets = Targets Nothing Nothing True [] Nothing Nothing
+defaultTargets = Targets Nothing Nothing True [] Nothing Nothing Nothing
 
 instance FromValue Metadata where
   fromValue = parseTableFromValue $ do
@@ -656,7 +657,8 @@ instance FromValue Targets where
           tgHtml = isJust (html :: Maybe EmptyTable),
           tgText = maybe [] textVariants txt,
           tgPdfA = pdf >>= ptPdfA,
-          tgPdfUa = pdf >>= ptPdfUa
+          tgPdfUa = pdf >>= ptPdfUa,
+          tgEpubPageMap = T.unpack <$> (epub >>= epubPageMap)
         }
 
 -- | [targets.pdf]: the ISBN, and the PDF/A and PDF/UA it declares (docs/adr ADR 0183).
@@ -704,13 +706,16 @@ instance FromValue PdfTable where
         Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
         v -> typeError "string" v
 
-newtype IsbnTable = IsbnTable (Maybe Text)
+data IsbnTable = IsbnTable (Maybe Text) (Maybe Text)
 
 isbnOf :: IsbnTable -> Maybe Text
-isbnOf (IsbnTable i) = i
+isbnOf (IsbnTable i _) = i
+
+epubPageMap :: IsbnTable -> Maybe Text
+epubPageMap (IsbnTable _ path) = path
 
 instance FromValue IsbnTable where
-  fromValue = parseTableFromValue (IsbnTable <$> optKey "isbn")
+  fromValue = parseTableFromValue (IsbnTable <$> optKey "isbn" <*> optKey "page-map")
 
 data EmptyTable = EmptyTable
 
