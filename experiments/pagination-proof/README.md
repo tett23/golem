@@ -295,7 +295,18 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 `alloy_someFits`、`alloy_noneMeetsAll`、`alloy_greedyOrphan`、`alloy_greedyWidow`、`alloy_greedyKeepHeading`、`alloy_tallFigure` は、解のある 6 コマンドの本体を、書き写した述語の上で具体的な入力により示す。
 `check-alloy-witnesses.sh` は同じ入力を Alloy に固定して、どれにも解があることを確かめる。
 書き写しの忠実さは、これらの具体例の一致で確かめたにとどまる。
-同じ群で解のない 11 コマンドを、書き写した述語の上で上限なしに示すこと、後の群の述語を書き写すこと、既存の宣言をこの書き写しへ結び付けることは残る。
+
+同じ群で解のない 11 コマンドは、書き写した述語の上で、項目の数と容量の上限なしに証明した。
+`alloy_noneMeetsAllButGreedy` は、図版が高々一つで空行と空きと行数指定のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、詰める規則のほかの 7 規則を同時に満たす配置があることを示す。
+その配置は、空の段の先頭が本文なら先頭の本文だけを置き、それ以外は本文を置かず、図版は図版規則が求めるとおりに置く。
+`alloy_orphanEmpty`、`alloy_widowEmpty`、`alloy_keepHeadingEmpty`、`alloy_orphanWidow`、`alloy_keepHeadingOrphan`、`alloy_keepHeadingWidow`、`alloy_keepHeadingFigure`、`alloy_figureOrder`、`alloy_figureEmpty` は、この配置が二つの規則を同時に満たすので、規則の対に衝突がないことを示す。
+`alloy_greedyFigure` は、使用済み行数が容量以下なら、収まる区切りを一つずつ進めて詰める規則と図版規則を同時に満たす配置があることを示す。
+区切りを一つ進めて図版が新たに置かれる場合も、図版規則の和がそのまま新しい使用行数の上限になる。
+容量 1 行以上と使用済み行数の条件は `fact input` から導かれ、`alloy_input_fact_bounds` が示す。
+容量の 6 行以下という条件と項目の数の上限は使わない。
+容量 0 行の空の段に本文 1 行を置く入力では 7 規則を同時に満たす配置がないことを、具体例で検査した。
+この入力は容量 3 行以上という `fact input` の条件を満たさないので、Alloy のコマンドの反例ではない。
+後の群の述語を書き写すことと、既存の宣言をこの書き写しへ結び付けることは残る。
 
 既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
