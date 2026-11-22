@@ -28,6 +28,24 @@ if [ "$missing" -gt 0 ]; then
   exit 1
 fi
 
+# The commands of docs/adr/0204 and docs/adr/0206 are also stated on the
+# transcribed predicates, in namespace Alloy.
+transcribed='someFits noneMeetsAll noneMeetsAllButGreedy greedyOrphan greedyWidow
+greedyKeepHeading greedyFigure orphanEmpty widowEmpty keepHeadingEmpty orphanWidow
+keepHeadingOrphan keepHeadingWidow keepHeadingFigure figureOrder figureEmpty tallFigure
+strictAfterHeadings relaxedAfterHeadings rectoKept rectoEnds keep21 decidedSome'
+sed -n '/^namespace Alloy$/,/^end Alloy$/p' "$proof" > "$tmp/alloy"
+for name in $transcribed; do
+  grep -Eq "^theorem ${name}([[:space:]]|:)" "$tmp/alloy" || {
+    echo "missing transcribed Lean counterpart: Alloy.$name" >&2
+    missing=$((missing + 1))
+  }
+done
+if [ "$missing" -gt 0 ]; then
+  echo "$missing transcribed commands lack a Lean counterpart" >&2
+  exit 1
+fi
+
 if grep -En '(^|[^A-Za-z])(sorry|admit|axiom)([^A-Za-z]|$)' "$proof"; then
   echo "unproved Lean declaration" >&2
   exit 1
@@ -35,4 +53,4 @@ fi
 
 lean=${LEAN:-lean}
 "$lean" "$proof"
-echo "42 Alloy commands have checked Lean counterparts"
+echo "42 Alloy commands have checked Lean counterparts, 23 of them on the transcription"

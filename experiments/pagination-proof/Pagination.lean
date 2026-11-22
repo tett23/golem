@@ -17190,4 +17190,139 @@ example : alloySome ⟨1,0,[.heading,.line 0]⟩ (fun p =>
     alloyWidowH ⟨1,0,[.heading,.line 0]⟩ p && alloyKeepHeading21 ⟨1,0,[.heading,.line 0]⟩ p &&
     alloyLineAfterHeadingsRule ⟨1,0,[.heading,.line 0]⟩ p) = false := by decide
 
+
+/-! ### The commands of the first two groups on the transcription
+
+Each theorem in `GolemPagination.Alloy` is named after its Alloy command
+and states the command's body on the transcribed predicates: a `found`
+command has an input meeting `fact input` and the body, and a `none`
+command has no input meeting `fact input` and the body, with no bound on
+the number of items. `check.sh` requires these names for the commands of
+the first two groups. The earlier declarations with the bare command
+names remain as abstract statements; they are not proved equivalent to
+these. -/
+
+private theorem alloyNoneFromDomain (inp : AlloyInput) (fact : alloyInputFact inp = true)
+    (rest : Bool) (proof : alloyInDomain inp = true → 1 ≤ inp.cap → 2 ≤ inp.cap →
+      inp.used ≤ inp.cap → rest = false) :
+    (alloyInDomain inp && rest) = false := by
+  cases d : alloyInDomain inp
+  · rfl
+  · have bounds := alloy_input_fact_bounds inp fact
+    simp [proof d bounds.1 (alloy_input_fact_cap_two inp fact) bounds.2]
+
+namespace Alloy
+
+theorem someFits : ∃ inp, alloyInputFact inp = true ∧ alloySome inp (alloyFits inp) = true :=
+  alloy_someFits
+
+theorem noneMeetsAll : ∃ inp, alloyInputFact inp = true ∧ alloyInDomain inp = true ∧
+    alloySome inp (alloyAll7 inp) = false :=
+  alloy_noneMeetsAll
+
+theorem noneMeetsAllButGreedy : ∀ inp, alloyInputFact inp = true →
+    (alloyInDomain inp && !alloySome inp (alloyAllButGreedy inp)) = false :=
+  fun inp fact => alloyNoneFromDomain inp fact _ (fun d c1 _ u => by
+    simp [alloy_noneMeetsAllButGreedy inp d c1 u])
+
+theorem greedyOrphan : ∃ inp, alloyInputFact inp = true ∧
+    alloyConflict inp alloyGreedy alloyOrphan = true := alloy_greedyOrphan
+theorem greedyWidow : ∃ inp, alloyInputFact inp = true ∧
+    alloyConflict inp alloyGreedy alloyWidow = true := alloy_greedyWidow
+theorem greedyKeepHeading : ∃ inp, alloyInputFact inp = true ∧
+    alloyConflict inp alloyGreedy alloyKeepHeading = true := alloy_greedyKeepHeading
+
+theorem greedyFigure : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyGreedy alloyFigure = false := fun inp fact => by
+  cases d : alloyInDomain inp
+  · simp [alloyConflict,d]
+  · exact alloy_greedyFigure inp d (alloy_input_fact_bounds inp fact).2
+
+private theorem pairNone (inp : AlloyInput) (fact : alloyInputFact inp = true)
+    (A B : AlloyInput → AlloyPlacement → Bool)
+    (proof : alloyInDomain inp = true → 1 ≤ inp.cap → inp.used ≤ inp.cap →
+      alloyConflict inp A B = false) :
+    alloyConflict inp A B = false := by
+  cases d : alloyInDomain inp
+  · simp [alloyConflict,d]
+  · exact proof d (alloy_input_fact_bounds inp fact).1 (alloy_input_fact_bounds inp fact).2
+
+theorem orphanEmpty : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyOrphan alloyNoSendFromEmpty = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_orphanEmpty inp)
+theorem widowEmpty : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyWidow alloyNoSendFromEmpty = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_widowEmpty inp)
+theorem keepHeadingEmpty : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyKeepHeading alloyNoSendFromEmpty = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingEmpty inp)
+theorem orphanWidow : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyOrphan alloyWidow = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_orphanWidow inp)
+theorem keepHeadingOrphan : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyKeepHeading alloyOrphan = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingOrphan inp)
+theorem keepHeadingWidow : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyKeepHeading alloyWidow = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingWidow inp)
+theorem keepHeadingFigure : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyKeepHeading alloyFigure = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingFigure inp)
+theorem figureOrder : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyFigure alloyOrder = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_figureOrder inp)
+theorem figureEmpty : ∀ inp, alloyInputFact inp = true →
+    alloyConflict inp alloyFigure alloyNoSendFromEmpty = false :=
+  fun inp fact => pairNone inp fact _ _ (alloy_figureEmpty inp)
+
+theorem tallFigure : ∃ inp, alloyInputFact inp = true ∧
+    (decide (inp.figures.length ≤ 1) && inp.blanks.isEmpty &&
+      (inp.where_ AlloyItem.isSpace).isEmpty && (inp.where_ AlloyItem.isNeed).isEmpty &&
+      !alloyFiguresFit inp &&
+      !alloySome inp (fun p => alloyFits inp p && alloyFigure inp p &&
+        alloyNoSendFromEmpty inp p)) = true :=
+  alloy_tallFigure
+
+theorem strictAfterHeadings : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain inp && alloyNoRecto inp &&
+      !alloySome inp (fun p => alloyBase inp p && alloyOrphan inp p && alloyWidow inp p &&
+        alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p)) = true :=
+  alloy_strictAfterHeadings
+
+theorem relaxedAfterHeadings : ∀ inp, alloyInputFact inp = true →
+    (alloyInDomain inp && (alloyNoRecto inp &&
+      !alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+        alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p))) = false :=
+  fun inp fact => alloyNoneFromDomain inp fact _ (fun d _ c2 u => by
+    simp [alloy_relaxedAfterHeadings inp d c2 u])
+
+theorem rectoKept : ∀ inp, alloyInputFact inp = true →
+    (alloyInDomain inp &&
+      !alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+        alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = false :=
+  fun inp fact => alloyNoneFromDomain inp fact _ (fun d _ c2 u => by
+    simp [alloy_rectoKept inp d c2 u])
+
+theorem rectoEnds : ∀ inp, alloyInputFact inp = true →
+    (alloyInDomain inp &&
+      !alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+        alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = false :=
+  fun inp fact => alloyNoneFromDomain inp fact _ (fun d _ c2 u => by
+    simp [alloy_rectoEnds inp d c2 u])
+
+theorem keep21 : ∀ inp, alloyInputFact inp = true →
+    (alloyInDomain inp && (alloyNoRecto inp &&
+      !alloySome inp (fun p => alloyBase inp p && alloyOrphan inp p && alloyWidow inp p &&
+        alloyKeepHeading21 inp p))) = false :=
+  fun inp fact => alloyNoneFromDomain inp fact _ (fun d c1 _ u => by
+    simp [alloy_keep21 inp d c1 u])
+
+theorem decidedSome : ∃ inp, alloyInputFact inp = true ∧
+    (alloyInDomain inp && !alloyNoRecto inp && !(inp.where_ AlloyItem.isLine).isEmpty &&
+      alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
+        alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = true :=
+  alloy_decidedSome
+
+end Alloy
+
 end GolemPagination
