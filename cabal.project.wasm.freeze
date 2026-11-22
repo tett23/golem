@@ -6,6 +6,8 @@ active-repositories: hackage.haskell.org:merge
 index-state: hackage.haskell.org 2026-11-10T04:57:14Z
 constraints: any.Diff ==1.0.2,
              any.Glob ==0.10.2,
+             any.JuicyPixels ==3.3.9,
+             JuicyPixels -mmap,
              any.OneTuple ==0.4.3,
              OneTuple +base-ge-4-15 +base-ge-4-16,
              any.QuickCheck ==2.18.0.0,

@@ -1159,6 +1159,40 @@ isbn = "978-..."
 プロジェクトを作るときに一度だけ生成し、以後は変えない。
 書名と著者の読み（`title-reading`、`reading`）は任意の項目であり、EPUB では電子書店での並べ替えや検索に使われる。
 
+### EPUB の固定ページ対応表
+
+`[targets.epub]` の `page-map` に JSON ファイルのパスを指定すると、対応する固定ページ版のページ一覧を EPUB のナビゲーション文書に書く（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
+指定を省くとページ一覧を作らない。
+リフロー後の画面番号は推定しない。
+
+```toml
+[targets.epub]
+page-map = "fixed-pages.json"
+```
+
+対応表の `sources` はプロジェクトルートからの原稿パスと、小文字の 16 進数 64 桁の SHA-256 の対応であり、文書を構成するすべての原稿を含める。
+`pages` は固定ページの物理順の配列で、`page` は正の整数の物理ページ、`label` は表示ノンブルである。
+`file`、`line`、`character` は原稿の本文位置を表し、行と UTF-16 の列は 0 から数える。
+この三つをすべて省いたページと、本文の文字に一意に対応しないページは一覧から除く。
+元の AST の文字、エスケープ、式の区間を、出力の文字列に照合する。
+式の結果や数の表記など文字ごとの対応がない部品は、その部品の先頭を指す。
+同じ原稿位置を本文に複数回展開した場合や、式の出力の境界を一意に定められない場合は、対応しない位置として扱う。
+原稿の SHA-256 が一致しない対応表、範囲外の位置、逆順の位置はエラーにする。
+本文位置は XHTML の空のページ区切り要素に解決し、ページ一覧からその ID にリンクする。
+HTML とプレーンテキストにはページ一覧を出さない。
+
+```json
+{
+  "sources": {"chapter.gm": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "pages": [
+    {"page": 1, "label": "i", "file": "chapter.gm", "line": 0, "character": 0},
+    {"page": 2, "label": "ii"}
+  ]
+}
+```
+
+上のハッシュは形式を示す仮の値であり、使うときは実際の原稿の SHA-256 に置き換える。
+
 ### 関係者と刷
 
 `creators` は主たる著作者（著者、訳者など）を、`contributors` はそのほかの関係者（編集者、印刷所、製本所、装丁者など）を書く表の配列である（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
@@ -4359,7 +4393,7 @@ HTML と EPUB は、文字スタイルの宣言を `ruby > rt` の CSS に書き
 名前と CMYK 値の対応は、出力インテント（`style.toml` の `[color]` の `intent` に指定する ICC プロファイル）に束縛して定義する。
 Golem が想定する出力インテントは、Japan Color 2001 Coated である。
 
-色を変換する向きは、CMYK から RGB だけである。
+色空間を換算する向きは CMYK から RGB だけであり、RGB の元の見た目に近い CMYK の値は推定しない。
 印刷を第一の媒体とするためである。
 そのため、EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
 
@@ -4373,15 +4407,21 @@ RGB への変換も、特色の色空間も使わない。
 レジストレーションの色を使えるのは golem-pdf の中のトンボだけであり、`style.toml` のスウォッチから使う手段はない。
 
 しかし、写真などの画像の色は、ここまでの規則の例外とする。
-Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込む。
+図版の描画色を指定しない場合、Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込む。
 印刷用の色への変換は、印刷所の RIP[^rip] に任せる。
 PDF/X-4 はこの形の画像を許している。
-画像と図版の色は、次のように書く。
+図版の明示的な色置換は、この色空間の換算とは区別する。
+書き手が選んだ CMYK スウォッチで単色図版を描き直す場合は、元の一色か白黒の濃淡を、指定色へ置き換える。
+多色の図版と、色を指定しない図版の色は保つ（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
+
+色を指定しない画像と図版は、次のように書く。
 
 - プロファイルのない RGB の画像には、sRGB のプロファイルを付けて埋め込む。
 - PDF の図版の DeviceRGB は、同じ考え方で、sRGB のプロファイルの ICCBased に置き換える（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 - PDF の図版の DeviceCMYK は、変換せずにそのまま書くので、本の出力インテントの値として印刷される。
 - SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased で書き、CMYK に変換しない（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+
+`[figures].color` を指定した図版は、対応する単色か白黒の濃淡をスウォッチの CMYK で直接描く（[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
 
 ## フォント
 
@@ -4833,12 +4873,14 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
   - 延べ数が上限を超えれば、メッセージに延べ数を書いた G08101 にし、図版を置かず、PDF を書かない。HTML と EPUB は `marker` を展開しないので、G08101 を出さない。
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - x86-64 と aarch64 で同じ出力にするため、数は有理数で計算する（[docs/adr/0002](adr/0002-determinism.md)）。三角関数と平方根は、有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。
-- 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
+- 色を指定しない SVG は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
 
-HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。
+HTML と EPUB は、SVG の図版を `<img>` で置く（`web` があればそれを置く）。
+`[figures].color` を指定した SVG は、単色または白黒の濃淡なら、その色と濃度に置き換えた描画を SVG として書く。
+色を指定しない SVG と、判定した多色の SVG は元の SVG をそのまま写す（[ADR 0386](adr/0386-page-list-and-page-colors.md)）。
 EPUB の `media-type` は `image/svg+xml` である。
-写す前に検査するのは、次に定める動的なコンテンツだけである（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。
-PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
+色を指定せず元の SVG を写す場合、検査するのは次に定める動的なコンテンツだけである（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。
+色を指定しなければ、PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は HTML と EPUB では許す。
 
 動的なコンテンツとは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。
 HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、処理命令、要素、属性を文書の順にたどる。
@@ -4898,6 +4940,65 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
   - 回せばより大きく置ける図版では、メッセージに `rotate=true` の案内を足す。
   - G07039 を抑制する単位は、`silence-notices` と `--no-notices` による本の全体である。
 - キャプションが占める格子の行の数が段の行の数に達し、画像を置く行が残らない場合はエラー（G07038）とする。
+
+### 単色図版の色
+
+`[figures]` の `color` にスウォッチ名を指定すると、単色図版をその色で描く（[ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+SVG、PNG、JPEG、取り込んだ PDF の描画を対象とし、白黒の濃淡と、一つの有彩色だけで描いた図版を扱う。
+白黒の濃淡を優先し、白は白、黒は指定色、灰色はその中間の濃度にする。
+RGB の三つの成分が等しい画素も白黒の濃淡である。
+一つの有彩色の図版は指定色に置き換え、それ以外の多色の図版は元の色のままにする。
+不透明度が 0 の画素は色の判定から除き、透過の度合いと図版の寸法は変えない。
+この指定は柱とノンブルの文字スタイル、罫線の色とは独立している。
+HTML と EPUB はスウォッチの CMYK を RGB に換算し、色を変えた JPEG は PNG として書く。
+PDF は指定スウォッチの CMYK を直接使い、SVG を RGB の近似へ変換してから CMYK に戻すことはしない。
+元のファイルは変更しない。
+画像の復号や安全なサイズでの変換ができない場合は G08113 を出し、影響する出力を削除する。
+JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended sequential、progressive の DCT 方式を扱う（[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)）。
+12-bit、lossless、arithmetic coding などの非対応方式は、G08113 にする。
+色を指定しない場合は、この復号方式の制限を適用せず、従来と同じように元の JPEG を扱う。
+
+PDF 図版の色置換は段階的な実装である。
+現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
+線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ ICCBased（成分数 1、3、4）と Indexed に対応する。
+Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
+ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
+インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
+画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
+Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
+画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
+ICCBased の Range は各成分の単位範囲だけを扱う。
+画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
+Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
+同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
+明示マスクは ImageMask = true で、画像とマスクの Interpolate を省くか false にした場合に扱う。
+マスクの Decode は既定の範囲か逆の範囲を受け入れ、元のオブジェクトと参照を変えずに可視画素の判定だけに使う。
+JPEG を含む DCTDecode の画像も、PDF の Decode を適用する前のサンプルへ復号する。
+RunLengthDecode の画像は復号してから判定する。
+CCITTFaxDecode の画像は 1-bit の DeviceGray か成分数 1 の ICCBased で、マスクを持たない場合に扱う。
+この画像は白と黒だけを持つので、復号せずに白黒の濃淡と判定する。
+置き換えた画像は元の符号化したデータを保ち、黒と白に指定色と白を割り当てた DeviceCMYK の Indexed の色空間で描く。
+DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
+取り込み時に展開した量に、色変換で見積もる復号量と出力量を加えて 256 MiB を超える変換は拒む。
+
+PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
+通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
+そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。
+ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、物体ごとの置き換えが濃淡の規則と一致しないので、G08113 とする。
+字形の中で自分の色を指定する Type 3 フォント（d0 の字形）を使う PDF も、字形の色を判定できないので G08113 とする。
+未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
+[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+
+色を指定した SVG は、判定か置換ができなければ PDF、HTML、EPUB の対象媒体を G08113 で止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
+色を指定しない SVG の受け入れ範囲は変えない。
+
+```toml
+[figures]
+color = "accent"
+
+[color.swatches.accent]
+cmyk = [0, 80, 60, 0]
+```
 
 ### HTML と EPUB の図版の大きさ
 
