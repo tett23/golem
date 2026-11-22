@@ -80,7 +80,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### スタイル
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
-  - **隠しノンブル（未実装）**：本文の役割の書体で、`[hidden-folio]` の `size` だけを変えられる。 [Golem ADR 0365](adr/0365-hidden-folio-style.md)。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
   - **ルビの読み**：読みだけに文字スタイルを指定できる。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
 - **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
