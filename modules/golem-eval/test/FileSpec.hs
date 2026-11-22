@@ -319,7 +319,9 @@ escapeTests =
         errs "[ruby side=both: 東|とう]\n" @?= ["G02038"]
         errs "[ruby side=after: 東|とう|East]\n" @?= ["G02038"]
         errs "[ruby side=both: 東/京|とう/きょう|Tokyo]\n" @?= ["G02015"]
-        errs "[ruby side=both: 東|とう|]\n" @?= ["G02015"],
+        errs "[ruby side=both: 東|とう|]\n" @?= ["G02157"]
+        errs "[ruby side=both: 東||East]\n" @?= ["G02157"]
+        errs "[ruby side=both: 東/京|とう/|East/Capital]\n" @?= ["G02157"],
       testCase "root ADR 0379 I1: invalid inline options fail at the ruby" $ do
         mapM_ (\arg -> errs ("[ruby " <> arg <> ": 東|とう]\n") @?= ["G02157"]) ["side=left", "overhang-side=left", "size=0pt", "size=-1pt", "size=nan", "align=left", "before"]
         errs "[ruby side=after overhang-side=end size=0.75zw align=start: 東|とう]\n" @?= [],

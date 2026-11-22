@@ -1112,11 +1112,14 @@ decorationBands env (x0, y0) sl =
       kind
         | kind `elem` [KindRuby, KindGroupRuby],
           (base, reading) <- T.breakOn "|" (bcText c),
-          T.length reading > 1 ->
+          T.length reading > 1,
+          roSide (lkRubyOptions (bcLook c)) /= RubyAfter ->
             let look = bcLook c
                 looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                 big = if null looks then lkSize look else maximum (map lkSize looks)
-             in [rubyOverhang True 0 big (lkSize (readingLook look)) (lkBaselineShift look)]
+                rsize = lkSize (readingLook look)
+                extra = if any isJust (roReadingKenten (lkRubyOptions look)) then half rsize else 0
+             in [rubyOverhang True 0 big rsize (lkBaselineShift look) + extra]
       KindKenten | Just _ <- lkKenten (bcLook c) -> let look = bcLook c in [kentenOverhang True 0 (lkSize look) 0 (lkBaselineShift look)]
       _ -> []
 
@@ -1341,12 +1344,12 @@ drawLineAt env (x0, y0) sl =
                             [ inColour rlook (usesOf (whoOf V.PartKenten c) (rlook {lkSize = markSize}) (kentenMark env (lkFace rlook) shape markSize centre))
                             | (side, text, placement) <- readingRuns,
                               (ch, pos, Just shapeName) <- zip3 (T.unpack text) (rpReading placement) (readingMarks side <> repeat Nothing),
-                              Just shape <- [kentenShapeFromName shapeName],
                               takesKenten ch,
                               let advance = lfAdvance fonts (shapingForFonts fonts vertical rlook ch) ch
                                   along = rubyOff + pos + zwToSp rsize (advance / 2)
                                   distance = if side == RubyBefore then across + kentenAcross vertical rsize (if vertical then 0 else 38 / 100) markSize else afterAcross - (if vertical then Sp (unSp rsize `div` 2) + Sp (unSp markSize `div` 2) else zwToSp rsize (1 - baselineRatio) + Sp (unSp markSize `div` 2))
-                                  centre = beside (origin along) distance
+                                  centre = beside (origin along) distance,
+                              Just shape <- [kentenShapeFromName shapeName]
                             ]
                           readingLeaf = leafOf (rubyTextLeaf (bcLeaf c))
                           bases = zipWith (\lk marks -> (leafOf (rubyBaseLeaf (bcLeaf c) lk), marks)) baseLooks placed1

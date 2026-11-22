@@ -232,7 +232,8 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 個々のルビでは、読みを置く側とかける側、大きさ、配置も選べます。
 
 ```
-[ruby side=after size=0.75zw overhang-side=start: 東京|とうきょう]
+[ruby side=after overhang-side=start: 東|とう]
+[ruby size=0.75zw: 東京|とうきょう]
 [ruby side=both: 東京|とうきょう|Tokyo]
 ```
 

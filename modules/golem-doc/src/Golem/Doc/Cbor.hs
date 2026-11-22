@@ -33,6 +33,7 @@ import Control.Monad (when, (>=>))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
+import Data.Maybe (isNothing)
 import Data.Ratio (denominator, numerator, (%))
 import Data.String (IsString (..))
 import Data.Text (Text)
@@ -209,7 +210,7 @@ segT seg@(RubySegment base reading) =
   where
     original = [list (inlineT absurd) base, opt text reading]
     extras
-      | rsOtherReading seg == Nothing && rsOptions seg == defaultRubyOptions = []
+      | isNothing (rsOtherReading seg) && rsOptions seg == defaultRubyOptions = []
       | otherwise = [opt text (rsOtherReading seg), rubyOptionsT (rsOptions seg)]
 
 rubyOptionsT :: RubyOptions -> Term

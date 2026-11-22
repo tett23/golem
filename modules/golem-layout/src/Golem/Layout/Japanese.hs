@@ -1272,7 +1272,7 @@ rubyPieces env segs
       [ let opts = rsOptions seg
             inheritMarks reading marks = case lkKenten (ceLook env) of
               Nothing -> marks
-              Just shape -> take (maybe 0 T.length reading) (map (\m -> Just (fromMaybe (kentenShapeName shape) m)) (marks <> repeat Nothing))
+              Just shape -> take (maybe 0 T.length reading) (map (Just . fromMaybe (kentenShapeName shape)) (marks <> repeat Nothing))
             styled = lk {lkRubyOptions = opts {roReadingKenten = inheritMarks (rsReading seg) (roReadingKenten opts), roOtherKenten = inheritMarks (rsOtherReading seg) (roOtherKenten opts)}, lkRubyOtherReading = rsOtherReading seg}
             chars = concatMap (baseChars env styled) (rsBase seg)
          in (styled, T.concat (map fst chars), map snd chars, rsReading seg)

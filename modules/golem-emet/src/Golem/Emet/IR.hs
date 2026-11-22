@@ -27,7 +27,7 @@ where
 
 import Control.Monad.State.Strict
 import Data.Foldable (toList)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
@@ -127,7 +127,7 @@ encodeInline = \case
       listE
         ( \seg -> do
             b <- encodeNoRuby (rsBase seg)
-            if rsOptions seg == defaultRubyOptions && rsOtherReading seg == Nothing
+            if rsOptions seg == defaultRubyOptions && isNothing (rsOtherReading seg)
               then pure (con "RubySegment" [b, maybeR str (rsReading seg)])
               else do
                 i <- gets (Seq.length . cRubyFormatting)

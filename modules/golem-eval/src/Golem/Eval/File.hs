@@ -2807,7 +2807,8 @@ ruby ctx sp options slots
           (_, Nothing, _) -> badReading
           (_, _, Nothing) -> badReading
           (Just baseSegs, Just readSegs, Just secondSegs)
-            | length baseSegs /= length readSegs || (expected == 3 && (length secondSegs /= length baseSegs || any (T.null . fst) (readSegs <> secondSegs))) -> err "G02015" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+            | length baseSegs /= length readSegs || (expected == 3 && length secondSegs /= length baseSegs) -> err "G02015" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+            | expected == 3 && any (T.null . fst) (readSegs <> secondSegs) -> err "G02157" sp "ruby side=both の両側には、空でない読みを書きます" >> pure []
             | otherwise ->
                 let optional t = if T.null t then Nothing else Just t
                     make b (r, marks) other = (RubySegment b (if expected == 2 && length baseSegs == 1 then Just r else optional r)) {rsOtherReading = other >>= optional . fst, rsOptions = options {roReadingKenten = marks, roOtherKenten = maybe [] snd other}}
