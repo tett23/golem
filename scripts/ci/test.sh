@@ -4659,8 +4659,16 @@ scripts-macos: changes
 verapdf: changes
 visual: changes
 wasm: changes'
+# root ADR 0351 adds independent proof and manuscript jobs to the current
+# workflow. Keep the ADR 0392 fixture and all its original edges unchanged.
+CP_CURRENT_NEEDS=$(
+  {
+    printf '%s\n' "$CP_NEEDS" | sed '/^ci:/s/$/ parser-fmt-manuscripts parser-fmt-proofs/'
+    printf '%s\n' 'parser-fmt-manuscripts: changes build' 'parser-fmt-proofs: changes'
+  } | cp_norm
+)
 run cpath --needs
-if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_CURRENT_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
 # the three forms of needs (a word, a list in brackets, the lines of a list),
 # quoted or not, with a comment after them
 run cpath --workflow "$CPD/ci.yml" --needs
@@ -4921,11 +4929,16 @@ done
 # after cabal build of build is written with the runners it runs on, the
 # suites of cabal test with their runners, and the needs of ci; the list of
 # the commit before the ADR is testdata. The one step more is the check of
-# the plan, item 1 of the ADR
+# the plan, item 1 of the ADR. root ADR 0351 independently adds two checks:
+# retain every original step, suite and architecture and add only their needs.
 CC=$HERE/testdata/ci-checks
+{
+  cat "$CC/before-0395.txt"
+  printf 'needs\t%s\n' parser-fmt-proofs parser-fmt-manuscripts
+} | LC_ALL=C sort >"$WORK/a1.expected"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
 grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
-if [ "$CODE" = 0 ] && diff "$CC/before-0395.txt" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
+if [ "$CODE" = 0 ] && diff "$WORK/a1.expected" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40
 fi
