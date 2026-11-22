@@ -28,6 +28,13 @@ pdfColorTests =
       result <- requireConverted original
       lookup 1 (P.ipObjects result) @?= lookup 1 (P.ipObjects original)
       assertBool "original object not reused for paint" (P.ipResources result /= P.ipResources original),
+    testCase "root ADR 0403 I2: a nested soft mask keeps the source XObject binding" $ do
+      let base = formPage ".5 g 0 0 10 10 re f" "/Alpha gs /F Do"
+          original = base {P.ipResources = P.ODict [("XObject", P.ODict [("F", P.ORef 1)]), ("ExtGState", P.ODict [("Alpha", P.ODict [("SMask", P.ODict [("S", P.OName "Luminosity"), ("G", P.ORef 3)])])])], P.ipObjects = P.ipObjects base <> [(3, P.OStream [("Subtype", P.OName "Form")] "/F Do")]}
+      result <- requireConverted original
+      case P.ipResources result of
+        P.ODict fields | Just (P.ODict objects) <- lookup "XObject" fields -> lookup "F" objects @?= Just (P.ORef 1)
+        other -> assertFailure (show other),
     testCase "root ADR 0403 I2: a cyclic PDF Form graph is rejected" $ do
       let cyclic = formPage "/F Do" "/F Do"
       case recolor cyclic of
@@ -106,10 +113,11 @@ formPage form content =
     }
 
 newFormContent :: P.ImportedPage -> ByteString
-newFormContent p = case P.ipResources p of
-  P.ODict fields
+newFormContent p = case (P.ipResources p, P.contentOperations (P.ipContent p)) of
+  (P.ODict fields, Just operations)
     | Just (P.ODict objects) <- lookup "XObject" fields,
-      Just (P.ORef key) <- lookup "F" objects,
+      name : _ <- [TE.decodeLatin1 (BS.drop 1 name) | ("Do", [name]) <- operations],
+      Just (P.ORef key) <- lookup name objects,
       Just (P.OStream _ content) <- lookup key (P.ipObjects p) ->
         content
   _ -> "missing converted Form"

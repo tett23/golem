@@ -42,7 +42,7 @@ recolorImportedPage swatch _ page = do
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
   let source = Map.fromList (P.ipObjects page)
-      initialState = Resources source Map.empty Map.empty Map.empty Map.empty (P.maxDecodedBytes - P.ipDecodedBytes page)
+      initialState = Resources source Map.empty Map.empty Map.empty Map.empty Map.empty (P.maxDecodedBytes - P.ipDecodedBytes page)
   (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty Nothing (P.ipResources page) initial (P.ipContent page) initialState
   case kind of
     Multicolor -> Right Nothing
@@ -50,10 +50,13 @@ recolorImportedPage swatch _ page = do
     _ -> do
       let prefix = BC.unlines [paint swatch (Gray 0) False, paint swatch (Gray 0) True]
       charged <- charge (BS.length prefix) analyzed
-      (content, resources, rendered) <- renderForms swatch Set.empty Nothing (P.ipResources page) initial (P.ipContent page) charged
+      (content, _, rendered) <- renderForms swatch Set.empty Nothing (P.ipResources page) initial (P.ipContent page) charged
+      resources <- bindScope Nothing (P.ipResources page) rendered
+      let scopes = Map.fromList [(clone, scope) | ((_, scope), clone) <- Map.toList (convertedForms rendered)]
+      objects <- traverse (finalizeClone scopes rendered) (Map.toAscList (convertedObjects rendered))
       let result = prefix <> content
           identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 result)
-      Right (Just page {P.ipContent = result, P.ipResources = resources, P.ipObjects = P.ipObjects page <> Map.toAscList (convertedObjects rendered), P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = P.maxDecodedBytes - remainingBytes rendered})
+      Right (Just page {P.ipContent = result, P.ipResources = resources, P.ipObjects = P.ipObjects page <> objects, P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = P.maxDecodedBytes - remainingBytes rendered})
   where
     initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1
 
@@ -64,6 +67,7 @@ data Resources = Resources
     formSummaries :: !(Map.Map (P.ObjNum, Maybe P.ObjNum, Graphics) RasterKind),
     convertedForms :: !(Map.Map (P.ObjNum, Maybe P.ObjNum) P.ObjNum),
     convertedObjects :: !(Map.Map P.ObjNum (P.ObjOf P.ObjNum)),
+    scopeBindings :: !(Map.Map (Maybe P.ObjNum) (Map.Map Text P.ObjNum)),
     remainingBytes :: !Int
   }
 
@@ -112,7 +116,7 @@ renderForms swatch active scope resources graphics content state = do
       | otherwise = Left "PDF 図版の描画状態が閉じていません"
     go (Scan before saved seen output _) bound st (operation@(operator, args) : rest) = do
       current <- externalGraphics resources before operation st
-      (external, rebound, updated) <-
+      (external, rebound, updated, rewritten) <-
         if operator == "Do"
           then do
             (key, fields, childResources, childScope) <- formResource resources scope args st
@@ -121,15 +125,15 @@ renderForms swatch active scope resources graphics content state = do
               Nothing -> do
                 guardForm active key
                 (body, decoded) <- decodeForm key fields st
-                (painted, childBound, rendered) <- renderForms swatch (Set.insert key active) childScope childResources current body decoded
+                (painted, _, rendered) <- renderForms swatch (Set.insert key active) childScope childResources current body decoded
                 fresh <- freshObject rendered
-                let fieldsOut = [(k, v) | (k, v) <- fields, k `notElem` ["Length", "Filter", "DecodeParms", "DL", "Resources"]] <> [("Resources", childBound)]
+                let fieldsOut = [(k, v) | (k, v) <- fields, k `notElem` ["Length", "Filter", "DecodeParms", "DL"]]
                 Right (fresh, rendered {convertedForms = Map.insert (key, childScope) fresh (convertedForms rendered), convertedObjects = Map.insert fresh (P.OStream fieldsOut painted) (convertedObjects rendered)})
-            name <- resourceName args
-            rebound <- replaceXObject bound name clone child
-            Right (Just Unpainted, rebound, child)
-          else Right (Nothing, bound, st)
-      next@(Scan _ _ _ _ budget) <- stepWith external swatch (Scan current saved seen output (Just (remainingBytes updated))) operation
+            alias <- freshAlias resources clone child
+            let bindings = Map.insertWith Map.union scope (Map.singleton alias clone) (scopeBindings child)
+            Right (Just Unpainted, bound, child {scopeBindings = bindings}, ("Do", ["/" <> TE.encodeUtf8 alias]))
+          else Right (Nothing, bound, st, operation)
+      next@(Scan _ _ _ _ budget) <- stepWith external swatch (Scan current saved seen output (Just (remainingBytes updated))) rewritten
       go next rebound (case budget of Nothing -> updated; Just remaining -> updated {remainingBytes = remaining}) rest
 
 -- Use the importer's existing nesting boundary for reference and Form graphs.
@@ -221,11 +225,33 @@ freshObject state =
   let lowest = min 0 (min (maybe 0 fst (Map.lookupMin (sourceObjects state))) (maybe 0 fst (Map.lookupMin (convertedObjects state))))
    in if lowest == minBound then Left "PDF 図版の変換用オブジェクト番号がありません" else Right (lowest - 1)
 
-replaceXObject :: P.ObjOf P.ObjNum -> Text -> P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
-replaceXObject resources name clone state = do
-  values <- dictionary resources state
-  objects <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" values)
-  Right (P.ODict ([(k, v) | (k, v) <- values, k /= "XObject"] <> [("XObject", P.ODict ([(k, v) | (k, v) <- objects, k /= name] <> [(name, P.ORef clone)]))]))
+-- Generated names leave every original binding available to unmodified masks.
+freshAlias :: P.ObjOf P.ObjNum -> P.ObjNum -> Resources -> Either Text Text
+freshAlias resources clone state = do
+  fields <- dictionary resources state
+  originals <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" fields)
+  let names = Map.fromList originals
+      choose candidate = if Map.member candidate names then choose (candidate <> "_") else candidate
+  Right (choose ("GolemFigureColor" <> TE.decodeLatin1 (BC.pack (show (negate (toInteger clone))))))
+
+-- Install aliases once at their original resource owner. Forms without their
+-- own Resources keep inheriting that dictionary instead of copying it.
+bindScope :: Maybe P.ObjNum -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
+bindScope scope resources state = case Map.lookup scope (scopeBindings state) of
+  Nothing -> Right resources
+  Just additions -> do
+    values <- dictionary resources state
+    originals <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" values)
+    let objects = Map.union (Map.map P.ORef additions) (Map.fromList originals)
+    Right (P.ODict ([(k, v) | (k, v) <- values, k /= "XObject"] <> [("XObject", P.ODict (Map.toAscList objects))]))
+
+finalizeClone :: Map.Map P.ObjNum (Maybe P.ObjNum) -> Resources -> (P.ObjNum, P.ObjOf P.ObjNum) -> Either Text (P.ObjNum, P.ObjOf P.ObjNum)
+finalizeClone scopes state (key, P.OStream fields content) = case lookup "Resources" fields of
+  Nothing -> Right (key, P.OStream fields content)
+  Just resources -> do
+    bound <- bindScope (Map.findWithDefault Nothing key scopes) resources state
+    Right (key, P.OStream ([(k, v) | (k, v) <- fields, k /= "Resources"] <> [("Resources", bound)]) content)
+finalizeClone _ _ object = Right object
 
 budgetError :: Text
 budgetError = "PDF 図版の色変換が展開上限を超えます"
