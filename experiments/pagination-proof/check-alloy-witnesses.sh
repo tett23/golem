@@ -8,6 +8,51 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 cp "$root/docs/golem-layout/models/pagination.als" "$tmp/witnesses.als"
 cat >> "$tmp/witnesses.als" <<'EOF'
+run someFitsFixture {
+  Col.cap = 3 and Col.used = 0
+  no Item
+  some p: Placement | fits[p]
+} for 5 but 5 Int, 14 Placement
+
+run noneMeetsAllFixture {
+  inDomain
+  Col.cap = 3 and Col.used = 2
+  #Heading = 2 and no Recto and no Line and no Figure
+  no p: Placement | all7[p]
+} for 5 but 5 Int, 14 Placement
+
+run greedyOrphanFixture {
+  inDomain
+  Col.cap = 3 and Col.used = 2
+  #Line = 2 and #Para = 1 and no Heading and no Figure
+  (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and orphan[p])
+  no p: Placement | fits[p] and greedy[p] and orphan[p]
+} for 5 but 5 Int, 14 Placement
+
+run greedyWidowFixture {
+  inDomain
+  Col.cap = 3 and Col.used = 2
+  #Line = 2 and #Para = 1 and no Heading and no Figure
+  (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and widow[p])
+  no p: Placement | fits[p] and greedy[p] and widow[p]
+} for 5 but 5 Int, 14 Placement
+
+run greedyKeepHeadingFixture {
+  inDomain
+  Col.cap = 3 and Col.used = 2
+  #Heading = 2 and no Recto and no Line and no Figure
+  (some p: Placement | fits[p] and greedy[p]) and (some p: Placement | fits[p] and keepHeading[p])
+  no p: Placement | fits[p] and greedy[p] and keepHeading[p]
+} for 5 but 5 Int, 14 Placement
+
+run tallFigureFixture {
+  Col.cap = 3 and Col.used = 0
+  no Text and no Blank and no Need
+  one f: Figure | f.size = 4
+  not figuresFit
+  no p: Placement | fits[p] and figure[p] and noSendFromEmpty[p]
+} for 5 but 5 Int, 14 Placement
+
 run decidedFixture {
   inDomain
   Col.cap = 3 and Col.used = 0
@@ -175,7 +220,8 @@ run needAcrossWaitingFigureFixture {
 } for 6 but 5 Int, exactly 3 Line, exactly 2 Para, exactly 6 Item, exactly 16 Placement
 EOF
 
-for command in decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
+for command in someFitsFixture noneMeetsAllFixture greedyOrphanFixture \
+    greedyWidowFixture greedyKeepHeadingFixture tallFigureFixture decidedFixture keepAllFixture needFigureFixture needMore27Fixture \
     needMoreSomeFixture needSpaceSomeFixture relaxedHeadingFixture \
     headingFigureFitsFixture headingFigureWaitsFixture \
     rectoRunDifferenceFixture headingRunFixture \

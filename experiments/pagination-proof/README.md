@@ -204,7 +204,9 @@ Haskell の各パスが作る active な候補と選ばれた履歴がこの検�
 走査が選ぶ履歴は、原稿全体の組立検査を通る。
 `I1_caption_ordered_breaks_assemble` は、ボックスでない改行位置が原稿順に厳密に増え、最後が原稿の最終項目であれば、組立検査が成功することを示す。
 直前の改行の読み飛ばし範囲に入る改行も、`I1_caption_discard_inside_same_start` により同じ開始位置へ戻るので、空の表示行として通る。
-`I1_caption_scan_history_step` は、通常の更新、追い出しによる再開、救済のどの分岐でも、各 active の履歴が実際の候補だけからなり、原稿位置が厳密に減る順に並び、行数と一致し、候補の原稿位置が最後の改行の次の位置に一致することを示す。
+`I1_caption_scan_history_step` は、通常の更新と追い出しによる再開と救済のどの分岐でも、各 active の履歴についての不変条件が保たれることを示す。
+履歴は実際の候補だけからなり、原稿位置が厳密に減る順に並ぶ。
+履歴の長さは行数と一致し、候補の原稿位置は最後の改行の次の位置に一致する。
 `I1_caption_scan_reaches_final` と `I1_caption_generated_scan_completes` は、項目から作る候補列の走査が燃料や再試行の上限なしに最終状態へ達することを示す。
 `I1_caption_chosen_history_assembles` は、その最終状態で最終項目に達した候補のどれを選んでも、履歴から作る改行列が組立検査を通り、表示行の数が候補の行数と一致し、原稿のボックスが原稿順に一度ずつ出ることを示す。
 この定理は最終の選択規則を仮定しない。
@@ -283,7 +285,19 @@ Lean は任意の整数の段容量、予約行数、区切り行数で、繰り
 改段後に行アキを置き直す場合は、元の要求行数を使い、移動先の段で実際に消費した行数を記録する。
 `I3_replayed_space_charges` は要求の順序と実際の消費行数の合計を、`I3_replay_on_column_top` は段頭で消費する行数がゼロであることを示す。
 
-既存宣言と元の述語の同値性、キャプションの行分割、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
+元の述語への対応を始めるため、Alloy のモデルを Lean へ書き写した。
+`AlloyInput` は段の容量と使用済み行数、原稿順の項目を持ち、項目の位置を列の番号とする。
+`alloyInputFact` は `fact input` の残りの条件を、容量の 3〜6 行も含めて検査する。
+`alloyPlacements` は `fact allPlacements` のとおり、区切り位置、置く図版の部分集合、置く空行の部分集合のすべての組を列挙するので、`some p: Placement` と `no p: Placement` はこの列の上の量化になる。
+`alloyFits` から `alloyAll7` までは、[docs/adr/0204](../../docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の述語を一つずつ写す。
+整数は上限のない自然数とし、Alloy の 5 ビット整数の折り返しは写さない。
+Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos` は、Alloy と同じく位置の和で比べる。
+`alloy_someFits`、`alloy_noneMeetsAll`、`alloy_greedyOrphan`、`alloy_greedyWidow`、`alloy_greedyKeepHeading`、`alloy_tallFigure` は、解のある 6 コマンドの本体を、書き写した述語の上で具体的な入力により示す。
+`check-alloy-witnesses.sh` は同じ入力を Alloy に固定して、どれにも解があることを確かめる。
+書き写しの忠実さは、これらの具体例の一致で確かめたにとどまる。
+同じ群で解のない 11 コマンドを、書き写した述語の上で上限なしに示すこと、後の群の述語を書き写すこと、既存の宣言をこの書き写しへ結び付けることは残る。
+
+既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
 既存の整数行のモデルを、その経路の証明とは扱わない。
 全体を閉じるには、キャプションの評価値と幅の計算と Haskell の対応、Alloy の元の述語への全体の対応、格子モードの各 `Flow` の具体的な状態遷移、自由な配置の状態遷移を、終了と内容保存の証明へそれぞれ接続する必要がある。

@@ -15370,4 +15370,263 @@ example : captionAssembleWhole id [.box,.glue,.box,.penalty (-10000) false]
     ([(3,3),(1,2)].reverse.map Prod.fst) = some [[.box],[.box]] := by decide
 
 
+
+/-! ## A direct transcription of the Alloy model, part 1
+
+This section transcribes `docs/golem-layout/models/pagination.als` up to
+the commands of docs/adr/0204 (`someFits` .. `tallFigure`) without the
+Alloy scope. An item's `pos` is its index in `items`, so the facts that
+positions are `0 .. #Item - 1` and distinct hold by construction. Every
+other `fact input` conjunct is checked by `alloyInputFact`, including the
+capacity range 3..6. `fact allPlacements` makes the Placement atoms
+exactly the triples (brk in 0..#Text, kept ⊆ Figure, placed ⊆ Blank), so
+`some p: Placement` and `no p: Placement` range over `alloyPlacements`.
+Integers are unbounded naturals: the facts make `cap`, `used`, sizes and
+need lines non-negative, and nothing here wraps as 5-bit Alloy integers
+would. Where Alloy applies an integer comparison to a set of positions
+(`p.kept.pos > i.pos`), it compares the sum, and so does `alloyKeptPosSum`. -/
+
+inductive AlloyItem where
+  | line (para : Nat)
+  | heading
+  | recto
+  | figure (size : Nat)
+  | blank
+  | space
+  | need (lines : Nat)
+  deriving DecidableEq, Repr
+
+structure AlloyInput where
+  cap : Nat
+  used : Nat
+  items : List AlloyItem
+  deriving DecidableEq, Repr
+
+structure AlloyPlacement where
+  brk : Nat
+  kept : List Nat
+  placed : List Nat
+  deriving DecidableEq, Repr
+
+namespace AlloyItem
+def isText : AlloyItem → Bool
+  | line _ | heading | recto | space => true
+  | _ => false
+def isHeading : AlloyItem → Bool
+  | heading | recto => true
+  | _ => false
+def isRecto : AlloyItem → Bool
+  | recto => true
+  | _ => false
+def isLine : AlloyItem → Bool
+  | line _ => true
+  | _ => false
+def paraOf : AlloyItem → Option Nat
+  | line q => some q
+  | _ => none
+def isFigure : AlloyItem → Bool
+  | figure _ => true
+  | _ => false
+def isBlank : AlloyItem → Bool
+  | blank => true
+  | _ => false
+def isSpace : AlloyItem → Bool
+  | space => true
+  | _ => false
+def isNeed : AlloyItem → Bool
+  | need _ => true
+  | _ => false
+def size : AlloyItem → Nat
+  | figure s => s
+  | _ => 0
+def needLines : AlloyItem → Nat
+  | need n => n
+  | _ => 0
+end AlloyItem
+
+namespace AlloyInput
+variable (inp : AlloyInput)
+
+def itemAt (i : Nat) : Option AlloyItem := inp.items.get? i
+def positions : List Nat := List.range inp.items.length
+def has (P : AlloyItem → Bool) (i : Nat) : Bool := (inp.itemAt i).any P
+def where_ (P : AlloyItem → Bool) : List Nat := inp.positions.filter (inp.has P)
+def textCount : Nat := (inp.where_ AlloyItem.isText).length
+def figures : List Nat := inp.where_ AlloyItem.isFigure
+def blanks : List Nat := inp.where_ AlloyItem.isBlank
+def sizeAt (i : Nat) : Nat := ((inp.itemAt i).map AlloyItem.size).getD 0
+def isLineOf (q i : Nat) : Bool := (inp.itemAt i).any (fun item => item.paraOf == some q)
+def paras : List Nat :=
+  (inp.items.filterMap AlloyItem.paraOf).eraseDups
+def paraLines (q : Nat) : List Nat := inp.positions.filter (inp.isLineOf q)
+def paraOfAt (i : Nat) : Option Nat := (inp.itemAt i).bind AlloyItem.paraOf
+
+/-- fun tpos: the number of text items before position t. -/
+def tpos (t : Nat) : Nat := ((inp.where_ AlloyItem.isText).filter (· < t)).length
+
+/-- fun first/second/last/beforeLast, as the line positions they select. -/
+def first (q : Nat) : Option Nat := (inp.paraLines q).head?
+def second (q : Nat) : Option Nat := (inp.paraLines q).get? 1
+def last (q : Nat) : Option Nat := (inp.paraLines q).reverse.head?
+def beforeLast (q : Nat) : Option Nat := (inp.paraLines q).reverse.get? 1
+end AlloyInput
+
+def alloySubsets : List Nat → List (List Nat)
+  | [] => [[]]
+  | x :: xs => let rest := alloySubsets xs; rest ++ rest.map (x :: ·)
+
+/-- fact allPlacements: every placement exists, once. -/
+def alloyPlacements (inp : AlloyInput) : List AlloyPlacement :=
+  (List.range (inp.textCount+1)).bind fun b =>
+    (alloySubsets inp.figures).bind fun kept =>
+      (alloySubsets inp.blanks).map fun placed => ⟨b,kept,placed⟩
+
+/-- fact input, without the scope of `for 5`. -/
+def alloyInputFact (inp : AlloyInput) : Bool :=
+  decide (3 ≤ inp.cap) && decide (inp.cap ≤ 6) && decide (inp.used ≤ inp.cap) &&
+  decide (inp.figures.length ≤ 2) && decide (inp.blanks.length ≤ 1) &&
+  decide ((inp.where_ AlloyItem.isSpace).length ≤ 1) &&
+  decide ((inp.where_ AlloyItem.isNeed).length ≤ 2) &&
+  inp.items.all (fun item => !item.isNeed ||
+    (decide (1 ≤ item.needLines) && decide (item.needLines ≤ inp.cap+1))) &&
+  inp.items.all (fun item => !item.isFigure ||
+    (decide (1 ≤ item.size) && decide (item.size ≤ inp.cap+1))) &&
+  -- the lines of a paragraph are together, nothing between them
+  inp.positions.all fun l => inp.positions.all fun m =>
+    match inp.paraOfAt l, inp.paraOfAt m with
+    | some q, some r =>
+      !(q == r) || inp.positions.all fun i =>
+        !(decide (min l m < i) && decide (i < max l m)) || inp.paraOfAt i == some q
+    | _, _ => true
+
+section
+variable (inp : AlloyInput) (p : AlloyPlacement)
+
+def alloyText (i : Nat) : Bool := inp.has AlloyItem.isText i
+def alloyHere (t : Nat) : Bool := decide (inp.tpos t < p.brk)
+def alloyHereOpt : Option Nat → Bool
+  | some t => alloyHere inp p t
+  | none => decide (0 < p.brk)  -- tpos[none] = #{u | u.pos < 0} = 0
+
+def alloyKeptPosSum : Nat := p.kept.foldl (· + ·) 0
+
+def alloyLoad : Nat :=
+  inp.used + (inp.positions.filter fun t => alloyText inp t && alloyHere inp p t).length +
+    (p.kept.map inp.sizeAt).foldl (· + ·) 0 + p.placed.length
+
+def alloyFits : Bool := decide (alloyLoad inp p ≤ inp.cap)
+
+def alloyStartsColumn (i : Nat) : Bool :=
+  decide (inp.used = 0) &&
+  inp.positions.all (fun t => !(alloyText inp t && decide (t < i) && alloyHere inp p t)) &&
+  (p.kept.isEmpty || decide (alloyKeptPosSum p > i))
+
+def alloyStartsColumnOpt : Option Nat → Bool
+  | some i => alloyStartsColumn inp p i
+  | none => alloyStartsColumn inp p 0
+
+def alloyGreedy : Bool :=
+  decide (p.brk = inp.textCount) || decide (alloyLoad inp p + 1 > inp.cap)
+
+def alloyTextBeforeHere (f : Nat) : Bool :=
+  inp.positions.all fun t => !(alloyText inp t && decide (t < f)) || alloyHere inp p t
+
+def alloyOrder : Bool := p.kept.all (alloyTextBeforeHere inp p)
+
+def alloyFigure : Bool :=
+  inp.figures.all fun f =>
+    p.kept.contains f ==
+      (alloyTextBeforeHere inp p f &&
+        decide (inp.used + (inp.positions.filter fun t => alloyText inp t && decide (t < f)).length +
+          inp.sizeAt f ≤ inp.cap))
+
+def alloyOrphan : Bool :=
+  inp.paras.all fun q =>
+    !(decide (2 ≤ (inp.paraLines q).length) && alloyHereOpt inp p (inp.first q) &&
+      !alloyHereOpt inp p (inp.second q)) || alloyStartsColumnOpt inp p (inp.first q)
+
+def alloyWidow : Bool :=
+  inp.paras.all fun q =>
+    !(decide (2 ≤ (inp.paraLines q).length) && alloyHereOpt inp p (inp.beforeLast q) &&
+      !alloyHereOpt inp p (inp.last q)) || alloyStartsColumnOpt inp p (inp.first q)
+
+def alloyKeepHeading : Bool :=
+  inp.positions.all fun h =>
+    !(inp.has AlloyItem.isHeading h && alloyHere inp p h && !alloyStartsColumn inp p h) ||
+    inp.positions.all fun t =>
+      !(alloyText inp t && decide (t > h) &&
+        inp.positions.all (fun i => !(decide (h < i) && decide (i < t)) || inp.has AlloyItem.isHeading i)) ||
+      ((!inp.has AlloyItem.isHeading t || alloyHere inp p t) &&
+       (match inp.paraOfAt t with
+        | none => true
+        | some q => alloyHereOpt inp p (inp.first q) &&
+            ((inp.second q).isNone || alloyHereOpt inp p (inp.second q))))
+
+def alloyNoSendFromEmpty : Bool :=
+  !decide (inp.used = 0) ||
+  inp.positions.all fun i =>
+    let plain := fun j => !(inp.has AlloyItem.isBlank j) && !(inp.has AlloyItem.isNeed j)
+    !(plain i && inp.positions.all (fun j => !(plain j && decide (j < i)))) ||
+      (if alloyText inp i then decide (p.brk ≥ 1) else p.kept.contains i)
+
+def alloyAll7 : Bool :=
+  alloyFits inp p && alloyGreedy inp p && alloyOrder inp p && alloyFigure inp p &&
+  alloyOrphan inp p && alloyWidow inp p && alloyKeepHeading inp p && alloyNoSendFromEmpty inp p
+end
+
+def alloyFiguresFit (inp : AlloyInput) : Bool :=
+  inp.figures.all fun f => decide (inp.sizeAt f ≤ inp.cap)
+
+def alloyInDomain (inp : AlloyInput) : Bool :=
+  alloyFiguresFit inp && decide (inp.figures.length ≤ 1) && inp.blanks.isEmpty &&
+  (inp.where_ AlloyItem.isSpace).isEmpty && (inp.where_ AlloyItem.isNeed).isEmpty
+
+def alloySome (inp : AlloyInput) (P : AlloyPlacement → Bool) : Bool :=
+  (alloyPlacements inp).any P
+
+/-- The shape of the 0204 pair commands: each rule holds in some fitting
+    placement, and no fitting placement meets both. -/
+def alloyConflict (inp : AlloyInput) (A B : AlloyInput → AlloyPlacement → Bool) : Bool :=
+  alloyInDomain inp &&
+  alloySome inp (fun p => alloyFits inp p && A inp p) &&
+  alloySome inp (fun p => alloyFits inp p && B inp p) &&
+  !alloySome inp (fun p => alloyFits inp p && A inp p && B inp p)
+
+/-! The `found` commands of the first group, on the transcribed
+    predicates. Each witness meets `fact input` with a capacity in 3..6
+    and at most five items, so it is also inside the Alloy scope. -/
+
+/-- run someFits: with no rule but fitting, a placement exists. -/
+theorem alloy_someFits :
+    ∃ inp, alloyInputFact inp = true ∧ alloySome inp (alloyFits inp) = true :=
+  ⟨⟨3,0,[]⟩,by decide,by decide⟩
+
+/-- run noneMeetsAll: capacity 3 with two lines used, then two headings. -/
+theorem alloy_noneMeetsAll :
+    ∃ inp, alloyInputFact inp = true ∧ alloyInDomain inp = true ∧
+      alloySome inp (alloyAll7 inp) = false :=
+  ⟨⟨3,2,[.heading,.heading]⟩,by decide,by decide,by decide⟩
+
+theorem alloy_greedyOrphan :
+    ∃ inp, alloyInputFact inp = true ∧ alloyConflict inp alloyGreedy alloyOrphan = true :=
+  ⟨⟨3,2,[.line 0,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_greedyWidow :
+    ∃ inp, alloyInputFact inp = true ∧ alloyConflict inp alloyGreedy alloyWidow = true :=
+  ⟨⟨3,2,[.line 0,.line 0]⟩,by decide,by decide⟩
+
+theorem alloy_greedyKeepHeading :
+    ∃ inp, alloyInputFact inp = true ∧ alloyConflict inp alloyGreedy alloyKeepHeading = true :=
+  ⟨⟨3,2,[.heading,.heading]⟩,by decide,by decide⟩
+
+/-- run tallFigure: one figure one line taller than the empty column. -/
+theorem alloy_tallFigure :
+    ∃ inp, alloyInputFact inp = true ∧
+      (decide (inp.figures.length ≤ 1) && inp.blanks.isEmpty &&
+        (inp.where_ AlloyItem.isSpace).isEmpty && (inp.where_ AlloyItem.isNeed).isEmpty &&
+        !alloyFiguresFit inp &&
+        !alloySome inp (fun p => alloyFits inp p && alloyFigure inp p &&
+          alloyNoSendFromEmpty inp p)) = true :=
+  ⟨⟨3,0,[.figure 4]⟩,by decide,by decide⟩
+
 end GolemPagination
