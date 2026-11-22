@@ -1,6 +1,6 @@
 # ADR 0421: EPUB の一致を同じバージョンで保証し、プロジェクトの外のフォントをどの出力でもエラーにする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

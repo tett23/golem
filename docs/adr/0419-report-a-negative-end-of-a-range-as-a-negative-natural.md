@@ -1,6 +1,6 @@
 # ADR 0419: 語と文字列で書いた範囲の負の端を、自然数の箇所の負の数（G02103）にする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

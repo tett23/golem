@@ -1,6 +1,6 @@
 # ADR 0420: 埋め込む CFF の seac の部品のグリフも確かめる
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
