@@ -899,7 +899,7 @@ tests =
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
-      testCase "ADR 0319 I1 I2: unitless zero is a typed zero" $ do
+      testCase "root ADR 0345 I1, I2: unitless zero is a typed zero" $ do
         map parseDim ["0", "-0", "0pt"] @?= replicate 3 (Just (Abs 0))
         map parseDim ["", "1", "0.0", "+0", "00"] @?= replicate 5 Nothing
         map parseAki ["0", "-0", "0pt"] @?= [Just 0, Just 0, Nothing]
@@ -907,7 +907,7 @@ tests =
           Left ds -> assertFailure (show ds)
           Right _ -> pure ()
         codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = \"0\"\n") @?= [],
-      testCase "ADR 0319 I1: zero reaches style length fields" $ do
+      testCase "root ADR 0345 I1: zero reaches style length fields" $ do
         mapM_
           (\src -> codes (parseStyle (FileId 0) src) @?= [])
           [ "[paragraph-styles.quote]\nindent = 0\nfirst-line-indent = \"-0\"\n",
@@ -920,7 +920,7 @@ tests =
           ]
         let notices = styleNotices (FileId 0) "[paragraph-styles.table]\nindent = 0\n"
         map diagCode notices @?= [DiagnosticCode "G03100"],
-      testCase "ADR 0346 I1 I3: named length resolves after declarations" $ do
+      testCase "ADR 0346 I1, I3: named length resolves after declarations" $ do
         let src = "[paragraph-styles.quote]\nindent = \"indent\"\n[values.length]\nindent = \"1zw\"\n"
         case parseStyle (FileId 0) src of
           Left ds -> assertFailure (show ds)
@@ -946,7 +946,7 @@ tests =
         codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]
         codes (parseStyle (FileId 0) "[values.aki]\nhalf = \"二分\"\n[paragraph-styles.quote]\nindent = \"half\"\n") @?= ["G03258"],
-      testCase "ADR 0346 I3 I5: unused reserved names and count limits fail at declarations" $ do
+      testCase "ADR 0346 I3, I5: unused reserved names and count limits fail at declarations" $ do
         mapM_
           (\name -> codes (parseStyle (FileId 0) ("[values.length]\n" <> name <> " = \"1pt\"\n")) @?= ["G03255"])
           ["zw", "pt", "mm", "in", "Q", "H", "\"二分\""]
@@ -1010,7 +1010,7 @@ tests =
         fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
         fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
         codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G03006"],
-      testCase "note mark size is set by its character style (ADR 0344 I1)" $
+      testCase "ADR 0344 I1: note mark size is set by its character style" $
         case parseStyle (FileId 0) "[character-styles.note-mark]\nsize = \"0.65zw\"\n" of
           Left ds -> assertFailure (show ds)
           Right s -> (csSize =<< Map.lookup "note-mark" (stCharStyles s)) @?= Just (Zw (65 % 100)),
@@ -1624,7 +1624,7 @@ noteMarkTests =
         codes (parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n") @?= ["G03013"]
         [diagMessage d | Left ds <- [parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n"], d <- ds]
           @?= ["style.toml のスタイルの参照が不正です: [composition.ruby] の reading-style の文字スタイルがありません: nothing"],
-      testCase "ADR 0344 I2 I5: mark-size is G03253 before a size conflict" $ do
+      testCase "ADR 0344 I2, I5: mark-size is G03253 before a size conflict" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03253", Error, 20)]
         let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
@@ -1701,7 +1701,7 @@ listTests =
         case parseStyle (FileId 0) "[lists]\nnumbers = ['\\{{n:kanji}\\}']\n" of
           Left ds -> assertFailure (show ds)
           Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" (NsNotation kanjiNotation) "}" :| []),
-      testCase "ADR 0344 I1 I2: each row of the table gives its codes, once per cause, at the value" $ do
+      testCase "ADR 0344 I1, I2: each row of the table gives its codes, once per cause, at the value" $ do
         let sites src = [(c, s) | d <- fromLeft [] (parseStyle (FileId 0) src), let DiagnosticCode c = diagCode d, let s = spanStart (diagSpan d)]
             at src needle = fromIntegral (T.length (fst (T.breakOn needle src)))
             row src needle cs = sites src @?= [(c, at src needle) | c <- cs]

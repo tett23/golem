@@ -3,7 +3,10 @@ name: Race
 # The tests that look for races between threads, with 40 times the
 # repetitions of the pull requests (docs/adr/0075): once a day on main, on
 # the days main has changed since the last successful run of this
-# workflow, and whenever it is started by hand.
+# workflow, and whenever it is started by hand. After them, with the golem
+# of the same commit, the tests that no pull request runs (root ADR 0415,
+# items 4 and 5): the comparison with golem v0.1.0-rc4 of root ADRs 0341 to
+# 0344, and the terminal of golem repl emet of root ADR 0348.
 on:
   schedule:
     - cron: "17 18 * * *"
@@ -120,3 +123,48 @@ jobs:
         run: |
           cabal test golem-driver-parallel-test golem-font-race-test
           cabal test golem-font-test --test-option=-p --test-option='/one font from many threads/'
+      # the golem of this commit, for the steps below (root ADR 0415)
+      - name: Build golem (root ADR 0415)
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        run: |
+          cabal build golem-cli:exe:golem
+          echo "GOLEM=$(cabal list-bin -v0 golem-cli:exe:golem)" >> "$GITHUB_ENV"
+      # experiments/syntax/*-release.mjs, the tests of root ADRs 0341 to
+      # 0343 I3 and I4 and of root ADR 0344 I3 to I5 that compare rc4 with
+      # the golem of this commit (root ADR 0415, item 4). The archive of rc4
+      # for x86-64 Linux is checked against the SHA256SUMS of the release
+      # and against the SHA-256 pinned here before it is unpacked. Once
+      # v1.0.0 is released, this step may go: the comparison checks the
+      # move from the forms that rc4 retired
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        with:
+          node-version: lts/*
+      - name: "root ADRs 0341 to 0344 I3, I4: golem v0.1.0-rc4 and the golem of this commit (root ADR 0415)"
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RC4_ARCHIVE: golem-v0.1.0-rc4-x86_64-linux.tar.gz
+          RC4_SHA256: 6cd9c0a131abac440aa16d417cade126a79bfd6cf7e3ebd4ed2b95349559b3aa
+        run: |
+          D=$RUNNER_TEMP/rc4
+          mkdir -p "$D"
+          gh release download v0.1.0-rc4 --pattern "$RC4_ARCHIVE" --pattern SHA256SUMS --dir "$D"
+          grep -x "[0-9a-f]\{64\}  $RC4_ARCHIVE" "$D/SHA256SUMS" > "$D/SHA256SUMS.archive"
+          (cd "$D" && sha256sum -c SHA256SUMS.archive)
+          echo "$RC4_SHA256  $D/$RC4_ARCHIVE" | sha256sum -c -
+          tar -xzf "$D/$RC4_ARCHIVE" -C "$D"
+          status=0
+          for t in line-range listing style-format table; do
+            node experiments/syntax/$t-release.mjs "$D/golem-v0.1.0-rc4-x86_64-linux/golem" "$GOLEM" || status=1
+          done
+          exit "$status"
+      # the terminal of golem repl emet, modules/golem-cli/test/repl/terminal.rb
+      # under a PTY, with the ruby of the runner; no ruby fails the step
+      # (root ADR 0415, item 5)
+      - name: "root ADR 0348 I4, I7: the terminal of golem repl emet (root ADR 0415)"
+        if: ${{ !cancelled() && steps.needed.outputs.run == 'true' }}
+        run: |
+          command -v ruby > /dev/null || { echo "root ADR 0348 I4, I7: no ruby on the runner" >&2; exit 1; }
+          ruby modules/golem-cli/test/repl/terminal.rb "$GOLEM" || { echo "root ADR 0348 I4, I7: the terminal of golem repl emet failed" >&2; exit 1; }

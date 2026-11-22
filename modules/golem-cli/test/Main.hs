@@ -317,8 +317,8 @@ golemIn files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
 shortFootnoteTests :: TestTree
 shortFootnoteTests =
   testGroup
-    "Golem ADR 0353 I1/I2: short columns with PDF footnotes"
-    [ testCase "Golem ADR 0352 I4: capacities 1 and 2 report G07125, and capacity 3 writes the PDF" $
+    "Golem ADR 0353 I1, I2: short columns with PDF footnotes"
+    [ testCase "Golem ADR 0353 I1, I2, Golem ADR 0352 I4: capacities 1 and 2 report G07125, and capacity 3 writes the PDF" $
         forM_ ([1, 2, 3] :: [Int]) $ \capacity -> withSystemTempDirectory "golem-short-note" $ \tmp -> do
           createDirectoryIfMissing True (tmp </> "fonts")
           BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" >>= BS.writeFile (tmp </> "fonts/latin.otf")

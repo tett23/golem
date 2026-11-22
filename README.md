@@ -151,10 +151,12 @@ golem new mybook
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。PDF を組めた場合は SHA-256、組めなかった場合はエラー件数と未検査の項目を出す |
+| `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の文字数、ワード数、組版後の行数を数え、ページ数に換算する（[Golem ADR 0355](docs/adr/0355-manuscript-statistics.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形し、表ファイルの先頭に続く BOM をすべて取り除き、改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画する |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
+| `golem repl emet` | Emet の式を標準入力から一つずつ読み、値を表示する（[Golem ADR 0348](docs/adr/0348-revise-emet-expression-repl.md)） |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
 | `golem kinsoku [PATH]` | `PATH`（省くと今のフォルダ）から親へたどって最も近いプロジェクトの、`style.toml` から解決した禁則（`kinsoku`）とぶら下げ（`hangingPunctuation`）を、一行の JSON で標準出力に書く。プロジェクトが無ければ `project` を `null` とし、既定値を書く |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
@@ -334,6 +336,7 @@ PDF の図版、表、コードブロックのキャプションと傍注の本�
 字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 本文の注の印の大きさは、`[notes]` の `mark-style` が指す文字スタイル（既定は `note-mark`）の `size` で指定する（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
+`[notes]` に `mark-shape = "flat"` を書くと、縦組みの PDF の印の漢数字を平字（上下の外枠を 50% にした漢数字）で組む（[ADR 0381](./docs/adr/0381-compressed-note-marks.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
@@ -982,6 +985,16 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 `GOLEM_RACE_TESTS` は、競合を探すテストの回数に掛ける数である（1 以上の整数。未設定なら 1）。
 プルリクエストの CI は設定せず、今の回数で走らせる。
 
+`race` は、競合を探すテストの後に、同じコミットの `golem` を組み、プルリクエストの CI が走らせない二つのテストを走らせる（[root ADR 0415](./docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md)）。
+どちらの段も `!cancelled()` を持ち、前の段が落ちても走る。
+
+- rc4 との比較：`gh release download` で v0.1.0-rc4 の `golem-v0.1.0-rc4-x86_64-linux.tar.gz` と `SHA256SUMS` を取り、`SHA256SUMS` と、`race.yml` に固定した SHA-256 の両方で照合してから展開する。
+  その後、`experiments/syntax/*-release.mjs` の四つに、rc4 の `golem` と、このコミットで組んだ `golem` を渡し、[ADR 0341](./docs/adr/0341-revise-retire-listing-src.md) から [ADR 0343](./docs/adr/0343-revise-retire-table-src.md) の I3 と I4、[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md) の I3 から I5 の rc4 の側を確かめる。
+  v1.0.0 のリリースの後は、この段を消してよい。
+- 端末のテスト：ランナーの ruby で `modules/golem-cli/test/repl/terminal.rb` を走らせ、PTY の上の `golem repl emet` を確かめる（[ADR 0348](./docs/adr/0348-revise-emet-expression-repl.md) の R4 の端末の部分と R7）。
+  ランナーに ruby が無ければ、段は失敗する。
+  段の名前と失敗のメッセージは、[root ADR 0415](./docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md) が決めたとおり `root ADR 0348 I4, I7: ` で始まる（I4 と I7 は、ADR 0348 の不変条件の 4 番目と 7 番目、R4 と R7 を指す）。
+
 `race.yml` が落ちたら、落ちたテストの名前と、ログに出たシードとサイズ（tasty-hedgehog が `--hedgehog-replay` に渡す形で書く）と、実行の URL と head のコミットを添えて issue を立てる。
 手元では、`GOLEM_RACE_TESTS=40 cabal test golem-driver-parallel-test` のように同じ回数で試し、`--hedgehog-replay` で落ちた例を再現する。
 
@@ -990,6 +1003,12 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 `enum.yml` の `enum` は、`scripts/ci/race-needed.sh` に `enum.yml` を渡して判定し、不変条件を小さな入力のすべてで確かめるテストを、範囲ごとの段（step）で走らせる（[docs/adr/0204](./docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md)、[docs/adr/0208](./docs/adr/0208-widen-lightweight-formal-methods.md)）。
 段ごとに、すべてを調べる上限と、その一つ上の段から抜き取る入力の数を環境の変数で渡し、すべての段の和を 60 分以内に収める（ジョブの上限は 90 分）。
 範囲の段はどれも `!cancelled()` を持ち、前の段が落ちても走る。
+
+`enum` は、時間を量る段と範囲の段の和の 60 分を、実行ごとに判定する（[root ADR 0415](./docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md)）。
+時間を量る段と範囲の段は、`shell: sh scripts/ci/enum-budget.sh step {0}` で走り、それぞれの始めと終わりの時刻（`date +%s`）を `$RUNNER_TEMP/enum-steps.tsv` に書き残す。
+ジョブの最後の段は、`if: ${{ !cancelled() }}` で走り、`scripts/ci/enum-budget.sh judge` が、各段の書き残した時刻から和を数え、3600 秒を超えたらジョブを失敗にする。
+ちょうど 3600 秒は通り、すべての段を省いた実行（main が変わっていない）は和が 0 で通る。
+判定は GitHub の API を読まない。
 
 範囲の段の前の段（`scripts/ci/enum-timings.sh`）は、時間を量る。
 範囲ごとのテストを上限の変数を渡さずにプルリクエストと同じ設定で走らせ、範囲ごとの壁時計の時間と和を予算（範囲ごとに 10 秒、和で 30 秒）と並べた表にして、ジョブの要約とログに書く（[ADR 0281](./docs/adr/0281-budgets-of-the-exhaustive-tests-and-what-moves-to-the-nightly-job.md)）。
@@ -1050,8 +1069,10 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 初めの三回は、[ADR 0305](./docs/adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) を入れる前のコミットで、改行しない範囲の段が I8 の違反で落ちた。
 四回目は、ADR 0305 を入れた後のコミットで、すべて通った。
-保持の設定の段の中央値は 2 分 10 秒、段の和の中央値は 57 分 17 秒で、60 分に収まった。
+保持の設定の段の中央値は 2 分 10 秒、段の和の中央値は 57 分 17 秒だった。
+60 分の予算は、段の和の中央値ではなく、実行ごとの和で判定する（[root ADR 0415](./docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md)）。
 一回目と二回目は、行分割の段が 37 分ほどかかり、和が 60 分を超えた。
+今は判定の段があるので、このような実行は失敗で終わる。
 
 `enum.yml` が落ちたら、表示された最も小さい入力と、実行の URL と head のコミットを添えて issue を立てる。
 手元では `GOLEM_ENUM_DEPTH=5 GOLEM_ENUM_PAGINATION_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/every input/&&!/keep options/'`、`GOLEM_ENUM_KEEP_DEPTH=4 GOLEM_ENUM_KEEP_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/pagination invariants/&&/keep options/&&/every input/'`、`GOLEM_ENUM_LINES_DEPTH=3 GOLEM_ENUM_LINES_SAMPLES=5000000 cabal test golem-layout-test --test-option=-p --test-option='/line breaking invariants on/'` で同じ入力を調べる。
@@ -1073,7 +1094,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 ##### `wasm-tests.yml`
 
-`wasm-tests.yml` の `prepare`、`native`、`wasm`、`skips` は、`scripts/ci/race-needed.sh` に `wasm-tests.yml` を渡して判定して走り、`golem.wasm` のパッケージのテストのスイート（`scripts/ci/test-suites.sh wasm`）を wasm32 とネイティブの両方で走らせる（[docs/adr/0293](./docs/adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。
+`wasm-tests.yml` の `prepare`、`native`、`wasm`、`skips` は、`scripts/ci/race-needed.sh` に `wasm-tests.yml` を渡して判定して走り、`golem.wasm` のパッケージのテストのスイートと `golem-test-support-test`（`scripts/ci/test-suites.sh wasm`、[root ADR 0415](./docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md)）を wasm32 とネイティブの両方で走らせる（[docs/adr/0293](./docs/adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。
 `ci.yml` のキャッシュを戻すだけで、保存しない。
 
 - `wasm`：スイートを `cabal.project.wasm-tests` で wasm32 に向けて組み、`scripts/wasm/run-suite.sh` で一つずつ Node の `node:wasi` で走らせる（`scripts/wasm/run-tests.mjs`）。
