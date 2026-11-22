@@ -5,12 +5,13 @@ module Golem.Project.Paths
     resolveInRoot,
     resolveEntryInRoot,
     pathErrorMessage,
+    findProjectRoot,
   )
 where
 
 import Data.List (intercalate, isInfixOf, isPrefixOf)
-import System.Directory (canonicalizePath, doesFileExist, doesPathExist)
-import System.FilePath (makeRelative, splitDirectories, (</>))
+import System.Directory (canonicalizePath, doesFileExist, doesPathExist, makeAbsolute)
+import System.FilePath (makeRelative, splitDirectories, takeDirectory, (</>))
 
 data PathError
   = Absolute
@@ -67,3 +68,17 @@ resolveExisting existsAt root p = case normalizeRelative p of
           if relReal == real || ".." `isPrefixOf` relReal
             then Left EscapesRoot
             else Right (intercalate "/" (splitDirectories relReal))
+
+{- | The nearest directory upwards from @dir@ that has manifest.toml, made
+absolute by 'makeAbsolute' (symbolic links are not resolved); Nothing when
+no directory up to the root of the file system has one. The LSP and golem
+kinsoku look for the project alike (root ADR 0417).
+-}
+findProjectRoot :: FilePath -> IO (Maybe FilePath)
+findProjectRoot dir = makeAbsolute dir >>= go
+  where
+    go d = do
+      found <- doesFileExist (d </> "manifest.toml")
+      if found
+        then pure (Just d)
+        else if takeDirectory d == d then pure Nothing else go (takeDirectory d)
