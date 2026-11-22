@@ -131,7 +131,7 @@ tomlTests =
             take 1 (kinds "[paragraph-styles.em]\nbased-on = ▮") @?= [CkParaStyle]
         ],
       testGroup
-        "T1 manifest.toml finite value positions"
+        "ADR 0347 T1: manifest.toml finite value positions"
         [ exactly "manifest.toml" "chapters = [{ paragraph-separator = '▮" ["blank-line", "line"],
           including "manifest.toml" "chapters = [{ page-numbering = { style = '▮" ["arabic"] ["line"],
           exactly "manifest.toml" "[metadata]\ncreators = [{ role = '▮" roles,
@@ -143,7 +143,7 @@ tomlTests =
           exactly "manifest.toml" "[vars]\nflag = ▮" []
         ],
       testGroup
-        "T1 finite values remain valid TOML after completion"
+        "ADR 0347 T1: finite values remain valid TOML after completion"
         [ testCase (T.unpack source) $ do
             let labels = labelsIn path source
             labels @?= expected

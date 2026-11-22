@@ -81,7 +81,7 @@ commandTests :: TestTree
 commandTests =
   testGroup
     "golem fmt"
-    [ testCase "Golem ADR 0354 I1-I3: fmt strips repeated BOMs from CSV and TSV in one pass" $ do
+    [ testCase "Golem ADR 0354 I1, I2, I3: fmt strips repeated BOMs from CSV and TSV in one pass" $ do
         let csv = "\xFEFF\xFEFF\&a,b\n"
             tsv = "\xFEFF\xFEFF\xFEFF\&c\td\n"
             files = [("manifest.toml", T.pack manifest), ("a.gm", "@table a.csv\n\n@table b.tsv\n"), ("a.csv", csv), ("b.tsv", tsv)]

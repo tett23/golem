@@ -178,7 +178,7 @@ tests =
             codes "``` highlight=[= \"5-7\"]\na\nb\nc\nd\ne\nf\ng\n```\n" @?= ["G02251"]
             codes "``` highlight=1-2,4-5\na\nb\nc\nd\ne\n```\n" @?= ["G02251"]
         ],
-      testCase "ADR 0342 I1 I2: line ranges use three dots and allow lists" $ do
+      testCase "ADR 0342 I1, I2: line ranges use three dots and allow lists" $ do
         codes (listing "lines=1...1") @?= []
         codes (listing "lines=2-3") @?= ["G02251"]
         codes (listing "lines=[= \"2-3\"]") @?= ["G02251"]
