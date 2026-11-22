@@ -194,6 +194,7 @@ tests skips =
              testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
              testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
              testGroup "running heads (ADR 0014)" runningHeadTests,
+             testGroup "the decorations of running heads and folios (docs/adr/0410)" runningHeadDecorationTests,
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
              testGroup "the plates of the PDF and G09019 to G09021 (docs/adr ADR 0232)" platesTests,
              testGroup "the PDF as Poppler reads it (docs/adr ADR 0232)" popplerTests,
