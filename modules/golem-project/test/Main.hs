@@ -1259,6 +1259,17 @@ tests =
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,
+      testCase "root ADR 0398 A1: separator styles load by name" $ do
+        let src = "[separators.default]\nkind = \"blank\"\nlines = 2\n\n[separators.scene]\nkind = \"text\"\ntext = \"＊\"\nspace-before = 1\nspace-after = 1\n"
+        fmap stSeparators (parseStyle (FileId 0) src)
+          @?= Right (Map.fromList [("default", SeparatorBlank 2), ("scene", SeparatorText 1 1 "center" "＊" Nothing)]),
+      testCase "root ADR 0398 A5: invalid separator definitions report G03006" $ do
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"blank\"\nlines = 0\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"text\"\ntext = \"x\\ny\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nspace-before = \"0pt\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nkeep-in-column = true\n") @?= ["G03006"],
+      testCase "root ADR 0398 A5: separator function path stays inside the project" $
+        codes (parseStyle (FileId 0) "[separators.default]\nfunction = \"../scene.emet\"\ncommand = \"scene\"\n") @?= ["G03006"],
       runningHeadTests,
       localStyleTests,
       akiTests,

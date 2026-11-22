@@ -216,6 +216,11 @@ tests =
         ],
       testCase "@blank-line right after a paragraph is kept as written (docs/adr ADR 0046)" $
         formatted "あ\n@blank-line\nい\n" @?= "あ\n@blank-line\nい\n",
+      testCase "root ADR 0398 A5: separator spelling and escape format idempotently" $ do
+        let source = "前\n---   \n後\n\n\\---\n"
+            once = formatted source
+        once @?= "前\n---\n後\n\n\\---\n"
+        formatted once @?= once,
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
       -- golem-fmt ADR 0003

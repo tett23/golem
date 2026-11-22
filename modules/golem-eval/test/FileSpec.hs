@@ -1430,7 +1430,15 @@ separatorTests :: TestTree
 separatorTests =
   testGroup
     "paragraph separator (docs/adr ADR 0013)"
-    [ testCase "one newline separates paragraphs in the line style only" $ do
+    [ testCase "root ADR 0398 I1: manuscript separator and named command have the same IR" $ do
+        map shapeOf (body "前\n---\n後\n") @?= map shapeOf (body "前\n@separator default\n後\n")
+        body "---\n" @?= [Separator "default"],
+      testCase "root ADR 0398 A5: a separator line inside a list is rejected" $
+        assertBool "nested separator diagnostic" ("G02159" `elem` errs "- item\n\n  ---\n"),
+      testCase "root ADR 0398 I2: escaped hyphens remain text" $ case body "\\---\n" of
+        [Paragraph Nothing [Text _ "---"]] -> pure ()
+        other -> assertFailure (show other),
+      testCase "one newline separates paragraphs in the line style only" $ do
         shapes lineCtx "a\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
         shapes ctx "a\nb\n" @?= [(Nothing, ["ab"])],
       testCase "blank lines separate paragraphs in both styles" $ do

@@ -354,6 +354,8 @@ data PdfLayout = PdfLayout
     plLineSpans :: !(Map Int SrcSpan),
     -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
     plRules :: !(Map Int RuledInfo),
+    -- | visible rule separators by the id of their occupied line (root ADR 0398)
+    plSeparatorRules :: !(Map Int SeparatorAppearance),
     -- | the units of the book by their indices, and the composition: what the structure tree is made of (docs/adr ADR 0183)
     plUnits :: ![(Int, Unit)],
     plFlowEnv :: FlowEnv,
@@ -401,6 +403,7 @@ data Built = Built
     bLineSpans :: Map Int SrcSpan,
     -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
     bRules :: Map Int RuledInfo,
+    bSeparatorLines :: Map Int SeparatorAppearance,
     -- | the span and the name in messages of each heading by its first line (golem-layout ADR 0020)
     bHeadingNames :: Map Int (SrcSpan, Text),
     -- | the units by their indices, and the composition (docs/adr ADR 0183)
@@ -774,7 +777,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
+            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
 
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
@@ -2149,6 +2152,12 @@ spine as left until their page is known; any other unit left-justified.
 layoutAlign :: UnitKind -> A.ParaAlign
 layoutAlign = \case
   UPara i -> alignOf i
+  USeparator appearance -> A.Ragged $ case appearance of
+    SeparatorTextAppearance _ _ "start" _ _ -> A.LineStart
+    SeparatorTextAppearance _ _ "end" _ _ -> A.LineEnd
+    SeparatorRuleAppearance _ _ "start" _ _ _ _ -> A.LineStart
+    SeparatorRuleAppearance _ _ "end" _ _ _ _ -> A.LineEnd
+    _ -> A.LineCenter
   -- an entry of the table of contents by the align of its style (docs/adr/0264)
   UTocEntry _ _ i _ -> alignOf i
   _ -> A.Justified (Just A.LineStart)
@@ -2189,6 +2198,7 @@ alignToSpine geom pages lines' = foldl' move lines' [(lid, poNumber p) | p <- pa
 
 data UnitKind
   = UPara !Indent
+  | USeparator !SeparatorAppearance
   | UHeading Int Text Bool
   | -- | the title of the notes at the end of a chapter, set as a heading of level 2 (golem-driver ADR 0026)
     UNotesTitle Text
@@ -2370,7 +2380,42 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
     blocks style ctx spaced n bs =
       let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx spaced prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
-       in (n', concat uss)
+       in (n', spaceSeparators (concat uss))
+    -- A visible separator owns its boundary spacing. Explicit blank lines
+    -- at that boundary and the two separator requests take the maximum.
+    spaceSeparators = go Nothing []
+      where
+        beforeOf = \case
+          USeparator (SeparatorTextAppearance n _ _ _ _) -> n
+          USeparator (SeparatorRuleAppearance n _ _ _ _ _ _) -> n
+          _ -> 0
+        afterOf = \case
+          USeparator (SeparatorTextAppearance _ n _ _ _) -> Just n
+          USeparator (SeparatorRuleAppearance _ n _ _ _ _ _) -> Just n
+          _ -> Nothing
+        go previous pending [] = case previous of
+          Just _ -> []
+          Nothing -> pending
+        go previous pending (u : rest) = case uKind u of
+          UBlank _ -> go previous (pending <> [u]) rest
+          UBreak _ -> pending <> (u : go Nothing [] rest)
+          kind ->
+            let explicit = sum [k | Unit {uKind = UBlank k} <- pending]
+                requested = max explicit (fromIntegral (beforeOf kind))
+                spacing = max requested (fromIntegral (fromMaybe 0 previous))
+                visibleBoundary = isJust previous || beforeOf kind > 0
+                source = case pending of
+                  initial : _ -> initial
+                  [] -> u
+                gap
+                  | visibleBoundary && spacing > 0 =
+                      [source {uKind = if isJust previous then UGap (fromIntegral spacing) else UBlank spacing, uInlines = []}]
+                  | visibleBoundary = []
+                  | otherwise = pending
+                keep = case previous of
+                  Just _ -> [u {uKind = UKeepNext 1, uInlines = []}]
+                  Nothing -> []
+             in keep <> gap <> [u] <> go (afterOf kind) [] rest
     gapBefore style ctx spaced prev (Block sp _ _ b) = case prev of
       Just (Block _ _ _ a)
         | g <- gapLines style ctx spaced a b,
@@ -2386,6 +2431,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     across the boundary of two files, whose blocks are not siblings
     (docs/adr/0211) -}
     gapLines style ctx spaced a b = case (a, b) of
+      (Separator _, _) -> 0
+      (_, Separator _) -> 0
       (BlankLines _, _) -> 0
       (_, BlankLines _) -> 0
       (_, ForcedBreak _) -> 0
@@ -2489,6 +2536,15 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             PageControl (NoBreakLines 0) -> (n, [])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
             BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
+            Separator name ->
+              case Map.lookup (sp, name) (bookSeparators book) of
+                Just appearance ->
+                  let content = case appearance of
+                        SeparatorTextAppearance _ _ _ t Nothing -> [CharStyle sp "no-break" [Text sp t]]
+                        SeparatorTextAppearance _ _ _ t (Just characterName) -> [CharStyle sp "no-break" [CharStyle sp characterName [Text sp t]]]
+                        SeparatorRuleAppearance {} -> [Text sp "\x200B"]
+                   in (n, [plainUnit (USeparator appearance) Nothing content])
+                Nothing -> (n, [])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =
@@ -3869,6 +3925,18 @@ buildFlow inp geom fonts images prev assumed = do
       tableUnits = [(i, spanFile (uSpan u), uStyle u, lkLang (uLook u), t) | (i, u@Unit {uKind = UTable t}) <- units]
   _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map (lineRatio . ptLine) (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(i, u) -> maybe (forceComposed (composeUnit fe widths (unitLineWidth fe (uKind u)) u)) pure (reused cuSingles i)) rest
+  let separatorErrors =
+        concat
+          [ case appearance of
+              SeparatorTextAppearance {} ->
+                [diagnostic "G07134" Error (uSpan u) "区切りの約物が一行に収まりません" | length ls /= 1 || any ((> 0) . lineOverflow) ls]
+                  <> [diagnostic "G07134" Error (uSpan u) "区切りの文字サイズが行送りを超えます" | maximum (lkSize (uLook u) : [lkSize (bcLook c) | l <- ls, Box _ c <- lineItems l]) > pgLinePitch geom]
+              SeparatorRuleAppearance _ _ _ len weight _ _ ->
+                [diagnostic "G07134" Error (uSpan u) "区切りの罫線が行長または行送りを超えます" | maybe False (> unSp (feMeasure fe)) len || weight > unSp (pgLinePitch geom)]
+          | (i, u) <- units,
+            USeparator appearance <- [uKind u],
+            let ls = maybe [] cLines (Map.lookup i singles)
+          ]
   tables <- Map.fromList <$> mapper (\(i, fid, st, l, t) -> maybe (let r = composeTable fe i fid st l t in forceTable r >> pure (i, r)) (pure . (i,)) (reused cuTables i)) tableUnits
   -- Numbering is pure and can be repeated for an uncommitted physical
   -- paragraph trial without reshaping its source or changing a snapshot.
@@ -3920,7 +3988,7 @@ numberComposedFlow inp geom fe units widths composed =
         let nb' = numberUnit fe composed nb iu
          in if nuNext nb' > nuNext nb then (nb', Map.insert (nuNext nb) (uSpan u) spans, Map.insert i (nuNext nb) firsts) else (nb', spans, firsts)
       lineFiles = Map.map spanFile lineSpans
-      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> internalSpacingErrors <> tocLineErrors fe units <> boxErrors fe units) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
+      start = Numbered 0 [] Map.empty Map.empty Map.empty (deepListErrors fe widths units <> codeErrors <> internalSpacingErrors <> tocLineErrors fe units <> boxErrors fe units <> separatorErrors) Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty Map.empty
       (numbered, baseSpans, baseFirsts) = foldl stepFiles (start, Map.empty, Map.empty) units
       free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)
       besideFirsts =
@@ -3954,6 +4022,7 @@ numberComposedFlow inp geom fe units widths composed =
       -- the rules of each ruled block by its first line, from the unit of its block (golem-driver ADR 0027)
       rulesBySpan = Map.fromList [(uSpan u, ruledInfoOf u) | (_, u) <- units, uRules u /= (Nothing, Nothing)]
       ruledInfos = Map.fromList [(frId f, info) | f@FRuled {} <- flow', Just sp <- [Map.lookup (frId f) lineSpans], Just info <- [Map.lookup sp rulesBySpan]]
+      separatorLines = Map.fromList [(lid, appearance) | (i, u) <- units, USeparator appearance@(SeparatorRuleAppearance {}) <- [uKind u], Just lid <- [Map.lookup i unitFirsts]]
       -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
       namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
       headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
@@ -3995,7 +4064,7 @@ numberComposedFlow inp geom fe units widths composed =
           ]
       pitches = Map.fromList (ordinaryPitches <> concat wrappedPitches)
       padding = Map.map (ubPadding . snd) (nuBoxes numbered)
-   in Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings pitches padding (nuWrappedBefore numbered) Nothing unitFirsts
+   in Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos separatorLines headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings pitches padding (nuWrappedBefore numbered) Nothing unitFirsts
 
 {- | Rebreak only unconsumed original items. The positions returned by the
 breaker stay in the original item coordinate system, so discarded glue,

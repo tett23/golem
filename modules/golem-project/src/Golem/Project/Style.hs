@@ -1,6 +1,7 @@
 -- | style.toml (golem-project ADR 0002).
 module Golem.Project.Style
   ( Style (..),
+    SeparatorDef (..),
     renderPrintingTemplate,
     Dim (..),
     Sp (..),
@@ -160,6 +161,7 @@ import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
 import Golem.Project.Manifest (decodeStrictBy, decodeStrictTableWith, decodeStrictWith, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
+import Golem.Project.Paths (normalizeRelative)
 import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Project.TomlSchema
@@ -1741,6 +1743,52 @@ parseRuleSpec = decodeStrictBy "G03006" (const "G03006")
 newtype Swatch = Swatch (Int, Int, Int, Int)
   deriving stock (Eq, Show)
 
+-- | A project separator before layout (root ADR 0398).
+data SeparatorDef
+  = SeparatorBlank !Int
+  | SeparatorRule !Int !Int !Text !RuleSpec
+  | SeparatorText !Int !Int !Text !Text !(Maybe Text)
+  | SeparatorFunction !FilePath !Text
+  deriving stock (Eq, Show)
+
+instance FromValue SeparatorDef where
+  fromValue v =
+    parseTableFromValue
+      ( do
+          kind <- optKey "kind"
+          lines' <- optKey "lines"
+          before <- optKey "space-before"
+          after <- optKey "space-after"
+          content <- optKey "text"
+          characterStyleName <- optKey "character-style"
+          align <- optKey "align"
+          rule <- optKey "rule"
+          function <- optKey "function"
+          command <- optKey "command"
+          let b = fromMaybe 0 before
+              a = fromMaybe 0 after
+              centered = fromMaybe "center" align
+              noVisual = before == Nothing && after == Nothing && content == Nothing && characterStyleName == Nothing && align == Nothing && rule == Nothing
+              noLines = lines' == Nothing
+              bad = failTableAt (valueAnn v) "区切りの種類に合わないキーがあります"
+          case (kind :: Maybe Text, function :: Maybe Text, command :: Maybe Text) of
+            (Nothing, Just path, Just cmd)
+              | noLines && noVisual && not (T.null path) && ".emet" `T.isSuffixOf` path && not (T.null cmd) && either (const False) (not . null) (normalizeRelative (T.unpack path)) -> pure (SeparatorFunction (T.unpack path) cmd)
+            (Just "blank", Nothing, Nothing)
+              | Just n <- lines', n > 0, noVisual -> pure (SeparatorBlank n)
+            (Just "rule", Nothing, Nothing)
+              | noLines && content == Nothing && characterStyleName == Nothing && b >= 0 && a >= 0 && centered `elem` ["start", "center", "end"] ->
+                  pure (SeparatorRule b a centered (fromMaybe (RuleSpec Nothing defaultRuleWeight Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True) rule))
+            (Just "text", Nothing, Nothing)
+              | Just txt <- content,
+                not (T.null txt),
+                not (T.any (`elem` ['\n', '\r']) txt),
+                noLines && rule == Nothing && b >= 0 && a >= 0 && centered `elem` ["start", "center", "end"] ->
+                  pure (SeparatorText b a centered txt characterStyleName)
+            _ -> bad
+      )
+      v
+
 data Style = Style
   { stPage :: !(Maybe Page),
     stLayoutValues :: !(Map Text (QuantityKind, QuantityValue)),
@@ -1749,6 +1797,7 @@ data Style = Style
     stCharStyles :: !(Map Text CharStyleDef),
     -- | the built-in paragraph styles with the user's definitions over them
     stParaStyles :: !(Map Text ParaStyleDef),
+    stSeparators :: !(Map Text SeparatorDef),
     stHeadings :: !(Map Int HeadingStyle),
     stComposition :: !Composition,
     stNumbersVertical :: !Text,
@@ -1819,6 +1868,7 @@ defaultStyle =
       stFonts = Map.empty,
       stCharStyles = builtinCharStyles,
       stParaStyles = builtinParaStyles,
+      stSeparators = Map.empty,
       stHeadings = Map.empty,
       stComposition = defaultComposition,
       stNumbersVertical = "kanji",
@@ -2768,6 +2818,7 @@ instance FromValue Style where
     page <- optKey "page"
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
+    separators <- fromMaybe Map.empty <$> optKey "separators"
     -- the indents of table, as written (golem-driver ADR 0043, docs/adr/0367)
     pstyles <-
       fmap (fromMaybe Map.empty) . optKeyOf "paragraph-styles" $ \v -> do
@@ -2827,6 +2878,7 @@ instance FromValue Style where
           stFonts = fonts,
           stCharStyles = markSizeOver nms nmst (Map.unionWith overChar cstyles builtinCharStyles),
           stParaStyles = Map.unionWith overPara pstyles builtinParaStyles,
+          stSeparators = separators,
           stHeadings = Map.fromList hs,
           stComposition = comp,
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
@@ -3193,6 +3245,7 @@ styleChecks :: Text -> Style -> [(Text, Text, [Scope], Text)]
 styleChecks owner s =
   numberFormatChecks s
     <> styleNameChecks s
+    <> separatorChecks s
     <> compositionChecks s
     <> hyphenationExceptionChecks s
     <> codeStyleChecks s
@@ -3297,7 +3350,23 @@ numberFormatChecks s =
 -- | G03006: the names of the character and paragraph styles.
 styleNameChecks :: Style -> [(Text, Text, [Scope], Text)]
 styleNameChecks s =
-  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
+  [("G03006", n, styleKeys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)) <> map ("separators",) (Map.keys (stSeparators s)), not (validStyleName n)]
+
+separatorChecks :: Style -> [(Text, Text, [Scope], Text)]
+separatorChecks s =
+  [ ("G03006", n, styleKeys ["separators", n, "character-style"], "区切りの文字スタイルがありません: " <> name)
+  | (n, SeparatorText _ _ _ _ (Just name)) <- Map.toList (stSeparators s),
+    Map.notMember name (stCharStyles s)
+  ]
+    <> [ ("G03006", n, styleKeys ["separators", n, "rule", "color"], "区切りの罫線のスウォッチがありません: " <> color)
+       | (n, SeparatorRule _ _ _ RuleSpec {rsColor = Just color}) <- Map.toList (stSeparators s),
+         Map.notMember color (stSwatches s)
+       ]
+    <> [ ("G03006", n, styleKeys ["separators", n, "rule", "length"], "区切りの罫線の長さが版面の行長を超えます")
+       | Just Grid {gridFontSize = Abs fs, gridCharacters = chars} <- [stPage s >>= pageGrid],
+         (n, SeparatorRule _ _ _ RuleSpec {rsLength = Just len}) <- Map.toList (stSeparators s),
+         dimToSp fs len > fromIntegral chars * fs
+       ]
 
 {- | G03126 to G03130 (docs/adr ADR 0272): the tags and the words of
 [composition.hyphenation-exceptions], each at its value.
@@ -3952,6 +4021,7 @@ styleSchema =
       ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
+      ("separators", NNamed Nothing separatorNode),
       ("headings", NNamed Nothing headingNode),
       ("composition", compositionNode),
       ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
@@ -4179,6 +4249,22 @@ adjustOrderNode = NArray (NEither [enum adjustPlaceNames, NArray (enum adjustPla
 -- | One regex style of a paragraph style (docs/adr ADR 0015).
 regexStyleNode :: Node
 regexStyleNode = NTable [("pattern", str), ("style", ref CharStyles)]
+
+-- | The keys of one named separator (root ADR 0398).
+separatorNode :: Node
+separatorNode =
+  NTable
+    [ ("kind", enum ["blank", "rule", "text"]),
+      ("lines", int),
+      ("space-before", int),
+      ("space-after", int),
+      ("text", str),
+      ("character-style", ref CharStyles),
+      ("align", enum ["start", "center", "end"]),
+      ("rule", NTable [kv | kv@(k, _) <- ruleKeys, k `elem` ["length", "weight", "color", "style", "dash", "gap"]]),
+      ("function", str),
+      ("command", str)
+    ]
 
 -- | The keys of 'featureKeysOf'.
 featureNodes :: [(Text, Node)]

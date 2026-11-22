@@ -297,6 +297,15 @@ tests =
       testCase "figure caption becomes the command body" $ case ast "@figure a.png alt=\"x\"\n  キャプション。\n" of
         [BlockCommand n args [Located _ (Paragraph _)]] -> (locValue n, length args) @?= ("figure", 2)
         other -> assertFailure (show other),
+      testCase "root ADR 0398 I1: separator line is an independent block" $ do
+        shape "前\n---\n後\n" @?= shape "前\n---   \n後\n"
+        case ast "前\n---\n後\n" of
+          [Paragraph _, Separator "default", Paragraph _] -> pure ()
+          other -> assertFailure (show other),
+      testCase "root ADR 0398 I2: escaped hyphens and code are not separators" $ do
+        case ast "\\---\n```\n---\n```\n" of
+          [Paragraph _, CodeBlock _ _ _] -> pure ()
+          other -> assertFailure (show other),
       -- golem-parser ADR 0009
       testCase "an expression slot with no expression is an error at the slot" $ do
         let cst = node NFile [ElemToken (Token KText "ab"), ElemNode (node NParagraph [ElemNode (node NExpr [token KExprOpen "[=", token KRBracket "]"])]), token KNewline "\n"]

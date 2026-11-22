@@ -72,7 +72,10 @@ resultTests =
         codes "pub filter f :: Blocks -> Blocks\nf bs = bs\n" @?= []
         codes "pub filter f :: Blocks -> <file \"a.tsv\"> Blocks\nf bs = bs ++ Block.paragraph (Inline.text (File.read \"a.tsv\"))\n" @?= [],
       testCase "pub block returns Blocks" $
-        codes "pub block f :: Inlines\nf = []\n" @?= ["E06101"]
+        codes "pub block f :: Inlines\nf = []\n" @?= ["E06101"],
+      testCase "root ADR 0398 I6: Block.separator constructs a named block" $ do
+        call "pub block f :: Blocks\nf = Block.separator \"scene\"\n" "f" []
+          >>= (@?= Right (RList [RCon "Separator" [str "scene"]]))
     ]
 
 argumentTests :: TestTree
