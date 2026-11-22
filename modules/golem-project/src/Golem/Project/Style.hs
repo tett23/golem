@@ -13,9 +13,13 @@ module Golem.Project.Style
     defaultAkiSetName,
     akiClassNames,
     Page (..),
+    PageLayout (..),
+    pageBindingRight,
+    singlePage,
     PageSize (..),
     pageTrimSize,
     Grid (..),
+    GridPosition (..),
     FontRole (..),
     Feature (..),
     FeatureSite (..),
@@ -221,9 +225,23 @@ data Grid = Grid
     gridColumns :: !Natural,
     gridColumnGap :: !(Maybe Dim),
     gridTop :: !Dim,
-    gridGutter :: !Dim
+    gridPosition :: !GridPosition
   }
   deriving stock (Eq, Show)
+
+-- | The physical reference edge of the type area (root ADR 0400).
+data GridPosition = GutterPosition !Dim | LeftPosition !Dim | RightPosition !Dim
+  deriving stock (Eq, Show)
+
+-- | Binding exists only in facing-page mode (root ADR 0400).
+data PageLayout = FacingLeft | FacingRight | SinglePage
+  deriving stock (Eq, Show)
+
+pageBindingRight :: Page -> Bool
+pageBindingRight = (== FacingRight) . pageLayout
+
+singlePage :: Style -> Bool
+singlePage = maybe False ((== SinglePage) . pageLayout) . stPage
 
 -- | [page] の size。名前は読み込みで表と照合済みである（ADR 0005）。
 data PageSize
@@ -235,7 +253,7 @@ data PageSize
 
 data Page = Page
   { pageSizeSpec :: !PageSize,
-    pageBindingRight :: !Bool,
+    pageLayout :: !PageLayout,
     pageVertical :: !Bool,
     pageGrid :: !(Maybe Grid),
     -- | the bleed around the trimmed page (golem-pdf ADR 0004); 0 by default
@@ -1162,7 +1180,8 @@ data SidenoteStyle = SidenoteStyle
     snGap :: !Dim,
     snMarker :: !Text,
     -- | the character style of the symbol marker ※ in the text (docs/adr/0371)
-    snMarkerStyle :: !(Maybe Text)
+    snMarkerStyle :: !(Maybe Text),
+    snSide :: !Text
   }
   deriving stock (Eq, Show)
 
@@ -1947,7 +1966,10 @@ enumKey k allowed =
       else pure x
 
 instance FromValue Grid where
-  fromValue = parseTableFromValue $ do
+  fromValue = gridOf FacingLeft
+
+gridOf :: PageLayout -> Value' l -> Matcher l Grid
+gridOf layout = parseTableFromValue $ do
     fs <- reqDim "font-size"
     ch <- reqKeyOf "characters" naturalIntOf
     ls <- reqKeyOf "lines" naturalIntOf
@@ -1955,30 +1977,54 @@ instance FromValue Grid where
     colsAt <- optKeyOf "columns" (\v -> (valueAnn v,) <$> naturalIntOf v)
     let cols = maybe 1 snd colsAt
     gap <- dimKey "column-gap"
-    pos <- reqKey "position"
+    (top, pos) <- reqKeyOf "position" (positionOf layout)
     case colsAt of
       Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
       _ -> pure ()
-    let Position2 t g = pos
-    pure (Grid fs ch ls lp cols gap t g)
+    pure (Grid fs ch ls lp cols gap top pos)
 
-data Position2 = Position2 Dim Dim
+-- | Validate the mode before constructing an unambiguous physical position.
+positionOf :: PageLayout -> Value' l -> Matcher l (Dim, GridPosition)
+positionOf layout v = flip parseTableFromValue v $ do
+  DimV top <- reqKeyOf "top" (positionDim layout)
+  gutter <- optKeyOf "gutter" (\x -> (valueAnn x,) <$> positionDim layout x)
+  left <- optKeyOf "left" (\x -> (valueAnn x,) <$> positionDim layout x)
+  right <- optKeyOf "right" (\x -> (valueAnn x,) <$> positionDim layout x)
+  pos <- case layout of
+    SinglePage -> case gutter of
+      Just (l, DimV _) -> failTableAt l "左右固定モードでは gutter を書けません。left または right を使います"
+      Nothing -> case (left, right) of
+        (Just (_, DimV d), Nothing) -> pure (LeftPosition d)
+        (Nothing, Just (_, DimV d)) -> pure (RightPosition d)
+        _ -> failTableAt (valueAnn v) "左右固定モードの position には left または right のちょうど一方を書きます"
+    _ -> case left <|> right of
+      Just (l, DimV _) -> failTableAt l "見開きモードでは left と right を書けません。gutter を使います"
+      Nothing -> case gutter of
+        Just (_, DimV d) -> pure (GutterPosition d)
+        Nothing -> failTableAt (valueAnn v) "必須のキーがありません: page.grid.position.gutter"
+  pure (top, pos)
 
-instance FromValue Position2 where
-  fromValue = parseTableFromValue (Position2 <$> reqDim "top" <*> reqDim "gutter")
+-- | Negative physical margins reach the geometric G07001 check.
+positionDim :: PageLayout -> Value' l -> Matcher l DimV
+positionDim SinglePage v@(Text' _ text) = maybe (fromValue v) (pure . DimV) (parseSignedDim text)
+positionDim _ v = fromValue v
 
 instance FromValue Page where
-  fromValue = parseTableFromValue $ do
+  fromValue v = flip parseTableFromValue v $ do
     size <- reqKey "size"
+    layout <- enumKey "layout" ["single", "facing"]
     binding <- enumKey "binding" bindingValues
+    let mode = if layout == Just "single" then SinglePage else if binding == Just "right" then FacingRight else FacingLeft
+    when (mode == SinglePage && isJust binding) $
+      failTableAt (keyPosition v "binding") "左右固定モードでは binding を書けません"
     wm <- enumKey "writing-mode" writingModeValues
-    grid <- optKey "grid"
+    grid <- optKeyOf "grid" (gridOf mode)
     bleed <-
       fmap (fromMaybe 0) . optKeyOf "bleed" . withValue $ \l -> \case
         DimV (Abs s) -> pure s
         -- the bleed does not depend on the size of the type (golem-pdf ADR 0004)
         DimV (Zw _) -> failAt l "塗り足しには zw を使えません"
-    pure (Page size (binding == Just "right") (wm == Just "vertical") grid bleed)
+    pure (Page size mode (wm == Just "vertical") grid bleed)
 
 instance FromValue FontRole where
   fromValue =
@@ -2302,7 +2348,7 @@ instance FromValue Composition where
 
 instance FromValue SidenoteStyle where
   fromValue = parseTableFromValue $ do
-    _ <- enumKey "side" sideValues
+    side <- enumKey "side" sideValues
     w <- reqDim "width"
     g <- reqDim "gap"
     f <- textAt "font"
@@ -2312,11 +2358,11 @@ instance FromValue SidenoteStyle where
       Nothing -> pure ()
     m <- enumKey "marker" markerValues
     markerStyle <- optKey "marker-style"
-    pure (SidenoteStyle w g (fromMaybe "number" m) markerStyle)
+    pure (SidenoteStyle w g (fromMaybe "number" m) markerStyle (fromMaybe "outside" side))
 
 -- | The positions of a running head and a folio (golem-driver ADR 0014).
 masterPositions :: [Text]
-masterPositions = ["top-outside", "top-inside", "top-center", "bottom-outside", "bottom-inside", "bottom-center"]
+masterPositions = [v <> "-" <> h | v <- ["top", "bottom"], h <- ["outside", "inside", "center", "left", "right"]]
 
 {- | A position of a master page; an unknown one is an error at its value,
 which makes it G03018 (golem-driver ADR 0016).
@@ -2563,13 +2609,13 @@ instance FromValue ListsSec where
             | otherwise -> pure (Just (l, x :| rest))
     bs <- fmap snd <$> nonEmpty "bullets" bullets
     ns <- nonEmpty "numbers" numbers
-    fmts <- traverse (\(l, fs) -> traverse (\f -> either (\why -> bad l "numbers" (why <> ": " <> f)) pure (parseNumberFormat f)) fs) ns
+    fmts <- traverse (\(l, fs) -> traverse (\f -> either (\why -> failTableAt l "numbers" (why <> ": " <> f)) pure (parseNumberFormat f)) fs) ns
     g <- case gap of
       Nothing -> pure Nothing
       Just (l, t) -> case parseSignedDim t of
-        Nothing -> bad l "gap" ("寸法として読めません: " <> t)
+        Nothing -> failTableAt l "gap" ("寸法として読めません: " <> t)
         Just d
-          | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
+          | negativeDim d -> failTableAt l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
     markerStyle <- optKey "marker-style"
     pure (ListsSec (ListStyle bs fmts g markerStyle))
@@ -2681,7 +2727,13 @@ instance FromValue Style where
           [] -> pure sets
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
     CodeSec code <- fromMaybe (CodeSec defaultCodeStyle) <$> optKey "code"
-    hidden <- fromMaybe defaultHiddenFolio <$> optKey "hidden-folio"
+    let hiddenDefault = defaultHiddenFolio {hfEnabled = maybe True ((/= SinglePage) . pageLayout) page}
+    hidden <- fmap (fromMaybe hiddenDefault) . optKeyOf "hidden-folio" $ \v -> do
+      h <- fromValue v
+      let enabledWritten = case v of
+            Table' _ (MkTable t) -> Map.member "enabled" t
+            _ -> False
+      pure (if not enabledWritten then h {hfEnabled = hfEnabled hiddenDefault} else h)
     let d = defaultStyle
     pure
       Style
@@ -3031,6 +3083,7 @@ styleChecks owner s =
     <> hyphenationExceptionChecks s
     <> codeStyleChecks s
     <> ruleStyleChecks s
+    <> singlePageChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
     <> fontRoleChecks s
     <> styleReferenceChecks owner s
@@ -3463,12 +3516,25 @@ opticalKerningChecks s =
 -- | G03118: the spine is beside the lines only in horizontal writing (docs/adr/0189).
 spineAlignChecks :: Style -> [(Text, Text, [Scope], Text)]
 spineAlignChecks s =
-  [ ("G03118", n, paraKey n "align", "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
-  | maybe False pageVertical (stPage s),
+  [ (if singlePage s then "G03006" else "G03118", n, paraKey n "align", if singlePage s then "左右固定モードでは、段落スタイル " <> n <> " の align に " <> v <> " を書けません。left、right、center などを使います" else "縦組みの本では、段落スタイル " <> n <> " の align に " <> v <> " を書けません。ノドと小口は横組みの本でだけ使えます")
+  | singlePage s || maybe False pageVertical (stPage s),
     (n, ParaStyleDef {psAlign = Just a}) <- Map.toList (stParaStyles s),
     (v, a') <- [("towards-spine", ParaTowardsSpine), ("away-from-spine", ParaAwayFromSpine)],
     a == a'
   ]
+
+-- | Constraints independent of the body or whether a master is used.
+singlePageChecks :: Style -> [(Text, Text, [Scope], Text)]
+singlePageChecks s
+  | not (singlePage s) = []
+  | otherwise =
+      [("G03006", "", styleKeys ["sidenotes", "side"], "左右固定モードの傍注には side = \"left\" または \"right\" を明記します") | Just sn <- [stSidenotes s], snSide sn == "outside"]
+        <> [("G03006", "", styleKeys ["hidden-folio", "enabled"], "左右固定モードでは隠しノンブルを有効にできません") | hfEnabled (stHiddenFolio s)]
+        <> [ ("G03018", "", styleKeys ["masters", name, kind, "position"], "左右固定モードでは柱とノンブルの inside と outside を使えません。left、right、center を使います")
+           | (name, md) <- Map.toList (stMasters s),
+             (kind, Just pos) <- [("running-head", rhPosition <$> mdRunningHead md), ("folio", fst <$> mdFolio md)],
+             any (`T.isSuffixOf` pos) ["-inside", "-outside"]
+           ]
 
 -- ------------------------------------------------------------------ styles in a file
 
@@ -3697,7 +3763,7 @@ groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
 baseSpacingValues = ["1:2:1", "0:1:0", "center"]
 overhangOntoValues = ["kana", "none"]
 kinsokuValues = ["strict", "loose"]
-sideValues = ["outside"]
+sideValues = ["outside", "left", "right"]
 markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
 refPageValues = verticalValues <> ["sideways"]
@@ -3760,6 +3826,7 @@ styleSchema =
       NTable
         [ ("size", NEither [enum (map fst pageSizes), NTable [("width", dim), ("height", dim)]]),
           ("binding", enum bindingValues),
+          ("layout", enum ["single", "facing"]),
           ("writing-mode", enum writingModeValues),
           ("grid", gridNode),
           ("bleed", dim)
@@ -3772,7 +3839,7 @@ styleSchema =
           ("line-pitch", dim),
           ("columns", int),
           ("column-gap", dim),
-          ("position", NTable [("top", dim), ("gutter", dim)])
+          ("position", NTable [("top", dim), ("gutter", dim), ("left", dim), ("right", dim)])
         ]
     headingNode =
       NTable

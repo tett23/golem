@@ -54,6 +54,7 @@ import OutputGoldenSpec
 import OverflowSpec (overflowTests)
 import PageElementsSpec
 import PageLabelsSpec (pageLabelsTests)
+import SinglePageSpec qualified
 import PageNoteNumbersSpec (pageNoteNumbersTests)
 import PageStartsSpec (pageStartsTests)
 import ParagraphRuleSpec
@@ -103,6 +104,7 @@ tests skips =
         varsTests,
         visualSubsetTests,
         unwritableNumbersTests,
+        SinglePageSpec.tests,
         pageLabelsTests,
         indexRangeTests,
         tocStylesTests,

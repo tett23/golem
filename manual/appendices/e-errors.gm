@@ -709,7 +709,7 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
 = [strong: G03012 [code: 段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: …]]
   ぶら下げの分だけ [code: indent] を大きくしてください。
 = [strong: G03118 [code: 縦組みの本では、段落スタイル … の align に … を書けません。…]]
-  ノドの側と小口の側に寄せる揃えは、横組みの本でだけ使えます。
+  ノドの側と小口の側に寄せる揃えは、見開きモードの横組みの本でだけ使えます。
   [code: align] を [code: "left"] や [code: "right"] などに変えてください。
 = [strong: G03013 [code: style.toml のスタイルの参照が不正です: …]]
   [code: based-on] の先のスタイルがないか、引き継ぎが輪になっているか、[code: body] に [code: based-on] があるか、文字スタイルの [code: color] の色が定義されていないか、[code: regex-styles] の文字スタイルがありません。
@@ -731,7 +731,8 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   柱の書式の [code: {vars.名前}] の値が、真偽値、配列、表のどれかです。
   表の中の値なら、[code: {vars.author.short}] のように値まで書いてください。
 = [strong: G03018 [code: 未知の位置です: …]]
-  柱かノンブルの [code: position] を、[code: top-outside] などの六つのどれかにしてください。
+  柱かノンブルの [code: position] を、[code: top-outside] や [code: bottom-left] などの値にしてください。
+  左右固定モードでは [code: inside] と [code: outside] を使わず、[code: left]、[code: right]、[code: center] の位置を選びます。
 = [strong: G03019 [code: \[headings.… \] の running-head は廃止しました。…]]
   見出しの [code: running-head] の行を消し、柱に出す見出しは [code: \[masters.名前\]] の [code: running-head] の [code: content] で選んでください。
 = [strong: G03015 [code: 正規表現を解釈できません: …]]

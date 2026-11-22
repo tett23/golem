@@ -38,11 +38,17 @@ docWith steps leaf = go [] steps
   where
     go here = \case
       [] -> leaf
-      SKey k : rest -> Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- required here k, k' /= k]))
+      SKey k : rest -> Table (table ((k, go (here <> [k]) rest) : [kv | kv@(k', _) <- requiredFor here k, k' /= k]))
       SName : rest ->
         let n = if here == ["headings"] then "1" else "x"
          in Table (table [(n, go (here <> [n]) rest)])
       SIndex : rest -> List [go (here <> ["[]"]) rest]
+    -- Physical anchors are meaningful only without a gutter in single mode.
+    physical = keysOf steps `elem` [["page", "grid", "position", "left"], ["page", "grid", "position", "right"]]
+    requiredFor here k
+      | physical && here == ["page"] = ("layout", Text "single") : required here k
+      | physical && here == ["page", "grid", "position"] = [("top", Text "10mm")]
+      | otherwise = required here k
 
 -- | The keys a table at a path needs besides the key written there.
 required :: [Text] -> Text -> [(Text, Value)]

@@ -11,6 +11,7 @@ cabal.project.local
 /manual/common/build-info.gm
 /manual-dev/common/build-info.gm
 /modules/golem-driver/test/fixtures/pd/*/fonts/
+/modules/golem-driver/test/fixtures/single-page/fonts/
 # the fonts copied into the two books of docs/adr/0175 to build them by hand
 /modules/golem-driver/test/fixtures/complex-vertical/fonts/
 /modules/golem-driver/test/fixtures/complex-horizontal/fonts/

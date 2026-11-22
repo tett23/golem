@@ -23,7 +23,7 @@ import Golem.Driver.New
 #endif
 import Golem.LayoutSpec (Rect (..))
 #ifdef GOLEM_PLUGINS
-import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
+import Golem.LayoutSpec (PageGeometry (..), pgBindingRight, pageGeometry)
 #endif
 import Golem.Length (Sp (..))
 #ifdef GOLEM_PLUGINS
