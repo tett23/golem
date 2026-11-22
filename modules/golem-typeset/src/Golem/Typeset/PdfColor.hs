@@ -1,6 +1,7 @@
 -- | Process-colour conversion of imported figures (root ADR 0403).
 module Golem.Typeset.PdfColor (recolorImportedPage) where
 
+import Control.Monad (foldM)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -42,32 +43,39 @@ recolorImportedPage swatch _ page = do
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
   let source = Map.fromList (P.ipObjects page)
-      initialState = Resources source Map.empty Map.empty Map.empty Map.empty Map.empty (P.maxDecodedBytes - P.ipDecodedBytes page)
-  (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty Nothing (P.ipResources page) initial (P.ipContent page) initialState
+      initialState = Resources {sourceObjects = source, decodedForms = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, clonedResources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page}
+  scope <- resourceScope PageResources (P.ipResources page) initialState
+  (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty scope (P.ipResources page) initial (P.ipContent page) initialState
   case kind of
     Multicolor -> Right Nothing
     Unpainted -> Right Nothing
     _ -> do
       let prefix = BC.unlines [paint swatch (Gray 0) False, paint swatch (Gray 0) True]
       charged <- charge (BS.length prefix) analyzed
-      (content, _, rendered) <- renderForms swatch Set.empty Nothing (P.ipResources page) initial (P.ipContent page) charged
-      resources <- bindScope Nothing (P.ipResources page) rendered
-      let scopes = Map.fromList [(clone, scope) | ((_, scope), clone) <- Map.toList (convertedForms rendered)]
-      objects <- traverse (finalizeClone scopes rendered) (Map.toAscList (convertedObjects rendered))
+      (content, _, rendered) <- renderForms swatch Set.empty scope (P.ipResources page) initial (P.ipContent page) charged
+      finalized <- cloneResourceDictionaries rendered
+      resources <- bindScope scope (P.ipResources page) finalized
+      let scopes = Map.fromList [(clone, childScope) | ((_, childScope), clone) <- Map.toList (convertedForms rendered)]
+      objects <- traverse (finalizeClone scopes finalized) (Map.toAscList (convertedObjects finalized))
       let result = prefix <> content
           identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 result)
       Right (Just page {P.ipContent = result, P.ipResources = resources, P.ipObjects = P.ipObjects page <> objects, P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = P.maxDecodedBytes - remainingBytes rendered})
   where
     initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1
 
+data Scope = PageResources | InlineResources !P.ObjNum | IndirectResources !P.ObjNum
+  deriving stock (Eq, Ord, Show)
+
 -- Original objects remain intact: a paint resource may also be a soft mask.
 data Resources = Resources
   { sourceObjects :: !(Map.Map P.ObjNum (P.ObjOf P.ObjNum)),
     decodedForms :: !(Map.Map P.ObjNum ByteString),
-    formSummaries :: !(Map.Map (P.ObjNum, Maybe P.ObjNum, Graphics) RasterKind),
-    convertedForms :: !(Map.Map (P.ObjNum, Maybe P.ObjNum) P.ObjNum),
+    formSummaries :: !(Map.Map (P.ObjNum, Scope, Graphics) RasterKind),
+    convertedForms :: !(Map.Map (P.ObjNum, Scope) P.ObjNum),
     convertedObjects :: !(Map.Map P.ObjNum (P.ObjOf P.ObjNum)),
-    scopeBindings :: !(Map.Map (Maybe P.ObjNum) (Map.Map Text P.ObjNum)),
+    scopeBindings :: !(Map.Map Scope (Map.Map Text P.ObjNum)),
+    sourceTables :: !(Map.Map Scope (Map.Map Text (P.ObjOf P.ObjNum))),
+    clonedResources :: !(Map.Map Scope P.ObjNum),
     remainingBytes :: !Int
   }
 
@@ -78,7 +86,7 @@ charge bytes state
 
 -- The same saved graphics context reuses a summary; shared Form graphs are
 -- not expanded once for every path through them.
-scanForms :: Cmyk -> Bool -> Set.Set P.ObjNum -> Maybe P.ObjNum -> P.ObjOf P.ObjNum -> Graphics -> ByteString -> Resources -> Either Text (Scan, Resources)
+scanForms :: Cmyk -> Bool -> Set.Set P.ObjNum -> Scope -> P.ObjOf P.ObjNum -> Graphics -> ByteString -> Resources -> Either Text (Scan, Resources)
 scanForms swatch emit active scope resources graphics content state = do
   operations <- maybe (Left "PDF 図版の描画命令を読めません") Right (P.contentOperations content)
   go (Scan graphics [] Unpainted [] (if emit then Just (remainingBytes state) else Nothing)) state operations
@@ -92,13 +100,13 @@ scanForms swatch emit active scope resources graphics content state = do
       (external, updated) <-
         if operator == "Do"
           then do
-            (key, fields, childResources, childScope) <- formResource resources scope args st
+            (key, fields, childResources, childScope, prepared) <- formResource resources scope args st
             let cacheKey = (key, childScope, current)
-            case Map.lookup cacheKey (formSummaries st) of
-              Just kind -> Right (Just kind, st)
+            case Map.lookup cacheKey (formSummaries prepared) of
+              Just kind -> Right (Just kind, prepared)
               Nothing -> do
                 guardForm active key
-                (body, decoded) <- decodeForm key fields st
+                (body, decoded) <- decodeForm key fields prepared
                 (Scan _ _ kind _ _, child) <- scanForms swatch False (Set.insert key active) childScope childResources current body decoded
                 Right (Just kind, child {formSummaries = Map.insert cacheKey kind (formSummaries child)})
           else Right (Nothing, st)
@@ -106,7 +114,7 @@ scanForms swatch emit active scope resources graphics content state = do
       next@(Scan _ _ _ _ budget) <- stepWith external swatch synced operation
       go next (case budget of Nothing -> updated; Just remaining -> updated {remainingBytes = remaining}) rest
 
-renderForms :: Cmyk -> Set.Set P.ObjNum -> Maybe P.ObjNum -> P.ObjOf P.ObjNum -> Graphics -> ByteString -> Resources -> Either Text (ByteString, P.ObjOf P.ObjNum, Resources)
+renderForms :: Cmyk -> Set.Set P.ObjNum -> Scope -> P.ObjOf P.ObjNum -> Graphics -> ByteString -> Resources -> Either Text (ByteString, P.ObjOf P.ObjNum, Resources)
 renderForms swatch active scope resources graphics content state = do
   operations <- maybe (Left "PDF 図版の描画命令を読めません") Right (P.contentOperations content)
   go (Scan graphics [] Unpainted [] (Just (remainingBytes state))) resources state operations
@@ -119,17 +127,17 @@ renderForms swatch active scope resources graphics content state = do
       (external, rebound, updated, rewritten) <-
         if operator == "Do"
           then do
-            (key, fields, childResources, childScope) <- formResource resources scope args st
-            (clone, child) <- case Map.lookup (key, childScope) (convertedForms st) of
-              Just converted -> Right (converted, st)
+            (key, fields, childResources, childScope, prepared) <- formResource resources scope args st
+            (clone, child) <- case Map.lookup (key, childScope) (convertedForms prepared) of
+              Just converted -> Right (converted, prepared)
               Nothing -> do
                 guardForm active key
-                (body, decoded) <- decodeForm key fields st
+                (body, decoded) <- decodeForm key fields prepared
                 (painted, _, rendered) <- renderForms swatch (Set.insert key active) childScope childResources current body decoded
                 fresh <- freshObject rendered
                 let fieldsOut = [(k, v) | (k, v) <- fields, k `notElem` ["Length", "Filter", "DecodeParms", "DL"]]
                 Right (fresh, rendered {convertedForms = Map.insert (key, childScope) fresh (convertedForms rendered), convertedObjects = Map.insert fresh (P.OStream fieldsOut painted) (convertedObjects rendered)})
-            alias <- freshAlias resources clone child
+            alias <- freshAlias scope clone child
             let bindings = Map.insertWith Map.union scope (Map.singleton alias clone) (scopeBindings child)
             Right (Just Unpainted, bound, child {scopeBindings = bindings}, ("Do", ["/" <> TE.encodeUtf8 alias]))
           else Right (Nothing, bound, st, operation)
@@ -167,12 +175,30 @@ resourceName :: [ByteString] -> Either Text Text
 resourceName [name] | BS.take 1 name == "/" = Right (TE.decodeLatin1 (BS.drop 1 name))
 resourceName _ = Left "PDF 図版の資源名が不正です"
 
-formResource :: P.ObjOf P.ObjNum -> Maybe P.ObjNum -> [ByteString] -> Resources -> Either Text (P.ObjNum, [(Text, P.ObjOf P.ObjNum)], P.ObjOf P.ObjNum, Maybe P.ObjNum)
+resourceScope :: Scope -> P.ObjOf P.ObjNum -> Resources -> Either Text Scope
+resourceScope fallback object state = go Set.empty Nothing object
+  where
+    go seen _ (P.ORef key) = do
+      guardForm seen key
+      value <- maybe (Left "PDF 図版の資源の参照先がありません") Right (Map.lookup key (sourceObjects state))
+      go (Set.insert key seen) (Just key) value
+    go _ reference (P.ODict _) = Right (maybe fallback IndirectResources reference)
+    go _ _ _ = Left "PDF 図版の資源辞書が不正です"
+
+sourceTable :: Scope -> P.ObjOf P.ObjNum -> Resources -> Either Text (Map.Map Text (P.ObjOf P.ObjNum), Resources)
+sourceTable scope resources state = case Map.lookup scope (sourceTables state) of
+  Just table -> Right (table, state)
+  Nothing -> do
+    values <- dictionary resources state
+    objects <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" values)
+    let table = Map.fromList objects
+    Right (table, state {sourceTables = Map.insert scope table (sourceTables state)})
+
+formResource :: P.ObjOf P.ObjNum -> Scope -> [ByteString] -> Resources -> Either Text (P.ObjNum, [(Text, P.ObjOf P.ObjNum)], P.ObjOf P.ObjNum, Scope, Resources)
 formResource resources scope args state = do
   name <- resourceName args
-  values <- dictionary resources state
-  objects <- maybe (Left "PDF 図版に XObject の資源がありません") (\value -> dictionary value state) (lookup "XObject" values)
-  key <- case lookup name objects of
+  (objects, prepared) <- sourceTable scope resources state
+  key <- case Map.lookup name objects of
     Just (P.ORef key) -> Right key
     _ -> Left "PDF 図版の XObject が見つかりません"
   object <- maybe (Left "PDF 図版の XObject の参照先がありません") Right (Map.lookup key (sourceObjects state))
@@ -180,10 +206,10 @@ formResource resources scope args state = do
     P.OStream fields _ | lookup "Subtype" fields == Just (P.OName "Form") -> Right fields
     _ -> Left "PDF 図版の画像 XObject の色変換は未完了です"
   case lookup "Resources" fields of
-    Nothing -> Right (key, fields, resources, scope)
+    Nothing -> Right (key, fields, resources, scope, prepared)
     Just own -> do
-      ownFields <- dictionary own state
-      Right (key, fields, P.ODict ownFields, Just key)
+      childScope <- resourceScope (InlineResources key) own prepared
+      Right (key, fields, own, childScope, prepared)
 
 dictionary :: P.ObjOf P.ObjNum -> Resources -> Either Text [(Text, P.ObjOf P.ObjNum)]
 dictionary object state = do
@@ -226,30 +252,44 @@ freshObject state =
    in if lowest == minBound then Left "PDF 図版の変換用オブジェクト番号がありません" else Right (lowest - 1)
 
 -- Generated names leave every original binding available to unmodified masks.
-freshAlias :: P.ObjOf P.ObjNum -> P.ObjNum -> Resources -> Either Text Text
-freshAlias resources clone state = do
-  fields <- dictionary resources state
-  originals <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" fields)
-  let names = Map.fromList originals
-      choose candidate = if Map.member candidate names then choose (candidate <> "_") else candidate
+freshAlias :: Scope -> P.ObjNum -> Resources -> Either Text Text
+freshAlias scope clone state = do
+  names <- maybe (Left "PDF 図版の資源辞書を準備できません") Right (Map.lookup scope (sourceTables state))
+  let choose candidate = if Map.member candidate names then choose (candidate <> "_") else candidate
   Right (choose ("GolemFigureColor" <> TE.decodeLatin1 (BC.pack (show (negate (toInteger clone))))))
+
+-- Shared indirect dictionaries are cloned once, so their sharing survives.
+cloneResourceDictionaries :: Resources -> Either Text Resources
+cloneResourceDictionaries state = foldM clone state (Map.keys (scopeBindings state))
+  where
+    clone current scope@(IndirectResources key) = do
+      bound <- bindScopeRaw scope (P.ORef key) current
+      fresh <- freshObject current
+      Right current {convertedObjects = Map.insert fresh bound (convertedObjects current), clonedResources = Map.insert scope fresh (clonedResources current)}
+    clone current _ = Right current
 
 -- Install aliases once at their original resource owner. Forms without their
 -- own Resources keep inheriting that dictionary instead of copying it.
-bindScope :: Maybe P.ObjNum -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
-bindScope scope resources state = case Map.lookup scope (scopeBindings state) of
+bindScope :: Scope -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
+bindScope scope resources state = case Map.lookup scope (clonedResources state) of
+  Just key -> Right (P.ORef key)
+  Nothing -> bindScopeRaw scope resources state
+
+bindScopeRaw :: Scope -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
+bindScopeRaw scope resources state = case Map.lookup scope (scopeBindings state) of
   Nothing -> Right resources
   Just additions -> do
     values <- dictionary resources state
-    originals <- maybe (Right []) (\value -> dictionary value state) (lookup "XObject" values)
-    let objects = Map.union (Map.map P.ORef additions) (Map.fromList originals)
+    originals <- maybe (Left "PDF 図版の資源辞書を準備できません") Right (Map.lookup scope (sourceTables state))
+    let objects = Map.union (Map.map P.ORef additions) originals
     Right (P.ODict ([(k, v) | (k, v) <- values, k /= "XObject"] <> [("XObject", P.ODict (Map.toAscList objects))]))
 
-finalizeClone :: Map.Map P.ObjNum (Maybe P.ObjNum) -> Resources -> (P.ObjNum, P.ObjOf P.ObjNum) -> Either Text (P.ObjNum, P.ObjOf P.ObjNum)
+finalizeClone :: Map.Map P.ObjNum Scope -> Resources -> (P.ObjNum, P.ObjOf P.ObjNum) -> Either Text (P.ObjNum, P.ObjOf P.ObjNum)
 finalizeClone scopes state (key, P.OStream fields content) = case lookup "Resources" fields of
   Nothing -> Right (key, P.OStream fields content)
   Just resources -> do
-    bound <- bindScope (Map.findWithDefault Nothing key scopes) resources state
+    scope <- maybe (Left "PDF 図版の Form の資源辞書がありません") Right (Map.lookup key scopes)
+    bound <- bindScope scope resources state
     Right (key, P.OStream ([(k, v) | (k, v) <- fields, k /= "Resources"] <> [("Resources", bound)]) content)
 finalizeClone _ _ object = Right object
 

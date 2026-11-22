@@ -43,6 +43,20 @@ pdfColorTests =
     testCase "root ADR 0403 I2: a shared PDF Form graph is summarized without expansion" $ do
       result <- requireConverted sharedForms
       length (P.ipObjects result) @?= 80,
+    testCase "root ADR 0403 I2: shared indirect Form resources remain shared" $ do
+      let base = sharedForms
+          own (key, P.OStream fields bytes) = (key, P.OStream (("Resources", P.ORef 1000) : fields) bytes)
+          own object = object
+          original = base {P.ipResources = P.ORef 1000, P.ipObjects = map own (P.ipObjects base) <> [(1000, P.ipResources base)]}
+      result <- requireConverted original
+      case P.ipResources result of
+        P.ORef resourceKey -> do
+          assertBool "resource dictionary cloned" (resourceKey /= 1000)
+          let forms = [fields | (key, P.OStream fields _) <- P.ipObjects result, key < 0, lookup "Subtype" fields == Just (P.OName "Form")]
+          length forms @?= 40
+          map (lookup "Resources") forms @?= replicate 40 (Just (P.ORef resourceKey))
+          length (P.ipObjects result) @?= 82
+        other -> assertFailure (show other),
     testCase "root ADR 0403 I1: a compressed PDF Form uses its indirect filter" $ do
       let original = (formPage "unused" "/F Do") {P.ipObjects = [(1, P.OStream [("Subtype", P.OName "Form"), ("Filter", P.ORef 2)] (flate ".5 g 0 0 10 10 re f")), (2, P.OName "FlateDecode")]}
       result <- requireConverted original
