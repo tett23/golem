@@ -881,7 +881,7 @@ mod tests {
 
     // root ADR 0398 A3: SDK filters preserve an unedited separator's tag and name.
     #[test]
-    fn named_separator_survives_document_and_inline_filter_roundtrip() {
+    fn root_adr_0398_a3_named_separator_survives_document_and_inline_filter_roundtrip() {
         let separator = Value::Array(vec![Value::Int(15), Value::Text("scene".into())]);
         let d = Document { file: 1, blocks: vec![Block { span: sp(0, 9), label: None, lang: None, body: BlockBody::Other(separator) }] };
         let bytes = encode(&document_value(&d));

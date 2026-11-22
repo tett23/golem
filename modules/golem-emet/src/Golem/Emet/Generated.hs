@@ -4771,18 +4771,18 @@ peg'rule'StrChar :: PegRt.P (Peg'Store peg's) peg's ((
 peg'rule'StrChar =
   PegRt.memo peg'memo'StrChar "StrChar"
     (PegRt.node syntaxKindStrChar (PegRt.choice
-      [ do { (peg'v1, peg'k0) <- peg'rule'Escape
-          ; PegPrelude.pure (peg'v1, peg'k0)
+      [ do { (_, peg'k0) <- peg'rule'Escape
+          ; PegPrelude.pure ((), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [('"', '"'), ('\\', '\\'), ('\n', '\n')] "[\"\\\\\\n]"))
-          ; (_, peg'k3) <- PegRt.plain (PegRt.anyChar)
+          ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [('"', '"'), ('\\', '\\'), ('\n', '\n')] "[\"\\\\\\n]"))
+          ; (_, peg'k2) <- PegRt.plain (PegRt.anyChar)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
 {-# LINE 443 "modules/golem-emet/grammar/Emet.hpeg" #-}
  {-# COLUMN 24 #-} () 
 {-# LINE 4785 "modules/golem-emet/src/Golem/Emet/Generated.hs" #-}
-    ), PegPrelude.concat [peg'k2, peg'k3])
+    ), PegPrelude.concat [peg'k1, peg'k2])
           }
       ]))
 
