@@ -1167,7 +1167,7 @@ overhang-onto = "kana"
 - [code: mono-align]：モノルビの読みが親文字より短いときに、中央に置くか（[code: "center"]）、始まりにそろえるか（[code: "start"]）です。
 - [code: group-align]：グループルビの読みの配置です。[code: "1:2:1"] は字のあいだに等しい空きを入れ、両端にその半分を置きます。
 - [code: overhang]：読みが親文字より長いときに、隣の文字にかけてよい量です。
-- [code: overhang-onto]：[code: "kana"] なら仮名にだけかけ、[code: "none"] ならかけません。
+- [code: overhang-onto]：[code: "kana"] なら仮名と約物の空きにかけ、[code: "none"] ならかけません。
 - [code: reading-style]：読みだけに当てる文字スタイルの名前です。文字スタイルが書かない書体と色は外側から引き継ぎ、大きさを書かなければ親文字の半分で組みます。親文字より大きな読みでは、親文字の占める幅も広がります。
 
 縦組みの本で [code: ##10##] や [code: \[number-text ...\]] の数をどう組むかは、[code: \[numbers\]] の [code: vertical] で決めます。

@@ -567,7 +567,19 @@ of @fid@.
 kentenGlyphDiagnostics :: FileId -> Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
 kentenGlyphDiagnostics fid vertical fonts layout =
   [ diagnostic "G08009" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（" <> codePointText (kentenChar shape) <> "）がありません")
-  | (role, shape) <- Set.toAscList (Set.fromList [(lkFace (bcLook c), shape) | l <- layoutLines layout, Box _ c <- lineItems l, boxKind c == KindKenten, Just shape <- [lkKenten (bcLook c)]]),
+  | (role, shape) <-
+      Set.toAscList
+        ( Set.fromList
+            ( concat
+                [ let look = bcLook c
+                      opts = lkRubyOptions look
+                   in [(lkFace look, shape) | boxKind c == KindKenten, Just shape <- [lkKenten look]]
+                        <> [(lkFace (readingLook look), shape) | boxKind c `elem` [KindRuby, KindGroupRuby], Just name <- roReadingKenten opts <> roOtherKenten opts, Just shape <- [kentenShapeFromName name]]
+                | l <- layoutLines layout,
+                  Box _ c <- lineItems l
+                ]
+            )
+        ),
     let gs = kentenShaped fonts vertical role shape,
     null gs || any ((== 0) . shGlyph) gs
   ]
