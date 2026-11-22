@@ -31,7 +31,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### エディタとの連携
 
-- **プロジェクトをまたぐ移動の計画（未実装）**：章登録の移管と参照編集を Golem LSP から取得できるようにし、Aleph のフォルダ移動で使う。索引の取得失敗を編集0件と区別する（[root ADR 0398](adr/0398-plan-moves-across-project-boundaries.md)）。
+- **プロジェクトをまたぐ移動の計画（未実装）**：章登録の移管と参照編集を Golem LSP から取得できるようにし、Aleph のフォルダ移動で使う。索引の取得失敗を編集 0 件と区別する（[root ADR 0398](adr/0398-plan-moves-across-project-boundaries.md)）。
 
 ### IR、ABI、レイアウトエンジンの基盤
 
