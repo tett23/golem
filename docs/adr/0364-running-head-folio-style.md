@@ -1,6 +1,6 @@
 # ADR 0364: 柱とノンブルの文字スタイルを個別に選ぶ
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0410-draw-decorations-of-running-heads-and-folios.md"],"part":"柱とノンブルに当てる文字スタイルの範囲"}]
 
 ## 文脈
 
