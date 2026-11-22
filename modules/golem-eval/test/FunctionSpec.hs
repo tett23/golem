@@ -93,7 +93,7 @@ tests =
         codesOf "[book.price 1000 rate=1]\n" @?= ["G02119"],
       testCase "a keyword argument written twice is G02077, as for a built-in command" $
         codesOf "[book.price 1000 tax=false tax=true]\n" @?= ["G02077"],
-      testCase "Golem ADR 0351 I7-I8: every unknown occurrence and later duplicate keeps its own site" $ do
+      testCase "Golem ADR 0351 I7, I8: every unknown occurrence and later duplicate keeps its own site" $ do
         let src = withImport "[book.price 1 x=1 x=2 x=3]\n"
             (ds, _) = evalSource functionCtx src
             index needle = Data.Text.length (fst (Data.Text.breakOn needle src))
@@ -105,7 +105,7 @@ tests =
                 ("G02119", index "x=3", index "x=3" + 1),
                 ("G02077", index "x=3", index "x=3" + 3)
               ],
-      testCase "Golem ADR 0351 I6-I7: independent unknown, duplicate and type errors survive" $ do
+      testCase "Golem ADR 0351 I6, I7: independent unknown, duplicate and type errors survive" $ do
         let src = withImport "[book.price 1 x=1 x=2 tax=abc]\n"
             (ds, _) = evalSource functionCtx src
             index needle = Data.Text.length (fst (Data.Text.breakOn needle src))

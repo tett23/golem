@@ -403,12 +403,12 @@ tests =
       powDiagnosticTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
-      testCase "ADR 0391 I1 I3: @set keeps the value without a notice" $ do
+      testCase "ADR 0391 I1, I3: @set keeps the value without a notice" $ do
         paraOf "@set x = 2\n\n[= x * 3]\n" @?= ["6"]
         map diagCode (fst (evalSource ctx "@set x = 2\n\n[= x * 3]\n")) @?= []
         errs "@set doc = 1\n" @?= ["G02023"]
         errs "set doc = 1\n" @?= [],
-      testCase "ADR 0391 I1 I3: @set x = \"abc\" then [= x] is abc with no diagnostic" $ do
+      testCase "ADR 0391 I1, I3: @set x = \"abc\" then [= x] is abc with no diagnostic" $ do
         paraTexts "@set x = \"abc\"\n\n[= x]\n" @?= [["abc"]]
         errs "@set x = \"abc\"\n\n[= x]\n" @?= [],
       testCase "ADR 0391 I1: @set x = without an expression is G01020" $
@@ -1683,14 +1683,14 @@ blankLineTests =
       testCase "the messages of G02092" $ do
         msgs "@blank-line x\n" @?= [("G02092", "@blank-line の引数は 0 以上の整数を一つだけ書きます")]
         msgs "@blank-line\n  あ\n" @?= [("G02092", "@blank-line は本体を持てません")],
-      testCase "ADR 0345 I3 I4: zero blank-line has no IR and one info per run" $ do
+      testCase "ADR 0345 I3, I4: zero blank-line has no IR and one info per run" $ do
         outline lineCtx "あ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254"])
         outline ctx "@blank-line 0\n@blank-line 0\nあ\n" @?= (["p あ"], ["G02254"])
         outline ctx "@blank-line 0\nあ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254", "G02254"])
         let (_, ds, _) = runS ctx "@blank-line 0\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- ds] @?= [(DiagnosticCode "G02254", Info, 0)]
         assertBool "an info code" (DiagnosticCode "G02254" `elem` infoCodes),
-      testCase "ADR 0345 I3 I4: consecutive blank-line counts form one IR block" $ do
+      testCase "ADR 0345 I3, I4: consecutive blank-line counts form one IR block" $ do
         outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
         outline ctx "@blank-line 0\n@blank-line 2\n@blank-line 0\nあ\n" @?= (["blank 2", "p あ"], [])
         outline ctx "@blank-line 1\n@blank-line 0\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
@@ -1977,7 +1977,7 @@ diagnosticTests =
         errs "@listing src/Main.hs other.hs\n" @?= ["G02253"]
         errs "@listing src=src/Main.hs src=other.hs\n" @?= ["G02077"]
         errs "@listing src/Main.hs src=src/Main.hs src=other.hs\n" @?= ["G02077"],
-      testCase "ADR 0343 I1 I2: the code, the site and the table requests of each path form" $ do
+      testCase "ADR 0343 I1, I2: the code, the site and the table requests of each path form" $ do
         let row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abTableCtx id) src],) <$> tableRequests src
             expect src codes n = row src >>= (@?= (codes, n))
             whole src = [("G02130", 0, T.length src)]
@@ -2159,7 +2159,7 @@ printingsTests =
         let (bs, es) = run ((printingsCtx "en") {ctxStyle = printingsStyle "  第{edition}版  {{刷}}{printing} {year}/{month}/{day} {date}  "}) "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["  第1版  {刷}1 2026/10/16 2026-10-16  ", "  第1版  {刷}2 2027/4/1 2027-04-01  ", "  第2版  {刷}1 2028/1/10 2028-01-10  "],
-      testCase "ADR 0375 I1: the fields of an explicit format are decimal digits, not numbers of the writing mode" $
+      testCase "ADR 0375: the fields of an explicit format are decimal digits, not numbers of the writing mode" $
         [[t | Text _ t <- is] | Paragraph _ is <- fst (run ((printingsCtx "ja") {ctxStyle = printingsStyle "{year}年{edition}"}) "@printings\n")]
           @?= [["2026年1"], ["2027年1"], ["2028年2"]],
       testCase "ADR 0375 I1: braces that do not pair are errors (root ADR 0413: G03267 to G03271)" $ do
@@ -2167,17 +2167,17 @@ printingsTests =
         mapM_ (\(fmt, code) -> codes fmt @?= [code]) [("{", "G03267"), ("}", "G03268"), ("{}", "G03269"), ("{edition", "G03267"), ("edition}", "G03268"), ("{{edition}", "G03268"), ("\\{edition}", "G03268")]
         mapM_ (\fmt -> codes fmt @?= []) ["{{", "}}", "{{}}", "\\{edition\\}", "\\\\", ""]
         mapM_ (\(fmt, code) -> codes fmt @?= [code]) [("\\a", "G03270"), ("a\\", "G03271")],
-      testCase "ADR 0375 I1: the escapes of the other formats are read too, and {{ is current: no notice" $ do
+      testCase "ADR 0375: the escapes of the other formats are read too, and {{ is current: no notice" $ do
         let (bs, es) = run ((printingsCtx "ja") {ctxStyle = printingsStyle "\\{{edition}\\} \\\\ {{{printing}}}"}) "@printings\n"
         es @?= []
         take 1 [plainOf is | Paragraph Nothing is <- bs] @?= ["{1} \\ {1}"]
         either (const (assertFailure "an error")) (const (pure ())) (parseStyle (FileId 9) "[printings]\nformat = '{{{edition}}}'\n"),
-      testCase "ADR 0375 I1: an error of the format names [printings] and the format" $ do
+      testCase "ADR 0375: an error of the format names [printings] and the format" $ do
         let formatMsgs fmt = either (map diagMessage) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
         formatMsgs "{unknown}" @?= ["[printings] の format が正しくありません（表にない欄です: {unknown}）: {unknown} (printings.format)"]
         formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {edition (printings.format)"]
         either (map diagMessage) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
-      testCase "ADR 0375 I1: without a format a book not in Japanese is still G02076" $
+      testCase "ADR 0375: without a format a book not in Japanese is still G02076" $
         run ((printingsCtx "en") {ctxStyle = either (error . show) id (parseStyle (FileId 9) "[printings]\n")}) "@printings\n" @?= ([], ["G02076"]),
       testCase "the year is kanji-digits, the other numbers follow the default" $
         case run (printingsCtx "ja") "@printings\n" of

@@ -100,7 +100,7 @@ tests =
         bodies digits [Heading 1 attrs [cs "manual" [t "34"]]] @?= [Heading 1 attrs [cs "n" [cs "manual" [t "34"]]]]
         bodies digits [Heading 1 attrs [t "a"]] @?= [Heading 1 attrs [t "a"]]
         para digits [Note sp 1 (noteBody sp [cs "manual" [t "56"]])] @?= [Note sp 1 (noteBody sp [cs "n" [cs "manual" [t "56"]]])],
-      testCase "ADR 0368 I1: headings, terms and notes take the rules of body, not those of another paragraph style" $ do
+      testCase "ADR 0368: headings, terms and notes take the rules of body, not those of another paragraph style" $ do
         let other = rules [("memo", [("[0-9]+", "n")])]
         bodies other [Heading 1 noHeadingAttrs [t "1"], DefList [DefGroup [[t "2"]] []]] @?= [Heading 1 noHeadingAttrs [t "1"], DefList [DefGroup [[t "2"]] []]]
         bodies other [Paragraph (Just "memo") [t "3", Note sp 1 (noteBody sp [t "4"])]] @?= [Paragraph (Just "memo") [cs "n" [t "3"], Note sp 1 (noteBody sp [t "4"])]],
