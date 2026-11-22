@@ -44,6 +44,7 @@ cfg0 =
     { hcTitle = "本",
       hcLanguage = "ja",
       hcVertical = False,
+      hcSeparatorPitch = Nothing,
       hcNumberDefault = "kanji",
       hcSwatches = Map.empty,
       hcFonts = Map.empty,
@@ -485,6 +486,38 @@ tests =
       assertBool "text" ("class=\"separator separator-text\"" `T.isInfixOf` body)
       assertBool "rule" ("class=\"separator separator-rule\"" `T.isInfixOf` body)
       assertBool "one line, margins" ("block-size: 1lh" `T.isInfixOf` siteCss (renderXhtml cfg0 ft ((bookOf [a, b]) {bookSeparators = appearances}))),
+    testCase "root ADR 0398 I4: separator boundaries override global and file paragraph margins" $ do
+      let sep = Block (at 2) Nothing Nothing (Separator "scene")
+          ps = plainPara {hpsSpaceBefore = 2, hpsSpaceAfter = 3, hpsSpaceBetween = 4}
+          cfg = cfg0 {hcParaStyles = Map.fromList [("body", ps), ("quote", ps)], hcLocalStyles = Map.singleton fidA (HtmlLocalStyles Map.empty (Map.singleton "quote" ps) Nothing Nothing Map.empty)}
+          book = (bookOf [styled 1 "quote", sep, para 3 [txt "after"]]) {bookSeparators = Map.singleton (at 2, "scene") (SeparatorTextAppearance 0 0 "center" "*" Nothing)}
+          body = bodyA cfg book
+      assertBool "preceding paragraph has no boundary margin" ("<p class=\"ps-quote\" style=\"margin-block-end:0\">" `T.isInfixOf` body)
+      assertBool "following paragraph has no boundary margin" ("<p style=\"margin-block-start:0\">" `T.isInfixOf` body),
+    testCase "root ADR 0398 I4: generated paragraphs sharing a source span retain non-boundary spacing" $ do
+      let paragraph text = Block (at 1) Nothing Nothing (Paragraph Nothing [txt text])
+          sep = Block (at 2) Nothing Nothing (Separator "scene")
+          book = (bookOf [paragraph "first", paragraph "before", sep, paragraph "after", paragraph "last"]) {bookSeparators = Map.singleton (at 2, "scene") (SeparatorTextAppearance 0 0 "center" "*" Nothing)}
+          body = bodyA cfg0 book
+      assertBool "first paragraph is unchanged" ("<p>first</p>" `T.isInfixOf` body)
+      assertBool "last paragraph is unchanged" ("<p>last</p>" `T.isInfixOf` body),
+    testCase "root ADR 0398 I4: adjacent visible separators serialize one maximum margin in both writing modes" $ do
+      let a = Block (at 1) Nothing Nothing (Separator "a")
+          b = Block (at 3) Nothing Nothing (Separator "b")
+          blank = Block (at 2) Nothing Nothing (BlankLines 4)
+          appearances = Map.fromList [((at 1, "a"), SeparatorTextAppearance 0 2 "center" "A" Nothing), ((at 3, "b"), SeparatorTextAppearance 3 0 "center" "B" Nothing)]
+      mapM_
+        ( \vertical ->
+            mapM_
+              ( \(between, margin) -> do
+                  let body = bodyA (cfg0 {hcVertical = vertical}) ((bookOf ([a] <> between <> [b])) {bookSeparators = appearances})
+                  assertBool "first separator ends at zero" ("margin-block-start:0lh;margin-block-end:0lh\"><span>A" `T.isInfixOf` body)
+                  assertBool "next separator owns the maximum" (("margin-block-start:" <> margin <> "lh;margin-block-end:0lh\"><span>B") `T.isInfixOf` body)
+                  T.count "<br/>" body @?= 0
+              )
+              [([], "3"), ([blank], "4")]
+        )
+        [False, True],
     testCase "root ADR 0398 I4: explicit blank lines and visible margins use the maximum" $ do
       let sep = Block (at 2) Nothing Nothing (Separator "scene")
           before = Block (at 1) Nothing Nothing (Paragraph Nothing [Text (at 1) "前"])

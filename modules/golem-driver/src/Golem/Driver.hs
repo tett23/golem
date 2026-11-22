@@ -1283,6 +1283,11 @@ htmlConfig dev e book missing bib =
     { hcTitle = mdTitle md,
       hcLanguage = mdLanguage md,
       hcVertical = vertical,
+      hcSeparatorPitch = do
+        grid <- stPage style >>= pageGrid
+        if gridAlignment grid == AlignFree
+          then Just (dimToSp (dimToSp 0 (gridFontSize grid)) (gridLinePitch grid))
+          else Nothing,
       hcNumberDefault = stNumbersVertical style,
       hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
       -- missing fonts are left out of the site (golem-project ADR 0004)

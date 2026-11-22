@@ -62,6 +62,8 @@ data HtmlConfig = HtmlConfig
   { hcTitle :: !Text,
     hcLanguage :: !Text,
     hcVertical :: !Bool,
+    -- | The physical base pitch of free composition, independent of paragraph overrides (root ADR 0398).
+    hcSeparatorPitch :: !(Maybe L.Sp),
     hcNumberDefault :: !Text, -- kanji, kanji-digits, tcy
     hcSwatches :: !(Map Text (Int, Int, Int, Int)),
     hcFonts :: !(Map Text (Maybe FilePath, Maybe FilePath)), -- role -> (ja, latin)
@@ -481,25 +483,48 @@ between two blocks, and nothing before the first block, after a break or
 after the last block (docs/adr ADR 0046).
 -}
 topBlocks :: Ctx -> [Block] -> Text
-topBlocks c = go Nothing Nothing 0
+topBlocks c = go Nothing Nothing 0 False
   where
+    -- These boundaries are semantic, so inline margins take precedence over
+    -- global and file-local paragraph rules, including their physical spacing.
+    displayed (Block _ _ _ (BlankLines _)) = False
+    displayed (Block _ _ _ (PageControl _)) = False
+    displayed _ = True
+    nextSeparator rest = case filter displayed rest of
+      next : _ -> isJust (separatorSpace next)
+      _ -> False
+    styledBoundary before after html = case ["margin-block-start:0" | before] <> ["margin-block-end:0" | after] of
+      [] -> html
+      declarations -> let (open, rest) = T.breakOn ">" html in open <> " style=\"" <> T.intercalate ";" declarations <> "\"" <> rest
+    render before after b@(Block _ _ _ (Paragraph _ _)) = styledBoundary before after (block c b)
+    render _ _ b = block c b
     -- the break pending, and the blank lines pending after a block (Nothing before one)
-    go _ _ _ [] = ""
-    go _ _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing 0 rest
-    go _ blanks after (Block _ _ _ (PageControl control) : rest) | keepsPageBreak control = go (Just "avoid") blanks after rest
-    go pending blanks after (Block _ _ _ (PageControl _) : rest) = go pending blanks after rest
-    go pending blanks after (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) after rest
+    go _ _ _ _ [] = ""
+    go _ _ _ _ (Block _ _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing 0 False rest
+    go _ blanks after previous (Block _ _ _ (PageControl control) : rest) | keepsPageBreak control = go (Just "avoid") blanks after previous rest
+    go pending blanks after previous (Block _ _ _ (PageControl _) : rest) = go pending blanks after previous rest
+    go pending blanks after previous (Block _ _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) after previous rest
     -- the paragraphs of one box in its div (docs/adr/0271)
-    go pending blanks after (b : rest)
+    go pending blanks after previous (b : rest)
       | Just (name, key) <- boxOf b =
           let (more, rest') = span (\x -> fmap snd (boxOf x) == Just key && not (startsPage x)) rest
-           in blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat (map (block c) (b : more)) <> "</div>\n") <> go Nothing (Just 0) 0 rest'
+              lastIndex = length more
+              followingSeparator = nextSeparator rest'
+           in blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (styledBoundary previous followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (previous && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
       | Just (before, after') <- separatorSpace b =
           let explicit = fromMaybe 0 blanks
-              extra = if explicit > max after before then explicit - after else 0
-              html = if extra > 0 then T.replace ("margin-block-start:" <> tshow before <> "lh") "margin-block-start:0lh" (block c b) else block c b
-           in blankLines extra <> withBreak pending html <> go Nothing (Just 0) after' rest
-      | otherwise = blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (block c b) <> go Nothing (Just 0) 0 rest
+              extra = if not previous && explicit > max after before then explicit - after else 0
+              marginBefore
+                | previous = max explicit (max after before)
+                | extra > 0 = 0
+                | otherwise = before
+              marginAfter = if nextSeparator rest then 0 else after'
+              html =
+                T.replace ("margin-block-end:" <> tshow after' <> "lh") ("margin-block-end:" <> tshow marginAfter <> "lh")
+                  . T.replace ("margin-block-start:" <> tshow before <> "lh") ("margin-block-start:" <> tshow marginBefore <> "lh")
+                  $ block c b
+           in blankLines extra <> withBreak pending html <> go Nothing (Just 0) after' True rest
+      | otherwise = blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (render previous (nextSeparator rest) b) <> go Nothing (Just 0) 0 False rest
     separatorSpace (Block sp _ _ (Separator name)) = case Map.lookup (sp, name) (bookSeparators (cBook c)) of
       Just (SeparatorTextAppearance before after _ _ _) -> Just (toInteger before, toInteger after)
       Just (SeparatorRuleAppearance before after _ _ _ _ _) -> Just (toInteger before, toInteger after)
@@ -1203,7 +1228,7 @@ css cfg book =
            "pre, code { font-family: " <> codeStack <> "; }",
            rule "pre" (["white-space: pre-wrap", "overflow-wrap: anywhere", "tab-size: 2", "hyphens: none", "font-kerning: none"] <> preDecls)
          ]
-      <> [ruleText | not (Map.null (bookSeparators book)), ruleText <- [".separator { display: block; block-size: 1lh; line-height: 1lh; }", "p:has(+ .separator), .separator + p { margin-block: 0; }"]]
+      <> [ruleText | not (Map.null (bookSeparators book)), ruleText <- [".separator { display: block; block-size: " <> separatorPitch <> "; line-height: " <> separatorPitch <> "; }"]]
       -- strong is always written (docs/adr ADR 0005)
       <> [charRule "strong" cs | Just cs <- [Map.lookup "strong" (hcCharStyles cfg)]]
       <> [ ".tcy { text-combine-upright: all; -epub-text-combine: horizontal; }",
@@ -1278,6 +1303,7 @@ css cfg book =
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
+    separatorPitch = maybe "1lh" ((<> "pt") . L.ptText) (hcSeparatorPitch cfg)
     docs = [fid | Document fid _ <- bookDocs book]
     -- the role of code, then monospace (golem-driver ADR 0017)
     codeStack = T.intercalate ", " (maybe [] families (hcoFont (hcCode cfg)) <> ["monospace"])

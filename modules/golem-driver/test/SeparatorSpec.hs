@@ -15,7 +15,11 @@ import Test.Tasty.HUnit
 
 visibleSeparatorTests :: [TestTree]
 visibleSeparatorTests =
-  [ testCase "root ADR 0398 I7: a free separator hold moves to the next column when that empty column fits" $ do
+  [ testCase "root ADR 0398 I4: free HTML separators use the base pitch rather than the paragraph override" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle <> "\n[paragraph-styles.body]\nline-pitch = \"12.5pt\"\n[separators.default]\nkind = \"text\"\ntext = \"*\"\nspace-before = 1\nspace-after = 1\n"
+      (_, css) <- htmlMini style "前。\n---\n後。\n"
+      assertBool "separator occupies the physical base pitch" (".separator { display: block; block-size: 15pt; line-height: 15pt; }" `T.isInfixOf` css),
+    testCase "root ADR 0398 I7: a free separator hold moves to the next column when that empty column fits" $ do
       let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (replaceIn "lines = 30" "lines = 4" horizontalStyle) <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
       (_, layout) <- layoutOk style "前。\n\n中。\n---\n後。\n" []
       map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 15], [0, 15]],
