@@ -14477,5 +14477,115 @@ example : captionChoosePush
     [⟨2,⟨5,2,1,false,0,[(4,1),(1,2)]⟩⟩,
      ⟨2,⟨6,2,3,false,99,[(5,3),(1,2)]⟩⟩] =
     some ⟨2,⟨6,2,3,false,99,[(5,3),(1,2)]⟩⟩ := by decide
+/-- Stable minimum of the actual context-dependent overflow expression. -/
+def captionChooseOverflow (overflow : CaptionActiveNode → Int) :
+    List CaptionActiveNode → Option CaptionActiveNode
+  | [] => none
+  | head :: rest =>
+      match captionChooseOverflow overflow rest with
+      | none => some head
+      | some later => some (if overflow head ≤ overflow later then head else later)
+
+private theorem captionOverflow_none (overflow : CaptionActiveNode → Int)
+    (actives : List CaptionActiveNode) (noneChosen : captionChooseOverflow overflow actives = none) :
+    actives = [] := by
+  cases actives with
+  | nil => rfl
+  | cons head tail =>
+    simp only [captionChooseOverflow] at noneChosen
+    split at noneChosen <;> contradiction
+
+theorem I1_caption_rescue_minimum (overflow : CaptionActiveNode → Int)
+    (actives : List CaptionActiveNode) (selected : CaptionActiveNode)
+    (chosen : captionChooseOverflow overflow actives = some selected) :
+    selected ∈ actives ∧ ∀ node ∈ actives, overflow selected ≤ overflow node := by
+  induction actives generalizing selected with
+  | nil => simp [captionChooseOverflow] at chosen
+  | cons head tail ih =>
+    simp only [captionChooseOverflow] at chosen
+    split at chosen
+    · rename_i tailNone
+      have empty := captionOverflow_none overflow tail tailNone
+      subst tail
+      cases chosen
+      refine ⟨List.Mem.head _,?_⟩
+      intro node member
+      simp only [List.mem_cons,List.not_mem_nil,or_false] at member
+      subst node
+      exact Int.le_refl _
+    · rename_i later laterChosen
+      have best := ih later laterChosen
+      split at chosen
+      · rename_i headBetter
+        cases chosen
+        refine ⟨List.Mem.head _,?_⟩
+        intro node member
+        simp only [List.mem_cons] at member
+        rcases member with rfl | prior
+        · exact Int.le_refl _
+        · exact Int.le_trans headBetter (best.2 node prior)
+      · rename_i laterBetter
+        cases chosen
+        refine ⟨List.Mem.tail _ best.1,?_⟩
+        intro node member
+        simp only [List.mem_cons] at member
+        rcases member with rfl | prior
+        · omega
+        · exact best.2 node prior
+
+def captionRescueNode (position : Nat) (flagged : Bool)
+    (prior : CaptionActiveNode) : CaptionActiveNode :=
+  { position := position+1, lineCount := prior.lineCount+1,
+    fitness := 3, flagged := flagged,
+    demerits := prior.demerits+100000000,
+    history := (position,3) :: prior.history }
+
+private theorem captionHistoryRaise (old new : Nat) (history : List (Nat × Nat))
+    (ordered : CaptionHistoryOrdered old history) (later : old ≤ new) :
+    CaptionHistoryOrdered new history := by
+  cases history with
+  | nil => trivial
+  | cons head tail => exact ⟨by have := ordered.1; omega,ordered.2⟩
+
+/-- Rescue keeps the selected predecessor's whole history and adds the
+    forced overfull line with fitness three and the actual demerit. -/
+theorem I1_caption_rescue_history (position : Nat) (flagged : Bool)
+    (candidates : List Nat) (candidate : position ∈ candidates)
+    (overflow : CaptionActiveNode → Int) (actives : List CaptionActiveNode)
+    (prior : CaptionActiveNode)
+    (old : ∀ node ∈ actives, CaptionNodeValid position candidates node)
+    (chosen : captionChooseOverflow overflow actives = some prior) :
+    CaptionNodeValid (position+1) candidates (captionRescueNode position flagged prior) := by
+  have member := (I1_caption_rescue_minimum overflow actives prior chosen).1
+  have valid := old prior member
+  refine ⟨Nat.le_refl _,?_,?_,?_⟩
+  · simp only [captionRescueNode,List.length_cons]
+    exact congrArg Nat.succ valid.2.1
+  · exact ⟨Nat.lt_succ_self _,captionHistoryRaise prior.position position prior.history valid.2.2.1 valid.1⟩
+  · intro entry entryMember
+    simp only [captionRescueNode,List.mem_cons] at entryMember
+    rcases entryMember with rfl | older
+    · exact candidate
+    · exact valid.2.2.2 entry older
+
+example : captionChooseOverflow (fun node => node.demerits)
+    [⟨1,1,1,false,9,[(0,1)]⟩,⟨2,1,3,false,9,[(1,3)]⟩] =
+    some ⟨1,1,1,false,9,[(0,1)]⟩ := by decide
+
+
+example : captionChooseOverflow (fun node => node.demerits)
+    [⟨1,1,1,false,2,[(0,1)]⟩,⟨2,1,3,false,9,[(1,3)]⟩] =
+    some ⟨1,1,1,false,2,[(0,1)]⟩ := by decide
+
+/-- Rescue advances to the current break; an empty predecessor set
+    simply produces no node. Either case needs no retry cap. -/
+theorem I1_caption_rescue_scan_rank (sourceLength candidateCount lower position
+    oldRemaining newRemaining : Nat)
+    (before : lower ≤ position) (inside : position < sourceLength)
+    (remaining : newRemaining ≤ candidateCount) :
+    captionScanRank sourceLength candidateCount (position+1) newRemaining <
+      captionScanRank sourceLength candidateCount lower oldRemaining :=
+  I1_caption_restart_scan_rank sourceLength candidateCount lower (position+1)
+    oldRemaining newRemaining (by omega) (by omega) remaining
 
 end GolemPagination
