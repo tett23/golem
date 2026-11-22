@@ -166,8 +166,8 @@ $ golem kinsoku chapters/01.gm | jq .
 ```
 
 [code: project] はプロジェクトの絶対パスで、見つからないときは [code: null] になり、[code: composition] は既定値になる。
-[code: style.toml] の誤りは、診断を [code: style.toml] の絶対パスで標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
-お知らせだけなら、標準エラー出力に書いたうえで JSON を書き、終了コード 0 で終える。
+[code: style.toml] の誤りは、diagnostics を [code: style.toml] の絶対パスで標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
+notice だけなら、標準エラー出力に書いたうえで JSON を書き、終了コード 0 で終える。
 
 [code: golem explain] にはコードをいくつでも渡せる。
 CI のログの JSON からコードを抜き出し、まとめて説明を引くこともできる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0009-explain-several-codes.md]（golem-cli ADR 0009「golem explain に複数のコードを渡す」）]
