@@ -5,6 +5,7 @@ import FigureColorSpec (figureColorTests)
 import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
+import PdfColorRangeSpec (pdfColorRangeTests)
 import PdfColorSpec (pdfColorTests)
 import PdfDctSpec (pdfDctTests)
 import RuleShapeSpec (ruleShapeTests)
@@ -25,6 +26,7 @@ tests =
       figureColorTests,
       svgColorTests,
       testGroup "PDF figure colors" pdfColorTests,
+      testGroup "PDF figure colour range" pdfColorRangeTests,
       memoTests,
       testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
       testGroup "the glyph runs of a box in the order of its text (docs/adr ADR 0227)" glyphRunsTests,

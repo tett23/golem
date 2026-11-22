@@ -24,6 +24,7 @@ module Golem.Pdf.Import
     importPage,
     importErrorText,
     contentOperations,
+    inlineImageParts,
     unescapeName,
     decodeImportedStream,
     maxDecodedBytes,
@@ -405,8 +406,9 @@ parseObj depth s0
 
 {- | The operations of a content stream, read with the lexing above
 (docs/adr ADR 0232): each operator with its operands as written. An
-inline image is the operator @BI@ alone; its dictionary and data are
-skipped. Nothing when the stream is broken.
+inline image is the operator @BI@ with one operand: the bytes from after
+@BI@ to the end of its @EI@, read by 'inlineImageParts'. Nothing when the
+stream is broken.
 -}
 contentOperations :: ByteString -> Maybe [(ByteString, [ByteString])]
 contentOperations = go [] []
@@ -426,7 +428,7 @@ contentOperations = go [] []
                   let (kw, rest) = BS.span isRegular s
                    in if
                         | kw `elem` ["true", "false", "null"] -> go acc (kw : ops) rest
-                        | kw == "BI" -> skipInline rest >>= go (("BI", []) : acc) []
+                        | kw == "BI" -> skipInline rest >>= \after -> go (("BI", [BS.take (BS.length rest - BS.length after) rest]) : acc) [] after
                         | otherwise -> go ((kw, reverse ops) : acc) [] rest
               | otherwise -> Nothing
     -- the rest after the EI of an inline image: its dictionary to ID, then its data
@@ -440,6 +442,47 @@ contentOperations = go [] []
         | BS.null found -> Nothing
         | maybe True (isWs . snd) (BS.unsnoc before) && maybe True (not . isRegular . fst) (BS.uncons (BS.drop 2 found)) -> Just (BS.drop 2 found)
         | otherwise -> findEi (BS.drop 2 found)
+
+{- | The dictionary and the data of an inline image, from the operand of
+@BI@ that 'contentOperations' gives. The abbreviated keys and filter and
+colour-space names are written in full (ISO 32000-1:2008 8.9.7). The data
+ends before the white space that precedes @EI@. Nothing when it is broken.
+-}
+inlineImageParts :: ByteString -> Maybe ([(Text, ObjOf ObjNum)], ByteString)
+inlineImageParts = entries []
+  where
+    entries acc t0 =
+      let t = skipWs t0
+       in if "ID" `BS.isPrefixOf` t && maybe False (isWs . fst) (BS.uncons (BS.drop 2 t))
+            then do
+              body <- BS.stripSuffix "EI" (BS.drop 3 t)
+              let trimmed = maybe body fst (BS.unsnoc body >>= \(front, w) -> if isWs w then Just (front, w) else Nothing)
+              Just (reverse acc, trimmed)
+            else case BS.uncons t of
+              Just (47, r) -> do
+                let (k, r') = BS.span isRegular r
+                (v, r'') <- either (const Nothing) Just (parseObj 0 r')
+                entries ((expandKey (unescapeName k), expandValue (unescapeName k) v) : acc) r''
+              _ -> Nothing
+    expandKey k = fromMaybe (nameText k) (lookup k abbreviatedKeys)
+    expandValue k v
+      | k `elem` ["F", "Filter"] = inlineObject filterName v
+      | k `elem` ["CS", "ColorSpace"] = inlineObject spaceName v
+      | otherwise = inlineObject id v
+    inlineObject f = \case
+      VName n -> OName (nameText (f n))
+      VArr xs -> OArr (map (inlineObject f) xs)
+      VDict kv -> ODict [(nameText key, inlineObject id value) | (key, value) <- kv]
+      VNull -> ONull
+      VBool b -> OBool b
+      VInt i -> OInt i
+      VReal t -> OReal (TE.decodeLatin1 t)
+      VStr s -> OStr s
+      VRef k -> ORef k
+      VStream kv body -> OStream [(nameText key, inlineObject id value) | (key, value) <- kv] body
+    abbreviatedKeys = [("BPC", "BitsPerComponent"), ("CS", "ColorSpace"), ("D", "Decode"), ("DP", "DecodeParms"), ("F", "Filter"), ("H", "Height"), ("IM", "ImageMask"), ("I", "Interpolate"), ("W", "Width"), ("L", "Length")]
+    filterName n = fromMaybe n (lookup n [("AHx", "ASCIIHexDecode"), ("A85", "ASCII85Decode"), ("LZW", "LZWDecode"), ("Fl", "FlateDecode"), ("RL", "RunLengthDecode"), ("CCF", "CCITTFaxDecode"), ("DCT", "DCTDecode")])
+    spaceName n = fromMaybe n (lookup n [("G", "DeviceGray"), ("RGB", "DeviceRGB"), ("CMYK", "DeviceCMYK"), ("I", "Indexed")])
 
 -- | A name with its #xx escapes undone.
 unescapeName :: ByteString -> ByteString

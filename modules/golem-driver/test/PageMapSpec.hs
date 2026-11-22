@@ -87,7 +87,7 @@ pageMapTests =
         assertBool "physical order" (isLeft (resolvePageMap sources files book (PageMap hashes [FixedPage 2 "2" Nothing, FixedPage 1 "1" Nothing]))),
       testCase "root ADR 0386 I1: invalid source coordinates are rejected" $
         assertBool "coordinate" (isLeft (resolvePageMap sources files book (PageMap hashes [FixedPage 1 "1" (Just ("a.gm", 9, 0))]))),
-      testCase "root ADR 0386 I1: HTML and EPUB recolour only monochrome SVG assets" $
+      testCase "root ADR 0386 I1, root ADR 0407 I3: HTML and EPUB recolour only monochrome SVG assets" $
         withChapters "[figures]\ncolor = \"accent\"\n[color.swatches.accent]\ncmyk = [0, 100, 100, 0]\n" [("a.gm", "@nonumber\n@figure mono.svg alt=\"mono\"\n\n@nonumber\n@figure multi.svg alt=\"multi\"\n")] [("mono.svg", monoSvg), ("multi.svg", multiSvg)] $ \root -> do
           result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
           codesOf (filter isError (brDiagnostics result)) @?= []
@@ -103,7 +103,7 @@ pageMapTests =
           result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
           codesOf (filter isError (brDiagnostics result)) @?= ["G08113"]
           brWritten result @?= [],
-      testCase "root ADR 0403 I2: SVG outside the drawing subset retains original bytes without recolouring" $
+      testCase "root ADR 0403 I2, root ADR 0407 I2: SVG outside the drawing subset retains original bytes without recolouring" $
         withChapters "" [("a.gm", "@nonumber\n@figure text.svg alt=\"text\"\n")] [("text.svg", textSvg)] $ \root -> do
           result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
           codesOf (filter isError (brDiagnostics result)) @?= []
