@@ -311,6 +311,9 @@ PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
 
+注の番号をページごとに振る場合、HTML、EPUB、テキストは警告して本の通し番号で生成する。
+PDF の章末注一覧で番号が重なる場合も警告し、PDF のページ別番号を保つ（[root ADR 0402](docs/adr/0402-define-page-local-note-fallback-diagnostics.md)）。
+
 `@no-page-break 3` で、改ページの際に前の段落の末尾 3 行を次の段落と同じ段に送る。
 前に 1 行しか残らなければ段落全体を送る（[Golem ADR 0376](docs/adr/0376-no-page-break-lines.md)）。
 
