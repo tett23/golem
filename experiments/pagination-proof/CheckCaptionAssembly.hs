@@ -26,7 +26,7 @@ finish = [glue 0 filStretch 0, Penalty 0 (-infPenalty) NoHyphen]
 inputs :: [[Item]]
 inputs = [zipWith identify [0 ..] items <> finish | size <- [0 .. 4], items <- replicateM size atoms]
   where
-    atoms = [box 0 10, box 0 40, glue 5 20 3, Penalty 0 0 NoHyphen, Penalty 9 0 ExplicitHyphen, Penalty 0 (-infPenalty) NoHyphen]
+    atoms = [box 0 10, box 0 40, glue 5 20 3, Penalty 0 0 NoHyphen, Penalty 9 0 ExplicitHyphen, Penalty 0 (-infPenalty) NoHyphen, Penalty 0 (-100) NoHyphen]
     identify ident (Box width content) = Box width content {bcTag = ident}
     identify _ item = item
 
@@ -53,9 +53,9 @@ leanItem item = case item of
 
 leanExample :: ([Item], Breaks) -> String
 leanExample (items, result) =
-  "example : (captionAssembleAt Prod.fst ("
+  "example : (captionAssembleWhole Prod.fst ("
     <> leanList leanItem items
-    <> " : List (CaptionItemKind × Nat)) 0 "
+    <> " : List (CaptionItemKind × Nat)) "
     <> leanList show (brPositions result)
     <> ").isSome = true ∧ ("
     <> leanList show (boxIds (concatMap lineItems (brLines result)))

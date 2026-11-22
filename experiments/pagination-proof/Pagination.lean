@@ -13640,11 +13640,15 @@ theorem I1_caption_discard_preserves_boxes {α : Type} (kind : α → CaptionIte
 /-- A concrete source decomposition at each chosen break. The break
     item cannot be a box (isBreak only admits glue or penalties); the
     suffix starts exactly where after/skip starts the next line.
-    The empty case means the source is exhausted, not that its content
-    has been assumed to vanish. -/
+    done means the source is exhausted, not that its content has been
+    assumed to vanish. skipped records an empty display line; the concrete
+    checker verifies its original-source after/skip condition separately. -/
 inductive CaptionAssembly {α : Type} (kind : α → CaptionItemKind) :
     List α → List (List α) → Prop where
   | done : CaptionAssembly kind [] []
+  | skipped (source : List α) (later : List (List α))
+      (tail : CaptionAssembly kind source later) :
+      CaptionAssembly kind source ([] :: later)
   | line (before : List α) (atBreak : α) (rest : List α) (later : List (List α))
       (breakItem : kind atBreak ≠ .box)
       (tail : CaptionAssembly kind
@@ -13660,6 +13664,7 @@ theorem I1_caption_assembly_boxes_exact {α : Type} (kind : α → CaptionItemKi
     (lines.map (captionBoxes kind)).join = captionBoxes kind source := by
   induction valid with
   | done => rfl
+  | skipped source later tail ih => simpa [captionBoxes,List.join] using ih
   | line before atBreak rest later notBox _tail ih =>
     have gone : (kind atBreak == CaptionItemKind.box) = false := by
       cases eq : kind atBreak <;> simp_all <;> rfl
@@ -13754,5 +13759,358 @@ example : captionAssembleAt Prod.fst
     0 [1,4] = some [[(.box,7)],[ (.box,8)]] := by decide
 
 example : captionAssembleAt id [.box,.penalty (-10000) false] 0 [0,1] = none := by decide
+
+
+/-- The absolute source offset where after/skip stops when it starts
+    scanning at an item. The predecessor's chosen break calls this
+    function at break+1; the paragraph itself starts at offset zero. -/
+def captionNextSourceStart (items : List CaptionItemKind) (start : Nat) : Nat :=
+  start + captionDiscardCount (items.drop start)
+
+private theorem captionDiscardCons_le (item : CaptionItemKind)
+    (items : List CaptionItemKind) :
+    captionDiscardCount (item :: items) ≤ 1 + captionDiscardCount items := by
+  cases item <;> simp [captionDiscardCount]
+  split <;> omega
+
+/-- Later break positions cannot make after/skip move backwards. This
+    holds with forced penalties and arbitrary runs of optional penalties
+    and glue, without any assumption about measured widths. -/
+theorem I1_caption_next_start_monotone (items : List CaptionItemKind)
+    (earlier later : Nat) (ordered : earlier ≤ later) :
+    captionNextSourceStart items earlier ≤ captionNextSourceStart items later := by
+  induction items generalizing earlier later with
+  | nil => simpa [captionNextSourceStart] using ordered
+  | cons item items ih =>
+    cases earlier with
+    | zero =>
+      cases later with
+      | zero => exact Nat.le_refl _
+      | succ later =>
+        have first := captionDiscardCons_le item items
+        have rest := ih 0 later (Nat.zero_le _)
+        simp only [captionNextSourceStart,List.drop_zero,Nat.zero_add] at rest
+        simp only [captionNextSourceStart,List.drop_zero,Nat.zero_add,List.drop_succ_cons]
+        omega
+    | succ earlier =>
+      cases later with
+      | zero => exact False.elim (Nat.not_succ_le_zero _ ordered)
+      | succ later =>
+        have rest := ih earlier later (by omega)
+        simp only [captionNextSourceStart,List.drop_succ_cons] at *
+        omega
+
+theorem I1_caption_next_start_bounds (items : List CaptionItemKind)
+    (start : Nat) (inside : start ≤ items.length) :
+    start ≤ captionNextSourceStart items start ∧
+      captionNextSourceStart items start ≤ items.length := by
+  have bound := I1_caption_discard_bounded (items.drop start)
+  simp only [List.length_drop] at bound
+  simp only [captionNextSourceStart]
+  omega
+
+
+/-- Active-node metadata in Knuth--Plass. Positions are encoded as the
+    Haskell position plus one, so the initial -1 is zero. History retains
+    both position and fitness as walk/key do, newest break first. -/
+structure CaptionActiveNode where
+  position : Nat
+  lineCount : Nat
+  fitness : Nat
+  flagged : Bool
+  demerits : Int
+  history : List (Nat × Nat)
+  deriving DecidableEq
+
+structure CaptionActiveEval where
+  fitness : Nat
+  demerits : Int
+  feasible : Bool
+  alive : Bool
+
+def captionActiveKeyBefore (left right : CaptionActiveNode) : Bool :=
+  decide (left.lineCount < right.lineCount) ||
+    (decide (left.lineCount = right.lineCount) && decide (left.fitness < right.fitness))
+
+def captionActiveKeyEqual (left right : CaptionActiveNode) : Bool :=
+  decide (left.lineCount = right.lineCount ∧ left.fitness = right.fitness)
+
+/-- The ordered map values after insertWith: equal keys keep the later
+    predecessor when its total cost is equal, not just when it is lower. -/
+def captionInsertActive (node : CaptionActiveNode) :
+    List CaptionActiveNode → List CaptionActiveNode
+  | [] => [node]
+  | prior :: rest =>
+    if captionActiveKeyBefore node prior then node :: prior :: rest
+    else if captionActiveKeyEqual node prior then
+      (if node.demerits ≤ prior.demerits then node else prior) :: rest
+    else prior :: captionInsertActive node rest
+
+def captionActiveSuccessors (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) :
+    List CaptionActiveNode → List CaptionActiveNode
+  | [] => []
+  | prior :: rest =>
+    let ev := evaluate prior
+    let later := captionActiveSuccessors position flagged evaluate rest
+    if ev.feasible then
+      { position := position+1, lineCount := prior.lineCount+1,
+        fitness := ev.fitness, flagged := flagged,
+        demerits := prior.demerits+ev.demerits,
+        history := (position,ev.fitness) :: prior.history } :: later
+    else later
+
+def captionActiveStep (position : Nat) (forced flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval)
+    (actives : List CaptionActiveNode) : List CaptionActiveNode :=
+  let survivors := if forced then [] else actives.filter (fun node => (evaluate node).alive)
+  let successors := captionActiveSuccessors position flagged evaluate actives
+  survivors ++ successors.foldl (fun table node => captionInsertActive node table) []
+
+private theorem captionInsert_preserves {P : CaptionActiveNode → Prop}
+    (node : CaptionActiveNode) (nodes : List CaptionActiveNode)
+    (new : P node) (old : ∀ n ∈ nodes, P n) :
+    ∀ n ∈ captionInsertActive node nodes, P n := by
+  induction nodes with
+  | nil => simpa [captionInsertActive] using new
+  | cons prior rest ih =>
+    have priorOk := old prior (List.Mem.head _)
+    have restOk : ∀ n ∈ rest, P n := fun n h => old n (List.Mem.tail _ h)
+    simp only [captionInsertActive]
+    split
+    · intro n member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | rfl | member
+      · exact new
+      · exact priorOk
+      · exact restOk _ member
+    · split
+      · intro n member
+        simp only [List.mem_cons] at member
+        rcases member with rfl | member
+        · split <;> assumption
+        · exact restOk _ member
+      · intro n member
+        simp only [List.mem_cons] at member
+        rcases member with rfl | member
+        · exact priorOk
+        · exact ih restOk _ member
+
+private theorem captionFold_preserves {P : CaptionActiveNode → Prop}
+    (nodes seed : List CaptionActiveNode)
+    (new : ∀ n ∈ nodes, P n) (old : ∀ n ∈ seed, P n) :
+    ∀ n ∈ nodes.foldl (fun table node => captionInsertActive node table) seed, P n := by
+  induction nodes generalizing seed with
+  | nil => exact old
+  | cons h t ih =>
+    have headOk := new h (List.Mem.head _)
+    have tailOk : ∀ n ∈ t, P n := fun n m => new n (List.Mem.tail _ m)
+    exact ih _ tailOk (captionInsert_preserves h seed headOk old)
+
+private theorem captionSuccessors_progress (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (counts : ∀ n ∈ actives, n.lineCount = n.history.length) :
+    ∀ n ∈ captionActiveSuccessors position flagged evaluate actives,
+      n.position = position+1 ∧ n.lineCount = n.history.length := by
+  induction actives with
+  | nil => simp [captionActiveSuccessors]
+  | cons h t ih =>
+    have tailOk : ∀ n ∈ t, n.lineCount = n.history.length :=
+      fun n m => counts n (List.Mem.tail _ m)
+    have headOk := counts h (List.Mem.head _)
+    simp only [captionActiveSuccessors]
+    split
+    · intro n member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · exact ⟨rfl,by simp only [List.length_cons]; omega⟩
+      · exact ih tailOk _ later
+    · exact ih tailOk
+
+private theorem captionMemberAppend {α : Type} (x : α) (xs ys : List α) :
+    x ∈ xs ++ ys ↔ x ∈ xs ∨ x ∈ ys := by
+  induction xs with
+  | nil => simp
+  | cons h t ih => simp only [List.cons_append,List.mem_cons,ih,or_assoc]
+
+/-- Grouping feasible successors by (line count, fitness), with the
+    actual equal-cost replacement policy, cannot invent a break offset
+    or change the number of source breaks in a node's history. The
+    integer cost and evaluation result may depend on the whole context. -/
+theorem I1_caption_active_step_progress (position lower : Nat) (forced flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (bounds : ∀ n ∈ actives, lower ≤ n.position ∧ n.position ≤ position+1)
+    (counts : ∀ n ∈ actives, n.lineCount = n.history.length)
+    (inside : lower ≤ position+1) :
+    ∀ n ∈ captionActiveStep position forced flagged evaluate actives,
+      lower ≤ n.position ∧ n.position ≤ position+1 ∧ n.lineCount = n.history.length := by
+  have successors := captionSuccessors_progress position flagged evaluate actives counts
+  have successorOk : ∀ n ∈ captionActiveSuccessors position flagged evaluate actives,
+      lower ≤ n.position ∧ n.position ≤ position+1 ∧ n.lineCount = n.history.length := by
+    intro n member
+    have h := successors n member
+    exact ⟨by omega,by omega,h.2⟩
+  have folded := captionFold_preserves
+    (captionActiveSuccessors position flagged evaluate actives) [] successorOk (by simp)
+  intro n member
+  simp only [captionActiveStep,captionMemberAppend] at member
+  rcases member with survived | created
+  · split at survived
+    · contradiction
+    · have old := (List.mem_filter.mp survived).1
+      exact ⟨(bounds n old).1,(bounds n old).2,counts n old⟩
+  · exact folded n created
+
+
+/-- insertWith uses <=: an equally good later predecessor replaces the
+    earlier history at exactly the same line-count/fitness key. -/
+theorem I1_caption_active_equal_cost_keeps_later (new old : CaptionActiveNode)
+    (rest : List CaptionActiveNode) (lines : new.lineCount = old.lineCount)
+    (fit : new.fitness = old.fitness) (cost : new.demerits ≤ old.demerits) :
+    captionInsertActive new (old :: rest) = new :: rest := by
+  simp [captionInsertActive,captionActiveKeyBefore,captionActiveKeyEqual,lines,fit,cost]
+
+example : captionInsertActive
+    ⟨5,2,2,false,9,[(4,2),(2,0)]⟩ [⟨5,2,2,false,9,[(4,2),(1,0)]⟩] =
+    [⟨5,2,2,false,9,[(4,2),(2,0)]⟩] := by decide
+
+
+/-- Every new active has one concrete predecessor, advances its source
+    offset, and adds exactly the current break to that predecessor's
+    history. Feasibility/cost calculations cannot change that history. -/
+theorem I1_caption_successor_history_advances (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (before : ∀ n ∈ actives, n.position ≤ position) :
+    ∀ n ∈ captionActiveSuccessors position flagged evaluate actives,
+      ∃ prior ∈ actives,
+        n.position = position+1 ∧ prior.position < n.position ∧
+        n.lineCount = prior.lineCount+1 ∧
+        n.history = (position,n.fitness) :: prior.history := by
+  induction actives with
+  | nil => simp [captionActiveSuccessors]
+  | cons h t ih =>
+    have tailBefore : ∀ n ∈ t, n.position ≤ position :=
+      fun n member => before n (List.Mem.tail _ member)
+    have headBefore := before h (List.Mem.head _)
+    simp only [captionActiveSuccessors]
+    split
+    · intro n member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · exact ⟨h,List.Mem.head _,rfl,Nat.lt_succ_of_le headBefore,rfl,rfl⟩
+      · obtain ⟨prior,member,rest⟩ := ih tailBefore n later
+        exact ⟨prior,List.Mem.tail _ member,rest⟩
+    · intro n member
+      obtain ⟨prior,member,rest⟩ := ih tailBefore n member
+      exact ⟨prior,List.Mem.tail _ member,rest⟩
+
+
+/-- Assemble with the original source available. A chosen break can lie
+    inside the predecessor's discarded prefix. mkLine then has no text
+    boxes; its next offset is still the same stopping point. Check that
+    equality against the original source rather than assuming it. -/
+def captionAssembleFrom {α : Type} (kind : α → CaptionItemKind)
+    (original remaining : List α) (start : Nat) : List Nat → Option (List (List α))
+  | [] => if remaining.isEmpty then some [] else none
+  | b :: bs =>
+    if start ≤ b then
+      match remaining.drop (b-start) with
+      | [] => none
+      | atBreak :: rest =>
+        if kind atBreak == .box then none else
+          let skip := captionDiscardCount (rest.map kind)
+          match captionAssembleFrom kind original (rest.drop skip) (b+1+skip) bs with
+          | none => none
+          | some later => some (remaining.take (b-start) :: later)
+    else
+      match original.drop b with
+      | [] => none
+      | atBreak :: rest =>
+        if kind atBreak == .box then none else
+          let next := b+1+captionDiscardCount (rest.map kind)
+          if next = start then
+            match captionAssembleFrom kind original remaining start bs with
+            | none => none
+            | some later => some ([] :: later)
+          else none
+
+def captionAssembleWhole {α : Type} (kind : α → CaptionItemKind)
+    (original : List α) (breaks : List Nat) : Option (List (List α)) :=
+  captionAssembleFrom kind original original 0 breaks
+
+theorem I1_caption_assemble_with_empty_lines {α : Type} (kind : α → CaptionItemKind)
+    (breaks : List Nat) (original remaining : List α) (start : Nat) (lines : List (List α))
+    (assembled : captionAssembleFrom kind original remaining start breaks = some lines) :
+    CaptionAssembly kind remaining lines ∧ lines.length = breaks.length := by
+  induction breaks generalizing remaining start lines with
+  | nil =>
+    simp only [captionAssembleFrom] at assembled
+    split at assembled
+    · have empty : remaining = [] := by
+        cases remaining <;> simp_all [List.isEmpty]
+      subst remaining
+      cases assembled
+      exact ⟨CaptionAssembly.done,rfl⟩
+    · contradiction
+  | cons b bs ih =>
+    simp only [captionAssembleFrom] at assembled
+    split at assembled
+    · split at assembled
+      · contradiction
+      · rename_i atBreak rest tailEq
+        split at assembled
+        · contradiction
+        · split at assembled
+          · contradiction
+          · rename_i later laterEq
+            have validTail := ih _ _ _ laterEq
+            have nb : kind atBreak ≠ .box := by
+              intro eq
+              simp [eq] at *
+            cases assembled
+            have source : remaining.take (b-start) ++ atBreak :: rest = remaining := by
+              rw [← tailEq]
+              exact List.take_append_drop _ _
+            refine ⟨?_,?_⟩
+            · simpa only [source] using
+                (CaptionAssembly.line (remaining.take (b-start)) atBreak rest later nb validTail.1)
+            · simpa only [List.length_cons] using congrArg Nat.succ validTail.2
+    · split at assembled
+      · contradiction
+      · split at assembled
+        · contradiction
+        · split at assembled
+          · split at assembled
+            · contradiction
+            · rename_i later laterEq
+              have validTail := ih _ _ _ laterEq
+              cases assembled
+              exact ⟨CaptionAssembly.skipped _ _ validTail.1,
+                by simpa only [List.length_cons] using congrArg Nat.succ validTail.2⟩
+          · contradiction
+
+/-- Empty display lines reached via a discarded penalty do not erase,
+    duplicate or reorder any source box. Their legitimacy is checked by
+    comparing after/skip with the predecessor's actual source offset. -/
+theorem I1_caption_whole_payload_exact {α : Type} (kind : α → CaptionItemKind)
+    (source : List α) (breaks : List Nat) (lines : List (List α))
+    (assembled : captionAssembleWhole kind source breaks = some lines) :
+    (lines.map (captionBoxes kind)).join = captionBoxes kind source :=
+  I1_caption_assembly_boxes_exact _ _ _
+    (I1_caption_assemble_with_empty_lines kind breaks source source 0 lines assembled).1
+
+example : captionAssembleWhole Prod.fst
+    [(.penalty (-10000) false,0),(.penalty (-100) false,0),(.box,2),
+      (.glue,0),(.penalty (-10000) false,0)] [0,1,4] =
+    some [[],[],[(.box,2),(.glue,0)]] := by decide
+
+
+theorem I1_caption_whole_grid_span {α : Type} (kind : α → CaptionItemKind)
+    (source : List α) (breaks : List Nat) (lines : List (List α))
+    (body pitch size : Nat)
+    (assembled : captionAssembleWhole kind source breaks = some lines) :
+    captionGridSpan body pitch size lines.length =
+      captionGridSpan body pitch size breaks.length := by
+  rw [(I1_caption_assemble_with_empty_lines kind breaks source source 0 lines assembled).2]
 
 end GolemPagination
