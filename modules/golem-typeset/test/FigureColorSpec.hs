@@ -67,6 +67,28 @@ figureColorTests =
               other -> assertFailure (fromLeft "unexpected PNG pixel type" other),
       testCase "root ADR 0403 I3: coloured JPEG bytes require no rewriting" $
         recolorRasterBytes red (rgbJpeg (\x _ -> if x < 8 then J.PixelRGB8 255 0 0 else J.PixelRGB8 0 0 255)) @?= Right Nothing,
+      testCase "root ADR 0406 I3: baseline and extended sequential JPEG are decoded" $ do
+        let baseline = rgbJpeg (\_ _ -> J.PixelRGB8 0 0 0)
+            extended = marker 0xc1 baseline
+        forM_ [baseline, extended] $ \bytes -> do
+          result <- safeRecolorRasterBytes red bytes
+          case result of
+            Right (Just _) -> pure ()
+            other -> assertFailure (show other),
+      testCase "root ADR 0406 I3: progressive JPEG is decoded" $ do
+        bytes <- BS.readFile "test/fixtures/gray-progressive.jpg"
+        assertBool "genuine progressive frame" (BS.pack [0xff, 0xc2] `BS.isInfixOf` bytes)
+        result <- safeRecolorRasterBytes red bytes
+        case result of
+          Right (Just _) -> pure ()
+          other -> assertFailure (show other),
+      testCase "root ADR 0406 I1: non-eight-bit lossless and arithmetic JPEG are rejected" $ do
+        let baseline = rgbJpeg (\_ _ -> J.PixelRGB8 0 0 0)
+            (before, frame) = BS.breakSubstring (BS.pack [0xff, 0xc0]) baseline
+            twelve = before <> BS.take 4 frame <> BS.singleton 12 <> BS.drop 5 frame
+        forM_ [twelve, marker 0xc3 baseline, marker 0xc9 baseline] $ \bytes -> do
+          result <- safeRecolorRasterBytes red bytes
+          assertBool "unsupported coding returns a cause" (isLeft result),
       testCase "root ADR 0403 I2: JPEG declared dimensions must match the codestream" $ do
         let bytes = rgbJpeg (\_ _ -> J.PixelRGB8 0 0 0)
         original <- either assertFailure pure (P.readImage bytes)
@@ -123,6 +145,7 @@ figureColorTests =
         assertBool "broken input" (isLeft (analyzeRaster red ((image P.CsRgb []) {P.imgDct = True, P.imgData = "not a jpeg"})))
     ]
   where
+    marker code bytes = let (before, frame) = BS.breakSubstring (BS.pack [0xff, 0xc0]) bytes in before <> BS.pack [0xff, code] <> BS.drop 2 frame
     rgbJpeg pixels = BL.toStrict (Jpeg.encodeJpegAtQuality 100 (J.convertImage (J.generateImage pixels 16 8) :: J.Image J.PixelYCbCr8))
     red = (0, 100, 100, 0)
     image color samples = P.ImageData 2 1 8 color Nothing (BS.pack samples) False False Nothing

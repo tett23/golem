@@ -12731,7 +12731,7 @@ HTML と EPUB は `axes` を使わないので、出さない。
 
 - メッセージ: `図版の色を変換できません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-driver の `Golem.Driver`）
-- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)
+- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)
 
 ### 主な原因
 

@@ -7,6 +7,8 @@ author:             tett23
 maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
+extra-source-files: test/fixtures/gray-progressive.jpg
+                    test/fixtures/README.md
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror

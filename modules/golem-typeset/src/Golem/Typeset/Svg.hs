@@ -5,6 +5,7 @@ golem-pdf does not depend on golem-svg; this module joins them.
 module Golem.Typeset.Svg
   ( svgDrawing,
     recolorFigure,
+    drawingImportedPage,
     drawingSvg,
     figureColor,
     unsupportedMessage,
@@ -20,6 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Length.Decimal (showRationalDigits)
 import Golem.Pdf qualified as P
+import Golem.Pdf.Object qualified as O
 import Golem.Project.Style (Style (..), Swatch (..))
 import Golem.Svg qualified as S
 import Golem.Typeset.FigureColor (Cmyk, rgbTone)
@@ -99,6 +101,24 @@ markers draw; no line and column, since the count is of the whole drawing.
 -}
 markerSegmentsMessage :: Text -> Integer -> Text
 markerSegmentsMessage path n = "SVG の図版の marker が描くパスの区間が 1000000 を超えます: " <> path <> "（" <> T.pack (show n) <> "）"
+
+-- | Reuse the PDF colour traversal without changing the ordinary SVG writer.
+drawingImportedPage :: P.Drawing -> P.ImportedPage
+drawingImportedPage drawing =
+  let (width, height) = P.drSize drawing
+      content = P.drawingContentForRecoloring drawing
+   in P.ImportedPage
+        (P.sha256 ("Golem SVG figure\n" <> content))
+        1
+        (0, 0, width, height)
+        0
+        (width, height)
+        (O.ODict [("ColorSpace", O.ODict [("GolemSRGB", O.OArr [O.OName "ICCBased", O.ORef 0])])])
+        Nothing
+        content
+        [(0, O.OStream [("N", O.OInt 3)] P.srgbProfile)]
+        [P.UseIcc 3 P.srgbProfile]
+        0
 
 -- | Grayscale has priority over a single chromatic colour (root ADR 0403).
 recolorFigure :: Cmyk -> P.FigureContent -> P.FigureContent

@@ -158,11 +158,12 @@ import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
 import Golem.Typeset.Box (BoxPaint (..), boxLineRange, boxLinesAround, groupBoxes)
-import Golem.Typeset.FigureColor (RasterAnalysis (..), safeAnalyzeRaster)
+import Golem.Typeset.FigureColor (RasterAnalysis (..), analyzeRaster, forceImportedPage, guardColorConversion, safeAnalyzeRaster)
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
-import Golem.Typeset.Svg (figureColor, markerMessage, markerSegmentsMessage, recolorFigure, svgDrawing, unsupportedMessage)
+import Golem.Typeset.PdfColor (recolorImportedPage)
+import Golem.Typeset.Svg (drawingImportedPage, figureColor, markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -4778,17 +4779,19 @@ loadFigures inp = do
       let path = T.unpack s
       bytes <- maybe (filesRead (piFiles inp) (fromRight path (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
       if
-        | ".pdf" `T.isSuffixOf` T.toLower s -> pure $ case P.importPage page bytes of
-            Left P.Encrypted -> Left EncryptedPdf
-            Left (P.NoSuchPage requested count) -> Left (MissingPdfPage requested count)
-            Left (P.ContentTooLarge _) -> Left ContentTooLarge
-            Left (P.StreamNumberTooLarge k) -> Left (StreamNumberTooLarge k)
-            Left e -> Left (Unplaced (P.importErrorText e))
-            Right ip -> Right (P.VectorFigure ip)
-        | ".svg" `T.isSuffixOf` T.toLower s -> pure $ case S.readSvg bytes of
-            Left (S.SvgMalformed why) -> Left (Unplaced why)
-            Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
-            Right svg -> Right (maybe id recolorFigure (figureColor (piStyle inp)) (P.SvgFigure (svgDrawing svg)))
+        | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
+            Left P.Encrypted -> pure (Left EncryptedPdf)
+            Left (P.NoSuchPage requested count) -> pure (Left (MissingPdfPage requested count))
+            Left (P.ContentTooLarge _) -> pure (Left ContentTooLarge)
+            Left (P.StreamNumberTooLarge k) -> pure (Left (StreamNumberTooLarge k))
+            Left e -> pure (Left (Unplaced (P.importErrorText e)))
+            Right ip -> recolorPdf (P.VectorFigure ip) ip
+        | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
+            Left (S.SvgMalformed why) -> pure (Left (Unplaced why))
+            Left (S.SvgUnsupported us) -> pure (Left (UnsupportedSvg us))
+            Right svg ->
+              let drawing = svgDrawing svg
+               in recolorPdf (P.SvgFigure drawing) (drawingImportedPage drawing)
         | otherwise -> case P.readImage bytes of
             Left why -> pure (Left (Unplaced (T.pack why)))
             Right image -> case figureColor (piStyle inp) of
@@ -4798,6 +4801,14 @@ loadFigures inp = do
                 pure $ case analysis of
                   Left why -> Left (ColorConversion why)
                   Right result -> Right (P.RasterFigure (fromMaybe image (raImage result)))
+
+    recolorPdf original page = case figureColor (piStyle inp) of
+      Nothing -> pure (Right original)
+      Just swatch -> do
+        changed <- guardColorConversion (maybe () forceImportedPage) (recolorImportedPage swatch (analyzeRaster swatch) page)
+        pure $ case changed of
+          Left why -> Left (ColorConversion why)
+          Right result -> Right (maybe original P.VectorFigure result)
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
