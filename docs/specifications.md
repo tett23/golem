@@ -373,14 +373,32 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 
 CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 `build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。
-`dist-newstyle` を保存するランナー（`tests-driver`）は `cabal build all` で、`tests-rest` は自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+`tests-rest` は、生成したパーサーを確かめるための `peg-hs` と、`golem` のほかの実行ファイルも組む。
+これらの実行ファイルを組むテストのスイートはないので、`ci` が待つジョブで `-Werror` のコンパイルを確かめるためである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+`cabal build all` を組んで `dist-newstyle` を保存するのは、アーキテクチャごとに一つ動くジョブ `cache-dist` で、`ci` はこのジョブを待たない（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I3）。
 ビルドの計画を読む検査は、どのランナーでも `cabal build all` の計画を読み、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョブ（`visual`、`verapdf`、`wasm`、`editors-lsp`）が待つ成果物を、`outputs-checks` がそのほかの手順を受け持つ。
+
+golem-driver のテストのスイートは、どちらのアーキテクチャでも二つのランナーに分け、どのスイートもちょうど一つのランナーで走る（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I2）。
+振り分けは `scripts/ci/test-suites.sh` の `driver-a` と `driver-b` が決め、`driver-a` に挙げないスイートは `tests-driver-b` で走る。
+
+| ランナー | スイート |
+| --- | --- |
+| `tests-driver-a` | golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test |
+| `tests-driver-b` | golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test |
+
+四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
+四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `Spec`）を、それぞれの `other-modules` に挙げて組む。
+テストを助けるモジュールをパッケージの内部のライブラリにしないので、テストだけの依存の検査（`scripts/ci/test-only-deps.sh`）は変わらない。
+
 プルリクエストの実行が走らせる検査は、[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の実装の前のコミット（`e5dcfc660`）と等しい。
+ただし、そのコミットの golem-driver-test は、分けた後の四つのスイートに読み替える。
 `scripts/ci/ci-checks.sh` が `ci.yml` から `cabal build` の後の手順とそれを走らせるアーキテクチャ、`cabal test` のスイート、`ci` が待つジョブを一覧にし、`scripts/ci/test.sh` がそのコミットで作った一覧（`scripts/ci/testdata/ci-checks/before-0395.txt`）と比べる（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の A1）。
 
 プルリクエストも、GHC がモジュールをコンパイルしたときに `dist-newstyle` を保存する（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)、[ADR 0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I1 を置き換えた）。
 キーは、`main` の族（キーからコミットのハッシュを除いた前の部分）の後に `pr-<番号>-` とコミットのハッシュを続けたものである（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の I4）。
+保存するジョブ `cache-dist` のキーと条件は、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の前に保存していた `tests-driver` のランナーと同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I3）。
 同じプルリクエストの次の push は、`restore-keys` の前方一致で自分の最新のものを戻し、それが無ければ `main` の最新を戻す。
 ワークフロー `pr-caches.yml` は、`ci.yml` の実行が終わったときとプルリクエストが閉じたときに、`scripts/ci/pr-caches.sh` が選んだキャッシュを消す。
 次の番号は [ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の不変条件の番号で、I2 の「族ごと」と同じ日時の扱いは、ADR の調査の「一組（約 970 MB）」に合わせてこの仕様が決めたものである。
@@ -537,7 +555,7 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
   golem-driver-parallel-test がこれを使う（[docs/adr/0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。
   golem-emet-test も木の全体を `watchTests 300` で包み、aarch64 の GHC の不具合（GHC の issue #28001）を避けるために、`localOption (NumThreads 1)` でテストを一つずつ走らせる（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。
 - `Golem.TestSupport.CssCascade`：段落スタイルのアキのテストのために、`style.css` のカスケードを評価する小さな評価器（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md)）。
-  golem-html-test と golem-driver-test がこれを使い、評価器そのもののテストは golem-test-support-test が持つ（[docs/adr/0248](adr/0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)）。
+  golem-html-test と golem-driver-page-test がこれを使い、評価器そのもののテストは golem-test-support-test が持つ（[docs/adr/0248](adr/0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)）。
 
 golem-test-support の依存は、次のように限る。
 このパッケージは、golem のパッケージ（`modules/` の golem-\*）に、直接にもほかのパッケージを通しても依存しない。
@@ -546,7 +564,7 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
 リポジトリのライブラリと実行ファイルがこのパッケージに依存しないことと、このパッケージが golem のパッケージに依存しないことは、cabal が解決した計画を読む `scripts/ci/test-only-deps.sh` が CI の `build` ジョブとリリースの `package.sh` で確かめる（[docs/adr/0028](adr/0028-shared-test-support-package.md)、[docs/adr/0087](adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
 
 `modules/golem-doc-gen` は、意味論 IR の hedgehog の生成器を持つ、テストスイートだけが使うパッケージなので、golem-test-support と同じく図に含めない（[ADR 0191](adr/0191-semantic-ir-generator-module.md)）。
-`Golem.DocGen` の一つのモジュールが `genDocument`、`genInline`、`genExpr`、`genInt64` を公開し、golem-driver-test がこれを使う。
+`Golem.DocGen` の一つのモジュールが `genDocument`、`genInline`、`genExpr`、`genInt64` を公開し、golem-driver-cli-test がこれを使う。
 ライブラリは golem-doc、golem-length、golem-parser、golem-syntax に依存する。
 
 生成器を使う性質のテストは、golem-doc-gen が持つ。
@@ -729,7 +747,8 @@ wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が w
 wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
 golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
 golem-pdf のテストは、`Int` に収まらない PDF のオブジェクトの番号を `Int64` で書き、`Int` のリテラルは wasm32 の `Int` に収める（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
-golem-driver の golem-driver-test と golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依り、golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）を組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+golem-driver のテストのスイートは、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依る。
+golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）は golem-driver-cli-test と golem-driver-global-test にあり、そのフラグのときだけ組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 `cabal.project.wasm` は `plugins` を外すので、wasm32 ではそれらのテストを組まない。
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 

@@ -70,7 +70,7 @@ golem-driver のテスト（[`modules/golem-driver/test/FunctionLibrarySpec.hs`]
 ほかに、どのファイルも `golem fmt` の整形のとおりであること、`golem lint` が何も報告しないことも確かめる。
 
 ```sh
-cabal test golem-driver:test:golem-driver-test --test-option=-p --test-option='/functions of the repository/'
+cabal test golem-driver:test:golem-driver-cli-test --test-option=-p --test-option='/functions of the repository/'
 ```
 
 ## ライセンス
