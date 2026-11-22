@@ -303,7 +303,7 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
         enc <- encoding
         registration <- liftIO (readTVarIO moveWorkspace)
         result <- liftIO (Move.planFileMove enc registration params)
-        respond (either (\issues -> Left (TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan file move" (Just issues))) Right result),
+        respond (either (Left . TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan file move" . Just) Right result),
       requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
         st <- state
         enc <- encoding

@@ -2,7 +2,7 @@ module Golem.Lsp.FileMove (fileMoveRegistration, planFileMove) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (IOException, try)
-import Control.Monad (foldM, guard, unless)
+import Control.Monad (foldM, guard, unless, when)
 import Data.Aeson qualified as J
 import Data.Aeson.KeyMap qualified as KM
 import Data.Aeson.Types qualified as J
@@ -69,7 +69,7 @@ fileMoveRegistration _ = Nothing
 
 fileUri :: Text -> Either String FilePath
 fileUri text = case L.uriToFilePath (L.Uri text) of
-  Just p | "file:///" `T.isPrefixOf` text, isAbsolute p, not ('\0' `elem` p), normalise p == p -> Right p
+  Just p | "file:///" `T.isPrefixOf` text, isAbsolute p, '\0' `notElem` p, normalise p == p -> Right p
   _ -> Left "expected a normalized local file URI"
 
 parseUri :: Text -> J.Parser FilePath
@@ -194,7 +194,7 @@ checkInventory req dirs = do
   unless (old /= root && within root old && within root new && not (within old new)) $
     Left (problem old "move is outside the workspace or into its own subtree")
   unless (safe old File || safe old Directory) (Left (problem old "missing or symbolic-link source"))
-  unless (old `notElem` [p </> "manifest.toml" | p <- declared]) $
+  when (old `elem` [p </> "manifest.toml" | p <- declared]) $
     Left (problem old "a project manifest can only move with its project")
   unless (not (safe old File) || new /= takeDirectory new </> "manifest.toml") $
     Left (problem new "a file move cannot introduce a project manifest")
@@ -248,7 +248,7 @@ readDocuments req files = do
   checked <- traverse (\p -> attempt p (Right <$> withBinaryFile p ReadMode (const (pure ())))) (filter (`notElem` pathways) sheets)
   case sequence checked of
     Left e -> pure (Left e)
-    Right _ -> fmap sequence $ traverse (readOne opening) pathways
+    Right _ -> sequence <$> traverse (readOne opening) pathways
   where
     readOne opening path
       | Map.lookup path files /= Just File = pure (Left (problem path "reference source is not a regular file"))
@@ -331,7 +331,7 @@ chapterPlan req files docs = case owner roots (sourcePath req) of
         old <- manifest from
         new <- traverse manifest target
         (oldEdit, newEdit, chapters) <- first (problem (docPath old)) (transferChapters (relocate from) (docText old) (docText <$> new))
-        let replacements = Map.fromList ([(docPath old, oldEdit) | not (null oldEdit)] <> [(docPath d, newEdit) | Just d <- [new], not (null newEdit)])
+        let replacements = Map.fromList ([(docPath old, oldEdit) | not (null oldEdit)] <> [(docPath d, newEdit) | not (null newEdit), Just d <- [new]])
         pure (replacements, map (summary from) chapters)
   where
     roots = map projectPath (projects req)
