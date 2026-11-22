@@ -51,7 +51,9 @@ inlines-no-ruby = [* inline-no-ruby]
 
 inline = ruby / inline-no-ruby
 ruby = [4, span, [+ ruby-segment]]
-ruby-segment = [base: inlines-no-ruby, reading: tstr / null]
+ruby-segment = [base: inlines-no-ruby, reading: tstr / null, ? (other-reading: tstr / null, options: ruby-options)]
+ruby-options = [side: 0..2, overhang-side: 0..3, size: ruby-size / null, align: tstr / null, reading-kenten: [* tstr / null], other-kenten: [* tstr / null]]
+ruby-size = [0, int64] / [1, rational]
 
 inline-no-ruby =
     [0, span, tstr]                                ; text

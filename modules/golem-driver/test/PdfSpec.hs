@@ -15,6 +15,7 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.IR (defaultRubyOptions)
 import Golem.Driver
 #ifdef GOLEM_PLUGINS
 import Golem.Driver.New (Language (..), createProject, templateFiles)
@@ -846,7 +847,7 @@ drawnSizes ch ds = [dSize d | d <- ds, dGlyph d == fromEnum ch]
 
 rubyTests :: [TestTree]
 rubyTests =
-  [ testCase "ADR 0369 I1: inv1_ruby_reading_style_property" $
+  [ testCase "root ADR 0379 I1, root ADR 0369 I1: reading styles preserve base characters across regrouping" $
       {- every reading style (colour, size absolute and in zw, synthetic bold,
       font, all of them) on mono and group ruby, ruby with a character style
       in the base or around it, and ruby in a paragraph long enough to break -}
@@ -860,15 +861,37 @@ rubyTests =
             T.replicate 12 "[ruby: 漢|かん]字" <> "\n"
           ]
           $ \source -> do
-            let base (t, lk, ls) = (t, lk {lkRubyReading = Nothing}, ls)
+            let clearRuby lk = lk {lkRubyReading = Nothing, lkRubyOptions = defaultRubyOptions, lkRubyOtherReading = Nothing}
+                bases = concatMap (\(text, lk, looks) -> [(ch, clearRuby look) | (ch, look) <- zip (T.unpack (T.takeWhile (/= '|') text)) (if null looks then repeat lk else looks)])
             plain <- readingBoxes "" source
             styled <- readingBoxes name source
             assertBool (show (name, source)) (any (\(t, _, _) -> "|" `T.isInfixOf` t) plain)
-            assertEqual (show (name, source)) (map base plain) (map base styled)
+            assertEqual (show (name, source)) (bases plain) (bases styled)
             (plainDrawn, _) <- readingDrawn "" source
             (styledDrawn, _) <- readingDrawn name source
             let baseGlyphs ds = [(dGlyph d, dFont d, dSize d) | d <- ds, dGlyph d `notElem` map fromEnum ("かんじさみだれ" :: String)]
             assertEqual (show (name, source)) (sort (baseGlyphs plainDrawn)) (sort (baseGlyphs styledDrawn)),
+    testCase "root ADR 0379 I1: PDF line edges keep the reading inside and align the base" $ do
+      (plain, _) <- readingDrawn "" "漢字\n"
+      (start, _) <- readingDrawn "" "[ruby: 漢|かなかな]字\n"
+      (final, _) <- readingDrawn "" "漢[ruby: 字|かなかな]\n"
+      let xs ch ds = [ptToRational (dX d) | d <- ds, dGlyph d == fromEnum ch]
+      xs '漢' start @?= xs '漢' plain
+      assertBool "no reading outside the start" (minimum (xs 'か' start <> xs 'な' start) >= minimum (xs '漢' start))
+      maximum (xs '字' final) + 10 @?= maximum (xs 'な' final) + 5,
+    testCase "root ADR 0379 I1: inline size overrides reading-style and uses the nominal size in scripts" $ do
+      (styled, _) <- readingDrawn "large" "[ruby size=0.75zw: 漢|か]字\n"
+      drawnSizes 'か' styled @?= ["7.5"]
+      (script, _) <- readingDrawn "" "[style superscript: [ruby size=0.75zw: 漢|か]]字\n"
+      drawnSizes 'か' script @?= ["7.5"],
+    testCase "root ADR 0379 I1: both readings use the inline size on opposite sides" $ do
+      (ds, _) <- readingDrawn "" "[ruby side=both size=0.75zw: 漢|か|な]字\n"
+      drawnSizes 'か' ds @?= ["7.5"]
+      drawnSizes 'な' ds @?= ["7.5"]
+      let ys ch = [ptToRational (dY d) | d <- ds, dGlyph d == fromEnum ch]
+      case (ys 'か', ys '漢', ys 'な') of
+        ([beforeY], [baseY], [afterY]) -> assertBool "opposite sides of base" ((beforeY - baseY) * (afterY - baseY) < 0)
+        other -> assertFailure (show other),
     testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1" $ do
       -- no reading style: half the base, in the font and the colour around
       boxes <- rubyBoxes "" "[ruby: 漢|か]字\n"
@@ -1170,11 +1193,15 @@ kentenTests =
       n <- buildNotified [("manifest.toml", miniManifest), ("style.toml", horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n"), ("a.gm", TE.encodeUtf8 "[kenten shape=open-sesame: 漢]\n"), ("fonts/sans.otf", sans)] (\o -> o {optFonts = golemFontProvider})
       [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G08009"]
         @?= [("G08009", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
-    testCase "G07045: kenten in a ruby base, and ruby in kenten, are a notice; the PDF is written" $
-      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7), ("[kenten: [ruby: 漢|かん]]\n", 9)] $ \(src, at) -> do
+    testCase "G07045: kenten in a ruby base is a notice; the PDF is written" $
+      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7)] $ \(src, at) -> do
         n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
         [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= [("G07045", Notice, at)]
         assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
+    testCase "root ADR 0379 I1: outside kenten follows both readings without G07045" $ do
+      n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten shape=dot: [ruby side=both: 漢|か|な]]\n")] <> fakeFontFiles) id
+      [c | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= []
+      assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "HTML: the class of the shape; no shape is sesame" $ do
       n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
       case [b | (p, b) <- nOutputs n, ".xhtml" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of

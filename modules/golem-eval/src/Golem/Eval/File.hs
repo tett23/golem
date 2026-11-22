@@ -353,7 +353,7 @@ unwritableText = concatMap blockDiags . docBlocks
     inline :: InlineF r -> [Diagnostic]
     inline = \case
       Text sp t -> at sp t
-      Ruby sp _ segs -> concat [inlines (rsBase g) <> maybe [] (at sp) (rsReading g) | g <- segs]
+      Ruby sp _ segs -> concat [inlines (rsBase g) <> maybe [] (at sp) (rsReading g) <> maybe [] (at sp) (rsOtherReading g) | g <- segs]
       Kenten _ _ xs -> inlines xs
       Color _ _ xs -> inlines xs
       CharStyle _ _ xs -> inlines xs
@@ -2655,7 +2655,13 @@ builtinWith ctx inHeading sp b args slots = do
                     Left (code, m) -> err code sp m >> pure []
       _ -> err "G02038" sp "index には散文スロットが一つ必要です" >> pure []
     Fixed BCite -> cite ctx sp args
-    Overridable BRuby -> ruby ctx sp slots
+    Overridable BRuby
+      | not (null pos) -> err "G02157" sp "ruby の指定はキーと値で書きます" >> pure []
+      | otherwise -> case rubyOptions kw of
+          Left message -> err "G02157" sp message >> pure []
+          Right options
+            | maybe True rubySizeInInt64 (roSize options) -> ruby ctx sp options slots
+            | otherwise -> outOfInt64 sp >> pure []
     Fixed BAki -> aki sp args slots
     Fixed BLink -> link ctx inHeading sp args slots
     Fixed BLang -> langSpan ctx inHeading sp args slots
@@ -2743,22 +2749,75 @@ akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
 
-ruby :: EvalContext -> SrcSpan -> [[A.Located A.Inline]] -> M [Inline]
-ruby ctx sp = \case
-  [baseSlot, readingSlot] -> do
-    -- the segments are split at the / written in the slots, before they
-    -- are evaluated (golem-parser ADR 0010)
-    base <- mapM (evalInlines ctx False) (splitSlot '/' baseSlot)
-    reading <- mapM (evalInlines ctx False) (splitSlot '/' readingSlot)
-    case (traverse (traverse noRuby) base, traverse plainText reading) of
-      (Nothing, _) -> err "G02016" sp "ルビの中にルビは入れられません" >> pure []
-      (_, Nothing) -> err "G02043" sp "ルビの読みは地の文に限ります" >> pure []
-      (Just baseSegs, Just readSegs)
-        -- a reading split by '/' needs a base split as many times (golem-eval ADR 0003)
-        | length baseSegs /= length readSegs -> err "G02015" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
-        | [nb] <- baseSegs, [r] <- readSegs -> pure [Ruby sp () [RubySegment nb (Just r)]]
-        | otherwise -> pure [Ruby sp () [RubySegment b (if T.null rd then Nothing else Just rd) | (b, rd) <- zip baseSegs readSegs]]
-  _ -> err "G02038" sp "ruby には散文スロットが二つ必要です" >> pure []
+-- | Per-ruby overrides. Dimensions remain exact until the font size is known.
+rubyReading :: [Inline] -> Maybe (Text, [Maybe Text])
+rubyReading xs = do
+  chunks <- traverse readPart xs
+  let marks = concatMap snd chunks
+  pure (T.concat (map fst chunks), if all (== Nothing) marks then [] else marks)
+  where
+    readPart (Text _ t) = Just (t, replicate (T.length t) Nothing)
+    readPart (Kenten _ shape ys) = do
+      t <- plainText ys
+      pure (t, replicate (T.length t) (Just (fromMaybe "sesame" shape)))
+    readPart _ = Nothing
+
+-- | The dimensions cross the same int64 boundary as the rest of the IR.
+rubySizeInInt64 :: RubySize -> Bool
+rubySizeInInt64 = \case
+  RubySizeAbsolute n -> inInt64 (unSp n)
+  RubySizeRelative r -> all inInt64 (ratioInts r)
+
+rubyOptions :: [(Text, A.ArgValue)] -> Either Text RubyOptions
+rubyOptions kw = do
+  case [k | (k, _) <- kw, k `notElem` ["side", "overhang-side", "size", "align"]] of
+    k : _ -> Left ("ruby の未知の指定です: " <> k)
+    [] -> pure ()
+  side <- choice "side" RubyBefore [("before", RubyBefore), ("after", RubyAfter), ("both", RubyBoth)]
+  overhang <- choice "overhang-side" RubyOverhangBoth [("none", RubyOverhangNone), ("start", RubyOverhangStart), ("end", RubyOverhangEnd), ("both", RubyOverhangBoth)]
+  size <- case value "size" of
+    Nothing -> Right Nothing
+    Just t -> case parseDim t of
+      Just (Abs n) | n > 0 -> Right (Just (RubySizeAbsolute n))
+      Just (Zw n) | n > 0 -> Right (Just (RubySizeRelative n))
+      _ -> Left "ruby の size は正の寸法です"
+  align <- case value "align" of
+    Nothing -> Right Nothing
+    Just t | t `elem` ["center", "start", "1-2-1", "0-1-0"] -> Right (Just t)
+    _ -> Left "ruby の align は center、start、1-2-1、0-1-0 のいずれかです"
+  pure (RubyOptions side overhang size align [] [])
+  where
+    value k = argText <$> lookup k kw
+    choice k def options = case value k of
+      Nothing -> Right def
+      Just t -> maybe (Left ("ruby の " <> k <> " の値が不正です: " <> t)) Right (lookup t options)
+
+ruby :: EvalContext -> SrcSpan -> RubyOptions -> [[A.Located A.Inline]] -> M [Inline]
+ruby ctx sp options slots
+  | length slots /= expected = err "G02038" sp (if expected == 3 then "ruby side=both には散文スロットが三つ必要です" else "ruby には散文スロットが二つ必要です") >> pure []
+  | otherwise = case slots of
+      baseSlot : readingSlot : others -> do
+        base <- mapM (evalInlines ctx False) (splitSlot '/' baseSlot)
+        reading <- mapM (evalInlines ctx False) (splitSlot '/' readingSlot)
+        second <- case others of
+          [slot] -> mapM (evalInlines ctx False) (splitSlot '/' slot)
+          _ -> pure []
+        case (traverse (traverse noRuby) base, traverse rubyReading reading, traverse rubyReading second) of
+          (Nothing, _, _) -> err "G02016" sp "ルビの中にルビは入れられません" >> pure []
+          (_, Nothing, _) -> badReading
+          (_, _, Nothing) -> badReading
+          (Just baseSegs, Just readSegs, Just secondSegs)
+            | length baseSegs /= length readSegs || (expected == 3 && length secondSegs /= length baseSegs) -> err "G02015" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+            | expected == 3 && any (T.null . fst) (readSegs <> secondSegs) -> err "G02157" sp "ruby side=both の両側には、空でない読みを書きます" >> pure []
+            | otherwise ->
+                let optional t = if T.null t then Nothing else Just t
+                    make b (r, marks) other = (RubySegment b (if expected == 2 && length baseSegs == 1 then Just r else optional r)) {rsOtherReading = other >>= optional . fst, rsOptions = options {roReadingKenten = marks, roOtherKenten = maybe [] snd other}}
+                    extras = if expected == 3 then map Just secondSegs else repeat Nothing
+                 in pure [Ruby sp () (zipWith3 make baseSegs readSegs extras)]
+      _ -> pure []
+  where
+    expected = if roSide options == RubyBoth then 3 else 2
+    badReading = err "G02043" sp "ルビの読みは地の文に限ります" >> pure []
 
 {- | A slot split at a character in its top-level text; escaped characters
 and nested commands are not split (golem-parser ADR 0010). A piece keeps

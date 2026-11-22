@@ -123,6 +123,18 @@ decorationsTests =
         case (xs a, xs b) of
           (xa : _, xb : _) -> assertBool (show (xa, xb)) (xb > xa)
           other -> assertFailure (show other),
+      testCase "root ADR 0379 I1: an after-side reading does not move the right underline" $ do
+        plain <- contents vertical "[style u: 漢字]\n"
+        afterRuby <- contents vertical "[style u: [ruby side=after: 漢|かん]字]\n"
+        let xs st = [x | x : _ <- concatMap rects st]
+        xs afterRuby @?= xs plain,
+      testCase "root ADR 0379 I1: the right underline clears kenten outside a reading" $ do
+        plainReading <- contents vertical "[style u: [ruby: 漢|かん]]\n"
+        markedReading <- contents vertical "[style u: [ruby: 漢|[kenten: かん]]]\n"
+        let xs st = [ptToRational x | x : _ <- concatMap rects st]
+        case (xs plainReading, xs markedReading) of
+          (plainX : _, markedX : _) -> assertBool (show (plainX, markedX)) (markedX > plainX)
+          other -> assertFailure (show other),
       testCase "I3: two ranges of one value side by side are one band; of other values, two" $ do
         one <- contents horizontal "[style u: 漢][style u: 字]\n"
         length (concatMap rects one) @?= 1

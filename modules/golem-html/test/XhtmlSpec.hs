@@ -621,7 +621,12 @@ tests =
     testGroup "notes at the end of the chapter (golem-driver ADR 0026)" chapterNoteTests,
     testGroup
       "ruby"
-      [ testCase "group ruby is one rt between rp" $
+      [ testCase "root ADR 0379 I1: both readings, size, alignment, and outside kenten survive XHTML" $ do
+          let opts = defaultRubyOptions {roSide = RubyBoth, roSize = Just (RubySizeRelative (3 / 4)), roAlign = Just "start", roOtherKenten = [Just "dot"]}
+              seg = (RubySegment [Text (at 1) "漢"] (Just "かん")) {rsOtherReading = Just "K", rsOptions = opts}
+              html = bodyA cfg0 (bookOf [para 0 [Ruby (at 1) () [seg]]])
+          mapM_ (\piece -> assertBool (T.unpack piece) (piece `T.isInfixOf` html)) ["ruby-position:under", "ruby-position:over", "ruby-align:start", "font-size:0.75em", "かん", "kenten-dot", "text-emphasis-position:under left"],
+        testCase "group ruby is one rt between rp" $
           bodyA cfg0 (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢字"] (Just "かんじ")]]])
             @?= "<p><ruby>漢字<rp>（</rp><rt>かんじ</rt><rp>）</rp></ruby></p>\n",
         testCase "mono ruby has one rt per segment" $

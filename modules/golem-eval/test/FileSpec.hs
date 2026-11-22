@@ -313,7 +313,25 @@ escapeTests :: TestTree
 escapeTests =
   testGroup
     "escaped characters (golem-parser ADR 0010)"
-    [ testCase "\\/ in the base of a ruby is no separator" $ do
+    [ testCase "root ADR 0379 I1: both sides accept one reading per side" $
+        errs "[ruby side=both: 東京|とうきょう|Tokyo]\n" @?= [],
+      testCase "root ADR 0379 I1: missing, extra, and unequal readings are rejected" $ do
+        errs "[ruby side=both: 東|とう]\n" @?= ["G02038"]
+        errs "[ruby side=after: 東|とう|East]\n" @?= ["G02038"]
+        errs "[ruby side=both: 東/京|とう/きょう|Tokyo]\n" @?= ["G02015"]
+        errs "[ruby side=both: 東|とう|]\n" @?= ["G02157"]
+        errs "[ruby side=both: 東||East]\n" @?= ["G02157"]
+        errs "[ruby side=both: 東/京|とう/|East/Capital]\n" @?= ["G02157"],
+      testCase "root ADR 0379 I1: invalid inline options fail at the ruby" $ do
+        mapM_ (\arg -> errs ("[ruby " <> arg <> ": 東|とう]\n") @?= ["G02157"]) ["side=left", "overhang-side=left", "size=0pt", "size=-1pt", "size=nan", "align=left", "before"]
+        errs "[ruby side=after overhang-side=end size=0.75zw align=start: 東|とう]\n" @?= [],
+      testCase "root ADR 0379 I1: dimensions that cannot cross the IR boundary are G02091" $
+        mapM_ (\size -> errs ("[ruby size=" <> size <> ": 漢|かん]\n") @?= ["G02091"]) ["140737488355328pt", "9223372036854775808zw", "0.00000000000000000001zw"],
+      testCase "root ADR 0379 I1: invalid options and missing readings keep the manuscript span" $
+        mapM_ (\command -> [(a, b) | (_, _, a, b) <- diags ("head " <> command <> "\n")] @?= [(5, 5 + T.length command)]) ["[ruby size=0pt: a|b]", "[ruby side=both: a|b]"],
+      testCase "root ADR 0379 I1: kenten is accepted independently in both readings" $
+        errs "[ruby side=both: 東|[kenten: とう]|[kenten shape=dot: East]]\n" @?= [],
+      testCase "\\/ in the base of a ruby is no separator" $ do
         rubiesOf "[ruby: a\\/b|えー]\n" @?= [[(["a/b"], Just "えー")]]
         errs "[ruby: a\\/b|えー]\n" @?= [],
       testCase "\\/ in the reading is a / of the reading" $

@@ -577,7 +577,19 @@ of @fid@.
 kentenGlyphDiagnostics :: FileId -> Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
 kentenGlyphDiagnostics fid vertical fonts layout =
   [ diagnostic "G08009" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（" <> codePointText (kentenChar shape) <> "）がありません")
-  | (role, shape) <- Set.toAscList (Set.fromList [(lkFace (bcLook c), shape) | l <- layoutLines layout, Box _ c <- lineItems l, boxKind c == KindKenten, Just shape <- [lkKenten (bcLook c)]]),
+  | (role, shape) <-
+      Set.toAscList
+        ( Set.fromList
+            ( concat
+                [ let look = bcLook c
+                      opts = lkRubyOptions look
+                   in [(lkFace look, shape) | boxKind c == KindKenten, Just shape <- [lkKenten look]]
+                        <> [(lkFace (readingLook look), shape) | boxKind c `elem` [KindRuby, KindGroupRuby], Just name <- roReadingKenten opts <> roOtherKenten opts, Just shape <- [kentenShapeFromName name]]
+                | l <- layoutLines layout,
+                  Box _ c <- lineItems l
+                ]
+            )
+        ),
     let gs = kentenShaped fonts vertical role shape,
     null gs || any ((== 0) . shGlyph) gs
   ]
@@ -762,7 +774,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
+            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
 
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
@@ -815,6 +827,24 @@ physicalSettings inp geom capacity built =
                 lastEnd = firstOffset + fromIntegral (length rows - 1) * hbPitch block + slSize lastSet
              in [(lbId firstRow, (firstOffset, lastEnd))]
       _ -> []
+
+-- | Warn once per chapter when its collected notes repeat a page-local number (root ADR 0402).
+chapterPageNoteWarnings :: PdfInput -> Map (NoteChannel, Int) Int -> [Diagnostic]
+chapterPageNoteWarnings inp numbers = mapMaybe chapter (bookChapters (piBook inp))
+  where
+    chapter docs = case reverse docs of
+      Document fid _ : _
+        | let style = docStyle inp fid,
+          stNotesNumbering style == NumberPerPage,
+          stNotesPlacement style == PlaceChapterEnd ->
+            repeated Set.empty (concatMap documentNotes docs)
+      _ -> Nothing
+    repeated _ [] = Nothing
+    repeated seen ((sp, n, _) : rest) = case Map.lookup (ChannelNote, n) numbers of
+      Nothing -> repeated seen rest
+      Just k
+        | Set.member k seen -> Just (diagnostic "G07132" Warning sp "ページごとの注番号のため、章末の注の一覧に同じ番号が重なります。[notes] の numbering を \"chapter\" か \"book\" にすると、一覧の番号を区別できます")
+        | otherwise -> repeated (Set.insert k seen) rest
 
 {- | The marks of notes numbered per page with their numbers (docs/adr/0383),
 on the settled pages: each page numbers the notes and the sidenotes it

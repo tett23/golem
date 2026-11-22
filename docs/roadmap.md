@@ -101,14 +101,12 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### ルビと和文組版の拡張
 
-- **ルビの拡張（未実装）**：熟語の全体の読みが長い熟語ルビをグループルビとして配置し直すこと、片側だけのかけ、約物へのかけ、行頭と行末で親文字を行の端にそろえる配置、ルビの文字の大きさとルビを置く側の設定、ルビごとに配置を指定する記法、両側ルビ、ルビの中の圏点（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。 [Golem ADR 0379](adr/0379-extended-ruby-placement.md)。
 - **和文組版の拡張（未実装）**：割注、左の傍線（[ADR 0270](adr/0270-underline-and-strikethrough.md) は右の傍線だけを引く）、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。 [Golem ADR 0380](adr/0380-extended-japanese-composition.md)。
 
 ### 本の部品の拡張
 
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
-- **ページを持たない出力でのページごとの注の番号（未実装）**：`[notes]` の `numbering = "page"` は、PDF ではページごとに番号を振る（[docs/specifications.md の「ページごとの注の番号」](specifications.md#ページごとの注の番号)）。HTML、EPUB、プレーンテキストには ADR が diagnostic を出すことだけを定め、その重大度と、その出力に振る番号を定めていない。今は警告（G03259）を出し、本の通し番号で組む。未決事項の「ページを持たない出力の注の番号」を決めてから、ADR の状態を `accepted` にする。 [Golem ADR 0383](adr/0383-page-local-note-numbers.md)。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
 - **ページ番号と柱の拡張（未実装）**：EPUB の `page-list`、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。 [Golem ADR 0386](adr/0386-page-list-and-page-colors.md)。 単色図版には白黒の濃淡を含め、JPEG の色変換は対応方式を限定し、非対応方式はエラーにする（[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)）。
 
@@ -258,7 +256,6 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **段落スタイルの拡張の採択単位**：行送り、次スタイル、先頭文字スタイル、ドロップキャップ、字取り、始め括弧の字下げを一括で採択した。実装を機能ごとの修正 ADR に分ける必要があるかは、着手時に判断する。行数と字数の型を「0 より大きい自然数」とすることは決まった。[Golem ADR 0374](adr/0374-paragraph-style-controls.md)
 - **投稿用の文献スタイルを照合する雑誌**：書き手が投稿先に合わせて文献スタイルを自作できることは v1 の目標である。どの雑誌のどの投稿規定と書誌例を v1 の受け入れ例に採るかは未決である。[Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)
 - **部品を保つ単位の指定**：[Golem ADR 0377](adr/0377-keep-book-parts.md) は、ページを単位とする指定では各ページの、見開きの指定では対向する 2 ページの外側だけで保持の条件を課すと定める。しかし、書き手が単位をどこに書くか（部品ごとのスタイルか、本の全体の設定か）と、書かないときにどちらを使うかを定めていない。今の改ページは段を単位に保つので、段組みの版面でページを単位にするとき、段のあいだで部品を分けてよいかも決まっていない。リストを項目のあいだで分ける規則も、この単位で課すので、同じく待つ。項目の中で分けるときに、`keep-all-lines` の段落と同じく notice を出すかも決まっていない。
-- **ページを持たない出力の注の番号**：[Golem ADR 0383](adr/0383-page-local-note-numbers.md) は、`numbering = "page"` の本をページを持たない出力（HTML、EPUB、プレーンテキスト）に組むと diagnostic を出すと定める。しかし、その重大度（出力を止めるか）と、出力を止めないときに振る番号を定めていない。実装は、警告（G03259）を出し、文書の組み立て（S1）の仮の番号である本の通し番号で組む。エラーにして出力を止めるか、ほかの範囲の番号にするかを決める。同じく、`placement = "chapter-end"` と組み合わせたとき、章末の一覧でページの違う注が同じ番号を持つことに diagnostic を出すか（`"file"` の [G03027](diagnostics.md#g03027) にあたるもの）も、ADR は定めていない。今は出さない。
 
 ### その他の未決事項
 

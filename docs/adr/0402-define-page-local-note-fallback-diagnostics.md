@@ -1,6 +1,6 @@
 # ADR 0402: 固定ページを持たない出力と章末注のページ別番号を扱う
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -371,9 +371,9 @@ dashInk fonts vertical g = do
   let (a, b) = if vertical && not (shTurned g) then (y0, y1) else (x0, x1)
   if b > a then Just (a, b) else Nothing
 
-{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at the
-kenten, and ruby in kenten, at the ruby. The PDF draws no kenten there;
-HTML and EPUB draw both.
+{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at
+that kenten. The PDF draws no kenten on the base; outside kenten instead
+marks each reading (root ADR 0379).
 -}
 kentenRubyNotices :: Book -> [Diagnostic]
 kentenRubyNotices book =
@@ -387,7 +387,7 @@ kentenRubyNotices book =
     sites :: Bool -> Inline -> [SrcSpan]
     sites inKenten = \case
       Kenten _ _ xs -> concatMap (sites True) xs
-      Ruby sp _ segs -> [sp | inKenten] <> concat [concatMap kentenIn b | RubySegment b _ <- segs]
+      Ruby _ _ segs -> concat [concatMap kentenIn b | RubySegment b _ <- segs]
       Color _ _ xs -> concatMap (sites inKenten) xs
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
       Link _ _ xs -> concatMap (sites inKenten) xs

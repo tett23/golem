@@ -766,13 +766,59 @@ inlines c = T.concat . map (inline c)
 inline :: Ctx -> InlineF r -> Text
 inline c = \case
   Text _ t -> escapeXml t
+  Ruby _ _ segs
+    | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->
+        T.concat (map extendedRuby segs)
+    where
+      extendedRuby seg =
+        let options = rsOptions seg
+            monoClass = if length segs >= 2 || T.length (foldMap inlineText (rsBase seg)) == 1 then " class=\"mono\"" else ""
+            alignment = case roAlign options of
+              Just "1-2-1" -> "ruby-align:space-around;"
+              Just "0-1-0" -> "ruby-align:space-between;"
+              Just value -> "ruby-align:" <> value <> ";"
+              Nothing -> ""
+            readingSize = case roSize options of
+              Just (RubySizeAbsolute size) -> " style=\"font-size:" <> L.ptText size <> "pt;\""
+              Just (RubySizeRelative size) -> " style=\"font-size:" <> L.emText size <> "em;\""
+              Nothing -> ""
+            readingHtml side readingText marks = T.concat [case mark of Nothing -> escapeXml (T.singleton ch); Just shape -> "<span style=\"text-emphasis-position:" <> (if side == "under" then "under left" else "over right") <> ";\" class=\"kenten kenten-" <> escapeXml shape <> "\">" <> escapeXml (T.singleton ch) <> "</span>" | (ch, mark) <- zip (T.unpack (fromMaybe "" readingText)) (marks <> repeat Nothing)]
+            wrap side baseText readingText marks = "<ruby" <> monoClass <> " style=\"ruby-position:" <> side <> ";" <> alignment <> "\">" <> baseText <> "<rp>（</rp><rt" <> readingSize <> ">" <> readingHtml side readingText marks <> "</rt><rp>）</rp></ruby>"
+            base = inlines c (rsBase seg)
+         in case roSide options of
+              RubyBefore -> wrap "over" base (rsReading seg) (roReadingKenten options)
+              RubyAfter -> wrap "under" base (rsReading seg) (roReadingKenten options)
+              RubyBoth -> wrap "under" (wrap "over" base (rsReading seg) (roReadingKenten options)) (rsOtherReading seg) (roOtherKenten options)
   Ruby _ _ segs ->
     -- several segments, or one base character, are mono ruby (golem-layout ADR 0009)
     (if length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1 then "<ruby class=\"mono\">" else "<ruby>")
       <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
       <> "</ruby>"
   -- the shape of the IR; none (from a plugin) is sesame (golem-driver ADR 0019)
-  Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inlines c xs <> "</span>"
+  Kenten _ sh xs ->
+    if any containsRuby xs
+      then T.concat (map emphasized xs)
+      else "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inlines c xs <> "</span>"
+    where
+      containsRuby = \case
+        Ruby {} -> True
+        Color _ _ ys -> any containsRuby ys
+        CharStyle _ _ ys -> any containsRuby ys
+        Link _ _ ys -> any containsRuby ys
+        Lang _ _ ys -> any containsRuby ys
+        Resolved _ _ _ ys -> any containsRuby ys
+        _ -> False
+      emphasized (Ruby sp unit segs) = inline c (Ruby sp unit (map markSegment segs))
+      emphasized (Color sp name ys) = inline c (Color sp name [Kenten sp sh ys])
+      emphasized (CharStyle sp name ys) = inline c (CharStyle sp name [Kenten sp sh ys])
+      emphasized (Link sp target ys) = inline c (Link sp target [Kenten sp sh ys])
+      emphasized (Lang sp lang ys) = inline c (Lang sp lang [Kenten sp sh ys])
+      emphasized (Resolved sp kind label ys) = inline c (Resolved sp kind label [Kenten sp sh ys])
+      emphasized x = "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inline c x <> "</span>"
+      markSegment seg =
+        let opts = rsOptions seg
+            marks reading previous = take (maybe 0 T.length reading) (map (Just . fromMaybe (fromMaybe "sesame" sh)) (previous <> repeat Nothing))
+         in seg {rsOptions = opts {roReadingKenten = marks (rsReading seg) (roReadingKenten opts), roOtherKenten = marks (rsOtherReading seg) (roOtherKenten opts)}}
   Color _ s xs -> "<span class=\"swatch-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   -- the built-in character styles keep their elements (docs/adr ADR 0005)
   CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
