@@ -1,6 +1,6 @@
 # ADR 0388: wasm32 で走らせるテストの時間の上限を広げる
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md"],"part":"I2 と I3 の wasm32 のテストを毎晩の wasm-tests.yml で走らせること","kind":"supplement"}]
 
 ## 文脈
 
