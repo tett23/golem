@@ -25,6 +25,7 @@ module Golem.Pdf.Import
     importErrorText,
     contentOperations,
     unescapeName,
+    decodeImportedStream,
   )
 where
 
@@ -105,7 +106,9 @@ data ImportedPage = ImportedPage
     ipContent :: !ByteString,
     -- | the objects reached from the resources, in the order they are reached
     ipObjects :: ![(ObjNum, ObjOf ObjNum)],
-    ipColors :: ![ColorUse]
+    ipColors :: ![ColorUse],
+    -- | Bytes already decoded by this import, carried into optional recoloring (root ADR 0403).
+    ipDecodedBytes :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -784,6 +787,53 @@ lastOccurrence needle hay = go 0 Nothing
 
 -- ------------------------------------------------------------------ decoding
 
+{- | Decode a stream whose Filter and DecodeParms have been resolved by
+the caller. Return the bytes and the cumulative cost of all decoding
+stages, so recoloring shares the import budget (root ADR 0040, root ADR
+0403). References and nested streams in these two fields are refused.
+-}
+decodeImportedStream :: Int -> [(Text, ObjOf ObjNum)] -> ByteString -> Either ImportError (ByteString, Int)
+decodeImportedStream remaining fields body
+  | remaining < 0 = bad tooLarge
+  | otherwise = do
+      dict <- traverse (\(key, value) -> (TE.encodeUtf8 key,) <$> direct 0 value) [(key, value) | (key, value) <- fields, key `elem` ["Filter", "DecodeParms"]]
+      names <- case lookup "Filter" dict of
+        Nothing -> Right []
+        Just VNull -> Right []
+        Just (VName name) -> Right [name]
+        Just (VArr values) -> traverse filterName values
+        _ -> bad "フィルター"
+      parms <- case lookup "DecodeParms" dict of
+        Nothing -> Right []
+        Just VNull -> Right []
+        Just (VDict values) -> Right [values]
+        Just (VArr values) -> traverse parameters values
+        _ -> bad "フィルターのパラメーター"
+      let available = min maxDecodedBytes remaining
+      (out, state) <- runM (decodeWith (zip names (parms <> repeat [])) body) (St available Map.empty Map.empty Map.empty Set.empty)
+      when (BS.length out > available) (bad tooLarge)
+      pure (out, available - stLeft state)
+  where
+    filterName (VName name) = Right name
+    filterName _ = bad "フィルター"
+    parameters VNull = Right []
+    parameters (VDict values) = Right values
+    parameters _ = bad "フィルターのパラメーター"
+    direct :: Int -> ObjOf ObjNum -> R V
+    direct depth _ | depth > maxNesting = bad "フィルターの辞書が深すぎます"
+    direct depth inputObj = case inputObj of
+      ODict values -> VDict <$> traverse (\(key, value) -> (TE.encodeUtf8 key,) <$> direct (depth + 1) value) values
+      OArr values -> VArr <$> traverse (direct (depth + 1)) values
+      OName name -> Right (VName (TE.encodeUtf8 name))
+      OInt value -> Right (VInt value)
+      OReal value -> Right (VReal (TE.encodeUtf8 value))
+      OStr value -> Right (VStr value)
+      OHex value -> Right (VStr value)
+      OBool value -> Right (VBool value)
+      ONull -> Right VNull
+      ORef {} -> bad "フィルターの参照が解決されていません"
+      OStream {} -> bad "フィルターにストリームがあります"
+
 -- | The filters of a stream whose Filter and DecodeParms are direct.
 filtersDirect :: Dict -> [(ByteString, Dict)]
 filtersDirect dict = zip names (parms <> repeat [])
@@ -1074,7 +1124,9 @@ boxOf d v =
 it (golem-pdf ADR 0008).
 -}
 importPage :: Int -> ByteString -> Either ImportError ImportedPage
-importPage n bytes = fst <$> runM (importM n bytes) (St maxDecodedBytes Map.empty Map.empty Map.empty Set.empty)
+importPage n bytes = do
+  (page, state) <- runM (importM n bytes) (St maxDecodedBytes Map.empty Map.empty Map.empty Set.empty)
+  pure page {ipDecodedBytes = maxDecodedBytes - stLeft state}
 
 importM :: Int -> ByteString -> M ImportedPage
 importM n bytes = do
@@ -1178,7 +1230,8 @@ importM n bytes = do
         ipGroup = conv <$> group,
         ipContent = pageBytes,
         ipObjects = map object objs <> [(innerKey k, innerForm body) | (k, body) <- inner] <> [(0, profile) | withProfile],
-        ipColors = nub (pageUses <> concat [u | (_, _, u) <- Map.elems rewritten] <> uses)
+        ipColors = nub (pageUses <> concat [u | (_, _, u) <- Map.elems rewritten] <> uses),
+        ipDecodedBytes = 0
       }
 
 -- | @%PDF-1.0@ to @%PDF-1.7@ and @%PDF-2.0@.
