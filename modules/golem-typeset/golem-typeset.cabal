@@ -18,6 +18,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Typeset
                     Golem.Typeset.Box
+                    Golem.Typeset.FigureColor
                     Golem.Typeset.FontProvider
                     Golem.Typeset.GlyphRuns
                     Golem.Typeset.Memo
