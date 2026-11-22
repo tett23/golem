@@ -42,10 +42,31 @@ tests =
         -- the tate-chu-yoko in 100, the ruby in 200 (in a red range)
         mixed [tcy, Color sp "red" [ruby]] @?= 2100
         -- the ruby in 200, the tate-chu-yoko in 100
-        mixed [Color sp "red" [ruby], tcy] @?= 2200
+        mixed [Color sp "red" [ruby], tcy] @?= 2200,
+      -- root ADR 0414: an ordinary character is one box too, so the tracking
+      -- is added once between a tate-chu-yoko or ruby box and the character
+      -- next to it, and nothing is added after the last box of a line.
+      testCase "root ADR 0414 I1: a tate-chu-yoko followed by an ordinary character adds the tracking between them" $
+        forM_ trackings0414 $ \t -> added t [tcy, char] @?= fromIntegral t,
+      testCase "root ADR 0414 I1: an ordinary character followed by a ruby adds the tracking between them" $
+        forM_ trackings0414 $ \t -> do
+          added t [char, ruby] @?= fromIntegral t
+          added t [char, groupRuby] @?= fromIntegral t,
+      testCase "root ADR 0414 I1: nothing is added after a tate-chu-yoko at the line end" $
+        forM_ trackings0414 $ \t -> do
+          added t [tcy] @?= 0
+          added t [char, tcy] @?= fromIntegral t,
+      testCase "root ADR 0414 I1: a tracking of 0 adds no space" $
+        forM_ (sequences0414 3) $ \xs -> added 0 xs @?= 0,
+      testCase "root ADR 0414 I1: every sequence of tate-chu-yoko, mono ruby, group ruby and ordinary characters of length 0 to 3 adds the tracking once between neighbours" $
+        forM_ (sequences0414 3) $ \xs -> forM_ trackings0414 $ \t ->
+          added t xs @?= fromIntegral (max 0 (length xs - 1) * t)
     ]
   where
     trackings = [-100, 0, 100, 250]
+    trackings0414 = [-100, 0, 100]
+    char = Text sp "字"
+    sequences0414 n = concat [replicateM k [tcy, ruby, groupRuby, char] | k <- [0 .. n]]
     tcy = Tcy sp "12"
     ruby = Ruby sp () [RubySegment [Text sp "漢"] (Just "かん")]
     groupRuby = Ruby sp () [RubySegment [Text sp "漢字"] (Just "かんじ")]
