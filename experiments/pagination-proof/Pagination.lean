@@ -14587,5 +14587,303 @@ theorem I1_caption_rescue_scan_rank (sourceLength candidateCount lower position
       captionScanRank sourceLength candidateCount lower oldRemaining :=
   I1_caption_restart_scan_rank sourceLength candidateCount lower (position+1)
     oldRemaining newRemaining (by omega) (by omega) remaining
+private theorem candidatesWeaken (old new upper : Nat) (candidates : List Nat)
+    (ordered : CaptionCandidatesOrdered old upper candidates) (weaker : new ≤ old) :
+    CaptionCandidatesOrdered new upper candidates := by
+  cases candidates with
+  | nil => trivial
+  | cons head tail => exact ⟨Nat.le_trans weaker ordered.1,ordered.2⟩
+
+private theorem candidatesFilter (lower upper threshold : Nat) (candidates : List Nat)
+    (ordered : CaptionCandidatesOrdered lower upper candidates) :
+    CaptionCandidatesOrdered (max lower threshold) upper
+      (candidates.filter (fun p => decide (threshold ≤ p))) := by
+  induction candidates generalizing lower with
+  | nil => trivial
+  | cons head tail ih =>
+    have tailValid := ih (head+1) ordered.2.2
+    simp only [List.filter_cons]
+    split
+    · rename_i accepted
+      have fits : threshold ≤ head := of_decide_eq_true accepted
+      refine ⟨by have := ordered.1; omega,ordered.2.1,?_⟩
+      exact candidatesWeaken (max (head+1) threshold) (head+1) upper _ tailValid (by omega)
+    · exact candidatesWeaken (max (head+1) threshold) (max lower threshold) upper _ tailValid
+        (by have := ordered.1; omega)
+
+private theorem filterCount (threshold : Nat) (candidates : List Nat) :
+    (candidates.filter (fun p => decide (threshold ≤ p))).length ≤ candidates.length := by
+  induction candidates with
+  | nil => exact Nat.le_refl _
+  | cons head tail ih =>
+    simp only [List.filter_cons]
+    split <;> simp only [List.length_cons] <;> omega
+
+private theorem successorsLower (position lower : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (inside : lower ≤ position+1) :
+    ∀ node ∈ captionActiveSuccessors position flagged evaluate actives, lower ≤ node.position := by
+  induction actives with
+  | nil => simp [captionActiveSuccessors]
+  | cons head tail ih =>
+    simp only [captionActiveSuccessors]
+    split
+    · intro node member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | later
+      · exact inside
+      · exact ih node later
+    · exact ih
+
+private theorem activeStepLower (position lower : Nat) (forced flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode)
+    (inside : lower ≤ position+1) (old : ∀ node ∈ actives, lower ≤ node.position) :
+    ∀ node ∈ captionActiveStep position forced flagged evaluate actives, lower ≤ node.position := by
+  have fresh := successorsLower position lower flagged evaluate actives inside
+  have folded := captionFold_preserves
+    (captionActiveSuccessors position flagged evaluate actives) [] fresh (by simp)
+  intro node member
+  simp only [captionActiveStep,captionMemberAppend] at member
+  rcases member with survived | created
+  · split at survived
+    · contradiction
+    · exact old node (List.mem_filter.mp survived).1
+  · exact folded node created
+
+structure CaptionScanContext where
+  items : List CaptionItemKind
+  candidates : List Nat
+  forced : Nat → Bool
+  flagged : Nat → Bool
+  evaluate : Nat → CaptionActiveNode → CaptionActiveEval
+  finite : CaptionActiveNode → Nat → Bool
+  overflow : Nat → CaptionActiveNode → Int
+  allowOverfull : Bool
+
+structure CaptionScanState where
+  lower : Nat
+  remaining : List Nat
+  actives : List CaptionActiveNode
+
+/-- lower is a ghost lower bound; the implementation stores only the
+    remaining candidates and actives. Restarting drops exactly those
+    candidates whose source position is at or before the chosen break. -/
+def captionScanNext (context : CaptionScanContext) (state : CaptionScanState) :
+    Option CaptionScanState :=
+  match state.remaining with
+  | [] => none
+  | position :: rest =>
+      let next := captionActiveStep position (context.forced position) (context.flagged position)
+        (context.evaluate position) state.actives
+      if context.allowOverfull && next.isEmpty then
+        match captionChoosePush (captionPushOptions context.items context.candidates position
+            context.flagged (fun prior p => context.evaluate p prior) context.finite state.actives) with
+        | some selected =>
+            some ⟨selected.node.position,
+              context.candidates.filter (fun p => decide (selected.node.position ≤ p)),[selected.node]⟩
+        | none =>
+            let rescued := match captionChooseOverflow (context.overflow position) state.actives with
+              | none => []
+              | some prior => [captionRescueNode position (context.flagged position) prior]
+            some ⟨position+1,rest,rescued⟩
+      else some ⟨state.lower,rest,next⟩
+
+def CaptionScanValid (context : CaptionScanContext) (state : CaptionScanState) : Prop :=
+  state.lower ≤ context.items.length+1 ∧
+  state.remaining.length ≤ context.candidates.length ∧
+  CaptionCandidatesOrdered state.lower context.items.length state.remaining ∧
+  (∀ node ∈ state.actives, state.lower ≤ node.position)
+
+def captionStateRank (context : CaptionScanContext) (state : CaptionScanState) : Nat :=
+  captionScanRank context.items.length context.candidates.length state.lower state.remaining.length
+
+private theorem normalScanValid (context : CaptionScanContext) (state : CaptionScanState)
+    (position : Nat) (rest : List Nat) (source : state.remaining = position :: rest)
+    (valid : CaptionScanValid context state) :
+    CaptionScanValid context
+      ⟨state.lower,rest,captionActiveStep position (context.forced position) (context.flagged position)
+        (context.evaluate position) state.actives⟩ := by
+  have ordered : CaptionCandidatesOrdered state.lower context.items.length (position::rest) :=
+    by simpa [source] using valid.2.2.1
+  refine ⟨valid.1,?_,?_,?_⟩
+  · have size := valid.2.1
+    simp only [source,List.length_cons] at size
+    exact Nat.le_trans (Nat.le_succ _) size
+  · exact candidatesWeaken (position+1) state.lower context.items.length rest ordered.2.2
+      (by have := ordered.1; omega)
+  · exact activeStepLower position state.lower (context.forced position) (context.flagged position)
+      (context.evaluate position) state.actives (by have := ordered.1; omega) valid.2.2.2
+
+private theorem rescueScanValid (context : CaptionScanContext) (state : CaptionScanState)
+    (position : Nat) (rest : List Nat) (source : state.remaining = position :: rest)
+    (valid : CaptionScanValid context state) :
+    CaptionScanValid context
+      ⟨position+1,rest,match captionChooseOverflow (context.overflow position) state.actives with
+        | none => []
+        | some prior => [captionRescueNode position (context.flagged position) prior]⟩ := by
+  have ordered : CaptionCandidatesOrdered state.lower context.items.length (position::rest) :=
+    by simpa [source] using valid.2.2.1
+  refine ⟨by change position+1 ≤ context.items.length+1; have := ordered.2.1; omega,?_,ordered.2.2,?_⟩
+  · have size := valid.2.1
+    simp only [source,List.length_cons] at size
+    exact Nat.le_trans (Nat.le_succ _) size
+  · split
+    · simp
+    · intro node member
+      simp only [List.mem_cons,List.not_mem_nil,or_false] at member
+      subst node
+      exact Nat.le_refl _
+
+private theorem restartScanValid (context : CaptionScanContext) (state : CaptionScanState)
+    (position : Nat) (rest : List Nat) (source : state.remaining = position :: rest)
+    (valid : CaptionScanValid context state)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (selected : CaptionPushOption)
+    (chosen : captionChoosePush (captionPushOptions context.items context.candidates position
+      context.flagged (fun prior p => context.evaluate p prior) context.finite state.actives) = some selected) :
+    CaptionScanValid context ⟨selected.node.position,
+      context.candidates.filter (fun p => decide (selected.node.position ≤ p)),[selected.node]⟩ := by
+  have ordered : CaptionCandidatesOrdered state.lower context.items.length (position::rest) :=
+    by simpa [source] using valid.2.2.1
+  have progress := I1_caption_push_out_advances context.items context.candidates position state.lower
+    context.flagged (fun prior p => context.evaluate p prior) context.finite state.actives selected valid.2.2.2 chosen
+  refine ⟨by change selected.node.position ≤ context.items.length+1; have := ordered.2.1; omega,filterCount _ _,?_,?_⟩
+  · simpa using candidatesFilter 0 context.items.length selected.node.position context.candidates original
+  · intro node member
+    simp only [List.mem_cons,List.not_mem_nil,or_false] at member
+    subst node
+    exact Nat.le_refl _
+
+
+/-- Every branch of the real scan control flow preserves its finite-source
+    invariant and strictly lowers one natural rank. In particular, a
+    pushOut restart is not treated as consumption of the old tail. -/
+theorem I1_caption_full_scan_step (context : CaptionScanContext)
+    (state next : CaptionScanState)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (valid : CaptionScanValid context state)
+    (advanced : captionScanNext context state = some next) :
+    CaptionScanValid context next ∧ captionStateRank context next < captionStateRank context state := by
+  cases source : state.remaining with
+  | nil => simp [captionScanNext,source] at advanced
+  | cons position rest =>
+    have ordered : CaptionCandidatesOrdered state.lower context.items.length (position::rest) :=
+      by simpa [source] using valid.2.2.1
+    have restSize : rest.length ≤ context.candidates.length := by
+      have size := valid.2.1
+      simp only [source,List.length_cons] at size
+      omega
+    simp only [captionScanNext,source] at advanced
+    split at advanced
+    · split at advanced
+      · rename_i selected chosen
+        cases advanced
+        refine ⟨restartScanValid context state position rest source valid original selected chosen,?_⟩
+        have progress := I1_caption_push_out_advances context.items context.candidates position state.lower
+          context.flagged (fun prior p => context.evaluate p prior) context.finite state.actives selected valid.2.2.2 chosen
+        exact I1_caption_restart_scan_rank context.items.length context.candidates.length
+          state.lower selected.node.position state.remaining.length
+          (context.candidates.filter (fun p => decide (selected.node.position ≤ p))).length
+          progress.1 (by have := ordered.2.1; omega) (filterCount _ _)
+      · cases advanced
+        refine ⟨rescueScanValid context state position rest source valid,?_⟩
+        exact I1_caption_restart_scan_rank context.items.length context.candidates.length
+          state.lower (position+1) state.remaining.length rest.length
+          (by have := ordered.1; omega) (by have := ordered.2.1; omega) restSize
+    · cases advanced
+      refine ⟨normalScanValid context state position rest source valid,?_⟩
+      simpa only [captionStateRank,source,List.length_cons] using
+        I1_caption_ordinary_scan_rank context.items.length context.candidates.length state.lower rest.length
+
+/-- There is no infinite scan, including arbitrarily many possible
+    pushOut restarts and overfull rescues. No retry limit or fuel bound is
+    added to the implementation's transition rules. -/
+theorem I1_caption_full_scan_terminates (context : CaptionScanContext)
+    (states : Nat → CaptionScanState)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (initial : CaptionScanValid context (states 0))
+    (infinite : ∀ index, captionScanNext context (states index) = some (states (index+1))) : False := by
+  have valid : ∀ index, CaptionScanValid context (states index) := by
+    intro index
+    induction index with
+    | zero => exact initial
+    | succ index ih =>
+      exact (I1_caption_full_scan_step context (states index) (states (index+1)) original ih (infinite index)).1
+  have decreases : ∀ index,
+      captionStateRank context (states (index+1)) < captionStateRank context (states index) :=
+    fun index => (I1_caption_full_scan_step context (states index) (states (index+1))
+      original (valid index) (infinite index)).2
+  have bounded : ∀ index, captionStateRank context (states index)+index ≤ captionStateRank context (states 0) := by
+    intro index
+    induction index with
+    | zero => exact Nat.le_refl _
+    | succ index ih =>
+      simp only [Nat.succ_eq_add_one]
+      have drop := decreases index
+      omega
+  have exhausted := bounded (captionStateRank context (states 0)+1)
+  omega
+
+theorem I1_caption_full_scan_start_valid (context : CaptionScanContext)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates) :
+    CaptionScanValid context ⟨0,context.candidates,[captionInitialActive]⟩ := by
+  refine ⟨Nat.zero_le _,Nat.le_refl _,original,?_⟩
+  intro node _
+  exact Nat.zero_le _
+
+
+/-- The ordered-domain assumption is derived from the item scanner,
+    including explicit/pattern hyphen filtering and preceding-box glue. -/
+theorem I1_caption_generated_scan_order (patterns prevBox : Bool) (start : Nat)
+    (items : List CaptionItemKind) :
+    CaptionCandidatesOrdered start (start+items.length)
+      (captionBreakIndices patterns prevBox start items) := by
+  induction items generalizing start prevBox with
+  | nil => trivial
+  | cons item tail ih =>
+    have later := ih (decide (item = .box)) (start+1)
+    have tailOrdered : CaptionCandidatesOrdered (start+1) (start+(item::tail).length)
+        (captionBreakIndices patterns (decide (item = .box)) (start+1) tail) :=
+      by simpa only [List.length_cons,Nat.add_assoc,Nat.add_comm,Nat.add_left_comm] using later
+    simp only [captionBreakIndices]
+    split
+    · exact ⟨Nat.le_refl _,by simp only [List.length_cons]; omega,tailOrdered⟩
+    · exact candidatesWeaken (start+1) start _ _ tailOrdered (Nat.le_succ _)
+
+/-- Whole-scan termination starts from the actual item-derived candidate
+    list, rather than assuming that a caller supplies an ordered list. -/
+theorem I1_caption_generated_scan_terminates (context : CaptionScanContext) (patterns : Bool)
+    (source : context.candidates = captionBreakIndices patterns false 0 context.items)
+    (states : Nat → CaptionScanState)
+    (start : states 0 = ⟨0,context.candidates,[captionInitialActive]⟩)
+    (infinite : ∀ index, captionScanNext context (states index) = some (states (index+1))) : False := by
+  have original : CaptionCandidatesOrdered 0 context.items.length context.candidates := by
+    rw [source]
+    simpa only [Nat.zero_add] using I1_caption_generated_scan_order patterns false 0 context.items
+  apply I1_caption_full_scan_terminates context states original
+  · rw [start]
+    exact I1_caption_full_scan_start_valid context original
+  · exact infinite
+
+private def captionRestartFixture : CaptionScanContext :=
+  { items := [.box,.glue,.box,.penalty (-10000) false], candidates := [1,3],
+    forced := fun position => decide (position = 3), flagged := fun _ => false,
+    evaluate := fun position _ => ⟨2,0,false,decide (position = 1)⟩,
+    finite := fun _ _ => true, overflow := fun _ _ => 0, allowOverfull := true }
+
+example : captionBreakIndices true false 0 captionRestartFixture.items =
+    captionRestartFixture.candidates := by decide
+
+/-- A loose earlier break is retried from the complete source candidate
+    list, then rescue consumes the final forced break. Dropping the old
+    tail at pushOut would lose that forced break instead. -/
+example :
+    (((captionScanNext captionRestartFixture ⟨0,[1,3],[captionInitialActive]⟩).bind
+      (captionScanNext captionRestartFixture)).bind
+      (captionScanNext captionRestartFixture)).map
+      (fun state => (state.lower,state.remaining,state.actives.map
+        (fun node => (node.position,node.lineCount,node.fitness,node.history)))) =
+    some (4,[],[(4,2,3,[(3,3),(1,2)])]) := by rfl
+
 
 end GolemPagination
