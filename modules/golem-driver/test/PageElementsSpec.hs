@@ -124,7 +124,7 @@ footnoteTests =
           r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider}
           [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d] @?= [(DiagnosticCode "G07102", "注の番号 8 は、[notes] の mark-format {n:note-symbols} で表せません")]
           brWritten r @?= [],
-    testCase "PDF: horizontal, note-mark size 0.65zw sets the mark at that size, raised to the top of the em box (ADR 0344 I1)" $ do
+    testCase "ADR 0344 I1: PDF: horizontal, note-mark size 0.65zw sets the mark at that size, raised to the top of the em box" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           s = 10 :: Rational
@@ -137,7 +137,7 @@ footnoteTests =
           assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
           assertBool (show (x1, xj)) (xj >= x1 + m / 2)
         other -> assertFailure (show other),
-    testCase "PDF: vertical, note-mark size 0.65zw keeps the right end of the mark column half the size right of the centre line (ADR 0344 I1)" $ do
+    testCase "ADR 0344 I1: PDF: vertical, note-mark size 0.65zw keeps the right end of the mark column half the size right of the centre line" $ do
       content <- miniPdf fakeProvider True (pdfStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sSp = maybe 0 (dimToSp 0) (parseDim "13Q")
@@ -161,7 +161,7 @@ footnoteTests =
             _ -> Nothing
       marks @?= ["1)"]
       map start firsts @?= [Just ("1)", "甲")],
-    testCase "PDF: note-mark size 0.65zw changes page contents (ADR 0344 I1)" $ do
+    testCase "ADR 0344 I1: PDF: note-mark size 0.65zw changes page contents" $ do
       let src = "漢[note: 注。]字\n"
       a <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.note-mark]\nsize = \"0.65zw\"\n") src [] >>= inflateAll
       c <- miniPdf fakeProvider True horizontalStyle src [] >>= inflateAll

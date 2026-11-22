@@ -770,7 +770,7 @@ if grep -qxF "cabal.project.local: package a" "$WORK/err"; then ok; else ng "wer
 
 # Exercise the job-list query and warning scan together (Golem ADR 0349).
 run sh "$HERE/test-warning-job-list.sh"
-expect "CI warning job list I1-I4" 0
+expect "ADR 0349 I1, I2, I3, I4: CI warning job list" 0
 
 # ---------------------------------------------------------------- log-warnings.sh
 # (docs/adr/0245 section 5, W4, W5, W6): lines of the logs of 40eb98ce with
