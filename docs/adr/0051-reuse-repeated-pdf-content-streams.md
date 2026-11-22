@@ -1,6 +1,6 @@
 # ADR 0051: PDF の図版の `Contents` で繰り返し名指したストリームを、出力でも一度だけ書く
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0409-limit-the-outer-content-of-reused-pdf-streams.md"],"part":"使い回すときの出力の、外側の内容にほかの上限を設けないとした一文"}]
 
 ## 文脈
 

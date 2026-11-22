@@ -1,6 +1,6 @@
 # ADR 0414: [ADR 0370](0370-tracking-inline-boxes.md) と [ADR 0395](0395-bring-the-pull-request-ci-under-five-minutes.md) の実装が ADR を越えて決めた点を記録する
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

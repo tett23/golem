@@ -1,6 +1,6 @@
 # ADR 0409: 使い回す PDF の内容の外側にも 256 MiB の上限をかける
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
