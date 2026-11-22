@@ -614,9 +614,9 @@ fitFigureTests =
                   Left ds -> assertFailure (show ds) >> pure ([], 0, 0, 0, 0)
                   Right (_, pl) -> do
                     (pf, _, _) <- single (figuresIn pl)
-                    let advances = [w | line <- pfCaption pf, Box w c <- lineItems line, bcText c == "M"]
+                    let advances = [w | line <- pfCaption pf, Box w c <- lineItems (ptLine line), bcText c == "M"]
                     nubOrd advances @?= [mAdvance]
-                    pure (map captionText (pfCaption pf), pfCaptionSpan pf, pfImageLines pf, pfAlong pf, pfAcross pf)
+                    pure (map (captionText . ptLine) (pfCaption pf), pfCaptionSpan pf, pfImageLines pf, pfAlong pf, pfAcross pf)
           actual <- sequence [observe sans 476447 12, observe serif 591135 12]
           let sansExpected = (["F1\x3000MMMMMMMMMMMM"], 1, 3, 15 * pt, 45 * pt)
               serifExpected = (["F1\x3000MMMMMMMMM", "MMM"], 2, 2, 10 * pt, 30 * pt)

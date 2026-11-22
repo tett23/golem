@@ -172,6 +172,10 @@ Golem の回帰テストでは最初の段に本文 3 行を置き、次の段�
 読み飛ばしは最初のボックスと強制改行の前で止まり、描画用に改行位置のペナルティを加えても原稿のボックスは増えない。
 これは検査を通る、範囲が重ならない改行列についての証明である。
 Haskell の各パスが作る active な候補と、選ばれた履歴がこの検査を満たすことの対応は、なお未証明である。
+`CheckCaptionAssembly.hs` はボックスの幅、グルー、任意のペナルティ、幅のあるペナルティ、強制改行を組み合わせ、3 種の行長と 2 種の行末の伸びについて、実際の改行器を呼ぶ。
+実装が返す改行位置とボックス番号列を Lean の具体例として出力する。
+9,330 例について、改行列の検査を通り、実装の出力と原稿のボックス番号列が一致することを Lean でも確認した。
+これは有限の対応試験であり、上の未証明の一般的な対応を置き換えない。
 
 実フォントの対応試験は、横組み 12 字幅の段で、同じ図番号と「M」12 字を組む。
 Source Sans Pro のキャプションは 1 行、Source Serif のキャプションは 2 行になる。
@@ -252,6 +256,20 @@ Lean は任意の整数の段容量、予約行数、区切り行数で、繰り
 lean experiments/pagination-proof/Pagination.lean
 sh experiments/pagination-proof/check.sh
 ```
+
+ライブラリをビルドした後、実装の改行結果を Lean に渡して照合する。
+次のコマンドでは、現在の `golem-layout` のローカルのパッケージを明示し、別にインストール済みの同名パッケージとの混同を避ける。
+
+```sh
+work=$(mktemp -d)
+lean -o "$work/Pagination.olean" experiments/pagination-proof/Pagination.lean
+cabal exec -- runghc -hide-all-packages -package=base -package=text \
+  -package-id=golem-layout-0.1.0-inplace \
+  experiments/pagination-proof/CheckCaptionAssembly.hs --lean > "$work/CaptionExamples.lean"
+LEAN_PATH="$work" lean "$work/CaptionExamples.lean"
+rm -rf "$work"
+```
+
 
 `decidedSome`、`keepAllSome`、`needMore27`、`needMoreSome`、`needSpaceSome`、見出し後の本文行の具体的な証人は、Alloy CLI を用意して次のコマンドで照合する。
 
