@@ -1,6 +1,6 @@
 # ADR 0408: RGB を自動で CMYK 化しない原則と図版の色置換を区別する
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
