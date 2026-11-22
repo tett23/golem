@@ -1,6 +1,6 @@
 # ADR 0397: 段落ごとの行送りと寸法で指定する段落間隔
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

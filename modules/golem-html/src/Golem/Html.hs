@@ -493,6 +493,13 @@ topBlocks c = go Nothing Nothing 0 False
     nextSeparator rest = case filter displayed rest of
       next : _ -> isJust (separatorSpace next)
       _ -> False
+    -- blank lines are written before the next block unless a break or the end
+    -- comes first; the block before them keeps no margin on their side, so the
+    -- default margin of a paragraph is not added to them (root ADR 0398)
+    blankFollows rest = case break displayed rest of
+      (_, Block _ _ _ (ForcedBreak _) : _) -> False
+      (hidden, _ : _) -> sum [toInteger n | Block _ _ _ (BlankLines n) <- hidden] > 0
+      _ -> False
     styledBoundary before after html = case ["margin-block-start:0" | before] <> ["margin-block-end:0" | after] of
       [] -> html
       declarations -> let (open, rest) = T.breakOn ">" html in open <> " style=\"" <> T.intercalate ";" declarations <> "\"" <> rest
@@ -509,8 +516,10 @@ topBlocks c = go Nothing Nothing 0 False
       | Just (name, key) <- boxOf b =
           let (more, rest') = span (\x -> fmap snd (boxOf x) == Just key && not (startsPage x)) rest
               lastIndex = length more
-              followingSeparator = nextSeparator rest'
-           in blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (styledBoundary previous followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (previous && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
+              followingSeparator = nextSeparator rest' || blankFollows rest'
+              blanksBefore = max 0 (fromMaybe 0 blanks - after)
+              start = previous || blanksBefore > 0
+           in blankLines blanksBefore <> withBreak pending (styledBoundary start followingSeparator ("<div class=\"box box-" <> escapeXml name <> "\">\n" <> T.concat [render (start && i == 0) (followingSeparator && i == lastIndex) x | (i, x) <- zip [0 ..] (b : more)] <> "</div>\n")) <> go Nothing (Just 0) 0 False rest'
       | Just (before, after') <- separatorSpace b =
           let explicit = fromMaybe 0 blanks
               extra = if not previous && explicit > max after before then explicit - after else 0
@@ -524,7 +533,9 @@ topBlocks c = go Nothing Nothing 0 False
                   . T.replace ("margin-block-start:" <> tshow before <> "lh") ("margin-block-start:" <> tshow marginBefore <> "lh")
                   $ block c b
            in blankLines extra <> withBreak pending html <> go Nothing (Just 0) after' True rest
-      | otherwise = blankLines (max 0 (fromMaybe 0 blanks - after)) <> withBreak pending (render previous (nextSeparator rest) b) <> go Nothing (Just 0) 0 False rest
+      | otherwise =
+          let blanksBefore = max 0 (fromMaybe 0 blanks - after)
+           in blankLines blanksBefore <> withBreak pending (render (previous || blanksBefore > 0) (nextSeparator rest || blankFollows rest) b) <> go Nothing (Just 0) 0 False rest
     separatorSpace (Block sp _ _ (Separator name)) = case Map.lookup (sp, name) (bookSeparators (cBook c)) of
       Just (SeparatorTextAppearance before after _ _ _) -> Just (toInteger before, toInteger after)
       Just (SeparatorRuleAppearance before after _ _ _ _ _) -> Just (toInteger before, toInteger after)
@@ -698,7 +709,7 @@ separatorRuleSvg c sp name len weight color stroke =
         Just sw -> let (r, g, b) = cmykToRgb sw in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
         Nothing -> "currentColor"
       segment pos thick extra =
-        let coords = if vertical then " x1=\"" <> pos <> "%\" y1=\"0\" x2=\"" <> pos <> "%\" y2=\"100\"" else " x1=\"0\" y1=\"" <> pos <> "%\" x2=\"100\" y2=\"" <> pos <> "%\""
+        let coords = if vertical then " x1=\"" <> pos <> "%\" y1=\"0\" x2=\"" <> pos <> "%\" y2=\"100%\"" else " x1=\"0\" y1=\"" <> pos <> "%\" x2=\"100%\" y2=\"" <> pos <> "%\""
          in "<line" <> coords <> " stroke=\"" <> ink <> "\" stroke-width=\"" <> pt thick <> "\"" <> extra <> "/>"
       base = segment "50" weight ""
       svgBody = case stroke of

@@ -304,6 +304,7 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 文字の波括弧は `\{` と `\}` で書く（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
 
 PDF の図版の取り込みは、展開の合計と、ページの内容のストリームを改行でつないだ長さを、別々に 256 MiB までとする（[ADR 0359](./docs/adr/0359-imported-content-separators.md)）。
+同じストリームを何度も名指しするページで、そのストリームを一度だけ書いて呼ぶときも、呼び出しの行と改行を含めたページの内容を 256 MiB までとする（[ADR 0409](./docs/adr/0409-limit-the-outer-content-of-reused-pdf-streams.md)）。
 
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 
