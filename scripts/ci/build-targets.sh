@@ -18,7 +18,11 @@
 #                                        but golem, which no suite may
 #                                        build: build, which ci needs,
 #                                        still compiles them, as it did
-#                                        when one runner built all
+#                                        when one runner built all. An
+#                                        executable with buildable: False
+#                                        (under a condition, as golem-wasm
+#                                        off wasm32) is left out, as all
+#                                        leaves it out
 #   build-targets.sh golem [MODULES]     the executable golem alone: the
 #                                        outputs and the environment check
 #                                        use nothing else
@@ -39,8 +43,10 @@ case "$1" in
     for f in "$MODULES"/*/*.cabal; do
       [ -f "$f" ] || continue
       awk 'tolower($1) == "name:" && pkg == "" { pkg = $2 }
-        tolower($1) == "executable" { exes[++n] = $2 }
-        END { for (i = 1; i <= n; i++) if (exes[i] != "golem") print pkg ":exe:" exes[i] }' "$f"
+        /^[^ \t-]/ { in_exe = 0 }
+        tolower($1) == "executable" { exes[++n] = $2; in_exe = 1 }
+        in_exe && tolower($1) == "buildable:" && tolower($2) == "false" { off[n] = 1 }
+        END { for (i = 1; i <= n; i++) if (exes[i] != "golem" && !off[i]) print pkg ":exe:" exes[i] }' "$f"
     done
     ;;
   golem) echo golem-cli:exe:golem ;;

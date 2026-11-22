@@ -4999,12 +4999,12 @@ done
 bt() { sh "$HERE/build-targets.sh" "$@"; }
 : >"$WORK/in"
 # an executable beside golem, which only all built before root ADR 0416
-printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n\nexecutable plain-tool\n  main-is: M.hs\n\nExecutable golem\n  main-is: G.hs\n' >"$TS/golem-plain/golem-plain.cabal"
+printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n\nexecutable plain-tool\n  main-is: M.hs\n\nexecutable wasm-only\n  main-is: W.hs\n  if !arch(wasm32)\n    buildable: False\n\nExecutable golem\n  main-is: G.hs\n' >"$TS/golem-plain/golem-plain.cabal"
 run bt all "$TS"
 expect "build-targets: all builds everything and peg-hs" 0 "all
 peg-cli:exe:peg-hs"
 run bt rest "$TS"
-expect "build-targets: rest builds the suites of rest, peg-hs and the executables but golem (root ADR 0416)" 0 "$(test_suites rest "$TS")
+expect "build-targets: rest builds the suites of rest, peg-hs and the executables but golem and those not buildable (root ADR 0416)" 0 "$(test_suites rest "$TS")
 peg-cli:exe:peg-hs
 golem-plain:exe:plain-tool"
 run bt driver-a "$TS"

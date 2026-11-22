@@ -824,7 +824,7 @@ aarch64 では四つのランナーでビルドし、x86-64 と同じく `tests-
 
 ランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
-`tests-rest` は、`peg-hs` と、テストのスイートが組まない `golem` のほかの実行ファイルも組む。
+`tests-rest` は、`peg-hs` と、テストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
 `dist-newstyle` を保存するジョブ `cache-dist` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
 `ci` は `cache-dist` を待たないので、`cabal build all` はプルリクエストの CI の時間に入らない（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 ビルドの計画を読む検査（`scripts/ci/test-only-deps.sh` と `scripts/ci/doc-deps.sh`）がどのランナーでもすべての部品を見るよう、計画を `cabal build all` のものに作り直し、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
