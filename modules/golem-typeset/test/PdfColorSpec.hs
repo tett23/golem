@@ -13,7 +13,42 @@ import Test.Tasty.HUnit
 
 pdfColorTests :: [TestTree]
 pdfColorTests =
-  [ testCase "root ADR 0403 I1: reversed PDF image Decode is applied before recoloring" $ do
+  [ testCase "root ADR 0403 I1: a colour-key mask compares samples before inverse Decode" $ do
+      let fields = [("Mask", P.OArr (map P.OInt [255, 255, 0, 0, 0, 0])), ("Decode", P.OArr (map P.OInt [1, 0, 1, 0, 1, 0]))] <> imageFields 2
+          original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.pack [255, 0, 0, 127, 127, 127]))]}
+          analyze input
+            | P.imgAlpha input == Just (P.Alpha 8 (BS.pack [0, 255])), P.imgData input == BS.pack [0, 255, 255, 128, 128, 128] = analyzeRaster (0, 100, 100, 0) input
+            | otherwise = Left "unexpected mask or sample order"
+      case recolorImportedPage (0, 100, 100, 0) analyze original of
+        Right (Just _) -> pure ()
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: invalid colour-key ranges are rejected" $ do
+      let original = imagePage {P.ipObjects = [(1, P.OStream (("Mask", P.OArr (map P.OInt [0, 256, 0, 0, 0, 0])) : imageFields 3) rgbPixels)]}
+      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
+        Left _ -> pure ()
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: a colour-key PDF mask becomes an equivalent gray soft mask" $ do
+      let mask = P.OArr (map P.OInt [255, 255, 0, 0, 0, 0])
+          original = imagePage {P.ipObjects = [(1, P.OStream (("Mask", mask) : ("Interpolate", P.OBool True) : imageFields 2) (BS.pack [255, 0, 0, 128, 128, 128]))]}
+      case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
+        Right (Just result) -> do
+          lookup 1 (P.ipObjects result) @?= lookup 1 (P.ipObjects original)
+          let outputs = [(entries, bytes) | (key, P.OStream entries bytes) <- P.ipObjects result, key < 0, lookup "ColorSpace" entries == Just (P.OName "DeviceCMYK")]
+          case outputs of
+            [(entries, bytes)] -> do
+              lookup "Mask" entries @?= Nothing
+              BS.drop 4 bytes @?= BS.pack [0, 127, 127, 0]
+              case lookup "SMask" entries of
+                Just (P.ORef reference) -> case lookup reference (P.ipObjects result) of
+                  Just (P.OStream maskFields alpha) -> do
+                    lookup "ColorSpace" maskFields @?= Just (P.OName "DeviceGray")
+                    lookup "Interpolate" maskFields @?= Just (P.OBool True)
+                    alpha @?= BS.pack [0, 255]
+                  other -> assertFailure (show other)
+                other -> assertFailure (show other)
+            other -> assertFailure (show other)
+        other -> assertFailure (show other),
+    testCase "root ADR 0403 I1: reversed PDF image Decode is applied before recoloring" $ do
       let fields = ("Decode", P.OArr (map P.OInt [1, 0, 1, 0, 1, 0])) : imageFields 3
           original = imagePage {P.ipObjects = [(1, P.OStream fields (BS.map (255 -) rgbPixels))]}
       case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
