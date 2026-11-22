@@ -99,7 +99,7 @@ compressedNoteMarksTests =
           a <- markOf normal n
           b <- markOf flat n
           assertEqual (T.unpack format <> " " <> show n) a b,
-    testCase "ADR 0381: the mark at the start of a note body is set flat as the mark in the text" $ do
+    testCase "ADR 0381 I1: the mark at the start of a note body is set flat as the mark in the text" $ do
       normal <- envOf "（{n:kanji}）" True False
       flat <- envOf "（{n:kanji}）" True True
       fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "（{n:kanji}）")

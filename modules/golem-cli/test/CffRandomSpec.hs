@@ -43,7 +43,7 @@ cffRandomTests =
             [] -> assertFailure "no build",
       testGroup
         "ADR 0390 I8, I9: no PDF after G08107, G08108 or G08109, in dev and in prod"
-        [ testCase (profile <> ": " <> show text) $ withBook text $ \book -> do
+        [ testCase ("ADR 0390 I8, I9: " <> profile <> ": " <> show text) $ withBook text $ \book -> do
             (code, out) <- build book [] ["--target", "pdf", "--profile", profile, "--format", "json"]
             (code, codesOf out) @?= (ExitFailure 1, expected)
             pdfOf book >>= (@?= Nothing)

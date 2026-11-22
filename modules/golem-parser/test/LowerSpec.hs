@@ -226,7 +226,7 @@ tests =
           locValue n @?= "price"
           length cmds @?= 2
         other -> assertFailure (show other),
-      testCase "ADR 0391 I1 I2: only a line-start @set is a declaration" $ do
+      testCase "ADR 0391 I1, I2: only a line-start @set is a declaration" $ do
         case ast "@set x = 3\n\n[= x]\n" of
           [SetVar n _, Paragraph _] -> locValue n @?= "x"
           other -> assertFailure (show other)
