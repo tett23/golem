@@ -8853,6 +8853,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。「[golem inspect](#golem-inspect)」の節を参照 |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。「[golem explain](#golem-explain)」の節を参照 |
+| `golem kinsoku [PATH]` | `PATH` から親へたどって最も近いプロジェクトの、解決した禁則とぶら下げの設定を、一行の JSON で標準出力に書く（[root ADR 0417](adr/0417-print-resolved-kinsoku-settings.md)）。「[golem kinsoku](#golem-kinsoku)」の節を参照 |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 ### golem new
@@ -9021,6 +9022,48 @@ G07002 は、`[page]` の `bleed` に 0 より大きい長さを書くよう案�
 diagnostics は、ほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コード 1 とする。
 表示は、diagnostics があっても、作れる限り標準出力に書く。
 引数のファイルがないか通常のファイルでなければ、G03002 とし、何も表示しない。
+
+### golem kinsoku
+
+`golem kinsoku [PATH]` は、プロジェクトの解決した組版の設定のうち、禁則の強さ（`kinsoku`）とぶら下げ（`hanging-punctuation`）を JSON で出す（[root ADR 0417](adr/0417-print-resolved-kinsoku-settings.md)）。
+エディタが、`style.toml` を自分で読まずに、Golem が解決した値を折り返しに使うためのコマンドである。
+出力はいつも JSON で、`--format` は持たない。
+
+プロジェクトの根は、`PATH` から親へたどって探す。
+`PATH` はプロジェクトのフォルダか、その中のファイルであり、省くと今のフォルダになる。
+`PATH` を絶対パスにし、字面の上で `.` と末尾の区切りを除き、`..` をその前の名前と打ち消した後、それがフォルダならそこから、そうでなければ存在する最も近い親のフォルダから探し始める。
+そのため、まだ保存していないファイルのパスも渡せる。
+始めのフォルダから親へたどり、最初に `manifest.toml` を持つフォルダを根とする。
+この探し方は LSP がワークスペースの根を探すのと同じで、golem-project の `findProjectRoot` が持つ。
+ほかのコマンドは、今のフォルダを根とし、親へたどらない。
+
+根が見つかったら、根の `style.toml` だけを読み、`loadStyle` で解決する。
+マニフェストの中身と原稿は読まない。
+そのため、章のファイルが無いことやマニフェストの誤りは、結果を変えない。
+`style.toml` が無いときは既定値とし、G03023 の notice は書かない。
+
+標準出力には、次の形の JSON を一行で書き、末尾に改行を一つ置く。
+キーの順は `schema`、`project`、`composition` である。
+
+```json
+{"schema":1,"project":"/path/to/project","composition":{"kinsoku":"strict","hangingPunctuation":false}}
+```
+
+各キーの値は次のとおりである。
+
+- `schema`：出力の形の版で、今は 1 である。キーを足すときは上げず、キーを除くか意味を変えるときに上げる。
+- `project`：根の絶対パスである。シンボリックリンクは解かず、末尾に区切りを付けない。根が見つからないときは `null` とし、`composition` を既定値にする。
+- `composition.kinsoku`：`"strict"` か `"loose"` である。既定は `"strict"` である。
+- `composition.hangingPunctuation`：ぶら下げるかどうかの真偽である。既定は偽である。
+
+`composition` の値は、`style.toml` に書いた値か、省いたときの既定値であり、どちらなのかは区別しない。
+値を書いたときの終了コードは 0 である。
+
+`style.toml` の誤りは、値を出さずに終わらせる。
+`loadStyle` が誤りを返したとき（TOML として読めない、`kinsoku = "medium"` など）は、diagnostics を human の形で標準エラー出力に書き、標準出力には何も書かず、終了コード 1 で終える。
+notice（G03100 など）だけのときは、それを標準エラー出力に書き、JSON を書いて終了コード 0 とする。
+diagnostic のファイルのパスは、今のフォルダが根とは限らないので、`style.toml` の絶対パスとする。
+引数が二つ以上あるなどの使い方の誤りは、終了コード 2 とする。
 
 ### golem explain
 
