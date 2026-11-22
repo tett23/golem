@@ -8,7 +8,7 @@ import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver (BuildOptions (..), BuildResult (..), Target (..), build, defaultOptions)
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (Slotted (..), poSlots)
 import Golem.Project.Files (Files (..))
 import Golem.Syntax
 import Golem.Typeset (PdfInput (..), PdfLayout (..), layoutPdf, renderPdfLeafTexts, renderPdfStructure)
