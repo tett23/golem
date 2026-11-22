@@ -56,7 +56,7 @@ tableFileTests =
   testGroup
     "table files (golem-eval ADR 0004)"
     [ -- docs/adr/0184
-      testCase "ADR 0343 I1 I2: assetRefs collects only a valid positional table path" $
+      testCase "ADR 0343 I1, I2: assetRefs collects only a valid positional table path" $
         withTables [("a.gm", "@table data/t.csv\n\n@table src=data/u.csv\n\n@table data/v.csv src=data/u.csv\n\n@table data/v.csv data/v.csv\n\n@table data/v.csv [= \"data/u.csv\"]\n")] [("data/t.csv", "a\n"), ("data/u.csv", "a\n"), ("data/v.csv", "a\n")] $ \tmp -> do
           e <- evaluateProject Dev tmp >>= either (const (assertFailure "the project does not load")) pure
           [r | sf <- Map.elems (projectSources (evProject e)), sfPath sf == "a.gm", r <- assetRefs (sfAst sf)]
