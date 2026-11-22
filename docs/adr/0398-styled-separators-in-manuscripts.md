@@ -1,6 +1,6 @@
 # ADR 0398: 原稿の区切りをプロジェクトのスタイルで組む
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
