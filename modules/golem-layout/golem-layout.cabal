@@ -85,7 +85,8 @@ test-suite golem-layout-test
   -- -N needs it (docs/adr/0293)
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N -qg -A64m"
-  other-modules:    BookPartsSpec
+  other-modules:    BookPartsEnum
+                    BookPartsSpec
                        AkiTableSpec
                     AlignSpec
                     CharClassSpec
