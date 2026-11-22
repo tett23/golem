@@ -104,6 +104,11 @@ function* cases() {
   yield ['[= [[], {a: 1}, {}]]\n', [],
     /EArray \[EArray \[\], EHash \[\("a", ENat 1\)\], EHash \[\]\]/u];
   yield ['[f answer=ok]\n', [], /Keyword \("answer"\) \(Word "ok"\)/u];
+  // root ADR 0351 I2/I3 with root ADR 0391 I1/I2: declarations keep @;
+  // plain set text remains a paragraph, including its original spaces.
+  yield ['@set x = 3\n', [], /SetVar \("x"\) \(ENat 3\)/u];
+  yield ['set x = 3\n', [], /Paragraph \[Text "set x = 3"\]/u];
+  yield ['set   x = 3\n', [], /Paragraph \[Text "set   x = 3"\]/u];
 }
 
 // Compare each comment's text and its position in the non-trivia token
@@ -146,6 +151,8 @@ try {
       }
       assert.deepEqual(positions(), expectedComments);
       run('fmt', file);
+      if (input.startsWith('set ')) assert.equal(readFileSync(file, 'utf8'), input,
+        'root ADR 0351 I2/I3 and root ADR 0391 I2: formatting preserves plain set text byte for byte');
       assert.equal(ast(), expectedAst);
       assert.deepEqual(positions(), formattedComments);
       const first = readFileSync(file);

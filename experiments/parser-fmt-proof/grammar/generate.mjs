@@ -208,11 +208,11 @@ const keywordFullyProved = rule('Keyword') === "('true' / 'false' / 'nil') ![a-z
   keywordAst.alts[0].items.every(item => item.bind === null) &&
   keywordAst.alts[0].action?.trim() === '()' && keywordAst.alts[0].constructor === null;
 // PegModelTest.generated_block_command_start proves the @ + lowercase
-// branch and preserves the actual SetDeclarationStart fallback result.
+// branch; plain set text has no declaration fallback (root ADR 0391).
 const blockCommandStartAst = ast?.rules.find(rule => rule.name === 'BlockCommandStart');
-const blockCommandStartFullyProved = rule('BlockCommandStart') === "'@' [a-z] / SetDeclarationStart" &&
+const blockCommandStartFullyProved = rule('BlockCommandStart') === "'@' [a-z]" &&
   blockCommandStartAst?.params.length === 0 && blockCommandStartAst.templateParams.length === 0 &&
-  blockCommandStartAst.alts.length === 2 && blockCommandStartAst.alts.every(alt =>
+  blockCommandStartAst.alts.length === 1 && blockCommandStartAst.alts.every(alt =>
     alt.action?.trim() === '()' && alt.constructor === null &&
     alt.items.every(item => item.bind === null));
 // PegModelTest.generated_skip_all proves that .* consumes every input to EOF.

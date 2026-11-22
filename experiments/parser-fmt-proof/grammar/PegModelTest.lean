@@ -1534,53 +1534,19 @@ theorem prefix_class_sequence (grammar : PegModel.Grammar) (env : PegModel.Param
           · simp [PegModel.runSequence, literal, classHit, hp, prefixClassExpected, rest, hc] <;> rfl
           · simp [PegModel.runSequence, literal, classHit, hp, prefixClassExpected, rest, hc] <;> rfl
 
-private theorem single_ref_sequence (parse : PegModel.Params → PegModel.Expr → List Char → PegModel.ParseResult)
-    (boundLength : PegModel.Params → PegModel.Expr → List Char → Except String (Option Nat))
-    (env : PegModel.Params) (name : String) (args : List String) (input : List Char) :
-    PegModel.runSequence parse boundLength env [.ref name args] input =
-      parse env (.ref name args) input := by
-  cases hit : parse env (.ref name args) input with
-  | error reason => simp [PegModel.runSequence, hit]; rfl
-  | ok result =>
-      cases result with
-      | none => simp [PegModel.runSequence, hit]; rfl
-      | some rest => simp [PegModel.runSequence, hit]; rfl
-
-theorem block_command_start_choice (grammar : PegModel.Grammar) (env : PegModel.Params)
-    (input : List Char) (fuel : Nat) :
-    PegModel.recognizeEnv grammar env (fuel + 2)
-      (.choice [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"],
-        [.ref "SetDeclarationStart" []]]) input =
-      (match prefixClassExpected input with
-      | some rest => .ok (some rest)
-      | none => PegModel.recognizeEnv grammar env (fuel + 1)
-          (.ref "SetDeclarationStart" []) input) := by
-  have fuelEq : fuel + 2 = (fuel + 1) + 1 := by omega
-  rw [fuelEq]
-  change PegModel.runChoices
-    (fun items => PegModel.runSequence
-      (fun scope item rest => PegModel.recognizeEnv grammar scope (fuel + 1) item rest)
-      _ env items input)
-    [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"],
-      [.ref "SetDeclarationStart" []]] = _
-  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
-  rw [prefix_class_sequence grammar env _ input fuel]
-  rw [single_ref_sequence]
-  cases h : prefixClassExpected input <;> simp [h] <;> rfl
-
+-- root ADR 0391 removed the unprefixed declaration branch. Every input
+-- now has the pure @ + lowercase prefix result, including an ordinary miss.
 theorem generated_block_command_start (input : List Char) (fuel : Nat) :
     PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 3)
-      (.ref "BlockCommandStart" []) input =
-      (match prefixClassExpected input with
-      | some rest => .ok (some rest)
-      | none => PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 1)
-          (.ref "SetDeclarationStart" []) input) := by
-  have fuelEq : fuel + 3 = (fuel + 2) + 1 := by omega
-  rw [fuelEq]
+      (.ref "BlockCommandStart" []) input = .ok (prefixClassExpected input) := by
   change PegModel.recognizeEnv Generated.pegGrammar [] (fuel + 2)
-    (.choice [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"],
-      [.ref "SetDeclarationStart" []]]) input = _
-  exact block_command_start_choice Generated.pegGrammar [] input fuel
+    (.choice [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"]]) input = _
+  change PegModel.runChoices (fun items => PegModel.runSequence
+    (fun scope item rest => PegModel.recognizeEnv Generated.pegGrammar scope (fuel + 1) item rest)
+    _ [] items input) [[.lit "@" "'@'", .charClass [(97, 122)] "[a-z]"]] = _
+  simp only [PegModel.runChoices, PegModel.foldChoice, List.foldlM]
+  rw [prefix_class_sequence Generated.pegGrammar [] _ input fuel]
+  cases prefixClassExpected input <;> rfl
 
 theorem star_any_total (grammar : PegModel.Grammar) (env : PegModel.Params)
     (input : List Char) (extra : Nat) :

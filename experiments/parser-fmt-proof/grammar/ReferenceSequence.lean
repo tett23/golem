@@ -96,8 +96,7 @@ private def chains : List (String × Nat × List String) :=
    ("AddExpr", 1, ["MulExpr"]), ("MulExpr", 1, ["UnaryExpr"]),
    ("UnaryExpr", 0, ["NegOp", "ES", "UnaryExpr"]), ("UnaryExpr", 1, ["PowExpr"]),
    ("PowExpr", 0, ["PostfixExpr", "ES", "PowOp", "ES", "UnaryExpr"]), ("PowExpr", 1, ["PostfixExpr"]),
-   ("ParenExpr", 0, ["LParen", "ES", "Expr", "ES", "RParen"]),
-   ("BlockStart", 6, ["SetDeclarationStart"])]
+   ("ParenExpr", 0, ["LParen", "ES", "Expr", "ES", "RParen"])]
 
 theorem generated_chains :
     chains.map (fun (name, idx, _) => alternative name idx) =

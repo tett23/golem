@@ -23,7 +23,7 @@ try {
   const baselineUnsupported = [...strict.stderr.matchAll(/^unsupported [A-Za-z][A-Za-z0-9]* choice /gm)].length;
   assert.doesNotMatch(strict.stderr, /^unsupported (Delim|TableDelimiter) choice /m,
     'root ADR 0351 I1/I2: delimiter and indented delimiter rows require arbitrary-input proofs');
-  assert.ok(baselineUnsupported <= 40, 'the full grammar model must not regress in unsupported choices');
+  assert.ok(baselineUnsupported <= 38, 'the full grammar model must not regress in unsupported choices');
   assert.equal(strict.status === 0, baselineUnsupported === 0,
     'strict generation succeeds exactly when every choice is supported');
   for (const line of strict.stderr.split('\n').filter(line => line.startsWith('unsupported '))) {
@@ -71,17 +71,16 @@ try {
     [join(here, 'generate.mjs'), changedRowBreak, generated], { encoding: 'utf8' });
   assert.match(strictRowBreak.stderr, /unsupported RowBreak choice \d+ at .*'x'/,
     'a changed literal newline/EOF choice must return to the report');
-  assert.doesNotMatch(strict.stderr, /^unsupported SetDeclarationStart choice [23] at /m,
-    'the proved character-class lookahead/EOF choice must be covered');
-  const changedSetStart = join(work, 'ChangedSetDeclarationStart.hpeg');
-  const setStartMutation = original.replace(/^SetDeclarationStart <- .*$/m,
-    line => line.replace(' / !.)', " / !. / 'x')"));
+  assert.doesNotMatch(strict.stderr, /^unsupported BlockCommandStart choice /m,
+    'root ADR 0351 I1/I2 and root ADR 0391 I1/I2: only the @ prefix starts a declaration');
+  const changedSetStart = join(work, 'ChangedBlockCommandStart.hpeg');
+  const setStartMutation = original.replace("BlockCommandStart <- '@' [a-z]", "BlockCommandStart <- '@' [a-z] 'x'");
   assert.notEqual(setStartMutation, original);
   writeFileSync(changedSetStart, setStartMutation);
   const strictSetStart = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedSetStart, generated], { encoding: 'utf8' });
-  assert.match(strictSetStart.stderr, /unsupported SetDeclarationStart choice \d+ at .*'x'/,
-    'a changed character-class lookahead/EOF choice must return to the report');
+  assert.match(strictSetStart.stderr, /unsupported BlockCommandStart choice \d+ at .*'x'/,
+    'root ADR 0351 I1/I2: a changed command prefix must invalidate its recognition proof');
   assert.doesNotMatch(strict.stderr, /^unsupported (HeadInline|Inline|SlotInline|CellInline) choice /m,
     'single-reference ordered choices are covered by the generic error-preserving proof');
   const changedRefChoice = join(work, 'ChangedRefChoice.hpeg');
@@ -158,7 +157,8 @@ try {
     ['', null, 0],
     ['# Title\n', 'Heading', 0],
     ['@set x = 1\n', 'BlockCommand', 0],
-    ['set x = 1\n', 'BlockCommand', 0],
+    ['set x = 1\n', 'Paragraph', 0, 'Text@0..9 "set x = 1"'],
+    ['set   x = 3\n', 'Paragraph', 0, 'Text@0..11 "set   x = 3"'],
     ['@set x = 1+2\n', 'BlockCommand', 0, 'AddOp@10..11 "+"'],
     ['@foo\n', 'BlockCommand', 0],
     ['@set x = 2*3\n', 'BlockCommand', 0, 'MulOp@10..11 "*"'],
@@ -526,7 +526,7 @@ try {
   const strictMarker = spawnSync(process.execPath,
     [join(here, 'generate.mjs'), changedMarker, generated], { encoding: 'utf8' });
   assert.match(strictMarker.stderr, /^unsupported BlockStart .*: '-' \[ \\t\] 'x'$/m);
-  assert.match(strict.stderr, /^unsupported SetDeclarationStart /m);
+  assert.doesNotMatch(original, /^SetDeclarationStart <- /m, 'root ADR 0391 I2: no unprefixed declaration rule remains');
   const changedSkipped = join(work, 'ChangedSkipped.hpeg');
   writeFileSync(changedSkipped, original.replace("/ '..' { () }", "/ '..' 'x' { () }"));
   const strictSkipped = spawnSync(process.execPath,

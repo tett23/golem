@@ -158,7 +158,7 @@ private def blockMarkers : List (Nat × Marker) :=
    (2, .followedBy "+" "'+'" [(32, 32), (9, 9)] "[ \\t]"),
    (3, .followedBy "=" "'='" [(32, 32), (9, 9), (58, 58)] "[ \\t:]"),
    (4, .literal "|" "'|'"), (5, .literal "```" "'```'"),
-   (7, .followedBy "@" "'@'" [(97, 122)] "[a-z]"), (8, .literal "@!" "'@!'")]
+   (6, .followedBy "@" "'@'" [(97, 122)] "[a-z]"), (7, .literal "@!" "'@!'")]
 
 theorem generated_block_marker_shapes :
     ((Generated.pegGrammar.rules.find? (fun r => r.name == "BlockStart")).map
