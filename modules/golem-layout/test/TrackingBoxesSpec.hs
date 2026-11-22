@@ -47,7 +47,8 @@ tests =
       -- is added once between a tate-chu-yoko or ruby box and the character
       -- next to it, and nothing is added after the last box of a line.
       testCase "root ADR 0414 I1: a tate-chu-yoko followed by an ordinary character adds the tracking between them" $
-        forM_ trackings0414 $ \t -> added t [tcy, char] @?= fromIntegral t,
+        forM_ trackings0414 $
+          \t -> added t [tcy, char] @?= fromIntegral t,
       testCase "root ADR 0414 I1: an ordinary character followed by a ruby adds the tracking between them" $
         forM_ trackings0414 $ \t -> do
           added t [char, ruby] @?= fromIntegral t
@@ -57,7 +58,8 @@ tests =
           added t [tcy] @?= 0
           added t [char, tcy] @?= fromIntegral t,
       testCase "root ADR 0414 I1: a tracking of 0 adds no space" $
-        forM_ (sequences0414 3) $ \xs -> added 0 xs @?= 0,
+        forM_ (sequences0414 3) $
+          \xs -> added 0 xs @?= 0,
       testCase "root ADR 0414 I1: every sequence of tate-chu-yoko, mono ruby, group ruby and ordinary characters of length 0 to 3 adds the tracking once between neighbours" $
         forM_ (sequences0414 3) $ \xs -> forM_ trackings0414 $ \t ->
           added t xs @?= fromIntegral (max 0 (length xs - 1) * t)
