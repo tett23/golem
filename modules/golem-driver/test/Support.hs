@@ -207,6 +207,16 @@ later file of the same path replaces an earlier one.
 writeFiles :: FilePath -> [(FilePath, BS.ByteString)] -> IO ()
 writeFiles dir = mapM_ (\(to, bytes) -> createDirectoryIfMissing True (takeDirectory (dir </> to)) >> BS.writeFile (dir </> to) bytes)
 
+{- | Makes HTML and EPUB of the project in a directory embed the fonts:
+fonts = "embed" in [targets.html] and [targets.epub] of its manifest
+(docs/adr/0423), for the tests of the families and the files of the fonts.
+-}
+embedFonts :: FilePath -> IO ()
+embedFonts dir = do
+  manifest <- TIO.readFile (dir </> "manifest.toml")
+  let embed t = T.replace ("[targets." <> t <> "]\n") ("[targets." <> t <> "]\nfonts = \"embed\"\n")
+  TIO.writeFile (dir </> "manifest.toml") (embed "epub" (embed "html" manifest))
+
 -- | 'writeFiles' with texts, written in UTF-8.
 writeTexts :: FilePath -> [(FilePath, T.Text)] -> IO ()
 writeTexts dir = writeFiles dir . map (fmap TE.encodeUtf8)

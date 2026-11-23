@@ -27,6 +27,9 @@ module Golem.Project.Style
     resolvedParagraphSpacing,
     GridPosition (..),
     FontRole (..),
+    GenericFamily (..),
+    genericFamilyValues,
+    genericFamilyName,
     Feature (..),
     FeatureSite (..),
     charFeatures,
@@ -322,9 +325,26 @@ data FontRole = FontRole
     {- | the coordinates of axes by their tags, over those of the instance,
     in the order of the tags (Golem ADR 0358); finite numbers, checked
     against the font when it is loaded
-    -} frAxes :: ![(Text, Double)]
+    -} frAxes :: ![(Text, Double)],
+    -- | the generic family HTML and EPUB end the role's font-family with (docs/adr/0423); unused by the PDF
+    frGenericFamily :: !(Maybe GenericFamily)
   }
   deriving stock (Eq, Show)
+
+-- | The generic families a role can name (docs/adr/0423): Mincho-like, Gothic-like, and monospace.
+data GenericFamily = GenericSerif | GenericSansSerif | GenericMonospace
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The values of generic-family, as CSS writes them (docs/adr/0423).
+genericFamilyValues :: [(Text, GenericFamily)]
+genericFamilyValues = [(genericFamilyName g, g) | g <- [minBound .. maxBound]]
+
+-- | The CSS name of a generic family.
+genericFamilyName :: GenericFamily -> Text
+genericFamilyName = \case
+  GenericSerif -> "serif"
+  GenericSansSerif -> "sans-serif"
+  GenericMonospace -> "monospace"
 
 {- | The kerning method of a style (docs/adr/0020). 'KernOptical' is read
 and then rejected by the checks of style.toml (G03021): it is a v2 item.
@@ -2163,7 +2183,7 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> instanceKey <*> axesKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> instanceKey <*> axesKey <*> genericFamilyKey
 
 -- | The named instance of a role (Golem ADR 0358): a string; anything else is G03260 (root ADR 0413).
 instanceKey :: ParseTable l (Maybe Text)
@@ -2171,6 +2191,10 @@ instanceKey =
   optKeyOf "instance" $ \case
     Text' _ t -> pure t
     v -> failAtCode (valueAnn v) "G03260" ("expected string but got " <> valueType v)
+
+-- | generic-family (docs/adr/0423): a wrong value is G03281 (codeAt in parseStyle).
+genericFamilyKey :: ParseTable l (Maybe GenericFamily)
+genericFamilyKey = fmap (>>= (`lookup` genericFamilyValues)) (enumKey "generic-family" (map fst genericFamilyValues))
 
 {- | The axes of a role (Golem ADR 0358): a table of axis tags and finite
 numbers, in the order of the tags. Whether the font has the axes and the
@@ -3369,6 +3393,8 @@ parseStyle fid src = do
       ScopeKey t : _ : ScopeKey k : _ | t `elem` ["character-styles", "paragraph-styles"], k `elem` featureKeys -> "G03021"
       -- an element of features that does not read is G03124 (docs/adr/0268)
       [ScopeKey t, _, ScopeKey "features", ScopeIndex _] | t `elem` ["fonts", "character-styles", "paragraph-styles"] -> "G03124"
+      -- a generic-family that is no generic family is G03281 (docs/adr/0423)
+      [ScopeKey "fonts", _, ScopeKey "generic-family"] -> "G03281"
       _ -> "G03006"
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
@@ -4182,7 +4208,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode)])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode), ("generic-family", enum (map fst genericFamilyValues))])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("separators", NNamed Nothing separatorNode),

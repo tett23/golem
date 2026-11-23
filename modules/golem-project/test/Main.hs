@@ -19,6 +19,7 @@ import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
 import FilesSpec qualified
 import FunctionsSpec qualified
+import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
 import Golem.Assemble.Formats (MarkFormat (..), arabic, asterisksNotation, circledNotation, kanjiNotation, lowerAlphaNotation, notationName, noteSymbolsNotation)
 import Golem.Assemble.ListMarkers (ListNumberStyle (..), NumberFormat (..))
@@ -884,6 +885,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       FeaturesSpec.tests,
+      GenericFontsSpec.tests,
       KeepPartsSpec.tests,
       PositionSpec.tests,
       UnderlineSpec.tests,

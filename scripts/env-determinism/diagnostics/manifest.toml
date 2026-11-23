@@ -10,6 +10,9 @@ language = "ja"
 date = 2026-10-11
 
 [targets.html]
+# HTML embeds the fonts, so that it looks for the missing one (docs/adr/0423).
+fonts = "embed"
+
 [targets.text]
 
 [source]

@@ -108,8 +108,8 @@ chapters = [
 | キー | 意味 |
 |:---|:---|
 | [code: \[targets.pdf\]] | PDF の設定です。[code: isbn] に紙の本の ISBN を書けます。[code: pdfa = "2a"] で PDF/A-2a に、[code: pdfua = "1"] で PDF/UA-1 に準拠させます。 |
-| [code: \[targets.epub\]] | EPUB の設定です。[code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。[code: page-map] には、固定ページ版と本文の対応表の JSON のパスを書けます（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。 |
-| [code: \[targets.html\]] | HTML の設定です。書けるキーはありません。 |
+| [code: \[targets.epub\]] | EPUB の設定です。[code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。[code: page-map] には、固定ページ版と本文の対応表の JSON のパスを書けます（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。[code: fonts] は HTML と同じです。 |
+| [code: \[targets.html\]] | HTML の設定です。[code: fonts] に [code: "embed"] を書くとフォントのファイルを同梱し、[code: "generic"]（既定）では総称の書体だけを指定します（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
 | [code: \[targets.text\]] | プレーンテキストの設定です。[code: variants] に [code: "vertical"]（縦書き用）と [code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
 
 [code: golem build] は、[code: --target] を指定しなければ、このテーブルにかかわらず四つの形式をすべて作ります。

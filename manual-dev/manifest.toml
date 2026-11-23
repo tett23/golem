@@ -39,6 +39,7 @@ role = "author"
 [targets.pdf]
 
 [targets.html]
+fonts = "embed"
 
 [source]
 paragraph-separator = "blank-line"

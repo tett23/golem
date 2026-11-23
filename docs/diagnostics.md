@@ -6288,6 +6288,7 @@ manifest.toml の誤りです
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて適用される `[source]` の値が異なる場合も、この誤りとする。
 `[targets.pdf]` の `pdfa` が `"2a"` でない場合と、`pdfua` が `"1"` でない場合（文字列でない値を含む）も、この誤りとする（[docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md)）。
+`[targets.html]` と `[targets.epub]` の `fonts` の値の誤りには使わない（[G03280](#g03280)）。
 `[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 0 の場合（負の数は [G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
 - メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、`pdfa に書けるのは "2a" だけです: <値>`、`pdfua に書けるのは "1" だけです: <値>`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
@@ -6434,6 +6435,7 @@ style.toml の誤りです
 フォントの役割、文字スタイル、段落スタイルの `features` の要素の誤りには使わない（[G03124](#g03124)）。
 フォントの役割の `instance` と `axes` の誤りには使わない（[G03260](#g03260) から [G03263](#g03263)）。
 `[printings]` の `format` の誤りには使わない（[G03264](#g03264) から [G03271](#g03271)、[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+フォントの役割の `generic-family` の値の誤りには使わない（[G03281](#g03281)）。
 隠しノンブルの `gutter` と `size` の関係の誤りには使わない（[G03029](#g03029)）。
 左右固定モードと禁止値の組み合わせにも出る（[root ADR 0400](adr/0400-single-page-layout-with-fixed-left-and-right.md)）。
 `single` に書いた `binding` と `gutter`、`facing` に書いた版面の `left` と `right`、左右固定モードの左右基準の重複と不足を拒む。
@@ -6575,7 +6577,8 @@ style.toml にないフォントの役割です
 
 ### 意味
 
-HTML か EPUB を作るときに、`[fonts]` が指すフォントのファイルがない。
+`fonts = "embed"` の HTML か EPUB を作るときに、`[fonts]` が指すフォントのファイルがない。
+既定の `fonts = "generic"` の HTML と EPUB はフォントを同梱しないので、ファイルの有無を調べず、このコードを出さない（[docs/adr/0423](adr/0423-generic-font-families-for-html-and-epub.md)）。
 パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 そのフォントを同梱せず、`@font-face` も書かずに出力する。
 prod では HTML と EPUB を書かない。
@@ -6583,7 +6586,7 @@ LSP は出さない。
 
 - メッセージ: `フォントのファイルがないので、HTML と EPUB に同梱しません: <パス>`
 - 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver`）
-- ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)
+- ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)。[docs/adr/0423](adr/0423-generic-font-families-for-html-and-epub.md) は、このコードを `fonts = "embed"` の出力だけに限った
 
 ### 主な原因
 
@@ -6593,6 +6596,7 @@ LSP は出さない。
 ### 直し方
 
 フォントのファイルを置くか、`[fonts]` のパスを直す。
+フォントを同梱しなくてよければ、`manifest.toml` のその出力の `fonts` を消すか `"generic"` にする。
 
 ## G03011
 
@@ -8961,6 +8965,58 @@ LSP は出さない。
 ### 直し方
 
 ファイルをプロジェクトの中に写し、`style.toml` のパスをプロジェクトルートからの相対パスに直す。
+
+## G03280
+
+manifest.toml の fonts の値の誤りです
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`manifest.toml` の `[targets.html]` か `[targets.epub]` の `fonts` に、`"generic"` と `"embed"` のどちらでもない値を書いた。
+文字列でない値もこの誤りとする。
+`manifest.toml` のほかの誤りと同じく、位置は誤った値であり、出力を一つも書かない。
+
+- メッセージ: `fonts に書けるのは "generic" か "embed" です: <値>`、または文字列でない値について TOML のスキーマの誤りの文言（`<経路> には文字列を書きます（<型>が書かれています）`）。前者には ` (targets.html.fonts)` のように経路を後ろに添える
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
+- ADR: [docs/adr/0423](adr/0423-generic-font-families-for-html-and-epub.md)
+
+### 主な原因
+
+- 総称の書体の名前（`"serif"` など）を `fonts` に書いた。総称の書体は、`style.toml` の役割の `generic-family` に書く。
+- 大文字で書いた（`"Embed"`）。
+
+### 直し方
+
+フォントを同梱しないなら `fonts` を消すか `"generic"` に、同梱するなら `"embed"` にする。
+
+## G03281
+
+フォントの役割の generic-family の値の誤りです
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[fonts.<役割>]` の `generic-family` に、`"serif"`、`"sans-serif"`、`"monospace"` のどれでもない値を書いた。
+文字列でない値もこの誤りとする。
+`style.toml` のほかの誤りと同じく、位置は誤った値である。
+
+- メッセージ: `generic-family に使えない値です: <値>（serif, sans-serif, monospace のどれか）`、または文字列でない値について TOML のスキーマの誤りの文言（`<経路> には文字列を書きます（<型>が書かれています）`）。前者には ` (fonts.body.generic-family)` のように経路を後ろに添える
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [docs/adr/0423](adr/0423-generic-font-families-for-html-and-epub.md)
+
+### 主な原因
+
+- 書体の名前（`"mincho"`、`"Noto Serif JP"` など）を書いた。
+- CSS のほかの総称（`"system-ui"`、`"ui-serif"` など）を書いた。どのフォントにも当たらないことがあるので、受け付けない。
+
+### 直し方
+
+明朝の系統なら `"serif"`、ゴシックの系統なら `"sans-serif"`、等幅なら `"monospace"` にする。
 
 ## G04001
 
