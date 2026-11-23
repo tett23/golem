@@ -96,14 +96,7 @@ pdfColorRangeTests =
                 P.ipObjects = [(1, P.OStream [("Subtype", P.OName "Form"), ("Group", P.ODict [("S", P.OName "Transparency"), ("CS", P.OName "DeviceRGB")])] "0.5 g 0 0 1 1 re f")]
               }
       p <- requireConverted original
-      [lookup "Group" fields | (key, P.OStream fields _) <- P.ipObjects p, key < 0] @?= [Just (P.ODict [("S", P.OName "Transparency"), ("CS", P.OName "DeviceCMYK")])],
-    testCase "root ADR 0403 I1: Type 3 glyphs that set their own colour are not recolored silently" $ do
-      let original =
-            (page "BT /T3 1 Tf (a) Tj ET")
-              { P.ipResources = P.ODict [("Font", P.ODict [("T3", P.ODict [("Subtype", P.OName "Type3"), ("CharProcs", P.ODict [("a", P.ORef 1)])])])],
-                P.ipObjects = [(1, P.OStream [] "1 0 d0 1 0 0 rg 0 0 1 1 re f")]
-              }
-      isLeft (recolor original) @?= True
+      [lookup "Group" fields | (key, P.OStream fields _) <- P.ipObjects p, key < 0] @?= [Just (P.ODict [("S", P.OName "Transparency"), ("CS", P.OName "DeviceCMYK")])]
   ]
   where
     isLeft = either (const True) (const False)

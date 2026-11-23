@@ -84,6 +84,7 @@ test-suite golem-typeset-test
     PdfColorPatternSpec
     PdfColorRangeSpec
     PdfColorShadingSpec
+    PdfColorType3Spec
     PdfColorSpec
     PdfDctSpec
     SvgColorSpec
