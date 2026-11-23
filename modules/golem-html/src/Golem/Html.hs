@@ -861,6 +861,10 @@ channelList c sp name =
 channelAnchor :: Text -> SrcSpan -> Text
 channelAnchor name (SrcSpan (FileId f) s _) = "c-" <> name <> "-" <> T.pack (show f) <> "-" <> T.pack (show s)
 
+-- | The empty span of the label of a note, the place its references go (root ADR 0422).
+labelSpan :: Text -> Text
+labelSpan l = "<span id=\"" <> escapeXml l <> "\"></span>"
+
 spanAnchor :: SrcSpan -> Text
 spanAnchor (SrcSpan (FileId f) s _) = "i-" <> T.pack (show f) <> "-" <> T.pack (show s)
 
@@ -954,15 +958,21 @@ inlineBody c = \case
         StyleKanjiDigits -> kanjiDigits n
         StyleTcy -> "<span class=\"tcy\">" <> T.pack (show n) <> "</span>"
   Ref _ _ l -> case Map.lookup l (bookLabels (cBook c)) of
+    -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)
+    Just t@LabelTarget {ltNote = Just _} -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cPageBreaks = Map.empty} (maybe [] pure (ltNumber t)) <> "</a>"
     Just t -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cPageBreaks = Map.empty} (ltTitle t) <> "</a>"
     Nothing -> ""
   Deferred {} -> ""
-  Note _ n _ ->
+  -- a labelled note: an empty span with its label as the id before the mark, where its references go (root ADR 0422)
+  Note sp n (Just l) b -> labelSpan l <> inline c (Note sp n Nothing b)
+  Sidenote sp n (Just l) b -> labelSpan l <> inline c (Sidenote sp n Nothing b)
+  Endnote sp n (Just l) b -> labelSpan l <> inline c (Endnote sp n Nothing b)
+  Note _ n _ _ ->
     let key = cnKey (cNotes c) n
      in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> noteText c n <> "</a>"
-  Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
+  Sidenote _ n _ _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   -- a reference to an endnote in the list at the end of its chapter (root ADR 0412)
-  Endnote _ n _ ->
+  Endnote _ n _ _ ->
     let key = cnKey (cEndnotes c) n
      in "<a epub:type=\"noteref\" class=\"endnoteref\" href=\"" <> linkTo c (cnHome (cEndnotes c)) ("endnote-" <> key) <> "\" id=\"endnoteref-" <> key <> "\">" <> endnoteText c n <> "</a>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
@@ -1030,7 +1040,7 @@ noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInt
 
 -- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
 sidenotes :: Ctx -> Maybe Text -> [Inline] -> Text
-sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> T.concat (map (inlines c) (noteParagraphs body)) <> "</aside>\n" | Sidenote _ n body <- is]
+sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> T.concat (map (inlines c) (noteParagraphs body)) <> "</aside>\n" | Sidenote _ n _ body <- is]
 
 -- | The text of the links of an endnote, in the notation of [endnotes] mark-format (root ADR 0412).
 endnoteText :: Ctx -> Int -> Text

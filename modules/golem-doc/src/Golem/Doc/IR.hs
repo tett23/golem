@@ -337,12 +337,12 @@ data InlineF r
   | Number !SrcSpan !Integer !(Maybe NumberStyle)
   | Ref !SrcSpan !RefKind !Text
   | Deferred !SrcSpan DeferredExpr
-  | -- | a footnote, its number in its file and its body: paragraphs without a paragraph style, whatever r is (docs/adr/0263)
-    Note !SrcSpan !Int [Block]
-  | -- | a sidenote, its number and its body: one paragraph without a paragraph style (docs/adr/0263)
-    Sidenote !SrcSpan !Int [Block]
-  | -- | an endnote, its number and its body: paragraphs without a paragraph style, at the end of the chapter in every output (root ADR 0412)
-    Endnote !SrcSpan !Int [Block]
+  | -- | a footnote, its number in its file, its label (root ADR 0422) and its body: paragraphs without a paragraph style, whatever r is (docs/adr/0263)
+    Note !SrcSpan !Int !(Maybe Text) [Block]
+  | -- | a sidenote, its number, its label (root ADR 0422) and its body: one paragraph without a paragraph style (docs/adr/0263)
+    Sidenote !SrcSpan !Int !(Maybe Text) [Block]
+  | -- | an endnote, its number, its label (root ADR 0422) and its body: paragraphs without a paragraph style, at the end of the chapter in every output (root ADR 0412)
+    Endnote !SrcSpan !Int !(Maybe Text) [Block]
   | IndexMark !SrcSpan IndexEntry
   | -- | a citation: one or more items, their keys distinct (docs/adr/0266)
     Cite !SrcSpan ![CiteItem r]
@@ -606,9 +606,9 @@ noRuby = \case
   Ref s k l -> Just (Ref s k l)
   Deferred s e -> Just (Deferred s e)
   -- the body of a note is set outside the base: no ruby inside ruby (docs/adr/0263)
-  Note s n bs -> Just (Note s n bs)
-  Sidenote s n bs -> Just (Sidenote s n bs)
-  Endnote s n bs -> Just (Endnote s n bs)
+  Note s n lbl bs -> Just (Note s n lbl bs)
+  Sidenote s n lbl bs -> Just (Sidenote s n lbl bs)
+  Endnote s n lbl bs -> Just (Endnote s n lbl bs)
   IndexMark s e -> Just (IndexMark s e)
   Cite s is -> Cite s <$> traverse itemNoRuby is
   ProofComment s t -> Just (ProofComment s t)

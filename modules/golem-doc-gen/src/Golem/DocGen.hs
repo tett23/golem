@@ -56,11 +56,11 @@ genInlineWith mr =
     [ Kenten <$> genSpan <*> Gen.maybe genText <*> sub,
       Color <$> genSpan <*> genText <*> sub,
       CharStyle <$> genSpan <*> genText <*> sub,
-      -- the body of a note: paragraphs without a style, one for a sidenote (docs/adr/0263)
-      Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.list (Range.linear 1 3) para,
-      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> fmap pure para,
+      -- the body of a note: paragraphs without a style, one for a sidenote (docs/adr/0263); a label or none (root ADR 0422)
+      Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.maybe genText <*> Gen.list (Range.linear 1 3) para,
+      Sidenote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.maybe genText <*> fmap pure para,
       -- the body of an endnote: paragraphs without a style, as a note (root ADR 0412)
-      Endnote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.list (Range.linear 1 3) para,
+      Endnote <$> genSpan <*> Gen.int (Range.linear 1 99) <*> Gen.maybe genText <*> Gen.list (Range.linear 1 3) para,
       -- a citation of distinct keys, with any locator, prefix and suffix (docs/adr/0266)
       Cite <$> genSpan <*> citeItems,
       -- a link to an external URL (docs/adr ADR 0182)

@@ -478,7 +478,7 @@ PDF では、本文の印（[code: *1]）を本文より小さく前の字に付
 印の大きさは [code: \[character-styles.note-mark\]] の [code: size] で、形は [code: \[notes\]] の [code: mark-format] で変えられます。
 PDF では注をページの下に、HTML、EPUB、プレーンテキストでは章の終わりにまとめて置きます。
 PDF でも章の終わりにまとめたいときは、[code: \[notes\]] の [code: placement] に [code: "chapter-end"] を書きます。
-この段落の終わりにも、注を一つ付けています[note: この注は、ページの下に組まれています。HTML では章の終わりにまとめて置き、本文の番号と相互にリンクします。]。
+この段落の終わりにも、注を一つ付けています[note label=footnote-sample: この注は、ページの下に組まれています。HTML では章の終わりにまとめて置き、本文の番号と相互にリンクします。]。
 
 どの出力でも章の終わりに置きたい注（後注[index reading=こうちゅう: 後注]）は、[code: \[endnote: …\]] で書きます。
 
@@ -866,6 +866,13 @@ HTML と EPUB では回さずに置きます。
 図[ref-number fig-new-project]は、PDF では [ref-page fig-new-project] ページにあります。
 [code: \[ref-page ...\]] は、HTML と EPUB ではページがないので、指す箇所の題へのリンクになります。
 HTML でこの段落を読むと、前の文のページ番号の位置に、図の代替テキストへのリンクが入っています。
+
+注にも、[code: \[note label=名前: …\]] のように [code: label] でラベルを付けられます（[code: \[sidenote\]] と [code: \[endnote\]] も同じです）。
+[code: \[ref-number 名前\]] は注の番号に、[code: \[ref-page 名前\]] は PDF で注の印のあるページの番号になります。
+番号には印の書式（[code: *] など）が付かないので、「注」などの字は参照の前後に書きます。
+たとえば、この章の「注」の節の段落の終わりの注は、注[ref-number footnote-sample]です。
+注は題を持たないので、[code: \[ref-title ...\]] では指せません。
+[code: \[note 名前\]] の名前はラベルではないので、参照に使うときは [code: label] も書きます。
 
 章の題を直しても、ラベルを変えなければ参照は壊れません。
 存在しないラベルを指すと、エラーになります。

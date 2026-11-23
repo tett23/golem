@@ -121,12 +121,12 @@ topText c = T.concat . go False Nothing Nothing
 file :: Ctx -> Document -> [Document] -> Text
 file c (Document _ bs) chapter =
   let body = topText c bs
-      notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n nb <- concatMap blockInlines cbs]
+      notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n _ nb <- concatMap blockInlines cbs]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
       listText title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- ns])
       -- the endnotes after the notes, under a title of their own (root ADR 0412)
-      endnotes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Endnote _ n nb <- concatMap blockInlines cbs]
+      endnotes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Endnote _ n _ nb <- concatMap blockInlines cbs]
       lists = [listText (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
       noteText = T.intercalate "\n\n" lists
       full
@@ -219,7 +219,7 @@ block c ind (Block sp _ _ body) = case body of
       (Block _ _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
-      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | Sidenote _ n nb <- is]
+      T.concat ["\n※" <> T.pack (show n) <> " " <> T.intercalate "\n" (map (inlines c) (noteParagraphs nb)) | Sidenote _ n _ nb <- is]
 
 blockInlines :: Block -> [Inline]
 blockInlines (Block _ _ _ body) = case body of
@@ -255,14 +255,16 @@ inline c = \case
   Tcy _ t -> t
   Number _ n st -> renderNumber (cVariant c) (cNumberDefault c) n st
   Ref _ RefPage l -> case Map.lookup l (bookLabels (cBook c)) of
+    -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)
+    Just t@LabelTarget {ltNote = Just _} -> inlines c (maybe [] pure (ltNumber t))
     Just t -> "「" <> inlines c (ltTitle t) <> "」"
     Nothing -> ""
   Ref {} -> ""
   Deferred {} -> ""
-  Note _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
-  Sidenote _ n _ -> "※" <> T.pack (show n)
+  Note _ n _ _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
+  Sidenote _ n _ _ -> "※" <> T.pack (show n)
   -- the mark of an endnote is that of a note (root ADR 0412)
-  Endnote _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
+  Endnote _ n _ _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
   IndexMark {} -> ""
   ChannelItem {} -> ""
   -- the mark of the default style; nothing when a number is not known (docs/adr/0266)

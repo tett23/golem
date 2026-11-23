@@ -161,8 +161,8 @@ langTests =
         texts its @?= ["porte-", "monnaie"]
         hyphens its @?= [ExplicitHyphen],
       testCase "the body of a note or a sidenote is in the language of the place of its mark" $ do
-        let note = IR.Note sp 1 (IR.noteBody sp [t "n"])
-            side = IR.Sidenote sp 1 (IR.noteBody sp [t "s"])
+        let note = IR.Note sp 1 Nothing (IR.noteBody sp [t "n"])
+            side = IR.Sidenote sp 1 Nothing (IR.noteBody sp [t "s"])
             bodies is = [b | AnchorNote _ _ _ b <- snd (composeInlines env is)] <> [b | AnchorSidenote _ _ _ b <- snd (composeInlines env is)]
         bodies [t "a", note, side] @?= [[[t "n"]], [[t "s"]]]
         bodies [lang "fr" [t "a", note, side]] @?= [[[lang "fr" [t "n"]]], [[lang "fr" [t "s"]]]]

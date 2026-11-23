@@ -65,12 +65,12 @@ pub enum Inline {
     Ref { span: Span, kind: RefKind, label: String },
     /// 11: the expression as it came in; a plugin may only pass it on
     Deferred { span: Span, expr: Value },
-    /// 23 (docs/adr/0263): the body is paragraphs without a paragraph style
-    Note { span: Span, number: u64, body: Vec<Block> },
-    /// 24 (docs/adr/0263): the body is one paragraph without a paragraph style
-    Sidenote { span: Span, number: u64, body: Vec<Block> },
-    /// 26 (root ADR 0412): an endnote; the body is paragraphs without a paragraph style
-    Endnote { span: Span, number: u64, body: Vec<Block> },
+    /// 23 (docs/adr/0263): the body is paragraphs without a paragraph style; the label after it, if any (root ADR 0422)
+    Note { span: Span, number: u64, label: Option<String>, body: Vec<Block> },
+    /// 24 (docs/adr/0263): the body is one paragraph without a paragraph style; a label as a note
+    Sidenote { span: Span, number: u64, label: Option<String>, body: Vec<Block> },
+    /// 26 (root ADR 0412): an endnote; the body is paragraphs without a paragraph style; a label as a note
+    Endnote { span: Span, number: u64, label: Option<String>, body: Vec<Block> },
     /// 14: the kind is a point, an end of a range or a reference (docs/adr/0265)
     IndexMark { span: Span, terms: Vec<String>, readings: Vec<String>, kind: IndexKind },
     /// 25 (docs/adr/0266): one item or more, their keys distinct; 15 is retired
@@ -343,9 +343,9 @@ pub fn inline_value(x: &Inline) -> Value {
             ],
         ),
         Inline::Deferred { span, expr } => t(11, span, vec![expr.clone()]),
-        Inline::Note { span, number, body } => t(23, span, vec![int(*number), blocks_value(body)]),
-        Inline::Sidenote { span, number, body } => t(24, span, vec![int(*number), blocks_value(body)]),
-        Inline::Endnote { span, number, body } => t(26, span, vec![int(*number), blocks_value(body)]),
+        Inline::Note { span, number, label, body } => t(23, span, note_fields(*number, label, body)),
+        Inline::Sidenote { span, number, label, body } => t(24, span, note_fields(*number, label, body)),
+        Inline::Endnote { span, number, label, body } => t(26, span, note_fields(*number, label, body)),
         Inline::IndexMark { span, terms, readings, kind } => t(
             14,
             span,
@@ -488,6 +488,15 @@ pub fn blocks_value(bs: &[Block]) -> Value {
     Value::Array(bs.iter().map(block_value).collect())
 }
 
+/// The fields of a note after its span: the number, the body and the label, only when it has one (root ADR 0422).
+fn note_fields(number: u64, label: &Option<String>, body: &[Block]) -> Vec<Value> {
+    let mut fields = vec![int(number), blocks_value(body)];
+    if let Some(l) = label {
+        fields.push(text(l));
+    }
+    fields
+}
+
 pub fn document_value(d: &Document) -> Value {
     Value::Array(vec![int(ABI_VERSION), int(d.file), blocks_value(&d.blocks)])
 }
@@ -628,9 +637,12 @@ pub fn inline_of(v: &Value) -> R<Inline> {
             label: text_of(l)?,
         },
         (11, [e]) => Inline::Deferred { span, expr: e.clone() },
-        (23, [n, body]) => Inline::Note { span, number: u64_of(n)?, body: blocks_of(body)? },
-        (24, [n, body]) => Inline::Sidenote { span, number: u64_of(n)?, body: blocks_of(body)? },
-        (26, [n, body]) => Inline::Endnote { span, number: u64_of(n)?, body: blocks_of(body)? },
+        (23, [n, body]) => Inline::Note { span, number: u64_of(n)?, label: None, body: blocks_of(body)? },
+        (23, [n, body, l]) => Inline::Note { span, number: u64_of(n)?, label: Some(text_of(l)?), body: blocks_of(body)? },
+        (24, [n, body]) => Inline::Sidenote { span, number: u64_of(n)?, label: None, body: blocks_of(body)? },
+        (24, [n, body, l]) => Inline::Sidenote { span, number: u64_of(n)?, label: Some(text_of(l)?), body: blocks_of(body)? },
+        (26, [n, body]) => Inline::Endnote { span, number: u64_of(n)?, label: None, body: blocks_of(body)? },
+        (26, [n, body, l]) => Inline::Endnote { span, number: u64_of(n)?, label: Some(text_of(l)?), body: blocks_of(body)? },
         (14, [ts, rs, k]) => Inline::IndexMark {
             span,
             terms: arr(ts)?.iter().map(text_of).collect::<R<_>>()?,
@@ -811,12 +823,12 @@ mod tests {
     /// the bytes of a note are those of the host: [23, span, number, [+ block]] (docs/adr/0263)
     #[test]
     fn note_bytes() {
-        let x = Inline::Note { span: sp(0, 1), number: 2, body: note_body(sp(0, 1), vec![]) };
+        let x = Inline::Note { span: sp(0, 1), number: 2, label: None, body: note_body(sp(0, 1), vec![]) };
         let bytes = encode(&inline_value(&x));
         let expected: Vec<u8> = vec![0x84, 0x17, 0x83, 0x01, 0x00, 0x01, 0x02, 0x81, 0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x83, 0x0a, 0xf6, 0x80];
         assert_eq!(bytes, expected);
         assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
-        let s = Inline::Sidenote { span: sp(0, 1), number: 1, body: note_body(sp(0, 1), vec![]) };
+        let s = Inline::Sidenote { span: sp(0, 1), number: 1, label: None, body: note_body(sp(0, 1), vec![]) };
         assert_eq!(encode(&inline_value(&s))[1], 0x18);
         assert_eq!(inline_of(&decode(&encode(&inline_value(&s))).unwrap()).unwrap(), s);
     }
@@ -824,11 +836,30 @@ mod tests {
     /// the bytes of an endnote are those of the host: [26, span, number, [+ block]] (root ADR 0412)
     #[test]
     fn endnote_bytes() {
-        let x = Inline::Endnote { span: sp(0, 1), number: 3, body: note_body(sp(0, 1), vec![]) };
+        let x = Inline::Endnote { span: sp(0, 1), number: 3, label: None, body: note_body(sp(0, 1), vec![]) };
         let bytes = encode(&inline_value(&x));
         let expected: Vec<u8> = vec![0x84, 0x18, 0x1a, 0x83, 0x01, 0x00, 0x01, 0x03, 0x81, 0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x83, 0x0a, 0xf6, 0x80];
         assert_eq!(bytes, expected);
         assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
+    }
+
+    /// the label of a note is the element after its body; a note without one keeps the bytes of before (root ADR 0422)
+    #[test]
+    fn note_label_bytes() {
+        let x = Inline::Note { span: sp(0, 1), number: 1, label: Some("x".to_string()), body: note_body(sp(0, 1), vec![]) };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = vec![0x85, 0x17, 0x83, 0x01, 0x00, 0x01, 0x01, 0x81, 0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x83, 0x0a, 0xf6, 0x80, 0x61, b'x'];
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
+        for y in [
+            Inline::Sidenote { span: sp(0, 1), number: 2, label: Some("y".to_string()), body: note_body(sp(0, 1), vec![]) },
+            Inline::Endnote { span: sp(0, 1), number: 3, label: Some("z".to_string()), body: note_body(sp(0, 1), vec![]) },
+            Inline::Endnote { span: sp(0, 1), number: 3, label: None, body: note_body(sp(0, 1), vec![]) },
+        ] {
+            assert_eq!(inline_of(&decode(&encode(&inline_value(&y))).unwrap()).unwrap(), y);
+        }
+        let none = Inline::Note { span: sp(0, 1), number: 1, label: None, body: note_body(sp(0, 1), vec![]) };
+        assert_eq!(encode(&inline_value(&none))[0], 0x84);
     }
 
     /// the bytes of a citation are those of the host: [25, span, [+ item]] (docs/adr/0266)

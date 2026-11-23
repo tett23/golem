@@ -246,8 +246,8 @@ twoFileBook :: Int -> Int -> [Int] -> Book
 twoFileBook na nb chapters =
   (bookOf [])
     { bookDocs =
-        [ Document fidA [para 0 [txt "甲", Note (at 1) na (noteBody (at 1) [txt "注甲。"])]],
-          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb (noteBody (atB 1) [txt "注乙。"])])]
+        [ Document fidA [para 0 [txt "甲", Note (at 1) na Nothing (noteBody (at 1) [txt "注甲。"])]],
+          Document fidB [Block (atB 0) Nothing Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb Nothing (noteBody (atB 1) [txt "注乙。"])])]
         ],
       bookChapterOf = chapters
     }
@@ -680,12 +680,12 @@ tests =
     testCase "text is escaped for XML" $
       bodyA cfg0 (bookOf [para 0 [txt "a < b & \"c\" > d"]]) @?= "<p>a &lt; b &amp; &quot;c&quot; &gt; d</p>\n",
     testCase "a sidenote is a numbered mark and an aside after the paragraph" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Sidenote (at 1) 1 (noteBody (at 1) [txt "補足。"]), txt "。"]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Sidenote (at 1) 1 Nothing (noteBody (at 1) [txt "補足。"]), txt "。"]])
         @?= "<p>本文<sup class=\"sidenote-ref\">1</sup>。</p>\n<aside class=\"sidenote\"><span class=\"number\">1</span>補足。</aside>\n",
     testCase "sidenotes are smaller than the text when no size is given (golem-driver ADR 0011)" $
       cssLines ".sidenote" cfg0 @?= [".sidenote { font-size: 0.85em; }"],
     testCase "I5: a note of two paragraphs is a p for each, the link back at the start of the first (docs/adr/0263)" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 [Block (at 1) Nothing Nothing (Paragraph Nothing [txt p]) | p <- ["一。", "二。"]]]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 Nothing [Block (at 1) Nothing Nothing (Paragraph Nothing [txt p]) | p <- ["一。", "二。"]]]])
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<section class=\"notes\">\n<h2>注</h2>\n",
@@ -695,7 +695,7 @@ tests =
     testCase "style.css takes the margins and the indents off the paragraphs of notes (docs/adr/0263)" $
       cssLines "section.notes" cfg0 @?= ["section.notes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }"],
     testCase "a footnote links to its note at the end of the file, which links back" $
-      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 (noteBody (at 1) [txt "注の本文。"])], para 5 [txt "次。"]])
+      bodyA cfg0 (bookOf [para 0 [txt "本文", Note (at 1) 1 Nothing (noteBody (at 1) [txt "注の本文。"])], para 5 [txt "次。"]])
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<p>次。</p>\n",
@@ -798,13 +798,13 @@ tests =
     testGroup
       "cross references"
       [ testCase "a page reference in the same file links to the anchor with the title of the target" $
-          let book = (bookOf [para 0 [Ref (at 1) RefPage "intro", txt "を見よ。"]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA)]}
+          let book = (bookOf [para 0 [Ref (at 1) RefPage "intro", txt "を見よ。"]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA Nothing)]}
            in bodyA cfg0 book @?= "<p><a href=\"#intro\">はじめに</a>を見よ。</p>\n",
         testCase "a page reference to another file links to its page" $
           let book =
                 (bookOf [para 0 [Ref (at 1) RefPage "second"]])
                   { bookDocs = [Document fidA [para 0 [Ref (at 1) RefPage "second"]], Document fidB []],
-                    bookLabels = Map.fromList [("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB)]
+                    bookLabels = Map.fromList [("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB Nothing)]
                   }
            in bodyA cfg0 book @?= "<p><a href=\"b.xhtml#second\">次の章</a></p>\n",
         -- docs/adr/0267
@@ -814,17 +814,17 @@ tests =
                   { bookDocs = [Document fidA [para 0 [Resolved (at 1) RefNumber "intro" [txt "1"], txt "と", Resolved (at 2) RefTitle "second" [txt "次の章"]]], Document fidB []],
                     bookLabels =
                       Map.fromList
-                        [ ("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA),
-                          ("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB)
+                        [ ("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fidA Nothing),
+                          ("second", LabelTarget (mkSpan fidB 0 1) Nothing [txt "次の章"] "second" fidB Nothing)
                         ]
                   }
            in bodyA cfg0 book @?= "<p><a href=\"#intro\">1</a>と<a href=\"b.xhtml#second\">次の章</a></p>\n",
         testCase "I11 a resolved reference copied into the table of contents is its text alone" $
           let entry = TocEntry 1 (Just "第一章") [txt "見出し", Resolved (at 3) RefNumber "intro" [txt "2"]] "intro" fidA (at 9)
-              book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry], bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "見出し"] "intro" fidA)]}
+              book = (bookOf [Block (at 0) Nothing Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry], bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "見出し"] "intro" fidA Nothing)]}
            in bodyA cfg0 book @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#intro\">第一章\x3000見出し2</a></li>\n</ol>\n</nav>\n",
         testCase "I11 a resolved reference inside another is the text of the outer link" $
-          let book = (bookOf [para 0 [Resolved (at 1) RefTitle "intro" [txt "題", Resolved (at 2) RefNumber "other" [txt "3"]]]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "題"] "intro" fidA), ("other", LabelTarget (at 8) Nothing [txt "他"] "other" fidA)]}
+          let book = (bookOf [para 0 [Resolved (at 1) RefTitle "intro" [txt "題", Resolved (at 2) RefNumber "other" [txt "3"]]]]) {bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "題"] "intro" fidA Nothing), ("other", LabelTarget (at 8) Nothing [txt "他"] "other" fidA Nothing)]}
            in bodyA cfg0 book @?= "<p><a href=\"#intro\">題3</a></p>\n",
         testCase "I11 a resolved reference whose label the book does not have is its text" $
           bodyA cfg0 (bookOf [para 0 [Resolved (at 1) RefNumber "missing" [txt "1"]]]) @?= "<p>1</p>\n"
@@ -1066,7 +1066,7 @@ langTests =
         bodyA cfg0 (bookOf [Block (at 0) Nothing Nothing (BulletList [ListItem Nothing [(para 1 [txt "a"]) {blockLang = Just "de"}]])])
           @?= "<ul>\n<li>\n<p lang=\"de\" xml:lang=\"de\">a</p>\n</li>\n</ul>\n",
       testCase "the sidenotes of a paragraph with a language have it too" $
-        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 (noteBody (at 1) [txt "s"])]) {blockLang = Just "en"}])
+        bodyA cfg0 (bookOf [(para 0 [txt "a", Sidenote (at 1) 1 Nothing (noteBody (at 1) [txt "s"])]) {blockLang = Just "en"}])
           @?= "<p lang=\"en\" xml:lang=\"en\">a<sup class=\"sidenote-ref\">1</sup></p>\n<aside class=\"sidenote\" lang=\"en\" xml:lang=\"en\"><span class=\"number\">1</span>s</aside>\n",
       testCase "the spans stay in the items of @toc, the toc page and the copies; character styles drop out of the toc page" $ do
         let title = [txt "見出し", Lang (at 1) "en" [CharStyle (at 1) "strong" [txt "Tokyo"]]]
@@ -1081,7 +1081,7 @@ langTests =
             page = indexPage cfg0 ft (assembled [[h]])
         assertBool (T.unpack page) ("<a href=\"a.xhtml#intro\">1\x3000<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
       testCase "the body of a note is in the language of its mark" $ do
-        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 (noteBody (at 2) [txt "a note"])]]]]
+        let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 Nothing (noteBody (at 2) [txt "a note"])]]]]
             body = bodyA cfg0 book
         assertBool (T.unpack body) ("</a> <span lang=\"en\" xml:lang=\"en\">a note</span></p></aside>" `T.isInfixOf` body)
     ]

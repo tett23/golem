@@ -347,6 +347,7 @@ PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落ス
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
 `[note]` と別に、どの出力でも章の終わりの一覧に出す注 `[endnote: 本文]` を書ける（[root ADR 0412](docs/adr/0412-a-separate-channel-for-endnotes.md)）。
 番号と印は `[endnotes]` で決め、一覧は見出し「後注」で、章に脚注の一覧があればその後に置く。
+注には `[note label=名前: 本文]` のようにラベルを付け、`[ref-number 名前]` で印の番号を、`[ref-page 名前]` で印のあるページを参照できる（[root ADR 0422](docs/adr/0422-references-to-notes.md)）。
 
 注の番号をページごとに振る場合、HTML、EPUB、テキストは警告して本の通し番号で生成する。
 PDF の章末注一覧で番号が重なる場合も警告し、PDF のページ別番号を保つ（[root ADR 0402](docs/adr/0402-define-page-local-note-fallback-diagnostics.md)）。
