@@ -1,6 +1,6 @@
 # ADR 0425: 取り込んだ PDF 図版の色の分類と、判定できない構成を決める
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
