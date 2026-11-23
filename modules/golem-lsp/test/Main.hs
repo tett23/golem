@@ -175,6 +175,17 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
+      testCase "root ADR 0422: completion of label= after a note command, of the labels of notes after a reference, definition and rename" $ do
+        ws0 <- openWorkspace root
+        let src = "本文[note label=n-one: 注。]と[endnote label=n-two: 後。]。\n\n[note \n\n[sidenote \n\n[ref-number \n\n[ref-page n-one]\n"
+        ws <- updateFile ws0 "b.gm" src
+        let names o = map cmpLabel (completions ws "b.gm" o)
+        assertBool "label= after note" ("label=" `elem` names (offsetIn src "[note \n" 6))
+        assertBool "label= after sidenote" ("label=" `elem` names (offsetIn src "[sidenote \n" 10))
+        assertBool "the labels of notes" (all (`elem` names (offsetIn src "[ref-number \n" 12)) ["n-one", "n-two", "intro"])
+        map (slice ws) (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["n-one"]
+        map locPath (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["b.gm"]
+        fmap (map snd) (renameLabel ws "b.gm" (offsetIn src "n-one]" 1) "n-first") @?= Right ["n-first", "n-first"],
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["

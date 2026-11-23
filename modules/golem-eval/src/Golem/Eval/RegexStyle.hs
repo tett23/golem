@@ -86,10 +86,10 @@ applyRegexStyles rules d
     sidenotes :: InlineF r -> InlineF r
     sidenotes = \case
       -- the paragraphs of the body of a note, with the regex styles of body (docs/adr/0368)
-      Note sp n bs -> Note sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "body") is); other -> other} | b <- bs]
-      Sidenote sp n bs -> Sidenote sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "sidenote") is); other -> other} | b <- bs]
+      Note sp n lbl bs -> Note sp n lbl [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "body") is); other -> other} | b <- bs]
+      Sidenote sp n lbl bs -> Sidenote sp n lbl [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "sidenote") is); other -> other} | b <- bs]
       -- the body of an endnote, as that of a note (root ADR 0412)
-      Endnote sp n bs -> Endnote sp n [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "body") is); other -> other} | b <- bs]
+      Endnote sp n lbl bs -> Endnote sp n lbl [b {blockBody = case blockBody b of Paragraph st is -> Paragraph st (paragraph (rulesOf "body") is); other -> other} | b <- bs]
       Kenten sp k xs -> Kenten sp k (map sidenotes xs)
       Color sp c xs -> Color sp c (map sidenotes xs)
       CharStyle sp c xs -> CharStyle sp c (map sidenotes xs)
@@ -266,9 +266,9 @@ spanOf = \case
   Number s _ _ -> s
   Ref s _ _ -> s
   Deferred s _ -> s
-  Note s _ _ -> s
-  Sidenote s _ _ -> s
-  Endnote s _ _ -> s
+  Note s _ _ _ -> s
+  Sidenote s _ _ _ -> s
+  Endnote s _ _ _ -> s
   IndexMark s _ -> s
   Cite s _ -> s
   ProofComment s _ -> s

@@ -146,7 +146,7 @@ tests =
       testCase "the prose slots go to the function, and the number of them is G02122" $ do
         let r = evalResult functionCtx (withImport "[book.emph-twice: 本文[note: 注]]\n")
         [length xs | Block _ _ _ (Paragraph _ [CharStyle _ _ xs]) <- resultBlocks r] @?= [2]
-        [n | Block _ _ _ (Paragraph _ [CharStyle _ _ [_, Note _ n _]]) <- resultBlocks r] @?= [1]
+        [n | Block _ _ _ (Paragraph _ [CharStyle _ _ [_, Note _ n _ _]]) <- resultBlocks r] @?= [1]
         codesOf "[book.emph-twice]\n" @?= ["G02122"],
       testCase "the body goes to a block command; a body to one that takes none is G02123" $ do
         let r = evalResult functionCtx (withImport "@book.word-table data/words.tsv\n  本体\n")

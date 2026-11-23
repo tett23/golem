@@ -159,9 +159,9 @@ breakErrors top is =
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
-      Note _ _ bs -> deep (concat (noteParagraphs bs))
-      Sidenote _ _ bs -> deep (concat (noteParagraphs bs))
-      Endnote _ _ bs -> deep (concat (noteParagraphs bs))
+      Note _ _ _ bs -> deep (concat (noteParagraphs bs))
+      Sidenote _ _ _ bs -> deep (concat (noteParagraphs bs))
+      Endnote _ _ _ bs -> deep (concat (noteParagraphs bs))
       Cite _ items -> deep (citeInlines items)
       Link _ _ xs -> deep xs
       Lang _ _ xs -> deep xs
@@ -197,10 +197,10 @@ inlineErrors fileSize allowed i =
     Color _ _ xs -> sub xs
     CharStyle _ _ xs -> sub xs
     Deferred _ e -> ["プラグインが新しい遅延式を作っています" | e `notElem` allowed]
-    Note _ _ bs -> noteErrors ["脚注の本文は一つ以上の段落です" | null bs] bs
-    Sidenote _ _ bs -> noteErrors ["傍注の本文は段落をちょうど一つ持ちます" | length bs /= 1] bs
+    Note _ _ _ bs -> noteErrors ["脚注の本文は一つ以上の段落です" | null bs] bs
+    Sidenote _ _ _ bs -> noteErrors ["傍注の本文は段落をちょうど一つ持ちます" | length bs /= 1] bs
     -- an endnote, as a footnote (root ADR 0412)
-    Endnote _ _ bs -> noteErrors ["章末の注の本文は一つ以上の段落です" | null bs] bs
+    Endnote _ _ _ bs -> noteErrors ["章末の注の本文は一つ以上の段落です" | null bs] bs
     Cite _ is -> citeErrors is <> sub (citeInlines is)
     IndexMark _ (IndexEntry ts rs k) ->
       ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
@@ -286,9 +286,9 @@ linkErrors = concatMap $ \case
   Kenten _ _ xs -> linkErrors xs
   Color _ _ xs -> linkErrors xs
   CharStyle _ _ xs -> linkErrors xs
-  Note _ _ bs -> concatMap linkErrors (noteParagraphs bs)
-  Sidenote _ _ bs -> concatMap linkErrors (noteParagraphs bs)
-  Endnote _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Note _ _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Sidenote _ _ _ bs -> concatMap linkErrors (noteParagraphs bs)
+  Endnote _ _ _ bs -> concatMap linkErrors (noteParagraphs bs)
   Cite _ is -> linkErrors (citeInlines is)
   ChannelItem _ c -> linkErrors (ciBody c)
   Lang _ _ xs -> linkErrors xs
@@ -316,9 +316,9 @@ langErrors = concatMap $ \case
   Kenten _ _ xs -> langErrors xs
   Color _ _ xs -> langErrors xs
   CharStyle _ _ xs -> langErrors xs
-  Note _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
-  Sidenote _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
-  Endnote _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Note _ _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Sidenote _ _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
+  Endnote _ _ _ bs -> concat [langTagErrors l | Block _ _ l _ <- bs] <> concatMap langErrors (noteParagraphs bs)
   Cite _ is -> langErrors (citeInlines is)
   ChannelItem _ c -> langErrors (ciBody c)
   Resolved _ _ _ xs -> langErrors xs
@@ -337,9 +337,9 @@ inlineSpan = \case
   Number s _ _ -> s
   Ref s _ _ -> s
   Deferred s _ -> s
-  Note s _ _ -> s
-  Sidenote s _ _ -> s
-  Endnote s _ _ -> s
+  Note s _ _ _ -> s
+  Sidenote s _ _ _ -> s
+  Endnote s _ _ _ -> s
   IndexMark s _ -> s
   Cite s _ -> s
   ProofComment s _ -> s
