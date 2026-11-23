@@ -125,7 +125,7 @@ tests =
           testCase "one line" $
             mapM_ (\src -> (src, codeOf src) @?= (src, [(["l2"], [], Just 2)])) [listing "lines=2", listing "lines=[= 2]", listing "lines=2...2"],
           testCase "a negative end, one not an integer and one past the limit" $ do
-            codes (listing "lines=3...-1") @?= ["G02110"]
+            codes (listing "lines=3...-1") @?= ["G02103"]
             codes (listing "lines=[= 3...0 - 1]") @?= ["G02103"]
             codes (listing "lines=1...1.5") @?= ["G02104"]
             codes (listing "lines=1...1e1301") @?= ["G02086"]
@@ -157,7 +157,7 @@ tests =
             codeOf (listing "lines=2-3") @?= []
             codeOf (listing "lines=\"2-3\"") @?= []
             msgs (listing "lines=2-3") @?= [("G02251", "- で区切った範囲は使えません。2...3 のように両端を残して ... で区切ります")]
-            codes (listing "lines=3--1") @?= ["G02110"]
+            codes (listing "lines=3--1") @?= ["G02103"]
         ],
       testGroup
         "highlight="
@@ -187,13 +187,14 @@ tests =
         codeOf (listing "lines=\"1...2, 3\"") @?= [(["l1", "l2", "l3"], [], Just 1)]
         [map clNumber (codeLines c) | CodeBlock c <- resultBodies (evalResult listingCtx (listing "lines=1,3"))]
           @?= [[Just 1, Just 3]]
-        codes (listing "lines=3--1") @?= ["G02110"]
-        codes (listing "lines=\"1...-2\"") @?= ["G02110"],
+        codes (listing "lines=3--1") @?= ["G02103"]
+        codes (listing "lines=\"1...-2\"") @?= ["G02103"],
       testCase "ADR 0342 I1: a contiguous listing keeps diff line numbers" $ do
         let patchCtx = baseCtx {ctxAssets = Map.fromList [("patch.txt", AssetText (FileId 23) "+a\n-b\n c\n")]}
             numbers = [map clNumber (codeLines c) | CodeBlock c <- resultBodies (evalResult patchCtx "@listing patch.txt lines=1...3 diff=true\n")]
         numbers @?= [[Just 1, Nothing, Just 2]],
       adr0342Tests,
+      adr0419Tests,
       testCase "numbers= takes no range" $ do
         codes "``` numbers=5-5\na\n```\n" @?= ["G02069"]
         -- a range where no range is taken is G02113 (docs/adr ADR 0111)
@@ -246,9 +247,9 @@ adr0342Tests =
       testCase "ADR 0342 I2: a dash range takes no code" $ do
         sevenCode (sevenListing "lines=1-2") @?= []
         highlightedOf (block "highlight=1-2") @?= [[]],
-      testCase "ADR 0342 I1: a written negative end is G02110 at the argument" $
+      testCase "ADR 0342 I1, root ADR 0419 I1: a written negative end is G02103 at the argument" $
         mapM_
-          (\arg -> let src = sevenListing arg in (src, sevenSites src) @?= (src, [("G02110", argStart src arg, argStart src arg + T.length arg)]))
+          (\arg -> let src = sevenListing arg in (src, sevenSites src) @?= (src, [("G02103", argStart src arg, argStart src arg + T.length arg)]))
           ["lines=3--1", "lines=-1", "lines=\"1...-2\"", "lines=\"1, -2\""],
       testCase "ADR 0342 I1: 1.,.3, 5..,7 and 5..7 are syntax errors" $ do
         map fst3 (sevenSites (sevenListing "lines=\"1.,.3, 5..,7\"")) @?= ["G02105"]
@@ -272,5 +273,57 @@ adr0342Tests =
     blocks src = [c | CodeBlock c <- resultBodies (evalResult sevenCtx src)]
     sevenCode src = [map clText (codeLines c) | c <- blocks src]
     highlightedOf src = [[clText l | l <- codeLines c, clHighlight l] | c <- blocks src]
+    argStart src arg = T.length (fst (T.breakOn arg src))
+    fst3 (a, _, _) = a
+
+{- | The negative end of a line range written as a word or a string is
+G02103 as one written as an expression (root ADR 0419).
+-}
+adr0419Tests :: TestTree
+adr0419Tests =
+  testGroup
+    "root ADR 0419: a negative end of a line range is a negative natural"
+    [ testCase "root ADR 0419 I1: a negative end is one G02103 at the argument" $
+        mapM_
+          (\(src, arg) -> (src, sevenSites src) @?= (src, [("G02103", argStart src arg, argStart src arg + T.length arg)]))
+          ( [ (sevenListing a, a)
+            | a <- ["lines=-1", "lines=3...-1", "lines=3--1", "lines=\"1...-2\"", "lines=\"1, -2\"", "lines=-1.5", "lines=-1...a", "lines=-1...-2", "lines=[= 3...0 - 1]"]
+            ]
+              <> [(block "highlight=-1", "highlight=-1")]
+          ),
+      testCase "root ADR 0419 I1: the message is the one of a negative natural" $ do
+        sevenMsgs (sevenListing "lines=-1.5") @?= [("G02103", "@listing の lines には 0 以上の整数を書きます（書かれた値は -1.5）")]
+        sevenMsgs (sevenListing "lines=-1...-2") @?= [("G02103", "@listing の lines には 0 以上の整数を書きます（書かれた値は -1）")],
+      testCase "root ADR 0419 I2: a word, a string and an expression give the same code and message" $
+        mapM_
+          ( \(mk, n) ->
+              let ofArg a = sevenMsgs (mk a)
+                  one = ofArg ("=-" <> n)
+                  rng = ofArg ("=3...-" <> n)
+               in do
+                    (mk "", n, map fst one) @?= (mk "", n, ["G02103"])
+                    (mk "", n, ofArg ("=\"-" <> n <> "\"")) @?= (mk "", n, one)
+                    (mk "", n, ofArg ("=[= -" <> n <> "]")) @?= (mk "", n, one)
+                    (mk "", n, map fst rng) @?= (mk "", n, ["G02103"])
+                    (mk "", n, ofArg ("=\"3...-" <> n <> "\"")) @?= (mk "", n, rng)
+                    (mk "", n, ofArg ("=[= 3...-" <> n <> "]")) @?= (mk "", n, rng)
+          )
+          [(mk, n) | mk <- [\a -> sevenListing ("lines" <> a), \a -> block ("highlight" <> a)], n <- ["1", "2", "3"]],
+      testCase "root ADR 0419 I3: a non-numeric end and a missing end stay G02110" $
+        mapM_
+          (\a -> (a, map fst3 (sevenSites (sevenListing a))) @?= (a, ["G02110"]))
+          ["lines=a...3", "lines=3...", "lines=-a"],
+      testCase "root ADR 0419 I3: 0 and -0 keep the rule of 0" $ do
+        map fst3 (sevenSites (sevenListing "lines=-0")) @?= ["G02037"]
+        map fst3 (sevenSites (sevenListing "lines=0")) @?= ["G02037"]
+        map fst3 (sevenSites (block "highlight=-0")) @?= ["G02069"]
+    ]
+  where
+    sevenCtx = baseCtx {ctxAssets = Map.fromList [("seven.txt", AssetText (FileId 24) "l1\nl2\nl3\nl4\nl5\nl6\nl7\n")]}
+    sevenListing arg = "@listing seven.txt " <> arg <> "\n"
+    block arg = "``` " <> arg <> "\na\nb\nc\nd\ne\nf\ng\n```\n"
+    sevenDiags src = map diagSite (fst (evalSource sevenCtx src))
+    sevenSites src = [(c, s, e) | (c, _, s, e) <- sevenDiags src]
+    sevenMsgs src = [(c, m) | (c, m, _, _) <- sevenDiags src]
     argStart src arg = T.length (fst (T.breakOn arg src))
     fst3 (a, _, _) = a
