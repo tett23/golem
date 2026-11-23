@@ -4,8 +4,10 @@
 # gen-vertical-orientation.sh, gen-embedded.sh (docs/adr/0203),
 # fixtures/copy-fonts.sh,
 # fixtures/fetch-public-domain.sh, plugin-licenses.sh
-# (docs/adr/0133-third-party-licenses-of-sample-plugins.md) and
-# wasmtime-advisories.sh (docs/adr/0157, docs/adr/0166). Each script that
+# (docs/adr/0133-third-party-licenses-of-sample-plugins.md),
+# wasmtime-advisories.sh (docs/adr/0157, docs/adr/0166) and
+# check-local-wasmtime.sh with .githooks/pre-push (docs/adr/0418). Each
+# script that
 # writes into the repository it is in runs as a copy in a fake root in a
 # temporary directory; nothing here uses the network. The
 # scripts-linux job of .github/workflows/ci.yml runs this.
@@ -666,6 +668,116 @@ GHSA-w36r-2hch-9xp9
 GHSA-wjc8-633q-pwxr
 EOF
 if [ "$(cut -f 1 "$WORK/out" | LC_ALL=C sort)" = "$(cat "$WA/expected")" ]; then ok; else ng "wasmtime-advisories: the 25 advisories that match 49.0.2"; fi
+
+# ---------------------------------------------------------------- check-local-wasmtime.sh
+
+# root ADR 0418: the pre-push hook stops a push when the wasmtime that the
+# build links is not the one that scripts/fetch-wasmtime.sh pins. Each case
+# is a temporary Git repository (and worktrees of it) with a stub of
+# fetch-wasmtime.sh, a VERSION and a cabal.project.local.
+LW=$WORK/lw
+mkdir -p "$LW"
+LW_NEW="wasmtime-v50.0.1-aarch64-macos-c-api a49327ca596fae51cd92e230265132112bb7896c5a24e4d58cd05b56612e26bb"
+LW_OLD="wasmtime-v49.0.2-aarch64-macos-c-api 0b8d4ba4b5e6a8b6c3f1f2d4c1c9e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091"
+LW_SHA="wasmtime-v50.0.1-aarch64-macos-c-api 0000000000000000000000000000000000000000000000000000000000000000"
+lw_git() { git -c user.name=test -c user.email=test@example.com "$@"; }
+# lw_repo DIR [fail]: a repository whose fetch-wasmtime.sh --expected prints
+# $LW_NEW, or fails as on an unsupported platform
+lw_repo() {
+  mkdir -p "$1/scripts/manual" "$1/.githooks"
+  cp "$HERE/check-local-wasmtime.sh" "$1/scripts/" 2>/dev/null || :
+  cp "$HERE/../.githooks/pre-push" "$1/.githooks/pre-push"
+  if [ "${2:-}" = fail ]; then
+    printf '#!/bin/sh\necho "unsupported platform: Plan9-mips" >&2\nexit 1\n' >"$1/scripts/fetch-wasmtime.sh"
+  else
+    printf '#!/bin/sh\n[ "$1" = --expected ] || exit 2\necho "%s"\n' "$LW_NEW" >"$1/scripts/fetch-wasmtime.sh"
+  fi
+  printf '#!/bin/sh\nexit 0\n' >"$1/scripts/manual/check-updated.sh"
+  printf '/third_party/\n/cabal.project.local\n' >"$1/.gitignore"
+  (cd "$1" && lw_git init -q -b main && lw_git add -A && lw_git commit -q -m init)
+}
+# lw_version DIR LINE: DIR/third_party/wasmtime/VERSION holds LINE
+lw_version() {
+  mkdir -p "$1/third_party/wasmtime/lib"
+  printf '%s\n' "$2" >"$1/third_party/wasmtime/VERSION"
+}
+# lw_local DIR TARGET: DIR/cabal.project.local links the wasmtime in TARGET
+lw_local() {
+  printf '%s\npackage golem-plugin\n  extra-include-dirs: %s/third_party/wasmtime/include\n  extra-lib-dirs: %s/third_party/wasmtime/lib\n' '-- written by scripts/fetch-wasmtime.sh' "$2" "$2" >"$1/cabal.project.local"
+}
+lw_worktree() { (cd "$1" && lw_git worktree add -q -b "$(basename "$2")" "$2"); }
+lw_check() { run sh "$1/scripts/check-local-wasmtime.sh"; }
+
+lw_repo "$LW/equal"
+lw_version "$LW/equal" "$LW_NEW"
+lw_repo "$LW/old"
+lw_version "$LW/old" "$LW_OLD"
+lw_repo "$LW/sha"
+lw_version "$LW/sha" "$LW_SHA"
+lw_repo "$LW/none"
+lw_repo "$LW/unsupported" fail
+lw_version "$LW/unsupported" "$LW_NEW"
+# a worktree whose cabal.project.local, copied from the main checkout, links
+# the main checkout's wasmtime
+lw_repo "$LW/main"
+lw_version "$LW/main" "$LW_NEW"
+lw_local "$LW/main" "$LW/main"
+lw_worktree "$LW/main" "$LW/wt-plain"
+lw_local "$LW/wt-plain" "$LW/main"
+lw_worktree "$LW/main" "$LW/wt-stale"
+lw_version "$LW/wt-stale" "$LW_OLD"
+lw_local "$LW/wt-stale" "$LW/main"
+# a worktree with its own wasmtime and no cabal.project.local
+lw_worktree "$LW/main" "$LW/wt-own"
+lw_version "$LW/wt-own" "$LW_NEW"
+# a worktree with the pinned wasmtime whose build links a stale one
+lw_repo "$LW/main-old"
+lw_version "$LW/main-old" "$LW_OLD"
+lw_worktree "$LW/main-old" "$LW/wt-linked-old"
+lw_version "$LW/wt-linked-old" "$LW_NEW"
+lw_local "$LW/wt-linked-old" "$LW/main-old"
+# lw_tree: every file under $LW with its checksum, to see that nothing is written
+lw_tree() { (cd "$LW" && find . -type f -exec cksum {} + | LC_ALL=C sort; find . | LC_ALL=C sort); }
+LW_BEFORE=$(lw_tree)
+
+lw_check "$LW/equal"
+expect "root ADR 0418 I1: the VERSION line equals the --expected line" 0
+lw_check "$LW/old"
+expect "root ADR 0418 I1: VERSION is 49.0.2 and --expected is 50.0.1" 1
+if grep -q 'fetch-wasmtime.sh' "$WORK/err" && grep -q "$LW/old/third_party/wasmtime" "$WORK/err"; then ok; else ng "root ADR 0418 I1: the stop names the directory to fetch into and fetch-wasmtime.sh"; fi
+lw_check "$LW/sha"
+expect "root ADR 0418 I1: only the SHA-256 differs" 1
+lw_check "$LW/none"
+expect "root ADR 0418 I1: no VERSION" 1
+lw_check "$LW/unsupported"
+expect "root ADR 0418 I1: --expected fails" 1
+if grep -q 'unsupported platform' "$WORK/err"; then ok; else ng "root ADR 0418 I1: the stop on a failed --expected says why"; fi
+lw_check "$LW/wt-plain"
+expect "root ADR 0418 I2: a worktree whose cabal.project.local links the main checkout's pinned wasmtime" 0
+lw_check "$LW/wt-stale"
+expect "root ADR 0418 I2: a stale VERSION in the worktree, cabal.project.local links the main checkout's pinned one" 0
+lw_check "$LW/wt-own"
+expect "root ADR 0418 I2: a worktree without cabal.project.local with the pinned VERSION" 0
+lw_check "$LW/wt-linked-old"
+expect "root ADR 0418 I2: the pinned VERSION in the worktree, cabal.project.local links a stale one" 1
+if grep -q "$LW/main-old/third_party/wasmtime" "$WORK/err"; then ok; else ng "root ADR 0418 I2: the stop names the linked wasmtime, not the worktree's"; fi
+# the hook: once per push, not for the deletion of branches only
+LW_ZERO=0000000000000000000000000000000000000000
+LW_SHA1=$(cd "$LW/none" && git rev-parse HEAD)
+lw_push() {
+  CODE=0
+  (cd "$1" && printf '%s\n' "$2" | sh .githooks/pre-push origin git@example.com:x.git) >"$WORK/out" 2>"$WORK/err" || CODE=$?
+}
+lw_push "$LW/none" "(delete) $LW_ZERO refs/heads/a $LW_SHA1
+(delete) $LW_ZERO refs/heads/b $LW_SHA1"
+expect "root ADR 0418 I1: a push that deletes branches only is not checked" 0
+lw_push "$LW/none" "refs/heads/main $LW_SHA1 refs/heads/main $LW_ZERO
+(delete) $LW_ZERO refs/heads/b $LW_SHA1"
+expect "root ADR 0418 I1: the hook stops a push without VERSION" 1
+if [ "$(grep -c 'VERSION does not exist' "$WORK/err")" = 1 ]; then ok; else ng "root ADR 0418 I1: the hook checks once per push"; fi
+lw_push "$LW/equal" "refs/heads/main $LW_SHA1 refs/heads/main $LW_ZERO"
+expect "root ADR 0418 I1: the hook passes a push with the pinned wasmtime" 0
+if [ "$(lw_tree)" = "$LW_BEFORE" ]; then ok; else ng "root ADR 0418 I3: the check writes no file"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"

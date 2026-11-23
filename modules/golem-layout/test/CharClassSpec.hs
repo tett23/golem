@@ -8,7 +8,7 @@ module CharClassSpec (charClassTests) where
 
 import Data.Char (chr)
 import Data.Text (Text)
-import Golem.Layout.CharClass
+import Golem.Unicode.CharClass
 import Test.Tasty
 import Test.Tasty.HUnit
 

@@ -1,6 +1,6 @@
 # ADR 0377: ページと見開きの境で部品を分ける位置を定める
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

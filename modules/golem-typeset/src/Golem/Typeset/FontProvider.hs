@@ -27,7 +27,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
 import Golem.Font.Cff (CffCheck (..), CffResult (..), checkCffReferences)
-import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
@@ -39,6 +38,7 @@ import Golem.Syntax
 import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, normalTexts, usedRoles)
 import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
+import Golem.Unicode.CharClass (isDualCharacter)
 import Numeric (showFFloat)
 import Text.Printf (printf)
 
@@ -64,7 +64,9 @@ fontProvider memoise = FontProvider $ \files fid style locals ->
         r <- filesResolve files path
         case r of
           -- reported by the driver before the fonts are loaded; kept for a provider used alone
-          Left e -> pure (Left (err "G08002" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
+          Left Missing -> pure (Left (err "G08002" (T.pack ("フォントのファイルがありません: " <> path))))
+          -- a path outside the project is its own cause (docs/adr/0421)
+          Left e -> pure (Left (err "G03279" (T.pack (pathErrorMessage e <> ": " <> path))))
           Right rel -> Right <$> filesRead files rel
       -- a file at the instance of a role (Golem ADR 0358): Left of a file's diagnostic, or Right of why the instance is not in it
       load bytes path inst = do

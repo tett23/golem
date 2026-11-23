@@ -401,7 +401,7 @@ x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョ
 矢印は、元のモジュールが先のモジュールを使うことを表す。
 図を読みやすくするため、次の矢印を省いている。
 
-- golem-syntax への矢印：golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+- golem-syntax への矢印：golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-unicode、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 - golem-length への矢印：golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset）が多いので、矢印を省く。
 - ほかの依存を通して届く依存の矢印。
 
@@ -425,6 +425,7 @@ flowchart TD
     numerals["golem-numerals<br/>数の表記（最下層）"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
+    unicode["golem-unicode<br/>書記素と語の分割、文字クラス（最下層）"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
         typeset["golem-typeset<br/>PDF の組版と描画"]
@@ -458,6 +459,7 @@ flowchart TD
     html --> assemble
     html --> bibliography
     layout --> project
+    layout --> unicode
     layoutspec --> pdf
     layoutspec --> project
     lint --> eval
@@ -489,6 +491,11 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
 
 - golem-length は長さの型 `Sp`、単位の変換、長さと十進の数の表記を持ち、golem のどのパッケージにも依存しない（[docs/adr/0114](adr/0114-sp-in-a-length-package.md)）。
 - golem-font は長さを持たず、位置と寸法をフォントの単位で返すので、golem-length に依存しない。
+- golem-unicode は base、containers、text だけに依存し、golem のどのパッケージにも依存しない（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
+  UAX #29 の拡張書記素クラスタの分割（`Golem.Unicode.Grapheme`）と語の境界（`Golem.Unicode.Word`）、一般カテゴリが L か N かの判定（`Golem.Unicode.Category`）、JLReq の文字クラス（`Golem.Unicode.CharClass`）を持つ。
+  分割は Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
+  分割の規則は libgrapheme 3.0.0 の実装に倣い、字の性質の表は Unicode 17.0.0 のデータから `scripts/gen-unicode-segmentation.sh` が生成する。
+  golem-html と golem-unicode のライブラリが golem-layout と golem-project に依存しないことは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
 - golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 - golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
   golem-pdf は golem-svg に依存せず、golem-typeset が golem-svg の描画を golem-pdf の描画に直す。
@@ -1348,13 +1355,15 @@ CLI のオプションは呼び出しに明示されるので、同じオプシ�
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
 PDF、HTML、プレーンテキストに加え、EPUB もファイル全体のバイト一致を保証する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
-EPUB の一致の条件は、EPUB を作る圧縮器（zip-archive と zlib）の版を含む同じ Golem のビルドと、同じ設定、原稿、素材である。
+EPUB の一致の条件は、同じ Golem のバージョンと、同じ設定、原稿、素材である（[Golem ADR 0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)）。
 本からの相対位置を保ってプロジェクトを別のディレクトリに移しても、素材の列挙順や組んだ時刻が変わっても、EPUB は一致する。
 zip には、`mimetype`、`META-INF/container.xml`、パッケージ文書、ナビゲーション文書、`style.css`、本文の章（本の順）、素材（出力先の相対パスの順）をこの順に収め、どのエントリにも時刻 0 を書く。
 `mimetype` は圧縮せず、ほかのエントリは deflate で縮むときだけ deflate で収める。
 EPUB の識別子と更新日時（`dcterms:modified`）はマニフェストから作り、絶対パスや組んだ時刻は書かない。
-異なるビルドの間の一致は保証しないので、圧縮器の版を上げると、同じ入力からでも EPUB のバイト列は変わりうる。
-`cabal.project.freeze` が二つの圧縮器の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
+`cabal.project.freeze` が EPUB を作る圧縮器（zip-archive、zlib、同梱の C の zlib である zlib-clib）の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
+そのため、一致の条件はバージョンで言える。
+異なるバージョンの間の一致は保証しない。
+圧縮器の版を変えると、同じ入力からでも EPUB のバイト列が変わりうるので、圧縮器の版を変えるのは minor のバージョンに限る（[docs/compatibility.md](compatibility.md)）。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
@@ -1966,6 +1975,10 @@ folio = { position = "bottom-outside", format = "{n}" }
 `[composition]` は、本文の組み方（行分割の許容度、禁則、数と単位のあいだの分割、句読点のぶら下げ、欧文の字幅の伸縮と行の端の突き出し、分綴の例外、圏点の形など）を決める。
 語に書かれたハイフンとダッシュの後の分割の罰則（`explicit-hyphen-penalty`）は「行分割」の節で、ルビの配置（`[composition.ruby]`）は「ルビの配置」で述べる。
 
+`keep-parts` は、表、リスト項目、定義用語と説明、図版とキャプションを保つ単位である。
+`"column"`（既定）、`"page"`、`"spread"` を指定する。
+分割候補、空の単位で保てない場合の通知と現在の制限は「表、リスト、図版、定義リストのまとまり」で定める。
+
 `pretolerance`、`tolerance`、`emergency-stretch` は、PDF の行分割の三つの段階の値である（「行分割」の節、[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 
 - `pretolerance`（既定は 100）：パターンの分綴を使わない一つ目の段階の許容度。負の値なら、この段階を飛ばす。
@@ -2553,6 +2566,7 @@ HTML、EPUB、プレーンテキストはページを持たないので、`[hidd
 
 `style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
 ファイルの存在は、そのファイルを使うターゲットのビルドと `golem check` でだけ検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
+パスがプロジェクトの外を指すかは、どのターゲットのビルドと `golem check` でも検査する（下の G03279）。
 LSP と `golem lint` はファイルを検査しないので、フォントを置く前でも原稿の diagnostics を出す。
 
 PDF は、ファイルの欠けを次のエラーとし、PDF を書かない。
@@ -2566,9 +2580,17 @@ G08007 は設定の欠けであり、ファイルを置いても直らないの�
 HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G03010 を報告する。
 ブラウザーは `font-family` の並びの残りで組むので、出力は読める。
 G03010 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
-プレーンテキストはファイルを検査しない。
+プレーンテキストはファイルの欠けを検査しない。
 
-絶対パス、URL、プロジェクトルートの外を指すパスは、存在しないファイルと同じコードで報告する。
+パスがプロジェクトの外を指すときは、欠けとは別の原因として、どのターゲットでも、どのプロファイルでも G03279 のエラーとする（[ADR 0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)）。
+プロジェクトの外とは、絶対パス、URL、プロジェクトルートの外に出るパス、プロジェクトの外のファイルを指すシンボリックリンクである。
+先のファイルがないシンボリックリンクは、ないファイルとして扱う。
+`[fonts]` のフォントは、PDF が使わない役割のものも検査する。
+`intent` は、PDF を組まないビルドでも検査する。
+G03279 があれば、どのターゲットも書かない。
+プロジェクトの外のフォントは、別のマシンで同じ本を組めない原因になるので、HTML と EPUB でも、そのフォントを除いて出力することはせず、ビルドを止める。
+G03279 を出したパスには、G08002、G08006、G03010 を出さない。
+
 diagnostic の位置は `style.toml` の先頭とし、同じコードと同じパスの diagnostic は一つだけ出す。
 
 ### 文字スタイルと段落スタイル
@@ -5170,12 +5192,13 @@ PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-d
 - キャプションは、`[tables]` の `caption-position` の側（`"above"` は表の上、縦組みでは右。`"below"` は表の下、縦組みでは左）に置く（[docs/adr/0262](adr/0262-table-numbers-captions-column-widths-and-cell-styles.md)）。表番号、区切り、キャプションは、段落スタイル `caption` の見た目と段の行長で、段の行の始まりからそろえて組む。行の送りと格子の行の占め方は、コードブロックのキャプションと同じである。
   - `"above"` では、表の前の空きをキャプションの前に置き、表の始まりの罫をキャプションと見出しの行のあいだに引く。
   - `"below"` では、表の終わりの罫を本体の最後の行とキャプションのあいだに引き、表の後の空きをキャプションの後に置く。
-- キャプションは、それに接する行と同じ段に置く。ページをまたいだ先では見出しの行を繰り返し、キャプションは繰り返さない。
+- `keep-parts = "column"`（既定）では、キャプションはそれに接する行と同じ段に置く。ページをまたいだ先では見出しの行を繰り返し、キャプションは繰り返さない。
   - `"above"` では、キャプション、見出しの行、本体の最初の行を同じ段に置き、収まらない位置からは表をキャプションごと次の段に送る。
   - `"below"` では、本体の最後の行とキャプションを同じ段に置く。収まらなければ本体の最後の行の前で段を改め、次の段に、繰り返す見出しの行、本体の最後の行、キャプションを置く。
   - キャプションとそれに接する行（`"above"` ではキャプション、見出しの行、本体の最初の行、`"below"` では見出しの行、本体の最後の行、キャプション）が空の段に収まらない場合は、エラー（G07116）とし、表を組まない。キャプションの行を加えなくても収まらない行は、G07116 ではなく G07042 とする。
+- `keep-parts = "page"` と `"spread"` では、キャプションと接する行を、選んだ単位に保つ。保持組が空の単位にも収まらない場合は通常の分割位置を使い、G07133 の notice を一度出す。キャプション単体が空の段にも入らなければ G07116 とする。図版と異なり、表のキャプションを表の行と別の段へ置けるが、キャプション自身の内部に新しい分割位置は加えない（「表、リスト、図版、定義リストのまとまり」の節）。
 - 見出しの行のすべてのセルが空白のほかに中身を持たない場合、PDF ではその表を見出しの行のない表として組む。見出しの行の格子の行を取らず、見出しの行の下の罫を引かず、ページをまたいでも見出しの行を繰り返さない。表のラベルは本体の最初の格子の行に付く。HTML と EPUB は、空の見出しの行も、空のセルの `<thead>` の行として出力する。
-- 改ページは表の行のあいだでだけ行い、次のページの先頭に見出しの行を繰り返す。各ページの表の部分には、三本の罫（見出しの行のない表では二本）を引く。
+- 改ページは表の行のあいだで行う。見出しを繰り返す境界は「表、リスト、図版、定義リストのまとまり」の節で定める。各段の表の部分には上下の罫を引き、見出しの行を持つ部分には、さらに見出しの下の罫を引く。
   - 前の空きと見出しの行と本体の最初の行が収まらない位置からは表を始めず、空きを置かずに次のページに送る。
   - 送った先の段で、送った図版と続きの脚注が段の先頭と末尾を取って、見出しの行と本体の最初の行が収まらなければ、さらに次の段に送る。ページをまたいで見出しの行を繰り返すときも同じである（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
   - 見出しの行と本体の一行がページに収まらない場合は、エラー（G07042）とする。
@@ -5271,8 +5294,11 @@ CRLF は受け付け、LF の前にない CR（単独の CR）を G02082 とす�
 メッセージは、最初の `-` の範囲の両端を残して `...` で区切った形を示す。
 式が返した文字列も同じに読む。
 `@listing` はコードブロックを作らず、コードブロックは強調せずに組む。
-語と文字列の負の端は G02110 とする。
-式の評価結果の端が負なら G02103 とし、0 なら `lines` ではファイルの行を外れた範囲として G02037、`highlight` ではそのコードにない行として G02069 とする。
+端が負の数なら、語、文字列、式のどれで書いても G02103 とし、メッセージも同じにする（[ADR 0419](adr/0419-report-a-negative-end-of-a-range-as-a-negative-natural.md)）。
+一つの項目には、始めの端から読んで最初に見つけた誤りの diagnostic を一つだけ出すので、`-1...a` は G02103 だけになる。
+`-0` は 0 と読む。
+端が 0 なら、`lines` ではファイルの行を外れた範囲として G02037、`highlight` ではそのコードにない行として G02069 とする。
+端のない範囲と、`a...3` や `-a` のように端が数でない項目は G02110 とする。
 一般の式の範囲の負の端（`[= -2...3]`）は、これまでどおり値として受け付ける。
 LSP では、エディタで開いているファイルの BOM と CR も G01002 と G01003 にするが、プロジェクトの読み込みは止めない。
 
@@ -5655,24 +5681,32 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 続く見出しと行の量には、それらの注の本文の行と、その段で最初の注なら区切りの領域を数える（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 段の先頭から見出しだけを置いた段では、空の段と同じく、孤立行と寡婦行の規則で一行も置けなくなる場合は、入るだけの行を置き、入らない注の本文を次の段に続ける（[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)、[docs/adr/0206](adr/0206-pagination-points-the-invariants-did-not-decide.md)）。
 
-### 表、図版、定義リストのまとまり
+### 表、リスト、図版、定義リストのまとまり
 
-改ページは、表、図版とキャプション、定義リストの用語と説明を、次の位置でだけ分ける（[ADR 0377](adr/0377-keep-book-parts.md)）。
+PDF の表、リスト項目、定義リストの用語と最初の説明行、図版とキャプションを保つ単位は、`[composition].keep-parts` で本全体に指定する（[root ADR 0377](adr/0377-keep-book-parts.md)、[root ADR 0401](adr/0401-select-book-part-retention-units.md)）。
+値は `"column"`、`"page"`、`"spread"` で、省略時は `"column"` として従来の段単位の配置を保つ。
+ほかの値と文字列でない値は G03006 とする。
+`"page"` では同じ物理ページの段の間、`"spread"` では同じ見開きの段とページの間で分けられる。
+見開きは物理ページの 2 と 3、4 と 5 の組であり、ノンブルの表記や付け直しでは変わらない。
+最初のページと、相手がない最後のページは一ページの単位である。
 
-- 表は、行のあいだで分け、続きの段の先頭で見出しの行を繰り返す。見出しの行は、本体の最初の行と同じ段に置く（「PDF の表」の節）。
-- 図版とキャプションは、一つのまとまりとして置き、分けない。
-- 定義リストの用語は、説明の段落の最初の部分と同じ段に置く。最初の部分は、その段落の `keep-first-lines` の行（既定では 2 行）であり、説明の最初の行を含む。
+保持単位の境界では、次のまとまりを保つ。
 
-まとまりを保つ単位は段であり、一段組みの版面では段はページと同じである。
-段に収まらないまとまりは、次の段へ一度だけ送る。
-表のまとまりは、前の空き、キャプション（`"above"` のとき）、見出しの行、本体の最初の行であり、表の全体ではない。
-図版は、送った図版として次の段に置き、後に続く本文は今の段に組み続ける（「待つ図版と自ら送られる図版」の節）。
-送った先の空の段にも収まらなければ、通常の分割の位置（表の行のあいだ、段落の `keep-first-lines` と `keep-last-lines`）で分け、空の段から同じまとまりを再び送らない。
-段に収まらない図版を縮める規則は「図版」の節で、空の段に収まらない表の行とキャプションのエラー（G07042、G07116）は「PDF の表」の節で定める。
-ページか見開きを単位にする指定と、リストを項目のあいだで分ける規則は、まだ無い（[docs/roadmap.md](roadmap.md)）。
+- 表は行のあいだで分け、見出しの行と最初のデータ行を同じ単位に置く。上のキャプションは見出しと最初のデータ行、下のキャプションは最後のデータ行と同じ単位に置く。`"column"` では続きの段で見出しを繰り返す。`"page"` と `"spread"` では同じページの段の間で繰り返さず、新しい物理ページでは繰り返す。
+- リストは項目のあいだで分け、各項目を一つの単位に保つ。入れ子の項目にも同じ規則を使う。
+- 定義リストの用語は説明の最初の行と同じ単位に置く。説明の段落自身の孤立行と寡婦行の指定も引き続き使う。`"column"` では従来どおり、説明の `keep-first-lines` の行（既定では 2 行）と用語を同じ段に置く。
+- 図版とキャプションは分けず、一段に置く。既存の縮小と寸法エラーの規則を保ち、キャプションに新しい分割位置は加えない。
 
-空の段から同じまとまりを再び送らないことは、[ADR 0377](adr/0377-keep-book-parts.md) の「不変条件」の節の I1 として、golem-layout のテストが確かめる。
-テストは、段の行の数が 3 から 6、段の数が 1 と 2 の版面で、段落の後に置いた表、図版、定義リスト、`keep-all-lines` の段落を組み、空の段が残らないことを調べる。
+まとまりが今の単位に収まらなければ、次の単位への移動を一度だけ試す。
+空の単位にも収まらなければ、通常の分割位置を使い、G07133 の notice を一度出す。
+notice は元の部品の原稿位置、種類と選んだ保持単位を示す。
+空の単位から同じ条件の単位へ繰り返し送り直さず、過去の見開きの分割位置は選び直さない。
+格子の配置と自由配置（[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）は同じ単位と規則を使う。
+自由配置で回り込む図版を含むリスト項目は、試す位置ごとに、図版と横の段落を含む項目全体をその位置の行長で組み直し、採らなかった試しの行、注、ラベルと索引の印を捨てる。
+図版の縮小は「図版」の節で、表の一行とキャプションの既存の寸法エラー（G07042、G07116）は「PDF の表」の節で定める。
+一段組みでは、`"page"` と `"spread"` でも、表の見出しの行と本体の各行の組が一つの段に収まらなければならない。
+見出しは続きの物理ページのたびに繰り返すので、見開きの 2 ページに見出しと行を分けても、続きのページには見出しと行の両方が要るからである。
+収まらない表は G07042 で止める。
 
 ### 不変条件による検査
 
@@ -6470,7 +6504,7 @@ He said nothing, and the silence was the answer.
 
 ### 両用の文字
 
-和文にも欧文にも使う次の 13 字を、両用の文字とする（golem-layout の `Golem.Layout.CharClass.dualCharacters`）。
+和文にも欧文にも使う次の 13 字を、両用の文字とする（golem-unicode の `Golem.Unicode.CharClass.dualCharacters`）。
 
 ```
 ‘ ’ “ ” « » ‹ › — – ‐ ‑ …
@@ -8955,7 +8989,8 @@ G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`
 `golem stats` は各ページのマスターフレームに流し込む本文を原稿順に集計し、PDF を書き出さずに文字数、ワード数、組版後の行数、換算ページ数を表示する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。
 本文にはルビの親文字を含め、読み、柱、ノンブル、独立したフレームのテキスト、組版で補ったハイフンを除く。
 文字数は段落の表示文字列の拡張書記素クラスタを数える。
-ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字を含む区間を数える。
+ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字（一般カテゴリが L か N の字）を含む区間を数える。
+書記素クラスタと単語境界は、golem-unicode が UAX #29 の規則と Unicode 17.0.0 の表で求める（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
 組版後の行数は、PDF と同じ組版で作る本文の行ボックスと、明示的な空行の数である。
 
 換算では段落の先頭と明示改行で新しい行を始め、1 行の字数を超えたところで折り返す。
@@ -9388,6 +9423,8 @@ GMP のソースを添えるのは、GMP が LGPL-3.0 であり、三つの実�
 `scripts/release/link-components.sh` は、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素に対応させる。
 構成要素は、Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt である。
 対応の付かないアーカイブが一つでもあれば、配布物を作らずに止まる。
+リンクマップによらず、golem-unicode の注記はいつも `THIRD_PARTY_LICENSES/golem-unicode/` に入れる（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
+注記は、golem-unicode が実装に倣った libgrapheme 3.0.0 の ISC ライセンスと、表の元にした Unicode 17.0.0 のデータの Unicode License である。
 
 構成要素の文書の出どころは、構成要素ごとに決まっている。
 
@@ -9428,7 +9465,7 @@ wasm の版の配布物 `golem-<タグ>-wasm32-wasi.tar.gz` は、ジョブ `was
 配布物の名前は `golem-*.tar.gz` に当たるので、`SHA256SUMS`、来歴の証明、下書きのリリースに、ほかの配布物と同じ規則で入る。
 
 `THIRD_PARTY_LICENSES/` には、次のもののライセンスを入れる。
-wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP である。
+wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、golem-unicode が倣った libgrapheme と Unicode のデータ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP である。
 
 ライセンスの文書の扱いには、wasm の版に固有の決まりがある。
 
@@ -9441,7 +9478,7 @@ wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、
 次のどれかに当たれば、ジョブは失敗し、`release` は走らない。
 
 - 最上位のディレクトリに `golem.wasm`、`LICENSE`、`README`、`THIRD_PARTY_LICENSES/` がない。
-- `THIRD_PARTY_LICENSES/` に、wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がない。
+- `THIRD_PARTY_LICENSES/` に、wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、golem-unicode の注記（libgrapheme と Unicode のデータ）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がない。
 - `.sha256` がアーカイブの SHA-256 と違う。
 
 この検査は `workflow_dispatch` でも走るので、タグを打つ前に確かめられる。
@@ -9575,6 +9612,13 @@ GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる
 `VERSION` には、配布物の名前と SHA-256 を空白で区切って書く。
 `VERSION` の名前とハッシュの両方がスクリプトのものと一致するときだけ、取得済みのディレクトリを使い、そうでなければ取り直す。
 `fetch-wasmtime.sh --expected` は、期待する `VERSION` の中身を出力する。
+
+Git の `pre-push` のフックは、ビルドがリンクする wasmtime が固定した版と違うとき、push を止める（`scripts/check-local-wasmtime.sh`、[docs/adr/0418](adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+照合は、push するチェックアウトの `fetch-wasmtime.sh --expected` の一行と、ビルドがリンクする wasmtime の `VERSION` の一行を比べる。
+ビルドがリンクする wasmtime は、そのチェックアウトの `cabal.project.local` の `extra-lib-dirs` のうち `third_party/wasmtime/lib` で終わる最初のものの親のディレクトリとし、そのような行がなければ、そのチェックアウト自身の `third_party/wasmtime` とする。
+二つの一行が違うとき、`VERSION` がないとき、`--expected` が失敗したときは、終了コード 1 で止まり、取り直す手順を標準エラーに書く。
+照合は一回の push に一度行い、push する ref がどれもブランチの削除のときは行わない。
+照合はネットワークに出ず、ファイルを書かず、飛ばす仕組みを持たない。
 
 ## マニュアル
 

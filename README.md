@@ -130,7 +130,7 @@ Chromium と Safari では、ページの Worker の中で `golem.wasm` を動�
 JSON は `golem build --target pdf --format json` が標準エラーに書くものと同じバイト列である。
 ホストの例は [scripts/wasm/run.mjs](./scripts/wasm/run.mjs) にあり、アーカイブの `README` にも同じことを書いている。
 
-アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスがある。
+アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスと、golem-unicode の注記（実装に倣った libgrapheme と、表の元にした Unicode のデータのライセンス）がある。
 GMP のソースは、ネイティブのアーカイブと同じくリリースに添えている。
 
 ## Usage
@@ -183,6 +183,11 @@ golem new mybook
 `ja_JP` はどの出力形式でも G03119 になる。
 
 奥付の `@printings` は、`style.toml` の `[printings]` に `format = "{date}  第{edition}版 第{printing}刷"` のように書くと、どの言語の本でも、その書式で発行の履歴を組む（[Golem ADR 0375](./docs/adr/0375-printings-format.md)）。
+
+PDF の表、リスト項目、定義用語と説明、図版とキャプションを保つ単位は、`style.toml` の `[composition].keep-parts` で `"column"`（既定）、`"page"`、`"spread"` から選ぶ（[root ADR 0401](./docs/adr/0401-select-book-part-retention-units.md)）。
+ページと見開きの中では段の間で分けられ、空の単位にも収まらないまとまりを分けると G07133 の notice を出す。
+図版とキャプションは従来どおり分けず、一段に置く。
+一段組みで表の見出しとデータ行を見開きへ分ける境界は、[ロードマップ](./docs/roadmap.md) に残す。
 
 `golem explain` は、コードを省くと一覧を表示する。
 複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。
@@ -459,6 +464,17 @@ ADR の参照の書き方にも、決まりがある。
 
 フックと同じ検査は、CI の `adr` ジョブでも、adr-guard の v0.13.1 の action に `allow-status: true` と `allow-links: true` を付けて行う。
 この action は、ADR の参照のリンクと番号の重複も検査する。
+
+`.githooks/pre-push` は、ビルドがリンクする wasmtime が固定した版と違うときも push を止める（`scripts/check-local-wasmtime.sh`、[docs/adr/0418](./docs/adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+手元のテストが CI と違う版の wasmtime で走るのを防ぐためである。
+照合は、push するチェックアウトの `scripts/fetch-wasmtime.sh --expected` の一行と、ビルドがリンクする wasmtime の `VERSION` の一行を比べる。
+ビルドがリンクする wasmtime は、`cabal.project.local` の `extra-lib-dirs` のうち `third_party/wasmtime/lib` で終わる最初のものの親のディレクトリであり、そのような行がなければチェックアウト自身の `third_party/wasmtime` である。
+メインのチェックアウトから `cabal.project.local` を写した worktree では、メインのチェックアウトの wasmtime を比べる。
+二つの一行が違うとき、`VERSION` がないとき、`--expected` が失敗したとき（対応しないプラットフォーム）は、push を止める。
+照合は、一回の push に一度行い、push する ref がどれもブランチの削除のときは行わない。
+照合はネットワークに出ず、ファイルを書かず、飛ばす仕組みもない。
+止まったときは、標準エラーに示されたコマンドで wasmtime を取り直す。
+wasmtime の版を上げるブランチを worktree から push するときは、その worktree で `scripts/fetch-wasmtime.sh` を走らせ、`cabal.project.local` の `extra-include-dirs` と `extra-lib-dirs` をその worktree の `third_party/wasmtime` に向ける。
 
 ### 固定しているネイティブライブラリ
 

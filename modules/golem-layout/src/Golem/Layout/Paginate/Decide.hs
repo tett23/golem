@@ -32,6 +32,7 @@ where
 import Data.List (find)
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Golem.Layout.Code (codeSpan)
+import Golem.Layout.Paginate.BookParts (flattenBookParts)
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd, ruleBefore, ruleBeforeAtStart, rulesJoined)
@@ -62,6 +63,7 @@ noteLinesOf = sum . map nbLines . concatMap lbNotes
 -- | The first part of what follows, with the notes of its lines (golem-layout ADR 0019).
 nextNeed :: Env -> [Flow] -> Need
 nextNeed env = \case
+  (FBookPart _ _ _ _ body : rest) -> nextNeed env (body <> rest)
   -- a heading at a recto starts a page of its own: nothing before it keeps it (docs/adr/0206)
   (f : _) | startsRecto f -> mempty
   -- the first part that can be split from the rest (golem-layout ADR 0021)
@@ -121,7 +123,7 @@ the no-break and the first part of what follows it, its spaces too, at
 most a column (golem-layout ADR 0022).
 -}
 keptNeed :: Env -> [Flow] -> Maybe Need
-keptNeed env rest = (\(before, _, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env n after)) <$> keepAhead rest
+keptNeed env rest = (\(before, _, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env n after)) <$> keepAhead (flattenBookParts rest)
 
 {- | The flows before a no-break or a keep-with-next (docs/adr/0261) that
 the paragraph waits past, the tail lines of that paragraph, the first
@@ -182,7 +184,8 @@ anything else. With whether only the lines count, not the figures placed
 in the column.
 -}
 nextFirstLines :: Int -> [Flow] -> (Int, Bool)
-nextFirstLines n after = case dropWhile skipped after of
+nextFirstLines n after = case dropWhile skipped (flattenBookParts after) of
+  FBookPart _ _ _ _ body : more -> nextFirstLines n (body <> more)
   -- of a box, those of its body (docs/adr/0271)
   FBoxed {fbBody = body} : _ -> nextFirstLines n body
   FParagraph kp ls : _ -> (max (firstPart kp True (length ls)) (min n (length ls)), True)
@@ -296,6 +299,7 @@ afterPageFigure st = case sDone st of
 -- | Whether the flow is a heading at a recto.
 startsRecto :: Flow -> Bool
 startsRecto = \case
+  FBookPart _ _ _ _ body -> maybe False startsRecto (listToMaybe body)
   FHeading {fhRecto = True} -> True
   FRuled {frBody = RuledHeading {rhRecto = True}} -> True
   _ -> False
@@ -331,7 +335,7 @@ insideAfter fr = maybe (0, 0) (\a -> ruleAfter (frGrid fr) a (frNextOverhang fr)
 -- | Whether the rule after waits for the next block to share its area.
 joinsNext :: Flow -> [Flow] -> Bool
 joinsNext fr rest =
-  isJust (frAfter fr) && case rest of
+  isJust (frAfter fr) && case flattenBookParts rest of
     (FRuled {frJoined = True, frBefore = Just _} : _) -> True
     _ -> False
 
