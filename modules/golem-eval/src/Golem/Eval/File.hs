@@ -3196,6 +3196,8 @@ data RangeItem
 data ItemError
   = -- | G02110: an end is missing or cannot be read
     ItemBadEnd
+  | -- | G02103: the first end read from the start of the item is negative (root ADR 0419)
+    ItemNegative Rational
   | -- | G01100: the reserved ..
     ItemReserved
   | -- | G02105: neither a line nor a range
@@ -3208,7 +3210,7 @@ the order written. @what@ names the place; @sp@ is the argument.
 
 A word or a string is items separated by commas: a line @3@ or a range
 @3...5@. The obsolete range @3-5@ is G02251 once per argument.
-Written negative ends are G02110. An expression is a range, a number
+A written negative end is G02103, as an evaluated one (root ADR 0419). An expression is a range, a number
 (one line), a string (read as a word), or an array of numbers and ranges.
 Evaluated ends must be positive integers.
 -}
@@ -3237,6 +3239,7 @@ lineRanges ctx what sp = \case
     -- U+0020 spaces only after a comma (ADR 0342)
     ofText t = case traverse rangeItem (afterCommas (T.splitOn "," t)) of
       Left (ItemBadEnd, i) -> report (rangeEndDiagnostic sp i) >> pure Nothing
+      Left (ItemNegative q, _) -> either report (const (pure ())) (naturalOf what sp q) >> pure Nothing
       Left (ItemReserved, _) -> err "G01100" sp "予約された記法です。今のバージョンでは使えません" >> pure Nothing
       Left (ItemNeither, i) -> neither i
       Right items -> case [(x, y) | ItemDash x y _ _ <- items] of
@@ -3270,24 +3273,33 @@ lineRanges ctx what sp = \case
     neither v = err "G02105" sp (what <> " には行の番号か範囲を書きます: " <> v) >> pure Nothing
 
 {- | An item of a word or a string of ranges (docs/adr ADR 0113), with
-the item for the message when it is not read.
+the item for the message when it is not read. The ends are read from the
+start, and the first error is the one of the item: a negative end is
+G02103 (root ADR 0419), and @-0@ is 0.
 -}
 rangeItem :: Text -> Either (ItemError, Text) RangeItem
 rangeItem i
-  | "-" `T.isPrefixOf` i = Left (ItemBadEnd, i)
   | (a, rest) <- T.breakOn "..." i,
     not (T.null rest) =
-      case (rangeEndWord a, rangeEndWord (T.drop 3 rest)) of
-        _ | "-" `T.isPrefixOf` T.drop 3 rest -> Left (ItemBadEnd, i)
-        (Just p, Just q) -> Right (ItemRange p q)
-        _ -> Left (ItemBadEnd, i)
-  | ".." `T.isInfixOf` i = Left (ItemReserved, i)
-  | Just q <- rangeEndWord i = Right (ItemLine q)
-  | Just [a, b] <- rangeEnds i = case (rangeEndWord a, rangeEndWord b) of
-      (Just p, Just q) | not ("-" `T.isPrefixOf` b) -> Right (ItemDash a b p q)
-      _ | "-" `T.isPrefixOf` b -> Left (ItemBadEnd, i)
-      _ -> Left (ItemNeither, i)
-  | otherwise = Left (ItemNeither, i)
+      ItemRange <$> end a <*> end (T.drop 3 rest)
+  | Just q <- rangeEndWord i = ItemLine <$> natural q
+  | "-" `T.isPrefixOf` i = case rangeEnds i of
+      -- the start is negative, or -0 of an obsolete range
+      Just (a : _) | Just q <- rangeEndWord a -> natural q >> dash
+      _ -> Left (ItemBadEnd, i)
+  | otherwise = dash
+  where
+    dash
+      | ".." `T.isInfixOf` i = Left (ItemReserved, i)
+      | Just [a, b] <- rangeEnds i = case (rangeEndWord a, rangeEndWord b) of
+          (Just p, Just q) -> ItemDash a b p <$> natural q
+          _ | "-" `T.isPrefixOf` b -> Left (ItemBadEnd, i)
+          _ -> Left (ItemNeither, i)
+      | otherwise = Left (ItemNeither, i)
+    end w = maybe (Left (ItemBadEnd, i)) natural (rangeEndWord w)
+    natural q
+      | q < 0 = Left (ItemNegative q, i)
+      | otherwise = Right q
 
 {- | An end of a range written in a word: a number literal. A dot is between digits, as in an
 expression: @.2@ and @2.@ are no ends.
