@@ -25,7 +25,7 @@ InDesign の操作の手順は説明しません。
 | 表の [code: @caption]、[code: @column-widths]、[code: @style] | 表のキャプション、列の幅、表スタイルとセルスタイル |
 | [code: \[note: …\]]、[code: \[note 名前\]] と [code: @note 名前] | 脚注（[code: @note] は複数の段落の脚注） |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
-| プロジェクトの [code: fonts/] | Document Fonts フォルダー |
+| プロジェクトの [code: fonts/] | Document Fonts フォルダ |
 | スウォッチ（[code: \[color.swatches\]]） | スウォッチ |
 | [code: golem build] | 書き出し |
 | [code: golem check] | 原稿と設定の検査（プリフライトの検査は含まない） |
@@ -205,9 +205,9 @@ Golem のマスターページに置けるのは、柱とノンブルだけで�
 章の始まりのページと白ページには、柱を出しません。
 
 @nonumber
-## プロジェクトの fonts/ と Document Fonts フォルダー
+## プロジェクトの fonts/ と Document Fonts フォルダ
 
-InDesign の Document Fonts フォルダーは、ドキュメントの横に置いたフォントを、そのドキュメントで使えるようにするものです。
+InDesign の Document Fonts フォルダは、ドキュメントの横に置いたフォントを、そのドキュメントで使えるようにするものです。
 Golem の [code: fonts/] も、プロジェクトの中にフォントを置く点は同じです。
 
 違いは、Golem がプロジェクトの中のフォントしか使わないことです。
