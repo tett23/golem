@@ -6,12 +6,19 @@
 # deletion of a branch are not checked. It does not fetch origin/main: if it
 # stops a push for changes that main already has, run git fetch and push
 # again.
+#
+# Once per push, unless every ref is the deletion of a branch, it also stops
+# the push when the wasmtime that this checkout's build links is not the
+# pinned one (scripts/check-local-wasmtime.sh, docs/adr/0418).
 set -eu
-CHECK=$(cd "$(dirname "$0")/.." && pwd)/scripts/manual/check-updated.sh
+SCRIPTS=$(cd "$(dirname "$0")/.." && pwd)/scripts
+CHECK=$SCRIPTS/manual/check-updated.sh
 ZERO=0000000000000000000000000000000000000000
 CODE=0
+UPDATES=false
 while read -r local_ref local_sha remote_ref remote_sha; do
   [ "$local_sha" != "$ZERO" ] || continue
+  UPDATES=true
   [ "$remote_ref" != refs/heads/main ] || continue
   if ! git rev-parse -q --verify refs/remotes/origin/main >/dev/null; then
     echo "pre-push: no origin/main; the manual is not checked (git fetch origin main)" >&2
@@ -19,4 +26,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
   sh "$CHECK" refs/remotes/origin/main "$local_sha" || CODE=1
 done
+if [ "$UPDATES" = true ]; then
+  sh "$SCRIPTS/check-local-wasmtime.sh" || CODE=1
+fi
 exit "$CODE"
