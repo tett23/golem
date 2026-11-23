@@ -113,7 +113,7 @@ checkInput dir notes endnotes (ks, j) = do
       epub = htmlValues (epubPage files "OEBPS/b.xhtml")
       text = T.lines (fileText files "build/text/horizontal/b.txt")
   assertBool (what <> " HTML has the mark") (not (T.null (fst html)))
-  assertEqual (what <> " HTML") (fst html) (snd html)
+  uncurry (assertEqual (what <> " HTML")) html
   assertEqual (what <> " EPUB") html epub
   let textMark = digitsOf <$> lineAfter "印" text
   assertBool (what <> " text has the mark") (maybe False (not . T.null) textMark)

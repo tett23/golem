@@ -684,7 +684,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
       | Document fid bs <- docs,
         Block sp l _ body <- allBlocks bs,
         t <-
-          [(name, LabelTarget sp num title (headingAnchor (Just name) sp) fid Nothing) | Just name <- [l], let (num, title) = describe sp body]
+          [(name, LabelTarget sp num title (headingAnchor (Just name) sp) fid Nothing) | let (num, title) = describe sp body, Just name <- [l]]
             <> [(name, LabelTarget nsp (Just (Number nsp (toInteger n) Nothing)) [] name fid (Just (NoteTarget ch n))) | (nsp, ch, n, name) <- mapMaybe noteLabel (bodyInlines body)]
       ]
     -- a note has a number and no title (root ADR 0422)
