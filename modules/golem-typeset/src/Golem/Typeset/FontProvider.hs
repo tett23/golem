@@ -64,7 +64,9 @@ fontProvider memoise = FontProvider $ \files fid style locals ->
         r <- filesResolve files path
         case r of
           -- reported by the driver before the fonts are loaded; kept for a provider used alone
-          Left e -> pure (Left (err "G08002" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
+          Left Missing -> pure (Left (err "G08002" (T.pack ("フォントのファイルがありません: " <> path))))
+          -- a path outside the project is its own cause (docs/adr/0421)
+          Left e -> pure (Left (err "G03279" (T.pack (pathErrorMessage e <> ": " <> path))))
           Right rel -> Right <$> filesRead files rel
       -- a file at the instance of a role (Golem ADR 0358): Left of a file's diagnostic, or Right of why the instance is not in it
       load bytes path inst = do
