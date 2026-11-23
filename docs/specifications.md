@@ -5088,6 +5088,28 @@ CCITTFaxDecode の画像は 1-bit の DeviceGray か成分数 1 の ICCBased で
 DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
 取り込み時に展開した量に、色変換で見積もる復号量と出力量を加えて 256 MiB を超える変換は拒む。
 
+`sh` で描く関数のシェーディング（ShadingType 1 から 3）は、定義の中の有限の値から色を集める（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+描かれるかに関わらず、FunctionType 0 の表のすべてのサンプルを Decode で写した値、FunctionType 2 の C0 と C1（無ければ 0 と 1）、FunctionType 3 の下の関数の値、Background の色を数える。
+出力ごとに同じ位置の値を並べたものを一つの色とし、色空間の範囲への切り詰めをせずに分類する。
+1 出力の関数の配列で、関数ごとの値の数が違うものは、同じ位置が決まらず色を集められないので G08113 とする。
+値の数が同じでも、値のほかの定義（関数の種類、Domain、Range、N、Size、Order、Encode、Decode、Bounds）がそろわない配列は、下の置き換えられないシェーディングとする。
+PostScript の計算機の関数（FunctionType 4）を使うシェーディングは、色の集合を決められないので G08113 とする。
+集めた値がすべて濃淡のシェーディングは、すべての定義の値と関数の Range が色空間の範囲の中にあり、灰色の値が一つの出力の値 v の一次式 `g = αv + β` で決まる場合だけ置き換える。
+Range を持たない FunctionType 2 は、Domain が `[0, 1]` の中にあり、N が 0 より大きいことも求める。
+一次式で決まるのは、DeviceGray と CalGray と、データの色空間が Gray の ICCBased、三つの出力の定義がそろった DeviceRGB と CalRGB と RGB の ICCBased、a* と b* の出力がすべて 0 の Lab とデータの色空間が Lab の ICCBased、C、M、Y の出力がすべて 0 の DeviceCMYK と CMYK の ICCBased である。
+RGB の ICCBased は、三つの成分の Range も等しい場合だけを扱う。
+CMYK の ICCBased の「出力が 0」は、Range で 0 から 1 に写した値が 0、つまり Range の下端に等しいことである。
+データの色空間が Lab の ICCBased の L* は、Range と 0 から 100 の共通部分を色空間の範囲とする。
+置き換えでは、関数の種類、N、Domain、Encode、Bounds、Size、BitsPerSample、Order と、サンプルの値そのものを変えず、C0、C1、Decode、Range、Background を、出力 k ごとに `s_k(1 - αv - β)` で写した DeviceCMYK の 4 出力にする。
+Range を持たない FunctionType 2 と 3 には、色空間の範囲を写した Range を書く。
+写した値は、10 進で有限の桁で終わるときは厳密に書き、終わらないとき（幅が 2 と 5 のほかの素因数を持つ ICCBased の Range）は小数 12 桁に丸める。
+写しは v の一次式なので、補間した後の色も元の色を写した色と一致する。
+これらを満たさない濃淡のシェーディングを、ほかの色がすべて濃淡の図版で使う場合は G08113 とし、ほかに濃淡でない色があれば多色の図版として元の色を保つ。
+一色の図版のシェーディングは、出力が指定色の FunctionType 2 の関数に置き換え、Background も指定色にする。
+ただし、関数のシェーディング（ShadingType 1）の関数は 2 入力なので、FunctionType 2 にできない。
+そのため、元の関数の定義を保ち、すべての出力を指定色の定数に写す。
+メッシュのシェーディング（ShadingType 4 から 7）、シェーディングのパターン、タイリングのパターンは、まだ判定できないので G08113 とする。
+
 PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
 通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
 そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。

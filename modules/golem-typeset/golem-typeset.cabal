@@ -33,6 +33,7 @@ library
                     Golem.Typeset.TextLayer
                     Golem.Typeset.WrapMark
   other-modules:    Golem.Typeset.JpegFrames
+                    Golem.Typeset.PdfShading
                     Golem.Typeset.Draw
                     Golem.Typeset.Structure
                     Golem.Typeset.Flow
@@ -78,6 +79,7 @@ test-suite golem-typeset-test
     RuleShapeSpec
     PdfColorClassifySpec
     PdfColorRangeSpec
+    PdfColorShadingSpec
     PdfColorSpec
     PdfDctSpec
     SvgColorSpec

@@ -102,7 +102,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が分類と置き換え方を決めたが、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
   これらは採択した範囲から除外せず、三つの ADR の残実装として進める。
   [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた構成（Normal と Compatible のほかの合成の方式、Identity と Default のほかの転送関数、OPM が 1 のオーバープリント、FunctionType 4 の関数のシェーディング、DeviceGray でないソフトマスクなど）は、残りではない。
-  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。
+  - メッシュのシェーディング（ShadingType 4 から 7）、シェーディングのパターン、タイリングのパターン。
   - CalGray、CalRGB、Lab の画像と、データの色空間が Lab の ICCBased の画像。単位範囲以外の Range を持つ ICCBased の画像。これらと、データの色空間が Lab の ICCBased を基底とする Indexed の色空間。
   - 異寸法のマスクと、Matte を持つ同寸法のソフトマスク。
   - 画像かマスクの Interpolate が true の場合に、すべての画素を可視として判定すること。今は、明示マスクでは G08113 にし、ソフトマスクではマスクで判定している。
