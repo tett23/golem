@@ -554,7 +554,10 @@ place env st f rest = case f of
         -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025)
         st1 = keep env st0 (const size)
         st2 = putSlot st1 0 (SWrapped i) labels marks
-     in (placeLines env defaultKeep st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines env defaultKeep st2 False beside))}
+        placed = placeLines env defaultKeep st2 False beside
+        -- the side lines their notes send on take the next column from its top (golem-driver ADR 0005)
+        sentOn = (sPage placed, sColumn placed) /= (sPage st2, sColumn st2)
+     in if sentOn then placed else placed {sUsed = max (sUsed st1 + size) (sUsed placed)}
   FBreak k -> st {sBreaks = sBreaks st <> [PendingBreak k]}
   FSection of_ k -> st {sBreaks = sBreaks st <> [PendingStart of_ k]}
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
