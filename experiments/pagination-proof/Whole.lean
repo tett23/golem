@@ -988,4 +988,403 @@ def paginate (env : Env) (flows : List Flow) : St :=
 theorem I4_paginate_ends (env : Env) (flows : List Flow) : ∃ st, paginate env flows = st :=
   ⟨_, rfl⟩
 
+/-! ## The lines are placed once, in the order written (invariant 5) -/
+
+/-- The lines and headings of slots, in order. -/
+def textSlots : List (Int × Slot) → List Slot
+  | [] => []
+  | (_, .line i) :: r => .line i :: textSlots r
+  | (_, .heading i c) :: r => .heading i c :: textSlots r
+  | _ :: r => textSlots r
+
+theorem textSlots_append (a b : List (Int × Slot)) :
+    textSlots (a ++ b) = textSlots a ++ textSlots b := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih =>
+    obtain ⟨g, s⟩ := x
+    cases s <;> simp [textSlots, ih]
+
+/-- The lines and headings of the pages closed, in page order. -/
+def pagesText (done : List PageOut) : List Slot := done.reverse.bind (fun p => textSlots p.slots)
+
+theorem pagesText_cons (p : PageOut) (done : List PageOut) :
+    pagesText (p :: done) = pagesText done ++ textSlots p.slots := by
+  simp [pagesText, List.reverse_cons, List.append_bind]
+
+/-- The lines and headings placed so far: those of the pages closed,
+    then those of the current column. -/
+def text (st : St) : List Slot := pagesText st.done ++ textSlots st.slots
+
+/-- The lines and headings of the flows written. -/
+def flowText : Flow → List Slot
+  | .paragraph _ ls => ls.map (fun l => .line l.id)
+  | .continued _ ls => ls.map (fun l => .line l.id)
+  | .heading _ _ [] => []
+  | .heading _ _ (l0 :: ls) => [.heading l0.id (ls.length + 1)]
+  | _ => []
+
+def sourceText (flows : List Flow) : List Slot := flows.bind flowText
+
+theorem text_addUnmet (u : Unmet) (st : St) : text (addUnmet u st) = text st := rfl
+
+theorem text_putSlot_figure (st : St) (n i : Nat) : text (putSlot st n (.figure i)) = text st := by
+  simp [text, putSlot, textSlots_append, textSlots]
+
+theorem text_pageFigure (env : Env) (st : St) (i : Nat) : text (pageFigure env st i) = text st := by
+  simp [text, pageFigure, pagesText_cons, textSlots]
+
+theorem text_blankPage (env : Env) (st : St) : text (blankPage env st) = text st := by
+  simp [text, blankPage, pagesText_cons, textSlots]
+
+theorem text_advanceFresh (env : Env) (b : Bool) (st : St) : text (advanceFresh env b st) = text st := by
+  simp only [advanceFresh, closePage]
+  by_cases e : st.slots.isEmpty = true ∧ st.notes.isEmpty = true
+  · have s : st.slots = [] := by
+      cases h : st.slots with
+      | nil => rfl
+      | cons _ _ => simp [h, List.isEmpty] at e
+    simp only [e, and_self, ite_true]
+    repeat' split
+    all_goals simp [text, pagesText_cons, textSlots, s]
+  · simp only [e, ite_false]
+    repeat' split
+    all_goals simp [text, pagesText_cons, textSlots]
+
+theorem text_carryNote (env : Env) (st : St) (p : NotePart) : text (carryNote env st p) = text st := by
+  simp only [carryNote, addUnmet]; split <;> rfl
+
+theorem text_carryAll (env : Env) (ps : List NotePart) (st : St) :
+    text (ps.foldl (carryNote env) st) = text st := by
+  induction ps generalizing st with
+  | nil => rfl
+  | cons p ps ih => simp only [List.foldl]; rw [ih, text_carryNote]
+
+theorem text_pageFigures (env : Env) (ts : List Nat) (st : St) :
+    text (ts.foldl (pageFigure env) st) = text st := by
+  induction ts generalizing st with
+  | nil => rfl
+  | cons t ts ih => simp only [List.foldl]; rw [ih, text_pageFigure]
+
+theorem text_placeDeferred (env : Env) (ws : List Deferred) (st : St) :
+    text (placeDeferred env st ws) = text st := by
+  induction ws generalizing st with
+  | nil => rfl
+  | cons w ws ih =>
+    cases w with
+    | figure i n =>
+      unfold placeDeferred; split
+      · rw [ih, text_putSlot_figure]
+      · rfl
+    | pageFigure i => rfl
+
+theorem text_advance (env : Env) (b : Bool) (st : St) : text (advance env b st) = text st := by
+  simp only [advance, openColumn]
+  rw [text_placeDeferred]
+  show text (List.foldl (carryNote env) _ st.pending) = text st
+  rw [text_carryAll, text_pageFigures, text_advanceFresh]
+
+theorem text_nextColumn (env : Env) (st : St) : text (nextColumn env st) = text st := text_advance ..
+theorem text_nextPage (env : Env) (st : St) : text (nextPage env st) = text st := text_advance ..
+
+theorem text_keep (env : Env) (st : St) (need : St → Int) : text (keep env st need) = text st := by
+  by_cases h : free env st < need st ∧ isEmpty st = false
+  · unfold keep; rw [dif_pos h, text_keep env (nextColumn env st) need, text_nextColumn]
+  · unfold keep; rw [dif_neg h]
+termination_by rank env st
+decreasing_by exact I4_nextColumn_rank env st (Or.inl h.2)
+
+theorem text_flushDeferred (env : Env) (st : St) : text (flushDeferred env st) = text st := by
+  by_cases h : st.deferred = [] ∧ st.pending = []
+  · unfold flushDeferred; rw [dif_pos h]
+  · unfold flushDeferred; rw [dif_neg h]
+    rw [text_flushDeferred env (nextColumn env st), text_nextColumn]
+termination_by (waiting st, columnsLeft env st)
+decreasing_by exact I4_nextColumn_flush_rank env st (waiting_pos st h)
+
+theorem text_flushFigures (env : Env) (st : St) : text (flushFigures env st) = text st := by
+  by_cases h : st.deferred = []
+  · unfold flushFigures; rw [dif_pos h]
+  · unfold flushFigures; rw [dif_neg h]
+    rw [text_flushFigures env (nextColumn env st), text_nextColumn]
+termination_by (waiting st, columnsLeft env st)
+decreasing_by exact I4_nextColumn_flush_rank env st (waiting_pos st (fun c => h c.1))
+
+theorem text_parityStart (env : Env) (p : Nat → Bool) (st : St) : text (parityStart env p st) = text st := by
+  simp only [parityStart]
+  repeat' split
+  all_goals simp only [text_blankPage, text_nextPage, text_flushDeferred]
+
+theorem text_breakPage (env : Env) (st : St) : text (breakPage env st) = text st := by
+  simp only [breakPage]
+  repeat' split
+  all_goals simp only [text_blankPage, text_nextPage]
+
+theorem text_applyBreakKind (env : Env) (st : St) (k : BreakKind) :
+    text (applyBreakKind env st k) = text st := by
+  cases k <;> simp only [applyBreakKind, text_breakPage, text_parityStart]
+  split <;> simp only [text_nextColumn, text_breakPage]
+
+theorem text_applyBreaks (env : Env) (st : St) : text (applyBreaks env st) = text st := by
+  simp only [applyBreaks]
+  suffices ∀ (ks : List BreakKind) (s : St), text (ks.foldl (applyBreakKind env) s) = text s by
+    rw [this]; rfl
+  intro ks
+  induction ks with
+  | nil => intro s; rfl
+  | cons k ks ih => intro s; simp only [List.foldl]; rw [ih, text_applyBreakKind]
+
+theorem text_ite {c : Prop} [Decidable c] {a b : St} {t : List Slot} (ha : text a = t) (hb : text b = t) :
+    text (if c then a else b) = t := by
+  split
+  · exact ha
+  · exact hb
+
+theorem text_applyNeed (env : Env) (st : St) : text (applyNeed env st) = text st := by
+  unfold applyNeed
+  split
+  · rfl
+  · split
+    · apply text_ite
+      · rfl
+      · rw [text_nextColumn]; rfl
+    · rw [text_keep]; rfl
+
+theorem text_needBeforeSpace (env : Env) (st : St) : text (needBeforeSpace env st) = text st := by
+  unfold needBeforeSpace
+  split
+  · rfl
+  · repeat' split
+    all_goals first | rfl | (rw [text_applyNeed]; rfl) | (show text (applyNeed env _) = _; rw [text_applyNeed]; rfl)
+
+theorem text_placeSpaceFlow (env : Env) (st : St) (n : Nat) : text (placeSpaceFlow env st n) = text st := by
+  unfold placeSpaceFlow; split <;> rfl
+
+theorem text_placeSpace (env : Env) (st : St) (n : Nat) : text (placeSpace env st n) = text st := by
+  show text (placeSpaceFlow env st n) = text st
+  exact text_placeSpaceFlow env st n
+
+theorem text_placeSpaces (env : Env) (ns : List Nat) (st : St) :
+    text (ns.foldl (placeSpace env) st) = text st := by
+  induction ns generalizing st with
+  | nil => rfl
+  | cons n ns ih => simp only [List.foldl]; rw [ih, text_placeSpace]
+
+theorem text_needBeforeSpaces (env : Env) (st : St) : text (needBeforeSpaces env st) = text st := by
+  unfold needBeforeSpaces
+  simp only
+  split
+  · show text (needBeforeSpace env _) = text st
+    rw [text_needBeforeSpace]; rfl
+  · rw [text_placeSpaces, text_needBeforeSpace]; rfl
+
+theorem text_needAfterSpaces (env : Env) (st : St) : text (needAfterSpaces env st) = text st := by
+  unfold needAfterSpaces; split
+  · rfl
+  · exact text_needBeforeSpaces env st
+
+theorem text_needMore (env : Env) (n : Nat) (st : St) : text (needMore env n st) = text st := by
+  unfold needMore
+  split
+  · split
+    · rfl
+    · rw [text_needAfterSpaces]; rfl
+  · rw [text_needAfterSpaces]; rfl
+
+theorem text_needBefore (env : Env) (st : St) (flows : List Flow) :
+    text (needBefore env st flows) = text st := by
+  unfold needBefore
+  split
+  · split
+    · rw [text_keep]; rfl
+    · rw [text_applyNeed]; rfl
+  · rw [text_applyNeed]; rfl
+
+theorem text_dropBlanks (ns : List Nat) (st : St) :
+    text (ns.foldl (fun s _ => addUnmet .droppedBlank s) st) = text st := by
+  induction ns generalizing st with
+  | nil => rfl
+  | cons n ns ih => simp only [List.foldl]; rw [ih, text_addUnmet]
+
+theorem text_placeBlank (env : Env) (st : St) (f : Flow) (rest : List Flow) :
+    text (placeBlank env st f rest) = text st := by
+  unfold placeBlank
+  split
+  · rfl
+  · simp only
+    have h1 : text (if startsRecto f = true then parityStart env odd st else st) = text st := by
+      split
+      · exact text_parityStart env odd st
+      · rfl
+    apply text_ite
+    · rw [text_dropBlanks]; show text (keep env _ _) = _; rw [text_keep]; exact h1
+    · show text (keep env _ _) = _; rw [text_keep]; exact h1
+
+theorem text_putLine (env : Env) (st : St) (l : Line) :
+    text (putLine env st l) = text st ++ [.line l.id] := by
+  simp [text, putLine, putLineKeeping, textSlots_append, textSlots]
+
+theorem text_putLines (env : Env) (ls : List Line) (st : St) :
+    text (ls.foldl (putLine env) st) = text st ++ ls.map (fun l => .line l.id) := by
+  induction ls generalizing st with
+  | nil => simp
+  | cons l ls ih => simp only [List.foldl, List.map]; rw [ih, text_putLine]; simp
+
+theorem text_putBlock (env : Env) (st : St) (n : Nat) (ls : List Line) :
+    text (putBlock env st n ls) = text st ++ flowText (.heading false n ls) := by
+  cases ls with
+  | nil => simp [putBlock, flowText]
+  | cons l0 ls => simp [putBlock, flowText, text, textSlots_append, textSlots]
+
+theorem text_shortParts (us : List Unmet) (st : St) :
+    text (us.foldl (fun s u => addUnmet u s) st) = text st := by
+  induction us generalizing st with
+  | nil => rfl
+  | cons u us ih => simp only [List.foldl]; rw [ih, text_addUnmet]
+
+theorem text_placeLinesGo (env : Env) (pid : Nat) (kp : Keep) (st : St) (isStart : Bool) (ls : List Line) :
+    text (placeLinesGo env pid kp st isStart ls) = text st ++ ls.map (fun l => .line l.id) := by
+  match ls with
+  | [] => simp [placeLinesGo]
+  | l :: ls' =>
+    by_cases h1 : st.adjust < 0 ∧ isEmpty st = true ∧ env.roomForLine st (l :: ls') = false
+    · unfold placeLinesGo; rw [dif_pos h1, text_placeLinesGo env pid kp (nextColumn env st), text_nextColumn]
+    · by_cases h2 : kp.all = true ∧ isStart = true ∧ env.fitting st (l :: ls') < (l :: ls').length
+      · by_cases h3 : isEmpty st = true ∨ st.headingOnly = true
+        · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_pos h3]
+          rw [text_placeLinesGo env pid { kp with all := false } (addUnmet (.splitKept pid) st), text_addUnmet]
+        · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_neg h3]
+          rw [text_placeLinesGo env pid kp (nextColumn env st), text_nextColumn]
+      · by_cases h4 : (l :: ls').length ≤ (lineCount env kp st isStart (l :: ls')).1
+        · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2]
+          rw [dif_pos h4, text_putLines]
+        · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2]
+          rw [dif_neg h4]
+          rw [text_placeLinesGo env pid kp _ _ ((l :: ls').drop (lineCount env kp st isStart (l :: ls')).1)]
+          rw [text_nextColumn, text_shortParts, text_putLines, List.append_assoc, ← List.map_append,
+            List.take_append_drop]
+termination_by (ls.length, allRank kp, rank env st)
+decreasing_by
+  all_goals simp_wf
+  · exact linesLt_rank (I4_nextColumn_rank env st (Or.inr h1.1))
+  · simp only [allRank, h2.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ (by decide))
+  · have : isEmpty st = false := by
+      cases e : isEmpty st
+      · rfl
+      · exact absurd (Or.inl e) h3
+    exact linesLt_rank (I4_nextColumn_rank env st (Or.inl this))
+  · by_cases k0 : (lineCount env kp st isStart (l :: ls')).1 = 0
+    · have z := lineCount_zero env kp st isStart (l :: ls') k0
+      simp only [k0, List.take, List.foldl, List.drop, shortParts, z.1]
+      rw [Nat.sub_zero]
+      exact linesLt_rank (I4_nextColumn_rank env st (Or.inl z.2))
+    · apply Prod.Lex.left
+      simp only [List.length] at h4
+      omega
+
+theorem text_placeLines (env : Env) (kp : Keep) (st : St) (isStart : Bool) (ls : List Line) :
+    text (placeLines env kp st isStart ls) = text st ++ ls.map (fun l => .line l.id) := by
+  cases ls with
+  | nil => simp [placeLines]
+  | cons l ls => exact text_placeLinesGo ..
+
+theorem flowText_heading (recto : Bool) (n : Nat) (ls : List Line) :
+    flowText (.heading recto n ls) = flowText (.heading false n ls) := by
+  cases ls <;> rfl
+
+theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
+    text (place env st f rest) = text st ++ flowText f := by
+  cases f with
+  | paragraph kp ls => exact text_placeLines ..
+  | continued kp ls => exact text_placeLines ..
+  | heading recto n ls =>
+    simp only [place]
+    rw [text_putBlock, flowText_heading recto]
+    congr 1
+    apply text_ite
+    · apply text_ite
+      · exact text_parityStart ..
+      · exact text_keep ..
+    · rw [text_nextColumn]
+      apply text_ite
+      · exact text_parityStart ..
+      · exact text_keep ..
+  | figure i n =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rfl
+    · apply text_ite
+      · exact text_putSlot_figure ..
+      · rfl
+  | pageFigure i =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rw [text_pageFigure]; rfl
+    · rfl
+  | brk k => simp only [place, flowText, List.append_nil]; rfl
+  | space n => simp only [place, flowText, List.append_nil]; exact text_placeSpaceFlow ..
+  | needLines n => simp [place, flowText]
+  | blank n => simp [place, flowText]
+
+theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
+    text (step env st f rest) = text st ++ flowText f := by
+  have general : ∀ (a : Bool) (b : List (Nat × Int)), text ({ (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
+      else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)
+      with seen := true, lastDeferred := a, spaces := b } : St) = text st ++ flowText f := by
+    intro _ _
+    show text (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
+      else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest) = _
+    apply text_ite
+    · rw [text_place, text_applyBreaks]
+    · rw [text_place, text_placeBlank, text_needBefore, text_applyBreaks]
+  cases f with
+  | needLines n => simp only [step, flowText, List.append_nil]; exact text_needMore ..
+  | blank n =>
+    simp only [step, flowText, List.append_nil]
+    apply text_ite <;> rfl
+  | brk k => simp only [step]; exact text_place ..
+  | space n =>
+    simp only [step, flowText, List.append_nil]
+    rw [text_placeSpace, text_needBeforeSpaces, text_applyBreaks]
+  | paragraph kp ls => simp only [step]; exact general _ _
+  | continued kp ls => simp only [step]; exact general _ _
+  | heading recto n ls => simp only [step]; exact general _ _
+  | figure i n => simp only [step]; exact general _ _
+  | pageFigure i => simp only [step]; exact general _ _
+
+theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
+    text (placeAll env st flows) = text st ++ sourceText flows := by
+  induction flows generalizing st with
+  | nil =>
+    simp only [placeAll, sourceText, List.bind, List.join, List.map, List.append_nil]
+    apply text_ite
+    · rw [text_flushDeferred]; rfl
+    · apply text_ite
+      · rw [text_flushDeferred, text_dropBlanks]; rfl
+      · rw [text_flushDeferred, text_dropBlanks, text_nextColumn]; rfl
+  | cons f rest ih =>
+    simp only [placeAll]
+    rw [ih, text_step]
+    simp [sourceText, List.cons_bind, List.append_assoc]
+
+/-- Root ADR 0352 invariant 5 for the lines: the pages of the pagination
+    hold every line of the paragraphs and every heading written, each
+    once, in the order written. -/
+theorem I5_paginate_text (env : Env) (flows : List Flow) :
+    pagesText (paginate env flows).done = sourceText flows := by
+  have h := text_placeAll env flows initialState
+  have i : text initialState = [] := rfl
+  rw [i, List.nil_append] at h
+  simp only [paginate, closePage]
+  generalize placeAll env initialState flows = st at h
+  split
+  · rename_i e
+    have s : st.slots = [] := by
+      cases c : st.slots with
+      | nil => rfl
+      | cons _ _ => simp [c, List.isEmpty] at e
+    simp only [text, s, textSlots, List.append_nil] at h
+    exact h
+  · rw [pagesText_cons]; exact h
+
 end WholePagination
