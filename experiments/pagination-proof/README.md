@@ -633,10 +633,23 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 
 二つ目は、キャプションの評価値と幅の計算の Haskell との対応である。
 `Pagination.lean` は、改行候補の選択、改行列からの行の組み立て、占有行数の計算を、評価値と幅を引数として証明する（`I1_caption_*`）。
-評価値（デメリット、fitness）と、累積した幅の計算そのものが Haskell の改行器と同じであることは、まだ示していない。
-計画は、`CheckCaptionAssembly.hs` が改行器を呼ぶ入力ごとに、候補の評価値と累積の幅を書き出し、Lean に写した評価関数が同じ値を返すことを `CaptionExamples.lean` で確かめることである。
-評価関数の整数の丸めは golem-layout の `Golem.Layout.KnuthPlass` の式をそのまま Lean に写し、実フォントの送りは golem-driver の `FigureSpec.hs` が使う計測値を記録して渡す。
-そのうえで、写した評価関数を `I1_caption_*` の引数に入れ、不変条件 1 と 2 を具体的な評価関数について結ぶ。
+評価値と幅の計算は、有限の入力で Haskell の改行器と照合した。
+`CheckCaptionAssembly.hs --values` は、golem-layout の `badness`、`fitnessOf`、`lineDemerits` を境界の値で評価し、改行器が改行した 24186 個のキャプションについて、項目、引数、行長、選んだ改行位置と、その総デメリット、各行の調整比と超過幅を書き出す。
+キャプションは、既存の 16806 例の入力に、突出と端のあるボックス、ソフトハイフン、突出、`pull-in-first`、緊急の伸びを使う引数を足したものである。
+`CaptionValues.lean` は、その入力を読み、`captionBadness`、`captionFitness`、`captionLineDemerits` の値と、`captionLineRanges` の行ごとに累積の幅（`captionSum`）の差から `captionWidthEvaluation` と `captionPathCost` で求めた総デメリットと、調整比と超過幅を書き出す。
+`check.sh` は二つの出力を `diff` で比べ、すべて一致した。
+直前の改行の読み飛ばし範囲に入る改行では、行の開始位置が改行位置より後になり、Haskell の伸びと縮みの和は負になる。
+Lean の側も、伸びと縮みを項目の和ではなく累積の和の差として求めて、この値に合わせた。
+
+照合の感度は、写した計算を一つずつ替えて確かめた。
+行末の伸びを除くと 4384 個、緊急の伸びを除くと 155 個、隣接する fitness のデメリットを除くと 181 個、行頭の突出を除くと 529 個、ハイフンの突出を除くと 72 個、行末の端を除くと 1590 個、改行位置のペナルティの幅を除くと 1306 個、調整比の下限を除くと 850 個、`pull-in-first` を除くと 2 個、`cappedCubicBadness` の上限を 1291 にすると 1 個の入力で出力が食い違った。
+
+対応には、次の三つが残る。
+一つ目に、超過を許す最後の走査（pass 4）の総デメリットは照合していない。
+この走査では、救済した行（`overfullRescue`）がデメリット `overfullDemerits`（100000000）と fitness 3 をとり、追い出した行（`pushOut`）が評価関数の値をとるが、改行位置だけからは二つを区別できない。
+許容度を超える行と超過する行を救済とみなすと、pass 4 で改行した 12518 個のキャプションのうち 874 個の総デメリットが食い違った。
+二つ目に、写した評価関数を `I1_caption_*` の引数に入れ、不変条件 1 と 2 を具体的な評価関数について結ぶことは、まだしていない。
+三つ目に、実フォントの送りを golem-driver の `FigureSpec.hs` の計測値で渡す照合も、まだしていない。
 
 三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移である。
 自由な配置は `Paginate/Physical.hs` が `Sp` の寸法で行い、図版の回り込みを実際の段の位置で改行し直す経路も持つ。
@@ -663,7 +676,7 @@ cabal build golem-layout
 sh experiments/pagination-proof/check.sh
 ```
 
-`check.sh` は境界入力の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
+`check.sh` は境界入力とキャプションの評価値の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

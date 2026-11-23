@@ -66,7 +66,7 @@ if grep -En '(^|[^A-Za-z])(sorry|admit|axiom)([^A-Za-z]|$)' "$proof"; then
 fi
 
 lean=${LEAN:-lean}
-"$lean" "$proof"
+"$lean" -o "$tmp/Pagination.olean" "$proof"
 
 # The whole pagination of the grid mode: every definition must be total
 # and every theorem proved.
@@ -94,4 +94,22 @@ LEAN_PATH="$tmp" "$lean" "$boundary" > "$tmp/boundary-lean"
 diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
 inputs=$(grep -c '^[0-9]' "$tmp/boundary-lean")
 echo "the $inputs boundary inputs give the same pages in Whole.lean and golem-layout"
+
+# The values of the evaluation of Golem.Layout.KnuthPlass (badness,
+# fitness, line demerits, cumulative widths, the demerits of the chosen
+# breaks and the ratio and overflow of each line) on Pagination.lean's
+# definitions, against golem-layout's breaker (root ADR 0352, condition 2).
+values=$root/experiments/pagination-proof/CaptionValues.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|extern)([^A-Za-z_]|$)' "$values"; then
+  echo "unchecked Lean declaration in $values" >&2
+  exit 1
+fi
+(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=text \
+  -package-id=golem-layout-0.1.0-inplace \
+  experiments/pagination-proof/CheckCaptionAssembly.hs --values) > "$tmp/caption-values"
+sed -n 's/^out //p' "$tmp/caption-values" > "$tmp/caption-haskell"
+LEAN_PATH="$tmp" "$lean" --run "$values" "$tmp/caption-values" | sed -n 's/^out //p' > "$tmp/caption-lean"
+diff -u "$tmp/caption-haskell" "$tmp/caption-lean"
+captions=$(grep -c '^in obs' "$tmp/caption-values")
+echo "the evaluation of $captions caption breaks gives the same values in Pagination.lean and golem-layout"
 echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"
