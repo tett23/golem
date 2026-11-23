@@ -1,6 +1,6 @@
 # ADR 0404: 脚注と章末注の段落スタイルを別々に指定する
 
-Status: proposed
+Status: accepted
 
 ## 文脈
 

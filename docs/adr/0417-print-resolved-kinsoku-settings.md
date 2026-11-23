@@ -1,6 +1,6 @@
 # ADR 0417: 解決した禁則とぶら下げの設定を JSON で出す
 
-Status: proposed
+Status: accepted
 
 ## 文脈
 

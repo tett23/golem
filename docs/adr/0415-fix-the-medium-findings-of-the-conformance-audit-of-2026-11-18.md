@@ -1,6 +1,6 @@
 # ADR 0415: 2026-11-18 の監査の、重大度が中の指摘を直す
 
-Status: proposed
+Status: accepted
 
 ## 文脈
 

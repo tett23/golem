@@ -1,6 +1,6 @@
 # ADR 0418: 手元の wasmtime が固定の版と違うとき、push を止める
 
-Status: proposed
+Status: accepted
 
 ## 文脈
 
