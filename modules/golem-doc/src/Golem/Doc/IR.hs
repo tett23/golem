@@ -343,6 +343,8 @@ data InlineF r
     Note !SrcSpan !Int [Block]
   | -- | a sidenote, its number and its body: one paragraph without a paragraph style (docs/adr/0263)
     Sidenote !SrcSpan !Int [Block]
+  | -- | an endnote, its number and its body: paragraphs without a paragraph style, at the end of the chapter in every output (root ADR 0412)
+    Endnote !SrcSpan !Int [Block]
   | IndexMark !SrcSpan IndexEntry
   | -- | a citation: one or more items, their keys distinct (docs/adr/0266)
     Cite !SrcSpan ![CiteItem r]
@@ -610,6 +612,7 @@ noRuby = \case
   -- the body of a note is set outside the base: no ruby inside ruby (docs/adr/0263)
   Note s n bs -> Just (Note s n bs)
   Sidenote s n bs -> Just (Sidenote s n bs)
+  Endnote s n bs -> Just (Endnote s n bs)
   IndexMark s e -> Just (IndexMark s e)
   Cite s is -> Cite s <$> traverse itemNoRuby is
   ProofComment s t -> Just (ProofComment s t)

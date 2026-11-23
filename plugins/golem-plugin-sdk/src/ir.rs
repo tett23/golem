@@ -73,6 +73,8 @@ pub enum Inline {
     Note { span: Span, number: u64, body: Vec<Block> },
     /// 24 (docs/adr/0263): the body is one paragraph without a paragraph style
     Sidenote { span: Span, number: u64, body: Vec<Block> },
+    /// 26 (root ADR 0412): an endnote; the body is paragraphs without a paragraph style
+    Endnote { span: Span, number: u64, body: Vec<Block> },
     /// 14: the kind is a point, an end of a range or a reference (docs/adr/0265)
     IndexMark { span: Span, terms: Vec<String>, readings: Vec<String>, kind: IndexKind },
     /// 25 (docs/adr/0266): one item or more, their keys distinct; 15 is retired
@@ -107,6 +109,7 @@ impl Inline {
             | Inline::Deferred { span, .. }
             | Inline::Note { span, .. }
             | Inline::Sidenote { span, .. }
+            | Inline::Endnote { span, .. }
             | Inline::IndexMark { span, .. }
             | Inline::Cite { span, .. }
             | Inline::ProofComment { span, .. }
@@ -321,8 +324,8 @@ pub fn inline_value(x: &Inline) -> Value {
         Inline::Color { span, swatch, body } => t(6, span, vec![text(swatch), inlines_value(body)]),
         Inline::CharStyle { span, style, body } => t(7, span, vec![text(style), inlines_value(body)]),
         Inline::Tcy { span, text: s } => t(8, span, vec![text(s)]),
-        Inline::Warichu { span, text: s } => t(26, span, vec![text(s)]),
-        Inline::Upright { span, text: s } => t(27, span, vec![text(s)]),
+        Inline::Warichu { span, text: s } => t(27, span, vec![text(s)]),
+        Inline::Upright { span, text: s } => t(28, span, vec![text(s)]),
         Inline::Number { span, value, style } => t(
             9,
             span,
@@ -350,6 +353,7 @@ pub fn inline_value(x: &Inline) -> Value {
         Inline::Deferred { span, expr } => t(11, span, vec![expr.clone()]),
         Inline::Note { span, number, body } => t(23, span, vec![int(*number), blocks_value(body)]),
         Inline::Sidenote { span, number, body } => t(24, span, vec![int(*number), blocks_value(body)]),
+        Inline::Endnote { span, number, body } => t(26, span, vec![int(*number), blocks_value(body)]),
         Inline::IndexMark { span, terms, readings, kind } => t(
             14,
             span,
@@ -611,8 +615,8 @@ pub fn inline_of(v: &Value) -> R<Inline> {
         (6, [sw, body]) => Inline::Color { span, swatch: text_of(sw)?, body: inlines_of(body)? },
         (7, [st, body]) => Inline::CharStyle { span, style: text_of(st)?, body: inlines_of(body)? },
         (8, [s]) => Inline::Tcy { span, text: text_of(s)? },
-        (26, [s]) => Inline::Warichu { span, text: text_of(s)? },
-        (27, [s]) => Inline::Upright { span, text: text_of(s)? },
+        (27, [s]) => Inline::Warichu { span, text: text_of(s)? },
+        (28, [s]) => Inline::Upright { span, text: text_of(s)? },
         (9, [n, st]) => Inline::Number {
             span,
             value: i64_of(n)?,
@@ -636,6 +640,7 @@ pub fn inline_of(v: &Value) -> R<Inline> {
         (11, [e]) => Inline::Deferred { span, expr: e.clone() },
         (23, [n, body]) => Inline::Note { span, number: u64_of(n)?, body: blocks_of(body)? },
         (24, [n, body]) => Inline::Sidenote { span, number: u64_of(n)?, body: blocks_of(body)? },
+        (26, [n, body]) => Inline::Endnote { span, number: u64_of(n)?, body: blocks_of(body)? },
         (14, [ts, rs, k]) => Inline::IndexMark {
             span,
             terms: arr(ts)?.iter().map(text_of).collect::<R<_>>()?,
@@ -826,6 +831,16 @@ mod tests {
         let s = Inline::Sidenote { span: sp(0, 1), number: 1, body: note_body(sp(0, 1), vec![]) };
         assert_eq!(encode(&inline_value(&s))[1], 0x18);
         assert_eq!(inline_of(&decode(&encode(&inline_value(&s))).unwrap()).unwrap(), s);
+    }
+
+    /// the bytes of an endnote are those of the host: [26, span, number, [+ block]] (root ADR 0412)
+    #[test]
+    fn endnote_bytes() {
+        let x = Inline::Endnote { span: sp(0, 1), number: 3, body: note_body(sp(0, 1), vec![]) };
+        let bytes = encode(&inline_value(&x));
+        let expected: Vec<u8> = vec![0x84, 0x18, 0x1a, 0x83, 0x01, 0x00, 0x01, 0x03, 0x81, 0x84, 0x83, 0x01, 0x00, 0x01, 0xf6, 0xf6, 0x83, 0x0a, 0xf6, 0x80];
+        assert_eq!(bytes, expected);
+        assert_eq!(inline_of(&decode(&bytes).unwrap()).unwrap(), x);
     }
 
     /// the bytes of a citation are those of the host: [25, span, [+ item]] (docs/adr/0266)

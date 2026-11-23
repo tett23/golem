@@ -53,6 +53,7 @@ data InlineKind
   | KDeferred
   | KNote
   | KSidenote
+  | KEndnote
   | KIndexMark
   | KCite
   | KProofComment
@@ -95,6 +96,7 @@ inlineKind = \case
   Deferred {} -> KDeferred
   Note {} -> KNote
   Sidenote {} -> KSidenote
+  Endnote {} -> KEndnote
   IndexMark {} -> KIndexMark
   Cite {} -> KCite
   ProofComment {} -> KProofComment
@@ -137,6 +139,7 @@ kinds = foldMap block . docBlocks
       CharStyle _ _ is -> inlines is
       Note _ _ bs -> foldMap inlines (noteParagraphs bs)
       Sidenote _ _ bs -> foldMap inlines (noteParagraphs bs)
+      Endnote _ _ bs -> foldMap inlines (noteParagraphs bs)
       ChannelItem _ c -> inlines (ciBody c)
       Link _ _ is -> inlines is
       Lang _ _ is -> inlines is

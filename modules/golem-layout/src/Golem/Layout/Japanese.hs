@@ -191,6 +191,11 @@ data ComposeEnv = ComposeEnv
     ceNoteMarkLook :: Look -> Look,
     -- | the size source of a mark in the text from that of its place (golem-cli ADR 0008, docs/adr/0177)
     ceNoteMarkSource :: SizeSource -> SizeSource,
+    -- | [endnotes] mark-format, mark-shape, mark-style: the marks of the endnotes in the text, as those of the notes (root ADR 0412)
+    ceEndnoteMarkFormat :: !MarkFormat,
+    ceEndnoteMarkFlat :: !Bool,
+    ceEndnoteMarkLook :: Look -> Look,
+    ceEndnoteMarkSource :: SizeSource -> SizeSource,
     -- | the definition that decided the size of 'ceLook' (golem-cli ADR 0008)
     ceSizeSource :: !SizeSource,
     -- | the size source inside an inline element, as 'ceRestyle' is the look inside it
@@ -271,6 +276,10 @@ defaultComposeEnv fs =
       ceScriptGlyphs = \_ _ -> False,
       ceNoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
       ceNoteMarkSource = const SourceNoteMark,
+      ceEndnoteMarkFormat = MarkFormat "" arabic "",
+      ceEndnoteMarkFlat = False,
+      ceEndnoteMarkLook = \lk -> lk {lkSize = noteMarkSize (Zw (1 % 2)) (lkSize lk)},
+      ceEndnoteMarkSource = const SourceNoteMark,
       ceSizeSource = SourceGrid,
       ceSizeSourceOf = const,
       ceBoxSource = noBoxSource,
@@ -477,6 +486,8 @@ softHyphenSites env inls =
       -- each paragraph of the body of a note (docs/adr/0263)
       NodeNote _ _ _ b -> b
       NodeSidenote _ _ b -> b
+      -- the body of an endnote is in its list, composed there (root ADR 0412)
+      NodeEndnote _ _ -> []
       NodeElem _ ns -> concatMap bodies ns
       NodeLink _ _ ns -> concatMap bodies ns
       NodeLeaf _ -> []
@@ -493,6 +504,11 @@ data InlineNode
     NodeNote !SrcSpan !Int !Int [[Inline]]
   | -- | the body of a sidenote marked here: its span, its number and the paragraphs of its body
     NodeSidenote !SrcSpan !Int [[Inline]]
+  | {- | an endnote marked here, whose body is in the list at the end of the
+    chapter (root ADR 0412): its span and its place among the notes of that
+    span
+    -}
+    NodeEndnote !SrcSpan !Int
   | {- | a link (docs/adr ADR 0182, docs/adr/0267): its target, the inlines
     of the text it draws and what it holds
     -}
@@ -632,6 +648,16 @@ walk env st@(LeafState next cur seen) inl = case inl of
         MarkFormat pre notation suf = ceNoteMarkFormat env
         markText = [Text sp (markPartsText (markParts (ceVertical env) pre notation (toInteger num) suf))]
      in (st2, [NodeElem RoleReference (linkedNodes link markText [NodeLeaf next]), NodeNote sp k num (noteParagraphsIn lk sp body), after], [(cur, src, p) | (src, p) <- anchor] <> [(next, src, p) | (src, p) <- mark])
+  -- the mark of an endnote, a link to its body in the list at the end of the chapter (root ADR 0412)
+  Endnote sp num _ ->
+    let k = Map.findWithDefault 0 sp seen
+        link = started (keyed k (lkLink (ceLook restyledEnv)))
+        mark = piecesOf (withLink link env) inl
+        st1 = LeafState (next + 1) cur (Map.insert sp (k + 1) seen)
+        (st2, after) = freshLeaf st1
+        MarkFormat pre notation suf = ceEndnoteMarkFormat env
+        markText = [Text sp (markPartsText (markParts (ceVertical env) pre notation (toInteger num) suf))]
+     in (st2, [NodeElem RoleReference (linkedNodes link markText [NodeLeaf next]), NodeEndnote sp k, after], [(next, src, p) | (src, p) <- mark])
   Sidenote sp n body ->
     let (anchor, mark) = splitAt 1 (piecesOf env inl)
         st1 = LeafState (next + 1) cur seen
@@ -914,6 +940,10 @@ piecesOf env inl = case inl of
   Note sp n body ->
     let MarkFormat pre notation suf = ceNoteMarkFormat env
      in [(((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorNote i n sp (noteParagraphsIn lk sp body))), (((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelNote n) (markPartsShaped (ceVertical env) (ceNoteMarkFlat env) pre notation (toInteger n) suf))]
+  -- the mark of an endnote in the character style of [endnotes] mark-style; its body is in the list (root ADR 0412)
+  Endnote sp n _ ->
+    let MarkFormat pre notation suf = ceEndnoteMarkFormat env
+     in [(((ceEndnoteMarkSource env (ceSizeSource env), sp), const (spanStart sp)), PMark lk (ceEndnoteMarkLook env lk) (markPartsShaped (ceVertical env) (ceEndnoteMarkFlat env) pre notation (toInteger n) suf) 0 0 Nothing)]
   Sidenote sp n body ->
     (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body))) : case ceSidenoteMarker env of
       -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
@@ -1349,6 +1379,7 @@ withRuby = \case
   Deferred s e -> Deferred s e
   Note s n bs -> Note s n bs
   Sidenote s n bs -> Sidenote s n bs
+  Endnote s n bs -> Endnote s n bs
   IndexMark s e -> IndexMark s e
   Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
   ProofComment s t -> ProofComment s t
@@ -1723,6 +1754,7 @@ channelMarkParts :: ComposeEnv -> NoteChannel -> Int -> [MarkPart]
 channelMarkParts env ch n = case ch of
   ChannelNote -> let MarkFormat pre notation suf = ceNoteMarkFormat env in markPartsShaped (ceVertical env) (ceNoteMarkFlat env) pre notation (toInteger n) suf
   ChannelSidenote -> markParts (ceVertical env) "" arabic (toInteger n) ""
+  ChannelEndnote -> let MarkFormat pre notation suf = ceEndnoteMarkFormat env in markPartsShaped (ceVertical env) (ceEndnoteMarkFlat env) pre notation (toInteger n) suf
 
 {- | The width a mark of a channel reserves when notes are numbered per
 page (docs/adr/0383): the widest of the marks of the numbers from 1 to
@@ -1733,7 +1765,11 @@ and the text around the number, which the format of the channel gives.
 -}
 markReserve :: ComposeEnv -> Look -> NoteChannel -> Sp -> Sp -> Sp
 markReserve env lk ch ps pe =
-  let count = maybe 0 (\(notes, sidenotes) -> if ch == ChannelNote then notes else sidenotes) (ceMarkReserve env)
+  let count = case ch of
+        ChannelNote -> maybe 0 fst (ceMarkReserve env)
+        ChannelSidenote -> maybe 0 snd (ceMarkReserve env)
+        -- the endnotes are never numbered per page (root ADR 0412)
+        ChannelEndnote -> 0
    in maximum (0 : [w | k <- [1 .. count], let (_, _, w) = markLayout env lk (channelMarkParts env ch k) ps pe])
 
 {- | A mark numbered per page with the number its page gives it
@@ -1762,7 +1798,7 @@ markLabelBox env ch n items =
   case [i | (i, Box _ c) <- zip [0 :: Int ..] items, isLabel c] of
     ixs@(i0 : _)
       | (before, Box _ c : _) <- splitAt i0 items,
-        Box w c' <- markItem env (bcLook c) (bcLook c) (channelMarkParts env ch n) 0 0 (MarkNumber ch n False <$ ceMarkReserve env) ->
+        Box w c' <- markItem env (bcLook c) (bcLook c) (channelMarkParts env ch n) 0 0 (if ch == ChannelEndnote then Nothing else MarkNumber ch n False <$ ceMarkReserve env) ->
           before <> [Box w c' {bcSource = bcSource c, bcLeaf = bcLeaf c, bcAt = bcAt c}] <> drop (maximum ixs + 1) items
     _ -> items
   where
@@ -2482,6 +2518,7 @@ verticalSidenotes env inls
       Lang _ _ xs -> concatMap go xs
       Resolved _ _ _ xs -> concatMap go xs
       Note _ _ bs -> concatMap go' (concat (noteParagraphs bs))
+      Endnote _ _ bs -> concatMap go' (concat (noteParagraphs bs))
       _ -> []
     go' :: Inline -> [Diagnostic]
     go' = go

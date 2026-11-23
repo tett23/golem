@@ -106,6 +106,8 @@ data HtmlConfig = HtmlConfig
     hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule)),
     -- | the notation of [notes] mark-format: the text of the links of notes (docs/adr/0177)
     hcNoteNotation :: !Notation,
+    -- | the notation of [endnotes] mark-format: the text of the links of endnotes (root ADR 0412)
+    hcEndnoteNotation :: !Notation,
     -- | full-width character cells in em, without changing glyph size (root ADR 0380)
     hcCharacterAdvance :: !(Maybe Text)
   }
@@ -335,6 +337,8 @@ data Ctx = Ctx
     cListDepth :: Int,
     -- | the notes of the chapter of the page (golem-driver ADR 0026)
     cNotes :: ChapterNotes,
+    -- | the endnotes of the chapter of the page, as its notes (root ADR 0412)
+    cEndnotes :: ChapterNotes,
     -- | the id of each entry of each @bibliography (golem-doc ADR 0008)
     cCiteIds :: Map (ListAt, Text) Text,
     -- | the character styles of the page: those of its file over those of style.toml (docs/adr/0269)
@@ -356,16 +360,16 @@ data ChapterNotes = ChapterNotes
     cnList :: [(FileId, Int -> Text, Document)]
   }
 
-{- | The notes of each document of a chapter (golem-driver ADR 0026): the
+{- | The notes (or the endnotes, root ADR 0412) of each document of a chapter (golem-driver ADR 0026): the
 id of a note is its number, or the place of its file in the chapter and
 its number when the numbers of the chapter meet.
 -}
-chapterNotes :: [Document] -> [(Document, ChapterNotes)]
-chapterNotes docs =
+chapterNotes :: (Document -> [(SrcSpan, Int, [[Inline]])]) -> [Document] -> [(Document, ChapterNotes)]
+chapterNotes notesOf docs =
   let home = case reverse docs of
         (Document f _ : _) -> f
         [] -> FileId 0
-      numbers d = [n | (_, n, _) <- documentNotes d]
+      numbers d = [n | (_, n, _) <- notesOf d]
       allNumbers = concatMap numbers docs
       meet = length allNumbers /= Set.size (Set.fromList allNumbers)
       keyOf k n = if meet then tshow k <> "-" <> tshow n else tshow n
@@ -379,7 +383,7 @@ renderXhtml cfg ft book = renderXhtmlWithPageBreaks cfg ft book Map.empty
 renderXhtmlWithPageBreaks :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> XhtmlSite
 renderXhtmlWithPageBreaks cfg ft book pageBreaks =
   XhtmlSite
-    { sitePages = [(pagePath ft fid, page cfg ft book pageBreaks notes d) | chapter <- bookChapters book, (d@(Document fid _), notes) <- chapterNotes chapter],
+    { sitePages = [(pagePath ft fid, page cfg ft book pageBreaks notes endnotes d) | chapter <- bookChapters book, ((d@(Document fid _), notes), (_, endnotes)) <- zip (chapterNotes documentNotes chapter) (chapterNotes documentEndnotes chapter)],
       siteCss = css cfg book,
       siteAssets =
         sortOn fst
@@ -418,14 +422,14 @@ relLink from to =
   let depth = length (splitDirectories (takeDirectory from)) - (if takeDirectory from == "." then 1 else 0)
    in T.pack (concat (replicate depth "../") <> makeRelative "." to)
 
-page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> ChapterNotes -> Document -> Text
-page cfg ft book pageBreaks notes (Document fid bs) =
+page :: HtmlConfig -> FileTable -> Book -> Map SrcSpan [(Int, Text, Text)] -> ChapterNotes -> ChapterNotes -> Document -> Text
+page cfg ft book pageBreaks notes endnotes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes endnotes (citeIds book) (maybe id (Map.union . hlCharStyles) local (hcCharStyles cfg)) False pageBreaks
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
-      body = topBlocks c bs <> notesSection c
+      body = topBlocks c bs <> notesSection c <> endnotesSection c
       title = case [hiTitle h | Block sp _ _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
@@ -968,6 +972,10 @@ inlineBody c = \case
     let key = cnKey (cNotes c) n
      in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> noteText c n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
+  -- a reference to an endnote in the list at the end of its chapter (root ADR 0412)
+  Endnote _ n _ ->
+    let key = cnKey (cEndnotes c) n
+     in "<a epub:type=\"noteref\" class=\"endnoteref\" href=\"" <> linkTo c (cnHome (cEndnotes c)) ("endnote-" <> key) <> "\" id=\"endnoteref-" <> key <> "\">" <> endnoteText c n <> "</a>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
   -- an empty span with an id when the channel shows where its items are (golem-doc ADR 0007)
   ChannelItem sp ci
@@ -1053,6 +1061,31 @@ noteText c n = fromMaybe (tshow n) (writeNumber (hcNoteNotation (cCfg c)) (toInt
 -- | The sidenotes of a paragraph after it, in the language of the paragraph (docs/adr ADR 0187).
 sidenotes :: Ctx -> Maybe Text -> [Inline] -> Text
 sidenotes c lang is = T.concat ["<aside class=\"sidenote\"" <> maybe "" langAttrs lang <> "><span class=\"number\">" <> tshow n <> "</span>" <> T.concat (map (inlines c) (noteParagraphs body)) <> "</aside>\n" | Sidenote _ n body <- is]
+
+-- | The text of the links of an endnote, in the notation of [endnotes] mark-format (root ADR 0412).
+endnoteText :: Ctx -> Int -> Text
+endnoteText c n = fromMaybe (tshow n) (writeNumber (hcEndnoteNotation (cCfg c)) (toInteger n))
+
+{- | The endnotes of the chapter at the end of its last page, after its
+notes, as they are written (root ADR 0412).
+-}
+endnotesSection :: Ctx -> Text
+endnotesSection c =
+  case [(f, key, n, xs) | (f, key, d) <- cnList (cEndnotes c), (_, n, xs) <- documentEndnotes d] of
+    [] -> ""
+    ns ->
+      "<section class=\"endnotes\">\n<h2>"
+        <> escapeXml (endnotesTitle (hcLanguage (cCfg c)))
+        <> "</h2>\n"
+        <> T.concat
+          [ "<aside epub:type=\"endnote\" id=\"endnote-"
+              <> key n
+              <> "\">"
+              <> T.concat ["<p>" <> (if i == (0 :: Int) then "<a href=\"" <> linkTo c f ("endnoteref-" <> key n) <> "\">" <> endnoteText c n <> "</a> " else "") <> inlines c is <> "</p>" | (i, is) <- zip [0 ..] ps]
+              <> "</aside>\n"
+          | (f, key, n, ps) <- ns
+          ]
+        <> "</section>\n"
 
 {- | The notes of the chapter at the end of its last page, after a title
 (golem-driver ADR 0026); each links back to its mark, on whichever page.
@@ -1375,6 +1408,9 @@ css cfg book =
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
       -- Ordinary paragraph pitch never changes the inside of a note.
+      -- the endnotes as the notes, only in a book that has them (root ADR 0412)
+      <> ["section.endnotes aside p { margin-block: 0; padding-inline-start: 0; text-indent: 0; }" | hasEndnotes]
+      <> ["section.endnotes aside p { line-height: normal; }" | hasEndnotes, any (isJust . hpsPhysical) (Map.elems (hcParaStyles cfg) <> concatMap (Map.elems . hlParaStyles) (Map.elems (hcLocalStyles cfg)))]
       <> ["section.notes aside p { line-height: normal; }" | any (isJust . hpsPhysical) (Map.elems (hcParaStyles cfg) <> concatMap (Map.elems . hlParaStyles) (Map.elems (hcLocalStyles cfg)))]
       -- the captions of tables below them (docs/adr/0262)
       <> ["table > caption { caption-side: bottom; }" | hcTableCaptionBelow cfg]
@@ -1416,6 +1452,7 @@ css cfg book =
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
+    hasEndnotes = not (all (null . documentEndnotes) (bookDocs book))
     separatorPitch = maybe "1lh" ((<> "pt") . L.ptText) (hcSeparatorPitch cfg)
     docs = [fid | Document fid _ <- bookDocs book]
     -- the role of code, then monospace (golem-driver ADR 0017)

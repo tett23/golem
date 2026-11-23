@@ -354,7 +354,7 @@ assembleResults channels handlers program style styleFid styleText manifest proj
           (resolvedDocs, resolvedSeparators, separatorDiags) = resolveSeparators handlers program style styleFid styleText (map fst chapterRuns)
           -- where G04007 points (golem-syntax ADR 0002)
           numberSites = Map.unions (map erNumberSites (Map.elems results))
-          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) (stTableNumber style) channels pageLines
+          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) (stTableNumber style) channels pageLines (stNotesNumbering (endnoteStyle style))
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred resolvedDocs
@@ -1055,13 +1055,18 @@ note of the second file with notes and names the first file of the
 chapter.
 -}
 chapterNoteDiagnostics :: Style -> [Target] -> Map FileId SourceInfo -> Book -> [Diagnostic]
-chapterNoteDiagnostics style targets infos book
-  | stNotesNumbering style /= NumberPerFile || not gathered = []
-  | otherwise =
-      [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
-      | ch@(Document f0 _ : _ : _) <- bookChapters book,
-        (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentNotes ch)]
-      ]
+chapterNoteDiagnostics style targets infos book =
+  [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
+  | stNotesNumbering style == NumberPerFile && gathered,
+    ch@(Document f0 _ : _ : _) <- bookChapters book,
+    (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentNotes ch)]
+  ]
+    -- the endnotes, gathered in every target, by the same rule (root ADR 0412)
+    <> [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[endnotes] の numbering を \"chapter\" にしてください")
+       | stNotesNumbering (endnoteStyle style) == NumberPerFile,
+         ch@(Document f0 _ : _ : _) <- bookChapters book,
+         (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentEndnotes ch)]
+       ]
   where
     gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
     pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
@@ -1382,6 +1387,7 @@ htmlConfig dev e book missing bib =
           ],
       -- the links of notes in the notation of [notes] mark-format (docs/adr/0177)
       hcNoteNotation = mfNotation (stNotesMarkFormat style),
+      hcEndnoteNotation = mfNotation (stNotesMarkFormat (endnoteStyle style)),
       hcCharacterAdvance = do
         grid <- stPage style >>= pageGrid
         advance <- gridCharacterAdvance grid

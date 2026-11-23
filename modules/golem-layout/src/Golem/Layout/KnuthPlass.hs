@@ -110,9 +110,10 @@ data MarkBox = MarkBox
   deriving stock (Eq, Show)
 
 {- | The channel of a note mark numbered per page (docs/adr/0383): the
-notes and the sidenotes count apart.
+notes and the sidenotes count apart. The endnotes are a channel of their
+own, never numbered per page (root ADR 0412).
 -}
-data NoteChannel = ChannelNote | ChannelSidenote
+data NoteChannel = ChannelNote | ChannelSidenote | ChannelEndnote
   deriving stock (Eq, Ord, Show)
 
 {- | The number of a mark of a channel (docs/adr/0383): before the pages
