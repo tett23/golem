@@ -2122,7 +2122,7 @@ boundaryTableTests =
              n <- [1, 3]
            ]
     para k n = FParagraph defaultKeep (lines' (10 * k) n)
-    boxed k b a body = FBoxed (100 + k) b a body
+    boxed k = FBoxed (100 + k)
     table k sp h rows c below =
       let base = 10 * k
        in FTable base sp (lines' base h) (zipWith lines' (scanl (+) (base + h) rows) rows) (lines' (base + h + sum rows) c) below
@@ -2172,7 +2172,7 @@ boundaryTableTests =
         const (FNoBreak (controlSpan 0)),
         const (FNoBreakLines (controlSpan 0) 3),
         const (FNeedLines (controlSpan 0) 2),
-        \k -> para k 2
+        (`para` 2)
       ]
     figureInputs capacity =
       [ concat (zipWith element [0 ..] shape)
