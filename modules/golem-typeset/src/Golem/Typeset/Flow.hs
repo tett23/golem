@@ -108,7 +108,7 @@ import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (fromRight)
 import Data.Foldable (toList)
 import Data.Int (Int64)
-import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, unsnoc, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, mapAccumR, nub, sortOn, unsnoc, zip4)
 import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -125,6 +125,7 @@ import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.FigureWidth (figureWidthSp, parseFigureWidth)
 import Golem.Doc.IR
 import Golem.Doc.Url (checkUrl)
+import Golem.Doc.Validate (inlineSpan)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Align qualified as A
@@ -137,7 +138,7 @@ import Golem.Layout.Look hiding (Kerning (..))
 import Golem.Layout.Look qualified as L
 import Golem.Layout.PageLabel
 import Golem.Layout.Paginate
-import Golem.Layout.Paginate.Physical (PhysicalFailure (..), PhysicalPart (..), PhysicalSettings (..), PhysicalWrap (..), beginPhysicalWrapAfter, endPhysicalWrap, finishPhysicalCursor, finishPhysicalUnit, fitsPhysicalFollowing, keepPhysicalNext, movePhysicalCursor, paginatePhysical, physicalCursorIsEmpty, physicalCursorPosition, physicalFollowingRows, physicalKeepAhead, physicalParagraphOrigin, recordPhysicalUnmet, startPhysicalCursor, stepPhysicalCursor, stepPhysicalPrefix, trialParagraphPart, trialParagraphPartLimit)
+import Golem.Layout.Paginate.Physical (PhysicalFailure (..), PhysicalPart (..), PhysicalSettings (..), PhysicalWrap (..), beginPhysicalWrapAfter, endPhysicalWrap, finishPhysicalCursor, finishPhysicalUnit, fitsPhysicalFollowing, keepPhysicalNext, movePhysicalCursor, paginatePhysical, physicalCursorIsEmpty, physicalCursorPosition, physicalFollowingRows, physicalKeepAhead, physicalParagraphOrigin, recordPhysicalUnmet, retainPhysicalPart, startPhysicalCursor, stepPhysicalCursor, stepPhysicalPrefix, trialParagraphPart, trialParagraphPartLimit)
 import Golem.Layout.Ruby (RubyStyle (..))
 import Golem.Layout.Ruby qualified as R
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
@@ -425,7 +426,8 @@ data Built = Built
     bBoxPadding :: Map Int Sp,
     bWrappedBefore :: Map Int Sp,
     bFreePages :: Maybe (Either PhysicalFailure [PageOutAt Sp]),
-    bUnitFirsts :: Map Int Int
+    bUnitFirsts :: Map Int Int,
+    bRetainedFlow :: [FlowAt Sp]
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -820,8 +822,8 @@ separatorHoldErrors built pages =
 
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
 paginateBuilt inp geom capacity built
-  | free = either (Left . pure . physicalError) Right (fromMaybe (paginatePhysical settings (bFlow built)) (bFreePages built))
-  | otherwise = Right (map normalize (paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bFlow built))))
+  | free = either (Left . pure . physicalError) Right (fromMaybe (paginatePhysical settings (bRetainedFlow built)) (bFreePages built))
+  | otherwise = Right (map normalize (paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -848,7 +850,7 @@ paginateBuilt inp geom capacity built
 -- | Resolve the same physical geometry for a causal trial and final pagination.
 physicalSettings :: PdfInput -> PageGeometry -> Int -> Built -> PhysicalSettings
 physicalSettings inp geom capacity built =
-  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds
+  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -1010,6 +1012,7 @@ unmetWarnings pagePitch free names paraOf styleAt pages =
   | p <- pages,
     u <- poUnmet p,
     d <- case u of
+      SplitBookPart sp kind unit -> [notice "G07133" sp (kind <> "が空の保持単位にも収まらないため、" <> keepName unit <> " の保持を外して通常の位置で分けました")]
       UnmetNoBreak sp -> [diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"]
       UnmetNeedLines sp k ->
         [ diagnostic
@@ -1041,6 +1044,9 @@ unmetWarnings pagePitch free names paraOf styleAt pages =
         | Just (sp, _) <- [paraOf i]
         ]
   ]
+
+keepName :: KeepParts -> Text
+keepName = \case KeepColumn -> "column"; KeepPage -> "page"; KeepSpread -> "spread"
 
 {- | G07046 (golem-driver ADR 0027): a ruled paragraph broken between
 columns, or a ruled heading that lost a rule, because an empty column
@@ -3232,6 +3238,10 @@ at. A paragraph with rules is not set beside a figure (golem-driver ADR
 composeBeside :: FlowEnv -> Map Int Sp -> Map Int Unit -> Int -> PlacedFigure -> IO [(Int, (Composed, Int))]
 composeBeside fe widths unitAt i pf = go (i + 1) 0 0
   where
+    itemPath u = case [take (n + 1) (uFrames u) | (n, Frame _ FItem _) <- zip [0 ..] (uFrames u)] of
+      [] -> []
+      contexts -> fromMaybe [] (listToMaybe (reverse contexts))
+    sameItem u = compKeepParts (stComposition (piStyle (feInput fe))) == KeepColumn || itemPath u == maybe [] itemPath (Map.lookup i unitAt)
     ex = fromMaybe (error "composeBeside: figure without exclusion") (pfExclusion pf)
     pagePitch = pgLinePitch (feGeom fe)
     pageFace = pgFontSize (feGeom fe)
@@ -3244,7 +3254,8 @@ composeBeside fe widths unitAt i pf = go (i + 1) 0 0
         else distance + fromIntegral k * pagePitch < fromIntegral (exLines ex) * pagePitch
     go j offset distance
       | not free && offset >= exLines ex = pure []
-      | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing), uBox = Nothing} <- Map.lookup j unitAt = do
+      | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing), uBox = Nothing} <- Map.lookup j unitAt,
+        sameItem u = do
           c <- forceComposed (composeUnit fe widths (\k -> feMeasure fe - (if narrowed u distance k then exWidth ex else 0) - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u)) u)
           ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c)) (distance + fromIntegral (length (cLines c)) * unitPitch u)
       | free, Just u <- Map.lookup j unitAt, Just controls <- besideControlFlow u = go (j + 1) offset (distance + sum [gap | FSpace gap <- controls])
@@ -3588,7 +3599,7 @@ numberTable fe u tbl r nb = case r of
       headerLines = if null (stHeader t) then 0 else gridLines (stHeaderLines t)
       heights = headerLines : map gridLines (stRowLines t)
       rowLines = map gridLines (stRowLines t)
-      tall = [row | (row, h) <- zip [1 :: Int ..] rowLines, headerLines + h > capacity]
+      tall = [row | (row, h) <- zip [1 :: Int ..] rowLines, h > capacity || headerLines > capacity || toInteger headerLines + toInteger h > retentionCapacity]
       capN = ccSpan (tableCaptionOf fe u tbl)
       -- the row the caption is kept with: the first above, the last below; none when it is too tall itself
       touching = if below then lastOf rowLines else take 1 rowLines
@@ -3596,8 +3607,8 @@ numberTable fe u tbl r nb = case r of
       captionTall =
         [ diagnostic "G07116" Error (uSpan u) ("表のキャプションが、" <> (if below then "見出しの行と本体の最後の行" else "見出しの行と本体の最初の行") <> "とともに一つの段に収まりません")
         | capN > 0,
-          all (\h -> headerLines + h <= capacity) touching,
-          headerLines + sum touching + capN > capacity
+          all (\h -> h <= capacity && headerLines <= capacity && toInteger headerLines + toInteger h <= retentionCapacity) touching,
+          capN > capacity || (compKeepParts (stComposition (piStyle (feInput fe))) == KeepColumn && toInteger headerLines + sum (map toInteger touching) + toInteger capN > retentionCapacity)
         ]
   where
     nextId = nuNext nb
@@ -3609,6 +3620,12 @@ numberTable fe u tbl r nb = case r of
     div' a b = fromInteger (a `div` b)
     below = stTableCaption (piStyle (feInput fe)) == CaptionBelow
     capacity = length (pgLineGrid (feGeom fe))
+    -- In one column the header repeats on every continuation page, so the header
+    -- and each row must fit one column even within page or spread retention.
+    retentionCapacity = toInteger capacity * toInteger columns
+    columns = case compKeepParts (stComposition (piStyle (feInput fe))) of
+      KeepColumn -> 1
+      _ -> max 1 (length (pgColumns (feGeom fe)))
     emptyLine = Line [] 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     layoutError = \case
       ColumnsTooWide mn avail -> diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> L.mmText mn <> "）が使える幅（" <> L.mmText avail <> "）に収まりません")
@@ -4112,7 +4129,7 @@ numberComposedFlow inp geom fe units widths composed =
           ]
       pitches = Map.fromList (ordinaryPitches <> concat wrappedPitches)
       padding = Map.map (ubPadding . snd) (nuBoxes numbered)
-   in Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos separatorLines headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings pitches padding (nuWrappedBefore numbered) Nothing unitFirsts
+   in Built flow' (nuLines numbered) (nuFigures numbered) (nuHeadings numbered) (nuErrors numbered) (nuTableLines numbered) (nuTables numbered) (nuHeadingSpans numbered) (nuTocLines numbered) lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos separatorLines headingNames units fe composed widths (nuTableCaptions numbered) boxes (destAnchors (piBook inp) units unitFirsts (nuFigures numbered) (nuHeadingSpans numbered) flow') captionWarnings pitches padding (nuWrappedBefore numbered) Nothing unitFirsts (markBookParts (compKeepParts (stComposition (piStyle inp))) units unitFirsts flow')
 
 {- | Rebreak only unconsumed original items. The positions returned by the
 breaker stay in the original item coordinate system, so discarded glue,
@@ -4138,32 +4155,73 @@ from the current placement snapshot; moving to another column rebreaks
 only the original source suffix that has not been committed.
 -}
 causalFreeFlow :: PdfInput -> PageGeometry -> FlowEnv -> [(Int, Unit)] -> Map Int Sp -> [Int] -> Built -> Either PhysicalFailure Built
-causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing initialBuilt (startPhysicalCursor (settings initialBuilt)) jobs
+causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Nothing initialBuilt (startPhysicalCursor (settings initialBuilt)) jobs
   where
     settings = physicalSettings inp geom (length (pgLineGrid geom))
     rebuild = numberComposedFlow inp geom fe units widths
-    remaining prior built = case prior >>= (`Map.lookup` bUnitFirsts built) of
-      Nothing -> bFlow built
-      Just ident -> case dropWhile (not . isWrapped ident) (bFlow built) of
-        [] -> []
-        _ : FContinued {} : rest -> rest
-        _ : rest -> rest
+    keepUnit = compKeepParts (stComposition (piStyle inp))
+    retaining = keepUnit /= KeepColumn
+    -- the retention groups of page and spread (root ADR 0401); column keeps the flow as it was
+    retain built = if retaining then markBookParts keepUnit units (bUnitFirsts built) else id
+    remaining prior built = map (\(_, _, f) -> f) (remainingKeyed prior Nothing built)
+    -- each flow with its outermost list item; after a finished item, what follows it
+    remainingKeyed prior done built =
+      let keyed = [(u >>= listToMaybe . itemPaths, u, f) | (u, f) <- itemOwners units (bUnitFirsts built) (bFlow built)]
+          afterPrior = case prior >>= (`Map.lookup` bUnitFirsts built) of
+            Nothing -> keyed
+            Just ident -> case dropWhile (\(_, _, f) -> not (isWrapped ident f)) keyed of
+              [] -> []
+              _ : (_, _, FContinued {}) : rest -> rest
+              _ : rest -> rest
+       in maybe afterPrior (\key -> dropWhile (\(k, _, _) -> k == Just key) afterPrior) done
+    flowOf (_, _, f) = f
     isWrapped ident = \case FWrapped {fwId = candidate} -> ident == candidate; _ -> False
-    jobsFrom prior built cursor [] = do
-      finalCursor <- stepPhysicalCursor (settings built) cursor (remaining prior built)
+    jobsFrom prior done built cursor [] = do
+      finalCursor <- stepPhysicalCursor (settings built) cursor (retain built (map flowOf (remainingKeyed prior done built)))
       Right built {bFreePages = Just (Right (finishPhysicalCursor (settings built) finalCursor))}
-    jobsFrom prior built cursor (job : rest) = do
+    jobsFrom prior done built cursor (job : rest) = do
+      let ident = bUnitFirsts built Map.! job
+          (before, atJob) = break (isWrapped ident . flowOf) (remainingKeyed prior done built)
+      case [key | retaining, (Just key, _, _) <- take 1 atJob] of
+        key : _ -> do
+          -- the figure is in a list item: the whole item is composed again at each trial cursor
+          let inside = reverse (takeWhile (\(k, _, _) -> k == Just key) (reverse before))
+              outside = take (length before - length inside) before
+              source = case [uSpan u | (_, Just u, _) <- inside <> atJob] of
+                sp : _ -> sp
+                [] -> mkSpan (fst key) 0 0
+          ready <- stepPhysicalCursor (settings built) cursor (retain built (map flowOf outside))
+          ((placedBuilt, lastJob, later), placedCursor) <-
+            retainPhysicalPart (settings built) keepUnit source "リスト項目" ready $ \at -> do
+              (firstBuilt, firstCursor) <- runJob (map flowOf inside) job built at
+              itemJobs key job firstBuilt firstCursor rest
+          jobsFrom (Just lastJob) (Just key) placedBuilt placedCursor later
+        [] -> do
+          (placedBuilt, placedCursor) <- runJob (retain built (map flowOf before)) job built cursor
+          jobsFrom (Just job) Nothing placedBuilt placedCursor rest
+    -- the later figures of the same item, then the rest of the item
+    itemJobs key prior built cursor later = case later of
+      next : more
+        | (before, (Just k, _, _) : _) <- break (isWrapped (bUnitFirsts built Map.! next) . flowOf) (remainingKeyed (Just prior) Nothing built),
+          k == key -> do
+            (nextBuilt, nextCursor) <- runJob (map flowOf before) next built cursor
+            itemJobs key next nextBuilt nextCursor more
+      _ -> do
+        let rest = takeWhile (\(k, _, _) -> k == Just key) (remainingKeyed (Just prior) Nothing built)
+            ids = concat [flowSlotIds f | (Just k, _, f) <- remainingKeyed Nothing Nothing built, k == key]
+        final <- stepPhysicalCursor (settings built) cursor (map flowOf rest)
+        Right ((built, prior, later), ids, final)
+    runJob prefix job built cursor = do
       let composed = bComposed built
           (pf, _, _, marks) = cuFigures composed Map.! job
           unit = cuUnits composed Map.! job
           ident = bUnitFirsts built Map.! job
-          prefix = takeWhile (not . isWrapped ident) (remaining prior built)
           cfg = settings built
       (anchored, region) <- beginPhysicalWrapAfter cfg cursor prefix ident (pfExclusionLength pf) (unitLabel unit) marks
       let (_, _, origin) = physicalCursorPosition anchored
           paras = besideParagraphs (cuUnits composed) (cuBesides composed) job
       (placedBuilt, placedCursor) <- paragraphs job pf origin region job built anchored paras
-      jobsFrom (Just job) placedBuilt (endPhysicalWrap (Just region) placedCursor) rest
+      Right (placedBuilt, endPhysicalWrap (Just region) placedCursor)
     controlsBetween composed prior index = concat [flows | i <- [prior + 1 .. index - 1], Just u <- [Map.lookup i (cuUnits composed)], Just flows <- [besideControlFlow u]]
     bindingAfter index composed styleWanted =
       let later = takeWhile (isJust . besideControlFlow . snd) (Map.toAscList (Map.filterWithKey (\i _ -> i > index) (cuUnits composed)))
@@ -4373,6 +4431,81 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing ini
                         else continue consumedBreaks nextStart next
               where
                 continue consumedBreaks nextStart = parts Nothing relaxed False nextStart (committed <> take count (cLines tailComposed)) (breaks <> consumedBreaks) (indents <> take count tailIndents) updated
+
+-- | The list items a unit is in, from the outermost (root ADR 0401).
+itemPaths :: Unit -> [(FileId, [Frame])]
+itemPaths u = [(spanFile (uSpan u), take (n + 1) (uFrames u)) | (n, Frame _ FItem _) <- zip [0 ..] (uFrames u)]
+
+{- | The unit each flow belongs to. A control between two flows of the same
+outermost list item belongs to that item.
+-}
+itemOwners :: [(Int, Unit)] -> Map Int Int -> [FlowAt position] -> [(Maybe Unit, FlowAt position)]
+itemOwners units firsts flows = annotated
+  where
+    owners = Map.fromList [(leading, u) | (i, u) <- units, Just leading <- [Map.lookup i firsts]]
+    owner f = listToMaybe (flowSlotIds f) >>= \ident -> snd <$> Map.lookupLE ident owners
+    raw = [(owner f, f) | f <- flows]
+    (_, future) = mapAccumR (\next (u, f) -> (u <|> next, (u, next, f))) Nothing raw
+    (_, annotated) = mapAccumL fill Nothing future
+    fill previous (u, next, f) =
+      let inherited = do
+            before <- previous
+            after <- next
+            leading <- listToMaybe (itemPaths before)
+            following <- listToMaybe (itemPaths after)
+            if leading == following then Just before else Nothing
+       in (u <|> previous, (u <|> inherited, f))
+
+-- | Build retention groups without changing the original flow used by painting and links.
+markBookParts :: KeepParts -> [(Int, Unit)] -> Map Int Int -> [FlowAt position] -> [FlowAt position]
+markBookParts unit units firsts flows = special (wrapLists 0 annotated)
+  where
+    owners = Map.fromList [(leading, u) | (i, u) <- units, Just leading <- [Map.lookup i firsts]]
+    owner f = listToMaybe (flowSlotIds f) >>= \ident -> snd <$> Map.lookupLE ident owners
+    paths = itemPaths
+    key depth (u, _) = u >>= (listToMaybe . drop depth . paths)
+    annotated = itemOwners units firsts flows
+    wrapLists _ [] = []
+    wrapLists depth allFlows@(leading : _) = case key depth leading of
+      Just wanted ->
+        let (inside, rest) = span ((== Just wanted) . key depth) allFlows
+            body = special (wrapLists (depth + 1) inside)
+            source = maybe (mkSpan (fst wanted) 0 0) uSpan (fst leading)
+         in retained source "リスト項目" (concatMap flowSlotIds body) body : wrapLists depth rest
+      Nothing ->
+        let (plain, rest) = span (isNothing . key depth) allFlows
+         in map snd plain <> wrapLists depth rest
+    retained = FBookPart unit
+    sourceOf f = case owner f of
+      Just u -> case uKind u of
+        UTerm _ -> maybe (uSpan u) inlineSpan (listToMaybe (uInlines u))
+        _ -> uSpan u
+      Nothing -> mkSpan (FileId 0) 0 0
+    defKey f = do
+      u <- owner f
+      n <- listToMaybe [i | (i, Frame _ FDefItem _) <- zip [0 ..] (uFrames u)]
+      pure (spanFile (uSpan u), take (n + 1) (uFrames u))
+    isTerm FDefTerm {} = True
+    isTerm _ = False
+    special [] = []
+    special allFlows@(leading@FDefTerm {} : _) =
+      let (terms, following) = span (\f -> isTerm f && defKey f == defKey leading) allFlows
+          (controls, material) = span (null . flowSlotIds) following
+          (description0, rest) = case material of
+            next : more | not (isTerm next) && defKey next == defKey leading -> ([next], more)
+            _ -> ([], material)
+          description = special description0
+          body = terms <> controls <> description
+          firstIds = case description of
+            [FBookPart _ _ _ keptIds _] -> keptIds
+            _ -> take 1 (concatMap flowSlotIds description)
+          ids = concatMap flowSlotIds terms <> firstIds
+       in retained (sourceOf leading) "定義用語と説明" ids body : special rest
+    special (f@FTable {ftHeader = header, ftRows = rows, ftCaption = caption, ftCaptionBelow = below} : rest) =
+      let ids = map lbId ((if below then [] else caption) <> header <> concat (take 1 rows))
+       in retained (sourceOf f) "表の見出しと最初の行" ids [f] : special rest
+    special (FBoxed i before after body : rest) = FBoxed i before after (special body) : special rest
+    special (f : rest) = f : special rest
 
 {- | Where the destinations of links inside the document are drawn first
 (docs/adr/0267): a label at the line or the figure that carries it, an

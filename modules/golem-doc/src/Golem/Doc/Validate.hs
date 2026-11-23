@@ -4,6 +4,7 @@ the invariants that the Haskell types guarantee internally.
 module Golem.Doc.Validate
   ( validateInlines,
     validateDocument,
+    inlineSpan,
     validateBlocks,
     validateCommandBlocks,
     captionErrors,
