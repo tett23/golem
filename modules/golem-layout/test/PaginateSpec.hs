@@ -11,7 +11,7 @@ module PaginateSpec (paginateTests) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (evaluate)
-import Control.Monad (forM_, replicateM, when)
+import Control.Monad (forM_, guard, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -2014,7 +2014,21 @@ boundaryTableTests =
       forM_ [2 .. 4] $ \capacity -> forM_ controlInputs $ \flows -> do
         assertEnds capacity flows
         let output = concat (contents (paginate 1 capacity flows))
-        assertEqual (show (capacity, flows)) (sourceLines flows) [i | s <- output, i <- placedLine s]
+        assertEqual (show (capacity, flows)) (sourceLines flows) [i | s <- output, i <- placedLine s],
+    testCase "Golem ADR 0352 I4, I5: boxes, tables, code blocks, ruled blocks, stanzas, wrapped figures and footnotes among paragraphs and controls place every line and note once in the order written" $
+      forM_ kindInputs $ \(capacity, flows) -> do
+        assertEnds capacity flows
+        let ps = paginate 1 capacity flows
+            output = concat (contents ps)
+            headers = [lbId l | FTable _ _ h _ _ _ <- flows, l <- h]
+            -- a header line repeated in a column gone on to is not a line of the text again
+            textIds = dropRepeated headers [] [i | s <- output, i <- kindLine s]
+        assertEqual (show (capacity, flows)) (concatMap kindLines flows) textIds
+        forM_ [(n, nbLines b) | f <- flows, l <- kindLines' f, b@(NoteBody n _) <- lbNotes l] $ \(n, m) -> do
+          let parts = [(first, k) | p <- ps, (n', first, k) <- poFootnotes p, n' == n]
+              unplaceable = or [True | p <- ps, UnplaceableFootnote n' _ <- poUnmet p, n' == n]
+          assertBool (show (capacity, flows, n, parts)) (and (zipWith (\(f, k) (f', _) -> f + k == f') parts (drop 1 parts)))
+          assertBool (show (capacity, flows, n, parts)) (sum (map snd parts) == m || unplaceable)
   ]
   where
     assertEnds capacity flows = do
@@ -2060,6 +2074,103 @@ boundaryTableTests =
                  const (FKeepNext (controlSpan 0) 2)
                ]
     sourceFigures flows = [i | FFigure i _ _ _ <- flows]
+    kindLine = \case
+      SLine i -> [i]
+      SHeading i _ -> [i]
+      SCode i k _ -> [i .. i + k - 1]
+      _ -> []
+    dropRepeated headers seen = \case
+      [] -> []
+      i : is
+        | i `elem` headers && i `elem` seen -> dropRepeated headers seen is
+        | otherwise -> i : dropRepeated headers (i : seen) is
+    kindLines = map lbId . kindLines'
+    kindLines' = \case
+      FParagraph _ ls -> ls
+      FHeading _ _ _ ls -> take 1 ls
+      FBoxed _ _ _ body -> concatMap kindLines' body
+      FTable _ _ h rows capt below -> if below then h <> concat rows <> capt else capt <> h <> concat rows
+      FCode _ _ _ _ ls -> ls
+      FRuled {frBody = RuledLines _ ls} -> ls
+      FRuled {frBody = RuledHeading _ _ ls} -> take 1 ls
+      FStanza _ vs -> concat vs
+      FWrapped _ _ _ _ ls -> ls
+      _ -> []
+    -- the inputs of the other kinds of flows (Boundary.hs, kindInputs, lists the same)
+    kindInputs =
+      [ (c, [FParagraph defaultKeep (lines' 0 p) | p > 0] <> [kind 1, FParagraph defaultKeep (lines' 20 n)])
+      | c <- [2 .. 5],
+        p <- [0 .. 2],
+        kind <- kindChoices,
+        n <- [1 .. 3]
+      ]
+        <> [ (c, [a 0, b 1, FParagraph defaultKeep (lines' 20 n)])
+           | c <- [2 .. 4],
+             a <- pairChoices,
+             b <- pairChoices,
+             n <- [1, 2]
+           ]
+        <> [ (c, [FParagraph defaultKeep (lines' 0 p)] <> (if kindFirst then [kind 1, control 2] else [control 1, kind 2]) <> [FParagraph defaultKeep (lines' 30 n)])
+           | c <- [3 .. 5],
+             p <- [1, 2],
+             control <- [\k -> heading (10 * k), const (FKeepNext (controlSpan 0) 1), const (FNoBreak (controlSpan 0)), const (FNeedLines (controlSpan 0) 3)],
+             kind <- kindChoices,
+             kindFirst <- [True, False],
+             n <- [1, 3]
+           ]
+    para k n = FParagraph defaultKeep (lines' (10 * k) n)
+    boxed k b a body = FBoxed (100 + k) b a body
+    table k sp h rows c below =
+      let base = 10 * k
+       in FTable base sp (lines' base h) (zipWith lines' (scanl (+) (base + h) rows) rows) (lines' (base + h + sum rows) c) below
+    code g c f cont k n = FCode (CodeGeometry 10 10 10 10 (if g == (0 :: Int) then 0 else 5)) c f cont (lines' (10 * k) n)
+    ruledK k b a j body =
+      let rule = RuleSide 0 0 12 False Nothing
+       in FRuled (100 + k) (rule <$ guard b) (rule <$ guard a) j (RuleGrid 10 8) 0 $ case body of
+            Left n -> RuledLines defaultKeep (lines' (10 * k) n)
+            Right n -> RuledHeading False n (lines' (10 * k) 1)
+    stanzaK kAll k vs = FStanza (Keep 2 2 kAll) (zipWith lines' (scanl (+) (10 * k) vs) vs)
+    wrapped k n b = FWrapped (100 + k) n [] [] (lines' (10 * k) b)
+    notedK k n at m =
+      FParagraph defaultKeep [if j == at then l {lbNotes = [NoteBody (noteOf (500 + 10 * k)) m]} else l | (j, l) <- zip [0 :: Int ..] (lines' (10 * k) n)]
+    kindChoices =
+      [\k -> boxed k b a [para k n] | (b, a) <- [(0, 0), (1, 1), (1, 0)], n <- [1 .. 4]]
+        <> [\k -> boxed k 1 1 [para k 1, FSpace 1, FParagraph defaultKeep (lines' (10 * k + 5) 2)]]
+        <> [ \k -> table k sp h rows c below
+           | sp <- [0, 1],
+             h <- [0, 1],
+             rows <- [[1], [1, 1], [1, 1, 1], [2, 1]],
+             (c, below) <- [(0, False), (1, False), (1, True)]
+           ]
+        <> [\k -> code g c f cont k n | g <- [0, 1], c <- [0, 1], f <- [1, 2], cont <- [False, True], n <- [1 .. 4]]
+        <> [\k -> ruledK k b a False body | b <- [False, True], a <- [False, True], body <- [Left 1, Left 2, Left 3, Right 1, Right 2]]
+        <> [\k -> stanzaK kAll k vs | kAll <- [False, True], vs <- [[1], [1, 1], [1, 1, 1], [2, 1], [1, 2, 1], [1, 1, 1, 1]]]
+        <> [\k -> wrapped k n b | n <- [1 .. 3], b <- [0 .. 3]]
+        <> [\k -> notedK k n at m | n <- [1 .. 3], at <- [0 .. n - 1], m <- [1 .. 3]]
+    pairChoices =
+      [ \k -> boxed k 1 1 [para k 2],
+        \k -> boxed k 1 0 [para k 3],
+        \k -> table k 1 1 [1, 1] 1 True,
+        \k -> table k 0 0 [2, 1] 1 False,
+        \k -> code 1 1 2 True k 3,
+        \k -> code 0 0 1 False k 2,
+        \k -> ruledK k True True False (Left 2),
+        \k -> ruledK k True True True (Left 1),
+        \k -> ruledK k True False True (Right 1),
+        \k -> ruledK k False True False (Left 2),
+        \k -> stanzaK False k [1, 1, 1],
+        \k -> stanzaK True k [2, 1],
+        \k -> wrapped k 2 3,
+        \k -> wrapped k 3 1,
+        \k -> notedK k 2 1 2,
+        \k -> notedK k 1 0 3,
+        const (FKeepNext (controlSpan 0) 1),
+        const (FKeepNext (controlSpan 0) 2),
+        const (FNoBreak (controlSpan 0)),
+        const (FNoBreakLines (controlSpan 0) 3),
+        const (FNeedLines (controlSpan 0) 2),
+        \k -> para k 2
+      ]
     figureInputs capacity =
       [ concat (zipWith element [0 ..] shape)
       | count <- [1 .. 4],

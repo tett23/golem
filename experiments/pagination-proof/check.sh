@@ -87,9 +87,26 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
   echo "unchecked Lean declaration in $boundary" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$boundary" > "$tmp/boundary-lean"
+# The inputs are evaluated in four parts side by side, in order.
+parts=4
+pids=
+part=0
+while [ "$part" -lt "$parts" ]; do
+  LEAN_PATH="$tmp" "$lean" --run "$boundary" "$part" "$parts" > "$tmp/boundary-lean.$part" &
+  pids="$pids $!"
+  part=$((part + 1))
+done
+for pid in $pids; do
+  wait "$pid"
+done
+part=0
+: > "$tmp/boundary-lean"
+while [ "$part" -lt "$parts" ]; do
+  cat "$tmp/boundary-lean.$part" >> "$tmp/boundary-lean"
+  part=$((part + 1))
+done
 (cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base \
-  -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace -package-id=golem-length-0.1.0-inplace \
   experiments/pagination-proof/Boundary.hs) > "$tmp/boundary-haskell"
 diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
 inputs=$(grep -c '^[0-9]' "$tmp/boundary-lean")
