@@ -1348,13 +1348,15 @@ CLI のオプションは呼び出しに明示されるので、同じオプシ�
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
 PDF、HTML、プレーンテキストに加え、EPUB もファイル全体のバイト一致を保証する（[Golem ADR 0361](adr/0361-epub-byte-determinism.md)）。
-EPUB の一致の条件は、EPUB を作る圧縮器（zip-archive と zlib）の版を含む同じ Golem のビルドと、同じ設定、原稿、素材である。
+EPUB の一致の条件は、同じ Golem のバージョンと、同じ設定、原稿、素材である（[Golem ADR 0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)）。
 本からの相対位置を保ってプロジェクトを別のディレクトリに移しても、素材の列挙順や組んだ時刻が変わっても、EPUB は一致する。
 zip には、`mimetype`、`META-INF/container.xml`、パッケージ文書、ナビゲーション文書、`style.css`、本文の章（本の順）、素材（出力先の相対パスの順）をこの順に収め、どのエントリにも時刻 0 を書く。
 `mimetype` は圧縮せず、ほかのエントリは deflate で縮むときだけ deflate で収める。
 EPUB の識別子と更新日時（`dcterms:modified`）はマニフェストから作り、絶対パスや組んだ時刻は書かない。
-異なるビルドの間の一致は保証しないので、圧縮器の版を上げると、同じ入力からでも EPUB のバイト列は変わりうる。
-`cabal.project.freeze` が二つの圧縮器の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
+`cabal.project.freeze` が EPUB を作る圧縮器（zip-archive、zlib、同梱の C の zlib である zlib-clib）の版を固定するので、同じバージョンの Golem の配布物は同じ圧縮器で EPUB を作る。
+そのため、一致の条件はバージョンで言える。
+異なるバージョンの間の一致は保証しない。
+圧縮器の版を変えると、同じ入力からでも EPUB のバイト列が変わりうるので、圧縮器の版を変えるのは minor のバージョンに限る（[docs/compatibility.md](compatibility.md)）。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
@@ -2551,6 +2553,7 @@ HTML、EPUB、プレーンテキストはページを持たないので、`[hidd
 
 `style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
 ファイルの存在は、そのファイルを使うターゲットのビルドと `golem check` でだけ検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
+パスがプロジェクトの外を指すかは、どのターゲットのビルドと `golem check` でも検査する（下の G03279）。
 LSP と `golem lint` はファイルを検査しないので、フォントを置く前でも原稿の diagnostics を出す。
 
 PDF は、ファイルの欠けを次のエラーとし、PDF を書かない。
@@ -2564,9 +2567,17 @@ G08007 は設定の欠けであり、ファイルを置いても直らないの�
 HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G03010 を報告する。
 ブラウザーは `font-family` の並びの残りで組むので、出力は読める。
 G03010 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
-プレーンテキストはファイルを検査しない。
+プレーンテキストはファイルの欠けを検査しない。
 
-絶対パス、URL、プロジェクトルートの外を指すパスは、存在しないファイルと同じコードで報告する。
+パスがプロジェクトの外を指すときは、欠けとは別の原因として、どのターゲットでも、どのプロファイルでも G03279 のエラーとする（[ADR 0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)）。
+プロジェクトの外とは、絶対パス、URL、プロジェクトルートの外に出るパス、プロジェクトの外のファイルを指すシンボリックリンクである。
+先のファイルがないシンボリックリンクは、ないファイルとして扱う。
+`[fonts]` のフォントは、PDF が使わない役割のものも検査する。
+`intent` は、PDF を組まないビルドでも検査する。
+G03279 があれば、どのターゲットも書かない。
+プロジェクトの外のフォントは、別のマシンで同じ本を組めない原因になるので、HTML と EPUB でも、そのフォントを除いて出力することはせず、ビルドを止める。
+G03279 を出したパスには、G08002、G08006、G03010 を出さない。
+
 diagnostic の位置は `style.toml` の先頭とし、同じコードと同じパスの diagnostic は一つだけ出す。
 
 ### 文字スタイルと段落スタイル
@@ -9640,6 +9651,13 @@ GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる
 `VERSION` には、配布物の名前と SHA-256 を空白で区切って書く。
 `VERSION` の名前とハッシュの両方がスクリプトのものと一致するときだけ、取得済みのディレクトリを使い、そうでなければ取り直す。
 `fetch-wasmtime.sh --expected` は、期待する `VERSION` の中身を出力する。
+
+Git の `pre-push` のフックは、ビルドがリンクする wasmtime が固定した版と違うとき、push を止める（`scripts/check-local-wasmtime.sh`、[docs/adr/0418](adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+照合は、push するチェックアウトの `fetch-wasmtime.sh --expected` の一行と、ビルドがリンクする wasmtime の `VERSION` の一行を比べる。
+ビルドがリンクする wasmtime は、そのチェックアウトの `cabal.project.local` の `extra-lib-dirs` のうち `third_party/wasmtime/lib` で終わる最初のものの親のディレクトリとし、そのような行がなければ、そのチェックアウト自身の `third_party/wasmtime` とする。
+二つの一行が違うとき、`VERSION` がないとき、`--expected` が失敗したときは、終了コード 1 で止まり、取り直す手順を標準エラーに書く。
+照合は一回の push に一度行い、push する ref がどれもブランチの削除のときは行わない。
+照合はネットワークに出ず、ファイルを書かず、飛ばす仕組みを持たない。
 
 ## マニュアル
 

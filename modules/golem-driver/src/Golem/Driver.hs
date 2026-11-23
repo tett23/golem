@@ -1164,32 +1164,44 @@ independentBleed files infos
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
 missingStyleFiles files style = do
-  let paths = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
-  resolved <- forM paths $ \p -> (p,) <$> filesResolve files p
+  resolved <- forM (styleFilePaths style) $ \p -> (p,) <$> filesResolve files p
   pure (Map.fromList [(p, err) | (p, Left err) <- resolved])
 
-{- | Diagnostics of the missing files for one target (golem-project ADR
-0004): the fonts the PDF uses and its output intent (errors), every font
-for HTML and EPUB (warnings, errors in prod), nothing for plain text.
-The PDF also needs a body font with a file (G08007, golem-driver ADR 0016).
+-- | The files style.toml names: the fonts of every role, then the output intent.
+styleFilePaths :: Style -> [FilePath]
+styleFilePaths style = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
+
+{- | Diagnostics of the files of style.toml for one target. A path outside
+the project (absolute, a URL, out of the root, or a symbolic link out of
+it) is G03279, an error for every target and profile (docs/adr/0421); it
+is the same diagnostic for every target, so a build reports it once.
+Missing files (golem-project ADR 0004): the fonts the PDF uses and its
+output intent (errors), every font for HTML and EPUB (warnings, errors in
+prod), nothing for plain text. The PDF also needs a body font with a file
+(G08007, golem-driver ADR 0016).
 -}
 targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid style locals missing = \case
-  TargetPdf ->
-    bodyFontDiagnostics fid style
-      <> report "G08002" Error "フォントのファイルがありません" pdfFonts
-      <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
-  TargetHtml -> siteFonts
-  TargetEpub -> siteFonts
-  TargetText -> []
+targetFileDiagnostics fid style locals missing target =
+  outside <> case target of
+    TargetPdf ->
+      bodyFontDiagnostics fid style
+        <> report "G08002" Error "フォントのファイルがありません" (pdfFontPaths style locals)
+        <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
+    TargetHtml -> siteFonts
+    TargetEpub -> siteFonts
+    TargetText -> []
   where
-    pdfFonts = pdfFontPaths style locals
+    outside =
+      [ diagnostic "G03279" Error (mkSpan fid 0 0) (T.pack (pathErrorMessage err <> ": " <> p))
+      | p <- styleFilePaths style,
+        Just err <- [Map.lookup p missing],
+        err /= Missing
+      ]
     siteFonts = report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
-    report code sev missingMsg paths =
+    report code sev msg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
       | p <- nub paths,
-        Just err <- [Map.lookup p missing],
-        let msg = if err == Missing then missingMsg else pathErrorMessage err
+        Map.lookup p missing == Just Missing
       ]
 
 -- | The roles that the PDF uses, with their files (Golem ADR 0358).

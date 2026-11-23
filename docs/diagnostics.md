@@ -6423,6 +6423,7 @@ style.toml の誤りです
 
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G03010](#g03010)、[G08002](#g08002)）。
+フォントと出力インテントのパスがプロジェクトの外を指すときにも使わない（[G03279](#g03279)）。
 判型（`[page]` の `size`）の誤りには使わない（[G03017](#g03017)）。
 自然数を読むキー（`[page.grid]` の `characters`、`lines`、`columns`、見出しの `lines`、`[index]` の `columns`）の負の数には使わない（[G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）。
 マスターページの柱の内容の誤りには使わない（[G03014](#g03014)）。
@@ -6572,6 +6573,7 @@ style.toml にないフォントの役割です
 ### 意味
 
 HTML か EPUB を作るときに、`[fonts]` が指すフォントのファイルがない。
+パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 そのフォントを同梱せず、`@font-face` も書かずに出力する。
 prod では HTML と EPUB を書かない。
 LSP は出さない。
@@ -8610,6 +8612,37 @@ file、line、character と原稿の文書順を確かめる。
 ### 直し方
 
 `[endnotes]` の `numbering` を `"chapter"`（既定）、`"file"`、`"book"` のどれかにする。
+||||||| 3c3e5e821
+
+## G03279
+
+style.toml のファイルのパスがプロジェクトの外を指しています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[fonts]` のフォントか、`[color]` の `intent` の ICC プロファイルのパスが、プロジェクトの外を指している。
+プロジェクトの外とは、絶対パス、URL、プロジェクトルートの外に出るパス、プロジェクトの外のファイルを指すシンボリックリンクである。
+先のファイルがないシンボリックリンクは、ないファイルとして [G03010](#g03010)、[G08002](#g08002)、[G08006](#g08006) になる。
+どのターゲットでも、どのプロファイルでもエラーであり、ターゲットを一つも書かない。
+プレーンテキストのビルドと `golem check` も報告する。
+同じパスについては一つだけ出し、位置は `style.toml` の先頭である。
+LSP は出さない。
+
+- メッセージ: パスの誤りの文言とパス（`プロジェクトルートの外を指しています: <パス>`、`絶対パスは使えません: <パス>`、`URL は使えません: <パス>`）
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset.FontProvider` と `Golem.Typeset.Flow`）
+- ADR: [docs/adr/0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)
+
+### 主な原因
+
+- `[fonts]` に、ほかのプロジェクトやシステムのフォントのパスを書いた。
+- `fonts/` に、プロジェクトの外のフォントを指すシンボリックリンクを置いた。
+
+### 直し方
+
+ファイルをプロジェクトの中に写し、`style.toml` のパスをプロジェクトルートからの相対パスに直す。
 
 ## G04001
 
@@ -11756,14 +11789,15 @@ PDF のフォントのファイルがありません
 
 ### 意味
 
-PDF が使う役割のフォントのファイルがないか、パスが不正である。
+PDF が使う役割のフォントのファイルがない。
+パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 PDF を書かない。
 `golem check` も報告する。
 LSP は出さない。
 位置は `style.toml` の先頭である。
 本文のフォントの設定がない場合は [G08007](#g08007) である。
 
-- メッセージ: `フォントのファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
+- メッセージ: `フォントのファイルがありません: <パス>`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset.FontProvider`）
 - ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた）、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（本文のフォントの設定の欠けを G08007 に分けた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
 
@@ -11869,18 +11903,18 @@ PostScript 名が同じ異なるフォントがあります
 
 ### 意味
 
-PDF を作るときに、`[color]` の `intent` が指す ICC プロファイルのファイルがないか、パスが不正である。
+PDF を作るときに、`[color]` の `intent` が指す ICC プロファイルのファイルがない。
+パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 PDF を書かない。
 LSP は出さない。
 
-- メッセージ: `出力インテントの ICC プロファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
+- メッセージ: `出力インテントの ICC プロファイルがありません: <パス>`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)
 
 ### 主な原因
 
 - `[color]` の `intent` のパスの綴りを誤ったか、ファイルを置いていない。
-- パスが絶対パスなど、使えない形である。
 
 ### 直し方
 

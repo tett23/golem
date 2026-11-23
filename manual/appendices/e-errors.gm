@@ -936,13 +936,17 @@ PDF を組むときに出るエラーです。
 = [strong: G08007 [code: style.toml に本文のフォントがありません。\[fonts.body\] を書いてください]] など
   PDF を作るのに、本文のフォントが設定されていません。
   [code: style.toml] に [code: \[fonts.body\]] を書き、[code: ja] か [code: latin] にフォントのファイルを書いてください。
-= [strong: G08002 [code: フォントのファイルがありません: …]] など
+= [strong: G08002 [code: フォントのファイルがありません: …]]
   PDF を組むのに要るフォントのファイルがありません。
   [code: style.toml] の [code: \[fonts\]] のパスにファイルを置いてください。
   [code: golem new --no-fonts] で作ったプロジェクトは、フォントを置くまでこのエラーが出ます。
 = [strong: G03010 [code: フォントのファイルがないので、HTML と EPUB に同梱しません: …]]
   [code: --profile dev] では警告で、フォントを同梱せずに HTML と EPUB を書きます。
   [code: --profile prod] ではエラーです。
+= [strong: G03279 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
+  [code: style.toml] のフォントか [code: intent] の ICC プロファイルのパスが、プロジェクトの外を指しています。
+  どの出力でもエラーで、何も書きません。
+  ファイルをプロジェクトのフォルダの中に写し、そこからの相対パスで書いてください。
 = [strong: G08003 [code: フォントを読み込めません: …]]
   フォントのファイルが壊れているか、OpenType のフォントではありません。
 = [strong: G08004 [code: ライセンスが埋め込みを禁じているフォントです（…）: …]]
