@@ -12838,18 +12838,27 @@ HTML と EPUB は `axes` を使わないので、出さない。
 
 - メッセージ: `図版の色を変換できません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-driver の `Golem.Driver`）
-- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)
+- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)、[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)
 
 ### 主な原因
 
 - 壊れた画像や、色の変換で扱えない JPEG の符号化方式を使っている。
 - 変換後の画素が、画像の展開サイズの上限を超える。
 - 色を指定した SVG（PDF、HTML、EPUB）に、色の変換で扱えない要素や属性がある。
-- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。シェーディング、パターン、特色などの色空間、Normal 以外の合成の方式、転送関数、自分の色を指定する Type 3 フォントの字形がこれにあたる。
+- 取り込んだ PDF の図版が、色を判定できないか、指定色に置き換えられない構成を使っている。次の構成がこれにあたる。
+  - ExtGState の BM が Normal か Compatible でないもの。配列は、空でなく、要素がすべて Normal か Compatible のときだけ扱う。
+  - ExtGState の TR と TR2 が Identity か Default でないもの。
+  - OPM が 1 で、線を描くときは線の、塗りを描くときは塗りのオーバープリントが true のもの。
+  - PostScript の計算機の関数（FunctionType 4）で色を決めるシェーディング。
+  - 値がすべて濃淡でも、灰色の値が一つの値の一次式で決まらないシェーディングを、ほかの色がすべて濃淡の図版で使うもの。
+  - DeviceGray でないソフトマスクと、Matte を持ち、画像と大きさが違うか、Interpolate が true のソフトマスク。
+  - ICCBased で、プロファイルのデータの色空間が Gray、RGB、CMYK、Lab のどれでもないか、N と合わないもの。
+- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。今はシェーディングをすべてこの扱いにする。ほかに、パターン、自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
 
 ### 直し方
 
 メッセージの理由に従って、図版を対応する画像形式とサイズで書き直す。
+PDF の図版は、描画色の指定を外すか、挙げた構成を使わない形に書き出し直す。
 
 ## G08114
 
