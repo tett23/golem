@@ -59,13 +59,13 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Layout.Aki (AkiPos (..), akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
-import Golem.Layout.CharClass (charClass, dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
 import Golem.Layout.Hyphenation (hyphenMins)
 import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese (BoxKind (..), CharClass (..), boxKind, lineEndProhibited, lineStartProhibited, lookClass)
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..), plainLook)
 import Golem.Length qualified as L
+import Golem.Unicode.CharClass (charClass, dualJapaneseClass, isDualCharacter, isExtending, spanIsJapanese)
 import KnuthPlassBrute (breakCandidates, bruteDemerits)
 
 {- | The invariants of docs/adr/0209, by their numbers, L1, L8 and L9 as

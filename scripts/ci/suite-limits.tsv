@@ -33,6 +33,7 @@ aarch64	golem-test-support-par-test	10
 aarch64	golem-test-support-test	28
 aarch64	golem-text-test	10
 aarch64	golem-typeset-test	10
+aarch64	golem-unicode-test	10
 aarch64	golem-wasm-test	10
 x86_64	golem-assemble-test	10
 x86_64	golem-bibliography-test	10
@@ -68,4 +69,5 @@ x86_64	golem-test-support-par-test	10
 x86_64	golem-test-support-test	28
 x86_64	golem-text-test	10
 x86_64	golem-typeset-test	10
+x86_64	golem-unicode-test	10
 x86_64	golem-wasm-test	10
