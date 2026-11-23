@@ -650,11 +650,11 @@ theorem fittedFigure_resolves_conflict (capacity height : Nat) :
   have depthFits : min capacity height ≤ capacity := Nat.min_le_left capacity height
   simp [legacyFits, legacyFigure, noSendFromEmpty, depthFits]
 
-theorem someFits : ∃ capacity height : Nat, ∃ kept : Bool,
+theorem I3_someFits : ∃ capacity height : Nat, ∃ kept : Bool,
     capacity = 3 ∧ height = 4 ∧ legacyFits capacity height kept := by
   exact ⟨3, 4, false, rfl, rfl, Or.inl rfl⟩
 
-theorem tallFigure : ∃ capacity height : Nat,
+theorem I2_tallFigure : ∃ capacity height : Nat,
     capacity = 3 ∧ height = 4 ∧
     ∀ kept : Bool, ¬ (legacyFits capacity height kept ∧
       legacyFigure capacity height kept ∧ noSendFromEmpty kept) := by
@@ -680,7 +680,7 @@ theorem greedyOrphanConflict_general (used : Nat) (brk : Fin 3) :
        brk.val ≠ 1) := by
   omega
 
-theorem greedyKeepHeading :
+theorem I3_greedyKeepHeading :
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingKeep brk) ∧
     (∀ brk : Fin 3, ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoHeadingKeep brk)) := by
@@ -689,17 +689,17 @@ theorem greedyKeepHeading :
   unfold twoHeadingFits twoHeadingGreedy twoHeadingKeep
   omega
 
-theorem noneMeetsAll :
+theorem I3_noneMeetsAll :
     ∀ brk : Fin 3,
       ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoHeadingKeep brk) := by
-  exact greedyKeepHeading.2.2
+  exact I3_greedyKeepHeading.2.2
 
 /- A two-line paragraph after the same partly used column. Breaking after
    its first line would make both an orphan and a widow. -/
 def twoLineOrphan (brk : Fin 3) : Prop := brk.val ≠ 1
 def twoLineWidow (brk : Fin 3) : Prop := brk.val ≠ 1
 
-theorem greedyOrphan :
+theorem I3_greedyOrphan :
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoLineOrphan brk) ∧
     (∀ brk : Fin 3, ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoLineOrphan brk)) := by
@@ -708,7 +708,7 @@ theorem greedyOrphan :
   unfold twoHeadingFits twoHeadingGreedy twoLineOrphan
   omega
 
-theorem greedyWidow :
+theorem I3_greedyWidow :
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoHeadingGreedy brk) ∧
     (∃ brk : Fin 3, twoHeadingFits brk ∧ twoLineWidow brk) ∧
     (∀ brk : Fin 3, ¬ (twoHeadingFits brk ∧ twoHeadingGreedy brk ∧ twoLineWidow brk)) := by
@@ -727,7 +727,7 @@ def headingParagraphHasLine (brk : Fin 5) : Prop := brk.val ≠ 1
 def headingParagraphOrphan (brk : Fin 5) : Prop := brk.val ≠ 2
 def headingParagraphWidow (brk : Fin 5) : Prop := brk.val ≠ 3
 
-theorem strictAfterHeadings : ∀ brk : Fin 5,
+theorem I3_strictAfterHeadings : ∀ brk : Fin 5,
     ¬ (headingParagraphFits brk ∧ headingParagraphNonempty brk ∧
        headingParagraphHasLine brk ∧ headingParagraphOrphan brk ∧
        headingParagraphWidow brk) := by
@@ -1044,7 +1044,7 @@ def decidedLineAfterHeadings (brk : Fin 3) : Prop :=
 def decidedRectoRule (brk : Fin 3) : Prop :=
   decidedHere brk .recto → decidedStartsColumn brk .recto
 
-theorem decidedSome :
+theorem I3_decidedSome :
     ∃ brk : Fin 3,
       decidedBase brk ∧ decidedOrphanH brk ∧ decidedWidowH brk ∧
       decidedKeepHeadingR brk ∧ decidedLineAfterHeadings brk ∧
@@ -1147,7 +1147,7 @@ def keepAllSomeLast (brk : Fin 2) : Prop :=
 def keepAllSomeAll (brk : Fin 2) : Prop :=
   keepAllSomeBroken brk → False
 
-theorem keepAllSome :
+theorem I3_keepAllSome :
     ∃ brk : Fin 2,
       keepAllSomeBase brk ∧ keepAllSomeFirst brk ∧
       keepAllSomeLast brk ∧ keepAllSomeAll brk := by
@@ -1205,7 +1205,7 @@ def orphanByBoundary (total here : Nat) (starts : Prop) : Prop :=
 def widowByBoundary (total here : Nat) (starts : Prop) : Prop :=
   2 ≤ total ∧ total - 1 ≤ here ∧ here < total → starts
 
-theorem keepDefaultDiffers (total here : Nat) (starts : Prop)
+theorem I3_keepDefaultDiffers (total here : Nat) (starts : Prop)
     (within : here ≤ total) :
     (orphanByBoundary total here starts ∧
       widowByBoundary total here starts) ↔
@@ -2659,7 +2659,7 @@ theorem I3_blank_dropped_after_all_wait (waiting : Nat → Bool)
   unfold blankPlaced
   rw [(I3_nextAfterWaiting_none_iff_all_wait waiting items).mpr allWait]
 
-theorem blankBeforeWaiting25 :
+theorem I3_blankBeforeWaiting25 :
     ∃ capacity used firstSize secondSize : Nat,
       capacity = 5 ∧ used = 4 ∧ firstSize = 4 ∧ secondSize = 5 ∧
       used + 1 ≤ capacity ∧
@@ -2669,7 +2669,7 @@ theorem blankBeforeWaiting25 :
       blankWithNextCase false false true = true := by
   exact ⟨5, 4, 4, 5, by decide⟩
 
-theorem waitingBlankSome :
+theorem I3_waitingBlankSome :
     ∃ capacity used firstSize secondSize : Nat,
       capacity = 4 ∧ used = 2 ∧ firstSize = 4 ∧ secondSize = 4 ∧
       used + 1 + 1 ≤ capacity ∧
@@ -5149,7 +5149,7 @@ theorem I3_keep_default_paragraph_equivalence
         (paragraphHereCount brk items p)
         (startsColumnModel used brk items config kept p.firstPos)) := by
   have partition := I3_paragraph_line_partition brk items p
-  exact keepDefaultDiffers p.linePositions.length
+  exact I3_keepDefaultDiffers p.linePositions.length
     (paragraphHereCount brk items p)
     (startsColumnModel used brk items config kept p.firstPos) (by omega)
 
@@ -5435,7 +5435,7 @@ theorem I3_empty_column_first_of_two_figures_with_blank_kept
       countZero, penaltyFalse, fits,
       show List.range 0 = [] from rfl]
 
-theorem blankFigureOrder (capacity used : Nat) (items : List SourceItem)
+theorem I3_blankFigureOrder (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
     (usedFits : used ≤ capacity) (ordered : sourceOrdered items)
     (figuresValid : figureDomain items config)
@@ -5577,7 +5577,7 @@ theorem I3_blankFigureOrder_old_blank_projection
       (∀ f, f < figureCount config → kept f = true →
         ∀ pos, .text pos ∈ items → pos < figurePosAt config f → False) := by
   obtain ⟨kept, atTop, newPlaced, newRule⟩ :=
-    blankFigureOrder capacity used items config blank usedFits ordered
+    I3_blankFigureOrder capacity used items config blank usedFits ordered
       figuresValid blankValid
   obtain ⟨oldPlaced, oldRule⟩ :=
     I3_old_blank_rule_projection capacity used items config blank kept
@@ -5805,7 +5805,7 @@ theorem I3_first_figure_stays_one_figure
       zeroBreakPlacement capacity 0 items (.one figurePos figureSize)
         blank kept atTop placed ∧ kept 0 = true := by
   obtain ⟨kept, atTop, placed, placement⟩ :=
-    blankFigureOrder capacity 0 items (.one figurePos figureSize) blank
+    I3_blankFigureOrder capacity 0 items (.one figurePos figureSize) blank
       (Nat.zero_le capacity) ordered figuresValid blankValid
   refine ⟨kept, atTop, placed, placement, ?_⟩
   cases blank with
@@ -5840,7 +5840,7 @@ theorem I3_first_figure_stays_two_figures
         (.two firstPos firstSize secondPos secondSize)
         blank kept atTop placed ∧ kept 0 = true := by
   obtain ⟨kept, atTop, placed, placement⟩ :=
-    blankFigureOrder capacity 0 items
+    I3_blankFigureOrder capacity 0 items
       (.two firstPos firstSize secondPos secondSize) blank
       (Nat.zero_le capacity) ordered figuresValid blankValid
   refine ⟨kept, atTop, placed, placement, ?_⟩
@@ -6362,7 +6362,7 @@ theorem I3_oneBreakPlacement25_implies_orders
       (figurePosAt config f) firstText first beforeFigure ready
       textPos member earlier
 
-theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
+theorem I3_blankRules25 (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6497,7 +6497,7 @@ theorem blankRules25 (capacity used : Nat) (items : List SourceItem)
 /- Current blank-line rule, which skips a waiting figure when looking for
    the next block.  Unlike `blankRules25`, this keeps the new placement
    predicate rather than projecting it to the historical one. -/
-theorem waitingBlankNone (capacity used : Nat) (items : List SourceItem)
+theorem I3_waitingBlankNone (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig) (blank : Option Nat)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6517,7 +6517,7 @@ theorem waitingBlankNone (capacity used : Nat) (items : List SourceItem)
     cases firstCase : firstContent items with
     | none =>
         obtain ⟨kept, atTop, placed, rule⟩ :=
-          blankFigureOrder capacity 0 items config blank
+          I3_blankFigureOrder capacity 0 items config blank
             (Nat.zero_le capacity) ordered figuresValid blankValid
         refine ⟨0, kept, atTop, placed, Or.inl ⟨rfl, rule⟩,
           by simp [firstContentNotSent, firstCase], ?_⟩
@@ -6589,7 +6589,7 @@ theorem waitingBlankNone (capacity used : Nat) (items : List SourceItem)
               (.need pos) firstCase).1
             simp [isContent] at content
   · obtain ⟨kept, atTop, placed, rule⟩ :=
-      blankFigureOrder capacity used items config blank usedFits ordered
+      I3_blankFigureOrder capacity used items config blank usedFits ordered
         figuresValid blankValid
     refine ⟨0, kept, atTop, placed, Or.inl ⟨rfl, rule⟩, ?_, ?_⟩
     · intro empty
@@ -6597,7 +6597,7 @@ theorem waitingBlankNone (capacity used : Nat) (items : List SourceItem)
     · intro impossible
       cases impossible
 
-theorem waitingBlankAllButGreedy (capacity used : Nat)
+theorem I3_waitingBlankAllButGreedy (capacity used : Nat)
     (items : List SourceItem) (config : FigureConfig)
     (blank : Option Nat)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
@@ -6625,7 +6625,7 @@ theorem waitingBlankAllButGreedy (capacity used : Nat)
       widowModel used brk items config kept paragraphs ∧
       headingKeepModel used brk items config kept headings keptLines := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase⟩ :=
-    waitingBlankNone capacity used items config blank capacityPositive
+    I3_waitingBlankNone capacity used items config blank capacityPositive
       usedFits ordered figuresValid blankValid sizesFit
   rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
   · subst brk
@@ -6676,7 +6676,7 @@ theorem I3_recto_compatible_with_blank_and_figure
       firstContentNotSent used brk items config kept ∧
       rectoModel used brk items config kept rectos := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase⟩ :=
-    waitingBlankNone capacity used items config blank capacityPositive
+    I3_waitingBlankNone capacity used items config blank capacityPositive
       usedFits ordered figuresValid blankValid sizesFit
   rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
   · subst brk
@@ -6816,7 +6816,7 @@ theorem I3_heading_runs_and_rectos_with_blank_and_figure
       · exact headingsValid p (List.mem_cons.mpr (Or.inl eq))
       · exact ih (fun q hq => headingsValid q (List.mem_cons.mpr (Or.inr hq))) tail
   obtain ⟨brk, kept, atTop, placed, rule, noSend, figureOrder, textOrder, orphan, widow, noInterior⟩ :=
-    waitingBlankAllButGreedy capacity used items config blank capacityPositive usedFits
+    I3_waitingBlankAllButGreedy capacity used items config blank capacityPositive usedFits
       ordered figuresValid blankValid sizesFit paragraphs paragraphsValid
       (headings ++ rectos) valid (fun _ => False)
   refine ⟨brk, kept, atTop, placed, rule, noSend, figureOrder, textOrder, orphan, widow, ?_, ?_, ?_⟩
@@ -6833,7 +6833,7 @@ theorem I3_heading_runs_and_rectos_with_blank_and_figure
     exact (noInterior h (List.mem_append_of_mem_left rectos member) here inside).elim
 
 
-theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
+theorem I3_figureEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6847,11 +6847,11 @@ theorem figureEmpty (capacity used : Nat) (items : List SourceItem)
         none kept atTop placed)) ∧
       firstContentNotSent used brk items config kept := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, _⟩ :=
-    blankRules25 capacity used items config none capacityPositive usedFits
+    I3_blankRules25 capacity used items config none capacityPositive usedFits
       ordered figuresValid noBlank sizesFit
   exact ⟨brk, kept, atTop, placed, rule, noSend⟩
 
-theorem figureOrder (capacity used : Nat) (items : List SourceItem)
+theorem I3_figureOrder (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6869,11 +6869,11 @@ theorem figureOrder (capacity used : Nat) (items : List SourceItem)
           textPos < figurePosAt config f →
             textHereAtBreak items brk textPos = true) := by
   obtain ⟨brk, kept, atTop, placed, rule, _, _, figureOrder, textOrder⟩ :=
-    blankRules25 capacity used items config none capacityPositive usedFits
+    I3_blankRules25 capacity used items config none capacityPositive usedFits
       ordered figuresValid noBlank sizesFit
   exact ⟨brk, kept, atTop, placed, rule, figureOrder, textOrder⟩
 
-theorem keep21 (capacity used : Nat) (items : List SourceItem)
+theorem I3_keep21 (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6901,7 +6901,7 @@ theorem keep21 (capacity used : Nat) (items : List SourceItem)
       headingKeepModel used brk items config kept headings keptLines := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase,
     figureOrder, textOrder⟩ :=
-    blankRules25 capacity used items config none capacityPositive usedFits
+    I3_blankRules25 capacity used items config none capacityPositive usedFits
       ordered figuresValid noBlank sizesFit
   rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
   · subst brk
@@ -6924,7 +6924,7 @@ theorem keep21 (capacity used : Nat) (items : List SourceItem)
    joint placement.  `keep21` constructs a stronger joint placement for every
    input in its domain.  The projection below retains the two rules queried
    by that command. -/
-theorem keepHeadingEmpty (capacity used : Nat) (items : List SourceItem)
+theorem I3_keepHeadingEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6944,12 +6944,12 @@ theorem keepHeadingEmpty (capacity used : Nat) (items : List SourceItem)
       firstContentNotSent used brk items config kept ∧
       headingKeepModel used brk items config kept headings keptLines := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, _, _, heading⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, noSend, heading⟩
 
-theorem keepHeadingFigure (capacity used : Nat) (items : List SourceItem)
+theorem I3_keepHeadingFigure (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6968,12 +6968,12 @@ theorem keepHeadingFigure (capacity used : Nat) (items : List SourceItem)
         none kept atTop placed)) ∧
       headingKeepModel used brk items config kept headings keptLines := by
   obtain ⟨brk, kept, atTop, placed, rule, _, _, _, _, _, heading⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, heading⟩
 
-theorem keepHeadingOrphan (capacity used : Nat) (items : List SourceItem)
+theorem I3_keepHeadingOrphan (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -6993,12 +6993,12 @@ theorem keepHeadingOrphan (capacity used : Nat) (items : List SourceItem)
       orphanModel used brk items config kept paragraphs ∧
       headingKeepModel used brk items config kept headings keptLines := by
   obtain ⟨brk, kept, atTop, placed, rule, _, _, _, orphan, _, heading⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, orphan, heading⟩
 
-theorem keepHeadingWidow (capacity used : Nat) (items : List SourceItem)
+theorem I3_keepHeadingWidow (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -7018,12 +7018,12 @@ theorem keepHeadingWidow (capacity used : Nat) (items : List SourceItem)
       widowModel used brk items config kept paragraphs ∧
       headingKeepModel used brk items config kept headings keptLines := by
   obtain ⟨brk, kept, atTop, placed, rule, _, _, _, _, widow, heading⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, widow, heading⟩
 
-theorem orphanEmpty (capacity used : Nat) (items : List SourceItem)
+theorem I3_orphanEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -7043,12 +7043,12 @@ theorem orphanEmpty (capacity used : Nat) (items : List SourceItem)
       firstContentNotSent used brk items config kept ∧
       orphanModel used brk items config kept paragraphs := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, orphan, _, _⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, noSend, orphan⟩
 
-theorem widowEmpty (capacity used : Nat) (items : List SourceItem)
+theorem I3_widowEmpty (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -7068,12 +7068,12 @@ theorem widowEmpty (capacity used : Nat) (items : List SourceItem)
       firstContentNotSent used brk items config kept ∧
       widowModel used brk items config kept paragraphs := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, _, _, _, widow, _⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, noSend, widow⟩
 
-theorem orphanWidow (capacity used : Nat) (items : List SourceItem)
+theorem I3_orphanWidow (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -7093,14 +7093,14 @@ theorem orphanWidow (capacity used : Nat) (items : List SourceItem)
       orphanModel used brk items config kept paragraphs ∧
       widowModel used brk items config kept paragraphs := by
   obtain ⟨brk, kept, atTop, placed, rule, _, _, _, orphan, widow, _⟩ :=
-    keep21 capacity used items config capacityPositive usedFits ordered
+    I3_keep21 capacity used items config capacityPositive usedFits ordered
       figuresValid noBlank sizesFit paragraphs paragraphsValid headings
       headingsValid keptLines
   exact ⟨brk, kept, atTop, placed, rule, orphan, widow⟩
 
 /- The command omits greedy filling; the same placement proves every
    remaining boundary rule in the modeled inDomain inputs. -/
-theorem noneMeetsAllButGreedy (capacity used : Nat)
+theorem I3_noneMeetsAllButGreedy (capacity used : Nat)
     (items : List SourceItem) (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -7126,13 +7126,13 @@ theorem noneMeetsAllButGreedy (capacity used : Nat)
       orphanModel used brk items config kept paragraphs ∧
       widowModel used brk items config kept paragraphs ∧
       headingKeepModel used brk items config kept headings keptLines := by
-  exact keep21 capacity used items config capacityPositive usedFits ordered
+  exact I3_keep21 capacity used items config capacityPositive usedFits ordered
     figuresValid noBlank sizesFit paragraphs paragraphsValid headings
     headingsValid keptLines
 
 /- This proves the keep-option command for any first/last bounds and
    keep-all flags once paragraph positions agree with the ordered source. -/
-theorem keepNone (capacity used : Nat) (items : List SourceItem)
+theorem I3_keepNone (capacity used : Nat) (items : List SourceItem)
     (config : FigureConfig)
     (capacityPositive : 1 ≤ capacity) (usedFits : used ≤ capacity)
     (ordered : sourceOrdered items)
@@ -7151,7 +7151,7 @@ theorem keepNone (capacity used : Nat) (items : List SourceItem)
       keepLastModel used brk items config kept paragraphs ∧
       keepAllModel used brk items config kept paragraphs := by
   obtain ⟨brk, kept, atTop, placed, rule, noSend, firstCase, _, _⟩ :=
-    blankRules25 capacity used items config none capacityPositive usedFits
+    I3_blankRules25 capacity used items config none capacityPositive usedFits
       ordered figuresValid noBlank sizesFit
   rcases rule with ⟨zero, zeroRule⟩ | ⟨one, empty, oneRule⟩
   · subst brk
@@ -7399,7 +7399,7 @@ private theorem always_ordered (keep : Bool) : ordered keep := by
   intro f bound _ g lt
   omega
 
-theorem needFigure :
+theorem I3_needFigure :
     (∃ keep, fits keep ∧ oldRule keep ∧ ordered keep) ∧
     (∃ keep, fits keep ∧ met keep) ∧
     (∀ keep, ¬ (fits keep ∧ oldRule keep ∧ ordered keep ∧ met keep)) := by
@@ -7411,7 +7411,7 @@ theorem needFigure :
 end NeedFigureWitness
 
 /- The same need before a heading conflicts with filling the last line. -/
-theorem needGreedy :
+theorem I3_needGreedy :
     (∃ brk : Fin 2, 2 + brk.val ≤ 3 ∧
       (brk.val = 1 ∨ 2 + brk.val + 1 > 3)) ∧
     (∃ brk : Fin 2, 2 + brk.val ≤ 3 ∧
@@ -7430,26 +7430,26 @@ theorem needGreedy :
 def space46Keeps (brk : Fin 3) : Prop :=
   (4 - 1 ≥ 1 ∧ 4 - 1 ≥ 3 ∧ 1 + 1 + 1 ≤ 4) → brk.val = 2
 
-theorem needMoreSpace46 :
+theorem I3_needMoreSpace46 :
     ∀ brk : Fin 3, ¬ (brk.val = 1 ∧ space46Keeps brk) := by
   intro brk
   unfold space46Keeps
   omega
 
-theorem needMoreSpace46Here :
+theorem I3_needMoreSpace46Here :
     ∃ brk : Fin 3, brk.val = 2 ∧ space46Keeps brk ∧ 1 + brk.val ≤ 4 := by
   exact ⟨2, by decide, by simp [space46Keeps], by decide⟩
 
-theorem needMoreSome :
+theorem I3_needMoreSome :
     ∃ brk : Fin 3,
       brk.val = 2 ∧ space46Keeps brk ∧
       1 + brk.val ≤ 4 ∧ 1 < 3 ∧ 3 ≤ 4 := by
-  obtain ⟨brk, atTwo, keeps, fits⟩ := needMoreSpace46Here
+  obtain ⟨brk, atTwo, keeps, fits⟩ := I3_needMoreSpace46Here
   exact ⟨brk, atTwo, keeps, fits, by decide, by decide⟩
 
 /- A single two-line need before one space and one body line can keep both
    text items in a capacity-three column with one line already used. -/
-theorem needSpaceSome :
+theorem I3_needSpaceSome :
     ∃ brk : Fin 3,
       brk.val = 2 ∧ 1 + brk.val ≤ 3 ∧
       3 - 1 ≥ 2 ∧ 1 + 1 + 1 ≤ 3 := by
@@ -7487,7 +7487,7 @@ theorem first_keeps_last (brk : Nat) (keeps : keepHeading21 brk)
 
 end NeedHeadingConflict
 
-theorem needSpaceAllButGreedy :
+theorem I3_needSpaceAllButGreedy :
     (∃ b : Fin 4, NeedHeadingConflict.fits b.val ∧
       NeedHeadingConflict.needMet b.val ∧ NeedHeadingConflict.spaceKeeps b.val) ∧
     (∃ b : Fin 4, NeedHeadingConflict.fits b.val ∧ NeedHeadingConflict.keepHeading21 b.val) ∧
@@ -11249,7 +11249,7 @@ def recordWritten (d : NeedSource) (b : Nat) (kept : Nat → Bool)
       (∀ k ∈ d.needs, target k.1 → k.1 < m.1 → k.2 < m.2) →
       m.2 ≤ d.capacity - d.before b kept m.1
 
-theorem needSpaceNone (d : NeedSource) (ordered : sourceOrdered d.items)
+theorem I3_needSpaceNone (d : NeedSource) (ordered : sourceOrdered d.items)
     (valid : figureDomain d.items d.config) (blankOK : blankDomain d.items d.blank)
     (capacityPos : 0 < d.capacity) (usedFits : d.used ≤ d.capacity)
     (sizes : ∀ i, i < d.count → 0 < d.size i ∧ d.size i ≤ d.capacity)
@@ -11266,7 +11266,7 @@ theorem needSpaceNone (d : NeedSource) (ordered : sourceOrdered d.items)
     subst n
     simpa [group,one,hit,writtenGroupFits,singleWritten] using met
 
-theorem needMoreNone (d : NeedSource) (ordered : sourceOrdered d.items)
+theorem I3_needMoreNone (d : NeedSource) (ordered : sourceOrdered d.items)
     (valid : figureDomain d.items d.config) (blankOK : blankDomain d.items d.blank)
     (capacityPos : 0 < d.capacity) (usedFits : d.used ≤ d.capacity)
     (sizes : ∀ i, i < d.count → 0 < d.size i ∧ d.size i ≤ d.capacity)
@@ -11304,7 +11304,7 @@ namespace GreedyFigureCommand
     when the source prefix and the figure itself fit. Fill the rest with
     the longest text prefix. The skipped figure, if present, is too
     large at its source position regardless of the final break. -/
-theorem greedyFigure (capacity used textCount : Nat) (usedFits : used ≤ capacity)
+theorem I3_greedyFigure (capacity used textCount : Nat) (usedFits : used ≤ capacity)
     (figure : Option (Nat × Nat))
     (rankBound : ∀ r h, figure = some (r,h) → r ≤ textCount) :
     ∃ b : Nat, ∃ kept : Bool,
@@ -11368,7 +11368,7 @@ theorem greedyFigure_from_manuscript (capacity used : Nat) (usedFits : used ≤ 
     intro tooBig
     have contradiction := I3_missed_source_has_another_text items (sourceTextPositions items).length p tooBig
     omega
-  obtain ⟨b,kept,bound,rule,fit,fill⟩ := greedyFigure capacity used (sourceTextPositions items).length usedFits
+  obtain ⟨b,kept,bound,rule,fit,fill⟩ := I3_greedyFigure capacity used (sourceTextPositions items).length usedFits
     (some (textBeforeCount items p,h)) (by intro r z eq; cases eq; exact rankBound)
   refine ⟨b,kept,bound,?_,fit,fill⟩
   change kept = decide (_ ∧ _) at rule
@@ -11498,7 +11498,7 @@ def needMore27OldKeep (brk : Fin 3) : Prop :=
 def needMore27NeedMet (brk : Fin 3) : Prop :=
   brk.val = 2 → 3 - 1 ≥ 3
 
-theorem needMore27 :
+theorem I3_needMore27 :
     (∃ brk : Fin 3, needMore27Base brk ∧ needMore27OldKeep brk) ∧
     (∃ brk : Fin 3, needMore27Base brk ∧ needMore27NeedMet brk) ∧
     (∀ brk : Fin 3,
@@ -13573,7 +13573,7 @@ end RectoInput
 /- Alloy's "no placement" has no witness: for each input there is a
    placement satisfying all the predicates. keptLines may be any predicate,
    which includes the paragraph-dependent keptLines of ADR 0021. -/
-theorem rectoKept (d : RectoInput) (twoFit : 2 ≤ d.cap)
+theorem I3_rectoKept (d : RectoInput) (twoFit : 2 ≤ d.cap)
     (keptLines : Nat → Prop) :
     ∃ b keep, d.basePlacement b keep ∧ d.orphanH b ∧ d.widowH b ∧
       d.headingRule b d.heading keptLines ∧ d.lineAfter b ∧
@@ -13584,7 +13584,7 @@ theorem rectoKept (d : RectoInput) (twoFit : 2 ≤ d.cap)
     d.headings_of_feasible b ok d.heading keptLines (fun _ h => h),
     ok.2.1, fun t here r => ok.2.2.2.2 t here (d.rectosHeadings t r)⟩
 
-theorem rectoEnds (d : RectoInput) (twoFit : 2 ≤ d.cap)
+theorem I3_rectoEnds (d : RectoInput) (twoFit : 2 ≤ d.cap)
     (keptLines : Nat → Prop) :
     ∃ b keep, d.basePlacement b keep ∧ d.orphanH b ∧ d.widowH b ∧
       d.headingRule b (fun t => d.heading t ∧ ¬ d.recto t) keptLines ∧
@@ -13595,11 +13595,11 @@ theorem rectoEnds (d : RectoInput) (twoFit : 2 ≤ d.cap)
     d.headings_of_feasible b ok _ keptLines (fun _ h => h.1),
     ok.2.1, fun t here r => ok.2.2.2.2 t here (d.rectosHeadings t r)⟩
 
-theorem relaxedAfterHeadings (d : RectoInput) (twoFit : 2 ≤ d.cap)
+theorem I3_relaxedAfterHeadings (d : RectoInput) (twoFit : 2 ≤ d.cap)
     (keptLines : Nat → Prop) :
     ∃ b keep, d.basePlacement b keep ∧ d.orphanH b ∧ d.widowH b ∧
       d.headingRule b d.heading keptLines ∧ d.lineAfter b := by
-  obtain ⟨b, keep, base, orphan, widow, heading, after, _⟩ := rectoKept d twoFit keptLines
+  obtain ⟨b, keep, base, orphan, widow, heading, after, _⟩ := I3_rectoKept d twoFit keptLines
   exact ⟨b, keep, base, orphan, widow, heading, after⟩
 
 
@@ -17213,26 +17213,26 @@ private theorem alloyNoneFromDomain (inp : AlloyInput) (fact : alloyInputFact in
 
 namespace Alloy
 
-theorem someFits : ∃ inp, alloyInputFact inp = true ∧ alloySome inp (alloyFits inp) = true :=
+theorem I3_someFits : ∃ inp, alloyInputFact inp = true ∧ alloySome inp (alloyFits inp) = true :=
   alloy_someFits
 
-theorem noneMeetsAll : ∃ inp, alloyInputFact inp = true ∧ alloyInDomain inp = true ∧
+theorem I3_noneMeetsAll : ∃ inp, alloyInputFact inp = true ∧ alloyInDomain inp = true ∧
     alloySome inp (alloyAll7 inp) = false :=
   alloy_noneMeetsAll
 
-theorem noneMeetsAllButGreedy : ∀ inp, alloyInputFact inp = true →
+theorem I3_noneMeetsAllButGreedy : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain inp && !alloySome inp (alloyAllButGreedy inp)) = false :=
   fun inp fact => alloyNoneFromDomain inp fact _ (fun d c1 _ u => by
     simp [alloy_noneMeetsAllButGreedy inp d c1 u])
 
-theorem greedyOrphan : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_greedyOrphan : ∃ inp, alloyInputFact inp = true ∧
     alloyConflict inp alloyGreedy alloyOrphan = true := alloy_greedyOrphan
-theorem greedyWidow : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_greedyWidow : ∃ inp, alloyInputFact inp = true ∧
     alloyConflict inp alloyGreedy alloyWidow = true := alloy_greedyWidow
-theorem greedyKeepHeading : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_greedyKeepHeading : ∃ inp, alloyInputFact inp = true ∧
     alloyConflict inp alloyGreedy alloyKeepHeading = true := alloy_greedyKeepHeading
 
-theorem greedyFigure : ∀ inp, alloyInputFact inp = true →
+theorem I3_greedyFigure : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyGreedy alloyFigure = false := fun inp fact => by
   cases d : alloyInDomain inp
   · simp [alloyConflict,d]
@@ -17247,35 +17247,35 @@ private theorem pairNone (inp : AlloyInput) (fact : alloyInputFact inp = true)
   · simp [alloyConflict,d]
   · exact proof d (alloy_input_fact_bounds inp fact).1 (alloy_input_fact_bounds inp fact).2
 
-theorem orphanEmpty : ∀ inp, alloyInputFact inp = true →
+theorem I3_orphanEmpty : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyOrphan alloyNoSendFromEmpty = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_orphanEmpty inp)
-theorem widowEmpty : ∀ inp, alloyInputFact inp = true →
+theorem I3_widowEmpty : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyWidow alloyNoSendFromEmpty = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_widowEmpty inp)
-theorem keepHeadingEmpty : ∀ inp, alloyInputFact inp = true →
+theorem I3_keepHeadingEmpty : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyKeepHeading alloyNoSendFromEmpty = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingEmpty inp)
-theorem orphanWidow : ∀ inp, alloyInputFact inp = true →
+theorem I3_orphanWidow : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyOrphan alloyWidow = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_orphanWidow inp)
-theorem keepHeadingOrphan : ∀ inp, alloyInputFact inp = true →
+theorem I3_keepHeadingOrphan : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyKeepHeading alloyOrphan = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingOrphan inp)
-theorem keepHeadingWidow : ∀ inp, alloyInputFact inp = true →
+theorem I3_keepHeadingWidow : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyKeepHeading alloyWidow = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingWidow inp)
-theorem keepHeadingFigure : ∀ inp, alloyInputFact inp = true →
+theorem I3_keepHeadingFigure : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyKeepHeading alloyFigure = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_keepHeadingFigure inp)
-theorem figureOrder : ∀ inp, alloyInputFact inp = true →
+theorem I3_figureOrder : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyFigure alloyOrder = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_figureOrder inp)
-theorem figureEmpty : ∀ inp, alloyInputFact inp = true →
+theorem I3_figureEmpty : ∀ inp, alloyInputFact inp = true →
     alloyConflict inp alloyFigure alloyNoSendFromEmpty = false :=
   fun inp fact => pairNone inp fact _ _ (alloy_figureEmpty inp)
 
-theorem tallFigure : ∃ inp, alloyInputFact inp = true ∧
+theorem I2_tallFigure : ∃ inp, alloyInputFact inp = true ∧
     (decide (inp.figures.length ≤ 1) && inp.blanks.isEmpty &&
       (inp.where_ AlloyItem.isSpace).isEmpty && (inp.where_ AlloyItem.isNeed).isEmpty &&
       !alloyFiguresFit inp &&
@@ -17283,41 +17283,41 @@ theorem tallFigure : ∃ inp, alloyInputFact inp = true ∧
         alloyNoSendFromEmpty inp p)) = true :=
   alloy_tallFigure
 
-theorem strictAfterHeadings : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_strictAfterHeadings : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain inp && alloyNoRecto inp &&
       !alloySome inp (fun p => alloyBase inp p && alloyOrphan inp p && alloyWidow inp p &&
         alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p)) = true :=
   alloy_strictAfterHeadings
 
-theorem relaxedAfterHeadings : ∀ inp, alloyInputFact inp = true →
+theorem I3_relaxedAfterHeadings : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain inp && (alloyNoRecto inp &&
       !alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
         alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p))) = false :=
   fun inp fact => alloyNoneFromDomain inp fact _ (fun d _ c2 u => by
     simp [alloy_relaxedAfterHeadings inp d c2 u])
 
-theorem rectoKept : ∀ inp, alloyInputFact inp = true →
+theorem I3_rectoKept : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain inp &&
       !alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
         alloyKeepHeading21 inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = false :=
   fun inp fact => alloyNoneFromDomain inp fact _ (fun d _ c2 u => by
     simp [alloy_rectoKept inp d c2 u])
 
-theorem rectoEnds : ∀ inp, alloyInputFact inp = true →
+theorem I3_rectoEnds : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain inp &&
       !alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
         alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = false :=
   fun inp fact => alloyNoneFromDomain inp fact _ (fun d _ c2 u => by
     simp [alloy_rectoEnds inp d c2 u])
 
-theorem keep21 : ∀ inp, alloyInputFact inp = true →
+theorem I3_keep21 : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain inp && (alloyNoRecto inp &&
       !alloySome inp (fun p => alloyBase inp p && alloyOrphan inp p && alloyWidow inp p &&
         alloyKeepHeading21 inp p))) = false :=
   fun inp fact => alloyNoneFromDomain inp fact _ (fun d c1 _ u => by
     simp [alloy_keep21 inp d c1 u])
 
-theorem decidedSome : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_decidedSome : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain inp && !alloyNoRecto inp && !(inp.where_ AlloyItem.isLine).isEmpty &&
       alloySome inp (fun p => alloyBase inp p && alloyOrphanH inp p && alloyWidowH inp p &&
         alloyKeepHeadingR inp p && alloyLineAfterHeadingsRule inp p && alloyRecto inp p)) = true :=
@@ -18196,7 +18196,7 @@ theorem alloy_blankBeforeWaiting25 : ∃ inp, alloyInputFact inp = true ∧
 
 namespace Alloy
 
-theorem waitingBlankSome : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_waitingBlankSome : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain26 inp && (alloyPlacements inp).any fun p =>
       alloyBase26 inp p && alloyBlankWithNext inp p &&
       inp.blanks.any fun b => inp.positions.any fun f => inp.positions.any fun t =>
@@ -18213,7 +18213,7 @@ private theorem from26 (inp : AlloyInput) (fact : alloyInputFact inp = true) (re
   · have bounds := alloy_input_fact_bounds inp fact
     simp [proof d (alloy_input_fact_two_figures inp fact) bounds.1 bounds.2]
 
-theorem waitingBlankNone : ∀ inp, alloyInputFact inp = true →
+theorem I3_waitingBlankNone : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain26 inp &&
       !alloySome inp (fun p => alloyBase26 inp p && alloyBlankWithNext inp p)) = false :=
   fun inp fact => from26 inp fact _ (fun d two c u => by
@@ -18224,14 +18224,14 @@ theorem waitingBlankNone : ∀ inp, alloyInputFact inp = true →
       List.any_eq_true.mpr ⟨p,m,by simp [h.1.1.1.1,h.1.1.1.2]⟩
     simp [this])
 
-theorem waitingBlankAllButGreedy : ∀ inp, alloyInputFact inp = true →
+theorem I3_waitingBlankAllButGreedy : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain26 inp &&
       !alloySome inp (fun p => alloyBase26 inp p && alloyBlankWithNext inp p && alloyOrphan inp p &&
         alloyWidow inp p && alloyKeepHeading21 inp p)) = false :=
   fun inp fact => from26 inp fact _ (fun d two c u => by
     simp [alloy_waitingBlankAllButGreedy inp d two c u])
 
-theorem blankFigureOrder : ∀ inp, alloyInputFact inp = true →
+theorem I3_blankFigureOrder : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain26 inp &&
       (alloySome inp (fun p => alloyFits inp p && alloyBlankWithNext inp p) &&
         alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p) &&
@@ -18240,7 +18240,7 @@ theorem blankFigureOrder : ∀ inp, alloyInputFact inp = true →
   fun inp fact => from26 inp fact _ (fun d two c u => by
     simp [alloy_blankFigureOrder inp d two c u])
 
-theorem blankBeforeWaiting25 : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_blankBeforeWaiting25 : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain26 inp && (alloyPlacements inp).any fun p =>
       alloyBase26 inp p && alloyBlankWithNext25 inp p &&
       inp.blanks.any fun b => inp.positions.any fun f => inp.positions.any fun t =>
@@ -18248,7 +18248,7 @@ theorem blankBeforeWaiting25 : ∃ inp, alloyInputFact inp = true ∧
           alloyText inp t && alloyHere inp p t && !p.placed.contains b) = true :=
   alloy_blankBeforeWaiting25
 
-theorem blankRules25 : ∀ inp, alloyInputFact inp = true →
+theorem I3_blankRules25 : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain26 inp &&
       !alloySome inp (fun p => alloyBase26 inp p && alloyBlankWithNext25 inp p)) = false :=
   fun inp fact => from26 inp fact _ (fun d two c u => by
@@ -18805,7 +18805,7 @@ theorem alloy_needGreedy : ∃ inp, alloyInputFact inp = true ∧
 
 namespace Alloy
 
-theorem needSpaceSome : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_needSpaceSome : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain27 inp && (alloyPlacements inp).any fun p =>
       alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p &&
       (alloyNeeds inp).any fun n => inp.positions.any fun sp => inp.positions.any fun b =>
@@ -18813,25 +18813,25 @@ theorem needSpaceSome : ∃ inp, alloyInputFact inp = true ∧
         decide (n < sp) && decide (sp < b) && alloyNeedNext inp p n == some b &&
         alloyHere inp p sp && alloyHere inp p b) = true :=
   alloy_needSpaceSome
-theorem needSpaceAllButGreedy : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_needSpaceAllButGreedy : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain27 inp &&
       !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p &&
         alloyOrphan inp p && alloyWidow inp p && alloyKeepHeading21 inp p)) = true :=
   alloy_needSpaceAllButGreedy
-theorem needFigure : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_needFigure : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain27 inp &&
       alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p) &&
       alloySome inp (fun p => alloyFits inp p && alloyNeedMet inp p) &&
       !alloySome inp (fun p => alloyFits inp p && alloyFigures inp p && alloyFigureOrder inp p &&
         alloyNeedMet inp p)) = true :=
   alloy_needFigure
-theorem needGreedy : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_needGreedy : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain27 inp &&
       alloySome inp (fun p => alloyFits inp p && alloyGreedy inp p) &&
       alloySome inp (fun p => alloyFits inp p && alloyNeedMet inp p) &&
       !alloySome inp (fun p => alloyFits inp p && alloyGreedy inp p && alloyNeedMet inp p)) = true :=
   alloy_needGreedy
-theorem needMoreSome : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_needMoreSome : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain35 inp && (alloyPlacements inp).any fun p =>
       alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps35 inp p &&
       (alloyNeeds inp).any fun n => (alloyNeeds inp).any fun m => inp.positions.any fun sp =>
@@ -18842,24 +18842,24 @@ theorem needMoreSome : ∃ inp, alloyInputFact inp = true ∧
           alloyNeedNext inp p m == some b && alloyHere inp p sp && alloyHere inp p b &&
           !alloyFirstInColumn inp p b) = true :=
   alloy_needMoreSome
-theorem needMore27 : ∃ inp, alloyInputFact inp = true ∧
+theorem I3_needMore27 : ∃ inp, alloyInputFact inp = true ∧
     (alloyInDomain35 inp &&
       ((alloyNeeds inp).any fun n => (alloyNeeds inp).any fun m => inp.positions.any fun sp =>
         inp.has AlloyItem.isSpace sp && decide (n < sp) && decide (sp < m)) &&
       !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeepsFirst inp p)) = true :=
   alloy_needMore27
-theorem needMoreSpace46Here : ∃ inp, alloyInputFact inp = true ∧ alloyNeedMore46 inp true = true :=
+theorem I3_needMoreSpace46Here : ∃ inp, alloyInputFact inp = true ∧ alloyNeedMore46 inp true = true :=
   alloy_needMoreSpace46Here
-theorem keepAllSome : ∃ inp k, alloyInputFact inp = true ∧ alloyKeepsFact inp k = true ∧
+theorem I3_keepAllSome : ∃ inp k, alloyInputFact inp = true ∧ alloyKeepsFact inp k = true ∧
     (alloyInDomain inp && !k.allLines.isEmpty && decide (inp.used > 0) &&
       alloySome inp (fun p => alloyBase inp p && alloyKeepFirst inp k p && alloyKeepLast inp k p &&
         alloyKeepAll inp k p)) = true :=
   alloy_keepAllSome
 
-theorem needMoreSpace46 : ∀ inp, alloyInputFact inp = true → alloyNeedMore46 inp false = false :=
+theorem I3_needMoreSpace46 : ∀ inp, alloyInputFact inp = true → alloyNeedMore46 inp false = false :=
   fun inp _ => alloy_needMoreSpace46 inp
 
-theorem keepNone : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k = true →
+theorem I3_keepNone : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k = true →
     (alloyInDomain inp &&
       !alloySome inp (fun p => alloyBase inp p && alloyKeepFirst inp k p && alloyKeepLast inp k p &&
         alloyKeepAll inp k p)) = false := by
@@ -18869,7 +18869,7 @@ theorem keepNone : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k
   · have bounds := alloy_input_fact_bounds inp fact
     simp [alloy_keepNone inp k d bounds.1 bounds.2]
 
-theorem keepDefaultDiffers : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k = true →
+theorem I3_keepDefaultDiffers : ∀ inp k, alloyInputFact inp = true → alloyKeepsFact inp k = true →
     (alloyInDomain inp && k.kept.isEmpty && k.allLines.isEmpty &&
       alloySome inp (fun p => alloyBase inp p &&
         ((alloyOrphan inp p && alloyWidow inp p) == !(alloyKeepFirst inp k p && alloyKeepLast inp k p)))) = false := by
@@ -20465,7 +20465,7 @@ theorem alloy_needMoreNone (inp : AlloyInput) (fact : alloyInputFact inp = true)
 
 namespace Alloy
 
-theorem needSpaceNone : ∀ inp, alloyInputFact inp = true →
+theorem I3_needSpaceNone : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain27 inp &&
       !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps inp p)) = false := by
   intro inp fact
@@ -20473,7 +20473,7 @@ theorem needSpaceNone : ∀ inp, alloyInputFact inp = true →
   · rfl
   · simp [alloy_needSpaceNone inp fact d]
 
-theorem needMoreNone : ∀ inp, alloyInputFact inp = true →
+theorem I3_needMoreNone : ∀ inp, alloyInputFact inp = true →
     (alloyInDomain35 inp &&
       !alloySome inp (fun p => alloyBase27 inp p && alloyNeedMet inp p && alloySpaceKeeps35 inp p)) = false := by
   intro inp fact

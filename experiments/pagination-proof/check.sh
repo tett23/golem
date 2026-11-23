@@ -16,9 +16,17 @@ diff -u "$tmp/model" "$tmp/listed"
 [ "$(wc -l < "$tmp/model" | tr -d ' ')" -eq 42 ]
 [ -f "$proof" ] || { echo "missing Lean proof: $proof" >&2; exit 1; }
 
+# Theorem names carry the invariant number of root ADR 0352 (for example
+# I3_someFits); a command matches a theorem whose name is the command name
+# after that prefix.
+theorems() {
+  sed -n "s/^theorem[[:space:]][[:space:]]*I[0-9][0-9]*_\([A-Za-z0-9_]*\).*/\1/p" "$1" | sort -u
+}
+theorems "$proof" > "$tmp/theorems"
+
 missing=0
 while IFS= read -r name; do
-  grep -Eq "^theorem [[:space:]]*${name}([[:space:]]|:)" "$proof" || {
+  grep -Fqx "$name" "$tmp/theorems" || {
     echo "missing Lean counterpart: $name" >&2
     missing=$((missing + 1))
   }
@@ -40,8 +48,9 @@ needSpaceSome needSpaceAllButGreedy needFigure needGreedy needMoreSome needMore2
 needMoreSpace46 needMoreSpace46Here keepNone keepDefaultDiffers keepAllSome
 needSpaceNone needMoreNone'
 sed -n '/^namespace Alloy$/,/^end Alloy$/p' "$proof" > "$tmp/alloy"
+theorems "$tmp/alloy" > "$tmp/alloy-theorems"
 for name in $transcribed; do
-  grep -Eq "^theorem ${name}([[:space:]]|:)" "$tmp/alloy" || {
+  grep -Fqx "$name" "$tmp/alloy-theorems" || {
     echo "missing transcribed Lean counterpart: Alloy.$name" >&2
     missing=$((missing + 1))
   }
