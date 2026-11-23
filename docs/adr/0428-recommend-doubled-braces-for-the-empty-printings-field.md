@@ -1,6 +1,6 @@
 # ADR 0428: [printings] の空の欄の直し方も、{{ と }} を勧める
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

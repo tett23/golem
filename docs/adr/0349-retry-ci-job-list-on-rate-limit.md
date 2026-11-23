@@ -1,6 +1,6 @@
 # ADR 0349: CI の警告検査でジョブ一覧の利用上限が解除されるのを待つ
 
-Status: accepted
+Status: superseded [{"part":null,"by":[],"kind":"note","note":"docs/adr/0427-warning-gate-and-jobs-without-logs.md で、step を走らせずに取り消されたジョブを読むジョブから除いた"}]
 
 ## 文脈
 

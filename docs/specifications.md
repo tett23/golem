@@ -615,8 +615,15 @@ peg-hs の生成器が書くモジュール（`Golem.Parser.Generated`、golem-p
 CI の `build` ジョブが、これらが `scripts/gen-parser.sh` の出力と一致することを確かめる。
 
 warning は、CI のログでも見つける。
-CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたものと `ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
-ジョブの一覧は `gh api` で、各ログは同じ API から `curl` で取る（`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたもの、step を一つも走らせずに取り消されたもの、`ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)、[ADR 0427](adr/0427-warning-gate-and-jobs-without-logs.md)）。
+step を一つも走らせずに取り消されたジョブ（`conclusion` が `cancelled` で、ジョブの一覧の `steps` が空のもの）は、何も走らせていないので warning を出しようがなく、GitHub にもログが無い。
+除いたジョブの ID と名前は、読まないジョブの一覧として step のログに書く。
+`cancelled` 以外の `conclusion` で `steps` が空のジョブは除かない。
+ジョブの一覧は `gh api` で取る。
+各ログは、`scripts/ci/job-logs.sh` が同じ API から `curl` で取る（`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+あるジョブのログが取れないときは、そのジョブの ID と名前を書き、残りのジョブのログを取って検査を続ける。
+読むジョブが一つも無ければ、検査は失敗する。
+すべてのジョブを読み終えた後で、取れないログが一つでもあれば、検査は失敗する。
 `release.yml` は `ci.yml` を呼ぶので、同じ検査が走る。
 ほかのワークフローのログは検査しない。
 
@@ -2213,6 +2220,7 @@ HTML と EPUB は版面の段組みを出力せず、CSS の `columns` も `colu
 ほかの書式の誤りのコードは、表のとおりである。
 
 `[printings]` の `format` の G03267 と G03268 の文言は、文字の波括弧を `{{` と `}}` で書くよう勧める。
+G03269 の文言は文字の波括弧の書き方に触れないが、diagnostic の一覧の G03267 から G03269 の直し方は、`[printings]` の `format` の文字の波括弧を `{{` と `}}` で書くよう勧める（[root ADR 0428](adr/0428-recommend-doubled-braces-for-the-empty-printings-field.md)）。
 ほかの書式の、閉じていない `{` と対応する `{` のない `}` の文言（コードは表のとおり）は、`\{` と `\}` で書くよう勧める（[ADR 0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)）。
 
 見出しの番号の書式の `{k}`（k は 1 から 5）は、その見出しの上の階層 k の今の番号である（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
