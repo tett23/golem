@@ -50,6 +50,10 @@ inductive Flow where
   | space (n : Nat)
   | blank (n : Nat)
   | needLines (n : Nat)
+  /-- A code block (`FCode`): its geometry, the grid lines of its
+      caption, the rows of its first part at least, whether a part
+      before the last has a row for the text it continues, its rows. -/
+  | code (geometry caption first : Nat) (continued : Bool) (rows : List Line)
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -57,6 +61,10 @@ inductive Slot where
   | heading (id count : Nat)
   | figure (id : Nat)
   | pageFigure (id : Nat)
+  /-- A part of a code block (`SCode`), by the rows in it. -/
+  | code (rows : List Nat)
+  /-- A row of a code block, as the text of a page lists it. -/
+  | codeRow (id : Nat)
   deriving DecidableEq, Repr
 
 /-- The figures waiting (`sDeferred`): only figures and turned figures
@@ -123,6 +131,9 @@ structure Env where
   columns : Nat
   nextNeed : List Flow → Need
   fitting : St → List Line → Nat
+  /-- `codeSpan` of Paginate/Types.hs: the grid lines of a part of a
+      code block of the geometry and the rows given. -/
+  codeSpan : Nat → Nat → Nat
   roomForLine : St → List Line → Bool
 
 def initialState : St :=
@@ -920,6 +931,60 @@ def waitsFor : Flow → Bool
 def headingNeed (env : Env) (st : St) (n : Nat) (ls : List Line) : Int :=
   needIn env st ⟨n, noteLinesOf ls⟩ noNeed
 
+/-! ## Code blocks (`placeCode` of Paginate.hs) -/
+
+/-- `spanOf` of `placeCode`: the grid lines of a part of `j` rows. -/
+def codeSpanOf (env : Env) (g cap0 : Nat) (cont isFirst : Bool) (len j : Nat) : Nat :=
+  (if isFirst then cap0 else 0) + env.codeSpan g (j + (if cont ∧ j < len then 1 else 0))
+
+/-- `k` of `placeCode`: the rows placed in the column. -/
+def codeCount (env : Env) (g cap0 first : Nat) (cont : Bool) (st : St) (isFirst : Bool) (len : Nat) : Nat :=
+  let least := if isFirst then min len (max 1 first) else 1
+  let k0 := ((List.range len).takeWhile
+    (fun j => decide ((codeSpanOf env g cap0 cont isFirst len (j + 1) : Int) ≤ free env st))).length
+  if least ≤ k0 then k0 else if isEmpty st then least else 0
+
+/-- A code block of rows goes on to the next column without a row only
+    from a column with something in it. -/
+theorem codeCount_zero (env : Env) (g cap0 first : Nat) (cont : Bool) (st : St) (isFirst : Bool) (len : Nat)
+    (hl : 0 < len) (h : codeCount env g cap0 first cont st isFirst len = 0) : isEmpty st = false := by
+  simp only [codeCount] at h
+  have least : 1 ≤ (if isFirst then min len (max 1 first) else 1) := by
+    split
+    · exact Nat.le_min.mpr ⟨hl, Nat.le_max_left ..⟩
+    · exact Nat.le_refl 1
+  revert h least
+  generalize (if isFirst then min len (max 1 first) else 1) = least
+  intro h least
+  split at h
+  · omega
+  · split at h
+    · omega
+    · rename_i e; cases c : isEmpty st
+      · rfl
+      · exact absurd c e
+
+set_option linter.unusedVariables false in
+def placeCode (env : Env) (g cap0 first : Nat) (cont : Bool) : St → Bool → List Line → St
+  | st, _, [] => st
+  | st, isFirst, l0 :: ls' =>
+    if h : codeCount env g cap0 first cont st isFirst (l0 :: ls').length = 0 then
+      placeCode env g cap0 first cont (nextColumn env st) isFirst (l0 :: ls')
+    else
+      let k := codeCount env g cap0 first cont st isFirst (l0 :: ls').length
+      let st1 := putSlot st (codeSpanOf env g cap0 cont isFirst (l0 :: ls').length k)
+        (.code (((l0 :: ls').take k).map (·.id)))
+      if (l0 :: ls').drop k = [] then st1
+      else placeCode env g cap0 first cont (nextColumn env st1) false ((l0 :: ls').drop k)
+termination_by st _ ls => (ls.length, rank env st)
+decreasing_by
+  all_goals simp_wf
+  · exact Prod.Lex.right _ (I4_nextColumn_rank env st
+      (Or.inl (codeCount_zero env g cap0 first cont st isFirst _ (by simp) h)))
+  · apply Prod.Lex.left
+    simp only [List.length, Nat.succ_eq_add_one] at *
+    omega
+
 def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   match f with
   | .paragraph kp ls => placeLines env kp st true ls
@@ -942,6 +1007,7 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .space n => placeSpaceFlow env st n
   | .needLines _ => st
   | .blank _ => st
+  | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
 
 def deferredFigure (i : Nat) : Deferred → Bool
   | .figure j _ => i == j
@@ -995,6 +1061,7 @@ def textSlots : List (Int × Slot) → List Slot
   | [] => []
   | (_, .line i) :: r => .line i :: textSlots r
   | (_, .heading i c) :: r => .heading i c :: textSlots r
+  | (_, .code rows) :: r => rows.map Slot.codeRow ++ textSlots r
   | _ :: r => textSlots r
 
 theorem textSlots_append (a b : List (Int × Slot)) :
@@ -1022,6 +1089,7 @@ def flowText : Flow → List Slot
   | .continued _ ls => ls.map (fun l => .line l.id)
   | .heading _ _ [] => []
   | .heading _ _ (l0 :: ls) => [.heading l0.id (ls.length + 1)]
+  | .code _ _ _ _ ls => ls.map (fun l => .codeRow l.id)
   | _ => []
 
 def sourceText (flows : List Flow) : List Slot := flows.bind flowText
@@ -1288,6 +1356,42 @@ theorem text_placeLines (env : Env) (kp : Keep) (st : St) (isStart : Bool) (ls :
   | nil => simp [placeLines]
   | cons l ls => exact text_placeLinesGo ..
 
+theorem text_putSlot_code (st : St) (n : Nat) (rows : List Nat) :
+    text (putSlot st n (.code rows)) = text st ++ rows.map Slot.codeRow := by
+  simp [text, putSlot, textSlots_append, textSlots]
+
+theorem text_placeCode (env : Env) (g cap0 first : Nat) (cont : Bool) (st : St) (isFirst : Bool)
+    (ls : List Line) :
+    text (placeCode env g cap0 first cont st isFirst ls) = text st ++ ls.map (fun l => .codeRow l.id) := by
+  match ls with
+  | [] => unfold placeCode; simp
+  | l0 :: ls' =>
+    by_cases h : codeCount env g cap0 first cont st isFirst (l0 :: ls').length = 0
+    · unfold placeCode; rw [dif_pos h, text_placeCode env g cap0 first cont (nextColumn env st), text_nextColumn]
+    · unfold placeCode; rw [dif_neg h]
+      simp only
+      generalize codeCount env g cap0 first cont st isFirst (l0 :: ls').length = k
+      split
+      · rename_i e
+        rw [text_putSlot_code, List.map_map]
+        congr 2
+        have := List.take_append_drop k (l0 :: ls')
+        rw [e, List.append_nil] at this
+        exact this
+      · rw [text_placeCode env g cap0 first cont _ false ((l0 :: ls').drop k), text_nextColumn,
+          text_putSlot_code, List.map_map, List.append_assoc]
+        congr 1
+        rw [show (Slot.codeRow ∘ fun x : Line => x.id) = (fun l => Slot.codeRow l.id) from rfl,
+          ← List.map_append, List.take_append_drop]
+termination_by (ls.length, rank env st)
+decreasing_by
+  all_goals simp_wf
+  · exact Prod.Lex.right _ (I4_nextColumn_rank env st
+      (Or.inl (codeCount_zero env g cap0 first cont st isFirst _ (by simp) h)))
+  · apply Prod.Lex.left
+    simp only [List.length, Nat.succ_eq_add_one] at *
+    omega
+
 theorem flowText_heading (recto : Bool) (n : Nat) (ls : List Line) :
     flowText (.heading recto n ls) = flowText (.heading false n ls) := by
   cases ls <;> rfl
@@ -1325,6 +1429,7 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | space n => simp only [place, flowText, List.append_nil]; exact text_placeSpaceFlow ..
   | needLines n => simp [place, flowText]
   | blank n => simp [place, flowText]
+  | code g c first cont ls => exact text_placeCode ..
 
 theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (step env st f rest) = text st ++ flowText f := by
@@ -1351,6 +1456,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | heading recto n ls => simp only [step]; exact general _ _
   | figure i n => simp only [step]; exact general _ _
   | pageFigure i => simp only [step]; exact general _ _
+  | code g c first cont ls => simp only [step]; exact general _ _
 
 theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     text (placeAll env st flows) = text st ++ sourceText flows := by
@@ -1368,8 +1474,8 @@ theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     simp [sourceText, List.cons_bind, List.append_assoc]
 
 /-- Root ADR 0352 invariant 5 for the lines: the pages of the pagination
-    hold every line of the paragraphs and every heading written, each
-    once, in the order written. -/
+    hold every line of the paragraphs, every heading and every row of
+    the code blocks written, each once, in the order written. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) :
     pagesText (paginate env flows).done = sourceText flows := by
   have h := text_placeAll env flows initialState
@@ -2048,6 +2154,49 @@ decreasing_by
       simp only [List.length] at h4
       omega
 
+theorem putSlot_code_figs (st : St) (n : Nat) (rows : List Nat) (h : Inv st) :
+    figs (putSlot st n (.code rows)) = figs st ∧ Inv (putSlot st n (.code rows)) := by
+  refine ⟨by simp [figs, putSlot, figSlots_append, figSlots], ?_⟩
+  have u := h.used
+  have n0 : (0 : Int) ≤ n := Int.ofNat_nonneg n
+  refine ⟨⟨h.weak.first, h.weak.deferred⟩, ?_, ?_⟩
+  · show 0 ≤ st.used + n; omega
+  · show figSlots (st.slots ++ [(st.used, .code rows)]) = [] ∨ 1 ≤ st.used + n
+    rw [figSlots_append]
+    rcases h.fig with g | g
+    · left; simp [g, figSlots]
+    · right; omega
+
+theorem placeCode_figs (env : Env) (g cap0 first : Nat) (cont : Bool) (st : St) (isFirst : Bool)
+    (h : Inv st) (ls : List Line) :
+    figs (placeCode env g cap0 first cont st isFirst ls) = figs st ∧
+      Inv (placeCode env g cap0 first cont st isFirst ls) := by
+  match ls with
+  | [] => unfold placeCode; exact ⟨rfl, h⟩
+  | l0 :: ls' =>
+    by_cases c : codeCount env g cap0 first cont st isFirst (l0 :: ls').length = 0
+    · unfold placeCode; rw [dif_pos c]
+      have := placeCode_figs env g cap0 first cont (nextColumn env st) isFirst
+        (inv_nextColumn env st h) (l0 :: ls')
+      rw [figs_nextColumn] at this; exact this
+    · unfold placeCode; rw [dif_neg c]
+      simp only
+      generalize codeCount env g cap0 first cont st isFirst (l0 :: ls').length = k
+      have p := putSlot_code_figs st (codeSpanOf env g cap0 cont isFirst (l0 :: ls').length k)
+        (((l0 :: ls').take k).map (·.id)) h
+      split
+      · exact p
+      · have := placeCode_figs env g cap0 first cont _ false (inv_nextColumn env _ p.2) ((l0 :: ls').drop k)
+        rw [figs_nextColumn, p.1] at this; exact this
+termination_by (ls.length, rank env st)
+decreasing_by
+  all_goals simp_wf
+  · exact Prod.Lex.right _ (I4_nextColumn_rank env st
+      (Or.inl (codeCount_zero env g cap0 first cont st isFirst _ (by simp) c)))
+  · apply Prod.Lex.left
+    simp only [List.length, Nat.succ_eq_add_one] at *
+    omega
+
 theorem placeLines_figs (env : Env) (kp : Keep) (st : St) (isStart : Bool) (ls : List Line) (h : Inv st) :
     figs (placeLines env kp st isStart ls) = figs st ∧ Inv (placeLines env kp st isStart ls) := by
   cases ls with
@@ -2128,6 +2277,8 @@ theorem place_figs (env : Env) (st : St) (f : Flow) (rest : List Flow)
     unfold placeSpaceFlow; split <;> rfl
   | needLines n => exact ⟨by simp [place, flowFigs], h⟩
   | blank n => exact ⟨by simp [place, flowFigs], h⟩
+  | code g c first cont ls =>
+    simp only [place, flowFigs, List.append_nil]; exact placeCode_figs env g c first cont st true h ls
 
 theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (st : St) (f : Flow) (rest : List Flow)
     (h : Inv st) (hf : figureOk f) :
@@ -2174,6 +2325,7 @@ theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (st : St) (f : Flow) (re
   | heading recto n ls => simp only [step]; exact general _ _
   | figure i n => simp only [step]; exact general _ _
   | pageFigure i => simp only [step]; exact general _ _
+  | code g c first cont ls => simp only [step]; exact general _ _
 
 theorem placeAll_figs (env : Env) (hc : 0 ≤ env.capacity) (flows : List Flow) (st : St) (h : Inv st)
     (hf : ∀ f ∈ flows, figureOk f) :

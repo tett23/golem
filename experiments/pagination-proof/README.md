@@ -411,11 +411,13 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 `keep` は空でない段からだけ次の段へ進むので、4 つ組で止まる。
 `placeLines` の段のループは、残りの行数、`keep-all-lines` の有無、4 つ組の辞書式順序で止まる。
 行を一つも置かずに次の段へ進むのは、行数が縮んだ空の段か、何かを置いた段からだけである。
+`placeCode` のループは、残りの行数と 4 つ組の辞書式順序で止まる。
+空の段には少なくとも 1 行を置くので、行を置かずに次の段へ進むのは、何かを置いた段からだけである。
 `I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
 
-`I5_paginate_text` は、出力のページに、段落の行と見出しが原稿の順に一度ずつ並ぶことを証明する。
+`I5_paginate_text` は、出力のページに、段落の行、見出し、コードの行が原稿の順に一度ずつ並ぶことを証明する。
 この定理は `nextNeed`、`fitting`、`roomForLine` のどの値でも、段の容量と脚注区切りの行数のどの値でも成り立つ。
-本文の行を置くのは `putLine` と `putBlock` だけで、ほかの操作は出力済みのページと現在の段のスロットから本文を消さず、増やさない。
+本文の行を置くのは `putLine`、`putBlock` と、`placeCode` がコードの行の部分を置く `putSlot` だけで、ほかの操作は出力済みのページと現在の段のスロットから本文を消さず、増やさない。
 `advance` は、現在の段を閉じてからスロットを空にするので、行は一度だけ出力に移る。
 
 図版の順序には、図版の高さが 1 行以上という前提が要る。
@@ -435,8 +437,9 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 
 モデルは次の点で Haskell の実装を抽象化する。
 `nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
-フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines` を扱う。
-本の部、箱、罫線つきのブロック、表、コード、詩、定義の項、回り込み図版、節の開始、段組みの切り替え、`no-break`、`keep-with-next`、`FAdjustLines` は、まだ扱わない。
+コードの行の部分の行数を決める `Code.hs:150` の `codeSpan` も `Env` の引数とし、コードの組み方は自然数で区別する。
+フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コードを扱う。
+本の部、箱、罫線つきのブロック、表、詩、定義の項、回り込み図版、節の開始、段組みの切り替え、`no-break`、`keep-with-next`、`FAdjustLines` は、まだ扱わない。
 これらがないので、`checkNoBreak` は何もせず、`placeFlow` は `place` と同じになる。
 `FAdjustLines` を扱わないが、状態の行数の縮みは残し、`placeLines` の分岐と尺度は任意の値で扱う。
 箱がないので、`cap` は箱の後の行数を引かず、`isEmpty` は箱の先頭を見ない。
@@ -464,6 +467,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
+| `Paginate.hs:598` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
 | `Paginate.hs:624` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate/State.hs:131` `initialState` | `initialState` |
 | `Paginate/State.hs:141` `cap`、`:149` `free`、`:156` `isEmpty` | `cap`、`free`、`isEmpty` |
@@ -491,7 +495,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 ## 未完の項目
 
 キャプションの評価値と幅の計算の対応、`Whole.lean` が扱わないフローの状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
-`Whole.lean` が扱うフローについては、改ページ全体の終了と、本文の行と見出しの過不足と順序を証明した。
+`Whole.lean` が扱うフローについては、改ページ全体の終了と、本文の行、見出し、コードの行の過不足と順序を証明した。
 図版と転置図版の過不足と順序は、図版の高さを 1 行以上、段の容量を 0 行以上とする前提の下で証明した。
 境界入力の表のうち改ページだけで決まる行は、`modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` で Haskell の実装を検査する。
 空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
