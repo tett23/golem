@@ -5317,5 +5317,32 @@ if [ -z "$(test_names_0424 "$HERE/../..")" ]; then ok; else
   ng "root ADR 0424 I3: the tests of root ADRs 0347, 0348, 0350 and 0387 are named root ADR NNNN I<n> ($(test_names_0424 "$HERE/../.." | tr '\n' '|'))"
 fi
 
+# ---------------------------------------------------------------- フォルダ in the text users see (root ADR 0430)
+# folder_0430 ROOT: the Haskell sources of ROOT/modules/*/src and
+# ROOT/modules/*/app that have フォルダー, one a line
+folder_0430() {
+  for d in "$1"/modules/*/src "$1"/modules/*/app; do
+    if [ -d "$d" ]; then find "$d" -name '*.hs' -type f; fi
+  done | LC_ALL=C sort >"$WORK/folder-0430-files"
+  tr '\n' '\0' <"$WORK/folder-0430-files" | xargs -0 grep -lF 'フォルダー' 2>/dev/null
+  return 0
+}
+F30=$WORK/folder-0430
+mkdir -p "$F30/bad/modules/golem-x/src/Golem" "$F30/bad/modules/golem-y/app" "$F30/good/modules/golem-x/src" "$F30/good/modules/golem-x/test"
+printf '%s\n' 'm = "画像を置くフォルダー"' >"$F30/bad/modules/golem-x/src/Golem/X.hs"
+printf '%s\n' 'm = "フォルダー"' >"$F30/bad/modules/golem-y/app/Main.hs"
+printf '%s\n' 'm = "画像を置くフォルダ"' >"$F30/good/modules/golem-x/src/X.hs"
+printf '%s\n' 'm = "フォルダー"' >"$F30/good/modules/golem-x/test/Main.hs"
+printf '%s\n' 'フォルダー' >"$F30/good/modules/golem-x/src/notes.md"
+if [ "$(folder_0430 "$F30/bad" | sed "s|^$F30/bad/||" | tr '\n' '|')" = "modules/golem-x/src/Golem/X.hs|modules/golem-y/app/Main.hs|" ]; then ok; else
+  ng "root ADR 0430 I4: the sources of src and app with フォルダー are found ($(folder_0430 "$F30/bad" | tr '\n' '|'))"
+fi
+if [ -z "$(folder_0430 "$F30/good")" ]; then ok; else
+  ng "root ADR 0430 I4: フォルダ, tests and files other than Haskell pass ($(folder_0430 "$F30/good" | tr '\n' '|'))"
+fi
+if [ -z "$(folder_0430 "$HERE/../..")" ]; then ok; else
+  ng "root ADR 0430 I4: no Haskell source of modules/*/src or modules/*/app has フォルダー ($(folder_0430 "$HERE/../.." | tr '\n' '|'))"
+fi
+
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
