@@ -20,6 +20,9 @@ git config core.hooksPath .githooks
 
 フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.13.1 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1`）。
 `.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
+このフックは、ビルドがリンクする wasmtime が `scripts/fetch-wasmtime.sh` の固定した版と違うときも push を止める（[docs/adr/0418](./docs/adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+そのため、push の前に `scripts/fetch-wasmtime.sh` で wasmtime を取得しておく。
+照合の内容は、README の「Git フックの有効化」の節にある。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
 ## 変更の流れ

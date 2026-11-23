@@ -40,6 +40,7 @@ $ git config core.hooksPath .githooks
 クローンのたびに実行する。
 フックは二つある。
 [code: .githooks/pre-commit] はコミット済みの ADR の変更を拒み、[code: .githooks/pre-push] は仕様を変えたのにマニュアルを直していないブランチの push を止める（第[ref-number adr]章、第[ref-number docs]章）。
+[code: .githooks/pre-push] は、ビルドがリンクする wasmtime が固定した版と違うときも push を止めるので、push の前に次の節の [code: scripts/fetch-wasmtime.sh] で wasmtime を取得しておく。
 
 ## ビルドする
 

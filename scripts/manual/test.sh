@@ -174,7 +174,15 @@ expect "check-updated: a change of main after the branch point" 0
 
 ZERO=0000000000000000000000000000000000000000
 git -C "$G" update-ref refs/remotes/origin/main "$(git -C "$G" rev-parse main)"
-prepush() { (cd "$G" && sh "$ROOT/.githooks/pre-push" origin https://example.com/r.git); }
+# the hook runs as a copy in a fake root whose check-local-wasmtime.sh
+# passes: these tests are of the manual check (the wasmtime check is tested
+# in scripts/test.sh, docs/adr/0418)
+HOOK=$WORK/hook
+mkdir -p "$HOOK/.githooks" "$HOOK/scripts/manual"
+cp "$ROOT/.githooks/pre-push" "$HOOK/.githooks/pre-push"
+cp "$ROOT/scripts/manual/check-updated.sh" "$HOOK/scripts/manual/check-updated.sh"
+printf '#!/bin/sh\nexit 0\n' >"$HOOK/scripts/check-local-wasmtime.sh"
+prepush() { (cd "$G" && sh "$HOOK/.githooks/pre-push" origin https://example.com/r.git); }
 SHA=$(git -C "$G" rev-parse markup-only)
 printf 'refs/heads/markup-only %s refs/heads/markup-only %s\n' "$SHA" "$ZERO" >"$WORK/in"
 run prepush
