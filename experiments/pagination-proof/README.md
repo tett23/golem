@@ -443,7 +443,7 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 段の容量の前提は、[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) が入力とする段と同じである。
 定理は、出力済みのページの図版、現在の段の図版、待機中の図版をこの順につないだ列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
 転置図版をすぐに置くのは段の使用行数と脚注の行数がともに 0 のときだけなので、この不変条件には、図版のある段では使用行数か脚注の行数が 1 以上であるという性質が要る。
-この性質は、使用行数が負なら脚注の行数が 1 以上であること、組の先頭行が 0 以上か組が各段の下に脚注の行を確保していること、行数の変更が 0 以上であること、待機中の図版の高さが 1 行以上であることと合わせて、すべての操作で保たれる。
+この性質は、使用行数が 0 以上か脚注の行数が 1 以上であること、組の先頭行が 0 以上か組が各段の下に脚注の行を確保していること、待機中の図版の高さが 1 行以上であることと合わせて、すべての操作で保たれる。
 組の先頭行についての性質は、同じページの次の段の使用行数が組の先頭行に、脚注の行数が確保した行数に戻るので要る。
 `startSet` は、切り替える前の段の使用行数を新しい組の先頭行に、脚注の行数を確保する行数にするので、使用行数についての性質からこの性質が出る。
 脚注の行数は段の中で減らないので、脚注の行数についての部分は段の中の操作で保たれる。
@@ -452,21 +452,18 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `needBeforeSpaces` だけは、使用行数からスペースの分を一時的に引くので、この性質を一時的に崩す。
 そこで、ページと段の組が前へしか進まないことを示し、段が変わらなければ使用行数、脚注の行数、スロットがもとに戻ることと、段が進めば新しい段で性質が成り立つことを使う。
 
-使用行数が負になりうるのは、`KeepColumn` の表のためである。
-表は空の段で、使用行数に `min sp (free st)` を足す。
-空の段では表の前のアキ `sp` が 0 なので、脚注の行数が段の行数を超えて残りの行数が負のとき、使用行数は段の先頭より下がる。
-下がった後の使用行数は、段の行数から脚注の行数を引いた値になる。
-脚注の行数が 0 なら、段の容量が 1 行以上で行数の変更が 0 以上なので、この値は 1 以上になり、図版のある段についての性質も保たれる。
-組の先頭行が 0 より大きいと、図版を置いた段がこの条件で空と判定されることがあるので、容量が 0 行の段ではこの性質を保てない。
-段の容量の前提は、このほか、行アキを足しても使用行数が負にならないことに使う。
+使用行数を増やす操作は、どれも 0 行以上を足す。
+`KeepColumn` の表の前のアキは `max 0 (min sp (free st))` を足すので、脚注の行数が段の行数を超えて残りの行数が負の段でも、使用行数は段の先頭より下がらない。
+段の容量の前提は、行アキの行数が 0 以上で、行アキを足しても使用行数が減らないことに使う。
+行数の変更（`FAdjustLines`）は段の行数を負にもするが、図版の順序の不変条件はどの値でも保たれる。
+`adjustLines` は使用行数、脚注の行数、スロットを変えず、次の段へ進むと行数の変更は 0 に戻るからである。
 
-Haskell の実装では、この下がり方が表を段の先頭より上に置く。
-段組みの切り替えの前に `FAdjustLines` で段を長くすると、新しい組の次の段は長さが戻り、組の先頭行が段の行数を超える。
+段組みを切り替える `FSwitchColumns` は、`FAdjustLines` が足した行を数えず、版面の行（`typeAreaFree`）が残るときだけ同じページで新しい組を始める。
+新しい組の段は行数の変更を 0 に戻し、版面の行数を持つ。
+そのため、組の先頭行は段の行数より小さい。
 `paginate 1 5 [FAdjustLines mk 3, FParagraph defaultKeep (ls 0 7), FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep (ls 10 1), FBreak BreakColumn, FTable 50 0 (ls 20 1) [ls 30 1] [] False]` を `runghc` で実行した（`ls b n` は id が b から n 個の注のない行）。
-2 段組みの 2 段目は先頭行が 7 で 5 行しかなく、表の見出し行と本体の行は 5 行目と 6 行目に置かれた。
-5 行目と 6 行目は、1 段組みの段落の行 5 と行 6 が置かれた行で、表はそれと重なる。
-同じ段の先頭に段落を置くと、段落の行は 7 行目に置かれ、5 行の段の外に出る。
-表の重なりは、段の先頭より上に置くことと、段の行数を超えて置くことの二つの扱いを決める必要を示すので、このモデルでは実装のとおりに写し、判断を待つ。
+1 ページ目は段落の 7 行だけを持ち、2 段組みは 2 ページ目の 0 行目から始まった。
+表の見出し行と本体の行は、2 ページ目の 2 段目の 0 行目と 1 行目に置かれた。
 
 モデルは次の点で Haskell の実装を抽象化する。
 `nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
@@ -474,15 +471,15 @@ Haskell の実装では、この下がり方が表を段の先頭より上に置
 部分を段の中で保つか（`envKeepParts` が `KeepColumn` か）も `Env` の引数とし、定義の項の置き方はその両方の値で扱う。
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
-フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻しを扱う。
-本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始、`FAdjustLines` は、まだ扱わない。
+フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻し、段の行数の変更（`FAdjustLines`）を扱う。
+本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始は、まだ扱わない。
 段組みは段数と先頭行だけを状態に持ち、段の幅と段間は持たない。
 `Env` の段数は基本の段組み（`envBase`）の段数で、段組みを戻すとこの段数になる。
 表は、`envKeepParts` が `KeepColumn` のときの `placeTable` と、それ以外のときの `placeTableAcross` の両方を扱う。
 本の部がないので、`placeTableAcross` の、本の部の中で末尾の行とキャプションを保つ分岐（`envBookPartSpan` が `Just` のとき）は扱わない。
 表の部分の記録 `sTables` は出力の付帯情報なので、モデルには持たない。
 満たせなかった制御は、出典の位置を持たない `Unmet.noBreak` と `Unmet.keepNext` で表す。
-`FAdjustLines` を扱わないが、状態の行数の縮みは残し、`placeLines` の分岐と尺度は任意の値で扱う。
+`FAdjustLines` の行数の上限（`envMaxLines`）は `Env` の `maxLines` とし、満たせなかった変更は `Unmet.adjust` で表す。
 箱がないので、`cap` は箱の後の行数を引かず、`isEmpty` は箱の先頭を見ない。
 出力の `PageOut` には、ページ番号、段番号、空白ページか、スロット、脚注、満たせなかった制御だけを持つ。
 脚注と図版の行数は自然数とし、負の行数は扱わない。
@@ -504,6 +501,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:327` `waitsFor` | `waitsFor` |
 | `Paginate.hs:351` `placeBlank` | `placeBlank` |
 | `Paginate.hs:369` `applyNeed` | `applyNeed` |
+| `Paginate.hs:379` `adjustLines` | `adjustLines` |
 | `Paginate.hs:393` `placeFlow` | `placeFlow`、`previousKeep` |
 | `Paginate.hs:417` `placeKept` | `placeKept`、`keptCut` |
 | `Paginate.hs:437` `waitFor` | `waitFor` |
@@ -513,29 +511,29 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
-| `Paginate.hs:561` `place` の `FSwitchColumns`、`:566` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
-| `Paginate.hs:598` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
-| `Paginate.hs:624` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
-| `Paginate.hs:786` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
-| `Paginate.hs:811` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat` |
+| `Paginate.hs:561` `place` の `FSwitchColumns`、`:567` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
+| `Paginate.hs:599` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
+| `Paginate.hs:625` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
+| `Paginate.hs:787` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
+| `Paginate.hs:812` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat` |
 | `Paginate/State.hs:131` `initialState` | `initialState` |
-| `Paginate/State.hs:141` `cap`、`:149` `free`、`:156` `isEmpty` | `cap`、`free`、`isEmpty` |
-| `Paginate/State.hs:191` `keep` | `keep` |
-| `Paginate/State.hs:199` `parityStart` | `parityStart` |
-| `Paginate/State.hs:205` `blankPage` | `blankPage` |
-| `Paginate/State.hs:208` `putSlot` | `putSlot` |
-| `Paginate/State.hs:215` `putLineKeeping` | `putLineKeeping`、`putLine` |
-| `Paginate/State.hs:233` `putBlock` | `putBlock` |
-| `Paginate/State.hs:255` `splitNotes` | `splitNotes` |
-| `Paginate/State.hs:265` `closePage` | `closePage` |
-| `Paginate/State.hs:272` `nextColumn`、`:275` `nextPage` | `nextColumn`、`nextPage` |
-| `Paginate/State.hs:278` `advance` | `advance`、`advanceFresh`、`advanceTurned`、`openColumn` |
-| `Paginate/State.hs:313` `startSet` | `startSet` |
-| `Paginate/State.hs:338` `pageFigure` | `pageFigure` |
-| `Paginate/State.hs:345` `carryNote` | `carryNote`、`carryRoom`、`carryShown` |
-| `Paginate/State.hs:360` `placeDeferred` | `placeDeferred` |
-| `Paginate/State.hs:369` `flushDeferred` | `flushDeferred` |
-| `Paginate/State.hs:375` `flushFigures` | `flushFigures` |
+| `Paginate/State.hs:142` `cap`、`:150` `free`、`:157` `typeAreaFree`、`:164` `isEmpty` | `cap`、`free`、`typeAreaFree`、`isEmpty` |
+| `Paginate/State.hs:199` `keep` | `keep` |
+| `Paginate/State.hs:207` `parityStart` | `parityStart` |
+| `Paginate/State.hs:213` `blankPage` | `blankPage` |
+| `Paginate/State.hs:216` `putSlot` | `putSlot` |
+| `Paginate/State.hs:223` `putLineKeeping` | `putLineKeeping`、`putLine` |
+| `Paginate/State.hs:241` `putBlock` | `putBlock` |
+| `Paginate/State.hs:263` `splitNotes` | `splitNotes` |
+| `Paginate/State.hs:273` `closePage` | `closePage` |
+| `Paginate/State.hs:280` `nextColumn`、`:283` `nextPage` | `nextColumn`、`nextPage` |
+| `Paginate/State.hs:286` `advance` | `advance`、`advanceFresh`、`advanceTurned`、`openColumn` |
+| `Paginate/State.hs:324` `startSet` | `startSet` |
+| `Paginate/State.hs:350` `pageFigure` | `pageFigure` |
+| `Paginate/State.hs:357` `carryNote` | `carryNote`、`carryRoom`、`carryShown` |
+| `Paginate/State.hs:372` `placeDeferred` | `placeDeferred` |
+| `Paginate/State.hs:381` `flushDeferred` | `flushDeferred` |
+| `Paginate/State.hs:387` `flushFigures` | `flushFigures` |
 | `Paginate/Decide.hs:215` `splitAtBreak` | `splitAtBreak` |
 | `Paginate/Decide.hs:256` `needIn` | `needIn` |
 | `Paginate/Decide.hs:263` `headingNeed` | `headingNeed` |
