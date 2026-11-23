@@ -1,6 +1,6 @@
 # ADR 0386: EPUB のページ一覧とページ部品の色を指定する
 
-Status: accepted-pending
+Status: superseded-pending [{"part":"page-map を読めないときの EPUB の出力","by":["docs/adr/0429-clear-the-target-output-before-writing.md"],"kind":"supplement"}]
 
 ## 文脈
 
