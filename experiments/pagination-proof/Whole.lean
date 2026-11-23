@@ -52,6 +52,14 @@ inductive KeepParts where
   | column | page | spread
   deriving DecidableEq, Repr
 
+/-- The body of a block with rules (`RuledBody` of Paginate/Types.hs): the
+    lines of a paragraph, or a heading at a recto or not, its grid lines
+    and its lines. -/
+inductive RuledBody where
+  | lines (kp : Keep) (lines : List Line)
+  | heading (recto : Bool) (n : Nat) (lines : List Line)
+  deriving Repr
+
 /-- The flows of the grid mode modelled here (Paginate/Types.hs `FlowAt`). -/
 inductive Flow where
   | paragraph (kp : Keep) (lines : List Line)
@@ -101,6 +109,11 @@ inductive Flow where
   /-- Paragraphs in one box (`FBoxed`): its id, its grid lines before and
       after each part, and its flows. -/
   | boxed (id before after : Nat) (body : List Flow)
+  /-- A paragraph or heading with rules (`FRuled`): its id, whether it has
+      a rule before and a rule after, whether its rule before shares one
+      area with the rule after of the block before (`frJoined`), and its
+      body. -/
+  | ruled (id : Nat) (before after joined : Bool) (body : RuledBody)
   deriving Repr
 
 /-- `BoxAt` of State.hs: the box being placed, its grid lines before and
@@ -204,6 +217,10 @@ structure St where
   box : Option BoxAt
   /-- `sSections`: the sections started and the page each opened. -/
   sections : List (Nat × Nat)
+  /-- `sJoin`: the rule after of the block placed last, waiting to share
+      its area with the rule before of the next block, by the block's id
+      and its last grid line. -/
+  join : Option (Nat × Int)
 
 structure Need where
   grid : Nat
@@ -236,12 +253,30 @@ structure Env where
   keepLast : List Flow → Nat
   /-- `nextFirstLines` of Decide.hs. -/
   nextFirst : Nat → List Flow → Nat × Bool
+  /-- The third of `keepAhead` of Decide.hs: the first lines a
+      keep-with-next ahead requests, 0 when there is none. -/
+  keepNextLines : List Flow → Nat
+  /-- The grid lines of the area of a block's rule before inside the
+      column (`ruleBefore`, and `ruleBeforeAtStart` at the top of the
+      column, its outside allowed only on the page's first line, of
+      RuleArea.hs), by the block's id. -/
+  ruleBefore : Nat → Bool → Bool → Nat
+  /-- `rulesJoined` of RuleArea.hs: the grid lines of the area shared by
+      the rule after of the block before and the rule before of the
+      block, by their ids. -/
+  rulesJoined : Nat → Nat → Nat
+  /-- `ruleAfter` of RuleArea.hs: the grid lines of the area of a
+      block's rule after inside the column, by the block's id. -/
+  ruleAfter : Nat → Nat
+  /-- `ruleAfterAtEnd` of RuleArea.hs: the same at the end of the column,
+      its outside allowed or not. -/
+  ruleAfterAtEnd : Nat → Bool → Nat
 
 /-- `envKeepParts env == KeepColumn`. -/
 def Env.keepColumn (env : Env) : Bool := env.keepParts == .column
 
 def initialState (env : Env) : St :=
-  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns, none, []⟩
+  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns, none, [], none⟩
 
 /-! ## Queries of State.hs -/
 
@@ -387,7 +422,8 @@ def advanceFresh (env : Env) (toPage : Bool) (st : St) : St :=
       notes := []
       pending := []
       spaces := []
-      headingOnly := false }
+      headingOnly := false
+      join := none }
   fresh
 
 /-- The turned figures placed first and the figures that wait. -/
@@ -431,7 +467,8 @@ def startSet (env : Env) (st : St) (columns : Nat) (first : Int) : St :=
     slots := []
     notes := []
     spaces := []
-    headingOnly := false }
+    headingOnly := false
+    join := none }
 
 def advance (env : Env) (toPage : Bool) (st : St) : St := openBox (advanceIn env toPage st)
 
@@ -496,6 +533,8 @@ def flowSlotIds : Flow → List Nat
   | .wrapped i _ beside => i :: beside.map (·.id)
   | .table _ h rows capt _ => (h ++ rows.join ++ capt).map (·.id)
   | .code _ _ _ _ rows => rows.map (·.id)
+  | .ruled _ _ _ _ (.lines _ ls) => ls.map (·.id)
+  | .ruled _ _ _ _ (.heading _ _ ls) => (ls.take 1).map (·.id)
   | _ => []
 termination_by f => sizeOf f
 def flowsSlotIds : List Flow → List Nat
@@ -662,6 +701,21 @@ theorem spanTurned_length (d : List Deferred) :
     cases w with
     | figure i n => simp [spanTurned]
     | pageFigure i => simp [spanTurned]; omega
+
+theorem carryNote_join (env : Env) (st : St) (p : NotePart) : (carryNote env st p).join = st.join := by
+  simp only [carryNote, addUnmet]; split <;> rfl
+
+theorem carryAll_join (env : Env) (ps : List NotePart) (st : St) :
+    (ps.foldl (carryNote env) st).join = st.join := by
+  induction ps generalizing st with
+  | nil => rfl
+  | cons p ps ih => simp only [List.foldl]; rw [ih, carryNote_join]
+
+theorem pageFigures_join (env : Env) (ts : List Nat) (st : St) :
+    (ts.foldl (pageFigure env) st).join = st.join := by
+  induction ts generalizing st with
+  | nil => rfl
+  | cons t _ ih => exact ih (pageFigure env st t)
 
 theorem pageFigures_fields (env : Env) (ts : List Nat) (st : St) :
     let r := ts.foldl (pageFigure env) st
@@ -1442,6 +1496,7 @@ def needBefore (env : Env) (st : St) (flows : List Flow) : St :=
 def startsRecto : Flow → Bool
   | .bookPart _ _ _ (g :: _) => startsRecto g
   | .heading recto _ _ => recto
+  | .ruled _ _ _ _ (.heading recto _ _) => recto
   | _ => false
 termination_by f => sizeOf f
 decreasing_by simp_wf; omega
@@ -1744,6 +1799,126 @@ def boxEnd (st : St) : Int :=
     | [] => st.used
     | g :: gs => gs.foldl max g + b.after + 1
 
+/-! ## Blocks with rules (`placeRuled` of Paginate.hs, golem-driver ADR 0027) -/
+
+def RuledBody.lines' : RuledBody → List Line
+  | .lines _ ls | .heading _ _ ls => ls
+
+/-- `bodySize` of Decide.hs. -/
+def RuledBody.size : RuledBody → Nat
+  | .lines _ ls => ls.length
+  | .heading _ n _ => n
+
+def RuledBody.recto : RuledBody → Bool
+  | .heading true _ _ => true
+  | _ => false
+
+/-- `joinsNext` of Decide.hs: the rule after waits for the next block to
+    share its area. -/
+def joinsNext (after : Bool) (rest : List Flow) : Bool :=
+  after && match flattenParts rest with
+    | .ruled _ true _ true _ :: _ => true
+    | _ => false
+
+/-- `Plan` of Decide.hs without the rules placed: the grid lines of the
+    area before, the grid lines of the area after, and the rule after
+    that waits for the next block. -/
+structure Plan where
+  before : Nat
+  after : Nat
+  waiting : Option (Nat × Int)
+
+/-- `planOf` of Decide.hs. -/
+def planOf (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBody) (rest : List Flow)
+    (joined : Option (Nat × Int)) : Plan :=
+  let k1 : Nat := match joined with
+    | some (a, _) => env.rulesJoined a i
+    | none => if before then env.ruleBefore i (st.used == top st) (top st == 0) else 0
+  let lastLine : Int := st.used + k1 + body.size - 1
+  let notes := decide (0 < st.noteLines) || !(body.lines'.all (·.notes.isEmpty))
+  let k2 : Nat :=
+    if after && !joinsNext after rest then
+      if cap env st - st.noteLines ≤ lastLine + 1 + env.ruleAfter i then env.ruleAfterAtEnd i !notes
+      else env.ruleAfter i
+    else 0
+  ⟨k1, k2, if joinsNext after rest then some (i, lastLine) else none⟩
+
+/-- `planParts` of Decide.hs: a paragraph's block fits by its grid lines
+    alone, a heading's counts its notes. -/
+def planParts (body : RuledBody) (p : Plan) : Need :=
+  match body with
+  | .lines _ ls => ⟨p.before + ls.length + p.after, 0⟩
+  | .heading _ n ls => ⟨p.before + n + p.after, noteLinesOf ls⟩
+
+def planNeed (env : Env) (st : St) (body : RuledBody) (p : Plan) : Int := needIn env st (planParts body p) noNeed
+
+/-- The lines of a paragraph's block, each keeping the grid lines of the
+    lines after it and of the area after. -/
+def putRuledLines (env : Env) (k2 : Nat) : St → List Line → St
+  | st, [] => st
+  | st, l :: ls => putRuledLines env k2 (putLineKeeping env (ls.length + k2) st l) ls
+
+/-- `commitRuled` of Paginate.hs. -/
+def commitRuled (env : Env) (st : St) (body : RuledBody) (p : Plan) : St :=
+  let st1 := { st with used := st.used + p.before, join := none }
+  let st2 := match body with
+    | .lines _ ls => putRuledLines env p.after st1 ls
+    | .heading _ n ls => { putBlock env st1 n ls with headingOnly := isEmpty st || st.headingOnly }
+  { st2 with used := min (st2.used + p.after) (max st2.used (cap env st2 - st2.noteLines)), join := p.waiting }
+
+/-- `splitRuled` of Paginate.hs: a block that does not fit an empty
+    column. -/
+def splitRuled (env : Env) (st0 : St) (i : Nat) (before after : Bool) (body : RuledBody) (rest : List Flow) : St :=
+  let st := if isEmpty st0 then st0 else nextColumn env st0
+  let k1 := (planOf env st i before after body rest none).before
+  match body with
+  | .lines kp ls => placeLines env kp st true ls
+  | .heading _ n ls =>
+    let k2 := (planOf env st i before after body [] none).after
+    if (k1 : Int) + headingNeed env st n ls + k2 ≤ free env st then commitRuled env st body ⟨k1, k2, none⟩
+    else if (k1 : Int) + headingNeed env st n ls ≤ free env st then commitRuled env st body ⟨k1, 0, none⟩
+    else putBlock env st n ls
+
+/-- `flushJoin` of Paginate.hs: the rule after of the block before, in
+    its own area. -/
+def flushJoin (env : Env) (st : St) : St :=
+  match st.join with
+  | none => st
+  | some (a, aLast) =>
+    let k : Nat := if cap env st - st.noteLines ≤ aLast + 1 + env.ruleAfter a
+      then env.ruleAfterAtEnd a (st.noteLines == 0) else env.ruleAfter a
+    { st with used := st.used + min (k : Int) (free env st), join := none }
+
+/-- `placeRuled` of Paginate.hs with no rule waiting. -/
+def placeRuledFresh (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBody) (rest : List Flow) : St :=
+  let st1 := if body.recto then parityStart env odd st else st
+  let plan (s : St) := planOf env s i before after body rest none
+  let st2 := match body with
+    | .heading false _ _ => keep env st1 (fun s => needIn env s (planParts body (plan s)) (env.nextNeed rest))
+    | .heading true _ _ => st1
+    | .lines _ _ =>
+      match env.keptNeed rest with
+      | some kn => if 0 < env.keepNextLines rest then keep env st1 (fun s => needIn env s (planParts body (plan s)) kn) else st1
+      | none => st1
+  if planNeed env st2 body (plan st2) ≤ free env st2 then commitRuled env st2 body (plan st2)
+  else if isEmpty st2 then splitRuled env st2 i before after body rest
+  else
+    let st3 := nextColumn env st2
+    if planNeed env st3 body (plan st3) ≤ free env st3 then commitRuled env st3 body (plan st3)
+    else splitRuled env st3 i before after body rest
+
+/-- `placeRuled` of Paginate.hs: a block whose rule before shares the area
+    of the rule waiting when it fits there; else the rule waiting takes
+    its own area first. -/
+def placeRuled (env : Env) (st : St) (i : Nat) (before after joined : Bool) (body : RuledBody) (rest : List Flow) : St :=
+  match st.join with
+  | some j =>
+    if joined && before && !body.recto
+        && decide (planNeed env st body (planOf env st i before after body rest (some j)) ≤ free env st) then
+      commitRuled env st body (planOf env st i before after body rest (some j))
+    else placeRuledFresh env (flushJoin env st) i before after body rest
+  | none => placeRuledFresh env st i before after body rest
+
 /-! ## One flow and the flows of a part (mutual: a book part and a box run their flows by `step`) -/
 
 mutual
@@ -1753,6 +1928,7 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .paragraph kp ls => placeLines env kp st true ls
   | .continued kp ls => placeLines env kp st false ls
   | .stanza kp vs => placeStanza env kp st true vs
+  | .ruled i before after joined body => placeRuled env st i before after joined body rest
   | .wrapped i n beside =>
     let st0 := flushFigures env st
     let size : Int := max (n : Int) beside.length
@@ -1953,6 +2129,8 @@ def flowText : Flow → List Slot
   | .code _ _ _ _ ls => ls.map (fun l => .codeRow l.id)
   | .table _ h rows capt below => (tableLines h rows capt below).map (fun l => .line l.id)
   | .bookPart _ _ _ body | .boxed _ _ _ body => sourceText body
+  | .ruled _ _ _ _ (.lines _ ls) => ls.map (fun l => .line l.id)
+  | .ruled _ _ _ _ (.heading _ n ls) => flowText (.heading false n ls)
   | _ => []
 termination_by f => sizeOf f
 def sourceText : List Flow → List Slot
@@ -2550,11 +2728,90 @@ theorem text_placeKept {α : Type} (env : Env) (kp : Keep) (placeIn : St → Boo
       · rw [hp, text_nextColumn, hp, List.append_assoc, ← hT, List.take_append_drop]
 
 mutual
+theorem text_putRuledLines (env : Env) (k2 : Nat) (ls : List Line) (st : St) :
+    text (putRuledLines env k2 st ls) = text st ++ ls.map (fun l => .line l.id) := by
+  induction ls generalizing st with
+  | nil => simp [putRuledLines]
+  | cons l ls ih =>
+    simp only [putRuledLines, List.map]; rw [ih]
+    simp [text, putLineKeeping, textSlots_append, textSlots]
+
+theorem text_commitRuled (env : Env) (st : St) (body : RuledBody) (p : Plan) :
+    text (commitRuled env st body p) = text st ++ flowText (.ruled 0 false false false body) := by
+  cases body with
+  | lines kp ls => simp only [commitRuled, flowText]; exact text_putRuledLines ..
+  | heading r n ls =>
+    simp only [commitRuled, flowText]
+    show text (putBlock env _ n ls) = _
+    rw [text_putBlock]; simp [flowText]; rfl
+
+theorem text_splitRuled (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) :
+    text (splitRuled env st i b a body rest) = text st ++ flowText (.ruled 0 false false false body) := by
+  have h0 : text (if isEmpty st = true then st else nextColumn env st) = text st := text_ite rfl (text_nextColumn ..)
+  cases body with
+  | lines kp ls => simp only [splitRuled, flowText]; rw [text_placeLines, h0]
+  | heading r n ls =>
+    simp only [splitRuled]
+    generalize (if isEmpty st = true then st else nextColumn env st) = s at h0
+    split
+    · rw [text_commitRuled, h0]
+    · split
+      · rw [text_commitRuled, h0]
+      · rw [text_putBlock, h0]; simp [flowText]
+
+theorem text_flushJoin (env : Env) (st : St) : text (flushJoin env st) = text st := by
+  unfold flushJoin; split <;> rfl
+
+theorem text_placeRuledFresh (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) :
+    text (placeRuledFresh env st i b a body rest) = text st ++ flowText (.ruled 0 false false false body) := by
+  have h1 : text (if body.recto = true then parityStart env odd st else st) = text st :=
+    text_ite (text_parityStart ..) rfl
+  simp only [placeRuledFresh]
+  generalize (if body.recto = true then parityStart env odd st else st) = s1 at h1
+  have h2 : ∀ s2 : St, text s2 = text st →
+      text (if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
+          commitRuled env s2 body (planOf env s2 i b a body rest none)
+        else if isEmpty s2 = true then splitRuled env s2 i b a body rest
+        else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
+            ≤ free env (nextColumn env s2) then
+          commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
+        else splitRuled env (nextColumn env s2) i b a body rest) = text st ++ flowText (.ruled 0 false false false body) := by
+    intro s2 e
+    split
+    · rw [text_commitRuled, e]
+    · split
+      · rw [text_splitRuled, e]
+      · split
+        · rw [text_commitRuled, text_nextColumn, e]
+        · rw [text_splitRuled, text_nextColumn, e]
+  apply h2
+  cases body with
+  | heading r n ls => cases r <;> simp only [] <;> first | exact (text_keep ..).trans h1 | exact h1
+  | lines kp ls =>
+    simp only []
+    split
+    · split
+      · exact (text_keep ..).trans h1
+      · exact h1
+    · exact h1
+
+theorem text_placeRuled (env : Env) (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest : List Flow) :
+    text (placeRuled env st i b a j body rest) = text st ++ flowText (.ruled i b a j body) := by
+  have e : flowText (.ruled i b a j body) = flowText (.ruled 0 false false false body) := by cases body <;> simp [flowText]
+  rw [e]
+  unfold placeRuled
+  split
+  · split
+    · exact text_commitRuled ..
+    · rw [text_placeRuledFresh, text_flushJoin]
+  · exact text_placeRuledFresh ..
+
 theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (place env st f rest) = text st ++ flowText f := by
   cases f with
   | paragraph kp ls => simp only [place, flowText]; exact text_placeLines ..
   | stanza kp vs => simp only [place, flowText]; exact text_placeStanza ..
+  | ruled i b a j body => simp only [place]; exact text_placeRuled ..
   | wrapped i n beside =>
     simp only [place, flowText]
     split <;>
@@ -2714,6 +2971,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | restoreColumns => simp only [step]; exact general _ _
   | stanza kp vs => simp only [step]; exact general _ _
   | wrapped i n beside => simp only [step]; exact general _ _
+  | ruled i b a j body => simp only [step]; exact general _ _
   | boxed i kb ka body => simp only [step]; exact general _ _
 termination_by (flowWeight f, 2)
 decreasing_by
@@ -2888,6 +3146,8 @@ structure Inv (st : St) : Prop where
   weak : Weak st
   used : 0 ≤ st.used ∨ 0 < st.noteLines
   fig : figSlots st.slots = [] ∨ 1 ≤ st.used ∨ 0 < st.noteLines
+  /-- No rule after waits for the next block to share its area. -/
+  join : st.join = none
 
 /-- `a` comes before `b`: an earlier page, or an earlier column of the
     same page. -/
@@ -2900,21 +3160,22 @@ theorem posLt_trans {a b c : St} (h1 : posLt a b) (h2 : posLt b c) : posLt a c :
 def Same (st r : St) : Prop :=
   r.slots = st.slots ∧ r.used = st.used ∧ r.page = st.page ∧ r.column = st.column ∧ r.firstLine = st.firstLine
     ∧ r.deferred = st.deferred ∧ r.noteLines = st.noteLines ∧ r.adjust = st.adjust ∧ r.reserved = st.reserved
+    ∧ r.join = st.join
 
 theorem Same.trans' {a b c : St} (h1 : Same a b) (h2 : Same b c) : Same a c := by
-  obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9⟩ := h1
-  obtain ⟨b1, b2, b3, b4, b5, b6, b7, b8, b9⟩ := h2
+  obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, a10⟩ := h1
+  obtain ⟨b1, b2, b3, b4, b5, b6, b7, b8, b9, b10⟩ := h2
   exact ⟨b1.trans a1, b2.trans a2, b3.trans a3, b4.trans a4, b5.trans a5, b6.trans a6, b7.trans a7, b8.trans a8,
-    b9.trans a9⟩
+    b9.trans a9, b10.trans a10⟩
 
 theorem Same.weak {st r : St} (s : Same st r) (w : Weak st) : Weak r := by
-  obtain ⟨_, _, _, _, a5, a6, _, _, a9⟩ := s
+  obtain ⟨_, _, _, _, a5, a6, _, _, a9, _⟩ := s
   exact ⟨a5 ▸ a9 ▸ w.first, a6 ▸ w.deferred⟩
 
 theorem Same.inv {st r : St} (s : Same st r) (i : Inv st) : Inv r := by
   have w := s.weak i.weak
-  obtain ⟨a1, a2, _, _, _, _, a7, _, _⟩ := s
-  exact ⟨w, a2 ▸ a7 ▸ i.used, a1 ▸ a2 ▸ a7 ▸ i.fig⟩
+  obtain ⟨a1, a2, _, _, _, _, a7, _, _, a10⟩ := s
+  exact ⟨w, a2 ▸ a7 ▸ i.used, a1 ▸ a2 ▸ a7 ▸ i.fig, a10 ▸ i.join⟩
 
 theorem Same.page' {st r : St} (s : Same st r) : r.page = st.page := s.2.2.1
 theorem Same.column' {st r : St} (s : Same st r) : r.column = st.column := s.2.2.2.1
@@ -2996,8 +3257,9 @@ theorem placeDeferred_figs (env : Env) (ws : List Deferred) (st : St) (h : st.de
     above no footnote lines, and a figure in it counted. -/
 theorem inv_addUsed {st r : St} (h : Inv st) (w : Weak r) (n : Int) (hn : 0 ≤ n) (u : r.used = st.used + n)
     (nl : st.noteLines ≤ r.noteLines)
-    (fs : figSlots r.slots = figSlots st.slots ∨ (1 ≤ n ∧ ∃ x, figSlots r.slots = figSlots st.slots ++ x)) : Inv r := by
-  refine ⟨w, ?_, ?_⟩
+    (fs : figSlots r.slots = figSlots st.slots ∨ (1 ≤ n ∧ ∃ x, figSlots r.slots = figSlots st.slots ++ x))
+    (j : r.join = st.join := by first | rfl | assumption) : Inv r := by
+  refine ⟨w, ?_, ?_, j ▸ h.join⟩
   · rcases h.used with a | a
     · left; omega
     · right; omega
@@ -3012,10 +3274,12 @@ theorem inv_addUsed {st r : St} (h : Inv st) (w : Weak r) (n : Int) (hn : 0 ≤ 
       · left; omega
       · right; omega
 
+theorem openBox_join (st : St) : (openBox st).join = st.join := by unfold openBox; split <;> rfl
+
 theorem inv_openBox (st : St) (h : Inv st) : Inv (openBox st) := by
   have u := openBox_used st
   refine inv_addUsed h ⟨?_, ?_⟩ ((openBox st).used - st.used) (by omega) (by omega)
-    (by rw [openBox_noteLines]; exact Int.le_refl _) (Or.inl (by rw [openBox_slots]))
+    (by rw [openBox_noteLines]; exact Int.le_refl _) (Or.inl (by rw [openBox_slots])) (openBox_join st)
   · rw [openBox_firstLine, openBox_reserved]; exact h.weak.first
   · rw [openBox_deferred]; exact h.weak.deferred
 
@@ -3032,8 +3296,8 @@ theorem placeDeferred_inv (env : Env) (ws : List Deferred) (st : St) (h : Inv st
     | figure i n =>
       unfold placeDeferred; split
       · exact ih _ (putSlot_inv st n i h hw.1) hw.2
-      · exact ⟨⟨h.weak.first, hw⟩, h.used, h.fig⟩
-    | pageFigure i => exact ⟨⟨h.weak.first, hw⟩, h.used, h.fig⟩
+      · exact ⟨⟨h.weak.first, hw⟩, h.used, h.fig, h.join⟩
+    | pageFigure i => exact ⟨⟨h.weak.first, hw⟩, h.used, h.fig, h.join⟩
 
 theorem spanTurned_figs (d : List Deferred) :
     (spanTurned d).1.map Slot.pageFigure ++ (spanTurned d).2.map deferredFig = d.map deferredFig := by
@@ -3120,17 +3384,20 @@ theorem advance_inv (env : Env) (b : Bool) (st : St) (w : Weak st) :
   have fa : (advanceFresh env b st).adjust = 0 := rfl
   have fr' : (advanceFresh env b st).reserved = (if b then 0 else st.reserved) := rfl
   have fn : (advanceFresh env b st).noteLines = (if b then 0 else st.reserved) := rfl
-  generalize advanceFresh env b st = fr at f2 f5 f6 fa fr' fn
+  have fj : (advanceFresh env b st).join = none := rfl
+  generalize advanceFresh env b st = fr at f2 f5 f6 fa fr' fn fj
   obtain ⟨_, p2, _⟩ := pageFigures_page env (advanceTurned b st).1 fr
   have pf := pageFigures_fields env (advanceTurned b st).1 fr
-  generalize (advanceTurned b st).1.foldl (pageFigure env) fr = pg at p2 pf
+  have p9 := pageFigures_join env (advanceTurned b st).1 fr
+  generalize (advanceTurned b st).1.foldl (pageFigure env) fr = pg at p2 pf p9
   obtain ⟨_, c2, _, c4, c5⟩ := carryAll_frame env st.pending pg
   have c6 := carryAll_adjust env st.pending pg
   have c7 := carryAll_reserved env st.pending pg
-  generalize st.pending.foldl (carryNote env) pg = cn at c2 c4 c5 c6 c7
+  have c9 : (st.pending.foldl (carryNote env) pg).join = pg.join := carryAll_join env st.pending pg
+  generalize st.pending.foldl (carryNote env) pg = cn at c2 c4 c5 c6 c7 c9
   have w1 := w.first
   have base : Inv { cn with deferred := [] } := by
-    refine ⟨⟨?_, trivial⟩, ?_, ?_⟩
+    refine ⟨⟨?_, trivial⟩, ?_, ?_, ?_⟩
     · show 0 ≤ cn.firstLine ∨ 0 < cn.reserved
       rw [c5, pf.2.2.2.2.2.1, f6, c7.1, pf.2.2.2.2.2.2.1, fr']; cases b <;> simp <;> omega
     · show 0 ≤ cn.used ∨ 0 < cn.noteLines
@@ -3141,6 +3408,7 @@ theorem advance_inv (env : Env) (b : Bool) (st : St) (w : Weak st) :
       · simp at c8 ⊢; omega
       · simp
     · left; show figSlots cn.slots = []; rw [c2, p2, f2]; rfl
+    · show cn.join = none; rw [c9, p9, fj]
   exact placeDeferred_inv env _ _ base okTurned
 
 theorem figs_nextColumn (env : Env) (st : St) : figs (nextColumn env st) = figs st := advance_figs ..
@@ -3166,7 +3434,7 @@ theorem keep_moves (env : Env) (st : St) (need : St → Int) (w : Weak st) : Mov
   · unfold keep; rw [dif_pos h]
     have m := moves_nextColumn env st w
     exact m.trans (keep_moves env (nextColumn env st) need (moves_weak w m))
-  · unfold keep; rw [dif_neg h]; exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · unfold keep; rw [dif_neg h]; exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 termination_by rank env st
 decreasing_by exact I4_nextColumn_rank env st (Or.inl h.2)
 
@@ -3201,7 +3469,7 @@ theorem figs_blankPage (env : Env) (st : St) : figs (blankPage env st) = figs st
   simp [figs, blankPage, pagesFigs_cons, figSlots]
 
 theorem inv_blankPage (env : Env) (st : St) (h : Inv st) : Inv (blankPage env st) :=
-  ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
 
 theorem parityStart_figs (env : Env) (p : Nat → Bool) (st : St) (h : Inv st) :
     figs (parityStart env p st) = figs st ∧ Inv (parityStart env p st) := by
@@ -3254,7 +3522,7 @@ theorem startBefore_figs (env : Env) (st : St) (sec : Option Nat) (k : BreakKind
     · exact parityStart_figs env even st h
   simp only [startBefore]
   split
-  · exact ⟨h1.1, ⟨⟨h1.2.weak.first, h1.2.weak.deferred⟩, h1.2.used, h1.2.fig⟩⟩
+  · exact ⟨h1.1, ⟨⟨h1.2.weak.first, h1.2.weak.deferred⟩, h1.2.used, h1.2.fig, h1.2.join⟩⟩
   · exact h1
 
 theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
@@ -3262,7 +3530,7 @@ theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
   simp only [applyBreaks]
   suffices ∀ (ks : List Pending) (s : St), Inv s →
       figs (ks.foldl (applyPending env) s) = figs s ∧ Inv (ks.foldl (applyPending env) s) by
-    exact this _ _ ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+    exact this _ _ ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
   intro ks
   induction ks with
   | nil => intro s i; exact ⟨rfl, i⟩
@@ -3291,10 +3559,10 @@ theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
 theorem applyNeed_moves (env : Env) (st : St) (w : Weak st) : Moves st (applyNeed env st) := by
   unfold applyNeed
   split
-  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · split
     · dsimp only; split
-      · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact moves_nextColumn env _ ⟨w.first, w.deferred⟩
     · exact keep_moves env _ _ ⟨w.first, w.deferred⟩
 
@@ -3311,15 +3579,15 @@ theorem figs_applyNeed (env : Env) (st : St) : figs (applyNeed env st) = figs st
 theorem needBeforeSpace_moves (env : Env) (st : St) (w : Weak st) : Moves st (needBeforeSpace env st) := by
   unfold needBeforeSpace
   split
-  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · split
-    · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · split
       · exact applyNeed_moves env _ ⟨w.first, w.deferred⟩
       · have m := applyNeed_moves env { st with needAt := none } ⟨w.first, w.deferred⟩
         rcases m with sm | ⟨i, p⟩
         · exact moves_same sm
-        · exact Or.inr ⟨⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig⟩, p⟩
+        · exact Or.inr ⟨⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig, i.join⟩, p⟩
 
 theorem figs_needBeforeSpace (env : Env) (st : St) : figs (needBeforeSpace env st) = figs st := by
   unfold needBeforeSpace
@@ -3336,7 +3604,7 @@ theorem inv_placeSpaceFlow (env : Env) (st : St) (n : Nat) (h : Inv st) : Inv (p
 
 theorem inv_placeSpace (env : Env) (st : St) (n : Nat) (h : Inv st) : Inv (placeSpace env st n) := by
   have i := inv_placeSpaceFlow env st n h
-  exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig⟩
+  exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig, i.join⟩
 
 theorem inv_placeSpaces (env : Env) (ns : List Nat) (st : St) (h : Inv st) :
     Inv (ns.foldl (placeSpace env) st) := by
@@ -3364,16 +3632,17 @@ theorem inv_needBeforeSpaces (env : Env) (st : St) (h : Inv st) : Inv (needBefor
   generalize needBeforeSpace env { st with used := st.used - k } = st1 at m
   split
   · rename_i e
-    rcases m with ⟨s1, s2, _, _, s5, s6, s7, _, s9⟩ | ⟨_, p⟩
+    rcases m with ⟨s1, s2, _, _, s5, s6, s7, _, s9, s10⟩ | ⟨_, p⟩
     · have u : st1.used + k = st.used := by rw [s2]; show st.used - k + k = st.used; omega
-      refine ⟨⟨?_, ?_⟩, ?_, ?_⟩
+      refine ⟨⟨?_, ?_⟩, ?_, ?_, ?_⟩
       · show 0 ≤ st1.firstLine ∨ 0 < st1.reserved; rw [s5, s9]; exact h.weak.first
       · show deferredOk st1.deferred; rw [s6]; exact h.weak.deferred
       · show 0 ≤ st1.used + k ∨ 0 < st1.noteLines; rw [u, s7]; exact h.used
       · show figSlots st1.slots = [] ∨ 1 ≤ st1.used + k ∨ 0 < st1.noteLines; rw [u, s1, s7]; exact h.fig
+      · show st1.join = none; rw [s10]; exact h.join
     · exfalso; simp only [posLt] at p; omega
   · rename_i e
-    rcases m with ⟨_, _, s3, s4, _, _, _, _, _⟩ | ⟨i, _⟩
+    rcases m with ⟨_, _, s3, s4, _, _, _, _, _, _⟩ | ⟨i, _⟩
     · exact absurd ⟨s3, s4⟩ e
     · exact inv_placeSpaces env _ st1 i
 
@@ -3394,7 +3663,7 @@ theorem needAfterSpaces_figs (env : Env) (st : St) (h : Inv st) :
 theorem needMore_figs (env : Env) (n : Nat) (st : St) (h : Inv st) :
     figs (needMore env n st) = figs st ∧ Inv (needMore env n st) := by
   have h' : ∀ a b, Inv { st with need := a, needAt := b } :=
-    fun _ _ => ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+    fun _ _ => ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
   unfold needMore
   split
   · split
@@ -3406,8 +3675,8 @@ theorem needBefore_figs (env : Env) (st : St) (flows : List Flow) (h : Inv st) :
     figs (needBefore env st flows) = figs st ∧ Inv (needBefore env st flows) := by
   have w : ∀ a b, Weak { st with need := a, needAt := b } := fun _ _ => ⟨h.weak.first, h.weak.deferred⟩
   have i : ∀ a b, Inv { st with need := a, needAt := b } :=
-    fun _ _ => ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
-  have i' : Inv { st with needAt := none } := ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+    fun _ _ => ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
+  have i' : Inv { st with needAt := none } := ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
   unfold needBefore
   split
   · split
@@ -3431,7 +3700,7 @@ theorem dropBlanks_figs (ns : List Nat) (st : St) (h : Inv st) :
       Inv (ns.foldl (fun s _ => addUnmet .droppedBlank s) st) := by
   induction ns generalizing st with
   | nil => exact ⟨rfl, h⟩
-  | cons _ _ ih => exact ih (addUnmet .droppedBlank st) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  | cons _ _ ih => exact ih (addUnmet .droppedBlank st) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
 
 theorem blankTail (total : Int) (ht : 0 ≤ total) (blanks : List Nat) (s2 : St) (X : List Slot)
     (h : Inv s2) (f : figs s2 = X) :
@@ -3440,7 +3709,7 @@ theorem blankTail (total : Int) (ht : 0 ≤ total) (blanks : List Nat) (s2 : St)
     Inv (if s2.used = top s2 then blanks.foldl (fun s _ => addUnmet .droppedBlank s) { s2 with blank := [] }
       else { s2 with used := s2.used + total, blank := [] }) := by
   split
-  · have := dropBlanks_figs blanks { s2 with blank := [] } ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  · have := dropBlanks_figs blanks { s2 with blank := [] } ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
     exact ⟨this.1.trans f, this.2⟩
   · exact ⟨f, inv_addUsed h ⟨h.weak.first, h.weak.deferred⟩ total ht rfl (Int.le_refl _)
       (Or.inl rfl)⟩
@@ -3508,7 +3777,7 @@ theorem shortParts_figs (us : List Unmet) (st : St) (h : Inv st) :
     figs (us.foldl (fun s u => addUnmet u s) st) = figs st ∧ Inv (us.foldl (fun s u => addUnmet u s) st) := by
   induction us generalizing st with
   | nil => exact ⟨rfl, h⟩
-  | cons u _ ih => exact ih (addUnmet u st) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  | cons u _ ih => exact ih (addUnmet u st) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
 
 theorem placeLinesGo_figs (env : Env) (hs : 0 ≤ env.separator) (pid : Nat) (kp : Keep) (st : St) (isStart : Bool)
     (ls : List Line) (h : Inv st) :
@@ -3524,7 +3793,7 @@ theorem placeLinesGo_figs (env : Env) (hs : 0 ≤ env.separator) (pid : Nat) (kp
       · by_cases h3 : isEmpty st = true ∨ st.headingOnly = true
         · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_pos h3]
           exact placeLinesGo_figs env hs pid { kp with all := false } (addUnmet (.splitKept pid) st) isStart
-            (l :: ls') ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+            (l :: ls') ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
         · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_neg h3]
           have := placeLinesGo_figs env hs pid kp (nextColumn env st) isStart (l :: ls') (inv_nextColumn env st h)
           rw [figs_nextColumn] at this; exact this
@@ -3615,7 +3884,7 @@ theorem placeStanzaGo_figs (env : Env) (hs : 0 ≤ env.separator) (pid : Nat) (k
     simp only
     split
     · split
-      · exact placeStanzaGo_figs env hs pid { kp with all := false } _ isStart (v :: more) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+      · exact placeStanzaGo_figs env hs pid { kp with all := false } _ isStart (v :: more) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
       · have := placeStanzaGo_figs env hs pid kp _ isStart (v :: more) (inv_nextColumn env st h)
         rw [figs_nextColumn] at this; exact this
     · split
@@ -3662,6 +3931,7 @@ mutual
 def figureOk : Flow → Prop
   | .figure _ n => 1 ≤ n
   | .bookPart _ _ _ body | .boxed _ _ _ body => figuresOk body
+  | .ruled _ _ after _ _ => after = false
   | _ => True
 termination_by f => sizeOf f
 def figuresOk : List Flow → Prop
@@ -3724,7 +3994,7 @@ theorem nextUnit_figs (env : Env) (unit : KeepParts) (st : St) (h : Inv st) :
   · exact nextSpread_figs env _ st h
 
 theorem inv_addUnmet (u : Unmet) (st : St) (h : Inv st) : Inv (addUnmet u st) :=
-  ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
 
 theorem partTrial_figs (env : Env) (runBody runPlain : St → St) (Y : List Slot)
     (hb : ∀ s, Inv s → figs (runBody s) = figs s ++ Y ∧ Inv (runBody s))
@@ -3782,7 +4052,7 @@ theorem defer_figs (st : St) (d : Deferred) (h : Inv st) (hd : deferredOk [d]) :
     figs { st with deferred := st.deferred ++ [d] } = figs st ++ [deferredFig d] ∧
       Inv { st with deferred := st.deferred ++ [d] } :=
   ⟨by simp [figs, List.map_append],
-    ⟨⟨h.weak.first, deferredOk_append _ _ h.weak.deferred hd⟩, h.used, h.fig⟩⟩
+    ⟨⟨h.weak.first, deferredOk_append _ _ h.weak.deferred hd⟩, h.used, h.fig, h.join⟩⟩
 
 /-! ### Tables -/
 
@@ -3931,11 +4201,12 @@ theorem startSet_figs (env : Env) (st : St) (n : Nat) (h : Inv st) :
       simp only [startSet, closePage]; split <;> rfl
     have nl : (startSet env st n st.used).noteLines = st.noteLines := by
       simp only [startSet, closePage]; split <;> rfl
-    refine ⟨⟨?_, ?_⟩, ?_, ?_⟩
+    refine ⟨⟨?_, ?_⟩, ?_, ?_, ?_⟩
     · show 0 ≤ st.used ∨ 0 < st.noteLines; exact h.used
     · rw [d]; exact h.weak.deferred
     · show 0 ≤ st.used ∨ 0 < (startSet env st n st.used).noteLines; rw [nl]; exact h.used
     · left; rfl
+    · rfl
   refine ⟨?_, inv⟩
   simp only [startSet, closePage]
   by_cases e : st.slots.isEmpty = true ∧ st.notes.isEmpty = true
@@ -3952,12 +4223,12 @@ theorem checkNoBreak_figs (st : St) (h : Inv st) :
     figs (checkNoBreak st) = figs st ∧ Inv (checkNoBreak st) := by
   rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e]
   · exact ⟨rfl, h⟩
-  · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+  · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
 
 theorem waitFor_figs (u : Unmet) (k : Nat × Bool) (st : St) (h : Inv st) :
     figs (waitFor u k st) = figs st ∧ Inv (waitFor u k st) := by
   obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]
-  exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+  exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
 
 theorem placeKept_figs {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → List α → St)
     (hp : ∀ s b xs, Inv s → figs (placeIn s b xs) = figs s ∧ Inv (placeIn s b xs))
@@ -3980,6 +4251,149 @@ theorem placeKept_figs {α : Type} (env : Env) (kp : Keep) (placeIn : St → Boo
       · exact one
       · exact three
 
+/-! ### Blocks with rules -/
+
+theorem putLineKeeping_noteLines (env : Env) (hs : 0 ≤ env.separator) (r : Int) (st : St) (l : Line) :
+    st.noteLines ≤ (putLineKeeping env r st l).noteLines := by
+  simp only [putLineKeeping]
+  generalize (splitNotes _ _).1 = sh
+  have : (0 : Int) ≤ (partsLines sh : Int) := Int.ofNat_nonneg _
+  split <;> (try split) <;> omega
+
+theorem putRuledLines_figs (env : Env) (hs : 0 ≤ env.separator) (k2 : Nat) (ls : List Line) (st : St) (h : Inv st) :
+    figs (putRuledLines env k2 st ls) = figs st ∧ Inv (putRuledLines env k2 st ls) := by
+  induction ls generalizing st with
+  | nil => exact ⟨rfl, h⟩
+  | cons l ls ih =>
+    simp only [putRuledLines]
+    have i1 : Inv (putLineKeeping env (ls.length + k2) st l) :=
+      inv_addUsed h ⟨h.weak.first, h.weak.deferred⟩ 1 (by decide) rfl (putLineKeeping_noteLines env hs _ st l)
+        (Or.inl (by simp [putLineKeeping, figSlots_append, figSlots]))
+    have f1 : figs (putLineKeeping env (ls.length + k2) st l) = figs st := by
+      simp [figs, putLineKeeping, figSlots_append, figSlots]
+    have := ih _ i1
+    exact ⟨this.1.trans f1, this.2⟩
+
+theorem commitRuled_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (body : RuledBody) (p : Plan)
+    (h : Inv st) (hw : p.waiting = none) :
+    figs (commitRuled env st body p) = figs st ∧ Inv (commitRuled env st body p) := by
+  have i1 : Inv { st with used := st.used + p.before, join := none } :=
+    inv_addUsed h ⟨h.weak.first, h.weak.deferred⟩ p.before (Int.ofNat_nonneg _) rfl (Int.le_refl _) (Or.inl rfl)
+      h.join.symm
+  have two : figs (match body with
+      | .lines _ ls => putRuledLines env p.after { st with used := st.used + p.before, join := none } ls
+      | .heading _ n ls => { putBlock env { st with used := st.used + p.before, join := none } n ls with
+          headingOnly := isEmpty st || st.headingOnly }) = figs st ∧
+      Inv (match body with
+      | .lines _ ls => putRuledLines env p.after { st with used := st.used + p.before, join := none } ls
+      | .heading _ n ls => { putBlock env { st with used := st.used + p.before, join := none } n ls with
+          headingOnly := isEmpty st || st.headingOnly }) := by
+    cases body with
+    | lines kp ls => exact putRuledLines_figs env hs _ ls _ i1
+    | heading r n ls =>
+      have b := putBlock_figs env hs _ n ls i1
+      exact ⟨b.1, ⟨⟨b.2.weak.first, b.2.weak.deferred⟩, b.2.used, b.2.fig, b.2.join⟩⟩
+  simp only [commitRuled]
+  generalize (match body with
+      | .lines _ ls => putRuledLines env p.after { st with used := st.used + p.before, join := none } ls
+      | .heading _ n ls => { putBlock env { st with used := st.used + p.before, join := none } n ls with
+          headingOnly := isEmpty st || st.headingOnly }) = s2 at two
+  refine ⟨two.1, ?_⟩
+  have i2 := two.2
+  exact inv_addUsed i2 ⟨i2.weak.first, i2.weak.deferred⟩
+    (min (s2.used + p.after) (max s2.used (cap env s2 - s2.noteLines)) - s2.used)
+    (by have m1 := Int.le_max_left s2.used (cap env s2 - s2.noteLines)
+        have m2 : (0 : Int) ≤ p.after := Int.ofNat_nonneg _
+        have := Int.le_min.mpr (And.intro (show s2.used ≤ s2.used + p.after by omega) m1)
+        omega)
+    (by show min _ _ = _; omega) (Int.le_refl _) (Or.inl rfl) (by rw [i2.join]; exact hw)
+
+theorem planOf_waiting (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow)
+    (j : Option (Nat × Int)) (hn : joinsNext a rest = false) : (planOf env st i b a body rest j).waiting = none := by
+  simp [planOf, hn]
+
+theorem splitRuled_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Nat) (b a : Bool) (body : RuledBody)
+    (rest : List Flow) (h : Inv st) :
+    figs (splitRuled env st i b a body rest) = figs st ∧ Inv (splitRuled env st i b a body rest) := by
+  have h0 : figs (if isEmpty st = true then st else nextColumn env st) = figs st ∧
+      Inv (if isEmpty st = true then st else nextColumn env st) := by
+    split
+    · exact ⟨rfl, h⟩
+    · exact ⟨figs_nextColumn .., inv_nextColumn env st h⟩
+  simp only [splitRuled]
+  generalize (if isEmpty st = true then st else nextColumn env st) = s at h0
+  cases body with
+  | lines kp ls => have := placeLines_figs env hs kp s true ls h0.2; exact ⟨this.1.trans h0.1, this.2⟩
+  | heading r n ls =>
+    simp only []
+    split
+    · have := commitRuled_figs env hs s (.heading r n ls) ⟨(planOf env s i b a (.heading r n ls) rest none).before,
+        (planOf env s i b a (.heading r n ls) [] none).after, none⟩ h0.2 rfl
+      exact ⟨this.1.trans h0.1, this.2⟩
+    · split
+      · have := commitRuled_figs env hs s (.heading r n ls) ⟨(planOf env s i b a (.heading r n ls) rest none).before,
+          0, none⟩ h0.2 rfl
+        exact ⟨this.1.trans h0.1, this.2⟩
+      · have := putBlock_figs env hs s n ls h0.2; exact ⟨this.1.trans h0.1, this.2⟩
+
+theorem placeRuledFresh_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Nat) (b a : Bool)
+    (body : RuledBody) (rest : List Flow) (h : Inv st) (hn : joinsNext a rest = false) :
+    figs (placeRuledFresh env st i b a body rest) = figs st ∧ Inv (placeRuledFresh env st i b a body rest) := by
+  have h1 : figs (if body.recto = true then parityStart env odd st else st) = figs st ∧
+      Inv (if body.recto = true then parityStart env odd st else st) := by
+    split
+    · exact parityStart_figs env odd st h
+    · exact ⟨rfl, h⟩
+  have w : ∀ s, (planOf env s i b a body rest none).waiting = none := fun s => planOf_waiting env s i b a body rest none hn
+  have last : ∀ s2 : St, figs s2 = figs st → Inv s2 →
+      let r := if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
+          commitRuled env s2 body (planOf env s2 i b a body rest none)
+        else if isEmpty s2 = true then splitRuled env s2 i b a body rest
+        else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
+            ≤ free env (nextColumn env s2) then
+          commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
+        else splitRuled env (nextColumn env s2) i b a body rest
+      figs r = figs st ∧ Inv r := by
+    intro s2 e i2
+    have n2 := inv_nextColumn env s2 i2
+    have e2 : figs (nextColumn env s2) = figs st := (figs_nextColumn ..).trans e
+    simp only []
+    split
+    · have := commitRuled_figs env hs s2 body (planOf env s2 i b a body rest none) i2 (w s2); exact ⟨this.1.trans e, this.2⟩
+    · split
+      · have := splitRuled_figs env hs s2 i b a body rest i2; exact ⟨this.1.trans e, this.2⟩
+      · split
+        · have := commitRuled_figs env hs _ body (planOf env (nextColumn env s2) i b a body rest none) n2 (w _); exact ⟨this.1.trans e2, this.2⟩
+        · have := splitRuled_figs env hs _ i b a body rest n2; exact ⟨this.1.trans e2, this.2⟩
+  simp only [placeRuledFresh]
+  generalize (if body.recto = true then parityStart env odd st else st) = s1 at h1
+  apply last
+  · cases body with
+    | heading r n ls => cases r <;> simp only [] <;> first | exact (figs_keep ..).trans h1.1 | exact h1.1
+    | lines kp ls =>
+      simp only []
+      split
+      · split
+        · exact (figs_keep ..).trans h1.1
+        · exact h1.1
+      · exact h1.1
+  · cases body with
+    | heading r n ls => cases r <;> simp only [] <;> first | exact inv_keep env _ _ h1.2 | exact h1.2
+    | lines kp ls =>
+      simp only []
+      split
+      · split
+        · exact inv_keep env _ _ h1.2
+        · exact h1.2
+      · exact h1.2
+
+theorem placeRuled_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Nat) (b a j : Bool)
+    (body : RuledBody) (rest : List Flow) (h : Inv st) (hn : joinsNext a rest = false) :
+    figs (placeRuled env st i b a j body rest) = figs st ∧ Inv (placeRuled env st i b a j body rest) := by
+  unfold placeRuled
+  rw [h.join]
+  exact placeRuledFresh_figs env hs st i b a body rest h hn
+
 mutual
 theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     (rest : List Flow) (h : Inv st) (hf : figureOk f) :
@@ -3987,6 +4401,10 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
   cases f with
   | paragraph kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st true ls h
   | stanza kp vs => simp only [place, flowFigs, List.append_nil]; exact placeStanza_figs env hs kp st true vs h
+  | ruled i b a j body =>
+    have ha : a = false := by simpa [figureOk] using hf
+    simp only [place, flowFigs, List.append_nil]
+    exact placeRuled_figs env hs st i b a j body rest h (by simp [joinsNext, ha])
   | wrapped i n beside =>
     simp only [place, flowFigs, List.append_nil]
     have f0 := flushFigures_figs env st h
@@ -4049,15 +4467,15 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
         · exact g
         · have := c.2.2.1; omega
         · have := c.2.2.2.2; omega
-      refine ⟨?_, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+      refine ⟨?_, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
       simp [figs, pageFigure, pagesFigs_cons, figSlots, d0, s0]
     · exact defer_figs st _ h trivial
   | brk k =>
     simp only [place, flowFigs, List.append_nil]
-    exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+    exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
   | sectionStart sec k =>
     simp only [place, flowFigs, List.append_nil]
-    exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+    exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
   | space n =>
     simp only [place, flowFigs, List.append_nil]
     refine ⟨?_, inv_placeSpaceFlow env st n h⟩
@@ -4076,14 +4494,14 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
       exact ⟨this.1.trans f1, this.2⟩
     · have i2 := inv_nextPage env s1 i1
       exact ⟨(figs_nextPage env s1).trans f1,
-        ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred⟩, i2.used, i2.fig⟩⟩
+        ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred⟩, i2.used, i2.fig, i2.join⟩⟩
   | restoreColumns =>
     simp only [place, flowFigs, List.append_nil]
     split
-    · exact ⟨rfl, ⟨⟨Or.inl (Int.le_refl 0), h.weak.deferred⟩, h.used, h.fig⟩⟩
+    · exact ⟨rfl, ⟨⟨Or.inl (Int.le_refl 0), h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
     · have i2 := inv_nextPage env st h
       exact ⟨figs_nextPage env st,
-        ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred⟩, i2.used, i2.fig⟩⟩
+        ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred⟩, i2.used, i2.fig, i2.join⟩⟩
   | adjustLines k => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
   | bookPart u k r body =>
     simp only [place, flowFigs]
@@ -4096,7 +4514,7 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
     have fk := figs_keep env st (fun s => (kb : Int) + ka + needIn env s noNeed (env.nextNeed body))
     generalize keep env st (fun s => (kb : Int) + ka + needIn env s noNeed (env.nextNeed body)) = st1 at k fk
     have o : Inv (openBox { st1 with box := some ⟨i, kb, ka, 0, false⟩ }) :=
-      inv_openBox _ ⟨⟨k.weak.first, k.weak.deferred⟩, k.used, k.fig⟩
+      inv_openBox _ ⟨⟨k.weak.first, k.weak.deferred⟩, k.used, k.fig, k.join⟩
     have r := runFlows_figs env hc hs _ body rest o hf
     rw [figs_openBox] at r
     generalize runFlows env (openBox { st1 with box := some ⟨i, kb, ka, 0, false⟩ }) body rest = ib at r
@@ -4195,12 +4613,12 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
         have p := placeFlow_figs env hc hs _ f rest k.2 hf
         have c := checkNoBreak_figs _ p.2
         rw [p.1, k.1, n.1, b.1] at c; exact c
-    exact ⟨core.1, ⟨⟨core.2.weak.first, core.2.weak.deferred⟩, core.2.used, core.2.fig⟩⟩
+    exact ⟨core.1, ⟨⟨core.2.weak.first, core.2.weak.deferred⟩, core.2.used, core.2.fig, core.2.join⟩⟩
   have ctl : ∀ (u : Unmet) (k : Nat × Bool),
       figs (if st.seen = false ∨ st.lastDeferred = true then addUnmet u st else waitFor u k st) = figs st ∧
       Inv (if st.seen = false ∨ st.lastDeferred = true then addUnmet u st else waitFor u k st) := by
     intro u k; split
-    · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+    · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
     · exact waitFor_figs u k st h
   cases f with
   | needLines n => simp only [step, flowFigs, List.append_nil]; exact needMore_figs env n st h
@@ -4229,8 +4647,8 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
     refine ⟨?_, ?_⟩
     · rw [← b.1]; simp only [adjustLines]; split <;> rfl
     · simp only [adjustLines]; split
-      · exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig⟩
-      · exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig⟩
+      · exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig, i.join⟩
+      · exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig, i.join⟩
   | noBreak => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
   | noBreakLines n =>
     cases n with
@@ -4241,7 +4659,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
     simp only [step, flowFigs, List.append_nil]
     split
     · exact ⟨rfl, h⟩
-    · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+    · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩⟩
   | brk k => simp only [step]; exact place_figs env hc hs st (.brk k) rest h hf
   | sectionStart sec k => simp only [step]; exact place_figs env hc hs st (.sectionStart sec k) rest h hf
   | space n =>
@@ -4265,6 +4683,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
   | restoreColumns => simp only [step]; exact general _ _
   | stanza kp vs => simp only [step]; exact general _ _
   | wrapped i n beside => simp only [step]; exact general _ _
+  | ruled i b a j body => simp only [step]; exact general _ _
   | boxed i kb ka body => simp only [step]; exact general _ _
 termination_by (flowWeight f, 2)
 decreasing_by
@@ -4303,7 +4722,7 @@ theorem placeAll_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.sepa
     rw [addUnmets_eq]
     generalize st.unmet ++ st.noBreak.map (fun w => w.1) = u
     have h2 : Inv { st with unmet := u, breaks := [], need := none, needAt := none, noBreak := [], blank := [] } :=
-      ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+      ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig, h.join⟩
     split
     · obtain ⟨a, _, c⟩ := flushDeferred_figs env _ h2; exact ⟨a, c⟩
     · split
@@ -4331,7 +4750,7 @@ theorem placeAll_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.sepa
 theorem I5_paginate_figures (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (flows : List Flow)
     (hf : ∀ f ∈ flows, figureOk f) :
     pagesFigs (paginate env flows).done = sourceFigs flows := by
-  have i : Inv (initialState env) := ⟨⟨Or.inl (Int.le_refl 0), trivial⟩, Or.inl (Int.le_refl 0), Or.inl rfl⟩
+  have i : Inv (initialState env) := ⟨⟨Or.inl (Int.le_refl 0), trivial⟩, Or.inl (Int.le_refl 0), Or.inl rfl, rfl⟩
   obtain ⟨h, d⟩ := placeAll_figs env hc hs flows (initialState env) i hf
   have e : figs (initialState env) = [] := rfl
   rw [e, List.nil_append] at h

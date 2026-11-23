@@ -449,7 +449,7 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 このとき `pageFigure` は、図版 1 のある段を閉じる前に、転置図版のページを出力する。
 
 `I5_paginate_figures` は、この前提の下で、出力のページに図版と転置図版が原稿の順に一度ずつ並ぶことを証明する。
-前提は三つで、原稿のどの図版も、本の部と箱の中の図版も高さが 1 行以上であること、段の容量が 1 行以上であること、脚注区切りの行数が 0 行以上であることである。
+前提は四つで、原稿のどの図版も、本の部と箱の中の図版も高さが 1 行以上であること、罫線つきのブロックが後の罫線を持たないこと、段の容量が 1 行以上であること、脚注区切りの行数が 0 行以上であることである。
 段の容量の前提は、[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) が入力とする段と同じである。
 定理は、出力済みのページの図版、現在の段の図版、待機中の図版をこの順につないだ列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
 転置図版をすぐに置くのは段の使用行数と脚注の行数がともに 0 のときだけなので、この不変条件には、図版のある段では使用行数か脚注の行数が 1 以上であるという性質が要る。
@@ -482,19 +482,21 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 モデルは次の点で Haskell の実装を抽象化する。
 `nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
 コードの行の部分の行数を決める `Code.hs:150` の `codeSpan` も `Env` の引数とし、コードの組み方は自然数で区別する。
+罫線の領域の行数（`RuleArea.hs` の `ruleBefore`、`ruleBeforeAtStart`、`rulesJoined`、`ruleAfter`、`ruleAfterAtEnd`）も、ブロックの id ごとの `Env` の引数とし、罫線の位置（`sRules`）は出力の付帯情報なのでモデルには持たない。
+`keepAhead` の 3 番目の値（`keep-with-next` が求める最初の行数）も `Env` の `keepNextLines` とする。
 部分を段の中で保つか（`envKeepParts` が `KeepColumn` か）も `Env` の引数とし、定義の項の置き方はその両方の値で扱う。
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
 フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻し、段の行数の変更（`FAdjustLines`）を扱う。
 本の部、箱、詩、回り込み図版、節と改ページつきの段落の開始（`FSection`）も扱う。
-罫線つきのブロックは、まだ扱わない。
+罫線つきのブロック（`FRuled`）も扱う。
 節の開始は、改段や改ページと同じく待つ改ページ（`Pending`）に加え、次のフローの前に `startBefore` で始める。
 節が始まったページの記録 `sSections` は、状態の `sections` に持つ。
 回り込み図版（`SWrapped`）は、`I5_paginate_figures` の図版に数えない。
 罫線つきのブロックの `flushJoin` は、後の罫線の領域を次のブロックと共有しなかったとき、使用行数に `min k (free st)` を足すので、残りの行数が負なら使用行数を減らす。
 図版の順序の不変条件をこの操作で保つには、共有を待つ状態（`sJoin`）では残りの行数が 0 以上か脚注の行数が 1 以上であることが要る。
-共有を待つのは、収まると判定して置いたブロックの直後から、次の罫線つきのブロックを置くまでである。
-この間に置かれるフローがないことは原稿の列の上の性質で、状態の不変条件では表せないので、罫線つきのブロックのモデルには、この性質の証明が先に要る。
+いまの `I5_paginate_figures` は、後の罫線を持たない罫線つきのブロックだけを前提に入れ（`figureOk`）、不変条件 `Inv` に共有を待たないこと（`join`）を足して証明する。
+後の罫線を持つブロックの共有は、`I4_paginate_ends` と `I5_paginate_text` では扱い、図版の順序ではまだ扱わない。
 
 段組みは段数と先頭行だけを状態に持ち、段の幅と段間は持たない。
 `Env` の段数は基本の段組み（`envBase`）の段数で、段組みを戻すとこの段数になる。
@@ -551,6 +553,8 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:628` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate.hs:551` `place` の `FWrapped` | `place` の `wrapped` |
 | `Paginate.hs:668` `placeStanza` | `placeStanza`、`placeStanzaGo`、`versesFitting`、`stanzaK0`、`stanzaK2`、`putVerses`、`shortVerse` |
+| `Paginate.hs:715` `placeRuled` | `placeRuled`、`placeRuledFresh` |
+| `Paginate.hs:746` `commitRuled`、`:759` `splitRuled`、`:775` `flushJoin` | `commitRuled`、`putRuledLines`、`splitRuled`、`flushJoin` |
 | `Paginate.hs:790` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
 | `Paginate.hs:815` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
 | `Paginate/BookParts.hs:13` `placeBookPart` | `placeBookPart`、`partTrial`、`fitsPart`、`unitKey`、`emptyUnit`、`nextUnit`、`nextSpread`、`hasNested` |
@@ -581,12 +585,14 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Decide.hs:270` `tableHead` | `tableHead` |
 | `Paginate/Decide.hs:294` `afterPageFigure` | `afterPageFigure` |
 | `Paginate/Decide.hs:300` `startsRecto` | `startsRecto` |
+| `Paginate/Decide.hs:322` `bodySize`、`:336` `joinsNext` | `RuledBody.size`、`joinsNext` |
+| `Paginate/Decide.hs:346` `planOf`、`:381` `planNeed`、`:385` `planParts` | `planOf`、`Plan`、`planNeed`、`planParts` |
 
 ## 未完の項目
 
 キャプションの評価値と幅の計算の対応、`Whole.lean` が扱わないフローの状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 `Whole.lean` が扱うフローについては、改ページ全体の終了と、段落、詩の行、回り込み図版の横の行、定義の項、表の行、見出し、コードの行の過不足と順序を証明した。
-`Whole.lean` がまだ扱わないフローは、罫線つきのブロック（`FRuled`）である。
+`Whole.lean` は格子モードのすべてのフローを扱うが、図版の順序の証明は、後の罫線を持つ罫線つきのブロックをまだ前提から外している。
 図版と転置図版の過不足と順序は、図版の高さと段の容量を 1 行以上、脚注区切りの行数を 0 行以上とする前提の下で証明した。
 境界入力の表のうち改ページだけで決まる行は、`modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` で Haskell の実装を検査する。
 空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
