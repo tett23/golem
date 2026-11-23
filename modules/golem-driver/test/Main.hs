@@ -36,6 +36,7 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import IndexRangeSpec (indexRangeTests)
 import InsideLinksSpec (insideLinksTests)
+import KeepBookPartsSpec qualified
 import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
@@ -98,7 +99,8 @@ tests :: Skips -> TestTree
 tests skips =
   testGroup
     "golem-driver (ADR 0001)"
-    ( [ qpdfInstalled,
+    ( [ KeepBookPartsSpec.tests,
+        qpdfInstalled,
         NestedFiguresSpec.tests,
         explainTests,
         noticeTests,

@@ -143,7 +143,14 @@ everyNoticeProjects =
         ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
         ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n  where {\n    unused = 1\n  }\n"),
         ("w.tsv", "w\n")
+      ],
+    -- root ADR 0401: a list item larger than the empty page (G07133).
+    \extra ->
+      [ ("manifest.toml", noticeManifest extra),
+        ("style.toml", withBodyFont (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[composition]\nkeep-parts = \"page\"\n")),
+        ("a.gm", TE.encodeUtf8 ("- " <> T.intercalate "\\\n  " (replicate 7 "x") <> "\n"))
       ]
+        <> fakeFontFiles
   ]
   where
     -- five lines of 12 characters, a paragraph style with rules, and a zero indent of table (G03100)
