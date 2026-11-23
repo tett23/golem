@@ -615,8 +615,13 @@ peg-hs の生成器が書くモジュール（`Golem.Parser.Generated`、golem-p
 CI の `build` ジョブが、これらが `scripts/gen-parser.sh` の出力と一致することを確かめる。
 
 warning は、CI のログでも見つける。
-CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたものと `ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
-ジョブの一覧は `gh api` で、各ログは同じ API から `curl` で取る（`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたもの、step を一つも走らせずに取り消されたもの、`ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)、[ADR 0427](adr/0427-warning-gate-and-jobs-without-logs.md)）。
+step を一つも走らせずに取り消されたジョブは、何も走らせていないので warning を出しようがなく、GitHub にもログが無い。
+このジョブの ID と名前は、読まないジョブとして step のログに書く。
+取り消し以外の理由で step が 0 のジョブは除かない。
+ジョブの一覧は `gh api` で、各ログは同じ API から `curl` で取る（`scripts/ci/job-logs.sh`。`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+あるジョブのログが取れないときは、そのジョブの ID と名前を書き、残りのジョブのログを取って検査を続ける。
+すべてのジョブを読み終えた後で、取れないログが一つでもあるか、読むジョブが一つも無ければ、検査は失敗する。
 `release.yml` は `ci.yml` を呼ぶので、同じ検査が走る。
 ほかのワークフローのログは検査しない。
 

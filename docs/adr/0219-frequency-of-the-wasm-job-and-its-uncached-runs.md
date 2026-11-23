@@ -1,6 +1,6 @@
 # ADR 0219: CI の wasm のジョブを走らせる頻度と、キャッシュのない実行の扱い
 
-Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"比べる基準と試していない行"}]
+Status: superseded [{"by":["docs/adr/0236-record-what-implementations-decided-found-by-the-second-review-of-2026-11-08.md"],"part":"比べる基準と試していない行"},{"part":"キャッシュのない実行と、不変条件の表の追い出しの行","by":["docs/adr/0427-warning-gate-and-jobs-without-logs.md"],"kind":"replace"}]
 
 ## 文脈
 

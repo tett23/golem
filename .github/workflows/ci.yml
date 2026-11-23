@@ -1022,8 +1022,8 @@ jobs:
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
       # why the toolchain cache missed: the toolchain or the project
       # differs from main (the base of a pull request, the commit before a
-      # push), or neither and the cache was evicted, a warning annotation
-      # that does not fail the job (docs/adr/0219)
+      # push), or neither and the cache was evicted, a notice annotation
+      # that does not fail the job nor ci (docs/adr/0219, docs/adr/0427)
       - name: Times
         if: always()
         env:
@@ -1474,10 +1474,13 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: printf '%s\n' "$NEEDS" | sh scripts/ci/gate.sh
-      # every job of the run that has ended, but those skipped; ci itself
-      # is still running. The list of jobs comes from gh api, and each log,
+      # every job of the run that has ended, but those skipped and those
+      # cancelled before any step ran, which have no log; ci itself is
+      # still running. The list of jobs comes from gh api, and each log,
       # which may hold terminal escape sequences that gh api refuses to
-      # write, from the same API with curl (docs/adr/0245 section 6)
+      # write, from the same API with curl in job-logs.sh, which reads the
+      # other logs when one cannot be fetched and fails at the end
+      # (docs/adr/0245 section 6, docs/adr/0427)
       - name: No warning in the logs of the jobs but the allowed ones (docs/adr/0245)
         if: always()
         env:
@@ -1487,11 +1490,5 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/logs"
           GITHUB_API_READ_SECONDS=3600 timeout -k 10 3600 sh scripts/ci/github-api-read.sh --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100" \
-            --jq '.jobs[] | select(.status == "completed" and .conclusion != "skipped") | [.id, .name] | @tsv' >"$RUNNER_TEMP/jobs.tsv"
-          cat "$RUNNER_TEMP/jobs.tsv"
-          while IFS="$(printf '\t')" read -r id name; do
-            curl -fsSL --retry 5 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/jobs/$id/logs" -o "$RUNNER_TEMP/logs/$id.log"
-          done <"$RUNNER_TEMP/jobs.tsv"
-          test -s "$RUNNER_TEMP/jobs.tsv"
-          sh scripts/ci/log-warnings.sh scripts/ci/warnings-allowed.tsv "$RUNNER_TEMP"/logs/*.log
+            --jq '.jobs[]' >"$RUNNER_TEMP/jobs.json"
+          sh scripts/ci/job-logs.sh scripts/ci/warnings-allowed.tsv "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/logs"
