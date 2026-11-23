@@ -702,6 +702,16 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   原稿の誤りではなく Golem の誤りなので、原稿を直しても消えません。
   出たときは、原稿と設定を添えて作者に知らせてください。
   PDF は書きません。
+= [strong: G03272]、[strong: G03273]、[strong: G03274]、[strong: G03275]、[strong: G03276]、[strong: G03277] [code: EPUB の page-map を読み込めません: …]
+  [code: \[targets.epub\]] の [code: page-map] に書いた対応表を使えません（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。
+  EPUB を組むときにだけ出て、このエラーがあれば EPUB を書きません。
+  ファイルがないときは G03272、読み取りに失敗したときは G03273、JSON として読めないときは G03274 です。
+  [code: sources] や [code: pages] の項目がないか、型、表示ノンブル、物理ページの順が正しくないときは G03275 です。
+  物理ページは、正の整数を小さい順に並べてください。
+  [code: sources] の SHA-256 が今の原稿と合わないか、原稿にないファイルを含むときは G03276 です。
+  今の固定ページ版と原稿から、対応表を作り直してください。
+  本文の位置が原稿の範囲の外にあるか、原稿の順に並んでいないときは G03277 です。
+  [code: file]、[code: line]、[code: character] と原稿の順を確かめてください。
 
 @nonumber
 ## スタイルの設定（style.toml）
