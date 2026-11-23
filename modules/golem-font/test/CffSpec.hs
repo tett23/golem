@@ -279,7 +279,7 @@ seacTests (sans, sansGlyphs) (han, hanGlyphs) (noto, notoGlyphs) =
         cffSeac (checkCffReferences noto [0 .. notoGlyphs - 1]) @?= []
     ]
   where
-    verdict f = verdict' [29] f
+    verdict = verdict' [29]
     verdict' gids f = let r = checkCffReferences f gids in (cffCheck r, cffUnverifiable r, cffSeac r)
     clean = (CffInTable, [], [])
     out = (CffOutOfTable, [], [])
