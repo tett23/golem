@@ -51,7 +51,6 @@ import Golem.Project
 import Golem.Project.Feature (normalFeatures, parseFeature)
 import Golem.Project.Style
 import Golem.Syntax
-import Golem.Unicode.Grapheme (graphemeClusters)
 import Golem.Typeset.Box (BoxPaint (..), boxAreaAt, boxMarks)
 import Golem.Typeset.Flow
 import Golem.Typeset.Fonts
@@ -62,6 +61,7 @@ import Golem.Typeset.Structure (linksOfLeaves, structureTree)
 import Golem.Typeset.Tcy (TcyFit (..), squeezed, tcyFit)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Typeset.WrapMark (wrapMarkFills, wrapMarkPolygons, wrapMarkSwatch)
+import Golem.Unicode.Grapheme (graphemeClusters)
 import Text.Printf (printf)
 
 {- | The PDF and the notices of its layout (G07030), or the errors that

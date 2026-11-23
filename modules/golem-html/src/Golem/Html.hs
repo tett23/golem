@@ -1007,7 +1007,6 @@ inlineBody c = \case
       | maybe False hcsCode (Map.lookup name (cCharStyles c)) = c {cCfg = (cCfg c) {hcCharacterAdvance = Nothing}}
       | otherwise = c
 
--- | Insert page-break spans without changing the surrounding text or its styles.
 {- | The HTML of a run of text: with a character advance, each grapheme
 cluster that is not Western is wrapped so that it takes the advance (root ADR
 0380).
@@ -1017,6 +1016,7 @@ textHtml c t = case hcCharacterAdvance (cCfg c) of
   Just _ -> T.concat [if maybe False (\(ch, _) -> charClass ch /= Western && ch /= ' ' && ch /= '\n' && ch /= '\t') (T.uncons u) then "<span class=\"character-advance\">" <> escapeXml u <> "</span>" else escapeXml u | u <- graphemeClusters t]
   Nothing -> escapeXml t
 
+-- | Insert page-break spans without changing the surrounding text or its styles.
 pageText :: [(Int, Text, Text)] -> Text -> Text
 pageText = pageTextWith escapeXml
 
