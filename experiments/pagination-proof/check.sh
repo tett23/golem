@@ -67,4 +67,14 @@ fi
 
 lean=${LEAN:-lean}
 "$lean" "$proof"
+
+# The whole pagination of the grid mode: every definition must be total
+# and every theorem proved.
+whole=$root/experiments/pagination-proof/Whole.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$whole"; then
+  echo "unproved or unchecked Lean declaration in $whole" >&2
+  exit 1
+fi
+"$lean" "$whole"
+echo "the whole pagination model is total and its theorems are proved"
 echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"

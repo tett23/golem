@@ -390,9 +390,88 @@ Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap
 `needMoreNone` では、同じブロックに先行し、行数が同じか大きい `need-lines` に余地があれば、後の `need-lines` にも余地がある。
 `EnumerateSmall.lean` は、項目 4 個以下、容量 3〜4 行の入力 66,744 個で、2 コマンドに解がないことを書き写した述語の上でも照合する。
 
+## 格子モードの改ページ全体のモデル
+
+`Whole.lean` は、格子モードの `placeAll` と `step` を、Haskell の関数ごとに一つの Lean の定義へ写した状態遷移のモデルである。
+`Pagination.lean` の部分ごとのモデルとは独立し、一つの状態 `St` の上で原稿の全体を処理する。
+Haskell の `placeAll` は原稿の列についての構造的な再帰なので、全体の終了は、`step` の中で次の段へ進むループの終了に帰着する。
+このモデルでは、そのループをすべて整礎な再帰で定義した。
+Lean はループごとに減少する尺度の証明を求めるので、定義が受理されれば、どの入力でも各ループは有限回で止まる。
+`check.sh` は `Whole.lean` に `partial`、`sorry`、`axiom` などがないことを確かめ、ファイルを検査する。
+
+尺度は、待つ内容、段の行数の縮み、段の使用、ページの残りの段数の 4 つ組の辞書式順序である。
+待つ内容は、待機中の図版の枚数と、繰り越す脚注ごとの行数に 1 を足した値の和である。
+`I4_nextColumn_rank` は、何かを置いた段か `FAdjustLines` で縮んだ段から次の段へ進むと、この 4 つ組が減ることを証明する。
+次のページへ進むときは、待つ内容があれば必ず減る。
+先頭の転置図版にページを与えるか、最初の繰り越し脚注を 1 行以上置くか、その脚注を置けないと診断して除くか、待機中の最初の図版を空の段に置くからである。
+待つ内容がなければ、新しいページの段は空になり、行数の縮みも 0 に戻る。
+同じページの次の段へ進むときは、待つ内容が増えず、行数の縮みが 0 に戻り、残りの段数が一つ減る。
+`I4_nextColumn_flush_rank` は、待つ内容がある間は、待つ内容とページの残りの段数の組が減ることを証明する。
+`flushDeferred` と `flushFigures` は、この組で止まる。
+`keep` は空でない段からだけ次の段へ進むので、4 つ組で止まる。
+`placeLines` の段のループは、残りの行数、`keep-all-lines` の有無、4 つ組の辞書式順序で止まる。
+行を一つも置かずに次の段へ進むのは、行数が縮んだ空の段か、何かを置いた段からだけである。
+`I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
+
+モデルは次の点で Haskell の実装を抽象化する。
+`nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
+フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines` を扱う。
+本の部、箱、罫線つきのブロック、表、コード、詩、定義の項、回り込み図版、節の開始、段組みの切り替え、`no-break`、`keep-with-next`、`FAdjustLines` は、まだ扱わない。
+これらがないので、`checkNoBreak` は何もせず、`placeFlow` は `place` と同じになる。
+`FAdjustLines` を扱わないが、状態の行数の縮みは残し、`placeLines` の分岐と尺度は任意の値で扱う。
+箱がないので、`cap` は箱の後の行数を引かず、`isEmpty` は箱の先頭を見ない。
+出力の `PageOut` には、ページ番号、段番号、空白ページか、スロット、脚注、満たせなかった制御だけを持つ。
+脚注と図版の行数は自然数とし、負の行数は扱わない。
+
+次の表は、Haskell の関数と Lean の定義の対応である。
+Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パスと行番号で示す。
+
+| Haskell | Lean |
+| --- | --- |
+| `Paginate.hs:175` `placeAll` | `placeAll` |
+| `Paginate.hs:191` `step` | `step` |
+| `Paginate.hs:249` `needMore` | `needMore` |
+| `Paginate.hs:261` `needAfterSpaces` | `needAfterSpaces` |
+| `Paginate.hs:273` `needBeforeSpaces` | `needBeforeSpaces` |
+| `Paginate.hs:282` `placeSpace` | `placeSpace` |
+| `Paginate.hs:292` `needBeforeSpace` | `needBeforeSpace` |
+| `Paginate.hs:309` `needBefore` | `needBefore` |
+| `Paginate.hs:320` `waitsBehind` | `waitsBehind` |
+| `Paginate.hs:327` `waitsFor` | `waitsFor` |
+| `Paginate.hs:351` `placeBlank` | `placeBlank` |
+| `Paginate.hs:369` `applyNeed` | `applyNeed` |
+| `Paginate.hs:466` `applyBreaks` | `applyBreaks` |
+| `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
+| `Paginate.hs:504` `breakPage` | `breakPage` |
+| `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
+| `Paginate.hs:624` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
+| `Paginate/State.hs:131` `initialState` | `initialState` |
+| `Paginate/State.hs:141` `cap`、`:149` `free`、`:156` `isEmpty` | `cap`、`free`、`isEmpty` |
+| `Paginate/State.hs:191` `keep` | `keep` |
+| `Paginate/State.hs:199` `parityStart` | `parityStart` |
+| `Paginate/State.hs:205` `blankPage` | `blankPage` |
+| `Paginate/State.hs:208` `putSlot` | `putSlot` |
+| `Paginate/State.hs:215` `putLineKeeping` | `putLineKeeping`、`putLine` |
+| `Paginate/State.hs:233` `putBlock` | `putBlock` |
+| `Paginate/State.hs:255` `splitNotes` | `splitNotes` |
+| `Paginate/State.hs:265` `closePage` | `closePage` |
+| `Paginate/State.hs:272` `nextColumn`、`:275` `nextPage` | `nextColumn`、`nextPage` |
+| `Paginate/State.hs:278` `advance` | `advance`、`advanceFresh`、`advanceTurned`、`openColumn` |
+| `Paginate/State.hs:338` `pageFigure` | `pageFigure` |
+| `Paginate/State.hs:345` `carryNote` | `carryNote`、`carryRoom`、`carryShown` |
+| `Paginate/State.hs:360` `placeDeferred` | `placeDeferred` |
+| `Paginate/State.hs:369` `flushDeferred` | `flushDeferred` |
+| `Paginate/State.hs:375` `flushFigures` | `flushFigures` |
+| `Paginate/Decide.hs:215` `splitAtBreak` | `splitAtBreak` |
+| `Paginate/Decide.hs:256` `needIn` | `needIn` |
+| `Paginate/Decide.hs:263` `headingNeed` | `headingNeed` |
+| `Paginate/Decide.hs:294` `afterPageFigure` | `afterPageFigure` |
+| `Paginate/Decide.hs:300` `startsRecto` | `startsRecto` |
+
 ## 未完の項目
 
-キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
+キャプションの評価値と幅の計算の対応、`Whole.lean` が扱わないフローの状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
+`Whole.lean` が扱うフローについては、改ページ全体の終了を証明した。
 境界入力の表のうち改ページだけで決まる行は、`modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` で Haskell の実装を検査する。
 空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
 キャプションの行は、キャプションを改行し図版を縮小する golem-driver の `FigureSpec.hs` で検査する。
@@ -409,6 +488,7 @@ Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap
 
 ```sh
 lean experiments/pagination-proof/Pagination.lean
+lean experiments/pagination-proof/Whole.lean
 sh experiments/pagination-proof/check.sh
 ```
 
