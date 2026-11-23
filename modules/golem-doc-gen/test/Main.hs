@@ -46,11 +46,14 @@ data InlineKind
   | KColor
   | KCharStyle
   | KTcy
+  | KWarichu
+  | KUpright
   | KNumber
   | KRef
   | KDeferred
   | KNote
   | KSidenote
+  | KEndnote
   | KIndexMark
   | KCite
   | KProofComment
@@ -86,11 +89,14 @@ inlineKind = \case
   Color {} -> KColor
   CharStyle {} -> KCharStyle
   Tcy {} -> KTcy
+  Warichu {} -> KWarichu
+  Upright {} -> KUpright
   Number {} -> KNumber
   Ref {} -> KRef
   Deferred {} -> KDeferred
   Note {} -> KNote
   Sidenote {} -> KSidenote
+  Endnote {} -> KEndnote
   IndexMark {} -> KIndexMark
   Cite {} -> KCite
   ProofComment {} -> KProofComment
@@ -131,14 +137,17 @@ kinds = foldMap block . docBlocks
       Kenten _ _ is -> inlines is
       Color _ _ is -> inlines is
       CharStyle _ _ is -> inlines is
-      Note _ _ bs -> foldMap inlines (noteParagraphs bs)
-      Sidenote _ _ bs -> foldMap inlines (noteParagraphs bs)
+      Note _ _ _ bs -> foldMap inlines (noteParagraphs bs)
+      Sidenote _ _ _ bs -> foldMap inlines (noteParagraphs bs)
+      Endnote _ _ _ bs -> foldMap inlines (noteParagraphs bs)
       ChannelItem _ c -> inlines (ciBody c)
       Link _ _ is -> inlines is
       Lang _ _ is -> inlines is
       Resolved _ _ _ is -> inlines is
       Text {} -> mempty
       Tcy {} -> mempty
+      Warichu {} -> mempty
+      Upright {} -> mempty
       Number {} -> mempty
       Ref {} -> mempty
       Deferred {} -> mempty

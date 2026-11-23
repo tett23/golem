@@ -48,7 +48,9 @@ test-suite golem-project-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ColophonSpec
+                    KeepPartsSpec
                     FeaturesSpec
+                    GenericFontsSpec
                     PositionSpec
                     UnderlineSpec
                     FilesSpec
@@ -58,6 +60,7 @@ test-suite golem-project-test
                     ParagraphPitchSpec
                     NaturalKeySpec
                     SinglePageSpec
+                    StyleCauseCodesSpec
                     StylePositionSpec
                     StyleSchemaSpec
                     SharedValuesSpec

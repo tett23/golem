@@ -141,8 +141,8 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
 = [strong: G02039 [code: 未知の圏点の形です: …]]
   [code: \[kenten ...\]] の [code: shape] の値が違います。
   付録A の形の名前から選んでください。
-= [strong: G02040 [code: 縦中横の中身は地の文に限ります]]
-  [code: \[tcy: ...\]] の中に、コマンドが入っています。
+= [strong: G02040 [code: 縦中横の中身は地の文に限ります]]、[strong: [code: warichu の中身は地の文に限ります]]、[strong: [code: upright の中身は地の文に限ります]]
+  [code: \[tcy: ...\]]、[code: \[warichu: ...\]]、[code: \[upright: ...\]] の中に、コマンドが入っています。
   文字だけを書いてください。
 = [strong: G02017 [code: style.toml にないスウォッチです: …]]、[strong: [code: color にはスウォッチの名前を一つ書きます]]
   [code: \[color ...\]] の色の名前が、[code: style.toml] の [code: \[color.swatches\]] にありません。
@@ -214,6 +214,7 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   引数が 0 以上になるように式を直してください。
 = [strong: G02103 [code: … には 0 以上の整数を書きます（書かれた値は …）]]
   [code: @blank-line -1] や [code: \[= round(x, n - 3)\]] のように、行数や桁数のような負にならない量に、負の数を書いています。
+  [code: lines] と [code: highlight] に [code: 3...-1] のように負の端を書いたときも、このエラーになります。
   [code: style.toml] の [code: lines] や [code: manifest.toml] の刷の [code: edition] のような設定のキーに負の数を書いたときも、このエラーになります。メッセージは [code: page.grid.lines には 0 以上の整数を書きます] のようにキーを示します。
   0 以上の整数を書いてください。
 = [strong: G02104 [code: … には 0 以上の整数を書きます（書かれた値 … は整数ではありません）]]、[strong: [code: 範囲の端には整数を書きます（書かれた値 … は整数ではありません）]]
@@ -279,8 +280,8 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   図版のキャプションの見た目は、[code: style.toml] の [code: \[paragraph-styles.caption\]] で決めます。
 = [strong: G02025 [code: @toc の depth は 1 から 3 の整数です]]
   [code: depth] を 1 から 3 の整数にしてください。
-= [strong: G02026 [code: @label にはラベルの名前を一つ書きます。…]]、[strong: [code: 参照にはラベルの名前を一つ書きます。…]]
-  [code: @label] か相互参照のコマンドに、ラベルの名前がないか、二つ以上あるか、使えない文字があります。
+= [strong: G02026 [code: @label にはラベルの名前を一つ書きます。…]]、[strong: [code: 参照にはラベルの名前を一つ書きます。…]]、[strong: [code: 注の label にはラベルの名前を一つ書きます。…]]
+  [code: @label]、相互参照のコマンド、注の [code: label] に、ラベルの名前がないか、二つ以上あるか、使えない文字があります。
   ラベルの名前は、英小文字、数字、[code: -]、[code: _] で一つだけ書きます。
 = [strong: G02027 [code: @number には整数を一つ書きます]]
   [code: @number 5] のように、整数を一つ書いてください。
@@ -394,7 +395,6 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   [code: 3...7] のように、小さいほうを先に書いてください。
 = [strong: G02110 [code: 範囲の端には数を書きます: …]]
   [code: 1...] や [code: ...3] のように範囲の端がないか、[code: a...3] や [code: 1...2...3] のように端が数として読めません。
-  [code: lines] と [code: highlight] に [code: 3...-1] のように負の端を書いたときも、このエラーになります。
   [code: 1...3] のように、両端に数を書いてください。
   [code: lines] と [code: highlight] では 1 以上の数を書きます。
 = [strong: G02251 [code: - で区切った範囲は使えません。…...… のように両端を残して ... で区切ります]]
@@ -537,15 +537,18 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
 
 = [strong: G04001 [code: ラベルが重複しています: …]]
   同じラベルを二か所に付けています。
+  注の [code: label] のラベルも、[code: @label] のラベルと同じ名前の集まりに入ります。
   どちらかの名前を変えてください。
 = [strong: G04003 [code: 存在しないラベルへの参照です: …]]
-  参照の名前と、[code: @label] の名前を見比べてください。
+  参照の名前と、[code: @label] か注の [code: label] の名前を見比べてください。
+  [code: @note] の名前はラベルではないので、参照では引けません。
 = [strong: G04005 [code: 番号を持たない要素への参照です: …]]
   [code: @nonumber] の見出し、段落、キャプションのないコードブロックのような、番号のない箇所を [code: \[ref-number ...\]] で指しています。
   題を出すなら [code: \[ref-title ...\]] を使ってください。
 = [strong: G04006 [code: 題を持たない要素への参照です: …]]
   段落や表のような、題のない箇所を [code: \[ref-title ...\]] で指しています。
   題があるのは、見出し、図版、キャプションを付けたコードブロックだけです。
+  注も題を持たないので、注の番号は [code: \[ref-number ...\]] で参照してください。
   ページを出すなら [code: \[ref-page ...\]] を使ってください。
 = [strong: G04002 [code: @toc は文書に一つだけ置けます]]
   [code: @toc] を一つにしてください。
@@ -633,7 +636,8 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   その文字列から、その文字を消してください。
   そのファイルの文献を引く [code: \[cite ...\]] には、G02021 も出ます。
 = [strong: G03027 [code: 章末の注の番号が章の中で重なります（…）。\[notes\] の numbering を "chapter" にしてください]]
-  一つの章を複数のファイルに分け、[code: \[notes\]] の [code: numbering] を [code: "file"] にしたため、章の終わりの注の一覧に同じ番号が二度現れます。
+  一つの章を複数のファイルに分け、[code: \[notes\]] か [code: \[endnotes\]] の [code: numbering] を [code: "file"] にしたため、章の終わりの注の一覧に同じ番号が二度現れます。
+  [code: \[endnotes\]] のときは、メッセージが [code: \[endnotes\] の numbering を "chapter" にしてください] になります。
   これは警告で、出力は止まりません。
   [code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
 = [strong: G03259 [code: \[notes\] の numbering = "page" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります]]
@@ -641,6 +645,11 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   これらの出力にはページがないので、本の全体の通し番号で注を組みます。
   これは警告で、出力は止まりません。
   どの出力でも同じ番号にしたいときは、[code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
+= [strong: G03278 [code: 章末の注にはページごとの番号を使えません。\[endnotes\] の numbering には "chapter"、"file"、"book" のどれかを書きます]]
+  [code: \[endnotes\]] の [code: numbering] に [code: "page"] を書いています。
+  章の終わりの注は一覧にまとめるので、ページごとの番号を振れません。
+  これはエラーで、ビルドは止まります。
+  [code: numbering] を [code: "chapter"]、[code: "file"]、[code: "book"] のどれかにしてください。
 = [strong: G03004 [code: 大文字と小文字だけが異なるパスです: …]]
   大文字と小文字だけが違う二つのパスを使っています。
   コンピューターによって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。
@@ -696,6 +705,19 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   原稿の誤りではなく Golem の誤りなので、原稿を直しても消えません。
   出たときは、原稿と設定を添えて作者に知らせてください。
   PDF は書きません。
+= [strong: G03272]、[strong: G03273]、[strong: G03274]、[strong: G03275]、[strong: G03276]、[strong: G03277] [code: EPUB の page-map を読み込めません: …]
+  [code: \[targets.epub\]] の [code: page-map] に書いた対応表を使えません（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。
+  EPUB を組むときにだけ出て、このエラーがあれば EPUB を書きません。
+  前のビルドの EPUB が古いまま残らないように、[code: build/epub] のフォルダごと消します。
+  ファイルがないときは G03272 です。
+  パスが絶対パスか URL かプロジェクトの外を指すとき、またはファイルを読み取れないときは G03273 です。
+  JSON として読めないときは G03274 です。
+  [code: sources] や [code: pages] の項目がないか、型、表示ノンブル、物理ページの順が正しくないときは G03275 です。
+  物理ページは、正の整数を小さい順に並べてください。
+  [code: sources] の SHA-256 が今の原稿と合わないか、原稿にないファイルを含むときは G03276 です。
+  今の固定ページ版と原稿から、対応表を作り直してください。
+  本文の位置が原稿の範囲の外にあるか、原稿の順に並んでいないときは G03277 です。
+  [code: file]、[code: line]、[code: character] と原稿の順を確かめてください。
 
 @nonumber
 ## スタイルの設定（style.toml）
@@ -759,6 +781,24 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   フォントの役割、文字スタイル、段落スタイルの [code: features] に、読めない機能の文字列があります。
   [code: smcp]、[code: -liga]、[code: salt=2] のように、英字と数字の 4 字のタグで書いてください。
   [code: kern\[3:5\]] のような範囲の指定と、[code: aalt=on] のような語の値は書けません。
+= [strong: G03260]、[strong: G03261]、[strong: G03262]、[strong: G03263] フォントの役割の [code: instance] と [code: axes] の誤り
+  [code: \[fonts.役割\]] の [code: instance] か [code: axes] の書き方が違います。
+  G03260 は [code: instance] が文字列でないときに出ます。
+  [code: instance = "Bold"] のように名前を引用符で囲んでください。
+  G03261 は [code: axes] が表でないときに出ます。
+  [code: axes = { wght = 650 }] のように、軸のタグと数の表で書いてください。
+  G03262 は軸の値が数でないとき、G03263 は軸の値が [code: inf] や [code: nan] のときに出ます。
+  軸の値は有限の数で書いてください。
+= [strong: G03264]、[strong: G03265]、[strong: G03266]、[strong: G03267]、[strong: G03268]、[strong: G03269]、[strong: G03270]、[strong: G03271] [code: \[printings\]] の [code: format] の誤り
+  メッセージは [code: \[printings\] の format が正しくありません（…）] で始まり、括弧の中に理由が出ます。
+  理由ごとにコードが分かれます。
+  改行は G03264、表にない欄（[code: {volume}] や名前のない [code: {:kanji}]）は G03265、欄に付けた表記（[code: {edition:kanji}]）は G03266 です。
+  閉じていない [code: {] は G03267、対応する [code: {] のない [code: }] は G03268、空の [code: {}] は G03269 です。
+  [code: \\] の後に [code: {]、[code: }]、[code: \\] のほかの字を書くと G03270、書式の最後に [code: \\] を書くと G03271 です。
+  G03267 と G03268 の理由は、文字の波括弧を [code: {{] と [code: }}] と書くよう勧めます。
+  [code: \\{] と [code: \\}] とも書けます。
+  誤りが二つ以上あるときは、改行を先に、残りは書式の前から読んで最初の誤りのコードだけが出ます。
+  書ける欄と波括弧の書き方は、「[ref-title app-style]」にあります。
 = [strong: G03125 [code: 注の印の文字スタイル … の position は "normal" だけを書けます（印の位置は \[notes\] で決まります）]]
   [code: \[notes\]] の [code: mark-style] の文字スタイルが、上付きか下付きになっています。
   印の文字スタイルから [code: position] を消すか、[code: superscript] を引き継がないスタイルにしてください。
@@ -930,13 +970,24 @@ PDF を組むときに出るエラーです。
 = [strong: G08007 [code: style.toml に本文のフォントがありません。\[fonts.body\] を書いてください]] など
   PDF を作るのに、本文のフォントが設定されていません。
   [code: style.toml] に [code: \[fonts.body\]] を書き、[code: ja] か [code: latin] にフォントのファイルを書いてください。
-= [strong: G08002 [code: フォントのファイルがありません: …]] など
+= [strong: G08002 [code: フォントのファイルがありません: …]]
   PDF を組むのに要るフォントのファイルがありません。
   [code: style.toml] の [code: \[fonts\]] のパスにファイルを置いてください。
   [code: golem new --no-fonts] で作ったプロジェクトは、フォントを置くまでこのエラーが出ます。
 = [strong: G03010 [code: フォントのファイルがないので、HTML と EPUB に同梱しません: …]]
+  [code: fonts = "embed"] を書いた HTML と EPUB でだけ出ます。
   [code: --profile dev] では警告で、フォントを同梱せずに HTML と EPUB を書きます。
   [code: --profile prod] ではエラーです。
+= [strong: G03279 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
+  [code: style.toml] のフォントか [code: intent] の ICC プロファイルのパスが、プロジェクトの外を指しています。
+  どの出力でもエラーで、何も書きません。
+  ファイルをプロジェクトのフォルダの中に写し、そこからの相対パスで書いてください。
+= [strong: G03280 [code: fonts に書けるのは "generic" か "embed" です: …]]
+  [code: manifest.toml] の [code: \[targets.html\]] か [code: \[targets.epub\]] の [code: fonts] の値が誤っています。
+  [code: "generic"] か [code: "embed"] にしてください。
+= [strong: G03281 [code: generic-family に使えない値です: …]]
+  [code: style.toml] のフォントの役割の [code: generic-family] の値が誤っています。
+  [code: "serif"]、[code: "sans-serif"]、[code: "monospace"] のどれかにしてください。
 = [strong: G08003 [code: フォントを読み込めません: …]]
   フォントのファイルが壊れているか、OpenType のフォントではありません。
 = [strong: G08004 [code: ライセンスが埋め込みを禁じているフォントです（…）: …]]
@@ -964,6 +1015,12 @@ PDF を組むときに出るエラーです。
 = [strong: G08109 [code: フォントのグリフの寸法を読めません: …]]
   使う字の輪郭を、フォントのファイルから読めません。
   メッセージの番号は、フォントの中のグリフの番号です。
+  その字を使わないように文字を替えるか、別のフォントに替えて、PDF を組み直してください。
+  PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G08114 [code: CFF の seac の引数が誤っています: …]] など
+  CFF の輪郭のフォントで、ほかの二つの字（基底の字とアクセント）を組み合わせて作る字（seac）の指定が誤っています。
+  G08114 は組み合わせる字の指定の形が誤っている、G08115 は組み合わせる字がフォントにない、G08116 は組み合わせる字がまた組み合わせで作られている、G08117 は字の名前ではなく番号（CID）で字を引くフォント（CID-keyed）で組み合わせを使っている、という場合に出ます。
+  メッセージの番号は、フォントの中の使う字のグリフの番号です。
   その字を使わないように文字を替えるか、別のフォントに替えて、PDF を組み直してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
 = [strong: G08110 [code: 可変フォントに名前付きインスタンスがありません: …]]
@@ -1029,8 +1086,8 @@ PDF を組むときに出るエラーです。
   マーカーを置く回数か、マーカーの中身の線を減らしてください。
   図の作成ツールでマーカーを図形に展開して書き出すか、PDF で書き出して PDF の画像として置くこともできます。
 = [strong: G08013 [code: 出力先がシンボリックリンクです: …]]
-  [code: build] か、その下の [code: html] などのディレクトリが、シンボリックリンクになっています。
-  Golem は出力の前にこれらのディレクトリを消すので、リンクの先のファイルを消さないように止めます。
+  [code: build] か、その下の [code: html] などのフォルダが、シンボリックリンクになっています。
+  Golem は出力の前にこれらのフォルダを消すので、リンクの先のファイルを消さないように止めます。
   他人から受け取った原稿のリポジトリでこのエラーが出たら、リンクの先を確かめてから、リンクを消してください。
 = [strong: G08104 [code: 出力先に通常のファイルがあります: …]]
   [code: build] か、今回選んだ形式の出力フォルダと同じ場所に通常のファイルがあります。
@@ -1044,9 +1101,9 @@ PDF を組むときに出るエラーです。
   行と桁の代わりに括弧の中に理由が出たら、SVG を XML として読めていません。
   G08010 と同じく、書き出し直してください。
   HTML と EPUB を組むときにだけ出て、このエラーがあれば HTML と EPUB を書きません。
-= [strong: G08102 [code: 図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: …]]
+= [strong: G08102 [code: 図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: …]]
   HTML と EPUB は、プラグインが作った画像を [code: images/golem-plugin/] に置きます。
-  原稿の画像をこのフォルダーに置くと取り違えるので、別のフォルダーに移して [code: @figure] のパスを直してください。
+  原稿の画像をこのフォルダに置くと取り違えるので、別のフォルダに移して [code: @figure] のパスを直してください。
   HTML と EPUB を組むときにだけ出て、このエラーがあれば HTML と EPUB を書きません。
 = [strong: G08015 [code: 図版の PDF のページの内容をつなぐと 256 MiB を超えます: …]]
   PDF の図版のページの描く命令のかたまりを、あいだの改行を入れてつなぐと 256 MiB を超えます。

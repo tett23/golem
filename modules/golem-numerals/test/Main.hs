@@ -92,11 +92,22 @@ tests =
             let table = \case
                   "n" -> Right (NumberSlot ())
                   "一" -> Right (SampleSlot () kanjiNotation)
-                  name -> Left name
+                  name -> Left (unknownSlot name)
             parseFormat DoubledToo table "{{{n}}}" @?= Right ([PLit "{", PNumber () Nothing, PLit "}"], [LegacyBraces, LegacyBraces])
             parseFormat DoubledToo table "\\{{n}\\}" @?= Right ([PLit "{", PNumber () Nothing, PLit "}"], [])
             parseFormat DoubledToo table "{一}" @?= Right ([PNumber () (Just kanjiNotation)], [LegacySample "一" kanjiNotation])
             assertBool "{{ without doubled braces" (isLeft (parseFormat EscapesOnly table "{{n}}")),
+          testCase "root ADR 0424 I1: parseFormat keeps recommending \\{ and \\} in both readings" $ do
+            let table = \case
+                  "n" -> Right (NumberSlot ())
+                  name -> Left (unknownSlot name)
+                reason braces t = either (\e -> Just (formatCause e, formatReason e)) (const Nothing) (parseFormat braces table t)
+                unclosed = Just (UnclosedBrace, "閉じていない { があります。文字の { は \\{ と書きます")
+                unopened = Just (UnopenedBrace, "対応する { のない } があります。文字の } は \\} と書きます")
+            reason DoubledToo "{n" @?= unclosed
+            reason EscapesOnly "{n" @?= unclosed
+            reason DoubledToo "n}" @?= unopened
+            reason EscapesOnly "n}" @?= unopened,
           testCase "number formats" $ do
             formatNumber "第{n:kanji}章" [3] Nothing @?= Right "第三章"
             formatNumber "{1}.{2}" [3, 4] Nothing @?= Right "3.4"

@@ -28,10 +28,10 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  exposed-modules:  Golem.Layout.KnuthPlass
+  exposed-modules:  Golem.Layout.Warichu
+                    Golem.Layout.KnuthPlass
                     Golem.Layout.Align
                     Golem.Layout.Aki
-                    Golem.Layout.CharClass
                     Golem.Layout.Code
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.De1996
@@ -58,6 +58,7 @@ library
                     Golem.Layout.Wrap
   other-modules:    Golem.Layout.Hyphenation.Embed
                     Golem.Layout.Orientation.Table
+                    Golem.Layout.Paginate.BookParts
                     Golem.Layout.Paginate.Decide
                     Golem.Layout.Paginate.Types
   build-depends:
@@ -68,6 +69,7 @@ library
     , golem-numerals
     , golem-project
     , golem-syntax
+    , golem-unicode
     , template-haskell
     , text               >=2.0  && <2.2
   default-language: GHC2021
@@ -84,7 +86,10 @@ test-suite golem-layout-test
   -- -N needs it (docs/adr/0293)
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N -qg -A64m"
-  other-modules:    AkiTableSpec
+  other-modules:    BookPartsEnum
+                    BookPartsSpec
+                    ExtendedJapaneseSpec
+                    AkiTableSpec
                     AlignSpec
                     CharClassSpec
                     CiteBreakEnum
@@ -148,6 +153,7 @@ test-suite golem-layout-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4

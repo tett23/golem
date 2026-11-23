@@ -259,7 +259,7 @@ Golem の概念に InDesign の対応物があるときは、初出でその名�
 | アキ量のセット | 文字組みアキ量設定 |
 | `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` | カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト |
 | マスターページ（`[masters]`） | 親ページ（InDesign 2022 より前はマスターページ） |
-| プロジェクトの `fonts/` | Document Fonts フォルダー |
+| プロジェクトの `fonts/` | Document Fonts フォルダ |
 | スウォッチ（`[color.swatches]`） | スウォッチ |
 | `golem build` | 書き出し |
 | `golem check` | 原稿と設定の検査（プリフライトの検査は含まない） |

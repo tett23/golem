@@ -17,7 +17,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig Map.empty "図{n}" Map.empty NumberPerFile [] "リスト{n}" "表{n}" Map.empty 16
+cfg = AssembleConfig Map.empty "図{n}" Map.empty NumberPerFile [] "リスト{n}" "表{n}" Map.empty 16 NumberPerChapter
 
 sp :: Int -> SrcSpan
 sp s = mkSpan (FileId 1) s (s + 1)

@@ -43,6 +43,7 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 - [code: characters]：一行の字数です。
 - [code: lines]：一ページの行数です。
 - [code: line-pitch]：版面の行送り（ある行から次の行までの距離）です。
+- [code: character-advance]：字形の大きさを保ったまま、和文の文字枠の送りを正の寸法で指定します。省くと、文字の大きさと同じ送りです。
 - [code: alignment]：省略時は [code: "grid"] で、本文を行の格子に載せます。[code: "free"] にすると、段落ごとに行送りと段落間の寸法を変えられます。
 - [code: position]：版面の位置です。[code: top] は天（ページの上端）から、[code: gutter] は見開きモードでノド（綴じる側の端）からの距離です。左右固定モードでは、[code: left] で仕上がりの左端から版面の左端まで、または [code: right] で右端から版面の右端までの距離を指定します。
 - [code: columns]：段数です。省略すると 1 段になります。
@@ -132,16 +133,18 @@ HTML と EPUB のレイアウトは変えません。
 ### フォントをプロジェクトの中に置く理由
 
 フォントのファイルは、プロジェクトのフォルダの中に置き、[code: style.toml] にはプロジェクトのフォルダからのパスを書きます。
-InDesign の Document Fonts フォルダー[index reading=どきゅめんとふぉんつふぉるだー: Document Fonts フォルダー]と同じ考え方です。
+InDesign の Document Fonts フォルダ[index reading=どきゅめんとふぉんつふぉるだ: Document Fonts フォルダ]と同じ考え方です。
 違いは、Golem がコンピューターにインストールされているフォントを一切探さないことです。
-InDesign は、Document Fonts フォルダーにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にないフォントはエラー（G08002）になります。
+InDesign は、Document Fonts フォルダにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にフォントのファイルがなければ、PDF ではエラー（G08002）になります。
+プロジェクトの外のフォントを指すパスは、どの出力でもエラー（G03279）になります。
 
 こうしているのは、コンピューターごとに入っているフォントとそのバージョンが違うと、同じ原稿から同じ紙面が得られなくなるからです。
 同じ名前のフォントでも、バージョンが違えば字形や字幅や詰めの情報が変わることがあります。
 フォントをプロジェクトに置けば、誰がどのコンピューターで組んでも、同じフォントのファイルで組まれます（「[ref-title same-output]」、[ref-page same-output] ページ）。
 
 その代わり、プロジェクトを人に渡すと、フォントのファイルも一緒に渡すことになります。
-HTML と EPUB にもフォントのファイルを同梱するので、それらを公開すればフォントを配ることになります。
+HTML と EPUB は、既定ではフォントのファイルを同梱しません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。
+[code: fonts = "embed"] で同梱した HTML と EPUB を公開すると、フォントも配ることになります。
 フォントのライセンスが、この使い方を許しているかを確かめてください。
 このマニュアルで使っているフォントは、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
 
@@ -166,7 +169,7 @@ Golem はこの欄を仕様のとおりに読み、次のどれかに当たる�
 PDF の埋め込みフォントの形式は CFF2 の輪郭を受けないので、Golem は CFF2 の輪郭のフォントを PDF に埋め込めません。
 PDF が使う役割にこのフォントを書くと、エラー（G08019）になり、PDF を書きません。
 [code: golem check] と [code: golem preflight] も、このエラーを出します。
-HTML と EPUB は、フォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
+HTML と EPUB は、フォントを同梱するときもファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
 
 G08019 が出たら、同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）を使ってください。
 たとえば Source Serif 4 なら、[code: SourceSerif4Variable-Roman.otf] の代わりに、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] を使います。
@@ -778,8 +781,10 @@ offset = "0.05zw"
 線は行送りを変えず、行の改め方にも影響しません。
 
 縦組みの下線は、文字の右に引く傍線[index reading=ぼうせん: 傍線]になります。
-ルビや圏点がある範囲では、傍線をルビと圏点の外に引きます。
-左の傍線は、まだ引けません。
+ルビや圏点がある範囲では、右の傍線をルビと圏点の外に引きます。
+[code: underline = { side = "left" }] と書けば、左に引けます。
+左の傍線は、ルビと圏点で動かしません。
+[code: side = "right"] が既定で、横組みの下線には側の指定を使いません。
 
 PDF では、下線を文字の前に、打ち消し線を文字の後に描くので、下線は文字を隠さず、打ち消し線は文字に隠れません。
 HTML と EPUB では、CSS の [code: text-decoration] で表します。
@@ -1086,6 +1091,7 @@ leader = "dots"
 - [code: \[notes\]] の [code: heading-style]：章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。省くと、2 の階層の見出しの書体と大きさで組みます。行取りは 2 の階層の見出しのままです。段落スタイルの大きさは本文の文字の大きさを超えられないので、見出しを大きくしたいときは [code: \[headings.2\]] の [code: size] を変えます。
 - [code: \[notes.footnote\]] の [code: body-style]：脚注本文だけに当てる段落スタイルです。共通の [code: \[notes\]] より優先します。
 - [code: \[notes.chapter-end\]] の [code: body-style] と [code: heading-style]：章末注の本文と一覧見出しだけに当てる段落スタイルです。省いた値には共通の [code: \[notes\]] の指定を使います。
+- [code: \[endnotes\]]：[code: \[endnote\]] で書いた注の番号と印の設定です。[code: numbering]、[code: mark-format]、[code: mark-style]、[code: body-mark-style]、[code: mark-shape]、[code: body-style]、[code: heading-style] を、[code: \[notes\]] と同じ意味で書けます。書かないキーは [code: \[notes\]] の値を引き継がず、[code: numbering] は [code: "chapter"]、[code: mark-format] は [code: "{n}"]、[code: mark-style] は [code: "note-mark"]、ほかはなしです。[code: numbering] に [code: "page"] を書くとエラー（G03278）になります。一覧の見出しは日本語の本では「後注」、ほかの言語の本では「Endnotes」で、変えられません。
 - [code: \[notes\]] の [code: mark-size]：以前の書き方で、エラー（G03253）になります。[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書き換えてください。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注の領域を設けます。見開きモードでは既定で小口側、左右固定モードでは明記した [code: side] の側の余白を使います。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。

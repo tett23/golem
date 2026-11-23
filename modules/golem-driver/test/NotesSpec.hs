@@ -91,7 +91,7 @@ notesTests =
       dc <- drawn c
       da @?= db
       da @?= dc,
-    testCase "tagged PDF: a Note holds the Lbl of its mark and a P for each paragraph" $ do
+    testCase "tagged PDF: a Note holds the lbl Lbl of its mark and a P for each paragraph" $ do
       t <- withSystemTempDirectory "golem-structure" $ \tmp -> do
         writeProject tmp miniManifest horizontalStyle three []
         r <- pdfStructure (defaultOptions tmp) {optFonts = fakeProvider}

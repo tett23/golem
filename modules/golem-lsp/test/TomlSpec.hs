@@ -78,6 +78,10 @@ tomlTests =
       testGroup
         "style.toml"
         [ including "style.toml" "[▮" ["page", "fonts", "character-styles", "paragraph-styles", "color"] ["emphasis", "verse"],
+          -- the table of the endnotes, its keys those of [notes] without placement and the tables of placement (root ADR 0412)
+          including "style.toml" "[▮" ["notes", "endnotes"] [],
+          exactlyNamed "root ADR 0412: complete the keys of [endnotes]" "style.toml" "[endnotes]\n▮" ["numbering", "mark-format", "mark-style", "body-mark-style", "body-style", "heading-style", "mark-shape"],
+          exactlyNamed "root ADR 0412 I5: complete the values of [endnotes] numbering without page" "style.toml" "[endnotes]\nnumbering = ▮" ["\"chapter\"", "\"file\"", "\"book\""],
           exactly "style.toml" "[paragraph-styles.quote]\n[paragraph-styles.▮" ["body", "caption", "code", "sidenote", "table", "toc-1", "toc-2", "toc-3", "toc-4", "toc-5", "toc-6", "verse", "quote"],
           including "style.toml" "[page]\nbinding = \"right\"\n▮" ["size", "writing-mode", "grid", "bleed"] ["binding"],
           exactly "style.toml" "[page]\nbinding = ▮" ["\"right\"", "\"left\""],
@@ -96,7 +100,7 @@ tomlTests =
           exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"toc-page-number\"", "\"url\"", "\"em\""],
           exactly "style.toml" "[page]\n# binding = ▮" [],
           exactly "style.toml" "[page]\nbinding = \"\"\"\n▮" [],
-          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "alignment", "columns", "column-gap", "position"],
+          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "character-advance", "characters", "lines", "line-pitch", "alignment", "columns", "column-gap", "position"],
           exactly "style.toml" "# 日本語のコメント😀\n[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           exactly "style.toml" "[page]\nsize = { width = \"100mm\", ▮" ["height"],
           exactly "style.toml" "[headings.1]\nrunning-head = ▮" [],
@@ -131,7 +135,7 @@ tomlTests =
             take 1 (kinds "[paragraph-styles.em]\nbased-on = ▮") @?= [CkParaStyle]
         ],
       testGroup
-        "ADR 0347 T1: manifest.toml finite value positions"
+        "root ADR 0347 I1: manifest.toml finite value positions"
         [ exactly "manifest.toml" "chapters = [{ paragraph-separator = '▮" ["blank-line", "line"],
           including "manifest.toml" "chapters = [{ page-numbering = { style = '▮" ["arabic"] ["line"],
           exactly "manifest.toml" "[metadata]\ncreators = [{ role = '▮" roles,
@@ -143,7 +147,7 @@ tomlTests =
           exactly "manifest.toml" "[vars]\nflag = ▮" []
         ],
       testGroup
-        "ADR 0347 T1: finite values remain valid TOML after completion"
+        "root ADR 0347 I1: finite values remain valid TOML after completion"
         [ testCase (T.unpack source) $ do
             let labels = labelsIn path source
             labels @?= expected

@@ -14,3 +14,12 @@ Adobe の反転した CMYK の規約では黒、灰、白を表す。
 この画像を PDF の DeviceCMYK として使う場合、同じ見た目を得るには全成分の Decode を `[1,0]` にする。
 macOS ImageIO の単独 JPEG の表示と、PDFKit のこの Decode を付けた PDF の表示が同じ RGB 値になることを確かめた。
 テストでは Decode を適用する前のサンプル値と、YCCK の中立な三成分が等しいことを検査する。
+
+`ccitt/` の `bw-gopher*` は、[root ADR 0425](../../../../docs/adr/0425-classify-colors-of-imported-pdf-figures.md) の CCITTFaxDecode の復号を検査するために、golang.org/x/image の `ccitt/testdata`（コミット [884d13f](https://github.com/golang/image/tree/884d13f747188b6b8581f58ddb403e7a98874f3c/ccitt/testdata)）から写したファイルである。
+ライセンスは BSD 3-Clause で、`ccitt/LICENSE` に原文を置いた。
+`bw-gopher.png` は幅 153、高さ 55 の白黒の画像で、ほかのファイルはその画像を Group 3 の一次元の符号化（`.ccitt_group3`）と Group 4 の符号化（`.ccitt_group4`）で書いたものである。
+Group 3 のファイルは、最初の行の前と各行の後に EOL を置き、RTC で終わる。
+`inverted` は白と黒を入れ替えた画像を符号化したもので、BlackIs1 を true にして読むと元の画像になる。
+`aligned` は各行をバイトの境界から始め、`truncated0` と `truncated1` は終わりの RTC か EOFB を欠く。
+Go の `aligned` の Group 3 のファイルは EOL の後に埋め草を置くので、EOL の前の埋め草を読む xpdf の読み方と合わず、写していない。
+試験は、各ファイルを復号した標本が、PNG の画素を白を 1 として詰めた標本と一致することを確かめる。

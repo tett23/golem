@@ -6,15 +6,15 @@ module SecuritySpec (securityTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, isSuffixOf, sort)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing, createDirectoryLink, createFileLink, doesDirectoryExist, doesFileExist, pathIsSymbolicLink)
-import System.FilePath ((</>))
+import System.Directory (createDirectoryIfMissing, createDirectoryLink, createFileLink, doesDirectoryExist, doesFileExist, listDirectory, pathIsSymbolicLink, removePathForcibly)
+import System.FilePath (makeRelative, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -35,6 +35,45 @@ victim tmp = do
     createDirectoryIfMissing True (v </> d)
     BS.writeFile (v </> d </> "precious.txt") "keep me"
   pure v
+
+-- | The target folders under build, as root ADR 0429 names them.
+targetDirs :: [(Target, FilePath)]
+targetDirs = [(TargetHtml, "html"), (TargetEpub, "epub"), (TargetText, "text"), (TargetPdf, "pdf")]
+
+{- | The files under a path with their contents, without .DS_Store (root ADR
+0429): a file is itself, a folder (or a link to one) its files, and a
+missing path nothing.
+-}
+snapshot :: FilePath -> IO [(FilePath, BS.ByteString)]
+snapshot top = sort <$> go top
+  where
+    go p = do
+      isDir <- doesDirectoryExist p
+      isFile <- doesFileExist p
+      if isDir
+        then concat <$> (listDirectory p >>= mapM (go . (p </>)) . filter (/= ".DS_Store"))
+        else
+          if isFile
+            then (\b -> [(makeRelative top p, b)]) <$> BS.readFile p
+            else pure []
+
+-- | The snapshot of every target folder of a project.
+snapshotTargets :: FilePath -> IO [(FilePath, [(FilePath, BS.ByteString)])]
+snapshotTargets root = mapM (\(_, d) -> (,) d <$> snapshot (root </> "build" </> d)) targetDirs
+
+-- | The relative paths of the files in a folder, without .DS_Store.
+filesIn :: FilePath -> IO [FilePath]
+filesIn dir = map fst <$> snapshot dir
+
+-- | The files a build returned under a folder, relative to it.
+writtenIn :: BuildResult -> FilePath -> [FilePath]
+writtenIn r dir = sort [makeRelative dir p | p <- brWritten r, (dir <> "/") `isPrefixOf` p]
+
+-- | Leaves a file the next build does not write in each target folder.
+leaveOldFiles :: FilePath -> IO ()
+leaveOldFiles root = forM_ targetDirs $ \(_, d) -> do
+  createDirectoryIfMissing True (root </> "build" </> d)
+  BS.writeFile (root </> "build" </> d </> "old.txt") "previous build"
 
 securityTests :: TestTree
 securityTests =
@@ -196,6 +235,93 @@ securityTests =
         BS.readFile oldPdf >>= (@?= "previous pdf")
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider, optProfile = Prod}
         BS.readFile oldPdf >>= (@?= "previous pdf"),
+      -- root ADR 0429: the folder of each target written is cleared before it is written
+      testGroup "root ADR 0429 I1: each written target folder holds only the files the build returned" $
+        [ testCase ("root ADR 0429 I1: " <> d <> " after a previous build") $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+            project tmp "" (withBodyFont horizontalStyle) "本文。\n" (bodyFontFiles horizontalStyle)
+            leaveOldFiles tmp
+            r <- build (defaultOptions tmp) {optTargets = Just [target], optFonts = fakeProvider}
+            map diagCode (filter isError (brDiagnostics r)) @?= []
+            let dir = tmp </> "build" </> d
+            got <- filesIn dir
+            got @?= writtenIn r dir
+            assertBool (show got) ("old.txt" `notElem` got)
+            fixed got
+        | (target, d, fixed) <-
+            [ (TargetHtml, "html", \got -> assertBool (show got) (all (`elem` got) ["a.xhtml", "index.xhtml", "style.css"])),
+              (TargetEpub, "epub", (@?= ["book.epub"])),
+              (TargetText, "text", (@?= ["horizontal/a.txt", "vertical/a.txt"])),
+              (TargetPdf, "pdf", \got -> (length got, "pages.json" `elem` got, length (filter (".pdf" `isSuffixOf`) got)) @?= (2, True, 1))
+            ]
+        ],
+      testCase "root ADR 0429 I1: an HTML page of a removed chapter is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        createDirectoryIfMissing True (tmp </> "build/html")
+        BS.writeFile (tmp </> "build/html/old.html") "a chapter removed since"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        got <- filesIn (tmp </> "build/html")
+        got @?= writtenIn r (tmp </> "build/html")
+        assertBool (show got) ("old.html" `notElem` got),
+      testCase "root ADR 0429 I1: the text variant no longer made is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        first <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        map diagCode (filter isError (brDiagnostics first)) @?= []
+        doesDirectoryExist (tmp </> "build/text/vertical") >>= assertBool "the first build writes the vertical text"
+        manifest <- BS.readFile (tmp </> "manifest.toml")
+        BS.writeFile (tmp </> "manifest.toml") (manifest <> "variants = [\"horizontal\"]\n")
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        doesDirectoryExist (tmp </> "build/text/vertical") >>= (@?= False)
+        got <- filesIn (tmp </> "build/text")
+        got @?= writtenIn r (tmp </> "build/text")
+        got @?= ["horizontal/a.txt"],
+      testCase "root ADR 0429 I1: a build with no previous output holds only the files it returned" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" (withBodyFont horizontalStyle) "本文。\n" (bodyFontFiles horizontalStyle)
+        r <- build (defaultOptions tmp) {optTargets = Just (map fst targetDirs), optFonts = fakeProvider}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        forM_ targetDirs $ \(_, d) -> do
+          let dir = tmp </> "build" </> d
+          got <- filesIn dir
+          assertBool d (not (null got))
+          got @?= writtenIn r dir,
+      testCase "root ADR 0429 I2: a build of HTML only leaves the other target folders as they were" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" horizontalStyle "本文。\n" []
+        leaveOldFiles tmp
+        BS.writeFile (tmp </> "build/pdf/book.pdf") "previous pdf"
+        BS.writeFile (tmp </> "build/epub/book.epub") "previous epub"
+        before <- snapshotTargets tmp
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        afterBuild <- snapshotTargets tmp
+        filter ((/= "html") . fst) afterBuild @?= filter ((/= "html") . fst) before,
+      testGroup "root ADR 0429 I3: an unsafe output path writes no target folder" $
+        [ testCase ("root ADR 0429 I3: " <> name) $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+            v <- victim tmp
+            let root = tmp </> "p"
+            createDirectoryIfMissing True root
+            project root "" (withBodyFont horizontalStyle) "本文。\n" (bodyFontFiles horizontalStyle)
+            leaveOldFiles root
+            setUp v root
+            before <- snapshotTargets root
+            victimBefore <- snapshot v
+            r <- build (defaultOptions root) {optTargets = Just targets, optFonts = fakeProvider, optProfile = profile}
+            assertBool (show (brDiagnostics r)) (DiagnosticCode code `elem` map diagCode (filter isError (brDiagnostics r)))
+            brWritten r @?= []
+            afterBuild <- snapshotTargets root
+            snapshot v >>= (@?= victimBefore)
+            if profile == Prod
+              then do
+                lookup "pdf" afterBuild @?= Just []
+                filter ((/= "pdf") . fst) afterBuild @?= filter ((/= "pdf") . fst) before
+              else afterBuild @?= before
+        | (name, profile, targets, code, setUp) <-
+            [ ("dev, build/epub a symbolic link, HTML and EPUB", Dev, [TargetHtml, TargetEpub], "G08013", \v root -> removeAndLink (v </> "epub") (root </> "build/epub")),
+              ("dev, build/text a regular file, HTML and text", Dev, [TargetHtml, TargetText], "G08104", \_ root -> removeAndWrite (root </> "build/text")),
+              ("prod, build/html a symbolic link, every target", Prod, map fst targetDirs, "G08013", \v root -> removeAndLink (v </> "html") (root </> "build/html")),
+              ("dev, build itself a symbolic link", Dev, map fst targetDirs, "G08013", \v root -> removeAndLink v (root </> "build"))
+            ]
+        ],
       testCase "a figure path with a quote stays inside the src attribute" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         img <- tinyImage
         let name = "q\" onerror=\"alert(1).jpg"
@@ -207,7 +333,9 @@ securityTests =
         assertBool (T.unpack page) (not ("onerror=\"" `T.isInfixOf` page)),
       testCase "a font role with a quote stays inside the CSS strings" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         let style = horizontalStyle <> "\n[fonts.\"x\\\" } body { color: red } x { a: \\\"\"]\nlatin = \"fonts/a\\\").otf\"\n"
+        -- the fonts embedded, so that the CSS names the role (docs/adr/0423)
         project tmp "" style "本文。\n" [("fonts/a\").otf", "font")]
+        embedFonts tmp
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         map diagCode (filter isError (brDiagnostics r)) @?= []
         css <- TIO.readFile (tmp </> "build/html/style.css")
@@ -218,3 +346,11 @@ securityTests =
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
         map diagCode (filter isError (brDiagnostics r)) @?= []
     ]
+
+-- | Replaces a path with a symbolic link to a folder.
+removeAndLink :: FilePath -> FilePath -> IO ()
+removeAndLink target link = removePathForcibly link >> createDirectoryLink target link
+
+-- | Replaces a path with a regular file.
+removeAndWrite :: FilePath -> IO ()
+removeAndWrite p = removePathForcibly p >> BS.writeFile p "not a folder"

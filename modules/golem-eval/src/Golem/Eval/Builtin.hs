@@ -37,6 +37,8 @@ data OverridableBuiltin
   | BKenten
   | BColor
   | BStyle
+  | BWarichu
+  | BUpright
   | BTcy
   | BNumberText
   deriving stock (Eq, Ord, Show, Enum, Bounded)
@@ -48,6 +50,8 @@ data FixedBuiltin
   | BRefPage
   | BNote
   | BSidenote
+  | -- | an endnote, at the end of the chapter in every output (root ADR 0412)
+    BEndnote
   | BIndex
   | BCite
   | BAki
@@ -74,6 +78,8 @@ builtinName = \case
     BKenten -> "kenten"
     BColor -> "color"
     BStyle -> "style"
+    BWarichu -> "warichu"
+    BUpright -> "upright"
     BTcy -> "tcy"
     BNumberText -> "number-text"
   Fixed f -> case f of
@@ -82,6 +88,7 @@ builtinName = \case
     BRefPage -> "ref-page"
     BNote -> "note"
     BSidenote -> "sidenote"
+    BEndnote -> "endnote"
     BIndex -> "index"
     BCite -> "cite"
     BAki -> "aki"
@@ -108,6 +115,8 @@ takesNoSlot = \case
     BKenten -> False
     BColor -> False
     BStyle -> False
+    BWarichu -> False
+    BUpright -> False
     BTcy -> False
     BNumberText -> True
   Fixed f -> case f of
@@ -116,6 +125,7 @@ takesNoSlot = \case
     BRefPage -> True
     BNote -> False
     BSidenote -> False
+    BEndnote -> False
     BIndex -> False
     BCite -> True
     -- [aki] reports a slot as G02055 itself (docs/adr ADR 0019)
@@ -178,5 +188,7 @@ builtinBlockCommands =
     -- docs/adr ADR 0272
     "hyphenation-exceptions",
     -- docs/adr/0263
-    "note"
+    "note",
+    -- root ADR 0412
+    "endnote"
   ]

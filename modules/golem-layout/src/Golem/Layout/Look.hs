@@ -215,7 +215,9 @@ data Decoration = Decoration
     -- | the size of the basis
     decSize :: !Sp,
     -- | the baseline shift of the basis
-    decShift :: !Sp
+    decShift :: !Sp,
+    -- | left instead of right in vertical text (root ADR 0380)
+    decSideLeft :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 

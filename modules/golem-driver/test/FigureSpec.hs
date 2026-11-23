@@ -147,7 +147,32 @@ contentsPdf refs streams =
 
 pdfFigureTests :: [TestTree]
 pdfFigureTests =
-  [ testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
+  [ testCase "root ADR 0425 I2: a PDF figure with a Separation colour is G08010, not G08113, when recolouring" $ do
+      let spot = streamPdf "<< /ColorSpace << /S [/Separation /Spot /DeviceCMYK 5 0 R] >> >>" "/S cs 1 scn 0 0 10 10 re f" [(5, "<< /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 1 0 0] /N 1 >>")]
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", spot), ("images/f.png", png False)]
+      codes @?= [DiagnosticCode "G08010"]
+      pdf @?= Nothing,
+    testCase "root ADR 0425 A1: the CalRGB gray, the Lab gray and the FunctionType 2 gray gradient of a PDF figure are tones of the swatch in the PDF output" $ do
+      let figure =
+            streamPdf
+              "<< /ColorSpace << /CR [/CalRGB << /WhitePoint [0.9505 1 1.089] >>] /L [/Lab << /WhitePoint [0.9505 1 1.089] /Range [-100 100 -100 100] >>] >> /Shading << /Sh 5 0 R >> >>"
+              "/CR cs 0.5 0.5 0.5 scn 0 0 50 50 re f /L cs 25 0 0 scn 50 0 50 50 re f 0 0 200 100 re W n /Sh sh"
+              [(5, "<< /ShadingType 2 /ColorSpace /DeviceGray /Coords [0 0 200 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [0] /C1 [1] /N 1 >> >>")]
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figure), ("images/f.png", png False)]
+      codes @?= []
+      out <- maybe (assertFailure "no PDF") pure pdf
+      streams <- inflateAll out
+      let everything = BS.concat (out : streams)
+          has label needle = assertBool (label <> ": " <> show needle) (needle `BS.isInfixOf` everything)
+      -- the swatch is C0 M100 Y100 K0: gray g paints (0, 1 - g, 1 - g, 0)
+      has "CalRGB (0.5, 0.5, 0.5)" "0 0.5 0.5 0 k"
+      has "Lab (25, 0, 0)" "0 0.75 0.75 0 k"
+      has "the shading in DeviceCMYK" "/ColorSpace /DeviceCMYK"
+      has "C0 black is the swatch" "/C0 [0 1 1 0]"
+      has "C1 white is white" "/C1 [0 0 0 0]"
+      assertBool "the CalRGB and Lab colours are not painted as they are" (not ("0.5 0.5 0.5 scn" `BS.isInfixOf` everything || "25 0 0 scn" `BS.isInfixOf` everything))
+      qpdfCheck out,
+    testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
       let figPdf = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
       (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
       codes @?= []
@@ -302,6 +327,31 @@ numberedPdf objs =
   where
     showB :: (Show a) => a -> BS.ByteString
     showB = TE.encodeUtf8 . T.pack . show
+
+{- | A PDF of one page of 200 by 100 pt whose Resources and content are
+given, with further numbered objects from 5.
+-}
+streamPdf :: BS.ByteString -> BS.ByteString -> [(Integer, BS.ByteString)] -> BS.ByteString
+streamPdf resources content extra =
+  numberedPdf
+    ( [ (1, "<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources " <> resources <> " /Contents 4 0 R >>"),
+        (4, "<< /Length " <> TE.encodeUtf8 (T.pack (show (BS.length content))) <> " >>\nstream\n" <> content <> "\nendstream")
+      ]
+        <> extra
+    )
+
+-- | 'pdfWith' in the developer profile with the figures drawn in the swatch C0 M100 Y100 K0 (root ADR 0403).
+colorPdfWith :: T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
+colorPdfWith source files = withSystemTempDirectory "golem-figure-color" $ \tmp -> do
+  writeProject tmp (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n") (figStyle horizontalStyle <> "color = \"accent\"\n[color.swatches.accent]\ncmyk = [0, 100, 100, 0]\n") source files
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = Dev}
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> Just <$> BS.readFile p
+    _ -> pure Nothing
+  let errs = filter isError (brDiagnostics r)
+  pure (map diagCode errs, pdf, map diagMessage errs)
 
 -- | The PDF of a one-chapter project with files, or the error codes.
 pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
@@ -987,7 +1037,8 @@ turnedFigureTests =
       let build' r = notifiedWith "\n[targets.html]\n\n[targets.epub]\n" (horizontal20 "left" 20) (fig "wide" r "キャプション。") (\o -> o {optTargets = Just [TargetHtml, TargetEpub]})
       turned <- build' " rotate=true"
       plain <- build' ""
-      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/fonts/b.otf", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
+      -- no font: HTML names generic families by default (docs/adr/0423)
+      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
       nOutputs turned @?= nOutputs plain
   ]
 

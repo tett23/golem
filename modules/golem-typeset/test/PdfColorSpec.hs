@@ -231,12 +231,10 @@ pdfColorTests =
       case recolorImportedPage (0, 100, 100, 0) (analyzeRaster (0, 100, 100, 0)) original of
         Right (Just result) -> convertedImagePixels result @?= [cmykPixels, cmykPixels]
         other -> assertFailure (show other),
-    testCase "root ADR 0403 I1: a non-unit ICC Range is not silently treated as ordinary samples" $ do
-      let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
+    testCase "root ADR 0403 I1, root ADR 0425 I4: a non-unit ICC Range is not silently treated as ordinary samples" $ do
+      let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : ("Decode", P.OArr (map P.OInt [0, 1, 0, 1, 0, 1])) : filter ((/= "ColorSpace") . fst) (imageFields 3)
           original = imagePage {P.ipObjects = [(1, P.OStream fields rgbPixels), (3, P.OStream [("N", P.OInt 3), ("Range", P.OArr (map P.OInt [0, 2, 0, 1, 0, 1]))] P.srgbProfile)]}
-      case recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original of
-        Left _ -> pure ()
-        other -> assertFailure (show other),
+      recolorImportedPage (0, 100, 100, 0) rgbAnalyzer original @?= Right Nothing,
     testCase "root ADR 0403 I1: cyclic ICC profile references are rejected" $ do
       let fields = ("ColorSpace", P.OArr [P.OName "ICCBased", P.ORef 3]) : filter ((/= "ColorSpace") . fst) (imageFields 3)
           original = imagePage {P.ipObjects = [(1, P.OStream fields rgbPixels), (3, P.ORef 4), (4, P.ORef 3)]}

@@ -350,14 +350,30 @@ pluginFigureTests =
       withBarChart "@bar-chart sales\n" $ \tmp -> do
         e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
         map diagCode (evDiagnostics e) @?= [DiagnosticCode "bc/alt"],
-    testCase "G08102: a figure of the source where HTML and EPUB put the images of plugins" $
+    testCase "root ADR 0430 I1, I3: G08102: a figure of the source where HTML and EPUB put the images of plugins" $
       withBarChart "# 章\n\n@figure ./images/golem-plugin/x.svg alt=x\n" $ \tmp -> do
         writeFiles tmp [("images/golem-plugin/x.svg", chartSvg)]
         r <- build (defaultOptions tmp) {optFonts = fakeProvider}
         [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
-          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: ./images/golem-plugin/x.svg")]
+          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: ./images/golem-plugin/x.svg")]
         assertBool "no HTML" (not (any (("build/html/" `T.isInfixOf`) . T.pack) (brWritten r)))
-        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+        assertBool "a PDF" (any (".pdf" `isSuffixOf`) (brWritten r)),
+    testCase "root ADR 0430 I1, I3: G08102 for a figure at images/golem-plugin/a.png" $
+      withBarChart "# 章\n\n@figure ./images/golem-plugin/a.png alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/golem-plugin/a.png", "\x89PNG\r\n\x1a\n")]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [(diagCode d, diagMessage d) | d <- brDiagnostics r, diagCode d == DiagnosticCode "G08102"]
+          @?= [(DiagnosticCode "G08102", "図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: ./images/golem-plugin/a.png")],
+    testCase "root ADR 0430 I3: no G08102 for a figure under images/golem-plugin-x/" $
+      withBarChart "# 章\n\n@figure ./images/golem-plugin-x/x.svg alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/golem-plugin-x/x.svg", chartSvg)]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [diagCode d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G08102"] @?= [],
+    testCase "root ADR 0430 I3: no G08102 for a figure out of images/golem-plugin" $
+      withBarChart "# 章\n\n@figure ./images/x.svg alt=x\n" $ \tmp -> do
+        writeFiles tmp [("images/x.svg", chartSvg)]
+        r <- build (defaultOptions tmp) {optFonts = fakeProvider}
+        [diagCode d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G08102"] @?= []
   ]
 
 -- | The context of the book a plugin asks for (docs/adr/0121).
@@ -405,6 +421,8 @@ shapes = map $ \case
   Number _ n (Just StyleTcy) -> "#" <> T.pack (show n)
   Number _ n _ -> "number " <> T.pack (show n)
   Tcy _ t -> "[tcy: " <> t <> "]"
+  Warichu _ t -> "[warichu: " <> t <> "]"
+  Upright _ t -> "[upright: " <> t <> "]"
   CharStyle _ s xs -> "[" <> s <> ": " <> T.concat (shapes xs) <> "]"
   _ -> "?"
 

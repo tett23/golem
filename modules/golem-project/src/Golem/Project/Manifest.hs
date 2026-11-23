@@ -17,6 +17,8 @@ module Golem.Project.Manifest
     chapterNumberings,
     SourceEdit (..),
     Targets (..),
+    WebFonts (..),
+    webFontsValues,
     PdfAPart (..),
     PdfUaPart (..),
     TextVariant (..),
@@ -35,6 +37,8 @@ module Golem.Project.Manifest
     decodeStrictWith,
     decodeStrictTableWith,
     decodeStrictWithReasons,
+    failAtCode,
+    codedMessage,
     naturalOf,
     naturalIntOf,
     maxNaturalInt,
@@ -252,9 +256,24 @@ data Targets = Targets
     tgPdfA :: !(Maybe PdfAPart),
     -- | [targets.pdf] pdfua: the PDF/UA the PDF declares (docs/adr ADR 0183)
     tgPdfUa :: !(Maybe PdfUaPart),
-    tgEpubPageMap :: !(Maybe FilePath)
+    tgEpubPageMap :: !(Maybe FilePath),
+    -- | [targets.html] fonts: whether HTML embeds the fonts or names generic families (docs/adr/0423)
+    tgHtmlFonts :: !WebFonts,
+    -- | [targets.epub] fonts (docs/adr/0423)
+    tgEpubFonts :: !WebFonts
   }
   deriving stock (Eq, Show)
+
+{- | How HTML and EPUB give the fonts of the roles (docs/adr/0423): only
+the generic family of each place, without the font files (the default),
+or the font files embedded with @font-face.
+-}
+data WebFonts = WebFontsGeneric | WebFontsEmbed
+  deriving stock (Eq, Show)
+
+-- | The values of fonts in [targets.html] and [targets.epub] (docs/adr/0423).
+webFontsValues :: [(Text, WebFonts)]
+webFontsValues = [("generic", WebFontsGeneric), ("embed", WebFontsEmbed)]
 
 -- | The parts and levels of PDF/A a book can declare: pdfa = "2a" (docs/adr ADR 0183).
 data PdfAPart = PdfA2a
@@ -536,10 +555,12 @@ manifestCode = \case
   [ScopeKey "functions", ScopeKey "requires", ScopeKey k] | k /= "file" -> "G03101"
   [ScopeKey "diagnostics", ScopeKey "silence-notices", ScopeIndex _] -> "G03024"
   [ScopeKey "diagnostics", ScopeKey "silence-info", ScopeIndex _] -> "G03024"
+  -- a value of fonts that is neither generic nor embed is G03280 (docs/adr/0423)
+  [ScopeKey "targets", ScopeKey t, ScopeKey "fonts"] | t `elem` ["html", "epub"] -> "G03280"
   _ -> "G03001"
 
 defaultTargets :: Targets
-defaultTargets = Targets Nothing Nothing True [] Nothing Nothing Nothing
+defaultTargets = Targets Nothing Nothing True [] Nothing Nothing Nothing WebFontsGeneric WebFontsGeneric
 
 instance FromValue Metadata where
   fromValue = parseTableFromValue $ do
@@ -654,11 +675,13 @@ instance FromValue Targets where
       Targets
         { tgPdf = fmap ptIsbn pdf,
           tgEpub = fmap isbnOf epub,
-          tgHtml = isJust (html :: Maybe EmptyTable),
+          tgHtml = isJust (html :: Maybe WebTable),
           tgText = maybe [] textVariants txt,
           tgPdfA = pdf >>= ptPdfA,
           tgPdfUa = pdf >>= ptPdfUa,
-          tgEpubPageMap = T.unpack <$> (epub >>= epubPageMap)
+          tgEpubPageMap = T.unpack <$> (epub >>= epubPageMap),
+          tgHtmlFonts = maybe WebFontsGeneric webTableFonts html,
+          tgEpubFonts = maybe WebFontsGeneric epubFonts epub
         }
 
 -- | [targets.pdf]: the ISBN, and the PDF/A and PDF/UA it declares (docs/adr ADR 0183).
@@ -687,6 +710,7 @@ manifestChoiceValues path arrayElement = case (path, arrayElement) of
   (["metadata", group, "role"], False) | group `elem` ["creators", "contributors"] -> map roleWord [minBound .. maxBound]
   (["targets", "pdf", "pdfa"], False) -> map fst pdfAValues
   (["targets", "pdf", "pdfua"], False) -> map fst pdfUaValues
+  (["targets", target, "fonts"], False) | target `elem` ["html", "epub"] -> map fst webFontsValues
   (["targets", "text", "variants"], True) -> map fst textVariantNames
   (["diagnostics", "silence-notices"], True) -> [n | DiagnosticCode n <- noticeCodes]
   (["diagnostics", "silence-info"], True) -> [n | DiagnosticCode n <- infoCodes]
@@ -706,21 +730,36 @@ instance FromValue PdfTable where
         Text' l v -> failAt l (T.unpack ("pdfua に書けるのは \"1\" だけです: " <> v))
         v -> typeError "string" v
 
-data IsbnTable = IsbnTable (Maybe Text) (Maybe Text)
+data IsbnTable = IsbnTable (Maybe Text) (Maybe Text) WebFonts
 
 isbnOf :: IsbnTable -> Maybe Text
-isbnOf (IsbnTable i _) = i
+isbnOf (IsbnTable i _ _) = i
 
 epubPageMap :: IsbnTable -> Maybe Text
-epubPageMap (IsbnTable _ path) = path
+epubPageMap (IsbnTable _ path _) = path
+
+epubFonts :: IsbnTable -> WebFonts
+epubFonts (IsbnTable _ _ f) = f
 
 instance FromValue IsbnTable where
-  fromValue = parseTableFromValue (IsbnTable <$> optKey "isbn" <*> optKey "page-map")
+  fromValue = parseTableFromValue (IsbnTable <$> optKey "isbn" <*> optKey "page-map" <*> webFontsKey)
 
-data EmptyTable = EmptyTable
+-- | [targets.html]: fonts alone (docs/adr/0423).
+newtype WebTable = WebTable {webTableFonts :: WebFonts}
 
-instance FromValue EmptyTable where
-  fromValue = parseTableFromValue (pure EmptyTable)
+instance FromValue WebTable where
+  fromValue = parseTableFromValue (WebTable <$> webFontsKey)
+
+{- | fonts of [targets.html] and [targets.epub] (docs/adr/0423): "generic"
+when it is not written; any other value, and a value that is not a
+string, is G03280 at the value ('manifestCode').
+-}
+webFontsKey :: ParseTable l WebFonts
+webFontsKey =
+  fmap (fromMaybe WebFontsGeneric) . optKeyOf "fonts" $ \case
+    Text' _ v | Just f <- lookup v webFontsValues -> pure f
+    Text' l v -> failAt l (T.unpack ("fonts に書けるのは \"generic\" か \"embed\" です: " <> v))
+    v -> typeError "string" v
 
 newtype TextTable = TextTable [Text]
 
@@ -1021,8 +1060,28 @@ code taken from the path of each message.
 tomlDiagnosticsBy :: ([Scope] -> Text) -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
 tomlDiagnosticsBy codeAt fid src = map one
   where
-    one (MatchMessage loc path msg) =
-      diagnostic (if msg == naturalOutOfRange then "G02103" else codeAt path) Error (positionSpan fid src loc) (schemaMessage path msg)
+    one (MatchMessage loc path coded) =
+      let (own, msg) = codedMessage coded
+       in diagnostic (fromMaybe (if msg == naturalOutOfRange then "G02103" else codeAt path) own) Error (positionSpan fid src loc) (schemaMessage path msg)
+
+{- | A failure of a value that carries its code (root ADR 0413): the
+reader that knows the cause chooses the code, where the path of the value
+cannot tell the causes of one key apart. The code rides in the message of
+toml-parser, between two unit separators, and 'codedMessage' takes it
+out; a failure without a code takes the code of its path.
+-}
+failAtCode :: l -> Text -> String -> Matcher l a
+failAtCode l code msg = failAt l (codeMark : T.unpack code <> (codeMark : msg))
+
+-- | The code of a message of 'failAtCode', and the message without it.
+codedMessage :: String -> (Maybe Text, String)
+codedMessage = \case
+  c : rest | c == codeMark, (code, _ : msg) <- break (== codeMark) rest -> (Just (T.pack code), msg)
+  msg -> (Nothing, msg)
+
+-- | The unit separator, which no message of Golem or toml-parser contains.
+codeMark :: Char
+codeMark = '\US'
 
 {- | The message of toml-parser for a negative number read as a natural
 number. It is G02103 in every file of settings, the code of a negative

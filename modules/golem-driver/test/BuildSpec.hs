@@ -34,7 +34,7 @@ import Golem.TestSupport.Env (envFlag)
 import Golem.TestSupport.Skipped (Skips, countSkipped)
 import Golem.Typeset (CodeInfo (..), PartLine (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -239,6 +239,8 @@ pdBookTest skips (name, vertical) = testCase name $ withSystemTempDirectory "gol
 withStyleProject :: BS.ByteString -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
 withStyleProject style files act = withSystemTempDirectory "golem-files" $ \tmp -> do
   copyTree fixture tmp
+  -- HTML and EPUB embed the fonts, so that they look for the files (golem-project ADR 0004, docs/adr/0423)
+  embedFonts tmp
   BS.writeFile (tmp </> "style.toml") style
   writeFiles tmp files
   act tmp
@@ -309,7 +311,63 @@ styleFileTests =
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         codeSeverities r @?= [(DiagnosticCode "G03010", Warning)]
   ]
+    <> outsideFileTests
     <> newTemplateTests
+
+{- | A path of style.toml outside the project is one G03279 error for that
+path, for every target and profile, with neither G03010 nor G08002 (root ADR 0421 I2).
+-}
+assertOutside :: FilePath -> BuildResult -> Assertion
+assertOutside path r = do
+  let codes = map diagCode (brDiagnostics r)
+      hits = [diagSeverity d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G03279", T.pack path `T.isInfixOf` diagMessage d]
+  assertEqual (show (brDiagnostics r)) [Error] hits
+  assertBool (show codes) (all (`notElem` codes) [DiagnosticCode "G03010", DiagnosticCode "G08002", DiagnosticCode "G08006"])
+  assertEqual "nothing written" [] (brWritten r)
+
+-- | style.toml with its body font at that path.
+outsideFontStyle :: T.Text -> BS.ByteString
+outsideFontStyle path = horizontalStyle <> TE.encodeUtf8 ("\n[fonts.body]\nja = \"" <> path <> "\"\n")
+
+outsideFileTests :: [TestTree]
+outsideFileTests =
+  [ testCase ("root ADR 0421 I2: a font at ../fonts/a.otf is one G03279 error for " <> show t <> " in " <> show p) $
+      withStyleProject (outsideFontStyle "../fonts/a.otf") [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+        assertOutside "../fonts/a.otf" r
+  | t <- allTargets,
+    p <- [Dev, Prod]
+  ]
+    <> [ testCase "root ADR 0421 I2: a font outside the project is reported once when every target is built" $
+           withStyleProject (outsideFontStyle "../fonts/a.otf") [] $ \tmp -> do
+             r <- build (defaultOptions tmp) {optTargets = Just allTargets, optFonts = fakeProvider}
+             assertOutside "../fonts/a.otf" r,
+         testCase "root ADR 0421 I2: golem check reports a font outside the project once, as G03279" $
+           withStyleProject (outsideFontStyle "../fonts/a.otf") [] $ \tmp -> do
+             r <- build (defaultOptions tmp) {optTargets = Just allTargets, optCheckOnly = True, optFonts = fakeProvider}
+             assertOutside "../fonts/a.otf" r,
+         testCase "root ADR 0421 I2: a symbolic link to a font outside the project is G03279 for every target" $
+           withSystemTempDirectory "golem-outside" $ \outside -> do
+             BS.writeFile (outside </> "a.otf") "fake"
+             withStyleProject (outsideFontStyle "fonts/link.otf") [] $ \tmp -> do
+               createDirectoryIfMissing True (tmp </> "fonts")
+               createFileLink (outside </> "a.otf") (tmp </> "fonts/link.otf")
+               forM_ [(t, p) | t <- allTargets, p <- [Dev, Prod]] $ \(t, p) -> do
+                 r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+                 assertOutside "fonts/link.otf" r,
+         testCase "root ADR 0421 I2: an absolute font path is G03279 for every target" $
+           withSystemTempDirectory "golem-outside" $ \outside -> do
+             BS.writeFile (outside </> "a.otf") "fake"
+             withStyleProject (outsideFontStyle (T.pack (outside </> "a.otf"))) [] $ \tmp ->
+               forM_ [(t, p) | t <- allTargets, p <- [Dev, Prod]] $ \(t, p) -> do
+                 r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+                 assertOutside (outside </> "a.otf") r,
+         testCase "root ADR 0421 I2: an output intent outside the project is G03279 for every target" $
+           withStyleProject (horizontalStyle <> fakeBody <> "\n[color]\nintent = \"../icc/a.icc\"\n") fakeFontFiles $ \tmp ->
+             forM_ [(t, p) | t <- allTargets, p <- [Dev, Prod]] $ \(t, p) -> do
+               r <- build (defaultOptions tmp) {optTargets = Just [t], optProfile = p, optFonts = fakeProvider}
+               assertOutside "../icc/a.icc" r
+       ]
 
 -- | The manifest of the one-chapter project in another language.
 langManifest :: T.Text -> BS.ByteString
@@ -464,7 +522,8 @@ newTemplateTests =
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            r <- build (defaultOptions dir) {optTargets = Just allTargets}
-           codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
+           -- HTML and EPUB name generic families and do not look for the fonts (docs/adr/0423)
+           codeSeverities r @?= [(DiagnosticCode "G08002", Error)]
            mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]

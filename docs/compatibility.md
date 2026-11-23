@@ -15,7 +15,7 @@
 | 原稿の記法（`.gm`） | 1.a でエラーなく組めた原稿は、1.b でもエラーなく組め、同じ意味になる。記法を足すときは、それまでエラーだった形にだけ足す | 警告、notice、info を足すこと。Emet を使う書き方（下の Emet の行） |
 | `manifest.toml`、`style.toml`、`preflight.toml`、`plugins.lock` | 受け付けたキーと値は、同じ意味で受け付ける。組み込みのプリフライトの設定 `print` の値を、検査が厳しくなる向きに変えない | キーを足すこと。値の既定を変えること（出力を変えるので、出力の規則に従う）。Emet を指すキー（下の Emet の行） |
 | CLI | コマンド、オプション、オプションの値、終了コード（0、1、2）の意味、`golem --version` の一行の形 | コマンドとオプションを足すこと。人が読む形の diagnostics、ヘルプ、使い方の表示の文言。`golem inspect` の `--as cst`、`--as ast`、`--as ir` の表示。`golem new` の雛形の中身。`golem lsp` |
-| 出力（PDF、HTML、EPUB、プレーンテキスト） | 同じバージョンと同じ入力からは、同じバイト列を得る。patch のバージョンは、Golem のバージョンから作る値（PDF の Producer とインスタンス ID）のほかに、出力を変えない | minor のバージョンで、組版の結果を変えること |
+| 出力（PDF、HTML、EPUB、プレーンテキスト） | 同じバージョンと同じ入力からは、同じバイト列を得る。patch のバージョンは、Golem のバージョンから作る値（PDF の Producer とインスタンス ID）のほかに、出力を変えない。EPUB を作る圧縮器（zip-archive、zlib、zlib-clib）の版を変えるのは、minor のバージョンに限る（[ADR 0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)） | minor のバージョンで、組版の結果を変えること |
 | 意味論 IR | なし | minor のバージョンで変えること。IR はプラグインの ABI なので、変えるときは ABI の手順に従う |
 | プラグインの ABI と CBOR | ABI を変えるのは、予告した後の minor のバージョンに限る。予告では、どこがどう変わるかを開発者に示す。patch のバージョンは ABI を変えない。`golem inspect --as cbor` のバイト列も ABI の CBOR である | 予告した後の minor のバージョンで、ABI のバージョンを上げること。そのとき、古い ABI のプラグインは読み込めなくなる |
 | JSON の diagnostics（`--format json`） | キーと値の型。重大度の値は `error`、`warning`、`notice`、`info` の四つに限る | キーを足すこと（読む側は知らないキーを読み飛ばす）。`message` の文言 |

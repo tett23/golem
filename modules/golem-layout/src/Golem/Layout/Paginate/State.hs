@@ -39,6 +39,7 @@ import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (SrcSpan)
 
 {- | What stays the same through one pagination: the most grid lines a
@@ -51,6 +52,8 @@ data Env = Env
     -- | a footnote line always fits under the separator and one line of text
     envSeparator :: !Int,
     envBase :: !ColumnSet,
+    envKeepParts :: !KeepParts,
+    envBookPartSpan :: !(Maybe SrcSpan),
     envCapacity :: !Int
   }
 

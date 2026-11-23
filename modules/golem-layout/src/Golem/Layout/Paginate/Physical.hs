@@ -6,6 +6,7 @@ module Golem.Layout.Paginate.Physical
     PhysicalFailure (..),
     paginatePhysical,
     PhysicalCursor,
+    retainPhysicalPart,
     PhysicalPart (..),
     PhysicalWrap (..),
     startPhysicalCursor,
@@ -31,6 +32,7 @@ module Golem.Layout.Paginate.Physical
 where
 
 import Control.Applicative ((<|>))
+import Data.IntSet qualified as IS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -38,10 +40,12 @@ import Data.Text qualified
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
 import Golem.Layout.FreeGeometry (boxExtras, faceOffset, ruleAfterEdge, ruleAfterGap, ruleBeforeEdge, ruleBeforeGap, rulesSharedGap)
+import Golem.Layout.Paginate.BookParts (slotIds)
 import Golem.Layout.Paginate.Decide qualified as Decide
 import Golem.Layout.Paginate.Types
 import Golem.Layout.RuleArea (RuleSide (..))
 import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax qualified
 
 {- | Page geometry and resolved body line pitches. A missing pitch uses the
@@ -58,7 +62,9 @@ data PhysicalSettings = PhysicalSettings
     physicalFaces :: !(Map Int Sp),
     physicalBoxPadding :: !(Map Int Sp),
     physicalWrappedBefore :: !(Map Int Sp),
-    physicalHeadingBounds :: !(Map Int (Sp, Sp))
+    physicalHeadingBounds :: !(Map Int (Sp, Sp)),
+    -- | the unit and source of the book part being placed, other than column (root ADR 0401)
+    physicalRetention :: !(Maybe (KeepParts, Golem.Syntax.SrcSpan))
   }
 
 data PhysicalFailure
@@ -102,6 +108,58 @@ data PhysicalState = PhysicalState
 marks, diagnostics, deferred figures and the columns already closed.
 -}
 newtype PhysicalCursor = PhysicalCursor PhysicalState
+
+-- | Retry a source composition from a complete immutable cursor snapshot.
+retainPhysicalPart :: PhysicalSettings -> KeepParts -> Golem.Syntax.SrcSpan -> Data.Text.Text -> PhysicalCursor -> (PhysicalCursor -> Either PhysicalFailure (a, [Int], PhysicalCursor)) -> Either PhysicalFailure (a, PhysicalCursor)
+retainPhysicalPart cfg unit source kind cursor@(PhysicalCursor initialState) compose = do
+  ordinary <- trial cursor
+  if unit == KeepColumn
+    then do
+      emptyTrial <- if emptyUnit initialState then pure ordinary else trial (nextUnit initialState)
+      pure (if fits emptyTrial then accepted ordinary else report ordinary)
+    else
+      if fits ordinary
+        then pure (accepted ordinary)
+        else do
+          movedTrial <- trial (nextUnit initialState)
+          if fits movedTrial
+            then pure (accepted movedTrial)
+            else
+              pure (report (if emptyUnit initialState then ordinary else movedTrial))
+  where
+    trial at@(PhysicalCursor starting) = do
+      (value, identifiers, PhysicalCursor placed) <- compose at
+      let wanted = IS.fromList identifiers
+          settle st
+            | any (\(ident, _, _, _) -> IS.member ident wanted) (psDeferred st) = settle (nextColumn cfg st)
+            | otherwise = st
+      pure (value, wanted, settle placed, key (psPage starting) (psColumn starting))
+    accepted (value, _, placed, _) = (value, PhysicalCursor placed)
+    report (value, _, placed, _) = (value, PhysicalCursor placed {psUnmet = psUnmet placed <> [SplitBookPart source kind unit]})
+    key p c = case unit of
+      KeepColumn -> (p, c)
+      KeepPage -> (p, 0)
+      KeepSpread -> (if p == 1 then 0 else p `div` 2, 0)
+    fits (_, wanted, state, expectedUnit)
+      | IS.null wanted = True
+      | otherwise =
+          let columns = takeWhile ((>= psPage initialState) . poNumber) (psDone state)
+              entries = [(poNumber p, poColumn p, poSlots p) | p <- columns] <> [(psPage state, psColumn state, psSlots state)]
+              found = Map.fromListWith min [(ident, key p c) | (p, c, slots) <- entries, (_, slot) <- slots, ident <- slotIds slot, IS.member ident wanted]
+           in IS.size wanted == Map.size found && case Map.elems found of
+                [] -> True
+                first : rest -> first == expectedUnit && all (== first) rest
+    emptyUnit st =
+      empty st && psUsed st == 0 && case unit of
+        KeepColumn -> True
+        KeepPage -> psColumn st == 0
+        KeepSpread -> psColumn st == 0 && (psPage st == 1 || even (psPage st))
+    nextUnit st = PhysicalCursor (advance (nextColumn cfg st))
+      where
+        wanted = key (psPage st) (psColumn st)
+        advance current
+          | key (psPage current) (psColumn current) == wanted = advance (nextColumn cfg current)
+          | otherwise = current
 
 data PhysicalPart
   = PhysicalMoved !PhysicalCursor !Keep
@@ -560,6 +618,9 @@ placeNext cfg st flow rest = do
     (FNoBreak span', _) -> Right (waitForPrior (UnmetNoBreak span') (followingRows 0 rest) before)
     (FNoBreakLines span' n, _) | n > 0 -> Right (waitForPrior (UnmetNoBreak span') (followingRows 0 rest) before)
     (FKeepNext span' n, _) -> Right (waitForPrior (UnmetKeepNext span') (followingRows n rest) before)
+    (FDefTerm lines', _)
+      -- the first description line is kept by the book part's unit (root ADR 0401)
+      | isJust (physicalRetention cfg) -> placeLines cfg (Keep 1 1 False) True before lines'
     (FDefTerm lines', _) ->
       let extent = sum (map (pitchOf cfg) lines')
           ready = keepFollowing cfg False before extent lines' rest
@@ -776,6 +837,20 @@ placeStanzaWithNext cfg keep st verses lastCount firstCount later = do
 
 placeFlow :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> Either PhysicalFailure PhysicalState
 placeFlow cfg st = \case
+  FBookPart unit source kind identifiers body -> do
+    let retaining = if unit == KeepColumn then cfg else cfg {physicalRetention = Just (unit, source)}
+    (_, PhysicalCursor placed) <-
+      retainPhysicalPart
+        cfg
+        unit
+        source
+        kind
+        (PhysicalCursor st)
+        ( \(PhysicalCursor at) -> do
+            final <- placeAll retaining at body
+            pure ((), identifiers, PhysicalCursor final)
+        )
+    pure placed
   FParagraph keep lines' -> placeLines cfg keep True st lines'
   FContinued keep lines' -> placeLines cfg keep False st lines'
   FDefTerm lines' -> placeLines cfg defaultKeep True st lines'
@@ -858,7 +933,9 @@ placeFlow cfg st = \case
              in Right closed {psSet = set {csFirstLine = first}, psColumn = 0, psUsed = first, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psTables = [], psBoxes = [], psRules = [], psJoin = Nothing, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []}
           else let fresh = nextPage cfg settled in Right fresh {psSet = set {csFirstLine = 0}}
   FPageFigure ident labels marks -> let fresh = if empty st then st else nextPage cfg st in Right (nextPage cfg (putSlot fresh (physicalCapacity cfg) (SPageFigure ident) labels marks))
-  FTable ident before header rows caption below -> placeTable cfg st ident before header rows caption below
+  FTable ident before header rows caption below
+    | Just (unit, source) <- physicalRetention cfg -> placeTableAcross cfg unit source st ident before header rows caption below
+    | otherwise -> placeTable cfg st ident before header rows caption below
   FCode geometry caption first continued rows -> placeCode cfg st geometry caption first continued rows
   ruled@FRuled {} -> placeRuled cfg st ruled []
   FBoxed ident before after [FParagraph keep lines'] -> placeBoxedParagraph cfg st ident before after keep [(0, line) | line <- lines']
@@ -1412,6 +1489,88 @@ placeTable cfg st0 ident before header rows caption below = do
                   reserve = fromIntegral (length header + length firstRow) * pitch
               placedCaption <- if below then Right start else placeTableLinesReserved cfg reserve start caption
               placeTableRows cfg ident header rows caption below placedCaption
+
+{- | A table within page or spread retention (root ADR 0377 and root ADR
+0401): whole rows go on in the next column, the header and the first row
+may be in different columns of the unit, and the header is repeated only
+where a new physical page begins. A lower caption is kept in the unit of
+the last row.
+-}
+placeTableAcross :: PhysicalSettings -> KeepParts -> Golem.Syntax.SrcSpan -> PhysicalState -> Int -> Sp -> [LineBox] -> [[LineBox]] -> [LineBox] -> Bool -> Either PhysicalFailure PhysicalState
+placeTableAcross cfg unit source st0 ident before header rows caption below = do
+  let capacity = physicalCapacity cfg
+      columns = fromIntegral (max 1 (csColumns (psSet st0)))
+      rowTooTall = any (\row -> extent row > capacity || extent header > capacity || extent header + extent row > capacity * columns) rows
+  if not (null caption) && extent caption > capacity
+    then Left (PhysicalTableCaptionTooTall ident)
+    else
+      if rowTooTall
+        then Left (PhysicalTableTooTall ident)
+        else do
+          mapM_ (checkTableNotes cfg) (caption : header : rows)
+          let started
+                | empty st0 = st0
+                | before + psPendingSpace st0 <= room cfg st0 = st0 {psUsed = psUsed st0 + psPendingSpace st0 + before, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []}
+                | otherwise = nextColumn cfg st0
+              lowered = below && not (null caption)
+              bodyRows = if lowered then take (length rows - 1) rows else rows
+              groups = [(GroupCaption, caption) | not below, not (null caption)] <> [(GroupHeader, header) | not (null header)] <> [(GroupRow, row) | row <- bodyRows]
+          placed <- go started (psUsed started) Nothing groups
+          if lowered then lowerCaption placed else Right (finish placed)
+  where
+    pitch = physicalPagePitch cfg
+    extent ls = fromIntegral (length ls) * pitch
+    repeated = [line {lbNotes = [], lbLabels = [], lbMarks = []} | line <- header]
+    record st first headerEnd
+      | psUsed st <= first = st
+      | otherwise = st {psTables = psTables st <> [TableSegment ident first headerEnd (psUsed st - pitch)]}
+    finish (st, first, headerEnd) = record st first headerEnd
+    fits st ls = tableNeed cfg st True ls <= room cfg st
+    go st first headerEnd [] = Right (st, first, headerEnd)
+    go st first headerEnd groups@((kind, ls) : remaining)
+      | fits st ls || empty st = do
+          placed <- placeTableLinesReserved cfg 0 st ls
+          let (first', headerEnd') = case kind of
+                GroupCaption -> (psUsed placed, headerEnd)
+                GroupHeader -> (first, Just (psUsed placed - pitch))
+                GroupRow -> (first, headerEnd)
+          go placed first' headerEnd' remaining
+      | otherwise = do
+          let fresh = nextColumn cfg (record st first headerEnd)
+          if kind == GroupRow && psPage fresh /= psPage st && not (null repeated)
+            then do
+              withHeader <- placeTableLinesReserved cfg 0 fresh repeated
+              let headerEnd' = Just (psUsed withHeader - pitch)
+              if fits withHeader ls
+                then go withHeader (psUsed fresh) headerEnd' groups
+                else do
+                  -- a header and a row taller than one column: the row in the next column of the page
+                  let next = nextColumn cfg (record withHeader (psUsed fresh) headerEnd')
+                  placed <- placeTableLinesReserved cfg 0 next ls
+                  go placed (psUsed next) Nothing remaining
+            else go fresh (psUsed fresh) Nothing groups
+    -- the last row and the lower caption are retained together in the unit
+    lowerCaption (st, first, headerEnd) = do
+      let closed = record st first headerEnd
+          lastRow = concat (take 1 (reverse rows))
+          tailOf at = do
+            let mustRepeat = psPage at /= psPage st && not (null repeated) && not (null lastRow)
+            (rowPlaced, rowFirst, rowHeader) <-
+              if mustRepeat
+                then do
+                  withHeader <- placeTableLinesReserved cfg 0 at repeated
+                  go withHeader (psUsed at) (Just (psUsed withHeader - pitch)) [(GroupRow, lastRow)]
+                else go at (psUsed at) Nothing [(GroupRow, lastRow) | not (null lastRow)]
+            placeCaption (record rowPlaced rowFirst rowHeader)
+      (_, PhysicalCursor kept) <-
+        retainPhysicalPart cfg unit source "表の末尾とキャプション" (PhysicalCursor closed) $ \(PhysicalCursor at) -> do
+          done <- tailOf at
+          pure ((), map lbId (lastRow <> caption), PhysicalCursor done)
+      Right kept
+    placeCaption st = placeTableLinesReserved cfg 0 (if fits st caption || empty st then st else nextColumn cfg st) caption
+
+data TableGroup = GroupCaption | GroupHeader | GroupRow
+  deriving stock (Eq)
 
 placeTableLinesReserved :: PhysicalSettings -> Sp -> PhysicalState -> [LineBox] -> Either PhysicalFailure PhysicalState
 placeTableLinesReserved cfg reserve = go

@@ -244,7 +244,7 @@ stripSpans = concatMap go
       Text _ t -> [t]
       CharStyle _ n xs -> ("<" <> n <> ">") : stripSpans xs
       LineBreak _ -> ["<br>"]
-      Note _ n bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
+      Note _ n _ bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
       Number _ n st -> ["<number " <> tshow n <> " " <> tshow st <> ">"]
       Ref _ k l -> ["<ref " <> tshow k <> " " <> l <> ">"]
@@ -379,7 +379,13 @@ tests :: TestTree
 tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
-    [ verseTests,
+    [ testCase "root ADR 0380 I1: cutting notes and upright prose retain their source text" $ do
+        let (ds, result) = evalSource baseCtx "[warichu: 注記][upright: AB]\n"
+        map diagCodeText ds @?= []
+        case resultBodies result of
+          [Paragraph _ [Warichu _ note, Upright _ latin]] -> (note, latin) @?= ("注記", "AB")
+          other -> assertFailure (show other),
+      verseTests,
       pluginBlockTests,
       outputCharTests,
       printingsTests,
@@ -637,7 +643,7 @@ verseTests =
     ]
   where
     noteNumbers = \case
-      Paragraph _ is -> [n | Note _ n _ <- is]
+      Paragraph _ is -> [n | Note _ n _ _ <- is]
       _ -> []
 
 -- | Character and paragraph styles (docs/adr ADR 0005).
@@ -2136,11 +2142,11 @@ printingsTests =
         let (bs, es) = run ((printingsCtx "ja") {ctxStyle = printingsStyle "第{edition}版"}) "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["第1版", "第1版", "第2版"],
-      testCase "ADR 0375 I1: inv1_printings_format_case_3: an unknown field is G03006" $ do
+      testCase "ADR 0375 I1: inv1_printings_format_case_3: an unknown field is an error (root ADR 0413: G03265, G03266)" $ do
         let codes fmt = either (map (\d -> let DiagnosticCode c = diagCode d in c)) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
-        codes "{unknown}" @?= ["G03006"]
-        codes "第{edition}版{edition:kanji}" @?= ["G03006"]
-        codes "{edition}{Year}" @?= ["G03006"],
+        codes "{unknown}" @?= ["G03265"]
+        codes "第{edition}版{edition:kanji}" @?= ["G03266"]
+        codes "{edition}{Year}" @?= ["G03265"],
       testCase "ADR 0375 I1: inv1_printings_format_property: an explicit format sets one line for each printing, whatever the language" $ do
         let formats = ["{edition}", "", " ", "第{edition}版", "{date}  第{edition}版 第{printing}刷", "{{{year}}}/{month}/{day}", "\t{printing}\x3000"]
             languages = [Just "ja", Just "ja-JP", Just "en", Just "fr-CA", Just "", Nothing]
@@ -2162,11 +2168,11 @@ printingsTests =
       testCase "ADR 0375: the fields of an explicit format are decimal digits, not numbers of the writing mode" $
         [[t | Text _ t <- is] | Paragraph _ is <- fst (run ((printingsCtx "ja") {ctxStyle = printingsStyle "{year}年{edition}"}) "@printings\n")]
           @?= [["2026年1"], ["2027年1"], ["2028年2"]],
-      testCase "ADR 0375 I1: braces that do not pair are G03006" $ do
+      testCase "ADR 0375 I1: braces that do not pair are errors (root ADR 0413: G03267 to G03271)" $ do
         let codes fmt = either (map (\d -> let DiagnosticCode c = diagCode d in c)) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
-        mapM_ (\fmt -> codes fmt @?= ["G03006"]) ["{", "}", "{}", "{edition", "edition}", "{{edition}", "\\{edition}"]
+        mapM_ (\(fmt, code) -> codes fmt @?= [code]) [("{", "G03267"), ("}", "G03268"), ("{}", "G03269"), ("{edition", "G03267"), ("edition}", "G03268"), ("{{edition}", "G03268"), ("\\{edition}", "G03268")]
         mapM_ (\fmt -> codes fmt @?= []) ["{{", "}}", "{{}}", "\\{edition\\}", "\\\\", ""]
-        mapM_ (\fmt -> codes fmt @?= ["G03006"]) ["\\a", "a\\"],
+        mapM_ (\(fmt, code) -> codes fmt @?= [code]) [("\\a", "G03270"), ("a\\", "G03271")],
       testCase "ADR 0375: the escapes of the other formats are read too, and {{ is current: no notice" $ do
         let (bs, es) = run ((printingsCtx "ja") {ctxStyle = printingsStyle "\\{{edition}\\} \\\\ {{{printing}}}"}) "@printings\n"
         es @?= []
@@ -2175,7 +2181,7 @@ printingsTests =
       testCase "ADR 0375: an error of the format names [printings] and the format" $ do
         let formatMsgs fmt = either (map diagMessage) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
         formatMsgs "{unknown}" @?= ["[printings] の format が正しくありません（表にない欄です: {unknown}）: {unknown} (printings.format)"]
-        formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {edition (printings.format)"]
+        formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は {{ と書きます）: {edition (printings.format)"]
         either (map diagMessage) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
       testCase "ADR 0375: without a format a book not in Japanese is still G02076" $
         run ((printingsCtx "en") {ctxStyle = either (error . show) id (parseStyle (FileId 9) "[printings]\n")}) "@printings\n" @?= ([], ["G02076"]),

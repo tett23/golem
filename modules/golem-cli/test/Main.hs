@@ -278,7 +278,8 @@ fmtCrTests =
 inMissingProject :: [String] -> IO (ExitCode, String)
 inMissingProject args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   createDirectoryIfMissing True (tmp </> "chapters")
-  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["chapters/01.gm"]})
+  -- HTML embeds the fonts, so that it looks for their files (docs/adr/0423)
+  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["chapters/01.gm"]} <> "fonts = \"embed\"\n")
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nja = \"fonts/missing.otf\"\n"
   TIO.writeFile (tmp </> "chapters/01.gm") "# はじめに\n\n本文。\n"
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""

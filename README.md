@@ -130,7 +130,7 @@ Chromium と Safari では、ページの Worker の中で `golem.wasm` を動�
 JSON は `golem build --target pdf --format json` が標準エラーに書くものと同じバイト列である。
 ホストの例は [scripts/wasm/run.mjs](./scripts/wasm/run.mjs) にあり、アーカイブの `README` にも同じことを書いている。
 
-アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスがある。
+アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスと、golem-unicode の注記（実装に倣った libgrapheme と、表の元にした Unicode のデータのライセンス）がある。
 GMP のソースは、ネイティブのアーカイブと同じくリリースに添えている。
 
 ## Usage
@@ -154,7 +154,7 @@ golem new mybook
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の文字数、ワード数、組版後の行数を数え、ページ数に換算する（[Golem ADR 0355](docs/adr/0355-manuscript-statistics.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形し、表ファイルの先頭に続く BOM をすべて取り除き、改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
-| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画する |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画し、エディタの外で移し終えたファイルとフォルダの参照編集も返す |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem repl emet` | Emet の式を標準入力から一つずつ読み、値を表示する（[Golem ADR 0348](docs/adr/0348-revise-emet-expression-repl.md)） |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
@@ -183,6 +183,11 @@ golem new mybook
 `ja_JP` はどの出力形式でも G03119 になる。
 
 奥付の `@printings` は、`style.toml` の `[printings]` に `format = "{date}  第{edition}版 第{printing}刷"` のように書くと、どの言語の本でも、その書式で発行の履歴を組む（[Golem ADR 0375](./docs/adr/0375-printings-format.md)）。
+
+PDF の表、リスト項目、定義用語と説明、図版とキャプションを保つ単位は、`style.toml` の `[composition].keep-parts` で `"column"`（既定）、`"page"`、`"spread"` から選ぶ（[root ADR 0401](./docs/adr/0401-select-book-part-retention-units.md)）。
+ページと見開きの中では段の間で分けられ、空の単位にも収まらないまとまりを分けると G07133 の notice を出す。
+図版とキャプションは従来どおり分けず、一段に置く。
+一段組みで表の見出しとデータ行を見開きへ分ける境界は、[ロードマップ](./docs/roadmap.md) に残す。
 
 `golem explain` は、コードを省くと一覧を表示する。
 複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。
@@ -218,8 +223,13 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
 参照を確かめきれない字は G08108、FreeType が寸法を読めない字は G08109 とし、どちらも PDF を書かない（[Golem ADR 0390](docs/adr/0390-deterministic-and-exhaustive-cff-random.md)）。
+字を別の二つのグリフで合成する形（seac）の字は、部品のグリフの輪郭も確かめ、seac の誤りは G08114 から G08117 として PDF を書かない（[root ADR 0420](docs/adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 可変フォントは、役割の `instance` に名前付きインスタンスの名前を、`axes` に軸の座標（`{ wght = 650 }` など）を書けば、その座標で組み、PDF にはその座標に固定したフォントを埋め込む（[Golem ADR 0358](docs/adr/0358-font-instance-selection.md)）。
 フォントにない名前、フォントにない軸、範囲の外の値は、PDF を書かずに G08110、G08111、G08112 を出す。
+
+HTML と EPUB は、既定ではフォントのファイルを同梱せず、役割の `generic-family`（`serif`、`sans-serif`、`monospace`）から決まる総称の書体だけを CSS に書く（[Golem ADR 0423](docs/adr/0423-generic-font-families-for-html-and-epub.md)）。
+フォントを同梱するには、`manifest.toml` の `[targets.html]` か `[targets.epub]` に `fonts = "embed"` を書く。
+
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
@@ -231,6 +241,8 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 `[paragraph-styles.verse]` の `line-number-interval = 5` で、空行を除く原稿の 5 行目ごとに行番号を付ける（[root ADR 0384](docs/adr/0384-verse-line-numbers.md)）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+`[warichu: 注記]` で小さい二行の割注を、`[upright: ABC]` で縦組みの正立欧文を書ける。
+傍線の `side` で左右を選び、`[page.grid]` の `character-advance` で字形の大きさを変えずに字送りを指定する（[root ADR 0380](docs/adr/0380-extended-japanese-composition.md)）。
 字下げなどの長さ、アキ量、行数を複数の欄で共有するときは、`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` に名前を付ける。
 たとえば `[values.length]` の `indent = "1zw"` は、段落スタイルの `indent = "indent"` と原稿の `@style-def paragraph letter indent=indent` から参照できる（[ADR 0346](docs/adr/0346-revise-named-layout-values.md)）。
 
@@ -277,6 +289,9 @@ PDF の本文の横組みで約物にもプロポーショナルメトリクス�
 見出しと用語は一つずつ、注の本文は段落ごとに、別々の段落として照合する（[ADR 0368](docs/adr/0368-regex-style-scope.md)）。
 
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
+画像や図版の RGB は、印刷用の PDF を作るという理由だけで CMYK に変換しない。
+元の色を近似する色空間変換と、書き手が `[figures].color` で指定した CMYK スウォッチへの図版の色置換を区別する。
+色置換は白黒の濃淡か一色の図版だけに当てはめ、多色の図版と、色を指定しない図版は元の色のまま書く（[root ADR 0408](docs/adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 ### 字間と言語
 
@@ -299,8 +314,8 @@ PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 02
 EPUB は `[targets.epub].page-map` に原稿の SHA-256 と本文位置を持つ JSON 対応表を指定した場合だけ、固定ページ版の表示ノンブルをページ一覧に載せる（[Golem ADR 0386](docs/adr/0386-page-list-and-page-colors.md)）。
 `[figures].color` は単色図版の色を独立に指定する。
 白黒の濃淡は白を白、黒を指定色、灰色をその中間の濃度にし、写真などの多色画像は元の色を保持する（[root ADR 0403](docs/adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
-取り込む PDF の色置換は段階的に実装しており、未対応の描画や画像のために変換できない場合は G08113 で生成を止める。
-[現在の対応範囲](docs/specifications.md#単色図版の色) と [残る対応](docs/roadmap.md#本の部品の拡張) を参照。
+取り込む PDF の図版の色を判定できないか、指定色に置き換えられない場合は、G08113 で生成を止める（[root ADR 0425](docs/adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+対応範囲は [仕様書の「単色図版の色」](docs/specifications.md#単色図版の色) を参照。
 
 ### リスト、図版、コード、表
 
@@ -340,6 +355,9 @@ PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
+`[note]` と別に、どの出力でも章の終わりの一覧に出す注 `[endnote: 本文]` を書ける（[root ADR 0412](docs/adr/0412-a-separate-channel-for-endnotes.md)）。
+番号と印は `[endnotes]` で決め、一覧は見出し「後注」で、章に脚注の一覧があればその後に置く。
+注には `[note label=名前: 本文]` のようにラベルを付け、`[ref-number 名前]` で印の番号を、`[ref-page 名前]` で印のあるページを参照できる（[root ADR 0422](docs/adr/0422-references-to-notes.md)）。
 
 注の番号をページごとに振る場合、HTML、EPUB、テキストは警告して本の通し番号で生成する。
 PDF の章末注一覧で番号が重なる場合も警告し、PDF のページ別番号を保つ（[root ADR 0402](docs/adr/0402-define-page-local-note-fallback-diagnostics.md)）。
@@ -552,12 +570,12 @@ TASTY_NO_CREATE=true cabal test all
 ```
 
 出力を意図して変えたときは、パッケージを指定して `--accept` を付け、ゴールデンを書き直す。
-`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、`golem-driver-test`、`golem-fmt-test`、`golem-font-test`、`golem-layout-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
+`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、golem-driver の `golem-driver-pdf-test`、`golem-driver-page-test`、`golem-driver-output-test`、`golem-driver-cli-test`、`golem-fmt-test`、`golem-font-test`、`golem-layout-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
 golem-driver と golem-font はほかのスイートも持ち、そちらは `--accept` を拒むので、スイートの名前まで指定する。
 書き直したファイルの差分を読み、意図した変更だけであることを確かめてからコミットする。
 
 ```bash
-cabal test golem-driver:golem-driver-test --test-options=--accept
+cabal test golem-driver:golem-driver-output-test --test-options=--accept
 ```
 
 #### 見た目の回帰テスト
@@ -826,15 +844,18 @@ x86-64 では、さらに次のことを行う。
   プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。
 
 ジョブは、アーキテクチャごとに複数のランナーに分かれる（[docs/adr/0140](./docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)、[docs/adr/0155](./docs/adr/0155-split-aarch64-test-runner.md)）。
-x86-64 では同じコミットを五つのランナーでビルドする。
-`tests-driver` が golem-driver のテストのスイートを、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ。
+x86-64 では同じコミットを六つのランナーでビルドする。
+`tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+`tests-driver-a` は golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test を、`tests-driver-b` は golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test を走らせる。
 `outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
 `outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
-aarch64 では三つのランナーでビルドし、x86-64 と同じく `tests-driver` と `tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
+aarch64 では四つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
 
 ランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
-`dist-newstyle` を保存する `tests-driver` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
-`tests-rest` は自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+`tests-rest` は、`peg-hs` と、テストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
+`dist-newstyle` を保存するジョブ `cache-dist` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
+`ci` は `cache-dist` を待たないので、`cabal build all` はプルリクエストの CI の時間に入らない（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 ビルドの計画を読む検査（`scripts/ci/test-only-deps.sh` と `scripts/ci/doc-deps.sh`）がどのランナーでもすべての部品を見るよう、計画を `cabal build all` のものに作り直し、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 
 テストの道具は、ビルドと並べて入れる。
@@ -846,7 +867,7 @@ zip は版と SHA-256 をキーにキャッシュする（[docs/adr/0062](./docs
 `env` は日本語のロケールを作り、マニュアルのフォントをキャッシュか `scripts/manual/fetch-fonts.sh` で取る。
 cabal は `PATH` をすべてのパッケージの設定に含めるので、`cabal build` より前に `PATH` を変えるのは、どのランナーでも同じディレクトリを足す GHC の手順だけとし、epubcheck は `cabal build` の後で `PATH` に足す（[docs/adr/0097](./docs/adr/0097-ci-same-path-before-build-and-env-check-runner.md)）。
 
-`dist-newstyle` は、`main` への push とプルリクエストで GHC がモジュールをコンパイルしたときに、アーキテクチャごとに一つのランナー（どちらのアーキテクチャでも `tests-driver`）が保存する。
+`dist-newstyle` は、`main` への push とプルリクエストで GHC がモジュールをコンパイルしたときに、アーキテクチャごとに一つ動くジョブ `cache-dist` が保存する。
 プルリクエストのキーは、`main` の族の後に `pr-<番号>-` とコミットのハッシュを続けたもので、`main` のキー（族の後にコミットのハッシュ）と前の部分で区別できる。
 プルリクエストの次の push は、自分の最新の `dist-newstyle` を戻し、それが無ければ `main` の最新を戻す（[docs/adr/0045](./docs/adr/0045-split-x86-build-and-pull-request-cache.md)、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 プルリクエストのキャッシュは、ワークフロー `pr-caches.yml` が消す（[docs/adr/0228](./docs/adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I1 を [docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md) が置き換えた）。
@@ -941,7 +962,8 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 ツールチェーンと wasm の cabal の store と索引は一つのキャッシュ、ネイティブの GHC で組んだ `alex` と `happy` は別のキャッシュ、`dist-wasm` はコミットごとのキャッシュに置く。
 `dist-wasm` を保存するのは `main` への push だけで、プルリクエストは `main` の `dist-wasm` を戻して変わったパッケージだけを組み、保存しない。
 ビルドに関わる変更のあるプルリクエストごとに走らせる頻度は変えない（[docs/adr/0219](./docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md)）。
-最後の `Times` のステップは、ツールチェーンのキャッシュが外れた理由（ツールチェーンを替えた、プロジェクトか freeze が `main` と違う、どれも同じなのに外れた）を `scripts/ci/wasm-cache.sh` で一行に書き、三つめ（キャッシュが消された）では `::warning::` の注釈を出してジョブは通す。
+最後の `Times` のステップは、ツールチェーンのキャッシュが外れた理由（ツールチェーンを替えた、プロジェクトか freeze が `main` と違う、どれも同じなのに外れた）を `scripts/ci/wasm-cache.sh` で一行に書き、三つめ（キャッシュが消された）では `::notice::` の注釈を出してジョブは通す。
+注釈を warning にしないのは、後述の `ci` ジョブの warning の検査でマージを止めないためである（[docs/adr/0427](./docs/adr/0427-warning-gate-and-jobs-without-logs.md)）。
 ツールチェーンか freeze を替えるプルリクエストの最初の実行は 5 分を超えてよい（CONTRIBUTING の「GitHub Actions」）。
 
 ##### `verapdf`
@@ -961,7 +983,9 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 ##### `ci`
 
 `ci` は、`ci.yml` のほかのジョブ（`caches` を除く）がすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`）。
-別の step で、同じ実行の終わったジョブのログを読み、`scripts/ci/warnings-allowed.tsv` にない warning がないことを確かめる（`scripts/ci/log-warnings.sh`、[docs/adr/0245](./docs/adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
+別の step で、同じ実行の終わったジョブ（省かれたもの、step を一つも走らせずに取り消されたもの、`ci` 自身を除く）のログを読み、`scripts/ci/warnings-allowed.tsv` にない warning がないことを確かめる（`scripts/ci/job-logs.sh`、`scripts/ci/log-warnings.sh`、[docs/adr/0245](./docs/adr/0245-keep-the-warnings-of-ci-at-zero.md)、[docs/adr/0427](./docs/adr/0427-warning-gate-and-jobs-without-logs.md)）。
+step を一つも走らせずに取り消されたジョブは、ジョブの一覧の `steps` が空のものである。
+あるジョブのログが取れなくても残りのジョブのログを読み、すべてを読んだ後で、取れないログがあるか、読むジョブが一つも無ければ失敗する。
 
 #### 定期に走るワークフロー
 

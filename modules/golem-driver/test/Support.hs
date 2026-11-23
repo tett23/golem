@@ -19,7 +19,6 @@ import Golem.Assemble (inlineText)
 import Golem.Bibliography (EntryPart)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
-import Golem.Layout.CharClass (charClass)
 import Golem.Layout.Japanese (punctSpace)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (BoxSegmentAt (..), Flow, PageOut, PageOutAt (..), Slotted (..))
@@ -32,6 +31,7 @@ import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Golem.Typeset (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPageGeometry, layoutPages, layoutPdf, runningHeads)
+import Golem.Unicode.CharClass (charClass)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -41,7 +41,8 @@ import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 
-{- | The time-out of the tests of golem-driver-test: 300 s of real time
+{- | The time-out of the tests of the four suites that golem-driver-test was
+split into (root ADR 0416): 300 s of real time
 (docs/adr/0237). It stops a test whose build does not stop (docs/adr/0073),
 and nothing else: the tests run at the same time on the threaded RTS
 (docs/adr/0146), so a test that ends takes far longer in the suite, and
@@ -205,6 +206,16 @@ later file of the same path replaces an earlier one.
 -}
 writeFiles :: FilePath -> [(FilePath, BS.ByteString)] -> IO ()
 writeFiles dir = mapM_ (\(to, bytes) -> createDirectoryIfMissing True (takeDirectory (dir </> to)) >> BS.writeFile (dir </> to) bytes)
+
+{- | Makes HTML and EPUB of the project in a directory embed the fonts:
+fonts = "embed" in [targets.html] and [targets.epub] of its manifest
+(docs/adr/0423), for the tests of the families and the files of the fonts.
+-}
+embedFonts :: FilePath -> IO ()
+embedFonts dir = do
+  manifest <- TIO.readFile (dir </> "manifest.toml")
+  let embed t = T.replace ("[targets." <> t <> "]\n") ("[targets." <> t <> "]\nfonts = \"embed\"\n")
+  TIO.writeFile (dir </> "manifest.toml") (embed "epub" (embed "html" manifest))
 
 -- | 'writeFiles' with texts, written in UTF-8.
 writeTexts :: FilePath -> [(FilePath, T.Text)] -> IO ()

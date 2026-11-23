@@ -143,7 +143,14 @@ everyNoticeProjects =
         ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
         ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n  where {\n    unused = 1\n  }\n"),
         ("w.tsv", "w\n")
+      ],
+    -- root ADR 0401: a list item larger than the empty page (G07133).
+    \extra ->
+      [ ("manifest.toml", noticeManifest extra),
+        ("style.toml", withBodyFont (replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[composition]\nkeep-parts = \"page\"\n")),
+        ("a.gm", TE.encodeUtf8 ("- " <> T.intercalate "\\\n  " (replicate 7 "x") <> "\n"))
       ]
+        <> fakeFontFiles
   ]
   where
     -- five lines of 12 characters, a paragraph style with rules, and a zero indent of table (G03100)
@@ -482,6 +489,53 @@ explainTests =
             [c | c <- ["G02096", "G02097", "G02098", "G02099"], c `notElem` used] @?= []
         ],
       testGroup
+        "root ADR 0430: golem explain writes フォルダ"
+        [ testCase "root ADR 0430 I2: no section golem explain shows has フォルダー" $
+            [c | (c, e) <- Map.toList catalog, any ("フォルダー" `T.isInfixOf`) [exTitle e, exBody e]] @?= [],
+          testCase "root ADR 0430 I2: golem explain G08102 and G08104 have no フォルダー" $ do
+            let bodies = [fmap exBody (lookupExplanation c) | c <- ["G08102", "G08104"]]
+            assertBool "G08102 or G08104 is missing" (all isJust bodies)
+            [b | Just b <- bodies, "フォルダー" `T.isInfixOf` b] @?= []
+        ],
+      testGroup
+        "root ADR 0428: the empty field of [printings] recommends {{ and }}"
+        [ testCase "root ADR 0428 I1: golem explain G03269 recommends {{ and }}, not \\{ and \\}" $ do
+            let causeAndFix = maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03269")
+            causeAndFix
+              @?= [ "### 主な原因",
+                    "",
+                    "- 欄の名前を書き忘れた。",
+                    "- 文字の `{}` を `{{}}` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄の名前を書くか、文字の `{` と `}` を `{{` と `}}` と書く。"
+                  ]
+            [l | l <- causeAndFix, any (`T.isInfixOf` l) ["\\{", "\\}"]] @?= [],
+          testCase "root ADR 0428 I2: golem explain G03267 is as before" $
+            maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03267")
+              @?= [ "### 主な原因",
+                    "",
+                    "- `{year` のように、欄の `}` を書き忘れた。",
+                    "- 文字の `{` を `{{` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄を `}` で閉じるか、文字の `{` を `{{` と書く。"
+                  ],
+          testCase "root ADR 0428 I2: golem explain G03268 is as before" $
+            maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03268")
+              @?= [ "### 主な原因",
+                    "",
+                    "- `year}` のように、欄の `{` を書き忘れた。",
+                    "- 文字の `}` を `}}` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄の `{` を足すか、文字の `}` を `}}` と書く。"
+                  ]
+        ],
+      testGroup
         "the form of the document"
         [ testCase "two good sections give their titles, statuses and bodies" $
             case parseCatalog (T.unlines (preamble <> inUse "G01001" <> retired "G02044")) of
@@ -524,6 +578,8 @@ explainTests =
         ]
     ]
   where
+    -- The lines of 主な原因 and 直し方 of a body, without the blank lines at the end (root ADR 0428).
+    causeAndFixOf = reverse . dropWhile T.null . reverse . dropWhile (/= "### 主な原因") . T.lines
     preamble = ["# 診断のコード", "", "前書き。", "", "## 番号の区分", "", "表。", ""]
     inUse c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 使用中", "", "### 意味", "", "意味。", "", "### 主な原因", "", "- 原因。", "", "### 直し方", "", "直す。", ""]
     retired c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 廃止", "", "### 意味", "", "廃止した。", "", "### 直し方", "", "代わりに書く。", ""]
@@ -799,7 +855,8 @@ outputDiagnosticTests =
       map diagCode (bErrors c) @?= [DiagnosticCode "G08019"]
       h <- buildMarksFiles (\o -> o {optFonts = golemFontProvider, optTargets = Just [TargetHtml]}) (Just style) files
       map diagCode (bErrors h) @?= []
-      length (bWritten h) @?= 4
+      -- the pages and the style sheet, without the font: HTML names generic families by default (docs/adr/0423)
+      length (bWritten h) @?= 3
       withSystemTempDirectory "golem-cff2" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") miniManifest
         BS.writeFile (tmp </> "style.toml") style

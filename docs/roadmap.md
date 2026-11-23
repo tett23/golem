@@ -47,6 +47,8 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **ページ分割の Lean 検証（未実装）**：[ADR 0352](adr/0352-prove-pagination-in-lean.md) に従い、既存の Alloy モデルの 42 コマンドを Lean の定理または具体例に対応付ける。境界入力でモデルの結果とレイアウトエンジンの出力を照合する。
   - **ページ分割の残りの要素**：罫線、コード、段の切り替え、手での制御、表、回り込む図版を、改ページの列挙の要素に足す。表と回り込む図版も含め、本文の各行と図版がそれぞれ一度ずつ出力されることを確かめる（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
   - **画像の実効解像度と診断の境界**：整数の ppi がしきい値を下回る場合に G09006 が出ることを調べる。実効解像度が 1 ppi の入力に対し、しきい値 0、1、2 で native CLI を各 3 回動かすと、G09006 はそれぞれ 0、0、1 件だった。同じ述語を wasm32 のプリフライトのテストでも検査する。
+- **プルリクエストの CI の時間の記録（未実装）**：golem-driver のテストを分けた後の、プルリクエストの CI の 20 回の中央値を `docs/ci-timings/` に記録する（[root ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の A1）。記録したら、0416 を実装済みにする。
+- **warning の検査の失敗が止んだことの記録（未実装）**：ログの無いジョブ、キャッシュの復元の失敗、ランナーの action の取り直し、wasm のキャッシュの追い出しの四つの原因で、`ci` の warning の検査が 20 回の実行のあいだ失敗しないことを数えて記録する（[root ADR 0427](adr/0427-warning-gate-and-jobs-without-logs.md) の A1）。記録したら、0427 を実装済みにする。
 - **改行しない範囲の S1 を実際の書体の送りで確かめる**：[ADR 0305](adr/0305-leave-soft-hyphens-in-or-next-to-a-no-break-range-out-of-i8.md) の S1 は、つないだ箱の幅を、つないだ文字列の送りで補正する。既存の回帰テストでは、試験用に作ったカーニングを使っている。字形と送りの性質が異なる 3 書体を当面の対象として、HarfBuzz で組んだ語の送りで S1 を確かめる。どの性質をどこまで網羅するかは改めて決める。
 
 - **パスの描画のベンチマーク**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは Emet（`.emet` の関数）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。
@@ -54,25 +56,20 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### 記法と設定の値
 
 - **ルビの区切りの記法（仕様を検討中）**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改める。記法が変わるので v1.0.0 までに仕様を決める。
-- **単位のない 0**：長さとアキ量の欄、`@blank-line 0` は [Golem ADR 0345](adr/0345-revise-unitless-zero-in-length-fields.md) に従って実装した。
-- **長さと量の名前**：段落スタイル、文字スタイル、長さの量などに名前を付け、スタイルやほかの設定から名前で指せるようにする。今の `style.toml` で名前を付けられるのは、段落スタイル、文字スタイル、アキ量のセット、色のスウォッチ、フォントの役割、マスターページであり、長さと量には名前を付けられない。字下げ、罫線の間隔、コードの余白、段間などの寸法は、どの欄にも `"1zw"` や `"3mm"` のような値をじかに書く。本の全体で同じ量を使うには同じ値を欄ごとに書き写すことになり、量を変えるときに直し漏れが起きる。アキの量の名前（`"二分"` など）は組み込みのもので、書き手は足せない。名前を付ける値の種類（絶対の寸法と `zw`、アキの量、行の数のような整数）、宣言の置き場所と名前の書き方、名前を指せる欄（`style.toml`、`@style-def`、`preflight.toml`）、`zw` の名前をどの文字の大きさで解決するか、組み込みの名前や単位と重なったときの扱い、LSP の補完と名前の変更を ADR で決める。段落スタイルと文字スタイルはすでに名前を持つので、スタイルについては、今の名前と `based-on` で足りないことがあるかを ADR で確かめる。`manifest.toml` の `[vars]` のプロジェクト全体の変数（[docs/adr/0185](adr/0185-project-wide-variables.md)）は原稿から読む値の名前であり、この項目は組版の設定の値の名前を扱う。
 
 ### diagnostics とビルドの結果
 
 - **一つのコードに一つの原因に合わせたコードの分割**：[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) は、異なる原因を一つにまとめたコードを 62 件挙げ、候補ごとに分け方を提案した。どの提案を採るかを決め、ADR を作成してコードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。
 - **diagnostics の判定の近似の監査**：数値による診断の境界と、追加の近似を調べる手順を定めた。 [Golem ADR 0322](adr/0322-check-numeric-diagnostic-boundaries.md)（採択）。
 - **`golem check` が G01012 を二度出す件**：check と HTML ビルドで見出しの各位置を照合する回帰テストを定めた。 [Golem ADR 0323](adr/0323-heading-level-diagnostic-occurrences.md)（採択）。
-- **フォントにない字があるときの preflight の完走**：欠字を G09002 で報告し、独立した検査を続ける。 [Golem ADR 0325](adr/0325-preflight-glyph-severity.md)（採択）。
 - **PDF を書かないエラーのときの前のビルドの PDF**：PDF を書けなかった prod ビルドで、安全な旧 PDF とページ情報を片付ける。 [Golem ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)（採択）。
-- **入稿しない原稿の塗り足し**：screen 設定と入稿しない原稿の雛形を用意する。 [Golem ADR 0327](adr/0327-screen-preflight-and-template.md)（採択）。
 
 ### フォント、PDF、EPUB の出力
 
-- **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
-- **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
+- **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。`fonts = "embed"` の HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
-- **HTML と EPUB へのフォントのライセンスの文書の同梱**：`golem build` の HTML と EPUB の出力は、`style.toml` が指すフォントのファイルだけを `fonts/` に写し、ライセンスの文書を写さない。そのため、OFL のフォントを使った HTML や EPUB をそのまま配ると、フォントの各コピーに著作権表示とライセンスを添えるという OFL 1.1 の条件 2 を満たさない。これはマニュアルに限らず、Golem を使うすべての本に起きる。どのファイルがライセンスの文書かを Golem が知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかを ADR で決める。[docs/adr/0082](adr/0082-manuals-under-cc0.md) は、マニュアルを組むスクリプトで足りる分だけを直し、本体の扱いは HTML の出力を XHTML から HTML Living Standard に変える予定とあわせて v1.0.0 のころに決めるとした。EPUB については、[OFL FAQ](https://openfontlicense.org/ofl-faq/) の 1.15 が、改変しないフォントを圧縮したフォルダの構造の文書に入れることを、埋め込みではなく同梱に近いとしている。
+- **HTML と EPUB へのフォントのライセンスの文書の同梱**：`fonts = "embed"` を書いた `golem build` の HTML と EPUB の出力は、`style.toml` が指すフォントのファイルだけを `fonts/` に写し、ライセンスの文書を写さない。そのため、OFL のフォントを使った HTML や EPUB をそのまま配ると、フォントの各コピーに著作権表示とライセンスを添えるという OFL 1.1 の条件 2 を満たさない。これはマニュアルに限らず、Golem を使うすべての本に起きる。どのファイルがライセンスの文書かを Golem が知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかを ADR で決める。[docs/adr/0082](adr/0082-manuals-under-cc0.md) は、マニュアルを組むスクリプトで足りる分だけを直し、本体の扱いは HTML の出力を XHTML から HTML Living Standard に変える予定とあわせて v1.0.0 のころに決めるとした。EPUB については、[OFL FAQ](https://openfontlicense.org/ofl-faq/) の 1.15 が、改変しないフォントを圧縮したフォルダの構造の文書に入れることを、埋め込みではなく同梱に近いとしている。既定の `fonts = "generic"` の出力はフォントを同梱しないので、この問題は起きない（[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）。
 
 - **プレーンな PDF 1.7 のターゲット**：PDF/X-4 の制約を持たない PDF 1.7 を出力のターゲットに足す。今の PDF は、`[color]` の `intent` の有無によらず版 1.6 で書き、`intent` があれば PDF/X-4 の出力インテントを書く（仕様書の「PDF/X-4 と出力インテント」の節）。ターゲットの名前、今の PDF との違い（色空間、透明、注釈、出力インテント）、PDF/A と PDF/UA の宣言との関係は ADR で決める。
 
@@ -93,27 +90,12 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### ページ分割
 
-- **ページと見開きをまたぐ泣き別れの禁止（未実装）**：表を行のあいだで、図版とキャプションを一組で、定義リストの用語を説明の最初の行とともに段で保つ規則は実装した（仕様書の「改ページ」の節の「表、図版、定義リストのまとまり」）。残るのは、保持の条件をページか見開きを単位に課す指定と、リストを項目のあいだで分ける規則である。見開きの指定では、対向する 2 ページの外側だけで保持の条件を課し、今の見開きに収まるかだけを調べる。どちらも、未決事項の「部品を保つ単位の指定」を決めてから実装する。段落の単位の設定は仕様書の「改ページ」の節の段落スタイルの欄（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）で、見開きの単位の最適化は v2 以降の「改ページの大域の最適化」で扱う。 [Golem ADR 0377](adr/0377-keep-book-parts.md)。
-
-### ルビと和文組版の拡張
-
-- **和文組版の拡張（未実装）**：割注、左の傍線（[ADR 0270](adr/0270-underline-and-strikethrough.md) は右の傍線だけを引く）、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。 [Golem ADR 0380](adr/0380-extended-japanese-composition.md)。
 
 ### 本の部品の拡張
 
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
-- **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
-  これらは採択した範囲から除外せず、二つの ADR の残実装として進める。
-  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。シェーディングの色は関数（PostScript の計算機の関数を含む）やメッシュの頂点で決まるので、濃淡か一色かを判定する方法の決めが要る。
-  - CalGray、CalRGB、Lab、Separation、DeviceN の色空間。特色の網の濃さを白黒の濃淡と一色のどちらとして扱うかなど、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の規則をどう当てはめるかの決めが要る。
-  - 単位範囲以外の ICCBased の Range。
-  - 異寸法のマスク、Interpolate = true の明示マスク、Matte を持つソフトマスク、DeviceGray 以外のソフトマスク。拡大縮小したマスクで見える画素の決め方が要る。
-  - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。CCITT の復号が要る。
-  - Normal 以外の合成の方式（BM）と転送関数（TR、TR2）。物体ごとの置き換えが濃淡の規則と一致しないので、合成した結果で判定するかどうかの決めが要る。
-  - 自分の色を指定する Type 3 フォントの字形（d0）。
-- **入力色の保存と明示的な色置換（未実装）**：RGB を自動で CMYK にしない既存の規則を設計原則にも書き、書き手が選んだスウォッチへの図版の色置換と区別する。図版色の実装後に、入力の色の保持と各出力を照合する（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 ### 機能をそろえた後の確かめ
 
@@ -187,7 +169,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **絵文字のレンダリング**：カラーの絵文字のフォント（COLR/CPAL、sbix、CBDT、OpenType の SVG）のグリフ、ZWJ でつないだ絵文字の並び、異体字セレクタによる絵文字の表示と文字の表示の切り替えを、PDF と HTML で組めるようにする。各形式の描き方、PDF/X-4 との関係、HTML でフォントに任せる範囲は ADR で決める。
 - **フォントのフォールバック**：役割のフォントにグリフがない字を、`style.toml` に役割ごとに宣言した代わりのフォントの列から順に探して組む。代わりのフォントの選び方は、環境によらず同じ結果になるように決める。`golem build` の G08100 と `golem preflight` の G09002 との関係（代わりのフォントで組んだ字を報告するか）を ADR で決める。グリフがない字は、`golem build` が G08100 で報告する（dev では警告、prod ではエラー、[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。この項目は、代わりのフォントで補う仕組みを扱う。カラーの絵文字のフォントを代わりのフォントに使う場合は、「絵文字のレンダリング」と合わせて決める。
 - **diagnostics の英語化**：diagnostics、ヒント、使い方の表示を英語でも出す。既定では実行時のロケールを読んで言語を選び、オプション（たとえば `--lang en`）と設定で指定できるようにする。出力するファイル（PDF、HTML、EPUB、テキスト）はロケールによらないという [docs/adr/0002](adr/0002-determinism.md) の規則は変えず、言語が変わるのは端末に出す文言だけとする。JSON の diagnostic のコードと位置は言語によらない。着手するときに ADR を作成する。
-- **章末の注の一覧の改ページと見出し**：v1 の章末の注の一覧は、前で改ページせず、見出しの文言は「注」（日本語以外は「Notes」）に固定する。一覧の前で改ページする設定と、見出しの文言を変える設定を加える（[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）。
+- **章末の注の一覧の改ページと見出し**：v1 の章末の注の一覧は、前で改ページせず、見出しの文言は「注」（日本語以外は「Notes」）に固定し、`[endnote]` の一覧の見出しは「後注」（日本語以外は「Endnotes」）に固定する。一覧の前で改ページする設定と、二つの見出しの文言を変える設定を加える（[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)、[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
 - **孤立行の規則の見直し**：段落の最初と最後の行をページの境に一つだけ残さない規則（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）は、ページの末尾に 1 行か 2 行の空きを残す。出版された本でもあまり気にされていないので今はこのままとし、必要になったら和文の本で緩めるかを検討する。
 - **条件テキスト**：一つの原稿から、媒体（PDF、EPUB、HTML）や版（紙の版と電子版、教師用と生徒用など）ごとに本文の一部を出し分けること。InDesign の条件テキストと条件セットにあたる。どの単位で条件を書くか、媒体ごとの出し分けを媒体契約（仕様書の [「設計原則」の節](specifications.md#設計原則)）の中でどう認めるかを ADR で決める（[2026-10-17 の調査](audits/2026-10-17-latex-gap-for-v1.md)）。
 - **差し込み**：外部のデータ（CSV など）の値を、組版に差し込んで組むこと。InDesign のデータ結合にあたる。名簿、カタログ、一つの型から多数の文書を組む用途に使う。データの形式、差し込む記法、一件ごとに文書を分けるか一冊に続けて組むかを ADR で決める。
@@ -261,7 +243,6 @@ v1 より後のバージョンのための事項には、そのバージョン�
 - **換算ページ数と実際の折り返し**：換算に使う 1 行文字数と 1 ページ行数を任意に指定できること、本文をマスターフレームに限定することは決まった。換算時に実際の版面の折り返しを引き継ぐかは未決である。現案は段落と明示改行を保ち、指定した字数で折り返し直す。[Golem ADR 0355](adr/0355-manuscript-statistics.md)
 - **段落スタイルの拡張の採択単位**：行送り、次スタイル、先頭文字スタイル、ドロップキャップ、字取り、始め括弧の字下げを一括で採択した。実装を機能ごとの修正 ADR に分ける必要があるかは、着手時に判断する。行数と字数の型を「0 より大きい自然数」とすることは決まった。[Golem ADR 0374](adr/0374-paragraph-style-controls.md)
 - **投稿用の文献スタイルを照合する雑誌**：書き手が投稿先に合わせて文献スタイルを自作できることは v1 の目標である。どの雑誌のどの投稿規定と書誌例を v1 の受け入れ例に採るかは未決である。[Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)
-- **部品を保つ単位の指定**：[Golem ADR 0377](adr/0377-keep-book-parts.md) は、ページを単位とする指定では各ページの、見開きの指定では対向する 2 ページの外側だけで保持の条件を課すと定める。しかし、書き手が単位をどこに書くか（部品ごとのスタイルか、本の全体の設定か）と、書かないときにどちらを使うかを定めていない。今の改ページは段を単位に保つので、段組みの版面でページを単位にするとき、段のあいだで部品を分けてよいかも決まっていない。リストを項目のあいだで分ける規則も、この単位で課すので、同じく待つ。項目の中で分けるときに、`keep-all-lines` の段落と同じく notice を出すかも決まっていない。
 
 ### その他の未決事項
 

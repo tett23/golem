@@ -1,6 +1,6 @@
 # ADR 0245: CI の warning を 0 に保つ
 
-Status: accepted
+Status: superseded [{"part":"6. ci.yml の最後のジョブで検査する","by":["docs/adr/0427-warning-gate-and-jobs-without-logs.md"],"kind":"supplement"}]
 
 ## 文脈
 

@@ -63,7 +63,6 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Layout.CharClass (spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -78,6 +77,7 @@ import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.TextLayer (ClusterPart (..))
+import Golem.Unicode.CharClass (spanIsJapanese)
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
 0003; a role that is not loaded is the body role), the direction, and
@@ -296,8 +296,9 @@ bookHasCode styleOf book = or [any (blockHas (styleOf fid)) bs | Document fid bs
       CharStyle _ n xs -> isCodeCharStyle st n || any (inlineHas st) xs
       Color _ _ xs -> any (inlineHas st) xs
       Kenten _ _ xs -> any (inlineHas st) xs
-      Note _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
-      Sidenote _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
+      Note _ _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
+      Sidenote _ _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
+      Endnote _ _ _ nb -> any (any (inlineHas st)) (noteParagraphs nb)
       -- the title a [ref-title] copies may hold code (docs/adr/0215)
       Resolved _ _ _ xs -> any (inlineHas st) xs
       Ruby _ _ segs -> or [any (inlineHas st) b | RubySegment b _ <- segs]
@@ -392,8 +393,9 @@ kentenRubyNotices book =
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
       Link _ _ xs -> concatMap (sites inKenten) xs
       Resolved _ _ _ xs -> concatMap (sites inKenten) xs
-      Note _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
-      Sidenote _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
+      Note _ _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
+      Sidenote _ _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
+      Endnote _ _ _ nb -> concatMap (sites False) (concat (noteParagraphs nb))
       _ -> []
     -- the outermost kenten in a base
     kentenIn :: InlineF r -> [SrcSpan]
@@ -499,7 +501,8 @@ restyle style lk = \case
                       L.decStyle = st,
                       L.decColor = dsColor d <|> csColor cs <|> lkColor lk,
                       L.decSize = size,
-                      L.decShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs)
+                      L.decShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs),
+                      L.decSideLeft = dsSide d == "left"
                     }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
@@ -515,7 +518,9 @@ restyle style lk = \case
   Resolved sp RefPage _ _ -> lk {lkLink = Just (L.LinkTo (L.DestIndexMark sp))}
   Resolved _ _ l _ -> lk {lkLink = Just (L.LinkTo (L.DestLabel l))}
   Ref _ RefPage l -> lk {lkLink = Just (L.LinkTo (L.DestLabel l))}
-  Note sp _ _ -> lk {lkLink = Just (L.LinkTo (L.DestNote (L.NoteId sp 0)))}
+  Note sp _ _ _ -> lk {lkLink = Just (L.LinkTo (L.DestNote (L.NoteId sp 0)))}
+  -- the mark of an endnote to its body in the list (root ADR 0412)
+  Endnote sp _ _ _ -> lk {lkLink = Just (L.LinkTo (L.DestNote (L.NoteId sp 0)))}
   _ -> lk
 
 {- | The size source inside an inline element (golem-cli ADR 0008), as

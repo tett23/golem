@@ -449,19 +449,19 @@ merge_pr_with 36 "quoted" docs/adr/0026-quoted.md "$(adr 'ADR 0026: g' 'Status: 
 Status: accepted"
 git_ tag v2.1.0
 run notes v2.0.0 v2.1.0
-expect "notes: S1 S2 S3 the canonical status lines" 0
+expect "root ADR 0387 I1, I2, I3: notes: the canonical status lines" 0
 CANON=https://github.com/tett23/golem/blob/v2.1.0/docs/adr
 status_changed() { # status_changed LINE: LINE is in the list of the ADRs whose status changed
   sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -Fxq -- "$1"
 }
-if status_changed "- [docs/adr/0020-legacy.md]($CANON/0020-legacy.md): 採択 → accepted"; then ok; else ng "notes: S1 S2 S3 a legacy line and a canonical line differ"; fi
-if status_changed "- [docs/adr/0022-no-space.md]($CANON/0022-no-space.md): proposed → accepted"; then ok; else ng "notes: S2 no space after the colon"; fi
-if status_changed "- [docs/adr/0023-spaces.md]($CANON/0023-spaces.md): accepted-pending → accepted-pending"; then ok; else ng "notes: S2 S3 the spaces around the status"; fi
-if status_changed "- [docs/adr/0024-empty.md]($CANON/0024-empty.md): proposed → "; then ok; else ng "notes: S2 an empty status"; fi
-if status_changed "- [docs/adr/0025-none.md]($CANON/0025-none.md):  → superseded [{\"by\":[\"docs/adr/0010-status.md\"],\"part\":\"x\"}]"; then ok; else ng "notes: S1 S2 no status line, then a superseded line"; fi
-if status_changed "- [docs/adr/0026-quoted.md]($CANON/0026-quoted.md): accepted → deprecated"; then ok; else ng "notes: S1 the first status line"; fi
-if ! sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -q '0021-same'; then ok; else ng "notes: S3 the same canonical status is not listed"; fi
-if [ "$(sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -c '^- ')" = 6 ]; then ok; else ng "notes: S3 six ADRs whose status changed"; fi
+if status_changed "- [docs/adr/0020-legacy.md]($CANON/0020-legacy.md): 採択 → accepted"; then ok; else ng "root ADR 0387 I1, I2, I3: notes: a legacy line and a canonical line differ"; fi
+if status_changed "- [docs/adr/0022-no-space.md]($CANON/0022-no-space.md): proposed → accepted"; then ok; else ng "root ADR 0387 I2: notes: no space after the colon"; fi
+if status_changed "- [docs/adr/0023-spaces.md]($CANON/0023-spaces.md): accepted-pending → accepted-pending"; then ok; else ng "root ADR 0387 I2, I3: notes: the spaces around the status"; fi
+if status_changed "- [docs/adr/0024-empty.md]($CANON/0024-empty.md): proposed → "; then ok; else ng "root ADR 0387 I2: notes: an empty status"; fi
+if status_changed "- [docs/adr/0025-none.md]($CANON/0025-none.md):  → superseded [{\"by\":[\"docs/adr/0010-status.md\"],\"part\":\"x\"}]"; then ok; else ng "root ADR 0387 I1, I2: notes: no status line, then a superseded line"; fi
+if status_changed "- [docs/adr/0026-quoted.md]($CANON/0026-quoted.md): accepted → deprecated"; then ok; else ng "root ADR 0387 I1: notes: the first status line"; fi
+if ! sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -q '0021-same'; then ok; else ng "root ADR 0387 I3: notes: the same canonical status is not listed"; fi
+if [ "$(sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -c '^- ')" = 6 ]; then ok; else ng "root ADR 0387 I3: notes: six ADRs whose status changed"; fi
 REPO_CANONICAL=$REPO
 REPO=$REPO_MAIN
 
@@ -859,20 +859,20 @@ if [ "$(sed -n '/^# The ADRs whose status changed in this release$/,$p' "$P")" =
 
 # ADR 0014: l
 ステータス: 採択→x は [ADR 0010](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0010-status.md)、y は [golem-cli ADR 0012](https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0012-module.md#文脈)、z は [ADR 0013](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0013-new.md)、w は [下](https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0014-links.md#文脈)" ]; then ok; else ng "write-notes: I3 the ADRs whose status changed in the prompt, their links absolute (docs/adr/0259)"; fi
-# S4: the canonical status lines in the prompt, and none of the other lines
+# root ADR 0387 I4: the canonical status lines in the prompt, and none of the other lines
 # (docs/adr/0387)
 REPO=$REPO_CANONICAL
 WN_TAG=v2.1.0
 run write_notes
 P=$FAKE_LOG/prompt
-if ! grep -q 'MARKER-BODY' "$P" && ! grep -q '^another line$' "$P"; then ok; else ng "write-notes: S4 the prompt has no other line of the ADRs"; fi
+if ! grep -q 'MARKER-BODY' "$P" && ! grep -q '^another line$' "$P"; then ok; else ng "root ADR 0387 I4: write-notes: the prompt has no other line of the ADRs"; fi
 adr_in_prompt() { # adr_in_prompt PATH: the lines of PATH in the prompt, but the heading and the blank lines
   sed -n "\\|^## $1 |,\\|^## |p" "$P" | sed '1d; /^## /d; /^$/d'
 }
 if [ "$(adr_in_prompt docs/adr/0020-legacy.md)" = "# ADR 0020: a
-Status: accepted" ]; then ok; else ng "write-notes: S4 a canonical status line in the prompt"; fi
+Status: accepted" ]; then ok; else ng "root ADR 0387 I4: write-notes: a canonical status line in the prompt"; fi
 if [ "$(adr_in_prompt docs/adr/0026-quoted.md)" = "# ADR 0026: g
-Status: deprecated" ]; then ok; else ng "write-notes: S4 only the first status line in the prompt"; fi
+Status: deprecated" ]; then ok; else ng "root ADR 0387 I4: write-notes: only the first status line in the prompt"; fi
 unset WN_TAG
 REPO=$REPO_MAIN
 
@@ -1194,9 +1194,9 @@ mkdir -p "$L/root/modules/golem-font/cbits/harfbuzz" "$L/root/modules/golem-font
   "$L/root/modules/golem-layout/data/hyphenation" "$L/root/dist-newstyle/src/peg-hs-0123/packages/peg-runtime" \
   "$L/ghcdoc/base-4.20.2.0" "$L/ghcdoc/ghc-9.10.3" "$L/gmp/gmp-6.3.0"
 echo MIT >"$L/root/LICENSE"
-mkdir -p "$L/root/modules/golem-cli/cbits/libgrapheme"
-echo libgrapheme >"$L/root/modules/golem-cli/cbits/libgrapheme/LICENSE"
-echo unicode >"$L/root/modules/golem-cli/cbits/libgrapheme/UNICODE-LICENSE"
+mkdir -p "$L/root/modules/golem-unicode"
+echo libgrapheme >"$L/root/modules/golem-unicode/LICENSE-libgrapheme"
+echo unicode >"$L/root/modules/golem-unicode/UNICODE-LICENSE"
 echo harfbuzz >"$L/root/modules/golem-font/cbits/harfbuzz/COPYING"
 echo freetype >"$L/root/modules/golem-font/cbits/freetype/LICENSE.TXT"
 echo ftl >"$L/root/modules/golem-font/cbits/freetype/docs/FTL.TXT"
@@ -1273,7 +1273,7 @@ licenses() {
 run licenses
 expect "licenses: all found" 0
 for f in README LICENSE-golem haskell/foo-1.0/LICENSE haskell/bar-2.1/license.md haskell/bar-2.1/COPYING \
-  haskell/peg-runtime-0.1.0.0/LICENSE haskell/base-4.20.2.0/LICENSE ghc/LICENSE harfbuzz/COPYING libgrapheme/LICENSE libgrapheme/UNICODE-LICENSE \
+  haskell/peg-runtime-0.1.0.0/LICENSE haskell/base-4.20.2.0/LICENSE ghc/LICENSE harfbuzz/COPYING golem-unicode/LICENSE-libgrapheme golem-unicode/UNICODE-LICENSE \
   freetype/LICENSE.TXT freetype/FTL.TXT wasmtime/LICENSE hyph-en-us/LICENSE-hyph-en-us.txt \
   hyph-en-gb/LICENSE-hyph-en-gb.txt hyph-fr/LICENSE-hyph-fr.txt hyph-de-1996/LICENSE-hyph-de-1996.txt \
   hyph-es/LICENSE-hyph-es.txt hyph-it/LICENSE-hyph-it.txt hyph-pt/LICENSE-hyph-pt.txt hyph-nl/LICENSE-hyph-nl.txt \
@@ -1436,6 +1436,7 @@ expect "licenses --wasm: all found" 0
 for f in README LICENSE-golem haskell/foo-1.0/LICENSE haskell/base-4.20.2.0/LICENSE ghc/LICENSE \
   haskell/cborg-0.2.10.0/LICENSE.txt haskell/cborg-0.2.10.0/SOURCE haskell/skylighting-0.15/LICENSE \
   haskell/skylighting-0.15/skylighting-0.15.patch haskell/skylighting-0.15/SOURCE harfbuzz/COPYING \
+  golem-unicode/LICENSE-libgrapheme golem-unicode/UNICODE-LICENSE \
   freetype/LICENSE.TXT freetype/FTL.TXT hyph-en-us/LICENSE-hyph-en-us.txt hyph-fr/LICENSE-hyph-fr.txt \
   hyph-de-1996/LICENSE-hyph-de-1996.txt hyph-it/LICENSE-hyph-it.txt gmp/COPYINGv3 gmp/COPYING.LESSERv3 \
   wasi-sdk/wasi-libc/LICENSE-MIT wasi-sdk/llvm/libcxx-LICENSE.TXT wasi-sdk/libffi-wasm/LICENSE; do
@@ -1847,6 +1848,7 @@ fi
 CW=$WORK/check-wasm
 CW_NAME=golem-v1.2.3-wasm32-wasi
 CW_DOCS="ghc/LICENSE haskell/base-4.20.2.0/LICENSE haskell/ghc-prim-0.12.0/LICENSE haskell/ghc-bignum-1.3/LICENSE
+golem-unicode/LICENSE-libgrapheme golem-unicode/UNICODE-LICENSE
 haskell/ghc-internal-9.1003.0/LICENSE harfbuzz/COPYING freetype/LICENSE.TXT freetype/FTL.TXT
 hyph-en-us/LICENSE-hyph-en-us.txt hyph-en-gb/LICENSE-hyph-en-gb.txt hyph-fr/LICENSE-hyph-fr.txt
 hyph-de-1996/LICENSE-hyph-de-1996.txt hyph-es/LICENSE-hyph-es.txt hyph-it/LICENSE-hyph-it.txt

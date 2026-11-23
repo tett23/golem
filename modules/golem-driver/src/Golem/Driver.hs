@@ -99,6 +99,7 @@ import Golem.Eval.File
 import Golem.Eval.Functions (BlockFunction (..), FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Length qualified as GL
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
@@ -353,7 +354,7 @@ assembleResults channels handlers program style styleFid styleText manifest proj
           (resolvedDocs, resolvedSeparators, separatorDiags) = resolveSeparators handlers program style styleFid styleText (map fst chapterRuns)
           -- where G04007 points (golem-syntax ADR 0002)
           numberSites = Map.unions (map erNumberSites (Map.elems results))
-          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) (stTableNumber style) channels pageLines
+          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) (stTableNumber style) channels pageLines (stNotesNumbering (endnoteStyle style))
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred resolvedDocs
@@ -975,7 +976,7 @@ buildCore inMemory opts = do
         if TargetPdf `elem` targets
           then pdfFontDiagnostics (optFiles opts) diagFid [(r, fr {frJa = mfilter (`Map.notMember` missing) (frJa fr), frLatin = mfilter (`Map.notMember` missing) (frLatin fr)}) | (r, fr) <- pdfFontRoles fileStyle locals]
           else pure []
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid (manifestTargets (projectManifest project)) fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G07001, G07002 and G07025 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -1018,7 +1019,7 @@ each figure, at its block.
 -}
 pluginImagePathDiagnostics :: Book -> [Diagnostic]
 pluginImagePathDiagnostics book =
-  [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: " <> path)
+  [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: " <> path)
   | Document _ bs <- bookDocs book,
     Block sp _ _ (FigureBlock f) <- allFigures bs,
     let path = fromMaybe (figSource f) (figWeb f),
@@ -1054,13 +1055,18 @@ note of the second file with notes and names the first file of the
 chapter.
 -}
 chapterNoteDiagnostics :: Style -> [Target] -> Map FileId SourceInfo -> Book -> [Diagnostic]
-chapterNoteDiagnostics style targets infos book
-  | stNotesNumbering style /= NumberPerFile || not gathered = []
-  | otherwise =
-      [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
-      | ch@(Document f0 _ : _ : _) <- bookChapters book,
-        (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentNotes ch)]
-      ]
+chapterNoteDiagnostics style targets infos book =
+  [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
+  | stNotesNumbering style == NumberPerFile && gathered,
+    ch@(Document f0 _ : _ : _) <- bookChapters book,
+    (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentNotes ch)]
+  ]
+    -- the endnotes, gathered in every target, by the same rule (root ADR 0412)
+    <> [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[endnotes] の numbering を \"chapter\" にしてください")
+       | stNotesNumbering (endnoteStyle style) == NumberPerFile,
+         ch@(Document f0 _ : _ : _) <- bookChapters book,
+         (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentEndnotes ch)]
+       ]
   where
     gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
     pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
@@ -1159,32 +1165,47 @@ independentBleed files infos
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
 missingStyleFiles files style = do
-  let paths = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
-  resolved <- forM paths $ \p -> (p,) <$> filesResolve files p
+  resolved <- forM (styleFilePaths style) $ \p -> (p,) <$> filesResolve files p
   pure (Map.fromList [(p, err) | (p, Left err) <- resolved])
 
-{- | Diagnostics of the missing files for one target (golem-project ADR
-0004): the fonts the PDF uses and its output intent (errors), every font
-for HTML and EPUB (warnings, errors in prod), nothing for plain text.
-The PDF also needs a body font with a file (G08007, golem-driver ADR 0016).
+-- | The files style.toml names: the fonts of every role, then the output intent.
+styleFilePaths :: Style -> [FilePath]
+styleFilePaths style = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
+
+{- | Diagnostics of the files of style.toml for one target. A path outside
+the project (absolute, a URL, out of the root, or a symbolic link out of
+it) is G03279, an error for every target and profile (docs/adr/0421); it
+is the same diagnostic for every target, so a build reports it once.
+Missing files (golem-project ADR 0004): the fonts the PDF uses and its
+output intent (errors), every font for HTML and EPUB that embed them
+(warnings, errors in prod), nothing for HTML and EPUB that name generic
+families (docs/adr/0423) and for plain text. The PDF also needs a body font
+with a file (G08007, golem-driver ADR 0016).
 -}
-targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid style locals missing = \case
-  TargetPdf ->
-    bodyFontDiagnostics fid style
-      <> report "G08002" Error "フォントのファイルがありません" pdfFonts
-      <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
-  TargetHtml -> siteFonts
-  TargetEpub -> siteFonts
-  TargetText -> []
+targetFileDiagnostics :: FileId -> Targets -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
+targetFileDiagnostics fid declared style locals missing target =
+  outside <> case target of
+    TargetPdf ->
+      bodyFontDiagnostics fid style
+        <> report "G08002" Error "フォントのファイルがありません" (pdfFontPaths style locals)
+        <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
+    TargetHtml -> siteFonts (tgHtmlFonts declared)
+    TargetEpub -> siteFonts (tgEpubFonts declared)
+    TargetText -> []
   where
-    pdfFonts = pdfFontPaths style locals
-    siteFonts = report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
-    report code sev missingMsg paths =
+    outside =
+      [ diagnostic "G03279" Error (mkSpan fid 0 0) (T.pack (pathErrorMessage err <> ": " <> p))
+      | p <- styleFilePaths style,
+        Just err <- [Map.lookup p missing],
+        err /= Missing
+      ]
+    siteFonts = \case
+      WebFontsEmbed -> report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+      WebFontsGeneric -> []
+    report code sev msg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
       | p <- nub paths,
-        Just err <- [Map.lookup p missing],
-        let msg = if err == Missing then missingMsg else pathErrorMessage err
+        Map.lookup p missing == Just Missing
       ]
 
 -- | The roles that the PDF uses, with their files (Golem ADR 0358).
@@ -1272,25 +1293,30 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
   let root = optRoot opts
       ft = projectFiles (evProject e)
   (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
-  let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
-      originalSite = renderXhtml hcfg ft book
+  let hcfgOf embed = htmlConfig (optProfile opts == Dev) embed e book missing bib
+      originalSite = renderXhtml (hcfgOf True) ft book
+      declared = manifestTargets (projectManifest (evProject e))
   (webBook, webDiags) <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book originalSite else pure (book, [])
-  let site = if isJust (figureColor (evStyle e)) then renderXhtml hcfg ft webBook else originalSite
+  -- the site with the fonts embedded, and the one of generic families (docs/adr/0423)
+  let embedSite = if isJust (figureColor (evStyle e)) then renderXhtml (hcfgOf True) ft webBook else originalSite
+      genericSite = renderXhtml (hcfgOf False) ft webBook
+      web fonts = let embed = fonts == WebFontsEmbed in (hcfgOf embed, if embed then embedSite else genericSite)
   results <- forM targets $ \case
     TargetHtml | not (null webDiags) -> cleanDir (root </> "build" </> "html") >> pure ([], [], Nothing)
     TargetEpub | not (null webDiags) -> cleanDir (root </> "build" </> "epub") >> pure ([], [], Nothing)
-    TargetHtml -> writeHtmlTarget root hcfg ft webBook site
-    TargetEpub -> writeEpubTarget opts e hcfg ft webBook site
+    TargetHtml -> let (hcfg, site) = web (tgHtmlFonts declared) in writeHtmlTarget root hcfg ft webBook site
+    TargetEpub -> let (hcfg, site) = web (tgEpubFonts declared) in writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
     TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
   pure (concat [w | (w, _, _) <- results], webDiags <> concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
 
 {- | The configuration of the HTML of a book from its style.toml and the
-styles of its files: @dev@ for the profile dev, the fonts that are
-@missing@ left out, the entries of the bibliography.
+styles of its files: @dev@ for the profile dev, @embed@ for fonts =
+"embed" (docs/adr/0423), the fonts that are @missing@ left out, the
+entries of the bibliography.
 -}
-htmlConfig :: Bool -> Evaluated -> Book -> Map FilePath PathError -> Map Text [EntryPart] -> HtmlConfig
-htmlConfig dev e book missing bib =
+htmlConfig :: Bool -> Bool -> Evaluated -> Book -> Map FilePath PathError -> Map Text [EntryPart] -> HtmlConfig
+htmlConfig dev embed e book missing bib =
   HtmlConfig
     { hcTitle = mdTitle md,
       hcLanguage = mdLanguage md,
@@ -1368,7 +1394,16 @@ htmlConfig dev e book missing bib =
             isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
           ],
       -- the links of notes in the notation of [notes] mark-format (docs/adr/0177)
-      hcNoteNotation = mfNotation (stNotesMarkFormat style)
+      hcNoteNotation = mfNotation (stNotesMarkFormat style),
+      hcEndnoteNotation = mfNotation (stNotesMarkFormat (endnoteStyle style)),
+      -- the fonts embedded, or generic families alone (docs/adr/0423)
+      hcEmbedFonts = embed,
+      hcGenericFamilies = Map.mapMaybe (fmap genericFamilyName . frGenericFamily) (stFonts style),
+      hcCharacterAdvance = do
+        grid <- stPage style >>= pageGrid
+        advance <- gridCharacterAdvance grid
+        let fs = dimToSp 1 (gridFontSize grid)
+        if fs <= 0 then Nothing else Just (GL.emText (toRational (GL.unSp (dimToSp fs advance)) / toRational (GL.unSp fs)) <> "em")
     }
   where
     style = evStyle e
@@ -1481,11 +1516,11 @@ writeEpubTarget opts e hcfg ft book site = do
     Just path -> do
       resolved <- filesResolve (optFiles opts) path
       case resolved of
-        Left err -> pure (Left (if err == Missing then "G03260" else "G03261", T.pack path <> ": " <> T.pack (pathErrorMessage err)))
+        Left err -> pure (Left (if err == Missing then "G03272" else "G03273", T.pack path <> ": " <> T.pack (pathErrorMessage err)))
         Right rel -> do
           readResult <- try (filesRead (optFiles opts) rel) :: IO (Either IOException BS.ByteString)
           pure $ do
-            bytes <- first (\err -> ("G03261", T.pack path <> ": " <> T.pack (show err))) readResult
+            bytes <- first (\err -> ("G03273", T.pack path <> ": " <> T.pack (show err))) readResult
             mapping <- first pageMapFailure (decodePageMap (BL.fromStrict bytes))
             first pageMapFailure $ resolvePageMapWithAst (Map.map sfAst (projectSources project)) (Map.map (\source -> (sfPath source, sfText source)) (projectSources project)) ft book mapping
   case pageMap of
@@ -1500,10 +1535,10 @@ writeEpubTarget opts e hcfg ft book site = do
 -- | Distinct causes of an invalid page map (root ADR 0386).
 pageMapFailure :: PageMapError -> (Text, Text)
 pageMapFailure = \case
-  PageMapJson why -> ("G03262", why)
-  PageMapSchema why -> ("G03263", why)
-  PageMapStale why -> ("G03264", why)
-  PageMapPosition why -> ("G03265", why)
+  PageMapJson why -> ("G03274", why)
+  PageMapSchema why -> ("G03275", why)
+  PageMapStale why -> ("G03276", why)
+  PageMapPosition why -> ("G03277", why)
 
 -- | Writes the plain text of each variant to build/text; @dev@ for the profile dev.
 writeTextTarget :: FilePath -> Bool -> Evaluated -> Map Text [EntryPart] -> FileTable -> Book -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))

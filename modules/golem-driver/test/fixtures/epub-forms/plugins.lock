@@ -1,3 +1,3 @@
 [plugins.glossary]
 url = "https://github.com/tett23/golem/releases/download/v0.1.0-rc4/glossary.wasm"
-sha256 = "05392cbbd41f835ba34804244f01567aea8116895f6f4167fee78cfa0ff7be31"
+sha256 = "1f1529f2fee120f7cfcb90b0d2614e04e2cad638446e9bf9ad3ac462f685fcec"

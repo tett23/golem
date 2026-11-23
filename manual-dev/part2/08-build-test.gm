@@ -108,7 +108,7 @@ $ TASTY_NO_CREATE=true cabal test all
 [code: --accept] を受け付けるのも、tasty-golden を使うスイートだけである。
 
 ```sh
-$ cabal test golem-driver:golem-driver-test --test-options=--accept
+$ cabal test golem-driver:golem-driver-output-test --test-options=--accept
 ```
 
 PDF の見た目を意図して変えたときは、見た目の回帰テスト（第[ref-number determinism]章）の参照も書き直す。

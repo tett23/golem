@@ -1,6 +1,7 @@
 module PageMapSpec (pageMapTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
+import Codec.Picture (convertRGBA8)
 import Codec.Picture.Jpg qualified as Jpeg
 import Codec.Picture.Png qualified as Png
 import Codec.Picture.Types qualified as J
@@ -26,7 +27,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Numeric (showHex)
 import Support (codesOf, fakeProvider, pdfStyle, withChapters, writeStyleWithFont)
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (takeExtension, (</>))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -45,12 +46,30 @@ pageMapTests =
           Right (anchors, links) -> do
             map (\(label, _, _) -> label) links === map (T.pack . show) positions
             [ident | (_, _, ident) <- links] === [ident | (_, ident, _) <- Map.findWithDefault [] spanA anchors],
-      testCase "root ADR 0386 I1: missing mapping reports G03260" $ checkFailure Nothing False "G03260",
-      testCase "root ADR 0386 I1: unreadable mapping reports G03261" $ checkFailure (Just "{}") True "G03261",
-      testCase "root ADR 0386 I1: JSON syntax reports G03262" $ checkFailure (Just "{") False "G03262",
-      testCase "root ADR 0386 I1: JSON schema reports G03263" $ checkFailure (Just "{}") False "G03263",
-      testCase "root ADR 0386 I1: stale mapping reports G03264" $ checkFailure (Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}") False "G03264",
-      testCase "root ADR 0386 I1: invalid position reports G03265" $ checkFailure (Just ("{\"sources\":{\"a.gm\":\"" <> hex (sha256 "abcd\n") <> "\"},\"pages\":[{\"page\":1,\"label\":\"1\",\"file\":\"a.gm\",\"line\":99,\"character\":0}]}")) False "G03265",
+      testCase "root ADR 0386 I1: missing mapping reports G03272" $ checkFailure Nothing False "G03272",
+      testCase "root ADR 0386 I1: unreadable mapping reports G03273" $ checkFailure (Just "{}") True "G03273",
+      testCase "root ADR 0386 I1: JSON syntax reports G03274" $ checkFailure (Just "{") False "G03274",
+      testCase "root ADR 0386 I1: JSON schema reports G03275" $ checkFailure (Just "{}") False "G03275",
+      testCase "root ADR 0386 I1: stale mapping reports G03276" $ checkFailure (Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}") False "G03276",
+      testCase "root ADR 0386 I1: invalid position reports G03277" $ checkFailure (Just ("{\"sources\":{\"a.gm\":\"" <> hex (sha256 "abcd\n") <> "\"},\"pages\":[{\"page\":1,\"label\":\"1\",\"file\":\"a.gm\",\"line\":99,\"character\":0}]}")) False "G03277",
+      testGroup "root ADR 0429 I4: a failed page map removes the build/epub of the previous build" $
+        [ testCase ("root ADR 0429 I4: " <> name <> " removes the previous build/epub with " <> T.unpack expected) $
+            withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
+              previous <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
+              codesOf (filter isError (brDiagnostics previous)) @?= []
+              doesFileExist (root </> "build/epub/book.epub") >>= assertBool "the previous build writes the EPUB"
+              manifest <- TIO.readFile (root </> "manifest.toml")
+              TIO.writeFile (root </> "manifest.toml") (T.replace "[targets.epub]" "[targets.epub]\npage-map = \"pages.json\"" manifest)
+              maybe (pure ()) (TIO.writeFile (root </> "pages.json")) json
+              result <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
+              codesOf (filter isError (brDiagnostics result)) @?= [expected]
+              brWritten result @?= []
+              doesDirectoryExist (root </> "build/epub") >>= (@?= False)
+        | (name, json, expected) <-
+            [ ("a page map whose file is missing", Nothing, "G03272"),
+              ("a stale page map", Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}", "G03276")
+            ]
+        ],
       testCase "root ADR 0386 I1: mapped pages preserve their physical order" $ do
         let mapping = PageMap hashes [FixedPage 1 "i" (Just ("a.gm", 0, 0)), FixedPage 2 "1" (Just ("a.gm", 0, 2))]
         case resolvePageMap sources files book mapping of
@@ -203,6 +222,39 @@ pageMapTests =
           case Png.decodePng bytes of
             Right (J.ImageRGBA8 pixels) -> J.pixelAt pixels 0 0 @?= J.PixelRGBA8 255 128 128 128
             other -> assertFailure (fromLeft "unexpected pixels" other),
+      testCase "root ADR 0408 I1: without a swatch RGB images stay RGB under the CMYK output intent" $
+        forM_ [grayRgbPng, multiRgbPng] $ \png -> withChapters "" [("a.gm", "@nonumber\n@figure photo.png alt=\"photo\"\n")] [] $ \root -> do
+          writeStyleWithFont root (pdfStyle <> "\n[color]\nintent = \"cmyk.icc\"\n")
+          BS.readFile "../../scripts/ci/testdata/conformance/golem-test-cmyk.icc" >>= BS.writeFile (root </> "cmyk.icc")
+          BS.writeFile (root </> "photo.png") png
+          pdf <- buildPdf root
+          assertBool "the output intent is a CMYK profile" ("/OutputIntents" `BS.isInfixOf` pdf && "/N 4" `BS.isInfixOf` pdf)
+          assertBool "the image keeps an RGB ICC profile" ("/ICCBased" `BS.isInfixOf` pdf)
+          assertBool "no image becomes DeviceCMYK" (not ("/ColorSpace /DeviceCMYK" `BS.isInfixOf` pdf)),
+      testCase "root ADR 0408 I2: an explicit swatch paints an RGB gray image in that CMYK" $
+        withChapters "" [("a.gm", "@nonumber\n@figure photo.png alt=\"photo\"\n")] [] $ \root -> do
+          writeStyleWithFont root (pdfStyle <> colorStyle)
+          BS.writeFile (root </> "photo.png") grayRgbPng
+          pdf <- buildPdf root
+          assertBool "the image is DeviceCMYK" ("/ColorSpace /DeviceCMYK" `BS.isInfixOf` pdf),
+      testCase "root ADR 0408 I3: an explicit swatch keeps a multicolour RGB image" $
+        withChapters "" [("a.gm", "@nonumber\n@figure photo.png alt=\"photo\"\n")] [] $ \root -> do
+          writeStyleWithFont root (pdfStyle <> colorStyle)
+          BS.writeFile (root </> "photo.png") multiRgbPng
+          pdf <- buildPdf root
+          assertBool "the image keeps an RGB ICC profile" ("/ICCBased" `BS.isInfixOf` pdf)
+          assertBool "no image becomes DeviceCMYK" (not ("/ColorSpace /DeviceCMYK" `BS.isInfixOf` pdf)),
+      testCase "root ADR 0408 I4: HTML and EPUB take the RGB approximation of the swatch tone" $
+        withChapters colorStyle [("a.gm", "@nonumber\n@figure photo.png alt=\"photo\"\n")] [] $ \root -> do
+          BS.writeFile (root </> "photo.png") grayRgbPng
+          result <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= []
+          bytes <- BS.readFile (root </> "build/html/photo.png")
+          case Png.decodePng bytes of
+            Right image -> let rgba = convertRGBA8 image in [J.pixelAt rgba 0 0, J.pixelAt rgba 1 0] @?= [J.PixelRGBA8 255 0 0 255, J.PixelRGBA8 255 128 128 255]
+            Left problem -> assertFailure problem
+          archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
+          fmap (BL.toStrict . fromEntry) (findEntryByPath "OEBPS/photo.png" archive) @?= Just bytes,
       testCase "root ADR 0386 I1: EPUB links resolve to actual body anchors" $
         withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
           manifest <- TIO.readFile (root </> "manifest.toml")
@@ -231,6 +283,14 @@ pageMapTests =
           twelve = before <> BS.take 4 frame <> BS.singleton 12 <> BS.drop 5 frame
           marker code = before <> BS.pack [0xff, code] <> BS.drop 2 frame
        in [twelve, marker 0xc3, marker 0xc9]
+    grayRgbPng = BL.toStrict (Png.encodePng (J.generateImage (\x _ -> if x == 0 then J.PixelRGB8 0 0 0 else J.PixelRGB8 128 128 128) 2 1))
+    multiRgbPng = BL.toStrict (Png.encodePng (J.generateImage (\x _ -> if x == 0 then J.PixelRGB8 255 0 0 else J.PixelRGB8 0 0 255) 2 1))
+    buildPdf root = do
+      result <- build (defaultOptions root) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+      codesOf (filter isError (brDiagnostics result)) @?= []
+      case filter ((== ".pdf") . takeExtension) (brWritten result) of
+        [path] -> BS.readFile path
+        other -> assertFailure (show other) >> pure BS.empty
     alphaPng = BL.toStrict (Png.encodePng (J.generateImage (\_ _ -> J.PixelRGBA8 128 128 128 128) 1 1))
     textSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><text x=\"0\" y=\"10\">text</text></svg>"
     monoSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><path fill=\"black\" d=\"M 0 0 L 10 10\"/></svg>"

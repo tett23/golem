@@ -64,7 +64,14 @@ decorationsTests :: TestTree
 decorationsTests =
   testGroup
     "underline and strikethrough (docs/adr/0270)"
-    [ testCase "I1: the lines change neither the line breaking nor the pages" $ do
+    [ testCase "root ADR 0380 I1: a vertical underline can be placed on the left" $ do
+        right <- contents vertical "[style u: 漢字]\n"
+        left <- contents (vertical <> "\n[character-styles.left]\nunderline = { side = \"left\" }\n") "[style left: 漢字]\n"
+        let xs streams = [ptToRational x | x : _ <- concatMap rects streams]
+        case (xs left, xs right) of
+          (xl : _, xr : _) -> assertBool (show (xl, xr)) (xl < xr)
+          other -> assertFailure (show other),
+      testCase "I1: the lines change neither the line breaking nor the pages" $ do
         let source t = "漢字漢字" <> t <> "漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字。\n"
         forM_ ["", " "] $ \sep -> do
           a <- layoutOf horizontal (source ("[style u: 漢字" <> sep <> "abc]"))

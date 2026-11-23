@@ -62,6 +62,8 @@ inline-no-ruby =
   / [6, span, swatch: tstr, inlines]               ; color
   / [7, span, style: tstr, inlines]                ; character style
   / [8, span, tstr]                                ; tate-chu-yoko
+  / [27, span, tstr]                               ; warichu (root ADR 0380)
+  / [28, span, tstr]                               ; upright (root ADR 0380)
   / [9, span, int64, number-style / null]          ; number
   / [10, span, ref-kind, label: tstr]              ; reference
   / [11, span, expr]                               ; deferred expression (S1)
@@ -73,9 +75,10 @@ inline-no-ruby =
   / [20, span, uri: tstr, inlines]               ; link to an external URL (docs/adr ADR 0182)
   / [21, span, lang: tstr, inlines]              ; language span (docs/adr ADR 0187)
   / [22, span, ref-kind, label: tstr, inlines]   ; [ref-number] or [ref-title] that the assembly resolved, never in a request nor a response of a plugin (docs/adr/0215)
-  / [23, span, uint64, [+ block]]                  ; note (docs/adr/0263)
-  / [24, span, uint64, [+ block]]                  ; sidenote (docs/adr/0263)
+  / [23, span, uint64, [+ block], ? label: tstr]   ; note (docs/adr/0263), its label (root ADR 0422)
+  / [24, span, uint64, [+ block], ? label: tstr]   ; sidenote (docs/adr/0263), its label (root ADR 0422)
   / [25, span, items: [1* cite-item]]              ; citation (docs/adr/0266)
+  / [26, span, uint64, [+ block], ? label: tstr]   ; endnote (root ADR 0412), its label (root ADR 0422)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005);
 ; 12 and 13 (notes of inlines) are retired (docs/adr/0263);
 ; 15 (a citation of one key) is retired (docs/adr/0266)

@@ -5,7 +5,7 @@ application/epub+zip
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
 <rootfiles><rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>
-== OEBPS/package.opf (deflate, time 315532800, 1854 bytes)
+== OEBPS/package.opf (deflate, time 315532800, 1727 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ja">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -26,12 +26,10 @@ application/epub+zip
 <item id="item4" href="chapters/03.xhtml" media-type="application/xhtml+xml"/>
 <item id="item5" href="back.xhtml" media-type="application/xhtml+xml"/>
 <item id="item6" href="style.css" media-type="text/css"/>
-<item id="item7" href="fonts/ja.otf" media-type="font/otf"/>
-<item id="item8" href="fonts/latin.otf" media-type="font/otf"/>
-<item id="item9" href="images/press.svg" media-type="image/svg+xml"/>
-<item id="item10" href="images/stick.svg" media-type="image/svg+xml"/>
-<item id="item11" href="images/timeline.svg" media-type="image/svg+xml"/>
-<item id="item12" href="images/type-case.png" media-type="image/png"/>
+<item id="item7" href="images/press.svg" media-type="image/svg+xml"/>
+<item id="item8" href="images/stick.svg" media-type="image/svg+xml"/>
+<item id="item9" href="images/timeline.svg" media-type="image/svg+xml"/>
+<item id="item10" href="images/type-case.png" media-type="image/png"/>
 </manifest>
 <spine page-progression-direction="rtl">
 <itemref idref="item1"/>
@@ -53,14 +51,10 @@ application/epub+zip
 </nav>
 </body>
 </html>
-== OEBPS/style.css (deflate, time 315532800, 3838 bytes)
-@font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
-@font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
-@font-face { font-family: "golem-code-latin"; src: url("fonts/latin.otf"); }
-@font-face { font-family: "golem-code-ja"; src: url("fonts/ja.otf"); }
-body { font-family: "golem-body-latin", "golem-body-ja", serif; }
+== OEBPS/style.css (deflate, time 315532800, 3468 bytes)
+body { font-family: serif; }
 body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
-pre, code { font-family: "golem-code-latin", "golem-code-ja", monospace; }
+pre, code { font-family: monospace; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; hyphens: none; font-kerning: none; font-size: 0.9231em; }
 strong { font-weight: bold; }
 .tcy { text-combine-upright: all; -epub-text-combine: horizontal; }
@@ -399,10 +393,6 @@ code { padding-inline: 0.25em; }
 </section>
 </body>
 </html>
-== OEBPS/fonts/ja.otf (deflate, time 315532800, 6210492 bytes)
-[binary: 6210492 bytes, SHA-256 2c9a12dbd4f2408c4610c7ee84a108b62d7236c3775baed618c64d9cb44b2f04]
-== OEBPS/fonts/latin.otf (deflate, time 315532800, 220852 bytes)
-[binary: 220852 bytes, SHA-256 cd978d919f1c6015f2b61530ece710215762bc39ba54e0b977005582c9b86a1d]
 == OEBPS/images/press.svg (deflate, time 315532800, 553 bytes)
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="160" viewBox="0 0 120 160">
   <rect x="20" y="10" width="80" height="12" fill="#3a3a3a"/>

@@ -279,7 +279,7 @@ semanticTokensTests =
         isRight (L.makeSemanticTokens L.defaultSemanticTokensLegend [L.SemanticTokenAbsolute l c n t m | (l, c, n, t, m) <- ts]) === True,
       testCase "the initialize response keeps semanticTokensProvider" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"semanticTokensProvider\":{\"full\":{\"delta\":false}}}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1}},\"semanticTokensProvider\":{\"full\":{\"delta\":false}}}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1,\"planMovedReferences\":1}},\"semanticTokensProvider\":{\"full\":{\"delta\":false}}}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value
         (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected,
       testCase "the server advertises full semantic tokens with a legend, without range or delta" $ withFixture $ \dir -> do
