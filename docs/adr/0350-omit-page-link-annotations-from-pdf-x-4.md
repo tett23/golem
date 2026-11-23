@@ -1,6 +1,6 @@
 # ADR 0350: PDF/X-4 の本文にリンクの注釈を置かない
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"テストの名前の番号","kind":"supplement"}]
 
 ## 文脈
 

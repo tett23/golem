@@ -336,6 +336,7 @@ PDF の図版、表、コードブロックのキャプションと傍注の本�
 字下げが行の幅を使い切り、1 字分も残らないキャプションは G07127、傍注は G07128 とし、dev では警告、prod ではエラーにする（[ADR 0389](./docs/adr/0389-diagnose-caption-and-sidenote-indents-that-leave-no-width.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 本文の注の印の大きさは、`[notes]` の `mark-style` が指す文字スタイル（既定は `note-mark`）の `size` で指定する（[ADR 0344](./docs/adr/0344-revise-retire-legacy-style-formats.md)）。
+`[notes]` に `mark-shape = "flat"` を書くと、縦組みの PDF の印の漢数字を平字（上下の外枠を 50% にした漢数字）で組む（[ADR 0381](./docs/adr/0381-compressed-note-marks.md)）。
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。

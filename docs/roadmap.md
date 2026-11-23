@@ -80,7 +80,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **組版の自由の原則に反する箇所**：仕様書の「設計原則」の「組版の自由」に反し、スタイルを当てる手段のない文字を直す（[ADR 0177](adr/0177-note-mark-style-and-numerals.md) の「原則に反する今の箇所」）。それぞれ、組むものの範囲と既定の見た目を決め直す必要があるので、別々の ADR で直す。網羅したとは言えず、読んだ範囲で見つけたものである。
   - **HTML と EPUB のキャプションと傍注の段落の組み方（未決）**：`caption` と `sidenote` の字下げ、`space-between`、`line-breaks` は、PDF だけに当たる。HTML と EPUB の `figcaption` と傍注の CSS には、書体と大きさだけを書く。ADR は部品の内幅と行数で組み方を決め、HTML と EPUB に触れていない。CSS にも出すかを決める。 [Golem ADR 0367](adr/0367-caption-sidenote-paragraphs.md)。
-  - **ルビの読み**：読みだけに文字スタイルを指定できる。 [Golem ADR 0369](adr/0369-ruby-reading-style.md)。
 - **見出しの番号と題の区切りを書く場所（未決）**：ADR は番号と題のあいだの区切りを段落スタイルの `number-title-separator` で決めるとするが、見出しには段落スタイルが当たらない（下の「段落スタイルの拡張」の「見出しとリストへの適用の方法」）。今は、見出しの区切りを `[headings.<階層>]` の `number-title-separator` に書き、図版、コードブロック、表のキャプションの区切りを段落スタイル `caption` に書く。見出しに段落スタイルを結び付ける方法を決めるときに、見出しの区切りを書く場所も決める。 [Golem ADR 0372](adr/0372-number-title-separator.md)。
 - **段落スタイルの拡張（未実装）**：ドロップキャップ（`drop-lines`）と字取り（`fit-characters`）、`@style` の名前付き引数による段落ごとの上書き、見出しとリストへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。ADR のうち `next-style`、`initial-style`、`opening-indent` と、後の ADR が変更した行送りを除く部分であり、次の未決事項を決めてから組む。 [root ADR 0374](adr/0374-paragraph-style-controls.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)。
   - **ドロップキャップの組み方（未決）**：ADR は「先頭 1 書記素を指定行数の高さで置き、その行だけ本文幅を減らす」と書く。指定行数の高さの字の脇では、その行数の行を短くしないと重なるので、「その行だけ」と食い違う。字の大きさの決め方（最初の行の字面の上端から最後の行のベースラインまでか）、字と本文のあいだの空き、HTML と EPUB の写し方も決まっていない。
@@ -126,6 +125,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - 圏点の十の形を、InDesign の圏点と比べること（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
   - Illustrator で図版の PDF と SVG（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の範囲の中）を書き出し、`modules/golem-driver/test/fixtures/figures-external/` に `illustrator.pdf` と `illustrator.svg` として加えること。README の表に版と書き出しの設定を書くと、golem-driver のテストがその二つも検査する（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
   - 12 の線の種類の脚注の区切り線と同じ太さと長さの線を InDesign で引いて並べ、多重線の比、点の間隔、和文の点線の形を比べること（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。色が DeviceCMYK の版だけに出ることと、技術書のコードブロックの強調の網の版は、golem-driver のテストが内容のストリームの色で確かめる（[docs/adr/0232](adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)）。
+- **リリースノートの、廃止したコードを消す手順**：v1.0.0 のリリースノートに、`manifest.toml` の `silence-notices` から G02065、G02108、G02129、G03114、G03115、G03116、G03117 を消す手順を載せる。この七つは v1.0.0 で廃止した notice のコードで、`silence-notices` に書いた設定は G03024 になるためである（[ADR 0341](adr/0341-revise-retire-listing-src.md)、[ADR 0342](adr/0342-revise-retire-dash-line-ranges.md)、[ADR 0343](adr/0343-revise-retire-table-src.md)、[ADR 0344](adr/0344-revise-retire-legacy-style-formats.md)、[互換性](compatibility.md) の廃止の手順）。
 
 ## v1.x
 
