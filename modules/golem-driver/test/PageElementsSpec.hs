@@ -926,6 +926,17 @@ wrapTests =
       case gridPages pl of
         (first : _) -> assertBool (show (poSlots first)) (all ((< 26) . fst) (poSlots first))
         [] -> assertFailure "no pages",
+    testCase "golem-driver ADR 0005: the side lines sent on by their notes take the next page from its top" $ do
+      img <- tinyImage
+      let note = "[note: " <> T.replicate 12 "脚注の本文は長く書く。" <> "]"
+          side = "脇の段落の一行目" <> note <> "。" <> T.replicate 30 "脇の段落は続く。" <> "\n\n"
+      (_, pl) <- layoutOk horizontal24 (fillers 20 <> wrapped "start" "4zw" <> side <> longPara 20) img
+      (_, _, p, _) <- theFigure pl
+      let next = [q | q <- gridPages pl, poNumber q == poNumber p + 1]
+          slotsOf q = [slot | (slot, SLine _) <- poSlots q]
+      assertBool ("the note is on the page of the figure: " <> show (poFootnotes p)) (not (null (poFootnotes p)))
+      assertBool ("some side lines are sent on: " <> show (map slotsOf next)) (not (all (null . slotsOf) next))
+      map slotsOf next @?= map (\q -> take (length (slotsOf q)) [0 ..]) next,
     testCase "vertical: the image hangs from the top at its grid line; lines beside it are indented" $ do
       img <- tinyImage
       (geom, pl) <- layoutOk (figStyle pdfStyle) (wrapped "start" "4zw" <> longPara 30) img

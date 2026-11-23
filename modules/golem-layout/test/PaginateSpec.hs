@@ -80,6 +80,7 @@ paginateTests =
       testGroup "the rules added by the implementation of ADR 0180 (docs/adr/0205)" addedRuleTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
+      testGroup "the side lines of a wrapped figure sent on by their notes (golem-driver ADR 0005)" wrappedNoteTests,
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "the index columns after page-lines (root ADR 0025, root ADR 0030)" indexAfterAdjustTests,
@@ -908,6 +909,22 @@ figureOrderTests =
     testCase "a wrapped figure after a figure sent on goes with its lines after it" $ do
       let ps = paginate 1 6 [FParagraph defaultKeep (lines' 0 3), FFigure 98 4 [] [], FWrapped 99 2 [] [] (lines' 10 2), FParagraph defaultKeep (lines' 20 1)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SFigure 98, SWrapped 99, SLine 10, SLine 11], [SLine 20]]
+  ]
+
+{- | golem-driver ADR 0005: the side lines of a wrapped figure that their
+notes do not let fit go to the next page as 'placeLines' sends lines on;
+the page they go to is used from its top, not from where the exclusion
+ended on the page of the figure.
+-}
+wrappedNoteTests :: [TestTree]
+wrappedNoteTests =
+  [ testCase "golem-driver ADR 0005: the side lines sent on by their notes take the next page from its top" $ do
+      let ps = paginate 1 4 [FWrapped 1 2 [] [] [LineBox 10 [NoteBody (nid 900) 2] [] [] 0, LineBox 11 [] [] [] 0], FParagraph defaultKeep (lines' 20 3)]
+      [(poNumber p, poSlots p, poFootnotes p) | p <- ps]
+        @?= [(1, [(0, SWrapped 1), (0, SLine 10)], [(nid 900, 0, 2)]), (2, [(0, SLine 11), (1, SLine 20), (2, SLine 21), (3, SLine 22)], [])],
+    testCase "golem-driver ADR 0005: the side lines that fit beside the figure keep the rest of its exclusion" $ do
+      let ps = paginate 1 6 [FWrapped 1 3 [] [] (lines' 10 1), FParagraph defaultKeep (lines' 20 1)]
+      map poSlots ps @?= [[(0, SWrapped 1), (0, SLine 10), (3, SLine 20)]]
   ]
 
 -- | A block of the generated flows with figures: a paragraph, a figure of n lines, or a wrapped figure of n lines with k lines beside it.
