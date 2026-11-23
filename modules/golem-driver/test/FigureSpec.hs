@@ -152,6 +152,26 @@ pdfFigureTests =
       (codes, pdf, _) <- colorPdfWith "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", spot), ("images/f.png", png False)]
       codes @?= [DiagnosticCode "G08010"]
       pdf @?= Nothing,
+    testCase "root ADR 0425 A1: the CalRGB gray, the Lab gray and the FunctionType 2 gray gradient of a PDF figure are tones of the swatch in the PDF output" $ do
+      let figure =
+            streamPdf
+              "<< /ColorSpace << /CR [/CalRGB << /WhitePoint [0.9505 1 1.089] >>] /L [/Lab << /WhitePoint [0.9505 1 1.089] /Range [-100 100 -100 100] >>] >> /Shading << /Sh 5 0 R >> >>"
+              "/CR cs 0.5 0.5 0.5 scn 0 0 50 50 re f /L cs 25 0 0 scn 50 0 50 50 re f 0 0 200 100 re W n /Sh sh"
+              [(5, "<< /ShadingType 2 /ColorSpace /DeviceGray /Coords [0 0 200 0] /Function << /FunctionType 2 /Domain [0 1] /C0 [0] /C1 [1] /N 1 >> >>")]
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figure), ("images/f.png", png False)]
+      codes @?= []
+      out <- maybe (assertFailure "no PDF") pure pdf
+      streams <- inflateAll out
+      let everything = BS.concat (out : streams)
+          has label needle = assertBool (label <> ": " <> show needle) (needle `BS.isInfixOf` everything)
+      -- the swatch is C0 M100 Y100 K0: gray g paints (0, 1 - g, 1 - g, 0)
+      has "CalRGB (0.5, 0.5, 0.5)" "0 0.5 0.5 0 k"
+      has "Lab (25, 0, 0)" "0 0.75 0.75 0 k"
+      has "the shading in DeviceCMYK" "/ColorSpace /DeviceCMYK"
+      has "C0 black is the swatch" "/C0 [0 1 1 0]"
+      has "C1 white is white" "/C1 [0 0 0 0]"
+      assertBool "the CalRGB and Lab colours are not painted as they are" (not ("0.5 0.5 0.5 scn" `BS.isInfixOf` everything || "25 0 0 scn" `BS.isInfixOf` everything))
+      qpdfCheck out,
     testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
       let figPdf = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
       (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
