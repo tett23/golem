@@ -7,7 +7,7 @@ aarch64	golem-doc-test	10
 aarch64	golem-driver-cli-test	44
 aarch64	golem-driver-global-test	36
 aarch64	golem-driver-output-test	100
-aarch64	golem-driver-page-test	88
+aarch64	golem-driver-page-test	164
 aarch64	golem-driver-parallel-test	25
 aarch64	golem-driver-pdf-test	132
 aarch64	golem-emet-test	198
@@ -22,7 +22,7 @@ aarch64	golem-layout-spec-test	10
 aarch64	golem-layout-test	116
 aarch64	golem-length-test	10
 aarch64	golem-lint-test	10
-aarch64	golem-lsp-test	10
+aarch64	golem-lsp-test	38
 aarch64	golem-numerals-test	10
 aarch64	golem-parser-test	92
 aarch64	golem-pdf-test	128
@@ -46,7 +46,7 @@ x86_64	golem-doc-test	13
 x86_64	golem-driver-cli-test	44
 x86_64	golem-driver-global-test	50
 x86_64	golem-driver-output-test	134
-x86_64	golem-driver-page-test	128
+x86_64	golem-driver-page-test	186
 x86_64	golem-driver-parallel-test	30
 x86_64	golem-driver-pdf-test	126
 x86_64	golem-emet-test	270
@@ -61,7 +61,7 @@ x86_64	golem-layout-spec-test	10
 x86_64	golem-layout-test	142
 x86_64	golem-length-test	10
 x86_64	golem-lint-test	10
-x86_64	golem-lsp-test	10
+x86_64	golem-lsp-test	36
 x86_64	golem-numerals-test	10
 x86_64	golem-parser-test	138
 x86_64	golem-pdf-test	200

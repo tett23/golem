@@ -154,7 +154,7 @@ golem new mybook
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の文字数、ワード数、組版後の行数を数え、ページ数に換算する（[Golem ADR 0355](docs/adr/0355-manuscript-statistics.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形し、表ファイルの先頭に続く BOM をすべて取り除き、改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
-| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画する |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画し、エディタの外で移し終えたファイルとフォルダの参照編集も返す |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem repl emet` | Emet の式を標準入力から一つずつ読み、値を表示する（[Golem ADR 0348](docs/adr/0348-revise-emet-expression-repl.md)） |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |
@@ -223,6 +223,7 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
 参照を確かめきれない字は G08108、FreeType が寸法を読めない字は G08109 とし、どちらも PDF を書かない（[Golem ADR 0390](docs/adr/0390-deterministic-and-exhaustive-cff-random.md)）。
+字を別の二つのグリフで合成する形（seac）の字は、部品のグリフの輪郭も確かめ、seac の誤りは G08114 から G08117 として PDF を書かない（[root ADR 0420](docs/adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 可変フォントは、役割の `instance` に名前付きインスタンスの名前を、`axes` に軸の座標（`{ wght = 650 }` など）を書けば、その座標で組み、PDF にはその座標に固定したフォントを埋め込む（[Golem ADR 0358](docs/adr/0358-font-instance-selection.md)）。
 フォントにない名前、フォントにない軸、範囲の外の値は、PDF を書かずに G08110、G08111、G08112 を出す。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。

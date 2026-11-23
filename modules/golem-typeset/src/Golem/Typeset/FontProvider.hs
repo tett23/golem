@@ -26,7 +26,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
-import Golem.Font.Cff (CffCheck (..), CffResult (..), checkCffReferences)
+import Golem.Font.Cff (CffCheck (..), CffResult (..), SeacError (..), checkCffReferences)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
@@ -310,7 +310,8 @@ provide memoise fid faces body roles =
     {- IO: the subset is made as the PDF is written (docs/adr ADR 0034); a CFF
     font whose used references leave its CFF table is G08107 (Golem ADR
     0357), a glyph whose references cannot all be checked is G08108, a glyph
-    used whose metrics FreeType cannot read is G08109 (Golem ADR 0390), and
+    used whose metrics FreeType cannot read is G08109 (Golem ADR 0390), a
+    glyph whose seac is wrong is G08114 to G08117 (root ADR 0420), and
     a font without a CFF table is G08018 (golem-pdf ADR 0011) -}
     embed ix vertical used = do
       let (f, path) = faceAt ix
@@ -324,12 +325,13 @@ provide memoise fid faces body roles =
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
           -- the used references of the CFF table, before the subset (Golem ADR 0357, Golem ADR 0390)
-          checked = if fontIsCff f then checkCffReferences (fontBytes f) (0 : gids) else CffResult CffInTable [] []
+          checked = if fontIsCff f then checkCffReferences (fontBytes f) (0 : gids) else CffResult CffInTable [] [] []
           at = mkSpan fid 0 0
           glyphText g = T.pack path <> " のグリフ " <> T.pack (show g)
           errors =
             [diagnostic "G08107" Error at ("CFF の内部参照が表の範囲を外れています: " <> T.pack path) | cffCheck checked == CffOutOfTable]
               <> [diagnostic "G08108" Error at ("CFF の参照を確かめきれません: " <> glyphText g) | g <- cffUnverifiable checked]
+              <> [diagnostic (seacCode e) Error at (seacMessage e <> glyphText g) | (g, e) <- cffSeac checked]
               <> [diagnostic "G08109" Error at ("フォントのグリフの寸法を読めません: " <> glyphText g) | (g, Nothing) <- read']
       if not (null errors)
         then pure (Left errors)
@@ -352,6 +354,22 @@ provide memoise fid faces body roles =
                   P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
                   P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
                 }
+
+-- | The code of a wrong seac (root ADR 0420).
+seacCode :: SeacError -> Text
+seacCode = \case
+  SeacArguments -> "G08114"
+  SeacMissingComponent -> "G08115"
+  SeacNested -> "G08116"
+  SeacCidKeyed -> "G08117"
+
+-- | The message of a wrong seac before the path and the glyph (root ADR 0420).
+seacMessage :: SeacError -> Text
+seacMessage = \case
+  SeacArguments -> "CFF の seac の引数が誤っています: "
+  SeacMissingComponent -> "CFF の seac の部品のグリフがフォントにありません: "
+  SeacNested -> "CFF の seac の部品がまた seac を含みます: "
+  SeacCidKeyed -> "CID-keyed の CFF で seac を使っています: "
 
 {- | The program of a CFF font: its bare CFF table, embedded in FontFile3 with
 the subtype CIDFontType0C (golem-pdf ADR 0011). PDFium takes the codes of a

@@ -68,7 +68,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### フォント、PDF、EPUB の出力
 
-- **CFF の seac の部品のグリフの確かめ**：PDF に埋め込む CFF の参照の確かめ（[Golem ADR 0357](adr/0357-validate-embedded-cff.md)）は、endchar の引数で別のグリフを合成する形（seac）の部品のグリフをたどらない。部品のグリフは、StandardEncoding の文字のコードと charset から求める。[ADR 0357](adr/0357-validate-embedded-cff.md) の「実装すること」が挙げるのは使うグリフの CharString とサブルーチンなので、部品のグリフを確かめるかは改めて決める。
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
 - **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
 - **HTML の出力の HTML の書き方への変更**：HTML の出力を、今の XHTML（HTML Living Standard の XML の書き方）から、HTML の書き方に変える。今の HTML の出力は、EPUB の本文が XHTML でなければならないので、EPUB と同じ本文を使えるように、XML としても HTML としても読める形（polyglot）で書いている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。XHTML は扱いづらいので、v1.0.0 のころに変えることを予定している（2026-10-24 の tett23 の決定）。EPUB の本文は XHTML のままでなければならないので、HTML と EPUB で本文を分けるか、共通の本文から二つの書き方で書き出すかを ADR で決める。次の「HTML と EPUB へのフォントのライセンスの文書の同梱」は、この項目とあわせて決める（[docs/adr/0082](adr/0082-manuals-under-cc0.md)）。
@@ -103,14 +102,14 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
-- **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
-  これらは採択した範囲から除外せず、二つの ADR の残実装として進める。
-  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。シェーディングの色は関数（PostScript の計算機の関数を含む）やメッシュの頂点で決まるので、濃淡か一色かを判定する方法の決めが要る。
-  - CalGray、CalRGB、Lab、Separation、DeviceN の色空間。特色の網の濃さを白黒の濃淡と一色のどちらとして扱うかなど、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の規則をどう当てはめるかの決めが要る。
-  - 単位範囲以外の ICCBased の Range。
-  - 異寸法のマスク、Interpolate = true の明示マスク、Matte を持つソフトマスク、DeviceGray 以外のソフトマスク。拡大縮小したマスクで見える画素の決め方が要る。
-  - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。CCITT の復号が要る。
-  - Normal 以外の合成の方式（BM）と転送関数（TR、TR2）。物体ごとの置き換えが濃淡の規則と一致しないので、合成した結果で判定するかどうかの決めが要る。
+- **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が分類と置き換え方を決めたが、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+  これらは採択した範囲から除外せず、三つの ADR の残実装として進める。
+  [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた構成（Normal と Compatible のほかの合成の方式、Identity と Default のほかの転送関数、OPM が 1 のオーバープリント、FunctionType 4 の関数のシェーディング、DeviceGray でないソフトマスクなど）は、残りではない。
+  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。
+  - CalGray、CalRGB、Lab の画像と、データの色空間が Lab の ICCBased の画像。単位範囲以外の Range を持つ ICCBased の画像。これらと、データの色空間が Lab の ICCBased を基底とする Indexed の色空間。
+  - 異寸法のマスクと、Matte を持つ同寸法のソフトマスク。
+  - 画像かマスクの Interpolate が true の場合に、すべての画素を可視として判定すること。今は、明示マスクでは G08113 にし、ソフトマスクではマスクで判定している。
+  - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。
   - 自分の色を指定する Type 3 フォントの字形（d0）。
 - **入力色の保存と明示的な色置換（未実装）**：RGB を自動で CMYK にしない既存の規則を設計原則にも書き、書き手が選んだスウォッチへの図版の色置換と区別する。図版色の実装後に、入力の色の保持と各出力を照合する（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 

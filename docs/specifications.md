@@ -4717,7 +4717,7 @@ CFF の表があるフォントは、サブセットを作る前に、表の中�
 wasm32 の 32 ビットの整数でも、64 ビットの処理系と同じ結果にするためである。
 使わないグリフの CharString は確かめない。
 スタックの不足のような、表の外を読まない誤りは G08107 にせず、その CharString をそれ以上たどらない。
-endchar の引数で別のグリフを合成する形（seac）の部品のグリフは、たどらない。
+endchar の引数で別のグリフを合成する形（seac）の部品のグリフも、使うグリフと同じ規則でたどる（後述）。
 G08003 はフォントを開けない場合、G08018 は CFF の表を取り出せない場合のままである。
 
 `random` の値で決まる参照は、`random` がとりうる値すべてで確かめる（[Golem ADR 0390](adr/0390-deterministic-and-exhaustive-cff-random.md)）。
@@ -4752,6 +4752,27 @@ G08108 と G08109 は、G08107 と同じく PDF のビルドとプリフライ�
 G08108 と G08109 は、ほかの diagnostics と同じ規則で並べる（[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
 同じコードのものは位置が同じなので、メッセージの文字列の順に並び、フォントのパスの文字列の順、同じフォントではグリフの番号の文字列の順になる。
 このため、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+使うグリフの CharString の `endchar` は、seac の形かを確かめる（[root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
+スタックの値が奇数個なら、最初に積んだ一つを幅とし、残りの引数の数で形を決める。
+引数が 0 個ならふつうの `endchar` であり、4 個なら seac で、スタックの上から `achar`、`bchar`、`ady`、`adx` とする。
+それ以外の数はエラー（G08114）とし、PDF を書かない。
+0 個、1 個、4 個、5 個の読み方は FreeType と同じであり、FreeType が seac として読む 2 個、3 個、6 個以上を、Golem は G08114 として厳しい側に倒す。
+部品のグリフの `endchar` の引数の誤りも、使うグリフの G08114 とする。
+`bchar`（基底の字）と `achar`（アクセントの字）は StandardEncoding の文字のコードとして読み、その字の名前の SID を charset で引いて、部品のグリフの番号を得る。
+定義済みの charset（ISOAdobe、Expert、ExpertSubset）は、CFF の仕様の表で引く。
+コードが 0 から 255 までの整数でなければ G08114、StandardEncoding のそのコードに字がない（`.notdef` に当たる）か、その字の名前が charset になければ G08115 とする。
+部品のグリフは、基底の字のものすべて、アクセントの字のものすべての順に、重なりを除いて、使うグリフと同じ規則（G08107、G08108）でたどり、その実行の数は使うグリフの実行の数に足す。
+部品のグリフがまた seac の形なら G08116 とし、CID-keyed のフォントの seac は、charset が字の名前ではなく CID を並べるので部品を引けず、G08117 とする。
+コードが `random` から作った値なら、区間の下端の床から上端の天井までのすべての整数をコードとし、そのすべてが正しく、すべての部品をたどれるときだけ受け付ける。
+端が無限大の区間をコードに使えば、G08108 とする。
+G08114 から G08117 は、G08108 と同じく、フォントとグリフの番号の組ごとに一つ、PDF のビルドとプリフライトで出し、位置は `style.toml` の先頭で、同じ規則で並べる。
+部品の CharString が表の外を参照すれば、G08107 とする。
+原因が重なるときは、部品の中の seac を G08116 とし、CID-keyed のフォントの seac を引数のコードによらず G08117 とし、残りは G08114 を G08115 より先に、`bchar` を `achar` より先に判定する。
+一つのグリフについては、G08108 と G08114 から G08117 のうち、枝をたどる順で最初に当たったものだけを出す。
+G08109 とは独立に出す。
+使わないグリフの seac は確かめない。
+サブセットは、HarfBuzz が seac の部品のグリフを含めて作るので、変えない。
 
 ### ToUnicode と ActualText
 
@@ -5011,14 +5032,28 @@ JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended 
 
 PDF 図版の色置換は段階的な実装である。
 現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
-線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ ICCBased（成分数 1、3、4）と Indexed に対応する。
+線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ CalGray、CalRGB、Lab、ICCBased、Indexed に対応する（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+CalGray、CalRGB、Lab の色は、色を変換せずに、切り詰めた成分の値のまま分類する。
+CalGray と CalRGB の成分は 0 から 1 に、Lab の L* は 0 から 100 に、a* と b* は色空間の Range に切り詰め、有理数のまま比べる。
+CalGray はつねに白黒の濃淡で、灰色の値はその成分である。
+CalRGB は三つの成分が等しいときだけ濃淡で、灰色の値はその成分である。
+Lab は a* と b* がともに 0 のときだけ濃淡で、灰色の値は L* を 100 で割った値である。
+この三つの色空間の色どうしは、色空間の種類と辞書の値と成分の値がすべて等しいときだけ同じ色とし、ほかの色空間の色とは別の色とする。
+ICCBased は、プロファイルのヘッダーのデータの色空間で分ける。
+Gray、RGB、CMYK のデータは、Range で 0 から 1 に写してから DeviceGray、DeviceRGB、DeviceCMYK と同じ規則で判定する。
+Lab のデータは、Range で切り詰めた成分を L*、a*、b* として Lab の規則で判定し、Lab の色空間とは別の色空間の色とする。
+Range を省いた ICCBased の既定の Range は、各成分の 0 から 1 である。
+Range が 0 から 100 を超える Lab のデータでは、灰色の値を求める L* を、さらに 0 から 100 に切り詰める。
+Indexed の基底は、DeviceGray、DeviceRGB、DeviceCMYK と、データの色空間が Gray、RGB、CMYK で Range が単位範囲の ICCBased に限る。
+データの色空間がこの四つのどれでもないか、成分数 N と合わない ICCBased は G08113 とする。
 Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
 ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
 インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
 画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
 Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
 画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
-ICCBased の Range は各成分の単位範囲だけを扱う。
+画像の ICCBased は、データの色空間が Gray、RGB、CMYK で、N と合い、Range が各成分の単位範囲である場合だけを扱う。
+画像の CalGray、CalRGB、Lab と、データの色空間が Lab の ICCBased の画像は、まだ判定できないので G08113 とする。
 画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
 Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
 同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
@@ -5035,10 +5070,22 @@ DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASC
 PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
 通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
 そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。
-ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、物体ごとの置き換えが濃淡の規則と一致しないので、G08113 とする。
+ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、G08113 とする（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+BM の配列は、空でなく、要素がすべて Normal か Compatible のときだけ扱う。
+Multiply などでは、物体ごとに置き換えてから重ねた色が、重ねた濃淡を置き換えた色と一致しないためである。
+転送関数は、描いた後の濃淡を関数で変えるので、置き換えた色が濃淡の規則と一致しない。
+線か塗りを描くとき、描画の状態の OPM が 1 で、その描き方のオーバープリントが true の PDF も G08113 とする。
+置き換えた DeviceCMYK の色では成分が 0 の版を抜かないので、白の物体が下の物体を隠さなくなるためである。
+線のオーバープリントは `gs` の OP が、塗りのオーバープリントは op が設定し、同じ辞書に op が無い OP は両方を設定する。
+OPM と OP は別々の `gs` で設定でき、描画の状態は前の `gs` から引き継ぐので、一つの ExtGState ではなく描画の状態で判定する。
+文字は、描画モードに応じて、塗りと線のオーバープリントで判定する。
+画像を描くときは、塗りのオーバープリントで判定する。
+ADR は画像を挙げていないが、PDF で画像を描く演算子は塗りのオーバープリントに従うので、この仕様で塗りと同じ扱いと決めた。
+OPM が 0 なら、プロセスカラーの四つの成分をすべて塗るので、オーバープリントは結果を変えない。
 字形の中で自分の色を指定する Type 3 フォント（d0 の字形）を使う PDF も、字形の色を判定できないので G08113 とする。
 未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
-[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) と [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+ただし、[diagnostic の一覧の G08113](diagnostics.md#g08113) が主な原因の最初の項目に挙げる構成は、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた振る舞いであり、残る対応ではない。
 
 色を指定した SVG は、判定か置換ができなければ PDF、HTML、EPUB の対象媒体を G08113 で止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
 色を指定しない SVG の受け入れ範囲は変えない。
@@ -7048,6 +7095,56 @@ LSP の `golem/planFileMove` は、Aleph が一つの登録済みワークスペ
 スナップショットには文書の本文と版、ディレクトリの項目、プロジェクトと可視シートの一覧を含める。
 クライアントは適用直前にスナップショットを照合し、一致すれば編集を適用し、項目を移す。
 サーバーの要求処理は読み取りだけを行う。
+
+### 移動し終えたファイルの参照の編集
+
+LSP の `golem/planMovedReferences` は、ターミナルの `git mv` や Finder でエディタの外から移し終えたファイルとフォルダについて、`golem/planFileMove` と同じ計画を返す（[root ADR 0426](adr/0426-plan-reference-edits-after-a-move.md)）。
+`initialize` の応答は、`capabilities.experimental.golem.planMovedReferences` に契約の版 `1` を返す。
+クライアントがこの要求を使えるのは、`golem/planFileMove` と同じく、`initializationOptions.golem.fileMove` に `version: 1` と `workspaceUri` を指定したときだけである。
+移動を見つけて要求を送り、編集を当てるのはクライアントの役目であり、LSP はファイルシステムを見張らない。
+
+クライアントは、`golem/planFileMove` の `oldUri` と `newUri` の代わりに、移動の対 `{ oldUri, newUri }` の配列 `moves` を渡す。
+ほかの欄（`workspaceUri`、`projects`、`wikiSheets`、`documents`、`inventoryComplete`）は `golem/planFileMove` と同じ形で、移し終えた後の状態を表す。
+クライアントは、一度に見つけた移動をまとめて一つの要求で渡す。
+対ごとに分けて送ると、ほかの対で移したファイルを指す参照が、その移動元にファイルが無いので参照先の無い参照に見え、計画がエラーになるためである。
+
+サーバーは、計画の前に、移し終えた状態であることを次の条件で確かめる。
+存在は親のディレクトリの一覧の名前で、大文字と小文字を区別して比べるので、大文字と小文字だけを変えた改名も移動として扱う。
+
+- `moves` が空でない。
+- 各対の移動元と移動先が、登録済みのワークスペースの中にあり、ワークスペースそのものでない。
+- 各対の移動元と移動先は、互いの下にない。
+- 対どうしが独立している。どの対の移動元と移動先も、ほかの対の移動元か移動先と同じでなく、その下にも上にもない。そのため、連鎖（a を b に、b を c に）と入れ子（フォルダと、その中のファイル）の対はエラーになる。
+- 各対の移動元に、ファイルもフォルダも無い。移動元の祖先に、フォルダでないものが無い。
+- 各対の移動先に、ファイルかフォルダがある。移動先はシンボリックリンクでなく、シンボリックリンクを含まない。
+- `inventoryComplete` が `true` である。
+
+条件に一つでも通らなければ、`golem/planFileMove` のエラーと同じ形で、該当する URI と理由を持つエラーを返し、編集を返さない。
+
+条件に通れば、サーバーは、今のディスクの索引の各移動先の下をその対の移動元の下に戻し、移動前の状態を組み直す。
+移した後に空になった移動元のフォルダを消していれば、そのフォルダも組み直す。
+`projects`、`wikiSheets`、`documents` の URI も、同じ逆の写像で移動前の URI に戻す。
+閉じた文書の本文は、今のディスクの、移動後のパスから読む。
+組み直した状態に `golem/planFileMove` と同じ検査をし、すべての対を合成した写像で一度に計画する。
+この検査のエラーの URI と `targetUri` も、移動の写像で移動後の URI に写す。
+そのため、章の原稿と、それが指す画像を一緒に別のプロジェクトへ移すように、一度に移せば成り立つ参照は受けいれる。
+
+章の登録の移し替えでは、一つの manifest への変更を一つの編集にまとめる。
+移動先の章の一覧の末尾に足す順は `moves` の順で、同じ対の中では元の章の順である。
+章の登録の変更の要約 `chapters` は、`golem/planFileMove` と同じ形で、移動前と移動後の URI を持つ。
+
+応答は `golem/planFileMove` と同じく `{ complete, groups, snapshot, chapters }` である。
+`groups` の編集先の URI と `projectUri`、`snapshot` の文書、プロジェクト、可視シートの URI は、移動の写像で移動後の URI に写す。
+`snapshot` のディレクトリの項目は、今のディスクの一覧である。
+移動前の一覧を写すと、親の違うフォルダへの移動で、移動先の親の一覧に項目が載らず、適用の直前の照合に使えないためである。
+`groups` の編集は `TextDocumentEdit` だけで、`RenameFile`、`CreateFile`、`DeleteFile` を含めない。
+`snapshot` の本文は、サーバーが読んだ移動後の本文である。
+書き換える参照が無ければ、`groups` は空の配列になる。
+サーバーの要求処理は読み取りだけを行い、`workspace/didRenameFiles` を受けて索引を作り直す振る舞いも変えない。
+
+移動先に前からあったファイルを上書きした移動は、移し終えた後のディスクから見分けられない。
+そのため検査は通りうるが、返す計画は、上書きされたファイルを指していた参照を正しく扱わない。
+上書きを見分けて、この要求を送らないのはクライアントの役目である。
 
 ### 同期と評価し直し
 
