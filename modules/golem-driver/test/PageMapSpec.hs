@@ -27,7 +27,7 @@ import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Numeric (showHex)
 import Support (codesOf, fakeProvider, pdfStyle, withChapters, writeStyleWithFont)
-import System.Directory (doesFileExist, listDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (takeExtension, (</>))
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -52,6 +52,17 @@ pageMapTests =
       testCase "root ADR 0386 I1: JSON schema reports G03275" $ checkFailure (Just "{}") False "G03275",
       testCase "root ADR 0386 I1: stale mapping reports G03276" $ checkFailure (Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}") False "G03276",
       testCase "root ADR 0386 I1: invalid position reports G03277" $ checkFailure (Just ("{\"sources\":{\"a.gm\":\"" <> hex (sha256 "abcd\n") <> "\"},\"pages\":[{\"page\":1,\"label\":\"1\",\"file\":\"a.gm\",\"line\":99,\"character\":0}]}")) False "G03277",
+      testCase "root ADR 0429 I4: a page map whose file is missing removes the previous build/epub with G03272" $
+        withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
+          previous <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
+          codesOf (filter isError (brDiagnostics previous)) @?= []
+          doesFileExist (root </> "build/epub/book.epub") >>= assertBool "the previous build writes the EPUB"
+          manifest <- TIO.readFile (root </> "manifest.toml")
+          TIO.writeFile (root </> "manifest.toml") (T.replace "[targets.epub]" "[targets.epub]\npage-map = \"pages.json\"" manifest)
+          result <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
+          codesOf (filter isError (brDiagnostics result)) @?= ["G03272"]
+          brWritten result @?= []
+          doesDirectoryExist (root </> "build/epub") >>= (@?= False),
       testCase "root ADR 0386 I1: mapped pages preserve their physical order" $ do
         let mapping = PageMap hashes [FixedPage 1 "i" (Just ("a.gm", 0, 0)), FixedPage 2 "1" (Just ("a.gm", 0, 2))]
         case resolvePageMap sources files book mapping of

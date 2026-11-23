@@ -1,6 +1,6 @@
 # ADR 0429: ターゲットの出力のフォルダーを、書く前に消す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
