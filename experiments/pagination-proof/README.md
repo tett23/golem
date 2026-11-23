@@ -427,7 +427,7 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 `placeAll` は原稿の列について構造的に再帰する。
 `I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
 
-`I5_paginate_text` は、出力のページに、段落、詩の行、定義の項、表の行、見出し、コードの行が原稿の順に一度ずつ並ぶことを証明する。
+`I5_paginate_text` は、出力のページに、段落、詩の行、回り込み図版の横の行、定義の項、表の行、見出し、コードの行が原稿の順に一度ずつ並ぶことを証明する。
 この定理は `nextNeed`、`fitting`、`roomForLine` のどの値でも、段の容量と脚注区切りの行数のどの値でも成り立つ。
 本文の行を置くのは `putLine`、`putBlock` と、`placeCode` がコードの行の部分を置く `putSlot` だけで、表の見出し行を繰り返す `putRepeated` は本文に数えないスロットを置く。
 ほかの操作は出力済みのページと現在の段のスロットから本文を消さず、増やさない。
@@ -475,6 +475,12 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 1 ページ目は段落の 7 行だけを持ち、2 段組みは 2 ページ目の 0 行目から始まった。
 表の見出し行と本体の行は、2 ページ目の 2 段目の 0 行目と 1 行目に置かれた。
 
+回り込み図版の横の行が次の段へ送られると、Haskell の実装は送った先の段の使用行数を、図版を置いた段の使用行数に、図版の高さと横の行数の大きいほう（`size`）を足した値にする。
+`paginate 1 3 [FWrapped 1 2 [] [] (ls 10 5), FParagraph defaultKeep (ls 20 1)]` を `runghc` で実行した。
+1 ページ目に図版と横の行 10〜12 が、2 ページ目に行 13 と 14 が置かれ、2 ページ目の 2 行目は空いたまま、1 行の段落 20 は 3 ページ目に置かれた。
+`place` の `FWrapped` が、`placeLines` の後の状態の `sUsed` を `max (sUsed st1 + size) (sUsed placed)` とし、`st1` が図版を置いた 1 ページ目の状態だからである。
+このモデルは実装のとおりに写し、判断を待つ。
+
 モデルは次の点で Haskell の実装を抽象化する。
 `nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
 コードの行の部分の行数を決める `Code.hs:150` の `codeSpan` も `Env` の引数とし、コードの組み方は自然数で区別する。
@@ -482,8 +488,9 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
 フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻し、段の行数の変更（`FAdjustLines`）を扱う。
-本の部、箱、詩も扱う。
-罫線つきのブロック、回り込み図版、節の開始は、まだ扱わない。
+本の部、箱、詩、回り込み図版も扱う。
+罫線つきのブロックと節の開始は、まだ扱わない。
+回り込み図版（`SWrapped`）は、`I5_paginate_figures` の図版に数えない。
 罫線つきのブロックの `flushJoin` は、後の罫線の領域を次のブロックと共有しなかったとき、使用行数に `min k (free st)` を足すので、残りの行数が負なら使用行数を減らす。
 図版の順序の不変条件をこの操作で保つには、共有を待つ状態（`sJoin`）では残りの行数が 0 以上か脚注の行数が 1 以上であることが要る。
 共有を待つのは、収まると判定して置いたブロックの直後から、次の罫線つきのブロックを置くまでである。
@@ -540,6 +547,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:561` `place` の `FSwitchColumns`、`:567` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
 | `Paginate.hs:599` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
 | `Paginate.hs:625` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
+| `Paginate.hs:551` `place` の `FWrapped` | `place` の `wrapped` |
 | `Paginate.hs:665` `placeStanza` | `placeStanza`、`placeStanzaGo`、`versesFitting`、`stanzaK0`、`stanzaK2`、`putVerses`、`shortVerse` |
 | `Paginate.hs:787` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
 | `Paginate.hs:812` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |

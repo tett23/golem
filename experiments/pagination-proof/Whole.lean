@@ -54,6 +54,9 @@ inductive Flow where
   | stanza (kp : Keep) (verses : List (List Line))
   | figure (id n : Nat)
   | pageFigure (id : Nat)
+  /-- A figure with lines beside it (`FWrapped`): its id, its grid lines
+      and the lines beside it. -/
+  | wrapped (id n : Nat) (beside : List Line)
   | brk (k : BreakKind)
   | space (n : Nat)
   | blank (n : Nat)
@@ -105,6 +108,8 @@ inductive Slot where
   | heading (id count : Nat)
   | figure (id : Nat)
   | pageFigure (id : Nat)
+  /-- A figure with lines beside it (`SWrapped`), of no grid lines of its own. -/
+  | wrapped (id : Nat)
   /-- A part of a code block (`SCode`), by the rows in it. -/
   | code (rows : List Nat)
   /-- A row of a code block, as the text of a page lists it. -/
@@ -475,6 +480,7 @@ def flowSlotIds : Flow → List Nat
   | .stanza _ vs => vs.join.map (·.id)
   | .heading _ _ ls => (ls.take 1).map (·.id)
   | .figure i _ | .pageFigure i => [i]
+  | .wrapped i _ beside => i :: beside.map (·.id)
   | .table _ h rows capt _ => (h ++ rows.join ++ capt).map (·.id)
   | .code _ _ _ _ rows => rows.map (·.id)
   | _ => []
@@ -1239,7 +1245,7 @@ def applyBreaks (env : Env) (st : St) : St :=
 /-- `slotIds` of BookParts.hs; a repeated header line is a line of the
     same id. -/
 def slotIds : Slot → List Nat
-  | .line i | .heading i _ | .figure i | .pageFigure i | .codeRow i | .repeated i => [i]
+  | .line i | .heading i _ | .figure i | .pageFigure i | .codeRow i | .repeated i | .wrapped i => [i]
   | .code rows => rows
 
 /-- `key` of `placeBookPart`: the unit of a column. -/
@@ -1714,6 +1720,12 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .paragraph kp ls => placeLines env kp st true ls
   | .continued kp ls => placeLines env kp st false ls
   | .stanza kp vs => placeStanza env kp st true vs
+  | .wrapped i n beside =>
+    let st0 := flushFigures env st
+    let size : Int := max (n : Int) beside.length
+    let st1 := keep env st0 (fun _ => size)
+    let st3 := placeLines env defaultKeep (putSlot st1 0 (.wrapped i)) false beside
+    { st3 with used := max (st1.used + size) st3.used }
   | .heading recto n ls =>
     let st1 := if recto then parityStart env odd st
       else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))
@@ -1897,6 +1909,7 @@ def flowText : Flow → List Slot
   | .continued _ ls => ls.map (fun l => .line l.id)
   | .defTerm ls => ls.map (fun l => .line l.id)
   | .stanza _ vs => vs.join.map (fun l => .line l.id)
+  | .wrapped _ _ beside => beside.map (fun l => .line l.id)
   | .heading _ _ [] => []
   | .heading _ _ (l0 :: ls) => [.heading l0.id (ls.length + 1)]
   | .code _ _ _ _ ls => ls.map (fun l => .codeRow l.id)
@@ -1933,6 +1946,9 @@ termination_by sizeOf fs
 theorem text_addUnmet (u : Unmet) (st : St) : text (addUnmet u st) = text st := rfl
 
 theorem text_putSlot_figure (st : St) (n i : Nat) : text (putSlot st n (.figure i)) = text st := by
+  simp [text, putSlot, textSlots_append, textSlots]
+
+theorem text_putSlot_wrapped (st : St) (n i : Nat) : text (putSlot st n (.wrapped i)) = text st := by
   simp [text, putSlot, textSlots_append, textSlots]
 
 theorem text_pageFigure (env : Env) (st : St) (i : Nat) : text (pageFigure env st i) = text st := by
@@ -2474,6 +2490,10 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   cases f with
   | paragraph kp ls => simp only [place, flowText]; exact text_placeLines ..
   | stanza kp vs => simp only [place, flowText]; exact text_placeStanza ..
+  | wrapped i n beside =>
+    simp only [place, flowText]
+    show text (placeLines env defaultKeep _ false beside) = _
+    rw [text_placeLines, text_putSlot_wrapped, text_keep, text_flushFigures]
   | continued kp ls => simp only [place, flowText]; exact text_placeLines ..
   | heading recto n ls =>
     simp only [place]
@@ -2625,6 +2645,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | switchColumns n => simp only [step]; exact general _ _
   | restoreColumns => simp only [step]; exact general _ _
   | stanza kp vs => simp only [step]; exact general _ _
+  | wrapped i n beside => simp only [step]; exact general _ _
   | boxed i kb ka body => simp only [step]; exact general _ _
 termination_by (flowWeight f, 2)
 decreasing_by
@@ -3864,6 +3885,23 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
   cases f with
   | paragraph kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st true ls h
   | stanza kp vs => simp only [place, flowFigs, List.append_nil]; exact placeStanza_figs env hs kp st true vs h
+  | wrapped i n beside =>
+    simp only [place, flowFigs, List.append_nil]
+    have f0 := flushFigures_figs env st h
+    have k := inv_keep env (flushFigures env st) (fun _ => max (n : Int) beside.length) f0.2
+    have fk := figs_keep env (flushFigures env st) (fun _ => max (n : Int) beside.length)
+    generalize keep env (flushFigures env st) (fun _ => max (n : Int) beside.length) = st1 at k fk
+    have ps : Inv (putSlot st1 0 (.wrapped i)) :=
+      inv_addUsed k ⟨k.weak.first, k.weak.deferred⟩ 0 (Int.le_refl 0) (by simp [putSlot]) (Int.le_refl _)
+        (Or.inl (by simp [putSlot, figSlots_append, figSlots]))
+    have fp : figs (putSlot st1 0 (.wrapped i)) = figs st1 := by simp [figs, putSlot, figSlots_append, figSlots]
+    have p := placeLines_figs env hs defaultKeep _ false beside ps
+    rw [fp, fk, f0.1] at p
+    generalize placeLines env defaultKeep (putSlot st1 0 (.wrapped i)) false beside = st3 at p
+    refine ⟨p.1, ?_⟩
+    exact inv_addUsed p.2 ⟨p.2.weak.first, p.2.weak.deferred⟩ (max (st1.used + max (n : Int) beside.length) st3.used - st3.used)
+      (by have := Int.le_max_right (st1.used + max (n : Int) beside.length) st3.used; omega) (by show max _ _ = _; omega)
+      (Int.le_refl _) (Or.inl rfl)
   | continued kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st false ls h
   | heading recto n ls =>
     simp only [place, flowFigs, List.append_nil]
@@ -4118,6 +4156,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
   | switchColumns n => simp only [step]; exact general _ _
   | restoreColumns => simp only [step]; exact general _ _
   | stanza kp vs => simp only [step]; exact general _ _
+  | wrapped i n beside => simp only [step]; exact general _ _
   | boxed i kb ka body => simp only [step]; exact general _ _
 termination_by (flowWeight f, 2)
 decreasing_by
