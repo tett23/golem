@@ -5283,8 +5283,6 @@ d1 の字形を一つでも持つフォントの文字は、d0 の字形の色�
 写しの d1 の字形は、元の内容を参照する。
 フォントが資源（Resources）を持たないときは、フォントを選んだ内容の資源で字形を読む。
 未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
-[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) と [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) の未実装部分であり、採択した対象からの除外ではない。
-ただし、[diagnostic の一覧の G08113](diagnostics.md#g08113) が主な原因の最初の項目に挙げる構成は、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた振る舞いであり、残る対応ではない。
 
 色を指定した SVG は、判定か置換ができなければ PDF、HTML、EPUB の対象媒体を G08113 で止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
 色を指定しない SVG の受け入れ範囲は変えない。
