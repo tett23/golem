@@ -18,6 +18,7 @@ import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import NestedFiguresSpec qualified
 import NoteBodyStylesSpec (noteBodyStylesTests)
+import NoteRefsSpec (noteRefTests)
 import NotesSpec (notesTests)
 import NumberTitleSeparatorSpec (numberTitleSeparatorTests)
 import OverflowSpec (overflowTests)
@@ -100,6 +101,7 @@ tests =
       testGroup "the footnote separator (ADR 0024)" noteRuleTests,
       testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
       testGroup "endnotes (root ADR 0412)" endnoteTests,
+      testGroup "references to notes (root ADR 0422)" noteRefTests,
       testGroup "the paragraph styles of notes (docs/adr/0366)" noteBodyStylesTests,
       testGroup "notes numbered per page (docs/adr/0383)" pageNoteNumbersTests,
       testGroup "the kanji numbers of note marks set flat (docs/adr/0381)" compressedNoteMarksTests,

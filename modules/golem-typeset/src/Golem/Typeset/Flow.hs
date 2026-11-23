@@ -728,6 +728,8 @@ layoutFigures reuse numbered inp geom fonts figures = do
         Map.fromList
           ( [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), l <- igLocators g, (_, sp) <- locatorMarks l]
               <> [(sp, T.concat (map inlineText (ceBody e))) | (_, _, es) <- bookChannels (piBook inp), e <- es, (_, sp) <- ceLocations e]
+              -- the labels of the notes, whose pages are those of their marks (root ADR 0422)
+              <> Map.toList (noteLabelSpans (piBook inp))
           )
   let capacity = length (pgLineGrid geom)
       -- the round before, whose compositions of the units that did not change are reused (docs/adr ADR 0251)
@@ -1696,9 +1698,9 @@ sidenoteDiagnostics geom book
       FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
       _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
-      Sidenote sp _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
-      Note _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
-      Endnote _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
+      Sidenote sp _ _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
+      Note _ _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
+      Endnote _ _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
@@ -2754,7 +2756,30 @@ flowEnv inp geom fonts assumed = fe
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe}
+lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe, cePageOf = labelPageOf (piBook (feInput fe)) (feAssumed fe), ceNoteRefOf = \l -> feMarkReserve fe >> pageNumberedNote (piBook (feInput fe)) l}
+
+{- | The page of a label (docs/adr/0260): of the block it is on, or of the
+mark of the note it is on, followed as an index mark by its span (root
+ADR 0422).
+-}
+labelPageOf :: Book -> Assumed -> Text -> Maybe PageLabel
+labelPageOf book assumed l = case Map.lookup l (bookLabels book) of
+  Just LabelTarget {ltNote = Just _, ltSpan = sp} -> Map.lookup sp (asMarks assumed)
+  _ -> Map.lookup l (asLabels assumed)
+
+{- | The channel and the number in the book of the note a label is on, when
+the channel is numbered per page (root ADR 0422): a note or a sidenote;
+the endnotes never are.
+-}
+pageNumberedNote :: Book -> Text -> Maybe (NoteChannel, Int)
+pageNumberedNote book l = case Map.lookup l (bookLabels book) >>= ltNote of
+  Just (NoteTarget FootnoteChannel n) -> Just (ChannelNote, n)
+  Just (NoteTarget SidenoteChannel n) -> Just (ChannelSidenote, n)
+  _ -> Nothing
+
+-- | The label of each note that has one, by the span of the note (root ADR 0422).
+noteLabelSpans :: Book -> Map SrcSpan Text
+noteLabelSpans book = Map.fromList [(ltSpan t, l) | (l, t@LabelTarget {ltNote = Just _}) <- Map.toList (bookLabels book)]
 
 {- | How many notes and how many sidenotes the book has (docs/adr/0383):
 numbered per page, the book numbers them in its order before the pages
@@ -2770,10 +2795,10 @@ bookNoteSites :: Book -> [(NoteChannel, Int, SrcSpan)]
 bookNoteSites book = concatMap (concatMap inlineNotes) (concatMap blockInlineLists (concat [bs | Document _ bs <- bookDocs book]))
   where
     inlineNotes = \case
-      Note sp n nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
-      Sidenote sp n nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      Note sp n _ nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      Sidenote sp n _ nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
       -- the endnotes are not numbered per page: their bodies alone (root ADR 0412)
-      Endnote _ _ nb -> concatMap inlineNotes (concat (noteParagraphs nb))
+      Endnote _ _ _ nb -> concatMap inlineNotes (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap inlineNotes xs
       Color _ _ xs -> concatMap inlineNotes xs
       CharStyle _ _ xs -> concatMap inlineNotes xs
@@ -4527,9 +4552,12 @@ destAnchors book units firsts figs headingSpans flow =
         [ [(DestBibEntry sp k, AnchorLine lid) | ((k, _), Just lid) <- zip (bibliographyAt book sp) (map (`Map.lookup` firsts) is)]
         | (sp, is) <- Map.toList (Map.fromListWith (flip (<>)) [(uSpan u, [i]) | (i, u) <- units, any (\(Frame _ k _) -> k == FBibliography) (uFrames u)])
         ]
-    ofBox lb = [(DestLabel l, AnchorLine (lbId lb)) | l <- lbLabels lb] <> [(DestIndexMark m, AnchorLine (lbId lb)) | m <- lbMarks lb]
+    -- a label of a note is at the mark of the note (root ADR 0422)
+    noteLabels = noteLabelSpans book
+    marked m = [DestIndexMark m] <> [DestLabel l | Just l <- [Map.lookup m noteLabels]]
+    ofBox lb = [(DestLabel l, AnchorLine (lbId lb)) | l <- lbLabels lb] <> [(d, AnchorLine (lbId lb)) | m <- lbMarks lb, d <- marked m]
     ofFigure fid labels marks = case Map.lookup fid figs of
-      Just pf -> [(DestLabel l, AnchorFigure (pfUnit pf)) | l <- labels] <> [(DestIndexMark m, AnchorFigure (pfUnit pf)) | m <- marks]
+      Just pf -> [(DestLabel l, AnchorFigure (pfUnit pf)) | l <- labels] <> [(d, AnchorFigure (pfUnit pf)) | m <- marks, d <- marked m]
       Nothing -> []
     ofFlow = \case
       FParagraph _ lbs -> concatMap ofBox lbs
@@ -4569,9 +4597,9 @@ inlinesReferToPage = any $ \case
   Kenten _ _ is -> inlinesReferToPage is
   Color _ _ is -> inlinesReferToPage is
   CharStyle _ _ is -> inlinesReferToPage is
-  Note _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
-  Sidenote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
-  Endnote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Note _ _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Sidenote _ _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Endnote _ _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
   Link _ _ is -> inlinesReferToPage is
   Lang _ _ is -> inlinesReferToPage is
   ChannelItem _ ci -> inlinesReferToPage (ciBody ci)

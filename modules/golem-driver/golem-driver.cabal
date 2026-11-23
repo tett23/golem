@@ -197,6 +197,7 @@ test-suite golem-driver-page-test
     LinkSpec
     NestedFiguresSpec
     NoteBodyStylesSpec
+    NoteRefsSpec
     NotesSpec
     NumberTitleSeparatorSpec
     OverflowSpec

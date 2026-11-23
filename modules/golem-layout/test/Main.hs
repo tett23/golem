@@ -331,7 +331,7 @@ noteMarkTests =
       fmt <- either (assertFailure . T.unpack) pure (parseMarkFormat "注{n:kanji}")
       let m = dimToSp fs (Zw (65 % 100))
           env = (defaultComposeEnv fs) {ceNoteMarkLook = \lk -> lk {lkSize = m}, ceNoteMarkFormat = fmt, ceSidenoteMarker = MarkerNumber, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
-          sn = Sidenote (mkSpan (FileId 0) 3 9) 2 (noteBody (mkSpan (FileId 0) 3 9) [sp0 "注"])
+          sn = Sidenote (mkSpan (FileId 0) 3 9) 2 Nothing (noteBody (mkSpan (FileId 0) 3 9) [sp0 "注"])
       [(bcText c, w) | Box w c <- fst (composeInlines env [sp0 "漢", sn, sp0 "字"]), boxKind c == KindNoteMark] @?= [("2", Sp (round (3 / 5 * toRational (unSp m) :: Rational)))],
     testCase "the spacing of the pair around the mark comes after it" $ do
       let env = defaultComposeEnv fs
@@ -347,10 +347,10 @@ noteMarkTests =
         [] -> assertFailure "no boxes"
       [w | Box w c <- with, boxKind c /= KindNoteMark] @?= [w | Box w _ <- without],
     testCase "a numbered sidenote marker is a note mark of the number alone" $ do
-      let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 (noteBody (mkSpan (FileId 0) 3 9) [sp0 "注"])
+      let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 Nothing (noteBody (mkSpan (FileId 0) 3 9) [sp0 "注"])
       [(bcText c, boxKind c) | Box _ c <- fst (composeInlines (defaultComposeEnv fs) [sp0 "本", sn]), boxKind c /= KindText] @?= [("1", KindNoteMark)],
     testCase "two notes of a paragraph have anchors of different spans" $ do
-      let anchors = snd (composeInlines (defaultComposeEnv fs) [sp0 "あ", Note (mkSpan (FileId 0) 1 5) 1 (noteBody (mkSpan (FileId 0) 1 5) [sp0 "注"]), sp0 "い", Note (mkSpan (FileId 0) 6 9) 2 (noteBody (mkSpan (FileId 0) 6 9) [sp0 "注"])])
+      let anchors = snd (composeInlines (defaultComposeEnv fs) [sp0 "あ", Note (mkSpan (FileId 0) 1 5) 1 Nothing (noteBody (mkSpan (FileId 0) 1 5) [sp0 "注"]), sp0 "い", Note (mkSpan (FileId 0) 6 9) 2 Nothing (noteBody (mkSpan (FileId 0) 6 9) [sp0 "注"])])
       [s | AnchorNote _ _ s _ <- anchors] @?= [mkSpan (FileId 0) 1 5, mkSpan (FileId 0) 6 9],
     testCase "two notes 1 of different keys on one page are two footnotes" $ do
       let a = NoteId (mkSpan (FileId 1) 0 5) 0
@@ -359,7 +359,7 @@ noteMarkTests =
       map poFootnotes ps @?= [[(a, 0, 1), (b, 0, 2)]]
   ]
   where
-    note n = Note (mkSpan (FileId 0) 1 2) n (noteBody (mkSpan (FileId 0) 1 2) [sp0 "注"])
+    note n = Note (mkSpan (FileId 0) 1 2) n Nothing (noteBody (mkSpan (FileId 0) 1 2) [sp0 "注"])
 
 -- | Advances that ignore variation selectors, so that boxes with and without them compare equal.
 vsEnv :: ComposeEnv
@@ -1341,11 +1341,11 @@ tests =
           testCase "notes near the bottom pull earlier ones up" $
             placeSidenotes 100 2 [(70, 10), (85, 20)] @?= Right [68, 80],
           testCase "a sidenote in a vertical paragraph is an error" $ do
-            let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 (noteBody (mkSpan (FileId 0) 3 9) [sp0 "注"])
+            let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 Nothing (noteBody (mkSpan (FileId 0) 3 9) [sp0 "注"])
             length (verticalSidenotes (defaultComposeEnv fs) {ceVertical = True} [sp0 "本文", sn]) @?= 1
             verticalSidenotes (defaultComposeEnv fs) [sn] @?= [],
           testCase "an anchor indexes its marker among the composed items, spacing included" $ do
-            let (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "あいうえお", Note (mkSpan (FileId 0) 0 1) 1 (noteBody (mkSpan (FileId 0) 0 1) [sp0 "注"]), sp0 "かき"]
+            let (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "あいうえお", Note (mkSpan (FileId 0) 0 1) 1 Nothing (noteBody (mkSpan (FileId 0) 0 1) [sp0 "注"]), sp0 "かき"]
             case anchors of
               [AnchorNote i 1 _ _] -> case drop i items of
                 (Box _ c : _) -> bcText c @?= "*1"
@@ -1378,7 +1378,7 @@ tests =
             text (map citeItem ["x", "a"]) @?= "[1,x]",
           testCase "the sidenote marker in the text follows the style (golem-driver ADR 0006)" $ do
             let snSpan = mkSpan (FileId 0) 3 9
-                sn = Sidenote snSpan 1 (noteBody snSpan [sp0 "注"])
+                sn = Sidenote snSpan 1 Nothing (noteBody snSpan [sp0 "注"])
                 boxes m = [bcText c | Box _ c <- fst (composeInlines (defaultComposeEnv fs) {ceSidenoteMarker = m} [sp0 "本", sn])]
             boxes MarkerNumber @?= ["本", "1"]
             boxes MarkerSymbol @?= ["本", "※"]
@@ -1469,7 +1469,7 @@ characterFeatureTests =
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           half = Sp (unSp fs `div` 2)
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs + tenth, negate tenth)]
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 (noteBody sp [])])] @?= [(half + Sp (unSp half `div` 10), 0)],
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 Nothing (noteBody sp [])])] @?= [(half + Sp (unSp half `div` 10), 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           items = compose env (T.replicate 40 "あ")

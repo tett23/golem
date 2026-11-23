@@ -1,6 +1,6 @@
 # ADR 0424: 2026-11-18 の監査の低の指摘のうち、ADR が要る四つを直す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

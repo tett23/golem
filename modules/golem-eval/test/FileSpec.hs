@@ -244,7 +244,7 @@ stripSpans = concatMap go
       Text _ t -> [t]
       CharStyle _ n xs -> ("<" <> n <> ">") : stripSpans xs
       LineBreak _ -> ["<br>"]
-      Note _ n bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
+      Note _ n _ bs -> ("<note " <> tshow n <> ">") : stripSpans (concat (noteParagraphs bs))
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
       Number _ n st -> ["<number " <> tshow n <> " " <> tshow st <> ">"]
       Ref _ k l -> ["<ref " <> tshow k <> " " <> l <> ">"]
@@ -643,7 +643,7 @@ verseTests =
     ]
   where
     noteNumbers = \case
-      Paragraph _ is -> [n | Note _ n _ <- is]
+      Paragraph _ is -> [n | Note _ n _ _ <- is]
       _ -> []
 
 -- | Character and paragraph styles (docs/adr ADR 0005).
@@ -2181,7 +2181,7 @@ printingsTests =
       testCase "ADR 0375: an error of the format names [printings] and the format" $ do
         let formatMsgs fmt = either (map diagMessage) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
         formatMsgs "{unknown}" @?= ["[printings] の format が正しくありません（表にない欄です: {unknown}）: {unknown} (printings.format)"]
-        formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {edition (printings.format)"]
+        formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は {{ と書きます）: {edition (printings.format)"]
         either (map diagMessage) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
       testCase "ADR 0375: without a format a book not in Japanese is still G02076" $
         run ((printingsCtx "en") {ctxStyle = either (error . show) id (parseStyle (FileId 9) "[printings]\n")}) "@printings\n" @?= ([], ["G02076"]),

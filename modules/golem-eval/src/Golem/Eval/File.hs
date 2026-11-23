@@ -369,9 +369,9 @@ unwritableText = concatMap blockDiags . docBlocks
       Tcy sp t -> at sp t
       Warichu sp t -> at sp t
       Upright sp t -> at sp t
-      Note _ _ bs -> concatMap inlines (noteParagraphs bs)
-      Sidenote _ _ bs -> concatMap inlines (noteParagraphs bs)
-      Endnote _ _ bs -> concatMap inlines (noteParagraphs bs)
+      Note _ _ _ bs -> concatMap inlines (noteParagraphs bs)
+      Sidenote _ _ _ bs -> concatMap inlines (noteParagraphs bs)
+      Endnote _ _ _ bs -> concatMap inlines (noteParagraphs bs)
       IndexMark sp e -> concatMap (at sp) (ieTerms e <> ieReadings e <> case ieKind e of IndexSee _ ts -> ts; _ -> [])
       ProofComment sp t -> at sp t
       Number {} -> []
@@ -901,9 +901,9 @@ nameErrors ctx is bs =
       Kenten _ _ xs -> xs
       Color _ _ xs -> xs
       CharStyle _ _ xs -> xs
-      Note _ _ nb -> concat (noteParagraphs nb)
-      Sidenote _ _ nb -> concat (noteParagraphs nb)
-      Endnote _ _ nb -> concat (noteParagraphs nb)
+      Note _ _ _ nb -> concat (noteParagraphs nb)
+      Sidenote _ _ _ nb -> concat (noteParagraphs nb)
+      Endnote _ _ _ nb -> concat (noteParagraphs nb)
       Cite _ items -> citeInlines items
       ChannelItem _ c -> ciBody c
       Link _ _ xs -> xs
@@ -939,9 +939,9 @@ fillKenten ctx = \case
   Kenten s sh xs -> Kenten s sh (map (fillKenten ctx) xs)
   Color s c xs -> Color s c (map (fillKenten ctx) xs)
   CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
-  Note s n bs -> Note s n (mapNoteBody (map (fillKenten ctx)) bs)
-  Sidenote s n bs -> Sidenote s n (mapNoteBody (map (fillKenten ctx)) bs)
-  Endnote s n bs -> Endnote s n (mapNoteBody (map (fillKenten ctx)) bs)
+  Note s n lbl bs -> Note s n lbl (mapNoteBody (map (fillKenten ctx)) bs)
+  Sidenote s n lbl bs -> Sidenote s n lbl (mapNoteBody (map (fillKenten ctx)) bs)
+  Endnote s n lbl bs -> Endnote s n lbl (mapNoteBody (map (fillKenten ctx)) bs)
   Link s u xs -> Link s u (map (fillKenten ctx) xs)
   Lang s l xs -> Lang s l (map (fillKenten ctx) xs)
   Resolved s k l xs -> Resolved s k l (map (fillKenten ctx) xs)
@@ -1573,18 +1573,18 @@ namedNotes kind refs defs bs
     unused = [diagnostic "G02138" Error sp ("使われない注の本文です: " <> n) | (n, sp, _) <- defs, Map.notMember n firsts]
     names = Map.fromList refs
     fill = \case
-      Note sp k []
+      Note sp k lbl []
         | kind == FootKind,
           Just n <- Map.lookup sp names ->
             case Map.lookup n bodies of
-              Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Note sp k body]
+              Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Note sp k lbl body]
               _ -> []
       -- an endnote written by name (root ADR 0412)
-      Endnote sp k []
+      Endnote sp k lbl []
         | kind == EndKind,
           Just n <- Map.lookup sp names ->
             case Map.lookup n bodies of
-              Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Endnote sp k body]
+              Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Endnote sp k lbl body]
               _ -> []
       other -> [other]
 
@@ -2680,40 +2680,40 @@ builtinWith ctx inHeading sp b args slots = do
     Fixed BRefNumber -> refTo RefNumber pos
     Fixed BRefTitle -> refTo RefTitle pos
     Fixed BRefPage -> refTo RefPage pos
-    -- [note: body], or [note name] of the body of @note name (docs/adr/0263)
-    Fixed BNote -> case (args, slots) of
+    -- [note: body], or [note name] of the body of @note name (docs/adr/0263); label= gives it a label (root ADR 0422)
+    Fixed BNote -> noteLabel $ \lbl rest -> case (rest, slots) of
       ([], [_]) -> oneSlot $ \body -> do
         n <- gets ((+ 1) . stNote)
         modify' (\s -> s {stNote = n})
-        pure [Note sp n (noteBody sp body)]
+        pure [Note sp n lbl (noteBody sp body)]
       (_ : _, _ : _) -> err "G02038" sp "note は名前を書くと散文スロットを取りません" >> pure []
       ([A.Located _ (A.Positional v)], [])
         | Just name <- nameArg v,
           validLabel name -> do
             n <- gets ((+ 1) . stNote)
             modify' (\s -> s {stNote = n, stNoteRefs = stNoteRefs s <> [(sp, name)]})
-            pure [Note sp n []]
+            pure [Note sp n lbl []]
       (_, []) -> err "G02142" sp noteNameMessage >> pure []
       _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
-    -- [endnote: body], or [endnote name] of the body of @endnote name (root ADR 0412)
-    Fixed BEndnote -> case (args, slots) of
+    -- [endnote: body], or [endnote name] of the body of @endnote name (root ADR 0412), a label as a note (root ADR 0422)
+    Fixed BEndnote -> noteLabel $ \lbl rest -> case (rest, slots) of
       ([], [_]) -> oneSlot $ \body -> do
         n <- gets ((+ 1) . stEndnote)
         modify' (\s -> s {stEndnote = n})
-        pure [Endnote sp n (noteBody sp body)]
+        pure [Endnote sp n lbl (noteBody sp body)]
       (_ : _, _ : _) -> err "G02038" sp "endnote は名前を書くと散文スロットを取りません" >> pure []
       ([A.Located _ (A.Positional v)], [])
         | Just name <- nameArg v,
           validLabel name -> do
             n <- gets ((+ 1) . stEndnote)
             modify' (\s -> s {stEndnote = n, stEndnoteRefs = stEndnoteRefs s <> [(sp, name)]})
-            pure [Endnote sp n []]
+            pure [Endnote sp n lbl []]
       (_, []) -> err "G02142" sp noteNameMessage >> pure []
       _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
-    Fixed BSidenote -> oneSlot $ \body -> do
+    Fixed BSidenote -> noteLabel $ \lbl _ -> oneSlot $ \body -> do
       n <- gets ((+ 1) . stSidenote)
       modify' (\s -> s {stSidenote = n})
-      pure [Sidenote sp n (noteBody sp body)]
+      pure [Sidenote sp n lbl (noteBody sp body)]
     Fixed BIndex -> case slots of
       [s] -> do
         -- the levels are split at the / written in the slot (golem-parser ADR 0010)
@@ -2748,6 +2748,15 @@ builtinWith ctx inHeading sp b args slots = do
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]
       _ -> err "G02026" sp "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure []
+    -- the label of a note, written label=, by the rule of the characters of @label (root ADR 0422); the other arguments
+    noteLabel k = case partition isLabel args of
+      ([], rest) -> k Nothing rest
+      ([A.Located _ (A.Keyword _ v)], rest) | Just l <- nameArg v, validLabel l -> k (Just l) rest
+      -- the note stays, without a label, so that the build reports what comes after it
+      (_, rest) -> err "G02026" sp "注の label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> k Nothing rest
+    isLabel = \case
+      A.Located _ (A.Keyword (A.Located _ "label") _) -> True
+      _ -> False
 
 {- | @[aki 量]@ (docs/adr ADR 0019): one amount, an aki name, zw, a
 percentage or an absolute dimension, and no prose slot; otherwise G02055.

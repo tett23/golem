@@ -44,7 +44,7 @@ hiddenConstructors = [("Inline", "Opaque")]
 
 {- | The inlines of the semantic IR (docs/adr/0162), as the ABI with the
 plugins serialises them (the section シリアライズ形式 of the specification). The
-spans, the numbers of the notes and the expressions of Deferred are not
+spans, the numbers and the labels of the notes (root ADR 0422) and the expressions of Deferred are not
 fields: a node that comes in keeps them, and a node a function makes
 takes the place of its call. The functions are the short ways of making
 the nodes used most.

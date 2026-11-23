@@ -2943,7 +2943,7 @@ printingTemplate loc format
   | T.any (`elem` ("\r\n" :: String)) format = failAtCode loc "G03264" "[printings] の format が正しくありません（改行は書けません）"
   | otherwise = either wrong (pure . fst) (parseFormat DoubledToo slot format)
   where
-    wrong (FormatError cause why) = failAtCode loc (printingFormatCode cause) (T.unpack ("[printings] の format が正しくありません（" <> why <> "）: " <> format))
+    wrong (FormatError cause why) = failAtCode loc (printingFormatCode cause) (T.unpack ("[printings] の format が正しくありません（" <> printingFormatReason cause why <> "）: " <> format))
     slot name
       | name == "printing" = Right (TextSlot "number")
       | name `elem` ["year", "month", "day", "date", "edition"] = Right (TextSlot name)
@@ -2965,6 +2965,17 @@ printingFormatCode = \case
   EmptySlot -> "G03269"
   BadEscape -> "G03270"
   TrailingBackslash -> "G03271"
+
+{- | The reason of an error of the format of [printings] (root ADR 0424):
+[printings] writes a brace as @{{@ and @}}@ (ADR 0375), so the reasons
+of a @{@ not closed and a @}@ without its @{@ recommend them in place of
+the @\\{@ and @\\}@ of 'parseFormat', which the other formats keep.
+-}
+printingFormatReason :: FormatCause -> Text -> Text
+printingFormatReason = \case
+  UnclosedBrace -> const "閉じていない { があります。文字の { は {{ と書きます"
+  UnopenedBrace -> const "対応する { のない } があります。文字の } は }} と書きます"
+  _ -> id
 
 -- | Substitute the fields of one printing, leaving literal text intact.
 renderPrintingTemplate :: (Text -> Text) -> [Piece Text] -> Text
