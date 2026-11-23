@@ -53,8 +53,18 @@ data Graphics = Graphics
     -- Overprint for stroking (OP) and for other painting (op), and OPM.
     overprintStroke :: !Bool,
     overprintFill :: !Bool,
-    overprintMode :: !Int
+    overprintMode :: !Int,
+    -- The Type 3 font that Tf selected, or Nothing for other fonts.
+    textFont :: !(Maybe TextFont)
   }
+  deriving stock (Eq, Ord, Show)
+
+{- | A Type 3 font selected by Tf (root ADR 0425): the scope it was selected
+in, its resource name, whether it has glyphs declared with d0, which paint
+their own colours, and whether it has other glyphs, which paint the colour
+of the text.
+-}
+data TextFont = TextFont {fontScope :: !Scope, fontName :: !Text, fontOwnColours :: !Bool, fontTextColour :: !Bool}
   deriving stock (Eq, Ord, Show)
 
 data Scan = Scan !Graphics ![Graphics] !RasterKind ![ByteString] !(Maybe Int)
@@ -68,7 +78,7 @@ recolorImportedPage swatch analyze page = do
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
   let source = Map.fromList (P.ipObjects page)
-      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, categoryBindings = Map.empty, categoryTables = Map.empty, patternSpaces = Map.empty, scopeResources = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page, figureSwatch = swatch, mappedMattes = Map.empty}
+      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, categoryBindings = Map.empty, categoryTables = Map.empty, patternSpaces = Map.empty, scopeResources = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page, figureSwatch = swatch, mappedMattes = Map.empty, convertedFonts = Map.empty, fontScopes = Map.empty}
   scope <- resourceScope PageResources (P.ipResources page) initialState
   (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty scope (P.ipResources page) initial (P.ipContent page) initialState
   if kind == Grayscale && unreplaceableShading analyzed then Left "PDF 図版の濃淡のシェーディングを指定色に置き換えられません" else Right ()
@@ -81,7 +91,7 @@ recolorImportedPage swatch analyze page = do
       (content, _, rendered) <- renderForms swatch Set.empty scope (P.ipResources page) initial (P.ipContent page) charged
       finalized <- cloneResourceDictionaries rendered
       resources <- bindScope scope (P.ipResources page) finalized
-      let scopes = Map.fromList [(clone, childScope) | ((_, childScope), clone) <- Map.toList (convertedForms rendered)]
+      let scopes = Map.union (fontScopes rendered) (Map.fromList [(clone, childScope) | ((_, childScope), clone) <- Map.toList (convertedForms rendered)])
       objects <- traverse (finalizeClone scopes finalized) (Map.toAscList (convertedObjects finalized))
       let result = prefix <> content
           identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 result)
@@ -91,9 +101,10 @@ recolorImportedPage swatch analyze page = do
 
 -- | The graphics state at the start of a page, a Form or a pattern cell.
 initialGraphics :: Graphics
-initialGraphics = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1 False False 0
+initialGraphics = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1 False False 0 Nothing
 
-data Scope = PageResources | InlineResources !P.ObjNum | IndirectResources !P.ObjNum
+-- A Type 3 font's own direct resources are named by where it was selected.
+data Scope = PageResources | InlineResources !P.ObjNum | IndirectResources !P.ObjNum | FontResources !Scope !Text
   deriving stock (Eq, Ord, Show)
 
 -- Original objects remain intact: a paint resource may also be a soft mask.
@@ -125,7 +136,11 @@ data Resources = Resources
     -- The swatch, for images classified from exact values (root ADR 0425).
     figureSwatch :: !Cmyk,
     -- The mapped Matte of each converted image with one (root ADR 0425).
-    mappedMattes :: !(Map.Map (P.ObjNum, Scope) [Rational])
+    mappedMattes :: !(Map.Map (P.ObjNum, Scope) [Rational]),
+    -- The converted Type 3 font of each font selected in a scope, and the
+    -- scope of the own resources of each converted font (root ADR 0425).
+    convertedFonts :: !(Map.Map (Scope, Text) P.ObjNum),
+    fontScopes :: !(Map.Map P.ObjNum Scope)
   }
 
 charge :: Int -> Resources -> Either Text Resources
@@ -146,7 +161,7 @@ scanForms swatch emit active scope resources graphics content state0 = do
       | null saved = Right (scan, st)
       | otherwise = Left "PDF 図版の描画状態が閉じていません"
     go (Scan before saved seen output _) st0 (operation@(operator, args) : rest) = do
-      (current, space, st) <- prepareOperation resources before operation st0
+      (current, space, st) <- prepareOperation scope resources before operation st0
       let fillKind st' = case fillColor current of
             colour@(PatternColor name _ _) | not (T.null name) -> patternKind swatch active scope resources current False colour st'
             colour -> Right (colorKind colour, st')
@@ -180,6 +195,12 @@ scanForms swatch emit active scope resources graphics content state0 = do
             | fillAlpha current == 0 -> Right (Just Unpainted, analyzed)
             | overprintMode current /= 0 && overprintFill current -> Left overprintError
             | otherwise -> Right (Just (shadingKind shading), analyzed {unreplaceableShading = unreplaceableShading analyzed || shadingBlocked shading})
+        _
+          | operator `elem` textOperators,
+            Just font <- textFont current,
+            fontOwnColours font -> do
+              (kind, scanned) <- glyphKinds swatch active scope resources current font st
+              Right (Just kind, scanned)
         _ -> Right (Nothing, st)
       -- The patterns this operation paints with (root ADR 0425).
       (kinds, patterned) <- foldM (\(found, st') (colour, isStroke) -> (\(kind, st'') -> (Map.insertWith mergeKind colour kind found, st'')) <$> patternKind swatch active scope resources current isStroke colour st') (Map.empty, updated) (paintedPatterns current operator)
@@ -197,7 +218,7 @@ renderForms swatch active scope resources graphics content state0 = do
       | null saved = Right (BC.unlines (reverse output), bound, st)
       | otherwise = Left "PDF 図版の描画状態が閉じていません"
     go (Scan before saved seen output _) bound st0 (operation@(operator, args) : rest) = do
-      (current, space, st) <- prepareOperation resources before operation st0
+      (current, space, st) <- prepareOperation scope resources before operation st0
       let renderImage imageScope imageResources key fields prepared
             | fillAlpha current == 0 = Right (key, prepared)
             | otherwise = do
@@ -243,6 +264,13 @@ renderForms swatch active scope resources graphics content state0 = do
               Right (new, materialized {convertedObjects = Map.insert new object (convertedObjects materialized)})
           (alias, aliased) <- bindCategory "Shading" scope resources fresh stored
           Right (Just Unpainted, bound, aliased, ("sh", ["/" <> TE.encodeUtf8 alias]))
+        -- A Type 3 font with d0 glyphs is selected as its converted copy.
+        "Tf"
+          | Just font <- textFont current,
+            fontOwnColours font,
+            [_, size] <- args -> do
+              (alias, aliased) <- convertType3 swatch active scope resources current (fontName font) st
+              Right (Nothing, bound, aliased, ("Tf", ["/" <> TE.encodeUtf8 alias, size]))
         -- An uncoloured tiling pattern's space becomes [/Pattern /DeviceCMYK].
         _
           | operator `elem` ["cs", "CS"],
@@ -326,39 +354,131 @@ applyExtGState current selected state = do
           _ -> Left "PDF 図版の不透明度が不正です"
         if amount < 0 || amount > 1 then Left "PDF 図版の不透明度が範囲外です" else Right amount
 
-{- | The graphics state, the colour space a @cs@ or @CS@ selects, and the
-checked fonts, before an operation is painted.
+{- | The graphics state, with the font a @Tf@ selects, and the colour space
+a @cs@ or @CS@ selects, before an operation is painted.
 -}
-prepareOperation :: P.ObjOf P.ObjNum -> Graphics -> (ByteString, [ByteString]) -> Resources -> Either Text (Graphics, Maybe Space, Resources)
-prepareOperation resources before operation state = do
-  current <- externalGraphics resources before operation state
-  checked <- type3Colours resources operation state
+prepareOperation :: Scope -> P.ObjOf P.ObjNum -> Graphics -> (ByteString, [ByteString]) -> Resources -> Either Text (Graphics, Maybe Space, Resources)
+prepareOperation scope resources before operation state = do
+  external <- externalGraphics resources before operation state
+  (current, checked) <- selectFont scope resources external operation state
   (space, spaced) <- operationSpace resources operation checked
   Right (current, space, spaced)
 
--- A Type 3 glyph declared with d0 paints its own colours, which are neither
--- classified nor recolored with the text's fill.
-type3Colours :: P.ObjOf P.ObjNum -> (ByteString, [ByteString]) -> Resources -> Either Text Resources
-type3Colours resources ("Tf", [name, _]) state = do
+textOperators :: [ByteString]
+textOperators = ["Tj", "TJ", "'", "\""]
+
+-- | The text font after a @Tf@: a Type 3 font, or Nothing for any other.
+selectFont :: Scope -> P.ObjOf P.ObjNum -> Graphics -> (ByteString, [ByteString]) -> Resources -> Either Text (Graphics, Resources)
+selectFont scope resources current ("Tf", [name, _]) state = do
   font <- resourceName [name]
+  found <- type3Font scope resources font state
+  case found of
+    Nothing -> Right (current {textFont = Nothing}, state)
+    Just (info, decoded) ->
+      let owns = [own | (_, _, _, _, own) <- type3Glyphs info]
+       in Right (current {textFont = Just (TextFont scope font (or owns) (not (and owns)))}, decoded)
+selectFont _ _ current _ state = Right (current, state)
+
+{- | A Type 3 font: its dictionary, the resources and scope its glyphs run
+in, and each glyph's name, object, dictionary, content and whether it is
+declared with d0 (root ADR 0425). A font without its own resources uses
+those of the content that selects it.
+-}
+data Type3 = Type3
+  { type3Fields :: ![(Text, P.ObjOf P.ObjNum)],
+    type3Resources :: !(P.ObjOf P.ObjNum),
+    type3Scope :: !Scope,
+    type3Glyphs :: ![(Text, P.ObjNum, [(Text, P.ObjOf P.ObjNum)], ByteString, Bool)]
+  }
+
+type3Font :: Scope -> P.ObjOf P.ObjNum -> Text -> Resources -> Either Text (Maybe (Type3, Resources))
+type3Font scope resources font state = do
   entries <- dictionary resources state
   fonts <- maybe (Right []) (`dictionary` state) (lookup "Font" entries)
   case lookup font fonts of
-    Nothing -> Right state
+    Nothing -> Right Nothing
     Just value -> do
       fields <- dictionary value state
       if lookup "Subtype" fields /= Just (P.OName "Type3")
-        then Right state
+        then Right Nothing
         else do
+          (glyphResources, glyphScope) <- case lookup "Resources" fields of
+            Nothing -> Right (resources, scope)
+            Just own -> (own,) <$> resourceScope (FontResources scope font) own state
           procs <- maybe (Right []) (`dictionary` state) (lookup "CharProcs" fields)
-          foldM glyph state (map snd procs)
+          (glyphs, decoded) <- foldM glyph ([], state) procs
+          Right (Just (Type3 fields glyphResources glyphScope (reverse glyphs), decoded))
   where
-    glyph st reference = do
+    glyph (found, st) (name, reference) = do
       (key, entries) <- pdfStreamReference "PDF 図版の Type 3 フォントの字形がありません" st Set.empty reference
       (body, decoded) <- decodePdfStream key entries st
       operations <- maybe (Left "PDF 図版の Type 3 フォントの字形を読めません") Right (P.contentOperations body)
-      if any ((== "d0") . fst) operations then Left "PDF 図版の Type 3 フォントの色を置き換えられません" else Right decoded
-type3Colours _ _ state = Right state
+      Right ((name, key, entries, body, any ((== "d0") . fst) operations) : found, decoded)
+
+-- | The font that a content in the given scope selected, with its resources.
+selectedType3 :: Scope -> P.ObjOf P.ObjNum -> TextFont -> Resources -> Either Text (Type3, Resources)
+selectedType3 scope resources font state = do
+  owner <- if fontScope font == scope then Right resources else maybe (Left type3Missing) Right (Map.lookup (fontScope font) (scopeResources state))
+  found <- type3Font (fontScope font) owner (fontName font) state
+  maybe (Left type3Missing) Right found
+
+type3Missing :: Text
+type3Missing = "PDF 図版の Type 3 フォントが見つかりません"
+
+{- | The class of the colours the d0 glyphs of a Type 3 font paint. Every d0
+glyph counts, whether the text shows it or not, and is scanned like a Form
+in the graphics state of the text (root ADR 0425).
+-}
+glyphKinds :: Cmyk -> Set.Set P.ObjNum -> Scope -> P.ObjOf P.ObjNum -> Graphics -> TextFont -> Resources -> Either Text (RasterKind, Resources)
+glyphKinds swatch active scope resources current font state = do
+  (info, found) <- selectedType3 scope resources font state
+  let glyph (kind, st) (_, key, _, body, own)
+        | not own = Right (kind, st)
+        | otherwise = do
+            let cacheKey = (key, type3Scope info, current)
+            case Map.lookup cacheKey (formSummaries st) of
+              Just summary -> Right (mergeKind kind summary, st)
+              Nothing -> do
+                guardForm active key
+                (Scan _ _ summary _ _, child) <- scanForms swatch False (Set.insert key active) (type3Scope info) (type3Resources info) current body st
+                Right (mergeKind kind summary, child {formSummaries = Map.insert cacheKey summary (formSummaries child)})
+  foldM glyph (Unpainted, found) (type3Glyphs info)
+
+{- | The converted copy of a Type 3 font with d0 glyphs, bound to a fresh name
+in the scope's Font resources. Its d0 glyphs are rendered like Forms; its
+other glyphs paint the text's colour and stay as they are.
+-}
+convertType3 :: Cmyk -> Set.Set P.ObjNum -> Scope -> P.ObjOf P.ObjNum -> Graphics -> Text -> Resources -> Either Text (Text, Resources)
+convertType3 swatch active scope resources current font state = do
+  (fresh, converted) <- case Map.lookup (scope, font) (convertedFonts state) of
+    Just done -> Right (done, state)
+    Nothing -> do
+      found <- type3Font scope resources font state
+      (info, decoded) <- maybe (Left type3Missing) Right found
+      reserved <- freshObject decoded
+      let held = decoded {convertedObjects = Map.insert reserved P.ONull (convertedObjects decoded)}
+          glyph (procs, st) (name, key, entries, body, own)
+            | not own = Right ((name, P.ORef key) : procs, st)
+            | otherwise = do
+                guardForm active key
+                (painted, _, rendered) <- renderForms swatch (Set.insert key active) (type3Scope info) (type3Resources info) current body st
+                new <- freshObject rendered
+                let fieldsOut = [(k, v) | (k, v) <- entries, k `notElem` ["Length", "Filter", "DecodeParms", "DL"]]
+                Right ((name, P.ORef new) : procs, rendered {convertedObjects = Map.insert new (P.OStream fieldsOut painted) (convertedObjects rendered)})
+      (procs, rendered) <- foldM glyph ([], held) (type3Glyphs info)
+      let fieldsOut = [(k, if k == "CharProcs" then P.ODict (reverse procs) else v) | (k, v) <- type3Fields info]
+          scoped = if isJust (lookup "Resources" (type3Fields info)) then Map.insert reserved (type3Scope info) else id
+      Right
+        ( reserved,
+          rendered
+            { convertedObjects = Map.insert reserved (P.ODict fieldsOut) (convertedObjects rendered),
+              convertedFonts = Map.insert (scope, font) reserved (convertedFonts rendered),
+              fontScopes = scoped (fontScopes rendered)
+            }
+        )
+  case [alias | (alias, clone) <- maybe [] Map.toList (Map.lookup ("Font", scope) (categoryBindings converted)), clone == fresh] of
+    alias : _ -> Right (alias, converted)
+    [] -> bindCategory "Font" scope resources fresh converted
 
 -- Named colour spaces resolve through the resources like those of images.
 operationSpace :: P.ObjOf P.ObjNum -> (ByteString, [ByteString]) -> Resources -> Either Text (Maybe Space, Resources)
@@ -1396,6 +1516,12 @@ finalizeClone scopes state (key, P.OStream fields content) = case lookup "Resour
     scope <- maybe (Left "PDF 図版の Form の資源辞書がありません") Right (Map.lookup key scopes)
     bound <- bindScope scope resources state
     Right (key, P.OStream ([(k, v) | (k, v) <- fields, k /= "Resources"] <> [("Resources", bound)]) content)
+-- A converted Type 3 font with its own resources binds them (root ADR 0425).
+finalizeClone scopes state (key, P.ODict fields)
+  | Just scope <- Map.lookup key scopes,
+    Just resources <- lookup "Resources" fields = do
+      bound <- bindScope scope resources state
+      Right (key, P.ODict ([(k, v) | (k, v) <- fields, k /= "Resources"] <> [("Resources", bound)]))
 finalizeClone _ _ object = Right object
 
 budgetError :: Text
@@ -1412,7 +1538,7 @@ stepWith patterns external resolved swatch (Scan graphics stack kind output budg
       same = keep graphics stack kind original
       painted fills strokes
         | overprintMode graphics /= 0 && (not (null fills) && overprintFill graphics || not (null strokes) && overprintStroke graphics) = Left overprintError
-        | otherwise = keep graphics stack (foldl mergeKind kind (map kindOf (fills <> strokes))) original
+        | otherwise = keep graphics stack (foldl mergeKind kind (maybe [] pure external <> map kindOf (fills <> strokes))) original
       kindOf = \case
         PatternColor name _ _ | T.null name -> Unpainted
         colour@PatternColor {} -> Map.findWithDefault Multicolor colour patterns
@@ -1732,7 +1858,10 @@ paintsWith graphics operator
   | operator `elem` ["f", "F", "f*"] = Just (fillAlpha graphics > 0, False)
   | operator `elem` ["S", "s"] = Just (False, strokeAlpha graphics > 0)
   | operator `elem` ["B", "B*", "b", "b*"] = Just (fillAlpha graphics > 0, strokeAlpha graphics > 0)
-  | operator `elem` ["Tj", "TJ", "'", "\""] = Just (textMode graphics `elem` [0, 2, 4, 6] && fillAlpha graphics > 0, textMode graphics `elem` [1, 2, 5, 6] && strokeAlpha graphics > 0)
+  -- Only the glyphs of a Type 3 font not declared with d0 paint the text's colour.
+  | operator `elem` textOperators =
+      let plain = maybe True fontTextColour (textFont graphics)
+       in Just (plain && textMode graphics `elem` [0, 2, 4, 6] && fillAlpha graphics > 0, plain && textMode graphics `elem` [1, 2, 5, 6] && strokeAlpha graphics > 0)
   | otherwise = Nothing
 
 -- | A pattern resource: its object number when indirect, and its value.
