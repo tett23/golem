@@ -306,17 +306,17 @@ operationSpace resources (operator, args) state
                 Nothing -> deviceSpace value
   where
     deviceSpace value = do
-              (space, components, _, palette, resolved) <- pdfImageSpace resources [("ColorSpace", value)] state
-              let device = case space of
-                    P.CsGray -> GraySpace
-                    P.CsCmyk -> CmykSpace
-                    _ -> RgbSpace
-                  colour bytes = case map (\w -> fromIntegral w % 255) (BS.unpack bytes) of
-                    [g] -> Gray g
-                    [r, g, b] -> Rgb r g b
-                    [c, m, y, k] -> CmykColor c m y k
-                    _ -> Gray 0
-              Right (Just (maybe device (\(count, table) -> IndexedSpace [colour (BS.take components (BS.drop (i * components) table)) | i <- [0 .. count]]) palette), resolved)
+      (space, components, _, palette, resolved) <- pdfImageSpace resources [("ColorSpace", value)] state
+      let device = case space of
+            P.CsGray -> GraySpace
+            P.CsCmyk -> CmykSpace
+            _ -> RgbSpace
+          colour bytes = case map (\w -> fromIntegral w % 255) (BS.unpack bytes) of
+            [g] -> Gray g
+            [r, g, b] -> Rgb r g b
+            [c, m, y, k] -> CmykColor c m y k
+            _ -> Gray 0
+      Right (Just (maybe device (\(count, table) -> IndexedSpace [colour (BS.take components (BS.drop (i * components) table)) | i <- [0 .. count]]) palette), resolved)
 
 isStencil :: [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text Bool
 isStencil fields state = case lookup "ImageMask" fields of
