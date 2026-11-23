@@ -488,8 +488,10 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
 フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻し、段の行数の変更（`FAdjustLines`）を扱う。
-本の部、箱、詩、回り込み図版も扱う。
-罫線つきのブロックと節の開始は、まだ扱わない。
+本の部、箱、詩、回り込み図版、節と改ページつきの段落の開始（`FSection`）も扱う。
+罫線つきのブロックは、まだ扱わない。
+節の開始は、改段や改ページと同じく待つ改ページ（`Pending`）に加え、次のフローの前に `startBefore` で始める。
+節が始まったページの記録 `sSections` は、状態の `sections` に持つ。
 回り込み図版（`SWrapped`）は、`I5_paginate_figures` の図版に数えない。
 罫線つきのブロックの `flushJoin` は、後の罫線の領域を次のブロックと共有しなかったとき、使用行数に `min k (free st)` を足すので、残りの行数が負なら使用行数を減らす。
 図版の順序の不変条件をこの操作で保つには、共有を待つ状態（`sJoin`）では残りの行数が 0 以上か脚注の行数が 1 以上であることが要る。
@@ -538,7 +540,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:437` `waitFor` | `waitFor` |
 | `Paginate.hs:448` `checkNoBreak` | `checkNoBreak`、`linesIn` |
 | `Paginate.hs:460` `slotLineCount` | `slotLineCount` |
-| `Paginate.hs:466` `applyBreaks` | `applyBreaks` |
+| `Paginate.hs:466` `applyBreaks`、`:469` `applyBreak` | `applyBreaks`、`applyPending` |
+| `Paginate.hs:481` `startBefore` | `startBefore` |
+| `Paginate.hs:559` `place` の `FSection` | `place` の `sectionStart` |
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
@@ -583,7 +587,8 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 ## 未完の項目
 
 キャプションの評価値と幅の計算の対応、`Whole.lean` が扱わないフローの状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
-`Whole.lean` が扱うフローについては、改ページ全体の終了と、段落、定義の項、表の行、見出し、コードの行の過不足と順序を証明した。
+`Whole.lean` が扱うフローについては、改ページ全体の終了と、段落、詩の行、回り込み図版の横の行、定義の項、表の行、見出し、コードの行の過不足と順序を証明した。
+`Whole.lean` がまだ扱わないフローは、罫線つきのブロック（`FRuled`）である。
 図版と転置図版の過不足と順序は、図版の高さと段の容量を 1 行以上、脚注区切りの行数を 0 行以上とする前提の下で証明した。
 境界入力の表のうち改ページだけで決まる行は、`modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` で Haskell の実装を検査する。
 空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。

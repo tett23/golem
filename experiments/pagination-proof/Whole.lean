@@ -21,6 +21,14 @@ inductive BreakKind where
   | page | column | recto | verso
   deriving DecidableEq, Repr
 
+/-- `Pending` of State.hs: a forced break not applied yet, or the start of
+    a section (`some` its id) or of a paragraph of a style with
+    page-break (`none`). -/
+inductive Pending where
+  | brk (k : BreakKind)
+  | start (sec : Option Nat) (k : BreakKind)
+  deriving DecidableEq, Repr
+
 structure Note where
   id : Nat
   lines : Nat
@@ -58,6 +66,9 @@ inductive Flow where
       and the lines beside it. -/
   | wrapped (id n : Nat) (beside : List Line)
   | brk (k : BreakKind)
+  /-- The start of a section or of a paragraph of a style with page-break
+      (`FSection`). -/
+  | sectionStart (sec : Option Nat) (k : BreakKind)
   | space (n : Nat)
   | blank (n : Nat)
   | needLines (n : Nat)
@@ -171,7 +182,7 @@ structure St where
   done : List PageOut
   deferred : List Deferred
   pending : List NotePart
-  breaks : List BreakKind
+  breaks : List Pending
   reserved : Int
   need : Option Nat
   needAt : Option (Nat × Nat)
@@ -191,6 +202,8 @@ structure St where
   columns : Nat
   /-- `sBox`: the box being placed. -/
   box : Option BoxAt
+  /-- `sSections`: the sections started and the page each opened. -/
+  sections : List (Nat × Nat)
 
 structure Need where
   grid : Nat
@@ -228,7 +241,7 @@ structure Env where
 def Env.keepColumn (env : Env) : Bool := env.keepParts == .column
 
 def initialState (env : Env) : St :=
-  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns, none⟩
+  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns, none, []⟩
 
 /-! ## Queries of State.hs -/
 
@@ -1237,8 +1250,27 @@ def applyBreakKind (env : Env) (st : St) : BreakKind → St
     if 1 < st.columns ∧ st.deferred.any isPageFigure = false then nextColumn env st
     else breakPage env st
 
+/-- `startBefore` of Paginate.hs: the start of a section or of a paragraph
+    of a style with page-break; the page a section starts on recorded. -/
+def startBefore (env : Env) (st : St) (sec : Option Nat) (k : BreakKind) : St :=
+  let st1 := match k with
+    | .column => if isEmpty st then st else nextColumn env st
+    | .page =>
+      let st0 := flushDeferred env st
+      if isEmpty st0 = true ∧ st0.column = 0 then st0 else nextPage env st0
+    | .recto => parityStart env odd st
+    | .verso => parityStart env even st
+  match sec with
+  | some i => { st1 with sections := st1.sections ++ [(i, st1.page)] }
+  | none => st1
+
+/-- `applyBreak` of Paginate.hs. -/
+def applyPending (env : Env) (st : St) : Pending → St
+  | .brk k => applyBreakKind env st k
+  | .start sec k => startBefore env st sec k
+
 def applyBreaks (env : Env) (st : St) : St :=
-  st.breaks.foldl (applyBreakKind env) { st with breaks := [] }
+  st.breaks.foldl (applyPending env) { st with breaks := [] }
 
 /-! ## Book parts (BookParts.hs `placeBookPart`) -/
 
@@ -1438,7 +1470,8 @@ mutual
 /-- `waitsFor` of Paginate.hs: the flows that place nothing of their own. -/
 def waitsFor : Flow → Bool
   | .bookPart _ _ _ body => allWaitsFor body
-  | .brk _ | .space _ | .blank _ | .needLines _ | .noBreak | .noBreakLines _ | .keepNext _ | .adjustLines _ => true
+  | .brk _ | .sectionStart _ _ | .space _ | .blank _ | .needLines _ | .noBreak | .noBreakLines _ | .keepNext _
+  | .adjustLines _ => true
   | _ => false
 termination_by f => sizeOf f
 /-- `all waitsFor`. -/
@@ -1740,7 +1773,8 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
     if st.deferred.isEmpty ∧ st.column = 0 ∧ st.used = 0 ∧ st.notes.isEmpty ∧ st.noteLines = 0 then
       pageFigure env { st with adjust := 0 } i
     else { st with deferred := st.deferred ++ [.pageFigure i] }
-  | .brk k => { st with breaks := st.breaks ++ [k] }
+  | .brk k => { st with breaks := st.breaks ++ [.brk k] }
+  | .sectionStart sec k => { st with breaks := st.breaks ++ [.start sec k] }
   | .space n => placeSpaceFlow env st n
   | .needLines _ => st
   | .blank _ => st
@@ -1815,6 +1849,7 @@ def step (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
     else waitFor .keepNext (env.nextFirst n rest) st
   | .blank n => if allWaitsFor rest then st else { st with blank := st.blank ++ [n] }
   | .brk k => place env st (.brk k) rest
+  | .sectionStart sec k => place env st (.sectionStart sec k) rest
   | .space n => placeSpace env (needBeforeSpaces env (applyBreaks env st)) n
   | f =>
     let stB := applyBreaks env st
@@ -2048,14 +2083,41 @@ theorem text_applyBreakKind (env : Env) (st : St) (k : BreakKind) :
   cases k <;> simp only [applyBreakKind, text_breakPage, text_parityStart]
   split <;> simp only [text_nextColumn, text_breakPage]
 
+theorem text_startBefore (env : Env) (st : St) (sec : Option Nat) (k : BreakKind) :
+    text (startBefore env st sec k) = text st := by
+  have h1 : text (match k with
+      | .column => if isEmpty st then st else nextColumn env st
+      | .page =>
+        if isEmpty (flushDeferred env st) = true ∧ (flushDeferred env st).column = 0 then flushDeferred env st
+        else nextPage env (flushDeferred env st)
+      | .recto => parityStart env odd st
+      | .verso => parityStart env even st) = text st := by
+    cases k
+    · simp only; split
+      · rw [text_flushDeferred]
+      · rw [text_nextPage, text_flushDeferred]
+    · simp only; split
+      · rfl
+      · rw [text_nextColumn]
+    · exact text_parityStart ..
+    · exact text_parityStart ..
+  simp only [startBefore]
+  split
+  · exact h1
+  · exact h1
+
 theorem text_applyBreaks (env : Env) (st : St) : text (applyBreaks env st) = text st := by
   simp only [applyBreaks]
-  suffices ∀ (ks : List BreakKind) (s : St), text (ks.foldl (applyBreakKind env) s) = text s by
+  suffices ∀ (ks : List Pending) (s : St), text (ks.foldl (applyPending env) s) = text s by
     rw [this]; rfl
   intro ks
   induction ks with
   | nil => intro s; rfl
-  | cons k ks ih => intro s; simp only [List.foldl]; rw [ih, text_applyBreakKind]
+  | cons k ks ih =>
+    intro s; simp only [List.foldl]; rw [ih]
+    cases k with
+    | brk k => exact text_applyBreakKind ..
+    | start sec k => exact text_startBefore ..
 
 theorem text_ite {c : Prop} [Decidable c] {a b : St} {t : List Slot} (ha : text a = t) (hb : text b = t) :
     text (if c then a else b) = t := by
@@ -2520,6 +2582,7 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     · rw [text_pageFigure]; rfl
     · rfl
   | brk k => simp only [place, flowText, List.append_nil]; rfl
+  | sectionStart sec k => simp only [place, flowText, List.append_nil]; rfl
   | space n => simp only [place, flowText, List.append_nil]; exact text_placeSpaceFlow ..
   | needLines n => simp [place, flowText]
   | blank n => simp [place, flowText]
@@ -2631,6 +2694,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     simp only [step, flowText, List.append_nil]
     apply text_ite <;> rfl
   | brk k => simp only [step]; exact text_place env st (.brk k) rest
+  | sectionStart sec k => simp only [step]; exact text_place env st (.sectionStart sec k) rest
   | space n =>
     simp only [step, flowText, List.append_nil]
     rw [text_placeSpace, text_needBeforeSpaces, text_applyBreaks]
@@ -3159,11 +3223,41 @@ theorem breakPage_figs (env : Env) (st : St) (h : Inv st) :
     · exact ⟨rfl, h⟩
     · exact ⟨figs_nextPage env st, inv_nextPage env st h⟩
 
+theorem startBefore_figs (env : Env) (st : St) (sec : Option Nat) (k : BreakKind) (h : Inv st) :
+    figs (startBefore env st sec k) = figs st ∧ Inv (startBefore env st sec k) := by
+  have h1 : figs (match k with
+      | .column => if isEmpty st then st else nextColumn env st
+      | .page =>
+        if isEmpty (flushDeferred env st) = true ∧ (flushDeferred env st).column = 0 then flushDeferred env st
+        else nextPage env (flushDeferred env st)
+      | .recto => parityStart env odd st
+      | .verso => parityStart env even st) = figs st ∧ Inv (match k with
+      | .column => if isEmpty st then st else nextColumn env st
+      | .page =>
+        if isEmpty (flushDeferred env st) = true ∧ (flushDeferred env st).column = 0 then flushDeferred env st
+        else nextPage env (flushDeferred env st)
+      | .recto => parityStart env odd st
+      | .verso => parityStart env even st) := by
+    obtain ⟨f0, i0, _⟩ := flushDeferred_figs env st h
+    cases k
+    · simp only; split
+      · exact ⟨f0, i0⟩
+      · exact ⟨(figs_nextPage env _).trans f0, inv_nextPage env _ i0⟩
+    · simp only; split
+      · exact ⟨rfl, h⟩
+      · exact ⟨figs_nextColumn env st, inv_nextColumn env st h⟩
+    · exact parityStart_figs env odd st h
+    · exact parityStart_figs env even st h
+  simp only [startBefore]
+  split
+  · exact ⟨h1.1, ⟨⟨h1.2.weak.first, h1.2.weak.deferred⟩, h1.2.used, h1.2.fig⟩⟩
+  · exact h1
+
 theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
     figs (applyBreaks env st) = figs st ∧ Inv (applyBreaks env st) := by
   simp only [applyBreaks]
-  suffices ∀ (ks : List BreakKind) (s : St), Inv s →
-      figs (ks.foldl (applyBreakKind env) s) = figs s ∧ Inv (ks.foldl (applyBreakKind env) s) by
+  suffices ∀ (ks : List Pending) (s : St), Inv s →
+      figs (ks.foldl (applyPending env) s) = figs s ∧ Inv (ks.foldl (applyPending env) s) by
     exact this _ _ ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
   intro ks
   induction ks with
@@ -3171,7 +3265,11 @@ theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
   | cons k ks ih =>
     intro s i
     simp only [List.foldl]
-    have one : figs (applyBreakKind env s k) = figs s ∧ Inv (applyBreakKind env s k) := by
+    have one : figs (applyPending env s k) = figs s ∧ Inv (applyPending env s k) := by
+      cases k with
+      | start sec k => exact startBefore_figs env s sec k i
+      | brk k =>
+      simp only [applyPending]
       cases k with
       | page => exact breakPage_figs env s i
       | recto => exact parityStart_figs env odd s i
@@ -3951,6 +4049,9 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
   | brk k =>
     simp only [place, flowFigs, List.append_nil]
     exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+  | sectionStart sec k =>
+    simp only [place, flowFigs, List.append_nil]
+    exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
   | space n =>
     simp only [place, flowFigs, List.append_nil]
     refine ⟨?_, inv_placeSpaceFlow env st n h⟩
@@ -4136,6 +4237,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
     · exact ⟨rfl, h⟩
     · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
   | brk k => simp only [step]; exact place_figs env hc hs st (.brk k) rest h hf
+  | sectionStart sec k => simp only [step]; exact place_figs env hc hs st (.sectionStart sec k) rest h hf
   | space n =>
     simp only [step, flowFigs, List.append_nil]
     have s := inv_needBeforeSpaces env _ b.2
