@@ -5080,14 +5080,15 @@ pdfXPeople md = (names (mdCreators md), names (mdContributors md))
   where
     names cs = [crName c | c <- cs, inMetadata (crRole c)]
 
--- | The output intent; a profile that cannot be read is G08006 (golem-project ADR 0004).
+-- | The output intent; a missing profile is G08006 (golem-project ADR 0004), one outside the project G03279 (docs/adr/0421).
 loadIntent :: PdfInput -> IO (Either [Diagnostic] (Maybe P.PdfX))
 loadIntent inp = case stIntent (piStyle inp) of
   Nothing -> pure (Right Nothing)
   Just path -> do
     r <- filesResolve (piFiles inp) path
     case r of
-      Left e -> pure (Left [diagnostic "G08006" Error (mkSpan (styleFileId (piProject inp)) 0 0) (T.pack (intentMessage e <> ": " <> path))])
+      -- a path outside the project is its own cause (docs/adr/0421)
+      Left e -> pure (Left [diagnostic (if e == Missing then "G08006" else "G03279") Error (mkSpan (styleFileId (piProject inp)) 0 0) (T.pack (intentMessage e <> ": " <> path))])
       Right rel -> do
         bytes <- filesRead (piFiles inp) rel
         let md = manifestMetadata (projectManifest (piProject inp))
