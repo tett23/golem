@@ -5141,8 +5141,7 @@ JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended 
 12-bit、lossless、arithmetic coding などの非対応方式は、G08113 にする。
 色を指定しない場合は、この復号方式の制限を適用せず、従来と同じように元の JPEG を扱う。
 
-PDF 図版の色置換は段階的な実装である。
-現在は線、塗りと文字、Form の参照をたどった描画、シェーディング、パターンと、対応する画像を判定する。
+PDF 図版の色置換は、線、塗りと文字、Form の参照をたどった描画、シェーディング、パターンと、対応する画像を判定する。
 線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ CalGray、CalRGB、Lab、ICCBased、Indexed に対応する（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
 CalGray、CalRGB、Lab の色は、色を変換せずに、切り詰めた成分の値のまま分類する。
 CalGray と CalRGB の成分は 0 から 1 に、Lab の L* は 0 から 100 に、a* と b* は色空間の Range に切り詰め、有理数のまま比べる。
