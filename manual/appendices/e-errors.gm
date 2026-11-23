@@ -705,7 +705,9 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
 = [strong: G03272]、[strong: G03273]、[strong: G03274]、[strong: G03275]、[strong: G03276]、[strong: G03277] [code: EPUB の page-map を読み込めません: …]
   [code: \[targets.epub\]] の [code: page-map] に書いた対応表を使えません（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。
   EPUB を組むときにだけ出て、このエラーがあれば EPUB を書きません。
-  ファイルがないときは G03272、読み取りに失敗したときは G03273、JSON として読めないときは G03274 です。
+  ファイルがないときは G03272 です。
+  パスが絶対パスか URL かプロジェクトの外を指すとき、またはファイルを読み取れないときは G03273 です。
+  JSON として読めないときは G03274 です。
   [code: sources] や [code: pages] の項目がないか、型、表示ノンブル、物理ページの順が正しくないときは G03275 です。
   物理ページは、正の整数を小さい順に並べてください。
   [code: sources] の SHA-256 が今の原稿と合わないか、原稿にないファイルを含むときは G03276 です。
