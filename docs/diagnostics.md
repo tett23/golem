@@ -8703,16 +8703,16 @@ HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 
 - メッセージ: `[printings] の format が正しくありません（空の差し込み {} があります）: <書式>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0428](adr/0428-recommend-doubled-braces-for-the-empty-printings-field.md)（直し方）、[docs/adr/0375](adr/0375-printings-format.md)
 
 ### 主な原因
 
 - 欄の名前を書き忘れた。
-- 文字の `{}` をエスケープしなかった。
+- 文字の `{}` を `{{}}` と書かなかった。
 
 ### 直し方
 
-欄の名前を書くか、文字の `{` と `}` を `\{` と `\}` と書く。
+欄の名前を書くか、文字の `{` と `}` を `{{` と `}}` と書く。
 
 ## G03270
 
