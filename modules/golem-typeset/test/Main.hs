@@ -13,6 +13,7 @@ import PdfColorPatternSpec (pdfColorPatternTests)
 import PdfColorRangeSpec (pdfColorRangeTests)
 import PdfColorShadingSpec (pdfColorShadingTests)
 import PdfColorSpec (pdfColorTests)
+import PdfColorType3Spec (pdfColorType3Tests)
 import PdfDctSpec (pdfDctTests)
 import RuleShapeSpec (ruleShapeTests)
 import SvgColorSpec (svgColorTests)
@@ -39,6 +40,7 @@ tests =
       testGroup "PDF figure shadings (root ADR 0425)" pdfColorShadingTests,
       testGroup "PDF figure mesh shadings (root ADR 0425)" pdfColorMeshTests,
       testGroup "PDF figure patterns (root ADR 0425)" pdfColorPatternTests,
+      testGroup "PDF figure Type 3 glyphs (root ADR 0425)" pdfColorType3Tests,
       memoTests,
       testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
       testGroup "the glyph runs of a box in the order of its text (docs/adr ADR 0227)" glyphRunsTests,

@@ -100,7 +100,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   これらは採択した範囲から除外せず、三つの ADR の残実装として進める。
   [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた構成（Normal と Compatible のほかの合成の方式、Identity と Default のほかの転送関数、OPM が 1 のオーバープリント、FunctionType 4 の関数のシェーディング、DeviceGray でないソフトマスクなど）は、残りではない。
   - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。
-  - 自分の色を指定する Type 3 フォントの字形（d0）。
 
 ### 機能をそろえた後の確かめ
 
