@@ -10,6 +10,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
+import Data.List (transpose)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio (denominator, numerator, (%))
@@ -20,6 +21,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
 import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
 import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
+import Golem.Typeset.PdfShading qualified as S
 
 -- A colour is kept in the source space until an operator actually paints it.
 -- A CIE-based colour (root ADR 0425) keeps its space's identity, its
@@ -62,9 +64,10 @@ recolorImportedPage swatch analyze page = do
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
   let source = Map.fromList (P.ipObjects page)
-      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page}
+      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, shadingBindings = Map.empty, shadingTables = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page}
   scope <- resourceScope PageResources (P.ipResources page) initialState
   (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty scope (P.ipResources page) initial (P.ipContent page) initialState
+  if kind == Grayscale && unreplaceableShading analyzed then Left "PDF 図版の濃淡のシェーディングを指定色に置き換えられません" else Right ()
   case kind of
     Multicolor -> Right Nothing
     Unpainted -> Right Nothing
@@ -94,6 +97,11 @@ data Resources = Resources
     convertedObjects :: !(Map.Map P.ObjNum (P.ObjOf P.ObjNum)),
     scopeBindings :: !(Map.Map Scope (Map.Map Text P.ObjNum)),
     sourceTables :: !(Map.Map Scope (Map.Map Text (P.ObjOf P.ObjNum))),
+    -- Converted shadings get aliases in the Shading resources, like XObjects.
+    shadingBindings :: !(Map.Map Scope (Map.Map Text P.ObjNum)),
+    shadingTables :: !(Map.Map Scope (Map.Map Text (P.ObjOf P.ObjNum))),
+    -- A gray shading met that cannot be recoloured (root ADR 0425).
+    unreplaceableShading :: !Bool,
     clonedResources :: !(Map.Map Scope P.ObjNum),
     rasterAnalyzer :: !(P.ImageData -> Either Text RasterAnalysis),
     rasterResults :: !(Map.Map (P.ObjNum, Scope) RasterAnalysis),
@@ -144,6 +152,13 @@ scanForms swatch emit active scope resources graphics content state = do
         "BI" -> do
           (key, fields, prepared) <- inlineSource args st
           scanImage scope resources key fields prepared
+        "sh" -> do
+          (value, tabled) <- shadingResource scope resources args st
+          (shading, analyzed) <- analyzeShading value tabled
+          if
+            | fillAlpha current == 0 -> Right (Just Unpainted, analyzed)
+            | overprintMode current /= 0 && overprintFill current -> Left overprintError
+            | otherwise -> Right (Just (shadingKind shading), analyzed {unreplaceableShading = unreplaceableShading analyzed || shadingBlocked shading})
         _ -> Right (Nothing, st)
       let synced = Scan current saved seen output (if emit then Just (remainingBytes updated) else Nothing)
       next@(Scan _ _ _ _ budget) <- stepWith external space swatch synced operation
@@ -192,6 +207,14 @@ renderForms swatch active scope resources graphics content state = do
           -- An unconverted inline image is written as the XObject it was read as.
           let kept = if clone == key then child {convertedObjects = Map.insert key (P.OStream fields (inlineData key child)) (convertedObjects child)} else child
           bindClone clone kept
+        "sh" -> do
+          (value, tabled) <- shadingResource scope resources args st
+          (shading, analyzed) <- analyzeShading value tabled
+          (object, materialized) <- materialize (convertShading swatch shading) analyzed
+          fresh <- freshObject materialized
+          alias <- freshShadingAlias scope fresh materialized
+          let bindings = Map.insertWith Map.union scope (Map.singleton alias fresh) (shadingBindings materialized)
+          Right (Just Unpainted, bound, materialized {convertedObjects = Map.insert fresh object (convertedObjects materialized), shadingBindings = bindings}, ("sh", ["/" <> TE.encodeUtf8 alias]))
         _ -> Right (Nothing, bound, st, operation)
       next@(Scan _ _ _ _ budget) <- stepWith external space swatch (Scan current saved seen output (Just (remainingBytes updated))) rewritten
       go next rebound (case budget of Nothing -> updated; Just remaining -> updated {remainingBytes = remaining}) rest
@@ -960,7 +983,7 @@ freshAlias scope clone state = do
 
 -- Shared indirect dictionaries are cloned once, so their sharing survives.
 cloneResourceDictionaries :: Resources -> Either Text Resources
-cloneResourceDictionaries state = foldM clone state (Map.keys (scopeBindings state))
+cloneResourceDictionaries state = foldM clone state (Set.toList (Set.fromList (Map.keys (scopeBindings state) <> Map.keys (shadingBindings state))))
   where
     clone current scope@(IndirectResources key) = do
       bound <- bindScopeRaw scope (P.ORef key) current
@@ -976,13 +999,12 @@ bindScope scope resources state = case Map.lookup scope (clonedResources state) 
   Nothing -> bindScopeRaw scope resources state
 
 bindScopeRaw :: Scope -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
-bindScopeRaw scope resources state = case Map.lookup scope (scopeBindings state) of
-  Nothing -> Right resources
-  Just additions -> do
+bindScopeRaw scope resources state = case [(category, additions, tables) | (category, bindings, tables) <- [("XObject", scopeBindings state, sourceTables state), ("Shading", shadingBindings state, shadingTables state)], Just additions <- [Map.lookup scope bindings]] of
+  [] -> Right resources
+  categories -> do
     values <- dictionary resources state
-    originals <- maybe (Left "PDF 図版の資源辞書を準備できません") Right (Map.lookup scope (sourceTables state))
-    let objects = Map.union (Map.map P.ORef additions) originals
-    Right (P.ODict ([(k, v) | (k, v) <- values, k /= "XObject"] <> [("XObject", P.ODict (Map.toAscList objects))]))
+    replaced <- traverse (\(category, additions, tables) -> (\originals -> (category, P.ODict (Map.toAscList (Map.union (Map.map P.ORef additions) originals)))) <$> maybe (Left "PDF 図版の資源辞書を準備できません") Right (Map.lookup scope tables)) categories
+    Right (P.ODict ([(k, v) | (k, v) <- values, k `notElem` map fst replaced] <> replaced))
 
 finalizeClone :: Map.Map P.ObjNum Scope -> Resources -> (P.ObjNum, P.ObjOf P.ObjNum) -> Either Text (P.ObjNum, P.ObjOf P.ObjNum)
 finalizeClone scopes state (key, P.OStream fields content) = case lookup "Resources" fields of
@@ -1018,7 +1040,7 @@ stepWith external resolved swatch (Scan graphics stack kind output budget) (oper
         let state = if isStroke then graphics {strokeSpace = space, strokeColor = zero} else graphics {fillSpace = space, fillColor = zero}
         keep state stack kind (paint swatch zero isStroke)
   case operator of
-    _ | operator `elem` ["Do", "BI"], Just used <- external -> keep graphics stack (mergeKind kind used) original
+    _ | operator `elem` ["Do", "BI", "sh"], Just used <- external -> keep graphics stack (mergeKind kind used) original
     "q" -> keep graphics (graphics : stack) kind original
     "Q" -> case stack of
       saved : rest -> keep saved rest kind original
@@ -1220,3 +1242,253 @@ paint (c, m, y, k) source isStroke =
         _ -> 1
       values = [fromIntegral component / 100 * amount | component <- [c, m, y, k]]
    in BC.unwords (map (TE.encodeUtf8 . P.showRationalDigits 8) values <> [if isStroke then "K" else "k"])
+
+-- Function-based shadings (root ADR 0425) ---------------------------------
+
+{- | A shading's dictionary, the space of its values, its functions, the
+colours of its definition, and how its gray values follow one output.
+-}
+data ShadingInfo = ShadingInfo
+  { shadingFields :: ![(Text, P.ObjOf P.ObjNum)],
+    shadingFunctions :: !(Either S.Fn [S.Fn]),
+    shadingColours :: ![Color],
+    shadingBackground :: !(Maybe [Rational]),
+    shadingGray :: !(Maybe S.Gray),
+    -- A function shading (type 1) has a function of two inputs.
+    shadingTwoInputs :: !Bool,
+    shadingRanges :: ![(Rational, Rational)]
+  }
+
+shadingKind :: ShadingInfo -> RasterKind
+shadingKind = foldl mergeKind Unpainted . map colorKind . shadingColours
+
+allGray :: ShadingInfo -> Bool
+allGray shading = all ((== Grayscale) . colorKind) (shadingColours shading)
+
+-- | All its values are tones, but no linear map recolours them.
+shadingBlocked :: ShadingInfo -> Bool
+shadingBlocked shading = allGray shading && isNothing (shadingGray shading)
+
+shadingResource :: Scope -> P.ObjOf P.ObjNum -> [ByteString] -> Resources -> Either Text (P.ObjOf P.ObjNum, Resources)
+shadingResource scope resources args state = do
+  name <- resourceName args
+  (table, tabled) <- case Map.lookup scope (shadingTables state) of
+    Just table -> Right (table, state)
+    Nothing -> do
+      values <- dictionary resources state
+      entries <- maybe (Right []) (`dictionary` state) (lookup "Shading" values)
+      let table = Map.fromList entries
+      Right (table, state {shadingTables = Map.insert scope table (shadingTables state)})
+  value <- maybe (Left "PDF 図版のシェーディングが見つかりません") Right (Map.lookup name table)
+  Right (value, tabled)
+
+freshShadingAlias :: Scope -> P.ObjNum -> Resources -> Either Text Text
+freshShadingAlias scope clone state = do
+  names <- maybe (Left "PDF 図版の資源辞書を準備できません") Right (Map.lookup scope (shadingTables state))
+  let choose candidate = if Map.member candidate names then choose (candidate <> "_") else candidate
+  Right (choose ("GolemFigureColor" <> TE.decodeLatin1 (BC.pack (show (negate (toInteger clone))))))
+
+analyzeShading :: P.ObjOf P.ObjNum -> Resources -> Either Text (ShadingInfo, Resources)
+analyzeShading value state = do
+  resolved <- dereference Set.empty value state
+  fields <- case resolved of
+    P.ODict entries -> Right entries
+    P.OStream _ _ -> Left "PDF 図版のメッシュのシェーディングの色置換は未完了です"
+    _ -> Left invalid
+  kind <- maybe (Left invalid) (\v -> dereference Set.empty v state) (lookup "ShadingType" fields)
+  if kind `elem` map P.OInt [1, 2, 3] then Right () else Left "PDF 図版のメッシュのシェーディングの色置換は未完了です"
+  spaceValue <- maybe (Left invalid) Right (lookup "ColorSpace" fields)
+  (space, spaced) <- shadingSpace spaceValue state
+  functionValue <- maybe (Left invalid) Right (lookup "Function" fields)
+  (functionObject, read') <- resolveFunction 0 Set.empty functionValue spaced
+  functions <- case functionObject of
+    P.OArr entries -> Right <$> traverse (S.readFunction streamBytes) entries
+    single -> Left <$> S.readFunction streamBytes single
+  let components = spaceComponents space
+      all' = either pure id functions
+      hasCalculator = \case
+        S.Fn4 -> True
+        S.Fn3 _ inner _ -> any hasCalculator inner
+        _ -> False
+  if any hasCalculator all' then Left "PDF 図版の PostScript の計算機の関数のシェーディングは色を判定できません" else Right ()
+  outputs <- case functions of
+    Left fn | S.fnOutputs fn == components -> Right (Just (S.fnPositions fn))
+    Right fns
+      | length fns == components && all ((== 1) . S.fnOutputs) fns ->
+          let columns = [concatMap (take 1) (S.fnPositions fn) | fn <- fns]
+           in if allSame (map length columns)
+                then Right (Just (transpose columns))
+                else Left "PDF 図版のシェーディングの関数の配列の値の位置がそろいません"
+    _ -> Left invalid
+  -- The functions of an array line up only with the same definitions but values.
+  let lined = case functions of
+        Right fns -> allSame [S.fnShape fn 0 | fn <- fns]
+        Left _ -> True
+  background <- traverse (\v -> dereference Set.empty v read' >>= numbersOf) (lookup "Background" fields)
+  colours <- traverse (rawColor space) (fromMaybe [] outputs <> maybe [] pure background)
+  let definitions = case functions of
+        Left fn -> [S.fnDefinition fn i | i <- [0 .. components - 1]]
+        Right fns -> [S.fnDefinition fn 0 | fn <- fns]
+      valuesOf i = case functions of
+        Left fn -> S.fnValues fn i <> maybe [] (pure . (!! i)) background
+        Right fns -> S.fnValues (fns !! i) 0 <> maybe [] (pure . (!! i)) background
+      ranges = spaceRanges space
+      within = case functions of
+        Left fn -> S.fnWithin ranges fn
+        Right fns -> and [S.fnWithin [range] fn | (range, fn) <- zip ranges fns]
+      backgroundWithin = maybe True (and . zipWith (\(low, high) v -> low <= v && v <= high) ranges) background
+      zeros = all (all (== 0) . valuesOf)
+      normalized (low, high) = (1 / (high - low), negate low / (high - low))
+      gray = case space of
+        GraySpace -> Just (S.Gray 0 1 0)
+        CieSpace CalGrayFamily _ _ -> Just (S.Gray 0 1 0)
+        RangedSpace GraySpace [range] -> Just (uncurry (S.Gray 0) (normalized range))
+        RgbSpace | equalOutputs -> Just (S.Gray 0 1 0)
+        CieSpace CalRgbFamily _ _ | equalOutputs -> Just (S.Gray 0 1 0)
+        RangedSpace RgbSpace (range : rest) | equalOutputs, all (== range) rest -> Just (uncurry (S.Gray 0) (normalized range))
+        CieSpace LabFamily _ _ | zeros [1, 2] -> Just (S.Gray 0 (1 / 100) 0)
+        CmykSpace | zeros [0, 1, 2] -> Just (S.Gray 3 (-1) 1)
+        RangedSpace CmykSpace [(l0, _), (l1, _), (l2, _), (low, high)]
+          | and [all (== l) (valuesOf i) | (i, l) <- zip [0, 1, 2] [l0, l1, l2]] -> Just (S.Gray 3 (negate 1 / (high - low)) (1 + low / (high - low)))
+        _ -> Nothing
+      equalOutputs = allSame definitions && maybe True allSame background
+      linear = if lined && within && backgroundWithin then gray else Nothing
+  Right (ShadingInfo fields functions colours background linear (kind == P.OInt 1) (spaceRanges space), read')
+  where
+    invalid = "PDF 図版のシェーディングを読めません"
+    streamBytes = \case
+      P.OStream _ bytes -> Right bytes
+      _ -> Left "PDF 図版のシェーディングの関数を読めません"
+    allSame :: (Eq a) => [a] -> Bool
+    allSame xs = and (zipWith (==) xs (drop 1 xs))
+    numbersOf = \case
+      P.OArr entries -> traverse (\case P.OInt n -> Right (fromInteger n); P.OReal t -> maybe (Left invalid) Right (decimal (TE.encodeUtf8 t)); _ -> Left invalid) entries
+      _ -> Left invalid
+
+-- | A function with references replaced and sampled tables decoded.
+resolveFunction :: Int -> Set.Set P.ObjNum -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum, Resources)
+resolveFunction depth seen value state
+  | depth > P.maxNesting = Left "PDF 図版のシェーディングの関数が深すぎます"
+  | otherwise = case value of
+      P.ORef key -> do
+        guardForm seen key
+        object <- maybe (Left "PDF 図版の資源の参照先がありません") Right (Map.lookup key (sourceObjects state))
+        case object of
+          P.OStream fields _ -> do
+            (body, decoded) <- decodePdfStream key fields state
+            deep <- traverse (\(name, entry) -> (name,) <$> resolveDeep 0 Set.empty entry state) fields
+            Right (P.OStream deep body, decoded)
+          _ -> resolveFunction (depth + 1) (Set.insert key seen) object state
+      P.OArr entries -> do
+        (resolved, final) <- foldM (\(acc, st) entry -> (\(r, st') -> (acc <> [r], st')) <$> resolveFunction (depth + 1) seen entry st) ([], state) entries
+        Right (P.OArr resolved, final)
+      P.ODict fields -> do
+        (resolved, final) <- foldM (\(acc, st) (name, entry) -> (\(r, st') -> (acc <> [(name, r)], st')) <$> (if name == "Functions" then resolveFunction (depth + 1) seen entry st else (,st) <$> resolveDeep 0 Set.empty entry st)) ([], state) fields
+        Right (P.ODict resolved, final)
+      P.OStream _ _ -> Left "PDF 図版のシェーディングの関数を読めません"
+      other -> Right (other, state)
+
+{- | The space of a shading's values: a device family name or a CIE-based or
+ICCBased array.
+-}
+shadingSpace :: P.ObjOf P.ObjNum -> Resources -> Either Text (Space, Resources)
+shadingSpace value state = do
+  resolved <- dereference Set.empty value state
+  case resolved of
+    P.OName "DeviceGray" -> Right (GraySpace, state)
+    P.OName "DeviceRGB" -> Right (RgbSpace, state)
+    P.OName "DeviceCMYK" -> Right (CmykSpace, state)
+    _ -> do
+      special <- cieSpace resolved state
+      maybe (Left "PDF 図版のシェーディングの色空間に対応していません") Right special
+
+spaceComponents :: Space -> Int
+spaceComponents = length . spaceRanges
+
+spaceRanges :: Space -> [(Rational, Rational)]
+spaceRanges = \case
+  GraySpace -> [(0, 1)]
+  RgbSpace -> replicate 3 (0, 1)
+  CmykSpace -> replicate 4 (0, 1)
+  IndexedSpace _ -> [(0, 255)]
+  RangedSpace _ ranges -> ranges
+  -- L* also stays within 0 to 100, which an ICCBased Range may exceed.
+  CieSpace LabFamily _ ((low, high) : rest) -> (max 0 low, min 100 high) : rest
+  CieSpace _ _ ranges -> ranges
+
+-- | A shading value as a colour, without clipping it to the space.
+rawColor :: Space -> [Rational] -> Either Text Color
+rawColor space values = case (space, values) of
+  (GraySpace, [g]) -> Right (Gray g)
+  (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
+  (CmykSpace, [c, m, y, k]) -> Right (CmykColor c m y k)
+  (RangedSpace base ranges, _) | length ranges == length values -> rawColor base [(v - low) / (high - low) | ((low, high), v) <- zip ranges values]
+  (CieSpace family key ranges, _) | length ranges == length values -> Right (cieColor family key (map (const (-(10 ^ (30 :: Int)), 10 ^ (30 :: Int))) ranges) values)
+  _ -> Left "PDF 図版のシェーディングの色の成分数が不正です"
+
+{- | The recoloured shading: a gray one maps the output of its gray value,
+a one-colour one paints the swatch.
+-}
+convertShading :: Cmyk -> ShadingInfo -> P.ObjOf P.ObjNum
+convertShading (c, m, y, k) shading =
+  let replaced = [("ColorSpace", P.OName "DeviceCMYK"), ("Function", newFunction)] <> [("Background", b) | Just b <- [newBackground]]
+   in P.ODict ([(key, value) | (key, value) <- shadingFields shading, key `notElem` map fst replaced] <> replaced)
+  where
+    inks = [fromIntegral component / 100 | component <- [c, m, y, k]] :: [Rational]
+    apply (a, b) v = a * v + b
+    (newFunction, newBackground) = case shadingGray shading of
+      Just (S.Gray output alpha beta)
+        | allGray shading ->
+            let maps = [(negate (s * alpha), s * (1 - beta)) | s <- inks]
+             in ( case shadingFunctions shading of
+                    Left fn -> withRange output maps fn (S.mapFunction output maps fn)
+                    Right fns -> P.OArr [withRange output [one] fn (S.mapFunction 0 [one] fn) | one <- maps, fn <- take 1 (drop output fns)],
+                  fmap (\values -> P.OArr [S.numberObject (apply one value) | one <- maps, value <- take 1 (drop output values)]) (shadingBackground shading)
+                )
+      -- A type 1 shading keeps its function of two inputs, every output constant.
+      _
+        | shadingTwoInputs shading ->
+            ( case shadingFunctions shading of
+                Left fn -> S.mapFunction 0 [(0, s) | s <- inks] fn
+                Right fns -> P.OArr [S.mapFunction 0 [(0, s)] fn | (s, fn) <- zip inks (cycle fns)],
+              solidBackground
+            )
+        | otherwise -> (S.solidFunction (domainOf (shadingFunctions shading)) inks, solidBackground)
+    solidBackground = fmap (const (P.OArr (map S.numberObject inks))) (shadingBackground shading)
+    -- A function without Range is mapped with the range of its colour space.
+    withRange output maps fn object = case (fn, object, drop output (shadingRanges shading)) of
+      (S.Fn2 _ _ _ _ _ Nothing, P.ODict entries, (low, high) : _) -> P.ODict (entries <> [("Range", mapped maps low high)])
+      (S.Fn3 _ _ Nothing, P.ODict entries, (low, high) : _) -> P.ODict (entries <> [("Range", mapped maps low high)])
+      _ -> object
+    mapped maps low high = P.OArr [S.numberObject x | one <- maps, let (a, b) = (apply one low, apply one high), x <- [min a b, max a b]]
+    domainOf = \case
+      Left fn -> domain fn
+      Right (fn : _) -> domain fn
+      Right [] -> (0, 1)
+    domain = \case
+      S.Fn0 fields _ _ _ _ _ -> first fields
+      S.Fn2 _ _ _ d _ _ -> d
+      S.Fn3 fields _ _ -> first fields
+      S.Fn4 -> (0, 1)
+    first fields = case lookup "Domain" fields of
+      Just (P.OArr (a : b : _)) | Just x <- num a, Just z <- num b -> (x, z)
+      _ -> (0, 1)
+    num = \case
+      P.OInt n -> Just (fromInteger n)
+      P.OReal t -> decimal (TE.encodeUtf8 t)
+      _ -> Nothing
+
+-- | Streams nested in a converted object become fresh objects.
+materialize :: P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum, Resources)
+materialize object state = case object of
+  P.OStream fields bytes -> do
+    charged <- charge (BS.length bytes) state
+    fresh <- freshObject charged
+    Right (P.ORef fresh, charged {convertedObjects = Map.insert fresh (P.OStream fields bytes) (convertedObjects charged)})
+  P.OArr values -> do
+    (out, final) <- foldM (\(acc, st) v -> (\(r, st') -> (acc <> [r], st')) <$> materialize v st) ([], state) values
+    Right (P.OArr out, final)
+  P.ODict fields -> do
+    (out, final) <- foldM (\(acc, st) (name, v) -> (\(r, st') -> (acc <> [(name, r)], st')) <$> materialize v st) ([], state) fields
+    Right (P.ODict out, final)
+  other -> Right (other, state)

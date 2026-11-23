@@ -60,6 +60,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### diagnostics とビルドの結果
 
 - **一つのコードに一つの原因に合わせたコードの分割**：[Golem ADR 0356](adr/0356-diagnostic-cause-audit.md) の [監査の記録](audits/2026-11-17-diagnostic-cause-audit.md) は、異なる原因を一つにまとめたコードを 62 件挙げ、候補ごとに分け方を提案した。どの提案を採るかを決め、ADR を作成してコードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。
+- **`[printings]` の書式のエラーの文言（未実装）**：`[printings]` の `format` の、閉じていない `{` と対応する `{` のない `}` の文言を、文字の波括弧を `{{` と `}}` で書くよう勧める文にする（[ADR 0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md) の 1、[ADR 0375](adr/0375-printings-format.md)）。文言は、書式を読む `parseFormat` が返す原因の値を見て差し替える。原因の値は [ADR 0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md) の実装で入るので、その後に実装する。今は、どの書式の文言も `\{` と `\}` を勧める。
 - **diagnostics の判定の近似の監査**：数値による診断の境界と、追加の近似を調べる手順を定めた。 [Golem ADR 0322](adr/0322-check-numeric-diagnostic-boundaries.md)（採択）。
 - **`golem check` が G01012 を二度出す件**：check と HTML ビルドで見出しの各位置を照合する回帰テストを定めた。 [Golem ADR 0323](adr/0323-heading-level-diagnostic-occurrences.md)（採択）。
 - **フォントにない字があるときの preflight の完走**：欠字を G09002 で報告し、独立した検査を続ける。 [Golem ADR 0325](adr/0325-preflight-glyph-severity.md)（採択）。
@@ -105,7 +106,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が分類と置き換え方を決めたが、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
   これらは採択した範囲から除外せず、三つの ADR の残実装として進める。
   [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた構成（Normal と Compatible のほかの合成の方式、Identity と Default のほかの転送関数、OPM が 1 のオーバープリント、FunctionType 4 の関数のシェーディング、DeviceGray でないソフトマスクなど）は、残りではない。
-  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。
+  - メッシュのシェーディング（ShadingType 4 から 7）、シェーディングのパターン、タイリングのパターン。
   - CalGray、CalRGB、Lab の画像と、データの色空間が Lab の ICCBased の画像。単位範囲以外の Range を持つ ICCBased の画像。これらと、データの色空間が Lab の ICCBased を基底とする Indexed の色空間。
   - 異寸法のマスクと、Matte を持つ同寸法のソフトマスク。
   - 画像かマスクの Interpolate が true の場合に、すべての画素を可視として判定すること。今は、明示マスクでは G08113 にし、ソフトマスクではマスクで判定している。

@@ -473,7 +473,7 @@ linkTests tinyJpeg =
           framed = framePageWith (Just Japanese) b (100 * 65536, 100 * 65536) [] [LinkAnnotation (Rect 0 0 65536 65536) (UriAction "https://example.com/") Nothing Nothing]
           m = b + 2415027
       pageAnnots framed @?= [LinkAnnotation (Rect m m 65536 65536) (UriAction "https://example.com/") Nothing Nothing],
-    testCase "ADR 0350 X1, X2, X3, X4: print links retain text and outline destinations without page annotations" $ do
+    testCase "root ADR 0350 I1, I2, I3, I4: print links retain text and outline destinations without page annotations" $ do
       let aid = AnnotId [1]
           leaf = LeafId [2]
           frame = (annotated "https://example.com/") {pageContent = [Tagged leaf [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]}
