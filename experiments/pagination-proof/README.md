@@ -4,8 +4,9 @@
 `check.sh` は Alloy の 42 コマンドと期待値の一覧が一致することを確かめ、各コマンドと同名の `theorem` を要求する。
 同名の計算用関数だけではこの検査に通らない。
 42 コマンドすべてについて、Alloy のモデルを Lean へ書き写した述語（「元の述語の書き写し」の節）の上で述べた、名前空間 `Alloy` の中の同名の定理も要求する。
+改ページの規則のモデルは、Alloy のモデルを書き写した Lean の定義であり、Alloy のモデルではない（2026-11-23 のメンテナーの決定）。
 移行はまだ完了していない。
-書き写しと元の Alloy の述語の同値性、名前空間の外の既存の宣言と書き写しの同値性を含め、未完の項目は「未完の項目」の節に挙げる。
+未完の項目は「未完の項目」の節に挙げる。
 
 この文書では、Alloy のモデルの項目を次の語で呼ぶ。
 `Text` は本文、`Figure` は図版、`Space` はスペース、`Blank` は行アキ、`Need` は `need-lines` である。
@@ -19,7 +20,8 @@ P7 は Alloy の `spaceKeeps` で、`need-lines` が記述位置で満たされ�
 `keep21` はこの配置に、段落境界の orphan、widow、見出しの規則を接続する。
 `keepHeadingEmpty`、`keepHeadingFigure`、`keepHeadingOrphan`、`keepHeadingWidow`、`orphanEmpty`、`widowEmpty`、`orphanWidow`、`noneMeetsAllButGreedy` は、この同じ配置から対象の規則を取り出す。
 `waitingBlankNone` と `waitingBlankAllButGreedy` は、待機中の図版を飛ばす現在の行アキ規則について同様の配置を構成する。
-段容量と図版寸法に有限の上限はないが、元の Alloy 入力と Lean の入力が全体として同値であることは未証明である。
+段容量と図版寸法に有限の上限はない。
+これらの宣言は補助の命題であり、モデルとしては扱わない。
 
 `greedyFigure` は、本文を詰める規則と図版を収まる位置に置く規則が両立することを示す。
 図版が原稿位置で収まる場合はその行数を確保し、残りの行に本文を詰める。
@@ -293,7 +295,9 @@ Lean は任意の整数の段容量、予約行数、区切り行数で、繰り
 
 ## 元の述語の書き写し
 
-元の述語への対応を始めるため、Alloy のモデルを Lean へ書き写した。
+Alloy のモデルを Lean へ書き写し、この書き写しを改ページの規則のモデルとする。
+規則を変えるときは、まずこの定義を変える。
+`docs/golem-layout/models/pagination.als` と Alloy の定期実行は、[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) が定めるとおり、移行の完了まで残す。
 書き写した述語は、元にした ADR ごとに第 1 群から第 5 群に分ける。
 [docs/adr/0204](../../docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の述語を第 1 群とする。
 `AlloyInput` は段の容量と使用済み行数、原稿順の項目を持ち、項目の位置を列の番号とする。
@@ -304,7 +308,15 @@ Lean は任意の整数の段容量、予約行数、区切り行数で、繰り
 Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos` は、Alloy と同じく位置の和で比べる。
 `alloy_someFits`、`alloy_noneMeetsAll`、`alloy_greedyOrphan`、`alloy_greedyWidow`、`alloy_greedyKeepHeading`、`alloy_tallFigure` は、解のある 6 コマンドの本体を、書き写した述語の上で具体的な入力により示す。
 `check-alloy-witnesses.sh` は同じ入力を Alloy に固定して、どれにも解があることを確かめる。
-書き写しの忠実さは、これらの具体例の一致で確かめたにとどまる。
+書き写しが元の述語と一致することは、次の有限の突き合わせで一度確かめた記録として残す。
+Lean の定義がモデルなので、両者の同値は証明の対象にしない。
+`DiffAlloy.lean` と `check-alloy-diff.sh` は、書き写した述語を元の述語と入力ごとに突き合わせる。
+項目 2 個以下のすべての入力と、項目 3〜4 個の入力の 97 個に 1 個を、容量 3〜4 行、使用済み行数 0、1、容量 −1、容量で選ぶ。
+各入力について、Lean が各述語を満たす配置の集合を計算し、Alloy のコマンドがその入力を固定して、元の述語がちょうどその集合で成り立つことを述べる。
+固定した入力のインスタンスは同型を除いて一つなので、コマンドに解があることは、`fact input` がその入力を許し、すべての述語が一致することと同じである。
+2026-11-23 に間隔 97 で生成した 2,719 個のコマンド（`diff0`〜`diff2718`）は、すべてに解があった。
+`diff0`〜`diff1677` と `diff1678`〜`diff2718` の 2 回に分けて Alloy 6 で走らせた。
+これは有限の照合であり、証明ではない。
 
 同じ群で解のない 11 コマンドは、書き写した述語の上で、項目の数と容量の上限なしに証明した。
 `alloy_noneMeetsAllButGreedy` は、図版が高々一つで行アキとスペースと `need-lines` のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、詰める規則のほかの 7 規則を同時に満たす配置があることを示す。
@@ -338,8 +350,7 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 解のあるコマンドは、`fact input` と本体を満たす入力があることを述べる。
 解のないコマンドは、`fact input` を満たすどの入力でも本体が成り立たないことを、項目の数の上限なしに述べる。
 `check.sh` は、第 1 群から第 5 群までの 42 コマンドすべてについて `Alloy` の中の同名の定理を要求する。
-名前空間の外にある同名の既存の宣言は、それぞれ独自の抽象化の上の命題として残す。
-既存の宣言とこの書き写しの同値は証明していない。
+名前空間の外にある同名の既存の宣言は、それぞれ独自の抽象化の上の補助の命題として残し、書き写しとの同値は求めない。
 
 第 3 群として、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の待機図版と行アキの述語も書き写した。
 `alloyWaiting`、`alloyNextOf`、`alloyNextOf25`、`alloyInColumn`、`alloyBlankAtTop`、`alloyFigures`、`alloyFigureOrder`、`alloyBlankWithNext`、`alloyBlankWithNext25`、`alloyBase26` が、元の述語に一つずつ対応する。
@@ -378,11 +389,11 @@ Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap
 
 ## 未完の項目
 
-書き写した述語と元の Alloy の述語の同値性、名前空間の外の既存の宣言と書き写しの同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
+キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
 既存の整数行のモデルを、その経路の証明とは扱わない。
 [root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りのフロー生成と G07134 の後処理も、まだ証明していない。
-全体を閉じるには、キャプションの評価値と幅の計算と Haskell の対応、Alloy の元の述語への全体の対応、格子モードの各 `Flow` の具体的な状態遷移、自由な配置の状態遷移、区切りのフロー生成と G07134 の後処理を、終了と内容保存の証明へそれぞれ接続する必要がある。
+全体を閉じるには、キャプションの評価値と幅の計算と Haskell の対応、格子モードの各 `Flow` の具体的な状態遷移、自由な配置の状態遷移、区切りのフロー生成と G07134 の後処理を、終了と内容保存の証明へそれぞれ接続する必要がある。
 移行が完了するまで Alloy の定期実行と既存の参照を維持する。
 
 ## 検査の手順
@@ -423,4 +434,11 @@ Alloy CLI を用意して次のコマンドで照合する。
 
 ```sh
 sh experiments/pagination-proof/check-alloy-witnesses.sh
+```
+
+書き写しと元の述語の突き合わせは、Alloy CLI を用意して次のコマンドで行う。
+引数は項目 3〜4 個の入力を選ぶ間隔で、既定は 97 である。
+
+```sh
+sh experiments/pagination-proof/check-alloy-diff.sh 97
 ```
