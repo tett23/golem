@@ -93,6 +93,19 @@ rowTest0424 (Row name src code needle message) =
   testCase ("root ADR 0424 I1: " <> name) $
     diagnosticsOf src @?= [(code, offsetOf src needle, message)]
 
+-- | The rows of root ADR 0428 I3: the message of G03269 is the one before the ADR.
+emptyFields :: [Row]
+emptyFields =
+  [ Row "{} is G03269 with the same message" (printings "\"{}\"") "G03269" "\"{}" (printingsMessage "空の差し込み {} があります" "{}"),
+    Row "a{}b is G03269 with the same message" (printings "\"a{}b\"") "G03269" "\"a{}b" (printingsMessage "空の差し込み {} があります" "a{}b")
+  ]
+
+-- | A row of root ADR 0428.
+rowTest0428 :: Row -> TestTree
+rowTest0428 (Row name src code needle message) =
+  testCase ("root ADR 0428 I3: " <> name) $
+    diagnosticsOf src @?= [(code, offsetOf src needle, message)]
+
 tests :: TestTree
 tests =
   testGroup
@@ -104,5 +117,6 @@ tests =
         ( testCase "root ADR 0413 I3: a right instance, axes and format have no diagnostic" (diagnosticsOf (font "instance = \"Bold\"\naxes = { wght = 650, opsz = -1.5 }" <> printings "\"{date} 第{edition}版第{printing}刷 \\\\{year\\\\}\"") @?= [])
             : map (rowTest "I3") otherFormats
         ),
-      testGroup "root ADR 0424 I1: the messages of braces" (map rowTest0424 bracesMessages)
+      testGroup "root ADR 0424 I1: the messages of braces" (map rowTest0424 bracesMessages),
+      testGroup "root ADR 0428 I3: the message of an empty field" (map rowTest0428 emptyFields)
     ]

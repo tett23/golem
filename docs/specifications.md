@@ -2220,6 +2220,7 @@ HTML と EPUB は版面の段組みを出力せず、CSS の `columns` も `colu
 ほかの書式の誤りのコードは、表のとおりである。
 
 `[printings]` の `format` の G03267 と G03268 の文言は、文字の波括弧を `{{` と `}}` で書くよう勧める。
+G03269 の文言は文字の波括弧の書き方に触れないが、diagnostic の一覧の G03267 から G03269 の直し方は、`[printings]` の `format` の文字の波括弧を `{{` と `}}` で書くよう勧める（[root ADR 0428](adr/0428-recommend-doubled-braces-for-the-empty-printings-field.md)）。
 ほかの書式の、閉じていない `{` と対応する `{` のない `}` の文言（コードは表のとおり）は、`\{` と `\}` で書くよう勧める（[ADR 0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)）。
 
 見出しの番号の書式の `{k}`（k は 1 から 5）は、その見出しの上の階層 k の今の番号である（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。

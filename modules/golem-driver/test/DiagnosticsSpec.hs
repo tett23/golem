@@ -489,6 +489,44 @@ explainTests =
             [c | c <- ["G02096", "G02097", "G02098", "G02099"], c `notElem` used] @?= []
         ],
       testGroup
+        "root ADR 0428: the empty field of [printings] recommends {{ and }}"
+        [ testCase "root ADR 0428 I1: golem explain G03269 recommends {{ and }}, not \\{ and \\}" $ do
+            let causeAndFix = maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03269")
+            causeAndFix
+              @?= [ "### 主な原因",
+                    "",
+                    "- 欄の名前を書き忘れた。",
+                    "- 文字の `{}` を `{{}}` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄の名前を書くか、文字の `{` と `}` を `{{` と `}}` と書く。"
+                  ]
+            [l | l <- causeAndFix, any (`T.isInfixOf` l) ["\\{", "\\}"]] @?= [],
+          testCase "root ADR 0428 I2: golem explain G03267 is as before" $
+            maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03267")
+              @?= [ "### 主な原因",
+                    "",
+                    "- `{year` のように、欄の `}` を書き忘れた。",
+                    "- 文字の `{` を `{{` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄を `}` で閉じるか、文字の `{` を `{{` と書く。"
+                  ],
+          testCase "root ADR 0428 I2: golem explain G03268 is as before" $
+            maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03268")
+              @?= [ "### 主な原因",
+                    "",
+                    "- `year}` のように、欄の `{` を書き忘れた。",
+                    "- 文字の `}` を `}}` と書かなかった。",
+                    "",
+                    "### 直し方",
+                    "",
+                    "欄の `{` を足すか、文字の `}` を `}}` と書く。"
+                  ]
+        ],
+      testGroup
         "the form of the document"
         [ testCase "two good sections give their titles, statuses and bodies" $
             case parseCatalog (T.unlines (preamble <> inUse "G01001" <> retired "G02044")) of
@@ -531,6 +569,8 @@ explainTests =
         ]
     ]
   where
+    -- The lines of 主な原因 and 直し方 of a body, without the blank lines at the end (root ADR 0428).
+    causeAndFixOf = reverse . dropWhile T.null . reverse . dropWhile (/= "### 主な原因") . T.lines
     preamble = ["# 診断のコード", "", "前書き。", "", "## 番号の区分", "", "表。", ""]
     inUse c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 使用中", "", "### 意味", "", "意味。", "", "### 主な原因", "", "- 原因。", "", "### 直し方", "", "直す。", ""]
     retired c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 廃止", "", "### 意味", "", "廃止した。", "", "### 直し方", "", "代わりに書く。", ""]
