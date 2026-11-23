@@ -2,12 +2,19 @@ module Golem.Lsp.FileMove.Chapters
   ( transferChapters,
     ChapterTransfer (..),
     ByteEdit,
+    Placement (..),
+    Partition,
+    Node,
+    partitionChapters,
+    partitionOutgoing,
+    partitionTransfers,
+    rebuildChapters,
   )
 where
 
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
-import Data.List (find)
+import Data.List (find, nub)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes)
@@ -46,57 +53,114 @@ data ChapterInput = ChapterInput !Text !Array !(Text -> [ByteEdit])
 
 data Parsed = Parsed !Node !(Val Position) !(Maybe Array)
 
+-- | Where one chapter entry goes when a manifest is planned for moves.
+data Placement d
+  = -- | The entry stays as it is.
+    Keep
+  | -- | The entry stays in this manifest under a new written path.
+    Rewrite !FilePath
+  | {- | The entry leaves for the destination @d@. The 'Int' orders the
+    entries appended to a destination; then the workspace path after the
+    move and the path written in the destination manifest.
+    -}
+    Transfer !d !Int !FilePath !FilePath
+
+-- | A manifest's chapters split into the entries that stay and those that leave.
+data Partition d = Partition
+  { remainingNodes :: ![Node],
+    tailText :: !Text,
+    editArray :: !(Text -> [ByteEdit]),
+    partitionOutgoing :: ![(d, Int, Node)],
+    partitionTransfers :: ![(d, Int, ChapterTransfer)]
+  }
+
 {- | Transfer complete chapter occurrences. Text between the value spans is
 assigned to the adjacent chapters, including comments after commas.
 -}
 transferChapters :: (FilePath -> Either String (Maybe (FilePath, FilePath))) -> Text -> Maybe Text -> Either String ([ByteEdit], [ByteEdit], [ChapterTransfer])
 transferChapters moved source destination = do
-  ChapterInput parsedSource (Array _ _ nodes tailText) editSource <- chapters source
-  partitioned <- traverse (uncurry (splitNode moved parsedSource [])) (zip [0 ..] nodes)
-  let (remaining, transferred, occurrences) = collect partitioned
-  if null occurrences
+  part <- partitionChapters (\path -> path >>= fmap (maybe Keep (uncurry (Transfer () 0))) . moved) source
+  if null (partitionTransfers part)
     then pure ([], [], [])
     else do
-      replaceDestination <- traverse (append transferred) destination
-      pure (editSource (render remaining tailText), concat replaceDestination, occurrences)
+      replaceDestination <- traverse (append [node | (_, _, node) <- partitionOutgoing part]) destination
+      pure (rebuildChapters part [], concat replaceDestination, [transfer | (_, _, transfer) <- partitionTransfers part])
   where
     append transferred text = do
-      ChapterInput _ (Array _ _ existing ending) editDestination <- chapters text
-      let existingNodes = [node | Parsed node _ _ <- existing]
-          extra = case transferred of
-            [] -> []
-            firstNode : rest -> firstNode {before = "\n" <> before firstNode} : rest
-      pure (editDestination (render (existingNodes <> extra) ending))
+      existing <- partitionChapters (const (Right Keep)) text
+      pure (rebuildChapters (existing :: Partition ()) transferred)
 
-collect :: [(Maybe Node, Maybe Node, [ChapterTransfer])] -> ([Node], [Node], [ChapterTransfer])
-collect triples =
-  (catMaybes [a | (a, _, _) <- triples], catMaybes [b | (_, b, _) <- triples], concat [xs | (_, _, xs) <- triples])
+{- | Split a manifest's chapters by the placement of each entry. The
+classifier receives the entry's path, or why the entry has none.
+-}
+partitionChapters :: (Eq d) => (Either String FilePath -> Either String (Placement d)) -> Text -> Either String (Partition d)
+partitionChapters classify source = do
+  ChapterInput parsedSource (Array _ _ nodes ending) edit <- chapters source
+  parts <- traverse (uncurry (splitNode classify parsedSource [])) (zip [0 ..] nodes)
+  pure
+    Partition
+      { remainingNodes = catMaybes [kept | Split kept _ _ _ <- parts],
+        tailText = ending,
+        editArray = edit,
+        partitionOutgoing = concat [taken | Split _ taken _ _ <- parts],
+        partitionTransfers = concat [occurrences | Split _ _ occurrences _ <- parts]
+      }
 
-splitNode :: (FilePath -> Either String (Maybe (FilePath, FilePath))) -> Text -> [Int] -> Int -> Parsed -> Either String (Maybe Node, Maybe Node, [ChapterTransfer])
-splitNode moved source prefix i (Parsed node value nested) =
+{- | The edits that replace the chapters array with the entries that stay,
+followed by the incoming entries in the given order.
+-}
+rebuildChapters :: Partition d -> [Node] -> [ByteEdit]
+rebuildChapters part incoming = editArray part (render (remainingNodes part <> extra) (tailText part))
+  where
+    extra = case incoming of
+      [] -> []
+      firstNode : rest -> firstNode {before = "\n" <> before firstNode} : rest
+
+data Split d = Split !(Maybe Node) ![(d, Int, Node)] ![(d, Int, ChapterTransfer)] !Bool
+
+splitNode :: (Eq d) => (Either String FilePath -> Either String (Placement d)) -> Text -> [Int] -> Int -> Parsed -> Either String (Split d)
+splitNode classify source prefix i (Parsed node value nested) =
   case nested of
-    Just (Array _ _ nodes tailText) -> do
-      (remaining, transferred, occurrences) <- collect <$> traverse (uncurry (splitNode moved source indices)) (zip [0 ..] nodes)
-      let kept = Just node {contents = render remaining tailText}
-          taken = Just node {contents = render transferred tailText}
+    Just (Array _ _ nodes ending) -> do
+      parts <- traverse (uncurry (splitNode classify source indices)) (zip [0 ..] nodes)
+      let remaining = catMaybes [kept | Split kept _ _ _ <- parts]
+          taken = concat [t | Split _ t _ _ <- parts]
+          occurrences = concat [o | Split _ _ o _ <- parts]
+          changed = or [c | Split _ _ _ c <- parts]
+          groups = [(d, minimum [k | (d', k, _) <- taken, d' == d], [n | (d', _, n) <- taken, d' == d]) | d <- nub [d | (d, _, _) <- taken]]
       pure $
         if null occurrences
-          then (Just node, Nothing, [])
-          else
-            if null remaining
-              then (Nothing, taken, occurrences)
-              else (kept, Just (Node "" (render transferred "") ""), occurrences)
-    Nothing -> do
-      (pos, path) <- chapterPath value
-      target <- moved (T.unpack path)
-      case target of
-        Nothing -> pure (Just node, Nothing, [])
-        Just (workspaceNew, written) -> do
-          let at = posIndex pos
-              start = valueStart value
-          end <- tokenEnd source at
-          let updated = T.take (at - start) (contents node) <> quotedToml (T.pack written) <> T.drop (end - start) (contents node)
-          pure (Nothing, Just node {contents = updated}, [ChapterTransfer (T.unpack path) workspaceNew indices])
+          then Split (Just (if changed then node {contents = render remaining ending} else node)) [] [] changed
+          else case groups of
+            [(d, k, transferred)]
+              | null remaining -> Split Nothing [(d, k, node {contents = render transferred ending})] occurrences True
+            _ ->
+              Split
+                (if null remaining then Nothing else Just node {contents = render remaining ending})
+                [(d, k, Node "" (render transferred "") "") | (d, k, transferred) <- groups]
+                occurrences
+                True
+    Nothing -> case chapterPath value of
+      Left reason -> do
+        placement <- classify (Left reason)
+        case placement of
+          Keep -> pure (Split (Just node) [] [] False)
+          _ -> Left reason
+      Right (pos, path) -> do
+        placement <- classify (Right (T.unpack path))
+        let written new = do
+              let at = posIndex pos
+                  start = valueStart value
+              end <- tokenEnd source at
+              pure (T.take (at - start) (contents node) <> quotedToml (T.pack new) <> T.drop (end - start) (contents node))
+        case placement of
+          Keep -> pure (Split (Just node) [] [] False)
+          Rewrite new -> do
+            updated <- written new
+            pure (Split (Just node {contents = updated}) [] [] True)
+          Transfer d k workspaceNew new -> do
+            updated <- written new
+            pure (Split Nothing [(d, k, node {contents = updated})] [(d, k, ChapterTransfer (T.unpack path) workspaceNew indices)] True)
   where
     indices = prefix <> [i]
 

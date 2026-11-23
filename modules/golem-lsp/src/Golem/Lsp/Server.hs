@@ -128,7 +128,7 @@ rewriteInitializeResponse lid enc bytes = do
   J.Object result <- KM.lookup "result" msg
   J.Object caps <- KM.lookup "capabilities" result
   let caps' =
-        KM.insert "experimental" (J.object ["golem" J..= J.object ["planFileMove" J..= (1 :: Int)]]) $
+        KM.insert "experimental" (J.object ["golem" J..= J.object ["planFileMove" J..= (1 :: Int), "planMovedReferences" J..= (1 :: Int)]]) $
           KM.insert "positionEncoding" (J.toJSON (F.encodingKind enc)) caps
       result' = KM.insert "capabilities" (J.Object caps') result
   pure (J.encode (J.Object (KM.insert "result" (J.Object result') msg)))
@@ -301,6 +301,11 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
         registration <- liftIO (readTVarIO moveWorkspace)
         result <- liftIO (Move.planFileMove enc registration params)
         respond (either (Left . TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan file move" . Just) Right result),
+      requestHandler (SMethod_CustomMethod (Proxy @"golem/planMovedReferences")) $ \(TRequestMessage _ _ _ params) respond -> do
+        enc <- encoding
+        registration <- liftIO (readTVarIO moveWorkspace)
+        result <- liftIO (Move.planMovedReferences enc registration params)
+        respond (either (Left . TResponseError (InR ErrorCodes_InvalidRequest) "Cannot plan moved references" . Just) Right result),
       requestHandler SMethod_WorkspaceWillRenameFiles $ \(TRequestMessage _ _ _ (RenameFilesParams renames)) respond -> do
         st <- state
         enc <- encoding

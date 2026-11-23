@@ -154,7 +154,7 @@ golem new mybook
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の文字数、ワード数、組版後の行数を数え、ページ数に換算する（[Golem ADR 0355](docs/adr/0355-manuscript-statistics.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形し、表ファイルの先頭に続く BOM をすべて取り除き、改行を直す。通常の実行では対象フォルダーの `.DS_Store` も片付ける |
-| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画する |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う。ファイルやフォルダの改名前に参照の編集を返す。登録したワークスペースでは、プロジェクトをまたぐ移動の章登録と参照編集も計画し、エディタの外で移し終えたファイルとフォルダの参照編集も返す |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem repl emet` | Emet の式を標準入力から一つずつ読み、値を表示する（[Golem ADR 0348](docs/adr/0348-revise-emet-expression-repl.md)） |
 | `golem explain [CODE...]` | diagnostic のコードの説明を表示する（下に詳しく書く） |

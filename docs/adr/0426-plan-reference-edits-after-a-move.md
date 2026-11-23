@@ -1,6 +1,6 @@
 # ADR 0426: 移動し終えたファイルとフォルダの参照の編集を Golem LSP が返す
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
