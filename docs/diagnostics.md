@@ -12649,6 +12649,7 @@ CFF の内部参照が表の範囲を外れています
 
 PDF に埋め込む CFF の輪郭のフォントで、CFF の表の中の参照が、テーブルディレクトリが宣言する表の長さを超える。
 INDEX の終端、Top DICT と Private DICT が指すデータ、使う字のグリフの CharString とそれが呼ぶサブルーチンを確かめる。
+使う字のグリフが seac で合成する形なら、部品のグリフの CharString とそれが呼ぶサブルーチンも確かめる（[root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合も、このエラーになる。
 PDF のビルドとプリフライトで出し、PDF を書かない。
 位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
@@ -12675,9 +12676,11 @@ CFF の参照を確かめきれません
 ### 意味
 
 PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの CharString が参照するサブルーチンを、確かめきれない。
+seac の部品のグリフの CharString も、使う字のグリフの一部として確かめる（[root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 CharString の演算子 `random` がとりうる値すべてでたどり、たどる枝の実行の数（数と演算子を一つずつ数え、すべての枝を足す）が 100000 を超えた場合に、このエラーになる。
 `random` を含まないグリフでも、実行の数が上限を超えればこのエラーになる。
 `random` から作った値で 0 を割りうる場合、負の数の平方根をとりうる場合、スタックの外を指しうる場合と、無限大になりうる値を掛け算、割り算、位置に使う場合も、このエラーになる。
+seac の基底の字かアクセントの字のコードが、`random` から作った値で無限大になりうる場合も、このエラーになる。
 フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
 G08107 とは独立に出す。
 表の構造の確かめで G08107 になったフォントでは、このエラーは出ない。
@@ -12857,6 +12860,122 @@ HTML と EPUB は `axes` を使わないので、出さない。
 
 メッセージの理由に従って、図版を対応する画像形式とサイズで書き直す。
 PDF の図版は、描画色の指定を外すか、挙げた構成を使わない形に書き出し直す。
+
+## G08114
+
+CFF の seac の引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフか、その seac の部品のグリフの `endchar` の引数が誤っている。
+`endchar` は、引数で別の二つのグリフ（基底の字とアクセント）を合成する形（seac）をとれる。
+幅の引数を除いた引数が 0 個でも 4 個でもない場合と、seac の基底の字かアクセントの字のコード（`bchar`、`achar`）が 0 から 255 までの整数でない場合に、このエラーになる。
+コードが `random` から作った値なら、とりうる値すべてで確かめる。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CFF の seac の引数が誤っています: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+グリフの輪郭が壊れているか、`endchar` の前にスタックに値が残っている。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08115
+
+CFF の seac の部品のグリフがフォントにありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの seac が、フォントにない字を部品に指す。
+seac の基底の字とアクセントの字のコードを StandardEncoding の文字のコードとして読み、その字の名前をフォントの charset で引いて、部品のグリフを求める。
+StandardEncoding のそのコードに字がない（`.notdef` に当たる）場合と、その字の名前がフォントの charset にない場合に、このエラーになる。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CFF の seac の部品のグリフがフォントにありません: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+フォントから部品の字のグリフを除いたか、グリフの輪郭が壊れている。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08116
+
+CFF の seac の部品がまた seac を含みます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの seac の部品のグリフが、また seac で合成する形である（入れ子）。
+FreeType は入れ子の seac を読まないので、このエラーにする。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CFF の seac の部品がまた seac を含みます: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+フォントの部品のグリフが、ほかの字を合成する形で作られている。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08117
+
+CID-keyed の CFF で seac を使っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CID-keyed の CFF の輪郭のフォントで、使う字のグリフが seac で合成する形である。
+CID-keyed のフォントの charset は字の名前ではなく CID を並べるので、部品のグリフを字の名前で引けない。
+FreeType も、CID-keyed のフォントの seac を誤りとして扱い、読まない。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CID-keyed の CFF で seac を使っています: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+フォントの変換で、名前で引くフォントの seac が CID-keyed のフォントに残った。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
 
 ## G09001
 
