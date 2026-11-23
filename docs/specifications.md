@@ -373,14 +373,32 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 
 CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 `build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。
-`dist-newstyle` を保存するランナー（`tests-driver`）は `cabal build all` で、`tests-rest` は自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+`tests-rest` は、生成したパーサーを確かめるための `peg-hs` と、`golem` のほかの、ネイティブで組める実行ファイルも組む。
+`tests-rest` がこれらも組むのは、これらを組むテストのスイートがなく、`ci` が待つジョブで `-Werror` のコンパイルを確かめるためである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+`cabal build all` を組んで `dist-newstyle` を保存するのは、アーキテクチャごとに一つ動くジョブ `cache-dist` で、`ci` はこのジョブを待たない（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I3）。
 ビルドの計画を読む検査は、どのランナーでも `cabal build all` の計画を読み、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョブ（`visual`、`verapdf`、`wasm`、`editors-lsp`）が待つ成果物を、`outputs-checks` がそのほかの手順を受け持つ。
+
+golem-driver のテストのスイートは、どちらのアーキテクチャでも二つのランナーに分け、どのスイートもちょうど一つのランナーで走る（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I2）。
+振り分けは `scripts/ci/test-suites.sh` の `driver-a` と `driver-b` が決め、`driver-a` に挙げないスイートは `tests-driver-b` で走る。
+
+| ランナー | スイート |
+| --- | --- |
+| `tests-driver-a` | golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test |
+| `tests-driver-b` | golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test |
+
+四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
+四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `PdfSpec`、`LinkSpec` などの `*Spec` のモジュール）を、それぞれの `other-modules` に挙げて組む。
+テストを助けるモジュールをパッケージの内部のライブラリにしないので、テストだけの依存の検査（`scripts/ci/test-only-deps.sh`）は変わらない。
+
 プルリクエストの実行が走らせる検査は、[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の実装の前のコミット（`e5dcfc660`）と等しい。
+ただし、そのコミットの golem-driver-test は、分けた後の四つのスイートに読み替える。
 `scripts/ci/ci-checks.sh` が `ci.yml` から `cabal build` の後の手順とそれを走らせるアーキテクチャ、`cabal test` のスイート、`ci` が待つジョブを一覧にし、`scripts/ci/test.sh` がそのコミットで作った一覧（`scripts/ci/testdata/ci-checks/before-0395.txt`）と比べる（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の A1）。
 
 プルリクエストも、GHC がモジュールをコンパイルしたときに `dist-newstyle` を保存する（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)、[ADR 0228](adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I1 を置き換えた）。
 キーは、`main` の族（キーからコミットのハッシュを除いた前の部分）の後に `pr-<番号>-` とコミットのハッシュを続けたものである（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の I4）。
+保存するジョブ `cache-dist` のキーと条件は、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の前に保存していた `tests-driver` のランナーと同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I3）。
 同じプルリクエストの次の push は、`restore-keys` の前方一致で自分の最新のものを戻し、それが無ければ `main` の最新を戻す。
 ワークフロー `pr-caches.yml` は、`ci.yml` の実行が終わったときとプルリクエストが閉じたときに、`scripts/ci/pr-caches.sh` が選んだキャッシュを消す。
 次の番号は [ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md) の不変条件の番号で、I2 の「族ごと」と同じ日時の扱いは、ADR の調査の「一組（約 970 MB）」に合わせてこの仕様が決めたものである。
@@ -544,7 +562,7 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
   golem-driver-parallel-test がこれを使う（[docs/adr/0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md)）。
   golem-emet-test も木の全体を `watchTests 300` で包み、aarch64 の GHC の不具合（GHC の issue #28001）を避けるために、`localOption (NumThreads 1)` でテストを一つずつ走らせる（[docs/adr/0207](adr/0207-run-golem-emet-test-one-test-at-a-time-under-the-watchdog.md)）。
 - `Golem.TestSupport.CssCascade`：段落スタイルのアキのテストのために、`style.css` のカスケードを評価する小さな評価器（[docs/adr/0217](adr/0217-html-spaces-of-paragraph-styles-redefined-in-files.md)）。
-  golem-html-test と golem-driver-test がこれを使い、評価器そのもののテストは golem-test-support-test が持つ（[docs/adr/0248](adr/0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)）。
+  golem-html-test と golem-driver-page-test がこれを使い、評価器そのもののテストは golem-test-support-test が持つ（[docs/adr/0248](adr/0248-move-the-css-cascade-of-the-tests-into-golem-test-support.md)）。
 
 golem-test-support の依存は、次のように限る。
 このパッケージは、golem のパッケージ（`modules/` の golem-\*）に、直接にもほかのパッケージを通しても依存しない。
@@ -553,7 +571,7 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
 リポジトリのライブラリと実行ファイルがこのパッケージに依存しないことと、このパッケージが golem のパッケージに依存しないことは、cabal が解決した計画を読む `scripts/ci/test-only-deps.sh` が CI の `build` ジョブとリリースの `package.sh` で確かめる（[docs/adr/0028](adr/0028-shared-test-support-package.md)、[docs/adr/0087](adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
 
 `modules/golem-doc-gen` は、意味論 IR の hedgehog の生成器を持つ、テストスイートだけが使うパッケージなので、golem-test-support と同じく図に含めない（[ADR 0191](adr/0191-semantic-ir-generator-module.md)）。
-`Golem.DocGen` の一つのモジュールが `genDocument`、`genInline`、`genExpr`、`genInt64` を公開し、golem-driver-test がこれを使う。
+`Golem.DocGen` の一つのモジュールが `genDocument`、`genInline`、`genExpr`、`genInt64` を公開し、golem-driver-cli-test がこれを使う。
 ライブラリは golem-doc、golem-length、golem-parser、golem-syntax に依存する。
 
 生成器を使う性質のテストは、golem-doc-gen が持つ。
@@ -736,7 +754,8 @@ wasm32 の `Int` は 32 ビットなので、ネイティブで通る断言が w
 wasm32 には threaded の実行時システムがないので、`-threaded` と `-N` は wasm32 では付けない。
 golem-pdf のテストは、wasm32 で組めない uuid を、ほかのターゲットでだけ使い、uuid と比べるテストは wasm32 では組まない。
 golem-pdf のテストは、`Int` に収まらない PDF のオブジェクトの番号を `Int64` で書き、`Int` のリテラルは wasm32 の `Int` に収める（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
-golem-driver の golem-driver-test と golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依り、golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）を組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)）。
+共通の stanza `driver-suite` を読む四つのスイートと golem-driver-global-test は、ライブラリと同じくフラグ `plugins` のときだけ golem-plugin に依る。
+golem-plugin か `Golem.Driver.New` を使うテスト（プラグインと `golem new` のテスト）は golem-driver-cli-test と golem-driver-global-test にあり、そのフラグのときだけ組む（[ADR 0300](adr/0300-build-the-suites-of-golem-driver-and-golem-pdf-on-wasm32.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 `cabal.project.wasm` は `plugins` を外すので、wasm32 ではそれらのテストを組まない。
 golem-font のテストの C のファイルは、ライブラリと同じく wasm の例外処理で `setjmp.h` を読む。
 
@@ -2231,6 +2250,9 @@ CSS の `japanese-informal` とは、0 の字（`〇` と `零`）と範囲が�
 
 四つ以外の値は G03006 とする。
 `"page"` の振り方は、「脚注」の節の「ページごとの注の番号」に書く。
+
+章末の注（`[endnote]`）の番号と印は、`[notes]` ではなく `[endnotes]` で決める（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+キーと既定は「章末の注（`[endnote]`）」の節に書く。
 
 `placement` は PDF の注の置き場所であり、`"page-foot"`（ページ下、既定）か `"chapter-end"`（章末）をとる（[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）。
 HTML、EPUB、プレーンテキストは、`placement` によらず注を章末にまとめる。
@@ -7247,6 +7269,9 @@ Golem はこの形を**チャネル**として一般化する。
 - ブロックコマンドが、その位置にチャネルの中身を一覧として出す。
 - 一覧に含まれるページ番号は、レイアウト後（S2）に決まる。
 
+注のチャネルは、脚注（`[note]`）、傍注（`[sidenote]`）、章末の注（`[endnote]`）の三つである（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+三つは別に番号を数え、それぞれの一覧に出る。
+
 目次は、見出しが自動で送られるチャネルである。
 図目次や表目次も、ラベル付きの図や表が送られるチャネルとして、同じ仕組みで追加できる。
 目次の一覧を出す `@toc` は文書に一つだけ置け、二つ目からは G04002 になる。
@@ -7322,6 +7347,7 @@ S1 は、`"page"` の注に、本の全体の通し番号（`"book"` と同じ�
 - 脚注の本文の先頭の印と、傍注の本文の先頭の番号も、同じ規則で予約する。この印は、`body-mark-style` の文字スタイルを当てた一つの箱として組み、注の本文の基準線に置く。`body-mark-style` がなければ、注の本文の文字のまま組む。印の中では行を分けず、アキ量のセットの空きを入れない。
 - 章末の注（`placement = "chapter-end"`）の一覧の印も、注の本文の先頭の印と同じく予約する。一覧では、ページの違う注が同じ番号を持ちうる。そのための diagnostic は出さない（[docs/roadmap.md](roadmap.md) の未決事項）。
 - 注のない本は、何も予約しない。
+- 章末の注（`[endnote]`）のチャネルは、ページごとの番号を取らず、印の幅も予約しない（「章末の注（`[endnote]`）」の節）。
 
 改ページが決まった後、PDF の各物理ページ（ノンブルではなく、白ページを含めて PDF に並ぶページ）で、チャネルごとに、そのページに印を置いた注を原稿の順に 1 から番号を振る。
 印を置いたページは、本文、見出し、表、表とコードブロックのキャプション、図版のキャプションの行のうち、その印を最初に置いたページである。
@@ -7525,6 +7551,7 @@ PDF の章末の注は、次のように組む。
 
 HTML、EPUB、プレーンテキストは、章の最後のファイルの出力の末尾に、章のすべての注をまとめる。
 章のほかのファイルの出力には注を置かない。
+章末の注（`[endnote]`）の一覧は、どの出力でも、脚注の一覧の後に置く（「章末の注（`[endnote]`）」の節）。
 HTML と EPUB の注の一覧は、次のように書く。
 
 - `<section class="notes">` の最初に `<h2>` で見出しを置き、目次とナビゲーション文書には入れない。
@@ -7575,6 +7602,69 @@ PDF のページ下の脚注は、注の印を含む行か見出しと同じペ�
 `@page-lines` で現在の段だけを短くした場合は、印のある行か見出しと脚注を一緒に次の段へ送り、その段の行数で配置できるかを判定する。
 たとえば区切りが一行なら、本文一行と脚注一行を同じ段に置くには三行必要になる。
 脚注のない原稿は、一行または二行の段でも通常どおり組む。
+
+### 章末の注（`[endnote]`）
+
+```
+この説は広く受け入れられている[endnote: 山田『組版の歴史』、1998 年、42 ページ。]。
+```
+
+章末の注（`[endnote]`）は、どの出力でも章の終わりの一覧に出す注である（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+脚注と別のコマンドにしたのは、説明の注をページの下に、出典の注を章の終わりに、と一冊の中で使い分けられるようにするためである。
+`[note]` は `[notes]` の `placement` に従い、`placement = "chapter-end"` の本では、この節の注とは別に、脚注の一覧を章の終わりに置く。
+この節で「章末の注」と書くときは、`[endnote]` の注を指す。
+置き場所は注のコマンドで決め、注ごとに置き場所を選ぶ引数はない。
+`[endnote]` をページの下に置く設定と、本の終わりにまとめる巻末注はない。
+
+本文の書き方は脚注と同じである。
+`[endnote: 本文]` の本文は、段落スタイルのない段落一つになる。
+二つ以上の段落の注は、ブロックコマンド `@endnote 名前` に本文を書き、本文の位置に `[endnote 名前]` を書く。
+`@endnote` と `[endnote 名前]` の規則と diagnostic は、「脚注」の節の `@note` と `[note 名前]` と同じである。
+ただし、名前の集まりは脚注と別であり、`[endnote 名前]` は同じファイルの `@endnote 名前` だけを引く。
+`[note 名前]` から `@endnote` を、`[endnote 名前]` から `@note` を引くことはできず、名前の未定義（[G02137](diagnostics.md#g02137)）と使われない本文（[G02138](diagnostics.md#g02138)）になる。
+一つのファイルの diagnostic は、脚注のものを先に、章末の注のものを後に出す。
+
+章末の注は、脚注と傍注と別のチャネルであり、番号を別に数える。
+番号と印は、`style.toml` の `[endnotes]` で決める。
+キーの意味は、`[notes]` の同じ名前のキーと同じである。
+
+| キー | 型 | 既定 |
+| --- | --- | --- |
+| `numbering` | 文字列 | `"chapter"`。`"file"` と `"book"` も書ける |
+| `mark-format` | 文字列 | `"{n}"` |
+| `mark-style` | 文字列 | `"note-mark"` |
+| `body-mark-style` | 文字列 | なし（注の本文の文字のまま） |
+| `mark-shape` | 文字列 | なし（平字にしない） |
+| `body-style` | 文字列 | なし（本文の役割と版面の文字の大きさ） |
+| `heading-style` | 文字列 | なし（2 の階層の見出しの役割と大きさ） |
+
+`[endnotes]` に書かないキーは、`[notes]` の値を引き継がず、この表の既定を使う。
+`mark-format` の既定を脚注の `"*{n}"` と変えたのは、一冊の中で二つを一緒に使うとき、既定のままでも印で見分けられるようにするためである。
+`[notes]` の `placement`、`rule`、`[notes.footnote]`、`[notes.chapter-end]` に当たるキーはなく、書けば G03006 とする。
+`[notes.chapter-end]` は、`placement = "chapter-end"` の本の脚注の一覧にだけ当て、章末の注の一覧には当てない。
+値の誤りは `[notes]` と同じく扱う（表にない値は G03006、ない文字スタイルと段落スタイルは G03013）。
+本文の印の文字スタイル（`mark-style`）の `position` の規則（G03125）も、`[notes]` と同じである。
+
+`numbering = "page"` は、章末の一覧に物理ページの番号を振る意味がないので、設定の誤り（[G03278](diagnostics.md#g03278)）とし、ビルドを止める。
+位置は `numbering` の値である。
+LSP の補完は、`numbering` の値に `"page"` を出さない。
+`numbering = "file"` で、二つ以上のファイルからなる章の二つ以上のファイルに章末の注があれば、ターゲットによらず [G03027](diagnostics.md#g03027) の警告を出す。
+
+章末の注の一覧は、`placement = "chapter-end"` の脚注の一覧と同じ規則で組む（「注の配置」の節）。
+違いは次のとおりである。
+
+- 一覧は、どの出力でも章の最後のファイルの末尾に置く。章に脚注の一覧もあれば（PDF では `placement = "chapter-end"` のとき、HTML、EPUB、プレーンテキストではいつも）、脚注の一覧を先に、章末の注の一覧を後に置く。章末の注のない章には一覧を置かない。
+- 一覧の見出しは、マニフェストの `language` の主の副タグが `ja` なら「後注」、そうでなければ「Endnotes」とする（脚注の一覧の見出しと同じ判定）。文言を変える設定はない。
+- PDF の本文の印と一覧の印は、`[endnotes]` の `mark-format`、`mark-style`、`body-mark-style`、`mark-shape` で組む。本文の印は一覧の注へのリンク、一覧の印は本文の印へ戻るリンクである。タグ付き PDF では、本文の印の後に、一覧の段落からなる Note を置く。
+- PDF の一覧の本文と見出しには、`[endnotes]` の `body-style` と `heading-style` を当てる。
+- HTML と EPUB では、一覧を `<section class="endnotes">` とし、最初に `<h2>` で見出しを置く。本文の参照は `<a epub:type="noteref" class="endnoteref">`、一覧の注は `<aside epub:type="endnote">` で書く。id は、一覧の側を `endnote-N`、本文の参照の側を `endnoteref-N` とし、`numbering = "file"` で番号が重なる章では `endnote-k-N` と `endnoteref-k-N` とする。リンクの文字は `[endnotes]` の `mark-format` の表記で書く。`style.css` は、章末の注のある本でだけ、`section.endnotes aside p` に `section.notes aside p` と同じ規則を足す。
+- プレーンテキストでは、章末の注の一覧を、脚注の一覧の後に空の行を一つ挟んで置く。印は脚注と同じく、横書きで `*1`、縦書きで `※1` とする。
+
+章末の注を一つも書かない本の出力は、`[endnotes]` を書いても変わらない。
+
+プラグインに渡す意味論 IR では、章末の注は `Endnote` であり、CBOR のタグは 26 である（`[26, span, uint64, [+ block]]`）。
+ABI のバージョンは [ADR 0052](adr/0052-plugin-abi-version-bump-rule.md) の規則による。
+[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md) は版を上げると書くが、9 は v0.1.0-rc4 の後に上げてまだどのリリースにも含まれないので、[ADR 0052](adr/0052-plugin-abi-version-bump-rule.md) の規則により 9 のままとする。
 
 ### 傍注
 
@@ -8447,7 +8537,8 @@ HTML、EPUB、プレーンテキストは、中のインラインをほかのイ
 以前の脚注と傍注のタグ 12 と 13 は廃止し、使い回さない。
 `Golem.Doc.Validate` は、脚注の本文が段落スタイルのない段落の一つ以上の並びであることと、傍注の本文が段落スタイルのない段落をちょうど一つ持つことを検査する。
 本文の段落のインラインには、ほかのインラインと同じ検査（改行の位置、リンク、言語のタグなど）を当てる。
-プラグインの SDK の `Inline::Note` と `Inline::Sidenote` は、本文を `Vec<Block>` で持つ。
+章末の注は `[26, span, uint64, [+ block]]` であり、`Golem.Doc.Validate` は脚注と同じく、本文が段落スタイルのない段落の一つ以上の並びであることを検査する（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+プラグインの SDK の `Inline::Note`、`Inline::Sidenote`、`Inline::Endnote` は、本文を `Vec<Block>` で持つ。
 SDK は、`note_body` で一つの段落の本文を作り、`note_paragraphs_mut` で本文の段落のインラインを辿る。
 
 #### 出力の不変条件

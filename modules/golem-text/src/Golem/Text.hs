@@ -124,9 +124,13 @@ file c (Document _ bs) chapter =
       notes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Note _ n nb <- concatMap blockInlines cbs]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       -- the first paragraph after the mark, each other on a line of its own (docs/adr/0263)
-      noteText = T.intercalate "\n" (notesTitle (cLanguage c) : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- notes])
+      listText title ns = T.intercalate "\n" (title : [noteMark n <> " " <> T.intercalate "\n" (map (inlines c) ps) | (n, ps) <- ns])
+      -- the endnotes after the notes, under a title of their own (root ADR 0412)
+      endnotes = [(n, noteParagraphs nb) | Document _ cbs <- chapter, Endnote _ n nb <- concatMap blockInlines cbs]
+      lists = [listText (notesTitle (cLanguage c)) notes | not (null notes)] <> [listText (endnotesTitle (cLanguage c)) endnotes | not (null endnotes)]
+      noteText = T.intercalate "\n\n" lists
       full
-        | null notes = body
+        | null lists = body
         | T.null body = noteText
         | otherwise = body <> "\n\n" <> noteText
    in if T.null full then "" else full <> "\n"
@@ -257,6 +261,8 @@ inline c = \case
   Deferred {} -> ""
   Note _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
   Sidenote _ n _ -> "※" <> T.pack (show n)
+  -- the mark of an endnote is that of a note (root ADR 0412)
+  Endnote _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
   IndexMark {} -> ""
   ChannelItem {} -> ""
   -- the mark of the default style; nothing when a number is not known (docs/adr/0266)
