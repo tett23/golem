@@ -1516,11 +1516,11 @@ writeEpubTarget opts e hcfg ft book site = do
     Just path -> do
       resolved <- filesResolve (optFiles opts) path
       case resolved of
-        Left err -> pure (Left (if err == Missing then "G03260" else "G03261", T.pack path <> ": " <> T.pack (pathErrorMessage err)))
+        Left err -> pure (Left (if err == Missing then "G03272" else "G03273", T.pack path <> ": " <> T.pack (pathErrorMessage err)))
         Right rel -> do
           readResult <- try (filesRead (optFiles opts) rel) :: IO (Either IOException BS.ByteString)
           pure $ do
-            bytes <- first (\err -> ("G03261", T.pack path <> ": " <> T.pack (show err))) readResult
+            bytes <- first (\err -> ("G03273", T.pack path <> ": " <> T.pack (show err))) readResult
             mapping <- first pageMapFailure (decodePageMap (BL.fromStrict bytes))
             first pageMapFailure $ resolvePageMapWithAst (Map.map sfAst (projectSources project)) (Map.map (\source -> (sfPath source, sfText source)) (projectSources project)) ft book mapping
   case pageMap of
@@ -1535,10 +1535,10 @@ writeEpubTarget opts e hcfg ft book site = do
 -- | Distinct causes of an invalid page map (root ADR 0386).
 pageMapFailure :: PageMapError -> (Text, Text)
 pageMapFailure = \case
-  PageMapJson why -> ("G03262", why)
-  PageMapSchema why -> ("G03263", why)
-  PageMapStale why -> ("G03264", why)
-  PageMapPosition why -> ("G03265", why)
+  PageMapJson why -> ("G03274", why)
+  PageMapSchema why -> ("G03275", why)
+  PageMapStale why -> ("G03276", why)
+  PageMapPosition why -> ("G03277", why)
 
 -- | Writes the plain text of each variant to build/text; @dev@ for the profile dev.
 writeTextTarget :: FilePath -> Bool -> Evaluated -> Map Text [EntryPart] -> FileTable -> Book -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))

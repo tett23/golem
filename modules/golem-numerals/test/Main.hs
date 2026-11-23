@@ -92,7 +92,7 @@ tests =
             let table = \case
                   "n" -> Right (NumberSlot ())
                   "一" -> Right (SampleSlot () kanjiNotation)
-                  name -> Left name
+                  name -> Left (unknownSlot name)
             parseFormat DoubledToo table "{{{n}}}" @?= Right ([PLit "{", PNumber () Nothing, PLit "}"], [LegacyBraces, LegacyBraces])
             parseFormat DoubledToo table "\\{{n}\\}" @?= Right ([PLit "{", PNumber () Nothing, PLit "}"], [])
             parseFormat DoubledToo table "{一}" @?= Right ([PNumber () (Just kanjiNotation)], [LegacySample "一" kanjiNotation])

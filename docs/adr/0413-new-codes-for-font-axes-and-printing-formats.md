@@ -1,6 +1,6 @@
 # ADR 0413: フォントの軸と刷の書式の誤りに、原因ごとの新しいコードを振る
 
-Status: superseded-pending [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"新しいコードのメッセージ（G03267、G03268）","kind":"supplement"}]
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"新しいコードのメッセージ（G03267、G03268）","kind":"supplement"}]
 
 ## 文脈
 

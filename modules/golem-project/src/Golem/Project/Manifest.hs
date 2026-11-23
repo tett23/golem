@@ -37,6 +37,8 @@ module Golem.Project.Manifest
     decodeStrictWith,
     decodeStrictTableWith,
     decodeStrictWithReasons,
+    failAtCode,
+    codedMessage,
     naturalOf,
     naturalIntOf,
     maxNaturalInt,
@@ -1058,8 +1060,28 @@ code taken from the path of each message.
 tomlDiagnosticsBy :: ([Scope] -> Text) -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
 tomlDiagnosticsBy codeAt fid src = map one
   where
-    one (MatchMessage loc path msg) =
-      diagnostic (if msg == naturalOutOfRange then "G02103" else codeAt path) Error (positionSpan fid src loc) (schemaMessage path msg)
+    one (MatchMessage loc path coded) =
+      let (own, msg) = codedMessage coded
+       in diagnostic (fromMaybe (if msg == naturalOutOfRange then "G02103" else codeAt path) own) Error (positionSpan fid src loc) (schemaMessage path msg)
+
+{- | A failure of a value that carries its code (root ADR 0413): the
+reader that knows the cause chooses the code, where the path of the value
+cannot tell the causes of one key apart. The code rides in the message of
+toml-parser, between two unit separators, and 'codedMessage' takes it
+out; a failure without a code takes the code of its path.
+-}
+failAtCode :: l -> Text -> String -> Matcher l a
+failAtCode l code msg = failAt l (codeMark : T.unpack code <> (codeMark : msg))
+
+-- | The code of a message of 'failAtCode', and the message without it.
+codedMessage :: String -> (Maybe Text, String)
+codedMessage = \case
+  c : rest | c == codeMark, (code, _ : msg) <- break (== codeMark) rest -> (Just (T.pack code), msg)
+  msg -> (Nothing, msg)
+
+-- | The unit separator, which no message of Golem or toml-parser contains.
+codeMark :: Char
+codeMark = '\US'
 
 {- | The message of toml-parser for a negative number read as a natural
 number. It is G02103 in every file of settings, the code of a negative
