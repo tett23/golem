@@ -100,6 +100,7 @@ module Golem.Project.Style
     NotesPlacement (..),
     noteStyleFor,
     Composition (..),
+    KeepParts (..),
     RubyStyleDef (..),
     kentenShapeNames,
     SidenoteStyle (..),
@@ -1206,6 +1207,10 @@ data HeadingStyle = HeadingStyle
   }
   deriving stock (Eq, Show)
 
+-- | The physical unit that retains book parts (root ADR 0377 and 0401).
+data KeepParts = KeepColumn | KeepPage | KeepSpread
+  deriving stock (Eq, Ord, Show)
+
 data Composition = Composition
   { compKinsokuStrict :: !Bool,
     compHanging :: !Bool,
@@ -1223,7 +1228,8 @@ data Composition = Composition
     compNumberUnitPenalty :: !Int,
     {- | [composition.hyphenation-exceptions] (docs/adr ADR 0272): the words
     of each language tag as written, hyphens where they may break
-    -} compHyphenationExceptions :: !(Map Text [Text])
+    -} compHyphenationExceptions :: !(Map Text [Text]),
+    compKeepParts :: !KeepParts
   }
   deriving stock (Eq, Show)
 
@@ -1893,7 +1899,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty KeepColumn
 
 defaultStyle :: Style
 defaultStyle =
@@ -2504,6 +2510,7 @@ instance FromValue Composition where
     eh <- optKey "explicit-hyphen-penalty"
     nu <- optKey "number-unit-penalty"
     hx <- optKey "hyphenation-exceptions"
+    parts <- enumKey "keep-parts" keepPartsValues
     let d = defaultComposition
     pure
       Composition
@@ -2518,7 +2525,8 @@ instance FromValue Composition where
           compExpansion = (\(Expansion l s) -> (l, s)) <$> ex,
           compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh,
           compNumberUnitPenalty = fromMaybe (compNumberUnitPenalty d) nu,
-          compHyphenationExceptions = fromMaybe Map.empty hx
+          compHyphenationExceptions = fromMaybe Map.empty hx,
+          compKeepParts = case parts of Just "page" -> KeepPage; Just "spread" -> KeepSpread; _ -> KeepColumn
         }
 
 instance FromValue SidenoteStyle where
@@ -4020,7 +4028,7 @@ fontFiles s = [(r, p) | (r, FontRole {frJa = ja, frLatin = la}) <- Map.toAscList
 {- | The values of the enumerations of style.toml, written once for the
 decoder and the schema (docs/adr ADR 0169).
 -}
-bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
+bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, keepPartsValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
 bindingValues = ["right", "left"]
 writingModeValues = ["vertical", "horizontal"]
 lineBreaksValues = ["join", "keep"]
@@ -4030,6 +4038,7 @@ groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
 baseSpacingValues = ["1:2:1", "0:1:0", "center"]
 overhangOntoValues = ["kana", "none"]
 kinsokuValues = ["strict", "loose"]
+keepPartsValues = ["column", "page", "spread"]
 sideValues = ["outside", "left", "right"]
 markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
@@ -4126,7 +4135,8 @@ styleSchema =
         ]
     compositionNode =
       NTable
-        [ ("kinsoku", enum kinsokuValues),
+        [ ("keep-parts", enum keepPartsValues),
+          ("kinsoku", enum kinsokuValues),
           ("hanging-punctuation", bool),
           ( "ruby",
             NTable
