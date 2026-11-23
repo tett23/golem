@@ -9,6 +9,10 @@ category:           Text
 build-type:         Simple
 extra-source-files: test/fixtures/gray-progressive.jpg
                     test/fixtures/README.md
+                    test/fixtures/ccitt/*.ccitt_group3
+                    test/fixtures/ccitt/*.ccitt_group4
+                    test/fixtures/ccitt/bw-gopher.png
+                    test/fixtures/ccitt/LICENSE
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
@@ -20,6 +24,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Typeset
                     Golem.Typeset.Box
+                    Golem.Typeset.Ccitt
                     Golem.Typeset.FigureColor
                     Golem.Typeset.FontProvider
                     Golem.Typeset.GlyphRuns
@@ -73,10 +78,13 @@ test-suite golem-typeset-test
   main-is:          Main.hs
   other-modules:
     BoxSpec
+    CcittEncode
+    CcittSpec
     FigureColorSpec
     GlyphRunsSpec
     MemoSpec
     RuleShapeSpec
+    PdfColorCcittSpec
     PdfColorClassifySpec
     PdfColorImageSpec
     PdfColorMaskSpec

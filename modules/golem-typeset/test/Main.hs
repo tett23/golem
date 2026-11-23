@@ -1,10 +1,12 @@
 module Main (main) where
 
 import BoxSpec (boxTests)
+import CcittSpec (ccittTests)
 import FigureColorSpec (figureColorTests)
 import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
+import PdfColorCcittSpec (pdfColorCcittTests)
 import PdfColorClassifySpec (pdfColorClassifyTests)
 import PdfColorImageSpec (pdfColorImageTests)
 import PdfColorMaskSpec (pdfColorMaskTests)
@@ -30,6 +32,7 @@ tests =
   testGroup
     "golem-typeset"
     [ pdfDctTests,
+      testGroup "the CCITTFaxDecode filter (root ADR 0425)" ccittTests,
       figureColorTests,
       svgColorTests,
       testGroup "PDF figure colors" pdfColorTests,
@@ -37,6 +40,7 @@ tests =
       testGroup "PDF figure colour classes (root ADR 0425)" pdfColorClassifyTests,
       testGroup "PDF figure images of CIE-based and ICCBased spaces (root ADR 0425)" pdfColorImageTests,
       testGroup "PDF figure image masks (root ADR 0425)" pdfColorMaskTests,
+      testGroup "PDF figure CCITT masks and images (root ADR 0425)" pdfColorCcittTests,
       testGroup "PDF figure shadings (root ADR 0425)" pdfColorShadingTests,
       testGroup "PDF figure mesh shadings (root ADR 0425)" pdfColorMeshTests,
       testGroup "PDF figure patterns (root ADR 0425)" pdfColorPatternTests,
