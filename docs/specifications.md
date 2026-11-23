@@ -5199,9 +5199,17 @@ ADR は、濃淡の図版で写しの対象の色が濃淡でない場合を決�
 Indexed の画像の Matte は、Matte が索引の値になり色の式が決まらないので、G08113 とする。
 JPEG を含む DCTDecode の画像も、PDF の Decode を適用する前のサンプルへ復号する。
 RunLengthDecode の画像は復号してから判定する。
-CCITTFaxDecode の画像は 1-bit の DeviceGray か成分数 1 の ICCBased で、マスクを持たない場合に扱う。
-この画像は白と黒だけを持つので、復号せずに白黒の濃淡と判定する。
+CCITTFaxDecode の画像のうち、マスクを持たず、1-bit の DeviceGray か成分数 1 の ICCBased で、Decode が既定の範囲か逆の範囲のものは、白と黒だけを持つので、復号せずに白黒の濃淡と判定する。
 置き換えた画像は元の符号化したデータを保ち、黒と白に指定色と白を割り当てた DeviceCMYK の Indexed の色空間で描く。
+ほかの CCITTFaxDecode の画像と、CCITTFaxDecode で符号化したマスクは、復号してから、ほかの画像とマスクと同じ規則で判定する（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+マスクを持つ CCITT の画像は、可視の画素で判定し、置き換えた画像を DeviceCMYK で書く。
+復号は、ITU-T T.4 の一次元と二次元の符号化（K が 0 と正）と、ITU-T T.6 の符号化（K が負）を、DecodeParms の K、EndOfLine、EncodedByteAlign、Columns、Rows、EndOfBlock、BlackIs1 に従って読む。
+ISO 32000 は、EncodedByteAlign を EOL と併せたときに EOL を行に含めてバイトの境界にそろえるかと、RTC の EOL のあいだの埋め草を読み飛ばすかを決めていない。
+この仕様では、多くの PDF の読み手のもとになった xpdf にならい、EOL の前の 0 の埋め草を読み飛ばし、行の後に EOL が無いときだけ次の行をバイトの境界から読む。
+RTC の EOL のあいだの埋め草も読み飛ばす。
+復号できるのは、1 成分の 1-bit の画像とマスクで、Columns が Width と等しいものに限る。
+未知の符号、行の幅を超える連長、行の外の変化点、拡張モード、行の途中で終わるデータ、Height に足りない行は G08113 とし、DamagedRowsBeforeError は読まない。
+CCITTFaxDecode の前に使う FlateDecode などは、DCTDecode と同じく展開予算に数え、復号した標本も予算に数える。
 DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASCII85Decode と、対応する predictor は、PDF の取り込みと共有する展開予算に数える。
 取り込み時に展開した量に、色変換で見積もる復号量と出力量を加えて 256 MiB を超える変換は拒む。
 

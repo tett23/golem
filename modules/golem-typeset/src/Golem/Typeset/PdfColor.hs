@@ -20,6 +20,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Pdf qualified as P
+import Golem.Typeset.Ccitt (CcittParams (..), decodeCcitt)
 import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
 import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
 import Golem.Typeset.PdfShading qualified as S
@@ -546,18 +547,16 @@ isStencil fields state = case lookup "ImageMask" fields of
       _ -> Left "PDF 図版の ImageMask が不正です"
 
 -- A stencil mask paints the fill colour, which the content already recolors.
--- A CCITT image is one-bit gray, so it is a tone without being decoded.
+-- A kept CCITT image is one-bit gray, so it is a tone without being decoded.
 pdfImageKind :: (Resources -> Either Text (RasterKind, Resources)) -> Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterKind, Resources)
 pdfImageKind fill scope resources key fields state = do
   stencil <- isStencil fields state
-  ccitt <- isCcitt fields state
+  (kept, checked) <- keptCcitt resources fields state
   if
     | stencil -> fill state
-    | ccitt -> do
-        (_, checked) <- ccittDecode resources fields state
-        Right (Grayscale, checked)
+    | Just _ <- kept -> Right (Grayscale, checked)
     | otherwise -> do
-        (analysis, decoded) <- analyzePdfImage scope resources key fields state
+        (analysis, decoded) <- analyzePdfImage scope resources key fields checked
         Right (raKind analysis, decoded)
 
 imageFilters :: [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text [P.ObjOf P.ObjNum]
@@ -573,19 +572,28 @@ imageFilters fields state = case lookup "Filter" fields of
 isCcitt :: [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text Bool
 isCcitt fields state = (\filters -> take 1 (reverse filters) == [P.OName "CCITTFaxDecode"]) <$> imageFilters fields state
 
--- Whether a CCITT image reverses its samples. Only one-bit gray samples
--- without masks are recolored without decoding them.
-ccittDecode :: P.ObjOf P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Bool, Resources)
-ccittDecode resources fields state = do
-  bits <- maybe (Right (P.OInt 1)) (\value -> dereference Set.empty value state) (lookup "BitsPerComponent" fields)
-  (space, _, _, palette, resolved) <- pdfImageSpace resources fields state
+{- | Whether a CCITT image is recoloured without decoding it, and then
+whether it reverses its samples: one-bit gray samples without masks and with
+the default Decode or its reversal. Any other CCITT image is decoded and
+judged like the other images (root ADR 0425).
+-}
+keptCcitt :: P.ObjOf P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Maybe Bool, Resources)
+keptCcitt resources fields state = do
+  ccitt <- isCcitt fields state
   let unmasked = all (\name -> maybe True (`elem` [P.ONull, P.OName "None"]) (lookup name fields)) ["SMask", "Mask"]
-  if bits == P.OInt 1 && space == P.CsGray && isNothing palette && unmasked then Right () else Left "PDF 図版の CCITT 画像の色置換は未完了です"
-  ranges <- unitDecode 1 fields resolved
-  case ranges of
-    [False, True] -> Right (False, resolved)
-    [True, False] -> Right (True, resolved)
-    _ -> Left "PDF 図版の画像の Decode に対応していません"
+  if not (ccitt && unmasked)
+    then Right (Nothing, state)
+    else do
+      bits <- maybe (Right (P.OInt 1)) (\value -> dereference Set.empty value state) (lookup "BitsPerComponent" fields)
+      (space, _, _, palette, resolved) <- pdfImageSpace resources fields state
+      if bits == P.OInt 1 && space == P.CsGray && isNothing palette
+        then do
+          ranges <- unitDecode 1 fields resolved
+          Right $ case ranges of
+            [False, True] -> (Just False, resolved)
+            [True, False] -> (Just True, resolved)
+            _ -> (Nothing, resolved)
+        else Right (Nothing, resolved)
 
 -- The source of an inline image, numbered once per distinct segment.
 inlineSource :: [ByteString] -> Resources -> Either Text (P.ObjNum, [(Text, P.ObjOf P.ObjNum)], Resources)
@@ -1010,15 +1018,7 @@ decodePdfImageStream key width height bits components fields state = case Map.lo
         Right (bytes, charged {decodedStreams = Map.insert key bytes (decodedStreams charged)})
       P.OName "DCTDecode" : reversedPrefix -> do
         if bits == 8 then Right () else Left invalid
-        parameters <- case lookup "DecodeParms" fields of
-          Nothing -> Right (replicate (length filters) P.ONull)
-          Just value -> do
-            resolved <- dereference Set.empty value state
-            case resolved of
-              P.ONull -> Right (replicate (length filters) P.ONull)
-              P.OArr values | length values == length filters -> Right values
-              P.ODict _ | length filters == 1 -> Right [resolved]
-              _ -> Left invalid
+        parameters <- filterParameters invalid (length filters) fields state
         (prefixParameters, jpegParameters) <- case reverse parameters of
           value : rest -> Right (reverse rest, value)
           [] -> Left invalid
@@ -1039,9 +1039,71 @@ decodePdfImageStream key width height bits components fields state = case Map.lo
         charged <- charge (dctDecodedBytes samples) decoded
         let bytes = P.imgData (dctImage samples)
         Right (bytes, charged {decodedStreams = Map.insert key bytes (decodedStreams charged)})
+      P.OName "CCITTFaxDecode" : reversedPrefix -> do
+        -- Only one-bit samples of one component, one CCITT row to a row.
+        if bits == 1 && components == 1 then Right () else Left ccittInvalid
+        parameters <- filterParameters ccittInvalid (length filters) fields state
+        (prefixParameters, ccittParameters) <- case reverse parameters of
+          value : rest -> Right (reverse rest, value)
+          [] -> Left ccittInvalid
+        params <- ccittParams ccittParameters state
+        if toInteger (ccittColumns params) == width then Right () else Left ccittInvalid
+        let prefix = reverse reversedPrefix
+            plainFields = filter (\(name, _) -> name `notElem` ["Filter", "DecodeParms"]) fields
+            prefixFields = if null prefix then plainFields else ("Filter", P.OArr prefix) : ("DecodeParms", P.OArr prefixParameters) : plainFields
+            samples = ((width + 7) `div` 8) * height
+        (encoded, decoded) <- decodePdfStream key prefixFields state
+        if samples > toInteger (remainingBytes decoded) || height > toInteger (maxBound :: Int) then Left budgetError else Right ()
+        bytes <- first (\reason -> "PDF 図版の CCITT 画像を復号できません: " <> reason) (decodeCcitt params (fromInteger height) encoded)
+        charged <- charge (BS.length bytes) decoded
+        Right (bytes, charged {decodedStreams = Map.insert key bytes (decodedStreams charged)})
       _ -> decodePdfStream key fields state
   where
     invalid = "PDF 図版の JPEG フィルターの指定が不正です"
+    ccittInvalid = "PDF 図版の CCITT フィルターの指定が不正です"
+
+{- | The DecodeParms of each filter of a stream: absent and null give null
+for every filter, an array gives one entry for each filter, and a lone
+dictionary belongs to a lone filter.
+-}
+filterParameters :: Text -> Int -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text [P.ObjOf P.ObjNum]
+filterParameters invalid count fields state = case lookup "DecodeParms" fields of
+  Nothing -> Right (replicate count P.ONull)
+  Just value -> do
+    resolved <- dereference Set.empty value state
+    case resolved of
+      P.ONull -> Right (replicate count P.ONull)
+      P.OArr values | length values == count -> Right values
+      P.ODict _ | count == 1 -> Right [resolved]
+      _ -> Left invalid
+
+{- | The parameters of CCITTFaxDecode, with the defaults of ISO 32000-1
+Table 11. DamagedRowsBeforeError is not read: damaged data is an error.
+-}
+ccittParams :: P.ObjOf P.ObjNum -> Resources -> Either Text CcittParams
+ccittParams value state = do
+  resolved <- dereference Set.empty value state
+  entries <- case resolved of
+    P.ONull -> Right []
+    P.ODict found -> Right found
+    _ -> Left invalid
+  let entry name fallback read' = maybe (Right fallback) (\v -> dereference Set.empty v state >>= read') (lookup name entries)
+      integer = \case
+        P.OInt n | abs n <= 2 ^ (30 :: Int) -> Right (fromInteger n)
+        _ -> Left invalid
+      bool = \case
+        P.OBool b -> Right b
+        _ -> Left invalid
+  CcittParams
+    <$> entry "K" 0 integer
+    <*> entry "EndOfLine" False bool
+    <*> entry "EncodedByteAlign" False bool
+    <*> entry "Columns" 1728 integer
+    <*> entry "Rows" 0 integer
+    <*> entry "EndOfBlock" True bool
+    <*> entry "BlackIs1" False bool
+  where
+    invalid = "PDF 図版の CCITT フィルターの指定が不正です"
 
 -- RunLengthDecode (ISO 32000-1:2008 7.4.5), bounded by the remaining budget.
 runLength :: Int -> ByteString -> Either Text ByteString
@@ -1443,13 +1505,12 @@ convertPdfImage :: Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.Ob
 convertPdfImage scope resources key fields state = case Map.lookup (key, scope) (convertedImages state) of
   Just converted -> Right (converted, state)
   Nothing -> do
-    ccitt <- isCcitt fields state
-    if ccitt then convertCcitt else convertDecoded
+    (kept, checked) <- keptCcitt resources fields state
+    maybe (convertDecoded checked) (convertCcitt checked) kept
   where
     -- The encoded samples stay; an Indexed CMYK table gives each of the two
     -- tones the colour the shared raster analyzer gives black and white.
-    convertCcitt = do
-      (reversed, checked) <- ccittDecode resources fields state
+    convertCcitt checked reversed = do
       analysis <- rasterAnalyzer checked (P.ImageData 2 1 8 P.CsGray Nothing (BS.pack [0, 255]) False False Nothing)
       tones <- case raImage analysis of
         Just image | P.imgColor image == P.CsCmyk, P.imgBits image == 8, BS.length (P.imgData image) == 8 -> Right (P.imgData image)
@@ -1462,8 +1523,8 @@ convertPdfImage scope resources key fields state = case Map.lookup (key, scope) 
         _ -> Left "PDF 図版の画像のストリームがありません"
       fresh <- freshObject checked
       Right (fresh, checked {convertedImages = Map.insert (key, scope) fresh (convertedImages checked), convertedObjects = Map.insert fresh (P.OStream fieldsOut source) (convertedObjects checked)})
-    convertDecoded = do
-      (analysis, decoded) <- analyzePdfImage scope resources key fields state
+    convertDecoded prepared = do
+      (analysis, decoded) <- analyzePdfImage scope resources key fields prepared
       case raImage analysis of
         Nothing -> Right (key, decoded)
         Just image -> do
