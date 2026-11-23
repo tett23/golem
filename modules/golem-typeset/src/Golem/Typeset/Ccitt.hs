@@ -231,7 +231,7 @@ packRow params changes =
   let columns = ccittColumns params
       bytes = (columns + 7) `div` 8
       black = blackAt changes
-      bit x = if x >= columns then False else black x == ccittBlackIs1 params
+      bit x = x < columns && black x == ccittBlackIs1 params
       byte k = foldl' (\acc j -> if bit (k * 8 + j) then acc .|. (0x80 `shiftR` j) else acc) (0 :: Word8) [0 .. 7]
    in BS.pack (map byte [0 .. bytes - 1])
 

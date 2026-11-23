@@ -9,6 +9,7 @@ import CcittEncode (encodeCcitt)
 import Data.Bits (testBit)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Golem.Pdf qualified as P
 import Golem.Typeset.Ccitt (CcittParams (..), defaultCcittParams)
@@ -71,7 +72,7 @@ pdfColorCcittTests =
     testCase "root ADR 0425 I8: a CCITT image with a colour-key mask writes the new soft mask" $ do
       p <- tinted (ccittImage 2 1 [[True, False]] [("Mask", P.OArr [P.OInt 0, P.OInt 0])] [])
       case [fields | (key, P.OStream fields _) <- P.ipObjects p, key < 0, lookup "ColorSpace" fields == Just (P.OName "DeviceCMYK")] of
-        [fields] -> assertBool "soft mask" (lookup "SMask" fields /= Nothing && lookup "Mask" fields == Nothing)
+        [fields] -> assertBool "soft mask" (isJust (lookup "SMask" fields) && isNothing (lookup "Mask" fields))
         other -> assertFailure (show other),
     testCase "root ADR 0425 I8: a CCITT mask whose Columns is not its Width is G08113" $
       rejected (explicit 2 1 (rgbPixels [gray, gray]) (explicitMask 2 1 (g4 3 1) (ccitt 3 1 [[False, True, False]]))),

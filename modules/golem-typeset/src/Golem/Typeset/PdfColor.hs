@@ -1054,7 +1054,7 @@ decodePdfImageStream key width height bits components fields state = case Map.lo
             samples = ((width + 7) `div` 8) * height
         (encoded, decoded) <- decodePdfStream key prefixFields state
         if samples > toInteger (remainingBytes decoded) || height > toInteger (maxBound :: Int) then Left budgetError else Right ()
-        bytes <- first (\reason -> "PDF 図版の CCITT 画像を復号できません: " <> reason) (decodeCcitt params (fromInteger height) encoded)
+        bytes <- first ("PDF 図版の CCITT 画像を復号できません: " <>) (decodeCcitt params (fromInteger height) encoded)
         charged <- charge (BS.length bytes) decoded
         Right (bytes, charged {decodedStreams = Map.insert key bytes (decodedStreams charged)})
       _ -> decodePdfStream key fields state
