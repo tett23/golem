@@ -36,6 +36,7 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import MovedReferencesSpec (movedReferencesTests)
 import PositionEnumSpec (positionEnumTests)
 import PublishSpec (publishTests)
 import SemanticTokensSpec (semanticTokensTests)
@@ -114,6 +115,7 @@ tests =
     "golem-lsp (ADR 0001)"
     [ fileRenameTests,
       fileMoveTests,
+      movedReferencesTests,
       positionEnumTests,
       testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
         codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
@@ -549,7 +551,7 @@ tests =
         encodingKind Utf16 @?= L.PositionEncodingKind_UTF16,
       testCase "only the matching initialize response gets its positionEncoding replaced (ADR 0002)" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
-            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1}},\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"experimental\":{\"golem\":{\"planFileMove\":1,\"planMovedReferences\":1}},\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value
         (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected
         rewriteInitializeResponse (M.IdInt 2) Utf8 resp @?= Nothing
