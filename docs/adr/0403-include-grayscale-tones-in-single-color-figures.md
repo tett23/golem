@@ -1,6 +1,6 @@
 # ADR 0403: 単色図版の色指定に白黒の濃淡を含める
 
-Status: superseded-pending [{"part":"JPEG の色変換で復号する方式と非対応時の扱い","by":["docs/adr/0406-limit-jpeg-figure-color-decoding.md"],"kind":"supplement"},{"part":"SVG の色を判定または置換できない場合","by":["docs/adr/0407-reject-svg-figures-that-cannot-be-recolored.md"],"kind":"supplement"}]
+Status: superseded-pending [{"part":"JPEG の色変換で復号する方式と非対応時の扱い","by":["docs/adr/0406-limit-jpeg-figure-color-decoding.md"],"kind":"supplement"},{"part":"SVG の色を判定または置換できない場合","by":["docs/adr/0407-reject-svg-figures-that-cannot-be-recolored.md"],"kind":"supplement"},{"part":"取り込んだ PDF の図版の色の分類と判定できない構成","by":["docs/adr/0425-classify-colors-of-imported-pdf-figures.md"],"kind":"supplement"}]
 
 ## 文脈
 
