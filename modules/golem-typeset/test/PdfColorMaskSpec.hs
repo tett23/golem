@@ -127,9 +127,10 @@ matteTests =
       rejected (rgbMatte [[128, 128, 128]] [255] [P.OInt 1, P.OInt 0, P.OInt 0])
   ]
 
--- | For each pixel, row by row, the mask pixels (numbered q * mw + p) whose
--- square meets the pixel's square with an area above 0, computed with
--- rationals.
+{- | For each pixel, row by row, the mask pixels (numbered q * mw + p) whose
+square meets the pixel's square with an area above 0, computed with
+rationals.
+-}
 oracle :: Int -> Int -> Int -> Int -> [[Int]]
 oracle w h mw mh =
   [ [q * mw + p | q <- [0 .. mh - 1], p <- [0 .. mw - 1], overlap (cell i w) (cell p mw) * overlap (cell j h) (cell q mh) > 0]
