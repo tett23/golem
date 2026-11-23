@@ -138,6 +138,7 @@ linkElements = concatMap $ \case
   Ref _ k _ -> [case k of RefNumber -> "ref-number"; RefTitle -> "ref-title"; RefPage -> "ref-page"]
   Note {} -> ["note"]
   Sidenote {} -> ["sidenote"]
+  Endnote {} -> ["endnote"]
   Cite {} -> ["cite"]
   Ruby _ _ segs -> concatMap (linkElements . rsBase) segs
   Kenten _ _ xs -> linkElements xs

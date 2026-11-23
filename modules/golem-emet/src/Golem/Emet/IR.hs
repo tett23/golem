@@ -109,6 +109,7 @@ withRuby = \case
   Deferred s e -> Deferred s e
   Note s n bs -> Note s n bs
   Sidenote s n bs -> Sidenote s n bs
+  Endnote s n bs -> Endnote s n bs
   IndexMark s e -> IndexMark s e
   Cite s is -> Cite s [CiteItem k l (map withRuby p) (map withRuby q) | CiteItem k l p q <- is]
   ProofComment s t -> ProofComment s t
@@ -148,6 +149,7 @@ encodeInline = \case
     at sp "Deferred" [con "Opaque" [nat j]]
   Note sp n bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp Nothing Nothing n)
   Sidenote sp n bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp Nothing Nothing n)
+  Endnote sp n bs -> encodeBlocks bs >>= \b -> node "Endnote" [b] (Hidden sp Nothing Nothing n)
   -- the kind of a mark (docs/adr/0265)
   IndexMark sp (IndexEntry ts rs k) -> at sp "IndexMark" [RList (map str ts), RList (map str rs), indexKind k]
   -- the items of a citation (docs/adr/0266)
@@ -356,6 +358,7 @@ inlineD cx = \case
     "Deferred" -> one1 $ \s d -> Deferred s <$> deferred d
     "Note" -> withNumber Note
     "Sidenote" -> withNumber Sidenote
+    "Endnote" -> withNumber Endnote
     "IndexMark" -> one 3 $ \s -> \case
       [ts, rs, k] -> (\a b k' -> IndexMark s (IndexEntry a b k')) <$> listD strD ts <*> listD strD rs <*> indexKindD k
       _ -> arity
