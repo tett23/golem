@@ -80,6 +80,7 @@ paginateTests =
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
+      testGroup "the index columns after page-lines (root ADR 0025, root ADR 0030)" indexAfterAdjustTests,
       testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
@@ -654,6 +655,33 @@ unmets = concatMap poUnmet
 -- | Page, column and line ids of each column.
 columnsOf :: [PageOut] -> [(Int, Int, [Int])]
 columnsOf ps = [(poNumber p, poColumn p, [i | (_, SLine i) <- poSlots p]) | p <- ps]
+
+{- | The switch to the index columns counts only the lines of the type
+area: the lines added by @page-lines belong to the column of the mark,
+and the columns of the index keep the lines of the type area (root ADR
+0025, root ADR 0030).
+-}
+indexAfterAdjustTests :: [TestTree]
+indexAfterAdjustTests =
+  [ testCase "root ADR 0025: after page-lines +3 and 12 lines on a page of 10, the index starts at line 0 of the next page" $ do
+      let ps = paginate 1 10 ([FAdjustLines mk 3, FParagraph defaultKeep (lines' 0 12), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns])
+      setsOf ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)]
+      columnsOf ps @?= [(1, 0, [0 .. 11]), (2, 0, [100, 101, 102])]
+      [l | p <- drop 1 ps, (l, _) <- poSlots p] @?= [0, 1, 2],
+    testCase "root ADR 0025: after page-lines +3 and exactly 10 lines, no line of the type area is left" $ do
+      let ps = paginate 1 10 ([FAdjustLines mk 3, FParagraph defaultKeep (lines' 0 10), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns])
+      setsOf ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)],
+    testCase "root ADR 0030: after page-lines +3 and 7 lines, each index column keeps the 3 lines left of the type area" $ do
+      let ps = paginate 1 10 ([FAdjustLines mk 3, FParagraph defaultKeep (lines' 0 7), FSwitchColumns index2] <> entries 100 8 <> [FRestoreColumns])
+      setsOf ps @?= [(1, 0, 1, 0), (1, 0, 2, 7), (1, 1, 2, 7), (2, 0, 2, 0)]
+      columnsOf ps @?= [(1, 0, [0 .. 6]), (1, 0, [100, 101, 102]), (1, 1, [103, 104, 105]), (2, 0, [106, 107])]
+      map poLines (drop 1 ps) @?= [10, 10, 10]
+      [l | p <- drop 1 ps, (l, _) <- poSlots p, l >= 10] @?= []
+  ]
+  where
+    index2 = ColumnSet 2 (15 * 65536) (2 * 65536) 0
+    entries base n = [FParagraph defaultKeep [LineBox (base + i) [] [] [] 0] | i <- [0 .. n - 1]]
+    setsOf = map (\p -> (poNumber p, poColumn p, csColumns (poColumnSet p), csFirstLine (poColumnSet p)))
 
 pageControlTests :: [TestTree]
 pageControlTests =
