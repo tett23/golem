@@ -489,6 +489,15 @@ explainTests =
             [c | c <- ["G02096", "G02097", "G02098", "G02099"], c `notElem` used] @?= []
         ],
       testGroup
+        "root ADR 0430: golem explain writes フォルダ"
+        [ testCase "root ADR 0430 I2: no section golem explain shows has フォルダー" $
+            [c | (c, e) <- Map.toList catalog, any ("フォルダー" `T.isInfixOf`) [exTitle e, exBody e]] @?= [],
+          testCase "root ADR 0430 I2: golem explain G08102 and G08104 have no フォルダー" $ do
+            let bodies = [fmap exBody (lookupExplanation c) | c <- ["G08102", "G08104"]]
+            assertBool "G08102 or G08104 is missing" (all isJust bodies)
+            [b | Just b <- bodies, "フォルダー" `T.isInfixOf` b] @?= []
+        ],
+      testGroup
         "root ADR 0428: the empty field of [printings] recommends {{ and }}"
         [ testCase "root ADR 0428 I1: golem explain G03269 recommends {{ and }}, not \\{ and \\}" $ do
             let causeAndFix = maybe [] (causeAndFixOf . exBody) (lookupExplanation "G03269")
