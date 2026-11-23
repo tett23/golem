@@ -141,8 +141,8 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
 = [strong: G02039 [code: 未知の圏点の形です: …]]
   [code: \[kenten ...\]] の [code: shape] の値が違います。
   付録A の形の名前から選んでください。
-= [strong: G02040 [code: 縦中横の中身は地の文に限ります]]
-  [code: \[tcy: ...\]] の中に、コマンドが入っています。
+= [strong: G02040 [code: 縦中横の中身は地の文に限ります]]、[strong: [code: warichu の中身は地の文に限ります]]、[strong: [code: upright の中身は地の文に限ります]]
+  [code: \[tcy: ...\]]、[code: \[warichu: ...\]]、[code: \[upright: ...\]] の中に、コマンドが入っています。
   文字だけを書いてください。
 = [strong: G02017 [code: style.toml にないスウォッチです: …]]、[strong: [code: color にはスウォッチの名前を一つ書きます]]
   [code: \[color ...\]] の色の名前が、[code: style.toml] の [code: \[color.swatches\]] にありません。

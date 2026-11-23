@@ -104,6 +104,8 @@ withRuby = \case
   Color s c xs -> Color s c (map withRuby xs)
   CharStyle s c xs -> CharStyle s c (map withRuby xs)
   Tcy s t -> Tcy s t
+  Warichu s t -> Warichu s t
+  Upright s t -> Upright s t
   Number s n st -> Number s n st
   Ref s k l -> Ref s k l
   Deferred s e -> Deferred s e
@@ -141,6 +143,8 @@ encodeInline = \case
   Color sp c xs -> encodeInlines xs >>= \b -> at sp "Color" [str c, b]
   CharStyle sp c xs -> encodeInlines xs >>= \b -> at sp "CharStyle" [str c, b]
   Tcy sp t -> at sp "Tcy" [str t]
+  Warichu sp t -> at sp "Warichu" [str t]
+  Upright sp t -> at sp "Upright" [str t]
   Number sp n st -> at sp "Number" [int n, maybeR numberStyle st]
   Ref sp k l -> at sp "Ref" [con (refKind k) [], str l]
   Deferred sp e -> do
@@ -353,6 +357,8 @@ inlineD cx = \case
     "Color" -> one2 $ \s n xs -> Color s <$> strD n <*> inlinesD cx xs
     "CharStyle" -> one2 $ \s n xs -> CharStyle s <$> strD n <*> inlinesD cx xs
     "Tcy" -> one1 $ \s t -> Tcy s <$> strD t
+    "Warichu" -> one1 $ \s t -> Warichu s <$> strD t
+    "Upright" -> one1 $ \s t -> Upright s <$> strD t
     "Number" -> one2 $ \s n st -> Number s <$> intD n <*> maybeD numberStyle st
     "Ref" -> one2 $ \s k l -> Ref s <$> refKind k <*> strD l
     "Deferred" -> one1 $ \s d -> Deferred s <$> deferred d

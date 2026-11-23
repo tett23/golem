@@ -37,6 +37,8 @@ data OverridableBuiltin
   | BKenten
   | BColor
   | BStyle
+  | BWarichu
+  | BUpright
   | BTcy
   | BNumberText
   deriving stock (Eq, Ord, Show, Enum, Bounded)
@@ -76,6 +78,8 @@ builtinName = \case
     BKenten -> "kenten"
     BColor -> "color"
     BStyle -> "style"
+    BWarichu -> "warichu"
+    BUpright -> "upright"
     BTcy -> "tcy"
     BNumberText -> "number-text"
   Fixed f -> case f of
@@ -111,6 +115,8 @@ takesNoSlot = \case
     BKenten -> False
     BColor -> False
     BStyle -> False
+    BWarichu -> False
+    BUpright -> False
     BTcy -> False
     BNumberText -> True
   Fixed f -> case f of

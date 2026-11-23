@@ -27,10 +27,11 @@ import DoubleDashSpec (doubleDashTests)
 import EnumSplitSpec (enumSplitTests)
 import ExceptionsSpec (exceptionsTests)
 import ExpansionStepSpec (expansionStepTests)
+import ExtendedJapaneseSpec (extendedJapaneseTests)
 import FeaturesSpec (featuresTests)
 import Fixtures (compose, fs, look0, sp, sp0)
 import FreeGeometrySpec (freeGeometryTests)
-import Golem.Doc.IR
+import Golem.Doc.IR hiding (Upright)
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
 import Golem.Layout.Aki qualified as Aki
 import Golem.Layout.Code
@@ -91,14 +92,14 @@ main :: IO ()
 main = enterPackageDirectory >> defaultMain tests
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -400,7 +401,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout"
-    [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
+    [ extendedJapaneseTests,
+      testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
       testGroup "boundaries and invariants" [BookPartsSpec.tests, bookPartsEnumTests, paginateTests, paginateElementsTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, noBreakTests, noBreakShapeTests, columnWidthInvariantTests, citeBreakTests, joinedWordTests, enumSplitTests, softHyphenTests, exceptionsTests, overflowTests, alignTests, expansionStepTests, charClassTests],
@@ -792,12 +794,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Sp <$> Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing) | w <- ws] `interleave` glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | w <- ws] `interleave` glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing) | w <- ws] `interleave` glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1598,7 +1600,7 @@ rubyOf segs = Ruby sp () [RubySegment [Text sp b] r | (b, r) <- segs]
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource Nothing noLeaf 0)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]

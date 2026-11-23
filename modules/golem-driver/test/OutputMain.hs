@@ -5,6 +5,7 @@ import BuildSpec
 import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
 import EmetSamplesSpec (emetSamplesTests)
+import ExtendedJapaneseOutputsSpec (extendedJapaneseOutputTests)
 import ForceTableSpec (forceTableTests)
 import GenericFontsSpec (genericFontsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
@@ -36,7 +37,8 @@ tests :: Skips -> TestTree
 tests skips =
   testGroup
     "golem-driver (ADR 0001)"
-    ( [ indexRangeTests,
+    ( [ testGroup "extended Japanese composition (root ADR 0380)" extendedJapaneseOutputTests,
+        indexRangeTests,
         tocStylesTests,
         emetSamplesTests,
         manualEmetTests,

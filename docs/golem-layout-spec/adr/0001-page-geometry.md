@@ -1,6 +1,6 @@
 # ADR 0001: ページの幾何
 
-Status: superseded [{"by":["docs/golem-layout-spec/adr/0002-gutter-side-of-odd-pages.md"],"part":"奇数ページのノドの向き"},{"part":"左右固定モードのページの幾何","by":["docs/adr/0400-single-page-layout-with-fixed-left-and-right.md"],"kind":"supplement"}]
+Status: superseded [{"by":["docs/golem-layout-spec/adr/0002-gutter-side-of-odd-pages.md"],"part":"奇数ページのノドの向き"},{"part":"版面の字送り","by":["docs/adr/0380-extended-japanese-composition.md"],"kind":"supplement"},{"part":"左右固定モードのページの幾何","by":["docs/adr/0400-single-page-layout-with-fixed-left-and-right.md"],"kind":"supplement"}]
 
 ## 文脈
 

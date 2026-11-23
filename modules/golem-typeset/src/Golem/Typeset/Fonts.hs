@@ -501,7 +501,8 @@ restyle style lk = \case
                       L.decStyle = st,
                       L.decColor = dsColor d <|> csColor cs <|> lkColor lk,
                       L.decSize = size,
-                      L.decShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs)
+                      L.decShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs),
+                      L.decSideLeft = dsSide d == "left"
                     }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}

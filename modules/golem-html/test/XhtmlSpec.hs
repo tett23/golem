@@ -70,7 +70,8 @@ cfg0 =
       hcNoteNotation = arabic,
       hcEndnoteNotation = arabic,
       hcEmbedFonts = True,
-      hcGenericFamilies = Map.empty
+      hcGenericFamilies = Map.empty,
+      hcCharacterAdvance = Nothing
     }
 
 -- | A book of one document, a.gm, with nothing assembled.

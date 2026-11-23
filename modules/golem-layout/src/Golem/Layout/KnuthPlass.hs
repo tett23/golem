@@ -88,7 +88,9 @@ data BoxContent = BoxContent
     character itself, where the span is that of the whole text; -1 for
     characters the source does not have. The algorithm does not read it,
     and nothing that draws the box does.
-    -} bcAt :: !Int
+    -} bcAt :: !Int,
+    -- | the two lines of an inline cutting note (root ADR 0380)
+    bcWarichu :: !(Maybe (Text, Text))
   }
   deriving stock (Eq, Show)
 
