@@ -2251,6 +2251,9 @@ CSS の `japanese-informal` とは、0 の字（`〇` と `零`）と範囲が�
 四つ以外の値は G03006 とする。
 `"page"` の振り方は、「脚注」の節の「ページごとの注の番号」に書く。
 
+章末の注（`[endnote]`）の番号と印は、`[notes]` ではなく `[endnotes]` で決める（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+キーと既定は「章末の注（`[endnote]`）」の節に書く。
+
 `placement` は PDF の注の置き場所であり、`"page-foot"`（ページ下、既定）か `"chapter-end"`（章末）をとる（[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）。
 HTML、EPUB、プレーンテキストは、`placement` によらず注を章末にまとめる。
 
@@ -5005,14 +5008,28 @@ JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended 
 
 PDF 図版の色置換は段階的な実装である。
 現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
-線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ ICCBased（成分数 1、3、4）と Indexed に対応する。
+線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ CalGray、CalRGB、Lab、ICCBased、Indexed に対応する（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+CalGray、CalRGB、Lab の色は、色を変換せずに、切り詰めた成分の値のまま分類する。
+CalGray と CalRGB の成分は 0 から 1 に、Lab の L* は 0 から 100 に、a* と b* は色空間の Range に切り詰め、有理数のまま比べる。
+CalGray はつねに白黒の濃淡で、灰色の値はその成分である。
+CalRGB は三つの成分が等しいときだけ濃淡で、灰色の値はその成分である。
+Lab は a* と b* がともに 0 のときだけ濃淡で、灰色の値は L* を 100 で割った値である。
+この三つの色空間の色どうしは、色空間の種類と辞書の値と成分の値がすべて等しいときだけ同じ色とし、ほかの色空間の色とは別の色とする。
+ICCBased は、プロファイルのヘッダーのデータの色空間で分ける。
+Gray、RGB、CMYK のデータは、Range で 0 から 1 に写してから DeviceGray、DeviceRGB、DeviceCMYK と同じ規則で判定する。
+Lab のデータは、Range で切り詰めた成分を L*、a*、b* として Lab の規則で判定し、Lab の色空間とは別の色空間の色とする。
+Range を省いた ICCBased の既定の Range は、各成分の 0 から 1 である。
+Range が 0 から 100 を超える Lab のデータでは、灰色の値を求める L* を、さらに 0 から 100 に切り詰める。
+Indexed の基底は、DeviceGray、DeviceRGB、DeviceCMYK と、データの色空間が Gray、RGB、CMYK で Range が単位範囲の ICCBased に限る。
+データの色空間がこの四つのどれでもないか、成分数 N と合わない ICCBased は G08113 とする。
 Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
 ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
 インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
 画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
 Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
 画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
-ICCBased の Range は各成分の単位範囲だけを扱う。
+画像の ICCBased は、データの色空間が Gray、RGB、CMYK で、N と合い、Range が各成分の単位範囲である場合だけを扱う。
+画像の CalGray、CalRGB、Lab と、データの色空間が Lab の ICCBased の画像は、まだ判定できないので G08113 とする。
 画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
 Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
 同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
@@ -5029,10 +5046,22 @@ DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASC
 PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
 通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
 そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。
-ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、物体ごとの置き換えが濃淡の規則と一致しないので、G08113 とする。
+ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、G08113 とする（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+BM の配列は、空でなく、要素がすべて Normal か Compatible のときだけ扱う。
+Multiply などでは、物体ごとに置き換えてから重ねた色が、重ねた濃淡を置き換えた色と一致しないためである。
+転送関数は、描いた後の濃淡を関数で変えるので、置き換えた色が濃淡の規則と一致しない。
+線か塗りを描くとき、描画の状態の OPM が 1 で、その描き方のオーバープリントが true の PDF も G08113 とする。
+置き換えた DeviceCMYK の色では成分が 0 の版を抜かないので、白の物体が下の物体を隠さなくなるためである。
+線のオーバープリントは `gs` の OP が、塗りのオーバープリントは op が設定し、同じ辞書に op が無い OP は両方を設定する。
+OPM と OP は別々の `gs` で設定でき、描画の状態は前の `gs` から引き継ぐので、一つの ExtGState ではなく描画の状態で判定する。
+文字は、描画モードに応じて、塗りと線のオーバープリントで判定する。
+画像を描くときは、塗りのオーバープリントで判定する。
+ADR は画像を挙げていないが、PDF で画像を描く演算子は塗りのオーバープリントに従うので、この仕様で塗りと同じ扱いと決めた。
+OPM が 0 なら、プロセスカラーの四つの成分をすべて塗るので、オーバープリントは結果を変えない。
 字形の中で自分の色を指定する Type 3 フォント（d0 の字形）を使う PDF も、字形の色を判定できないので G08113 とする。
 未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
-[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) と [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+ただし、[diagnostic の一覧の G08113](diagnostics.md#g08113) が主な原因の最初の項目に挙げる構成は、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた振る舞いであり、残る対応ではない。
 
 色を指定した SVG は、判定か置換ができなければ PDF、HTML、EPUB の対象媒体を G08113 で止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
 色を指定しない SVG の受け入れ範囲は変えない。
@@ -7218,6 +7247,9 @@ Golem はこの形を**チャネル**として一般化する。
 - ブロックコマンドが、その位置にチャネルの中身を一覧として出す。
 - 一覧に含まれるページ番号は、レイアウト後（S2）に決まる。
 
+注のチャネルは、脚注（`[note]`）、傍注（`[sidenote]`）、章末の注（`[endnote]`）の三つである（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+三つは別に番号を数え、それぞれの一覧に出る。
+
 目次は、見出しが自動で送られるチャネルである。
 図目次や表目次も、ラベル付きの図や表が送られるチャネルとして、同じ仕組みで追加できる。
 目次の一覧を出す `@toc` は文書に一つだけ置け、二つ目からは G04002 になる。
@@ -7293,6 +7325,7 @@ S1 は、`"page"` の注に、本の全体の通し番号（`"book"` と同じ�
 - 脚注の本文の先頭の印と、傍注の本文の先頭の番号も、同じ規則で予約する。この印は、`body-mark-style` の文字スタイルを当てた一つの箱として組み、注の本文の基準線に置く。`body-mark-style` がなければ、注の本文の文字のまま組む。印の中では行を分けず、アキ量のセットの空きを入れない。
 - 章末の注（`placement = "chapter-end"`）の一覧の印も、注の本文の先頭の印と同じく予約する。一覧では、ページの違う注が同じ番号を持ちうる。そのための diagnostic は出さない（[docs/roadmap.md](roadmap.md) の未決事項）。
 - 注のない本は、何も予約しない。
+- 章末の注（`[endnote]`）のチャネルは、ページごとの番号を取らず、印の幅も予約しない（「章末の注（`[endnote]`）」の節）。
 
 改ページが決まった後、PDF の各物理ページ（ノンブルではなく、白ページを含めて PDF に並ぶページ）で、チャネルごとに、そのページに印を置いた注を原稿の順に 1 から番号を振る。
 印を置いたページは、本文、見出し、表、表とコードブロックのキャプション、図版のキャプションの行のうち、その印を最初に置いたページである。
@@ -7496,6 +7529,7 @@ PDF の章末の注は、次のように組む。
 
 HTML、EPUB、プレーンテキストは、章の最後のファイルの出力の末尾に、章のすべての注をまとめる。
 章のほかのファイルの出力には注を置かない。
+章末の注（`[endnote]`）の一覧は、どの出力でも、脚注の一覧の後に置く（「章末の注（`[endnote]`）」の節）。
 HTML と EPUB の注の一覧は、次のように書く。
 
 - `<section class="notes">` の最初に `<h2>` で見出しを置き、目次とナビゲーション文書には入れない。
@@ -7546,6 +7580,69 @@ PDF のページ下の脚注は、注の印を含む行か見出しと同じペ�
 `@page-lines` で現在の段だけを短くした場合は、印のある行か見出しと脚注を一緒に次の段へ送り、その段の行数で配置できるかを判定する。
 たとえば区切りが一行なら、本文一行と脚注一行を同じ段に置くには三行必要になる。
 脚注のない原稿は、一行または二行の段でも通常どおり組む。
+
+### 章末の注（`[endnote]`）
+
+```
+この説は広く受け入れられている[endnote: 山田『組版の歴史』、1998 年、42 ページ。]。
+```
+
+章末の注（`[endnote]`）は、どの出力でも章の終わりの一覧に出す注である（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+脚注と別のコマンドにしたのは、説明の注をページの下に、出典の注を章の終わりに、と一冊の中で使い分けられるようにするためである。
+`[note]` は `[notes]` の `placement` に従い、`placement = "chapter-end"` の本では、この節の注とは別に、脚注の一覧を章の終わりに置く。
+この節で「章末の注」と書くときは、`[endnote]` の注を指す。
+置き場所は注のコマンドで決め、注ごとに置き場所を選ぶ引数はない。
+`[endnote]` をページの下に置く設定と、本の終わりにまとめる巻末注はない。
+
+本文の書き方は脚注と同じである。
+`[endnote: 本文]` の本文は、段落スタイルのない段落一つになる。
+二つ以上の段落の注は、ブロックコマンド `@endnote 名前` に本文を書き、本文の位置に `[endnote 名前]` を書く。
+`@endnote` と `[endnote 名前]` の規則と diagnostic は、「脚注」の節の `@note` と `[note 名前]` と同じである。
+ただし、名前の集まりは脚注と別であり、`[endnote 名前]` は同じファイルの `@endnote 名前` だけを引く。
+`[note 名前]` から `@endnote` を、`[endnote 名前]` から `@note` を引くことはできず、名前の未定義（[G02137](diagnostics.md#g02137)）と使われない本文（[G02138](diagnostics.md#g02138)）になる。
+一つのファイルの diagnostic は、脚注のものを先に、章末の注のものを後に出す。
+
+章末の注は、脚注と傍注と別のチャネルであり、番号を別に数える。
+番号と印は、`style.toml` の `[endnotes]` で決める。
+キーの意味は、`[notes]` の同じ名前のキーと同じである。
+
+| キー | 型 | 既定 |
+| --- | --- | --- |
+| `numbering` | 文字列 | `"chapter"`。`"file"` と `"book"` も書ける |
+| `mark-format` | 文字列 | `"{n}"` |
+| `mark-style` | 文字列 | `"note-mark"` |
+| `body-mark-style` | 文字列 | なし（注の本文の文字のまま） |
+| `mark-shape` | 文字列 | なし（平字にしない） |
+| `body-style` | 文字列 | なし（本文の役割と版面の文字の大きさ） |
+| `heading-style` | 文字列 | なし（2 の階層の見出しの役割と大きさ） |
+
+`[endnotes]` に書かないキーは、`[notes]` の値を引き継がず、この表の既定を使う。
+`mark-format` の既定を脚注の `"*{n}"` と変えたのは、一冊の中で二つを一緒に使うとき、既定のままでも印で見分けられるようにするためである。
+`[notes]` の `placement`、`rule`、`[notes.footnote]`、`[notes.chapter-end]` に当たるキーはなく、書けば G03006 とする。
+`[notes.chapter-end]` は、`placement = "chapter-end"` の本の脚注の一覧にだけ当て、章末の注の一覧には当てない。
+値の誤りは `[notes]` と同じく扱う（表にない値は G03006、ない文字スタイルと段落スタイルは G03013）。
+本文の印の文字スタイル（`mark-style`）の `position` の規則（G03125）も、`[notes]` と同じである。
+
+`numbering = "page"` は、章末の一覧に物理ページの番号を振る意味がないので、設定の誤り（[G03278](diagnostics.md#g03278)）とし、ビルドを止める。
+位置は `numbering` の値である。
+LSP の補完は、`numbering` の値に `"page"` を出さない。
+`numbering = "file"` で、二つ以上のファイルからなる章の二つ以上のファイルに章末の注があれば、ターゲットによらず [G03027](diagnostics.md#g03027) の警告を出す。
+
+章末の注の一覧は、`placement = "chapter-end"` の脚注の一覧と同じ規則で組む（「注の配置」の節）。
+違いは次のとおりである。
+
+- 一覧は、どの出力でも章の最後のファイルの末尾に置く。章に脚注の一覧もあれば（PDF では `placement = "chapter-end"` のとき、HTML、EPUB、プレーンテキストではいつも）、脚注の一覧を先に、章末の注の一覧を後に置く。章末の注のない章には一覧を置かない。
+- 一覧の見出しは、マニフェストの `language` の主の副タグが `ja` なら「後注」、そうでなければ「Endnotes」とする（脚注の一覧の見出しと同じ判定）。文言を変える設定はない。
+- PDF の本文の印と一覧の印は、`[endnotes]` の `mark-format`、`mark-style`、`body-mark-style`、`mark-shape` で組む。本文の印は一覧の注へのリンク、一覧の印は本文の印へ戻るリンクである。タグ付き PDF では、本文の印の後に、一覧の段落からなる Note を置く。
+- PDF の一覧の本文と見出しには、`[endnotes]` の `body-style` と `heading-style` を当てる。
+- HTML と EPUB では、一覧を `<section class="endnotes">` とし、最初に `<h2>` で見出しを置く。本文の参照は `<a epub:type="noteref" class="endnoteref">`、一覧の注は `<aside epub:type="endnote">` で書く。id は、一覧の側を `endnote-N`、本文の参照の側を `endnoteref-N` とし、`numbering = "file"` で番号が重なる章では `endnote-k-N` と `endnoteref-k-N` とする。リンクの文字は `[endnotes]` の `mark-format` の表記で書く。`style.css` は、章末の注のある本でだけ、`section.endnotes aside p` に `section.notes aside p` と同じ規則を足す。
+- プレーンテキストでは、章末の注の一覧を、脚注の一覧の後に空の行を一つ挟んで置く。印は脚注と同じく、横書きで `*1`、縦書きで `※1` とする。
+
+章末の注を一つも書かない本の出力は、`[endnotes]` を書いても変わらない。
+
+プラグインに渡す意味論 IR では、章末の注は `Endnote` であり、CBOR のタグは 26 である（`[26, span, uint64, [+ block]]`）。
+ABI のバージョンは [ADR 0052](adr/0052-plugin-abi-version-bump-rule.md) の規則による。
+[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md) は版を上げると書くが、9 は v0.1.0-rc4 の後に上げてまだどのリリースにも含まれないので、[ADR 0052](adr/0052-plugin-abi-version-bump-rule.md) の規則により 9 のままとする。
 
 ### 傍注
 
@@ -8418,7 +8515,8 @@ HTML、EPUB、プレーンテキストは、中のインラインをほかのイ
 以前の脚注と傍注のタグ 12 と 13 は廃止し、使い回さない。
 `Golem.Doc.Validate` は、脚注の本文が段落スタイルのない段落の一つ以上の並びであることと、傍注の本文が段落スタイルのない段落をちょうど一つ持つことを検査する。
 本文の段落のインラインには、ほかのインラインと同じ検査（改行の位置、リンク、言語のタグなど）を当てる。
-プラグインの SDK の `Inline::Note` と `Inline::Sidenote` は、本文を `Vec<Block>` で持つ。
+章末の注は `[26, span, uint64, [+ block]]` であり、`Golem.Doc.Validate` は脚注と同じく、本文が段落スタイルのない段落の一つ以上の並びであることを検査する（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+プラグインの SDK の `Inline::Note`、`Inline::Sidenote`、`Inline::Endnote` は、本文を `Vec<Block>` で持つ。
 SDK は、`note_body` で一つの段落の本文を作り、`note_paragraphs_mut` で本文の段落のインラインを辿る。
 
 #### 出力の不変条件

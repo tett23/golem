@@ -201,7 +201,7 @@ impl Flat {
                     let l = self.leaf(*span, None);
                     self.items.push(Item::Unknown(l));
                 }
-                Inline::Note { .. } | Inline::Sidenote { .. } | Inline::LineBreak { .. } | Inline::Aki { .. } => self.items.push(Item::Wall),
+                Inline::Note { .. } | Inline::Sidenote { .. } | Inline::Endnote { .. } | Inline::LineBreak { .. } | Inline::Aki { .. } => self.items.push(Item::Wall),
                 // nothing is set where they are
                 Inline::IndexMark { .. } | Inline::ProofComment { .. } | Inline::ChannelItem { .. } => {}
             }
@@ -341,6 +341,12 @@ pub fn run(cfg: &Config, xs: Vec<Inline>, diags: &mut Vec<Diagnostic>) -> Vec<In
                     *p = run(cfg, std::mem::take(p), diags);
                 }
                 Inline::Sidenote { span, number, body }
+            }
+            Inline::Endnote { span, number, mut body } => {
+                for p in note_paragraphs_mut(&mut body) {
+                    *p = run(cfg, std::mem::take(p), diags);
+                }
+                Inline::Endnote { span, number, body }
             }
             Inline::ChannelItem { span, channel, key, reading, body } => Inline::ChannelItem { span, channel, key, reading, body: run(cfg, body, diags) },
             other => other,

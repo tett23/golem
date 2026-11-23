@@ -186,6 +186,7 @@ test-suite golem-driver-page-test
     CaptionSidenoteIndentSpec
     CaptionSidenoteParagraphsSpec
     ChapterNotesSpec
+    EndnotesSpec
     CompressedNoteMarksSpec
     FigureSpec
     FileSpacesSpec

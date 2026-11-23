@@ -104,14 +104,14 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
-- **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
-  これらは採択した範囲から除外せず、二つの ADR の残実装として進める。
-  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。シェーディングの色は関数（PostScript の計算機の関数を含む）やメッシュの頂点で決まるので、濃淡か一色かを判定する方法の決めが要る。
-  - CalGray、CalRGB、Lab、Separation、DeviceN の色空間。特色の網の濃さを白黒の濃淡と一色のどちらとして扱うかなど、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の規則をどう当てはめるかの決めが要る。
-  - 単位範囲以外の ICCBased の Range。
-  - 異寸法のマスク、Interpolate = true の明示マスク、Matte を持つソフトマスク、DeviceGray 以外のソフトマスク。拡大縮小したマスクで見える画素の決め方が要る。
-  - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。CCITT の復号が要る。
-  - Normal 以外の合成の方式（BM）と転送関数（TR、TR2）。物体ごとの置き換えが濃淡の規則と一致しないので、合成した結果で判定するかどうかの決めが要る。
+- **PDF 図版の色置換の残り（未実装）**：取り込んだ PDF の図版のうち、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が分類と置き換え方を決めたが、まだ判定も置換もできず G08113 にする構成への対応が残っている（[root ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
+  これらは採択した範囲から除外せず、三つの ADR の残実装として進める。
+  [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた構成（Normal と Compatible のほかの合成の方式、Identity と Default のほかの転送関数、OPM が 1 のオーバープリント、FunctionType 4 の関数のシェーディング、DeviceGray でないソフトマスクなど）は、残りではない。
+  - シェーディング（`sh` と、シェーディングのパターン）とタイリングのパターン。
+  - CalGray、CalRGB、Lab の画像と、データの色空間が Lab の ICCBased の画像。単位範囲以外の Range を持つ ICCBased の画像。これらと、データの色空間が Lab の ICCBased を基底とする Indexed の色空間。
+  - 異寸法のマスクと、Matte を持つ同寸法のソフトマスク。
+  - 画像かマスクの Interpolate が true の場合に、すべての画素を可視として判定すること。今は、明示マスクでは G08113 にし、ソフトマスクではマスクで判定している。
+  - マスクを持つ CCITTFaxDecode の画像と、CCITTFaxDecode のマスク。
   - 自分の色を指定する Type 3 フォントの字形（d0）。
 - **入力色の保存と明示的な色置換（未実装）**：RGB を自動で CMYK にしない既存の規則を設計原則にも書き、書き手が選んだスウォッチへの図版の色置換と区別する。図版色の実装後に、入力の色の保持と各出力を照合する（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
@@ -187,7 +187,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **絵文字のレンダリング**：カラーの絵文字のフォント（COLR/CPAL、sbix、CBDT、OpenType の SVG）のグリフ、ZWJ でつないだ絵文字の並び、異体字セレクタによる絵文字の表示と文字の表示の切り替えを、PDF と HTML で組めるようにする。各形式の描き方、PDF/X-4 との関係、HTML でフォントに任せる範囲は ADR で決める。
 - **フォントのフォールバック**：役割のフォントにグリフがない字を、`style.toml` に役割ごとに宣言した代わりのフォントの列から順に探して組む。代わりのフォントの選び方は、環境によらず同じ結果になるように決める。`golem build` の G08100 と `golem preflight` の G09002 との関係（代わりのフォントで組んだ字を報告するか）を ADR で決める。グリフがない字は、`golem build` が G08100 で報告する（dev では警告、prod ではエラー、[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。この項目は、代わりのフォントで補う仕組みを扱う。カラーの絵文字のフォントを代わりのフォントに使う場合は、「絵文字のレンダリング」と合わせて決める。
 - **diagnostics の英語化**：diagnostics、ヒント、使い方の表示を英語でも出す。既定では実行時のロケールを読んで言語を選び、オプション（たとえば `--lang en`）と設定で指定できるようにする。出力するファイル（PDF、HTML、EPUB、テキスト）はロケールによらないという [docs/adr/0002](adr/0002-determinism.md) の規則は変えず、言語が変わるのは端末に出す文言だけとする。JSON の diagnostic のコードと位置は言語によらない。着手するときに ADR を作成する。
-- **章末の注の一覧の改ページと見出し**：v1 の章末の注の一覧は、前で改ページせず、見出しの文言は「注」（日本語以外は「Notes」）に固定する。一覧の前で改ページする設定と、見出しの文言を変える設定を加える（[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）。
+- **章末の注の一覧の改ページと見出し**：v1 の章末の注の一覧は、前で改ページせず、見出しの文言は「注」（日本語以外は「Notes」）に固定し、`[endnote]` の一覧の見出しは「後注」（日本語以外は「Endnotes」）に固定する。一覧の前で改ページする設定と、二つの見出しの文言を変える設定を加える（[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)、[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
 - **孤立行の規則の見直し**：段落の最初と最後の行をページの境に一つだけ残さない規則（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）は、ページの末尾に 1 行か 2 行の空きを残す。出版された本でもあまり気にされていないので今はこのままとし、必要になったら和文の本で緩めるかを検討する。
 - **条件テキスト**：一つの原稿から、媒体（PDF、EPUB、HTML）や版（紙の版と電子版、教師用と生徒用など）ごとに本文の一部を出し分けること。InDesign の条件テキストと条件セットにあたる。どの単位で条件を書くか、媒体ごとの出し分けを媒体契約（仕様書の [「設計原則」の節](specifications.md#設計原則)）の中でどう認めるかを ADR で決める（[2026-10-17 の調査](audits/2026-10-17-latex-gap-for-v1.md)）。
 - **差し込み**：外部のデータ（CSV など）の値を、組版に差し込んで組むこと。InDesign のデータ結合にあたる。名簿、カタログ、一つの型から多数の文書を組む用途に使う。データの形式、差し込む記法、一件ごとに文書を分けるか一冊に続けて組むかを ADR で決める。

@@ -7105,17 +7105,23 @@ G03026 はそれらの後に並ぶ。
 出力は止めず、重なった番号のまま組む。
 HTML と EPUB では、注の id に章の中のファイルの順番を入れて（`note-2-1` など）、一つの文書の中で id が重ならないようにする。
 
-- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`
+章末の注（`[endnote]`）も、同じ規則で出す（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+`[endnotes]` の `numbering` が `"file"` で、二つ以上のファイルからなる章の、二つ以上のファイルに章末の注があるときに出る。
+章末の注はどの出力でも章の末尾にまとめるので、ターゲットによらず出す。
+HTML と EPUB の id は `endnote-2-1` などになる。
+脚注と章末の注の両方が重なる章では、それぞれに一度ずつ出す。
+
+- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`（章末の注では `[endnotes] の numbering`）
 - 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.chapterNoteDiagnostics`）。位置は、その章で注を持つ二つ目のファイルの最初の注である。`golem check` とビルドが出す
-- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)
+- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)、[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)
 
 ### 主な原因
 
-- 一つの章を複数のファイルに分け、`[notes]` の `numbering` を `"file"` にした。
+- 一つの章を複数のファイルに分け、`[notes]` か `[endnotes]` の `numbering` を `"file"` にした。
 
 ### 直し方
 
-`[notes]` の `numbering` を `"chapter"`（既定）か `"book"` にする。
+メッセージが示す表の `numbering` を `"chapter"`（既定）か `"book"` にする。
 
 ## G03028
 
@@ -8585,6 +8591,33 @@ EPUB のページ一覧に使う対応表を解決できないので、EPUB 生�
 ### 直し方
 
 file、line、character と原稿の文書順を確かめる。
+
+## G03278
+
+章末の注にはページごとの番号を使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[endnotes]` の `numbering` に `"page"` を書いた（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+章末の注（`[endnote]`）は、どの出力でも章の末尾の一覧にまとめるので、印を置いた物理ページの番号を振る意味がない。
+`style.toml` を読む段階で誤りとし、ビルドを止める。
+`[notes]` の `numbering = "page"`（[ADR 0383](adr/0383-page-local-note-numbers.md)）は、この誤りにならない。
+
+- メッセージ: `章末の注にはページごとの番号を使えません。[endnotes] の numbering には "chapter"、"file"、"book" のどれかを書きます`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.endnoteChecks`）。位置は `numbering` の値である
+- ADR: [docs/adr/0412](adr/0412-a-separate-channel-for-endnotes.md)
+
+### 主な原因
+
+- `[notes]` の設定を写して、`[endnotes]` にも `numbering = "page"` を書いた。
+
+### 直し方
+
+`[endnotes]` の `numbering` を `"chapter"`（既定）、`"file"`、`"book"` のどれかにする。
+||||||| 3c3e5e821
 
 ## G03279
 
@@ -12805,18 +12838,27 @@ HTML と EPUB は `axes` を使わないので、出さない。
 
 - メッセージ: `図版の色を変換できません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-driver の `Golem.Driver`）
-- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)
+- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)、[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)
 
 ### 主な原因
 
 - 壊れた画像や、色の変換で扱えない JPEG の符号化方式を使っている。
 - 変換後の画素が、画像の展開サイズの上限を超える。
 - 色を指定した SVG（PDF、HTML、EPUB）に、色の変換で扱えない要素や属性がある。
-- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。シェーディング、パターン、特色などの色空間、Normal 以外の合成の方式、転送関数、自分の色を指定する Type 3 フォントの字形がこれにあたる。
+- 取り込んだ PDF の図版が、色を判定できないか、指定色に置き換えられない構成を使っている。次の構成がこれにあたる。
+  - ExtGState の BM が Normal か Compatible でないもの。配列は、空でなく、要素がすべて Normal か Compatible のときだけ扱う。
+  - ExtGState の TR と TR2 が Identity か Default でないもの。
+  - OPM が 1 で、線を描くときは線の、塗りを描くときは塗りのオーバープリントが true のもの。
+  - PostScript の計算機の関数（FunctionType 4）で色を決めるシェーディング。
+  - 値がすべて濃淡でも、灰色の値が一つの値の一次式で決まらないシェーディングを、ほかの色がすべて濃淡の図版で使うもの。
+  - DeviceGray でないソフトマスクと、Matte を持ち、画像と大きさが違うか、Interpolate が true のソフトマスク。
+  - ICCBased で、プロファイルのデータの色空間が Gray、RGB、CMYK、Lab のどれでもないか、N と合わないもの。
+- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。今はシェーディングをすべてこの扱いにする。ほかに、パターン、自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
 
 ### 直し方
 
 メッセージの理由に従って、図版を対応する画像形式とサイズで書き直す。
+PDF の図版は、描画色の指定を外すか、挙げた構成を使わない形に書き出し直す。
 
 ## G09001
 
