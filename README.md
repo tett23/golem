@@ -226,6 +226,10 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 字を別の二つのグリフで合成する形（seac）の字は、部品のグリフの輪郭も確かめ、seac の誤りは G08114 から G08117 として PDF を書かない（[root ADR 0420](docs/adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 可変フォントは、役割の `instance` に名前付きインスタンスの名前を、`axes` に軸の座標（`{ wght = 650 }` など）を書けば、その座標で組み、PDF にはその座標に固定したフォントを埋め込む（[Golem ADR 0358](docs/adr/0358-font-instance-selection.md)）。
 フォントにない名前、フォントにない軸、範囲の外の値は、PDF を書かずに G08110、G08111、G08112 を出す。
+
+HTML と EPUB は、既定ではフォントのファイルを同梱せず、役割の `generic-family`（`serif`、`sans-serif`、`monospace`）から決まる総称の書体だけを CSS に書く（[Golem ADR 0423](docs/adr/0423-generic-font-families-for-html-and-epub.md)）。
+フォントを同梱するには、`manifest.toml` の `[targets.html]` か `[targets.epub]` に `fonts = "embed"` を書く。
+
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
 見出しを行取りの中の前、中央、後ろのどこに寄せるかは、`block-align` で選べる。
