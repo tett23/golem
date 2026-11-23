@@ -76,6 +76,7 @@ inline-no-ruby =
   / [23, span, uint64, [+ block]]                  ; note (docs/adr/0263)
   / [24, span, uint64, [+ block]]                  ; sidenote (docs/adr/0263)
   / [25, span, items: [1* cite-item]]              ; citation (docs/adr/0266)
+  / [26, span, uint64, [+ block]]                  ; endnote (root ADR 0412)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005);
 ; 12 and 13 (notes of inlines) are retired (docs/adr/0263);
 ; 15 (a citation of one key) is retired (docs/adr/0266)

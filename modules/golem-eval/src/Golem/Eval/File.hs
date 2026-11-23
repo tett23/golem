@@ -185,6 +185,8 @@ data St = St
     stImports :: ![(Text, FilePath, SrcSpan)],
     stNote :: !Int,
     stSidenote :: !Int,
+    -- | the number of the last endnote of the file (root ADR 0412)
+    stEndnote :: !Int,
     stDiags :: ![Diagnostic],
     -- | the line of each @number by the span of its block (G04007)
     stNumberSites :: !(Map SrcSpan SrcSpan),
@@ -194,6 +196,9 @@ data St = St
     stNoteRefs :: ![(SrcSpan, Text)],
     -- | each @note in order: its name, its span and its body, Nothing for one of a name already defined (docs/adr/0263)
     stNoteDefs :: ![(Text, SrcSpan, [Block])],
+    -- | each [endnote name] and each @endnote, as those of the notes (root ADR 0412)
+    stEndnoteRefs :: ![(SrcSpan, Text)],
+    stEndnoteDefs :: ![(Text, SrcSpan, [Block])],
     -- | the argument span and exact count of each @blank-line (Golem ADR 0345)
     stBlankCounts :: !(Map SrcSpan (SrcSpan, Integer))
   }
@@ -248,11 +253,14 @@ evalFile ctx0 (A.File fid blocks0) =
       -- the styles of style.toml with those of the file over them
       fileStyle = withLocalStyles (ctxStyle ctx0) local
       -- meta and vars, which every file reads without @import (docs/adr/0185)
-      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] Map.empty
+      st0 = St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty
       (bsEval, st) = runState (nextStyled ctx fileStyle blocks) st0
       (bsCollapsed, blankDiags) = collapseBlankLines (stBlankCounts st) bsEval
       -- the notes written by name take their bodies (docs/adr/0263)
-      (bs0, noteDiags) = namedNotes (stNoteRefs st) (stNoteDefs st) bsCollapsed
+      (bsNotes, footDiags) = namedNotes FootKind (stNoteRefs st) (stNoteDefs st) bsCollapsed
+      -- the endnotes written by name, apart from the notes (root ADR 0412)
+      (bs0, endDiags) = namedNotes EndKind (stEndnoteRefs st) (stEndnoteDefs st) bsNotes
+      noteDiags = footDiags <> endDiags
       (bs, nestedDiags) = nestedBreaks bs0
       breakDiags = blankDiags <> nestedDiags <> conflictingBreaks bs
       doc0 = Document fid bs
@@ -361,6 +369,7 @@ unwritableText = concatMap blockDiags . docBlocks
       Tcy sp t -> at sp t
       Note _ _ bs -> concatMap inlines (noteParagraphs bs)
       Sidenote _ _ bs -> concatMap inlines (noteParagraphs bs)
+      Endnote _ _ bs -> concatMap inlines (noteParagraphs bs)
       IndexMark sp e -> concatMap (at sp) (ieTerms e <> ieReadings e <> case ieKind e of IndexSee _ ts -> ts; _ -> [])
       ProofComment sp t -> at sp t
       Number {} -> []
@@ -616,7 +625,9 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       Left NaturalReported -> pure []
       _ -> err "G02025" sp "@toc の depth は 1 から 6 の整数です" >> pure []
   -- the body of a note of more than one paragraph (docs/adr/0263)
-  "note" -> noteDefinition ctx sp args body
+  "note" -> noteDefinition ctx FootKind sp args body
+  -- the body of an endnote of more than one paragraph (root ADR 0412)
+  "endnote" -> noteDefinition ctx EndKind sp args body
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
   "channel" -> channelBlock ctx sp args
@@ -890,6 +901,7 @@ nameErrors ctx is bs =
       CharStyle _ _ xs -> xs
       Note _ _ nb -> concat (noteParagraphs nb)
       Sidenote _ _ nb -> concat (noteParagraphs nb)
+      Endnote _ _ nb -> concat (noteParagraphs nb)
       Cite _ items -> citeInlines items
       ChannelItem _ c -> ciBody c
       Link _ _ xs -> xs
@@ -927,6 +939,7 @@ fillKenten ctx = \case
   CharStyle s c xs -> CharStyle s c (map (fillKenten ctx) xs)
   Note s n bs -> Note s n (mapNoteBody (map (fillKenten ctx)) bs)
   Sidenote s n bs -> Sidenote s n (mapNoteBody (map (fillKenten ctx)) bs)
+  Endnote s n bs -> Endnote s n (mapNoteBody (map (fillKenten ctx)) bs)
   Link s u xs -> Link s u (map (fillKenten ctx) xs)
   Lang s l xs -> Lang s l (map (fillKenten ctx) xs)
   Resolved s k l xs -> Resolved s k l (map (fillKenten ctx) xs)
@@ -1026,9 +1039,10 @@ attributedGroup ctx sp cmds target = case target of
       _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
     -- @note takes no attribute (docs/adr/0263)
-    withAttrs attrs0 t@(A.Located _ (A.BlockCommand (A.Located _ "note") _ _)) = do
-      mapM_ (\(A.Located asp c) -> case c of A.BlockCommand (A.Located _ n) _ _ -> err "G02013" asp ("@" <> n <> " は @note には付けられません"); _ -> pure ()) attrs0
-      evalBlock ctx t
+    withAttrs attrs0 t@(A.Located _ (A.BlockCommand (A.Located _ name) _ _))
+      | name `elem` ["note", "endnote"] = do
+          mapM_ (\(A.Located asp c) -> case c of A.BlockCommand (A.Located _ n) _ _ -> err "G02013" asp ("@" <> n <> " は @" <> name <> " には付けられません"); _ -> pure ()) attrs0
+          evalBlock ctx t
     withAttrs attrs0 t = do
       attrs <- catMaybes <$> mapM uniqueAttrKeys attrs0
       -- every line of an attribute already given (golem-eval ADR 0003)
@@ -1474,6 +1488,24 @@ columnWidthOf t
 noteNameMessage :: Text
 noteNameMessage = "注の名前を一つの語で書きます。名前は英小文字、数字、-、_ で書きます"
 
+{- | The two kinds of notes written by name: the notes (docs/adr/0263) and
+the endnotes (root ADR 0412), each with names of its own.
+-}
+data NoteKind = FootKind | EndKind
+  deriving stock (Eq)
+
+-- | The name of the command of a kind of notes.
+kindCommand :: NoteKind -> Text
+kindCommand = \case
+  FootKind -> "note"
+  EndKind -> "endnote"
+
+-- | The definitions of a kind of notes so far.
+kindDefs :: NoteKind -> St -> [(Text, SrcSpan, [Block])]
+kindDefs = \case
+  FootKind -> stNoteDefs
+  EndKind -> stEndnoteDefs
+
 {- | @note name with its body (docs/adr/0263): the body evaluated here,
 its paragraphs the body of the note; G02142 for a name not of one word,
 G02140 for a name already defined (the first wins), G02141 at each block
@@ -1481,16 +1513,18 @@ of the body that is not a paragraph, which is dropped, G02143 for no body,
 G02013 for @style on a paragraph of the body, whose style is dropped.
 It puts out nothing where it is.
 -}
-noteDefinition :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-noteDefinition ctx sp args body = case args of
+noteDefinition :: EvalContext -> NoteKind -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+noteDefinition ctx kind sp args body = case args of
   [A.Located _ (A.Positional v)]
     | Just name <- nameArg v,
       validLabel name -> do
-        defined <- gets (any (\(n, _, _) -> n == name) . stNoteDefs)
+        defined <- gets (any (\(n, _, _) -> n == name) . kindDefs kind)
         when defined $ err "G02140" sp ("同じ名前の注の本文を二度書いています: " <> name)
-        when (null body) $ err "G02143" sp ("@note に本文がありません: " <> name)
+        when (null body) $ err "G02143" sp ("@" <> kindCommand kind <> " に本文がありません: " <> name)
         bs <- concat <$> mapM inBody body
-        unless defined $ modify' (\s -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]})
+        unless defined $ modify' $ \s -> case kind of
+          FootKind -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]}
+          EndKind -> s {stEndnoteDefs = stEndnoteDefs s <> [(name, sp, bs)]}
         pure []
   _ -> err "G02142" sp noteNameMessage >> pure []
   where
@@ -1518,8 +1552,8 @@ for a second [note] of the same name, which puts out nothing, as one of
 a body left without a paragraph does; G02138 for a @note no [note]
 names.
 -}
-namedNotes :: [(SrcSpan, Text)] -> [(Text, SrcSpan, [Block])] -> [Block] -> ([Block], [Diagnostic])
-namedNotes refs defs bs
+namedNotes :: NoteKind -> [(SrcSpan, Text)] -> [(Text, SrcSpan, [Block])] -> [Block] -> ([Block], [Diagnostic])
+namedNotes kind refs defs bs
   | null refs && null defs = (bs, [])
   | otherwise = (mapBlockInlines fill bs, refDiags <> unused)
   where
@@ -1530,7 +1564,7 @@ namedNotes refs defs bs
         [ case Map.lookup n bodies of
             Nothing -> [diagnostic "G02137" Error sp ("定義されていない注の名前です: " <> n)]
             Just _
-              | Map.lookup n firsts /= Just sp -> [diagnostic "G02139" Error sp ("一つの注の本文を二つ以上の [note] が指しています: " <> n)]
+              | Map.lookup n firsts /= Just sp -> [diagnostic "G02139" Error sp ("一つの注の本文を二つ以上の [" <> kindCommand kind <> "] が指しています: " <> n)]
               | otherwise -> []
         | (sp, n) <- refs
         ]
@@ -1538,9 +1572,17 @@ namedNotes refs defs bs
     names = Map.fromList refs
     fill = \case
       Note sp k []
-        | Just n <- Map.lookup sp names ->
+        | kind == FootKind,
+          Just n <- Map.lookup sp names ->
             case Map.lookup n bodies of
               Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Note sp k body]
+              _ -> []
+      -- an endnote written by name (root ADR 0412)
+      Endnote sp k []
+        | kind == EndKind,
+          Just n <- Map.lookup sp names ->
+            case Map.lookup n bodies of
+              Just body@(_ : _) | Map.lookup n firsts == Just sp -> [Endnote sp k body]
               _ -> []
       other -> [other]
 
@@ -1776,7 +1818,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 [] Map.empty Map.empty [] [] Map.empty
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
@@ -2641,6 +2683,21 @@ builtinWith ctx inHeading sp b args slots = do
             n <- gets ((+ 1) . stNote)
             modify' (\s -> s {stNote = n, stNoteRefs = stNoteRefs s <> [(sp, name)]})
             pure [Note sp n []]
+      (_, []) -> err "G02142" sp noteNameMessage >> pure []
+      _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
+    -- [endnote: body], or [endnote name] of the body of @endnote name (root ADR 0412)
+    Fixed BEndnote -> case (args, slots) of
+      ([], [_]) -> oneSlot $ \body -> do
+        n <- gets ((+ 1) . stEndnote)
+        modify' (\s -> s {stEndnote = n})
+        pure [Endnote sp n (noteBody sp body)]
+      (_ : _, _ : _) -> err "G02038" sp "endnote は名前を書くと散文スロットを取りません" >> pure []
+      ([A.Located _ (A.Positional v)], [])
+        | Just name <- nameArg v,
+          validLabel name -> do
+            n <- gets ((+ 1) . stEndnote)
+            modify' (\s -> s {stEndnote = n, stEndnoteRefs = stEndnoteRefs s <> [(sp, name)]})
+            pure [Endnote sp n []]
       (_, []) -> err "G02142" sp noteNameMessage >> pure []
       _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
     Fixed BSidenote -> oneSlot $ \body -> do

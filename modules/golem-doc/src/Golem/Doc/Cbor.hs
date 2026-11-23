@@ -175,6 +175,8 @@ inlineT rt = \case
   -- 12 and 13 are retired: the body is blocks (docs/adr/0263)
   Note s n bs -> tagged 23 [spanT s, int n, list blockT bs]
   Sidenote s n bs -> tagged 24 [spanT s, int n, list blockT bs]
+  -- an endnote (root ADR 0412)
+  Endnote s n bs -> tagged 26 [spanT s, int n, list blockT bs]
   IndexMark s (IndexEntry ts rs k) -> tagged 14 [spanT s, list text ts, list text rs, indexKindT k]
   -- 15 is retired: a citation is its items (docs/adr/0266)
   Cite s is -> tagged 25 [spanT s, list citeItemT is]
@@ -551,6 +553,8 @@ termInline rd t =
         -- 12 and 13 are retired (docs/adr/0263)
         (23, [n, x]) -> Note s <$> asIntI n <*> (asList x >>= traverse termBlock)
         (24, [n, x]) -> Sidenote s <$> asIntI n <*> (asList x >>= traverse termBlock)
+        -- an endnote (root ADR 0412)
+        (26, [n, x]) -> Endnote s <$> asIntI n <*> (asList x >>= traverse termBlock)
         (14, [ts, rs, k]) -> (\a b c -> IndexMark s (IndexEntry a b c)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText) <*> termIndexKind k
         -- 15 is retired (docs/adr/0266)
         (25, [x]) -> Cite s <$> (asList x >>= traverse (termCiteItem sub))

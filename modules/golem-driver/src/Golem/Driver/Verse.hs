@@ -32,6 +32,7 @@ numberVerseDocument style doc = doc {docBlocks = map block (docBlocks doc)}
     inline = \case
       Note sp n bs -> Note sp n (map block bs)
       Sidenote sp n bs -> Sidenote sp n (map block bs)
+      Endnote sp n bs -> Endnote sp n (map block bs)
       CharStyle sp n xs -> CharStyle sp n (map inline xs)
       Color sp n xs -> Color sp n (map inline xs)
       Kenten sp n xs -> Kenten sp n (map inline xs)
@@ -66,6 +67,7 @@ hasContent = \case
   Cite {} -> True
   Note {} -> True
   Sidenote {} -> True
+  Endnote {} -> True
   CharStyle _ _ xs -> any hasContent xs
   Color _ _ xs -> any hasContent xs
   Kenten _ _ xs -> any hasContent xs

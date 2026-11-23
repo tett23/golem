@@ -1,6 +1,6 @@
 # ADR 0412: 章末の注を、脚注と別のチャネルにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

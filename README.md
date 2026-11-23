@@ -223,6 +223,7 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参照していると、PDF を書かずに G08107 を出す（[Golem ADR 0357](docs/adr/0357-validate-embedded-cff.md)）。
 参照を確かめきれない字は G08108、FreeType が寸法を読めない字は G08109 とし、どちらも PDF を書かない（[Golem ADR 0390](docs/adr/0390-deterministic-and-exhaustive-cff-random.md)）。
+字を別の二つのグリフで合成する形（seac）の字は、部品のグリフの輪郭も確かめ、seac の誤りは G08114 から G08117 として PDF を書かない（[root ADR 0420](docs/adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 可変フォントは、役割の `instance` に名前付きインスタンスの名前を、`axes` に軸の座標（`{ wght = 650 }` など）を書けば、その座標で組み、PDF にはその座標に固定したフォントを埋め込む（[Golem ADR 0358](docs/adr/0358-font-instance-selection.md)）。
 フォントにない名前、フォントにない軸、範囲の外の値は、PDF を書かずに G08110、G08111、G08112 を出す。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
@@ -345,6 +346,8 @@ PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight
 脚注の印、区切りの領域と脚注本文の一行が空の段にも収まらなければ、PDF のビルドは [G07125](./docs/diagnostics.md#g07125) で止まる。
 PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落スタイルで、章末の注の一覧の見出しは `heading-style` の段落スタイルで組める（[ADR 0366](./docs/adr/0366-note-body-styles.md)）。
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
+`[note]` と別に、どの出力でも章の終わりの一覧に出す注 `[endnote: 本文]` を書ける（[root ADR 0412](docs/adr/0412-a-separate-channel-for-endnotes.md)）。
+番号と印は `[endnotes]` で決め、一覧は見出し「後注」で、章に脚注の一覧があればその後に置く。
 
 注の番号をページごとに振る場合、HTML、EPUB、テキストは警告して本の通し番号で生成する。
 PDF の章末注一覧で番号が重なる場合も警告し、PDF のページ別番号を保つ（[root ADR 0402](docs/adr/0402-define-page-local-note-fallback-diagnostics.md)）。
@@ -557,12 +560,12 @@ TASTY_NO_CREATE=true cabal test all
 ```
 
 出力を意図して変えたときは、パッケージを指定して `--accept` を付け、ゴールデンを書き直す。
-`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、`golem-driver-test`、`golem-fmt-test`、`golem-font-test`、`golem-layout-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
+`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、golem-driver の `golem-driver-pdf-test`、`golem-driver-page-test`、`golem-driver-output-test`、`golem-driver-cli-test`、`golem-fmt-test`、`golem-font-test`、`golem-layout-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
 golem-driver と golem-font はほかのスイートも持ち、そちらは `--accept` を拒むので、スイートの名前まで指定する。
 書き直したファイルの差分を読み、意図した変更だけであることを確かめてからコミットする。
 
 ```bash
-cabal test golem-driver:golem-driver-test --test-options=--accept
+cabal test golem-driver:golem-driver-output-test --test-options=--accept
 ```
 
 #### 見た目の回帰テスト
@@ -831,15 +834,18 @@ x86-64 では、さらに次のことを行う。
   プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。
 
 ジョブは、アーキテクチャごとに複数のランナーに分かれる（[docs/adr/0140](./docs/adr/0140-ci-split-test-runners-and-visual-pdfs-first.md)、[docs/adr/0155](./docs/adr/0155-split-aarch64-test-runner.md)）。
-x86-64 では同じコミットを五つのランナーでビルドする。
-`tests-driver` が golem-driver のテストのスイートを、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ。
+x86-64 では同じコミットを六つのランナーでビルドする。
+`tests-driver-a` と `tests-driver-b` が golem-driver のテストのスイートを二つに分けて、`tests-rest` がそのほかのスイートを（振り分けは `scripts/ci/test-suites.sh` が `.cabal` から決める）受け持つ（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+`tests-driver-a` は golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test を、`tests-driver-b` は golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test を走らせる。
 `outputs` は、ほかのジョブが待つ成果物（`editors-lsp` の golem、見た目の回帰テストの PDF（`visual` を待たせないよう最初に組む）、`wasm` と比べるネイティブの一覧、`verapdf` の PDF）を作る。
 `outputs-checks` は、そのほかの出力の手順（epubcheck、決定性の検査の出力、マニュアル）を、`env` は環境を変える検査を受け持つ（[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
-aarch64 では三つのランナーでビルドし、x86-64 と同じく `tests-driver` と `tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
+aarch64 では四つのランナーでビルドし、x86-64 と同じく `tests-driver-a`、`tests-driver-b`、`tests-rest` がテストのスイートを、`outputs` が決定性の検査の出力を受け持つ。
 
 ランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
-`dist-newstyle` を保存する `tests-driver` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
-`tests-rest` は自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
+`tests-rest` は、`peg-hs` と、テストのスイートが組まない `golem` のほかの、ネイティブで組める実行ファイルも組む。
+`dist-newstyle` を保存するジョブ `cache-dist` は、保存するキャッシュがすべてを含むよう `cabal build all` で組む。
+`ci` は `cache-dist` を待たないので、`cabal build all` はプルリクエストの CI の時間に入らない（[docs/adr/0416](./docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
 ビルドの計画を読む検査（`scripts/ci/test-only-deps.sh` と `scripts/ci/doc-deps.sh`）がどのランナーでもすべての部品を見るよう、計画を `cabal build all` のものに作り直し、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 
 テストの道具は、ビルドと並べて入れる。
@@ -851,7 +857,7 @@ zip は版と SHA-256 をキーにキャッシュする（[docs/adr/0062](./docs
 `env` は日本語のロケールを作り、マニュアルのフォントをキャッシュか `scripts/manual/fetch-fonts.sh` で取る。
 cabal は `PATH` をすべてのパッケージの設定に含めるので、`cabal build` より前に `PATH` を変えるのは、どのランナーでも同じディレクトリを足す GHC の手順だけとし、epubcheck は `cabal build` の後で `PATH` に足す（[docs/adr/0097](./docs/adr/0097-ci-same-path-before-build-and-env-check-runner.md)）。
 
-`dist-newstyle` は、`main` への push とプルリクエストで GHC がモジュールをコンパイルしたときに、アーキテクチャごとに一つのランナー（どちらのアーキテクチャでも `tests-driver`）が保存する。
+`dist-newstyle` は、`main` への push とプルリクエストで GHC がモジュールをコンパイルしたときに、アーキテクチャごとに一つ動くジョブ `cache-dist` が保存する。
 プルリクエストのキーは、`main` の族の後に `pr-<番号>-` とコミットのハッシュを続けたもので、`main` のキー（族の後にコミットのハッシュ）と前の部分で区別できる。
 プルリクエストの次の push は、自分の最新の `dist-newstyle` を戻し、それが無ければ `main` の最新を戻す（[docs/adr/0045](./docs/adr/0045-split-x86-build-and-pull-request-cache.md)、[docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 プルリクエストのキャッシュは、ワークフロー `pr-caches.yml` が消す（[docs/adr/0228](./docs/adr/0228-keep-the-ci-caches-under-the-10-gb-limit.md) の I1 を [docs/adr/0395](./docs/adr/0395-bring-the-pull-request-ci-under-five-minutes.md) が置き換えた）。

@@ -59,7 +59,7 @@ structureTree fe units figureAttrs tocNumber =
     isEndNote u = any (\case Frame _ FEndNote {} _ -> True; Frame _ (FEndNoteMore _) _ -> True; _ -> False) (uFrames u)
     -- the units of the notes at the end of chapters by their spans, in order: each note its first paragraph and the others (docs/adr/0263)
     endNotes = Map.map groupNotes (Map.fromListWith (flip (<>)) [(sp, [(isFirst, (i, u))]) | (i, u) <- units, (sp, isFirst) <- endNoteOf u])
-    endNoteOf u = [(sp, True) | Frame _ (FEndNote sp _ _) _ <- uFrames u] <> [(sp, False) | Frame _ (FEndNoteMore sp) _ <- uFrames u]
+    endNoteOf u = [(sp, True) | Frame _ (FEndNote _ sp _ _) _ <- uFrames u] <> [(sp, False) | Frame _ (FEndNoteMore sp) _ <- uFrames u]
     groupNotes = \case
       [] -> []
       (_, x) : rest -> let (more, others) = break fst rest in (x : map snd more) : groupNotes others
@@ -74,6 +74,8 @@ structureTree fe units figureAttrs tocNumber =
       NodeElem role ns -> P.KidElem (P.structElem (roleType role) [toKid (site, m) | m <- ns])
       NodeNote sp k num nbody -> P.KidElem (noteElem sp k num nbody)
       NodeSidenote sp num snBody -> P.KidElem (sidenoteElem sp num (concat snBody))
+      -- an endnote: its paragraphs in the list at the end of the chapter (root ADR 0412)
+      NodeEndnote sp k -> P.KidElem (listedNote sp k)
       -- a link: its text, then the annotations of its lines (docs/adr ADR 0183)
       NodeLink t xs ns -> P.KidElem (linkElem site t xs [toKid (site, m) | m <- ns] ns)
     linkElem site t xs kids ns =
@@ -107,9 +109,7 @@ structureTree fe units figureAttrs tocNumber =
     -- the mark (Lbl), the first paragraph (P) and a P for each other paragraph (docs/adr/0263)
     withMore el more = el {P.seKids = P.seKids el <> [P.KidElem (P.structElem P.SP kids) | kids <- more]}
     noteElem sp k num nbody
-      | atEnd = case drop k (Map.findWithDefault [] sp endNotes) of
-          ((j, u) : more) : _ -> withMore (noteFrom (content (unitEnv fe u) (unitSite j) (uInlines u))) [content (unitEnv fe mu) (unitSite mj) (uInlines mu) | (mj, mu) <- more]
-          _ -> P.structElem P.SNote []
+      | atEnd = listedNote sp k
       | otherwise =
           let key = NoteId sp k
               st = piStyle inp
@@ -118,6 +118,10 @@ structureTree fe units figureAttrs tocNumber =
            in case nbody of
                 first : more -> withMore (noteFrom (content env {ceLabelInlines = noteMarkCount st vertical (noteIdSpan key) num, ceLabelLink = Just (LinkTo (DestNoteMark key))} (noteSite key) (withNoteMark st vertical (noteIdSpan key) num first))) [content env {ceLabelInlines = 0} (noteParagraphSite key j) para | (j, para) <- zip [1 ..] more]
                 [] -> P.structElem P.SNote []
+    -- a note whose paragraphs are units of a list at the end of a chapter
+    listedNote sp k = case drop k (Map.findWithDefault [] sp endNotes) of
+      ((j, u) : more) : _ -> withMore (noteFrom (content (unitEnv fe u) (unitSite j) (uInlines u))) [content (unitEnv fe mu) (unitSite mj) (uInlines mu) | (mj, mu) <- more]
+      _ -> P.structElem P.SNote []
     sidenoteElem sp num snBody =
       let st = styleOfSpan sp
           prefix = sidenotePrefix fe sp num

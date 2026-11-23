@@ -1626,36 +1626,36 @@ if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' 
 # ---------------------------------------------------------------- ci.yml and the parts of build
 # (docs/adr/0045-split-x86-build-and-pull-request-cache.md)
 
-# x86-64 builds four times: two runners for the tests (the suites of
-# golem-driver, and the rest), one for the outputs, one for the environment
-# check; aarch64 builds twice, for the tests and for the outputs. One runner
-# of each architecture saves dist-newstyle (docs/adr/0045, docs/adr/0097,
-# docs/adr/0140)
-# the runner, part, tests, outputs, artifacts, env, suites, build and save
-# of each row of the matrix; save is the last key of a row
+# x86-64 builds six times: three runners for the tests (the suites of
+# golem-driver in two, and the rest), one for the outputs, one for the
+# artifacts, one for the environment check; aarch64 builds four times, for
+# the tests in three and for the outputs. No runner of build saves
+# dist-newstyle: cache-dist does (docs/adr/0045, docs/adr/0097,
+# docs/adr/0140, root ADR 0416)
+# the runner, part, tests, outputs, artifacts, env, suites and build of
+# each row of the matrix; build is the last key of a row
 matrix_rows() {
   awk '/^        include:/ { on = 1; next }
     on && /^    [a-z]/ { on = 0 }
-    on && /- runner:/ { r = $3; a = "-"; b = "-" } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
+    on && /- runner:/ { r = $3; a = "-" } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
     on && /outputs:/ { o = $2 } on && /artifacts:/ { a = $2 } on && /env:/ { e = $2 } on && /suites:/ { u = $2 }
-    on && /build:/ { b = $2 } on && /save:/ { print r, p, t, o, a, e, u, b, $2 }' "$1"
+    on && /build:/ { print r, p, t, o, a, e, u, $2 }' "$1"
 }
 # the x86-64 outputs are split in two runners: outputs makes the artifacts
-# that other jobs wait for, outputs-checks the rest (docs/adr/0395)
-if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver true false false false driver all true
-ubuntu-24.04 tests-rest true false false false rest rest false
-ubuntu-24.04 outputs false false true false none golem false
-ubuntu-24.04 outputs-checks false true false false none golem false
-ubuntu-24.04 env false false false true none golem false
-ubuntu-24.04-arm tests-driver true false false false driver all true
-ubuntu-24.04-arm tests-rest true false false false rest rest false
-ubuntu-24.04-arm outputs false true false false none golem false" ]; then ok; else ng "ci.yml: the matrix of build has two runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395)"; fi
-# one runner of each architecture saves dist-newstyle (docs/adr/0045,
-# docs/adr/0140, docs/adr/0155)
-if [ "$(matrix_rows "$CI_YML" | awk '$9 == "true" { print $1 }' | sort | uniq -c | awk '{ print $1 }' | sort -u)" = 1 ] &&
-  [ "$(matrix_rows "$CI_YML" | awk '$9 == "true"' | wc -l | tr -d ' ')" = 2 ]; then ok; else
-  ng "ci.yml: one runner of each architecture has save: true"
-fi
+# that other jobs wait for, outputs-checks the rest (docs/adr/0395); the
+# tests of golem-driver are split in two runners (root ADR 0416)
+if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests-driver-a true false false false driver-a driver-a
+ubuntu-24.04 tests-driver-b true false false false driver-b driver-b
+ubuntu-24.04 tests-rest true false false false rest rest
+ubuntu-24.04 outputs false false true false none golem
+ubuntu-24.04 outputs-checks false true false false none golem
+ubuntu-24.04 env false false false true none golem
+ubuntu-24.04-arm tests-driver-a true false false false driver-a driver-a
+ubuntu-24.04-arm tests-driver-b true false false false driver-b driver-b
+ubuntu-24.04-arm tests-rest true false false false rest rest
+ubuntu-24.04-arm outputs false true false false none golem" ]; then ok; else ng "ci.yml: the matrix of build has three runners of the tests on each architecture, the outputs of both in two runners on x86-64, and the environment check of x86-64 (docs/adr/0155, docs/adr/0395, root ADR 0416)"; fi
+# no runner of build has save (root ADR 0416)
+if awk '$0 == "  build:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML" | grep -q '^            save:'; then ng "ci.yml: no row of the matrix of build has save (root ADR 0416)"; else ok; fi
 # the step that starts at a line that matches $1 has a line that matches $2
 step_has() {
   awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
@@ -1669,14 +1669,14 @@ if step_has "$TEST_STEP" 'cabal test $(sh scripts/ci/test-suites.sh "$SUITES")' 
 fi
 if [ "$(grep -cE '^ +(- run: )?cabal test ' "$CI_YML")" = 1 ]; then ok; else ng "ci.yml: one step runs cabal test"; fi
 # the generated parser is checked where the suites of golem-parser run
-if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites != 'driver'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of the tests but tests-driver"; fi
+if step_if "name: Generated parser matches the grammar" "if: matrix.tests && matrix.suites == 'rest'"; then ok; else ng "ci.yml: the generated parser is checked on the runners of tests-rest, which build peg-hs"; fi
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
 # the generated modules of golem-driver are checked in the same way, right
 # after the parser (docs/adr/0203)
 EMBEDDED_STEP="name: Generated modules match VERSION and docs/diagnostics.md"
-if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites != 'driver'" &&
+if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest'" &&
   step_has "$EMBEDDED_STEP" "sh scripts/gen-embedded.sh" &&
   step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs" &&
   [ "$(awk '/^      - name: / { print }' "$CI_YML" | grep -A1 -F "name: Generated parser matches the grammar" | sed -n 2p)" = "      - $EMBEDDED_STEP" ]; then ok; else
@@ -1873,8 +1873,9 @@ if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?visual([],].*)?$'; then ok; e
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi
 # a push to main saves dist-newstyle only when GHC compiled a module
 # (docs/adr/0228, I2); a pull request saves it in the same way, under a key
-# of its own (docs/adr/0395, which replaced I1 of docs/adr/0228)
-if step_if "name: Save dist-newstyle (docs/adr/0009" "if: success() && matrix.save && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from the runner that saves, when GHC compiled (docs/adr/0140, docs/adr/0228, I2)"; fi
+# of its own (docs/adr/0395, which replaced I1 of docs/adr/0228); cache-dist
+# saves it (root ADR 0416)
+if step_if "name: Save dist-newstyle (docs/adr/0009" "if: success() && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))"; then ok; else ng "ci.yml: a push to main saves dist-newstyle from cache-dist, when GHC compiled (docs/adr/0140, docs/adr/0228, I2, root ADR 0416)"; fi
 if grep -n 'Save dist-newstyle' -A 1 "$CI_YML" | grep -q 'matrix.tests'; then ng "ci.yml: the saves of dist-newstyle do not depend on matrix.tests"; else ok; fi
 
 # ---------------------------------------------------------------- ci.yml and verapdf
@@ -1956,7 +1957,7 @@ if [ -n "$SAVES" ] && ! printf '%s\n' "$SAVES" | grep -vF "github.ref == 'refs/h
 fi
 # each job that fetches restores the archives of its own key, without
 # restore-keys, and saves them on main
-for jk in "ci.yml build downloads-build-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/fetch-wasmtime.sh') }}" \
+for jk in "ci.yml cache-dist downloads-build-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/fetch-wasmtime.sh') }}" \
   "ci.yml format downloads-format-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/ci/fetch-hlint.sh') }}" \
   "ci.yml visual downloads-visual-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('scripts/visual/fetch-shem.sh') }}" \
   "ci.yml editors downloads-editors-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('tools/editors/helix/test.sh') }}" \
@@ -1973,16 +1974,14 @@ for jk in "ci.yml build downloads-build-\${{ runner.os }}-\${{ runner.arch }}-\$
   fi
 done
 if grep -q 'restore-keys: downloads-' "$WORKFLOWS"/*.yml; then ng "workflows: the archives have no restore-keys (docs/adr/0243)"; else ok; fi
-# the archives of build are restored before the wasmtime C API, and saved
-# by the runner that saves, on a push to main
+# the archives of build are restored before the wasmtime C API; cache-dist,
+# which restores them by the same key, saves them on a push to main, and no
+# runner of build saves them (root ADR 0416)
 BJ=$(job_lines build)
 DL_AT=$(printf '%s\n' "$BJ" | grep -n 'key: downloads-build-' | head -1 | cut -d: -f1)
 WT_AT=$(printf '%s\n' "$BJ" | grep -n 'name: wasmtime C API' | head -1 | cut -d: -f1)
 if [ -n "$DL_AT" ] && [ -n "$WT_AT" ] && [ "$DL_AT" -lt "$WT_AT" ]; then ok; else ng "ci.yml: build restores the archives before the wasmtime C API (docs/adr/0243)"; fi
-if printf '%s\n' "$BJ" | grep -B2 -A3 'uses: actions/cache/save@' | grep -A5 -F 'third_party/downloads' >/dev/null &&
-  printf '%s\n' "$BJ" | awk '/^      - /{ s = "" } { s = s $0 "\n" } /path: third_party\/downloads/ && s ~ /cache\/save/ { print s }' | grep -qF 'matrix.save'; then ok; else
-  ng "ci.yml: the runner of build that saves saves the archives (docs/adr/0243)"
-fi
+if printf '%s\n' "$BJ" | grep -qF 'uses: actions/cache/save@'; then ng "ci.yml: no runner of build saves a cache (root ADR 0416)"; else ok; fi
 # the steps that fetch have a timeout-minutes, and no timeout of 300
 # seconds around them
 for f in scripts/fetch-wasmtime.sh scripts/ci/fetch-hlint.sh scripts/visual/fetch-shem.sh tools/editors/fetch-nvim.sh tools/editors/helix/test.sh scripts/fetch-wasm-packages.sh; do
@@ -2353,8 +2352,9 @@ echo 'not json' >"$WORK/in"
 run gate
 expect "gate: not JSON" 1
 
-# the jobs of ci.yml, but ci itself and caches, which ci does not need
-# (docs/adr/0228), are the jobs that gate.sh knows
+# the jobs of ci.yml, but ci itself, and caches and cache-dist, which ci
+# does not need (docs/adr/0228, root ADR 0416), are the jobs that gate.sh
+# knows
 ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
   awk '/^jobs:/ { on = 1; next } on && /^[^ #]/ { on = 0 } on && /^  [a-z][a-z0-9-]*:$/ { sub(/^  /, ""); sub(/:$/, ""); print }' "$1"
 }
@@ -2362,7 +2362,7 @@ ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
 names_match() {
   : >"$WORK/in"
   run sh "$1" --names
-  [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx -e ci -e caches | sort)" ]
+  [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx -e ci -e caches -e cache-dist | sort)" ]
 }
 if names_match "$HERE/gate.sh"; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
 # the same comparison finds a job missing from the names, in a copy of
@@ -2402,8 +2402,8 @@ case "$CACHES_IF" in
   *"github.event_name == 'push' && github.ref == 'refs/heads/main'"*) ok ;;
   *) ng "ci.yml: caches runs on pushes to main only (docs/adr/0228)" ;;
 esac
-if job_lines caches | grep -Eq '^    needs: \[(.*[ ,])?build([],].*)?$' &&
-  job_lines caches | grep -Eq '^    needs: \[(.*[ ,])?wasm([],].*)?$'; then ok; else ng "ci.yml: caches needs build and wasm (docs/adr/0228)"; fi
+if job_lines caches | grep -Eq '^    needs: \[(.*[ ,])?cache-dist([],].*)?$' &&
+  job_lines caches | grep -Eq '^    needs: \[(.*[ ,])?wasm([],].*)?$'; then ok; else ng "ci.yml: caches needs cache-dist and wasm, which save the dist- caches (docs/adr/0228, root ADR 0416)"; fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?caches([],].*)?$'; then ng "ci.yml: ci does not need caches (docs/adr/0228)"; else ok; fi
 if [ "$(job_lines caches | grep -E '^ +(- )?uses: ' | grep -vE '^ +(- )?uses: actions/checkout@')" = "" ] &&
   job_lines caches | grep -qE '^ +(- )?uses: actions/checkout@'; then ok; else ng "ci.yml: caches uses no action but actions/checkout (docs/adr/0228)"; fi
@@ -3364,7 +3364,7 @@ if grep -qF 'GH_TOKEN: ${{ github.token }}' "$ADV_YML" && grep -qx '        run:
 test_suites() { sh "$HERE/test-suites.sh" "$@"; }
 TS=$WORK/test-suites
 mkdir -p "$TS/golem-driver" "$TS/golem-pdf" "$TS/golem-plain" "$TS/other-dir"
-printf 'cabal-version: 3.0\nname:          golem-driver\n\nlibrary\n  exposed-modules: A\n\ntest-suite golem-driver-test\n  type: exitcode-stdio-1.0\n\ntest-suite golem-driver-parallel-test\n  type: exitcode-stdio-1.0\n' >"$TS/golem-driver/golem-driver.cabal"
+printf 'cabal-version: 3.0\nname:          golem-driver\n\nlibrary\n  exposed-modules: A\n\ntest-suite golem-driver-test\n  type: exitcode-stdio-1.0\n\ntest-suite golem-driver-parallel-test\n  type: exitcode-stdio-1.0\n\ntest-suite golem-driver-pdf-test\n  type: exitcode-stdio-1.0\n' >"$TS/golem-driver/golem-driver.cabal"
 printf 'cabal-version: 3.0\nname: golem-pdf\n\nlibrary\n\nTest-Suite   golem-pdf-test\n  type: exitcode-stdio-1.0\n' >"$TS/golem-pdf/golem-pdf.cabal"
 printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n' >"$TS/golem-plain/golem-plain.cabal"
 # the name of the package, not of its directory
@@ -3372,6 +3372,12 @@ printf 'cabal-version: 3.0\nname: golem-renamed\n\ntest-suite renamed-test\n  ty
 : >"$WORK/in"
 run test_suites driver "$TS"
 expect "test-suites: driver has the suites of golem-driver" 0 "golem-driver:test:golem-driver-test
+golem-driver:test:golem-driver-parallel-test
+golem-driver:test:golem-driver-pdf-test"
+run test_suites driver-a "$TS"
+expect "root ADR 0416 I2: test-suites: driver-a has the suites of golem-driver of DRIVER_A" 0 "golem-driver:test:golem-driver-pdf-test"
+run test_suites driver-b "$TS"
+expect "root ADR 0416 I2: test-suites: driver-b has the other suites of golem-driver" 0 "golem-driver:test:golem-driver-test
 golem-driver:test:golem-driver-parallel-test"
 run test_suites rest "$TS"
 expect "test-suites: rest has every other suite, by the name of its package" 0 "golem-pdf:test:golem-pdf-test
@@ -3397,6 +3403,14 @@ if [ -s "$WORK/ts-driver" ] && [ -s "$WORK/ts-rest" ] &&
   [ "$(cat "$WORK/ts-driver" "$WORK/ts-rest" | LC_ALL=C sort)" = "$(cat "$WORK/ts-every")" ] &&
   ! grep -qv '^golem-driver:' "$WORK/ts-driver"; then ok; else
   ng "test-suites: driver and rest of modules/ split every test suite in two"
+fi
+# driver-a and driver-b split driver in two (root ADR 0416 I2)
+test_suites driver-a >"$WORK/ts-driver-a" 2>>"$WORK/err" || true
+test_suites driver-b >"$WORK/ts-driver-b" 2>>"$WORK/err" || true
+if [ -s "$WORK/ts-driver-a" ] && [ -s "$WORK/ts-driver-b" ] &&
+  [ "$(cat "$WORK/ts-driver-a" "$WORK/ts-driver-b" | LC_ALL=C sort)" = "$(LC_ALL=C sort "$WORK/ts-driver")" ] &&
+  [ -z "$(LC_ALL=C sort "$WORK/ts-driver-a" "$WORK/ts-driver-b" | uniq -d)" ]; then ok; else
+  ng "root ADR 0416 I2: test-suites: driver-a and driver-b of modules/ split driver in two"
 fi
 # (docs/adr/0293 A1, root ADR 0415 I1): wasm is every suite of the golem
 # packages that the packages: of cabal.project.wasm, next to MODULES,
@@ -3482,12 +3496,13 @@ run run_all -t x "$RA/two.sh"
 expect "run-all: -t of a word" 2
 
 # ---------------------------------------------------------------- golem-driver's suites and threads
-# (docs/adr/0146-threaded-golem-driver-test.md)
+# (docs/adr/0146-threaded-golem-driver-test.md, root ADR 0416)
 # The options are under if !arch(wasm32), indented (docs/adr/0293)
 
 # stanza NAME: the lines of the test-suite NAME of golem-driver.cabal
+# (common NAME for a common stanza)
 DRIVER_CABAL=$HERE/../../modules/golem-driver/golem-driver.cabal
-stanza() { awk -v n="test-suite $1" '$0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
+stanza() { awk -v n="$1" 'n !~ / / { n = "test-suite " n } $0 == n { on = 1; next } on && /^[^ \t-]/ { on = 0 } on' "$DRIVER_CABAL"; }
 # modules NAME: the other-modules of the test-suite NAME, one per line, those
 # under a condition too (the flag plugins, docs/adr ADR 0300)
 modules_of() {
@@ -3496,32 +3511,41 @@ modules_of() {
     on && /^ +([a-z-]+:|if |else)/ { on = 0 }
     on { print $1 }'
 }
-if stanza golem-driver-test | grep -Eq '^ +ghc-options: .*-threaded' && stanza golem-driver-test | grep -qF '"-with-rtsopts=-N"'; then ok; else
-  ng "golem-driver.cabal: golem-driver-test is built -threaded with -N"
+# main_of NAME: the module of main-is of the test-suite NAME
+main_of() { stanza "$1" | sed -n 's/^ *main-is: *\([A-Za-z]*\)\.hs$/\1/p'; }
+# the four suites that golem-driver-test was split into (root ADR 0416)
+THREADED="golem-driver-pdf-test golem-driver-page-test golem-driver-output-test golem-driver-cli-test"
+if stanza "common driver-suite" | grep -Eq '^ +ghc-options: .*-threaded' && stanza "common driver-suite" | grep -qF '"-with-rtsopts=-N"'; then ok; else
+  ng "golem-driver.cabal: the common stanza driver-suite is built -threaded with -N"
 fi
+for s in $THREADED; do
+  if stanza "$s" | grep -qx '  import: *driver-suite' && [ -n "$(main_of "$s")" ]; then ok; else
+    ng "golem-driver.cabal: $s imports driver-suite and has a main-is (root ADR 0416)"
+  fi
+done
 if [ -n "$(stanza golem-driver-global-test)" ] && ! stanza golem-driver-global-test | grep -q -- '-threaded'; then ok; else
   ng "golem-driver.cabal: golem-driver-global-test is a suite without -threaded"
 fi
-if ! modules_of golem-driver-test | grep -Eqx 'PluginsSpec|LocaleSpec' &&
+if ! for s in $THREADED; do modules_of "$s"; done | grep -Eqx 'PluginsSpec|LocaleSpec' &&
   modules_of golem-driver-global-test | grep -qx PluginsSpec && modules_of golem-driver-global-test | grep -qx LocaleSpec; then ok; else
-  ng "golem-driver.cabal: PluginsSpec and LocaleSpec are in golem-driver-global-test, not in golem-driver-test"
+  ng "golem-driver.cabal: PluginsSpec and LocaleSpec are in golem-driver-global-test, not in the threaded suites"
 fi
-# the threaded suite changes no state of the process: tasty runs its tests
-# at the same time, and the others would read the state half changed
-GLOBAL_STATE=$(for m in $(modules_of golem-driver-test) Main; do
+# the threaded suites change no state of the process: tasty runs their
+# tests at the same time, and the others would read the state half changed
+GLOBAL_STATE=$(for s in $THREADED; do for m in $(modules_of "$s") $(main_of "$s"); do
   grep -lwE 'withEnv|setEnv|unsetEnv|setLocaleEncoding|setCurrentDirectory|withCurrentDirectory' "$HERE/../../modules/golem-driver/test/$m.hs" 2>/dev/null
-done)
-if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$GLOBAL_STATE" ]; then ok; else
-  ng "golem-driver-test: no test changes the state of the process ($GLOBAL_STATE)"
+done; done)
+if [ -n "$(modules_of golem-driver-pdf-test)" ] && [ -z "$GLOBAL_STATE" ]; then ok; else
+  ng "golem-driver: no test of the threaded suites changes the state of the process ($GLOBAL_STATE)"
 fi
 # the time-out of the tests is hangTimeout of Support.hs, in one place
 # (docs/adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)
-OWN_TIMEOUT=$(for m in $(modules_of golem-driver-test) Main; do
+OWN_TIMEOUT=$(for s in $THREADED; do for m in $(modules_of "$s") $(main_of "$s"); do
   [ "$m" = Support ] || grep -lw 'mkTimeout' "$HERE/../../modules/golem-driver/test/$m.hs" 2>/dev/null
-done)
-if [ -n "$(modules_of golem-driver-test)" ] && [ -z "$OWN_TIMEOUT" ] &&
+done; done)
+if [ -n "$(modules_of golem-driver-pdf-test)" ] && [ -z "$OWN_TIMEOUT" ] &&
   grep -qw 'hangTimeout' "$HERE/../../modules/golem-driver/test/Support.hs"; then ok; else
-  ng "golem-driver-test: no module but Support.hs has mkTimeout, and Support.hs has hangTimeout ($OWN_TIMEOUT)"
+  ng "golem-driver: no module of the threaded suites but Support.hs has mkTimeout, and Support.hs has hangTimeout ($OWN_TIMEOUT)"
 fi
 
 # ---------------------------------------------------------------- test-only-deps.sh
@@ -4749,13 +4773,15 @@ cp_files() {
 
 # needs read from the ci.yml of now are those of the ADR: changes,
 # scripts-linux and editors wait for no job; ci waits for all but caches
+# and cache-dist (root ADR 0416)
 cp_norm() {
   while read -r job deps; do
     printf '%s %s\n' "$job" "$(printf '%s\n' $deps | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
   done | sed 's/ $//' | LC_ALL=C sort
 }
 CP_NEEDS='build: changes
-caches: build changes wasm
+cache-dist: changes
+caches: build cache-dist changes wasm
 changes:
 ci: build changes determinism editors editors-lsp format plugins release-scripts scripts-linux scripts-macos verapdf visual wasm
 determinism: build
@@ -4772,9 +4798,10 @@ wasm: changes'
 run cpath --needs
 if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: the needs read from .github/workflows/ci.yml are those of the ADR"; printf '  got: %s\n' "$(cp_norm <"$WORK/out")"; fi
 # the three forms of needs (a word, a list in brackets, the lines of a list),
-# quoted or not, with a comment after them
+# quoted or not, with a comment after them, in the ci.yml of 2026-11-18,
+# before cache-dist (root ADR 0416)
 run cpath --workflow "$CPD/ci.yml" --needs
-if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$CP_NEEDS" ]; then ok; else ng "ADR 0392 I1: needs is read in each of its three forms"; fi
+if [ "$CODE" = 0 ] && [ "$(cp_norm <"$WORK/out")" = "$(printf '%s\n' "$CP_NEEDS" | grep -vx 'cache-dist: changes' | sed 's/^caches: build cache-dist changes wasm$/caches: build changes wasm/')" ]; then ok; else ng "ADR 0392 I1: needs is read in each of its three forms"; fi
 
 # a run of jobs that wait for no job takes the seconds of ci
 cp_run "$CP/flat.json" "$(cp_job changes 50)" "$(cp_job editors 70)" "$(cp_job ci 7)"
@@ -4915,7 +4942,8 @@ expect "pr-caches: a number of a pull request that is not a number" 2
 # I4: a pull request saves its dist-newstyle under the family of main with
 # pr-NUMBER- after it; the key of main has the commit hash there, which
 # never starts with pr-
-ci_step() { awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML"; }
+# (the first such step: build and cache-dist share the steps before cabal build)
+ci_step() { awk -v s="$1" '!done && index($0, s) { on = 1; print; next } on && /^      - / { on = 0; done = 1 } on' "$CI_YML"; }
 I4_FAMILY="dist-\${{ runner.os }}-\${{ runner.arch }}-ghc-\${{ env.GHC_VERSION }}-\${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-\${{ hashFiles('scripts/fetch-wasmtime.sh') }}-"
 I4_PR="\${{ github.event_name == 'pull_request' && format('pr-{0}-', github.event.pull_request.number) || '' }}"
 I4_SAVE=$(ci_step "name: Save dist-newstyle (docs/adr/0009" | sed -n 's/^          key: //p')
@@ -4923,7 +4951,7 @@ if [ "$I4_SAVE" = "$I4_FAMILY$I4_PR\${{ github.sha }}" ]; then ok; else
   ng "ADR 0395 I4: the key that saves dist-newstyle is the family of main, pr-NUMBER- on a pull request, and the commit"
   printf '  got: %s\n' "$I4_SAVE"
 fi
-if ci_step "name: Save dist-newstyle (docs/adr/0009" | grep -qxF "        if: success() && matrix.save && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))"; then ok; else
+if ci_step "name: Save dist-newstyle (docs/adr/0009" | grep -qxF "        if: success() && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))"; then ok; else
   ng "ADR 0395 I4: a pull request saves dist-newstyle as a push to main does, when GHC compiled"
 fi
 # the next push of the pull request restores its own newest, and then the
@@ -4970,27 +4998,36 @@ done
 # build-targets.sh: the targets of cabal build of each runner of build
 bt() { sh "$HERE/build-targets.sh" "$@"; }
 : >"$WORK/in"
+# an executable beside golem, which only all built before root ADR 0416
+printf 'cabal-version: 3.0\nname: golem-plain\n\nlibrary\n\nexecutable plain-tool\n  main-is: M.hs\n\nexecutable wasm-only\n  main-is: W.hs\n  if !arch(wasm32)\n    buildable: False\n\nExecutable golem\n  main-is: G.hs\n' >"$TS/golem-plain/golem-plain.cabal"
 run bt all "$TS"
 expect "build-targets: all builds everything and peg-hs" 0 "all
 peg-cli:exe:peg-hs"
 run bt rest "$TS"
-expect "build-targets: rest builds the suites of rest and peg-hs" 0 "$(test_suites rest "$TS")
-peg-cli:exe:peg-hs"
+expect "build-targets: rest builds the suites of rest, peg-hs and the executables but golem and those not buildable (root ADR 0416)" 0 "$(test_suites rest "$TS")
+peg-cli:exe:peg-hs
+golem-plain:exe:plain-tool"
+run bt driver-a "$TS"
+expect "root ADR 0416 I2: build-targets: driver-a builds the suites of driver-a" 0 "$(test_suites driver-a "$TS")"
+run bt driver-b "$TS"
+expect "root ADR 0416 I2: build-targets: driver-b builds the suites of driver-b" 0 "$(test_suites driver-b "$TS")"
 run bt golem "$TS"
 expect "build-targets: golem builds the executable golem alone" 0 "golem-cli:exe:golem"
 run bt driver "$TS"
 expect "build-targets: an unknown part" 2
 # the runners of the outputs and the environment check build golem; the
-# runner that saves dist-newstyle builds everything, so that the cache has
-# it all; tests-rest builds the suites it runs (docs/adr/0395)
-if [ "$(matrix_rows "$CI_YML" | awk '{ print $1, $2, $8, $9 }')" = "ubuntu-24.04 tests-driver all true
-ubuntu-24.04 tests-rest rest false
-ubuntu-24.04 outputs golem false
-ubuntu-24.04 outputs-checks golem false
-ubuntu-24.04 env golem false
-ubuntu-24.04-arm tests-driver all true
-ubuntu-24.04-arm tests-rest rest false
-ubuntu-24.04-arm outputs golem false" ]; then ok; else ng "ci.yml: the runners build their targets, and those that save build all (docs/adr/0395)"; fi
+# runners of the tests build the suites they run; none builds all, which
+# cache-dist builds (docs/adr/0395, root ADR 0416)
+if [ "$(matrix_rows "$CI_YML" | awk '{ print $1, $2, $8 }')" = "ubuntu-24.04 tests-driver-a driver-a
+ubuntu-24.04 tests-driver-b driver-b
+ubuntu-24.04 tests-rest rest
+ubuntu-24.04 outputs golem
+ubuntu-24.04 outputs-checks golem
+ubuntu-24.04 env golem
+ubuntu-24.04-arm tests-driver-a driver-a
+ubuntu-24.04-arm tests-driver-b driver-b
+ubuntu-24.04-arm tests-rest rest
+ubuntu-24.04-arm outputs golem" ]; then ok; else ng "ci.yml: the runners build their targets, and none builds all (docs/adr/0395, root ADR 0416)"; fi
 if ci_step "name: cabal build (docs/adr/0395)" | grep -qF 'cabal build $(sh scripts/ci/build-targets.sh "$TARGETS")' &&
   ci_step "name: cabal build (docs/adr/0395)" | grep -qxF '          TARGETS: ${{ matrix.build }}'; then ok; else
   ng "ci.yml: cabal build builds the targets of build-targets.sh for the runner (docs/adr/0395)"
@@ -5027,15 +5064,102 @@ for s in "name: Copy golem for the job editors-lsp" "name: Upload golem for the 
   if step_if "$s" "if: matrix.artifacts"; then ok; else ng "ci.yml: $s on the runner of the artifacts (docs/adr/0395)"; fi
 done
 
+# ---------------------------------------------------------------- root ADR 0416
+# (docs/adr/0416-shorten-the-build-of-the-pull-request-ci.md)
+
+# I2: on each architecture of build, each suite of golem-driver runs on
+# exactly one runner, and the suites are split between the two runners
+# tests-driver-a and tests-driver-b. driver_legs FILE [MODULES] fails, with
+# the reason on stderr, unless the matrix of build in FILE does so
+driver_legs() {
+  matrix_rows "$1" | awk '$3 == "true" { print $1, $2, $7 }' >"$WORK/legs" || return 1
+  [ -s "$WORK/legs" ] || { echo "no runner of the tests" >&2; return 1; }
+  sh "$HERE/test-suites.sh" driver ${2:+"$2"} >"$WORK/legs-driver" || return 1
+  : >"$WORK/legs-runs"
+  while read -r runner part suites; do
+    [ "$suites" = none ] && continue
+    sh "$HERE/test-suites.sh" "$suites" ${2:+"$2"} | grep '^golem-driver:' | sed "s|^|$runner $part |" >>"$WORK/legs-runs" || true
+  done <"$WORK/legs"
+  for runner in $(awk '{ print $1 }' "$WORK/legs" | sort -u); do
+    while IFS= read -r suite; do
+      n=$(awk -v r="$runner" -v s="$suite" '$1 == r && $3 == s' "$WORK/legs-runs" | wc -l | tr -d ' ')
+      [ "$n" = 1 ] || { echo "$suite runs on $n runners of $runner" >&2; return 1; }
+    done <"$WORK/legs-driver"
+    parts=$(awk -v r="$runner" '$1 == r { print $2 }' "$WORK/legs-runs" | sort -u | tr '\n' ' ')
+    [ "$parts" = "tests-driver-a tests-driver-b " ] || { echo "the suites of golem-driver run on $parts on $runner" >&2; return 1; }
+  done
+}
+run driver_legs "$CI_YML"
+expect "root ADR 0416 I2: each suite of golem-driver runs on one runner of each architecture, tests-driver-a or tests-driver-b" 0
+# the inputs of the table of the ADR: a runner that drops its suites, the
+# same suites on two runners
+sed 's/^            suites: driver-b$/            suites: none/' "$CI_YML" >"$WORK/legs-dropped.yml"
+run driver_legs "$WORK/legs-dropped.yml"
+if [ "$CODE" = 1 ] && grep -q 'runs on 0 runners' "$WORK/err"; then ok; else ng "root ADR 0416 I2: a runner that drops a suite of golem-driver fails the check"; fi
+sed 's/^            suites: driver-a$/            suites: driver/' "$CI_YML" >"$WORK/legs-twice.yml"
+run driver_legs "$WORK/legs-twice.yml"
+if [ "$CODE" = 1 ] && grep -q 'runs on 2 runners' "$WORK/err"; then ok; else ng "root ADR 0416 I2: a suite of golem-driver on two runners fails the check"; fi
+# tests-driver-a and tests-driver-b run the suites as the table of the
+# pull request of the ADR says
+run test_suites driver-a
+expect "root ADR 0416 I2: tests-driver-a runs golem-driver-pdf-test, golem-driver-cli-test and golem-driver-global-test" 0 "golem-driver:test:golem-driver-pdf-test
+golem-driver:test:golem-driver-cli-test
+golem-driver:test:golem-driver-global-test"
+run test_suites driver-b
+expect "root ADR 0416 I2: tests-driver-b runs golem-driver-page-test, golem-driver-output-test and golem-driver-parallel-test" 0 "golem-driver:test:golem-driver-page-test
+golem-driver:test:golem-driver-output-test
+golem-driver:test:golem-driver-parallel-test"
+
+# I3: cache-dist builds everything and saves dist-newstyle on each
+# architecture, under the key and on the condition of the runner of build
+# that saved before the ADR; ci does not need it, and no runner of build
+# saves dist-newstyle. cache_dist FILE fails, with the reason on stderr,
+# unless FILE does so
+cache_dist() {
+  awk '$0 == "  cache-dist:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$1" >"$WORK/cd-job"
+  [ -s "$WORK/cd-job" ] || { echo "no job cache-dist" >&2; return 1; }
+  awk '$0 == "  ci:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$1" | grep '^    needs: ' >"$WORK/cd-needs" || true
+  if grep -Eq '[[ ,]cache-dist([],]|$)' "$WORK/cd-needs"; then echo "ci needs cache-dist" >&2; return 1; fi
+  grep -qxF '        runner: [ubuntu-24.04, ubuntu-24.04-arm]' "$WORK/cd-job" || { echo "cache-dist does not run on both architectures" >&2; return 1; }
+  grep -qF 'cabal build $(sh scripts/ci/build-targets.sh all)' "$WORK/cd-job" || { echo "cache-dist does not build all" >&2; return 1; }
+  awk '/^      - name: Save dist-newstyle/ { on = 1; print; next } on && /^      - / { on = 0 } on' "$WORK/cd-job" >"$WORK/cd-save"
+  [ "$(sed -n 's/^          key: //p' "$WORK/cd-save")" = "$I4_FAMILY$I4_PR\${{ github.sha }}" ] || { echo "cache-dist saves under another key" >&2; return 1; }
+  grep -qxF "        if: success() && steps.build.outputs.compiled == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))" "$WORK/cd-save" || { echo "cache-dist saves on another condition" >&2; return 1; }
+  if awk '$0 == "  build:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$1" |
+    awk '/^      - / { s = "" } { s = s $0 "\n" } /^          path: dist-newstyle$/ && s ~ /cache\/save@/ { found = 1 } END { exit !found }'; then
+    echo "a runner of build saves dist-newstyle" >&2
+    return 1
+  fi
+}
+run cache_dist "$CI_YML"
+expect "root ADR 0416 I3: cache-dist saves dist-newstyle as build saved it, and ci does not need it" 0
+sed 's/^    needs: \[changes, scripts-linux, build, /    needs: [changes, scripts-linux, build, cache-dist, /' "$CI_YML" >"$WORK/cd-needed.yml"
+run cache_dist "$WORK/cd-needed.yml"
+if [ "$CODE" = 1 ] && grep -qx 'ci needs cache-dist' "$WORK/err"; then ok; else ng "root ADR 0416 I3: ci that needs cache-dist fails the check"; fi
+sed "s/^        if: success() && steps.build.outputs.compiled == 'true' && /        if: success() \&\& /" "$CI_YML" >"$WORK/cd-always.yml"
+run cache_dist "$WORK/cd-always.yml"
+if [ "$CODE" = 1 ] && grep -qx 'cache-dist saves on another condition' "$WORK/err"; then ok; else ng "root ADR 0416 I3: a save on another condition fails the check"; fi
+# cache-dist is not on the critical path of ci.yml that ci-critical-path.sh
+# measures, however long it takes (ADR 0392 I1)
+cp_files "$WORK/cd-path.json" "$(cp_all 5 'changes:10' 'build (a):200' 'determinism:30' 'cache-dist (ubuntu-24.04):900')"
+run cpath --workflow "$CI_YML" "$WORK/cd-path.json"
+expect "root ADR 0416 I3: cache-dist, which ci does not wait for, does not count in the time of the CI" 0 245
+
 # A1: the checks of a pull request are those before the ADR. Each step
 # after cabal build of build is written with the runners it runs on, the
 # suites of cabal test with their runners, and the needs of ci; the list of
 # the commit before the ADR is testdata. The one step more is the check of
 # the plan, item 1 of the ADR
+# The suites of golem-driver-test are those of the four suites that it was
+# split into, on the same runners (root ADR 0416)
 CC=$HERE/testdata/ci-checks
+awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver-test" {
+    for (i = split("pdf page output cli", s, " "); i > 0; i--) print $1, $2, "golem-driver:test:golem-driver-" s[i] "-test"
+    next
+  } { print }' "$CC/before-0395.txt" | LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
 grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
-if [ "$CODE" = 0 ] && diff "$CC/before-0395.txt" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
+if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40
 fi
@@ -5082,6 +5206,37 @@ test-suite t
 EOF
 if [ "$(lib_deps "$WORK/i5.cabal" | tr '\n' ' ')" = "base golem-layout " ]; then ok; else
   ng "root ADR 0411 I5: lib_deps reads the build-depends of the library only"
+fi
+
+# ---------------------------------------------------------------- the numbers in the names of tests (root ADR 0424)
+# test_names_0424 ROOT: prints each name, under ROOT, of a test of the
+# invariants of root ADRs 0347, 0348, 0350 and 0387 that does not start with
+# "root ADR NNNN I<n>" (two or more numbers parted by ", "): the tests of
+# modules/*/test, scripts/*/test.sh and .github/workflows, this file left out
+test_names_0424() {
+  { find "$1/modules" -path '*/test/*' -type f; find "$1/scripts" -name test.sh -type f; find "$1/.github/workflows" -type f; } 2>/dev/null |
+    grep -vxF "$1/scripts/ci/test.sh" >"$WORK/names-0424-files"
+  tr '\n' '\0' <"$WORK/names-0424-files" | xargs -0 grep -IhoE '([A-Za-z]+ )?ADR (0347|0348|0350|0387) [A-Z][0-9][^:"]*:?' 2>/dev/null |
+    grep -vxE 'root ADR (0347|0348|0350|0387) I[0-9]+(, I[0-9]+)*:'
+  tr '\n' '\0' <"$WORK/names-0424-files" | xargs -0 grep -IhoE '(write-)?notes: S[0-9][^"]*' 2>/dev/null
+  return 0
+}
+N24=$WORK/names-0424
+mkdir -p "$N24/bad/modules/golem-x/test" "$N24/bad/scripts/release" "$N24/bad/.github/workflows" "$N24/good/modules/golem-x/test" "$N24/good/scripts/release" "$N24/good/scripts/ci"
+printf '%s\n' '    testCase "ADR 0350 X1, X2: print links" $ do' '    testCase "Golem ADR 0348 R5: steps" $ do' >"$N24/bad/modules/golem-x/test/Main.hs"
+printf '%s\n' 'expect "notes: S1 S2 S3 the canonical status lines" 0' >"$N24/bad/scripts/release/test.sh"
+printf '%s\n' '      - name: "root ADR 0348 R4: the terminal"' >"$N24/bad/.github/workflows/race.yml"
+printf '%s\n' '    testCase "root ADR 0350 I1, I2, I3, I4: print links" $ do' '  testGroup "Emet REPL (Golem ADR 0348)"' '    testCase "root ADR 0347 I2: expressions" $ do' >"$N24/good/modules/golem-x/test/Main.hs"
+printf '%s\n' 'expect "root ADR 0387 I1, I2, I3: notes: the canonical status lines" 0' 'ng "notes: I4 I5 the ADRs whose status changed"' >"$N24/good/scripts/release/test.sh"
+printf '%s\n' 'ng "notes: S1 the names of this file are not read"' >"$N24/good/scripts/ci/test.sh"
+if [ "$(test_names_0424 "$N24/bad" | LC_ALL=C sort | tr '\n' '|')" = "ADR 0350 X1, X2:|Golem ADR 0348 R5:|notes: S1 S2 S3 the canonical status lines|root ADR 0348 R4:|" ]; then ok; else
+  ng "root ADR 0424 I3: the names of the old numbers are found ($(test_names_0424 "$N24/bad" | tr '\n' '|'))"
+fi
+if [ -z "$(test_names_0424 "$N24/good")" ]; then ok; else
+  ng "root ADR 0424 I3: names of the form root ADR NNNN I<n> pass ($(test_names_0424 "$N24/good" | tr '\n' '|'))"
+fi
+if [ -z "$(test_names_0424 "$HERE/../..")" ]; then ok; else
+  ng "root ADR 0424 I3: the tests of root ADRs 0347, 0348, 0350 and 0387 are named root ADR NNNN I<n> ($(test_names_0424 "$HERE/../.." | tr '\n' '|'))"
 fi
 
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
