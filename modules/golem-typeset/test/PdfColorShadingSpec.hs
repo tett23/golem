@@ -2,7 +2,23 @@
 (root ADR 0425): the colours they add to the figure, the shadings that
 cannot be recoloured, and the exact mapping of their definitions.
 -}
-module PdfColorShadingSpec (pdfColorShadingTests) where
+module PdfColorShadingSpec
+  ( pdfColorShadingTests,
+    inks,
+    tone,
+    recolor,
+    rejected,
+    converted,
+    page,
+    shaded,
+    fn2,
+    nums,
+    numbers,
+    shadingOf,
+    paintedShading,
+    dictOf,
+  )
+where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
