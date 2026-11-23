@@ -611,14 +611,20 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 図版と転置図版の過不足と順序は、図版の高さと段の容量を 1 行以上、脚注区切りの行数を 0 行以上とし、箱の直後のブロックが罫線の領域を共有しない（`BoxesOk`）前提の下で証明した。
 [root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の完了の条件のうち、残るのは次の四つである。
 
-一つ目は、境界入力の表の Lean の側の照合である。
+一つ目は、境界入力の表のうち、キャプションの行の Lean の側の照合である。
 `modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` は、空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、Haskell の実装の終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
-同じ入力を `Whole.lean` の `paginate` で評価して、Haskell の出力と比べる照合はまだない。
-計画は次のとおりである。
-`Whole.lean` を `EnumerateSmall.lean` と同じく `.olean` にし、新しい `Boundary.lean` が、表の入力と、`Env` の引数（`nextNeed`、`fitting`、`roomForLine`、`keptNeed` など）を Decide.hs の定義どおりに計算する具体的な `Env` を定める。
-`Boundary.lean` は各入力のページ、段、スロットを `#eval` で書き出し、`runghc` で同じ入力を `paginate` に渡した出力と `check.sh` が `diff` で比べる。
-`keep` などは整礎再帰で定義しているので、カーネルの簡約による `decide` ではなく、コンパイルした評価で比べる。
-`native_decide` は `check.sh` が禁じているので使わない。
+`Boundary.lean` は、これらの 3850 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行を `#eval` で書き出す。
+`Env` は `paginate 1` の容量ごとの `Env` で、その引数は `Decide.hs` の `nextNeed`、`keptNeed`、`keepAhead`、`nextFirstLines`、`fitting`、`roomForLine` を写した関数である（`boundaryEnv`）。
+`check.sh` は、`Whole.lean` を `.olean` にして `Boundary.lean` を評価し、`Boundary.hs` が golem-layout の `paginate` に同じ入力を渡した出力と `diff` で比べる。
+二つの出力は一致した。
+`keep` などは整礎再帰で定義しているので、カーネルの簡約による `decide` ではなく、コンパイルした評価で比べ、`native_decide` は使わない。
+`Boundary.lean` は証明ではなく評価のためのファイルなので、`Decide.hs` を写した関数に `partial` を使う。
+
+境界入力の照合には、二つのことが残る。
+表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめるので、Lean の側の照合は二つ目の条件の評価関数を待つ。
+また、表の入力は段落と図版だけなので、`boundaryEnv` の `nextNeed`、`keptNeed`、`nextFirst` は出力を変えない。
+`nextNeed` を何も求めない関数に替えても出力は変わらず、`fitting` を常に 1 行にすると 7625 行が食い違った。
+見出し、`need-lines`、`no-break` を含む入力で照合するには、`boundaryTableTests`、`Boundary.hs`、`Boundary.lean` に同じ入力を足す。
 
 二つ目は、キャプションの評価値と幅の計算の Haskell との対応である。
 `Pagination.lean` は、改行候補の選択、改行列からの行の組み立て、占有行数の計算を、評価値と幅を引数として証明する（`I1_caption_*`）。
@@ -648,8 +654,11 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 ```sh
 lean experiments/pagination-proof/Pagination.lean
 lean experiments/pagination-proof/Whole.lean
+cabal build golem-layout
 sh experiments/pagination-proof/check.sh
 ```
+
+`check.sh` は境界入力の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

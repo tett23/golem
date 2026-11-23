@@ -75,6 +75,23 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $whole" >&2
   exit 1
 fi
-"$lean" "$whole"
+"$lean" -o "$tmp/Whole.olean" "$whole"
 echo "the whole pagination model is total and its theorems are proved"
+
+# The boundary inputs of boundaryTableTests on Whole.lean's paginate,
+# evaluated under the Env of Paginate/Decide.hs, against golem-layout's
+# paginate (root ADR 0352). Boundary.lean is evaluated, not proved, so it
+# may use partial; it must not decide anything by native code.
+boundary=$root/experiments/pagination-proof/Boundary.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|extern)([^A-Za-z_]|$)' "$boundary"; then
+  echo "unchecked Lean declaration in $boundary" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$boundary" > "$tmp/boundary-lean"
+(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base \
+  -package-id=golem-layout-0.1.0-inplace \
+  experiments/pagination-proof/Boundary.hs) > "$tmp/boundary-haskell"
+diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
+inputs=$(grep -c '^[0-9]' "$tmp/boundary-lean")
+echo "the $inputs boundary inputs give the same pages in Whole.lean and golem-layout"
 echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"
