@@ -52,6 +52,12 @@ diagnosticSiteTests =
           r <- loadFonts golemFontProvider (diskFiles tmp) (FileId 7) style []
           either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
             @?= [(DiagnosticCode "G08002", mkSpan (FileId 7) 0 0, "フォントのファイルがありません: fonts/none.otf")],
+      testCase "root ADR 0421 I2: the font provider by itself reports a font outside the project as G03279, not G08002" $
+        withSystemTempDirectory "golem-sites" $ \tmp -> do
+          style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"../a.otf\"\n")
+          r <- loadFonts golemFontProvider (diskFiles tmp) (FileId 7) style []
+          either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
+            @?= [(DiagnosticCode "G03279", mkSpan (FileId 7) 0 0, "プロジェクトルートの外を指しています: ../a.otf")],
       testCase "G08019: the font provider by itself rejects a CFF2 font (golem-font ADR 0003)" $
         withSystemTempDirectory "golem-sites" $ \tmp -> do
           BS.readFile "../golem-font/test/fonts/SourceSerif4Variable-Roman.otf" >>= BS.writeFile (tmp </> "v.otf")
