@@ -5,8 +5,9 @@
 # filter (of a stream), colorspace (a family, with the bases of Indexed and
 # Separation), xobject (its Subtype) or font (its Subtype).
 #
-# golem-driver-test (VisualSubsetSpec) builds the inputs and fails when one
-# uses a kind that is not here (V1), or a kind here is used by none (V2).
+# golem-driver-pdf-test (VisualSubsetSpec) builds the inputs and fails when
+# one uses a kind that is not here (V1), or a kind here is used by none
+# (V2).
 # A kind is added only in the change that pins a shem that reads it
 # (docs/adr/0294-draw-images-and-figures-in-the-visual-regression-test.md).
 colorspace DeviceCMYK
