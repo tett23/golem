@@ -16,7 +16,15 @@ tests :: TestTree
 tests =
   testGroup
     "OpenType features (docs/adr/0268)"
-    [ testCase "root ADR 0397 I6: free placement accepts dimensional paragraph spacing and line pitch" $
+    [ testCase "root ADR 0380 I1: inv1_extended_japanese_composition_case_3: a positive grid character advance is accepted and zero is rejected" $ do
+        let source value = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 20\nlines = 20\nline-pitch = \"15pt\"\nposition = { top = \"20mm\", gutter = \"20mm\" }\ncharacter-advance = " <> value <> "\n"
+        codes (parseStyle (FileId 0) (source "\"8pt\"")) @?= []
+        codes (parseStyle (FileId 0) (source "\"0pt\"")) @?= ["G03006"],
+      testCase "root ADR 0380 I1: underline accepts either side and rejects unknown sides" $ do
+        codes (parseStyle (FileId 0) "[character-styles.left]\nunderline = { side = \"left\" }\n") @?= []
+        codes (parseStyle (FileId 0) "[character-styles.right]\nunderline = { side = \"right\" }\n") @?= []
+        codes (parseStyle (FileId 0) "[character-styles.invalid]\nunderline = { side = \"above\" }\n") @?= ["G03006"],
+      testCase "root ADR 0397 I6: free placement accepts dimensional paragraph spacing and line pitch" $
         mapM_ (\unit -> codes (parseStyle (FileId 0) (freeSource "free" ("[paragraph-styles.dialogue]\nline-pitch = \"18" <> unit <> "\"\nspace-between = \"6" <> unit <> "\"\nspace-before = 1\nspace-after = \"0" <> unit <> "\"\n"))) @?= []) ["mm", "pt", "Q", "H", "in", "zw"],
       testCase "root ADR 0397 A2: typed length and count references retain their units and source sites" $ do
         let source = freeSource "free" "[values.length]\npitch = \"18pt\"\ngap = \"6pt\"\n[values.count]\nrows = 2\n[paragraph-styles.dialogue]\nline-pitch = \"pitch\"\nspace-before = \"rows\"\nspace-between = \"gap\"\n"

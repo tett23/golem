@@ -99,6 +99,7 @@ import Golem.Eval.File
 import Golem.Eval.Functions (BlockFunction (..), FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Length qualified as GL
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
@@ -1397,7 +1398,12 @@ htmlConfig dev embed e book missing bib =
       hcEndnoteNotation = mfNotation (stNotesMarkFormat (endnoteStyle style)),
       -- the fonts embedded, or generic families alone (docs/adr/0423)
       hcEmbedFonts = embed,
-      hcGenericFamilies = Map.mapMaybe (fmap genericFamilyName . frGenericFamily) (stFonts style)
+      hcGenericFamilies = Map.mapMaybe (fmap genericFamilyName . frGenericFamily) (stFonts style),
+      hcCharacterAdvance = do
+        grid <- stPage style >>= pageGrid
+        advance <- gridCharacterAdvance grid
+        let fs = dimToSp 1 (gridFontSize grid)
+        if fs <= 0 then Nothing else Just (GL.emText (toRational (GL.unSp (dimToSp fs advance)) / toRational (GL.unSp fs)) <> "em")
     }
   where
     style = evStyle e

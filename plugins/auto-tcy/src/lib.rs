@@ -201,7 +201,7 @@ impl Flat {
                     let l = self.leaf(*span, None);
                     self.items.push(Item::Unknown(l));
                 }
-                Inline::Note { .. } | Inline::Sidenote { .. } | Inline::Endnote { .. } | Inline::LineBreak { .. } | Inline::Aki { .. } => self.items.push(Item::Wall),
+                Inline::Note { .. } | Inline::Sidenote { .. } | Inline::Endnote { .. } | Inline::LineBreak { .. } | Inline::Aki { .. } | Inline::Warichu { .. } | Inline::Upright { .. } => self.items.push(Item::Wall),
                 // nothing is set where they are
                 Inline::IndexMark { .. } | Inline::ProofComment { .. } | Inline::ChannelItem { .. } => {}
             }

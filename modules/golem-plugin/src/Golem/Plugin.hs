@@ -778,6 +778,8 @@ inlineSpans = \case
   Color s _ xs -> s : concatMap inlineSpans xs
   CharStyle s _ xs -> s : concatMap inlineSpans xs
   Tcy s _ -> [s]
+  Warichu s _ -> [s]
+  Upright s _ -> [s]
   Number s _ _ -> [s]
   Ref s _ _ -> [s]
   Deferred s _ -> [s]

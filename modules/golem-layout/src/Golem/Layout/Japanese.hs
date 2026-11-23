@@ -73,6 +73,7 @@ import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.PageLabel (PageLabel, pageLabelInlines, plainLabel)
 import Golem.Layout.Ruby
+import Golem.Layout.Warichu (splitWarichu)
 import Golem.Length qualified as L
 import Golem.Numerals (kanji, kanjiDigits)
 import Golem.Numerals.Format (MarkFormat (..), defaultMarkFormat, parseMarkFormat)
@@ -81,6 +82,7 @@ import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
 import Golem.Unicode.CharClass
+import Golem.Unicode.Grapheme (graphemeClusters)
 
 {- | The class of a character in a look: of the language of its span
 (docs/adr ADR 0187), 'charClass' outside one.
@@ -133,6 +135,8 @@ data ComposeEnv = ComposeEnv
     -} ceFontSize :: !Sp,
     -- | advance of a character in a look, in em (1 for full-width characters)
     ceAdvance :: Look -> Char -> Rational,
+    -- | full-width cell advance relative to glyph size (root ADR 0380)
+    ceCellRatio :: !Rational,
     -- | advance of a Latin word in a look, in em, as shaped (kerning, ligatures)
     ceWordAdvance :: Look -> Text -> Rational,
     {- | advance of one character of a Latin word in the font the word is
@@ -250,6 +254,7 @@ defaultComposeEnv fs =
   ComposeEnv
     { ceFontSize = fs,
       ceAdvance = const defaultAdvance,
+      ceCellRatio = 1,
       ceWordAdvance = const (sum . map defaultAdvance . T.unpack),
       ceWordCharAdvance = \_ _ -> defaultAdvance,
       ceKern = \_ _ _ -> 0,
@@ -334,7 +339,7 @@ the number of a note mark set flat, a part of the box of the mark only
 (docs/adr/0381); they come last so that the values before them keep their
 'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes | KindFlat
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark | KindDashes | KindFlat | KindWarichu | KindUpright
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -348,6 +353,7 @@ data Piece
   | PWord !Look !Text ![Int] !(Maybe WordShys) -- a Latin word (no spaces), where the soft hyphens taken out of it were (docs/adr ADR 0272), and what they make of it in the joined word (docs/adr ADR 0285)
   | PSpace !Look !Bool -- an inter-word space, and whether no line breaks at it (docs/adr/0277)
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
+  | PWarichu !Look !Text !Text !Sp
   | PRuby !Look !RubyKind !Text ![Look] !(Maybe Text) -- ruby: the base, the look of each base character (golem-layout ADR 0011) and the reading (none for a segment without one)
   | PRubyBreak -- a break allowed between mono ruby bases
   | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
@@ -384,6 +390,7 @@ displayedInlines env = foldMap (foldMap (display . snd) . piecesOf env)
       PWord _ text _ _ -> text
       PSpace {} -> " "
       PBox _ text _ _ -> text
+      PWarichu _ a b _ -> a <> b
       PRuby _ _ base _ _ -> base
       PRubyBreak -> ""
       PForcedBreak -> "\n"
@@ -926,6 +933,12 @@ piecesOf env inl = case inl of
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby sp _ segs -> at sp (rubyPieces env segs)
   Tcy sp t -> at sp [PBox lk t KindTcy (lkSize lk)]
+  Upright sp t -> at sp (if ceVertical env then [PBox lk u KindUpright (L.zwToSp (lkSize lk) (ceCellRatio env)) | u <- graphemeClusters t] else textPieces lk t)
+  Warichu sp t ->
+    let half = lk {lkSize = L.zwToSp (lkSize lk) (1 % 2)}
+        measure text = sum [L.zwToSp (lkSize half) (ceWordAdvance env half u) + tracking half | u <- graphemeClusters text]
+        (a, b) = splitWarichu measure t
+     in at sp [PWarichu lk a b (max (measure a) (measure b)) | not (T.null t)]
   Number sp n style -> at sp (numberPieces env n style)
   Ref sp RefPage l ->
     let label = fromMaybe (plainLabel 1) (cePageOf env l)
@@ -1362,6 +1375,8 @@ baseChars env lk inl = case inl of
   Resolved _ _ _ xs -> concatMap (baseChars env lk) xs
   Kenten _ _ xs -> concatMap (baseChars env lk) xs
   Tcy _ t -> each t
+  Warichu _ t -> each t
+  Upright _ t -> each t
   Number _ n _ -> each (T.pack (show n))
   _ -> []
   where
@@ -1377,6 +1392,8 @@ withRuby = \case
   Color s c xs -> Color s c (map withRuby xs)
   CharStyle s c xs -> CharStyle s c (map withRuby xs)
   Tcy s t -> Tcy s t
+  Warichu s t -> Warichu s t
+  Upright s t -> Upright s t
   Number s n st -> Number s n st
   Ref s k l -> Ref s k l
   Deferred s e -> Deferred s e
@@ -1395,7 +1412,7 @@ withRuby = \case
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
-advance env lk c = L.zwToSp (lkSize lk) (ceAdvance env lk c)
+advance env lk c = L.zwToSp (lkSize lk) (ceCellRatio env * ceAdvance env lk c)
 
 -- | The tracking of a look in sp: lkTracking thousandths of its size (docs/adr/0020).
 tracking :: Look -> Sp
@@ -1508,6 +1525,7 @@ pieceLook = \case
   PWord lk _ _ _ -> Just lk
   PSpace lk _ -> Just lk
   PBox lk _ _ _ -> Just lk
+  PWarichu lk _ _ _ -> Just lk
   PRuby lk _ _ _ _ -> Just lk
   PAki lk _ -> Just lk
   PCode lk _ _ _ -> Just lk
@@ -1548,6 +1566,7 @@ scriptRanges env = go
       PWord lk t _ _ -> [(lk, c) | c <- T.unpack t]
       PSpace lk _ -> [(lk, ' ')]
       PBox lk t _ _ -> [(lk, c) | c <- T.unpack t]
+      PWarichu lk a b _ -> [(lk, c) | c <- T.unpack (a <> b)]
       PRuby lk _ base looks _ -> zip (looks <> repeat lk) (T.unpack base)
       PCode lk t _ _ -> [(lk, c) | c <- T.unpack t]
       PDashes lk t -> [(lk, c) | c <- T.unpack t]
@@ -1558,6 +1577,7 @@ scriptRanges env = go
       PSpace lk held -> PSpace (set lk) held
       PBox lk t kind w -> PBox (set lk) t kind (if w == lkSize lk then lkSize (set lk) else w)
       PRuby lk kind base looks reading -> PRuby (set lk) kind base (map set looks) reading
+      PWarichu lk a b w -> PWarichu (set lk) a b (L.zwToSp w (toRational (unSp (lkSize (set lk))) / toRational (unSp (lkSize lk))))
       PAki lk a -> PAki (set lk) a
       PCode lk t ps pe -> PCode (set lk) t ps pe
       PDashes lk t -> PDashes (set lk) t
@@ -1590,11 +1610,15 @@ itemsFor env lead prev p next = case p of
         -- with variation selectors: shaped together with them
         full
           | T.null vs = advance env lk c
-          | otherwise = L.zwToSp fs (ceWordAdvance env lk (T.cons c vs))
+          | otherwise = L.zwToSp fs (ceCellRatio env * ceWordAdvance env lk (T.cons c vs))
         -- a glyph narrower than full width takes a box of max a (1zw - aki) (docs/adr/0302)
         w = maybe (full - L.zwToSp fs (pre + post)) fst (narrowPunctuation cls fs full)
         -- tracking after the character, given back at the line end (docs/adr/0020)
         t = tracking lk
+        originalFull
+          | T.null vs = L.zwToSp fs (ceAdvance env lk c)
+          | otherwise = L.zwToSp fs (ceWordAdvance env lk (T.cons c vs))
+        cellEnd = originalFull - full
         -- kenten on characters other than punctuation and separators (golem-driver ADR 0019)
         tag
           | isJust (lkKenten lk) && takesKenten c = KindKenten
@@ -1602,7 +1626,7 @@ itemsFor env lead prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (cellEnd - t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
   -- a word of superscript or subscript is not broken (docs/adr/0269)
   PWord lk word shys ws
     | isScript lk -> [x | x@Box {} <- wordItems env lk False word shys Nothing]
@@ -1619,8 +1643,11 @@ itemsFor env lead prev p next = case p of
         [Penalty 0 infPenalty NoHyphen | held || (not (lkCode lk) && (isScript lk || maybe False (maybe False isScript . pieceLook) next))] <> [space]
   -- a tate-chu-yoko is one box from outside: the tracking after it, given back at the line end (docs/adr/0370)
   PBox lk t kind w ->
-    let extra = if kind == KindTcy then tracking lk else 0
-     in [Box (w + extra) (BoxContent t False 0 0 (fromEnum kind) lk 0 (negate extra) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+    let extra = if kind `elem` [KindTcy, KindUpright] then tracking lk else 0
+        end = if kind == KindUpright then lkSize lk - w else 0
+     in [Box (w + extra) (BoxContent t False 0 0 (fromEnum kind) lk 0 (end - extra) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
+  PWarichu lk a b w ->
+    [Box w (BoxContent (a <> b) False 0 0 (fromEnum KindWarichu) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) (Just (a, b)))]
   PRuby lk kind base looks reading ->
     let style = rubyStyleWith (lkRubyOptions lk) (ceRuby env)
         -- the reading measured and drawn in its character style (docs/adr/0369)
@@ -1671,7 +1698,7 @@ itemsFor env lead prev p next = case p of
         -- one box from outside: the tracking after it, nothing of it inside the base or the reading,
         -- given back at the line end (docs/adr/0370)
         outer = tracking lk
-     in [Box (rpWidth rp + outer) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) startOverhang (endOverhang - outer) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+     in [Box (rpWidth rp + outer) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) startOverhang (endOverhang - outer) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -1680,7 +1707,7 @@ itemsFor env lead prev p next = case p of
     let w = case a of
           AkiZw r -> L.zwToSp (lkSize lk) r
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
   PCode lk run ps pe -> codeItems env lk run ps pe
   {- a run of dashes: an em for each, whatever the font's advance; inseparable
   at both ends, so the spacing and the breaks around it are those of one
@@ -1688,7 +1715,7 @@ itemsFor env lead prev p next = case p of
   PDashes lk d ->
     let t = tracking lk
         w = lkSize lk * fromIntegral (T.length d)
-     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))]
+     in [Box (w + t) (BoxContent d False 0 0 (fromEnum KindDashes) lk 0 (negate t) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
   PMark place lk parts ps pe num -> [markItem env place lk parts ps pe num]
   PAnchor _ -> []
   PShy {} -> []
@@ -1706,7 +1733,7 @@ markItem env place lk parts ps pe num =
   let (txt, parts', w) = markLayout env lk parts ps pe
       -- numbered per page, the widest number the mark can take (docs/adr/0383)
       reserved = maybe w (\mn -> max w (markReserve env lk mn ps pe)) num
-   in Box reserved (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts' num)) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0))
+   in Box reserved (BoxContent txt False 0 0 (fromEnum KindNoteMark) lk 0 0 [] ps pe (ceBoxSource env) (Just (MarkBox place parts' num)) (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)
 
 {- | The text of a mark, its parts, each with the kind of its box, its
 text and where it starts along the line from the start of the box, and
@@ -1830,7 +1857,7 @@ protrusion or expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * fromIntegral (trackedChars seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
+  [ Box (w + tr * fromIntegral (trackedChars seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k) Nothing)
   | let segs = [unit | part <- slashParts run, seg <- T.groupBy sameSide part, unit <- if isCodeJapanese seg then clusters seg else [seg]]
         lastIx = length segs - 1,
     -- the index of the first character of each part in the run (docs/adr ADR 0195)
@@ -2021,7 +2048,7 @@ wordItems env lk lead word shys joinedShys =
         let w = L.zwToSp (lkSize lk) (ceWordAdvance env lk t)
             ps = maybe 0 (min w . protIn t fst . fst) (T.uncons t)
             pe = maybe 0 (min w . protIn t snd . snd) (T.unsnoc t)
-         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k))
+         in Box (w + tr * fromIntegral (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env k) Nothing)
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then Sp (unSp (advance env lk c) * pick (protrusionRatio c) `div` 1000) else 0
       -- that of a character at an end of a box, in the font of the box (docs/adr/0222)

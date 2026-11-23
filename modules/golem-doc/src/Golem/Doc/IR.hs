@@ -334,6 +334,8 @@ data InlineF r
   | Color !SrcSpan !Text [InlineF r]
   | CharStyle !SrcSpan !Text [InlineF r]
   | Tcy !SrcSpan Text
+  | Warichu !SrcSpan Text
+  | Upright !SrcSpan Text
   | Number !SrcSpan !Integer !(Maybe NumberStyle)
   | Ref !SrcSpan !RefKind !Text
   | Deferred !SrcSpan DeferredExpr
@@ -602,6 +604,8 @@ noRuby = \case
   Color s c xs -> Color s c <$> traverse noRuby xs
   CharStyle s c xs -> CharStyle s c <$> traverse noRuby xs
   Tcy s t -> Just (Tcy s t)
+  Warichu s t -> Just (Warichu s t)
+  Upright s t -> Just (Upright s t)
   Number s n st -> Just (Number s n st)
   Ref s k l -> Just (Ref s k l)
   Deferred s e -> Just (Deferred s e)

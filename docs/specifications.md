@@ -487,6 +487,7 @@ flowchart TD
     fmt --> parser
     html --> assemble
     html --> bibliography
+    html --> unicode
     layout --> project
     layout --> unicode
     layoutspec --> pdf
@@ -2088,6 +2089,12 @@ G03126 から G03130 の位置はその値であり、どれもエラーとし�
 
 版面は、日本語組版の流儀に従い、文字の大きさ、一行の字数、一ページの行数、行送り、段数で定義する。
 `[page.grid]` では、それぞれ `font-size`、`characters`、`lines`、`line-pitch`、`columns` に書く。
+`character-advance` に正の寸法を書くと、字形の大きさを保ったまま和文の文字枠の送りを変える（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+省略時の送りは `font-size` と同じであり、0 は G03006 とする。
+版面の一行の長さは `(characters - 1) × character-advance + font-size` で、最後の字の後ろの送りは加えない。
+欧文の語の内部の比例幅は変えない。
+HTML と EPUB は、欧文の文字クラスでない書記素（空白を除く）を指定した送りのインライン枠に入れ、字形の大きさは変えない。
+インラインのコードと、コードの文字スタイルの中は枠に入れない。
 字数と行数を整数で決めるので、行頭と行末が字送りの格子にそろう。
 余白は、版面をページのどこに置くか（`position`）から決まる従属的な値である。
 
@@ -2134,7 +2141,7 @@ HTML と EPUB のレイアウトには反映しないが、スタイルの設定
 - 回り込ませる図版（`wrap`）：図版の位置で G07026 とする。
 
 ページを持たない出力は、段組みを出力しない。
-HTML と EPUB は版面を無視するので、CSS の `columns` も `column-count` も書かない。
+HTML と EPUB は版面の段組みを出力せず、CSS の `columns` も `column-count` も書かない。
 プレーンテキストも段組みを出力しない。
 
 ### 縦組みの数の表記
@@ -2929,6 +2936,7 @@ HTML と EPUB では、`position` が `"superscript"` に解決する文字ス�
 | --- | --- | --- | --- |
 | `weight` | 寸法 | `"0.05zw"` | 線の太さ。0 より大きい |
 | `offset` | 符号付きの寸法 | `"0pt"` | 線の位置（後述） |
+| `side` | `"left"` か `"right"` | `"right"` | 縦組みの傍線を置く側（[root ADR 0380](adr/0380-extended-japanese-composition.md)） |
 | `style` | 文字列 | `"solid"` | 線の種類。罫線の指定の 12 種 |
 | `dash` | 寸法 | `weight` の 3 倍 | 破線の線分の長さ |
 | `gap` | 寸法 | 線の種類による | 破線と点線の間隔 |
@@ -2955,17 +2963,18 @@ HTML と EPUB では、`position` が `"superscript"` に解決する文字ス�
 
 - 横組みの下線は、字面の枠の下端から `offset` だけ下に、線の上の縁を置く。
 - 横組みの打ち消し線は、字面の枠の中心から `offset` だけ上に、線の中心を置く。
-- 縦組みの下線（傍線）は、JLReq の 4.5.1 に従って字の右に引き、字面の枠の右端から `offset` だけ右に線の左の縁を置く。縦組みの左の傍線は引かない。
+- 縦組みの下線（傍線）は、JLReq の 4.5.1 に従って字の右に引き、字面の枠の右端から `offset` だけ右に線の左の縁を置く。`side = "left"` なら、字面の枠の左端から `offset` だけ左に線の右の縁を置く。
 - 縦組みの打ち消し線は、字面の枠の中心から `offset` だけ右に、線の中心を置く。
 
-縦組みで、区画（次の段落）の中に右に読みか圏点を持つ箱があるときは、区画の全体の傍線を、その区画の読みと圏点の右端のうち最も右のものから `offset` だけ右に置く。
+縦組みで、区画（次の段落）の中に右に読みか圏点を持つ箱があるときは、区画の全体の右の傍線を、その区画の読みと圏点の右端のうち最も右のものから `offset` だけ右に置く。
+`side = "left"` の傍線は、読みと圏点で動かさない。
 横組みの下線と打ち消し線は、ルビと圏点で動かさない。
 線は行送りを変えず、行分割と改ページにも影響しない（JLReq の 2.4.2）。
 版面の先頭と末尾の行の線が版面の外にはみ出しても、行の位置は変えない（JLReq の 4.5.1）。
 
 線は区画ごとに引く。
 区画とは、行ごとに、行に置いた箱のうち下線（打ち消し線）の値が等しい箱の連なりである。
-値が等しいとは、解決した線の太さ、位置、種類、破線の長さ、色、線の基準の大きさと基準線のずらしがすべて等しいことである。
+値が等しいとは、解決した線の太さ、位置、側、種類、破線の長さ、色、線の基準の大きさと基準線のずらしがすべて等しいことである。
 区画は、最初の箱の始まりから最後の箱の終わりまでとし、あいだのグルーを含む。
 別々に当てた同じ文字スタイルが隣り合えば一つの区画になり、値の違う線が隣り合えば別の区画になる。
 区画は行をまたがない。
@@ -2997,7 +3006,7 @@ HTML と EPUB では、`cs-名前` の CSS に次のように書く。
 | `weight` | `text-decoration-thickness`（`zw` は `em`、絶対の寸法は `pt`） |
 | `color` | `text-decoration-color`（スウォッチの RGB の近似）。書かなければ書かない |
 | `offset`（下線） | `text-underline-offset`。0 なら書かない |
-| 縦組みの本の下線 | `text-underline-position: right` |
+| 縦組みの本の下線 | `text-underline-position: left` か `right`。`side` に従う |
 
 両方を書いたスタイルの線の種類、太さ、色は、下線の値を書く。
 `dash` と `gap`、打ち消し線の `offset` は書かない。
@@ -3007,7 +3016,7 @@ CSS と PDF は、次の点で違う。
 - CSS の文字の飾りは子孫の要素で消せないので、`false` を写した CSS は書かず、HTML と EPUB では外側の線が消えない。
 - 範囲の最後の空白にも、CSS は線を引く。
 
-読書環境が `text-underline-position: right` を読むかは未確認である。
+読書環境が `text-underline-position` の `left` と `right` を読むかは未確認である。
 プレーンテキストは、線を出さず、字を原稿のまま出す。
 
 #### 組み込みの文字スタイル
@@ -4537,6 +4546,21 @@ PDF の縦中横は、箱の文字列を横組みでシェイピングし、横�
 一字の縦中横も同じ規則で描く。
 縦中横は、中の字の間にトラッキングを足さず、箱の後ろに一度だけ足す（[ADR 0370](adr/0370-tracking-inline-boxes.md)）。
 HTML と EPUB の縦中横は、CSS の `text-orientation` の既定の `mixed` に任せる。
+
+`[upright: ABC]` は、縦組みの欧文を一つの書記素ごとに独立した文字枠へ入れ、回転せずに置く（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+字形を縮めずに枠の中央に置き、横組みでは普通の本文として組む。
+HTML と EPUB は `text-orientation: upright` に写す。
+
+`[warichu: 注記]` は、本文の半分の大きさで、行間のない 2 行の割注を組む（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+PDF は、各書記素をその書体の送りで測り、長い方の行幅が最小になる書記素境界で分ける。
+同じ幅になる候補では、原稿の先頭に近い境界を選ぶ。
+空の注は何も出さず、1 書記素の注は最初の行が空になる。
+割注全体を一つの分けられない箱とし、2 行を本文の中心にそろえる。
+HTML と EPUB は、半サイズの等幅枠を一書記素ずつに割り当て、同じ最小幅と同点時の規則で 2 行に分ける。
+使用する書体の幅が異なるため、PDF と分割位置が異なる場合がある。
+プレーンテキストでは、割注と正立欧文の中身を原稿の順に出す。
+これら二つのコマンドの中身は地の文に限り、ほかのコマンドを含めると G02040 とする。
+PDF の割注と正立欧文、HTML の割注と字送りは、書記素を golem-unicode の `Golem.Unicode.Grapheme` で分ける（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
 
 役割より細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、本文から適用する。
 
@@ -8687,6 +8711,8 @@ NaN と、正と負の無限大は有理数を持たないので、G06100 のエ
 
 ブロックは `[span, label, lang, body]` であり、`lang` はブロックの言語（`@lang`）のタグか null である（[docs/adr/0187](adr/0187-inline-language-switch.md)）。
 言語の区間は `[21, span, lang, inlines]` である。
+割注は `[27, span, text]`、正立欧文は `[28, span, text]` である（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+ABI は [ADR 0052](adr/0052-plugin-abi-version-bump-rule.md) に従い、未リリースの 9 のままとする。
 プラグインの SDK の `Block` の `lang` と `Inline::Lang { span, lang, body }` も、同じバイト列を読み書きする。
 
 文書の組み立てが番号と題に置き換えた `[ref-number]` と `[ref-title]` は、`[22, span, ref-kind, label, inlines]`（Haskell では `Resolved !SrcSpan !RefKind !Text [InlineF r]`）で表す（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。

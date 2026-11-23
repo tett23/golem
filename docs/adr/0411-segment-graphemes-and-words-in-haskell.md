@@ -1,6 +1,6 @@
 # ADR 0411: 書記素と語の分割を Haskell で実装し、依存のないパッケージに置く
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

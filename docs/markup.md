@@ -1394,6 +1394,18 @@ CMYK の値を直接書くことはできない。
 数を縦中横にする場合は、`[number-text ...]` の `style=tcy` を使う。
 本の既定（`style.toml` の `[numbers]` の `vertical`）が `tcy` か `auto` なら、`##10##` と書いてもよい（[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）。
 
+### 割注と正立欧文
+
+`[warichu: 注記]` は、小さい字の 2 行に分ける割注である（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+本文の半分の大きさを使い、長い方の行幅が最小になる書記素境界を選び、同点なら先頭に近い境界を選ぶ。
+一つの箱として組むため、割注の中では改行しない。
+PDF は書体の送りで測り、HTML と EPUB は一書記素ごとの等幅枠を使う。
+
+`[upright: ABC]` は、縦組みで欧文を一書記素ずつ回転せずに並べる（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+横組みでは普通の本文と同じである。
+二つのコマンドの中には地の文だけを書け、コマンドなどを入れると G02040 になる。
+プレーンテキストには、中身を元の順に出す。
+
 ### 強調
 
 ```

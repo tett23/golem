@@ -56,6 +56,8 @@ import Golem.Numerals
 import Golem.Numerals.Notation (Notation, notationName, writeNumber)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
+import Golem.Unicode.CharClass (CharClass (..), charClass)
+import Golem.Unicode.Grapheme (graphemeClusters)
 import Numeric (showHex)
 import Skylighting qualified as S
 import System.FilePath (makeRelative, replaceExtension, splitDirectories, takeDirectory, takeFileName, (</>))
@@ -111,7 +113,9 @@ data HtmlConfig = HtmlConfig
     (fonts = "embed") or names only generic families (docs/adr/0423)
     -} hcEmbedFonts :: !Bool,
     -- | the generic-family of each role that has one, as CSS writes it (docs/adr/0423)
-    hcGenericFamilies :: !(Map Text Text)
+    hcGenericFamilies :: !(Map Text Text),
+    -- | full-width character cells in em, without changing glyph size (root ADR 0380)
+    hcCharacterAdvance :: !(Maybe Text)
   }
 
 {- | A rule before or after a paragraph or a heading as CSS (golem-driver
@@ -892,7 +896,7 @@ inline c value = anchor <> inlineBody c value
 
 inlineBody :: Ctx -> InlineF r -> Text
 inlineBody c = \case
-  Text sp t -> pageText (Map.findWithDefault [] sp (cPageBreaks c)) t
+  Text sp t -> pageTextWith (textHtml c) (Map.findWithDefault [] sp (cPageBreaks c)) t
   Ruby _ _ segs
     | any (\seg -> rsOptions seg /= defaultRubyOptions || isJust (rsOtherReading seg)) segs ->
         T.concat (map extendedRuby segs)
@@ -948,16 +952,23 @@ inlineBody c = \case
          in seg {rsOptions = opts {roReadingKenten = marks (rsReading seg) (roReadingKenten opts), roOtherKenten = marks (rsOtherReading seg) (roOtherKenten opts)}}
   Color _ s xs -> "<span class=\"swatch-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   -- the built-in character styles keep their elements (docs/adr ADR 0005)
-  CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
-  CharStyle _ "bold" xs -> "<b>" <> inlines c xs <> "</b>"
-  CharStyle _ "italic" xs -> "<i>" <> inlines c xs <> "</i>"
-  CharStyle _ "code" xs -> "<code>" <> inlines c xs <> "</code>"
+  CharStyle _ "strong" xs -> "<strong>" <> inlines (styled "strong") xs <> "</strong>"
+  CharStyle _ "bold" xs -> "<b>" <> inlines (styled "bold") xs <> "</b>"
+  CharStyle _ "italic" xs -> "<i>" <> inlines (styled "italic") xs <> "</i>"
+  CharStyle _ "code" xs -> "<code>" <> inlines c {cCfg = (cCfg c) {hcCharacterAdvance = Nothing}} xs <> "</code>"
   -- superscript and subscript are sup and sub; the built-in ones without a class (docs/adr/0269)
   CharStyle _ s xs
     | Just e <- Map.lookup s (cCharStyles c) >>= hcsElement ->
-        "<" <> e <> (if s `elem` ["superscript", "subscript"] then "" else " class=\"cs-" <> escapeXml s <> "\"") <> ">" <> inlines c xs <> "</" <> e <> ">"
-  CharStyle _ s xs -> "<span class=\"cs-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
+        "<" <> e <> (if s `elem` ["superscript", "subscript"] then "" else " class=\"cs-" <> escapeXml s <> "\"") <> ">" <> inlines (styled s) xs <> "</" <> e <> ">"
+  CharStyle _ s xs -> "<span class=\"cs-" <> escapeXml s <> "\">" <> inlines (styled s) xs <> "</span>"
   Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
+  Upright _ t -> "<span class=\"upright\">" <> escapeXml t <> "</span>"
+  Warichu _ "" -> ""
+  Warichu _ t ->
+    let units = graphemeClusters t
+        (first, second) = splitAt (length units `div` 2) units
+        row xs = "<span class=\"warichu-line\">" <> T.concat ["<span class=\"warichu-cell\">" <> escapeXml u <> "</span>" | u <- xs] <> "</span>"
+     in "<span class=\"warichu\">" <> row first <> row second <> "</span>"
   Number _ n st
     | not (hcVertical (cCfg c)) -> T.pack (show n)
     | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) n) st of
@@ -1016,14 +1027,33 @@ inlineBody c = \case
       Just t <- Map.lookup l (bookLabels (cBook c)) ->
         "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c {cInLink = True} xs <> "</a>"
   Resolved _ _ _ xs -> inlines c xs
+  where
+    styled name
+      | maybe False hcsCode (Map.lookup name (cCharStyles c)) = c {cCfg = (cCfg c) {hcCharacterAdvance = Nothing}}
+      | otherwise = c
+
+{- | The HTML of a run of text: with a character advance, each grapheme
+cluster that is not Western is wrapped so that it takes the advance (root ADR
+0380).
+-}
+textHtml :: Ctx -> Text -> Text
+textHtml c t = case hcCharacterAdvance (cCfg c) of
+  Just _ -> T.concat [if maybe False (\(ch, _) -> charClass ch /= Western && ch /= ' ' && ch /= '\n' && ch /= '\t') (T.uncons u) then "<span class=\"character-advance\">" <> escapeXml u <> "</span>" else escapeXml u | u <- graphemeClusters t]
+  Nothing -> escapeXml t
 
 -- | Insert page-break spans without changing the surrounding text or its styles.
 pageText :: [(Int, Text, Text)] -> Text -> Text
-pageText breaks text = go 0 (sortOn (\(offset, _, _) -> offset) breaks)
+pageText = pageTextWith escapeXml
+
+{- | 'pageText' with the way each run of text between the page breaks becomes
+HTML.
+-}
+pageTextWith :: (Text -> Text) -> [(Int, Text, Text)] -> Text -> Text
+pageTextWith html breaks text = go 0 (sortOn (\(offset, _, _) -> offset) breaks)
   where
-    go start [] = escapeXml (T.drop start text)
+    go start [] = html (T.drop start text)
     go start ((offset, ident, label) : rest) =
-      escapeXml (T.take (offset - start) (T.drop start text))
+      html (T.take (offset - start) (T.drop start text))
         <> "<span epub:type=\"pagebreak\" role=\"doc-pagebreak\" id=\""
         <> escapeXml ident
         <> "\" aria-label=\""
@@ -1297,6 +1327,44 @@ listRules cfg book ls =
     gapAfter m = if fromMaybe (not (endsWithSpacedPunctuation m)) (hlGap ls) then " " else ""
     str t = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" t) <> "\""
 
+-- | Only books using the new inline forms receive their CSS (root ADR 0380).
+extendedInlineCss :: Book -> [Text]
+extendedInlineCss book
+  | any (any hasBlock . docBlocks) (bookDocs book) || or [any hasInline (ceBody e) | (_, _, entries) <- bookChannels book, e <- entries] =
+      [ ".upright { text-orientation: upright; }",
+        ".warichu { display: inline-flex; flex-direction: column; font-size: 0.5em; line-height: 1; vertical-align: middle; white-space: nowrap; }",
+        ".warichu-line { display: block; }",
+        ".warichu-cell { display: inline-block; inline-size: 1em; text-align: center; }"
+      ]
+  | otherwise = []
+  where
+    hasBlock = hasBody . blockBody
+    hasBody = \case
+      Paragraph _ xs -> any hasInline xs
+      Heading _ attrs xs -> any hasInline xs || maybe False (any hasInline) (haTocTitle attrs)
+      BulletList items -> any (any hasBlock . itemBlocks) items
+      OrderedList items -> any (any hasBlock . itemBlocks) items
+      DefList groups -> any (\g -> any (any hasInline) (dgTerms g) || any (any hasBlock) (dgDefs g)) groups
+      FigureBlock f -> any hasBlock (figCaption f)
+      TableBlock t -> any (any hasInline) (tableHeader t) || any (any (any hasInline)) (tableRows t) || maybe False (any hasInline) (tableCaption t)
+      CodeBlock c -> maybe False (any hasInline) (codeCaption c)
+      _ -> False
+    hasInline :: InlineF r -> Bool
+    hasInline = \case
+      Warichu {} -> True
+      Upright {} -> True
+      Ruby _ _ segments -> any (any hasInline . rsBase) segments
+      CharStyle _ _ xs -> any hasInline xs
+      Color _ _ xs -> any hasInline xs
+      Kenten _ _ xs -> any hasInline xs
+      Link _ _ xs -> any hasInline xs
+      Lang _ _ xs -> any hasInline xs
+      Resolved _ _ _ xs -> any hasInline xs
+      Note _ _ _ blocks -> any hasBlock blocks
+      Sidenote _ _ _ blocks -> any hasBlock blocks
+      ChannelItem _ c -> any hasInline (ciBody c)
+      _ -> False
+
 {- | The style sheet; the documents of the book in order number the rules
 of the styles of their files (docs/adr ADR 0014), and its lists give the
 largest numbers of the fixed list markers (golem-driver ADR 0013).
@@ -1322,9 +1390,11 @@ css cfg book =
            "pre, code { font-family: " <> codeStack <> "; }",
            rule "pre" (["white-space: pre-wrap", "overflow-wrap: anywhere", "tab-size: 2", "hyphens: none", "font-kerning: none"] <> preDecls)
          ]
+      <> [".character-advance { display: inline-block; inline-size: " <> advance <> "; }" | Just advance <- [hcCharacterAdvance cfg]]
       <> [ruleText | not (Map.null (bookSeparators book)), ruleText <- [".separator { display: block; block-size: " <> separatorPitch <> "; line-height: " <> separatorPitch <> "; }"]]
       -- strong is always written (docs/adr ADR 0005)
       <> [charRule "strong" cs | Just cs <- [Map.lookup "strong" (hcCharStyles cfg)]]
+      <> extendedInlineCss book
       <> [ ".tcy { text-combine-upright: all; -epub-text-combine: horizontal; }",
            ".kenten { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }",
            ".kenten-open-sesame { text-emphasis-style: open sesame; }",

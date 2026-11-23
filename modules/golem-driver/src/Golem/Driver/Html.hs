@@ -233,7 +233,7 @@ textDecoration style d =
            | Just (Just u) <- [csUnderline d],
              not (zeroDim (dsOffset u))
            ]
-        <> ["text-underline-position: right" | maybe False pageVertical (stPage style), Just (Just _) <- [csUnderline d]]
+        <> ["text-underline-position: " <> dsSide u | maybe False pageVertical (stPage style), Just (Just u) <- [csUnderline d]]
   where
     zeroDim = \case
       Abs x -> x == 0

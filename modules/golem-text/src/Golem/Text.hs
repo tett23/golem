@@ -253,6 +253,8 @@ inline c = \case
   Color _ _ xs -> inlines c xs
   CharStyle _ _ xs -> inlines c xs
   Tcy _ t -> t
+  Warichu _ t -> t
+  Upright _ t -> t
   Number _ n st -> renderNumber (cVariant c) (cNumberDefault c) n st
   Ref _ RefPage l -> case Map.lookup l (bookLabels (cBook c)) of
     -- a note has no title: its number, as [ref-number] gives it (root ADR 0422)

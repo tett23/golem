@@ -59,8 +59,8 @@ itemKey :: Item -> String
 itemKey = \case
   Glue {itemWidth = w, itemStretch = y, itemShrink = z} -> "G" <> show (unSp w, unSp y, unSp z)
   -- Omit later default fields absent from the original line-adjustment snapshots
-  -- (docs/adr/0302, docs/adr/0369, root ADR 0379 and the ruby base leaf).
-  it -> T.unpack (foldr (`T.replace` "") (T.pack (show it)) [", lkRubyReading = Nothing", ", lkRubyBaseLeaf = Nothing", ", lkFullWidthPunctuation = True", ", lkRubyOptions = " <> T.pack (show IR.defaultRubyOptions), ", lkRubyOtherReading = Nothing"])
+  -- (docs/adr/0302, docs/adr/0369, root ADR 0379, root ADR 0380 and the ruby base leaf).
+  it -> T.unpack (foldr (`T.replace` "") (T.pack (show it)) [", lkRubyReading = Nothing", ", lkRubyBaseLeaf = Nothing", ", lkFullWidthPunctuation = True", ", lkRubyOptions = " <> T.pack (show IR.defaultRubyOptions), ", lkRubyOtherReading = Nothing", ", bcWarichu = Nothing", ", decSideLeft = False"])
 
 {- | A9 of docs/adr/0278: the items of every run up to two parts, in every
 setting of its normal form, at the start and not, at the end and not, in
@@ -137,7 +137,7 @@ defaultOrder =
 
 -- | A box of no content of a width.
 boxOf :: Sp -> Item
-boxOf w = Box w (BoxContent "" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+boxOf w = Box w (BoxContent "" False 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
 
 -- | A line of items set to a target, of an order, with no expansion, protrusion nor limit.
 lineOf :: AdjustOrder -> Sp -> [Item] -> Line

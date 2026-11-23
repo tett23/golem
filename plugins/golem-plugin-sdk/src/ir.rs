@@ -59,6 +59,10 @@ pub enum Inline {
     CharStyle { span: Span, style: String, body: Vec<Inline> },
     /// 8
     Tcy { span: Span, text: String },
+    /// 26 (root ADR 0380)
+    Warichu { span: Span, text: String },
+    /// 27 (root ADR 0380)
+    Upright { span: Span, text: String },
     /// 9
     Number { span: Span, value: i64, style: Option<NumberStyle> },
     /// 10
@@ -98,6 +102,8 @@ impl Inline {
             | Inline::Color { span, .. }
             | Inline::CharStyle { span, .. }
             | Inline::Tcy { span, .. }
+            | Inline::Warichu { span, .. }
+            | Inline::Upright { span, .. }
             | Inline::Number { span, .. }
             | Inline::Ref { span, .. }
             | Inline::Deferred { span, .. }
@@ -318,6 +324,8 @@ pub fn inline_value(x: &Inline) -> Value {
         Inline::Color { span, swatch, body } => t(6, span, vec![text(swatch), inlines_value(body)]),
         Inline::CharStyle { span, style, body } => t(7, span, vec![text(style), inlines_value(body)]),
         Inline::Tcy { span, text: s } => t(8, span, vec![text(s)]),
+        Inline::Warichu { span, text: s } => t(27, span, vec![text(s)]),
+        Inline::Upright { span, text: s } => t(28, span, vec![text(s)]),
         Inline::Number { span, value, style } => t(
             9,
             span,
@@ -616,6 +624,8 @@ pub fn inline_of(v: &Value) -> R<Inline> {
         (6, [sw, body]) => Inline::Color { span, swatch: text_of(sw)?, body: inlines_of(body)? },
         (7, [st, body]) => Inline::CharStyle { span, style: text_of(st)?, body: inlines_of(body)? },
         (8, [s]) => Inline::Tcy { span, text: text_of(s)? },
+        (27, [s]) => Inline::Warichu { span, text: text_of(s)? },
+        (28, [s]) => Inline::Upright { span, text: text_of(s)? },
         (9, [n, st]) => Inline::Number {
             span,
             value: i64_of(n)?,
@@ -760,6 +770,8 @@ mod tests {
     fn inline_roundtrip() {
         let xs = vec![
             Inline::Text { span: sp(0, 3), text: "漢字".into() },
+            Inline::Warichu { span: sp(0, 3), text: "割注".into() },
+            Inline::Upright { span: sp(0, 3), text: "AB".into() },
             Inline::Ruby {
                 span: sp(0, 3),
                 segments: vec![RubySegment { base: vec![Inline::Text { span: sp(0, 3), text: "漢".into() }], reading: Some("かん".into()) }],

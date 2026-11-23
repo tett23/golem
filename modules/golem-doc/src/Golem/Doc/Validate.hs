@@ -332,6 +332,8 @@ inlineSpan = \case
   Color s _ _ -> s
   CharStyle s _ _ -> s
   Tcy s _ -> s
+  Warichu s _ -> s
+  Upright s _ -> s
   Number s _ _ -> s
   Ref s _ _ -> s
   Deferred s _ -> s

@@ -86,6 +86,7 @@ PDF を作るには必須です。
 | [code: columns] | 段数です。省くと 1 段です。2 以上にすると段組みになり、傍注と図版の回り込みは使えなくなります。 |
 | [code: column-gap] | 段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必須です。 |
 | [code: line-pitch] | 版面の行送りです。文字の大きさ以上にします。 |
+| [code: character-advance] | 字形の大きさを保ったまま、和文の文字枠の送りを正の寸法で指定します。省くと、文字の大きさと同じ送りです。 |
 | [code: alignment] | [code: "grid"]（既定）は格子への配置、[code: "free"] は段落ごとの行送りと寸法のアキを使う配置です。 |
 | [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。左右固定モードでは [code: gutter] の代わりに [code: left] または [code: right] のちょうど一方で、仕上がりの物理的な端から版面の同じ側の端までの距離を書きます。 |
 
@@ -133,7 +134,7 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 | [code: synthetic-bold] | [code: false] | [code: true] にすると、字形の輪郭を太らせて太字にします。 |
 | [code: synthetic-italic] | [code: false] | [code: true] にすると、字形を傾けて斜体にします。 |
 | [code: position] | 外側の値 | [code: "superscript"] で上付き、[code: "subscript"] で下付き、[code: "normal"] で通常の位置にします。 |
-| [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color] を書いた線、[code: false] で線なしにします。縦組みでは文字の右に引きます。 |
+| [code: underline] | 外側の値 | 下線です。[code: true] で既定の線、表で [code: weight]、[code: offset]、[code: style]、[code: dash]、[code: gap]、[code: color]、[code: side] を書いた線、[code: false] で線なしにします。縦組みでは既定で文字の右に引き、[code: side = "left"] で左に引きます。 |
 | [code: strikethrough] | 外側の値 | 打ち消し線です。書き方は [code: underline] と同じです。 |
 | [code: features] | なし | OpenType の機能の配列です。[code: \["smcp", "-liga", "salt=2"\]] のように書きます。[code: based-on] で引き継いだ機能の後ろに足します。 |
 | [code: punctuation-width] | 外側の値 | [code: "full-width"] で括弧類、句読点、中点類を全角の字形で、[code: "font"] でフォントの字形のまま組みます。[code: body] の既定は [code: "full-width"] です（「[ref-title punctuation-width]」、[ref-page punctuation-width] ページ）。 |
