@@ -52,18 +52,24 @@ pageMapTests =
       testCase "root ADR 0386 I1: JSON schema reports G03275" $ checkFailure (Just "{}") False "G03275",
       testCase "root ADR 0386 I1: stale mapping reports G03276" $ checkFailure (Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}") False "G03276",
       testCase "root ADR 0386 I1: invalid position reports G03277" $ checkFailure (Just ("{\"sources\":{\"a.gm\":\"" <> hex (sha256 "abcd\n") <> "\"},\"pages\":[{\"page\":1,\"label\":\"1\",\"file\":\"a.gm\",\"line\":99,\"character\":0}]}")) False "G03277",
-      testCase "a failed page map removes the build/epub of the previous build" $
-        withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
-          firstBuild <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
-          codesOf (filter isError (brDiagnostics firstBuild)) @?= []
-          doesFileExist (root </> "build/epub/book.epub") >>= assertBool "the first build writes the EPUB"
-          manifest <- TIO.readFile (root </> "manifest.toml")
-          TIO.writeFile (root </> "manifest.toml") (T.replace "[targets.epub]" "[targets.epub]\npage-map = \"pages.json\"" manifest)
-          TIO.writeFile (root </> "pages.json") "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}"
-          secondBuild <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
-          codesOf (filter isError (brDiagnostics secondBuild)) @?= ["G03276"]
-          brWritten secondBuild @?= []
-          doesDirectoryExist (root </> "build/epub") >>= assertBool "the failed build removes build/epub" . not,
+      testGroup "root ADR 0429 I4: a failed page map removes the build/epub of the previous build" $
+        [ testCase ("root ADR 0429 I4: " <> name <> " removes the previous build/epub with " <> T.unpack expected) $
+            withChapters "" [("a.gm", "abcd\n")] [] $ \root -> do
+              previous <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
+              codesOf (filter isError (brDiagnostics previous)) @?= []
+              doesFileExist (root </> "build/epub/book.epub") >>= assertBool "the previous build writes the EPUB"
+              manifest <- TIO.readFile (root </> "manifest.toml")
+              TIO.writeFile (root </> "manifest.toml") (T.replace "[targets.epub]" "[targets.epub]\npage-map = \"pages.json\"" manifest)
+              maybe (pure ()) (TIO.writeFile (root </> "pages.json")) json
+              result <- build (defaultOptions root) {optTargets = Just [TargetEpub]}
+              codesOf (filter isError (brDiagnostics result)) @?= [expected]
+              brWritten result @?= []
+              doesDirectoryExist (root </> "build/epub") >>= (@?= False)
+        | (name, json, expected) <-
+            [ ("a page map whose file is missing", Nothing, "G03272"),
+              ("a stale page map", Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}", "G03276")
+            ]
+        ],
       testCase "root ADR 0386 I1: mapped pages preserve their physical order" $ do
         let mapping = PageMap hashes [FixedPage 1 "i" (Just ("a.gm", 0, 0)), FixedPage 2 "1" (Just ("a.gm", 0, 2))]
         case resolvePageMap sources files book mapping of
