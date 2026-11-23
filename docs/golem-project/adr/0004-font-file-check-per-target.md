@@ -1,6 +1,6 @@
 # ADR 0004: style.toml が指すファイルの存在をターゲットごとに検査する
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0423-generic-font-families-for-html-and-epub.md"],"part":"HTML と EPUB のフォントのファイルの同梱と検査","kind":"supplement"}]
 
 ## 文脈
 
