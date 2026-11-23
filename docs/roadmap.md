@@ -94,10 +94,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 ### ページ分割
 
 
-### ルビと和文組版の拡張
-
-- **和文組版の拡張（未実装）**：割注、左の傍線（[ADR 0270](adr/0270-underline-and-strikethrough.md) は右の傍線だけを引く）、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。 [Golem ADR 0380](adr/0380-extended-japanese-composition.md)。 割注の境界、縦組みの正立の欧文の箱、HTML の字送りでは、書記素の分割に golem-unicode の `Golem.Unicode.Grapheme` を使い、golem-html は golem-layout でなく golem-unicode に依存する（[root ADR 0411](adr/0411-segment-graphemes-and-words-in-haskell.md) のうち、この項目とともに実装する部分）。
-
 ### 本の部品の拡張
 
 - **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。

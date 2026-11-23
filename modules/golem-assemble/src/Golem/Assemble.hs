@@ -334,6 +334,8 @@ inlineText = \case
   Lang _ _ xs -> foldMap inlineText xs
   Resolved _ _ _ xs -> foldMap inlineText xs
   Tcy _ t -> t
+  Warichu _ t -> t
+  Upright _ t -> t
   Number _ n _ -> T.pack (show n)
   _ -> ""
 

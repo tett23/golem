@@ -12,7 +12,9 @@ tests :: TestTree
 tests =
   testGroup
     "built-in inline commands (docs/adr ADR 0027)"
-    [ testCase "parseBuiltin is the inverse of builtinName" $
+    [ testCase "root ADR 0380 I1: warichu and upright are built-in prose commands" $
+        assertBool "both commands are built in" (all (isJust . parseBuiltin) ["warichu", "upright"]),
+      testCase "parseBuiltin is the inverse of builtinName" $
         [(b, parseBuiltin (builtinName b)) | b <- allBuiltins] @?= [(b, Just b) | b <- allBuiltins],
       testCase "allBuiltins holds every constructor once" $ do
         sort allBuiltins @?= sort (map Overridable [minBound .. maxBound] <> map Fixed [minBound .. maxBound])
@@ -20,9 +22,9 @@ tests =
       testCase "parseBuiltin rejects names that are not built in" $
         map parseBuiltin ["nope", "", "Strong", "greet", "strong "] @?= replicate 5 Nothing,
       testCase "builtinInlineCommands keeps its names and order" $
-        builtinInlineCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "aki", "link", "lang", "shy"],
+        builtinInlineCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "warichu", "upright", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "aki", "link", "lang", "shy"],
       testCase "overridableCommands keeps its names and order" $
-        overridableCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text"],
+        overridableCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "warichu", "upright", "tcy", "number-text"],
       -- docs/adr ADR 0031
       testCase "the commands a plugin may not override" $
         [builtinName (Fixed f) | f <- [minBound .. maxBound]] @?= ["ref-number", "ref-title", "ref-page", "note", "sidenote", "endnote", "index", "cite", "aki", "link", "lang", "shy"],

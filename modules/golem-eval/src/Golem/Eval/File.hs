@@ -367,6 +367,8 @@ unwritableText = concatMap blockDiags . docBlocks
       Color _ _ xs -> inlines xs
       CharStyle _ _ xs -> inlines xs
       Tcy sp t -> at sp t
+      Warichu sp t -> at sp t
+      Upright sp t -> at sp t
       Note _ _ bs -> concatMap inlines (noteParagraphs bs)
       Sidenote _ _ bs -> concatMap inlines (noteParagraphs bs)
       Endnote _ _ bs -> concatMap inlines (noteParagraphs bs)
@@ -2621,6 +2623,12 @@ builtinWith :: EvalContext -> Bool -> SrcSpan -> BuiltinInline -> [A.Located A.A
 builtinWith ctx inHeading sp b args slots = do
   kw <- keywords ctx args
   let pos = [v | A.Located _ (A.Positional v) <- args]
+      plainComposition constructor = oneSlot $ \xs ->
+        if all isPlain xs
+          then pure [constructor sp (T.concat [t | Text _ t <- xs])]
+          else err "G02040" sp (builtinName b <> " の中身は地の文に限ります") >> pure []
+      isPlain Text {} = True
+      isPlain _ = False
       oneSlot k = case slots of
         [s] -> evalInlines ctx inHeading s >>= k
         _ -> err "G02038" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
@@ -2645,6 +2653,8 @@ builtinWith ctx inHeading sp b args slots = do
       [v] | Just n <- nameArg v, n `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp n)
       [v] | Just n <- nameArg v -> err "G02018" sp ("定義されていない文字スタイルです: " <> n) >> pure []
       _ -> err "G02018" sp "style には文字スタイルの名前を一つ書きます" >> pure []
+    Overridable BWarichu -> plainComposition Warichu
+    Overridable BUpright -> plainComposition Upright
     Overridable BTcy -> oneSlot $ \case
       [Text _ t]
         -- G02063: a number reads better as a number (golem-syntax ADR 0002)

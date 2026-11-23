@@ -241,6 +241,7 @@ sourcePhrase :: SizeSource -> GlyphPart -> Text
 sourcePhrase src = \case
   PartBase -> sizeSourceText src
   PartRuby -> sizeSourceText src <> " のルビ"
+  PartWarichu -> sizeSourceText src <> " の割注"
   PartKenten -> sizeSourceText src <> " の圏点"
 
 -- | The part of a glyph in the facts of G09004.
@@ -248,6 +249,7 @@ partName :: GlyphPart -> Text
 partName = \case
   PartBase -> "base"
   PartRuby -> "ruby"
+  PartWarichu -> "warichu"
   PartKenten -> "kenten"
 
 -- | G09006: the effective resolution below a threshold of the kind of the image.

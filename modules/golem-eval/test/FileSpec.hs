@@ -379,7 +379,13 @@ tests :: TestTree
 tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
-    [ verseTests,
+    [ testCase "root ADR 0380 I1: cutting notes and upright prose retain their source text" $ do
+        let (ds, result) = evalSource baseCtx "[warichu: 注記][upright: AB]\n"
+        map diagCodeText ds @?= []
+        case resultBodies result of
+          [Paragraph _ [Warichu _ note, Upright _ latin]] -> (note, latin) @?= ("注記", "AB")
+          other -> assertFailure (show other),
+      verseTests,
       pluginBlockTests,
       outputCharTests,
       printingsTests,

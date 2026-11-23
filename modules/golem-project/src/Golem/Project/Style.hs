@@ -242,7 +242,9 @@ data Grid = Grid
     gridColumns :: !Natural,
     gridColumnGap :: !(Maybe Dim),
     gridTop :: !Dim,
-    gridPosition :: !GridPosition
+    gridPosition :: !GridPosition,
+    -- | the cell advance without resizing its glyph (root ADR 0380)
+    gridCharacterAdvance :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -1616,13 +1618,15 @@ data DecorationSpec = DecorationSpec
     dsDash :: !(Maybe Dim),
     dsGap :: !(Maybe Dim),
     -- | the swatch; none is the colour of the characters
-    dsColor :: !(Maybe Text)
+    dsColor :: !(Maybe Text),
+    -- | the side of a vertical underline (root ADR 0380)
+    dsSide :: !Text
   }
   deriving stock (Eq, Show)
 
 -- | The line of true and of an empty table: 0.05zw, at the face, solid, the colour of the characters.
 defaultDecoration :: DecorationSpec
-defaultDecoration = DecorationSpec (Zw (1 % 20)) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing
+defaultDecoration = DecorationSpec (Zw (1 % 20)) (Abs 0) ("solid", Nothing) Nothing Nothing Nothing "right"
 
 {- | The weight and the line style of a decoration at a size, its lengths
 in sp: the defaults of the dash and the gap are those of a rule of the
@@ -1772,8 +1776,9 @@ instance FromValue DecorationSpec where
       Integer' _ 0 -> pure (Abs 0)
       Text' l t -> maybe (failAt l (T.unpack ("offset の長さの書き方が不正です: " <> t <> "（0.05zw や -1pt のように書きます）"))) pure (parseSignedDim t)
       v -> failAt (valueAnn v) "offset は \"0.05zw\" のように文字列で書きます"
+    side <- enumKey "side" ["left", "right"]
     let d = defaultDecoration
-    pure (DecorationSpec (fromMaybe (dsWeight d) weight) (fromMaybe (dsOffset d) offset) style dash gap color)
+    pure (DecorationSpec (fromMaybe (dsWeight d) weight) (fromMaybe (dsOffset d) offset) style dash gap color (fromMaybe "right" side))
 
 -- | 0.3pt.
 defaultRuleWeight :: Sp
@@ -2132,7 +2137,15 @@ gridOf layout = parseTableFromValue $ do
   case colsAt of
     Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
     _ -> pure ()
-  pure (Grid fs ch ls lp (if alignment == Just "free" then AlignFree else AlignGrid) cols gap top pos)
+  advance <- optKeyOf "character-advance" $ \v -> do
+    d <- case v of
+      Text' l text -> maybe (failAt l "character-advance は寸法で書きます") pure (parseDim text)
+      _ -> failAt (valueAnn v) "character-advance は寸法で書きます"
+    case d of
+      Abs x | x > 0 -> pure d
+      Zw x | x > 0 -> pure d
+      _ -> failAt (valueAnn v) "character-advance は 0 より大きい寸法です"
+  pure (Grid fs ch ls lp (if alignment == Just "free" then AlignFree else AlignGrid) cols gap top pos advance)
 
 -- | Validate the mode before constructing an unambiguous physical position.
 positionOf :: PageLayout -> Value' l -> Matcher l (Dim, GridPosition)
@@ -4256,6 +4269,7 @@ styleSchema =
     gridNode =
       NTable
         [ ("font-size", dim),
+          ("character-advance", dim),
           ("characters", int),
           ("lines", int),
           ("line-pitch", dim),
@@ -4390,6 +4404,7 @@ decorationNode =
       NTable
         [ ("weight", dim),
           ("offset", dim),
+          ("side", enum ["left", "right"]),
           ("style", enum (map fst ruleStyleNames)),
           ("dash", dim),
           ("gap", dim),
