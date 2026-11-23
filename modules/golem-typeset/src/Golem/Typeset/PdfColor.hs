@@ -22,11 +22,18 @@ import Golem.Typeset.FigureColor (Cmyk, RasterAnalysis (..), RasterKind (..))
 import Golem.Typeset.PdfDct (DctSamples (..), PdfDctSpec (..), decodePdfDct)
 
 -- A colour is kept in the source space until an operator actually paints it.
-data Color = Gray !Rational | Rgb !Rational !Rational !Rational | CmykColor !Rational !Rational !Rational !Rational
+-- A CIE-based colour (root ADR 0425) keeps its space's identity, its
+-- clipped components, and its gray value when it is neutral.
+data Color = Gray !Rational | Rgb !Rational !Rational !Rational | CmykColor !Rational !Rational !Rational !Rational | Cie !Text ![Rational] !(Maybe Rational)
   deriving stock (Eq, Ord, Show)
 
 -- An Indexed space keeps its palette as colours of its base space.
-data Space = GraySpace | RgbSpace | CmykSpace | IndexedSpace ![Color]
+-- An ICCBased space of Gray, RGB or CMYK data maps its Range to 0 to 1 and
+-- is then a device space; a CIE-based space clips to its ranges (root ADR 0425).
+data Space = GraySpace | RgbSpace | CmykSpace | IndexedSpace ![Color] | RangedSpace !Space ![(Rational, Rational)] | CieSpace !CieFamily !Text ![(Rational, Rational)]
+  deriving stock (Eq, Ord, Show)
+
+data CieFamily = CalGrayFamily | CalRgbFamily | LabFamily
   deriving stock (Eq, Ord, Show)
 
 data Graphics = Graphics
@@ -36,7 +43,11 @@ data Graphics = Graphics
     strokeSpace :: !Space,
     textMode :: !Int,
     fillAlpha :: !Rational,
-    strokeAlpha :: !Rational
+    strokeAlpha :: !Rational,
+    -- Overprint for stroking (OP) and for other painting (op), and OPM.
+    overprintStroke :: !Bool,
+    overprintFill :: !Bool,
+    overprintMode :: !Int
   }
   deriving stock (Eq, Ord, Show)
 
@@ -69,7 +80,7 @@ recolorImportedPage swatch analyze page = do
           identity = P.sha256 (P.ipFile page <> BC.pack (show (P.ipPage page, swatch)) <> P.sha256 result)
       Right (Just page {P.ipContent = result, P.ipResources = resources, P.ipObjects = P.ipObjects page <> objects, P.ipFile = identity, P.ipColors = [P.UseCmyk], P.ipDecodedBytes = P.maxDecodedBytes - remainingBytes rendered})
   where
-    initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1
+    initial = Graphics (Gray 0) (Gray 0) GraySpace GraySpace 0 1 1 False False 0
 
 data Scope = PageResources | InlineResources !P.ObjNum | IndirectResources !P.ObjNum
   deriving stock (Eq, Ord, Show)
@@ -112,6 +123,7 @@ scanForms swatch emit active scope resources graphics content state = do
       (current, space, st) <- prepareOperation resources before operation st0
       let scanImage imageScope imageResources key fields prepared
             | fillAlpha current == 0 = Right (Just Unpainted, prepared)
+            | overprintMode current /= 0 && overprintFill current = Left overprintError
             | otherwise = do
                 (kind, decoded) <- pdfImageKind (fillColor current) imageScope imageResources key fields prepared
                 Right (Just kind, decoded)
@@ -203,8 +215,21 @@ externalGraphics resources current ("gs", args) state = do
   -- functions are not, and are not recolored per object.
   mapM_ (\key -> traverse (named key ["Normal", "Compatible"]) (lookup key selected)) ["BM"]
   mapM_ (\key -> traverse (named key ["Identity", "Default"]) (lookup key selected)) ["TR", "TR2"]
-  Right current {fillAlpha = fill, strokeAlpha = stroke}
+  -- OP sets both overprints unless op is in the same dictionary (root ADR 0425).
+  strokeOverprint <- flag "OP" selected
+  fillOverprint <- flag "op" selected
+  mode <- traverse (\value -> dereference Set.empty value state >>= \case P.OInt n | n == 0 || n == 1 -> Right (fromInteger n); _ -> Left overprintInvalid) (lookup "OPM" selected)
+  Right
+    current
+      { fillAlpha = fill,
+        strokeAlpha = stroke,
+        overprintStroke = fromMaybe (overprintStroke current) strokeOverprint,
+        overprintFill = fromMaybe (fromMaybe (overprintFill current) strokeOverprint) fillOverprint,
+        overprintMode = fromMaybe (overprintMode current) mode
+      }
   where
+    overprintInvalid = "PDF 図版のオーバープリントの指定が不正です"
+    flag name fields = traverse (\value -> dereference Set.empty value state >>= \case P.OBool b -> Right b; _ -> Left overprintInvalid) (lookup name fields)
     named key allowed value = do
       resolved <- dereference Set.empty value state
       let ok = \case
@@ -275,6 +300,12 @@ operationSpace resources (operator, args) state
             Nothing | name == "GolemSRGB" -> Right (Just RgbSpace, state)
             Nothing -> Left "PDF 図版の色空間が見つかりません"
             Just value -> do
+              special <- cieSpace value state
+              case special of
+                Just (space, resolved) -> Right (Just space, resolved)
+                Nothing -> deviceSpace value
+  where
+    deviceSpace value = do
               (space, components, _, palette, resolved) <- pdfImageSpace resources [("ColorSpace", value)] state
               let device = case space of
                     P.CsGray -> GraySpace
@@ -656,6 +687,8 @@ pdfImageSpace resources fields state = do
           ranges <- unitDecode components [("Decode", range) | Just range <- [lookup "Range" entries]] state
           if ranges == concat (replicate components [False, True]) then Right () else Left invalid
           (profile, decoded) <- decodePdfStream key entries state
+          -- The profile's data colour space must agree with N (root ADR 0425).
+          if lookup (iccDataSpace profile) [("GRAY", 1), ("RGB ", 3), ("CMYK", 4)] == Just components then Right () else Left invalid
           Right (space, components, Just profile, decoded)
         _ -> Left invalid
 
@@ -972,20 +1005,17 @@ stepWith external resolved swatch (Scan graphics stack kind output budget) (oper
           | otherwise -> Right (Scan state saved seen (bytes : output) (Just (remaining - BS.length bytes - 1)))
       original = BC.unwords (args <> [operator])
       same = keep graphics stack kind original
-      painted colors = keep graphics stack (foldl mergeKind kind (map colorKind colors)) original
+      painted fills strokes
+        | overprintMode graphics /= 0 && (not (null fills) && overprintFill graphics || not (null strokes) && overprintStroke graphics) = Left overprintError
+        | otherwise = keep graphics stack (foldl mergeKind kind (map colorKind (fills <> strokes))) original
       colorOp isStroke space = do
         color <- parseColor space args
         let state = if isStroke then graphics {strokeColor = color, strokeSpace = space} else graphics {fillColor = color, fillSpace = space}
         keep state stack kind (paint swatch color isStroke)
       spaceOp isStroke = do
         space <- maybe (Left "PDF 図版の色空間の変換は未完了です") Right resolved
-        let zero = case space of
-              GraySpace -> Gray 0
-              RgbSpace -> Rgb 0 0 0
-              CmykSpace -> CmykColor 0 0 0 1
-              IndexedSpace (first : _) -> first
-              IndexedSpace [] -> Gray 0
-            state = if isStroke then graphics {strokeSpace = space, strokeColor = zero} else graphics {fillSpace = space, fillColor = zero}
+        zero <- initialColor space
+        let state = if isStroke then graphics {strokeSpace = space, strokeColor = zero} else graphics {fillSpace = space, fillColor = zero}
         keep state stack kind (paint swatch zero isStroke)
   case operator of
     _ | operator `elem` ["Do", "BI"], Just used <- external -> keep graphics stack (mergeKind kind used) original
@@ -1009,10 +1039,10 @@ stepWith external resolved swatch (Scan graphics stack kind output budget) (oper
       [value] | Just n <- int value, n >= 0 && n <= 7 -> keep graphics {textMode = fromInteger n} stack kind original
       _ -> Left "PDF 図版のテキスト描画モードが不正です"
     _
-      | operator `elem` ["f", "F", "f*"] -> painted [fillColor graphics | fillAlpha graphics > 0]
-      | operator `elem` ["S", "s"] -> painted [strokeColor graphics | strokeAlpha graphics > 0]
-      | operator `elem` ["B", "B*", "b", "b*"] -> painted ([fillColor graphics | fillAlpha graphics > 0] <> [strokeColor graphics | strokeAlpha graphics > 0])
-      | operator `elem` ["Tj", "TJ", "'", "\""] -> painted ([fillColor graphics | textMode graphics `elem` [0, 2, 4, 6], fillAlpha graphics > 0] <> [strokeColor graphics | textMode graphics `elem` [1, 2, 5, 6], strokeAlpha graphics > 0])
+      | operator `elem` ["f", "F", "f*"] -> painted [fillColor graphics | fillAlpha graphics > 0] []
+      | operator `elem` ["S", "s"] -> painted [] [strokeColor graphics | strokeAlpha graphics > 0]
+      | operator `elem` ["B", "B*", "b", "b*"] -> painted [fillColor graphics | fillAlpha graphics > 0] [strokeColor graphics | strokeAlpha graphics > 0]
+      | operator `elem` ["Tj", "TJ", "'", "\""] -> painted [fillColor graphics | textMode graphics `elem` [0, 2, 4, 6], fillAlpha graphics > 0] [strokeColor graphics | textMode graphics `elem` [1, 2, 5, 6], strokeAlpha graphics > 0]
       | operator `elem` ["Do", "sh", "BI"] -> Left "PDF 図版の画像・Form・シェーディングの色変換は未完了です"
       | otherwise -> same
 
@@ -1020,6 +1050,12 @@ parseColor :: Space -> [ByteString] -> Either Text Color
 parseColor (IndexedSpace palette) args = case args of
   [arg] | Just index <- decimal arg, denominator index == 1, index >= 0, index < fromIntegral (length palette) -> Right (palette !! fromInteger (numerator index))
   _ -> Left "PDF 図版の色の索引が不正です"
+parseColor (RangedSpace base ranges) args = do
+  values <- maybe (Left "PDF 図版の色の成分を読めません") Right (traverse decimal args)
+  if length values == length ranges then rangedColor base ranges values else Left "PDF 図版の色の成分数が不正です"
+parseColor (CieSpace family key ranges) args = do
+  values <- maybe (Left "PDF 図版の色の成分を読めません") Right (traverse decimal args)
+  if length values == length ranges then Right (cieColor family key ranges values) else Left "PDF 図版の色の成分数が不正です"
 parseColor space args = do
   values <- maybe (Left "PDF 図版の色の成分を読めません") Right (traverse decimal args)
   let clipped = map (max 0 . min 1) values
@@ -1054,8 +1090,114 @@ int bytes = case BC.readInteger bytes of
   Just (n, rest) | BS.null rest -> Just n
   _ -> Nothing
 
+-- The initial colour of a space selected by cs or CS.
+initialColor :: Space -> Either Text Color
+initialColor = \case
+  GraySpace -> Right (Gray 0)
+  RgbSpace -> Right (Rgb 0 0 0)
+  CmykSpace -> Right (CmykColor 0 0 0 1)
+  IndexedSpace (first : _) -> Right first
+  IndexedSpace [] -> Right (Gray 0)
+  RangedSpace base ranges -> rangedColor base ranges (map (const 0) ranges)
+  CieSpace family key ranges -> Right (cieColor family key ranges (map (const 0) ranges))
+
+clip :: (Rational, Rational) -> Rational -> Rational
+clip (low, high) = max low . min high
+
+-- Range maps an ICCBased component to 0 to 1 before the device rules apply.
+rangedColor :: Space -> [(Rational, Rational)] -> [Rational] -> Either Text Color
+rangedColor base ranges values =
+  let unit = [(clip range value - low) / (high - low) | (range@(low, high), value) <- zip ranges values]
+   in case (base, unit) of
+        (GraySpace, [g]) -> Right (Gray g)
+        (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
+        (CmykSpace, [c, m, y, k]) -> Right (CmykColor c m y k)
+        _ -> Left "PDF 図版の色の成分数が不正です"
+
+-- CIE-based colours are classified by their clipped values without
+-- conversion; equal values in one space are one colour (root ADR 0425).
+cieColor :: CieFamily -> Text -> [(Rational, Rational)] -> [Rational] -> Color
+cieColor family key ranges values =
+  let clipped = zipWith clip ranges values
+      neutral = case (family, clipped) of
+        (CalGrayFamily, [g]) -> Just g
+        (CalRgbFamily, [r, g, b]) | r == g && g == b -> Just r
+        -- An ICCBased Lab Range may exceed 0 to 100; L* stays within it.
+        (LabFamily, [l, 0, 0]) -> Just (clip (0, 100) l / 100)
+        _ -> Nothing
+   in Cie key clipped neutral
+
+overprintError :: Text
+overprintError = "PDF 図版の OPM 1 のオーバープリントを保って色を置き換えられません"
+
+iccDataSpace :: ByteString -> ByteString
+iccDataSpace = BS.take 4 . BS.drop 16
+
+-- The CIE-based spaces and the ICCBased spaces classified by the data colour
+-- space of their profiles (root ADR 0425); Nothing for any other space.
+cieSpace :: P.ObjOf P.ObjNum -> Resources -> Either Text (Maybe (Space, Resources))
+cieSpace value state = do
+  resolved <- dereference Set.empty value state
+  case resolved of
+    P.OArr [P.OName family, dictionaryValue]
+      | Just kind <- lookup family [("CalGray", CalGrayFamily), ("CalRGB", CalRgbFamily), ("Lab", LabFamily)] -> do
+          fields <- dictionary dictionaryValue state
+          deepFields <- traverse (\(name, entry) -> (name,) <$> resolveDeep 0 Set.empty entry state) fields
+          ranges <- case kind of
+            CalGrayFamily -> Right [(0, 1)]
+            CalRgbFamily -> Right (replicate 3 (0, 1))
+            LabFamily -> ((0, 100) :) <$> maybe (Right [(-100, 100), (-100, 100)]) (rangePairs 2) (lookup "Range" deepFields)
+          Right (Just (CieSpace kind (family <> " " <> T.pack (show deepFields)) ranges, state))
+    P.OArr [P.OName "ICCBased", reference] -> do
+      (key, entries) <- pdfStreamReference unsupported state Set.empty reference
+      count <- maybe (Left unsupported) (\n -> dereference Set.empty n state) (lookup "N" entries)
+      components <- case count of
+        P.OInt n | n `elem` [1, 3, 4] -> Right (fromInteger n)
+        _ -> Left unsupported
+      deepEntries <- traverse (\(name, entry) -> (name,) <$> resolveDeep 0 Set.empty entry state) [(name, entry) | (name, entry) <- entries, name `notElem` ["Length", "Filter", "DecodeParms", "DL"]]
+      ranges <- maybe (Right (replicate components (0, 1))) (rangePairs components) (lookup "Range" deepEntries)
+      if all (uncurry (<)) ranges then Right () else Left unsupported
+      (profile, decoded) <- decodePdfStream key entries state
+      let identity = "ICCBased " <> T.pack (show deepEntries) <> " " <> TE.decodeLatin1 (P.sha256 profile)
+      space <- case (iccDataSpace profile, components) of
+        ("GRAY", 1) -> Right (RangedSpace GraySpace ranges)
+        ("RGB ", 3) -> Right (RangedSpace RgbSpace ranges)
+        ("CMYK", 4) -> Right (RangedSpace CmykSpace ranges)
+        ("Lab ", 3) -> Right (CieSpace LabFamily identity ranges)
+        _ -> Left unsupported
+      Right (Just (space, decoded))
+    _ -> Right Nothing
+  where
+    unsupported = "PDF 図版の ICC プロファイルの色空間を扱えません"
+    rangePairs count = \case
+      P.OArr entries | length entries == 2 * count -> do
+        numbers <- traverse number entries
+        let pairs (low : high : rest) = (low, high) : pairs rest
+            pairs _ = []
+            result = pairs numbers
+        if all (uncurry (<=)) result then Right result else Left "PDF 図版の色空間の Range が不正です"
+      _ -> Left "PDF 図版の色空間の Range が不正です"
+    number = \case
+      P.OInt n -> Right (fromInteger n)
+      P.OReal text | Just parsed <- decimal (TE.encodeUtf8 text) -> Right parsed
+      _ -> Left "PDF 図版の色空間の Range が不正です"
+
+-- A value with every reference replaced, bounded like Form nesting.
+resolveDeep :: Int -> Set.Set P.ObjNum -> P.ObjOf P.ObjNum -> Resources -> Either Text (P.ObjOf P.ObjNum)
+resolveDeep depth _ _ _ | depth > P.maxNesting = Left "PDF 図版の色空間の辞書が深すぎます"
+resolveDeep depth seen (P.ORef reference) state = do
+  guardForm seen reference
+  value <- maybe (Left "PDF 図版の資源の参照先がありません") Right (Map.lookup reference (sourceObjects state))
+  resolveDeep (depth + 1) (Set.insert reference seen) value state
+resolveDeep depth seen (P.OArr values) state = P.OArr <$> traverse (\value -> resolveDeep (depth + 1) seen value state) values
+resolveDeep depth seen (P.ODict values) state = P.ODict <$> traverse (\(name, value) -> (name,) <$> resolveDeep (depth + 1) seen value state) values
+resolveDeep _ _ (P.OStream fields _) _ = Right (P.ODict fields)
+resolveDeep _ _ value _ = Right value
+
 colorKind :: Color -> RasterKind
 colorKind = \case
+  Cie _ _ (Just _) -> Grayscale
+  Cie key values Nothing -> SolidOther key values
   Gray _ -> Grayscale
   Rgb r g b | r == g && g == b -> Grayscale
   Rgb r g b -> SolidRgb (r, g, b)
@@ -1074,6 +1216,7 @@ paint (c, m, y, k) source isStroke =
         Gray g -> 1 - g
         Rgb r g b | r == g && g == b -> 1 - g
         CmykColor a b d e | a == b && b == d -> 1 - (1 - a) * (1 - e)
+        Cie _ _ (Just g) -> 1 - g
         _ -> 1
       values = [fromIntegral component / 100 * amount | component <- [c, m, y, k]]
    in BC.unwords (map (TE.encodeUtf8 . P.showRationalDigits 8) values <> [if isStroke then "K" else "k"])
