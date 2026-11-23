@@ -1387,4 +1387,838 @@ theorem I5_paginate_text (env : Env) (flows : List Flow) :
     exact h
   · rw [pagesText_cons]; exact h
 
+
+/-! ## The figures are placed once, in the order written (invariant 5)
+
+The figures of the model are the figures and the turned figures.  The
+proof needs every figure to be at least one line high: a figure of no
+lines leaves the column's lines used at 0, so a turned figure after it
+is put on a page of its own before the column that holds the figure is
+closed (README.md).  It also needs a capacity of 0 lines or more, so
+that blank lines never make the lines used negative. -/
+
+/-- The figures and turned figures of slots, in order. -/
+def figSlots : List (Int × Slot) → List Slot
+  | [] => []
+  | (_, .figure i) :: r => .figure i :: figSlots r
+  | (_, .pageFigure i) :: r => .pageFigure i :: figSlots r
+  | _ :: r => figSlots r
+
+theorem figSlots_append (a b : List (Int × Slot)) :
+    figSlots (a ++ b) = figSlots a ++ figSlots b := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih =>
+    obtain ⟨g, s⟩ := x
+    cases s <;> simp [figSlots, ih]
+
+def pagesFigs (done : List PageOut) : List Slot := done.reverse.bind (fun p => figSlots p.slots)
+
+theorem pagesFigs_cons (p : PageOut) (done : List PageOut) :
+    pagesFigs (p :: done) = pagesFigs done ++ figSlots p.slots := by
+  simp [pagesFigs, List.reverse_cons, List.append_bind]
+
+def deferredFig : Deferred → Slot
+  | .figure i _ => .figure i
+  | .pageFigure i => .pageFigure i
+
+/-- The figures on the pages closed, then in the current column, then
+    waiting. -/
+def figs (st : St) : List Slot :=
+  pagesFigs st.done ++ figSlots st.slots ++ st.deferred.map deferredFig
+
+def flowFigs : Flow → List Slot
+  | .figure i _ => [.figure i]
+  | .pageFigure i => [.pageFigure i]
+  | _ => []
+
+def sourceFigs (flows : List Flow) : List Slot := flows.bind flowFigs
+
+/-- Every figure waiting is at least one line high. -/
+def deferredOk : List Deferred → Prop
+  | [] => True
+  | .figure _ n :: r => 1 ≤ n ∧ deferredOk r
+  | .pageFigure _ :: r => deferredOk r
+
+theorem deferredOk_append (a b : List Deferred) (ha : deferredOk a) (hb : deferredOk b) :
+    deferredOk (a ++ b) := by
+  induction a with
+  | nil => exact hb
+  | cons x xs ih =>
+    cases x with
+    | figure i n => exact ⟨ha.1, ih ha.2⟩
+    | pageFigure i => exact ih ha
+
+theorem deferredOk_spanTurned (d : List Deferred) (h : deferredOk d) : deferredOk (spanTurned d).2 := by
+  induction d with
+  | nil => exact h
+  | cons x xs ih =>
+    cases x with
+    | figure i n => exact h
+    | pageFigure i => exact ih h
+
+/-- What holds of every state outside `needBeforeSpaces`. -/
+structure Weak (st : St) : Prop where
+  first : st.firstLine = 0
+  deferred : deferredOk st.deferred
+
+/-- A column that holds a figure has used a line or more. -/
+structure Inv (st : St) : Prop where
+  weak : Weak st
+  used : 0 ≤ st.used
+  fig : figSlots st.slots = [] ∨ 1 ≤ st.used
+
+/-- `a` comes before `b`: an earlier page, or an earlier column of the
+    same page. -/
+def posLt (a b : St) : Prop := a.page < b.page ∨ (a.page = b.page ∧ a.column < b.column)
+
+theorem posLt_trans {a b c : St} (h1 : posLt a b) (h2 : posLt b c) : posLt a c := by
+  simp only [posLt] at *; omega
+
+/-- `r` keeps the column of `st` as it is, or is a valid state in a later
+    column. -/
+def Moves (st r : St) : Prop :=
+  (r.slots = st.slots ∧ r.used = st.used ∧ r.page = st.page ∧ r.column = st.column
+    ∧ r.firstLine = st.firstLine ∧ r.deferred = st.deferred) ∨ (Inv r ∧ posLt st r)
+
+theorem Moves.refl' {st r : St} (h : r.slots = st.slots ∧ r.used = st.used ∧ r.page = st.page
+    ∧ r.column = st.column ∧ r.firstLine = st.firstLine ∧ r.deferred = st.deferred) : Moves st r :=
+  Or.inl h
+
+theorem Moves.trans {a b c : St} (h1 : Moves a b) (h2 : Moves b c) : Moves a c := by
+  rcases h1 with s1 | ⟨i1, p1⟩
+  · rcases h2 with s2 | ⟨i2, p2⟩
+    · left; obtain ⟨a1, a2, a3, a4, a5, a6⟩ := s1; obtain ⟨b1, b2, b3, b4, b5, b6⟩ := s2
+      exact ⟨b1.trans a1, b2.trans a2, b3.trans a3, b4.trans a4, b5.trans a5, b6.trans a6⟩
+    · right; refine ⟨i2, ?_⟩
+      simp only [posLt] at *; omega
+  · rcases h2 with s2 | ⟨i2, p2⟩
+    · obtain ⟨b1, b2, b3, b4, b5, b6⟩ := s2
+      right
+      refine ⟨⟨⟨b5.trans i1.weak.first, b6 ▸ i1.weak.deferred⟩, b2 ▸ i1.used, b1 ▸ b2 ▸ i1.fig⟩, ?_⟩
+      simp only [posLt] at *; omega
+    · exact Or.inr ⟨i2, posLt_trans p1 p2⟩
+
+theorem Moves.inv {st r : St} (i : Inv st) (h : Moves st r) : Inv r := by
+  rcases h with ⟨b1, b2, _, _, b5, b6⟩ | ⟨i2, _⟩
+  · exact ⟨⟨b5.trans i.weak.first, b6 ▸ i.weak.deferred⟩, b2 ▸ i.used, b1 ▸ b2 ▸ i.fig⟩
+  · exact i2
+
+/-! ### Going on to the next column keeps the figures and makes a valid state -/
+
+theorem pageFigures_page (env : Env) (ts : List Nat) (st : St) :
+    (ts.foldl (pageFigure env) st).page = st.page + ts.length ∧
+      (ts.foldl (pageFigure env) st).slots = st.slots ∧
+      pagesFigs (ts.foldl (pageFigure env) st).done = pagesFigs st.done ++ ts.map Slot.pageFigure := by
+  induction ts generalizing st with
+  | nil => simp
+  | cons t ts ih =>
+    simp only [List.foldl]
+    obtain ⟨a, b, c⟩ := ih (pageFigure env st t)
+    refine ⟨?_, ?_, ?_⟩
+    · rw [a]; simp [pageFigure]; omega
+    · rw [b]; rfl
+    · rw [c]; simp [pageFigure, pagesFigs_cons, figSlots]
+
+theorem carryNote_frame (env : Env) (st : St) (p : NotePart) :
+    let r := carryNote env st p
+    r.page = st.page ∧ r.slots = st.slots ∧ r.done = st.done ∧ r.used = st.used
+      ∧ r.firstLine = st.firstLine := by
+  simp only [carryNote, addUnmet]; split <;> exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+theorem carryAll_frame (env : Env) (ps : List NotePart) (st : St) :
+    let r := ps.foldl (carryNote env) st
+    r.page = st.page ∧ r.slots = st.slots ∧ r.done = st.done ∧ r.used = st.used
+      ∧ r.firstLine = st.firstLine := by
+  induction ps generalizing st with
+  | nil => exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+  | cons p ps ih =>
+    simp only [List.foldl]
+    obtain ⟨a, b, c, d, e⟩ := ih (carryNote env st p)
+    obtain ⟨a', b', c', d', e'⟩ := carryNote_frame env st p
+    exact ⟨a.trans a', b.trans b', c.trans c', d.trans d', e.trans e'⟩
+
+theorem placeDeferred_figs (env : Env) (ws : List Deferred) (st : St) (h : st.deferred = []) :
+    let r := placeDeferred env st ws
+    r.page = st.page ∧ r.done = st.done ∧
+      figSlots r.slots ++ r.deferred.map deferredFig = figSlots st.slots ++ ws.map deferredFig := by
+  induction ws generalizing st with
+  | nil => simp [placeDeferred, h]
+  | cons w ws ih =>
+    cases w with
+    | figure i n =>
+      unfold placeDeferred; split
+      · obtain ⟨a, b, c⟩ := ih (putSlot st n (.figure i)) h
+        refine ⟨a, b, ?_⟩
+        rw [c]; simp [putSlot, figSlots_append, figSlots, deferredFig]
+      · simp
+    | pageFigure i => simp [placeDeferred]
+
+theorem putSlot_inv (st : St) (n i : Nat) (h : Inv st) (hn : 1 ≤ n) : Inv (putSlot st n (.figure i)) :=
+  ⟨⟨h.weak.first, h.weak.deferred⟩, by simp only [putSlot]; have := h.used; omega,
+    by simp only [putSlot]; have := h.used; right; omega⟩
+
+theorem placeDeferred_inv (env : Env) (ws : List Deferred) (st : St) (h : Inv st) (hw : deferredOk ws) :
+    Inv (placeDeferred env st ws) := by
+  induction ws generalizing st with
+  | nil => exact h
+  | cons w ws ih =>
+    cases w with
+    | figure i n =>
+      unfold placeDeferred; split
+      · exact ih _ (putSlot_inv st n i h hw.1) hw.2
+      · exact ⟨⟨h.weak.first, hw⟩, h.used, h.fig⟩
+    | pageFigure i => exact ⟨⟨h.weak.first, hw⟩, h.used, h.fig⟩
+
+theorem spanTurned_figs (d : List Deferred) :
+    (spanTurned d).1.map Slot.pageFigure ++ (spanTurned d).2.map deferredFig = d.map deferredFig := by
+  induction d with
+  | nil => rfl
+  | cons x xs ih =>
+    cases x with
+    | figure i n => simp [spanTurned]
+    | pageFigure i => simp [spanTurned, deferredFig]; exact ih
+
+theorem advanceFresh_figs (env : Env) (b : Bool) (st : St) :
+    let r := advanceFresh env b st
+    pagesFigs r.done = pagesFigs st.done ++ figSlots st.slots ∧ r.slots = [] ∧ r.deferred = st.deferred
+      ∧ r.page = (if b then st.page + 1 else st.page) ∧ r.used = (if b then 0 else st.firstLine)
+      ∧ r.firstLine = (if b then 0 else st.firstLine) := by
+  refine ⟨?_, rfl, ?_, rfl, rfl, rfl⟩
+  · simp only [advanceFresh, closePage]
+    by_cases e : st.slots.isEmpty = true ∧ st.notes.isEmpty = true
+    · have s : st.slots = [] := by
+        cases h : st.slots with
+        | nil => rfl
+        | cons _ _ => simp [h, List.isEmpty] at e
+      simp only [e, and_self, ite_true]
+      split <;> simp [pagesFigs_cons, figSlots, s]
+    · simp only [e, ite_false]
+      split <;> simp [pagesFigs_cons, figSlots]
+  · simp only [advanceFresh, closePage]
+    split <;> (try split) <;> rfl
+
+theorem advance_figs (env : Env) (b : Bool) (st : St) : figs (advance env b st) = figs st := by
+  simp only [advance, openColumn]
+  obtain ⟨f1, f2, f3, _, _, _⟩ := advanceFresh_figs env b st
+  generalize advanceFresh env b st = fr at f1 f2 f3
+  obtain ⟨p1, p2, p3⟩ := pageFigures_page env (advanceTurned b st).1 fr
+  generalize (advanceTurned b st).1.foldl (pageFigure env) fr = pf at p1 p2 p3
+  obtain ⟨c1, c2, c3, _, _⟩ := carryAll_frame env st.pending pf
+  generalize st.pending.foldl (carryNote env) pf = cn at c1 c2 c3
+  obtain ⟨_, d2, d3⟩ := placeDeferred_figs env (advanceTurned b st).2 { cn with deferred := [] } rfl
+  simp only [figs]
+  rw [List.append_assoc, d3, d2]
+  simp only [c2, c3, p2, f2, p3, f1, figSlots, List.append_nil, List.append_assoc]
+  congr 2
+  have : (advanceTurned b st).1.map Slot.pageFigure ++ (advanceTurned b st).2.map deferredFig
+      = st.deferred.map deferredFig := by
+    unfold advanceTurned; split
+    · exact spanTurned_figs _
+    · simp
+  exact this
+
+theorem advance_page (env : Env) (b : Bool) (st : St) :
+    (advance env b st).page = (if b then st.page + 1 else st.page) + (advanceTurned b st).1.length := by
+  simp only [advance, openColumn]
+  obtain ⟨_, _, _, f4, _, _⟩ := advanceFresh_figs env b st
+  generalize advanceFresh env b st = fr at f4
+  obtain ⟨p1, _, _⟩ := pageFigures_page env (advanceTurned b st).1 fr
+  generalize (advanceTurned b st).1.foldl (pageFigure env) fr = pg at p1
+  obtain ⟨c1, _, _, _, _⟩ := carryAll_frame env st.pending pg
+  generalize st.pending.foldl (carryNote env) pg = cn at c1
+  obtain ⟨d1, _, _⟩ := placeDeferred_figs env (advanceTurned b st).2 { cn with deferred := [] } rfl
+  rw [d1]; show cn.page = _; rw [c1, p1, f4]
+
+theorem advance_posLt (env : Env) (b : Bool) (st : St) : posLt st (advance env b st) := by
+  have p := advance_page env b st
+  have c := advance_column env b st
+  simp only [posLt, p, c]
+  cases b with
+  | true => left; simp; omega
+  | false => right; simp [advanceTurned]
+
+theorem advance_inv (env : Env) (b : Bool) (st : St) (w : Weak st) :
+    Inv (advance env b st) ∧ posLt st (advance env b st) := by
+  refine ⟨?_, advance_posLt env b st⟩
+  simp only [advance, openColumn]
+  obtain ⟨_, f2, _, _, f5, f6⟩ := advanceFresh_figs env b st
+  have okTurned : deferredOk (advanceTurned b st).2 := by
+    unfold advanceTurned; split
+    · exact deferredOk_spanTurned _ w.deferred
+    · exact w.deferred
+  generalize advanceFresh env b st = fr at f2 f5 f6
+  obtain ⟨_, p2, _⟩ := pageFigures_page env (advanceTurned b st).1 fr
+  have pf := pageFigures_fields env (advanceTurned b st).1 fr
+  generalize (advanceTurned b st).1.foldl (pageFigure env) fr = pg at p2 pf
+  obtain ⟨_, c2, _, c4, c5⟩ := carryAll_frame env st.pending pg
+  generalize st.pending.foldl (carryNote env) pg = cn at c2 c4 c5
+  have base : Inv { cn with deferred := [] } := by
+    refine ⟨⟨?_, trivial⟩, ?_, ?_⟩
+    · show cn.firstLine = 0
+      rw [c5, pf.2.2.2.2.2.1, f6]; have := w.first; split <;> simp [this]
+    · show 0 ≤ cn.used
+      rw [c4, pf.2.2.2.2.1, f5]; have := w.first; split <;> simp [this]
+    · left; show figSlots cn.slots = []; rw [c2, p2, f2]; rfl
+  exact placeDeferred_inv env _ _ base okTurned
+
+theorem figs_nextColumn (env : Env) (st : St) : figs (nextColumn env st) = figs st := advance_figs ..
+theorem figs_nextPage (env : Env) (st : St) : figs (nextPage env st) = figs st := advance_figs ..
+
+theorem moves_nextColumn (env : Env) (st : St) (w : Weak st) : Moves st (nextColumn env st) :=
+  Or.inr (advance_inv env _ st w)
+
+theorem Inv.weak' {st : St} (h : Inv st) : Weak st := h.weak
+
+/-- A state that keeps the column of `st` as it is. -/
+theorem moves_same {st r : St} (a : r.slots = st.slots) (b : r.used = st.used) (c : r.page = st.page)
+    (d : r.column = st.column) (e : r.firstLine = st.firstLine) (f : r.deferred = st.deferred) :
+    Moves st r := Or.inl ⟨a, b, c, d, e, f⟩
+
+theorem moves_weak {st r : St} (w : Weak st) (m : Moves st r) : Weak r := by
+  rcases m with ⟨_, _, _, _, e, f⟩ | ⟨i, _⟩
+  · exact ⟨e.trans w.first, f ▸ w.deferred⟩
+  · exact i.weak
+
+/-! ### The loops and the breaks -/
+
+theorem keep_moves (env : Env) (st : St) (need : St → Int) (w : Weak st) : Moves st (keep env st need) := by
+  by_cases h : free env st < need st ∧ isEmpty st = false
+  · unfold keep; rw [dif_pos h]
+    have m := moves_nextColumn env st w
+    exact m.trans (keep_moves env (nextColumn env st) need (moves_weak w m))
+  · unfold keep; rw [dif_neg h]; exact moves_same rfl rfl rfl rfl rfl rfl
+termination_by rank env st
+decreasing_by exact I4_nextColumn_rank env st (Or.inl h.2)
+
+theorem figs_keep (env : Env) (st : St) (need : St → Int) : figs (keep env st need) = figs st := by
+  by_cases h : free env st < need st ∧ isEmpty st = false
+  · unfold keep; rw [dif_pos h, figs_keep env (nextColumn env st) need, figs_nextColumn]
+  · unfold keep; rw [dif_neg h]
+termination_by rank env st
+decreasing_by exact I4_nextColumn_rank env st (Or.inl h.2)
+
+theorem inv_nextColumn (env : Env) (st : St) (h : Inv st) : Inv (nextColumn env st) :=
+  (advance_inv env _ st h.weak).1
+
+theorem inv_nextPage (env : Env) (st : St) (h : Inv st) : Inv (nextPage env st) :=
+  (advance_inv env _ st h.weak).1
+
+theorem inv_keep (env : Env) (st : St) (need : St → Int) (h : Inv st) : Inv (keep env st need) :=
+  (keep_moves env st need h.weak).inv h
+
+theorem flushDeferred_figs (env : Env) (st : St) (h : Inv st) :
+    figs (flushDeferred env st) = figs st ∧ Inv (flushDeferred env st) ∧ (flushDeferred env st).deferred = [] := by
+  by_cases c : st.deferred = [] ∧ st.pending = []
+  · unfold flushDeferred; rw [dif_pos c]; exact ⟨rfl, h, c.1⟩
+  · unfold flushDeferred; rw [dif_neg c]
+    have := flushDeferred_figs env (nextColumn env st) (inv_nextColumn env st h)
+    rw [figs_nextColumn] at this
+    exact this
+termination_by (waiting st, columnsLeft env st)
+decreasing_by exact I4_nextColumn_flush_rank env st (waiting_pos st c)
+
+theorem figs_blankPage (env : Env) (st : St) : figs (blankPage env st) = figs st := by
+  simp [figs, blankPage, pagesFigs_cons, figSlots]
+
+theorem inv_blankPage (env : Env) (st : St) (h : Inv st) : Inv (blankPage env st) :=
+  ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+
+theorem parityStart_figs (env : Env) (p : Nat → Bool) (st : St) (h : Inv st) :
+    figs (parityStart env p st) = figs st ∧ Inv (parityStart env p st) := by
+  obtain ⟨f, i, _⟩ := flushDeferred_figs env st h
+  simp only [parityStart]
+  generalize flushDeferred env st = s0 at f i
+  have h1 : figs (if isEmpty s0 = true ∧ s0.column = 0 then s0 else nextPage env s0) = figs st ∧
+      Inv (if isEmpty s0 = true ∧ s0.column = 0 then s0 else nextPage env s0) := by
+    split
+    · exact ⟨f, i⟩
+    · exact ⟨(figs_nextPage env s0).trans f, inv_nextPage env s0 i⟩
+  generalize (if isEmpty s0 = true ∧ s0.column = 0 then s0 else nextPage env s0) = s1 at h1
+  split
+  · exact h1
+  · exact ⟨(figs_blankPage env s1).trans h1.1, inv_blankPage env s1 h1.2⟩
+
+theorem breakPage_figs (env : Env) (st : St) (h : Inv st) :
+    figs (breakPage env st) = figs st ∧ Inv (breakPage env st) := by
+  simp only [breakPage]
+  split
+  · exact ⟨figs_blankPage env st, inv_blankPage env st h⟩
+  · split
+    · exact ⟨rfl, h⟩
+    · exact ⟨figs_nextPage env st, inv_nextPage env st h⟩
+
+theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
+    figs (applyBreaks env st) = figs st ∧ Inv (applyBreaks env st) := by
+  simp only [applyBreaks]
+  suffices ∀ (ks : List BreakKind) (s : St), Inv s →
+      figs (ks.foldl (applyBreakKind env) s) = figs s ∧ Inv (ks.foldl (applyBreakKind env) s) by
+    exact this _ _ ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  intro ks
+  induction ks with
+  | nil => intro s i; exact ⟨rfl, i⟩
+  | cons k ks ih =>
+    intro s i
+    simp only [List.foldl]
+    have one : figs (applyBreakKind env s k) = figs s ∧ Inv (applyBreakKind env s k) := by
+      cases k with
+      | page => exact breakPage_figs env s i
+      | recto => exact parityStart_figs env odd s i
+      | verso => exact parityStart_figs env even s i
+      | column =>
+        simp only [applyBreakKind]
+        split
+        · exact ⟨figs_nextColumn env s, inv_nextColumn env s i⟩
+        · exact breakPage_figs env s i
+    have := ih _ one.2
+    exact ⟨this.1.trans one.1, this.2⟩
+
+/-! ### Need-lines and spaces -/
+
+theorem applyNeed_moves (env : Env) (st : St) (w : Weak st) : Moves st (applyNeed env st) := by
+  unfold applyNeed
+  split
+  · exact moves_same rfl rfl rfl rfl rfl rfl
+  · split
+    · dsimp only; split
+      · exact moves_same rfl rfl rfl rfl rfl rfl
+      · exact moves_nextColumn env _ ⟨w.first, w.deferred⟩
+    · exact keep_moves env _ _ ⟨w.first, w.deferred⟩
+
+theorem figs_applyNeed (env : Env) (st : St) : figs (applyNeed env st) = figs st := by
+  unfold applyNeed
+  split
+  · rfl
+  · split
+    · dsimp only; split
+      · rfl
+      · rw [figs_nextColumn]; rfl
+    · rw [figs_keep]; rfl
+
+theorem needBeforeSpace_moves (env : Env) (st : St) (w : Weak st) : Moves st (needBeforeSpace env st) := by
+  unfold needBeforeSpace
+  split
+  · exact moves_same rfl rfl rfl rfl rfl rfl
+  · split
+    · exact moves_same rfl rfl rfl rfl rfl rfl
+    · split
+      · exact applyNeed_moves env _ ⟨w.first, w.deferred⟩
+      · have m := applyNeed_moves env { st with needAt := none } ⟨w.first, w.deferred⟩
+        rcases m with ⟨a, b, c, d, e, f⟩ | ⟨i, p⟩
+        · exact moves_same a b c d e f
+        · exact Or.inr ⟨⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig⟩, p⟩
+
+theorem figs_needBeforeSpace (env : Env) (st : St) : figs (needBeforeSpace env st) = figs st := by
+  unfold needBeforeSpace
+  split
+  · rfl
+  · repeat' split
+    all_goals first | rfl | (rw [figs_applyNeed]; rfl) | (show figs (applyNeed env _) = _; rw [figs_applyNeed]; rfl)
+
+theorem inv_placeSpaceFlow (env : Env) (st : St) (n : Nat) (h : Inv st) : Inv (placeSpaceFlow env st n) := by
+  unfold placeSpaceFlow; split
+  · exact h
+  · have u := h.used
+    have m : 0 ≤ max 0 (min (n : Int) (free env st)) := Int.le_max_left ..
+    refine ⟨⟨h.weak.first, h.weak.deferred⟩, ?_, ?_⟩
+    · show 0 ≤ st.used + _; omega
+    · rcases h.fig with f | f
+      · exact Or.inl f
+      · right; show 1 ≤ st.used + _; omega
+
+theorem inv_placeSpace (env : Env) (st : St) (n : Nat) (h : Inv st) : Inv (placeSpace env st n) := by
+  have i := inv_placeSpaceFlow env st n h
+  exact ⟨⟨i.weak.first, i.weak.deferred⟩, i.used, i.fig⟩
+
+theorem inv_placeSpaces (env : Env) (ns : List Nat) (st : St) (h : Inv st) :
+    Inv (ns.foldl (placeSpace env) st) := by
+  induction ns generalizing st with
+  | nil => exact h
+  | cons n _ ih => exact ih _ (inv_placeSpace env st n h)
+
+theorem figs_placeSpaces (env : Env) (ns : List Nat) (st : St) :
+    figs (ns.foldl (placeSpace env) st) = figs st := by
+  induction ns generalizing st with
+  | nil => rfl
+  | cons n ns ih =>
+    simp only [List.foldl]; rw [ih]
+    show figs (placeSpaceFlow env st n) = _
+    unfold placeSpaceFlow; split <;> rfl
+
+/-- `needBeforeSpaces` takes the spaces out of the lines used for a
+    while.  If the column stays, the lines used come back as they were;
+    otherwise the state is the valid state of a later column. -/
+theorem inv_needBeforeSpaces (env : Env) (st : St) (h : Inv st) : Inv (needBeforeSpaces env st) := by
+  unfold needBeforeSpaces
+  generalize (st.spaces.map (·.2)).foldr (· + ·) 0 = k
+  have m := needBeforeSpace_moves env { st with used := st.used - k } ⟨h.weak.first, h.weak.deferred⟩
+  simp only
+  generalize needBeforeSpace env { st with used := st.used - k } = st1 at m
+  split
+  · rename_i e
+    rcases m with ⟨s1, s2, _, _, s5, s6⟩ | ⟨_, p⟩
+    · have u : st1.used + k = st.used := by rw [s2]; show st.used - k + k = st.used; omega
+      refine ⟨⟨?_, ?_⟩, ?_, ?_⟩
+      · show st1.firstLine = 0; rw [s5]; exact h.weak.first
+      · show deferredOk st1.deferred; rw [s6]; exact h.weak.deferred
+      · show 0 ≤ st1.used + k; rw [u]; exact h.used
+      · show figSlots st1.slots = [] ∨ 1 ≤ st1.used + k; rw [u, s1]; exact h.fig
+    · exfalso; simp only [posLt] at p; omega
+  · rename_i e
+    rcases m with ⟨_, _, s3, s4, _, _⟩ | ⟨i, _⟩
+    · exact absurd ⟨s3, s4⟩ e
+    · exact inv_placeSpaces env _ st1 i
+
+theorem figs_needBeforeSpaces (env : Env) (st : St) : figs (needBeforeSpaces env st) = figs st := by
+  unfold needBeforeSpaces
+  simp only
+  split
+  · show figs (needBeforeSpace env _) = figs st
+    rw [figs_needBeforeSpace]; rfl
+  · rw [figs_placeSpaces, figs_needBeforeSpace]; rfl
+
+theorem needAfterSpaces_figs (env : Env) (st : St) (h : Inv st) :
+    figs (needAfterSpaces env st) = figs st ∧ Inv (needAfterSpaces env st) := by
+  unfold needAfterSpaces; split
+  · exact ⟨rfl, h⟩
+  · exact ⟨figs_needBeforeSpaces env st, inv_needBeforeSpaces env st h⟩
+
+theorem needMore_figs (env : Env) (n : Nat) (st : St) (h : Inv st) :
+    figs (needMore env n st) = figs st ∧ Inv (needMore env n st) := by
+  have h' : ∀ a b, Inv { st with need := a, needAt := b } :=
+    fun _ _ => ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  unfold needMore
+  split
+  · split
+    · exact ⟨rfl, h⟩
+    · exact needAfterSpaces_figs env _ (h' _ _)
+  · exact needAfterSpaces_figs env _ (h' _ _)
+
+theorem needBefore_figs (env : Env) (st : St) (flows : List Flow) (h : Inv st) :
+    figs (needBefore env st flows) = figs st ∧ Inv (needBefore env st flows) := by
+  have w : ∀ a b, Weak { st with need := a, needAt := b } := fun _ _ => ⟨h.weak.first, h.weak.deferred⟩
+  have i : ∀ a b, Inv { st with need := a, needAt := b } :=
+    fun _ _ => ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  have i' : Inv { st with needAt := none } := ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+  unfold needBefore
+  split
+  · split
+    · exact ⟨by rw [figs_keep]; rfl, (keep_moves env _ _ (w _ _)).inv (i _ _)⟩
+    · exact ⟨by rw [figs_applyNeed]; rfl, (applyNeed_moves env _ i'.weak).inv i'⟩
+  · exact ⟨by rw [figs_applyNeed]; rfl, (applyNeed_moves env _ i'.weak).inv i'⟩
+
+/-! ### Blank lines -/
+
+theorem total_nonneg (c : Int) (hc : 0 ≤ c) (ns : List Nat) (a : Int) (ha : 0 ≤ a) :
+    0 ≤ ns.foldl (fun a (n : Nat) => min c (a + min c (n : Int))) a := by
+  induction ns generalizing a with
+  | nil => exact ha
+  | cons n _ ih =>
+    apply ih
+    have : 0 ≤ min c (n : Int) := Int.le_min.mpr ⟨hc, Int.ofNat_nonneg n⟩
+    exact Int.le_min.mpr ⟨hc, by omega⟩
+
+theorem dropBlanks_figs (ns : List Nat) (st : St) (h : Inv st) :
+    figs (ns.foldl (fun s _ => addUnmet .droppedBlank s) st) = figs st ∧
+      Inv (ns.foldl (fun s _ => addUnmet .droppedBlank s) st) := by
+  induction ns generalizing st with
+  | nil => exact ⟨rfl, h⟩
+  | cons _ _ ih => exact ih (addUnmet .droppedBlank st) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+
+theorem blankTail (total : Int) (ht : 0 ≤ total) (blanks : List Nat) (s2 : St) (X : List Slot)
+    (h : Inv s2) (f : figs s2 = X) :
+    figs (if s2.used = top s2 then blanks.foldl (fun s _ => addUnmet .droppedBlank s) { s2 with blank := [] }
+      else { s2 with used := s2.used + total, blank := [] }) = X ∧
+    Inv (if s2.used = top s2 then blanks.foldl (fun s _ => addUnmet .droppedBlank s) { s2 with blank := [] }
+      else { s2 with used := s2.used + total, blank := [] }) := by
+  split
+  · have := dropBlanks_figs blanks { s2 with blank := [] } ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+    exact ⟨this.1.trans f, this.2⟩
+  · refine ⟨f, ⟨⟨h.weak.first, h.weak.deferred⟩, ?_, ?_⟩⟩
+    · show 0 ≤ s2.used + total; have := h.used; omega
+    · rcases h.fig with g | g
+      · exact Or.inl g
+      · right; show 1 ≤ s2.used + total; omega
+
+theorem placeBlank_figs (env : Env) (hc : 0 ≤ env.capacity) (st : St) (f : Flow) (rest : List Flow)
+    (h : Inv st) : figs (placeBlank env st f rest) = figs st ∧ Inv (placeBlank env st f rest) := by
+  unfold placeBlank
+  split
+  · exact ⟨rfl, h⟩
+  · dsimp only
+    have h1 : figs (if startsRecto f = true then parityStart env odd st else st) = figs st ∧
+        Inv (if startsRecto f = true then parityStart env odd st else st) := by
+      split
+      · exact parityStart_figs env odd st h
+      · exact ⟨rfl, h⟩
+    generalize (if startsRecto f = true then parityStart env odd st else st) = s1 at h1
+    apply blankTail
+    · exact total_nonneg _ hc _ 0 (Int.le_refl 0)
+    · exact inv_keep env s1 _ h1.2
+    · rw [figs_keep]; exact h1.1
+
+/-! ### Lines and headings -/
+
+theorem putLine_figs (env : Env) (st : St) (l : Line) (h : Inv st) :
+    figs (putLine env st l) = figs st ∧ Inv (putLine env st l) := by
+  refine ⟨by simp [figs, putLine, putLineKeeping, figSlots_append, figSlots], ?_⟩
+  have u := h.used
+  refine ⟨⟨h.weak.first, h.weak.deferred⟩, ?_, ?_⟩
+  · show 0 ≤ st.used + 1; omega
+  · right; show 1 ≤ st.used + 1; omega
+
+theorem putLines_figs (env : Env) (ls : List Line) (st : St) (h : Inv st) :
+    figs (ls.foldl (putLine env) st) = figs st ∧ Inv (ls.foldl (putLine env) st) := by
+  induction ls generalizing st with
+  | nil => exact ⟨rfl, h⟩
+  | cons l ls ih =>
+    simp only [List.foldl]
+    have one := putLine_figs env st l h
+    have := ih _ one.2
+    exact ⟨this.1.trans one.1, this.2⟩
+
+theorem putBlock_figs (env : Env) (st : St) (n : Nat) (ls : List Line) (h : Inv st) :
+    figs (putBlock env st n ls) = figs st ∧ Inv (putBlock env st n ls) := by
+  cases ls with
+  | nil => exact ⟨rfl, h⟩
+  | cons l0 ls =>
+    refine ⟨by simp [figs, putBlock, figSlots_append, figSlots], ?_⟩
+    have u := h.used
+    have n0 : (0 : Int) ≤ n := Int.ofNat_nonneg n
+    refine ⟨⟨h.weak.first, h.weak.deferred⟩, ?_, ?_⟩
+    · show 0 ≤ st.used + n; omega
+    · show figSlots (st.slots ++ [(st.used, .heading l0.id (ls.length + 1))]) = [] ∨ 1 ≤ st.used + n
+      rw [figSlots_append]
+      rcases h.fig with g | g
+      · left; simp [g, figSlots]
+      · right; omega
+
+theorem shortParts_figs (us : List Unmet) (st : St) (h : Inv st) :
+    figs (us.foldl (fun s u => addUnmet u s) st) = figs st ∧ Inv (us.foldl (fun s u => addUnmet u s) st) := by
+  induction us generalizing st with
+  | nil => exact ⟨rfl, h⟩
+  | cons u _ ih => exact ih (addUnmet u st) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+
+theorem placeLinesGo_figs (env : Env) (pid : Nat) (kp : Keep) (st : St) (isStart : Bool) (ls : List Line)
+    (h : Inv st) :
+    figs (placeLinesGo env pid kp st isStart ls) = figs st ∧ Inv (placeLinesGo env pid kp st isStart ls) := by
+  match ls with
+  | [] => unfold placeLinesGo; exact ⟨rfl, h⟩
+  | l :: ls' =>
+    by_cases h1 : st.adjust < 0 ∧ isEmpty st = true ∧ env.roomForLine st (l :: ls') = false
+    · unfold placeLinesGo; rw [dif_pos h1]
+      have := placeLinesGo_figs env pid kp (nextColumn env st) isStart (l :: ls') (inv_nextColumn env st h)
+      rw [figs_nextColumn] at this; exact this
+    · by_cases h2 : kp.all = true ∧ isStart = true ∧ env.fitting st (l :: ls') < (l :: ls').length
+      · by_cases h3 : isEmpty st = true ∨ st.headingOnly = true
+        · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_pos h3]
+          exact placeLinesGo_figs env pid { kp with all := false } (addUnmet (.splitKept pid) st) isStart
+            (l :: ls') ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+        · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_neg h3]
+          have := placeLinesGo_figs env pid kp (nextColumn env st) isStart (l :: ls') (inv_nextColumn env st h)
+          rw [figs_nextColumn] at this; exact this
+      · by_cases h4 : (l :: ls').length ≤ (lineCount env kp st isStart (l :: ls')).1
+        · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2]
+          rw [dif_pos h4]; exact putLines_figs env _ st h
+        · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2]
+          rw [dif_neg h4]
+          have p := putLines_figs env ((l :: ls').take (lineCount env kp st isStart (l :: ls')).1) st h
+          have s := shortParts_figs (shortParts kp pid (lineCount env kp st isStart (l :: ls')).2 isStart
+            (l :: ls').length (lineCount env kp st isStart (l :: ls')).1) _ p.2
+          have := placeLinesGo_figs env pid kp _ (isStart && (lineCount env kp st isStart (l :: ls')).1 == 0)
+            ((l :: ls').drop (lineCount env kp st isStart (l :: ls')).1) (inv_nextColumn env _ s.2)
+          rw [figs_nextColumn, s.1, p.1] at this
+          exact this
+termination_by (ls.length, allRank kp, rank env st)
+decreasing_by
+  all_goals simp_wf
+  · exact linesLt_rank (I4_nextColumn_rank env st (Or.inr h1.1))
+  · simp only [allRank, h2.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ (by decide))
+  · have : isEmpty st = false := by
+      cases e : isEmpty st
+      · rfl
+      · exact absurd (Or.inl e) h3
+    exact linesLt_rank (I4_nextColumn_rank env st (Or.inl this))
+  · by_cases k0 : (lineCount env kp st isStart (l :: ls')).1 = 0
+    · have z := lineCount_zero env kp st isStart (l :: ls') k0
+      simp only [k0, List.take, List.foldl, List.drop, shortParts, z.1]
+      rw [Nat.sub_zero]
+      exact linesLt_rank (I4_nextColumn_rank env st (Or.inl z.2))
+    · apply Prod.Lex.left
+      simp only [List.length] at h4
+      omega
+
+theorem placeLines_figs (env : Env) (kp : Keep) (st : St) (isStart : Bool) (ls : List Line) (h : Inv st) :
+    figs (placeLines env kp st isStart ls) = figs st ∧ Inv (placeLines env kp st isStart ls) := by
+  cases ls with
+  | nil => exact ⟨rfl, h⟩
+  | cons l ls => exact placeLinesGo_figs env _ kp st isStart _ h
+
+/-! ### One flow and the whole -/
+
+/-- A figure flow is at least one line high. -/
+def figureOk : Flow → Prop
+  | .figure _ n => 1 ≤ n
+  | _ => True
+
+theorem isEmpty_nil {α : Type} (l : List α) (h : l.isEmpty = true) : l = [] := by
+  cases l with
+  | nil => rfl
+  | cons _ _ => simp [List.isEmpty] at h
+
+theorem defer_figs (st : St) (d : Deferred) (h : Inv st) (hd : deferredOk [d]) :
+    figs { st with deferred := st.deferred ++ [d] } = figs st ++ [deferredFig d] ∧
+      Inv { st with deferred := st.deferred ++ [d] } :=
+  ⟨by simp [figs, List.map_append],
+    ⟨⟨h.weak.first, deferredOk_append _ _ h.weak.deferred hd⟩, h.used, h.fig⟩⟩
+
+theorem place_figs (env : Env) (st : St) (f : Flow) (rest : List Flow)
+    (h : Inv st) (hf : figureOk f) :
+    figs (place env st f rest) = figs st ++ flowFigs f ∧ Inv (place env st f rest) := by
+  cases f with
+  | paragraph kp ls => simp only [flowFigs, List.append_nil]; exact placeLines_figs env kp st true ls h
+  | continued kp ls => simp only [flowFigs, List.append_nil]; exact placeLines_figs env kp st false ls h
+  | heading recto n ls =>
+    simp only [place, flowFigs, List.append_nil]
+    have h1 : figs (if recto = true then parityStart env odd st
+        else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))) = figs st ∧
+        Inv (if recto = true then parityStart env odd st
+        else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))) := by
+      split
+      · exact parityStart_figs env odd st h
+      · exact ⟨figs_keep .., inv_keep env st _ h⟩
+    generalize (if recto = true then parityStart env odd st
+        else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))) = s1 at h1
+    have h2 : figs (if headingNeed env s1 n ls ≤ free env s1 ∨ isEmpty s1 = true then s1 else nextColumn env s1)
+        = figs st ∧
+        Inv (if headingNeed env s1 n ls ≤ free env s1 ∨ isEmpty s1 = true then s1 else nextColumn env s1) := by
+      split
+      · exact h1
+      · exact ⟨(figs_nextColumn env s1).trans h1.1, inv_nextColumn env s1 h1.2⟩
+    generalize (if headingNeed env s1 n ls ≤ free env s1 ∨ isEmpty s1 = true then s1 else nextColumn env s1)
+      = s2 at h2
+    have := putBlock_figs env s2 n ls h2.2
+    exact ⟨this.1.trans h2.1, this.2⟩
+  | figure i n =>
+    simp only [place, flowFigs]
+    split
+    · exact defer_figs st _ h ⟨hf, trivial⟩
+    · rename_i d
+      have d0 : st.deferred = [] := isEmpty_nil _ (by simpa using d)
+      split
+      · refine ⟨?_, putSlot_inv st n i h hf⟩
+        simp [figs, putSlot, figSlots_append, figSlots, d0]
+      · exact defer_figs st _ h ⟨hf, trivial⟩
+  | pageFigure i =>
+    simp only [place, flowFigs]
+    split
+    · rename_i c
+      have d0 : st.deferred = [] := isEmpty_nil _ c.1
+      have s0 : figSlots st.slots = [] := by
+        rcases h.fig with g | g
+        · exact g
+        · have := c.2.2.1; omega
+      refine ⟨?_, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+      simp [figs, pageFigure, pagesFigs_cons, figSlots, d0, s0]
+    · exact defer_figs st _ h trivial
+  | brk k => exact ⟨by simp [place, figs, flowFigs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+  | space n =>
+    simp only [place, flowFigs, List.append_nil]
+    refine ⟨?_, inv_placeSpaceFlow env st n h⟩
+    unfold placeSpaceFlow; split <;> rfl
+  | needLines n => exact ⟨by simp [place, flowFigs], h⟩
+  | blank n => exact ⟨by simp [place, flowFigs], h⟩
+
+theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (st : St) (f : Flow) (rest : List Flow)
+    (h : Inv st) (hf : figureOk f) :
+    figs (step env st f rest) = figs st ++ flowFigs f ∧ Inv (step env st f rest) := by
+  have b := applyBreaks_figs env st h
+  have general : ∀ (a : Bool) (sp : List (Nat × Int)),
+      let r : St := if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
+        else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest
+      figs { r with seen := true, lastDeferred := a, spaces := sp } = figs st ++ flowFigs f ∧
+        Inv { r with seen := true, lastDeferred := a, spaces := sp } := by
+    intro a sp
+    have core : figs (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
+        else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)
+        = figs st ++ flowFigs f ∧
+        Inv (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
+        else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest) := by
+      split
+      · have p := place_figs env _ f rest b.2 hf
+        rw [b.1] at p; exact p
+      · have n := needBefore_figs env (applyBreaks env st) (f :: rest) b.2
+        have k := placeBlank_figs env hc _ f rest n.2
+        have p := place_figs env _ f rest k.2 hf
+        rw [k.1, n.1, b.1] at p; exact p
+    exact ⟨core.1, ⟨⟨core.2.weak.first, core.2.weak.deferred⟩, core.2.used, core.2.fig⟩⟩
+  cases f with
+  | needLines n => simp only [step, flowFigs, List.append_nil]; exact needMore_figs env n st h
+  | blank n =>
+    simp only [step, flowFigs, List.append_nil]
+    split
+    · exact ⟨rfl, h⟩
+    · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+  | brk k => simp only [step]; exact place_figs env st _ rest h hf
+  | space n =>
+    simp only [step, flowFigs, List.append_nil]
+    have s := inv_needBeforeSpaces env _ b.2
+    refine ⟨?_, inv_placeSpace env _ n s⟩
+    show figs (placeSpaceFlow env _ n) = _
+    have : figs (placeSpaceFlow env (needBeforeSpaces env (applyBreaks env st)) n)
+        = figs (needBeforeSpaces env (applyBreaks env st)) := by
+      unfold placeSpaceFlow; split <;> rfl
+    rw [this, figs_needBeforeSpaces, b.1]
+  | paragraph kp ls => simp only [step]; exact general _ _
+  | continued kp ls => simp only [step]; exact general _ _
+  | heading recto n ls => simp only [step]; exact general _ _
+  | figure i n => simp only [step]; exact general _ _
+  | pageFigure i => simp only [step]; exact general _ _
+
+theorem placeAll_figs (env : Env) (hc : 0 ≤ env.capacity) (flows : List Flow) (st : St) (h : Inv st)
+    (hf : ∀ f ∈ flows, figureOk f) :
+    figs (placeAll env st flows) = figs st ++ sourceFigs flows ∧ (placeAll env st flows).deferred = [] := by
+  induction flows generalizing st with
+  | nil =>
+    simp only [placeAll, sourceFigs, List.bind, List.join, List.map, List.append_nil]
+    have h2 : Inv { st with breaks := [], need := none, needAt := none, blank := [] } :=
+      ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+    split
+    · obtain ⟨a, _, c⟩ := flushDeferred_figs env _ h2; exact ⟨a, c⟩
+    · split
+      · have d := dropBlanks_figs st.blank _ h2
+        obtain ⟨a, _, c⟩ := flushDeferred_figs env _ d.2; exact ⟨a.trans d.1, c⟩
+      · have d := dropBlanks_figs st.blank _ (inv_nextColumn env _ h2)
+        obtain ⟨a, _, c⟩ := flushDeferred_figs env _ d.2
+        refine ⟨?_, c⟩
+        rw [a, d.1, figs_nextColumn]; rfl
+  | cons f rest ih =>
+    simp only [placeAll]
+    have s := step_figs env hc st f rest h (hf f (List.mem_cons_self f rest))
+    have := ih (step env st f rest) s.2 (fun g m => hf g (List.mem_cons_of_mem f m))
+    refine ⟨?_, this.2⟩
+    rw [this.1, s.1]
+    simp [sourceFigs, List.cons_bind, List.append_assoc]
+
+/-- Root ADR 0352 invariant 5 for the figures: the pages of the
+    pagination hold every figure and turned figure written, each once,
+    in the order written.  It assumes that every figure is at least one
+    line high and that a column holds 0 lines or more; README.md shows
+    the input that breaks the order with a figure of no lines. -/
+theorem I5_paginate_figures (env : Env) (hc : 0 ≤ env.capacity) (flows : List Flow)
+    (hf : ∀ f ∈ flows, figureOk f) :
+    pagesFigs (paginate env flows).done = sourceFigs flows := by
+  have i : Inv initialState := ⟨⟨rfl, trivial⟩, by decide, Or.inl rfl⟩
+  obtain ⟨h, d⟩ := placeAll_figs env hc flows initialState i hf
+  have e : figs initialState = [] := rfl
+  rw [e, List.nil_append] at h
+  simp only [paginate, closePage]
+  generalize placeAll env initialState flows = st at h d
+  simp only [figs, d, List.map, List.append_nil] at h
+  split
+  · rename_i c
+    have s : st.slots = [] := isEmpty_nil _ c.1
+    simp only [s, figSlots, List.append_nil] at h
+    exact h
+  · rw [pagesFigs_cons]; exact h
 end WholePagination
