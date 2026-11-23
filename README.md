@@ -463,6 +463,17 @@ ADR の参照の書き方にも、決まりがある。
 フックと同じ検査は、CI の `adr` ジョブでも、adr-guard の v0.13.1 の action に `allow-status: true` と `allow-links: true` を付けて行う。
 この action は、ADR の参照のリンクと番号の重複も検査する。
 
+`.githooks/pre-push` は、ビルドがリンクする wasmtime が固定した版と違うときも push を止める（`scripts/check-local-wasmtime.sh`、[docs/adr/0418](./docs/adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+手元のテストが CI と違う版の wasmtime で走るのを防ぐためである。
+照合は、push するチェックアウトの `scripts/fetch-wasmtime.sh --expected` の一行と、ビルドがリンクする wasmtime の `VERSION` の一行を比べる。
+ビルドがリンクする wasmtime は、`cabal.project.local` の `extra-lib-dirs` のうち `third_party/wasmtime/lib` で終わる最初のものの親のディレクトリであり、そのような行がなければチェックアウト自身の `third_party/wasmtime` である。
+メインのチェックアウトから `cabal.project.local` を写した worktree では、メインのチェックアウトの wasmtime を比べる。
+二つの一行が違うとき、`VERSION` がないとき、`--expected` が失敗したとき（対応しないプラットフォーム）は、push を止める。
+照合は、一回の push に一度行い、push する ref がどれもブランチの削除のときは行わない。
+照合はネットワークに出ず、ファイルを書かず、飛ばす仕組みもない。
+止まったときは、標準エラーに示されたコマンドで wasmtime を取り直す。
+wasmtime の版を上げるブランチを worktree から push するときは、その worktree で `scripts/fetch-wasmtime.sh` を走らせ、`cabal.project.local` の `extra-include-dirs` と `extra-lib-dirs` をその worktree の `third_party/wasmtime` に向ける。
+
 ### 固定しているネイティブライブラリ
 
 出力の決定性を保つため、次のライブラリはバージョンを固定して使う。

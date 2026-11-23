@@ -9584,6 +9584,13 @@ GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる
 `VERSION` の名前とハッシュの両方がスクリプトのものと一致するときだけ、取得済みのディレクトリを使い、そうでなければ取り直す。
 `fetch-wasmtime.sh --expected` は、期待する `VERSION` の中身を出力する。
 
+Git の `pre-push` のフックは、ビルドがリンクする wasmtime が固定した版と違うとき、push を止める（`scripts/check-local-wasmtime.sh`、[docs/adr/0418](adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)）。
+照合は、push するチェックアウトの `fetch-wasmtime.sh --expected` の一行と、ビルドがリンクする wasmtime の `VERSION` の一行を比べる。
+ビルドがリンクする wasmtime は、そのチェックアウトの `cabal.project.local` の `extra-lib-dirs` のうち `third_party/wasmtime/lib` で終わる最初のものの親のディレクトリとし、そのような行がなければ、そのチェックアウト自身の `third_party/wasmtime` とする。
+二つの一行が違うとき、`VERSION` がないとき、`--expected` が失敗したときは、終了コード 1 で止まり、取り直す手順を標準エラーに書く。
+照合は一回の push に一度行い、push する ref がどれもブランチの削除のときは行わない。
+照合はネットワークに出ず、ファイルを書かず、飛ばす仕組みを持たない。
+
 ## マニュアル
 
 Golem には二つのマニュアルがあり、どちらも Golem 自身で組む（[docs/adr/0022](adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
