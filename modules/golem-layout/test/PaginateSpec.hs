@@ -590,13 +590,16 @@ pageFigureTests =
     testCase "a recto break after a turned figure on page 1 makes page 2 blank (golem-driver ADR 0039)" $ do
       let ps = paginate 1 5 [FPageFigure 50 [] [], FBreak BreakRecto, FParagraph defaultKeep (lines' 10 1)]
       [(poNumber p, poBlank p, map snd (poSlots p)) | p <- ps] @?= [(1, False, [SPageFigure 50]), (2, True, []), (3, False, [SLine 10])],
+    -- The footnote reserved above the set (3 lines) is more than the 2
+    -- lines the box leaves in the next column, so the continued note gets
+    -- an empty part there and goes on from line 0 after the turned figure.
     testCase "I5: a reserved footnote cannot rewind a continued note before a turned figure" $ do
       let withNote i noteId count = FParagraph defaultKeep [LineBox i [NoteBody (nid noteId) count] [] [] 0]
-          flows = [FAdjustLines mk 8, withNote 0 10 5, FSwitchColumns (ColumnSet 2 0 0 0), withNote 1 20 8, FPageFigure 99 [] []]
+          flows = [withNote 0 10 2, FSwitchColumns (ColumnSet 2 0 0 0), FBoxed 1 0 2 [withNote 1 20 6, FParagraph defaultKeep (lines' 2 1)], FPageFigure 99 [] []]
           pages = paginate 1 5 flows
-          parts = [(start, count) | p <- pages, (i, start, count) <- poFootnotes p, i == nid 20]
-      parts @?= [(0, 5), (5, 0), (5, 3)]
-      [(poNumber p, slot) | p <- pages, (_, slot) <- poSlots p] @?= [(1, SLine 0), (1, SLine 1), (2, SPageFigure 99)],
+          parts = [(poNumber p, poColumn p, start, count) | p <- pages, (i, start, count) <- poFootnotes p, i == nid 20]
+      parts @?= [(1, 1, 0, 0), (2, 0, 0, 1), (2, 1, 1, 3), (4, 0, 4, 2)]
+      [(poNumber p, slot) | p <- pages, (_, slot) <- poSlots p] @?= [(1, SLine 0), (1, SLine 1), (2, SLine 2), (3, SPageFigure 99)],
     testCase "a verso break after a turned figure on page 2 makes page 3 blank (golem-driver ADR 0039)" $ do
       let ps = paginate 1 5 [FParagraph defaultKeep (lines' 0 1), FPageFigure 50 [] [], FBreak BreakVerso, FParagraph defaultKeep (lines' 10 1)]
       [(poNumber p, poBlank p, map snd (poSlots p)) | p <- ps]
