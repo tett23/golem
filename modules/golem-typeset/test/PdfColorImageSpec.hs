@@ -47,7 +47,7 @@ cieTests =
       pixels (image (labSpace [("Range", P.OArr (map P.OInt [0, 10, 0, 10]))]) 2 8 [("Decode", P.OArr (map P.OInt [0, 100, -10, 10, -10, 10]))] (BS.pack [0, 0, 0, 255, 0, 0])) @?= Right [cmyk [[0, 255, 255, 0], [0, 0, 0, 0]]],
     testCase "root ADR 0425 I3: a hidden pixel of a CalRGB image adds no colour" $
       pixels
-        ( (image (calSpace "CalRGB") 2 8 [("SMask", P.ORef 2)] (BS.pack [0, 0, 0, 255, 0, 0]))
+        ( image (calSpace "CalRGB") 2 8 [("SMask", P.ORef 2)] (BS.pack [0, 0, 0, 255, 0, 0])
             `withObjects` [(2, P.OStream [("Subtype", P.OName "Image"), ("Width", P.OInt 2), ("Height", P.OInt 1), ("BitsPerComponent", P.OInt 8), ("ColorSpace", P.OName "DeviceGray")] (BS.pack [255, 0]))]
         )
         @?= Right [cmyk [[0, 255, 255, 0], [0, 255, 255, 0]]],
