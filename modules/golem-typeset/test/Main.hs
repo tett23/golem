@@ -7,6 +7,7 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
 import PdfColorClassifySpec (pdfColorClassifyTests)
 import PdfColorImageSpec (pdfColorImageTests)
+import PdfColorMaskSpec (pdfColorMaskTests)
 import PdfColorMeshSpec (pdfColorMeshTests)
 import PdfColorPatternSpec (pdfColorPatternTests)
 import PdfColorRangeSpec (pdfColorRangeTests)
@@ -34,6 +35,7 @@ tests =
       testGroup "PDF figure colour range" pdfColorRangeTests,
       testGroup "PDF figure colour classes (root ADR 0425)" pdfColorClassifyTests,
       testGroup "PDF figure images of CIE-based and ICCBased spaces (root ADR 0425)" pdfColorImageTests,
+      testGroup "PDF figure image masks (root ADR 0425)" pdfColorMaskTests,
       testGroup "PDF figure shadings (root ADR 0425)" pdfColorShadingTests,
       testGroup "PDF figure mesh shadings (root ADR 0425)" pdfColorMeshTests,
       testGroup "PDF figure patterns (root ADR 0425)" pdfColorPatternTests,

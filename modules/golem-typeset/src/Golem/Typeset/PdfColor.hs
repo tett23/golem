@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiWayIf #-}
 
 -- | Process-colour conversion of imported figures (root ADR 0403).
-module Golem.Typeset.PdfColor (recolorImportedPage) where
+module Golem.Typeset.PdfColor (recolorImportedPage, maskCoverage) where
 
 import Control.Applicative ((<|>))
 import Control.Monad (foldM, join)
@@ -68,7 +68,7 @@ recolorImportedPage swatch analyze page = do
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
   let source = Map.fromList (P.ipObjects page)
-      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, categoryBindings = Map.empty, categoryTables = Map.empty, patternSpaces = Map.empty, scopeResources = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page, figureSwatch = swatch}
+      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, categoryBindings = Map.empty, categoryTables = Map.empty, patternSpaces = Map.empty, scopeResources = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page, figureSwatch = swatch, mappedMattes = Map.empty}
   scope <- resourceScope PageResources (P.ipResources page) initialState
   (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty scope (P.ipResources page) initial (P.ipContent page) initialState
   if kind == Grayscale && unreplaceableShading analyzed then Left "PDF 図版の濃淡のシェーディングを指定色に置き換えられません" else Right ()
@@ -123,7 +123,9 @@ data Resources = Resources
     inlineSources :: !(Map.Map ByteString P.ObjNum),
     remainingBytes :: !Int,
     -- The swatch, for images classified from exact values (root ADR 0425).
-    figureSwatch :: !Cmyk
+    figureSwatch :: !Cmyk,
+    -- The mapped Matte of each converted image with one (root ADR 0425).
+    mappedMattes :: !(Map.Map (P.ObjNum, Scope) [Rational])
   }
 
 charge :: Int -> Resources -> Either Text Resources
@@ -574,10 +576,19 @@ analyzePdfImage scope resources key fields state = case Map.lookup (key, scope) 
   Just analysis -> Right (analysis, state)
   Nothing -> do
     exact <- traverse (\value -> exactSpace resources value state) (lookup "ColorSpace" fields)
-    case join exact of
+    -- A soft mask with a Matte needs the exact colours of a device image too.
+    matte <- softMaskMatte fields state
+    chosen <- case (join exact, matte) of
+      (Just found, _) -> Right (Just found)
+      (Nothing, Just _) -> do
+        (space, _, _, palette, spaced) <- pdfImageSpace resources fields state
+        if isJust palette then Left "PDF 図版の Matte を持つソフトマスクを保って色を置き換えられません" else Right ()
+        Right (Just (case space of P.CsGray -> GraySpace; P.CsCmyk -> CmykSpace; _ -> RgbSpace, spaced))
+      (Nothing, Nothing) -> Right Nothing
+    case chosen of
       Just (space, spaced) -> do
-        (analysis, analyzed) <- exactPdfImage space key fields spaced
-        Right (analysis, analyzed {rasterResults = Map.insert (key, scope) analysis (rasterResults analyzed)})
+        (analysis, mapped, analyzed) <- exactPdfImage space key fields spaced
+        Right (analysis, analyzed {rasterResults = Map.insert (key, scope) analysis (rasterResults analyzed), mappedMattes = maybe id (Map.insert (key, scope)) mapped (mappedMattes analyzed)})
       Nothing -> devicePdfImage scope resources key fields state
 
 devicePdfImage :: Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Resources)
@@ -714,14 +725,18 @@ exactColor :: Space -> [Rational] -> Either Text Color
 exactColor space values = case space of
   CieSpace family key ranges | length ranges == length values -> Right (cieColor family key ranges values)
   RangedSpace base ranges | length ranges == length values -> rangedColor base ranges values
-  _ -> Left "PDF 図版の色の成分数が不正です"
+  _ -> case (space, map (clip (0, 1)) values) of
+    (GraySpace, [g]) -> Right (Gray g)
+    (RgbSpace, [r, g, b]) -> Right (Rgb r g b)
+    (CmykSpace, [c, m, y, k]) -> Right (CmykColor c m y k)
+    _ -> Left "PDF 図版の色の成分数が不正です"
 
 {- | An image of an exact space. Each sample is mapped through Decode, and an
 Indexed one through its table, and the colours are clipped and compared as
 rationals (root ADR 0425). A recoloured image is DeviceCMYK with the
 dimensions and the visibility of the original.
 -}
-exactPdfImage :: Space -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Resources)
+exactPdfImage :: Space -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Maybe [Rational], Resources)
 exactPdfImage space key fields state = do
   width <- imageDimension "Width" fields state
   height <- imageDimension "Height" fields state
@@ -743,6 +758,10 @@ exactPdfImage space key fields state = do
   (bytes, decoded) <- decodePdfImageStream key width height bits components fields state
   if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
   (alpha, masked) <- pdfImageAlpha width height bits components bytes fields decoded
+  matte <- softMaskMatte fields masked
+  case matte of
+    Just values | isJust palette || length values /= components -> Left matteInvalid
+    _ -> Right ()
   let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8 :: Int
       outputBytes = pixels * 4 * toInteger (outputBits `div` 8)
   reserved <- charge (fromInteger outputBytes) masked
@@ -761,21 +780,42 @@ exactPdfImage space key fields state = do
              in maybe (Left "PDF 図版の色の索引が不正です") Right (Map.lookup index table)
           _ -> Left "PDF 図版の色の索引が不正です"
         Nothing -> exactColor space (zipWith valueOf decode samples)
-      visible pixel = case alpha of
-        Nothing -> True
-        Just a -> packedSample (P.alphaSamples a) ((w * P.alphaBits a + 7) `div` 8) (P.alphaBits a) (pixel `mod` w) (pixel `div` w) > 0
+      opacity :: Int -> (Int, Int)
+      opacity pixel = case alpha of
+        Nothing -> (1, 1)
+        Just a -> (packedSample (P.alphaSamples a) ((w * P.alphaBits a + 7) `div` 8) (P.alphaBits a) (pixel `mod` w) (pixel `div` w), 2 ^ P.alphaBits a - 1)
+      visible pixel = fst (opacity pixel) > 0
       lookupColour cache samples = case Map.lookup samples cache of
         Just colour -> Right (colour, cache)
         Nothing -> (\colour -> (colour, Map.insert samples colour cache)) <$> colourOf samples
+      -- The colour with its Matte removed, c = m + (c' - m) / alpha, clipped
+      -- (ISO 32000-2 11.6.5.3); the colour itself without a Matte.
+      judged cache pixel = case matte of
+        Nothing -> lookupColour cache (samplesOf pixel)
+        Just mattes -> do
+          let samples = samplesOf pixel
+              (a, top') = opacity pixel
+              level = toInteger a % toInteger top' :: Rational
+              key' = samples <> [a]
+          case Map.lookup key' cache of
+            Just colour -> Right (colour, cache)
+            Nothing -> do
+              colour <- exactColor space [mv + (valueOf range sample - mv) / level | (mv, range, sample) <- zip3 mattes decode samples]
+              Right (colour, Map.insert key' colour cache)
       classify !pixel !kind cache
         | pixel == total || kind == Multicolor = Right (kind, cache)
         | not (visible pixel) = classify (pixel + 1) kind cache
         | otherwise = do
-            (colour, cache') <- lookupColour cache (samplesOf pixel)
+            (colour, cache') <- judged cache pixel
             classify (pixel + 1) (mergeKind kind (colorKind colour)) cache'
-  (kind, seen) <- classify 0 Unpainted Map.empty
+  (kind, _) <- classify 0 Unpainted Map.empty
+  -- A gray figure maps the stored colours and the Matte with one linear map,
+  -- which needs both to be tones.
+  matteColour <- traverse (exactColor space) matte
+  let storedTones = and [colorKind colour == Grayscale | Right (colour, _) <- [lookupColour Map.empty (samplesOf pixel) | pixel <- [0 .. total - 1], visible pixel]]
+  if isJust matte && kind == Grayscale && not (storedTones && maybe True ((== Grayscale) . colorKind) matteColour) then Left matteInvalid else Right ()
   if kind `elem` [Multicolor, Unpainted]
-    then Right (RasterAnalysis kind Nothing, reserved)
+    then Right (RasterAnalysis kind Nothing, Nothing, reserved)
     else do
       let (c, m, y, k) = figureSwatch state
           top = 2 ^ outputBits - 1 :: Integer
@@ -786,9 +826,33 @@ exactPdfImage space key fields state = do
             (colour, cache') <- lookupColour cache samples
             let out = Map.findWithDefault (encode colour) samples encoded
             Right (cache', Map.insert samples out encoded, out : acc)
-      (_, _, chunks) <- foldM pixelBytes (seen, Map.empty, []) [0 .. total - 1]
+      (_, _, chunks) <- foldM pixelBytes (Map.empty, Map.empty, []) [0 .. total - 1]
       let converted = P.ImageData w (fromInteger height) outputBits P.CsCmyk Nothing (BS.concat (reverse chunks)) False False alpha
-      Right (RasterAnalysis kind (Just converted), reserved)
+      Right (RasterAnalysis kind (Just converted), inksOf <$> matteColour, reserved)
+  where
+    matteInvalid = "PDF 図版の Matte を持つソフトマスクを保って色を置き換えられません"
+
+-- | The Matte of an image's soft mask, as numbers.
+softMaskMatte :: [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Maybe [Rational])
+softMaskMatte fields state = case lookup "SMask" fields of
+  Nothing -> Right Nothing
+  Just reference -> do
+    resolved <- dereference Set.empty reference state
+    case resolved of
+      P.OStream maskFields _ -> case lookup "Matte" maskFields of
+        Nothing -> Right Nothing
+        Just value -> do
+          numbers <- dereference Set.empty value state
+          case numbers of
+            P.OArr entries -> Just <$> traverse (\entry -> dereference Set.empty entry state >>= number) entries
+            _ -> Left invalid
+      _ -> Right Nothing
+  where
+    invalid = "PDF 図版の Matte が不正です"
+    number = \case
+      P.OInt n -> Right (fromInteger n)
+      P.OReal text | Just parsed <- decimal (TE.encodeUtf8 text) -> Right parsed
+      _ -> Left invalid
 
 -- | A sample of packed rows: the index of the sample in its row, and the row.
 packedSample :: ByteString -> Int -> Int -> Int -> Int -> Int
@@ -1046,8 +1110,15 @@ unitDecode components fields state = case lookup "Decode" fields of
                 else if T.null normalized then Right False else if normalized == "1" && not negative then Right True else Left invalid
         _ -> Left invalid
 
--- The original mask remains referenced by the converted image. Its decoded
--- samples are used only to classify visible pixels; no mask object is rewritten.
+{- | The visibility of the pixels of an image under its soft mask or
+explicit mask (root ADR 0425). The original mask remains referenced by the
+converted image; its decoded samples are used only to classify visible
+pixels. A mask of the image's size, without interpolation, gives its own
+samples. A mask of another size gives the pixels that it covers with a
+visible pixel, and interpolation makes every pixel visible; both are
+returned at the image's size, at 16 bits for a 16-bit soft mask and at
+8 bits otherwise.
+-}
 pdfImageAlpha :: Integer -> Integer -> Integer -> Int -> ByteString -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (Maybe P.Alpha, Resources)
 pdfImageAlpha width height imageBits components raw fields state = case lookup "SMask" fields of
   Nothing -> imageMaskAlpha width height imageBits components raw fields state
@@ -1056,25 +1127,86 @@ pdfImageAlpha width height imageBits components raw fields state = case lookup "
   Just reference -> do
     (key, maskFields) <- pdfStreamReference invalid state Set.empty reference
     dimensions <- traverse (\name -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name maskFields)) ["Width", "Height", "BitsPerComponent", "ColorSpace", "Subtype"]
-    bits <- case dimensions of
+    (maskWidth, maskHeight, bits) <- case dimensions of
       [P.OInt w, P.OInt h, P.OInt depth, P.OName "DeviceGray", P.OName "Image"]
-        | w == width, h == height, depth `elem` [1, 2, 4, 8, 16] -> Right depth
+        | w > 0, h > 0, depth `elem` [1, 2, 4, 8, 16] -> Right (w, h, depth)
       _ -> Left invalid
-    if any (`isJustField` maskFields) ["Mask", "SMask", "Matte"] || maybe False (/= P.OBool False) (lookup "ImageMask" maskFields) then Left invalid else Right ()
-    let sampleBytes = ((width * bits + 7) `div` 8) * height
-    if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
-    ranges <- unitDecode 1 maskFields state
-    (bytes, decoded) <- decodePdfImageStream key width height bits 1 maskFields state
-    if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
-    case ranges of
-      [False, True] -> Right (Just (P.Alpha (fromInteger bits) bytes), decoded)
-      [True, False] -> do
-        reserved <- charge (BS.length bytes) decoded
-        Right (Just (P.Alpha (fromInteger bits) (BS.map (255 -) bytes)), reserved)
-      _ -> Left invalid
+    if any (`isJustField` maskFields) ["Mask", "SMask"] || maybe False (/= P.OBool False) (lookup "ImageMask" maskFields) then Left invalid else Right ()
+    interpolated <- interpolates fields maskFields state
+    let sameSize = maskWidth == width && maskHeight == height
+    -- Removing a Matte needs one opacity for each pixel, which neither
+    -- another size nor interpolation gives.
+    if isJustField "Matte" maskFields && (not sameSize || interpolated) then Left "PDF 図版の Matte を持つソフトマスクを保って色を置き換えられません" else Right ()
+    let outBits = if bits == 16 then 16 else 8
+    if interpolated
+      then Right (Just (visibilityAlpha outBits (replicate (fromInteger (width * height)) True)), state)
+      else do
+        let sampleBytes = ((maskWidth * bits + 7) `div` 8) * maskHeight
+        if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
+        ranges <- unitDecode 1 maskFields state
+        (bytes, decoded) <- decodePdfImageStream key maskWidth maskHeight bits 1 maskFields state
+        if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
+        reversed <- case ranges of
+          [False, True] -> Right False
+          [True, False] -> Right True
+          _ -> Left invalid
+        if sameSize
+          then
+            if reversed
+              then do
+                reserved <- charge (BS.length bytes) decoded
+                Right (Just (P.Alpha (fromInteger bits) (BS.map (255 -) bytes)), reserved)
+              else Right (Just (P.Alpha (fromInteger bits) bytes), decoded)
+          else do
+            let depth = fromInteger bits
+                top = 2 ^ depth - 1
+                rowBytes = fromInteger ((maskWidth * bits + 7) `div` 8)
+                -- A sample is visible when its Decode-mapped value is above 0.
+                visibleAt p q = let v = packedSample bytes rowBytes depth p q in if reversed then v < top else v > 0
+            covered <- coverage outBits width height maskWidth maskHeight visibleAt decoded
+            Right covered
   where
     invalid = "PDF 図版のソフトマスクを保って色を置き換えられません"
     isJustField name entries = case lookup name entries of Nothing -> False; Just _ -> True
+
+-- | Whether the image or its mask interpolates (ISO 32000-2 8.9.5.3).
+interpolates :: [(Text, P.ObjOf P.ObjNum)] -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text Bool
+interpolates imageFields maskFields state = or <$> traverse flag [imageFields, maskFields]
+  where
+    flag entries = case lookup "Interpolate" entries of
+      Nothing -> Right False
+      Just value -> do
+        resolved <- dereference Set.empty value state
+        case resolved of
+          P.OBool b -> Right b
+          _ -> Left "PDF 図版の画像の Interpolate が不正です"
+
+-- | The visibility of the pixels of an image as samples of 0 and the maximum.
+visibilityAlpha :: Int -> [Bool] -> P.Alpha
+visibilityAlpha bits visible =
+  let sample on = if on then [255 | _ <- [1 .. bits `div` 8]] else [0 | _ <- [1 .. bits `div` 8]]
+   in P.Alpha bits (BS.pack (concatMap sample visible))
+
+-- | The visibility of a mask of another size, charged at the image's size.
+coverage :: Int -> Integer -> Integer -> Integer -> Integer -> (Int -> Int -> Bool) -> Resources -> Either Text (Maybe P.Alpha, Resources)
+coverage bits width height maskWidth maskHeight visibleAt state = do
+  let pixels = width * height
+  if width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int) then Left budgetError else Right ()
+  reserved <- charge (fromInteger (pixels * toInteger (bits `div` 8))) state
+  Right (Just (visibilityAlpha bits (maskCoverage (fromInteger width) (fromInteger height) (fromInteger maskWidth) (fromInteger maskHeight) visibleAt)), reserved)
+
+{- | Which pixels of a w by h image a mw by mh mask leaves visible, row by
+row (root ADR 0425 I8). The image and the mask are stretched over the same
+unit square; a pixel is visible when a visible mask pixel overlaps it with
+an area above 0. The pixel i covers [i/w, (i+1)/w), and the mask column p
+covers [p/mw, (p+1)/mw); they overlap with a positive length exactly when
+p*w < (i+1)*mw and i*mw < (p+1)*w.
+-}
+maskCoverage :: Int -> Int -> Int -> Int -> (Int -> Int -> Bool) -> [Bool]
+maskCoverage w h mw mh visibleAt =
+  [or [visibleAt p q | q <- span' j h mh, p <- span' i w mw] | j <- [0 .. h - 1], i <- [0 .. w - 1]]
+  where
+    span' i size maskSize = [i * maskSize `div` size .. ((i + 1) * maskSize - 1) `div` size]
 
 -- ISO 32000-1:2008 8.9.6.2-3: a one-bit stencil paints zero
 -- samples with the default Decode. Keep the mask stream attached to the
@@ -1092,32 +1224,38 @@ explicitMaskAlpha :: Integer -> Integer -> [(Text, P.ObjOf P.ObjNum)] -> P.ObjOf
 explicitMaskAlpha width height imageFields reference state = do
   (key, fields) <- pdfStreamReference invalid state Set.empty reference
   values <- traverse (\(name, fallback) -> maybe (Left invalid) (\value -> dereference Set.empty value state) (lookup name fields <|> fallback)) [("Subtype", Nothing), ("Width", Nothing), ("Height", Nothing), ("ImageMask", Nothing), ("BitsPerComponent", Just (P.OInt 1))]
-  case values of
-    [P.OName "Image", P.OInt w, P.OInt h, P.OBool True, P.OInt 1] | w == width, h == height -> Right ()
+  (maskWidth, maskHeight) <- case values of
+    [P.OName "Image", P.OInt w, P.OInt h, P.OBool True, P.OInt 1] | w > 0, h > 0 -> Right (w, h)
     _ -> Left invalid
   if any (\name -> isJust (lookup name fields)) ["ColorSpace", "Mask", "SMask", "Matte"] then Left invalid else Right ()
-  -- Interpolation can expose samples whose mask-centre is transparent.
-  -- Its visibility analysis remains separate work; do not erase such colours.
-  noInterpolation imageFields
-  noInterpolation fields
-  let sampleBytes = ((width + 7) `div` 8) * height
-  if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
-  ranges <- unitDecode 1 fields state
-  (bytes, decoded) <- decodePdfImageStream key width height 1 1 fields state
-  if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
-  case ranges of
-    [False, True] -> do
-      reserved <- charge (BS.length bytes) decoded
-      Right (Just (P.Alpha 1 (BS.map (255 -) bytes)), reserved)
-    [True, False] -> Right (Just (P.Alpha 1 bytes), decoded)
-    _ -> Left invalid
+  -- Interpolation can expose the colours of masked pixels (root ADR 0425 I9).
+  interpolated <- interpolates imageFields fields state
+  if interpolated
+    then Right (Just (visibilityAlpha 8 (replicate (fromInteger (width * height)) True)), state)
+    else do
+      let sampleBytes = ((maskWidth + 7) `div` 8) * maskHeight
+      if sampleBytes > toInteger (remainingBytes state) then Left budgetError else Right ()
+      ranges <- unitDecode 1 fields state
+      (bytes, decoded) <- decodePdfImageStream key maskWidth maskHeight 1 1 fields state
+      if toInteger (BS.length bytes) /= sampleBytes then Left invalid else Right ()
+      reversed <- case ranges of
+        [False, True] -> Right False
+        [True, False] -> Right True
+        _ -> Left invalid
+      if maskWidth == width && maskHeight == height
+        then
+          if reversed
+            then Right (Just (P.Alpha 1 bytes), decoded)
+            else do
+              reserved <- charge (BS.length bytes) decoded
+              Right (Just (P.Alpha 1 (BS.map (255 -) bytes)), reserved)
+        else do
+          let rowBytes = fromInteger ((maskWidth + 7) `div` 8)
+              -- A sample paints where its Decode-mapped value is 0.
+              visibleAt p q = packedSample bytes rowBytes 1 p q == (if reversed then 1 else 0)
+          coverage 8 width height maskWidth maskHeight visibleAt decoded
   where
     invalid = "PDF 図版の明示マスクを保って色を置き換えられません"
-    noInterpolation fields = case lookup "Interpolate" fields of
-      Nothing -> Right ()
-      Just value -> do
-        resolved <- dereference Set.empty value state
-        if resolved == P.OBool False then Right () else Left invalid
 
 -- Colour-key ranges compare the original integer samples, before Decode.
 -- Their component count changes on recoloring, so emit an equivalent gray
@@ -1155,8 +1293,18 @@ colorKeyAlpha width height bits components raw fields state = case lookup "Mask"
 
 -- Existing soft masks keep their original objects. Colour-key masks need a
 -- new independent object because the converted image has four components.
-convertedImageMask :: P.ImageData -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text ([(Text, P.ObjOf P.ObjNum)], Resources)
-convertedImageMask image fields state
+convertedImageMask :: Maybe [Rational] -> P.ImageData -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text ([(Text, P.ObjOf P.ObjNum)], Resources)
+convertedImageMask (Just matte) _ fields state
+  | Just reference <- lookup "SMask" fields = do
+      -- A new soft mask with the Matte mapped like the image (root ADR 0425 I10).
+      (key, maskFields) <- pdfStreamReference "PDF 図版のソフトマスクを保って色を置き換えられません" state Set.empty reference
+      bytes <- case Map.lookup key (sourceObjects state) of
+        Just (P.OStream _ raw) -> Right raw
+        _ -> Left "PDF 図版のソフトマスクを保って色を置き換えられません"
+      fresh <- freshObject state
+      let entries = [(name, if name == "Matte" then P.OArr (map S.numberObject matte) else value) | (name, value) <- maskFields]
+      Right (("SMask", P.ORef fresh) : filter ((`notElem` ["SMask", "Mask"]) . fst) fields, state {convertedObjects = Map.insert fresh (P.OStream entries bytes) (convertedObjects state)})
+convertedImageMask _ image fields state
   | hasSoftMask = Right (withoutKey, state)
   | Just reference <- lookup "Mask" fields,
     Right (P.OStream _ _) <- dereference Set.empty reference state =
@@ -1199,7 +1347,7 @@ convertPdfImage scope resources key fields state = case Map.lookup (key, scope) 
       case raImage analysis of
         Nothing -> Right (key, decoded)
         Just image -> do
-          (maskedFields, masked) <- convertedImageMask image fields decoded
+          (maskedFields, masked) <- convertedImageMask (Map.lookup (key, scope) (mappedMattes decoded)) image fields decoded
           fresh <- freshObject masked
           let fieldsOut = [(name, value) | (name, value) <- maskedFields, name `notElem` ["Length", "Filter", "DecodeParms", "DL", "Decode", "ColorSpace", "BitsPerComponent", "Resources"]] <> [("ColorSpace", P.OName "DeviceCMYK"), ("BitsPerComponent", P.OInt (toInteger (P.imgBits image)))]
           Right (fresh, masked {convertedImages = Map.insert (key, scope) fresh (convertedImages masked), convertedObjects = Map.insert fresh (P.OStream fieldsOut (P.imgData image)) (convertedObjects masked)})
