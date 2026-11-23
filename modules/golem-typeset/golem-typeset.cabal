@@ -78,6 +78,7 @@ test-suite golem-typeset-test
     MemoSpec
     RuleShapeSpec
     PdfColorClassifySpec
+    PdfColorImageSpec
     PdfColorMeshSpec
     PdfColorPatternSpec
     PdfColorRangeSpec

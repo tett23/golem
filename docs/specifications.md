@@ -5155,18 +5155,29 @@ Gray、RGB、CMYK のデータは、Range で 0 から 1 に写してから Devi
 Lab のデータは、Range で切り詰めた成分を L*、a*、b* として Lab の規則で判定し、Lab の色空間とは別の色空間の色とする。
 Range を省いた ICCBased の既定の Range は、各成分の 0 から 1 である。
 Range が 0 から 100 を超える Lab のデータでは、灰色の値を求める L* を、さらに 0 から 100 に切り詰める。
-Indexed の基底は、DeviceGray、DeviceRGB、DeviceCMYK と、データの色空間が Gray、RGB、CMYK で Range が単位範囲の ICCBased に限る。
-データの色空間がこの四つのどれでもないか、成分数 N と合わない ICCBased は G08113 とする。
+Indexed の基底は、DeviceGray、DeviceRGB、DeviceCMYK、CalGray、CalRGB、Lab と ICCBased である。
+基底が CalGray、CalRGB、Lab、データの色空間が Lab の ICCBased、Range が単位範囲でない ICCBased のときは、表の各バイトの 0 から 255 を、基底の成分の範囲（CalGray と CalRGB は 0 から 1、Lab の L* は 0 から 100 で a* と b* は Range、ICCBased は Range）に写した値をその色とし、線と塗りの色と同じ規則で判定する。
+ほかの基底の表の値は、0 から 255 を 0 から 1 に写す。
+ADR は Indexed の基底を挙げていないが、表の値は基底の色空間の色なので、この仕様で基底と同じ規則を当てはめると決めた。
+データの色空間が Gray、RGB、CMYK、Lab のどれでもないか、データの色空間の成分数が N と一致しない ICCBased は G08113 とする。
 Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
 ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
 インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
-画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
+画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK、CalGray、CalRGB、Lab と、成分数が 1、3、4 の ICCBased に対応する。
 Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
 画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
-画像の ICCBased は、データの色空間が Gray、RGB、CMYK で、N と合い、Range が各成分の単位範囲である場合だけを扱う。
-画像の CalGray、CalRGB、Lab と、データの色空間が Lab の ICCBased の画像は、まだ判定できないので G08113 とする。
-画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
-Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
+画像の ICCBased は、データの色空間の成分数が N と一致する場合だけを扱う。
+データの色空間が Gray、RGB、CMYK で、Range が各成分の単位範囲の ICCBased の画像は、DeviceGray、DeviceRGB、DeviceCMYK の画像と同じく判定する。
+DeviceGray、DeviceRGB、DeviceCMYK と、この ICCBased の画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
+CalGray、CalRGB、Lab の画像と、データの色空間が Lab か Range が単位範囲でない ICCBased の画像と、これらを基底とする Indexed の画像は、サンプルを Decode で写した値を、線と塗りの色と同じ規則で切り詰め、有理数のまま比べる（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+Indexed のほかの画像で Decode を省いたときは、その色空間の成分の範囲（CalGray と CalRGB は 0 から 1、Lab は `[0 100]` と a* と b* の Range、ICCBased は Range）を Decode とする。
+既定の Range `[-100 100]` の 8-bit の Lab の画像では、サンプルの 0 から 255 が a* と b* の -100 から 100 を 255 等分した値に写り、ちょうど 0 になるサンプルが無いので、濃淡と判定しない。
+16-bit でも、65535 等分なので同じである。
+この画像を置き換えるときは、濃淡の図版では各画素の灰色の値 g から指定色の成分 `s_k(1 - g)` を、一色の図版では指定色の成分を求める。
+その値を、8-bit（元の画像かソフトマスクが 16-bit なら 16-bit）のサンプルの最も近い値に丸め、ちょうど中間の値は偶数に丸めて書く。
+この丸めは、DeviceGray、DeviceRGB、DeviceCMYK の画像を置き換えるときと同じである。
+ADR はマスクで隠した画素の色を決めていないので、濃淡の図版で濃淡でない色を持ち、マスクで隠した画素は、指定色の成分そのものにするとこの仕様で決めた。
+Indexed の画像では、Decode（省いたときは `[0 2^n - 1]`、n はビット深度）で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
 同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
 明示マスクは ImageMask = true で、画像とマスクの Interpolate を省くか false にした場合に扱う。
 マスクの Decode は既定の範囲か逆の範囲を受け入れ、元のオブジェクトと参照を変えずに可視画素の判定だけに使う。
