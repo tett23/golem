@@ -449,19 +449,19 @@ merge_pr_with 36 "quoted" docs/adr/0026-quoted.md "$(adr 'ADR 0026: g' 'Status: 
 Status: accepted"
 git_ tag v2.1.0
 run notes v2.0.0 v2.1.0
-expect "notes: S1 S2 S3 the canonical status lines" 0
+expect "root ADR 0387 I1, I2, I3: notes: the canonical status lines" 0
 CANON=https://github.com/tett23/golem/blob/v2.1.0/docs/adr
 status_changed() { # status_changed LINE: LINE is in the list of the ADRs whose status changed
   sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -Fxq -- "$1"
 }
-if status_changed "- [docs/adr/0020-legacy.md]($CANON/0020-legacy.md): 採択 → accepted"; then ok; else ng "notes: S1 S2 S3 a legacy line and a canonical line differ"; fi
-if status_changed "- [docs/adr/0022-no-space.md]($CANON/0022-no-space.md): proposed → accepted"; then ok; else ng "notes: S2 no space after the colon"; fi
-if status_changed "- [docs/adr/0023-spaces.md]($CANON/0023-spaces.md): accepted-pending → accepted-pending"; then ok; else ng "notes: S2 S3 the spaces around the status"; fi
-if status_changed "- [docs/adr/0024-empty.md]($CANON/0024-empty.md): proposed → "; then ok; else ng "notes: S2 an empty status"; fi
-if status_changed "- [docs/adr/0025-none.md]($CANON/0025-none.md):  → superseded [{\"by\":[\"docs/adr/0010-status.md\"],\"part\":\"x\"}]"; then ok; else ng "notes: S1 S2 no status line, then a superseded line"; fi
-if status_changed "- [docs/adr/0026-quoted.md]($CANON/0026-quoted.md): accepted → deprecated"; then ok; else ng "notes: S1 the first status line"; fi
-if ! sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -q '0021-same'; then ok; else ng "notes: S3 the same canonical status is not listed"; fi
-if [ "$(sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -c '^- ')" = 6 ]; then ok; else ng "notes: S3 six ADRs whose status changed"; fi
+if status_changed "- [docs/adr/0020-legacy.md]($CANON/0020-legacy.md): 採択 → accepted"; then ok; else ng "root ADR 0387 I1, I2, I3: notes: a legacy line and a canonical line differ"; fi
+if status_changed "- [docs/adr/0022-no-space.md]($CANON/0022-no-space.md): proposed → accepted"; then ok; else ng "root ADR 0387 I2: notes: no space after the colon"; fi
+if status_changed "- [docs/adr/0023-spaces.md]($CANON/0023-spaces.md): accepted-pending → accepted-pending"; then ok; else ng "root ADR 0387 I2, I3: notes: the spaces around the status"; fi
+if status_changed "- [docs/adr/0024-empty.md]($CANON/0024-empty.md): proposed → "; then ok; else ng "root ADR 0387 I2: notes: an empty status"; fi
+if status_changed "- [docs/adr/0025-none.md]($CANON/0025-none.md):  → superseded [{\"by\":[\"docs/adr/0010-status.md\"],\"part\":\"x\"}]"; then ok; else ng "root ADR 0387 I1, I2: notes: no status line, then a superseded line"; fi
+if status_changed "- [docs/adr/0026-quoted.md]($CANON/0026-quoted.md): accepted → deprecated"; then ok; else ng "root ADR 0387 I1: notes: the first status line"; fi
+if ! sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -q '0021-same'; then ok; else ng "root ADR 0387 I3: notes: the same canonical status is not listed"; fi
+if [ "$(sed -n '/^## ADRs whose status changed$/,/^## Verifying/p' "$WORK/out" | grep -c '^- ')" = 6 ]; then ok; else ng "root ADR 0387 I3: notes: six ADRs whose status changed"; fi
 REPO_CANONICAL=$REPO
 REPO=$REPO_MAIN
 
@@ -859,20 +859,20 @@ if [ "$(sed -n '/^# The ADRs whose status changed in this release$/,$p' "$P")" =
 
 # ADR 0014: l
 ステータス: 採択→x は [ADR 0010](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0010-status.md)、y は [golem-cli ADR 0012](https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0012-module.md#文脈)、z は [ADR 0013](https://github.com/tett23/golem/blob/v1.1.0/docs/adr/0013-new.md)、w は [下](https://github.com/tett23/golem/blob/v1.1.0/docs/golem-cli/adr/0014-links.md#文脈)" ]; then ok; else ng "write-notes: I3 the ADRs whose status changed in the prompt, their links absolute (docs/adr/0259)"; fi
-# S4: the canonical status lines in the prompt, and none of the other lines
+# root ADR 0387 I4: the canonical status lines in the prompt, and none of the other lines
 # (docs/adr/0387)
 REPO=$REPO_CANONICAL
 WN_TAG=v2.1.0
 run write_notes
 P=$FAKE_LOG/prompt
-if ! grep -q 'MARKER-BODY' "$P" && ! grep -q '^another line$' "$P"; then ok; else ng "write-notes: S4 the prompt has no other line of the ADRs"; fi
+if ! grep -q 'MARKER-BODY' "$P" && ! grep -q '^another line$' "$P"; then ok; else ng "root ADR 0387 I4: write-notes: the prompt has no other line of the ADRs"; fi
 adr_in_prompt() { # adr_in_prompt PATH: the lines of PATH in the prompt, but the heading and the blank lines
   sed -n "\\|^## $1 |,\\|^## |p" "$P" | sed '1d; /^## /d; /^$/d'
 }
 if [ "$(adr_in_prompt docs/adr/0020-legacy.md)" = "# ADR 0020: a
-Status: accepted" ]; then ok; else ng "write-notes: S4 a canonical status line in the prompt"; fi
+Status: accepted" ]; then ok; else ng "root ADR 0387 I4: write-notes: a canonical status line in the prompt"; fi
 if [ "$(adr_in_prompt docs/adr/0026-quoted.md)" = "# ADR 0026: g
-Status: deprecated" ]; then ok; else ng "write-notes: S4 only the first status line in the prompt"; fi
+Status: deprecated" ]; then ok; else ng "root ADR 0387 I4: write-notes: only the first status line in the prompt"; fi
 unset WN_TAG
 REPO=$REPO_MAIN
 

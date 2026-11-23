@@ -5208,5 +5208,36 @@ if [ "$(lib_deps "$WORK/i5.cabal" | tr '\n' ' ')" = "base golem-layout " ]; then
   ng "root ADR 0411 I5: lib_deps reads the build-depends of the library only"
 fi
 
+# ---------------------------------------------------------------- the numbers in the names of tests (root ADR 0424)
+# test_names_0424 ROOT: prints each name, under ROOT, of a test of the
+# invariants of root ADRs 0347, 0348, 0350 and 0387 that does not start with
+# "root ADR NNNN I<n>" (two or more numbers parted by ", "): the tests of
+# modules/*/test, scripts/*/test.sh and .github/workflows, this file left out
+test_names_0424() {
+  { find "$1/modules" -path '*/test/*' -type f; find "$1/scripts" -name test.sh -type f; find "$1/.github/workflows" -type f; } 2>/dev/null |
+    grep -vxF "$1/scripts/ci/test.sh" >"$WORK/names-0424-files"
+  tr '\n' '\0' <"$WORK/names-0424-files" | xargs -0 grep -IhoE '([A-Za-z]+ )?ADR (0347|0348|0350|0387) [A-Z][0-9][^:"]*:?' 2>/dev/null |
+    grep -vxE 'root ADR (0347|0348|0350|0387) I[0-9]+(, I[0-9]+)*:'
+  tr '\n' '\0' <"$WORK/names-0424-files" | xargs -0 grep -IhoE '(write-)?notes: S[0-9][^"]*' 2>/dev/null
+  return 0
+}
+N24=$WORK/names-0424
+mkdir -p "$N24/bad/modules/golem-x/test" "$N24/bad/scripts/release" "$N24/bad/.github/workflows" "$N24/good/modules/golem-x/test" "$N24/good/scripts/release" "$N24/good/scripts/ci"
+printf '%s\n' '    testCase "ADR 0350 X1, X2: print links" $ do' '    testCase "Golem ADR 0348 R5: steps" $ do' >"$N24/bad/modules/golem-x/test/Main.hs"
+printf '%s\n' 'expect "notes: S1 S2 S3 the canonical status lines" 0' >"$N24/bad/scripts/release/test.sh"
+printf '%s\n' '      - name: "root ADR 0348 R4: the terminal"' >"$N24/bad/.github/workflows/race.yml"
+printf '%s\n' '    testCase "root ADR 0350 I1, I2, I3, I4: print links" $ do' '  testGroup "Emet REPL (Golem ADR 0348)"' '    testCase "root ADR 0347 I2: expressions" $ do' >"$N24/good/modules/golem-x/test/Main.hs"
+printf '%s\n' 'expect "root ADR 0387 I1, I2, I3: notes: the canonical status lines" 0' 'ng "notes: I4 I5 the ADRs whose status changed"' >"$N24/good/scripts/release/test.sh"
+printf '%s\n' 'ng "notes: S1 the names of this file are not read"' >"$N24/good/scripts/ci/test.sh"
+if [ "$(test_names_0424 "$N24/bad" | LC_ALL=C sort | tr '\n' '|')" = "ADR 0350 X1, X2:|Golem ADR 0348 R5:|notes: S1 S2 S3 the canonical status lines|root ADR 0348 R4:|" ]; then ok; else
+  ng "root ADR 0424 I3: the names of the old numbers are found ($(test_names_0424 "$N24/bad" | tr '\n' '|'))"
+fi
+if [ -z "$(test_names_0424 "$N24/good")" ]; then ok; else
+  ng "root ADR 0424 I3: names of the form root ADR NNNN I<n> pass ($(test_names_0424 "$N24/good" | tr '\n' '|'))"
+fi
+if [ -z "$(test_names_0424 "$HERE/../..")" ]; then ok; else
+  ng "root ADR 0424 I3: the tests of root ADRs 0347, 0348, 0350 and 0387 are named root ADR NNNN I<n> ($(test_names_0424 "$HERE/../.." | tr '\n' '|'))"
+fi
+
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
