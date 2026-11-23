@@ -935,7 +935,7 @@ wrapTests =
       let next = [q | q <- gridPages pl, poNumber q == poNumber p + 1]
           slotsOf q = [slot | (slot, SLine _) <- poSlots q]
       assertBool ("the note is on the page of the figure: " <> show (poFootnotes p)) (not (null (poFootnotes p)))
-      assertBool ("some side lines are sent on: " <> show (map slotsOf next)) (any (not . null . slotsOf) next)
+      assertBool ("some side lines are sent on: " <> show (map slotsOf next)) (not (all (null . slotsOf) next))
       map slotsOf next @?= map (\q -> take (length (slotsOf q)) [0 ..]) next,
     testCase "vertical: the image hangs from the top at its grid line; lines beside it are indented" $ do
       img <- tinyImage
