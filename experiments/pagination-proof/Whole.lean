@@ -49,6 +49,9 @@ inductive Flow where
   | paragraph (kp : Keep) (lines : List Line)
   | continued (kp : Keep) (lines : List Line)
   | heading (recto : Bool) (n : Nat) (lines : List Line)
+  /-- A stanza of verse (`FStanza`): its keep and its verse lines, each of
+      lines. -/
+  | stanza (kp : Keep) (verses : List (List Line))
   | figure (id n : Nat)
   | pageFigure (id : Nat)
   | brk (k : BreakKind)
@@ -469,6 +472,7 @@ mutual
 def flowSlotIds : Flow → List Nat
   | .bookPart _ _ _ body | .boxed _ _ _ body => flowsSlotIds body
   | .paragraph _ ls | .continued _ ls | .defTerm ls => ls.map (·.id)
+  | .stanza _ vs => vs.join.map (·.id)
   | .heading _ _ ls => (ls.take 1).map (·.id)
   | .figure i _ | .pageFigure i => [i]
   | .table _ h rows capt _ => (h ++ rows.join ++ capt).map (·.id)
@@ -1128,6 +1132,69 @@ def placeLines (env : Env) (kp : Keep) (st : St) (isStart : Bool) : List Line �
   | [] => st
   | l0 :: ls => placeLinesGo env l0.id kp st isStart (l0 :: ls)
 
+/-! ## Stanzas (`placeStanza` of Paginate.hs) -/
+
+theorem join_append' {α : Type} (a b : List (List α)) : (a ++ b).join = a.join ++ b.join := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih => simp [List.join, ih]
+
+
+/-- `k0` of `placeStanza`: the first verse lines whose lines fit in `room`. -/
+def versesFitting (room : Nat) : List (List Line) → Nat
+  | [] => 0
+  | v :: r => if v.length ≤ room then versesFitting (room - v.length) r + 1 else 0
+
+def stanzaK0 (env : Env) (st : St) (vs : List (List Line)) : Nat := versesFitting (env.fitting st vs.join) vs
+def stanzaK2 (env : Env) (kp : Keep) (st : St) (isStart : Bool) (vs : List (List Line)) : Nat :=
+  splitAtBreak kp isStart vs.length (stanzaK0 env st vs)
+
+def putVerses (env : Env) (st : St) (vs : List (List Line)) : St := vs.join.foldl (putLine env) st
+
+/-- The short last part of a stanza whose first verse line is broken as a
+    paragraph. -/
+def shortVerse (kp : Keep) (pid n : Nat) (more : List (List Line)) : List Unmet :=
+  if n - 1 < kp.last ∧ more ≠ [] then [.shortLast pid kp.last (n - 1)] else []
+
+set_option linter.unusedVariables false in
+/-- `go` of `placeStanza` of Paginate.hs, for the stanza whose first line
+    is `pid`: a verse line is not broken between columns. -/
+def placeStanzaGo (env : Env) (pid : Nat) : Keep → St → Bool → List (List Line) → St
+  | _, st, _, [] => st
+  | kp, st, isStart, v :: more =>
+    let n := (v :: more).length
+    let k0 := stanzaK0 env st (v :: more)
+    let k2 := stanzaK2 env kp st isStart (v :: more)
+    if h1 : kp.all = true ∧ isStart = true ∧ stanzaK0 env st (v :: more) < (v :: more).length then
+      if h2 : isEmpty st = true ∨ st.headingOnly = true then
+        placeStanzaGo env pid { kp with all := false } (addUnmet (.splitKept pid) st) isStart (v :: more)
+      else placeStanzaGo env pid kp (nextColumn env st) isStart (v :: more)
+    else if (v :: more).length ≤ stanzaK2 env kp st isStart (v :: more) then putVerses env st (v :: more)
+    else if h3 : 0 < stanzaK2 env kp st isStart (v :: more) then
+      placeStanzaGo env pid kp (nextColumn env (putVerses env st ((v :: more).take k2))) false ((v :: more).drop k2)
+    else if h4 : emptyish env st (v :: more).join = true then
+      if h5 : stanzaK0 env st (v :: more) = 0 then
+        placeStanzaGo env pid kp ((shortVerse kp pid n more).foldl (fun s u => addUnmet u s)
+          (placeLines env defaultKeep st isStart v)) false more
+      else
+        placeStanzaGo env pid kp (nextColumn env ((shortParts kp pid true isStart n k0).foldl (fun s u => addUnmet u s)
+          (putVerses env st ((v :: more).take k0)))) false ((v :: more).drop k0)
+    else placeStanzaGo env pid kp (nextColumn env st) isStart (v :: more)
+termination_by kp st _ vs => (vs.length, allRank kp, rank env st)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.left; omega)
+    | (apply Prod.Lex.right; apply Prod.Lex.left; simp_all [allRank]; done)
+    | (apply linesLt_rank; apply I4_nextColumn_rank; left; cases e : isEmpty st
+       · rfl
+       · simp [emptyish, e] at *)
+
+def placeStanza (env : Env) (kp : Keep) (st : St) (isStart : Bool) (vs : List (List Line)) : St :=
+  match vs.join with
+  | [] => placeStanzaGo env 0 kp st isStart vs
+  | l :: _ => placeStanzaGo env l.id kp st isStart vs
+
 /-! ## Breaks (Paginate.hs `applyBreaks` and State.hs `parityStart`) -/
 
 def isPageFigure : Deferred → Bool
@@ -1570,9 +1637,10 @@ def previousKeep (env : Env) (rest : List Flow) (kp : Keep) : Keep :=
 def keptCut (kp : Keep) (len : Nat) : Nat :=
   if kp.all = true ∨ len ≤ kp.last ∨ len - kp.last < kp.first then len else kp.last
 
-/-- `placeKept` of Paginate.hs, for the lines of a paragraph or a term. -/
-def placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St) (st : St) (isStart : Bool)
-    (ls : List Line) (n : Need) : St :=
+/-- `placeKept` of Paginate.hs, for the lines of a paragraph or a term,
+    or the verse lines of a stanza. -/
+def placeKept {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → List α → St) (st : St) (isStart : Bool)
+    (ls : List α) (n : Need) : St :=
   let st1 := placeIn st isStart ls
   let front := ls.take (ls.length - keptCut kp ls.length)
   let back := ls.drop (ls.length - keptCut kp ls.length)
@@ -1645,6 +1713,7 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   match f with
   | .paragraph kp ls => placeLines env kp st true ls
   | .continued kp ls => placeLines env kp st false ls
+  | .stanza kp vs => placeStanza env kp st true vs
   | .heading recto n ls =>
     let st1 := if recto then parityStart env odd st
       else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))
@@ -1705,6 +1774,7 @@ decreasing_by all_goals simp_wf; (try subst_vars); apply Prod.Lex.left; simp onl
 def placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   match f, env.keptNeed rest with
   | .paragraph kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st true ls n
+  | .stanza kp vs, some n => placeKept env kp (placeStanza env kp) st true vs n
   | .continued kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st false ls n
   | .defTerm ls, some n =>
     let initial := if 0 < env.keepLast rest then st
@@ -1826,6 +1896,7 @@ def flowText : Flow → List Slot
   | .paragraph _ ls => ls.map (fun l => .line l.id)
   | .continued _ ls => ls.map (fun l => .line l.id)
   | .defTerm ls => ls.map (fun l => .line l.id)
+  | .stanza _ vs => vs.join.map (fun l => .line l.id)
   | .heading _ _ [] => []
   | .heading _ _ (l0 :: ls) => [.heading l0.id (ls.length + 1)]
   | .code _ _ _ _ ls => ls.map (fun l => .codeRow l.id)
@@ -2124,6 +2195,49 @@ theorem text_placeLines (env : Env) (kp : Keep) (st : St) (isStart : Bool) (ls :
   | nil => simp [placeLines]
   | cons l ls => exact text_placeLinesGo ..
 
+theorem text_putVerses (env : Env) (st : St) (vs : List (List Line)) :
+    text (putVerses env st vs) = text st ++ vs.join.map (fun l => .line l.id) := text_putLines env vs.join st
+
+theorem text_placeStanzaGo (env : Env) (pid : Nat) (kp : Keep) (st : St) (isStart : Bool) (vs : List (List Line)) :
+    text (placeStanzaGo env pid kp st isStart vs) = text st ++ vs.join.map (fun l => .line l.id) := by
+  match vs with
+  | [] => simp [placeStanzaGo]
+  | v :: more =>
+    have td : ∀ k s, text (putVerses env s ((v :: more).take k)) ++ ((v :: more).drop k).join.map (fun l => .line l.id)
+        = text s ++ (v :: more).join.map (fun l => .line l.id) := by
+      intro k s
+      rw [text_putVerses, List.append_assoc, ← List.map_append, ← join_append', List.take_append_drop]
+    unfold placeStanzaGo
+    simp only
+    split
+    · split
+      · rw [text_placeStanzaGo env pid { kp with all := false } _ isStart (v :: more), text_addUnmet]
+      · rw [text_placeStanzaGo env pid kp _ isStart (v :: more), text_nextColumn]
+    · split
+      · exact text_putVerses ..
+      · split
+        · rw [text_placeStanzaGo env pid kp _ false _, text_nextColumn]; exact td _ _
+        · split
+          · split
+            · rw [text_placeStanzaGo env pid kp _ false more, text_shortParts, text_placeLines, List.append_assoc,
+                ← List.map_append]
+              simp
+            · rw [text_placeStanzaGo env pid kp _ false _, text_nextColumn, text_shortParts]; exact td _ _
+          · rw [text_placeStanzaGo env pid kp _ isStart (v :: more), text_nextColumn]
+termination_by (vs.length, allRank kp, rank env st)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.left; omega)
+    | (apply Prod.Lex.right; apply Prod.Lex.left; simp_all [allRank]; done)
+    | (apply linesLt_rank; apply I4_nextColumn_rank; left; cases e : isEmpty st
+       · rfl
+       · simp [emptyish, e] at *)
+
+theorem text_placeStanza (env : Env) (kp : Keep) (st : St) (isStart : Bool) (vs : List (List Line)) :
+    text (placeStanza env kp st isStart vs) = text st ++ vs.join.map (fun l => .line l.id) := by
+  unfold placeStanza; split <;> exact text_placeStanzaGo ..
+
 theorem text_putSlot_code (st : St) (n : Nat) (rows : List Nat) :
     text (putSlot st n (.code rows)) = text st ++ rows.map Slot.codeRow := by
   simp [text, putSlot, textSlots_append, textSlots]
@@ -2272,11 +2386,6 @@ decreasing_by
       subst r
       exact Prod.Lex.left _ _ (by simp)
 
-theorem join_append' {α : Type} (a b : List (List α)) : (a ++ b).join = a.join ++ b.join := by
-  induction a with
-  | nil => rfl
-  | cons x xs ih => simp [List.join, ih]
-
 theorem tableGroups_lines (h : List Line) (rows : List (List Line)) (capt : List Line) (below : Bool) :
     (tableGroups h rows capt below).bind (·.2) = tableLines h rows capt below := by
   have j : List.join (List.map ((fun x : Bool × List Line => x.snd) ∘ fun r => (false, r)) rows) = rows.join := by
@@ -2340,15 +2449,16 @@ theorem text_checkNoBreak (st : St) : text (checkNoBreak st) = text st := by
 theorem text_waitFor (u : Unmet) (k : Nat × Bool) (st : St) : text (waitFor u k st) = text st := by
   obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]; rfl
 
-theorem text_placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St)
-    (hp : ∀ s b xs, text (placeIn s b xs) = text s ++ xs.map (fun l => .line l.id))
-    (st : St) (isStart : Bool) (ls : List Line) (n : Need) :
-    text (placeKept env kp placeIn st isStart ls n) = text st ++ ls.map (fun l => .line l.id) := by
+theorem text_placeKept {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → List α → St)
+    (T : List α → List Slot) (hT : ∀ a b, T (a ++ b) = T a ++ T b)
+    (hp : ∀ s b xs, text (placeIn s b xs) = text s ++ T xs)
+    (st : St) (isStart : Bool) (ls : List α) (n : Need) :
+    text (placeKept env kp placeIn st isStart ls n) = text st ++ T ls := by
   have split2 : ∀ s, text (placeIn (placeIn s isStart (ls.take (ls.length - keptCut kp ls.length)))
       (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty) (ls.drop (ls.length - keptCut kp ls.length)))
-      = text s ++ ls.map (fun l => .line l.id) := by
+      = text s ++ T ls := by
     intro s
-    rw [hp, hp, List.append_assoc, ← List.map_append, List.take_append_drop]
+    rw [hp, hp, List.append_assoc, ← hT, List.take_append_drop]
   simp only [placeKept]
   apply text_ite
   · exact hp ..
@@ -2356,13 +2466,14 @@ theorem text_placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List L
     · exact split2 st
     · apply text_ite
       · exact hp ..
-      · rw [hp, text_nextColumn, hp, List.append_assoc, ← List.map_append, List.take_append_drop]
+      · rw [hp, text_nextColumn, hp, List.append_assoc, ← hT, List.take_append_drop]
 
 mutual
 theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (place env st f rest) = text st ++ flowText f := by
   cases f with
   | paragraph kp ls => simp only [place, flowText]; exact text_placeLines ..
+  | stanza kp vs => simp only [place, flowText]; exact text_placeStanza ..
   | continued kp ls => simp only [place, flowText]; exact text_placeLines ..
   | heading recto n ls =>
     simp only [place]
@@ -2443,10 +2554,13 @@ theorem text_placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     fun kp s b xs => text_placeLines env kp s b xs
   unfold placeFlow
   split
-  · simp only [flowText]; exact text_placeKept env _ _ (pl _) st true _ _
-  · simp only [flowText]; exact text_placeKept env _ _ (pl _) st false _ _
+  · simp only [flowText]; exact text_placeKept env _ _ _ (fun a b => List.map_append _ a b) (pl _) st true _ _
   · simp only [flowText]
-    rw [text_placeKept env _ _ (pl _)]
+    exact text_placeKept env _ _ (fun vs => vs.join.map (fun l => .line l.id))
+      (fun a b => by simp only [join_append', List.map_append]) (fun s b xs => text_placeStanza env _ s b xs) st true _ _
+  · simp only [flowText]; exact text_placeKept env _ _ _ (fun a b => List.map_append _ a b) (pl _) st false _ _
+  · simp only [flowText]
+    rw [text_placeKept env _ _ _ (fun a b => List.map_append _ a b) (pl _)]
     congr 1
     apply text_ite
     · rfl
@@ -2510,6 +2624,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | table sp0 h rows capt below => simp only [step]; exact general _ _
   | switchColumns n => simp only [step]; exact general _ _
   | restoreColumns => simp only [step]; exact general _ _
+  | stanza kp vs => simp only [step]; exact general _ _
   | boxed i kb ka body => simp only [step]; exact general _ _
 termination_by (flowWeight f, 2)
 decreasing_by
@@ -3321,6 +3436,9 @@ decreasing_by
       simp only [List.length] at h4
       omega
 
+theorem putVerses_figs (env : Env) (hs : 0 ≤ env.separator) (vs : List (List Line)) (st : St) (h : Inv st) :
+    figs (putVerses env st vs) = figs st ∧ Inv (putVerses env st vs) := putLines_figs env hs vs.join st h
+
 theorem putSlot_code_figs (st : St) (n : Nat) (rows : List Nat) (h : Inv st) :
     figs (putSlot st n (.code rows)) = figs st ∧ Inv (putSlot st n (.code rows)) := by
   refine ⟨by simp [figs, putSlot, figSlots_append, figSlots], ?_⟩
@@ -3363,6 +3481,56 @@ theorem placeLines_figs (env : Env) (hs : 0 ≤ env.separator) (kp : Keep) (st :
   cases ls with
   | nil => exact ⟨rfl, h⟩
   | cons l ls => exact placeLinesGo_figs env hs _ kp st isStart _ h
+
+theorem placeStanzaGo_figs (env : Env) (hs : 0 ≤ env.separator) (pid : Nat) (kp : Keep) (st : St) (isStart : Bool)
+    (vs : List (List Line)) (h : Inv st) :
+    figs (placeStanzaGo env pid kp st isStart vs) = figs st ∧ Inv (placeStanzaGo env pid kp st isStart vs) := by
+  match vs with
+  | [] => unfold placeStanzaGo; exact ⟨rfl, h⟩
+  | v :: more =>
+    unfold placeStanzaGo
+    simp only
+    split
+    · split
+      · exact placeStanzaGo_figs env hs pid { kp with all := false } _ isStart (v :: more) ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+      · have := placeStanzaGo_figs env hs pid kp _ isStart (v :: more) (inv_nextColumn env st h)
+        rw [figs_nextColumn] at this; exact this
+    · split
+      · exact putVerses_figs env hs _ st h
+      · split
+        · have p := putVerses_figs env hs ((v :: more).take (stanzaK2 env kp st isStart (v :: more))) st h
+          have := placeStanzaGo_figs env hs pid kp _ false
+            ((v :: more).drop (stanzaK2 env kp st isStart (v :: more))) (inv_nextColumn env _ p.2)
+          rw [figs_nextColumn, p.1] at this; exact this
+        · split
+          · split
+            · have p := placeLines_figs env hs defaultKeep st isStart v h
+              have q := shortParts_figs (shortVerse kp pid (v :: more).length more) _ p.2
+              have := placeStanzaGo_figs env hs pid kp _ false more q.2
+              rw [q.1, p.1] at this; exact this
+            · have p := putVerses_figs env hs ((v :: more).take
+                (stanzaK0 env st (v :: more))) st h
+              have q := shortParts_figs (shortParts kp pid true isStart (v :: more).length
+                (stanzaK0 env st (v :: more))) _ p.2
+              have := placeStanzaGo_figs env hs pid kp _ false
+                ((v :: more).drop (stanzaK0 env st (v :: more))) (inv_nextColumn env _ q.2)
+              rw [figs_nextColumn, q.1, p.1] at this; exact this
+          · have := placeStanzaGo_figs env hs pid kp _ isStart (v :: more) (inv_nextColumn env st h)
+            rw [figs_nextColumn] at this; exact this
+termination_by (vs.length, allRank kp, rank env st)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.left; omega)
+    | (apply Prod.Lex.right; apply Prod.Lex.left; simp_all [allRank]; done)
+    | (apply linesLt_rank; apply I4_nextColumn_rank; left; cases e : isEmpty st
+       · rfl
+       · simp [emptyish, e] at *)
+
+theorem placeStanza_figs (env : Env) (hs : 0 ≤ env.separator) (kp : Keep) (st : St) (isStart : Bool)
+    (vs : List (List Line)) (h : Inv st) :
+    figs (placeStanza env kp st isStart vs) = figs st ∧ Inv (placeStanza env kp st isStart vs) := by
+  unfold placeStanza; split <;> exact placeStanzaGo_figs env hs _ kp st isStart vs h
 
 /-! ### One flow and the whole -/
 
@@ -3668,9 +3836,9 @@ theorem waitFor_figs (u : Unmet) (k : Nat × Bool) (st : St) (h : Inv st) :
   obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]
   exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
 
-theorem placeKept_figs (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St)
+theorem placeKept_figs {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → List α → St)
     (hp : ∀ s b xs, Inv s → figs (placeIn s b xs) = figs s ∧ Inv (placeIn s b xs))
-    (st : St) (isStart : Bool) (ls : List Line) (n : Need) (h : Inv st) :
+    (st : St) (isStart : Bool) (ls : List α) (n : Need) (h : Inv st) :
     figs (placeKept env kp placeIn st isStart ls n) = figs st ∧ Inv (placeKept env kp placeIn st isStart ls n) := by
   have one := hp st isStart ls h
   have a := hp st isStart (ls.take (ls.length - keptCut kp ls.length)) h
@@ -3695,6 +3863,7 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
     figs (place env st f rest) = figs st ++ flowFigs f ∧ Inv (place env st f rest) := by
   cases f with
   | paragraph kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st true ls h
+  | stanza kp vs => simp only [place, flowFigs, List.append_nil]; exact placeStanza_figs env hs kp st true vs h
   | continued kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st false ls h
   | heading recto n ls =>
     simp only [place, flowFigs, List.append_nil]
@@ -3839,6 +4008,8 @@ theorem placeFlow_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.sep
   unfold placeFlow
   split
   · simp only [flowFigs, List.append_nil]; exact placeKept_figs env _ _ (pl _) st true _ _ h
+  · simp only [flowFigs, List.append_nil]
+    exact placeKept_figs env _ _ (fun s b xs i => placeStanza_figs env hs _ s b xs i) st true _ _ h
   · simp only [flowFigs, List.append_nil]; exact placeKept_figs env _ _ (pl _) st false _ _ h
   · rename_i ls n _
     simp only [flowFigs, List.append_nil]
@@ -3946,6 +4117,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
   | table sp0 h rows capt below => simp only [step]; exact general _ _
   | switchColumns n => simp only [step]; exact general _ _
   | restoreColumns => simp only [step]; exact general _ _
+  | stanza kp vs => simp only [step]; exact general _ _
   | boxed i kb ka body => simp only [step]; exact general _ _
 termination_by (flowWeight f, 2)
 decreasing_by
