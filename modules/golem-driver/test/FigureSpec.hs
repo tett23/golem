@@ -172,6 +172,24 @@ pdfFigureTests =
       has "C1 white is white" "/C1 [0 0 0 0]"
       assertBool "the CalRGB and Lab colours are not painted as they are" (not ("0.5 0.5 0.5 scn" `BS.isInfixOf` everything || "25 0 0 scn" `BS.isInfixOf` everything))
       qpdfCheck out,
+    testCase "root ADR 0403 A1: an SVG line drawing of white, gray and black is drawn in tones of the swatch in the PDF output" $ do
+      let svg =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">"
+              <> "<rect x=\"0\" y=\"0\" width=\"10\" height=\"10\" fill=\"#ffffff\"/>"
+              <> "<path d=\"M 1 1 L 9 1\" fill=\"none\" stroke=\"#808080\"/>"
+              <> "<path d=\"M 1 3 L 9 3 L 9 9 Z\" fill=\"#000000\"/></svg>"
+      (codes, pdf, _) <- colorPdfWith "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", svg)]
+      codes @?= []
+      out <- maybe (assertFailure "no PDF") pure pdf
+      streams <- inflateAll out
+      let everything = BS.concat (out : streams)
+          has label needle = assertBool (label <> ": " <> show needle) (needle `BS.isInfixOf` everything)
+      -- the swatch is C0 M100 Y100 K0: gray g paints (0, 1 - g, 1 - g, 0)
+      has "white stays white" "0 0 0 0 k"
+      has "gray 128 is the tone 127/255 of the swatch" "0 0.49803922 0.49803922 0 K"
+      has "black is the swatch" "0 1 1 0 k"
+      assertBool "no RGB paint is left" (not (any (`BS.isInfixOf` everything) [" sc\n", " SC\n", " rg\n", " RG\n"]))
+      qpdfCheck out,
     testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
       let figPdf = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
       (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
