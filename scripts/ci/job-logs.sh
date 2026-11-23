@@ -23,9 +23,10 @@
 # allowed to stdout.
 #
 # The exit code is 0 when there is a job to read, every log was fetched and
-# no warning is left; 1 when there is no job to read, a log cannot be
-# fetched, or a warning is not allowed; 2 for a usage error, a JOBS jq
-# cannot read, and the exit code 2 of log-warnings.sh.
+# no warning is left that ALLOWED does not allow; 1 when there is no job to
+# read, a log cannot be fetched, or a warning is not allowed; 2 for a usage
+# error and a JOBS jq cannot read; and the exit code of log-warnings.sh when
+# it is 2 or more.
 set -u
 usage() { echo "usage: job-logs.sh ALLOWED JOBS DIR" >&2; exit 2; }
 [ $# -eq 3 ] || usage

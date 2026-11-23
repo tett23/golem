@@ -1023,7 +1023,7 @@ jobs:
       # why the toolchain cache missed: the toolchain or the project
       # differs from main (the base of a pull request, the commit before a
       # push), or neither and the cache was evicted, a notice annotation
-      # that does not fail the job nor ci (docs/adr/0219, docs/adr/0427)
+      # that fails neither the job nor ci (docs/adr/0219, docs/adr/0427)
       - name: Times
         if: always()
         env:

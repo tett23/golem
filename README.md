@@ -963,7 +963,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 `dist-wasm` を保存するのは `main` への push だけで、プルリクエストは `main` の `dist-wasm` を戻して変わったパッケージだけを組み、保存しない。
 ビルドに関わる変更のあるプルリクエストごとに走らせる頻度は変えない（[docs/adr/0219](./docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md)）。
 最後の `Times` のステップは、ツールチェーンのキャッシュが外れた理由（ツールチェーンを替えた、プロジェクトか freeze が `main` と違う、どれも同じなのに外れた）を `scripts/ci/wasm-cache.sh` で一行に書き、三つめ（キャッシュが消された）では `::notice::` の注釈を出してジョブは通す。
-注釈を warning にしないのは、`ci` の warning の検査でマージを止めないためである（[docs/adr/0427](./docs/adr/0427-warning-gate-and-jobs-without-logs.md)）。
+注釈を warning にしないのは、後述の `ci` ジョブの warning の検査でマージを止めないためである（[docs/adr/0427](./docs/adr/0427-warning-gate-and-jobs-without-logs.md)）。
 ツールチェーンか freeze を替えるプルリクエストの最初の実行は 5 分を超えてよい（CONTRIBUTING の「GitHub Actions」）。
 
 ##### `verapdf`
@@ -984,7 +984,8 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 `ci` は、`ci.yml` のほかのジョブ（`caches` を除く）がすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`）。
 別の step で、同じ実行の終わったジョブ（省かれたもの、step を一つも走らせずに取り消されたもの、`ci` 自身を除く）のログを読み、`scripts/ci/warnings-allowed.tsv` にない warning がないことを確かめる（`scripts/ci/job-logs.sh`、`scripts/ci/log-warnings.sh`、[docs/adr/0245](./docs/adr/0245-keep-the-warnings-of-ci-at-zero.md)、[docs/adr/0427](./docs/adr/0427-warning-gate-and-jobs-without-logs.md)）。
-あるジョブのログが取れなくても残りのジョブのログを読み、すべてを読んだ後で、取れないログがあれば失敗する。
+step を一つも走らせずに取り消されたジョブは、ジョブの一覧の `steps` が空のものである。
+あるジョブのログが取れなくても残りのジョブのログを読み、すべてを読んだ後で、取れないログがあるか、読むジョブが一つも無ければ失敗する。
 
 #### 定期に走るワークフロー
 
