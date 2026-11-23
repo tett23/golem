@@ -475,11 +475,9 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 1 ページ目は段落の 7 行だけを持ち、2 段組みは 2 ページ目の 0 行目から始まった。
 表の見出し行と本体の行は、2 ページ目の 2 段目の 0 行目と 1 行目に置かれた。
 
-回り込み図版の横の行が次の段へ送られると、Haskell の実装は送った先の段の使用行数を、図版を置いた段の使用行数に、図版の高さと横の行数の大きいほう（`size`）を足した値にする。
-`paginate 1 3 [FWrapped 1 2 [] [] (ls 10 5), FParagraph defaultKeep (ls 20 1)]` を `runghc` で実行した。
-1 ページ目に図版と横の行 10〜12 が、2 ページ目に行 13 と 14 が置かれ、2 ページ目の 2 行目は空いたまま、1 行の段落 20 は 3 ページ目に置かれた。
-`place` の `FWrapped` が、`placeLines` の後の状態の `sUsed` を `max (sUsed st1 + size) (sUsed placed)` とし、`st1` が図版を置いた 1 ページ目の状態だからである。
-このモデルは実装のとおりに写し、判断を待つ。
+回り込み図版の横の行が次の段へ送られると、Haskell の実装は送った先の段の使用行数を、`placeLines` の後の状態の値のままにする（PR #1129）。
+`place` の `FWrapped` は、図版を置いた段と `placeLines` の後の段が同じときだけ、使用行数を `max (sUsed st1 + size) (sUsed placed)` とし、図版の除外領域の終わりまでを空ける。
+このモデルの `place` の `wrapped` も、ページと段が変わらないときだけ使用行数を `max` で広げる。
 
 モデルは次の点で Haskell の実装を抽象化する。
 `nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
@@ -542,19 +540,19 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:460` `slotLineCount` | `slotLineCount` |
 | `Paginate.hs:466` `applyBreaks`、`:469` `applyBreak` | `applyBreaks`、`applyPending` |
 | `Paginate.hs:481` `startBefore` | `startBefore` |
-| `Paginate.hs:559` `place` の `FSection` | `place` の `sectionStart` |
+| `Paginate.hs:562` `place` の `FSection` | `place` の `sectionStart` |
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
 | `Paginate.hs:514` `place` の `FBookPart` | `place` の `bookPart`、`runFlows` |
-| `Paginate.hs:584` `place` の `FBoxed` | `place` の `boxed`、`boxEnd` |
-| `Paginate.hs:561` `place` の `FSwitchColumns`、`:567` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
-| `Paginate.hs:599` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
-| `Paginate.hs:625` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
+| `Paginate.hs:587` `place` の `FBoxed` | `place` の `boxed`、`boxEnd` |
+| `Paginate.hs:564` `place` の `FSwitchColumns`、`:570` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
+| `Paginate.hs:602` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
+| `Paginate.hs:628` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate.hs:551` `place` の `FWrapped` | `place` の `wrapped` |
-| `Paginate.hs:665` `placeStanza` | `placeStanza`、`placeStanzaGo`、`versesFitting`、`stanzaK0`、`stanzaK2`、`putVerses`、`shortVerse` |
-| `Paginate.hs:787` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
-| `Paginate.hs:812` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
+| `Paginate.hs:668` `placeStanza` | `placeStanza`、`placeStanzaGo`、`versesFitting`、`stanzaK0`、`stanzaK2`、`putVerses`、`shortVerse` |
+| `Paginate.hs:790` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
+| `Paginate.hs:815` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
 | `Paginate/BookParts.hs:13` `placeBookPart` | `placeBookPart`、`partTrial`、`fitsPart`、`unitKey`、`emptyUnit`、`nextUnit`、`nextSpread`、`hasNested` |
 | `Paginate/BookParts.hs:60` `flattenBookParts` | `flattenParts` |
 | `Paginate/BookParts.hs:66` `flowSlotIds`、`:83` `slotIds` | `flowSlotIds`、`flowsSlotIds`、`slotIds` |

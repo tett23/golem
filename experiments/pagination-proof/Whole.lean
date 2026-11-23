@@ -1757,8 +1757,11 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
     let st0 := flushFigures env st
     let size : Int := max (n : Int) beside.length
     let st1 := keep env st0 (fun _ => size)
-    let st3 := placeLines env defaultKeep (putSlot st1 0 (.wrapped i)) false beside
-    { st3 with used := max (st1.used + size) st3.used }
+    let st2 := putSlot st1 0 (.wrapped i)
+    let st3 := placeLines env defaultKeep st2 false beside
+    -- the side lines their notes send on take the next column from its top
+    if st3.page = st2.page ∧ st3.column = st2.column then { st3 with used := max (st1.used + size) st3.used }
+    else st3
   | .heading recto n ls =>
     let st1 := if recto then parityStart env odd st
       else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))
@@ -2554,8 +2557,9 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | stanza kp vs => simp only [place, flowText]; exact text_placeStanza ..
   | wrapped i n beside =>
     simp only [place, flowText]
-    show text (placeLines env defaultKeep _ false beside) = _
-    rw [text_placeLines, text_putSlot_wrapped, text_keep, text_flushFigures]
+    split <;>
+    · show text (placeLines env defaultKeep _ false beside) = _
+      rw [text_placeLines, text_putSlot_wrapped, text_keep, text_flushFigures]
   | continued kp ls => simp only [place, flowText]; exact text_placeLines ..
   | heading recto n ls =>
     simp only [place]
@@ -3996,10 +4000,12 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
     have p := placeLines_figs env hs defaultKeep _ false beside ps
     rw [fp, fk, f0.1] at p
     generalize placeLines env defaultKeep (putSlot st1 0 (.wrapped i)) false beside = st3 at p
-    refine ⟨p.1, ?_⟩
-    exact inv_addUsed p.2 ⟨p.2.weak.first, p.2.weak.deferred⟩ (max (st1.used + max (n : Int) beside.length) st3.used - st3.used)
-      (by have := Int.le_max_right (st1.used + max (n : Int) beside.length) st3.used; omega) (by show max _ _ = _; omega)
-      (Int.le_refl _) (Or.inl rfl)
+    split
+    · refine ⟨p.1, ?_⟩
+      exact inv_addUsed p.2 ⟨p.2.weak.first, p.2.weak.deferred⟩ (max (st1.used + max (n : Int) beside.length) st3.used - st3.used)
+        (by have := Int.le_max_right (st1.used + max (n : Int) beside.length) st3.used; omega) (by show max _ _ = _; omega)
+        (Int.le_refl _) (Or.inl rfl)
+    · exact p
   | continued kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st false ls h
   | heading recto n ls =>
     simp only [place, flowFigs, List.append_nil]
