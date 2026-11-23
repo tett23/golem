@@ -401,7 +401,7 @@ x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョ
 矢印は、元のモジュールが先のモジュールを使うことを表す。
 図を読みやすくするため、次の矢印を省いている。
 
-- golem-syntax への矢印：golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+- golem-syntax への矢印：golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-unicode、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 - golem-length への矢印：golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset）が多いので、矢印を省く。
 - ほかの依存を通して届く依存の矢印。
 
@@ -425,6 +425,7 @@ flowchart TD
     numerals["golem-numerals<br/>数の表記（最下層）"]
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
+    unicode["golem-unicode<br/>書記素と語の分割、文字クラス（最下層）"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
         typeset["golem-typeset<br/>PDF の組版と描画"]
@@ -458,6 +459,7 @@ flowchart TD
     html --> assemble
     html --> bibliography
     layout --> project
+    layout --> unicode
     layoutspec --> pdf
     layoutspec --> project
     lint --> eval
@@ -489,6 +491,11 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
 
 - golem-length は長さの型 `Sp`、単位の変換、長さと十進の数の表記を持ち、golem のどのパッケージにも依存しない（[docs/adr/0114](adr/0114-sp-in-a-length-package.md)）。
 - golem-font は長さを持たず、位置と寸法をフォントの単位で返すので、golem-length に依存しない。
+- golem-unicode は base、containers、text だけに依存し、golem のどのパッケージにも依存しない（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
+  UAX #29 の拡張書記素クラスタの分割（`Golem.Unicode.Grapheme`）と語の境界（`Golem.Unicode.Word`）、一般カテゴリが L か N かの判定（`Golem.Unicode.Category`）、JLReq の文字クラス（`Golem.Unicode.CharClass`）を持つ。
+  分割は Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
+  分割の規則は libgrapheme 3.0.0 の実装に倣い、字の性質の表は Unicode 17.0.0 のデータから `scripts/gen-unicode-segmentation.sh` が生成する。
+  golem-html と golem-unicode のライブラリが golem-layout と golem-project に依存しないことは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
 - golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 - golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
   golem-pdf は golem-svg に依存せず、golem-typeset が golem-svg の描画を golem-pdf の描画に直す。
@@ -5322,8 +5329,11 @@ CRLF は受け付け、LF の前にない CR（単独の CR）を G02082 とす�
 メッセージは、最初の `-` の範囲の両端を残して `...` で区切った形を示す。
 式が返した文字列も同じに読む。
 `@listing` はコードブロックを作らず、コードブロックは強調せずに組む。
-語と文字列の負の端は G02110 とする。
-式の評価結果の端が負なら G02103 とし、0 なら `lines` ではファイルの行を外れた範囲として G02037、`highlight` ではそのコードにない行として G02069 とする。
+端が負の数なら、語、文字列、式のどれで書いても G02103 とし、メッセージも同じにする（[ADR 0419](adr/0419-report-a-negative-end-of-a-range-as-a-negative-natural.md)）。
+一つの項目には、始めの端から読んで最初に見つけた誤りの diagnostic を一つだけ出すので、`-1...a` は G02103 だけになる。
+`-0` は 0 と読む。
+端が 0 なら、`lines` ではファイルの行を外れた範囲として G02037、`highlight` ではそのコードにない行として G02069 とする。
+端のない範囲と、`a...3` や `-a` のように端が数でない項目は G02110 とする。
 一般の式の範囲の負の端（`[= -2...3]`）は、これまでどおり値として受け付ける。
 LSP では、エディタで開いているファイルの BOM と CR も G01002 と G01003 にするが、プロジェクトの読み込みは止めない。
 
@@ -6521,7 +6531,7 @@ He said nothing, and the silence was the answer.
 
 ### 両用の文字
 
-和文にも欧文にも使う次の 13 字を、両用の文字とする（golem-layout の `Golem.Layout.CharClass.dualCharacters`）。
+和文にも欧文にも使う次の 13 字を、両用の文字とする（golem-unicode の `Golem.Unicode.CharClass.dualCharacters`）。
 
 ```
 ‘ ’ “ ” « » ‹ › — – ‐ ‑ …
@@ -9006,7 +9016,8 @@ G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`
 `golem stats` は各ページのマスターフレームに流し込む本文を原稿順に集計し、PDF を書き出さずに文字数、ワード数、組版後の行数、換算ページ数を表示する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。
 本文にはルビの親文字を含め、読み、柱、ノンブル、独立したフレームのテキスト、組版で補ったハイフンを除く。
 文字数は段落の表示文字列の拡張書記素クラスタを数える。
-ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字を含む区間を数える。
+ワード数は Unicode 17.0.0 の既定の単語境界で区切り、文字か数字（一般カテゴリが L か N の字）を含む区間を数える。
+書記素クラスタと単語境界は、golem-unicode が UAX #29 の規則と Unicode 17.0.0 の表で求める（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
 組版後の行数は、PDF と同じ組版で作る本文の行ボックスと、明示的な空行の数である。
 
 換算では段落の先頭と明示改行で新しい行を始め、1 行の字数を超えたところで折り返す。
@@ -9439,6 +9450,8 @@ GMP のソースを添えるのは、GMP が LGPL-3.0 であり、三つの実�
 `scripts/release/link-components.sh` は、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素に対応させる。
 構成要素は、Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt である。
 対応の付かないアーカイブが一つでもあれば、配布物を作らずに止まる。
+リンクマップによらず、golem-unicode の注記はいつも `THIRD_PARTY_LICENSES/golem-unicode/` に入れる（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
+注記は、golem-unicode が実装に倣った libgrapheme 3.0.0 の ISC ライセンスと、表の元にした Unicode 17.0.0 のデータの Unicode License である。
 
 構成要素の文書の出どころは、構成要素ごとに決まっている。
 
@@ -9479,7 +9492,7 @@ wasm の版の配布物 `golem-<タグ>-wasm32-wasi.tar.gz` は、ジョブ `was
 配布物の名前は `golem-*.tar.gz` に当たるので、`SHA256SUMS`、来歴の証明、下書きのリリースに、ほかの配布物と同じ規則で入る。
 
 `THIRD_PARTY_LICENSES/` には、次のもののライセンスを入れる。
-wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP である。
+wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、golem-unicode が倣った libgrapheme と Unicode のデータ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc、libc++、libc++abi、compiler-rt、libffi-wasm、GMP である。
 
 ライセンスの文書の扱いには、wasm の版に固有の決まりがある。
 
@@ -9492,7 +9505,7 @@ wasm の GHC の RTS と boot のパッケージ、Hackage のパッケージ、
 次のどれかに当たれば、ジョブは失敗し、`release` は走らない。
 
 - 最上位のディレクトリに `golem.wasm`、`LICENSE`、`README`、`THIRD_PARTY_LICENSES/` がない。
-- `THIRD_PARTY_LICENSES/` に、wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がない。
+- `THIRD_PARTY_LICENSES/` に、wasm の GHC と RTS、boot のパッケージ（`base`、`ghc-prim`、`ghc-bignum`、`ghc-internal`）、golem-unicode の注記（libgrapheme と Unicode のデータ）、HarfBuzz、FreeType、hyph-utf8、zlib（`zlib-clib`）、wasi-libc、libc++、GMP の文書がない。
 - `.sha256` がアーカイブの SHA-256 と違う。
 
 この検査は `workflow_dispatch` でも走るので、タグを打つ前に確かめられる。

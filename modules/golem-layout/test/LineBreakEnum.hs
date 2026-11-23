@@ -67,12 +67,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
-import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Hyphenation.Languages (patternsFor)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
 import Golem.TestSupport.Enum
+import Golem.Unicode.CharClass (isDualCharacter)
 
 {- | One character of each JLReq class (docs/adr/0209): an ideograph,
 hiragana, an opening and a closing bracket, a hyphen, a dividing

@@ -31,7 +31,6 @@ library
   exposed-modules:  Golem.Layout.KnuthPlass
                     Golem.Layout.Align
                     Golem.Layout.Aki
-                    Golem.Layout.CharClass
                     Golem.Layout.Code
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.De1996
@@ -68,6 +67,7 @@ library
     , golem-numerals
     , golem-project
     , golem-syntax
+    , golem-unicode
     , template-haskell
     , text               >=2.0  && <2.2
   default-language: GHC2021
@@ -148,6 +148,7 @@ test-suite golem-layout-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4
