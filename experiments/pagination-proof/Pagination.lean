@@ -20483,4 +20483,337 @@ theorem I3_needMoreNone : ∀ inp, alloyInputFact inp = true →
 
 end Alloy
 
+/-! ## The breaker compared with KnuthPlass.hs (root ADR 0352, condition 2)
+
+The scan above takes the evaluation of a line as an argument
+(`CaptionScanContext`).  This section gives it the evaluation of
+`breakParagraph` of `Golem.Layout.KnuthPlass` for a line width that does
+not change from line to line, as a caption has, and no expansion of the
+glyphs.  CaptionValues.lean runs `captionCompared` on the captions of
+CheckCaptionAssembly.hs and check.sh compares the pass, the breaks, the
+demerits and each line's ratio and overflow with golem-layout.  The
+theorems at the end state invariants 1 and 2 of root ADR 0352 for the
+captions on this evaluation. -/
+
+/-- An item of the breaker with every field `evaluate` and `mkLine` read. -/
+structure CaptionItem where
+  kind : CaptionItemKind
+  width : Int
+  stretch : Int := 0
+  shrink : Int := 0
+  protrudeStart : Int := 0
+  protrudeEnd : Int := 0
+  edgeStart : Int := 0
+  edgeEnd : Int := 0
+  flagged : Bool := false
+  /-- The protrusion of the hyphen drawn at a break of the patterns or at
+      a soft hyphen. -/
+  hyphenEnd : Option Int := none
+
+instance : Inhabited CaptionItem := ⟨{ kind := .glue, width := 0 }⟩
+
+def CaptionItem.measured (i : CaptionItem) : MeasuredCaptionItem := ⟨i.kind, i.width⟩
+
+def CaptionItem.isBox (i : CaptionItem) : Bool := match i.kind with | .box => true | _ => false
+
+/-- The parameters of `breakParagraph` that a caption sets, and its line
+    width. -/
+structure CaptionParams where
+  pretolerance : Int
+  tolerance : Int
+  linePenalty : Int
+  adjDemerits : Int
+  doubleHyphen : Int
+  endStretch : Int
+  emergency : Int
+  pullInFirst : Bool
+  protrusion : Bool
+  width : Int
+
+/-- `tW` of the items before `i`: the cumulative width. -/
+def captionCumulativeWidth (items : List CaptionItem) (i : Nat) : Int :=
+  captionSum ((items.take i).map CaptionItem.measured)
+
+/-- `tY` and `tZ` of the items before `i`: the cumulative stretch and
+    shrink of the glue. -/
+def captionCumulative (f : CaptionItem → Int) (items : List CaptionItem) (i : Nat) : Int :=
+  (items.take i).foldl (fun acc item => acc + f item) 0
+
+def captionGlueStretch (i : CaptionItem) : Int := match i.kind with | .glue => i.stretch | _ => 0
+def captionGlueShrink (i : CaptionItem) : Int := match i.kind with | .glue => i.shrink | _ => 0
+
+/-- The values `evaluate` and `mkLine` share for the line from `s` to the
+    break `b`: natural width, glue stretch, glue shrink.  As in
+    KnuthPlass.hs, they are differences of the cumulative sums, so a break
+    inside the items skipped after the break before it (`s > b`) gives
+    negative sums. -/
+def captionLineSums (ps : CaptionParams) (items : List CaptionItem) (s b : Nat) : Int × Int × Int :=
+  let line := (items.drop s).take (b - s)
+  let atBreak := items.getD b default
+  let boxes := line.filter CaptionItem.isBox
+  let firstBox := boxes.head?
+  let lastBox := boxes.getLast?
+  let protS := if ps.protrusion then (firstBox.map (·.protrudeStart)).getD 0 else 0
+  let protE := if ps.protrusion then
+      match atBreak.kind, atBreak.hyphenEnd with
+      | .penalty _ _, some q => q
+      | _, _ => (lastBox.map (·.protrudeEnd)).getD 0
+    else 0
+  let edgeS := (firstBox.map (·.edgeStart)).getD 0
+  let edgeE := (lastBox.map (·.edgeEnd)).getD 0
+  let natural := captionCumulativeWidth items b - captionCumulativeWidth items s
+    + atBreak.measured.breakWidth - protS - protE + edgeS + edgeE
+  (natural, captionCumulative captionGlueStretch items b - captionCumulative captionGlueStretch items s,
+    captionCumulative captionGlueShrink items b - captionCumulative captionGlueShrink items s)
+
+def captionPenaltyAt (items : List CaptionItem) (b : Nat) : Int :=
+  match (items.getD b default).kind with | .penalty p _ => p | _ => 0
+
+/-- The tolerance of a pass of `breakParagraph`: the pretolerance in the
+    first, any finite badness in the overfull pass (`infBad - 1`). -/
+def captionPassTolerance (ps : CaptionParams) (pass : Nat) : Int :=
+  if pass = 1 then ps.pretolerance else if pass = 4 then 9999 else ps.tolerance
+
+def captionPassEmergency (ps : CaptionParams) (pass : Nat) : Int :=
+  if 3 ≤ pass then ps.emergency else 0
+
+/-- The badness, whether the line shrinks, whether it overflows, its
+    shortfall, and its shrink, of `evaluate` for the line from the node
+    `prior` (its position encoded as in `CaptionActiveNode`) to `b`. -/
+def captionLineEvaluation (ps : CaptionParams) (items : List CaptionItem) (pass : Nat)
+    (b : Nat) (prior : CaptionActiveNode) : Nat × Bool × Bool × Int × Int :=
+  let s := captionAfterEncoded (items.map (·.kind)) prior.position
+  let (natural, stretch, shrink) := captionLineSums ps items s b
+  let shortfall := ps.width - natural
+  let (bad, shrinking, overfull) :=
+    captionWidthEvaluation shortfall (stretch + captionPassEmergency ps pass + ps.endStretch) shrink 0
+      ps.pullInFirst
+  (bad, shrinking, overfull, shortfall, shrink)
+
+/-- `evaluate` of `breakParagraph` as the scan reads it: the fitness, the
+    demerits the line adds, whether the line is feasible in the pass, and
+    whether the node lives on past `b`. -/
+def captionEvaluate (ps : CaptionParams) (items : List CaptionItem) (pass : Nat)
+    (b : Nat) (prior : CaptionActiveNode) : CaptionActiveEval :=
+  let (bad, shrinking, overfull, shortfall, shrink) := captionLineEvaluation ps items pass b prior
+  let atBreak := items.getD b default
+  { fitness := (captionFitness shrinking bad).toNat,
+    demerits := captionPathCost 0 prior.fitness ps.linePenalty (captionPenaltyAt items b) ps.doubleHyphen
+      ps.adjDemerits prior.flagged atBreak.flagged shrinking bad,
+    feasible := !overfull && decide ((bad : Int) ≤ captionPassTolerance ps pass),
+    alive := decide (-(shortfall + atBreak.measured.breakWidth) ≤ shrink) }
+
+/-- The scan of one pass of `breakParagraph` on the items. -/
+def captionContext (ps : CaptionParams) (items : List CaptionItem) (pass : Nat) : CaptionScanContext where
+  items := items.map (·.kind)
+  candidates := captionBreakIndices (pass != 1) false 0 (items.map (·.kind))
+  forced := fun b => match (items.getD b default).kind with
+    | .penalty p _ => decide (p ≤ -10000)
+    | _ => false
+  flagged := fun b => (items.getD b default).flagged
+  evaluate := captionEvaluate ps items pass
+  finite := fun prior b => !(captionLineEvaluation ps items pass b prior).2.2.1
+  overflow := fun b prior =>
+    captionCumulativeWidth items b
+      - captionCumulativeWidth items (captionAfterEncoded (items.map (·.kind)) prior.position) - ps.width
+  allowOverfull := pass == 4
+
+def captionStart (context : CaptionScanContext) : CaptionScanState :=
+  ⟨0, context.candidates, [captionInitialActive]⟩
+
+/-- The scan run for at most `fuel` steps; `none` when it has not ended. -/
+def captionScanFuel (context : CaptionScanContext) : Nat → CaptionScanState → Option CaptionScanState
+  | 0, _ => none
+  | fuel + 1, state =>
+    match captionScanNext context state with
+    | none => some state
+    | some next => captionScanFuel context fuel next
+
+theorem captionScanFuel_runs (context : CaptionScanContext) (fuel : Nat) (state final : CaptionScanState)
+    (ran : captionScanFuel context fuel state = some final) : CaptionScanRuns context state final := by
+  induction fuel generalizing state with
+  | zero => simp [captionScanFuel] at ran
+  | succ fuel ih =>
+    simp only [captionScanFuel] at ran
+    split at ran
+    · rename_i stops
+      cases ran
+      exact CaptionScanRuns.done _ stops
+    · rename_i next advanced
+      exact CaptionScanRuns.step state next final advanced (ih next ran)
+
+/-- One more step than the rank of the state is enough fuel. -/
+theorem captionScanFuel_enough (context : CaptionScanContext)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (fuel : Nat) (state : CaptionScanState) (valid : CaptionScanValid context state)
+    (bound : captionStateRank context state < fuel) :
+    ∃ final, captionScanFuel context fuel state = some final := by
+  induction fuel generalizing state with
+  | zero => exact absurd bound (Nat.not_lt_zero _)
+  | succ fuel ih =>
+    simp only [captionScanFuel]
+    split
+    · exact ⟨_, rfl⟩
+    · rename_i next advanced
+      have step := I1_caption_full_scan_step context state next original valid advanced
+      exact ih next step.1 (Nat.lt_of_lt_of_le step.2 (Nat.le_of_lt_succ bound))
+
+/-- The last node of the paths that end at the last item: of the least
+    demerits, the one whose last line is loosest, then whose positions and
+    fitness from the second-to-last break are greatest (`key` of
+    `breakParagraph`). -/
+def captionEndOf (node : CaptionActiveNode) : CaptionEnd :=
+  ⟨node.demerits, node.fitness, (node.history.drop 1).map fun (p, f) => ((p : Int), f)⟩
+
+def captionChooseNode (a b : CaptionActiveNode) : CaptionActiveNode :=
+  if captionChooseEnd (captionEndOf a) (captionEndOf b) = captionEndOf a then a else b
+
+theorem captionChooseNode_either (a b : CaptionActiveNode) :
+    captionChooseNode a b = a ∨ captionChooseNode a b = b := by
+  unfold captionChooseNode
+  split
+  · exact Or.inl rfl
+  · exact Or.inr rfl
+
+def captionPickEnd : List CaptionActiveNode → Option CaptionActiveNode
+  | [] => none
+  | first :: rest => some (rest.foldl captionChooseNode first)
+
+theorem captionPickEnd_member (nodes : List CaptionActiveNode) (node : CaptionActiveNode)
+    (picked : captionPickEnd nodes = some node) : node ∈ nodes := by
+  cases nodes with
+  | nil => simp [captionPickEnd] at picked
+  | cons first rest =>
+    simp only [captionPickEnd, Option.some.injEq] at picked
+    subst picked
+    induction rest generalizing first with
+    | nil => exact List.Mem.head _
+    | cons next tail ih =>
+      have h := ih (captionChooseNode first next)
+      simp only [List.foldl, List.mem_cons] at h ⊢
+      rcases h with chosen | later
+      · rcases captionChooseNode_either first next with e | e
+        · rw [e] at chosen ⊢
+          exact Or.inl chosen
+        · rw [e] at chosen ⊢
+          exact Or.inr (Or.inl chosen)
+      · exact Or.inr (Or.inr later)
+
+/-- One pass of `breakParagraph`: the node it assembles, if any path ends
+    at the last item. -/
+def captionPass (ps : CaptionParams) (items : List CaptionItem) (pass : Nat) : Option CaptionActiveNode :=
+  let context := captionContext ps items pass
+  match captionScanFuel context (captionStateRank context (captionStart context) + 1) (captionStart context) with
+  | none => none
+  | some final => captionPickEnd (final.actives.filter fun node => node.position = context.items.length)
+
+/-- The passes `breakParagraph` attempts, in order. -/
+def captionPasses (ps : CaptionParams) : List Nat :=
+  (if 0 ≤ ps.pretolerance then [1] else []) ++ [2] ++ (if 0 < ps.emergency then [3] else []) ++ [4]
+
+def captionFirstPass (ps : CaptionParams) (items : List CaptionItem) : List Nat → Option (Nat × CaptionActiveNode)
+  | [] => none
+  | pass :: rest =>
+    match captionPass ps items pass with
+    | some node => some (pass, node)
+    | none => captionFirstPass ps items rest
+
+/-- `breakParagraph` for a caption: the pass that succeeded, and the last
+    node, whose history read forwards is the breaks. -/
+def captionCompared (ps : CaptionParams) (items : List CaptionItem) : Option (Nat × CaptionActiveNode) :=
+  captionFirstPass ps items (captionPasses ps)
+
+def captionComparedBreaks (node : CaptionActiveNode) : List Nat := node.history.reverse.map Prod.fst
+
+theorem captionFirstPass_pass (ps : CaptionParams) (items : List CaptionItem) (passes : List Nat)
+    (pass : Nat) (node : CaptionActiveNode)
+    (found : captionFirstPass ps items passes = some (pass, node)) :
+    captionPass ps items pass = some node := by
+  induction passes with
+  | nil => simp [captionFirstPass] at found
+  | cons head tail ih =>
+    simp only [captionFirstPass] at found
+    split at found
+    · rename_i chosen
+      cases found
+      exact chosen
+    · exact ih found
+
+/-- Invariant 1 of root ADR 0352 for the captions on the compared
+    evaluation: the breaks the breaker chooses for the items assemble the
+    items into lines, as many as the lines the node counts, and the boxes
+    of the lines are the boxes of the items in order. -/
+theorem I1_caption_compared_lines (ps : CaptionParams) (items : List CaptionItem)
+    (pass : Nat) (node : CaptionActiveNode) (chosen : captionCompared ps items = some (pass, node)) :
+    ∃ lines, captionAssembleWhole CaptionItem.kind items (captionComparedBreaks node) = some lines ∧
+      lines.length = node.lineCount ∧
+      (lines.map (captionBoxes CaptionItem.kind)).join = captionBoxes CaptionItem.kind items := by
+  have once := captionFirstPass_pass ps items _ pass node chosen
+  simp only [captionPass] at once
+  split at once
+  · simp at once
+  · rename_i final ran
+    have member := captionPickEnd_member _ node once
+    have filtered := List.mem_filter.mp member
+    exact I1_caption_chosen_history_assembles CaptionItem.kind items (captionContext ps items pass)
+      (pass != 1) rfl rfl final (captionScanFuel_runs _ _ _ final ran) node filtered.1
+      (of_decide_eq_true filtered.2)
+
+/-- The scan of every pass ends: the fuel of `captionPass` is enough, so
+    a pass that finds no path says so only because no path ends at the
+    last item. -/
+theorem I1_caption_compared_scan_ends (ps : CaptionParams) (items : List CaptionItem) (pass : Nat) :
+    ∃ final, captionScanFuel (captionContext ps items pass)
+      (captionStateRank (captionContext ps items pass) (captionStart (captionContext ps items pass)) + 1)
+      (captionStart (captionContext ps items pass)) = some final := by
+  have original : CaptionCandidatesOrdered 0 (captionContext ps items pass).items.length
+      (captionContext ps items pass).candidates := by
+    simpa only [Nat.zero_add] using I1_caption_generated_scan_order (pass != 1) false 0 (items.map (·.kind))
+  exact captionScanFuel_enough _ original _ _ (I1_caption_full_scan_start_valid _ original) (Nat.lt_succ_self _)
+
+/-- Invariant 1 of root ADR 0352 for the captions: the same items, the
+    same parameters and the same line width give the same pass, the same
+    breaks and the same lines; the breaker reads nothing else. -/
+theorem I1_caption_compared_deterministic (ps qs : CaptionParams) (items others : List CaptionItem)
+    (sameParams : ps = qs) (sameItems : items = others) :
+    captionCompared ps items = captionCompared qs others := by
+  rw [sameParams, sameItems]
+
+/-- Invariant 2 of root ADR 0352 for the captions on the compared
+    evaluation: the caption of the lines the breaker chooses fills the
+    column (G07038) exactly when its extent overflows the free grid lines,
+    and the grid lines it takes are those of its breaks. -/
+theorem I2_caption_compared_diagnostic (ps : CaptionParams) (items : List CaptionItem)
+    (pass : Nat) (node : CaptionActiveNode) (chosen : captionCompared ps items = some (pass, node))
+    (bodySize pitch captionSize free : Nat) (positive : 0 < pitch) :
+    ∃ lines, captionAssembleWhole CaptionItem.kind items (captionComparedBreaks node) = some lines ∧
+      captionGridSpan bodySize pitch captionSize lines.length =
+        captionGridSpan bodySize pitch captionSize (captionComparedBreaks node).length ∧
+      (∀ rest, lines.length = rest + 1 →
+        (free + 2 ≤ captionGridSpan bodySize pitch captionSize lines.length ↔
+          free * pitch + bodySize < rest * captionPitch bodySize pitch captionSize + captionSize)) := by
+  obtain ⟨lines, assembled, _, _⟩ := I1_caption_compared_lines ps items pass node chosen
+  refine ⟨lines, assembled, I1_caption_whole_grid_span _ _ _ _ _ _ _ assembled, ?_⟩
+  intro rest count
+  rw [count]
+  exact I2_caption_diagnostic_iff_extent_overflows bodySize pitch captionSize rest free positive
+
+/-- Invariant 2 of root ADR 0352 for the captions on the compared
+    evaluation: with the grid lines of the lines the breaker chooses, a
+    caption that fills the column leaves no figure (G07038), and one that
+    leaves lines gives a figure whose depth fits the lines left. -/
+theorem I2_caption_compared_figure (ps : CaptionParams) (items : List CaptionItem)
+    (pass : Nat) (node : CaptionActiveNode) (chosen : captionCompared ps items = some (pass, node))
+    (bodySize pitch captionSize capacity along numerator denominator : Nat) :
+    ∃ lines, captionAssembleWhole CaptionItem.kind items (captionComparedBreaks node) = some lines ∧
+      (capacity ≤ captionGridSpan bodySize pitch captionSize lines.length →
+        fitCaptionedFigure capacity (captionGridSpan bodySize pitch captionSize lines.length) pitch along
+          numerator denominator = none) ∧
+      (captionGridSpan bodySize pitch captionSize lines.length < capacity →
+        ∃ along' across', fitCaptionedFigure capacity (captionGridSpan bodySize pitch captionSize lines.length)
+            pitch along numerator denominator = some (along', across') ∧
+          across' ≤ (capacity - captionGridSpan bodySize pitch captionSize lines.length) * pitch) := by
+  obtain ⟨lines, assembled, _, _⟩ := I1_caption_compared_lines ps items pass node chosen
+  exact ⟨lines, assembled, I2_caption_fills_column _ _ _ _ _ _, I2_fitted_figure_depth _ _ _ _ _ _⟩
+
 end GolemPagination

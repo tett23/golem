@@ -136,7 +136,8 @@ valueLines =
     observation (params, width, items, result) =
       ( unwords
           ( ["obs", show (brPass result), show (pLinePenalty params), show (pAdjDemerits params), show (pDoubleHyphenDemerits params)]
-              <> [sp (pEndStretch params), sp (pEmergencyStretch params), flag (pPullInFirst params), flag (pProtrusion params), sp width]
+              <> [sp (pEndStretch params), sp (pEmergencyStretch params), flag (pPullInFirst params), flag (pProtrusion params)]
+              <> [show (pPretolerance params), show (pTolerance params), sp width]
               <> map itemToken items
               <> ["|"]
               <> map show (brPositions result)
@@ -145,6 +146,9 @@ valueLines =
           ( (if brPass result < 4 then show (brDemerits result) else "-")
               : [show (numerator r) <> "/" <> show (denominator r) <> ":" <> sp (lineOverflow l) | l <- brLines result, let r = lineRatio l]
           )
+          -- the pass, the breaks and the demerits, for the breaker of Pagination.lean
+          <> " | "
+          <> unwords [show (brPass result), intercalate "," (map show (brPositions result)), show (brDemerits result)]
       )
 
 main :: IO ()
