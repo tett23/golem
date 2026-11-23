@@ -948,18 +948,19 @@ piecesOf env inl = case inl of
     let MarkFormat pre notation suf = ceEndnoteMarkFormat env
      in [(((ceEndnoteMarkSource env (ceSizeSource env), sp), const (spanStart sp)), PMark lk (ceEndnoteMarkLook env lk) (markPartsShaped (ceVertical env) (ceEndnoteMarkFlat env) pre notation (toInteger n) suf) 0 0 Nothing)] <> labelled sp lbl
   Sidenote sp n lbl body ->
-    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body))) : labelled sp lbl <> case ceSidenoteMarker env of
-      -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
-      MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelSidenote n) (markParts (ceVertical env) "" arabic (toInteger n) ""))]
-      {- ※ in the look of its place, or in that of marker-style, measured
-      in it; the body of the sidenote does not take it (docs/adr/0371) -}
-      MarkerSymbol -> case ceSidenoteMarkStyle env of
-        Nothing -> at sp [PBox lk "※" KindText (lkSize lk)]
-        Just name ->
-          let styled = CharStyle sp name []
-              lk' = ceRestyle env lk styled
-           in [(((ceSizeSourceOf env (ceSizeSource env) styled, sp), const (spanStart sp)), PBox lk' "※" KindText (lkSize lk'))]
-      MarkerNone -> []
+    (((ceSizeSource env, sp), const (spanStart sp)), PAnchor (\i -> AnchorSidenote i n sp (noteParagraphsIn lk sp body)))
+      : labelled sp lbl <> case ceSidenoteMarker env of
+        -- the number alone, neither the format nor the notation of [notes] (docs/adr/0177)
+        MarkerNumber -> [(((markSource, sp), const (spanStart sp)), markPiece (numbered ChannelSidenote n) (markParts (ceVertical env) "" arabic (toInteger n) ""))]
+        {- ※ in the look of its place, or in that of marker-style, measured
+        in it; the body of the sidenote does not take it (docs/adr/0371) -}
+        MarkerSymbol -> case ceSidenoteMarkStyle env of
+          Nothing -> at sp [PBox lk "※" KindText (lkSize lk)]
+          Just name ->
+            let styled = CharStyle sp name []
+                lk' = ceRestyle env lk styled
+             in [(((ceSizeSourceOf env (ceSizeSource env) styled, sp), const (spanStart sp)), PBox lk' "※" KindText (lkSize lk'))]
+        MarkerNone -> []
   IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
   ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] [] IndexPoint))]
