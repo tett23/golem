@@ -89,7 +89,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic arabic
+  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic arabic True Map.empty
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -150,9 +150,34 @@ determinism =
         snd actual @?= snd expected
     ]
 
+{- | A site that names generic families (root ADR 0423 I1): no font file
+in the EPUB and none in its manifest, though the role has one; with
+fonts = "embed" the font is packaged as before (I5).
+-}
+genericFonts :: TestTree
+genericFonts =
+  testGroup
+    "root ADR 0423"
+    [ testCase "root ADR 0423 I1: a site of generic families puts no font in the EPUB" $ do
+        (names, packageDoc, css) <- epubOf False
+        (filter (T.isInfixOf "fonts/" . T.pack) names, T.isInfixOf "font/otf" packageDoc, T.isInfixOf "@font-face" css) @?= ([], False, False),
+      testCase "root ADR 0423 I5: a site that embeds the fonts packages them in the EPUB" $ do
+        (names, packageDoc, css) <- epubOf True
+        (filter (T.isInfixOf "fonts/" . T.pack) names, T.isInfixOf "font/otf" packageDoc, T.isInfixOf "@font-face" css) @?= (["OEBPS/fonts/b.otf"], True, True)
+    ]
+  where
+    epubOf embed = withSystemTempDirectory "golem-epub" $ \root -> do
+      BS.writeFile (root </> "b.otf") "fake"
+      let site = renderXhtml htmlConfig {hcFonts = Map.singleton "body" (Just "b.otf", Nothing), hcEmbedFonts = embed} ft emptyBook
+      writeEpub root (root </> "book.epub") cfg0 ft emptyBook site
+      archive <- toArchive . BL.fromStrict <$> BS.readFile (root </> "book.epub")
+      let textOf path = maybe "" (T.pack . map (toEnum . fromEnum) . BL.unpack . fromEntry) (findEntryByPath path archive)
+      pure (map eRelativePath (zEntries archive), textOf "OEBPS/package.opf", textOf "OEBPS/style.css")
+
 tests :: [TestTree]
 tests =
   [ determinism,
+    genericFonts,
     testGroup
       "package document"
       [ testCase "the identifier is the given ISBN" $

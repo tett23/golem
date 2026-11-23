@@ -944,12 +944,19 @@ PDF を組むときに出るエラーです。
   [code: style.toml] の [code: \[fonts\]] のパスにファイルを置いてください。
   [code: golem new --no-fonts] で作ったプロジェクトは、フォントを置くまでこのエラーが出ます。
 = [strong: G03010 [code: フォントのファイルがないので、HTML と EPUB に同梱しません: …]]
+  [code: fonts = "embed"] を書いた HTML と EPUB でだけ出ます。
   [code: --profile dev] では警告で、フォントを同梱せずに HTML と EPUB を書きます。
   [code: --profile prod] ではエラーです。
 = [strong: G03279 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
   [code: style.toml] のフォントか [code: intent] の ICC プロファイルのパスが、プロジェクトの外を指しています。
   どの出力でもエラーで、何も書きません。
   ファイルをプロジェクトのフォルダの中に写し、そこからの相対パスで書いてください。
+= [strong: G03280 [code: fonts に書けるのは "generic" か "embed" です: …]]
+  [code: manifest.toml] の [code: \[targets.html\]] か [code: \[targets.epub\]] の [code: fonts] の値が誤っています。
+  [code: "generic"] か [code: "embed"] にしてください。
+= [strong: G03281 [code: generic-family に使えない値です: …]]
+  [code: style.toml] のフォントの役割の [code: generic-family] の値が誤っています。
+  [code: "serif"]、[code: "sans-serif"]、[code: "monospace"] のどれかにしてください。
 = [strong: G08003 [code: フォントを読み込めません: …]]
   フォントのファイルが壊れているか、OpenType のフォントではありません。
 = [strong: G08004 [code: ライセンスが埋め込みを禁じているフォントです（…）: …]]

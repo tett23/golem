@@ -306,7 +306,7 @@ CI が生成した最新のゲラを URL で共有すれば、関係者は常に
 
 ## 設計原則
 
-Golem の設計は、次の八つの原則に従う。
+Golem の設計は、次の十の原則に従う。
 
 ### 幾何の隔離
 
@@ -363,6 +363,17 @@ Golem は、ある文字に当てられるスタイルのキーを狭めず、�
 専用の欄は欄の数だけ仕様と実装を増やし、書き手がすでに使っているスタイルの仕組みを、その文字にだけ使えなくするためである。
 処理系が文字の位置を決める箇所（注の印の高さなど）も、スタイルを当てた結果の書体と大きさから位置を求める。
 この原則に反する今の箇所は [docs/roadmap.md](roadmap.md) に挙げる（[ADR 0177](adr/0177-note-mark-style-and-numerals.md)）。
+
+### 入力の色を自動で印刷色へ変換しない
+
+Golem は、RGB の入力の見た目を保つ目的で、その入力を CMYK に自動変換しない。
+PDF の出力インテントが CMYK であることだけを理由に、RGB の画像や図版を CMYK 化しない。
+既存の ICC プロファイルを保持し、プロファイルのない RGB に sRGB を付ける処理は、色空間の変換とは区別する。
+HTML と EPUB では、CMYK の指定色から RGB の近似色を求める。
+
+書き手が `[figures].color` で選んだ CMYK の色への図版の色置換は、元の見た目を保つための色空間変換とは区別する。
+この場合は、明示した色と元の濃淡から描画色を決め、元の RGB に近い CMYK は推定しない。
+多色の図版の元の色と、色を指定しない図版の元の色を保つ（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 ### CI の時間
 
@@ -962,7 +973,7 @@ HTML、EPUB、プレーンテキストはページを持たないので、`page-
 
 ### 出力ターゲットとプラグインの宣言
 
-マニフェストは、本の構成に加えて、出力ターゲット（PDF、EPUB、HTML、プレーンテキスト）ごとの設定（ISBN、プレーンテキストの縦書きと横書き）を持つ。
+マニフェストは、本の構成に加えて、出力ターゲット（PDF、EPUB、HTML、プレーンテキスト）ごとの設定（ISBN、HTML と EPUB のフォントの同梱、プレーンテキストの縦書きと横書き）を持つ。
 `golem build` は、`--target` で絞らなければ四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
 プレーンテキストの設定がなければ、縦書きと横書きの両方を生成する。
 
@@ -1186,6 +1197,8 @@ isbn = "978-..."
 `id` は本の識別子であり、必須とする。
 プロジェクトを作るときに一度だけ生成し、以後は変えない。
 書名と著者の読み（`title-reading`、`reading`）は任意の項目であり、EPUB では電子書店での並べ替えや検索に使われる。
+
+`[targets.html]` と `[targets.epub]` の `fonts` は、フォントを同梱するか（`"embed"`）、総称の書体だけを指定するか（`"generic"`、既定）を決める（「フォント」の節の「HTML と EPUB のフォント」、[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）。
 
 ### EPUB の固定ページ対応表
 
@@ -2601,7 +2614,8 @@ PDF は、ファイルの欠けを次のエラーとし、PDF を書かない。
 ファイルの欠けとは別に、`[fonts]` に役割が一つもないか、本文の役割に `ja` も `latin` もなければ、PDF は G08007 のエラーとし、レイアウトに進まない（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 G08007 は設定の欠けであり、ファイルを置いても直らないので、G08002 と分ける。
 
-HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G03010 を報告する。
+`fonts = "embed"` の HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G03010 を報告する。
+既定の `fonts = "generic"` の HTML と EPUB は、フォントを同梱しないので、ファイルの有無を調べない（「HTML と EPUB のフォント」、[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）。
 ブラウザーは `font-family` の並びの残りで組むので、出力は読める。
 G03010 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
 プレーンテキストはファイルの欠けを検査しない。
@@ -3995,11 +4009,11 @@ HTML と EPUB では、スタイルを要素か class に対応させる。
 - 段落スタイルは、`ps-名前` の class にする。
 
 コードブロックは `<pre><code>` で出す。
-`style.css` の `pre` と `code` の `font-family` は、`code` の役割の書体の並びと `monospace` にする（`code` の役割がなければ `monospace` だけ）。
+`style.css` の `pre` と `code` の `font-family` は、`code` の役割の書体の並びと、その役割の `generic-family`（なければ `monospace`）にする（`code` の役割がなければ `monospace` だけ。`fonts = "generic"` では総称だけ。「HTML と EPUB のフォント」）。
 `pre` には `white-space: pre-wrap`、`overflow-wrap: anywhere`、`tab-size: 2`、`hyphens: none`、`font-kerning: none` を書く。
 `[paragraph-styles.code]` に `background` があれば、その RGB の近似の `background-color` と、`padding` を `em` にした `padding` も書く。
 `code` の `size` があれば、キャプションと同じく `pre` の `font-size` を書く。
-`code` を `based-on` で引き継ぐ文字スタイルの CSS には、`font-family`（最後に `monospace`）と `hyphens: none` を書く（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+`code` を `based-on` で引き継ぐ文字スタイルの CSS には、`font-family`（最後に役割の `generic-family`、なければ `monospace`）と `hyphens: none` を書く（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 
 `no-break` が真の文字スタイルの CSS には、`white-space: nowrap` を書く（[ADR 0272](adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 強制改行の `br` は `nowrap` の中でも改行するので、PDF と同じになる。
@@ -4463,11 +4477,15 @@ RGB への変換も、特色の色空間も使わない。
 
 しかし、写真などの画像の色は、ここまでの規則の例外とする。
 図版の描画色を指定しない場合、Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込む。
+PDF の出力インテントが CMYK であることだけを理由に、RGB の画像や図版を CMYK にしない。
+ICC プロファイルの保持と、プロファイルのない RGB への sRGB の付与は、色空間の変換ではない。
 印刷用の色への変換は、印刷所の RIP[^rip] に任せる。
 PDF/X-4 はこの形の画像を許している。
-図版の明示的な色置換は、この色空間の換算とは区別する。
-書き手が選んだ CMYK スウォッチで単色図版を描き直す場合は、元の一色か白黒の濃淡を、指定色へ置き換える。
-多色の図版と、色を指定しない図版の色は保つ（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
+図版の明示的な色置換は、この色空間の変換とは区別する。
+書き手が `[figures].color` で選んだ CMYK スウォッチで単色図版を描き直す場合は、元の一色か白黒の濃淡を、指定色へ置き換える。
+HTML と EPUB の置き換えた色は、元の RGB からではなく、指定したスウォッチの CMYK から求めた RGB の近似色である。
+多色の図版の色は保つ。
+RGB に保存した白黒図版の明示的な置換も、元の見た目に近い CMYK を推定する処理ではない（[root ADR 0408](adr/0408-preserve-rgb-and-distinguish-explicit-figure-recoloring.md)）。
 
 色を指定しない画像と図版は、次のように書く。
 
@@ -4647,7 +4665,7 @@ CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz を更新
 `axes` の値が範囲の外の CFF2 のフォントは、G08019 と G08112 の両方を報告する。
 
 HTML と EPUB は、`instance` と `axes` を使わない。
-HTML と EPUB はフォントのファイルをそのまま同梱し、可変フォントの座標は、ブラウザーと読書環境が CSS の規則で決める。
+`fonts = "embed"` の HTML と EPUB はフォントのファイルをそのまま同梱し、可変フォントの座標は、ブラウザーと読書環境が CSS の規則で決める（「HTML と EPUB のフォント」）。
 HTML と EPUB のターゲットだけのビルドは、G08110、G08111、G08112 を報告しない。
 
 ### 埋め込めないフォント
@@ -4667,7 +4685,7 @@ PDF の埋め込みフォントの入れ物が、CFF2 の輪郭を受けない�
 G08019 は読めないフォント（G08003）と原因が違うので、コードを分ける。
 G08019 は `golem build` の PDF、`golem check`、`golem preflight` が報告し、`golem check` もフォントのファイルを読んで確かめる。
 HTML と EPUB は CFF2 のフォントを拒まない。
-HTML と EPUB はフォントのファイルをそのまま同梱し、CFF2 はブラウザーと読書環境が描くためである。
+HTML と EPUB は、フォントを同梱するときもファイルをそのまま同梱し、CFF2 はブラウザーと読書環境が描くためである。
 
 ### フォントにない字
 
@@ -4682,9 +4700,53 @@ prod では PDF を書かず（前のビルドの PDF も消す）、ほかの�
 そのため、書きかけの原稿はフォントにない字が残っていても組んで確かめられ、入稿のために prod で組むときに止まる。
 
 HTML、EPUB、プレーンテキストのターゲットでは報告しない。
-HTML と EPUB はフォントのファイルを同梱するだけで、字を描くのは読書環境だからである。
+HTML と EPUB は、フォントを同梱するときもファイルを写すだけで、字を描くのは読書環境だからである（同梱しないときは、書体も読書環境が決める）。
 プレーンテキストはフォントを使わない。
 `golem check` と LSP は組版をしないので、報告しない。
+
+### HTML と EPUB のフォント
+
+HTML と EPUB は、既定ではフォントのファイルを同梱せず、CSS の総称の書体（明朝の系統、ゴシックの系統、等幅）だけを指定する（[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）。
+電子書籍の多くは明朝かゴシック程度の指定で足り、フォントを同梱すると EPUB が大きくなり、フォントのライセンスの文書を添える問題も起きるためである。
+どの書体で描くかは、読み手のブラウザーと読書環境が決める。
+
+同梱するかは、`manifest.toml` の `[targets.html]` と `[targets.epub]` の `fonts` で、出力ごとに決める。
+値は `"generic"`（既定）か `"embed"` である。
+`"embed"` を書いた出力は、`[fonts]` のすべての役割のファイルを `fonts/` に写し、`@font-face` で指定する。
+EPUB は、写したフォントを `package.opf` の manifest に載せる。
+`fonts` は PDF とプレーンテキストを変えない。
+値が `"generic"` と `"embed"` のどちらでもなければ、G03280 のエラーとする（文字列でない値を含む）。
+
+```toml
+[targets.html]
+fonts = "embed"
+
+[targets.epub]
+```
+
+総称の書体は、役割の `generic-family` で決める。
+値は `"serif"`（明朝の系統）、`"sans-serif"`（ゴシックの系統）、`"monospace"` のどれかであり、ほかの値は G03281 のエラーとする（文字列でない値を含む）。
+`system-ui` や `ui-serif` などのほかの総称は、どのフォントにも当たらないことがあるので、受け付けない。
+`generic-family` だけを書き、`ja` も `latin` も書かない役割も書ける。
+PDF は `generic-family` を使わないので、そのような役割は PDF では今までどおり G08007 と G08002 の規則に従う。
+
+`font-family` の並びの最後の総称は、CSS の箇所ごとに次のとおりに決める。
+
+| 箇所 | 最後の総称 |
+| --- | --- |
+| 本文（`body`） | `body` の役割の `generic-family`、なければ `serif` |
+| 段落スタイル（`code` を除く。キャプション、傍注、表のセル、目次の項目を含む） | その `font` の役割の `generic-family`、なければ `serif` |
+| 段落スタイル `code`（`pre` と `code` の規則） | その `font` の役割の `generic-family`、なければ `monospace` |
+| `code` を継ぐ文字スタイル | その `font` の役割の `generic-family`、なければ `monospace` |
+| ほかの文字スタイル | その `font` の役割の `generic-family`、なければ `body` の役割の `generic-family`、それもなければ `serif` |
+
+`fonts = "generic"` の出力では、`font-family` の値は、`inherit` を除き、この表の総称ただ一つである。
+`fonts = "embed"` の出力では、役割のファミリー（`golem-<役割>-latin`、`golem-<役割>-ja`）の並びの後に、この表の総称を一つ置く。
+`code` を継がない文字スタイルの並びには、その役割のファミリーの後に `body` の役割のファミリーを挟む。
+ファイルの中で定義したスタイルの規則も、最後の総称は同じ表に従う（`body` の役割のファミリーは挟まない）。
+
+`fonts = "generic"` の出力は、フォントのファイルの有無を調べず、G03010 を出さない（`golem check` も同じ）。
+ただし、パスがプロジェクトの外を指せば、出力によらず G03279 のエラーとする（「参照するファイルの検査」）。
 
 ### 読み込む役割
 
@@ -7467,7 +7529,7 @@ S1 は、`"page"` の注に、本の全体の通し番号（`"book"` と同じ�
 - 本文の印は、1 から N までの番号の印を、実際の文字スタイル、大きさ、縦横、書式で測り、その最大の幅を予約する。`mark-format` の表記で表せない番号は、表せない番号の印と同じく算用数字で書いた印として測る。印の文字スタイルと大きさは、本文の印の規則（`mark-style`、印の位置の文字）で決まる。
 - 予約は印ごとに求める。予約を分けるのは、印の実効のスタイル（文字スタイルを当てた結果の書体、大きさ、トラッキングなど）、縦組みか横組みか、番号の前後の文字（`mark-format` の差し込みの前と後）である。
 - 脚注の本文の先頭の印と、傍注の本文の先頭の番号も、同じ規則で予約する。この印は、`body-mark-style` の文字スタイルを当てた一つの箱として組み、注の本文の基準線に置く。`body-mark-style` がなければ、注の本文の文字のまま組む。印の中では行を分けず、アキ量のセットの空きを入れない。
-- 章末の注（`placement = "chapter-end"`）の一覧の印も、注の本文の先頭の印と同じく予約する。一覧では、ページの違う注が同じ番号を持ちうる。そのための diagnostic は出さない（[docs/roadmap.md](roadmap.md) の未決事項）。
+- 章末の注（`placement = "chapter-end"`）の一覧の印も、注の本文の先頭の印と同じく予約する。一覧では、ページの違う注が同じ番号を持ちうる。番号が重なる場合の警告は、後述の [G07132](diagnostics.md#g07132) の規則に従う。
 - 注のない本は、何も予約しない。
 - 章末の注（`[endnote]`）のチャネルは、ページごとの番号を取らず、印の幅も予約しない（「章末の注（`[endnote]`）」の節）。
 
@@ -9955,7 +10017,8 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 
 組めたら、`build.sh` は HTML の出力にライセンスの文書を写す。
 プロジェクトの `LICENSE` を `build/html/LICENSE` に写し、`build/html/fonts/` があれば、プロジェクトの `fonts/LICENSE-*` をすべて `build/html/fonts/` に写す。
-フォントの文書を写すのは、HTML の出力がフォントのファイルを `fonts/` にそのまま写すので、その隣に SIL Open Font License 1.1 の全文を置くためである。
+二冊の `manifest.toml` は `[targets.html]` に `fonts = "embed"` を書くので（[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）、HTML の出力はフォントのファイルを `fonts/` にそのまま写す。
+フォントの文書を写すのは、その隣に SIL Open Font License 1.1 の全文を置くためである。
 PDF には何も足さない。
 
 ### マニュアルの更新の検査
