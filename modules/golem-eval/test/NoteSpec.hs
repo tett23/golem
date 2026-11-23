@@ -22,7 +22,7 @@ lineCtx = ctx {ctxSource = SourceSettings LineSeparated}
 notesOf :: EvalContext -> Text -> ([[(Maybe Text, Text)]], [Text])
 notesOf c src =
   let (ds, r) = evalSource c src
-   in ([map para body | b <- resultBodies r, Note _ _ body <- inlinesOf b], map diagCodeText ds)
+   in ([map para body | b <- resultBodies r, Note _ _ _ body <- inlinesOf b], map diagCodeText ds)
   where
     para = \case
       Block _ _ _ (Paragraph st is) -> (st, T.concat [t | Text _ t <- is])
@@ -44,12 +44,23 @@ tests =
     [ testCase "root ADR 0412 I2: [endnote: body] is an endnote of one paragraph, numbered apart from notes and sidenotes" $ do
         let (ds, r) = evalSource ctx "甲[note: 脚]乙[endnote: 後一]丙[sidenote: 傍]丁[endnote: 後二]。\n"
         map diagCodeText ds @?= []
-        [(n, [T.concat [t | Text _ t <- is'] | Block _ _ _ (Paragraph Nothing is') <- body]) | Paragraph _ is <- resultBodies r, Endnote _ n body <- is] @?= [(1, ["後一"]), (2, ["後二"])]
-        [n | Paragraph _ is <- resultBodies r, Note _ n _ <- is] @?= [1],
+        [(n, [T.concat [t | Text _ t <- is'] | Block _ _ _ (Paragraph Nothing is') <- body]) | Paragraph _ is <- resultBodies r, Endnote _ n _ body <- is] @?= [(1, ["後一"]), (2, ["後二"])]
+        [n | Paragraph _ is <- resultBodies r, Note _ n _ _ <- is] @?= [1],
       testCase "root ADR 0412 I2: [endnote name] takes the body of @endnote name of more than one paragraph" $ do
         let (ds, r) = evalSource ctx "本文[endnote k]。\n\n@endnote k\n  一つめ。\n\n  二つめ。\n"
         map diagCodeText ds @?= []
-        [length body | Paragraph _ is <- resultBodies r, Endnote _ _ body <- is] @?= [2],
+        [length body | Paragraph _ is <- resultBodies r, Endnote _ _ _ body <- is] @?= [2],
+      testCase "root ADR 0422: label= gives a note, a sidenote and an endnote a label; the name of @note is none" $ do
+        let (ds, r) = evalSource ctx "甲[note label=a: 脚]乙[sidenote label=b: 傍]丙[endnote label=c-1_2: 後]丁[note: 無]戊[note k label=d]。\n\n@note k\n  名。\n"
+            labels is = [l | i <- is, l <- case i of Note _ _ l _ -> [l]; Sidenote _ _ l _ -> [l]; Endnote _ _ l _ -> [l]; _ -> []]
+        map diagCodeText ds @?= []
+        concat [labels is | Paragraph _ is <- resultBodies r] @?= [Just "a", Just "b", Just "c-1_2", Nothing, Just "d"]
+        -- the note written by name keeps its body
+        [length body | Paragraph _ is <- resultBodies r, Note _ _ (Just "d") body <- is] @?= [1],
+      testCase "root ADR 0422: the value of label= follows the rule of the characters of @label (G02026)" $ do
+        codesOf ctx "本文[note label=A: 注]。\n" @?= ["G02026"]
+        codesOf ctx "本文[sidenote label=\"a b\": 注]。\n" @?= ["G02026"]
+        codesOf ctx "本文[endnote k label=_]。\n\n@endnote k\n  注。\n" @?= [],
       testCase "root ADR 0412: the names of endnotes are apart from those of notes, with the same codes" $ do
         codesOf ctx "本文[endnote k]。\n\n@note k\n  注。\n" @?= ["G02138", "G02137"]
         codesOf ctx "本文[note k]。\n\n@endnote k\n  注。\n" @?= ["G02137", "G02138"]
@@ -66,7 +77,7 @@ tests =
       testCase "I1: a sidenote is a body of one paragraph" $ do
         let (ds, r) = evalSource ctx "本文[sidenote: 傍注]。\n"
         map diagCodeText ds @?= []
-        [length body | Paragraph _ is <- resultBodies r, Sidenote _ _ body <- is] @?= [1],
+        [length body | Paragraph _ is <- resultBodies r, Sidenote _ _ _ body <- is] @?= [1],
       testCase "the blank-line style: a paragraph for each run of lines between blank lines" $
         notesOf ctx "本文[note k]。\n\n@note k\n  一つめの\n  段落。\n\n  二つめ。\n" @?= ([[(Nothing, "一つめの段落。"), (Nothing, "二つめ。")]], []),
       testCase "the line style: a paragraph for each line" $

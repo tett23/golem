@@ -30,9 +30,9 @@ numberVerseDocument style doc = doc {docBlocks = map block (docBlocks doc)}
     item x = x {itemBlocks = map block (itemBlocks x)}
     inline :: InlineF r -> InlineF r
     inline = \case
-      Note sp n bs -> Note sp n (map block bs)
-      Sidenote sp n bs -> Sidenote sp n (map block bs)
-      Endnote sp n bs -> Endnote sp n (map block bs)
+      Note sp n lbl bs -> Note sp n lbl (map block bs)
+      Sidenote sp n lbl bs -> Sidenote sp n lbl (map block bs)
+      Endnote sp n lbl bs -> Endnote sp n lbl (map block bs)
       CharStyle sp n xs -> CharStyle sp n (map inline xs)
       Color sp n xs -> Color sp n (map inline xs)
       Kenten sp n xs -> Kenten sp n (map inline xs)

@@ -512,7 +512,7 @@ stoppers :: [(String, IR.Inline)]
 stoppers =
   [ ("ruby", IR.Ruby sp () [IR.RubySegment [IR.Text sp "漢"] (Just "かん")]),
     ("code", IR.CharStyle sp "code" [IR.Text sp "x"]),
-    ("the mark of a note", IR.Note sp 1 (IR.noteBody sp [IR.Text sp "n"]))
+    ("the mark of a note", IR.Note sp 1 Nothing (IR.noteBody sp [IR.Text sp "n"]))
   ]
 
 -- | The mark of a citation of key a, [1]: its text is read (docs/adr ADR 0298).
@@ -842,7 +842,7 @@ spaceTests =
       testCase "S2: the places of the ADR have the glues of spaces of one text, as many and where they are" $
         sequence_ [assertEqual (show is) [] (map violationDetail (s2Same (itemsWith (bothEnv Nothing) is) (itemsWith (bothEnv Nothing) (oneText is)))) | is <- spaceCases],
       testCase "S1: the mark of a note between two spaces is a box: two glues stay" $
-        length (spaceGlues (bothEnv Nothing) [txt "a ", IR.Note sp 1 (IR.noteBody sp [txt "n"]), strong " b"]) @?= 2,
+        length (spaceGlues (bothEnv Nothing) [txt "a ", IR.Note sp 1 Nothing (IR.noteBody sp [txt "n"]), strong " b"]) @?= 2,
       testCase "S3: the glue left is that of the space before, the text before at 10 pt and after at 20 pt, and the other way" $ do
         spaceGlues bigEnv [txt "a ", IR.CharStyle sp "big" [txt " b"]] @?= spaceGlues bigEnv [txt "a b"]
         spaceGlues bigEnv [IR.CharStyle sp "big" [txt "a "], txt " b"] @?= spaceGlues bigEnv [IR.CharStyle sp "big" [txt "a b"]],

@@ -332,23 +332,23 @@ fn walk_run(xs: &mut Vec<Inline>, v: &mut impl Visitor) {
                 walk_run(&mut body, v);
                 xs.push(Inline::Lang { span, lang, body });
             }
-            Inline::Note { span, number, mut body } => {
+            Inline::Note { span, number, label, mut body } => {
                 for p in note_paragraphs_mut(&mut body) {
                     walk_run(p, v);
                 }
-                xs.push(Inline::Note { span, number, body });
+                xs.push(Inline::Note { span, number, label, body });
             }
-            Inline::Sidenote { span, number, mut body } => {
+            Inline::Sidenote { span, number, label, mut body } => {
                 for p in note_paragraphs_mut(&mut body) {
                     walk_run(p, v);
                 }
-                xs.push(Inline::Sidenote { span, number, body });
+                xs.push(Inline::Sidenote { span, number, label, body });
             }
-            Inline::Endnote { span, number, mut body } => {
+            Inline::Endnote { span, number, label, mut body } => {
                 for p in note_paragraphs_mut(&mut body) {
                     walk_run(p, v);
                 }
-                xs.push(Inline::Endnote { span, number, body });
+                xs.push(Inline::Endnote { span, number, label, body });
             }
             other => xs.push(other),
         }

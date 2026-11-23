@@ -1,6 +1,6 @@
 # ADR 0422: 注にラベルを付けて、番号とページを参照する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

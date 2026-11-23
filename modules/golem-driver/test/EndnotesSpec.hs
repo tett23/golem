@@ -1,7 +1,7 @@
 {- | The endnotes: a channel apart from the notes and the sidenotes,
 always at the end of the chapter (root ADR 0412).
 -}
-module EndnotesSpec (endnoteTests) where
+module EndnotesSpec (endnoteTests, baseStyle, buildIn, epubPage, fileText, pdfLinesIn, twoChapters) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_, replicateM, when)

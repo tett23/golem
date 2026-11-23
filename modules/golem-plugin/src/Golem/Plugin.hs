@@ -761,9 +761,9 @@ inlineItems = \case
   Link _ _ xs -> concatMap inlineItems xs
   Lang _ _ xs -> concatMap inlineItems xs
   Resolved _ _ _ xs -> concatMap inlineItems xs
-  Note _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
-  Sidenote _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
-  Endnote _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Note _ _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Sidenote _ _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
+  Endnote _ _ _ nb -> concatMap inlineItems (concat (noteParagraphs nb))
   Cite _ is -> concatMap inlineItems (citeInlines is)
   _ -> []
 
@@ -783,9 +783,9 @@ inlineSpans = \case
   Number s _ _ -> [s]
   Ref s _ _ -> [s]
   Deferred s _ -> [s]
-  Note s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
-  Sidenote s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
-  Endnote s _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Note s _ _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Sidenote s _ _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
+  Endnote s _ _ nb -> s : map blockSpan nb <> concatMap inlineSpans (concat (noteParagraphs nb))
   IndexMark s _ -> [s]
   Cite s is -> s : concatMap inlineSpans (citeInlines is)
   ProofComment s _ -> [s]
@@ -803,9 +803,9 @@ inlineDeferred = \case
   Kenten _ _ xs -> concatMap inlineDeferred xs
   Color _ _ xs -> concatMap inlineDeferred xs
   CharStyle _ _ xs -> concatMap inlineDeferred xs
-  Note _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
-  Sidenote _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
-  Endnote _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Note _ _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Sidenote _ _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
+  Endnote _ _ _ nb -> concatMap inlineDeferred (concat (noteParagraphs nb))
   Cite _ is -> concatMap inlineDeferred (citeInlines is)
   ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   Link _ _ xs -> concatMap inlineDeferred xs

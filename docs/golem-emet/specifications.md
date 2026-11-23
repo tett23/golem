@@ -223,7 +223,7 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 | `Block.table` | `List Inlines -> List (List Inlines) -> Blocks` | 見出しの行と本体の行の表 |
 | `Block.definitions` | `List (Inlines, Blocks) -> Blocks` | 定義リスト |
 
-値の中のソースの位置、ブロックのラベルと言語（[docs/adr/0187](../adr/0187-inline-language-switch.md)）、注の番号、遅延した式は、データ型の欄に出さない（`Golem.Emet.IR`）。
+値の中のソースの位置、ブロックのラベルと言語（[docs/adr/0187](../adr/0187-inline-language-switch.md)）、注の番号とラベル（[root ADR 0422](../adr/0422-references-to-notes.md)）、遅延した式は、データ型の欄に出さない（`Golem.Emet.IR`）。
 外から来たノードは、宣言の欄の後ろに、それらを引く添字を一つ多く持つ。
 パターンは宣言の欄だけを照合するので、関数からは見えない。
 関数が作ったノードは添字を持たず、呼び出しの位置（フィルタではファイルの先頭）を持つ。

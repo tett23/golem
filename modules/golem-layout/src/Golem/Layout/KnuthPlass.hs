@@ -117,13 +117,16 @@ data NoteChannel = ChannelNote | ChannelSidenote | ChannelEndnote
   deriving stock (Eq, Ord, Show)
 
 {- | The number of a mark of a channel (docs/adr/0383): before the pages
-are settled, its place in the book; and whether it is the mark in the
-text (the call), not the one at the start of the body.
+are settled, its place in the book; whether it is the mark in the
+text (the call), not the one at the start of the body; and whether it is
+the number alone of a reference to the note (root ADR 0422), without the
+text around the number of the format of the channel.
 -}
 data MarkNumber = MarkNumber
   { mnChannel :: !NoteChannel,
     mnNumber :: !Int,
-    mnCall :: !Bool
+    mnCall :: !Bool,
+    mnBare :: !Bool
   }
   deriving stock (Eq, Show)
 

@@ -28,6 +28,11 @@ printings format = "[printings]\nformat = " <> format <> "\n"
 printingsMessage :: Text -> Text -> Text
 printingsMessage why format = "[printings] の format が正しくありません（" <> why <> "）: " <> format <> " (printings.format)"
 
+-- | The reasons of [printings] for a { not closed and a } without its {: they recommend {{ and }} (root ADR 0424).
+unclosedPrintings, unopenedPrintings :: Text
+unclosedPrintings = "閉じていない { があります。文字の { は {{ と書きます"
+unopenedPrintings = "対応する { のない } があります。文字の } は }} と書きます"
+
 -- | A row: the name, the style.toml, the code, the value the error starts at, and the message.
 data Row = Row String Text Text Text Text
 
@@ -49,8 +54,8 @@ oneCause =
     Row "a field with an empty name is G03265" (printings "\"{:kanji}\"") "G03265" "\"{:kanji}" (printingsMessage "表にない欄です: {}" "{:kanji}"),
     Row "a notation on a field is G03266" (printings "\"{edition:kanji}\"") "G03266" "\"{edition" (printingsMessage "数でない差し込みには表記を書けません: {edition:kanji}" "{edition:kanji}"),
     Row "an empty notation on a field is G03266" (printings "\"{year:}\"") "G03266" "\"{year" (printingsMessage "数でない差し込みには表記を書けません: {year:}" "{year:}"),
-    Row "a { not closed is G03267" (printings "\"{year\"") "G03267" "\"{year" (printingsMessage "閉じていない { があります。文字の { は \\{ と書きます" "{year"),
-    Row "a } without its { is G03268" (printings "\"year}\"") "G03268" "\"year}" (printingsMessage "対応する { のない } があります。文字の } は \\} と書きます" "year}"),
+    Row "a { not closed is G03267" (printings "\"{year\"") "G03267" "\"{year" (printingsMessage unclosedPrintings "{year"),
+    Row "a } without its { is G03268" (printings "\"year}\"") "G03268" "\"year}" (printingsMessage unopenedPrintings "year}"),
     Row "an empty field {} is G03269" (printings "\"{}\"") "G03269" "\"{}" (printingsMessage "空の差し込み {} があります" "{}"),
     Row "a character after \\ that is not {, } or \\ is G03270" (printings "\"\\\\a\"") "G03270" "\"\\\\a" (printingsMessage "\\ の後には {、}、\\ のどれかを書きます: \\a" "\\a"),
     Row "a \\ at the end of the format is G03271" (printings "\"{year}\\\\\"") "G03271" "\"{year}" (printingsMessage "書式の末尾に \\ があります。文字の \\ は \\\\ と書きます" "{year}\\")
@@ -72,6 +77,22 @@ otherFormats =
     Row "a slot not in the table of a heading number is still G03006" "[headings.1]\nnumber = \"{x}\"\n" "G03006" "\"{x}" "番号の書式が不正です: {x}"
   ]
 
+-- | The rows of root ADR 0424 I1: [printings] recommends {{ and }}, the other formats \\{ and \\} as before.
+bracesMessages :: [Row]
+bracesMessages =
+  [ Row "a { not closed in [printings] recommends {{" (printings "\"{year\"") "G03267" "\"{year" (printingsMessage unclosedPrintings "{year"),
+    Row "a } without its { in [printings] recommends }}" (printings "\"year}\"") "G03268" "\"year}" (printingsMessage unopenedPrintings "year}"),
+    Row "a { not closed in a running head still recommends \\{" "[masters.book]\nrunning-head = { position = \"top-outside\", content = [\"{title\"] }\n" "G03014" "[\"{title" "柱の書式が正しくありません: 閉じていない { があります。文字の { は \\{ と書きます (masters.book.running-head.content)",
+    Row "a { not closed in [notes] mark-format still recommends \\{" "[notes]\nmark-format = \"{n\"\n" "G03006" "\"{n" "[notes] の mark-format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {n (notes.mark-format)",
+    Row "a } without its { in [notes] mark-format still recommends \\}" "[notes]\nmark-format = \"n}\"\n" "G03006" "\"n}" "[notes] の mark-format が正しくありません（対応する { のない } があります。文字の } は \\} と書きます）: n} (notes.mark-format)"
+  ]
+
+-- | A row of root ADR 0424.
+rowTest0424 :: Row -> TestTree
+rowTest0424 (Row name src code needle message) =
+  testCase ("root ADR 0424 I1: " <> name) $
+    diagnosticsOf src @?= [(code, offsetOf src needle, message)]
+
 tests :: TestTree
 tests =
   testGroup
@@ -82,5 +103,6 @@ tests =
         "I3"
         ( testCase "root ADR 0413 I3: a right instance, axes and format have no diagnostic" (diagnosticsOf (font "instance = \"Bold\"\naxes = { wght = 650, opsz = -1.5 }" <> printings "\"{date} 第{edition}版第{printing}刷 \\\\{year\\\\}\"") @?= [])
             : map (rowTest "I3") otherFormats
-        )
+        ),
+      testGroup "root ADR 0424 I1: the messages of braces" (map rowTest0424 bracesMessages)
     ]
