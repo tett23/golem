@@ -8648,18 +8648,18 @@ HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 位置は `format` の値である。
 書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
 
-- メッセージ: `[printings] の format が正しくありません（閉じていない { があります。文字の { は \{ と書きます）: <書式>`
+- メッセージ: `[printings] の format が正しくありません（閉じていない { があります。文字の { は {{ と書きます）: <書式>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)（文言）、[docs/adr/0375](adr/0375-printings-format.md)
 
 ### 主な原因
 
 - `{year` のように、欄の `}` を書き忘れた。
-- 文字の `{` をエスケープしなかった。
+- 文字の `{` を `{{` と書かなかった。
 
 ### 直し方
 
-欄を `}` で閉じるか、文字の `{` を `\{` と書く。
+欄を `}` で閉じるか、文字の `{` を `{{` と書く。
 
 ## G03268
 
@@ -8674,18 +8674,18 @@ HTML、EPUB、プレーンテキストの注は本の通し番号になる。
 位置は `format` の値である。
 書式に二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す（[docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
 
-- メッセージ: `[printings] の format が正しくありません（対応する { のない } があります。文字の } は \} と書きます）: <書式>`
+- メッセージ: `[printings] の format が正しくありません（対応する { のない } があります。文字の } は }} と書きます）: <書式>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0375](adr/0375-printings-format.md)
+- ADR: [docs/adr/0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)（定めた）、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)（文言）、[docs/adr/0375](adr/0375-printings-format.md)
 
 ### 主な原因
 
 - `year}` のように、欄の `{` を書き忘れた。
-- 文字の `}` をエスケープしなかった。
+- 文字の `}` を `}}` と書かなかった。
 
 ### 直し方
 
-欄の `{` を足すか、文字の `}` を `\}` と書く。
+欄の `{` を足すか、文字の `}` を `}}` と書く。
 
 ## G03269
 
