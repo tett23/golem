@@ -68,7 +68,6 @@ import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
-import Golem.Layout.CharClass
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
@@ -81,6 +80,7 @@ import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNota
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
+import Golem.Unicode.CharClass
 
 {- | The class of a character in a look: of the language of its span
 (docs/adr ADR 0187), 'charClass' outside one.

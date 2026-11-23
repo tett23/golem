@@ -43,8 +43,11 @@
 #                or from licenses/alpine/<origin>/ of the repository
 #   compiler-rt  the license of LLVM (Apache-2.0 WITH LLVM-exception)
 # The C libraries and data bundled in the repository (HarfBuzz, FreeType,
-# hyph-utf8; zlib comes with the haskell packages) and GMP (from the GMP
-# source archive, GMP_SOURCE) are always added.
+# hyph-utf8; zlib comes with the haskell packages), the notices of
+# golem-unicode (the ISC license of libgrapheme, whose implementation it
+# follows, and the Unicode License of the Unicode data of its tables;
+# docs/adr/0411) and GMP (from the GMP source archive, GMP_SOURCE) are
+# always added.
 # A component without a license file is an error (exit code 1).
 #
 # Environment:
@@ -289,10 +292,8 @@ if has ghc-libffi; then
     fail "licenses/ghc-libffi/ is for GHC $(cat "$GLDIR/GHC_VERSION"), not $GHC_VERSION: check the libffi that GHC bundles"
   copy "$GLDIR/LICENSE" ghc-libffi
 fi
-if [ "$WASM" = false ]; then
-  copy "$ROOT/modules/golem-cli/cbits/libgrapheme/LICENSE" libgrapheme
-  copy "$ROOT/modules/golem-cli/cbits/libgrapheme/UNICODE-LICENSE" libgrapheme
-fi
+copy "$ROOT/modules/golem-unicode/LICENSE-libgrapheme" golem-unicode
+copy "$ROOT/modules/golem-unicode/UNICODE-LICENSE" golem-unicode
 copy "$ROOT/modules/golem-font/cbits/harfbuzz/COPYING" harfbuzz
 copy "$ROOT/modules/golem-font/cbits/freetype/LICENSE.TXT" freetype
 copy "$ROOT/modules/golem-font/cbits/freetype/docs/FTL.TXT" freetype
@@ -435,7 +436,9 @@ FREETYPE_YEAR=$(sed -n 's/.*Copyright (C) 1996-\([0-9]\{4\}\).*/\1/p' "$ROOT/mod
   fi
   [ ! -d "$OUT/ghc" ] || line ghc/ "GHC $GHC_VERSION and its runtime system (RTS)"
   [ ! -d "$OUT/ghc-libffi" ] || line ghc-libffi/ "libffi, bundled in the RTS of GHC $GHC_VERSION"
-  if [ "$WASM" = false ]; then line libgrapheme/ "libgrapheme and Unicode 17.0.0 data"; fi
+  line golem-unicode/ "libgrapheme 3.0.0 (LICENSE-libgrapheme), whose"
+  line '' "implementation golem-unicode follows, and the Unicode"
+  line '' "17.0.0 data of its tables (UNICODE-LICENSE)"
   line harfbuzz/ HarfBuzz
   line freetype/ 'FreeType, used under the FreeType License (FTL.TXT)'
   if [ -d "$OUT/wasmtime" ]; then
