@@ -10,6 +10,7 @@ module Golem.Typeset.PdfShading
     fnValues,
     fnPositions,
     fnDefinition,
+    fnShape,
     fnWithin,
     mapFunction,
     solidFunction,
@@ -66,7 +67,9 @@ readFunction table value = do
       bytes <- table value
       let outputs = length ranges
           count = fromInteger (product sizes) * outputs
-          samples = unpackBits (fromInteger bits) count bytes
+      -- The table must hold every sample before any is read.
+      if toInteger count * bits > 8 * toInteger (BS.length bytes) then Left "PDF 図版のシェーディングの関数の標本が足りません" else Right ()
+      let samples = unpackBits (fromInteger bits) count bytes
       if length samples < count then Left "PDF 図版のシェーディングの関数の標本が足りません" else Right ()
       Right (Fn0 fields bytes (fromInteger bits) decode ranges (transpose (chunks outputs (take count samples))))
     P.OInt 2 -> do
@@ -109,8 +112,9 @@ fnOutputs = \case
   Fn3 _ (f : _) _ -> fnOutputs f
   _ -> 0
 
--- | The values of one output: decoded samples, C0 and C1, or those of the
--- stitched functions.
+{- | The values of one output: decoded samples, C0 and C1, or those of the
+stitched functions.
+-}
 fnValues :: Fn -> Int -> [Rational]
 fnValues fn output = map (!! output) (fnPositions fn)
 
@@ -133,6 +137,18 @@ fnDefinition fn output = case fn of
   Fn0 fields _ bits decode ranges samples -> T.pack (show ("0" :: Text, common fields, bits, decode !! output, ranges !! output, samples !! output))
   Fn2 fields c0 c1 domain n range -> T.pack (show ("2" :: Text, common fields, c0 !! output, c1 !! output, domain, n, fmap (!! output) range))
   Fn3 fields functions range -> T.pack (show ("3" :: Text, common fields, map (`fnDefinition` output) functions, fmap (!! output) range))
+  Fn4 -> "4"
+  where
+    common fields = [(k, v) | (k, v) <- fields, k `elem` ["Domain", "Size", "Order", "Encode", "Bounds"]]
+
+{- | The definition of one output without its values: whether the functions
+of an array line up position by position.
+-}
+fnShape :: Fn -> Int -> Text
+fnShape fn output = case fn of
+  Fn0 fields _ bits decode ranges samples -> T.pack (show ("0" :: Text, common fields, bits, decode !! output, ranges !! output, length (samples !! output)))
+  Fn2 fields _ _ domain n range -> T.pack (show ("2" :: Text, common fields, domain, n, fmap (!! output) range))
+  Fn3 fields functions range -> T.pack (show ("3" :: Text, common fields, map (`fnShape` output) functions, fmap (!! output) range))
   Fn4 -> "4"
   where
     common fields = [(k, v) | (k, v) <- fields, k `elem` ["Domain", "Size", "Order", "Encode", "Bounds"]]
@@ -185,8 +201,9 @@ replaceAll fields replacements dropped =
 nums :: [Rational] -> Obj
 nums = P.OArr . map numberObject
 
--- | A number written exactly when its decimal terminates; otherwise to
--- twelve fractional digits.
+{- | A number written exactly when its decimal terminates; otherwise to
+twelve fractional digits.
+-}
 numberObject :: Rational -> Obj
 numberObject r
   | denominator r == 1 = P.OInt (numerator r)

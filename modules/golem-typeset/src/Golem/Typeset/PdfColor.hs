@@ -1245,14 +1245,18 @@ paint (c, m, y, k) source isStroke =
 
 -- Function-based shadings (root ADR 0425) ---------------------------------
 
--- | A shading's dictionary, the space of its values, its functions, the
--- colours of its definition, and how its gray values follow one output.
+{- | A shading's dictionary, the space of its values, its functions, the
+colours of its definition, and how its gray values follow one output.
+-}
 data ShadingInfo = ShadingInfo
   { shadingFields :: ![(Text, P.ObjOf P.ObjNum)],
     shadingFunctions :: !(Either S.Fn [S.Fn]),
     shadingColours :: ![Color],
     shadingBackground :: !(Maybe [Rational]),
-    shadingGray :: !(Maybe S.Gray)
+    shadingGray :: !(Maybe S.Gray),
+    -- A function shading (type 1) has a function of two inputs.
+    shadingTwoInputs :: !Bool,
+    shadingRanges :: ![(Rational, Rational)]
   }
 
 shadingKind :: ShadingInfo -> RasterKind
@@ -1312,8 +1316,14 @@ analyzeShading value state = do
     Right fns
       | length fns == components && all ((== 1) . S.fnOutputs) fns ->
           let columns = [concatMap (take 1) (S.fnPositions fn) | fn <- fns]
-           in Right (if allSame (map length columns) then Just (transpose columns) else Nothing)
+           in if allSame (map length columns)
+                then Right (Just (transpose columns))
+                else Left "PDF 図版のシェーディングの関数の配列の値の位置がそろいません"
     _ -> Left invalid
+  -- The functions of an array line up only with the same definitions but values.
+  let lined = case functions of
+        Right fns -> allSame [S.fnShape fn 0 | fn <- fns]
+        Left _ -> True
   background <- traverse (\v -> dereference Set.empty v read' >>= numbersOf) (lookup "Background" fields)
   colours <- traverse (rawColor space) (maybe [] id outputs <> maybe [] pure background)
   let definitions = case functions of
@@ -1342,8 +1352,8 @@ analyzeShading value state = do
           | and [all (== l) (valuesOf i) | (i, l) <- zip [0, 1, 2] [l0, l1, l2]] -> Just (S.Gray 3 (-1 / (high - low)) (1 + low / (high - low)))
         _ -> Nothing
       equalOutputs = allSame definitions && maybe True allSame background
-      linear = if isJust outputs && within && backgroundWithin then gray else Nothing
-  Right (ShadingInfo fields functions colours background linear, read')
+      linear = if lined && within && backgroundWithin then gray else Nothing
+  Right (ShadingInfo fields functions colours background linear (kind == P.OInt 1) (spaceRanges space), read')
   where
     invalid = "PDF 図版のシェーディングを読めません"
     streamBytes = \case
@@ -1378,8 +1388,9 @@ resolveFunction depth seen value state
       P.OStream _ _ -> Left "PDF 図版のシェーディングの関数を読めません"
       other -> Right (other, state)
 
--- | The space of a shading's values: a device family name or a CIE-based or
--- ICCBased array.
+{- | The space of a shading's values: a device family name or a CIE-based or
+ICCBased array.
+-}
 shadingSpace :: P.ObjOf P.ObjNum -> Resources -> Either Text (Space, Resources)
 shadingSpace value state = do
   resolved <- dereference Set.empty value state
@@ -1401,6 +1412,8 @@ spaceRanges = \case
   CmykSpace -> replicate 4 (0, 1)
   IndexedSpace _ -> [(0, 255)]
   RangedSpace _ ranges -> ranges
+  -- L* also stays within 0 to 100, which an ICCBased Range may exceed.
+  CieSpace LabFamily _ ((low, high) : rest) -> (max 0 low, min 100 high) : rest
   CieSpace _ _ ranges -> ranges
 
 -- | A shading value as a colour, without clipping it to the space.
@@ -1413,25 +1426,41 @@ rawColor space values = case (space, values) of
   (CieSpace family key ranges, _) | length ranges == length values -> Right (cieColor family key (map (const (-(10 ^ (30 :: Int)), 10 ^ (30 :: Int))) ranges) values)
   _ -> Left "PDF 図版のシェーディングの色の成分数が不正です"
 
--- | The recoloured shading: a gray one maps the output of its gray value,
--- a one-colour one paints the swatch.
+{- | The recoloured shading: a gray one maps the output of its gray value,
+a one-colour one paints the swatch.
+-}
 convertShading :: Cmyk -> ShadingInfo -> P.ObjOf P.ObjNum
 convertShading (c, m, y, k) shading =
-  let inks = [fromIntegral component / 100 | component <- [c, m, y, k]] :: [Rational]
-      function = case shadingGray shading of
-        Just (S.Gray output alpha beta) | allGray shading ->
-          let maps = [(negate (s * alpha), s * (1 - beta)) | s <- inks]
-              apply (a, b) v = a * v + b
-           in ( case shadingFunctions shading of
-                  Left fn -> S.mapFunction output maps fn
-                  Right fns -> P.OArr [S.mapFunction 0 [one] (fns !! output) | one <- maps],
-                fmap (\values -> P.OArr [S.numberObject (apply one (values !! output)) | one <- maps]) (shadingBackground shading)
-              )
-        _ -> (S.solidFunction (domainOf (shadingFunctions shading)) inks, fmap (const (P.OArr (map S.numberObject inks))) (shadingBackground shading))
-      (newFunction, newBackground) = function
-      replaced = [("ColorSpace", P.OName "DeviceCMYK"), ("Function", newFunction)] <> [("Background", b) | Just b <- [newBackground]]
+  let replaced = [("ColorSpace", P.OName "DeviceCMYK"), ("Function", newFunction)] <> [("Background", b) | Just b <- [newBackground]]
    in P.ODict ([(key, value) | (key, value) <- shadingFields shading, key `notElem` map fst replaced] <> replaced)
   where
+    inks = [fromIntegral component / 100 | component <- [c, m, y, k]] :: [Rational]
+    apply (a, b) v = a * v + b
+    (newFunction, newBackground) = case shadingGray shading of
+      Just (S.Gray output alpha beta)
+        | allGray shading ->
+            let maps = [(negate (s * alpha), s * (1 - beta)) | s <- inks]
+             in ( case shadingFunctions shading of
+                    Left fn -> withRange output maps fn (S.mapFunction output maps fn)
+                    Right fns -> P.OArr [withRange output [one] fn (S.mapFunction 0 [one] fn) | one <- maps, fn <- take 1 (drop output fns)],
+                  fmap (\values -> P.OArr [S.numberObject (apply one value) | one <- maps, value <- take 1 (drop output values)]) (shadingBackground shading)
+                )
+      -- A type 1 shading keeps its function of two inputs, every output constant.
+      _
+        | shadingTwoInputs shading ->
+            ( case shadingFunctions shading of
+                Left fn -> S.mapFunction 0 [(0, s) | s <- inks] fn
+                Right fns -> P.OArr [S.mapFunction 0 [(0, s)] fn | (s, fn) <- zip inks (cycle fns)],
+              solidBackground
+            )
+        | otherwise -> (S.solidFunction (domainOf (shadingFunctions shading)) inks, solidBackground)
+    solidBackground = fmap (const (P.OArr (map S.numberObject inks))) (shadingBackground shading)
+    -- A function without Range is mapped with the range of its colour space.
+    withRange output maps fn object = case (fn, object, drop output (shadingRanges shading)) of
+      (S.Fn2 _ _ _ _ _ Nothing, P.ODict entries, (low, high) : _) -> P.ODict (entries <> [("Range", mapped maps low high)])
+      (S.Fn3 _ _ Nothing, P.ODict entries, (low, high) : _) -> P.ODict (entries <> [("Range", mapped maps low high)])
+      _ -> object
+    mapped maps low high = P.OArr [S.numberObject x | one <- maps, let (a, b) = (apply one low, apply one high), x <- [min a b, max a b]]
     domainOf = \case
       Left fn -> domain fn
       Right (fn : _) -> domain fn

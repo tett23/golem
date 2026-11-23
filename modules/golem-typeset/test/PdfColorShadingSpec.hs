@@ -148,6 +148,16 @@ mappingTests =
       let (_, function) = shadingOf p
       (numbers =<< lookup "C0" function) @?= Just (tone 0.8)
       (numbers =<< lookup "C1" function) @?= Just (tone 0),
+    testCase "root ADR 0425 I6: a function without Range gets the mapped range of the colour space" $ do
+      p <- converted (shaded "/Sh sh" (axial "DeviceGray" (fn2 [0] [1])) [])
+      let (_, function) = shadingOf p
+      (numbers =<< lookup "Range" function) @?= Just (concat [[0, s] | s <- inks]),
+    testCase "root ADR 0425 I5: a one-colour function shading (type 1) keeps a function of two inputs" $ do
+      let sampled = P.OStream [("FunctionType", P.OInt 0), ("Domain", nums [0, 1, 0, 1]), ("Range", nums [0, 1, 0, 1, 0, 1]), ("Size", nums [1, 1]), ("BitsPerSample", P.OInt 8)] (BS.pack [255, 0, 0])
+      p <- converted (shaded "/Sh sh" [("ShadingType", P.OInt 1), ("ColorSpace", P.OName "DeviceRGB"), ("Function", P.ORef 8)] [(8, sampled)])
+      let (_, function) = shadingOf p
+      lookup "Domain" function @?= Just (nums [0, 1, 0, 1])
+      (numbers =<< lookup "Decode" function) @?= Just (concat [[s, s] | s <- inks]),
     testCase "root ADR 0425 I6: a gray Background maps with the function" $ do
       p <- converted (shaded "/Sh sh" ((axialFields "DeviceGray" (fn2 [0] [1])) <> [("Background", nums [0.5])]) [])
       (numbers =<< lookup "Background" (fst (shadingOf p))) @?= Just (tone 0.5)
@@ -155,7 +165,13 @@ mappingTests =
 
 unreplaceableTests :: [TestTree]
 unreplaceableTests =
-  [ testCase "root ADR 0425 I7: DeviceRGB with a different N for one output and gray ends is G08113" $
+  [ testCase "root ADR 0425 I7: an array of DeviceRGB functions with different numbers of values is G08113, even beside red" $ do
+      let sampled = P.OStream [("FunctionType", P.OInt 0), ("Domain", nums [0, 1]), ("Range", nums [0, 1]), ("Size", nums [3]), ("BitsPerSample", P.OInt 8)] (BS.pack [0, 128, 255])
+      rejected (shaded "/Sh sh" (axial "DeviceRGB" (P.OArr [fn2 [0] [1], P.ORef 8, fn2 [0] [1]])) [(8, sampled)])
+      rejected (shaded "1 0 0 rg 0 0 1 1 re f /Sh sh" (axial "DeviceRGB" (P.OArr [fn2 [0] [1], P.ORef 8, fn2 [0] [1]])) [(8, sampled)]),
+    testCase "root ADR 0425 I7: a DeviceCMYK array whose functions differ in N is G08113" $
+      rejected (shaded "/Sh sh" (axial "DeviceCMYK" (P.OArr [fn2 [0] [0], fn2 [0] [0], fn2 [0] [0], P.ODict [("FunctionType", P.OInt 2), ("Domain", nums [0, 1]), ("C0", nums [0]), ("C1", nums [1]), ("N", P.OInt 2)]])) []),
+    testCase "root ADR 0425 I7: DeviceRGB with a different N for one output and gray ends is G08113" $
       rejected (shaded "/Sh sh" (axial "DeviceRGB" (P.OArr [fn2 [0] [1], P.ODict [("FunctionType", P.OInt 2), ("Domain", nums [0, 1]), ("C0", nums [0]), ("C1", nums [1]), ("N", P.OInt 2)], fn2 [0] [1]])) []),
     testCase "root ADR 0425 I7: DeviceCMYK values with C = M = Y = 0.2 are G08113" $
       rejected (shaded "/Sh sh" (axial "DeviceCMYK" (fn2 [0.2, 0.2, 0.2, 0] [0.2, 0.2, 0.2, 1])) []),
