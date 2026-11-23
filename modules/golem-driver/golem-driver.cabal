@@ -202,6 +202,7 @@ test-suite golem-driver-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , JuicyPixels    ==3.3.9
     , hedgehog       >=1.4 && <1.6
     , process
@@ -257,6 +258,7 @@ test-suite golem-driver-global-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , process
     , zlib
     , tasty          >=1.4 && <1.6
@@ -307,6 +309,7 @@ test-suite golem-driver-parallel-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib
