@@ -40,6 +40,8 @@ data RasterKind
   | Grayscale
   | SolidRgb !(Rational, Rational, Rational)
   | SolidCmyk !(Rational, Rational, Rational, Rational)
+  | -- | One colour of a CIE-based space (root ADR 0425): the space's identity and the clipped components.
+    SolidOther !Text ![Rational]
   | Multicolor
   deriving stock (Eq, Show)
 
@@ -90,6 +92,7 @@ forceRasterAnalysis analysis = forceKind (raKind analysis) `seq` maybe () forceI
   where
     forceKind (SolidRgb (r, g, b)) = tone r `seq` tone g `seq` tone b
     forceKind (SolidCmyk (c, m, y, k)) = tone c `seq` tone m `seq` tone y `seq` tone k
+    forceKind (SolidOther key values) = T.length key `seq` foldr (\value rest -> tone value `seq` rest) () values
     forceKind other = other `seq` ()
     tone value = numerator value `seq` denominator value `seq` ()
 

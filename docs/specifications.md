@@ -5030,14 +5030,28 @@ JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended 
 
 PDF 図版の色置換は段階的な実装である。
 現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
-線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ ICCBased（成分数 1、3、4）と Indexed に対応する。
+線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ CalGray、CalRGB、Lab、ICCBased、Indexed に対応する（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+CalGray、CalRGB、Lab の色は、色を変換せずに、切り詰めた成分の値のまま分類する。
+CalGray と CalRGB の成分は 0 から 1 に、Lab の L* は 0 から 100 に、a* と b* は色空間の Range に切り詰め、有理数のまま比べる。
+CalGray はつねに白黒の濃淡で、灰色の値はその成分である。
+CalRGB は三つの成分が等しいときだけ濃淡で、灰色の値はその成分である。
+Lab は a* と b* がともに 0 のときだけ濃淡で、灰色の値は L* を 100 で割った値である。
+この三つの色空間の色どうしは、色空間の種類と辞書の値と成分の値がすべて等しいときだけ同じ色とし、ほかの色空間の色とは別の色とする。
+ICCBased は、プロファイルのヘッダーのデータの色空間で分ける。
+Gray、RGB、CMYK のデータは、Range で 0 から 1 に写してから DeviceGray、DeviceRGB、DeviceCMYK と同じ規則で判定する。
+Lab のデータは、Range で切り詰めた成分を L*、a*、b* として Lab の規則で判定し、Lab の色空間とは別の色空間の色とする。
+Range を省いた ICCBased の既定の Range は、各成分の 0 から 1 である。
+Range が 0 から 100 を超える Lab のデータでは、灰色の値を求める L* を、さらに 0 から 100 に切り詰める。
+Indexed の基底は、DeviceGray、DeviceRGB、DeviceCMYK と、データの色空間が Gray、RGB、CMYK で Range が単位範囲の ICCBased に限る。
+データの色空間がこの四つのどれでもないか、成分数 N と合わない ICCBased は G08113 とする。
 Form が引き継ぐ色と不透明度、資源辞書の共有と元のソフトマスクを保持する。
 ステンシルマスク（ImageMask = true の画像）は塗りの色で描くので、塗りの色として判定し、置き換えた塗りの色で描く。
 インライン画像は、同じ辞書とデータを持つ画像 XObject として判定し、置き換えた画像を XObject として描く。
 画像は 1、2、4、8、16-bit の DeviceGray、DeviceRGB、DeviceCMYK と、成分数が 1、3、4 の ICCBased に対応する。
 Indexed の画像は 1、2、4、8-bit を扱い、索引を基底の色空間の色に展開してから判定する。
 画像の名前付き色空間と DefaultGray、DefaultRGB、DefaultCMYK も、この範囲へ解決できる場合に扱う。
-ICCBased の Range は各成分の単位範囲だけを扱う。
+画像の ICCBased は、データの色空間が Gray、RGB、CMYK で、N と合い、Range が各成分の単位範囲である場合だけを扱う。
+画像の CalGray、CalRGB、Lab と、データの色空間が Lab の ICCBased の画像は、まだ判定できないので G08113 とする。
 画像の Decode は任意の範囲を受け入れ、サンプルを写した値を 0 から 1 に切り詰めてから判定する。
 Indexed の画像では、Decode で写した索引を最も近い整数に丸め、表の範囲に切り詰める。
 同寸法の DeviceGray のソフトマスク、色キーのマスクと、同寸法の 1-bit の明示マスクを保つ。
@@ -5054,10 +5068,22 @@ DCTDecode と RunLengthDecode の前に使う FlateDecode、ASCIIHexDecode、ASC
 PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
 通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
 そのため、置き換えた Form の透明グループの合成の色空間（Group の CS）は DeviceCMYK にする。
-ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、物体ごとの置き換えが濃淡の規則と一致しないので、G08113 とする。
+ほかの合成の方式（BM）や、Identity と Default のほかの転送関数（TR、TR2）を ExtGState で指定した PDF は、G08113 とする（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+BM の配列は、空でなく、要素がすべて Normal か Compatible のときだけ扱う。
+Multiply などでは、物体ごとに置き換えてから重ねた色が、重ねた濃淡を置き換えた色と一致しないためである。
+転送関数は、描いた後の濃淡を関数で変えるので、置き換えた色が濃淡の規則と一致しない。
+線か塗りを描くとき、描画の状態の OPM が 1 で、その描き方のオーバープリントが true の PDF も G08113 とする。
+置き換えた DeviceCMYK の色では成分が 0 の版を抜かないので、白の物体が下の物体を隠さなくなるためである。
+線のオーバープリントは `gs` の OP が、塗りのオーバープリントは op が設定し、同じ辞書に op が無い OP は両方を設定する。
+OPM と OP は別々の `gs` で設定でき、描画の状態は前の `gs` から引き継ぐので、一つの ExtGState ではなく描画の状態で判定する。
+文字は、描画モードに応じて、塗りと線のオーバープリントで判定する。
+画像を描くときは、塗りのオーバープリントで判定する。
+ADR は画像を挙げていないが、PDF で画像を描く演算子は塗りのオーバープリントに従うので、この仕様で塗りと同じ扱いと決めた。
+OPM が 0 なら、プロセスカラーの四つの成分をすべて塗るので、オーバープリントは結果を変えない。
 字形の中で自分の色を指定する Type 3 フォント（d0 の字形）を使う PDF も、字形の色を判定できないので G08113 とする。
 未対応の色空間や画像などにより判定か置換を続けられない PDF も G08113 とする。
-[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+[残る対応](roadmap.md#本の部品の拡張) は [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md) と [root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) の未実装部分であり、採択した対象からの除外ではない。
+ただし、[diagnostic の一覧の G08113](diagnostics.md#g08113) が主な原因の最初の項目に挙げる構成は、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md) が G08113 と決めた振る舞いであり、残る対応ではない。
 
 色を指定した SVG は、判定か置換ができなければ PDF、HTML、EPUB の対象媒体を G08113 で止める（[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)）。
 色を指定しない SVG の受け入れ範囲は変えない。
