@@ -419,9 +419,9 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 行が収まらなければ次の段で見出し行を繰り返し、繰り返した見出し行の直後では行を必ず置くからである。
 それ以外の表の `placeTableAcross` は、残りの組の数、見出し行を繰り返したか、4 つ組の辞書式順序で止まる。
 組を置かずに次の段へ進むのは空でない段からだけで、見出し行を繰り返すのは組ごとに一度だけである。
-本の部は、その中のフローを `step` で一つずつ置くので、`step`、`place`、`placeFlow` と、フローの列を置く `runFlows` は相互に再帰する。
+本の部と箱は、その中のフローを `step` で一つずつ置くので、`step`、`place`、`placeFlow` と、フローの列を置く `runFlows` は相互に再帰する。
 この再帰は、フローの重み（`flowWeight`）と関数の順位の組の辞書式順序で止まる。
-本の部の重みはその中のフローの重みの和より大きく、`flattenParts`（`flattenBookParts`）で平らにした列の重みは元の列の重みを超えない（`flattenParts_weight`）。
+本の部と箱の重みはその中のフローの重みの和より大きく、`flattenParts`（`flattenBookParts`）で平らにした列の重みは元の列の重みを超えない（`flattenParts_weight`）。
 `placeAll` は原稿の列について構造的に再帰する。
 `I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
 
@@ -437,7 +437,8 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 `waitFor` と `checkNoBreak` は待つ制御と満たせなかった制御だけを変えるので、本文と図版を変えない。
 本の部の `placeBookPart` は、中のフローをそのまま置いた結果、平らにして置いた結果、次の単位から置いた結果のどれかを選ぶ。
 どの結果も、選ぶ前の状態に中のフローの行を原稿の順に足したものなので（`text_placeBookPart`）、どれを選んでも行は一度ずつ置かれる。
-本の部の行は、中のフローの行を原稿の順につないだ列として数える。
+本の部と箱の行は、中のフローの行を原稿の順につないだ列として数える。
+箱は、段ごとの部分の前の行（`openBox`）と、最後の部分の後の行（`boxEnd`）を使用行数に足すだけで、本文と図版を変えない。
 
 図版の順序には、図版の高さが 1 行以上という前提が要る。
 高さ 0 行の図版の直後に転置図版があると、Haskell の実装は図版の順序を原稿と逆にする。
@@ -479,8 +480,8 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
 フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻し、段の行数の変更（`FAdjustLines`）を扱う。
-本の部も扱う。
-箱、罫線つきのブロック、詩、回り込み図版、節の開始は、まだ扱わない。
+本の部と箱も扱う。
+罫線つきのブロック、詩、回り込み図版、節の開始は、まだ扱わない。
 段組みは段数と先頭行だけを状態に持ち、段の幅と段間は持たない。
 `Env` の段数は基本の段組み（`envBase`）の段数で、段組みを戻すとこの段数になる。
 表は、`envKeepParts` が `KeepColumn` のときの `placeTable` と、それ以外のときの `placeTableAcross` の両方を扱う。
@@ -492,7 +493,10 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 表の部分の記録 `sTables` は出力の付帯情報なので、モデルには持たない。
 満たせなかった制御は、出典の位置を持たない `Unmet.noBreak` と `Unmet.keepNext` で表す。
 `FAdjustLines` の行数の上限（`envMaxLines`）は `Env` の `maxLines` とし、満たせなかった変更は `Unmet.adjust` で表す。
-箱がないので、`cap` は箱の後の行数を引かず、`isEmpty` は箱の先頭を見ない。
+箱は、状態の `box`（`sBox`）に、id、部分の前と後の行数、段の中の部分の先頭行、部分が空の段の先頭から始まったかを持つ。
+`cap` は箱の部分の後の行数を引き、`isEmpty` は空の段の先頭から始まった部分の前の行だけの段も空とみなす。
+`advance` は次の段を開いた後に `openBox` で箱の部分の前の行を置く。
+箱の部分の記録 `sBoxes` は出力の付帯情報なのでモデルには持たず、`closeBox` は最後の部分の後の行の位置（`boxEnd`）だけを求める。
 出力の `PageOut` には、ページ番号、段番号、空白ページか、スロット、脚注、満たせなかった制御だけを持つ。
 脚注と図版の行数は自然数とし、負の行数は扱わない。
 
@@ -525,6 +529,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
 | `Paginate.hs:514` `place` の `FBookPart` | `place` の `bookPart`、`runFlows` |
+| `Paginate.hs:584` `place` の `FBoxed` | `place` の `boxed`、`boxEnd` |
 | `Paginate.hs:561` `place` の `FSwitchColumns`、`:567` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
 | `Paginate.hs:599` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
 | `Paginate.hs:625` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
@@ -534,7 +539,8 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/BookParts.hs:60` `flattenBookParts` | `flattenParts` |
 | `Paginate/BookParts.hs:66` `flowSlotIds`、`:83` `slotIds` | `flowSlotIds`、`flowsSlotIds`、`slotIds` |
 | `Paginate/State.hs:131` `initialState` | `initialState` |
-| `Paginate/State.hs:142` `cap`、`:150` `free`、`:157` `typeAreaFree`、`:164` `isEmpty` | `cap`、`free`、`typeAreaFree`、`isEmpty` |
+| `Paginate/State.hs:142` `cap`、`:150` `free`、`:157` `typeAreaFree`、`:164` `isEmpty` | `cap`、`boxAfter`、`free`、`typeAreaFree`、`isEmpty`、`boxTop` |
+| `Paginate/State.hs:168` `atBoxStart`、`:174` `openBox`、`:183` `closeBox` | `atBoxStart`、`openBox`、`boxEnd` |
 | `Paginate/State.hs:199` `keep` | `keep` |
 | `Paginate/State.hs:207` `parityStart` | `parityStart` |
 | `Paginate/State.hs:213` `blankPage` | `blankPage` |
@@ -544,7 +550,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/State.hs:263` `splitNotes` | `splitNotes` |
 | `Paginate/State.hs:273` `closePage` | `closePage` |
 | `Paginate/State.hs:280` `nextColumn`、`:283` `nextPage` | `nextColumn`、`nextPage` |
-| `Paginate/State.hs:286` `advance` | `advance`、`advanceFresh`、`advanceTurned`、`openColumn` |
+| `Paginate/State.hs:286` `advance` | `advance`、`advanceIn`、`advanceFresh`、`advanceTurned`、`openColumn` |
 | `Paginate/State.hs:324` `startSet` | `startSet` |
 | `Paginate/State.hs:350` `pageFigure` | `pageFigure` |
 | `Paginate/State.hs:357` `carryNote` | `carryNote`、`carryRoom`、`carryShown` |
