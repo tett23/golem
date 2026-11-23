@@ -3173,10 +3173,10 @@ resolveStyleValues fid src (MkTable root) = do
             | otherwise = Left (bad "G03256" pos ("行数の宣言値が正しくありません: " <> raw))
     reference defs cache stack wanted pos name = do
       case Map.lookup name defs of
-        Nothing -> Left (bad (if null stack then "G03257" else "G03256") pos ("値の名前がありません: " <> name))
+        Nothing -> Left (bad "G03257" pos ("値の名前がありません: " <> name))
         Just _ -> do
           ((actual, resolved), next) <- resolveName defs cache stack name
-          if actual == wanted then Right (resolved, next) else Left (bad (if null stack then "G03258" else "G03256") pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
+          if actual == wanted then Right (resolved, next) else Left (bad "G03258" pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
     kindText = \case
       LengthKind -> "length"
       AkiKind -> "aki"

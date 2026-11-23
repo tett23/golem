@@ -948,6 +948,21 @@ tests =
             source = declarations <> "[paragraph-styles.quote]\nkeep-with-next = \"v30\"\n"
         result <- timeout 5000000 (evaluate (either (const False) (\s -> (paraStyle s (Just "quote") >>= psKeepWithNext) == Just 0) (parseStyle (FileId 0) source)))
         result @?= Just True,
+      testCase "root ADR 0424 I2: undefined and mistyped names on the right of a declaration are G03257 and G03258 at the name" $ do
+        let located src = either (map (\d -> (diagCode d, spanStart (diagSpan d)))) (const []) (parseStyle (FileId 0) src)
+            at src needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
+            undefinedLength = "[values.length]\na = \"missing\"\n"
+            mistyped = "[values.aki]\nh = \"二分\"\n[values.length]\na = \"h\"\n"
+            undefinedCount = "[values.count]\nn = \"a+m\"\na = 1\n"
+            nested = "[values.length]\na = \"b\"\nb = \"missing\"\n"
+        located undefinedLength @?= [(DiagnosticCode "G03257", at undefinedLength "\"missing\"")]
+        located mistyped @?= [(DiagnosticCode "G03258", at mistyped "\"h\"")]
+        located undefinedCount @?= [(DiagnosticCode "G03257", at undefinedCount "\"a+m\"")]
+        located nested @?= [(DiagnosticCode "G03257", at nested "\"missing\"")],
+      testCase "root ADR 0424 I2: uses, cycles and wrong declared values keep their codes" $ do
+        codes (parseStyle (FileId 0) "[values.length]\na = \"3mm\"\n[paragraph-styles.quote]\nindent = \"x\"\n") @?= ["G03257"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"a\"\n") @?= ["G03256"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"3mx\"\n") @?= ["G03256"],
       testCase "ADR 0346 I3: invalid names and typed references have located errors" $ do
         codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]

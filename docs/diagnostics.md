@@ -8357,9 +8357,10 @@ size = "0.65zw"
 
 宣言の値が種類に合わない、行数が 0 から 2147483647 の範囲を外れる、または参照が循環する。
 位置は宣言の値である。
+宣言の右辺に書いた名前の宣言がない場合と、種類が違う場合は、このコードではなく G03257 と G03258 である（[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)）。
 
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
@@ -8379,16 +8380,17 @@ size = "0.65zw"
 
 ### 意味
 
-長さ、アキ量、行数の欄に書いた名前の宣言が `style.toml` にない。
+長さ、アキ量、行数の欄、または値の宣言の右辺に書いた名前の宣言が `style.toml` にない。
 位置は参照した値である。
 
 - メッセージ: `値の名前がありません: <名前>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
 - 名前の綴りが宣言と違う。
+- 値の宣言の右辺に、宣言していない名前を書いた。
 
 ### 直し方
 
@@ -8403,16 +8405,17 @@ size = "0.65zw"
 
 ### 意味
 
-参照先の宣言が、値を使う欄の長さ、アキ量、行数の種類と合わない。
+参照先の宣言の種類（長さ、アキ量、行数）が、値を使う欄、または参照する側の宣言の種類と合わない。
 位置は参照した値である。
 
 - メッセージ: `値 <名前> の種類が違います: 要求 <種類>、実際 <種類>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
 - 長さの欄にアキ量や行数の名前を書いた。
+- 長さの宣言の右辺に、アキ量や行数の宣言の名前を書いた。
 
 ### 直し方
 
@@ -12906,10 +12909,11 @@ HTML と EPUB は `axes` を使わないので、出さない。
   - ExtGState の TR と TR2 が Identity か Default でないもの。
   - OPM が 1 で、線を描くときは線の、塗りを描くときは塗りのオーバープリントが true のもの。
   - PostScript の計算機の関数（FunctionType 4）で色を決めるシェーディング。
-  - 値がすべて濃淡でも、灰色の値が一つの値の一次式で決まらないシェーディングを、ほかの色がすべて濃淡の図版で使うもの。
+  - 値がすべて濃淡でも、値か関数の Range が色空間の範囲の外にあるか、灰色の値が一つの値の一次式で決まらないシェーディングを、ほかの色がすべて濃淡の図版で使うもの。
+  - 1 出力の関数の配列で、関数ごとの値の数が違うシェーディング。
   - DeviceGray でないソフトマスクと、Matte を持ち、画像と大きさが違うか、Interpolate が true のソフトマスク。
   - ICCBased で、プロファイルのデータの色空間が Gray、RGB、CMYK、Lab のどれでもないか、N と合わないもの。
-- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。今はシェーディングをすべてこの扱いにする。ほかに、パターン、自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
+- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。今はメッシュのシェーディング（ShadingType 4 から 7）をこの扱いにする。ほかに、パターン、自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
 
 ### 直し方
 
