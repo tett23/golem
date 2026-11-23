@@ -36,6 +36,7 @@ import Golem.Layout.Code (CodeGeometry)
 import Golem.Layout.Look (NoteId (..))
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp)
+import Golem.Project.Style (KeepParts)
 import Golem.Syntax (SrcSpan)
 
 data NoteBody = NoteBody {nbId :: !NoteId, nbLines :: !Int}
@@ -80,7 +81,9 @@ data StartOf = OfSection !Int | OfParagraph !SrcSpan
 type Flow = FlowAt Int
 
 data FlowAt position
-  = -- | a paragraph and how it is broken (docs/adr/0261)
+  = -- | A book part and its retained slot IDs (root ADR 0377 and 0401).
+    FBookPart !KeepParts !SrcSpan !Text ![Int] ![FlowAt position]
+  | -- | a paragraph and how it is broken (docs/adr/0261)
     FParagraph !Keep [LineBox]
   | {- | a stanza of verse, a paragraph of line-breaks = "keep": its verse
     lines, each the lines it is broken into (docs/adr/0180). A verse line
@@ -287,7 +290,9 @@ data AdjustLimit
 
 -- | A manual control of page breaks that could not be met (docs/adr ADR 0030).
 data Unmet
-  = UnmetNoBreak !SrcSpan
+  = -- | A book part split after an empty retention unit failed (root ADR 0401).
+    SplitBookPart !SrcSpan !Text !KeepParts
+  | UnmetNoBreak !SrcSpan
   | -- | the lines asked for
     UnmetNeedLines !SrcSpan !Int
   | -- | the lines the column was changed by, and why it was cut short
