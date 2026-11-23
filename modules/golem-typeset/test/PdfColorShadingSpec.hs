@@ -159,7 +159,7 @@ mappingTests =
       lookup "Domain" function @?= Just (nums [0, 1, 0, 1])
       (numbers =<< lookup "Decode" function) @?= Just (concat [[s, s] | s <- inks]),
     testCase "root ADR 0425 I6: a gray Background maps with the function" $ do
-      p <- converted (shaded "/Sh sh" ((axialFields "DeviceGray" (fn2 [0] [1])) <> [("Background", nums [0.5])]) [])
+      p <- converted (shaded "/Sh sh" (axialFields "DeviceGray" (fn2 [0] [1]) <> [("Background", nums [0.5])]) [])
       (numbers =<< lookup "Background" (fst (shadingOf p))) @?= Just (tone 0.5)
   ]
 
@@ -178,7 +178,7 @@ unreplaceableTests =
     testCase "root ADR 0425 I7: a red rectangle and that DeviceCMYK shading keep the original colours" $
       recolor (shaded "1 0 0 rg 0 0 1 1 re f /Sh sh" (axial "DeviceCMYK" (fn2 [0.2, 0.2, 0.2, 0] [0.2, 0.2, 0.2, 1])) []) @?= Right Nothing,
     testCase "root ADR 0425 I7: a DeviceGray FunctionType 2 without Range on Domain [0, 2] is G08113" $
-      rejected (shaded "/Sh sh" ((axialFields "DeviceGray" (P.ODict [("FunctionType", P.OInt 2), ("Domain", nums [0, 2]), ("C0", nums [0]), ("C1", nums [1]), ("N", P.OInt 1)])) <> [("Domain", nums [0, 2])]) []),
+      rejected (shaded "/Sh sh" (axialFields "DeviceGray" (P.ODict [("FunctionType", P.OInt 2), ("Domain", nums [0, 2]), ("C0", nums [0]), ("C1", nums [1]), ("N", P.OInt 1)]) <> [("Domain", nums [0, 2])]) []),
     testCase "root ADR 0425 I7: a DeviceGray function of Range [-1, 1] is G08113" $
       rejected (shaded "/Sh sh" (axial "DeviceGray" (P.ODict [("FunctionType", P.OInt 2), ("Domain", nums [0, 1]), ("Range", nums [-1, 1]), ("C0", nums [-0.5]), ("C1", nums [1]), ("N", P.OInt 1)])) []),
     testCase "root ADR 0425 I7: Lab a* outputs all 0 with an a* Range of [1, 5] are G08113" $
@@ -205,7 +205,7 @@ shaded :: ByteString -> [(T.Text, P.ObjOf P.ObjNum)] -> [(P.ObjNum, P.ObjOf P.Ob
 shaded content fields objects = (page content) {P.ipResources = P.ODict [("Shading", P.ODict [("Sh", P.ORef 9)])], P.ipObjects = (9, P.ODict fields) : objects}
 
 axial :: T.Text -> P.ObjOf P.ObjNum -> [(T.Text, P.ObjOf P.ObjNum)]
-axial space = axialFields space
+axial = axialFields
 
 axialFields :: T.Text -> P.ObjOf P.ObjNum -> [(T.Text, P.ObjOf P.ObjNum)]
 axialFields space = axialIn (if space == "Lab" then P.OArr [P.OName "Lab", P.ODict [("WhitePoint", nums [0.9505, 1, 1.089])]] else P.OName space)

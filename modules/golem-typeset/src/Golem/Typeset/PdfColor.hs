@@ -1325,7 +1325,7 @@ analyzeShading value state = do
         Right fns -> allSame [S.fnShape fn 0 | fn <- fns]
         Left _ -> True
   background <- traverse (\v -> dereference Set.empty v read' >>= numbersOf) (lookup "Background" fields)
-  colours <- traverse (rawColor space) (maybe [] id outputs <> maybe [] pure background)
+  colours <- traverse (rawColor space) (fromMaybe [] outputs <> maybe [] pure background)
   let definitions = case functions of
         Left fn -> [S.fnDefinition fn i | i <- [0 .. components - 1]]
         Right fns -> [S.fnDefinition fn 0 | fn <- fns]
@@ -1349,7 +1349,7 @@ analyzeShading value state = do
         CieSpace LabFamily _ _ | zeros [1, 2] -> Just (S.Gray 0 (1 / 100) 0)
         CmykSpace | zeros [0, 1, 2] -> Just (S.Gray 3 (-1) 1)
         RangedSpace CmykSpace [(l0, _), (l1, _), (l2, _), (low, high)]
-          | and [all (== l) (valuesOf i) | (i, l) <- zip [0, 1, 2] [l0, l1, l2]] -> Just (S.Gray 3 (-1 / (high - low)) (1 + low / (high - low)))
+          | and [all (== l) (valuesOf i) | (i, l) <- zip [0, 1, 2] [l0, l1, l2]] -> Just (S.Gray 3 (negate 1 / (high - low)) (1 + low / (high - low)))
         _ -> Nothing
       equalOutputs = allSame definitions && maybe True allSame background
       linear = if lined && within && backgroundWithin then gray else Nothing

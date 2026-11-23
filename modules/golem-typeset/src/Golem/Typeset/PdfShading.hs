@@ -159,7 +159,7 @@ extrapolate.
 -}
 fnWithin :: [(Rational, Rational)] -> Fn -> Bool
 fnWithin spaceRanges fn =
-  all (\position -> and (zipWith inside spaceRanges position)) (fnPositions fn) && rangesWithin fn
+  all (and . zipWith inside spaceRanges) (fnPositions fn) && rangesWithin fn
   where
     inside (low, high) value = low <= value && value <= high
     contained ranges = and (zipWith (\(low, high) (a, b) -> low <= a && b <= high) spaceRanges ranges)
@@ -178,7 +178,8 @@ mapFunction output maps fn = case fn of
     let column = samples !! output
         (d0, d1) = decode !! output
         bytes = packBits bits (concatMap (replicate (length maps)) column)
-        rangeOut = concat [sorted (apply m a) (apply m b) | m <- maps, let (a, b) = ranges !! output]
+        (r0, r1) = ranges !! output
+        rangeOut = concat [sorted (apply m r0) (apply m r1) | m <- maps]
         decodeOut = concat [[apply m d0, apply m d1] | m <- maps]
      in P.OStream (replaceAll fields [("Range", nums rangeOut), ("Decode", nums decodeOut)] ["Length", "Filter", "DecodeParms", "DL"]) bytes
   Fn2 fields c0 c1 _ _ range ->
@@ -211,7 +212,7 @@ numberObject r
   | otherwise = P.OReal (P.showRationalDigits 12 r)
   where
     terminates d
-      | d `mod` 2 == 0 = terminates (d `div` 2)
+      | even d = terminates (d `div` 2)
       | d `mod` 5 == 0 = terminates (d `div` 5)
       | otherwise = d == 1
     exact value =
