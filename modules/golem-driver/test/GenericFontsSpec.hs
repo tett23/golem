@@ -5,6 +5,7 @@ roles.
 module GenericFontsSpec (genericFontsTests) where
 
 import Codec.Archive.Zip (eRelativePath, findEntryByPath, fromEntry, toArchive, zEntries)
+import Control.Applicative ((<|>))
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -147,7 +148,7 @@ familyTests =
         ("p.ps-note", fromMaybe "serif" gr),
         ("pre, code", fromMaybe "monospace" gr),
         (".cs-kbd", fromMaybe "monospace" gr),
-        (".cs-em2", fromMaybe "serif" (maybe gb Just gr))
+        (".cs-em2", fromMaybe "serif" (gr <|> gb))
       ]
 
 {- | The font-family declarations of a style sheet, by the selector of their
