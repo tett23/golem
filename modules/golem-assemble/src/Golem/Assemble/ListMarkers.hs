@@ -17,6 +17,7 @@ module Golem.Assemble.ListMarkers
   )
 where
 
+import Data.Bifunctor (first)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Maybe (fromMaybe)
@@ -72,7 +73,7 @@ parseNumberFormat = fmap fst . parseNumberFormatLegacy
 -- | 'parseNumberFormat' with the forms to be retired the format uses (G03114, G03115).
 parseNumberFormatLegacy :: Text -> Either Text (NumberFormat, [Legacy])
 parseNumberFormatLegacy src = do
-  (ps, legacy) <- parseFormat DoubledToo table src
+  (ps, legacy) <- first formatReason (parseFormat DoubledToo table src)
   (pre, (), n, suf) <- singleNumber ps
   pure (NumberFormat pre (maybe NsBook NsNotation n) suf, legacy)
   where
@@ -80,7 +81,7 @@ parseNumberFormatLegacy src = do
       "n" -> Right (NumberSlot ())
       name
         | Just n <- lookup name samples -> Right (SampleSlot () n)
-        | otherwise -> Left ("表にない差し込みです: {" <> name <> "}")
+        | otherwise -> Left (unknownSlot ("表にない差し込みです: {" <> name <> "}"))
 
 -- | The format as style.toml writes it.
 renderNumberFormat :: NumberFormat -> Text

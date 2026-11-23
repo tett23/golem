@@ -39,6 +39,7 @@ import ParagraphPitchSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
 import SinglePageSpec qualified
+import StyleCauseCodesSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -892,6 +893,7 @@ tests =
       SharedValuesSpec.tests,
       SinglePageSpec.tests,
       StylePositionSpec.tests,
+      StyleCauseCodesSpec.tests,
       StyleSchemaSpec.tests,
       HyphenationExceptionsSpec.tests,
       NaturalKeySpec.tests,
@@ -1275,9 +1277,9 @@ tests =
         role "" @?= Right (Just (Nothing, []))
         role "instance = \"Bold\"\naxes = { wght = 650, wdth = 87.5, opsz = -1 }\n" @?= Right (Just (Just "Bold", [("opsz", -1), ("wdth", 87.5), ("wght", 650)]))
         role "axes = {}\n" @?= Right (Just (Nothing, [])),
-      testCase "ADR 0358: an instance that is not a string, axes that are not a table of finite numbers: G03006" $
-        forM_ ["instance = 3", "instance = [\"Bold\"]", "axes = 3", "axes = [650]", "axes = { wght = \"650\" }", "axes = { wght = true }", "axes = { wght = nan }", "axes = { wght = inf }", "axes = { wght = { v = 1 } }"] $ \kv ->
-          codes (parseStyle (FileId 0) ("[fonts.body]\nja = \"b.otf\"\n" <> kv <> "\n")) @?= ["G03006"],
+      testCase "ADR 0358: an instance that is not a string, axes that are not a table of finite numbers (root ADR 0413: G03260 to G03263)" $
+        forM_ [("instance = 3", "G03260"), ("instance = [\"Bold\"]", "G03260"), ("axes = 3", "G03261"), ("axes = [650]", "G03261"), ("axes = { wght = \"650\" }", "G03262"), ("axes = { wght = true }", "G03262"), ("axes = { wght = nan }", "G03263"), ("axes = { wght = inf }", "G03263"), ("axes = { wght = { v = 1 } }", "G03262")] $ \(kv, code) ->
+          codes (parseStyle (FileId 0) ("[fonts.body]\nja = \"b.otf\"\n" <> kv <> "\n")) @?= [code],
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,

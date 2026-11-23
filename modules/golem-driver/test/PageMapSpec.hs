@@ -46,12 +46,12 @@ pageMapTests =
           Right (anchors, links) -> do
             map (\(label, _, _) -> label) links === map (T.pack . show) positions
             [ident | (_, _, ident) <- links] === [ident | (_, ident, _) <- Map.findWithDefault [] spanA anchors],
-      testCase "root ADR 0386 I1: missing mapping reports G03260" $ checkFailure Nothing False "G03260",
-      testCase "root ADR 0386 I1: unreadable mapping reports G03261" $ checkFailure (Just "{}") True "G03261",
-      testCase "root ADR 0386 I1: JSON syntax reports G03262" $ checkFailure (Just "{") False "G03262",
-      testCase "root ADR 0386 I1: JSON schema reports G03263" $ checkFailure (Just "{}") False "G03263",
-      testCase "root ADR 0386 I1: stale mapping reports G03264" $ checkFailure (Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}") False "G03264",
-      testCase "root ADR 0386 I1: invalid position reports G03265" $ checkFailure (Just ("{\"sources\":{\"a.gm\":\"" <> hex (sha256 "abcd\n") <> "\"},\"pages\":[{\"page\":1,\"label\":\"1\",\"file\":\"a.gm\",\"line\":99,\"character\":0}]}")) False "G03265",
+      testCase "root ADR 0386 I1: missing mapping reports G03272" $ checkFailure Nothing False "G03272",
+      testCase "root ADR 0386 I1: unreadable mapping reports G03273" $ checkFailure (Just "{}") True "G03273",
+      testCase "root ADR 0386 I1: JSON syntax reports G03274" $ checkFailure (Just "{") False "G03274",
+      testCase "root ADR 0386 I1: JSON schema reports G03275" $ checkFailure (Just "{}") False "G03275",
+      testCase "root ADR 0386 I1: stale mapping reports G03276" $ checkFailure (Just "{\"sources\":{\"a.gm\":\"0000000000000000000000000000000000000000000000000000000000000000\"},\"pages\":[]}") False "G03276",
+      testCase "root ADR 0386 I1: invalid position reports G03277" $ checkFailure (Just ("{\"sources\":{\"a.gm\":\"" <> hex (sha256 "abcd\n") <> "\"},\"pages\":[{\"page\":1,\"label\":\"1\",\"file\":\"a.gm\",\"line\":99,\"character\":0}]}")) False "G03277",
       testCase "root ADR 0386 I1: mapped pages preserve their physical order" $ do
         let mapping = PageMap hashes [FixedPage 1 "i" (Just ("a.gm", 0, 0)), FixedPage 2 "1" (Just ("a.gm", 0, 2))]
         case resolvePageMap sources files book mapping of

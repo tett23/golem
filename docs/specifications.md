@@ -2191,9 +2191,14 @@ HTML と EPUB は版面を無視するので、CSS の `columns` も `column-cou
 | 見出しの番号の書式 | `n`、`1` から `5`、`chapter` | `arabic` | G03006 |
 | 図版、コードブロック、表、ノンブルの番号の書式 | `n`、`1`、`2`、`chapter` | `arabic` | G03006 |
 | 柱の書式 | なし | なし | G03014 |
-| `[printings]` の `format` | なし（欄はどれも文字の差し込み） | なし | G03006 |
+| `[printings]` の `format` | なし（欄はどれも文字の差し込み） | なし | 原因ごとに G03264 から G03271 |
 
 `[printings]` の `format` だけは、`{{` と `}}` も今の書き方として文字の波括弧に読む（[Golem ADR 0375](adr/0375-printings-format.md)）。
+
+`[printings]` の `format` の誤りは、原因ごとにコードを分ける（[ADR 0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+改行は G03264、表にない欄（名前の空の `{:kanji}` を含む）は G03265、欄に付けた表記（`{edition:kanji}`、`{year:}`）は G03266、閉じていない `{` は G03267、対応する `{` のない `}` は G03268、空の差し込み `{}` は G03269、`\` の後の `{`、`}`、`\` のどれでもない字は G03270、書式の末尾の `\` は G03271 である。
+二つ以上の誤りがあるときは、改行を先に、残りは書式の前から読んで最初に出会う誤りのコードを一つだけ出す。
+ほかの書式の誤りのコードは、表のとおりである。
 
 見出しの番号の書式の `{k}`（k は 1 から 5）は、その見出しの上の階層 k の今の番号である（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。
 k は、その見出しの階層より小さくなければならない。
@@ -4644,7 +4649,9 @@ PDF が使う役割の、フォントにない名前、フォントにない軸�
 G08111 と G08112 は、その後に軸ごとに一つずつ、軸のタグの文字の順に出す。
 位置は、ほかのフォントのエラーと同じく `style.toml` の先頭である。
 `golem build` の PDF、`golem check`、`golem preflight` が報告し、`golem check` もフォントのファイルを読んで確かめる。
-`instance` が文字列でないか、`axes` が数の表でないか、`axes` の値が `nan` か `inf` であれば、`style.toml` の誤り（G03006）である。
+`style.toml` の `instance` と `axes` の誤りは、原因ごとにコードを分ける（[ADR 0413](adr/0413-new-codes-for-font-axes-and-printing-formats.md)）。
+`instance` が文字列でなければ G03260、`axes` が表でなければ G03261、`axes` の値が数でなければ G03262、`axes` の値が `nan` か `inf` であれば G03263 である。
+位置は誤りの値である。
 
 PDF では、シェイピング、グリフの寸法、埋め込むサブセットに、同じ座標を渡す。
 HarfBuzz が座標でシェイピングし、FreeType が座標で送りと字面の枠を測り、HarfBuzz のサブセットがすべての軸を座標に固定する。

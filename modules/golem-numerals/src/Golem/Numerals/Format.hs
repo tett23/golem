@@ -8,6 +8,9 @@ module Golem.Numerals.Format
     Piece (..),
     Braces (..),
     Legacy (..),
+    FormatCause (..),
+    FormatError (..),
+    unknownSlot,
     parseFormat,
     singleNumber,
     escapeLiteral,
@@ -27,6 +30,7 @@ module Golem.Numerals.Format
   )
 where
 
+import Data.Bifunctor (bimap, first)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -62,12 +66,48 @@ data Legacy
     LegacySample !Text !Notation
   deriving stock (Eq, Show)
 
+{- | Why a format does not read (root ADR 0413): one constructor for each
+cause, so that a reader of style.toml can choose a code for it.
+-}
+data FormatCause
+  = -- | the table of the format has no slot of the name (or the name is empty, as in @{:kanji}@)
+    UnknownSlot
+  | -- | a notation after the colon of a slot that writes text
+    NotationOnText
+  | -- | a notation not in the table of notations
+    UnknownNotation
+  | -- | a notation after the colon of a sample (@{一:kanji}@)
+    NotationOnSample
+  | -- | a @{@ not closed
+    UnclosedBrace
+  | -- | a @}@ without its @{@
+    UnopenedBrace
+  | -- | an empty slot @{}@
+    EmptySlot
+  | -- | a character after @\\@ that is not @{@, @}@ or @\\@
+    BadEscape
+  | -- | a @\\@ at the end of the format
+    TrailingBackslash
+  deriving stock (Eq, Show)
+
+-- | The cause of an error of a format and its reason, in Japanese.
+data FormatError = FormatError
+  { formatCause :: !FormatCause,
+    formatReason :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | A name the table of a format does not have, with the reason.
+unknownSlot :: Text -> FormatError
+unknownSlot = FormatError UnknownSlot
+
 {- | Reads a format: text, escapes (@\\{@, @\\}@, @\\\\@) and slots in
 braces, a number slot with a notation after a colon. The table gives the
-slot of a name, or the reason it is wrong. 'Left' is the reason, in
-Japanese; the uses of the forms to be retired come with the pieces.
+slot of a name, or why it is wrong. 'Left' is the first error read from
+the front, its cause and its reason in Japanese; the uses of the forms to
+be retired come with the pieces.
 -}
-parseFormat :: Braces -> (Text -> Either Text (Slot a)) -> Text -> Either Text ([Piece a], [Legacy])
+parseFormat :: Braces -> (Text -> Either FormatError (Slot a)) -> Text -> Either FormatError ([Piece a], [Legacy])
 parseFormat braces table = fmap finish . go [] [] . T.unpack
   where
     finish (ps, ls) = (merge (reverse ps), reverse ls)
@@ -75,36 +115,36 @@ parseFormat braces table = fmap finish . go [] [] . T.unpack
       [] -> Right (ps, ls)
       '\\' : c : rest
         | c `elem` ("{}\\" :: String) -> go (PLit (T.singleton c) : ps) ls rest
-        | otherwise -> Left ("\\ の後には {、}、\\ のどれかを書きます: \\" <> T.singleton c)
-      ['\\'] -> Left "書式の末尾に \\ があります。文字の \\ は \\\\ と書きます"
+        | otherwise -> Left (FormatError BadEscape ("\\ の後には {、}、\\ のどれかを書きます: \\" <> T.singleton c))
+      ['\\'] -> Left (FormatError TrailingBackslash "書式の末尾に \\ があります。文字の \\ は \\\\ と書きます")
       '{' : '{' : rest | braces == DoubledToo -> go (PLit "{" : ps) (LegacyBraces : ls) rest
       '}' : '}' : rest | braces == DoubledToo -> go (PLit "}" : ps) (LegacyBraces : ls) rest
       '{' : rest -> case break (`elem` ("{}\\" :: String)) rest of
         (name, '}' : after) -> do
           (p, l) <- slot (T.pack name)
           go (p : ps) (maybe ls (: ls) l) after
-        _ -> Left "閉じていない { があります。文字の { は \\{ と書きます"
-      '}' : _ -> Left "対応する { のない } があります。文字の } は \\} と書きます"
+        _ -> Left (FormatError UnclosedBrace "閉じていない { があります。文字の { は \\{ と書きます")
+      '}' : _ -> Left (FormatError UnopenedBrace "対応する { のない } があります。文字の } は \\} と書きます")
       c : rest -> go (PLit (T.singleton c) : ps) ls rest
     slot written =
       let (name, colon) = T.breakOn ":" written
           notationOf = T.drop 1 colon
        in if T.null written
-            then Left "空の差し込み {} があります"
+            then Left (FormatError EmptySlot "空の差し込み {} があります")
             else do
               s <- table name
               case s of
                 TextSlot a
                   | T.null colon -> Right (PText a, Nothing)
-                  | otherwise -> Left ("数でない差し込みには表記を書けません: {" <> written <> "}")
+                  | otherwise -> Left (FormatError NotationOnText ("数でない差し込みには表記を書けません: {" <> written <> "}"))
                 NumberSlot a
                   | T.null colon -> Right (PNumber a Nothing, Nothing)
                   | otherwise -> case notationNamed notationOf of
                       Just n -> Right (PNumber a (Just n), Nothing)
-                      Nothing -> Left ("表にない表記です: {" <> written <> "}。" <> T.intercalate "、" (map notationName notations) <> " のどれかを書きます")
+                      Nothing -> Left (FormatError UnknownNotation ("表にない表記です: {" <> written <> "}。" <> T.intercalate "、" (map notationName notations) <> " のどれかを書きます"))
                 SampleSlot a n
                   | T.null colon -> Right (PNumber a (Just n), Just (LegacySample name n))
-                  | otherwise -> Left ("表にない差し込みです: {" <> written <> "}")
+                  | otherwise -> Left (FormatError NotationOnSample ("表にない差し込みです: {" <> written <> "}"))
     merge = \case
       PLit a : PLit b : rest -> merge (PLit (a <> b) : rest)
       x : rest -> x : merge rest
@@ -150,13 +190,13 @@ defaultMarkFormat = MarkFormat "*" arabic ""
 -- | Reads @[notes] mark-format@: exactly one @{n}@ or @{n:<notation>}@.
 parseMarkFormat :: Text -> Either Text MarkFormat
 parseMarkFormat t = do
-  (ps, _) <- parseFormat EscapesOnly table t
+  (ps, _) <- first formatReason (parseFormat EscapesOnly table t)
   (pre, (), n, suf) <- singleNumber ps
   pure (MarkFormat pre (fromMaybe arabic n) suf)
   where
     table = \case
       "n" -> Right (NumberSlot ())
-      name -> Left ("表にない差し込みです: {" <> name <> "}。注の番号は {n} か {n:<表記>} と書きます")
+      name -> Left (unknownSlot ("表にない差し込みです: {" <> name <> "}。注の番号は {n} か {n:<表記>} と書きます"))
 
 -- | The mark format as style.toml writes it.
 renderMarkFormat :: MarkFormat -> Text
@@ -168,33 +208,33 @@ data NumberSlotName = SlotOwn | SlotLevel Int | SlotChapter
   deriving stock (Eq, Show)
 
 -- | The slots of the number formats of figures, code blocks and folios: @{n}@, @{1}@, @{2}@ and @{chapter}@.
-numberFormatSlots :: Text -> Either Text (Slot NumberSlotName)
+numberFormatSlots :: Text -> Either FormatError (Slot NumberSlotName)
 numberFormatSlots = \case
   "n" -> Right (NumberSlot SlotOwn)
   "1" -> Right (NumberSlot (SlotLevel 0))
   "2" -> Right (NumberSlot (SlotLevel 1))
   "chapter" -> Right (NumberSlot SlotChapter)
-  name -> Left ("表にない差し込みです: {" <> name <> "}。{n}、{1}、{2}、{chapter} のどれかを書きます")
+  name -> Left (unknownSlot ("表にない差し込みです: {" <> name <> "}。{n}、{1}、{2}、{chapter} のどれかを書きます"))
 
 -- | Reads a number format; 'Left' is the reason, in Japanese.
 parseNumberFormatText :: Text -> Either Text [Piece NumberSlotName]
-parseNumberFormatText t = fst <$> parseFormat EscapesOnly numberFormatSlots t
+parseNumberFormatText t = bimap formatReason fst (parseFormat EscapesOnly numberFormatSlots t)
 
 {- | The slots of the number formats of headings (docs/adr/0188): @{n}@,
 @{1}@ to @{5}@ and @{chapter}@. Which of @{1}@ to @{5}@ a heading may
 use depends on its level; style.toml checks that.
 -}
-headingNumberFormatSlots :: Text -> Either Text (Slot NumberSlotName)
+headingNumberFormatSlots :: Text -> Either FormatError (Slot NumberSlotName)
 headingNumberFormatSlots = \case
   "n" -> Right (NumberSlot SlotOwn)
   "chapter" -> Right (NumberSlot SlotChapter)
   name
     | [c] <- T.unpack name, c >= '1', c <= '5' -> Right (NumberSlot (SlotLevel (fromEnum c - fromEnum '1')))
-    | otherwise -> Left ("表にない差し込みです: {" <> name <> "}。{n}、{1} から {5}、{chapter} のどれかを書きます")
+    | otherwise -> Left (unknownSlot ("表にない差し込みです: {" <> name <> "}。{n}、{1} から {5}、{chapter} のどれかを書きます"))
 
 -- | Reads a number format of a heading; 'Left' is the reason, in Japanese.
 parseHeadingNumberFormatText :: Text -> Either Text [Piece NumberSlotName]
-parseHeadingNumberFormatText t = fst <$> parseFormat EscapesOnly headingNumberFormatSlots t
+parseHeadingNumberFormatText t = bimap formatReason fst (parseFormat EscapesOnly headingNumberFormatSlots t)
 
 -- | Whether a number format has a slot of the chapter (G04004).
 formatUsesChapter :: Text -> Bool
