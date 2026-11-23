@@ -303,9 +303,7 @@ HTML は [code: build/html/] に、原稿のファイルごとに一つずつ書
 [code: index.xhtml] が入り口です。
 書き方は、HTML Living Standard [cite html] の XML の書き方（XHTML）です[note: HTML Living Standard。[code: https://html.spec.whatwg.org/multipage/]]。
 EPUB の本文も XHTML でなければならないので、HTML と EPUB で同じ本文を使えるように、HTML も XHTML で書きます。
-フォントのファイルとスタイルシートも同じフォルダに置くので、フォルダごと Web サーバーに置けば、そのまま読めます。
-フォントのファイルを同梱するので、HTML を公開するとフォントのファイルも配ることになります。
-フォントのライセンスが配布を許しているかを確かめてください（「[ref-title fonts]」、[ref-page fonts] ページ）。
+スタイルシートも同じフォルダに置くので、フォルダごと Web サーバーに置けば、そのまま読めます。
 
 HTML は、画面の幅に合わせて文章を流し込む形式なので、版面、柱、ノンブルはありません。
 [code: style.toml] からは、書体、文字スタイル、段落スタイル、色、番号の書式を使います。
@@ -319,6 +317,51 @@ HTML は、画面の幅に合わせて文章を流し込む形式なので、版
 HTML の見た目を、スタイルシートを直接書いて変える方法はありません。
 見た目は [code: style.toml] で決め、PDF と同じ設定から作ります。
 スタイルシートを書けると、PDF と HTML で中身が食い違う抜け道になるからです。
+
+@label web-fonts
+### HTML と EPUB の書体
+
+HTML と EPUB は、既定ではフォントのファイルを同梱せず、明朝の系統、ゴシックの系統、等幅といった大まかな書体（CSS の総称の書体）だけを指定します。
+電子書籍の多くは、明朝かゴシックかの指定で足りるからです。
+実際にどの書体で描くかは、読み手のブラウザーや読書環境が決めます。
+同じ本でも、読む環境ごとに書体が違います。
+
+総称の書体は、[code: style.toml] のフォントの役割の [code: generic-family] で選びます。
+[code: "serif"] が明朝の系統、[code: "sans-serif"] がゴシックの系統、[code: "monospace"] が等幅です。
+書かなければ、本文と段落は [code: serif]、コードとコードを継ぐ文字スタイルは [code: monospace]、ほかの文字スタイルは本文の役割の総称（それもなければ [code: serif]）になります。
+フォントのファイルを書かず、[code: generic-family] だけを書いた役割も作れます。
+ほかの値を書くとエラー（G03281）になります。
+PDF は [code: generic-family] を使いません。
+
+```toml
+[fonts.note]
+ja = "fonts/NotoSansJP-Regular.otf"
+generic-family = "sans-serif"
+
+[paragraph-styles.note]
+font = "note"
+```
+
+HTML と EPUB は見出しの [code: font] を使わないので、見出しの役割の [code: generic-family] は見出しに適用されません。
+
+書体を決めたい本は、[code: manifest.toml] の [code: \[targets.html\]] か [code: \[targets.epub\]] に [code: fonts = "embed"] を書きます。
+その出力は、[code: style.toml] のフォントのファイルを同梱し、その書体で表示します。
+同梱すると、HTML や EPUB を公開すればフォントのファイルも配ることになります。
+フォントのライセンスが配布を許しているかを確かめてください（「[ref-title fonts]」、[ref-page fonts] ページ）。
+[code: fonts] に [code: "generic"] と [code: "embed"] のほかの値を書くとエラー（G03280）になります。
+
+```toml
+[targets.html]
+fonts = "embed"
+
+[targets.epub]
+fonts = "embed"
+```
+
+同梱しない出力は、フォントのファイルがなくても警告を出しません。
+ただし、パスがプロジェクトの外を指すと、どの出力でもエラー（G03279）になります。
+同梱する出力は、フォントのファイルがなければ、[code: --profile dev] ではそのフォントを除いて書き、G03010 の警告を出します。
+[code: --profile prod] ではエラーになり、書きません。
 
 ## EPUB
 
@@ -339,7 +382,7 @@ HTML の目次のページ（[code: index.xhtml]）も同じです。
 縦組みの本は、ページを右から左へめくる向きにします。
 脚注は、電子書籍の端末でポップアップとして表示される形で書きます。
 傍注は、段落の直後に置きます。
-フォントのファイルは、HTML と同じく EPUB の中に同梱し、難読化はしません。
+[code: fonts = "embed"] を書いた EPUB は、フォントのファイルを EPUB の中に同梱し、難読化はしません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。
 
 本の識別子には、[code: \[targets.epub\]] に電子版の ISBN を書いていればそれを、なければ [code: manifest.toml] の [code: id] を使います。
 書名、著者、そのほかの関係者、発行者、言語は [code: \[metadata\]] から書き込みます（「[ref-title metadata]」、[ref-page metadata] ページ）。

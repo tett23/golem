@@ -89,6 +89,7 @@ role = "author"
 [targets.pdf]
 
 [targets.html]
+fonts = "embed"
 
 [functions.requires]
 file = ["data/units.tsv"]

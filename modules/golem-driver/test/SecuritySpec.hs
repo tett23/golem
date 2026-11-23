@@ -207,7 +207,9 @@ securityTests =
         assertBool (T.unpack page) (not ("onerror=\"" `T.isInfixOf` page)),
       testCase "a font role with a quote stays inside the CSS strings" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         let style = horizontalStyle <> "\n[fonts.\"x\\\" } body { color: red } x { a: \\\"\"]\nlatin = \"fonts/a\\\").otf\"\n"
+        -- the fonts embedded, so that the CSS names the role (docs/adr/0423)
         project tmp "" style "本文。\n" [("fonts/a\").otf", "font")]
+        embedFonts tmp
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         map diagCode (filter isError (brDiagnostics r)) @?= []
         css <- TIO.readFile (tmp </> "build/html/style.css")
