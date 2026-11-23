@@ -15,8 +15,9 @@ import Test.Tasty
 {- | The tests of golem-driver that change the state of the process:
 the plugin tests set XDG_CACHE_HOME, and the locale tests set the locale
 encoding. The suite is not -threaded, so tasty runs them one after another
-and no test reads the state another has half changed; golem-driver-test,
-which is -threaded, has none of them (docs/adr/0146).
+and no test reads the state another has half changed; the four suites
+that golem-driver-test was split into, which are -threaded, have none of
+them (docs/adr/0146, root ADR 0416).
 -}
 main :: IO ()
 main = enterPackageDirectory >> lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . const . tests
