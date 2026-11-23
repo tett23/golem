@@ -54,6 +54,8 @@ inductive Flow where
       caption, the rows of its first part at least, whether a part
       before the last has a row for the text it continues, its rows. -/
   | code (geometry caption first : Nat) (continued : Bool) (rows : List Line)
+  /-- A term of a definition list (`FDefTerm`). -/
+  | defTerm (lines : List Line)
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -134,6 +136,9 @@ structure Env where
   /-- `codeSpan` of Paginate/Types.hs: the grid lines of a part of a
       code block of the geometry and the rows given. -/
   codeSpan : Nat → Nat → Nat
+  /-- `envKeepParts env == KeepColumn`: the parts are kept in a column,
+      not across a page or a spread. -/
+  keepColumn : Bool
   roomForLine : St → List Line → Bool
 
 def initialState : St :=
@@ -1008,6 +1013,11 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .needLines _ => st
   | .blank _ => st
   | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
+  | .defTerm ls =>
+    if env.keepColumn then
+      placeLines env defaultKeep
+        (keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))) true ls
+    else placeLines env ⟨1, 1, false⟩ st true ls
 
 def deferredFigure (i : Nat) : Deferred → Bool
   | .figure j _ => i == j
@@ -1087,6 +1097,7 @@ def text (st : St) : List Slot := pagesText st.done ++ textSlots st.slots
 def flowText : Flow → List Slot
   | .paragraph _ ls => ls.map (fun l => .line l.id)
   | .continued _ ls => ls.map (fun l => .line l.id)
+  | .defTerm ls => ls.map (fun l => .line l.id)
   | .heading _ _ [] => []
   | .heading _ _ (l0 :: ls) => [.heading l0.id (ls.length + 1)]
   | .code _ _ _ _ ls => ls.map (fun l => .codeRow l.id)
@@ -1430,6 +1441,11 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | needLines n => simp [place, flowText]
   | blank n => simp [place, flowText]
   | code g c first cont ls => exact text_placeCode ..
+  | defTerm ls =>
+    simp only [place]
+    split
+    · rw [text_placeLines, text_keep]; rfl
+    · rw [text_placeLines]; rfl
 
 theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (step env st f rest) = text st ++ flowText f := by
@@ -1457,6 +1473,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | figure i n => simp only [step]; exact general _ _
   | pageFigure i => simp only [step]; exact general _ _
   | code g c first cont ls => simp only [step]; exact general _ _
+  | defTerm ls => simp only [step]; exact general _ _
 
 theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     text (placeAll env st flows) = text st ++ sourceText flows := by
@@ -1474,8 +1491,9 @@ theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     simp [sourceText, List.cons_bind, List.append_assoc]
 
 /-- Root ADR 0352 invariant 5 for the lines: the pages of the pagination
-    hold every line of the paragraphs, every heading and every row of
-    the code blocks written, each once, in the order written. -/
+    hold every line of the paragraphs and the terms, every heading and
+    every row of the code blocks written, each once, in the order
+    written. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) :
     pagesText (paginate env flows).done = sourceText flows := by
   have h := text_placeAll env flows initialState
@@ -2279,6 +2297,13 @@ theorem place_figs (env : Env) (st : St) (f : Flow) (rest : List Flow)
   | blank n => exact ⟨by simp [place, flowFigs], h⟩
   | code g c first cont ls =>
     simp only [place, flowFigs, List.append_nil]; exact placeCode_figs env g c first cont st true h ls
+  | defTerm ls =>
+    simp only [place, flowFigs, List.append_nil]
+    split
+    · have k := inv_keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest)) h
+      have := placeLines_figs env defaultKeep _ true ls k
+      rw [figs_keep] at this; exact this
+    · exact placeLines_figs env _ st true ls h
 
 theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (st : St) (f : Flow) (rest : List Flow)
     (h : Inv st) (hf : figureOk f) :
@@ -2326,6 +2351,7 @@ theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (st : St) (f : Flow) (re
   | figure i n => simp only [step]; exact general _ _
   | pageFigure i => simp only [step]; exact general _ _
   | code g c first cont ls => simp only [step]; exact general _ _
+  | defTerm ls => simp only [step]; exact general _ _
 
 theorem placeAll_figs (env : Env) (hc : 0 ≤ env.capacity) (flows : List Flow) (st : St) (h : Inv st)
     (hf : ∀ f ∈ flows, figureOk f) :
