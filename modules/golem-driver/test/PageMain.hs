@@ -12,6 +12,7 @@ import FileSpacesSpec (fileSpacesTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
+import KeepBookPartsSpec qualified
 import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import NestedFiguresSpec qualified
@@ -52,7 +53,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-driver (ADR 0001)"
-    [ NestedFiguresSpec.tests,
+    [ KeepBookPartsSpec.tests,
+      NestedFiguresSpec.tests,
       SinglePageSpec.tests,
       pageLabelsTests,
       keepOptionsTests,

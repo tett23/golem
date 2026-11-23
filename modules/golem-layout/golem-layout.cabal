@@ -57,6 +57,7 @@ library
                     Golem.Layout.Wrap
   other-modules:    Golem.Layout.Hyphenation.Embed
                     Golem.Layout.Orientation.Table
+                    Golem.Layout.Paginate.BookParts
                     Golem.Layout.Paginate.Decide
                     Golem.Layout.Paginate.Types
   build-depends:
@@ -84,7 +85,9 @@ test-suite golem-layout-test
   -- -N needs it (docs/adr/0293)
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N -qg -A64m"
-  other-modules:    AkiTableSpec
+  other-modules:    BookPartsEnum
+                    BookPartsSpec
+                       AkiTableSpec
                     AlignSpec
                     CharClassSpec
                     CiteBreakEnum

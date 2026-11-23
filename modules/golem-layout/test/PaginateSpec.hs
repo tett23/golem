@@ -22,6 +22,7 @@ import Golem.Layout.Paginate
 import Golem.Layout.Paginate.State qualified as S
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -1243,7 +1244,7 @@ given and a continued note of the lines given waiting, and a need.
 -}
 keepFrom :: Int -> Int -> [Int] -> Int -> Int -> (S.St, S.St)
 keepFrom cols c figs noteLen need =
-  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
+  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c
       st0 = S.putLine env (S.initialState env) (LineBox 0 [] [] [] 0)
       st = st0 {S.sDeferred = [FFigure (1000 + j) n [] [] | (j, n) <- zip [0 ..] figs], S.sPendingNotes = [(nid 900, 0, noteLen) | noteLen > 0]}
    in (st, S.keep env st (const need))
@@ -1263,7 +1264,7 @@ keepTests =
           noteLen <- [0 .. 2],
           need <- [1 .. c + 1],
           let (st, r) = keepFrom cols c figs noteLen need
-              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) c
+              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c
               fitsOrEmpty = need <= S.free env r || S.isEmpty r
               advanced = (S.sPage r - S.sPage st) * cols + S.sColumn r - S.sColumn st
         ],
