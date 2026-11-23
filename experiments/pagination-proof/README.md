@@ -426,6 +426,9 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 `advance` は、現在の段を閉じてからスロットを空にするので、行は一度だけ出力に移る。
 表の行は、キャプションが上なら、キャプション、見出し行、本体の行の順に、キャプションが下なら、見出し行、本体の行、キャプションの順に数える。
 次の段で繰り返す見出し行は、注などを除いた同じ行なので、本文の行とは別のスロットに置き、本文には数えない。
+`no-break` か `keep-with-next` の前の段落では、`placeKept` が、段落の全体をそのまま置くか、最後の行を残りから分けて置くかを選ぶ。
+分けるときも、前の部分を置いた状態に続けて後ろの部分を置くので、行は原稿の順に一度ずつ置かれる。
+`waitFor` と `checkNoBreak` は待つ制御と満たせなかった制御だけを変えるので、本文と図版を変えない。
 
 図版の順序には、図版の高さが 1 行以上という前提が要る。
 高さ 0 行の図版の直後に転置図版があると、Haskell の実装は図版の順序を原稿と逆にする。
@@ -463,12 +466,14 @@ Haskell の実装では、この下がり方が表を段の先頭より上に置
 `nextNeed`、`fitting`、`roomForLine` の値は `Env` の引数とし、定理はそのどの値でも成り立つ。
 コードの行の部分の行数を決める `Code.hs:150` の `codeSpan` も `Env` の引数とし、コードの組み方は自然数で区別する。
 部分を段の中で保つか（`envKeepParts` が `KeepColumn` か）も `Env` の引数とし、定義の項の置き方はその両方の値で扱う。
-フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表を扱う。
-本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始、段組みの切り替え、`no-break`、`keep-with-next`、`FAdjustLines` は、まだ扱わない。
+`no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
+段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
+フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next` を扱う。
+本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始、段組みの切り替え、`FAdjustLines` は、まだ扱わない。
 表は、`envKeepParts` が `KeepColumn` のときの `placeTable` と、それ以外のときの `placeTableAcross` の両方を扱う。
 本の部がないので、`placeTableAcross` の、本の部の中で末尾の行とキャプションを保つ分岐（`envBookPartSpan` が `Just` のとき）は扱わない。
 表の部分の記録 `sTables` は出力の付帯情報なので、モデルには持たない。
-これらがないので、`checkNoBreak` は何もせず、`placeFlow` は `place` と同じになる。
+満たせなかった制御は、出典の位置を持たない `Unmet.noBreak` と `Unmet.keepNext` で表す。
 `FAdjustLines` を扱わないが、状態の行数の縮みは残し、`placeLines` の分岐と尺度は任意の値で扱う。
 箱がないので、`cap` は箱の後の行数を引かず、`isEmpty` は箱の先頭を見ない。
 出力の `PageOut` には、ページ番号、段番号、空白ページか、スロット、脚注、満たせなかった制御だけを持つ。
@@ -491,6 +496,11 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:327` `waitsFor` | `waitsFor` |
 | `Paginate.hs:351` `placeBlank` | `placeBlank` |
 | `Paginate.hs:369` `applyNeed` | `applyNeed` |
+| `Paginate.hs:393` `placeFlow` | `placeFlow`、`previousKeep` |
+| `Paginate.hs:417` `placeKept` | `placeKept`、`keptCut` |
+| `Paginate.hs:437` `waitFor` | `waitFor` |
+| `Paginate.hs:448` `checkNoBreak` | `checkNoBreak`、`linesIn` |
+| `Paginate.hs:460` `slotLineCount` | `slotLineCount` |
 | `Paginate.hs:466` `applyBreaks` | `applyBreaks` |
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |

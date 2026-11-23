@@ -59,6 +59,13 @@ inductive Flow where
   /-- A table (`FTable`): the grid lines of space before it, its header
       row, its body rows, its caption and whether the caption is below. -/
   | table (space : Nat) (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool)
+  /-- A no-break (`FNoBreak`): the flow after it starts in the column
+      where the flow before it ended. -/
+  | noBreak
+  /-- A no-break of so many last lines (`FNoBreakLines`). -/
+  | noBreakLines (n : Nat)
+  /-- A keep-with-next of so many lines (`FKeepNext`). -/
+  | keepNext (n : Nat)
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -91,6 +98,8 @@ inductive Unmet where
   | splitKept (id : Nat)
   | shortFirst (id want got : Nat)
   | shortLast (id want got : Nat)
+  | noBreak
+  | keepNext
   deriving DecidableEq, Repr
 
 /-- A note part: note id, first line, lines. -/
@@ -126,6 +135,10 @@ structure St where
   seen : Bool
   lastDeferred : Bool
   headingOnly : Bool
+  /-- `sNoBreak`: the no-breaks and keep-with-nexts waiting for the next
+      flow, with the page, the column and the slots before it, and the
+      lines the column must take and whether only lines count. -/
+  noBreak : List (Unmet × Nat × Nat × Nat × (Nat × Bool))
 
 structure Need where
   grid : Nat
@@ -146,9 +159,17 @@ structure Env where
       not across a page or a spread. -/
   keepColumn : Bool
   roomForLine : St → List Line → Bool
+  /-- `keptNeed` of Decide.hs: what a paragraph before a no-break or a
+      keep-with-next keeps its last lines with. -/
+  keptNeed : List Flow → Option Need
+  /-- The last lines requested by the controls ahead (the second of
+      `keepAhead` of Decide.hs, 0 when there are none). -/
+  keepLast : List Flow → Nat
+  /-- `nextFirstLines` of Decide.hs. -/
+  nextFirst : Nat → List Flow → Nat × Bool
 
 def initialState : St :=
-  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false⟩
+  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, []⟩
 
 /-! ## Queries of State.hs -/
 
@@ -936,7 +957,7 @@ def waitsBehind (st : St) : Flow → Bool
   | _ => false
 
 def waitsFor : Flow → Bool
-  | .brk _ | .space _ | .blank _ | .needLines _ => true
+  | .brk _ | .space _ | .blank _ | .needLines _ | .noBreak | .noBreakLines _ | .keepNext _ => true
   | _ => false
 
 def headingNeed (env : Env) (st : St) (n : Nat) (ls : List Line) : Int :=
@@ -1125,6 +1146,9 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .space n => placeSpaceFlow env st n
   | .needLines _ => st
   | .blank _ => st
+  | .noBreak => st
+  | .noBreakLines _ => st
+  | .keepNext _ => st
   | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
   | .defTerm ls =>
     if env.keepColumn then
@@ -1143,24 +1167,92 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
       let started := if space ≤ free env st then { st with used := st.used + space } else nextColumn env st
       placeTableAcross env started h rows capt below
 
+/-! ## No-breaks and keep-with-nexts (docs/adr/0261) -/
+
+/-- `previousKeep` of `placeFlow`. -/
+def previousKeep (env : Env) (rest : List Flow) (kp : Keep) : Keep :=
+  if 0 < env.keepLast rest then { kp with last := max kp.last (env.keepLast rest), first := max 2 kp.first }
+  else kp
+
+/-- The lines that `placeKept` sends to the next column together. -/
+def keptCut (kp : Keep) (len : Nat) : Nat :=
+  if kp.all = true ∨ len ≤ kp.last ∨ len - kp.last < kp.first then len else kp.last
+
+/-- `placeKept` of Paginate.hs, for the lines of a paragraph or a term. -/
+def placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St) (st : St) (isStart : Bool)
+    (ls : List Line) (n : Need) : St :=
+  let st1 := placeIn st isStart ls
+  let front := ls.take (ls.length - keptCut kp ls.length)
+  let back := ls.drop (ls.length - keptCut kp ls.length)
+  let stA := placeIn st isStart front
+  let here := placeIn stA (isStart && front.isEmpty) back
+  let fits (s : St) : Prop := needIn env s noNeed n ≤ free env s
+  if fits st1 then st1
+  else if here.page = stA.page ∧ here.column = stA.column ∧ fits here then here
+  else if isEmpty stA = true then st1
+  else placeIn (nextColumn env stA) (isStart && front.isEmpty) back
+
+/-- `placeFlow` of Paginate.hs. -/
+def placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
+  match f, env.keptNeed rest with
+  | .paragraph kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st true ls n
+  | .continued kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st false ls n
+  | .defTerm ls, some n =>
+    let initial := if 0 < env.keepLast rest then st
+      else keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))
+    placeKept env (previousKeep env rest defaultKeep) (placeLines env defaultKeep) initial true ls n
+  | _, _ => place env st f rest
+
+/-- `waitFor` of Paginate.hs. -/
+def waitFor (u : Unmet) (k : Nat × Bool) (st : St) : St :=
+  match st.noBreak with
+  | [] => { st with noBreak := [(u, st.page, st.column, st.slots.length, k)] }
+  | ws@((_, p, c, n, (k0, l0)) :: _) =>
+    { st with noBreak := (ws ++ [(u, p, c, n, k)]).map (fun w => (w.1, p, c, n, (max k0 k.1, l0 || k.2))) }
+
+/-- `slotLineCount` of Paginate.hs; a repeated header line is a line. -/
+def slotLineCount (linesOnly : Bool) : Slot → Nat
+  | .line _ => 1
+  | .repeated _ => 1
+  | .heading _ m => max 1 m
+  | _ => if linesOnly then 0 else 1
+
+def linesIn (linesOnly : Bool) (n : Nat) (slots : List (Int × Slot)) : Nat :=
+  ((slots.drop n).map (fun s => slotLineCount linesOnly s.2)).foldr (· + ·) 0
+
+/-- `checkNoBreak` of Paginate.hs. -/
+def checkNoBreak (st : St) : St :=
+  match st.noBreak with
+  | [] => st
+  | ws@((_, p, c, n, (k, linesOnly)) :: _) =>
+    let added := if st.page = p ∧ st.column = c then linesIn linesOnly n st.slots
+      else ((st.done.filter (fun po => po.number == p && po.column == c)).map
+        (fun po => linesIn linesOnly n po.slots)).foldr max 0
+    let st' := if max 1 k ≤ added then st else ws.foldl (fun s w => addUnmet w.1 s) st
+    { st' with noBreak := [] }
+
 def deferredFigure (i : Nat) : Deferred → Bool
   | .figure j _ => i == j
   | _ => false
 
-/-- `step` of Paginate.hs; `checkNoBreak` and `placeFlow` are the
-    identity and `place` here, as no flow of the model is a no-break or
-    a keep-with-next. -/
+/-- `step` of Paginate.hs. -/
 def step (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   match f with
   | .needLines n => needMore env n st
+  | .noBreakLines 0 => st
+  | .noBreakLines _ | .noBreak =>
+    if st.seen = false ∨ st.lastDeferred = true then addUnmet .noBreak st else waitFor .noBreak (1, false) st
+  | .keepNext n =>
+    if st.seen = false ∨ st.lastDeferred = true then addUnmet .keepNext st
+    else waitFor .keepNext (env.nextFirst n rest) st
   | .blank n => if rest.all waitsFor then st else { st with blank := st.blank ++ [n] }
   | .brk _ => place env st f rest
   | .space n => placeSpace env (needBeforeSpaces env (applyBreaks env st)) n
   | _ =>
     let stB := applyBreaks env st
     let waiting := waitsBehind stB f
-    let st1 := if waiting then place env stB f rest
-      else place env (placeBlank env (needBefore env stB (f :: rest)) f rest) f rest
+    let st1 := if waiting then checkNoBreak (place env stB f rest)
+      else checkNoBreak (placeFlow env (placeBlank env (needBefore env stB (f :: rest)) f rest) f rest)
     let deferred := match f with
       | .figure i _ => st1.deferred.any (deferredFigure i)
       | .pageFigure _ => true
@@ -1170,9 +1262,10 @@ def step (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
 
 def placeAll (env : Env) (st : St) : List Flow → St
   | [] =>
-    let st2 := { st with breaks := [], need := none, needAt := none, blank := [] }
-    let dropBlanks (s : St) := st.blank.foldl (fun s' _ => addUnmet .droppedBlank s') s
-    if st.blank = [] then flushDeferred env st2
+    let st1 := st.noBreak.foldl (fun s w => addUnmet w.1 s) st
+    let st2 := { st1 with breaks := [], need := none, needAt := none, noBreak := [], blank := [] }
+    let dropBlanks (s : St) := st1.blank.foldl (fun s' _ => addUnmet .droppedBlank s') s
+    if st1.blank = [] then flushDeferred env st2
     else if st2.deferred = [] then flushDeferred env (dropBlanks st2)
     else flushDeferred env (dropBlanks (nextColumn env st2))
   | f :: rest => placeAll env (step env st f rest) rest
@@ -1656,6 +1749,9 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | space n => simp only [place, flowText, List.append_nil]; exact text_placeSpaceFlow ..
   | needLines n => simp [place, flowText]
   | blank n => simp [place, flowText]
+  | noBreak => simp [place, flowText]
+  | noBreakLines n => simp [place, flowText]
+  | keepNext n => simp [place, flowText]
   | code g c first cont ls => exact text_placeCode ..
   | defTerm ls =>
     simp only [place]
@@ -1676,19 +1772,99 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
       · rfl
       · rw [text_nextColumn]
 
+/-- The controls not met recorded. -/
+theorem addUnmets_eq (ws : List (Unmet × Nat × Nat × Nat × (Nat × Bool))) (st : St) :
+    ws.foldl (fun s w => addUnmet w.1 s) st = { st with unmet := st.unmet ++ ws.map (·.1) } := by
+  induction ws generalizing st with
+  | nil => simp
+  | cons w ws ih => simp only [List.foldl]; rw [ih]; simp [addUnmet]
+
+theorem checkNoBreak_aux (st : St) (c : Prop) [Decidable c] (ws : List (Unmet × Nat × Nat × Nat × (Nat × Bool))) :
+    ∃ u, ({ (if c then st else ws.foldl (fun s w => addUnmet w.1 s) st) with noBreak := [] } : St)
+      = { st with unmet := u, noBreak := [] } := by
+  split
+  · exact ⟨st.unmet, rfl⟩
+  · rw [addUnmets_eq]; exact ⟨_, rfl⟩
+
+/-- `checkNoBreak` changes only the controls not met and those waiting. -/
+theorem checkNoBreak_eq (st : St) :
+    checkNoBreak st = st ∨ ∃ u, checkNoBreak st = { st with unmet := u, noBreak := [] } := by
+  unfold checkNoBreak
+  split
+  · exact Or.inl rfl
+  · exact Or.inr (checkNoBreak_aux st _ _)
+
+theorem waitFor_eq (u : Unmet) (k : Nat × Bool) (st : St) : ∃ w, waitFor u k st = { st with noBreak := w } := by
+  unfold waitFor; split
+  · exact ⟨_, rfl⟩
+  · exact ⟨_, rfl⟩
+
+theorem text_checkNoBreak (st : St) : text (checkNoBreak st) = text st := by
+  rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e]; rfl
+
+theorem text_waitFor (u : Unmet) (k : Nat × Bool) (st : St) : text (waitFor u k st) = text st := by
+  obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]; rfl
+
+theorem text_placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St)
+    (hp : ∀ s b xs, text (placeIn s b xs) = text s ++ xs.map (fun l => .line l.id))
+    (st : St) (isStart : Bool) (ls : List Line) (n : Need) :
+    text (placeKept env kp placeIn st isStart ls n) = text st ++ ls.map (fun l => .line l.id) := by
+  have split2 : ∀ s, text (placeIn (placeIn s isStart (ls.take (ls.length - keptCut kp ls.length)))
+      (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty) (ls.drop (ls.length - keptCut kp ls.length)))
+      = text s ++ ls.map (fun l => .line l.id) := by
+    intro s
+    rw [hp, hp, List.append_assoc, ← List.map_append, List.take_append_drop]
+  simp only [placeKept]
+  apply text_ite
+  · exact hp ..
+  · apply text_ite
+    · exact split2 st
+    · apply text_ite
+      · exact hp ..
+      · rw [hp, text_nextColumn, hp, List.append_assoc, ← List.map_append, List.take_append_drop]
+
+theorem text_placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) :
+    text (placeFlow env st f rest) = text st ++ flowText f := by
+  have pl : ∀ kp s b xs, text (placeLines env kp s b xs) = text s ++ xs.map (fun l => .line l.id) :=
+    fun kp s b xs => text_placeLines env kp s b xs
+  unfold placeFlow
+  split
+  · exact text_placeKept env _ _ (pl _) st true _ _
+  · exact text_placeKept env _ _ (pl _) st false _ _
+  · simp only [flowText]
+    rw [text_placeKept env _ _ (pl _)]
+    congr 1
+    apply text_ite
+    · rfl
+    · exact text_keep ..
+  · exact text_place ..
+
 theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (step env st f rest) = text st ++ flowText f := by
-  have general : ∀ (a : Bool) (b : List (Nat × Int)), text ({ (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
-      else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)
+  have general : ∀ (a : Bool) (b : List (Nat × Int)), text ({ (if waitsBehind (applyBreaks env st) f
+      then checkNoBreak (place env (applyBreaks env st) f rest)
+      else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest))
       with seen := true, lastDeferred := a, spaces := b } : St) = text st ++ flowText f := by
     intro _ _
-    show text (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
-      else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest) = _
+    show text (if waitsBehind (applyBreaks env st) f then checkNoBreak (place env (applyBreaks env st) f rest)
+      else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest))
+      = _
     apply text_ite
-    · rw [text_place, text_applyBreaks]
-    · rw [text_place, text_placeBlank, text_needBefore, text_applyBreaks]
+    · rw [text_checkNoBreak, text_place, text_applyBreaks]
+    · rw [text_checkNoBreak, text_placeFlow, text_placeBlank, text_needBefore, text_applyBreaks]
+  have ctl : ∀ (u : Unmet) (k : Nat × Bool), text (if st.seen = false ∨ st.lastDeferred = true then addUnmet u st
+      else waitFor u k st) = text st := by
+    intro u k; apply text_ite
+    · rfl
+    · exact text_waitFor ..
   cases f with
   | needLines n => simp only [step, flowText, List.append_nil]; exact text_needMore ..
+  | noBreak => simp only [step, flowText, List.append_nil]; exact ctl _ _
+  | noBreakLines n =>
+    cases n with
+    | zero => simp [step, flowText]
+    | succ m => simp only [step, flowText, List.append_nil]; exact ctl _ _
+  | keepNext n => simp only [step, flowText, List.append_nil]; exact ctl _ _
   | blank n =>
     simp only [step, flowText, List.append_nil]
     apply text_ite <;> rfl
@@ -1710,6 +1886,7 @@ theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
   induction flows generalizing st with
   | nil =>
     simp only [placeAll, sourceText, List.bind, List.join, List.map, List.append_nil]
+    rw [addUnmets_eq]
     apply text_ite
     · rw [text_flushDeferred]; rfl
     · apply text_ite
@@ -2709,6 +2886,9 @@ theorem place_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separat
     unfold placeSpaceFlow; split <;> rfl
   | needLines n => exact ⟨by simp [place, flowFigs], h⟩
   | blank n => exact ⟨by simp [place, flowFigs], h⟩
+  | noBreak => exact ⟨by simp [place, flowFigs], h⟩
+  | noBreakLines n => exact ⟨by simp [place, flowFigs], h⟩
+  | keepNext n => exact ⟨by simp [place, flowFigs], h⟩
   | code g c first cont ls =>
     simp only [place, flowFigs, List.append_nil]; exact placeCode_figs env g c first cont st true h ls
   | defTerm ls =>
@@ -2747,31 +2927,99 @@ theorem place_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separat
       have := acrossGo_figs env hs hd false _ (tableGroups hd rows capt below) s1.2
       rw [s1.1] at this; exact this
 
+theorem checkNoBreak_figs (st : St) (h : Inv st) :
+    figs (checkNoBreak st) = figs st ∧ Inv (checkNoBreak st) := by
+  rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e]
+  · exact ⟨rfl, h⟩
+  · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred, h.weak.adjust⟩, h.used, h.fig⟩⟩
+
+theorem waitFor_figs (u : Unmet) (k : Nat × Bool) (st : St) (h : Inv st) :
+    figs (waitFor u k st) = figs st ∧ Inv (waitFor u k st) := by
+  obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]
+  exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred, h.weak.adjust⟩, h.used, h.fig⟩⟩
+
+theorem placeKept_figs (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St)
+    (hp : ∀ s b xs, Inv s → figs (placeIn s b xs) = figs s ∧ Inv (placeIn s b xs))
+    (st : St) (isStart : Bool) (ls : List Line) (n : Need) (h : Inv st) :
+    figs (placeKept env kp placeIn st isStart ls n) = figs st ∧ Inv (placeKept env kp placeIn st isStart ls n) := by
+  have one := hp st isStart ls h
+  have a := hp st isStart (ls.take (ls.length - keptCut kp ls.length)) h
+  have two := hp _ (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty)
+    (ls.drop (ls.length - keptCut kp ls.length)) a.2
+  have three := hp _ (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty)
+    (ls.drop (ls.length - keptCut kp ls.length)) (inv_nextColumn env _ a.2)
+  rw [figs_nextColumn, a.1] at three
+  rw [a.1] at two
+  simp only [placeKept]
+  split
+  · exact one
+  · split
+    · exact two
+    · split
+      · exact one
+      · exact three
+
+theorem placeFlow_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
+    (rest : List Flow) (h : Inv st) (hf : figureOk f) :
+    figs (placeFlow env st f rest) = figs st ++ flowFigs f ∧ Inv (placeFlow env st f rest) := by
+  have pl : ∀ kp s b xs, Inv s → figs (placeLines env kp s b xs) = figs s ∧ Inv (placeLines env kp s b xs) :=
+    fun kp s b xs i => placeLines_figs env hs kp s b xs i
+  unfold placeFlow
+  split
+  · simp only [flowFigs, List.append_nil]; exact placeKept_figs env _ _ (pl _) st true _ _ h
+  · simp only [flowFigs, List.append_nil]; exact placeKept_figs env _ _ (pl _) st false _ _ h
+  · rename_i ls n _
+    simp only [flowFigs, List.append_nil]
+    have i : figs (if 0 < env.keepLast rest then st
+        else keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))) = figs st ∧
+        Inv (if 0 < env.keepLast rest then st
+        else keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))) := by
+      split
+      · exact ⟨rfl, h⟩
+      · exact ⟨figs_keep .., inv_keep env st _ h⟩
+    have := placeKept_figs env (previousKeep env rest defaultKeep) (placeLines env defaultKeep) (pl _) _ true ls n i.2
+    rw [i.1] at this; exact this
+  · exact place_figs env hc hs st _ rest h hf
+
 theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (rest : List Flow)
     (h : Inv st) (hf : figureOk f) :
     figs (step env st f rest) = figs st ++ flowFigs f ∧ Inv (step env st f rest) := by
   have b := applyBreaks_figs env st h
   have general : ∀ (a : Bool) (sp : List (Nat × Int)),
-      let r : St := if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
-        else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest
+      let r : St := if waitsBehind (applyBreaks env st) f then checkNoBreak (place env (applyBreaks env st) f rest)
+        else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)
       figs { r with seen := true, lastDeferred := a, spaces := sp } = figs st ++ flowFigs f ∧
         Inv { r with seen := true, lastDeferred := a, spaces := sp } := by
     intro a sp
-    have core : figs (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
-        else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)
+    have core : figs (if waitsBehind (applyBreaks env st) f then checkNoBreak (place env (applyBreaks env st) f rest)
+        else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest))
         = figs st ++ flowFigs f ∧
-        Inv (if waitsBehind (applyBreaks env st) f then place env (applyBreaks env st) f rest
-        else place env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest) := by
+        Inv (if waitsBehind (applyBreaks env st) f then checkNoBreak (place env (applyBreaks env st) f rest)
+        else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)) := by
       split
       · have p := place_figs env hc hs _ f rest b.2 hf
-        rw [b.1] at p; exact p
+        have c := checkNoBreak_figs _ p.2
+        rw [p.1, b.1] at c; exact c
       · have n := needBefore_figs env (applyBreaks env st) (f :: rest) b.2
         have k := placeBlank_figs env hc _ f rest n.2
-        have p := place_figs env hc hs _ f rest k.2 hf
-        rw [k.1, n.1, b.1] at p; exact p
+        have p := placeFlow_figs env hc hs _ f rest k.2 hf
+        have c := checkNoBreak_figs _ p.2
+        rw [p.1, k.1, n.1, b.1] at c; exact c
     exact ⟨core.1, ⟨⟨core.2.weak.first, core.2.weak.deferred, core.2.weak.adjust⟩, core.2.used, core.2.fig⟩⟩
+  have ctl : ∀ (u : Unmet) (k : Nat × Bool),
+      figs (if st.seen = false ∨ st.lastDeferred = true then addUnmet u st else waitFor u k st) = figs st ∧
+      Inv (if st.seen = false ∨ st.lastDeferred = true then addUnmet u st else waitFor u k st) := by
+    intro u k; split
+    · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred, h.weak.adjust⟩, h.used, h.fig⟩⟩
+    · exact waitFor_figs u k st h
   cases f with
   | needLines n => simp only [step, flowFigs, List.append_nil]; exact needMore_figs env n st h
+  | noBreak => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
+  | noBreakLines n =>
+    cases n with
+    | zero => exact ⟨by simp [step, flowFigs], h⟩
+    | succ m => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
+  | keepNext n => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
   | blank n =>
     simp only [step, flowFigs, List.append_nil]
     split
@@ -2802,7 +3050,9 @@ theorem placeAll_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.sepa
   induction flows generalizing st with
   | nil =>
     simp only [placeAll, sourceFigs, List.bind, List.join, List.map, List.append_nil]
-    have h2 : Inv { st with breaks := [], need := none, needAt := none, blank := [] } :=
+    rw [addUnmets_eq]
+    generalize st.unmet ++ st.noBreak.map (fun w => w.1) = u
+    have h2 : Inv { st with unmet := u, breaks := [], need := none, needAt := none, noBreak := [], blank := [] } :=
       ⟨⟨h.weak.first, h.weak.deferred, h.weak.adjust⟩, h.used, h.fig⟩
     split
     · obtain ⟨a, _, c⟩ := flushDeferred_figs env _ h2; exact ⟨a, c⟩
