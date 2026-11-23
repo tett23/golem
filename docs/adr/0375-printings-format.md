@@ -1,6 +1,6 @@
 # ADR 0375: 奥付の発行履歴をテンプレートで組む
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"書式のエラーの文言","kind":"supplement"}]
 
 ## 文脈
 

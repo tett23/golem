@@ -1,6 +1,6 @@
 # ADR 0346: 組版に使う寸法、アキ量、行数を名前で参照する
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"宣言の右辺の参照のコード","kind":"supplement"}]
 
 ## 文脈
 

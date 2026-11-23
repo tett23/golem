@@ -1,6 +1,6 @@
 # ADR 0347: 原稿の入力位置と設定の欄に合う候補を返す
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md"],"part":"テストの名前の番号","kind":"supplement"}]
 
 ## 文脈
 
