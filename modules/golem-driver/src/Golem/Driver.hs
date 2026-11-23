@@ -1019,7 +1019,7 @@ each figure, at its block.
 -}
 pluginImagePathDiagnostics :: Book -> [Diagnostic]
 pluginImagePathDiagnostics book =
-  [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダー images/golem-plugin と重なります: " <> path)
+  [ diagnostic "G08102" Error sp ("図版の画像の出力のパスが、プラグインの画像を置くフォルダ images/golem-plugin と重なります: " <> path)
   | Document _ bs <- bookDocs book,
     Block sp _ _ (FigureBlock f) <- allFigures bs,
     let path = fromMaybe (figSource f) (figWeb f),

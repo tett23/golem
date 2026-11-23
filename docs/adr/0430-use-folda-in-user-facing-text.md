@@ -1,6 +1,6 @@
 # ADR 0430: 利用者に見せる文の「フォルダー」を「フォルダ」にそろえる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
