@@ -177,7 +177,7 @@ tests =
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
         map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
-        length builtinInlineCommands @?= 21
+        length builtinInlineCommands @?= 23
         -- [shy] is built in (docs/adr ADR 0272)
         assertBool "shy" ("shy" `elem` builtinInlineCommands)
         -- [link] is built in (docs/adr ADR 0182)

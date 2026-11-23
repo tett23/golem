@@ -96,7 +96,7 @@ tomlTests =
           exactly "style.toml" "[character-styles.em]\n[paragraph-styles.body]\nregex-styles = [\n  { pattern = 'x', style = ▮" ["\"bold\"", "\"code\"", "\"italic\"", "\"no-break\"", "\"note-mark\"", "\"strong\"", "\"subscript\"", "\"superscript\"", "\"toc-page-number\"", "\"url\"", "\"em\""],
           exactly "style.toml" "[page]\n# binding = ▮" [],
           exactly "style.toml" "[page]\nbinding = \"\"\"\n▮" [],
-          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "characters", "lines", "line-pitch", "alignment", "columns", "column-gap", "position"],
+          exactly "style.toml" "[page]\nsize = \n[page.grid]\n▮" ["font-size", "character-advance", "characters", "lines", "line-pitch", "alignment", "columns", "column-gap", "position"],
           exactly "style.toml" "# 日本語のコメント😀\n[page]\nbinding = ▮" ["\"right\"", "\"left\""],
           exactly "style.toml" "[page]\nsize = { width = \"100mm\", ▮" ["height"],
           exactly "style.toml" "[headings.1]\nrunning-head = ▮" [],
