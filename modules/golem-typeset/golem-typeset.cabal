@@ -59,6 +59,7 @@ library
     , golem-project
     , golem-svg
     , golem-syntax
+    , golem-unicode
     , text          >=2.0  && <2.2
     , time          >=1.12 && <1.15
     , vector        >=0.13 && <0.14

@@ -27,11 +27,11 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
-import Golem.Layout.CharClass (dualJapaneseClass, isDualCharacter, spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (LinkTarget (..), Look (..), plainLook)
 import Golem.TestSupport.Enum
+import Golem.Unicode.CharClass (dualJapaneseClass, isDualCharacter, spanIsJapanese)
 import LineBreakEnum (Setting (..), advance, composeEnv, lineText, paramsOf, placings)
 import LineBreakInvariants (Breach (..), Paragraph (..), breaches, bruteLimit)
 import System.Environment (lookupEnv)

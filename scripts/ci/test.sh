@@ -5044,5 +5044,45 @@ expect "ADR 0395 A1: a step is listed with the runners whose row of the matrix m
 run sh "$HERE/ci-checks.sh" "$CC/unknown.yml" "$TS"
 if [ "$CODE" = 1 ] && grep -qF 'steps.x.outputs.y' "$WORK/err"; then ok; else ng "ADR 0395 A1: an if with a term that the list cannot decide fails"; fi
 
+# ---------------------------------------------------------------- the libraries of golem-html and golem-unicode
+# (docs/adr/0411 I5)
+
+# lib_deps CABAL: the packages of the build-depends of the library of a .cabal,
+# one a line
+lib_deps() {
+  awk '/^[^ \t-]/ { lib = ($1 == "library") } lib' "$1" |
+    awk '/^[ \t]*--/ { next }
+      /^[ \t]*build-depends:/ { d = 1; sub(/^[ \t]*build-depends:/, "") }
+      d && /^[ \t]*[a-z-]+:/ { d = 0 }
+      d { gsub(/,/, " "); for (i = 1; i <= NF; i++) if ($i ~ /^[a-z][a-z0-9-]*$/) print $i }'
+}
+MODULES=$HERE/../../modules
+for p in golem-html golem-unicode; do
+  lib_deps "$MODULES/$p/$p.cabal" >"$WORK/deps"
+  if grep -q '^base$' "$WORK/deps" && ! grep -qxE 'golem-layout|golem-project' "$WORK/deps"; then ok; else
+    ng "root ADR 0411 I5: the library of $p depends on neither golem-layout nor golem-project"
+    sed 's/^/  /' "$WORK/deps"
+  fi
+done
+if [ "$(lib_deps "$MODULES/golem-unicode/golem-unicode.cabal" | sort | tr '\n' ' ')" = "base containers text " ]; then ok; else
+  ng "root ADR 0411 I5: the library of golem-unicode depends on base, containers and text only"
+fi
+# the check sees a dependency of the library, and not one of a test suite
+cat >"$WORK/i5.cabal" <<'EOF'
+cabal-version: 3.0
+name: x
+library
+  build-depends:
+    , base  >=4.20 && <4.21
+    -- , golem-project
+    , golem-layout
+  default-language: GHC2021
+test-suite t
+  build-depends: base, golem-project
+EOF
+if [ "$(lib_deps "$WORK/i5.cabal" | tr '\n' ' ')" = "base golem-layout " ]; then ok; else
+  ng "root ADR 0411 I5: lib_deps reads the build-depends of the library only"
+fi
+
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
