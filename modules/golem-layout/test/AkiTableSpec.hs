@@ -11,9 +11,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Layout.Aki (Aki (..), AkiPos (..), akiBetween, akiPositions, defaultAkiSet)
-import Golem.Layout.CharClass (CharClass (..), charClass)
 import Golem.Layout.Japanese (punctSpace)
 import Golem.Project.Style (akiClassNames)
+import Golem.Unicode.CharClass (CharClass (..), charClass)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit

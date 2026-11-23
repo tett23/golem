@@ -1,5 +1,7 @@
--- | The JLReq character classes the composition uses (golem-layout ADR 0002).
-module Golem.Layout.CharClass
+{- | The JLReq character classes the composition uses (golem-layout ADR 0002),
+moved from golem-layout (docs/adr/0411).
+-}
+module Golem.Unicode.CharClass
   ( CharClass (..),
     charClass,
     dualCharacters,

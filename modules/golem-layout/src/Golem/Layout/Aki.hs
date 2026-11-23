@@ -20,8 +20,8 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
-import Golem.Layout.CharClass
 import Golem.Project.Style (AkiRuleDef (..), AkiSetDef (..), defaultAkiSetName)
+import Golem.Unicode.CharClass
 
 -- | One side of a pair: a character of a class, or an edge.
 data AkiPos = AkiChar !CharClass | AkiLineStart | AkiParagraphStart | AkiLineEnd
