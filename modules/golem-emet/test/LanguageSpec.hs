@@ -505,7 +505,7 @@ limitTests :: TestTree
 limitTests =
   testGroup
     "the limit of steps"
-    [ testCase "R5: a manuscript call and its REPL expression share the last available step" $ do
+    [ testCase "root ADR 0348 I5: a manuscript call and its REPL expression share the last available step" $ do
         let source = "discard :: List Int -> Nat\ndiscard xs = 7\nwork :: Int -> Nat\nwork n = discard (List.range 1 n)\n"
         (_, base) <- stepsOf source "work" [int 1]
         let lastArg = toInteger (stepLimit - base + 1)

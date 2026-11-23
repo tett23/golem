@@ -8353,9 +8353,10 @@ size = "0.65zw"
 
 宣言の値が種類に合わない、行数が 0 から 2147483647 の範囲を外れる、または参照が循環する。
 位置は宣言の値である。
+宣言の右辺に書いた名前の宣言がない場合と、種類が違う場合は、このコードではなく G03257 と G03258 である（[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)）。
 
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
@@ -8375,16 +8376,17 @@ size = "0.65zw"
 
 ### 意味
 
-長さ、アキ量、行数の欄に書いた名前の宣言が `style.toml` にない。
+長さ、アキ量、行数の欄、または値の宣言の右辺に書いた名前の宣言が `style.toml` にない。
 位置は参照した値である。
 
 - メッセージ: `値の名前がありません: <名前>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
 - 名前の綴りが宣言と違う。
+- 値の宣言の右辺に、宣言していない名前を書いた。
 
 ### 直し方
 
@@ -8399,16 +8401,17 @@ size = "0.65zw"
 
 ### 意味
 
-参照先の宣言が、値を使う欄の長さ、アキ量、行数の種類と合わない。
+参照先の宣言の種類（長さ、アキ量、行数）が、値を使う欄、または参照する側の宣言の種類と合わない。
 位置は参照した値である。
 
 - メッセージ: `値 <名前> の種類が違います: 要求 <種類>、実際 <種類>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
 - 長さの欄にアキ量や行数の名前を書いた。
+- 長さの宣言の右辺に、アキ量や行数の宣言の名前を書いた。
 
 ### 直し方
 
