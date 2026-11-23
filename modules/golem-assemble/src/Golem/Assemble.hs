@@ -27,6 +27,8 @@ module Golem.Assemble
     bookChapters,
     notesTitle,
     documentNotes,
+    documentEndnotes,
+    endnotesTitle,
     headingAnchor,
     inlineText,
   )
@@ -71,7 +73,9 @@ data AssembleConfig = AssembleConfig
     acChannels :: !(Map Text ChannelDecl),
     {- | the lines of a page, @[page.grid].lines@: a run of blank lines of
     as many lines or more is dropped (docs/adr ADR 0047)
-    -} acPageLines :: !Int
+    -} acPageLines :: !Int,
+    -- | the range over which endnotes are numbered, [endnotes] numbering (root ADR 0412)
+    acEndnoteNumbering :: !NoteNumbering
   }
 
 {- | An entry of a list of a channel of a plugin (golem-doc ADR 0007): the
@@ -261,6 +265,13 @@ ADR 0026): 注 in a book whose primary language subtag is ja, Notes otherwise.
 notesTitle :: Text -> Text
 notesTitle lang = if T.toLower (T.takeWhile (/= '-') lang) == "ja" then "注" else "Notes"
 
+{- | The title of the list of endnotes at the end of a chapter (root ADR
+0412): 後注 in a book whose primary language subtag is ja, Endnotes
+otherwise, as 'notesTitle' tells them.
+-}
+endnotesTitle :: Text -> Text
+endnotesTitle lang = if T.toLower (T.takeWhile (/= '-') lang) == "ja" then "後注" else "Endnotes"
+
 {- | The inlines of a block, the notes among them, in order, through lists,
 definition lists, tables and captions (golem-driver ADR 0018, 0026), each
 with the language of its place: that of the innermost language span or
@@ -294,6 +305,10 @@ the place of its mark, if that has one (docs/adr ADR 0187).
 -}
 documentNotes :: Document -> [(SrcSpan, Int, [[Inline]])]
 documentNotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Note sp n body) <- concatMap (blockNotes Nothing) bs]
+
+-- | The endnotes of a document in order, as 'documentNotes' gives the notes (root ADR 0412).
+documentEndnotes :: Document -> [(SrcSpan, Int, [[Inline]])]
+documentEndnotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Endnote sp n body) <- concatMap (blockNotes Nothing) bs]
 
 {- | The paragraphs of the body of a note with their inlines changed in
 an applicative (docs/adr/0263); the other blocks as they are.
@@ -754,26 +769,29 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       -- the body of an item resolves like the text around it (golem-doc ADR 0007)
       ChannelItem sp c -> (\b -> [ChannelItem sp c {ciBody = b}]) <$> inls (ciBody c)
       Sidenote sp n body -> pure . Sidenote sp n <$> traverseNoteBody inls body
+      Endnote sp n body -> pure . Endnote sp n <$> traverseNoteBody inls body
       other -> pure [other]
 
 {- | The notes and the sidenotes numbered again over the range of
 'acNoteNumbering', in the order of the documents and of the notes in them
 (golem-driver ADR 0018). Footnotes and sidenotes count apart. S0 numbered
-both per file.
+both per file. The endnotes count apart too, over the range of
+'acEndnoteNumbering' (root ADR 0412).
 -}
 renumberNotes :: AssembleConfig -> [Document] -> [Document]
-renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
+renumberNotes cfg docs = evalState (zipWithM doc (zip (restarts (acNoteNumbering cfg)) (restarts (acEndnoteNumbering cfg))) docs) (0, 0, 0)
   where
     chapters = map Just (acChapterOf cfg) <> repeat Nothing
-    restarts = zipWith3 restart [0 :: Int ..] chapters (Nothing : chapters)
-    restart i ch prev = case acNoteNumbering cfg of
+    restarts numbering = zipWith3 (restart numbering) [0 :: Int ..] chapters (Nothing : chapters)
+    restart numbering i ch prev = case numbering of
       NumberPerFile -> True
       NumberPerBook -> i == 0
       -- in the order of the book until the pages are known (docs/adr/0383)
       NumberPerPage -> i == 0
       NumberPerChapter -> i == 0 || isNothing ch || ch /= prev
-    doc fresh (Document fid bs) = do
-      when fresh (put (0, 0))
+    doc (fresh, freshEnd) (Document fid bs) = do
+      when fresh (modify' (\(_, _, e) -> (0, 0, e)))
+      when freshEnd (modify' (\(n, m, _) -> (n, m, 0)))
       Document fid <$> mapM blk bs
     blk (Block sp l lang body) =
       Block sp l lang <$> case body of
@@ -787,16 +805,20 @@ renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
         other -> pure other
     item (ListItem n bs) = ListItem n <$> mapM blk bs
     inls = mapM inl
-    inl :: Inline -> State (Int, Int) Inline
+    inl :: Inline -> State (Int, Int, Int) Inline
     inl = \case
       Note sp _ xs -> do
-        (n, m) <- get
-        put (n + 1, m)
+        (n, m, e) <- get
+        put (n + 1, m, e)
         Note sp (n + 1) <$> traverseNoteBody inls xs
       Sidenote sp _ xs -> do
-        (n, m) <- get
-        put (n, m + 1)
+        (n, m, e) <- get
+        put (n, m + 1, e)
         Sidenote sp (m + 1) <$> traverseNoteBody inls xs
+      Endnote sp _ xs -> do
+        (n, m, e) <- get
+        put (n, m, e + 1)
+        Endnote sp (e + 1) <$> traverseNoteBody inls xs
       Kenten sp s xs -> Kenten sp s <$> inls xs
       Color sp c xs -> Color sp c <$> inls xs
       CharStyle sp c xs -> CharStyle sp c <$> inls xs
@@ -1021,6 +1043,7 @@ bodyInlines body = concatMap flatten $ case body of
         Resolved _ _ _ xs -> concatMap flatten xs
         Note _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
         Sidenote _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
+        Endnote _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
         _ -> []
 
 {- | Inlines in a language span of the language of their block, if it has
