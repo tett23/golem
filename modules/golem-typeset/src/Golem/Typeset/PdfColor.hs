@@ -4,7 +4,7 @@
 module Golem.Typeset.PdfColor (recolorImportedPage) where
 
 import Control.Applicative ((<|>))
-import Control.Monad (foldM)
+import Control.Monad (foldM, join)
 import Data.Bifunctor (first)
 import Data.Bits (shiftL, shiftR, (.&.))
 import Data.ByteString (ByteString)
@@ -68,7 +68,7 @@ recolorImportedPage swatch analyze page = do
     then Left "PDF 図版の展開済みサイズが不正です"
     else Right ()
   let source = Map.fromList (P.ipObjects page)
-      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, categoryBindings = Map.empty, categoryTables = Map.empty, patternSpaces = Map.empty, scopeResources = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page}
+      initialState = Resources {sourceObjects = source, decodedStreams = Map.empty, formSummaries = Map.empty, convertedForms = Map.empty, convertedObjects = Map.empty, scopeBindings = Map.empty, sourceTables = Map.empty, categoryBindings = Map.empty, categoryTables = Map.empty, patternSpaces = Map.empty, scopeResources = Map.empty, unreplaceableShading = False, clonedResources = Map.empty, rasterAnalyzer = analyze, rasterResults = Map.empty, convertedImages = Map.empty, inlineSources = Map.empty, remainingBytes = P.maxDecodedBytes - P.ipDecodedBytes page, figureSwatch = swatch}
   scope <- resourceScope PageResources (P.ipResources page) initialState
   (Scan _ _ kind _ _, analyzed) <- scanForms swatch False Set.empty scope (P.ipResources page) initial (P.ipContent page) initialState
   if kind == Grayscale && unreplaceableShading analyzed then Left "PDF 図版の濃淡のシェーディングを指定色に置き換えられません" else Right ()
@@ -121,7 +121,9 @@ data Resources = Resources
     convertedImages :: !(Map.Map (P.ObjNum, Scope) P.ObjNum),
     -- An inline image is read as an image XObject numbered like a clone.
     inlineSources :: !(Map.Map ByteString P.ObjNum),
-    remainingBytes :: !Int
+    remainingBytes :: !Int,
+    -- The swatch, for images classified from exact values (root ADR 0425).
+    figureSwatch :: !Cmyk
   }
 
 charge :: Int -> Resources -> Either Text Resources
@@ -395,7 +397,10 @@ operationSpace resources (operator, args) state
           special <- cieSpace value state
           case special of
             Just (space, cie) -> Right (Just space, cie)
-            Nothing -> deviceSpace value
+            Nothing -> do
+              -- An Indexed space on a CIE-based or ranged base (root ADR 0425).
+              exact <- exactSpace resources value state
+              maybe (deviceSpace value) (\(space, found) -> Right (Just space, found)) exact
     deviceSpace value = do
       (space, components, _, palette, resolved) <- pdfImageSpace resources [("ColorSpace", value)] state
       let device = case space of
@@ -568,69 +573,231 @@ analyzePdfImage :: Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.Ob
 analyzePdfImage scope resources key fields state = case Map.lookup (key, scope) (rasterResults state) of
   Just analysis -> Right (analysis, state)
   Nothing -> do
-    width <- positive "Width"
-    height <- positive "Height"
-    bits <- positive "BitsPerComponent"
-    (space, components, profile, palette, colored) <- pdfImageSpace resources fields state
-    let sampleComponents = maybe components (const 1) palette
-    if bits `notElem` (if isJust palette then [1, 2, 4, 8] else [1, 2, 4, 8, 16]) then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
-    if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
-    written <- decodeRanges sampleComponents fields colored
-    let maximum' = 2 ^ bits - 1
-        defaults = if isJust palette then [(0, fromInteger maximum')] else replicate sampleComponents (0, 1)
-        ranges = fromMaybe defaults written
-        reversed = isNothing palette && ranges == replicate sampleComponents (1, 0)
-        expanded = isJust palette || (ranges /= defaults && not reversed)
-        expandedBits = if bits == 16 then 16 else 8
-    let pixels = width * height
-        inputBytes = ((width * toInteger sampleComponents * bits + 7) `div` 8) * height
-        expandedBytes = if expanded then pixels * toInteger components * (expandedBits `div` 8) else 0
-        minimumOutputBytes = pixels * 4 * (if bits == 16 then 2 else 1)
-    if inputBytes + expandedBytes + minimumOutputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
-      then Left budgetError
-      else Right ()
-    (bytes, decoded) <- decodePdfImageStream key width height bits sampleComponents fields colored
-    if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
-    (samples, sampled) <-
-      if
-        | expanded -> do
-            reservedExpansion <- charge (fromInteger expandedBytes) decoded
-            Right (expandSamples (fromInteger width) (fromInteger height) (fromInteger bits) sampleComponents ranges palette components bytes, reservedExpansion)
-        | reversed -> do
-            inverted <- charge (BS.length bytes) decoded
-            Right (BS.map (255 -) bytes, inverted)
-        | otherwise -> Right (bytes, decoded)
-    (alpha, masked) <- pdfImageAlpha width height bits sampleComponents bytes fields sampled
-    let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8
-        outputBytes = pixels * 4 * (outputBits `div` 8)
-        sampleBits = fromInteger (if expanded then expandedBits else bits)
-    reserved <- charge (fromInteger outputBytes) masked
-    let input = P.ImageData (fromInteger width) (fromInteger height) sampleBits space profile samples False False alpha
-    analysis <- rasterAnalyzer reserved input
-    case raImage analysis of
-      Nothing | raKind analysis `elem` [Unpainted, Multicolor] -> Right ()
-      Just converted
-        | P.imgWidth converted == P.imgWidth input,
-          P.imgHeight converted == P.imgHeight input,
-          P.imgBits converted == fromInteger outputBits,
-          P.imgColor converted == P.CsCmyk,
-          isNothing (P.imgIcc converted),
-          not (P.imgDct converted),
-          not (P.imgInvertedCmyk converted),
-          P.imgAlpha converted == P.imgAlpha input,
-          toInteger (BS.length (P.imgData converted)) == outputBytes ->
-            Right ()
-      _ -> Left "PDF 図版の画像の色置換結果が不正です"
-    Right (analysis, reserved {rasterResults = Map.insert (key, scope) analysis (rasterResults reserved)})
+    exact <- traverse (\value -> exactSpace resources value state) (lookup "ColorSpace" fields)
+    case join exact of
+      Just (space, spaced) -> do
+        (analysis, analyzed) <- exactPdfImage space key fields spaced
+        Right (analysis, analyzed {rasterResults = Map.insert (key, scope) analysis (rasterResults analyzed)})
+      Nothing -> devicePdfImage scope resources key fields state
+
+devicePdfImage :: Scope -> P.ObjOf P.ObjNum -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Resources)
+devicePdfImage scope resources key fields state = do
+  width <- positive "Width"
+  height <- positive "Height"
+  bits <- positive "BitsPerComponent"
+  (space, components, profile, palette, colored) <- pdfImageSpace resources fields state
+  let sampleComponents = maybe components (const 1) palette
+  if bits `notElem` (if isJust palette then [1, 2, 4, 8] else [1, 2, 4, 8, 16]) then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
+  if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
+  written <- decodeRanges sampleComponents fields colored
+  let maximum' = 2 ^ bits - 1
+      defaults = if isJust palette then [(0, fromInteger maximum')] else replicate sampleComponents (0, 1)
+      ranges = fromMaybe defaults written
+      reversed = isNothing palette && ranges == replicate sampleComponents (1, 0)
+      expanded = isJust palette || (ranges /= defaults && not reversed)
+      expandedBits = if bits == 16 then 16 else 8
+  let pixels = width * height
+      inputBytes = ((width * toInteger sampleComponents * bits + 7) `div` 8) * height
+      expandedBytes = if expanded then pixels * toInteger components * (expandedBits `div` 8) else 0
+      minimumOutputBytes = pixels * 4 * (if bits == 16 then 2 else 1)
+  if inputBytes + expandedBytes + minimumOutputBytes > toInteger (remainingBytes colored) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
+    then Left budgetError
+    else Right ()
+  (bytes, decoded) <- decodePdfImageStream key width height bits sampleComponents fields colored
+  if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
+  (samples, sampled) <-
+    if
+      | expanded -> do
+          reservedExpansion <- charge (fromInteger expandedBytes) decoded
+          Right (expandSamples (fromInteger width) (fromInteger height) (fromInteger bits) sampleComponents ranges palette components bytes, reservedExpansion)
+      | reversed -> do
+          inverted <- charge (BS.length bytes) decoded
+          Right (BS.map (255 -) bytes, inverted)
+      | otherwise -> Right (bytes, decoded)
+  (alpha, masked) <- pdfImageAlpha width height bits sampleComponents bytes fields sampled
+  let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8
+      outputBytes = pixels * 4 * (outputBits `div` 8)
+      sampleBits = fromInteger (if expanded then expandedBits else bits)
+  reserved <- charge (fromInteger outputBytes) masked
+  let input = P.ImageData (fromInteger width) (fromInteger height) sampleBits space profile samples False False alpha
+  analysis <- rasterAnalyzer reserved input
+  case raImage analysis of
+    Nothing | raKind analysis `elem` [Unpainted, Multicolor] -> Right ()
+    Just converted
+      | P.imgWidth converted == P.imgWidth input,
+        P.imgHeight converted == P.imgHeight input,
+        P.imgBits converted == fromInteger outputBits,
+        P.imgColor converted == P.CsCmyk,
+        isNothing (P.imgIcc converted),
+        not (P.imgDct converted),
+        not (P.imgInvertedCmyk converted),
+        P.imgAlpha converted == P.imgAlpha input,
+        toInteger (BS.length (P.imgData converted)) == outputBytes ->
+          Right ()
+    _ -> Left "PDF 図版の画像の色置換結果が不正です"
+  Right (analysis, reserved {rasterResults = Map.insert (key, scope) analysis (rasterResults reserved)})
   where
-    positive name = do
-      value <- maybe (Left "PDF 図版の画像の寸法がありません") Right (lookup name fields)
+    positive name = imageDimension name fields state
+
+unsupportedMask :: (Text, P.ObjOf P.ObjNum) -> Bool
+unsupportedMask ("ImageMask", P.OBool False) = False
+unsupportedMask (name, _) = name == "ImageMask"
+
+imageDimension :: Text -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text Integer
+imageDimension name fields state = do
+  value <- maybe (Left "PDF 図版の画像の寸法がありません") Right (lookup name fields)
+  resolved <- dereference Set.empty value state
+  case resolved of
+    P.OInt n | n > 0 -> Right n
+    _ -> Left "PDF 図版の画像の寸法が不正です"
+
+{- | A space whose samples are classified from their exact values rather
+than by the shared raster analyzer: a CIE-based space, an ICCBased space of
+Lab data or of a Range other than 0 to 1, and an Indexed space on one of
+them (root ADR 0425). Nothing for the other spaces.
+-}
+exactSpace :: P.ObjOf P.ObjNum -> P.ObjOf P.ObjNum -> Resources -> Either Text (Maybe (Space, Resources))
+exactSpace resources = go Set.empty
+  where
+    go seen value state = do
       resolved <- dereference Set.empty value state
       case resolved of
-        P.OInt n | n > 0 -> Right n
-        _ -> Left "PDF 図版の画像の寸法が不正です"
-    unsupportedMask ("ImageMask", P.OBool False) = False
-    unsupportedMask (name, _) = name == "ImageMask"
+        P.OName name
+          | name `notElem` ["DeviceGray", "DeviceRGB", "DeviceCMYK", "Pattern"],
+            not (Set.member name seen),
+            Set.size seen < P.maxNesting -> do
+              entries <- dictionary resources state
+              spaces <- maybe (Right []) (`dictionary` state) (lookup "ColorSpace" entries)
+              maybe (Right Nothing) (\named -> go (Set.insert name seen) named state) (lookup name spaces)
+        P.OArr [P.OName "Indexed", base, high, table] -> do
+          inner <- go seen base state
+          case inner of
+            Just (space, based) | not (isIndexed space) -> do
+              count <- dereference Set.empty high based
+              highest <- case count of
+                P.OInt n | n >= 0 && n <= 255 -> Right (fromInteger n)
+                _ -> Left indexedInvalid
+              (bytes, read') <- indexTable table based
+              let ranges = exactRanges space
+                  components = length ranges
+              if BS.length bytes < (highest + 1) * components then Left indexedInvalid else Right ()
+              entries <- traverse (\i -> exactColor space [low + fromIntegral byte * (top - low) / 255 | ((low, top), byte) <- zip ranges (BS.unpack (BS.take components (BS.drop (i * components) bytes)))]) [0 .. highest]
+              Right (Just (IndexedSpace entries, read'))
+            _ -> Right Nothing
+        _ -> do
+          special <- cieSpace resolved state
+          Right $ case special of
+            Just found@(CieSpace {}, _) -> Just found
+            Just found@(RangedSpace _ ranges, _) | any (/= (0, 1)) ranges -> Just found
+            _ -> Nothing
+    isIndexed = \case IndexedSpace _ -> True; _ -> False
+    indexedInvalid = "PDF 図版の画像の色空間に対応していません"
+    indexTable table st = do
+      resolvedTable <- dereference Set.empty table st
+      case resolvedTable of
+        P.OStr bytes -> Right (bytes, st)
+        P.OHex bytes -> Right (bytes, st)
+        P.OStream _ _ -> do
+          (key, entries) <- pdfStreamReference indexedInvalid st Set.empty table
+          decodePdfStream key entries st
+        _ -> Left indexedInvalid
+
+-- | The ranges of the components of an exact space, before any clipping.
+exactRanges :: Space -> [(Rational, Rational)]
+exactRanges = \case
+  CieSpace _ _ ranges -> ranges
+  RangedSpace _ ranges -> ranges
+  other -> spaceRanges other
+
+-- | The colour of the values of the components of an exact space.
+exactColor :: Space -> [Rational] -> Either Text Color
+exactColor space values = case space of
+  CieSpace family key ranges | length ranges == length values -> Right (cieColor family key ranges values)
+  RangedSpace base ranges | length ranges == length values -> rangedColor base ranges values
+  _ -> Left "PDF 図版の色の成分数が不正です"
+
+{- | An image of an exact space. Each sample is mapped through Decode, and an
+Indexed one through its table, and the colours are clipped and compared as
+rationals (root ADR 0425). A recoloured image is DeviceCMYK with the
+dimensions and the visibility of the original.
+-}
+exactPdfImage :: Space -> P.ObjNum -> [(Text, P.ObjOf P.ObjNum)] -> Resources -> Either Text (RasterAnalysis, Resources)
+exactPdfImage space key fields state = do
+  width <- imageDimension "Width" fields state
+  height <- imageDimension "Height" fields state
+  bits <- imageDimension "BitsPerComponent" fields state
+  let (palette, defaults) = case space of
+        IndexedSpace entries -> (Just entries, [(0, 2 ^ bits - 1)])
+        _ -> (Nothing, exactRanges space)
+      components = length defaults
+  if bits `notElem` (if isJust palette then [1, 2, 4, 8] else [1, 2, 4, 8, 16]) then Left "PDF 図版の画像のビット深度に対応していません" else Right ()
+  if any unsupportedMask fields then Left "PDF 図版の画像マスクを保って色を置き換えられません" else Right ()
+  written <- decodeRanges components fields state
+  let decode = fromMaybe defaults written
+      pixels = width * height
+      inputBytes = ((width * toInteger components * bits + 7) `div` 8) * height
+      minimumOutputBytes = pixels * 4 * (if bits == 16 then 2 else 1)
+  if inputBytes + minimumOutputBytes > toInteger (remainingBytes state) || width > toInteger (maxBound :: Int) || height > toInteger (maxBound :: Int)
+    then Left budgetError
+    else Right ()
+  (bytes, decoded) <- decodePdfImageStream key width height bits components fields state
+  if toInteger (BS.length bytes) /= inputBytes then Left "PDF 図版の画像の寸法とデータ長が一致しません" else Right ()
+  (alpha, masked) <- pdfImageAlpha width height bits components bytes fields decoded
+  let outputBits = if bits == 16 || maybe False ((== 16) . P.alphaBits) alpha then 16 else 8 :: Int
+      outputBytes = pixels * 4 * toInteger (outputBits `div` 8)
+  reserved <- charge (fromInteger outputBytes) masked
+  let total = fromInteger pixels :: Int
+      w = fromInteger width :: Int
+      depth = fromInteger bits :: Int
+      maximum' = 2 ^ bits - 1 :: Integer
+      rowBytes = fromInteger ((width * toInteger components * bits + 7) `div` 8) :: Int
+      table = maybe Map.empty (Map.fromList . zip [0 ..]) palette
+      samplesOf pixel = [packedSample bytes rowBytes depth (pixel `mod` w * components + channel) (pixel `div` w) | channel <- [0 .. components - 1]]
+      valueOf (low, high) sample = low + fromIntegral sample * (high - low) / fromIntegral maximum'
+      colourOf samples = case palette of
+        Just _ -> case zip decode samples of
+          [(range, sample)] ->
+            let index = max 0 (min (Map.size table - 1) (fromInteger (floor (valueOf range sample + 1 / 2))))
+             in maybe (Left "PDF 図版の色の索引が不正です") Right (Map.lookup index table)
+          _ -> Left "PDF 図版の色の索引が不正です"
+        Nothing -> exactColor space (zipWith valueOf decode samples)
+      visible pixel = case alpha of
+        Nothing -> True
+        Just a -> packedSample (P.alphaSamples a) ((w * P.alphaBits a + 7) `div` 8) (P.alphaBits a) (pixel `mod` w) (pixel `div` w) > 0
+      lookupColour cache samples = case Map.lookup samples cache of
+        Just colour -> Right (colour, cache)
+        Nothing -> (\colour -> (colour, Map.insert samples colour cache)) <$> colourOf samples
+      classify !pixel !kind cache
+        | pixel == total || kind == Multicolor = Right (kind, cache)
+        | not (visible pixel) = classify (pixel + 1) kind cache
+        | otherwise = do
+            (colour, cache') <- lookupColour cache (samplesOf pixel)
+            classify (pixel + 1) (mergeKind kind (colorKind colour)) cache'
+  (kind, seen) <- classify 0 Unpainted Map.empty
+  if kind `elem` [Multicolor, Unpainted]
+    then Right (RasterAnalysis kind Nothing, reserved)
+    else do
+      let (c, m, y, k) = figureSwatch state
+          top = 2 ^ outputBits - 1 :: Integer
+          inksOf colour = if kind == Grayscale then inkValues (figureSwatch state) colour else [fromIntegral s / 100 | s <- [c, m, y, k]]
+          encode colour = BS.pack (concatMap (\ink -> let v = round (fromIntegral top * ink) :: Integer in if outputBits == 16 then [fromInteger (v `shiftR` 8), fromInteger (v .&. 255)] else [fromInteger v]) (inksOf colour))
+          pixelBytes (cache, encoded, acc) pixel = do
+            let samples = samplesOf pixel
+            (colour, cache') <- lookupColour cache samples
+            let out = Map.findWithDefault (encode colour) samples encoded
+            Right (cache', Map.insert samples out encoded, out : acc)
+      (_, _, chunks) <- foldM pixelBytes (seen, Map.empty, []) [0 .. total - 1]
+      let converted = P.ImageData w (fromInteger height) outputBits P.CsCmyk Nothing (BS.concat (reverse chunks)) False False alpha
+      Right (RasterAnalysis kind (Just converted), reserved)
+
+-- | A sample of packed rows: the index of the sample in its row, and the row.
+packedSample :: ByteString -> Int -> Int -> Int -> Int -> Int
+packedSample bytes rowBytes depth sample row =
+  let bit = sample * depth
+      offset = row * rowBytes + bit `div` 8
+   in if depth == 16
+        then fromIntegral (BS.index bytes offset) * 256 + fromIntegral (BS.index bytes (offset + 1))
+        else (fromIntegral (BS.index bytes offset) `shiftR` (8 - depth - bit `mod` 8)) .&. (2 ^ depth - 1)
 
 -- Decode the lossless filter prefix first, then DCT into native device samples.
 -- The common stream cache holds the final samples, never a second JPEG decode.
