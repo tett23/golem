@@ -12857,7 +12857,7 @@ HTML と EPUB は `axes` を使わないので、出さない。
   - 1 出力の関数の配列で、関数ごとの値の数が違うシェーディング。
   - DeviceGray でないソフトマスクと、Matte を持ち、画像と大きさが違うか、Interpolate が true のソフトマスク。
   - ICCBased で、プロファイルのデータの色空間が Gray、RGB、CMYK、Lab のどれでもないか、N と合わないもの。
-- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。今はメッシュのシェーディング（ShadingType 4 から 7）をこの扱いにする。ほかに、パターン、自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
+- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
 
 ### 直し方
 
