@@ -21,6 +21,9 @@ git config core.hooksPath .githooks
 The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.13.1 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.13.1`).
 This setting is not stored in the repository, so run it in every clone.
 `.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
+It also stops a push when the wasmtime that the build links is not the version pinned by `scripts/fetch-wasmtime.sh` ([docs/adr/0418](./docs/adr/0418-stop-a-push-when-the-local-wasmtime-is-not-the-pinned-one.md)).
+So fetch wasmtime with `scripts/fetch-wasmtime.sh` before you push.
+The section "Git フックの有効化" of README describes the check.
 
 ## How a change proceeds
 
