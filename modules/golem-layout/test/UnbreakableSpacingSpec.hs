@@ -22,7 +22,6 @@ import Data.Text qualified as T
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Aki qualified as A
-import Golem.Layout.CharClass
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Length qualified as L

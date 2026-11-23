@@ -27,7 +27,6 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
 import Golem.Font.Cff (CffCheck (..), CffResult (..), SeacError (..), checkCffReferences)
-import Golem.Layout.CharClass (isDualCharacter)
 import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
@@ -39,6 +38,7 @@ import Golem.Syntax
 import Golem.Typeset (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, normalTexts, usedRoles)
 import Golem.Typeset.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Typeset.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
+import Golem.Unicode.CharClass (isDualCharacter)
 import Numeric (showFFloat)
 import Text.Printf (printf)
 

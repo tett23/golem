@@ -130,7 +130,7 @@ Chromium と Safari では、ページの Worker の中で `golem.wasm` を動�
 JSON は `golem build --target pdf --format json` が標準エラーに書くものと同じバイト列である。
 ホストの例は [scripts/wasm/run.mjs](./scripts/wasm/run.mjs) にあり、アーカイブの `README` にも同じことを書いている。
 
-アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスがある。
+アーカイブの `THIRD_PARTY_LICENSES/` には、`golem.wasm` にリンクしたもの（wasm の GHC の RTS と boot のパッケージ、HarfBuzz、FreeType、hyph-utf8、zlib、wasi-sdk の wasi-libc と libc++、GMP など）のライセンスと、golem-unicode の注記（実装に倣った libgrapheme と、表の元にした Unicode のデータのライセンス）がある。
 GMP のソースは、ネイティブのアーカイブと同じくリリースに添えている。
 
 ## Usage

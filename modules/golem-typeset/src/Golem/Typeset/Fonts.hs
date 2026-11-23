@@ -63,7 +63,6 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Layout.CharClass (spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -78,6 +77,7 @@ import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.TextLayer (ClusterPart (..))
+import Golem.Unicode.CharClass (spanIsJapanese)
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
 0003; a role that is not loaded is the body role), the direction, and

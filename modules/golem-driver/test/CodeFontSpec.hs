@@ -16,13 +16,13 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Layout.CharClass (CharClass (..))
 import Golem.Layout.Japanese (BoxKind (..), boxKind, lookClass)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..))
 import Golem.Length (Sp (..))
 import Golem.Syntax (Diagnostic (..))
 import Golem.Typeset (PdfLayout (..), SetLine (..), Shaped (..), shapingOf)
+import Golem.Unicode.CharClass (CharClass (..))
 import SpecimenGeometrySpec (jaLatin, layoutAndFontsOf)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing)

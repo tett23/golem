@@ -23,9 +23,9 @@ where
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Layout.CharClass (CharClass (..), charClass)
 import Golem.Layout.Japanese (isExtending)
 import Golem.Length (Sp (..))
+import Golem.Unicode.CharClass (CharClass (..), charClass)
 
 -- | A part of a line of code: a space, a tab, or a cluster of glyphs with its advance.
 data CodeAtom
