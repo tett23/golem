@@ -1,7 +1,8 @@
 #!/bin/sh
 # Says why the toolchain cache of the wasm job of ci.yml (the toolchain and
 # its cabal store, ghc-wasm-...) missed, in one line for the Times step
-# (docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md).
+# (docs/adr/0219-frequency-of-the-wasm-job-and-its-uncached-runs.md,
+# docs/adr/0427-warning-gate-and-jobs-without-logs.md).
 #
 #   wasm-cache.sh HIT TOOLCHAIN PROJECT
 #
@@ -14,8 +15,12 @@
 #   a hit                        the cache was restored
 #   TOOLCHAIN false              the toolchain changed
 #   PROJECT false                the project or its freeze changed
-#   both true                    the cache was evicted: a ::warning::
+#   both true                    the cache was evicted: a ::notice::
 #                                annotation, and the job still passes
+#
+# The annotation is a notice, not a warning, as the ci job fails on a
+# warning of the logs that the list of allowed warnings does not allow
+# (docs/adr/0245), and an evicted cache is not a fault of the pull request.
 #
 # A pull request that changes the toolchain or the freeze may take more
 # than 5 minutes once (CONTRIBUTING.md); an evicted cache is a fault of CI.
@@ -36,5 +41,5 @@ elif [ "$2" = false ]; then
 elif [ "$3" = false ]; then
   echo "wasm-cache: missed, as the project or its freeze differs from main"
 else
-  echo "::warning::wasm-cache: missed, though the toolchain, the project and its freeze are those of main: the cache was evicted (docs/adr/0219)"
+  echo "::notice::wasm-cache: missed, though the toolchain, the project and its freeze are those of main: the cache was evicted (docs/adr/0219)"
 fi

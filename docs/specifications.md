@@ -615,8 +615,15 @@ peg-hs の生成器が書くモジュール（`Golem.Parser.Generated`、golem-p
 CI の `build` ジョブが、これらが `scripts/gen-parser.sh` の出力と一致することを確かめる。
 
 warning は、CI のログでも見つける。
-CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたものと `ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)）。
-ジョブの一覧は `gh api` で、各ログは同じ API から `curl` で取る（`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+CI の `ci` ジョブは、`gate.sh` の step の後に、同じ実行の終わったジョブ（省かれたもの、step を一つも走らせずに取り消されたもの、`ci` 自身を除く）のログを読み、許可の一覧にない warning があれば失敗する（[ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md)、[ADR 0427](adr/0427-warning-gate-and-jobs-without-logs.md)）。
+step を一つも走らせずに取り消されたジョブ（`conclusion` が `cancelled` で、ジョブの一覧の `steps` が空のもの）は、何も走らせていないので warning を出しようがなく、GitHub にもログが無い。
+除いたジョブの ID と名前は、読まないジョブの一覧として step のログに書く。
+`cancelled` 以外の `conclusion` で `steps` が空のジョブは除かない。
+ジョブの一覧は `gh api` で取る。
+各ログは、`scripts/ci/job-logs.sh` が同じ API から `curl` で取る（`gh api` は端末のエスケープシーケンスを含む出力を書かない）。
+あるジョブのログが取れないときは、そのジョブの ID と名前を書き、残りのジョブのログを取って検査を続ける。
+読むジョブが一つも無ければ、検査は失敗する。
+すべてのジョブを読み終えた後で、取れないログが一つでもあれば、検査は失敗する。
 `release.yml` は `ci.yml` を呼ぶので、同じ検査が走る。
 ほかのワークフローのログは検査しない。
 
@@ -978,9 +985,12 @@ HTML、EPUB、プレーンテキストはページを持たないので、`page-
 `golem build` は、`--target` で絞らなければ四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
 プレーンテキストの設定がなければ、縦書きと横書きの両方を生成する。
 
-出力は、プロジェクトルートの `build` の下のターゲットごとのディレクトリ（`build/html` など）に、前の出力を消してから書く。
-`build` か選んだターゲットの出力フォルダーがシンボリックリンクなら、何も消さず書かずに G08013 のエラーとする（[docs/adr/0035](adr/0035-security-hardening.md)、[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
-同じパスに通常のファイルがあれば、上書きせず G08104 のエラーとする（[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
+出力は、プロジェクトルートの `build` の下のターゲットごとのディレクトリ（`build/html` など）に、前の出力を消してから書く（[root ADR 0429](adr/0429-clear-the-target-output-before-writing.md)）。
+書くターゲットは、選んだターゲットのうち、そのターゲットだけを止めるエラー（G07001 系、G08014 など）で外れなかったものである。
+書き込みのときに消すのは書くターゲットの出力フォルダーだけで、選んでいないターゲットと、エラーで外れたターゲットのフォルダーは、書き込みのときには調べず、消さず、書かない。
+エラーで書けなかったときの片付けは、PDF は prod のビルドの片付け（[root ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)）に、EPUB は「EPUB の固定ページ対応表」の節に従う。
+`build` か書くターゲットの出力フォルダーがシンボリックリンクなら、どのターゲットの出力フォルダーも消さず書かずに G08013 のエラーとする（[docs/adr/0035](adr/0035-security-hardening.md)、[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
+同じパスに通常のファイルがあれば、同じくどのターゲットの出力フォルダーも消さず書かずに G08104 のエラーとする（[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
 `golem build` はプロジェクトのルート、`build` と今回選んだターゲットの出力フォルダーにある通常の `.DS_Store` を取り除く。
 `golem fmt` はプロジェクトのルートと整形対象の親フォルダーにある通常の `.DS_Store` を取り除く。
 検査だけのコマンドは取り除かず、リンク、隠しフォルダー、プロジェクト外には入らない（[ADR 0329](adr/0329-output-path-file-diagnostic.md)）。
@@ -1220,6 +1230,8 @@ page-map = "fixed-pages.json"
 式の結果や数の表記など文字ごとの対応がない部品は、その部品の先頭を指す。
 同じ原稿位置を本文に複数回展開した場合や、式の出力の境界を一意に定められない場合は、対応しない位置として扱う。
 原稿の SHA-256 が一致しない対応表、範囲外の位置、逆順の位置はエラーにする。
+対応表を読めないとき（G03272 から G03277）は、前のビルドの `build/epub` を消し、EPUB を書かない（[root ADR 0429](adr/0429-clear-the-target-output-before-writing.md)）。
+前のビルドの EPUB が、古い対応表のまま成功した成果物として残らないためである。
 本文位置は XHTML の空のページ区切り要素に解決し、ページ一覧からその ID にリンクする。
 HTML とプレーンテキストにはページ一覧を出さない。
 

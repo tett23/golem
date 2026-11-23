@@ -820,6 +820,84 @@ run lw "$HERE/warnings-allowed.tsv" "$LW/two.txt"
 expect "log-warnings: the list of the repository allows the ld of macOS but not GHC (W4)" 1
 if [ "$(cut -d: -f2 "$WORK/out")" = 6 ]; then ok; else ng "log-warnings: the list of the repository leaves the warning of GHC alone (W4)"; fi
 
+# ---------------------------------------------------------------- job-logs.sh
+# (docs/adr/0427-warning-gate-and-jobs-without-logs.md): the jobs whose logs
+# the ci job reads, and the logs fetched by a curl that answers from
+# $JLR/responses/ID (200) or 404 when there is no such file, writing the IDs
+# it was asked for to $JLR/calls
+
+JD=$HERE/testdata/job-logs
+JLR=$WORK/job-logs
+mkdir -p "$JLR/bin" "$JLR/responses"
+cat >"$JLR/bin/curl" <<'MOCK'
+#!/bin/sh
+out= url=
+while [ $# -gt 0 ]; do
+  case $1 in
+    -o) out=$2; shift 2 ;;
+    -H) shift 2 ;;
+    -*) shift ;;
+    *) url=$1; shift ;;
+  esac
+done
+id=${url%/logs}
+id=${id##*/}
+echo "$id" >>"$JLR/calls"
+if [ -f "$JLR/responses/$id" ]; then cp "$JLR/responses/$id" "$out"; exit 0; fi
+echo "curl: (22) The requested URL returned error: 404" >&2
+exit 22
+MOCK
+chmod +x "$JLR/bin/curl"
+# job_logs JOBS [ID=FILE ...]: job-logs.sh with the list of the repository,
+# the jobs of JOBS, and the responses of the IDs given; the IDs fetched in
+# $JLR/fetched, one a line joined by commas
+job_logs() {
+  jobs=$1
+  shift
+  rm -rf "$JLR/responses" "$JLR/logs" "$JLR/calls"
+  mkdir -p "$JLR/responses" "$JLR/logs"
+  : >"$JLR/calls"
+  for r in "$@"; do cp "${r#*=}" "$JLR/responses/${r%%=*}"; done
+  CODE=0
+  JLR=$JLR PATH="$JLR/bin:$PATH" GH_TOKEN=test GITHUB_API_URL=https://api.github.invalid GITHUB_REPOSITORY=owner/repo \
+    sh "$HERE/job-logs.sh" "$HERE/warnings-allowed.tsv" "$jobs" "$JLR/logs" <"$WORK/in" >"$WORK/out" 2>"$WORK/err" || CODE=$?
+  FETCHED=$(paste -sd, "$JLR/calls")
+}
+: >"$WORK/in"
+job_logs "$JD/mixed.json" 12="$LT/empty.log" 13="$LT/empty.log" 16="$LT/empty.log"
+if [ "$CODE" = 0 ] && [ "$FETCHED" = 12,13,16 ]; then ok; else ng "root ADR 0427 I1: reads the cancelled job with a step and the failed one with none, not the skipped, the in-progress nor the cancelled one with no step (exit code $CODE, fetched $FETCHED)"; fi
+if grep -q "11	scripts-macos" "$WORK/out"; then ok; else ng "root ADR 0427 I1: the cancelled job with no step is written with its ID and name"; fi
+if ! grep -q "^1[45]	" "$WORK/out"; then ok; else ng "root ADR 0427 I1: the skipped and the in-progress jobs are not written as left out"; fi
+job_logs "$JD/three.json" 21="$LT/empty.log" 23="$LT/empty.log"
+if [ "$CODE" = 1 ] && [ "$FETCHED" = 21,22,23 ]; then ok; else ng "root ADR 0427 I2: the log after one that cannot be fetched is fetched, and the check fails (exit code $CODE, fetched $FETCHED)"; fi
+if grep -q "22" "$WORK/err" && grep -qF "build (ubuntu-24.04, env)" "$WORK/err"; then ok; else ng "root ADR 0427 I2: the job whose log cannot be fetched is written with its ID and name"; fi
+job_logs "$JD/three.json" 21="$LT/empty.log" 23="$JD/other.txt"
+if [ "$CODE" = 1 ] && [ "$FETCHED" = 21,22,23 ] && grep -qF "23.log:1: ##[warning]Node.js 20 actions are deprecated." "$WORK/out"; then ok; else ng "root ADR 0427 I2, I5: the warning of the third log is reported though the second cannot be fetched (exit code $CODE, fetched $FETCHED)"; fi
+: >"$JLR/none.json"
+job_logs "$JLR/none.json"
+if [ "$CODE" = 1 ] && [ -z "$FETCHED" ]; then ok; else ng "root ADR 0427 I3: no job to read fails (exit code $CODE, fetched $FETCHED)"; fi
+job_logs "$JD/all-cancelled.json"
+if [ "$CODE" = 1 ] && [ -z "$FETCHED" ]; then ok; else ng "root ADR 0427 I1, I3: every job cancelled with no step fails, as none is read (exit code $CODE, fetched $FETCHED)"; fi
+if grep -q "31	scripts-macos" "$WORK/out" && grep -q "32	verapdf" "$WORK/out"; then ok; else ng "root ADR 0427 I1, I3: the jobs cancelled with no step are written"; fi
+job_logs "$JD/three.json" 21="$LT/empty.log" 22="$LT/empty.log" 23="$LT/empty.log"
+if [ "$CODE" = 0 ] && [ "$FETCHED" = 21,22,23 ]; then ok; else ng "root ADR 0427 I2: every log fetched and no warning passes (exit code $CODE, fetched $FETCHED)"; fi
+
+# the rows of warnings-allowed.tsv that docs/adr/0427 adds (I4, I5, I7)
+run lw "$HERE/warnings-allowed.tsv" "$JD/restore-blob.txt"
+expect "root ADR 0427 I4: the restore of an empty cache is allowed" 0 ""
+run lw "$HERE/warnings-allowed.tsv" "$JD/restore-eof.txt"
+expect "root ADR 0427 I5: another failure to restore is not allowed" 1
+run lw "$HERE/warnings-allowed.tsv" "$JD/save.txt"
+expect "root ADR 0427 I5: a failure to save is not allowed" 1
+run lw "$HERE/warnings-allowed.tsv" "$JD/other.txt"
+expect "root ADR 0427 I5: another ##[warning] is not allowed" 1
+run lw "$HERE/warnings-allowed.tsv" "$JD/download.txt"
+expect "root ADR 0427 I7: the runner retrying the download of an action from codeload.github.com is allowed" 0 ""
+run lw "$HERE/warnings-allowed.tsv" "$JD/back-off.txt"
+expect "root ADR 0427 I7: the back-off of the runner before it retries is allowed" 0 ""
+run lw "$HERE/warnings-allowed.tsv" "$JD/download-elsewhere.txt"
+expect "root ADR 0427 I5: a failed download of an action from elsewhere is not allowed" 1
+
 # ---------------------------------------------------------------- unsafe-io.sh
 
 unsafe_io() { sh "$HERE/unsafe-io.sh" "$@"; }
@@ -2384,8 +2462,8 @@ if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^ 
 # changes job, and the logs read in the ci job, apart from gate.sh
 if job_of "$CI_YML" changes | grep -qxF '        run: sh scripts/ci/werror.sh'; then ok; else ng "ci.yml: the changes job runs werror.sh"; fi
 if [ "$(perms_of "$CI_YML" ci | sort | tr '\n' ' ')" = "actions: read contents: read " ]; then ok; else ng "ci.yml: the ci job has contents: read and actions: read"; fi
-if job_of "$CI_YML" ci | grep -qF 'sh scripts/ci/log-warnings.sh scripts/ci/warnings-allowed.tsv' &&
-  job_of "$CI_YML" ci | awk '/log-warnings/ { exit } /^      - name: No warning in the logs/ { s = 1 } s && /^        if: always\(\)$/ { f = 1 } END { exit !f }'; then ok; else ng "ci.yml: the ci job checks the logs in a step of its own, also when gate.sh failed"; fi
+if job_of "$CI_YML" ci | grep -qF 'sh scripts/ci/job-logs.sh scripts/ci/warnings-allowed.tsv' &&
+  job_of "$CI_YML" ci | awk '/sh scripts\/ci\/job-logs/ { exit } /^      - name: No warning in the logs/ { s = 1 } s && /^        if: always\(\)$/ { f = 1 } END { exit !f }'; then ok; else ng "ci.yml: the ci job checks the logs in a step of its own, also when gate.sh failed"; fi
 if [ "$(perms_of "$CI_YML" visual)" = "contents: read
 actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
 ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
@@ -3864,7 +3942,7 @@ run fetch_wasm
 expect "fetch-wasm-packages: a patch that does not apply fails" 1
 
 # ---------------------------------------------------------------- wasm-cache.sh
-# (docs/adr/0219): why the toolchain cache of the wasm job missed, from
+# (docs/adr/0219, docs/adr/0427): why the toolchain cache of the wasm job missed, from
 # the hit and whether the toolchain and the project are those of main
 
 wasm_cache() { sh "$HERE/wasm-cache.sh" "$@"; }
@@ -3882,7 +3960,7 @@ expect "wasm-cache: the toolchain and the project changed" 0 "wasm-cache: missed
 run wasm_cache false true false
 expect "wasm-cache: the project changed" 0 "wasm-cache: missed, as the project or its freeze differs from main"
 run wasm_cache false true true
-expect "wasm-cache: evicted" 0 "::warning::wasm-cache: missed, though the toolchain, the project and its freeze are those of main: the cache was evicted (docs/adr/0219)"
+expect "root ADR 0427 I6: wasm-cache: evicted, a notice and no warning" 0 "::notice::wasm-cache: missed, though the toolchain, the project and its freeze are those of main: the cache was evicted (docs/adr/0219)"
 run wasm_cache false
 expect "wasm-cache: too few arguments" 2
 run wasm_cache yes true true

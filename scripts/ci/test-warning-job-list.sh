@@ -27,7 +27,7 @@ cat "$RUNNER_TEMP/time" >>"$RUNNER_TEMP/calls"
 case " $* " in *' --include '*) headers=yes;; *) headers=no;; esac
 page() {
   if [ "$headers" = yes ]; then printf 'HTTP/2.0 200 OK\r\n\r\n'; fi
-  printf '%s\tbuild\n' "$1"
+  printf '{"id":%s,"name":"build","status":"completed","conclusion":"success","steps":[{"number":1}]}\n' "$1"
 }
 case "$CASE" in
   empty) exit 0;;
