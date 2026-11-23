@@ -11,6 +11,7 @@ import GenericFontsSpec (genericFontsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import InMemorySpec (inMemoryTests)
+import IndexColumnsSpec (indexColumnsTests)
 import IndexRangeSpec (indexRangeTests)
 import InsideLinksSpec (insideLinksTests)
 import ManualEmetSpec (manualEmetTests)
@@ -39,6 +40,7 @@ tests skips =
     "golem-driver (ADR 0001)"
     ( [ testGroup "extended Japanese composition (root ADR 0380)" extendedJapaneseOutputTests,
         indexRangeTests,
+        indexColumnsTests,
         tocStylesTests,
         emetSamplesTests,
         manualEmetTests,

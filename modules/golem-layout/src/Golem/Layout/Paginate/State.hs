@@ -15,6 +15,7 @@ module Golem.Layout.Paginate.State
     openBox,
     closeBox,
     free,
+    typeAreaFree,
     isEmpty,
     addUnmet,
     keep,
@@ -148,6 +149,13 @@ columnLines env st = envCapacity env + sAdjust st
 -- | The grid lines left in the current column.
 free :: Env -> St -> Int
 free env st = cap env st - sUsed st - sNoteLines st
+
+{- | The grid lines of the type area left in the current column: the lines
+added by @page-lines belong to the column of the mark alone, so they are
+not counted (root ADR 0025, root ADR 0030).
+-}
+typeAreaFree :: Env -> St -> Int
+typeAreaFree env st = envCapacity env - sUsed st - sNoteLines st
 
 {- | Whether nothing is placed in the current column; in a part of a box
 that starts at the top of an empty column, nothing but the grid lines
@@ -309,12 +317,16 @@ advance env toPage st =
       withNotes = foldl' (carryNote env) fresh' (sPendingNotes st)
    in openBox (placeDeferred env withNotes {sDeferred = []} waiting)
 
--- | The set starts at line @first@ of the page, above the footnotes already there.
+{- | The set starts at line @first@ of the page, above the footnotes
+already there; its columns have the lines of the type area, without
+those of @page-lines (root ADR 0030).
+-}
 startSet :: Env -> St -> ColumnSet -> Int -> St
 startSet env st set first =
   (closePage env st)
     { sSet = set {csFirstLine = first},
       sColumn = 0,
+      sAdjust = 0,
       sUsed = first,
       sReserved = sNoteLines st,
       sSlots = [],

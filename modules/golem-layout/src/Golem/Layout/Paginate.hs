@@ -528,7 +528,7 @@ place env st f rest = case f of
         let sp = if sUsed st == top st then 0 else sp0
             headed = tableHead h rows capt below
             st1
-              | sp + headed <= free env st || isEmpty st = st {sUsed = sUsed st + min sp (free env st)}
+              | sp + headed <= free env st || isEmpty st = st {sUsed = sUsed st + max 0 (min sp (free env st))}
               | otherwise = keep env (nextColumn env st) (const headed)
          in placeTable env st1 i h rows capt below
   FDefTerm ls
@@ -560,7 +560,8 @@ place env st f rest = case f of
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
-     in if (csColumns (envBase env) == 1 && free env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
+     in -- only the lines of the type area are left to the set (root ADR 0025, root ADR 0030)
+        if (csColumns (envBase env) == 1 && typeAreaFree env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
           then startSet env st1 set (sUsed st1)
           else (nextPage env st1) {sSet = set {csFirstLine = 0}}
   FRestoreColumns
