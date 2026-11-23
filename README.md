@@ -184,6 +184,11 @@ golem new mybook
 
 奥付の `@printings` は、`style.toml` の `[printings]` に `format = "{date}  第{edition}版 第{printing}刷"` のように書くと、どの言語の本でも、その書式で発行の履歴を組む（[Golem ADR 0375](./docs/adr/0375-printings-format.md)）。
 
+PDF の表、リスト項目、定義用語と説明、図版とキャプションを保つ単位は、`style.toml` の `[composition].keep-parts` で `"column"`（既定）、`"page"`、`"spread"` から選ぶ（[root ADR 0401](./docs/adr/0401-select-book-part-retention-units.md)）。
+ページと見開きの中では段の間で分けられ、空の単位にも収まらないまとまりを分けると G07133 の notice を出す。
+図版とキャプションは従来どおり分けず、一段に置く。
+一段組みで表の見出しとデータ行を見開きへ分ける境界は、[ロードマップ](./docs/roadmap.md) に残す。
+
 `golem explain` は、コードを省くと一覧を表示する。
 複数のコードを渡すと、渡した順に空行一つで区切って標準出力に書く。
 Golem のコードは大文字に直して同じになるものを、プラグインのコードは綴りが同じものを、最初のものだけ扱う。

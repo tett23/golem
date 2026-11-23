@@ -37,6 +37,7 @@ import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import IndexRangeSpec (indexRangeTests)
 import InsideLinksSpec (insideLinksTests)
+import KeepBookPartsSpec qualified
 import KeepOptionsSpec (keepOptionsTests)
 import LineAdjustmentSpec (lineAdjustmentTests)
 import LinkSpec (linkTests)
@@ -99,7 +100,8 @@ tests :: Skips -> TestTree
 tests skips =
   testGroup
     "golem-driver (ADR 0001)"
-    ( [ testGroup "extended Japanese composition (root ADR 0380)" extendedJapaneseOutputTests,
+    ( [ KeepBookPartsSpec.tests,
+        testGroup "extended Japanese composition (root ADR 0380)" extendedJapaneseOutputTests,
         qpdfInstalled,
         NestedFiguresSpec.tests,
         explainTests,

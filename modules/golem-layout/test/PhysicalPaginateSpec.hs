@@ -9,6 +9,7 @@ import Golem.Layout.Paginate
 import Golem.Layout.Paginate.Physical
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp)
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Test.Tasty hiding (after)
 import Test.Tasty.HUnit
@@ -23,10 +24,13 @@ longNoteLine :: Int -> LineBox
 longNoteLine i = LineBox i [NoteBody (NoteId span0 0) 3] [] [] 0
 
 settings :: PhysicalSettings
-settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty
+settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 0) 0 0
+
+columnsOf :: [PageOutAt Sp] -> [(Int, Int, [Int])]
+columnsOf pages = [(poNumber p, poColumn p, ids) | p <- pages, let ids = [n | (_, SLine n) <- poSlots p], not (null ids)]
 
 slots :: Either PhysicalFailure [PageOutAt Sp] -> Either PhysicalFailure [[(Sp, Slotted)]]
 slots = fmap (map poSlots)
@@ -35,7 +39,90 @@ physicalPaginateTests :: TestTree
 physicalPaginateTests =
   testGroup
     "physical pagination"
-    [ testCase "root ADR 0397 I9 I10: cursor trials discard failed labels, marks and notes when a paragraph moves" $ do
+    [ testCase "root ADR 0401 I2: discarded source callbacks preserve only accepted ids notes labels and marks" $ do
+        let cfg = settings {physicalCapacity = 64, physicalMaxCapacity = 64, physicalColumns = ColumnSet 2 0 0 0}
+        cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 6])])
+        (acceptedPage, chosen) <-
+          either
+            (assertFailure . show)
+            pure
+            ( retainPhysicalPart
+                cfg
+                KeepPage
+                span0
+                "item"
+                cursor
+                ( \at -> do
+                    let (page, _, _) = physicalCursorPosition at
+                        ident = page * 10
+                        first = (noteLine ident) {lbLabels = [if page == 1 then "discarded" else "accepted"], lbMarks = [span0]}
+                    placed <- stepPhysicalCursor cfg at [FParagraph defaultKeep (first : map line [ident + 1, ident + 2])]
+                    pure (page, [ident .. ident + 2], placed)
+                )
+            )
+        acceptedPage @?= 2
+        let pages = finishPhysicalCursor cfg chosen
+        concatMap poLabels pages @?= ["accepted"]
+        concatMap poMarks pages @?= [span0]
+        concatMap poFootnotes pages @?= [(NoteId span0 0, 0, 1)]
+        [n | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [20, 21, 22],
+      testCase "root ADR 0401 I2: a retained callback re-composes source at the accepted cursor" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+        cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 2])])
+        (sourcePage, chosen) <-
+          either
+            (assertFailure . show)
+            pure
+            ( retainPhysicalPart
+                cfg
+                KeepPage
+                span0
+                "item"
+                cursor
+                ( \at -> do
+                    let (page, _, _) = physicalCursorPosition at
+                    placed <- stepPhysicalCursor cfg at [FParagraph defaultKeep (map line [10 .. 12])]
+                    pure (page, [10 .. 12], placed)
+                )
+            )
+        sourcePage @?= 2
+        [poNumber p | p <- finishPhysicalCursor cfg chosen, (_, SLine n) <- poSlots p, n >= 10] @?= [2, 2, 2],
+      testCase "root ADR 0401 I2: free page keeps a list item across columns in one page" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "list item" [10, 11, 12] [FParagraph defaultKeep (map line [10 .. 12])]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep (map line [0 .. 2]), part])
+        [(poNumber p, poColumn p) | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [(2, 0), (2, 0), (2, 1)],
+      testCase "root ADR 0401 I2: free page lets a table header and first row cross columns within a page" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "table" [10, 11, 20, 21] [FTable 10 0 [line 10, line 11] [[line 20, line 21]] [] False]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [part])
+        columnsOf pages @?= [(1, 0, [10, 11]), (1, 1, [20, 21])],
+      testCase "root ADR 0401 I2: free spread repeats a table header on the next physical page only" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepSpread span0 "table" [10, 20] [FTable 10 0 [line 10] [[line 20], [line 30], [line 40], [line 50]] [] False]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FBreak BreakPage, part])
+        columnsOf pages @?= [(2, 0, [10, 20]), (2, 1, [30, 40]), (3, 0, [10, 50])],
+      testCase "root ADR 0401 I2: free page keeps a lower caption in its last row's page across columns" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "table" [10, 11] [FTable 10 0 [] [[line 10, line 11], [line 20]] [line 30, line 31] True]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [part])
+        columnsOf pages @?= [(1, 0, [10, 11]), (2, 0, [20]), (2, 1, [30, 31])],
+      testCase "root ADR 0401 I2: free page lets a definition term and its first description cross columns" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepPage span0 "definition" [10, 11, 20] [FDefTerm [line 10, line 11], FParagraph (Keep 1 1 False) [line 20, line 21]]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0], part])
+        columnsOf pages @?= [(1, 0, [0, 10]), (1, 1, [11, 20]), (2, 0, [21])],
+      testCase "root ADR 0401 I1: free column keeps a table header with its first row in one column" $ do
+        let cfg = settings {physicalColumns = ColumnSet 2 0 0 0}
+            part = FBookPart KeepColumn span0 "table" [10, 20] [FTable 10 0 [line 10] [[line 20], [line 30], [line 40]] [] False]
+        pages <- either (assertFailure . show) pure (paginatePhysical cfg [part])
+        columnsOf pages @?= [(1, 0, [10, 20]), (1, 1, [10, 30]), (2, 0, [10, 40])],
+      testCase "root ADR 0401 I3: free oversized item produces one notice without losing rows" $ do
+        let part = FBookPart KeepPage span0 "list item" [10 .. 14] [FParagraph defaultKeep (map line [10 .. 14])]
+        pages <- either (assertFailure . show) pure (paginatePhysical settings [FParagraph defaultKeep [line 0], part])
+        [n | p <- pages, (_, SLine n) <- poSlots p, n >= 10] @?= [10 .. 14]
+        [u | p <- pages, u@SplitBookPart {} <- poUnmet p] @?= [SplitBookPart span0 "list item" KeepPage],
+      testCase "root ADR 0397 I9 I10: cursor trials discard failed labels, marks and notes when a paragraph moves" $ do
         let cfg = settings {physicalSeparator = 10}
             row = (noteLine 0) {lbLabels = ["body"], lbMarks = [span0]}
         (wrapped, region) <- either (assertFailure . show) pure (beginPhysicalWrap cfg (startPhysicalCursor cfg) 9 30 ["figure"] [])
