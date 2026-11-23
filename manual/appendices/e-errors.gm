@@ -633,7 +633,8 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   その文字列から、その文字を消してください。
   そのファイルの文献を引く [code: \[cite ...\]] には、G02021 も出ます。
 = [strong: G03027 [code: 章末の注の番号が章の中で重なります（…）。\[notes\] の numbering を "chapter" にしてください]]
-  一つの章を複数のファイルに分け、[code: \[notes\]] の [code: numbering] を [code: "file"] にしたため、章の終わりの注の一覧に同じ番号が二度現れます。
+  一つの章を複数のファイルに分け、[code: \[notes\]] か [code: \[endnotes\]] の [code: numbering] を [code: "file"] にしたため、章の終わりの注の一覧に同じ番号が二度現れます。
+  [code: \[endnotes\]] のときは、メッセージが [code: \[endnotes\] の numbering を "chapter" にしてください] になります。
   これは警告で、出力は止まりません。
   [code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
 = [strong: G03259 [code: \[notes\] の numbering = "page" は、ページを持たない出力（HTML、EPUB、プレーンテキスト）では使えないので、注に本の通し番号を振ります]]
@@ -641,6 +642,11 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   これらの出力にはページがないので、本の全体の通し番号で注を組みます。
   これは警告で、出力は止まりません。
   どの出力でも同じ番号にしたいときは、[code: numbering] を [code: "chapter"] か [code: "book"] にしてください。
+= [strong: G03278 [code: 章末の注にはページごとの番号を使えません。\[endnotes\] の numbering には "chapter"、"file"、"book" のどれかを書きます]]
+  [code: \[endnotes\]] の [code: numbering] に [code: "page"] を書いています。
+  章の終わりの注は一覧にまとめるので、ページごとの番号を振れません。
+  これはエラーで、ビルドは止まります。
+  [code: numbering] を [code: "chapter"]、[code: "file"]、[code: "book"] のどれかにしてください。
 = [strong: G03004 [code: 大文字と小文字だけが異なるパスです: …]]
   大文字と小文字だけが違う二つのパスを使っています。
   コンピューターによって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。

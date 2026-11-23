@@ -68,6 +68,7 @@ cfg0 =
       hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
       hcHeadingRules = Map.empty,
       hcNoteNotation = arabic,
+      hcEndnoteNotation = arabic,
       hcEmbedFonts = True,
       hcGenericFamilies = Map.empty
     }
@@ -148,7 +149,7 @@ multipleBibliographyTests =
 assembled :: [[Block]] -> Book
 assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
   where
-    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" Map.empty 40
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" Map.empty 40 NumberPerChapter
 
 -- | A paragraph at offset s that cites the keys, one byte apart.
 citing :: FileId -> Int -> [Text] -> Block
@@ -181,7 +182,7 @@ channelTests =
     ]
   where
     decls = [ChannelDecl "people" OrderDocument True, ChannelDecl "glossary" OrderReading False, ChannelDecl "a-1" OrderDocument True, ChannelDecl "a" OrderDocument True]
-    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" (Map.fromList [(channelName d, d) | d <- decls]) 40) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
+    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" "" (Map.fromList [(channelName d, d) | d <- decls]) 40 NumberPerChapter) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
     item f s c t = ChannelItem (mkSpan f s (s + 1)) (ChannelItemData c (Just t) (Just t) [Text (mkSpan f s (s + 1)) t])
     list f s c = Block (mkSpan f s (s + 1)) Nothing Nothing (ChannelOutput (CustomOutput c Nothing))
 
