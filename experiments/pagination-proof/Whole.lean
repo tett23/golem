@@ -66,6 +66,10 @@ inductive Flow where
   | noBreakLines (n : Nat)
   /-- A keep-with-next of so many lines (`FKeepNext`). -/
   | keepNext (n : Nat)
+  /-- Another set of columns (`FSwitchColumns`), by its columns. -/
+  | switchColumns (columns : Nat)
+  /-- Back to the base set of columns (`FRestoreColumns`). -/
+  | restoreColumns
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -139,13 +143,16 @@ structure St where
       flow, with the page, the column and the slots before it, and the
       lines the column must take and whether only lines count. -/
   noBreak : List (Unmet × Nat × Nat × Nat × (Nat × Bool))
+  /-- `csColumns (sSet st)`: the columns of the set in effect; its first
+      line is `firstLine`. -/
+  columns : Nat
 
 structure Need where
   grid : Nat
   notes : Nat
 
-/-- `Env` of State.hs with the columns of the set, and the values the
-    model leaves open. -/
+/-- `Env` of State.hs with the columns of the base set (`envBase`), and
+    the values the model leaves open. -/
 structure Env where
   capacity : Int
   separator : Int
@@ -168,8 +175,8 @@ structure Env where
   /-- `nextFirstLines` of Decide.hs. -/
   nextFirst : Nat → List Flow → Nat × Bool
 
-def initialState : St :=
-  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, []⟩
+def initialState (env : Env) : St :=
+  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns⟩
 
 /-! ## Queries of State.hs -/
 
@@ -317,7 +324,21 @@ def advance (env : Env) (toPage : Bool) (st : St) : St :=
   let tw := advanceTurned toPage st
   openColumn env (advanceFresh env toPage st) tw.1 st.pending tw.2
 
-def nextColumn (env : Env) (st : St) : St := advance env (env.columns ≤ st.column + 1) st
+/-- `startSet` of State.hs: the set starts at line `first` of the page,
+    above the footnote lines already there. -/
+def startSet (env : Env) (st : St) (columns : Nat) (first : Int) : St :=
+  { closePage env st with
+    columns := columns
+    firstLine := first
+    column := 0
+    used := first
+    reserved := st.noteLines
+    slots := []
+    notes := []
+    spaces := []
+    headingOnly := false }
+
+def nextColumn (env : Env) (st : St) : St := advance env (st.columns ≤ st.column + 1) st
 def nextPage (env : Env) (st : St) : St := advance env true st
 
 /-! ## The rank of the loops -/
@@ -329,7 +350,7 @@ def pendingWeight : List NotePart → Nat
 
 /-- What waits: the figures sent on and the lines of the continued notes. -/
 def waiting (st : St) : Nat := st.deferred.length + pendingWeight st.pending
-def columnsLeft (env : Env) (st : St) : Nat := env.columns - (st.column + 1)
+def columnsLeft (_env : Env) (st : St) : Nat := st.columns - (st.column + 1)
 def adjustRank (st : St) : Nat := if st.adjust < 0 then 1 else 0
 def fullRank (st : St) : Nat := if isEmpty st then 0 else 1
 
@@ -479,6 +500,28 @@ theorem carryNote_column (env : Env) (st : St) (p : NotePart) :
     (carryNote env st p).column = st.column := by
   simp only [carryNote, addUnmet]; split <;> rfl
 
+theorem carryNote_reserved (env : Env) (st : St) (p : NotePart) :
+    (carryNote env st p).reserved = st.reserved ∧ (0 < st.noteLines → 0 < (carryNote env st p).noteLines) := by
+  simp only [carryNote, addUnmet]
+  split
+  · exact ⟨rfl, id⟩
+  · refine ⟨rfl, fun h => ?_⟩
+    show 0 < st.noteLines + carrySep env st + (carryShown env st p.2.2 : Int)
+    have : (0 : Int) ≤ (carryShown env st p.2.2 : Int) := Int.ofNat_nonneg _
+    have : carrySep env st = 0 := by simp only [carrySep]; split <;> omega
+    omega
+
+theorem carryAll_reserved (env : Env) (ps : List NotePart) (st : St) :
+    (ps.foldl (carryNote env) st).reserved = st.reserved ∧
+      (0 < st.noteLines → 0 < (ps.foldl (carryNote env) st).noteLines) := by
+  induction ps generalizing st with
+  | nil => exact ⟨rfl, id⟩
+  | cons p ps ih =>
+    simp only [List.foldl]
+    obtain ⟨a, b⟩ := ih (carryNote env st p)
+    obtain ⟨a', b'⟩ := carryNote_reserved env st p
+    exact ⟨a.trans a', fun h => b (b' h)⟩
+
 theorem carryAll_column (env : Env) (ps : List NotePart) (st : St) :
     (ps.foldl (carryNote env) st).column = st.column := by
   induction ps generalizing st with
@@ -520,6 +563,40 @@ theorem openColumn_pending (env : Env) (base : St) (ts : List Nat) (ps : List No
   have c := carryAll_pending env ps (ts.foldl (pageFigure env) base)
   rw [(pageFigures_fields ..).2.1] at c
   exact c
+
+theorem carryAll_columns (env : Env) (ps : List NotePart) (st : St) :
+    (ps.foldl (carryNote env) st).columns = st.columns := by
+  induction ps generalizing st with
+  | nil => rfl
+  | cons p ps ih =>
+    simp only [List.foldl]; rw [ih]; simp only [carryNote, addUnmet]; split <;> rfl
+
+theorem pageFigures_columns (env : Env) (ts : List Nat) (st : St) :
+    (ts.foldl (pageFigure env) st).columns = st.columns := by
+  induction ts generalizing st with
+  | nil => rfl
+  | cons t ts ih => simp only [List.foldl]; rw [ih]; rfl
+
+theorem placeDeferred_columns (env : Env) (ws : List Deferred) (st : St) :
+    (placeDeferred env st ws).columns = st.columns := by
+  induction ws generalizing st with
+  | nil => rfl
+  | cons w ws ih =>
+    cases w with
+    | figure i n =>
+      unfold placeDeferred; split
+      · rw [ih]; rfl
+      · rfl
+    | pageFigure i => rfl
+
+/-- Going on to the next column or page keeps the set of columns. -/
+theorem advance_columns (env : Env) (b : Bool) (st : St) : (advance env b st).columns = st.columns := by
+  simp only [advance, openColumn]
+  rw [placeDeferred_columns]
+  show (List.foldl (carryNote env) _ st.pending).columns = st.columns
+  rw [carryAll_columns, pageFigures_columns]
+  simp only [advanceFresh, closePage]
+  split <;> (try split) <;> rfl
 
 theorem advance_adjust (env : Env) (b : Bool) (st : St) : (advance env b st).adjust = 0 := by
   simp only [advance]; rw [openColumn_adjust]; rfl
@@ -652,16 +729,16 @@ theorem I4_nextColumn_rank (env : Env) (st : St) (h : isEmpty st = false ∨ st.
     RankLt (rank env (nextColumn env st)) (rank env st) := by
   simp only [rank, nextColumn]
   apply rankLt_of
-  have adj := advance_adjust env (env.columns ≤ st.column + 1) st
-  have col := advance_column env (env.columns ≤ st.column + 1) st
-  have le := advance_waiting_le env (env.columns ≤ st.column + 1) st
-  have adjZero : adjustRank (advance env (decide (env.columns ≤ st.column + 1)) st) = 0 := by
+  have adj := advance_adjust env (st.columns ≤ st.column + 1) st
+  have col := advance_column env (st.columns ≤ st.column + 1) st
+  have le := advance_waiting_le env (st.columns ≤ st.column + 1) st
+  have adjZero : adjustRank (advance env (decide (st.columns ≤ st.column + 1)) st) = 0 := by
     simp [adjustRank, adj]
   have adjOld : st.adjust < 0 → adjustRank st = 1 := fun n => by simp [adjustRank, n]
   have fullOld : isEmpty st = false → fullRank st = 1 := fun n => by simp [fullRank, n]
-  have fullLe : fullRank (advance env (decide (env.columns ≤ st.column + 1)) st) ≤ 1 := by
+  have fullLe : fullRank (advance env (decide (st.columns ≤ st.column + 1)) st) ≤ 1 := by
     unfold fullRank; split <;> omega
-  by_cases toPage : env.columns ≤ st.column + 1
+  by_cases toPage : st.columns ≤ st.column + 1
   · simp only [toPage, decide_True] at adj col le adjZero fullLe ⊢
     by_cases w : 0 < waiting st
     · exact Or.inl (advance_page_waiting_lt env st w)
@@ -682,7 +759,7 @@ theorem I4_nextColumn_rank (env : Env) (st : St) (h : isEmpty st = false ∨ st.
   · simp only [toPage, decide_False] at adj col le adjZero fullLe ⊢
     have cl : columnsLeft env (advance env false st) < columnsLeft env st := by
       have c1 : (advance env false st).column = st.column + 1 := by rw [col]; rfl
-      simp only [columnsLeft, c1]; omega
+      simp only [columnsLeft, c1, advance_columns]; omega
     by_cases w : waiting (advance env false st) < waiting st
     · exact Or.inl w
     · right
@@ -703,16 +780,16 @@ theorem I4_nextColumn_flush_rank (env : Env) (st : St) (h : 0 < waiting st) :
     Prod.Lex (· < ·) (· < ·) (waiting (nextColumn env st), columnsLeft env (nextColumn env st))
       (waiting st, columnsLeft env st) := by
   simp only [Prod.lex_def, nextColumn]
-  have col := advance_column env (env.columns ≤ st.column + 1) st
-  have le := advance_waiting_le env (env.columns ≤ st.column + 1) st
-  by_cases toPage : env.columns ≤ st.column + 1
+  have col := advance_column env (st.columns ≤ st.column + 1) st
+  have le := advance_waiting_le env (st.columns ≤ st.column + 1) st
+  by_cases toPage : st.columns ≤ st.column + 1
   · simp only [toPage, decide_True] at col le ⊢
     exact Or.inl (advance_page_waiting_lt env st h)
   · simp only [toPage, decide_False] at col le ⊢
     by_cases w : waiting (advance env false st) < waiting st
     · exact Or.inl w
     · have c1 : (advance env false st).column = st.column + 1 := by rw [col]; rfl
-      exact Or.inr ⟨by omega, by simp only [columnsLeft, c1]; omega⟩
+      exact Or.inr ⟨by omega, by simp only [columnsLeft, c1, advance_columns]; omega⟩
 
 /-! ## The loops of State.hs -/
 
@@ -872,7 +949,7 @@ def applyBreakKind (env : Env) (st : St) : BreakKind → St
   | .recto => parityStart env odd st
   | .verso => parityStart env even st
   | .column =>
-    if 1 < env.columns ∧ st.deferred.any isPageFigure = false then nextColumn env st
+    if 1 < st.columns ∧ st.deferred.any isPageFigure = false then nextColumn env st
     else breakPage env st
 
 def applyBreaks (env : Env) (st : St) : St :=
@@ -1149,6 +1226,14 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .noBreak => st
   | .noBreakLines _ => st
   | .keepNext _ => st
+  | .switchColumns n =>
+    let st1 := flushDeferred env st
+    if (env.columns = 1 ∧ 0 < free env st1) ∨ (isEmpty st1 = true ∧ st1.column = 0) then
+      startSet env st1 n st1.used
+    else { nextPage env st1 with columns := n, firstLine := 0 }
+  | .restoreColumns =>
+    if isEmpty st = true ∧ st.column = 0 ∧ top st = 0 then { st with columns := env.columns, firstLine := 0 }
+    else { nextPage env st with columns := env.columns, firstLine := 0 }
   | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
   | .defTerm ls =>
     if env.keepColumn then
@@ -1272,7 +1357,7 @@ def placeAll (env : Env) (st : St) : List Flow → St
 
 /-- `paginateWithin` of Paginate.hs up to the pages it returns. -/
 def paginate (env : Env) (flows : List Flow) : St :=
-  closePage env (placeAll env initialState flows)
+  closePage env (placeAll env (initialState env) flows)
 
 /-- Root ADR 0352 invariant 4: the pagination of every finite list of
     flows ends.  Every definition above is total, and the
@@ -1712,6 +1797,18 @@ theorem text_placeTableAcross (env : Env) (st : St) (h : List Line) (rows : List
       = text st ++ (tableLines h rows capt below).map (fun l => .line l.id) := by
   simp only [placeTableAcross]; rw [text_acrossGo, tableGroups_lines]
 
+theorem text_startSet (env : Env) (st : St) (n : Nat) (first : Int) : text (startSet env st n first) = text st := by
+  simp only [startSet, closePage]
+  by_cases e : st.slots.isEmpty = true ∧ st.notes.isEmpty = true
+  · have s : st.slots = [] := by
+      cases h : st.slots with
+      | nil => rfl
+      | cons _ _ => simp [h, List.isEmpty] at e
+    simp only [e, and_self, ite_true]
+    simp [text, textSlots, s]
+  · simp only [e, ite_false]
+    simp [text, pagesText_cons, textSlots]
+
 theorem flowText_heading (recto : Bool) (n : Nat) (ls : List Line) :
     flowText (.heading recto n ls) = flowText (.heading false n ls) := by
   cases ls <;> rfl
@@ -1752,6 +1849,18 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | noBreak => simp [place, flowText]
   | noBreakLines n => simp [place, flowText]
   | keepNext n => simp [place, flowText]
+  | switchColumns n =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rw [text_startSet, text_flushDeferred]
+    · show text (nextPage env _) = _
+      rw [text_nextPage, text_flushDeferred]
+  | restoreColumns =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rfl
+    · show text (nextPage env _) = _
+      rw [text_nextPage]
   | code g c first cont ls => exact text_placeCode ..
   | defTerm ls =>
     simp only [place]
@@ -1880,6 +1989,8 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | code g c first cont ls => simp only [step]; exact general _ _
   | defTerm ls => simp only [step]; exact general _ _
   | table sp0 h rows capt below => simp only [step]; exact general _ _
+  | switchColumns n => simp only [step]; exact general _ _
+  | restoreColumns => simp only [step]; exact general _ _
 
 theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     text (placeAll env st flows) = text st ++ sourceText flows := by
@@ -1904,11 +2015,11 @@ theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     to are slots of their own, not lines of the text. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) :
     pagesText (paginate env flows).done = sourceText flows := by
-  have h := text_placeAll env flows initialState
-  have i : text initialState = [] := rfl
+  have h := text_placeAll env flows (initialState env)
+  have i : text (initialState env) = [] := rfl
   rw [i, List.nil_append] at h
   simp only [paginate, closePage]
-  generalize placeAll env initialState flows = st at h
+  generalize placeAll env (initialState env) flows = st at h
   split
   · rename_i e
     have s : st.slots = [] := by
@@ -1926,10 +2037,11 @@ The figures of the model are the figures and the turned figures.  The
 proof needs every figure to be at least one line high: a figure of no
 lines leaves the column's lines used at 0, so a turned figure after it
 is put on a page of its own before the column that holds the figure is
-closed (README.md).  It also needs a capacity of 0 lines or more and a
-footnote separator of 0 lines or more: the lines used become negative
-only where a table in an empty column takes the negative room that its
-footnote lines leave, and the footnote lines of a column never
+closed (README.md).  It also needs a capacity of 1 line or more, the
+input of root ADR 0352, and a footnote separator of 0 lines or more:
+a table in an empty column whose footnote lines leave no room takes the
+negative room left, so the lines used become the lines of the column
+less its footnote lines, and the footnote lines of a column never
 decrease. -/
 
 /-- The figures and turned figures of slots, in order. -/
@@ -1994,7 +2106,9 @@ theorem deferredOk_spanTurned (d : List Deferred) (h : deferredOk d) : deferredO
 
 /-- What holds of every state outside `needBeforeSpaces`. -/
 structure Weak (st : St) : Prop where
-  first : st.firstLine = 0
+  /-- The first line of the set of columns is 0 or more, or the set
+      keeps footnote lines at the foot of each of its columns. -/
+  first : 0 ≤ st.firstLine ∨ 0 < st.reserved
   deferred : deferredOk st.deferred
   adjust : 0 ≤ st.adjust
 
@@ -2018,20 +2132,21 @@ theorem posLt_trans {a b c : St} (h1 : posLt a b) (h2 : posLt b c) : posLt a c :
 /-- `r` keeps the column of `st` as it is. -/
 def Same (st r : St) : Prop :=
   r.slots = st.slots ∧ r.used = st.used ∧ r.page = st.page ∧ r.column = st.column ∧ r.firstLine = st.firstLine
-    ∧ r.deferred = st.deferred ∧ r.noteLines = st.noteLines ∧ r.adjust = st.adjust
+    ∧ r.deferred = st.deferred ∧ r.noteLines = st.noteLines ∧ r.adjust = st.adjust ∧ r.reserved = st.reserved
 
 theorem Same.trans' {a b c : St} (h1 : Same a b) (h2 : Same b c) : Same a c := by
-  obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8⟩ := h1
-  obtain ⟨b1, b2, b3, b4, b5, b6, b7, b8⟩ := h2
-  exact ⟨b1.trans a1, b2.trans a2, b3.trans a3, b4.trans a4, b5.trans a5, b6.trans a6, b7.trans a7, b8.trans a8⟩
+  obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9⟩ := h1
+  obtain ⟨b1, b2, b3, b4, b5, b6, b7, b8, b9⟩ := h2
+  exact ⟨b1.trans a1, b2.trans a2, b3.trans a3, b4.trans a4, b5.trans a5, b6.trans a6, b7.trans a7, b8.trans a8,
+    b9.trans a9⟩
 
 theorem Same.weak {st r : St} (s : Same st r) (w : Weak st) : Weak r := by
-  obtain ⟨_, _, _, _, a5, a6, _, a8⟩ := s
-  exact ⟨a5.trans w.first, a6 ▸ w.deferred, a8 ▸ w.adjust⟩
+  obtain ⟨_, _, _, _, a5, a6, _, a8, a9⟩ := s
+  exact ⟨a5 ▸ a9 ▸ w.first, a6 ▸ w.deferred, a8 ▸ w.adjust⟩
 
 theorem Same.inv {st r : St} (s : Same st r) (i : Inv st) : Inv r := by
   have w := s.weak i.weak
-  obtain ⟨a1, a2, _, _, _, _, a7, _⟩ := s
+  obtain ⟨a1, a2, _, _, _, _, a7, _, _⟩ := s
   exact ⟨w, a2 ▸ a7 ▸ i.used, a1 ▸ a2 ▸ a7 ▸ i.fig⟩
 
 theorem Same.page' {st r : St} (s : Same st r) : r.page = st.page := s.2.2.1
@@ -2224,21 +2339,30 @@ theorem advance_inv (env : Env) (b : Bool) (st : St) (w : Weak st) :
     · exact deferredOk_spanTurned _ w.deferred
     · exact w.deferred
   have fa : (advanceFresh env b st).adjust = 0 := rfl
-  generalize advanceFresh env b st = fr at f2 f5 f6 fa
+  have fr' : (advanceFresh env b st).reserved = (if b then 0 else st.reserved) := rfl
+  have fn : (advanceFresh env b st).noteLines = (if b then 0 else st.reserved) := rfl
+  generalize advanceFresh env b st = fr at f2 f5 f6 fa fr' fn
   obtain ⟨_, p2, _⟩ := pageFigures_page env (advanceTurned b st).1 fr
   have pf := pageFigures_fields env (advanceTurned b st).1 fr
   generalize (advanceTurned b st).1.foldl (pageFigure env) fr = pg at p2 pf
   obtain ⟨_, c2, _, c4, c5⟩ := carryAll_frame env st.pending pg
   have c6 := carryAll_adjust env st.pending pg
-  generalize st.pending.foldl (carryNote env) pg = cn at c2 c4 c5 c6
+  have c7 := carryAll_reserved env st.pending pg
+  generalize st.pending.foldl (carryNote env) pg = cn at c2 c4 c5 c6 c7
+  have w1 := w.first
   have base : Inv { cn with deferred := [] } := by
     refine ⟨⟨?_, trivial, ?_⟩, ?_, ?_⟩
-    · show cn.firstLine = 0
-      rw [c5, pf.2.2.2.2.2.1, f6]; have := w.first; split <;> simp [this]
+    · show 0 ≤ cn.firstLine ∨ 0 < cn.reserved
+      rw [c5, pf.2.2.2.2.2.1, f6, c7.1, pf.2.2.2.2.2.2.1, fr']; cases b <;> simp <;> omega
     · show 0 ≤ cn.adjust
       rw [c6, pf.2.2.1, fa]; decide
-    · left; show 0 ≤ cn.used
-      rw [c4, pf.2.2.2.2.1, f5]; have := w.first; split <;> simp [this]
+    · show 0 ≤ cn.used ∨ 0 < cn.noteLines
+      rw [c4, pf.2.2.2.2.1, f5]
+      have c8 : 0 < pg.noteLines → 0 < cn.noteLines := c7.2
+      rw [pf.2.2.2.2.2.2.2.1, fn] at c8
+      cases b
+      · simp at c8 ⊢; omega
+      · simp
     · left; show figSlots cn.slots = []; rw [c2, p2, f2]; rfl
   exact placeDeferred_inv env _ _ base okTurned
 
@@ -2265,7 +2389,7 @@ theorem keep_moves (env : Env) (st : St) (need : St → Int) (w : Weak st) : Mov
   · unfold keep; rw [dif_pos h]
     have m := moves_nextColumn env st w
     exact m.trans (keep_moves env (nextColumn env st) need (moves_weak w m))
-  · unfold keep; rw [dif_neg h]; exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · unfold keep; rw [dif_neg h]; exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 termination_by rank env st
 decreasing_by exact I4_nextColumn_rank env st (Or.inl h.2)
 
@@ -2356,10 +2480,10 @@ theorem applyBreaks_figs (env : Env) (st : St) (h : Inv st) :
 theorem applyNeed_moves (env : Env) (st : St) (w : Weak st) : Moves st (applyNeed env st) := by
   unfold applyNeed
   split
-  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · split
     · dsimp only; split
-      · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
       · exact moves_nextColumn env _ ⟨w.first, w.deferred, w.adjust⟩
     · exact keep_moves env _ _ ⟨w.first, w.deferred, w.adjust⟩
 
@@ -2376,9 +2500,9 @@ theorem figs_applyNeed (env : Env) (st : St) : figs (applyNeed env st) = figs st
 theorem needBeforeSpace_moves (env : Env) (st : St) (w : Weak st) : Moves st (needBeforeSpace env st) := by
   unfold needBeforeSpace
   split
-  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
   · split
-    · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    · exact moves_same ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · split
       · exact applyNeed_moves env _ ⟨w.first, w.deferred, w.adjust⟩
       · have m := applyNeed_moves env { st with needAt := none } ⟨w.first, w.deferred, w.adjust⟩
@@ -2429,17 +2553,17 @@ theorem inv_needBeforeSpaces (env : Env) (st : St) (h : Inv st) : Inv (needBefor
   generalize needBeforeSpace env { st with used := st.used - k } = st1 at m
   split
   · rename_i e
-    rcases m with ⟨s1, s2, _, _, s5, s6, s7, s8⟩ | ⟨_, p⟩
+    rcases m with ⟨s1, s2, _, _, s5, s6, s7, s8, s9⟩ | ⟨_, p⟩
     · have u : st1.used + k = st.used := by rw [s2]; show st.used - k + k = st.used; omega
       refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_⟩
-      · show st1.firstLine = 0; rw [s5]; exact h.weak.first
+      · show 0 ≤ st1.firstLine ∨ 0 < st1.reserved; rw [s5, s9]; exact h.weak.first
       · show deferredOk st1.deferred; rw [s6]; exact h.weak.deferred
       · show 0 ≤ st1.adjust; rw [s8]; exact h.weak.adjust
       · show 0 ≤ st1.used + k ∨ 0 < st1.noteLines; rw [u, s7]; exact h.used
       · show figSlots st1.slots = [] ∨ 1 ≤ st1.used + k ∨ 0 < st1.noteLines; rw [u, s1, s7]; exact h.fig
     · exfalso; simp only [posLt] at p; omega
   · rename_i e
-    rcases m with ⟨_, _, s3, s4, _, _, _, _⟩ | ⟨i, _⟩
+    rcases m with ⟨_, _, s3, s4, _, _, _, _, _⟩ | ⟨i, _⟩
     · exact absurd ⟨s3, s4⟩ e
     · exact inv_placeSpaces env _ st1 i
 
@@ -2798,11 +2922,11 @@ decreasing_by
       subst r
       exact Prod.Lex.left _ _ (by simp)
 
-/-- The space before a table in `KeepColumn`: in an empty column whose
-    footnote lines leave no room, the lines used drop by the room
-    missing, so they are negative only below footnote lines. -/
-theorem tableStart_inv (env : Env) (hc : 0 ≤ env.capacity) (st : St) (h : Inv st) (sp headed : Int)
-    (hsp : 0 ≤ sp) (hh : 0 ≤ headed) (c : sp + headed ≤ free env st ∨ isEmpty st = true) :
+/-- The space before a table in `KeepColumn`: where the room left is
+    negative (in an empty column whose footnote lines leave no room),
+    the lines used become the lines of the column less its footnote
+    lines, so a column of 1 line or more keeps the invariant. -/
+theorem tableStart_inv (env : Env) (hc : 1 ≤ env.capacity) (st : St) (h : Inv st) (sp : Int) (hsp : 0 ≤ sp) :
     Inv { st with used := st.used + min sp (free env st) } := by
   by_cases d : 0 ≤ min sp (free env st)
   · exact inv_addUsed h ⟨h.weak.first, h.weak.deferred, h.weak.adjust⟩ _ d rfl (Int.le_refl _) (Or.inl rfl)
@@ -2810,26 +2934,42 @@ theorem tableStart_inv (env : Env) (hc : 0 ≤ env.capacity) (st : St) (h : Inv 
       rw [Int.min_def]; split
       · omega
       · rfl
-    have e : isEmpty st = true := by
-      rcases c with c | c
-      · omega
-      · exact c
-    have u0 : st.used = 0 := by
-      have := h.weak.first
-      simp [isEmpty, top] at e
-      omega
     have fr : free env st = env.capacity + st.adjust - st.used - st.noteLines := rfl
     have a := h.weak.adjust
     refine ⟨⟨h.weak.first, h.weak.deferred, h.weak.adjust⟩, ?_, ?_⟩
     · show 0 ≤ st.used + min sp (free env st) ∨ 0 < st.noteLines
       rw [m]; omega
     · show figSlots st.slots = [] ∨ 1 ≤ st.used + min sp (free env st) ∨ 0 < st.noteLines
-      rcases h.fig with g | g | g
-      · exact Or.inl g
-      · omega
-      · exact Or.inr (Or.inr g)
+      rw [m]; omega
 
-theorem place_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
+theorem startSet_figs (env : Env) (st : St) (n : Nat) (h : Inv st) :
+    figs (startSet env st n st.used) = figs st ∧ Inv (startSet env st n st.used) := by
+  have inv : Inv (startSet env st n st.used) := by
+    have a : (startSet env st n st.used).adjust = st.adjust := by
+      simp only [startSet, closePage]; split <;> rfl
+    have d : (startSet env st n st.used).deferred = st.deferred := by
+      simp only [startSet, closePage]; split <;> rfl
+    have nl : (startSet env st n st.used).noteLines = st.noteLines := by
+      simp only [startSet, closePage]; split <;> rfl
+    refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_⟩
+    · show 0 ≤ st.used ∨ 0 < st.noteLines; exact h.used
+    · rw [d]; exact h.weak.deferred
+    · rw [a]; exact h.weak.adjust
+    · show 0 ≤ st.used ∨ 0 < (startSet env st n st.used).noteLines; rw [nl]; exact h.used
+    · left; rfl
+  refine ⟨?_, inv⟩
+  simp only [startSet, closePage]
+  by_cases e : st.slots.isEmpty = true ∧ st.notes.isEmpty = true
+  · have s : st.slots = [] := by
+      cases h : st.slots with
+      | nil => rfl
+      | cons _ _ => simp [h, List.isEmpty] at e
+    simp only [e, and_self, ite_true]
+    simp [figs, figSlots, s]
+  · simp only [e, ite_false]
+    simp [figs, pagesFigs_cons, figSlots]
+
+theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     (rest : List Flow) (h : Inv st) (hf : figureOk f) :
     figs (place env st f rest) = figs st ++ flowFigs f ∧ Inv (place env st f rest) := by
   cases f with
@@ -2889,6 +3029,23 @@ theorem place_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separat
   | noBreak => exact ⟨by simp [place, flowFigs], h⟩
   | noBreakLines n => exact ⟨by simp [place, flowFigs], h⟩
   | keepNext n => exact ⟨by simp [place, flowFigs], h⟩
+  | switchColumns n =>
+    simp only [place, flowFigs, List.append_nil]
+    obtain ⟨f1, i1, _⟩ := flushDeferred_figs env st h
+    generalize flushDeferred env st = s1 at f1 i1
+    split
+    · have := startSet_figs env s1 n i1
+      exact ⟨this.1.trans f1, this.2⟩
+    · have i2 := inv_nextPage env s1 i1
+      exact ⟨(figs_nextPage env s1).trans f1,
+        ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred, i2.weak.adjust⟩, i2.used, i2.fig⟩⟩
+  | restoreColumns =>
+    simp only [place, flowFigs, List.append_nil]
+    split
+    · exact ⟨rfl, ⟨⟨Or.inl (Int.le_refl 0), h.weak.deferred, h.weak.adjust⟩, h.used, h.fig⟩⟩
+    · have i2 := inv_nextPage env st h
+      exact ⟨figs_nextPage env st,
+        ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred, i2.weak.adjust⟩, i2.used, i2.fig⟩⟩
   | code g c first cont ls =>
     simp only [place, flowFigs, List.append_nil]; exact placeCode_figs env g c first cont st true h ls
   | defTerm ls =>
@@ -2913,7 +3070,7 @@ theorem place_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separat
             else keep env (nextColumn env st) (fun _ => (tableHead hd rows capt below : Int))) := by
         split
         · rename_i c
-          exact ⟨rfl, tableStart_inv env hc st h _ _ hsp (Int.ofNat_nonneg _) c⟩
+          exact ⟨rfl, tableStart_inv env hc st h _ hsp⟩
         · exact ⟨by rw [figs_keep, figs_nextColumn], inv_keep env _ _ (inv_nextColumn env st h)⟩
       have := placeTable_figs env hs _ hd rows capt below s1.2
       rw [s1.1] at this; exact this
@@ -2959,7 +3116,7 @@ theorem placeKept_figs (env : Env) (kp : Keep) (placeIn : St → Bool → List L
       · exact one
       · exact three
 
-theorem placeFlow_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
+theorem placeFlow_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     (rest : List Flow) (h : Inv st) (hf : figureOk f) :
     figs (placeFlow env st f rest) = figs st ++ flowFigs f ∧ Inv (placeFlow env st f rest) := by
   have pl : ∀ kp s b xs, Inv s → figs (placeLines env kp s b xs) = figs s ∧ Inv (placeLines env kp s b xs) :=
@@ -2981,7 +3138,7 @@ theorem placeFlow_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.sep
     rw [i.1] at this; exact this
   · exact place_figs env hc hs st _ rest h hf
 
-theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (rest : List Flow)
+theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (rest : List Flow)
     (h : Inv st) (hf : figureOk f) :
     figs (step env st f rest) = figs st ++ flowFigs f ∧ Inv (step env st f rest) := by
   have b := applyBreaks_figs env st h
@@ -3001,7 +3158,7 @@ theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separato
         have c := checkNoBreak_figs _ p.2
         rw [p.1, b.1] at c; exact c
       · have n := needBefore_figs env (applyBreaks env st) (f :: rest) b.2
-        have k := placeBlank_figs env hc _ f rest n.2
+        have k := placeBlank_figs env (by omega) _ f rest n.2
         have p := placeFlow_figs env hc hs _ f rest k.2 hf
         have c := checkNoBreak_figs _ p.2
         rw [p.1, k.1, n.1, b.1] at c; exact c
@@ -3043,8 +3200,10 @@ theorem step_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separato
   | code g c first cont ls => simp only [step]; exact general _ _
   | defTerm ls => simp only [step]; exact general _ _
   | table sp0 h rows capt below => simp only [step]; exact general _ _
+  | switchColumns n => simp only [step]; exact general _ _
+  | restoreColumns => simp only [step]; exact general _ _
 
-theorem placeAll_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (flows : List Flow) (st : St) (h : Inv st)
+theorem placeAll_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (flows : List Flow) (st : St) (h : Inv st)
     (hf : ∀ f ∈ flows, figureOk f) :
     figs (placeAll env st flows) = figs st ++ sourceFigs flows ∧ (placeAll env st flows).deferred = [] := by
   induction flows generalizing st with
@@ -3074,19 +3233,19 @@ theorem placeAll_figs (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.sepa
 /-- Root ADR 0352 invariant 5 for the figures: the pages of the
     pagination hold every figure and turned figure written, each once,
     in the order written.  It assumes that every figure is at least one
-    line high, that a column holds 0 lines or more and that the footnote
+    line high, that a column holds 1 line or more and that the footnote
     separator takes 0 lines or more (golem-layout clamps it to 1 line or
     more); README.md shows the input that breaks the order with a figure
     of no lines. -/
-theorem I5_paginate_figures (env : Env) (hc : 0 ≤ env.capacity) (hs : 0 ≤ env.separator) (flows : List Flow)
+theorem I5_paginate_figures (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (flows : List Flow)
     (hf : ∀ f ∈ flows, figureOk f) :
     pagesFigs (paginate env flows).done = sourceFigs flows := by
-  have i : Inv initialState := ⟨⟨rfl, trivial, by decide⟩, Or.inl (by decide), Or.inl rfl⟩
-  obtain ⟨h, d⟩ := placeAll_figs env hc hs flows initialState i hf
-  have e : figs initialState = [] := rfl
+  have i : Inv (initialState env) := ⟨⟨Or.inl (Int.le_refl 0), trivial, Int.le_refl 0⟩, Or.inl (Int.le_refl 0), Or.inl rfl⟩
+  obtain ⟨h, d⟩ := placeAll_figs env hc hs flows (initialState env) i hf
+  have e : figs (initialState env) = [] := rfl
   rw [e, List.nil_append] at h
   simp only [paginate, closePage]
-  generalize placeAll env initialState flows = st at h d
+  generalize placeAll env (initialState env) flows = st at h d
   simp only [figs, d, List.map, List.append_nil] at h
   split
   · rename_i c

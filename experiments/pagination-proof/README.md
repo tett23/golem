@@ -408,6 +408,8 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 同じページの次の段へ進むときは、待つ内容が増えず、行数の縮みが 0 に戻り、残りの段数が一つ減る。
 `I4_nextColumn_flush_rank` は、待つ内容がある間は、待つ内容とページの残りの段数の組が減ることを証明する。
 `flushDeferred` と `flushFigures` は、この組で止まる。
+ページの残りの段数は、状態が持つ段組みの段数から求める。
+段組みを切り替えるのは `place` の中だけで、次の段へ進む操作は段組みを変えないので、ループの中では段数は変わらない。
 `keep` は空でない段からだけ次の段へ進むので、4 つ組で止まる。
 `placeLines` の段のループは、残りの行数、`keep-all-lines` の有無、4 つ組の辞書式順序で止まる。
 行を一つも置かずに次の段へ進むのは、行数が縮んだ空の段か、何かを置いた段からだけである。
@@ -437,10 +439,13 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 このとき `pageFigure` は、図版 1 のある段を閉じる前に、転置図版のページを出力する。
 
 `I5_paginate_figures` は、この前提の下で、出力のページに図版と転置図版が原稿の順に一度ずつ並ぶことを証明する。
-前提は三つで、原稿のどの図版も高さが 1 行以上であること、段の容量が 0 行以上であること、脚注区切りの行数が 0 行以上であることである。
+前提は三つで、原稿のどの図版も高さが 1 行以上であること、段の容量が 1 行以上であること、脚注区切りの行数が 0 行以上であることである。
+段の容量の前提は、[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) が入力とする段と同じである。
 定理は、出力済みのページの図版、現在の段の図版、待機中の図版をこの順につないだ列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
 転置図版をすぐに置くのは段の使用行数と脚注の行数がともに 0 のときだけなので、この不変条件には、図版のある段では使用行数か脚注の行数が 1 以上であるという性質が要る。
-この性質は、使用行数が負なら脚注の行数が 1 以上であること、各段の先頭行が 0 であること、行数の変更が 0 以上であること、待機中の図版の高さが 1 行以上であることと合わせて、すべての操作で保たれる。
+この性質は、使用行数が負なら脚注の行数が 1 以上であること、組の先頭行が 0 以上か組が各段の下に脚注の行を確保していること、行数の変更が 0 以上であること、待機中の図版の高さが 1 行以上であることと合わせて、すべての操作で保たれる。
+組の先頭行についての性質は、同じページの次の段の使用行数が組の先頭行に、脚注の行数が確保した行数に戻るので要る。
+`startSet` は、切り替える前の段の使用行数を新しい組の先頭行に、脚注の行数を確保する行数にするので、使用行数についての性質からこの性質が出る。
 脚注の行数は段の中で減らないので、脚注の行数についての部分は段の中の操作で保たれる。
 脚注の行数が減らないことには、脚注区切りの行数の前提が要る。
 golem-layout の `paginateWithin` は区切りの行数を 1 以上にするので、この前提は実装で成り立つ。
@@ -451,7 +456,8 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 表は空の段で、使用行数に `min sp (free st)` を足す。
 空の段では表の前のアキ `sp` が 0 なので、脚注の行数が段の行数を超えて残りの行数が負のとき、使用行数は段の先頭より下がる。
 下がった後の使用行数は、段の行数から脚注の行数を引いた値になる。
-脚注の行数が 0 なら、段の容量と行数の変更が 0 以上という前提から、この値は負にならない。
+脚注の行数が 0 なら、段の容量が 1 行以上で行数の変更が 0 以上なので、この値は 1 以上になり、図版のある段についての性質も保たれる。
+組の先頭行が 0 より大きいと、図版を置いた段がこの条件で空と判定されることがあるので、容量が 0 行の段ではこの性質を保てない。
 段の容量の前提は、このほか、行アキを足しても使用行数が負にならないことに使う。
 
 Haskell の実装では、この下がり方が表を段の先頭より上に置く。
@@ -468,8 +474,10 @@ Haskell の実装では、この下がり方が表を段の先頭より上に置
 部分を段の中で保つか（`envKeepParts` が `KeepColumn` か）も `Env` の引数とし、定義の項の置き方はその両方の値で扱う。
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
-フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next` を扱う。
-本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始、段組みの切り替え、`FAdjustLines` は、まだ扱わない。
+フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻しを扱う。
+本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始、`FAdjustLines` は、まだ扱わない。
+段組みは段数と先頭行だけを状態に持ち、段の幅と段間は持たない。
+`Env` の段数は基本の段組み（`envBase`）の段数で、段組みを戻すとこの段数になる。
 表は、`envKeepParts` が `KeepColumn` のときの `placeTable` と、それ以外のときの `placeTableAcross` の両方を扱う。
 本の部がないので、`placeTableAcross` の、本の部の中で末尾の行とキャプションを保つ分岐（`envBookPartSpan` が `Just` のとき）は扱わない。
 表の部分の記録 `sTables` は出力の付帯情報なので、モデルには持たない。
@@ -505,6 +513,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
+| `Paginate.hs:561` `place` の `FSwitchColumns`、`:566` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
 | `Paginate.hs:598` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
 | `Paginate.hs:624` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate.hs:786` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
@@ -521,6 +530,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/State.hs:265` `closePage` | `closePage` |
 | `Paginate/State.hs:272` `nextColumn`、`:275` `nextPage` | `nextColumn`、`nextPage` |
 | `Paginate/State.hs:278` `advance` | `advance`、`advanceFresh`、`advanceTurned`、`openColumn` |
+| `Paginate/State.hs:313` `startSet` | `startSet` |
 | `Paginate/State.hs:338` `pageFigure` | `pageFigure` |
 | `Paginate/State.hs:345` `carryNote` | `carryNote`、`carryRoom`、`carryShown` |
 | `Paginate/State.hs:360` `placeDeferred` | `placeDeferred` |
