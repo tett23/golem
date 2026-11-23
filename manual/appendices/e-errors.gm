@@ -705,6 +705,18 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   原稿の誤りではなく Golem の誤りなので、原稿を直しても消えません。
   出たときは、原稿と設定を添えて作者に知らせてください。
   PDF は書きません。
+= [strong: G03272]、[strong: G03273]、[strong: G03274]、[strong: G03275]、[strong: G03276]、[strong: G03277] [code: EPUB の page-map を読み込めません: …]
+  [code: \[targets.epub\]] の [code: page-map] に書いた対応表を使えません（「[ref-title epub-page-list]」、[ref-page epub-page-list] ページ）。
+  EPUB を組むときにだけ出て、このエラーがあれば EPUB を書きません。
+  ファイルがないときは G03272 です。
+  パスが絶対パスか URL かプロジェクトの外を指すとき、またはファイルを読み取れないときは G03273 です。
+  JSON として読めないときは G03274 です。
+  [code: sources] や [code: pages] の項目がないか、型、表示ノンブル、物理ページの順が正しくないときは G03275 です。
+  物理ページは、正の整数を小さい順に並べてください。
+  [code: sources] の SHA-256 が今の原稿と合わないか、原稿にないファイルを含むときは G03276 です。
+  今の固定ページ版と原稿から、対応表を作り直してください。
+  本文の位置が原稿の範囲の外にあるか、原稿の順に並んでいないときは G03277 です。
+  [code: file]、[code: line]、[code: character] と原稿の順を確かめてください。
 
 @nonumber
 ## スタイルの設定（style.toml）
@@ -768,6 +780,22 @@ G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] 
   フォントの役割、文字スタイル、段落スタイルの [code: features] に、読めない機能の文字列があります。
   [code: smcp]、[code: -liga]、[code: salt=2] のように、英字と数字の 4 字のタグで書いてください。
   [code: kern\[3:5\]] のような範囲の指定と、[code: aalt=on] のような語の値は書けません。
+= [strong: G03260]、[strong: G03261]、[strong: G03262]、[strong: G03263] フォントの役割の [code: instance] と [code: axes] の誤り
+  [code: \[fonts.役割\]] の [code: instance] か [code: axes] の書き方が違います。
+  G03260 は [code: instance] が文字列でないときに出ます。
+  [code: instance = "Bold"] のように名前を引用符で囲んでください。
+  G03261 は [code: axes] が表でないときに出ます。
+  [code: axes = { wght = 650 }] のように、軸のタグと数の表で書いてください。
+  G03262 は軸の値が数でないとき、G03263 は軸の値が [code: inf] や [code: nan] のときに出ます。
+  軸の値は有限の数で書いてください。
+= [strong: G03264]、[strong: G03265]、[strong: G03266]、[strong: G03267]、[strong: G03268]、[strong: G03269]、[strong: G03270]、[strong: G03271] [code: \[printings\]] の [code: format] の誤り
+  メッセージは [code: \[printings\] の format が正しくありません（…）] で始まり、括弧の中に理由が出ます。
+  理由ごとにコードが分かれます。
+  改行は G03264、表にない欄（[code: {volume}] や名前のない [code: {:kanji}]）は G03265、欄に付けた表記（[code: {edition:kanji}]）は G03266 です。
+  閉じていない [code: {] は G03267、対応する [code: {] のない [code: }] は G03268、空の [code: {}] は G03269 です。
+  [code: \\] の後に [code: {]、[code: }]、[code: \\] のほかの字を書くと G03270、書式の最後に [code: \\] を書くと G03271 です。
+  誤りが二つ以上あるときは、改行を先に、残りは書式の前から読んで最初の誤りのコードだけが出ます。
+  書ける欄と波括弧の書き方は、「[ref-title app-style]」にあります。
 = [strong: G03125 [code: 注の印の文字スタイル … の position は "normal" だけを書けます（印の位置は \[notes\] で決まります）]]
   [code: \[notes\]] の [code: mark-style] の文字スタイルが、上付きか下付きになっています。
   印の文字スタイルから [code: position] を消すか、[code: superscript] を引き継がないスタイルにしてください。

@@ -60,6 +60,7 @@ test-suite golem-project-test
                     ParagraphPitchSpec
                     NaturalKeySpec
                     SinglePageSpec
+                    StyleCauseCodesSpec
                     StylePositionSpec
                     StyleSchemaSpec
                     SharedValuesSpec
