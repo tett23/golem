@@ -33,6 +33,7 @@ import Control.Monad (when, (>=>))
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
+import Data.Maybe (isNothing)
 import Data.Ratio (denominator, numerator, (%))
 import Data.String (IsString (..))
 import Data.Text (Text)
@@ -112,6 +113,7 @@ bodyT = \case
   ForcedBreak k -> tagged 11 [int (fromEnum k)]
   PageControl c -> tagged 12 [pageControlT c]
   BlankLines n -> tagged 13 [int n]
+  Separator name -> tagged 15 [text name]
 
 pageControlT :: PageControl -> Term
 pageControlT = \case
@@ -206,7 +208,19 @@ indexKindT = \case
   IndexSee k ts -> TList [int (3 :: Int), int (fromEnum k), list text ts]
 
 segT :: RubySegment -> Term
-segT (RubySegment base reading) = TList [list (inlineT absurd) base, opt text reading]
+segT seg@(RubySegment base reading) =
+  TList (original <> extras)
+  where
+    original = [list (inlineT absurd) base, opt text reading]
+    extras
+      | isNothing (rsOtherReading seg) && rsOptions seg == defaultRubyOptions = []
+      | otherwise = [opt text (rsOtherReading seg), rubyOptionsT (rsOptions seg)]
+
+rubyOptionsT :: RubyOptions -> Term
+rubyOptionsT o = TList [int (fromEnum (roSide o)), int (fromEnum (roOverhangSide o)), opt rubySizeT (roSize o), opt text (roAlign o), list (opt text) (roReadingKenten o), list (opt text) (roOtherKenten o)]
+  where
+    rubySizeT (RubySizeAbsolute (Sp n)) = tagged 0 [int n]
+    rubySizeT (RubySizeRelative r) = tagged 1 [rationalTerm r]
 
 exprT :: AST.Located AST.Expr -> Term
 exprT (AST.Located s e) = case e of
@@ -422,6 +436,7 @@ termBody t =
         11 | [k] <- fs -> ForcedBreak <$> asEnum k
         12 | [c] <- fs -> PageControl <$> termPageControl c
         13 | [n] <- fs -> BlankLines . fromInteger <$> asInt n
+        15 | [name] <- fs -> Separator <$> asText name
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
@@ -566,11 +581,32 @@ termInline rd t =
 termSeg :: Term -> D RubySegment
 termSeg t =
   asList t >>= \case
-    [base, reading] -> RubySegment <$> (asList base >>= traverse (termInline noRubyHere)) <*> asOpt asText reading
+    [base, reading] -> original base reading
+    [base, reading, other, options] -> do
+      seg <- original base reading
+      after <- asOpt asText other
+      overrides <- termRubyOptions options
+      pure seg {rsOtherReading = after, rsOptions = overrides}
     _ -> bad "ルビのセグメント"
   where
+    original base reading = RubySegment <$> (asList base >>= traverse (termInline noRubyHere)) <*> asOpt asText reading
     noRubyHere :: Term -> D Void
     noRubyHere _ = Left "ルビの中にルビがあります"
+
+termRubyOptions :: Term -> D RubyOptions
+termRubyOptions t =
+  asList t >>= \case
+    [side, overhang, size, align, marks, otherMarks] -> RubyOptions <$> asEnum side <*> asEnum overhang <*> asOpt sizeOf size <*> asOpt asText align <*> (asList marks >>= traverse (asOpt asText)) <*> (asList otherMarks >>= traverse (asOpt asText))
+    _ -> bad "ルビの指定"
+  where
+    sizeOf t' =
+      asList t' >>= \case
+        [tag, n] ->
+          asInt tag >>= \case
+            0 -> RubySizeAbsolute . Sp <$> asInt n
+            1 -> RubySizeRelative <$> asRational n
+            _ -> bad "ルビの寸法"
+        _ -> bad "ルビの寸法"
 
 termExpr :: Term -> D (AST.Located AST.Expr)
 termExpr t =

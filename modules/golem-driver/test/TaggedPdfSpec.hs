@@ -221,6 +221,9 @@ structureTests =
     testCase "ADR 0393 I1: inv1_ruby_references_case_1: a title in a segment without a reading after one with a reading is a Reference after the Ruby" $ do
       p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: 前/[ref-title a]後|まえ/]")
       p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえ\""), (0, "Reference"), (1, "Link"), (2, "\"一章\""), (2, "OBJR 1"), (0, "\"後。\"")],
+    testCase "root ADR 0379 I1, root ADR 0393 I2: partial readings keep unread references outside Ruby even beside a long reading" $ do
+      p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: 前/[ref-title a]後|まえまえまえまえまえ/]")
+      p @?= [(0, "Ruby"), (1, "RB"), (2, "\"前\""), (1, "RT"), (2, "\"まえまえまえまえまえ\""), (0, "Reference"), (1, "Link"), (2, "\"一章\""), (2, "OBJR 1"), (0, "\"後。\"")],
     testCase "ADR 0393 I2: inv2_ruby_references_case_2: a number in the first segment without a reading is a Reference before the Ruby" $ do
       p <- lastParagraph <$> miniStructure horizontalStyle (labelledRuby "[ruby: [ref-number a]/後|/あと]")
       p @?= [(0, "Reference"), (1, "Link"), (2, "\"1\""), (2, "OBJR 1"), (0, "Ruby"), (1, "RB"), (2, "\"後\""), (1, "RT"), (2, "\"あと\""), (0, "\"。\"")],

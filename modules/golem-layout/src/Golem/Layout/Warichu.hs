@@ -6,7 +6,7 @@ import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Length (Sp)
-import Golem.Syntax.Grapheme (graphemeClusters)
+import Golem.Unicode.Grapheme (graphemeClusters)
 
 {- | Measure each grapheme once, then minimise the wider sum of advances.
 The stable minimum keeps the earliest boundary on a tie, including the

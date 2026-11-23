@@ -15,6 +15,7 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.IR (defaultRubyOptions)
 import Golem.Driver
 #ifdef GOLEM_PLUGINS
 import Golem.Driver.New (Language (..), createProject, templateFiles)
@@ -22,7 +23,7 @@ import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Hyphen (..), Item (..), Line (..), noLeaf, placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook, readingLook)
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOutAt (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
 import Golem.Length (Sp (..))
@@ -590,7 +591,23 @@ layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidde
 -- | The hidden folio tests (ADR 0021).
 hiddenFolioTests :: [TestTree]
 hiddenFolioTests =
-  [ testCase "with crop marks, only the blank page has one" $ do
+  [ testCase "root ADR 0365 I1: explicit size" $ do
+      pdf <- marksPdf (\o -> o {optMarks = WesternMarks}) (horizontalStyle <> "\n[hidden-folio]\npages = \"all\"\nsize = \"8pt\"\ngutter = \"5pt\"\n")
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "8pt hidden folio" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
+    testCase "root ADR 0365 I1: style color with size override" $ do
+      let style = horizontalStyle <> "\n[fonts.wide]\nja = \"fonts/b.otf\"\nlatin = \"fonts/b.otf\"\n[color.swatches]\nhidden-red = { cmyk = [0, 100, 100, 0] }\n[character-styles.hidden]\nfont = \"wide\"\nsize = \"12pt\"\ncolor = \"hidden-red\"\n[hidden-folio]\npages = \"all\"\ncharacter-style = \"hidden\"\nsize = \"8pt\"\ngutter = \"5pt\"\n"
+      built <- buildMarksFilesWith "本文。\n" (\o -> o {optMarks = WesternMarks}) (Just (style <> fakeBody)) fakeFontFiles
+      assertEqual "no errors" [] (map diagCode (bErrors built))
+      pdf <- maybe (assertFailure "no PDF") pure (bPdf built)
+      content <- BS.concat <$> inflateAll pdf
+      let drawn = drawnGlyphs content
+      case ([dFont d | d <- drawn, dGlyph d == fromEnum '1'], [dFont d | d <- drawn, dGlyph d == fromEnum '本']) of
+        ([hiddenFont], [bodyFont]) -> assertBool "hidden folio uses its own font role" (hiddenFont /= bodyFont)
+        other -> assertFailure (show other)
+      assertBool "red hidden folio" ("0 1 1 0 k" `BS.isInfixOf` content)
+      assertBool "8pt overrides 12pt" (any (\d -> dGlyph d == fromEnum '1' && dSize d == "8") (drawnGlyphs content)),
+    testCase "with crop marks, only the blank page has one" $ do
       (_, _, hf) <- layoutHidden (Just P.Western) miniManifest headsStyle [("a.gm", twoChapters)]
       Map.keys hf @?= [4],
     testCase "without crop marks, none" $ do
@@ -604,7 +621,7 @@ hiddenFolioTests =
       Map.keys hf @?= [1 .. 6],
     testCase "without master pages, every page; and a page whose master page has no folio" $ do
       (_, layout, hf) <- layoutHidden (Just P.Western) miniManifest shortGrid [("a.gm", twoChapters)]
-      Map.keys hf @?= nub (map poNumber (plPages layout))
+      Map.keys hf @?= nub (map poNumber (gridPages layout))
       let manifest = BS.concat ["chapters = [{ file = \"front.gm\", master = \"front\" }, \"a.gm\"]\n", BS.drop (BS.length "chapters = [\"a.gm\"]\n") miniManifest]
           style =
             BS.concat
@@ -634,7 +651,7 @@ hiddenFolioTests =
       (_, a, _) <- layoutHidden Nothing miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
       (_, b, hf) <- layoutHidden (Just P.Western) miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
       Map.keys hf @?= [1 .. 6]
-      plPages a @?= plPages b,
+      gridPages a @?= gridPages b,
     testCase "bleed and marks: placed against the trimmed page, moved with it in the content" $ do
       pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) (bleedStyle <> allPages)
       (w, h) <- a5Size
@@ -846,7 +863,7 @@ drawnSizes ch ds = [dSize d | d <- ds, dGlyph d == fromEnum ch]
 
 rubyTests :: [TestTree]
 rubyTests =
-  [ testCase "ADR 0369 I1: inv1_ruby_reading_style_property" $
+  [ testCase "root ADR 0379 I1, root ADR 0369 I1: reading styles preserve base characters across regrouping" $
       {- every reading style (colour, size absolute and in zw, synthetic bold,
       font, all of them) on mono and group ruby, ruby with a character style
       in the base or around it, and ruby in a paragraph long enough to break -}
@@ -860,15 +877,37 @@ rubyTests =
             T.replicate 12 "[ruby: 漢|かん]字" <> "\n"
           ]
           $ \source -> do
-            let base (t, lk, ls) = (t, lk {lkRubyReading = Nothing}, ls)
+            let clearRuby lk = lk {lkRubyReading = Nothing, lkRubyOptions = defaultRubyOptions, lkRubyOtherReading = Nothing}
+                bases = concatMap (\(text, lk, looks) -> [(ch, clearRuby look) | (ch, look) <- zip (T.unpack (T.takeWhile (/= '|') text)) (if null looks then repeat lk else looks)])
             plain <- readingBoxes "" source
             styled <- readingBoxes name source
             assertBool (show (name, source)) (any (\(t, _, _) -> "|" `T.isInfixOf` t) plain)
-            assertEqual (show (name, source)) (map base plain) (map base styled)
+            assertEqual (show (name, source)) (bases plain) (bases styled)
             (plainDrawn, _) <- readingDrawn "" source
             (styledDrawn, _) <- readingDrawn name source
             let baseGlyphs ds = [(dGlyph d, dFont d, dSize d) | d <- ds, dGlyph d `notElem` map fromEnum ("かんじさみだれ" :: String)]
             assertEqual (show (name, source)) (sort (baseGlyphs plainDrawn)) (sort (baseGlyphs styledDrawn)),
+    testCase "root ADR 0379 I1: PDF line edges keep the reading inside and align the base" $ do
+      (plain, _) <- readingDrawn "" "漢字\n"
+      (start, _) <- readingDrawn "" "[ruby: 漢|かなかな]字\n"
+      (final, _) <- readingDrawn "" "漢[ruby: 字|かなかな]\n"
+      let xs ch ds = [ptToRational (dX d) | d <- ds, dGlyph d == fromEnum ch]
+      xs '漢' start @?= xs '漢' plain
+      assertBool "no reading outside the start" (minimum (xs 'か' start <> xs 'な' start) >= minimum (xs '漢' start))
+      maximum (xs '字' final) + 10 @?= maximum (xs 'な' final) + 5,
+    testCase "root ADR 0379 I1: inline size overrides reading-style and uses the nominal size in scripts" $ do
+      (styled, _) <- readingDrawn "large" "[ruby size=0.75zw: 漢|か]字\n"
+      drawnSizes 'か' styled @?= ["7.5"]
+      (script, _) <- readingDrawn "" "[style superscript: [ruby size=0.75zw: 漢|か]]字\n"
+      drawnSizes 'か' script @?= ["7.5"],
+    testCase "root ADR 0379 I1: both readings use the inline size on opposite sides" $ do
+      (ds, _) <- readingDrawn "" "[ruby side=both size=0.75zw: 漢|か|な]字\n"
+      drawnSizes 'か' ds @?= ["7.5"]
+      drawnSizes 'な' ds @?= ["7.5"]
+      let ys ch = [ptToRational (dY d) | d <- ds, dGlyph d == fromEnum ch]
+      case (ys 'か', ys '漢', ys 'な') of
+        ([beforeY], [baseY], [afterY]) -> assertBool "opposite sides of base" ((beforeY - baseY) * (afterY - baseY) < 0)
+        other -> assertFailure (show other),
     testCase "ADR 0369 I1: inv1_ruby_reading_style_case_1" $ do
       -- no reading style: half the base, in the font and the colour around
       boxes <- rubyBoxes "" "[ruby: 漢|か]字\n"
@@ -1170,11 +1209,15 @@ kentenTests =
       n <- buildNotified [("manifest.toml", miniManifest), ("style.toml", horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n"), ("a.gm", TE.encodeUtf8 "[kenten shape=open-sesame: 漢]\n"), ("fonts/sans.otf", sans)] (\o -> o {optFonts = golemFontProvider})
       [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G08009"]
         @?= [("G08009", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
-    testCase "G07045: kenten in a ruby base, and ruby in kenten, are a notice; the PDF is written" $
-      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7), ("[kenten: [ruby: 漢|かん]]\n", 9)] $ \(src, at) -> do
+    testCase "G07045: kenten in a ruby base is a notice; the PDF is written" $
+      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7)] $ \(src, at) -> do
         n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
         [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= [("G07045", Notice, at)]
         assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
+    testCase "root ADR 0379 I1: outside kenten follows both readings without G07045" $ do
+      n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten shape=dot: [ruby side=both: 漢|か|な]]\n")] <> fakeFontFiles) id
+      [c | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= []
+      assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "HTML: the class of the shape; no shape is sesame" $ do
       n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
       case [b | (p, b) <- nOutputs n, ".xhtml" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
@@ -1266,7 +1309,7 @@ turnedTests =
 codeRows :: PdfLayout -> [[(Sp, T.Text)]]
 codeRows pl =
   [ [(slIndent sl + off, bcText c) | (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))]
-  | p <- plPages pl,
+  | p <- gridPages pl,
     (_, SCode lid k _) <- poSlots p,
     j <- [0 .. k - 1],
     Just sl <- [Map.lookup (lid + j) (plLines pl)]
@@ -1274,7 +1317,7 @@ codeRows pl =
 
 -- | The code slots of each page and column.
 codeSlots :: PdfLayout -> [[(Int, Slotted)]]
-codeSlots pl = [[x | x@(_, SCode {}) <- poSlots p] | p <- plPages pl]
+codeSlots pl = [[x | x@(_, SCode {}) <- poSlots p] | p <- gridPages pl]
 
 -- | The rectangles filled in a content stream: x, y, width and height in pt.
 filledRects :: BS.ByteString -> [[Double]]
@@ -1329,7 +1372,7 @@ codeTests =
       diagnosticsOf "G07030" (brDiagnostics r') @?= [],
     testCase "the grid: three rows of 11Q code on 13Q and 22H take three lines; the text after is on the grid" $ do
       (_, pl) <- layoutOk (grid13 <> "\n[paragraph-styles.code]\nsize = \"11Q\"\n") "```\na\nb\nc\n```\n\n本文。\n" []
-      case plPages pl of
+      case gridPages pl of
         (p : _) -> case poSlots p of
           (s0 : s1 : _) -> do
             s0 @?= (0, SCode 0 3 3)
@@ -1344,7 +1387,7 @@ codeTests =
           set style src = do
             (_, pl) <- layoutOk style src []
             drawn <- miniPdf fakeProvider True style src [] >>= pageContents
-            pure (map poSlots (plPages pl), drawn)
+            pure (map poSlots (gridPages pl), drawn)
       toml <- set (base <> "\n[paragraph-styles.code]\n" <> TE.encodeUtf8 (T.concat [k <> " = " <> v <> "\n" | (k, v, _) <- keys])) source
       local <- set base ("@style-def paragraph code" <> T.concat [" " <> k <> "=" <> v | (k, _, v) <- keys] <> "\n\n" <> source)
       plain <- set base source
@@ -1383,7 +1426,7 @@ codeTests =
       codeSlots pl @?= [[], [(0, SCode 4 1 2)]],
     testCase "columns: the rows break at the end of a column as at a page" $ do
       (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2) "一。\n\n二。\n\n三。\n\n```\na\nb\nc\n```\n" []
-      [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- plPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
+      [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- gridPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
     testCase "in a list: the background and the text start at the text of the item" $ do
       (geom, pl) <- layoutOk (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" []
       -- the bullet • and its gap take two characters (golem-driver ADR 0044)
@@ -2083,7 +2126,7 @@ codeBlockRubyTests =
       assertBool (show (filledRects content, map vbox readings)) (not (any (\d -> any (overlaps (vbox d)) (filledRects content)) readings)),
     testCase "a code block that ends a column: the paragraph with ruby starts the next one, with no space line" $ do
       (_, pl) <- layoutOk (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\n```\n\n[ruby: 漢|かん]字。\n" []
-      case plPages pl of
+      case gridPages pl of
         [_, p2] -> take 1 [s | (s, SLine _) <- poSlots p2] @?= [0]
         ps -> assertFailure (show (map poSlots ps)),
     testCase "a blank line after a code block with a background takes the place of the space line (docs/adr ADR 0046)" $ do
@@ -2101,7 +2144,7 @@ codeBlockRubyTests =
     lineOf items = Line items 0 0 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
     rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource Nothing noLeaf 0 Nothing)
-    firstPage pl = take 1 (plPages pl)
+    firstPage pl = take 1 (gridPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
     firstLineSlot pl = case [s | p <- firstPage pl, (s, SLine _) <- poSlots p] of

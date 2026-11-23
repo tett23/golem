@@ -1,6 +1,6 @@
 # ADR 0002: 決定性の規則
 
-Status: superseded [{"by":["docs/golem-pdf/adr/0004-crop-marks-and-bleed.md"],"part":"入力に出力を変える CLI のオプションを加える点"},{"by":["docs/golem-syntax/adr/0003-diagnostic-order.md"],"part":"診断の出力順"}]
+Status: superseded [{"by":["docs/golem-pdf/adr/0004-crop-marks-and-bleed.md"],"part":"入力に出力を変える CLI のオプションを加える点"},{"by":["docs/golem-syntax/adr/0003-diagnostic-order.md"],"part":"診断の出力順"},{"by":["docs/adr/0361-epub-byte-determinism.md"],"part":"EPUB の決定性を v2 で扱うこと"}]
 
 ## 文脈
 

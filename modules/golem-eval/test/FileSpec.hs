@@ -313,7 +313,25 @@ escapeTests :: TestTree
 escapeTests =
   testGroup
     "escaped characters (golem-parser ADR 0010)"
-    [ testCase "\\/ in the base of a ruby is no separator" $ do
+    [ testCase "root ADR 0379 I1: both sides accept one reading per side" $
+        errs "[ruby side=both: 東京|とうきょう|Tokyo]\n" @?= [],
+      testCase "root ADR 0379 I1: missing, extra, and unequal readings are rejected" $ do
+        errs "[ruby side=both: 東|とう]\n" @?= ["G02038"]
+        errs "[ruby side=after: 東|とう|East]\n" @?= ["G02038"]
+        errs "[ruby side=both: 東/京|とう/きょう|Tokyo]\n" @?= ["G02015"]
+        errs "[ruby side=both: 東|とう|]\n" @?= ["G02157"]
+        errs "[ruby side=both: 東||East]\n" @?= ["G02157"]
+        errs "[ruby side=both: 東/京|とう/|East/Capital]\n" @?= ["G02157"],
+      testCase "root ADR 0379 I1: invalid inline options fail at the ruby" $ do
+        mapM_ (\arg -> errs ("[ruby " <> arg <> ": 東|とう]\n") @?= ["G02157"]) ["side=left", "overhang-side=left", "size=0pt", "size=-1pt", "size=nan", "align=left", "before"]
+        errs "[ruby side=after overhang-side=end size=0.75zw align=start: 東|とう]\n" @?= [],
+      testCase "root ADR 0379 I1: dimensions that cannot cross the IR boundary are G02091" $
+        mapM_ (\size -> errs ("[ruby size=" <> size <> ": 漢|かん]\n") @?= ["G02091"]) ["140737488355328pt", "9223372036854775808zw", "0.00000000000000000001zw"],
+      testCase "root ADR 0379 I1: invalid options and missing readings keep the manuscript span" $
+        mapM_ (\command -> [(a, b) | (_, _, a, b) <- diags ("head " <> command <> "\n")] @?= [(5, 5 + T.length command)]) ["[ruby size=0pt: a|b]", "[ruby side=both: a|b]"],
+      testCase "root ADR 0379 I1: kenten is accepted independently in both readings" $
+        errs "[ruby side=both: 東|[kenten: とう]|[kenten shape=dot: East]]\n" @?= [],
+      testCase "\\/ in the base of a ruby is no separator" $ do
         rubiesOf "[ruby: a\\/b|えー]\n" @?= [[(["a/b"], Just "えー")]]
         errs "[ruby: a\\/b|えー]\n" @?= [],
       testCase "\\/ in the reading is a / of the reading" $
@@ -391,12 +409,12 @@ tests =
       powDiagnosticTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
-      testCase "ADR 0391 I1 I3: @set keeps the value without a notice" $ do
+      testCase "ADR 0391 I1, I3: @set keeps the value without a notice" $ do
         paraOf "@set x = 2\n\n[= x * 3]\n" @?= ["6"]
         map diagCode (fst (evalSource ctx "@set x = 2\n\n[= x * 3]\n")) @?= []
         errs "@set doc = 1\n" @?= ["G02023"]
         errs "set doc = 1\n" @?= [],
-      testCase "ADR 0391 I1 I3: @set x = \"abc\" then [= x] is abc with no diagnostic" $ do
+      testCase "ADR 0391 I1, I3: @set x = \"abc\" then [= x] is abc with no diagnostic" $ do
         paraTexts "@set x = \"abc\"\n\n[= x]\n" @?= [["abc"]]
         errs "@set x = \"abc\"\n\n[= x]\n" @?= [],
       testCase "ADR 0391 I1: @set x = without an expression is G01020" $
@@ -558,7 +576,7 @@ tests =
         msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G02087", "rotate は true か false です: yes")]
         msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G02087", "回して置く図版は回り込ませられません")],
       -- docs/adr/0190
-      testCase "G02133: a width that is neither a length nor a percentage of the measure, or 0, at the width, for every kind of figure" $
+      testCase "root ADR 0345 I2: G02133: a width that is neither a length nor a percentage of the measure, or 0, at the width, for every kind of figure" $
         mapM_
           ( \(extra, w) -> do
               let src = "@figure images/a.png alt=x" <> extra <> " width=" <> w <> "\n"
@@ -1418,7 +1436,15 @@ separatorTests :: TestTree
 separatorTests =
   testGroup
     "paragraph separator (docs/adr ADR 0013)"
-    [ testCase "one newline separates paragraphs in the line style only" $ do
+    [ testCase "root ADR 0398 I1: manuscript separator and named command have the same IR" $ do
+        map shapeOf (body "前\n---\n後\n") @?= map shapeOf (body "前\n@separator default\n後\n")
+        body "---\n" @?= [Separator "default"],
+      testCase "root ADR 0398 A5: a separator line inside a list is rejected" $
+        assertBool "nested separator diagnostic" ("G02159" `elem` errs "- item\n\n  ---\n"),
+      testCase "root ADR 0398 I2: escaped hyphens remain text" $ case body "\\---\n" of
+        [Paragraph Nothing [Text _ "---"]] -> pure ()
+        other -> assertFailure (show other),
+      testCase "one newline separates paragraphs in the line style only" $ do
         shapes lineCtx "a\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
         shapes ctx "a\nb\n" @?= [(Nothing, ["ab"])],
       testCase "blank lines separate paragraphs in both styles" $ do
@@ -1663,14 +1689,14 @@ blankLineTests =
       testCase "the messages of G02092" $ do
         msgs "@blank-line x\n" @?= [("G02092", "@blank-line の引数は 0 以上の整数を一つだけ書きます")]
         msgs "@blank-line\n  あ\n" @?= [("G02092", "@blank-line は本体を持てません")],
-      testCase "ADR 0345 I3 I4: zero blank-line has no IR and one info per run" $ do
+      testCase "ADR 0345 I3, I4: zero blank-line has no IR and one info per run" $ do
         outline lineCtx "あ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254"])
         outline ctx "@blank-line 0\n@blank-line 0\nあ\n" @?= (["p あ"], ["G02254"])
         outline ctx "@blank-line 0\nあ\n@blank-line 0\nい\n" @?= (["p あ", "p い"], ["G02254", "G02254"])
         let (_, ds, _) = runS ctx "@blank-line 0\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- ds] @?= [(DiagnosticCode "G02254", Info, 0)]
         assertBool "an info code" (DiagnosticCode "G02254" `elem` infoCodes),
-      testCase "ADR 0345 I3 I4: consecutive blank-line counts form one IR block" $ do
+      testCase "ADR 0345 I3, I4: consecutive blank-line counts form one IR block" $ do
         outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
         outline ctx "@blank-line 0\n@blank-line 2\n@blank-line 0\nあ\n" @?= (["blank 2", "p あ"], [])
         outline ctx "@blank-line 1\n@blank-line 0\n@blank-line 2\nあ\n" @?= (["blank 3", "p あ"], ["G02094"])
@@ -1957,7 +1983,7 @@ diagnosticTests =
         errs "@listing src/Main.hs other.hs\n" @?= ["G02253"]
         errs "@listing src=src/Main.hs src=other.hs\n" @?= ["G02077"]
         errs "@listing src/Main.hs src=src/Main.hs src=other.hs\n" @?= ["G02077"],
-      testCase "ADR 0343 I1 I2: the code, the site and the table requests of each path form" $ do
+      testCase "ADR 0343 I1, I2: the code, the site and the table requests of each path form" $ do
         let row src = ([(c, s, e) | (c, _, s, e) <- diagsWith (abTableCtx id) src],) <$> tableRequests src
             expect src codes n = row src >>= (@?= (codes, n))
             whole src = [("G02130", 0, T.length src)]
@@ -2139,7 +2165,7 @@ printingsTests =
         let (bs, es) = run ((printingsCtx "en") {ctxStyle = printingsStyle "  第{edition}版  {{刷}}{printing} {year}/{month}/{day} {date}  "}) "@printings\n"
         es @?= []
         [plainOf is | Paragraph Nothing is <- bs] @?= ["  第1版  {刷}1 2026/10/16 2026-10-16  ", "  第1版  {刷}2 2027/4/1 2027-04-01  ", "  第2版  {刷}1 2028/1/10 2028-01-10  "],
-      testCase "ADR 0375 I1: the fields of an explicit format are decimal digits, not numbers of the writing mode" $
+      testCase "ADR 0375: the fields of an explicit format are decimal digits, not numbers of the writing mode" $
         [[t | Text _ t <- is] | Paragraph _ is <- fst (run ((printingsCtx "ja") {ctxStyle = printingsStyle "{year}年{edition}"}) "@printings\n")]
           @?= [["2026年1"], ["2027年1"], ["2028年2"]],
       testCase "ADR 0375 I1: braces that do not pair are G03006" $ do
@@ -2147,17 +2173,17 @@ printingsTests =
         mapM_ (\fmt -> codes fmt @?= ["G03006"]) ["{", "}", "{}", "{edition", "edition}", "{{edition}", "\\{edition}"]
         mapM_ (\fmt -> codes fmt @?= []) ["{{", "}}", "{{}}", "\\{edition\\}", "\\\\", ""]
         mapM_ (\fmt -> codes fmt @?= ["G03006"]) ["\\a", "a\\"],
-      testCase "ADR 0375 I1: the escapes of the other formats are read too, and {{ is current: no notice" $ do
+      testCase "ADR 0375: the escapes of the other formats are read too, and {{ is current: no notice" $ do
         let (bs, es) = run ((printingsCtx "ja") {ctxStyle = printingsStyle "\\{{edition}\\} \\\\ {{{printing}}}"}) "@printings\n"
         es @?= []
         take 1 [plainOf is | Paragraph Nothing is <- bs] @?= ["{1} \\ {1}"]
         either (const (assertFailure "an error")) (const (pure ())) (parseStyle (FileId 9) "[printings]\nformat = '{{{edition}}}'\n"),
-      testCase "ADR 0375 I1: an error of the format names [printings] and the format" $ do
+      testCase "ADR 0375: an error of the format names [printings] and the format" $ do
         let formatMsgs fmt = either (map diagMessage) (const []) (parseStyle (FileId 9) ("[printings]\nformat = '" <> fmt <> "'\n"))
         formatMsgs "{unknown}" @?= ["[printings] の format が正しくありません（表にない欄です: {unknown}）: {unknown} (printings.format)"]
         formatMsgs "{edition" @?= ["[printings] の format が正しくありません（閉じていない { があります。文字の { は \\{ と書きます）: {edition (printings.format)"]
         either (map diagMessage) (const []) (parseStyle (FileId 9) "[printings]\nformat = \"a\\nb\"\n") @?= ["[printings] の format が正しくありません（改行は書けません） (printings.format)"],
-      testCase "ADR 0375 I1: without a format a book not in Japanese is still G02076" $
+      testCase "ADR 0375: without a format a book not in Japanese is still G02076" $
         run ((printingsCtx "en") {ctxStyle = either (error . show) id (parseStyle (FileId 9) "[printings]\n")}) "@printings\n" @?= ([], ["G02076"]),
       testCase "the year is kanji-digits, the other numbers follow the default" $
         case run (printingsCtx "ja") "@printings\n" of

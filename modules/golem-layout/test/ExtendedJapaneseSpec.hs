@@ -8,7 +8,7 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
 import Golem.Layout.Warichu (splitWarichu)
-import Golem.Syntax.Grapheme (graphemeClusters)
+import Golem.Unicode.Grapheme (graphemeClusters)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -16,7 +16,7 @@ extendedJapaneseTests :: TestTree
 extendedJapaneseTests =
   testGroup
     "root ADR 0380 extended Japanese composition"
-    [ testCase "root ADR 0380 I1: every split preserves the grapheme sequence and minimises the wider line" $ do
+    [ testCase "root ADR 0380 I1: inv1_extended_japanese_composition_property: every split preserves the grapheme sequence and minimises the wider line" $ do
         forM_ [T.replicate n "漢a" <> "e\x301👨\x200d👩\x200d👧\x200d👦" | n <- [0 .. 24]] $ \text -> do
           let units = graphemeClusters text
               measure = sum . map (\u -> if u == "a" then 3 else 7) . graphemeClusters
@@ -26,11 +26,11 @@ extendedJapaneseTests =
           graphemeClusters a <> graphemeClusters b @?= units
           max (measure a) (measure b) @?= minimum costs
           [(a, b)] @?= take 1 [p | (p, c) <- zip candidates costs, c == minimum costs],
-      testCase "root ADR 0380 I1: one grapheme leaves the first line empty on a tie" $
+      testCase "root ADR 0380 I1: inv1_extended_japanese_composition_case_1: one grapheme leaves the first line empty on a tie" $
         splitWarichu (fromIntegral . length . graphemeClusters) "e\x301" @?= ("", "e\x301"),
       testCase "root ADR 0380 I1: an empty cutting note stays empty" $
         splitWarichu (const 0) "" @?= ("", ""),
-      testCase "root ADR 0380 I1: upright AB makes two unrotated full-size boxes" $ do
+      testCase "root ADR 0380 I1: inv1_extended_japanese_composition_case_2: upright AB makes two unrotated full-size boxes" $ do
         let env = (defaultComposeEnv fs) {ceVertical = True}
             items = fst (composeInlines env [Upright sp "AB"])
         [(w, boxKind c, bcText c) | Box w c <- items] @?= [(fs, KindUpright, "A"), (fs, KindUpright, "B")],

@@ -44,8 +44,11 @@ data Sizes = Sizes {szBody :: [Rational], szMark :: [Rational], szNote :: [Ratio
   deriving stock (Eq, Show)
 
 sizesOf :: NoteKeys -> IO Sizes
-sizesOf k = do
-  content <- miniPdf fakeProvider True (styleOf k) source [] >>= fmap BS.concat . inflateAll
+sizesOf = sizesOfStyle . styleOf
+
+sizesOfStyle :: BS.ByteString -> IO Sizes
+sizesOfStyle style = do
+  content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
   let ds = drawnGlyphs content
       at c = sort (nub [ptToRational (dSize d) | d <- ds, dGlyph d == fromEnum c])
   pure (Sizes (at '本') (at '*') (at '甲') (at '乙') (at '注'))
@@ -56,7 +59,20 @@ allKeys = [NoteKeys p b h | p <- [PageFoot, ChapterEnd], b <- [Nothing, Just "sm
 
 noteBodyStylesTests :: [TestTree]
 noteBodyStylesTests =
-  [ testCase "ADR 0366 I1: inv1_note_body_styles_property: each key changes only the text it names" $ do
+  [ testCase "root ADR 0404 I1, I3: placement overrides style only the selected note body" $ do
+      let overrides = "\n[notes.footnote]\nbody-style = \"small\"\n[notes.chapter-end]\nbody-style = \"mid\"\nheading-style = \"small\"\n"
+      foot <- sizesOfStyle (styleOf (NoteKeys PageFoot Nothing Nothing) <> overrides)
+      end <- sizesOfStyle (styleOf (NoteKeys ChapterEnd Nothing Nothing) <> overrides)
+      (szNote foot, szNote end, szTitle end) @?= ([8], [9], [8])
+      (szBody foot, szBody end, szSidenote foot, szSidenote end) @?= ([10], [10], [7], [7])
+      szMark foot @?= [5, 8]
+      szMark end @?= [5, 9],
+    testCase "root ADR 0404 I1: footnote-only override leaves chapter-end body at the default" $ do
+      let overrides = "\n[notes.footnote]\nbody-style = \"small\"\n"
+      foot <- sizesOfStyle (styleOf (NoteKeys PageFoot Nothing Nothing) <> overrides)
+      end <- sizesOfStyle (styleOf (NoteKeys ChapterEnd Nothing Nothing) <> overrides)
+      (szNote foot, szNote end) @?= ([8], [10]),
+    testCase "ADR 0366 I1: inv1_note_body_styles_property: each key changes only the text it names" $ do
       foot <- sizesOf (NoteKeys PageFoot Nothing Nothing)
       end <- sizesOf (NoteKeys ChapterEnd Nothing Nothing)
       -- without the keys: the note in the size of the grid, the title in that of headings of level 2

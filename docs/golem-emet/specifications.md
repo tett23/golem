@@ -171,13 +171,13 @@ pub fn total :: List Nat -> Nat
 
 | データ型 | コンストラクタ |
 | --- | --- |
-| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Blocks`、`Sidenote Blocks`（本文は段落の並び。[docs/adr/0263](../adr/0263-notes-with-more-than-one-paragraph.md)）、`IndexMark (List String) (List String) IndexKind`（[docs/adr/0265](../adr/0265-index-cross-references-page-ranges-and-section-headings.md)。`IndexKind` は `IndexPoint`、`IndexRangeBegin`、`IndexRangeEnd`、`IndexSee SeeKind (List String)`、`SeeKind` は `SeeAuto`、`SeeOnly`、`SeeAlso`）、`Cite (List CiteItem)`（[docs/adr/0266](../adr/0266-citation-locators-and-multiple-keys.md)。`CiteItem String (Maybe Locator) Inlines Inlines` はキー、位置、前置き、後置き、`Locator String LocatorValue` は CSL の位置の種類の語と値、`LocatorValue` は `LocNumber Nat`、`LocRange Nat Nat`、`LocText String`）、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)）、`Lang String Inlines`（[docs/adr/0187](../adr/0187-inline-language-switch.md)。組み込みの `plain` は中の文字を返す） |
-| `Inline.RubySegment` | `RubySegment Inlines (Maybe String)`（親文字と読み） |
+| `Inline.Inline` | `Text String`、`Ruby (List RubySegment)`、`Kenten (Maybe String) Inlines`、`Color String Inlines`、`CharStyle String Inlines`、`Tcy String`、`Warichu String`、`Upright String`（[root ADR 0380](../adr/0380-extended-japanese-composition.md)）、`Number Int (Maybe NumberStyle)`、`Ref RefKind String`、`Deferred Deferred`、`Note Blocks`、`Sidenote Blocks`（本文は段落の並び。[docs/adr/0263](../adr/0263-notes-with-more-than-one-paragraph.md)）、`IndexMark (List String) (List String) IndexKind`（[docs/adr/0265](../adr/0265-index-cross-references-page-ranges-and-section-headings.md)。`IndexKind` は `IndexPoint`、`IndexRangeBegin`、`IndexRangeEnd`、`IndexSee SeeKind (List String)`、`SeeKind` は `SeeAuto`、`SeeOnly`、`SeeAlso`）、`Cite (List CiteItem)`（[docs/adr/0266](../adr/0266-citation-locators-and-multiple-keys.md)。`CiteItem String (Maybe Locator) Inlines Inlines` はキー、位置、前置き、後置き、`Locator String LocatorValue` は CSL の位置の種類の語と値、`LocatorValue` は `LocNumber Nat`、`LocRange Nat Nat`、`LocText String`）、`ProofComment String`、`LineBreak`、`Aki AkiAmount`、`ChannelItem String (Maybe String) (Maybe String) Inlines`、`Link String Inlines`（[docs/adr/0182](../adr/0182-external-links.md)）、`Lang String Inlines`（[docs/adr/0187](../adr/0187-inline-language-switch.md)。組み込みの `plain` は中の文字を返す） |
+| `Inline.RubySegment` | `RubySegment Inlines (Maybe String)`（親文字と一つ目の読み）。二つ目の読みとルビの個別指定は、入力の区切りをそのまま返すと引き継ぐ。区切りを新しく作ると既定のルビになる（[Golem ADR 0379](../adr/0379-extended-ruby-placement.md)） |
 | `Inline.NumberStyle` | `Kanji`、`KanjiDigits`、`TateChuYoko` |
 | `Inline.RefKind` | `RefNumber`、`RefTitle`、`RefPage` |
 | `Inline.AkiAmount` | `Zw Rat`、`Sp Nat` |
 | `Inline.Deferred` | なし（中身の読めない値） |
-| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat` |
+| `Block.Block` | `Paragraph (Maybe String) Inlines`、`Heading Nat HeadingAttrs Inlines`、`BulletList (List ListItem)`、`OrderedList (List ListItem)`、`DefList (List DefGroup)`、`TableBlock Table`、`CodeBlock Code`、`FigureBlock Figure`、`ChannelOutput Channel`、`ForcedBreak BreakKind`、`PageControl PageControl`、`BlankLines Nat`、`Separator String` |
 | `Block.HeadingAttrs` | `HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }` |
 | `Block.ListItem` | `ListItem (Maybe Nat) (List Block)`（番号と中身） |
 | `Block.DefGroup` | `DefGroup (List Inlines) (List Blocks)`（語と定義） |
@@ -195,6 +195,12 @@ pub fn total :: List Nat -> Nat
 
 ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の注の本文はインラインの列なので、`Inlines` にした。
 
+`Block.Separator String` は、原稿の `---` や `@separator 名前` と同じ名前付き区切りを作る（[root ADR 0398](../adr/0398-styled-separators-in-manuscripts.md)）。
+通常の公開ブロック関数は従来どおり `BlankLines` を返せない。
+`[separators.名前]` の `function` と `command` で指定した区切り関数だけは、返す列の最上位に `BlankLines` を置ける。
+区切り関数の返す列が空でもよいが、入れ子の `BlankLines` と、深さによらず `Separator` は拒否する。
+区切り関数の結果は原稿の区切り位置に展開し、再帰的な区切りの展開はしない。
+
 コードの行の原稿の範囲（[docs/adr/0218](../adr/0218-page-starts-inside-code-blocks.md)）は、ブロックの範囲と同じく `CodeLine` の欄に出さない。
 受け取ったまま返したコードの行は範囲を保ち、関数が作ったコードの行は範囲を持たない（`Nothing`）。
 
@@ -209,9 +215,10 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 | `Inline.kenten` | `Inlines -> Inlines` | 既定の形の圏点 |
 | `Inline.tcy` | `String -> Inlines` | 縦中横 |
 | `Inline.note` | `Inlines -> Inlines` | 本文を段落スタイルのない段落一つとする脚注 |
-| `Inline.plain` | `Inlines -> String` | テキスト、ルビの親文字、圏点と色と文字スタイルの中身、縦中横、数をつないだ文字列 |
+| `Inline.plain` | `Inlines -> String` | テキスト、ルビの親文字、圏点と色と文字スタイルの中身、縦中横、割注、正立欧文、数をつないだ文字列 |
 | `Block.paragraph` | `Inlines -> Blocks` | 段落 |
 | `Block.styled` | `String -> Inlines -> Blocks` | 段落スタイルを付けた段落 |
+| `Block.separator` | `String -> Blocks` | 名前を持つ区切りのブロック |
 | `Block.bullets`、`Block.numbered` | `List Blocks -> Blocks` | 箇条書き、番号付きリスト |
 | `Block.table` | `List Inlines -> List (List Inlines) -> Blocks` | 見出しの行と本体の行の表 |
 | `Block.definitions` | `List (Inlines, Blocks) -> Blocks` | 定義リスト |
@@ -221,6 +228,8 @@ ADR は注と傍注の本文を `Blocks` と書くが、ABI と意味論 IR の�
 パターンは宣言の欄だけを照合するので、関数からは見えない。
 関数が作ったノードは添字を持たず、呼び出しの位置（フィルタではファイルの先頭）を持つ。
 関数が作ったブロックは言語を持たず、外のブロックの言語を受け継ぐ。
+ただし、`Separator` は言語を持てず、外の `@lang` により言語が付いた結果は不正な IR として拒否する。
+`style.toml` の区切り関数として呼ぶ場合は、言語のない最上位の結果として展開する。
 `Inline.Deferred` のコンストラクタ `Opaque` は利用者に見せず、値は遅延した式の添字である。
 
 高階の関数は、渡された関数の要求をそのまま自分の要求にする型を持つ（[docs/adr/0161](../adr/0161-emet-requirements-and-driver-handlers.md)）。

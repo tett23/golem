@@ -11,7 +11,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Look (..), Synthetic (..))
-import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), defaultKeep, paginate)
+import Golem.Layout.Paginate (Flow, FlowAt (..), LineBox (..), PageOutAt (..), Slotted (..), defaultKeep, paginate)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
@@ -400,7 +400,7 @@ listTests =
       let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", \"b.gm\"]" miniManifest
       (_, pl) <- layoutHeads manifest horizontalStyle [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: " <> T.replicate 30 "乙" <> "]\n")]
       let keys = [nid | sl <- Map.elems (plLines pl), (nid, _) <- slNotes sl]
-          placed = [nid | p <- plPages pl, (nid, _, _) <- poFootnotes p]
+          placed = [nid | p <- gridPages pl, (nid, _, _) <- poFootnotes p]
       length keys @?= 2
       length (nub keys) @?= 2
       sort placed @?= sort keys,
@@ -468,7 +468,7 @@ pageControlTests =
       let style = replaceIn "lines = 30" "lines = 36" horizontalStyle
       r <- layoutMini style "@page-lines +1\n\n一\n" []
       (_, layout) <- either (assertFailure . show) pure r
-      map poLines (plPages layout) @?= [36]
+      map poLines (gridPages layout) @?= [36]
       map described (plNotices layout) @?= [("G07037", "段に余りがないため、@page-lines の増減を 0 行に切り詰めました", FileId 1, 0, 15)],
     testCase "PDF: a no-break that cannot be met and need-lines past the column are G07037, and the PDF is written" $ do
       r <- layoutMini fiveLines "@no-page-break\n\n一\n\n@need-lines 9\n\n二\n" []
@@ -510,22 +510,22 @@ blankLineTests =
   [ testCase "PDF: @blank-line 2 puts the next paragraph three grid lines after, horizontal and vertical" $
       forM_ [horizontalStyle, pdfStyle] $ \style -> do
         (_, layout) <- layoutMini style "あ\n@blank-line 2\nい\n" [] >>= either (assertFailure . show) pure
-        map (map fst . poSlots) (plPages layout) @?= [[0, 3]]
+        map (map fst . poSlots) (gridPages layout) @?= [[0, 3]]
         plNotices layout @?= [],
     testCase "PDF: a blank line at the top of a column is dropped with the info G07047 at its line (docs/adr 0104)" $ do
       let src = "あ\n\n@page-break\n\n@blank-line\n\nい\n"
       (_, layout) <- layoutMini fiveLines src [] >>= either (assertFailure . show) pure
-      map (map fst . poSlots) (plPages layout) @?= [[0], [0]]
+      map (map fst . poSlots) (gridPages layout) @?= [[0], [0]]
       [(diagCode d, diagSeverity d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout]
         @?= [(DiagnosticCode "G07047", Info, "段の先頭に来た @blank-line の空きを捨てました", 18)],
     testCase "PDF: blank lines between two stanzas take the place of space-between, not more" $ do
       (_, layout) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@blank-line\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
-      map (map fst . poSlots) (plPages layout) @?= [[0, 2]]
+      map (map fst . poSlots) (gridPages layout) @?= [[0, 2]]
       (_, plain) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
-      map (map fst . poSlots) (plPages plain) @?= [[0, 2]],
+      map (map fst . poSlots) (gridPages plain) @?= [[0, 2]],
     testCase "HTML: a div of a br for each blank line between the paragraphs" $ do
       (page, _) <- htmlMini horizontalStyle "あ\n@blank-line 2\nい\n"
-      assertBool (T.unpack page) ("<p>あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p>い</p>\n" `T.isInfixOf` page),
+      assertBool (T.unpack page) ("<p style=\"margin-block-end:0\">あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p style=\"margin-block-start:0\">い</p>\n" `T.isInfixOf` page),
     testCase "HTML: nothing before the first block, after a page break or after the last block" $ do
       (page, _) <- htmlMini horizontalStyle "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line 3\n"
       assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
@@ -658,7 +658,7 @@ columnTests :: [TestTree]
 columnTests =
   [ testCase "PDF: a paragraph longer than two columns is set in the measure of a column" $ do
       (_, pl) <- layoutOk horizontal2 (longPara 80) []
-      assertBool "column 1" (any ((== 1) . poColumn) (plPages pl))
+      assertBool "column 1" (any ((== 1) . poColumn) (gridPages pl))
       nub [lineTarget (slLine sl) | sl <- Map.elems (plLines pl)] @?= [12 * 10 * pt],
     testCase "PDF: the second column starts at the left edge of column 1, on the lines of column 0" $ do
       geom <- geometryOf horizontal2
@@ -680,11 +680,11 @@ columnTests =
     testCase "PDF: sixty lines fill the two columns of one page" $ do
       (_, pl) <- layoutOk horizontal2 (longPara 72) []
       Map.size (plLines pl) @?= 60
-      map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)],
+      map (\p -> (poNumber p, poColumn p)) (gridPages pl) @?= [(1, 0), (1, 1)],
     testCase "PDF: the running head of a page takes the headings of its columns in order (golem-driver ADR 0014)" $ do
       let style = horizontal2 <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.short\" }\n"
       (heads, pl) <- layoutHeads miniManifest style [("a.gm", "# 一\n\n" <> longPara 33 <> "# 二\n\n" <> longPara 2)]
-      map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)]
+      map (\p -> (poNumber p, poColumn p)) (gridPages pl) @?= [(1, 0), (1, 1)]
       Map.lookup 1 heads @?= Just ["一"]
       (heads', _) <- layoutHeads miniManifest style [("a.gm", longPara 36 <> "# 二\n\n" <> longPara 2)]
       Map.lookup 1 heads' @?= Just ["二"],
@@ -705,8 +705,8 @@ columnTests =
       (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2 <> "\n[index]\nsection-headings = false\n") source []
       let indexIn p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
       -- (page, column, index lines): two lines after the text, five in column 1, the rest on page 2
-      [(poNumber p, poColumn p, length (indexIn p)) | p <- plPages pl, not (null (indexIn p))] @?= [(1, 0, 2), (1, 1, 5), (2, 0, 3)]
-      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexIn p] @?= [12 * 10 * pt],
+      [(poNumber p, poColumn p, length (indexIn p)) | p <- gridPages pl, not (null (indexIn p))] @?= [(1, 0, 2), (1, 1, 5), (2, 0, 3)]
+      nub [lineTarget (slLine sl) | p <- gridPages pl, sl <- indexIn p] @?= [12 * 10 * pt],
     testCase "PDF: two columns, parallel and sequential, and two builds, give the same bytes" $ do
       let source = "# 一\n\n本文[note: 注。]。\n\n" <> longPara 80
       a <- miniPdf fakeProvider True horizontal2 source []

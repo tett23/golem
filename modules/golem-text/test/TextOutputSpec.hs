@@ -8,7 +8,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble (Book (..), ChannelEntry (..), HeadingInfo (..), LabelTarget (..), TocEntry (..))
+import Golem.Assemble (Book (..), ChannelEntry (..), HeadingInfo (..), LabelTarget (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..))
 import Golem.Doc.IR
 import Golem.Syntax.Span
 import Golem.Text
@@ -47,7 +47,8 @@ bookOf bs =
       bookChannels = [],
       bookChannelDecls = Map.empty,
       bookTitleSeparators = Map.empty,
-      bookImages = Map.empty
+      bookImages = Map.empty,
+      bookSeparators = Map.empty
     }
 
 para :: Int -> [Inline] -> Block
@@ -86,7 +87,14 @@ twoFiles lang na nb chapters =
 
 tests :: [TestTree]
 tests =
-  [ testCase "a chapter of two files: its notes at the end of the second, after a title (golem-driver ADR 0026)" $
+  [ testCase "root ADR 0398 A2: text and rule with explicit blank lines" $ do
+      let sep n name = Block (at n) Nothing Nothing (Separator name)
+          book =
+            (bookOf [para 0 [txt "前"], Block (at 1) Nothing Nothing (BlankLines 2), sep 2 "scene", sep 3 "rule", para 4 [txt "後"]])
+              { bookSeparators = Map.fromList [((at 2, "scene"), SeparatorTextAppearance 1 1 "center" "＊" Nothing), ((at 3, "rule"), SeparatorRuleAppearance 1 1 "center" Nothing 19660 Nothing StrokeSolid)]
+              }
+      only (horizontal book) @?= "前\n\n\n＊\n\n---\n\n後\n",
+    testCase "a chapter of two files: its notes at the end of the second, after a title (golem-driver ADR 0026)" $
       twoFiles "ja" 1 2 [0, 0] @?= [("chapters/a.txt", "甲*1\n"), ("chapters/b.txt", "乙*2\n\n注\n*1 注甲。\n*2 注乙。\n")],
     testCase "two chapters each have their notes; Notes in English (golem-driver ADR 0026)" $
       twoFiles "en" 1 1 [0, 1] @?= [("chapters/a.txt", "甲*1\n\nNotes\n*1 注甲。\n"), ("chapters/b.txt", "乙*1\n\nNotes\n*1 注乙。\n")],
@@ -163,7 +171,10 @@ tests =
        in only (horizontal book) @?= "本文※1。\n※1 補足。\n\n次。\n",
     testGroup
       "ruby is base（reading）"
-      [ testCase "group ruby" $
+      [ testCase "root ADR 0379 I1: both readings remain in text output" $
+          let seg = (RubySegment [Text (at 1) "漢"] (Just "かん")) {rsOtherReading = Just "Kan", rsOptions = defaultRubyOptions {roSide = RubyBoth}}
+           in only (horizontal (bookOf [para 0 [Ruby (at 1) () [seg]]])) @?= "漢（かん）（Kan）\n",
+        testCase "group ruby" $
           only (horizontal (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢字"] (Just "かんじ")]]])) @?= "漢字（かんじ）\n",
         testCase "mono ruby joins the readings of consecutive segments" $
           only (horizontal (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢"] (Just "かん"), RubySegment [Text (at 2) "字"] (Just "じ")]]])) @?= "漢字（かんじ）\n",

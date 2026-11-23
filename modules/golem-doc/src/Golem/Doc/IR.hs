@@ -1,3 +1,5 @@
+{-# LANGUAGE PatternSynonyms #-}
+
 {- | The semantic IR (golem-doc ADR 0001): evaluated content with no
 geometry. The canonical definition is schema/golem-doc.cddl; these types
 mirror it and are checked against it by round-trip tests.
@@ -40,7 +42,12 @@ module Golem.Doc.IR
     akiAbsoluteSp,
     Inline,
     InlineNoRuby,
-    RubySegment (..),
+    RubySegment (RubySegment, rsBase, rsReading, rsOtherReading, rsOptions),
+    RubyOptions (..),
+    RubySide (..),
+    RubyOverhangSide (..),
+    RubySize (..),
+    defaultRubyOptions,
     NumberStyle (..),
     VerticalNumbers (..),
     verticalStyleOf,
@@ -137,6 +144,8 @@ data BlockBody
     PageControl !PageControl
   | -- | blank lines before what follows (docs/adr ADR 0046)
     BlankLines !Int64
+  | -- | a named project separator, resolved after all filters (root ADR 0398)
+    Separator !Text
   deriving stock (Eq, Show)
 
 {- | A manual control of page breaks (docs/adr ADR 0030): no break
@@ -380,11 +389,44 @@ type Inline = InlineF ()
 
 type InlineNoRuby = InlineF Void
 
-data RubySegment = RubySegment
+-- | Per-ruby overrides (root ADR 0379). Nothing keeps the style's choice.
+data RubySide = RubyBefore | RubyAfter | RubyBoth
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+data RubyOverhangSide = RubyOverhangNone | RubyOverhangStart | RubyOverhangEnd | RubyOverhangBoth
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+data RubySize = RubySizeAbsolute !Sp | RubySizeRelative !Rational
+  deriving stock (Eq, Ord, Show)
+
+data RubyOptions = RubyOptions
+  { roSide :: !RubySide,
+    roOverhangSide :: !RubyOverhangSide,
+    roSize :: !(Maybe RubySize),
+    roAlign :: !(Maybe Text),
+    roReadingKenten :: ![Maybe Text],
+    roOtherKenten :: ![Maybe Text]
+  }
+  deriving stock (Eq, Ord, Show)
+
+defaultRubyOptions :: RubyOptions
+defaultRubyOptions = RubyOptions RubyBefore RubyOverhangBoth Nothing Nothing [] []
+
+data RubySegment = RubySegmentData
   { rsBase :: [InlineNoRuby],
-    rsReading :: !(Maybe Text)
+    rsReading :: !(Maybe Text),
+    rsOtherReading :: !(Maybe Text),
+    rsOptions :: !RubyOptions
   }
   deriving stock (Eq, Show)
+
+-- | The original constructor keeps existing source and plugin inputs valid.
+pattern RubySegment :: [InlineNoRuby] -> Maybe Text -> RubySegment
+pattern RubySegment base reading <- RubySegmentData base reading _ _
+  where
+    RubySegment base reading = RubySegmentData base reading Nothing defaultRubyOptions
+
+{-# COMPLETE RubySegment #-}
 
 data NumberStyle = StyleKanji | StyleKanjiDigits | StyleTcy
   deriving stock (Eq, Show, Enum, Bounded)

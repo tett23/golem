@@ -27,7 +27,7 @@ where
 
 import Control.Monad.State.Strict
 import Data.Foldable (toList)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Sequence (Seq)
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
@@ -44,11 +44,12 @@ data Hidden = Hidden !SrcSpan !(Maybe Text) !(Maybe Text) !Int
 -- | What the nodes that came in carry, by their indexes.
 data Carried = Carried
   { cHidden :: !(Seq Hidden),
-    cDeferred :: !(Seq DeferredExpr)
+    cDeferred :: !(Seq DeferredExpr),
+    cRubyFormatting :: !(Seq (Maybe Text, RubyOptions))
   }
 
 emptyCarried :: Carried
-emptyCarried = Carried Seq.empty Seq.empty
+emptyCarried = Carried Seq.empty Seq.empty Seq.empty
 
 -- | The deferred expressions that came in, which alone may go out.
 carriedDeferred :: Carried -> [DeferredExpr]
@@ -124,7 +125,18 @@ encodeInline :: Inline -> Enc Result
 encodeInline = \case
   Text sp t -> at sp "Text" [str t]
   Ruby sp _ segs -> do
-    ss <- listE (\(RubySegment base reading) -> (\b -> con "RubySegment" [b, maybeR str reading]) <$> encodeNoRuby base) segs
+    ss <-
+      listE
+        ( \seg -> do
+            b <- encodeNoRuby (rsBase seg)
+            if rsOptions seg == defaultRubyOptions && isNothing (rsOtherReading seg)
+              then pure (con "RubySegment" [b, maybeR str (rsReading seg)])
+              else do
+                i <- gets (Seq.length . cRubyFormatting)
+                modify' (\cx -> cx {cRubyFormatting = cRubyFormatting cx Seq.|> (rsOtherReading seg, rsOptions seg)})
+                pure (con "RubySegment" [b, maybeR str (rsReading seg), nat i])
+        )
+        segs
     at sp "Ruby" [ss]
   Kenten sp sh xs -> encodeInlines xs >>= \b -> at sp "Kenten" [maybeR str sh, b]
   Color sp c xs -> encodeInlines xs >>= \b -> at sp "Color" [str c, b]
@@ -214,6 +226,7 @@ encodeBlock (Block sp lbl blang body) = do
     ForcedBreak k -> pure ("ForcedBreak", [con (breakKind k) []])
     PageControl pc -> pure ("PageControl", [pageControl pc])
     BlankLines n -> pure ("BlankLines", [nat n])
+    Separator name -> pure ("Separator", [str name])
   node c fs (Hidden sp lbl blang 0)
   where
     item (ListItem n bs) = (\b -> con "ListItem" [maybeR nat n, b]) <$> encodeBlocks bs
@@ -382,10 +395,14 @@ inlineD cx = \case
   where
     Ctx carried _ = cx
     segment = \case
-      RCon "RubySegment" [base, reading] -> do
+      RCon "RubySegment" (base : reading : rest) | length rest <= 1 -> do
         bs <- inlinesD cx base
         nr <- maybe (bad "ルビの親文字にルビがあります") pure (traverse noRuby bs)
-        RubySegment nr <$> maybeD strD reading
+        r <- maybeD strD reading
+        let (other, opts) = case rest of
+              [RPrim (VNat j)] | Just formatting <- Seq.lookup (fromIntegral j) (cRubyFormatting carried) -> formatting
+              _ -> (Nothing, defaultRubyOptions)
+        pure ((RubySegment nr r) {rsOtherReading = other, rsOptions = opts})
       r -> bad ("ルビの区切りではない値です: " <> shown r)
     numberStyle = \case
       RCon "Kanji" [] -> pure StyleKanji
@@ -450,6 +467,7 @@ blockD cx = \case
     "ForcedBreak" -> one1 (fmap ForcedBreak . breakKind)
     "PageControl" -> one1 (fmap PageControl . pageControl)
     "BlankLines" -> one1 $ \n -> BlankLines . fromInteger <$> (intD n >>= \m -> if m < 0 then bad "負の数です" else pure m)
+    "Separator" -> one1 (fmap Separator . strD)
     _ -> bad ("ブロックではない値です: " <> c)
     where
       arity = bad ("欄の数が合いません: " <> c)

@@ -58,8 +58,9 @@ alone, the kind and the size it has after docs/adr/0278 left out.
 itemKey :: Item -> String
 itemKey = \case
   Glue {itemWidth = w, itemStretch = y, itemShrink = z} -> "G" <> show (unSp w, unSp y, unSp z)
-  -- Omit later default fields absent from the original line-adjustment snapshots (docs/adr/0302, docs/adr/0369 and the ruby base leaf).
-  it -> T.unpack (T.replace ", lkRubyReading = Nothing" "" (T.replace ", lkRubyBaseLeaf = Nothing" "" (T.replace ", lkFullWidthPunctuation = True" "" (T.pack (show it)))))
+  -- Omit later default fields absent from the original line-adjustment snapshots
+  -- (docs/adr/0302, docs/adr/0369, root ADR 0379 and the ruby base leaf).
+  it -> T.unpack (foldr (`T.replace` "") (T.pack (show it)) [", lkRubyReading = Nothing", ", lkRubyBaseLeaf = Nothing", ", lkFullWidthPunctuation = True", ", lkRubyOptions = " <> T.pack (show IR.defaultRubyOptions), ", lkRubyOtherReading = Nothing"])
 
 {- | A9 of docs/adr/0278: the items of every run up to two parts, in every
 setting of its normal form, at the start and not, at the end and not, in

@@ -33,8 +33,10 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
+import ParagraphPitchSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
+import SinglePageSpec qualified
 import StylePositionSpec qualified
 import StyleSchemaSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
@@ -776,7 +778,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-project"
-    [ -- golem-parser ADR 0011
+    [ ParagraphPitchSpec.tests,
+      -- golem-parser ADR 0011
       testCase "[numbers] vertical takes auto and auto-digits" $ do
         let vertical src = stNumbersVertical <$> parseStyle (FileId 0) src
         vertical "[numbers]\nvertical = \"auto\"\n" @?= Right "auto"
@@ -881,6 +884,7 @@ tests =
       UnderlineSpec.tests,
       OutputCharsSpec.tests,
       SharedValuesSpec.tests,
+      SinglePageSpec.tests,
       StylePositionSpec.tests,
       StyleSchemaSpec.tests,
       HyphenationExceptionsSpec.tests,
@@ -895,7 +899,7 @@ tests =
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
-      testCase "ADR 0319 I1 I2: unitless zero is a typed zero" $ do
+      testCase "root ADR 0345 I1, I2: unitless zero is a typed zero" $ do
         map parseDim ["0", "-0", "0pt"] @?= replicate 3 (Just (Abs 0))
         map parseDim ["", "1", "0.0", "+0", "00"] @?= replicate 5 Nothing
         map parseAki ["0", "-0", "0pt"] @?= [Just 0, Just 0, Nothing]
@@ -903,7 +907,7 @@ tests =
           Left ds -> assertFailure (show ds)
           Right _ -> pure ()
         codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\nbleed = \"0\"\n") @?= [],
-      testCase "ADR 0319 I1: zero reaches style length fields" $ do
+      testCase "root ADR 0345 I1: zero reaches style length fields" $ do
         mapM_
           (\src -> codes (parseStyle (FileId 0) src) @?= [])
           [ "[paragraph-styles.quote]\nindent = 0\nfirst-line-indent = \"-0\"\n",
@@ -916,7 +920,7 @@ tests =
           ]
         let notices = styleNotices (FileId 0) "[paragraph-styles.table]\nindent = 0\n"
         map diagCode notices @?= [DiagnosticCode "G03100"],
-      testCase "ADR 0346 I1 I3: named length resolves after declarations" $ do
+      testCase "ADR 0346 I1, I3: named length resolves after declarations" $ do
         let src = "[paragraph-styles.quote]\nindent = \"indent\"\n[values.length]\nindent = \"1zw\"\n"
         case parseStyle (FileId 0) src of
           Left ds -> assertFailure (show ds)
@@ -942,7 +946,7 @@ tests =
         codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]
         codes (parseStyle (FileId 0) "[values.aki]\nhalf = \"二分\"\n[paragraph-styles.quote]\nindent = \"half\"\n") @?= ["G03258"],
-      testCase "ADR 0346 I3 I5: unused reserved names and count limits fail at declarations" $ do
+      testCase "ADR 0346 I3, I5: unused reserved names and count limits fail at declarations" $ do
         mapM_
           (\name -> codes (parseStyle (FileId 0) ("[values.length]\n" <> name <> " = \"1pt\"\n")) @?= ["G03255"])
           ["zw", "pt", "mm", "in", "Q", "H", "\"二分\""]
@@ -1006,7 +1010,7 @@ tests =
         fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
         fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
         codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G03006"],
-      testCase "note mark size is set by its character style (ADR 0344 I1)" $
+      testCase "ADR 0344 I1: note mark size is set by its character style" $
         case parseStyle (FileId 0) "[character-styles.note-mark]\nsize = \"0.65zw\"\n" of
           Left ds -> assertFailure (show ds)
           Right s -> (csSize =<< Map.lookup "note-mark" (stCharStyles s)) @?= Just (Zw (65 % 100)),
@@ -1020,13 +1024,13 @@ tests =
       boxStyleTests,
       captionSidenoteTests,
       alignSpaceTests,
-      testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
+      testCase "root ADR 0400 I4: side of [sidenotes] defaults to outside and also accepts physical sides" $ do
         let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
             sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
         sidenotesOf (sn <> "side = \"outside\"\n") @?= sidenotesOf sn
         assertBool "without side" (isJust (sidenotesOf sn))
         codes (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["G03006"]
-        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside のどれか） (sidenotes.side)"]
+        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside, left, right のどれか） (sidenotes.side)"]
         codes (parseStyle (FileId 0) (sn <> "side = 1\n")) @?= ["G03006"],
       testCase "ADR 0345 I1: unitless zero in sidenote dimensions equals 0pt" $ do
         let sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
@@ -1255,6 +1259,17 @@ tests =
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G03008"],
       styleTests,
+      testCase "root ADR 0398 A1: separator styles load by name" $ do
+        let src = "[separators.default]\nkind = \"blank\"\nlines = 2\n\n[separators.scene]\nkind = \"text\"\ntext = \"＊\"\nspace-before = 1\nspace-after = 1\n"
+        fmap stSeparators (parseStyle (FileId 0) src)
+          @?= Right (Map.fromList [("default", SeparatorBlank 2), ("scene", SeparatorText 1 1 "center" "＊" Nothing)]),
+      testCase "root ADR 0398 A5: invalid separator definitions report G03006" $ do
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"blank\"\nlines = 0\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"text\"\ntext = \"x\\ny\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nspace-before = \"0pt\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[separators.default]\nkind = \"rule\"\n[separators.default.rule]\nkeep-in-column = true\n") @?= ["G03006"],
+      testCase "root ADR 0398 A5: separator function path stays inside the project" $
+        codes (parseStyle (FileId 0) "[separators.default]\nfunction = \"../scene.emet\"\ncommand = \"scene\"\n") @?= ["G03006"],
       runningHeadTests,
       localStyleTests,
       akiTests,
@@ -1317,10 +1332,16 @@ hiddenFolioTests =
   testGroup
     "[hidden-folio] (golem-driver ADR 0021)"
     [ testCase "the defaults without [hidden-folio]" $
-        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False),
+        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False Nothing False),
+      testCase "root ADR 0365 I1: gutter uses the effective size" $ do
+        let source explicit = "[character-styles.hidden]\nsize = \"12pt\"\n[hidden-folio]\ncharacter-style = \"hidden\"\ngutter = \"4pt\"\n" <> explicit
+        codes (parseStyle (FileId 0) (source "")) @?= ["G03029"]
+        codes (parseStyle (FileId 0) (source "size = \"6pt\"\n")) @?= [],
+      testCase "root ADR 0365 I1: unknown character style is diagnosed" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\ncharacter-style = \"absent\"\n") @?= ["G03013"],
       testCase "the four keys are read" $
         fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
-          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True),
+          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True Nothing True),
       testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G03006" $ do
         mapM_
           (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G03006"])
@@ -1495,7 +1516,22 @@ noteBodyStyleTests :: TestTree
 noteBodyStyleTests =
   testGroup
     "the paragraph styles of notes (docs/adr/0366)"
-    [ testCase "ADR 0366 I1: without the keys, the body and the title take no paragraph style" $
+    [ testCase "root ADR 0404 I1: footnote and chapter-end accept separate paragraph styles" $
+        codes (parseStyle (FileId 0) "[notes.footnote]\nbody-style = \"caption\"\n[notes.chapter-end]\nbody-style = \"sidenote\"\nheading-style = \"caption\"\n") @?= [],
+      testCase "root ADR 0404 I1: placement overrides are independent" $ do
+        let st = defaultStyle {stNotesBodyStyle = Just "body", stNotesHeadingStyle = Just "caption", stFootnoteBodyStyle = Just "sidenote"}
+        stNotesBodyStyle (noteStyleFor PlaceFoot st) @?= Just "sidenote"
+        stNotesBodyStyle (noteStyleFor PlaceChapterEnd st) @?= Just "body"
+        stNotesHeadingStyle (noteStyleFor PlaceChapterEnd st) @?= Just "caption",
+      testCase "root ADR 0404 I2: omitted placement overrides preserve common defaults" $
+        forM_ [Nothing, Just "body", Just "caption"] $ \body ->
+          forM_ [Nothing, Just "caption"] $ \heading ->
+            forM_ [PlaceFoot, PlaceChapterEnd] $ \placement -> do
+              let st = defaultStyle {stNotesBodyStyle = body, stNotesHeadingStyle = heading}
+              (stNotesBodyStyle (noteStyleFor placement st), stNotesHeadingStyle (noteStyleFor placement st)) @?= (body, heading),
+      testCase "root ADR 0404 I1: unknown placement styles are diagnosed at configuration reading" $
+        codes (parseStyle (FileId 0) "[notes.chapter-end]\nbody-style = \"absent\"\n") @?= ["G03013"],
+      testCase "ADR 0366 I1: without the keys, the body and the title take no paragraph style" $
         case parseStyle (FileId 0) "" of
           Left ds -> assertFailure (show ds)
           Right s -> (stNotesBodyStyle s, stNotesHeadingStyle s) @?= (Nothing, Nothing),
@@ -1588,7 +1624,7 @@ noteMarkTests =
         codes (parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n") @?= ["G03013"]
         [diagMessage d | Left ds <- [parseStyle (FileId 0) "[composition.ruby]\nreading-style = \"nothing\"\n"], d <- ds]
           @?= ["style.toml のスタイルの参照が不正です: [composition.ruby] の reading-style の文字スタイルがありません: nothing"],
-      testCase "ADR 0344 I2 I5: mark-size is G03253 before a size conflict" $ do
+      testCase "ADR 0344 I2, I5: mark-size is G03253 before a size conflict" $ do
         let src = "[notes]\nmark-size = \"0.6zw\"\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03253", Error, 20)]
         let both = "[character-styles.base]\nsize = \"0.6zw\"\n[character-styles.mark]\nbased-on = \"base\"\ncolor = \"red\"\n[color.swatches.red]\ncmyk = [0, 100, 100, 0]\n[notes]\nmark-size = \"0.5zw\"\nmark-style = \"mark\"\n"
@@ -1665,7 +1701,7 @@ listTests =
         case parseStyle (FileId 0) "[lists]\nnumbers = ['\\{{n:kanji}\\}']\n" of
           Left ds -> assertFailure (show ds)
           Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" (NsNotation kanjiNotation) "}" :| []),
-      testCase "ADR 0344 I1 I2: each row of the table gives its codes, once per cause, at the value" $ do
+      testCase "ADR 0344 I1, I2: each row of the table gives its codes, once per cause, at the value" $ do
         let sites src = [(c, s) | d <- fromLeft [] (parseStyle (FileId 0) src), let DiagnosticCode c = diagCode d, let s = spanStart (diagSpan d)]
             at src needle = fromIntegral (T.length (fst (T.breakOn needle src)))
             row src needle cs = sites src @?= [(c, at src needle) | c <- cs]
@@ -2472,6 +2508,7 @@ localStyleTests =
               "synthetic-italic" -> "true"
               "no-break" -> "true"
               "line-breaks" -> "keep"
+              "line-pitch" -> "auto"
               "space-between" -> "1"
               "space-before" -> "1"
               "space-after" -> "1"

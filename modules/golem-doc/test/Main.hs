@@ -76,6 +76,15 @@ int64Tests =
               (negate (2 ^ (63 :: Int)) - 1, False)
             ]
         ],
+      testCase "root ADR 0379 I1: both readings and inline overrides survive CBOR" $ do
+        let segment = (RubySegment [Text sp "漢"] (Just "かん")) {rsOtherReading = Just "Kan", rsOptions = RubyOptions RubyBoth RubyOverhangStart (Just (RubySizeRelative (3 / 4))) (Just "start") [] []}
+            input = [Ruby sp () [segment]]
+        decodeInlines (encodeInlines input) @?= Right input,
+      testCase "root ADR 0379 I1: plugin ruby rejects inconsistent sides and nonpositive sizes" $ do
+        let seg = RubySegment [Text sp "漢"] (Just "かん")
+            check opts = validateInlines (const (Just 100)) [] [Ruby sp () [seg {rsOptions = opts}]]
+        assertBool "a second reading is required" (not (null (check defaultRubyOptions {roSide = RubyBoth})))
+        assertBool "a size is positive" (not (null (check defaultRubyOptions {roSize = Just (RubySizeAbsolute 0)}))),
       testCase "the ends of int64 survive the CBOR round trip" $ do
         let is = [Number sp n Nothing | n <- [2 ^ (63 :: Int) - 1, negate (2 ^ (63 :: Int))]]
         decodeInlines (encodeInlines is) @?= Right is,
@@ -163,6 +172,16 @@ cbor =
             BS.writeFile path (BS.pack [0x83, 0x01, 0x00, 0x80])
             readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
           assertBool "rejected" (code /= ExitSuccess),
+      needsTool "cddl" cddlValidator $ \cddl ->
+        testCase "root ADR 0379 I1: the schema accepts both readings and extended formatting" $ do
+          exe <- cddl
+          let seg = (RubySegment [Text sp "漢"] (Just "かん")) {rsOtherReading = Just "Kan", rsOptions = defaultRubyOptions {roSide = RubyBoth, roSize = Just (RubySizeRelative (3 / 4)), roReadingKenten = [Just "dot", Nothing]}}
+              document = Document (FileId 0) [Block sp Nothing Nothing (Paragraph Nothing [Ruby sp () [seg]])]
+          (code, out, err) <- withSystemTempDirectory "golem-ruby" $ \dir -> do
+            let path = dir </> "ruby.cbor"
+            BS.writeFile path (encodeDocument document)
+            readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+          assertEqual (out <> err) ExitSuccess code,
       testCase "small integers use their shortest form" $
         BS.length (toStrictByteString (encodeTerm (TInteger 1))) @?= 1,
       testCase "ruby inside ruby is rejected by the decoder" $ do
@@ -337,6 +356,9 @@ cbor =
         decodeDocument (encodeDocument d) @?= Right d
         decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TNull, TList [TInt 13, TInt 2]]]])))
           @?= Right (Document (FileId 0) [Block sp Nothing Nothing (BlankLines 2)]),
+      testCase "root ADR 0398 I5: named separators survive the CBOR round trip" $ do
+        let d = Document (FileId 0) [Block sp Nothing Nothing (Separator "scene")]
+        decodeDocument (encodeDocument d) @?= Right d,
       testCase "blank lines only at the top of a document, without a label, of one line or more (docs/adr ADR 0046)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing

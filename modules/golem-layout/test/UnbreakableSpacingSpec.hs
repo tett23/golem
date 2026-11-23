@@ -22,7 +22,6 @@ import Data.Text qualified as T
 import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Aki qualified as A
-import Golem.Layout.CharClass
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Length qualified as L
@@ -83,7 +82,7 @@ unbreakableSpacingTests =
         assertBool
           "the unprotected boundaries of the custom set stretch"
           (and [itemStretch g > 0 | r <- checked, rSet r == custom, (False, gs) <- bounds r, g <- gs]),
-      testCase "ADR 0362 I1: outside a run of digits the set applies" $ do
+      testCase "ADR 0362: outside a run of digits the set applies" $ do
         let stretches v t = [unSp (itemStretch g) | (_, gs) <- bounds (run v custom t), g <- gs]
         stretches False "１漢" @?= [unSp fs `div` 2],
       -- two full-width digits in vertical writing are no pair of B2, so the

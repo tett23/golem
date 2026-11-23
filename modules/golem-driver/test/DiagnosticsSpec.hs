@@ -14,7 +14,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
 import Golem.Driver.Explain.Embedded (documentText)
-import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
+import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
@@ -56,7 +56,7 @@ readingTests =
       withChapters "" [("a.gm", "[=]\n")] [] $ \tmp -> do
         (codes, _) <- checked tmp
         codes @?= [DiagnosticCode "G01020"],
-    testCase "ADR 0344 I2 I3: retired style forms stop every target even with --no-notices" $
+    testCase "ADR 0344 I2, I3: retired style forms stop every target even with --no-notices" $
       withChapters "[lists]\nnumbers = [\"{{{a}}}\"]\n[notes]\nmark-size = \"0.5zw\"\n[masters.book]\nrunning-head = { position = \"top-outside\", content = [\"{{x}}\"] }\n" [("a.gm", "一。\n")] [] $ \tmp ->
         forM_ [TargetPdf, TargetHtml, TargetEpub, TargetText] $ \target -> do
           r <- build (defaultOptions tmp) {optTargets = Just [target], optNoNotices = True}

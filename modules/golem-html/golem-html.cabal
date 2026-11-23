@@ -23,10 +23,10 @@ library
     , golem-assemble
     , golem-bibliography
     , golem-doc
-    , golem-layout
     , golem-length
     , golem-numerals
     , golem-syntax
+    , golem-unicode
     , skylighting   >=0.14 && <0.16
     , text          >=2.0  && <2.2
   default-language: GHC2021

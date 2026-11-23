@@ -35,6 +35,7 @@ book =
         Map.fromList
           [ ("word-table", BlockFunction (Params [ArgString] Nothing []) True "" (\_ body _ -> Right body)),
             ("rule", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Paragraph Nothing [Text sp "―"])])),
+            ("two-separators", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Separator "scene"), Block sp Nothing Nothing (Separator "rule")])),
             ("styled", BlockFunction noParams False "" (\_ _ sp -> Right [Block sp Nothing Nothing (Paragraph (Just "nonexistent") [Text sp "x"])]))
           ],
       fnExpr =
@@ -72,7 +73,12 @@ tests :: TestTree
 tests =
   testGroup
     "the functions of .emet in .gm (docs/adr/0162)"
-    [ testCase "an inline command of a namespace gets its values" $ do
+    [ testCase "root ADR 0398 I6: two Emet separators share a span but keep distinct names" $ do
+        let bs = resultBlocks (evalResult functionCtx (withImport "@book.two-separators\n"))
+        case bs of
+          [Block a _ _ (Separator "scene"), Block b _ _ (Separator "rule")] -> a @?= b
+          other -> assertFailure (show other),
+      testCase "an inline command of a namespace gets its values" $ do
         texts "[book.tax-included 1000]\n" @?= ["N1000"]
         codesOf "[book.tax-included 1000]\n" @?= [],
       testCase "the namespace is the file's: without @import, G02022" $ do
@@ -87,7 +93,7 @@ tests =
         codesOf "[book.price 1000 rate=1]\n" @?= ["G02119"],
       testCase "a keyword argument written twice is G02077, as for a built-in command" $
         codesOf "[book.price 1000 tax=false tax=true]\n" @?= ["G02077"],
-      testCase "Golem ADR 0351 I7-I8: every unknown occurrence and later duplicate keeps its own site" $ do
+      testCase "Golem ADR 0351 I7, I8: every unknown occurrence and later duplicate keeps its own site" $ do
         let src = withImport "[book.price 1 x=1 x=2 x=3]\n"
             (ds, _) = evalSource functionCtx src
             index needle = Data.Text.length (fst (Data.Text.breakOn needle src))
@@ -99,7 +105,7 @@ tests =
                 ("G02119", index "x=3", index "x=3" + 1),
                 ("G02077", index "x=3", index "x=3" + 3)
               ],
-      testCase "Golem ADR 0351 I6-I7: independent unknown, duplicate and type errors survive" $ do
+      testCase "Golem ADR 0351 I6, I7: independent unknown, duplicate and type errors survive" $ do
         let src = withImport "[book.price 1 x=1 x=2 tax=abc]\n"
             (ds, _) = evalSource functionCtx src
             index needle = Data.Text.length (fst (Data.Text.breakOn needle src))

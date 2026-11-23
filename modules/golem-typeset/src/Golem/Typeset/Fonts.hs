@@ -63,7 +63,6 @@ import Data.Text.Encoding qualified as TE
 import Golem.Assemble
 import Golem.Bibliography (EntryPart (..))
 import Golem.Doc.IR
-import Golem.Layout.CharClass (spanIsJapanese)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look hiding (Kerning (..))
@@ -78,6 +77,7 @@ import Golem.Project.Position (Position (..))
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Typeset.TextLayer (ClusterPart (..))
+import Golem.Unicode.CharClass (spanIsJapanese)
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
 0003; a role that is not loaded is the body role), the direction, and
@@ -371,9 +371,9 @@ dashInk fonts vertical g = do
   let (a, b) = if vertical && not (shTurned g) then (y0, y1) else (x0, x1)
   if b > a then Just (a, b) else Nothing
 
-{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at the
-kenten, and ruby in kenten, at the ruby. The PDF draws no kenten there;
-HTML and EPUB draw both.
+{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at
+that kenten. The PDF draws no kenten on the base; outside kenten instead
+marks each reading (root ADR 0379).
 -}
 kentenRubyNotices :: Book -> [Diagnostic]
 kentenRubyNotices book =
@@ -387,7 +387,7 @@ kentenRubyNotices book =
     sites :: Bool -> Inline -> [SrcSpan]
     sites inKenten = \case
       Kenten _ _ xs -> concatMap (sites True) xs
-      Ruby sp _ segs -> [sp | inKenten] <> concat [concatMap kentenIn b | RubySegment b _ <- segs]
+      Ruby _ _ segs -> concat [concatMap kentenIn b | RubySegment b _ <- segs]
       Color _ _ xs -> concatMap (sites inKenten) xs
       CharStyle _ _ xs -> concatMap (sites inKenten) xs
       Link _ _ xs -> concatMap (sites inKenten) xs

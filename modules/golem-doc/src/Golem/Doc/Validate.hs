@@ -5,6 +5,7 @@ module Golem.Doc.Validate
   ( validateInlines,
     validateDocument,
     validateBlocks,
+    validateCommandBlocks,
     captionErrors,
     linkErrors,
     langErrors,
@@ -14,10 +15,12 @@ where
 
 import Data.List (nub)
 import Data.Maybe (isJust, isNothing)
+import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Doc.Url
+import Golem.Length (Sp (..))
 import Golem.Syntax.LanguageTag (isLanguageTag)
 import Golem.Syntax.Span
 
@@ -36,6 +39,12 @@ break, page control or blank lines.
 -}
 validateBlocks :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Block] -> [Text]
 validateBlocks fileSize allowed = blocksAt fileSize allowed False
+
+-- | A command result may contain a separator at its outermost level.
+validateCommandBlocks :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Block] -> [Text]
+validateCommandBlocks fileSize allowed = concatMap $ \b -> case blockBody b of
+  Separator _ -> validateDocument fileSize allowed (Document (spanFile (blockSpan b)) [b])
+  _ -> validateBlocks fileSize allowed [b]
 
 blocksAt :: (FileId -> Maybe Int) -> [DeferredExpr] -> Bool -> [Block] -> [Text]
 blocksAt fileSize allowed top0 = concatMap (blockAt top0)
@@ -60,6 +69,11 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
           ["行アキは文書の最上位にだけ置けます" | not top]
             <> ["行アキはラベルを持てません" | Just _ <- [lbl]]
             <> ["行アキの行数は 1 以上です" | n < 1]
+        Separator name ->
+          ["区切りは文書の最上位にだけ置けます" | not top]
+            <> ["区切りはラベルを持てません" | isJust lbl]
+            <> ["区切りは言語を持てません" | isJust lang]
+            <> ["区切りの名前は空にできません" | T.null name]
         _ -> bodyErrors body
     inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
@@ -90,6 +104,7 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       ForcedBreak _ -> []
       PageControl _ -> []
       BlankLines _ -> []
+      Separator _ -> []
 
 {- | The invariants of a table (docs/adr/0262): as many cells in each row
 as in the header row, no widths or one for each column, every width but
@@ -153,6 +168,20 @@ breakErrors top is =
     deep :: [InlineF r] -> Bool
     deep = any (\x -> isBreak x || nested x)
 
+-- Inline ruby options are also checked on the plugin boundary (root ADR 0379).
+rubyErrors :: RubySegment -> [Text]
+rubyErrors seg =
+  let opts = rsOptions seg
+      positive = case roSize opts of Nothing -> True; Just (RubySizeAbsolute n) -> n > 0; Just (RubySizeRelative r) -> r > 0
+      representable = case roSize opts of Nothing -> True; Just (RubySizeAbsolute (Sp n)) -> inInt64 n; Just (RubySizeRelative r) -> inInt64 (numerator r) && inInt64 (denominator r)
+      validMarks reading marks = (null marks || length marks == maybe 0 T.length reading) && all (maybe True (`elem` ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"])) marks
+   in ["ルビの読みのサイズは正でなければなりません" | not positive]
+        <> ["ルビの寸法が意味論 IR の範囲外です" | not representable]
+        <> ["ルビの配置が不正です" | maybe False (`notElem` ["start", "center", "1-2-1", "0-1-0"]) (roAlign opts)]
+        <> ["両側ルビにだけ二つ目の読みが必要です" | (roSide opts == RubyBoth) /= isJust (rsOtherReading seg)]
+        <> ["両側ルビの読みは空にできません" | roSide opts == RubyBoth, any (maybe True T.null) [rsReading seg, rsOtherReading seg]]
+        <> ["ルビの圏点が不正です" | not (validMarks (rsReading seg) (roReadingKenten opts) && validMarks (rsOtherReading seg) (roOtherKenten opts))]
+
 spanErrors :: (FileId -> Maybe Int) -> SrcSpan -> [Text]
 spanErrors fileSize (SrcSpan f s e) = case fileSize f of
   Nothing -> ["存在しないファイルの位置です"]
@@ -161,7 +190,7 @@ spanErrors fileSize (SrcSpan f s e) = case fileSize f of
 inlineErrors :: (FileId -> Maybe Int) -> [DeferredExpr] -> InlineF r -> [Text]
 inlineErrors fileSize allowed i =
   spanErrors fileSize (inlineSpan i) <> case i of
-    Ruby _ _ segs -> concatMap (concatMap (inlineErrors fileSize allowed) . rsBase) segs
+    Ruby _ _ segs -> concatMap (\seg -> rubyErrors seg <> concatMap (inlineErrors fileSize allowed) (rsBase seg)) segs
     Kenten _ _ xs -> sub xs
     Color _ _ xs -> sub xs
     CharStyle _ _ xs -> sub xs

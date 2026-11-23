@@ -216,6 +216,11 @@ tests =
         ],
       testCase "@blank-line right after a paragraph is kept as written (docs/adr ADR 0046)" $
         formatted "あ\n@blank-line\nい\n" @?= "あ\n@blank-line\nい\n",
+      testCase "root ADR 0398 A5: separator spelling and escape format idempotently" $ do
+        let source = "前\n---   \n後\n\n\\---\n"
+            once = formatted source
+        once @?= "前\n---\n後\n\n\\---\n"
+        formatted once @?= once,
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
       -- golem-fmt ADR 0003
@@ -290,7 +295,7 @@ tableTests =
       testCase "tabs, spaces, blank lines and quotes are kept" $ do
         formatTable "a\tb\n\tz  \n" @?= "a\tb\n\tz  \n"
         formatTable "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n" @?= "a,b\n\"x\n\n\ny  \",1\n\n\n  c ,\"d\"\"\"\n",
-      testCase "Golem ADR 0354 I1/I2: strip the whole leading run, keep interior BOMs" $ do
+      testCase "Golem ADR 0354 I1, I2: strip the whole leading run, keep interior BOMs" $ do
         formatTable "" @?= ""
         formatTable "\xFEFF\xFEFF" @?= ""
         formatTable "\xFEFF\xFEFF\xFEFF\&a\xFEFF\xFEFF\&b" @?= "a\xFEFF\xFEFF\&b"

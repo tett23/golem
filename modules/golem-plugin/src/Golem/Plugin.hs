@@ -72,7 +72,7 @@ import Foreign.C.String (CString, peekCString, withCString, withCStringLen)
 import Foreign.C.Types
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
-import Golem.Doc.Validate (captionErrors, langErrors, linkErrors, validateBlocks, validateDocument)
+import Golem.Doc.Validate (captionErrors, langErrors, linkErrors, validateCommandBlocks, validateDocument)
 import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Value (PluginArg (..), Value (..))
 import Golem.Syntax
@@ -570,7 +570,7 @@ callBlockCommand plugin name args body sp = do
   checkItems plugin (documentItems bodyDoc) (documentItems madeDoc)
   checkOutput allowedSpans (documentDeferred bodyDoc) (documentSpans madeDoc) (documentDeferred madeDoc)
   checkDiagnosticSpans allowedSpans diags
-  case validateBlocks (const (Just maxBound)) (documentDeferred bodyDoc) made of
+  case validateCommandBlocks (const (Just maxBound)) (documentDeferred bodyDoc) made of
     [] -> Right (bs, used, diags)
     errs -> Left (BadOutput (T.intercalate "、" errs))
   where
@@ -650,6 +650,7 @@ blockKind (Block _ lbl _ body)
       ForcedBreak _ -> refuse "改ページ"
       PageControl _ -> refuse "改ページの制御"
       BlankLines _ -> refuse "行アキ"
+      Separator _ -> Right ()
   where
     refuse k = Left (BadOutput ("ブロックコマンドが返せないブロックです: " <> k))
 

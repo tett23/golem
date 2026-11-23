@@ -8,7 +8,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Syntax
-import Golem.Syntax.Grapheme (graphemeClusters)
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Bytes (hex)
 import Golem.TestSupport.Gen (genText)
@@ -47,10 +46,7 @@ tests :: TestTree
 tests =
   testGroup
     "golem-syntax"
-    [ testCase "root ADR 0380 I1: extended graphemes stay whole" $ do
-        let cases = [("", []), ("e\x301", ["e\x301"]), ("👨\x200d👩\x200d👧\x200d👦", ["👨\x200d👩\x200d👧\x200d👦"]), ("🇯🇵🇫🇷", ["🇯🇵", "🇫🇷"]), ("\x1100\x1161\x11a8", ["\x1100\x1161\x11a8"]), ("\r\n", ["\r\n"])]
-        mapM_ (\(source, expected) -> graphemeClusters source @?= expected) cases,
-      testGroup
+    [ testGroup
         "sha256"
         [ testCase "the empty string" $
             hex (sha256 "") @?= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

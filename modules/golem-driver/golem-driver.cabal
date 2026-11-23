@@ -39,13 +39,16 @@ library
                     Golem.Driver.Explain.Embedded
                     Golem.Driver.Functions
                     Golem.Driver.Html
+                    Golem.Driver.PageMap
                     Golem.Driver.Lint
                     Golem.Driver.Plugins
                     Golem.Driver.Svg
                     Golem.Driver.Version
                     Golem.Driver.Version.Embedded
-  other-modules:    Golem.Driver.ProjectVars
+  other-modules:    Golem.Driver.PageMap.Alignment
+                    Golem.Driver.ProjectVars
   build-depends:
+    , aeson         >=2.2 && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , containers    >=0.6  && <0.8
@@ -69,6 +72,7 @@ library
     , golem-text
     , golem-typeset
     , text          >=2.0  && <2.2
+    , vector        >=0.13 && <0.14
     , time          >=1.12 && <1.15
   default-language: GHC2021
   if !arch(wasm32)
@@ -90,6 +94,8 @@ test-suite golem-driver-test
   other-modules:
     ExtendedJapaneseOutputsSpec
     AlignSpaceSpec
+    ParagraphPitchSpec
+    ParagraphWrapPitchSpec
     FontInstanceSpec
     BookLanguageSpec
     BuildSpec
@@ -124,6 +130,7 @@ test-suite golem-driver-test
     ManualEmetSpec
     InsideLinksSpec
     LinkSpec
+    NestedFiguresSpec
     NotesSpec
     OutputGoldenSpec
     DecorationsSpec
@@ -134,8 +141,10 @@ test-suite golem-driver-test
     OverflowSpec
     SoftHyphenSpec
     PageElementsSpec
+    PageMapSpec
     PageStartsSpec
     ParagraphRuleSpec
+    SeparatorSpec
     ParagraphSpec
     PdfSpec
     PlatesSpec
@@ -147,6 +156,7 @@ test-suite golem-driver-test
     LineAdjustmentSpec
     AdjustOrderSpec
     NumberUnitBuildSpec
+    SinglePageSpec
     PageLabelsSpec
     IndexRangeSpec
     ShapingMemoSpec
@@ -193,6 +203,8 @@ test-suite golem-driver-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
+    , JuicyPixels    ==3.3.9
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib
@@ -247,6 +259,7 @@ test-suite golem-driver-global-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , process
     , zlib
     , tasty          >=1.4 && <1.6
@@ -297,6 +310,7 @@ test-suite golem-driver-parallel-test
     , golem-syntax
     , golem-test-support
     , golem-typeset
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , process
     , zlib

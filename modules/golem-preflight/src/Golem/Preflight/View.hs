@@ -77,8 +77,8 @@ data PageView = PageView
     pvRules :: ![RuleView],
     -- | nothing but the master page (running head, folio)
     pvBlank :: !Bool,
-    -- | the gutter (のど) is on the left of the page
-    pvGutterLeft :: !Bool
+    -- | The gutter is on the left, or absent on a single page (root ADR 0400).
+    pvGutterLeft :: !(Maybe Bool)
   }
   deriving stock (Eq, Show)
 

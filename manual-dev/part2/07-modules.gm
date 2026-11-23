@@ -14,9 +14,10 @@ ADR はコミットした後に変えられないので、下の層から順に�
 
 | モジュール | 役割 |
 | --- | --- |
-| golem-syntax | diagnostic とソースの位置。golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-fixtures、golem-test-support を除くすべてのモジュールが使う最下層 |
+| golem-syntax | diagnostic とソースの位置。golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-unicode、golem-fixtures、golem-test-support を除くすべてのモジュールが使う最下層 |
 | golem-length | 長さの型 [code: Sp]、長さの単位の変換と表記（[code: Golem.Length]）、十進の数の表記（[code: Golem.Length.Decimal]）。golem のどのパッケージにも依存しない最下層 |
 | golem-regex | 正規表現スタイルの照合器。base、text、containers、array だけに依存する |
+| golem-unicode | 書記素クラスタと語の分割（UAX #29、Unicode 17.0.0）、文字か数字かの判定、JLReq の文字クラス（[code: Golem.Unicode.CharClass]）。base、containers、text だけに依存する最下層 |
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |
 | golem-eval | 式の評価とプラグインの展開（S0） |
@@ -51,6 +52,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 golem-syntax と golem-length への矢印も省いた。
 どちらも使うパッケージが多いからである。
 golem-length を使うのは、golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0114-sp-in-a-length-package.md]（docs/adr ADR 0114「長さの型と変換を golem-length に移し、golem-font から使われない sp の API を消す」）]
+golem-unicode は golem-layout だけが直接使う最下層で、golem-length と同じく図に含めなかった。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0411-segment-graphemes-and-words-in-haskell.md]（docs/adr ADR 0411「書記素と語の分割を Haskell で実装し、依存のないパッケージに置く」）]
 たとえば golem-cli は golem-driver にも直接依存しているが、golem-lsp を通して届くので、矢印は golem-lsp への一本だけである。
 
 @label fig-modules

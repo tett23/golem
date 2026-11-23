@@ -1,6 +1,6 @@
 # ADR 0293: `golem.wasm` のパッケージのテストのスイートを、wasm32 で毎晩走らせる
 
-Status: superseded [{"by":["docs/adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md"],"part":"3 の preopen"}]
+Status: superseded [{"by":["docs/adr/0307-preopen-a-temporary-directory-at-tmp-for-the-wasm-tests.md"],"part":"3 の preopen"},{"by":["docs/adr/0415-fix-the-medium-findings-of-the-conformance-audit-of-2026-11-18.md"],"part":"A1 の検査の中身","kind":"supplement"}]
 
 ## 文脈
 

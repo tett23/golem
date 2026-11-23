@@ -10,7 +10,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
+import Golem.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), IndexLocator (..), IndexSection (..), LabelTarget (..), NoteNumbering (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..), assemble)
 import Golem.Assemble.Formats (arabic, kanjiNotation)
 import Golem.Assemble.ListMarkers (defaultNumberFormat)
 import Golem.Bibliography (EntryPart (..))
@@ -44,6 +44,7 @@ cfg0 =
     { hcTitle = "本",
       hcLanguage = "ja",
       hcVertical = False,
+      hcSeparatorPitch = Nothing,
       hcNumberDefault = "kanji",
       hcSwatches = Map.empty,
       hcFonts = Map.empty,
@@ -90,7 +91,8 @@ bookOf bs =
       bookChannels = [],
       bookChannelDecls = Map.empty,
       bookTitleSeparators = Map.empty,
-      bookImages = Map.empty
+      bookImages = Map.empty,
+      bookSeparators = Map.empty
     }
 
 para :: Int -> [Inline] -> Block
@@ -294,11 +296,11 @@ chapterNoteTests =
 
 -- | A paragraph style that sets nothing but its rules.
 ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
-ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing
+ruled b a = HtmlParaStyle Nothing False 0 "0" "0" noFeatures b a defaultAlignDecls 0 0 "0em" [] Nothing Nothing
 
 -- | A paragraph style of the defaults of body (docs/adr/0189).
 plainPara :: HtmlParaStyle
-plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing
+plainPara = HtmlParaStyle Nothing False 0 "0em" "0em" noFeatures Nothing Nothing defaultAlignDecls 0 0 "0em" [] Nothing Nothing
 
 -- | The rules of the CSS that have a declaration of the keys of docs/adr/0189, but those of the cells of tables.
 alignSpaceLines :: HtmlConfig -> [Text]
@@ -306,7 +308,37 @@ alignSpaceLines cfg = [l | l <- cssLines "" cfg, not (".align-" `T.isPrefixOf` l
 
 alignSpaceTests :: [TestTree]
 alignSpaceTests =
-  [ testCase "the defaults write no rule" $
+  [ testCase "root ADR 0397 A3: physical pitch and spacing are emitted independently" $ do
+      let ps = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 65536 262144 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "dialogue" ps}
+      assertBool (show rendered) ("p.ps-dialogue { line-height: 18pt; margin-block: 0; }" `elem` rendered)
+      assertBool (show rendered) ("p.ps-dialogue + p.ps-dialogue { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "root ADR 0397 A3: unequal styles use the larger absolute gap" $ do
+      let a = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 393216 0)}
+          b = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1048576 262144 0 0)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.fromList [("a", a), ("b", b)]}
+      assertBool (show rendered) ("p.ps-a + p.ps-b:not(.ps-a) { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "root ADR 0397 A3: zero physical gap overrides browser paragraph margins" $ do
+      let ps = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 0)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "dialogue" ps}
+      assertBool (show rendered) ("p.ps-dialogue { line-height: 18pt; margin-block: 0; }" `elem` rendered)
+      assertBool (show rendered) ("p.ps-dialogue + p.ps-dialogue { margin-block-start: 0; }" `elem` rendered),
+    testCase "root ADR 0397 A3: body spacing does not select other paragraph styles" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "body" body}
+      assertBool (show rendered) ("p:where(:not([class])) + p:where(:not([class])) { margin-block-start: 6pt; }" `elem` rendered)
+      assertBool (show rendered) ("p + p { margin-block-start: 6pt; }" `notElem` rendered),
+    testCase "root ADR 0397 A3: note interiors retain browser line height" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          rendered = cssLines "" cfg0 {hcParaStyles = Map.singleton "body" body}
+      assertBool (show rendered) ("section.notes aside p { line-height: normal; }" `elem` rendered),
+    testCase "root ADR 0397 A3: file-local body pitch resets margins without matching styled paragraphs" $ do
+      let body = plainPara {hpsPhysical = Just (HtmlPhysicalParagraph 1179648 0 0 393216)}
+          local = HtmlLocalStyles Map.empty (Map.singleton "body" body) Nothing Nothing Map.empty
+          rendered = cssLines "" cfg0 {hcLocalStyles = Map.singleton fidA local}
+      assertBool (show rendered) (any (T.isInfixOf "margin-block: 0; line-height: 18pt;") rendered)
+      assertBool (show rendered) ("body.file-1 p:where(:not([class])) + p:where(:not([class])) { margin-block-start: 6pt; }" `elem` rendered),
+    testCase "the defaults write no rule" $
       alignSpaceLines cfg0 {hcParaStyles = Map.fromList [("body", plainPara), ("quote", plainPara)]} @?= [],
     testCase "the alignment of body when it is not the default, of another style when it is not that of body" $ do
       let centre = plainPara {hpsAlign = ["text-align: center"]}
@@ -399,9 +431,9 @@ boxTests =
       body
         @?= T.concat
           [ "<div class=\"box box-col\" data-break-before=\"page\">\n<p class=\"ps-col\">x</p>\n</div>\n",
-            "<div class=\"box box-top\">\n<p class=\"ps-top\">x</p>\n</div>\n",
+            "<div class=\"box box-top\" style=\"margin-block-end:0\">\n<p class=\"ps-top\" style=\"margin-block-end:0\">x</p>\n</div>\n",
             "<div class=\"blank-line\"><br/></div>\n",
-            "<div class=\"box box-col\">\n<p class=\"ps-col\">x</p>\n</div>\n"
+            "<div class=\"box box-col\" style=\"margin-block-start:0\">\n<p class=\"ps-col\" style=\"margin-block-start:0\">x</p>\n</div>\n"
           ],
     testCase "the rule of the box; no indent and no outer margin of the paragraphs in a box; the spaces before and after on the box" $ do
       let cfg = cfg0 {hcParaStyles = Map.fromList [("body", plainPara {hpsSpaceAfter = 2}), ("col", (boxed "a") {hpsSpaceBefore = 1, hpsSpaceAfter = 3})]}
@@ -447,7 +479,89 @@ ruleTests =
 
 tests :: [TestTree]
 tests =
-  [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
+  [ testCase "root ADR 0398 A2: text and rule separators are distinct XHTML blocks" $ do
+      let a = Block (at 1) Nothing Nothing (Separator "scene")
+          b = Block (at 2) Nothing Nothing (Separator "rule")
+          appearances = Map.fromList [((at 1, "scene"), SeparatorTextAppearance 1 1 "center" "＊" Nothing), ((at 2, "rule"), SeparatorRuleAppearance 1 1 "end" Nothing 19660 Nothing StrokeSolid)]
+          body = bodyA cfg0 ((bookOf [a, b]) {bookSeparators = appearances})
+      assertBool "text" ("class=\"separator separator-text\"" `T.isInfixOf` body)
+      assertBool "rule" ("class=\"separator separator-rule\"" `T.isInfixOf` body)
+      assertBool "one line, margins" ("block-size: 1lh" `T.isInfixOf` siteCss (renderXhtml cfg0 ft ((bookOf [a, b]) {bookSeparators = appearances}))),
+    testCase "root ADR 0398 I4: separator boundaries override global and file paragraph margins" $ do
+      let sep = Block (at 2) Nothing Nothing (Separator "scene")
+          ps = plainPara {hpsSpaceBefore = 2, hpsSpaceAfter = 3, hpsSpaceBetween = 4}
+          cfg = cfg0 {hcParaStyles = Map.fromList [("body", ps), ("quote", ps)], hcLocalStyles = Map.singleton fidA (HtmlLocalStyles Map.empty (Map.singleton "quote" ps) Nothing Nothing Map.empty)}
+          book = (bookOf [styled 1 "quote", sep, para 3 [txt "after"]]) {bookSeparators = Map.singleton (at 2, "scene") (SeparatorTextAppearance 0 0 "center" "*" Nothing)}
+          body = bodyA cfg book
+      assertBool "preceding paragraph has no boundary margin" ("<p class=\"ps-quote\" style=\"margin-block-end:0\">" `T.isInfixOf` body)
+      assertBool "following paragraph has no boundary margin" ("<p style=\"margin-block-start:0\">" `T.isInfixOf` body),
+    testCase "root ADR 0398 I4: generated paragraphs sharing a source span retain non-boundary spacing" $ do
+      let paragraph text = Block (at 1) Nothing Nothing (Paragraph Nothing [txt text])
+          sep = Block (at 2) Nothing Nothing (Separator "scene")
+          book = (bookOf [paragraph "first", paragraph "before", sep, paragraph "after", paragraph "last"]) {bookSeparators = Map.singleton (at 2, "scene") (SeparatorTextAppearance 0 0 "center" "*" Nothing)}
+          body = bodyA cfg0 book
+      assertBool "first paragraph is unchanged" ("<p>first</p>" `T.isInfixOf` body)
+      assertBool "last paragraph is unchanged" ("<p>last</p>" `T.isInfixOf` body),
+    testCase "root ADR 0398 I4: adjacent visible separators serialize one maximum margin in both writing modes" $ do
+      let a = Block (at 1) Nothing Nothing (Separator "a")
+          b = Block (at 3) Nothing Nothing (Separator "b")
+          blank = Block (at 2) Nothing Nothing (BlankLines 4)
+          appearances = Map.fromList [((at 1, "a"), SeparatorTextAppearance 0 2 "center" "A" Nothing), ((at 3, "b"), SeparatorTextAppearance 3 0 "center" "B" Nothing)]
+      mapM_
+        ( \vertical ->
+            mapM_
+              ( \(between, margin) -> do
+                  let body = bodyA (cfg0 {hcVertical = vertical}) ((bookOf ([a] <> between <> [b])) {bookSeparators = appearances})
+                  assertBool "first separator ends at zero" ("margin-block-start:0lh;margin-block-end:0lh\"><span>A" `T.isInfixOf` body)
+                  assertBool "next separator owns the maximum" (("margin-block-start:" <> margin <> "lh;margin-block-end:0lh\"><span>B") `T.isInfixOf` body)
+                  T.count "<br/>" body @?= 0
+              )
+              [([], "3"), ([blank], "4")]
+        )
+        [False, True],
+    testCase "root ADR 0398 I4: explicit blank lines and visible margins use the maximum" $ do
+      let sep = Block (at 2) Nothing Nothing (Separator "scene")
+          before = Block (at 1) Nothing Nothing (Paragraph Nothing [Text (at 1) "前"])
+          lastPara = Block (at 4) Nothing Nothing (Paragraph Nothing [Text (at 4) "後"])
+          blank = Block (at 3) Nothing Nothing (BlankLines 2)
+          appearances = Map.singleton (at 2, "scene") (SeparatorTextAppearance 1 1 "center" "＊" Nothing)
+          body = bodyA cfg0 ((bookOf [before, blank, sep, blank, lastPara]) {bookSeparators = appearances})
+      assertBool "before max" ("class=\"blank-line\"" `T.isInfixOf` body)
+      T.count "<br/>" body @?= 3,
+    testCase "root ADR 0398 A2 A4: rule stroke parameters and vertical direction remain in SVG" $ do
+      let rule stroke = (bookOf [Block (at 1) Nothing Nothing (Separator "scene")]) {bookSeparators = Map.singleton (at 1, "scene") (SeparatorRuleAppearance 0 0 "center" (Just 655360) 32768 Nothing stroke)}
+          dashed = bodyA cfg0 (rule (StrokeDashed 131072 65536))
+          dotted = bodyA cfg0 (rule (StrokeDotted 65536))
+          japanese = bodyA cfg0 (rule (StrokeJapaneseDots 65536))
+          multiple = bodyA cfg0 (rule (StrokeMulti [1, 1, 1]))
+          wavy = bodyA cfg0 (rule StrokeWavy)
+          vertical = bodyA (cfg0 {hcVertical = True}) (rule (StrokeDashed 131072 65536))
+      assertBool "dash and gap" ("stroke-dasharray=\"2pt 1pt\"" `T.isInfixOf` dashed)
+      assertBool "round dots" ("stroke-linecap=\"round\"" `T.isInfixOf` dotted)
+      assertBool "square dots" ("stroke-linecap=\"square\"" `T.isInfixOf` japanese)
+      assertBool "multiple strokes" (T.count "<line" multiple == 2)
+      assertBool "wavy path" ("<path" `T.isInfixOf` wavy)
+      assertBool "vertical path" ("y2=\"100%\"" `T.isInfixOf` vertical),
+    testCase "root ADR 0398 A2: a rule line spans the whole SVG, the measure, in both writing modes" $ do
+      let rule = (bookOf [Block (at 1) Nothing Nothing (Separator "scene")]) {bookSeparators = Map.singleton (at 1, "scene") (SeparatorRuleAppearance 1 1 "center" Nothing 32768 Nothing StrokeSolid)}
+          horizontal = bodyA cfg0 rule
+          vertical = bodyA (cfg0 {hcVertical = True}) rule
+      assertBool (T.unpack horizontal) ("inline-size:100%" `T.isInfixOf` horizontal)
+      assertBool (T.unpack horizontal) ("<line x1=\"0\" y1=\"50%\" x2=\"100%\" y2=\"50%\"" `T.isInfixOf` horizontal)
+      assertBool (T.unpack vertical) ("<line x1=\"50%\" y1=\"0\" x2=\"50%\" y2=\"100%\"" `T.isInfixOf` vertical),
+    testCase "root ADR 0398 A4: paragraphs next to blank lines drop their margin on that side in both writing modes" $
+      mapM_
+        ( \vertical -> do
+            let blank n = Block (at 2) Nothing Nothing (BlankLines n)
+                body = bodyA (cfg0 {hcVertical = vertical}) (bookOf [para 1 [txt "a"], blank 2, para 3 [txt "b"], para 4 [txt "c"]])
+            assertBool (T.unpack body) ("<p style=\"margin-block-end:0\">a</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p style=\"margin-block-start:0\">b</p>\n<p>c</p>\n" `T.isInfixOf` body)
+        )
+        [False, True],
+    testCase "root ADR 0398 A4: no blank line is written before a break, so the paragraph keeps its margin" $ do
+      let body = bodyA cfg0 (bookOf [para 1 [txt "a"], Block (at 2) Nothing Nothing (BlankLines 2), Block (at 3) Nothing Nothing (ForcedBreak BreakPage), para 4 [txt "b"]])
+      assertBool (T.unpack body) ("<p>a</p>" `T.isInfixOf` body)
+      T.count "<br/>" body @?= 0,
+    testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
     testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
     testGroup "the alignment, spaces and end indent of paragraph styles (docs/adr/0189)" alignSpaceTests,
     testGroup "the spaces of paragraph styles redefined in files (docs/adr/0217)" fileSpaceTests,
@@ -592,7 +706,12 @@ tests =
     testGroup "notes at the end of the chapter (golem-driver ADR 0026)" chapterNoteTests,
     testGroup
       "ruby"
-      [ testCase "group ruby is one rt between rp" $
+      [ testCase "root ADR 0379 I1: both readings, size, alignment, and outside kenten survive XHTML" $ do
+          let opts = defaultRubyOptions {roSide = RubyBoth, roSize = Just (RubySizeRelative (3 / 4)), roAlign = Just "start", roOtherKenten = [Just "dot"]}
+              seg = (RubySegment [Text (at 1) "漢"] (Just "かん")) {rsOtherReading = Just "K", rsOptions = opts}
+              html = bodyA cfg0 (bookOf [para 0 [Ruby (at 1) () [seg]]])
+          mapM_ (\piece -> assertBool (T.unpack piece) (piece `T.isInfixOf` html)) ["ruby-position:under", "ruby-position:over", "ruby-align:start", "font-size:0.75em", "かん", "kenten-dot", "text-emphasis-position:under left"],
+        testCase "group ruby is one rt between rp" $
           bodyA cfg0 (bookOf [para 0 [Ruby (at 1) () [RubySegment [Text (at 1) "漢字"] (Just "かんじ")]]])
             @?= "<p><ruby>漢字<rp>（</rp><rt>かんじ</rt><rp>）</rp></ruby></p>\n",
         testCase "mono ruby has one rt per segment" $
@@ -769,13 +888,14 @@ tests =
     testCase "one page per source file, named .xhtml" $
       map fst (sitePages (renderXhtml cfg0 ft (bookOf []) {bookDocs = [Document fidA [], Document fidB []]})) @?= ["a.xhtml", "b.xhtml"],
     -- a round trip: an escape that drops or rewrites characters fails too (docs/adr/0066)
-    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $ property $ do
-      t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
-      let e = escapeXml t
-      unescapeXml e === t
-      T.filter (`elem` ("<>\"" :: String)) e === ""
-      -- every & starts one of the four references
-      filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
+    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $
+      property $ do
+        t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
+        let e = escapeXml t
+        unescapeXml e === t
+        T.filter (`elem` ("<>\"" :: String)) e === ""
+        -- every & starts one of the four references
+        filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
   ]
 
 -- | The references escapeXml writes, without their &.
@@ -967,4 +1087,14 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests])
+
+-- | Fixed-page positions are empty anchors in the original text (root ADR 0386).
+pageBreakTests :: TestTree
+pageBreakTests = testCase "root ADR 0386 I1: each page-list destination occurs once in body order" $ do
+  let sp = mkSpan fidA 0 4
+      book = bookOf [Block sp Nothing Nothing (Paragraph Nothing [Text sp "日本語句"])]
+      anchors = Map.singleton sp [(0, "GolemFixedPage-1", "i"), (2, "GolemFixedPage-2", "1")]
+      body = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtmlWithPageBreaks cfg0 ft book anchors)))
+  [T.takeWhile (/= '"') piece | piece <- drop 1 (T.splitOn "id=\"" body)] @?= ["GolemFixedPage-1", "GolemFixedPage-2"]
+  assertBool "body text retains its order" ("日本<span" `T.isInfixOf` body && "></span>語句" `T.isInfixOf` body)

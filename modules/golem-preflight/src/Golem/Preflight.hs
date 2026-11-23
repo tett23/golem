@@ -360,15 +360,20 @@ checkBleed r sp bleed =
   ]
 
 {- | The distance of each edge of a rectangle from the same edge of the
-trimmed page, inside positive: 天, 地, 小口, のど.
+trimmed page, inside positive: top, bottom, then physical left/right
+or the fore-edge/gutter in facing mode (root ADR 0400).
 -}
 edges :: PageView -> Rect -> [(Text, Sp)]
 edges p (Rect x y w h) =
   let Rect tx ty tw th = pvTrim p
       left = x - tx
       right = (tx + tw) - (x + w)
-      (gutter, outer) = if pvGutterLeft p then (left, right) else (right, left)
-   in [("天", (ty + th) - (y + h)), ("地", y - ty), ("小口", outer), ("のど", gutter)]
+      horizontal = case pvGutterLeft p of
+        Nothing -> [("左", left), ("右", right)]
+        Just gutterLeft ->
+          let (gutter, outer) = if gutterLeft then (left, right) else (right, left)
+           in [("小口", outer), ("のど", gutter)]
+   in [("天", (ty + th) - (y + h)), ("地", y - ty)] <> horizontal
 
 -- | G09011: an edge of an image near the trim line that does not reach the bleed line.
 trimHazard :: Rules -> View -> [Diagnostic]

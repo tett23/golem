@@ -32,6 +32,7 @@ test-suite golem-layout-spec-test
   main-is:          Main.hs
   other-modules:    Fixtures
                     GeometrySpec
+                    SinglePageSpec
   build-depends:
     , base
     , containers

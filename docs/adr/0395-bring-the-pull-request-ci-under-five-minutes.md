@@ -1,6 +1,6 @@
 # ADR 0395: プルリクエストの CI を 5 分の予算に収める
 
-Status: accepted
+Status: superseded [{"by":["docs/adr/0414-record-what-the-implementations-of-adr-0370-and-0395-decided.md"],"part":"I2 の残すキャッシュの単位","kind":"supplement"}]
 
 ## 文脈
 

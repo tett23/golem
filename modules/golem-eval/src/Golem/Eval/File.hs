@@ -348,12 +348,13 @@ unwritableText = concatMap blockDiags . docBlocks
       ForcedBreak _ -> []
       PageControl _ -> []
       BlankLines _ -> []
+      Separator _ -> []
     inlines :: [InlineF r] -> [Diagnostic]
     inlines = concatMap inline
     inline :: InlineF r -> [Diagnostic]
     inline = \case
       Text sp t -> at sp t
-      Ruby sp _ segs -> concat [inlines (rsBase g) <> maybe [] (at sp) (rsReading g) | g <- segs]
+      Ruby sp _ segs -> concat [inlines (rsBase g) <> maybe [] (at sp) (rsReading g) <> maybe [] (at sp) (rsOtherReading g) | g <- segs]
       Kenten _ _ xs -> inlines xs
       Color _ _ xs -> inlines xs
       CharStyle _ _ xs -> inlines xs
@@ -527,6 +528,7 @@ block sp = Block sp Nothing Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
 evalBlock ctx (A.Located sp b) = case b of
+  A.Separator name -> pure [block sp (Separator name)]
   -- items, definitions and captions break their lines by the same rule (docs/adr ADR 0016)
   A.Paragraph is -> styledParagraph ctx sp Nothing is
   A.Heading l is -> one . Heading l noHeadingAttrs <$> evalInlines ctx True is
@@ -621,6 +623,9 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
   "channel" -> channelBlock ctx sp args
   "printings" -> printingsBlock ctx sp args body
+  "separator" -> case (map A.locValue args, body) of
+    ([A.Positional v], []) | Just name' <- nameArg v, not (T.null name') -> pure [block sp (Separator name')]
+    _ -> err "G02158" sp "@separator には名前を一つ書き、本体は付けません" >> pure []
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
   "no-page-break" -> noPageBreak ctx sp args body
@@ -994,7 +999,7 @@ attributedWith ctx sp cmds target
 
 isBreakCommand :: A.Located A.Block -> Bool
 isBreakCommand = \case
-  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines", "blank-line"]
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines", "blank-line", "separator"]
   _ -> False
 
 attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
@@ -1348,6 +1353,7 @@ nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
       ForcedBreak _ -> ([], [b])
       PageControl _ -> ([], [b])
       BlankLines _ -> ([], [b])
+      Separator _ -> ([], [b])
       _ -> belowTop b
 
 -- | The diagnostics and what is left of a block below the top of the document ('nestedBreaks').
@@ -1359,6 +1365,7 @@ belowTop = inner
       ForcedBreak _ -> ([diagnostic "G02059" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
       PageControl _ -> ([diagnostic "G02071" Error sp "@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます"], [])
       BlankLines _ -> ([diagnostic "G02093" Error sp "@blank-line は文書の最上位にだけ置けます"], [])
+      Separator _ -> ([diagnostic "G02159" Error sp "区切りは文書の最上位にだけ置けます"], [])
       BulletList items -> rebuild BulletList <$> traverse item items
       OrderedList items -> rebuild OrderedList <$> traverse item items
       DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
@@ -1890,6 +1897,7 @@ figure ctx sp args body = do
       ForcedBreak _ -> Nothing
       PageControl _ -> Nothing
       BlankLines _ -> Nothing
+      Separator _ -> Nothing
       FigureBlock _ -> Just "図版"
       BulletList _ -> Just "箇条書き"
       OrderedList _ -> Just "番号付きリスト"
@@ -2665,7 +2673,13 @@ builtinWith ctx inHeading sp b args slots = do
                     Left (code, m) -> err code sp m >> pure []
       _ -> err "G02038" sp "index には散文スロットが一つ必要です" >> pure []
     Fixed BCite -> cite ctx sp args
-    Overridable BRuby -> ruby ctx sp slots
+    Overridable BRuby
+      | not (null pos) -> err "G02157" sp "ruby の指定はキーと値で書きます" >> pure []
+      | otherwise -> case rubyOptions kw of
+          Left message -> err "G02157" sp message >> pure []
+          Right options
+            | maybe True rubySizeInInt64 (roSize options) -> ruby ctx sp options slots
+            | otherwise -> outOfInt64 sp >> pure []
     Fixed BAki -> aki sp args slots
     Fixed BLink -> link ctx inHeading sp args slots
     Fixed BLang -> langSpan ctx inHeading sp args slots
@@ -2753,22 +2767,75 @@ akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
 
-ruby :: EvalContext -> SrcSpan -> [[A.Located A.Inline]] -> M [Inline]
-ruby ctx sp = \case
-  [baseSlot, readingSlot] -> do
-    -- the segments are split at the / written in the slots, before they
-    -- are evaluated (golem-parser ADR 0010)
-    base <- mapM (evalInlines ctx False) (splitSlot '/' baseSlot)
-    reading <- mapM (evalInlines ctx False) (splitSlot '/' readingSlot)
-    case (traverse (traverse noRuby) base, traverse plainText reading) of
-      (Nothing, _) -> err "G02016" sp "ルビの中にルビは入れられません" >> pure []
-      (_, Nothing) -> err "G02043" sp "ルビの読みは地の文に限ります" >> pure []
-      (Just baseSegs, Just readSegs)
-        -- a reading split by '/' needs a base split as many times (golem-eval ADR 0003)
-        | length baseSegs /= length readSegs -> err "G02015" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
-        | [nb] <- baseSegs, [r] <- readSegs -> pure [Ruby sp () [RubySegment nb (Just r)]]
-        | otherwise -> pure [Ruby sp () [RubySegment b (if T.null rd then Nothing else Just rd) | (b, rd) <- zip baseSegs readSegs]]
-  _ -> err "G02038" sp "ruby には散文スロットが二つ必要です" >> pure []
+-- | Per-ruby overrides. Dimensions remain exact until the font size is known.
+rubyReading :: [Inline] -> Maybe (Text, [Maybe Text])
+rubyReading xs = do
+  chunks <- traverse readPart xs
+  let marks = concatMap snd chunks
+  pure (T.concat (map fst chunks), if all (== Nothing) marks then [] else marks)
+  where
+    readPart (Text _ t) = Just (t, replicate (T.length t) Nothing)
+    readPart (Kenten _ shape ys) = do
+      t <- plainText ys
+      pure (t, replicate (T.length t) (Just (fromMaybe "sesame" shape)))
+    readPart _ = Nothing
+
+-- | The dimensions cross the same int64 boundary as the rest of the IR.
+rubySizeInInt64 :: RubySize -> Bool
+rubySizeInInt64 = \case
+  RubySizeAbsolute n -> inInt64 (unSp n)
+  RubySizeRelative r -> all inInt64 (ratioInts r)
+
+rubyOptions :: [(Text, A.ArgValue)] -> Either Text RubyOptions
+rubyOptions kw = do
+  case [k | (k, _) <- kw, k `notElem` ["side", "overhang-side", "size", "align"]] of
+    k : _ -> Left ("ruby の未知の指定です: " <> k)
+    [] -> pure ()
+  side <- choice "side" RubyBefore [("before", RubyBefore), ("after", RubyAfter), ("both", RubyBoth)]
+  overhang <- choice "overhang-side" RubyOverhangBoth [("none", RubyOverhangNone), ("start", RubyOverhangStart), ("end", RubyOverhangEnd), ("both", RubyOverhangBoth)]
+  size <- case value "size" of
+    Nothing -> Right Nothing
+    Just t -> case parseDim t of
+      Just (Abs n) | n > 0 -> Right (Just (RubySizeAbsolute n))
+      Just (Zw n) | n > 0 -> Right (Just (RubySizeRelative n))
+      _ -> Left "ruby の size は正の寸法です"
+  align <- case value "align" of
+    Nothing -> Right Nothing
+    Just t | t `elem` ["center", "start", "1-2-1", "0-1-0"] -> Right (Just t)
+    _ -> Left "ruby の align は center、start、1-2-1、0-1-0 のいずれかです"
+  pure (RubyOptions side overhang size align [] [])
+  where
+    value k = argText <$> lookup k kw
+    choice k def options = case value k of
+      Nothing -> Right def
+      Just t -> maybe (Left ("ruby の " <> k <> " の値が不正です: " <> t)) Right (lookup t options)
+
+ruby :: EvalContext -> SrcSpan -> RubyOptions -> [[A.Located A.Inline]] -> M [Inline]
+ruby ctx sp options slots
+  | length slots /= expected = err "G02038" sp (if expected == 3 then "ruby side=both には散文スロットが三つ必要です" else "ruby には散文スロットが二つ必要です") >> pure []
+  | otherwise = case slots of
+      baseSlot : readingSlot : others -> do
+        base <- mapM (evalInlines ctx False) (splitSlot '/' baseSlot)
+        reading <- mapM (evalInlines ctx False) (splitSlot '/' readingSlot)
+        second <- case others of
+          [slot] -> mapM (evalInlines ctx False) (splitSlot '/' slot)
+          _ -> pure []
+        case (traverse (traverse noRuby) base, traverse rubyReading reading, traverse rubyReading second) of
+          (Nothing, _, _) -> err "G02016" sp "ルビの中にルビは入れられません" >> pure []
+          (_, Nothing, _) -> badReading
+          (_, _, Nothing) -> badReading
+          (Just baseSegs, Just readSegs, Just secondSegs)
+            | length baseSegs /= length readSegs || (expected == 3 && length secondSegs /= length baseSegs) -> err "G02015" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+            | expected == 3 && any (T.null . fst) (readSegs <> secondSegs) -> err "G02157" sp "ruby side=both の両側には、空でない読みを書きます" >> pure []
+            | otherwise ->
+                let optional t = if T.null t then Nothing else Just t
+                    make b (r, marks) other = (RubySegment b (if expected == 2 && length baseSegs == 1 then Just r else optional r)) {rsOtherReading = other >>= optional . fst, rsOptions = options {roReadingKenten = marks, roOtherKenten = maybe [] snd other}}
+                    extras = if expected == 3 then map Just secondSegs else repeat Nothing
+                 in pure [Ruby sp () (zipWith3 make baseSegs readSegs extras)]
+      _ -> pure []
+  where
+    expected = if roSide options == RubyBoth then 3 else 2
+    badReading = err "G02043" sp "ルビの読みは地の文に限ります" >> pure []
 
 {- | A slot split at a character in its top-level text; escaped characters
 and nested commands are not split (golem-parser ADR 0010). A piece keeps
@@ -3082,6 +3149,8 @@ data RangeItem
 data ItemError
   = -- | G02110: an end is missing or cannot be read
     ItemBadEnd
+  | -- | G02103: the first end read from the start of the item is negative (root ADR 0419)
+    ItemNegative Rational
   | -- | G01100: the reserved ..
     ItemReserved
   | -- | G02105: neither a line nor a range
@@ -3094,7 +3163,7 @@ the order written. @what@ names the place; @sp@ is the argument.
 
 A word or a string is items separated by commas: a line @3@ or a range
 @3...5@. The obsolete range @3-5@ is G02251 once per argument.
-Written negative ends are G02110. An expression is a range, a number
+A written negative end is G02103, as an evaluated one (root ADR 0419). An expression is a range, a number
 (one line), a string (read as a word), or an array of numbers and ranges.
 Evaluated ends must be positive integers.
 -}
@@ -3123,6 +3192,7 @@ lineRanges ctx what sp = \case
     -- U+0020 spaces only after a comma (ADR 0342)
     ofText t = case traverse rangeItem (afterCommas (T.splitOn "," t)) of
       Left (ItemBadEnd, i) -> report (rangeEndDiagnostic sp i) >> pure Nothing
+      Left (ItemNegative q, _) -> either report (const (pure ())) (naturalOf what sp q) >> pure Nothing
       Left (ItemReserved, _) -> err "G01100" sp "予約された記法です。今のバージョンでは使えません" >> pure Nothing
       Left (ItemNeither, i) -> neither i
       Right items -> case [(x, y) | ItemDash x y _ _ <- items] of
@@ -3156,24 +3226,33 @@ lineRanges ctx what sp = \case
     neither v = err "G02105" sp (what <> " には行の番号か範囲を書きます: " <> v) >> pure Nothing
 
 {- | An item of a word or a string of ranges (docs/adr ADR 0113), with
-the item for the message when it is not read.
+the item for the message when it is not read. The ends are read from the
+start, and the first error is the one of the item: a negative end is
+G02103 (root ADR 0419), and @-0@ is 0.
 -}
 rangeItem :: Text -> Either (ItemError, Text) RangeItem
 rangeItem i
-  | "-" `T.isPrefixOf` i = Left (ItemBadEnd, i)
   | (a, rest) <- T.breakOn "..." i,
     not (T.null rest) =
-      case (rangeEndWord a, rangeEndWord (T.drop 3 rest)) of
-        _ | "-" `T.isPrefixOf` T.drop 3 rest -> Left (ItemBadEnd, i)
-        (Just p, Just q) -> Right (ItemRange p q)
-        _ -> Left (ItemBadEnd, i)
-  | ".." `T.isInfixOf` i = Left (ItemReserved, i)
-  | Just q <- rangeEndWord i = Right (ItemLine q)
-  | Just [a, b] <- rangeEnds i = case (rangeEndWord a, rangeEndWord b) of
-      (Just p, Just q) | not ("-" `T.isPrefixOf` b) -> Right (ItemDash a b p q)
-      _ | "-" `T.isPrefixOf` b -> Left (ItemBadEnd, i)
-      _ -> Left (ItemNeither, i)
-  | otherwise = Left (ItemNeither, i)
+      ItemRange <$> end a <*> end (T.drop 3 rest)
+  | Just q <- rangeEndWord i = ItemLine <$> natural q
+  | "-" `T.isPrefixOf` i = case rangeEnds i of
+      -- the start is negative, or -0 of an obsolete range
+      Just (a : _) | Just q <- rangeEndWord a -> natural q >> dash
+      _ -> Left (ItemBadEnd, i)
+  | otherwise = dash
+  where
+    dash
+      | ".." `T.isInfixOf` i = Left (ItemReserved, i)
+      | Just [a, b] <- rangeEnds i = case (rangeEndWord a, rangeEndWord b) of
+          (Just p, Just q) -> ItemDash a b p <$> natural q
+          _ | "-" `T.isPrefixOf` b -> Left (ItemBadEnd, i)
+          _ -> Left (ItemNeither, i)
+      | otherwise = Left (ItemNeither, i)
+    end w = maybe (Left (ItemBadEnd, i)) natural (rangeEndWord w)
+    natural q
+      | q < 0 = Left (ItemNegative q, i)
+      | otherwise = Right q
 
 {- | An end of a range written in a word: a number literal. A dot is between digits, as in an
 expression: @.2@ and @2.@ are no ends.

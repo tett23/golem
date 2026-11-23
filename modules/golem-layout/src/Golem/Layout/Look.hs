@@ -24,6 +24,7 @@ module Golem.Layout.Look
 where
 
 import Data.Text (Text)
+import Golem.Doc.IR (RubyOptions, defaultRubyOptions)
 import Golem.Length (Sp (..))
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (RuleStyle, SizeSource (..))
@@ -194,7 +195,9 @@ data Look = Look
     {- | the look of the reading in the character style of [composition.ruby]
     reading-style, set on the look of a composed ruby box alone; Nothing
     is 'readingLook' of the look (docs/adr/0369)
-    -} lkRubyReading :: !(Maybe Look)
+    -} lkRubyReading :: !(Maybe Look),
+    lkRubyOptions :: !RubyOptions,
+    lkRubyOtherReading :: !(Maybe Text)
   }
   deriving stock (Eq, Ord, Show)
 
@@ -254,4 +257,4 @@ outside a language span, no wrap mark, no features, the normal position and
 breaking.
 -}
 plainLook :: Text -> Sp -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True Nothing Nothing
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0 Nothing Nothing "" [] PositionNormal size False Nothing Nothing False True Nothing Nothing defaultRubyOptions Nothing

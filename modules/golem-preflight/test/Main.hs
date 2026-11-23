@@ -39,7 +39,7 @@ manifestSpan = mkSpan (FileId 8) 0 0
 srcSpan = mkSpan (FileId 0) 10 20
 
 emptyPage :: Int -> PageView
-emptyPage n = PageView n trim [] [] [] [] False (odd n)
+emptyPage n = PageView n trim [] [] [] [] False (Just (odd n))
 
 emptyView :: View
 emptyView =
@@ -71,7 +71,7 @@ placed img r = ImageView r (RasterFigure img) srcSpan "images/photo.jpg" False
 vector :: [ColorUse] -> ImageView
 vector cs = ImageView (Rect (mm 20) (mm 20) (inch 4) (inch 3)) (VectorFigure page) srcSpan "images/figure.pdf" False
   where
-    page = ImportedPage "file" 1 (0, 0, 288, 216) 0 (288, 216) (ODict []) Nothing "" [] cs
+    page = ImportedPage "file" 1 (0, 0, 288, 216) 0 (288, 216) (ODict []) Nothing "" [] cs 0
 
 -- | An image of w × h pixels placed at w' × h' inches well inside the page.
 placedAt :: ColorSpace -> Int -> Int -> Rational -> Rational -> ImageView
@@ -308,7 +308,7 @@ rulesTests =
         msgs "[image-color-space]\nallowed = [\"cmyk\", \"lab\"]\n" @?= ["allowed の値が正しくありません: lab（cmyk、gray、rgb のどれかにします） (image-color-space.allowed)"]
         msgs "[font-formats]\nallowed = [\"opentype\"]\n" @?= ["allowed の値が正しくありません: opentype（cff、cff2、truetype のどれかにします） (font-formats.allowed)"]
         msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"],
-      testCase "ADR 0319 I1: preflight length accepts typed zero" $ do
+      testCase "root ADR 0345 I1: preflight length accepts typed zero" $ do
         ruBleedMin (parsed "[bleed-size]\nmin = 0\n") @?= 0
         ruBleedMin (parsed "[bleed-size]\nmin = \"-0\"\n") @?= 0
         ruleError "G09102" "[bleed-size]\nmin = 0.0\n" 1

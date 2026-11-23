@@ -592,6 +592,7 @@ completions ws path off = case sourceOf ws path of
         -- code is the style of code blocks, not of @style, based-on or regex styles (golem-driver ADR 0017)
         paraNames = filter (/= "code") (nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind))
         charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
+        separatorNames = nub ("default" : Map.keys (stSeparators style))
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
         -- the dotted name before the cursor in an expression
         metaPath = case T.stripPrefix "=" (T.stripStart lastOpen) of
@@ -619,24 +620,27 @@ completions ws path off = case sourceOf ws path of
                           if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                             then [Completion n CkParaStyle | n <- paraNames]
                             else
-                              if isNothing open
-                                then []
-                                else case metaPath of
-                                  -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                                  Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                                  Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                                  -- the keys of [vars] and of its tables (docs/adr/0185)
-                                  Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
-                                  Just [_] | inOperand lastOpen -> expressionNames
-                                  Just _ -> []
-                                  _ -> case ws' of
-                                    [] -> commandNames
-                                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                                    (cmd : _)
-                                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                      | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                      | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                                    _ -> []
+                              if "@separator " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                                then [Completion n CkSettingValue | n <- separatorNames]
+                                else
+                                  if isNothing open
+                                    then []
+                                    else case metaPath of
+                                      -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                                      Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                                      Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                                      -- the keys of [vars] and of its tables (docs/adr/0185)
+                                      Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
+                                      Just [_] | inOperand lastOpen -> expressionNames
+                                      Just _ -> []
+                                      _ -> case ws' of
+                                        [] -> commandNames
+                                        [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                        (cmd : _)
+                                          | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                          | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                          | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                        _ -> []
   where
     nameChar c = isAsciiLower c || isAsciiUpper c || isDigit c || c == '_' || c == '-'
     inOperand expression =
@@ -820,20 +824,22 @@ tomlCompletions schema text off = case contextAt text off of
     defined = definedPaths text
     layoutNames path q
       | schema /= styleSchema = []
-      | Just kind <- layoutKind path =
+      | otherwise =
           [ Completion (if q == Bare then "\"" <> name <> "\"" else name) CkSettingValue
           | ["values", declaredKind, name] <- defined,
-            declaredKind == kind,
-            path /= ["values", kind, name]
+            declaredKind `elem` layoutKinds path,
+            path /= ["values", declaredKind, name]
           ]
-      | otherwise = []
-    layoutKind path = case path of
-      ["values", kind, _] | kind `elem` ["length", "aki", "count"] -> Just kind
-      _ -> case nodeAt styleSchema path of
-        Just (NValue LDimension) -> Just "length"
-        Just (NValue LInteger) | last path `elem` ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> Just "count"
-        _ | "aki-sets" `elem` path, last path `elem` ["optimum", "minimum", "maximum"] -> Just "aki"
-        _ -> Nothing
+    layoutKinds path = case path of
+      ["values", kind, _] | kind `elem` ["length", "aki", "count"] -> [kind]
+      _ | "aki-sets" `elem` path, last path `elem` ["optimum", "minimum", "maximum"] -> ["aki"]
+      _ -> maybe [] kinds (nodeAt styleSchema path)
+      where
+        kinds = \case
+          NValue LDimension -> ["length"]
+          NValue LInteger | last path `elem` ["lines", "keep-first-lines", "keep-last-lines", "keep-with-next", "space-before", "space-after", "space-between"] -> ["count"]
+          NEither ns -> concatMap kinds ns
+          _ -> []
     -- the names a namespace has: the built-in ones, then those of the file in its order
     names ns = nub (builtinNames ns <> [n | (ns', n) <- concatMap (namesOn schema) defined, ns' == ns])
     namesUnder ns path = case ns of

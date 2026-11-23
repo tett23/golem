@@ -18,7 +18,7 @@ import Golem.Driver
 import Golem.Layout.KnuthPlass (AdjustOrder (..), BoxContent (..), Item (..), Line (..), glueRatio, noLeaf, placeLine)
 import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.PageLabel (PageLabel (..), plainLabel)
-import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
+import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..), Slotted (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
 import Golem.Length (Sp (..))
 import Golem.Pdf (spToPt)
@@ -146,7 +146,7 @@ indexTests =
       let source =
             "# 見出し[index reading=み: 見]\n\n本文[index reading=ほ: 本]。[note: 注[index reading=ちゅう: 注]]\n\n= 用語[index reading=よう: 用]\n  定義。\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション[index reading=きゃ: 図]。\n\n@index\n"
       (_, pl) <- layoutOk horizontal24 source img
-      sort (map spanStart (Map.keys (markPages Map.empty (plPages pl)))) @?= offsetsIn "[index" source,
+      sort (map spanStart (Map.keys (markPages Map.empty (gridPages pl)))) @?= offsetsIn "[index" source,
     testCase "index and bibliography: parallel and sequential, and two builds, give the same bytes" $ do
       let source = "# 一\n\n本文[index reading=くみはん: 組版][cite knuth1981]。\n\n" <> fillers 8 <> "@index\n\n@bibliography\n"
           build' parallel = withSystemTempDirectory "golem-mini" $ \tmp -> do
@@ -659,14 +659,14 @@ indexColumnTests =
   [ testCase "PDF: one column of 32 characters, two index columns 2zw apart are 15 characters wide" $ do
       let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
       (geom, pl) <- layoutOk style indexSource []
-      let entries = [sl | p <- plPages pl, sl <- indexLinesOn pl p]
+      let entries = [sl | p <- gridPages pl, sl <- indexLinesOn pl p]
       length entries @?= 40
       nub [lineTarget (slLine sl) | sl <- entries] @?= [15 * 10 * pt]
-      nub [csMeasure (poColumnSet p) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
+      nub [csMeasure (poColumnSet p) | p <- gridPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
       -- the heading of the index goes on to page 2 with the first section
       -- heading and the entry it keeps with (docs/adr/0261, its I6 and K4)
-      let first = [poNumber p | p <- plPages pl, not (null (indexLinesOn pl p))]
+      let first = [poNumber p | p <- gridPages pl, not (null (indexLinesOn pl p))]
           ta = typeAreaFor geom 2
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
       take 1 first @?= [2]
@@ -719,21 +719,21 @@ indexColumnTests =
     testCase "PDF: with a sidenote column, two index columns are not G07001 and leave the column out" $ do
       let style = withIndexColumns "2" (replaceIn "characters = 12" "characters = 24" sidenoteStyle) <> "column-gap = \"2zw\"\n"
       (_, pl) <- layoutOk style indexSource []
-      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [11 * 10 * pt],
+      nub [lineTarget (slLine sl) | p <- gridPages pl, sl <- indexLinesOn pl p] @?= [11 * 10 * pt],
     testCase "PDF: a page reference after an index of fewer pages converges on the right page" $ do
       let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
           source = "参照は[ref-page later]ページ。\n\n" <> indexSource <> "\n@label later\n後。\n"
       (_, pl) <- layoutOk style source []
-      later <- maybe (assertFailure "later") (pure . plIndex) (Map.lookup "later" (labelPages Map.empty (plPages pl)))
+      later <- maybe (assertFailure "later") (pure . plIndex) (Map.lookup "later" (labelPages Map.empty (gridPages pl)))
       let refLine = [setLineText sl | sl <- Map.elems (plLines pl), "参照は" `T.isPrefixOf` setLineText sl]
       refLine @?= ["参照は" <> T.pack (show later) <> "ページ。"]
       let one = withIndexColumns "1" (replaceIn "lines = 30" "lines = 10" horizontal32)
       (_, pl1) <- layoutOk one source []
-      assertBool "fewer pages" (fmap plIndex (Map.lookup "later" (labelPages Map.empty (plPages pl1))) > Just later),
+      assertBool "fewer pages" (fmap plIndex (Map.lookup "later" (labelPages Map.empty (gridPages pl1))) > Just later),
     testCase "PDF: vertical, the index columns run from top to bottom" $ do
       let style = withIndexColumns "2" pdfStyle <> "column-gap = \"2zw\"\n"
       (geom, pl) <- layoutOk style indexSource []
-      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [20 * pgFontSize geom]
+      nub [lineTarget (slLine sl) | p <- gridPages pl, sl <- indexLinesOn pl p] @?= [20 * pgFontSize geom]
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
       let ta = typeAreaFor geom 1
           ta2 = typeAreaFor geom 2

@@ -8,12 +8,6 @@ maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
 
-extra-source-files: cbits/libgrapheme/SOURCE
-                    cbits/libgrapheme/LICENSE
-                    cbits/libgrapheme/UNICODE-LICENSE
-                    cbits/libgrapheme/gen/*.h
-                    cbits/libgrapheme/src/util.h
-
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
@@ -21,17 +15,10 @@ common warnings
 library
   import:           warnings
   hs-source-dirs:   src
-  c-sources:        cbits/libgrapheme/src/character.c
-                    cbits/libgrapheme/src/word.c
-                    cbits/libgrapheme/src/util.c
-                    cbits/libgrapheme/src/utf8.c
-  include-dirs:     cbits
-  install-includes: libgrapheme/grapheme.h
   exposed-modules:
     Golem.Syntax
     Golem.Syntax.Span
     Golem.Syntax.Chars
-    Golem.Syntax.Grapheme
     Golem.Syntax.Position
     Golem.Syntax.Diagnostic
     Golem.Syntax.LanguageTag

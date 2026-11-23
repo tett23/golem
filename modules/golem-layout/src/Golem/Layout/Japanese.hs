@@ -47,6 +47,7 @@ module Golem.Layout.Japanese
     protrusionRatio,
     verticalSidenotes,
     punctSpace,
+    takesKenten,
     narrowPunctuation,
   )
 where
@@ -67,7 +68,6 @@ import Golem.Doc.Citation (CitePiece (..), citationPieces, citationText)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
 import Golem.Layout.Aki qualified as A
-import Golem.Layout.CharClass
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
@@ -81,7 +81,8 @@ import Golem.Numerals.Notation (Notation, arabic, kanjiDigitsNotation, kanjiNota
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan (..), diagnostic, mkSpan, spanLength)
-import Golem.Syntax.Grapheme (graphemeClusters)
+import Golem.Unicode.CharClass
+import Golem.Unicode.Grapheme (graphemeClusters)
 
 {- | The class of a character in a look: of the language of its span
 (docs/adr ADR 0187), 'charClass' outside one.
@@ -729,7 +730,11 @@ walk env st@(LeafState next cur seen) inl = case inl of
                     (c, src, PRuby look kind base (if null baseNodes then looks else zipWith own looks owners) reading)
                   assign (src, other) = (c, src, other)
                in (LeafState nextLeaf lastLeaf sn, ns <> baseNodes, ps <> map assign segPieces)
-       in foldl' go (st, [], []) (zip segs (chunks (piecesOf env inl)))
+       in let groups = chunks (piecesOf env inl)
+              effective = case (segs, groups) of
+                (first : _ : _, [_]) -> [first {rsBase = concatMap rsBase segs, rsReading = Just (T.concat [fromMaybe "" (rsReading seg) | seg <- segs])}]
+                _ -> segs
+           in foldl' go (st, [], []) (zip effective groups)
     own look (k, link) = look {lkRubyBaseLeaf = Just k, lkLink = link <|> lkLink look}
     rubyBase initial nextLeaf = foldl' visit (nextLeaf, initial, [], [])
       where
@@ -1267,15 +1272,42 @@ group ruby (golem-layout ADR 0009). Mono ruby may break between bases.
 The width is decided with the neighbours ('itemsFor').
 -}
 rubyPieces :: ComposeEnv -> [RubySegment] -> [Piece]
-rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
+rubyPieces env segs
+  | length parts > 1 && all (isJust . rsReading) segs && any tooLong parts && totalReading > totalBase =
+      let firstLook = case parts of (look, _, _, _) : _ -> look; [] -> lk
+          other = T.concat [fromMaybe "" (lkRubyOtherReading look) | (look, _, _, _) <- parts]
+          groupedLook = firstLook {lkRubyOtherReading = if roSide (lkRubyOptions firstLook) == RubyBoth then Just other else Nothing, lkRubyOptions = (lkRubyOptions firstLook) {roReadingKenten = concat [take (maybe 0 T.length reading) (roReadingKenten (lkRubyOptions look) <> repeat Nothing) | (look, _, _, reading) <- parts], roOtherKenten = concat [take (maybe 0 T.length (lkRubyOtherReading look)) (roOtherKenten (lkRubyOptions look) <> repeat Nothing) | (look, _, _, _) <- parts]}}
+       in [PRuby groupedLook GroupRuby (T.concat [base | (_, base, _, _) <- parts]) (concat [looks | (_, _, looks, _) <- parts]) (Just (T.concat [fromMaybe "" reading | (_, _, _, reading) <- parts]))]
+  | otherwise = concat (zipWith piece [0 :: Int ..] parts)
   where
-    -- no kenten on a ruby base (golem-layout ADR 0011, golem-driver ADR 0019)
     lk = (ceLook env) {lkKenten = Nothing}
-    piece i (RubySegment base reading) =
-      let chars = concatMap (baseChars env lk) base
-          baseStr = T.concat (map fst chars)
-          kind = if length segs >= 2 || length chars == 1 then MonoRuby else GroupRuby
-       in [PRubyBreak | i > 0] <> [PRuby lk kind baseStr (map snd chars) reading]
+    parts =
+      [ let opts = rsOptions seg
+            inheritMarks reading marks = case lkKenten (ceLook env) of
+              Nothing -> marks
+              Just shape -> take (maybe 0 T.length reading) (map (Just . fromMaybe (kentenShapeName shape)) (marks <> repeat Nothing))
+            styled = lk {lkRubyOptions = opts {roReadingKenten = inheritMarks (rsReading seg) (roReadingKenten opts), roOtherKenten = inheritMarks (rsOtherReading seg) (roOtherKenten opts)}, lkRubyOtherReading = rsOtherReading seg}
+            chars = concatMap (baseChars env styled) (rsBase seg)
+         in (styled, T.concat (map fst chars), map snd chars, rsReading seg)
+      | seg <- segs
+      ]
+    widths (look, base, looks, reading) =
+      (sum (baseAdvances env look looks base), max (sum (readingAdvances env (withRubyReading env look) reading)) (sum (readingAdvances env (withRubyReading env look) (lkRubyOtherReading look))))
+    tooLong part = let (base, reading) = widths part in reading > base
+    totalBase = sum (map (fst . widths) parts)
+    totalReading = max (sum [sum (readingAdvances env (withRubyReading env look) reading) | (look, _, _, reading) <- parts]) (sum [sum (readingAdvances env (withRubyReading env look) (lkRubyOtherReading look)) | (look, _, _, _) <- parts])
+    piece i (look, base, looks, reading) =
+      let kind = if length segs >= 2 || length looks == 1 then MonoRuby else GroupRuby
+       in [PRubyBreak | i > 0] <> [PRuby look kind base looks reading]
+
+withRubyReading :: ComposeEnv -> Look -> Look
+withRubyReading env look =
+  let reading = fromMaybe (readingLook look) (ceRubyReading env look)
+      size = case roSize (lkRubyOptions look) of
+        Nothing -> lkSize reading
+        Just (RubySizeAbsolute n) -> n
+        Just (RubySizeRelative r) -> L.zwToSp (if isScript look then lkNominalSize look else lkSize look) r
+   in look {lkRubyReading = Just reading {lkSize = size, lkNominalSize = size}}
 
 {- | The characters of a ruby base, each with its look (golem-layout ADR
 0011): a character style or colour inside restyles its characters as
@@ -1566,25 +1598,47 @@ itemsFor env lead prev p next = case p of
   PWarichu lk a b w ->
     [Box w (BoxContent (a <> b) False 0 0 (fromEnum KindWarichu) lk 0 0 [] 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) (Just (a, b)))]
   PRuby lk kind base looks reading ->
-    let style = ceRuby env
+    let style = rubyStyleWith (lkRubyOptions lk) (ceRuby env)
         -- the reading measured and drawn in its character style (docs/adr/0369)
-        withReading x = x {lkRubyReading = ceRubyReading env x}
-        rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env (withReading lk) reading) (allowance True prev, allowance False next)
+        withReading = withRubyReading env
+        baseWidths = baseAdvances env lk looks base
+        bounds = (allowance True prev, allowance False next)
+        firstWidths = readingAdvances env (withReading lk) reading
+        otherWidths = readingAdvances env (withReading lk) (lkRubyOtherReading lk)
+        width = max (rpWidth (placeRuby style kind baseWidths firstWidths bounds)) (rpWidth (placeRuby style kind baseWidths otherWidths bounds))
+        rp = placeRubyMinimum width style kind baseWidths firstWidths bounds
+        otherPlacement = placeRubyMinimum width style kind baseWidths otherWidths bounds
+        startOverhang = max (rpOverhangStart rp) (rpOverhangStart otherPlacement)
+        endOverhang = max (rpOverhangEnd rp) (rpOverhangEnd otherPlacement)
         -- how far the reading may overhang a neighbour: kana up to half its
         -- advance, the free space of a neighbouring reading, nothing else;
         -- a neighbouring base is measured in the looks of its characters
         allowance before = \case
+          _ | let side = roOverhangSide (lkRubyOptions lk), side == RubyOverhangNone || (before && side == RubyOverhangEnd) || (not before && side == RubyOverhangStart) -> 0
           _ | not (rsOverhangOntoKana style) -> 0
-          Just (PChar lk' c _) | isNothing (lkKenten lk'), isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lk' c) `div` 2))
+          Just (PChar lk' c _)
+            | isNothing (lkKenten lk') ->
+                let cls = lookClass lk' c
+                    (pre, post) = punctSpace cls
+                    room
+                      | isKanaClass cls = Sp (unSp (advance env lk' c) `div` 2)
+                      | Just (punctWidth, offset) <- narrowPunctuation cls (lkSize lk') (advance env lk' c) = if before then punctWidth - offset - advance env lk' c else offset
+                      | otherwise = L.zwToSp (lkSize lk') (if before then post else pre)
+                 in min (rsOverhang style) room
           Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (map T.head (clusters b)) (ls <> repeat lk')) of
             (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (Sp (unSp (advance env lc c) `div` 2))
             _ -> 0
           Just (PRuby lk' k b ls r@(Just _)) ->
-            let ras = readingAdvances env (withReading lk') r
-                placed = placeRuby style k (baseAdvances env lk' ls b) ras (0, 0)
-                room = case (rpReading placed, reverse (zip (rpReading placed) ras)) of
-                  (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth placed - (lastPos + lastAdv) else firstPos
-                  _ -> 0
+            let style' = rubyStyleWith (lkRubyOptions lk') (ceRuby env)
+                baseAdv = baseAdvances env lk' ls b
+                readings = [readingAdvances env (withReading lk') x | x <- r : [lkRubyOtherReading lk' | isJust (lkRubyOtherReading lk')]]
+                width' = maximum (sum baseAdv : map sum readings)
+                free ras =
+                  let placed = placeRubyMinimum width' style' k baseAdv ras (0, 0)
+                   in case (rpReading placed, reverse (zip (rpReading placed) ras)) of
+                        (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth placed - (lastPos + lastAdv) else firstPos
+                        _ -> 0
+                room = minimum (map free readings)
              in min (rsOverhang style) (max 0 room)
           _ -> 0
         tag = case kind of
@@ -1593,7 +1647,7 @@ itemsFor env lead prev p next = case p of
         -- one box from outside: the tracking after it, nothing of it inside the base or the reading,
         -- given back at the line end (docs/adr/0370)
         outer = tracking lk
-     in [Box (rpWidth rp + outer) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) (rpOverhang rp) (rpOverhang rp - outer) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
+     in [Box (rpWidth rp + outer) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) (withReading lk) startOverhang (endOverhang - outer) looks 0 0 (ceBoxSource env) Nothing (Leaf (ceSite env) (ceLeaf env)) (ceBoxAt env 0) Nothing)]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd

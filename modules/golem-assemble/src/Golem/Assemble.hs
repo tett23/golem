@@ -6,6 +6,8 @@ module Golem.Assemble
     NoteNumbering (..),
     DocValues (..),
     Book (..),
+    SeparatorAppearance (..),
+    SeparatorStroke (..),
     HeadingInfo (..),
     LabelTarget (..),
     TocEntry (..),
@@ -154,8 +156,25 @@ data IndexSection = IndexSection
   }
   deriving stock (Eq, Show)
 
+-- | A visible separator's resolved, output-independent appearance (root ADR 0398).
+data SeparatorAppearance
+  = SeparatorTextAppearance !Int !Int !Text !Text !(Maybe Text)
+  | SeparatorRuleAppearance !Int !Int !Text !(Maybe Integer) !Integer !(Maybe Text) !SeparatorStroke
+  deriving stock (Eq, Show)
+
+data SeparatorStroke
+  = StrokeSolid
+  | StrokeMulti ![Int]
+  | StrokeDashed !Integer !Integer
+  | StrokeDotted !Integer
+  | StrokeJapaneseDots !Integer
+  | StrokeWavy
+  deriving stock (Eq, Show)
+
 data Book = Book
   { bookDocs :: ![Document],
+    -- | The visible separators after style resolution, keyed also by name because Emet may assign one span to multiple results.
+    bookSeparators :: !(Map (SrcSpan, Text) SeparatorAppearance),
     bookHeadings :: !(Map SrcSpan HeadingInfo),
     bookFigures :: !(Map SrcSpan Text),
     -- | the listing number of each code block with a caption (golem-driver ADR 0023)
@@ -440,6 +459,7 @@ assemble cfg evalDeferred docs0 =
       (indexes, indexDiags) = indexLists docs
    in ( Book
           { bookDocs = renumberNotes cfg docs',
+            bookSeparators = Map.empty,
             bookHeadings = nsHeadings ns,
             bookFigures = Map.mapMaybe (either (const Nothing) Just) figureWritten,
             bookListings = Map.mapMaybe (either (const Nothing) Just) listingWritten,

@@ -14,7 +14,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (fromGregorian)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import Golem.Assemble (Book (..), TocEntry (..))
+import Golem.Assemble (Book (..), SeparatorAppearance (..), SeparatorStroke (..), TocEntry (..))
 import Golem.Assemble.Formats (arabic)
 import Golem.Doc.IR
 import Golem.Epub
@@ -46,7 +46,8 @@ cfg0 =
       epPublisher = Just "出版社",
       epCreators = [EpubCreator "著者" (Just "ちょしゃ") "aut"],
       epContributors = [],
-      epVertical = False
+      epVertical = False,
+      epPageList = []
     }
 
 -- | The lines of a document that start with a prefix.
@@ -79,7 +80,8 @@ emptyBook =
       bookChannels = [],
       bookChannelDecls = Map.empty,
       bookTitleSeparators = Map.empty,
-      bookImages = Map.empty
+      bookImages = Map.empty,
+      bookSeparators = Map.empty
     }
 
 entry :: Int -> FileId -> Text -> Text -> TocEntry
@@ -87,7 +89,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
+  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic Nothing
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -100,7 +102,7 @@ written = withSystemTempDirectory "golem-epub" $ \tmp -> do
 {- | Builds the same book in a fresh project root (a new temporary
 directory each call), with the given modification time on the assets
 and the assets in the given order, as an asset producer may list them.
-Returns the root and the bytes of the EPUB (Golem ADR 0361).
+Returns the root and the bytes of the EPUB (root ADR 0421).
 -}
 archiveBytes :: Integer -> [FilePath] -> IO (FilePath, BS.ByteString)
 archiveBytes epoch names = withSystemTempDirectory "epub-project" $ \root -> do
@@ -125,8 +127,8 @@ withoutRoot (root, bytes) =
 determinism :: TestTree
 determinism =
   testGroup
-    "Golem ADR 0361"
-    [ testCase "ADR 0361 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
+    "root ADR 0421 (formerly Golem ADR 0361)"
+    [ testCase "root ADR 0421 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
         let names = ["a.png", "b.png", "c.png"]
         expected <- archiveBytes 1000000000 names
         withoutRoot expected
@@ -137,12 +139,12 @@ determinism =
               snd actual @?= snd expected
           )
           (permutations names),
-      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
+      testCase "root ADR 0421 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
         expected <- archiveBytes 1000000000 ["a.png"]
         actual <- archiveBytes 1700000000 ["a.png"]
         assertBool "the roots differ" (fst actual /= fst expected)
         snd actual @?= snd expected,
-      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
+      testCase "root ADR 0421 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
         expected <- archiveBytes 1000000000 ["a.png", "b.png"]
         actual <- archiveBytes 1000000000 ["b.png", "a.png"]
         snd actual @?= snd expected
@@ -247,6 +249,12 @@ tests =
           assertBool "no URL in the navigation document" (not ("example.com" `T.isInfixOf` nav)),
         testCase "the nav element is the toc" $
           linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"],
+        testCase "root ADR 0386 I1: no page map preserves the navigation bytes" $
+          assertBool "no extra navigation element or blank line" ("</nav>\n</body>" `T.isInfixOf` navDocument cfg0 ft emptyBook),
+        testCase "root ADR 0386 I1: a mapped page is a page-list link" $ do
+          let nav = navDocument cfg0 {epPageList = [("xii", "a.xhtml", "page-12")]} ft emptyBook
+          assertBool "page-list navigation" ("epub:type=\"page-list\"" `T.isInfixOf` nav)
+          assertBool "the actual body anchor" ("href=\"a.xhtml#page-12\">xii</a>" `T.isInfixOf` nav),
         -- golem-epub ADR 0002
         testCase "@toc depth=1: only the headings of level 1, no nested ol" $
           linesWith "<ol>" (navDocument cfg0 ft (threeLevels (Just 1)))
@@ -263,7 +271,19 @@ tests =
       ],
     testGroup
       "container"
-      [ testCase "the first entry is mimetype, stored without compression" $ do
+      [ testCase "root ADR 0398 A2: EPUB preserves the separator rule SVG" $
+          withSystemTempDirectory "golem-epub-separator" $ \root -> do
+            let sp = mkSpan fidA 1 2
+                sep = Block sp Nothing Nothing (Separator "scene")
+                book = emptyBook {bookDocs = [Document fidA [sep], Document fidB []], bookSeparators = Map.singleton (sp, "scene") (SeparatorRuleAppearance 1 1 "center" (Just 655360) 32768 Nothing (StrokeDashed 131072 65536))}
+                site = renderXhtml htmlConfig ft book
+                out = root </> "book.epub"
+            writeEpub root out cfg0 ft book site
+            archive <- toArchive . BL.fromStrict <$> BS.readFile out
+            case findEntryByPath "OEBPS/a.xhtml" archive of
+              Just archiveEntry -> assertBool "dash and gap in EPUB XHTML" ("stroke-dasharray=\"2pt 1pt\"" `BS.isInfixOf` BL.toStrict (fromEntry archiveEntry))
+              Nothing -> assertFailure "a.xhtml is missing",
+        testCase "the first entry is mimetype, stored without compression" $ do
           archive <- written
           take 1 [(eRelativePath e, eCompressionMethod e, fromEntry e) | e <- zEntries archive] @?= [("mimetype", NoCompression, "application/epub+zip")],
         testCase "the container, the package, the navigation, the CSS and the pages are in the archive" $ do

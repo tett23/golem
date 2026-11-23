@@ -52,7 +52,7 @@ module Golem.Driver
 where
 
 import Control.Applicative ((<|>))
-import Control.Exception (SomeException, try)
+import Control.Exception (IOException, SomeException, try)
 #if !defined(wasm32_HOST_ARCH)
 import Control.Exception qualified as Exception
 #endif
@@ -84,18 +84,19 @@ import Golem.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Driver.Functions (LoadedFunctions (..), RequiredFiles (..), loadFunctions, loadRequiredFiles, requiredFileSet, requirementHandlers)
 import Golem.Driver.Html
+import Golem.Driver.PageMap (PageMapError (..), decodePageMap, resolvePageMapWithAst)
 import Golem.Driver.Plugins (FunctionFilter, HostContext (..), LoadedPlugins (..), defaultCacheDir, loadPlugins)
 import Golem.Driver.ProjectVars (projectVarDiagnostics, projectVarTexts)
 import Golem.Driver.Svg (activeMessage)
 import Golem.Driver.Verse (numberVerseDocument)
 import Golem.Driver.Version (golemVersion)
-import Golem.Emet (Handlers (..), Program)
-import Golem.Emet.Gm (filterOf, functionNamespaces)
+import Golem.Emet (Export (..), Handlers (..), Kind (..), Program, programExports)
+import Golem.Emet.Gm (filterOf, functionNamespaces, separatorFunction)
 import Golem.Epub
 import Golem.Eval.Builtin (unPluginCommandName)
 import Golem.Eval.Expr (embedValue, evalExpr, plainEnv)
 import Golem.Eval.File
-import Golem.Eval.Functions (FunctionTable (..), noFunctions)
+import Golem.Eval.Functions (BlockFunction (..), FunctionTable (..), noFunctions)
 import Golem.Eval.Value
 import Golem.Html
 import Golem.Length qualified as GL
@@ -111,11 +112,15 @@ import Golem.Project
 import Golem.Project.Files (Files (..), diskFiles, memoryFiles)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style
+import Golem.Svg qualified as Svg
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import Golem.Typeset
+import Golem.Typeset.FigureColor (safeRecolorRasterBytes)
 import Golem.Typeset.FontProvider (golemFontProvider, pdfFontDiagnostics)
+import Golem.Typeset.Svg (drawingSvg, figureColor, recolorFigure, svgDrawing)
+import Numeric (showHex)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 #if !defined(wasm32_HOST_ARCH)
@@ -274,7 +279,7 @@ evaluateProjectWith files overlay profile root = do
           -- the files functions may read, whether or not a chapter calls a function (docs/adr/0161)
           required <- loadRequiredFiles files overlay (projectManifestFile project) manifest0
           -- the functions of the .emet of @import and [[filters]] (docs/adr/0162)
-          (filterRootDiags, emetRoots) <- functionRoots files project
+          (filterRootDiags, emetRoots) <- functionRoots files project style
           functions <-
             if null emetRoots
               then pure (LoadedFunctions [] Map.empty Nothing)
@@ -318,7 +323,7 @@ evaluateProjectWith files overlay profile root = do
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook table)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   projectDiags = defaultStyleNotice <> defaultSeparatorNotice <> styleNoticeDiags <> masterDiags <> runningVarDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
-                  reassemble = assembleResults (phChannels hook) style manifest project projectDiags
+                  reassemble = assembleResults (phChannels hook) handlers (lfProgram functions) style styleFid (fromMaybe "" styleText) manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook table results f sf)
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded <> pluginSources <> lfSources functions) (laTableFiles loaded <> pluginDataFiles manifest0 <> requiredFileSet manifest0 <> contextFiles <> functionFiles) projectDiags s1Diags reassemble again pluginCommands (lfProgram functions) (lfSources functions)))
@@ -339,19 +344,20 @@ pluginDataFiles m = Set.fromList [rel | d <- Map.elems (manifestPlugins m), Righ
 and the diagnostics of S1; nothing when the diagnostics of the project
 stage or of S0 have an error.
 -}
-assembleResults :: Map Text ChannelDecl -> Style -> Manifest -> Project -> [Diagnostic] -> Map FileId EvalResult -> (Maybe Book, [Diagnostic])
-assembleResults channels style manifest project projectDiags results
+assembleResults :: Map Text ChannelDecl -> Handlers -> Maybe Program -> Style -> FileId -> Text -> Manifest -> Project -> [Diagnostic] -> Map FileId EvalResult -> (Maybe Book, [Diagnostic])
+assembleResults channels handlers program style styleFid styleText manifest project projectDiags results
   | hasErrors (projectDiags <> concatMap erDiagnostics (Map.elems results)) = (Nothing, [])
   | otherwise =
       let -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
           chapterOfFile = [i | (i, e) <- zip [0 :: Int ..] (manifestChapters manifest), _ <- chapterFiles [e]] <> [length (manifestChapters manifest) ..]
           chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
+          (resolvedDocs, resolvedSeparators, separatorDiags) = resolveSeparators handlers program style styleFid styleText (map fst chapterRuns)
           -- where G04007 points (golem-syntax ADR 0002)
           numberSites = Map.unions (map erNumberSites (Map.elems results))
           cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) (stTableNumber style) channels pageLines
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound (fromIntegral . gridLines) (stPage style >>= pageGrid)
-          (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
+          (book, s1Diags) = assemble cfg evalDeferred resolvedDocs
           -- the separators between numbers and titles, by file: a heading's from
           -- its [headings.<l>], a caption's from the paragraph style caption (Golem ADR 0372)
           separators =
@@ -370,7 +376,50 @@ assembleResults channels style manifest project projectDiags results
             [ numberVerseDocument (maybe style (withLocalStyles style . erStyles) (Map.lookup fid results)) doc
             | doc@(Document fid _) <- bookDocs book
             ]
-       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results))}, s1Diags)
+       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, separatorDiags <> s1Diags)
+
+-- | Resolve names only after plugin and Emet filters have run (root ADR 0398).
+resolveSeparators :: Handlers -> Maybe Program -> Style -> FileId -> Text -> [Document] -> ([Document], Map (SrcSpan, Text) SeparatorAppearance, [Diagnostic])
+resolveSeparators handlers program style styleFid styleText docs =
+  let (docs', pairs) = unzip [let (bss, entries) = unzip (map resolveBlock bs) in (Document fid (concat bss), concat entries) | Document fid bs <- docs]
+      appearances = Map.fromList [(key, appearance) | Right (key, appearance) <- concat pairs]
+      diagnostics = lefts (concat pairs)
+   in (docs', appearances, diagnostics)
+  where
+    fontSize = maybe 0 (dimToSp 0 . gridFontSize) (stPage style >>= pageGrid)
+    dimension = unSp . dimToSp fontSize
+    stroke = \case
+      RuleSolid -> StrokeSolid
+      RuleMulti ratios -> StrokeMulti ratios
+      RuleDashed dash gap -> StrokeDashed (unSp dash) (unSp gap)
+      RuleDotted gap -> StrokeDotted (unSp gap)
+      RuleJapaneseDots gap -> StrokeJapaneseDots (unSp gap)
+      RuleWavy -> StrokeWavy
+    resolveBlock b@(Block sp lbl lang (Separator name)) =
+      let definition = if name == "default" then Just (fromMaybe (SeparatorBlank 1) (Map.lookup name (stSeparators style))) else Map.lookup name (stSeparators style)
+       in case definition of
+            Nothing -> ([b], [Left (diagnostic "G04105" Error sp ("区切りスタイルがありません: " <> name))])
+            Just (SeparatorBlank n) -> ([Block sp lbl lang (BlankLines (fromIntegral n))], [])
+            Just (SeparatorText before after align content characterName) -> ([b], [Right ((sp, name), SeparatorTextAppearance before after align content characterName)])
+            Just (SeparatorRule before after align rule) ->
+              ([b], [Right ((sp, name), SeparatorRuleAppearance before after align (dimension <$> rsLength rule) (unSp (rsWeight rule)) (rsColor rule) (stroke (rsStyle rule)))])
+            Just (SeparatorFunction path command) ->
+              case [e | p <- maybe [] pure program, e <- Map.findWithDefault [] path (programExports p), exKind e == KindBlock, exName e == command, null (exArgs e)] of
+                e : _ | Just p <- program ->
+                  case bfCall (separatorFunction handlers p e) [] [] sp of
+                    Right blocks' -> (blocks', [])
+                    Left ds -> ([], map Left ds)
+                _ -> ([], [Left (diagnostic "G03006" Error (separatorSettingSite styleFid styleText name "command") ("区切りの Emet 関数が見つからないか、引数があります: " <> command))])
+    resolveBlock b = ([b], [])
+
+separatorSettingSite :: FileId -> Text -> Text -> Text -> SrcSpan
+separatorSettingSite fid src name key =
+  let section = "[separators." <> name <> "]"
+      (before, rest) = T.breakOn section src
+      (through, found) = T.breakOn key rest
+      prefix = if T.null found then before else before <> through
+      off = BS.length (TE.encodeUtf8 prefix)
+   in mkSpan fid off off
 
 readMaybeText :: Files -> FilePath -> IO (Maybe Text)
 readMaybeText files p = fmap TE.decodeUtf8Lenient <$> readMaybeBytes files p
@@ -517,7 +566,8 @@ epubConfig md isbn vertical =
       epPublisher = mdPublisher md,
       epCreators = people (mdCreators md),
       epContributors = people (mdContributors md),
-      epVertical = vertical
+      epVertical = vertical,
+      epPageList = []
     }
   where
     people cs = [EpubCreator (crName c) (crReading c) (marcRelator (crRole c)) | c <- cs, inMetadata (crRole c)]
@@ -586,15 +636,30 @@ those of @import of the sources, in the order of the files, then those of
 the root G03003, at the top of manifest.toml; the project checks those of
 @import as it checks the .gm.
 -}
-functionRoots :: Files -> Project -> IO ([Diagnostic], [FilePath])
-functionRoots files project = do
+functionRoots :: Files -> Project -> Style -> IO ([Diagnostic], [FilePath])
+functionRoots files project style = do
   let imported = [p | sf <- Map.elems (projectSources project), site <- sfImports sf, ".emet" `T.isSuffixOf` isPath site, Right p <- [normalizeRelative (T.unpack (isPath site))]]
-      filtered = nub [p | FilterDecl (FilterFunction p) _ _ _ _ <- manifestFilters (projectManifest project)]
+      filtered = [(p, Nothing) | FilterDecl (FilterFunction p) _ _ _ _ <- manifestFilters (projectManifest project)] <> [(p, Just name) | (name, SeparatorFunction p _) <- Map.toList (stSeparators style)]
       at = mkSpan (projectManifestFile project) 0 0
-  checked <- forM filtered $ \p ->
+  styleText <- maybe "" TE.decodeUtf8Lenient <$> readMaybeBytes files "style.toml"
+  checked <- forM filtered $ \(p, separatorName) ->
     filesResolve files p >>= \case
-      Left Missing -> pure (Left (diagnostic "G03002" Error at ("[[filters]] の function のファイルがありません: " <> T.pack p)))
-      Left e -> pure (Left (diagnostic "G03003" Error at (T.pack (pathErrorMessage e <> ": " <> p))))
+      Left Missing ->
+        pure
+          ( Left
+              ( case separatorName of
+                  Just name -> diagnostic "G03006" Error (separatorSettingSite (styleFileId project) styleText name "function") ("区切りの function のファイルがありません: " <> T.pack p)
+                  Nothing -> diagnostic "G03002" Error at ("[[filters]] の function のファイルがありません: " <> T.pack p)
+              )
+          )
+      Left e ->
+        pure
+          ( Left
+              ( case separatorName of
+                  Just name -> diagnostic "G03006" Error (separatorSettingSite (styleFileId project) styleText name "function") (T.pack (pathErrorMessage e <> ": " <> p))
+                  Nothing -> diagnostic "G03003" Error at (T.pack (pathErrorMessage e <> ": " <> p))
+              )
+          )
       Right rel -> pure (Right rel)
   pure (lefts checked, nub (imported <> rights checked))
 
@@ -605,7 +670,8 @@ fmt without arguments.
 functionPaths :: FilePath -> Project -> IO [FilePath]
 functionPaths root project = do
   let files = diskFiles root
-  (_, roots) <- functionRoots files project
+  style <- maybe defaultStyle (fromRight defaultStyle . parseStyle (styleFileId project) . TE.decodeUtf8Lenient) <$> readMaybeBytes files "style.toml"
+  (_, roots) <- functionRoots files project style
   if null roots
     then pure []
     else do
@@ -927,7 +993,9 @@ buildCore inMemory opts = do
               -- and G08102, a figure of the source where they put the images of plugins (docs/adr/0123)
               activeDiags <-
                 if any (`elem` writable) [TargetHtml, TargetEpub]
-                  then (pluginImagePathDiagnostics book <>) <$> activeContentDiagnostics (optFiles opts) book
+                  then do
+                    svgDiags <- if isJust (figureColor (evStyle e)) then pure [] else activeContentDiagnostics (optFiles opts) book
+                    pure (pluginImagePathDiagnostics book <> svgDiags)
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
@@ -1092,32 +1160,44 @@ independentBleed files infos
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: Files -> Style -> IO (Map FilePath PathError)
 missingStyleFiles files style = do
-  let paths = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
-  resolved <- forM paths $ \p -> (p,) <$> filesResolve files p
+  resolved <- forM (styleFilePaths style) $ \p -> (p,) <$> filesResolve files p
   pure (Map.fromList [(p, err) | (p, Left err) <- resolved])
 
-{- | Diagnostics of the missing files for one target (golem-project ADR
-0004): the fonts the PDF uses and its output intent (errors), every font
-for HTML and EPUB (warnings, errors in prod), nothing for plain text.
-The PDF also needs a body font with a file (G08007, golem-driver ADR 0016).
+-- | The files style.toml names: the fonts of every role, then the output intent.
+styleFilePaths :: Style -> [FilePath]
+styleFilePaths style = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
+
+{- | Diagnostics of the files of style.toml for one target. A path outside
+the project (absolute, a URL, out of the root, or a symbolic link out of
+it) is G03279, an error for every target and profile (docs/adr/0421); it
+is the same diagnostic for every target, so a build reports it once.
+Missing files (golem-project ADR 0004): the fonts the PDF uses and its
+output intent (errors), every font for HTML and EPUB (warnings, errors in
+prod), nothing for plain text. The PDF also needs a body font with a file
+(G08007, golem-driver ADR 0016).
 -}
 targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid style locals missing = \case
-  TargetPdf ->
-    bodyFontDiagnostics fid style
-      <> report "G08002" Error "フォントのファイルがありません" pdfFonts
-      <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
-  TargetHtml -> siteFonts
-  TargetEpub -> siteFonts
-  TargetText -> []
+targetFileDiagnostics fid style locals missing target =
+  outside <> case target of
+    TargetPdf ->
+      bodyFontDiagnostics fid style
+        <> report "G08002" Error "フォントのファイルがありません" (pdfFontPaths style locals)
+        <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
+    TargetHtml -> siteFonts
+    TargetEpub -> siteFonts
+    TargetText -> []
   where
-    pdfFonts = pdfFontPaths style locals
+    outside =
+      [ diagnostic "G03279" Error (mkSpan fid 0 0) (T.pack (pathErrorMessage err <> ": " <> p))
+      | p <- styleFilePaths style,
+        Just err <- [Map.lookup p missing],
+        err /= Missing
+      ]
     siteFonts = report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
-    report code sev missingMsg paths =
+    report code sev msg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
       | p <- nub paths,
-        Just err <- [Map.lookup p missing],
-        let msg = if err == Missing then missingMsg else pathErrorMessage err
+        Map.lookup p missing == Just Missing
       ]
 
 -- | The roles that the PDF uses, with their files (Golem ADR 0358).
@@ -1206,13 +1286,17 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
       ft = projectFiles (evProject e)
   (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
   let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
-      site = renderXhtml hcfg ft book
+      originalSite = renderXhtml hcfg ft book
+  (webBook, webDiags) <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book originalSite else pure (book, [])
+  let site = if isJust (figureColor (evStyle e)) then renderXhtml hcfg ft webBook else originalSite
   results <- forM targets $ \case
-    TargetHtml -> writeHtmlTarget root hcfg ft book site
-    TargetEpub -> writeEpubTarget root e ft book site
+    TargetHtml | not (null webDiags) -> cleanDir (root </> "build" </> "html") >> pure ([], [], Nothing)
+    TargetEpub | not (null webDiags) -> cleanDir (root </> "build" </> "epub") >> pure ([], [], Nothing)
+    TargetHtml -> writeHtmlTarget root hcfg ft webBook site
+    TargetEpub -> writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
     TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
-  pure (concat [w | (w, _, _) <- results], concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
+  pure (concat [w | (w, _, _) <- results], webDiags <> concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
 
 {- | The configuration of the HTML of a book from its style.toml and the
 styles of its files: @dev@ for the profile dev, the fonts that are
@@ -1224,6 +1308,11 @@ htmlConfig dev e book missing bib =
     { hcTitle = mdTitle md,
       hcLanguage = mdLanguage md,
       hcVertical = vertical,
+      hcSeparatorPitch = do
+        grid <- stPage style >>= pageGrid
+        if gridAlignment grid == AlignFree
+          then Just (dimToSp (dimToSp 0 (gridFontSize grid)) (gridLinePitch grid))
+          else Nothing,
       hcNumberDefault = stNumbersVertical style,
       hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
       -- missing fonts are left out of the site (golem-project ADR 0004)
@@ -1337,19 +1426,102 @@ writeHtmlTarget root hcfg ft book site = do
     pure (dir </> o)
   pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
 
+-- | Convert only monochrome assets; generated PNG paths cannot shadow an existing asset.
+recolorWebFigures :: BuildOptions -> Style -> Book -> XhtmlSite -> IO (Book, [Diagnostic])
+recolorWebFigures opts style book site = case figureColor style of
+  Nothing -> pure (book, [])
+  Just swatch -> do
+    checked <- forM (nub (map snd (siteAssets site))) $ \path -> do
+      let lower = T.toLower (T.pack path)
+          svg = ".svg" `T.isSuffixOf` lower
+          raster = any (`T.isSuffixOf` lower) [".png", ".jpg", ".jpeg"]
+      result <-
+        if not (svg || raster)
+          then pure (Right Nothing)
+          else do
+            readResult <- try (maybe (filesRead (optFiles opts) path) pure (Map.lookup (T.pack path) (bookImages book))) :: IO (Either IOException BS.ByteString)
+            case readResult of
+              Left problem -> pure (Left (T.pack (show problem)))
+              Right bytes
+                -- With a swatch this check belongs to the conversion boundary:
+                -- G08113 also removes stale target outputs (root ADR 0407).
+                | svg, Just why <- activeMessage (T.pack path) (activeContent bytes) -> pure (Left why)
+                | svg -> pure $ case Svg.readSvg bytes of
+                    Left problem -> Left $ case problem of
+                      Svg.SvgMalformed why -> why
+                      Svg.SvgUnsupported _ -> "SVG の色の変換で扱えない要素または属性があります"
+                    Right parsed ->
+                      let original = P.SvgFigure (svgDrawing parsed)
+                       in case recolorFigure swatch original of
+                            P.SvgFigure drawing | P.SvgFigure drawing /= original -> Right (Just (False, TE.encodeUtf8 (drawingSvg drawing)))
+                            _ -> Right Nothing
+                | otherwise -> fmap (fmap (fmap (\(_, png) -> (True, png)))) (safeRecolorRasterBytes swatch bytes)
+      pure (T.pack path, result)
+    let failures = Map.fromList [(path, why) | (path, Left why) <- checked]
+        diagnostics = [diagnostic "G08113" Error sp ("図版の色を変換できません: " <> webSource f <> "（" <> why <> "）") | Document _ bs <- bookDocs book, Block sp _ _ (FigureBlock f) <- allFigures bs, Just why <- [Map.lookup (webSource f) failures]]
+        taken = Set.fromList (Map.keys (bookImages book) <> [T.pack path | (out, src) <- siteAssets site, path <- [out, src]])
+        (paths, images, _) = foldl' allocate (Map.empty, Map.empty, taken) [(path, png, bytes) | (path, Right (Just (png, bytes))) <- checked]
+        allocate (pathMap, imageMap, used) (path, png, bytes) =
+          let jpeg = any (`T.isSuffixOf` T.toLower path) [".jpg", ".jpeg"]
+              base = "images/golem-color/" <> hex (P.sha256 bytes)
+              candidate n = base <> (if n == (0 :: Int) then "" else "-" <> T.pack (show n)) <> ".png"
+              unused n = if Set.member (candidate n) used then unused (n + 1) else candidate n
+              target = if png && jpeg then unused 0 else path
+           in (Map.insert path target pathMap, Map.insert target bytes imageMap, Set.insert target used)
+        rewrite block' =
+          block'
+            { blockBody = case blockBody block' of
+                FigureBlock f -> let old = webSource f; target = Map.findWithDefault old old paths in FigureBlock f {figWeb = if target == old then figWeb f else Just target, figCaption = map rewrite (figCaption f)}
+                BulletList items -> BulletList [item {itemBlocks = map rewrite (itemBlocks item)} | item <- items]
+                OrderedList items -> OrderedList [item {itemBlocks = map rewrite (itemBlocks item)} | item <- items]
+                DefList groups -> DefList [group {dgDefs = map (map rewrite) (dgDefs group)} | group <- groups]
+                other -> other
+            }
+        docs = [Document fid (map rewrite bs) | Document fid bs <- bookDocs book]
+    pure (book {bookDocs = docs, bookImages = Map.union images (bookImages book)}, diagnostics)
+  where
+    hex = T.pack . concatMap (\byte -> let value = showHex byte "" in replicate (2 - length value) '0' <> value) . BS.unpack
+
 -- | Writes the EPUB of the site to build/epub/book.epub.
-writeEpubTarget :: FilePath -> Evaluated -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
-writeEpubTarget root e ft book site = do
-  let manifest = projectManifest (evProject e)
+writeEpubTarget :: BuildOptions -> Evaluated -> HtmlConfig -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeEpubTarget opts e hcfg ft book site = do
+  let project = evProject e
+      manifest = projectManifest project
       style = evStyle e
+      root = optRoot opts
       dir = root </> "build" </> "epub"
       out = dir </> "book.epub"
       isbn = fromMaybe Nothing (tgEpub (manifestTargets manifest))
       cfg = epubConfig (manifestMetadata manifest) isbn (maybe False pageVertical (stPage style))
-  cleanDir dir
-  createDirectoryIfMissing True dir
-  writeEpub root out cfg ft book site
-  pure ([out], [], Nothing)
+      report (code, message) = ([], [diagnostic code Error (mkSpan (projectManifestFile project) 0 0) ("EPUB の page-map を読み込めません: " <> message)], Nothing)
+  pageMap <- case tgEpubPageMap (manifestTargets manifest) of
+    Nothing -> pure (Right (Map.empty, []))
+    Just path -> do
+      resolved <- filesResolve (optFiles opts) path
+      case resolved of
+        Left err -> pure (Left (if err == Missing then "G03260" else "G03261", T.pack path <> ": " <> T.pack (pathErrorMessage err)))
+        Right rel -> do
+          readResult <- try (filesRead (optFiles opts) rel) :: IO (Either IOException BS.ByteString)
+          pure $ do
+            bytes <- first (\err -> ("G03261", T.pack path <> ": " <> T.pack (show err))) readResult
+            mapping <- first pageMapFailure (decodePageMap (BL.fromStrict bytes))
+            first pageMapFailure $ resolvePageMapWithAst (Map.map sfAst (projectSources project)) (Map.map (\source -> (sfPath source, sfText source)) (projectSources project)) ft book mapping
+  case pageMap of
+    Left problem -> cleanDir dir >> pure (report problem)
+    Right (anchors, links) -> do
+      let epubSite = if Map.null anchors then site else renderXhtmlWithPageBreaks hcfg ft book anchors
+      cleanDir dir
+      createDirectoryIfMissing True dir
+      writeEpub root out cfg {epPageList = links} ft book epubSite
+      pure ([out], [], Nothing)
+
+-- | Distinct causes of an invalid page map (root ADR 0386).
+pageMapFailure :: PageMapError -> (Text, Text)
+pageMapFailure = \case
+  PageMapJson why -> ("G03262", why)
+  PageMapSchema why -> ("G03263", why)
+  PageMapStale why -> ("G03264", why)
+  PageMapPosition why -> ("G03265", why)
 
 -- | Writes the plain text of each variant to build/text; @dev@ for the profile dev.
 writeTextTarget :: FilePath -> Bool -> Evaluated -> Map Text [EntryPart] -> FileTable -> Book -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
@@ -1391,7 +1563,9 @@ writePdfTarget inMemory opts e diagFid book bib = do
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
   case r of
-    Left ds -> pure ([], ds <> fontNotice, Nothing)
+    Left ds -> do
+      when (not inMemory && any ((== DiagnosticCode "G08113") . diagCode) ds) (cleanDir dir)
+      pure ([], ds <> fontNotice, Nothing)
     Right (bytes, notices, view, starts)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))

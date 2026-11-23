@@ -41,6 +41,7 @@ type Name = Text
 
 data Block
   = Paragraph [Located Inline]
+  | Separator Text
   | Heading !Int [Located Inline]
   | BulletList [ListItem]
   | OrderedList [ListItem]

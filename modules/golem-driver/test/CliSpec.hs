@@ -23,7 +23,7 @@ import Golem.Driver.New
 #endif
 import Golem.LayoutSpec (Rect (..))
 #ifdef GOLEM_PLUGINS
-import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
+import Golem.LayoutSpec (PageGeometry (..), pgBindingRight, pageGeometry)
 #endif
 import Golem.Length (Sp (..))
 #ifdef GOLEM_PLUGINS
@@ -270,6 +270,13 @@ preflightTests =
         p <- preflightIn tmp
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         Map.lookup "code-bg" (vwSwatchesUsed v) @?= Just (0, 0, 0, 8),
+    testCase "root ADR 0410: the background of a running head is a swatch used, its underline a rule" $
+      withPreflightProject (horizontalStyle <> "\n[color.swatches]\nheavy = { cmyk = [100, 100, 100, 100] }\n\n[character-styles.code]\nfont = \"body\"\n\n[character-styles.marked]\nbased-on = \"code\"\nbackground = \"heavy\"\nunderline = true\n\n[masters.body]\nrunning-head = { position = \"top-center\", content = [\"H\"], character-style = \"marked\" }\n") "本文。\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        Map.keys (vwSwatchesUsed v) @?= ["heavy"]
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G09015" `elem` map diagCode (prDiagnostics p))
+        [rvKind r | r <- concatMap pvRules (vwPages v)] @?= ["下線"],
     testCase "the view: the trimmed page, the folio, the image and the table rules" $ do
       img <- tinyImage
       let source = "# 章\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n| a | b |\n|---|---|\n| c | d |\n\n本文。\n"

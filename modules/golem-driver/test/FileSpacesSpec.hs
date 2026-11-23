@@ -23,13 +23,13 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book)
 import Golem.Driver
-import Golem.Layout.Paginate (PageOut (..))
+import Golem.Layout.Paginate (PageOutAt (..))
 import Golem.LayoutSpec (pageGeometry)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..))
 import Golem.Project.Files (diskFiles)
 import Golem.Syntax
 import Golem.TestSupport.CssCascade (Elem (..), Page (..), Winner (..), pageOf, winningMarginStarts)
-import Golem.Typeset (PdfInput (..), PdfLayout (..), layoutPdf)
+import Golem.Typeset (PdfInput (..), layoutPdf)
 import Support
 import System.FilePath ((</>))
 import Test.Tasty
@@ -99,7 +99,7 @@ buildCase c = do
     geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) False (evStyle e))
     r <- layoutPdf (PdfInput (diskFiles tmp) (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty (projectVarTexts (manifestVars (projectManifest (evProject e)))) (evStyleText e)) geom fakeFonts
     pl <- either (assertFailure . show) pure r
-    let slots = map (map fst . poSlots) (plPages pl)
+    let slots = map (map fst . poSlots) (gridPages pl)
     unless (length slots == length (caseChapters c)) (assertFailure ("a page a chapter: " <> show slots))
     res <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
     assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- filter isError (brDiagnostics res)]

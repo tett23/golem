@@ -891,6 +891,18 @@ mod tests {
         assert_eq!(document_of(&decode(&bytes).unwrap()).unwrap(), d);
     }
 
+    // root ADR 0398 A3: SDK filters preserve an unedited separator's tag and name.
+    #[test]
+    fn root_adr_0398_a3_named_separator_survives_document_and_inline_filter_roundtrip() {
+        let separator = Value::Array(vec![Value::Int(15), Value::Text("scene".into())]);
+        let d = Document { file: 1, blocks: vec![Block { span: sp(0, 9), label: None, lang: None, body: BlockBody::Other(separator) }] };
+        let bytes = encode(&document_value(&d));
+        let mut restored = document_of(&decode(&bytes).unwrap()).unwrap();
+        restored.map_inlines(&mut |xs| xs);
+        assert_eq!(restored, d);
+        assert_eq!(encode(&document_value(&restored)), bytes);
+    }
+
     #[test]
     fn map_inlines_visits_list_items() {
         let para = |s: &str| Block { span: sp(0, 1), label: None, lang: None, body: BlockBody::Paragraph { style: None, inlines: vec![Inline::Text { span: sp(0, 1), text: s.into() }] } };

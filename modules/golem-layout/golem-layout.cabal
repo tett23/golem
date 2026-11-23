@@ -32,7 +32,6 @@ library
                     Golem.Layout.KnuthPlass
                     Golem.Layout.Align
                     Golem.Layout.Aki
-                    Golem.Layout.CharClass
                     Golem.Layout.Code
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.De1996
@@ -49,6 +48,8 @@ library
                     Golem.Layout.Orientation
                     Golem.Layout.PageLabel
                     Golem.Layout.Paginate
+                    Golem.Layout.FreeGeometry
+                    Golem.Layout.Paginate.Physical
                     Golem.Layout.Paginate.State
                     Golem.Layout.Ruby
                     Golem.Layout.RuleArea
@@ -67,6 +68,7 @@ library
     , golem-numerals
     , golem-project
     , golem-syntax
+    , golem-unicode
     , template-haskell
     , text               >=2.0  && <2.2
   default-language: GHC2021
@@ -103,6 +105,8 @@ test-suite golem-layout-test
                     TrackingBoxesSpec
                     FeaturesSpec
                     ScriptSpec
+                    PhysicalPaginateSpec
+                    FreeGeometrySpec
                     Fixtures
                     InseparableSpec
                     KnuthPlassBrute
@@ -146,6 +150,7 @@ test-suite golem-layout-test
     , golem-project
     , golem-syntax
     , golem-test-support
+    , golem-unicode
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4

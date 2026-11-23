@@ -63,6 +63,7 @@ htmlParaStyles style =
           (cssLength (fromMaybe (Zw 0) (psEndIndent d)))
           (keepDecls d)
           (htmlBox style n d)
+          (physicalParagraph d)
       )
     | n <- Map.keys (stParaStyles style),
       -- toc-<l> as built in writes nothing: the table of contents of HTML is as before (docs/adr/0264)
@@ -71,6 +72,15 @@ htmlParaStyles style =
     ]
   where
     bindingRight = maybe False pageBindingRight (stPage style)
+    physicalParagraph d
+      | maybe False ((== AlignFree) . gridAlignment) (stPage style >>= pageGrid) = do
+          pitch <- resolvedParagraphPitch style d
+          before <- spacing d (psSpaceBefore d) (psSpaceBeforeDim d)
+          after <- spacing d (psSpaceAfter d) (psSpaceAfterDim d)
+          between <- spacing d (psSpaceBetween d) (psSpaceBetweenDim d)
+          pure (HtmlPhysicalParagraph pitch before after between)
+      | otherwise = Nothing
+    spacing d count dimension = resolvedParagraphSpacing style d (maybe (SpacingLines (fromMaybe 0 count)) SpacingDim dimension)
 
 {- | The box of a paragraph style that has one (docs/adr/0271): the key of
 its settings resolved, in sp where the size of the grid is known, and the

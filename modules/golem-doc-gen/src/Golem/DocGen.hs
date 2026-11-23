@@ -231,7 +231,8 @@ genTopBlock =
               )
       ),
       -- blank lines (docs/adr ADR 0046)
-      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
+      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound))),
+      (1, Block <$> genSpan <*> pure Nothing <*> pure Nothing <*> (Separator <$> Gen.text (Range.linear 1 16) Gen.alphaNum))
     ]
 
 -- | Every kind of an index mark, a target of one level or two (docs/adr/0265).

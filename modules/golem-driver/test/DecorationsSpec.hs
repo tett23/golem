@@ -78,7 +78,7 @@ decorationsTests =
           c <- layoutOf horizontal (source ("漢字" <> sep <> "abc"))
           map (map bcText) (boxesOf a) @?= map (map bcText) (boxesOf c)
           [lineTarget (slLine sl) | sl <- Map.elems (plLines a)] @?= [lineTarget (slLine sl) | sl <- Map.elems (plLines c)]
-          length (plPages a) @?= length (plPages c),
+          length (gridPages a) @?= length (gridPages c),
       testCase "I5, I6: the styles inside the basis do not change the line" $ do
         pl <- layoutOf horizontal "[style u: 漢[style big: 字][style up: 漢][style superscript: 2]字]\n"
         let ds = [lkUnderline (bcLook c) | cs <- boxesOf pl, c <- cs, isJust (lkUnderline (bcLook c))]
@@ -129,6 +129,18 @@ decorationsTests =
         let xs st = [ptToRational x | x : _ <- concatMap rects st]
         case (xs a, xs b) of
           (xa : _, xb : _) -> assertBool (show (xa, xb)) (xb > xa)
+          other -> assertFailure (show other),
+      testCase "root ADR 0379 I1: an after-side reading does not move the right underline" $ do
+        plain <- contents vertical "[style u: 漢字]\n"
+        afterRuby <- contents vertical "[style u: [ruby side=after: 漢|かん]字]\n"
+        let xs st = [x | x : _ <- concatMap rects st]
+        xs afterRuby @?= xs plain,
+      testCase "root ADR 0379 I1: the right underline clears kenten outside a reading" $ do
+        plainReading <- contents vertical "[style u: [ruby: 漢|かん]]\n"
+        markedReading <- contents vertical "[style u: [ruby: 漢|[kenten: かん]]]\n"
+        let xs st = [ptToRational x | x : _ <- concatMap rects st]
+        case (xs plainReading, xs markedReading) of
+          (plainX : _, markedX : _) -> assertBool (show (plainX, markedX)) (markedX > plainX)
           other -> assertFailure (show other),
       testCase "I3: two ranges of one value side by side are one band; of other values, two" $ do
         one <- contents horizontal "[style u: 漢][style u: 字]\n"
