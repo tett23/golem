@@ -15,6 +15,11 @@ module Golem.Typeset.PdfShading
     mapFunction,
     solidFunction,
     numberObject,
+    Mesh (..),
+    MeshRecord (..),
+    readMesh,
+    meshPositions,
+    writeMesh,
   )
 where
 
@@ -23,6 +28,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.List (transpose)
+import Data.Maybe (fromMaybe)
 import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -258,3 +264,120 @@ decimal bytes =
           a <- if BS.null whole then Just 0 else fst <$> BC.readInteger whole
           b <- if BS.null tailDigits then Just 0 else fst <$> BC.readInteger tailDigits
           Just (sign * (fromInteger a + b % (10 ^ BS.length tailDigits)))
+
+-- Mesh shadings (ISO 32000-2 8.7.4.5.5 to 8.7.4.5.8) -------------------
+
+-- | The data of a mesh shading, with the samples as written.
+data Mesh = Mesh
+  { meshType :: !Int,
+    meshCoordinateBits :: !Int,
+    meshComponentBits :: !Int,
+    -- | Zero for a lattice (ShadingType 5), which has no flags.
+    meshFlagBits :: !Int,
+    -- | The coordinate pairs of Decode, as written.
+    meshCoordinateDecode :: ![Obj],
+    -- | The colour pairs of Decode.
+    meshColourDecode :: ![(Rational, Rational)],
+    meshRecords :: ![MeshRecord]
+  }
+  deriving stock (Eq, Show)
+
+-- | A vertex (types 4 and 5) or a patch (types 6 and 7).
+data MeshRecord = MeshRecord
+  { recordFlag :: !(Maybe Integer),
+    recordCoordinates :: ![Integer],
+    recordColours :: ![[Integer]]
+  }
+  deriving stock (Eq, Show)
+
+{- | Read the data of a mesh of the given type whose colours have the given
+number of components (one when the shading has a function). A vertex of
+ShadingType 4 begins on a byte boundary; the records of the other types
+follow each other without padding. Fewer than eight bits after the last
+record are padding; any longer remainder that is not a record is an error.
+-}
+readMesh :: Int -> [(Text, Obj)] -> Int -> ByteString -> Either Text Mesh
+readMesh kind fields components body = do
+  coordinate <- bitsOf "BitsPerCoordinate" [1, 2, 4, 8, 12, 16, 24, 32]
+  component <- bitsOf "BitsPerComponent" [1, 2, 4, 8, 12, 16]
+  flag <- if kind == 5 then Right 0 else bitsOf "BitsPerFlag" [2, 4, 8]
+  if kind == 5
+    then case lookup "VerticesPerRow" fields of
+      Just (P.OInt n) | n >= 2 -> Right ()
+      _ -> Left invalid
+    else Right ()
+  (written, decode) <- case lookup "Decode" fields of
+    Just (P.OArr values) | length values == 4 + 2 * components -> (take 4 values,) <$> traverse number values
+    _ -> Left invalid
+  let colourDecode = pairsOf (drop 4 decode)
+      total = 8 * BS.length body
+      points flagValue = case kind of
+        6 -> if flagValue == 0 then 12 else 8
+        7 -> if flagValue == 0 then 16 else 12
+        _ -> 1
+      colours flagValue = if kind `elem` [6, 7] then (if flagValue == 0 then 4 else 2) else 1
+      smallest = flag + 2 * coordinate * (if kind `elem` [6, 7] then 8 else 1) + component * components * (if kind `elem` [6, 7] then 2 else 1)
+      go position acc
+        | total - position < 8 && total - position < smallest = Right (reverse acc)
+        | otherwise = do
+            let flagValue = if flag == 0 then Nothing else Just (bitsAt body position flag)
+                f = fromMaybe 0 flagValue
+            if kind `elem` [6, 7] && f > 3 || kind == 4 && f > 2 then Left invalid else Right ()
+            let size = flag + 2 * coordinate * points f + component * components * colours f
+                padded = if kind == 4 then 8 * ((size + 7) `div` 8) else size
+            if position + size > total then Left "PDF 図版のメッシュのシェーディングのデータが途中で切れています" else Right ()
+            let coordinateAt i = bitsAt body (position + flag + i * coordinate) coordinate
+                colourStart = position + flag + 2 * coordinate * points f
+                colourAt c i = bitsAt body (colourStart + (c * components + i) * component) component
+                record = MeshRecord flagValue [coordinateAt i | i <- [0 .. 2 * points f - 1]] [[colourAt c i | i <- [0 .. components - 1]] | c <- [0 .. colours f - 1]]
+            go (position + padded) (record : acc)
+  records <- go 0 []
+  Right (Mesh kind coordinate component flag written colourDecode records)
+  where
+    invalid = "PDF 図版のメッシュのシェーディングを読めません"
+    bitsOf name allowed = case lookup name fields of
+      Just (P.OInt n) | n `elem` allowed -> Right (fromInteger n)
+      _ -> Left invalid
+    number = \case
+      P.OInt n -> Right (fromInteger n)
+      P.OReal text -> maybe (Left invalid) Right (decimal (TE.encodeUtf8 text))
+      _ -> Left invalid
+    pairsOf (a : b : rest) = (a, b) : pairsOf rest
+    pairsOf _ = []
+
+-- | The decoded colours of every vertex and corner, as written.
+meshPositions :: Mesh -> [[Rational]]
+meshPositions mesh =
+  let top = 2 ^ meshComponentBits mesh - 1 :: Integer
+   in [[d0 + fromInteger s * (d1 - d0) / fromInteger top | ((d0, d1), s) <- zip (meshColourDecode mesh) colour] | record <- meshRecords mesh, colour <- recordColours record]
+
+{- | The data whose colours are four copies of the sample of one output, and
+the colour Decode pairs mapped by each map (a_k, b_k).
+-}
+writeMesh :: Int -> [(Rational, Rational)] -> Mesh -> ([(Rational, Rational)], ByteString)
+writeMesh output maps mesh =
+  let (d0, d1) = meshColourDecode mesh !! output
+      decode = [(a * d0 + b, a * d1 + b) | (a, b) <- maps]
+      fieldsOf record =
+        [(meshFlagBits mesh, f) | Just f <- [recordFlag record]]
+          <> [(meshCoordinateBits mesh, c) | c <- recordCoordinates record]
+          <> [(meshComponentBits mesh, colour !! output) | colour <- recordColours record, _ <- maps]
+      bitsOfRecord record = concat [[(value `shiftR` (width - 1 - i)) .&. 1 | i <- [0 .. width - 1]] | (width, value) <- fieldsOf record]
+      aligned xs = xs <> replicate ((8 - length xs `mod` 8) `mod` 8) 0
+      stream =
+        if meshType mesh == 4
+          then concatMap (aligned . bitsOfRecord) (meshRecords mesh)
+          else aligned (concatMap bitsOfRecord (meshRecords mesh))
+   in (decode, BS.pack (bytesOf stream))
+  where
+    bytesOf [] = []
+    bytesOf xs = let (byte, rest) = splitAt 8 xs in fromInteger (foldl (\acc b -> acc * 2 + b) 0 byte) : bytesOf rest
+
+-- | The big-endian unsigned value of the given width at a bit position.
+bitsAt :: ByteString -> Int -> Int -> Integer
+bitsAt bytes position width =
+  let first = position `div` 8
+      lastByte = (position + width - 1) `div` 8
+      value = foldl (\acc i -> acc `shiftL` 8 .|. toInteger (BS.index bytes i)) 0 [first .. lastByte]
+      trailing = 8 * (lastByte + 1) - (position + width)
+   in (value `shiftR` trailing) .&. (2 ^ width - 1)

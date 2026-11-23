@@ -46,7 +46,7 @@ verseLineNumberTests =
       prefixes (numberVerseLines sp 2 [LineBreak sp, Text sp "one", LineBreak sp, Text sp " ", LineBreak sp, Text sp "two"]) @?= ["2 "],
     testCase "root ADR 0384 I1: reference-only and note-mark-only lines count as nonempty" $ do
       prefixes (numberVerseLines sp 1 [Resolved sp RefNumber "target" [Text sp "7"]]) @?= ["1 "]
-      prefixes (numberVerseLines sp 1 [CharStyle sp "em" [Note sp 1 (noteBody sp [])]]) @?= ["1 "],
+      prefixes (numberVerseLines sp 1 [CharStyle sp "em" [Note sp 1 Nothing (noteBody sp [])]]) @?= ["1 "],
     testCase "root ADR 0384 I1: the counter restarts at each paragraph" $ do
       style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[paragraph-styles.verse]\nline-number-interval = 2\n")
       let paragraph = Block sp Nothing Nothing (Paragraph (Just "verse") (sourceLines 3))

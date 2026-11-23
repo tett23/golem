@@ -201,7 +201,7 @@ impl Flat {
                     let l = self.leaf(*span, None);
                     self.items.push(Item::Unknown(l));
                 }
-                Inline::Note { .. } | Inline::Sidenote { .. } | Inline::Endnote { .. } | Inline::LineBreak { .. } | Inline::Aki { .. } => self.items.push(Item::Wall),
+                Inline::Note { .. } | Inline::Sidenote { .. } | Inline::Endnote { .. } | Inline::LineBreak { .. } | Inline::Aki { .. } | Inline::Warichu { .. } | Inline::Upright { .. } => self.items.push(Item::Wall),
                 // nothing is set where they are
                 Inline::IndexMark { .. } | Inline::ProofComment { .. } | Inline::ChannelItem { .. } => {}
             }
@@ -330,23 +330,23 @@ pub fn run(cfg: &Config, xs: Vec<Inline>, diags: &mut Vec<Diagnostic>) -> Vec<In
     let xs: Vec<Inline> = xs
         .into_iter()
         .map(|x| match x {
-            Inline::Note { span, number, mut body } => {
+            Inline::Note { span, number, label, mut body } => {
                 for p in note_paragraphs_mut(&mut body) {
                     *p = run(cfg, std::mem::take(p), diags);
                 }
-                Inline::Note { span, number, body }
+                Inline::Note { span, number, label, body }
             }
-            Inline::Sidenote { span, number, mut body } => {
+            Inline::Sidenote { span, number, label, mut body } => {
                 for p in note_paragraphs_mut(&mut body) {
                     *p = run(cfg, std::mem::take(p), diags);
                 }
-                Inline::Sidenote { span, number, body }
+                Inline::Sidenote { span, number, label, body }
             }
-            Inline::Endnote { span, number, mut body } => {
+            Inline::Endnote { span, number, label, mut body } => {
                 for p in note_paragraphs_mut(&mut body) {
                     *p = run(cfg, std::mem::take(p), diags);
                 }
-                Inline::Endnote { span, number, body }
+                Inline::Endnote { span, number, label, body }
             }
             Inline::ChannelItem { span, channel, key, reading, body } => Inline::ChannelItem { span, channel, key, reading, body: run(cfg, body, diags) },
             other => other,
@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     fn the_body_of_a_note_is_a_run_of_its_own() {
-        let note = |b| Inline::Note { span: S, number: 1, body: note_body(S, b) };
+        let note = |b| Inline::Note { span: S, number: 1, label: None, body: note_body(S, b) };
         assert_eq!(go(vec![t("1"), note(vec![t("12")]), t("2")]), (vec![t("1"), note(vec![num(12)]), t("2")], none()));
     }
 

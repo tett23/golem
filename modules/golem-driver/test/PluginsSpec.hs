@@ -405,6 +405,8 @@ shapes = map $ \case
   Number _ n (Just StyleTcy) -> "#" <> T.pack (show n)
   Number _ n _ -> "number " <> T.pack (show n)
   Tcy _ t -> "[tcy: " <> t <> "]"
+  Warichu _ t -> "[warichu: " <> t <> "]"
+  Upright _ t -> "[upright: " <> t <> "]"
   CharStyle _ s xs -> "[" <> s <> ": " <> T.concat (shapes xs) <> "]"
   _ -> "?"
 

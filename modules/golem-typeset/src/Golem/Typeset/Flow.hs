@@ -728,6 +728,8 @@ layoutFigures reuse numbered inp geom fonts figures = do
         Map.fromList
           ( [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), l <- igLocators g, (_, sp) <- locatorMarks l]
               <> [(sp, T.concat (map inlineText (ceBody e))) | (_, _, es) <- bookChannels (piBook inp), e <- es, (_, sp) <- ceLocations e]
+              -- the labels of the notes, whose pages are those of their marks (root ADR 0422)
+              <> Map.toList (noteLabelSpans (piBook inp))
           )
   let capacity = length (pgLineGrid geom)
       -- the round before, whose compositions of the units that did not change are reused (docs/adr ADR 0251)
@@ -1393,7 +1395,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 (unSp (le - (e + g)) `div` unSp u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing) | _ <- [1 .. k]] 0 (fromInteger k * u) 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
    in TocPage (le - fromInteger k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -1696,9 +1698,9 @@ sidenoteDiagnostics geom book
       FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
       _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
-      Sidenote sp _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
-      Note _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
-      Endnote _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
+      Sidenote sp _ _ nb -> (sp, flow) : concatMap (inlineSites flow) (concat (noteParagraphs nb))
+      Note _ _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
+      Endnote _ _ _ nb -> concatMap (inlineSites False) (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
@@ -1838,6 +1840,7 @@ composeEnv bookLang style geom fonts assumed look =
       shaping = shapingForFonts fonts (pgVertical geom)
    in (defaultComposeEnv (lkSize look))
         { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
+          ceCellRatio = maybe 1 (\d -> toRational (unSp (dimToSp (pgFontSize geom) d)) / toRational (unSp (pgFontSize geom))) (stPage style >>= pageGrid >>= gridCharacterAdvance),
           ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) t,
           -- a character of a word alone, in the shaping of the word (docs/adr/0222)
           ceWordCharAdvance = \lk t c -> lfAdvance fonts (maybe (Shaping (lkLatinFace lk) False [] False) (shaping lk . fst) (T.uncons t)) c,
@@ -2622,6 +2625,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
       Text _ t -> Text s t
       Number _ k st -> Number s k st
       Tcy _ t -> Tcy s t
+      Warichu _ t -> Warichu s t
+      Upright _ t -> Upright s t
       x -> x
     splitBreaks is = case break isBreak is of
       (l, []) -> [l]
@@ -2751,7 +2756,30 @@ flowEnv inp geom fonts assumed = fe
 
 -- | The composition of a look; citations show their numbers (golem-driver ADR 0007).
 lookEnv :: FlowEnv -> Look -> ComposeEnv
-lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe}
+lookEnv fe lk = (composeEnv (bookLanguage (feInput fe)) (piStyle (feInput fe)) (feGeom fe) (feFonts fe) (feAssumed fe) lk) {ceCiteNumber = citeNumber (piBook (feInput fe)), ceCiteLink = citeLink (piBook (feInput fe)), ceSourceAt = feSourceAt fe, ceMarkReserve = feMarkReserve fe, cePageOf = labelPageOf (piBook (feInput fe)) (feAssumed fe), ceNoteRefOf = \l -> feMarkReserve fe >> pageNumberedNote (piBook (feInput fe)) l}
+
+{- | The page of a label (docs/adr/0260): of the block it is on, or of the
+mark of the note it is on, followed as an index mark by its span (root
+ADR 0422).
+-}
+labelPageOf :: Book -> Assumed -> Text -> Maybe PageLabel
+labelPageOf book assumed l = case Map.lookup l (bookLabels book) of
+  Just LabelTarget {ltNote = Just _, ltSpan = sp} -> Map.lookup sp (asMarks assumed)
+  _ -> Map.lookup l (asLabels assumed)
+
+{- | The channel and the number in the book of the note a label is on, when
+the channel is numbered per page (root ADR 0422): a note or a sidenote;
+the endnotes never are.
+-}
+pageNumberedNote :: Book -> Text -> Maybe (NoteChannel, Int)
+pageNumberedNote book l = case Map.lookup l (bookLabels book) >>= ltNote of
+  Just (NoteTarget FootnoteChannel n) -> Just (ChannelNote, n)
+  Just (NoteTarget SidenoteChannel n) -> Just (ChannelSidenote, n)
+  _ -> Nothing
+
+-- | The label of each note that has one, by the span of the note (root ADR 0422).
+noteLabelSpans :: Book -> Map SrcSpan Text
+noteLabelSpans book = Map.fromList [(ltSpan t, l) | (l, t@LabelTarget {ltNote = Just _}) <- Map.toList (bookLabels book)]
 
 {- | How many notes and how many sidenotes the book has (docs/adr/0383):
 numbered per page, the book numbers them in its order before the pages
@@ -2767,10 +2795,10 @@ bookNoteSites :: Book -> [(NoteChannel, Int, SrcSpan)]
 bookNoteSites book = concatMap (concatMap inlineNotes) (concatMap blockInlineLists (concat [bs | Document _ bs <- bookDocs book]))
   where
     inlineNotes = \case
-      Note sp n nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
-      Sidenote sp n nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      Note sp n _ nb -> (ChannelNote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
+      Sidenote sp n _ nb -> (ChannelSidenote, n, sp) : concatMap inlineNotes (concat (noteParagraphs nb))
       -- the endnotes are not numbered per page: their bodies alone (root ADR 0412)
-      Endnote _ _ nb -> concatMap inlineNotes (concat (noteParagraphs nb))
+      Endnote _ _ _ nb -> concatMap inlineNotes (concat (noteParagraphs nb))
       Kenten _ _ xs -> concatMap inlineNotes xs
       Color _ _ xs -> concatMap inlineNotes xs
       CharStyle _ _ xs -> concatMap inlineNotes xs
@@ -2934,7 +2962,7 @@ markerItems env inner u = case uMarker u of
   Just m ->
     let boxes = [b | b@Box {} <- fst (composeInlines env {ceSite = markerSite (uIndex u), ceLabelInlines = 0} m)]
         w = sum (map itemWidth boxes)
-     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf (spanStart (uSpan u)))]
+     in boxes <> [Box (inner - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0 (uSource u, uSpan u) Nothing noLeaf (spanStart (uSpan u)) Nothing)]
 
 {- | Composes a unit and breaks it into lines of the widths, with its notes,
 sidenotes and index marks. A unit in a box is composed and broken as with
@@ -4524,9 +4552,12 @@ destAnchors book units firsts figs headingSpans flow =
         [ [(DestBibEntry sp k, AnchorLine lid) | ((k, _), Just lid) <- zip (bibliographyAt book sp) (map (`Map.lookup` firsts) is)]
         | (sp, is) <- Map.toList (Map.fromListWith (flip (<>)) [(uSpan u, [i]) | (i, u) <- units, any (\(Frame _ k _) -> k == FBibliography) (uFrames u)])
         ]
-    ofBox lb = [(DestLabel l, AnchorLine (lbId lb)) | l <- lbLabels lb] <> [(DestIndexMark m, AnchorLine (lbId lb)) | m <- lbMarks lb]
+    -- a label of a note is at the mark of the note (root ADR 0422)
+    noteLabels = noteLabelSpans book
+    marked m = [DestIndexMark m] <> [DestLabel l | Just l <- [Map.lookup m noteLabels]]
+    ofBox lb = [(DestLabel l, AnchorLine (lbId lb)) | l <- lbLabels lb] <> [(d, AnchorLine (lbId lb)) | m <- lbMarks lb, d <- marked m]
     ofFigure fid labels marks = case Map.lookup fid figs of
-      Just pf -> [(DestLabel l, AnchorFigure (pfUnit pf)) | l <- labels] <> [(DestIndexMark m, AnchorFigure (pfUnit pf)) | m <- marks]
+      Just pf -> [(DestLabel l, AnchorFigure (pfUnit pf)) | l <- labels] <> [(d, AnchorFigure (pfUnit pf)) | m <- marks, d <- marked m]
       Nothing -> []
     ofFlow = \case
       FParagraph _ lbs -> concatMap ofBox lbs
@@ -4566,9 +4597,9 @@ inlinesReferToPage = any $ \case
   Kenten _ _ is -> inlinesReferToPage is
   Color _ _ is -> inlinesReferToPage is
   CharStyle _ _ is -> inlinesReferToPage is
-  Note _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
-  Sidenote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
-  Endnote _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Note _ _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Sidenote _ _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
+  Endnote _ _ _ nb -> inlinesReferToPage (concat (noteParagraphs nb))
   Link _ _ is -> inlinesReferToPage is
   Lang _ _ is -> inlinesReferToPage is
   ChannelItem _ ci -> inlinesReferToPage (ciBody ci)
@@ -4721,7 +4752,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
       -- the size of the paragraph style code, at the code block (golem-cli ADR 0008)
       source = (uSource u, uSpan u)
       blockStart = spanStart (snd source)
-      emptyBox off w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf off)
+      emptyBox off w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0 source Nothing noLeaf off Nothing)
       {- pieces at offsets from the padding: (offset, text, width, Latin,
       swatch, leaf); line numbers and wrap marks are of no leaf: artifacts
       (docs/adr ADR 0183); every box of a row is at the source of its row
@@ -4730,7 +4761,7 @@ codeBlockOf atSource geom fonts measure capacity u lead code caption =
         let go _ [] = []
             go x ((o, t, w, latin, col, leaf) : rest) =
               [emptyBox off (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off)]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0 source Nothing leaf off Nothing)]
                 <> go (o + w) rest
          in Line (go 0 (sortOn (\(o, _, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) 0 (0, 0) Nothing AdjustUniform
       at leaf o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col, leaf) | p <- oneRow t]

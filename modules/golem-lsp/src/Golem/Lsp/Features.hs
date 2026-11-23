@@ -133,6 +133,10 @@ data Occurrence
 labelCommands :: [Text]
 labelCommands = ["ref-number", "ref-title", "ref-page"]
 
+-- | The commands of notes, which take a label with label= (root ADR 0422).
+noteCommands :: [Text]
+noteCommands = ["note", "sidenote", "endnote"]
+
 -- | Every occurrence in a file with its span.
 occurrences :: File -> [(SrcSpan, Occurrence)]
 occurrences (File _ bs) = concatMap block bs
@@ -168,6 +172,11 @@ occurrences (File _ bs) = concatMap block bs
                  (n, Located asp (Positional (Word l)) : _)
                    | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
                  ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
+                 -- the label of a note, its value at the end of the argument (root ADR 0422)
+                 (n, _)
+                   | n `elem` noteCommands ->
+                       [(SrcSpan f (e - BS.length (TE.encodeUtf8 l)) e, OccLabelDef l) | Located (SrcSpan f _ e) (Keyword (Located _ "label") (Word l)) <- args]
+                         <> concatMap argument [a | a@(Located _ (Positional _)) <- args]
                  _ -> concatMap argument args
              )
           <> concatMap (concatMap inline) slots
@@ -638,6 +647,8 @@ completions ws path off = case sourceOf ws path of
                                         [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
                                         (cmd : _)
                                           | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                          -- label= after the command of a note (root ADR 0422)
+                                          | cmd `elem` noteCommands, not ("label=" `T.isInfixOf` lastOpen) -> [Completion "label=" CkSettingKey]
                                           | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
                                           | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
                                         _ -> []

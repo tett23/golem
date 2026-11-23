@@ -487,6 +487,7 @@ flowchart TD
     fmt --> parser
     html --> assemble
     html --> bibliography
+    html --> unicode
     layout --> project
     layout --> unicode
     layoutspec --> pdf
@@ -1674,6 +1675,11 @@ S0 はソースファイルごとに独立して評価し、S1 は各ファイ�
 番号を持たない要素を `[ref-number ...]` で参照した場合と、題を持たない要素を `[ref-title ...]` で参照した場合は、コンパイルエラーとする（[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
 題名を識別子にすると、題を直すたびに参照が壊れるためである。
 
+注には、`@label` ではなく、注のコマンドの名前付き引数 `label` でラベルを付ける（[root ADR 0422](adr/0422-references-to-notes.md)）。
+注のラベルは、ブロックのラベルと同じ名前の集まりに入る。
+注は番号を持ち、題を持たない。
+規則は「脚注」の節の「注のラベルと参照」に書く。
+
 ルビの親文字の中の `[ref-number]` と `[ref-title]` も、ほかの場所と同じく番号と題に置き換える（[ADR 0360](adr/0360-ruby-base-references.md)）。
 親文字の中にはルビを置けないので、ルビのある題を親文字の中に写すときは、そのルビの親文字だけを写す。
 
@@ -2083,6 +2089,12 @@ G03126 から G03130 の位置はその値であり、どれもエラーとし�
 
 版面は、日本語組版の流儀に従い、文字の大きさ、一行の字数、一ページの行数、行送り、段数で定義する。
 `[page.grid]` では、それぞれ `font-size`、`characters`、`lines`、`line-pitch`、`columns` に書く。
+`character-advance` に正の寸法を書くと、字形の大きさを保ったまま和文の文字枠の送りを変える（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+省略時の送りは `font-size` と同じであり、0 は G03006 とする。
+版面の一行の長さは `(characters - 1) × character-advance + font-size` で、最後の字の後ろの送りは加えない。
+欧文の語の内部の比例幅は変えない。
+HTML と EPUB は、欧文の文字クラスでない書記素（空白を除く）を指定した送りのインライン枠に入れ、字形の大きさは変えない。
+インラインのコードと、コードの文字スタイルの中は枠に入れない。
 字数と行数を整数で決めるので、行頭と行末が字送りの格子にそろう。
 余白は、版面をページのどこに置くか（`position`）から決まる従属的な値である。
 
@@ -2129,7 +2141,7 @@ HTML と EPUB のレイアウトには反映しないが、スタイルの設定
 - 回り込ませる図版（`wrap`）：図版の位置で G07026 とする。
 
 ページを持たない出力は、段組みを出力しない。
-HTML と EPUB は版面を無視するので、CSS の `columns` も `column-count` も書かない。
+HTML と EPUB は版面の段組みを出力せず、CSS の `columns` も `column-count` も書かない。
 プレーンテキストも段組みを出力しない。
 
 ### 縦組みの数の表記
@@ -2927,6 +2939,7 @@ HTML と EPUB では、`position` が `"superscript"` に解決する文字ス�
 | --- | --- | --- | --- |
 | `weight` | 寸法 | `"0.05zw"` | 線の太さ。0 より大きい |
 | `offset` | 符号付きの寸法 | `"0pt"` | 線の位置（後述） |
+| `side` | `"left"` か `"right"` | `"right"` | 縦組みの傍線を置く側（[root ADR 0380](adr/0380-extended-japanese-composition.md)） |
 | `style` | 文字列 | `"solid"` | 線の種類。罫線の指定の 12 種 |
 | `dash` | 寸法 | `weight` の 3 倍 | 破線の線分の長さ |
 | `gap` | 寸法 | 線の種類による | 破線と点線の間隔 |
@@ -2953,17 +2966,18 @@ HTML と EPUB では、`position` が `"superscript"` に解決する文字ス�
 
 - 横組みの下線は、字面の枠の下端から `offset` だけ下に、線の上の縁を置く。
 - 横組みの打ち消し線は、字面の枠の中心から `offset` だけ上に、線の中心を置く。
-- 縦組みの下線（傍線）は、JLReq の 4.5.1 に従って字の右に引き、字面の枠の右端から `offset` だけ右に線の左の縁を置く。縦組みの左の傍線は引かない。
+- 縦組みの下線（傍線）は、JLReq の 4.5.1 に従って字の右に引き、字面の枠の右端から `offset` だけ右に線の左の縁を置く。`side = "left"` なら、字面の枠の左端から `offset` だけ左に線の右の縁を置く。
 - 縦組みの打ち消し線は、字面の枠の中心から `offset` だけ右に、線の中心を置く。
 
-縦組みで、区画（次の段落）の中に右に読みか圏点を持つ箱があるときは、区画の全体の傍線を、その区画の読みと圏点の右端のうち最も右のものから `offset` だけ右に置く。
+縦組みで、区画（次の段落）の中に右に読みか圏点を持つ箱があるときは、区画の全体の右の傍線を、その区画の読みと圏点の右端のうち最も右のものから `offset` だけ右に置く。
+`side = "left"` の傍線は、読みと圏点で動かさない。
 横組みの下線と打ち消し線は、ルビと圏点で動かさない。
 線は行送りを変えず、行分割と改ページにも影響しない（JLReq の 2.4.2）。
 版面の先頭と末尾の行の線が版面の外にはみ出しても、行の位置は変えない（JLReq の 4.5.1）。
 
 線は区画ごとに引く。
 区画とは、行ごとに、行に置いた箱のうち下線（打ち消し線）の値が等しい箱の連なりである。
-値が等しいとは、解決した線の太さ、位置、種類、破線の長さ、色、線の基準の大きさと基準線のずらしがすべて等しいことである。
+値が等しいとは、解決した線の太さ、位置、側、種類、破線の長さ、色、線の基準の大きさと基準線のずらしがすべて等しいことである。
 区画は、最初の箱の始まりから最後の箱の終わりまでとし、あいだのグルーを含む。
 別々に当てた同じ文字スタイルが隣り合えば一つの区画になり、値の違う線が隣り合えば別の区画になる。
 区画は行をまたがない。
@@ -2995,7 +3009,7 @@ HTML と EPUB では、`cs-名前` の CSS に次のように書く。
 | `weight` | `text-decoration-thickness`（`zw` は `em`、絶対の寸法は `pt`） |
 | `color` | `text-decoration-color`（スウォッチの RGB の近似）。書かなければ書かない |
 | `offset`（下線） | `text-underline-offset`。0 なら書かない |
-| 縦組みの本の下線 | `text-underline-position: right` |
+| 縦組みの本の下線 | `text-underline-position: left` か `right`。`side` に従う |
 
 両方を書いたスタイルの線の種類、太さ、色は、下線の値を書く。
 `dash` と `gap`、打ち消し線の `offset` は書かない。
@@ -3005,7 +3019,7 @@ CSS と PDF は、次の点で違う。
 - CSS の文字の飾りは子孫の要素で消せないので、`false` を写した CSS は書かず、HTML と EPUB では外側の線が消えない。
 - 範囲の最後の空白にも、CSS は線を引く。
 
-読書環境が `text-underline-position: right` を読むかは未確認である。
+読書環境が `text-underline-position` の `left` と `right` を読むかは未確認である。
 プレーンテキストは、線を出さず、字を原稿のまま出す。
 
 #### 組み込みの文字スタイル
@@ -4536,6 +4550,21 @@ PDF の縦中横は、箱の文字列を横組みでシェイピングし、横�
 縦中横は、中の字の間にトラッキングを足さず、箱の後ろに一度だけ足す（[ADR 0370](adr/0370-tracking-inline-boxes.md)）。
 HTML と EPUB の縦中横は、CSS の `text-orientation` の既定の `mixed` に任せる。
 
+`[upright: ABC]` は、縦組みの欧文を一つの書記素ごとに独立した文字枠へ入れ、回転せずに置く（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+字形を縮めずに枠の中央に置き、横組みでは普通の本文として組む。
+HTML と EPUB は `text-orientation: upright` に写す。
+
+`[warichu: 注記]` は、本文の半分の大きさで、行間のない 2 行の割注を組む（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+PDF は、各書記素をその書体の送りで測り、長い方の行幅が最小になる書記素境界で分ける。
+同じ幅になる候補では、原稿の先頭に近い境界を選ぶ。
+空の注は何も出さず、1 書記素の注は最初の行が空になる。
+割注全体を一つの分けられない箱とし、2 行を本文の中心にそろえる。
+HTML と EPUB は、半サイズの等幅枠を一書記素ずつに割り当て、同じ最小幅と同点時の規則で 2 行に分ける。
+使用する書体の幅が異なるため、PDF と分割位置が異なる場合がある。
+プレーンテキストでは、割注と正立欧文の中身を原稿の順に出す。
+これら二つのコマンドの中身は地の文に限り、ほかのコマンドを含めると G02040 とする。
+PDF の割注と正立欧文、HTML の割注と字送りは、書記素を golem-unicode の `Golem.Unicode.Grapheme` で分ける（[docs/adr/0411](adr/0411-segment-graphemes-and-words-in-haskell.md)）。
+
 役割より細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、本文から適用する。
 
 文字スタイルと段落スタイルの `kerning` と `proportional-metrics`（「style.toml」の節）は、役割の `features` の後ろに機能を足して、PDF のシェイピングに渡す（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
@@ -5100,7 +5129,7 @@ JPEG の色変換は、8-bit の Huffman 符号化による baseline、extended 
 色を指定しない場合は、この復号方式の制限を適用せず、従来と同じように元の JPEG を扱う。
 
 PDF 図版の色置換は段階的な実装である。
-現在は線、塗りと文字、Form の参照をたどった描画と、対応する画像を判定する。
+現在は線、塗りと文字、Form の参照をたどった描画、シェーディング、パターンと、対応する画像を判定する。
 線、塗りと文字の色空間は、DeviceGray、DeviceRGB、DeviceCMYK と、`cs` と `CS` の演算子が資源の名前で選ぶ CalGray、CalRGB、Lab、ICCBased、Indexed に対応する（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
 CalGray、CalRGB、Lab の色は、色を変換せずに、切り詰めた成分の値のまま分類する。
 CalGray と CalRGB の成分は 0 から 1 に、Lab の L* は 0 から 100 に、a* と b* は色空間の Range に切り詰め、有理数のまま比べる。
@@ -5156,7 +5185,30 @@ Range を持たない FunctionType 2 と 3 には、色空間の範囲を写し�
 一色の図版のシェーディングは、出力が指定色の FunctionType 2 の関数に置き換え、Background も指定色にする。
 ただし、関数のシェーディング（ShadingType 1）の関数は 2 入力なので、FunctionType 2 にできない。
 そのため、元の関数の定義を保ち、すべての出力を指定色の定数に写す。
-メッシュのシェーディング（ShadingType 4 から 7）、シェーディングのパターン、タイリングのパターンは、まだ判定できないので G08113 とする。
+
+メッシュのシェーディング（ShadingType 4 から 7）は、関数を持たなければ、すべての頂点（ShadingType 4 と 5）と、すべてのパッチの四隅（ShadingType 6 と 7）の色を集める（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+色は、標本を Decode の色成分の組（座標の範囲の先頭の 4 つを除いたもの）で写した値であり、関数のシェーディングと同じく、色空間の範囲への切り詰めをせずに分類する。
+関数を持つメッシュでは、頂点と四隅の値は関数の入力なので、関数の値を関数のシェーディングと同じ規則で集める。
+データは、ShadingType 4 では頂点ごとにバイトの境界から始まり、ほかの種類では区切らずに続くものとして読む。
+最後の頂点かパッチの後に残る 8 ビット未満は埋め草とし、それより長い残りや、途中で切れた頂点かパッチは G08113 とする。
+BitsPerCoordinate、BitsPerComponent、BitsPerFlag が PDF の許す値でないもの、Decode の長さが座標と色成分の数に合わないもの、VerticesPerRow が 2 未満のもの、フラグが種類の許す値を超えるものも、メッシュを読めないので G08113 とする。
+置き換えられるかの条件は関数のシェーディングと同じであり、DeviceRGB などで三つの出力の定義がそろうとは、すべての頂点と四隅で三つの値が等しいことである。
+関数を持たないメッシュの濃淡の置き換えでは、各頂点と各四隅の色の成分を、灰色の値を決める出力 v の標本を複製した DeviceCMYK の 4 成分にする。
+フラグ、座標、標本の値と BitsPerCoordinate、BitsPerComponent、BitsPerFlag は変えず、データは読むときと同じ詰め方で書き直す。
+その 4 成分の Decode は、元の v の Decode を、出力 k ごとに `s_k(1 - αv - β)` で写したものにする。
+一色の図版では、同じように複製した 4 成分の Decode を、出力 k ごとに `[s_k, s_k]` にして、すべての頂点と四隅を指定色にする。
+関数を持つメッシュは、データを変えず、関数だけを置き換える。
+
+パターンの色空間（`Pattern` と、下の色空間を持つ `[/Pattern 下の色空間]`）の色で塗りか線を描くときは、そのパターンが描く色を集める（[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)）。
+パターンの名前は、`scn` か `SCN` を実行した内容の資源で引き、その色を引き継いだ Form の中で描くときも、Form の資源ではなく、この資源で引く。
+色付きのタイリングパターン（PaintType 1）は、パターンの内容を、初期の描画の状態から Form と同じ規則で集め、内容を置き換えたパターンで描く。
+色なしのタイリングパターン（PaintType 2）は、`scn` か `SCN` で渡した下の色空間の色を集める。
+置き換えでは、色空間を `[/Pattern /DeviceCMYK]` に変え、成分を写した 4 成分を渡し、パターンの内容は変えない。
+シェーディングパターンは、シェーディングの規則で集めて置き換え、Matrix などのほかの値を保つ。
+シェーディングパターンの ExtGState には、`gs` で選んだ ExtGState と同じ BM、TR、TR2 の検査を当てはめる。
+オーバープリントは、その ExtGState を描画の状態に当てはめた後の OPM と、その描き方のオーバープリントで判定する。
+置き換えた色付きのタイリングパターンとシェーディングパターンは、新しい名前で資源に加え、そのパターンで描く演算子（`f`、`S`、`Tj` など）の直前に、新しい名前の `scn` か `SCN` で選び直す。
+資源に無いパターンや、PaintType と色空間の合わないパターン（下の色空間の無い色空間で選んだ PaintType 2 など）は G08113 とする。
 
 PDF 図版の透明の合成は、通常の合成（ExtGState の BM が Normal か Compatible で、TR と TR2 が Identity か Default）の場合だけ扱う。
 通常の合成は各色の一次式なので、物体ごとに色を置き換えた結果は、合成した濃淡を置き換えた結果と一致する。
@@ -6911,8 +6963,8 @@ PDF/X-4 を宣言しない場合、次のものを文書の中の行先へのリ
 
 | リンクの元 | 矩形 | 行先 |
 | --- | --- | --- |
-| `[ref-number]`、`[ref-title]` | 置き換わった文字 | ラベルを付けたブロック |
-| `[ref-page]` | ページ番号の文字 | ラベルを付けたブロック |
+| `[ref-number]`、`[ref-title]` | 置き換わった文字 | ラベルを付けたブロック、注のラベルでは注の印の行（[root ADR 0422](adr/0422-references-to-notes.md)） |
+| `[ref-page]` | ページ番号の文字 | ラベルを付けたブロック、注のラベルでは注の印の行 |
 | 本文の脚注と章末の注の印 | 印 | 注の本文の最初の行 |
 | 注の側の印（脚注と章末の注） | 注の側の印 | 本文の注の印の行 |
 | PDF の目次と本文の `@toc` の項目 | 項目の行ごとに、最初の箱からページ番号の終わりまで（リーダーを含む） | 見出し |
@@ -7129,9 +7181,9 @@ UTF-8 として読めない表のファイルは、原稿と同じく整形せ�
 LSP は次の機能を持つ。
 
 - diagnostics（コンパイルエラーと lint）。重大度ごとの載せ方は下に書く。
-- 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
+- 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。注の `label=` もラベルの定義として扱う（[root ADR 0422](adr/0422-references-to-notes.md)）。
 - ラベルの名前変更（章をまたいで一括で書き換える）と、`.emet` の名前の変更（[docs/adr/0170](adr/0170-emet-editor-support.md)）
-- 補完（組み込みとプラグインのコマンドの名前、ラベル、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）
+- 補完（組み込みとプラグインのコマンドの名前、ラベル（注のラベルを含む）、注のコマンドの後の `label=`（[root ADR 0422](adr/0422-references-to-notes.md)）、import のパス、`[color ...]` のスウォッチ、`[style ...]` の文字スタイル、行頭の `@style` の段落スタイル、`@page-break` と `@page-lines` の値、`@manifest` と `@style-def` のキーと値、式の中の組み込みの定数と関数、`meta` と `meta.roles` のキー、式の中の `vars` と `[vars]` の表の中のキー、`style.toml` と `preflight.toml` のキーと値、`manifest.toml` の列挙できる値、[Golem ADR 0347](adr/0347-revise-complete-manifest-values-and-manuscript-expressions.md)）
 - ホバーによる `[= ...]` の評価結果の表示
 - 整形（fmt を呼び出す）
 - 見出しによる文書のアウトラインと、`.emet` の宣言のアウトライン（[docs/adr/0170](adr/0170-emet-editor-support.md)）
@@ -7459,6 +7511,52 @@ Golem は決定性を重視する[note: 同じ入力からバイト単位で同�
 
 どちらの書き方でも、注の本文は段落の並びであり、段落の中はインラインの要素に限る。
 リストやコードなどの段落でないブロックを注の本文に置くことは扱わない（[docs/roadmap.md](roadmap.md)）。
+
+#### 注のラベルと参照
+
+脚注、傍注、章末の注には、名前付き引数 `label` でラベルを付けられる（[root ADR 0422](adr/0422-references-to-notes.md)）。
+ラベルを付けた注は、`[ref-number ...]` で番号を、`[ref-page ...]` で印のあるページを参照できる。
+本文に「注 3 を参照」と番号を手で書くと、注を足したときに番号がずれるためである。
+
+```
+訳語は初版に従った[note label=first-edition: 原書の初版の表記に従った。]。
+（中略）
+表記の方針は、注[ref-number first-edition]に書いた。
+```
+
+ラベルは、次の規則に従う。
+
+- `label` の値は、`@label` と同じ字（英小文字、数字、`-`、`_`）の語で書く。誤りは [G02026](diagnostics.md#g02026) とし、注はラベルのないまま残す。
+- `[note 名前]` と `[endnote 名前]` にも `label` を書ける。`@note` と `@endnote` の定義には、ラベルを付けない。
+- `@note 名前` と `@endnote 名前` の名前はファイルの中の名前であり、ラベルではない。`[ref-number 名前]` でこの名前を引くと、存在しないラベルへの参照（[G04003](diagnostics.md#g04003)）とする。
+- 注のラベルは、`@label` のラベルと同じ名前の集まりに入る。重複は、ブロックのラベルの重複と同じく [G04001](diagnostics.md#g04001) とする。
+- 注は題を持たない。`[ref-title ...]` で注を参照すると、題を持たない要素の参照（[G04006](diagnostics.md#g04006)）とする。
+
+`[ref-number ラベル]` の値は、その出力で注の印に振った番号に等しい数（Number）である。
+`numbering = "page"` の PDF では、物理ページごとの番号である。
+ページを持たない出力では、本の通し番号である。
+このとき、[G03259](diagnostics.md#g03259) は今までどおり本に一度だけ出し、参照があっても増やさない。
+参照には、印の書式を写さない。
+`mark-format` の番号の前後の字も、`{n:kanji}` などの番号の表記も写さず、番号はほかの数と同じ表記で組む。
+書き手が、参照の前後に「注」などの字を書く。
+縦組みでは、ほかの数と同じく `[numbers]` の `vertical` の表記で組む。
+
+`numbering = "page"` の PDF で脚注か傍注を参照する `[ref-number]` は、番号の幅を予約する。
+予約の幅は、参照の箇所の実効のスタイルと縦横で、前後の字を付けずに 1 からチャネルの注の総数までの番号を測った最大の幅である。
+これは、次の「ページごとの注の番号」の印の予約と同じ考え方である。
+参照の番号は一つの箱として組み、本文の注の印と同じく、直前の字との間で行を分けず、アキ量のセットの空きを入れない。
+番号はページが決まった後で振り直し、箱の幅は変えない。
+章末の注（`[endnote]`）のチャネルはページごとの番号を取らないので、その参照は幅を予約しない。
+`placement = "chapter-end"` の脚注は脚注のチャネルなので、その参照は幅を予約する。
+
+`[ref-page ラベル]` の値は、注の印のあるページの表記である。
+注の印のページは、索引の印と同じく、ページ番号が変わらなくなるまでレイアウトを繰り返して求める（「ラベルと相互参照」の節）。
+ページを持たない出力の `[ref-page ...]` は、ブロックを指すときは題を書き、注を指すときは `[ref-number ...]` と同じ番号を書く。
+注は題を持たないので、題の代わりに番号を書く。
+
+注への参照は、注の印へのリンクにする。
+PDF では、注の印のある行を行先とする。
+HTML と EPUB では、ラベルを付けた注の印の直前に、ラベルを id とする空の `<span>` を置き、参照はそこへの `<a href>` にする。
 
 #### 注の番号
 
@@ -8639,6 +8737,8 @@ NaN と、正と負の無限大は有理数を持たないので、G06100 のエ
 
 ブロックは `[span, label, lang, body]` であり、`lang` はブロックの言語（`@lang`）のタグか null である（[docs/adr/0187](adr/0187-inline-language-switch.md)）。
 言語の区間は `[21, span, lang, inlines]` である。
+割注は `[27, span, text]`、正立欧文は `[28, span, text]` である（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+ABI は [ADR 0052](adr/0052-plugin-abi-version-bump-rule.md) に従い、未リリースの 9 のままとする。
 プラグインの SDK の `Block` の `lang` と `Inline::Lang { span, lang, body }` も、同じバイト列を読み書きする。
 
 文書の組み立てが番号と題に置き換えた `[ref-number]` と `[ref-title]` は、`[22, span, ref-kind, label, inlines]`（Haskell では `Resolved !SrcSpan !RefKind !Text [InlineF r]`）で表す（[docs/adr/0215](adr/0215-ref-number-and-ref-title-as-reference.md)）。
@@ -8677,6 +8777,9 @@ HTML、EPUB、プレーンテキストは、中のインラインをほかのイ
 プラグインの SDK の `Inline::Cite` は `items: Vec<CiteItem>` を持ち、位置の種類を文字列のまま通す。
 
 脚注は `[23, span, uint64, [+ block]]`、傍注は `[24, span, uint64, [+ block]]` であり、本文はブロックの並びである（[docs/adr/0263](adr/0263-notes-with-more-than-one-paragraph.md)）。
+脚注、傍注、章末の注は、ラベルを持つときだけ、本文の後に五つめの要素としてラベルの文字列を持つ（`? label: tstr`、[root ADR 0422](adr/0422-references-to-notes.md)）。
+ラベルのない注のバイト列は、ラベルを足す前と同じである。
+プラグインの SDK の `Inline::Note`、`Inline::Sidenote`、`Inline::Endnote` は、`label: Option<String>` を持つ。
 以前の脚注と傍注のタグ 12 と 13 は廃止し、使い回さない。
 `Golem.Doc.Validate` は、脚注の本文が段落スタイルのない段落の一つ以上の並びであることと、傍注の本文が段落スタイルのない段落をちょうど一つ持つことを検査する。
 本文の段落のインラインには、ほかのインラインと同じ検査（改行の位置、リンク、言語のタグなど）を当てる。

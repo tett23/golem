@@ -241,6 +241,8 @@ HTML と EPUB は、既定ではフォントのファイルを同梱せず、役
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 `[paragraph-styles.verse]` の `line-number-interval = 5` で、空行を除く原稿の 5 行目ごとに行番号を付ける（[root ADR 0384](docs/adr/0384-verse-line-numbers.md)）。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+`[warichu: 注記]` で小さい二行の割注を、`[upright: ABC]` で縦組みの正立欧文を書ける。
+傍線の `side` で左右を選び、`[page.grid]` の `character-advance` で字形の大きさを変えずに字送りを指定する（[root ADR 0380](docs/adr/0380-extended-japanese-composition.md)）。
 字下げなどの長さ、アキ量、行数を複数の欄で共有するときは、`style.toml` の `[values.length]`、`[values.aki]`、`[values.count]` に名前を付ける。
 たとえば `[values.length]` の `indent = "1zw"` は、段落スタイルの `indent = "indent"` と原稿の `@style-def paragraph letter indent=indent` から参照できる（[ADR 0346](docs/adr/0346-revise-named-layout-values.md)）。
 
@@ -355,6 +357,7 @@ PDF の脚注と章末の注の本文は `[notes]` の `body-style` の段落ス
 脚注だけの上書きは `[notes.footnote]` の `body-style`、章末注の上書きは `[notes.chapter-end]` の `body-style` と `heading-style` で指定する（[root ADR 0404](docs/adr/0404-separate-footnote-and-chapter-end-styles.md)）。
 `[note]` と別に、どの出力でも章の終わりの一覧に出す注 `[endnote: 本文]` を書ける（[root ADR 0412](docs/adr/0412-a-separate-channel-for-endnotes.md)）。
 番号と印は `[endnotes]` で決め、一覧は見出し「後注」で、章に脚注の一覧があればその後に置く。
+注には `[note label=名前: 本文]` のようにラベルを付け、`[ref-number 名前]` で印の番号を、`[ref-page 名前]` で印のあるページを参照できる（[root ADR 0422](docs/adr/0422-references-to-notes.md)）。
 
 注の番号をページごとに振る場合、HTML、EPUB、テキストは警告して本の通し番号で生成する。
 PDF の章末注一覧で番号が重なる場合も警告し、PDF のページ別番号を保つ（[root ADR 0402](docs/adr/0402-define-page-local-note-fallback-diagnostics.md)）。

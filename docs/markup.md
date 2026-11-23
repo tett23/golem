@@ -1394,6 +1394,18 @@ CMYK の値を直接書くことはできない。
 数を縦中横にする場合は、`[number-text ...]` の `style=tcy` を使う。
 本の既定（`style.toml` の `[numbers]` の `vertical`）が `tcy` か `auto` なら、`##10##` と書いてもよい（[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）。
 
+### 割注と正立欧文
+
+`[warichu: 注記]` は、小さい字の 2 行に分ける割注である（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+本文の半分の大きさを使い、長い方の行幅が最小になる書記素境界を選び、同点なら先頭に近い境界を選ぶ。
+一つの箱として組むため、割注の中では改行しない。
+PDF は書体の送りで測り、HTML と EPUB は一書記素ごとの等幅枠を使う。
+
+`[upright: ABC]` は、縦組みで欧文を一書記素ずつ回転せずに並べる（[root ADR 0380](adr/0380-extended-japanese-composition.md)）。
+横組みでは普通の本文と同じである。
+二つのコマンドの中には地の文だけを書け、コマンドなどを入れると G02040 になる。
+プレーンテキストには、中身を元の順に出す。
+
 ### 強調
 
 ```
@@ -1548,6 +1560,8 @@ HTML と EPUB とプレーンテキストには、U+00AD をそのまま書く�
 番号を持たない要素（`@nonumber` の見出しや段落など）を `[ref-number ...]` で参照した場合と、題を持たない要素（段落や表など）を `[ref-title ...]` で参照した場合も、コンパイルエラーとなる（[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
 番号を持つのは `@nonumber` のない見出し、`@nonumber` のない図版、`@nonumber` のない、キャプションを付けたコードブロックであり、題を持つのは見出し、図版、キャプションを付けたコードブロックである。
 キャプションのないコードブロックは番号も題も持たない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+注には、注のコマンドの `label` でラベルを付ける。
+ラベルを付けた注は番号を持ち、題を持たない（「注のラベルと参照」の節）。
 相互参照のコマンドは散文スロットを取らず、`: ` の後に本文を書くとコンパイルエラーとなる（[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)）。
 `[ref-title ...]` で写した題には、索引の印とプラグインのチャネルの項目（用語集の `[term]` など）を含めない。
 それらは見出しの位置だけで数え、写しの位置は索引や一覧に載らない（[docs/adr/0145](adr/0145-title-copies-drop-anchor-inlines.md)）。
@@ -1612,6 +1626,28 @@ PDF のページ下の脚注では、二つめ以降の段落を新しい行か�
 PDF では版面の外の傍注の領域に置かれ、ほかの媒体では段落の直後などに置かれる。
 v1 では横組みでだけ使え、縦組みで使うとコンパイルエラーになる。
 PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文や図版のキャプションの中に置いた場合もコンパイルエラーになる（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
+
+### 注のラベルと参照
+
+```
+訳語は初版に従った[note label=first-edition: 原書の初版の表記に従った。]。
+表記の方針は、注[ref-number first-edition]に書いた。
+```
+
+`[note]`、`[sidenote]`、`[endnote]` には、名前付き引数 `label` でラベルを付けられる（[root ADR 0422](adr/0422-references-to-notes.md)）。
+ラベルを付けた注は、`[ref-number ...]` で番号を、`[ref-page ...]` で印のあるページを参照できる。
+
+- `label` の値は、`@label` と同じ字（英小文字、数字、`-`、`_`）の語で書く。誤りは G02026 になる。
+- `[note 名前 label=ラベル]` と `[endnote 名前 label=ラベル]` のように、`@note` と `@endnote` の本文を引く形にも書ける。`@note` と `@endnote` の名前はラベルではないので、`[ref-number 名前]` では引けない（G04003）。
+- 注のラベルは `@label` のラベルと同じ名前の集まりに入り、重複は G04001 になる。
+- 注は題を持たないので、`[ref-title ...]` で注を参照すると G04006 になる。
+
+`[ref-number ...]` は、その出力で注の印に振った番号を返す。
+印の書式（`*` などの前後の字と、`{n:kanji}` などの番号の表記）は写さず、番号はほかの数と同じ表記で組む。
+「注」などの字は参照の前後に書く。
+PDF で注の番号をページごとに振るときは、ページごとの番号を返し、番号の幅を予約して組む。
+HTML、EPUB、プレーンテキストでは、本の通し番号を返す。
+`[ref-page ...]` は、PDF では注の印のあるページの番号を返し、ページを持たない出力では注の番号を返す。
 
 ### 索引
 

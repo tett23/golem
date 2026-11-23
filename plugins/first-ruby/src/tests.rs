@@ -71,7 +71,7 @@ fn a_ruby_of_the_source_counts() {
 
 #[test]
 fn a_note_counts_where_its_mark_is() {
-    let note = |xs| Inline::Note { span: SP, number: 1, body: note_body(SP, xs) };
+    let note = |xs| Inline::Note { span: SP, number: 1, label: None, body: note_body(SP, xs) };
     let (bs, _) = run(vec![para(vec![t("あ"), note(vec![t("東京")]), t("東京")])], TSV);
     assert_eq!(bs, vec![para(vec![t("あ"), note(vec![r(&[("東京", Some("とうきょう"))])]), t("東京")])]);
 }

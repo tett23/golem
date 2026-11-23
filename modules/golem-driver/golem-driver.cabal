@@ -197,6 +197,7 @@ test-suite golem-driver-page-test
     LinkSpec
     NestedFiguresSpec
     NoteBodyStylesSpec
+    NoteRefsSpec
     NotesSpec
     NumberTitleSeparatorSpec
     OverflowSpec
@@ -232,6 +233,7 @@ test-suite golem-driver-output-test
     ColophonSpec
     ComplexFixtureSpec
     EmetSamplesSpec
+    ExtendedJapaneseOutputsSpec
     ForceTableSpec
     GenericFontsSpec
     InMemorySpec

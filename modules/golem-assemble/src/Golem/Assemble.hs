@@ -10,6 +10,8 @@ module Golem.Assemble
     SeparatorStroke (..),
     HeadingInfo (..),
     LabelTarget (..),
+    NoteChannelKind (..),
+    NoteTarget (..),
     TocEntry (..),
     IndexGroup (..),
     IndexLocator (..),
@@ -44,7 +46,7 @@ import Data.Graph (SCC (..), stronglyConnComp)
 import Data.List (groupBy, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isNothing, listToMaybe)
+import Data.Maybe (fromMaybe, isNothing, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -115,7 +117,23 @@ data LabelTarget = LabelTarget
     ltNumber :: !(Maybe Inline),
     ltTitle :: ![Inline],
     ltAnchor :: !Text,
-    ltFile :: !FileId
+    ltFile :: !FileId,
+    -- | the channel and the number in the book of a note the label is on (root ADR 0422); Nothing for a block
+    ltNote :: !(Maybe NoteTarget)
+  }
+  deriving stock (Eq, Show)
+
+-- | The channels of notes a label can be on (root ADR 0422).
+data NoteChannelKind = FootnoteChannel | SidenoteChannel | EndnoteChannel
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+{- | A note a label is on (root ADR 0422): its channel and its number as the
+assembly numbered it, which the PDF numbers again on its pages when the
+notes are numbered per page.
+-}
+data NoteTarget = NoteTarget
+  { ntChannel :: !NoteChannelKind,
+    ntNumber :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -304,11 +322,11 @@ blockNotes outer (Block _ _ blang body) = case body of
 the place of its mark, if that has one (docs/adr ADR 0187).
 -}
 documentNotes :: Document -> [(SrcSpan, Int, [[Inline]])]
-documentNotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Note sp n body) <- concatMap (blockNotes Nothing) bs]
+documentNotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Note sp n _ body) <- concatMap (blockNotes Nothing) bs]
 
 -- | The endnotes of a document in order, as 'documentNotes' gives the notes (root ADR 0412).
 documentEndnotes :: Document -> [(SrcSpan, Int, [[Inline]])]
-documentEndnotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Endnote sp n body) <- concatMap (blockNotes Nothing) bs]
+documentEndnotes (Document _ bs) = [(sp, n, [inLang sp (pl <|> l) is | Block _ _ pl (Paragraph _ is) <- body]) | (l, Endnote sp n _ body) <- concatMap (blockNotes Nothing) bs]
 
 {- | The paragraphs of the body of a note with their inlines changed in
 an applicative (docs/adr/0263); the other blocks as they are.
@@ -334,6 +352,8 @@ inlineText = \case
   Lang _ _ xs -> foldMap inlineText xs
   Resolved _ _ _ xs -> foldMap inlineText xs
   Tcy _ t -> t
+  Warichu _ t -> t
+  Upright _ t -> t
   Number _ n _ -> T.pack (show n)
   _ -> ""
 
@@ -450,7 +470,8 @@ assemble cfg evalDeferred docs0 =
           (sp, (Nothing, _)) <- Map.toList numbered
         ]
       figureErrors = outside (acFigureFormat cfg) (nsFigures ns) <> outside (acListingFormat cfg) (nsListings ns) <> outside (acTableFormat cfg) (nsTables ns)
-      (labels, labelDiags) = collectLabels ns docs
+      -- the labels of notes take the numbers the notes take in the book (root ADR 0422)
+      (labels, labelDiags) = collectLabels ns (renumberNotes cfg docs)
       chapterCount = toInteger (length [() | HeadingInfo {hiLevel = 1, hiNumbers = Just _} <- Map.elems (nsHeadings ns)])
       dv = DocValues chapterCount
       (docs', (refd, resolveDiags)) = runState (mapM (resolveDoc labels dv evalDeferred) docs) (Set.empty, [])
@@ -659,12 +680,21 @@ allBlocks = concatMap go
 collectLabels :: NumSt -> [Document] -> (Map Text LabelTarget, [Diagnostic])
 collectLabels ns docs = foldl add (Map.empty, []) targets
   where
+    -- the label of each block, then those of the notes in it, in the order of the book (root ADR 0422)
     targets =
-      [ (l, LabelTarget sp num title (headingAnchor (Just l) sp) fid)
+      [ t
       | Document fid bs <- docs,
-        Block sp (Just l) _ body <- allBlocks bs,
-        let (num, title) = describe sp body
+        Block sp l _ body <- allBlocks bs,
+        t <-
+          [(name, LabelTarget sp num title (headingAnchor (Just name) sp) fid Nothing) | let (num, title) = describe sp body, Just name <- [l]]
+            <> [(name, LabelTarget nsp (Just (Number nsp (toInteger n) Nothing)) [] name fid (Just (NoteTarget ch n))) | (nsp, ch, n, name) <- mapMaybe noteLabel (bodyInlines body)]
       ]
+    -- a note has a number and no title (root ADR 0422)
+    noteLabel = \case
+      Note nsp n (Just name) _ -> Just (nsp, FootnoteChannel, n, name)
+      Sidenote nsp n (Just name) _ -> Just (nsp, SidenoteChannel, n, name)
+      Endnote nsp n (Just name) _ -> Just (nsp, EndnoteChannel, n, name)
+      _ -> Nothing
     describe sp = \case
       Heading _ _ is -> case Map.lookup sp (nsHeadings ns) of
         Just HeadingInfo {hiNumbers = Just [n], hiTitle = t} -> (Just (Number sp n Nothing), t)
@@ -765,11 +795,11 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
       Lang sp t xs -> pure . Lang sp t <$> inls xs
       Resolved sp k l xs -> pure . Resolved sp k l <$> inls xs
-      Note sp n body -> pure . Note sp n <$> traverseNoteBody inls body
+      Note sp n lbl body -> pure . Note sp n lbl <$> traverseNoteBody inls body
       -- the body of an item resolves like the text around it (golem-doc ADR 0007)
       ChannelItem sp c -> (\b -> [ChannelItem sp c {ciBody = b}]) <$> inls (ciBody c)
-      Sidenote sp n body -> pure . Sidenote sp n <$> traverseNoteBody inls body
-      Endnote sp n body -> pure . Endnote sp n <$> traverseNoteBody inls body
+      Sidenote sp n lbl body -> pure . Sidenote sp n lbl <$> traverseNoteBody inls body
+      Endnote sp n lbl body -> pure . Endnote sp n lbl <$> traverseNoteBody inls body
       other -> pure [other]
 
 {- | The notes and the sidenotes numbered again over the range of
@@ -807,18 +837,18 @@ renumberNotes cfg docs = evalState (zipWithM doc (zip (restarts (acNoteNumbering
     inls = mapM inl
     inl :: Inline -> State (Int, Int, Int) Inline
     inl = \case
-      Note sp _ xs -> do
+      Note sp _ lbl xs -> do
         (n, m, e) <- get
         put (n + 1, m, e)
-        Note sp (n + 1) <$> traverseNoteBody inls xs
-      Sidenote sp _ xs -> do
+        Note sp (n + 1) lbl <$> traverseNoteBody inls xs
+      Sidenote sp _ lbl xs -> do
         (n, m, e) <- get
         put (n, m + 1, e)
-        Sidenote sp (m + 1) <$> traverseNoteBody inls xs
-      Endnote sp _ xs -> do
+        Sidenote sp (m + 1) lbl <$> traverseNoteBody inls xs
+      Endnote sp _ lbl xs -> do
         (n, m, e) <- get
         put (n, m, e + 1)
-        Endnote sp (e + 1) <$> traverseNoteBody inls xs
+        Endnote sp (e + 1) lbl <$> traverseNoteBody inls xs
       Kenten sp s xs -> Kenten sp s <$> inls xs
       Color sp c xs -> Color sp c <$> inls xs
       CharStyle sp c xs -> CharStyle sp c <$> inls xs
@@ -1041,9 +1071,9 @@ bodyInlines body = concatMap flatten $ case body of
         Link _ _ xs -> concatMap flatten xs
         Lang _ _ xs -> concatMap flatten xs
         Resolved _ _ _ xs -> concatMap flatten xs
-        Note _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
-        Sidenote _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
-        Endnote _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
+        Note _ _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
+        Sidenote _ _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
+        Endnote _ _ _ bs -> concatMap flatten (concat (noteParagraphs bs))
         _ -> []
 
 {- | Inlines in a language span of the language of their block, if it has

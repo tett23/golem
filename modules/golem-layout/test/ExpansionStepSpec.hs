@@ -16,7 +16,7 @@ import Test.Tasty.HUnit
 
 -- | A box of Latin text, which takes the glyph expansion, of a width in sp.
 word :: Sp -> Item
-word w = Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0)
+word w = Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0 noBoxSource Nothing noLeaf 0 Nothing)
 
 -- | The end of a paragraph: no break, the glue that fills the last line, the forced break.
 finish :: [Item]
