@@ -1,10 +1,18 @@
-# Golem [ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の Lean 証明
+# [root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の Lean 証明
 
-このディレクトリは、[Golem ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の改ページ証明を作る場所である。
-`check.sh` は Alloy の 42 コマンドと期待値の一覧が一致することを確かめ、各コマンドに対応する Lean の宣言を要求する。
-42 コマンドすべてに、書き写した述語の上で述べた名前空間 `Alloy` の中の同名の定理も要求する。
+このディレクトリは、[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の改ページ証明を作る場所である。
+`check.sh` は Alloy の 42 コマンドと期待値の一覧が一致することを確かめ、各コマンドと同名の `theorem` を要求する。
+同名の計算用関数だけではこの検査に通らない。
+42 コマンドすべてについて、Alloy のモデルを Lean へ書き写した述語（「元の述語の書き写し」の節）の上で述べた、名前空間 `Alloy` の中の同名の定理も要求する。
+移行はまだ完了していない。
+書き写しと元の Alloy の述語の同値性、名前空間の外の既存の宣言と書き写しの同値性を含め、未完の項目は「未完の項目」の節に挙げる。
 
-現在の `Pagination.lean` には、42 コマンドすべてと同名の宣言がある。
+この文書では、Alloy のモデルの項目を次の語で呼ぶ。
+`Text` は本文、`Figure` は図版、`Space` はスペース、`Blank` は行アキ、`Need` は `need-lines` である。
+P1 は Alloy の `needMet` で、`need-lines` の次のブロックを段の先頭でない位置に置くなら、段の容量からそのブロックより前に置いた行（スペースと行アキを除く）を引いた残りが、要求の行数以上であることを求める。
+P7 は Alloy の `spaceKeeps` で、`need-lines` が記述位置で満たされ、次のブロックの最初の部分がスペースの後に収まるなら、そのブロックを段に置くことを求める。
+
+名前空間の外の宣言は、それぞれ独自の抽象化の上で述べた命題である。
 `blankFigureOrder` は、本文を置かない境界の配置を構成し、図版が 0〜2 枚で行アキが 0〜1 個の入力について、図版規則、行アキ規則、段容量を同時に満たすことを証明する。
 `blankRules25` は、空段の先頭内容を本文、図版、内容なしに分け、旧行アキ規則と段容量、本文と図版の順序、空段から先頭内容を送らない規則を同時に満たす配置を証明する。
 `figureEmpty` と `figureOrder` は行アキのない入力をこの証明から導く。
@@ -17,8 +25,6 @@
 図版が原稿位置で収まる場合はその行数を確保し、残りの行に本文を詰める。
 図版がその位置で収まらない場合は本文だけを詰める。
 元の Alloy コマンドをスコープ 5、配置 14 で検査しても反例は 0 件だった。
-`check.sh` は各コマンドと同名の `theorem` を探す。
-同名の計算用関数だけではこの検査に通らない。
 
 `needFigure` では、容量 5 行の段を 4 行使い、2 行を求める `need-lines` の直後に高さ 1 行の図版を置く。
 旧図版規則と図版順を満たす配置は図版を置き、P1 を満たす配置は図版を送る。
@@ -26,7 +32,6 @@
 同じ原稿の全 2 配置を元の Alloy 述語で調べてもこの衝突を再現した。
 Haskell の `paginate 1 5` に本文 4 行と高さ 1 行の図版を渡すと、本文と図版を同じページに置いた。
 本文と図版の間に `FNeedLines` で 2 行を求めると、本文 4 行は 1 ページ目に残り、図版だけが 2 ページ目に移った。
-
 
 `decidedSome` は、容量 3 行の空段に改丁見出し 1 行と 1 行段落を続け、両方を置く配置を証人とする。
 手元の Alloy CLI で同じ容量、使用済み行数 0、本文の位置 0、1、区切り位置 2 を固定して実行し、解を確認した。
@@ -122,9 +127,9 @@ Alloy でも同じ入力と配置 3 通りを固定して解を確認した。
 `needSpaceSome` は、容量 3 行、使用済み 1 行、`need-lines` 2 行、スペース 1 行、段落 1 行の証人を示す。
 両方の入力は Alloy でも固定して解を確認した。
 
-さらに、`need-lines`、空き、`need-lines`、本文 1 行という形では、任意の段容量と使用済み行数について、二つの `need-lines` の大きい値を判定すれば P1 と P7 を同時に満たす区切りがあることを証明した。
-区切り 0、1、2 で空きと本文が置かれる位置は Lean の原稿列から計算して照合した。
-後続ブロックの先頭部分を任意の正の行数に広げ、空段では先頭の空きを送らない規則も加えた場合に、同じ形の区切りが存在することを証明した。
+さらに、`need-lines`、スペース、`need-lines`、本文 1 行という形では、任意の段容量と使用済み行数について、二つの `need-lines` の大きい値を判定すれば P1 と P7 を同時に満たす区切りがあることを証明した。
+区切り 0、1、2 でスペースと本文が置かれる位置は Lean の原稿列から計算して照合した。
+後続ブロックの先頭部分を任意の正の行数に広げ、空段では先頭のスペースを送らない規則も加えた場合に、同じ形の区切りが存在することを証明した。
 
 図版を除いた場合には、任意長の本文、スペース列と任意の位置にある行アキ一つに対して配置を構成した。
 各本文にかかる `need-lines` は原稿順にまとめ、容量と P1 を満たす最長の本文の接頭部を選ぶ。
@@ -140,7 +145,7 @@ Alloy でも同じ入力と配置 3 通りを固定して解を確認した。
 このとき `needNext` の対象は、図版の配置を決める前に定まり、`placedBefore` が数える図版の高さは先行する全図版の高さの和に等しい。
 本文の区切りを固定し、行アキより前に置いた本文があるかを与えると、段頭の行アキ判定と配置する図版の集合も同時に決まる。
 行アキを段頭と仮定して先行図版を調べても、その先行図版の配置は行アキを置くかどうかに依存しない。
-`needSpaceNone` と `needMoreNone` では、段容量と P1 を満たし、もう 1 行延ばせない本文の区切りを選ぶ。
+名前空間の外の `needSpaceNone` と `needMoreNone` では、段容量と P1 を満たし、もう 1 行延ばせない本文の区切りを選ぶ。
 この区切りで P7 の条件を満たす本文や図版を段の外に置くと、さらに 1 行延ばせるか、その図版を図版規則が段の中に置くことになり、矛盾する。
 図版 0〜2 枚と行アキ 0〜1 個の各入力について、同じ配置が段容量、段頭の規則、図版の順序、P1、P7 を同時に満たす。
 `needSpaceNone` は 2 行を要求する `need-lines` が 0 個か 1 個のときに適用する。
@@ -234,9 +239,9 @@ Haskell の `paginate 1 4` に見出し 1 行、本文 1 行、5 行の高さの
 見出しがなく、空の本文行、5 行の高さの本文、空の本文行が続く入力では、本文の 5 行を 1 ページに出力して終了した。
 
 脚注の `splitNotes` は脚注 1 件が収まれば残りのリストを処理し、収まらなければ脚注を分割するか、後続を含めて次の段に送る。
-Lean は、空き行数が負の場合を含め、表示分と繰り越し分を順に並べると元の全脚注の各行が 1 回ずつ現れることを証明する。
-`carryNote` が 0 行以上の空きに置く部分と次に残す部分も、脚注番号と行位置を保存する。
-1 行以上の空きがある段でさらに繰り越すなら、残りの行数は減る。
+Lean は、段の残りの行数が負の場合を含め、表示分と繰り越し分を順に並べると元の全脚注の各行が 1 回ずつ現れることを証明する。
+`carryNote` が 0 行以上の残りの行に置く部分と次に残す部分も、脚注番号と行位置を保存する。
+1 行以上の残りの行がある段でさらに繰り越すなら、残りの行数は減る。
 
 Haskell の `paginate 1 5` で本文 1 行に 1 行、5 行、2 行の脚注を順につけた。
 1 ページ目は最初の脚注と 2 個目の先頭 2 行を、2 ページ目は 2 個目の残り 3 行を置いた。
@@ -257,7 +262,7 @@ Haskell の `paginate 1 5` で本文 1 行に 1 行、5 行、2 行の脚注を�
 Haskell の `advance` は出力スロットと脚注を空にしてから `placeDeferred` を呼び、段頭のボックスをその後で開く。
 下の回帰例では、同じ 2 段構成と予約行数を Lean に渡し、2 段目を経て転置図版の次の 3 ページ目で脚注と図版の待ち行列が空になることを確かめた。
 
-予約済みの脚注がある段では、空き行数を 0 行で下限にする必要がある。
+予約済みの脚注がある段では、段の残りの行数を 0 行で下限にする必要がある。
 5 行のページを一時的に 8 行増やし、5 行の脚注を置いてから 2 段組みに切り替えると、後の段で 6 行が予約されたまま容量が 5 行に戻る。
 8 行の次の脚注はこの段までに 5 行を表示済みである。
 修正前の Haskell 実装は、続きの開始位置 5 で長さ−2 を記録し、転置図版の次のページに開始位置 3 から 3 行を置いた。
@@ -266,7 +271,7 @@ Haskell の `advance` は出力スロットと脚注を空にしてから `place
 Lean は任意の整数の段容量、予約行数、区切り行数で、繰り越す脚注の開始位置が後戻りせず、すべての行を順に保つことを証明する。
 
 原稿の終端では、保留した行アキと待機図版が両方あるときに一度だけ先に改段し、その後で脚注と図版を最後まで置く。
-`I5_measured_flow_eof` は、この手順で箱の内外の図版を原稿順に一度ずつ出すことを、段の容量、段の先頭位置、脚注区切りの行数から求めた空きで確かめる。
+`I5_measured_flow_eof` は、この手順で箱の内外の図版を原稿順に一度ずつ出すことを、段の容量、段の先頭位置、脚注区切りの行数から求めた残りの行数で確かめる。
 `I4_flush_figures` は、回り込み図版の前では待機図版がなくなった時点で改段を止め、残る脚注は次の本文の配置に渡せることを示す。
 
 この証明の基にした Haskell の `Flow` 22 種は、通常図版、転置図版、箱と、それ以外の 19 種に分けられる。
@@ -286,10 +291,14 @@ Lean は任意の整数の段容量、予約行数、区切り行数で、繰り
 改段後に行アキを置き直す場合は、元の要求行数を使い、移動先の段で実際に消費した行数を記録する。
 `I3_replayed_space_charges` は要求の順序と実際の消費行数の合計を、`I3_replay_on_column_top` は段頭で消費する行数がゼロであることを示す。
 
+## 元の述語の書き写し
+
 元の述語への対応を始めるため、Alloy のモデルを Lean へ書き写した。
+書き写した述語は、元にした ADR ごとに第 1 群から第 5 群に分ける。
+[docs/adr/0204](../../docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の述語を第 1 群とする。
 `AlloyInput` は段の容量と使用済み行数、原稿順の項目を持ち、項目の位置を列の番号とする。
 `alloyInputFact` は `fact input` の残りの条件を、容量の 3〜6 行も含めて検査する。
-`alloyPlacements` は `fact allPlacements` のとおり、区切り位置、置く図版の部分集合、置く空行の部分集合のすべての組を列挙するので、`some p: Placement` と `no p: Placement` はこの列の上の量化になる。
+`alloyPlacements` は `fact allPlacements` のとおり、区切り位置、置く図版の部分集合、置く行アキの部分集合のすべての組を列挙するので、`some p: Placement` と `no p: Placement` はこの列の上の量化になる。
 `alloyFits` から `alloyAll7` までは、[docs/adr/0204](../../docs/adr/0204-pagination-invariants-by-exhaustive-small-inputs.md) の述語を一つずつ写す。
 整数は上限のない自然数とし、Alloy の 5 ビット整数の折り返しは写さない。
 Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos` は、Alloy と同じく位置の和で比べる。
@@ -298,7 +307,7 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 書き写しの忠実さは、これらの具体例の一致で確かめたにとどまる。
 
 同じ群で解のない 11 コマンドは、書き写した述語の上で、項目の数と容量の上限なしに証明した。
-`alloy_noneMeetsAllButGreedy` は、図版が高々一つで空行と空きと行数指定のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、詰める規則のほかの 7 規則を同時に満たす配置があることを示す。
+`alloy_noneMeetsAllButGreedy` は、図版が高々一つで行アキとスペースと `need-lines` のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、詰める規則のほかの 7 規則を同時に満たす配置があることを示す。
 その配置は、空の段の先頭が本文なら先頭の本文だけを置き、それ以外は本文を置かず、図版は図版規則が求めるとおりに置く。
 `alloy_orphanEmpty`、`alloy_widowEmpty`、`alloy_keepHeadingEmpty`、`alloy_orphanWidow`、`alloy_keepHeadingOrphan`、`alloy_keepHeadingWidow`、`alloy_keepHeadingFigure`、`alloy_figureOrder`、`alloy_figureEmpty` は、この配置が二つの規則を同時に満たすので、規則の対に衝突がないことを示す。
 `alloy_greedyFigure` は、使用済み行数が容量以下なら、収まる区切りを一つずつ進めて詰める規則と図版規則を同時に満たす配置があることを示す。
@@ -317,7 +326,7 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 見出しの後に行を一行置く規則があるので、残る 3 コマンドには第 1 群の配置では足りない。
 `alloyHeadingPlacement` は、空の段の先頭が見出しで、次の本文が行で、その間に置く図版がなければ、見出しとその行を置く。
 それ以外は第 1 群と同じく、空の段の先頭の本文だけを置くか、本文を置かない。
-`alloy_heading_placement_meets` は、図版が高々一つで空行と空きと行数指定のない任意の入力で、容量が 2 行以上かつ使用済み行数が容量以下なら、この配置が第 2 群のすべての規則を満たすことを示す。
+`alloy_heading_placement_meets` は、図版が高々一つで行アキとスペースと `need-lines` のない任意の入力で、容量が 2 行以上かつ使用済み行数が容量以下なら、この配置が第 2 群のすべての規則を満たすことを示す。
 `alloy_relaxedAfterHeadings`、`alloy_rectoKept`、`alloy_rectoEnds` はこの定理から導く。
 容量 2 行以上の条件は `fact input` から導かれ、`alloy_input_fact_cap_two` が示す。
 容量 1 行の空の段に見出しと行を続ける入力では、緩めた規則を同時に満たす配置がないことを具体例で検査した。
@@ -325,50 +334,58 @@ Alloy が図版の集合の位置を整数として比べる `p.kept.pos > i.pos
 `EnumerateSmall.lean` は、項目 4 個以下、容量 3〜4 行の入力 18,099 個で、この 4 コマンドに解がないことを書き写した述語の上で確かめる。
 これは書き写しの有限の照合であり、証明ではない。
 
-第 1 群と第 2 群の 23 コマンドは、名前空間 `Alloy` の同名の定理で、書き写した述語の上のコマンドの本体として述べる。
+各群のコマンドは、名前空間 `Alloy` の同名の定理で、書き写した述語の上のコマンドの本体として述べる。
 解のあるコマンドは、`fact input` と本体を満たす入力があることを述べる。
 解のないコマンドは、`fact input` を満たすどの入力でも本体が成り立たないことを、項目の数の上限なしに述べる。
-`check.sh` は、この 23 コマンドについて `Alloy` の中の同名の定理も要求する。
+`check.sh` は、第 1 群から第 5 群までの 42 コマンドすべてについて `Alloy` の中の同名の定理を要求する。
 名前空間の外にある同名の既存の宣言は、それぞれ独自の抽象化の上の命題として残す。
 既存の宣言とこの書き写しの同値は証明していない。
 
-第 3 群として、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の待機図版と空行の述語も書き写した。
+第 3 群として、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の待機図版と行アキの述語も書き写した。
 `alloyWaiting`、`alloyNextOf`、`alloyNextOf25`、`alloyInColumn`、`alloyBlankAtTop`、`alloyFigures`、`alloyFigureOrder`、`alloyBlankWithNext`、`alloyBlankWithNext25`、`alloyBase26` が、元の述語に一つずつ対応する。
 解のある `alloy_waitingBlankSome` と `alloy_blankBeforeWaiting25` は具体的な入力で示し、同じ入力を Alloy に固定して解を確かめた。
 解のない 4 コマンドには `alloyPlacement26` を使う。
 空の段の最初の項目が本文ならその本文だけを置き、そうでなければ本文を置かない。
-空行と行数指定のほかの最初の項目を、最初の項目として扱う。
-図版は原稿順に、それまでに置いた図版で図版規則を読んで置き、空行は与えた次のブロックの規則で置く。
-`alloy_placement26_meets` は、図版が高々二つで空きと行数指定のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、この配置が `base26`、空行の規則、孤立行、寡婦行、見出しの規則を満たすことを示す。
+行アキと `need-lines` のほかの最初の項目を、最初の項目として扱う。
+図版は原稿順に、それまでに置いた図版で図版規則を読んで置き、行アキは与えた次のブロックの規則で置く。
+`alloy_placement26_meets` は、図版が高々二つでスペースと `need-lines` のない任意の入力で、容量が 1 行以上かつ使用済み行数が容量以下なら、この配置が `base26`、行アキの規則、孤立行、寡婦行、見出しの規則を満たすことを示す。
 次のブロックの規則は、[golem-layout ADR 0026](../../docs/golem-layout/adr/0026-need-lines-and-blank-lines-pass-over-waiting-figures.md) の `nextOf` でも、それ以前の `nextOf25` でもよい。
 `alloy_waitingBlankAllButGreedy`、`alloy_blankRules25`、`alloy_blankFigureOrder` はこの定理から導き、`waitingBlankNone` は最初のものから導く。
 図版が二つ以下という条件は `fact input` から導かれ、`alloy_input_fact_two_figures` が示す。
 
-第 4 群と第 5 群として、行数指定と空きの述語（[golem-layout ADR 0027](../../docs/golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)、[golem-layout ADR 0035](../../docs/golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)、[golem-layout ADR 0046](../../docs/golem-layout/adr/0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)）と、段落の保持の述語（[docs/adr/0261](../../docs/adr/0261-keep-options-of-paragraph-styles.md)）を書き写した。
+第 4 群と第 5 群として、`need-lines` とスペースの述語（[golem-layout ADR 0027](../../docs/golem-layout/adr/0027-need-lines-judged-again-after-spaces.md)、[golem-layout ADR 0035](../../docs/golem-layout/adr/0035-a-larger-need-lines-after-a-judged-one-is-judged-again.md)、[golem-layout ADR 0046](../../docs/golem-layout/adr/0046-the-alloy-model-judges-a-larger-need-lines-without-the-spaces-before-it.md)）と、段落の保持の述語（[docs/adr/0261](../../docs/adr/0261-keep-options-of-paragraph-styles.md)）を書き写した。
+第 4 群は `need` で始まる 10 コマンド、第 5 群は `keep` で始まる 3 コマンドである。
 Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap` と書く。
 `Kept` と `AllLines` は段落の番号で `AlloyKeeps` に持ち、`alloyKeepsFact` が `fact keeps` を検査する。
-解のある 8 コマンドは具体的な入力で示し、Alloy に固定して解を確かめた。
+解のある 8 コマンドは具体的な入力で示した。
+`needMoreSpace46Here` のほかの 7 コマンドは、`check-alloy-witnesses.sh` で同じ入力を Alloy に固定して解を確かめた。
+`needMoreSpace46Here` は元のコマンドが入力を固定しており、通常の期待値でも解があると記録されている。
 `alloy_needMoreSpace46` は、コマンドの条件から入力が段落の番号を除いて一つに決まることを示し、その入力で段落が段に入ることを段落の番号によらず示す。
 `alloy_keepNone` は、第 1 群の配置が段落を段の先頭でしか分けないことから導く。
 `alloy_keep_default` は、保持行数が 2 と 2 のとき、どの配置でも孤立行と寡婦行の規則が K1 と K2 と段落ごとに一致することを示し、`keepDefaultDiffers` を導く。
 段に置いた行が段落の先頭の行の並びになることを、`alloy_here_prefix` が示す。
 
-`needSpaceNone` と `needMoreNone` も、書き写した述語の上で、項目の数の上限なしに証明した。
-行数指定の次のブロックを段に残す規則（P7）があるので、行数指定の後のブロックまで置く配置を作る。
-`alloyPlacement27` は区切りを受け取り、図版を `figures27` の規則で原稿順に置き、空行を `blankWithNext` で置く。
+`needSpaceNone` と `needMoreNone` は、名前空間の外の宣言とは別に、書き写した述語の上で、項目の数の上限なしに証明した。
+`need-lines` の次のブロックを段に残す規則（P7）があるので、`need-lines` の後のブロックまで置く配置を作る。
+`alloyPlacement27` は区切りを受け取り、図版を `figures27` の規則で原稿順に置き、行アキを `blankWithNext` で置く。
 `alloyBreak27` は、この配置が段容量と P1 を満たす区切りのうち、最大のものを選ぶ。
 区切り 0 はいつもこの条件を満たし、空の段の先頭が本文なら区切り 1 も満たすので、空の段から先頭の内容を送らない規則も成り立つ。
 この区切りで、P7 が段に置くよう求めるブロックが段の外にあるとする。
 `alloy_keeps27_step` は、そのとき区切りを本文一つ分進めた配置も段容量と P1 を満たすか、そのブロックである図版を図版規則が段に置くことを示し、最大の区切りを選んだことと矛盾させる。
 区切りの本文より前で二つの配置が一致することを `alloy_agree27_step` が示し、図版規則がその図版より前の本文と図版だけを読むことを `alloy_cond27_congr` が示す。
-`needMoreNone` では、同じブロックに先行し、行数が同じか大きい行数指定に余地があれば、後の行数指定にも余地がある。
+`needMoreNone` では、同じブロックに先行し、行数が同じか大きい `need-lines` に余地があれば、後の `need-lines` にも余地がある。
 `EnumerateSmall.lean` は、項目 4 個以下、容量 3〜4 行の入力 66,744 個で、2 コマンドに解がないことを書き写した述語の上でも照合する。
 
-既存宣言と元の述語の同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
+## 未完の項目
+
+書き写した述語と元の Alloy の述語の同値性、名前空間の外の既存の宣言と書き写しの同値性、キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
 既存の整数行のモデルを、その経路の証明とは扱わない。
-全体を閉じるには、キャプションの評価値と幅の計算と Haskell の対応、Alloy の元の述語への全体の対応、格子モードの各 `Flow` の具体的な状態遷移、自由な配置の状態遷移を、終了と内容保存の証明へそれぞれ接続する必要がある。
+[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りのフロー生成と G07134 の後処理も、まだ証明していない。
+全体を閉じるには、キャプションの評価値と幅の計算と Haskell の対応、Alloy の元の述語への全体の対応、格子モードの各 `Flow` の具体的な状態遷移、自由な配置の状態遷移、区切りのフロー生成と G07134 の後処理を、終了と内容保存の証明へそれぞれ接続する必要がある。
 移行が完了するまで Alloy の定期実行と既存の参照を維持する。
+
+## 検査の手順
 
 手元では次のコマンドで Lean 4.7.0 の証明を検査する。
 
@@ -377,8 +394,16 @@ lean experiments/pagination-proof/Pagination.lean
 sh experiments/pagination-proof/check.sh
 ```
 
-書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `lean experiments/pagination-proof/EnumerateSmall.lean` を実行する。
-4 件の一覧がすべて空なら照合は通る。
+書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
+
+```sh
+work=$(mktemp -d)
+lean -o "$work/Pagination.olean" experiments/pagination-proof/Pagination.lean
+LEAN_PATH="$work" lean experiments/pagination-proof/EnumerateSmall.lean
+rm -rf "$work"
+```
+
+入力の数を出す 2 行（18099 と 66744）を除く 6 個の一覧がすべて空なら、照合は通る。
 
 ライブラリをビルドした後、実装の改行結果を Lean に渡して照合する。
 次のコマンドでは、現在の `golem-layout` のローカルのパッケージを明示し、別にインストール済みの同名パッケージとの混同を避ける。
@@ -393,8 +418,8 @@ LEAN_PATH="$work" lean "$work/CaptionExamples.lean"
 rm -rf "$work"
 ```
 
-
-`decidedSome`、`keepAllSome`、`needMore27`、`needMoreSome`、`needSpaceSome`、見出し後の本文行の具体的な証人は、Alloy CLI を用意して次のコマンドで照合する。
+`check-alloy-witnesses.sh` は、この文書で Alloy に固定して確かめた 25 の具体例をすべて実行する。
+Alloy CLI を用意して次のコマンドで照合する。
 
 ```sh
 sh experiments/pagination-proof/check-alloy-witnesses.sh
