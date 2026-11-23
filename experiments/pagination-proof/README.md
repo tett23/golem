@@ -613,18 +613,23 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 
 一つ目は、境界入力の表のうち、キャプションの行の Lean の側の照合である。
 `modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` は、空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、Haskell の実装の終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
-`Boundary.lean` は、これらの 3850 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行を `#eval` で書き出す。
+同じ表は、見出し、`need-lines`、`no-break`、行数を指定した `no-break`、`keep-with-next` を段落の間に置いた原稿についても、終了と、段落と見出しの行を原稿順に一度ずつ置くことを確かめる。
+この原稿は、1〜5 行の段落、一行の見出し、2 行か 3 行の `need-lines`、`no-break`、3 行の `no-break`、1 行か 2 行の `keep-with-next` から一〜三つを並べ、最後に 1〜3 行の段落を置いたもので、段の容量は 2〜4 行である。
+`Boundary.lean` は、これらの 20806 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、満たせなかった指定を `#eval` で書き出す。
 `Env` は `paginate 1` の容量ごとの `Env` で、その引数は `Decide.hs` の `nextNeed`、`keptNeed`、`keepAhead`、`nextFirstLines`、`fitting`、`roomForLine` を写した関数である（`boundaryEnv`）。
 `check.sh` は、`Whole.lean` を `.olean` にして `Boundary.lean` を評価し、`Boundary.hs` が golem-layout の `paginate` に同じ入力を渡した出力と `diff` で比べる。
 二つの出力は一致した。
 `keep` などは整礎再帰で定義しているので、カーネルの簡約による `decide` ではなく、コンパイルした評価で比べ、`native_decide` は使わない。
 `Boundary.lean` は証明ではなく評価のためのファイルなので、`Decide.hs` を写した関数に `partial` を使う。
 
+この照合は、`boundaryEnv` の引数の写しの誤りを検出する。
+`boundaryEnv` の引数を一つずつ替えると、食い違う入力の数は次のとおりだった。
+`nextNeed` を何も求めない関数にすると 888 個、`keptNeed` を常に `none` にすると 802 個、`nextFirst` を常に 1 行にすると 148 個、`keepLast` を常に 0 行にすると 276 個、`fitting` を常に 1 行にすると 19701 個、`roomForLine` を常に偽にすると 1109 個である。
+`keepNextLines` は罫線つきのブロックの配置にだけ使うので、罫線つきのブロックを含まないこの表では替えても出力は変わらない。
+
 境界入力の照合には、二つのことが残る。
 表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめるので、Lean の側の照合は二つ目の条件の評価関数を待つ。
-また、表の入力は段落と図版だけなので、`boundaryEnv` の `nextNeed`、`keptNeed`、`nextFirst` は出力を変えない。
-`nextNeed` を何も求めない関数に替えても出力は変わらず、`fitting` を常に 1 行にすると 7625 行が食い違った。
-見出し、`need-lines`、`no-break` を含む入力で照合するには、`boundaryTableTests`、`Boundary.hs`、`Boundary.lean` に同じ入力を足す。
+また、箱、表、コード、罫線つきのブロック、詩、回り込み図版、脚注を含む入力は、まだ照合していない。
 
 二つ目は、キャプションの評価値と幅の計算の Haskell との対応である。
 `Pagination.lean` は、改行候補の選択、改行列からの行の組み立て、占有行数の計算を、評価値と幅を引数として証明する（`I1_caption_*`）。

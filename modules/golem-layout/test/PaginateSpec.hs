@@ -2009,7 +2009,12 @@ boundaryTableTests =
         assertEnds capacity flows
         let output = concat (contents (paginate 1 capacity flows))
         assertEqual (show (capacity, flows)) (sourceLines flows) [i | SLine i <- output]
-        assertEqual (show (capacity, flows)) (sourceFigures flows) [i | SFigure i <- output]
+        assertEqual (show (capacity, flows)) (sourceFigures flows) [i | SFigure i <- output],
+    testCase "Golem ADR 0352 I4, I5: headings, need-lines, no-breaks and keep-with-nexts among paragraphs place every line once in the order written" $
+      forM_ [2 .. 4] $ \capacity -> forM_ controlInputs $ \flows -> do
+        assertEnds capacity flows
+        let output = concat (contents (paginate 1 capacity flows))
+        assertEqual (show (capacity, flows)) (sourceLines flows) [i | s <- output, i <- placedLine s]
   ]
   where
     assertEnds capacity flows = do
@@ -2024,7 +2029,36 @@ boundaryTableTests =
       -- a column left with nothing in it would be a column only sent on from
       assertBool (show (capacity, sizes, output)) (not (any null output))
       assertBool (show (capacity, sizes, output)) (length output <= sum sizes)
-    sourceLines flows = [i | FParagraph _ ls <- flows, LineBox i _ _ _ _ <- ls]
+    sourceLines flows = [i | f <- flows, LineBox i _ _ _ _ <- linesOf f]
+      where
+        linesOf = \case
+          FParagraph _ ls -> ls
+          FHeading _ _ _ ls -> take 1 ls
+          _ -> []
+    placedLine = \case
+      SLine i -> [i]
+      SHeading i _ -> [i]
+      _ -> []
+    -- one to three flows, each a paragraph of one to five lines, a heading,
+    -- a need-lines of two or three lines, a no-break, a no-break of three
+    -- lines or a keep-with-next of one or two lines, before a last
+    -- paragraph of one to three lines (Boundary.hs lists the same inputs)
+    controlInputs =
+      [ zipWith id shape [0 ..] <> [FParagraph defaultKeep (lines' (10 * length shape) n)]
+      | shape <- concatMap (`replicateM` controlChoices) [1 .. 3],
+        n <- [1 .. 3]
+      ]
+      where
+        controlChoices =
+          [\k -> FParagraph defaultKeep (lines' (10 * k) n) | n <- [1 .. 5]]
+            <> [ \k -> FHeading 2 False 1 (lines' (10 * k) 1),
+                 const (FNeedLines (controlSpan 0) 2),
+                 const (FNeedLines (controlSpan 0) 3),
+                 const (FNoBreak (controlSpan 0)),
+                 const (FNoBreakLines (controlSpan 0) 3),
+                 const (FKeepNext (controlSpan 0) 1),
+                 const (FKeepNext (controlSpan 0) 2)
+               ]
     sourceFigures flows = [i | FFigure i _ _ _ <- flows]
     figureInputs capacity =
       [ concat (zipWith element [0 ..] shape)

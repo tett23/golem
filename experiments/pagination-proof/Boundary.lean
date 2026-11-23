@@ -2,7 +2,7 @@
    (modules/golem-layout/test/PaginateSpec.hs) on the paginate of
    Whole.lean.  `boundaryEnv` is the `Env` of `paginate 1 capacity` of
    Paginate.hs, its parameters computed as Paginate/Decide.hs computes
-   them.  `#eval` prints the pages of every input in the format of
+   them.  `#eval` prints the pages and the unmet keeps of every input in the format of
    Boundary.hs, and check.sh compares the two with diff.  This is a check
    on finitely many inputs, not a proof; the definitions below are
    `partial` because they are only evaluated. -/
@@ -200,19 +200,37 @@ def boundaryEnv (capacity : Nat) : Env :=
 
 /-! ## The inputs, in the order of Boundary.hs -/
 
+/-- A paragraph, a figure, a heading of one line over one grid line, a
+    need-lines, a no-break, a no-break of so many lines and a
+    keep-with-next. -/
 inductive Element where
   | para (base n : Nat)
   | fig (id n : Nat)
+  | head (base : Nat)
+  | need (n : Nat)
+  | noBreak
+  | noBreakLines (n : Nat)
+  | keepNext (n : Nat)
 
 def lines' (base n : Nat) : List Line := (List.range n).map fun i => ⟨base + i, []⟩
 
 def Element.flow : Element → Flow
   | .para base n => .paragraph defaultKeep (lines' base n)
   | .fig id n => .figure id n
+  | .head base => .heading false 1 (lines' base 1)
+  | .need n => .needLines n
+  | .noBreak => .noBreak
+  | .noBreakLines n => .noBreakLines n
+  | .keepNext n => .keepNext n
 
 def Element.show : Element → String
   | .para base n => s!"P{base}:{n}"
   | .fig id n => s!"F{id}:{n}"
+  | .head base => s!"H{base}"
+  | .need n => s!"N{n}"
+  | .noBreak => "B"
+  | .noBreakLines n => s!"B{n}"
+  | .keepNext n => s!"K{n}"
 
 def replicateM {α : Type} : Nat → List α → List (List α)
   | 0, _ => [[]]
@@ -232,6 +250,23 @@ def figureInput (shape : List (Sum Nat Nat)) : List Element :=
     | (k, .inl n) => .para (10 * k) n
     | (k, .inr n) => .fig (100 + k) n
 
+/-- One to three elements, each a paragraph of one to five lines, a
+    heading, a need-lines of two or three lines, a no-break, a no-break
+    of three lines or a keep-with-next of one or two lines, as in
+    Boundary.hs. -/
+def controlChoices : List (Nat → Element) :=
+  [fun k => .para (10 * k) 1, fun k => .para (10 * k) 2, fun k => .para (10 * k) 3,
+   fun k => .para (10 * k) 4, fun k => .para (10 * k) 5,
+   fun k => .head (10 * k), fun _ => .need 2, fun _ => .need 3, fun _ => .noBreak, fun _ => .noBreakLines 3,
+   fun _ => .keepNext 1, fun _ => .keepNext 2]
+
+def controlShapes : List (List (Nat → Element)) :=
+  [1, 2, 3].bind fun n => replicateM n controlChoices
+
+/-- The shape, then a last paragraph of `n` lines. -/
+def controlInput (shape : List (Nat → Element)) (n : Nat) : List Element :=
+  ((List.range shape.length).zip shape |>.map fun (k, e) => e k) ++ [.para (10 * shape.length) n]
+
 def inputs : List (Nat × List Element) :=
   ([1, 2, 3].bind fun c => [(c, []), (c, [.para 0 1])])
   ++ ([1, 2, 3].bind fun c =>
@@ -239,16 +274,29 @@ def inputs : List (Nat × List Element) :=
         |>.map fun s => (c, paragraphs s))
   ++ [(3, [.fig 1 3]), (3, [.para 0 1, .fig 1 3]), (3, [.fig 1 4]), (3, [.para 0 1, .fig 1 4, .para 10 1])]
   ++ ([3, 4].bind fun c => (figureShapes c).map fun s => (c, figureInput s))
+  ++ ([2, 3, 4].bind fun c => controlShapes.bind fun s => [1, 2, 3].map fun n => (c, controlInput s n))
 
 /-! ## The output, in the format of Boundary.hs -/
 
 def slotText : Int × Slot → String
   | (g, .line i) => s!"{g}:L{i}"
   | (g, .figure i) => s!"{g}:F{i}"
+  | (g, .heading i n) => s!"{g}:H{i}:{n}"
   | (g, s) => s!"{g}:{reprStr s}"
 
+def unmetText : Unmet → String
+  | .needLines n => s!"!need{n}"
+  | .noBreak => "!nobreak"
+  | .keepNext => "!keepnext"
+  | .droppedBlank => "!dropped"
+  | .tallHeading i n f => s!"!tall{i}:{n}:{f}"
+  | .splitKept i => s!"!split{i}"
+  | .shortFirst i w g => s!"!first{i}:{w}:{g}"
+  | .shortLast i w g => s!"!last{i}:{w}:{g}"
+  | u => s!"!{reprStr u}"
+
 def pageText (p : PageOut) : String :=
-  " ".intercalate ([toString p.number, toString p.column, if p.blank then "blank" else "-"] ++ p.slots.map slotText)
+  " ".intercalate ([toString p.number, toString p.column, if p.blank then "blank" else "-"] ++ p.slots.map slotText ++ p.unmet.map unmetText)
 
 /-- The pages of `paginateWithin`: those of the state, or one empty page
     when there are none (Paginate.hs, `paginateWithin`). -/

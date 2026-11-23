@@ -89,7 +89,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
 fi
 LEAN_PATH="$tmp" "$lean" "$boundary" > "$tmp/boundary-lean"
 (cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base \
-  -package-id=golem-layout-0.1.0-inplace \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
   experiments/pagination-proof/Boundary.hs) > "$tmp/boundary-haskell"
 diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
 inputs=$(grep -c '^[0-9]' "$tmp/boundary-lean")
