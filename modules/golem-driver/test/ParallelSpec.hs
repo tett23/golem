@@ -2,11 +2,12 @@
 
 The PDF pipeline composes paragraphs, figure captions and tables with
 'Control.Concurrent.Async.mapConcurrently' when 'optParallel' is set
-(golem-driver ADR 0001 and 0002). The tests of golem-driver-test compare
-parallel and sequential builds on one capability, where the green threads
-never run at the same time and the foreign calls into HarfBuzz and
-FreeType never overlap. This suite is built with -threaded and -N (one
-capability per processor), so that the threads really run at once;
+(golem-driver ADR 0001 and 0002). The tests of the suites split from
+golem-driver-test (root ADR 0416) compare parallel and sequential builds
+on one capability, where the green threads never run at the same time
+and the foreign calls into HarfBuzz and FreeType never overlap.
+This suite is built with -threaded and -N (one capability per
+processor), so that the threads really run at once;
 its tests check what ADR 0001 requires of parallel runs: the output and the
 diagnostics equal those of a sequential run (docs/adr/0002 determinism),
 and the diagnostics are in the order of the files, the positions and the

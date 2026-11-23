@@ -10,6 +10,7 @@ step	b	- name: Pull requests only\n  run: echo pr
 step	b	- name: Tests\n  env:\n    SUITES: ${{ matrix.suites }}\n  run: cabal test $(sh scripts/ci/test-suites.sh "$SUITES")
 step	b	- name: Where x\n  run: |\n    echo x\n    echo more
 suites	a	golem-driver:test:golem-driver-parallel-test
+suites	a	golem-driver:test:golem-driver-pdf-test
 suites	a	golem-driver:test:golem-driver-test
 suites	b	golem-pdf:test:golem-pdf-test
 suites	b	golem-renamed:test:renamed-test

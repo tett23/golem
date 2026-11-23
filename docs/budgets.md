@@ -44,7 +44,10 @@
 | テストスイートの止まりの検出 | 600 秒 | `scripts/ci/suite-timeout.sh`（`SUITE_TIMEOUT` の既定） | [ADR 0292](adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md) |
 | golem-pdf と golem-svg のテストの時間（ネイティブ） | CPU 60 秒、実時間 300 秒。時間の上限を付けるテストは、単独の CPU 時間で 10 秒以内 | `hangLimits` | [ADR 0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md) |
 | golem-pdf と golem-svg のテストの時間（wasm32） | CPU 600 秒、実時間 1200 秒 | `hangLimits` の wasm32 の値 | [ADR 0388](adr/0388-widen-the-time-limits-of-tests-on-wasm32.md) I2 |
-| golem-driver-test の止まりの検出 | 300 秒 | `hangTimeout` | [ADR 0237](adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md) |
+| golem-driver-pdf-test の止まりの検出 | 300 秒 | `hangTimeout` | [ADR 0237](adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) |
+| golem-driver-page-test の止まりの検出 | 300 秒 | `hangTimeout` | [ADR 0237](adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) |
+| golem-driver-output-test の止まりの検出 | 300 秒 | `hangTimeout` | [ADR 0237](adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) |
+| golem-driver-cli-test の止まりの検出 | 300 秒 | `hangTimeout` | [ADR 0237](adr/0237-raise-the-hang-time-outs-of-golem-driver-test-to-300-seconds.md)、[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) |
 | threaded のテストの見張り | `300 × GOLEM_RACE_TESTS` 秒 | ランタイムの外の見張りのスレッド | [ADR 0117](adr/0117-watchdog-outside-the-runtime-for-threaded-tests.md) |
 | Alloy のモデルの CI | `models.yml` は 30 分。毎晩のジョブは 1 コマンド 5.5 時間、ジョブ 345 分 | 30 分は `.github/workflows/models.yml` の `timeout-minutes`。毎晩の 1 コマンドの 5.5 時間は `scripts/models/check.sh` の `TIMEOUT`（`.github/workflows/models-nightly.yml` が 19800 秒を渡す）。ジョブの 345 分は `models-nightly.yml` の `timeout-minutes` | [ADR 0242](adr/0242-run-the-heavy-commands-of-the-alloy-models-every-night.md) |
 | CI の warning | 許可の一覧に無い warning が 0 行 | `scripts/ci/log-warnings.sh` と `scripts/ci/warnings-allowed.tsv` | [ADR 0245](adr/0245-keep-the-warnings-of-ci-at-zero.md) |
