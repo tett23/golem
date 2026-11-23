@@ -3,8 +3,8 @@
    headings, recto headings, figures of sizes 1, 3 and 4) with a capacity
    of 3 or 4 lines and 0..4 used lines that meets `alloyInputFact`, and
    prints the inputs on which the unsatisfiable commands of docs/adr/0206
-   would have an instance, and the need-lines inputs on which no candidate
-   placement of alloyNeedCandidates meets every rule. Every list must be
+   would have an instance, and the need-lines inputs on which
+   needSpaceNone or needMoreNone would have one. Every list must be
    empty. This is a check of the
    transcription, not a proof. -/
 import Pagination
@@ -51,8 +51,9 @@ def needInputs : List AlloyInput :=
 #eval smallInputs.filter rectoEndsAt
 #eval smallInputs.filter keep21At
 
--- needSpaceNone and needMoreNone: a candidate of alloyNeedCandidates meets
--- every rule (both lists must be empty)
+-- needSpaceNone and needMoreNone (both lists must be empty)
 #eval needInputs.length
-#eval needInputs.filter fun i => alloyInDomain27 i && !alloyRules27 i alloySpaceKeeps
-#eval needInputs.filter fun i => alloyInDomain35 i && !alloyRules27 i alloySpaceKeeps35
+#eval needInputs.filter fun i => alloyInDomain27 i &&
+  !alloySome i (fun p => alloyBase27 i p && alloyNeedMet i p && alloySpaceKeeps i p)
+#eval needInputs.filter fun i => alloyInDomain35 i &&
+  !alloySome i (fun p => alloyBase27 i p && alloyNeedMet i p && alloySpaceKeeps35 i p)

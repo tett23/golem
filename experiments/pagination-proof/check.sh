@@ -28,8 +28,8 @@ if [ "$missing" -gt 0 ]; then
   exit 1
 fi
 
-# All commands but needSpaceNone and needMoreNone are also stated on the
-# transcribed predicates, in namespace Alloy.
+# Every command is also stated on the transcribed predicates, in namespace
+# Alloy.
 transcribed='someFits noneMeetsAll noneMeetsAllButGreedy greedyOrphan greedyWidow
 greedyKeepHeading greedyFigure orphanEmpty widowEmpty keepHeadingEmpty orphanWidow
 keepHeadingOrphan keepHeadingWidow keepHeadingFigure figureOrder figureEmpty tallFigure
@@ -37,7 +37,8 @@ strictAfterHeadings relaxedAfterHeadings rectoKept rectoEnds keep21 decidedSome
 waitingBlankSome waitingBlankNone waitingBlankAllButGreedy blankFigureOrder
 blankBeforeWaiting25 blankRules25
 needSpaceSome needSpaceAllButGreedy needFigure needGreedy needMoreSome needMore27
-needMoreSpace46 needMoreSpace46Here keepNone keepDefaultDiffers keepAllSome'
+needMoreSpace46 needMoreSpace46Here keepNone keepDefaultDiffers keepAllSome
+needSpaceNone needMoreNone'
 sed -n '/^namespace Alloy$/,/^end Alloy$/p' "$proof" > "$tmp/alloy"
 for name in $transcribed; do
   grep -Eq "^theorem ${name}([[:space:]]|:)" "$tmp/alloy" || {
@@ -57,4 +58,4 @@ fi
 
 lean=${LEAN:-lean}
 "$lean" "$proof"
-echo "42 Alloy commands have checked Lean counterparts, 40 of them on the transcription"
+echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"
