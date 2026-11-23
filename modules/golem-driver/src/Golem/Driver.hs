@@ -976,7 +976,7 @@ buildCore inMemory opts = do
         if TargetPdf `elem` targets
           then pdfFontDiagnostics (optFiles opts) diagFid [(r, fr {frJa = mfilter (`Map.notMember` missing) (frJa fr), frLatin = mfilter (`Map.notMember` missing) (frLatin fr)}) | (r, fr) <- pdfFontRoles fileStyle locals]
           else pure []
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid (manifestTargets (projectManifest project)) fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G07001, G07002 and G07025 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -1177,19 +1177,20 @@ the project (absolute, a URL, out of the root, or a symbolic link out of
 it) is G03279, an error for every target and profile (docs/adr/0421); it
 is the same diagnostic for every target, so a build reports it once.
 Missing files (golem-project ADR 0004): the fonts the PDF uses and its
-output intent (errors), every font for HTML and EPUB (warnings, errors in
-prod), nothing for plain text. The PDF also needs a body font with a file
-(G08007, golem-driver ADR 0016).
+output intent (errors), every font for HTML and EPUB that embed them
+(warnings, errors in prod), nothing for HTML and EPUB that name generic
+families (docs/adr/0423) and for plain text. The PDF also needs a body font
+with a file (G08007, golem-driver ADR 0016).
 -}
-targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid style locals missing target =
+targetFileDiagnostics :: FileId -> Targets -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
+targetFileDiagnostics fid declared style locals missing target =
   outside <> case target of
     TargetPdf ->
       bodyFontDiagnostics fid style
         <> report "G08002" Error "フォントのファイルがありません" (pdfFontPaths style locals)
         <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
-    TargetHtml -> siteFonts
-    TargetEpub -> siteFonts
+    TargetHtml -> siteFonts (tgHtmlFonts declared)
+    TargetEpub -> siteFonts (tgEpubFonts declared)
     TargetText -> []
   where
     outside =
@@ -1198,7 +1199,9 @@ targetFileDiagnostics fid style locals missing target =
         Just err <- [Map.lookup p missing],
         err /= Missing
       ]
-    siteFonts = report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+    siteFonts = \case
+      WebFontsEmbed -> report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+      WebFontsGeneric -> []
     report code sev msg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
       | p <- nub paths,
@@ -1290,25 +1293,30 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
   let root = optRoot opts
       ft = projectFiles (evProject e)
   (_, _, bib) <- loadBibliography (optFiles opts) (projectManifest (evProject e))
-  let hcfg = htmlConfig (optProfile opts == Dev) e book missing bib
-      originalSite = renderXhtml hcfg ft book
+  let hcfgOf embed = htmlConfig (optProfile opts == Dev) embed e book missing bib
+      originalSite = renderXhtml (hcfgOf True) ft book
+      declared = manifestTargets (projectManifest (evProject e))
   (webBook, webDiags) <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book originalSite else pure (book, [])
-  let site = if isJust (figureColor (evStyle e)) then renderXhtml hcfg ft webBook else originalSite
+  -- the site with the fonts embedded, and the one of generic families (docs/adr/0423)
+  let embedSite = if isJust (figureColor (evStyle e)) then renderXhtml (hcfgOf True) ft webBook else originalSite
+      genericSite = renderXhtml (hcfgOf False) ft webBook
+      web fonts = let embed = fonts == WebFontsEmbed in (hcfgOf embed, if embed then embedSite else genericSite)
   results <- forM targets $ \case
     TargetHtml | not (null webDiags) -> cleanDir (root </> "build" </> "html") >> pure ([], [], Nothing)
     TargetEpub | not (null webDiags) -> cleanDir (root </> "build" </> "epub") >> pure ([], [], Nothing)
-    TargetHtml -> writeHtmlTarget root hcfg ft webBook site
-    TargetEpub -> writeEpubTarget opts e hcfg ft webBook site
+    TargetHtml -> let (hcfg, site) = web (tgHtmlFonts declared) in writeHtmlTarget root hcfg ft webBook site
+    TargetEpub -> let (hcfg, site) = web (tgEpubFonts declared) in writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
     TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
   pure (concat [w | (w, _, _) <- results], webDiags <> concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
 
 {- | The configuration of the HTML of a book from its style.toml and the
-styles of its files: @dev@ for the profile dev, the fonts that are
-@missing@ left out, the entries of the bibliography.
+styles of its files: @dev@ for the profile dev, @embed@ for fonts =
+"embed" (docs/adr/0423), the fonts that are @missing@ left out, the
+entries of the bibliography.
 -}
-htmlConfig :: Bool -> Evaluated -> Book -> Map FilePath PathError -> Map Text [EntryPart] -> HtmlConfig
-htmlConfig dev e book missing bib =
+htmlConfig :: Bool -> Bool -> Evaluated -> Book -> Map FilePath PathError -> Map Text [EntryPart] -> HtmlConfig
+htmlConfig dev embed e book missing bib =
   HtmlConfig
     { hcTitle = mdTitle md,
       hcLanguage = mdLanguage md,
@@ -1388,6 +1396,9 @@ htmlConfig dev e book missing bib =
       -- the links of notes in the notation of [notes] mark-format (docs/adr/0177)
       hcNoteNotation = mfNotation (stNotesMarkFormat style),
       hcEndnoteNotation = mfNotation (stNotesMarkFormat (endnoteStyle style)),
+      -- the fonts embedded, or generic families alone (docs/adr/0423)
+      hcEmbedFonts = embed,
+      hcGenericFamilies = Map.mapMaybe (fmap genericFamilyName . frGenericFamily) (stFonts style),
       hcCharacterAdvance = do
         grid <- stPage style >>= pageGrid
         advance <- gridCharacterAdvance grid

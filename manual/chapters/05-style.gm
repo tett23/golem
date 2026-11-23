@@ -143,7 +143,8 @@ InDesign は、Document Fonts フォルダーにないフォントをコンピ�
 フォントをプロジェクトに置けば、誰がどのコンピューターで組んでも、同じフォントのファイルで組まれます（「[ref-title same-output]」、[ref-page same-output] ページ）。
 
 その代わり、プロジェクトを人に渡すと、フォントのファイルも一緒に渡すことになります。
-HTML と EPUB にもフォントのファイルを同梱するので、それらを公開すればフォントを配ることになります。
+HTML と EPUB は、既定ではフォントのファイルを同梱しません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。
+[code: fonts = "embed"] で同梱した HTML と EPUB を公開すると、フォントも配ることになります。
 フォントのライセンスが、この使い方を許しているかを確かめてください。
 このマニュアルで使っているフォントは、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
 
@@ -168,7 +169,7 @@ Golem はこの欄を仕様のとおりに読み、次のどれかに当たる�
 PDF の埋め込みフォントの形式は CFF2 の輪郭を受けないので、Golem は CFF2 の輪郭のフォントを PDF に埋め込めません。
 PDF が使う役割にこのフォントを書くと、エラー（G08019）になり、PDF を書きません。
 [code: golem check] と [code: golem preflight] も、このエラーを出します。
-HTML と EPUB は、フォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
+HTML と EPUB は、フォントを同梱するときもファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
 
 G08019 が出たら、同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）を使ってください。
 たとえば Source Serif 4 なら、[code: SourceSerif4Variable-Roman.otf] の代わりに、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] を使います。

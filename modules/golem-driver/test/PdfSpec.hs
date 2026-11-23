@@ -1882,7 +1882,8 @@ codeTests =
       assertBool (show texts) (T.concat texts == "あいうえおmodules/golem-driver/src/Golem/Driver/Pdf.hs")
       assertBool "no hyphen" (null [() | l <- ls, Penalty w _ (PatternHyphen _) <- take 1 (reverse l), w > 0])
     withCode style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
-      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
+      -- the fonts embedded, so that the families of the roles are written (docs/adr/0423)
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\nfonts = \"embed\"\n")
       BS.writeFile (tmp </> "style.toml") (withBodyFont style)
       writeFiles tmp fakeFontFiles
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)

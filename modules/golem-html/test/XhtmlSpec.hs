@@ -69,6 +69,8 @@ cfg0 =
       hcHeadingRules = Map.empty,
       hcNoteNotation = arabic,
       hcEndnoteNotation = arabic,
+      hcEmbedFonts = True,
+      hcGenericFamilies = Map.empty,
       hcCharacterAdvance = Nothing
     }
 
@@ -1088,7 +1090,26 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests])
+
+-- | The fonts of a site, embedded or named by generic families (root ADR 0423).
+genericFontTests :: TestTree
+genericFontTests =
+  testGroup
+    "root ADR 0423"
+    [ testCase "root ADR 0423 I1: a site of generic families has no @font-face and no font among its assets" $ do
+        let site = renderXhtml (withBody False) ft (bookOf [])
+        (filter (T.isPrefixOf "@font-face") (T.lines (siteCss site)), [a | (a, _) <- siteAssets site, a == "fonts/b.otf"]) @?= ([], []),
+      testCase "root ADR 0423 I2: the body of a site of generic families names only the generic family of body" $
+        cssLines "body {" (withBody False) @?= ["body { font-family: sans-serif; }"],
+      testCase "root ADR 0423 I3: the body of a site that embeds the fonts ends with the generic family of body" $ do
+        cssLines "body {" (withBody True) @?= ["body { font-family: \"golem-body-ja\", sans-serif; }"]
+        cssLines "@font-face" (withBody True) @?= ["@font-face { font-family: \"golem-body-ja\"; src: url(\"fonts/b.otf\"); }"],
+      testCase "root ADR 0423 I5: without generic-family, the body of a site that embeds the fonts ends with serif" $
+        cssLines "body {" (withBody True) {hcGenericFamilies = Map.empty} @?= ["body { font-family: \"golem-body-ja\", serif; }"]
+    ]
+  where
+    withBody embed = cfg0 {hcFonts = Map.singleton "body" (Just "fonts/b.otf", Nothing), hcEmbedFonts = embed, hcGenericFamilies = Map.singleton "body" "sans-serif"}
 
 -- | Fixed-page positions are empty anchors in the original text (root ADR 0386).
 pageBreakTests :: TestTree
