@@ -2392,7 +2392,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
               | let notes = [notesList ChannelNote (notesTitle lang) (noteStyleFor PlaceChapterEnd (styleOf fid)) (concatMap documentNotes docs) | stNotesPlacement (styleOf fid) == PlaceChapterEnd]
                     -- the endnotes after the notes, always (root ADR 0412)
                     endnotes = notesList ChannelEndnote (endnotesTitle lang) (endnoteStyle (styleOf fid)) (concatMap documentEndnotes docs),
-                not (null (concat notes)) || not (null endnotes) ->
+                not (all null notes) || not (null endnotes) ->
                   let (breaks, body) = span isBreakUnit (reverse us)
                    in reverse body <> concat notes <> endnotes <> reverse breaks
             _ -> us

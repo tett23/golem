@@ -1382,7 +1382,7 @@ css cfg book =
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
-    hasEndnotes = any (not . null . documentEndnotes) (bookDocs book)
+    hasEndnotes = not (all (null . documentEndnotes) (bookDocs book))
     separatorPitch = maybe "1lh" ((<> "pt") . L.ptText) (hcSeparatorPitch cfg)
     docs = [fid | Document fid _ <- bookDocs book]
     -- the role of code, then monospace (golem-driver ADR 0017)

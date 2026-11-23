@@ -4,7 +4,7 @@ always at the end of the chapter (root ADR 0412).
 module EndnotesSpec (endnoteTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, replicateM, when)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
@@ -108,7 +108,7 @@ are left out, which numbering = "page" decides on the pages), then the
 list of its endnotes, numbered (root ADR 0412 I1, I2, I4).
 -}
 expectedPdf :: Config -> ([Kind], [Kind]) -> [Line] -> Bool
-expectedPdf c input@(xs, ys) got = go (zip3 [xs, ys] [0, length xs] (expectedEndnotes c input)) got
+expectedPdf c input@(xs, ys) = go (zip3 [xs, ys] [0, length xs] (expectedEndnotes c input))
   where
     go [] rest = null rest
     go ((ks, from, ens) : more) rest =
@@ -218,7 +218,7 @@ textEndnotes t = case T.breakOn "\n後注\n" t of
 inputs :: Int -> [([Kind], [Kind])]
 inputs depth = [(xs, ys) | n <- [0 .. depth], a <- [0 .. n], xs <- seqs a, ys <- seqs (n - a)]
   where
-    seqs k = sequence (replicate k [minBound .. maxBound])
+    seqs k = replicateM k [minBound .. maxBound]
 
 configs :: [Config]
 configs = [Config n e p | n <- ["chapter", "file", "book", "page"], e <- ["chapter", "file", "book"], p <- ["page-foot", "chapter-end"]]
