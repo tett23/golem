@@ -393,6 +393,10 @@ Alloy の `minus[Col.cap, x] >= l` は、引き算を使わずに `x + l ≤ cap
 ## 未完の項目
 
 キャプションの評価値と幅の計算の対応、改ページの全状態遷移と終了、出力の過不足と順序、実装との境界例の照合は未完である。
+境界入力の表のうち改ページだけで決まる行は、`modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` で Haskell の実装を検査する。
+空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
+キャプションの行は、キャプションを改行し図版を縮小する golem-driver の `FigureSpec.hs` で検査する。
+これは実装の側の検査で、同じ入力を Lean の改ページ全体のモデルと照合するには、そのモデルが要る。
 現在の main には [root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置と、図版の回り込みを実際の段の位置で改行し直す経路もある。
 既存の整数行のモデルを、その経路の証明とは扱わない。
 [root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りのフロー生成と G07134 の後処理も、まだ証明していない。

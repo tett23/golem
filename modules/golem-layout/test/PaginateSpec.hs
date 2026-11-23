@@ -9,6 +9,7 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
+import Control.Applicative ((<|>))
 import Control.Exception (evaluate)
 import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
@@ -71,6 +72,7 @@ paginateTests =
       testGroup "a heading kept with what follows" keepWithNextTests,
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
       testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
+      testGroup "the boundary inputs of Golem ADR 0352" boundaryTableTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "stanzas of verse (docs/adr/0180)" stanzaTests,
       testGroup "the look-ahead counts the first part that can be split (golem-layout ADR 0021)" splitPartTests,
@@ -1934,3 +1936,58 @@ spaceBeforeWaitingTests =
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
         <> (show w <> " figures of " <> show h <> " lines waiting between " <> show s <> " spaces and need-lines 2, ")
         <> (show r <> " grid lines left before the spaces")
+
+{- | The rows of the boundary table of Golem ADR 0352 that the paginator
+decides alone. The caption rows are judged in golem-driver, where the
+caption is broken and the figure is shrunk (FigureSpec). Each input must
+end within a second, every line must be placed once in the order
+written, and every figure once in the order written (I4, I5).
+-}
+boundaryTableTests :: [TestTree]
+boundaryTableTests =
+  [ testCase "Golem ADR 0352 I4, I5: an empty manuscript and a one-line manuscript end with nothing added" $
+      forM_ [1 .. 3] $ \capacity -> do
+        assertEnds capacity []
+        assertEnds capacity [FParagraph defaultKeep (lines' 0 1)]
+        contents (paginate 1 capacity []) @?= [[]]
+        contents (paginate 1 capacity [FParagraph defaultKeep (lines' 0 1)]) @?= [[SLine 0]],
+    testCase "Golem ADR 0352 I3, I4: paragraphs broken in columns of 1, 2 and 3 lines fill every column they leave" $
+      forM_ [1 .. 3] $
+        \capacity -> forM_ [[a] | a <- [1 .. 5]] (paragraphsIn capacity) >> forM_ [[a, b] | a <- [1 .. 4], b <- [1 .. 4]] (paragraphsIn capacity),
+    testCase "Golem ADR 0352 I2, I3: a figure of the column's height fits an empty column, one a line taller is not shrunk here" $ do
+      contents (paginate 1 3 [FFigure 1 3 [] []]) @?= [[SFigure 1]]
+      contents (paginate 1 3 [FParagraph defaultKeep (lines' 0 1), FFigure 1 3 [] []]) @?= [[SLine 0], [SFigure 1]]
+      contents (paginate 1 3 [FFigure 1 4 [] []]) @?= [[SFigure 1]]
+      assertEnds 3 [FParagraph defaultKeep (lines' 0 1), FFigure 1 4 [] [], FParagraph defaultKeep (lines' 10 1)],
+    testCase "Golem ADR 0352 I3, I4, I5: one, two and three figures among paragraphs are placed once in the order written" $
+      forM_ [3, 4] $ \capacity -> forM_ (figureInputs capacity) $ \flows -> do
+        assertEnds capacity flows
+        let output = concat (contents (paginate 1 capacity flows))
+        assertEqual (show (capacity, flows)) (sourceLines flows) [i | SLine i <- output]
+        assertEqual (show (capacity, flows)) (sourceFigures flows) [i | SFigure i <- output]
+  ]
+  where
+    assertEnds capacity flows = do
+      done <- timeout 1000000 (evaluate (length (show (contents (paginate 1 capacity flows)))))
+      assertBool ("does not end: " <> show (capacity, flows)) (isJust done)
+    paragraphsIn capacity sizes = do
+      let flows = zipWith (\k n -> FParagraph defaultKeep (lines' (10 * k) n)) [0 ..] sizes
+          ps = paginate 1 capacity flows
+          output = contents ps
+      assertEnds capacity flows
+      assertEqual (show (capacity, sizes)) (sourceLines flows) [i | SLine i <- concat output]
+      -- a column left with nothing in it would be a column only sent on from
+      assertBool (show (capacity, sizes, output)) (not (any null output))
+      assertBool (show (capacity, sizes, output)) (length output <= sum sizes)
+    sourceLines flows = [i | FParagraph _ ls <- flows, LineBox i _ _ _ _ <- ls]
+    sourceFigures flows = [i | FFigure i _ _ _ <- flows]
+    figureInputs capacity =
+      [ concat (zipWith element [0 ..] shape)
+      | count <- [1 .. 4],
+        shape <- replicateM count (Left <$> [1 .. 3] <|> Right <$> [1 .. capacity]),
+        length (filter isFigure shape) `elem` [1 .. 3]
+      ]
+      where
+        isFigure = either (const False) (const True)
+        element k (Left n) = [FParagraph defaultKeep (lines' (10 * k) n)]
+        element k (Right size) = [FFigure (100 + k) size [] []]
