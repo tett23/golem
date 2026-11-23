@@ -954,7 +954,8 @@ turnedFigureTests =
       let build' r = notifiedWith "\n[targets.html]\n\n[targets.epub]\n" (horizontal20 "left" 20) (fig "wide" r "キャプション。") (\o -> o {optTargets = Just [TargetHtml, TargetEpub]})
       turned <- build' " rotate=true"
       plain <- build' ""
-      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/fonts/b.otf", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
+      -- no font: HTML names generic families by default (docs/adr/0423)
+      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
       nOutputs turned @?= nOutputs plain
   ]
 

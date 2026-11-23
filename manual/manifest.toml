@@ -89,6 +89,8 @@ role = "author"
 [targets.pdf]
 
 [targets.html]
+# the manual shows its own typefaces and carries their licenses (docs/adr/0082, docs/adr/0423)
+fonts = "embed"
 
 [functions.requires]
 file = ["data/units.tsv"]

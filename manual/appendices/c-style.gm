@@ -111,6 +111,7 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 |:---|:---|
 | [code: ja] | 和文のフォントのファイルです。 |
 | [code: latin] | 欧文のフォントのファイルです。 |
+| [code: generic-family] | HTML と EPUB で使う総称の書体です。[code: "serif"]（明朝の系統）、[code: "sans-serif"]（ゴシックの系統）、[code: "monospace"]（等幅）のどれかです。ほかの値はエラー（G03281）になります。PDF は使いません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
 | [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の仮名などを詰めて組みます。PDF では、[code: punctuation-proportional] が [code: true] でなければ、括弧類、句読点、中点類には [code: palt] と [code: vpal] を当てません。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
 | [code: punctuation-proportional] | 真偽値です。[code: true] にすると、PDF で括弧類、句読点、中点類にも、[code: features] や [code: proportional-metrics] で指定した [code: palt]（縦組みでは [code: vpal]）を当てます。当てた約物には、Golem が全角の字形の機能（[code: fwid]）を足しません。これだけでは機能を足しません。[code: kerning = "japanese-equal-width"] の文字は全角の送りのままです。既定は [code: false] です。 |
 | [code: instance] | 可変フォントの名前付きインスタンスの名前です。たとえば [code: "Bold"] で、フォントの Bold の太さで組みます。名前はフォントに書かれた英語の名前で、大文字と小文字を区別します。和文と欧文の両方のフォントに当たります。PDF だけが使います。 |

@@ -239,6 +239,8 @@ pdBookTest skips (name, vertical) = testCase name $ withSystemTempDirectory "gol
 withStyleProject :: BS.ByteString -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
 withStyleProject style files act = withSystemTempDirectory "golem-files" $ \tmp -> do
   copyTree fixture tmp
+  -- HTML and EPUB embed the fonts, so that they look for the files (golem-project ADR 0004, docs/adr/0423)
+  embedFonts tmp
   BS.writeFile (tmp </> "style.toml") style
   writeFiles tmp files
   act tmp
@@ -520,7 +522,8 @@ newTemplateTests =
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= assertBool "written" . isRight
            r <- build (defaultOptions dir) {optTargets = Just allTargets}
-           codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
+           -- HTML and EPUB name generic families and do not look for the fonts (docs/adr/0423)
+           codeSeverities r @?= [(DiagnosticCode "G08002", Error)]
            mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]

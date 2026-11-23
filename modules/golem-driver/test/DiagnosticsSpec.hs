@@ -799,7 +799,8 @@ outputDiagnosticTests =
       map diagCode (bErrors c) @?= [DiagnosticCode "G08019"]
       h <- buildMarksFiles (\o -> o {optFonts = golemFontProvider, optTargets = Just [TargetHtml]}) (Just style) files
       map diagCode (bErrors h) @?= []
-      length (bWritten h) @?= 4
+      -- the pages and the style sheet, without the font: HTML names generic families by default (docs/adr/0423)
+      length (bWritten h) @?= 3
       withSystemTempDirectory "golem-cff2" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") miniManifest
         BS.writeFile (tmp </> "style.toml") style

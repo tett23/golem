@@ -1,6 +1,6 @@
 # ADR 0423: HTML と EPUB は、既定でフォントを同梱せず、総称の書体（明朝、ゴシック）だけを指定する
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -124,6 +124,7 @@ test-suite golem-driver-test
     ForceTableSpec
     FunctionLibrarySpec
     FunctionsSpec
+    GenericFontsSpec
     HeadingLevelsSpec
     InMemorySpec
     ManualEmetSpec

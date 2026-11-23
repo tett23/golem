@@ -820,7 +820,7 @@ emphasisTests =
       a @?= c
       qpdfCheck a,
     testCase "HTML: a bold role is declared bold and b names it before the body" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
-      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\nfonts = \"embed\"\n")
       BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"gothic\"\n"
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "[bold: 太い]\n")
       writeFiles tmp fakeFontFiles
@@ -1146,7 +1146,7 @@ captionTests =
       qpdfCheck pdf,
     testCase "HTML: figcaption takes the caption's font and size relative to the grid" $ do
       let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
-            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\nfonts = \"embed\"\n")
             BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.caption]\nlatin = \"fonts/c.otf\"\n\n[paragraph-styles.caption]\n" <> keys)
             BS.writeFile (tmp </> "a.gm") "x\n"
             createDirectoryIfMissing True (tmp </> "fonts")
@@ -1351,7 +1351,7 @@ sidenoteTests =
       qpdfCheck pdf,
     testCase "HTML: .sidenote takes the sidenote's font and size" $ do
       let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
-            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\nfonts = \"embed\"\n")
             BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.note]\nlatin = \"fonts/n.otf\"\n\n[paragraph-styles.sidenote]\n" <> keys)
             BS.writeFile (tmp </> "a.gm") "x\n"
             createDirectoryIfMissing True (tmp </> "fonts")

@@ -31,6 +31,7 @@ module Golem.Html
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Char (isAsciiUpper)
 import Data.List (find, mapAccumL, sortOn, zip4)
 import Data.List.NonEmpty (NonEmpty)
@@ -103,7 +104,12 @@ data HtmlConfig = HtmlConfig
     -- | the rules before and after the headings of each level (golem-driver ADR 0027)
     hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule)),
     -- | the notation of [notes] mark-format: the text of the links of notes (docs/adr/0177)
-    hcNoteNotation :: !Notation
+    hcNoteNotation :: !Notation,
+    {- | whether the site embeds the fonts of hcFonts with @font-face
+    (fonts = "embed") or names only generic families (docs/adr/0423) -}
+    hcEmbedFonts :: !Bool,
+    -- | the generic-family of each role that has one, as CSS writes it (docs/adr/0423)
+    hcGenericFamilies :: !(Map Text Text)
   }
 
 {- | A rule before or after a paragraph or a heading as CSS (golem-driver
@@ -382,7 +388,8 @@ renderXhtmlWithPageBreaks cfg ft book pageBreaks =
           $ Map.toList
           $ Map.fromList
           $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ _ (FigureBlock f) <- allFigures bs]
-            <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
+            -- the fonts only when the site embeds them (docs/adr/0423)
+            <> [(fontOut p, p) | hcEmbedFonts cfg, (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
 -- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
@@ -1262,7 +1269,8 @@ css cfg book =
         <> (if role `elem` boldRoles then " font-weight: bold;" else "")
         <> (if role `elem` italicRoles then " font-style: italic;" else "")
         <> " }"
-    | (role, (ja, la)) <- Map.toAscList (hcFonts cfg),
+    | hcEmbedFonts cfg,
+      (role, (ja, la)) <- Map.toAscList (hcFonts cfg),
       (kind, Just p) <- [("latin" :: Text, la), ("ja", ja)]
     ]
       <> [ "body { font-family: " <> fontStack "body" <> "; }",
@@ -1348,8 +1356,8 @@ css cfg book =
   where
     separatorPitch = maybe "1lh" ((<> "pt") . L.ptText) (hcSeparatorPitch cfg)
     docs = [fid | Document fid _ <- bookDocs book]
-    -- the role of code, then monospace (golem-driver ADR 0017)
-    codeStack = T.intercalate ", " (maybe [] families (hcoFont (hcCode cfg)) <> ["monospace"])
+    -- the role of code, then its generic family or monospace (golem-driver ADR 0017, docs/adr/0423)
+    codeStack = T.intercalate ", " (maybe [] families (hcoFont (hcCode cfg)) <> [fromMaybe "monospace" (hcoFont (hcCode cfg) >>= genericOf)])
     preDecls =
       let co = hcCode cfg
        in [ d
@@ -1381,7 +1389,7 @@ css cfg book =
       "italic" -> ["font-style: italic"]
       _ -> []
     declsOf name cs =
-      [ "font-family: " <> T.intercalate ", " (families role <> fallback)
+      [ "font-family: " <> T.intercalate ", " (stack role)
       | -- code is in the rule of pre and code when it has the role of pre
         name /= "code" || hcsFont cs /= hcoFont (hcCode cfg),
         Just role <- [hcsFont cs]
@@ -1408,7 +1416,9 @@ css cfg book =
         -- a range that does not break; a br breaks inside it, as a forced break does in the PDF (docs/adr ADR 0272)
         <> ["white-space: nowrap" | hcsNoBreak cs]
       where
-        fallback = if hcsCode cs then ["monospace"] else families "body" <> ["serif"]
+        fallback = if hcsCode cs then [] else families "body"
+        -- the families of the role, then body's for a style not of code, then the generic family (docs/adr/0423)
+        stack role = families role <> fallback <> [charGeneric cs]
     {- the keys of the spacing of characters whose values differ from the
     defaults of body (docs/adr/0020): CSS kerns Japanese and Latin alike,
     so japanese-equal-width keeps the Latin kerning -}
@@ -1566,11 +1576,20 @@ css cfg book =
       [] -> ""
       ks -> "body" <> T.concat [":not(.file-" <> tshow k <> ")" | k <- ks]
     allStyles = [(n, ps) | (n, ps) <- Map.toAscList (hcParaStyles cfg), n /= "code"]
+    -- the families of the fonts of a role, none when the site names generic families only (docs/adr/0423)
     families role = case Map.lookup role (hcFonts cfg) of
-      Just (ja, la) -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
-      Nothing -> []
+      Just (ja, la) | hcEmbedFonts cfg -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
+      _ -> []
     family role kind = "golem-" <> role <> "-" <> kind
-    fontStack role = T.intercalate ", " (families role <> ["serif"])
+    {- the generic family that ends font-family (docs/adr/0423): that of the
+    role; for a paragraph, serif without one; for a character style of code,
+    monospace; for another character style, that of body, then serif -}
+    genericOf role = Map.lookup role (hcGenericFamilies cfg)
+    fontStack role = T.intercalate ", " (families role <> [fromMaybe "serif" (genericOf role)])
+    charGeneric cs
+      | hcsCode cs = fromMaybe "monospace" (hcsFont cs >>= genericOf)
+      | otherwise = fromMaybe "serif" ((hcsFont cs >>= genericOf) <|> genericOf "body")
+    charStack cs = T.intercalate ", " (maybe [] families (hcsFont cs) <> [charGeneric cs])
     {- the rules of the styles of a file: every property they handle, as a
     property left out would keep the value of the rule of style.toml -}
     readingRules prefix styles =
@@ -1594,7 +1613,7 @@ css cfg book =
           charRules =
             [ rule
                 (pre <> " " <> selectorOf name)
-                ( [ "font-family: " <> stackOr (hcsFont cs),
+                ( [ "font-family: " <> (if isJust (hcsFont cs) then charStack cs else "inherit"),
                     "font-weight: " <> (if hcsBold cs then "bold" else "normal"),
                     "font-style: " <> (if hcsItalic cs then "italic" else "normal"),
                     "color: " <> colorOf cs

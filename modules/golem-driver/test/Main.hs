@@ -32,6 +32,7 @@ import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
+import GenericFontsSpec (genericFontsTests)
 import HeadingLevelsSpec (headingLevelsTests)
 import InMemorySpec (inMemoryTests)
 import IndexRangeSpec (indexRangeTests)
@@ -152,6 +153,7 @@ tests skips =
              testGroup "regex styles (docs/adr ADR 0015)" regexStyleTests,
              testGroup "PDF headings (ADR 0003)" headingTests,
              testGroup "headings of six levels (docs/adr/0188)" headingLevelsTests,
+             testGroup "generic font families of HTML and EPUB (root ADR 0423)" genericFontsTests,
              testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
              testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
              testGroup "PDF captions (ADR 0010)" captionTests,
