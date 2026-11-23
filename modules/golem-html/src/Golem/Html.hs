@@ -108,8 +108,8 @@ data HtmlConfig = HtmlConfig
     -- | the notation of [endnotes] mark-format: the text of the links of endnotes (root ADR 0412)
     hcEndnoteNotation :: !Notation,
     {- | whether the site embeds the fonts of hcFonts with @font-face
-    (fonts = "embed") or names only generic families (docs/adr/0423) -}
-    hcEmbedFonts :: !Bool,
+    (fonts = "embed") or names only generic families (docs/adr/0423)
+    -} hcEmbedFonts :: !Bool,
     -- | the generic-family of each role that has one, as CSS writes it (docs/adr/0423)
     hcGenericFamilies :: !(Map Text Text)
   }
