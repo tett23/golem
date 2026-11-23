@@ -419,6 +419,10 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 行が収まらなければ次の段で見出し行を繰り返し、繰り返した見出し行の直後では行を必ず置くからである。
 それ以外の表の `placeTableAcross` は、残りの組の数、見出し行を繰り返したか、4 つ組の辞書式順序で止まる。
 組を置かずに次の段へ進むのは空でない段からだけで、見出し行を繰り返すのは組ごとに一度だけである。
+本の部は、その中のフローを `step` で一つずつ置くので、`step`、`place`、`placeFlow` と、フローの列を置く `runFlows` は相互に再帰する。
+この再帰は、フローの重み（`flowWeight`）と関数の順位の組の辞書式順序で止まる。
+本の部の重みはその中のフローの重みの和より大きく、`flattenParts`（`flattenBookParts`）で平らにした列の重みは元の列の重みを超えない（`flattenParts_weight`）。
+`placeAll` は原稿の列について構造的に再帰する。
 `I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
 
 `I5_paginate_text` は、出力のページに、段落、定義の項、表の行、見出し、コードの行が原稿の順に一度ずつ並ぶことを証明する。
@@ -431,6 +435,9 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 `no-break` か `keep-with-next` の前の段落では、`placeKept` が、段落の全体をそのまま置くか、最後の行を残りから分けて置くかを選ぶ。
 分けるときも、前の部分を置いた状態に続けて後ろの部分を置くので、行は原稿の順に一度ずつ置かれる。
 `waitFor` と `checkNoBreak` は待つ制御と満たせなかった制御だけを変えるので、本文と図版を変えない。
+本の部の `placeBookPart` は、中のフローをそのまま置いた結果、平らにして置いた結果、次の単位から置いた結果のどれかを選ぶ。
+どの結果も、選ぶ前の状態に中のフローの行を原稿の順に足したものなので（`text_placeBookPart`）、どれを選んでも行は一度ずつ置かれる。
+本の部の行は、中のフローの行を原稿の順につないだ列として数える。
 
 図版の順序には、図版の高さが 1 行以上という前提が要る。
 高さ 0 行の図版の直後に転置図版があると、Haskell の実装は図版の順序を原稿と逆にする。
@@ -439,7 +446,7 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 このとき `pageFigure` は、図版 1 のある段を閉じる前に、転置図版のページを出力する。
 
 `I5_paginate_figures` は、この前提の下で、出力のページに図版と転置図版が原稿の順に一度ずつ並ぶことを証明する。
-前提は三つで、原稿のどの図版も高さが 1 行以上であること、段の容量が 1 行以上であること、脚注区切りの行数が 0 行以上であることである。
+前提は三つで、原稿のどの図版も、本の部の中の図版も高さが 1 行以上であること、段の容量が 1 行以上であること、脚注区切りの行数が 0 行以上であることである。
 段の容量の前提は、[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) が入力とする段と同じである。
 定理は、出力済みのページの図版、現在の段の図版、待機中の図版をこの順につないだ列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
 転置図版をすぐに置くのは段の使用行数と脚注の行数がともに 0 のときだけなので、この不変条件には、図版のある段では使用行数か脚注の行数が 1 以上であるという性質が要る。
@@ -472,11 +479,16 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `no-break` と `keep-with-next` が先の原稿から求める値も `Env` の引数とする。
 段落が最後の行を保つ相手の行数（`Decide.hs:125` の `keptNeed`）、先の制御が求める最後の行数（`Decide.hs:133` の `keepAhead` の 2 番目の値、制御がなければ 0）、次の部分の最初の行数（`Decide.hs:186` の `nextFirstLines`）の三つである。
 フローは、段落、続きの段落、見出し、図版、転置図版、改段と改ページ、スペース、行アキ、`need-lines`、コード、定義の項、表、`no-break`、`keep-with-next`、段組みの切り替えと戻し、段の行数の変更（`FAdjustLines`）を扱う。
-本の部、箱、罫線つきのブロック、詩、回り込み図版、節の開始は、まだ扱わない。
+本の部も扱う。
+箱、罫線つきのブロック、詩、回り込み図版、節の開始は、まだ扱わない。
 段組みは段数と先頭行だけを状態に持ち、段の幅と段間は持たない。
 `Env` の段数は基本の段組み（`envBase`）の段数で、段組みを戻すとこの段数になる。
 表は、`envKeepParts` が `KeepColumn` のときの `placeTable` と、それ以外のときの `placeTableAcross` の両方を扱う。
-本の部がないので、`placeTableAcross` の、本の部の中で末尾の行とキャプションを保つ分岐（`envBookPartSpan` が `Just` のとき）は扱わない。
+`placeTableAcross` は、本の部の中で末尾の行とキャプションを一つの単位に保つ分岐（`envBookPartSpan` が `Just` のとき）も扱う。
+`Env` の `keepParts` は `envKeepParts` を、`inBookPart` は `envBookPartSpan` が `Just` であることを表す。
+本の部の種類は自然数で表し、満たせなかった保持は `Unmet.splitBookPart` で表す。
+`placeBookPart` が試した配置を選ぶ `fits` は、出力のページのスロットの id から実装のとおりに求める。
+`fits` の値は定理の証明に使わないので、定理はどの選び方でも成り立つ。
 表の部分の記録 `sTables` は出力の付帯情報なので、モデルには持たない。
 満たせなかった制御は、出典の位置を持たない `Unmet.noBreak` と `Unmet.keepNext` で表す。
 `FAdjustLines` の行数の上限（`envMaxLines`）は `Env` の `maxLines` とし、満たせなかった変更は `Unmet.adjust` で表す。
@@ -491,6 +503,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | --- | --- |
 | `Paginate.hs:175` `placeAll` | `placeAll` |
 | `Paginate.hs:191` `step` | `step` |
+| `Paginate.hs:193` `step` の `FBookPart` | `step` の `bookPart`、`runFlows` |
 | `Paginate.hs:249` `needMore` | `needMore` |
 | `Paginate.hs:261` `needAfterSpaces` | `needAfterSpaces` |
 | `Paginate.hs:273` `needBeforeSpaces` | `needBeforeSpaces` |
@@ -511,11 +524,15 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:494` `applyBreakKind` | `applyBreakKind` |
 | `Paginate.hs:504` `breakPage` | `breakPage` |
 | `Paginate.hs:512` `place` | `place`、スペースは `placeSpaceFlow` |
+| `Paginate.hs:514` `place` の `FBookPart` | `place` の `bookPart`、`runFlows` |
 | `Paginate.hs:561` `place` の `FSwitchColumns`、`:567` `FRestoreColumns` | `place` の `switchColumns`、`restoreColumns` |
 | `Paginate.hs:599` `placeCode` | `placeCode`、`codeCount`、`codeSpanOf` |
 | `Paginate.hs:625` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate.hs:787` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
-| `Paginate.hs:812` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat` |
+| `Paginate.hs:812` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
+| `Paginate/BookParts.hs:13` `placeBookPart` | `placeBookPart`、`partTrial`、`fitsPart`、`unitKey`、`emptyUnit`、`nextUnit`、`nextSpread`、`hasNested` |
+| `Paginate/BookParts.hs:60` `flattenBookParts` | `flattenParts` |
+| `Paginate/BookParts.hs:66` `flowSlotIds`、`:83` `slotIds` | `flowSlotIds`、`flowsSlotIds`、`slotIds` |
 | `Paginate/State.hs:131` `initialState` | `initialState` |
 | `Paginate/State.hs:142` `cap`、`:150` `free`、`:157` `typeAreaFree`、`:164` `isEmpty` | `cap`、`free`、`typeAreaFree`、`isEmpty` |
 | `Paginate/State.hs:199` `keep` | `keep` |

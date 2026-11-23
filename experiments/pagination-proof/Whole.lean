@@ -39,6 +39,11 @@ structure Keep where
 
 def defaultKeep : Keep := ⟨2, 2, false⟩
 
+/-- `KeepParts` of golem-project: the unit a part is kept in. -/
+inductive KeepParts where
+  | column | page | spread
+  deriving DecidableEq, Repr
+
 /-- The flows of the grid mode modelled here (Paginate/Types.hs `FlowAt`). -/
 inductive Flow where
   | paragraph (kp : Keep) (lines : List Line)
@@ -73,7 +78,10 @@ inductive Flow where
   /-- The grid lines of the column changed by so many (`FAdjustLines`,
       `@page-lines`). -/
   | adjustLines (k : Int)
-  deriving DecidableEq, Repr
+  /-- A book part (`FBookPart`): the unit it is kept in, its kind, the
+      ids it retains in one unit and its flows. -/
+  | bookPart (unit : KeepParts) (kind : Nat) (retained : List Nat) (body : List Flow)
+  deriving Repr
 
 inductive Slot where
   | line (id : Nat)
@@ -114,6 +122,9 @@ inductive Unmet where
   | keepNext
   /-- `UnmetAdjust`: the lines the column was changed by instead, and why. -/
   | adjust (got : Int) (limit : AdjustLimit)
+  /-- `SplitBookPart`: a book part, by its kind, or the last row and the
+      caption of a table (`none`), not kept in its unit. -/
+  | splitBookPart (kind : Option Nat) (unit : KeepParts)
   deriving DecidableEq, Repr
 
 /-- A note part: note id, first line, lines. -/
@@ -175,9 +186,10 @@ structure Env where
   /-- `codeSpan` of Paginate/Types.hs: the grid lines of a part of a
       code block of the geometry and the rows given. -/
   codeSpan : Nat → Nat → Nat
-  /-- `envKeepParts env == KeepColumn`: the parts are kept in a column,
-      not across a page or a spread. -/
-  keepColumn : Bool
+  /-- `envKeepParts`: the unit the parts are kept in. -/
+  keepParts : KeepParts
+  /-- `envBookPartSpan` is `Just`: the flows are in a book part. -/
+  inBookPart : Bool
   roomForLine : St → List Line → Bool
   /-- `keptNeed` of Decide.hs: what a paragraph before a no-break or a
       keep-with-next keeps its last lines with. -/
@@ -187,6 +199,9 @@ structure Env where
   keepLast : List Flow → Nat
   /-- `nextFirstLines` of Decide.hs. -/
   nextFirst : Nat → List Flow → Nat × Bool
+
+/-- `envKeepParts env == KeepColumn`. -/
+def Env.keepColumn (env : Env) : Bool := env.keepParts == .column
 
 def initialState (env : Env) : St :=
   ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns⟩
@@ -358,6 +373,70 @@ def startSet (env : Env) (st : St) (columns : Nat) (first : Int) : St :=
 
 def nextColumn (env : Env) (st : St) : St := advance env (st.columns ≤ st.column + 1) st
 def nextPage (env : Env) (st : St) : St := advance env true st
+
+/-! ## The flows nested in book parts -/
+
+mutual
+/-- The weight of a flow: what the mutual recursion of `step`, `place`
+    and `runFlows` decreases. -/
+def flowWeight : Flow → Nat
+  | .bookPart _ _ _ body => flowsWeight body + 1
+  | _ => 1
+termination_by f => sizeOf f
+def flowsWeight : List Flow → Nat
+  | [] => 0
+  | g :: r => flowWeight g + 1 + flowsWeight r
+termination_by fs => sizeOf fs
+end
+
+theorem flowsWeight_append (a b : List Flow) : flowsWeight (a ++ b) = flowsWeight a + flowsWeight b := by
+  induction a with
+  | nil => simp [flowsWeight]
+  | cons x xs ih => simp only [List.cons_append, flowsWeight, ih]; omega
+
+/-- `flattenBookParts` of BookParts.hs. -/
+def flattenParts : List Flow → List Flow
+  | [] => []
+  | .bookPart _ _ _ b :: r => flattenParts b ++ flattenParts r
+  | f :: r => f :: flattenParts r
+termination_by fs => sizeOf fs
+
+theorem flattenParts_weight (fs : List Flow) : flowsWeight (flattenParts fs) ≤ flowsWeight fs := by
+  match fs with
+  | [] => simp [flattenParts, flowsWeight]
+  | .bookPart u k i b :: r =>
+    have := flattenParts_weight b; have := flattenParts_weight r
+    simp only [flattenParts, flowsWeight_append, flowsWeight, flowWeight]; omega
+  | f :: r =>
+    have := flattenParts_weight r
+    cases f with
+    | bookPart u k i b =>
+      have := flattenParts_weight b
+      simp only [flattenParts, flowsWeight_append, flowsWeight, flowWeight]; omega
+    | _ => simp only [flattenParts, flowsWeight]; omega
+termination_by sizeOf fs
+
+mutual
+/-- `flowSlotIds` of BookParts.hs. -/
+def flowSlotIds : Flow → List Nat
+  | .bookPart _ _ _ body => flowsSlotIds body
+  | .paragraph _ ls | .continued _ ls | .defTerm ls => ls.map (·.id)
+  | .heading _ _ ls => (ls.take 1).map (·.id)
+  | .figure i _ | .pageFigure i => [i]
+  | .table _ h rows capt _ => (h ++ rows.join ++ capt).map (·.id)
+  | .code _ _ _ _ rows => rows.map (·.id)
+  | _ => []
+termination_by f => sizeOf f
+def flowsSlotIds : List Flow → List Nat
+  | [] => []
+  | g :: r => flowSlotIds g ++ flowsSlotIds r
+termination_by fs => sizeOf fs
+end
+
+/-- `hasNested` of `placeBookPart`. -/
+def hasNested : Flow → Bool
+  | .bookPart .. => true
+  | _ => false
 
 /-! ## The rank of the loops -/
 
@@ -973,6 +1052,117 @@ def applyBreakKind (env : Env) (st : St) : BreakKind → St
 def applyBreaks (env : Env) (st : St) : St :=
   st.breaks.foldl (applyBreakKind env) { st with breaks := [] }
 
+/-! ## Book parts (BookParts.hs `placeBookPart`) -/
+
+/-- `slotIds` of BookParts.hs; a repeated header line is a line of the
+    same id. -/
+def slotIds : Slot → List Nat
+  | .line i | .heading i _ | .figure i | .pageFigure i | .codeRow i | .repeated i => [i]
+  | .code rows => rows
+
+/-- `key` of `placeBookPart`: the unit of a column. -/
+def unitKey : KeepParts → Nat → Nat → Nat × Nat
+  | .column, p, c => (p, c)
+  | .page, p, _ => (p, 0)
+  | .spread, p, _ => (if p = 1 then 0 else p / 2, 0)
+
+def keyMin (a b : Nat × Nat) : Nat × Nat := if a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 ≤ b.2) then a else b
+
+def minKey : List (Nat × Nat) → Option (Nat × Nat)
+  | [] => none
+  | k :: ks => some (ks.foldl keyMin k)
+
+/-- `fits` of `placeBookPart`: every id retained is placed, and the first
+    unit of each is the same. -/
+def fitsPart (unit : KeepParts) (first : Nat) (wanted : List Nat) (st : St) : Bool :=
+  let entries := (st.done.takeWhile (fun p => decide (first ≤ p.number))).map (fun p => (p.number, p.column, p.slots))
+    ++ [(st.page, st.column, st.slots)]
+  let keysOf (w : Nat) : List (Nat × Nat) :=
+    entries.bind (fun e => if e.2.2.any (fun s => (slotIds s.2).contains w) then [unitKey unit e.1 e.2.1] else [])
+  let found := wanted.map (fun w => minKey (keysOf w))
+  found.all Option.isSome && (match found.filterMap id with
+    | [] => true
+    | k :: ks => ks.all (· == k))
+
+/-- `emptyUnit` of `placeBookPart`. -/
+def emptyUnit (unit : KeepParts) (st : St) : Bool :=
+  isEmpty st && top st == 0 && (match unit with
+    | .column => true
+    | .page => st.column == 0
+    | .spread => st.column == 0 && (st.page == 1 || even st.page))
+
+theorem pageFigures_page_ge (env : Env) (ts : List Nat) (st : St) : st.page ≤ (ts.foldl (pageFigure env) st).page := by
+  induction ts generalizing st with
+  | nil => exact Nat.le_refl _
+  | cons t ts ih => exact Nat.le_trans (Nat.le_succ _) (ih (pageFigure env st t))
+
+theorem carryAll_page (env : Env) (ps : List NotePart) (st : St) : (ps.foldl (carryNote env) st).page = st.page := by
+  induction ps generalizing st with
+  | nil => rfl
+  | cons p ps ih => simp only [List.foldl]; rw [ih]; simp only [carryNote, addUnmet]; split <;> rfl
+
+theorem placeDeferred_page (env : Env) (ws : List Deferred) (st : St) : (placeDeferred env st ws).page = st.page := by
+  induction ws generalizing st with
+  | nil => rfl
+  | cons w ws ih =>
+    cases w with
+    | figure i n =>
+      unfold placeDeferred; split
+      · rw [ih]; rfl
+      · rfl
+    | pageFigure i => rfl
+
+theorem nextPage_page_gt (env : Env) (st : St) : st.page < (nextPage env st).page := by
+  simp only [nextPage, advance, openColumn]
+  rw [placeDeferred_page]
+  show st.page < (List.foldl (carryNote env) _ st.pending).page
+  rw [carryAll_page]
+  have f : (advanceFresh env true st).page = st.page + 1 := rfl
+  have := pageFigures_page_ge env (advanceTurned true st).1 (advanceFresh env true st)
+  omega
+
+set_option linter.unusedVariables false in
+/-- `go` of `nextUnit` for a spread: the next pages up to the first page
+    of the next spread. -/
+def nextSpread (env : Env) (target : Nat) (st : St) : St :=
+  if h : (nextPage env st).page < target then nextSpread env target (nextPage env st) else nextPage env st
+termination_by target - st.page
+decreasing_by simp_wf; have := nextPage_page_gt env st; omega
+
+/-- `nextUnit` of `placeBookPart`. -/
+def nextUnit (env : Env) (unit : KeepParts) (st : St) : St :=
+  match unit with
+  | .column => nextColumn env st
+  | .page => nextPage env st
+  | .spread => nextSpread env (if st.page = 1 then 2 else 2 * (st.page / 2 + 1)) st
+
+/-- `trial` of `placeBookPart`: the flattened flows, unless a nested part
+    does not keep its ids in one unit. -/
+def partTrial (env : Env) (runBody runPlain : St → St) (unit : KeepParts) (fits : St → Bool) (nested whole : Bool)
+    (state : St) : St :=
+  let placed := runPlain state
+  let completed := if unit = .column then placed else flushFigures env placed
+  if whole || !nested || !fits completed then completed else flushFigures env (runBody state)
+
+/-- `placeBookPart` of BookParts.hs: the flows of the part run by
+    `runBody`, and flattened by `runPlain`, from the state given; the
+    trials that do not keep the ids retained in one unit are discarded.
+    `nested` and `whole` are those of BookParts.hs. -/
+def placeBookPart (env : Env) (runBody runPlain : St → St) (initial : St) (unit : KeepParts) (kind : Option Nat)
+    (retained : List Nat) (nested whole : Bool) : St :=
+  let fits := fitsPart unit initial.page retained
+  let ordinary := if unit = .column then runBody initial else partTrial env runBody runPlain unit fits nested whole initial
+  let moved := nextUnit env unit initial
+  let movedTrial := partTrial env runBody runPlain unit fits nested whole moved
+  let emptyTrial := if emptyUnit unit initial then ordinary else movedTrial
+  let report (st : St) : St := addUnmet (.splitBookPart kind unit) st
+  if retained = [] then runBody initial
+  else if unit = .column then (if fits emptyTrial then ordinary else report ordinary)
+  else if fits ordinary then ordinary
+  else if fits movedTrial then movedTrial
+  else if emptyUnit unit initial then report (runBody initial)
+  else report (runBody moved)
+
 /-! ## Need-lines, spaces and blank lines -/
 
 def noNeed : Need := ⟨0, 0⟩
@@ -1051,9 +1241,19 @@ def waitsBehind (st : St) : Flow → Bool
     !(st.deferred.isEmpty && st.column == 0 && st.used == 0 && st.notes.isEmpty && st.noteLines == 0)
   | _ => false
 
+mutual
+/-- `waitsFor` of Paginate.hs: the flows that place nothing of their own. -/
 def waitsFor : Flow → Bool
+  | .bookPart _ _ _ body => allWaitsFor body
   | .brk _ | .space _ | .blank _ | .needLines _ | .noBreak | .noBreakLines _ | .keepNext _ | .adjustLines _ => true
   | _ => false
+termination_by f => sizeOf f
+/-- `all waitsFor`. -/
+def allWaitsFor : List Flow → Bool
+  | [] => true
+  | g :: r => waitsFor g && allWaitsFor r
+termination_by fs => sizeOf fs
+end
 
 def headingNeed (env : Env) (st : St) (n : Nat) (ls : List Line) : Int :=
   needIn env st ⟨n, noteLinesOf ls⟩ noNeed
@@ -1181,26 +1381,46 @@ def tableGroups (h : List Line) (rows : List (List Line)) (capt : List Line) (be
 def mustRepeat (h : List Line) (fresh here : St) (isHeader retried : Bool) : Bool :=
   decide (fresh.page ≠ here.page) && !isHeader && !retried && !h.isEmpty
 
+/-- Whether `go` of `placeTableAcross` keeps the last row and the caption
+    below it in one unit: in a book part, at the last row before a
+    caption below. -/
+def retainsTail (env : Env) (capt : List Line) (below retain : Bool) (isHeader : Bool)
+    (remaining : List (Bool × List Line)) : Bool :=
+  retain && below && !capt.isEmpty && env.inBookPart && !isHeader && remaining == [(false, capt)]
+
 set_option linter.unusedVariables false in
-/-- `go` and `placeGroup` of `placeTableAcross` of Paginate.hs, outside a
-    book part (`envBookPartSpan` is `Nothing`): each group whole in a
-    column, or in an empty column; the header repeated once on a page
-    gone on to. -/
-def acrossGo (env : Env) (h : List Line) : Bool → St → List (Bool × List Line) → St
-  | _, st, [] => st
-  | retried, here, (isHeader, ls) :: remaining =>
-    if h1 : ls.length ≤ env.fitting here ls ∨ isEmpty here = true then
-      acrossGo env h false (ls.foldl (putLine env) here) remaining
+/-- `go` and `placeGroup` of `placeTableAcross` of Paginate.hs: each
+    group whole in a column, or in an empty column; the header repeated
+    once on a page gone on to.  `retain` is the first argument of `go`,
+    `fresh` whether the group is entered by `go`, not tried again by
+    `placeGroup`.  In a book part, the last row and the caption below it
+    are kept in one unit by `placeBookPart`. -/
+def acrossGo (env : Env) (h capt : List Line) (below : Bool) :
+    Bool → Bool → Bool → St → List (Bool × List Line) → St
+  | _, _, _, st, [] => st
+  | retain, fresh, retried, here, (isHeader, ls) :: remaining =>
+    if hr : fresh = true ∧ retainsTail env capt below retain isHeader remaining = true then
+      let run (start : St) : St :=
+        acrossGo env h capt below false true false
+          (if decide (start.page ≠ here.page) && !h.isEmpty then h.foldl putRepeated start else start)
+          ((isHeader, ls) :: remaining)
+      placeBookPart env run run here env.keepParts none ((ls ++ capt).map (·.id)) false true
+    else if h1 : ls.length ≤ env.fitting here ls ∨ isEmpty here = true then
+      acrossGo env h capt below retain true false (ls.foldl (putLine env) here) remaining
     else
-      acrossGo env h (retried || mustRepeat h (nextColumn env here) here isHeader retried)
+      acrossGo env h capt below retain false (retried || mustRepeat h (nextColumn env here) here isHeader retried)
         (if mustRepeat h (nextColumn env here) here isHeader retried
           then h.foldl putRepeated (nextColumn env here) else nextColumn env here)
         ((isHeader, ls) :: remaining)
-termination_by retried here gs => (gs.length, if retried then 0 else 1, rank env here)
+termination_by retain _ retried here gs =>
+  (if retain then 1 else 0, gs.length, if retried then 0 else 1, rank env here)
 decreasing_by
   all_goals simp_wf
-  · exact Prod.Lex.left _ _ (Nat.lt_succ_self _)
-  · apply Prod.Lex.right
+  · apply Prod.Lex.left
+    have := hr.2; simp only [retainsTail, Bool.and_eq_true] at this
+    simp [this.1.1.1.1.1]
+  · exact Prod.Lex.right _ (Prod.Lex.left _ _ (Nat.lt_succ_self _))
+  · apply Prod.Lex.right; apply Prod.Lex.right
     have ne : isEmpty here = false := by
       cases e : isEmpty here
       · rfl
@@ -1217,60 +1437,7 @@ decreasing_by
 
 def placeTableAcross (env : Env) (st : St) (h : List Line) (rows : List (List Line)) (capt : List Line)
     (below : Bool) : St :=
-  acrossGo env h false st (tableGroups h rows capt below)
-
-def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
-  match f with
-  | .paragraph kp ls => placeLines env kp st true ls
-  | .continued kp ls => placeLines env kp st false ls
-  | .heading recto n ls =>
-    let st1 := if recto then parityStart env odd st
-      else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))
-    let st2 := if headingNeed env st1 n ls ≤ free env st1 ∨ isEmpty st1 = true then st1
-      else nextColumn env st1
-    putBlock env st2 n ls
-  | .figure i n =>
-    if !st.deferred.isEmpty then { st with deferred := st.deferred ++ [.figure i n] }
-    else if (n : Int) ≤ free env st ∨ isEmpty st = true then putSlot st n (.figure i)
-    else { st with deferred := st.deferred ++ [.figure i n] }
-  | .pageFigure i =>
-    if st.deferred.isEmpty ∧ st.column = 0 ∧ st.used = 0 ∧ st.notes.isEmpty ∧ st.noteLines = 0 then
-      pageFigure env { st with adjust := 0 } i
-    else { st with deferred := st.deferred ++ [.pageFigure i] }
-  | .brk k => { st with breaks := st.breaks ++ [k] }
-  | .space n => placeSpaceFlow env st n
-  | .needLines _ => st
-  | .blank _ => st
-  | .noBreak => st
-  | .noBreakLines _ => st
-  | .keepNext _ => st
-  | .switchColumns n =>
-    let st1 := flushDeferred env st
-    if (env.columns = 1 ∧ 0 < typeAreaFree env st1) ∨ (isEmpty st1 = true ∧ st1.column = 0) then
-      startSet env st1 n st1.used
-    else { nextPage env st1 with columns := n, firstLine := 0 }
-  | .restoreColumns =>
-    if isEmpty st = true ∧ st.column = 0 ∧ top st = 0 then { st with columns := env.columns, firstLine := 0 }
-    else { nextPage env st with columns := env.columns, firstLine := 0 }
-  | .adjustLines _ => st
-  | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
-  | .defTerm ls =>
-    if env.keepColumn then
-      placeLines env defaultKeep
-        (keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))) true ls
-    else placeLines env ⟨1, 1, false⟩ st true ls
-  | .table sp0 h rows capt below =>
-    if env.keepColumn then
-      let sp : Int := if st.used = top st then 0 else sp0
-      let headed : Int := tableHead h rows capt below
-      let st1 := if sp + headed ≤ free env st ∨ isEmpty st = true
-        then { st with used := st.used + max 0 (min sp (free env st)) }
-        else keep env (nextColumn env st) (fun _ => headed)
-      placeTable env st1 h rows capt below
-    else
-      let space : Int := if st.used = top st then 0 else sp0
-      let started := if space ≤ free env st then { st with used := st.used + space } else nextColumn env st
-      placeTableAcross env started h rows capt below
+  acrossGo env h capt below true true false st (tableGroups h rows capt below)
 
 /-! ## No-breaks and keep-with-nexts (docs/adr/0261) -/
 
@@ -1296,17 +1463,6 @@ def placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → S
   else if here.page = stA.page ∧ here.column = stA.column ∧ fits here then here
   else if isEmpty stA = true then st1
   else placeIn (nextColumn env stA) (isStart && front.isEmpty) back
-
-/-- `placeFlow` of Paginate.hs. -/
-def placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
-  match f, env.keptNeed rest with
-  | .paragraph kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st true ls n
-  | .continued kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st false ls n
-  | .defTerm ls, some n =>
-    let initial := if 0 < env.keepLast rest then st
-      else keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))
-    placeKept env (previousKeep env rest defaultKeep) (placeLines env defaultKeep) initial true ls n
-  | _, _ => place env st f rest
 
 /-- `waitFor` of Paginate.hs. -/
 def waitFor (u : Unmet) (k : Nat × Bool) (st : St) : St :=
@@ -1350,21 +1506,100 @@ def adjustLines (env : Env) (st : St) (k : Int) : St :=
   let limit := if got < want then AdjustLimit.noRoom else if 1 ≤ placed then .linesPlaced else .oneLine
   if got ≠ want then addUnmet (.adjust got limit) st1 else st1
 
+/-! ## One flow and the flows of a part (mutual: a book part runs its flows by `step`) -/
+
+mutual
+/-- `place` of Paginate.hs. -/
+def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
+  match f with
+  | .paragraph kp ls => placeLines env kp st true ls
+  | .continued kp ls => placeLines env kp st false ls
+  | .heading recto n ls =>
+    let st1 := if recto then parityStart env odd st
+      else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))
+    let st2 := if headingNeed env st1 n ls ≤ free env st1 ∨ isEmpty st1 = true then st1
+      else nextColumn env st1
+    putBlock env st2 n ls
+  | .figure i n =>
+    if !st.deferred.isEmpty then { st with deferred := st.deferred ++ [.figure i n] }
+    else if (n : Int) ≤ free env st ∨ isEmpty st = true then putSlot st n (.figure i)
+    else { st with deferred := st.deferred ++ [.figure i n] }
+  | .pageFigure i =>
+    if st.deferred.isEmpty ∧ st.column = 0 ∧ st.used = 0 ∧ st.notes.isEmpty ∧ st.noteLines = 0 then
+      pageFigure env { st with adjust := 0 } i
+    else { st with deferred := st.deferred ++ [.pageFigure i] }
+  | .brk k => { st with breaks := st.breaks ++ [k] }
+  | .space n => placeSpaceFlow env st n
+  | .needLines _ => st
+  | .blank _ => st
+  | .noBreak => st
+  | .noBreakLines _ => st
+  | .keepNext _ => st
+  | .switchColumns n =>
+    let st1 := flushDeferred env st
+    if (env.columns = 1 ∧ 0 < typeAreaFree env st1) ∨ (isEmpty st1 = true ∧ st1.column = 0) then
+      startSet env st1 n st1.used
+    else { nextPage env st1 with columns := n, firstLine := 0 }
+  | .restoreColumns =>
+    if isEmpty st = true ∧ st.column = 0 ∧ top st = 0 then { st with columns := env.columns, firstLine := 0 }
+    else { nextPage env st with columns := env.columns, firstLine := 0 }
+  | .adjustLines _ => st
+  | .bookPart _ _ _ body => runFlows env st body rest
+  | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
+  | .defTerm ls =>
+    if env.keepColumn then
+      placeLines env defaultKeep
+        (keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))) true ls
+    else placeLines env ⟨1, 1, false⟩ st true ls
+  | .table sp0 h rows capt below =>
+    if env.keepColumn then
+      let sp : Int := if st.used = top st then 0 else sp0
+      let headed : Int := tableHead h rows capt below
+      let st1 := if sp + headed ≤ free env st ∨ isEmpty st = true
+        then { st with used := st.used + max 0 (min sp (free env st)) }
+        else keep env (nextColumn env st) (fun _ => headed)
+      placeTable env st1 h rows capt below
+    else
+      let space : Int := if st.used = top st then 0 else sp0
+      let started := if space ≤ free env st then { st with used := st.used + space } else nextColumn env st
+      placeTableAcross env started h rows capt below
+termination_by (flowWeight f, 0)
+decreasing_by all_goals simp_wf; (try subst_vars); apply Prod.Lex.left; simp only [flowWeight]; omega
+
+/-- `placeFlow` of Paginate.hs. -/
+def placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
+  match f, env.keptNeed rest with
+  | .paragraph kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st true ls n
+  | .continued kp ls, some n => placeKept env (previousKeep env rest kp) (placeLines env kp) st false ls n
+  | .defTerm ls, some n =>
+    let initial := if 0 < env.keepLast rest then st
+      else keep env st (fun s => needIn env s ⟨ls.length, noteLinesOf ls⟩ (env.nextNeed rest))
+    placeKept env (previousKeep env rest defaultKeep) (placeLines env defaultKeep) initial true ls n
+  | f, _ => place env st f rest
+termination_by (flowWeight f, 1)
+decreasing_by all_goals simp_wf; apply Prod.Lex.right; decide
+
 /-- `step` of Paginate.hs. -/
 def step (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   match f with
   | .needLines n => needMore env n st
   | .adjustLines k => adjustLines env (applyBreaks env st) k
+  | .bookPart unit kind retained body =>
+    let env' : Env := { env with keepParts := unit, inBookPart := true }
+    let plain := flattenParts body
+    placeBookPart env (fun s => runFlows env' s body rest) (fun s => runFlows env' s plain rest)
+      (if retained = [] then st else applyBreaks env st) unit (some kind) retained (body.any hasNested)
+      ((flowsSlotIds plain).all retained.contains)
   | .noBreakLines 0 => st
   | .noBreakLines _ | .noBreak =>
     if st.seen = false ∨ st.lastDeferred = true then addUnmet .noBreak st else waitFor .noBreak (1, false) st
   | .keepNext n =>
     if st.seen = false ∨ st.lastDeferred = true then addUnmet .keepNext st
     else waitFor .keepNext (env.nextFirst n rest) st
-  | .blank n => if rest.all waitsFor then st else { st with blank := st.blank ++ [n] }
-  | .brk _ => place env st f rest
+  | .blank n => if allWaitsFor rest then st else { st with blank := st.blank ++ [n] }
+  | .brk k => place env st (.brk k) rest
   | .space n => placeSpace env (needBeforeSpaces env (applyBreaks env st)) n
-  | _ =>
+  | f =>
     let stB := applyBreaks env st
     let waiting := waitsBehind stB f
     let st1 := if waiting then checkNoBreak (place env stB f rest)
@@ -1375,6 +1610,26 @@ def step (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
       | _ => false
     let spaces := if waiting ∧ st.breaks = [] then st1.spaces else []
     { st1 with seen := true, lastDeferred := deferred, spaces := spaces }
+termination_by (flowWeight f, 2)
+decreasing_by
+  all_goals simp_wf
+  all_goals try subst_vars
+  all_goals first
+    | (apply Prod.Lex.right; decide)
+    | (apply Prod.Lex.left; simp only [flowWeight]; omega)
+    | (apply Prod.Lex.left; have := flattenParts_weight body; simp only [flowWeight]; omega)
+
+/-- `go` of the book part in `step`, and `foldBody` of `place`: each
+    flow placed, with the flows after it to look ahead to. -/
+def runFlows (env : Env) (st : St) (fs : List Flow) (rest : List Flow) : St :=
+  match fs with
+  | [] => st
+  | g :: more => runFlows env (step env st g (more ++ rest)) more rest
+termination_by (flowsWeight fs, 3)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.left; simp only [flowsWeight]; omega
+end
 
 def placeAll (env : Env) (st : St) : List Flow → St
   | [] =>
@@ -1430,6 +1685,7 @@ def text (st : St) : List Slot := pagesText st.done ++ textSlots st.slots
 def tableLines (h : List Line) (rows : List (List Line)) (capt : List Line) (below : Bool) : List Line :=
   (if below then [] else capt) ++ h ++ rows.join ++ (if below then capt else [])
 
+mutual
 /-- The lines and headings of the flows written. -/
 def flowText : Flow → List Slot
   | .paragraph _ ls => ls.map (fun l => .line l.id)
@@ -1439,9 +1695,31 @@ def flowText : Flow → List Slot
   | .heading _ _ (l0 :: ls) => [.heading l0.id (ls.length + 1)]
   | .code _ _ _ _ ls => ls.map (fun l => .codeRow l.id)
   | .table _ h rows capt below => (tableLines h rows capt below).map (fun l => .line l.id)
+  | .bookPart _ _ _ body => sourceText body
   | _ => []
+termination_by f => sizeOf f
+def sourceText : List Flow → List Slot
+  | [] => []
+  | g :: r => flowText g ++ sourceText r
+termination_by fs => sizeOf fs
+end
 
-def sourceText (flows : List Flow) : List Slot := flows.bind flowText
+theorem sourceText_append (a b : List Flow) : sourceText (a ++ b) = sourceText a ++ sourceText b := by
+  induction a with
+  | nil => simp [sourceText]
+  | cons x xs ih => simp only [List.cons_append, sourceText, ih, List.append_assoc]
+
+theorem sourceText_flatten (fs : List Flow) : sourceText (flattenParts fs) = sourceText fs := by
+  match fs with
+  | [] => simp [flattenParts, sourceText]
+  | f :: r =>
+    have := sourceText_flatten r
+    cases f with
+    | bookPart u k i b =>
+      have := sourceText_flatten b
+      simp only [flattenParts, sourceText_append, sourceText, flowText, *]
+    | _ => simp only [flattenParts, sourceText, *]
+termination_by sizeOf fs
 
 theorem text_addUnmet (u : Unmet) (st : St) : text (addUnmet u st) = text st := rfl
 
@@ -1776,25 +2054,69 @@ theorem text_placeTable (env : Env) (st : St) (h : List Line) (rows : List (List
     text (placeTable env st h rows capt below) = text st ++ (tableLines h rows capt below).map (fun l => .line l.id) := by
   cases below <;> simp [placeTable, tableLines, text_tableRowsGo, text_putLines]
 
-theorem text_acrossGo (env : Env) (h : List Line) (retried : Bool) (st : St) (gs : List (Bool × List Line)) :
-    text (acrossGo env h retried st gs) = text st ++ (gs.bind (·.2)).map (fun l => .line l.id) := by
+theorem text_nextSpread (env : Env) (t : Nat) (st : St) : text (nextSpread env t st) = text st := by
+  by_cases h : (nextPage env st).page < t
+  · unfold nextSpread; rw [dif_pos h, text_nextSpread env t (nextPage env st), text_nextPage]
+  · unfold nextSpread; rw [dif_neg h, text_nextPage]
+termination_by t - st.page
+decreasing_by simp_wf; have := nextPage_page_gt env st; omega
+
+theorem text_nextUnit (env : Env) (unit : KeepParts) (st : St) : text (nextUnit env unit st) = text st := by
+  cases unit <;> simp only [nextUnit, text_nextColumn, text_nextPage, text_nextSpread]
+
+theorem text_partTrial (env : Env) (runBody runPlain : St → St) (X : List Slot)
+    (hb : ∀ s, text (runBody s) = text s ++ X) (hp : ∀ s, text (runPlain s) = text s ++ X)
+    (unit : KeepParts) (fits : St → Bool) (nested whole : Bool) (st : St) :
+    text (partTrial env runBody runPlain unit fits nested whole st) = text st ++ X := by
+  simp only [partTrial]
+  repeat' split
+  all_goals simp only [text_flushFigures, hb, hp]
+
+/-- Every trial of a book part places the same lines. -/
+theorem text_placeBookPart (env : Env) (runBody runPlain : St → St) (X : List Slot)
+    (hb : ∀ s, text (runBody s) = text s ++ X) (hp : ∀ s, text (runPlain s) = text s ++ X)
+    (initial : St) (unit : KeepParts) (kind : Option Nat) (retained : List Nat) (nested whole : Bool) :
+    text (placeBookPart env runBody runPlain initial unit kind retained nested whole) = text initial ++ X := by
+  simp only [placeBookPart]
+  repeat' split
+  all_goals simp only [text_addUnmet, text_partTrial env runBody runPlain X hb hp, hb, text_nextUnit]
+
+theorem text_acrossGo (env : Env) (h capt : List Line) (below retain fresh retried : Bool) (st : St)
+    (gs : List (Bool × List Line)) :
+    text (acrossGo env h capt below retain fresh retried st gs)
+      = text st ++ (gs.bind (·.2)).map (fun l => .line l.id) := by
   match gs with
   | [] => unfold acrossGo; simp
   | (isHeader, ls) :: remaining =>
-    by_cases h1 : ls.length ≤ env.fitting st ls ∨ isEmpty st = true
-    · unfold acrossGo; rw [dif_pos h1, text_acrossGo env h false _ remaining, text_putLines]
-      simp
-    · unfold acrossGo; rw [dif_neg h1]
-      rw [text_acrossGo env h _ _ ((isHeader, ls) :: remaining)]
-      congr 1
-      split
-      · rw [text_putRepeateds, text_nextColumn]
-      · rw [text_nextColumn]
-termination_by (gs.length, if retried then 0 else 1, rank env st)
+    by_cases hr : fresh = true ∧ retainsTail env capt below retain isHeader remaining = true
+    · unfold acrossGo; rw [dif_pos hr]
+      apply text_placeBookPart
+      all_goals intro s
+      all_goals rw [text_acrossGo env h capt below false true false _ ((isHeader, ls) :: remaining)]
+      all_goals congr 1
+      all_goals split
+      all_goals first | rfl | rw [text_putRepeateds]
+    · by_cases h1 : ls.length ≤ env.fitting st ls ∨ isEmpty st = true
+      · unfold acrossGo; rw [dif_neg hr, dif_pos h1, text_acrossGo env h capt below retain true false _ remaining,
+          text_putLines]
+        simp
+      · unfold acrossGo; rw [dif_neg hr, dif_neg h1]
+        rw [text_acrossGo env h capt below retain false _ _ ((isHeader, ls) :: remaining)]
+        congr 1
+        split
+        · rw [text_putRepeateds, text_nextColumn]
+        · rw [text_nextColumn]
+termination_by (if retain then 1 else 0, gs.length, if retried then 0 else 1, rank env st)
 decreasing_by
   all_goals simp_wf
-  · exact Prod.Lex.left _ _ (Nat.lt_succ_self _)
-  · apply Prod.Lex.right
+  · apply Prod.Lex.left
+    have := hr.2; simp only [retainsTail, Bool.and_eq_true] at this
+    simp [this.1.1.1.1.1]
+  · apply Prod.Lex.left
+    have := hr.2; simp only [retainsTail, Bool.and_eq_true] at this
+    simp [this.1.1.1.1.1]
+  · exact Prod.Lex.right _ (Prod.Lex.left _ _ (Nat.lt_succ_self _))
+  · apply Prod.Lex.right; apply Prod.Lex.right
     have ne : isEmpty st = false := by
       cases e : isEmpty st
       · rfl
@@ -1842,76 +2164,7 @@ theorem text_startSet (env : Env) (st : St) (n : Nat) (first : Int) : text (star
 
 theorem flowText_heading (recto : Bool) (n : Nat) (ls : List Line) :
     flowText (.heading recto n ls) = flowText (.heading false n ls) := by
-  cases ls <;> rfl
-
-theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
-    text (place env st f rest) = text st ++ flowText f := by
-  cases f with
-  | paragraph kp ls => exact text_placeLines ..
-  | continued kp ls => exact text_placeLines ..
-  | heading recto n ls =>
-    simp only [place]
-    rw [text_putBlock, flowText_heading recto]
-    congr 1
-    apply text_ite
-    · apply text_ite
-      · exact text_parityStart ..
-      · exact text_keep ..
-    · rw [text_nextColumn]
-      apply text_ite
-      · exact text_parityStart ..
-      · exact text_keep ..
-  | figure i n =>
-    simp only [place, flowText, List.append_nil]
-    apply text_ite
-    · rfl
-    · apply text_ite
-      · exact text_putSlot_figure ..
-      · rfl
-  | pageFigure i =>
-    simp only [place, flowText, List.append_nil]
-    apply text_ite
-    · rw [text_pageFigure]; rfl
-    · rfl
-  | brk k => simp only [place, flowText, List.append_nil]; rfl
-  | space n => simp only [place, flowText, List.append_nil]; exact text_placeSpaceFlow ..
-  | needLines n => simp [place, flowText]
-  | blank n => simp [place, flowText]
-  | noBreak => simp [place, flowText]
-  | noBreakLines n => simp [place, flowText]
-  | keepNext n => simp [place, flowText]
-  | switchColumns n =>
-    simp only [place, flowText, List.append_nil]
-    apply text_ite
-    · rw [text_startSet, text_flushDeferred]
-    · show text (nextPage env _) = _
-      rw [text_nextPage, text_flushDeferred]
-  | restoreColumns =>
-    simp only [place, flowText, List.append_nil]
-    apply text_ite
-    · rfl
-    · show text (nextPage env _) = _
-      rw [text_nextPage]
-  | adjustLines k => simp [place, flowText]
-  | code g c first cont ls => exact text_placeCode ..
-  | defTerm ls =>
-    simp only [place]
-    split
-    · rw [text_placeLines, text_keep]; rfl
-    · rw [text_placeLines]; rfl
-  | table sp0 h rows capt below =>
-    simp only [place, flowText]
-    split
-    · rw [text_placeTable]
-      congr 1
-      apply text_ite
-      · rfl
-      · rw [text_keep, text_nextColumn]
-    · rw [text_placeTableAcross]
-      congr 1
-      apply text_ite
-      · rfl
-      · rw [text_nextColumn]
+  cases ls <;> simp [flowText]
 
 /-- The controls not met recorded. -/
 theorem addUnmets_eq (ws : List (Unmet × Nat × Nat × Nat × (Nat × Bool))) (st : St) :
@@ -1964,14 +2217,87 @@ theorem text_placeKept (env : Env) (kp : Keep) (placeIn : St → Bool → List L
       · exact hp ..
       · rw [hp, text_nextColumn, hp, List.append_assoc, ← List.map_append, List.take_append_drop]
 
+mutual
+theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
+    text (place env st f rest) = text st ++ flowText f := by
+  cases f with
+  | paragraph kp ls => simp only [place, flowText]; exact text_placeLines ..
+  | continued kp ls => simp only [place, flowText]; exact text_placeLines ..
+  | heading recto n ls =>
+    simp only [place]
+    rw [text_putBlock, flowText_heading recto]
+    congr 1
+    apply text_ite
+    · apply text_ite
+      · exact text_parityStart ..
+      · exact text_keep ..
+    · rw [text_nextColumn]
+      apply text_ite
+      · exact text_parityStart ..
+      · exact text_keep ..
+  | figure i n =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rfl
+    · apply text_ite
+      · exact text_putSlot_figure ..
+      · rfl
+  | pageFigure i =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rw [text_pageFigure]; rfl
+    · rfl
+  | brk k => simp only [place, flowText, List.append_nil]; rfl
+  | space n => simp only [place, flowText, List.append_nil]; exact text_placeSpaceFlow ..
+  | needLines n => simp [place, flowText]
+  | blank n => simp [place, flowText]
+  | noBreak => simp [place, flowText]
+  | noBreakLines n => simp [place, flowText]
+  | keepNext n => simp [place, flowText]
+  | switchColumns n =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rw [text_startSet, text_flushDeferred]
+    · show text (nextPage env _) = _
+      rw [text_nextPage, text_flushDeferred]
+  | restoreColumns =>
+    simp only [place, flowText, List.append_nil]
+    apply text_ite
+    · rfl
+    · show text (nextPage env _) = _
+      rw [text_nextPage]
+  | adjustLines k => simp [place, flowText]
+  | bookPart u k r body => simp only [place, flowText]; exact text_runFlows env st body rest
+  | code g c first cont ls => simp only [place, flowText]; exact text_placeCode ..
+  | defTerm ls =>
+    simp only [place]
+    split
+    · rw [text_placeLines, text_keep]; simp [flowText]
+    · rw [text_placeLines]; simp [flowText]
+  | table sp0 h rows capt below =>
+    simp only [place, flowText]
+    split
+    · rw [text_placeTable]
+      congr 1
+      apply text_ite
+      · rfl
+      · rw [text_keep, text_nextColumn]
+    · rw [text_placeTableAcross]
+      congr 1
+      apply text_ite
+      · rfl
+      · rw [text_nextColumn]
+termination_by (flowWeight f, 0)
+decreasing_by all_goals simp_wf; (try subst_vars); apply Prod.Lex.left; simp only [flowWeight]; omega
+
 theorem text_placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (placeFlow env st f rest) = text st ++ flowText f := by
   have pl : ∀ kp s b xs, text (placeLines env kp s b xs) = text s ++ xs.map (fun l => .line l.id) :=
     fun kp s b xs => text_placeLines env kp s b xs
   unfold placeFlow
   split
-  · exact text_placeKept env _ _ (pl _) st true _ _
-  · exact text_placeKept env _ _ (pl _) st false _ _
+  · simp only [flowText]; exact text_placeKept env _ _ (pl _) st true _ _
+  · simp only [flowText]; exact text_placeKept env _ _ (pl _) st false _ _
   · simp only [flowText]
     rw [text_placeKept env _ _ (pl _)]
     congr 1
@@ -1979,6 +2305,8 @@ theorem text_placeFlow (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     · rfl
     · exact text_keep ..
   · exact text_place ..
+termination_by (flowWeight f, 1)
+decreasing_by all_goals simp_wf; apply Prod.Lex.right; decide
 
 theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     text (step env st f rest) = text st ++ flowText f := by
@@ -2000,6 +2328,14 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
     · exact text_waitFor ..
   cases f with
   | needLines n => simp only [step, flowText, List.append_nil]; exact text_needMore ..
+  | bookPart u k r body =>
+    simp only [step, flowText]
+    rw [text_placeBookPart env _ _ (sourceText body)]
+    · split
+      · rfl
+      · rw [text_applyBreaks]
+    · intro s; exact text_runFlows _ s body rest
+    · intro s; rw [text_runFlows, sourceText_flatten]
   | adjustLines k =>
     simp only [step, flowText, List.append_nil, adjustLines]
     rw [← text_applyBreaks env st]
@@ -2013,7 +2349,7 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | blank n =>
     simp only [step, flowText, List.append_nil]
     apply text_ite <;> rfl
-  | brk k => simp only [step]; exact text_place ..
+  | brk k => simp only [step]; exact text_place env st (.brk k) rest
   | space n =>
     simp only [step, flowText, List.append_nil]
     rw [text_placeSpace, text_needBeforeSpaces, text_applyBreaks]
@@ -2027,12 +2363,34 @@ theorem text_step (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | table sp0 h rows capt below => simp only [step]; exact general _ _
   | switchColumns n => simp only [step]; exact general _ _
   | restoreColumns => simp only [step]; exact general _ _
+termination_by (flowWeight f, 2)
+decreasing_by
+  all_goals simp_wf
+  all_goals try subst_vars
+  all_goals first
+    | (apply Prod.Lex.right; decide)
+    | (apply Prod.Lex.left; simp only [flowWeight]; omega)
+    | (apply Prod.Lex.left; have := flattenParts_weight body; simp only [flowWeight]; omega)
+
+theorem text_runFlows (env : Env) (st : St) (fs : List Flow) (rest : List Flow) :
+    text (runFlows env st fs rest) = text st ++ sourceText fs := by
+  match fs with
+  | [] => unfold runFlows; simp [sourceText]
+  | g :: more =>
+    unfold runFlows
+    rw [text_runFlows env _ more rest, text_step]
+    simp [sourceText, List.append_assoc]
+termination_by (flowsWeight fs, 3)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.left; simp only [flowsWeight]; omega
+end
 
 theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
     text (placeAll env st flows) = text st ++ sourceText flows := by
   induction flows generalizing st with
   | nil =>
-    simp only [placeAll, sourceText, List.bind, List.join, List.map, List.append_nil]
+    simp only [placeAll, sourceText, List.append_nil]
     rw [addUnmets_eq]
     apply text_ite
     · rw [text_flushDeferred]; rfl
@@ -2042,7 +2400,7 @@ theorem text_placeAll (env : Env) (flows : List Flow) (st : St) :
   | cons f rest ih =>
     simp only [placeAll]
     rw [ih, text_step]
-    simp [sourceText, List.cons_bind, List.append_assoc]
+    simp [sourceText, List.append_assoc]
 
 /-- Root ADR 0352 invariant 5 for the lines: the pages of the pagination
     hold every line of the paragraphs, the terms and the tables, every
@@ -2108,12 +2466,35 @@ def deferredFig : Deferred → Slot
 def figs (st : St) : List Slot :=
   pagesFigs st.done ++ figSlots st.slots ++ st.deferred.map deferredFig
 
+mutual
 def flowFigs : Flow → List Slot
   | .figure i _ => [.figure i]
   | .pageFigure i => [.pageFigure i]
+  | .bookPart _ _ _ body => sourceFigs body
   | _ => []
+termination_by f => sizeOf f
+def sourceFigs : List Flow → List Slot
+  | [] => []
+  | g :: r => flowFigs g ++ sourceFigs r
+termination_by fs => sizeOf fs
+end
 
-def sourceFigs (flows : List Flow) : List Slot := flows.bind flowFigs
+theorem sourceFigs_append (a b : List Flow) : sourceFigs (a ++ b) = sourceFigs a ++ sourceFigs b := by
+  induction a with
+  | nil => simp [sourceFigs]
+  | cons x xs ih => simp only [List.cons_append, sourceFigs, ih, List.append_assoc]
+
+theorem sourceFigs_flatten (fs : List Flow) : sourceFigs (flattenParts fs) = sourceFigs fs := by
+  match fs with
+  | [] => simp [flattenParts, sourceFigs]
+  | f :: r =>
+    have := sourceFigs_flatten r
+    cases f with
+    | bookPart u k i b =>
+      have := sourceFigs_flatten b
+      simp only [flattenParts, sourceFigs_append, sourceFigs, flowFigs, *]
+    | _ => simp only [flattenParts, sourceFigs, *]
+termination_by sizeOf fs
 
 /-- Every figure waiting is at least one line high. -/
 def deferredOk : List Deferred → Prop
@@ -2822,10 +3203,117 @@ theorem placeLines_figs (env : Env) (hs : 0 ≤ env.separator) (kp : Keep) (st :
 
 /-! ### One flow and the whole -/
 
-/-- A figure flow is at least one line high. -/
+mutual
+/-- A figure flow is at least one line high, in a book part too. -/
 def figureOk : Flow → Prop
   | .figure _ n => 1 ≤ n
+  | .bookPart _ _ _ body => figuresOk body
   | _ => True
+termination_by f => sizeOf f
+def figuresOk : List Flow → Prop
+  | [] => True
+  | g :: r => figureOk g ∧ figuresOk r
+termination_by fs => sizeOf fs
+end
+
+theorem figuresOk_append (a b : List Flow) (ha : figuresOk a) (hb : figuresOk b) : figuresOk (a ++ b) := by
+  induction a with
+  | nil => exact hb
+  | cons x xs ih =>
+    simp only [List.cons_append, figuresOk] at ha ⊢
+    exact ⟨ha.1, ih ha.2⟩
+
+theorem figuresOk_flatten (fs : List Flow) (h : figuresOk fs) : figuresOk (flattenParts fs) := by
+  match fs with
+  | [] => simp [flattenParts, figuresOk]
+  | f :: r =>
+    simp only [figuresOk] at h
+    have := figuresOk_flatten r h.2
+    cases f with
+    | bookPart u k i b =>
+      have hb : figuresOk b := by have := h.1; simp only [figureOk] at this; exact this
+      have := figuresOk_flatten b hb
+      simp only [flattenParts]; exact figuresOk_append _ _ (by assumption) (by assumption)
+    | _ => simp only [flattenParts, figuresOk]; exact ⟨h.1, by assumption⟩
+termination_by sizeOf fs
+
+theorem flushFigures_figs (env : Env) (st : St) (h : Inv st) :
+    figs (flushFigures env st) = figs st ∧ Inv (flushFigures env st) := by
+  by_cases c : st.deferred = []
+  · unfold flushFigures; rw [dif_pos c]; exact ⟨rfl, h⟩
+  · unfold flushFigures; rw [dif_neg c]
+    have := flushFigures_figs env (nextColumn env st) (inv_nextColumn env st h)
+    rw [figs_nextColumn] at this
+    exact this
+termination_by (waiting st, columnsLeft env st)
+decreasing_by exact I4_nextColumn_flush_rank env st (waiting_pos st (fun e => c e.1))
+
+theorem nextSpread_figs (env : Env) (t : Nat) (st : St) (h : Inv st) :
+    figs (nextSpread env t st) = figs st ∧ Inv (nextSpread env t st) := by
+  by_cases c : (nextPage env st).page < t
+  · unfold nextSpread; rw [dif_pos c]
+    have := nextSpread_figs env t (nextPage env st) (inv_nextPage env st h)
+    rw [figs_nextPage] at this; exact this
+  · unfold nextSpread; rw [dif_neg c]; exact ⟨figs_nextPage env st, inv_nextPage env st h⟩
+termination_by t - st.page
+decreasing_by simp_wf; have := nextPage_page_gt env st; omega
+
+theorem nextUnit_figs (env : Env) (unit : KeepParts) (st : St) (h : Inv st) :
+    figs (nextUnit env unit st) = figs st ∧ Inv (nextUnit env unit st) := by
+  cases unit
+  · exact ⟨figs_nextColumn env st, inv_nextColumn env st h⟩
+  · exact ⟨figs_nextPage env st, inv_nextPage env st h⟩
+  · exact nextSpread_figs env _ st h
+
+theorem inv_addUnmet (u : Unmet) (st : St) (h : Inv st) : Inv (addUnmet u st) :=
+  ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩
+
+theorem partTrial_figs (env : Env) (runBody runPlain : St → St) (Y : List Slot)
+    (hb : ∀ s, Inv s → figs (runBody s) = figs s ++ Y ∧ Inv (runBody s))
+    (hp : ∀ s, Inv s → figs (runPlain s) = figs s ++ Y ∧ Inv (runPlain s))
+    (unit : KeepParts) (fits : St → Bool) (nested whole : Bool) (st : St) (h : Inv st) :
+    figs (partTrial env runBody runPlain unit fits nested whole st) = figs st ++ Y ∧
+      Inv (partTrial env runBody runPlain unit fits nested whole st) := by
+  have p := hp st h
+  have b := hb st h
+  have fp := flushFigures_figs env _ p.2
+  have fb := flushFigures_figs env _ b.2
+  rw [p.1] at fp; rw [b.1] at fb
+  simp only [partTrial]
+  repeat' split
+  all_goals first | exact p | exact fp | exact fb
+
+/-- Every trial of a book part places the same figures, in a valid state. -/
+theorem placeBookPart_figs (env : Env) (runBody runPlain : St → St) (Y : List Slot)
+    (hb : ∀ s, Inv s → figs (runBody s) = figs s ++ Y ∧ Inv (runBody s))
+    (hp : ∀ s, Inv s → figs (runPlain s) = figs s ++ Y ∧ Inv (runPlain s))
+    (initial : St) (unit : KeepParts) (kind : Option Nat) (retained : List Nat) (nested whole : Bool)
+    (h : Inv initial) :
+    figs (placeBookPart env runBody runPlain initial unit kind retained nested whole) = figs initial ++ Y ∧
+      Inv (placeBookPart env runBody runPlain initial unit kind retained nested whole) := by
+  have m := nextUnit_figs env unit initial h
+  have t0 := partTrial_figs env runBody runPlain Y hb hp unit (fitsPart unit initial.page retained) nested whole
+    initial h
+  have t1 := partTrial_figs env runBody runPlain Y hb hp unit (fitsPart unit initial.page retained) nested whole
+    _ m.2
+  rw [m.1] at t1
+  have b0 := hb initial h
+  have b1 := hb _ m.2
+  rw [m.1] at b1
+  have rep : ∀ k (x : St), figs x = figs initial ++ Y ∧ Inv x →
+      figs (addUnmet k x) = figs initial ++ Y ∧ Inv (addUnmet k x) :=
+    fun k x hx => ⟨hx.1, inv_addUnmet k x hx.2⟩
+  simp only [placeBookPart]
+  repeat' split
+  all_goals first
+    | exact b0
+    | exact t0
+    | exact t1
+    | exact b1
+    | exact rep _ _ b0
+    | exact rep _ _ t0
+    | exact rep _ _ b1
+    | exact rep _ _ t1
 
 theorem isEmpty_nil {α : Type} (l : List α) (h : l.isEmpty = true) : l = [] := by
   cases l with
@@ -2907,35 +3395,57 @@ theorem placeTable_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (h : Li
     exact ⟨p3.1.trans p2.1, p3.2⟩
   · exact p2
 
-theorem acrossGo_figs (env : Env) (hs : 0 ≤ env.separator) (h : List Line) (retried : Bool) (st : St)
-    (gs : List (Bool × List Line)) (hi : Inv st) :
-    figs (acrossGo env h retried st gs) = figs st ∧ Inv (acrossGo env h retried st gs) := by
+theorem acrossGo_figs (env : Env) (hs : 0 ≤ env.separator) (h capt : List Line) (below retain fresh retried : Bool)
+    (st : St) (gs : List (Bool × List Line)) (hi : Inv st) :
+    figs (acrossGo env h capt below retain fresh retried st gs) = figs st ∧
+      Inv (acrossGo env h capt below retain fresh retried st gs) := by
   match gs with
   | [] => unfold acrossGo; exact ⟨rfl, hi⟩
   | (isHeader, ls) :: remaining =>
-    by_cases h1 : ls.length ≤ env.fitting st ls ∨ isEmpty st = true
-    · unfold acrossGo; rw [dif_pos h1]
-      have p := putLines_figs env hs ls st hi
-      have := acrossGo_figs env hs h false _ remaining p.2
-      rw [p.1] at this; exact this
-    · unfold acrossGo; rw [dif_neg h1]
-      have n := inv_nextColumn env st hi
-      have q : figs (if mustRepeat h (nextColumn env st) st isHeader retried = true
-            then h.foldl putRepeated (nextColumn env st) else nextColumn env st) = figs st ∧
-          Inv (if mustRepeat h (nextColumn env st) st isHeader retried = true
-            then h.foldl putRepeated (nextColumn env st) else nextColumn env st) := by
-        split
-        · have := putRepeateds_figs h _ n
-          rw [figs_nextColumn] at this; exact this
-        · exact ⟨figs_nextColumn env st, n⟩
-      have := acrossGo_figs env hs h (retried || mustRepeat h (nextColumn env st) st isHeader retried) _
-        ((isHeader, ls) :: remaining) q.2
-      rw [q.1] at this; exact this
-termination_by (gs.length, if retried then 0 else 1, rank env st)
+    by_cases hr : fresh = true ∧ retainsTail env capt below retain isHeader remaining = true
+    · unfold acrossGo; rw [dif_pos hr]
+      have run : ∀ s, Inv s → figs (acrossGo env h capt below false true false
+          (if decide (s.page ≠ st.page) && !h.isEmpty then h.foldl putRepeated s else s)
+          ((isHeader, ls) :: remaining)) = figs s ++ [] ∧
+          Inv (acrossGo env h capt below false true false
+          (if decide (s.page ≠ st.page) && !h.isEmpty then h.foldl putRepeated s else s)
+          ((isHeader, ls) :: remaining)) := by
+        intro s i
+        have q : figs (if decide (s.page ≠ st.page) && !h.isEmpty then h.foldl putRepeated s else s) = figs s ∧
+            Inv (if decide (s.page ≠ st.page) && !h.isEmpty then h.foldl putRepeated s else s) := by
+          split
+          · exact putRepeateds_figs h s i
+          · exact ⟨rfl, i⟩
+        have := acrossGo_figs env hs h capt below false true false _ ((isHeader, ls) :: remaining) q.2
+        rw [q.1, List.append_nil] at *; exact this
+      have := placeBookPart_figs env _ _ [] run run st env.keepParts none ((ls ++ capt).map (·.id)) false true hi
+      rw [List.append_nil] at this; exact this
+    · by_cases h1 : ls.length ≤ env.fitting st ls ∨ isEmpty st = true
+      · unfold acrossGo; rw [dif_neg hr, dif_pos h1]
+        have p := putLines_figs env hs ls st hi
+        have := acrossGo_figs env hs h capt below retain true false _ remaining p.2
+        rw [p.1] at this; exact this
+      · unfold acrossGo; rw [dif_neg hr, dif_neg h1]
+        have n := inv_nextColumn env st hi
+        have q : figs (if mustRepeat h (nextColumn env st) st isHeader retried = true
+              then h.foldl putRepeated (nextColumn env st) else nextColumn env st) = figs st ∧
+            Inv (if mustRepeat h (nextColumn env st) st isHeader retried = true
+              then h.foldl putRepeated (nextColumn env st) else nextColumn env st) := by
+          split
+          · have := putRepeateds_figs h _ n
+            rw [figs_nextColumn] at this; exact this
+          · exact ⟨figs_nextColumn env st, n⟩
+        have := acrossGo_figs env hs h capt below retain false (retried || mustRepeat h (nextColumn env st) st isHeader retried) _
+          ((isHeader, ls) :: remaining) q.2
+        rw [q.1] at this; exact this
+termination_by (if retain then 1 else 0, gs.length, if retried then 0 else 1, rank env st)
 decreasing_by
   all_goals simp_wf
-  · exact Prod.Lex.left _ _ (Nat.lt_succ_self _)
-  · apply Prod.Lex.right
+  · apply Prod.Lex.left
+    have := hr.2; simp only [retainsTail, Bool.and_eq_true] at this
+    simp [this.1.1.1.1.1]
+  · exact Prod.Lex.right _ (Prod.Lex.left _ _ (Nat.lt_succ_self _))
+  · apply Prod.Lex.right; apply Prod.Lex.right
     have ne : isEmpty st = false := by
       cases e : isEmpty st
       · rfl
@@ -2980,12 +3490,45 @@ theorem startSet_figs (env : Env) (st : St) (n : Nat) (h : Inv st) :
   · simp only [e, ite_false]
     simp [figs, pagesFigs_cons, figSlots]
 
-theorem place_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
+theorem checkNoBreak_figs (st : St) (h : Inv st) :
+    figs (checkNoBreak st) = figs st ∧ Inv (checkNoBreak st) := by
+  rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e]
+  · exact ⟨rfl, h⟩
+  · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+
+theorem waitFor_figs (u : Unmet) (k : Nat × Bool) (st : St) (h : Inv st) :
+    figs (waitFor u k st) = figs st ∧ Inv (waitFor u k st) := by
+  obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]
+  exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+
+theorem placeKept_figs (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St)
+    (hp : ∀ s b xs, Inv s → figs (placeIn s b xs) = figs s ∧ Inv (placeIn s b xs))
+    (st : St) (isStart : Bool) (ls : List Line) (n : Need) (h : Inv st) :
+    figs (placeKept env kp placeIn st isStart ls n) = figs st ∧ Inv (placeKept env kp placeIn st isStart ls n) := by
+  have one := hp st isStart ls h
+  have a := hp st isStart (ls.take (ls.length - keptCut kp ls.length)) h
+  have two := hp _ (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty)
+    (ls.drop (ls.length - keptCut kp ls.length)) a.2
+  have three := hp _ (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty)
+    (ls.drop (ls.length - keptCut kp ls.length)) (inv_nextColumn env _ a.2)
+  rw [figs_nextColumn, a.1] at three
+  rw [a.1] at two
+  simp only [placeKept]
+  split
+  · exact one
+  · split
+    · exact two
+    · split
+      · exact one
+      · exact three
+
+mutual
+theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     (rest : List Flow) (h : Inv st) (hf : figureOk f) :
     figs (place env st f rest) = figs st ++ flowFigs f ∧ Inv (place env st f rest) := by
   cases f with
-  | paragraph kp ls => simp only [flowFigs, List.append_nil]; exact placeLines_figs env hs kp st true ls h
-  | continued kp ls => simp only [flowFigs, List.append_nil]; exact placeLines_figs env hs kp st false ls h
+  | paragraph kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st true ls h
+  | continued kp ls => simp only [place, flowFigs, List.append_nil]; exact placeLines_figs env hs kp st false ls h
   | heading recto n ls =>
     simp only [place, flowFigs, List.append_nil]
     have h1 : figs (if recto = true then parityStart env odd st
@@ -3008,6 +3551,7 @@ theorem place_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     have := putBlock_figs env hs s2 n ls h2.2
     exact ⟨this.1.trans h2.1, this.2⟩
   | figure i n =>
+    have hf : 1 ≤ n := by simpa [figureOk] using hf
     simp only [place, flowFigs]
     split
     · exact defer_figs st _ h ⟨hf, trivial⟩
@@ -3030,16 +3574,18 @@ theorem place_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
       refine ⟨?_, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
       simp [figs, pageFigure, pagesFigs_cons, figSlots, d0, s0]
     · exact defer_figs st _ h trivial
-  | brk k => exact ⟨by simp [place, figs, flowFigs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
+  | brk k =>
+    simp only [place, flowFigs, List.append_nil]
+    exact ⟨by simp [figs], ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
   | space n =>
     simp only [place, flowFigs, List.append_nil]
     refine ⟨?_, inv_placeSpaceFlow env st n h⟩
     unfold placeSpaceFlow; split <;> rfl
-  | needLines n => exact ⟨by simp [place, flowFigs], h⟩
-  | blank n => exact ⟨by simp [place, flowFigs], h⟩
-  | noBreak => exact ⟨by simp [place, flowFigs], h⟩
-  | noBreakLines n => exact ⟨by simp [place, flowFigs], h⟩
-  | keepNext n => exact ⟨by simp [place, flowFigs], h⟩
+  | needLines n => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
+  | blank n => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
+  | noBreak => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
+  | noBreakLines n => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
+  | keepNext n => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
   | switchColumns n =>
     simp only [place, flowFigs, List.append_nil]
     obtain ⟨f1, i1, _⟩ := flushDeferred_figs env st h
@@ -3057,7 +3603,11 @@ theorem place_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     · have i2 := inv_nextPage env st h
       exact ⟨figs_nextPage env st,
         ⟨⟨Or.inl (Int.le_refl 0), i2.weak.deferred⟩, i2.used, i2.fig⟩⟩
-  | adjustLines k => exact ⟨by simp [place, flowFigs], h⟩
+  | adjustLines k => simp only [place, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
+  | bookPart u k r body =>
+    simp only [place, flowFigs]
+    simp only [figureOk] at hf
+    exact runFlows_figs env hc hs st body rest h hf
   | code g c first cont ls =>
     simp only [place, flowFigs, List.append_nil]; exact placeCode_figs env g c first cont st true h ls
   | defTerm ls =>
@@ -3093,42 +3643,12 @@ theorem place_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
         · exact ⟨rfl, inv_addUsed h ⟨h.weak.first, h.weak.deferred⟩ _ hsp rfl (Int.le_refl _)
             (Or.inl rfl)⟩
         · exact ⟨figs_nextColumn env st, inv_nextColumn env st h⟩
-      have := acrossGo_figs env hs hd false _ (tableGroups hd rows capt below) s1.2
+      have := acrossGo_figs env hs hd capt below true true false _ (tableGroups hd rows capt below) s1.2
       rw [s1.1] at this; exact this
+termination_by (flowWeight f, 0)
+decreasing_by all_goals simp_wf; (try subst_vars); apply Prod.Lex.left; simp only [flowWeight]; omega
 
-theorem checkNoBreak_figs (st : St) (h : Inv st) :
-    figs (checkNoBreak st) = figs st ∧ Inv (checkNoBreak st) := by
-  rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e]
-  · exact ⟨rfl, h⟩
-  · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
-
-theorem waitFor_figs (u : Unmet) (k : Nat × Bool) (st : St) (h : Inv st) :
-    figs (waitFor u k st) = figs st ∧ Inv (waitFor u k st) := by
-  obtain ⟨w, e⟩ := waitFor_eq u k st; rw [e]
-  exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
-
-theorem placeKept_figs (env : Env) (kp : Keep) (placeIn : St → Bool → List Line → St)
-    (hp : ∀ s b xs, Inv s → figs (placeIn s b xs) = figs s ∧ Inv (placeIn s b xs))
-    (st : St) (isStart : Bool) (ls : List Line) (n : Need) (h : Inv st) :
-    figs (placeKept env kp placeIn st isStart ls n) = figs st ∧ Inv (placeKept env kp placeIn st isStart ls n) := by
-  have one := hp st isStart ls h
-  have a := hp st isStart (ls.take (ls.length - keptCut kp ls.length)) h
-  have two := hp _ (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty)
-    (ls.drop (ls.length - keptCut kp ls.length)) a.2
-  have three := hp _ (isStart && (ls.take (ls.length - keptCut kp ls.length)).isEmpty)
-    (ls.drop (ls.length - keptCut kp ls.length)) (inv_nextColumn env _ a.2)
-  rw [figs_nextColumn, a.1] at three
-  rw [a.1] at two
-  simp only [placeKept]
-  split
-  · exact one
-  · split
-    · exact two
-    · split
-      · exact one
-      · exact three
-
-theorem placeFlow_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
+theorem placeFlow_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow)
     (rest : List Flow) (h : Inv st) (hf : figureOk f) :
     figs (placeFlow env st f rest) = figs st ++ flowFigs f ∧ Inv (placeFlow env st f rest) := by
   have pl : ∀ kp s b xs, Inv s → figs (placeLines env kp s b xs) = figs s ∧ Inv (placeLines env kp s b xs) :=
@@ -3148,7 +3668,9 @@ theorem placeFlow_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flo
       · exact ⟨figs_keep .., inv_keep env st _ h⟩
     have := placeKept_figs env (previousKeep env rest defaultKeep) (placeLines env defaultKeep) (pl _) _ true ls n i.2
     rw [i.1] at this; exact this
-  · exact place_figs env hs st _ rest h hf
+  · exact place_figs env hc hs _ _ rest h hf
+termination_by (flowWeight f, 1)
+decreasing_by all_goals simp_wf; apply Prod.Lex.right; decide
 
 theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (rest : List Flow)
     (h : Inv st) (hf : figureOk f) :
@@ -3166,12 +3688,12 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
         Inv (if waitsBehind (applyBreaks env st) f then checkNoBreak (place env (applyBreaks env st) f rest)
         else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)) := by
       split
-      · have p := place_figs env hs _ f rest b.2 hf
+      · have p := place_figs env hc hs _ f rest b.2 hf
         have c := checkNoBreak_figs _ p.2
         rw [p.1, b.1] at c; exact c
       · have n := needBefore_figs env (applyBreaks env st) (f :: rest) b.2
         have k := placeBlank_figs env (by omega) _ f rest n.2
-        have p := placeFlow_figs env hs _ f rest k.2 hf
+        have p := placeFlow_figs env hc hs _ f rest k.2 hf
         have c := checkNoBreak_figs _ p.2
         rw [p.1, k.1, n.1, b.1] at c; exact c
     exact ⟨core.1, ⟨⟨core.2.weak.first, core.2.weak.deferred⟩, core.2.used, core.2.fig⟩⟩
@@ -3183,6 +3705,25 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
     · exact waitFor_figs u k st h
   cases f with
   | needLines n => simp only [step, flowFigs, List.append_nil]; exact needMore_figs env n st h
+  | bookPart u k r body =>
+    simp only [step, flowFigs]
+    simp only [figureOk] at hf
+    have i : Inv (if r = [] then st else applyBreaks env st) := by
+      split
+      · exact h
+      · exact b.2
+    have f0 : figs (if r = [] then st else applyBreaks env st) = figs st := by
+      split
+      · rfl
+      · exact b.1
+    have := placeBookPart_figs env _ _ (sourceFigs body)
+      (fun s i => runFlows_figs { env with keepParts := u, inBookPart := true } hc hs s body rest i hf)
+      (fun s i => by
+        have := runFlows_figs { env with keepParts := u, inBookPart := true } hc hs s (flattenParts body) rest i
+          (figuresOk_flatten body hf)
+        rw [sourceFigs_flatten] at this; exact this)
+      _ u (some k) r (body.any hasNested) ((flowsSlotIds (flattenParts body)).all r.contains) i
+    rw [f0] at this; exact this
   | adjustLines k =>
     simp only [step, flowFigs, List.append_nil]
     have i := b.2
@@ -3194,7 +3735,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
   | noBreak => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
   | noBreakLines n =>
     cases n with
-    | zero => exact ⟨by simp [step, flowFigs], h⟩
+    | zero => simp only [step, flowFigs, List.append_nil]; exact ⟨trivial, h⟩
     | succ m => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
   | keepNext n => simp only [step, flowFigs, List.append_nil]; exact ctl _ _
   | blank n =>
@@ -3202,7 +3743,7 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
     split
     · exact ⟨rfl, h⟩
     · exact ⟨rfl, ⟨⟨h.weak.first, h.weak.deferred⟩, h.used, h.fig⟩⟩
-  | brk k => simp only [step]; exact place_figs env hs st _ rest h hf
+  | brk k => simp only [step]; exact place_figs env hc hs st (.brk k) rest h hf
   | space n =>
     simp only [step, flowFigs, List.append_nil]
     have s := inv_needBeforeSpaces env _ b.2
@@ -3222,13 +3763,40 @@ theorem step_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separato
   | table sp0 h rows capt below => simp only [step]; exact general _ _
   | switchColumns n => simp only [step]; exact general _ _
   | restoreColumns => simp only [step]; exact general _ _
+termination_by (flowWeight f, 2)
+decreasing_by
+  all_goals simp_wf
+  all_goals try subst_vars
+  all_goals first
+    | (apply Prod.Lex.right; decide)
+    | (apply Prod.Lex.left; simp only [flowWeight]; omega)
+    | (apply Prod.Lex.left; have := flattenParts_weight body; simp only [flowWeight]; omega)
+
+theorem runFlows_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (st : St) (fs : List Flow)
+    (rest : List Flow) (h : Inv st) (hf : figuresOk fs) :
+    figs (runFlows env st fs rest) = figs st ++ sourceFigs fs ∧ Inv (runFlows env st fs rest) := by
+  match fs with
+  | [] => unfold runFlows; simp only [sourceFigs, List.append_nil]; exact ⟨trivial, h⟩
+  | g :: more =>
+    unfold runFlows
+    simp only [figuresOk] at hf
+    have s := step_figs env hc hs st g (more ++ rest) h hf.1
+    have r := runFlows_figs env hc hs _ more rest s.2 hf.2
+    rw [s.1] at r
+    simp only [sourceFigs, List.append_assoc] at r ⊢
+    exact r
+termination_by (flowsWeight fs, 3)
+decreasing_by
+  all_goals simp_wf
+  all_goals apply Prod.Lex.left; simp only [flowsWeight]; omega
+end
 
 theorem placeAll_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (flows : List Flow) (st : St) (h : Inv st)
     (hf : ∀ f ∈ flows, figureOk f) :
     figs (placeAll env st flows) = figs st ++ sourceFigs flows ∧ (placeAll env st flows).deferred = [] := by
   induction flows generalizing st with
   | nil =>
-    simp only [placeAll, sourceFigs, List.bind, List.join, List.map, List.append_nil]
+    simp only [placeAll, sourceFigs, List.append_nil]
     rw [addUnmets_eq]
     generalize st.unmet ++ st.noBreak.map (fun w => w.1) = u
     have h2 : Inv { st with unmet := u, breaks := [], need := none, needAt := none, noBreak := [], blank := [] } :=
