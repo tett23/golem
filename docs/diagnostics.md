@@ -2741,7 +2741,7 @@ lines の範囲がファイルの行を外れています
 
 `lines` のほかの誤りは、原因ごとのコードになる（[docs/adr/0113](adr/0113-closed-range-literal.md)）。
 行の番号でも範囲でもない値は [G02105](#g02105)、始めが終わりより大きい範囲は [G02106](#g02106)、`-` で区切った範囲は [G02251](#g02251)、端のない範囲か端の読めない範囲は [G02110](#g02110) である。
-式の値の端が負の数なら [G02103](#g02103)（語と文字列の負の端は [G02110](#g02110)）、整数でない数なら [G02104](#g02104)、式の評価の上限を超える数なら [G02086](#g02086) になる（[docs/adr/0102](adr/0102-natural-number-type.md)）。
+端が負の数なら [G02103](#g02103)、整数でない数なら [G02104](#g02104)、式の評価の上限を超える数なら [G02086](#g02086) になり、語、文字列、式のどれで書いても同じである（[docs/adr/0102](adr/0102-natural-number-type.md)、[ADR 0419](adr/0419-report-a-negative-end-of-a-range-as-a-negative-natural.md)）。
 
 - メッセージ: `@listing の lines の範囲がファイルの行（1〜<行数>）を外れています: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -4576,10 +4576,12 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 原稿で自然数を求める箇所は、`@toc` の `depth`、`@need-lines`、`@blank-line`、`@number`、図版の `page`、`@listing` の `lines` の両端、コードブロックの `numbers` と `highlight` の両端、`round` と `fixed` の桁数である。
 語で書いても式で書いても、同じコードとメッセージになる。
-ただし、`@listing` の `lines` とコードブロックの `highlight` では、語と文字列に書いた負の端は [G02110](#g02110) にし、このコードは式の値の負の端にだけ出す（[ADR 0342](adr/0342-revise-retire-dash-line-ranges.md)）。
+`@listing` の `lines` とコードブロックの `highlight` の範囲の端も、語と文字列で書いても式で書いても同じである（[ADR 0419](adr/0419-report-a-negative-end-of-a-range-as-a-negative-natural.md)）。
+範囲の一つの項目には、始めの端から読んで最初に見つけた誤りのコードだけを出すので、`-1...a` はこのコードだけになる。
+`-0` は 0 と読み、このコードにしない。
 `doc` を参照しない式の値は、評価の前の解析で調べる。
 `doc` を参照する式の値は、文書構造（S1）で評価するときに調べ、同じ位置に出す。
-位置は、コマンドの引数ならコマンド、`round` と `fixed` の桁数なら桁数の式である。
+位置は、コマンドの引数ならコマンド、`lines` と `highlight` の範囲の端なら引数、`round` と `fixed` の桁数なら桁数の式である。
 
 設定のファイルで自然数を読むキーは、`style.toml` の `[page.grid]` の `characters`、`lines`、`columns`、見出しの `lines`、`[index]` の `columns`、`manifest.toml` の `printings` の `edition` と `printing`、`preflight.toml` のしきい値と数のキーである。
 負の数は、ファイルごとのコード（[G03006](#g03006)、[G03001](#g03001)、[G09001](#g09001)）ではなく、このコードになる。
@@ -4775,7 +4777,7 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 式の構文では、端のない範囲（`[= 5...]`、`[= ...5]`）、端の読めない範囲（`[= 1....2]`）、端の後に点が続く範囲（`[= 1...2...3]`、`[= 1...2..3]`）である。
 式の評価では、端の値が数でない範囲（`[= "a"...3]`、`[= true...3]`）である。
 `lines` と `highlight` の語と文字列では、端が空の項目（`1...`、`...3`）と、端が数のリテラルとして読めない項目（`a...3`、`1-2...3`、`1....2`、`1...2...3`、`1...2..3`）である。
-語と文字列の負の端（`-1`、`3...-1`）もこのコードにする（[ADR 0342](adr/0342-revise-retire-dash-line-ranges.md)）。
+`-a` のように `-` の後が数でない項目も、このコードになる。
 位置は、式の構文ではその誤りの位置、式の評価ではその範囲の式、語と文字列では引数である。
 
 - メッセージ: `範囲の端には数を書きます: <値>`。式の構文の誤りでは `範囲の端には数を書きます`。
@@ -6423,6 +6425,7 @@ style.toml の誤りです
 
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G03010](#g03010)、[G08002](#g08002)）。
+フォントと出力インテントのパスがプロジェクトの外を指すときにも使わない（[G03279](#g03279)）。
 判型（`[page]` の `size`）の誤りには使わない（[G03017](#g03017)）。
 自然数を読むキー（`[page.grid]` の `characters`、`lines`、`columns`、見出しの `lines`、`[index]` の `columns`）の負の数には使わない（[G02103](#g02103)、[docs/adr/0102](adr/0102-natural-number-type.md)）。
 マスターページの柱の内容の誤りには使わない（[G03014](#g03014)）。
@@ -6572,6 +6575,7 @@ style.toml にないフォントの役割です
 ### 意味
 
 HTML か EPUB を作るときに、`[fonts]` が指すフォントのファイルがない。
+パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 そのフォントを同梱せず、`@font-face` も書かずに出力する。
 prod では HTML と EPUB を書かない。
 LSP は出さない。
@@ -7101,17 +7105,23 @@ G03026 はそれらの後に並ぶ。
 出力は止めず、重なった番号のまま組む。
 HTML と EPUB では、注の id に章の中のファイルの順番を入れて（`note-2-1` など）、一つの文書の中で id が重ならないようにする。
 
-- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`
+章末の注（`[endnote]`）も、同じ規則で出す（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+`[endnotes]` の `numbering` が `"file"` で、二つ以上のファイルからなる章の、二つ以上のファイルに章末の注があるときに出る。
+章末の注はどの出力でも章の末尾にまとめるので、ターゲットによらず出す。
+HTML と EPUB の id は `endnote-2-1` などになる。
+脚注と章末の注の両方が重なる章では、それぞれに一度ずつ出す。
+
+- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`（章末の注では `[endnotes] の numbering`）
 - 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.chapterNoteDiagnostics`）。位置は、その章で注を持つ二つ目のファイルの最初の注である。`golem check` とビルドが出す
-- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)
+- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)、[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)
 
 ### 主な原因
 
-- 一つの章を複数のファイルに分け、`[notes]` の `numbering` を `"file"` にした。
+- 一つの章を複数のファイルに分け、`[notes]` か `[endnotes]` の `numbering` を `"file"` にした。
 
 ### 直し方
 
-`[notes]` の `numbering` を `"chapter"`（既定）か `"book"` にする。
+メッセージが示す表の `numbering` を `"chapter"`（既定）か `"book"` にする。
 
 ## G03028
 
@@ -8343,9 +8353,10 @@ size = "0.65zw"
 
 宣言の値が種類に合わない、行数が 0 から 2147483647 の範囲を外れる、または参照が循環する。
 位置は宣言の値である。
+宣言の右辺に書いた名前の宣言がない場合と、種類が違う場合は、このコードではなく G03257 と G03258 である（[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)）。
 
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
@@ -8365,16 +8376,17 @@ size = "0.65zw"
 
 ### 意味
 
-長さ、アキ量、行数の欄に書いた名前の宣言が `style.toml` にない。
+長さ、アキ量、行数の欄、または値の宣言の右辺に書いた名前の宣言が `style.toml` にない。
 位置は参照した値である。
 
 - メッセージ: `値の名前がありません: <名前>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
 - 名前の綴りが宣言と違う。
+- 値の宣言の右辺に、宣言していない名前を書いた。
 
 ### 直し方
 
@@ -8389,16 +8401,17 @@ size = "0.65zw"
 
 ### 意味
 
-参照先の宣言が、値を使う欄の長さ、アキ量、行数の種類と合わない。
+参照先の宣言の種類（長さ、アキ量、行数）が、値を使う欄、または参照する側の宣言の種類と合わない。
 位置は参照した値である。
 
 - メッセージ: `値 <名前> の種類が違います: 要求 <種類>、実際 <種類>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)
+- ADR: [docs/adr/0346](adr/0346-revise-named-layout-values.md)、[docs/adr/0424](adr/0424-fix-the-low-findings-of-the-audit-that-need-an-adr.md)
 
 ### 主な原因
 
 - 長さの欄にアキ量や行数の名前を書いた。
+- 長さの宣言の右辺に、アキ量や行数の宣言の名前を書いた。
 
 ### 直し方
 
@@ -8578,6 +8591,63 @@ EPUB のページ一覧に使う対応表を解決できないので、EPUB 生�
 ### 直し方
 
 file、line、character と原稿の文書順を確かめる。
+
+## G03278
+
+章末の注にはページごとの番号を使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[endnotes]` の `numbering` に `"page"` を書いた（[root ADR 0412](adr/0412-a-separate-channel-for-endnotes.md)）。
+章末の注（`[endnote]`）は、どの出力でも章の末尾の一覧にまとめるので、印を置いた物理ページの番号を振る意味がない。
+`style.toml` を読む段階で誤りとし、ビルドを止める。
+`[notes]` の `numbering = "page"`（[ADR 0383](adr/0383-page-local-note-numbers.md)）は、この誤りにならない。
+
+- メッセージ: `章末の注にはページごとの番号を使えません。[endnotes] の numbering には "chapter"、"file"、"book" のどれかを書きます`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style.endnoteChecks`）。位置は `numbering` の値である
+- ADR: [docs/adr/0412](adr/0412-a-separate-channel-for-endnotes.md)
+
+### 主な原因
+
+- `[notes]` の設定を写して、`[endnotes]` にも `numbering = "page"` を書いた。
+
+### 直し方
+
+`[endnotes]` の `numbering` を `"chapter"`（既定）、`"file"`、`"book"` のどれかにする。
+||||||| 3c3e5e821
+
+## G03279
+
+style.toml のファイルのパスがプロジェクトの外を指しています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[fonts]` のフォントか、`[color]` の `intent` の ICC プロファイルのパスが、プロジェクトの外を指している。
+プロジェクトの外とは、絶対パス、URL、プロジェクトルートの外に出るパス、プロジェクトの外のファイルを指すシンボリックリンクである。
+先のファイルがないシンボリックリンクは、ないファイルとして [G03010](#g03010)、[G08002](#g08002)、[G08006](#g08006) になる。
+どのターゲットでも、どのプロファイルでもエラーであり、ターゲットを一つも書かない。
+プレーンテキストのビルドと `golem check` も報告する。
+同じパスについては一つだけ出し、位置は `style.toml` の先頭である。
+LSP は出さない。
+
+- メッセージ: パスの誤りの文言とパス（`プロジェクトルートの外を指しています: <パス>`、`絶対パスは使えません: <パス>`、`URL は使えません: <パス>`）
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset.FontProvider` と `Golem.Typeset.Flow`）
+- ADR: [docs/adr/0421](adr/0421-epub-determinism-per-version-and-fonts-outside-the-project.md)
+
+### 主な原因
+
+- `[fonts]` に、ほかのプロジェクトやシステムのフォントのパスを書いた。
+- `fonts/` に、プロジェクトの外のフォントを指すシンボリックリンクを置いた。
+
+### 直し方
+
+ファイルをプロジェクトの中に写し、`style.toml` のパスをプロジェクトルートからの相対パスに直す。
 
 ## G04001
 
@@ -11160,6 +11230,8 @@ PDF を組むときにだけ出す。
 `[tables]` の `caption-position` が `"above"` ならキャプション、見出しの行、本体の最初の行であり、`"below"` なら見出しの行、本体の最後の行、キャプションである。
 キャプションのない同じ表なら収まる場合だけをこのコードとし、キャプションがなくても収まらない行は [G07042](#g07042) である。
 自由な配置では、これらの占有行数を版面の行送りで長さに直し、段の長さと比べる。
+この保持組の寸法の検査は、`[composition].keep-parts` が `"column"`（既定）のときに使う。
+`"page"` と `"spread"` では、キャプション単体が空の段にも収まらないときにこのコードを使い、キャプションと接する行の保持組だけが単位を超える場合は [G07133](#g07133) で通常の分割へ戻す（[root ADR 0401](adr/0401-select-book-part-retention-units.md)）。
 表を組まない。
 位置は表のブロックである。
 
@@ -11657,6 +11729,37 @@ HTML、EPUB、プレーンテキストには、この警告を出さない。
 章末一覧の番号を区別したい場合は、`[notes]` の `numbering` を `"chapter"` か `"book"` にする。
 ページ別の番号が必要なら、警告があっても生成した PDF を使える。
 
+## G07133
+
+部品を空の保持単位にも収められないため、通常の位置で分けました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+`[composition]` の `keep-parts` で選んだ保持単位にも、本の部品を収められないため、通常の分割位置を使った。
+保持単位は `column`、`page`、`spread` のいずれかであり、省略時は `column` である。
+`page` と `spread` では次の保持単位への移動を一度だけ試す。
+`column` の配置は指定前と同じに保つ。
+部品ごとに一度出し、PDF の生成を続ける。
+位置はリスト項目の最初のブロック、定義用語の先頭、または表のブロックである。
+図や表の一行自体が空の領域に入らない場合は、既存の寸法エラーを使う。
+
+- メッセージ: `<種類>が空の保持単位にも収まらないため、<単位> の保持を外して通常の位置で分けました`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Paginate`、golem-typeset の `Golem.Typeset.Flow`）
+- ADR: [root ADR 0377](adr/0377-keep-book-parts.md)、[root ADR 0401](adr/0401-select-book-part-retention-units.md)
+
+### 主な原因
+
+- 一つのリスト項目が、空のページや見開きにも収まらない。
+- 部品の行数と、段落スタイルの保持条件を、選んだ単位の中で両立できない。
+
+### 直し方
+
+部品を短くするか、版面または保持単位を広げる。
+`silence-notices` または `--no-notices` で、このお知らせを抑制できる。
+
 ## G07134
 
 可視の区切りを段に配置できません
@@ -11724,14 +11827,15 @@ PDF のフォントのファイルがありません
 
 ### 意味
 
-PDF が使う役割のフォントのファイルがないか、パスが不正である。
+PDF が使う役割のフォントのファイルがない。
+パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 PDF を書かない。
 `golem check` も報告する。
 LSP は出さない。
 位置は `style.toml` の先頭である。
 本文のフォントの設定がない場合は [G08007](#g08007) である。
 
-- メッセージ: `フォントのファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
+- メッセージ: `フォントのファイルがありません: <パス>`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset.FontProvider`）
 - ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた）、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（本文のフォントの設定の欠けを G08007 に分けた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
 
@@ -11837,18 +11941,18 @@ PostScript 名が同じ異なるフォントがあります
 
 ### 意味
 
-PDF を作るときに、`[color]` の `intent` が指す ICC プロファイルのファイルがないか、パスが不正である。
+PDF を作るときに、`[color]` の `intent` が指す ICC プロファイルのファイルがない。
+パスがプロジェクトの外を指すときは、このコードではなく [G03279](#g03279) である。
 PDF を書かない。
 LSP は出さない。
 
-- メッセージ: `出力インテントの ICC プロファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
+- メッセージ: `出力インテントの ICC プロファイルがありません: <パス>`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-typeset の `Golem.Typeset`）
 - ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)
 
 ### 主な原因
 
 - `[color]` の `intent` のパスの綴りを誤ったか、ファイルを置いていない。
-- パスが絶対パスなど、使えない形である。
 
 ### 直し方
 
@@ -12548,6 +12652,7 @@ CFF の内部参照が表の範囲を外れています
 
 PDF に埋め込む CFF の輪郭のフォントで、CFF の表の中の参照が、テーブルディレクトリが宣言する表の長さを超える。
 INDEX の終端、Top DICT と Private DICT が指すデータ、使う字のグリフの CharString とそれが呼ぶサブルーチンを確かめる。
+使う字のグリフが seac で合成する形なら、部品のグリフの CharString とそれが呼ぶサブルーチンも確かめる（[root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 グリフ、サブルーチン、Font DICT の番号の項目が INDEX にない場合も、このエラーになる。
 PDF のビルドとプリフライトで出し、PDF を書かない。
 位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
@@ -12574,9 +12679,11 @@ CFF の参照を確かめきれません
 ### 意味
 
 PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの CharString が参照するサブルーチンを、確かめきれない。
+seac の部品のグリフの CharString も、使う字のグリフの一部として確かめる（[root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)）。
 CharString の演算子 `random` がとりうる値すべてでたどり、たどる枝の実行の数（数と演算子を一つずつ数え、すべての枝を足す）が 100000 を超えた場合に、このエラーになる。
 `random` を含まないグリフでも、実行の数が上限を超えればこのエラーになる。
 `random` から作った値で 0 を割りうる場合、負の数の平方根をとりうる場合、スタックの外を指しうる場合と、無限大になりうる値を掛け算、割り算、位置に使う場合も、このエラーになる。
+seac の基底の字かアクセントの字のコードが、`random` から作った値で無限大になりうる場合も、このエラーになる。
 フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
 G08107 とは独立に出す。
 表の構造の確かめで G08107 になったフォントでは、このエラーは出ない。
@@ -12734,18 +12841,143 @@ HTML と EPUB は `axes` を使わないので、出さない。
 
 - メッセージ: `図版の色を変換できません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.Flow`、golem-driver の `Golem.Driver`）
-- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)
+- ADR: [root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)、[root ADR 0406](adr/0406-limit-jpeg-figure-color-decoding.md)、[root ADR 0407](adr/0407-reject-svg-figures-that-cannot-be-recolored.md)、[root ADR 0425](adr/0425-classify-colors-of-imported-pdf-figures.md)
 
 ### 主な原因
 
 - 壊れた画像や、色の変換で扱えない JPEG の符号化方式を使っている。
 - 変換後の画素が、画像の展開サイズの上限を超える。
 - 色を指定した SVG（PDF、HTML、EPUB）に、色の変換で扱えない要素や属性がある。
-- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。シェーディング、パターン、特色などの色空間、Normal 以外の合成の方式、転送関数、自分の色を指定する Type 3 フォントの字形がこれにあたる。
+- 取り込んだ PDF の図版が、色を判定できないか、指定色に置き換えられない構成を使っている。次の構成がこれにあたる。
+  - ExtGState の BM が Normal か Compatible でないもの。配列は、空でなく、要素がすべて Normal か Compatible のときだけ扱う。
+  - ExtGState の TR と TR2 が Identity か Default でないもの。
+  - OPM が 1 で、線を描くときは線の、塗りを描くときは塗りのオーバープリントが true のもの。
+  - PostScript の計算機の関数（FunctionType 4）で色を決めるシェーディング。
+  - 値がすべて濃淡でも、灰色の値が一つの値の一次式で決まらないシェーディングを、ほかの色がすべて濃淡の図版で使うもの。
+  - DeviceGray でないソフトマスクと、Matte を持ち、画像と大きさが違うか、Interpolate が true のソフトマスク。
+  - ICCBased で、プロファイルのデータの色空間が Gray、RGB、CMYK、Lab のどれでもないか、N と合わないもの。
+- 取り込んだ PDF の図版が、色の置換でまだ扱えない構成を使っている。今はシェーディングをすべてこの扱いにする。ほかに、パターン、自分の色を指定する Type 3 フォントの字形、CIE 由来の色空間の画像、データの色空間が Lab か Range が単位範囲でない ICCBased の画像、画像と大きさの違うマスク、Interpolate が true のマスク、Matte を持つ同じ大きさのソフトマスク、マスクを持つ CCITTFaxDecode の画像と CCITTFaxDecode のマスクなどがこれにあたる。
 
 ### 直し方
 
 メッセージの理由に従って、図版を対応する画像形式とサイズで書き直す。
+PDF の図版は、描画色の指定を外すか、挙げた構成を使わない形に書き出し直す。
+
+## G08114
+
+CFF の seac の引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフか、その seac の部品のグリフの `endchar` の引数が誤っている。
+`endchar` は、引数で別の二つのグリフ（基底の字とアクセント）を合成する形（seac）をとれる。
+幅の引数を除いた引数が 0 個でも 4 個でもない場合と、seac の基底の字かアクセントの字のコード（`bchar`、`achar`）が 0 から 255 までの整数でない場合に、このエラーになる。
+コードが `random` から作った値なら、とりうる値すべてで確かめる。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CFF の seac の引数が誤っています: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+グリフの輪郭が壊れているか、`endchar` の前にスタックに値が残っている。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08115
+
+CFF の seac の部品のグリフがフォントにありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの seac が、フォントにない字を部品に指す。
+seac の基底の字とアクセントの字のコードを StandardEncoding の文字のコードとして読み、その字の名前をフォントの charset で引いて、部品のグリフを求める。
+StandardEncoding のそのコードに字がない（`.notdef` に当たる）場合と、その字の名前がフォントの charset にない場合に、このエラーになる。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CFF の seac の部品のグリフがフォントにありません: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+フォントから部品の字のグリフを除いたか、グリフの輪郭が壊れている。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08116
+
+CFF の seac の部品がまた seac を含みます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CFF の輪郭のフォントで、使う字のグリフの seac の部品のグリフが、また seac で合成する形である（入れ子）。
+FreeType は入れ子の seac を読まないので、このエラーにする。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CFF の seac の部品がまた seac を含みます: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+フォントの部品のグリフが、ほかの字を合成する形で作られている。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
+
+## G08117
+
+CID-keyed の CFF で seac を使っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF に埋め込む CID-keyed の CFF の輪郭のフォントで、使う字のグリフが seac で合成する形である。
+CID-keyed のフォントの charset は字の名前ではなく CID を並べるので、部品のグリフを字の名前で引けない。
+FreeType も、CID-keyed のフォントの seac を誤りとして扱い、読まない。
+フォントとグリフの番号の組ごとに一度、PDF のビルドとプリフライトで出し、PDF を書かない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+同じコードのものは、メッセージの文字列の順に並ぶので、同じフォントのグリフ 10 はグリフ 9 より先に出る。
+
+- メッセージ: `CID-keyed の CFF で seac を使っています: <パス> のグリフ <番号>`
+- 段階とモジュール: 出力（golem-typeset の `Golem.Typeset.FontProvider`、golem-font の `Golem.Font.Cff`）
+- ADR: [root ADR 0420](adr/0420-validate-the-seac-components-of-embedded-cff.md)、[Golem ADR 0394](adr/0394-order-cff-glyph-diagnostics-like-the-others.md)
+
+### 主な原因
+
+フォントの変換で、名前で引くフォントの seac が CID-keyed のフォントに残った。
+
+### 直し方
+
+メッセージの番号は、フォントの中の使う字のグリフの番号であり、部品のグリフの番号ではない。
+そのグリフの字を使わないように文字を替えるか、別のフォントに替えてから、PDF を組み直す。
 
 ## G09001
 

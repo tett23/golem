@@ -31,6 +31,7 @@ import Golem.Project.Style
 import Golem.Syntax
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
+import KeepPartsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
@@ -181,6 +182,8 @@ silenceTests =
     "[diagnostics] silence-notices (golem-syntax ADR 0002)"
     [ testCase "the codes of notices are read" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G02062\"]\n") @?= Right (Set.fromList [DiagnosticCode "G02062"]),
+      testCase "root ADR 0401: the retention notice G07133 can be silenced" $
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G07133\"]\n") @?= Right (Set.fromList [DiagnosticCode "G07133"]),
       testCase "the notice of .emet E02109 is read (docs/adr/0160)" $
         fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"E02109\"]\n") @?= Right (Set.fromList [DiagnosticCode "E02109"]),
       testCase "ADR 0344 I4: retired notice codes are not accepted in silence-notices" $
@@ -880,6 +883,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       FeaturesSpec.tests,
+      KeepPartsSpec.tests,
       PositionSpec.tests,
       UnderlineSpec.tests,
       OutputCharsSpec.tests,
@@ -942,6 +946,21 @@ tests =
             source = declarations <> "[paragraph-styles.quote]\nkeep-with-next = \"v30\"\n"
         result <- timeout 5000000 (evaluate (either (const False) (\s -> (paraStyle s (Just "quote") >>= psKeepWithNext) == Just 0) (parseStyle (FileId 0) source)))
         result @?= Just True,
+      testCase "root ADR 0424 I2: undefined and mistyped names on the right of a declaration are G03257 and G03258 at the name" $ do
+        let located src = either (map (\d -> (diagCode d, spanStart (diagSpan d)))) (const []) (parseStyle (FileId 0) src)
+            at src needle = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src)))
+            undefinedLength = "[values.length]\na = \"missing\"\n"
+            mistyped = "[values.aki]\nh = \"二分\"\n[values.length]\na = \"h\"\n"
+            undefinedCount = "[values.count]\nn = \"a+m\"\na = 1\n"
+            nested = "[values.length]\na = \"b\"\nb = \"missing\"\n"
+        located undefinedLength @?= [(DiagnosticCode "G03257", at undefinedLength "\"missing\"")]
+        located mistyped @?= [(DiagnosticCode "G03258", at mistyped "\"h\"")]
+        located undefinedCount @?= [(DiagnosticCode "G03257", at undefinedCount "\"a+m\"")]
+        located nested @?= [(DiagnosticCode "G03257", at nested "\"missing\"")],
+      testCase "root ADR 0424 I2: uses, cycles and wrong declared values keep their codes" $ do
+        codes (parseStyle (FileId 0) "[values.length]\na = \"3mm\"\n[paragraph-styles.quote]\nindent = \"x\"\n") @?= ["G03257"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"a\"\n") @?= ["G03256"]
+        codes (parseStyle (FileId 0) "[values.length]\na = \"b\"\nb = \"3mx\"\n") @?= ["G03256"],
       testCase "ADR 0346 I3: invalid names and typed references have located errors" $ do
         codes (parseStyle (FileId 0) "[values.length]\nBad = \"1zw\"\n") @?= ["G03255"]
         codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"missing\"\n") @?= ["G03257"]
@@ -1016,6 +1035,7 @@ tests =
           Right s -> (csSize =<< Map.lookup "note-mark" (stCharStyles s)) @?= Just (Zw (65 % 100)),
       noteMarkTests,
       noteBodyStyleTests,
+      endnoteStyleTests,
       indentTests,
       listTests,
       characterFeatureTests,
@@ -1510,6 +1530,44 @@ styleTests =
     noBase = fmap (\d -> d {psBasedOn = Nothing})
     messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
     hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
+
+-- | The table [endnotes] of the endnotes, a channel apart from the notes (root ADR 0412).
+endnoteStyleTests :: TestTree
+endnoteStyleTests =
+  testGroup
+    "[endnotes] (root ADR 0412)"
+    [ testCase "root ADR 0412 I1: without [endnotes], the endnotes are numbered per chapter, marked {n} with note-mark, and take no other style" $ do
+        s <- parsed ""
+        let e = endnoteStyle s
+        (stNotesNumbering e, stNotesMarkFormat e, stNotesMarkStyle e) @?= (NumberPerChapter, MarkFormat "" arabic "", "note-mark")
+        (stNotesBodyMarkStyle e, stNotesMarkFlat e, stNotesBodyStyle e, stNotesHeadingStyle e) @?= (Nothing, False, Nothing, Nothing),
+      testCase "root ADR 0412 I1: the keys of [notes] are not inherited by the endnotes" $ do
+        s <- parsed "[paragraph-styles.small]\nsize = \"0.8zw\"\n[notes]\nnumbering = \"book\"\nmark-format = \"†{n}\"\nmark-style = \"strong\"\nbody-mark-style = \"strong\"\nmark-shape = \"flat\"\nbody-style = \"small\"\nheading-style = \"small\"\n[notes.chapter-end]\nbody-style = \"small\"\nheading-style = \"small\"\n"
+        let e = noteStyleFor PlaceChapterEnd (endnoteStyle s)
+        (stNotesNumbering e, stNotesMarkFormat e, stNotesMarkStyle e) @?= (NumberPerChapter, MarkFormat "" arabic "", "note-mark")
+        (stNotesBodyMarkStyle e, stNotesMarkFlat e, stNotesBodyStyle e, stNotesHeadingStyle e) @?= (Nothing, False, Nothing, Nothing),
+      testCase "root ADR 0412 I1: each key of [endnotes] is read as the key of [notes] of the same name" $ do
+        s <- parsed "[paragraph-styles.small]\nsize = \"0.8zw\"\n[endnotes]\nnumbering = \"file\"\nmark-format = \"［{n:kanji}］\"\nmark-style = \"strong\"\nbody-mark-style = \"bold\"\nmark-shape = \"flat\"\nbody-style = \"small\"\nheading-style = \"caption\"\n"
+        let e = endnoteStyle s
+        (stNotesNumbering e, stNotesMarkFormat e, stNotesMarkStyle e) @?= (NumberPerFile, MarkFormat "［" kanjiNotation "］", "strong")
+        (stNotesBodyMarkStyle e, stNotesMarkFlat e, stNotesBodyStyle e, stNotesHeadingStyle e) @?= (Just "bold", True, Just "small", Just "caption")
+        -- the notes keep their own values
+        (stNotesNumbering s, stNotesMarkFormat s) @?= (NumberPerChapter, MarkFormat "*" arabic ""),
+      testCase "root ADR 0412 I5: [endnotes] numbering = \"page\" is one G03278 at the value" $ do
+        let src = "[endnotes]\nnumbering = \"page\"\n"
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d)) | d <- fromLeft [] (parseStyle (FileId 0) src)] @?= [(DiagnosticCode "G03278", Error, 23)]
+        -- [notes] numbering = "page" stays a value of the notes
+        codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n[endnotes]\nnumbering = \"chapter\"\n") @?= [],
+      testCase "root ADR 0412: the values of [endnotes] are checked as those of [notes]" $ do
+        codes (parseStyle (FileId 0) "[endnotes]\nnumbering = \"section\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nmark-format = \"{n}{n}\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nmark-shape = \"tall\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nplacement = \"page-foot\"\n") @?= ["G03006"]
+        codes (parseStyle (FileId 0) "[endnotes]\nmark-style = \"nothing\"\n") @?= ["G03013"]
+        codes (parseStyle (FileId 0) "[endnotes]\nbody-style = \"nothing\"\n") @?= ["G03013"]
+    ]
+  where
+    parsed src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
 
 -- | The paragraph styles of the bodies of notes and of the title of their list (docs/adr/0366).
 noteBodyStyleTests :: TestTree

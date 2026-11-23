@@ -3,6 +3,10 @@
 # job of ci.yml, one per line (docs/adr/0140).
 #
 #   test-suites.sh driver [MODULES]  the test suites of golem-driver
+#   test-suites.sh driver-a [MODULES]  those of DRIVER_A below, for the
+#                                    runner tests-driver-a
+#   test-suites.sh driver-b [MODULES]  the other suites of golem-driver,
+#                                    for the runner tests-driver-b
 #   test-suites.sh rest [MODULES]    every other test suite
 #   test-suites.sh all [MODULES]     all, for cabal test all
 #   test-suites.sh wasm [MODULES]    the suites of the golem packages of
@@ -23,12 +27,19 @@
 # on wasm32 (root ADR 0388 I2, root ADR 0415); golem-test-support is a
 # package of cabal.project.wasm-tests only, and its other suite, built
 # with -threaded, is not run there.
+#
+# driver-a and driver-b split the suites of driver between the two runners
+# of the tests of golem-driver of each architecture: driver-a has the
+# suites of DRIVER_A, driver-b every other suite of golem-driver, so that a
+# new suite of golem-driver runs on tests-driver-b without being listed
+# here (root ADR 0416)
 set -eu
-usage() { echo "usage: test-suites.sh driver|rest|all|wasm [MODULES]" >&2; exit 2; }
+DRIVER_A="golem-driver-pdf-test golem-driver-cli-test golem-driver-global-test"
+usage() { echo "usage: test-suites.sh driver|driver-a|driver-b|rest|all|wasm [MODULES]" >&2; exit 2; }
 [ $# -ge 1 ] && [ $# -le 2 ] || usage
 PART=$1
 case "$PART" in
-  driver | rest | all | wasm) ;;
+  driver | driver-a | driver-b | rest | all | wasm) ;;
   *) usage ;;
 esac
 if [ "$PART" = all ]; then echo all; exit 0; fi
@@ -45,13 +56,17 @@ else
 fi
 printf '%s\n' "$CABALS" | while IFS= read -r cabal; do
   [ -f "$cabal" ] || continue
-  awk -v part="$PART" '
+  awk -v part="$PART" -v driver_a=" $DRIVER_A " '
     tolower($1) == "name:" && pkg == "" { pkg = $2 }
     tolower($1) == "test-suite" { suites[++n] = $2 }
     END {
       if (pkg == "") { print "test-suites.sh: no name in " FILENAME > "/dev/stderr"; exit 1 }
-      if (part != "wasm" && (part == "driver") != (pkg == "golem-driver")) exit 0
-      for (i = 1; i <= n; i++) print pkg ":test:" suites[i]
+      if (part != "wasm" && (part ~ /^driver/) != (pkg == "golem-driver")) exit 0
+      for (i = 1; i <= n; i++) {
+        a = index(driver_a, " " suites[i] " ") > 0
+        if ((part == "driver-a" && !a) || (part == "driver-b" && a)) continue
+        print pkg ":test:" suites[i]
+      }
     }' "$cabal"
 done
 if [ "$PART" = wasm ]; then echo golem-test-support:test:golem-test-support-test; fi

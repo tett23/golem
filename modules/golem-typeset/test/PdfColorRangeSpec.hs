@@ -47,10 +47,10 @@ pdfColorRangeTests =
       b <- requireConverted direct
       map snd (convertedImages a) @?= map snd (convertedImages b),
     testCase "root ADR 0403 I1: an ICCBased vector colour space paints as its device components" $ do
-      p <- requireConverted (withSpaces "/CS0 cs 0.5 sc 0 0 1 1 re f" [("CS0", P.OArr [P.OName "ICCBased", P.ORef 7])] [(7, P.OStream [("N", P.OInt 1)] "profile")])
+      p <- requireConverted (withSpaces "/CS0 cs 0.5 sc 0 0 1 1 re f" [("CS0", P.OArr [P.OName "ICCBased", P.ORef 7])] [(7, P.OStream [("N", P.OInt 1)] (iccHeader "GRAY"))])
       assertBool "half tint" ("0 0.5 0.5 0 k" `BS.isInfixOf` P.ipContent p),
     testCase "root ADR 0403 I3: a coloured ICCBased vector paint keeps the original PDF" $
-      recolor (withSpaces "0 g 0 0 1 1 re f /CS0 cs 1 0 0 scn 0 0 1 1 re f" [("CS0", P.OArr [P.OName "ICCBased", P.ORef 7])] [(7, P.OStream [("N", P.OInt 3)] "profile")]) @?= Right Nothing,
+      recolor (withSpaces "0 g 0 0 1 1 re f /CS0 cs 1 0 0 scn 0 0 1 1 re f" [("CS0", P.OArr [P.OName "ICCBased", P.ORef 7])] [(7, P.OStream [("N", P.OInt 3)] (iccHeader "RGB "))]) @?= Right Nothing,
     testCase "root ADR 0403 I1: an Indexed vector colour space paints its palette colour" $ do
       p <- requireConverted (withSpaces "/P cs 1 scn 0 0 1 1 re f" [("P", P.OArr [P.OName "Indexed", P.OName "DeviceGray", P.OInt 1, P.OStr (BS.pack [0, 51])])] [])
       assertBool "palette gray 0.2" ("0 0.8 0.8 0 k" `BS.isInfixOf` P.ipContent p),
@@ -133,3 +133,7 @@ stencilFields = [("Type", P.OName "XObject"), ("Subtype", P.OName "Image"), ("Wi
 
 stencilBits :: ByteString
 stencilBits = BS.pack [0x55]
+
+-- | An ICC profile header whose data colour space is given (root ADR 0425).
+iccHeader :: ByteString -> ByteString
+iccHeader space = BS.replicate 16 0 <> space <> BS.replicate 108 0

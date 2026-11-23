@@ -427,6 +427,18 @@ sourceTests =
             n : _ -> near (inTop toNote) (faceTopOf n)
             [] -> assertFailure "no note"
         other -> assertFailure (show other),
+    testCase "root ADR 0412 I2: the mark of an endnote goes to its entry in the list, its mark back" $ do
+      let src = "本文[endnote: 注の本文。]の後。\n"
+      pdf <- pdfOf horizontalStyle src []
+      pages <- pageGlyphs pdf
+      case (insides pdf, glyphsOf '後' pages, glyphsOf '注' pages) of
+        ([toNote, back], (_, b) : _, ns) -> do
+          near (inTop back) (faceTopOf b)
+          case [n | (_, n) <- ns, dSize n == "10"] of
+            n : _ -> near (inTop toNote) (faceTopOf n)
+            [] -> assertFailure "no endnote"
+          (inContents toNote, inContents back) @?= (Just "1", Just "1")
+        other -> assertFailure (show other),
     testCase "I3 a note of two paragraphs goes to its first line" $ do
       let src = "本文[note k]の後。\n\n@note k\n  一つめの段落。\n  二つめの段落。\n"
       pdf <- pdfOf horizontalStyle src []

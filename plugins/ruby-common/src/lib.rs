@@ -344,6 +344,12 @@ fn walk_run(xs: &mut Vec<Inline>, v: &mut impl Visitor) {
                 }
                 xs.push(Inline::Sidenote { span, number, body });
             }
+            Inline::Endnote { span, number, mut body } => {
+                for p in note_paragraphs_mut(&mut body) {
+                    walk_run(p, v);
+                }
+                xs.push(Inline::Endnote { span, number, body });
+            }
             other => xs.push(other),
         }
     }

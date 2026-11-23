@@ -96,7 +96,11 @@ module Golem.Project.Style
     HeadingBlockAlign (..),
     NotesPlacement (..),
     noteStyleFor,
+    Endnotes (..),
+    defaultEndnotes,
+    endnoteStyle,
     Composition (..),
+    KeepParts (..),
     RubyStyleDef (..),
     kentenShapeNames,
     SidenoteStyle (..),
@@ -156,7 +160,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Assemble (NoteNumbering (..))
-import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat, NumberSlotName (..), Piece (..), Slot (..), defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText)
+import Golem.Assemble.Formats (Braces (..), Legacy (..), MarkFormat (..), NumberSlotName (..), Piece (..), Slot (..), arabic, defaultMarkFormat, notationName, parseFormat, parseHeadingNumberFormatText, parseMarkFormat, parseNumberFormatText)
 import Golem.Assemble.ListMarkers (NumberFormat, parseNumberFormat, parseNumberFormatLegacy)
 import Golem.Length (Sp (..))
 import Golem.Length qualified as L
@@ -1186,6 +1190,10 @@ data HeadingStyle = HeadingStyle
   }
   deriving stock (Eq, Show)
 
+-- | The physical unit that retains book parts (root ADR 0377 and 0401).
+data KeepParts = KeepColumn | KeepPage | KeepSpread
+  deriving stock (Eq, Ord, Show)
+
 data Composition = Composition
   { compKinsokuStrict :: !Bool,
     compHanging :: !Bool,
@@ -1203,7 +1211,8 @@ data Composition = Composition
     compNumberUnitPenalty :: !Int,
     {- | [composition.hyphenation-exceptions] (docs/adr ADR 0272): the words
     of each language tag as written, hyphens where they may break
-    -} compHyphenationExceptions :: !(Map Text [Text])
+    -} compHyphenationExceptions :: !(Map Text [Text]),
+    compKeepParts :: !KeepParts
   }
   deriving stock (Eq, Show)
 
@@ -1843,6 +1852,8 @@ data Style = Style
     stFootnoteBodyStyle :: !(Maybe Text),
     stChapterEndBodyStyle :: !(Maybe Text),
     stChapterEndHeadingStyle :: !(Maybe Text),
+    -- | [endnotes]: the endnotes, a channel apart from the notes (root ADR 0412)
+    stEndnotes :: !Endnotes,
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     -- | [figures] color: the swatch of single-colour SVG figures (root ADR 0386).
@@ -1873,7 +1884,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50 10000 Map.empty KeepColumn
 
 defaultStyle :: Style
 defaultStyle =
@@ -1901,6 +1912,7 @@ defaultStyle =
       stFootnoteBodyStyle = Nothing,
       stChapterEndBodyStyle = Nothing,
       stChapterEndHeadingStyle = Nothing,
+      stEndnotes = defaultEndnotes,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stFigureColor = Nothing,
@@ -2480,6 +2492,7 @@ instance FromValue Composition where
     eh <- optKey "explicit-hyphen-penalty"
     nu <- optKey "number-unit-penalty"
     hx <- optKey "hyphenation-exceptions"
+    parts <- enumKey "keep-parts" keepPartsValues
     let d = defaultComposition
     pure
       Composition
@@ -2494,7 +2507,8 @@ instance FromValue Composition where
           compExpansion = (\(Expansion l s) -> (l, s)) <$> ex,
           compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh,
           compNumberUnitPenalty = fromMaybe (compNumberUnitPenalty d) nu,
-          compHyphenationExceptions = fromMaybe Map.empty hx
+          compHyphenationExceptions = fromMaybe Map.empty hx,
+          compKeepParts = case parts of Just "page" -> KeepPage; Just "spread" -> KeepSpread; _ -> KeepColumn
         }
 
 instance FromValue SidenoteStyle where
@@ -2631,6 +2645,79 @@ data NoteStyle = NoteStyle (Maybe Text) (Maybe Text)
 
 instance FromValue NoteStyle where
   fromValue = parseTableFromValue (NoteStyle <$> optKey "body-style" <*> optKey "heading-style")
+
+{- | [endnotes] (root ADR 0412): the keys of [notes] of the same names
+but placement, rule and the tables of placement. A key not written takes
+the default of the endnotes, never the value of [notes]. numbering =
+"page" is read, and is G03278 ('endnoteChecks').
+-}
+data Endnotes = Endnotes
+  { enNumbering :: !NoteNumbering,
+    enMarkFormat :: !MarkFormat,
+    enMarkStyle :: !Text,
+    enBodyMarkStyle :: !(Maybe Text),
+    enMarkFlat :: !Bool,
+    enBodyStyle :: !(Maybe Text),
+    enHeadingStyle :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | The endnotes of a book without [endnotes]: per chapter, marked {n} in note-mark (root ADR 0412).
+defaultEndnotes :: Endnotes
+defaultEndnotes = Endnotes NumberPerChapter (MarkFormat "" arabic "") "note-mark" Nothing False Nothing Nothing
+
+instance FromValue Endnotes where
+  fromValue =
+    parseTableFromValue $ do
+      let d = defaultEndnotes
+      numbering <- enumKey "numbering" numberingValues
+      format <- optKeyOf "mark-format" (withValue (\l f -> either (\why -> failAt l (T.unpack ("[endnotes] の mark-format が正しくありません（" <> why <> "）: " <> f))) pure (parseMarkFormat f)))
+      markStyle <- optKey "mark-style"
+      bodyMarkStyle <- optKey "body-mark-style"
+      bodyStyle <- optKey "body-style"
+      headingStyle <- optKey "heading-style"
+      shape <- enumKey "mark-shape" markShapeValues
+      pure
+        Endnotes
+          { enNumbering = maybe (enNumbering d) numberingOf numbering,
+            enMarkFormat = fromMaybe (enMarkFormat d) format,
+            enMarkStyle = fromMaybe (enMarkStyle d) markStyle,
+            enBodyMarkStyle = bodyMarkStyle,
+            enMarkFlat = shape == Just "flat",
+            enBodyStyle = bodyStyle,
+            enHeadingStyle = headingStyle
+          }
+
+-- | A value of numbering, of [notes] and of [endnotes] (golem-driver ADR 0018, docs/adr/0383).
+numberingOf :: Text -> NoteNumbering
+numberingOf = \case
+  "file" -> NumberPerFile
+  "book" -> NumberPerBook
+  "page" -> NumberPerPage
+  _ -> NumberPerChapter
+
+{- | The style with the values of [endnotes] in place of those of [notes]
+(root ADR 0412): the endnotes are set with what sets the notes at the end
+of a chapter, from their own keys alone.
+-}
+endnoteStyle :: Style -> Style
+endnoteStyle st =
+  let e = stEndnotes st
+   in st
+        { stNotesPlacement = PlaceChapterEnd,
+          stNotesNumbering = enNumbering e,
+          stNotesRule = Nothing,
+          stNotesMarkSize = Nothing,
+          stNotesMarkFormat = enMarkFormat e,
+          stNotesMarkFlat = enMarkFlat e,
+          stNotesMarkStyle = enMarkStyle e,
+          stNotesBodyMarkStyle = enBodyMarkStyle e,
+          stNotesBodyStyle = enBodyStyle e,
+          stNotesHeadingStyle = enHeadingStyle e,
+          stFootnoteBodyStyle = Nothing,
+          stChapterEndBodyStyle = Nothing,
+          stChapterEndHeadingStyle = Nothing
+        }
 
 -- | Resolve placement overrides while preserving common defaults (root ADR 0404).
 noteStyleFor :: NotesPlacement -> Style -> Style
@@ -2861,6 +2948,8 @@ instance FromValue Style where
         case (size, markSizeConflict cstyles markStyle) of
           (Just _, Just d) -> inKey "mark-size" (failAt (keyPosition v "mark-size") (T.unpack (markSizeConflictMessage markStyle d)))
           _ -> pure notes
+    -- the endnotes (root ADR 0412)
+    endnotes <- fromMaybe defaultEndnotes <$> optKey "endnotes"
     side <- optKey "sidenotes"
     Figures fnum fgap fcolor <- fromMaybe (Figures Nothing Nothing Nothing) <$> optKey "figures"
     TablesSec tnum tcap <- fromMaybe (TablesSec Nothing Nothing) <$> optKey "tables"
@@ -2912,6 +3001,7 @@ instance FromValue Style where
           stFootnoteBodyStyle = fbody,
           stChapterEndBodyStyle = ebody,
           stChapterEndHeadingStyle = ehead,
+          stEndnotes = endnotes,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stFigureColor = fcolor,
@@ -3059,10 +3149,10 @@ resolveStyleValues fid src (MkTable root) = do
             | otherwise = Left (bad "G03256" pos ("行数の宣言値が正しくありません: " <> raw))
     reference defs cache stack wanted pos name = do
       case Map.lookup name defs of
-        Nothing -> Left (bad (if null stack then "G03257" else "G03256") pos ("値の名前がありません: " <> name))
+        Nothing -> Left (bad "G03257" pos ("値の名前がありません: " <> name))
         Just _ -> do
           ((actual, resolved), next) <- resolveName defs cache stack name
-          if actual == wanted then Right (resolved, next) else Left (bad (if null stack then "G03258" else "G03256") pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
+          if actual == wanted then Right (resolved, next) else Left (bad "G03258" pos ("値 " <> name <> " の種類が違います: 要求 " <> kindText wanted <> "、実際 " <> kindText actual))
     kindText = \case
       LengthKind -> "length"
       AkiKind -> "aki"
@@ -3278,6 +3368,16 @@ styleChecks owner s =
     <> opticalKerningChecks s
     <> spineAlignChecks s
     <> markPositionChecks s
+    <> endnoteChecks s
+
+{- | G03278 (root ADR 0412): [endnotes] numbering = "page"; a list at the
+end of a chapter has no page to number its endnotes by.
+-}
+endnoteChecks :: Style -> [(Text, Text, [Scope], Text)]
+endnoteChecks s =
+  [ ("G03278", "", styleKeys ["endnotes", "numbering"], "章末の注にはページごとの番号を使えません。[endnotes] の numbering には \"chapter\"、\"file\"、\"book\" のどれかを書きます")
+  | enNumbering (stEndnotes s) == NumberPerPage
+  ]
 
 paragraphDimensionChecks :: Style -> [(Text, Text, [Scope], Text)]
 paragraphDimensionChecks s =
@@ -3319,7 +3419,7 @@ writes it. [notes] places the marks.
 markPositionChecks :: Style -> [(Text, Text, [Scope], Text)]
 markPositionChecks s =
   [ ("G03125", name, charKey definer "position", "注の印の文字スタイル " <> name <> " の position は \"normal\" だけを書けます（印の位置は [notes] で決まります）")
-  | let name = stNotesMarkStyle s,
+  | name <- nub [stNotesMarkStyle s, enMarkStyle (stEndnotes s)],
     (definer, d) <- take 1 [nd | nd@(_, d') <- namedChainOf (const csBasedOn) (stCharStyles s) name, isJust (csPosition d')],
     csPosition d /= Just P.PositionNormal
   ]
@@ -3626,6 +3726,15 @@ styleReferenceChecks owner s =
                ]
             <> [ ("", styleKeys ["notes", placement, key], "[notes." <> placement <> "] の " <> key <> " の段落スタイルがありません: " <> n)
                | (placement, key, Just n) <- [("footnote", "body-style", stFootnoteBodyStyle s), ("chapter-end", "body-style", stChapterEndBodyStyle s), ("chapter-end", "heading-style", stChapterEndHeadingStyle s)],
+                 Map.notMember n ps
+               ]
+            -- the styles of [endnotes] (root ADR 0412)
+            <> [ ("", styleKeys ["endnotes", k], "[endnotes] の " <> k <> " の文字スタイルがありません: " <> n)
+               | (k, Just n) <- [("mark-style", Just (enMarkStyle (stEndnotes s))), ("body-mark-style", enBodyMarkStyle (stEndnotes s))],
+                 Map.notMember n cs
+               ]
+            <> [ ("", styleKeys ["endnotes", k], "[endnotes] の " <> k <> " の段落スタイルがありません: " <> n)
+               | (k, Just n) <- [("body-style", enBodyStyle (stEndnotes s)), ("heading-style", enHeadingStyle (stEndnotes s))],
                  Map.notMember n ps
                ]
             <> [("", styleKeys ["lists", "marker-style"], "[lists] の marker-style の文字スタイルがありません: " <> n) | Just n <- [lsMarkerStyle (stLists s)], Map.notMember n cs]
@@ -3994,7 +4103,7 @@ fontFiles s = [(r, p) | (r, FontRole {frJa = ja, frLatin = la}) <- Map.toAscList
 {- | The values of the enumerations of style.toml, written once for the
 decoder and the schema (docs/adr ADR 0169).
 -}
-bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
+bindingValues, writingModeValues, lineBreaksValues, pageBreakValues, monoAlignValues, groupAlignValues, baseSpacingValues, overhangOntoValues, kinsokuValues, keepPartsValues, sideValues, markerValues, verticalValues, refPageValues, placementValues, numberingValues, markShapeValues, leaderValues :: [Text]
 bindingValues = ["right", "left"]
 writingModeValues = ["vertical", "horizontal"]
 lineBreaksValues = ["join", "keep"]
@@ -4004,6 +4113,7 @@ groupAlignValues = ["1:2:1", "0:1:0", "center", "start"]
 baseSpacingValues = ["1:2:1", "0:1:0", "center"]
 overhangOntoValues = ["kana", "none"]
 kinsokuValues = ["strict", "loose"]
+keepPartsValues = ["column", "page", "spread"]
 sideValues = ["outside", "left", "right"]
 markerValues = ["number", "symbol", "none"]
 verticalValues = ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
@@ -4049,6 +4159,18 @@ styleSchema =
       ("numbers", NTable [("vertical", enum verticalValues), ("ref-page", enum refPageValues)]),
       ("emphasis", NRejected),
       ("notes", notesNode),
+      -- the keys of [notes] for the endnotes; numbering = "page" is G03278, which completion leaves out (root ADR 0412)
+      ( "endnotes",
+        NTable
+          [ ("numbering", enum (filter (/= "page") numberingValues)),
+            ("mark-format", str),
+            ("mark-style", ref CharStyles),
+            ("body-mark-style", ref CharStyles),
+            ("body-style", ref ParaStyles),
+            ("heading-style", ref ParaStyles),
+            ("mark-shape", enum markShapeValues)
+          ]
+      ),
       ("sidenotes", NTable [("side", enum sideValues), ("width", dim), ("gap", dim), ("font", NRejected), ("size", NRejected), ("marker", enum markerValues), ("marker-style", ref CharStyles)]),
       ("figures", NTable [("number", str), ("wrap-gap", dim), ("color", str)]),
       ("tables", NTable [("number", str), ("caption-position", enum captionPositionValues)]),
@@ -4100,7 +4222,8 @@ styleSchema =
         ]
     compositionNode =
       NTable
-        [ ("kinsoku", enum kinsokuValues),
+        [ ("keep-parts", enum keepPartsValues),
+          ("kinsoku", enum kinsokuValues),
           ("hanging-punctuation", bool),
           ( "ruby",
             NTable

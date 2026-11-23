@@ -1,0 +1,57 @@
+cabal-version:      3.0
+name:               golem-unicode
+version:            0.1.0
+synopsis:           Grapheme clusters, word boundaries and character classes of Unicode for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+extra-source-files: LICENSE-libgrapheme
+                    UNICODE-LICENSE
+                    test/data/GraphemeBreakTest-17.0.0.txt
+                    test/data/WordBreakTest-17.0.0.txt
+                    test/data/UNICODE-LICENSE
+                    test/data/libgrapheme-3.0.0-counts.tsv
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+-- depends on no golem package (docs/adr ADR 0411)
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.Unicode.Category
+    Golem.Unicode.CharClass
+    Golem.Unicode.Grapheme
+    Golem.Unicode.Word
+  other-modules:
+    Golem.Unicode.Ranges
+    Golem.Unicode.Table
+  build-depends:
+    , base        >=4.20 && <4.21
+    , containers  >=0.6  && <0.8
+    , text        >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-unicode-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    ConformanceSpec
+                    CountsSpec
+                    SegmentSpec
+  build-depends:
+    , base
+    , containers
+    , golem-test-support
+    , golem-unicode
+    , hedgehog       >=1.4 && <1.6
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

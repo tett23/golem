@@ -14,7 +14,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16 NumberPerChapter
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -177,7 +177,7 @@ sixLevelTests =
     ]
   where
     numbersOf fmts ls =
-      let c = AssembleConfig fmts "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16
+      let c = AssembleConfig fmts "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" "表{chapter}-{n}" Map.empty 16 NumberPerChapter
           docs = [Document (FileId 1) [heading 1 (i * 10) l noHeadingAttrs Nothing "見出し" | (i, l) <- zip [0 ..] ls]]
           (book, ds) = assemble c noEval docs
        in if null ds then map (hiNumberText . snd) (Map.toAscList (bookHeadings book)) else error (show ds)

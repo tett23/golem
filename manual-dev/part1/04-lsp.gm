@@ -108,6 +108,14 @@ LSP は元の URI と文書の版を付けた参照の編集を返し、編集�
 クライアントは編集を適用してからファイルを改名し、成功後に [code: workspace/didRenameFiles] を一度送る。
 LSP は改名後に旧パスの索引を捨て、プロジェクトを読み直す。
 
+ターミナルの [code: git mv] や Finder でエディタの外から移したファイルとフォルダには、移し終えた後に [code: golem/planMovedReferences] で参照の編集を取得する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0426-plan-reference-edits-after-a-move.md]（root ADR 0426「移動し終えたファイルとフォルダの参照の編集を Golem LSP が返す」）]
+この要求に対応する LSP は、初期化の応答に [code: capabilities.experimental.golem.planMovedReferences] の版 [code: 1] を返す。
+[code: golem/planFileMove] と同じく、クライアントが初期化で [code: initializationOptions.golem.fileMove] に版とワークスペースの URI を渡したときだけ使える。
+クライアントは、一度に見つけた独立した移動の対を [code: moves] にまとめ、移し終えた後の URI で、プロジェクトと可視シートの一覧、開いている文書の本文と版を送る。
+LSP は、ディスクは変えずに、ディスクの索引と一覧を移動の前の状態に組み直し、次の節の [code: golem/planFileMove] と同じ規則で計画する。
+応答の編集は、移動後の URI に対する [code: TextDocumentEdit] だけである。
+連鎖する移動と入れ子の移動、移動元にまだファイルかフォルダがある移動、移動先に何も無い移動などはエラーになる。
+
 ## プロジェクトをまたぐ移動の計画
 
 Aleph はファイルやフォルダを移す前に、章登録と参照の編集計画を [code: golem/planFileMove] で取得する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0399-plan-moves-across-project-boundaries.md]（root ADR 0399「プロジェクトをまたぐ移動の章登録と参照編集を計画する」）]

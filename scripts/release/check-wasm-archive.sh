@@ -44,13 +44,15 @@ done
 grep -q '^THIRD_PARTY_LICENSES/' "$TMP/files" || missing THIRD_PARTY_LICENSES/
 # the documents that licenses.sh --wasm writes (docs/adr/0199, 8)
 #   ghc/            the wasm GHC and its RTS
+#   golem-unicode/  libgrapheme and the Unicode data (docs/adr/0411)
 #   harfbuzz/       HarfBuzz
 #   freetype/       FreeType, with the FreeType License
 #   hyph-<tag>/     the hyph-utf8 patterns, one directory a language
 #                   (docs/adr/0276; the list of licenses.sh)
 #   wasi-sdk/       wasi-libc, and libc++ and libc++abi of LLVM
 #   gmp/            GMP
-for f in ghc/LICENSE harfbuzz/COPYING freetype/LICENSE.TXT freetype/FTL.TXT \
+for f in ghc/LICENSE golem-unicode/LICENSE-libgrapheme golem-unicode/UNICODE-LICENSE \
+  harfbuzz/COPYING freetype/LICENSE.TXT freetype/FTL.TXT \
   hyph-en-us/LICENSE-hyph-en-us.txt hyph-en-gb/LICENSE-hyph-en-gb.txt \
   hyph-fr/LICENSE-hyph-fr.txt hyph-de-1996/LICENSE-hyph-de-1996.txt \
   hyph-es/LICENSE-hyph-es.txt hyph-it/LICENSE-hyph-it.txt \

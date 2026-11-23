@@ -89,7 +89,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic
+  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic arabic
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -102,7 +102,7 @@ written = withSystemTempDirectory "golem-epub" $ \tmp -> do
 {- | Builds the same book in a fresh project root (a new temporary
 directory each call), with the given modification time on the assets
 and the assets in the given order, as an asset producer may list them.
-Returns the root and the bytes of the EPUB (Golem ADR 0361).
+Returns the root and the bytes of the EPUB (root ADR 0421).
 -}
 archiveBytes :: Integer -> [FilePath] -> IO (FilePath, BS.ByteString)
 archiveBytes epoch names = withSystemTempDirectory "epub-project" $ \root -> do
@@ -127,8 +127,8 @@ withoutRoot (root, bytes) =
 determinism :: TestTree
 determinism =
   testGroup
-    "Golem ADR 0361"
-    [ testCase "ADR 0361 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
+    "root ADR 0421 (formerly Golem ADR 0361)"
+    [ testCase "root ADR 0421 I1: inv1_epub_byte_determinism_property: the same book in other roots, at other times, with the assets in any order, is the same bytes" $ do
         let names = ["a.png", "b.png", "c.png"]
         expected <- archiveBytes 1000000000 names
         withoutRoot expected
@@ -139,12 +139,12 @@ determinism =
               snd actual @?= snd expected
           )
           (permutations names),
-      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
+      testCase "root ADR 0421 I1: inv1_epub_byte_determinism_case_1: the same book built in another directory is the same bytes" $ do
         expected <- archiveBytes 1000000000 ["a.png"]
         actual <- archiveBytes 1700000000 ["a.png"]
         assertBool "the roots differ" (fst actual /= fst expected)
         snd actual @?= snd expected,
-      testCase "ADR 0361 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
+      testCase "root ADR 0421 I1: inv1_epub_byte_determinism_case_2: only the order the assets are listed in differs, and the bytes are the same" $ do
         expected <- archiveBytes 1000000000 ["a.png", "b.png"]
         actual <- archiveBytes 1000000000 ["b.png", "a.png"]
         snd actual @?= snd expected

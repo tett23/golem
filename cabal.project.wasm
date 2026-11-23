@@ -34,6 +34,7 @@ packages:
   modules/golem-syntax
   modules/golem-text
   modules/golem-typeset
+  modules/golem-unicode
   modules/golem-wasm
   -- docs/adr/0202 section 2: the archives of Hackage with the patches of
   -- scripts/wasm/patches/, unpacked by scripts/fetch-wasm-packages.sh

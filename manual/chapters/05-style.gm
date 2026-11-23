@@ -134,7 +134,8 @@ HTML と EPUB のレイアウトは変えません。
 フォントのファイルは、プロジェクトのフォルダの中に置き、[code: style.toml] にはプロジェクトのフォルダからのパスを書きます。
 InDesign の Document Fonts フォルダー[index reading=どきゅめんとふぉんつふぉるだー: Document Fonts フォルダー]と同じ考え方です。
 違いは、Golem がコンピューターにインストールされているフォントを一切探さないことです。
-InDesign は、Document Fonts フォルダーにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にないフォントはエラー（G08002）になります。
+InDesign は、Document Fonts フォルダーにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にフォントのファイルがなければ、PDF ではエラー（G08002）になります。
+プロジェクトの外のフォントを指すパスは、どの出力でもエラー（G03279）になります。
 
 こうしているのは、コンピューターごとに入っているフォントとそのバージョンが違うと、同じ原稿から同じ紙面が得られなくなるからです。
 同じ名前のフォントでも、バージョンが違えば字形や字幅や詰めの情報が変わることがあります。
@@ -1086,6 +1087,7 @@ leader = "dots"
 - [code: \[notes\]] の [code: heading-style]：章の終わりの注の一覧の見出しに当てる段落スタイルの名前です。省くと、2 の階層の見出しの書体と大きさで組みます。行取りは 2 の階層の見出しのままです。段落スタイルの大きさは本文の文字の大きさを超えられないので、見出しを大きくしたいときは [code: \[headings.2\]] の [code: size] を変えます。
 - [code: \[notes.footnote\]] の [code: body-style]：脚注本文だけに当てる段落スタイルです。共通の [code: \[notes\]] より優先します。
 - [code: \[notes.chapter-end\]] の [code: body-style] と [code: heading-style]：章末注の本文と一覧見出しだけに当てる段落スタイルです。省いた値には共通の [code: \[notes\]] の指定を使います。
+- [code: \[endnotes\]]：[code: \[endnote\]] で書いた注の番号と印の設定です。[code: numbering]、[code: mark-format]、[code: mark-style]、[code: body-mark-style]、[code: mark-shape]、[code: body-style]、[code: heading-style] を、[code: \[notes\]] と同じ意味で書けます。書かないキーは [code: \[notes\]] の値を引き継がず、[code: numbering] は [code: "chapter"]、[code: mark-format] は [code: "{n}"]、[code: mark-style] は [code: "note-mark"]、ほかはなしです。[code: numbering] に [code: "page"] を書くとエラー（G03278）になります。一覧の見出しは日本語の本では「後注」、ほかの言語の本では「Endnotes」で、変えられません。
 - [code: \[notes\]] の [code: mark-size]：以前の書き方で、エラー（G03253）になります。[code: mark-style] が指す文字スタイル（既定は [code: note-mark]）の [code: size] に書き換えてください。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注の領域を設けます。見開きモードでは既定で小口側、左右固定モードでは明記した [code: side] の側の余白を使います。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。[code: marker-style] には、本文の中の「※」に当てる文字スタイルの名前を書きます。省くと、「※」は置いた位置の文字のまま組みます。この文字スタイルは、傍注の本文の先頭の「※」と番号の印には当たりません。
