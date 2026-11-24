@@ -467,6 +467,63 @@ boxInputs =
       [FBoxed i b a [FParagraph k ls] | i <- [170, 171], (b, a) <- [(5, 5), (0, 10)], k <- keeps, ls <- [lines' 400 m | m <- [1 .. 4]] <> [noted 400 2 1 2]]
         <> [FBoxed i b a [FStanza k [lines' (400 + 10 * j) m | (j, m) <- zip [0 ..] shape]] | i <- [170, 171], (b, a) <- [(5, 5), (0, 10)], k <- keeps, shape <- [[1], [1, 1], [2, 1], [1, 2, 1], [3, 1], [5]]]
 
+-- Boxes of paragraphs, stanzas, spaces and keeps, and boxes of any other
+-- body, nested boxes among them, after paragraphs and before what follows.
+mixedBoxInputs :: [(Column, [FlowAt Sp])]
+mixedBoxInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FBoxed i 5 5 body] <> after <> [para 20 n])
+  | cap <- [30, 40, 60],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    i <- [170, 171],
+    body <- bodies,
+    after <- [[], [FKeepNext span0 1, para 30 2]],
+    n <- [1, 2]
+  ]
+  where
+    bodies =
+      [[FParagraph k (lines' 400 m), FSpace s, FParagraph k2 (lines' 410 m2)] | k <- [defaultKeep, Keep 2 2 True], k2 <- [Keep 1 1 False, Keep 3 2 False], m <- [1, 3], s <- [0, 5], m2 <- [1, 2]]
+        <> [[FParagraph k (lines' 400 m), FKeepNext span0 w, FParagraph defaultKeep (lines' 410 2)] | k <- keeps, m <- [1 .. 3], w <- [1, 2]]
+        <> [[FStanza k [lines' 400 1, lines' 410 2], FSpace 5, FParagraph defaultKeep (lines' 420 2)] | k <- keeps]
+        <> [[FParagraph defaultKeep (noted 400 2 1 2), FSpace 5, FParagraph (Keep 2 2 True) (lines' 410 3)], [FSpace 5], [], [FParagraph defaultKeep [], FSpace 5, FParagraph (Keep 1 1 False) (lines' 400 2)]]
+        <> [ [FParagraph (Keep 1 1 True) (lines' 400 3), FSpace 5, FParagraph defaultKeep (lines' 410 2)],
+             [FParagraph (Keep 2 2 True) (lines' 400 5), FParagraph (Keep 1 1 False) (lines' 410 2)],
+             [FStanza defaultKeep [lines' 400 6, lines' 410 1], FSpace 5, FParagraph defaultKeep (lines' 420 2)],
+             [FStanza (Keep 1 1 True) [lines' 400 2, lines' 410 2, lines' 420 2], FSpace 5, FStanza defaultKeep [lines' 430 1]],
+             [FParagraph defaultKeep (lines' 400 2), FSpace 5, FStanza (Keep 2 2 True) [lines' 410 1, lines' 420 5]],
+             [FStanza (Keep 2 2 True) [lines' 400 5], FSpace 5, FParagraph defaultKeep (lines' 410 1)],
+             [FStanza defaultKeep [lines' 400 7], FSpace 5, FParagraph defaultKeep (lines' 410 1)]
+           ]
+
+genericBoxInputs :: [(Column, [FlowAt Sp])]
+genericBoxInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FBoxed i 5 5 body] <> after <> [para 20 n])
+  | cap <- [30, 40, 60],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    i <- [170, 171],
+    body <- bodies,
+    after <- [[], [FKeepNext span0 1, para 30 2]],
+    n <- [1, 2]
+  ]
+  where
+    bodies =
+      [ [para 400 2, FFigure 100 15 [] []],
+        [FHeading 1 False 10 [line 400], para 410 2],
+        [para 400 1, FCode (CodeGeometry 10 10 10 10 0) 0 1 False (lines' 410 3)],
+        [FDefTerm (lines' 400 1), para 410 2],
+        [ruled 100 (Just (sides !! 0)) Nothing False defaultKeep (lines' 400 2)],
+        [FBoxed 172 5 5 [para 400 2], para 410 1],
+        [FBoxed 172 0 10 [FBoxed 173 5 5 [para 400 1, FSpace 5, para 410 2]]],
+        [FContinued defaultKeep (lines' 400 3)],
+        [FTable 160 0 [line 400] [lines' 410 1, lines' 420 1] [] False],
+        [para 400 2, FBreak BreakColumn, para 410 1],
+        [FWrapped 150 25 [] [] (lines' 700 3)],
+        [FStanza defaultKeep [lines' 400 1], FFigure 100 15 [] []],
+        [FParagraph defaultKeep (noted 400 2 1 2), FFigure 100 15 [] []],
+        [FNeedLines span0 2, para 400 2]
+      ]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -475,6 +532,7 @@ flowToken = \case
   FTable i b h rs c below -> "g:" <> show i <> ":" <> show (unSp b) <> ":" <> linesToken h <> ":" <> intercalate "/" (map linesToken rs) <> ":" <> linesToken c <> ":" <> bit below
   FBoxed i b a [FParagraph k ls] -> "X:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> keepToken k <> ":" <> linesToken ls
   FBoxed i b a [FStanza k vs] -> "Y:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> keepToken k <> ":" <> intercalate "/" (map linesToken vs)
+  FBoxed i b a body -> unwords (("O:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> show (length body)) : map flowToken body)
   FWrapped i e _ _ ls -> "w:" <> show i <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FPageFigure i _ _ -> "t:" <> show i
   FSpace n -> "s:" <> show (unSp n)
@@ -545,7 +603,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

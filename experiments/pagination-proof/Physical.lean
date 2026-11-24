@@ -95,11 +95,9 @@ inductive Flow where
   /-- `FTable`: the space before it, the header, the rows, the caption and
       whether the caption is below. -/
   | table (id : Nat) (before : Int) (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool)
-  /-- `FBoxed ident before after [FParagraph keep lines]`. -/
-  | boxedParagraph (id : Nat) (before after : Int) (k : Keep) (ls : List Line)
-  /-- `FBoxed ident before after [FStanza keep verses]`. -/
-  | boxedStanza (id : Nat) (before after : Int) (k : Keep) (verses : List (List Line))
-  deriving DecidableEq, Repr
+  /-- `FBoxed ident before after body`. -/
+  | boxed (id : Nat) (before after : Int) (body : List Flow)
+  deriving Repr
 
 inductive Slot where
   | line (id : Nat)
@@ -437,7 +435,14 @@ def trialRest (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line)
     | .error e => .error e
     | .ok placed => .ok (.placed takeCount { placed with unmet := placed.unmet ++ short } k)
 
-def trial (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) : Except Failure Part :=
+/-- `checkPhysicalNotes` of the rows `trialParagraphPartLimit` takes. -/
+def checkRows (env : Env) (rows : List Line) : Option Failure :=
+  match rows.bind (fun l => l.notes) with
+  | n :: _ => if env.capacity < env.separator + env.pagePitch then some (.footnoteTooTall n.id) else none
+  | [] => none
+
+/-- `go` of `trialParagraphPartLimit`. -/
+def trialFrom (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) : Except Failure Part :=
   match rows with
   | [] => .ok (.placed 0 st k)
   | first :: _ =>
@@ -446,6 +451,12 @@ def trial (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) : E
       if empty st || headingOnly st then trialRest env { k with all := false } start (addUnmet (.splitKept first.id) st) rows first.id
       else .ok (.moved (nextColumn env st) k)
     else trialRest env k start st rows first.id
+
+/-- `trialParagraphPartLimit` without a wrap region or a prefix limit. -/
+def trial (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) : Except Failure Part :=
+  match checkRows env rows with
+  | some e => .error e
+  | none => trialFrom env k start st rows
 
 /-! ## The rank the column loops decrease -/
 
@@ -656,6 +667,9 @@ theorem I4_trial_moved (env : Env) (k : Keep) (start : Bool) (st : St) (rows : L
     keepRank relaxed < keepRank k ∨ (keepRank relaxed = keepRank k ∧ rank next < rank st) := by
   unfold trial at h
   split at h
+  · cases h
+  unfold trialFrom at h
+  split at h
   · simp at h
   · split at h
     · simp at h
@@ -679,6 +693,9 @@ theorem I4_trial_placed (env : Env) (k : Keep) (start : Bool) (st : St) (r : Lin
     (c : Nat) (next : St) (relaxed : Keep) (h : trial env k start st (r :: rs) = .ok (.placed c next relaxed)) :
     1 ≤ c := by
   unfold trial at h
+  split at h
+  · cases h
+  unfold trialFrom at h
   dsimp only at h
   split at h
   · simp at h
@@ -741,6 +758,8 @@ def ruleAfterEdgeExtra (pitch face : Int) (s : RuleSide) : Int :=
   | some available => if pitch ≤ outside ∧ outside + s.weight - pitch ≤ available then 0 else extra
   | none => extra
 
+mutual
+/-- `flowLines` of Physical.hs: the lines of a box are those of its body. -/
 def flowLines : Flow → List Line
   | .paragraph _ ls => ls
   | .continued _ ls => ls
@@ -751,9 +770,24 @@ def flowLines : Flow → List Line
   | .code _ _ _ _ rows => rows
   | .wrapped _ _ ls => ls
   | .table _ _ header rows caption _ => header ++ rows.join ++ caption
-  | .boxedParagraph _ _ _ _ ls => ls
-  | .boxedStanza _ _ _ _ vs => vs.join
-  | _ => []
+  | .boxed _ _ _ body => bodyLines body
+  | .figure _ _ => []
+  | .pageFigure _ => []
+  | .space _ => []
+  | .blank _ => []
+  | .brk _ => []
+  | .needLines _ => []
+  | .adjustLines _ => []
+  | .noBreak => []
+  | .noBreakLines _ => []
+  | .keepNext _ => []
+  | .start _ => []
+  | .switchColumns _ => []
+  | .restoreColumns => []
+def bodyLines : List Flow → List Line
+  | [] => []
+  | f :: fs => flowLines f ++ bodyLines fs
+end
 
 /-! ## Ruled blocks -/
 
@@ -1327,16 +1361,20 @@ theorem rank_headingState_le (env : Env) (st : St) (recto b : Bool) :
   · exact rank_parityStart_le env _ st
   · exact rank_keepFrom_le env st b
 
-/-! ## Boxes of one paragraph or one stanza -/
+/-! ## Boxes -/
+
+/-- `boxExtras` of FreeGeometry.hs: the padding around the first and the
+    last line. -/
+def paddingExtra (env : Env) (padding : Int) (first last : Line) : Int × Int :=
+  (max 0 (padding - faceOffset (env.pitchOf first.id) (env.faceOf first.id)),
+   max 0 (padding - (env.pitchOf last.id - env.faceOf last.id - faceOffset (env.pitchOf last.id) (env.faceOf last.id))))
 
 /-- `extras` of `placeBoxedParagraphWithKeeps` and `placeBoxedStanzaWith`:
-    the padding of the box around its first and last lines (`boxExtras`
-    of FreeGeometry.hs), or the lengths the flow gives. -/
+    the padding of the box around its first and last lines, or the lengths
+    the flow gives. -/
 def boxExtra (env : Env) (ident : Nat) (fb fa : Int) (first last : Line) : Int × Int :=
   match env.boxPadding ident with
-  | some padding =>
-    (max 0 (padding - faceOffset (env.pitchOf first.id) (env.faceOf first.id)),
-     max 0 (padding - (env.pitchOf last.id - env.faceOf last.id - faceOffset (env.pitchOf last.id) (env.faceOf last.id))))
+  | some padding => paddingExtra env padding first last
   | none => (fb, fa)
 
 /-- The note lines of the lines and the separator they need. -/
@@ -1360,11 +1398,14 @@ def boxCount (selected available : Nat) : Nat := if selected = 0 then max 1 avai
 
 theorem boxCount_pos (s a : Nat) : 1 ≤ boxCount s a := by unfold boxCount; split <;> omega
 
-/-- The verse lines of a boxed stanza a column takes (`count`). -/
-def stanzaBoxCount (selected available : Nat) : Nat := if 0 < selected then selected else available
+/-- The units of a boxed stanza a column takes (`count`). -/
+def stanzaBoxCount (selected paragraphCount available : Nat) : Nat :=
+  if 0 < selected then selected else if 0 < paragraphCount then paragraphCount else available
 
-theorem stanzaBoxCount_pos {s a : Nat} (h : ¬(s = 0 ∧ a = 0)) : 1 ≤ stanzaBoxCount s a := by
-  unfold stanzaBoxCount; split <;> omega
+theorem stanzaBoxCount_pos {s q a : Nat} (h : ¬(s = 0 ∧ a = 0)) : 1 ≤ stanzaBoxCount s q a := by
+  unfold stanzaBoxCount; split
+  · omega
+  · split <;> omega
 
 /-- A part of a box put at `ready`: its padding before, its lines, its
     padding after, and its segment. -/
@@ -1439,14 +1480,55 @@ def reopen (env : Env) (ident : Nat) (fb fa : Int) (verse : List Line) (st : St)
     else (st, none)
   | _, _ => (st, none)
 
-/-- `size` of `placeBoxedStanzaWith` with no gaps. -/
-def stanzaBoxSize (env : Env) (ident : Nat) (fb fa : Int) (st : St) (open? : BoxOpen) (vs : List (List Line)) : Int :=
+/-- `BoxUnitKeep`: the keep of the paragraph or the stanza of a unit, the
+    first line of that paragraph, the index of the unit in it and the number
+    of its units. -/
+structure UnitKeep where
+  keep : Keep
+  paragraph : Nat
+  index : Nat
+  count : Nat
+
+/-- The maps of `placeBoxedStanzaWith` as lists keyed by a line id: the
+    keep-with-next links (`keepMarks` holds a span for each, `keepCounts`
+    the largest count), `unitKeeps` and `gaps`. A later entry of `units`
+    and `gaps` wins, as in `Map.fromList` and `Map.insert`. -/
+structure BoxMaps where
+  links : List (Nat × Nat)
+  units : List (Nat × UnitKeep)
+  gaps : List (Nat × Int)
+
+def noMaps : BoxMaps := ⟨[], [], []⟩
+
+def lookupLast {α : Type} (xs : List (Nat × α)) (i : Nat) : Option α :=
+  (xs.reverse.find? (fun x => x.1 == i)).map (·.2)
+
+def BoxMaps.gap (m : BoxMaps) (i : Nat) : Int := (lookupLast m.gaps i).getD 0
+def BoxMaps.marks (m : BoxMaps) (i : Nat) : Nat := (m.links.filter (fun x => x.1 == i)).length
+def BoxMaps.count (m : BoxMaps) (i : Nat) : Option Nat :=
+  match m.links.filter (fun x => x.1 == i) with
+  | [] => none
+  | x :: xs => some (xs.foldl (fun a y => max a y.2) x.2)
+def BoxMaps.hasUnits (m : BoxMaps) : Bool := !m.units.isEmpty
+/-- `boundsOf`: the keep of the unit, by its first line. -/
+def BoxMaps.bounds (m : BoxMaps) (unit : List Line) : Option UnitKeep :=
+  match unit with
+  | l :: _ => lookupLast m.units l.id
+  | [] => none
+
+/-- `betweenUnits` of `size`: the gaps before the units after the first,
+    and before the first when the part goes on from an open segment. -/
+def unitGaps (m : BoxMaps) (opened : Bool) : Nat → List (List Line) → Int
+  | _, [] => 0
+  | j, v :: vs => (match v with | l :: _ => if 0 < j ∨ opened = true then m.gap l.id else 0 | [] => 0) + unitGaps m opened (j + 1) vs
+
+/-- `size` of `placeBoxedStanzaWith`. -/
+def stanzaBoxSize (env : Env) (ident : Nat) (fb fa : Int) (m : BoxMaps) (st : St) (open? : BoxOpen) (vs : List (List Line)) : Int :=
   match vs.join.head?, vs.join.getLast? with
   | some first, some last =>
     (if open?.isSome then 0 else (boxExtra env ident fb fa first last).1) + sumPitch env vs.join +
-      (boxExtra env ident fb fa first last).2 + boxNotes env st vs.join
+      unitGaps m open?.isSome 0 vs + (boxExtra env ident fb fa first last).2 + boxNotes env st vs.join
   | _, _ => 0
-
 theorem rank_seal_lt (env : Env) (o : BoxOpen) (st : St) (h : empty st = false) :
     rank (nextColumn env (seal o st)) < rank st := by
   cases o with
@@ -1465,52 +1547,189 @@ theorem rank_seal_lt (env : Env) (o : BoxOpen) (st : St) (h : empty st = false) 
         simp only [rank, seal, waiting, h, e']; simp
       exact Nat.lt_of_le_of_lt a (by omega)
 
+/-- `linkBreaks`: the keep-with-next spans a break after the first `n`
+    units cuts. -/
+def linkBreaks (m : BoxMaps) (vs : List (List Line)) (n : Nat) : Nat :=
+  if vs.length ≤ n then 0
+  else
+    let cut := (vs.take n).join.length
+    (vs.join.enum.filter (fun x => decide (x.1 < cut) &&
+      (match m.count x.2.id with | some w => decide (cut - x.1 - 1 < w) | none => false))).foldr
+      (fun x a => m.marks x.2.id + a) 0
+
+/-- `boundary`: the units on the two sides of a break after the first `n`
+    units, when they are of one paragraph. -/
+def unitBoundary (m : BoxMaps) (vs : List (List Line)) (n : Nat) : Option (UnitKeep × UnitKeep) :=
+  match vs.drop (n - 1), vs.drop n with
+  | b :: _, a :: _ =>
+    match m.bounds b, m.bounds a with
+    | some x, some y => if x.paragraph = y.paragraph then some (x, y) else none
+    | _, _ => none
+  | _, _ => none
+
+def atGroupStart (m : BoxMaps) (vs : List (List Line)) (b : UnitKeep) : Bool :=
+  match (vs.filterMap m.bounds).find? (fun x => x.paragraph == b.paragraph) with
+  | some x => x.index == 0
+  | none => false
+
+def paragraphBreak (m : BoxMaps) (relaxed : List Nat) (vs : List (List Line)) (n : Nat) : Bool :=
+  match unitBoundary m vs n with
+  | none => true
+  | some (a, b) =>
+    (!a.keep.all || relaxed.contains a.paragraph) && (!atGroupStart m vs a || decide (a.keep.first ≤ a.index + 1)) &&
+      decide (a.keep.last ≤ b.count - b.index)
+
+def legalBreak (m : BoxMaps) (relaxed : List Nat) (vs : List (List Line)) (n : Nat) : Bool :=
+  paragraphBreak m relaxed vs n && linkBreaks m vs n == 0
+
+def boundaryWarnings (m : BoxMaps) (vs : List (List Line)) (n : Nat) : List Unmet :=
+  match unitBoundary m vs n with
+  | some (a, b) =>
+    (if atGroupStart m vs a = true ∧ a.index + 1 < a.keep.first then [Unmet.shortPart true a.paragraph a.keep.first (a.index + 1)] else []) ++
+    (if b.count - b.index < a.keep.last then [Unmet.shortPart false b.paragraph a.keep.last (b.count - b.index)] else [])
+  | none => []
+
+/-- The paragraph whose keep-all-lines a unit relaxes when no part of it fits. -/
+def relaxFor (m : BoxMaps) (relaxed : List Nat) (unit : List Line) : Option Nat :=
+  match m.bounds unit with
+  | some b => if b.keep.all = true ∧ b.paragraph ∉ relaxed then some b.paragraph else none
+  | none => none
+
+def fallbackKeep (m : BoxMaps) (relaxed : List Nat) (unit : List Line) : Keep :=
+  match m.bounds unit with
+  | some b => if relaxed.contains b.paragraph then { b.keep with all := false } else b.keep
+  | none => ⟨1, 1, false⟩
+
+/-- The units whose paragraph a later relaxation may still relax. -/
+def unrelaxed (m : BoxMaps) (relaxed : List Nat) (vs : List (List Line)) : Nat :=
+  (vs.filter (fun v => (relaxFor m relaxed v).isSome)).length
+
+theorem filter_length_mono {α : Type} (p q : α → Bool) (h : ∀ x, p x = true → q x = true) :
+    ∀ xs : List α, (xs.filter p).length ≤ (xs.filter q).length
+  | [] => Nat.le_refl _
+  | x :: xs => by
+    have ih := filter_length_mono p q h xs
+    cases hp : p x <;> cases hq : q x <;> simp [List.filter, hp, hq] <;> try omega
+    exact absurd (h x hp) (by simp [hq])
+
+theorem relaxFor_mono (m : BoxMaps) (p : Nat) (relaxed : List Nat) (w : List Line)
+    (h : (relaxFor m (p :: relaxed) w).isSome = true) : (relaxFor m relaxed w).isSome = true := by
+  unfold relaxFor at h ⊢
+  split at h
+  · rename_i b _
+    by_cases c : b.keep.all = true ∧ b.paragraph ∉ p :: relaxed
+    · rw [if_pos ⟨c.1, fun m => c.2 (List.mem_cons_of_mem _ m)⟩]; rfl
+    · rw [if_neg c] at h; cases h
+  · cases h
+
+theorem unrelaxed_lt (m : BoxMaps) (relaxed : List Nat) (v : List Line) (vs : List (List Line)) (p : Nat)
+    (h : relaxFor m relaxed v = some p) : unrelaxed m (p :: relaxed) (v :: vs) < unrelaxed m relaxed (v :: vs) := by
+  have hn : relaxFor m (p :: relaxed) v = none := by
+    unfold relaxFor at h ⊢
+    split at h
+    · rename_i b _
+      by_cases c : b.keep.all = true ∧ b.paragraph ∉ relaxed
+      · rw [if_pos c] at h; injection h with h; subst h
+        rw [if_neg]; intro c'; exact c'.2 (List.mem_cons_self _ _)
+      · rw [if_neg c] at h; cases h
+    · cases h
+  have mono := filter_length_mono _ _ (relaxFor_mono m p relaxed) vs
+  unfold unrelaxed
+  simp [List.filter, hn, h]
+  omega
+
+/-- The lines of the units, each unit after the first moved by its gap. -/
+def putUnits (env : Env) (m : BoxMaps) (st : St) : Bool → List (List Line) → Except Failure St
+  | _, [] => .ok st
+  | first, v :: vs =>
+    let gap := if first then 0 else (match v with | l :: _ => m.gap l.id | [] => 0)
+    match putLines false env { st with used := st.used + gap } v with
+    | .error e => .error e
+    | .ok s => putUnits env m s false vs
+
+/-- A part of a boxed stanza put at `ready`: its padding before, the gap
+    before its first unit, its units, its padding after, and its segment. -/
+def putStanzaPart (env : Env) (m : BoxMaps) (ident : Nat) (ready : St) (origin before firstGap after : Int)
+    (vs : List (List Line)) (short : List Unmet) : Except Failure St :=
+  match putUnits env m { ready with used := ready.used + before + firstGap, adjust := ready.adjust - after } true vs with
+  | .error e => .error e
+  | .ok placed =>
+    .ok { placed with used := placed.used + after, adjust := ready.adjust,
+                      boxes := placed.boxes ++ [(ident, origin, placed.used + after)], unmet := placed.unmet ++ short }
+
+/-- `selected` and `paragraphCount` of `placeBoxedStanzaWith`: the largest
+    break that fits and that `legal` allows, or the break of the keep of the
+    box when it has no keeps of its own. -/
+def boxSelected (legal : Nat → Bool) (m : BoxMaps) (k : Keep) (start : Bool) (total available : Nat) : Nat :=
+  if m.hasUnits then boxAvailable legal available else splitAtBreak k start total available
+
+/-- `short` of `placeBoxedStanzaWith`: the parts shorter than their keeps
+    and the keep-with-next links a forced break cuts. -/
+def boxShort (m : BoxMaps) (k : Keep) (start forced : Bool) (vs : List (List Line)) (count : Nat) : List Unmet :=
+  (if m.hasUnits then (if forced then boundaryWarnings m vs count else [])
+   else (if forced ∧ start ∧ count < k.first then [Unmet.shortPart true (headId (vs.headD [])) k.first count] else []) ++
+    (if forced ∧ vs.length - count < k.last then
+      [Unmet.shortPart false (headId (vs.headD [])) k.last (vs.length - count)] else [])) ++
+  List.replicate (if forced then linkBreaks m vs count else 0) Unmet.keepNext
+
+def lex4 (a b : Nat × Nat × Nat × Nat) : Prop :=
+  Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))) a b
+
 set_option linter.unusedVariables false in
-/-- `placeBoxedStanza` (`placeBoxedStanzaWith` with no maps): the verse
-    lines of one stanza in a box, a verse line too tall for an empty column
-    broken as a boxed paragraph. -/
-def placeBoxedStanza (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (open? : BoxOpen) (st : St) :
-    List (List Line) → Except Failure St
+/-- `placeBoxedStanzaWith`: the units of a box, each a verse line of a
+    stanza or a line of a paragraph, a unit too tall for an empty column
+    broken as a boxed paragraph. `placeBoxedStanza` is this with no maps. -/
+def placeBoxedStanza (env : Env) (ident : Nat) (fb fa : Int) (m : BoxMaps) (k : Keep) (start : Bool)
+    (relaxed : List Nat) (open? : BoxOpen) (st : St) : List (List Line) → Except Failure St
   | [] => .ok (seal open? st)
   | firstVerse :: more =>
     let available := boxAvailable
-      (fun j => decide (stanzaBoxSize env ident fb fa st open? ((firstVerse :: more).take j) + st.pending ≤ room env st))
+      (fun j => decide (stanzaBoxSize env ident fb fa m st open? ((firstVerse :: more).take j) + st.pending ≤ room env st))
       (more.length + 1)
-    let selected := splitAtBreak k start (more.length + 1) available
+    let selected := boxSelected (legalBreak m relaxed (firstVerse :: more)) m k start (more.length + 1) available
+    let paragraphCount := boxSelected (paragraphBreak m relaxed (firstVerse :: more)) m k start (more.length + 1) available
     if h1 : selected = 0 ∧ empty st = false then
-      placeBoxedStanza env ident fb fa k start none (nextColumn env (seal open? st)) (firstVerse :: more)
-    else if h2 : selected = 0 ∧ k.all ∧ start then
-      placeBoxedStanza env ident fb fa { k with all := false } start open? (addUnmet (.splitKept (headId firstVerse)) st)
-        (firstVerse :: more)
-    else if h3 : selected = 0 ∧ available = 0 then
-      match placeBoxedParagraph env ident fb fa ⟨1, 1, false⟩ true st firstVerse with
-      | .error e => .error e
-      | .ok placed =>
-        placeBoxedStanza env ident fb fa k false (reopen env ident fb fa firstVerse placed).2
-          (reopen env ident fb fa firstVerse placed).1 more
-    else
-      let count := stanzaBoxCount selected available
-      let here := (firstVerse :: more).take count
-      let forced := selected = 0 ∧ count < more.length + 1
-      let short :=
-        (if forced ∧ start ∧ count < k.first then [Unmet.shortPart true (headId firstVerse) k.first count] else []) ++
-        (if forced ∧ more.length + 1 - count < k.last then [Unmet.shortPart false (headId firstVerse) k.last (more.length + 1 - count)] else [])
-      let extra := boxExtra env ident fb fa (here.join.headD ⟨0, [], 0⟩) (here.join.getLastD ⟨0, [], 0⟩)
-      let ready := fit env st (stanzaBoxSize env ident fb fa st open? here)
-      let origin := match open? with
-        | some (segment, _) => segment.2.1
-        | none => ready.used
-      match putBoxPart env ident ready origin (if open?.isSome then 0 else extra.1) extra.2 here.join short with
-      | .error e => .error e
-      | .ok finished =>
-        if h4 : count < more.length + 1 then
-          placeBoxedStanza env ident fb fa k false none (nextColumn env finished) ((firstVerse :: more).drop count)
-        else .ok finished
-termination_by vs => (vs.length, keepRank k, rank st)
+      placeBoxedStanza env ident fb fa m k start relaxed none (nextColumn env (seal open? st)) (firstVerse :: more)
+    else if h2 : selected = 0 ∧ paragraphCount = 0 ∧ k.all ∧ start then
+      placeBoxedStanza env ident fb fa m { k with all := false } start relaxed open?
+        (addUnmet (.splitKept (headId firstVerse)) st) (firstVerse :: more)
+    else match hp : (if selected = 0 ∧ paragraphCount = 0 then relaxFor m relaxed firstVerse else none) with
+    | some p =>
+      placeBoxedStanza env ident fb fa m k start (p :: relaxed) open? (addUnmet (.splitKept p) st) (firstVerse :: more)
+    | none =>
+      if h3 : selected = 0 ∧ available = 0 then
+        match placeBoxedParagraph env ident fb fa (fallbackKeep m relaxed firstVerse) true st firstVerse with
+        | .error e => .error e
+        | .ok placed =>
+          placeBoxedStanza env ident fb fa m k false relaxed (reopen env ident fb fa firstVerse placed).2
+            (reopen env ident fb fa firstVerse placed).1 more
+      else
+        let count := stanzaBoxCount selected paragraphCount available
+        let here := (firstVerse :: more).take count
+        let forced := selected = 0 ∧ count < more.length + 1
+        let short := boxShort m k start (decide forced) (firstVerse :: more) count
+        let extra := boxExtra env ident fb fa (here.join.headD ⟨0, [], 0⟩) (here.join.getLastD ⟨0, [], 0⟩)
+        let ready := fit env st (stanzaBoxSize env ident fb fa m st open? here)
+        let origin := match open? with
+          | some (segment, _) => segment.2.1
+          | none => ready.used
+        let firstGap := if open?.isSome then m.gap (here.join.headD ⟨0, [], 0⟩).id else 0
+        match putStanzaPart env m ident ready origin (if open?.isSome then 0 else extra.1) firstGap extra.2 here short with
+        | .error e => .error e
+        | .ok finished =>
+          if h4 : count < more.length + 1 then
+            placeBoxedStanza env ident fb fa m k false relaxed none (nextColumn env finished) ((firstVerse :: more).drop count)
+          else .ok finished
+termination_by vs => (vs.length, keepRank k, unrelaxed m relaxed vs, rank st)
 decreasing_by
   all_goals simp_wf
-  · apply Prod.Lex.right; apply Prod.Lex.right; exact rank_seal_lt env _ st h1.2
-  · apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h2.2.1]
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; exact rank_seal_lt env _ st h1.2
+  · apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h2.2.2.1]
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+    apply unrelaxed_lt
+    split at hp
+    · exact hp
+    · cases hp
   · apply Prod.Lex.left; omega
   · apply Prod.Lex.left
     exact Nat.sub_lt (Nat.succ_pos _) (stanzaBoxCount_pos h3)
@@ -1523,6 +1742,97 @@ def boxFits (st : St) : Except Failure St → Bool
   | .error _ => false
 
 def nonemptyVerses (vs : List (List Line)) : List (List Line) := vs.filter (fun v => !v.isEmpty)
+
+/-- `collectMixedBoxUnits`: the units of a box of paragraphs, stanzas,
+    spaces and keeps (a unit for each line of a paragraph and each verse
+    line of a stanza), and the spaces before each unit after them. -/
+def collectMixed : Int → List (Nat × Int) → List (List Line) → List Flow → Option (List (Nat × Int) × List (List Line))
+  | _, gaps, units, [] => some (gaps, units.reverse)
+  | p, gaps, units, .space n :: rest => collectMixed (p + n) gaps units rest
+  | p, gaps, units, .keepNext _ :: rest => collectMixed p gaps units rest
+  | p, gaps, units, .paragraph _ ls :: rest =>
+    match (nonemptyVerses (ls.map (fun l => [l]))).join.head? with
+    | none => collectMixed p gaps units rest
+    | some first =>
+      collectMixed 0 (if p = 0 then gaps else gaps ++ [(first.id, p)]) ((nonemptyVerses (ls.map (fun l => [l]))).reverse ++ units) rest
+  | p, gaps, units, .stanza _ vs :: rest =>
+    match (nonemptyVerses vs).join.head? with
+    | none => collectMixed p gaps units rest
+    | some first => collectMixed 0 (if p = 0 then gaps else gaps ++ [(first.id, p)]) ((nonemptyVerses vs).reverse ++ units) rest
+  | _, _, _, _ :: _ => none
+
+/-- `boxKeepLinks`: each keep-with-next of a box, with the last line before
+    it and the lines it asks for. -/
+def boxLinks : Option Nat → List Flow → List (Nat × Nat)
+  | _, [] => []
+  | prior, .space _ :: rest => boxLinks prior rest
+  | prior, .keepNext w :: rest =>
+    (match prior with | some i => [(i, (followingRows w rest).1)] | none => []) ++ boxLinks prior rest
+  | prior, f :: rest =>
+    boxLinks (match (flowLines f).getLast? with | some l => some l.id | none => prior) rest
+
+/-- `boxUnitKeeps` of one paragraph or stanza. -/
+def unitEntries (k : Keep) (raw : List (List Line)) : List (Nat × UnitKeep) :=
+  match (nonemptyVerses raw).join.head? with
+  | none => []
+  | some p => (nonemptyVerses raw).enum.filterMap (fun x => x.2.head?.map (fun l => (l.id, ⟨k, p.id, x.1, (nonemptyVerses raw).length⟩)))
+
+def unitKeepsOf : List Flow → List (Nat × UnitKeep)
+  | [] => []
+  | .paragraph k ls :: rest => unitEntries k (ls.map (fun l => [l])) ++ unitKeepsOf rest
+  | .stanza k vs :: rest => unitEntries k vs ++ unitKeepsOf rest
+  | _ :: rest => unitKeepsOf rest
+
+def mapsOf (body : List Flow) (gaps : List (Nat × Int)) : BoxMaps := ⟨boxLinks none body, unitKeepsOf body, gaps⟩
+
+/-- The extras of a box with any other body (`boxExtras` with the padding
+    or 0), or the lengths the flow gives when it has no lines. -/
+def genericExtra (env : Env) (ident : Nat) (fb fa : Int) (ls : List Line) : Int × Int :=
+  match ls.head?, ls.getLast? with
+  | some first, some last => paddingExtra env ((env.boxPadding ident).getD 0) first last
+  | _, _ => (fb, fa)
+
+/-- `minimumSize`: the first line with the padding around it. -/
+def genericMinimum (env : Env) (ident : Nat) (ls : List Line) : Int :=
+  match ls.head? with
+  | some first =>
+    (paddingExtra env ((env.boxPadding ident).getD 0) first first).1 + env.pitchOf first.id +
+      (paddingExtra env ((env.boxPadding ident).getD 0) first first).2
+  | none => 0
+
+/-- `placeFlow` for the flows inside a box, one level of nesting below. -/
+structure Inner where
+  flow : Env → St → Flow → Except Failure St
+
+/-- The `foldl'` of `placeFlow` over the body of a box. -/
+def placeFlows (inner : Inner) (env : Env) (st : St) : List Flow → Except Failure St
+  | [] => .ok st
+  | f :: fs =>
+    match inner.flow env st f with
+    | .error e => .error e
+    | .ok s => placeFlows inner env s fs
+
+/-- `FBoxed` with any other body: its flows placed one after another inside
+    the padding. -/
+def placeGeneric (inner : Inner) (env : Env) (st : St) (ident : Nat) (fb fa : Int) (body : List Flow) : Except Failure St :=
+  if env.capacity < genericMinimum env ident (bodyLines body) then .error (.boxTooTall ident)
+  else
+    let start := fit env st (genericMinimum env ident (bodyLines body))
+    let extra := genericExtra env ident fb fa (bodyLines body)
+    match placeFlows inner env { start with used := start.used + extra.1 } body with
+    | .error e => .error e
+    | .ok placed =>
+      .ok { placed with used := placed.used + extra.2, boxes := placed.boxes ++ [(ident, start.used, placed.used + extra.2)] }
+
+/-- The cases of `FBoxed` in `placeFlow`. -/
+def placeBox (inner : Inner) (env : Env) (st : St) (ident : Nat) (fb fa : Int) (body : List Flow) : Except Failure St :=
+  match body with
+  | [.paragraph k ls] => placeBoxedParagraph env ident fb fa k true st ls
+  | [.stanza k vs] => placeBoxedStanza env ident fb fa noMaps k true [] none st (nonemptyVerses vs)
+  | _ =>
+    match collectMixed 0 [] [] body with
+    | some (gaps, units) => placeBoxedStanza env ident fb fa (mapsOf body gaps) ⟨1, 1, false⟩ true [] none st units
+    | none => placeGeneric inner env st ident fb fa body
 
 /-! ## What follows a block, and ruled blocks -/
 
@@ -1624,30 +1934,28 @@ def headingNotesExtent (env : Env) (ls : List Line) : Int :=
    (`keepWanted_length`). -/
 set_option linter.unusedVariables false in
 mutual
-def fitsFollowingGo (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Flow → Bool
-  | .space s :: rest => fitsFollowingGo env st wanted (extra + s) rest
-  | .needLines _ :: rest => fitsFollowingGo env st wanted extra rest
-  | .adjustLines _ :: rest => fitsFollowingGo env st wanted extra rest
-  | .noBreak :: rest => fitsFollowingGo env st wanted extra rest
-  | .noBreakLines _ :: rest => fitsFollowingGo env st wanted extra rest
-  | .keepNext _ :: rest => fitsFollowingGo env st wanted extra rest
+def fitsFollowingGo (inner : Inner) (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Flow → Bool
+  | .space s :: rest => fitsFollowingGo inner env st wanted (extra + s) rest
+  | .needLines _ :: rest => fitsFollowingGo inner env st wanted extra rest
+  | .adjustLines _ :: rest => fitsFollowingGo inner env st wanted extra rest
+  | .noBreak :: rest => fitsFollowingGo inner env st wanted extra rest
+  | .noBreakLines _ :: rest => fitsFollowingGo inner env st wanted extra rest
+  | .keepNext _ :: rest => fitsFollowingGo inner env st wanted extra rest
   | .heading true _ _ :: _ => true
   | .heading false extent ls :: rest =>
     if extra + st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 [.heading false extent ls] ≤ room env st then
       match placeHeading env { st with pending := st.pending + extra } (headId ls) extent ls with
-      | .ok placed => (placed.page == st.page && placed.column == st.column) && fitsFollowingGo env placed 1 0 rest
+      | .ok placed => (placed.page == st.page && placed.column == st.column) && fitsFollowingGo inner env placed 1 0 rest
       | .error _ => false
     else false
   | .ruled r :: rest =>
     match r.heading with
     | some (true, _) => true
     | _ =>
-      match placeRuled env { st with pending := st.pending + extra } r rest with
+      match placeRuled inner env { st with pending := st.pending + extra } r rest with
       | .ok placed => placed.page == st.page && placed.column == st.column
       | .error _ => false
-  | .boxedParagraph i b a k ls :: _ => boxFits st (placeBoxedParagraph env i b a k true { st with pending := st.pending + extra } ls)
-  | .boxedStanza i b a k vs :: _ =>
-    boxFits st (placeBoxedStanza env i b a k true none { st with pending := st.pending + extra } (nonemptyVerses vs))
+  | .boxed i b a body :: _ => boxFits st (placeBox inner env { st with pending := st.pending + extra } i b a body)
   | rest => decide (extra + env.firstNeed (decide (0 < st.notesUsed)) wanted rest ≤ room env st)
 termination_by fs => (fs.length, 5, 0)
 decreasing_by
@@ -1656,37 +1964,37 @@ decreasing_by
     | (apply Prod.Lex.left; omega)
     | (apply Prod.Lex.right; apply Prod.Lex.left; have := ruledRank_le r; omega)
 
-def placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
+def placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
   match hh : r.heading with
   | some (recto, extent) =>
     let hs := headingStateOf env st recto
-      (fitsFollowingGo env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2)
+      (fitsFollowingGo inner env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2)
     let firstId := headId r.lines
     let before := headingBeforeExtra env r
     let after := headingAfterExtra env r extent
     if env.capacity < extent then .error (.headingTooTall firstId)
     else if env.capacity < before + extent + after + headingNotesExtent env r.lines then
       match ha : r.after, hb : r.before with
-      | some _, _ => placeRuled env hs { r with after := none } later
-      | none, some _ => placeRuled env hs { r with before := none } later
+      | some _, _ => placeRuled inner env hs { r with after := none } later
+      | none, some _ => placeRuled inner env hs { r with before := none } later
       | none, none => placeHeading env hs firstId extent r.lines
     else
       let size := before + headingNeed env hs extent r.lines + after
       if empty hs ∧ hs.adjust < 0 ∧ room env hs < size ∧ size ≤ env.capacity - hs.used - hs.notesUsed then
         putRuledHeading env (tallAt hs firstId extent (room env hs)) before after firstId extent r.lines
       else if h2 : ¬((fit env hs size).page = hs.page ∧ (fit env hs size).column = hs.column) then
-        placeRuled env (fit env hs size) r later
+        placeRuled inner env (fit env hs size) r later
       else putRuledHeading env (fit env hs size) before after firstId extent r.lines
   | none =>
     match r.lines.head?, r.lines.getLast? with
     | some first, some lastLine =>
       if h1 : r.joined ∧ st.join.isSome ∧ room env st < ruledExtent env st r first lastLine later + st.pending ∧
           empty st = false then
-        placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
+        placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
       else if env.capacity < ruledExtent env st r first lastLine later then placeLines env r.keep true st r.lines
       else if h2 : ¬((fit env st (ruledExtent env st r first lastLine later)).page = st.page ∧
           (fit env st (ruledExtent env st r first lastLine later)).column = st.column) then
-        placeRuled env (fit env st (ruledExtent env st r first lastLine later)) r later
+        placeRuled inner env (fit env st (ruledExtent env st r first lastLine later)) r later
       else
         match putLines true env
             { fit env st (ruledExtent env st r first lastLine later) with
@@ -1712,13 +2020,13 @@ decreasing_by
   · apply Prod.Lex.right; apply Prod.Lex.right; exact I4_fit_moved env st _ h2
 end
 
-def fitsFollowing (env : Env) (st : St) (wanted : Nat) (flows : List Flow) : Bool :=
-  fitsFollowingGo env st wanted 0 flows
+def fitsFollowing (inner : Inner) (env : Env) (st : St) (wanted : Nat) (flows : List Flow) : Bool :=
+  fitsFollowingGo inner env st wanted 0 flows
 
 /-- `keepFollowing`: a heading or a definition term goes on to the next
     column unless the first part of what follows fits after it. -/
-def keepFollowing (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) : St :=
-  keepFrom env st (fitsFollowing env (keepVirtual env heading st extent ls) (keepWanted later).1 (keepWanted later).2)
+def keepFollowing (inner : Inner) (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) : St :=
+  keepFrom env st (fitsFollowing inner env (keepVirtual env heading st extent ls) (keepWanted later).1 (keepWanted later).2)
 
 /-- The lines of a paragraph moved on with what follows (`backCount` of
     `placeWithNext`). -/
@@ -1730,12 +2038,12 @@ def keptBack (k : Keep) (lastCount len : Nat) : Nat :=
 /-- The column after the front part: the same one when it is still empty. -/
 def afterFront (env : Env) (before : St) : St := if empty before then before else nextColumn env before
 
-def placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
+def placeWithNext (inner : Inner) (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
     (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
   match placeLines env k start st ls with
   | .error e => .error e
   | .ok full =>
-    if fitsFollowing env full firstCount later then .ok full
+    if fitsFollowing inner env full firstCount later then .ok full
     else if (ls.drop (ls.length - keptBack k lastCount ls.length)).isEmpty then .ok full
     else
       match placeLines env k start st (ls.take (ls.length - keptBack k lastCount ls.length)) with
@@ -1749,12 +2057,12 @@ def stanzaBack (k : Keep) (lastCount total : Nat) : Nat :=
   let requested := max lastCount k.last
   if k.all ∨ total ≤ requested ∨ total - requested < k.first then total else requested
 
-def placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Line))
+def placeStanzaWithNext (inner : Inner) (env : Env) (k : Keep) (st : St) (verses : List (List Line))
     (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
   match placeStanza env k true st verses with
   | .error e => .error e
   | .ok full =>
-    if fitsFollowing env full firstCount later then .ok full
+    if fitsFollowing inner env full firstCount later then .ok full
     else
       match placeStanza env k true st (verses.take (verses.length - stanzaBack k lastCount verses.length)) with
       | .error e => .error e
@@ -1762,8 +2070,8 @@ def placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Li
         if (verses.drop (verses.length - stanzaBack k lastCount verses.length)).isEmpty ∨ empty before = true then .ok full
         else placeStanza env k true (nextColumn env before) (verses.drop (verses.length - stanzaBack k lastCount verses.length))
 
-def placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
-  match placeRuled env st r later with
+def placeRuledKeeping (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
+  match placeRuled inner env st r later with
   | .error e => .error e
   | .ok full =>
     let following := match keepAhead later with
@@ -1771,8 +2079,8 @@ def placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow) : Ex
       | none => if r.heading.isSome then some (1, later) else none
     match following with
     | some (wanted, rest) =>
-      if empty st = false ∧ fitsFollowing env full wanted rest = false then
-        placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
+      if empty st = false ∧ fitsFollowing inner env full wanted rest = false then
+        placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
       else .ok full
     | none => .ok full
 
@@ -2103,7 +2411,7 @@ def adjustLines (env : Env) (n : Int) (st : St) : St :=
 
 /-! ## One flow -/
 
-def placeFlow (env : Env) (st : St) : Flow → Except Failure St
+def placeFlow (inner : Inner) (env : Env) (st : St) : Flow → Except Failure St
   | .paragraph k ls => placeLines env k true st ls
   | .continued k ls => placeLines env k false st ls
   | .space n => .ok { st with pending := if st.blankActive then st.pending else st.pending + max 0 n }
@@ -2131,7 +2439,7 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
     if st.deferred = [] ∧ st.column = 0 ∧ st.used = 0 ∧ empty st = true then
       .ok (nextPage env (putSlot st env.capacity (.pageFigure i)))
     else .ok { st with deferred := st.deferred ++ [.turned i] }
-  | .ruled r => placeRuled env st r []
+  | .ruled r => placeRuled inner env st r []
   | .start k => .ok (sectionStart env k st)
   | .switchColumns cols => .ok (switchColumns env cols st)
   | .restoreColumns => .ok (restoreColumns env st)
@@ -2142,12 +2450,11 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .code caption first continued spans rows => placeCode env caption first continued spans true st rows
   | .wrapped i e ls => placeWrapped env st i e ls
   | .table i b header rows caption below => placeTable env st i b header rows caption below
-  | .boxedParagraph i b a k ls => placeBoxedParagraph env i b a k true st ls
-  | .boxedStanza i b a k vs => placeBoxedStanza env i b a k true none st (nonemptyVerses vs)
+  | .boxed i b a body => placeBox inner env st i b a body
 
 def occupies : Flow → Bool
   | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ | .wrapped _ _ _ | .table _ _ _ _ _ _
-  | .boxedParagraph _ _ _ _ _ | .boxedStanza _ _ _ _ _ => true
+  | .boxed _ _ _ _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -2162,36 +2469,51 @@ def beforeOf (env : Env) (st : St) (flow : Flow) (rest : List Flow) : St :=
   | _ => { afterBlank with join := none }
 
 /-- The placement of the flow itself in `placeNext`. -/
-def placeBody (env : Env) (before : St) (flow : Flow) (rest : List Flow) : Except Failure St :=
+def placeBody (inner : Inner) (env : Env) (before : St) (flow : Flow) (rest : List Flow) : Except Failure St :=
   match flow, keepAhead rest with
-  | .paragraph k ls, some (l, f, later) => placeWithNext env k true before ls l f later
-  | .continued k ls, some (l, f, later) => placeWithNext env k false before ls l f later
+  | .paragraph k ls, some (l, f, later) => placeWithNext inner env k true before ls l f later
+  | .continued k ls, some (l, f, later) => placeWithNext inner env k false before ls l f later
   | .noBreak, _ => .ok (waitForPrior .noBreak (followingRows 0 rest) before)
   | .noBreakLines n, _ =>
-    if 0 < n then .ok (waitForPrior .noBreak (followingRows 0 rest) before) else placeFlow env before flow
+    if 0 < n then .ok (waitForPrior .noBreak (followingRows 0 rest) before) else placeFlow inner env before flow
   | .keepNext n, _ => .ok (waitForPrior .keepNext (followingRows n rest) before)
-  | .stanza k vs, some (l, f, later) => placeStanzaWithNext env k before vs l f later
-  | .defTerm ls, _ => placeLines env defaultKeep true (keepFollowing env false before (sumPitch env ls) ls rest) ls
+  | .stanza k vs, some (l, f, later) => placeStanzaWithNext inner env k before vs l f later
+  | .defTerm ls, _ => placeLines env defaultKeep true (keepFollowing inner env false before (sumPitch env ls) ls rest) ls
   | .heading recto extent ls, _ =>
     placeHeading env (if recto then parityStart env (fun p => p % 2 == 1) before
-      else keepFollowing env true before extent ls rest) (headId ls) extent ls
-  | .ruled r, _ => placeRuledKeeping env before r rest
-  | _, _ => placeFlow env before flow
+      else keepFollowing inner env true before extent ls rest) (headId ls) extent ls
+  | .ruled r, _ => placeRuledKeeping inner env before r rest
+  | _, _ => placeFlow inner env before flow
 
-def placeNext (env : Env) (st : St) (flow : Flow) (rest : List Flow) : Except Failure St :=
-  match placeBody env (beforeOf env st flow rest) flow rest with
+def placeNext (inner : Inner) (env : Env) (st : St) (flow : Flow) (rest : List Flow) : Except Failure St :=
+  match placeBody inner env (beforeOf env st flow rest) flow rest with
   | .error e => .error e
   | .ok s => .ok (if occupies flow then checkWaits s else s)
 
-def placeAll (env : Env) (st : St) : List Flow → Except Failure St
+def placeAll (inner : Inner) (env : Env) (st : St) : List Flow → Except Failure St
   | [] => .ok st
   | f :: rest =>
-    match placeNext env st f rest with
+    match placeNext inner env st f rest with
     | .error e => .error e
-    | .ok s => placeAll env s rest
+    | .ok s => placeAll inner env s rest
+
+/-- `placeFlow` with `n` levels of boxes inside boxes; below them nothing
+    is placed. `paginate` uses as many levels as the flows nest. -/
+def level : Nat → Inner
+  | 0 => ⟨fun _ _ _ => .error (.noProgress 0)⟩
+  | n + 1 => ⟨placeFlow (level n)⟩
+
+mutual
+def flowDepth : Flow → Nat
+  | .boxed _ _ _ body => flowsDepth body + 1
+  | _ => 0
+def flowsDepth : List Flow → Nat
+  | [] => 0
+  | f :: fs => max (flowDepth f) (flowsDepth fs)
+end
 
 def checkNotes (env : Env) (flows : List Flow) : Option Failure :=
-  match (flows.bind flowLines).bind (fun l => l.notes) with
+  match (bodyLines flows).bind (fun l => l.notes) with
   | n :: _ => if env.capacity < env.separator + env.pagePitch then some (.footnoteTooTall n.id) else none
   | [] => none
 
@@ -2200,13 +2522,14 @@ def paginate (env : Env) (flows : List Flow) : Except Failure (List PageOut) :=
   match checkNotes env flows with
   | some e => .error e
   | none =>
-    match placeAll env (initial env) flows with
+    match placeAll (level (flowsDepth flows)) env (initial env) flows with
     | .error e => .error e
     | .ok final =>
-      let closed := close env (drainCarry env final)
-      match closed.done.reverse with
-      | [] => .ok [⟨1, 0, false, [], [], env.capacity, []⟩]
-      | pages => .ok pages
+      if (drainCarry env final).deferred.isEmpty ∧ (drainCarry env final).carry.isEmpty then
+        match (close env (drainCarry env final)).done.reverse with
+        | [] => .ok [⟨1, 0, false, [], [], env.capacity, []⟩]
+        | pages => .ok pages
+      else .error (.noProgress 0)
 
 /-! ## What the pages hold -/
 
@@ -2233,10 +2556,6 @@ def text (st : St) : List Nat := pagesText st.done.reverse ++ textSlots st.slots
 /-- The figures placed, in the pages closed and in the column, then those sent on. -/
 def figs (st : St) : List Nat := pagesFigs st.done.reverse ++ figSlots st.slots ++ st.deferred.map Waiting.id
 def lineIds (ls : List Line) : List Nat := ls.map (·.id)
-def flowFigs : Flow → List Nat
-  | .figure i _ => [i]
-  | .pageFigure i => [i]
-  | _ => []
 /-- The ids a table adds to the text, in the order it is placed. -/
 def tableText (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool) : List Nat :=
   if below then lineIds header ++ lineIds rows.join ++ lineIds caption
@@ -2245,47 +2564,89 @@ def tableText (header : List Line) (rows : List (List Line)) (caption : List Lin
 /-- The ids a ruled block adds to the text: its lines, or the first line
     of a ruled heading. -/
 def ruledText (r : Ruled) : List Nat := if r.heading.isSome then [headId r.lines] else lineIds r.lines
-/-- The ids a flow adds to the text: its lines, or the first line of a heading. -/
+
+mutual
+/-- The ids a flow adds to the text: its lines, the first line of a
+    heading, a wrapped figure before its lines, and those of the flows of a
+    box. -/
 def flowText : Flow → List Nat
   | .heading _ _ ls => [headId ls]
   | .ruled r => ruledText r
   | .wrapped i _ ls => i :: lineIds ls
   | .table _ _ header rows caption below => tableText header rows caption below
-  | f => lineIds (flowLines f)
+  | .boxed _ _ _ body => sourceText body
+  | .paragraph _ ls => lineIds ls
+  | .continued _ ls => lineIds ls
+  | .defTerm ls => lineIds ls
+  | .stanza _ vs => lineIds vs.join
+  | .code _ _ _ _ rows => lineIds rows
+  | .figure _ _ => []
+  | .pageFigure _ => []
+  | .space _ => []
+  | .blank _ => []
+  | .brk _ => []
+  | .needLines _ => []
+  | .adjustLines _ => []
+  | .noBreak => []
+  | .noBreakLines _ => []
+  | .keepNext _ => []
+  | .start _ => []
+  | .switchColumns _ => []
+  | .restoreColumns => []
 def sourceText : List Flow → List Nat
   | [] => []
   | f :: fs => flowText f ++ sourceText fs
+end
+
+mutual
+/-- The figures of a flow, and those of the flows of a box. -/
+def flowFigs : Flow → List Nat
+  | .figure i _ => [i]
+  | .pageFigure i => [i]
+  | .boxed _ _ _ body => sourceFigs body
+  | .paragraph _ _ => []
+  | .continued _ _ => []
+  | .defTerm _ => []
+  | .stanza _ _ => []
+  | .code _ _ _ _ _ => []
+  | .heading _ _ _ => []
+  | .ruled _ => []
+  | .wrapped _ _ _ => []
+  | .table _ _ _ _ _ _ => []
+  | .space _ => []
+  | .blank _ => []
+  | .brk _ => []
+  | .needLines _ => []
+  | .adjustLines _ => []
+  | .noBreak => []
+  | .noBreakLines _ => []
+  | .keepNext _ => []
+  | .start _ => []
+  | .switchColumns _ => []
+  | .restoreColumns => []
 def sourceFigs : List Flow → List Nat
   | [] => []
   | f :: fs => flowFigs f ++ sourceFigs fs
-
-/-- A note line and its separator fit in the column. -/
-def NotesFit (env : Env) : Prop := env.separator + env.pagePitch ≤ env.capacity
-/-- What `drainCarry` needs to go on: the figures sent on fit in a column,
-    and notes are carried on only where a note line fits. -/
-def Good (env : Env) (st : St) : Prop :=
-  (∀ d ∈ st.deferred, d.fits env.capacity) ∧ (st.carry ≠ [] → NotesFit env)
-def LineOk (env : Env) (l : Line) : Prop := l.notes = [] ∨ NotesFit env
+end
 
 /-- From `st` to `s`, the lines `t` and the figures `g` are added. -/
-def Step (env : Env) (st s : St) (t g : List Nat) : Prop :=
-  text s = text st ++ t ∧ figs s = figs st ++ g ∧ (Good env st → Good env s)
+def Step (st s : St) (t g : List Nat) : Prop :=
+  text s = text st ++ t ∧ figs s = figs st ++ g
 
-theorem Step.refl (env : Env) (st : St) : Step env st st [] [] := by
+theorem Step.refl (st : St) : Step st st [] [] := by
   simp [Step]
 
-theorem Step.trans {env : Env} {a b c : St} {t g t' g' : List Nat}
-    (h : Step env a b t g) (h' : Step env b c t' g') : Step env a c (t ++ t') (g ++ g') := by
-  obtain ⟨t1, g1, d1⟩ := h
-  obtain ⟨t2, g2, d2⟩ := h'
-  exact ⟨by rw [t2, t1, List.append_assoc], by rw [g2, g1, List.append_assoc], fun x => d2 (d1 x)⟩
+theorem Step.trans {a b c : St} {t g t' g' : List Nat}
+    (h : Step a b t g) (h' : Step b c t' g') : Step a c (t ++ t') (g ++ g') := by
+  obtain ⟨t1, g1⟩ := h
+  obtain ⟨t2, g2⟩ := h'
+  exact ⟨by rw [t2, t1, List.append_assoc], by rw [g2, g1, List.append_assoc]⟩
 
-theorem Step.same {env : Env} {st s : St} (d : s.done = st.done) (sl : s.slots = st.slots)
-    (df : s.deferred = st.deferred) (c : s.carry = st.carry) : Step env st s [] [] := by
-  refine ⟨?_, ?_, ?_⟩
+theorem Step.same {st s : St} (d : s.done = st.done) (sl : s.slots = st.slots)
+    (df : s.deferred = st.deferred) : Step st s [] [] := by
+  refine ⟨?_, ?_⟩
   · simp [text, d, sl]
   · simp [figs, d, sl, df]
-  · intro ⟨a, b⟩; exact ⟨by rw [df]; exact a, by rw [c]; exact b⟩
 
 theorem textSlots_append (a b : List (Int × Slot)) : textSlots (a ++ b) = textSlots a ++ textSlots b := by
   induction a with
@@ -2304,7 +2665,7 @@ theorem pagesFigs_append (a b : List PageOut) : pagesFigs (a ++ b) = pagesFigs a
   | nil => rfl
   | cons x r ih => simp [pagesFigs, ih]
 
-theorem step_fresh (env : Env) (tp : Bool) (st : St) : Step env st (fresh env tp st) [] [] := by
+theorem step_fresh (env : Env) (tp : Bool) (st : St) : Step st (fresh env tp st) [] [] := by
   unfold fresh close
   split
   · rename_i h
@@ -2312,14 +2673,12 @@ theorem step_fresh (env : Env) (tp : Bool) (st : St) : Step env st (fresh env tp
       cases c : st.slots with
       | nil => rfl
       | cons _ _ => simp [c, List.isEmpty] at h
-    refine ⟨?_, ?_, ?_⟩
+    refine ⟨?_, ?_⟩
     · simp [text, s, textSlots]
     · simp [figs, s, figSlots]
-    · intro g; exact g
-  · refine ⟨?_, ?_, ?_⟩
+  · refine ⟨?_, ?_⟩
     · simp [text, pagesText_append, pagesText, textSlots]
     · simp [figs, pagesFigs_append, pagesFigs, figSlots]
-    · intro g; exact g
 
 theorem close_pages (env : Env) (st : St) :
     pagesText (close env st).done.reverse = text st ∧
@@ -2342,12 +2701,11 @@ theorem close_fields (env : Env) (st : St) :
 
 /-- A column closed and emptied in the same page or the next. -/
 theorem step_closed (env : Env) (st s : St) (d : s.done = (close env st).done) (sl : s.slots = [])
-    (df : s.deferred = st.deferred) (c : s.carry = st.carry) : Step env st s [] [] := by
+    (df : s.deferred = st.deferred) : Step st s [] [] := by
   obtain ⟨a, b⟩ := close_pages env st
-  refine ⟨?_, ?_, ?_⟩
+  refine ⟨?_, ?_⟩
   · simp only [text, d, sl, textSlots, List.append_nil]; exact a
   · simp only [figs, d, sl, df, figSlots, List.append_nil]; rw [b]
-  · intro ⟨g1, g2⟩; exact ⟨by rw [df]; exact g1, by rw [c]; exact g2⟩
 
 
 theorem pdg_step (env : Env) (st : St) (ds : List Waiting) :
@@ -2385,52 +2743,47 @@ theorem ptg_step (env : Env) (st : St) (ds : List Waiting) (hs : st.slots = []) 
       · rw [a]; simp [text, pagesText_append, pagesText, textSlots]
       · rw [b]; simp [pagesFigs_append, pagesFigs, figSlots, Waiting.id]
 
-theorem step_opened (env : Env) (tp : Bool) (st : St) : Step env st (opened env tp st) [] [] := by
+theorem step_opened (env : Env) (tp : Bool) (st : St) : Step st (opened env tp st) [] [] := by
   have f := step_fresh env tp st
   unfold opened
   split
   · obtain ⟨f1, _, _, _, _, _, _⟩ := fresh_fields env tp st
     generalize fresh env tp st = F at *
     obtain ⟨a, b⟩ := ptg_step env F F.deferred f1
-    obtain ⟨_, _, _, _, _, t6, _, _, _, _, t11, _⟩ := placeTurnedGo_fields env F F.deferred
-    have g : Step env F (placeTurned env F) [] [] := by
-      refine ⟨by rw [placeTurned, a, List.append_nil], ?_, fun ⟨g1, g2⟩ => ⟨fun x m => g1 x (t11 x m), by rw [placeTurned, t6]; exact g2⟩⟩
+    have g : Step F (placeTurned env F) [] [] := by
+      refine ⟨by rw [placeTurned, a, List.append_nil], ?_⟩
       rw [placeTurned, b, List.append_nil]; simp [figs, f1, figSlots]
     simpa using f.trans g
   · exact f
 
-theorem step_placeDeferred (env : Env) (st : St) : Step env st (placeDeferred env st) [] [] := by
-  obtain ⟨a, b, c, d⟩ := pdg_step env st st.deferred
-  refine ⟨by rw [placeDeferred, a, List.append_nil], by rw [placeDeferred, b, List.append_nil]; rfl, ?_⟩
-  intro ⟨g1, g2⟩
-  exact ⟨fun x m => g1 x (d x m), by rw [placeDeferred, c]; exact g2⟩
+theorem step_placeDeferred (env : Env) (st : St) : Step st (placeDeferred env st) [] [] := by
+  obtain ⟨a, b, _, _⟩ := pdg_step env st st.deferred
+  exact ⟨by rw [placeDeferred, a, List.append_nil], by rw [placeDeferred, b, List.append_nil]; rfl⟩
 
-theorem step_carryInto (env : Env) (st : St) : Step env st (carryInto env st) [] [] := by
+theorem step_carryInto (env : Env) (st : St) : Step st (carryInto env st) [] [] := by
   unfold carryInto
   split
-  · exact Step.refl env st
-  · rename_i h
-    have ne : st.carry ≠ [] := by intro c; rw [c] at h; exact h rfl
-    refine ⟨by simp [text], by simp [figs], fun ⟨g1, g2⟩ => ⟨g1, fun _ => g2 ne⟩⟩
+  · exact Step.refl st
+  · exact ⟨by simp [text], by simp [figs]⟩
 
-theorem step_nextColumn (env : Env) (st : St) : Step env st (nextColumn env st) [] [] := by
+theorem step_nextColumn (env : Env) (st : St) : Step st (nextColumn env st) [] [] := by
   have := ((step_opened env false st).trans (step_placeDeferred env _)).trans (step_carryInto env _)
   simpa using this
 
-theorem step_nextPage (env : Env) (st : St) : Step env st (nextPage env st) [] [] := by
+theorem step_nextPage (env : Env) (st : St) : Step st (nextPage env st) [] [] := by
   have := ((step_opened env true st).trans (step_placeDeferred env _)).trans (step_carryInto env _)
   simpa using this
 
 
-theorem step_dropAtTop (env : Env) (st : St) : Step env st (dropAtTop st) [] [] := Step.same rfl rfl rfl rfl
+theorem step_dropAtTop (st : St) : Step st (dropAtTop st) [] [] := Step.same rfl rfl rfl
 
-theorem step_fit (env : Env) (st : St) (a : Int) : Step env st (fit env st a) [] [] := by
+theorem step_fit (env : Env) (st : St) (a : Int) : Step st (fit env st a) [] [] := by
   unfold fit
   repeat' split
   all_goals first
-    | exact step_dropAtTop env st
-    | exact Step.same rfl rfl rfl rfl
-    | simpa using (step_nextColumn env st).trans (step_dropAtTop env _)
+    | exact step_dropAtTop st
+    | exact Step.same rfl rfl rfl
+    | simpa using (step_nextColumn env st).trans (step_dropAtTop _)
 
 theorem nextColumn_deferred (env : Env) (st : St) (h : st.deferred = []) : (nextColumn env st).deferred = [] := by
   unfold nextColumn placeDeferred
@@ -2452,28 +2805,28 @@ theorem fit_deferred (env : Env) (st : St) (a : Int) (h : st.deferred = []) : (f
     | exact h
     | exact nextColumn_deferred env st h
 
-theorem step_putLineSlot (env : Env) (st : St) (e : Int) (i : Nat) :
-    Step env st (putSlot st e (.line i)) [i] [] := by
-  refine ⟨?_, ?_, fun g => g⟩
+theorem step_putLineSlot (st : St) (e : Int) (i : Nat) :
+    Step st (putSlot st e (.line i)) [i] [] := by
+  refine ⟨?_, ?_⟩
   · simp [text, putSlot, textSlots_append, textSlots]
   · simp [figs, putSlot, figSlots_append, figSlots]
 
-theorem step_putFigureSlot (env : Env) (st : St) (e : Int) (i : Nat) (h : st.deferred = []) :
-    Step env st (putSlot st e (.figure i)) [] [i] := by
-  refine ⟨?_, ?_, fun g => g⟩
+theorem step_putFigureSlot (st : St) (e : Int) (i : Nat) (h : st.deferred = []) :
+    Step st (putSlot st e (.figure i)) [] [i] := by
+  refine ⟨?_, ?_⟩
   · simp [text, putSlot, textSlots_append, textSlots]
   · simp [figs, putSlot, figSlots_append, figSlots, h]
 
-theorem step_putPageFigureSlot (env : Env) (st : St) (e : Int) (i : Nat) (h : st.deferred = []) :
-    Step env st (putSlot st e (.pageFigure i)) [] [i] := by
-  refine ⟨?_, ?_, fun g => g⟩
+theorem step_putPageFigureSlot (st : St) (e : Int) (i : Nat) (h : st.deferred = []) :
+    Step st (putSlot st e (.pageFigure i)) [] [i] := by
+  refine ⟨?_, ?_⟩
   · simp [text, putSlot, textSlots_append, textSlots]
   · simp [figs, putSlot, figSlots_append, figSlots, h]
 
 theorem splitNotes_nil (n : Nat) : splitNotes n [] = ([], []) := by cases n <;> rfl
 
-theorem step_putLine (env : Env) (allow : Bool) (st s : St) (l : Line) (hl : LineOk env l)
-    (h : putLineWithReserve allow env st l = .ok s) : Step env st s [l.id] [] := by
+theorem step_putLine (env : Env) (allow : Bool) (st s : St) (l : Line)
+    (h : putLineWithReserve allow env st l = .ok s) : Step st s [l.id] [] := by
   unfold putLineWithReserve at h
   split at h
   · cases h
@@ -2487,30 +2840,25 @@ theorem step_putLine (env : Env) (allow : Bool) (st s : St) (l : Line) (hl : Lin
         omega
     · injection h with h
       subst h
-      obtain ⟨t1, g1, _⟩ := step_putLineSlot env st (env.pitchOf l.id) l.id
-      refine ⟨t1, g1, fun ⟨a, b⟩ => ⟨a, fun ne => ?_⟩⟩
-      cases hl with
-      | inr f => exact f
-      | inl e =>
-        simp only [lineNotes, e, splitNotes_nil, List.append_nil] at ne
-        exact b ne
+      obtain ⟨t1, g1⟩ := step_putLineSlot st (env.pitchOf l.id) l.id
+      exact ⟨t1, g1⟩
 
-theorem step_putLines (env : Env) (allow : Bool) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
-    (h : putLines allow env st ls = .ok s) : Step env st s (lineIds ls) [] := by
+theorem step_putLines (env : Env) (allow : Bool) (st s : St) (ls : List Line)
+    (h : putLines allow env st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with
-  | nil => simp only [putLines, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | nil => simp only [putLines, Except.ok.injEq] at h; subst h; exact Step.refl _
   | cons l ls ih =>
     unfold putLines at h
     split at h
     · cases h
     · rename_i s1 e
-      have a := step_putLine env allow st s1 l (hl l (List.mem_cons_self _ _)) e
-      have b := ih s1 (fun x m => hl x (List.mem_cons_of_mem _ m)) h
+      have a := step_putLine env allow st s1 l e
+      have b := ih s1 h
       simpa [lineIds] using a.trans b
 
 
-theorem step_unmet (env : Env) (st : St) (u : List Unmet) : Step env st { st with unmet := u } [] [] :=
-  Step.same rfl rfl rfl rfl
+theorem step_unmet (st : St) (u : List Unmet) : Step st { st with unmet := u } [] [] :=
+  Step.same rfl rfl rfl
 
 theorem mem_take' {α : Type} : ∀ (n : Nat) (ls : List α) (x : α), x ∈ ls.take n → x ∈ ls
   | 0, _, _, m => by simp at m
@@ -2526,22 +2874,15 @@ theorem mem_drop' {α : Type} : ∀ (n : Nat) (ls : List α) (x : α), x ∈ ls.
   | _ + 1, [], _, m => by simp at m
   | n + 1, _ :: ys, x, m => List.mem_cons_of_mem _ (mem_drop' n ys x m)
 
-theorem lineOk_take {env : Env} {ls : List Line} (n : Nat) (h : ∀ l ∈ ls, LineOk env l) :
-    ∀ l ∈ ls.take n, LineOk env l := fun l m => h l (mem_take' n ls l m)
-
-theorem lineOk_drop {env : Env} {ls : List Line} (n : Nat) (h : ∀ l ∈ ls, LineOk env l) :
-    ∀ l ∈ ls.drop n, LineOk env l := fun l m => h l (mem_drop' n ls l m)
-
 theorem trialRest_moved_step (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (fid : Nat)
     (next : St) (r : Keep) (h : trialRest env k start st rows fid = .ok (.moved next r)) :
-    Step env st next [] [] := by
+    Step st next [] [] := by
   obtain ⟨_, n, _⟩ := trialRest_moved env k start st rows fid next r h
   rw [n]; exact step_nextColumn env st
 
 theorem trialRest_placed_step (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (fid : Nat)
-    (hl : ∀ l ∈ rows, LineOk env l)
     (c : Nat) (next : St) (r : Keep) (h : trialRest env k start st rows fid = .ok (.placed c next r)) :
-    Step env st next (lineIds (rows.take c)) [] := by
+    Step st next (lineIds (rows.take c)) [] := by
   unfold trialRest at h
   dsimp only at h
   split at h
@@ -2552,40 +2893,45 @@ theorem trialRest_placed_step (env : Env) (k : Keep) (start : Bool) (st : St) (r
       injection h with h; injection h with h1 h2 _
       subst h1; subst h2
       have a := step_fit env st (sumPitch env (rows.take (if splitAtBreak k start rows.length (fitting env st rows) = 0 then max 1 (fitting env st rows) else splitAtBreak k start rows.length (fitting env st rows))))
-      have b := step_putLines env false _ placed _ (lineOk_take _ hl) e
-      simpa using (a.trans b).trans (step_unmet env placed _)
+      have b := step_putLines env false _ placed _ e
+      simpa using (a.trans b).trans (step_unmet placed _)
 
-theorem step_addUnmet (env : Env) (st : St) (u : Unmet) : Step env st (addUnmet u st) [] [] :=
-  Step.same rfl rfl rfl rfl
+theorem step_addUnmet (st : St) (u : Unmet) : Step st (addUnmet u st) [] [] :=
+  Step.same rfl rfl rfl
 
 theorem trial_moved_step (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line)
     (next : St) (r : Keep) (h : trial env k start st rows = .ok (.moved next r)) :
-    Step env st next [] [] := by
+    Step st next [] [] := by
   unfold trial at h
+  split at h
+  · cases h
+  unfold trialFrom at h
   split at h
   · simp at h
   · split at h
     · simp at h
     · split at h
       · split at h
-        · simpa using (step_addUnmet env st _).trans (trialRest_moved_step env _ start _ _ _ next r h)
+        · simpa using (step_addUnmet st _).trans (trialRest_moved_step env _ start _ _ _ next r h)
         · injection h with h; injection h with h1 _; subst h1; exact step_nextColumn env st
       · exact trialRest_moved_step env _ start _ _ _ next r h
 
 theorem trial_placed_step (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line)
-    (hl : ∀ l ∈ rows, LineOk env l)
     (c : Nat) (next : St) (r : Keep) (h : trial env k start st rows = .ok (.placed c next r)) :
-    Step env st next (lineIds (rows.take c)) [] := by
+    Step st next (lineIds (rows.take c)) [] := by
   unfold trial at h
   split at h
-  · injection h with h; injection h with h1 h2 _; subst h1; subst h2; simpa [lineIds] using Step.refl env st
+  · cases h
+  unfold trialFrom at h
+  split at h
+  · injection h with h; injection h with h1 h2 _; subst h1; subst h2; simpa [lineIds] using Step.refl st
   · split at h
     · simp at h
     · split at h
       · split at h
-        · simpa using (step_addUnmet env st _).trans (trialRest_placed_step env _ start _ _ _ hl c next r h)
+        · simpa using (step_addUnmet st _).trans (trialRest_placed_step env _ start _ _ _ c next r h)
         · simp at h
-      · exact trialRest_placed_step env _ start _ _ _ hl c next r h
+      · exact trialRest_placed_step env _ start _ _ _ c next r h
 
 
 theorem take_length' {α : Type} (ls : List α) : ls.take ls.length = ls := by
@@ -2597,12 +2943,11 @@ theorem lineIds_append (a b : List Line) : lineIds (a ++ b) = lineIds a ++ lineI
   simp [lineIds]
 
 set_option linter.unusedVariables false in
-theorem step_placeLines (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line)
-    (hl : ∀ l ∈ rows, LineOk env l) (s : St) (h : placeLines env k start st rows = .ok s) :
-    Step env st s (lineIds rows) [] := by
+theorem step_placeLines (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (s : St) (h : placeLines env k start st rows = .ok s) :
+    Step st s (lineIds rows) [] := by
   match rows with
   | [] =>
-    simp only [placeLines, Except.ok.injEq] at h; subst h; exact Step.refl env _
+    simp only [placeLines, Except.ok.injEq] at h; subst h; exact Step.refl _
   | r :: rs =>
     rw [placeLines] at h
     split at h
@@ -2615,10 +2960,10 @@ theorem step_placeLines (env : Env) (k : Keep) (start : Bool) (st : St) (rows : 
         | inl l => exact Prod.Lex.left _ _ l
         | inr e => rw [e.1]; exact Prod.Lex.right _ e.2
       have a := trial_moved_step env k start st _ next relaxed e
-      have b := step_placeLines env relaxed start next (r :: rs) hl s h
+      have b := step_placeLines env relaxed start next (r :: rs) s h
       simpa using a.trans b
     · rename_i count next relaxed e
-      have a := trial_placed_step env k start st _ hl count next relaxed e
+      have a := trial_placed_step env k start st _ count next relaxed e
       split at h
       · rename_i c
         injection h with h; subst h
@@ -2629,7 +2974,7 @@ theorem step_placeLines (env : Env) (k : Keep) (start : Bool) (st : St) (rows : 
           apply Prod.Lex.left
           have := I4_trial_placed env k start st _ _ count next relaxed e
           omega
-        have b := step_placeLines env relaxed false (nextColumn env next) ((r :: rs).drop count) (lineOk_drop _ hl) s h
+        have b := step_placeLines env relaxed false (nextColumn env next) ((r :: rs).drop count) s h
         have := (a.trans (step_nextColumn env next)).trans b
         rw [List.append_nil, List.append_nil, ← lineIds_append, List.take_append_drop] at this
         exact this
@@ -2639,32 +2984,32 @@ decreasing_by
   all_goals assumption
 
 
-theorem step_flush (env : Env) (st : St) : Step env st (flushPendingRule env st) [] [] := by
+theorem step_flush (env : Env) (st : St) : Step st (flushPendingRule env st) [] [] := by
   unfold flushPendingRule
   split
-  · exact Step.refl env st
-  · exact Step.same rfl rfl rfl rfl
+  · exact Step.refl st
+  · exact Step.same rfl rfl rfl
 
-theorem step_placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
-    (l f : Nat) (later : List Flow) (hl : ∀ x ∈ ls, LineOk env x) (s : St)
-    (h : placeWithNext env k start st ls l f later = .ok s) : Step env st s (lineIds ls) [] := by
+theorem step_placeWithNext (inner : Inner) (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
+    (l f : Nat) (later : List Flow) (s : St)
+    (h : placeWithNext inner env k start st ls l f later = .ok s) : Step st s (lineIds ls) [] := by
   unfold placeWithNext at h
   split at h
   · cases h
   · rename_i full e
     split at h
-    · injection h with h; subst h; exact step_placeLines env k start st ls hl _ e
+    · injection h with h; subst h; exact step_placeLines env k start st ls _ e
     · split at h
-      · injection h with h; subst h; exact step_placeLines env k start st ls hl _ e
+      · injection h with h; subst h; exact step_placeLines env k start st ls _ e
       · split at h
         · cases h
         · rename_i before e2
-          have a := step_placeLines env k start st _ (lineOk_take _ hl) before e2
-          have m : Step env before (afterFront env before) [] [] := by
+          have a := step_placeLines env k start st _ before e2
+          have m : Step before (afterFront env before) [] [] := by
             unfold afterFront; split
-            · exact Step.refl env _
+            · exact Step.refl _
             · exact step_nextColumn env _
-          have b := step_placeLines env k _ _ _ (lineOk_drop _ hl) s h
+          have b := step_placeLines env k _ _ _ s h
           have := (a.trans m).trans b
           rw [List.append_nil, ← lineIds_append, List.take_append_drop] at this
           exact this
@@ -2686,11 +3031,6 @@ theorem join_take_drop (n : Nat) (vs : List (List Line)) :
     lineIds (vs.take n).join ++ lineIds (vs.drop n).join = lineIds vs.join := by
   rw [← lineIds_append, ← join_app, List.take_append_drop]
 
-theorem lineOk_join {env : Env} {vs : List (List Line)} (h : ∀ l ∈ vs.join, LineOk env l) (n : Nat) :
-    (∀ l ∈ (vs.take n).join, LineOk env l) ∧ (∀ l ∈ (vs.drop n).join, LineOk env l) := by
-  rw [← List.take_append_drop n vs, join_app] at h
-  exact ⟨fun l m => h l (mem_append_left' _ m), fun l m => h l (mem_append_right' _ m)⟩
-
 /-- The rank of `placeStanza`. -/
 def stanzaRank (k : Keep) (st : St) (verses : List (List Line)) : Nat × Nat × Nat := (verses.length, keepRank k, rank st)
 def stanzaLt (a b : Nat × Nat × Nat) : Prop := Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) a b
@@ -2698,75 +3038,72 @@ def stanzaLt (a b : Nat × Nat × Nat) : Prop := Prod.Lex (· < ·) (Prod.Lex (�
 theorem stanza_wf : WellFounded stanzaLt :=
   (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)).wf
 
-theorem step_placeStanza (env : Env) (k : Keep) (start : Bool) (st : St) (verses : List (List Line))
-    (hl : ∀ l ∈ verses.join, LineOk env l) (s : St) (h : placeStanza env k start st verses = .ok s) :
-    Step env st s (lineIds verses.join) [] := by
+theorem step_placeStanza (env : Env) (k : Keep) (start : Bool) (st : St) (verses : List (List Line)) (s : St) (h : placeStanza env k start st verses = .ok s) :
+    Step st s (lineIds verses.join) [] := by
   have key : ∀ m, ∀ (k : Keep) (start : Bool) (st : St) (verses : List (List Line)),
-      stanzaRank k st verses = m → (∀ l ∈ verses.join, LineOk env l) → ∀ s, placeStanza env k start st verses = .ok s →
-      Step env st s (lineIds verses.join) [] := by
+      stanzaRank k st verses = m → ∀ s, placeStanza env k start st verses = .ok s →
+      Step st s (lineIds verses.join) [] := by
     intro m
     induction m using stanza_wf.induction with
     | _ m ih =>
-    intro k start st verses hm hl s h
+    intro k start st verses hm s h
     subst hm
     match verses with
-    | [] => simp only [placeStanza, Except.ok.injEq] at h; subst h; exact Step.refl env _
+    | [] => simp only [placeStanza, Except.ok.injEq] at h; subst h; exact Step.refl _
     | v :: vs =>
       rw [placeStanza] at h
       dsimp only at h
       split at h
       · rename_i h1
         split at h
-        · have := ih _ (Prod.Lex.right _ (Prod.Lex.left _ _ (by simp [keepRank, h1.1]))) _ start _ (v :: vs) rfl hl s h
-          simpa using (step_addUnmet env st _).trans this
+        · have := ih _ (Prod.Lex.right _ (Prod.Lex.left _ _ (by simp [keepRank, h1.1]))) _ start _ (v :: vs) rfl s h
+          simpa using (step_addUnmet st _).trans this
         · rename_i h2
           have r : rank (nextColumn env st) < rank st := by
             apply I4_nextColumn_rank; left
             cases e : empty st
             · rfl
             · simp [e] at h2
-          have := ih _ (Prod.Lex.right _ (Prod.Lex.right _ r)) k start _ (v :: vs) rfl hl s h
+          have := ih _ (Prod.Lex.right _ (Prod.Lex.right _ r)) k start _ (v :: vs) rfl s h
           simpa using (step_nextColumn env st).trans this
       · split at h
         · rename_i h3
           have r : rank (nextColumn env st) < rank st := by
             apply I4_nextColumn_rank; left
             have := h3.2; simp only [Bool.or_eq_false_iff] at this; exact this.1
-          have := ih _ (Prod.Lex.right _ (Prod.Lex.right _ r)) k start _ (v :: vs) rfl hl s h
+          have := ih _ (Prod.Lex.right _ (Prod.Lex.right _ r)) k start _ (v :: vs) rfl s h
           simpa using (step_nextColumn env st).trans this
         · split at h
           · rename_i h4
             split at h
             · cases h
             · rename_i placed e
-              have hj := lineOk_join hl (wholeVerses (fitting env st (v :: vs).join) (v :: vs))
-              have a := step_placeLines env _ _ st _ hj.1 placed e
+              have a := step_placeLines env _ _ st _ placed e
               split at h
               · injection h with h; subst h
                 rename_i c
                 have : (v :: vs).drop (wholeVerses (fitting env st (v :: vs).join) (v :: vs)) = [] := by
                   rw [c]; simp
-                have b := a.trans (step_unmet env placed (placed.unmet ++ stanzaShort k start (headId v) (vs.length + 1)
+                have b := a.trans (step_unmet placed (placed.unmet ++ stanzaShort k start (headId v) (vs.length + 1)
                   (wholeVerses (fitting env st (v :: vs).join) (v :: vs))))
                 rw [← join_take_drop (wholeVerses (fitting env st (v :: vs).join) (v :: vs)) (v :: vs), this]
                 simpa [lineIds] using b
-              · have b := ih _ (by apply Prod.Lex.left; simp only [stanzaRank, List.length_drop, List.length_cons]; have := h4.2; omega) k false _ _ rfl hj.2 s h
-                have := ((a.trans (step_unmet env placed _)).trans (step_nextColumn env _)).trans b
+              · have b := ih _ (by apply Prod.Lex.left; simp only [stanzaRank, List.length_drop, List.length_cons]; have := h4.2; omega) k false _ _ rfl s h
+                have := ((a.trans (step_unmet placed _)).trans (step_nextColumn env _)).trans b
                 simpa [join_take_drop] using this
           · split at h
             · split at h
               · cases h
               · rename_i placed e
-                have a := step_placeLines env _ true st v (fun l m => hl l (by rw [List.join]; exact mem_append_left' _ m)) placed e
+                have a := step_placeLines env _ true st v placed e
                 have b := ih _ (Prod.Lex.left _ _ (by simp)) k false placed vs rfl
-                  (fun l m => hl l (by rw [List.join]; exact mem_append_right' _ m)) s h
+                  s h
                 simpa [List.join, lineIds_append] using a.trans b
             · rename_i h5
               split at h
               · cases h
               · rename_i placed e
-                have hj := lineOk_join hl (splitAtBreak k start (vs.length + 1) (wholeVerses (fitting env st (v :: vs).join) (v :: vs)))
-                have a := step_placeLines env _ _ st _ hj.1 placed e
+                have a := step_placeLines env _ _ st _ placed e
                 split at h
                 · injection h with h; subst h
                   rename_i c
@@ -2774,19 +3111,19 @@ theorem step_placeStanza (env : Env) (k : Keep) (start : Bool) (st : St) (verses
                     rw [c]; simp
                   rw [← join_take_drop (splitAtBreak k start (vs.length + 1) (wholeVerses (fitting env st (v :: vs).join) (v :: vs))) (v :: vs), this]
                   simpa [lineIds] using a
-                · have b := ih _ (by apply Prod.Lex.left; simp only [stanzaRank, List.length_drop, List.length_cons]; omega) k false _ _ rfl hj.2 s h
+                · have b := ih _ (by apply Prod.Lex.left; simp only [stanzaRank, List.length_drop, List.length_cons]; omega) k false _ _ rfl s h
                   have := (a.trans (step_nextColumn env _)).trans b
                   simpa [join_take_drop] using this
-  exact key _ k start st verses rfl hl s h
+  exact key _ k start st verses rfl s h
 
-theorem step_placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Line))
-    (l f : Nat) (later : List Flow) (hl : ∀ x ∈ verses.join, LineOk env x) (s : St)
-    (h : placeStanzaWithNext env k st verses l f later = .ok s) : Step env st s (lineIds verses.join) [] := by
+theorem step_placeStanzaWithNext (inner : Inner) (env : Env) (k : Keep) (st : St) (verses : List (List Line))
+    (l f : Nat) (later : List Flow) (s : St)
+    (h : placeStanzaWithNext inner env k st verses l f later = .ok s) : Step st s (lineIds verses.join) [] := by
   unfold placeStanzaWithNext at h
   split at h
   · cases h
   · rename_i full e
-    have a := step_placeStanza env k true st verses hl full e
+    have a := step_placeStanza env k true st verses full e
     split at h
     · injection h with h; subst h; exact a
     · split at h
@@ -2794,68 +3131,67 @@ theorem step_placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List
       · rename_i before e2
         split at h
         · injection h with h; subst h; exact a
-        · have hj := lineOk_join hl (verses.length - stanzaBack k l verses.length)
-          have a2 := step_placeStanza env k true st _ hj.1 before e2
-          have b := step_placeStanza env k true _ _ hj.2 s h
+        · have a2 := step_placeStanza env k true st _ before e2
+          have b := step_placeStanza env k true _ _ s h
           have := (a2.trans (step_nextColumn env _)).trans b
           simpa [join_take_drop] using this
 
-theorem step_waitFor (env : Env) (u : Unmet) (q : Nat × Bool) (st : St) : Step env st (waitFor u q st) [] [] :=
-  Step.same rfl rfl rfl rfl
+theorem step_waitFor (u : Unmet) (q : Nat × Bool) (st : St) : Step st (waitFor u q st) [] [] :=
+  Step.same rfl rfl rfl
 
-theorem step_waitForPrior (env : Env) (u : Unmet) (q : Nat × Bool) (st : St) :
-    Step env st (waitForPrior u q st) [] [] := by
+theorem step_waitForPrior (u : Unmet) (q : Nat × Bool) (st : St) :
+    Step st (waitForPrior u q st) [] [] := by
   unfold waitForPrior; split
-  · exact step_addUnmet env st u
-  · exact step_waitFor env u q st
+  · exact step_addUnmet st u
+  · exact step_waitFor u q st
 
-theorem pagesText_map (f : PageOut → PageOut) (hf : ∀ p, (f p).slots = p.slots) (ps : List PageOut) :
+theorem pagesText_map (f : PageOut → PageOut) (hs : ∀ p, (f p).slots = p.slots) (ps : List PageOut) :
     pagesText (ps.map f).reverse = pagesText ps.reverse ∧ pagesFigs (ps.map f).reverse = pagesFigs ps.reverse := by
   induction ps with
   | nil => simp
   | cons p ps ih =>
-    simp only [List.map, List.reverse_cons, pagesText_append, pagesFigs_append, ih.1, ih.2, pagesText, pagesFigs, hf]
+    simp only [List.map, List.reverse_cons, pagesText_append, pagesFigs_append, ih.1, ih.2, pagesText, pagesFigs, hs]
     trivial
 
-theorem step_checkWait (env : Env) (acc : St) (w : Wait) : Step env acc (checkWait acc w) [] [] := by
+theorem step_checkWait (acc : St) (w : Wait) : Step acc (checkWait acc w) [] [] := by
   unfold checkWait
   split
-  · exact Step.refl env acc
+  · exact Step.refl acc
   · split
-    · exact step_addUnmet env acc _
+    · exact step_addUnmet acc _
     · obtain ⟨a, b⟩ := pagesText_map (markUnmet w) (fun o => by unfold markUnmet; split <;> rfl) acc.done
-      refine ⟨?_, ?_, fun g => g⟩
+      refine ⟨?_, ?_⟩
       · simp only [text]; rw [a]; simp
       · simp only [figs]; rw [b]; simp
 
-theorem step_checkWaits (env : Env) (st : St) : Step env st (checkWaits st) [] [] := by
+theorem step_checkWaits (st : St) : Step st (checkWaits st) [] [] := by
   unfold checkWaits
-  have : ∀ (ws : List Wait) (a : St), Step env a (ws.foldl checkWait a) [] [] := by
+  have : ∀ (ws : List Wait) (a : St), Step a (ws.foldl checkWait a) [] [] := by
     intro ws
     induction ws with
-    | nil => intro a; exact Step.refl env a
-    | cons w ws ih => intro a; simpa using (step_checkWait env a w).trans (ih _)
-  simpa using (Step.same (s := { st with waits := [] }) rfl rfl rfl rfl).trans (this st.waits _)
+    | nil => intro a; exact Step.refl a
+    | cons w ws ih => intro a; simpa using (step_checkWait a w).trans (ih _)
+  simpa using (Step.same (s := { st with waits := [] }) rfl rfl rfl).trans (this st.waits _)
 
 
 set_option linter.unusedVariables false in
-theorem step_drainCarry (env : Env) (st : St) : Step env st (drainCarry env st) [] [] := by
+theorem step_drainCarry (env : Env) (st : St) : Step st (drainCarry env st) [] [] := by
   rw [drainCarry]
   split
   · rename_i h
     have dec := I4_drain_rank env st ⟨Or.inl h.1, h.2⟩
     simpa using (step_nextColumn env st).trans (step_drainCarry env (nextColumn env st))
-  · exact Step.refl env st
+  · exact Step.refl st
 termination_by (waiting st, columnsLeft st)
 decreasing_by
   all_goals simp_wf
   all_goals assumption
 
 set_option linter.unusedVariables false in
-theorem step_seek (env : Env) (p : St → Bool) (st : St) : Step env st (seek env p st) [] [] := by
+theorem step_seek (env : Env) (p : St → Bool) (st : St) : Step st (seek env p st) [] [] := by
   rw [seek]
   split
-  · exact Step.refl env st
+  · exact Step.refl st
   · split
     · rename_i h
       have dec := I4_drain_rank env st ⟨seek_cond st h.2, h.1⟩
@@ -2866,30 +3202,30 @@ decreasing_by
   all_goals simp_wf
   all_goals assumption
 
-theorem step_putCodeSlot (env : Env) (st : St) (e : Int) (ids : List Nat) (g : Nat) :
-    Step env st (putSlot st e (.code ids g)) ids [] := by
-  refine ⟨?_, ?_, fun g => g⟩
+theorem step_putCodeSlot (st : St) (e : Int) (ids : List Nat) (g : Nat) :
+    Step st (putSlot st e (.code ids g)) ids [] := by
+  refine ⟨?_, ?_⟩
   · simp [text, putSlot, textSlots_append, textSlots]
   · simp [figs, putSlot, figSlots_append, figSlots]
 
-theorem Step.text_eq {env : Env} {st s : St} {t t' g : List Nat} (e : t = t') (h : Step env st s t g) :
-    Step env st s t' g := e ▸ h
+theorem Step.text_eq {st s : St} {t t' g : List Nat} (e : t = t') (h : Step st s t g) :
+    Step st s t' g := e ▸ h
 
 theorem step_seekFitCode (env : Env) (p : St → Bool) (st : St) (e : Int) (ids : List Nat) (g : Nat) :
-    Step env st (putSlot (fit env (seek env p st) e) e (.code ids g)) ids [] := by
-  simpa using (step_seek env p st).trans ((step_fit env _ e).trans (step_putCodeSlot env _ e ids g))
+    Step st (putSlot (fit env (seek env p st) e) e (.code ids g)) ids [] := by
+  simpa using (step_seek env p st).trans ((step_fit env _ e).trans (step_putCodeSlot _ e ids g))
 
 theorem step_placeCode (env : Env) (caption : Int) (first : Nat) (continued : Bool) (spans : List Nat)
     (isFirst : Bool) (st : St) (rows : List Line) (s : St)
-    (h : placeCode env caption first continued spans isFirst st rows = .ok s) : Step env st s (lineIds rows) [] := by
+    (h : placeCode env caption first continued spans isFirst st rows = .ok s) : Step st s (lineIds rows) [] := by
   have key : ∀ n, ∀ (isFirst : Bool) (st : St) (rows : List Line), rows.length = n →
-      ∀ s, placeCode env caption first continued spans isFirst st rows = .ok s → Step env st s (lineIds rows) [] := by
+      ∀ s, placeCode env caption first continued spans isFirst st rows = .ok s → Step st s (lineIds rows) [] := by
     intro n
     induction n using Nat.strongInductionOn with
     | _ n ih =>
     intro isFirst st rows hn s h
     match rows with
-    | [] => simp only [placeCode, Except.ok.injEq] at h; subst h; exact Step.refl env _
+    | [] => simp only [placeCode, Except.ok.injEq] at h; subst h; exact Step.refl _
     | r :: rs =>
       rw [placeCode] at h
       dsimp only at h
@@ -2912,12 +3248,12 @@ theorem step_placeCode (env : Env) (caption : Int) (first : Nat) (continued : Bo
   exact key _ isFirst st rows rfl s h
 
 theorem step_parityStart (env : Env) (accept : Nat → Bool) (st : St) :
-    Step env st (parityStart env accept st) [] [] := by
+    Step st (parityStart env accept st) [] [] := by
   have a := step_drainCarry env st
-  have b : Step env (drainCarry env st)
+  have b : Step (drainCarry env st)
       (if empty (drainCarry env st) ∧ (drainCarry env st).column = 0 then drainCarry env st else nextPage env (drainCarry env st)) [] [] := by
     split
-    · exact Step.refl env _
+    · exact Step.refl _
     · exact step_nextPage env _
   have c := a.trans b
   simp only [List.append_nil] at c
@@ -2927,15 +3263,15 @@ theorem step_parityStart (env : Env) (accept : Nat → Bool) (st : St) :
   split
   · exact c
   · split
-    · refine ⟨?_, ?_, fun g => c.2.2 g⟩
+    · refine ⟨?_, ?_⟩
       · have := c.1; simp only [text, List.append_nil] at this; simp [text, pagesText_append, pagesText, textSlots, this]
-      · have := c.2.1; simp only [figs, List.append_nil] at this; simp [figs, pagesFigs_append, pagesFigs, figSlots]; simpa using this
+      · have := c.2; simp only [figs, List.append_nil] at this; simp [figs, pagesFigs_append, pagesFigs, figSlots]; simpa using this
     · simpa using c.trans (step_nextPage env nx)
 
-theorem step_breakAt (env : Env) (k : BreakKind) (st : St) : Step env st (breakAt env k st) [] [] := by
-  have bp : Step env st (breakPage env st) [] [] := by
+theorem step_breakAt (env : Env) (k : BreakKind) (st : St) : Step st (breakAt env k st) [] [] := by
+  have bp : Step st (breakPage env st) [] [] := by
     unfold breakPage; split
-    · exact Step.refl env st
+    · exact Step.refl st
     · exact step_nextPage env st
   cases k <;> unfold breakAt <;> dsimp only
   · split
@@ -2945,12 +3281,12 @@ theorem step_breakAt (env : Env) (k : BreakKind) (st : St) : Step env st (breakA
   · exact step_parityStart env _ st
   · exact step_parityStart env _ st
 
-theorem step_sectionStart (env : Env) (k : BreakKind) (st : St) : Step env st (sectionStart env k st) [] [] := by
+theorem step_sectionStart (env : Env) (k : BreakKind) (st : St) : Step st (sectionStart env k st) [] [] := by
   have a := step_drainCarry env st
-  have b : ∀ c : Prop, ∀ _ : Decidable c, Step env (drainCarry env st)
+  have b : ∀ c : Prop, ∀ _ : Decidable c, Step (drainCarry env st)
       (if c then drainCarry env st else breakAt env k (drainCarry env st)) [] [] := by
     intro c _; split
-    · exact Step.refl env _
+    · exact Step.refl _
     · exact step_breakAt env k _
   unfold sectionStart
   cases k
@@ -2960,31 +3296,31 @@ theorem step_sectionStart (env : Env) (k : BreakKind) (st : St) : Step env st (s
   · simpa using a.trans (step_breakAt env _ _)
 
 theorem step_switchColumns (env : Env) (cols : Nat) (st : St) :
-    Step env st (switchColumns env cols st) [] [] := by
+    Step st (switchColumns env cols st) [] [] := by
   have a := step_drainCarry env st
   unfold switchColumns
   dsimp only
   split
   · have h := step_closed env (drainCarry env st) { close env (drainCarry env st) with
       columns := cols, firstLine := (drainCarry env st).used, column := 0, used := (drainCarry env st).used,
-      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] } rfl rfl (close_fields env _).1 (close_fields env _).2.1
+      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] } rfl rfl (close_fields env _).1
     simpa using a.trans h
-  · simpa using (a.trans (step_nextPage env _)).trans (Step.same rfl rfl rfl rfl)
+  · simpa using (a.trans (step_nextPage env _)).trans (Step.same rfl rfl rfl)
 
-theorem step_restoreColumns (env : Env) (st : St) : Step env st (restoreColumns env st) [] [] := by
-  simpa using (step_nextPage env st).trans (Step.same rfl rfl rfl rfl)
+theorem step_restoreColumns (env : Env) (st : St) : Step st (restoreColumns env st) [] [] := by
+  simpa using (step_nextPage env st).trans (Step.same rfl rfl rfl)
 
 set_option linter.unusedVariables false in
-theorem step_judgeNeed (env : Env) (b : Int) (st : St) : Step env st (judgeNeed env b st) [] [] := by
+theorem step_judgeNeed (env : Env) (b : Int) (st : St) : Step st (judgeNeed env b st) [] [] := by
   rw [judgeNeed]
   split
-  · exact Step.refl env st
+  · exact Step.refl st
   · split
     · rename_i h
       have dec := I4_nextColumn_rank env st (Or.inr h.2)
       simpa using (step_nextColumn env st).trans (step_judgeNeed env b (nextColumn env st))
     · split
-      · exact Step.refl env st
+      · exact Step.refl st
       · rename_i h
         have dec := I4_nextColumn_rank env st (Or.inl (by simpa using h))
         simpa using (step_nextColumn env st).trans (step_judgeNeed env b (nextColumn env st))
@@ -3006,78 +3342,56 @@ theorem putLine_fields (env : Env) (allow : Bool) (st s : St) (l : Line)
       · injection h with h; subst h; exact ⟨rfl, rfl, rfl, rfl⟩
     · injection h with h; subst h; exact ⟨rfl, rfl, rfl, rfl⟩
 
-theorem notesOf_nil (ls : List Line) (h : ∀ l ∈ ls, l.notes = []) : notesOf ls = [] := by
-  induction ls with
-  | nil => rfl
-  | cons l ls ih =>
-    have e : notesOf (l :: ls) = l.notes ++ notesOf ls := rfl
-    rw [e, h l (List.mem_cons_self _ _), ih (fun x m => h x (List.mem_cons_of_mem _ m))]; rfl
-
-theorem lineOk_merge (env : Env) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l) (i : Nat) :
-    LineOk env ⟨i, notesOf ls, 0⟩ := by
-  by_cases f : NotesFit env
-  · exact Or.inr f
-  · refine Or.inl (notesOf_nil ls (fun l m => ?_))
-    cases hl l m with
-    | inl e => exact e
-    | inr g => exact absurd g f
-
-theorem step_putHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line)
-    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : putHeading env st firstId extent ls = .ok s) :
-    Step env st s [firstId] [] := by
+theorem step_putHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line) (s : St) (h : putHeading env st firstId extent ls = .ok s) :
+    Step st s [firstId] [] := by
   unfold putHeading at h
   split at h
   · cases h
   · rename_i placed e
     injection h with h; subst h
-    have a : Step env st placed [firstId] [] :=
-      step_putLine (headingEnv env firstId extent) false st placed _ (lineOk_merge env ls hl firstId) e
     obtain ⟨d, df, _, _⟩ := putLine_fields _ false st placed _ e
-    refine ⟨?_, ?_, fun g => a.2.2 g⟩
+    refine ⟨?_, ?_⟩
     · simp [text, d, textSlots_append, textSlots]
     · simp [figs, d, df, figSlots_append, figSlots]
 
-theorem step_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line)
-    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : placeHeading env st firstId extent ls = .ok s) :
-    Step env st s [firstId] [] := by
+theorem step_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line) (s : St) (h : placeHeading env st firstId extent ls = .ok s) :
+    Step st s [firstId] [] := by
   unfold placeHeading at h
   split at h
   · cases h
   · split at h
-    · simpa using (Step.same rfl rfl rfl rfl).trans (step_putHeading env _ firstId extent ls hl s h)
-    · simpa using (step_fit env st _).trans (step_putHeading env _ firstId extent ls hl s h)
+    · simpa using (Step.same rfl rfl rfl).trans (step_putHeading env _ firstId extent ls s h)
+    · simpa using (step_fit env st _).trans (step_putHeading env _ firstId extent ls s h)
 
-theorem step_keepFollowing (env : Env) (hd : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) :
-    Step env st (keepFollowing env hd st extent ls later) [] [] := by
+theorem step_keepFollowing (inner : Inner) (env : Env) (hd : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) :
+    Step st (keepFollowing inner env hd st extent ls later) [] [] := by
   unfold keepFollowing keepFrom
   split
   · exact step_nextColumn env st
-  · exact Step.refl env st
+  · exact Step.refl st
 
-theorem step_putRuledHeading (env : Env) (ready : St) (b a : Int) (fid : Nat) (e : Int) (ls : List Line)
-    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : putRuledHeading env ready b a fid e ls = .ok s) :
-    Step env ready s [fid] [] := by
+theorem step_putRuledHeading (env : Env) (ready : St) (b a : Int) (fid : Nat) (e : Int) (ls : List Line) (s : St) (h : putRuledHeading env ready b a fid e ls = .ok s) :
+    Step ready s [fid] [] := by
   unfold putRuledHeading at h
   split at h
   · cases h
   · rename_i placed e2
     injection h with h; subst h
-    have c := step_putHeading env _ fid e ls hl placed e2
-    simpa using ((Step.same rfl rfl rfl rfl).trans c).trans (Step.same rfl rfl rfl rfl)
+    have c := step_putHeading env _ fid e ls placed e2
+    simpa using ((Step.same rfl rfl rfl).trans c).trans (Step.same rfl rfl rfl)
 
 theorem step_headingState (env : Env) (st : St) (recto b : Bool) :
-    Step env st (headingStateOf env st recto b) [] [] := by
+    Step st (headingStateOf env st recto b) [] [] := by
   unfold headingStateOf
   split
   · exact step_parityStart env _ st
   · unfold keepFrom; split
     · exact step_nextColumn env st
-    · exact Step.refl env st
+    · exact Step.refl st
 
 set_option linter.unusedVariables false in
-theorem step_placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow)
-    (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuled env st r later = .ok s) :
-    Step env st s (ruledText r) [] := by
+theorem step_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (s : St) (h : placeRuled inner env st r later = .ok s) :
+    Step st s (ruledText r) [] := by
   rw [placeRuled] at h
   split at h
   · rename_i recto extent hh
@@ -3085,7 +3399,7 @@ theorem step_placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow)
       intro r' e1 e2; simp [ruledText, e1, e2, hh]
     rw [tx r rfl rfl]
     dsimp only at h
-    generalize fitsFollowingGo env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2 = fb at h
+    generalize fitsFollowingGo inner env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2 = fb at h
     have hr := rank_headingState_le env st recto fb
     have hsS := step_headingState env st recto fb
     generalize headingStateOf env st recto fb = HS at h hr hsS
@@ -3096,28 +3410,28 @@ theorem step_placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow)
         · rename_i ha
           have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with after := none }, rank HS) (ruledRank r, rank st) :=
             Prod.Lex.left _ _ (ruledRank_after r ha)
-          have c := step_placeRuled env HS { r with after := none } later hl s h
+          have c := step_placeRuled inner env HS { r with after := none } later s h
           rw [tx { r with after := none } rfl rfl] at c
           simpa using hsS.trans c
         · rename_i ha hb
           have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with before := none }, rank HS) (ruledRank r, rank st) :=
             Prod.Lex.left _ _ (ruledRank_before r ha hb)
-          have c := step_placeRuled env HS { r with before := none } later hl s h
+          have c := step_placeRuled inner env HS { r with before := none } later s h
           rw [tx { r with before := none } rfl rfl] at c
           simpa using hsS.trans c
-        · simpa using hsS.trans (step_placeHeading env HS _ extent r.lines hl s h)
+        · simpa using hsS.trans (step_placeHeading env HS _ extent r.lines s h)
       · split at h
-        · have c := step_putRuledHeading env _ _ _ _ extent r.lines hl s h
-          simpa using (hsS.trans (Step.same rfl rfl rfl rfl)).trans c
+        · have c := step_putRuledHeading env _ _ _ _ extent r.lines s h
+          simpa using (hsS.trans (Step.same rfl rfl rfl)).trans c
         · split at h
           · rename_i h2
             have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env HS (headingBeforeExtra env r +
                 headingNeed env HS extent r.lines + headingAfterExtra env r extent))) (ruledRank r, rank st) :=
               Prod.Lex.right _ (Nat.lt_of_lt_of_le (I4_fit_moved env HS _ h2) hr)
-            have c := step_placeRuled env _ r later hl s h
+            have c := step_placeRuled inner env _ r later s h
             rw [tx r rfl rfl] at c
             simpa using (hsS.trans (step_fit env HS _)).trans c
-          · simpa using (hsS.trans (step_fit env HS _)).trans (step_putRuledHeading env _ _ _ _ extent r.lines hl s h)
+          · simpa using (hsS.trans (step_fit env HS _)).trans (step_putRuledHeading env _ _ _ _ extent r.lines s h)
   · rename_i hh
     have tx : ∀ r' : Ruled, r'.heading = r.heading → r'.lines = r.lines → ruledText r' = lineIds r.lines := by
       intro r' e1 e2; simp [ruledText, e1, e2, hh]
@@ -3129,41 +3443,40 @@ theorem step_placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow)
         have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with joined := false }, rank (nextColumn env (flushPendingRule env st)))
             (ruledRank r, rank st) := by
           apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
-        have c := step_placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later hl s h
+        have c := step_placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later s h
         rw [tx { r with joined := false } rfl rfl] at c
         simpa using ((step_flush env st).trans (step_nextColumn env _)).trans c
       · split at h
-        · exact step_placeLines env r.keep true st r.lines hl s h
+        · exact step_placeLines env r.keep true st r.lines s h
         · split at h
           · rename_i h2
             have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env st (ruledExtent env st r first lastLine later)))
                 (ruledRank r, rank st) :=
               Prod.Lex.right _ (I4_fit_moved env st _ h2)
-            have c := step_placeRuled env _ r later hl s h
+            have c := step_placeRuled inner env _ r later s h
             rw [tx r rfl rfl] at c
             simpa using (step_fit env st _).trans c
           · split at h
             · cases h
             · rename_i placed e
               injection h with h; subst h
-              have c := step_putLines env true _ placed r.lines hl e
-              simpa using ((step_fit env st _).trans (Step.same rfl rfl rfl rfl)).trans (c.trans (Step.same rfl rfl rfl rfl))
+              have c := step_putLines env true _ placed r.lines e
+              simpa using ((step_fit env st _).trans (Step.same rfl rfl rfl)).trans (c.trans (Step.same rfl rfl rfl))
     · rename_i H
       have : r.lines = [] := by
         cases e : r.lines with
         | nil => rfl
         | cons x xs => exact absurd (H x ((x :: xs).getLast (by simp)) (by rw [e]; rfl) (by rw [e]; rfl)) id
       injection h with h; subst h
-      rw [this]; exact Step.refl env _
+      rw [this]; exact Step.refl _
 termination_by (ruledRank r, rank st)
 decreasing_by
   all_goals simp_wf
   all_goals assumption
 
 
-theorem step_placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow)
-    (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuledKeeping env st r later = .ok s) :
-    Step env st s (ruledText r) [] := by
+theorem step_placeRuledKeeping (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (s : St) (h : placeRuledKeeping inner env st r later = .ok s) :
+    Step st s (ruledText r) [] := by
   unfold placeRuledKeeping at h
   split at h
   · cases h
@@ -3171,75 +3484,75 @@ theorem step_placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List F
     dsimp only at h
     split at h
     · split at h
-      · have c := step_placeRuled env _ { r with joined := false } later hl s h
+      · have c := step_placeRuled inner env _ { r with joined := false } later s h
         have tx : ruledText { r with joined := false } = ruledText r := rfl
         rw [tx] at c
         simpa using ((step_flush env st).trans (step_nextColumn env _)).trans c
-      · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
-    · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
+      · injection h with h; subst h; exact step_placeRuled inner env st r later _ e
+    · injection h with h; subst h; exact step_placeRuled inner env st r later _ e
 
-theorem step_putWrappedSlot (env : Env) (st : St) (i : Nat) :
-    Step env st (putSlot st 0 (.wrapped i)) [i] [] := by
-  refine ⟨?_, ?_, fun g => g⟩
+theorem step_putWrappedSlot (st : St) (i : Nat) :
+    Step st (putSlot st 0 (.wrapped i)) [i] [] := by
+  refine ⟨?_, ?_⟩
   · simp [text, putSlot, textSlots_append, textSlots]
   · simp [figs, putSlot, figSlots_append, figSlots]
 
-theorem step_putWrappedLine (env : Env) (fe : Int) (st s : St) (l : Line) (hl : LineOk env l)
-    (h : putWrappedLine env fe st l = .ok s) : Step env st s [l.id] [] := by
+theorem step_putWrappedLine (env : Env) (fe : Int) (st s : St) (l : Line)
+    (h : putWrappedLine env fe st l = .ok s) : Step st s [l.id] [] := by
   unfold putWrappedLine at h
   split at h
   · cases h
   · rename_i placed e
     injection h with h; subst h
-    have c := step_putLine env false _ placed l hl e
-    simpa using ((Step.same rfl rfl rfl rfl).trans c).trans (Step.same rfl rfl rfl rfl)
+    have c := step_putLine env false _ placed l e
+    simpa using ((Step.same rfl rfl rfl).trans c).trans (Step.same rfl rfl rfl)
 
-theorem step_putBeside (env : Env) (fe : Int) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
-    (h : putBeside env fe st ls = .ok s) : Step env st s (lineIds ls) [] := by
+theorem step_putBeside (env : Env) (fe : Int) (st s : St) (ls : List Line)
+    (h : putBeside env fe st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with
-  | nil => simp only [putBeside, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | nil => simp only [putBeside, Except.ok.injEq] at h; subst h; exact Step.refl _
   | cons l ls ih =>
     unfold putBeside at h
     split at h
     · cases h
     · rename_i s1 e
-      have a := step_putWrappedLine env fe _ s1 l (hl l (List.mem_cons_self _ _)) e
-      have b := ih s1 (fun x m => hl x (List.mem_cons_of_mem _ m)) h
-      simpa [lineIds] using ((Step.same rfl rfl rfl rfl).trans a).trans b
+      have a := step_putWrappedLine env fe _ s1 l e
+      have b := ih s1 h
+      simpa [lineIds] using ((Step.same rfl rfl rfl).trans a).trans b
 
-theorem step_fitPending (env : Env) (st R : St) (p a : Int) (h : Step env st R [] []) :
-    Step env st (fit env { R with pending := p } a) [] [] := by
-  have c := (h.trans (Step.same rfl rfl rfl rfl)).trans (step_fit env { R with pending := p } a)
+theorem step_fitPending (env : Env) (st R : St) (p a : Int) (h : Step st R [] []) :
+    Step st (fit env { R with pending := p } a) [] [] := by
+  have c := (h.trans (Step.same rfl rfl rfl)).trans (step_fit env { R with pending := p } a)
   simpa only [List.append_nil] using c
 
 theorem step_overflowMove (env : Env) (st : St) (l : Line) (gap : Int) :
-    Step env st (overflowMove env st l gap) [] [] := by
+    Step st (overflowMove env st l gap) [] [] := by
   unfold overflowMove
   split
   · exact step_nextColumn env st
-  · exact Step.refl env st
+  · exact Step.refl st
 
-theorem step_overflowReady (env : Env) (st : St) (l : Line) : Step env st (overflowReady env st l) [] [] := by
+theorem step_overflowReady (env : Env) (st : St) (l : Line) : Step st (overflowReady env st l) [] [] := by
   unfold overflowReady
   dsimp only
   apply step_fitPending
   exact step_overflowMove env st l _
 
-theorem step_placeWrappedOverflow (env : Env) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
-    (h : placeWrappedOverflow env st ls = .ok s) : Step env st s (lineIds ls) [] := by
+theorem step_placeWrappedOverflow (env : Env) (st s : St) (ls : List Line)
+    (h : placeWrappedOverflow env st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with
-  | nil => simp only [placeWrappedOverflow, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | nil => simp only [placeWrappedOverflow, Except.ok.injEq] at h; subst h; exact Step.refl _
   | cons l ls ih =>
     unfold placeWrappedOverflow at h
     split at h
     · cases h
     · rename_i placed e
-      have a := step_putLine env false _ placed l (hl l (List.mem_cons_self _ _)) e
-      have b := ih placed (fun x m => hl x (List.mem_cons_of_mem _ m)) h
+      have a := step_putLine env false _ placed l e
+      have b := ih placed h
       simpa [lineIds] using ((step_overflowReady env st l).trans a).trans b
 
-theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
-    (s : St) (h : placeWrapped env st i e ls = .ok s) : Step env st s (i :: lineIds ls) [] := by
+theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List Line)
+    (s : St) (h : placeWrapped env st i e ls = .ok s) : Step st s (i :: lineIds ls) [] := by
   unfold placeWrapped at h
   split at h
   · cases h
@@ -3248,8 +3561,8 @@ theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List L
     · cases h
     · rename_i placed eq
       generalize fittingWrapped env _ _ ls = c at h eq
-      have ab := ((step_fit env st e).trans (step_putWrappedSlot env _ i)).trans
-        (step_putBeside env _ _ placed _ (lineOk_take c hl) eq)
+      have ab := ((step_fit env st e).trans (step_putWrappedSlot _ i)).trans
+        (step_putBeside env _ _ placed _ eq)
       have tx : i :: lineIds ls = [] ++ [i] ++ lineIds (ls.take c) ++ lineIds (ls.drop c) := by
         rw [List.append_assoc, ← lineIds_append, List.take_append_drop]; rfl
       rw [tx]
@@ -3261,42 +3574,42 @@ theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List L
           | nil => rfl
           | cons _ _ => rw [d] at emp; cases emp
         rw [hd]
-        have c2 := ab.trans (Step.same (s := { placed with used := max placed.used ((fit env st e).used + e) }) rfl rfl rfl rfl)
+        have c2 := ab.trans (Step.same (s := { placed with used := max placed.used ((fit env st e).used + e) }) rfl rfl rfl)
         simpa only [List.append_nil, lineIds, List.map] using c2
-      · have b := step_placeWrappedOverflow env _ s _ (lineOk_drop c hl) h
+      · have b := step_placeWrappedOverflow env _ s _ h
         have c2 := ((ab.trans (Step.same (s := { placed with used := max placed.used ((fit env st e).used + e) })
-          rfl rfl rfl rfl)).trans (step_nextColumn env _)).trans b
+          rfl rfl rfl)).trans (step_nextColumn env _)).trans b
         simpa only [List.append_nil] using c2
 
-theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
-    (h : putReserved env reserve st ls = .ok s) : Step env st s (lineIds ls) [] := by
+theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line)
+    (h : putReserved env reserve st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with
-  | nil => simp only [putReserved, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | nil => simp only [putReserved, Except.ok.injEq] at h; subst h; exact Step.refl _
   | cons l ls ih =>
     unfold putReserved at h
     split at h
     · cases h
     · rename_i s1 e
-      have a := step_putLine env true _ s1 l (hl l (List.mem_cons_self _ _)) e
-      have b := ih _ (fun x m => hl x (List.mem_cons_of_mem _ m)) h
-      have c := (((Step.same rfl rfl rfl rfl).trans a).trans (Step.same rfl rfl rfl rfl)).trans b
+      have a := step_putLine env true _ s1 l e
+      have b := ih _ h
+      have c := (((Step.same rfl rfl rfl).trans a).trans (Step.same rfl rfl rfl)).trans b
       simpa only [lineIds, List.map, List.nil_append, List.append_nil, List.singleton_append] using c
 
 theorem step_putRepeated (env : Env) (st s : St) (ls : List Line) (h : putRepeated env st ls = .ok s) :
-    Step env st s [] [] := by
+    Step st s [] [] := by
   induction ls generalizing st with
-  | nil => simp only [putRepeated, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | nil => simp only [putRepeated, Except.ok.injEq] at h; subst h; exact Step.refl _
   | cons l ls ih =>
     unfold putRepeated at h
     split at h
     · cases h
-    · have a : Step env st (putSlot st (env.pitchOf l.id) (.repeated l.id)) [] [] := by
-        refine ⟨?_, ?_, fun g => g⟩
+    · have a : Step st (putSlot st (env.pitchOf l.id) (.repeated l.id)) [] [] := by
+        refine ⟨?_, ?_⟩
         · simp [text, putSlot, textSlots_append, textSlots]
         · simp [figs, putSlot, figSlots_append, figSlots]
       simpa using a.trans (ih _ h)
 
-theorem step_tableAt (env : Env) (b : Int) (ls : List Line) (s : St) : Step env s (tableAt env b ls s) [] [] :=
+theorem step_tableAt (env : Env) (b : Int) (ls : List Line) (s : St) : Step s (tableAt env b ls s) [] [] :=
   step_fit env s _
 
 def tableLt (a b : Nat × Nat × Nat × Nat × Nat) : Prop :=
@@ -3305,26 +3618,23 @@ def tableLt (a b : Nat × Nat × Nat × Nat × Nat) : Prop :=
 theorem table_wf : WellFounded tableLt :=
   (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)))).wf
 
-theorem step_tableRowsGo (env : Env) (header caption : List Line) (below : Bool) (ident : Nat)
-    (hc : ∀ l ∈ caption, LineOk env l) :
+theorem step_tableRowsGo (env : Env) (header caption : List Line) (below : Bool) (ident : Nat) :
     ∀ m (seeking passed : Bool) (start : Int) (st : St) (rows : List (List Line)),
-      (rows.length, tableRowsRank passed st seeking) = m → (∀ l ∈ rows.join, LineOk env l) →
+      (rows.length, tableRowsRank passed st seeking) = m →
       ∀ s, tableRowsGo env header caption below ident seeking passed start st rows = .ok s →
-      Step env st s (lineIds rows.join ++ (if below then lineIds caption else [])) [] := by
+      Step st s (lineIds rows.join ++ (if below then lineIds caption else [])) [] := by
   intro m
   induction m using table_wf.induction with
   | _ m ih =>
-  intro seeking passed start st rows hm hr s h
+  intro seeking passed start st rows hm s h
   subst hm
   match rows with
   | [] =>
     rw [tableRowsGo] at h
     split at h
-    · rename_i b; simpa [b, List.join] using step_putReserved env 0 st s caption hc h
-    · rename_i b; injection h with h; subst h; simpa [b, List.join] using Step.refl env st
+    · rename_i b; simpa [b, List.join] using step_putReserved env 0 st s caption h
+    · rename_i b; injection h with h; subst h; simpa [b, List.join] using Step.refl st
   | row :: rest =>
-    have hrow : ∀ l ∈ row, LineOk env l := fun l m => hr l (by rw [List.join]; exact mem_append_left' _ m)
-    have hrest : ∀ l ∈ rest.join, LineOk env l := fun l m => hr l (by rw [List.join]; exact mem_append_right' _ m)
     rw [tableRowsGo] at h
     split at h
     · rename_i h1
@@ -3339,7 +3649,7 @@ theorem step_tableRowsGo (env : Env) (header caption : List Line) (below : Bool)
           simp only [tableRowsRank, waiting, columnsLeft, d1, c1, k1, n1, d2, c2, k2, n2, h1.1]
           exact Prod.Lex.right _ (Prod.Lex.right _ (Prod.Lex.right _ (by decide)))
         have a := (step_tableAt env 0 _ st).trans (step_putRepeated env _ withHeader header e)
-        have b := ih _ dec false passed _ withHeader (row :: rest) rfl hr s h
+        have b := ih _ dec false passed _ withHeader (row :: rest) rfl s h
         simpa using a.trans b
     · split at h
       · split at h
@@ -3348,8 +3658,8 @@ theorem step_tableRowsGo (env : Env) (header caption : List Line) (below : Bool)
           have dec : tableLt (rest.length, tableRowsRank false placed false)
               ((row :: rest).length, tableRowsRank passed st seeking) := by
             apply Prod.Lex.left; simp
-          have a := step_putReserved env _ st placed row hrow e
-          have b := ih _ dec false false start placed rest rfl hrest s h
+          have a := step_putReserved env _ st placed row e
+          have b := ih _ dec false false start placed rest rfl s h
           have c := a.trans b
           simpa only [List.join, lineIds_append, List.append_assoc] using c
       · split at h
@@ -3358,30 +3668,28 @@ theorem step_tableRowsGo (env : Env) (header caption : List Line) (below : Bool)
               ((row :: rest).length, tableRowsRank passed st seeking) := by
             apply Prod.Lex.right; simp only [tableRowsRank]
             exact Prod.Lex.right _ (lex3_of_lex2 (I4_drain_rank env st ⟨seek_cond st h2.2, h2.1⟩))
-          have b := ih _ dec true passed start _ (row :: rest) rfl hr s h
+          have b := ih _ dec true passed start _ (row :: rest) rfl s h
           simpa using (step_nextColumn env st).trans b
         · split at h
           · rename_i h3
             have dec : tableLt ((row :: rest).length, tableRowsRank true (nextColumn env st) true)
                 ((row :: rest).length, tableRowsRank passed st seeking) := by
               apply Prod.Lex.right; simp only [tableRowsRank, h3]; exact Prod.Lex.left _ _ (by decide)
-            have b := ih _ dec true true start _ (row :: rest) rfl hr s h
+            have b := ih _ dec true true start _ (row :: rest) rfl s h
             simpa using (step_nextColumn env st).trans b
           · cases h
 
-theorem step_tableCaption (env : Env) (below : Bool) (reserve : Int) (start s : St) (caption : List Line)
-    (hc : ∀ l ∈ caption, LineOk env l) (h : tableCaption env below reserve start caption = .ok s) :
-    Step env start s (if below then [] else lineIds caption) [] := by
+theorem step_tableCaption (env : Env) (below : Bool) (reserve : Int) (start s : St) (caption : List Line) (h : tableCaption env below reserve start caption = .ok s) :
+    Step start s (if below then [] else lineIds caption) [] := by
   unfold tableCaption at h
   split at h
-  · rename_i b; injection h with h; subst h; simpa [b] using Step.refl env start
-  · rename_i b; simpa [b] using step_putReserved env reserve start s caption hc h
+  · rename_i b; injection h with h; subst h; simpa [b] using Step.refl start
+  · rename_i b; simpa [b] using step_putReserved env reserve start s caption h
 
 theorem step_placeTableFrom (env : Env) (st : St) (ident : Nat) (before : Int) (header : List Line)
     (rows : List (List Line)) (caption : List Line) (below : Bool) (firstPart : List Line)
-    (hh : ∀ l ∈ header, LineOk env l) (hr : ∀ l ∈ rows.join, LineOk env l) (hc : ∀ l ∈ caption, LineOk env l)
     (s : St) (h : placeTableFrom env st ident before header rows caption below firstPart = .ok s) :
-    Step env st s (tableText header rows caption below) [] := by
+    Step st s (tableText header rows caption below) [] := by
   unfold placeTableFrom at h
   have sk := step_seek env (tableFits env before firstPart) st
   generalize seek env (tableFits env before firstPart) st = F at h sk
@@ -3394,10 +3702,10 @@ theorem step_placeTableFrom (env : Env) (st : St) (ident : Nat) (before : Int) (
       split at h
       · cases h
       · rename_i withHeader e2
-        have a := (sk.trans (step_tableAt env before firstPart F)).trans (Step.same rfl rfl rfl rfl)
-        have b := step_tableCaption env below _ _ placed caption hc e1
-        have c := step_putReserved env _ placed withHeader header hh e2
-        have d := step_tableRowsGo env header caption below ident hc _ false false _ withHeader rows rfl hr s h
+        have a := (sk.trans (step_tableAt env before firstPart F)).trans (Step.same rfl rfl rfl)
+        have b := step_tableCaption env below _ _ placed caption e1
+        have c := step_putReserved env _ placed withHeader header e2
+        have d := step_tableRowsGo env header caption below ident _ false false _ withHeader rows rfl s h
         have all := ((a.trans b).trans c).trans d
         unfold tableText
         cases below
@@ -3406,39 +3714,33 @@ theorem step_placeTableFrom (env : Env) (st : St) (ident : Nat) (before : Int) (
 
 theorem step_placeTable (env : Env) (st : St) (ident : Nat) (before : Int) (header : List Line)
     (rows : List (List Line)) (caption : List Line) (below : Bool)
-    (hf : ∀ l ∈ header ++ rows.join ++ caption, LineOk env l)
     (s : St) (h : placeTable env st ident before header rows caption below = .ok s) :
-    Step env st s (tableText header rows caption below) [] := by
-  have hh : ∀ l ∈ header, LineOk env l := fun l m => hf l (mem_append_left' _ (mem_append_left' _ m))
-  have hr : ∀ l ∈ rows.join, LineOk env l := fun l m => hf l (mem_append_left' _ (mem_append_right' _ m))
-  have hc : ∀ l ∈ caption, LineOk env l := fun l m => hf l (mem_append_right' _ m)
+    Step st s (tableText header rows caption below) [] := by
   unfold placeTable at h
   split at h
   · cases h
-  · exact step_placeTableFrom env st ident before header rows caption below _ hh hr hc s h
+  · exact step_placeTableFrom env st ident before header rows caption below _ s h
 
 theorem take_of_le {α : Type} : ∀ (n : Nat) (ls : List α), ls.length ≤ n → ls.take n = ls
   | _, [], _ => by cases ‹Nat› <;> rfl
   | 0, _ :: _, h => by simp at h
   | n + 1, x :: xs, h => by simp only [List.take, List.cons.injEq, true_and]; exact take_of_le n xs (by simp at h; omega)
 
-theorem step_putBoxPart (env : Env) (ident : Nat) (ready s : St) (origin b a : Int) (ls : List Line) (short : List Unmet)
-    (hl : ∀ l ∈ ls, LineOk env l) (h : putBoxPart env ident ready origin b a ls short = .ok s) :
-    Step env ready s (lineIds ls) [] := by
+theorem step_putBoxPart (env : Env) (ident : Nat) (ready s : St) (origin b a : Int) (ls : List Line) (short : List Unmet) (h : putBoxPart env ident ready origin b a ls short = .ok s) :
+    Step ready s (lineIds ls) [] := by
   unfold putBoxPart at h
   split at h
   · cases h
   · rename_i placed e
     injection h with h; subst h
-    have c := ((Step.same rfl rfl rfl rfl).trans (step_putLines env false _ placed ls hl e)).trans (Step.same rfl rfl rfl rfl)
+    have c := ((Step.same rfl rfl rfl).trans (step_putLines env false _ placed ls e)).trans (Step.same rfl rfl rfl)
     simpa only [List.nil_append, List.append_nil] using c
 
 set_option linter.unusedVariables false in
-theorem step_placeBoxedParagraph (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (st : St) (ls : List Line)
-    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : placeBoxedParagraph env ident fb fa k start st ls = .ok s) :
-    Step env st s (lineIds ls) [] := by
+theorem step_placeBoxedParagraph (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (st : St) (ls : List Line) (s : St) (h : placeBoxedParagraph env ident fb fa k start st ls = .ok s) :
+    Step st s (lineIds ls) [] := by
   match ls with
-  | [] => simp only [placeBoxedParagraph, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | [] => simp only [placeBoxedParagraph, Except.ok.injEq] at h; subst h; exact Step.refl _
   | first :: more =>
     rw [placeBoxedParagraph] at h
     dsimp only at h
@@ -3452,29 +3754,29 @@ theorem step_placeBoxedParagraph (env : Env) (ident : Nat) (fb fa : Int) (k : Ke
           · have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) ((first :: more).length, keepRank { k with all := false }, rank (addUnmet (.splitKept first.id) st))
                 ((first :: more).length, keepRank k, rank st) := by
               apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h1.1]
-            have b := step_placeBoxedParagraph env ident fb fa _ start _ (first :: more) hl s h
-            simpa using (step_addUnmet env st _).trans b
+            have b := step_placeBoxedParagraph env ident fb fa _ start _ (first :: more) s h
+            simpa using (step_addUnmet st _).trans b
           · rename_i h2
             have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) ((first :: more).length, keepRank k, rank (nextColumn env st))
                 ((first :: more).length, keepRank k, rank st) := by
               apply Prod.Lex.right; apply Prod.Lex.right
               exact I4_nextColumn_rank env st (Or.inl (by simpa using h2))
-            have b := step_placeBoxedParagraph env ident fb fa k start _ (first :: more) hl s h
+            have b := step_placeBoxedParagraph env ident fb fa k start _ (first :: more) s h
             simpa using (step_nextColumn env st).trans b
         · split at h
           · rename_i h3
             have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) ((first :: more).length, keepRank k, rank (nextColumn env st))
                 ((first :: more).length, keepRank k, rank st) := by
               apply Prod.Lex.right; apply Prod.Lex.right; exact I4_nextColumn_rank env st (Or.inl h3.2)
-            have b := step_placeBoxedParagraph env ident fb fa k start _ (first :: more) hl s h
+            have b := step_placeBoxedParagraph env ident fb fa k start _ (first :: more) s h
             simpa using (step_nextColumn env st).trans b
           · split at h
             · cases h
             · rename_i finished e
-              have a := (step_fit env st _).trans (step_putBoxPart env ident _ finished _ _ _ _ _ (lineOk_take _ hl) e)
+              have a := (step_fit env st _).trans (step_putBoxPart env ident _ finished _ _ _ _ _ e)
               split at h
               · rename_i h4
-                have b := step_placeBoxedParagraph env ident fb fa k false _ _ (lineOk_drop _ hl) s h
+                have b := step_placeBoxedParagraph env ident fb fa k false _ _ s h
                 have all := (a.trans (step_nextColumn env _)).trans b
                 rw [List.append_nil, List.nil_append, ← lineIds_append, List.take_append_drop] at all
                 exact all
@@ -3491,19 +3793,19 @@ decreasing_by
     | (apply Prod.Lex.left; try simp only [List.length_drop, List.length_cons]
        exact Nat.sub_lt (Nat.succ_pos _) (boxCount_pos _ _))
 
-theorem step_seal (env : Env) (o : BoxOpen) (st : St) : Step env st (seal o st) [] [] := by
+theorem step_seal (o : BoxOpen) (st : St) : Step st (seal o st) [] [] := by
   cases o with
-  | none => exact Step.refl env st
-  | some p => exact Step.same rfl rfl rfl rfl
+  | none => exact Step.refl st
+  | some p => exact Step.same rfl rfl rfl
 
 theorem step_reopen (env : Env) (ident : Nat) (fb fa : Int) (verse : List Line) (st : St) :
-    Step env st (reopen env ident fb fa verse st).1 [] [] := by
+    Step st (reopen env ident fb fa verse st).1 [] [] := by
   unfold reopen
   split
   · split
-    · exact Step.same rfl rfl rfl rfl
-    · exact Step.refl env st
-  · exact Step.refl env st
+    · exact Step.same rfl rfl rfl
+    · exact Step.refl st
+  · exact Step.refl st
 
 theorem join_nonempty (vs : List (List Line)) : (nonemptyVerses vs).join = vs.join := by
   induction vs with
@@ -3514,59 +3816,200 @@ theorem join_nonempty (vs : List (List Line)) : (nonemptyVerses vs).join = vs.jo
     | nil => exact ih
     | cons x xs => exact congrArg ((x :: xs) ++ ·) ih
 
+theorem step_putUnits (env : Env) (m : BoxMaps) (st s : St) (first : Bool) (vs : List (List Line))
+    (h : putUnits env m st first vs = .ok s) : Step st s (lineIds vs.join) [] := by
+  induction vs generalizing st first with
+  | nil => simp only [putUnits, Except.ok.injEq] at h; subst h; exact Step.refl _
+  | cons v vs ih =>
+    unfold putUnits at h
+    dsimp only at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have a := step_putLines env false _ s1 v e
+      have b := ih s1 false h
+      simpa [List.join, lineIds_append] using ((Step.same rfl rfl rfl).trans a).trans b
+
+theorem step_putStanzaPart (env : Env) (m : BoxMaps) (ident : Nat) (ready s : St) (origin b g a : Int)
+    (vs : List (List Line)) (short : List Unmet) (h : putStanzaPart env m ident ready origin b g a vs short = .ok s) :
+    Step ready s (lineIds vs.join) [] := by
+  unfold putStanzaPart at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    have c := ((Step.same rfl rfl rfl).trans (step_putUnits env m _ placed true vs e)).trans (Step.same rfl rfl rfl)
+    simpa only [List.nil_append, List.append_nil] using c
+
 set_option linter.unusedVariables false in
-theorem step_placeBoxedStanza (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (o : BoxOpen) (st : St)
-    (vs : List (List Line)) (hl : ∀ l ∈ vs.join, LineOk env l) (s : St)
-    (h : placeBoxedStanza env ident fb fa k start o st vs = .ok s) : Step env st s (lineIds vs.join) [] := by
+theorem step_placeBoxedStanza (env : Env) (ident : Nat) (fb fa : Int) (m : BoxMaps) (k : Keep) (start : Bool)
+    (relaxed : List Nat) (o : BoxOpen) (st : St) (vs : List (List Line)) (s : St)
+    (h : placeBoxedStanza env ident fb fa m k start relaxed o st vs = .ok s) : Step st s (lineIds vs.join) [] := by
   match vs with
   | [] =>
     simp only [placeBoxedStanza, Except.ok.injEq] at h; subst h
-    simpa [List.join, lineIds] using step_seal env o st
+    simpa [List.join, lineIds] using step_seal o st
   | v :: more =>
-    have hv : ∀ l ∈ v, LineOk env l := fun l m => hl l (by rw [List.join]; exact mem_append_left' _ m)
-    have hm : ∀ l ∈ more.join, LineOk env l := fun l m => hl l (by rw [List.join]; exact mem_append_right' _ m)
     rw [placeBoxedStanza] at h
     dsimp only at h
     split at h
     · rename_i h1
       have hne := h1.2
-      have b := step_placeBoxedStanza env ident fb fa k start none _ (v :: more) hl s h
-      simpa using ((step_seal env o st).trans (step_nextColumn env _)).trans b
+      have b := step_placeBoxedStanza env ident fb fa m k start relaxed none _ (v :: more) s h
+      simpa using ((step_seal o st).trans (step_nextColumn env _)).trans b
     · split at h
       · rename_i h2
-        have hk := h2.2.1
-        have b := step_placeBoxedStanza env ident fb fa _ start o _ (v :: more) hl s h
-        simpa using (step_addUnmet env st _).trans b
+        have hk := h2.2.2.1
+        have b := step_placeBoxedStanza env ident fb fa m _ start relaxed o _ (v :: more) s h
+        simpa using (step_addUnmet st _).trans b
       · split at h
+        · rename_i p hp
+          have hp' : relaxFor m relaxed v = some p := by
+            split at hp
+            · exact hp
+            · cases hp
+          have b := step_placeBoxedStanza env ident fb fa m k start (p :: relaxed) o _ (v :: more) s h
+          simpa using (step_addUnmet st _).trans b
         · split at h
-          · cases h
-          · rename_i placed e
-            have a := step_placeBoxedParagraph env ident fb fa _ true st v hv placed e
-            have b := step_placeBoxedStanza env ident fb fa k false _ _ more hm s h
-            simpa [List.join, lineIds_append] using (a.trans (step_reopen env ident fb fa v placed)).trans b
-        · rename_i h3
-          split at h
-          · cases h
-          · rename_i finished e
-            have a := (step_fit env st _).trans (step_putBoxPart env ident _ finished _ _ _ _ _ (lineOk_join hl _).1 e)
+          · split at h
+            · cases h
+            · rename_i placed e
+              have a := step_placeBoxedParagraph env ident fb fa _ true st v placed e
+              have b := step_placeBoxedStanza env ident fb fa m k false relaxed _ _ more s h
+              simpa [List.join, lineIds_append] using (a.trans (step_reopen env ident fb fa v placed)).trans b
+          · rename_i h3
             split at h
-            · have b := step_placeBoxedStanza env ident fb fa k false none _ _ (lineOk_join hl _).2 s h
-              have all := (a.trans (step_nextColumn env _)).trans b
-              simpa [join_take_drop] using all
-            · rename_i h4
-              injection h with h; subst h
-              rw [take_of_le _ (v :: more) ?_] at a
-              · simpa using a
-              · simp; omega
-termination_by (vs.length, keepRank k, rank st)
+            · cases h
+            · rename_i finished e
+              have a := (step_fit env st _).trans (step_putStanzaPart env m ident _ finished _ _ _ _ _ _ e)
+              split at h
+              · have b := step_placeBoxedStanza env ident fb fa m k false relaxed none _ _ s h
+                have all := (a.trans (step_nextColumn env _)).trans b
+                simpa [join_take_drop] using all
+              · rename_i h4
+                injection h with h; subst h
+                rw [take_of_le _ (v :: more) ?_] at a
+                · simpa using a
+                · simp; omega
+termination_by (vs.length, keepRank k, unrelaxed m relaxed vs, rank st)
 decreasing_by
   all_goals simp_wf
   all_goals first
-    | (apply Prod.Lex.right; apply Prod.Lex.right; exact rank_seal_lt env _ _ (by assumption))
+    | (apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; exact rank_seal_lt env _ _ (by assumption))
     | (apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, hk])
+    | (apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; exact unrelaxed_lt _ _ _ _ _ hp')
     | (apply Prod.Lex.left; omega)
     | (apply Prod.Lex.left; try simp only [List.length_drop, List.length_cons]
        exact Nat.sub_lt (Nat.succ_pos _) (stanzaBoxCount_pos (by assumption)))
+
+theorem join_singletons (ls : List Line) : (ls.map (fun l => [l])).join = ls := by
+  induction ls with
+  | nil => rfl
+  | cons l ls ih => simp [List.join, ih]
+
+theorem nonempty_head_none (vs : List (List Line)) (h : (nonemptyVerses vs).join.head? = none) : vs.join = [] := by
+  rw [← join_nonempty]
+  cases e : (nonemptyVerses vs).join with
+  | nil => rfl
+  | cons x xs => rw [e] at h; cases h
+
+/-- The units of a mixed box are the lines of its paragraphs and stanzas,
+    in order, and it holds no figures. -/
+theorem collectMixed_text : ∀ (body : List Flow) (p : Int) (gaps : List (Nat × Int)) (acc : List (List Line))
+    (g : List (Nat × Int)) (us : List (List Line)), collectMixed p gaps acc body = some (g, us) →
+    lineIds us.join = lineIds acc.reverse.join ++ sourceText body ∧ sourceFigs body = []
+  | [], _, gaps, acc, g, us, h => by
+    simp only [collectMixed, Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨_, h⟩ := h; subst h; simp [sourceText, sourceFigs]
+  | f :: rest, p, gaps, acc, g, us, h => by
+    cases f with
+    | space n =>
+      simp only [collectMixed] at h
+      obtain ⟨a, b⟩ := collectMixed_text rest _ _ _ g us h
+      simp [sourceText, sourceFigs, flowText, flowFigs, a, b]
+    | keepNext n =>
+      simp only [collectMixed] at h
+      obtain ⟨a, b⟩ := collectMixed_text rest _ _ _ g us h
+      simp [sourceText, sourceFigs, flowText, flowFigs, a, b]
+    | paragraph k ls =>
+      simp only [collectMixed] at h
+      split at h
+      · rename_i e
+        have z := nonempty_head_none _ e
+        rw [join_singletons] at z; subst z
+        obtain ⟨a, b⟩ := collectMixed_text rest _ _ _ g us h
+        refine ⟨?_, by simp [sourceFigs, flowFigs, b]⟩
+        rw [a]; simp [sourceText, flowText, lineIds]
+      · obtain ⟨a, b⟩ := collectMixed_text rest _ _ _ g us h
+        refine ⟨?_, by simp [sourceFigs, flowFigs, b]⟩
+        rw [a]
+        simp only [List.reverse_append, List.reverse_reverse, join_app, join_nonempty, join_singletons, lineIds_append,
+          sourceText, flowText, List.append_assoc]
+    | stanza k vs =>
+      simp only [collectMixed] at h
+      split at h
+      · rename_i e
+        have z := nonempty_head_none _ e
+        obtain ⟨a, b⟩ := collectMixed_text rest _ _ _ g us h
+        refine ⟨?_, by simp [sourceFigs, flowFigs, b]⟩
+        rw [a]; simp [sourceText, flowText, lineIds, z]
+      · obtain ⟨a, b⟩ := collectMixed_text rest _ _ _ g us h
+        refine ⟨?_, by simp [sourceFigs, flowFigs, b]⟩
+        rw [a]
+        simp only [List.reverse_append, List.reverse_reverse, join_app, join_nonempty, lineIds_append,
+          sourceText, flowText, List.append_assoc]
+    | _ => simp [collectMixed] at h
+
+/-- `placeFlow` one level below places each flow with its lines and figures. -/
+def InnerOk (inner : Inner) : Prop :=
+  ∀ env st f s, inner.flow env st f = .ok s → Step st s (flowText f) (flowFigs f)
+
+theorem step_placeFlows (inner : Inner) (hi : InnerOk inner) (env : Env) (st s : St) (body : List Flow)
+    (h : placeFlows inner env st body = .ok s) : Step st s (sourceText body) (sourceFigs body) := by
+  induction body generalizing st with
+  | nil => simp only [placeFlows, Except.ok.injEq] at h; subst h; simpa [sourceText, sourceFigs] using Step.refl st
+  | cons f fs ih =>
+    unfold placeFlows at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have a := hi env st f s1 e
+      have b := ih s1 h
+      simpa [sourceText, sourceFigs] using a.trans b
+
+theorem step_placeGeneric (inner : Inner) (hi : InnerOk inner) (env : Env) (st : St) (ident : Nat) (fb fa : Int)
+    (body : List Flow) (s : St) (h : placeGeneric inner env st ident fb fa body = .ok s) :
+    Step st s (sourceText body) (sourceFigs body) := by
+  unfold placeGeneric at h
+  split at h
+  · cases h
+  · dsimp only at h
+    split at h
+    · cases h
+    · rename_i placed e
+      injection h with h; subst h
+      have b := step_placeFlows inner hi env _ placed body e
+      have a : Step st { fit env st (genericMinimum env ident (bodyLines body)) with
+          used := (fit env st (genericMinimum env ident (bodyLines body))).used +
+            (genericExtra env ident fb fa (bodyLines body)).1 } [] [] :=
+        (step_fit env st _).trans (Step.same rfl rfl rfl)
+      simpa using (a.trans b).trans (Step.same rfl rfl rfl)
+
+theorem step_placeBox (inner : Inner) (hi : InnerOk inner) (env : Env) (st : St) (ident : Nat) (fb fa : Int)
+    (body : List Flow) (s : St) (h : placeBox inner env st ident fb fa body = .ok s) :
+    Step st s (sourceText body) (sourceFigs body) := by
+  unfold placeBox at h
+  split at h
+  · simpa [sourceText, flowText, sourceFigs, flowFigs] using step_placeBoxedParagraph env ident fb fa _ true st _ s h
+  · have c := step_placeBoxedStanza env ident fb fa _ _ true [] none st _ s h
+    rw [join_nonempty] at c
+    simpa [sourceText, flowText, sourceFigs, flowFigs] using c
+  · split at h
+    · rename_i gaps units e
+      obtain ⟨t, f⟩ := collectMixed_text body 0 [] [] gaps units e
+      have c := step_placeBoxedStanza env ident fb fa _ _ true [] none st units s h
+      rw [t] at c; rw [f]; simpa [lineIds] using c
+    · exact step_placeGeneric inner hi env st ident fb fa body s h
 
 theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
   | [], _, m => Or.inr m
@@ -3577,187 +4020,178 @@ theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b →
       | inl m => exact Or.inl (List.Mem.tail _ m)
       | inr m => exact Or.inr m
 
-def FlowOk (env : Env) (f : Flow) : Prop := ∀ l ∈ flowLines f, LineOk env l
+theorem step_adjustLines (env : Env) (n : Int) (st : St) : Step st (adjustLines env n st) [] [] :=
+  Step.same rfl rfl rfl
 
-theorem step_adjustLines (env : Env) (n : Int) (st : St) : Step env st (adjustLines env n st) [] [] :=
-  Step.same rfl rfl rfl rfl
-
-theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s : St)
-    (h : placeFlow env st f = .ok s) : Step env st s (flowText f) (flowFigs f) := by
+theorem step_placeFlow (inner : Inner) (hi : InnerOk inner) (env : Env) (st : St) (f : Flow) (s : St)
+    (h : placeFlow inner env st f = .ok s) : Step st s (flowText f) (flowFigs f) := by
   cases f with
-  | paragraph k ls => exact step_placeLines env k true st ls hf s h
-  | continued k ls => exact step_placeLines env k false st ls hf s h
-  | ruled r => exact step_placeRuled env st r [] hf s h
-  | space n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact Step.same rfl rfl rfl rfl
-  | blank n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact Step.same rfl rfl rfl rfl
-  | brk k => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_breakAt env k st
-  | start k => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_sectionStart env k st
-  | switchColumns c => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_switchColumns env c st
-  | restoreColumns => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_restoreColumns env st
-  | defTerm ls => exact step_placeLines env _ true st ls hf s h
-  | stanza k vs => exact step_placeStanza env k true st vs hf s h
-  | code c f k sp rows => exact step_placeCode env c f k sp true st rows s h
-  | wrapped i e ls => exact step_placeWrapped env st i e ls hf s h
-  | table i b header rows caption below => exact step_placeTable env st i b header rows caption below hf s h
-  | boxedParagraph i b a k ls => exact step_placeBoxedParagraph env i b a k true st ls hf s h
-  | boxedStanza i b a k vs =>
-    have c := step_placeBoxedStanza env i b a k true none st (nonemptyVerses vs) (by rw [join_nonempty]; exact hf) s h
-    rw [join_nonempty] at c; exact c
+  | paragraph k ls => simpa [flowText, flowFigs] using step_placeLines env k true st ls s h
+  | continued k ls => simpa [flowText, flowFigs] using step_placeLines env k false st ls s h
+  | ruled r => simpa [flowText, flowFigs] using step_placeRuled inner env st r [] s h
+  | space n =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using Step.same rfl rfl rfl
+  | blank n =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using Step.same rfl rfl rfl
+  | brk k =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_breakAt env k st
+  | start k =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_sectionStart env k st
+  | switchColumns c =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_switchColumns env c st
+  | restoreColumns =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_restoreColumns env st
+  | defTerm ls => simpa [flowText, flowFigs] using step_placeLines env _ true st ls s h
+  | stanza k vs => simpa [flowText, flowFigs] using step_placeStanza env k true st vs s h
+  | code c f k sp rows => simpa [flowText, flowFigs] using step_placeCode env c f k sp true st rows s h
+  | wrapped i e ls => simpa [flowText, flowFigs] using step_placeWrapped env st i e ls s h
+  | table i b header rows caption below =>
+    simpa [flowText, flowFigs] using step_placeTable env st i b header rows caption below s h
+  | boxed i b a body => simpa [flowText, flowFigs] using step_placeBox inner hi env st i b a body s h
   | heading recto extent ls =>
     simp only [placeFlow] at h
-    have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
+    have a : Step st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
       split
       · exact step_parityStart env _ st
-      · exact Step.refl env st
-    simpa [flowText] using a.trans (step_placeHeading env _ _ extent ls hf s h)
-  | adjustLines n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_adjustLines env n st
-  | noBreak => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ st
-  | keepNext n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ st
+      · exact Step.refl st
+    simpa [flowText, flowFigs] using a.trans (step_placeHeading env _ _ extent ls s h)
+  | adjustLines n =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_adjustLines env n st
+  | noBreak =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_waitForPrior _ _ st
+  | keepNext n =>
+    simp only [placeFlow, Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_waitForPrior _ _ st
   | noBreakLines n =>
     simp only [placeFlow] at h
     split at h
-    · injection h with h; subst h; exact Step.refl env st
-    · injection h with h; subst h; exact step_waitForPrior env _ _ st
+    · injection h with h; subst h; simpa [flowText, flowFigs] using Step.refl st
+    · injection h with h; subst h; simpa [flowText, flowFigs] using step_waitForPrior _ _ st
   | needLines n =>
     simp only [placeFlow, Except.ok.injEq] at h; subst h
-    have : Step env st (if env.capacity < (n : Int) * env.pagePitch then addUnmet (.needLines n) st else st) [] [] := by
+    have : Step st (if env.capacity < (n : Int) * env.pagePitch then addUnmet (.needLines n) st else st) [] [] := by
       split
-      · exact step_addUnmet env st _
-      · exact Step.refl env st
-    simpa using this.trans (step_judgeNeed env _ _)
+      · exact step_addUnmet st _
+      · exact Step.refl st
+    simpa [flowText, flowFigs] using this.trans (step_judgeNeed env _ _)
   | pageFigure i =>
     simp only [placeFlow] at h
     split at h
     · rename_i c
       injection h with h; subst h
-      simpa [flowText, flowLines, lineIds, flowFigs] using
-        (step_putPageFigureSlot env st env.capacity i c.1).trans (step_nextPage env _)
+      simpa [flowText, flowFigs] using
+        (step_putPageFigureSlot st env.capacity i c.1).trans (step_nextPage env _)
     · injection h with h; subst h
-      refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs, Waiting.id], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
-      intro d m
-      cases mem_append' m with
-      | inl m => exact g1 d m
-      | inr m => simp at m; subst m; trivial
+      exact ⟨by simp [text, flowText], by simp [figs, flowFigs, Waiting.id]⟩
   | figure i e =>
     simp only [placeFlow] at h
     split at h
     · cases h
-    · rename_i big
-      split at h
+    · split at h
       · injection h with h; subst h
-        refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs, Waiting.id], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
-        intro d m
-        cases mem_append' m with
-        | inl m => exact g1 d m
-        | inr m => simp at m; subst m; exact Int.not_lt.1 big
+        exact ⟨by simp [text, flowText], by simp [figs, flowFigs, Waiting.id]⟩
       · split at h
         · injection h with h; subst h
-          refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs, Waiting.id], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
-          intro d m
-          cases mem_append' m with
-          | inl m => exact g1 d m
-          | inr m => simp at m; subst m; exact Int.not_lt.1 big
+          exact ⟨by simp [text, flowText], by simp [figs, flowFigs, Waiting.id]⟩
         · rename_i nd _
           injection h with h; subst h
           have d0 : st.deferred = [] := Decidable.of_not_not nd
-          simpa [flowText, flowLines, lineIds, flowFigs] using (step_fit env st e).trans
-            (step_putFigureSlot env _ e i (fit_deferred env st e d0))
+          simpa [flowText, flowFigs] using (step_fit env st e).trans
+            (step_putFigureSlot _ e i (fit_deferred env st e d0))
 
 
 theorem step_beforeOf (env : Env) (st : St) (flow : Flow) (rest : List Flow) :
-    Step env st (beforeOf env st flow rest) [] [] := by
-  have a : Step env st (if st.blankActive ∧ occupies flow ∧ empty st = false ∧
+    Step st (beforeOf env st flow rest) [] [] := by
+  have a : Step st (if st.blankActive ∧ occupies flow ∧ empty st = false ∧
       room env st < min env.capacity (st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 (flow :: rest))
       then nextColumn env st else st) [] [] := by
     split
     · exact step_nextColumn env st
-    · exact Step.refl env st
+    · exact Step.refl st
   unfold beforeOf
   dsimp only
   split
   · exact a
-  · simpa using a.trans (Step.same rfl rfl rfl rfl)
+  · simpa using a.trans (Step.same rfl rfl rfl)
 
-theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf : FlowOk env flow) (s : St)
-    (h : placeBody env b flow rest = .ok s) : Step env b s (flowText flow) (flowFigs flow) := by
+theorem step_placeBody (inner : Inner) (hi : InnerOk inner) (env : Env) (b : St) (flow : Flow) (rest : List Flow) (s : St)
+    (h : placeBody inner env b flow rest = .ok s) : Step b s (flowText flow) (flowFigs flow) := by
   unfold placeBody at h
   cases flow with
   | paragraph k ls =>
     cases e : keepAhead rest with
-    | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
+    | none => simp only [e] at h; exact step_placeFlow inner hi env b _ s h
     | some p =>
       obtain ⟨l, f, later⟩ := p
-      simp only [e] at h; exact step_placeWithNext env k true b ls l f later hf s h
+      simp only [e] at h; simpa [flowText, flowFigs] using step_placeWithNext inner env k true b ls l f later s h
   | continued k ls =>
     cases e : keepAhead rest with
-    | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
+    | none => simp only [e] at h; exact step_placeFlow inner hi env b _ s h
     | some p =>
       obtain ⟨l, f, later⟩ := p
-      simp only [e] at h; exact step_placeWithNext env k false b ls l f later hf s h
-  | noBreak => simp only [Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ b
-  | keepNext n => simp only [Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ b
+      simp only [e] at h; simpa [flowText, flowFigs] using step_placeWithNext inner env k false b ls l f later s h
+  | noBreak => simp only [Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_waitForPrior _ _ b
+  | keepNext n => simp only [Except.ok.injEq] at h; subst h; simpa [flowText, flowFigs] using step_waitForPrior _ _ b
   | noBreakLines n =>
     simp only at h
     split at h
-    · injection h with h; subst h; exact step_waitForPrior env _ _ b
-    · exact step_placeFlow env b _ hf s h
-  | ruled r => exact step_placeRuledKeeping env b r rest hf s h
-  | figure i e => exact step_placeFlow env b _ hf s h
-  | pageFigure i => exact step_placeFlow env b _ hf s h
-  | space n => exact step_placeFlow env b _ hf s h
-  | blank n => exact step_placeFlow env b _ hf s h
-  | brk k => exact step_placeFlow env b _ hf s h
-  | needLines n => exact step_placeFlow env b _ hf s h
-  | adjustLines n => exact step_placeFlow env b _ hf s h
-  | start k => exact step_placeFlow env b _ hf s h
-  | switchColumns c => exact step_placeFlow env b _ hf s h
-  | restoreColumns => exact step_placeFlow env b _ hf s h
-  | code c f k sp rows => exact step_placeFlow env b _ hf s h
-  | wrapped i e ls => exact step_placeFlow env b _ hf s h
-  | table i bf header rows caption below => exact step_placeFlow env b _ hf s h
-  | boxedParagraph i bf a k ls => exact step_placeFlow env b _ hf s h
-  | boxedStanza i bf a k vs => exact step_placeFlow env b _ hf s h
+    · injection h with h; subst h; simpa [flowText, flowFigs] using step_waitForPrior _ _ b
+    · exact step_placeFlow inner hi env b _ s h
+  | ruled r => simpa [flowText, flowFigs] using step_placeRuledKeeping inner env b r rest s h
+  | figure i e => exact step_placeFlow inner hi env b _ s h
+  | pageFigure i => exact step_placeFlow inner hi env b _ s h
+  | space n => exact step_placeFlow inner hi env b _ s h
+  | blank n => exact step_placeFlow inner hi env b _ s h
+  | brk k => exact step_placeFlow inner hi env b _ s h
+  | needLines n => exact step_placeFlow inner hi env b _ s h
+  | adjustLines n => exact step_placeFlow inner hi env b _ s h
+  | start k => exact step_placeFlow inner hi env b _ s h
+  | switchColumns c => exact step_placeFlow inner hi env b _ s h
+  | restoreColumns => exact step_placeFlow inner hi env b _ s h
+  | code c f k sp rows => exact step_placeFlow inner hi env b _ s h
+  | wrapped i e ls => exact step_placeFlow inner hi env b _ s h
+  | table i bf header rows caption below => exact step_placeFlow inner hi env b _ s h
+  | boxed i bf a body => exact step_placeFlow inner hi env b _ s h
   | stanza k vs =>
     cases e : keepAhead rest with
-    | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
+    | none => simp only [e] at h; exact step_placeFlow inner hi env b _ s h
     | some p =>
       obtain ⟨l, f, later⟩ := p
-      simp only [e] at h; exact step_placeStanzaWithNext env k b vs l f later hf s h
+      simp only [e] at h; simpa [flowText, flowFigs] using step_placeStanzaWithNext inner env k b vs l f later s h
   | defTerm ls =>
-    simpa using (step_keepFollowing env false b _ ls rest).trans (step_placeLines env _ true _ ls hf s h)
+    simpa [flowText, flowFigs] using (step_keepFollowing inner env false b _ ls rest).trans (step_placeLines env _ true _ ls s h)
   | heading recto extent ls =>
-    have a : Step env b (if recto = true then parityStart env (fun p => p % 2 == 1) b
-        else keepFollowing env true b extent ls rest) [] [] := by
+    have a : Step b (if recto = true then parityStart env (fun p => p % 2 == 1) b
+        else keepFollowing inner env true b extent ls rest) [] [] := by
       split
       · exact step_parityStart env _ b
-      · exact step_keepFollowing env true b extent ls rest
-    simpa [flowText] using a.trans (step_placeHeading env _ _ extent ls hf s h)
+      · exact step_keepFollowing inner env true b extent ls rest
+    simpa [flowText, flowFigs] using a.trans (step_placeHeading env _ _ extent ls s h)
 
-theorem step_placeNext (env : Env) (st : St) (flow : Flow) (rest : List Flow) (hf : FlowOk env flow) (s : St)
-    (h : placeNext env st flow rest = .ok s) : Step env st s (flowText flow) (flowFigs flow) := by
+theorem step_placeNext (inner : Inner) (hi : InnerOk inner) (env : Env) (st : St) (flow : Flow) (rest : List Flow) (s : St)
+    (h : placeNext inner env st flow rest = .ok s) : Step st s (flowText flow) (flowFigs flow) := by
   unfold placeNext at h
   split at h
   · cases h
   · rename_i p e
     injection h with h; subst h
-    have a := (step_beforeOf env st flow rest).trans (step_placeBody env _ flow rest hf p e)
-    have c : Step env p (if occupies flow = true then checkWaits p else p) [] [] := by
+    have a := (step_beforeOf env st flow rest).trans (step_placeBody inner hi env _ flow rest p e)
+    have c : Step p (if occupies flow = true then checkWaits p else p) [] [] := by
       split
-      · exact step_checkWaits env p
-      · exact Step.refl env p
+      · exact step_checkWaits p
+      · exact Step.refl p
     simpa using a.trans c
 
-theorem step_placeAll (env : Env) (st : St) (flows : List Flow) (hf : ∀ f ∈ flows, FlowOk env f) (s : St)
-    (h : placeAll env st flows = .ok s) : Step env st s (sourceText flows) (sourceFigs flows) := by
+theorem step_placeAll (inner : Inner) (hi : InnerOk inner) (env : Env) (st : St) (flows : List Flow) (s : St)
+    (h : placeAll inner env st flows = .ok s) : Step st s (sourceText flows) (sourceFigs flows) := by
   induction flows generalizing st with
-  | nil => simp only [placeAll, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | nil => simp only [placeAll, Except.ok.injEq] at h; subst h; exact Step.refl _
   | cons f fs ih =>
     simp only [placeAll] at h
     split at h
     · cases h
     · rename_i p e
-      have a := step_placeNext env st f fs (hf f (List.mem_cons_self _ _)) p e
-      have b := ih p (fun x m => hf x (List.mem_cons_of_mem _ m)) h
+      have a := step_placeNext inner hi env st f fs p e
+      have b := ih p h
       simpa [sourceText, sourceFigs] using a.trans b
 
 
@@ -3777,59 +4211,47 @@ theorem mem_bind' {α β : Type} {g : α → List β} {x : α} {y : β} : ∀ {x
   | _ :: ys, .head _, my => by rw [List.cons_bind]; exact mem_append_left' _ my
   | z :: _, .tail _ m, my => by rw [List.cons_bind]; exact mem_append_right' (g z) (mem_bind' m my)
 
-theorem checkNotes_ok (env : Env) (flows : List Flow) (h : checkNotes env flows = none) :
-    ∀ f ∈ flows, FlowOk env f := by
-  unfold checkNotes at h
-  split at h
-  · split at h
-    · cases h
-    · rename_i fits
-      exact fun _ _ _ _ => Or.inr (Int.not_lt.1 fits)
-  · rename_i e
-    intro f m l ml
-    exact Or.inl (bind_nil (fun l => l.notes) e l (mem_bind' m ml))
-
-theorem drainOk_of_good (env : Env) (st : St) (hp : 0 < env.pagePitch) (g : Good env st) : drainOk env st = true := by
-  unfold drainOk
-  simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq]
-  constructor
-  · cases c : st.carry with
-    | nil => exact Or.inl rfl
-    | cons _ _ => exact Or.inr ⟨hp, g.2 (by rw [c]; intro h; cases h)⟩
-  · cases d : st.deferred with
-    | nil => trivial
-    | cons x _ =>
-      have := g.1 x (by rw [d]; exact List.mem_cons_self _ _)
-      cases x with
-      | figure _ e => simp only [decide_eq_true_eq]; exact this
-      | turned _ => trivial
-
-set_option linter.unusedVariables false in
-theorem drain_empty (env : Env) (hp : 0 < env.pagePitch) (st : St) (g : Good env st) :
-    (drainCarry env st).deferred = [] := by
-  rw [drainCarry]
-  split
-  · rename_i h
-    have dec := I4_drain_rank env st ⟨Or.inl h.1, h.2⟩
-    exact drain_empty env hp (nextColumn env st) ((step_nextColumn env st).2.2 g)
-  · rename_i h
-    have ok := drainOk_of_good env st hp g
-    have : (st.carry.isEmpty && st.deferred.isEmpty) = true := by
-      cases e : (st.carry.isEmpty && st.deferred.isEmpty)
-      · exact absurd ⟨e, ok⟩ h
-      · rfl
-    simp only [Bool.and_eq_true] at this
-    cases d : st.deferred with
-    | nil => rfl
-    | cons _ _ => rw [d] at this; cases this.2
-termination_by (waiting st, columnsLeft st)
-decreasing_by
-  all_goals simp_wf
-  all_goals assumption
+/-- `placeFlow` at every level places each flow with its lines and figures. -/
+theorem level_ok : ∀ n, InnerOk (level n)
+  | 0 => fun _ _ _ _ h => by simp [level] at h
+  | n + 1 => fun env st f s h => step_placeFlow (level n) (level_ok n) env st f s h
 
 /-- Invariant 4: the free placement is a total function; every column
     loop ends (`I4_nextColumn_rank`, `I4_fit_moved`, `I4_drain_rank`). -/
 theorem I4_paginate_ends (env : Env) (flows : List Flow) : ∃ r, paginate env flows = r := ⟨_, rfl⟩
+
+/-- What `paginate` places, from the first column to the last column closed. -/
+theorem paginate_step (env : Env) (flows : List Flow) (pages : List PageOut)
+    (h : paginate env flows = .ok pages) :
+    pagesText pages = sourceText flows ∧ pagesFigs pages = sourceFigs flows := by
+  unfold paginate at h
+  split at h
+  · cases h
+  · split at h
+    · cases h
+    · rename_i final e
+      split at h
+      · rename_i clean
+        have a := (step_placeAll _ (level_ok _) env _ flows final e).trans (step_drainCarry env final)
+        have d : (drainCarry env final).deferred = [] := by
+          cases c : (drainCarry env final).deferred with
+          | nil => rfl
+          | cons _ _ => have c1 := clean.1; rw [c] at c1; cases c1
+        have c := close_pages env (drainCarry env final)
+        have t : text (initial env) = [] := rfl
+        have f0 : figs (initial env) = [] := rfl
+        obtain ⟨a1, a2⟩ := a
+        rw [t, List.nil_append, List.append_nil] at a1
+        rw [f0, List.nil_append, List.append_nil] at a2
+        simp only [figs, d, List.map, List.append_nil] at a2
+        split at h
+        · rename_i r
+          injection h with h; subst h
+          rw [r] at c
+          exact ⟨by rw [← a1, ← c.1]; rfl, by rw [← a2, ← c.2]; rfl⟩
+        · injection h with h; subst h
+          exact ⟨by rw [c.1, a1], by rw [c.2, a2]⟩
+      · cases h
 
 /-- Invariant 5: the lines of the paragraphs, definition terms, stanzas,
     code blocks, ruled blocks, tables (a header repeated in a later column
@@ -3837,53 +4259,14 @@ theorem I4_paginate_ends (env : Env) (flows : List Flow) : ∃ r, paginate env f
     first line of each heading and ruled heading, and each wrapped figure
     before its lines, are placed once each, in the order of the manuscript. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) (pages : List PageOut)
-    (h : paginate env flows = .ok pages) : pagesText pages = sourceText flows := by
-  unfold paginate at h
-  split at h
-  · cases h
-  · rename_i hn
-    split at h
-    · cases h
-    · rename_i final e
-      dsimp only at h
-      have a := (step_placeAll env _ flows (checkNotes_ok env flows hn) final e).trans (step_drainCarry env final)
-      have c := close_pages env (drainCarry env final)
-      have t : text (initial env) = [] := rfl
-      have a1 := a.1
-      rw [t, List.nil_append, List.append_nil] at a1
-      split at h
-      · rename_i r
-        injection h with h; subst h
-        rw [r] at c; rw [← a1, ← c.1]; rfl
-      · injection h with h; subst h
-        rw [c.1, a1]
+    (h : paginate env flows = .ok pages) : pagesText pages = sourceText flows :=
+  (paginate_step env flows pages h).1
 
-/-- Invariant 5: the figures and the turned figures are placed once each,
-    in the order of the manuscript, for a page line pitch above 0. -/
-theorem I5_paginate_figures (env : Env) (hp : 0 < env.pagePitch) (flows : List Flow) (pages : List PageOut)
-    (h : paginate env flows = .ok pages) : pagesFigs pages = sourceFigs flows := by
-  unfold paginate at h
-  split at h
-  · cases h
-  · rename_i hn
-    split at h
-    · cases h
-    · rename_i final e
-      dsimp only at h
-      have a := (step_placeAll env _ flows (checkNotes_ok env flows hn) final e).trans (step_drainCarry env final)
-      have d := drain_empty env hp final ((step_placeAll env _ flows (checkNotes_ok env flows hn) final e).2.2
-        ⟨fun _ m => (by cases m), fun c => absurd rfl c⟩)
-      have c := close_pages env (drainCarry env final)
-      have f0 : figs (initial env) = [] := rfl
-      have fa := a.2.1
-      rw [f0, List.nil_append, List.append_nil] at fa
-      simp only [figs, d, List.map, List.append_nil] at fa
-      split at h
-      · rename_i r
-        injection h with h; subst h
-        rw [r] at c; rw [← fa, ← c.2]; rfl
-      · injection h with h; subst h
-        rw [c.2, fa]
+/-- Invariant 5: the figures and the turned figures, those in boxes among
+    them, are placed once each, in the order of the manuscript. -/
+theorem I5_paginate_figures (env : Env) (flows : List Flow) (pages : List PageOut)
+    (h : paginate env flows = .ok pages) : pagesFigs pages = sourceFigs flows :=
+  (paginate_step env flows pages h).2
 
 
 end PhysicalPagination

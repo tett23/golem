@@ -120,13 +120,13 @@ def breakOf : String → BreakKind
 
 def flowOf (s : String) : Flow :=
   match s.splitOn ":" with
-  | ["p", k, ls] => .paragraph (keepOf k) (linesOf ls)
+  | ["p", k, ls] => .paragraph (keepOf k) (linesOr ls)
   | ["c", k, ls] => .continued (keepOf k) (linesOf ls)
   | ["f", i, e] => .figure (nat! i) (int! e)
   | ["g", i, b, h, rs, c, bl] =>
     .table (nat! i) (int! b) (linesOr h) (if rs == "" then [] else (rs.splitOn "/").map linesOr) (linesOr c) (bl == "1")
-  | ["X", i, b, a, k, ls] => .boxedParagraph (nat! i) (int! b) (int! a) (keepOf k) (linesOr ls)
-  | ["Y", i, b, a, k, vs] => .boxedStanza (nat! i) (int! b) (int! a) (keepOf k) ((vs.splitOn "/").map linesOr)
+  | ["X", i, b, a, k, ls] => .boxed (nat! i) (int! b) (int! a) [.paragraph (keepOf k) (linesOr ls)]
+  | ["Y", i, b, a, k, vs] => .boxed (nat! i) (int! b) (int! a) [.stanza (keepOf k) ((vs.splitOn "/").map linesOr)]
   | ["w", i, e, ls] => .wrapped (nat! i) (int! e) (if ls == "" then [] else linesOf ls)
   | ["t", i] => .pageFigure (nat! i)
   | ["s", n] => .space (int! n)
@@ -149,6 +149,21 @@ def flowOf (s : String) : Flow :=
   | ["q", i, b, a, j, o, r, e, ls] =>
     .ruled ⟨nat! i, sideOf b, sideOf a, j == "1", int! o, defaultKeep, linesOf ls, some (r == "1", int! e)⟩
   | _ => panic! s!"flow {s}"
+
+/-- The flows of an input line: a box `O:id:before:after:n` holds the `n`
+    flows after it. -/
+partial def flowsOf : Nat → List String → List Flow × List String
+  | 0, ts => ([], ts)
+  | _ + 1, [] => ([], [])
+  | n + 1, t :: ts =>
+    let (f, rest) :=
+      match t.splitOn ":" with
+      | ["O", i, b, a, c] =>
+        let (body, rest) := flowsOf (nat! c) ts
+        (Flow.boxed (nat! i) (int! b) (int! a) body, rest)
+      | _ => (flowOf t, ts)
+    let (more, rest') := flowsOf n rest
+    (f :: more, rest')
 
 def slotToken : Int × Slot → String
   | (p, .line i) => s!"{p}:L{i}"
@@ -190,7 +205,7 @@ def failureToken : Failure → String
 def run (input : String) : List String :=
   match input.splitOn " " with
   | "in" :: cap :: sep :: cols :: flows =>
-    match paginate (boundaryEnv (int! cap) (int! sep) (nat! cols)) (flows.map flowOf) with
+    match paginate (boundaryEnv (int! cap) (int! sep) (nat! cols)) (flowsOf flows.length flows).1 with
     | .error e => [s!"out fail {failureToken e}"]
     | .ok pages => pages.map pageToken
   | _ => []
