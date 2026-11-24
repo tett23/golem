@@ -14,6 +14,7 @@ import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
@@ -1289,7 +1290,7 @@ given and a continued note of the lines given waiting, and a need.
 -}
 keepFrom :: Int -> Int -> [Int] -> Int -> Int -> (S.St, S.St)
 keepFrom cols c figs noteLen need =
-  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c
+  let env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c Set.empty
       st0 = S.putLine env (S.initialState env) (LineBox 0 [] [] [] 0)
       st = st0 {S.sDeferred = [FFigure (1000 + j) n [] [] | (j, n) <- zip [0 ..] figs], S.sPendingNotes = [(nid 900, 0, noteLen) | noteLen > 0]}
    in (st, S.keep env st (const need))
@@ -1309,7 +1310,7 @@ keepTests =
           noteLen <- [0 .. 2],
           need <- [1 .. c + 1],
           let (st, r) = keepFrom cols c figs noteLen need
-              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c
+              env = S.Env maxBound 1 (ColumnSet cols 0 0 0) KeepColumn Nothing c Set.empty
               fitsOrEmpty = need <= S.free env r || S.isEmpty r
               advanced = (S.sPage r - S.sPage st) * cols + S.sColumn r - S.sColumn st
         ],
