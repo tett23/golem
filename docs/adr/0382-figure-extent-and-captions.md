@@ -1,6 +1,6 @@
 # ADR 0382: 図版のページ範囲、回り込み、キャプションを指定する
 
-Status: accepted-pending
+Status: superseded-pending [{"part":null,"by":[],"kind":"note","note":"パスの型は、パスとボックスモデルを決めた ADR で決めた。図版の輪郭の書き方と輪郭に沿う回り込みは別の ADR で決める"}]
 
 ## 文脈
 

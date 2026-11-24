@@ -1,6 +1,6 @@
 # ADR 0001: XHTML と CSS の出力
 
-Status: superseded [{"by":["docs/golem-driver/adr/0026-chapter-end-notes.md"],"part":"注の本文をまとめる場所と一覧の見出し"}]
+Status: superseded [{"by":["docs/golem-driver/adr/0026-chapter-end-notes.md"],"part":"注の本文をまとめる場所と一覧の見出し"},{"part":"入力と出力","by":["docs/adr/0432-write-the-html-target-in-the-html-syntax.md"],"kind":"replace"},{"part":"テスト設計の、すべての golden で整形式の XML かを確かめる項目","by":["docs/adr/0432-write-the-html-target-in-the-html-syntax.md"],"kind":"replace"}]
 
 ## 文脈
 
