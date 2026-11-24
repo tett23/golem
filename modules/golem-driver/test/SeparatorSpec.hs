@@ -149,3 +149,43 @@ visibleSeparatorTests =
            map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 15]]
        | mode <- ["grid", "free"]
        ]
+    -- a paragraph of three lines, which the widow and orphan rules keep whole
+    <> [ testCase ("root ADR 0398 I7: a separator hold goes with what a no-break keeps after the next block in " <> T.unpack mode) $ do
+           (_, layout) <- layoutOk (heldStyle mode 5 "") ("前。\n---\n中。\n@no-page-break\n" <> threeLines <> "\n") []
+           [(diagCode d, spanStart (diagSpan d)) | d <- plNotices layout] @?= []
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 1, 2, 3, 4]]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold goes with what a keep-with-next keeps after the next block in " <> T.unpack mode) $ do
+           (_, layout) <- layoutOk (heldStyle mode 5 leadStyle) ("前。\n---\n@style lead\n中。\n\n" <> threeLines <> "\n") []
+           [(diagCode d, spanStart (diagSpan d)) | d <- plNotices layout] @?= []
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 1, 2, 3, 4]]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold stays with the next block when what the no-break keeps fits no column with it in " <> T.unpack mode) $ do
+           (_, layout) <- layoutOk (heldStyle mode 4 "") ("前。\n---\n中。\n@no-page-break\n" <> threeLines <> "\n") []
+           -- only the no-break written is reported, at its position
+           [(diagCode d, spanStart (diagSpan d)) | d <- plNotices layout] @?= [(DiagnosticCode "G07037", 18)]
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 1], [0, 1, 2]]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold stays with the next block when what the keep-with-next keeps fits no column with it in " <> T.unpack mode) $ do
+           (_, layout) <- layoutOk (heldStyle mode 4 leadStyle) ("前。\n---\n@style lead\n中。\n\n" <> threeLines <> "\n") []
+           [(diagCode d, spanStart (diagSpan d)) | d <- plNotices layout] @?= [(DiagnosticCode "G07111", leadAt)]
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 1], [0, 1, 2]]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold before a no-break that no empty column fits is an error in " <> T.unpack mode) $ do
+           (errors, result) <- buildMiniErrors fakeProvider True (heldStyle mode 2 "" <> "space-after = 1\n") "---\n中。\n@no-page-break\n後。\n" []
+           [(diagCode d, spanStart (diagSpan d)) | d <- errors] @?= [(DiagnosticCode "G07134", 0)]
+           assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
+       | mode <- ["grid", "free"]
+       ]
+  where
+    threeLines = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひ。"
+    leadStyle = "\n[paragraph-styles.lead]\nkeep-with-next = 1\n"
+    -- the paragraph of the style lead
+    leadAt = 23
+    heldStyle mode lines' extra =
+      let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" ("lines = " <> T.pack (show (lines' :: Int))) horizontalStyle)
+       in replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> extra <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"

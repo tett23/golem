@@ -3,6 +3,7 @@ module PhysicalPaginateSpec (physicalPaginateTests) where
 import Control.Monad (forM_)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (codeGeometry)
 import Golem.Layout.Paginate
@@ -24,7 +25,7 @@ longNoteLine :: Int -> LineBox
 longNoteLine i = LineBox i [NoteBody (NoteId span0 0) 3] [] [] 0
 
 settings :: PhysicalSettings
-settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing
+settings = PhysicalSettings 16 10 42 42 0 (ColumnSet 1 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 0) 0 0
