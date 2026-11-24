@@ -88,6 +88,7 @@ paginateTests =
       testGroup "the index columns on a page of adjusted lines (root ADR 0441)" indexOnAdjustedPageTests,
       testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
+      testGroup "the rule after of a block the next block does not join stays in the column (golem-driver ADR 0027, root ADR 0352 I3)" joinedRuleTests,
       testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
       testGroup "the points the invariants did not decide (docs/adr/0206)" undecidedPointTests,
       testGroup "a heading sent on is checked again after the figures sent on (golem-layout ADR 0023)" keepAfterFiguresTests,
@@ -1113,6 +1114,92 @@ ruledTests =
       gridLines ps @?= [[0, 1, 2]]
       map poRules ps @?= [[PlacedRule 0 False (2 * 17 * 65536 + 10 * 65536 + 5 * 65536)]]
   ]
+
+{- | The grid of the boundary inputs of root ADR 0352: a pitch of 10 sp and
+an em box of 8 sp; a rule of 12 sp without spaces takes 1 grid line inside
+a column, 2 at its start or its end and 3 shared by two blocks.
+-}
+smallGrid :: RuleGrid
+smallGrid = RuleGrid 10 8
+
+{- | The rule of so many sp of a block of the small grid; the rules of the
+blocks of id 200 or more may go out of the column by 20 sp
+(keep-in-column = false).
+-}
+smallSide :: Sp -> Int -> RuleSide
+smallSide w i = RuleSide 0 0 w False (if i >= 200 then Just 20 else Nothing)
+
+-- | A block of the small grid: the weight of its rules, id, rule before, rule after, whether it joins the block before, body.
+smallRuled :: Sp -> Int -> Bool -> Bool -> Bool -> RuledBody -> Flow
+smallRuled w i b a j = FRuled i (smallSide w i <$ guardB b) (smallSide w i <$ guardB a) j smallGrid 0
+  where
+    guardB x = if x then Just () else Nothing
+
+{- | The rules of a page of the small grid that are not in its column: a
+rule of keep-in-column = true starts at or after the start of the column
+and its weight ends at or before the end of the em box of the last grid
+line above the lines of the notes of the page. A rule of keep-in-column =
+false may go 20 sp further out, but not into the notes.
+-}
+rulesOutOfColumn :: Sp -> Int -> PageOut -> [PlacedRule]
+rulesOutOfColumn w c p =
+  let noteLines = sum [n | (_, _, n) <- poFootnotes p]
+      end = fromIntegral (c - noteLines - 1) * 10 + 8
+      room r = if prId r >= 200 && noteLines == 0 then 20 else 0
+   in [r | r <- poRules p, prAt r < negate (room r) || prAt r + w > end + room r]
+
+{- | Golem-driver ADR 0027: two rules share an area only when the block
+after goes on in the same column (「隣り合う罫線」); otherwise the rule
+after is the first block's own, its block is not split and keeps the rule
+inside the column (keep-in-column = true), going whole to the next
+column, or broken without rules when an empty column cannot hold it
+(golem-driver ADR 0035). Root ADR 0352 I3: one column's placement keeps
+these rules for any capacity.
+-}
+joinedRuleTests :: [TestTree]
+joinedRuleTests =
+  [ testCase "I3: the boundary input of root ADR 0352: the first block that cannot share is broken without rules, not ruled out of the column" $ do
+      -- capacity 3: the first block alone takes 2 + 1 + 2 lines, more than an empty column
+      let ps = paginate 1 3 [smallRuled 12 100 True True True (RuledLines defaultKeep (lines' 0 1)), smallRuled 12 101 True True True (RuledLines defaultKeep (lines' 10 1)), FParagraph defaultKeep (lines' 20 1)]
+      concatMap (rulesOutOfColumn 12 3) ps @?= []
+      map poSlots ps @?= [[(0, SLine 0)], [(0, SLine 10), (1, SLine 20)]]
+      map poRules ps @?= [[], []],
+    testCase "I3: the first block whose own rule after does not fit the room goes whole to the next column" $ do
+      -- capacity 4, two lines before: the block of one line and its rule after at the end take 3 lines, 2 are left
+      let ps = paginate 1 4 [FParagraph defaultKeep (lines' 0 2), smallRuled 12 100 False True False (RuledLines defaultKeep (lines' 10 1)), smallRuled 12 101 True True True (RuledLines defaultKeep (lines' 20 1))]
+      concatMap (rulesOutOfColumn 12 4) ps @?= []
+      take 2 (map poSlots ps) @?= [[(0, SLine 0), (1, SLine 1)], [(0, SLine 10)]]
+      take 2 (map poRules ps) @?= [[], [PlacedRule 100 False 8]],
+    testCase "I3: the rules of two ruled blocks in a row lie in their columns and above the notes, joined or not" $
+      sequence_
+        [ assertBool (show (c, w, map showFlow flows, [(poNumber p, poRules p) | p <- ps])) (all (null . rulesOutOfColumn w c) ps)
+        | c <- [2 .. 6],
+          lead <- [[], [FParagraph defaultKeep (lines' 0 1)], [FParagraph defaultKeep (lines' 0 2)], [FParagraph defaultKeep [noted 0 1]], [FParagraph defaultKeep [noted 0 2, LineBox 1 [] [] [] 0]]],
+          b1 <- [False, True],
+          n <- [1 .. 3],
+          a2 <- [False, True],
+          second <- [RuledLines defaultKeep (lines' 20 1), RuledLines defaultKeep (lines' 20 2), RuledLines defaultKeep (lines' 20 3), RuledHeading False 1 (lines' 20 1)],
+          i <- [100, 200],
+          -- rule areas inside a column, at its start or end and shared: 0, 1, 1; 1, 2, 3; 2, 3, 5 grid lines
+          w <- [2, 12, 22],
+          third <- [[], [smallRuled w (i + 2) True True True (RuledLines defaultKeep (lines' 30 1))]],
+          k <- [1, 2],
+          let flows = lead <> [smallRuled w i b1 True False (RuledLines defaultKeep (lines' 10 n)), smallRuled w (i + 1) True a2 True second] <> third <> [FParagraph defaultKeep (lines' 40 k)]
+              ps = paginate 1 c flows
+        ],
+    testCase "I3: two blocks that fit one column still share one area" $ do
+      let ps = paginate 1 8 [smallRuled 12 100 False True False (RuledLines defaultKeep (lines' 0 1)), smallRuled 12 101 True False True (RuledLines defaultKeep (lines' 10 1))]
+      map poSlots ps @?= [[(0, SLine 0), (4, SLine 10)]]
+      map (map prId . poRules) ps @?= [[100, 101]]
+  ]
+  where
+    showFlow = \case
+      FRuled {frId = i, frBefore = b, frAfter = a, frJoined = j, frBody = body} -> "R" <> show i <> ":" <> concatMap (\x -> if x then "1" else "0") [isJust b, isJust a, j] <> ":" <> either' body
+      FParagraph _ ls -> "P" <> show (map lbId ls) <> show (sum [m | l <- ls, NoteBody _ m <- lbNotes l])
+      _ -> "?"
+    either' = \case
+      RuledLines _ ls -> "L" <> show (length ls)
+      RuledHeading _ m _ -> "H" <> show m
 
 -- | The flows of n lines of each kind a heading keeps the first part of, numbered from 30.
 splittable :: Int -> [(String, Flow)]
