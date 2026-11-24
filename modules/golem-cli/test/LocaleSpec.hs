@@ -29,7 +29,7 @@ localeTests =
   testGroup
     "the locale does not change the output (docs/adr/0002-determinism.md)"
     [ sameEverywhere "golem build --target html --target text writes the same files" projectFiles ["build", "--target", "html", "--target", "text"] $ \r ->
-        assertJapanese "build/html/a.xhtml" (lookup "build/html/a.xhtml" (rFiles r)),
+        assertJapanese "build/html/a.html" (lookup "build/html/a.html" (rFiles r)),
       sameEverywhere "golem check --format json writes the same JSON" syntaxErrorFiles ["check", "--format", "json"] $ \r ->
         assertJapanese "stderr" (Just (rErr r)),
       sameEverywhere "golem check writes the same diagnostics and hint" syntaxErrorFiles ["check"] $ \r ->

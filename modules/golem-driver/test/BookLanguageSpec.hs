@@ -144,15 +144,15 @@ bookLanguageTests =
         texts ja @?= [word]
         en <- linesIn "fr" (withList "en") [("a.gm", word <> "\n")]
         texts en @?= [word],
-      testCase "F7: the HTML, the EPUB and the plain text of a book of fr are the bytes before docs/adr ADR 0276" $ do
+      testCase "F7: the EPUB and the plain text of a book of fr are the bytes before docs/adr ADR 0276, the HTML those of root ADR 0432" $ do
         html <- webDigests "fr" TargetHtml
         epub <- webDigests "fr" TargetEpub
         txt <- webDigests "fr" TargetText
         html
-          @?= [ ("/build/html/chapters/01.xhtml", "3d23f790f9eaafb98b8c4d08cef9b8a0d4bf7e19bf7dce02dbcdc88057f20981"),
-                ("/build/html/chapters/02.xhtml", "fd2f8c139b35404f882ba78a6c6b7fec3b0ab25a775854094c74ed8a97d0be43"),
-                ("/build/html/front.xhtml", "2ef2a685a52ce79fda2f11c003970101dbbadc156a825d81c9aaae98025f1959"),
-                ("/build/html/index.xhtml", "e47c4d4a58811c0318da4a766c453badccd836ad606c0b518807c1ab107566a6"),
+          @?= [ ("/build/html/chapters/01.html", "3004e74555dacd1588f71b0ac5ab0c81c22f4da0a014ae154dac6be2f41691ff"),
+                ("/build/html/chapters/02.html", "9f129dc35fdbcea1b756b9d7ea3b3b8a1cebdb6e62e02ba57b9900bab6c26d86"),
+                ("/build/html/front.html", "ab31650c0aff2b663f55b7d85c7fc60c1935504171043bf1040b72362cd4e727"),
+                ("/build/html/index.html", "68bceec6fb1a7f67f8220cf4a21807d18c492372cbf420cdc96895c8baca8e70"),
                 ("/build/html/style.css", "3360b21aaa4acb000f05be9fb92cac49ef48b6277ee0eeb9e7a81115a173bb00")
               ]
         epub

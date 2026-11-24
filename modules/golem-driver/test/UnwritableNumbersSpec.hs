@@ -29,7 +29,7 @@ buildFor targets manifest style files = withSystemTempDirectory "golem-unwritabl
   writeFiles tmp (bodyFontFiles style)
   writeTexts tmp files
   r <- build (defaultOptions tmp) {optTargets = Just targets, optFiles = diskFiles tmp, optFonts = fakeProvider}
-  pure (brDiagnostics r, brSources r, [p | p <- brWritten r, any (`isSuffixOf` p) [".pdf", ".html", ".xhtml", ".txt", ".epub", ".css"]])
+  pure (brDiagnostics r, brSources r, [p | p <- brWritten r, any (`isSuffixOf` p) [".pdf", ".html", ".txt", ".epub", ".css"]])
 
 -- | The book of the ADR: ㊿, then 51, its eight sections and a chapter of @number 0.
 headingsStyle :: BS.ByteString

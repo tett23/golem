@@ -3,6 +3,7 @@ module Main (main) where
 import BoxSpec (boxTests)
 import CcittSpec (ccittTests)
 import FigureColorSpec (figureColorTests)
+import FitFigureSpec (fitFigureTests)
 import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
@@ -35,6 +36,7 @@ tests =
     [ pdfDctTests,
       testGroup "the CCITTFaxDecode filter (root ADR 0425)" ccittTests,
       figureColorTests,
+      testGroup "the size of a figure fitted to the column (root ADR 0440)" fitFigureTests,
       svgColorTests,
       testGroup "PDF figure colors" pdfColorTests,
       testGroup "PDF figure colour range" pdfColorRangeTests,

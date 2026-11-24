@@ -383,6 +383,29 @@ carryInto cfg st
           extent = physicalSeparator cfg + fromIntegral (sum [n | (_, _, n) <- shown]) * physicalPagePitch cfg
        in st {psNotes = shown, psCarry = remaining, psNotesUsed = psNotesUsed st + (if null shown then 0 else extent)}
 
+{- | The continued notes take the room that @page-lines has added to the
+column, in their order, before any later note, leaving nothing for the
+text, as 'carryInto' (root ADR 0444). What does not fit goes on.
+-}
+drainCarried :: PhysicalSettings -> PhysicalState -> PhysicalState
+drainCarried cfg st
+  | null (psCarry st) || null shown = st
+  | otherwise =
+      st
+        { psNotes = foldl' joinPart (psNotes st) shown,
+          psCarry = remaining,
+          psNotesUsed = psNotesUsed st + separator + fromIntegral (sum [n | (_, _, n) <- shown]) * physicalPagePitch cfg
+        }
+  where
+    separator = if psNotesUsed st == 0 then physicalSeparator cfg else 0
+    available = room cfg st - separator
+    count = max 0 (fromInteger (unSp available `div` unSp (physicalPagePitch cfg)))
+    (shown, remaining) = splitCarried count (psCarry st)
+    -- a part after the part before it of the same note joins it
+    joinPart parts part@(i, from, len) = case reverse parts of
+      (j, from', len') : before | j == i && from' + len' == from -> reverse before <> [(j, from', len' + len)]
+      _ -> parts <> [part]
+
 splitCarried :: Int -> [(NoteId, Int, Int)] -> ([(NoteId, Int, Int)], [(NoteId, Int, Int)])
 splitCarried _ [] = ([], [])
 splitCarried room' allNotes@((ident, offset, count) : rest)
@@ -970,7 +993,8 @@ placeFlow cfg st = \case
           | usedLength > faceLength = AdjustLinesPlaced
           | otherwise = AdjustOneLine
         limited = [UnmetAdjust span' (fromInteger chosen) limitReason | chosen /= wanted]
-     in Right st {psAdjustment = fromInteger chosen * physicalPagePitch cfg, psUnmet = psUnmet st <> limited}
+     in -- the continued notes take the room added first (root ADR 0444)
+        Right (drainCarried cfg st {psAdjustment = fromInteger chosen * physicalPagePitch cfg, psUnmet = psUnmet st <> limited})
   FNoBreak span' -> Right (waitForPrior (UnmetNoBreak span') (1, False) st)
   FNoBreakLines _ n | n <= 0 -> Right st
   FNoBreakLines span' _ -> Right (waitForPrior (UnmetNoBreak span') (1, False) st)

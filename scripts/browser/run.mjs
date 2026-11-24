@@ -16,7 +16,7 @@
 // BROWSER_VERSION_FILE, the browserVersion of the WebDriver session of
 // Safari is written there as soon as the session is made. With
 // GITHUB_STEP_SUMMARY, the check svg writes its measures there too.
-import { appendFile, cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, appendFile, cp, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import process from 'node:process';
@@ -29,12 +29,28 @@ import { HARNESS, SAFARI, svgText } from './svg-text.mjs';
 // @font-face of style.css (scripts/browser/fixtures/horizontal/style.toml).
 const CODE_FAMILY = 'golem-code-latin';
 
-async function xhtmlUnder(dir) {
+// The pages of the HTML target are .html, which serve.mjs gives as text/html
+// so that the browser reads them as HTML (root ADR 0432). The artifacts of
+// main the checks take can come from a golem before that ADR, whose pages are
+// .xhtml; those pages are taken as they are.
+const PAGE = /\.x?html$/;
+
+async function pagesUnder(dir) {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true, recursive: true })) {
-    if (e.isFile() && e.name.endsWith('.xhtml')) out.push(join(e.parentPath, e.name));
+    if (e.isFile() && PAGE.test(e.name)) out.push(join(e.parentPath, e.name));
   }
   return out.sort();
+}
+
+// The page NAME of the fixtures: NAME.html, or NAME.xhtml when there is no NAME.html.
+async function pageOf(inputs, name) {
+  try {
+    await access(join(inputs, `${name}.html`));
+    return `${name}.html`;
+  } catch {
+    return `${name}.xhtml`;
+  }
 }
 
 async function report(name, failures) {
@@ -46,19 +62,22 @@ async function report(name, failures) {
 async function htmlChecks(page, inputs) {
   const server = await serve(inputs);
   const u = (p) => `${server.url}/${p}`;
+  const horizontal = await pageOf(inputs, 'horizontal/book');
+  const vertical = await pageOf(inputs, 'vertical/book');
+  const figures = await pageOf(inputs, 'figures/figures');
   try {
     const results = [];
-    results.push(await report('selection and copy (I1)', await html.selection(page, u('horizontal/book.xhtml'))));
-    results.push(await report('pre and code', await html.preCode(page, u('horizontal/book.xhtml'), CODE_FAMILY)));
-    results.push(await report('the vertical dash', await html.verticalDash(page, u('vertical/book.xhtml'), 'p.ps-dash')));
-    results.push(await report('kenten', await html.kenten(page, u('horizontal/book.xhtml'))));
-    results.push(await report('paragraph rules, horizontal', await html.paragraphRules(page, u('horizontal/book.xhtml'))));
-    results.push(await report('paragraph rules, vertical', await html.paragraphRules(page, u('vertical/book.xhtml'))));
-    results.push(await report('boxes of paragraphs, horizontal', await html.boxes(page, u('horizontal/book.xhtml'))));
-    results.push(await report('boxes of paragraphs, vertical', await html.boxes(page, u('vertical/book.xhtml'))));
-    results.push(await report('tRNS (I3)', await html.trns(page, u('figures/figures.xhtml'))));
+    results.push(await report('selection and copy (I1)', await html.selection(page, u(horizontal))));
+    results.push(await report('pre and code', await html.preCode(page, u(horizontal), CODE_FAMILY)));
+    results.push(await report('the vertical dash', await html.verticalDash(page, u(vertical), 'p.ps-dash')));
+    results.push(await report('kenten', await html.kenten(page, u(horizontal))));
+    results.push(await report('paragraph rules, horizontal', await html.paragraphRules(page, u(horizontal))));
+    results.push(await report('paragraph rules, vertical', await html.paragraphRules(page, u(vertical))));
+    results.push(await report('boxes of paragraphs, horizontal', await html.boxes(page, u(horizontal))));
+    results.push(await report('boxes of paragraphs, vertical', await html.boxes(page, u(vertical))));
+    results.push(await report('tRNS (I3)', await html.trns(page, u(figures))));
     const manuals = [];
-    for (const m of ['manual/html', 'manual-dev/html']) for (const f of await xhtmlUnder(join(inputs, m))) manuals.push(u(relative(inputs, f).split('\\').join('/')));
+    for (const m of ['manual/html', 'manual-dev/html']) for (const f of await pagesUnder(join(inputs, m))) manuals.push(u(relative(inputs, f).split('\\').join('/')));
     if (manuals.length === 0) results.push(await report('the manuals (I2)', ['no page of the manuals']));
     else results.push(await report(`the ${manuals.length} pages of the manuals (I2)`, await html.pages(page, manuals)));
     return results.every(Boolean);
