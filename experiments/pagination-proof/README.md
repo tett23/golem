@@ -609,10 +609,11 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 `Separator.lean` は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りを扱う golem-typeset の四つの関数を、`Whole.lean` の `Flow` の上に写したものである。
 `space` は、`blocks` の局所関数 `spaceSeparators`（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:2484`）の `go` を写す。
 この関数は、可視の区切りの後に 1 行の `keep-with-next` を足し、区切りとの境界の行アキを一つのアキに置き換える。
+足す `keep-with-next` は区切りの位置を持つ（`Flow.hs:2525`）。
 `holdNeeds` は、`space` の後に働く `holdSeparatorNeeds`（`Flow.hs:2451`）を写す。
 この関数は、区切りの保持に `@need-lines` があると、保持の最初の区切りの前に `@need-lines` を一つ足す。
 足す `@need-lines` の行数は、保持の中の各 `@need-lines` について、保持の前の行アキと保持の中でそれより前の行数に、その行数を足したものの最大で、段の行数を超えない。
-`reported` は、`unmetWarnings`（`Flow.hs:1011`）が区切りの位置の満たせなかった `@need-lines` を報告しない処理（`Flow.hs:1022`）を写す。
+`reported` は、`unmetWarnings`（`Flow.hs:1011`）が区切りの位置の満たせなかった `@need-lines` と `keep-with-next` を報告しない処理（`Flow.hs:1022`、`Flow.hs:1029`）を写す。
 `Whole.lean` の `Unmet` は位置を持たないので、`reported` は位置を `Unmet` と組にして受け取る。
 `holdErrors` は、`separatorHoldErrors`（`Flow.hs:793`）を写す。
 この関数は、組んだページを読み、区切りの連続と後続ブロックの最初の行が一つの段にない連続ごとに G07134 を返す。
@@ -626,6 +627,17 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 `separatorHoldErrors` は、`USection` と `UColumns` で連続を切り、`UGap`、`UBlank`、`UKeepNext`、`UPageControl` を通し、ほかの単位で連続を終える（`Flow.hs:811`〜`:822`）。
 モデルでは、`USection` と `UColumns` を `reset`、`UPageControl` を `pass`、ほかを `block` の役とする。
 定理はこれらの引数のどの選び方でも成り立つ。
+
+区切りの保持の位置は、二つの改ページのモデルに `Env` の引数 `held` として渡す。
+golem-typeset は可視の区切りの位置の集合（`separatorSpans`、`Flow.hs:826`）を golem-layout の `paginateHeld` と `PhysicalSettings` の `physicalHeld` に渡す（`Flow.hs:832`）。
+モデルでは、位置を行の id で表す。
+`Whole.lean` と `Physical.lean` の `keepNext` のフローと満たせなかった `keepNext` は位置の id を持ち、`space` は区切りの後の `keep-with-next` に区切りの行の id を付ける（`keepOf`、`holdOf`）。
+`heldHere`（`modules/golem-layout/src/Golem/Layout/Paginate/State.hs:179` と `Paginate/Physical.hs:879`）は、`held` に入る位置の `keep-with-next` が今の段で待っているかを返す。
+格子モードの `placeKept`（`Paginate.hs:441`）と自由な配置の `afterFront` と `placeStanzaWithNext`（`Paginate/Physical.hs:856`、`:870`）は、保持が待つ段から後続のブロックを自分の指定のために送らず、空の段からと同じに置く。
+格子モードでは、`Boundary.lean` が `Decide.hs` の `holds`（`Decide.hs:134`）と `chainedHeld`（`Decide.hs:196`）を写す。
+保持の後のブロックの全体の後に `@no-page-break` が続くと、`keptNeed` はその `@no-page-break` が保つ後の最初の部分も区切りに求める。
+`held` は `Env` の引数なので、`Whole.lean`、`Physical.lean`、`Separator.lean` の定理は `held` のどの値でも成り立つ。
+`Boundary.lean` と `PhysicalBoundary.lean` は `held` を空にし、`SeparatorBoundary.lean` は単位の可視の区切りの行の id を渡す。
 
 不変条件 4 と 5 は、`Whole.lean` の定理をそのまま当てて導いた。
 `separatorFlows` は段の行数を引数に取り、定理では `env.capacity` を渡す。
@@ -667,7 +679,7 @@ G07134 は、`Physical.lean` のページの上で同じ規則（`Flow.hs:793`�
 `I3_separator_error_iff` は、ある連続で G07134 を返すのは、連続の区切りの行と後続ブロックの最初の行のうち、置いた二つが異なる段にあるときに限ることを示す。
 `I3_separator_error_single` は、区切り一つと、連続を通す単位と、ブロック一つの原稿について、区切りの行と最初の行をどちらも置いたとき、二つの段が異なるときに限って G07134 を返すことを示す。
 `hoisted_need` は、保持に `@need-lines` があるときに限って `holdNeeds` が `@need-lines` を足し、その行数が段の行数以下で、保持の中の各 `@need-lines` が求める行数か段の行数の小さいほう以上であることを示す。
-`reported_iff` は、区切りの位置の満たせなかった `@need-lines` を報告せず、ほかの満たせなかった指定をすべて報告に回すことを示す。
+`reported_iff` は、区切りの位置の満たせなかった `@need-lines` と `keep-with-next` を報告せず、ほかの満たせなかった指定をすべて報告に回すことを示す。
 
 境界入力の照合は、`SeparatorBoundary.hs` と `SeparatorBoundary.lean` で行う。
 `SeparatorBoundary.hs` は、golem-driver のテストの偽のフォント（`modules/golem-driver/test/Support.hs`）で原稿を golem-typeset の `layoutPdf` に渡し、ページか、診断の一覧を書き出す。
@@ -700,32 +712,37 @@ PR #1131 が golem-typeset に `holdSeparatorNeeds` を加えたので、この 
 
 定理の前提は次のとおりで、どれも実際の入力で成り立つ。
 `Clear` は、改ページ、`@need-lines`、行アキ、送った図版、繰り越す脚注が待っておらず、箱の中でも `FAdjustLines` の後でもなく、段組みの始めの行と段組みの上に残す脚注の行（`firstLine` と `reserved`）が 0 で、脚注のない段に脚注の行がないことである。
+区切りの前の状態の段では、ほかの区切りの保持が待っていない（`heldHere` が `false`）。
+区切りの後の `keep-with-next` は可視の区切りの位置を持つ（`env.held sp`）。
 段組みを切り替えない本文では、`firstLine` と `reserved` は 0 のままである。
 行は脚注を持たず、`fitting` は段に残る行の数だけ行を数える（`PlainFitting`）。
 `SeparatorBoundary.lean` の `boundary_plainFitting` は、照合に使う `boundaryEnv` がこの前提を満たすことを示す。
 区切りの段落は最後の 1 行以上を送る段落スタイルを持つ（`keep-last-lines` は 1 以上である、[仕様](../../docs/specifications.md)の 3100 行）。
 `keptNeed`（`modules/golem-layout/src/Golem/Layout/Paginate/Decide.hs:125`）が区切りの後に求める行数を n とし、1 + n が段の容量以下であることを、保持が空の段に収まることとする。
 p は段落の最初の部分の行数で、1 行以上 n 行以下であり、段落の全体か、`splitAtBreak` がそのまま返す行数である（`firstPart`、`Decide.hs:229`）。
-段落の後には `@no-page-break` も `keep-with-next` も続かない（段落の後の `keptNeed` が `none`）。
+段落の後に `@no-page-break` も `keep-with-next` も続かない（段落の後の `keptNeed` が `none`）か、`placeKept` が段落の全体を次の段へ送る行数にする（`keptCut` が段落の行数に等しい）。
+後者は、たとえば最後に送る行数以下の行数の段落である。
 
 証明は、まず `placeKept` が区切りの行を置いた段に n 行以上が残ることを示す（`separator_place`）。
 今の段に区切りの行を置いて n 行が残らず、今の段が空でなければ、区切りの行は次の段の先頭に送られ、その段には容量から 1 を引いた行が残る。
 今の段が空なら、同じく容量から 1 を引いた行が残るので、n 行が残る。
 続く `keep-with-next` は段を変えず（`view_keepNext`）、段落は残りの行に p 行以上の最初の部分を置く（`placeLinesGo_first`、`split_pos`）。
 段落が段に収まらないときは、最初の部分を置いた段を閉じてから次の段へ進むので、二つの行は閉じた段の一つに入る。
+段落の後に `@no-page-break` か `keep-with-next` が続くときは、段落は `placeKept` で置かれる。
+このとき区切りの `keep-with-next` が区切りの段で待っているので、`heldHere` が成り立ち、`placeKept` は段落の全体を今の段から置く（`placeKept_held`）。
+そのため、段落は `keptNeed` が `none` のときと同じに置かれる。
 
 この定理は、後のフローが閉じた段と今の段の行を保つことまでは示さない。
 `Together` から G07134 がないことを導くには、後のすべてのフローの `step` が閉じた段を変えず、今の段の行をそのまま閉じることを示す必要がある。
 区切りの後ろのアキ、保持の中の `@need-lines`、区切りの連続、区切りの前の行アキも、まだ定理の範囲にない。
 自由な配置（`SeparatorPhysical.lean`）の同じ性質も、まだ示していない。
 
-段落の後に `@no-page-break` が続くと、保持が空の段に収まっても golem-typeset と Lean の両方が G07134 を返す。
+段落の後に `@no-page-break` が続く保持では、PR #1132 より前の golem-typeset が仕様と食い違っていた。
 容量 4 行の段で、1 行の段落、`---`、1 行の段落、`@no-page-break`、3 行の段落を並べた原稿（区切りの前後の行数は 0）では、区切りの行が 1 ページ目に残り、続く 1 行の段落が 2 ページ目に送られて、G07134 になった。
 区切りの行、1 行の段落、3 行の段落の最初の 2 行は合わせて 4 行で、空の段に収まる。
-`chained`（`Decide.hs:168`）は `@no-page-break` だけでは後の最初の部分を足さないので、区切りの `keptNeed` は 1 行の段落の 1 行だけを求め、区切りの行を次の段へ送らない。
-その後、`placeKept`（`modules/golem-layout/src/Golem/Layout/Paginate.hs:418`）が 1 行の段落を 3 行の段落の最初の部分と同じ段に置くために次の段へ送り、`separatorHoldErrors`（`Flow.hs:793`）が G07134 を返す。
-[仕様](../../docs/specifications.md)は空の段へ送っても置けない場合にだけ G07134 を返すと定める（1873 行）ので、この結果は仕様と食い違う。
-Lean の側は golem-typeset と同じ結果を返すので、この README は golem-typeset の側を仕様に合わない側として報告し、`I3_separator_hold_together` は段落の後の `keptNeed` が `none` であることを前提に置く。
+PR #1132 は、区切りの `keptNeed` に `@no-page-break` が保つ後の最初の部分を足し、保持の後のブロックを保持の段から送らないようにした。
+その後は、golem-typeset と Lean の両方が、区切りの行と 1 行の段落を 2 ページ目に置き、3 行の段落を 3 ページ目に置いて、満たせなかった `@no-page-break` を付けたページを返す。
+この原稿は、照合の組 `holds` に含まれる。
 容量 3 行の段で `---` と 3 行の段落を並べた原稿も、両方が G07134 を返す。
 3 行の段落は、最初と最後の 2 行を同じ段に置く規則（`keep-first-lines` と `keep-last-lines` の既定値）で分けられず、全体で一つの段に置かれる。
 区切りの行と段落の最初の 1 行だけなら空の段に収まるが、分け方の規則を守ると区切りの行と合わせて 4 行になり、収まらない。
@@ -1121,10 +1138,11 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3814`）、g
 不変条件 4 と 5 は、`joinBoxes`、`ruledLinks`、`markBookParts` を通したフローと、自由な配置に写したフローにも当てた。
 空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について、二つの行が一つの段に入るところまで定理で示した。
 後のフローが閉じた段を保つことと、後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
-段落の後に `@no-page-break` が続く保持で golem-typeset が仕様と食い違うことは、「区切りのモデル」の節に記した。
-`check.sh` は、区切りの原稿を四つの組で golem-typeset と照合し、すべて一致した。
+`check.sh` は、区切りの原稿を六つの組で golem-typeset と照合し、すべて一致した。
 格子モードと自由な配置の 8784 個ずつの原稿は、これまでの項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
+残る二組の 1440 個ずつの原稿（`holds` と `holds-free`）は、保持の後の段落に `@no-page-break` を続けたもので、格子モードと自由な配置で照合した。
+この原稿は、なしか 1 行の段落の後に、`---` か `@separator scene`、なしか `---` か `@blank-line 1`、1〜3 行の段落、`@no-page-break` を置き、最後に 1〜3 行の段落か、1 行か 2 行の段落と `@no-page-break` と同じ行数の段落を置いたもので、段の容量は 2〜5 行である。
 自由な配置は、`SeparatorBoundary.hs` が `alignment = "free"` の組版の設定で選ぶ。
 
 照合の感度は、写した計算を一つずつ替えて確かめた。
@@ -1132,6 +1150,12 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3814`）、g
 箱の padding を渡さないと 3164 個、罫線を外すと 2020 個、前の罫線の外側のアキを 0 にすると 1124 個の入力で食い違った。
 箱などを含む組では、`joinBoxes` を外すと格子モードで 49 個と自由な配置で 34 個、`ruledLinks` を外すと 86 個と 53 個、`markBookParts` を外すと自由な配置で 167 個の入力で食い違った。
 罫線の共有の領域を 0 行にすると 36 個、段の始めの領域を 0 行にすると 1183 個、段の終わりの領域を 2 行にすると 1149 個、箱の前後を 0 行にすると 2870 個の入力で食い違った。
+区切りの保持の位置の照合の感度も、同じく確かめた。
+格子モードで `heldHere` を常に `false` にすると、`holds` で 420 個、これまでの格子モードの組で 24 個、箱などを含む格子モードの組で 2 個の入力で食い違った。
+`keptNeed` の `holds` を常に `false` にすると 22 個、`chainedHeld` が `@no-page-break` の最初の部分を足さないと 40 個、`chainedHeld` の中の `holds` を常に `false` にすると 18 個の入力で、`holds` の出力が食い違った。
+自由な配置で `heldHere` を常に `false` にすると、`holds-free` で 260 個、これまでの自由な配置の組で 4 個の入力で食い違った。
+区切りの位置を一つも渡さないと、`holds` で 442 個、`holds-free` で 260 個、これまでの組で格子モードの 24 個、自由な配置の 4 個、箱などを含む格子モードの 2 個の入力で食い違った。
+`keptNeed` と `chainedHeld` へのこの三つの変更は、`holds` の組を足す前の原稿では出力を変えなかった。
 格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、この入力では照合できていない。
 `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、まだ照合していない。
 
@@ -1153,7 +1177,7 @@ sh experiments/pagination-proof/check.sh
 区切りの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
 `check.sh` は、`Whole.olean` と `Boundary.olean` を作ってから、それを読み込む `Separator.lean` と `SeparatorBoundary.lean` を検査する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
-`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で四つの組を一つずつ評価する。
+`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で六つの組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

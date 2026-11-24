@@ -24,8 +24,9 @@ import System.Environment (getArgs)
 -- separator gap of kind blank, a blank line, a page break, a need-lines
 -- of two lines, and, in the manuscripts with blocks, a paragraph of one
 -- line in a box, a paragraph of one line with rules before and after,
--- and an item of a list of one line, a book part (markBookParts).
-data Item = P Int | S | T | G | B | E | N | X | R | L
+-- and an item of a list of one line, a book part (markBookParts); in
+-- the manuscripts of the holds, a no-break.
+data Item = P Int | S | T | G | B | E | N | X | R | L | K
   deriving stock (Eq)
 
 name :: Item -> String
@@ -40,6 +41,7 @@ name = \case
   X -> "X"
   R -> "R"
   L -> "L"
+  K -> "K"
 
 source :: Item -> T.Text
 source = \case
@@ -54,6 +56,7 @@ source = \case
   X -> "@style boxed\n" <> T.replicate 10 (T.singleton '\12356')
   R -> "@style ruled\n" <> T.replicate 12 (T.singleton '\12358')
   L -> "- " <> T.replicate 10 (T.singleton '\12360')
+  K -> "@no-page-break"
 
 -- | The lines an item takes.
 linesOf :: Item -> Int
@@ -96,6 +99,24 @@ manuscripts =
 inputs :: [(Int, Int, [Item])]
 inputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [1, 2, 3], items <- manuscripts]
 
+-- | A visible separator, a blank line or a second separator, a paragraph
+-- of one to three lines and a no-break, then what the no-break keeps the
+-- paragraph with: a paragraph, or a paragraph with a no-break and a
+-- paragraph after it (root ADR 0398 I7: the hold goes with what a
+-- no-break after the whole next block keeps).
+holdManuscripts :: [[Item]]
+holdManuscripts =
+  [ lead <> [s] <> pre <> [P a, K] <> after
+  | lead <- [[], [P 1]],
+    s <- [S, T],
+    pre <- [[], [S], [B]],
+    a <- [1, 2, 3],
+    after <- [[P 1], [P 2], [P 3], [P 1, K, P 1], [P 2, K, P 2]]
+  ]
+
+holdInputs :: [(Int, Int, [Item])]
+holdInputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [2, 3, 4, 5], items <- holdManuscripts]
+
 -- | The styles of the box, of the rules and of the swatch of the box: a
 -- padding of 1zw takes a grid line before and after the box
 -- (boxLinesAround), and the rules take one grid line inside the column,
@@ -137,12 +158,14 @@ starts items = zip3 (scanl (+) 0 (map linesOf items)) (scanl (+) 0 [BS.length (T
 -- | With the argument @free@, the page grid alignment is free
 -- (@alignment = "free"@), and golem-typeset paginates with
 -- paginatePhysical; the slots are then printed at their offsets in sp.
--- With @blocks@ first, the manuscripts with blocks are laid out.
+-- With @blocks@ first, the manuscripts with blocks are laid out, with
+-- @holds@ first, those of the holds.
 main :: IO ()
 main = do
   args <- getArgs
   let (set, extra) = case args of
         "blocks" : _ -> (blockInputs, blockStyle)
+        "holds" : _ -> (holdInputs, "")
         _ -> (inputs, "")
   forM_ set (run (drop 1 args == ["free"] || args == ["free"]) extra)
 

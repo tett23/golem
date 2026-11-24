@@ -10,7 +10,9 @@
    `physicalSettings` (Flow.hs:853) gives for the page of
    SeparatorBoundary.hs.  With `SEPARATOR_MODE` starting with `blocks`,
    the manuscripts with a box, a ruled paragraph or an item of a list
-   (`blockManuscripts`) are laid out instead.
+   (`blockManuscripts`) are laid out instead, and with `SEPARATOR_MODE`
+   starting with `holds`, the manuscripts with a no-break after the
+   paragraph a separator is held with (`holdManuscripts`).
    This is a check on finitely many inputs, not a proof. -/
 import Whole
 import Separator
@@ -30,12 +32,14 @@ inductive Item where
   | x | r | l
   /-- `@blank-line` lines collapsed into one block of `k` lines. -/
   | bk (k : Nat)
+  /-- `@no-page-break`, in the manuscripts of the holds. -/
+  | nb
   deriving DecidableEq
 
 def Item.name : Item → String
   | .p k => s!"P{k}"
   | .s => "S" | .t => "T" | .g => "G" | .b => "B" | .e => "E" | .n => "N" | .bk k => s!"B{k}"
-  | .x => "X" | .r => "R" | .l => "L"
+  | .x => "X" | .r => "R" | .l => "L" | .nb => "K"
 
 /-- The grid lines before and after the separators default and scene. -/
 def combos : List ((Nat × Nat) × (Nat × Nat)) := [((0, 0), (1, 2)), ((1, 1), (2, 0))]
@@ -53,6 +57,7 @@ def units (c : (Nat × Nat) × (Nat × Nat)) : Nat → List Item → List Separa
   | id, .bk k :: r => .blank k :: units c id r
   | id, .e :: r => .brk .page :: units c id r
   | id, .n :: r => .other .pass [.needLines 2] none :: units c id r
+  | id, .nb :: r => .other .pass [.noBreak] none :: units c id r
   | id, .x :: r => .other .block [.boxed id 1 1 [.paragraph defaultKeep (lines' id 1)]] (some id) :: units c (id + 1) r
   | id, .r :: r => .other .block [.ruled id true true false (.lines defaultKeep (lines' id 1))] (some id) :: units c (id + 1) r
   | id, .l :: r => .other .block [.paragraph defaultKeep (lines' id 1)] (some id) :: units c (id + 1) r
@@ -130,6 +135,16 @@ def blockManuscripts : List (List Item) :=
 
 def blockInputs : List (Nat × Nat × List Item) :=
   (List.range combos.length).bind fun c => [3, 4].bind fun capacity => blockManuscripts.map fun m => (c, capacity, m)
+
+/-- `holdManuscripts` of SeparatorBoundary.hs. -/
+def holdManuscripts : List (List Item) :=
+  [[], [Item.p 1]].bind fun lead => [Item.s, .t].bind fun s => [[], [Item.s], [Item.b]].bind fun pre =>
+    [1, 2, 3].bind fun a =>
+      [[Item.p 1], [.p 2], [.p 3], [.p 1, .nb, .p 1], [.p 2, .nb, .p 2]].map fun after =>
+        lead ++ [s] ++ pre ++ [.p a, .nb] ++ after
+
+def holdInputs : List (Nat × Nat × List Item) :=
+  (List.range combos.length).bind fun c => [2, 3, 4, 5].bind fun capacity => holdManuscripts.map fun m => (c, capacity, m)
 
 /-- The lines an item takes. -/
 def Item.lines : Item → Nat
@@ -295,7 +310,7 @@ def freePageText (p : PhysicalPagination.PageOut) : String :=
 def Item.bytes : Item → Nat
   | .p k => 36 * k
   | .s => 3 | .t => 16 | .g => 14 | .b => 13 | .e => 11 | .n => 13 | .bk _ => 13
-  | .x => 13 + 30 | .r => 13 + 36 | .l => 2 + 30
+  | .x => 13 + 30 | .r => 13 + 36 | .l => 2 + 30 | .nb => 14
 
 /-- Where SeparatorBoundary.hs prints a diagnostic at the unit of the line
     `i`: the id of a separator, or the byte offset of the paragraph
@@ -324,8 +339,8 @@ def freeOutput (c capacity : Nat) (items : List Item) : List String :=
     | [] => pages.map freePageText
     | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
 
-def report (blocks free : Bool) (part parts : Nat) : String :=
-  let all := if blocks then blockInputs else inputs
+def report (blocks holds free : Bool) (part parts : Nat) : String :=
+  let all := if blocks then blockInputs else if holds then holdInputs else inputs
   let size := (all.length + parts - 1) / parts
   String.join (((all.drop (part * size)).take size).map fun (c, capacity, items) =>
     s!"{c} {capacity} [{" ".intercalate (items.map Item.name)}]\n" ++
@@ -371,11 +386,12 @@ end SeparatorBoundary
 
 -- check.sh evaluates the inputs in `SEPARATOR_PARTS` contiguous parts
 -- side by side, this one part `SEPARATOR_PART`: the manuscripts with
--- blocks when `SEPARATOR_MODE` starts with `blocks`, in the free
+-- blocks when `SEPARATOR_MODE` starts with `blocks`, those of the holds
+-- when it starts with `holds`, in the free
 -- placement when it ends with `free`; `#eval` prints it, as `main` is
 -- Boundary.lean's.
 #eval show IO _root_.Unit from do
   let part := ((← IO.getEnv "SEPARATOR_PART").getD "0").toNat!
   let parts := ((← IO.getEnv "SEPARATOR_PARTS").getD "1").toNat!
   let mode := (← IO.getEnv "SEPARATOR_MODE").getD ""
-  IO.print (SeparatorBoundary.report (mode.startsWith "blocks") (mode.endsWith "free") part parts)
+  IO.print (SeparatorBoundary.report (mode.startsWith "blocks") (mode.startsWith "holds") (mode.endsWith "free") part parts)
