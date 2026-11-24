@@ -81,7 +81,7 @@ paginateTests =
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "the side lines of a wrapped figure sent on by their notes (golem-driver ADR 0005)" wrappedNoteTests,
       testGroup "a wrapped figure fits with the notes of its side lines (root ADR 0443)" wrappedFitNoteTests,
-      testGroup "the footnotes in order while one continues (root ADR 0444)" (continuedNoteOrderTests <> [continuedGoldenTest]),
+      testGroup "the footnotes in order while one continues (root ADR 0444)" (continuedNoteOrderTests <> continuedBoxNoteTests <> [continuedGoldenTest]),
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "the index columns after page-lines (root ADR 0025, root ADR 0030)" indexAfterAdjustTests,
@@ -2001,3 +2001,22 @@ continuedGoldenTest =
     splitOn c s = case break (== c) s of
       (a, []) -> [a]
       (a, _ : rest) -> a : splitOn c rest
+
+{- | root ADR 0444 I1 and I4 when the note goes on from the inside of a
+box: the end of a box gives back the grid lines kept for after it, which
+the next line uses, so the note that goes on keeps its place.
+-}
+continuedBoxNoteTests :: [TestTree]
+continuedBoxNoteTests =
+  [ testCase "root ADR 0444 I1, I4: a note going on from a box, whatever the page-lines and its grid lines before and after, comes before the next note, and every line is placed once in order" $
+      forM_ [(k, before', after', len, second) | k <- [0 .. 3], before' <- [0, 1], after' <- [0, 1], len <- [1 .. 7], second <- [Nothing, Just 1, Just 2]] $ \(k, before', after', len, second) -> do
+        let ps =
+              paginateWithin 9 1 (ColumnSet 1 0 0 0) 5 $
+                [FBoxed 1 before' after' [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) len] [] [] 0]]]
+                  <> [FAdjustLines mk k | k /= 0]
+                  <> [FParagraph defaultKeep [LineBox 10 [NoteBody (nid 510) n | Just n <- [second]] [] [] 0]]
+            order = [i | p <- ps, (i, _, _) <- poFootnotes p]
+            what = show (k, before', after', len, second, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+        assertBool ("I1 " <> what) (nid 500 `notElem` dropWhile (/= nid 510) order)
+        assertEqual ("I4 " <> what) [0, 10] [i | p <- ps, (_, SLine i) <- poSlots p]
+  ]
