@@ -3,7 +3,7 @@ figures fitted to the column and turned onto a page of their own
 (golem-driver ADR 0034); SVG active content in HTML and EPUB (docs/adr
 ADR 0039).
 -}
-module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, figureWidthTests, turnedFigureTests, activeContentTests) where
+module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, figureWidthTests, turnedFigureTests, activeContentTests, zeroExtentFigureTests) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Monad (forM_)
@@ -1080,3 +1080,116 @@ turnedParts style source = do
   v <- viewOf style source boxes
   img <- single [ivRect i | pv <- vwPages v, i <- pvImages pv, ivTurned i]
   pure (img, [lvRect l | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"])
+
+-- ------------------------------------------------------------------ figures of zero extent across the lines (root ADR 0440)
+
+-- | A grey PNG of w by h pixels, 8 bits; readImage does not check the CRC.
+grayPng :: Int -> Int -> BS.ByteString
+grayPng w h =
+  BS.pack [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    <> chunk "IHDR" (be32 w <> be32 h <> BS.pack [8, 0, 0, 0, 0])
+    <> chunk "IDAT" (BL.toStrict (Z.compress (BL.fromStrict (BS.pack (concat (replicate h (0 : replicate w 0)))))))
+    <> chunk "IEND" ""
+  where
+    be32 :: Int -> BS.ByteString
+    be32 n = BS.pack [fromIntegral (n `shiftR` s) | s <- [24, 16, 8, 0 :: Int]]
+    chunk name d = be32 (BS.length d) <> name <> d <> be32 0
+
+-- | The images of these tests: PNGs of w by h pixels at images/pWxH.png, and a long SVG.
+zeroImages :: [(FilePath, BS.ByteString)]
+zeroImages = [("images/p" <> show w <> "x" <> show h <> ".png", grayPng w h) | (w, h) <- pngSizes] <> [("images/long.svg", boxSvg 100000000 1)]
+
+pngSizes :: [(Int, Int)]
+pngSizes = [(1, 1), (1, 2), (2, 1), (1, 1000), (1000, 1)]
+
+-- | A figure of a PNG of 'zeroImages' with more arguments and a caption (none when empty), with no number unless asked.
+pngFig :: Bool -> (Int, Int) -> T.Text -> T.Text -> T.Text
+pngFig numbered (w, h) extra caption =
+  (if numbered then "" else "@nonumber\n") <> "@figure images/p" <> tshow w <> "x" <> tshow h <> ".png alt=\"t\"" <> extra <> "\n" <> (if T.null caption then "" else "  " <> caption <> "\n") <> "\n"
+
+-- | A page style laid out freely (root ADR 0397).
+freely :: BS.ByteString -> BS.ByteString
+freely = TE.encodeUtf8 . T.replace "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" . TE.decodeUtf8
+
+zeroMessage :: T.Text
+zeroMessage = "図版の行の方向の長さと画像の縦横の比から求めた、行の送りの方向の長さが 0 になります"
+
+-- | The rows a figure gives the pagination: those of its exclusion when it wraps, of its image and caption otherwise; none for a turned one.
+figureRows :: PlacedFigure -> Maybe Int
+figureRows pf
+  | isJust (pfTurn pf) = Nothing
+  | Just e <- pfExclusion pf = Just (exLines e)
+  | otherwise = Just (pfImageLines pf + pfCaptionSpan pf)
+
+-- | The layout errors as code and message, and whether a PDF build of the same source writes the PDF.
+zeroOutcome :: BS.ByteString -> T.Text -> IO ([(T.Text, T.Text)], Bool)
+zeroOutcome style source = do
+  r <- layoutMini style source zeroImages
+  pdf <- withSystemTempDirectory "golem-zero" $ \tmp -> do
+    writeProject tmp miniManifest style source zeroImages
+    b <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+    w <- doesFileExist (tmp </> "build/a.pdf")
+    pure (w || any (".pdf" `isSuffixOf`) (brWritten b))
+  pure ([(c, m) | (c, m, _, _, _) <- layoutErrors r], pdf)
+
+zeroExtentFigureTests :: [TestTree]
+zeroExtentFigureTests =
+  [ testCase "root ADR 0440 I1: whatever the width and the pixels, a figure gives the pagination one row or more, or the layout fails" $
+      forM_ [(mode, wrap', width, size) | mode <- ["vertical", "horizontal"], wrap' <- ["", " wrap=start"], width <- ["0.00001pt", "0.00002pt", "0.0001pt", "1pt", "10zw"], size <- pngSizes] $ \(mode, wrap', width, size) -> do
+        let style = pageStyle mode "left" 24 20 1 20 20
+            source = "前の段落。\n\n" <> pngFig False size (wrap' <> " width=" <> width) "" <> "後の段落。\n"
+        r <- layoutMini style source zeroImages
+        case r of
+          Left ds -> assertBool ("an error: " <> show ds) (any isError ds)
+          Right (_, pl) -> forM_ (figuresIn pl) $ \(pf, _, _) ->
+            assertBool (show (mode, wrap', width, size, figureRows pf)) (maybe True (>= 1) (figureRows pf)),
+    testCase "root ADR 0440 I1, I2: vertical, a 1 by 2 PNG, no number, width=0.00001pt is the new error, with no PDF" $ do
+      (errs, pdf) <- zeroOutcome (vertical10 60) (pngFig False (1, 2) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I2: horizontal, a 2 by 1 PNG, no number, width=0.00001pt is the new error, with no PDF" $ do
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) (pngFig False (2, 1) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I2: with a number and a caption, the same figure is the new error, at the figure" $ do
+      let source = "前の段落。\n\n" <> pngFig True (2, 1) " width=0.00001pt" "キャプション。"
+      r <- layoutMini (horizontal20 "left" 20) source zeroImages
+      [(c, f, s) | (c, _, f, s, _) <- layoutErrors r] @?= [("G07135", FileId 1, s) | s <- take 1 (figureOffsets source)]
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) (pngFig True (2, 1) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I2: a wrapped figure of zero extent across the lines is the new error" $ do
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) (pngFig False (2, 1) " wrap=start width=0.00001pt" "" <> "脇の段落。\n")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I2: a turned figure whose frame line by its ratio is less than 1 sp is the new error" $ do
+      (errs, pdf) <- zeroOutcome (horizontal20 "left" 20) "@nonumber\n@figure images/long.svg alt=\"t\" rotate=true\n\n"
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I2: laid out freely, a figure of zero extent across the lines is the new error" $ do
+      (errs, pdf) <- zeroOutcome (freely (horizontal20 "left" 20)) (pngFig False (2, 1) " width=0.00001pt" "")
+      errs @?= [("G07135", zeroMessage)]
+      pdf @?= False,
+    testCase "root ADR 0440 I1, I3: a figure exactly 1 sp across the lines takes one row, with no error" $
+      forM_ [vertical10 60, horizontal20 "left" 20] $ \style -> do
+        (_, pl) <- layoutOk style (pngFig False (1, 1) " width=0.00001pt" "") zeroImages
+        (pf, _, _) <- single (figuresIn pl)
+        pfAcross pf @?= 1
+        figureRows pf @?= Just 1,
+    testCase "root ADR 0440 I2: a figure whose caption fills the column is G07038 alone" $ do
+      r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) ("前の段落。\n\n" <> pngFig True (2, 1) " width=0.00001pt" (T.replicate 70 "あ")) zeroImages
+      [c | (c, _, _, _, _) <- layoutErrors r] @?= ["G07038"],
+    testCase "root ADR 0440 I2: laid out freely on a column shorter than a pitch, a figure is G07131 alone" $ do
+      let style = TE.encodeUtf8 (T.replace "lines = 30" "lines = 1" (TE.decodeUtf8 (freely horizontalStyle)))
+      r <- layoutMini (figStyle style) (pngFig False (2, 1) " width=0.00001pt" "") zeroImages
+      [c | (c, _, _, _, _) <- layoutErrors r] @?= ["G07131"],
+    testCase "root ADR 0440 I4: golem check and the HTML build give no new error, and the HTML is written" $
+      withSystemTempDirectory "golem-zero" $ \tmp -> do
+        let source = pngFig False (2, 1) " width=0.00001pt" ""
+        writeProject tmp (miniManifest <> "\n[targets.html]\n") (horizontal20 "left" 20) source zeroImages
+        c <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optFonts = fakeProvider, optCheckOnly = True}
+        [diagCode d | d <- brDiagnostics c, diagCode d == DiagnosticCode "G07135"] @?= []
+        h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider}
+        [diagCode d | d <- brDiagnostics h, isError d] @?= []
+        assertBool (show (brWritten h)) (any (".xhtml" `isSuffixOf`) (brWritten h))
+  ]

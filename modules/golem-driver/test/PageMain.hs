@@ -81,6 +81,7 @@ tests =
       testGroup "figures fitted to the column (golem-driver ADR 0034)" fitFigureTests,
       testGroup "the width of figures (docs/adr/0190)" figureWidthTests,
       testGroup "turned figures (golem-driver ADR 0034)" turnedFigureTests,
+      testGroup "figures of zero extent across the lines (root ADR 0440)" zeroExtentFigureTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
       pageStartsTests,
