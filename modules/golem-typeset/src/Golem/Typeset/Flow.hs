@@ -784,7 +784,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (`Set.member` Set.fromList [uSpan u | (_, u) <- bUnits built, USeparator _ <- [uKind u]]) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
+            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (`Set.member` separatorSpans built) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
 
 -- Ordinary paragraph keep options may fall back when no empty column fits.
@@ -822,10 +822,14 @@ separatorHoldErrors built pages =
         ((site, _) : _, Just ident) -> (site, reverse (map snd pending) <> [ident]) : groups [] rest
         _ -> groups pending rest
 
+-- | The spans of the visible separators, those of their keeps too (root ADR 0398 I7).
+separatorSpans :: Built -> Set.Set SrcSpan
+separatorSpans built = Set.fromList [uSpan u | (_, u) <- bUnits built, USeparator _ <- [uKind u]]
+
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
 paginateBuilt inp geom capacity built
   | free = either (Left . pure . physicalError) Right (fromMaybe (paginatePhysical settings (bRetainedFlow built)) (bFreePages built))
-  | otherwise = Right (map normalize (paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
+  | otherwise = Right (map normalize (paginateHeld (separatorSpans built) (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -852,7 +856,7 @@ paginateBuilt inp geom capacity built
 -- | Resolve the same physical geometry for a causal trial and final pagination.
 physicalSettings :: PdfInput -> PageGeometry -> Int -> Built -> PhysicalSettings
 physicalSettings inp geom capacity built =
-  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing
+  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing (separatorSpans built)
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -1020,6 +1024,9 @@ unmetWarnings pagePitch free held names paraOf styleAt pages =
       -- the separator, is not written by the author: it reports nothing
       -- of its own (root ADR 0398 I7)
       UnmetNeedLines sp _ | held sp -> []
+      -- the keep of a separator is not written by the author either: a
+      -- hold not met is G07134 (root ADR 0398 I7)
+      UnmetKeepNext sp | held sp -> []
       UnmetNeedLines sp k ->
         [ diagnostic
             "G07037"
@@ -2500,7 +2507,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
           kind ->
             let explicit = sum [k | Unit {uKind = UBlank k} <- pending]
                 requested = max explicit (fromIntegral (beforeOf kind))
-                spacing = max requested (fromIntegral (fromMaybe 0 previous))
+                spacing = max requested (fromIntegral (maybe 0 snd previous))
                 visibleBoundary = isJust previous || beforeOf kind > 0
                 source = case pending of
                   initial : _ -> initial
@@ -2510,10 +2517,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                       [source {uKind = if isJust previous then UGap (fromIntegral spacing * pgLinePitch geom) else UBlank spacing, uInlines = []}]
                   | visibleBoundary = []
                   | otherwise = pending
+                -- the keep has the span of the separator, so that the
+                -- paginator knows it holds a separator (root ADR 0398 I7)
                 keep = case previous of
-                  Just _ -> [u {uKind = UKeepNext 1, uInlines = []}]
+                  Just (sp, _) -> [u {uKind = UKeepNext 1, uInlines = [], uSpan = sp}]
                   Nothing -> []
-             in keep <> gap <> [u] <> go (afterOf kind) [] rest
+             in keep <> gap <> [u] <> go ((uSpan u,) <$> afterOf kind) [] rest
     gapBefore style ctx spaced prev (Block sp _ _ b) = case prev of
       Just (Block _ _ _ a)
         | g <- gapLines style ctx spaced a b,

@@ -31,6 +31,7 @@ where
 
 import Data.List (find)
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Set qualified as Set
 import Golem.Layout.Code (codeSpan)
 import Golem.Layout.Paginate.BookParts (flattenBookParts)
 import Golem.Layout.Paginate.State
@@ -123,7 +124,24 @@ the no-break and the first part of what follows it, its spaces too, at
 most a column (golem-layout ADR 0022).
 -}
 keptNeed :: Env -> [Flow] -> Maybe Need
-keptNeed env rest = (\(before, _, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env n after)) <$> keepAhead (flattenBookParts rest)
+keptNeed env rest =
+  let flat = flattenBookParts rest
+   in (\(before, _, n, after) -> spaced env (sum [max 0 k | FSpace k <- before]) (followNeed env (holds env flat) n after)) <$> keepAhead flat
+
+{- | Whether the controls at the start of the flows hold a separator
+(root ADR 0398 I7): a keep-with-next of a visible separator among them.
+-}
+holds :: Env -> [Flow] -> Bool
+holds env = go
+  where
+    go = \case
+      FKeepNext sp _ : more -> Set.member sp (envHeld env) || go more
+      f : more | soft f || control f -> go more
+      _ -> False
+    control = \case
+      FNoBreak _ -> True
+      FNoBreakLines _ _ -> True
+      _ -> False
 
 {- | The flows before a no-break or a keep-with-next (docs/adr/0261) that
 the paragraph waits past, the tail lines of that paragraph, the first
@@ -148,15 +166,18 @@ keepAhead rest = case span soft rest of
 (docs/adr/0261): of a paragraph or a stanza, its first part made at
 least @n@ lines (verse lines), at most the whole; when that is the whole
 and it keeps with what follows it too, that too, at most a column. With
-@n@ = 0, the first part of 'nextNeed'.
+@n@ = 0, the first part of 'nextNeed'. After a separator hold, when
+@held@ (root ADR 0398 I7), what a no-break after the whole first part
+keeps is added too, as a keep-with-next adds it, so that the hold goes
+where the block is placed.
 -}
-followNeed :: Env -> Int -> [Flow] -> Need
-followNeed env n after
-  | n <= 0 = nextNeed env after
+followNeed :: Env -> Bool -> Int -> [Flow] -> Need
+followNeed env held n after
+  | n <= 0 && not held = nextNeed env after
   | otherwise = case after of
-      FParagraph kp ls : more -> chained env (length ls) (max (firstPart kp True (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
-      FContinued kp ls : more -> chained env (length ls) (max (firstPart kp False (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
-      FStanza kp vs : more -> chained env (length vs) (max (firstPart kp True (length vs)) (min n (length vs))) (\k -> linesNeed (concat (take k vs))) more
+      FParagraph kp ls : more -> chainedHeld env held (length ls) (max (firstPart kp True (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
+      FContinued kp ls : more -> chainedHeld env held (length ls) (max (firstPart kp False (length ls)) (min n (length ls))) (\k -> linesNeed (take k ls)) more
+      FStanza kp vs : more -> chainedHeld env held (length vs) (max (firstPart kp True (length vs)) (min n (length vs))) (\k -> linesNeed (concat (take k vs))) more
       _ -> nextNeed env after
 
 {- | The first part of @k@ of the @total@ lines (verse lines) of a
@@ -166,13 +187,20 @@ with the spaces before it, at most a column (docs/adr/0261). A no-break
 alone adds nothing.
 -}
 chained :: Env -> Int -> Int -> (Int -> Need) -> [Flow] -> Need
-chained env total k needOf more =
+chained env = chainedHeld env False
+
+{- | 'chained' of the block after a separator hold when @held@ (root ADR
+0398 I7): a no-break after the whole block adds the first part of what
+follows it too.
+-}
+chainedHeld :: Env -> Bool -> Int -> Int -> (Int -> Need) -> [Flow] -> Need
+chainedHeld env held total k needOf more =
   let base = needOf k
    in case keepAhead more of
-        Just (before, _, m, after')
+        Just (before, l, m, after')
           | k >= total,
-            m > 0 ->
-              let r = spaced env (sum [max 0 x | FSpace x <- before]) (followNeed env m after')
+            m > 0 || (held && l > 0) ->
+              let r = spaced env (sum [max 0 x | FSpace x <- before]) (followNeed env (holds env more) m after')
                in Need (min (envCapacity env) (needGrid base + needGrid r)) (needNotes base + needNotes r)
         _ -> base
 

@@ -36,6 +36,8 @@ import Data.IntSet qualified as IS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text qualified
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
@@ -64,7 +66,9 @@ data PhysicalSettings = PhysicalSettings
     physicalWrappedBefore :: !(Map Int Sp),
     physicalHeadingBounds :: !(Map Int (Sp, Sp)),
     -- | the unit and source of the book part being placed, other than column (root ADR 0401)
-    physicalRetention :: !(Maybe (KeepParts, Golem.Syntax.SrcSpan))
+    physicalRetention :: !(Maybe (KeepParts, Golem.Syntax.SrcSpan)),
+    -- | the spans of the keep-with-next of the visible separators (root ADR 0398 I7)
+    physicalHeld :: !(Set Golem.Syntax.SrcSpan)
   }
 
 data PhysicalFailure
@@ -849,7 +853,7 @@ placeWithNext cfg keep start st lines' lastCount firstCount later = do
         then Right full
         else do
           before <- placeLines cfg keep start st front
-          let next = if empty before then before else nextColumn cfg before
+          let next = if empty before || heldHere cfg before then before else nextColumn cfg before
           placeLines cfg keep (start && null front) next back
 
 placeStanzaWithNext :: PhysicalSettings -> Keep -> PhysicalState -> [[LineBox]] -> Int -> Int -> [FlowAt Sp] -> Either PhysicalFailure PhysicalState
@@ -863,9 +867,17 @@ placeStanzaWithNext cfg keep st verses lastCount firstCount later = do
           backCount = if kAll keep || total <= requested || total - requested < kFirst keep then total else requested
           (front, back) = splitAt (total - backCount) verses
       before <- placeStanza cfg keep st front
-      if null back || empty before
+      if null back || empty before || heldHere cfg before
         then Right full
         else placeStanza cfg keep (nextColumn cfg before) back
+
+{- | Whether a separator hold waits in the current column for the block
+being placed (root ADR 0398 I7): the hold went there with what that block
+keeps, or to an empty column when that is more than a column, so the
+block does not leave it for its own keeps, as from an empty column.
+-}
+heldHere :: PhysicalSettings -> PhysicalState -> Bool
+heldHere cfg st = or [Set.member sp (physicalHeld cfg) | (UnmetKeepNext sp, page, column, _, _, _) <- psWaits st, page == psPage st, column == psColumn st]
 
 placeFlow :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> Either PhysicalFailure PhysicalState
 placeFlow cfg st = \case

@@ -50,6 +50,7 @@ module Golem.Layout.Paginate
     paginate,
     paginateIn,
     paginateWithin,
+    paginateHeld,
     pageLabels,
     labelPages,
     markPages,
@@ -64,6 +65,8 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
@@ -114,7 +117,7 @@ keptLookAhead = keptNeed . lookAheadEnv
 
 -- | A page of one column of the given grid lines.
 lookAheadEnv :: Int -> Env
-lookAheadEnv = Env maxBound 1 (ColumnSet 1 0 0 0) KeepColumn Nothing
+lookAheadEnv capacity = Env maxBound 1 (ColumnSet 1 0 0 0) KeepColumn Nothing capacity Set.empty
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
@@ -140,9 +143,16 @@ one is placed in an empty column, past its end; that is not a rule
 (docs/adr/0206).
 -}
 paginateWithin :: Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
-paginateWithin maxLines separatorLines base capacity flows =
+paginateWithin = paginateHeld Set.empty
+
+{- | 'paginateWithin' with the spans of the keep-with-next of the visible
+separators (root ADR 0398 I7): a separator hold goes with what the block
+after it keeps, and that block does not leave the hold for its own keeps.
+-}
+paginateHeld :: Set SrcSpan -> Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateHeld held maxLines separatorLines base capacity flows =
   let -- a footnote line always fits under the separator and one line of text
-      env = Env maxLines (max 1 (min separatorLines (capacity - 2))) base KeepColumn Nothing capacity
+      env = Env maxLines (max 1 (min separatorLines (capacity - 2))) base KeepColumn Nothing capacity held
       final = closePage env (placeAll env (initialState env) flows)
       done = reverse (sDone final)
       -- controls not met in a column that made no output go with the last column
@@ -428,7 +438,7 @@ placeKept env kp placeIn st isStart ls n =
         else
           if fitsHere
             then here
-            else if isEmpty stA then st1 else placeIn (nextColumn env stA) (isStart && null front) back
+            else if isEmpty stA || heldHere env stA then st1 else placeIn (nextColumn env stA) (isStart && null front) back
 
 {- | A no-break or a keep-with-next waiting for the next flow
 (docs/adr/0261): at the place of the first, the larger of the lines they

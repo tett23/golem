@@ -17,6 +17,7 @@ module Golem.Layout.Paginate.State
     free,
     typeAreaFree,
     isEmpty,
+    heldHere,
     addUnmet,
     keep,
     parityStart,
@@ -36,6 +37,8 @@ module Golem.Layout.Paginate.State
   )
 where
 
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Paginate.Types
@@ -55,7 +58,11 @@ data Env = Env
     envBase :: !ColumnSet,
     envKeepParts :: !KeepParts,
     envBookPartSpan :: !(Maybe SrcSpan),
-    envCapacity :: !Int
+    envCapacity :: !Int,
+    {- | the spans of the keep-with-next of the visible separators (root
+    ADR 0398 I7): a separator hold goes with the first part of the block
+    after it, and with what that block keeps, as that block is placed
+    -} envHeld :: !(Set SrcSpan)
   }
 
 {- | A break not applied yet: a forced break (docs/adr ADR 0017), or the
@@ -163,6 +170,14 @@ before the part (docs/adr/0271).
 -}
 isEmpty :: St -> Bool
 isEmpty st = null (sNotes st) && (sUsed st == top st || (maybe False baTop (sBox st) && atBoxStart st))
+
+{- | Whether a separator hold waits in the current column for the block
+being placed (root ADR 0398 I7): the hold went there with what that block
+keeps, or to an empty column when that is more than a column, so the
+block does not leave it for its own keeps, as from an empty column.
+-}
+heldHere :: Env -> St -> Bool
+heldHere env st = or [Set.member sp (envHeld env) | (UnmetKeepNext sp, p, c, _, _) <- sNoBreak st, p == sPage st, c == sColumn st]
 
 -- | Whether nothing but the grid lines before the part of the box being placed is placed in it (docs/adr/0271).
 atBoxStart :: St -> Bool
