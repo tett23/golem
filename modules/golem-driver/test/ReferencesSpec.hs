@@ -184,7 +184,7 @@ tocProject withToc = withSystemTempDirectory "golem-nav" $ \tmp -> do
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
   let nav = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/nav.xhtml" archive)
-  index <- TIO.readFile (tmp </> "build/html/index.xhtml")
+  index <- TIO.readFile (tmp </> "build/html/index.html")
   pure (nav, index)
 
 -- | A one-chapter project with a bibliography line and extra files.
@@ -238,15 +238,15 @@ bibliographyFormatTests =
         TIO.writeFile (tmp </> "chapters/99.gm") "@bibliography\n"
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        let link = "<span class=\"cite\">[<a href=\"../chapters/99.xhtml#cite-knuth1981\">1</a>]</span>"
+        let link ext = "<span class=\"cite\">[<a href=\"../chapters/99." <> ext <> "#cite-knuth1981\">1</a>]</span>"
             entry = "<li id=\"cite-knuth1981\">"
-        html01 <- TIO.readFile (tmp </> "build/html/chapters/01.xhtml")
-        html99 <- TIO.readFile (tmp </> "build/html/chapters/99.xhtml")
-        assertBool (T.unpack html01) (link `T.isInfixOf` html01)
+        html01 <- TIO.readFile (tmp </> "build/html/chapters/01.html")
+        html99 <- TIO.readFile (tmp </> "build/html/chapters/99.html")
+        assertBool (T.unpack html01) (link "html" `T.isInfixOf` html01)
         assertBool (T.unpack html99) (entry `T.isInfixOf` html99)
         archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
         let page p = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath p archive)
-        assertBool "EPUB 01" (link `T.isInfixOf` page "OEBPS/chapters/01.xhtml")
+        assertBool "EPUB 01" (link "xhtml" `T.isInfixOf` page "OEBPS/chapters/01.xhtml")
         assertBool "EPUB 99" (entry `T.isInfixOf` page "OEBPS/chapters/99.xhtml"),
     testCase "a literal author and a literal date are in the entry" $ do
       (ds, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
@@ -276,7 +276,7 @@ bibliographyFormatTests =
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite jisx4061]。\n\n@bibliography\n" [("refs.json", jaRefsJson)] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack page) ("JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。</li>" `T.isInfixOf` page),
     testCase "the PDF bibliography line has no space before a Latin period" $ do
       (_, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
@@ -304,7 +304,7 @@ bibliographyFormatTests =
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite jlreq][cite js]。\n\n@bibliography\n" [("refs.json", urlRefsJson)] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack page) ("<a class=\"cs-url\" href=\"https://www.w3.org/TR/jlreq/\">https://www.w3.org/TR/jlreq/</a>" `T.isInfixOf` page)
         assertBool (T.unpack page) ("<span class=\"cs-url\">javascript:alert(1)</span>" `T.isInfixOf` page)
         assertBool (T.unpack page) (not ("href=\"javascript" `T.isInfixOf` page))

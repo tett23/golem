@@ -188,7 +188,7 @@ footnoteTests =
         filter isError (brDiagnostics r) @?= []
         let written = brWritten r
             readAll suffix = mconcat <$> mapM TIO.readFile (filter (suffix `isSuffixOf`) written)
-        html <- readAll ".xhtml"
+        html <- readAll ".html"
         txt <- readAll ".txt"
         assertBool (T.unpack html) ("href=\"#note-2\"" `T.isInfixOf` html)
         assertBool (T.unpack txt) ("*2" `T.isInfixOf` txt)

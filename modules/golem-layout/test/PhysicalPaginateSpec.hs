@@ -742,6 +742,7 @@ physicalPaginateTests =
       <> turnedFigureTests
       <> continuedNoteOrderTests
       <> continuedTableNoteTests
+      <> indexColumnNotesTests
 
 turnedSettings :: PhysicalSettings
 turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
@@ -886,3 +887,32 @@ continuedTableNoteTests =
       [FParagraph defaultKeep [LineBox 0 [NoteBody note500 len] [] [] 0]]
         <> [FAdjustLines span0 k | k /= 0]
         <> [FTable 1 0 [] [[LineBox 10 (notesOf note510 second) [] [] 0], [LineBox 11 (notesOf note520 third) [] [] 0]] [] False]
+
+{- | Laid out freely, every index column on the page of the switch divides
+the lines left after the footnotes of the page (root ADR 0025).
+-}
+indexColumnNotesTests :: [TestTree]
+indexColumnNotesTests =
+  [ testCase "root ADR 0025: freely, two lines and a note of two, both index columns end before the note" $
+      fmap (entriesOn 1) (switchPage 2 2) @?= Right (tens 2 6 <> tens 2 6),
+    testCase "root ADR 0025: freely, without a note, both index columns take the rest of the type area" $
+      fmap (entriesOn 1) (switchPage 2 0) @?= Right (tens 2 9 <> tens 2 5),
+    testCase "root ADR 0025: freely, whatever the lines and the note, no index line on the page of the switch reaches its footnotes" $
+      forM_ [(n, m) | n <- [1 .. 8], m <- [0 .. 3]] $ \(n, m) -> case switchPage n m of
+        Left failure -> assertFailure (show failure)
+        Right pages -> forM_ [p | p <- pages, poNumber p == 1, csColumns (poColumnSet p) == 1] $ \body -> do
+          let notes = sum [c | (_, _, c) <- poFootnotes body]
+              noteStart = poLines body - (if notes == 0 then 0 else 10 + fromIntegral notes * 10)
+          assertBool (show (n, m, noteStart, entriesOn 1 pages)) (all (\at -> at + 10 <= noteStart) (entriesOn 1 pages))
+  ]
+  where
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 100, physicalMaxCapacity = 200, physicalSeparator = 10}
+    switchPage :: Int -> Int -> Either PhysicalFailure [PageOutAt Sp]
+    switchPage n m =
+      let first = if m > 0 then LineBox 0 [NoteBody (NoteId span0 0) m] [] [] 0 else line 0
+       in paginatePhysical cfg ([FParagraph defaultKeep (first : map line [1 .. n - 1]), FSwitchColumns (ColumnSet 2 0 0 0)] <> [FParagraph defaultKeep [line (100 + i)] | i <- [0 .. 11]] <> [FRestoreColumns])
+    -- the starts of the entries on a page, column by column
+    entriesOn page pages = [at | p <- pages, poNumber p == page, (at, SLine i) <- poSlots p, i >= 100]
+    -- the lines a to b of pitch 10
+    tens :: Int -> Int -> [Sp]
+    tens a b = [fromIntegral (10 * i) | i <- [a .. b]]

@@ -165,11 +165,11 @@ channelTests =
         let html = do
               r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
               assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-              (,) <$> TIO.readFile (tmp </> "build/html/chapters/01.xhtml") <*> TIO.readFile (tmp </> "build/html/chapters/02.xhtml")
+              (,) <$> TIO.readFile (tmp </> "build/html/chapters/01.html") <*> TIO.readFile (tmp </> "build/html/chapters/02.html")
         (one, two) <- html
         assertBool (T.unpack one) ("<span id=\"c-people-" `T.isInfixOf` one)
         assertBool (T.unpack two) ("<section class=\"channel\" data-channel=\"people\">" `T.isInfixOf` two)
-        assertBool (T.unpack two) ("<li>甲 <a href=\"../chapters/01.xhtml#c-people-" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("<li>甲 <a href=\"../chapters/01.html#c-people-" `T.isInfixOf` two)
         again <- html
         again @?= (one, two),
     testCase "plain text: the body of each entry on a line" $
@@ -321,7 +321,7 @@ pluginFigureTests =
         r <- build (defaultOptions tmp) {optFonts = fakeProvider}
         filter isError (brDiagnostics r) @?= []
         BS.readFile (tmp </> "build/html" </> chartPath) >>= (@?= chartSvg)
-        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack page) (T.pack chartPath `T.isInfixOf` page)
         epubs <- filter (".epub" `isSuffixOf`) <$> listDirectory (tmp </> "build/epub")
         case epubs of
@@ -873,8 +873,8 @@ glossaryTests =
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         t <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
         t @?= "組んだ版と組む版。\n\n組む　版を作ること\n"
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
-        (T.count "<li>" html, T.count "href=\"#c-glossary-" html + T.count "a.xhtml#c-glossary-" html) @?= (1, 2),
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        (T.count "<li>" html, T.count "href=\"#c-glossary-" html + T.count "a.html#c-glossary-" html) @?= (1, 2),
     testCase "G04003: the label of the fourth column is not in the book" $
       withGlossary horizontalStyle "[term: カーニング]。\n\n@channel glossary\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -915,19 +915,19 @@ glossaryTests =
       withGlossary horizontalStyle "@label h\n# [term: 組版]の章\n\n参照[ref-title h]。\n\n@channel glossary\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
-        (T.count "id=\"c-glossary-" html, T.count "href=\"#c-glossary-" html + T.count "a.xhtml#c-glossary-" html) @?= (1, 1),
+        html <- TIO.readFile (tmp </> "build/html/a.html")
+        (T.count "id=\"c-glossary-" html, T.count "href=\"#c-glossary-" html + T.count "a.html#c-glossary-" html) @?= (1, 1),
     testCase "HTML: an index mark nested in a style of a heading has no id in @toc" $
       withGlossary horizontalStyle "@toc\n\n# [strong: [index reading=はんめん: 版面]と]\n\n@index\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         T.count "id=\"i-" html @?= 1,
     testCase "HTML: a word and an index mark in a heading have their ids once, not again in @toc of the same file" $
       withGlossary horizontalStyle "@toc\n\n# [term: 組版]と[index reading=はんめん: 版面]\n\n@channel glossary\n\n@index\n" $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         map (`T.count` html) ["id=\"c-glossary-", "id=\"i-"] @?= [1, 1],
     testCase "HTML and EPUB: the list links to the words in another file; the same bytes twice" $
       withPlugins [("glossary", "glossary.wasm")] (pluginDeclOf "glossary" "data = { terms = \"terms.tsv\" }\n") $ \tmp -> do
@@ -937,12 +937,12 @@ glossaryTests =
         let out = do
               r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
               assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-              (,,) <$> TIO.readFile (tmp </> "build/html/chapters/01.xhtml") <*> TIO.readFile (tmp </> "build/html/chapters/02.xhtml") <*> BS.readFile (tmp </> "build/epub/book.epub")
+              (,,) <$> TIO.readFile (tmp </> "build/html/chapters/01.html") <*> TIO.readFile (tmp </> "build/html/chapters/02.html") <*> BS.readFile (tmp </> "build/epub/book.epub")
         (one, two, epub) <- out
         assertBool (T.unpack one) ("<span id=\"c-glossary-" `T.isInfixOf` one)
         assertBool (T.unpack two) ("<section class=\"channel\" data-channel=\"glossary\">" `T.isInfixOf` two)
-        assertBool (T.unpack two) ("<li>組版　版を組むこと（→<a href=\"../chapters/01.xhtml#" `T.isInfixOf` two)
-        assertBool (T.unpack two) ("） <a href=\"../chapters/01.xhtml#c-glossary-" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("<li>組版　版を組むこと（→<a href=\"../chapters/01.html#" `T.isInfixOf` two)
+        assertBool (T.unpack two) ("） <a href=\"../chapters/01.html#c-glossary-" `T.isInfixOf` two)
         again <- out
         again @?= (one, two, epub)
   ]
