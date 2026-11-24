@@ -74,7 +74,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 data CFont
 
-foreign import capi unsafe "golem_font.h golem_font_open" c_open :: Ptr Word8 -> CSize -> IO (Ptr CFont)
+foreign import capi safe "golem_font.h golem_font_open" c_open :: Ptr Word8 -> CSize -> IO (Ptr CFont)
 
 foreign import capi unsafe "golem_font.h &golem_font_close" c_close :: FunPtr (Ptr CFont -> IO ())
 
@@ -101,7 +101,7 @@ foreign import capi unsafe "golem_font.h golem_font_shape"
 
 foreign import capi unsafe "golem_font.h golem_font_feature_tags" c_featureTags :: Ptr CFont -> Ptr Word32 -> CInt -> IO CInt
 
-foreign import capi unsafe "golem_font.h golem_font_subset" c_subset :: Ptr CFont -> Ptr Word32 -> CInt -> Ptr CSize -> IO (Ptr Word8)
+foreign import capi safe "golem_font.h golem_font_subset" c_subset :: Ptr CFont -> Ptr Word32 -> CInt -> Ptr CSize -> IO (Ptr Word8)
 
 foreign import capi unsafe "golem_font.h golem_font_postscript_name" c_psName :: Ptr CFont -> IO CString
 
