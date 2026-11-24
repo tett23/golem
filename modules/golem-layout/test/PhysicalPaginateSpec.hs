@@ -740,6 +740,7 @@ physicalPaginateTests =
           @?= Right [[(1, SLine 0)], [(1, SLine 1), (17, SLine 2), (33, SLine 3)]]
     ]
       <> turnedFigureTests
+      <> continuedNoteOrderTests
 
 turnedSettings :: PhysicalSettings
 turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
@@ -818,3 +819,40 @@ turnedFigureTests =
             (3, [(0, SLine 10), (10, SLine 11)], [(NoteId span0 0, 4, 2)])
           ]
   ]
+
+-- | Laid out freely, the footnotes keep the order written while one continues (root ADR 0444).
+continuedNoteOrderTests :: [TestTree]
+continuedNoteOrderTests =
+  [ testCase "root ADR 0444 I1: freely, page-lines +2 puts the rest of note 500 on page 1, and line 10 with note 510 on page 2" $ do
+      ps <- either (assertFailure . show) pure (continued 2 5 (Just 1) 0)
+      [i | (_, i, _, _) <- noteParts ps] @?= [note500, note510]
+      [(n, from, len) | (n, i, from, len) <- noteParts ps, i == note500] @?= [(1, 0, 5)]
+      pageOfLine 10 ps @?= [2],
+    testCase "root ADR 0444 I1, I2: freely, page-lines +1 puts one more line of note 500 on page 1, and the rest before note 510 on page 2" $ do
+      ps <- either (assertFailure . show) pure (continued 1 5 (Just 1) 0)
+      [(n, i) | (n, i, _, _) <- noteParts ps] @?= [(1, note500), (2, note500), (2, note510)]
+      pageOfLine 10 ps @?= [2],
+    testCase "root ADR 0444 I1, I2, I4: freely, whatever the page-lines and the notes, the notes keep the order written and every line is placed once in order" $
+      forM_ [(k, len, second, more) | k <- [0 .. 5], len <- [1 .. 8], second <- [Nothing, Just 1, Just 2], more <- [0 .. 2]] $ \(k, len, second, more) ->
+        case continued k len second more of
+          Left failure -> assertFailure (show (k, len, second, more, failure))
+          Right ps -> do
+            let order = [i | (_, i, _, _) <- noteParts ps]
+                what = show (k, len, second, more, noteParts ps, map poSlots ps)
+            assertBool ("I1 " <> what) (note500 `notElem` dropWhile (/= note510) order)
+            [i | p <- ps, (_, SLine i) <- poSlots p] @?= [0, 10] <> take more [20 ..]
+  ]
+  where
+    note500 = NoteId (mkSpan (FileId 0) 500 501) 0
+    note510 = NoteId (mkSpan (FileId 0) 510 511) 0
+    -- a column of 50 sp that may grow to 90, a pitch of 10 and a separator of 10, as the grid tests of root ADR 0444
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 50, physicalMaxCapacity = 90, physicalSeparator = 10}
+    continued :: Int -> Int -> Maybe Int -> Int -> Either PhysicalFailure [PageOutAt Sp]
+    continued k len second more =
+      paginatePhysical cfg $
+        [FParagraph defaultKeep [LineBox 0 [NoteBody note500 len] [] [] 0]]
+          <> [FAdjustLines span0 k | k /= 0]
+          <> [FParagraph defaultKeep [LineBox 10 [NoteBody note510 n | Just n <- [second]] [] [] 0]]
+          <> [FParagraph defaultKeep (map line [20 .. 20 + more - 1]) | more > 0]
+    noteParts ps = [(poNumber p, i, from, n) | p <- ps, (i, from, n) <- poFootnotes p]
+    pageOfLine j ps = [poNumber p | p <- ps, (_, SLine i) <- poSlots p, i == j]

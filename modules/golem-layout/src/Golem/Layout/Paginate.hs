@@ -219,7 +219,8 @@ step env st f rest = case f of
   -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
   -- before the spaces placed after the block before it (golem-layout ADR 0043)
   FNeedLines sp n -> needMore env sp n st
-  FAdjustLines sp k -> adjustLines env (applyBreaks env st) sp k
+  -- the continued notes take the room added first (root ADR 0444)
+  FAdjustLines sp k -> drainPendingNotes env (adjustLines env (applyBreaks env st) sp k)
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
     | all waitsFor rest -> st

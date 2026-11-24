@@ -36,7 +36,14 @@ import Test.Tasty.HUnit
 -- | Footnote marks, note bodies and note numbers (golem-driver ADR 0018).
 footnoteTests :: [TestTree]
 footnoteTests =
-  [ testCase "PDF: notes 1 of two files each set the body of their own file" $ do
+  [ testCase "root ADR 0444 I1: after page-lines +2, the rest of a continued note is drawn before the next note" $ do
+      let five = replaceIn "lines = 30" "lines = 5" horizontalStyle
+          source = "一[note: " <> T.replicate 55 "甲" <> "]\n\n@page-lines +2\n\n二[note: 乙。]\n"
+      content <- miniPdf fakeProvider True five source [] >>= fmap BS.concat . inflateAll
+      let drawn = [c | d <- drawnGlyphs content, c <- "甲乙", dGlyph d == fromEnum c]
+      assertBool (show drawn) ('甲' `elem` drawn && '乙' `elem` drawn)
+      dropWhile (/= '乙') drawn @?= "乙",
+    testCase "PDF: notes 1 of two files each set the body of their own file" $ do
       content <- projectPdf twoFiles (horizontalStyle <> "\n[notes]\nnumbering = \"file\"\n") [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: 乙。]\n")]
       let count c = length [() | d <- drawnGlyphs content, dGlyph d == fromEnum c]
       (count '甲', count '乙') @?= (1, 1),
