@@ -1,6 +1,6 @@
 module PhysicalPaginateSpec (physicalPaginateTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -943,7 +943,7 @@ indexOnAdjustedPageTests =
                 rows = indexAt 1 pages
                 label = show (k, n, m, end, rows)
             assertBool ("I1, I2 " <> label) (all (\at -> at + 10 <= end) rows)
-            if used >= end then assertBool ("I3 " <> label) (null rows) else pure ()
+            when (used >= end) $ assertBool ("I3 " <> label) (null rows)
           [] -> assertFailure "no column of the body on page 1"
   ]
   where
