@@ -78,6 +78,22 @@ fi
 "$lean" -o "$tmp/Whole.olean" "$whole"
 echo "the whole pagination model is total and its theorems are proved"
 
+# The separators of root ADR 0398 on the flows of Whole.lean: every
+# definition must be total and every theorem proved.  The manuscripts of
+# SeparatorBoundary.hs are laid out by golem-typeset in the background,
+# to be compared below.
+separator=$root/experiments/pagination-proof/Separator.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$separator"; then
+  echo "unproved or unchecked Lean declaration in $separator" >&2
+  exit 1
+fi
+(cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Separator.olean" "$separator")
+echo "the separator flows are total and their theorems are proved"
+(cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
+  --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
+  experiments/pagination-proof/SeparatorBoundary.hs) > "$tmp/separator-haskell" &
+separatorPid=$!
+
 # The boundary inputs of boundaryTableTests on Whole.lean's paginate,
 # evaluated under the Env of Paginate/Decide.hs, against golem-layout's
 # paginate (root ADR 0352). Boundary.lean is evaluated, not proved, so it
@@ -111,6 +127,23 @@ done
 diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
 inputs=$(grep -c '^[0-9]' "$tmp/boundary-lean")
 echo "the $inputs boundary inputs give the same pages in Whole.lean and golem-layout"
+
+# The manuscripts of SeparatorBoundary.hs on the flows Separator.lean
+# makes, Whole.lean's paginate and the G07134 of Separator.lean, against
+# golem-typeset's layoutPdf (root ADR 0352, root ADR 0398).
+# SeparatorBoundary.lean is evaluated, not proved; it imports
+# Boundary.lean for its Env and prints by #eval, as main is Boundary.lean's.
+sboundary=$root/experiments/pagination-proof/SeparatorBoundary.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|extern)([^A-Za-z_]|$)' "$sboundary"; then
+  echo "unchecked Lean declaration in $sboundary" >&2
+  exit 1
+fi
+(cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Boundary.olean" "$boundary")
+(cd "$root" && LEAN_PATH="$tmp" "$lean" "$sboundary") > "$tmp/separator-lean"
+wait "$separatorPid"
+diff -u "$tmp/separator-haskell" "$tmp/separator-lean"
+manuscripts=$(grep -c '^[0-9]' "$tmp/separator-lean")
+echo "the $manuscripts manuscripts with separators give the same pages and G07134 in Separator.lean and golem-typeset"
 
 # The free placement of root ADR 0397 (Paginate/Physical.hs): every
 # definition must be total and every theorem proved.
