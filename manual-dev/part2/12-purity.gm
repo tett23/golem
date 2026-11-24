@@ -229,6 +229,29 @@ HarfBuzz のオブジェクト（blob、face、font）は開いた後は読む�
 呼び出しごとにインスタンスを作り直すのも同じ考えによる。
 状態を持ち越すと、呼び出しの順で結果が変わり、[code: callCommand] は関数ではなくなる。
 
+C の関数を呼ぶ [code: foreign import] は、[code: safe] か [code: unsafe] のどちらかを必ず書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0435-call-long-ffi-functions-safely.md]（docs/adr の ADR 0435「長くかかりうる FFI の呼び出しを safe で呼び、unsafe の呼び出しを一覧で管理する」）]
+二つの違いは、呼び出しのあいだ capability を手放すかどうかにある。
+[code: unsafe] の呼び出しは費用が小さいが、終わるまで capability を手放さない。
+そのあいだに GC の同期が起きると、ほかのすべての capability が、その呼び出しが終わるまで待たされる。
+[code: safe] の呼び出しは、capability を手放してから C の関数に入るので、ほかのスレッドは止まらない。
+[code: golem] は [code: -threaded -N] で動き、LSP も同じ実行ファイルの中で動くので、長い [code: unsafe] の呼び出しは、LSP の応答や並べて組む段落をまとめて遅らせる。
+そこで、プラグインのコンパイル（[code: golem_plugin_load]）、WAT から wasm への変換（[code: golem_wat2wasm]）、フォントを開くこと（[code: golem_font_open]）、サブセットを作ること（[code: golem_font_subset]）は、[code: safe] で呼ぶ。
+どれもプラグインかフォントの数だけしか呼ばないので、[code: safe] の費用は無視できる。
+
+[code: unsafe] で呼んでよいのは、次の三つのどれかに当たる呼び出しだけである。
+
++ 呼び出しの時間が入力の大きさによらず短く、ロックを待たない呼び出し（値の読み出し、領域の解放など）。
++ 呼び出しの数が多く、[code: safe] の費用が無視できないので、理由を書いて [code: unsafe] のまま残す呼び出し。語ごとに呼ぶシェイピングの [code: golem_font_shape] は、これに当たる。
++ capability を手放さないことそのものが目的の呼び出し。golem-test-support のテストの [code: sleep] は、非 threaded のランタイムの唯一の OS のスレッドを止めるために、わざと [code: unsafe] で呼ぶ。
+
+[code: unsafe] の呼び出しは、[code: scripts/ci/unsafe-ffi.tsv] に一行ずつ書く。
+一行は、モジュールのパス、C の関数の名前、上の理由の番号、理由の文を、タブで区切ったものである。
+[code: scripts/ci/test.sh] は、[code: modules] の下の Haskell のソースから注釈を除いて [code: foreign import] を探し、[code: unsafe] の宣言の（モジュールのパス、C の関数の名前）の集合が一覧と等しいことを確かめる。
+C の関数の名前は、引用符の中の文字列の最後の語である。
+[code: &] で始まる名前は関数のアドレスを取るだけの import で、呼び出しではないので数えない。
+一覧に無い [code: unsafe] の呼び出しも、ソースから消えた一覧の行も、[code: safe] も [code: unsafe] も書かない [code: foreign import] も、検査を落とす。
+GHC は安全さの指定を省いた呼び出しを [code: safe] とするが、どちらかを書かせるのは、[code: unsafe] の呼び出しが一覧の検査をすり抜けないようにするためである。
+
 ### メモ化
 
 golem-typeset の [code: Golem.Typeset.FontProvider] は、字の送りと二字のカーニングの計算、単語とランのシェイピングを、[code: Golem.Typeset.Memo] の [code: memoWith] でメモ化している。
