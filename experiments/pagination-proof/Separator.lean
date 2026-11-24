@@ -1712,12 +1712,12 @@ theorem place_one {pages : List PageOut} {q : PageOut} (mq : q ∈ pages) {i : N
     obtain ⟨hr, mr⟩ := find?_some' _ _ _ e
     rw [hu r mr (slotsIds_mem.mpr hr)]; rfl
 
-/-- Root ADR 0352 invariant 3 on G07134 for one visible separator held
-    with the paragraph after it: under the hypotheses of
-    `I3_separator_hold_one_column`, and when each of the two lines is in
-    one column only of the pages output, the post-processing reports no
-    G07134 for the chain of the separator and the paragraph. -/
-theorem I3_separator_hold_no_error (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
+/-- Under the hypotheses of `I3_separator_hold_one_column`, and when each
+    of the two lines is in one column only of the pages output, the
+    post-processing reports no G07134 for the chain of the separator and
+    the paragraph.  `I3_separator_hold_no_error` derives the last
+    hypothesis from the text of the pages (`text_placeAll`). -/
+theorem hold_no_error_of_once (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
     (c : Clear st) (hw : heldHere env st = false)
     (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
     (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
@@ -1745,6 +1745,147 @@ theorem I3_separator_hold_no_error (env : Env) (hs : 0 ≤ env.separator) (hfit 
     hu l0.id (List.mem_cons_of_mem _ (List.mem_cons_self _ _)) q' m q mq' h h2)
   rw [I3_separator_error_single b a kp' l mids hm fs l0.id _ _ _ e1 e2]
   exact fun ne => ne rfl
+
+/-! ## The ids of the hold, once in the pages output -/
+
+/-- Each element differs from those after it. -/
+def Uniq : List Nat → Prop
+  | [] => True
+  | x :: xs => x ∉ xs ∧ Uniq xs
+
+theorem uniq_append : ∀ {a b : List Nat}, Uniq (a ++ b) → (∀ x ∈ a, x ∉ b) ∧ Uniq b
+  | [], _, h => ⟨fun _ m => absurd m (List.not_mem_nil _), h⟩
+  | x :: xs, b, h => by
+    obtain ⟨hx, h⟩ := (h : x ∉ xs ++ b ∧ Uniq (xs ++ b))
+    obtain ⟨d, u⟩ := uniq_append h
+    refine ⟨fun y m => ?_, u⟩
+    cases m with
+    | head => exact fun mb => hx (mem_app.mpr (Or.inr mb))
+    | tail _ m => exact d y m
+
+/-- An element of the ids of two members of a list whose ids are unique
+    is of one member. -/
+theorem uniq_bind {β : Type} (f : β → List Nat) : ∀ (L : List β), Uniq (L.bind f) →
+    ∀ q ∈ L, ∀ q' ∈ L, ∀ x, x ∈ f q → x ∈ f q' → q = q'
+  | [], _, _, m, _, _, _, _, _ => absurd m (List.not_mem_nil _)
+  | y :: ys, h, q, mq, q', mq', x, hx, hx' => by
+    rw [List.cons_bind] at h
+    obtain ⟨d, u⟩ := uniq_append h
+    have inb : ∀ z ∈ ys, x ∈ f z → x ∈ ys.bind f := fun z m hz => (mem_bind_iff f x ys).mpr ⟨z, m, hz⟩
+    cases mq with
+    | head =>
+      cases mq' with
+      | head => rfl
+      | tail _ m' => exact absurd (inb q' m' hx') (d x hx)
+    | tail _ m =>
+      cases mq' with
+      | head => exact absurd (inb q m hx) (d x hx')
+      | tail _ m' => exact uniq_bind f ys u q m q' m' x hx hx'
+
+theorem bind_bind' {α β γ : Type} (g : α → List β) (h : β → List γ) : ∀ (L : List α),
+    (L.bind g).bind h = L.bind (fun p => (g p).bind h)
+  | [] => rfl
+  | x :: xs => by rw [List.cons_bind, List.append_bind, bind_bind' g h xs, List.cons_bind]
+
+/-- The slots `textSlots` leaves out: figures, turned figures, wrapped
+    figures, rows of code on their own and the header lines a table
+    repeats. -/
+def unlisted : Slot → Bool
+  | .figure _ | .pageFigure _ | .wrapped _ | .codeRow _ | .repeated _ => true
+  | _ => false
+
+theorem codeRows_ids : ∀ (rows : List Nat), (rows.map Slot.codeRow).bind slotIds = rows
+  | [] => rfl
+  | r :: rs => by rw [List.map_cons, List.cons_bind, codeRows_ids rs]; rfl
+
+/-- An id of a slot is an id of the text of the slots, or of a slot the
+    text leaves out. -/
+theorem slotsIds_text (i : Nat) : ∀ (ss : List (Int × Slot)), i ∈ slotsIds ss →
+    i ∈ (textSlots ss).bind slotIds ∨ ∃ s ∈ ss, unlisted s.2 = true ∧ i ∈ slotIds s.2
+  | [], h => absurd h (List.not_mem_nil _)
+  | (g, s) :: r, h => by
+    have ih := slotsIds_text i r
+    have e : slotsIds ((g, s) :: r) = slotIds s ++ slotsIds r := by simp [slotsIds, List.cons_bind]
+    have t : textSlots ((g, s) :: r) = textSlots [(g, s)] ++ textSlots r := by
+      rw [← textSlots_append]; rfl
+    rw [e] at h
+    rw [t, List.append_bind]
+    rcases mem_app.mp h with h | h
+    · cases s with
+      | line j => exact Or.inl (mem_app.mpr (Or.inl (by simpa [textSlots, slotIds] using h)))
+      | heading j c => exact Or.inl (mem_app.mpr (Or.inl (by simpa [textSlots] using h)))
+      | code rows =>
+        refine Or.inl (mem_app.mpr (Or.inl ?_))
+        simp only [textSlots, List.append_nil, codeRows_ids]; exact h
+      | figure j | pageFigure j | wrapped j | codeRow j | repeated j =>
+        exact Or.inr ⟨(g, _), List.mem_cons_self _ _, rfl, h⟩
+    · rcases ih h with h | ⟨x, mx, ux, hx⟩
+      · exact Or.inl (mem_app.mpr (Or.inr h))
+      · exact Or.inr ⟨x, List.mem_cons_of_mem _ mx, ux, hx⟩
+
+theorem pagesText_closePage (env : Env) (st : St) : pagesText (closePage env st).done = text st := by
+  unfold closePage
+  split
+  · rename_i e
+    have s : st.slots = [] := by
+      cases c : st.slots with
+      | nil => rfl
+      | cons _ _ => simp [c, List.isEmpty] at e
+    simp [text, s, textSlots]
+  · rw [pagesText_cons]; rfl
+
+/-- Root ADR 0352 invariant 5 read as the ids: when the ids of the text
+    placed before and of the flows written are unique, an id is in one
+    column only of the pages output, unless a slot the text leaves out
+    holds it (`text_placeAll`). -/
+theorem once_of_uniq (env : Env) (st : St) (flows : List Flow) (i : Nat)
+    (hd : Uniq ((text st ++ sourceText flows).bind slotIds))
+    (hn : ∀ q ∈ (closePage env (placeAll env st flows)).done.reverse, ∀ s ∈ q.slots,
+      unlisted s.2 = true → i ∉ slotIds s.2) :
+    ∀ q ∈ (closePage env (placeAll env st flows)).done.reverse,
+      ∀ q' ∈ (closePage env (placeAll env st flows)).done.reverse,
+      i ∈ slotsIds q.slots → i ∈ slotsIds q'.slots → q = q' := by
+  intro q mq q' mq' h h'
+  generalize hL : (closePage env (placeAll env st flows)).done.reverse = L at hn mq mq'
+  have toText : ∀ r ∈ L, i ∈ slotsIds r.slots → i ∈ (textSlots r.slots).bind slotIds := by
+    intro r mr hr
+    rcases slotsIds_text i r.slots hr with t | ⟨s, ms, us, hs⟩
+    · exact t
+    · exact absurd hs (hn r mr s ms us)
+  have e : L.bind (fun p => (textSlots p.slots).bind slotIds) = (text st ++ sourceText flows).bind slotIds := by
+    rw [← bind_bind', ← hL, ← text_placeAll env flows st, ← pagesText_closePage env]; rfl
+  rw [← e] at hd
+  exact uniq_bind (fun p => (textSlots p.slots).bind slotIds) L hd q mq q' mq' i (toText q mq h) (toText q' mq' h')
+
+/-- Root ADR 0352 invariant 3 on G07134 for one visible separator held
+    with the paragraph after it: under the hypotheses of
+    `I3_separator_hold_one_column`, the post-processing reports no G07134
+    for the chain of the separator and the paragraph, when the ids of the
+    text placed before and of the flows are unique (golem-typeset numbers
+    lines, figures and rows of code by one counter, `nuNext` of Flow.hs)
+    and no slot the text leaves out holds the two lines' ids. -/
+theorem I3_separator_hold_no_error (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
+    (c : Clear st) (hw : heldHere env st = false)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
+    (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
+    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hsp : env.held sp = true)
+    (hnext : env.keptNeed rest = none ∨
+      keptCut (previousKeep env rest kq) (l0 :: ls).length = (l0 :: ls).length)
+    (hhold : 1 + (n : Int) ≤ env.capacity)
+    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
+    (hf : Notes.Fresh st (Notes.sourceNotes rest))
+    (b a : Nat) (kp' : Keep) (mids : List Unit) (hm : ∀ m ∈ mids, passes m = true) (fs : List Flow)
+    (hd : Uniq ((text st ++ sourceText (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)).bind
+      slotIds))
+    (hn : ∀ i ∈ [l.id, l0.id], ∀ q ∈ (closePage env (placeAll env st
+      (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse,
+      ∀ s ∈ q.slots, unlisted s.2 = true → i ∉ slotIds s.2) :
+    0 ∉ holdErrors (.separator b a kp' l :: mids ++ [.other .block fs (some l0.id)])
+      (closePage env (placeAll env st
+        (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse :=
+  hold_no_error_of_once env hs hfit st c hw kp kq l l0 ls rest n p sp hl hlast hkept hsp hnext hhold hp hpn hpart hf
+    b a kp' mids hm fs (fun i mi => once_of_uniq env st _ i hd (hn i mi))
 
 /-- The flows `separatorFlows` makes of a visible separator with no space
     before or after it and the paragraph after it are the separator's
