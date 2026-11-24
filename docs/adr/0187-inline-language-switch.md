@@ -1,6 +1,6 @@
 # ADR 0187: 原稿の一部の言語を `[lang]` と `@lang` で指定する
 
-Status: superseded [{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"欧文の区間の両用の文字の隣の改行"},{"part":"区切りを結果に含む命令への言語付与の拒否","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]}]
+Status: superseded [{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"欧文の区間の両用の文字の隣の改行"},{"part":"区切りを結果に含む命令への言語付与の拒否","by":["docs/adr/0398-styled-separators-in-manuscripts.md"]},{"part":"HTML と EPUB の、HTML の出力に xml:lang を書くこと","by":["docs/adr/0432-write-the-html-target-in-the-html-syntax.md"],"kind":"replace"}]
 
 ## 文脈
 
