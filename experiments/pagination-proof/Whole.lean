@@ -179,6 +179,41 @@ inductive Unmet where
 /-- A note part: note id, first line, lines. -/
 abbrev NotePart := Nat × Nat × Nat
 
+/-- Where a placed rule is measured from (`PlacedRule` of Paginate/Types.hs,
+    the places of RuleArea.hs): the start of the em box of its grid line at
+    the start of a column (`ruleBeforeAtStart`, its outside allowed or not),
+    or the end of the em box of its grid line inside a column (`ruleBefore`
+    and `ruleAfter`), at the end of a column (`ruleAfterAtEnd`, its outside
+    allowed or not), or in the area shared with the rule of the block
+    named (`rulesJoined`, the rule after of the block before and the rule
+    before of the block after). -/
+inductive RuleEdge where
+  | start (outside : Bool)
+  | inside
+  | atEnd (outside : Bool)
+  | joinedAfter (next : Nat)
+  | joinedBefore (prior : Nat)
+  deriving DecidableEq, Repr
+
+/-- A rule placed (`PlacedRule` of Paginate/Types.hs) by the id of its
+    block and whether it is the rule before, on the grid: the grid line it
+    is measured from, what it is measured from, and the grid lines of its
+    area.  The area of a rule at the start of a column starts at its grid
+    line, that of any other rule at the grid line after it. -/
+structure PlacedRule where
+  id : Nat
+  before : Bool
+  line : Int
+  edge : RuleEdge
+  area : Nat
+  deriving DecidableEq, Repr
+
+/-- The first grid line of the area of a rule. -/
+def PlacedRule.first (r : PlacedRule) : Int :=
+  match r.edge with
+  | .start _ => r.line
+  | _ => r.line + 1
+
 structure PageOut where
   number : Nat
   column : Nat
@@ -186,6 +221,8 @@ structure PageOut where
   slots : List (Int × Slot)
   notes : List NotePart
   unmet : List Unmet
+  /-- `poRules`: the rules placed in the column. -/
+  rules : List PlacedRule
 
 structure St where
   page : Nat
@@ -228,6 +265,8 @@ structure St where
       of a set started on this page, against the type area (root ADR
       0441). -/
   setAdjust : Int
+  /-- `sRules`: the rules placed in the column. -/
+  rules : List PlacedRule
 
 structure Need where
   grid : Nat
@@ -286,7 +325,7 @@ structure Env where
 def Env.keepColumn (env : Env) : Bool := env.keepParts == .column
 
 def initialState (env : Env) : St :=
-  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns, none, [], none, 0⟩
+  ⟨1, 0, 0, 0, 0, [], [], [], [], [], [], 0, none, none, [], 0, [], [], false, false, false, [], env.columns, none, [], none, 0, []⟩
 
 /-! ## Queries of State.hs -/
 
@@ -325,7 +364,7 @@ def needIn (env : Env) (st : St) (a b : Need) : Int :=
 /-! ## Operations of State.hs -/
 
 def blankPage (_env : Env) (st : St) : St :=
-  { st with done := ⟨st.page, 0, true, [], [], []⟩ :: st.done, page := st.page + 1 }
+  { st with done := ⟨st.page, 0, true, [], [], [], []⟩ :: st.done, page := st.page + 1 }
 
 def putSlot (st : St) (n : Nat) (s : Slot) : St :=
   { st with slots := st.slots ++ [(st.used, s)], used := st.used + n, headingOnly := false }
@@ -380,10 +419,10 @@ def putBlock (env : Env) (st : St) (n : Nat) : List Line → St
 /-- An empty column makes no output. -/
 def closePage (_env : Env) (st : St) : St :=
   if st.slots.isEmpty ∧ st.notes.isEmpty then st
-  else { st with done := ⟨st.page, st.column, false, st.slots, st.notes, st.unmet⟩ :: st.done, unmet := [] }
+  else { st with done := ⟨st.page, st.column, false, st.slots, st.notes, st.unmet, st.rules⟩ :: st.done, unmet := [] }
 
 def pageFigure (_env : Env) (st : St) (i : Nat) : St :=
-  { st with done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], []⟩ :: st.done, page := st.page + 1 }
+  { st with done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], [], []⟩ :: st.done, page := st.page + 1 }
 
 def carrySep (env : Env) (st : St) : Int := if st.noteLines = 0 then env.separator else 0
 def carryRoom (env : Env) (st : St) : Int := max 0 (cap env st - st.noteLines - carrySep env st - 1)
@@ -418,7 +457,7 @@ def advanceFresh (env : Env) (toPage : Bool) (st : St) : St :=
   let closed := closePage env st
   let written := closed.done.any (·.number == st.page)
   let closed' :=
-    if toPage ∧ ¬written then { closed with done := ⟨st.page, 0, true, [], [], []⟩ :: closed.done }
+    if toPage ∧ ¬written then { closed with done := ⟨st.page, 0, true, [], [], [], []⟩ :: closed.done }
     else closed
   let fresh : St :=
     { closed' with
@@ -435,7 +474,8 @@ def advanceFresh (env : Env) (toPage : Bool) (st : St) : St :=
       pending := []
       spaces := []
       headingOnly := false
-      join := none }
+      join := none
+      rules := [] }
   fresh
 
 /-- The turned figures placed first and the figures that wait. -/
@@ -482,7 +522,8 @@ def startSet (env : Env) (st : St) (columns : Nat) (first : Int) : St :=
     notes := []
     spaces := []
     headingOnly := false
-    join := none }
+    join := none
+    rules := [] }
 
 def advance (env : Env) (toPage : Bool) (st : St) : St := openBox (advanceIn env toPage st)
 
@@ -1923,6 +1964,9 @@ structure Plan where
   before : Nat
   after : Nat
   waiting : Option (Nat × Int)
+  /-- The rules placed before the lines of the block, and after them. -/
+  beforeRules : List PlacedRule
+  afterRules : List PlacedRule
 
 /-- `planOf` of Decide.hs. -/
 def planOf (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBody) (rest : List Flow)
@@ -1930,6 +1974,13 @@ def planOf (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBo
   let k1 : Nat := match joined with
     | some (a, _) => env.rulesJoined a i
     | none => if before then env.ruleBefore i (st.used == top st) (top st == 0) else 0
+  let rulesBefore : List PlacedRule := match joined with
+    | some (a, aLast) => [⟨a, false, aLast, .joinedAfter i, k1⟩, ⟨i, true, aLast, .joinedBefore a, k1⟩]
+    | none =>
+      if before then
+        if st.used == top st then [⟨i, true, st.used, .start (top st == 0), k1⟩]
+        else [⟨i, true, st.used - 1, .inside, k1⟩]
+      else []
   let lastLine : Int := st.used + k1 + body.size - 1
   let notes := decide (0 < st.noteLines) || !(body.lines'.all (·.notes.isEmpty))
   let k2 : Nat :=
@@ -1937,7 +1988,11 @@ def planOf (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBo
       if cap env st - st.noteLines ≤ lastLine + 1 + env.ruleAfter i then env.ruleAfterAtEnd i !notes
       else env.ruleAfter i
     else 0
-  ⟨k1, k2, if joinsNext after rest then some (i, lastLine) else none⟩
+  let rulesAfter : List PlacedRule :=
+    if after && !joinsNext after rest then
+      [⟨i, false, lastLine, if cap env st - st.noteLines ≤ lastLine + 1 + env.ruleAfter i then .atEnd !notes else .inside, k2⟩]
+    else []
+  ⟨k1, k2, if joinsNext after rest then some (i, lastLine) else none, rulesBefore, rulesAfter⟩
 
 /-- `planParts` of Decide.hs: a paragraph's block fits by its grid lines
     alone, a heading's counts its notes. -/
@@ -1960,7 +2015,10 @@ def commitRuled (env : Env) (st : St) (body : RuledBody) (p : Plan) : St :=
   let st2 := match body with
     | .lines _ ls => putRuledLines env p.after st1 ls
     | .heading _ n ls => { putBlock env st1 n ls with headingOnly := isEmpty st || st.headingOnly }
-  { st2 with used := min (st2.used + p.after) (max st2.used (cap env st2 - st2.noteLines)), join := p.waiting }
+  { st2 with
+    used := min (st2.used + p.after) (max st2.used (cap env st2 - st2.noteLines))
+    join := p.waiting
+    rules := st2.rules ++ p.beforeRules ++ p.afterRules }
 
 /-- `splitRuled` of Paginate.hs: a block that does not fit an empty
     column. -/
@@ -1971,8 +2029,10 @@ def splitRuled (env : Env) (st0 : St) (i : Nat) (before after : Bool) (body : Ru
   | .lines kp ls => placeLines env kp st true ls
   | .heading _ n ls =>
     let k2 := (planOf env st i before after body [] none).after
-    if (k1 : Int) + headingNeed env st n ls + k2 ≤ free env st then commitRuled env st body ⟨k1, k2, none⟩
-    else if (k1 : Int) + headingNeed env st n ls ≤ free env st then commitRuled env st body ⟨k1, 0, none⟩
+    let rb := (planOf env st i before after body rest none).beforeRules
+    let ra := (planOf env st i before after body [] none).afterRules
+    if (k1 : Int) + headingNeed env st n ls + k2 ≤ free env st then commitRuled env st body ⟨k1, k2, none, rb, ra⟩
+    else if (k1 : Int) + headingNeed env st n ls ≤ free env st then commitRuled env st body ⟨k1, 0, none, rb, []⟩
     else putBlock env st n ls
 
 /-- `flushJoin` of Paginate.hs: the rule after of the block before, in
@@ -1983,7 +2043,11 @@ def flushJoin (env : Env) (st : St) : St :=
   | some (a, aLast) =>
     let k : Nat := if cap env st - st.noteLines ≤ aLast + 1 + env.ruleAfter a
       then env.ruleAfterAtEnd a (st.noteLines == 0) else env.ruleAfter a
-    { st with used := st.used + min (k : Int) (free env st), join := none }
+    { st with
+      used := st.used + min (k : Int) (free env st)
+      join := none
+      rules := st.rules ++ [⟨a, false, aLast,
+        if cap env st - st.noteLines ≤ aLast + 1 + env.ruleAfter a then .atEnd (st.noteLines == 0) else .inside, k⟩] }
 
 /-- The columns a block with no rule waiting goes on to first: a heading
     not at a recto keeps the first part of what follows, a paragraph of
@@ -4678,11 +4742,12 @@ theorem splitRuled_figs (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Na
     simp only []
     split
     · have := commitRuled_figs env hs s (.heading r n ls) ⟨(planOf env s i b a (.heading r n ls) rest none).before,
-        (planOf env s i b a (.heading r n ls) [] none).after, none⟩ h0.2 rfl
+        (planOf env s i b a (.heading r n ls) [] none).after, none,
+        (planOf env s i b a (.heading r n ls) rest none).beforeRules, (planOf env s i b a (.heading r n ls) [] none).afterRules⟩ h0.2 rfl
       exact ⟨this.1.trans h0.1, this.2⟩
     · split
       · have := commitRuled_figs env hs s (.heading r n ls) ⟨(planOf env s i b a (.heading r n ls) rest none).before,
-          0, none⟩ h0.2 rfl
+          0, none, (planOf env s i b a (.heading r n ls) rest none).beforeRules, []⟩ h0.2 rfl
         exact ⟨this.1.trans h0.1, this.2⟩
       · have := putBlock_figs env hs s n ls h0.2; exact ⟨this.1.trans h0.1, this.2⟩
 

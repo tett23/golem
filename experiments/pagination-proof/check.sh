@@ -110,6 +110,17 @@ fi
 LEAN_PATH="$tmp" "$lean" "$wholeOrder" > "$tmp/whole-order" 2>&1 &
 wholeOrderPid=$!
 
+# The rules of the ruled blocks of the grid mode (WholeRules.lean): every
+# theorem proved.  It is checked in the background and waited for at the
+# end.
+wholeRules=$root/experiments/pagination-proof/WholeRules.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wholeRules"; then
+  echo "unproved or unchecked Lean declaration in $wholeRules" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$wholeRules" > "$tmp/whole-rules" 2>&1 &
+wholeRulesPid=$!
+
 # The separators of root ADR 0398 on the flows of Whole.lean: every
 # definition must be total and every theorem proved.  The manuscripts of
 # SeparatorBoundary.hs are laid out by golem-typeset in the background,
@@ -268,4 +279,9 @@ if ! wait "$wholeOrderPid"; then
   exit 1
 fi
 echo "the footnote lines of the grid mode come in the manuscript's order"
+if ! wait "$wholeRulesPid"; then
+  cat "$tmp/whole-rules" >&2
+  exit 1
+fi
+echo "the rules of the ruled blocks of the grid mode are placed with their blocks in one column"
 echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"

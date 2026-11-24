@@ -206,10 +206,12 @@ def plainEnv (capacity : Nat) (held : Nat → Bool := fun _ => false) : Env wher
   keepNextLines := fun rest => match keepAhead rest with | some (_, _, f, _) => f | none => 0
   -- `ruleBeforeAtStart`, `ruleAfterAtEnd` and `rulesJoined` of RuleArea.hs
   -- for the rule of Boundary.hs
-  ruleBefore := fun _ atStart _ => if atStart then 2 else ruleLines
+  -- for the rule of Boundary.hs; the rules of the blocks of id 200 or
+  -- more may go out of the column by 20 sp (`keep-in-column = false`)
+  ruleBefore := fun i atStart top0 => if atStart then (if 200 ≤ i ∧ top0 = true then 0 else 2) else ruleLines
   rulesJoined := fun _ _ => 3
   ruleAfter := fun _ => ruleLines
-  ruleAfterAtEnd := fun _ _ => 2
+  ruleAfterAtEnd := fun i outside => if 200 ≤ i ∧ outside = true then 0 else 2
   held := held
 
 def boundaryEnv (capacity : Nat) (held : Nat → Bool := fun _ => false) : Env :=
@@ -424,6 +426,25 @@ def boxInputs : List (Nat × List Element) :=
       ++ [1, 2].map fun w => Element.wrapped 101 w 10 0).bind fun last =>
     [1, 2].map fun n => (c, [Element.boxed 100 b a [.noted 0 1 0 m, last], .noted 20 1 0 1, .para 30 n])
 
+/-- Two ruled blocks whose rules may share an area, the first ending at or
+    near the end of a column, between paragraphs: the places of the rules
+    (`poRules`); the same with rules that may go out of the column, after
+    a paragraph with a note or not; and a ruled block before a switch of
+    the columns. -/
+def ruleInputs : List (Nat × List Element) :=
+  ([2, 3, 4, 5, 6].bind fun c => [0, 1, 2].bind fun p => [false, true].bind fun b1 => [1, 2, 3].bind fun n =>
+    [false, true].bind fun a2 => [(Sum.inl 1 : Sum Nat Nat), .inl 2, .inr 1].bind fun second => [1, 2].map fun k =>
+      (c, (if 0 < p then [Element.para 0 p] else [])
+        ++ [Element.ruled 100 b1 true false (.inl n) 10, .ruled 101 true a2 true second 20, .para 30 k]))
+  ++ ([2, 3, 4, 5, 6].bind fun c => [[], [Element.para 0 1], [Element.noted 0 1 0 1]].bind fun lead =>
+    [false, true].bind fun b1 => [1, 2, 3].bind fun n =>
+    (([false, true].bind fun a2 => [(Sum.inl 1 : Sum Nat Nat), .inl 2, .inr 1].map fun s => Element.ruled 201 true a2 true s 20)
+      ++ [Element.para 20 1]).bind fun second => [1, 2].map fun k =>
+      (c, lead ++ [Element.ruled 200 b1 true false (.inl n) 10, second, .para 30 k]))
+  ++ ([3, 4, 5, 6].bind fun c => [0, 1].bind fun p => [100, 200].bind fun r => [1, 2].bind fun n => [1, 2].map fun cs =>
+      (c, (if 0 < p then [Element.para 0 p] else [])
+        ++ [Element.ruled r true true false (.inl n) 10, .switch cs, .ruled (r + 1) true true true (.inl 1) 20, .para 30 2]))
+
 def inputs : List (Nat × List Element) :=
   ([1, 2, 3].bind fun c => [(c, []), (c, [.para 0 1])])
   ++ ([1, 2, 3].bind fun c =>
@@ -459,9 +480,26 @@ def unmetText : Unmet → String
     s!"!adjust{n}:" ++ (match limit with | .noRoom => "AdjustNoRoom" | .linesPlaced => "AdjustLinesPlaced" | .oneLine => "AdjustOneLine")
   | u => s!"!{reprStr u}"
 
+/-- The place of a rule in sp (`prAt`), on the rule grid of Boundary.hs (p = 10 sp,
+    h = 8 sp) for its rule side (weight 12 sp, no space written, kept in
+    the column, or out of it by 20 sp for the blocks of id 200 or more):
+    from the start of the em box of its grid line at the start of a column,
+    from the end of the em box of its grid line elsewhere. -/
+def ruleAt (r : PlacedRule) : Int :=
+  let p : Int := 10
+  let h : Int := 8
+  match r.edge with
+  | .start o => if o && 200 ≤ r.id then r.line * p - 12 else r.line * p + 4
+  | .inside => r.line * p + h
+  | .atEnd o => if o && 200 ≤ r.id then r.line * p + h else r.line * p + h + 4
+  | .joinedAfter _ => r.line * p + h + 2
+  | .joinedBefore _ => r.line * p + h + 18
+
+def ruleText (r : PlacedRule) : String := s!"r{r.id}{if r.before then "b" else "a"}:{ruleAt r}"
+
 def pageText (p : PageOut) : String :=
   " ".intercalate ([toString p.number, toString p.column, if p.blank then "blank" else "-"] ++ p.slots.map slotText
-    ++ p.notes.map (fun (i, first, n) => s!"n{i}:{first}:{n}") ++ p.unmet.map unmetText)
+    ++ p.notes.map (fun (i, first, n) => s!"n{i}:{first}:{n}") ++ p.rules.map ruleText ++ p.unmet.map unmetText)
 
 /-- The pages of `paginateWithin`: those of the state, or one empty page
     when there are none (Paginate.hs, `paginateWithin`). -/
@@ -473,7 +511,7 @@ def pages (capacity : Nat) (es : List Element) : List String :=
 /-- The pages of the inputs of part `part` of `parts` contiguous parts,
     so that check.sh evaluates the parts side by side. -/
 def report (part parts : Nat) : String :=
-  let all := inputs ++ kindInputs ++ adjustInputs ++ boxInputs
+  let all := inputs ++ kindInputs ++ adjustInputs ++ boxInputs ++ ruleInputs
   let size := (all.length + parts - 1) / parts
   String.join (((all.drop (part * size)).take size).map fun (c, es) =>
     s!"{c} [{" ".intercalate (es.map Element.show)}]\n" ++ String.join ((pages c es).map fun p => s!"  {p}\n"))

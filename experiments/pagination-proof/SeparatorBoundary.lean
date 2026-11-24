@@ -206,10 +206,11 @@ def output (c capacity : Nat) (items : List Item) : List String :=
   -- the controls not met in a column with no output go with the last
   -- page, as `paginateWithin` of Paginate.hs puts them
   let pages := match final.done with
-    | [] => [⟨1, 0, false, [], [], final.unmet⟩]
+    | [] => [⟨1, 0, false, [], [], final.unmet, []⟩]
     | last :: earlier => ({ last with unmet := last.unmet ++ final.unmet } :: earlier).reverse
   match Separator.holdErrors made pages with
-  | [] => pages.map pageText
+  -- SeparatorBoundary.hs does not print the rules placed
+  | [] => pages.map fun p => pageText { p with rules := [] }
   | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
 
 

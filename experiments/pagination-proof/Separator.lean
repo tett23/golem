@@ -1212,7 +1212,7 @@ theorem advanceFresh_done (env : Env) (b : Bool) (st : St) :
   obtain ⟨⟨new, d1⟩, d2⟩ := closePage_done env st
   unfold advanceFresh; dsimp only
   split
-  · refine ⟨⟨⟨st.page, 0, true, [], [], []⟩ :: new, by rw [d1]; rfl⟩, fun ne => ?_⟩
+  · refine ⟨⟨⟨st.page, 0, true, [], [], [], []⟩ :: new, by rw [d1]; rfl⟩, fun ne => ?_⟩
     obtain ⟨p, m, h⟩ := d2 ne; exact ⟨p, List.mem_cons_of_mem _ m, h⟩
   · exact ⟨⟨new, d1⟩, d2⟩
 

@@ -461,7 +461,7 @@ theorem placeDeferred_NM (env : Env) (ws : List Deferred) (st : St) :
 theorem keeps_closePage (env : Env) (st : St) : Keeps st (closePage env st) := by
   unfold closePage; split
   · exact Keeps.refl st
-  · exact Keeps.cons ⟨st.page, st.column, false, st.slots, st.notes, st.unmet⟩ rfl rfl
+  · exact Keeps.cons ⟨st.page, st.column, false, st.slots, st.notes, st.unmet, st.rules⟩ rfl rfl
 
 theorem closePage_closes (env : Env) (st : St) (ne : st.slots ≠ []) :
     ∃ p ∈ (closePage env st).done, p.slots = st.slots := by
@@ -491,7 +491,7 @@ theorem keeps_advanceFresh (env : Env) (b : Bool) (st : St) : Keeps st (advanceF
 theorem keeps_pageFigures (env : Env) (ts : List Nat) (st : St) : Keeps st (ts.foldl (pageFigure env) st) := by
   induction ts generalizing st with
   | nil => exact Keeps.refl st
-  | cons t ts ih => exact Keeps.trans (by exact Keeps.cons ⟨st.page, 0, false, [(0, .pageFigure t)], [], []⟩ rfl rfl) (ih _)
+  | cons t ts ih => exact Keeps.trans (by exact Keeps.cons ⟨st.page, 0, false, [(0, .pageFigure t)], [], [], []⟩ rfl rfl) (ih _)
 
 theorem keeps_carryAll (env : Env) (ps : List NotePart) (st : St) : Keeps st (ps.foldl (carryNote env) st) := by
   induction ps generalizing st with
@@ -623,12 +623,12 @@ theorem Rel.ite {c : Prop} [Decidable c] {st a b : St} {X : List Note} (ha : Rel
 theorem Rel.blankP (env : Env) (st : St) : Rel st (blankPage env st) [] :=
   Rel.of_R0 (R0.same (by simp [NM, blankPage, pagesNotes_cons])
     (Grows.of_eq (by simp [allUnmet, blankPage, List.reverse_cons, List.append_bind])
-      (by exact Keeps.cons ⟨st.page, 0, true, [], [], []⟩ rfl rfl)))
+      (by exact Keeps.cons ⟨st.page, 0, true, [], [], [], []⟩ rfl rfl)))
 
 theorem Rel.pageF (env : Env) (st : St) (i : Nat) : Rel st (pageFigure env st i) [] :=
   Rel.of_R0 (R0.same (by simp [NM, pageFigure, pagesNotes_cons])
     (Grows.of_eq (by simp [allUnmet, pageFigure, List.reverse_cons, List.append_bind])
-      (by exact Keeps.cons ⟨st.page, 0, false, [(0, .pageFigure i)], [], []⟩ rfl rfl)))
+      (by exact Keeps.cons ⟨st.page, 0, false, [(0, .pageFigure i)], [], [], []⟩ rfl rfl)))
 
 theorem Rel.oBox (st : St) : Rel st (openBox st) [] :=
   Rel.frame (openBox_done st) (openBox_notes st) (openBox_pending st) (openBox_unmet st) (Keeps.same (openBox_done st) (openBox_slots st))

@@ -70,7 +70,7 @@ flowOf = \case
      in FTable base sp (lines' base h) rowLines (lines' (base + h + sum rows) c) below
   Code g c f cont base n -> FCode (geometry g) c f cont (lines' base n)
   Ruled i b a j body base ->
-    FRuled i (side <$ guard b) (side <$ guard a) j ruleGrid 0 $ case body of
+    FRuled i (sideOf i <$ guard b) (sideOf i <$ guard a) j ruleGrid 0 $ case body of
       Left n -> RuledLines defaultKeep (lines' base n)
       Right n -> RuledHeading False n (lines' base 1)
   Stanza kAll base vs -> FStanza (Keep 2 2 kAll) (zipWith lines' (scanl (+) base vs) vs)
@@ -95,6 +95,12 @@ ruleGrid = RuleGrid 10 8
 
 side :: RuleSide
 side = RuleSide 0 0 12 False Nothing
+
+-- | The rules of the blocks of id 200 or more may go out of the column by
+-- 20 sp (keep-in-column = false): no line at the start of the page's first
+-- column or at the end of a column without notes.
+sideOf :: Int -> RuleSide
+sideOf i = if i >= 200 then side {rsdOutside = Just 20} else side
 
 showElement :: Element -> String
 showElement = \case
@@ -234,6 +240,38 @@ boxInputs =
     n <- [1, 2]
   ]
 
+-- Two ruled blocks whose rules may share an area, the first ending at or
+-- near the end of a column, between paragraphs: the places of the rules
+-- (poRules); the same with rules that may go out of the column, after a
+-- paragraph with a note or not; and a ruled block before a switch of the
+-- columns.
+ruleInputs :: [(Int, [Element])]
+ruleInputs =
+  [ (c, [Para 0 p | p > 0] <> [Ruled 100 b1 True False (Left n) 10, Ruled 101 True a2 True second 20, Para 30 k])
+  | c <- [2 .. 6],
+    p <- [0 .. 2],
+    b1 <- [False, True],
+    n <- [1 .. 3],
+    a2 <- [False, True],
+    second <- [Left 1, Left 2, Right 1],
+    k <- [1, 2]
+  ]
+    <> [ (c, lead <> [Ruled 200 b1 True False (Left n) 10, second, Para 30 k])
+       | c <- [2 .. 6],
+         lead <- [[], [Para 0 1], [Noted 0 1 0 1]],
+         b1 <- [False, True],
+         n <- [1 .. 3],
+         second <- [Ruled 201 True a2 True s 20 | a2 <- [False, True], s <- [Left 1, Left 2, Right 1]] <> [Para 20 1],
+         k <- [1, 2]
+       ]
+    <> [ (c, [Para 0 p | p > 0] <> [Ruled r True True False (Left n) 10, Switch cs, Ruled (r + 1) True True True (Left 1) 20, Para 30 2])
+       | c <- [3 .. 6],
+         p <- [0, 1],
+         r <- [100, 200],
+         n <- [1, 2],
+         cs <- [1, 2]
+       ]
+
 kindChoices :: [Int -> Element]
 kindChoices =
   [\k -> Boxed (100 + k) b a [Para (10 * k) n] | (b, a) <- [(0, 0), (1, 1), (1, 0)], n <- [1 .. 4]]
@@ -300,12 +338,13 @@ unmet = \case
   other -> "!" <> show other
 
 page :: PageOut -> String
-page p = "  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p then "blank" else "-"] <> map slot (poSlots p) <> map note (poFootnotes p) <> map unmet (poUnmet p))
+page p = "  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p then "blank" else "-"] <> map slot (poSlots p) <> map note (poFootnotes p) <> map rule (poRules p) <> map unmet (poUnmet p))
   where
     note (NoteId _ i, first, n) = "n" <> show i <> ":" <> show first <> ":" <> show n
+    rule r = "r" <> show (prId r) <> (if prBefore r then "b" else "a") <> ":" <> show (unSp (prAt r))
 
 main :: IO ()
-main = mapM_ run (inputs <> kindInputs <> adjustInputs <> boxInputs)
+main = mapM_ run (inputs <> kindInputs <> adjustInputs <> boxInputs <> ruleInputs)
   where
     run (c, es) = do
       putStrLn (show c <> " [" <> intercalate " " (map showElement es) <> "]")

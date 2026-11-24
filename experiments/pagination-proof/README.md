@@ -1103,7 +1103,11 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 三組目は、横の行に脚注を持つ回り込み図版を段落の後か見出しなどの指定の後に置いたものである（[root ADR 0443](https://github.com/tett23/golem/blob/8873337addc24163574d69d33c20d4f95b67ac9b/docs/adr/0443-count-side-line-notes-when-a-wrapped-figure-fits.md)）。
 さらに、`boxInputs` の 864 個の入力を足した。
 この入力は、1〜4 行の脚注を持つ 1 行の段落と、行のない最後の部分を作るコードか横の行のない回り込み図版を箱に入れ、箱の後に 1 行の脚注を持つ 1 行の段落と 1 行か 2 行の段落を置いたもので、箱の前のアキは 0 行か 1 行、後のアキは 1〜3 行、段の容量は 3〜5 行である（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md)）。
-`Boundary.lean` は、これらの 52954 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、満たせなかった指定を書き出す。
+さらに、`ruleInputs` の三組 2404 個の入力を足した。
+一組目の 1080 個は、なしか 1〜2 行の段落の後に、後の罫線と、なしか前の罫線を持つ 1〜3 行の段落のブロックと、その後の罫線と領域を共有するブロック（1 行か 2 行の段落か 1 行の見出し）を置き、最後に 1 行か 2 行の段落を置いたもので、段の容量は 2〜6 行である。
+二組目の 1260 個は、一組目と同じ組を版面の外に出してよい罫線（`keep-in-column = false`、余白 20 sp）で作り、前になしか 1 行の段落か 1 行の脚注を持つ段落を置き、共有するブロックの代わりに 1 行の段落も選べるようにしたものである。
+三組目の 64 個は、罫線つきのブロックの後に段組みの切り替えと領域を共有しないブロックを置いたものである。
+`Boundary.lean` は、これらの 55358 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、置いた罫線の位置、満たせなかった指定を書き出す。
 `Env` は `paginate 1` の容量ごとの `Env` で、その引数は `Decide.hs` の `nextNeed`、`keptNeed`、`keepAhead`、`nextFirstLines`、`fitting`、`roomForLine` を写した関数と、`Code.hs` の `codeSpan` と `RuleArea.hs` の罫線の領域をこの寸法で求めた値である（`boundaryEnv`）。
 `check.sh` は、`Whole.lean` を `.olean` にして `Boundary.lean` を四つに分けて並べて評価し、`Boundary.hs` が golem-layout の `paginate` に同じ入力を渡した出力と `diff` で比べる。
 二つの出力は一致した。
@@ -1125,6 +1129,13 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 脚注では、`fitting` から脚注の行を除くと 2295 個、`roomForLine` から脚注の行を除くと 40 個、`nextNeed` の求める行から脚注の行を除くと 82 個である。
 足した 3696 個の入力では、`drainPendingNotes` を外すと 336 個、組の後の段に組の縮みを渡さないと 192 個、`startSet` の縮みを 0 にすると 312 個、`typeAreaFree` を版面だけで測ると 184 個、回り込み図版を収める判定から横の行の脚注を除くと 769 個、`nextNeed` の回り込み図版から脚注を除くと 41 個である。
 `boxInputs` の 864 個の入力では、箱を閉じた後の `drainPendingNotes` を外すと 40 個が食い違う。
+置いた罫線の位置の照合の感度も、`Whole.lean` の罫線の計算を一つずつ替えて確かめた。
+55358 個の入力で、段の中の前の罫線の起点を前の行でなく今の行にすると 667 個、段の始めの前の罫線を段の中の罫線として置くと 2398 個、共有する二つの罫線の起点の種類を入れ替えると 82 個、後の罫線の起点から前の罫線の領域を除くと 378 個、前の罫線と後の罫線を足す順を逆にすると 930 個の入力で出力が食い違った。
+`flushJoin` の罫線を置かないと 1778 個、その罫線を常に段の中の罫線にすると 644 個、脚注のある段でも版面の外に出してよいとすると 96 個、段の始めの罫線を段組みの始まりの行によらず版面の外に出してよいとすると 6 個の入力で食い違った。
+次の段で罫線を空にしないと 3073 個、段組みを始めるときに空にしないと 40 個の入力で食い違った。
+`commitRuled` が置く後の罫線を常に段の中の罫線にする変更と、脚注のある段でも版面の外に出してよいとする変更は、出力を変えなかった。
+この寸法では、段の端の後の罫線の領域（2 行）が段の中の領域（1 行）より大きく、段の中に収める段の終わりの後の罫線を `commitRuled` が置くことがないからである。
+版面の外に出す段の終わりの後の罫線は、段の中の罫線と同じ sp の位置に置かれる。
 
 境界入力の照合には、一つのことが残る。
 表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめるので、Lean の側の照合は、二つ目の項目に残る、実フォントの送りを `FigureSpec.hs` の計測値で渡す照合を待つ。
@@ -1173,7 +1184,39 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 回り込み図版の横の段落を改行し直すループ（`parts`）は写したが、改行器と後続の判定を引数とし、golem-typeset の出力とは照合していない。
 golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、まだ写していない。
 
-置いた罫線の位置は、まだ証明していない。
+置いた罫線の位置は、格子の上で `WholeRules.lean` が扱う（不変条件 3）。
+`Whole.lean` の `St` と `PageOut` は、golem-layout の `sRules` と `poRules` を写した `rules` を持つ。
+置いた罫線（`PlacedRule`）は、ブロックの id、前の罫線かどうか、位置を測る起点の格子の行、起点の種類（`RuleEdge`）、領域の行数を持つ。
+起点の種類は、段の始め（`ruleBeforeAtStart`）、段の中（`ruleBefore` と `ruleAfter`）、段の終わり（`ruleAfterAtEnd`）、共有する領域の二つの罫線（`rulesJoined`）の五つで、段の始めと段の終わりは版面の外に出してよいかを持つ。
+`planOf`、`commitRuled`、`flushJoin` は Haskell と同じ順に罫線を足し、`advanceFresh` と `startSet` は新しい段の罫線を空にする。
+`Boundary.lean` は、起点の行と種類から `Boundary.hs` の罫線の寸法で sp の位置を求めて（`ruleAt`）、golem-layout の `prAt` と照合する。
+
+`I3_commitRuled_column` は、`commitRuled` がページと段を変えず、前の罫線と後の罫線をその段の罫線に足し、ブロックの行を前の罫線の領域の後に置くことを示す。
+`I3_planOf_before_in_column` と `I3_planOf_after_in_column` は、ブロックが二つの領域とともに段の空きに収まれば、`planOf` の罫線の領域が、ブロックの前に使った行から始まり、段の脚注の行の前で終わることを示す。
+領域を共有する二つの罫線については、待つ罫線の起点の次の行が使った行であることを前提に置く。
+`I3_placeRuledFresh_rules` と `I3_placeRuled_rules` は、`placeRuled` の結果が、この性質を満たす罫線とともにブロックを置いた `commitRuled` か、罫線を外して分けたブロック（`placeLines` か `putBlock`）であることを示す（[golem-driver ADR 0027](../../docs/golem-driver/adr/0027-paragraph-style-rules.md)）。
+`I3_placeRuled_joined` は、領域を共有するブロックを罫線が待つ状態の段にそのまま置き、前のブロックの後の罫線と自身の前の罫線を、前のブロックの最後の行を起点に置くことを示す。
+`I3_commitRuled_waiting` は、後の罫線を待たせたブロックが使った行を、待つ罫線の起点の次の行にすることを示す。
+`I3_commitRuled_waiting_line` は、段落のブロックならその最後の行を同じ段の起点の行に置くことを示し、段落のブロックが 1 行以上を持つことを前提に置く。
+`I3_advance_clears` と `I3_startSet_clears` は、次の段に進むか段組みを始めると、待つ罫線がなくなり、罫線が空になることを示す。
+したがって、領域を共有する二つの罫線と、二つのブロックの行は一つの段に置かれる。
+ただし、待つ罫線を置いてから次のブロックを置くまで使った行が変わらないことは、全体の不変条件としては証明していない。
+その間に `step` が通る処理は、`applyBreaks`、`needBefore`、`placeBlank` と、本の部の `placeBookPart` である。
+
+`I3_flushJoin_rule` は、`flushJoin` が置く後の罫線が段の中にあるのは、その領域が段の空きに収まるときに限ることを示す。
+golem-layout と `Whole.lean` は、収まらないときにもその罫線を段の終わりの後に置く。
+`planOf` は、次のブロックが領域を共有するなら後の罫線の領域を数えずにブロックを置き（`modules/golem-layout/src/Golem/Layout/Paginate/Decide.hs:397` と `:406`）、次のブロックが収まらなければ、`flushJoin` が使った行を `min k (free env st)` だけ進めて罫線を置く（`Paginate.hs:797`）。
+容量 3 行の段に、前後に罫線を持つ 1 行の段落と、その後の罫線と領域を共有する 1 行の段落を置くと（`Boundary.hs` の記法で `3 [R100:111:L1:0 R101:111:L1:10 P20:1]`）、1 ページ目の罫線 100 の後の罫線は 32 sp に置かれ、段の最後の行の字面の下端の 28 sp より後になる。
+この罫線は版面の外に出さない（`rsdOutside` が `Nothing`）。
+55358 個の入力のうち、版面の外に出さない罫線を段の外に置いたのは 548 個で、どれも領域を共有するブロックの前で後の罫線が待った入力だった。
+golem-typeset の原稿でも起きる。
+`horizontalStyle` の行数を 4 行にし、前後に罫線（太さ 1pt、`space-before` 10pt、`space-after` 5pt）を持つ段落スタイルで 3 行の段落と 1 行の段落を続けると、1 ページ目の最初の段落の後の罫線は 65pt に置かれ、4 行の段の高さの 60pt を超え、次の段落は 2 ページ目に置かれた。
+これは、`keep-in-column = true` の罫線を段の端の内側に収め、罫線のまとまりを改ページで分けないとする [golem-driver ADR 0027](../../docs/golem-driver/adr/0027-paragraph-style-rules.md) と、`keep-in-column` の既定を `true` とする仕様（`docs/specifications.md:2371`）に反する。
+Haskell の側の誤りとして報告し、golem-layout は直していない。
+
+本の部の最初のブロックが前のブロックと領域を共有すると、`placeBookPart` の `nextUnit` が待つ罫線を置かずに次の段へ進み、前のブロックの後の罫線が失われる。
+容量 7 行の段で、前後に罫線を持つ 1 行の段落の後に、領域を共有する 1 行の段落と 2 行の段落を `keep-parts = "page"` の本の部に入れると、golem-layout の `paginate` は罫線 100 の後の罫線を置かなかった。
+golem-typeset は、リストの項目と定義の段落に罫線を付けず（`Flow.hs:2596`）、表は罫線つきのブロックでないので、本の部の最初のフローは罫線つきのブロックにならず、この入力は golem-typeset からは来ない。
 
 脚注の行の原稿の注の順は、[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md) の I1 が定めた。
 この ADR の前は、容量 40 sp、送り 10 sp、区切り 0 sp の 1 段で、`[FParagraph (Keep 1 1 False) (5 行の脚注 500 を持つ 1 行), FAdjustLines 2, FParagraph (Keep 1 1 False) (1 行の脚注 510 を持つ 1 行), 1 行の段落]` を `paginatePhysical` に渡すと、脚注 510 が脚注 500 の続きより前に置かれた。
@@ -1237,7 +1280,13 @@ golem-typeset は、箱を持つ段落のフローだけを箱で包み（`modul
 この前提は `I5_paginate_figures` と同じで、golem-typeset が作るフローの列では常に成り立つ（「格子モードの改ページ全体のモデル」の節）。
 罫線つきのブロックの行は、golem-typeset が段落の行から作る（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:3948` の `RuledLines kp boxes`）。
 この前提は、`flushJoin` が使用行数を負にした段に後のブロックが置かれないことに使う。
-行のない段落を golem-typeset が作らないことは、実際の原稿でまだ確かめていない。
+golem-typeset は行のない段落を作らないので、実際の入力はこの前提を満たす。
+`RuledLines` を作るのは `numberText` だけで（`Flow.hs:3948` と `:3950`）、その行は `composeUnit` が組んだ段落の行（`cuSingles`）である。
+golem-layout の `composeInlinesTree` は段落の項目の列の最後に `lineEnd` を足し（`modules/golem-layout/src/Golem/Layout/Japanese.hs:458`）、`lineEnd` は強制改行のペナルティで終わる（`Japanese.hs:806`）。
+`breakParagraph` の最後の pass は必ず成功し、強制改行の位置では必ず行を切るので、組んだ段落は 1 行以上を持つ。
+回り込み図版の横で段落を組み直す `rebreakComposed` は図版の横の段落（`cuBesides`）だけを扱い、罫線つきのブロックを作らない。
+罫線を持つ段落スタイルで、コメントだけの段落、脚注の印だけの段落、空の文字列の式だけの段落、エスケープした空白だけの段落、全角空白だけの段落を golem-typeset の `flowLines` に渡すと、どれも 1 行の `RuledLines` になり、`layoutPdf` はその行をページに置いた。
+後にブロックのない `@style` は G02010 になり、語のない索引の印だけの段落は語と読みの段の数の誤り（G02042）になって、どちらもフローを作らない。
 見出しの行数は、golem-layout の `headingBlock` が `max 1 least` 以上にする（`Paginate.hs:96`）ので、実際の入力はこの前提を満たす。
 脚注区切りは 0 行以上で、段は 1 行以上である（`Hyp`）。
 golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
@@ -1304,6 +1353,7 @@ sh experiments/pagination-proof/check.sh
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
+`WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
 `SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で六つの組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。

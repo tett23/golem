@@ -1931,12 +1931,14 @@ theorem q_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest
     · have fq := frame_parts (frame_flushJoin env st)
       have hq' : (flushJoin env st).breaks = [] ∧ (flushJoin env st).need = none ∧ (flushJoin env st).blank = [] :=
         ⟨fq.1.trans hq.1, fq.2.1.trans hq.2.1, fq.2.2.trans hq.2.2⟩
-      have fe : ∃ x : Nat, flushJoin env st = { st with used := st.used + min (x : Int) (free env st), join := none } := by
-        unfold flushJoin; rw [e]; exact ⟨_, rfl⟩
-      obtain ⟨x, fe⟩ := fe
+      -- the rule placed (`rules`) is not read by the invariants
+      have fe : ∃ (x : Nat) (rs : List PlacedRule), flushJoin env st
+          = { { st with rules := rs } with used := st.used + min (x : Int) (free env st), join := none } := by
+        unfold flushJoin; rw [e]; exact ⟨_, _, rfl⟩
+      obtain ⟨x, rs, fe⟩ := fe
       by_cases hu : 0 ≤ (flushJoin env st).used
       · have fl : OR st (flushJoin env st) [] ∧ Base bx (flushJoin env st) ∧ Ok env (flushJoin env st) := by
-          rw [fe] at hu ⊢; exact q_flushUsed env hs st _ (Int.ofNat_nonneg _) bj.1 oa w.room hu
+          rw [fe] at hu ⊢; exact q_flushUsed env hs { st with rules := rs } _ (Int.ofNat_nonneg _) bj.1.of oa w.room hu
         obtain ⟨r1, b1, o1⟩ := fl
         obtain ⟨r2, b2, o2, j2⟩ := q_placeRuledFresh env hs (flushJoin env st) i b a body rest hb hq' b1 o1
         exact ⟨by simpa using r1.trans r2, b2, o2, j2⟩
