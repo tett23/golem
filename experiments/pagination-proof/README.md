@@ -814,12 +814,30 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 三つ目に、実フォントの送りを golem-driver の `FigureSpec.hs` の計測値で渡す照合も、まだしていない。
 
 三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わないフローである。
-`Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、回していない図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
+`Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
 残るフローは、見出しの罫線つきのブロック（`RuledHeading`）、回り込み図版、表（`placeTable`、`placeTableAcross`）、箱（`placeBoxedParagraph`、`placeBoxedStanzaWith`）、本の部（`retainPhysicalPart`）である。
 計画は、これらを `Physical.lean` の `Flow` と `placeFlow` に一つずつ足し、各配置の `Step` の補題と終了の尺度を広げ、`PhysicalBoundary.hs` に同じ種類の入力を足すことである。
-回り込み図版の改行し直し（`placeWrappedOverflow`、`trialParagraphPartLimit` の回り込みの領域と行数の上限）は、改行器を引数とし、改行した行の id が原稿の行の id と同じ列であることを前提に置く。
-繰り越した脚注の行が過不足なく出力に並ぶことと、置いた罫線の位置も、まだ証明していない。
+`RuledHeading` は `keepFollowing` を呼び、`fitsFollowing` は `RuledHeading` を試しに置くので、二つと `keepFollowing` を相互再帰にする。
+尺度は、`fitsFollowing` には後のフローの長さ、`RuledHeading` には後のフローの長さ、残る罫線の数に 1 を足した値、`rank` の組とする。
+`keepAhead` が返すフローの列は元の列より長くならないので、この組は相互の呼び出しで減る。
+回り込み図版は、横の行を置くループ（`putWrappedLine`）と送った行のループ（`placeWrappedOverflow`）がどちらも行の列で止まるので、`Step` の補題は段落と同じ形になる。
+図版の id は図版の列と別の列に数える。
+待機中の図版があっても回り込み図版はその場に置かれるので、図版の列に入れると原稿の順が保たれないからである。
+回り込み図版の改行し直し（`trialParagraphPartLimit` の回り込みの領域と行数の上限）は、改行器を引数とし、改行した行の id が原稿の行の id と同じ列であることを前提に置く。
+表の `tableReady` と `placeTableRows` は、収まる段まで進むループを `seek` で写す。
+`placeTableRows` は、見出しの行を繰り返した直後の行を必ず置くので、見出しの行の送りが行の送りに等しいことを前提に置くか、行の列と段の尺度の辞書式順序で止まることを示す。
+本の部は、単位の境目まで段を進めるループ（`nextUnit` の `advance`）がページの番号か段の番号を必ず進めるので、ページの残りの段数で止まる。
+
+繰り越した脚注の行が一度ずつ出力に並ぶことと、置いた罫線の位置も、まだ証明していない。
+脚注の行は、注ごとに見れば最初の行から順に並ぶが、原稿の注の順には並ばないことがある。
+容量 40 sp、送り 10 sp、区切り 0 sp の 1 段で、`[FParagraph (Keep 1 1 False) (5 行の脚注 500 を持つ 1 行), FAdjustLines 2, FParagraph (Keep 1 1 False) (1 行の脚注 510 を持つ 1 行), 1 行の段落]` を `paginatePhysical` に渡すと、1 ページ目に脚注 500 の 0〜2 行目と脚注 510 の全体が並び、脚注 500 の 3〜4 行目は 2 ページ目に置かれた。
+`FAdjustLines` がない同じ入力では、脚注 510 を持つ行は 2 ページ目に送られ、脚注 500 の続きの後に置かれた。
+`putLineWithReserve`（`Paginate/Physical.hs:404`）は、繰り越す脚注が残っていても、段の残りが増えれば新しい行の脚注を今の段に置くからである。
+[仕様](../../docs/specifications.md)は、前のページから続く脚注を次の本文のページに続ける（5324 行）と定めるが、後の注との順は定めていない。
+このため、この README は食い違いとは扱わず、注の順を定めるかをメンテナーの判断に残す。
+証明は、注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる形にする。
+不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を、注ごとに行の番号へ展開したものが、読んだ行の脚注を展開したものに注ごとに等しいことである。
 
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りである。
 `USeparator` からのフロー生成と、区切りを後続行と保持できなければ G07134 を返す後処理は、まだ証明していない。

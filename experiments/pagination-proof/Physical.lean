@@ -2663,7 +2663,8 @@ decreasing_by
     loop ends (`I4_nextColumn_rank`, `I4_fit_moved`, `I4_drain_rank`). -/
 theorem I4_paginate_ends (env : Env) (flows : List Flow) : ∃ r, paginate env flows = r := ⟨_, rfl⟩
 
-/-- Invariant 5: the lines of the paragraphs and the ruled blocks are
+/-- Invariant 5: the lines of the paragraphs, definition terms, stanzas,
+    code blocks and ruled blocks, and the first line of each heading, are
     placed once each, in the order of the manuscript. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) (pages : List PageOut)
     (h : paginate env flows = .ok pages) : pagesText pages = sourceText flows := by
@@ -2687,8 +2688,8 @@ theorem I5_paginate_text (env : Env) (flows : List Flow) (pages : List PageOut)
       · injection h with h; subst h
         rw [c.1, a1]
 
-/-- Invariant 5: the figures that are not turned are placed once each, in
-    the order of the manuscript, for a page line pitch above 0. -/
+/-- Invariant 5: the figures and the turned figures are placed once each,
+    in the order of the manuscript, for a page line pitch above 0. -/
 theorem I5_paginate_figures (env : Env) (hp : 0 < env.pagePitch) (flows : List Flow) (pages : List PageOut)
     (h : paginate env flows = .ok pages) : pagesFigs pages = sourceFigs flows := by
   unfold paginate at h
