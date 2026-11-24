@@ -626,7 +626,7 @@ golemOutputs :: [(FilePath, String)] -> [String] -> IO (ExitCode, String, [(File
 golemOutputs files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
-  outs <- mapM (\p -> (p,) <$> BL.readFile (tmp </> "build" </> p)) ["html/a.xhtml", "text/vertical/a.txt", "text/horizontal/a.txt"]
+  outs <- mapM (\p -> (p,) <$> BL.readFile (tmp </> "build" </> p)) ["html/a.html", "text/vertical/a.txt", "text/horizontal/a.txt"]
   pure (code, err, outs)
 
 -- | The notices (golem-syntax ADR 0002).

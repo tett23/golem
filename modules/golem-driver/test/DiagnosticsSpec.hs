@@ -285,7 +285,7 @@ noticeTests =
         -- G05100 belongs to golem lint, while these projects exercise golem build.
         sort (nub (concatMap (\(_, i, _) -> i) raised)) @?= sort (filter (/= DiagnosticCode "G05100") infoCodes)
         let written = concatMap (\(_, _, w) -> w) raised
-        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"]),
       testCase "ADR 0341 I2: legacy listing path stops before reading its asset" $ do
         n <- buildNotified (noticeProject "" "@listing src=missing.hs\n") id
         codesOf (nDiagnostics n) @?= ["G02250"]
@@ -385,7 +385,7 @@ noticeTests =
         n <- buildNotified (separatorProject id "\n[diagnostics]\nsilence-notices = [\"G03120\"]\n") id
         codesOf (nDiagnostics n) @?= [],
       testCase "a paragraph of two lines is two paragraphs without paragraph-separator, one with blank-line (docs/adr/0193)" $ do
-        let paragraphs n = length [() | (p, o) <- nOutputs n, ".xhtml" `isSuffixOf` p, piece <- BC.split '<' o, "p>" `BS.isPrefixOf` piece || "p " `BS.isPrefixOf` piece, "line" `BS.isInfixOf` piece]
+        let paragraphs n = length [() | (p, o) <- nOutputs n, ".html" `isSuffixOf` p, piece <- BC.split '<' o, "p>" `BS.isPrefixOf` piece || "p " `BS.isPrefixOf` piece, "line" `BS.isInfixOf` piece]
         byDefault <- buildNotified (separatorProject id "") id
         blank <- buildNotified (separatorProject id "\n[source]\nparagraph-separator = \"blank-line\"\n") id
         (paragraphs byDefault, paragraphs blank) @?= (2, 1)

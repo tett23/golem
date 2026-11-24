@@ -303,7 +303,7 @@ PDF の本文の横組みで約物にもプロポーショナルメトリクス�
 
 原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
 PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
-HTML と EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)）。
+HTML には `lang` を、EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)、[docs/adr/0432](./docs/adr/0432-write-the-html-target-in-the-html-syntax.md)）。
 
 PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 0272](./docs/adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 

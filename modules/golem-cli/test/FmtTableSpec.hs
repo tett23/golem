@@ -144,13 +144,13 @@ commandTests =
           let golem args = readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
           (code0, _, err0) <- golem ["build", "--target", "html"]
           assertEqual err0 ExitSuccess code0
-          before <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build" </> "html" </> "a.xhtml")
+          before <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build" </> "html" </> "a.html")
           assertBool "the BOM is in @listing before golem fmt" ("\xFEFF" `T.isInfixOf` before)
           (code1, _, err1) <- golem ["fmt"]
           assertEqual err1 ExitSuccess code1
           (code2, _, err2) <- golem ["build", "--target", "html"]
           assertEqual err2 ExitSuccess code2
-          after <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build" </> "html" </> "a.xhtml")
+          after <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build" </> "html" </> "a.html")
           assertBool "no BOM in @listing after golem fmt" (not ("\xFEFF" `T.isInfixOf` after))
           assertBool "the first line of @listing is there" ("a,b" `T.isInfixOf` after),
       testCase "without arguments, a missing table file and one outside the root are left to the build" $ do

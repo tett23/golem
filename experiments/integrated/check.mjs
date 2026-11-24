@@ -77,7 +77,7 @@ try{
     const r=html();
     expect('HTML language '+tag,[r.exit,...codes(r)],[Number(Boolean(error)),...(error?[error]:[])]);
     if(!error){
-      const chapter='build/html/chapters/01.xhtml';
+      const chapter='build/html/chapters/01.html';
       const contents=fs.existsSync(path.join(book,chapter))?read(chapter):'';
       expect('JA-jp prints Japanese edition and date',contents.match(/<p>([^<]*発行)<\/p>/)?.[1]??null,'二〇二六年十月十六日　初版第一刷発行');
     }
