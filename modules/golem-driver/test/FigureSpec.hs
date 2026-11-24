@@ -1158,5 +1158,5 @@ zeroExtentFigureTests =
         [diagCode d | d <- brDiagnostics c, diagCode d == DiagnosticCode "G07135"] @?= []
         h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider}
         [diagCode d | d <- brDiagnostics h, isError d] @?= []
-        assertBool (show (brWritten h)) (any (".xhtml" `isSuffixOf`) (brWritten h))
+        assertBool (show (brWritten h)) (any (".html" `isSuffixOf`) (brWritten h))
   ]
