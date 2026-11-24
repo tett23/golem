@@ -137,7 +137,9 @@ fi
 LEAN_PATH="$tmp" "$lean" --run "$pboundary" "$tmp/physical-haskell" > "$tmp/physical-lean"
 diff -u "$tmp/physical-haskell" "$tmp/physical-lean"
 physicalInputs=$(grep -c '^in ' "$tmp/physical-lean")
+wrapTrials=$(grep -c '^tw ' "$tmp/physical-lean")
 echo "the $physicalInputs boundary inputs give the same pages in Physical.lean and golem-layout's paginatePhysical"
+echo "the $wrapTrials trials beside a wrapped figure give the same parts in Physical.lean and trialParagraphPartLimit"
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen

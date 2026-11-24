@@ -657,8 +657,25 @@ pageToken p =
         <> map unmetToken (poUnmet p)
     )
 
+-- A paragraph part on trial beside a wrapped figure: the flows before it
+-- placed, the figure begun, then trialParagraphPartLimit with the region of
+-- the figure, a prefix limit, a keep and whether the part starts the
+-- paragraph. A part moved on is tried once more in the next column.
+wrapTrialInputs :: [(Column, [FlowAt Sp], Int, Maybe Int, Keep, Bool, [LineBox])]
+wrapTrialInputs =
+  [ (Column cap 4 cols, pre, e, lim, k, s, rows)
+  | cap <- [30, 40, 60],
+    cols <- [1, 2],
+    pre <- [[], [para 0 1], [para 0 3]],
+    e <- [15, 25, 35],
+    lim <- [Nothing, Just 1, Just 2],
+    k <- keeps,
+    s <- [True, False],
+    rows <- [lines' 700 m | m <- [1 .. 4]] <> [noted 700 3 1 2, noted 700 3 0 1, noted 700 2 0 3, lines' 900 2]
+  ]
+
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> bookPartInputs <> tableAcrossInputs <> failureInputs)
+main = mapM_ runWrap wrapTrialInputs >> mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> bookPartInputs <> tableAcrossInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))
@@ -669,6 +686,20 @@ main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs
       -- printed as a loop, which Physical.lean gives as noProgress
       done <- timeout 2000000 (evaluate (length (concat out)))
       mapM_ putStrLn (maybe ["out fail loop"] (const out) done)
+    runWrap (column@(Column cap sep cols), pre, e, lim, k, s, rows) = do
+      putStrLn (unwords (["tw", show cap, show sep, show cols, show e, maybe "-" show lim, flowToken (FParagraph k rows), if s then "1" else "0"] <> map flowToken pre))
+      let cfg = settingsOf column
+          keepOf (Keep f l a) = show f <> "," <> show l <> "," <> (if a then "1" else "0")
+          shown again = \case
+            Left failure -> ["out fail " <> failureToken failure]
+            Right (region, PhysicalMoved c kk) ->
+              ("part moved " <> keepOf kk) : if again then shown False ((,) region <$> trialParagraphPartLimit cfg (Just region) lim kk s c rows) else map pageToken (finishPhysicalCursor cfg c)
+            Right (_, PhysicalPlaced n c kk) -> ("part placed " <> show n <> " " <> keepOf kk) : map pageToken (finishPhysicalCursor cfg c)
+          trial = do
+            c1 <- stepPhysicalCursor cfg (startPhysicalCursor cfg) pre
+            (c2, region) <- beginPhysicalWrap cfg c1 150 (Sp (fromIntegral e)) [] []
+            (,) region <$> trialParagraphPartLimit cfg (Just region) lim k s c2 rows
+      mapM_ putStrLn (shown True trial)
     failureToken = \case
       PhysicalLineTooTall i -> "line" <> show i
       PhysicalFootnoteTooTall (NoteId _ i) -> "note" <> show i

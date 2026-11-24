@@ -224,6 +224,47 @@ def run (input : String) : List String :=
     | .ok pages => pages.map pageToken
   | _ => []
 
+def finish (env : Env) (st : St) : List PageOut :=
+  match (close env (drainCarry env st)).done.reverse with
+  | [] => [⟨1, 0, false, [], [], env.capacity, []⟩]
+  | pages => pages
+
+def keepTok (k : Keep) : String := s!"{k.first},{k.last},{if k.all then 1 else 0}"
+
+/-- The result of a trial, and of one more trial of a part moved on. -/
+partial def shownWrap (env : Env) (lim : Option Nat) (start : Bool) (rows : List Line) (again : Bool) :
+    Except Failure (Region × Part) → List String
+  | .error f => [s!"out fail {failureToken f}"]
+  | .ok (region, .moved st kk) =>
+    s!"part moved {keepTok kk}" ::
+      (if again then shownWrap env lim start rows false ((trialWrap env region lim kk start st rows).map (fun p => (region, p)))
+       else (finish env st).map pageToken)
+  | .ok (_, .placed n st kk) => s!"part placed {n} {keepTok kk}" :: (finish env st).map pageToken
+
+/-- A `tw` line of PhysicalBoundary.hs: `trialWrap` after the flows before
+    it and `beginWrap`. -/
+def runWrap (input : String) : List String :=
+  match input.splitOn " " with
+  | "tw" :: cap :: sep :: cols :: e :: lim :: p :: s :: pre =>
+    let env := boundaryEnv (int! cap) (int! sep) (nat! cols)
+    let flows := (flowsOf pre.length pre).1
+    let (k, rows) := match flowOf p with
+      | .paragraph k ls => (k, ls)
+      | _ => (defaultKeep, [])
+    let lim := if lim == "-" then none else some (nat! lim)
+    let result : Except Failure (Region × Part) :=
+      match checkNotes env flows with
+      | some f => .error f
+      | none =>
+        match placeAll (level (flowsDepth flows)) env (initial env) flows with
+        | .error f => .error f
+        | .ok st =>
+          match beginWrap env st 150 (int! e) with
+          | .error f => .error f
+          | .ok (st2, region) => (trialWrap env region lim k (s == "1") st2 rows).map (fun p => (region, p))
+    shownWrap env lim (s == "1") rows true result
+  | _ => []
+
 end PhysicalBoundary
 
 def main (args : List String) : IO Unit := do
@@ -235,5 +276,9 @@ def main (args : List String) : IO Unit := do
       if l.startsWith "in " then
         out.putStrLn l
         for o in PhysicalBoundary.run l do
+          out.putStrLn o
+      else if l.startsWith "tw " then
+        out.putStrLn l
+        for o in PhysicalBoundary.runWrap l do
           out.putStrLn o
   | _ => throw (IO.userError "usage: PhysicalBoundary.lean <inputs>")

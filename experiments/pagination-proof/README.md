@@ -660,8 +660,16 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 詩の行が空の段にも収まらないときは、その詩の行を箱の段落として置き、段の終わりで閉じた箱の部分を開き直して後の詩の行を続ける（`reopen` と `seal`）。
 このため、状態 `St` に段の箱の部分（`psBoxes`）を加えた。
 
+回り込み図版の横の段落は、golem-typeset が `trialParagraphPartLimit` に回り込みの領域と行数の上限を渡して一部分ずつ置き、段を進めるたびに残りの原稿を改行し直す。
+モデルは、回り込みの領域と行数の上限を持つ `trialParagraphPartLimit` を `trialWrap` として、`movePhysicalCursor` を `moveCursor` として、`beginPhysicalWrap` を `beginWrap` として写した。
+回り込みの領域（`Region`）は図版のページ、段、終わりの位置で、その段では行の終わりを図版の終わりと比べて収まる行を数え（`fittingHere`）、図版の横の行を `putWrappedLine` で置く（`putHere`）。
+改行し直すループは、golem-typeset の `causalFreeFlow` の `paragraph` の `parts` を `parts` として写した。
+`parts` は改行器を引数（`breaker`）に取り、改行器は、カーソル、置いた行の数、原稿の項目の位置から、残りの原稿の行と、それぞれの行の改行の後の項目の位置を返す。
+後に続くものが収まるかの判定（`probeNext`）と、最後の部分の後の `keepPhysicalNext` も引数（`follows` と `hold`）である。
+golem-typeset が小さくならない上限で試し直すとき、または後でない項目の位置から続けるとき、`parts` は `noProgress` を返す。
+
 モデルは次の点で Haskell の実装と異なる。
-`trialParagraphPartLimit` は回り込みの領域と行数の上限を持たない場合だけを写し、`movePhysicalCursor` は `nextColumn` として写した。
+`paginatePhysical` の中の `trialParagraphPartLimit` は回り込みの領域と行数の上限を持たない場合（`trial`）として写し、そこでの `movePhysicalCursor` は `nextColumn` として写した。
 `movePhysicalCursor` が閉じる段の使用長を広げる処理は、閉じた段の出力に現れないからである。
 `trialParagraphPartLimit` が呼ぶたびに行う `checkPhysicalNotes` は、`trial` も呼ぶたびに行う（`checkRows`）。
 `paginatePhysical` の最初の検査は本の部の中の行を見ないので（`flowLines` の `FBookPart` は空）、本の部の中の段落にはこの検査が働く。
@@ -671,7 +679,7 @@ golem-typeset はコードの行に続く番号を振るので、二つは一致
 この条件が成り立たない状態では、Physical.hs の `drainCarry` は止まらないか、送りが 0 のときに `div` の例外になる。
 繰り越す脚注の 1 行が新しいページに収まらなければ、どのページでも脚注は減らないからである。
 そのため、`paginate` は、最後の `drainCarry` の後に待機中の図版か繰り越す脚注が残れば `noProgress` を返す。
-`checkNotes` を通った原稿では、待機中の図版は `FFigure` の検査で段の容量以下であり、繰り越す脚注は区切りと 1 行の和が段の容量以下なので、この条件は成り立つと考えられるが、証明していない。
+本の部を含まずに `checkNotes` を通った原稿では、待機中の図版は `FFigure` の検査で段の容量以下であり、繰り越す脚注は区切りと 1 行の和が段の容量以下なので、この条件は成り立つと考えられるが、証明していない。
 
 終了は、各ループが整礎な再帰で定義されていることで示す。
 `I4_nextColumn_rank` は、何かを置いた段か `FAdjustLines` で縮んだ段から次の段へ進むと、尺度 `rank` が減ることを証明する。
@@ -702,6 +710,8 @@ golem-typeset が `physicalPitches` に送りを与えるのは段落の単位�
 本の部の次の単位まで段を進めるループ（`advanceUnit`）は、次の段がページの番号か残りの段数を必ず進める（`nextColumn_moves`）ので、単位の番号から決まるページの上限との差と残りの段数の辞書式順序で止まる。
 本の部の図版が待つ間に段を進めるループ（`settle`）は、待機中の図版があるので `waiting` とページの残りの段数の辞書式順序で止まる（`I4_settle_rank`）。
 `placeTableAcross` のループ（`acrossGo`）は、残りの部分の数と `rank` の辞書式順序で止まる。
+`parts` は、原稿の残りの項目の数、`keep-all-lines` の有無、`rank`、行数の上限の辞書式順序で止まる。
+段を進めると `rank` が減り（`I4_trialWrap_moved` と `I4_moveCursor_rank`）、試し直すと上限が減り、続けると残りの項目が減る。
 
 `fitsFollowing` は罫線つきのブロックを試しに置き、見出しの罫線つきのブロックは `keepFollowing` を通して `fitsFollowing` を呼ぶので、`fitsFollowingGo` と `placeRuled` は相互再帰で定義した。
 尺度は三つ組の辞書式順序である。
@@ -727,6 +737,12 @@ golem-typeset が `physicalPitches` に送りを与えるのは段落の単位�
 この定理は、出力済みの段、現在の段、待機中の図版をつないだ図版の列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
 `paginate` が成功すれば、最後に待機中の図版は残らない。
 各操作の補題（`step_placeNext` など）は、操作の前後で行と図版の列にどれだけ足されるかを `Step` の形で述べる。
+`I5_parts_lines` は、`parts` が成功すれば、段落の `before` 番目からの行が一度ずつ順に置かれることを証明する。
+この定理は二つの前提を置く。
+一つ目に、改行器が、置いた行の数 `c` の後の行に、段落の最初の行の id に `c` を足した id から続く番号を振ること（`hb`）である。
+golem-typeset は、行に `bUnitFirsts updated Map.! index + countBefore` から続く番号を振る（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:4423` と `:3507`）。
+段落の最初の行の id が改行し直すたびに変わらないことは、未確認である。
+二つ目に、`hold` が行と図版を足さないこと（`hh`）であり、`keepPhysicalNext` の写しの `waitForPrior` はこれを満たす（`step_waitForPrior`）。
 箱の中身を置く補題は、一段内側の `placeFlow` について同じことが成り立つこと（`InnerOk`）を前提とし、`level_ok` がすべての段数でこの前提を導く。
 
 回した図版は、`Physical.hs` の `Waiting` と同じく、待機中の図版の列に図版と区別して入れる（`Waiting.turned`）。
@@ -737,13 +753,15 @@ golem-typeset が `physicalPitches` に送りを与えるのは段落の単位�
 
 `PhysicalBoundary.hs` は、境界の入力を作って golem-layout の `paginatePhysical` に渡し、入力を `in` の行に、出力のページを `out` の行に書き出す。
 入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、節の開始と段組みの切り替えと戻し、見出しと定義の項とその後続、縮めた段の見出し、回した図版の前後の改段と改ページと図版、段落か見出しの後の詩とその後続、コードとその前後の保持と行アキ、見出しの罫線つきのブロックとその前後の見出しと保持と縮めた段、回り込み図版とその前後、見出しの行と本体の行とキャプションと脚注の組み合わせを変えた表とその前後、一つの段落か一つの詩の箱とその前後、段落と詩とスペースと保持を混ぜた箱とそのほかの中身の箱とその前後、段とページと見開きの本の部とその前後、ページか見開きの本の部の中の表、失敗する入力からなる。
+さらに、図版の前のフロー、図版の高さ、行数の上限、保持、段落の始めかを変えて、回り込み図版の横の段落の一部分を `trialParagraphPartLimit` で試す入力を `tw` の行に書き出す。
+次の段へ送った部分は、送った先の段でもう一度試す。
 id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
 最初の行の id が 385 の見出しには、`physicalHeadingBounds` として字面の始まり 4 sp と終わり 16 sp を与えた。
 id が 702 と 705 の行には 3 sp、712 の行には 5 sp の `physicalWrappedBefore` を与え、箱 170 には 3 sp の `physicalBoxPadding` を与えた。
 `PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
 `PhysicalBoundary.hs` は、2 秒で終わらない入力を `out fail loop` と書き出し、`PhysicalBoundary.lean` は `noProgress` を同じく書き出す。
 見出しの行の送りが 14 sp の表の 8 個の入力では、4 個が両方で `loop` になった。
-`check.sh` は二つの出力を `diff` で比べ、150106 個の入力ですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、150106 個の入力と 10368 個の試しですべて一致した。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
 この照合の感度は、写した計算を一つずつ替えて確かめた。
@@ -783,6 +801,15 @@ id が 702 と 705 の行には 3 sp、712 の行には 5 sp の `physicalWrappe
 本の部の中の表では、行の前で見出しの行を繰り返さないと 752 個、部分の判定で脚注のすべてでなく 1 行を求めると 81 個、最後の行と下のキャプションを保持しないと 159 個、表の前のアキを使用長に足さないと 307 個、行の検査で段の数を掛けないと 96 個、最後の行の前で見出しの行を繰り返さないと 244 個、繰り返した見出しの行の後に行が収まらないときに次の段へ進まないと 321 個である。
 `trial` が呼ぶたびに行う脚注の検査は、この照合の入力では確かめていない。
 脚注を持つ入力は、どれも区切りと 1 行の和が段の容量以下だからである。
+
+回り込み図版の横の段落の数は、10368 個の試しで数えた。
+回り込みの領域を見ずに `fitting` で数えると 320 個、図版の終わりと比べずに行の終わりだけで数えると 320 個、行数の上限を見ないと 2824 個、領域の段を見ずにページだけで比べると 417 個、図版を置く前に `fit` を呼ばないと 3072 個である。
+次の三つの写しは、変えても出力が変わらなかった。
+`moveCursor` が使用長を図版の終わりまで広げる処理は、閉じた段の使用長が出力に現れないからである。
+`fittingHere` が待っているスペースを足す処理は、`beginWrap` の `fit` が待っているスペースを使用長に移した後に試すからである。
+図版の横の行を `putWrappedLine` でなく `putLine` で置いても出力が変わらないのは、`fittingHere` が図版の終わりの下に脚注が収まる行だけを選ぶので、予約しても表示する脚注の行が変わらないためと考えられるが、未確認である。
+`parts` の照合はしていない。
+golem-typeset の改行器と `probeNext` を入力から作るには、組版の全体を動かす必要があるからである。
 見出しでは、`headingOnly` を常に偽にすると 1444 個、`TallHeadingExtent` の分岐を除くと 29 個、`headingNeed` が脚注の全体を常に求めると 23 個、`headingNeed` から脚注の区切りを除くと 2 個、`putHeading` が見出しの長さを行の送りにしないと 3414 個である。
 `keepFollowing` では、次の段へ送らないと 1292 個、仮の配置に脚注の長さを足さないと 8 個、待っているスペースを足さないと 30 個、後続の保持の行数を 1 行にすると 18 個、定義の項の長さを 0 にすると 324 個、定義の項の仮のスロットを見出しにすると 6 個である。
 回した図版では、段の終わりでページを開くときに `placeTurned` を呼ばないと、回した図版を一度も置かないと、どちらも評価が 300 秒で終わらなかった。
@@ -802,7 +829,7 @@ id が 702 と 705 の行には 3 sp、712 の行には 5 sp の `physicalWrappe
 同じ処理が置く罫線の位置はモデルに持たないので、この照合では確かめていない。
 
 次の表は、Haskell の関数と Lean の定義の対応である。
-Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パスと行番号で示す。
+Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パスと行番号で示し、golem-typeset の位置だけはリポジトリからのパスで示す。
 
 | Haskell | Lean |
 | --- | --- |
@@ -817,7 +844,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:441` `fitting` | `fitting`、`fittingGo` |
 | `Paginate/Physical.hs:453` `fittingWrapped`、`:467` `putWrappedLine`、`:474` `placeWrappedOverflow`、`:899` `placeFlow` の `FWrapped` | `fittingWrapped`、`fittingWrappedGo`、`putWrappedLine`、`putBeside`、`placeWrappedOverflow`、`overflowMove`、`overflowReady`、`placeWrapped` |
 | `Paginate/Physical.hs:485` `splitAtBreak`、`Paginate/Decide.hs:229` `firstPart` | `splitAtBreak`、`firstPart` |
-| `Paginate/Physical.hs:546` `trialParagraphPartLimit` | `trial`、`trialFrom`、`trialRest`、`checkRows`、`Part` |
+| `Paginate/Physical.hs:546` `trialParagraphPartLimit` | `trial`、`trialFrom`、`trialRest`、`checkRows`、`Part`、`trialWrap`、`trialWrapFrom`、`trialWrapRest`、`fittingHere`、`fittingWrapGo`、`putHere`、`putHereLines`、`limited` |
+| `Paginate/Physical.hs:184` `PhysicalWrap`、`:214` `activeWrapEnd`、`:219` `endPhysicalWrap`、`:222` `movePhysicalCursor`、`:247` `beginPhysicalWrap` | `Region`、`wrapEnd`、`endWrap`、`moveCursor`、`beginWrap` |
+| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4412` `paragraph`（`parts`） | `parts`、`nextItem`、`minimumFront`、`limitRank` |
 | `Paginate/Physical.hs:593` `placeLines` | `placeLines` |
 | `Paginate/Physical.hs:606` `checkPhysicalNotes`、`:614` `paginatePhysical` | `checkNotes`、`paginate` |
 | `Paginate/Physical.hs:628` `drainCarry` | `drainCarry`、`drainOk` |
@@ -931,8 +960,8 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わない処理である。
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
-`paginatePhysical` の回り込み図版は写したが、golem-typeset が `trialParagraphPartLimit` に回り込みの領域と行数の上限を渡して改行し直す処理は、まだ写していない。
-計画は、この処理を改行器を引数として写し、改行した行の id が原稿の行の id と同じ列であることを前提に置くことである。
+回り込み図版の横の段落を改行し直すループ（`parts`）は写したが、改行器と後続の判定を引数とし、golem-typeset の出力とは照合していない。
+golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、まだ写していない。
 
 繰り越した脚注の行が一度ずつ出力に並ぶことと、置いた罫線の位置も、まだ証明していない。
 脚注の行は、注ごとに見れば最初の行から順に並ぶが、原稿の注の順には並ばないことがある。

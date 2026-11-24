@@ -2256,6 +2256,260 @@ def placeWrapped (env : Env) (st : St) (i : Nat) (extent : Int) (beside : List L
       if (beside.drop count).isEmpty then .ok after
       else placeWrappedOverflow env (nextColumn env after) (beside.drop count)
 
+/-! ## A paragraph beside a wrapped figure -/
+
+/-- `PhysicalWrap`: the page, the column and the end of an exclusion. -/
+abbrev Region := Option (Nat × Nat × Int)
+
+/-- `activeWrapEnd`: the end of the exclusion in its column, 0 elsewhere. -/
+def wrapEnd (region : Region) (st : St) : Int :=
+  match region with
+  | some (p, c, e) => if p = st.page ∧ c = st.column then e else 0
+  | none => 0
+
+/-- `endPhysicalWrap`: the used length at least the end of the exclusion. -/
+def endWrap (region : Region) (st : St) : St := { st with used := max st.used (wrapEnd region st) }
+
+/-- `movePhysicalCursor`. -/
+def moveCursor (env : Env) (region : Region) (st : St) : St := nextColumn env (endWrap region st)
+
+/-- `beginPhysicalWrap`: the wrapped figure at the start of its lines, and
+    its exclusion. -/
+def beginWrap (env : Env) (st : St) (ident : Nat) (extent : Int) : Except Failure (St × Region) :=
+  if env.capacity < extent then .error (.figureTooTall ident)
+  else
+    let ready := fit env st extent
+    .ok (checkWaits (putSlot ready 0 (.wrapped ident)), some (ready.page, ready.column, ready.used + extent))
+
+/-- The loop of `fittingHere` in the column of an exclusion. -/
+def fittingWrapGo (env : Env) (st : St) (e used notes : Int) : List Line → Nat
+  | [] => 0
+  | l :: ls =>
+    let n := noteLines l
+    let sep : Int := if 0 < n ∧ notes = 0 then env.separator else 0
+    let used' := used + env.pitchOf l.id
+    let notes' := notes + sep + (n : Int) * env.pagePitch
+    if max e used' + notes' ≤ limit env st then fittingWrapGo env st e used' notes' ls + 1 else 0
+
+/-- `fittingHere` of `trialParagraphPartLimit`. -/
+def fittingHere (env : Env) (region : Region) (st : St) (rows : List Line) : Nat :=
+  if wrapEnd region st = 0 then fitting env st rows
+  else fittingWrapGo env st (wrapEnd region st) (st.used + if empty st then 0 else st.pending) st.notesUsed rows
+
+/-- `put` of `trialParagraphPartLimit`: a line beside the exclusion, or a line. -/
+def putHere (env : Env) (region : Region) (st : St) (l : Line) : Except Failure St :=
+  if 0 < wrapEnd region st then putWrappedLine env (wrapEnd region st) st l else putLine env st l
+
+def putHereLines (env : Env) (region : Region) (st : St) : List Line → Except Failure St
+  | [] => .ok st
+  | l :: ls =>
+    match putHere env region st l with
+    | .error e => .error e
+    | .ok s => putHereLines env region s ls
+
+/-- `selected` with the prefix limit. -/
+def limited (limit : Option Nat) (n : Nat) : Nat :=
+  match limit with
+  | some m => min m n
+  | none => n
+
+/-- `trialParagraphPartLimit` after its first test and the relaxation of
+    keep-all-lines. -/
+def trialWrapRest (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (firstId : Nat) : Except Failure Part :=
+  let total := rows.length
+  let count := fittingHere env region st rows
+  let selected := limited limit (splitAtBreak k start total count)
+  let emptyish := empty st || (headingOnly st && decide (0 < count))
+  if (empty st ∧ st.adjust < 0 ∧ count = 0) ∨ (selected = 0 ∧ emptyish = false) then
+    .ok (.moved (moveCursor env region st) k)
+  else
+    let takeCount := if selected = 0 then max 1 count else selected
+    let here := rows.take takeCount
+    let forced := selected = 0 ∧ emptyish ∧ takeCount < total
+    let short :=
+      (if forced ∧ start ∧ takeCount < k.first then [Unmet.shortPart true firstId k.first takeCount] else []) ++
+      (if forced ∧ total - takeCount < k.last then [Unmet.shortPart false firstId k.last (total - takeCount)] else [])
+    let ready := fit env st (sumPitch env here)
+    match putHereLines env region ready here with
+    | .error e => .error e
+    | .ok placed => .ok (.placed takeCount { placed with unmet := placed.unmet ++ short } k)
+
+def trialWrapFrom (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) : Except Failure Part :=
+  match rows with
+  | [] => .ok (.placed 0 st k)
+  | first :: _ =>
+    if env.capacity < env.pitchOf first.id then .error (.lineTooTall first.id)
+    else if k.all ∧ start ∧ fittingHere env region st rows < rows.length then
+      if empty st || headingOnly st then
+        trialWrapRest env region limit { k with all := false } start (addUnmet (.splitKept first.id) st) rows first.id
+      else .ok (.moved (moveCursor env region st) k)
+    else trialWrapRest env region limit k start st rows first.id
+
+/-- `trialParagraphPartLimit` with a wrap region and a prefix limit. -/
+def trialWrap (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) : Except Failure Part :=
+  match checkRows env rows with
+  | some e => .error e
+  | none => trialWrapFrom env region limit k start st rows
+
+/-- Going on from a state with what waits of `st` lowers the rank of `st`
+    when it is not empty or made shorter. -/
+theorem nextColumn_rank_of (env : Env) (X st : St) (hw : waiting X = waiting st)
+    (h : empty st = false ∨ st.adjust < 0) : rank (nextColumn env X) < rank st := by
+  obtain ⟨le, e, a⟩ := open_waiting env false X
+  unfold nextColumn
+  generalize carryInto env (placeDeferred env (opened env false X)) = C at *
+  have r := rank_le C
+  have low : waiting st * 4 + 1 ≤ rank st := by
+    unfold rank; cases h with
+    | inl h => simp [h]; split <;> omega
+    | inr h => simp [h]; split <;> omega
+  by_cases lt : waiting C < waiting X
+  · omega
+  · have eq : waiting C = waiting X := by omega
+    have : rank C = waiting X * 4 := by simp [rank, e eq, a, eq]
+    omega
+
+theorem I4_moveCursor_rank (env : Env) (region : Region) (st : St) (h : empty st = false ∨ st.adjust < 0) :
+    rank (moveCursor env region st) < rank st :=
+  nextColumn_rank_of env _ st rfl h
+
+theorem trialWrapRest_moved (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (fid : Nat) (next : St) (r : Keep)
+    (h : trialWrapRest env region limit k start st rows fid = .ok (.moved next r)) :
+    r = k ∧ next = moveCursor env region st ∧ (empty st = false ∨ st.adjust < 0) := by
+  unfold trialWrapRest at h
+  dsimp only at h
+  split at h
+  · rename_i c
+    injection h with h; injection h with h1 h2
+    refine ⟨h2.symm, h1.symm, ?_⟩
+    cases c with
+    | inl c => exact Or.inr c.2.1
+    | inr c =>
+      have e := c.2
+      simp only [Bool.or_eq_false_iff] at e
+      exact Or.inl e.1
+  · split at h <;> simp at h
+
+theorem trialWrapRest_placed (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (fid : Nat) (c : Nat) (next : St) (r : Keep)
+    (h : trialWrapRest env region limit k start st rows fid = .ok (.placed c next r)) : 1 ≤ c := by
+  unfold trialWrapRest at h
+  dsimp only at h
+  split at h
+  · simp at h
+  · split at h
+    · simp at h
+    · injection h with h; injection h with h1 _ _
+      subst h1; split <;> omega
+
+theorem I4_trialWrap_moved (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (next : St) (relaxed : Keep)
+    (h : trialWrap env region limit k start st rows = .ok (.moved next relaxed)) :
+    keepRank relaxed < keepRank k ∨ (keepRank relaxed = keepRank k ∧ rank next < rank st) := by
+  unfold trialWrap at h
+  split at h
+  · cases h
+  unfold trialWrapFrom at h
+  split at h
+  · simp at h
+  · split at h
+    · simp at h
+    · split at h
+      · rename_i c
+        split at h
+        · obtain ⟨e, _, _⟩ := trialWrapRest_moved env region limit _ start _ _ _ next relaxed h
+          left; subst e; simp [keepRank, c.1]
+        · injection h with h; injection h with h1 h2
+          subst h1; subst h2
+          rename_i ne
+          refine Or.inr ⟨rfl, I4_moveCursor_rank env region st (Or.inl ?_)⟩
+          cases e : empty st
+          · rfl
+          · exact absurd (by simp [e]) ne
+      · obtain ⟨e, n, m⟩ := trialWrapRest_moved env region limit _ start _ _ _ next relaxed h
+        subst e; subst n
+        exact Or.inr ⟨rfl, I4_moveCursor_rank env region st m⟩
+
+/-- `parts` of golem-typeset's `paragraph`: the rank of a retry. -/
+def limitRank (limit : Option Nat) (total : Nat) : Nat :=
+  match limit with
+  | some n => n
+  | none => total + 1
+
+/-- The item after the break of the `count`-th line. -/
+def nextItem (tail : List (Line × Nat)) (count start : Nat) : Nat :=
+  ((tail.drop (count - 1)).head?.map (·.2)).getD start
+
+/-- `minimumFront` of `paragraph`. -/
+def minimumFront (isStart : Bool) (lastWanted : Nat) (k : Keep) : Nat :=
+  if isStart then max (if 0 < lastWanted then 2 else 1) k.first else 1
+
+set_option linter.unusedVariables false in
+/-- `parts` of `paragraph` in golem-typeset's `causalFreeFlow`: a paragraph
+    beside a wrapped figure, its unplaced source broken again at each
+    cursor. `breaker at before start` stands for `composeAt` and
+    `numberedLines`: the lines of the source from the item `start`, each
+    with the item after its break, numbered after `before` lines; `items`
+    is the number of items of the source. `follows` stands for `probeNext`,
+    and `hold` for `keepPhysicalNext` after the last part. Where
+    golem-typeset would retry with a bound that is not smaller, or go on
+    from an item that is not later, the model returns `noProgress`. -/
+def parts (env : Env) (region : Region) (breaker : St → Nat → Nat → List (Line × Nat)) (items lastWanted : Nat)
+    (follows : St → Bool) (hold : St → St)
+    (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St) : Except Failure St :=
+  match hm : trialWrap env region limit k isStart at' ((breaker at' before start).map (·.1)) with
+  | .error e => .error e
+  | .ok (.moved moved relaxed) =>
+    parts env region breaker items lastWanted follows hold none relaxed isStart start before moved
+  | .ok (.placed count placed relaxed) =>
+    if (breaker at' before start).length ≤ count then
+      if follows (checkWaits placed) || (breaker at' before start).isEmpty then .ok (hold (checkWaits placed))
+      else if h1 : minimumFront isStart lastWanted k ≤ count - max lastWanted (max 1 relaxed.last) ∧ relaxed.all = false then
+        if h2 : count - max lastWanted (max 1 relaxed.last) < limitRank limit (breaker at' before start).length then
+          parts env region breaker items lastWanted follows hold (some (count - max lastWanted (max 1 relaxed.last)))
+            k isStart start before at'
+        else .error (.noProgress 0)
+      else if h3 : empty at' = false then
+        parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at')
+      else .ok (hold (checkWaits placed))
+    else if h4 : start < nextItem (breaker at' before start) count start ∧ start < items then
+      if (breaker (moveCursor env region placed) (before + count) (nextItem (breaker at' before start) count start)).length
+          < relaxed.last then
+        if h5 : minimumFront isStart lastWanted k < count then
+          if h6 : count - 1 < limitRank limit (breaker at' before start).length then
+            parts env region breaker items lastWanted follows hold (some (count - 1)) k isStart start before at'
+          else .error (.noProgress 0)
+        else if h7 : empty at' = false then
+          parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at')
+        else
+          parts env region breaker items lastWanted follows hold none relaxed false
+            (nextItem (breaker at' before start) count start) (before + count) (moveCursor env region placed)
+      else
+        parts env region breaker items lastWanted follows hold none relaxed false
+          (nextItem (breaker at' before start) count start) (before + count) (moveCursor env region placed)
+    else .error (.noProgress 0)
+termination_by (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right
+    cases I4_trialWrap_moved env region limit k isStart at' _ moved relaxed hm with
+    | inl l => exact Prod.Lex.left _ _ l
+    | inr e => rw [e.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ e.2)
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right
+    simp only [limitRank] at h2 ⊢; exact h2
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+    exact I4_moveCursor_rank env region at' (Or.inl h3)
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right
+    simp only [limitRank] at h6 ⊢; exact h6
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+    exact I4_moveCursor_rank env region at' (Or.inl h7)
+  · apply Prod.Lex.left; have a := h4.1; have b := h4.2; omega
+  · apply Prod.Lex.left; have a := h4.1; have b := h4.2; omega
+
 /-! ## Tables -/
 
 /-- The header lines repeated in a later column, without their notes. -/
@@ -3850,6 +4104,218 @@ theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List L
         have c2 := ((ab.trans (Step.same (s := { placed with used := max placed.used ((fit env st e).used + e) })
           rfl rfl rfl)).trans (step_nextColumn env _)).trans b
         simpa only [List.append_nil] using c2
+
+theorem step_endWrap (region : Region) (st : St) : Step st (endWrap region st) [] [] := Step.same rfl rfl rfl
+
+theorem step_moveCursor (env : Env) (region : Region) (st : St) : Step st (moveCursor env region st) [] [] := by
+  simpa using (step_endWrap region st).trans (step_nextColumn env _)
+
+theorem step_putHere (env : Env) (region : Region) (st s : St) (l : Line) (h : putHere env region st l = .ok s) :
+    Step st s [l.id] [] := by
+  unfold putHere at h
+  split at h
+  · exact step_putWrappedLine env _ st s l h
+  · exact step_putLine env false st s l h
+
+theorem step_putHereLines (env : Env) (region : Region) (st s : St) (ls : List Line)
+    (h : putHereLines env region st ls = .ok s) : Step st s (lineIds ls) [] := by
+  induction ls generalizing st with
+  | nil => simp only [putHereLines, Except.ok.injEq] at h; subst h; exact Step.refl _
+  | cons l ls ih =>
+    unfold putHereLines at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      simpa [lineIds] using (step_putHere env region st s1 l e).trans (ih s1 h)
+
+theorem trialWrapRest_placed_step (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool)
+    (st : St) (rows : List Line) (fid : Nat) (c : Nat) (next : St) (r : Keep)
+    (h : trialWrapRest env region limit k start st rows fid = .ok (.placed c next r)) :
+    Step st next (lineIds (rows.take c)) [] := by
+  unfold trialWrapRest at h
+  dsimp only at h
+  split at h
+  · simp at h
+  · split at h
+    · simp at h
+    · rename_i placed e
+      injection h with h; injection h with h1 h2 _
+      subst h1; subst h2
+      have a := step_fit env st (sumPitch env (rows.take (if limited limit (splitAtBreak k start rows.length
+        (fittingHere env region st rows)) = 0 then max 1 (fittingHere env region st rows) else limited limit
+        (splitAtBreak k start rows.length (fittingHere env region st rows)))))
+      have b := step_putHereLines env region _ placed _ e
+      simpa using (a.trans b).trans (step_unmet placed _)
+
+theorem trialWrap_moved_step (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (next : St) (r : Keep) (h : trialWrap env region limit k start st rows = .ok (.moved next r)) :
+    Step st next [] [] := by
+  unfold trialWrap at h
+  split at h
+  · cases h
+  unfold trialWrapFrom at h
+  split at h
+  · simp at h
+  · split at h
+    · simp at h
+    · split at h
+      · split at h
+        · obtain ⟨_, n, _⟩ := trialWrapRest_moved env region limit _ start _ _ _ next r h
+          subst n; simpa using (step_addUnmet st _).trans (step_moveCursor env region _)
+        · injection h with h; injection h with h1 _; subst h1; exact step_moveCursor env region st
+      · obtain ⟨_, n, _⟩ := trialWrapRest_moved env region limit _ start _ _ _ next r h
+        subst n; exact step_moveCursor env region st
+
+theorem trialWrap_placed_step (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (c : Nat) (next : St) (r : Keep)
+    (h : trialWrap env region limit k start st rows = .ok (.placed c next r)) :
+    Step st next (lineIds (rows.take c)) [] := by
+  unfold trialWrap at h
+  split at h
+  · cases h
+  unfold trialWrapFrom at h
+  split at h
+  · injection h with h; injection h with h1 h2 _; subst h1; subst h2; simpa [lineIds] using Step.refl st
+  · split at h
+    · simp at h
+    · split at h
+      · split at h
+        · simpa using (step_addUnmet st _).trans (trialWrapRest_placed_step env region limit _ start _ _ _ c next r h)
+        · simp at h
+      · exact trialWrapRest_placed_step env region limit _ start _ _ _ c next r h
+
+/-- The ids `s`, `s + 1`, ..., of `n` lines. -/
+def ids : Nat → Nat → List Nat
+  | _, 0 => []
+  | s, n + 1 => s :: ids (s + 1) n
+
+theorem ids_append (s a b : Nat) : ids s a ++ ids (s + a) b = ids s (a + b) := by
+  induction a generalizing s with
+  | zero => simp [ids]
+  | succ a ih =>
+    rw [Nat.succ_add]
+    show s :: (ids (s + 1) a ++ ids (s + (a + 1)) b) = s :: ids (s + 1) (a + b)
+    rw [show s + (a + 1) = s + 1 + a by omega, ih]
+
+theorem ids_take (s m n : Nat) : (ids s n).take m = ids s (min m n) := by
+  induction n generalizing s m with
+  | zero => simp [ids]
+  | succ n ih =>
+    cases m with
+    | zero => simp [ids]
+    | succ m =>
+      show s :: (ids (s + 1) n).take m = ids s (min (m + 1) (n + 1))
+      rw [ih, show min (m + 1) (n + 1) = min m n + 1 by omega]; rfl
+
+theorem lineIds_take (ls : List Line) (n : Nat) : lineIds (ls.take n) = (lineIds ls).take n := by
+  induction ls generalizing n with
+  | nil => cases n <;> rfl
+  | cons l ls ih => cases n with
+    | zero => rfl
+    | succ n => simp only [List.take, lineIds, List.map] at ih ⊢; rw [ih]
+
+def lex4lt (a b : Nat × Nat × Nat × Nat) : Prop :=
+  Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))) a b
+
+theorem lex4_wf : WellFounded lex4lt :=
+  (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel))).wf
+
+/-- The lines `parts` places are the lines of the paragraph from the
+    `before`-th on, each once and in order, when the breaker numbers each
+    line after those placed before it (`numberedLines`). -/
+theorem I5_parts_lines (env : Env) (region : Region) (breaker : St → Nat → Nat → List (Line × Nat)) (items lastWanted : Nat)
+    (follows : St → Bool) (hold : St → St) (base : Nat)
+    (hb : ∀ a c t, lineIds ((breaker a c t).map (·.1)) = ids (base + c) (breaker a c t).length)
+    (hh : ∀ s, Step s (hold s) [] []) :
+    ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St) (s : St),
+    parts env region breaker items lastWanted follows hold limit k isStart start before at' = .ok s →
+    ∃ n, Step at' s (ids (base + before) n) [] := by
+  have key : ∀ m, ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St),
+      (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) = m → ∀ s,
+      parts env region breaker items lastWanted follows hold limit k isStart start before at' = .ok s →
+      ∃ n, Step at' s (ids (base + before) n) [] := by
+    intro m
+    induction m using lex4_wf.induction with
+    | _ m ih =>
+    intro limit k isStart start before at' hm0 s h
+    subst hm0
+    rw [parts] at h
+    split at h
+    · cases h
+    · rename_i moved relaxed hm
+      have a := trialWrap_moved_step env region limit k isStart at' _ moved relaxed hm
+      have dec : lex4lt (items - start, keepRank relaxed, rank moved, limitRank none (breaker moved before start).length)
+          (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+        apply Prod.Lex.right
+        cases I4_trialWrap_moved env region limit k isStart at' _ moved relaxed hm with
+        | inl l => exact Prod.Lex.left _ _ l
+        | inr e => rw [e.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ e.2)
+      obtain ⟨n, b⟩ := ih _ dec none relaxed isStart start before moved rfl s h
+      exact ⟨n, by simpa using a.trans b⟩
+    · rename_i count placed relaxed hm
+      have a := trialWrap_placed_step env region limit k isStart at' _ count placed relaxed hm
+      rw [lineIds_take, hb, ids_take] at a
+      have done : Step at' (hold (checkWaits placed)) (ids (base + before) (min count (breaker at' before start).length)) [] := by
+        simpa using (a.trans (step_checkWaits placed)).trans (hh _)
+      have movePart : ∀ s, empty at' = false →
+          parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at') = .ok s →
+          ∃ n, Step at' s (ids (base + before) n) [] := by
+        intro s e3 e
+        have dec : lex4lt (items - start, keepRank k, rank (moveCursor env region at'),
+            limitRank none (breaker (moveCursor env region at') before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+          exact I4_moveCursor_rank env region at' (Or.inl e3)
+        obtain ⟨n, b⟩ := ih _ dec none k isStart start before _ rfl s e
+        exact ⟨n, by simpa using (step_moveCursor env region at').trans b⟩
+      have retry : ∀ s n, n < limitRank limit (breaker at' before start).length →
+          parts env region breaker items lastWanted follows hold (some n) k isStart start before at' = .ok s →
+          ∃ n, Step at' s (ids (base + before) n) [] := by
+        intro s n hn e
+        have dec : lex4lt (items - start, keepRank k, rank at', limitRank (some n) (breaker at' before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; exact hn
+        exact ih _ dec (some n) k isStart start before at' rfl s e
+      split at h
+      · split at h
+        · injection h with h; subst h; exact ⟨_, done⟩
+        · split at h
+          · split at h
+            · rename_i h2; exact retry s _ h2 h
+            · cases h
+          · split at h
+            · rename_i h3; exact movePart s h3 h
+            · injection h with h; subst h; exact ⟨_, done⟩
+      · rename_i full
+        have mc : min count (breaker at' before start).length = count := by omega
+        rw [mc] at a
+        split at h
+        · rename_i h4
+          have go : ∀ s, parts env region breaker items lastWanted follows hold none relaxed false
+              (nextItem (breaker at' before start) count start) (before + count) (moveCursor env region placed) = .ok s →
+              ∃ n, Step at' s (ids (base + before) n) [] := by
+            intro s e
+            have dec : lex4lt (items - nextItem (breaker at' before start) count start, keepRank relaxed,
+                rank (moveCursor env region placed), limitRank none (breaker (moveCursor env region placed) (before + count)
+                  (nextItem (breaker at' before start) count start)).length)
+                (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+              apply Prod.Lex.left; obtain ⟨_, _⟩ := h4; omega
+            obtain ⟨n, b⟩ := ih _ dec none relaxed false _ (before + count) _ rfl s e
+            refine ⟨count + n, ?_⟩
+            have c := (a.trans (step_moveCursor env region placed)).trans b
+            rw [← ids_append, Nat.add_assoc]; simpa using c
+          split at h
+          · split at h
+            · split at h
+              · rename_i h6; exact retry s _ h6 h
+              · cases h
+            · split at h
+              · rename_i h7; exact movePart s h7 h
+              · exact go s h
+          · exact go s h
+        · cases h
+  intro limit k isStart start before at' s h
+  exact key _ limit k isStart start before at' rfl s h
 
 theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line)
     (h : putReserved env reserve st ls = .ok s) : Step st s (lineIds ls) [] := by
