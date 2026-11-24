@@ -505,10 +505,10 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `Win` の状態の `flushJoin` は、残りの行数が負なら脚注の行数が 1 以上なので、使用行数を減らしても `Inv` を保つ（`flushJoin_inv`）。
 
 `I5_paginate_figures` の前提 `BoxesOk` は、golem-typeset が作るフローの列では常に成り立つ。
-golem-typeset は、罫線つきのブロックを前の罫線を共有しないもの（`frJoined` が偽）として作る（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:3845`）。
-`ruledLinks` は、直前のフローが後の罫線を持つ罫線つきのブロックのときだけ共有を付け、箱の本体の中には入らない（`Flow.hs:4612`）。
-golem-typeset は、箱を作ってから `ruledLinks` でブロックをつなぎ、その後で `markBookParts` が本の部を作る（`Flow.hs:4113`、`:4114`、`:4160`）。
-`markBookParts` はフローを本の部で包むだけで、並びを変えない（`Flow.hs:4488`）。
+golem-typeset は、罫線つきのブロックを前の罫線を共有しないもの（`frJoined` が偽）として作る（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:3888`）。
+`ruledLinks` は、直前のフローが後の罫線を持つ罫線つきのブロックのときだけ共有を付け、箱の本体の中には入らない（`Flow.hs:4655`）。
+golem-typeset は、箱を作ってから `ruledLinks` でブロックをつなぎ、その後で `markBookParts` が本の部を作る（`Flow.hs:4156`、`:4157`、`:4203`）。
+`markBookParts` はフローを本の部で包むだけで、並びを変えない（`Flow.hs:4531`）。
 そのため、共有は本の部の境をまたいでも起こるが、箱の中のブロックと箱の直後のブロックは共有しない。
 定理にこの前提が要るのは、箱の終わりが使用行数を `boxEnd` まで広げるので、箱の終わりで後の罫線が待つと `Win` の残りの行数が保てないからである。
 `I5_paginate_figures` は、平らにした列で箱の直後のブロックが共有しないことを前提 `BoxesOk` とし、本の部と箱の中でも同じことを求める。
@@ -606,15 +606,20 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 
 ## 区切りのモデル
 
-`Separator.lean` は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りを扱う golem-typeset の二つの関数を、`Whole.lean` の `Flow` の上に写したものである。
-`space` は、`blocks` の局所関数 `spaceSeparators`（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:2441`）の `go` を写す。
+`Separator.lean` は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りを扱う golem-typeset の四つの関数を、`Whole.lean` の `Flow` の上に写したものである。
+`space` は、`blocks` の局所関数 `spaceSeparators`（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:2484`）の `go` を写す。
 この関数は、可視の区切りの後に 1 行の `keep-with-next` を足し、区切りとの境界の行アキを一つのアキに置き換える。
+`holdNeeds` は、`space` の後に働く `holdSeparatorNeeds`（`Flow.hs:2451`）を写す。
+この関数は、区切りの保持に `@need-lines` があると、保持の最初の区切りの前に `@need-lines` を一つ足す。
+足す `@need-lines` の行数は、保持の中の各 `@need-lines` について、保持の前の行アキと保持の中でそれより前の行数に、その行数を足したものの最大で、段の行数を超えない。
+`reported` は、`unmetWarnings`（`Flow.hs:1011`）が区切りの位置の満たせなかった `@need-lines` を報告しない処理（`Flow.hs:1022`）を写す。
+`Whole.lean` の `Unmet` は位置を持たないので、`reported` は位置を `Unmet` と組にして受け取る。
 `holdErrors` は、`separatorHoldErrors`（`Flow.hs:793`）を写す。
 この関数は、組んだページを読み、区切りの連続と後続ブロックの最初の行が一つの段にない連続ごとに G07134 を返す。
 `postProcess` は、`round'`（`Flow.hs:749`）がこの診断を足す処理を写し、ページをそのまま返して、受け取った診断の後に G07134 を足す。
 
 単位（`Unit`）は、可視の区切り、行アキ、改ページ、アキ、`keep-with-next` と、それ以外の単位からなる。
-可視の区切りは、前後の格子の行数と 1 行の行を持ち、段落のフロー（`Flow.hs:3855`）になる。
+可視の区切りは、前後の格子の行数と 1 行の行を持ち、段落のフロー（`Flow.hs:3898`）になる。
 種類が `blank` の区切りは、単位を作る前に行アキへ解決される（`modules/golem-driver/src/Golem/Driver.hs:402`）ので、行アキとして表す。
 アキ（`UGap`）は `FSpace` になり、格子の行へは `paginateBuilt` の `gridUnits`（`Flow.hs:834`）が行送りで割って渡す。
 それ以外の単位は、フロー、区切りの連続を終えるか通すか切るか（`Role`）、最初の行の id を引数として持つ。
@@ -623,14 +628,16 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 定理はこれらの引数のどの選び方でも成り立つ。
 
 不変条件 4 と 5 は、`Whole.lean` の定理をそのまま当てて導いた。
+`separatorFlows` は段の行数を引数に取り、定理では `env.capacity` を渡す。
 `I4_separator_paginate_ends` は、`separatorFlows` が作るフローの改ページが終わることを `I4_paginate_ends` から示す。
 `I5_separator_text` は、ページの行と見出しが、可視の区切りの行とほかの単位の行を原稿順に一度ずつ並べた列（`unitsText`）に等しいことを `I5_paginate_text` から示す。
 `space` が足す `keep-with-next`、アキ、行アキと、除く行アキは行を持たないので、`space_text` がこの列を保つ。
+`holdNeeds` が足す `@need-lines` も行を持たないので、`holdNeeds_text` がこの列を保つ。
 `I5_separator_figures` は、図版と転置図版が原稿順に一度ずつ出ることを `I5_paginate_figures` から示す。
 その前提は、区切り、行アキ、改ページ、アキ、`keep-with-next` を除いたほかの単位のフロー（`otherFlows`）についての `figureOk` と `BoxesOk` である。
-`space` が作るフローは、このフローの間に、箱でも本の部でも罫線つきのブロックでもないフロー（`plainFlow`）を挟んだものである（`separatorFlows_ins`）。
+`space` と `holdNeeds` が作るフローは、このフローの間に、箱でも本の部でも罫線つきのブロックでもないフロー（`plainFlow`）を挟んだものである（`holdNeeds_ins`、`Ins.trans`、`separatorFlows_ins`）。
 `boxesOk_ins` と `figureOk_ins` は、そのようなフローを挟んでも二つの前提が保たれることを示す。
-実際のフローでは、`ruledLinks`（`Flow.hs:4612`）が直前のフローが罫線つきのブロックのときだけ共有を付けるので、共有するブロックの直前には `otherFlows` でも罫線つきのブロックがあり、箱は来ない。
+実際のフローでは、`ruledLinks`（`Flow.hs:4655`）が直前のフローが罫線つきのブロックのときだけ共有を付けるので、共有するブロックの直前には `otherFlows` でも罫線つきのブロックがあり、箱は来ない。
 ただし、golem-typeset が単位のフローの後に行う `joinBoxes`、`ruledLinks`、`markBookParts` は写していない。
 この三つは、照合に使った段落だけの原稿ではフローを変えない。
 
@@ -639,6 +646,8 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 `I5_separator_post_keeps_pages` は、後処理がページを変えず、受け取った診断の後に診断を足すだけであることを示す。
 `I3_separator_error_iff` は、ある連続で G07134 を返すのは、連続の区切りの行と後続ブロックの最初の行のうち、置いた二つが異なる段にあるときに限ることを示す。
 `I3_separator_error_single` は、区切り一つと、連続を通す単位と、ブロック一つの原稿について、区切りの行と最初の行をどちらも置いたとき、二つの段が異なるときに限って G07134 を返すことを示す。
+`hoisted_need` は、保持に `@need-lines` があるときに限って `holdNeeds` が `@need-lines` を足し、その行数が段の行数以下で、保持の中の各 `@need-lines` が求める行数か段の行数の小さいほう以上であることを示す。
+`reported_iff` は、区切りの位置の満たせなかった `@need-lines` を報告せず、ほかの満たせなかった指定をすべて報告に回すことを示す。
 
 境界入力の照合は、`SeparatorBoundary.hs` と `SeparatorBoundary.lean` で行う。
 `SeparatorBoundary.hs` は、golem-driver のテストの偽のフォント（`modules/golem-driver/test/Support.hs`）で原稿を golem-typeset の `layoutPdf` に渡し、ページか、診断の一覧を書き出す。
@@ -652,24 +661,20 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 照合の感度は、写した処理を一つずつ替えて確かめた。
 区切りの後に `keep-with-next` を足さないと 1272 個、区切りの後のアキを行アキにすると 698 個、前の区切りの後の行数を見ないと 1076 個、明示した行アキを見ないと 272 個、区切りの前の行数を見ないと 2746 個、区切りの前の行数があっても境界を可視としないと 2696 個、`beforeOf` を常に 0 にすると 2782 個の入力で出力が食い違った。
 後処理では、`@need-lines` で連続を切ると 689 個、連続の id から後続ブロックの最初の行を除くと 2977 個の入力で出力が食い違った。
+`holdNeeds` では、保持の中の `@need-lines` を見ないで何も足さないと 33 個、足す行数を段の行数で抑えないと 482 個の入力で出力が食い違った。
+見ないときに食い違う 33 個のうち 7 個は、golem-typeset がページを返す入力で、Lean の側だけが G07134 を返した。
+保持の前の行アキを数えない変更は、この入力では出力が変わらない。
 原稿の末尾で区切りの後の行アキを残す変更と、改ページの前の行アキを除く変更は、この入力では出力が変わらない。
 golem-assemble の `ineffectiveBlankLines` が、その位置の行アキを単位を作る前に除くからである。
 `keep-with-next` の行数を 2 にする変更も、この入力では照合できていない。
 本文の段落スタイルは段落の先頭に 2 行を求め、1 行の段落は分けられないので、1 行と 2 行の `keep-with-next` が後続の段落に同じ行数を求めるからである。
 段が一つなので、段の番号だけが異なる分割も照合していない。
 
-照合した Haskell の出力には、[仕様](../../docs/specifications.md)と食い違うものがある。
-仕様は、空の段へ送っても区切りの連続、後ろのアキ、後続ブロックの最初の表示行を同じ段に置けない場合に G07134 で PDF の生成を止める（1874 行）と定める。
-[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の「配置と改ページ」も、一つの空の段にも保持対象が収まらない場合を組版のエラーとする。
-容量 3 行の段で、`space-before` と `space-after` が 0 の `default` を使い、1 行の段落、`---`、`@need-lines 2`、1 行の段落を並べると、golem-typeset は `---` の位置に G07134 を返し、PDF を書かない。
-同じ設定で先頭の段落を除いた原稿では、1 ページ目の 0 行目に区切り、1 行目に段落を置くので、この連続は空の段に収まる。
-`spaceSeparators` は `UPageControl` を区切りの後続として扱い、その前に `keep-with-next` を置く（`Flow.hs:2470`）。
-一方、`separatorHoldErrors` は `UPageControl` を通して、その後の段落の最初の行と比べる（`Flow.hs:820`）。
-golem-typeset はこのときページを返さないが、同じ G07134 を返す `Whole.lean` のページでは、区切りを 1 ページ目の 1 行目に置いた後で `@need-lines` が段落を 2 ページ目へ送り、`keep-with-next` も満たせない。
-G07134 を返した入力のそれぞれで、連続が空の段に求める行数を、区切りの行、アキ、`@need-lines` の行数、後続の段落の最初の部分の行数から求めた。
-その行数が段の容量以下だった入力は 7 個で、すべて連続に `@need-lines` を挟むこの形だった。
-`@need-lines` を挟まない連続では、G07134 を返したどの入力でも、求める行数が段の容量を超えていた。
-この README は、この 7 個を Haskell の側の誤りと扱い、修正はメンテナーの判断に残す。
+[仕様](../../docs/specifications.md)は、空の段へ送っても区切りの連続、後ろのアキ、後続ブロックの最初の表示行を同じ段に置けない場合に G07134 で PDF の生成を止める（1873 行）と定める。
+`holdNeeds` を写す前は、容量 3 行の段で 1 行の段落、`---`、`@need-lines 2`、1 行の段落を並べた原稿などの 7 個の入力で、空の段に収まる保持に golem-typeset と Lean の両方が G07134 を返していた。
+PR #1131 が golem-typeset に `holdSeparatorNeeds` を加えたので、この 7 個は区切りの保持を次の段へ送ったページを返し、Lean の側も同じページを返す。
+空の段に収まる保持に G07134 を返さないことは、照合した 8784 個の入力で確かめただけで、定理としては示していない。
+この性質を示すには、`Whole.lean` の `paginate` が `@need-lines` と `keep-with-next` を扱う遷移を、任意の前の状態から追う必要があり、この README の範囲を超える。
 
 ## 自由な配置のモデル
 
@@ -770,7 +775,7 @@ golem-typeset はコードの行に続く番号を振るので、二つは一致
 モデルは、最後に行を置いてから二度目に、待つもののないページの最後の段から進むとき、`noProgress` を返す。
 一度目にそこを通った後の段は、ページの番号のほかはどれも同じ状態なので、Haskell の実装はそこから止まらないからである。
 容量 30 sp、送り 10 sp の 1 段で、2 行の段落の後に、送り 14 sp の行 905 だけの見出しの行と本体の行 `[810]`、`[820, 821]` を持つ表を置くと、`paginatePhysical` は 2 秒で終わらなかった。
-golem-typeset が `physicalPitches` に送りを与えるのは段落の単位の行だけで（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:4122`）、表の行には与えないので、原稿から作る表では見出しの行の送りは行の送りに等しい。
+golem-typeset が `physicalPitches` に送りを与えるのは段落の単位の行だけで（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:4165`）、表の行には与えないので、原稿から作る表では見出しの行の送りは行の送りに等しい。
 
 `judgeNeed`（`FNeedLines` の段のループ）も、空でない段か縮んだ段からだけ次の段へ進むので、`rank` で止まる。
 
@@ -807,7 +812,7 @@ golem-typeset が `physicalPitches` に送りを与えるのは段落の単位�
 `I5_parts_lines` は、`parts` が成功すれば、段落の `before` 番目からの行が一度ずつ順に置かれることを証明する。
 この定理は二つの前提を置く。
 一つ目に、改行器が、置いた行の数 `c` の後の行に、段落の最初の行の id に `c` を足した id から続く番号を振ること（`hb`）である。
-golem-typeset は、行に `bUnitFirsts updated Map.! index + countBefore` から続く番号を振る（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:4423` と `:3507`）。
+golem-typeset は、行に `bUnitFirsts updated Map.! index + countBefore` から続く番号を振る（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:4466` と `:3550`）。
 段落の最初の行の id が改行し直すたびに変わらないことは、未確認である。
 二つ目に、`hold` が行と図版を足さないこと（`hh`）であり、`keepPhysicalNext` の写しの `waitForPrior` はこれを満たす（`step_waitForPrior`）。
 箱の中身を置く補題は、一段内側の `placeFlow` について同じことが成り立つこと（`InnerOk`）を前提とし、`level_ok` がすべての段数でこの前提を導く。
@@ -913,7 +918,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:485` `splitAtBreak`、`Paginate/Decide.hs:229` `firstPart` | `splitAtBreak`、`firstPart` |
 | `Paginate/Physical.hs:546` `trialParagraphPartLimit` | `trial`、`trialFrom`、`trialRest`、`checkRows`、`Part`、`trialWrap`、`trialWrapFrom`、`trialWrapRest`、`fittingHere`、`fittingWrapGo`、`putHere`、`putHereLines`、`limited` |
 | `Paginate/Physical.hs:184` `PhysicalWrap`、`:214` `activeWrapEnd`、`:219` `endPhysicalWrap`、`:222` `movePhysicalCursor`、`:247` `beginPhysicalWrap` | `Region`、`wrapEnd`、`endWrap`、`moveCursor`、`beginWrap` |
-| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4412` `paragraph`（`parts`） | `parts`、`nextItem`、`minimumFront`、`limitRank` |
+| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4455` `paragraph`（`parts`） | `parts`、`nextItem`、`minimumFront`、`limitRank` |
 | `Paginate/Physical.hs:593` `placeLines` | `placeLines` |
 | `Paginate/Physical.hs:606` `checkPhysicalNotes`、`:614` `paginatePhysical` | `checkNotes`、`paginate` |
 | `Paginate/Physical.hs:628` `drainCarry` | `drainCarry`、`drainOk` |
@@ -1042,7 +1047,7 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を
 
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
-その節に挙げた `@need-lines` を挟む区切りの G07134 の食い違いは、メンテナーの判断を待つ。
+空の段に収まる保持に G07134 を返さないことは、照合だけで確かめ、定理としてはまだ示していない。
 単位のフローの後の `joinBoxes`、`ruledLinks`、`markBookParts` は写しておらず、箱、罫線つきのブロック、本の部を区切りと並べた原稿は照合していない。
 自由な配置の区切り（`paginatePhysical` に渡す区切りのフロー）も、`Physical.lean` の上ではまだ照合していない。
 
