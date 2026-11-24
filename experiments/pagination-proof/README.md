@@ -1101,7 +1101,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 一組目は、2〜6 行の脚注を持つ 1 行の段落、行数の変更、なしか 1 行の脚注を持つ段落か横の行に 1 行の脚注を持つ回り込み図版か 2 段組みへの切り替えと段落、1 行か 3 行の段落を並べたもので、段の容量は 3〜5 行である（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md)）。
 二組目は、脚注のない段落か脚注つきの段落、行数の変更、2 段か 3 段への切り替え、1〜6 行の段落、1 行の段落を並べたものである（[root ADR 0441](https://github.com/tett23/golem/blob/7e332092be2f3b7523faaa09d73a7e657f2ca27d/docs/adr/0441-index-columns-on-a-page-with-adjusted-lines.md)）。
 三組目は、横の行に脚注を持つ回り込み図版を段落の後か見出しなどの指定の後に置いたものである（[root ADR 0443](https://github.com/tett23/golem/blob/8873337addc24163574d69d33c20d4f95b67ac9b/docs/adr/0443-count-side-line-notes-when-a-wrapped-figure-fits.md)）。
-`Boundary.lean` は、これらの 52090 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、満たせなかった指定を書き出す。
+さらに、`boxInputs` の 864 個の入力を足した。
+この入力は、1〜4 行の脚注を持つ 1 行の段落と、行のない最後の部分を作るコードか横の行のない回り込み図版を箱に入れ、箱の後に 1 行の脚注を持つ 1 行の段落と 1 行か 2 行の段落を置いたもので、箱の前のアキは 0 行か 1 行、後のアキは 1〜3 行、段の容量は 3〜5 行である（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md)）。
+`Boundary.lean` は、これらの 52954 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、満たせなかった指定を書き出す。
 `Env` は `paginate 1` の容量ごとの `Env` で、その引数は `Decide.hs` の `nextNeed`、`keptNeed`、`keepAhead`、`nextFirstLines`、`fitting`、`roomForLine` を写した関数と、`Code.hs` の `codeSpan` と `RuleArea.hs` の罫線の領域をこの寸法で求めた値である（`boundaryEnv`）。
 `check.sh` は、`Whole.lean` を `.olean` にして `Boundary.lean` を四つに分けて並べて評価し、`Boundary.hs` が golem-layout の `paginate` に同じ入力を渡した出力と `diff` で比べる。
 二つの出力は一致した。
@@ -1122,6 +1124,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 回り込み図版では、`nextNeed` から横の行の数を除くと 16 個である。
 脚注では、`fitting` から脚注の行を除くと 2295 個、`roomForLine` から脚注の行を除くと 40 個、`nextNeed` の求める行から脚注の行を除くと 82 個である。
 足した 3696 個の入力では、`drainPendingNotes` を外すと 336 個、組の後の段に組の縮みを渡さないと 192 個、`startSet` の縮みを 0 にすると 312 個、`typeAreaFree` を版面だけで測ると 184 個、回り込み図版を収める判定から横の行の脚注を除くと 769 個、`nextNeed` の回り込み図版から脚注を除くと 41 個である。
+`boxInputs` の 864 個の入力では、箱を閉じた後の `drainPendingNotes` を外すと 40 個が食い違う。
 
 境界入力の照合には、一つのことが残る。
 表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめるので、Lean の側の照合は、二つ目の項目に残る、実フォントの送りを `FigureSpec.hs` の計測値で渡す照合を待つ。
@@ -1193,13 +1196,14 @@ golem-typeset は注の id を注の原稿上の範囲と番号から作る（go
 `@page-lines` の後は、`drainPendingNotes` が空きを繰り越す脚注に渡すので、この性質が成り立つ。
 罫線つきのブロックの行は後の行と罫線の行を取っておくので、その行数だけ空きが多いことを許し、ブロックの終わりで元の性質に戻ることを示した（`q_putRuledLines`、`q_commitRuled`）。
 
-箱を含むフローでは、I1 は成り立たない。
-容量 5 行の 1 段で、前のアキ 0 行と後のアキ 2 行の箱に、3 行の脚注 500 を持つ 1 行の段落と 1 行のコードを入れ、箱の後に、1 行の脚注 520 を持つ 1 行の段落と 2 行の段落を置く（`Boundary.hs` の記法で `[X100:0:2(Q0:1:0:3 C10:0:0:1:0:1) Q20:1:0:1 P30:2]`）。
-golem-layout の `paginate 1 5` は、1 ページ目に脚注 500 の 0 行目を、2 ページ目にコードと段落 20 と脚注 500 の 1 行目と脚注 520 を、3 ページ目に脚注 500 の 2 行目を置いた。
-`Whole.lean` の `paginate` も同じページを返した。
-箱の 2 ページ目の部分には行がないので、`closeBox` は部分を記録せず、箱の後のアキ 2 行を、使った行を進めないまま段に返し、後の注 520 がその空きに入る。
-箱の最後に、横の行のない回り込み図版を置いても同じことが起きた。
-箱を含む原稿を含めて 200000 個の無作為の原稿を golem-layout で調べると、反例は 42 個で、どれも箱がこの形で終わるものだった。
+箱を閉じた後に繰り越す脚注を移す処理は、PR #1146 の前の golem-layout になかった。
+そのころは、容量 5 行の 1 段で、前のアキ 0 行と後のアキ 2 行の箱に、3 行の脚注 500 を持つ 1 行の段落と 1 行のコードを入れ、箱の後に、1 行の脚注 520 を持つ 1 行の段落と 2 行の段落を置くと（`Boundary.hs` の記法で `[X100:0:2(Q0:1:0:3 C10:0:0:1:0:1) Q20:1:0:1 P30:2]`）、I1 が破れた。
+`paginate 1 5` は、1 ページ目に脚注 500 の 0 行目を、2 ページ目にコードと段落 20 と脚注 500 の 1 行目と脚注 520 を、3 ページ目に脚注 500 の 2 行目を置いた。
+箱の 2 ページ目の部分には行がないので、`closeBox` は部分を記録せず、箱の後のアキ 2 行を、使った行を進めないまま段に返し、後の注 520 がその空きに入ったからである。
+今の golem-layout は、箱を閉じた後に `drainPendingNotes` を呼び、返した空きを繰り越す脚注に先に渡す（`Paginate.hs:606`）。
+`Whole.lean` の `place` の `boxed` もこれを写す。
+同じ入力で、2 ページ目にはコードと脚注 500 の 1 行目と 2 行目が並び、段落 20 と脚注 520 は 3 ページ目に置かれる。
+箱、段組みの切り替え、行数の変更を含む 200000 個の無作為の原稿を今の golem-layout で調べると、反例はなかった。
 
 定理の前提は次のとおりである。
 フローは箱と段組みの切り替えを含まず、見出しと罫線つきの見出しは格子の 1 行以上を取る（`plainFlows`）。

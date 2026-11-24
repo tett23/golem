@@ -2077,7 +2077,7 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .boxed i kb ka body =>
     let st1 := keep env st (fun s => (kb : Int) + ka + needIn env s noNeed (env.nextNeed body))
     let inBox := runFlows env (openBox { st1 with box := some ⟨i, kb, ka, 0, false⟩ }) body rest
-    { inBox with box := none, used := max inBox.used (boxEnd inBox) }
+    drainPendingNotes env { inBox with box := none, used := max inBox.used (boxEnd inBox) }
   | .code g cap0 first cont ls => placeCode env g cap0 first cont st true ls
   | .defTerm ls =>
     if env.keepColumn then
@@ -2984,6 +2984,8 @@ theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
   | bookPart u k r body => simp only [place, flowText]; exact text_runFlows env st body rest
   | boxed i kb ka body =>
     simp only [place, flowText]
+    show text (drainPendingNotes env _) = _
+    rw [text_drainPendingNotes]
     show text (runFlows env _ body rest) = _
     rw [text_runFlows, text_openBox]
     show text (keep env st _) ++ _ = _
@@ -5441,10 +5443,11 @@ theorem place_figs (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separat
     rw [figs_openBox] at r
     generalize runFlows env (openBox { st1 with box := some ⟨i, kb, ka, 0, false⟩ }) body rest = ib at r
     refine ⟨?_, ?_⟩
-    · show figs ib = _; rw [r.1]; congr 1
-    · exact inv_addUsed r.2 ⟨r.2.weak.first, r.2.weak.deferred⟩ (max ib.used (boxEnd ib) - ib.used)
-        (by have := Int.le_max_left ib.used (boxEnd ib); omega) (by show max _ _ = _; omega) (Int.le_refl _)
-        (Or.inl rfl)
+    · show figs (drainPendingNotes env _) = _; rw [figs_drainPendingNotes]; show figs ib = _; rw [r.1]; congr 1
+    · refine inv_drainPendingNotes env _ hs ?_
+      exact inv_addUsed r.2 ⟨r.2.weak.first, r.2.weak.deferred⟩ (max ib.used (boxEnd ib) - ib.used)
+          (by have := Int.le_max_left ib.used (boxEnd ib); omega) (by show max _ _ = _; omega) (Int.le_refl _)
+          (Or.inl rfl)
   | code g c first cont ls =>
     have h := hI (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e)
     refine up _ ?_

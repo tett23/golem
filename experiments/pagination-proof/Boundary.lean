@@ -417,6 +417,13 @@ def adjustInputs : List (Nat × List Element) :=
       [1, 2].bind fun n => [1, 2].bind fun b => [1, 2, 3].map fun m =>
       (c, [Element.para 0 p, control, .wrappedNoted 100 n 10 b 0 m, .para 20 1]))
 
+/-- `boxInputs` of Boundary.hs. -/
+def boxInputs : List (Nat × List Element) :=
+  [3, 4, 5].bind fun c => [0, 1].bind fun b => [1, 2, 3].bind fun a => [1, 2, 3, 4].bind fun m =>
+    (([0, 1].bind fun g => [1, 2].map fun k => Element.code g 0 1 false 10 k)
+      ++ [1, 2].map fun w => Element.wrapped 101 w 10 0).bind fun last =>
+    [1, 2].map fun n => (c, [Element.boxed 100 b a [.noted 0 1 0 m, last], .noted 20 1 0 1, .para 30 n])
+
 def inputs : List (Nat × List Element) :=
   ([1, 2, 3].bind fun c => [(c, []), (c, [.para 0 1])])
   ++ ([1, 2, 3].bind fun c =>
@@ -466,7 +473,7 @@ def pages (capacity : Nat) (es : List Element) : List String :=
 /-- The pages of the inputs of part `part` of `parts` contiguous parts,
     so that check.sh evaluates the parts side by side. -/
 def report (part parts : Nat) : String :=
-  let all := inputs ++ kindInputs ++ adjustInputs
+  let all := inputs ++ kindInputs ++ adjustInputs ++ boxInputs
   let size := (all.length + parts - 1) / parts
   String.join (((all.drop (part * size)).take size).map fun (c, es) =>
     s!"{c} [{" ".intercalate (es.map Element.show)}]\n" ++ String.join ((pages c es).map fun p => s!"  {p}\n"))

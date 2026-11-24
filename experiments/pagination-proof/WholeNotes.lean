@@ -1320,7 +1320,7 @@ theorem rel_place (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (r
     have h : Rel st (runFlows env (openBox { keep env st (fun s => (kb : Int) + ka + needIn env s noNeed (env.nextNeed body))
         with box := some ⟨i, kb, ka, 0, false⟩ }) body rest) (sourceNotes body) :=
       Rel.nl (Rel.nl (rel_keep env hs st _) (Rel.fl (Rel.oBox _))) (rel_runFlows env hs _ body rest)
-    exact Rel.fr h
+    exact Rel.nr (Rel.fr h) (rel_drainPendingNotes env _)
   | code g c first cont ls => simp only [place, flowNotes]; exact rel_placeCode env hs _ _ _ _ _ _ _
   | defTerm ls =>
     simp only [place, flowNotes]

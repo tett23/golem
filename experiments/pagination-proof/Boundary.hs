@@ -221,6 +221,19 @@ adjustInputs =
          m <- [1 .. 3]
        ]
 
+-- Boxes whose last part has no text line, after a note continued over
+-- them (root ADR 0444): the room the box gives back goes to that note.
+boxInputs :: [(Int, [Element])]
+boxInputs =
+  [ (c, [Boxed 100 b a [Noted 0 1 0 m, end], Noted 20 1 0 1, Para 30 n])
+  | c <- [3 .. 5],
+    b <- [0, 1],
+    a <- [1 .. 3],
+    m <- [1 .. 4],
+    end <- [Code g 0 1 False 10 k | g <- [0, 1], k <- [1, 2]] <> [Wrapped 101 w 10 0 | w <- [1, 2]],
+    n <- [1, 2]
+  ]
+
 kindChoices :: [Int -> Element]
 kindChoices =
   [\k -> Boxed (100 + k) b a [Para (10 * k) n] | (b, a) <- [(0, 0), (1, 1), (1, 0)], n <- [1 .. 4]]
@@ -292,7 +305,7 @@ page p = "  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p th
     note (NoteId _ i, first, n) = "n" <> show i <> ":" <> show first <> ":" <> show n
 
 main :: IO ()
-main = mapM_ run (inputs <> kindInputs <> adjustInputs)
+main = mapM_ run (inputs <> kindInputs <> adjustInputs <> boxInputs)
   where
     run (c, es) = do
       putStrLn (show c <> " [" <> intercalate " " (map showElement es) <> "]")
