@@ -573,7 +573,7 @@ place env st f rest = case f of
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
-     in -- only the lines of the type area are left to the set (root ADR 0025, root ADR 0030)
+     in -- the set ends at the type area or above the footnotes, whichever comes first (root ADR 0025, root ADR 0030, root ADR 0441)
         if (csColumns (envBase env) == 1 && typeAreaFree env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
           then startSet env st1 set (sUsed st1)
           else (nextPage env st1) {sSet = set {csFirstLine = 0}}
