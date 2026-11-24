@@ -236,6 +236,7 @@ test-suite golem-driver-output-test
     ExtendedJapaneseOutputsSpec
     ForceTableSpec
     GenericFontsSpec
+    HtmlSyntaxBuildSpec
     InMemorySpec
     IndexColumnsSpec
     IndexRangeSpec

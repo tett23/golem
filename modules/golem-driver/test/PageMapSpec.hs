@@ -142,7 +142,7 @@ pageMapTests =
           let path = "images/golem-color/" <> name
           png <- BS.readFile (root </> "build/html" </> path)
           assertBool "PNG signature" (BS.take 8 png == BS.pack [137, 80, 78, 71, 13, 10, 26, 10])
-          html <- TIO.readFile (root </> "build/html/a.xhtml")
+          html <- TIO.readFile (root </> "build/html/a.html")
           assertBool "HTML links to generated PNG" (T.pack path `T.isInfixOf` html)
           BS.readFile (root </> "build/html/multi.jpg") >>= (@?= multiJpeg)
           archive <- toArchive <$> BL.readFile (root </> "build/epub/book.epub")
@@ -156,7 +156,7 @@ pageMapTests =
           BS.writeFile (root </> "gray.jpg") (BS.take 24 grayJpeg)
           bad <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetEpub]}
           codesOf (filter isError (brDiagnostics bad)) @?= ["G08113"]
-          doesFileExist (root </> "build/html/a.xhtml") >>= (@?= False)
+          doesFileExist (root </> "build/html/a.html") >>= (@?= False)
           doesFileExist (root </> "build/epub/book.epub") >>= (@?= False),
       testCase "root ADR 0406 I1: JPEG broken before SOF reports G08113 and removes stale PDF" $
         withChapters "" [("a.gm", "@nonumber\n@figure gray.jpg alt=\"gray\"\n")] [] $ \root -> do
