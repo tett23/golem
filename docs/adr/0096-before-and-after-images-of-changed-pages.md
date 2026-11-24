@@ -1,6 +1,6 @@
 # ADR 0096: 見た目の回帰テストで変わったページの前後の画像と差分の画像を、CI の成果物と要約にする
 
-Status: accepted
+Status: superseded [{"part":"`wasm`、`editors-lsp`、`verapdf` の権限","by":["docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md"],"kind":"replace"}]
 
 ## 文脈
 

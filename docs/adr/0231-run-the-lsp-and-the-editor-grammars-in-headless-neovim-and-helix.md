@@ -1,6 +1,6 @@
 # ADR 0231: LSP とエディタの文法を、ヘッドレスの Neovim と Helix で CI で確かめる
 
-Status: superseded [{"by":["docs/adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md"],"part":"実装すること 1 の `silence-notices` の置き場所、I3 の範囲（動的な登録を申し出るクライアント）、I6 の読み方（`use-grammars` を添えた例）"}]
+Status: superseded [{"by":["docs/adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md"],"part":"実装すること 1 の `silence-notices` の置き場所、I3 の範囲（動的な登録を申し出るクライアント）、I6 の読み方（`use-grammars` を添えた例）"},{"part":"待った後の取り寄せの手順","by":["docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md"],"kind":"replace"}]
 
 ## 文脈
 
