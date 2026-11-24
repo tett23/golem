@@ -1,0 +1,37 @@
+# The unsafe foreign calls of the Haskell sources under modules (root ADR 0435):
+# the path of the module, the name of the C function, the number of the reason
+# and the reason, split by tabs. The reasons are 1, a call that is short
+# whatever its input and waits for no lock; 2, a call made so often that a safe
+# call costs too much, kept unsafe with the reason; 3, a call that is meant to
+# hold its capability. scripts/ci/test.sh checks that the sources have exactly
+# these; every other foreign import is safe.
+modules/golem-font/src/Golem/Font.hs	golem_font_upem	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_fstype	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_is_cff	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_is_cff2	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_num_glyphs	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_extents	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_embox_central	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_feature_tags	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_postscript_name	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_is_cid_keyed	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_ros	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_axes	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_instances	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_name	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_set_coords	1	loadFont で、ほかのスレッドに渡す前に一度だけ呼ぶ。値を読むだけで、ロックを取っても取り合わない
+modules/golem-font/src/Golem/Font.hs	golem_font_cid	1	CID-keyed のフォントのグリフごとに loadFont で呼ぶが、ほかのスレッドに渡す前で、表を一つ引くだけである
+modules/golem-font/src/Golem/Font.hs	golem_font_v_origin	1	グリフ一つの縦組みの原点を HarfBuzz から読むだけで、ロックを取らない
+modules/golem-font/src/Golem/Font.hs	golem_font_coords_for	1	軸の座標を読むだけで、軸の数（64 まで）のほかに入力が無い。テストだけが呼ぶ
+modules/golem-font/src/Golem/Font.hs	golem_font_free	1	C の側が確保した領域を解放するだけである
+modules/golem-font/src/Golem/Font.hs	golem_font_glyph_metrics	2	グリフごとに呼び、呼び出しの数が多い。フェイスのロックを取り、CFF のフォントでは初めて読むグリフのためにフェイスを開く
+modules/golem-font/src/Golem/Font.hs	golem_font_shape	2	語ごとに呼び、呼び出しの数が多い。safe にするかは、時間を計ってから別の ADR で決める
+modules/golem-plugin/src/Golem/Plugin.hs	golem_plugin_import_count	1	読み込んだモジュールの import の表の長さを読むだけである
+modules/golem-plugin/src/Golem/Plugin.hs	golem_plugin_import_name	1	読み込んだモジュールの import の表から名前を一つ複写するだけである
+modules/golem-plugin/src/Golem/Plugin.hs	golem_plugin_has_export	1	読み込んだモジュールの export の表を名前で一つ引くだけである
+modules/golem-plugin/src/Golem/Plugin.hs	golem_plugin_free_bytes	1	C の側が確保した領域を解放するだけである
+modules/golem-test-support/src/Golem/TestSupport/Watchdog.hs	golem_watchdog_start	1	見張りの表のロックを短く取るだけである（root ADR 0117）
+modules/golem-test-support/src/Golem/TestSupport/Watchdog.hs	golem_watchdog_enter	1	見張りの表のロックを短く取るだけである（root ADR 0117）
+modules/golem-test-support/src/Golem/TestSupport/Watchdog.hs	golem_watchdog_leave	1	見張りの表のロックを短く取るだけである（root ADR 0117）
+modules/golem-test-support/src/Golem/TestSupport/Watchdog.hs	golem_watchdog_beat	1	見張りの表のロックを短く取るだけである（root ADR 0117）
+modules/golem-test-support/test/Main.hs	sleep	3	非 threaded のランタイムの唯一の OS のスレッドを、わざと止める（root ADR 0117）

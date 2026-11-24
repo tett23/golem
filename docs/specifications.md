@@ -9615,6 +9615,22 @@ spark は純粋な値の計算を別の capability に委ねるだけなので�
 環境変数 `GHCRTS=-N<n>` か、コマンド行の `+RTS -N<n> -RTS` で指定する。
 変えても、出力のバイト列と diagnostics は変わらない（[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）。
 
+C のライブラリを呼ぶ FFI の呼び出しのうち、長くかかりうるものは `safe` で呼ぶ（[root ADR 0435](adr/0435-call-long-ffi-functions-safely.md)）。
+`unsafe` の呼び出しは終わるまで capability を手放さないので、そのあいだに GC の同期が起きると、ほかのすべての capability が待たされる。
+プラグインのコンパイル（`golem_plugin_load`）、WAT から wasm への変換（`golem_wat2wasm`）、フォントを開くこと（`golem_font_open`）、サブセットを作ること（`golem_font_subset`）は `safe` で呼ぶので、そのあいだも LSP の応答や並べて組む段落は止まらない。
+`unsafe` で呼んでよいのは、次の三つのどれかに当たる呼び出しだけである。
+
+1. 呼び出しの時間が入力の大きさによらず短く、ロックを待たない呼び出し（値の読み出し、領域の解放など）。
+2. 呼び出しの数が多く、`safe` の呼び出しの費用が無視できないので、理由を書いて `unsafe` のまま残す呼び出し（語ごとに呼ぶ `golem_font_shape` など）。
+3. capability を手放さないことそのものが目的の呼び出し（golem-test-support のテストの `sleep`）。
+
+`unsafe` の呼び出しは、モジュールのパス、C の関数の名前、理由の番号、理由の文をタブで区切り、`scripts/ci/unsafe-ffi.tsv` に一行ずつ書く。
+`scripts/ci/test.sh` は、`modules` の下の Haskell のソースを `scripts/ci/unsafe-io.sh` と同じ近似の字句解析で注釈を除いて読み、`foreign import` の宣言を探す。
+呼び出しの規約（`capi` か `ccall`）の次の語が安全さの語で、`safe` でも `unsafe` でもなければ検査を落とす。
+`unsafe` の宣言では、その後の引用符の中の文字列の最後の語を C の関数の名前とし、`&` で始まるもの（関数のアドレスを取るだけの import）は数えない。
+ソースから得た（モジュールのパス、C の関数の名前）の集合が一覧の行の集合と等しくなければ、足りない行と余る行を一つずつ標準エラー出力に書いて検査を落とす。
+一覧の空行と `#` で始まる行は読まない。
+
 ### golem preflight
 
 `golem preflight` は、印刷所に入稿する前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
