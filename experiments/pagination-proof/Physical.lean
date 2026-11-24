@@ -79,12 +79,17 @@ inductive Flow where
   /-- `FSwitchColumns` with the number of columns of the set. -/
   | switchColumns (cols : Nat)
   | restoreColumns
+  /-- `FHeading`: recto, its extent and its lines. -/
+  | heading (recto : Bool) (extent : Int) (ls : List Line)
+  | defTerm (ls : List Line)
   deriving DecidableEq, Repr
 
 inductive Slot where
   | line (id : Nat)
   | figure (id : Nat)
   | pageFigure (id : Nat)
+  /-- `SHeading`: the first line and the number of lines. -/
+  | heading (id : Nat) (n : Nat)
   deriving DecidableEq, Repr
 
 inductive AdjustLimit where
@@ -101,12 +106,15 @@ inductive Unmet where
   /-- `ShortPart`: the first part (true) or the last, the first line,
       the lines asked for and the lines placed. -/
   | shortPart (firstPart : Bool) (id : Nat) (wanted placed : Nat)
+  /-- `TallHeadingExtent`: the first line, the extent and the room left. -/
+  | tallHeading (id : Nat) (extent room : Int)
   deriving DecidableEq, Repr
 
 inductive Failure where
   | lineTooTall (id : Nat)
   | footnoteTooTall (id : Nat)
   | figureTooTall (id : Nat)
+  | headingTooTall (id : Nat)
   deriving DecidableEq, Repr
 
 /-- A note part: the note, the first line shown, the lines. -/
@@ -173,6 +181,11 @@ def initial (env : Env) : St :=
 def limit (env : Env) (st : St) : Int := env.capacity + st.adjust
 def room (env : Env) (st : St) : Int := limit env st - st.used - st.notesUsed
 def empty (st : St) : Bool := st.slots.isEmpty && st.notes.isEmpty && st.used == st.firstLine
+def isHeading : Slot → Bool
+  | .heading _ _ => true
+  | _ => false
+/-- `headingOnly`: the column holds headings and nothing else. -/
+def headingOnly (st : St) : Bool := !st.slots.isEmpty && st.slots.all (fun s => isHeading s.2)
 def addUnmet (u : Unmet) (st : St) : St := { st with unmet := st.unmet ++ [u] }
 
 def close (env : Env) (st : St) : St :=
@@ -331,7 +344,7 @@ def trialRest (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line)
   let total := rows.length
   let count := fitting env st rows
   let selected := splitAtBreak k start total count
-  let emptyish := empty st
+  let emptyish := empty st || (headingOnly st && decide (0 < count))
   if (empty st ∧ st.adjust < 0 ∧ count = 0) ∨ (selected = 0 ∧ emptyish = false) then
     .ok (.moved (nextColumn env st) k)
   else
@@ -352,7 +365,7 @@ def trial (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) : E
   | first :: _ =>
     if env.capacity < env.pitchOf first.id then .error (.lineTooTall first.id)
     else if k.all ∧ start ∧ fitting env st rows < rows.length then
-      if empty st then trialRest env { k with all := false } start (addUnmet (.splitKept first.id) st) rows first.id
+      if empty st || headingOnly st then trialRest env { k with all := false } start (addUnmet (.splitKept first.id) st) rows first.id
       else .ok (.moved (nextColumn env st) k)
     else trialRest env k start st rows first.id
 
@@ -500,7 +513,10 @@ theorem trialRest_moved (env : Env) (k : Keep) (start : Bool) (st : St) (rows : 
     refine ⟨h2.symm, h1.symm, ?_⟩
     cases c with
     | inl c => exact Or.inr c.2.1
-    | inr c => exact Or.inl c.2
+    | inr c =>
+      have e := c.2
+      simp only [Bool.or_eq_false_iff] at e
+      exact Or.inl e.1
   · split at h <;> simp at h
 
 theorem trialRest_placed (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (fid : Nat)
@@ -531,7 +547,10 @@ theorem I4_trial_moved (env : Env) (k : Keep) (start : Bool) (st : St) (rows : L
         · injection h with h; injection h with h1 h2
           subst h1; subst h2
           rename_i ne
-          exact Or.inr ⟨rfl, I4_nextColumn_rank env st (Or.inl (by simpa using ne))⟩
+          refine Or.inr ⟨rfl, I4_nextColumn_rank env st (Or.inl ?_)⟩
+          cases e : empty st
+          · rfl
+          · exact absurd (by simp [e]) ne
       · obtain ⟨e, n, m⟩ := trialRest_moved env _ start _ _ _ next relaxed h
         subst e; subst n
         exact Or.inr ⟨rfl, I4_nextColumn_rank env st m⟩
@@ -606,6 +625,8 @@ def flowLines : Flow → List Line
   | .paragraph _ ls => ls
   | .continued _ ls => ls
   | .ruled r => r.lines
+  | .heading _ _ ls => ls
+  | .defTerm ls => ls
   | _ => []
 
 /-! ## Ruled blocks -/
@@ -735,6 +756,44 @@ decreasing_by
   · apply Prod.Lex.left; simp [joinedRank, h1.1]
   · apply Prod.Lex.right; exact I4_fit_moved env st _ h2
 
+/-! ## Headings -/
+
+def headId : List Line → Nat
+  | l :: _ => l.id
+  | [] => 0
+
+def notesOf (ls : List Line) : List Note := ls.bind (fun l => l.notes)
+def notesCount (ls : List Line) : Nat := ls.foldr (fun l a => noteLines l + a) 0
+
+/-- The settings of `putHeading`: the first line takes the extent. -/
+def headingEnv (env : Env) (firstId : Nat) (extent : Int) : Env :=
+  { env with pitchOf := fun i => if i = firstId then extent else env.pitchOf i }
+
+/-- `putHeading`: one slot, its notes as those of one line. -/
+def putHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line) : Except Failure St :=
+  match putLine (headingEnv env firstId extent) st ⟨firstId, notesOf ls, 0⟩ with
+  | .error e => .error e
+  | .ok placed => .ok { placed with slots := st.slots ++ [(st.used, .heading firstId ls.length)] }
+
+def headingNeed (env : Env) (st : St) (extent : Int) (ls : List Line) : Int :=
+  let notes := notesCount ls
+  let separator := if 0 < notes ∧ st.notesUsed = 0 then env.separator else 0
+  let complete := extent + separator + (notes : Int) * env.pagePitch
+  if complete ≤ env.capacity then complete
+  else extent + separator + (if 0 < notes then env.pagePitch else 0)
+
+/-- The heading placed over the room of a column made shorter (`TallHeadingExtent`). -/
+def tallAt (st : St) (firstId : Nat) (extent roomLeft : Int) : St :=
+  { st with pending := 0, blankActive := false, blankSpans := 0,
+            unmet := st.unmet ++ [.tallHeading firstId extent roomLeft] }
+
+def placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line) : Except Failure St :=
+  if env.capacity < extent then .error (.headingTooTall firstId)
+  else if empty st ∧ st.adjust < 0 ∧ room env st < headingNeed env st extent ls ∧
+      headingNeed env st extent ls ≤ env.capacity - st.used - st.notesUsed then
+    putHeading env (tallAt st firstId extent (room env st)) firstId extent ls
+  else putHeading env (fit env st (headingNeed env st extent ls)) firstId extent ls
+
 /-! ## What follows a block -/
 
 /-- `keepAhead` of Physical.hs: the last and first lines the controls
@@ -780,6 +839,13 @@ def fitsFollowingGo (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Fl
   | .space s :: rest => fitsFollowingGo env st wanted (extra + s) rest
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
   | .noBreakLines _ :: rest | .keepNext _ :: rest => fitsFollowingGo env st wanted extra rest
+  | .heading true _ _ :: _ => true
+  | .heading false extent ls :: rest =>
+    if extra + st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 [.heading false extent ls] ≤ room env st then
+      match placeHeading env { st with pending := st.pending + extra } (headId ls) extent ls with
+      | .ok placed => (placed.page == st.page && placed.column == st.column) && fitsFollowingGo env placed 1 0 rest
+      | .error _ => false
+    else false
   | .ruled r :: rest =>
     match placeRuled env { st with pending := st.pending + extra } r rest with
     | .ok placed => placed.page == st.page && placed.column == st.column
@@ -788,6 +854,26 @@ def fitsFollowingGo (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Fl
 
 def fitsFollowing (env : Env) (st : St) (wanted : Nat) (flows : List Flow) : Bool :=
   fitsFollowingGo env st wanted 0 flows
+
+/-- `keepFollowing`: a heading or a definition term goes on to the next
+    column unless the first part of what follows fits after it. -/
+def keepVirtual (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) : St :=
+  let noteCount := notesCount ls
+  let notes : Int := (noteCount : Int) * env.pagePitch + (if 0 < noteCount ∧ st.notesUsed = 0 then env.separator else 0)
+  let origin := st.used + st.pending
+  let virtualSlots : List (Int × Slot) :=
+    if heading then [(origin, .heading (headId ls) ls.length)]
+    else (ls.foldl (fun (a : List (Int × Slot) × Int) l => (a.1 ++ [(a.2, .line l.id)], a.2 + env.pitchOf l.id)) ([], origin)).1
+  { st with used := origin + extent, notesUsed := st.notesUsed + notes, slots := st.slots ++ virtualSlots, pending := 0 }
+
+def keepWanted (later : List Flow) : Nat × List Flow :=
+  match keepAhead later with
+  | some (_, n, rest) => (n, rest)
+  | none => (1, later)
+
+def keepFollowing (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) : St :=
+  if empty st = false ∧ fitsFollowing env (keepVirtual env heading st extent ls) (keepWanted later).1 (keepWanted later).2 = false
+  then nextColumn env st else st
 
 /-- The lines of a paragraph moved on with what follows (`backCount` of
     `placeWithNext`). -/
@@ -836,7 +922,10 @@ def waitForPrior (u : Unmet) (req : Nat × Bool) (st : St) : St :=
   if empty st ∨ st.deferred ≠ [] then addUnmet u st else waitFor u req st
 
 def addedSlots (linesOnly : Bool) (prior : Nat) (slots : List (Int × Slot)) : Nat :=
-  ((slots.drop prior).map (fun s => match s.2 with | .line _ => 1 | _ => if linesOnly then 0 else 1)).foldr (· + ·) 0
+  ((slots.drop prior).map (fun s => match s.2 with
+    | .line _ => 1
+    | .heading _ n => max 1 n
+    | _ => if linesOnly then 0 else 1)).foldr (· + ·) 0
 
 /-- Whether a wait is met: the column it started in took the lines asked for. -/
 def waitMet (acc : St) (w : Wait) : Bool :=
@@ -1070,9 +1159,12 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .start k => .ok (sectionStart env k st)
   | .switchColumns cols => .ok (switchColumns env cols st)
   | .restoreColumns => .ok (restoreColumns env st)
+  | .heading recto extent ls =>
+    placeHeading env (if recto then parityStart env (fun p => p % 2 == 1) st else st) (headId ls) extent ls
+  | .defTerm ls => placeLines env defaultKeep true st ls
 
 def occupies : Flow → Bool
-  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ => true
+  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -1095,6 +1187,10 @@ def placeBody (env : Env) (before : St) (flow : Flow) (rest : List Flow) : Excep
   | .noBreakLines n, _ =>
     if 0 < n then .ok (waitForPrior .noBreak (followingRows 0 rest) before) else placeFlow env before flow
   | .keepNext n, _ => .ok (waitForPrior .keepNext (followingRows n rest) before)
+  | .defTerm ls, _ => placeLines env defaultKeep true (keepFollowing env false before (sumPitch env ls) ls rest) ls
+  | .heading recto extent ls, _ =>
+    placeHeading env (if recto then parityStart env (fun p => p % 2 == 1) before
+      else keepFollowing env true before extent ls rest) (headId ls) extent ls
   | .ruled r, _ => placeRuledKeeping env before r rest
   | _, _ => placeFlow env before flow
 
@@ -1133,6 +1229,7 @@ def paginate (env : Env) (flows : List Flow) : Except Failure (List PageOut) :=
 def textSlots : List (Int × Slot) → List Nat
   | [] => []
   | (_, .line i) :: r => i :: textSlots r
+  | (_, .heading i _) :: r => i :: textSlots r
   | _ :: r => textSlots r
 def figSlots : List (Int × Slot) → List Nat
   | [] => []
@@ -1152,9 +1249,13 @@ def lineIds (ls : List Line) : List Nat := ls.map (·.id)
 def flowFigs : Flow → List Nat
   | .figure i _ => [i]
   | _ => []
+/-- The ids a flow adds to the text: its lines, or the first line of a heading. -/
+def flowText : Flow → List Nat
+  | .heading _ _ ls => [headId ls]
+  | f => lineIds (flowLines f)
 def sourceText : List Flow → List Nat
   | [] => []
-  | f :: fs => lineIds (flowLines f) ++ sourceText fs
+  | f :: fs => flowText f ++ sourceText fs
 def sourceFigs : List Flow → List Nat
   | [] => []
   | f :: fs => flowFigs f ++ sourceFigs fs
@@ -1718,6 +1819,66 @@ decreasing_by
   all_goals assumption
 
 
+theorem putLine_fields (env : Env) (allow : Bool) (st s : St) (l : Line)
+    (h : putLineWithReserve allow env st l = .ok s) :
+    s.done = st.done ∧ s.deferred = st.deferred ∧ s.page = st.page ∧ s.column = st.column := by
+  unfold putLineWithReserve at h
+  split at h
+  · cases h
+  · split at h
+    · split at h
+      · cases h
+      · injection h with h; subst h; exact ⟨rfl, rfl, rfl, rfl⟩
+    · injection h with h; subst h; exact ⟨rfl, rfl, rfl, rfl⟩
+
+theorem notesOf_nil (ls : List Line) (h : ∀ l ∈ ls, l.notes = []) : notesOf ls = [] := by
+  induction ls with
+  | nil => rfl
+  | cons l ls ih =>
+    have e : notesOf (l :: ls) = l.notes ++ notesOf ls := rfl
+    rw [e, h l (List.mem_cons_self _ _), ih (fun x m => h x (List.mem_cons_of_mem _ m))]; rfl
+
+theorem lineOk_merge (env : Env) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l) (i : Nat) :
+    LineOk env ⟨i, notesOf ls, 0⟩ := by
+  by_cases f : NotesFit env
+  · exact Or.inr f
+  · refine Or.inl (notesOf_nil ls (fun l m => ?_))
+    cases hl l m with
+    | inl e => exact e
+    | inr g => exact absurd g f
+
+theorem step_putHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line)
+    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : putHeading env st firstId extent ls = .ok s) :
+    Step env st s [firstId] [] := by
+  unfold putHeading at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    have a : Step env st placed [firstId] [] :=
+      step_putLine (headingEnv env firstId extent) false st placed _ (lineOk_merge env ls hl firstId) e
+    obtain ⟨d, df, _, _⟩ := putLine_fields _ false st placed _ e
+    refine ⟨?_, ?_, fun g => a.2.2 g⟩
+    · simp [text, d, textSlots_append, textSlots]
+    · simp [figs, d, df, figSlots_append, figSlots]
+
+theorem step_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (ls : List Line)
+    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : placeHeading env st firstId extent ls = .ok s) :
+    Step env st s [firstId] [] := by
+  unfold placeHeading at h
+  split at h
+  · cases h
+  · split at h
+    · simpa using (Step.same rfl rfl rfl rfl).trans (step_putHeading env _ firstId extent ls hl s h)
+    · simpa using (step_fit env st _).trans (step_putHeading env _ firstId extent ls hl s h)
+
+theorem step_keepFollowing (env : Env) (hd : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) :
+    Step env st (keepFollowing env hd st extent ls later) [] [] := by
+  unfold keepFollowing
+  split
+  · exact step_nextColumn env st
+  · exact Step.refl env st
+
 theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
   | [], _, m => Or.inr m
   | y :: ys, b, m => by
@@ -1733,7 +1894,7 @@ theorem step_adjustLines (env : Env) (n : Int) (st : St) : Step env st (adjustLi
   Step.same rfl rfl rfl rfl
 
 theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s : St)
-    (h : placeFlow env st f = .ok s) : Step env st s (lineIds (flowLines f)) (flowFigs f) := by
+    (h : placeFlow env st f = .ok s) : Step env st s (flowText f) (flowFigs f) := by
   cases f with
   | paragraph k ls => exact step_placeLines env k true st ls hf s h
   | continued k ls => exact step_placeLines env k false st ls hf s h
@@ -1744,6 +1905,14 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | start k => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_sectionStart env k st
   | switchColumns c => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_switchColumns env c st
   | restoreColumns => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_restoreColumns env st
+  | defTerm ls => exact step_placeLines env _ true st ls hf s h
+  | heading recto extent ls =>
+    simp only [placeFlow] at h
+    have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
+      split
+      · exact step_parityStart env _ st
+      · exact Step.refl env st
+    simpa [flowText] using a.trans (step_placeHeading env _ _ extent ls hf s h)
   | adjustLines n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_adjustLines env n st
   | noBreak => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ st
   | keepNext n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ st
@@ -1773,14 +1942,14 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
     · rename_i big
       split at h
       · injection h with h; subst h
-        refine ⟨by simp [text, flowLines, lineIds], by simp [figs, flowFigs], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
+        refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
         intro d m
         cases mem_append' m with
         | inl m => exact g1 d m
         | inr m => simp at m; subst m; exact Int.not_lt.1 big
       · split at h
         · injection h with h; subst h
-          refine ⟨by simp [text, flowLines, lineIds], by simp [figs, flowFigs], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
+          refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
           intro d m
           cases mem_append' m with
           | inl m => exact g1 d m
@@ -1788,7 +1957,7 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
         · rename_i nd _
           injection h with h; subst h
           have d0 : st.deferred = [] := Decidable.of_not_not nd
-          simpa [flowLines, lineIds, flowFigs] using (step_fit env st e).trans
+          simpa [flowText, flowLines, lineIds, flowFigs] using (step_fit env st e).trans
             (step_putFigureSlot env _ e i (fit_deferred env st e d0))
 
 
@@ -1807,7 +1976,7 @@ theorem step_beforeOf (env : Env) (st : St) (flow : Flow) (rest : List Flow) :
   · simpa using a.trans (Step.same rfl rfl rfl rfl)
 
 theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf : FlowOk env flow) (s : St)
-    (h : placeBody env b flow rest = .ok s) : Step env b s (lineIds (flowLines flow)) (flowFigs flow) := by
+    (h : placeBody env b flow rest = .ok s) : Step env b s (flowText flow) (flowFigs flow) := by
   unfold placeBody at h
   cases flow with
   | paragraph k ls =>
@@ -1840,9 +2009,18 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | start k => exact step_placeFlow env b _ hf s h
   | switchColumns c => exact step_placeFlow env b _ hf s h
   | restoreColumns => exact step_placeFlow env b _ hf s h
+  | defTerm ls =>
+    simpa using (step_keepFollowing env false b _ ls rest).trans (step_placeLines env _ true _ ls hf s h)
+  | heading recto extent ls =>
+    have a : Step env b (if recto = true then parityStart env (fun p => p % 2 == 1) b
+        else keepFollowing env true b extent ls rest) [] [] := by
+      split
+      · exact step_parityStart env _ b
+      · exact step_keepFollowing env true b extent ls rest
+    simpa [flowText] using a.trans (step_placeHeading env _ _ extent ls hf s h)
 
 theorem step_placeNext (env : Env) (st : St) (flow : Flow) (rest : List Flow) (hf : FlowOk env flow) (s : St)
-    (h : placeNext env st flow rest = .ok s) : Step env st s (lineIds (flowLines flow)) (flowFigs flow) := by
+    (h : placeNext env st flow rest = .ok s) : Step env st s (flowText flow) (flowFigs flow) := by
   unfold placeNext at h
   split at h
   · cases h

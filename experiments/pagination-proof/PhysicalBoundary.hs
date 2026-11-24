@@ -220,6 +220,47 @@ startInputs =
   where
     kinds = [BreakColumn, BreakPage, BreakRecto, BreakVerso]
 
+-- Headings and definition terms after paragraphs, before what they keep.
+headingInputs :: [(Column, [FlowAt Sp])]
+headingInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FSpace 5 | space] <> [FHeading 1 recto e ls] <> after <> [para 20 n])
+  | cap <- [20, 30, 40],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    space <- [False, True],
+    recto <- [False, True],
+    (e, ls) <- [(10, [line 300]), (16, [line 300]), (24, lines' 300 2), (32, lines' 300 2), (16, noted 300 1 0 2)],
+    after <- [[], [FHeading 2 False 12 [line 310]], [FKeepNext span0 2, FParagraph (Keep 1 1 False) (lines' 350 3)], [FSpace 5], [FDefTerm (lines' 320 1)], [ruled 100 (Just (sides !! 0)) Nothing False defaultKeep (lines' 330 1)], [FFigure 100 15 [] []], [FParagraph (Keep 2 2 True) (lines' 340 3)]],
+    n <- [1 .. 3]
+  ]
+    <> [ (Column cap 4 cols, [para 0 p | p > 0] <> [FDefTerm (lines' 300 k)] <> after <> [para 20 n])
+       | cap <- [20, 30, 35, 40],
+         cols <- [1, 2],
+         p <- [0 .. 3],
+         k <- [1, 2],
+         after <- [[], [FDefTerm (lines' 310 1)], [FKeepNext span0 2], [ruled 100 (Just (sides !! 3)) Nothing False defaultKeep (lines' 330 1)]],
+         n <- [1 .. 3]
+       ]
+    <> [ (Column cap 4 1, [para 0 p | p > 0] <> [FAdjustLines span0 a, FHeading 1 False e [line 300], para 20 1])
+       | cap <- [20, 30],
+         p <- [0, 1],
+         a <- [-1, -2],
+         e <- [15, 20, 25, 30]
+       ]
+    <> [ (Column cap sep 1, [para 0 1, FHeading 1 False e (noted 300 1 0 m), para 20 2])
+       | cap <- [30, 40],
+         sep <- [0, 4],
+         e <- [10, 20],
+         m <- [1 .. 5]
+       ]
+    <> [ (Column cap sep 1, [FAdjustLines span0 (-1), FHeading 1 False e (noted 300 1 0 m), para 20 1])
+       | cap <- [30, 40],
+         sep <- [0, 4],
+         e <- [10, 20],
+         m <- [1 .. 5]
+       ]
+    <> [(Column 20 0 1, [para 0 1, FHeading 1 False 25 [line 300]])]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -236,6 +277,8 @@ flowToken = \case
   FKeepNext _ n -> "K:" <> show n
   FRuled i b a j _ o (RuledLines k ls) ->
     "r:" <> show i <> ":" <> sideToken b <> ":" <> sideToken a <> ":" <> bit j <> ":" <> show (unSp o) <> ":" <> keepToken k <> ":" <> linesToken ls
+  FHeading _ recto e ls -> "h:" <> bit recto <> ":" <> show (unSp e) <> ":" <> linesToken ls
+  FDefTerm ls -> "d:" <> linesToken ls
   FSection _ k -> "S:" <> breakToken k
   FSwitchColumns (ColumnSet c _ _ _) -> "W:" <> show c
   FRestoreColumns -> "R"
@@ -258,6 +301,7 @@ slotToken (at, s) = show (unSp at) <> ":" <> case s of
   SLine i -> "L" <> show i
   SFigure i -> "F" <> show i
   SPageFigure i -> "T" <> show i
+  SHeading i n -> "H" <> show i <> "." <> show n
   other -> show other
 
 unmetToken :: Unmet -> String
@@ -273,6 +317,7 @@ unmetToken = \case
   SplitKept i -> "!split" <> show i
   ShortPart FirstPart i w g -> "!first" <> show i <> ":" <> show w <> ":" <> show g
   ShortPart LastPart i w g -> "!last" <> show i <> ":" <> show w <> ":" <> show g
+  TallHeadingExtent i e r -> "!tall" <> show i <> ":" <> show (unSp e) <> ":" <> show (unSp r)
   other -> "!" <> show other
 
 pageToken :: PageOutAt Sp -> String
@@ -285,7 +330,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))
@@ -296,4 +341,5 @@ main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs
       PhysicalLineTooTall i -> "line" <> show i
       PhysicalFootnoteTooTall (NoteId _ i) -> "note" <> show i
       PhysicalFigureTooTall i -> "figure" <> show i
+      PhysicalHeadingTooTall i -> "heading" <> show i
       other -> show other

@@ -30,8 +30,16 @@ partial def firstNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Na
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
   | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed pagePitch separator hasNotes wanted rest
   | .figure _ e :: _ => e
+  | .heading true _ _ :: _ => 0
+  | .heading false extent ls :: rest =>
+    extent + noteNeed pagePitch separator hasNotes ls +
+      firstNeed pagePitch separator (hasNotes || ls.any (fun l => !l.notes.isEmpty)) 1 rest
+  | .defTerm ls :: _ => sumInt (ls.map (fun l => pitchOf l.id)) + noteNeed pagePitch separator hasNotes ls
   | _ => 0
 where
+  noteNeed (pagePitch separator : Int) (hasNotes : Bool) (ls : List Line) : Int :=
+    let c : Nat := (ls.map noteLines).foldr (· + ·) 0
+    (if 0 < c ∧ !hasNotes then separator else 0) + (c : Int) * pagePitch
   paragraphNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Nat) (k : Keep) (start : Bool)
       (ls : List Line) (rest : List Flow) : Int :=
     let total := ls.length
@@ -96,6 +104,8 @@ def flowOf (s : String) : Flow :=
   | ["B"] => .noBreak
   | ["L", n] => .noBreakLines (nat! n)
   | ["K", n] => .keepNext (nat! n)
+  | ["h", r, e, ls] => .heading (r == "1") (int! e) (linesOf ls)
+  | ["d", ls] => .defTerm (linesOf ls)
   | ["S", k] => .start (breakOf k)
   | ["W", c] => .switchColumns (nat! c)
   | ["R"] => .restoreColumns
@@ -107,6 +117,7 @@ def slotToken : Int × Slot → String
   | (p, .line i) => s!"{p}:L{i}"
   | (p, .figure i) => s!"{p}:F{i}"
   | (p, .pageFigure i) => s!"{p}:T{i}"
+  | (p, .heading i n) => s!"{p}:H{i}.{n}"
 
 def unmetToken : Unmet → String
   | .needLines n => s!"!need{n}"
@@ -117,6 +128,7 @@ def unmetToken : Unmet → String
   | .splitKept i => s!"!split{i}"
   | .shortPart true i w g => s!"!first{i}:{w}:{g}"
   | .shortPart false i w g => s!"!last{i}:{w}:{g}"
+  | .tallHeading i e r => s!"!tall{i}:{e}:{r}"
 
 def pageToken (p : PageOut) : String :=
   " ".intercalate (["out", toString p.number, toString p.column, if p.blank then "blank" else "-", toString p.limit]
@@ -128,6 +140,7 @@ def failureToken : Failure → String
   | .lineTooTall i => s!"line{i}"
   | .footnoteTooTall i => s!"note{i}"
   | .figureTooTall i => s!"figure{i}"
+  | .headingTooTall i => s!"heading{i}"
 
 def run (input : String) : List String :=
   match input.splitOn " " with
