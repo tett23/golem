@@ -1024,7 +1024,18 @@ turnedFigureTests =
       plain <- build' ""
       -- no font: HTML names generic families by default (docs/adr/0423)
       map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
-      nOutputs turned @?= nOutputs plain
+      nOutputs turned @?= nOutputs plain,
+    testCase "golem-driver ADR 0034, root ADR 0397: in the free placement a turned figure waits after a waiting figure and takes a page of its own" $ do
+      let free = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (pageStyle "horizontal" "left" 24 8 1 20 20)
+          source = "一。\n\n二。\n\n三。\n\n四。\n\n" <> fig "wide" "" "" <> fig "wide" " rotate=true" "" <> "後の本文。\n"
+      (_, pl) <- layoutOk free source boxes
+      let kinds slot = case slot of
+            SLine _ -> "line"
+            SFigure _ -> "figure"
+            SPageFigure _ -> "turned"
+            _ -> "other" :: T.Text
+      [(poNumber p, map (kinds . snd) (poSlots p)) | p <- plPages pl]
+        @?= [(1, ["line", "line", "line", "line", "line"]), (2, ["figure"]), (3, ["turned"])]
   ]
 
 {- | The rectangle of the image of the only turned figure and those of the

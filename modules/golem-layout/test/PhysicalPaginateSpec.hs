@@ -37,8 +37,7 @@ slots = fmap (map poSlots)
 
 physicalPaginateTests :: TestTree
 physicalPaginateTests =
-  testGroup
-    "physical pagination"
+  testGroup "physical pagination" $
     [ testCase "root ADR 0401 I2: discarded source callbacks preserve only accepted ids notes labels and marks" $ do
         let cfg = settings {physicalCapacity = 64, physicalMaxCapacity = 64, physicalColumns = ColumnSet 2 0 0 0}
         cursor <- either (assertFailure . show) pure (stepPhysicalCursor cfg (startPhysicalCursor cfg) [FParagraph defaultKeep (map line [0 .. 6])])
@@ -739,3 +738,82 @@ physicalPaginateTests =
           )
           @?= Right [[(1, SLine 0)], [(1, SLine 1), (17, SLine 2), (33, SLine 3)]]
     ]
+      <> turnedFigureTests
+
+turnedSettings :: PhysicalSettings
+turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
+
+pageTrace :: Either PhysicalFailure [PageOutAt Sp] -> Either PhysicalFailure [(Int, Int, [(Sp, Slotted)])]
+pageTrace = fmap (map (\page -> (poNumber page, poColumn page, poSlots page)))
+
+lines10 :: Int -> Int -> [LineBox]
+lines10 from count = map line [from .. from + count - 1]
+
+-- The turned figures of the specification (golem-driver ADR 0034 and 0039) in the free placement of root ADR 0397.
+turnedFigureTests :: [TestTree]
+turnedFigureTests =
+  [ testCase "golem-driver ADR 0034, root ADR 0397: a turned figure after waiting figures takes a page after them in manuscript order" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 4), FFigure 100 30 [] [], FFigure 101 30 [] [], FPageFigure 200 [] []])
+        @?= Right
+          [ (1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 2), (30, SLine 3)]),
+            (2, 0, [(0, SFigure 100)]),
+            (3, 0, [(0, SFigure 101)]),
+            (4, 0, [(0, SPageFigure 200)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: the text after a waiting turned figure fills the current page first" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 4), FPageFigure 200 ["f"] [], FParagraph defaultKeep [line 10]])
+        @?= Right
+          [ (1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 2), (30, SLine 3), (40, SLine 10)]),
+            (2, 0, [(0, SPageFigure 200)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: a turned figure met on an empty page takes that page" $
+      pageTrace (paginatePhysical turnedSettings [FPageFigure 200 [] [], FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SPageFigure 200)]), (2, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a figure after a waiting turned figure waits even when it fits" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FFigure 60 10 [] [], FParagraph defaultKeep [line 10]])
+        @?= Right
+          [ (1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 10)]),
+            (2, 0, [(0, SPageFigure 200)]),
+            (3, 0, [(0, SFigure 60)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: a waiting turned figure is placed before a page break" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FBreak BreakPage, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: two or three page breaks after a waiting turned figure add no blank page" $
+      forM_ [2, 3] $ \k ->
+        pageTrace (paginatePhysical turnedSettings ([FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] []] <> replicate k (FBreak BreakPage) <> [FParagraph defaultKeep [line 10]]))
+          @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: a page break right after a turned figure met on an empty page adds no blank page" $
+      pageTrace (paginatePhysical turnedSettings [FPageFigure 200 [] [], FBreak BreakPage, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SPageFigure 200)]), (2, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: a column break while a turned figure waits is a page break" $
+      pageTrace (paginatePhysical turnedSettings {physicalColumns = ColumnSet 2 0 0 0} [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FBreak BreakColumn, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0039, root ADR 0397: a column break with only an unturned figure waiting goes to the next column" $
+      pageTrace (paginatePhysical turnedSettings {physicalColumns = ColumnSet 2 0 0 0} [FParagraph defaultKeep (lines10 0 4), FFigure 60 30 [] [], FBreak BreakColumn, FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1), (20, SLine 2), (30, SLine 3)]), (1, 1, [(0, SFigure 60), (30, SLine 10)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a turned figure met in an empty second column waits for the next page" $
+      pageTrace (paginatePhysical turnedSettings {physicalColumns = ColumnSet 2 0 0 0} [FParagraph defaultKeep (lines10 0 2), FBreak BreakColumn, FPageFigure 200 [] [], FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (1, 1, [(0, SLine 10)]), (2, 0, [(0, SPageFigure 200)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a waiting turned figure is placed before a column switch" $
+      pageTrace (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep [line 10]])
+        @?= Right [(1, 0, [(0, SLine 0), (10, SLine 1)]), (2, 0, [(0, SPageFigure 200)]), (3, 0, [(0, SLine 10)])],
+    testCase "golem-driver ADR 0034, root ADR 0397: a waiting turned figure is placed before a recto heading" $
+      fmap
+        (map (\page -> (poNumber page, poBlank page, poSlots page)))
+        (paginatePhysical turnedSettings [FParagraph defaultKeep (lines10 0 2), FPageFigure 200 [] [], FParagraph defaultKeep [line 10], FHeading 1 True 10 [line 20]])
+        @?= Right
+          [ (1, False, [(0, SLine 0), (10, SLine 1), (20, SLine 10)]),
+            (2, False, [(0, SPageFigure 200)]),
+            (3, False, [(0, SHeading 20 1)])
+          ],
+    testCase "golem-driver ADR 0034, root ADR 0397: a footnote continued from the page before skips the page of a turned figure" $
+      fmap
+        (map (\page -> (poNumber page, poSlots page, poFootnotes page)))
+        (paginatePhysical turnedSettings [FParagraph defaultKeep [LineBox 0 [NoteBody (NoteId span0 0) 6] [] [] 0], FPageFigure 200 [] [], FParagraph defaultKeep [line 10, line 11]])
+        @?= Right
+          [ (1, [(0, SLine 0)], [(NoteId span0 0, 0, 4)]),
+            (2, [(0, SPageFigure 200)], []),
+            (3, [(0, SLine 10), (10, SLine 11)], [(NoteId span0 0, 4, 2)])
+          ]
+  ]
