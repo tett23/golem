@@ -49,7 +49,9 @@ structure RuleSide where
   outside : Option Int
   deriving DecidableEq, Repr
 
-/-- `FRuled` with a `RuledLines` body. -/
+/-- `FRuled`: its body is `RuledLines keep lines` when `heading` is none,
+    and `RuledHeading recto extent lines` when it is `some (recto, extent)`;
+    `keep` is then not read. -/
 structure Ruled where
   id : Nat
   before : Option RuleSide
@@ -58,6 +60,7 @@ structure Ruled where
   nextOverhang : Int
   keep : Keep
   lines : List Line
+  heading : Option (Bool × Int)
   deriving DecidableEq, Repr
 
 inductive Flow where
@@ -204,6 +207,9 @@ structure Env where
   firstLine : Int
   pitchOf : Nat → Int
   faceOf : Nat → Int
+  /-- `physicalHeadingBounds`: the face of the first line of a heading from
+      its top and the end of the face of its last line. -/
+  headingBounds : Nat → Option (Int × Int)
   /-- `firstNeed` of Physical.hs: the length the flows ahead need. -/
   firstNeed : Bool → Nat → List Flow → Int
 
@@ -817,36 +823,6 @@ def ruledJoin (env : Env) (r : Ruled) (lastLine : Line) (later : List Flow) : Op
 def ruledExtent (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (later : List Flow) : Int :=
   ruledBeforeExtra env st r first + sumPitch env r.lines + ruledAfterExtra env r lastLine later
 
-set_option linter.unusedVariables false in
-def placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
-  match r.lines.head?, r.lines.getLast? with
-  | some first, some lastLine =>
-    if h1 : r.joined ∧ st.join.isSome ∧ room env st < ruledExtent env st r first lastLine later + st.pending ∧
-        empty st = false then
-      placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
-    else if env.capacity < ruledExtent env st r first lastLine later then placeLines env r.keep true st r.lines
-    else if h2 : ¬((fit env st (ruledExtent env st r first lastLine later)).page = st.page ∧
-        (fit env st (ruledExtent env st r first lastLine later)).column = st.column) then
-      placeRuled env (fit env st (ruledExtent env st r first lastLine later)) r later
-    else
-      match putLines true env
-          { fit env st (ruledExtent env st r first lastLine later) with
-            used := (fit env st (ruledExtent env st r first lastLine later)).used + ruledBeforeExtra env st r first
-            adjust := (fit env st (ruledExtent env st r first lastLine later)).adjust - ruledAfterExtra env r lastLine later }
-          r.lines with
-      | .error e => .error e
-      | .ok placed =>
-        .ok { placed with
-          used := placed.used + ruledAfterExtra env r lastLine later
-          adjust := (fit env st (ruledExtent env st r first lastLine later)).adjust
-          join := ruledJoin env r lastLine later }
-  | _, _ => .ok st
-termination_by (joinedRank r, rank st)
-decreasing_by
-  all_goals simp_wf
-  · apply Prod.Lex.left; simp [joinedRank, h1.1]
-  · apply Prod.Lex.right; exact I4_fit_moved env st _ h2
-
 /-! ## Headings -/
 
 def headId : List Line → Nat
@@ -927,28 +903,8 @@ def followingRows (wanted : Nat) : List Flow → Nat × Bool
   | .noBreak :: rest | .noBreakLines _ :: rest | .keepNext _ :: rest => followingRows wanted rest
   | _ => (1, false)
 
-def fitsFollowingGo (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Flow → Bool
-  | .space s :: rest => fitsFollowingGo env st wanted (extra + s) rest
-  | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
-  | .noBreakLines _ :: rest | .keepNext _ :: rest => fitsFollowingGo env st wanted extra rest
-  | .heading true _ _ :: _ => true
-  | .heading false extent ls :: rest =>
-    if extra + st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 [.heading false extent ls] ≤ room env st then
-      match placeHeading env { st with pending := st.pending + extra } (headId ls) extent ls with
-      | .ok placed => (placed.page == st.page && placed.column == st.column) && fitsFollowingGo env placed 1 0 rest
-      | .error _ => false
-    else false
-  | .ruled r :: rest =>
-    match placeRuled env { st with pending := st.pending + extra } r rest with
-    | .ok placed => placed.page == st.page && placed.column == st.column
-    | .error _ => false
-  | rest => decide (extra + env.firstNeed (decide (0 < st.notesUsed)) wanted rest ≤ room env st)
-
-def fitsFollowing (env : Env) (st : St) (wanted : Nat) (flows : List Flow) : Bool :=
-  fitsFollowingGo env st wanted 0 flows
-
-/-- `keepFollowing`: a heading or a definition term goes on to the next
-    column unless the first part of what follows fits after it. -/
+/-- The column with the heading or definition term on trial (`virtual`
+    of `keepFollowing`). -/
 def keepVirtual (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) : St :=
   let noteCount := notesCount ls
   let notes : Int := (noteCount : Int) * env.pagePitch + (if 0 < noteCount ∧ st.notesUsed = 0 then env.separator else 0)
@@ -962,34 +918,6 @@ def keepWanted (later : List Flow) : Nat × List Flow :=
   match keepAhead later with
   | some (_, n, rest) => (n, rest)
   | none => (1, later)
-
-def keepFollowing (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) : St :=
-  if empty st = false ∧ fitsFollowing env (keepVirtual env heading st extent ls) (keepWanted later).1 (keepWanted later).2 = false
-  then nextColumn env st else st
-
-/-- The lines of a paragraph moved on with what follows (`backCount` of
-    `placeWithNext`). -/
-def keptBack (k : Keep) (lastCount len : Nat) : Nat :=
-  let requested := max lastCount k.last
-  let minimumFirst := if 0 < lastCount then max 2 k.first else k.first
-  if k.all ∨ len ≤ requested ∨ len - requested < minimumFirst then len else requested
-
-/-- The column after the front part: the same one when it is still empty. -/
-def afterFront (env : Env) (before : St) : St := if empty before then before else nextColumn env before
-
-def placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
-    (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
-  match placeLines env k start st ls with
-  | .error e => .error e
-  | .ok full =>
-    if fitsFollowing env full firstCount later then .ok full
-    else if (ls.drop (ls.length - keptBack k lastCount ls.length)).isEmpty then .ok full
-    else
-      match placeLines env k start st (ls.take (ls.length - keptBack k lastCount ls.length)) with
-      | .error e => .error e
-      | .ok before =>
-        placeLines env k (start && (ls.take (ls.length - keptBack k lastCount ls.length)).isEmpty)
-          (afterFront env before) (ls.drop (ls.length - keptBack k lastCount ls.length))
 
 /-! ## Stanzas -/
 
@@ -1055,35 +983,6 @@ decreasing_by
   · apply Prod.Lex.left; have h := h4.2; simp only [whole, count, List.join] at h; omega
   · apply Prod.Lex.left; omega
   · apply Prod.Lex.left; have h := h5; simp only [selected, whole, count, total, List.join] at h; omega
-
-/-- The verse lines moved on with what follows (`backCount`). -/
-def stanzaBack (k : Keep) (lastCount total : Nat) : Nat :=
-  let requested := max lastCount k.last
-  if k.all ∨ total ≤ requested ∨ total - requested < k.first then total else requested
-
-def placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Line))
-    (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
-  match placeStanza env k true st verses with
-  | .error e => .error e
-  | .ok full =>
-    if fitsFollowing env full firstCount later then .ok full
-    else
-      match placeStanza env k true st (verses.take (verses.length - stanzaBack k lastCount verses.length)) with
-      | .error e => .error e
-      | .ok before =>
-        if (verses.drop (verses.length - stanzaBack k lastCount verses.length)).isEmpty ∨ empty before = true then .ok full
-        else placeStanza env k true (nextColumn env before) (verses.drop (verses.length - stanzaBack k lastCount verses.length))
-
-def placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
-  match placeRuled env st r later with
-  | .error e => .error e
-  | .ok full =>
-    match keepAhead later with
-    | some (_, wanted, rest) =>
-      if empty st = false ∧ fitsFollowing env full wanted rest = false then
-        placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
-      else .ok full
-    | none => .ok full
 
 /-! ## Keeps waiting for what follows -/
 
@@ -1330,6 +1229,325 @@ def switchColumns (env : Env) (cols : Nat) (st : St) : St :=
 def restoreColumns (env : Env) (st : St) : St :=
   { nextPage env st with columns := env.columns, firstLine := env.firstLine }
 
+/-! ## What the rank of a column does on the way to the next ones -/
+
+/-- Going on to a new column or page never raises `rank`. -/
+theorem rank_open_le (env : Env) (tp : Bool) (st : St) :
+    rank (carryInto env (placeDeferred env (opened env tp st))) ≤ rank st := by
+  obtain ⟨le, e, a⟩ := open_waiting env tp st
+  generalize carryInto env (placeDeferred env (opened env tp st)) = C at *
+  have r := rank_le C
+  have low : waiting st * 4 ≤ rank st := by unfold rank; split <;> split <;> omega
+  by_cases lt : waiting C < waiting st
+  · omega
+  · have eq : waiting C = waiting st := by omega
+    have : rank C = waiting st * 4 := by simp [rank, e eq, a, eq]
+    omega
+
+set_option linter.unusedVariables false in
+theorem rank_drainCarry_le (env : Env) (st : St) : rank (drainCarry env st) ≤ rank st := by
+  rw [drainCarry]
+  split
+  · rename_i h
+    have dec := I4_drain_rank env st ⟨Or.inl h.1, h.2⟩
+    exact Nat.le_trans (rank_drainCarry_le env (nextColumn env st)) (rank_open_le env false st)
+  · exact Nat.le_refl _
+termination_by (waiting st, columnsLeft st)
+decreasing_by
+  all_goals simp_wf
+  all_goals assumption
+
+theorem rank_parityStart_le (env : Env) (accept : Nat → Bool) (st : St) :
+    rank (parityStart env accept st) ≤ rank st := by
+  have a := rank_drainCarry_le env st
+  have b : rank (if empty (drainCarry env st) ∧ (drainCarry env st).column = 0 then drainCarry env st
+      else nextPage env (drainCarry env st)) ≤ rank (drainCarry env st) := by
+    split
+    · exact Nat.le_refl _
+    · exact rank_open_le env true _
+  unfold parityStart
+  dsimp only
+  generalize (if empty (drainCarry env st) ∧ (drainCarry env st).column = 0 then drainCarry env st
+      else nextPage env (drainCarry env st)) = nx at b
+  split
+  · omega
+  · split
+    · exact Nat.le_trans (Nat.le_of_eq rfl) (Nat.le_trans b a)
+    · exact Nat.le_trans (rank_open_le env true nx) (Nat.le_trans b a)
+
+/-- `keepFollowing` with what follows judged: the next column unless the
+    column is empty or what follows fits. -/
+def keepFrom (env : Env) (st : St) (fits : Bool) : St :=
+  if empty st = false ∧ fits = false then nextColumn env st else st
+
+theorem rank_keepFrom_le (env : Env) (st : St) (b : Bool) : rank (keepFrom env st b) ≤ rank st := by
+  unfold keepFrom
+  split
+  · rename_i h; exact Nat.le_of_lt (I4_nextColumn_rank env st (Or.inl h.1))
+  · exact Nat.le_refl _
+
+/-- The column a ruled heading starts from: an odd page, or the column
+    `keepFollowing` gives with what follows judged. -/
+def headingStateOf (env : Env) (st : St) (recto fits : Bool) : St :=
+  if recto then parityStart env (fun p => p % 2 == 1) st else keepFrom env st fits
+
+theorem rank_headingState_le (env : Env) (st : St) (recto b : Bool) :
+    rank (headingStateOf env st recto b) ≤ rank st := by
+  unfold headingStateOf
+  split
+  · exact rank_parityStart_le env _ st
+  · exact rank_keepFrom_le env st b
+
+/-! ## What follows a block, and ruled blocks -/
+
+theorem collect_length (before between : List Flow) (l f : Nat) (xs : List Flow) :
+    (collect before between l f xs).2.2.length ≤ before.length + between.length + xs.length := by
+  induction xs generalizing before between l f with
+  | nil => simp [collect]
+  | cons x xs ih =>
+    simp only [collect]
+    split
+    · have := ih before (between ++ [x]) l f; simp at this ⊢; omega
+    · split
+      · rename_i l' f' _
+        have := ih (before ++ between) [] (max l l') (max f f'); simp at this ⊢; omega
+      · simp; omega
+
+theorem keepAheadGo_length (between : List Flow) (xs : List Flow) (l f : Nat) (r : List Flow)
+    (h : keepAheadGo between xs = some (l, f, r)) : r.length ≤ between.length + xs.length := by
+  induction xs generalizing between with
+  | nil => simp [keepAheadGo] at h
+  | cons x xs ih =>
+    simp only [keepAheadGo] at h
+    split at h
+    · have := ih (between ++ [x]) h; simp at this ⊢; omega
+    · split at h
+      · rename_i l' f' _
+        injection h with h
+        have c := collect_length between [] l' f' xs
+        rw [h] at c
+        simp at c ⊢; omega
+      · cases h
+
+theorem keepWanted_length (later : List Flow) : (keepWanted later).2.length ≤ later.length := by
+  unfold keepWanted
+  split
+  · rename_i n rest e
+    have := keepAheadGo_length [] later _ n rest e
+    simp at this ⊢; exact this
+  · exact Nat.le_refl _
+
+/-- The rules of a ruled block, and whether its rule before waits to share. -/
+def ruledRank (r : Ruled) : Nat :=
+  (if r.before.isSome then 1 else 0) + (if r.after.isSome then 1 else 0) + joinedRank r
+
+theorem ruledRank_le (r : Ruled) : ruledRank r ≤ 3 := by
+  unfold ruledRank joinedRank; split <;> split <;> split <;> omega
+
+theorem ruledRank_after (r : Ruled) {side : RuleSide} (h : r.after = some side) :
+    ruledRank { r with after := none } < ruledRank r := by
+  obtain ⟨_, b, a, j, _, _, _, _⟩ := r
+  simp only at h; subst h
+  cases b <;> cases j <;> simp [ruledRank, joinedRank]
+
+theorem ruledRank_before (r : Ruled) {side : RuleSide} (ha : r.after = none) (h : r.before = some side) :
+    ruledRank { r with before := none } < ruledRank r := by
+  obtain ⟨_, b, a, j, _, _, _, _⟩ := r
+  simp only at h ha; subst h; subst ha
+  cases j <;> simp [ruledRank, joinedRank]
+
+/-- The extra length of the rule before a ruled heading (`beforeGeometry`
+    of `RuledHeading`), from its first line and the heading bounds. -/
+def headingBeforeExtra (env : Env) (r : Ruled) : Int :=
+  match r.before, r.lines.head? with
+  | some side, some l =>
+    let size := env.faceOf l.id
+    let pitch := match env.headingBounds (headId r.lines) with
+      | some (firstFaceAt, _) => 2 * firstFaceAt + size
+      | none => env.pitchOf l.id
+    ruleBeforeEdgeExtra pitch size side l.overhang
+  | _, _ => 0
+
+/-- The extra length of the rule after a ruled heading (`afterGeometry`). -/
+def headingAfterExtra (env : Env) (r : Ruled) (extent : Int) : Int :=
+  match r.after, r.lines.getLast? with
+  | some side, some l =>
+    let size := env.faceOf l.id
+    let pitch := match env.headingBounds (headId r.lines) with
+      | some (_, lastFaceEnd) => 2 * (extent - lastFaceEnd) + size
+      | none => env.pitchOf l.id
+    ruleAfterEdgeExtra pitch size { side with outside := none }
+  | _, _ => 0
+
+/-- A ruled heading put at `ready`, its rules around it. -/
+def putRuledHeading (env : Env) (ready : St) (before after : Int) (firstId : Nat) (extent : Int) (ls : List Line) :
+    Except Failure St :=
+  match putHeading env { ready with used := ready.used + before, adjust := ready.adjust - after } firstId extent ls with
+  | .error e => .error e
+  | .ok placed => .ok { placed with adjust := ready.adjust, used := placed.used + after }
+
+def headingNotesExtent (env : Env) (ls : List Line) : Int :=
+  (notesCount ls : Int) * env.pagePitch + (if 0 < notesCount ls then env.separator else 0)
+
+/- `fitsFollowing` places a ruled block on trial, and a ruled heading asks
+   `keepFollowing`, so the two are one recursion. `fitsFollowingGo` takes
+   the flows after a block, `placeRuled` the flows after it, its rules and
+   the rank of the column: a call of `placeRuled` from `fitsFollowingGo`
+   keeps the flows after the block, and a call of `fitsFollowingGo` from
+   `placeRuled` reads no more flows than those after the block
+   (`keepWanted_length`). -/
+set_option linter.unusedVariables false in
+mutual
+def fitsFollowingGo (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Flow → Bool
+  | .space s :: rest => fitsFollowingGo env st wanted (extra + s) rest
+  | .needLines _ :: rest => fitsFollowingGo env st wanted extra rest
+  | .adjustLines _ :: rest => fitsFollowingGo env st wanted extra rest
+  | .noBreak :: rest => fitsFollowingGo env st wanted extra rest
+  | .noBreakLines _ :: rest => fitsFollowingGo env st wanted extra rest
+  | .keepNext _ :: rest => fitsFollowingGo env st wanted extra rest
+  | .heading true _ _ :: _ => true
+  | .heading false extent ls :: rest =>
+    if extra + st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 [.heading false extent ls] ≤ room env st then
+      match placeHeading env { st with pending := st.pending + extra } (headId ls) extent ls with
+      | .ok placed => (placed.page == st.page && placed.column == st.column) && fitsFollowingGo env placed 1 0 rest
+      | .error _ => false
+    else false
+  | .ruled r :: rest =>
+    match r.heading with
+    | some (true, _) => true
+    | _ =>
+      match placeRuled env { st with pending := st.pending + extra } r rest with
+      | .ok placed => placed.page == st.page && placed.column == st.column
+      | .error _ => false
+  | rest => decide (extra + env.firstNeed (decide (0 < st.notesUsed)) wanted rest ≤ room env st)
+termination_by fs => (fs.length, 5, 0)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.left; omega)
+    | (apply Prod.Lex.right; apply Prod.Lex.left; have := ruledRank_le r; omega)
+
+def placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
+  match hh : r.heading with
+  | some (recto, extent) =>
+    let hs := headingStateOf env st recto
+      (fitsFollowingGo env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2)
+    let firstId := headId r.lines
+    let before := headingBeforeExtra env r
+    let after := headingAfterExtra env r extent
+    if env.capacity < extent then .error (.headingTooTall firstId)
+    else if env.capacity < before + extent + after + headingNotesExtent env r.lines then
+      match ha : r.after, hb : r.before with
+      | some _, _ => placeRuled env hs { r with after := none } later
+      | none, some _ => placeRuled env hs { r with before := none } later
+      | none, none => placeHeading env hs firstId extent r.lines
+    else
+      let size := before + headingNeed env hs extent r.lines + after
+      if empty hs ∧ hs.adjust < 0 ∧ room env hs < size ∧ size ≤ env.capacity - hs.used - hs.notesUsed then
+        putRuledHeading env (tallAt hs firstId extent (room env hs)) before after firstId extent r.lines
+      else if h2 : ¬((fit env hs size).page = hs.page ∧ (fit env hs size).column = hs.column) then
+        placeRuled env (fit env hs size) r later
+      else putRuledHeading env (fit env hs size) before after firstId extent r.lines
+  | none =>
+    match r.lines.head?, r.lines.getLast? with
+    | some first, some lastLine =>
+      if h1 : r.joined ∧ st.join.isSome ∧ room env st < ruledExtent env st r first lastLine later + st.pending ∧
+          empty st = false then
+        placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
+      else if env.capacity < ruledExtent env st r first lastLine later then placeLines env r.keep true st r.lines
+      else if h2 : ¬((fit env st (ruledExtent env st r first lastLine later)).page = st.page ∧
+          (fit env st (ruledExtent env st r first lastLine later)).column = st.column) then
+        placeRuled env (fit env st (ruledExtent env st r first lastLine later)) r later
+      else
+        match putLines true env
+            { fit env st (ruledExtent env st r first lastLine later) with
+              used := (fit env st (ruledExtent env st r first lastLine later)).used + ruledBeforeExtra env st r first
+              adjust := (fit env st (ruledExtent env st r first lastLine later)).adjust - ruledAfterExtra env r lastLine later }
+            r.lines with
+        | .error e => .error e
+        | .ok placed =>
+          .ok { placed with
+            used := placed.used + ruledAfterExtra env r lastLine later
+            adjust := (fit env st (ruledExtent env st r first lastLine later)).adjust
+            join := ruledJoin env r lastLine later }
+    | _, _ => .ok st
+termination_by (later.length + 1, ruledRank r + 1, rank st)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.left; have := keepWanted_length later; omega
+  · apply Prod.Lex.right; apply Prod.Lex.left; have := ruledRank_after r ha; omega
+  · apply Prod.Lex.right; apply Prod.Lex.left; have := ruledRank_before r ha hb; omega
+  · apply Prod.Lex.right; apply Prod.Lex.right
+    exact Nat.lt_of_lt_of_le (I4_fit_moved env _ _ h2) (rank_headingState_le env st recto _)
+  · apply Prod.Lex.right; apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
+  · apply Prod.Lex.right; apply Prod.Lex.right; exact I4_fit_moved env st _ h2
+end
+
+def fitsFollowing (env : Env) (st : St) (wanted : Nat) (flows : List Flow) : Bool :=
+  fitsFollowingGo env st wanted 0 flows
+
+/-- `keepFollowing`: a heading or a definition term goes on to the next
+    column unless the first part of what follows fits after it. -/
+def keepFollowing (env : Env) (heading : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) : St :=
+  keepFrom env st (fitsFollowing env (keepVirtual env heading st extent ls) (keepWanted later).1 (keepWanted later).2)
+
+/-- The lines of a paragraph moved on with what follows (`backCount` of
+    `placeWithNext`). -/
+def keptBack (k : Keep) (lastCount len : Nat) : Nat :=
+  let requested := max lastCount k.last
+  let minimumFirst := if 0 < lastCount then max 2 k.first else k.first
+  if k.all ∨ len ≤ requested ∨ len - requested < minimumFirst then len else requested
+
+/-- The column after the front part: the same one when it is still empty. -/
+def afterFront (env : Env) (before : St) : St := if empty before then before else nextColumn env before
+
+def placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
+    (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
+  match placeLines env k start st ls with
+  | .error e => .error e
+  | .ok full =>
+    if fitsFollowing env full firstCount later then .ok full
+    else if (ls.drop (ls.length - keptBack k lastCount ls.length)).isEmpty then .ok full
+    else
+      match placeLines env k start st (ls.take (ls.length - keptBack k lastCount ls.length)) with
+      | .error e => .error e
+      | .ok before =>
+        placeLines env k (start && (ls.take (ls.length - keptBack k lastCount ls.length)).isEmpty)
+          (afterFront env before) (ls.drop (ls.length - keptBack k lastCount ls.length))
+
+/-- The verse lines moved on with what follows (`backCount`). -/
+def stanzaBack (k : Keep) (lastCount total : Nat) : Nat :=
+  let requested := max lastCount k.last
+  if k.all ∨ total ≤ requested ∨ total - requested < k.first then total else requested
+
+def placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Line))
+    (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
+  match placeStanza env k true st verses with
+  | .error e => .error e
+  | .ok full =>
+    if fitsFollowing env full firstCount later then .ok full
+    else
+      match placeStanza env k true st (verses.take (verses.length - stanzaBack k lastCount verses.length)) with
+      | .error e => .error e
+      | .ok before =>
+        if (verses.drop (verses.length - stanzaBack k lastCount verses.length)).isEmpty ∨ empty before = true then .ok full
+        else placeStanza env k true (nextColumn env before) (verses.drop (verses.length - stanzaBack k lastCount verses.length))
+
+def placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
+  match placeRuled env st r later with
+  | .error e => .error e
+  | .ok full =>
+    let following := match keepAhead later with
+      | some (_, wanted, rest) => some (wanted, rest)
+      | none => if r.heading.isSome then some (1, later) else none
+    match following with
+    | some (wanted, rest) =>
+      if empty st = false ∧ fitsFollowing env full wanted rest = false then
+        placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
+      else .ok full
+    | none => .ok full
+
+
 /-! ## Code -/
 
 def codeSpanOf (spans : List Nat) (k : Nat) : Nat := spans.getD k 1
@@ -1548,9 +1766,13 @@ def flowFigs : Flow → List Nat
   | .figure i _ => [i]
   | .pageFigure i => [i]
   | _ => []
+/-- The ids a ruled block adds to the text: its lines, or the first line
+    of a ruled heading. -/
+def ruledText (r : Ruled) : List Nat := if r.heading.isSome then [headId r.lines] else lineIds r.lines
 /-- The ids a flow adds to the text: its lines, or the first line of a heading. -/
 def flowText : Flow → List Nat
   | .heading _ _ ls => [headId ls]
+  | .ruled r => ruledText r
   | f => lineIds (flowLines f)
 def sourceText : List Flow → List Nat
   | [] => []
@@ -1945,48 +2167,6 @@ theorem step_flush (env : Env) (st : St) : Step env st (flushPendingRule env st)
   · exact Step.refl env st
   · exact Step.same rfl rfl rfl rfl
 
-set_option linter.unusedVariables false in
-theorem step_placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow)
-    (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuled env st r later = .ok s) :
-    Step env st s (lineIds r.lines) [] := by
-  rw [placeRuled] at h
-  split at h
-  · rename_i first lastLine _ _
-    split at h
-    · rename_i h1
-      have dec : Prod.Lex (· < ·) (· < ·) (joinedRank { r with joined := false }, rank (nextColumn env (flushPendingRule env st)))
-          (joinedRank r, rank st) := by
-        apply Prod.Lex.left; simp [joinedRank, h1.1]
-      have b := step_placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later hl s h
-      simpa using ((step_flush env st).trans (step_nextColumn env _)).trans b
-    · split at h
-      · exact step_placeLines env r.keep true st r.lines hl s h
-      · split at h
-        · rename_i h2
-          have dec : Prod.Lex (· < ·) (· < ·) (joinedRank r, rank (fit env st (ruledExtent env st r first lastLine later)))
-              (joinedRank r, rank st) :=
-            Prod.Lex.right _ (I4_fit_moved env st _ h2)
-          have b := step_placeRuled env _ r later hl s h
-          simpa using (step_fit env st _).trans b
-        · split at h
-          · cases h
-          · rename_i placed e
-            injection h with h; subst h
-            have b := step_putLines env true _ placed r.lines hl e
-            simpa using ((step_fit env st _).trans (Step.same rfl rfl rfl rfl)).trans (b.trans (Step.same rfl rfl rfl rfl))
-  · rename_i H
-    have : r.lines = [] := by
-      cases hh : r.lines with
-      | nil => rfl
-      | cons x xs => exact absurd (H x ((x :: xs).getLast (by simp)) (by rw [hh]; rfl) (by rw [hh]; rfl)) id
-    injection h with h; subst h
-    rw [this]; exact Step.refl env _
-termination_by (joinedRank r, rank st)
-decreasing_by
-  all_goals simp_wf
-  all_goals assumption
-
-
 theorem step_placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
     (l f : Nat) (later : List Flow) (hl : ∀ x ∈ ls, LineOk env x) (s : St)
     (h : placeWithNext env k start st ls l f later = .ok s) : Step env st s (lineIds ls) [] := by
@@ -2141,20 +2321,6 @@ theorem step_placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List
           have b := step_placeStanza env k true _ _ hj.2 s h
           have := (a2.trans (step_nextColumn env _)).trans b
           simpa [join_take_drop] using this
-
-theorem step_placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow)
-    (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuledKeeping env st r later = .ok s) :
-    Step env st s (lineIds r.lines) [] := by
-  unfold placeRuledKeeping at h
-  split at h
-  · cases h
-  · rename_i full e
-    split at h
-    · split at h
-      · have b := step_placeRuled env _ { r with joined := false } later hl s h
-        simpa using ((step_flush env st).trans (step_nextColumn env _)).trans b
-      · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
-    · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
 
 theorem step_waitFor (env : Env) (u : Unmet) (q : Nat × Bool) (st : St) : Step env st (waitFor u q st) [] [] :=
   Step.same rfl rfl rfl rfl
@@ -2405,10 +2571,134 @@ theorem step_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (
 
 theorem step_keepFollowing (env : Env) (hd : Bool) (st : St) (extent : Int) (ls : List Line) (later : List Flow) :
     Step env st (keepFollowing env hd st extent ls later) [] [] := by
-  unfold keepFollowing
+  unfold keepFollowing keepFrom
   split
   · exact step_nextColumn env st
   · exact Step.refl env st
+
+theorem step_putRuledHeading (env : Env) (ready : St) (b a : Int) (fid : Nat) (e : Int) (ls : List Line)
+    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : putRuledHeading env ready b a fid e ls = .ok s) :
+    Step env ready s [fid] [] := by
+  unfold putRuledHeading at h
+  split at h
+  · cases h
+  · rename_i placed e2
+    injection h with h; subst h
+    have c := step_putHeading env _ fid e ls hl placed e2
+    simpa using ((Step.same rfl rfl rfl rfl).trans c).trans (Step.same rfl rfl rfl rfl)
+
+theorem step_headingState (env : Env) (st : St) (recto b : Bool) :
+    Step env st (headingStateOf env st recto b) [] [] := by
+  unfold headingStateOf
+  split
+  · exact step_parityStart env _ st
+  · unfold keepFrom; split
+    · exact step_nextColumn env st
+    · exact Step.refl env st
+
+set_option linter.unusedVariables false in
+theorem step_placeRuled (env : Env) (st : St) (r : Ruled) (later : List Flow)
+    (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuled env st r later = .ok s) :
+    Step env st s (ruledText r) [] := by
+  rw [placeRuled] at h
+  split at h
+  · rename_i recto extent hh
+    have tx : ∀ r' : Ruled, r'.heading = r.heading → r'.lines = r.lines → ruledText r' = [headId r.lines] := by
+      intro r' e1 e2; simp [ruledText, e1, e2, hh]
+    rw [tx r rfl rfl]
+    dsimp only at h
+    generalize fitsFollowingGo env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2 = fb at h
+    have hr := rank_headingState_le env st recto fb
+    have hsS := step_headingState env st recto fb
+    generalize headingStateOf env st recto fb = HS at h hr hsS
+    split at h
+    · cases h
+    · split at h
+      · split at h
+        · rename_i ha
+          have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with after := none }, rank HS) (ruledRank r, rank st) :=
+            Prod.Lex.left _ _ (ruledRank_after r ha)
+          have c := step_placeRuled env HS { r with after := none } later hl s h
+          rw [tx { r with after := none } rfl rfl] at c
+          simpa using hsS.trans c
+        · rename_i ha hb
+          have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with before := none }, rank HS) (ruledRank r, rank st) :=
+            Prod.Lex.left _ _ (ruledRank_before r ha hb)
+          have c := step_placeRuled env HS { r with before := none } later hl s h
+          rw [tx { r with before := none } rfl rfl] at c
+          simpa using hsS.trans c
+        · simpa using hsS.trans (step_placeHeading env HS _ extent r.lines hl s h)
+      · split at h
+        · have c := step_putRuledHeading env _ _ _ _ extent r.lines hl s h
+          simpa using (hsS.trans (Step.same rfl rfl rfl rfl)).trans c
+        · split at h
+          · rename_i h2
+            have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env HS (headingBeforeExtra env r +
+                headingNeed env HS extent r.lines + headingAfterExtra env r extent))) (ruledRank r, rank st) :=
+              Prod.Lex.right _ (Nat.lt_of_lt_of_le (I4_fit_moved env HS _ h2) hr)
+            have c := step_placeRuled env _ r later hl s h
+            rw [tx r rfl rfl] at c
+            simpa using (hsS.trans (step_fit env HS _)).trans c
+          · simpa using (hsS.trans (step_fit env HS _)).trans (step_putRuledHeading env _ _ _ _ extent r.lines hl s h)
+  · rename_i hh
+    have tx : ∀ r' : Ruled, r'.heading = r.heading → r'.lines = r.lines → ruledText r' = lineIds r.lines := by
+      intro r' e1 e2; simp [ruledText, e1, e2, hh]
+    rw [tx r rfl rfl]
+    split at h
+    · rename_i first lastLine _ _
+      split at h
+      · rename_i h1
+        have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with joined := false }, rank (nextColumn env (flushPendingRule env st)))
+            (ruledRank r, rank st) := by
+          apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
+        have c := step_placeRuled env (nextColumn env (flushPendingRule env st)) { r with joined := false } later hl s h
+        rw [tx { r with joined := false } rfl rfl] at c
+        simpa using ((step_flush env st).trans (step_nextColumn env _)).trans c
+      · split at h
+        · exact step_placeLines env r.keep true st r.lines hl s h
+        · split at h
+          · rename_i h2
+            have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env st (ruledExtent env st r first lastLine later)))
+                (ruledRank r, rank st) :=
+              Prod.Lex.right _ (I4_fit_moved env st _ h2)
+            have c := step_placeRuled env _ r later hl s h
+            rw [tx r rfl rfl] at c
+            simpa using (step_fit env st _).trans c
+          · split at h
+            · cases h
+            · rename_i placed e
+              injection h with h; subst h
+              have c := step_putLines env true _ placed r.lines hl e
+              simpa using ((step_fit env st _).trans (Step.same rfl rfl rfl rfl)).trans (c.trans (Step.same rfl rfl rfl rfl))
+    · rename_i H
+      have : r.lines = [] := by
+        cases e : r.lines with
+        | nil => rfl
+        | cons x xs => exact absurd (H x ((x :: xs).getLast (by simp)) (by rw [e]; rfl) (by rw [e]; rfl)) id
+      injection h with h; subst h
+      rw [this]; exact Step.refl env _
+termination_by (ruledRank r, rank st)
+decreasing_by
+  all_goals simp_wf
+  all_goals assumption
+
+
+theorem step_placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow)
+    (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuledKeeping env st r later = .ok s) :
+    Step env st s (ruledText r) [] := by
+  unfold placeRuledKeeping at h
+  split at h
+  · cases h
+  · rename_i full e
+    dsimp only at h
+    split at h
+    · split at h
+      · have c := step_placeRuled env _ { r with joined := false } later hl s h
+        have tx : ruledText { r with joined := false } = ruledText r := rfl
+        rw [tx] at c
+        simpa using ((step_flush env st).trans (step_nextColumn env _)).trans c
+      · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
+    · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
 
 theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
   | [], _, m => Or.inr m

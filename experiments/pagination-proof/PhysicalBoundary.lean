@@ -75,6 +75,7 @@ where
 def boundaryEnv (cap sep : Int) (cols : Nat) : Env :=
   { pagePitch := 10, fontSize := 10, capacity := cap, maxCapacity := cap + 20, separator := sep,
     columns := cols, firstLine := 0, pitchOf := pitchOf, faceOf := faceOf,
+    headingBounds := fun i => if i = 385 then some (4, 16) else none,
     firstNeed := firstNeed 10 sep }
 
 def int! (s : String) : Int := s.toInt!
@@ -128,7 +129,9 @@ def flowOf (s : String) : Flow :=
   | ["W", c] => .switchColumns (nat! c)
   | ["R"] => .restoreColumns
   | ["r", i, b, a, j, o, k, ls] =>
-    .ruled ⟨nat! i, sideOf b, sideOf a, j == "1", int! o, keepOf k, linesOf ls⟩
+    .ruled ⟨nat! i, sideOf b, sideOf a, j == "1", int! o, keepOf k, linesOf ls, none⟩
+  | ["q", i, b, a, j, o, r, e, ls] =>
+    .ruled ⟨nat! i, sideOf b, sideOf a, j == "1", int! o, defaultKeep, linesOf ls, some (r == "1", int! e)⟩
   | _ => panic! s!"flow {s}"
 
 def slotToken : Int × Slot → String

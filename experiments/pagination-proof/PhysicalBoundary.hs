@@ -20,15 +20,17 @@ import Golem.Length (Sp (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 
 -- | The column: capacity, separator and columns; the pitch and the face
--- of the lines whose id is at least 900 are 14 and 12 sp.
+-- of the lines whose id is at least 900 are 14 and 12 sp, and the heading
+-- whose first line is 385 has the bounds 4 and 16 sp.
 data Column = Column Int Int Int
 
 settingsOf :: Column -> PhysicalSettings
 settingsOf (Column cap sep cols) =
-  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces Map.empty Map.empty Map.empty Nothing
+  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces Map.empty Map.empty bounds Nothing
   where
     tall = Map.fromList [(i, 14) | i <- [900 .. 999]]
     faces = Map.fromList [(i, 12) | i <- [900 .. 999]]
+    bounds = Map.fromList [(385, (4, 16))]
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 1) 0 1
@@ -50,6 +52,9 @@ sides = [RuleSide 2 2 1 False Nothing, RuleSide 0 0 12 False (Just 5), RuleSide 
 
 ruled :: Int -> Maybe RuleSide -> Maybe RuleSide -> Bool -> Keep -> [LineBox] -> FlowAt Sp
 ruled i b a j k ls = FRuled i b a j (RuleGrid 10 8) 0 (RuledLines k ls)
+
+ruledHeading :: Int -> Maybe RuleSide -> Maybe RuleSide -> Bool -> Int -> [LineBox] -> FlowAt Sp
+ruledHeading i b a recto e ls = FRuled i b a False (RuleGrid 10 8) 0 (RuledHeading recto (Sp (fromIntegral e)) ls)
 
 para :: Int -> Int -> FlowAt Sp
 para base n = FParagraph defaultKeep (lines' base n)
@@ -322,6 +327,58 @@ codeInputs =
   where
     geometries = [CodeGeometry 10 10 10 10 0, CodeGeometry 10 10 10 10 5]
 
+-- Ruled headings after paragraphs, before what they keep, in a column made
+-- shorter, and kept with a paragraph before them.
+ruledHeadingInputs :: [(Column, [FlowAt Sp])]
+ruledHeadingInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [ruledHeading 100 b a recto e ls] <> after <> [para 20 n])
+  | cap <- [20, 30, 40],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    b <- hsides,
+    a <- hsides,
+    recto <- [False, True],
+    (e, ls) <- [(10, [line 300]), (24, lines' 300 2), (20, [line 385]), (16, noted 300 1 0 2)],
+    after <- [[], [FKeepNext span0 2, FParagraph (Keep 1 1 False) (lines' 350 3)], [FSpace 5], [ruledHeading 101 (Just (sides !! 0)) Nothing False 10 [line 310]], [FHeading 2 False 12 [line 320]]],
+    n <- [1, 2]
+  ]
+    <> [ (Column cap 4 1, [para 0 p | p > 0] <> [FAdjustLines span0 j, ruledHeading 100 b a False e [line 300], para 20 1])
+       | cap <- [20, 30],
+         p <- [0, 1],
+         j <- [-1, -2],
+         b <- hsides,
+         a <- hsides,
+         e <- [10, 15, 20]
+       ]
+    <> [ (Column cap 4 1, [para 0 p, ctl, ruledHeading 100 b Nothing recto 10 [line 300], para 20 2])
+       | cap <- [30, 40],
+         p <- [1, 2, 3],
+         ctl <- [FKeepNext span0 1, FNoBreak span0, FSpace 5],
+         b <- hsides,
+         recto <- [False, True]
+       ]
+    <> [ (Column cap 4 1, [para 0 1, FHeading 1 False 10 [line 300], ruledHeading 100 (Just s) (Just s) False 10 [line 310], para 20 n])
+       | cap <- [30, 40],
+         s <- sides,
+         n <- [1, 2]
+       ]
+    <> [ (Column cap 4 1, [para 50 1, para 0 n, ctl, ruledHeading 100 (Just (sides !! 0)) Nothing recto 10 [line 300], para 20 2])
+       | cap <- [40, 50, 60],
+         n <- [3 .. 5],
+         ctl <- [FKeepNext span0 1, FNoBreak span0],
+         recto <- [False, True]
+       ]
+    <> [ (Column cap 4 1, pre <> [ruledHeading 100 b a False e (noted 300 1 0 m), para 20 1])
+       | cap <- [30, 40, 60],
+         pre <- [[], [FAdjustLines span0 (-1)], [FAdjustLines span0 (-2)], [para 0 1]],
+         b <- hsides,
+         a <- hsides,
+         e <- [10, 20],
+         m <- [1 .. 5]
+       ]
+  where
+    hsides = [Nothing, Just (sides !! 0), Just (sides !! 1), Just (sides !! 3)]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -338,6 +395,8 @@ flowToken = \case
   FKeepNext _ n -> "K:" <> show n
   FRuled i b a j _ o (RuledLines k ls) ->
     "r:" <> show i <> ":" <> sideToken b <> ":" <> sideToken a <> ":" <> bit j <> ":" <> show (unSp o) <> ":" <> keepToken k <> ":" <> linesToken ls
+  FRuled i b a j _ o (RuledHeading recto e ls) ->
+    "q:" <> show i <> ":" <> sideToken b <> ":" <> sideToken a <> ":" <> bit j <> ":" <> show (unSp o) <> ":" <> bit recto <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FHeading _ recto e ls -> "h:" <> bit recto <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FDefTerm ls -> "d:" <> linesToken ls
   FCode g c f k ls -> "x:" <> show (unSp c) <> ":" <> show f <> ":" <> bit k <> ":" <> intercalate "," [show (codeSpan g n) | n <- [0 .. length ls + 1]] <> ":" <> linesToken ls
@@ -394,7 +453,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

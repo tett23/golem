@@ -612,12 +612,15 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 除いた項目は出力の付帯情報で、どの段に何を置くかの判断には使わない。
 `check.sh` は `Physical.lean` に `partial`、`sorry`、`axiom` などがないことを確かめ、ファイルを検査する。
 
-モデルが扱うフローは、段落、続きの段落、図版、回した図版、スペース、行アキ、改段と改ページ（奇数ページと偶数ページの改ページを含む）、`need-lines`、`page-lines`（`FAdjustLines`）、`no-break`、行数を指定した `no-break`、`keep-with-next`、本文の行を持つ罫線つきのブロック（`RuledLines`）、節の開始（`FSection`）、段組みの切り替えと戻し（`FSwitchColumns`、`FRestoreColumns`）、見出し（`FHeading`）、定義の項（`FDefTerm`）、詩（`FStanza`）、コード（`FCode`）である。
+モデルが扱うフローは、段落、続きの段落、図版、回した図版、スペース、行アキ、改段と改ページ（奇数ページと偶数ページの改ページを含む）、`need-lines`、`page-lines`（`FAdjustLines`）、`no-break`、行数を指定した `no-break`、`keep-with-next`、本文の行を持つ罫線つきのブロック（`RuledLines`）、見出しの罫線つきのブロック（`RuledHeading`）、節の開始（`FSection`）、段組みの切り替えと戻し（`FSwitchColumns`、`FRestoreColumns`）、見出し（`FHeading`）、定義の項（`FDefTerm`）、詩（`FStanza`）、コード（`FCode`）である。
 コードの部分のスロット（`SCode`）は、Haskell の最初の行と行の数の代わりに行の id の列を持つ。
 `codeSpan` は、コードの行の数ごとの格子の行数を `Flow.code` の引数とする。
 見出しは一つのスロット（`SHeading`）に置き、`I5_paginate_text` では見出しの最初の行の id を一つだけ数える。
 脚注は、行ごとの脚注の分割（`splitNotes`）、次の段への繰り越し（`carryInto` と `splitCarried`）、区切りの長さを含めて写した。
 罫線つきのブロックは、前のブロックと罫線の領域を共有する配置（`psJoin`）、共有をやめて次の段へ送る配置（`placeRuledKeeping` と `flushPendingRule`）を含めて写した。
+見出しの罫線つきのブロックは、`keepFollowing` で後続を判定した段から、罫線の領域を足した長さで見出しを置く。
+罫線の領域と見出しと脚注の長さの和が段の容量を超えるときは、後の罫線を外し、次に前の罫線を外して置き直し、どちらもなければ罫線のない見出しとして置く。
+見出しの罫線の領域は、`physicalHeadingBounds` に見出しの字面の位置があればその位置から求めた仮想の送りで求める（`Env.headingBounds`）。
 罫線の領域の長さは、`FreeGeometry.hs` の `faceOffset`、`ruleBeforeGap`、`ruleAfterGap`、`rulesSharedGap`、`ruleBeforeEdge`、`ruleAfterEdge` のうち、使用長に足す長さ（extra）だけを写した。
 先のフローが求める長さ（`firstNeed`）は `Env` の引数とし、定理はそのどの値でも成り立つ。
 
@@ -643,14 +646,21 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 そこから先の段はどれも同じ状態なので、Haskell の実装はこのとき止まらない。
 `placeCode` はこの段で収まる行がなければ `noProgress` を返すので、`paginate` が成功した入力では Haskell と同じ配置になる。
 `judgeNeed`（`FNeedLines` の段のループ）も、空でない段か縮んだ段からだけ次の段へ進むので、この尺度で止まる。
-`placeRuled` は、前のブロックとの共有の有無と、この尺度の辞書式順序で止まる（`I4_fit_moved`）。
-共有をやめると共有の有無が減り、`fit` が段を進めるとこの尺度が減るからである。
+`fitsFollowing` は罫線つきのブロックを試しに置き、見出しの罫線つきのブロックは `keepFollowing` を通して `fitsFollowing` を呼ぶので、`fitsFollowingGo` と `placeRuled` は相互再帰で定義した。
+尺度は三つ組の辞書式順序である。
+`fitsFollowingGo` の尺度は、読む後続のフローの数、5、0 の組である。
+`placeRuled` の尺度は、後に続くフローの数に 1 を足した値、罫線の数と共有の有無の和（`ruledRank`）に 1 を足した値、この `rank` の組である。
+`fitsFollowingGo` が `placeRuled` を呼ぶときは後続のフローの数が等しく、`ruledRank` は 3 以下なので、二つ目が減る。
+`placeRuled` が `fitsFollowingGo` を呼ぶときは、`keepAhead` が返す列が元の列より長くならないので（`keepWanted_length`）、一つ目が減る。
+`placeRuled` が自身を呼ぶときは、罫線を外すか共有をやめれば `ruledRank` が減り、`fit` が段を進めれば `rank` が減る（`I4_fit_moved`）。
+見出しを置く前の `keepFollowing` と奇数ページへの改ページは `rank` を増やさない（`rank_headingState_le`）。
 `drainCarry` は、`waiting` とページの残りの段数の辞書式順序で止まる（`I4_drain_rank`）。
 ページの終わりで次のページへ進むと、`drainOk` の下で最初の図版か最初の脚注の 1 行が新しいページに置かれ、`waiting` が減る。
 `I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
 
 内容の過不足と順序は、`Whole.lean` と同じく、出力済みの段と現在の段をつないだ列の不変条件で示す。
 `I5_paginate_text` は、`paginate` が成功すれば、段落、続きの段落、定義の項、詩、コード、罫線つきのブロックの行と見出しが原稿の順に一度ずつ出力のページに並ぶことを証明する。
+見出しの罫線つきのブロックは、見出しと同じく最初の行の id を一つだけ数える（`ruledText`）。
 この定理に、`paginate` の成功のほかの前提はない。
 `I5_paginate_figures` は、行の送りが正なら、図版と回した図版が原稿の順に一度ずつ並ぶことを証明する。
 この定理は、出力済みの段、現在の段、待機中の図版をつないだ図版の列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
@@ -663,14 +673,16 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 `I4_drain_rank` のページの終わりの場合は、先頭の回した図版を置けば列が短くなり、置かなければ先頭が図版か列が空であることから導く。
 
 `PhysicalBoundary.hs` は、境界の入力を作って golem-layout の `paginatePhysical` に渡し、入力を `in` の行に、出力のページを `out` の行に書き出す。
-入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、節の開始と段組みの切り替えと戻し、見出しと定義の項とその後続、縮めた段の見出し、回した図版の前後の改段と改ページと図版、段落か見出しの後の詩とその後続、コードとその前後の保持と行アキ、失敗する入力からなる。
+入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、節の開始と段組みの切り替えと戻し、見出しと定義の項とその後続、縮めた段の見出し、回した図版の前後の改段と改ページと図版、段落か見出しの後の詩とその後続、コードとその前後の保持と行アキ、見出しの罫線つきのブロックとその前後の見出しと保持と縮めた段、失敗する入力からなる。
 id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
+最初の行の id が 385 の見出しには、`physicalHeadingBounds` として字面の始まり 4 sp と終わり 16 sp を与えた。
 `PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
-`check.sh` は二つの出力を `diff` で比べ、80012 個の入力ですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、105552 個の入力ですべて一致した。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
 この照合の感度は、写した計算を一つずつ替えて確かめた。
 食い違う入力の数は次のとおりだった。
+見出しの罫線つきのブロックの数は 105552 個の入力で、ほかの数はそれを写す前の 80012 個の入力で数えた。
 脚注では、行の脚注の区切りを除くと 4812 個、繰り越しの区切りを除くと 1152 個、`splitCarried` が分けた脚注の行を一つ減らすと 1152 個、`splitNotes` が脚注を途中で分けないと 6696 個、`fitting` から脚注の長さを除くと 11001 個である。
 段落では、`fit` が待っているスペースを足さないと 281 個、強制した分割の `ShortPart` を除くと 9628 個、縮めた空の段で行が収まらないときに次の段へ進まないと 2 個である。
 罫線つきのブロックでは、共有をやめて次の段へ送る分岐を除くと 179 個、`placeRuledKeeping` が後続を見ないと 116 個、共有する領域の長さを共有しない長さにすると 345 個、後の罫線を常に段の端の長さにすると 1510 個、段の外の余白を見ないと 1193 個である。
@@ -678,6 +690,8 @@ id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
 その他では、`need-lines` が縮めた空の段から進まないと 11 個、`page-lines` の下限を除くと 42 個、奇数ページの改ページが空白のページを入れないと 368 個、行アキの後の段送りを除くと 14 個、回した図版の前で改ページしないと 4520 個である。
 節の開始では、空の段でも改段すると 48 個、空のページの判定で段を見ないと 6 個、前に `drainCarry` を呼ばないと 18 個である。
 段組みでは、同じページで切り替える分岐を除くと 356 個、切り替えた段の先頭を 0 にすると 144 個、切り替えで脚注の長さを 0 に戻すと 69 個、次のページで切り替えるときに段の数を変えないと 142 個、戻しで段の数を戻さないと 90 個、戻しで次のページでなく次の段へ進むと 348 個である。
+見出しの罫線つきのブロックでは、前の罫線の領域を 0 にすると 11274 個、後の罫線の領域を 0 にすると 3280 個、前の罫線で `physicalHeadingBounds` を見ないと 2880 個、後の罫線で見ないと 864 個、後の罫線より先に前の罫線を外すと 1744 個、脚注の長さを 0 にすると 5181 個である。
+さらに、`TallHeadingExtent` の分岐を除くと 422 個、`keepFollowing` を呼ばないと 410 個、`placeRuledKeeping` が後続の制御のないときに後続を見ないと 651 個、`fitsFollowing` が奇数ページの見出しの罫線つきのブロックを収まらないとすると 12 個、置く長さに `headingNeed` でなく見出しの長さを使うと 197 個、脚注を分けるときに後の罫線の領域を予約しないと 48 個、後の罫線の領域を使用長に足さないと 3260 個である。
 見出しでは、`headingOnly` を常に偽にすると 1444 個、`TallHeadingExtent` の分岐を除くと 29 個、`headingNeed` が脚注の全体を常に求めると 23 個、`headingNeed` から脚注の区切りを除くと 2 個、`putHeading` が見出しの長さを行の送りにしないと 3414 個である。
 `keepFollowing` では、次の段へ送らないと 1292 個、仮の配置に脚注の長さを足さないと 8 個、待っているスペースを足さないと 30 個、後続の保持の行数を 1 行にすると 18 個、定義の項の長さを 0 にすると 324 個、定義の項の仮のスロットを見出しにすると 6 個である。
 回した図版では、段の終わりでページを開くときに `placeTurned` を呼ばないと、回した図版を一度も置かないと、どちらも評価が 300 秒で終わらなかった。
@@ -719,13 +733,14 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:683` `checkWaits` | `checkWaits`、`checkWait`、`waitMet`、`markUnmet`、`addedSlots` |
 | `Paginate/Physical.hs:698` `followingRows`、`:711` `keepAhead` | `followingRows`、`keepAhead`、`keepAheadGo`、`collect`、`soft`、`counts` |
 | `Paginate/Physical.hs:731` `firstNeed` | `Env.firstNeed`（照合では `PhysicalBoundary.firstNeed`） |
-| `Paginate/Physical.hs:786` `fitsFollowing` | `fitsFollowing`、`fitsFollowingGo` |
+| `Paginate/Physical.hs:786` `fitsFollowing` | `fitsFollowing`、`fitsFollowingGo`、`keepWanted_length` |
 | `Paginate/Physical.hs:837` `placeWithNext` | `placeWithNext`、`keptBack`、`afterFront` |
 | `Paginate/Physical.hs:870` `placeFlow` | `placeFlow`、`judgeNeed`、`adjustLines`、`ceilDiv` |
-| `Paginate/Physical.hs:1264` `placeRuledKeeping`、`:1280` `placeRuled`、`:1394` `flushPendingRule` | `placeRuledKeeping`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`joiningNext`、`flushPendingRule` |
+| `Paginate/Physical.hs:1264` `placeRuledKeeping`、`:1280` `placeRuled`、`:1394` `flushPendingRule` | `placeRuledKeeping`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`joiningNext`、`flushPendingRule`、`ruledRank` |
+| `Paginate/Physical.hs:1340` `placeRuled` の `RuledHeading` | `placeRuled`、`headingStateOf`、`keepFrom`、`headingBeforeExtra`、`headingAfterExtra`、`headingNotesExtent`、`putRuledHeading`、`ruledText` |
 | `Paginate/Physical.hs:1404` `waitFor`、`:1411` `waitForPrior` | `waitFor`、`waitForPrior` |
 | `Paginate/Physical.hs:1647` `breakAt`、`:1663` `parityStart` | `breakAt`、`parityStart` |
-| `Paginate/Physical.hs:294` `headingOnly`、`:820` `keepFollowing`、`:1422` `putHeading`、`:1429` `headingNeed`、`:1438` `placeHeading` | `headingOnly`、`keepFollowing`、`keepVirtual`、`keepWanted`、`putHeading`、`headingEnv`、`headingNeed`、`tallAt`、`placeHeading` |
+| `Paginate/Physical.hs:294` `headingOnly`、`:820` `keepFollowing`（`keepFrom`）、`:1422` `putHeading`、`:1429` `headingNeed`、`:1438` `placeHeading` | `headingOnly`、`keepFollowing`、`keepVirtual`、`keepWanted`、`putHeading`、`headingEnv`、`headingNeed`、`tallAt`、`placeHeading` |
 | `Paginate/Physical.hs:496` `placeStanza`、`:855` `placeStanzaWithNext` | `placeStanza`、`wholeVerses`、`stanzaShort`、`placeStanzaWithNext`、`stanzaBack` |
 | `Paginate/Physical.hs:1448` `placeCode` | `placeCode`、`codeExtent`、`codeMinimum`、`codeFit`、`codeFitting`、`codeCount`、`seek` |
 | `Paginate/Physical.hs:917` `FSection`、`:958` `FRestoreColumns`、`:959` `FSwitchColumns` | `sectionStart`、`restoreColumns`、`switchColumns` |
@@ -816,11 +831,8 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わないフローである。
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
-残るフローは、見出しの罫線つきのブロック（`RuledHeading`）、回り込み図版、表（`placeTable`、`placeTableAcross`）、箱（`placeBoxedParagraph`、`placeBoxedStanzaWith`）、本の部（`retainPhysicalPart`）である。
+残るフローは、回り込み図版、表（`placeTable`、`placeTableAcross`）、箱（`placeBoxedParagraph`、`placeBoxedStanzaWith`）、本の部（`retainPhysicalPart`）である。
 計画は、これらを `Physical.lean` の `Flow` と `placeFlow` に一つずつ足し、各配置の `Step` の補題と終了の尺度を広げ、`PhysicalBoundary.hs` に同じ種類の入力を足すことである。
-`RuledHeading` は `keepFollowing` を呼び、`fitsFollowing` は `RuledHeading` を試しに置くので、二つと `keepFollowing` を相互再帰にする。
-尺度は、`fitsFollowing` には後のフローの長さ、`RuledHeading` には後のフローの長さ、残る罫線の数に 1 を足した値、`rank` の組とする。
-`keepAhead` が返すフローの列は元の列より長くならないので、この組は相互の呼び出しで減る。
 回り込み図版は、横の行を置くループ（`putWrappedLine`）と送った行のループ（`placeWrappedOverflow`）がどちらも行の列で止まるので、`Step` の補題は段落と同じ形になる。
 図版の id は図版の列と別の列に数える。
 待機中の図版があっても回り込み図版はその場に置かれるので、図版の列に入れると原稿の順が保たれないからである。
