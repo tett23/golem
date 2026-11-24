@@ -1009,7 +1009,7 @@ blockTests =
         @?= "<pre id=\"c\"><code>a &amp; b\nc</code></pre>\n"
   ]
 
--- | The table of contents page of the HTML target, moved from golem-driver (docs/adr ADR 0090).
+-- | The table of contents page of the HTML target, moved from golem-driver (docs/adr ADR 0090), in the HTML syntax (root ADR 0432).
 indexPageTests :: TestTree
 indexPageTests =
   testGroup
@@ -1017,22 +1017,22 @@ indexPageTests =
     [ testCase "a book of two files with a numbered heading of level 1 and a heading of level 2" $
         indexPage cfg0 ft twoHeadings
           @?= T.concat
-            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"ja\" xml:lang=\"ja\">\n",
-              "<head>\n<meta charset=\"UTF-8\"/>\n<title>本</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n",
+            [ "<!DOCTYPE html>\n<html lang=\"ja\">\n",
+              "<head>\n<meta charset=\"UTF-8\">\n<title>本</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\">\n</head>\n",
               "<body>\n<h1>本</h1>\n<nav class=\"toc\">\n<ol>\n",
-              "<li class=\"toc-1\"><a href=\"a.xhtml#intro\">第一章\x3000はじめに</a></li>\n",
-              "<li class=\"toc-2\"><a href=\"b.xhtml#detail\">細部</a></li>\n",
+              "<li class=\"toc-1\"><a href=\"a.html#intro\">第一章\x3000はじめに</a></li>\n",
+              "<li class=\"toc-2\"><a href=\"b.html#detail\">細部</a></li>\n",
               "</ol>\n</nav>\n</body>\n</html>\n"
             ],
-      testCase "the title and the language are escaped in title, h1, lang and xml:lang" $ do
+      testCase "the title and the language are escaped in title, h1 and lang (root ADR 0432)" $ do
         let page = indexPage cfg0 {hcTitle = "<A & B>", hcLanguage = "ja&<"} ft twoHeadings
         assertBool (T.unpack page) ("<title>&lt;A &amp; B&gt;</title>" `T.isInfixOf` page)
         assertBool (T.unpack page) ("<h1>&lt;A &amp; B&gt;</h1>" `T.isInfixOf` page)
-        assertBool (T.unpack page) ("lang=\"ja&amp;&lt;\" xml:lang=\"ja&amp;&lt;\"" `T.isInfixOf` page),
+        assertBool (T.unpack page) ("<html lang=\"ja&amp;&lt;\">" `T.isInfixOf` page),
       testCase "with @toc of depth 1, the heading of level 2 is not listed (golem-epub ADR 0002)" $ do
         let page = indexPage cfg0 ft twoHeadings {bookTocDepth = Just 1}
-        assertBool (T.unpack page) ("a.xhtml#intro" `T.isInfixOf` page)
-        assertBool (T.unpack page) (not ("b.xhtml#detail" `T.isInfixOf` page))
+        assertBool (T.unpack page) ("a.html#intro" `T.isInfixOf` page)
+        assertBool (T.unpack page) (not ("b.html#detail" `T.isInfixOf` page))
     ]
   where
     twoHeadings =
@@ -1078,11 +1078,11 @@ langTests =
             body = bodyA cfg0 book
         assertBool (T.unpack body) ("<span lang=\"en\" xml:lang=\"en\"><strong>Tokyo</strong></span></a>" `T.isInfixOf` body)
         let page = indexPage cfg0 ft book
-        assertBool (T.unpack page) ("見出し<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a></li>" `T.isInfixOf` page),
+        assertBool (T.unpack page) ("見出し<span lang=\"en\">Tokyo</span></a></li>" `T.isInfixOf` page),
       testCase "the toc page writes the language of a heading around its title" $ do
         let h = Block (at 0) (Just "intro") (Just "en") (Heading 1 noHeadingAttrs [txt "Tokyo"])
             page = indexPage cfg0 ft (assembled [[h]])
-        assertBool (T.unpack page) ("<a href=\"a.xhtml#intro\">1\x3000<span lang=\"en\" xml:lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
+        assertBool (T.unpack page) ("<a href=\"a.html#intro\">1\x3000<span lang=\"en\">Tokyo</span></a>" `T.isInfixOf` page),
       testCase "the body of a note is in the language of its mark" $ do
         let book = assembled [[para 0 [txt "本文", Lang (at 1) "en" [txt "text", Note (at 2) 1 Nothing (noteBody (at 2) [txt "a note"])]]]]
             body = bodyA cfg0 book

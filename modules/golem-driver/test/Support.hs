@@ -528,7 +528,7 @@ htmlMini style source = withSystemTempDirectory "golem-html" $ \tmp -> do
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-  page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+  page <- TIO.readFile (tmp </> "build/html/a.html")
   css' <- TIO.readFile (tmp </> "build/html/style.css")
   pure (page, css')
 

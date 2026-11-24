@@ -494,7 +494,7 @@ svgFigureTests =
       BS.writeFile (tmp </> "images/u.png") (png False)
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
       brDiagnostics r @?= []
-      page <- BS.readFile (tmp </> "build/html/a.xhtml")
+      page <- BS.readFile (tmp </> "build/html/a.html")
       assertBool "t.svg" ("src=\"images/t.svg\"" `BS.isInfixOf` page)
       assertBool "u.png" ("src=\"images/u.png\"" `BS.isInfixOf` page)
   ]
@@ -1023,7 +1023,7 @@ turnedFigureTests =
       turned <- build' " rotate=true"
       plain <- build' ""
       -- no font: HTML names generic families by default (docs/adr/0423)
-      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
+      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.html", "html/images/wide.svg", "html/index.html", "html/style.css"]
       nOutputs turned @?= nOutputs plain,
     testCase "golem-driver ADR 0034, root ADR 0397: in the free placement a turned figure waits after a waiting figure and takes a page of its own" $ do
       let free = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" (pageStyle "horizontal" "left" 24 8 1 20 20)
@@ -1158,5 +1158,5 @@ zeroExtentFigureTests =
         [diagCode d | d <- brDiagnostics c, diagCode d == DiagnosticCode "G07135"] @?= []
         h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider}
         [diagCode d | d <- brDiagnostics h, isError d] @?= []
-        assertBool (show (brWritten h)) (any (".xhtml" `isSuffixOf`) (brWritten h))
+        assertBool (show (brWritten h)) (any (".html" `isSuffixOf`) (brWritten h))
   ]

@@ -208,8 +208,9 @@ winningMarginStart css page i = do
     (w : _) -> Right w
     [] -> Left ("no element " <> show i)
 
-{- | The page of an XHTML file: the classes of body and the elements right
-under it. The writer's XHTML is well-formed, so counting the tags is enough.
+{- | The page of an HTML or XHTML file: the classes of body and the elements
+right under it. The writer's pages balance their tags, so counting the tags,
+the void elements of HTML among them, is enough.
 -}
 pageOf :: Text -> Page
 pageOf x =
@@ -230,7 +231,8 @@ pageOf x =
                   then children depth more
                   else
                     let name = T.takeWhile identChar tag
-                        selfClosing = "/" `T.isSuffixOf` tag
+                        -- a void element of HTML has no end tag, with or without the slash of XHTML (root ADR 0432)
+                        selfClosing = "/" `T.isSuffixOf` tag || name `elem` ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]
                         here = [Elem name (classesIn tag) | depth == 0]
                      in here <> children (if selfClosing then depth else depth + 1) more
     classesIn tag = case T.breakOn "class=\"" tag of
