@@ -1177,13 +1177,38 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を
 今の実装では、`@page-lines` が足した行を繰り越す脚注が先に取る（`drainCarried`、`drainPendingNotes`）ので、同じ入力で 1 ページ目に脚注 500 の全体が並び、2 ページ目に脚注 510 が置かれた。
 `WholeNotes.lean` の `nm_drainPendingNotes` と `PhysicalNotes.lean` の `nm_drainCarried` は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を行に展開したものを、この移し替えが注ごとでなく列全体で保つことを示す。
 `drain_room` は、格子モードで移し替えの後に繰り越す脚注が残れば、段の空きが、使わなかった区切りの行と、本文の行のない段に残す 1 行の和以下であることを示す（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md) の I2）。
-原稿の注の順の全体（I1）は、まだ証明していない。
-新しい行の脚注を置く操作のどれもが、繰り越す脚注が残る段に新しい脚注を置かないことを、すべての操作について示す必要があるからである。
-そこで、脚注の証明は、今も注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる。
+注の id ごとの証明は、注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる。
 不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を、注ごとに行の番号へ展開したものが、読んだ行の脚注を展開したものに注ごとに等しいことである（`WholeNotes.lean` と `PhysicalNotes.lean` の `Rel`）。
 新しい行の脚注は、繰り越す脚注の前に今の段へ置かれることがあるので、この等しさは列全体ではなく注ごとに成り立つ。
 この入れ替わりが同じ注の中で起きないために、原稿の注の id が互いに異なること（`Distinct`）を前提に置く。
 golem-typeset は注の id を注の原稿上の範囲と番号から作る（golem-layout の `Look.hs:250` の `NoteId`、golem-typeset の `Structure.hs:114`）ので、実際の入力はこの前提を満たす。
+
+原稿の注の順の全体（I1）は、格子モードで、箱と段組みの切り替えを含まないフローについて証明した（`WholeOrder.lean` の `I1_paginate_order`）。
+この定理は、原稿で注 a の印が注 b の印より前にあれば、ページの脚注の行の列が、a の行をすべて含む前半と、b の行をすべて含む後半に分かれることを示す。
+ただし、a か b を置けない脚注として報告した場合は除く。
+不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を行に展開し、置けない注の行を除いたものが、読んだ注の行を原稿の順に並べ、同じ注を除いたものに、列全体で等しいことである（`OR`）。
+この等しさは、繰り越す脚注が残る段に、新しい注の行を置かないことに依る。
+そこで、繰り越す脚注が残る段は何かを置いていて、区切りの行を除いた空きが 1 行以下であるという性質（`Ok`）を、すべての操作が保つことを示した。
+段を進めると、`carryNote` が段の 1 行を残して繰り越す脚注を置くので、この性質が成り立つ。
+`@page-lines` の後は、`drainPendingNotes` が空きを繰り越す脚注に渡すので、この性質が成り立つ。
+罫線つきのブロックの行は後の行と罫線の行を取っておくので、その行数だけ空きが多いことを許し、ブロックの終わりで元の性質に戻ることを示した（`q_putRuledLines`、`q_commitRuled`）。
+
+箱を含むフローでは、I1 は成り立たない。
+容量 5 行の 1 段で、前のアキ 0 行と後のアキ 2 行の箱に、3 行の脚注 500 を持つ 1 行の段落と 1 行のコードを入れ、箱の後に、1 行の脚注 520 を持つ 1 行の段落と 2 行の段落を置く（`Boundary.hs` の記法で `[X100:0:2(Q0:1:0:3 C10:0:0:1:0:1) Q20:1:0:1 P30:2]`）。
+golem-layout の `paginate 1 5` は、1 ページ目に脚注 500 の 0 行目を、2 ページ目にコードと段落 20 と脚注 500 の 1 行目と脚注 520 を、3 ページ目に脚注 500 の 2 行目を置いた。
+`Whole.lean` の `paginate` も同じページを返した。
+箱の 2 ページ目の部分には行がないので、`closeBox` は部分を記録せず、箱の後のアキ 2 行を、使った行を進めないまま段に返し、後の注 520 がその空きに入る。
+箱の最後に、横の行のない回り込み図版を置いても同じことが起きた。
+箱を含む原稿を含めて 200000 個の無作為の原稿を golem-layout で調べると、反例は 42 個で、どれも箱がこの形で終わるものだった。
+
+定理の前提は次のとおりである。
+フローは箱と段組みの切り替えを含まず、見出しと罫線つきの見出しは格子の 1 行以上を取る（`plainFlows`）。
+段組みを切り替えた段では、`carryRoom` が段の先頭の行（`firstLine`）を見ないので、その行が負でないことを示す必要があるが、まだ示していない。
+見出しの行数は、golem-layout の `headingBlock` が `max 1 least` 以上にする（`Paginate.hs:96`）ので、実際の入力はこの前提を満たす。
+脚注区切りは 0 行以上で、段は 1 行以上である（`Hyp`）。
+golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
+段の行数は golem-typeset の版面の行の数で（`Flow.hs:736`）、実装はそれが 1 以上であることを確かめていない。
+原稿の注の id は互いに異なる（`Distinct`）。
 
 格子モードでは、`WholeNotes.lean` の `I5_paginate_each_note` が、原稿のどの注についても、ページに並ぶその注の行が 0 行目から最後の行まで一度ずつ順に並ぶことを示す。
 ただし、置けない脚注として `unplaceableFootnote` を報告した注は除く。
@@ -1244,6 +1269,7 @@ sh experiments/pagination-proof/check.sh
 `check.sh` は、`Whole.olean` と `WholeNotes.olean` を作ってから、それを読み込む `Separator.lean` を検査する。
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
+`WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で六つの組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。

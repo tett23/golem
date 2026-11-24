@@ -99,6 +99,17 @@ fi
 LEAN_PATH="$tmp" "$lean" -o "$tmp/WholeNotes.olean" "$wholeNotes"
 echo "every footnote line of the grid mode is placed once, note by note"
 
+# The order of the footnote lines of the grid mode (root ADR 0444 I1,
+# WholeOrder.lean): every theorem proved.  It is checked in the background
+# and waited for at the end.
+wholeOrder=$root/experiments/pagination-proof/WholeOrder.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wholeOrder"; then
+  echo "unproved or unchecked Lean declaration in $wholeOrder" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$wholeOrder" > "$tmp/whole-order" 2>&1 &
+wholeOrderPid=$!
+
 # The separators of root ADR 0398 on the flows of Whole.lean: every
 # definition must be total and every theorem proved.  The manuscripts of
 # SeparatorBoundary.hs are laid out by golem-typeset in the background,
@@ -252,4 +263,9 @@ LEAN_PATH="$tmp" "$lean" --run "$values" "$tmp/caption-values" | sed -n 's/^out 
 diff -u "$tmp/caption-haskell" "$tmp/caption-lean"
 captions=$(grep -c '^in obs' "$tmp/caption-values")
 echo "the evaluation and the breaks of $captions captions are the same in Pagination.lean and golem-layout"
+if ! wait "$wholeOrderPid"; then
+  cat "$tmp/whole-order" >&2
+  exit 1
+fi
+echo "the footnote lines of the grid mode come in the manuscript's order, the boxes and switches of columns apart"
 echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"
