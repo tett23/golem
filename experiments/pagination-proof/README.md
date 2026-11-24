@@ -712,9 +712,11 @@ golem-assemble の `ineffectiveBlankLines` が、その位置の行アキを単�
 `holdNeeds` を写す前は、容量 3 行の段で 1 行の段落、`---`、`@need-lines 2`、1 行の段落を並べた原稿などの 7 個の入力で、空の段に収まる保持に golem-typeset と Lean の両方が G07134 を返していた。
 PR #1131 が golem-typeset に `holdSeparatorNeeds` を加えたので、この 7 個は区切りの保持を次の段へ送ったページを返し、Lean の側も同じページを返す。
 格子モードでは、区切り一つと後続の段落について、空の段に収まる保持の二つの行が一つの段に入ることを定理で示した。
-`I3_separator_hold_together` は、何も待っていない状態（`Clear`）から、後ろのアキのない区切りの行、1 行の `keep-with-next`、段落の三つのフローを `step` で進めると、区切りの行と段落の最初の行が一つの段に入ることを示す。
+`I3_separator_hold_together` は、何も待っていない状態（`Clear`）から、区切りの行、1 行の `keep-with-next`、区切りの後ろのアキ、段落のフローを `step` で進めると、区切りの行と段落の最初の行が一つの段に入ることを示す。
+後ろのアキは、ないか、`FSpace` のフローが一つである（`gapFlows`）。
 一つの段とは、最後の状態の今の段か、閉じた段の一つである（`Together`）。
-`separatorFlows_hold` は、前後の行数が 0 の区切りと段落の単位から、`separatorFlows` がこの三つのフローを作ることを示す。
+`separatorFlows_hold` は、前後の行数が 0 の区切りと段落の単位から、`separatorFlows` が後ろのアキのないこのフローを作ることを示す。
+`separatorFlows_hold_gap` は、後ろの行数が 1 以上の区切りから、`separatorFlows` がその行数のアキを持つこのフローを作ることを示す。
 
 定理の前提は次のとおりで、保持が空の段に収まることと段落についての最後の二つの条件のほかは、段組みを切り替えない実際の入力で成り立つ。
 `Clear` は、改ページ、`@need-lines`、行アキ、送った図版、繰り越す脚注が待っておらず、箱の中でも `FAdjustLines` の後でもなく、段組みの始めの行と段組みの上に残す脚注の行（`firstLine` と `reserved`）が 0 で、脚注のない段に脚注の行がないことである。
@@ -726,7 +728,8 @@ PR #1131 が golem-typeset に `holdSeparatorNeeds` を加えたので、この 
 `SeparatorBoundary.lean` の `boundary_plainFitting` は、照合に使う `boundaryEnv` の `fitting` がこの前提を満たすことを示し、`blockEnv` は `fitting` を変えない。
 区切りの段落は最後の 1 行以上を送る段落スタイルを持つ（`keep-last-lines` は 1 以上である、[仕様](../../docs/specifications.md)の 3100 行）。
 `keptNeed`（`modules/golem-layout/src/Golem/Layout/Paginate/Decide.hs:126`）が区切りの後に求める行数を n とし、1 + n が段の容量以下であることを、保持が空の段に収まることとする。
-p は段落の最初の部分の行数で、1 行以上 n 行以下であり、段落の全体か、`splitAtBreak` がそのまま返す行数である（`firstPart`、`Decide.hs:257`）。
+p は段落の最初の部分の行数で、1 行以上であり、段落の全体か、`splitAtBreak` がそのまま返す行数である（`firstPart`、`Decide.hs:257`）。
+p と後ろのアキの行数の和は、n 行以下である。
 段落の後に `@no-page-break` も `keep-with-next` も続かない（段落の後の `keptNeed` が `none`）か、p が `placeKept` の前の部分の最初の部分でもある。
 前の部分は、`placeKept` が後の指定のために送る段落の最後の行（`keptCut`）より前の行である。
 p がその行数以上であるか、`splitAtBreak` が前の部分について p をそのまま返すことを、p が前の部分の最初の部分であることとする。
@@ -735,7 +738,9 @@ p がその行数以上であるか、`splitAtBreak` が前の部分について
 証明は、まず `placeKept` が区切りの行を置いた段に n 行以上が残ることを示す（`separator_place`）。
 今の段に区切りの行を置いて n 行が残らず、今の段が空でなければ、区切りの行は次の段の先頭に送られ、その段には容量から 1 を引いた行が残る。
 今の段が空なら、同じく容量から 1 を引いた行が残るので、n 行が残る。
-続く `keep-with-next` は段を変えず（`view_keepNext`）、段落は残りの行に p 行以上の最初の部分を置く（`placeLinesGo_first`、`split_pos`）。
+続く `keep-with-next` は段を変えない（`view_keepNext`）。
+後ろのアキは、段も待っている指定も変えず、アキの行数以下の行だけを使う（`gap_step`）。
+そのため段には p 行以上が残り、段落はそこに p 行以上の最初の部分を置く（`placeLinesGo_first`、`split_pos`）。
 段落が段に収まらないときは、最初の部分を置いた段を閉じてから次の段へ進むので、二つの行は閉じた段の一つに入る。
 段落の後に `@no-page-break` か `keep-with-next` が続くときは、段落は `placeKept` で置かれる。
 `placeKept` が段落の全体を送る行数にするときは、区切りの `keep-with-next` が区切りの段で待っているので、`heldHere` が成り立ち、`placeKept` は段落の全体を今の段から置く（`placeKept_held`）。
@@ -756,7 +761,7 @@ p がその行数以上であるか、`splitAtBreak` が前の部分について
 golem-typeset は、行、図版、コードの行の id を一つの番号（`nuNext`、`Flow.hs:3816`、`Flow.hs:3826`）から振るので、実際の入力は `Uniq` を満たす。
 ただし、`textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは、まだ前提に残る。
 これらの id が原稿の id から来ることは、まだ示していない。
-区切りの後ろのアキ、保持の中の `@need-lines`、区切りの連続、区切りの前の行アキも、まだ定理の範囲にない。
+保持の中の `@need-lines`、区切りの連続、区切りの前の行アキは、まだ定理の範囲にない。
 自由な配置（`SeparatorPhysical.lean`）の同じ性質も、まだ示していない。
 
 段落の後に `@no-page-break` が続く保持では、PR #1132 より前の golem-typeset が仕様と食い違っていた。
@@ -1159,8 +1164,8 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3823`）、g
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
 不変条件 4 と 5 は、`joinBoxes`、`ruledLinks`、`markBookParts` を通したフローと、自由な配置に写したフローにも当てた。
 空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について定理で示した（`I3_separator_hold_no_error`）。
-`placeKept` が段落を分けて送る場合も、この定理の範囲に入る。
-後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
+`placeKept` が段落を分けて送る場合と、区切りの後ろのアキも、この定理の範囲に入る。
+保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
 `check.sh` は、区切りの原稿を六つの組で golem-typeset と照合し、すべて一致した。
 格子モードと自由な配置の 8784 個ずつの原稿は、「区切りのモデル」の節で述べた項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。

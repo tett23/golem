@@ -1618,101 +1618,72 @@ theorem together_lines (env : Env) (hfit : PlainFitting env) (kq : Keep) (s : St
     rw [e]; exact both
   · right; exact ⟨q, mq, by rw [hq]; exact both.1, by rw [hq]; exact both.2⟩
 
-/-- Root ADR 0352 invariant 3 on the empty-column rule of root ADR 0398
-    (docs/specifications.md:1873), in the grid mode: a visible separator
-    with no space after it, its keep-with-next of one line and the
-    paragraph after it put the separator's line and the paragraph's first
-    line in one column, when the separator's line and the first part of
-    the paragraph that its keep asks for (`n` lines, `keptNeed` of
-    Decide.hs, with what a no-break or a keep-with-next after the whole
-    paragraph keeps) fit a column of the whole capacity.
+/-- The flows of the gap after a visible separator: none, or `FSpace` of
+    its grid lines. -/
+def gapFlows : Option Nat → List Flow
+  | none => []
+  | some g => [.space g]
 
-    The hypotheses: nothing waits before the separator and the set of
-    columns has no footnote lines kept above it (`Clear`), and no
-    separator hold waits in its column (`heldHere`); the lines have no
-    footnote and `fitting` counts the free lines (`PlainFitting`); the
-    footnote separator takes 0 lines or more; the
-    separator keeps one last line or more (`keep-last-lines` is 1 or more,
-    docs/specifications.md:3100); its keep has the span of a visible
-    separator (`env.held sp`); `p`, a first part of the paragraph (its
-    whole or a split `splitAtBreak` leaves as it is, as `firstPart` of
-    Decide.hs gives), is one line or more and no more than `n`; and either
-    no no-break or keep-with-next follows the paragraph (`keptNeed` of
-    what follows it is none), or `p` is also a first part of the lines
-    `placeKept` places before those it keeps together (`keptCut`): no
-    more than they are, or a split `splitAtBreak` leaves as it is.  When
-    `placeKept` keeps the whole paragraph together, those lines are none.
-    -/
-theorem I3_separator_hold_together (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
-    (c : Clear st)
-    (hw : heldHere env st = false)
-    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
-    (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
-    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
-    (hsp : env.held sp = true)
+def gapLines : Option Nat → Nat
+  | none => 0
+  | some g => g
+
+theorem needBeforeSpaces_none (env : Env) (s : St) (h : s.need = none) : needBeforeSpaces env s = s := by
+  unfold needBeforeSpaces needBeforeSpace
+  simp only [h]
+  simp only [and_self, ite_true, Int.sub_add_cancel]
+  cases s; simp only at h; rw [h]
+
+/-- A gap after a separator, when nothing waits, uses `d` of its lines,
+    no more than it has, and leaves the slots and what waits as they are. -/
+theorem gap_step (env : Env) (s : St) (c : Clear s) (g : Nat) (rest : List Flow) :
+    ∃ d : Int, 0 ≤ d ∧ d ≤ g ∧
+      step env s (.space g) rest = { s with used := s.used + d, spaces := s.spaces ++ [(g, d)] } := by
+  have es : step env s (.space g) rest = placeSpace env (needBeforeSpaces env (applyBreaks env s)) g := by
+    unfold step; rfl
+  rw [es]
+  rw [applyBreaks_nil env s c.breaks, needBeforeSpaces_none env s c.need]
+  unfold placeSpace placeSpaceFlow
+  by_cases e : s.used = top s ∨ atBoxStart s = true
+  · refine ⟨0, Int.le_refl 0, Int.ofNat_nonneg g, ?_⟩
+    simp only [if_pos e, Int.sub_self, Int.add_zero]
+  · refine ⟨max 0 (min (g : Int) (free env s)), Int.le_max_left _ _, ?_, ?_⟩
+    · exact Int.max_le.mpr ⟨Int.ofNat_nonneg g, Int.min_le_left _ _⟩
+    · simp only [if_neg e]
+      have k : ∀ a b : Int, a + b - a = b := fun a b => by omega
+      rw [k]
+
+/-- The paragraph after a separator hold, its first part fitting the free
+    lines: its first line is in one column with the ids of the slots before
+    it (`placeKept_held`, `placeKept_cases`). -/
+theorem paragraph_together (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (s2 : St)
+    (c2 : Clear s2) (h2 : heldHere env s2 = true) (i : Nat) (m2 : i ∈ slotsIds s2.slots)
+    (kq : Keep) (l0 : Line) (ls : List Line) (rest : List Flow) (p : Nat)
+    (hb : ∀ x ∈ l0 :: ls, x.notes = []) (hp : 1 ≤ p) (f2 : (p : Int) ≤ free env s2)
     (hfront : env.keptNeed rest = none ∨
       ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length ≤ p ∨
         splitAtBreak kq true ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length) p = p))
-    (hhold : 1 + (n : Int) ≤ env.capacity)
-    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p) :
-    let s1 := step env st (.paragraph kp [l]) (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)
-    let s2 := step env s1 (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest)
-    let s3 := step env s2 (.paragraph kq (l0 :: ls)) rest
-    placeAll env st (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = placeAll env s3 rest ∧
-      Together s3 l.id l0.id := by
-  intro s1 s2 s3
-  refine ⟨rfl, ?_⟩
-  have hl0 : l.notes = [] := hl l (List.mem_cons_self _ _)
-  have hb : ∀ x ∈ l0 :: ls, x.notes = [] := fun x m => hl x (List.mem_cons_of_mem _ m)
-  -- the separator
-  obtain ⟨s', cs', e', fr⟩ := separator_place env hfit { st with needAt := none } kp l
-    (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) n hl0 (view_clear (a := st) rfl c) hw hlast hhold
-  have s1e : s1 = { checkNoBreak (placeFlow env { st with needAt := none } (.paragraph kp [l])
-      (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)) with seen := true, lastDeferred := false, spaces := [] } :=
-    step_paragraph env st kp [l] _ c
-  have v1 : View s1 = View (putLine env s' l) := by
-    rw [s1e, placeFlow_some env _ kp [l] _ _ hkept, e']
-    exact view_checkNoBreak _
-  have m1 : l.id ∈ slotsIds s1.slots := by
-    have : s1.slots = (putLine env s' l).slots := congrArg (·.1) v1
-    rw [this, putLine_plain env s' l hl0, slotsIds_append]
-    exact mem_app.mpr (Or.inr (by simp [slotsIds, slotIds]))
-  have c1 : Clear s1 := view_clear v1.symm (clear_putLine env s' l hl0 cs')
-  have f1 : (n : Int) ≤ free env s1 := by rw [view_free env v1]; exact fr
-  -- the keep-with-next, waiting in the separator's column
-  have v2 : View s2 = View s1 := view_keepNext env s1 1 sp _
-  have c2 : Clear s2 := view_clear v2.symm c1
-  have f2 : (p : Int) ≤ free env s2 := by rw [view_free env v2]; omega
-  have m2 : l.id ∈ slotsIds s2.slots := by
-    have : s2.slots = s1.slots := congrArg (·.1) v2
-    rw [this]; exact m1
-  have h2 : heldHere env { s2 with needAt := none } = true := by
-    have nb1 : s1.noBreak = [] := by rw [s1e]; exact checkNoBreak_noBreak _
-    have sn1 : s1.seen = true := by rw [s1e]
-    have ld1 : s1.lastDeferred = false := by rw [s1e]
-    show heldHere env (step env s1 (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest)) = true
-    unfold step
-    rw [if_neg (by rw [sn1, ld1]; decide)]
-    unfold waitFor
-    rw [nb1]
-    simp [heldHere, hsp]
-  -- the paragraph
+    (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p) :
+    Together (step env s2 (.paragraph kq (l0 :: ls)) rest) i l0.id := by
   have c2' : Clear { s2 with needAt := none } := view_clear (a := s2) rfl c2
   have f2' : (p : Int) ≤ free env { s2 with needAt := none } := f2
-  have e3 : s3 = { checkNoBreak (placeFlow env { s2 with needAt := none } (.paragraph kq (l0 :: ls)) rest) with
-      seen := true, lastDeferred := false, spaces := [] } := step_paragraph env s2 kq _ rest c2
-  have v3 : View s3 = View (placeFlow env { s2 with needAt := none } (.paragraph kq (l0 :: ls)) rest) := by
+  have h2' : heldHere env { s2 with needAt := none } = true := h2
+  have e3 : step env s2 (.paragraph kq (l0 :: ls)) rest =
+      { checkNoBreak (placeFlow env { s2 with needAt := none } (.paragraph kq (l0 :: ls)) rest) with
+        seen := true, lastDeferred := false, spaces := [] } := step_paragraph env s2 kq _ rest c2
+  have v3 : View (step env s2 (.paragraph kq (l0 :: ls)) rest) =
+      View (placeFlow env { s2 with needAt := none } (.paragraph kq (l0 :: ls)) rest) := by
     rw [e3]; exact view_checkNoBreak _
   apply together_view v3.symm
-  have whole : Together (placeLines env kq { s2 with needAt := none } true (l0 :: ls)) l.id l0.id :=
-    together_lines env hfit kq _ c2' l.id m2 l0 ls hb p hp f2' hpart
+  have whole : Together (placeLines env kq { s2 with needAt := none } true (l0 :: ls)) i l0.id :=
+    together_lines env hfit kq _ c2' i m2 l0 ls hb p hp f2' hpart
   cases hk : env.keptNeed rest with
   | none => rw [placeFlow_none env _ kq _ rest hk]; exact whole
   | some m =>
     rw [placeFlow_some env _ kq _ rest m hk]
     have hcl := keptCut_le (previousKeep env rest kq) (l0 :: ls).length
     by_cases hcut : keptCut (previousKeep env rest kq) (l0 :: ls).length = (l0 :: ls).length
-    · rw [placeKept_held env _ _ _ true _ m hcut rfl h2]; exact whole
+    · rw [placeKept_held env _ _ _ true _ m hcut rfl h2']; exact whole
     · have hfr : (l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length ≤ p ∨
           splitAtBreak kq true ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length) p = p := by
         rcases hfront with h | h
@@ -1738,9 +1709,9 @@ theorem I3_separator_hold_together (env : Env) (hs : 0 ≤ env.separator) (hfit 
         rcases List.mem_cons.mp m with e | m
         · rw [e]; exact hb l0 (List.mem_cons_self _ _)
         · exact hb x (List.mem_cons_of_mem _ (mem_take' m))
-      have front : Together (placeLines env kq { s2 with needAt := none } true ((l0 :: ls).take k)) l.id l0.id := by
+      have front : Together (placeLines env kq { s2 with needAt := none } true ((l0 :: ls).take k)) i l0.id := by
         rw [tk]
-        exact together_lines env hfit kq _ c2' l.id m2 l0 (ls.take (k - 1)) hb' p hp f2' (by rw [lt]; exact hfr)
+        exact together_lines env hfit kq _ c2' i m2 l0 (ls.take (k - 1)) hb' p hp f2' (by rw [lt]; exact hfr)
       have hback : ∀ x ∈ (l0 :: ls).drop k, x.notes = [] := fun x m => hb x (mem_drop' m)
       rcases placeKept_cases env (previousKeep env rest kq) (placeLines env kq) { s2 with needAt := none } true
         (l0 :: ls) m with e | e | e
@@ -1750,44 +1721,154 @@ theorem I3_separator_hold_together (env : Env) (hs : 0 ≤ env.separator) (hfit 
       · rw [e, hkk]
         exact together_keeps ((keeps_nextColumn env hs _).trans (keeps_lines env hs kq _ _ _ hback)) front
 
-/-- Root ADR 0352 invariant 3 on G07134, from `I3_separator_hold_together`:
-    under its hypotheses, the separator's line and the first line of the
-    paragraph after it are in one column of the pages output, as the later
-    steps keep the columns closed (`Notes.keeps_placeAll`).  It also
-    assumes that the footnote separator takes 0 lines or more and that the
-    notes after the paragraph are new (`Notes.Fresh`). -/
-theorem I3_separator_hold_one_column (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
+/-- Root ADR 0352 invariant 3 on the empty-column rule of root ADR 0398
+    (docs/specifications.md:1873), in the grid mode: a visible separator,
+    its keep-with-next of one line, the gap after the separator if any
+    (`gapFlows`) and the paragraph after it put the separator's line and
+    the paragraph's first line in one column, when the separator's line
+    and what its keep asks for (`n` lines, `keptNeed` of Decide.hs: the
+    gap, the first part of the paragraph and what a no-break or a
+    keep-with-next after the whole paragraph keeps) fit a column of the
+    whole capacity.
+
+    The hypotheses: nothing waits before the separator and the set of
+    columns has no footnote lines kept above it (`Clear`), and no
+    separator hold waits in its column (`heldHere`); the lines have no
+    footnote and `fitting` counts the free lines (`PlainFitting`); the
+    footnote separator takes 0 lines or more; the separator keeps one
+    last line or more (`keep-last-lines` is 1 or more,
+    docs/specifications.md:3100); its keep has the span of a visible
+    separator (`env.held sp`); `p`, a first part of the paragraph (its
+    whole or a split `splitAtBreak` leaves as it is, as `firstPart` of
+    Decide.hs gives), is one line or more, and `p` and the lines of the
+    gap are no more than `n`; and either no no-break or keep-with-next
+    follows the paragraph (`keptNeed` of what follows it is none), or `p`
+    is also a first part of the lines `placeKept` places before those it
+    keeps together (`keptCut`): no more than they are, or a split
+    `splitAtBreak` leaves as it is.  When `placeKept` keeps the whole
+    paragraph together, those lines are none.
+
+    The state after the paragraph reads no note (`Notes.Rel`). -/
+theorem I3_separator_hold_together (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
     (c : Clear st) (hw : heldHere env st = false)
-    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (gap : Option Nat) (rest : List Flow) (n p sp : Nat)
     (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
-    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hkept : env.keptNeed (.keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)) = some ⟨n, 0⟩)
     (hsp : env.held sp = true)
     (hfront : env.keptNeed rest = none ∨
       ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length ≤ p ∨
         splitAtBreak kq true ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length) p = p))
     (hhold : 1 + (n : Int) ≤ env.capacity)
-    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
-    (hf : Notes.Fresh st (Notes.sourceNotes rest)) :
-    ∃ q ∈ (closePage env (placeAll env st (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done,
-      l.id ∈ slotsIds q.slots ∧ l0.id ∈ slotsIds q.slots := by
-  obtain ⟨e, t⟩ := I3_separator_hold_together env hs hfit st c hw kp kq l l0 ls rest n p sp hl hlast hkept hsp hfront
-    hhold hp hpn hpart
-  rw [e]
-  have n1 : Notes.flowNotes (.paragraph kp [l]) = [] := by
-    simp [Notes.flowNotes, hl l (List.mem_cons_self _ _)]
-  have n3 : Notes.flowNotes (.paragraph kq (l0 :: ls)) = [] := by
-    have : ∀ x ∈ l0 :: ls, x.notes = [] := fun x m => hl x (List.mem_cons_of_mem _ m)
-    simp only [Notes.flowNotes]
-    exact bind_nil' _ _ this
+    (hp : 1 ≤ p) (hpn : p + gapLines gap ≤ n)
+    (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p) :
+    ∃ s3, placeAll env st (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)) =
+        placeAll env s3 rest ∧ Together s3 l.id l0.id ∧ Notes.Rel st s3 [] := by
+  have hl0 : l.notes = [] := hl l (List.mem_cons_self _ _)
+  have hb : ∀ x ∈ l0 :: ls, x.notes = [] := fun x m => hl x (List.mem_cons_of_mem _ m)
+  generalize hR : gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest = R at hkept
+  -- the separator
+  obtain ⟨s', cs', e', fr⟩ := separator_place env hfit { st with needAt := none } kp l
+    (.keepNext 1 sp :: R) n hl0 (view_clear (a := st) rfl c) hw hlast hhold
+  have s1e : step env st (.paragraph kp [l]) (.keepNext 1 sp :: R) =
+      { checkNoBreak (placeFlow env { st with needAt := none } (.paragraph kp [l]) (.keepNext 1 sp :: R)) with
+        seen := true, lastDeferred := false, spaces := [] } :=
+    step_paragraph env st kp [l] _ c
+  generalize hs1 : step env st (.paragraph kp [l]) (.keepNext 1 sp :: R) = s1 at s1e
+  have v1 : View s1 = View (putLine env s' l) := by
+    rw [s1e, placeFlow_some env _ kp [l] _ _ hkept, e']
+    exact view_checkNoBreak _
+  have m1 : l.id ∈ slotsIds s1.slots := by
+    have : s1.slots = (putLine env s' l).slots := congrArg (·.1) v1
+    rw [this, putLine_plain env s' l hl0, slotsIds_append]
+    exact mem_app.mpr (Or.inr (by simp [slotsIds, slotIds]))
+  have c1 : Clear s1 := view_clear v1.symm (clear_putLine env s' l hl0 cs')
+  have f1 : (n : Int) ≤ free env s1 := by rw [view_free env v1]; exact fr
+  -- the keep-with-next, waiting in the separator's column
+  generalize hs2 : step env s1 (.keepNext 1 sp) R = s2
+  have v2 : View s2 = View s1 := by rw [← hs2]; exact view_keepNext env s1 1 sp _
+  have c2 : Clear s2 := view_clear v2.symm c1
+  have f2 : (n : Int) ≤ free env s2 := by rw [view_free env v2]; exact f1
+  have m2 : l.id ∈ slotsIds s2.slots := by
+    have : s2.slots = s1.slots := congrArg (·.1) v2
+    rw [this]; exact m1
+  have h2 : heldHere env s2 = true := by
+    have nb1 : s1.noBreak = [] := by rw [s1e]; exact checkNoBreak_noBreak _
+    have sn1 : s1.seen = true := by rw [s1e]
+    have ld1 : s1.lastDeferred = false := by rw [s1e]
+    rw [← hs2]
+    unfold step
+    rw [if_neg (by rw [sn1, ld1]; decide)]
+    unfold waitFor
+    rw [nb1]
+    simp [heldHere, hsp]
+  have n1 : Notes.flowNotes (.paragraph kp [l]) = [] := by simp [Notes.flowNotes, hl0]
   have n2 : Notes.flowNotes (.keepNext 1 sp) = [] := by simp [Notes.flowNotes]
-  have r1 := Notes.rel_step env hs st (.paragraph kp [l]) (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)
-  have r2 := Notes.rel_step env hs (step env st (.paragraph kp [l]) (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))
-    (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest)
-  have r3 := Notes.rel_step env hs (step env (step env st (.paragraph kp [l])
-    (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)) (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest))
-    (.paragraph kq (l0 :: ls)) rest
-  rw [n1] at r1; rw [n2] at r2; rw [n3] at r3
-  have r := Notes.Rel.nl r1 (Notes.Rel.nl r2 r3)
+  have n3 : Notes.flowNotes (.paragraph kq (l0 :: ls)) = [] := by
+    simp only [Notes.flowNotes]; exact bind_nil' _ _ hb
+  have r1 := Notes.rel_step env hs st (.paragraph kp [l]) (.keepNext 1 sp :: R)
+  have r2 := Notes.rel_step env hs s1 (.keepNext 1 sp) R
+  rw [n1, hs1] at r1; rw [n2, hs2] at r2
+  have r12 := Notes.Rel.nl r1 r2
+  have eq0 : placeAll env st (.paragraph kp [l] :: .keepNext 1 sp :: R) = placeAll env s2 R := by
+    show placeAll env (step env (step env st (.paragraph kp [l]) (.keepNext 1 sp :: R)) (.keepNext 1 sp) R) R = _
+    rw [hs1, hs2]
+  rw [← hR] at eq0 ⊢
+  cases gap with
+  | none =>
+    refine ⟨step env s2 (.paragraph kq (l0 :: ls)) rest, eq0, ?_, ?_⟩
+    · exact paragraph_together env hs hfit s2 c2 h2 l.id m2 kq l0 ls rest p hb hp
+        (by simp only [gapLines] at hpn; omega) hfront hpart
+    · have r3 := Notes.rel_step env hs s2 (.paragraph kq (l0 :: ls)) rest
+      rw [n3] at r3
+      exact Notes.Rel.nl r12 r3
+  | some g =>
+    obtain ⟨d, _, dg, esg⟩ := gap_step env s2 c2 g (.paragraph kq (l0 :: ls) :: rest)
+    generalize hsg : step env s2 (.space g) (.paragraph kq (l0 :: ls) :: rest) = sg at esg
+    have cg : Clear sg := by
+      rw [esg]
+      exact ⟨c2.breaks, c2.need, c2.blank, c2.box, c2.adjust, c2.deferred, c2.pending, c2.first, c2.reserved,
+        c2.noteLines⟩
+    have hg : heldHere env sg = true := by rw [esg]; exact h2
+    have mg : l.id ∈ slotsIds sg.slots := by rw [esg]; exact m2
+    have fg : (p : Int) ≤ free env sg := by
+      rw [esg]
+      simp only [gapLines] at hpn
+      simp only [free, cap, boxAfter] at f2 ⊢
+      omega
+    refine ⟨step env sg (.paragraph kq (l0 :: ls)) rest, ?_, ?_, ?_⟩
+    · rw [eq0]; show placeAll env (step env s2 (.space g) (.paragraph kq (l0 :: ls) :: rest)) _ = _; rw [hsg]; rfl
+    · exact paragraph_together env hs hfit sg cg hg l.id mg kq l0 ls rest p hb hp fg hfront hpart
+    · have rg := Notes.rel_step env hs s2 (.space g) (.paragraph kq (l0 :: ls) :: rest)
+      have ng : Notes.flowNotes (.space g) = [] := by simp [Notes.flowNotes]
+      rw [ng, hsg] at rg
+      have r3 := Notes.rel_step env hs sg (.paragraph kq (l0 :: ls)) rest
+      rw [n3] at r3
+      exact Notes.Rel.nl r12 (Notes.Rel.nl rg r3)
+
+/-- Root ADR 0352 invariant 3 on G07134, from `I3_separator_hold_together`:
+    under its hypotheses, the separator's line and the first line of the
+    paragraph after it are in one column of the pages output, as the later
+    steps keep the columns closed (`Notes.keeps_placeAll`).  It also
+    assumes that the notes after the paragraph are new (`Notes.Fresh`). -/
+theorem I3_separator_hold_one_column (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
+    (c : Clear st) (hw : heldHere env st = false)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (gap : Option Nat) (rest : List Flow) (n p sp : Nat)
+    (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
+    (hkept : env.keptNeed (.keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)) = some ⟨n, 0⟩)
+    (hsp : env.held sp = true)
+    (hfront : env.keptNeed rest = none ∨
+      ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length ≤ p ∨
+        splitAtBreak kq true ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length) p = p))
+    (hhold : 1 + (n : Int) ≤ env.capacity)
+    (hp : 1 ≤ p) (hpn : p + gapLines gap ≤ n)
+    (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
+    (hf : Notes.Fresh st (Notes.sourceNotes rest)) :
+    ∃ q ∈ (closePage env (placeAll env st
+        (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)))).done,
+      l.id ∈ slotsIds q.slots ∧ l0.id ∈ slotsIds q.slots := by
+  obtain ⟨s3, e, t, r⟩ := I3_separator_hold_together env hs hfit st c hw kp kq l l0 ls gap rest n p sp hl hlast hkept
+    hsp hfront hhold hp hpn hpart
+  rw [e]
   have f3 := Notes.Rel.fresh_after r (by rw [List.nil_append]; exact hf)
   exact together_closePage env (together_keeps (Notes.keeps_placeAll env hs rest _ f3) t)
 
@@ -1817,26 +1898,26 @@ theorem place_one {pages : List PageOut} {q : PageOut} (mq : q ∈ pages) {i : N
     hypothesis from the text of the pages (`text_placeAll`). -/
 theorem hold_no_error_of_once (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
     (c : Clear st) (hw : heldHere env st = false)
-    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (gap : Option Nat) (rest : List Flow) (n p sp : Nat)
     (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
-    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hkept : env.keptNeed (.keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)) = some ⟨n, 0⟩)
     (hsp : env.held sp = true)
     (hfront : env.keptNeed rest = none ∨
       ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length ≤ p ∨
         splitAtBreak kq true ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length) p = p))
     (hhold : 1 + (n : Int) ≤ env.capacity)
-    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
+    (hp : 1 ≤ p) (hpn : p + gapLines gap ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
     (hf : Notes.Fresh st (Notes.sourceNotes rest))
     (b a : Nat) (kp' : Keep) (mids : List Unit) (hm : ∀ m ∈ mids, passes m = true) (fs : List Flow)
     (hu : ∀ i ∈ [l.id, l0.id], ∀ q ∈ (closePage env (placeAll env st
-      (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse,
+      (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)))).done.reverse,
       ∀ q' ∈ (closePage env (placeAll env st
-        (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse,
+        (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)))).done.reverse,
       i ∈ slotsIds q.slots → i ∈ slotsIds q'.slots → q = q') :
     0 ∉ holdErrors (.separator b a kp' l :: mids ++ [.other .block fs (some l0.id)])
       (closePage env (placeAll env st
-        (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse := by
-  obtain ⟨q, mq, h1, h2⟩ := I3_separator_hold_one_column env hs hfit st c hw kp kq l l0 ls rest n p sp hl hlast
+        (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)))).done.reverse := by
+  obtain ⟨q, mq, h1, h2⟩ := I3_separator_hold_one_column env hs hfit st c hw kp kq l l0 ls gap rest n p sp hl hlast
     hkept hsp hfront hhold hp hpn hpart hf
   have mq' := mem_reverse' mq
   have e1 := place_one mq' h1 (fun q' m h => hu l.id (List.mem_cons_self _ _) q' m q mq' h h1)
@@ -1965,26 +2046,26 @@ theorem once_of_uniq (env : Env) (st : St) (flows : List Flow) (i : Nat)
     and no slot the text leaves out holds the two lines' ids. -/
 theorem I3_separator_hold_no_error (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
     (c : Clear st) (hw : heldHere env st = false)
-    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (gap : Option Nat) (rest : List Flow) (n p sp : Nat)
     (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
-    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hkept : env.keptNeed (.keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)) = some ⟨n, 0⟩)
     (hsp : env.held sp = true)
     (hfront : env.keptNeed rest = none ∨
       ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length ≤ p ∨
         splitAtBreak kq true ((l0 :: ls).length - keptCut (previousKeep env rest kq) (l0 :: ls).length) p = p))
     (hhold : 1 + (n : Int) ≤ env.capacity)
-    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
+    (hp : 1 ≤ p) (hpn : p + gapLines gap ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
     (hf : Notes.Fresh st (Notes.sourceNotes rest))
     (b a : Nat) (kp' : Keep) (mids : List Unit) (hm : ∀ m ∈ mids, passes m = true) (fs : List Flow)
-    (hd : Uniq ((text st ++ sourceText (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)).bind
+    (hd : Uniq ((text st ++ sourceText (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest))).bind
       slotIds))
     (hn : ∀ i ∈ [l.id, l0.id], ∀ q ∈ (closePage env (placeAll env st
-      (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse,
+      (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)))).done.reverse,
       ∀ s ∈ q.slots, unlisted s.2 = true → i ∉ slotIds s.2) :
     0 ∉ holdErrors (.separator b a kp' l :: mids ++ [.other .block fs (some l0.id)])
       (closePage env (placeAll env st
-        (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse :=
-  hold_no_error_of_once env hs hfit st c hw kp kq l l0 ls rest n p sp hl hlast hkept hsp hfront hhold hp hpn hpart hf
+        (.paragraph kp [l] :: .keepNext 1 sp :: (gapFlows gap ++ .paragraph kq (l0 :: ls) :: rest)))).done.reverse :=
+  hold_no_error_of_once env hs hfit st c hw kp kq l l0 ls gap rest n p sp hl hlast hkept hsp hfront hhold hp hpn hpart hf
     b a kp' mids hm fs (fun i mi => once_of_uniq env st _ i hd (hn i mi))
 
 /-- The flows `separatorFlows` makes of a visible separator with no space
@@ -1993,6 +2074,17 @@ theorem I3_separator_hold_no_error (env : Env) (hs : 0 ≤ env.separator) (hfit 
 theorem separatorFlows_hold (capacity : Nat) (kp kq : Keep) (l : Line) (ls : List Line) (i : Nat) :
     separatorFlows capacity [.separator 0 0 kp l, .other .block [.paragraph kq ls] (some i)] =
       [.paragraph kp [l], .keepNext 1 l.id, .paragraph kq ls] := rfl
+
+/-- With `a` grid lines after the separator, the flows are the separator's
+    line, a keep-with-next of one line, a gap of `a` lines and the
+    paragraph: the flows of `I3_separator_hold_together` with the gap
+    `some a`. -/
+theorem separatorFlows_hold_gap (capacity : Nat) (kp kq : Keep) (l : Line) (ls : List Line) (i a : Nat) (ha : 0 < a) :
+    separatorFlows capacity [.separator 0 a kp l, .other .block [.paragraph kq ls] (some i)] =
+      [.paragraph kp [l], .keepNext 1 l.id] ++ gapFlows (some a) ++ [.paragraph kq ls] := by
+  have m : max (blankLines []) a = a := by simp [blankLines]
+  simp [separatorFlows, separatorUnits, space, gapOf, holdOf, keepOf, beforeOf, m, ha, holdNeeds, inHold, hoisted,
+    wants, takeHold, needOf, holdLines, allFlows, Unit.flows, gapFlows]
 
 end Separator
 end WholePagination
