@@ -32,7 +32,7 @@ import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
 #endif
 import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
 #ifdef GOLEM_PLUGINS
-import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
+import Golem.Project.Style (FontFile (..), Page (..), Style (..), fontFilesWithLicenses, parseDim, parseStyle)
 #endif
 import Golem.Syntax
 import Support
@@ -88,6 +88,11 @@ newProjectTests =
                bleedOf Japanese >>= (@?= Right (Just (Sp (round (3 * 72 * 65536 / (25.4 :: Rational))))))
                bleedOf English >>= (@?= Right (Just (9 * 65536)))
                parseDim "0.125in" @?= parseDim "9pt",
+             testCase "root ADR 0433 I1: the style.toml of each template names the license document it fetches with its font" $
+               forM_ [Japanese, English] $ \lang -> do
+                 style <- parseStyle (FileId 0) <$> templateText lang "style.toml"
+                 let fetched = map fsPath (templateFonts lang)
+                 (show lang, fmap (map (\f -> [ffPath f] <> maybe [] pure (ffLicense f)) . fontFilesWithLicenses) style) @?= (show lang, Right [fetched]),
              testCase "fonts come from tagged releases with fixed hashes" $ do
                map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
                map fsPath (templateFonts English) @?= ["fonts/SourceSerif4-Regular.otf", "fonts/LICENSE-SourceSerif4.md"]

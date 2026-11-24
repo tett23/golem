@@ -18,6 +18,7 @@ folio = { position = "bottom-outside", format = "{n}" }
 [fonts.body]
 # Source Serif 4 Regular (4.005R), SIL Open Font License 1.1
 latin = "fonts/SourceSerif4-Regular.otf"
+latin-license = "fonts/LICENSE-SourceSerif4.md"
 
 [headings.1]
 number = "Chapter {n}"

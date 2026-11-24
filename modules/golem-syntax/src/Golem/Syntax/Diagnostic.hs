@@ -188,6 +188,8 @@ profileDependentCodes :: [DiagnosticCode]
 profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
     DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
+    DiagnosticCode "G03282", -- a font HTML and EPUB copy without the key of its license document (root ADR 0433)
+    DiagnosticCode "G03283", -- a license document of a font HTML and EPUB copy is missing (root ADR 0433)
     DiagnosticCode "G08100", -- a character the font of the PDF has not (docs/adr 0081)
     DiagnosticCode "G08103", -- an OpenType feature the font of the PDF has not (docs/adr/0268)
     DiagnosticCode "G07127", -- caption indents that leave no character (docs/adr/0389)

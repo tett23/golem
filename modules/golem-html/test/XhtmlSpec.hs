@@ -70,6 +70,7 @@ cfg0 =
       hcNoteNotation = arabic,
       hcEndnoteNotation = arabic,
       hcEmbedFonts = True,
+      hcFontLicenses = [],
       hcGenericFamilies = Map.empty,
       hcCharacterAdvance = Nothing
     }
@@ -1090,7 +1091,7 @@ langTests =
     ]
 
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests])
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests, langTests, pageBreakTests, genericFontTests, fontLicenseTests])
 
 -- | The fonts of a site, embedded or named by generic families (root ADR 0423).
 genericFontTests :: TestTree
@@ -1110,6 +1111,29 @@ genericFontTests =
     ]
   where
     withBody embed = cfg0 {hcFonts = Map.singleton "body" (Just "fonts/b.otf", Nothing), hcEmbedFonts = embed, hcGenericFamilies = Map.singleton "body" "sans-serif"}
+
+-- | The license documents of the fonts a site embeds (root ADR 0433).
+fontLicenseTests :: TestTree
+fontLicenseTests =
+  testGroup
+    "root ADR 0433"
+    [ testCase "root ADR 0433 I1: a site that embeds the fonts copies each license document to fonts/ by its own name" $ do
+        let site = renderXhtml (licensed True ["fonts/OFL.txt", "licenses/LICENSE-B.md"]) ft (bookOf [])
+        siteAssets site @?= [("fonts/LICENSE-B.md", "licenses/LICENSE-B.md"), ("fonts/OFL.txt", "fonts/OFL.txt"), ("fonts/b.otf", "fonts/b.otf")]
+        siteLicenses site @?= ["fonts/LICENSE-B.md", "fonts/OFL.txt"],
+      testCase "root ADR 0433 I5: a site of generic families copies no license document" $ do
+        let site = renderXhtml (licensed False ["fonts/OFL.txt"]) ft (bookOf [])
+        (siteAssets site, siteLicenses site) @?= ([], []),
+      testCase "root ADR 0433 I6: one license document that two fonts name is copied once" $ do
+        let site = renderXhtml (licensed True ["fonts/OFL.txt", "fonts/OFL.txt"]) ft (bookOf [])
+        [a | (a, _) <- siteAssets site, a == "fonts/OFL.txt"] @?= ["fonts/OFL.txt"]
+        siteLicenses site @?= ["fonts/OFL.txt"],
+      testCase "root ADR 0433 I1: the HTML syntax copies the same license documents as the XHTML syntax" $ do
+        let cfg = licensed True ["fonts/OFL.txt"]
+        (siteAssets (renderHtml cfg ft (bookOf [])), siteLicenses (renderHtml cfg ft (bookOf []))) @?= (siteAssets (renderXhtml cfg ft (bookOf [])), siteLicenses (renderXhtml cfg ft (bookOf [])))
+    ]
+  where
+    licensed embed ls = cfg0 {hcFonts = Map.singleton "body" (Just "fonts/b.otf", Nothing), hcEmbedFonts = embed, hcFontLicenses = ls}
 
 -- | Fixed-page positions are empty anchors in the original text (root ADR 0386).
 pageBreakTests :: TestTree

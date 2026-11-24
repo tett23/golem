@@ -229,6 +229,9 @@ CFF の輪郭のフォントで、使う字の輪郭が CFF の表の外を参�
 
 HTML と EPUB は、既定ではフォントのファイルを同梱せず、役割の `generic-family`（`serif`、`sans-serif`、`monospace`）から決まる総称の書体だけを CSS に書く（[Golem ADR 0423](docs/adr/0423-generic-font-families-for-html-and-epub.md)）。
 フォントを同梱するには、`manifest.toml` の `[targets.html]` か `[targets.epub]` に `fonts = "embed"` を書く。
+同梱するフォントには、役割の `ja-license` と `latin-license` に書いたライセンスの文書を `fonts/` に添える（[root ADR 0433](docs/adr/0433-bundle-font-licenses-with-embedded-fonts.md)）。
+ライセンスの文書を書いていないか、書いたファイルがなければ、dev では警告（G03282、G03283）を出して文書なしで書き、prod ではそのターゲットを書かない。
+`fonts/` に写すファイルの名前が同じで中身が違えば、G03284 としてそのターゲットを書かない。
 
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。

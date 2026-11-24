@@ -17,15 +17,21 @@ position = { top = "28mm", gutter = "24mm" }
 
 [fonts.body]
 ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
 latin = "fonts/SourceSerif4-Regular.otf"
+latin-license = "fonts/LICENSE-SourceSerif4.md"
 
 [fonts.heading]
 ja = "fonts/NotoSansJP-Bold.otf"
+ja-license = "fonts/LICENSE-NotoSansJP.txt"
 latin = "fonts/SourceSans3-Bold.otf"
+latin-license = "fonts/LICENSE-SourceSans3.md"
 
 [fonts.code]
 ja = "fonts/NotoSansJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSansJP.txt"
 latin = "fonts/SourceCodePro-Regular.otf"
+latin-license = "fonts/LICENSE-SourceCodePro.md"
 
 [character-styles.bold]
 font = "heading"

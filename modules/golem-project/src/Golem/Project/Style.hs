@@ -143,6 +143,8 @@ module Golem.Project.Style
     checkPosition,
     loadStyle,
     fontFiles,
+    FontFile (..),
+    fontFilesWithLicenses,
     pageSize,
   )
 where
@@ -329,7 +331,11 @@ data FontRole = FontRole
     against the font when it is loaded
     -} frAxes :: ![(Text, Double)],
     -- | the generic family HTML and EPUB end the role's font-family with (docs/adr/0423); unused by the PDF
-    frGenericFamily :: !(Maybe GenericFamily)
+    frGenericFamily :: !(Maybe GenericFamily),
+    -- | ja-license: the license document HTML and EPUB copy with the ja font they embed (root ADR 0433)
+    frJaLicense :: !(Maybe FilePath),
+    -- | latin-license: the license document of the latin font (root ADR 0433)
+    frLatinLicense :: !(Maybe FilePath)
   }
   deriving stock (Eq, Show)
 
@@ -2196,7 +2202,7 @@ instance FromValue Page where
 instance FromValue FontRole where
   fromValue =
     parseTableFromValue $
-      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> instanceKey <*> axesKey <*> genericFamilyKey
+      (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> featuresKey <*> (fromMaybe False <$> optKey "punctuation-proportional") <*> instanceKey <*> axesKey <*> genericFamilyKey <*> (fmap T.unpack <$> optKey "ja-license") <*> (fmap T.unpack <$> optKey "latin-license")
 
 -- | The named instance of a role (Golem ADR 0358): a string; anything else is G03260 (root ADR 0413).
 instanceKey :: ParseTable l (Maybe Text)
@@ -4180,6 +4186,25 @@ loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
 fontFiles :: Style -> [(Text, FilePath)]
 fontFiles s = [(r, p) | (r, FontRole {frJa = ja, frLatin = la}) <- Map.toAscList (stFonts s), Just p <- [ja, la]]
 
+-- | A font file of a role with the key it is written in and its license document (root ADR 0433).
+data FontFile = FontFile
+  { ffRole :: !Text,
+    -- | ja or latin
+    ffKey :: !Text,
+    ffPath :: !FilePath,
+    -- | the value of ja-license or latin-license
+    ffLicense :: !(Maybe FilePath)
+  }
+  deriving stock (Eq, Show)
+
+-- | The font files of 'fontFiles', in its order, with their license documents (root ADR 0433).
+fontFilesWithLicenses :: Style -> [FontFile]
+fontFilesWithLicenses s =
+  [ FontFile r k p l
+  | (r, fr) <- Map.toAscList (stFonts s),
+    (k, Just p, l) <- [("ja", frJa fr, frJaLicense fr), ("latin", frLatin fr, frLatinLicense fr)]
+  ]
+
 -- ------------------------------------------------------------------ the schema
 
 {- | The values of the enumerations of style.toml, written once for the
@@ -4232,7 +4257,7 @@ styleSchema =
   NTable
     [ ("values", NTable [("length", NNamed Nothing dim), ("aki", NNamed Nothing str), ("count", NNamed Nothing int)]),
       ("page", pageNode),
-      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode), ("generic-family", enum (map fst genericFamilyValues))])),
+      ("fonts", NNamed (Just FontRoles) (NTable [("ja", str), ("latin", str), ("features", features), ("punctuation-proportional", bool), ("instance", str), ("axes", NNamed Nothing numberNode), ("generic-family", enum (map fst genericFamilyValues)), ("ja-license", str), ("latin-license", str)])),
       ("character-styles", NNamed (Just CharStyles) charStyleNode),
       ("paragraph-styles", NNamed (Just ParaStyles) paraStyleNode),
       ("separators", NNamed Nothing separatorNode),

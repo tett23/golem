@@ -2656,7 +2656,7 @@ HTML、EPUB、プレーンテキストはページを持たないので、`[hidd
 
 ### 参照するファイルの検査
 
-`style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
+`style.toml` が指すファイル（`[fonts]` のフォントとそのライセンスの文書と、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
 ファイルの存在は、そのファイルを使うターゲットのビルドと `golem check` でだけ検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 パスがプロジェクトの外を指すかは、どのターゲットのビルドと `golem check` でも検査する（下の G03279）。
 LSP と `golem lint` はファイルを検査しないので、フォントを置く前でも原稿の diagnostics を出す。
@@ -2679,10 +2679,11 @@ G03010 は dev のプロファイルでは警告、prod のプロファイルで
 プロジェクトの外とは、絶対パス、URL、プロジェクトルートの外に出るパス、プロジェクトの外のファイルを指すシンボリックリンクである。
 先のファイルがないシンボリックリンクは、ないファイルとして扱う。
 `[fonts]` のフォントは、PDF が使わない役割のものも検査する。
+`[fonts]` の `ja-license` と `latin-license` のパスも、プロジェクトの外を指すかを、フォントを同梱しない出力を含め、どの出力でも検査する（[root ADR 0433](adr/0433-bundle-font-licenses-with-embedded-fonts.md)）。
 `intent` は、PDF を組まないビルドでも検査する。
 G03279 があれば、どのターゲットも書かない。
 プロジェクトの外のフォントは、別のマシンで同じ本を組めない原因になるので、HTML と EPUB でも、そのフォントを除いて出力することはせず、ビルドを止める。
-G03279 を出したパスには、G08002、G08006、G03010 を出さない。
+G03279 を出したパスには、G08002、G08006、G03010、G03283 を出さない。
 
 diagnostic の位置は `style.toml` の先頭とし、同じコードと同じパスの diagnostic は一つだけ出す。
 
@@ -4781,13 +4782,14 @@ HTML と EPUB は、フォントを同梱するときもファイルを写すだ
 ### HTML と EPUB のフォント
 
 HTML と EPUB は、既定ではフォントのファイルを同梱せず、CSS の総称の書体（明朝の系統、ゴシックの系統、等幅）だけを指定する（[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）。
-電子書籍の多くは明朝かゴシック程度の指定で足り、フォントを同梱すると EPUB が大きくなり、フォントのライセンスの文書を添える問題も起きるためである。
+電子書籍の多くは明朝かゴシック程度の指定で足り、フォントを同梱すると EPUB が大きくなり、フォントのライセンスの文書を添える必要も生じるためである。
 どの書体で描くかは、読み手のブラウザーと読書環境が決める。
 
 同梱するかは、`manifest.toml` の `[targets.html]` と `[targets.epub]` の `fonts` で、出力ごとに決める。
 値は `"generic"`（既定）か `"embed"` である。
 `"embed"` を書いた出力は、`[fonts]` のすべての役割のファイルを `fonts/` に写し、`@font-face` で指定する。
 EPUB は、写したフォントを `package.opf` の manifest に載せる。
+写したフォントには、そのライセンスの文書を添える（「フォントのライセンスの文書」）。
 `fonts` は PDF とプレーンテキストを変えない。
 値が `"generic"` と `"embed"` のどちらでもなければ、G03280 のエラーとする（文字列でない値を含む）。
 
@@ -4821,6 +4823,61 @@ PDF は `generic-family` を使わないので、そのような役割は PDF �
 
 `fonts = "generic"` の出力は、フォントのファイルの有無を調べず、G03010 を出さない（`golem check` も同じ）。
 ただし、パスがプロジェクトの外を指せば、出力によらず G03279 のエラーとする（「参照するファイルの検査」）。
+
+### フォントのライセンスの文書
+
+`fonts = "embed"` の HTML と EPUB は、写したフォントごとに、そのライセンスの文書を `fonts/` に添える（[root ADR 0433](adr/0433-bundle-font-licenses-with-embedded-fonts.md)）。
+写したフォントの各コピーに著作権の表示とライセンスを添えるという SIL Open Font License 1.1 の条件を、配った出力が欠かないためである。
+条文の解釈が割れうるとき（EPUB の中のフォントを埋め込みとみなせるか、など）も、添える側に倒す。
+
+ライセンスの文書は、役割の `ja-license` と `latin-license` に、`ja` と `latin` のフォントごとに書く。
+値は、`ja` と `latin` と同じく、プロジェクトのルートからの相対パスである。
+ライセンスの文書の名前（`LICENSE-NotoSerifJP.txt`、`OFL.txt` など）はフォントの名前と一致しないので、名前で探すことはしない。
+ライセンスの種類は判定せず、フォントの `name` の表からも読まない。
+
+```toml
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
+latin = "fonts/SourceSerif4-Regular.otf"
+latin-license = "fonts/LICENSE-SourceSerif4.md"
+```
+
+ライセンスの文書を写すのは、`fonts = "embed"` の出力が、そのフォントを写すときだけである。
+`fonts = "generic"` の出力はフォントを写さないので、ライセンスの文書も写さない。
+PDF はフォントを文書に埋め込むので、ライセンスの文書を写さない。
+プレーンテキストもフォントを使わないので、写さない。
+フォントのファイルがなく（G03010）、そのフォントを写さないときは、そのライセンスの文書も写さず、調べない。
+
+HTML のターゲットは、ライセンスの文書を、元のファイルの名前のまま `fonts/` に写す。
+EPUB は、ライセンスの文書を、元のファイルの名前のままコンテナの `OEBPS/fonts/` に入れ、`package.opf` の manifest に挙げる。
+manifest の型は、拡張子が `.md`（大文字と小文字を区別しない）なら `text/markdown`、それ以外（拡張子がないものを含む）は `text/plain` とする。
+ライセンスの文書の型は、ほかのファイルの型を決める拡張子の表ではなく、この規則で決める。
+どの文書からも参照しないが、manifest に挙げた EPUB が epubcheck 5.4.0 を通ることを、CI で確かめる（`modules/golem-driver/test/fixtures/font-licenses`）。
+
+フォントとライセンスの文書は、どちらも `fonts/<ファイル名>` に写すので、二つのファイルが同じ出力の名前になりうる。
+同じ出力の名前になるファイルの中身のバイト列が同じなら、一つだけ写す（二つの役割が同じ文書を指すときや、二つのフォルダの同じ中身の `OFL.txt` など）。
+中身が違えば、G03284 のエラーとする。
+フォントどうし、ライセンスの文書どうし、フォントとライセンスの文書のどの組も、同じ扱いである。
+片方を黙って落とすと、別のフォントで組んだ出力や、別のフォントのライセンスを添えた出力ができるためである。
+名前を付け替えてぶつかりを避けることはしない。
+
+`fonts` はターゲットごとに決まるので、次の表の diagnostic（G03282 から G03284）も、`fonts = "embed"` のターゲットごとに検査し、そのターゲットだけを止める。
+たとえば、HTML だけが `"embed"` で EPUB が `"generic"` の本では、HTML のライセンスの欠けは HTML だけを止め、EPUB は書く。
+
+| 原因 | コード | 重大度と出力 | LSP |
+| --- | --- | --- | --- |
+| 写すフォントに、対応する `ja-license` か `latin-license` がない | G03282 | dev では警告で、ライセンスの文書なしで出力する。prod ではエラーで、そのターゲットを書かない | `style.toml` に出す |
+| `ja-license` か `latin-license` のファイルがない | G03283 | 同上 | 出さない |
+| `fonts/` の出力の名前が同じで、中身が違う二つのファイルがある | G03284 | エラーで、dev でも prod でもそのターゲットを書かない | 出さない |
+
+G03282 と G03283 の重大度は、フォントのファイルがないときの G03010 に合わせる。
+dev の出力は手元で見るためのもので配らないが、prod の出力は配るので、条件を欠いた出力を作らない。
+G03284 は、どちらの出力も組み方が変わりうるので、dev でも止める。
+ファイルを見る G03283 と G03284 は、G03010 と同じく LSP では出さない。
+LSP の G03282 は、フォントのファイルを調べず、`manifest.toml` のターゲットに `fonts = "embed"` の HTML か EPUB があるとき、パスを書いたフォントごとに出す。
+`golem check` は、同じターゲットのビルドと同じコードを出す。
+位置は、どれも `style.toml` の先頭である。
 
 ### 読み込む役割
 
@@ -9448,6 +9505,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 塗り足しがあるので、雛形のプロジェクトは `--marks japanese` でもそのまま PDF を組める。
 
 フォントとそのライセンスの文書は、`golem new` がネットワークから取得する。
+雛形の `style.toml` は、取得するフォントに、取得するライセンスの文書を `ja-license` か `latin-license` で添える（[root ADR 0433](adr/0433-bundle-font-licenses-with-embedded-fonts.md)）。
 取得するのは配布元のタグで固定したバージョンであり、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
 Golem がネットワークに接続するのは、この取得とプラグインの取得だけである。
@@ -10206,10 +10264,10 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 書体はリポジトリに入れない。
 `fetch-fonts.sh` が、バージョンを固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
 
-組めたら、`build.sh` は HTML の出力にライセンスの文書を写す。
-プロジェクトの `LICENSE` を `build/html/LICENSE` に写し、`build/html/fonts/` があれば、プロジェクトの `fonts/LICENSE-*` をすべて `build/html/fonts/` に写す。
+組めたら、`build.sh` は、プロジェクトの `LICENSE` を HTML の出力の `build/html/LICENSE` に写す。
 二冊の `manifest.toml` は `[targets.html]` に `fonts = "embed"` を書くので（[ADR 0423](adr/0423-generic-font-families-for-html-and-epub.md)）、HTML の出力はフォントのファイルを `fonts/` にそのまま写す。
-フォントの文書を写すのは、その隣に SIL Open Font License 1.1 の全文を置くためである。
+フォントのライセンスの文書は、二冊の `style.toml` の `ja-license` と `latin-license` に書き、Golem がフォントの隣の `build/html/fonts/` に写す（「フォントのライセンスの文書」、[root ADR 0433](adr/0433-bundle-font-licenses-with-embedded-fonts.md)）。
+`build.sh` は、フォントのライセンスの文書を写さない。
 PDF には何も足さない。
 
 ### マニュアルの更新の検査
@@ -10250,7 +10308,7 @@ golem-driver の `ComplexFixtureSpec` が、二冊の `[diagnostics]` の表が�
 リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で、`GOLEM_MANUAL_TAG` にタグを渡して二つのマニュアルを組む。
 組んだ `golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz`、`golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` を、リリースのアセットと `SHA256SUMS` に加える。
 HTML の tar は `build/html` をそのまま固めたものである。
-そのため、HTML とフォントのほかに、マニュアルの `LICENSE`（CC0 1.0 の条文）と、`fonts/` のフォントのライセンスの文書（`LICENSE-*`）を含む。
+そのため、HTML とフォントのほかに、マニュアルの `LICENSE`（CC0 1.0 の条文）と、Golem が `fonts/` に写したフォントのライセンスの文書を含む。
 
 ## 開発順序
 
