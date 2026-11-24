@@ -326,6 +326,42 @@ def report (blocks free : Bool) (part parts : Nat) : String :=
     s!"{c} {capacity} [{" ".intercalate (items.map Item.name)}]\n" ++
       String.join (((if free then freeOutput else output) c capacity items).map fun p => s!"  {p}\n"))
 
+/-- `fitting` of Boundary.lean counts the free lines of the column for
+    lines with no footnote. -/
+theorem fitting_go (env : Env) (st : St) (u nl : Int) (ls : List Line) (h : ∀ x ∈ ls, x.notes = []) :
+    Boundary.fitting.go env st u nl ls = min ls.length (cap env st - u - nl).toNat := by
+  induction ls generalizing u with
+  | nil => simp [Boundary.fitting.go]
+  | cons x xs ih =>
+    have hx : x.notes = [] := h x (List.mem_cons_self _ _)
+    simp only [Boundary.fitting.go, hx, List.map, List.foldr]
+    have z : (nl + ((0 : Nat) : Int) + if nl = 0 ∧ (0 : Int) < ((0 : Nat) : Int) then env.separator else 0) = nl := by
+      simp
+    rw [z, ih (u + 1) (fun y m => h y (List.mem_cons_of_mem _ m))]
+    split
+    · have e := Int.toNat_of_nonneg (show 0 ≤ cap env st - (u + 1) - nl by omega)
+      have e2 := Int.toNat_of_nonneg (show 0 ≤ cap env st - u - nl by omega)
+      simp only [List.length]
+      omega
+    · have : (cap env st - u - nl).toNat = 0 := by
+        have hh : cap env st - u - nl ≤ 0 := by omega
+        generalize cap env st - u - nl = a at hh ⊢
+        cases a with
+        | ofNat k =>
+          have : k = 0 := by have := hh; simp only [Int.ofNat_eq_coe] at this; omega
+          subst this; rfl
+        | negSucc k => rfl
+      simp [this]
+
+/-- The `Env` of the check satisfies `Separator.PlainFitting`, the
+    hypothesis of `Separator.I3_separator_hold_together`. -/
+theorem boundary_plainFitting (capacity : Nat) : Separator.PlainFitting (Boundary.boundaryEnv capacity) := by
+  intro s ls h
+  show Boundary.fitting _ s ls = _
+  unfold Boundary.fitting
+  rw [fitting_go _ s _ _ ls h]
+  simp only [free, Boundary.boundaryEnv, Boundary.plainEnv, cap]
+
 end SeparatorBoundary
 
 -- check.sh evaluates the inputs in `SEPARATOR_PARTS` contiguous parts

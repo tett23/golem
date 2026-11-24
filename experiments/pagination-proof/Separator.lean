@@ -12,6 +12,12 @@ reports nothing of that need-lines.  `separatorHoldErrors` reads the
 pages and returns G07134 for each chain of visible separators whose lines
 and the first line of the block after them are not in one column.
 
+`I3_separator_hold_together` follows the steps of `paginate` from a
+state with nothing waiting through a separator, its keep-with-next and
+the paragraph after it, and shows the empty-column rule of root ADR 0398
+on them: when the separator's line and the first part of the paragraph
+fit a column of the whole capacity, the two lines end in one column.
+
 The units other than the separators, the blank lines and the breaks are
 left abstract: each carries its flows, whether it starts a block, passes
 or resets a chain of separators, and the id of its first line.  The
@@ -870,6 +876,555 @@ theorem I3_separator_error_single (b a : Nat) (kp : Keep) (l : Line) (mids : Lis
   · subst e; simp [splitAcross, List.filterMap, hp, hq, List.any]
   · have e' : q ≠ p := fun h => e h.symm
     simp [splitAcross, List.filterMap, hp, hq, List.any, e, e']
+
+/-! ## The empty-column rule -/
+
+/-- The ids the slots of a column hold. -/
+def slotsIds (ss : List (Int × Slot)) : List Nat := ss.bind (fun s => slotIds s.2)
+
+theorem slotsIds_append (a b : List (Int × Slot)) : slotsIds (a ++ b) = slotsIds a ++ slotsIds b := by
+  simp [slotsIds, List.append_bind]
+
+/-- The ids `a` and `b` are in one column: the current one, or one closed. -/
+def Together (st : St) (a b : Nat) : Prop :=
+  (a ∈ slotsIds st.slots ∧ b ∈ slotsIds st.slots) ∨ ∃ p ∈ st.done, a ∈ slotsIds p.slots ∧ b ∈ slotsIds p.slots
+
+/-- The state a hold starts from: nothing waits (no break, need-lines,
+    blank line, figure or footnote), no box is open, no `FAdjustLines`
+    applies, the set of columns starts at the top of the page with no
+    footnote lines kept above it, and a column with no footnote has no
+    footnote lines. -/
+structure Clear (st : St) : Prop where
+  breaks : st.breaks = []
+  need : st.need = none
+  blank : st.blank = []
+  box : st.box = none
+  adjust : st.adjust = 0
+  deferred : st.deferred = []
+  pending : st.pending = []
+  first : st.firstLine = 0
+  reserved : st.reserved = 0
+  noteLines : st.notes = [] → st.noteLines = 0
+
+theorem closePage_keeps (env : Env) (st : St) :
+    (closePage env st).breaks = st.breaks ∧ (closePage env st).need = st.need ∧ (closePage env st).blank = st.blank ∧
+      (closePage env st).box = st.box ∧ (closePage env st).deferred = st.deferred := by
+  unfold closePage; split <;> exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+theorem closePage_done (env : Env) (st : St) :
+    (∃ new, (closePage env st).done = new ++ st.done) ∧
+      (st.slots ≠ [] → ∃ p ∈ (closePage env st).done, p.slots = st.slots) := by
+  unfold closePage
+  split
+  · rename_i h
+    refine ⟨⟨[], rfl⟩, fun ne => absurd (isEmpty_nil _ h.1) ne⟩
+  · exact ⟨⟨[_], rfl⟩, fun _ => ⟨_, List.mem_cons_self _ _, rfl⟩⟩
+
+theorem openBox_none (st : St) (h : st.box = none) : openBox st = st := by
+  unfold openBox; rw [h]
+
+theorem advanceFresh_keeps (env : Env) (b : Bool) (st : St) :
+    (advanceFresh env b st).breaks = st.breaks ∧ (advanceFresh env b st).need = st.need ∧
+      (advanceFresh env b st).blank = st.blank ∧ (advanceFresh env b st).box = st.box ∧
+      (advanceFresh env b st).deferred = st.deferred := by
+  obtain ⟨k1, k2, k3, k4, k5⟩ := closePage_keeps env st
+  unfold advanceFresh; dsimp only
+  split <;> exact ⟨k1, k2, k3, k4, k5⟩
+
+theorem advanceFresh_done (env : Env) (b : Bool) (st : St) :
+    (∃ new, (advanceFresh env b st).done = new ++ st.done) ∧
+      (st.slots ≠ [] → ∃ p ∈ (advanceFresh env b st).done, p.slots = st.slots) := by
+  obtain ⟨⟨new, d1⟩, d2⟩ := closePage_done env st
+  unfold advanceFresh; dsimp only
+  split
+  · refine ⟨⟨⟨st.page, 0, true, [], [], []⟩ :: new, by rw [d1]; rfl⟩, fun ne => ?_⟩
+    obtain ⟨p, m, h⟩ := d2 ne; exact ⟨p, List.mem_cons_of_mem _ m, h⟩
+  · exact ⟨⟨new, d1⟩, d2⟩
+
+theorem nextColumn_eq (env : Env) (st : St) (c : Clear st) :
+    nextColumn env st = { advanceFresh env (decide (st.columns ≤ st.column + 1)) st with deferred := [] } := by
+  have hb : advanceTurned (decide (st.columns ≤ st.column + 1)) st = ([], []) := by
+    unfold advanceTurned; split <;> simp [c.deferred, spanTurned]
+  unfold nextColumn advance advanceIn
+  rw [hb]
+  simp only [openColumn, c.pending, List.foldl, placeDeferred]
+  apply openBox_none
+  exact (advanceFresh_keeps env _ st).2.2.2.1.trans c.box
+
+/-- Going on to the next column from a state with nothing waiting opens
+    an empty column of the whole capacity, closing the column left. -/
+theorem nextColumn_clear (env : Env) (st : St) (c : Clear st) :
+    Clear (nextColumn env st) ∧ (nextColumn env st).used = 0 ∧ (nextColumn env st).noteLines = 0 ∧
+      (nextColumn env st).slots = [] ∧ (nextColumn env st).notes = [] ∧
+      (∃ new, (nextColumn env st).done = new ++ st.done) ∧
+      (st.slots ≠ [] → ∃ p ∈ (nextColumn env st).done, p.slots = st.slots) := by
+  obtain ⟨k1, k2, k3, k4, _⟩ := advanceFresh_keeps env (decide (st.columns ≤ st.column + 1)) st
+  obtain ⟨d1, d2⟩ := advanceFresh_done env (decide (st.columns ≤ st.column + 1)) st
+  rw [nextColumn_eq env st c]
+  have u : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).used = 0 := by
+    unfold advanceFresh; dsimp only; split <;> simp [top, c.first]
+  have nl : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).noteLines = 0 := by
+    unfold advanceFresh; dsimp only; split <;> simp [c.reserved]
+  have f : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).firstLine = 0 := by
+    unfold advanceFresh; dsimp only; split <;> simp [c.first]
+  have r : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).reserved = 0 := by
+    unfold advanceFresh; dsimp only; split <;> simp [c.reserved]
+  have a : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).adjust = 0 := by
+    unfold advanceFresh; dsimp only
+  have sl : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).slots = [] := by
+    unfold advanceFresh; dsimp only
+  have no : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).notes = [] := by
+    unfold advanceFresh; dsimp only
+  have pe : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).pending = [] := by
+    unfold advanceFresh; dsimp only
+  exact ⟨⟨k1.trans c.breaks, k2.trans c.need, k3.trans c.blank, k4.trans c.box, a, rfl, pe, f, r, fun _ => nl⟩,
+    u, nl, sl, no, d1, d2⟩
+
+/-- A line with no footnote takes one line of the column and nothing else. -/
+theorem putLine_plain (env : Env) (st : St) (l : Line) (h : l.notes = []) :
+    putLine env st l = { st with slots := st.slots ++ [(st.used, .line l.id)], used := st.used + 1, headingOnly := false } := by
+  cases st
+  simp [putLine, putLineKeeping, h, splitNotes, partsLines]
+
+theorem clear_putLine (env : Env) (st : St) (l : Line) (h : l.notes = []) (c : Clear st) : Clear (putLine env st l) := by
+  rw [putLine_plain env st l h]
+  exact ⟨c.breaks, c.need, c.blank, c.box, c.adjust, c.deferred, c.pending, c.first, c.reserved, c.noteLines⟩
+
+theorem clear_addUnmet (u : Unmet) (st : St) (c : Clear st) : Clear (addUnmet u st) :=
+  ⟨c.breaks, c.need, c.blank, c.box, c.adjust, c.deferred, c.pending, c.first, c.reserved, c.noteLines⟩
+
+theorem clear_addUnmets (us : List Unmet) (st : St) (c : Clear st) : Clear (us.foldl (fun s u => addUnmet u s) st) := by
+  induction us generalizing st with
+  | nil => exact c
+  | cons u _ ih => exact ih _ (clear_addUnmet u st c)
+
+theorem addUnmets_slots (us : List Unmet) (st : St) :
+    (us.foldl (fun s u => addUnmet u s) st).slots = st.slots ∧ (us.foldl (fun s u => addUnmet u s) st).done = st.done ∧
+      (us.foldl (fun s u => addUnmet u s) st).used = st.used ∧
+      (us.foldl (fun s u => addUnmet u s) st).noteLines = st.noteLines := by
+  induction us generalizing st with
+  | nil => exact ⟨rfl, rfl, rfl, rfl⟩
+  | cons u _ ih => exact ih _
+
+theorem putLines_plain (env : Env) (ls : List Line) (hl : ∀ x ∈ ls, x.notes = []) (st : St) (c : Clear st) :
+    Clear (ls.foldl (putLine env) st) ∧ (ls.foldl (putLine env) st).done = st.done ∧
+      (ls.foldl (putLine env) st).noteLines = st.noteLines ∧
+      (ls.foldl (putLine env) st).used = st.used + ls.length ∧
+      ∃ pos : List Int, (ls.foldl (putLine env) st).slots = st.slots ++ (pos.zip (ls.map (fun x => Slot.line x.id))) ∧
+        pos.length = ls.length := by
+  induction ls generalizing st with
+  | nil => exact ⟨c, rfl, rfl, by simp, [], by simp, rfl⟩
+  | cons x xs ih =>
+    have hx := hl x (List.mem_cons_self _ _)
+    obtain ⟨c', d, nl, u, pos, e, len⟩ := ih (fun y m => hl y (List.mem_cons_of_mem _ m)) _ (clear_putLine env st x hx c)
+    simp only [List.foldl]
+    rw [putLine_plain env st x hx] at c' d nl u e ⊢
+    refine ⟨c', d, nl, by rw [u]; simp; omega, st.used :: pos, ?_, by simp [len]⟩
+    rw [e]; simp
+
+/-- `fitting` of Decide.hs on lines with no footnote: the lines the free
+    lines of the column take, at most all of them. -/
+def PlainFitting (env : Env) : Prop :=
+  ∀ s (ls : List Line), (∀ x ∈ ls, x.notes = []) → env.fitting s ls = min ls.length (free env s).toNat
+
+/-- The lines of a paragraph that fit the free lines are put one after the
+    other in the column. -/
+theorem placeLinesGo_all (env : Env) (hfit : PlainFitting env) (pid : Nat) (kp : Keep) (s : St) (isStart : Bool)
+    (ls : List Line) (hl : ∀ x ∈ ls, x.notes = []) (ha : s.adjust = 0) (hf : (ls.length : Int) ≤ free env s) :
+    placeLinesGo env pid kp s isStart ls = ls.foldl (putLine env) s := by
+  match ls with
+  | [] => simp [placeLinesGo]
+  | l :: ls' =>
+    have k0 : env.fitting s (l :: ls') = (l :: ls').length := by
+      rw [hfit s _ hl]; apply Nat.min_eq_left; have e := Int.toNat_of_nonneg (show 0 ≤ free env s by omega); omega
+    have h1 : ¬(s.adjust < 0 ∧ isEmpty s = true ∧ env.roomForLine s (l :: ls') = false) := by
+      rw [ha]; intro h; exact absurd h.1 (by decide)
+    have h2 : ¬(kp.all = true ∧ isStart = true ∧ env.fitting s (l :: ls') < (l :: ls').length) := by
+      rw [k0]; intro h; exact absurd h.2.2 (Nat.lt_irrefl _)
+    have h4 : (l :: ls').length ≤ (lineCount env kp s isStart (l :: ls')).1 := by
+      simp only [lineCount, k0, splitAtBreak, Nat.le_refl, ite_true]
+      split
+      · rw [Nat.min_self]; exact Nat.le_max_right _ _
+      · exact Nat.le_refl _
+    unfold placeLinesGo
+    rw [dif_neg h1, dif_neg h2, dif_pos h4]
+
+/-- A paragraph of one line with no footnote is put at the end of a
+    column, from the state given or from a later one with nothing waiting. -/
+theorem placeLinesGo_one (env : Env) (pid : Nat) (kp : Keep) (s : St) (isStart : Bool) (l : Line)
+    (hl : l.notes = []) (c : Clear s) :
+    ∃ s', Clear s' ∧ placeLinesGo env pid kp s isStart [l] = putLine env s' l := by
+  by_cases h1 : s.adjust < 0 ∧ isEmpty s = true ∧ env.roomForLine s [l] = false
+  · exact absurd h1.1 (by rw [c.adjust]; decide)
+  · by_cases h2 : kp.all = true ∧ isStart = true ∧ env.fitting s [l] < [l].length
+    · by_cases h3 : isEmpty s = true ∨ s.headingOnly = true
+      · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_pos h3]
+        exact placeLinesGo_one env pid { kp with all := false } (addUnmet (.splitKept pid) s) isStart l hl
+          (clear_addUnmet _ s c)
+      · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_neg h3]
+        exact placeLinesGo_one env pid kp (nextColumn env s) isStart l hl (nextColumn_clear env s c).1
+    · by_cases h4 : [l].length ≤ (lineCount env kp s isStart [l]).1
+      · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2, dif_pos h4]
+        exact ⟨s, c, rfl⟩
+      · have k0 : (lineCount env kp s isStart [l]).1 = 0 := by simp at h4; omega
+        unfold placeLinesGo; rw [dif_neg h1, dif_neg h2, dif_neg h4]
+        simp only [k0, List.take, List.foldl, List.drop]
+        exact placeLinesGo_one env pid kp _ _ l hl
+          (nextColumn_clear env _ (clear_addUnmets _ s c)).1
+termination_by (allRank kp, rank env s)
+decreasing_by
+  all_goals simp_wf
+  · simp only [allRank, h2.1]; exact Prod.Lex.left _ _ (by decide)
+  · have : isEmpty s = false := by
+      cases e : isEmpty s
+      · rfl
+      · exact absurd (Or.inl e) h3
+    exact Prod.Lex.right _ (I4_nextColumn_rank env s (Or.inl this))
+  · have z := lineCount_zero env kp s isStart [l] k0
+    simp only [shortParts, z.1]
+    exact Prod.Lex.right _ (I4_nextColumn_rank env s (Or.inl z.2))
+
+theorem mem_take' {α : Type} {l : List α} {k : Nat} {x : α} (m : x ∈ l.take k) : x ∈ l := by
+  rw [← List.take_append_drop k l]; exact mem_app.mpr (Or.inl m)
+
+theorem mem_drop' {α : Type} {l : List α} {k : Nat} {x : α} (m : x ∈ l.drop k) : x ∈ l := by
+  rw [← List.take_append_drop k l]; exact mem_app.mpr (Or.inr m)
+
+/-- The lines placed so far stay on the pages closed. -/
+theorem placeLinesGo_done (env : Env) (pid : Nat) (kp : Keep) (s : St) (isStart : Bool) (ls : List Line)
+    (hl : ∀ x ∈ ls, x.notes = []) (c : Clear s) :
+    ∃ new, (placeLinesGo env pid kp s isStart ls).done = new ++ s.done := by
+  match ls with
+  | [] => exact ⟨[], by simp [placeLinesGo]⟩
+  | l :: ls' =>
+    by_cases h1 : s.adjust < 0 ∧ isEmpty s = true ∧ env.roomForLine s (l :: ls') = false
+    · exact absurd h1.1 (by rw [c.adjust]; decide)
+    · by_cases h2 : kp.all = true ∧ isStart = true ∧ env.fitting s (l :: ls') < (l :: ls').length
+      · by_cases h3 : isEmpty s = true ∨ s.headingOnly = true
+        · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_pos h3]
+          exact placeLinesGo_done env pid { kp with all := false } (addUnmet (.splitKept pid) s) isStart _ hl
+            (clear_addUnmet _ s c)
+        · unfold placeLinesGo; rw [dif_neg h1, dif_pos h2, dif_neg h3]
+          obtain ⟨n1, e1⟩ := (nextColumn_clear env s c).2.2.2.2.2.1
+          obtain ⟨n2, e2⟩ := placeLinesGo_done env pid kp (nextColumn env s) isStart _ hl (nextColumn_clear env s c).1
+          exact ⟨n2 ++ n1, by rw [e2, e1, List.append_assoc]⟩
+      · by_cases h4 : (l :: ls').length ≤ (lineCount env kp s isStart (l :: ls')).1
+        · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2, dif_pos h4]
+          exact ⟨[], (putLines_plain env _ hl s c).2.1⟩
+        · unfold placeLinesGo; rw [dif_neg h1, dif_neg h2, dif_neg h4]
+          have ht : ∀ x ∈ (l :: ls').take (lineCount env kp s isStart (l :: ls')).1, x.notes = [] :=
+            fun x m => hl x (mem_take' m)
+          have hd : ∀ x ∈ (l :: ls').drop (lineCount env kp s isStart (l :: ls')).1, x.notes = [] :=
+            fun x m => hl x (mem_drop' m)
+          have p := putLines_plain env _ ht s c
+          have c1 := clear_addUnmets (shortParts kp pid (lineCount env kp s isStart (l :: ls')).2 isStart
+            (l :: ls').length (lineCount env kp s isStart (l :: ls')).1) _ p.1
+          have a1 := addUnmets_slots (shortParts kp pid (lineCount env kp s isStart (l :: ls')).2 isStart
+            (l :: ls').length (lineCount env kp s isStart (l :: ls')).1) (((l :: ls').take
+              (lineCount env kp s isStart (l :: ls')).1).foldl (putLine env) s)
+          obtain ⟨n1, e1⟩ := (nextColumn_clear env _ c1).2.2.2.2.2.1
+          obtain ⟨n2, e2⟩ := placeLinesGo_done env pid kp _ (isStart && (lineCount env kp s isStart (l :: ls')).1 == 0) _ hd
+            (nextColumn_clear env _ c1).1
+          exact ⟨n2 ++ n1, by rw [e2, e1, a1.2.1, p.2.1, List.append_assoc]⟩
+termination_by (ls.length, allRank kp, rank env s)
+decreasing_by
+  all_goals simp_wf
+  · simp only [allRank, h2.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ (by decide))
+  · have : isEmpty s = false := by
+      cases e : isEmpty s
+      · rfl
+      · exact absurd (Or.inl e) h3
+    exact linesLt_rank (I4_nextColumn_rank env s (Or.inl this))
+  · by_cases k0 : (lineCount env kp s isStart (l :: ls')).1 = 0
+    · have z := lineCount_zero env kp s isStart (l :: ls') k0
+      simp only [k0, List.take, List.foldl, List.drop, shortParts, z.1]
+      rw [Nat.sub_zero]
+      exact linesLt_rank (I4_nextColumn_rank env s (Or.inl z.2))
+    · apply Prod.Lex.left
+      change ¬ List.length (l :: ls') ≤ (lineCount env kp s isStart (l :: ls')).1 at h4
+      simp only [List.length] at h4
+      omega
+
+/-- A first part `p` of a paragraph of `n` lines (`firstPart` of
+    Decide.hs) that fits leaves every larger part that fits, short of
+    the whole, a split of one line or more and no more than it. -/
+theorem split_pos (kp : Keep) (n p k : Nat) (hp : 1 ≤ p) (hpk : p ≤ k) (hk : k < n)
+    (hfix : splitAtBreak kp true n p = p) :
+    1 ≤ splitAtBreak kp true n k ∧ splitAtBreak kp true n k ≤ k := by
+  have np : ¬ n ≤ p := by omega
+  have nk : ¬ n ≤ k := by omega
+  unfold splitAtBreak at hfix ⊢
+  rw [if_neg np] at hfix
+  rw [if_neg nk]
+  cases ha : kp.all
+  · simp only [ha] at hfix ⊢
+    by_cases a : n - p < kp.last <;> by_cases b : n - k < kp.last <;> simp only [a, b, ite_true, ite_false] at hfix ⊢ <;>
+      (split at hfix <;> split <;> simp_all <;> omega)
+  · simp only [ha, ite_true] at hfix; omega
+
+theorem zip_first (pos : List Int) (l0 : Line) (ls : List Line) (h : pos.length = (l0 :: ls).length) :
+    l0.id ∈ slotsIds (pos.zip ((l0 :: ls).map (fun x => Slot.line x.id))) := by
+  cases pos with
+  | nil => simp at h
+  | cons q qs => simp [slotsIds, List.zip, List.zipWith, slotIds]
+
+/-- A paragraph whose first part `p` fits the free lines puts its first
+    line after the slots of the column, in the column or in one closed
+    with them. -/
+theorem placeLinesGo_first (env : Env) (hfit : PlainFitting env) (kq : Keep) (s : St) (l0 : Line) (ls : List Line)
+    (hl : ∀ x ∈ l0 :: ls, x.notes = []) (c : Clear s) (p : Nat) (hp : 1 ≤ p) (hf : (p : Int) ≤ free env s)
+    (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p) :
+    ∃ more, l0.id ∈ slotsIds more ∧
+      ((placeLinesGo env l0.id kq s true (l0 :: ls)).slots = s.slots ++ more ∨
+        ∃ q ∈ (placeLinesGo env l0.id kq s true (l0 :: ls)).done, q.slots = s.slots ++ more) := by
+  by_cases all : ((l0 :: ls).length : Int) ≤ free env s
+  · rw [placeLinesGo_all env hfit l0.id kq s true _ hl c.adjust all]
+    obtain ⟨_, _, _, _, pos, e, len⟩ := putLines_plain env _ hl s c
+    exact ⟨_, zip_first pos l0 ls len, Or.inl e⟩
+  · have e0 := Int.toNat_of_nonneg (show 0 ≤ free env s by omega)
+    have k0 : env.fitting s (l0 :: ls) = (free env s).toNat := by
+      rw [hfit s _ hl]; apply Nat.min_eq_right; omega
+    have pk : p ≤ (free env s).toNat := by omega
+    have kn : (free env s).toNat < (l0 :: ls).length := by omega
+    have fix : splitAtBreak kq true (l0 :: ls).length p = p := by
+      rcases hpart with h | h
+      · omega
+      · exact h
+    have sp := split_pos kq _ p _ hp pk kn fix
+    have notAll : kq.all = false := by
+      cases e : kq.all
+      · rfl
+      · unfold splitAtBreak at fix; rw [if_neg (by omega), e] at fix; simp at fix; omega
+    have h1 : ¬(s.adjust < 0 ∧ isEmpty s = true ∧ env.roomForLine s (l0 :: ls) = false) := by
+      rw [c.adjust]; intro h; exact absurd h.1 (by decide)
+    have h2 : ¬(kq.all = true ∧ true = true ∧ env.fitting s (l0 :: ls) < (l0 :: ls).length) := by
+      rw [notAll]; intro h; cases h.1
+    have lc : lineCount env kq s true (l0 :: ls) =
+        (splitAtBreak kq true (l0 :: ls).length (free env s).toNat, false) := by
+      simp only [lineCount, k0]
+      have : (splitAtBreak kq true (l0 :: ls).length (free env s).toNat == 0) = false := by
+        cases e : (splitAtBreak kq true (l0 :: ls).length (free env s).toNat == 0)
+        · rfl
+        · exact absurd ((beq_iff_eq _ _).mp e) (by have := sp.1; omega)
+      rw [this]; rfl
+    have h4 : ¬(l0 :: ls).length ≤ (lineCount env kq s true (l0 :: ls)).1 := by rw [lc]; omega
+    unfold placeLinesGo; rw [dif_neg h1, dif_neg h2, dif_neg h4]
+    rw [lc]
+    have sh : ∀ a b, shortParts kq l0.id false true a b = [] := by intro a b; simp [shortParts]
+    rw [sh]
+    simp only [List.foldl]
+    generalize hk : splitAtBreak kq true (l0 :: ls).length (free env s).toNat = k at sp ⊢
+    obtain ⟨k1, _⟩ := sp
+    have ht : ∀ x ∈ (l0 :: ls).take k, x.notes = [] := fun x m => hl x (mem_take' m)
+    have hd : ∀ x ∈ (l0 :: ls).drop k, x.notes = [] := fun x m => hl x (mem_drop' m)
+    have tk : (l0 :: ls).take k = l0 :: ls.take (k - 1) := by
+      match k, k1 with
+      | 0, h => exact absurd h (by decide)
+      | k + 1, _ => simp
+    obtain ⟨c1, _, _, _, pos, e, len⟩ := putLines_plain env _ ht s c
+    rw [tk] at len
+    have ne : (((l0 :: ls).take k).foldl (putLine env) s).slots ≠ [] := by
+      rw [e]; cases pos with
+      | nil => simp at len
+      | cons q qs => rw [tk]; simp [List.zip, List.zipWith]
+    have nc := nextColumn_clear env _ c1
+    obtain ⟨q, mq, eq⟩ := nc.2.2.2.2.2.2 ne
+    obtain ⟨n2, e2⟩ := placeLinesGo_done env l0.id kq _ (true && k == 0) _ hd nc.1
+    refine ⟨_, zip_first pos l0 (ls.take (k - 1)) len, Or.inr ⟨q, ?_, ?_⟩⟩
+    · rw [e2]; exact mem_app.mpr (Or.inr mq)
+    · rw [eq, e, tk]
+
+theorem applyBreaks_nil (env : Env) (st : St) (h : st.breaks = []) : applyBreaks env st = st := by
+  unfold applyBreaks; rw [h]; cases st; simp_all
+
+/-- The step of a paragraph, when no break, need-lines or blank line waits. -/
+theorem step_paragraph (env : Env) (st : St) (kp : Keep) (ls : List Line) (rest : List Flow) (c : Clear st) :
+    step env st (.paragraph kp ls) rest =
+      { checkNoBreak (placeFlow env { st with needAt := none } (.paragraph kp ls) rest) with
+        seen := true, lastDeferred := false, spaces := [] } := by
+  unfold step
+  simp only [applyBreaks_nil env st c.breaks, waitsBehind]
+  have nb : needBefore env st (.paragraph kp ls :: rest) = { st with needAt := none } := by
+    unfold needBefore; split <;> simp_all [applyNeed, c.need]
+  rw [nb]
+  have pb : placeBlank env { st with needAt := none } (.paragraph kp ls) rest = { st with needAt := none } := by
+    unfold placeBlank; simp [c.blank]
+  rw [pb]
+  simp
+
+theorem placeFlow_none (env : Env) (st : St) (kp : Keep) (ls : List Line) (rest : List Flow)
+    (h : env.keptNeed rest = none) : placeFlow env st (.paragraph kp ls) rest = placeLines env kp st true ls := by
+  unfold placeFlow; rw [h]
+  show WholePagination.place env st _ rest = _
+  unfold WholePagination.place; rfl
+
+theorem placeFlow_some (env : Env) (st : St) (kp : Keep) (ls : List Line) (rest : List Flow) (n : Need)
+    (h : env.keptNeed rest = some n) :
+    placeFlow env st (.paragraph kp ls) rest = placeKept env (previousKeep env rest kp) (placeLines env kp) st true ls n := by
+  unfold placeFlow; rw [h]
+
+theorem needIn_grid (env : Env) (st : St) (n : Nat) : needIn env st noNeed ⟨n, 0⟩ = n := by
+  simp [needIn, noNeed]
+
+theorem free_putLine (env : Env) (st : St) (l : Line) (h : l.notes = []) :
+    free env (putLine env st l) = free env st - 1 := by
+  rw [putLine_plain env st l h]; simp only [free, cap, boxAfter]; omega
+
+/-- The separator's line, kept with the first part of `n` lines of what
+    follows it (`placeKept` of Paginate.hs), ends a column with `n` free
+    lines left when a column of the whole capacity holds the line and
+    those `n` lines. -/
+theorem separator_place (env : Env) (hfit : PlainFitting env) (st : St) (kp : Keep) (l : Line) (rest : List Flow)
+    (n : Nat) (hl : l.notes = []) (c : Clear st) (hlast : 1 ≤ kp.last) (hhold : 1 + (n : Int) ≤ env.capacity) :
+    ∃ s', Clear s' ∧
+      placeKept env (previousKeep env rest kp) (placeLines env kp) st true [l] ⟨n, 0⟩ = putLine env s' l ∧
+      (n : Int) ≤ free env (putLine env s' l) := by
+  have cut : keptCut (previousKeep env rest kp) 1 = 1 := by
+    have : 1 ≤ (previousKeep env rest kp).last := by
+      unfold previousKeep; split
+      · exact Nat.le_trans hlast (Nat.le_max_left _ _)
+      · exact hlast
+    unfold keptCut; rw [if_pos (Or.inr (Or.inl this))]
+  have hl1 : ∀ x ∈ [l], x.notes = [] := fun x m => by rw [mem_one m]; exact hl
+  -- the line put in a column of the whole capacity
+  have fresh : ∀ s, Clear s → s.used = 0 → s.noteLines = 0 →
+      placeLines env kp s true [l] = putLine env s l ∧ (n : Int) ≤ free env (putLine env s l) := by
+    intro s cs u nl
+    have fs : free env s = env.capacity := by simp only [free, cap, boxAfter, cs.box, cs.adjust, u, nl]; omega
+    refine ⟨?_, ?_⟩
+    · show placeLinesGo env l.id kp s true [l] = _
+      rw [placeLinesGo_all env hfit l.id kp s true [l] hl1 cs.adjust (by simp only [List.length]; omega)]; rfl
+    · rw [free_putLine env s l hl, fs]; omega
+  unfold placeKept
+  have one : [l].length = 1 := rfl
+  simp only [one, cut, Nat.sub_self, List.take_zero, List.drop_zero]
+  have stA : placeLines env kp st true [] = st := rfl
+  rw [stA]
+  simp only [needIn_grid, Bool.and_true, List.isEmpty]
+  obtain ⟨s', cs', e'⟩ := placeLinesGo_one env l.id kp st true l hl c
+  have e1 : placeLines env kp st true [l] = putLine env s' l := e'
+  rw [e1]
+  by_cases f1 : (n : Int) ≤ free env (putLine env s' l)
+  · rw [if_pos f1]; exact ⟨s', cs', rfl, f1⟩
+  · rw [if_neg f1, if_neg (fun h => f1 h.2.2)]
+    by_cases em : isEmpty st = true
+    · exfalso
+      have u : st.used = 0 := by
+        simp only [isEmpty, Bool.and_eq_true, Bool.or_eq_true, boxTop, c.box, Bool.false_and, or_false] at em
+        have := em.2; simp [top, c.first] at this; exact this
+      have nl : st.notes = [] := by
+        simp only [isEmpty, Bool.and_eq_true] at em; exact isEmpty_nil _ em.1
+      obtain ⟨a, b⟩ := fresh st c u (c.noteLines nl)
+      rw [← e1, a] at f1; exact f1 b
+    · rw [if_neg em]
+      have nc := nextColumn_clear env st c
+      obtain ⟨a, b⟩ := fresh (nextColumn env st) nc.1 nc.2.1 nc.2.2.1
+      exact ⟨nextColumn env st, nc.1, a, b⟩
+
+/-- What the empty-column rule reads of a state. -/
+def View (st : St) :=
+  (st.slots, st.done, st.used, st.noteLines, st.notes, st.breaks, st.need, st.blank, st.box, st.adjust,
+    st.deferred, st.pending, st.firstLine, st.reserved)
+
+theorem view_clear {a b : St} (v : View a = View b) (c : Clear a) : Clear b := by
+  simp only [View, Prod.mk.injEq] at v
+  obtain ⟨_, _, _, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14⟩ := v
+  exact ⟨e6 ▸ c.breaks, e7 ▸ c.need, e8 ▸ c.blank, e9 ▸ c.box, e10 ▸ c.adjust, e11 ▸ c.deferred, e12 ▸ c.pending,
+    e13 ▸ c.first, e14 ▸ c.reserved, fun h => e4 ▸ c.noteLines (e5 ▸ h)⟩
+
+theorem view_free (env : Env) {a b : St} (v : View a = View b) : free env a = free env b := by
+  simp only [View, Prod.mk.injEq] at v
+  obtain ⟨_, _, e3, e4, _, _, _, _, e9, e10, _⟩ := v
+  simp only [free, cap, boxAfter, e3, e4, e9, e10]
+
+theorem view_checkNoBreak (st : St) : View (checkNoBreak st) = View st := by
+  rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e] <;> rfl
+
+theorem view_keepNext (env : Env) (st : St) (n : Nat) (rest : List Flow) :
+    View (step env st (.keepNext n) rest) = View st := by
+  unfold step
+  split
+  · rfl
+  · obtain ⟨w, e⟩ := waitFor_eq .keepNext (env.nextFirst n rest) st; rw [e]; rfl
+
+/-- Root ADR 0352 invariant 3 on the empty-column rule of root ADR 0398
+    (docs/specifications.md:1873), in the grid mode: a visible separator
+    with no space after it, its keep-with-next of one line and the
+    paragraph after it put the separator's line and the paragraph's first
+    line in one column, when the separator's line and the first part of
+    the paragraph that its keep asks for (`n` lines, `keptNeed` of
+    Decide.hs) fit a column of the whole capacity.
+
+    The hypotheses: nothing waits before the separator and the set of
+    columns has no footnote lines kept above it (`Clear`); the lines have
+    no footnote and `fitting` counts the free lines (`PlainFitting`); the
+    separator keeps one last line or more (`keep-last-lines` is 1 or more,
+    docs/specifications.md:3100); `p`, a first part of the paragraph (its
+    whole or a split `splitAtBreak` leaves as it is, as `firstPart` of
+    Decide.hs gives), is one line or more and no more than `n`; and no
+    no-break or keep-with-next follows the paragraph (`keptNeed` of what
+    follows it is none). README.md shows an input where a no-break after
+    the paragraph splits the hold. -/
+theorem I3_separator_hold_together (env : Env) (hfit : PlainFitting env) (st : St) (c : Clear st)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p : Nat)
+    (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
+    (hkept : env.keptNeed (.keepNext 1 :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hnone : env.keptNeed rest = none) (hhold : 1 + (n : Int) ≤ env.capacity)
+    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p) :
+    let s1 := step env st (.paragraph kp [l]) (.keepNext 1 :: .paragraph kq (l0 :: ls) :: rest)
+    let s2 := step env s1 (.keepNext 1) (.paragraph kq (l0 :: ls) :: rest)
+    let s3 := step env s2 (.paragraph kq (l0 :: ls)) rest
+    placeAll env st (.paragraph kp [l] :: .keepNext 1 :: .paragraph kq (l0 :: ls) :: rest) = placeAll env s3 rest ∧
+      Together s3 l.id l0.id := by
+  intro s1 s2 s3
+  refine ⟨rfl, ?_⟩
+  have hl0 : l.notes = [] := hl l (List.mem_cons_self _ _)
+  have hb : ∀ x ∈ l0 :: ls, x.notes = [] := fun x m => hl x (List.mem_cons_of_mem _ m)
+  -- the separator
+  obtain ⟨s', cs', e', fr⟩ := separator_place env hfit { st with needAt := none } kp l
+    (.keepNext 1 :: .paragraph kq (l0 :: ls) :: rest) n hl0 (view_clear (a := st) rfl c) hlast hhold
+  have v1 : View s1 = View (putLine env s' l) := by
+    show View (step env st _ _) = _
+    rw [step_paragraph env st kp [l] _ c, placeFlow_some env _ kp [l] _ _ hkept, e']
+    exact view_checkNoBreak _
+  have m1 : l.id ∈ slotsIds s1.slots := by
+    have : s1.slots = (putLine env s' l).slots := congrArg (·.1) v1
+    rw [this, putLine_plain env s' l hl0, slotsIds_append]
+    exact mem_app.mpr (Or.inr (by simp [slotsIds, slotIds]))
+  have c1 : Clear s1 := view_clear v1.symm (clear_putLine env s' l hl0 cs')
+  have f1 : (n : Int) ≤ free env s1 := by rw [view_free env v1]; exact fr
+  -- the keep-with-next
+  have v2 : View s2 = View s1 := view_keepNext env s1 1 _
+  have c2 : Clear s2 := view_clear v2.symm c1
+  have f2 : (p : Int) ≤ free env s2 := by rw [view_free env v2]; omega
+  have m2 : l.id ∈ slotsIds s2.slots := by
+    have : s2.slots = s1.slots := congrArg (·.1) v2
+    rw [this]; exact m1
+  -- the paragraph
+  have e3 : s3 = { checkNoBreak (placeLinesGo env l0.id kq { s2 with needAt := none } true (l0 :: ls)) with
+      seen := true, lastDeferred := false, spaces := [] } := by
+    show step env s2 _ rest = _
+    rw [step_paragraph env s2 kq _ rest c2, placeFlow_none env _ kq _ rest hnone]; rfl
+  obtain ⟨more, mm, h⟩ := placeLinesGo_first env hfit kq { s2 with needAt := none } l0 ls hb (view_clear (a := s2) rfl c2) p hp f2 hpart
+  have v3 : View s3 = View (placeLinesGo env l0.id kq { s2 with needAt := none } true (l0 :: ls)) := by
+    rw [e3]; exact view_checkNoBreak _
+  have sl : s3.slots = (placeLinesGo env l0.id kq { s2 with needAt := none } true (l0 :: ls)).slots :=
+    congrArg (·.1) v3
+  have dn : s3.done = (placeLinesGo env l0.id kq { s2 with needAt := none } true (l0 :: ls)).done :=
+    congrArg (·.2.1) v3
+  have both : l.id ∈ slotsIds (s2.slots ++ more) ∧ l0.id ∈ slotsIds (s2.slots ++ more) := by
+    rw [slotsIds_append]; exact ⟨mem_app.mpr (Or.inl m2), mem_app.mpr (Or.inr mm)⟩
+  rcases h with h | ⟨q, mq, hq⟩
+  · left; rw [sl, h]; exact both
+  · right; refine ⟨q, by rw [dn]; exact mq, ?_⟩
+    rw [hq]; exact both
+
+/-- The flows `separatorFlows` makes of a visible separator with no space
+    before or after it and the paragraph after it are the separator's
+    line, a keep-with-next of one line and the paragraph. -/
+theorem separatorFlows_hold (capacity : Nat) (kp kq : Keep) (l : Line) (ls : List Line) (i : Nat) :
+    separatorFlows capacity [.separator 0 0 kp l, .other .block [.paragraph kq ls] (some i)] =
+      [.paragraph kp [l], .keepNext 1, .paragraph kq ls] := rfl
 
 end Separator
 end WholePagination
