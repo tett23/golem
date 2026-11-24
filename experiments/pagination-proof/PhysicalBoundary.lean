@@ -41,7 +41,7 @@ partial def firstNeed (pagePitch separator capacity : Int) (hasNotes : Bool) (wa
   | .space s :: rest => s + firstNeed pagePitch separator capacity hasNotes wanted rest
   | .blank n :: rest => (n : Int) * pagePitch + firstNeed pagePitch separator capacity hasNotes wanted rest
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
-  | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed pagePitch separator capacity hasNotes wanted rest
+  | .noBreakLines _ :: rest | .keepNext _ _ :: rest => firstNeed pagePitch separator capacity hasNotes wanted rest
   | .figure _ e :: _ => e
   | .wrapped _ e _ :: _ => e
   | .table _ before header rows caption below :: _ =>
@@ -86,7 +86,7 @@ def boundaryEnv (cap sep : Int) (cols : Nat) : Env :=
     headingBounds := fun i => if i = 385 then some (4, 16) else none,
     wrappedBefore := fun i => if i = 702 ∨ i = 705 then 3 else if i = 712 then 5 else 0,
     boxPadding := fun i => if i = 170 then some 3 else none,
-    firstNeed := firstNeed 10 sep cap, retention := none }
+    firstNeed := firstNeed 10 sep cap, retention := none, held := fun _ => false }
 
 def int! (s : String) : Int := s.toInt!
 def nat! (s : String) : Nat := s.toNat!
@@ -136,7 +136,7 @@ def flowOf (s : String) : Flow :=
   | ["a", n] => .adjustLines (int! n)
   | ["B"] => .noBreak
   | ["L", n] => .noBreakLines (nat! n)
-  | ["K", n] => .keepNext (nat! n)
+  | ["K", n] => .keepNext (nat! n) 0
   | ["h", r, e, ls] => .heading (r == "1") (int! e) (linesOf ls)
   | ["d", ls] => .defTerm (linesOf ls)
   | ["x", c, f, k, sp, ls] => .code (int! c) (nat! f) (k == "1") ((sp.splitOn ",").map nat!) (linesOf ls)
@@ -190,7 +190,7 @@ def slotToken : Int × Slot → String
 def unmetToken : Unmet → String
   | .needLines n => s!"!need{n}"
   | .noBreak => "!nobreak"
-  | .keepNext => "!keepnext"
+  | .keepNext _ => "!keepnext"
   | .adjust n why => s!"!adjust{n}:" ++ (match why with | .noRoom => "room" | .linesPlaced => "placed" | .oneLine => "one")
   | .droppedBlank => "!dropped"
   | .splitKept i => s!"!split{i}"

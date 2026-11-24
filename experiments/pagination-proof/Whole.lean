@@ -94,8 +94,10 @@ inductive Flow where
   | noBreak
   /-- A no-break of so many last lines (`FNoBreakLines`). -/
   | noBreakLines (n : Nat)
-  /-- A keep-with-next of so many lines (`FKeepNext`). -/
-  | keepNext (n : Nat)
+  /-- A keep-with-next of so many lines (`FKeepNext`), by the id of its
+      span: the keep a visible separator is held by has the span of the
+      separator (root ADR 0398 I7). -/
+  | keepNext (n : Nat) (sp : Nat)
   /-- Another set of columns (`FSwitchColumns`), by its columns. -/
   | switchColumns (columns : Nat)
   /-- Back to the base set of columns (`FRestoreColumns`). -/
@@ -165,7 +167,8 @@ inductive Unmet where
   | shortFirst (id want got : Nat)
   | shortLast (id want got : Nat)
   | noBreak
-  | keepNext
+  /-- `UnmetKeepNext`, by the id of the span of its keep-with-next. -/
+  | keepNext (sp : Nat)
   /-- `UnmetAdjust`: the lines the column was changed by instead, and why. -/
   | adjust (got : Int) (limit : AdjustLimit)
   /-- `SplitBookPart`: a book part, by its kind, or the last row and the
@@ -271,6 +274,9 @@ structure Env where
   /-- `ruleAfterAtEnd` of RuleArea.hs: the same at the end of the column,
       its outside allowed or not. -/
   ruleAfterAtEnd : Nat → Bool → Nat
+  /-- `envHeld`: whether a keep-with-next, by the id of its span, is the
+      keep of a visible separator (root ADR 0398 I7). -/
+  held : Nat → Bool
 
 /-- `envKeepParts env == KeepColumn`. -/
 def Env.keepColumn (env : Env) : Bool := env.keepParts == .column
@@ -1525,7 +1531,7 @@ mutual
 /-- `waitsFor` of Paginate.hs: the flows that place nothing of their own. -/
 def waitsFor : Flow → Bool
   | .bookPart _ _ _ body => allWaitsFor body
-  | .brk _ | .sectionStart _ _ | .space _ | .blank _ | .needLines _ | .noBreak | .noBreakLines _ | .keepNext _
+  | .brk _ | .sectionStart _ _ | .space _ | .blank _ | .needLines _ | .noBreak | .noBreakLines _ | .keepNext _ _
   | .adjustLines _ => true
   | _ => false
 termination_by f => sizeOf f
@@ -1731,6 +1737,12 @@ def previousKeep (env : Env) (rest : List Flow) (kp : Keep) : Keep :=
 def keptCut (kp : Keep) (len : Nat) : Nat :=
   if kp.all = true ∨ len ≤ kp.last ∨ len - kp.last < kp.first then len else kp.last
 
+/-- `heldHere` of State.hs: a keep-with-next of a visible separator waits
+    in the current column for the flow being placed (root ADR 0398 I7). -/
+def heldHere (env : Env) (st : St) : Bool :=
+  st.noBreak.any fun w =>
+    (match w.1 with | .keepNext sp => env.held sp | _ => false) && w.2.1 == st.page && w.2.2.1 == st.column
+
 /-- `placeKept` of Paginate.hs, for the lines of a paragraph or a term,
     or the verse lines of a stanza. -/
 def placeKept {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → List α → St) (st : St) (isStart : Bool)
@@ -1743,7 +1755,7 @@ def placeKept {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → Lis
   let fits (s : St) : Prop := needIn env s noNeed n ≤ free env s
   if fits st1 then st1
   else if here.page = stA.page ∧ here.column = stA.column ∧ fits here then here
-  else if isEmpty stA = true then st1
+  else if isEmpty stA = true ∨ heldHere env stA = true then st1
   else placeIn (nextColumn env stA) (isStart && front.isEmpty) back
 
 /-- `waitFor` of Paginate.hs. -/
@@ -1966,7 +1978,7 @@ def place (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .blank _ => st
   | .noBreak => st
   | .noBreakLines _ => st
-  | .keepNext _ => st
+  | .keepNext _ _ => st
   | .switchColumns n =>
     let st1 := flushDeferred env st
     if (env.columns = 1 ∧ 0 < typeAreaFree env st1) ∨ (isEmpty st1 = true ∧ st1.column = 0) then
@@ -2030,9 +2042,9 @@ def step (env : Env) (st : St) (f : Flow) (rest : List Flow) : St :=
   | .noBreakLines 0 => st
   | .noBreakLines _ | .noBreak =>
     if st.seen = false ∨ st.lastDeferred = true then addUnmet .noBreak st else waitFor .noBreak (1, false) st
-  | .keepNext n =>
-    if st.seen = false ∨ st.lastDeferred = true then addUnmet .keepNext st
-    else waitFor .keepNext (env.nextFirst n rest) st
+  | .keepNext n sp =>
+    if st.seen = false ∨ st.lastDeferred = true then addUnmet (.keepNext sp) st
+    else waitFor (.keepNext sp) (env.nextFirst n rest) st
   | .blank n => if allWaitsFor rest then st else { st with blank := st.blank ++ [n] }
   | .brk k => place env st (.brk k) rest
   | .sectionStart sec k => place env st (.sectionStart sec k) rest

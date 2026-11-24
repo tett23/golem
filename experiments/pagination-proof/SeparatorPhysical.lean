@@ -81,7 +81,7 @@ def flow (pitch : Int) (side : Bool → PhysicalPagination.RuleSide) : WholePagi
   | .needLines n => [.needLines n]
   | .noBreak => [.noBreak]
   | .noBreakLines n => [.noBreakLines n]
-  | .keepNext n => [.keepNext n]
+  | .keepNext n sp => [.keepNext n sp]
   | .boxed i b a body => [.boxed i ((b : Int) * pitch) ((a : Int) * pitch) (flows pitch side body)]
   | .bookPart u _ ids body => [.bookPart (partUnit u) ids (flows pitch side body)]
   | .ruled i b a j body => [ruled pitch side i b a j body]
@@ -155,7 +155,7 @@ theorem textOf_nested (pitch : Int) (side : Bool → PhysicalPagination.RuleSide
         (flows_append pitch side [f] r), physText_append]
     onBlank := fun n => by simp [textOf, flows, flow, PhysicalPagination.sourceText, PhysicalPagination.flowText]
     onSpace := fun n => by simp [textOf, flows, flow, PhysicalPagination.sourceText, PhysicalPagination.flowText]
-    onKeepNext := fun n => by simp [textOf, flows, flow, PhysicalPagination.sourceText, PhysicalPagination.flowText]
+    onKeepNext := fun n sp => by simp [textOf, flows, flow, PhysicalPagination.sourceText, PhysicalPagination.flowText]
     onNeedLines := fun n => by simp [textOf, flows, flow, PhysicalPagination.sourceText, PhysicalPagination.flowText]
     boxed := fun i kb ka body => by simp [textOf, flows, flow, PhysicalPagination.sourceText, PhysicalPagination.flowText]
     bookPart := fun u k ids body => by
@@ -173,7 +173,7 @@ theorem figsOf_nested (pitch : Int) (side : Bool → PhysicalPagination.RuleSide
         (flows_append pitch side [f] r), physFigs_append]
     onBlank := fun n => by simp [figsOf, flows, flow, PhysicalPagination.sourceFigs, PhysicalPagination.flowFigs]
     onSpace := fun n => by simp [figsOf, flows, flow, PhysicalPagination.sourceFigs, PhysicalPagination.flowFigs]
-    onKeepNext := fun n => by simp [figsOf, flows, flow, PhysicalPagination.sourceFigs, PhysicalPagination.flowFigs]
+    onKeepNext := fun n sp => by simp [figsOf, flows, flow, PhysicalPagination.sourceFigs, PhysicalPagination.flowFigs]
     onNeedLines := fun n => by simp [figsOf, flows, flow, PhysicalPagination.sourceFigs, PhysicalPagination.flowFigs]
     boxed := fun i kb ka body => by simp [figsOf, flows, flow, PhysicalPagination.sourceFigs, PhysicalPagination.flowFigs]
     bookPart := fun u k ids body => by

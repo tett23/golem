@@ -31,7 +31,7 @@ def soft : Flow → Bool
 def control : Flow → Option (Nat × Nat)
   | .noBreak => some (2, 0)
   | .noBreakLines n => some (n, 0)
-  | .keepNext n => some (0, n)
+  | .keepNext n _ => some (0, n)
   | _ => none
 
 /-- The loop of `keepAhead` of Decide.hs. -/
@@ -70,37 +70,45 @@ def ruleLines : Nat := 1
     above and below (1). -/
 def codeLines (geometry rows : Nat) : Nat := if geometry = 0 then max 1 rows else max 1 rows + 1
 
+/-- `holds` of Decide.hs: a keep-with-next of a visible separator among
+    the controls at the start of the flows (root ADR 0398 I7). -/
+def holds (held : Nat → Bool) : List Flow → Bool
+  | .keepNext _ sp :: more => held sp || holds held more
+  | .noBreak :: more | .noBreakLines _ :: more => holds held more
+  | f :: more => if soft f then holds held more else false
+  | [] => false
+
 mutual
 /-- `nextNeed` of Decide.hs, of a column of `capacity` lines in a base set
-    of `columns` columns. -/
-partial def nextNeed (capacity columns : Nat) : List Flow → Need
+    of `columns` columns, the keeps of the visible separators `held`. -/
+partial def nextNeed (held : Nat → Bool) (capacity columns : Nat) : List Flow → Need
   | [] => grid 0
-  | .bookPart _ _ _ body :: rest => nextNeed capacity columns (body ++ rest)
+  | .bookPart _ _ _ body :: rest => nextNeed held capacity columns (body ++ rest)
   | f :: rest =>
     if startsRecto f then grid 0 else
     match f with
     | .paragraph kp ls =>
-      chained capacity columns ls.length (firstPart kp true ls.length) (fun k => linesNeed (ls.take k)) rest
+      chained held capacity columns false ls.length (firstPart kp true ls.length) (fun k => linesNeed (ls.take k)) rest
     | .continued kp ls =>
-      chained capacity columns ls.length (firstPart kp false ls.length) (fun k => linesNeed (ls.take k)) rest
+      chained held capacity columns false ls.length (firstPart kp false ls.length) (fun k => linesNeed (ls.take k)) rest
     | .stanza kp vs =>
-      chained capacity columns vs.length (firstPart kp true vs.length) (fun k => linesNeed (vs.take k).join) rest
+      chained held capacity columns false vs.length (firstPart kp true vs.length) (fun k => linesNeed (vs.take k).join) rest
     | .table sp h rows capt below => grid (sp + tableHead h rows capt below)
     | .defTerm ls => linesNeed ls
-    | .heading _ n ls => plus ⟨n, noteLinesOf ls⟩ (nextNeed capacity columns rest)
+    | .heading _ n ls => plus ⟨n, noteLinesOf ls⟩ (nextNeed held capacity columns rest)
     | .figure _ n => grid (min n capacity)
     | .pageFigure _ => grid 0
     | .wrapped _ n ls => grid (max n ls.length)
-    | .space n => spaced capacity n (nextNeed capacity columns rest)
+    | .space n => spaced capacity n (nextNeed held capacity columns rest)
     | .brk _ | .sectionStart _ _ => grid 0
-    | .noBreak | .noBreakLines _ | .keepNext _ | .needLines _ | .adjustLines _ => nextNeed capacity columns rest
-    | .blank n => let r := nextNeed capacity columns rest; { r with grid := min capacity (min capacity n + r.grid) }
+    | .noBreak | .noBreakLines _ | .keepNext _ _ | .needLines _ | .adjustLines _ => nextNeed held capacity columns rest
+    | .blank n => let r := nextNeed held capacity columns rest; { r with grid := min capacity (min capacity n + r.grid) }
     | .code g caption first cont ls =>
       if ls.isEmpty then grid 0
       else
         let k := min ls.length (max 1 first)
         grid (caption + codeLines g (k + (if cont && k < ls.length then 1 else 0)))
-    | .switchColumns _ => if columns = 1 then nextNeed capacity columns rest else grid 0
+    | .switchColumns _ => if columns = 1 then nextNeed held capacity columns rest else grid 0
     | .restoreColumns => grid 0
     | .ruled _ before after _ body =>
       let size := (if before then ruleLines else 0) + body.size + (if after then ruleLines else 0)
@@ -108,7 +116,7 @@ partial def nextNeed (capacity columns : Nat) : List Flow → Need
       | .heading _ _ ls => ⟨size, noteLinesOf ls⟩
       | .lines _ _ => grid size
     | .boxed _ kb ka body =>
-      let n := nextNeed capacity columns body
+      let n := nextNeed held capacity columns body
       let whole := match body with
         | [.paragraph kp ls] => decide (ls.length ≤ firstPart kp true ls.length)
         | [.stanza kp vs] => decide (vs.length ≤ firstPart kp true vs.length)
@@ -116,39 +124,42 @@ partial def nextNeed (capacity columns : Nat) : List Flow → Need
       { n with grid := kb + n.grid + (if whole then ka else 0) }
     | .bookPart _ _ _ _ => grid 0
 
-/-- `followNeed` of Decide.hs. -/
-partial def followNeed (capacity columns n : Nat) (after : List Flow) : Need :=
-  if n = 0 then nextNeed capacity columns after
+/-- `followNeed` of Decide.hs: after a separator hold when `h`, what a
+    no-break after the whole first part keeps is added too. -/
+partial def followNeed (held : Nat → Bool) (capacity columns : Nat) (h : Bool) (n : Nat) (after : List Flow) : Need :=
+  if n = 0 ∧ h = false then nextNeed held capacity columns after
   else match after with
     | .paragraph kp ls :: more =>
-      chained capacity columns ls.length (max (firstPart kp true ls.length) (min n ls.length)) (fun k => linesNeed (ls.take k)) more
+      chained held capacity columns h ls.length (max (firstPart kp true ls.length) (min n ls.length)) (fun k => linesNeed (ls.take k)) more
     | .continued kp ls :: more =>
-      chained capacity columns ls.length (max (firstPart kp false ls.length) (min n ls.length)) (fun k => linesNeed (ls.take k)) more
+      chained held capacity columns h ls.length (max (firstPart kp false ls.length) (min n ls.length)) (fun k => linesNeed (ls.take k)) more
     | .stanza kp vs :: more =>
-      chained capacity columns vs.length (max (firstPart kp true vs.length) (min n vs.length)) (fun k => linesNeed (vs.take k).join) more
-    | _ => nextNeed capacity columns after
+      chained held capacity columns h vs.length (max (firstPart kp true vs.length) (min n vs.length)) (fun k => linesNeed (vs.take k).join) more
+    | _ => nextNeed held capacity columns after
 
-/-- `chained` of Decide.hs. -/
-partial def chained (capacity columns total k : Nat) (needOf : Nat → Need) (more : List Flow) : Need :=
+/-- `chainedHeld` of Decide.hs (`chained` when `h` is false). -/
+partial def chained (held : Nat → Bool) (capacity columns : Nat) (h : Bool) (total k : Nat) (needOf : Nat → Need)
+    (more : List Flow) : Need :=
   let base := needOf k
   match keepAhead more with
-  | some (before, _, m, after') =>
-    if total ≤ k ∧ 0 < m then
-      let r := spaced capacity (spacesIn before) (followNeed capacity columns m after')
+  | some (before, l, m, after') =>
+    if total ≤ k ∧ (0 < m ∨ (h = true ∧ 0 < l)) then
+      let r := spaced capacity (spacesIn before) (followNeed held capacity columns (holds held more) m after')
       ⟨min capacity (base.grid + r.grid), base.notes + r.notes⟩
     else base
   | none => base
 end
 
 /-- `keptNeed` of Decide.hs. -/
-def keptNeed (capacity columns : Nat) (rest : List Flow) : Option Need :=
-  (keepAhead (flattenParts rest)).map fun (before, _, n, after) =>
-    spaced capacity (spacesIn before) (followNeed capacity columns n after)
+def keptNeed (held : Nat → Bool) (capacity columns : Nat) (rest : List Flow) : Option Need :=
+  let flat := flattenParts rest
+  (keepAhead flat).map fun (before, _, n, after) =>
+    spaced capacity (spacesIn before) (followNeed held capacity columns (holds held flat) n after)
 
 /-- `nextFirstLines` of Decide.hs. -/
 partial def nextFirst (n : Nat) (after : List Flow) : Nat × Bool :=
   let skipped : Flow → Bool
-    | .space _ | .needLines _ | .adjustLines _ | .noBreak | .noBreakLines _ | .keepNext _ | .blank _ => true
+    | .space _ | .needLines _ | .adjustLines _ | .noBreak | .noBreakLines _ | .keepNext _ _ | .blank _ => true
     | _ => false
   match (flattenParts after).dropWhile skipped with
   | .bookPart _ _ _ body :: more => nextFirst n (body ++ more)
@@ -174,20 +185,21 @@ def roomForLine (env : Env) (st : St) (ls : List Line) : Bool :=
   let sep : Int := if st.noteLines = 0 ∧ 0 < noteLines then env.separator else 0
   decide (1 + (if 0 < noteLines then sep + 1 else 0) ≤ free env st)
 
-/-- The `Env` of `paginateWithin` for `paginate 1 capacity` of
-    Paginate.hs, before the parameters that read the state. -/
-def plainEnv (capacity : Nat) : Env where
+/-- The `Env` of `paginateHeld` for `paginate 1 capacity` of
+    Paginate.hs, the keeps of the visible separators `held` (none for
+    `paginate`), before the parameters that read the state. -/
+def plainEnv (capacity : Nat) (held : Nat → Bool := fun _ => false) : Env where
   maxLines := 9223372036854775807
   capacity := capacity
   separator := max 1 (min 1 ((capacity : Int) - 2))
   columns := 1
-  nextNeed := nextNeed capacity 1
+  nextNeed := nextNeed held capacity 1
   fitting := fun _ _ => 0
   codeSpan := codeLines
   keepParts := .column
   inBookPart := false
   roomForLine := fun _ _ => false
-  keptNeed := keptNeed capacity 1
+  keptNeed := keptNeed held capacity 1
   keepLast := fun rest => match keepAhead rest with | some (_, l, _, _) => l | none => 0
   nextFirst := nextFirst
   keepNextLines := fun rest => match keepAhead rest with | some (_, _, f, _) => f | none => 0
@@ -197,11 +209,12 @@ def plainEnv (capacity : Nat) : Env where
   rulesJoined := fun _ _ => 3
   ruleAfter := fun _ => ruleLines
   ruleAfterAtEnd := fun _ _ => 2
+  held := held
 
-def boundaryEnv (capacity : Nat) : Env :=
-  { plainEnv capacity with
-    fitting := fitting (plainEnv capacity)
-    roomForLine := roomForLine (plainEnv capacity) }
+def boundaryEnv (capacity : Nat) (held : Nat → Bool := fun _ => false) : Env :=
+  { plainEnv capacity held with
+    fitting := fitting (plainEnv capacity held)
+    roomForLine := roomForLine (plainEnv capacity held) }
 
 /-! ## The inputs, in the order of Boundary.hs -/
 
@@ -265,7 +278,7 @@ partial def Element.flow : Element → Flow
   | .need n => .needLines n
   | .noBreak => .noBreak
   | .noBreakLines n => .noBreakLines n
-  | .keepNext n => .keepNext n
+  | .keepNext n => .keepNext n 0
 
 partial def Element.show : Element → String
   | .para base n => s!"P{base}:{n}"
@@ -398,7 +411,7 @@ def slotText : Int × Slot → String
 def unmetText : Unmet → String
   | .needLines n => s!"!need{n}"
   | .noBreak => "!nobreak"
-  | .keepNext => "!keepnext"
+  | .keepNext _ => "!keepnext"
   | .droppedBlank => "!dropped"
   | .tallHeading i n f => s!"!tall{i}:{n}:{f}"
   | .splitKept i => s!"!split{i}"

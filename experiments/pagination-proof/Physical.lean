@@ -80,7 +80,9 @@ inductive Flow where
   | adjustLines (n : Int)
   | noBreak
   | noBreakLines (n : Nat)
-  | keepNext (n : Nat)
+  /-- `FKeepNext`: its lines and the id of its span; the keep a visible
+      separator is held by has the span of the separator (root ADR 0398 I7). -/
+  | keepNext (n : Nat) (sp : Nat)
   | ruled (r : Ruled)
   /-- `FSection` of a section: the start the flows after it need. -/
   | start (k : BreakKind)
@@ -129,7 +131,8 @@ inductive AdjustLimit where
 
 inductive Unmet where
   | noBreak
-  | keepNext
+  /-- `UnmetKeepNext`, by the id of the span of its keep-with-next. -/
+  | keepNext (sp : Nat)
   | needLines (n : Nat)
   | adjust (chosen : Int) (why : AdjustLimit)
   | droppedBlank
@@ -247,6 +250,9 @@ structure Env where
   /-- `physicalRetention`: the unit of the book part being placed, other
       than column. -/
   retention : Option PartUnit
+  /-- `physicalHeld`: whether a keep-with-next, by the id of its span, is
+      the keep of a visible separator (root ADR 0398 I7). -/
+  held : Nat → Bool
 
 def initial (env : Env) : St :=
   ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, [], []⟩
@@ -794,7 +800,7 @@ def flowLines : Flow → List Line
   | .adjustLines _ => []
   | .noBreak => []
   | .noBreakLines _ => []
-  | .keepNext _ => []
+  | .keepNext _ _ => []
   | .start _ => []
   | .switchColumns _ => []
   | .restoreColumns => []
@@ -949,7 +955,7 @@ def soft : Flow → Bool
 def counts : Flow → Option (Nat × Nat)
   | .noBreak => some (2, 0)
   | .noBreakLines n => some (n, 0)
-  | .keepNext n => some (0, n)
+  | .keepNext n _ => some (0, n)
   | _ => none
 
 /-- `collect` of `keepAhead`: `before` and the soft flows since the last
@@ -977,7 +983,7 @@ def followingRows (wanted : Nat) : List Flow → Nat × Bool
   | .paragraph k ls :: _ => (max (firstPart k true ls.length) (min wanted ls.length), true)
   | .continued k ls :: _ => (max (firstPart k false ls.length) (min wanted ls.length), true)
   | .space _ :: rest | .needLines _ :: rest | .adjustLines _ :: rest
-  | .noBreak :: rest | .noBreakLines _ :: rest | .keepNext _ :: rest => followingRows wanted rest
+  | .noBreak :: rest | .noBreakLines _ :: rest | .keepNext _ _ :: rest => followingRows wanted rest
   | _ => (1, false)
 
 /-- The column with the heading or definition term on trial (`virtual`
@@ -1708,7 +1714,7 @@ def boxShort (m : BoxMaps) (k : Keep) (start forced : Bool) (vs : List (List Lin
    else (if forced ∧ start ∧ count < k.first then [Unmet.shortPart true (headId (vs.headD [])) k.first count] else []) ++
     (if forced ∧ vs.length - count < k.last then
       [Unmet.shortPart false (headId (vs.headD [])) k.last (vs.length - count)] else [])) ++
-  List.replicate (if forced then linkBreaks m vs count else 0) Unmet.keepNext
+  List.replicate (if forced then linkBreaks m vs count else 0) (Unmet.keepNext 0)
 
 def lex4 (a b : Nat × Nat × Nat × Nat) : Prop :=
   Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))) a b
@@ -1787,7 +1793,7 @@ def nonemptyVerses (vs : List (List Line)) : List (List Line) := vs.filter (fun 
 def collectMixed : Int → List (Nat × Int) → List (List Line) → List Flow → Option (List (Nat × Int) × List (List Line))
   | _, gaps, units, [] => some (gaps, units.reverse)
   | p, gaps, units, .space n :: rest => collectMixed (p + n) gaps units rest
-  | p, gaps, units, .keepNext _ :: rest => collectMixed p gaps units rest
+  | p, gaps, units, .keepNext _ _ :: rest => collectMixed p gaps units rest
   | p, gaps, units, .paragraph _ ls :: rest =>
     match (nonemptyVerses (ls.map (fun l => [l]))).join.head? with
     | none => collectMixed p gaps units rest
@@ -1804,7 +1810,7 @@ def collectMixed : Int → List (Nat × Int) → List (List Line) → List Flow 
 def boxLinks : Option Nat → List Flow → List (Nat × Nat)
   | _, [] => []
   | prior, .space _ :: rest => boxLinks prior rest
-  | prior, .keepNext w :: rest =>
+  | prior, .keepNext w _ :: rest =>
     (match prior with | some i => [(i, (followingRows w rest).1)] | none => []) ++ boxLinks prior rest
   | prior, f :: rest =>
     boxLinks (match (flowLines f).getLast? with | some l => some l.id | none => prior) rest
@@ -1980,7 +1986,7 @@ def fitsFollowingGo (inner : Inner) (env : Env) (st : St) (wanted : Nat) (extra 
   | .adjustLines _ :: rest => fitsFollowingGo inner env st wanted extra rest
   | .noBreak :: rest => fitsFollowingGo inner env st wanted extra rest
   | .noBreakLines _ :: rest => fitsFollowingGo inner env st wanted extra rest
-  | .keepNext _ :: rest => fitsFollowingGo inner env st wanted extra rest
+  | .keepNext _ _ :: rest => fitsFollowingGo inner env st wanted extra rest
   | .heading true _ _ :: _ => true
   | .heading false extent ls :: rest =>
     if extra + st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 [.heading false extent ls] ≤ room env st then
@@ -2075,8 +2081,16 @@ def keptBack (k : Keep) (lastCount len : Nat) : Nat :=
   let minimumFirst := if 0 < lastCount then max 2 k.first else k.first
   if k.all ∨ len ≤ requested ∨ len - requested < minimumFirst then len else requested
 
-/-- The column after the front part: the same one when it is still empty. -/
-def afterFront (env : Env) (before : St) : St := if empty before then before else nextColumn env before
+/-- `heldHere` of Physical.hs: a keep-with-next of a visible separator
+    waits in the current column for the flow being placed (root ADR 0398
+    I7). -/
+def heldHere (env : Env) (st : St) : Bool :=
+  st.waits.any fun w =>
+    (match w.1 with | .keepNext sp => env.held sp | _ => false) && w.2.1 == st.page && w.2.2.1 == st.column
+
+/-- The column after the front part: the same one when it is still empty,
+    or when a separator hold waits in it. -/
+def afterFront (env : Env) (before : St) : St := if empty before = true ∨ heldHere env before = true then before else nextColumn env before
 
 def placeWithNext (inner : Inner) (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
     (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
@@ -2107,7 +2121,7 @@ def placeStanzaWithNext (inner : Inner) (env : Env) (k : Keep) (st : St) (verses
       match placeStanza env k true st (verses.take (verses.length - stanzaBack k lastCount verses.length)) with
       | .error e => .error e
       | .ok before =>
-        if (verses.drop (verses.length - stanzaBack k lastCount verses.length)).isEmpty ∨ empty before = true then .ok full
+        if (verses.drop (verses.length - stanzaBack k lastCount verses.length)).isEmpty ∨ empty before = true ∨ heldHere env before = true then .ok full
         else placeStanza env k true (nextColumn env before) (verses.drop (verses.length - stanzaBack k lastCount verses.length))
 
 def placeRuledKeeping (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
@@ -2948,7 +2962,7 @@ def placeFlow (inner : Inner) (env : Env) (st : St) : Flow → Except Failure St
   | .adjustLines n => .ok (adjustLines env n st)
   | .noBreak => .ok (waitForPrior .noBreak (1, false) st)
   | .noBreakLines n => if n = 0 then .ok st else .ok (waitForPrior .noBreak (1, false) st)
-  | .keepNext _ => .ok (waitForPrior .keepNext (1, false) st)
+  | .keepNext _ sp => .ok (waitForPrior (.keepNext sp) (1, false) st)
   | .pageFigure i =>
     if st.deferred = [] ∧ st.column = 0 ∧ st.used = 0 ∧ empty st = true then
       .ok (nextPage env (putSlot st env.capacity (.pageFigure i)))
@@ -2995,7 +3009,7 @@ def placeBody (inner : Inner) (env : Env) (before : St) (flow : Flow) (rest : Li
   | .noBreak, _ => .ok (waitForPrior .noBreak (followingRows 0 rest) before)
   | .noBreakLines n, _ =>
     if 0 < n then .ok (waitForPrior .noBreak (followingRows 0 rest) before) else placeFlow inner env before flow
-  | .keepNext n, _ => .ok (waitForPrior .keepNext (followingRows n rest) before)
+  | .keepNext n sp, _ => .ok (waitForPrior (.keepNext sp) (followingRows n rest) before)
   | .stanza k vs, some (l, f, later) => placeStanzaWithNext inner env k before vs l f later
   | .defTerm ls, _ =>
     if env.retention.isSome then placeLines env ⟨1, 1, false⟩ true before ls
@@ -3112,7 +3126,7 @@ def flowText : Flow → List Nat
   | .adjustLines _ => []
   | .noBreak => []
   | .noBreakLines _ => []
-  | .keepNext _ => []
+  | .keepNext _ _ => []
   | .start _ => []
   | .switchColumns _ => []
   | .restoreColumns => []
@@ -3144,7 +3158,7 @@ def flowFigs : Flow → List Nat
   | .adjustLines _ => []
   | .noBreak => []
   | .noBreakLines _ => []
-  | .keepNext _ => []
+  | .keepNext _ _ => []
   | .start _ => []
   | .switchColumns _ => []
   | .restoreColumns => []

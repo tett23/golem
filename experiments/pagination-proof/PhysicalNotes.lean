@@ -1066,7 +1066,7 @@ def flowNotes : Flow → List Note
   | .adjustLines _ => []
   | .noBreak => []
   | .noBreakLines _ => []
-  | .keepNext _ => []
+  | .keepNext _ _ => []
   | .start _ => []
   | .switchColumns _ => []
   | .restoreColumns => []

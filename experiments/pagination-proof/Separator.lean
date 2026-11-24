@@ -95,8 +95,8 @@ inductive Unit where
   | brk (k : BreakKind)
   /-- `UGap`, by its grid lines. -/
   | gap (n : Nat)
-  /-- `UKeepNext`. -/
-  | keepNext (n : Nat)
+  /-- `UKeepNext`, by its lines and the id of its span. -/
+  | keepNext (n sp : Nat)
   /-- Any other unit: its role, its flows and the id of its first line
       (`bUnitFirsts`). -/
   | other (role : Role) (flows : List Flow) (first : Option Nat)
@@ -110,7 +110,7 @@ def Unit.flows : Unit → List Flow
   | .blank n => [.blank n]
   | .brk k => [.brk k]
   | .gap n => [.space n]
-  | .keepNext n => [.keepNext n]
+  | .keepNext n sp => [.keepNext n sp]
   | .other _ fs _ => fs
 
 def allFlows : List Unit → List Flow
@@ -127,6 +127,19 @@ def afterOf : Unit → Option Nat
   | .separator _ a _ _ => some a
   | _ => none
 
+/-- The span and the lines after a visible separator, as `spaceSeparators`
+    carries them to the unit after it (`(uSpan u,) <$> afterOf kind`);
+    the span of a separator is the id of its line. -/
+def holdOf : Unit → Option (Nat × Nat)
+  | .separator _ a _ l => some (l.id, a)
+  | _ => none
+
+/-- The keep-with-next `spaceSeparators` puts after a visible separator:
+    one line, of the span of the separator (root ADR 0398 I7). -/
+def keepOf : Option (Nat × Nat) → List Unit
+  | some (sp, _) => [.keepNext 1 sp]
+  | none => []
+
 def blankLines : List Unit → Nat
   | [] => 0
   | .blank k :: r => k + blankLines r
@@ -142,19 +155,19 @@ def gapOf (previous : Option Nat) (pending : List Unit) (u : Unit) : List Unit :
   else pending
 
 /-- `go` of `spaceSeparators` (Flow.hs). -/
-def space : Option Nat → List Unit → List Unit → List Unit
+def space : Option (Nat × Nat) → List Unit → List Unit → List Unit
   | previous, pending, [] => if previous.isSome then [] else pending
   | previous, pending, .blank k :: rest => space previous (pending ++ [.blank k]) rest
   | _, pending, .brk k :: rest => pending ++ .brk k :: space none [] rest
   | previous, pending, u :: rest =>
-    (if previous.isSome then [.keepNext 1] else []) ++ gapOf previous pending u ++ u :: space (afterOf u) [] rest
+    keepOf previous ++ gapOf (previous.map Prod.snd) pending u ++ u :: space (holdOf u) [] rest
 
 /-! ## The need-lines asked for before a separator hold -/
 
 /-- `inHold` of `holdSeparatorNeeds`: the units a hold goes on through,
     `USeparator`, `UGap`, `UBlank`, `UKeepNext` and `UPageControl`. -/
 def inHold : Unit → Bool
-  | .separator _ _ _ _ | .gap _ | .blank _ | .keepNext _ | .other .pass _ _ => true
+  | .separator _ _ _ _ | .gap _ | .blank _ | .keepNext _ _ | .other .pass _ _ => true
   | _ => false
 
 /-- `holdLines` of `holdSeparatorNeeds`: a visible separator is one line,
@@ -223,7 +236,7 @@ def unitsText (us : List Unit) : List Slot := sourceText (allFlows us)
 def otherFlows : List Unit → List Flow
   | [] => []
   | .other _ fs _ :: r => fs ++ otherFlows r
-  | .separator _ _ _ _ :: r | .blank _ :: r | .brk _ :: r | .gap _ :: r | .keepNext _ :: r => otherFlows r
+  | .separator _ _ _ _ :: r | .blank _ :: r | .brk _ :: r | .gap _ :: r | .keepNext _ _ :: r => otherFlows r
 
 theorem allFlows_append (a b : List Unit) : allFlows (a ++ b) = allFlows a ++ allFlows b := by
   induction a with
@@ -266,14 +279,14 @@ theorem blanks_other {us : List Unit} (h : Blanks us) : otherFlows us = [] := by
     exact ih (fun u m => h u (List.mem_cons_of_mem _ m))
 
 /-- `.gap` units are in the output only as gaps; they carry no text. -/
-def Quiet (us : List Unit) : Prop := ∀ u ∈ us, (∃ k, u = .blank k) ∨ (∃ k, u = .gap k) ∨ (∃ k, u = .keepNext k)
+def Quiet (us : List Unit) : Prop := ∀ u ∈ us, (∃ k, u = .blank k) ∨ (∃ k, u = .gap k) ∨ (∃ k s, u = .keepNext k s)
 
 theorem quiet_text {us : List Unit} (h : Quiet us) : sourceText (allFlows us) = [] := by
   induction us with
   | nil => rfl
   | cons x xs ih =>
     have t := ih (fun u m => h u (List.mem_cons_of_mem _ m))
-    rcases h x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, e⟩ <;> subst e <;>
+    rcases h x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, s, e⟩ <;> subst e <;>
       simp only [allFlows, Unit.flows, List.singleton_append, sourceText, flowText, List.nil_append, t]
 
 theorem quiet_other {us : List Unit} (h : Quiet us) : otherFlows us = [] := by
@@ -281,7 +294,7 @@ theorem quiet_other {us : List Unit} (h : Quiet us) : otherFlows us = [] := by
   | nil => rfl
   | cons x xs ih =>
     have t := ih (fun u m => h u (List.mem_cons_of_mem _ m))
-    rcases h x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, e⟩ <;> subst e <;> exact t
+    rcases h x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, s, e⟩ <;> subst e <;> exact t
 
 theorem gapOf_quiet (previous : Option Nat) {pending : List Unit} (h : Blanks pending) (u : Unit) :
     Quiet (gapOf previous pending u) := by
@@ -303,13 +316,12 @@ theorem gapOf_quiet (previous : Option Nat) {pending : List Unit} (h : Blanks pe
 
 theorem blanks_quiet {us : List Unit} (h : Blanks us) : Quiet us := fun u m => Or.inl (h u m)
 
-theorem keep_quiet (b : Bool) : Quiet (if b then [.keepNext 1] else []) := by
+theorem keep_quiet (p : Option (Nat × Nat)) : Quiet (keepOf p) := by
   intro u m
-  split at m
-  · exact Or.inr (Or.inr ⟨1, mem_one m⟩)
-  · exact absurd m (List.not_mem_nil _)
+  match p, m with
+  | some (sp, _), m => exact Or.inr (Or.inr ⟨1, sp, mem_one m⟩)
 
-theorem space_text (previous : Option Nat) (pending : List Unit) (h : Blanks pending) (us : List Unit) :
+theorem space_text (previous : Option (Nat × Nat)) (pending : List Unit) (h : Blanks pending) (us : List Unit) :
     sourceText (allFlows (space previous pending us)) = unitsText us := by
   induction us generalizing previous pending with
   | nil =>
@@ -353,7 +365,7 @@ theorem space_text (previous : Option Nat) (pending : List Unit) (h : Blanks pen
       rw [ih _ [] Blanks.nil]
       simp only [unitsText, allFlows, sourceText_append]
 
-theorem space_other (previous : Option Nat) (pending : List Unit) (h : Blanks pending) (us : List Unit) :
+theorem space_other (previous : Option (Nat × Nat)) (pending : List Unit) (h : Blanks pending) (us : List Unit) :
     otherFlows (space previous pending us) = otherFlows us := by
   induction us generalizing previous pending with
   | nil =>
@@ -388,7 +400,7 @@ theorem space_other (previous : Option Nat) (pending : List Unit) (h : Blanks pe
 
 /-- The flows a unit other than `other` is made of. -/
 def plainFlow : Flow → Bool
-  | .paragraph _ _ | .blank _ | .space _ | .keepNext _ | .brk _ | .needLines _ => true
+  | .paragraph _ _ | .blank _ | .space _ | .keepNext _ _ | .brk _ | .needLines _ => true
   | _ => false
 
 /-- `ys` is `xs` with plain flows put in between. -/
@@ -634,7 +646,7 @@ theorem I5_separator_figures (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ e
 
 /-! ## The keep after a visible separator -/
 
-theorem space_blanks (previous : Option Nat) (acc bl rest : List Unit) (h : Blanks bl) :
+theorem space_blanks (previous : Option (Nat × Nat)) (acc bl rest : List Unit) (h : Blanks bl) :
     space previous acc (bl ++ rest) = space previous (acc ++ bl) rest := by
   induction bl generalizing acc with
   | nil => simp
@@ -646,10 +658,10 @@ theorem space_blanks (previous : Option Nat) (acc bl rest : List Unit) (h : Blan
     rw [ih _ (fun v m => h v (List.mem_cons_of_mem _ m)), List.append_assoc]
     rfl
 
-theorem space_step (previous : Option Nat) (pending : List Unit) (u : Unit) (rest : List Unit)
+theorem space_step (previous : Option (Nat × Nat)) (pending : List Unit) (u : Unit) (rest : List Unit)
     (hu : ∀ k, u ≠ .blank k) (hk : ∀ k, u ≠ .brk k) :
     space previous pending (u :: rest) =
-      (if previous.isSome then [.keepNext 1] else []) ++ gapOf previous pending u ++ u :: space (afterOf u) [] rest := by
+      keepOf previous ++ gapOf (previous.map Prod.snd) pending u ++ u :: space (holdOf u) [] rest := by
   cases u with
   | blank k => exact absurd rfl (hu k)
   | brk k => exact absurd rfl (hk k)
@@ -660,15 +672,15 @@ theorem space_step (previous : Option Nat) (pending : List Unit) (u : Unit) (res
     separator's line, a keep-with-next of one line, the gap and the unit
     in this order (root ADR 0398: the separator is held with the first
     line of the block after it). -/
-theorem I3_separator_keeps (previous : Option Nat) (pending : List Unit) (b a : Nat) (kp : Keep) (l : Line)
+theorem I3_separator_keeps (previous : Option (Nat × Nat)) (pending : List Unit) (b a : Nat) (kp : Keep) (l : Line)
     (blanks : List Unit) (hb : Blanks blanks) (u : Unit) (hu : ∀ k, u ≠ .blank k) (hk : ∀ k, u ≠ .brk k)
     (rest : List Unit) :
     ∃ pre, space previous pending (.separator b a kp l :: blanks ++ u :: rest) =
-      pre ++ .separator b a kp l :: .keepNext 1 :: gapOf (some a) blanks u ++ u :: space (afterOf u) [] rest := by
-  refine ⟨(if previous.isSome then [.keepNext 1] else []) ++ gapOf previous pending (.separator b a kp l), ?_⟩
+      pre ++ .separator b a kp l :: .keepNext 1 l.id :: gapOf (some a) blanks u ++ u :: space (holdOf u) [] rest := by
+  refine ⟨keepOf previous ++ gapOf (previous.map Prod.snd) pending (.separator b a kp l), ?_⟩
   rw [List.cons_append, space_step _ _ _ _ (fun k e => Unit.noConfusion e) (fun k e => Unit.noConfusion e)]
-  rw [afterOf, space_blanks _ [] blanks _ hb, List.nil_append, space_step _ _ _ _ hu hk]
-  simp only [Option.isSome, ite_true, List.append_assoc, List.cons_append, List.singleton_append, List.nil_append]
+  rw [holdOf, space_blanks _ [] blanks _ hb, List.nil_append, space_step _ _ _ _ hu hk]
+  simp only [keepOf, Option.map, Option.isSome, ite_true, List.append_assoc, List.cons_append, List.singleton_append, List.nil_append]
 
 /-! ## What adds up over the flows -/
 
@@ -680,7 +692,7 @@ structure Additive {α : Type} (T : List Flow → List α) : Prop where
   cons : ∀ f r, T (f :: r) = T [f] ++ T r
   onBlank : ∀ n, T [.blank n] = []
   onSpace : ∀ n, T [.space n] = []
-  onKeepNext : ∀ n, T [.keepNext n] = []
+  onKeepNext : ∀ n sp, T [.keepNext n sp] = []
   onNeedLines : ∀ n, T [.needLines n] = []
 
 theorem Additive.append {α : Type} {T : List Flow → List α} (h : Additive T) (a b : List Flow) :
@@ -697,13 +709,13 @@ theorem Additive.quiet {α : Type} {T : List Flow → List α} (h : Additive T) 
     have t := ih (fun u m => hq u (List.mem_cons_of_mem _ m))
     simp only [allFlows]
     rw [h.append, t, List.append_nil]
-    rcases hq x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, e⟩ <;> subst e
+    rcases hq x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, s, e⟩ <;> subst e
     · exact h.onBlank k
     · exact h.onSpace k
-    · exact h.onKeepNext k
+    · exact h.onKeepNext k s
 
 /-- `spaceSeparators` keeps what adds up over the flows. -/
-theorem Additive.space_eq {α : Type} {T : List Flow → List α} (h : Additive T) (previous : Option Nat)
+theorem Additive.space_eq {α : Type} {T : List Flow → List α} (h : Additive T) (previous : Option (Nat × Nat))
     (pending : List Unit) (hb : Blanks pending) (us : List Unit) :
     T (allFlows (space previous pending us)) = T (allFlows us) := by
   induction us generalizing previous pending with
@@ -761,7 +773,7 @@ theorem sourceText_additive : Additive sourceText where
   cons f r := by simp [sourceText]
   onBlank n := by simp [sourceText, flowText]
   onSpace n := by simp [sourceText, flowText]
-  onKeepNext n := by simp [sourceText, flowText]
+  onKeepNext n sp := by simp [sourceText, flowText]
   onNeedLines n := by simp [sourceText, flowText]
 
 theorem sourceFigs_additive : Additive sourceFigs where
@@ -769,7 +781,7 @@ theorem sourceFigs_additive : Additive sourceFigs where
   cons f r := by simp [sourceFigs]
   onBlank n := by simp [sourceFigs, flowFigs]
   onSpace n := by simp [sourceFigs, flowFigs]
-  onKeepNext n := by simp [sourceFigs, flowFigs]
+  onKeepNext n sp := by simp [sourceFigs, flowFigs]
   onNeedLines n := by simp [sourceFigs, flowFigs]
 
 /-! ## The warnings of the need-lines not met -/
@@ -783,35 +795,37 @@ def separatorSpans : List Unit → List Nat
 
 def needUnmet : Unmet → Bool
   | .needLines _ => true
+  | .keepNext _ => true
   | _ => false
 
 /-- The filter of `unmetWarnings` (Flow.hs): of the controls not met, each
     at the span of its unit, a need-lines at the span of a separator, the
-    one `holdSeparatorNeeds` asks for, reports nothing; the others go on
+    one `holdSeparatorNeeds` asks for, and a keep-with-next at the span of
+    a separator, the one `spaceSeparators` puts after it, report nothing; the others go on
     to their warnings.  `Unmet` of Whole.lean has no span, so the span is
     given beside it. -/
 def reported (held : Nat → Bool) (unmet : List (Nat × Unmet)) : List (Nat × Unmet) :=
   unmet.filter fun x => !(held x.1 && needUnmet x.2)
 
-/-- The need-lines asked for before a separator hold gives no warning,
-    and every other control not met goes on to its warning. -/
+/-- The need-lines asked for before a separator hold and the keep of a
+    separator give no warning, and every other control not met goes on to
+    its warning. -/
 theorem reported_iff (us : List Unit) (unmet : List (Nat × Unmet)) (sp : Nat) (u : Unmet) :
     (sp, u) ∈ reported (fun s => (separatorSpans us).contains s) unmet ↔
-      (sp, u) ∈ unmet ∧ (sp ∈ separatorSpans us → ∀ n, u ≠ .needLines n) := by
+      (sp, u) ∈ unmet ∧ (sp ∈ separatorSpans us → (∀ n, u ≠ .needLines n) ∧ ∀ s, u ≠ .keepNext s) := by
   have key : (separatorSpans us).contains sp = true ↔ sp ∈ separatorSpans us :=
     ⟨List.mem_of_elem_eq_true, List.elem_eq_true_of_mem⟩
   unfold reported
   rw [List.mem_filter]
   constructor
   · rintro ⟨m, h⟩
-    refine ⟨m, fun hs n e => ?_⟩
-    subst e
-    simp [needUnmet, key.mpr hs] at h
+    refine ⟨m, fun hs => ⟨fun n e => ?_, fun s e => ?_⟩⟩ <;> subst e <;> simp [needUnmet, key.mpr hs] at h
   · rintro ⟨m, h⟩
     refine ⟨m, ?_⟩
     by_cases hs : sp ∈ separatorSpans us
     · cases u with
-      | needLines n => exact absurd rfl (h hs n)
+      | needLines n => exact absurd rfl ((h hs).1 n)
+      | keepNext s => exact absurd rfl ((h hs).2 s)
       | _ => simp [needUnmet]
     · have : (separatorSpans us).contains sp = false := by
         cases e : (separatorSpans us).contains sp
@@ -839,7 +853,7 @@ def groupsFrom : Nat → List (Nat × Nat) → List Unit → List (Nat × List N
   | _, _, [] => []
   | n, pending, .separator _ _ _ l :: rest => groupsFrom (n + 1) ((n, l.id) :: pending) rest
   | n, _, .brk _ :: rest => groupsFrom (n + 1) [] rest
-  | n, pending, .blank _ :: rest | n, pending, .gap _ :: rest | n, pending, .keepNext _ :: rest =>
+  | n, pending, .blank _ :: rest | n, pending, .gap _ :: rest | n, pending, .keepNext _ _ :: rest =>
     groupsFrom (n + 1) pending rest
   | n, pending, .other role _ first :: rest =>
     match role, first, pending.reverse with
@@ -928,7 +942,7 @@ theorem I3_separator_error_iff (us : List Unit) (pages : List PageOut) (site : N
     units that pass it (`UGap`, `UKeepNext`, `UPageControl`), and blocks
     with no line of their own. -/
 def passes : Unit → Bool
-  | .blank _ | .gap _ | .keepNext _ | .other .pass _ _ | .other .block _ none => true
+  | .blank _ | .gap _ | .keepNext _ _ | .other .pass _ _ | .other .block _ none => true
   | _ => false
 
 theorem groupsFrom_passes (n : Nat) (pending : List (Nat × Nat)) (mids : List Unit)
@@ -1377,7 +1391,8 @@ theorem free_putLine (env : Env) (st : St) (l : Line) (h : l.notes = []) :
     lines left when a column of the whole capacity holds the line and
     those `n` lines. -/
 theorem separator_place (env : Env) (hfit : PlainFitting env) (st : St) (kp : Keep) (l : Line) (rest : List Flow)
-    (n : Nat) (hl : l.notes = []) (c : Clear st) (hlast : 1 ≤ kp.last) (hhold : 1 + (n : Int) ≤ env.capacity) :
+    (n : Nat) (hl : l.notes = []) (c : Clear st) (hw : heldHere env st = false) (hlast : 1 ≤ kp.last)
+    (hhold : 1 + (n : Int) ≤ env.capacity) :
     ∃ s', Clear s' ∧
       placeKept env (previousKeep env rest kp) (placeLines env kp) st true [l] ⟨n, 0⟩ = putLine env s' l ∧
       (n : Int) ≤ free env (putLine env s' l) := by
@@ -1418,7 +1433,7 @@ theorem separator_place (env : Env) (hfit : PlainFitting env) (st : St) (kp : Ke
         simp only [isEmpty, Bool.and_eq_true] at em; exact isEmpty_nil _ em.1
       obtain ⟨a, b⟩ := fresh st c u (c.noteLines nl)
       rw [← e1, a] at f1; exact f1 b
-    · rw [if_neg em]
+    · rw [if_neg (fun h => h.elim em (fun h' => by rw [hw] at h'; exact Bool.false_ne_true h'))]
       have nc := nextColumn_clear env st c
       obtain ⟨a, b⟩ := fresh (nextColumn env st) nc.1 nc.2.1 nc.2.2.1
       exact ⟨nextColumn env st, nc.1, a, b⟩
@@ -1442,12 +1457,30 @@ theorem view_free (env : Env) {a b : St} (v : View a = View b) : free env a = fr
 theorem view_checkNoBreak (st : St) : View (checkNoBreak st) = View st := by
   rcases checkNoBreak_eq st with e | ⟨u, e⟩ <;> rw [e] <;> rfl
 
-theorem view_keepNext (env : Env) (st : St) (n : Nat) (rest : List Flow) :
-    View (step env st (.keepNext n) rest) = View st := by
+theorem view_keepNext (env : Env) (st : St) (n sp : Nat) (rest : List Flow) :
+    View (step env st (.keepNext n sp) rest) = View st := by
   unfold step
   split
   · rfl
-  · obtain ⟨w, e⟩ := waitFor_eq .keepNext (env.nextFirst n rest) st; rw [e]; rfl
+  · obtain ⟨w, e⟩ := waitFor_eq (.keepNext sp) (env.nextFirst n rest) st; rw [e]; rfl
+
+/-- `checkNoBreak` leaves nothing waiting. -/
+theorem checkNoBreak_noBreak (st : St) : (checkNoBreak st).noBreak = [] := by
+  unfold checkNoBreak
+  split
+  · assumption
+  · rfl
+
+/-- A paragraph or a stanza that `placeKept` sends to the next column
+    whole, placed where a separator hold waits, is placed as it is, as
+    from an empty column (root ADR 0398 I7, `heldHere`). -/
+theorem placeKept_held {α : Type} (env : Env) (kp : Keep) (placeIn : St → Bool → List α → St) (st : St)
+    (isStart : Bool) (ls : List α) (n : Need) (hcut : keptCut kp ls.length = ls.length)
+    (h0 : placeIn st isStart [] = st) (hh : heldHere env st = true) :
+    placeKept env kp placeIn st isStart ls n = placeIn st isStart ls := by
+  unfold placeKept
+  simp only [hcut, Nat.sub_self, List.take_zero, List.drop_zero, h0, List.isEmpty, Bool.and_true, hh, or_true,
+    ite_true, ite_self]
 
 /-- Root ADR 0352 invariant 3 on the empty-column rule of root ADR 0398
     (docs/specifications.md:1873), in the grid mode: a visible separator
@@ -1455,28 +1488,36 @@ theorem view_keepNext (env : Env) (st : St) (n : Nat) (rest : List Flow) :
     paragraph after it put the separator's line and the paragraph's first
     line in one column, when the separator's line and the first part of
     the paragraph that its keep asks for (`n` lines, `keptNeed` of
-    Decide.hs) fit a column of the whole capacity.
+    Decide.hs, with what a no-break or a keep-with-next after the whole
+    paragraph keeps) fit a column of the whole capacity.
 
     The hypotheses: nothing waits before the separator and the set of
-    columns has no footnote lines kept above it (`Clear`); the lines have
-    no footnote and `fitting` counts the free lines (`PlainFitting`); the
+    columns has no footnote lines kept above it (`Clear`), and no
+    separator hold waits in its column (`heldHere`); the lines have no
+    footnote and `fitting` counts the free lines (`PlainFitting`); the
     separator keeps one last line or more (`keep-last-lines` is 1 or more,
-    docs/specifications.md:3100); `p`, a first part of the paragraph (its
+    docs/specifications.md:3100); its keep has the span of a visible
+    separator (`env.held sp`); `p`, a first part of the paragraph (its
     whole or a split `splitAtBreak` leaves as it is, as `firstPart` of
-    Decide.hs gives), is one line or more and no more than `n`; and no
-    no-break or keep-with-next follows the paragraph (`keptNeed` of what
-    follows it is none). README.md shows an input where a no-break after
-    the paragraph splits the hold. -/
+    Decide.hs gives), is one line or more and no more than `n`; and either
+    no no-break or keep-with-next follows the paragraph (`keptNeed` of
+    what follows it is none), or `placeKept` would send the paragraph to
+    the next column whole (`keptCut`), as a paragraph of no more lines
+    than it keeps last. -/
 theorem I3_separator_hold_together (env : Env) (hfit : PlainFitting env) (st : St) (c : Clear st)
-    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p : Nat)
+    (hw : heldHere env st = false)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
     (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
-    (hkept : env.keptNeed (.keepNext 1 :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
-    (hnone : env.keptNeed rest = none) (hhold : 1 + (n : Int) ≤ env.capacity)
+    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hsp : env.held sp = true)
+    (hnext : env.keptNeed rest = none ∨
+      keptCut (previousKeep env rest kq) (l0 :: ls).length = (l0 :: ls).length)
+    (hhold : 1 + (n : Int) ≤ env.capacity)
     (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p) :
-    let s1 := step env st (.paragraph kp [l]) (.keepNext 1 :: .paragraph kq (l0 :: ls) :: rest)
-    let s2 := step env s1 (.keepNext 1) (.paragraph kq (l0 :: ls) :: rest)
+    let s1 := step env st (.paragraph kp [l]) (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)
+    let s2 := step env s1 (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest)
     let s3 := step env s2 (.paragraph kq (l0 :: ls)) rest
-    placeAll env st (.paragraph kp [l] :: .keepNext 1 :: .paragraph kq (l0 :: ls) :: rest) = placeAll env s3 rest ∧
+    placeAll env st (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = placeAll env s3 rest ∧
       Together s3 l.id l0.id := by
   intro s1 s2 s3
   refine ⟨rfl, ?_⟩
@@ -1484,10 +1525,12 @@ theorem I3_separator_hold_together (env : Env) (hfit : PlainFitting env) (st : S
   have hb : ∀ x ∈ l0 :: ls, x.notes = [] := fun x m => hl x (List.mem_cons_of_mem _ m)
   -- the separator
   obtain ⟨s', cs', e', fr⟩ := separator_place env hfit { st with needAt := none } kp l
-    (.keepNext 1 :: .paragraph kq (l0 :: ls) :: rest) n hl0 (view_clear (a := st) rfl c) hlast hhold
+    (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) n hl0 (view_clear (a := st) rfl c) hw hlast hhold
+  have s1e : s1 = { checkNoBreak (placeFlow env { st with needAt := none } (.paragraph kp [l])
+      (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)) with seen := true, lastDeferred := false, spaces := [] } :=
+    step_paragraph env st kp [l] _ c
   have v1 : View s1 = View (putLine env s' l) := by
-    show View (step env st _ _) = _
-    rw [step_paragraph env st kp [l] _ c, placeFlow_some env _ kp [l] _ _ hkept, e']
+    rw [s1e, placeFlow_some env _ kp [l] _ _ hkept, e']
     exact view_checkNoBreak _
   have m1 : l.id ∈ slotsIds s1.slots := by
     have : s1.slots = (putLine env s' l).slots := congrArg (·.1) v1
@@ -1495,18 +1538,36 @@ theorem I3_separator_hold_together (env : Env) (hfit : PlainFitting env) (st : S
     exact mem_app.mpr (Or.inr (by simp [slotsIds, slotIds]))
   have c1 : Clear s1 := view_clear v1.symm (clear_putLine env s' l hl0 cs')
   have f1 : (n : Int) ≤ free env s1 := by rw [view_free env v1]; exact fr
-  -- the keep-with-next
-  have v2 : View s2 = View s1 := view_keepNext env s1 1 _
+  -- the keep-with-next, waiting in the separator's column
+  have v2 : View s2 = View s1 := view_keepNext env s1 1 sp _
   have c2 : Clear s2 := view_clear v2.symm c1
   have f2 : (p : Int) ≤ free env s2 := by rw [view_free env v2]; omega
   have m2 : l.id ∈ slotsIds s2.slots := by
     have : s2.slots = s1.slots := congrArg (·.1) v2
     rw [this]; exact m1
+  have h2 : heldHere env { s2 with needAt := none } = true := by
+    have nb1 : s1.noBreak = [] := by rw [s1e]; exact checkNoBreak_noBreak _
+    have sn1 : s1.seen = true := by rw [s1e]
+    have ld1 : s1.lastDeferred = false := by rw [s1e]
+    show heldHere env (step env s1 (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest)) = true
+    unfold step
+    rw [if_neg (by rw [sn1, ld1]; decide)]
+    unfold waitFor
+    rw [nb1]
+    simp [heldHere, hsp]
   -- the paragraph
   have e3 : s3 = { checkNoBreak (placeLinesGo env l0.id kq { s2 with needAt := none } true (l0 :: ls)) with
       seen := true, lastDeferred := false, spaces := [] } := by
     show step env s2 _ rest = _
-    rw [step_paragraph env s2 kq _ rest c2, placeFlow_none env _ kq _ rest hnone]; rfl
+    rw [step_paragraph env s2 kq _ rest c2]
+    cases hk : env.keptNeed rest with
+    | none => rw [placeFlow_none env _ kq _ rest hk]; rfl
+    | some m =>
+      have hcut : keptCut (previousKeep env rest kq) (l0 :: ls).length = (l0 :: ls).length := by
+        rcases hnext with h | h
+        · rw [hk] at h; cases h
+        · exact h
+      rw [placeFlow_some env _ kq _ rest m hk, placeKept_held env _ _ _ true _ m hcut rfl h2]; rfl
   obtain ⟨more, mm, h⟩ := placeLinesGo_first env hfit kq { s2 with needAt := none } l0 ls hb (view_clear (a := s2) rfl c2) p hp f2 hpart
   have v3 : View s3 = View (placeLinesGo env l0.id kq { s2 with needAt := none } true (l0 :: ls)) := by
     rw [e3]; exact view_checkNoBreak _
@@ -1526,7 +1587,7 @@ theorem I3_separator_hold_together (env : Env) (hfit : PlainFitting env) (st : S
     line, a keep-with-next of one line and the paragraph. -/
 theorem separatorFlows_hold (capacity : Nat) (kp kq : Keep) (l : Line) (ls : List Line) (i : Nat) :
     separatorFlows capacity [.separator 0 0 kp l, .other .block [.paragraph kq ls] (some i)] =
-      [.paragraph kp [l], .keepNext 1, .paragraph kq ls] := rfl
+      [.paragraph kp [l], .keepNext 1 l.id, .paragraph kq ls] := rfl
 
 end Separator
 end WholePagination

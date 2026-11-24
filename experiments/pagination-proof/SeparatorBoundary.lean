@@ -165,13 +165,18 @@ def flowsOf (items : List Item) (capacity : Nat) (us : List Separator.Unit) : Li
     `blockStyle` (a weight of 1pt, 10pt outside and 5pt inside the rule
     before, 10pt inside and 5pt outside the rule after, on a pitch of 15pt
     and a face of 10pt): one grid line inside the column (`ruleLines`),
-    one at its start and at its end, and two shared. -/
-def blockEnv (capacity : Nat) : Env :=
-  { boundaryEnv capacity with
+    one at its start and at its end, and two shared; the keeps of the
+    visible separators are `held` (`paginateHeld`, Flow.hs:869). -/
+def blockEnv (capacity : Nat) (held : Nat → Bool) : Env :=
+  { boundaryEnv capacity held with
     ruleBefore := fun _ _ _ => 1
     rulesJoined := fun _ _ => 2
     ruleAfter := fun _ => 1
     ruleAfterAtEnd := fun _ _ => 1 }
+
+/-- The spans of the keeps of the visible separators (`separatorSpans`,
+    Flow.hs:826): those of the separators, by the ids of their lines. -/
+def held (us : List Separator.Unit) (sp : Nat) : Bool := (Separator.separatorSpans us).contains sp
 
 /-- The line of the separator at an index of the units. -/
 def siteLine (us : List Separator.Unit) (i : Nat) : String :=
@@ -182,7 +187,7 @@ def siteLine (us : List Separator.Unit) (i : Nat) : String :=
 def output (c capacity : Nat) (items : List Item) : List String :=
   let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
   let made := Separator.separatorUnits capacity us
-  let final := paginate (blockEnv capacity) (flowsOf items capacity us)
+  let final := paginate (blockEnv capacity (held us)) (flowsOf items capacity us)
   -- the controls not met in a column with no output go with the last
   -- page, as `paginateWithin` of Paginate.hs puts them
   let pages := match final.done with
@@ -218,7 +223,7 @@ partial def firstNeed (separator capacity : Int) (hasNotes : Bool) (wanted : Nat
   | .space s :: rest => s + firstNeed separator capacity hasNotes wanted rest
   | .blank n :: rest => (n : Int) * pitch + firstNeed separator capacity hasNotes wanted rest
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
-  | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed separator capacity hasNotes wanted rest
+  | .noBreakLines _ :: rest | .keepNext _ _ :: rest => firstNeed separator capacity hasNotes wanted rest
   | .figure _ e :: _ => e
   | .wrapped _ e _ :: _ => e
   | .heading true _ _ :: _ => 0
@@ -246,12 +251,12 @@ where
     its height is `(lines - 1) * pitch + face`; the manuscripts have no
     notes, no `@page-lines`, no headings, no wrapped figures, and the
     boxes have no padding of their own. -/
-def freeEnv (lines : Nat) : PhysicalPagination.Env :=
+def freeEnv (lines : Nat) (held : Nat → Bool) : PhysicalPagination.Env :=
   let cap : Int := ((lines : Int) - 1) * pitch + face
   { pagePitch := pitch, fontSize := face, capacity := cap, maxCapacity := cap, separator := pitch,
     columns := 1, firstLine := 0, pitchOf := fun _ => pitch, faceOf := fun _ => face,
     headingBounds := fun _ => none, wrappedBefore := fun _ => 0, boxPadding := fun _ => none,
-    firstNeed := firstNeed pitch cap, retention := none }
+    firstNeed := firstNeed pitch cap, retention := none, held := held }
 
 /-- The rules of `blockStyle` as `ruleSide` (Flow.hs:3569) makes them:
     the rule before has its space after inside and its space before
@@ -263,8 +268,8 @@ def side : Bool → PhysicalPagination.RuleSide
 
 /-- `freeEnv` with the padding of the boxes of `blockStyle`, 1zw, by the
     first line of each box (`bBoxPadding`, Flow.hs:4202). -/
-def freeBlockEnv (items : List Item) (lines : Nat) : PhysicalPagination.Env :=
-  { freeEnv lines with boxPadding := fun i => if (boxKey items i).isSome then some face else none }
+def freeBlockEnv (items : List Item) (lines : Nat) (held : Nat → Bool) : PhysicalPagination.Env :=
+  { freeEnv lines held with boxPadding := fun i => if (boxKey items i).isSome then some face else none }
 
 def freeSlot : Int × PhysicalPagination.Slot → String
   | (p, .line i) | (p, .repeated i) => s!"{p}:L{i}"
@@ -277,7 +282,7 @@ def freeSlot : Int × PhysicalPagination.Slot → String
 def freeUnmet : PhysicalPagination.Unmet → String
   | .needLines n => s!"!need{n}"
   | .noBreak => "!nobreak"
-  | .keepNext => "!keepnext"
+  | .keepNext _ => "!keepnext"
   | .droppedBlank => "!dropped"
   | .shortPart true i w g => s!"!first{i}:{w}:{g}"
   | .shortPart false i w g => s!"!last{i}:{w}:{g}"
@@ -312,7 +317,7 @@ def failureText (items : List Item) : PhysicalPagination.Failure → String
 def freeOutput (c capacity : Nat) (items : List Item) : List String :=
   let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
   let made := Separator.separatorUnits capacity us
-  match PhysicalPagination.paginate (freeBlockEnv items capacity) (SeparatorPhysical.flows pitch side (flowsOf items capacity us)) with
+  match PhysicalPagination.paginate (freeBlockEnv items capacity (held us)) (SeparatorPhysical.flows pitch side (flowsOf items capacity us)) with
   | .error f => ["error " ++ failureText items f]
   | .ok pages =>
     match SeparatorPhysical.holdErrors made pages with

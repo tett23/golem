@@ -32,7 +32,7 @@ namespace SeparatorBlocks
 /-- `passable` of `joinBoxes`: a space or a keep-with-next may go into a
     box. -/
 def passable : Flow → Bool
-  | .space _ | .keepNext _ => true
+  | .space _ | .keepNext _ _ => true
   | _ => false
 
 /-- `keyOf` of `joinBoxes`: the settings of the box of a boxed flow, by
