@@ -604,6 +604,110 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Decide.hs:322` `bodySize`、`:336` `joinsNext` | `RuledBody.size`、`joinsNext` |
 | `Paginate/Decide.hs:346` `planOf`、`:381` `planNeed`、`:385` `planParts` | `planOf`、`Plan`、`planNeed`、`planParts` |
 
+## 自由な配置のモデル
+
+`Physical.lean` は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置（`Paginate/Physical.hs` の `paginatePhysical`）を、Haskell の関数ごとに一つの Lean の定義へ写した状態遷移のモデルである。
+寸法は sp の整数（`Int`）のまま写し、格子の行に丸めない。
+状態 `St` は `PhysicalState` から、ラベル、索引の印、表と箱の部分、置いた罫線、節の記録を除いたものである。
+除いた項目は出力の付帯情報で、どの段に何を置くかの判断には使わない。
+`check.sh` は `Physical.lean` に `partial`、`sorry`、`axiom` などがないことを確かめ、ファイルを検査する。
+
+モデルが扱うフローは、段落、続きの段落、図版、回した図版、スペース、行アキ、改段と改ページ（奇数ページと偶数ページの改ページを含む）、`need-lines`、`page-lines`（`FAdjustLines`）、`no-break`、行数を指定した `no-break`、`keep-with-next`、本文の行を持つ罫線つきのブロック（`RuledLines`）である。
+脚注は、行ごとの脚注の分割（`splitNotes`）、次の段への繰り越し（`carryInto` と `splitCarried`）、区切りの長さを含めて写した。
+罫線つきのブロックは、前のブロックと罫線の領域を共有する配置（`psJoin`）、共有をやめて次の段へ送る配置（`placeRuledKeeping` と `flushPendingRule`）を含めて写した。
+罫線の領域の長さは、`FreeGeometry.hs` の `faceOffset`、`ruleBeforeGap`、`ruleAfterGap`、`rulesSharedGap`、`ruleBeforeEdge`、`ruleAfterEdge` のうち、使用長に足す長さ（extra）だけを写した。
+先のフローが求める長さ（`firstNeed`）は `Env` の引数とし、定理はそのどの値でも成り立つ。
+
+モデルは次の点で Haskell の実装と異なる。
+`trialParagraphPartLimit` は回り込みの領域と行数の上限を持たない場合だけを写し、`movePhysicalCursor` は `nextColumn` として写した。
+`movePhysicalCursor` が閉じる段の使用長を広げる処理は、閉じた段の出力に現れないからである。
+`trialParagraphPartLimit` が段落ごとに呼ぶ `checkPhysicalNotes` は、`paginatePhysical` が最初に原稿の全体で同じ検査をするので、モデルでは `paginate` の最初に一度だけ行う。
+`drainCarry` は、次のページが最初の待機中の図版と最初の繰り越し脚注の 1 行を受け取れる間だけ進む（`drainOk`）。
+`paginate` が通る状態では、この条件は常に成り立つ。
+待機中の図版の高さは `FFigure` の検査で段の容量以下であり、脚注を繰り越すのは脚注を持つ行を置いたときだけで、そのとき `checkPhysicalNotes` が区切りと 1 行の和が段の容量以下であることを確かめているからである。
+`drain_empty` は、この性質（`Good`）の下で `drainCarry` が待機中の図版を残さないことを証明する。
+ただし、`drain_empty` は行の送り（`physicalPagePitch`）が正であることを前提に置く。
+送りが 0 の設定では、Haskell の `div` が例外になる。
+
+終了は、各ループが整礎な再帰で定義されていることで示す。
+`I4_nextColumn_rank` は、何かを置いた段か `FAdjustLines` で縮んだ段から次の段へ進むと、尺度 `rank` が減ることを証明する。
+`rank` は、待機中の図版の数と繰り越す脚注ごとの行数に 1 を足した値の和（`waiting`）を 4 倍し、段が縮んでいれば 2 を、段が空でなければ 1 を足した値である。
+`placeLines` は残りの行数、`keep-all-lines` の有無、この尺度の辞書式順序で止まる（`I4_trial_moved`、`I4_trial_placed`）。
+`judgeNeed`（`FNeedLines` の段のループ）も、空でない段か縮んだ段からだけ次の段へ進むので、この尺度で止まる。
+`placeRuled` は、前のブロックとの共有の有無と、この尺度の辞書式順序で止まる（`I4_fit_moved`）。
+共有をやめると共有の有無が減り、`fit` が段を進めるとこの尺度が減るからである。
+`drainCarry` は、`waiting` とページの残りの段数の辞書式順序で止まる（`I4_drain_rank`）。
+ページの終わりで次のページへ進むと、`drainOk` の下で最初の図版か最初の脚注の 1 行が新しいページに置かれ、`waiting` が減る。
+`I4_paginate_ends` は、この全体が任意の有限の原稿で値を持つことを述べる。
+
+内容の過不足と順序は、`Whole.lean` と同じく、出力済みの段と現在の段をつないだ列の不変条件で示す。
+`I5_paginate_text` は、`paginate` が成功すれば、段落、続きの段落、罫線つきのブロックの行が原稿の順に一度ずつ出力のページに並ぶことを証明する。
+この定理に、`paginate` の成功のほかの前提はない。
+`I5_paginate_figures` は、行の送りが正なら、回していない図版が原稿の順に一度ずつ並ぶことを証明する。
+この定理は、出力済みの段、現在の段、待機中の図版をつないだ図版の列が、それまでに読んだ原稿の図版の列に等しいという不変条件から導く。
+各操作の補題（`step_placeNext` など）は、操作の前後で行と図版の列にどれだけ足されるかと、`Good` が保たれることを `Step` の形で述べる。
+
+回した図版の順序は、この定理に含めない。
+Haskell の実装は、空でないページで回した図版に出会うと、待機中の図版を置き終える前に次のページへ回した図版を置くからである（`Physical.hs:935`）。
+容量 50 sp、送り 10 sp の 1 段で `[FParagraph defaultKeep (4 行), FFigure 100 30, FFigure 101 30, FPageFigure 200]` を `paginatePhysical` に渡すと、2 ページ目に図版 100 と回した図版 200 が並び、図版 101 は 3 ページ目に置かれた。
+また、`[FParagraph defaultKeep (4 行), FPageFigure 200, FParagraph defaultKeep (1 行)]` では、1 ページ目に 1 行の余りがあっても、後の段落は 3 ページ目に置かれた。
+[仕様](../../docs/specifications.md)の「回した図版」の節（5321 行）は、空でないページで出会った回した図版を待機中の図版に加えて本文を続け、次のページで待機中の図版を原稿の順に置き、回した図版がそのページを占めると定める。
+二つの例は、どちらもこの記述と合わない。
+この README は実装を変えず、食い違いをメンテナーの判断に残す。
+
+`PhysicalBoundary.hs` は、境界の入力を作って golem-layout の `paginatePhysical` に渡し、入力を `in` の行に、出力のページを `out` の行に書き出す。
+入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、失敗する入力からなる。
+id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
+`PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
+`check.sh` は二つの出力を `diff` で比べ、61746 個の入力ですべて一致した。
+`PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
+
+この照合の感度は、写した計算を一つずつ替えて確かめた。
+食い違う入力の数は次のとおりだった。
+脚注では、行の脚注の区切りを除くと 4812 個、繰り越しの区切りを除くと 1152 個、`splitCarried` が分けた脚注の行を一つ減らすと 1152 個、`splitNotes` が脚注を途中で分けないと 6696 個、`fitting` から脚注の長さを除くと 11001 個である。
+段落では、`fit` が待っているスペースを足さないと 281 個、強制した分割の `ShortPart` を除くと 9628 個、縮めた空の段で行が収まらないときに次の段へ進まないと 2 個である。
+罫線つきのブロックでは、共有をやめて次の段へ送る分岐を除くと 179 個、`placeRuledKeeping` が後続を見ないと 116 個、共有する領域の長さを共有しない長さにすると 345 個、後の罫線を常に段の端の長さにすると 1510 個、段の外の余白を見ないと 1193 個である。
+後続の保持では、`fitsFollowing` を常に真にすると 1446 個、`checkWaits` を除くと 2346 個、空の段でも待つ保持を記録すると 244 個、`firstNeed` から脚注の区切りを除くと 10 個、`firstNeed` が後の保持を見ないと 297 個である。
+その他では、`need-lines` が縮めた空の段から進まないと 11 個、`page-lines` の下限を除くと 42 個、奇数ページの改ページが空白のページを入れないと 368 個、行アキの後の段送りを除くと 14 個、回した図版の前で改ページしないと 4520 個である。
+待機中の図版を容量に等しい空きに置かないようにした場合と、`keep-all-lines` の段落を空の段でも緩めない場合は、評価が 120 秒で終わらなかった。
+変えたモデルでは段を進めるループが止まらなくなるためと考えられるが、未確認である。
+`flushPendingRule` が使用長を広げる処理を除いても、出力は変わらなかった。
+この処理の後には必ず `nextColumn` が段を閉じ、閉じた段の使用長は出力に現れないからである。
+同じ処理が置く罫線の位置はモデルに持たないので、この照合では確かめていない。
+
+次の表は、Haskell の関数と Lean の定義の対応である。
+Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パスと行番号で示す。
+
+| Haskell | Lean |
+| --- | --- |
+| `Paginate/Physical.hs:262` `initial`、`:265` `limit`、`:268` `room`、`:271` `empty` | `initial`、`limit`、`room`、`empty` |
+| `Paginate/Physical.hs:286` `close` | `close` |
+| `Paginate/Physical.hs:293` `nextColumn`、`:319` `nextPage` | `fresh`、`nextColumn`、`nextPage` |
+| `Paginate/Physical.hs:325` `placeDeferred` | `placeDeferred`、`placeDeferredGo` |
+| `Paginate/Physical.hs:332` `carryInto`、`:342` `splitCarried` | `carryInto`、`splitCarried` |
+| `Paginate/Physical.hs:352` `fit` | `fit`、`dropAtTop` |
+| `Paginate/Physical.hs:362` `putSlot` | `putSlot` |
+| `Paginate/Physical.hs:372` `putLineWithReserve`、`:399` `splitNotes` | `putLineWithReserve`、`lineSep`、`lineNotes`、`lineNotesUsed`、`putLines`、`splitNotes` |
+| `Paginate/Physical.hs:409` `fitting` | `fitting`、`fittingGo` |
+| `Paginate/Physical.hs:453` `splitAtBreak`、`Paginate/Decide.hs:229` `firstPart` | `splitAtBreak`、`firstPart` |
+| `Paginate/Physical.hs:514` `trialParagraphPartLimit` | `trial`、`trialRest`、`Part` |
+| `Paginate/Physical.hs:561` `placeLines` | `placeLines` |
+| `Paginate/Physical.hs:574` `checkPhysicalNotes`、`:582` `paginatePhysical` | `checkNotes`、`paginate` |
+| `Paginate/Physical.hs:596` `drainCarry` | `drainCarry`、`drainOk` |
+| `Paginate/Physical.hs:601` `placeAll`、`:607` `placeNext`、`:635` `occupies` | `placeAll`、`placeNext`、`beforeOf`、`placeBody`、`occupies` |
+| `Paginate/Physical.hs:651` `checkWaits` | `checkWaits`、`checkWait`、`waitMet`、`markUnmet`、`addedSlots` |
+| `Paginate/Physical.hs:666` `followingRows`、`:679` `keepAhead` | `followingRows`、`keepAhead`、`keepAheadGo`、`collect`、`soft`、`counts` |
+| `Paginate/Physical.hs:699` `firstNeed` | `Env.firstNeed`（照合では `PhysicalBoundary.firstNeed`） |
+| `Paginate/Physical.hs:754` `fitsFollowing` | `fitsFollowing`、`fitsFollowingGo` |
+| `Paginate/Physical.hs:805` `placeWithNext` | `placeWithNext`、`keptBack`、`afterFront` |
+| `Paginate/Physical.hs:838` `placeFlow` | `placeFlow`、`judgeNeed`、`adjustLines`、`ceilDiv` |
+| `Paginate/Physical.hs:1229` `placeRuledKeeping`、`:1245` `placeRuled`、`:1359` `flushPendingRule` | `placeRuledKeeping`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`joiningNext`、`flushPendingRule` |
+| `Paginate/Physical.hs:1369` `waitFor`、`:1376` `waitForPrior` | `waitFor`、`waitForPrior` |
+| `Paginate/Physical.hs:1612` `breakAt`、`:1621` `parityStart` | `breakAt`、`parityStart` |
+| `FreeGeometry.hs:29` `faceOffset`、`:56` `ruleBeforeExtra`、`:59` `ruleAfterExtra` | `faceOffset`、`ruleBeforeExtra`、`ruleAfterExtra` |
+| `FreeGeometry.hs:68` `ruleBeforeGap`、`:76` `ruleAfterGap`、`:83` `rulesSharedGap` | `ruleGapExtra`、`rulesSharedExtra` |
+| `FreeGeometry.hs:97` `ruleBeforeEdge`、`:109` `ruleAfterEdge` | `ruleBeforeEdgeExtra`、`ruleAfterEdgeExtra` |
+
 ## 未完の項目
 
 格子モードの改ページ全体は `Whole.lean` が扱う。
@@ -684,12 +788,15 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 二つ目に、行ごとに変わる行長と、字形の伸縮（`pExpansion`）は写していない。
 三つ目に、実フォントの送りを golem-driver の `FigureSpec.hs` の計測値で渡す照合も、まだしていない。
 
-三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移である。
-自由な配置は `Paginate/Physical.hs` が `Sp` の寸法で行い、図版の回り込みを実際の段の位置で改行し直す経路も持つ。
-整数行の `Whole.lean` を、この経路の証明とは扱わない。
-計画は、`Physical.lean` に `Physical.hs` の状態（`PhysicalState`）と、その `placeRuled`、`placeRuledKeeping`、`flushPendingRule` を含む各フローの配置を、寸法を整数として写すことである。
-終了は、残りのフローの重さと、段を進めるたびに減る尺度で示し、内容の過不足と順序は `Whole.lean` と同じく、出力済み、段の中、待機中をつないだ列の不変条件で示す。
-回り込みの改行し直しは、改行器を引数とし、改行した行の id が原稿の行の id と同じ列であることを前提に置く。
+三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わないフローである。
+`Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、回していない図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
+整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
+残るフローは、見出し（`placeHeading`、`keepFollowing`、見出しの罫線つきのブロック `RuledHeading`）、定義の項、詩、回り込み図版、表（`placeTable`、`placeTableAcross`）、コード、箱（`placeBoxedParagraph`、`placeBoxedStanzaWith`）、本の部（`retainPhysicalPart`）、節の開始、段組みの切り替えと戻しである。
+計画は、これらを `Physical.lean` の `Flow` と `placeFlow` に一つずつ足し、各配置の `Step` の補題と終了の尺度を広げ、`PhysicalBoundary.hs` に同じ種類の入力を足すことである。
+段組みの切り替えは、同じページの次の段の先頭行を 0 より大きくするので、`drainOk` と `drain_empty` には、ページの先頭で先頭行が 0 に戻ることを使う。
+回り込み図版の改行し直し（`placeWrappedOverflow`、`trialParagraphPartLimit` の回り込みの領域と行数の上限）は、改行器を引数とし、改行した行の id が原稿の行の id と同じ列であることを前提に置く。
+繰り越した脚注の行が過不足なく出力に並ぶことと、置いた罫線の位置も、まだ証明していない。
+回した図版の順序は、「自由な配置のモデル」の節に挙げた実装と仕様の食い違いについて、メンテナーの判断を待つ。
 
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りである。
 `USeparator` からのフロー生成と、区切りを後続行と保持できなければ G07134 を返す後処理は、まだ証明していない。
@@ -705,6 +812,7 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 ```sh
 lean experiments/pagination-proof/Pagination.lean
 lean experiments/pagination-proof/Whole.lean
+lean experiments/pagination-proof/Physical.lean
 cabal build golem-layout
 sh experiments/pagination-proof/check.sh
 ```

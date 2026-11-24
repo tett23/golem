@@ -112,6 +112,32 @@ diff -u "$tmp/boundary-haskell" "$tmp/boundary-lean"
 inputs=$(grep -c '^[0-9]' "$tmp/boundary-lean")
 echo "the $inputs boundary inputs give the same pages in Whole.lean and golem-layout"
 
+# The free placement of root ADR 0397 (Paginate/Physical.hs): every
+# definition must be total and every theorem proved.
+physical=$root/experiments/pagination-proof/Physical.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$physical"; then
+  echo "unproved or unchecked Lean declaration in $physical" >&2
+  exit 1
+fi
+"$lean" -o "$tmp/Physical.olean" "$physical"
+echo "the free placement model is total and its theorems are proved"
+
+# The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
+# against golem-layout's paginatePhysical (root ADR 0352).
+pboundary=$root/experiments/pagination-proof/PhysicalBoundary.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|extern)([^A-Za-z_]|$)' "$pboundary"; then
+  echo "unchecked Lean declaration in $pboundary" >&2
+  exit 1
+fi
+(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=containers \
+  -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
+  -package-id=golem-length-0.1.0-inplace -package-id=golem-doc-0.1.0-inplace \
+  experiments/pagination-proof/PhysicalBoundary.hs) > "$tmp/physical-haskell"
+LEAN_PATH="$tmp" "$lean" --run "$pboundary" "$tmp/physical-haskell" > "$tmp/physical-lean"
+diff -u "$tmp/physical-haskell" "$tmp/physical-lean"
+physicalInputs=$(grep -c '^in ' "$tmp/physical-lean")
+echo "the $physicalInputs boundary inputs give the same pages in Physical.lean and golem-layout's paginatePhysical"
+
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
 # breaks and the ratio and overflow of each line) on Pagination.lean's
