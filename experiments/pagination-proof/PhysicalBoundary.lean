@@ -76,6 +76,12 @@ def sideOf (s : String) : Option RuleSide :=
     | [i, o, w, sp, out] => some ⟨int! i, int! o, int! w, sp == "1", if out == "-" then none else some (int! out)⟩
     | _ => panic! s!"side {s}"
 
+def breakOf : String → BreakKind
+  | "c" => .column
+  | "p" => .page
+  | "r" => .recto
+  | _ => .verso
+
 def flowOf (s : String) : Flow :=
   match s.splitOn ":" with
   | ["p", k, ls] => .paragraph (keepOf k) (linesOf ls)
@@ -84,15 +90,15 @@ def flowOf (s : String) : Flow :=
   | ["t", i] => .pageFigure (nat! i)
   | ["s", n] => .space (int! n)
   | ["b", n] => .blank (nat! n)
-  | ["k", "c"] => .brk .column
-  | ["k", "p"] => .brk .page
-  | ["k", "r"] => .brk .recto
-  | ["k", "v"] => .brk .verso
+  | ["k", k] => .brk (breakOf k)
   | ["n", n] => .needLines (nat! n)
   | ["a", n] => .adjustLines (int! n)
   | ["B"] => .noBreak
   | ["L", n] => .noBreakLines (nat! n)
   | ["K", n] => .keepNext (nat! n)
+  | ["S", k] => .start (breakOf k)
+  | ["W", c] => .switchColumns (nat! c)
+  | ["R"] => .restoreColumns
   | ["r", i, b, a, j, o, k, ls] =>
     .ruled ⟨nat! i, sideOf b, sideOf a, j == "1", int! o, keepOf k, linesOf ls⟩
   | _ => panic! s!"flow {s}"

@@ -612,7 +612,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 除いた項目は出力の付帯情報で、どの段に何を置くかの判断には使わない。
 `check.sh` は `Physical.lean` に `partial`、`sorry`、`axiom` などがないことを確かめ、ファイルを検査する。
 
-モデルが扱うフローは、段落、続きの段落、図版、回した図版、スペース、行アキ、改段と改ページ（奇数ページと偶数ページの改ページを含む）、`need-lines`、`page-lines`（`FAdjustLines`）、`no-break`、行数を指定した `no-break`、`keep-with-next`、本文の行を持つ罫線つきのブロック（`RuledLines`）である。
+モデルが扱うフローは、段落、続きの段落、図版、回した図版、スペース、行アキ、改段と改ページ（奇数ページと偶数ページの改ページを含む）、`need-lines`、`page-lines`（`FAdjustLines`）、`no-break`、行数を指定した `no-break`、`keep-with-next`、本文の行を持つ罫線つきのブロック（`RuledLines`）、節の開始（`FSection`）、段組みの切り替えと戻し（`FSwitchColumns`、`FRestoreColumns`）である。
 脚注は、行ごとの脚注の分割（`splitNotes`）、次の段への繰り越し（`carryInto` と `splitCarried`）、区切りの長さを含めて写した。
 罫線つきのブロックは、前のブロックと罫線の領域を共有する配置（`psJoin`）、共有をやめて次の段へ送る配置（`placeRuledKeeping` と `flushPendingRule`）を含めて写した。
 罫線の領域の長さは、`FreeGeometry.hs` の `faceOffset`、`ruleBeforeGap`、`ruleAfterGap`、`rulesSharedGap`、`ruleBeforeEdge`、`ruleAfterEdge` のうち、使用長に足す長さ（extra）だけを写した。
@@ -627,6 +627,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 待機中の図版の高さは `FFigure` の検査で段の容量以下であり、脚注を繰り越すのは脚注を持つ行を置いたときだけで、そのとき `checkPhysicalNotes` が区切りと 1 行の和が段の容量以下であることを確かめているからである。
 `drain_empty` は、この性質（`Good`）の下で `drainCarry` が待機中の図版を残さないことを証明する。
 ただし、`drain_empty` は行の送り（`physicalPagePitch`）が正であることを前提に置く。
+段組みの切り替えは同じページの次の段の先頭を 0 より下げるが、`I4_drain_rank` はページの先頭で先頭が 0 に戻ることだけを使うので、この性質は切り替えの後も成り立つ。
 送りが 0 の設定では、Haskell の `div` が例外になる。
 
 終了は、各ループが整礎な再帰で定義されていることで示す。
@@ -656,10 +657,10 @@ Haskell の実装は、空でないページで回した図版に出会うと、
 この README は実装を変えず、食い違いをメンテナーの判断に残す。
 
 `PhysicalBoundary.hs` は、境界の入力を作って golem-layout の `paginatePhysical` に渡し、入力を `in` の行に、出力のページを `out` の行に書き出す。
-入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、失敗する入力からなる。
+入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、節の開始と段組みの切り替えと戻し、失敗する入力からなる。
 id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
 `PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
-`check.sh` は二つの出力を `diff` で比べ、61746 個の入力ですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、63426 個の入力ですべて一致した。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
 この照合の感度は、写した計算を一つずつ替えて確かめた。
@@ -669,6 +670,8 @@ id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
 罫線つきのブロックでは、共有をやめて次の段へ送る分岐を除くと 179 個、`placeRuledKeeping` が後続を見ないと 116 個、共有する領域の長さを共有しない長さにすると 345 個、後の罫線を常に段の端の長さにすると 1510 個、段の外の余白を見ないと 1193 個である。
 後続の保持では、`fitsFollowing` を常に真にすると 1446 個、`checkWaits` を除くと 2346 個、空の段でも待つ保持を記録すると 244 個、`firstNeed` から脚注の区切りを除くと 10 個、`firstNeed` が後の保持を見ないと 297 個である。
 その他では、`need-lines` が縮めた空の段から進まないと 11 個、`page-lines` の下限を除くと 42 個、奇数ページの改ページが空白のページを入れないと 368 個、行アキの後の段送りを除くと 14 個、回した図版の前で改ページしないと 4520 個である。
+節の開始では、空の段でも改段すると 48 個、空のページの判定で段を見ないと 6 個、前に `drainCarry` を呼ばないと 18 個である。
+段組みでは、同じページで切り替える分岐を除くと 356 個、切り替えた段の先頭を 0 にすると 144 個、切り替えで脚注の長さを 0 に戻すと 69 個、次のページで切り替えるときに段の数を変えないと 142 個、戻しで段の数を戻さないと 90 個、戻しで次のページでなく次の段へ進むと 348 個である。
 待機中の図版を容量に等しい空きに置かないようにした場合と、`keep-all-lines` の段落を空の段でも緩めない場合は、評価が 120 秒で終わらなかった。
 変えたモデルでは段を進めるループが止まらなくなるためと考えられるが、未確認である。
 `flushPendingRule` が使用長を広げる処理を除いても、出力は変わらなかった。
@@ -704,6 +707,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:1229` `placeRuledKeeping`、`:1245` `placeRuled`、`:1359` `flushPendingRule` | `placeRuledKeeping`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`joiningNext`、`flushPendingRule` |
 | `Paginate/Physical.hs:1369` `waitFor`、`:1376` `waitForPrior` | `waitFor`、`waitForPrior` |
 | `Paginate/Physical.hs:1612` `breakAt`、`:1621` `parityStart` | `breakAt`、`parityStart` |
+| `Paginate/Physical.hs:885` `FSection`、`:926` `FRestoreColumns`、`:927` `FSwitchColumns` | `sectionStart`、`restoreColumns`、`switchColumns` |
 | `FreeGeometry.hs:29` `faceOffset`、`:56` `ruleBeforeExtra`、`:59` `ruleAfterExtra` | `faceOffset`、`ruleBeforeExtra`、`ruleAfterExtra` |
 | `FreeGeometry.hs:68` `ruleBeforeGap`、`:76` `ruleAfterGap`、`:83` `rulesSharedGap` | `ruleGapExtra`、`rulesSharedExtra` |
 | `FreeGeometry.hs:97` `ruleBeforeEdge`、`:109` `ruleAfterEdge` | `ruleBeforeEdgeExtra`、`ruleAfterEdgeExtra` |
@@ -791,9 +795,8 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わないフローである。
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、回していない図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
-残るフローは、見出し（`placeHeading`、`keepFollowing`、見出しの罫線つきのブロック `RuledHeading`）、定義の項、詩、回り込み図版、表（`placeTable`、`placeTableAcross`）、コード、箱（`placeBoxedParagraph`、`placeBoxedStanzaWith`）、本の部（`retainPhysicalPart`）、節の開始、段組みの切り替えと戻しである。
+残るフローは、見出し（`placeHeading`、`keepFollowing`、見出しの罫線つきのブロック `RuledHeading`）、定義の項、詩、回り込み図版、表（`placeTable`、`placeTableAcross`）、コード、箱（`placeBoxedParagraph`、`placeBoxedStanzaWith`）、本の部（`retainPhysicalPart`）である。
 計画は、これらを `Physical.lean` の `Flow` と `placeFlow` に一つずつ足し、各配置の `Step` の補題と終了の尺度を広げ、`PhysicalBoundary.hs` に同じ種類の入力を足すことである。
-段組みの切り替えは、同じページの次の段の先頭行を 0 より大きくするので、`drainOk` と `drain_empty` には、ページの先頭で先頭行が 0 に戻ることを使う。
 回り込み図版の改行し直し（`placeWrappedOverflow`、`trialParagraphPartLimit` の回り込みの領域と行数の上限）は、改行器を引数とし、改行した行の id が原稿の行の id と同じ列であることを前提に置く。
 繰り越した脚注の行が過不足なく出力に並ぶことと、置いた罫線の位置も、まだ証明していない。
 回した図版の順序は、「自由な配置のモデル」の節に挙げた実装と仕様の食い違いについて、メンテナーの判断を待つ。

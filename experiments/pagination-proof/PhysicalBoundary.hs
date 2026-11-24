@@ -200,6 +200,26 @@ failureInputs =
   [(Column 12 4 1, [para 0 1, FParagraph defaultKeep (noted 10 2 1 1)]), (Column 13 0 1, [para 0 1, FParagraph defaultKeep (lines' 900 1)])]
     <> [(Column 30 0 c, [para 0 1, FFigure 100 e [] []]) | c <- [1, 2], e <- [29, 30, 31]]
 
+-- Starts of sections, and columns switched and restored, after paragraphs,
+-- a figure sent on, a note carried on or a column break.
+startInputs :: [(Column, [FlowAt Sp])]
+startInputs =
+  [ (Column cap 4 cols, pre <> ctl <> [para 20 n])
+  | cap <- [30, 40],
+    cols <- [1, 2],
+    pre <- [[], [para 0 1], [para 0 3], [para 0 2, FFigure 100 20 [] []], [FParagraph defaultKeep (noted 0 2 1 3)], [para 0 1, FBreak BreakColumn]],
+    ctl <- [[FSection (OfSection 1) k] | k <- kinds] <> [FSwitchColumns (ColumnSet c 0 0 0) : mid <> end | c <- [1, 2, 3], mid <- [[], [para 10 2], [para 10 5, FFigure 101 25 [] []]], end <- [[], [FRestoreColumns]]],
+    n <- [1 .. 3]
+  ]
+    <> [ (Column 30 4 cols, [para 0 p, FSwitchColumns (ColumnSet 2 0 0 0), para 10 q, FSection (OfSection 2) k, para 20 1, FRestoreColumns, FSection (OfSection 3) k, para 30 2])
+       | cols <- [1, 2],
+         p <- [1 .. 3],
+         q <- [1 .. 4],
+         k <- kinds
+       ]
+  where
+    kinds = [BreakColumn, BreakPage, BreakRecto, BreakVerso]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -208,11 +228,7 @@ flowToken = \case
   FPageFigure i _ _ -> "t:" <> show i
   FSpace n -> "s:" <> show (unSp n)
   FBlank _ n -> "b:" <> show n
-  FBreak k -> "k:" <> case k of
-    BreakColumn -> "c"
-    BreakPage -> "p"
-    BreakRecto -> "r"
-    BreakVerso -> "v"
+  FBreak k -> "k:" <> breakToken k
   FNeedLines _ n -> "n:" <> show n
   FAdjustLines _ n -> "a:" <> show n
   FNoBreak _ -> "B"
@@ -220,8 +236,16 @@ flowToken = \case
   FKeepNext _ n -> "K:" <> show n
   FRuled i b a j _ o (RuledLines k ls) ->
     "r:" <> show i <> ":" <> sideToken b <> ":" <> sideToken a <> ":" <> bit j <> ":" <> show (unSp o) <> ":" <> keepToken k <> ":" <> linesToken ls
+  FSection _ k -> "S:" <> breakToken k
+  FSwitchColumns (ColumnSet c _ _ _) -> "W:" <> show c
+  FRestoreColumns -> "R"
   other -> error ("no token for " <> show other)
   where
+    breakToken = \case
+      BreakColumn -> "c"
+      BreakPage -> "p"
+      BreakRecto -> "r"
+      BreakVerso -> "v"
     bit b = if b then "1" else "0"
     keepToken (Keep f l a) = show f <> "," <> show l <> "," <> bit a
     linesToken ls = intercalate "," (map lineToken ls)
@@ -261,7 +285,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

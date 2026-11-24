@@ -74,6 +74,11 @@ inductive Flow where
   | noBreakLines (n : Nat)
   | keepNext (n : Nat)
   | ruled (r : Ruled)
+  /-- `FSection` of a section: the start the flows after it need. -/
+  | start (k : BreakKind)
+  /-- `FSwitchColumns` with the number of columns of the set. -/
+  | switchColumns (cols : Nat)
+  | restoreColumns
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -984,6 +989,28 @@ def breakAt (env : Env) (k : BreakKind) (st : St) : St :=
   | .recto => parityStart env (fun p => p % 2 == 1) st
   | .verso => parityStart env (fun p => p % 2 == 0) st
 
+/-- `FSection`: nothing in an empty column or on an empty page. -/
+def sectionStart (env : Env) (k : BreakKind) (st : St) : St :=
+  let settled := drainCarry env st
+  match k with
+  | .column => if empty settled then settled else breakAt env k settled
+  | .page => if empty settled ∧ settled.column = 0 then settled else breakAt env k settled
+  | _ => breakAt env k settled
+
+/-- `FSwitchColumns`: the new columns start below what the page holds, or
+    on the next page. -/
+def switchColumns (env : Env) (cols : Nat) (st : St) : St :=
+  let settled := drainCarry env st
+  if (env.columns = 1 ∧ 0 < room env settled) ∨ (empty settled ∧ settled.column = 0) then
+    { close env settled with
+      columns := cols, firstLine := settled.used, column := 0, used := settled.used,
+      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0 }
+  else { nextPage env settled with columns := cols, firstLine := 0 }
+
+/-- `FRestoreColumns`: the next page, in the columns of the page. -/
+def restoreColumns (env : Env) (st : St) : St :=
+  { nextPage env st with columns := env.columns, firstLine := env.firstLine }
+
 /-! ## Need-lines and adjust-lines -/
 
 set_option linter.unusedVariables false in
@@ -1040,6 +1067,9 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
     let fr := if empty st then st else nextPage env st
     .ok (nextPage env (putSlot fr env.capacity (.pageFigure i)))
   | .ruled r => placeRuled env st r []
+  | .start k => .ok (sectionStart env k st)
+  | .switchColumns cols => .ok (switchColumns env cols st)
+  | .restoreColumns => .ok (restoreColumns env st)
 
 def occupies : Flow → Bool
   | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ => true
@@ -1190,6 +1220,34 @@ theorem step_fresh (env : Env) (tp : Bool) (st : St) : Step env st (fresh env tp
     · simp [text, pagesText_append, pagesText, textSlots]
     · simp [figs, pagesFigs_append, pagesFigs, figSlots]
     · intro g; exact g
+
+theorem close_pages (env : Env) (st : St) :
+    pagesText (close env st).done.reverse = text st ∧
+    pagesFigs (close env st).done.reverse = pagesFigs st.done.reverse ++ figSlots st.slots := by
+  unfold close
+  split
+  · rename_i h
+    have s : st.slots = [] := by
+      cases c : st.slots with
+      | nil => rfl
+      | cons _ _ => simp [c, List.isEmpty] at h
+    simp [text, s, textSlots, figSlots]
+  · simp [text, pagesText_append, pagesText, pagesFigs_append, pagesFigs]
+
+theorem close_fields (env : Env) (st : St) :
+    (close env st).deferred = st.deferred ∧ (close env st).carry = st.carry ∧ (close env st).page = st.page ∧
+    (close env st).column = st.column ∧ (close env st).columns = st.columns ∧ (close env st).slots = st.slots ∧
+    (close env st).used = st.used ∧ (close env st).adjust = st.adjust ∧ (close env st).notesUsed = st.notesUsed := by
+  unfold close; split <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+/-- A column closed and emptied in the same page or the next. -/
+theorem step_closed (env : Env) (st s : St) (d : s.done = (close env st).done) (sl : s.slots = [])
+    (df : s.deferred = st.deferred) (c : s.carry = st.carry) : Step env st s [] [] := by
+  obtain ⟨a, b⟩ := close_pages env st
+  refine ⟨?_, ?_, ?_⟩
+  · simp only [text, d, sl, textSlots, List.append_nil]; exact a
+  · simp only [figs, d, sl, df, figSlots, List.append_nil]; rw [b]
+  · intro ⟨g1, g2⟩; exact ⟨by rw [df]; exact g1, by rw [c]; exact g2⟩
 
 
 theorem pdg_step (env : Env) (st : St) (ds : List (Nat × Int)) :
@@ -1611,6 +1669,35 @@ theorem step_breakAt (env : Env) (k : BreakKind) (st : St) : Step env st (breakA
   · exact step_parityStart env _ st
   · exact step_parityStart env _ st
 
+theorem step_sectionStart (env : Env) (k : BreakKind) (st : St) : Step env st (sectionStart env k st) [] [] := by
+  have a := step_drainCarry env st
+  have b : ∀ c : Prop, ∀ _ : Decidable c, Step env (drainCarry env st)
+      (if c then drainCarry env st else breakAt env k (drainCarry env st)) [] [] := by
+    intro c _; split
+    · exact Step.refl env _
+    · exact step_breakAt env k _
+  unfold sectionStart
+  cases k
+  · simpa using a.trans (b _ _)
+  · simpa using a.trans (b _ _)
+  · simpa using a.trans (step_breakAt env _ _)
+  · simpa using a.trans (step_breakAt env _ _)
+
+theorem step_switchColumns (env : Env) (cols : Nat) (st : St) :
+    Step env st (switchColumns env cols st) [] [] := by
+  have a := step_drainCarry env st
+  unfold switchColumns
+  dsimp only
+  split
+  · have h := step_closed env (drainCarry env st) { close env (drainCarry env st) with
+      columns := cols, firstLine := (drainCarry env st).used, column := 0, used := (drainCarry env st).used,
+      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0 } rfl rfl (close_fields env _).1 (close_fields env _).2.1
+    simpa using a.trans h
+  · simpa using (a.trans (step_nextPage env _)).trans (Step.same rfl rfl rfl rfl)
+
+theorem step_restoreColumns (env : Env) (st : St) : Step env st (restoreColumns env st) [] [] := by
+  simpa using (step_nextPage env st).trans (Step.same rfl rfl rfl rfl)
+
 set_option linter.unusedVariables false in
 theorem step_judgeNeed (env : Env) (b : Int) (st : St) : Step env st (judgeNeed env b st) [] [] := by
   rw [judgeNeed]
@@ -1654,6 +1741,9 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | space n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact Step.same rfl rfl rfl rfl
   | blank n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact Step.same rfl rfl rfl rfl
   | brk k => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_breakAt env k st
+  | start k => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_sectionStart env k st
+  | switchColumns c => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_switchColumns env c st
+  | restoreColumns => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_restoreColumns env st
   | adjustLines n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_adjustLines env n st
   | noBreak => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ st
   | keepNext n => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_waitForPrior env _ _ st
@@ -1747,6 +1837,9 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | brk k => exact step_placeFlow env b _ hf s h
   | needLines n => exact step_placeFlow env b _ hf s h
   | adjustLines n => exact step_placeFlow env b _ hf s h
+  | start k => exact step_placeFlow env b _ hf s h
+  | switchColumns c => exact step_placeFlow env b _ hf s h
+  | restoreColumns => exact step_placeFlow env b _ hf s h
 
 theorem step_placeNext (env : Env) (st : St) (flow : Flow) (rest : List Flow) (hf : FlowOk env flow) (s : St)
     (h : placeNext env st flow rest = .ok s) : Step env st s (lineIds (flowLines flow)) (flowFigs flow) := by
@@ -1811,19 +1904,6 @@ theorem checkNotes_ok (env : Env) (flows : List Flow) (h : checkNotes env flows 
   · rename_i e
     intro f m l ml
     exact Or.inl (bind_nil (fun l => l.notes) e l (mem_bind' m ml))
-
-theorem close_pages (env : Env) (st : St) :
-    pagesText (close env st).done.reverse = text st ∧
-    pagesFigs (close env st).done.reverse = pagesFigs st.done.reverse ++ figSlots st.slots := by
-  unfold close
-  split
-  · rename_i h
-    have s : st.slots = [] := by
-      cases c : st.slots with
-      | nil => rfl
-      | cons _ _ => simp [c, List.isEmpty] at h
-    simp [text, s, textSlots, figSlots]
-  · simp [text, pagesText_append, pagesText, pagesFigs_append, pagesFigs]
 
 theorem drainOk_of_good (env : Env) (st : St) (hp : 0 < env.pagePitch) (g : Good env st) : drainOk env st = true := by
   unfold drainOk
