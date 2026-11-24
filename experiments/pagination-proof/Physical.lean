@@ -227,6 +227,9 @@ structure St where
   /-- `psReserved`: the notes at the foot of the page that the columns of
       a set started on it keep clear (root ADR 0025). -/
   reserved : Int
+  /-- `psSetAdjustment`: what `FAdjustLines` changes in every column of a
+      set started on this page (root ADR 0441). -/
+  setAdjust : Int
 
 /-- `PhysicalSettings` without the maps the flows of the model do not
     read; the pitch and the face of a line are functions of its id. -/
@@ -258,7 +261,7 @@ structure Env where
   held : Nat → Bool
 
 def initial (env : Env) : St :=
-  ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, [], [], 0⟩
+  ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, [], [], 0, 0⟩
 
 def limit (env : Env) (st : St) : Int := env.capacity + st.adjust
 def room (env : Env) (st : St) : Int := limit env st - st.used - st.notesUsed
@@ -321,7 +324,8 @@ def fresh (env : Env) (toPage : Bool) (st : St) : St :=
     reserved := if pageEnd then 0 else st.reserved
     slots := []
     notes := []
-    adjust := 0
+    adjust := if pageEnd then 0 else st.setAdjust
+    setAdjust := if pageEnd then 0 else st.setAdjust
     pending := 0
     blankActive := false
     join := none
@@ -487,10 +491,18 @@ def carryWeight (ps : List NotePart) : Nat := ps.foldr (fun p a => p.2.2 + 1 + a
 /-- What waits for a later column: the figures sent on and the lines of
     the notes carried on, each note counted one more. -/
 def waiting (st : St) : Nat := st.deferred.length + carryWeight st.carry
-def rank (st : St) : Nat :=
-  waiting st * 4 + (if st.adjust < 0 then 2 else 0) + (if empty st then 0 else 1)
-def keepRank (k : Keep) : Nat := if k.all then 1 else 0
 def columnsLeft (st : St) : Nat := st.columns - (st.column + 1)
+/-- What a column made shorter weighs: the columns left on the page when
+    every column of the set is made shorter (`setAdjust < 0`), as the next
+    one is too, or 2 when this column alone is. -/
+def adjustWeight (st : St) : Nat :=
+  if st.setAdjust < 0 then 4 * columnsLeft st + 4 else if st.adjust < 0 then 2 else 0
+/-- The weight of one thing waiting, more than any `adjustWeight` and
+    emptiness of a column of the set. -/
+def unitWeight (st : St) : Nat := 4 * st.columns + 8
+def rank (st : St) : Nat :=
+  waiting st * unitWeight st + adjustWeight st + (if empty st then 0 else 1)
+def keepRank (k : Keep) : Nat := if k.all then 1 else 0
 
 /-- `placeDeferredGo` only puts figures into the column. -/
 theorem placeDeferredGo_fields (env : Env) (st : St) (ds : List Waiting) :
@@ -560,17 +572,58 @@ theorem carryInto_fields (env : Env) (st : St) :
       | cons p ps => simp [splitCarried]
     | succ m => have := b (by omega) ne; omega
 
-theorem rank_le (st : St) : rank st ≤ waiting st * 4 + 3 := by
-  unfold rank; split <;> split <;> omega
+theorem adjustWeight_lt (st : St) : adjustWeight st + 1 < unitWeight st := by
+  unfold adjustWeight unitWeight columnsLeft; split
+  · omega
+  · split <;> omega
+
+theorem rank_le (st : St) : rank st < (waiting st + 1) * unitWeight st := by
+  have := adjustWeight_lt st
+  rw [Nat.succ_mul]; unfold rank; split <;> omega
+
+theorem rank_low (st : St) : waiting st * unitWeight st ≤ rank st := by
+  unfold rank; omega
+
+/-- A column that is not empty or is made shorter weighs more than the
+    things waiting. -/
+theorem rank_pos (st : St) (h : empty st = false ∨ st.adjust < 0) : waiting st * unitWeight st < rank st := by
+  have : 0 < adjustWeight st + (if empty st then 0 else 1) := by
+    unfold adjustWeight
+    cases h with
+    | inl h => simp [h]
+    | inr h => split <;> (try rw [if_pos h]) <;> split <;> omega
+  have r : rank st = waiting st * unitWeight st + (adjustWeight st + (if empty st then 0 else 1)) := by
+    unfold rank; omega
+  omega
+
+theorem adjustWeight_congr {a b : St} (h1 : a.setAdjust = b.setAdjust) (h2 : a.adjust = b.adjust)
+    (h3 : a.column = b.column) (h4 : a.columns = b.columns) : adjustWeight a = adjustWeight b := by
+  simp only [adjustWeight, columnsLeft, h1, h2, h3, h4]
+
+/-- The new column weighs less than the column before, or nothing: it is
+    made shorter only when every column of the set is, and then it leaves
+    one column fewer on the page. -/
+theorem fresh_weight (env : Env) (tp : Bool) (st : St) :
+    adjustWeight (fresh env tp st) < adjustWeight st ∨ adjustWeight (fresh env tp st) = 0 := by
+  unfold adjustWeight columnsLeft fresh close
+  by_cases pe : (tp || decide (st.columns ≤ st.column + 1)) = true
+  · right; split <;> simp [pe]
+  · have pe' : ¬st.columns ≤ st.column + 1 := by
+      intro c; apply pe; simp [c]
+    simp only [Bool.not_eq_true] at pe
+    by_cases sa : st.setAdjust < 0
+    · left; split <;> simp [pe, sa] <;> omega
+    · right; split <;> simp [pe, sa] <;> omega
 
 /-- The next column, before the figures and notes waiting are placed: it is
     empty and has not been made shorter. -/
 theorem fresh_fields (env : Env) (tp : Bool) (st : St) :
     (fresh env tp st).slots = [] ∧ (fresh env tp st).notes = [] ∧
-    (fresh env tp st).used = (fresh env tp st).firstLine ∧ (fresh env tp st).adjust = 0 ∧
+    (fresh env tp st).used = (fresh env tp st).firstLine ∧
+    (adjustWeight (fresh env tp st) < adjustWeight st ∨ adjustWeight (fresh env tp st) = 0) ∧
     (fresh env tp st).deferred = st.deferred ∧ (fresh env tp st).carry = st.carry ∧
     (fresh env tp st).columns = st.columns := by
-  unfold fresh close; split <;> simp
+  refine ⟨?_, ?_, ?_, fresh_weight env tp st, ?_⟩ <;> unfold fresh close <;> split <;> simp
 
 /-- `placeTurnedGo` only closes pages of turned figures. -/
 theorem placeTurnedGo_fields (env : Env) (st : St) (ds : List Waiting) :
@@ -597,18 +650,44 @@ theorem placeTurnedGo_fields (env : Env) (st : St) (ds : List Waiting) :
         fun _ _ _ => by simp; omega, fun h => ?_⟩
       simp at h; omega
 
-/-- The new column: empty, not made shorter, with no more waiting. -/
+theorem placeTurnedGo_setAdjust (env : Env) (st : St) (ds : List Waiting) :
+    (placeTurnedGo env st ds).setAdjust = st.setAdjust := by
+  induction ds generalizing st with
+  | nil => rfl
+  | cons d ds ih =>
+    cases d with
+    | figure i e => rfl
+    | turned i => simp only [placeTurnedGo]; rw [ih]
+
+theorem placeDeferredGo_setAdjust (env : Env) (st : St) (ds : List Waiting) :
+    (placeDeferredGo env st ds).setAdjust = st.setAdjust := by
+  induction ds generalizing st with
+  | nil => rfl
+  | cons d ds ih =>
+    cases d with
+    | figure i e => simp only [placeDeferredGo]; split <;> (try rw [ih]) <;> rfl
+    | turned i => rfl
+
+theorem carryInto_setAdjust (env : Env) (st : St) : (carryInto env st).setAdjust = st.setAdjust := by
+  unfold carryInto; split <;> rfl
+
+/-- The new column: empty, weighing less than the column before or
+    nothing, with no more waiting. -/
 theorem opened_fields (env : Env) (tp : Bool) (st : St) :
     (opened env tp st).slots = [] ∧ (opened env tp st).notes = [] ∧
-    (opened env tp st).used = (opened env tp st).firstLine ∧ (opened env tp st).adjust = 0 ∧
+    (opened env tp st).used = (opened env tp st).firstLine ∧
+    (adjustWeight (opened env tp st) < adjustWeight st ∨ adjustWeight (opened env tp st) = 0) ∧
     (opened env tp st).deferred.length ≤ st.deferred.length ∧ (opened env tp st).carry = st.carry ∧
     (opened env tp st).columns = st.columns ∧ (∀ d ∈ (opened env tp st).deferred, d ∈ st.deferred) := by
   obtain ⟨f1, f2, f3, f4, f5, f6, f7⟩ := fresh_fields env tp st
   unfold opened
   split
   · unfold placeTurned
-    obtain ⟨a1, a2, a3, a4, a5, a6, _, a8, _, a10, a11, _⟩ := placeTurnedGo_fields env (fresh env tp st) (fresh env tp st).deferred
-    refine ⟨by rw [a1, f1], by rw [a2, f2], by rw [a3, a4, f3], by rw [a5, f4], by rw [← f5]; exact a10,
+    obtain ⟨a1, a2, a3, a4, a5, a6, _, a8, a9, a10, a11, _⟩ := placeTurnedGo_fields env (fresh env tp st) (fresh env tp st).deferred
+    have aw : adjustWeight (placeTurnedGo env (fresh env tp st) (fresh env tp st).deferred) =
+        adjustWeight (fresh env tp st) :=
+      adjustWeight_congr (placeTurnedGo_setAdjust env _ _) a5 a9 a8
+    refine ⟨by rw [a1, f1], by rw [a2, f2], by rw [a3, a4, f3], by rw [aw]; exact f4, by rw [← f5]; exact a10,
       by rw [a6, f6], by rw [a8, f7], fun x m => by rw [← f5]; exact a11 x m⟩
   · exact ⟨f1, f2, f3, f4, by simp [f5], f6, f7, fun x m => by rw [← f5]; exact m⟩
 
@@ -618,17 +697,23 @@ theorem open_waiting (env : Env) (tp : Bool) (st : St) :
     waiting (carryInto env (placeDeferred env (opened env tp st))) ≤ waiting st ∧
     (waiting (carryInto env (placeDeferred env (opened env tp st))) = waiting st →
       empty (carryInto env (placeDeferred env (opened env tp st))) = true) ∧
-    (carryInto env (placeDeferred env (opened env tp st))).adjust = 0 := by
-  obtain ⟨f1, f2, f3, f4, f5, f6, _⟩ := opened_fields env tp st
+    (adjustWeight (carryInto env (placeDeferred env (opened env tp st))) < adjustWeight st ∨
+      adjustWeight (carryInto env (placeDeferred env (opened env tp st))) = 0) ∧
+    (carryInto env (placeDeferred env (opened env tp st))).columns = st.columns := by
+  obtain ⟨f1, f2, f3, f4, f5, f6, f7, _⟩ := opened_fields env tp st
   generalize opened env tp st = F at *
   unfold placeDeferred
-  obtain ⟨_, _, _, p4, p5, p6, p7, _, _, p10, p11⟩ := placeDeferredGo_fields env F F.deferred
+  obtain ⟨_, p2, p3, p4, p5, p6, p7, _, _, p10, p11⟩ := placeDeferredGo_fields env F F.deferred
+  have ps := placeDeferredGo_setAdjust env F F.deferred
   generalize placeDeferredGo env F F.deferred = P at *
-  obtain ⟨_, _, _, c4, c5, c6, c7, c8, _, c10, c11⟩ := carryInto_fields env P
+  obtain ⟨_, c2, c3, c4, c5, c6, c7, c8, _, c10, c11⟩ := carryInto_fields env P
+  have cs := carryInto_setAdjust env P
   generalize carryInto env P = C at *
+  have aw : adjustWeight C = adjustWeight F :=
+    adjustWeight_congr (cs.trans ps) (c5.trans p5) (c2.trans p2) (c3.trans p3)
   simp only [waiting]
   rw [c8, ← f6, ← p7]
-  refine ⟨by omega, fun e => ?_, by rw [c5, p5, f4]⟩
+  refine ⟨by omega, fun e => ?_, by rw [aw]; exact f4, by rw [c3, p3, f7]⟩
   have l : P.deferred.length = F.deferred.length := by omega
   obtain ⟨s, u⟩ := p11 l
   have w : carryWeight C.carry = carryWeight P.carry := by omega
@@ -638,23 +723,34 @@ theorem open_waiting (env : Env) (tp : Bool) (st : St) :
     | inr h => rw [h, p6, f2]
   simp [empty, n, c6, s, f1, c7, u, f3, c4, p4, List.isEmpty]
 
-theorem I4_nextColumn_rank (env : Env) (st : St) (h : empty st = false ∨ st.adjust < 0) :
-    rank (nextColumn env st) < rank st := by
-  obtain ⟨le, e, a⟩ := open_waiting env false st
-  unfold nextColumn
-  generalize carryInto env (placeDeferred env (opened env false st)) = C at *
+/-- The rank of the column a state goes on to, with what waits of a state
+    `st` of the same weight and columns. -/
+theorem open_rank (C X st : St) (le : waiting C ≤ waiting X) (e : waiting C = waiting X → empty C = true)
+    (a : adjustWeight C < adjustWeight X ∨ adjustWeight C = 0) (cc : C.columns = X.columns)
+    (hw : waiting X = waiting st) (hx : adjustWeight X ≤ adjustWeight st) (hc : X.columns = st.columns) :
+    rank C ≤ rank st ∧ ((empty st = false ∨ st.adjust < 0) → rank C < rank st) := by
+  have u : unitWeight C = unitWeight st := by simp only [unitWeight, cc, hc]
   have r := rank_le C
+  have low := rank_low st
+  rw [u] at r
   by_cases lt : waiting C < waiting st
-  · have : waiting C * 4 + 3 < rank st := by unfold rank; omega
+  · have : (waiting C + 1) * unitWeight st ≤ waiting st * unitWeight st := Nat.mul_le_mul_right _ lt
     omega
   · have eq : waiting C = waiting st := by omega
-    have em := e eq
-    have : rank C = waiting st * 4 := by simp [rank, em, a, eq]
-    rw [this]
-    unfold rank
-    cases h with
-    | inl h => simp [h]; split <;> omega
-    | inr h => simp [h]; split <;> omega
+    have em := e (eq.trans hw.symm)
+    have rc : rank C = waiting st * unitWeight st + adjustWeight C := by simp [rank, em, eq, u]
+    have rs : rank st = waiting st * unitWeight st + adjustWeight st + (if empty st then 0 else 1) := rfl
+    refine ⟨by rw [rc, rs]; split <;> omega, fun h => ?_⟩
+    have p := rank_pos st h
+    rw [rc]
+    rcases a with a | a
+    · rw [rs]; split <;> omega
+    · omega
+
+theorem I4_nextColumn_rank (env : Env) (st : St) (h : empty st = false ∨ st.adjust < 0) :
+    rank (nextColumn env st) < rank st := by
+  obtain ⟨le, e, a, c⟩ := open_waiting env false st
+  exact (open_rank _ st st le e a c rfl (Nat.le_refl _) rfl).2 h
 
 theorem trialRest_moved (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (fid : Nat)
     (next : St) (r : Keep) (h : trialRest env k start st rows fid = .ok (.moved next r)) :
@@ -1342,6 +1438,7 @@ def switchColumns (env : Env) (cols : Nat) (st : St) : St :=
     { close env settled with
       columns := cols, firstLine := settled.used, column := 0, used := settled.used,
       reserved := settled.notesUsed, adjust := min settled.notesUsed settled.adjust,
+      setAdjust := min settled.notesUsed settled.adjust,
       slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] }
   else { nextPage env settled with columns := cols, firstLine := 0 }
 
@@ -1354,15 +1451,8 @@ def restoreColumns (env : Env) (st : St) : St :=
 /-- Going on to a new column or page never raises `rank`. -/
 theorem rank_open_le (env : Env) (tp : Bool) (st : St) :
     rank (carryInto env (placeDeferred env (opened env tp st))) ≤ rank st := by
-  obtain ⟨le, e, a⟩ := open_waiting env tp st
-  generalize carryInto env (placeDeferred env (opened env tp st)) = C at *
-  have r := rank_le C
-  have low : waiting st * 4 ≤ rank st := by unfold rank; split <;> split <;> omega
-  by_cases lt : waiting C < waiting st
-  · omega
-  · have eq : waiting C = waiting st := by omega
-    have : rank C = waiting st * 4 := by simp [rank, e eq, a, eq]
-    omega
+  obtain ⟨le, e, a, c⟩ := open_waiting env tp st
+  exact (open_rank _ st st le e a c rfl (Nat.le_refl _) rfl).1
 
 set_option linter.unusedVariables false in
 theorem rank_drainCarry_le (env : Env) (st : St) : rank (drainCarry env st) ≤ rank st := by
@@ -1595,13 +1685,14 @@ theorem rank_seal_lt (env : Env) (o : BoxOpen) (st : St) (h : empty st = false) 
     cases e : empty (seal (some (seg, after)) st)
     · have e' := e
       simp only [seal] at e'
-      have : rank (seal (some (seg, after)) st) = rank st := by simp only [rank, seal, waiting, e', h]
+      have : rank (seal (some (seg, after)) st) = rank st := by
+        simp only [rank, seal, waiting, unitWeight, adjustWeight, columnsLeft, e', h]
       have := I4_nextColumn_rank env _ (Or.inl e); omega
     · have a := rank_open_le env false (seal (some (seg, after)) st)
       have e' := e
       simp only [seal] at e'
       have : rank (seal (some (seg, after)) st) + 1 = rank st := by
-        simp only [rank, seal, waiting, h, e']; simp
+        simp only [rank, seal, waiting, unitWeight, adjustWeight, columnsLeft, h, e']; simp
       exact Nat.lt_of_le_of_lt a (by omega)
 
 /-- `linkBreaks`: the keep-with-next spans a break after the first `n`
@@ -2384,24 +2475,14 @@ def trialWrap (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (sta
 /-- Going on from a state with what waits of `st` lowers the rank of `st`
     when it is not empty or made shorter. -/
 theorem nextColumn_rank_of (env : Env) (X st : St) (hw : waiting X = waiting st)
+    (hx : adjustWeight X ≤ adjustWeight st) (hc : X.columns = st.columns)
     (h : empty st = false ∨ st.adjust < 0) : rank (nextColumn env X) < rank st := by
-  obtain ⟨le, e, a⟩ := open_waiting env false X
-  unfold nextColumn
-  generalize carryInto env (placeDeferred env (opened env false X)) = C at *
-  have r := rank_le C
-  have low : waiting st * 4 + 1 ≤ rank st := by
-    unfold rank; cases h with
-    | inl h => simp [h]; split <;> omega
-    | inr h => simp [h]; split <;> omega
-  by_cases lt : waiting C < waiting X
-  · omega
-  · have eq : waiting C = waiting X := by omega
-    have : rank C = waiting X * 4 := by simp [rank, e eq, a, eq]
-    omega
+  obtain ⟨le, e, a, c⟩ := open_waiting env false X
+  exact (open_rank _ X st le e a c hw hx hc).2 h
 
 theorem I4_moveCursor_rank (env : Env) (region : Region) (st : St) (h : empty st = false ∨ st.adjust < 0) :
     rank (moveCursor env region st) < rank st :=
-  nextColumn_rank_of env _ st rfl h
+  nextColumn_rank_of env _ st rfl (Nat.le_of_eq (adjustWeight_congr rfl rfl rfl rfl)) rfl h
 
 theorem trialWrapRest_moved (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
     (rows : List Line) (fid : Nat) (next : St) (r : Keep)
@@ -2950,6 +3031,30 @@ def adjustLines (env : Env) (n : Int) (st : St) : St :=
   { st with adjust := chosen * env.pagePitch,
             unmet := st.unmet ++ (if chosen ≠ wanted then [Unmet.adjust chosen why] else []) }
 
+/-- `joinPart` of `drainCarried`: a part after the part before it of the
+    same note joins it. -/
+def joinPart (parts : List NotePart) (p : NotePart) : List NotePart :=
+  match parts.reverse with
+  | (j, f, l) :: before => if j = p.1 ∧ f + l = p.2.1 then before.reverse ++ [(j, f, l + p.2.2)] else parts ++ [p]
+  | [] => parts ++ [p]
+
+/-- `drainCarried`: the continued notes take the room that `FAdjustLines`
+    has added to the column, in their order, before any later note,
+    leaving nothing for the text, as `carryInto` (root ADR 0444).  What
+    does not fit goes on. -/
+def drainCarried (env : Env) (st : St) : St :=
+  let separator := if st.notesUsed = 0 then env.separator else 0
+  let count := (max 0 (Int.fdiv (room env st - separator) env.pagePitch)).toNat
+  let p := splitCarried count st.carry
+  if st.carry.isEmpty ∨ p.1.isEmpty then st
+  else { st with notes := p.1.foldl joinPart st.notes, carry := p.2,
+                 notesUsed := st.notesUsed + separator + (partsLines p.1 : Int) * env.pagePitch }
+
+theorem drainCarried_fields (env : Env) (st : St) :
+    (drainCarried env st).done = st.done ∧ (drainCarried env st).slots = st.slots ∧
+      (drainCarried env st).deferred = st.deferred := by
+  unfold drainCarried; dsimp only; split <;> (try split) <;> exact ⟨rfl, rfl, rfl⟩
+
 /-! ## One flow -/
 
 def placeFlow (inner : Inner) (env : Env) (st : St) : Flow → Except Failure St
@@ -2972,7 +3077,7 @@ def placeFlow (inner : Inner) (env : Env) (st : St) : Flow → Except Failure St
     let bounded := min required env.capacity
     let marked := if env.capacity < required then addUnmet (.needLines n) st else st
     .ok (judgeNeed env bounded marked)
-  | .adjustLines n => .ok (adjustLines env n st)
+  | .adjustLines n => .ok (drainCarried env (adjustLines env n st))
   | .noBreak => .ok (waitForPrior .noBreak (1, false) st)
   | .noBreakLines n => if n = 0 then .ok st else .ok (waitForPrior .noBreak (1, false) st)
   | .keepNext _ sp => .ok (waitForPrior (.keepNext sp) (1, false) st)
@@ -3855,6 +3960,7 @@ theorem step_switchColumns (env : Env) (cols : Nat) (st : St) :
   · have h := step_closed env (drainCarry env st) { close env (drainCarry env st) with
       columns := cols, firstLine := (drainCarry env st).used, column := 0, used := (drainCarry env st).used,
       reserved := (drainCarry env st).notesUsed, adjust := min (drainCarry env st).notesUsed (drainCarry env st).adjust,
+      setAdjust := min (drainCarry env st).notesUsed (drainCarry env st).adjust,
       slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] } rfl rfl (close_fields env _).1
     simpa using a.trans h
   · simpa using (a.trans (step_nextPage env _)).trans (Step.same rfl rfl rfl)
@@ -4785,8 +4891,10 @@ theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b →
       | inl m => exact Or.inl (List.Mem.tail _ m)
       | inr m => exact Or.inr m
 
-theorem step_adjustLines (env : Env) (n : Int) (st : St) : Step st (adjustLines env n st) [] [] :=
-  Step.same rfl rfl rfl
+theorem step_adjustLines (env : Env) (n : Int) (st : St) :
+    Step st (drainCarried env (adjustLines env n st)) [] [] :=
+  let f := drainCarried_fields env (adjustLines env n st)
+  Step.same f.1 f.2.1 f.2.2
 
 set_option linter.unusedVariables false in
 theorem step_settle (env : Env) (ids : List Nat) (st : St) : Step st (settle env ids st) [] [] := by

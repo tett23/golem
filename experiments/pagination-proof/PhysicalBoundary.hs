@@ -232,6 +232,27 @@ startInputs =
          q <- [1 .. 4],
          k <- kinds
        ]
+    -- root ADR 0444: a note going on takes the room @page-lines adds first;
+    -- root ADR 0441: the columns of a set started after @page-lines end at
+    -- the type area or above the notes of the column before
+    <> [ (Column cap sep cols, [FParagraph defaultKeep (noted 0 1 0 m), FAdjustLines span0 a] <> more <> [para 20 n])
+       | cap <- [30, 50],
+         sep <- [0, 10],
+         cols <- [1, 2],
+         m <- [3, 5],
+         a <- [-1, 1, 2, 3, 4],
+         more <- [[], [FParagraph defaultKeep (noted 10 1 0 1)], [FSwitchColumns (ColumnSet 2 0 0 0), para 10 3]],
+         n <- [1, 3]
+       ]
+    <> [ (Column cap sep 1, [if m == 0 then para 0 p else FParagraph defaultKeep (noted 0 p 0 m), FAdjustLines span0 a, FSwitchColumns (ColumnSet c 0 0 0), para 10 q, para 20 1])
+       | cap <- [30, 40],
+         sep <- [0, 4],
+         p <- [1, 2],
+         m <- [0, 1, 2],
+         a <- [-2, -1, 1, 2],
+         c <- [2, 3],
+         q <- [1 .. 6]
+       ]
   where
     kinds = [BreakColumn, BreakPage, BreakRecto, BreakVerso]
 

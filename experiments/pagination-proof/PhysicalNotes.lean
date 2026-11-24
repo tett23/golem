@@ -272,6 +272,38 @@ theorem nm_open (env : Env) (tp : Bool) (st : St) :
   rw [nm_carryInto env _ n0, nm_placeDeferred, nm_opened]
 
 theorem nm_nextColumn (env : Env) (st : St) : NM (nextColumn env st) = NM st := nm_open env false st
+
+/-- Joining a part to the part before it of the same note keeps the lines. -/
+theorem ex_joinPart (parts : List NotePart) (q : NotePart) : ex (joinPart parts q) = ex parts ++ partLines q := by
+  unfold joinPart
+  split
+  · rename_i j f l before e
+    split
+    · rename_i c
+      obtain ⟨c1, c2⟩ := c
+      have pr : parts = before.reverse ++ [(j, f, l)] := by
+        have := congrArg List.reverse e; simpa using this
+      obtain ⟨qi, qf, ql⟩ := q
+      simp only at c1 c2
+      subst c1; subst c2
+      rw [pr, ex_append, ex_append, List.append_assoc]
+      simp only [ex, partLines, List.cons_bind, List.nil_bind, List.append_nil]
+      rw [seg_add]
+    · rw [ex_append]; simp [ex, partLines]
+  · rw [ex_append]; simp [ex, partLines]
+
+theorem ex_foldl_joinPart (parts qs : List NotePart) : ex (qs.foldl joinPart parts) = ex parts ++ ex qs := by
+  induction qs generalizing parts with
+  | nil => simp
+  | cons q qs ih =>
+    simp only [List.foldl]; rw [ih, ex_joinPart, ex_cons, List.append_assoc]
+
+theorem nm_drainCarried (env : Env) (st : St) : NM (drainCarried env st) = NM st := by
+  unfold drainCarried; dsimp only
+  split <;> (try split) <;> (try rfl)
+  all_goals
+    simp only [NM, ex_foldl_joinPart, List.append_assoc]
+    rw [splitCarried_lines]
 theorem nm_nextPage (env : Env) (st : St) : NM (nextPage env st) = NM st := nm_open env true st
 
 theorem nm_fit (env : Env) (st : St) (a : Int) : NM (fit env st a) = NM st := by
@@ -1572,7 +1604,8 @@ theorem rel_placeFlow (inner : Inner) (hi : NotesOk inner) (env : Env) (st : St)
       · rfl
     exact Rel.congr (by simp [flowNotes]) (Rel.via (rel_placeHeading env _ _ extent ls s h) a)
   | adjustLines n =>
-    simp only [placeFlow, Except.ok.injEq] at h; subst h; exact Rel.congr (by simp [flowNotes]) (Rel.same rfl)
+    simp only [placeFlow, Except.ok.injEq] at h; subst h
+    exact Rel.congr (by simp [flowNotes]) (Rel.same (nm_drainCarried env _))
   | noBreak =>
     simp only [placeFlow, Except.ok.injEq] at h; subst h
     exact Rel.congr (by simp [flowNotes]) (Rel.same (nm_waitForPrior _ _ st))
