@@ -1,6 +1,6 @@
 # ADR 0443: 格子の配置で、回り込ませる図版が収まるかを、脇の行の脚注も数えて決める
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

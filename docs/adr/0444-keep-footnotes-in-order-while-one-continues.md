@@ -1,6 +1,6 @@
 # ADR 0444: 脚注の本文が次の段へ続くとき、段に空きができたら、その続きを先に置く
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

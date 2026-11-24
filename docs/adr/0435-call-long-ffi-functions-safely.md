@@ -1,6 +1,6 @@
 # ADR 0435: 長くかかりうる FFI の呼び出しを safe で呼び、unsafe の呼び出しを一覧で管理する
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

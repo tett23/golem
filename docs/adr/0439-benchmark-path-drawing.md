@@ -1,6 +1,6 @@
 # ADR 0439: SVG の図版のパスの描画の速さを、Emet が乱数で作る図形で測る
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
