@@ -135,6 +135,26 @@ structure PageOut where
     whether only lines count. -/
 abbrev Wait := Unmet × Nat × Nat × Nat × Nat × Bool
 
+/-- `Waiting` of Physical.hs: a figure waiting for room, or a turned
+    figure waiting for a page of its own. -/
+inductive Waiting where
+  | figure (id : Nat) (extent : Int)
+  | turned (id : Nat)
+  deriving DecidableEq, Repr
+
+def Waiting.id : Waiting → Nat
+  | .figure i _ => i
+  | .turned i => i
+
+def Waiting.isTurned : Waiting → Bool
+  | .turned _ => true
+  | .figure _ _ => false
+
+/-- A figure waiting fits in an empty column. -/
+def Waiting.fits (capacity : Int) : Waiting → Prop
+  | .figure _ e => e ≤ capacity
+  | .turned _ => True
+
 /-- `PhysicalState` of Physical.hs without labels, marks, table and box
     segments, placed rules and sections, which only decorate the output. -/
 structure St where
@@ -148,7 +168,7 @@ structure St where
   slots : List (Int × Slot)
   notes : List NotePart
   carry : List NotePart
-  deferred : List (Nat × Int)
+  deferred : List Waiting
   done : List PageOut
   adjust : Int
   unmet : List Unmet
@@ -196,11 +216,11 @@ def putSlot (st : St) (extent : Int) (s : Slot) : St :=
   { st with slots := st.slots ++ [(st.used, s)], used := st.used + extent }
 
 /-- The loop of `placeDeferred`. -/
-def placeDeferredGo (env : Env) (st : St) : List (Nat × Int) → St
-  | [] => { st with deferred := [] }
-  | (i, e) :: later =>
+def placeDeferredGo (env : Env) (st : St) : List Waiting → St
+  | .figure i e :: later =>
     if e ≤ room env st then placeDeferredGo env (putSlot st e (.figure i)) later
-    else { st with deferred := (i, e) :: later }
+    else { st with deferred := .figure i e :: later }
+  | ds => { st with deferred := ds }
 
 def placeDeferred (env : Env) (st : St) : St := placeDeferredGo env st st.deferred
 
@@ -243,8 +263,23 @@ def fresh (env : Env) (toPage : Bool) (st : St) : St :=
     blankActive := false
     join := none }
 
-def nextColumn (env : Env) (st : St) : St := carryInto env (placeDeferred env (fresh env false st))
-def nextPage (env : Env) (st : St) : St := carryInto env (placeDeferred env (fresh env true st))
+/-- The loop of `placeTurned`: each turned figure waiting at the start of a
+    page takes that page. -/
+def placeTurnedGo (env : Env) (st : St) : List Waiting → St
+  | .turned i :: later =>
+    placeTurnedGo env { st with
+      done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], limit env st, []⟩ :: st.done
+      page := st.page + 1 } later
+  | ds => { st with deferred := ds }
+
+def placeTurned (env : Env) (st : St) : St := placeTurnedGo env st st.deferred
+
+/-- The new column, with the turned figures placed when it starts a page. -/
+def opened (env : Env) (toPage : Bool) (st : St) : St :=
+  if toPage || decide (st.columns ≤ st.column + 1) then placeTurned env (fresh env toPage st) else fresh env toPage st
+
+def nextColumn (env : Env) (st : St) : St := carryInto env (placeDeferred env (opened env false st))
+def nextPage (env : Env) (st : St) : St := carryInto env (placeDeferred env (opened env true st))
 
 def dropAtTop (st : St) : St :=
   { st with pending := 0, blankActive := false, blankSpans := 0,
@@ -381,7 +416,7 @@ def keepRank (k : Keep) : Nat := if k.all then 1 else 0
 def columnsLeft (st : St) : Nat := st.columns - (st.column + 1)
 
 /-- `placeDeferredGo` only puts figures into the column. -/
-theorem placeDeferredGo_fields (env : Env) (st : St) (ds : List (Nat × Int)) :
+theorem placeDeferredGo_fields (env : Env) (st : St) (ds : List Waiting) :
     (placeDeferredGo env st ds).page = st.page ∧ (placeDeferredGo env st ds).column = st.column ∧
     (placeDeferredGo env st ds).columns = st.columns ∧
     (placeDeferredGo env st ds).firstLine = st.firstLine ∧ (placeDeferredGo env st ds).adjust = st.adjust ∧
@@ -393,14 +428,16 @@ theorem placeDeferredGo_fields (env : Env) (st : St) (ds : List (Nat × Int)) :
   induction ds generalizing st with
   | nil => simp [placeDeferredGo]
   | cons d ds ih =>
-    obtain ⟨i, e⟩ := d
-    simp only [placeDeferredGo]
-    split
-    · obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, _⟩ := ih (putSlot st e (.figure i))
-      simp only [putSlot] at a1 a2 a3 a4 a5 a6 a7 a8 a9
-      refine ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, by simp; omega, fun h => ?_⟩
-      simp at h; omega
-    · simp
+    cases d with
+    | turned i => simp [placeDeferredGo]
+    | figure i e =>
+      simp only [placeDeferredGo]
+      split
+      · obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, _⟩ := ih (putSlot st e (.figure i))
+        simp only [putSlot] at a1 a2 a3 a4 a5 a6 a7 a8 a9
+        refine ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, by simp; omega, fun h => ?_⟩
+        simp at h; omega
+      · simp
 
 theorem splitCarried_weight (n : Nat) (ps : List NotePart) :
     carryWeight (splitCarried n ps).2 ≤ carryWeight ps ∧
@@ -458,22 +495,62 @@ theorem fresh_fields (env : Env) (tp : Bool) (st : St) :
     (fresh env tp st).columns = st.columns := by
   unfold fresh close; split <;> simp
 
+/-- `placeTurnedGo` only closes pages of turned figures. -/
+theorem placeTurnedGo_fields (env : Env) (st : St) (ds : List Waiting) :
+    (placeTurnedGo env st ds).slots = st.slots ∧ (placeTurnedGo env st ds).notes = st.notes ∧
+    (placeTurnedGo env st ds).used = st.used ∧ (placeTurnedGo env st ds).firstLine = st.firstLine ∧
+    (placeTurnedGo env st ds).adjust = st.adjust ∧ (placeTurnedGo env st ds).carry = st.carry ∧
+    (placeTurnedGo env st ds).notesUsed = st.notesUsed ∧ (placeTurnedGo env st ds).columns = st.columns ∧
+    (placeTurnedGo env st ds).column = st.column ∧
+    (placeTurnedGo env st ds).deferred.length ≤ ds.length ∧
+    (∀ d ∈ (placeTurnedGo env st ds).deferred, d ∈ ds) ∧
+    (∀ i later, ds = .turned i :: later → (placeTurnedGo env st ds).deferred.length < ds.length) ∧
+    ((placeTurnedGo env st ds).deferred.length = ds.length →
+      (placeTurnedGo env st ds).deferred = ds ∧ (placeTurnedGo env st ds).done = st.done) := by
+  induction ds generalizing st with
+  | nil => simp [placeTurnedGo]
+  | cons d ds ih =>
+    cases d with
+    | figure i e => simp [placeTurnedGo]
+    | turned i =>
+      simp only [placeTurnedGo]
+      obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, _⟩ := ih { st with
+        done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], limit env st, []⟩ :: st.done, page := st.page + 1 }
+      refine ⟨a1, a2, a3, a4, a5, a6, a7, a8, a9, by simp; omega, fun x m => List.mem_cons_of_mem _ (a11 x m),
+        fun _ _ _ => by simp; omega, fun h => ?_⟩
+      simp at h; omega
+
+/-- The new column: empty, not made shorter, with no more waiting. -/
+theorem opened_fields (env : Env) (tp : Bool) (st : St) :
+    (opened env tp st).slots = [] ∧ (opened env tp st).notes = [] ∧
+    (opened env tp st).used = (opened env tp st).firstLine ∧ (opened env tp st).adjust = 0 ∧
+    (opened env tp st).deferred.length ≤ st.deferred.length ∧ (opened env tp st).carry = st.carry ∧
+    (opened env tp st).columns = st.columns ∧ (∀ d ∈ (opened env tp st).deferred, d ∈ st.deferred) := by
+  obtain ⟨f1, f2, f3, f4, f5, f6, f7⟩ := fresh_fields env tp st
+  unfold opened
+  split
+  · unfold placeTurned
+    obtain ⟨a1, a2, a3, a4, a5, a6, _, a8, _, a10, a11, _⟩ := placeTurnedGo_fields env (fresh env tp st) (fresh env tp st).deferred
+    refine ⟨by rw [a1, f1], by rw [a2, f2], by rw [a3, a4, f3], by rw [a5, f4], by rw [← f5]; exact a10,
+      by rw [a6, f6], by rw [a8, f7], fun x m => by rw [← f5]; exact a11 x m⟩
+  · exact ⟨f1, f2, f3, f4, by simp [f5], f6, f7, fun x m => by rw [← f5]; exact m⟩
+
 /-- What waits does not grow on the way to a new column; if it does not
     shrink, the new column is empty. -/
 theorem open_waiting (env : Env) (tp : Bool) (st : St) :
-    waiting (carryInto env (placeDeferred env (fresh env tp st))) ≤ waiting st ∧
-    (waiting (carryInto env (placeDeferred env (fresh env tp st))) = waiting st →
-      empty (carryInto env (placeDeferred env (fresh env tp st))) = true) ∧
-    (carryInto env (placeDeferred env (fresh env tp st))).adjust = 0 := by
-  obtain ⟨f1, f2, f3, f4, f5, f6, _⟩ := fresh_fields env tp st
-  generalize fresh env tp st = F at *
+    waiting (carryInto env (placeDeferred env (opened env tp st))) ≤ waiting st ∧
+    (waiting (carryInto env (placeDeferred env (opened env tp st))) = waiting st →
+      empty (carryInto env (placeDeferred env (opened env tp st))) = true) ∧
+    (carryInto env (placeDeferred env (opened env tp st))).adjust = 0 := by
+  obtain ⟨f1, f2, f3, f4, f5, f6, _⟩ := opened_fields env tp st
+  generalize opened env tp st = F at *
   unfold placeDeferred
   obtain ⟨_, _, _, p4, p5, p6, p7, _, _, p10, p11⟩ := placeDeferredGo_fields env F F.deferred
   generalize placeDeferredGo env F F.deferred = P at *
   obtain ⟨_, _, _, c4, c5, c6, c7, c8, _, c10, c11⟩ := carryInto_fields env P
   generalize carryInto env P = C at *
   simp only [waiting]
-  rw [c8, ← f5, ← f6, ← p7]
+  rw [c8, ← f6, ← p7]
   refine ⟨by omega, fun e => ?_, by rw [c5, p5, f4]⟩
   have l : P.deferred.length = F.deferred.length := by omega
   obtain ⟨s, u⟩ := p11 l
@@ -488,7 +565,7 @@ theorem I4_nextColumn_rank (env : Env) (st : St) (h : empty st = false ∨ st.ad
     rank (nextColumn env st) < rank st := by
   obtain ⟨le, e, a⟩ := open_waiting env false st
   unfold nextColumn
-  generalize carryInto env (placeDeferred env (fresh env false st)) = C at *
+  generalize carryInto env (placeDeferred env (opened env false st)) = C at *
   have r := rank_le C
   by_cases lt : waiting C < waiting st
   · have : waiting C * 4 + 3 < rank st := by unfold rank; omega
@@ -953,7 +1030,7 @@ def checkWaits (st : St) : St := st.waits.foldl checkWait { st with waits := [] 
     explains why `paginate` never meets a state where it stops early. -/
 def drainOk (env : Env) (st : St) : Bool :=
   (st.carry.isEmpty || decide (0 < env.pagePitch ∧ env.separator + env.pagePitch ≤ env.capacity)) &&
-  (match st.deferred with | (_, e) :: _ => decide (e ≤ env.capacity) | [] => true)
+  (match st.deferred with | .figure _ e :: _ => decide (e ≤ env.capacity) | _ => true)
 
 theorem fdiv_nat (k n : Nat) : Int.fdiv (Int.ofNat (k + 1)) (Int.ofNat n) = Int.ofNat ((k + 1) / n) := rfl
 
@@ -1002,55 +1079,72 @@ theorem I4_drain_rank (env : Env) (st : St)
     Prod.Lex (· < ·) (· < ·) (waiting (nextColumn env st), columnsLeft (nextColumn env st))
       (waiting st, columnsLeft st) := by
   obtain ⟨le, _, _⟩ := open_waiting env false st
-  obtain ⟨_, _, _, _, f5, f6, f7⟩ := fresh_fields env false st
   by_cases pe : st.columns ≤ st.column + 1
   · apply Prod.Lex.left
-    obtain ⟨u0, a0, n0, _⟩ := fresh_pageEnd env st pe
+    have op : opened env false st = placeTurned env (fresh env false st) := by simp [opened, pe]
     unfold nextColumn placeDeferred
+    rw [op]
+    unfold placeTurned
+    obtain ⟨u0, a0, n0, _⟩ := fresh_pageEnd env st pe
+    obtain ⟨_, _, _, _, f5, f6, _⟩ := fresh_fields env false st
     generalize fresh env false st = Fr at *
-    cases d : st.deferred with
-    | cons x rest =>
-      obtain ⟨i, e⟩ := x
-      have ok : e ≤ env.capacity := by
-        have := h.2; simp only [drainOk, d, Bool.and_eq_true, decide_eq_true_eq] at this; exact this.2
-      rw [f5, d]
-      simp only [placeDeferredGo]
-      have r : e ≤ room env Fr := by simp only [room, limit, u0, a0, n0]; omega
-      rw [if_pos r]
-      obtain ⟨_, _, _, _, _, _, p7, _, _, p10, _⟩ := placeDeferredGo_fields env (putSlot Fr e (.figure i)) rest
-      obtain ⟨_, _, _, _, _, _, _, c8, _, c10, _⟩ := carryInto_fields env (placeDeferredGo env (putSlot Fr e (.figure i)) rest)
-      simp only [waiting, c8, d, List.length_cons]
-      have p7' : (placeDeferredGo env (putSlot Fr e (.figure i)) rest).carry = st.carry := p7.trans f6
-      rw [p7'] at c10
+    obtain ⟨_, _, t3, _, t5, t6, t7, _, _, t10, _, t12, t13⟩ := placeTurnedGo_fields env Fr Fr.deferred
+    generalize placeTurnedGo env Fr Fr.deferred = T at *
+    rw [f5] at t10 t12 t13
+    by_cases lt : T.deferred.length < st.deferred.length
+    · obtain ⟨_, _, _, _, _, _, p7, _, _, p10, _⟩ := placeDeferredGo_fields env T T.deferred
+      obtain ⟨_, _, _, _, _, _, _, c8, _, c10, _⟩ := carryInto_fields env (placeDeferredGo env T T.deferred)
+      simp only [waiting, c8]
+      rw [p7, t6, f6] at c10
       omega
-    | nil =>
-      have ne : st.carry ≠ [] := by
-        intro c; have := h.1; rw [c, d] at this; exact absurd this (by decide)
-      have fits : 0 < env.pagePitch ∧ env.separator + env.pagePitch ≤ env.capacity := by
-        have := h.2
-        cases c : st.carry with
-        | nil => exact absurd c ne
-        | cons _ _ => simp only [drainOk, c, d, List.isEmpty, Bool.false_or, Bool.and_true, decide_eq_true_eq] at this; exact this
-      rw [f5, d]
-      simp only [placeDeferredGo]
-      have s := carryInto_strict env { Fr with deferred := [] } (by rw [← f6] at ne; exact ne)
-        (fdiv_pos _ _ fits.1 (by show env.pagePitch ≤ env.capacity + Fr.adjust - Fr.used - env.separator; omega))
-      simp only [waiting, d, List.length_nil]
-      have : ({ Fr with deferred := [] } : St).carry = st.carry := f6
-      obtain ⟨_, _, _, _, _, _, _, c8, _, _, _⟩ := carryInto_fields env { Fr with deferred := [] }
-      have e2 : carryWeight ({ Fr with deferred := [] } : St).carry = carryWeight st.carry := by rw [this]
-      rw [c8]; simp only [List.length_nil]; omega
-  · have cl : columnsLeft (nextColumn env st) < columnsLeft st := by
+    · have eqd : T.deferred = st.deferred := (t13 (by omega)).1
+      rw [eqd]
+      cases d : st.deferred with
+      | cons x rest =>
+        cases x with
+        | turned i => have := t12 i rest d; omega
+        | figure i e =>
+          have ok : e ≤ env.capacity := by
+            have := h.2; simp only [drainOk, d, Bool.and_eq_true, decide_eq_true_eq] at this; exact this.2
+          simp only [placeDeferredGo]
+          have r : e ≤ room env T := by simp only [room, limit, t3, t5, t7, u0, a0, n0]; omega
+          rw [if_pos r]
+          obtain ⟨_, _, _, _, _, _, p7, _, _, p10, _⟩ := placeDeferredGo_fields env (putSlot T e (.figure i)) rest
+          obtain ⟨_, _, _, _, _, _, _, c8, _, c10, _⟩ := carryInto_fields env (placeDeferredGo env (putSlot T e (.figure i)) rest)
+          simp only [waiting, c8, d, List.length_cons]
+          have p7' : (placeDeferredGo env (putSlot T e (.figure i)) rest).carry = st.carry := (p7.trans t6).trans f6
+          rw [p7'] at c10
+          omega
+      | nil =>
+        have ne : st.carry ≠ [] := by
+          intro c; have := h.1; rw [c, d] at this; exact absurd this (by decide)
+        have fits : 0 < env.pagePitch ∧ env.separator + env.pagePitch ≤ env.capacity := by
+          have := h.2
+          cases c : st.carry with
+          | nil => exact absurd c ne
+          | cons _ _ => simp only [drainOk, c, d, List.isEmpty, Bool.false_or, Bool.and_true, decide_eq_true_eq] at this; exact this
+        simp only [placeDeferredGo]
+        have s := carryInto_strict env { T with deferred := [] } (by rw [← f6, ← t6] at ne; exact ne)
+          (fdiv_pos _ _ fits.1 (by show env.pagePitch ≤ env.capacity + T.adjust - T.used - env.separator; rw [t3, t5, u0, a0]; omega))
+        simp only [waiting, d, List.length_nil]
+        have : ({ T with deferred := [] } : St).carry = st.carry := t6.trans f6
+        obtain ⟨_, _, _, _, _, _, _, c8, _, _, _⟩ := carryInto_fields env { T with deferred := [] }
+        have e2 : carryWeight ({ T with deferred := [] } : St).carry = carryWeight st.carry := by rw [this]
+        rw [c8]; simp only [List.length_nil]; omega
+  · have op : opened env false st = fresh env false st := by simp [opened, pe]
+    have cl : columnsLeft (nextColumn env st) < columnsLeft st := by
       unfold nextColumn placeDeferred
+      rw [op]
       have fc := fresh_inPage env st pe
+      obtain ⟨_, _, _, _, _, _, f7⟩ := fresh_fields env false st
       obtain ⟨_, p2, p3, _⟩ := placeDeferredGo_fields env (fresh env false st) (fresh env false st).deferred
       obtain ⟨_, c2, c3, _⟩ := carryInto_fields env (placeDeferredGo env (fresh env false st) (fresh env false st).deferred)
       simp only [columnsLeft, c2, c3, p2, p3, fc, f7]
       omega
     unfold nextColumn at cl ⊢
-    by_cases w : waiting (carryInto env (placeDeferred env (fresh env false st))) < waiting st
+    by_cases w : waiting (carryInto env (placeDeferred env (opened env false st))) < waiting st
     · exact Prod.Lex.left _ _ w
-    · have : waiting (carryInto env (placeDeferred env (fresh env false st))) = waiting st := by omega
+    · have : waiting (carryInto env (placeDeferred env (opened env false st))) = waiting st := by omega
       rw [this]; exact Prod.Lex.right _ cl
 
 set_option linter.unusedVariables false in
@@ -1071,10 +1165,20 @@ def parityStart (env : Env) (accept : Nat → Bool) (st : St) : St :=
     { next with done := ⟨next.page, 0, true, [], [], limit env next, []⟩ :: next.done, page := next.page + 1 }
   else nextPage env next
 
+/-- The page before holds a turned figure (`afterTurned`). -/
+def afterTurned (st : St) : Bool :=
+  match st.done with
+  | p :: _ => p.number == st.page - 1 && p.slots.any (fun s => match s.2 with | .pageFigure _ => true | _ => false)
+  | [] => false
+
+/-- The page break of `breakAt`: none on the page after a turned figure. -/
+def breakPage (env : Env) (st : St) : St :=
+  if empty st ∧ st.column = 0 ∧ afterTurned st then st else nextPage env st
+
 def breakAt (env : Env) (k : BreakKind) (st : St) : St :=
   match k with
-  | .column => nextColumn env st
-  | .page => nextPage env st
+  | .column => if 1 < st.columns ∧ st.deferred.any Waiting.isTurned = false then nextColumn env st else breakPage env st
+  | .page => breakPage env st
   | .recto => parityStart env (fun p => p % 2 == 1) st
   | .verso => parityStart env (fun p => p % 2 == 0) st
 
@@ -1138,9 +1242,9 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
       blankSpans := st.blankSpans + (if 0 < n then 1 else 0) }
   | .figure i e =>
     if env.capacity < e then .error (.figureTooTall i)
-    else if st.deferred ≠ [] then .ok { st with deferred := st.deferred ++ [(i, e)] }
+    else if st.deferred ≠ [] then .ok { st with deferred := st.deferred ++ [.figure i e] }
     else if room env st < e + st.pending ∧ empty st = false then
-      .ok { st with deferred := st.deferred ++ [(i, e)], pending := 0, blankActive := false }
+      .ok { st with deferred := st.deferred ++ [.figure i e], pending := 0, blankActive := false }
     else .ok (putSlot (fit env st e) e (.figure i))
   | .brk k => .ok (breakAt env k st)
   | .needLines n =>
@@ -1153,8 +1257,9 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .noBreakLines n => if n = 0 then .ok st else .ok (waitForPrior .noBreak (1, false) st)
   | .keepNext _ => .ok (waitForPrior .keepNext (1, false) st)
   | .pageFigure i =>
-    let fr := if empty st then st else nextPage env st
-    .ok (nextPage env (putSlot fr env.capacity (.pageFigure i)))
+    if st.deferred = [] ∧ st.column = 0 ∧ st.used = 0 ∧ empty st = true then
+      .ok (nextPage env (putSlot st env.capacity (.pageFigure i)))
+    else .ok { st with deferred := st.deferred ++ [.turned i] }
   | .ruled r => placeRuled env st r []
   | .start k => .ok (sectionStart env k st)
   | .switchColumns cols => .ok (switchColumns env cols st)
@@ -1234,6 +1339,7 @@ def textSlots : List (Int × Slot) → List Nat
 def figSlots : List (Int × Slot) → List Nat
   | [] => []
   | (_, .figure i) :: r => i :: figSlots r
+  | (_, .pageFigure i) :: r => i :: figSlots r
   | _ :: r => figSlots r
 def pagesText : List PageOut → List Nat
   | [] => []
@@ -1244,10 +1350,11 @@ def pagesFigs : List PageOut → List Nat
 /-- The lines placed, in the pages closed and in the column. -/
 def text (st : St) : List Nat := pagesText st.done.reverse ++ textSlots st.slots
 /-- The figures placed, in the pages closed and in the column, then those sent on. -/
-def figs (st : St) : List Nat := pagesFigs st.done.reverse ++ figSlots st.slots ++ st.deferred.map (·.1)
+def figs (st : St) : List Nat := pagesFigs st.done.reverse ++ figSlots st.slots ++ st.deferred.map Waiting.id
 def lineIds (ls : List Line) : List Nat := ls.map (·.id)
 def flowFigs : Flow → List Nat
   | .figure i _ => [i]
+  | .pageFigure i => [i]
   | _ => []
 /-- The ids a flow adds to the text: its lines, or the first line of a heading. -/
 def flowText : Flow → List Nat
@@ -1265,7 +1372,7 @@ def NotesFit (env : Env) : Prop := env.separator + env.pagePitch ≤ env.capacit
 /-- What `drainCarry` needs to go on: the figures sent on fit in a column,
     and notes are carried on only where a note line fits. -/
 def Good (env : Env) (st : St) : Prop :=
-  (∀ d ∈ st.deferred, d.2 ≤ env.capacity) ∧ (st.carry ≠ [] → NotesFit env)
+  (∀ d ∈ st.deferred, d.fits env.capacity) ∧ (st.carry ≠ [] → NotesFit env)
 def LineOk (env : Env) (l : Line) : Prop := l.notes = [] ∨ NotesFit env
 
 /-- From `st` to `s`, the lines `t` and the figures `g` are added. -/
@@ -1351,22 +1458,54 @@ theorem step_closed (env : Env) (st s : St) (d : s.done = (close env st).done) (
   · intro ⟨g1, g2⟩; exact ⟨by rw [df]; exact g1, by rw [c]; exact g2⟩
 
 
-theorem pdg_step (env : Env) (st : St) (ds : List (Nat × Int)) :
+theorem pdg_step (env : Env) (st : St) (ds : List Waiting) :
     text (placeDeferredGo env st ds) = text st ∧
-    figs (placeDeferredGo env st ds) = pagesFigs st.done.reverse ++ figSlots st.slots ++ ds.map (·.1) ∧
+    figs (placeDeferredGo env st ds) = pagesFigs st.done.reverse ++ figSlots st.slots ++ ds.map Waiting.id ∧
     (placeDeferredGo env st ds).carry = st.carry ∧
     (∀ d ∈ (placeDeferredGo env st ds).deferred, d ∈ ds) := by
   induction ds generalizing st with
   | nil => simp [placeDeferredGo, text, figs]
   | cons d ds ih =>
-    obtain ⟨i, e⟩ := d
-    simp only [placeDeferredGo]
-    split
-    · obtain ⟨a, b, c, d⟩ := ih (putSlot st e (.figure i))
-      refine ⟨?_, ?_, c, fun x m => List.mem_cons_of_mem _ (d x m)⟩
-      · rw [a]; simp [text, putSlot, textSlots_append, textSlots]
-      · rw [b]; simp [putSlot, figSlots_append, figSlots]
-    · refine ⟨rfl, by simp [figs], rfl, fun x m => m⟩
+    cases d with
+    | turned i => refine ⟨rfl, by simp [figs, placeDeferredGo], rfl, fun x m => by simpa [placeDeferredGo] using m⟩
+    | figure i e =>
+      simp only [placeDeferredGo]
+      split
+      · obtain ⟨a, b, c, d⟩ := ih (putSlot st e (.figure i))
+        refine ⟨?_, ?_, c, fun x m => List.mem_cons_of_mem _ (d x m)⟩
+        · rw [a]; simp [text, putSlot, textSlots_append, textSlots]
+        · rw [b]; simp [putSlot, figSlots_append, figSlots, Waiting.id]
+      · refine ⟨rfl, by simp [figs], rfl, fun x m => m⟩
+
+theorem ptg_step (env : Env) (st : St) (ds : List Waiting) (hs : st.slots = []) :
+    text (placeTurnedGo env st ds) = text st ∧
+    figs (placeTurnedGo env st ds) = pagesFigs st.done.reverse ++ ds.map Waiting.id := by
+  induction ds generalizing st with
+  | nil => simp [placeTurnedGo, text, figs, hs, figSlots]
+  | cons d ds ih =>
+    cases d with
+    | figure i e => simp [placeTurnedGo, text, figs, hs, figSlots]
+    | turned i =>
+      simp only [placeTurnedGo]
+      obtain ⟨a, b⟩ := ih { st with
+        done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], limit env st, []⟩ :: st.done, page := st.page + 1 } hs
+      refine ⟨?_, ?_⟩
+      · rw [a]; simp [text, pagesText_append, pagesText, textSlots]
+      · rw [b]; simp [pagesFigs_append, pagesFigs, figSlots, Waiting.id]
+
+theorem step_opened (env : Env) (tp : Bool) (st : St) : Step env st (opened env tp st) [] [] := by
+  have f := step_fresh env tp st
+  unfold opened
+  split
+  · obtain ⟨f1, _, _, _, _, _, _⟩ := fresh_fields env tp st
+    generalize fresh env tp st = F at *
+    obtain ⟨a, b⟩ := ptg_step env F F.deferred f1
+    obtain ⟨_, _, _, _, _, t6, _, _, _, _, t11, _⟩ := placeTurnedGo_fields env F F.deferred
+    have g : Step env F (placeTurned env F) [] [] := by
+      refine ⟨by rw [placeTurned, a, List.append_nil], ?_, fun ⟨g1, g2⟩ => ⟨fun x m => g1 x (t11 x m), by rw [placeTurned, t6]; exact g2⟩⟩
+      rw [placeTurned, b, List.append_nil]; simp [figs, f1, figSlots]
+    simpa using f.trans g
+  · exact f
 
 theorem step_placeDeferred (env : Env) (st : St) : Step env st (placeDeferred env st) [] [] := by
   obtain ⟨a, b, c, d⟩ := pdg_step env st st.deferred
@@ -1383,11 +1522,11 @@ theorem step_carryInto (env : Env) (st : St) : Step env st (carryInto env st) []
     refine ⟨by simp [text], by simp [figs], fun ⟨g1, g2⟩ => ⟨g1, fun _ => g2 ne⟩⟩
 
 theorem step_nextColumn (env : Env) (st : St) : Step env st (nextColumn env st) [] [] := by
-  have := ((step_fresh env false st).trans (step_placeDeferred env _)).trans (step_carryInto env _)
+  have := ((step_opened env false st).trans (step_placeDeferred env _)).trans (step_carryInto env _)
   simpa using this
 
 theorem step_nextPage (env : Env) (st : St) : Step env st (nextPage env st) [] [] := by
-  have := ((step_fresh env true st).trans (step_placeDeferred env _)).trans (step_carryInto env _)
+  have := ((step_opened env true st).trans (step_placeDeferred env _)).trans (step_carryInto env _)
   simpa using this
 
 
@@ -1403,13 +1542,16 @@ theorem step_fit (env : Env) (st : St) (a : Int) : Step env st (fit env st a) []
 
 theorem nextColumn_deferred (env : Env) (st : St) (h : st.deferred = []) : (nextColumn env st).deferred = [] := by
   unfold nextColumn placeDeferred
-  obtain ⟨_, _, _, _, f5, _, _⟩ := fresh_fields env false st
-  obtain ⟨_, _, _, d⟩ := pdg_step env (fresh env false st) (fresh env false st).deferred
-  obtain ⟨_, _, _, _, _, _, _, c8, _⟩ := carryInto_fields env (placeDeferredGo env (fresh env false st) (fresh env false st).deferred)
+  obtain ⟨_, _, _, _, _, _, _, o8⟩ := opened_fields env false st
+  generalize opened env false st = O at *
+  obtain ⟨_, _, _, d⟩ := pdg_step env O O.deferred
+  obtain ⟨_, _, _, _, _, _, _, c8, _⟩ := carryInto_fields env (placeDeferredGo env O O.deferred)
   rw [c8]
-  cases e : (placeDeferredGo env (fresh env false st) (fresh env false st).deferred).deferred with
+  cases e : (placeDeferredGo env O O.deferred).deferred with
   | nil => rfl
-  | cons x _ => have := d x (by rw [e]; exact List.mem_cons_self _ _); rw [f5, h] at this; cases this
+  | cons x _ =>
+    have := o8 x (d x (by rw [e]; exact List.mem_cons_self _ _))
+    rw [h] at this; cases this
 
 theorem fit_deferred (env : Env) (st : St) (a : Int) (h : st.deferred = []) : (fit env st a).deferred = [] := by
   unfold fit
@@ -1430,11 +1572,11 @@ theorem step_putFigureSlot (env : Env) (st : St) (e : Int) (i : Nat) (h : st.def
   · simp [text, putSlot, textSlots_append, textSlots]
   · simp [figs, putSlot, figSlots_append, figSlots, h]
 
-theorem step_putPageFigureSlot (env : Env) (st : St) (e : Int) (i : Nat) :
-    Step env st (putSlot st e (.pageFigure i)) [] [] := by
+theorem step_putPageFigureSlot (env : Env) (st : St) (e : Int) (i : Nat) (h : st.deferred = []) :
+    Step env st (putSlot st e (.pageFigure i)) [] [i] := by
   refine ⟨?_, ?_, fun g => g⟩
   · simp [text, putSlot, textSlots_append, textSlots]
-  · simp [figs, putSlot, figSlots_append, figSlots]
+  · simp [figs, putSlot, figSlots_append, figSlots, h]
 
 theorem splitNotes_nil (n : Nat) : splitNotes n [] = ([], []) := by cases n <;> rfl
 
@@ -1764,9 +1906,15 @@ theorem step_parityStart (env : Env) (accept : Nat → Bool) (st : St) :
     · simpa using c.trans (step_nextPage env nx)
 
 theorem step_breakAt (env : Env) (k : BreakKind) (st : St) : Step env st (breakAt env k st) [] [] := by
-  cases k <;> unfold breakAt
-  · exact step_nextColumn env st
-  · exact step_nextPage env st
+  have bp : Step env st (breakPage env st) [] [] := by
+    unfold breakPage; split
+    · exact Step.refl env st
+    · exact step_nextPage env st
+  cases k <;> unfold breakAt <;> dsimp only
+  · split
+    · exact step_nextColumn env st
+    · exact bp
+  · exact bp
   · exact step_parityStart env _ st
   · exact step_parityStart env _ st
 
@@ -1929,12 +2077,18 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
       · exact Step.refl env st
     simpa using this.trans (step_judgeNeed env _ _)
   | pageFigure i =>
-    simp only [placeFlow, Except.ok.injEq] at h; subst h
-    have : Step env st (if empty st = true then st else nextPage env st) [] [] := by
-      split
-      · exact Step.refl env st
-      · exact step_nextPage env st
-    simpa [flowFigs] using (this.trans (step_putPageFigureSlot env _ env.capacity i)).trans (step_nextPage env _)
+    simp only [placeFlow] at h
+    split at h
+    · rename_i c
+      injection h with h; subst h
+      simpa [flowText, flowLines, lineIds, flowFigs] using
+        (step_putPageFigureSlot env st env.capacity i c.1).trans (step_nextPage env _)
+    · injection h with h; subst h
+      refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs, Waiting.id], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
+      intro d m
+      cases mem_append' m with
+      | inl m => exact g1 d m
+      | inr m => simp at m; subst m; trivial
   | figure i e =>
     simp only [placeFlow] at h
     split at h
@@ -1942,14 +2096,14 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
     · rename_i big
       split at h
       · injection h with h; subst h
-        refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
+        refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs, Waiting.id], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
         intro d m
         cases mem_append' m with
         | inl m => exact g1 d m
         | inr m => simp at m; subst m; exact Int.not_lt.1 big
       · split at h
         · injection h with h; subst h
-          refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
+          refine ⟨by simp [text, flowText, flowLines, lineIds], by simp [figs, flowFigs, Waiting.id], fun ⟨g1, g2⟩ => ⟨?_, g2⟩⟩
           intro d m
           cases mem_append' m with
           | inl m => exact g1 d m
@@ -2092,7 +2246,11 @@ theorem drainOk_of_good (env : Env) (st : St) (hp : 0 < env.pagePitch) (g : Good
     | cons _ _ => exact Or.inr ⟨hp, g.2 (by rw [c]; intro h; cases h)⟩
   · cases d : st.deferred with
     | nil => trivial
-    | cons x _ => simp only [decide_eq_true_eq]; exact g.1 x (by rw [d]; exact List.mem_cons_self _ _)
+    | cons x _ =>
+      have := g.1 x (by rw [d]; exact List.mem_cons_self _ _)
+      cases x with
+      | figure _ e => simp only [decide_eq_true_eq]; exact this
+      | turned _ => trivial
 
 set_option linter.unusedVariables false in
 theorem drain_empty (env : Env) (hp : 0 < env.pagePitch) (st : St) (g : Good env st) :

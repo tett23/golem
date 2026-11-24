@@ -261,6 +261,17 @@ headingInputs =
        ]
     <> [(Column 20 0 1, [para 0 1, FHeading 1 False 25 [line 300]])]
 
+-- Turned figures with breaks, figures sent on and columns switched around them.
+turnedInputs :: [(Column, [FlowAt Sp])]
+turnedInputs =
+  [ (Column cap 0 cols, pre <> [FPageFigure 200 [] []] <> mid <> [para 20 n])
+  | cap <- [30, 40],
+    cols <- [1, 2],
+    pre <- [[], [para 0 1], [para 0 3], [para 0 1, FBreak BreakColumn], [para 0 2, FFigure 100 25 [] []], [para 0 1, FSwitchColumns (ColumnSet 2 0 0 0)]],
+    mid <- [[], [FBreak BreakColumn], [FBreak BreakPage], [FFigure 101 20 [] []], [FPageFigure 201 [] []], [FSection (OfSection 1) BreakPage], [FBreak BreakColumn, FPageFigure 201 [] []], [para 10 1, FBreak BreakColumn]],
+    n <- [1, 2]
+  ]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -330,7 +341,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))
