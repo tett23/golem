@@ -286,7 +286,7 @@ Lean は任意の整数の段容量、予約行数、区切り行数で、繰り
 `I5_all_measured_flows_eof` はその実行列について、入れ子の箱と原稿末尾の処理を含めて図版が原稿順に一度ずつ出ることを示す。
 本文の操作列を各コンストラクターの引数と先読みから生成する処理は、なお Haskell の `step` と照合する必要がある。
 現在の main の `FlowAt` には、さらに `FNoBreakLines` があり、その行数を含む制御もこの照合に含める。
-[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) で加わった `USeparator` からのフロー生成と、区切りを後続行と保持できなければ G07134 を返す後処理も、現在の未証明の範囲に含む。
+[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) で加わった `USeparator` からのフロー生成と G07134 を返す後処理は、「区切りのモデル」の節で扱う。
 
 段落と詩節の通常の分割では、`splitAtBreak` が先頭と末尾に必要な行数を満たす最大の部分を選ぶことを `I3_kept_break_is_largest` が示す。
 空段で強制的に行を置く分岐は、この最大性の前提から外れる。
@@ -603,6 +603,73 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Decide.hs:300` `startsRecto` | `startsRecto` |
 | `Paginate/Decide.hs:322` `bodySize`、`:336` `joinsNext` | `RuledBody.size`、`joinsNext` |
 | `Paginate/Decide.hs:346` `planOf`、`:381` `planNeed`、`:385` `planParts` | `planOf`、`Plan`、`planNeed`、`planParts` |
+
+## 区切りのモデル
+
+`Separator.lean` は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りを扱う golem-typeset の二つの関数を、`Whole.lean` の `Flow` の上に写したものである。
+`space` は、`blocks` の局所関数 `spaceSeparators`（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:2441`）の `go` を写す。
+この関数は、可視の区切りの後に 1 行の `keep-with-next` を足し、区切りとの境界の行アキを一つのアキに置き換える。
+`holdErrors` は、`separatorHoldErrors`（`Flow.hs:793`）を写す。
+この関数は、組んだページを読み、区切りの連続と後続ブロックの最初の行が一つの段にない連続ごとに G07134 を返す。
+`postProcess` は、`round'`（`Flow.hs:749`）がこの診断を足す処理を写し、ページをそのまま返して、受け取った診断の後に G07134 を足す。
+
+単位（`Unit`）は、可視の区切り、行アキ、改ページ、アキ、`keep-with-next` と、それ以外の単位からなる。
+可視の区切りは、前後の格子の行数と 1 行の行を持ち、段落のフロー（`Flow.hs:3855`）になる。
+種類が `blank` の区切りは、単位を作る前に行アキへ解決される（`modules/golem-driver/src/Golem/Driver.hs:402`）ので、行アキとして表す。
+アキ（`UGap`）は `FSpace` になり、格子の行へは `paginateBuilt` の `gridUnits`（`Flow.hs:834`）が行送りで割って渡す。
+それ以外の単位は、フロー、区切りの連続を終えるか通すか切るか（`Role`）、最初の行の id を引数として持つ。
+`separatorHoldErrors` は、`USection` と `UColumns` で連続を切り、`UGap`、`UBlank`、`UKeepNext`、`UPageControl` を通し、ほかの単位で連続を終える（`Flow.hs:811`〜`:822`）。
+モデルでは、`USection` と `UColumns` を `reset`、`UPageControl` を `pass`、ほかを `block` の役とする。
+定理はこれらの引数のどの選び方でも成り立つ。
+
+不変条件 4 と 5 は、`Whole.lean` の定理をそのまま当てて導いた。
+`I4_separator_paginate_ends` は、`separatorFlows` が作るフローの改ページが終わることを `I4_paginate_ends` から示す。
+`I5_separator_text` は、ページの行と見出しが、可視の区切りの行とほかの単位の行を原稿順に一度ずつ並べた列（`unitsText`）に等しいことを `I5_paginate_text` から示す。
+`space` が足す `keep-with-next`、アキ、行アキと、除く行アキは行を持たないので、`space_text` がこの列を保つ。
+`I5_separator_figures` は、図版と転置図版が原稿順に一度ずつ出ることを `I5_paginate_figures` から示す。
+その前提は、区切り、行アキ、改ページ、アキ、`keep-with-next` を除いたほかの単位のフロー（`otherFlows`）についての `figureOk` と `BoxesOk` である。
+`space` が作るフローは、このフローの間に、箱でも本の部でも罫線つきのブロックでもないフロー（`plainFlow`）を挟んだものである（`separatorFlows_ins`）。
+`boxesOk_ins` と `figureOk_ins` は、そのようなフローを挟んでも二つの前提が保たれることを示す。
+実際のフローでは、`ruledLinks`（`Flow.hs:4612`）が直前のフローが罫線つきのブロックのときだけ共有を付けるので、共有するブロックの直前には `otherFlows` でも罫線つきのブロックがあり、箱は来ない。
+ただし、golem-typeset が単位のフローの後に行う `joinBoxes`、`ruledLinks`、`markBookParts` は写していない。
+この三つは、照合に使った段落だけの原稿ではフローを変えない。
+
+区切りの保持は、生成と後処理の二つの性質として示した。
+`I3_separator_keeps` は、可視の区切りの後に行アキと、行アキでも改ページでもない単位が続くと、`space` が区切りの行、1 行の `keep-with-next`、アキ、その単位をこの順に置くことを示す。
+`I5_separator_post_keeps_pages` は、後処理がページを変えず、受け取った診断の後に診断を足すだけであることを示す。
+`I3_separator_error_iff` は、ある連続で G07134 を返すのは、連続の区切りの行と後続ブロックの最初の行のうち、置いた二つが異なる段にあるときに限ることを示す。
+`I3_separator_error_single` は、区切り一つと、連続を通す単位と、ブロック一つの原稿について、区切りの行と最初の行をどちらも置いたとき、二つの段が異なるときに限って G07134 を返すことを示す。
+
+境界入力の照合は、`SeparatorBoundary.hs` と `SeparatorBoundary.lean` で行う。
+`SeparatorBoundary.hs` は、golem-driver のテストの偽のフォント（`modules/golem-driver/test/Support.hs`）で原稿を golem-typeset の `layoutPdf` に渡し、ページか、診断の一覧を書き出す。
+原稿は、なしか 1 行の段落の後に、`---`、`@separator scene`、種類が `blank` の `@separator gap`、`@blank-line 1`、`@page-break`、`@need-lines 2`、1 行の段落から一つ〜三つを並べ、最後になしか 1 行か 2 行の段落を置いたもので、可視の区切りを一つ以上含む。
+`default` と `scene` の前後の行数は、0 と 0 と 1 と 2、または 1 と 1 と 2 と 0 の二組で、段の容量は 1〜3 行である。
+`SeparatorBoundary.lean` は、同じ 8784 個の原稿を単位にし、`separatorFlows` のフローを `Boundary.lean` の `boundaryEnv` で `paginate` に渡し、`holdErrors` が空ならページを、空でなければ各連続の最初の区切りの行の id を書き出す。
+原稿から単位を作る前に、golem-eval の `collapseBlankLines`、golem-assemble の `ineffectiveBlankLines` と `blankLinesOverPage` が行アキをまとめたり除いたりするので、`SeparatorBoundary.lean` はこの三つを `collapse`、`effective`、`overPage` として写した。
+出力のない段で満たせなかった指定は、`paginateWithin`（`Paginate.hs:142`）と同じく最後のページに付ける。
+`check.sh` は二つの出力を `diff` で比べ、すべて一致した。
+
+照合の感度は、写した処理を一つずつ替えて確かめた。
+区切りの後に `keep-with-next` を足さないと 1272 個、区切りの後のアキを行アキにすると 698 個、前の区切りの後の行数を見ないと 1076 個、明示した行アキを見ないと 272 個、区切りの前の行数を見ないと 2746 個、区切りの前の行数があっても境界を可視としないと 2696 個、`beforeOf` を常に 0 にすると 2782 個の入力で出力が食い違った。
+後処理では、`@need-lines` で連続を切ると 689 個、連続の id から後続ブロックの最初の行を除くと 2977 個の入力で出力が食い違った。
+原稿の末尾で区切りの後の行アキを残す変更と、改ページの前の行アキを除く変更は、この入力では出力が変わらない。
+golem-assemble の `ineffectiveBlankLines` が、その位置の行アキを単位を作る前に除くからである。
+`keep-with-next` の行数を 2 にする変更も、この入力では照合できていない。
+本文の段落スタイルは段落の先頭に 2 行を求め、1 行の段落は分けられないので、1 行と 2 行の `keep-with-next` が後続の段落に同じ行数を求めるからである。
+段が一つなので、段の番号だけが異なる分割も照合していない。
+
+照合した Haskell の出力には、[仕様](../../docs/specifications.md)と食い違うものがある。
+仕様は、空の段へ送っても区切りの連続、後ろのアキ、後続ブロックの最初の表示行を同じ段に置けない場合に G07134 で PDF の生成を止める（1874 行）と定める。
+[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の「配置と改ページ」も、一つの空の段にも保持対象が収まらない場合を組版のエラーとする。
+容量 3 行の段で、`space-before` と `space-after` が 0 の `default` を使い、1 行の段落、`---`、`@need-lines 2`、1 行の段落を並べると、golem-typeset は `---` の位置に G07134 を返し、PDF を書かない。
+同じ設定で先頭の段落を除いた原稿では、1 ページ目の 0 行目に区切り、1 行目に段落を置くので、この連続は空の段に収まる。
+`spaceSeparators` は `UPageControl` を区切りの後続として扱い、その前に `keep-with-next` を置く（`Flow.hs:2470`）。
+一方、`separatorHoldErrors` は `UPageControl` を通して、その後の段落の最初の行と比べる（`Flow.hs:820`）。
+golem-typeset はこのときページを返さないが、同じ G07134 を返す `Whole.lean` のページでは、区切りを 1 ページ目の 1 行目に置いた後で `@need-lines` が段落を 2 ページ目へ送り、`keep-with-next` も満たせない。
+G07134 を返した入力のそれぞれで、連続が空の段に求める行数を、区切りの行、アキ、`@need-lines` の行数、後続の段落の最初の部分の行数から求めた。
+その行数が段の容量以下だった入力は 7 個で、すべて連続に `@need-lines` を挟むこの形だった。
+`@need-lines` を挟まない連続では、G07134 を返したどの入力でも、求める行数が段の容量を超えていた。
+この README は、この 7 個を Haskell の側の誤りと扱い、修正はメンテナーの判断に残す。
 
 ## 自由な配置のモデル
 
@@ -973,10 +1040,11 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を
 証明は、注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる形にする。
 不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を、注ごとに行の番号へ展開したものが、読んだ行の脚注を展開したものに注ごとに等しいことである。
 
-四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りである。
-`USeparator` からのフロー生成と、区切りを後続行と保持できなければ G07134 を返す後処理は、まだ証明していない。
-計画は、フロー生成を区切りの行を段落のフローに変える関数として `Whole.lean` の `Flow` の上に写し、生成したフローに I4 と I5 の定理をそのまま当てることである。
-後処理は出力のページを変えず診断だけを足す関数として写し、区切りの行とその後続行が別の段に分かれるときに限って G07134 を返すことと、ページの内容を変えないことを証明する。
+四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
+格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
+その節に挙げた `@need-lines` を挟む区切りの G07134 の食い違いは、メンテナーの判断を待つ。
+単位のフローの後の `joinBoxes`、`ruledLinks`、`markBookParts` は写しておらず、箱、罫線つきのブロック、本の部を区切りと並べた原稿は照合していない。
+自由な配置の区切り（`paginatePhysical` に渡す区切りのフロー）も、`Physical.lean` の上ではまだ照合していない。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 
@@ -988,11 +1056,13 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を
 lean experiments/pagination-proof/Pagination.lean
 lean experiments/pagination-proof/Whole.lean
 lean experiments/pagination-proof/Physical.lean
-cabal build golem-layout
+cabal build golem-layout golem-driver:tests
 sh experiments/pagination-proof/check.sh
 ```
 
 `check.sh` は境界入力とキャプションの評価値の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
+区切りの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
+`check.sh` は、`Whole.olean` と `Boundary.olean` を作ってから、それを読み込む `Separator.lean` と `SeparatorBoundary.lean` を検査する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 
