@@ -129,9 +129,10 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
   echo "unchecked Lean declaration in $pboundary" >&2
   exit 1
 fi
-(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=containers \
+(cd "$root" && cabal exec -v0 -- runghc -hide-all-packages -package=base -package=containers -package=text \
   -package-id=golem-layout-0.1.0-inplace -package-id=golem-syntax-0.1.0-inplace \
   -package-id=golem-length-0.1.0-inplace -package-id=golem-doc-0.1.0-inplace \
+  -package-id=golem-project-0.1.0-inplace \
   experiments/pagination-proof/PhysicalBoundary.hs) > "$tmp/physical-haskell"
 LEAN_PATH="$tmp" "$lean" --run "$pboundary" "$tmp/physical-haskell" > "$tmp/physical-lean"
 diff -u "$tmp/physical-haskell" "$tmp/physical-lean"

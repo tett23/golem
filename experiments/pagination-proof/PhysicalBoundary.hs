@@ -11,6 +11,7 @@ import Control.Exception (evaluate)
 import Control.Monad (replicateM)
 import Data.List (intercalate)
 import Data.Map.Strict qualified as Map
+import Data.Text qualified
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..), codeSpan)
 import Golem.Layout.Look (NoteId (..))
@@ -18,6 +19,7 @@ import Golem.Layout.Paginate
 import Golem.Layout.Paginate.Physical
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import System.Timeout (timeout)
 
@@ -524,6 +526,51 @@ genericBoxInputs =
         [FNeedLines span0 2, para 400 2]
       ]
 
+-- Book parts of each unit after paragraphs that fill part of a page, with
+-- the ids of all their slots or of their first slot, and tables in book
+-- parts with the ids golem-typeset gives them.
+bookPartInputs :: [(Column, [FlowAt Sp])]
+bookPartInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FBookPart unit span0 (Data.Text.pack "part") (pick body) body] <> after <> [para 20 n])
+  | cap <- [30, 40],
+    cols <- [1, 2],
+    p <- [0, 2, 5, 9],
+    unit <- [KeepColumn, KeepPage, KeepSpread],
+    (body, pick) <- bodies,
+    after <- [[], [FKeepNext span0 1, para 30 2]],
+    n <- [1, 3]
+  ]
+  where
+    allIds = concatMap flowSlotIds
+    firstId = take 1 . concatMap flowSlotIds
+    bodies =
+      [ ([para 400 2], allIds),
+        ([para 400 4], allIds),
+        ([para 400 4], firstId),
+        ([FDefTerm (lines' 400 1), para 410 3], \b -> 400 : take 1 (concatMap flowSlotIds (drop 1 b))),
+        ([para 400 2, FFigure 100 25 [] []], allIds),
+        ([FHeading 1 False 10 [line 400], para 410 2], allIds),
+        ([FBookPart KeepPage span0 (Data.Text.pack "part") [410, 411, 412] [para 410 3], para 420 1], allIds),
+        ([FBoxed 172 5 5 [para 400 2], para 410 1], allIds),
+        ([FTable 160 0 [line 400] [lines' 410 2, lines' 420 1] [line 430] True], \_ -> [400, 410, 411]),
+        ([FParagraph defaultKeep (noted 400 2 1 2), para 410 1], allIds)
+      ]
+
+tableAcrossInputs :: [(Column, [FlowAt Sp])]
+tableAcrossInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FBookPart unit span0 (Data.Text.pack "table") ids [FTable 160 b header rows caption below]] <> [para 20 1])
+  | cap <- [30, 40],
+    cols <- [1, 2],
+    p <- [0, 2, 5],
+    unit <- [KeepPage, KeepSpread],
+    b <- [0, 5],
+    header <- [[], [line 800], lines' 800 2],
+    rows <- [[lines' 810 1], [lines' 810 1, lines' 820 2], [lines' 810 2, lines' 820 1, lines' 830 2], [noted 810 1 0 2, lines' 820 1]],
+    caption <- [[], [line 850]],
+    below <- [False, True],
+    let ids = map lbId ((if below then [] else caption) <> header <> concat (take 1 rows))
+  ]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -532,6 +579,7 @@ flowToken = \case
   FTable i b h rs c below -> "g:" <> show i <> ":" <> show (unSp b) <> ":" <> linesToken h <> ":" <> intercalate "/" (map linesToken rs) <> ":" <> linesToken c <> ":" <> bit below
   FBoxed i b a [FParagraph k ls] -> "X:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> keepToken k <> ":" <> linesToken ls
   FBoxed i b a [FStanza k vs] -> "Y:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> keepToken k <> ":" <> intercalate "/" (map linesToken vs)
+  FBookPart unit _ _ ids body -> unwords (("P:" <> unitToken unit <> ":" <> (if null ids then "-" else intercalate "," (map show ids)) <> ":" <> show (length body)) : map flowToken body)
   FBoxed i b a body -> unwords (("O:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> show (length body)) : map flowToken body)
   FWrapped i e _ _ ls -> "w:" <> show i <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FPageFigure i _ _ -> "t:" <> show i
@@ -554,7 +602,6 @@ flowToken = \case
   FSection _ k -> "S:" <> breakToken k
   FSwitchColumns (ColumnSet c _ _ _) -> "W:" <> show c
   FRestoreColumns -> "R"
-  other -> error ("no token for " <> show other)
   where
     breakToken = \case
       BreakColumn -> "c"
@@ -562,6 +609,10 @@ flowToken = \case
       BreakRecto -> "r"
       BreakVerso -> "v"
     bit b = if b then "1" else "0"
+    unitToken = \case
+      KeepColumn -> "c"
+      KeepPage -> "p"
+      KeepSpread -> "s"
     keepToken (Keep f l a) = show f <> "," <> show l <> "," <> bit a
     linesToken ls = intercalate "," (map lineToken ls)
     lineToken l = show (lbId l) <> concat ["^" <> show i <> "." <> show n | NoteBody (NoteId _ i) n <- lbNotes l]
@@ -591,6 +642,10 @@ unmetToken = \case
   ShortPart FirstPart i w g -> "!first" <> show i <> ":" <> show w <> ":" <> show g
   ShortPart LastPart i w g -> "!last" <> show i <> ":" <> show w <> ":" <> show g
   TallHeadingExtent i e r -> "!tall" <> show i <> ":" <> show (unSp e) <> ":" <> show (unSp r)
+  SplitBookPart _ kind unit -> "!splitpart:" <> (if kind == Data.Text.pack "表の末尾とキャプション" then "table" else "part") <> ":" <> case unit of
+    KeepColumn -> "c"
+    KeepPage -> "p"
+    KeepSpread -> "s"
   other -> "!" <> show other
 
 pageToken :: PageOutAt Sp -> String
@@ -603,7 +658,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> bookPartInputs <> tableAcrossInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

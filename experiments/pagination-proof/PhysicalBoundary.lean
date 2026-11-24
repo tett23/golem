@@ -86,7 +86,7 @@ def boundaryEnv (cap sep : Int) (cols : Nat) : Env :=
     headingBounds := fun i => if i = 385 then some (4, 16) else none,
     wrappedBefore := fun i => if i = 702 ∨ i = 705 then 3 else if i = 712 then 5 else 0,
     boxPadding := fun i => if i = 170 then some 3 else none,
-    firstNeed := firstNeed 10 sep cap }
+    firstNeed := firstNeed 10 sep cap, retention := none }
 
 def int! (s : String) : Int := s.toInt!
 def nat! (s : String) : Nat := s.toNat!
@@ -150,8 +150,18 @@ def flowOf (s : String) : Flow :=
     .ruled ⟨nat! i, sideOf b, sideOf a, j == "1", int! o, defaultKeep, linesOf ls, some (r == "1", int! e)⟩
   | _ => panic! s!"flow {s}"
 
-/-- The flows of an input line: a box `O:id:before:after:n` holds the `n`
-    flows after it. -/
+def unitOf : String → PartUnit
+  | "c" => .column
+  | "p" => .page
+  | _ => .spread
+
+def unitToken : PartUnit → String
+  | .column => "c"
+  | .page => "p"
+  | .spread => "s"
+
+/-- The flows of an input line: a box `O:id:before:after:n` and a book part
+    `P:unit:ids:n` hold the `n` flows after them. -/
 partial def flowsOf : Nat → List String → List Flow × List String
   | 0, ts => ([], ts)
   | _ + 1, [] => ([], [])
@@ -161,6 +171,9 @@ partial def flowsOf : Nat → List String → List Flow × List String
       | ["O", i, b, a, c] =>
         let (body, rest) := flowsOf (nat! c) ts
         (Flow.boxed (nat! i) (int! b) (int! a) body, rest)
+      | ["P", u, ids, c] =>
+        let (body, rest) := flowsOf (nat! c) ts
+        (Flow.bookPart (unitOf u) (if ids == "-" then [] else (ids.splitOn ",").map nat!) body, rest)
       | _ => (flowOf t, ts)
     let (more, rest') := flowsOf n rest
     (f :: more, rest')
@@ -184,6 +197,7 @@ def unmetToken : Unmet → String
   | .shortPart true i w g => s!"!first{i}:{w}:{g}"
   | .shortPart false i w g => s!"!last{i}:{w}:{g}"
   | .tallHeading i e r => s!"!tall{i}:{e}:{r}"
+  | .splitPart t u => s!"!splitpart:{if t then "table" else "part"}:{unitToken u}"
 
 def pageToken (p : PageOut) : String :=
   " ".intercalate (["out", toString p.number, toString p.column, if p.blank then "blank" else "-", toString p.limit]
