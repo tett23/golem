@@ -5129,6 +5129,14 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
   - G07039 を抑制する単位は、`silence-notices` と `--no-notices` による本の全体である。
 - キャプションが占める格子の行の数が段の行の数に達し、画像を置く行が残らない場合はエラー（G07038）とする。
 
+PDF の組版で、縮める前の図版の行の送りの方向の長さが sp に切り捨てて 0 になる場合は、エラー（[G07135](diagnostics.md#g07135)）とし、その図版をページに置かない（[root ADR 0440](adr/0440-reject-figures-of-zero-extent-across-the-lines.md)）。
+縮める前の長さは、回り込ませない図版と回した図版では上の最初の手順の長さ、回り込ませる図版では `width` に画像の縦横の比を掛けた長さである。
+`width` が極めて小さい図版と、行の方向に極端に長い画素の比を持つ図版がこれに当たる。
+番号とキャプションの有無と、格子への配置か自由な配置かによらない。
+同じ図版が G07038 か G07131 になる場合は、G07135 を出さない。
+切り上げて一行を空けることはしないので、ページ分割に渡す図版の行数はいつも 1 以上である。
+G07135 は、ほかの G07 系のエラーと同じく PDF をターゲットに含む `golem build` だけで出し、`golem check`、LSP、HTML、EPUB、プレーンテキストの出力では出さない。
+
 ### 単色図版の色
 
 `[figures]` の `color` にスウォッチ名を指定すると、単色図版をその色で描く（[ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
@@ -6734,6 +6742,18 @@ S2 は、範囲に触れるソフトハイフンが罰点を残さないこと�
 部品は、和文の `漢`、`あ`、`。`、`「` と、欧文の `a`、`table`、`hyphenation`、`lime-tree` と、語間の空白、ソフトハイフン、親文字が二字のモノルビ、`/` を含むコード、強制改行の 13 であり、それぞれを範囲の中か外に置く。
 行の幅は 2 字から 5 字である。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個までを調べる。
+
+S1 は、実際の書体の送りでも確かめる。
+golem-layout のテスト（`modules/golem-layout/test/NoBreakShapeSpec.hs`）は、[ADR 0314](adr/0314-check-no-break-widths-with-harfbuzz.md) に従い、Source Sans Pro、Source Serif Variable、Source Han Sans のサブセットの三つの書体で、機能の一覧を渡さずに HarfBuzz で組んだ語の送りを使う。
+golem-typeset のテスト（`modules/golem-typeset/test/NoBreakProductSpec.hs`）は、[ADR 0436](adr/0436-check-no-break-s1-through-the-product-shaping.md) に従い、製品と同じ組版の環境で S1 を確かめる。
+その環境は golem-typeset の `composeEnv` が作り、引数は、検査のための `style.toml` を読んだスタイル、その判型から `pageGeometry` で作った版面、フォントの提供者が読んだ書体、空の仮定、本文の段落のスタイルから `paraLook` で作った見た目である。
+`composeEnv`、`paraLook` と空の仮定（`emptyAssumed`）は、テストのための公開のモジュール `Golem.Typeset.Internal` が export する。
+確かめる書体の性質は、Source Sans Pro のペアのカーニング、Source Serif Variable の合字、NotoSerifJP（golem-driver のテストの素材）の横組みの `palt` と縦組みの `vpal` の四つである。
+NotoSerifJP では、役割の `ja` と `latin` の両方にこの書体を当て、本文の段落のスタイルの `proportional-metrics = true` と役割の `punctuation-proportional = true` で `palt`（縦組みでは `vpal`）を入れる。
+列は、どの性質でも 0314 と同じ 1814 入力である。
+各性質が語の送りに現れること（`AV` が `A` と `V` の和より短い、`fi` が `f` と `i` の和と違う、`「あ` が `palt`（`vpal`）の無い役割より短い）と、性質を持たない役割では現れないことも確かめる。
+列のどの字も、一字の送り（`ceAdvance`）は、golem-font の `shapeUnits` にその字と役割の機能の一覧を渡した送りに等しい。
+ルビの送りと、字間の追加（トラッキング）を通した送りは、この検査に含めない。
 
 囲みの中のぶら下げは、[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md) の H1、H2、H3 として、golem-driver のテスト（`modules/golem-driver/test/BoxesSpec.hs`）が横組みと縦組みの本で確かめる。
 
@@ -9604,6 +9624,22 @@ spark は純粋な値の計算を別の capability に委ねるだけなので�
 ただし、capability の数だけは変えられる。
 環境変数 `GHCRTS=-N<n>` か、コマンド行の `+RTS -N<n> -RTS` で指定する。
 変えても、出力のバイト列と diagnostics は変わらない（[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）。
+
+C のライブラリを呼ぶ FFI の呼び出しのうち、長くかかりうるものは `safe` で呼ぶ（[root ADR 0435](adr/0435-call-long-ffi-functions-safely.md)）。
+`unsafe` の呼び出しは終わるまで capability を手放さないので、そのあいだに GC の同期が起きると、ほかのすべての capability が待たされる。
+プラグインのコンパイル（`golem_plugin_load`）、WAT から wasm への変換（`golem_wat2wasm`）、フォントを開くこと（`golem_font_open`）、サブセットを作ること（`golem_font_subset`）は `safe` で呼ぶので、そのあいだも LSP の応答や並べて組む段落は止まらない。
+`unsafe` で呼んでよいのは、次の三つのどれかに当たる呼び出しだけである。
+
+1. 呼び出しの時間が入力の大きさによらず短く、ロックを待たない呼び出し（値の読み出し、領域の解放など）。
+2. 呼び出しの数が多く、`safe` の呼び出しの費用が無視できないので、理由を書いて `unsafe` のまま残す呼び出し（語ごとに呼ぶ `golem_font_shape` など）。
+3. capability を手放さないことそのものが目的の呼び出し（golem-test-support のテストの `sleep`）。
+
+`unsafe` の呼び出しは、モジュールのパス、C の関数の名前、理由の番号、理由の文をタブで区切り、`scripts/ci/unsafe-ffi.tsv` に一行ずつ書く。
+`scripts/ci/test.sh` は、`modules` の下の Haskell のソースを `scripts/ci/unsafe-io.sh` と同じ近似の字句解析で注釈を除いて読み、`foreign import` の宣言を探す。
+呼び出しの規約（`capi` か `ccall`）の次の語が安全さの語で、`safe` でも `unsafe` でもなければ検査を落とす。
+`unsafe` の宣言では、その後の引用符の中の文字列の最後の語を C の関数の名前とし、`&` で始まるもの（関数のアドレスを取るだけの import）は数えない。
+ソースから得た（モジュールのパス、C の関数の名前）の集合が一覧の行の集合と等しくなければ、足りない行と余る行を一つずつ標準エラー出力に書いて検査を落とす。
+一覧の空行と `#` で始まる行は読まない。
 
 ### golem preflight
 

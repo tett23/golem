@@ -84,7 +84,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 data CPlugin
 
-foreign import capi unsafe "golem_plugin.h golem_plugin_load" c_load :: Ptr Word8 -> CSize -> Ptr CString -> IO (Ptr CPlugin)
+foreign import capi safe "golem_plugin.h golem_plugin_load" c_load :: Ptr Word8 -> CSize -> Ptr CString -> IO (Ptr CPlugin)
 
 foreign import capi unsafe "golem_plugin.h &golem_plugin_free" c_free :: FunPtr (Ptr CPlugin -> IO ())
 
@@ -99,7 +99,7 @@ foreign import capi safe "golem_plugin.h golem_plugin_call"
 
 foreign import capi unsafe "golem_plugin.h golem_plugin_free_bytes" c_freeBytes :: Ptr a -> IO ()
 
-foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString -> CSize -> Ptr CSize -> Ptr CString -> IO (Ptr Word8)
+foreign import capi safe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString -> CSize -> Ptr CSize -> Ptr CString -> IO (Ptr Word8)
 
 {- | The ABI version of this host, the one of the IR ('Golem.Doc.IR.abiVersion'):
 one more than the last release only when the ABI changed since
