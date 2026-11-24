@@ -595,13 +595,15 @@ place env st f rest = case f of
   FBlank _ _ -> st
   {- a box (docs/adr/0271): where its grid lines before, the first part
   of its body and its grid lines after fit; its body placed as outside a
-  box, each part of it in a column closed by its grid lines after -}
+  box, each part of it in a column closed by its grid lines after; the
+  room kept for those that its last part does not take, as when that part
+  has no text line, goes to the continued notes first (root ADR 0444) -}
   FBoxed i kb ka body ->
     let st1 = keep env st (\s -> kb + ka + needIn env s mempty (nextNeed env body))
         inBox = foldBody (openBox st1 {sBox = Just (BoxAt i kb ka 0 False)}) body
         closed = closeBox inBox
         ends = [bsLast b + 1 | b <- drop (length (sBoxes inBox)) (sBoxes closed)]
-     in closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
+     in drainPendingNotes env closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
   where
     need = nextNeed env rest
     foldBody s0 body = foldl' (\s (g, more) -> step env s g (more <> rest)) s0 [(g, drop k body) | (k, g) <- zip [1 ..] body]

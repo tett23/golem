@@ -2062,7 +2062,10 @@ continuedGoldenTest =
 
 {- | root ADR 0444 I1 and I4 when the note goes on from the inside of a
 box: the end of a box gives back the grid lines kept for after it, which
-the next line uses, so the note that goes on keeps its place.
+the next line uses, so the note that goes on keeps its place. A last part
+of a box with no text line (a code row, a wrapped figure without side
+lines) takes no grid lines after it, so the continued note takes the
+room given back first.
 -}
 continuedBoxNoteTests :: [TestTree]
 continuedBoxNoteTests =
@@ -2076,5 +2079,46 @@ continuedBoxNoteTests =
             order = [i | p <- ps, (i, _, _) <- poFootnotes p]
             what = show (k, before', after', len, second, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
         assertBool ("I1 " <> what) (nid 500 `notElem` dropWhile (/= nid 510) order)
-        assertEqual ("I4 " <> what) [0, 10] [i | p <- ps, (_, SLine i) <- poSlots p]
+        assertEqual ("I4 " <> what) [0, 10] [i | p <- ps, (_, SLine i) <- poSlots p],
+    testCase "root ADR 0444 I1: a box whose last part is a code row and no text line: the rest of note 500 comes before note 520" $ do
+      let ps = lineLessEnd (FCode plainCode 0 1 False (lines' 10 1))
+      notesIn ps @?= [(1, nid 500, 0, 1), (2, nid 500, 1, 2), (3, nid 520, 0, 1)]
+      contents ps @?= [[SLine 0], [SCode 10 1 1], [SLine 20, SLine 30, SLine 31]],
+    testCase "root ADR 0444 I1: a box whose last part is a wrapped figure without side lines: the rest of note 500 comes before note 520" $ do
+      let ps = lineLessEnd (FWrapped 1 1 [] [] [])
+      notesIn ps @?= [(1, nid 500, 0, 1), (2, nid 500, 1, 2), (3, nid 520, 0, 1)]
+      contents ps @?= [[SLine 0], [SWrapped 1], [SLine 20, SLine 30, SLine 31]],
+    testCase "root ADR 0444 I1, I4: a box whose last part has no text line, whatever the column, its grid lines, its last flow and the notes, keeps the notes in the order written, and every line is placed once in order" $
+      forM_ lineLessInputs $ \input@(c, _, _, _, end, _, more) -> do
+        let ps = paginate 1 c (lineLessFlows input)
+            order = [i | (_, i, _, _) <- notesIn ps]
+            what = show (input, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+        assertBool ("I1 " <> what) (and (zipWith (\a b -> rank a <= rank b) order (drop 1 order)))
+        assertEqual ("I4 " <> what) ([0] <> [10 | end == 3] <> [20] <> take more [30 ..]) [i | p <- ps, (_, SLine i) <- poSlots p]
   ]
+  where
+    notesIn ps = [(poNumber p, i, from, n) | p <- ps, (i, from, n) <- poFootnotes p]
+    rank i = length (takeWhile (/= i) [nid 500, nid 520])
+    plainCode = CodeGeometry 10 10 10 10 0
+    -- the counterexample of the Lean model of root ADR 0352: capacity 5, a box of 2 grid lines after
+    lineLessEnd end =
+      paginate
+        1
+        5
+        [ FBoxed 100 0 2 [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) 3] [] [] 0], end],
+          FParagraph defaultKeep [LineBox 20 [NoteBody (nid 520) 1] [] [] 0],
+          FParagraph defaultKeep (lines' 30 2)
+        ]
+    -- column, grid lines before and after the box, lines of note 500, the last flow of the box, the note of line 20, lines after
+    lineLessInputs = [(c, kb, ka, len, end, second, more) | c <- [4 .. 7], kb <- [0, 1], ka <- [1, 2], len <- [1 .. 6], end <- [0 .. 3 :: Int], second <- [Nothing, Just 1, Just 2], more <- [0, 2]]
+    lineLessFlows (_, kb, ka, len, end, second, more) =
+      [ FBoxed 100 kb ka [FParagraph defaultKeep [LineBox 0 [NoteBody (nid 500) len] [] [] 0], lastOf end],
+        FParagraph defaultKeep [LineBox 20 [NoteBody (nid 520) n | Just n <- [second]] [] [] 0]
+      ]
+        <> [FParagraph defaultKeep (lines' 30 more) | more > 0]
+    -- a code row, two code rows, a wrapped figure without side lines, or a text line
+    lastOf = \case
+      0 -> FCode plainCode 0 1 False (lines' 10 1)
+      1 -> FCode plainCode 0 1 False (lines' 10 2)
+      2 -> FWrapped 1 1 [] [] []
+      _ -> FParagraph defaultKeep (lines' 10 1)

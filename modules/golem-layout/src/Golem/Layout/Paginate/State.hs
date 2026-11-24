@@ -394,7 +394,8 @@ carryNote env st (i, from, len) =
             }
 
 {- | The continued notes take the room that @page-lines has added to the
-column, in their order, before any later note (root ADR 0444): all of it
+column, or that the end of a box gives back, in their order, before any
+later note (root ADR 0444): all of it
 when the column has text, all but one line when it has none, as
 'carryNote' leaves one. What does not fit goes on to the next column.
 -}
