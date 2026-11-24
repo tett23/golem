@@ -413,7 +413,7 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 ### 出力ごとの一覧
 
 タグ 8 のブロックと脚注の書き方は、出力の経路ごとに違う。
-HTML の経路と EPUB の経路は本文の XHTML を共有するので、本文の中の一覧は同じになる。
+HTML の経路と EPUB の経路は本文の要素の木を共有し、書き方だけが違う（HTML は HTML の書き方、EPUB は XHTML）ので、本文の中の一覧は同じになる。
 
 | | PDF | HTML | EPUB | プレーンテキスト |
 | --- | --- | --- | --- | --- |

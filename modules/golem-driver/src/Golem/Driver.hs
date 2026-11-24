@@ -1297,15 +1297,14 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
       originalSite = renderXhtml (hcfgOf True) ft book
       declared = manifestTargets (projectManifest (evProject e))
   (webBook, webDiags) <- if any (`elem` targets) [TargetHtml, TargetEpub] then recolorWebFigures opts (evStyle e) book originalSite else pure (book, [])
-  -- the site with the fonts embedded, and the one of generic families (docs/adr/0423)
-  let embedSite = if isJust (figureColor (evStyle e)) then renderXhtml (hcfgOf True) ft webBook else originalSite
-      genericSite = renderXhtml (hcfgOf False) ft webBook
-      web fonts = let embed = fonts == WebFontsEmbed in (hcfgOf embed, if embed then embedSite else genericSite)
+  {- the site with the fonts embedded or of generic families (docs/adr/0423),
+  in the HTML syntax for HTML and in the XHTML syntax for EPUB (root ADR 0432) -}
+  let web render fonts = let hcfg = hcfgOf (fonts == WebFontsEmbed) in (hcfg, render hcfg ft webBook)
   results <- forM targets $ \case
     TargetHtml | not (null webDiags) -> cleanDir (root </> "build" </> "html") >> pure ([], [], Nothing)
     TargetEpub | not (null webDiags) -> cleanDir (root </> "build" </> "epub") >> pure ([], [], Nothing)
-    TargetHtml -> let (hcfg, site) = web (tgHtmlFonts declared) in writeHtmlTarget root hcfg ft webBook site
-    TargetEpub -> let (hcfg, site) = web (tgEpubFonts declared) in writeEpubTarget opts e hcfg ft webBook site
+    TargetHtml -> let (hcfg, site) = web renderHtml (tgHtmlFonts declared) in writeHtmlTarget root hcfg ft webBook site
+    TargetEpub -> let (hcfg, site) = web renderXhtml (tgEpubFonts declared) in writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
     TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
   pure (concat [w | (w, _, _) <- results], webDiags <> concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
@@ -1427,21 +1426,21 @@ htmlConfig dev embed e book missing bib =
       _ -> []
     ruby = compRuby (stComposition style)
 
--- | Writes the HTML site to build/html: its pages, its CSS, its index and its images.
+-- | Writes the HTML site to build/html: its pages, its CSS, its index and its images, in the HTML syntax (root ADR 0432).
 writeHtmlTarget :: FilePath -> HtmlConfig -> FileTable -> Book -> XhtmlSite -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
 writeHtmlTarget root hcfg ft book site = do
   let dir = root </> "build" </> "html"
   cleanDir dir
   forM_ (sitePages site) $ \(p, t) -> writeUtf8File (dir </> p) t
   writeUtf8File (dir </> "style.css") (siteCss site)
-  writeUtf8File (dir </> "index.xhtml") (indexPage hcfg ft book)
+  writeUtf8File (dir </> "index.html") (indexPage hcfg ft book)
   -- the images plugins made are written from the book (docs/adr/0123)
   copied <- forM (siteAssets site) $ \(o, src) -> do
     case Map.lookup (T.pack src) (bookImages book) of
       Just bytes -> createDirectoryIfMissing True (takeDirectory (dir </> o)) >> BS.writeFile (dir </> o) bytes
       Nothing -> copyFileInto (root </> src) (dir </> o)
     pure (dir </> o)
-  pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
+  pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.html"] <> copied, [], Nothing)
 
 -- | Convert only monochrome assets; generated PNG paths cannot shadow an existing asset.
 recolorWebFigures :: BuildOptions -> Style -> Book -> XhtmlSite -> IO (Book, [Diagnostic])

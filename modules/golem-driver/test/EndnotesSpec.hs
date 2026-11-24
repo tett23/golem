@@ -197,7 +197,7 @@ data PageNotes = PageNotes
 pageNotes :: Text -> PageNotes
 pageNotes page =
   let (before, section) = T.breakOn "<section class=\"endnotes\">" page
-      entries = [(T.takeWhile (/= '"') rest, T.takeWhile (/= '<') (T.drop 3 (snd (T.breakOn "a> " rest)))) | (_, r) <- T.breakOnAll "<aside epub:type=\"endnote\" id=\"endnote-" section, let rest = T.drop (T.length "<aside epub:type=\"endnote\" id=\"endnote-") r]
+      entries = [(T.takeWhile (/= '"') rest, T.takeWhile (/= '<') (T.drop 3 (snd (T.breakOn "a> " rest)))) | open <- ["<aside epub:type=\"endnote\" id=\"endnote-", "<aside role=\"doc-endnote\" id=\"endnote-"], (_, r) <- T.breakOnAll open section, let rest = T.drop (T.length open) r]
       title = if T.null section then Nothing else Just (T.takeWhile (/= '<') (T.drop 4 (snd (T.breakOn "<h2>" section))))
       (beforeNotes, notes) = T.breakOn "<section class=\"notes\">" page
    in PageNotes (idsAfter "id=\"endnoteref-" before) entries title (T.null section || T.null notes || T.length beforeNotes <= T.length before)
@@ -245,7 +245,7 @@ checkInput dir c input = do
   (ds, files) <- buildIn dir [TargetHtml, TargetEpub, TargetText] twoChapters style sources
   assertEqual (what <> " errors") [] [diagCode d | d <- ds, isError d]
   forM_ (zip ["a", "b"] ens) $ \(name, chapterNotes) -> do
-    assertEqual (what <> " HTML " <> name) (expectedPage chapterNotes) (pageNotes (fileText files ("build/html/" <> name <> ".xhtml")))
+    assertEqual (what <> " HTML " <> name) (expectedPage chapterNotes) (pageNotes (fileText files ("build/html/" <> name <> ".html")))
     assertEqual (what <> " EPUB " <> name) (expectedPage chapterNotes) (pageNotes (epubPage files ("OEBPS/" <> name <> ".xhtml")))
     let text = fileText files ("build/text/horizontal/" <> name <> ".txt")
     assertEqual (what <> " text " <> name) [(tshow n, b) | (n, b) <- chapterNotes] (textEndnotes text)
@@ -276,18 +276,18 @@ endnoteTests =
       pages <- pdfLines miniManifest style [("a.gm", "甲[note: 一。]乙[endnote: 後。]丙[note: 二。]\n")] >>= either (assertFailure . show) pure
       concat pages @?= ["甲*1乙1丙*2", "注", "*1一。", "*2二。", "後注", "1後。"]
       (_, files) <- buildFor [TargetHtml] miniManifest style [("a.gm", "甲[note: 一。]乙[endnote: 後。]丙[note: 二。]\n")]
-      let page = fileText files "build/html/a.xhtml"
+      let page = fileText files "build/html/a.html"
       assertBool "notes first" (T.length (fst (T.breakOn "<section class=\"notes\">" page)) < T.length (fst (T.breakOn "<section class=\"endnotes\">" page)))
       pageNotes page @?= PageNotes ["1"] [("1", "後。")] (Just "後注") True
       assertBool "the title of the notes" ("<section class=\"notes\">\n<h2>注</h2>" `T.isInfixOf` page)
-      assertBool "the mark of the endnote" ("<a epub:type=\"noteref\" class=\"endnoteref\" href=\"#endnote-1\" id=\"endnoteref-1\">1</a>" `T.isInfixOf` page)
-      assertBool "the link back" ("<aside epub:type=\"endnote\" id=\"endnote-1\"><p><a href=\"#endnoteref-1\">1</a> 後。</p></aside>" `T.isInfixOf` page),
+      assertBool "the mark of the endnote" ("<a role=\"doc-noteref\" class=\"endnoteref\" href=\"#endnote-1\" id=\"endnoteref-1\">1</a>" `T.isInfixOf` page)
+      assertBool "the link back" ("<aside role=\"doc-endnote\" id=\"endnote-1\"><p><a href=\"#endnoteref-1\">1</a> 後。</p></aside>" `T.isInfixOf` page),
     testCase "root ADR 0412 I4: the title is Endnotes in an English book" $ do
       let manifest = replaceIn "language = \"ja\"" "language = \"en\"" miniManifest
       pages <- pdfLines manifest baseStyle [("a.gm", "Text[endnote: An endnote.]\n")] >>= either (assertFailure . show) pure
       assertBool (show pages) ("Endnotes" `elem` concat pages)
       (_, files) <- buildFor [TargetHtml, TargetText] manifest baseStyle [("a.gm", "Text[endnote: An endnote.]\n")]
-      pnTitle (pageNotes (fileText files "build/html/a.xhtml")) @?= Just "Endnotes"
+      pnTitle (pageNotes (fileText files "build/html/a.html")) @?= Just "Endnotes"
       assertBool "text" ("\nEndnotes\n*1 An endnote." `T.isInfixOf` fileText files "build/text/horizontal/a.txt"),
     testCase "root ADR 0412 I1, I2: endnotes in two chapters count from 1 in each" $ do
       pages <- pdfLines twoChapters baseStyle [("a.gm", "甲[endnote: 一。]\n"), ("b.gm", "乙[endnote: 二。]丙[endnote: 三。]\n")] >>= either (assertFailure . show) pure
@@ -301,7 +301,7 @@ endnoteTests =
       pages <- pdfLines miniManifest baseStyle src >>= either (assertFailure . show) pure
       concat pages @?= ["本文1。", "後注", "1一つめ。", "二つめ。"]
       (_, files) <- buildFor [TargetHtml, TargetText] miniManifest baseStyle src
-      assertBool "html" ("<aside epub:type=\"endnote\" id=\"endnote-1\"><p><a href=\"#endnoteref-1\">1</a> 一つめ。</p><p>二つめ。</p></aside>" `T.isInfixOf` fileText files "build/html/a.xhtml")
+      assertBool "html" ("<aside role=\"doc-endnote\" id=\"endnote-1\"><p><a href=\"#endnoteref-1\">1</a> 一つめ。</p><p>二つめ。</p></aside>" `T.isInfixOf` fileText files "build/html/a.html")
       assertBool "text" ("\n後注\n*1 一つめ。\n二つめ。\n" `T.isInfixOf` fileText files "build/text/horizontal/a.txt"),
     testCase "root ADR 0412 I5: [endnotes] numbering = \"page\" is G03278 and stops the build" $ do
       (ds, files) <- buildFor [TargetPdf, TargetHtml] miniManifest (baseStyle <> "\n[endnotes]\nnumbering = \"page\"\n") [("a.gm", "本文[endnote: 注。]\n")]
@@ -312,15 +312,15 @@ endnoteTests =
       pages <- pdfLines miniManifest style [("a.gm", "甲[endnote: 一。]乙[endnote: 二。]\n")] >>= either (assertFailure . show) pure
       concat pages @?= ["甲［一］乙［二］", "後注", "［一］一。", "［二］二。"]
       (_, files) <- buildFor [TargetHtml] miniManifest style [("a.gm", "甲[endnote: 一。]\n")]
-      assertBool "html" ("id=\"endnoteref-1\">一</a>" `T.isInfixOf` fileText files "build/html/a.xhtml"),
+      assertBool "html" ("id=\"endnoteref-1\">一</a>" `T.isInfixOf` fileText files "build/html/a.html"),
     testCase "root ADR 0412: numbering = \"file\" in a chapter of two files: endnote-k-N and G03027 in every target" $ do
       let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [[\"a.gm\", \"b.gm\"]]" miniManifest
           style = baseStyle <> "\n[endnotes]\nnumbering = \"file\"\n"
           src = [("a.gm", "甲[endnote: 一。]\n"), ("b.gm", "乙[endnote: 二。]\n")]
       (ds, files) <- buildFor [TargetHtml] manifest style src
       [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G03027"] @?= [Warning]
-      idsAfter "id=\"endnoteref-" (fileText files "build/html/a.xhtml") @?= ["1-1"]
-      idsAfter "id=\"endnote-" (fileText files "build/html/b.xhtml") @?= ["1-1", "2-1"]
+      idsAfter "id=\"endnoteref-" (fileText files "build/html/a.html") @?= ["1-1"]
+      idsAfter "id=\"endnote-" (fileText files "build/html/b.html") @?= ["1-1", "2-1"]
       (pdfDs, _) <- buildFor [TargetPdf] manifest style src
       [diagSeverity d | d <- pdfDs, diagCode d == DiagnosticCode "G03027"] @?= [Warning]
       -- the notes numbered per file meet in no list of endnotes: none

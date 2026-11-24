@@ -466,7 +466,7 @@ flowchart TD
         svg["golem-svg<br/>SVG の図版の読み込み"]
     end
     subgraph webpath["Web 経路"]
-        html["golem-html<br/>XHTML と CSS"]
+        html["golem-html<br/>HTML、XHTML と CSS"]
         epub["golem-epub<br/>EPUB のパッケージ"]
     end
     subgraph textpath["テキスト経路"]
@@ -876,7 +876,29 @@ Web 経路では行分割もシェイピングも読者側のエンジンが行�
 隣の文字へのかけは、CSS で作者が指定できないので表さず、読者の環境に任せる。
 
 HTML と EPUB は並列のバックエンドではなく親子である。
-EPUB の実体は XHTML+CSS にパッケージングを加えたものなので、共通のシリアライザの上に薄い層として EPUB を載せる。
+EPUB の実体は XHTML+CSS にパッケージングを加えたものなので、共通の書き出しの上に薄い層として EPUB を載せる。
+golem-html は、ページごとに一つの本文を、文字列ではなく要素の木（要素、属性、文字、文字の参照）として作り、その木を二つの書き方で書き出す（[root ADR 0432](adr/0432-write-the-html-target-in-the-html-syntax.md)）。
+HTML のターゲットは HTML Living Standard の HTML の書き方で、EPUB は XHTML（XML の書き方）で書く。
+二つの書き方は、同じ要素、同じ属性、同じ並びを書き、次の点だけが違う。
+
+| 点 | HTML のターゲット | EPUB（XHTML） |
+| --- | --- | --- |
+| ページの拡張子と目次のページ | `.html`、`index.html` | `.xhtml`（目次のページは作らず、ナビゲーション文書の `nav.xhtml` を作る） |
+| XML の宣言 | 書かない | 書く |
+| `<html>` の名前空間 | 書かない | `xmlns`、`xmlns:epub` |
+| 言語（根、区間、ブロック） | `lang` だけ | `lang` と `xml:lang` |
+| HTML の空要素（`br`、`col`、`meta`、`link`、`img` など） | `<br>` のように `/` を付けない | `<br/>` |
+| 注の参照、脚注、後注、目次の意味の印 | `role="doc-noteref"`、`role="doc-footnote"`、`role="doc-endnote"`、`role="doc-toc"` | `epub:type`（`noteref`、`footnote`、`endnote`、`toc`） |
+| 改ページの `span` | 書かない | page-map の位置に書く |
+| インラインの SVG の `xmlns` | 書かない | 書く |
+| インラインの SVG の中の空要素 | `/>` で閉じる | `/>` で閉じる |
+| 文字の参照 | `&amp; &lt; &gt; &quot;` と、アキの前後の `&#x2060;` | 同じ |
+| 本の中のリンクの先の拡張子 | `.html` | `.xhtml` |
+
+HTML のターゲットは、`epub:type` を同じ意味の DPUB-ARIA の `role` に置き換えて書き、EPUB には `role` を足さない（改ページの `span` の `role="doc-pagebreak"` のほか）。
+インラインの SVG の要素は外来の要素なので、HTML の書き方でも空のものを `/>` で閉じる。
+古い `.xhtml` の名前から `.html` への転送のページは作らない。
+HTML のページが HTML として読めることは、ブラウザーの検査（`.github/workflows/browser.yml`）が `.html` を `text/html` で配って確かめ、EPUB の本文が整形式の XML であることは、golem-html のテストと epubcheck で確かめる。
 
 テキスト経路は、意味論 IR からテキストノード（見出しと本文）を抽出するだけの最軽量のバックエンドである。
 ルビは「漢字（かんじ）」のように全角丸括弧で読みを併記し、圏点、強調、色は出力しない。
@@ -1775,7 +1797,7 @@ HTML の本文の `@toc` とナビゲーション文書は項目を階層で入�
 目次ページは、マニフェストに並べた前付けのファイルに書く。
 `@toc` は文書に一つだけ置け、章ごとの小目次は扱わない（小目次の予定は [docs/roadmap.md](roadmap.md) の「目次の拡張」）。
 
-EPUB のナビゲーション文書と HTML の目次のページ（`index.xhtml`）は、`@toc` があればその `depth` 以下の階層の見出しだけを載せ、なければ `@notoc` のない見出しをすべて載せる（[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）。
+EPUB のナビゲーション文書と HTML の目次のページ（`index.html`）は、`@toc` があればその `depth` 以下の階層の見出しだけを載せ、なければ `@notoc` のない見出しをすべて載せる（[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）。
 載せる見出しが一つもなければ、ナビゲーション文書にはナビゲーション文書そのものへのリンクを一つ置き、目次のページは空の一覧になる。
 
 HTML、EPUB、プレーンテキストの目次は、ページを持たないので、リンクの一覧と題の一覧のままである。
@@ -5134,6 +5156,14 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
   - G07039 を抑制する単位は、`silence-notices` と `--no-notices` による本の全体である。
 - キャプションが占める格子の行の数が段の行の数に達し、画像を置く行が残らない場合はエラー（G07038）とする。
 
+PDF の組版で、縮める前の図版の行の送りの方向の長さが sp に切り捨てて 0 になる場合は、エラー（[G07135](diagnostics.md#g07135)）とし、その図版をページに置かない（[root ADR 0440](adr/0440-reject-figures-of-zero-extent-across-the-lines.md)）。
+縮める前の長さは、回り込ませない図版と回した図版では上の最初の手順の長さ、回り込ませる図版では `width` に画像の縦横の比を掛けた長さである。
+`width` が極めて小さい図版と、行の方向に極端に長い画素の比を持つ図版がこれに当たる。
+番号とキャプションの有無と、格子への配置か自由な配置かによらない。
+同じ図版が G07038 か G07131 になる場合は、G07135 を出さない。
+切り上げて一行を空けることはしないので、ページ分割に渡す図版の行数はいつも 1 以上である。
+G07135 は、ほかの G07 系のエラーと同じく PDF をターゲットに含む `golem build` だけで出し、`golem check`、LSP、HTML、EPUB、プレーンテキストの出力では出さない。
+
 ### 単色図版の色
 
 `[figures]` の `color` にスウォッチ名を指定すると、単色図版をその色で描く（[ADR 0386](adr/0386-page-list-and-page-colors.md)、[root ADR 0403](adr/0403-include-grayscale-tones-in-single-color-figures.md)）。
@@ -5341,8 +5371,12 @@ HTML と EPUB では回り込ませる図版も回り込ませない図版とし
 脇の行は図版の直後の段落に限り、見出しなどの段落でないブロックが来たら、除外領域の残りを空けたまま、その後から組む。
 図版がページの残りに収まらない場合は、脇の行とともに次のページの先頭に送り、前のページの残りは空白にする。
 送った先のページで、前のページから続く脚注が末尾を取って図版が収まらなければ、さらに次のページに送る（[golem-layout ADR 0025](golem-layout/adr/0025-need-lines-and-blank-lines-after-figures-sent-on.md)）。
-図版が収まるかは、脇の行の脚注を数えずに判定する。
-脇の行の脚注が段の残りに入らなければ、脚注の入らない脇の行から後を次の段に送り、短く組んだ行長と字下げを変えない（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）。
+格子の配置では、図版が段に収まるかを、図版の行数と脇の行の数の大きいほうに、脇の行の脚注の行数と、その段にまだ脚注が無ければ区切りの行数を足した和で判定する（[root ADR 0443](adr/0443-count-side-line-notes-when-a-wrapped-figure-fits.md)）。
+和が段の残りより大きければ、図版と脇の行をまとめて次の段の先頭に送り、行分割はやり直さない。
+図版の前の見出しも、同じ和で図版と離さないかを決める。
+そのため、格子の配置で図版と脇の行が別の段に分かれるのは、和が一つの段の行数より大きい場合だけである。
+その場合と自由な配置では、脇の行の脚注が段の残りに入らなければ、脚注の入らない脇の行から後を次の段に送り、短く組んだ行長と字下げを変えない（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）。
+自由な配置は、図版の除外矩形だけで収まるかを決め、脇の行の脚注を数えない。
 格子の配置では、段落の行と同じく、最後の行の孤立の規則で送る行が一行増えることがある。
 送った先の段では、前の段の除外領域の終わりまで空けず、送った脇の行から続けて置く。
 
@@ -6994,7 +7028,7 @@ IR を写す箇所でも、言語の区間を残す。
 
 支援技術が言語を読めるよう、言語の情報を出力から落とさない。
 
-- HTML と EPUB：言語の区間を `<span lang="タグ" xml:lang="タグ">` にする。本の言語と同じでも書く。言語を持つブロックは、最も外側の要素（`p`、`h1` から `h6`、`ul`、`ol`、`dl`、`table`、`pre`、`figure` など）に `lang` と `xml:lang` を書く。段落の傍注の `aside` にも段落の言語を書く。目次のページと EPUB のナビゲーション文書は、題の言語の区間だけを `span` で残し、ほかのインラインは落とす。脚注の本文は、印の位置の言語の `span` で包む。
+- HTML と EPUB：言語の区間を、EPUB では `<span lang="タグ" xml:lang="タグ">`、HTML では `<span lang="タグ">` にする（HTML に `xml:lang` を書かないことは [root ADR 0432](adr/0432-write-the-html-target-in-the-html-syntax.md)）。本の言語と同じでも書く。言語を持つブロックは、最も外側の要素（`p`、`h1` から `h6`、`ul`、`ol`、`dl`、`table`、`pre`、`figure` など）に、EPUB では `lang` と `xml:lang` を、HTML では `lang` を書く。根の `html` の要素も同じである。段落の傍注の `aside` にも段落の言語を書く。目次のページと EPUB のナビゲーション文書は、題の言語の区間だけを `span` で残し、ほかのインラインは落とす。脚注の本文は、印の位置の言語の `span` で包む。
 - PDF：言語の区間を構造の要素 `Span` に、言語を持つブロックの構造の要素（`P`、`H1` から `H6`、`L`、`Table`、`TOC` など）に `/Lang` を付ける。区間の外は、カタログの `/Lang`（本の言語）で決まる。
 - プレーンテキスト：区間の中の文字をそのまま書く。
 
@@ -7976,7 +8010,7 @@ HTML と EPUB の注の一覧は、次のように書く。
 - `<section class="notes">` の最初に `<h2>` で見出しを置き、目次とナビゲーション文書には入れない。
 - 本文の参照の `href` と、一覧の注から本文の参照へ戻るリンクは、文書をまたぐときは相手の文書への相対のリンクになる。
 - id は `note-N` と `noteref-N` とする。`numbering = "file"` で番号が章の中で重なる場合は、章の中のファイルの順番 k（1 から）を入れて `note-k-N` と `noteref-k-N` とする（[G03027](diagnostics.md#g03027)）。
-- 一覧の注は `<aside epub:type="footnote">` で書き、本文の段落ごとに `<p>` を置き、本文の参照へ戻るリンクを最初の `<p>` の先頭に置く。一つの段落の注も `<p>` で包む。
+- 一覧の注は、EPUB では `<aside epub:type="footnote">`、HTML では `<aside role="doc-footnote">` で書き、本文の段落ごとに `<p>` を置き、本文の参照へ戻るリンクを最初の `<p>` の先頭に置く。一つの段落の注も `<p>` で包む。
 - `style.css` は `section.notes aside p` の上下の余白、字下げ、行頭の余白を 0 にし、一つの段落の注の見た目を `<p>` で包む前と同じにする。
 
 プレーンテキストでは、注の並びの前に見出しを一行で置き、空の行で本文と隔てる。
@@ -8076,7 +8110,7 @@ LSP の補完は、`numbering` の値に `"page"` を出さない。
 - 一覧の見出しは、マニフェストの `language` の主の副タグが `ja` なら「後注」、そうでなければ「Endnotes」とする（脚注の一覧の見出しと同じ判定）。文言を変える設定はない。
 - PDF の本文の印と一覧の印は、`[endnotes]` の `mark-format`、`mark-style`、`body-mark-style`、`mark-shape` で組む。本文の印は一覧の注へのリンク、一覧の印は本文の印へ戻るリンクである。タグ付き PDF では、本文の印の後に、一覧の段落からなる Note を置く。
 - PDF の一覧の本文と見出しには、`[endnotes]` の `body-style` と `heading-style` を当てる。
-- HTML と EPUB では、一覧を `<section class="endnotes">` とし、最初に `<h2>` で見出しを置く。本文の参照は `<a epub:type="noteref" class="endnoteref">`、一覧の注は `<aside epub:type="endnote">` で書く。id は、一覧の側を `endnote-N`、本文の参照の側を `endnoteref-N` とし、`numbering = "file"` で番号が重なる章では `endnote-k-N` と `endnoteref-k-N` とする。リンクの文字は `[endnotes]` の `mark-format` の表記で書く。`style.css` は、章末の注のある本でだけ、`section.endnotes aside p` に `section.notes aside p` と同じ規則を足す。
+- HTML と EPUB では、一覧を `<section class="endnotes">` とし、最初に `<h2>` で見出しを置く。本文の参照は、EPUB では `<a epub:type="noteref" class="endnoteref">`、HTML では `<a role="doc-noteref" class="endnoteref">` で、一覧の注は、EPUB では `<aside epub:type="endnote">`、HTML では `<aside role="doc-endnote">` で書く。id は、一覧の側を `endnote-N`、本文の参照の側を `endnoteref-N` とし、`numbering = "file"` で番号が重なる章では `endnote-k-N` と `endnoteref-k-N` とする。リンクの文字は `[endnotes]` の `mark-format` の表記で書く。`style.css` は、章末の注のある本でだけ、`section.endnotes aside p` に `section.notes aside p` と同じ規則を足す。
 - プレーンテキストでは、章末の注の一覧を、脚注の一覧の後に空の行を一つ挟んで置く。印は脚注と同じく、横書きで `*1`、縦書きで `※1` とする。
 
 章末の注を一つも書かない本の出力は、`[endnotes]` を書いても変わらない。
@@ -8321,7 +8355,7 @@ HTML と EPUB の引用の印は、`<span class="cite">` の中に、括弧、�
 頁の文言と値のあいだは U+00A0 である（[docs/adr/0277](adr/0277-keep-the-page-label-of-a-citation-mark-with-its-value.md)）。
 例の `&#xA0;` は説明のための書き方で、出力には実体参照ではなく U+00A0 の文字を書く。
 まとめた範囲の途中の番号（`[1–3]` の 2）は、文字に出ないのでリンクを持たない。
-一覧が別のファイルにあれば、そのファイルへの相対リンク（`../chapters/99.xhtml#cite-knuth1981` など）にする。
+一覧が別のファイルにあれば、そのファイルへの相対リンク（HTML では `../chapters/99.html#cite-knuth1981`、EPUB では `../chapters/99.xhtml#cite-knuth1981` など）にする。
 本に `@bibliography` がなければ、印をリンクにせず、`<span class="cite">[1]</span>` と書く。
 
 #### 参考文献の書式
@@ -9720,6 +9754,22 @@ spark は純粋な値の計算を別の capability に委ねるだけなので�
 ただし、capability の数だけは変えられる。
 環境変数 `GHCRTS=-N<n>` か、コマンド行の `+RTS -N<n> -RTS` で指定する。
 変えても、出力のバイト列と diagnostics は変わらない（[docs/adr/0050](adr/0050-run-golem-on-every-processor.md)）。
+
+C のライブラリを呼ぶ FFI の呼び出しのうち、長くかかりうるものは `safe` で呼ぶ（[root ADR 0435](adr/0435-call-long-ffi-functions-safely.md)）。
+`unsafe` の呼び出しは終わるまで capability を手放さないので、そのあいだに GC の同期が起きると、ほかのすべての capability が待たされる。
+プラグインのコンパイル（`golem_plugin_load`）、WAT から wasm への変換（`golem_wat2wasm`）、フォントを開くこと（`golem_font_open`）、サブセットを作ること（`golem_font_subset`）は `safe` で呼ぶので、そのあいだも LSP の応答や並べて組む段落は止まらない。
+`unsafe` で呼んでよいのは、次の三つのどれかに当たる呼び出しだけである。
+
+1. 呼び出しの時間が入力の大きさによらず短く、ロックを待たない呼び出し（値の読み出し、領域の解放など）。
+2. 呼び出しの数が多く、`safe` の呼び出しの費用が無視できないので、理由を書いて `unsafe` のまま残す呼び出し（語ごとに呼ぶ `golem_font_shape` など）。
+3. capability を手放さないことそのものが目的の呼び出し（golem-test-support のテストの `sleep`）。
+
+`unsafe` の呼び出しは、モジュールのパス、C の関数の名前、理由の番号、理由の文をタブで区切り、`scripts/ci/unsafe-ffi.tsv` に一行ずつ書く。
+`scripts/ci/test.sh` は、`modules` の下の Haskell のソースを `scripts/ci/unsafe-io.sh` と同じ近似の字句解析で注釈を除いて読み、`foreign import` の宣言を探す。
+呼び出しの規約（`capi` か `ccall`）の次の語が安全さの語で、`safe` でも `unsafe` でもなければ検査を落とす。
+`unsafe` の宣言では、その後の引用符の中の文字列の最後の語を C の関数の名前とし、`&` で始まるもの（関数のアドレスを取るだけの import）は数えない。
+ソースから得た（モジュールのパス、C の関数の名前）の集合が一覧の行の集合と等しくなければ、足りない行と余る行を一つずつ標準エラー出力に書いて検査を落とす。
+一覧の空行と `#` で始まる行は読まない。
 
 ### golem preflight
 

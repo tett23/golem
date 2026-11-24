@@ -70,7 +70,7 @@ tests =
           writeProject tmp (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n") sharedFiguresStyle sharedFigureSource sharedFigureFiles
           result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub], optFonts = fakeProvider}
           map diagCode (filter isError (brDiagnostics result)) @?= []
-          html <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build/html/a.xhtml")
+          html <- TE.decodeUtf8 <$> BS.readFile (tmp </> "build/html/a.html")
           archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
           epub <- maybe (assertFailure "missing EPUB chapter") (pure . TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/a.xhtml" archive)
           forM_ [html, epub] $ \document -> do

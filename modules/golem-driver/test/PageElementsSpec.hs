@@ -181,7 +181,7 @@ footnoteTests =
         filter isError (brDiagnostics r) @?= []
         let written = brWritten r
             readAll suffix = mconcat <$> mapM TIO.readFile (filter (suffix `isSuffixOf`) written)
-        html <- readAll ".xhtml"
+        html <- readAll ".html"
         txt <- readAll ".txt"
         assertBool (T.unpack html) ("href=\"#note-2\"" `T.isInfixOf` html)
         assertBool (T.unpack txt) ("*2" `T.isInfixOf` txt)
@@ -926,12 +926,23 @@ wrapTests =
       case gridPages pl of
         (first : _) -> assertBool (show (poSlots first)) (all ((< 26) . fst) (poSlots first))
         [] -> assertFailure "no pages",
-    testCase "golem-driver ADR 0005: the side lines sent on by their notes take the next page from its top" $ do
+    testCase "root ADR 0443 I2: a wrapped figure whose side lines and their note do not fit the rest of the page goes to the next page with them" $ do
       img <- tinyImage
       let note = "[note: " <> T.replicate 12 "脚注の本文は長く書く。" <> "]"
           side = "脇の段落の一行目" <> note <> "。" <> T.replicate 30 "脇の段落は続く。" <> "\n\n"
       (_, pl) <- layoutOk horizontal24 (fillers 20 <> wrapped "start" "4zw" <> side <> longPara 20) img
-      (_, _, p, _) <- theFigure pl
+      (_, pf, p, slot) <- theFigure pl
+      (poNumber p, slot) @?= (2, 0)
+      assertBool ("the note is on the page of the figure: " <> show (poFootnotes p)) (not (null (poFootnotes p)))
+      -- the side lines follow the figure on its page, from its top
+      take (maybe 0 exLines (pfExclusion pf)) [at | (at, SLine _) <- poSlots p] @?= take (maybe 0 exLines (pfExclusion pf)) [0 ..],
+    testCase "golem-driver ADR 0005, root ADR 0443 I4: side lines whose note is longer than a page take the next page from its top" $ do
+      img <- tinyImage
+      let note = "[note: " <> T.replicate 60 "脚注の本文は長く書く。" <> "]"
+          side = "脇の段落の一行目" <> note <> "。" <> T.replicate 30 "脇の段落は続く。" <> "\n\n"
+      (_, pl) <- layoutOk horizontal24 (fillers 20 <> wrapped "start" "4zw" <> side <> longPara 20) img
+      (_, _, p, at) <- theFigure pl
+      (poNumber p, at) @?= (2, 0)
       let next = [q | q <- gridPages pl, poNumber q == poNumber p + 1]
           slotsOf q = [slot | (slot, SLine _) <- poSlots q]
       assertBool ("the note is on the page of the figure: " <> show (poFootnotes p)) (not (null (poFootnotes p)))

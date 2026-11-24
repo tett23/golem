@@ -84,7 +84,7 @@ buildOutputs style source = withSystemTempDirectory "golem-0372" $ \tmp -> do
   writeFiles tmp wideSvg
   r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-  html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+  html <- TIO.readFile (tmp </> "build/html/a.html")
   archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
   texts <- textFiles (tmp </> "build/text")
   text <- T.concat <$> mapM TIO.readFile texts

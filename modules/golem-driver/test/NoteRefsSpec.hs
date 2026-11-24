@@ -109,7 +109,7 @@ checkInput dir notes endnotes (ks, j) = do
       assertEqual (what <> " PDF") mark ref
   (ds, files) <- buildIn dir [TargetHtml, TargetEpub, TargetText] twoChapters style sources
   assertEqual (what <> " errors") [] [diagCode d | d <- ds, isError d]
-  let html = htmlValues (fileText files "build/html/b.xhtml")
+  let html = htmlValues (fileText files "build/html/b.html")
       epub = htmlValues (epubPage files "OEBPS/b.xhtml")
       text = T.lines (fileText files "build/text/horizontal/b.txt")
   assertBool (what <> " HTML has the mark") (not (T.null (fst html)))
@@ -211,7 +211,7 @@ noteRefTests =
     testCase "root ADR 0422 I1: the HTML of a book numbered per page numbers the reference through the book" $ do
       withSystemTempDirectory "golem-note-refs" $ \dir -> do
         (_, files) <- buildIn dir [TargetHtml] miniManifest pageStyle [("a.gm", pagedSource 12 5 12)]
-        htmlValues (fileText files "build/html/a.xhtml") @?= ("12", "12"),
+        htmlValues (fileText files "build/html/a.html") @?= ("12", "12"),
     testCase "root ADR 0422 I3: [ref-page] is the page of the mark, before and after a page break" $ do
       results <- forM [(kind, gap) | kind <- [KNote, KEndnote], gap <- [24 .. 31]] $ \(kind, gap) -> do
         let src = fillers gap <> "印[" <> command kind <> " label=x: 注。]\n\n" <> fillers 40 <> "参[ref-page x]\n"
@@ -224,7 +224,7 @@ noteRefTests =
     testCase "root ADR 0422: [ref-page] to a note in the outputs without pages writes its number" $ do
       withSystemTempDirectory "golem-note-refs" $ \dir -> do
         (_, files) <- buildIn dir [TargetHtml, TargetText] miniManifest baseStyle [("a.gm", "他[note: 一。]\n\n印[note label=x: 二。]\n\n参[ref-page x]\n")]
-        htmlValues (fileText files "build/html/a.xhtml") @?= ("2", "2")
+        htmlValues (fileText files "build/html/a.html") @?= ("2", "2")
         lineAfter "参" (T.lines (fileText files "build/text/horizontal/a.txt")) @?= Just "2",
     testCase "root ADR 0422 I5: [ref-title] to a note is one G04006" $ do
       cs <- buildCodes baseStyle "本[note label=x: 注。]\n\n参[ref-title x]\n"

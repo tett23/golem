@@ -67,7 +67,7 @@ verseLineNumberTests =
         writeProject tmp manifest style source []
         result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
         assertEqual "no output errors" [] [diagCode d | d <- brDiagnostics result, isError d]
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         T.count ">2 " html @?= 2
         archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
         let epub = T.concat [TE.decodeUtf8 (BL.toStrict (fromEntry entry)) | entry <- zEntries archive, ".xhtml" `isSuffixOf` eRelativePath entry]

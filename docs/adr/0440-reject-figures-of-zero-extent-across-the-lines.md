@@ -1,6 +1,6 @@
 # ADR 0440: 行の送りの方向の長さが 0 sp になる図版を、PDF の組版のエラーにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

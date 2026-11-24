@@ -303,7 +303,7 @@ PDF の本文の横組みで約物にもプロポーショナルメトリクス�
 
 原稿の一部の言語は `[lang en: “Tokyo”]` と、ブロックの言語は `@lang en` と書く。
 PDF では引用符、ダッシュ、三点リーダーをその言語で欧文か和文として組み、英語のほかの言語では分綴しない。
-HTML と EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)）。
+HTML には `lang` を、EPUB には `lang` と `xml:lang` を、PDF には `/Lang` を書く（[docs/adr/0187](./docs/adr/0187-inline-language-switch.md)、[docs/adr/0432](./docs/adr/0432-write-the-html-target-in-the-html-syntax.md)）。
 
 PDF の欧文の語の分け方は、三つの方法で変えられる（[ADR 0272](./docs/adr/0272-discretionary-hyphens-hyphenation-exceptions-and-no-break.md)）。
 
@@ -821,6 +821,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 
 `scripts-linux` は、スクリプトのテストを `ubuntu-24.04` で実行する。
 対象は、`scripts/ci/`、`scripts/manual/`、`scripts/env-determinism/`、`scripts/visual/` のスクリプトと、手でだけ動くスクリプト（`scripts/gen-vertical-orientation.sh`、`scripts/fixtures/` の二本、`scripts/plugin-licenses.sh`、`scripts/wasmtime-advisories.sh`）と、`scripts/gen-embedded.sh` のテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`、`scripts/env-determinism/test.sh`、`scripts/visual/test.sh`、`scripts/test.sh`、[docs/adr/0078](./docs/adr/0078-tests-for-release-and-hand-run-scripts.md)、[docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）である。
+`scripts/ci/test.sh` は、`modules/` の Haskell のソースの `unsafe` の FFI の呼び出しが `scripts/ci/unsafe-ffi.tsv` の一覧のとおりであることと、どの `foreign import` も `safe` か `unsafe` を書くことも確かめる（[root ADR 0435](./docs/adr/0435-call-long-ffi-functions-safely.md)）。
 ワークフローのすべての action がコミットの SHA と版の注釈で指定されていることも、`scripts/ci/actions-pins.sh check` で確かめる（[docs/adr/0296](./docs/adr/0296-pin-every-github-action-by-commit-sha.md)）。
 `needs` も条件も持たず、文書だけの変更でも走る（[docs/adr/0097](./docs/adr/0097-ci-same-path-before-build-and-env-check-runner.md)）。
 

@@ -37,7 +37,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-svg | SVG の図版の読み込み（XML、CSS、描画）。base、bytestring、containers、text だけに依存する |
 | golem-preflight | プリフライトの設定（[code: preflight.toml]）と検査。I/O を持たない純粋な関数だけからなる |
 | golem-typeset | PDF の組版。意味論 IR の本と [code: style.toml] から行とページを組み、PDF を書く |
-| golem-html | XHTML と CSS |
+| golem-html | HTML、XHTML と CSS |
 | golem-epub | EPUB のパッケージ |
 | golem-text | プレーンテキスト（縦書きと横書き） |
 | golem-driver | パイプラインの束ね |

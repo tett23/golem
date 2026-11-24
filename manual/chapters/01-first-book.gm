@@ -233,7 +233,7 @@ $ golem build
 組んだ結果は [code: build/] のフォルダに入ります。
 
 - [code: build/pdf/]：PDF
-- [code: build/html/]：HTML（[code: index.xhtml] から読み始めます）
+- [code: build/html/]：HTML（[code: index.html] から読み始めます）
 - [code: build/epub/book.epub]：EPUB
 - [code: build/text/]：プレーンテキスト
 
@@ -390,7 +390,7 @@ $ golem build
   [code: koya-hijiri] のプロジェクトを組んだ PDF の最初のページ。
 
 ほかの形式もできています。
-[code: build/html/index.xhtml] をブラウザで開けば、Web で読む形の『高野聖』が読めます。
+[code: build/html/index.html] をブラウザで開けば、Web で読む形の『高野聖』が読めます。
 [code: build/text/] のプレーンテキストでは、振り仮名は「参謀（さんぼう）」のように括弧に入ります。
 
 ### 入稿の前の検査をする
