@@ -742,6 +742,7 @@ physicalPaginateTests =
       <> turnedFigureTests
       <> continuedNoteOrderTests
       <> continuedTableNoteTests
+      <> continuedLineLessBoxTests
       <> indexColumnNotesTests
       <> indexOnAdjustedPageTests
 
@@ -892,6 +893,39 @@ continuedTableNoteTests =
 {- | Laid out freely, every index column on the page of the switch divides
 the lines left after the footnotes of the page (root ADR 0025).
 -}
+
+{- | root ADR 0444 I1 and I4, laid out freely, for a box whose last part
+has no text line: a code row or a wrapped figure without side lines.
+-}
+continuedLineLessBoxTests :: [TestTree]
+continuedLineLessBoxTests =
+  [ testCase "root ADR 0444 I1, I4: freely, a box whose last part has no text line, whatever the column, its space after, its last flow and the notes, keeps the notes in the order written, and every line is placed once in order" $
+      forM_ [(c, after', len, end, second, more) | c <- [50, 60, 70, 80], after' <- [10, 20], len <- [1 .. 6], end <- [0 .. 3 :: Int], second <- [Nothing, Just 1, Just 2], more <- [0, 2]] $ \input@(c, after', len, end, second, more) ->
+        case paginatePhysical (cfg c) (flows after' len end second more) of
+          Left failure -> assertFailure (show (input, failure))
+          Right ps -> do
+            let order = [i | p <- ps, (i, _, _) <- poFootnotes p]
+                what = show (input, [(poNumber p, poSlots p, poFootnotes p) | p <- ps])
+            assertBool ("I1 " <> what) (note500 `notElem` dropWhile (/= note520) order)
+            assertEqual ("I4 " <> what) ([0] <> [10 | end == 3] <> [20] <> take more [30 ..]) [i | p <- ps, (_, SLine i) <- poSlots p]
+  ]
+  where
+    note500 = NoteId (mkSpan (FileId 0) 500 501) 0
+    note520 = NoteId (mkSpan (FileId 0) 520 521) 0
+    cfg c = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = 10}
+    geometry = codeGeometry 10 10 10 0
+    flows after' len end second more =
+      [ FBoxed 1 0 after' [FParagraph defaultKeep [LineBox 0 [NoteBody note500 len] [] [] 0], lastOf end],
+        FParagraph defaultKeep [LineBox 20 [NoteBody note520 n | Just n <- [second]] [] [] 0]
+      ]
+        <> [FParagraph defaultKeep (map line [30 .. 30 + more - 1]) | more > 0]
+    -- a code row, two code rows, a wrapped figure without side lines, or a text line
+    lastOf = \case
+      0 -> FCode geometry 0 1 False [line 10]
+      1 -> FCode geometry 0 1 False [line 10, line 11]
+      2 -> FWrapped 1 10 [] [] []
+      _ -> FParagraph defaultKeep [line 10]
+
 indexColumnNotesTests :: [TestTree]
 indexColumnNotesTests =
   [ testCase "root ADR 0025: freely, two lines and a note of two, both index columns end before the note" $
