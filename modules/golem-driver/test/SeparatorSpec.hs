@@ -125,14 +125,26 @@ visibleSeparatorTests =
            map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 15]]
        | mode <- ["grid", "free"]
        ]
-    <> [ testCase ("root ADR 0398 I7: a separator hold over need-lines that no empty column fits is an error in " <> T.unpack mode <> " with " <> show need <> " lines needed") $ do
-           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" ("lines = " <> lines') horizontalStyle)
-               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
-           (errors, result) <- buildMiniErrors fakeProvider True style ("lead\n---\n@need-lines " <> T.pack (show need) <> "\n後。\n") []
-           map (spanStart . diagSpan) (filter ((== DiagnosticCode "G07134") . diagCode) errors) @?= [5]
-           assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
+    <> [ testCase ("root ADR 0398 I7: a separator hold over a need-lines that no column fits with the hold stays together in " <> T.unpack mode <> " with " <> show need <> " lines needed") $ do
+           (_, layout) <- layoutOk (heldStyle mode lines' "") ("lead\n---\n@need-lines " <> T.pack (show need) <> "\n後。\n") []
+           -- only the need-lines written is reported, at its position
+           [(diagCode d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout] @?= [(DiagnosticCode "G07037", "区切りからの 1 行と合わせると、@need-lines " <> T.pack (show need) <> " は段の行数 " <> T.pack (show lines') <> " を超えます", 9)]
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 1]]
        | mode <- ["grid", "free"],
-         (lines', need) <- [("2", 2 :: Int), ("3", 5)]
+         (lines', need) <- [(2, 2 :: Int), (3, 5)]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold over a need-lines that the hold leaves no room for stays in its empty column in " <> T.unpack mode <> " with " <> show before <> " lines of the hold before it") $ do
+           (_, layout) <- layoutOk (heldStyle mode lines' "" <> TE.encodeUtf8 ("space-after = " <> T.pack (show (before - 1)) <> "\n")) "---\n@need-lines 2\n後。\n" []
+           [(diagCode d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout] @?= [(DiagnosticCode "G07037", "区切りからの " <> T.pack (show before) <> " 行と合わせると、@need-lines 2 は段の行数 " <> T.pack (show lines') <> " を超えます", 4)]
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, fromIntegral before]]
+       | mode <- ["grid", "free"],
+         (lines', before) <- [(2, 1 :: Int), (3, 2)]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold over need-lines whose first part no empty column fits is an error in " <> T.unpack mode) $ do
+           (errors, result) <- buildMiniErrors fakeProvider True (heldStyle mode 3 "") ("---\n@need-lines 1\n" <> threeLines <> "\n") []
+           [(diagCode d, spanStart (diagSpan d)) | d <- errors] @?= [(DiagnosticCode "G07134", 0)]
+           assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
+       | mode <- ["grid", "free"]
        ]
     <> [ testCase ("root ADR 0398 I7: a separator hold over need-lines counts the space after the separator in " <> T.unpack mode) $ do
            let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" "lines = 4" horizontalStyle)
