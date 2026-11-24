@@ -670,6 +670,108 @@ theorem I3_separator_keeps (previous : Option Nat) (pending : List Unit) (b a : 
   rw [afterOf, space_blanks _ [] blanks _ hb, List.nil_append, space_step _ _ _ _ hu hk]
   simp only [Option.isSome, ite_true, List.append_assoc, List.cons_append, List.singleton_append, List.nil_append]
 
+/-! ## What adds up over the flows -/
+
+/-- A function of the flows, such as the lines or the figures they carry,
+    that adds up over the flows and gives nothing for the blank lines,
+    spaces, keep-with-nexts and need-lines the separators put in. -/
+structure Additive {α : Type} (T : List Flow → List α) : Prop where
+  nil : T [] = []
+  cons : ∀ f r, T (f :: r) = T [f] ++ T r
+  onBlank : ∀ n, T [.blank n] = []
+  onSpace : ∀ n, T [.space n] = []
+  onKeepNext : ∀ n, T [.keepNext n] = []
+  onNeedLines : ∀ n, T [.needLines n] = []
+
+theorem Additive.append {α : Type} {T : List Flow → List α} (h : Additive T) (a b : List Flow) :
+    T (a ++ b) = T a ++ T b := by
+  induction a with
+  | nil => rw [h.nil]; rfl
+  | cons x xs ih => rw [List.cons_append, h.cons, ih, ← List.append_assoc, ← h.cons]
+
+theorem Additive.quiet {α : Type} {T : List Flow → List α} (h : Additive T) {us : List Unit} (hq : Quiet us) :
+    T (allFlows us) = [] := by
+  induction us with
+  | nil => exact h.nil
+  | cons x xs ih =>
+    have t := ih (fun u m => hq u (List.mem_cons_of_mem _ m))
+    simp only [allFlows]
+    rw [h.append, t, List.append_nil]
+    rcases hq x (List.mem_cons_self _ _) with ⟨k, e⟩ | ⟨k, e⟩ | ⟨k, e⟩ <;> subst e
+    · exact h.onBlank k
+    · exact h.onSpace k
+    · exact h.onKeepNext k
+
+/-- `spaceSeparators` keeps what adds up over the flows. -/
+theorem Additive.space_eq {α : Type} {T : List Flow → List α} (h : Additive T) (previous : Option Nat)
+    (pending : List Unit) (hb : Blanks pending) (us : List Unit) :
+    T (allFlows (space previous pending us)) = T (allFlows us) := by
+  induction us generalizing previous pending with
+  | nil =>
+    simp only [space]
+    split
+    · rfl
+    · rw [h.quiet (blanks_quiet hb)]; exact h.nil.symm
+  | cons u rest ih =>
+    cases u with
+    | blank k =>
+      show T (allFlows (space previous (pending ++ [.blank k]) rest)) = _
+      rw [ih previous _ (hb.snoc k)]
+      show _ = T ([.blank k] ++ allFlows rest)
+      rw [h.append, h.onBlank, List.nil_append]
+    | brk k =>
+      show T (allFlows (pending ++ .brk k :: space none [] rest)) = T ([.brk k] ++ allFlows rest)
+      rw [allFlows_append, h.append, h.quiet (blanks_quiet hb), List.nil_append]
+      show T ([.brk k] ++ allFlows (space none [] rest)) = _
+      rw [h.append, h.append, ih none [] Blanks.nil]
+    | _ =>
+      rw [space_step _ _ _ _ (fun k e => Unit.noConfusion e) (fun k e => Unit.noConfusion e)]
+      rw [allFlows_append, allFlows_append, h.append, h.append, h.quiet (keep_quiet _),
+        h.quiet (gapOf_quiet _ hb _), List.nil_append, List.nil_append]
+      simp only [allFlows]
+      rw [h.append, h.append, ih _ [] Blanks.nil]
+
+theorem Additive.hoisted_eq {α : Type} {T : List Flow → List α} (h : Additive T) (capacity blanks : Nat)
+    (hold : List Unit) (r : List Flow) : T (allFlows (hoisted capacity blanks hold) ++ r) = T r := by
+  rcases hoisted_flows capacity blanks hold with e | ⟨n, e⟩ <;> rw [e]
+  · rfl
+  · rw [h.append, h.onNeedLines, List.nil_append]
+
+/-- `holdSeparatorNeeds` keeps what adds up over the flows. -/
+theorem Additive.holdNeeds_eq {α : Type} {T : List Flow → List α} (h : Additive T) (capacity : Nat)
+    (blanks : Nat) (held : Bool) (us : List Unit) :
+    T (allFlows (holdNeeds capacity blanks held us)) = T (allFlows us) := by
+  induction us generalizing blanks held with
+  | nil => rfl
+  | cons u rest ih =>
+    unfold holdNeeds
+    split
+    · simp only [allFlows]; rw [h.append, h.append, ih]
+    · split
+      · rw [allFlows_append, h.hoisted_eq]; simp only [allFlows]; rw [h.append, h.append, ih]
+      · simp only [allFlows]; rw [h.append, h.append, ih]
+      · simp only [allFlows]; rw [h.append, h.append, ih]
+
+theorem Additive.separatorFlows_eq {α : Type} {T : List Flow → List α} (h : Additive T) (capacity : Nat)
+    (us : List Unit) : T (separatorFlows capacity us) = T (allFlows us) := by
+  rw [separatorFlows, separatorUnits, h.holdNeeds_eq, h.space_eq none [] Blanks.nil]
+
+theorem sourceText_additive : Additive sourceText where
+  nil := rfl
+  cons f r := by simp [sourceText]
+  onBlank n := by simp [sourceText, flowText]
+  onSpace n := by simp [sourceText, flowText]
+  onKeepNext n := by simp [sourceText, flowText]
+  onNeedLines n := by simp [sourceText, flowText]
+
+theorem sourceFigs_additive : Additive sourceFigs where
+  nil := rfl
+  cons f r := by simp [sourceFigs]
+  onBlank n := by simp [sourceFigs, flowFigs]
+  onSpace n := by simp [sourceFigs, flowFigs]
+  onKeepNext n := by simp [sourceFigs, flowFigs]
+  onNeedLines n := by simp [sourceFigs, flowFigs]
+
 /-! ## The warnings of the need-lines not met -/
 
 /-- The spans of the visible separators, by the ids of their lines, as

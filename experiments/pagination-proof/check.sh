@@ -176,7 +176,7 @@ fi
 (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Boundary.olean" "$boundary")
 # The separators in the free placement (SeparatorPhysical.lean) and next
 # to boxes, ruled blocks and book parts (SeparatorBlocks.lean): every
-# definition must be total.
+# definition must be total and every theorem proved.
 wait "$physicalPid"
 for model in SeparatorBlocks SeparatorPhysical; do
   file=$root/experiments/pagination-proof/$model.lean
@@ -186,7 +186,7 @@ for model in SeparatorBlocks SeparatorPhysical; do
   fi
   (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/$model.olean" "$file")
 done
-echo "the separator flows of the free placement and next to boxes, ruled blocks and book parts are total"
+echo "the separator flows of the free placement and next to boxes, ruled blocks and book parts are total and their theorems are proved"
 leanPids=
 for mode in $modes; do
   (cd "$root" && SEPARATOR_MODE=${mode#grid} LEAN_PATH="$tmp" "$lean" "$sboundary") > "$tmp/separator-lean-$mode" &

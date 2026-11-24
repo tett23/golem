@@ -639,15 +639,27 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 `boxesOk_ins` と `figureOk_ins` は、そのようなフローを挟んでも二つの前提が保たれることを示す。
 実際のフローでは、`ruledLinks`（`Flow.hs:4655`）が直前のフローが罫線つきのブロックのときだけ共有を付けるので、共有するブロックの直前には `otherFlows` でも罫線つきのブロックがあり、箱は来ない。
 golem-typeset が単位のフローの後に行う `joinBoxes`（`Flow.hs:3951`）、`ruledLinks`（`Flow.hs:4655`）、`markBookParts`（`Flow.hs:4531`）は、`SeparatorBlocks.lean` に写した。
-定理は、この三つを通さないフローについて述べる。
-三つは照合にだけ使い、`SeparatorBoundary.lean` は格子モードでもこの三つを通したフローを評価する。
+ここまでの定理は、この三つを通さないフローについて述べる。
+`SeparatorBoundary.lean` は、格子モードでもこの三つを通したフローを評価する。
 段落だけの原稿では、三つを通しても出力は変わらなかった。
+
+三つを通したフローにも、不変条件 4 と 5 を当てた。
+`Nested` は、フローの列を足し合わせて読み、箱と本の部はその中のフローで読み、罫線つきのブロックは領域を共有するかによらず同じに読む関数の性質である。
+`Nested.blockFlows_eq` は、そのような関数が三つを通したフローと単位のフローに同じ値を返すことを示す。
+三つは、箱の中身をつなぎ、罫線の共有の印を付け替え、項目のフローを本の部に包むだけで、行も図版も足さず、除かず、並べ替えないからである。
+`I4_blocks_paginate_ends` と `I5_blocks_text` は、三つを通したフローの改ページが終わり、ページの行が `unitsText` に等しいことを、`I4_paginate_ends` と `I5_paginate_text` から示す。
+`I5_blocks_figures` は、図版と転置図版が原稿順に一度ずつ出ることを `I5_paginate_figures` から示し、その前提の `figureOk` と `BoxesOk` は三つを通したフローについて置く。
 
 自由な配置の区切りは、`SeparatorPhysical.lean` に写した。
 このファイルは、`Separator.lean` が作る `Whole.lean` のフローを、`Physical.lean` の sp のフローに写す。
 アキと箱の前後の行数には行送りを掛け（`Flow.hs:2510`、`Flow.hs:3730`、`Flow.hs:3908`）、罫線には `ruleSide`（`Flow.hs:3569`）の寸法を持たせる。
 G07134 は、`Physical.lean` のページの上で同じ規則（`Flow.hs:793`）で判定する。
-二つのファイルは全域の定義だけを持ち、定理はまだない。
+`textOf` と `figsOf` は、格子モードのフローを sp のフローに写し、その行と図版を `Physical.lean` の `sourceText` と `sourceFigs` で読む。
+どちらも `Nested` を満たす（`textOf_nested`、`figsOf_nested`）ので、`Separator.lean` の生成と三つの変換は、写したフローの行と図版を変えない。
+`I4_free_paginate_ends` は、写したフローの `paginatePhysical` が終わることを示す。
+`I5_free_text` と `I5_free_figures` は、`paginatePhysical` がページを返すとき、ページの行と図版が単位のフローを写したものの行と図版に等しく、原稿順に一度ずつ並ぶことを、`Physical.lean` の `I5_paginate_text` と `I5_paginate_figures` から示す。
+三つを通したフローについても、`I4_free_blocks_paginate_ends`、`I5_free_blocks_text`、`I5_free_blocks_figures` が同じことを示す。
+`flow` は照合の原稿に現れないフローを写さないので、これらの定理の行と図版は、写したフローが運ぶものに限る。
 
 区切りの保持は、生成と後処理の二つの性質として示した。
 `I3_separator_keeps` は、可視の区切りの後に行アキと、行アキでも改ページでもない単位が続くと、`space` が区切りの行、1 行の `keep-with-next`、アキ、その単位をこの順に置くことを示す。
@@ -1106,6 +1118,7 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3814`）、g
 
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
+不変条件 4 と 5 は、`joinBoxes`、`ruledLinks`、`markBookParts` を通したフローと、自由な配置に写したフローにも当てた。
 空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について、二つの行が一つの段に入るところまで定理で示した。
 後のフローが閉じた段を保つことと、後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
 段落の後に `@no-page-break` が続く保持で golem-typeset が仕様と食い違うことは、「区切りのモデル」の節に記した。

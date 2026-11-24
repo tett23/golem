@@ -15,6 +15,11 @@ the flows `Separator.separatorFlows` makes.  `spaceAfterCode`
 after a code block, and the definition terms and the tables that
 `markBookParts` also wraps (its `special`) are not modelled: none is in
 these flows.  Every definition is total.
+
+The three changes move no line and no figure (`Nested.blockFlows_eq`),
+so invariants 4 and 5 of root ADR 0352 hold of the flows paginate
+receives by the theorems of Whole.lean (`I4_blocks_paginate_ends`,
+`I5_blocks_text`, `I5_blocks_figures`).
 -/
 import Whole
 import Separator
@@ -162,6 +167,221 @@ def markBookParts (unit : KeepParts) (owners : List (Nat × Option Nat)) (flows 
 def blockFlows (key : Nat → Option Nat) (unit : KeepParts) (owners : List (Nat × Option Nat))
     (capacity : Nat) (us : List Separator.Unit) : List Flow :=
   markBookParts unit owners (ruledLinks (joinBoxes key (Separator.separatorFlows capacity us)))
+
+/-! ## The three changes keep the lines and the figures -/
+
+/-- What adds up over the flows and reads a box and a book part by their
+    flows and a ruled block whatever area it shares. -/
+structure Nested {α : Type} (T : List Flow → List α) extends Separator.Additive T : Prop where
+  boxed : ∀ i kb ka body, T [.boxed i kb ka body] = T body
+  bookPart : ∀ u k ids body, T [.bookPart u k ids body] = T body
+  ruled : ∀ i b a j j' body, T [.ruled i b a j body] = T [.ruled i b a j' body]
+
+theorem Nested.bodies {α : Type} {T : List Flow → List α} (h : Nested T) (fs : List Flow) :
+    T (fs.bind bodyOf) = T fs := by
+  induction fs with
+  | nil => rfl
+  | cons f r ih =>
+    rw [List.cons_bind, h.append, ih, h.cons f r]
+    cases f <;> simp only [bodyOf]
+    rw [h.boxed]
+
+theorem Nested.joined {α : Type} {T : List Flow → List α} (h : Nested T) (fs : List Flow) :
+    T (joined fs) = T fs := by
+  unfold joined
+  split
+  · rename_i i kb ka _ _
+    rw [h.boxed, h.bodies]
+  · rfl
+
+/-- What `joinGo` gives: the run collected, then the flows after it. -/
+def runOf {α : Type} (T : List Flow → List α) : Option (Nat × List Flow × List Flow) → List α
+  | none => []
+  | some (_, acc, mid) => T acc ++ T mid
+
+theorem Nested.joinGo_eq {α : Type} {T : List Flow → List α} (h : Nested T) (key : Nat → Option Nat)
+    (run : Option (Nat × List Flow × List Flow)) (fs : List Flow) :
+    T (joinGo key run fs) = runOf T run ++ T fs := by
+  induction fs generalizing run with
+  | nil =>
+    cases run with
+    | none => simp only [joinGo, runOf, h.nil, List.append_nil]
+    | some r =>
+      obtain ⟨k, acc, mid⟩ := r
+      simp only [joinGo, runOf, h.nil, List.append_nil]; rw [h.append, h.joined]
+  | cons f rest ih =>
+    cases run with
+    | none =>
+      simp only [joinGo]
+      split
+      · rw [ih]; simp only [runOf, h.nil, List.nil_append, List.append_nil]; rw [h.cons f rest]
+      · rw [h.cons, ih]; simp only [runOf, List.nil_append]; rw [h.cons f rest]
+    | some r =>
+      obtain ⟨k, acc, mid⟩ := r
+      simp only [joinGo]
+      split
+      · rw [ih]; simp only [runOf, h.nil, List.append_nil]
+        rw [h.append, h.append, h.cons f rest]; simp only [List.append_assoc]
+      · split
+        · rw [ih]; simp only [runOf, h.nil, List.append_nil]
+          rw [h.append, h.cons f rest]; simp only [List.append_assoc]
+        · rw [h.append, h.append, h.joined]
+          split
+          · rw [ih]; simp only [runOf, h.nil, List.append_nil]
+            rw [h.cons f rest]
+          · rw [h.cons, ih]; simp only [runOf, List.nil_append]
+            rw [h.cons f rest]
+
+theorem Nested.ruledGo_eq {α : Type} {T : List Flow → List α} (h : Nested T) (prev : Option Flow) (fs : List Flow) :
+    T (ruledGo prev fs) = T fs := by
+  induction fs generalizing prev with
+  | nil => rfl
+  | cons f rest ih =>
+    cases f with
+    | ruled i b a j body =>
+      simp only [ruledGo]
+      rw [h.cons, ih, h.cons (.ruled i b a j body) rest, h.ruled]
+    | _ => simp only [ruledGo]; rw [h.cons, ih, ← h.cons]
+
+theorem Nested.special_eq {α : Type} {T : List Flow → List α} (h : Nested T) (fs : List Flow) :
+    T (special fs) = T fs := by
+  match fs with
+  | [] => simp only [special]
+  | f :: rest =>
+    have e2 := h.special_eq rest
+    cases f with
+    | boxed i b a body =>
+      have e1 := h.special_eq body
+      simp only [special]
+      rw [h.cons, h.boxed, e1, e2, h.cons (.boxed i b a body) rest, h.boxed]
+    | _ => simp only [special]; rw [h.cons, e2, ← h.cons]
+termination_by sizeOf fs
+decreasing_by all_goals simp_wf <;> omega
+
+/-- What `wrapGo` gives: the flows of the item collected, then the rest. -/
+def itemOf {α : Type} (T : List Flow → List α) : Option (Nat × List Flow) → List α
+  | none => []
+  | some (_, acc) => T acc
+
+theorem Nested.part_eq {α : Type} {T : List Flow → List α} (h : Nested T) (unit : KeepParts) (inside : List Flow) :
+    T [wrapGo.part unit inside] = T inside := by
+  simp only [wrapGo.part]; rw [h.bookPart, h.special_eq]
+
+theorem Nested.wrapGo_eq {α : Type} {T : List Flow → List α} (h : Nested T) (unit : KeepParts)
+    (item : Option (Nat × List Flow)) (ps : List (Option Nat × Flow)) :
+    T (wrapGo unit item ps) = itemOf T item ++ T (ps.map (·.2)) := by
+  induction ps generalizing item with
+  | nil =>
+    cases item with
+    | none => simp only [wrapGo, itemOf, List.map, h.nil, List.append_nil]
+    | some r => obtain ⟨k, acc⟩ := r; simp only [wrapGo, itemOf, List.map, h.nil, List.append_nil]; rw [h.part_eq]
+  | cons q rest ih =>
+    obtain ⟨k', f⟩ := q
+    have hf := h.cons f (List.map (fun x => x.snd) rest)
+    cases item with
+    | none =>
+      cases k' with
+      | some k =>
+        simp only [wrapGo]; rw [ih]; simp only [itemOf, List.map, hf, List.nil_append]
+      | none =>
+        simp only [wrapGo]; rw [h.cons, ih]; simp only [itemOf, List.map, List.nil_append, hf]
+    | some r =>
+      obtain ⟨k, acc⟩ := r
+      simp only [wrapGo]
+      split
+      · rw [ih]; simp only [itemOf, List.map]; rw [h.append, hf]; simp only [List.append_assoc]
+      · rw [h.cons, h.part_eq]
+        cases k' with
+        | some k2 =>
+          simp only []; rw [ih]; simp only [itemOf, List.map, hf]
+        | none =>
+          simp only []; rw [h.cons, ih]; simp only [itemOf, List.map, List.nil_append, hf]
+
+theorem length_nexts (raw : List (Option (Option Nat))) : (nexts raw).length = raw.length := by
+  induction raw with
+  | nil => rfl
+  | cons _ r ih => simp [nexts, ih]
+
+theorem length_fillGo (prev : Option (Option Nat)) (ps : List (Option (Option Nat) × Option (Option Nat))) :
+    (fillGo prev ps).length = ps.length := by
+  induction ps generalizing prev with
+  | nil => rfl
+  | cons q r ih => obtain ⟨u, n⟩ := q; simp [fillGo, ih]
+
+theorem length_zip_eq {α β : Type} (a : List α) (b : List β) (h : a.length = b.length) : (a.zip b).length = a.length := by
+  induction a generalizing b with
+  | nil => rfl
+  | cons x xs ih => cases b with
+    | nil => simp at h
+    | cons y ys => simp only [List.zip_cons_cons, List.length_cons]; rw [ih ys (by simp at h; exact h)]
+
+theorem length_itemKeys (owners : List (Nat × Option Nat)) (flows : List Flow) :
+    (itemKeys owners flows).length = flows.length := by
+  simp only [itemKeys, List.length_map, length_fillGo]
+  rw [length_zip_eq _ _ (by rw [length_nexts]), List.length_map]
+
+theorem map_snd_zip' {α β : Type} (a : List α) (b : List β) (h : a.length = b.length) : (a.zip b).map (·.2) = b := by
+  induction a generalizing b with
+  | nil => cases b with
+    | nil => rfl
+    | cons _ _ => simp at h
+  | cons x xs ih => cases b with
+    | nil => simp at h
+    | cons y ys => simp only [List.zip_cons_cons, List.map_cons]; rw [ih ys (by simp at h; exact h)]
+
+/-- The three changes golem-typeset makes after the separators keep what
+    the flows carry. -/
+theorem Nested.blockFlows_eq {α : Type} {T : List Flow → List α} (h : Nested T) (key : Nat → Option Nat)
+    (unit : KeepParts) (owners : List (Nat × Option Nat)) (capacity : Nat) (us : List Separator.Unit) :
+    T (blockFlows key unit owners capacity us) = T (Separator.allFlows us) := by
+  rw [blockFlows, markBookParts, h.special_eq, h.wrapGo_eq]
+  simp only [itemOf, List.nil_append]
+  rw [map_snd_zip' _ _ (length_itemKeys _ _), ruledLinks, h.ruledGo_eq, joinBoxes, h.joinGo_eq]
+  simp only [runOf, List.nil_append]
+  exact h.separatorFlows_eq capacity us
+
+theorem sourceText_nested : Nested sourceText :=
+  { toAdditive := Separator.sourceText_additive
+    boxed := fun i kb ka body => by simp [sourceText, flowText]
+    bookPart := fun u k ids body => by simp [sourceText, flowText]
+    ruled := fun i b a j j' body => by cases body <;> simp [sourceText, flowText] }
+
+theorem sourceFigs_nested : Nested sourceFigs :=
+  { toAdditive := Separator.sourceFigs_additive
+    boxed := fun i kb ka body => by simp [sourceFigs, flowFigs]
+    bookPart := fun u k ids body => by simp [sourceFigs, flowFigs]
+    ruled := fun i b a j j' body => by simp [sourceFigs, flowFigs] }
+
+/-! ## Invariants 4 and 5 on the flows paginate receives -/
+
+/-- Root ADR 0352 invariant 4 on the flows after `joinBoxes`,
+    `ruledLinks` and `markBookParts`, by `I4_paginate_ends`. -/
+theorem I4_blocks_paginate_ends (env : Env) (key : Nat → Option Nat) (unit : KeepParts)
+    (owners : List (Nat × Option Nat)) (us : List Separator.Unit) :
+    ∃ st, paginate env (blockFlows key unit owners env.capacity.toNat us) = st :=
+  I4_paginate_ends env _
+
+/-- Root ADR 0352 invariant 5 for the lines on the flows after the three
+    changes: the pages hold the lines of the units once each, in the order
+    written, by `I5_paginate_text`; joining boxes, sharing the area of
+    rules and wrapping items in book parts move no line. -/
+theorem I5_blocks_text (env : Env) (key : Nat → Option Nat) (unit : KeepParts)
+    (owners : List (Nat × Option Nat)) (us : List Separator.Unit) :
+    pagesText (paginate env (blockFlows key unit owners env.capacity.toNat us)).done = Separator.unitsText us := by
+  rw [I5_paginate_text, sourceText_nested.blockFlows_eq]; rfl
+
+/-- Root ADR 0352 invariant 5 for the figures on the flows after the three
+    changes, by `I5_paginate_figures`: its hypotheses are on the flows
+    paginate receives, and those flows carry the figures of the units in
+    the order written. -/
+theorem I5_blocks_figures (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (key : Nat → Option Nat)
+    (unit : KeepParts) (owners : List (Nat × Option Nat)) (us : List Separator.Unit)
+    (hf : ∀ f ∈ blockFlows key unit owners env.capacity.toNat us, figureOk f)
+    (hb : BoxesOk (blockFlows key unit owners env.capacity.toNat us)) :
+    pagesFigs (paginate env (blockFlows key unit owners env.capacity.toNat us)).done =
+      sourceFigs (Separator.otherFlows us) := by
+  rw [I5_paginate_figures env hc hs _ hf hb, sourceFigs_nested.blockFlows_eq,
+    Separator.sourceFigs_ins (Separator.allFlows_ins us)]
 
 end SeparatorBlocks
 end WholePagination
