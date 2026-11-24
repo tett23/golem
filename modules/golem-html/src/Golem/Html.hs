@@ -119,6 +119,9 @@ data HtmlConfig = HtmlConfig
     {- | whether the site embeds the fonts of hcFonts with @font-face
     (fonts = "embed") or names only generic families (docs/adr/0423)
     -} hcEmbedFonts :: !Bool,
+    {- | the license documents of the fonts of hcFonts, which a site that
+    embeds the fonts copies to fonts/ beside them (root ADR 0433)
+    -} hcFontLicenses :: ![FilePath],
     -- | the generic-family of each role that has one, as CSS writes it (docs/adr/0423)
     hcGenericFamilies :: !(Map Text Text),
     -- | full-width character cells in em, without changing glyph size (root ADR 0380)
@@ -316,7 +319,10 @@ data HtmlLocalStyles = HtmlLocalStyles
 data XhtmlSite = XhtmlSite
   { sitePages :: ![(FilePath, Text)],
     siteCss :: !Text,
-    siteAssets :: ![(FilePath, FilePath)] -- output path, source path
+    siteAssets :: ![(FilePath, FilePath)], -- output path, source path
+
+    -- | the output paths of siteAssets that are license documents of fonts, in order (root ADR 0433)
+    siteLicenses :: ![FilePath]
   }
 
 -- | The path of the page of a file without its extension (root ADR 0432).
@@ -424,6 +430,9 @@ renderSite syntax cfg ft book pageBreaks =
           $ [(T.unpack (webOutput f), T.unpack (webSource f)) | Document _ bs <- bookDocs book, Block _ _ _ (FigureBlock f) <- allFigures bs]
             -- the fonts only when the site embeds them (docs/adr/0423)
             <> [(fontOut p, p) | hcEmbedFonts cfg, (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
+            -- and their license documents beside them (root ADR 0433)
+            <> [(fontOut p, p) | hcEmbedFonts cfg, p <- hcFontLicenses cfg],
+      siteLicenses = Set.toAscList (Set.fromList [fontOut p | hcEmbedFonts cfg, p <- hcFontLicenses cfg])
     }
 
 {- | The tree of the page of each document, after its doctype: the same

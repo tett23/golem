@@ -6,6 +6,7 @@ import ColophonSpec
 import ComplexFixtureSpec (complexFixtureTests)
 import EmetSamplesSpec (emetSamplesTests)
 import ExtendedJapaneseOutputsSpec (extendedJapaneseOutputTests)
+import FontLicensesSpec (fontLicensesTests)
 import ForceTableSpec (forceTableTests)
 import GenericFontsSpec (genericFontsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
@@ -59,6 +60,7 @@ tests skips =
         <> [ allTargetsTests,
              testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,
              testGroup "generic font families of HTML and EPUB (root ADR 0423)" genericFontsTests,
+             testGroup "license documents of the fonts of HTML and EPUB (root ADR 0433)" fontLicensesTests,
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,
              testGroup "bibliography entries and G03026 (golem-doc ADR 0004)" bibliographyFormatTests,
              testGroup "PDF tables (ADR 0008)" tableTests,

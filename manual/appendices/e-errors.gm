@@ -16,7 +16,7 @@
 
 ほとんどはエラーで、一つでもあれば出力を書きません。
 警告になるものは、項目の中にそう書いています。
-G03010、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
+G03010、G03282、G03283、G05004、G07127、G07128、G08100、G08103 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
 [code: golem preflight] だけが出す G09 で始まる診断の重さは、プリフライトの設定で決まります。
 お知らせと情報は、最後の二つの節にまとめています。
 この付録にない番号は、今のバージョンの Golem では出ません。
@@ -981,7 +981,7 @@ PDF を組むときに出るエラーです。
   [code: --profile dev] では警告で、フォントを同梱せずに HTML と EPUB を書きます。
   [code: --profile prod] ではエラーです。
 = [strong: G03279 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
-  [code: style.toml] のフォントか [code: intent] の ICC プロファイルのパスが、プロジェクトの外を指しています。
+  [code: style.toml] のフォントかそのライセンスの文書か、[code: intent] の ICC プロファイルのパスが、プロジェクトの外を指しています。
   どの出力でもエラーで、何も書きません。
   ファイルをプロジェクトのフォルダの中に写し、そこからの相対パスで書いてください。
 = [strong: G03280 [code: fonts に書けるのは "generic" か "embed" です: …]]
@@ -990,6 +990,20 @@ PDF を組むときに出るエラーです。
 = [strong: G03281 [code: generic-family に使えない値です: …]]
   [code: style.toml] のフォントの役割の [code: generic-family] の値が誤っています。
   [code: "serif"]、[code: "sans-serif"]、[code: "monospace"] のどれかにしてください。
+= [strong: G03282 [code: フォントのライセンスの文書を指定していません: …]]
+  [code: fonts = "embed"] を書いた HTML と EPUB が同梱するフォントの役割に、[code: ja-license] か [code: latin-license] がありません。
+  [code: --profile dev] では警告で、ライセンスの文書なしで書きます。
+  [code: --profile prod] ではエラーで、その出力を書きません。
+  [code: style.toml] のその役割に、フォントのライセンスの文書のパスを書いてください。
+= [strong: G03283 [code: フォントのライセンスの文書のファイルがありません: …]]
+  [code: ja-license] か [code: latin-license] が指すファイルがありません。
+  重大度と出力は G03282 と同じです。
+  ライセンスの文書を置くか、パスを直してください。
+= [strong: G03284 [code: fonts に写す同じ名前のファイルの中身が違います: …]]
+  同梱するフォントとそのライセンスの文書のうち、二つが [code: fonts/] の同じ名前になり、中身が違います。
+  中身が同じなら一つだけ写すので、このエラーは出ません。
+  [code: --profile dev] でもエラーで、その出力を書きません。
+  どちらかのファイルの名前を変えて、[code: style.toml] のパスを直してください。
 = [strong: G08003 [code: フォントを読み込めません: …]]
   フォントのファイルが壊れているか、OpenType のフォントではありません。
 = [strong: G08004 [code: ライセンスが埋め込みを禁じているフォントです（…）: …]]

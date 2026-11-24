@@ -32,7 +32,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
+import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, fontLicenseKeyDiagnostics, keepStyles, targetsOf)
 import Golem.Driver.Lint (lintEvaluated)
 import Golem.Emet (Program, programModules)
 import Golem.Eval.File
@@ -347,9 +347,11 @@ diagnosticsFor ws =
             ft = projectFiles p
             lintDiags = lintEvaluated e
             m = projectManifest p
-            all' = publishable (manifestSilencedNotices m) (manifestSilencedInfo m) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags))
+            -- G03282 on style.toml, without looking at the font files (root ADR 0433)
+            licenseDiags = fontLicenseKeyDiagnostics (evStyleFile e) (manifestTargets m) (targetsOf m) (evStyle e) (const True)
+            all' = publishable (manifestSilencedNotices m) (manifestSilencedInfo m) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags <> licenseDiags))
             -- a file read for @table or @listing is where its diagnostics point too (golem-eval ADR 0004)
-            pathOf fid = lookupPath fid ft <|> (siPath <$> Map.lookup fid (evAssetSources e))
+            pathOf fid = lookupPath fid ft <|> (siPath <$> Map.lookup fid (evAssetSources e)) <|> (if fid == evStyleFile e then Just "style.toml" else Nothing)
             byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (pathOf (spanFile (diagSpan d))), [d]) | d <- all']
             empties = Map.fromList ([(sfPath sf, []) | sf <- Map.elems (projectSources p)] <> [(t, []) | t <- Set.toList (evTableFiles e)])
          in Map.map sortDiagnostics (Map.union byFile empties)

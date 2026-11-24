@@ -71,6 +71,7 @@ cfg0 =
       hcNoteNotation = arabic,
       hcEndnoteNotation = arabic,
       hcEmbedFonts = True,
+      hcFontLicenses = [],
       hcGenericFamilies = Map.empty,
       hcCharacterAdvance = Nothing
     }

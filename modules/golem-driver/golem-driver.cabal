@@ -234,6 +234,7 @@ test-suite golem-driver-output-test
     ComplexFixtureSpec
     EmetSamplesSpec
     ExtendedJapaneseOutputsSpec
+    FontLicensesSpec
     ForceTableSpec
     GenericFontsSpec
     HtmlSyntaxBuildSpec

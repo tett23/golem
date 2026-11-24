@@ -283,8 +283,9 @@ styleFileTests =
       [s | (DiagnosticCode "G03010", s) <- codeSeverities r] @?= [Error]
       doesDirectoryExist (tmp </> "build/html") >>= assertBool "no HTML" . not,
     testCase "the PDF does not report roles it does not use; HTML leaves only the missing face out" $ do
-      let style = horizontalStyle <> fakeBody <> "\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
-      withStyleProject style fakeFontFiles $ \tmp -> do
+      -- with the license document of the body font, which HTML copies with it (root ADR 0433)
+      let style = horizontalStyle <> fakeBody <> "ja-license = \"fonts/OFL.txt\"\n\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
+      withStyleProject style (("fonts/OFL.txt", "OFL") : fakeFontFiles) $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
         -- the fixture has code and no [fonts.code]: G08008 (golem-driver ADR 0017)
         filter ((/= DiagnosticCode "G08008") . fst) (codeSeverities r) @?= []
@@ -294,8 +295,8 @@ styleFileTests =
         assertBool "body face" ("font-family: \"golem-body-ja\"; src" `T.isInfixOf` css)
         assertBool "no mono face" (not ("font-family: \"golem-mono-latin\"; src" `T.isInfixOf` css)),
     testCase "a missing ICC profile is G08006 for the PDF and nothing for HTML" $ do
-      let style = horizontalStyle <> fakeBody <> "\n[color]\nintent = \"icc/none.icc\"\n"
-      withStyleProject style fakeFontFiles $ \tmp -> do
+      let style = horizontalStyle <> fakeBody <> "ja-license = \"fonts/OFL.txt\"\n\n[color]\nintent = \"icc/none.icc\"\n"
+      withStyleProject style (("fonts/OFL.txt", "OFL") : fakeFontFiles) $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
         codeSeverities r @?= [(DiagnosticCode "G08006", Error)]
         doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
