@@ -638,8 +638,16 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 `space` と `holdNeeds` が作るフローは、このフローの間に、箱でも本の部でも罫線つきのブロックでもないフロー（`plainFlow`）を挟んだものである（`holdNeeds_ins`、`Ins.trans`、`separatorFlows_ins`）。
 `boxesOk_ins` と `figureOk_ins` は、そのようなフローを挟んでも二つの前提が保たれることを示す。
 実際のフローでは、`ruledLinks`（`Flow.hs:4655`）が直前のフローが罫線つきのブロックのときだけ共有を付けるので、共有するブロックの直前には `otherFlows` でも罫線つきのブロックがあり、箱は来ない。
-ただし、golem-typeset が単位のフローの後に行う `joinBoxes`、`ruledLinks`、`markBookParts` は写していない。
-この三つは、照合に使った段落だけの原稿ではフローを変えない。
+golem-typeset が単位のフローの後に行う `joinBoxes`（`Flow.hs:3951`）、`ruledLinks`（`Flow.hs:4655`）、`markBookParts`（`Flow.hs:4531`）は、`SeparatorBlocks.lean` に写した。
+定理は、この三つを通さないフローについて述べる。
+三つは照合にだけ使い、`SeparatorBoundary.lean` は格子モードでもこの三つを通したフローを評価する。
+段落だけの原稿では、三つを通しても出力は変わらなかった。
+
+自由な配置の区切りは、`SeparatorPhysical.lean` に写した。
+このファイルは、`Separator.lean` が作る `Whole.lean` のフローを、`Physical.lean` の sp のフローに写す。
+アキと箱の前後の行数には行送りを掛け（`Flow.hs:2510`、`Flow.hs:3730`、`Flow.hs:3908`）、罫線には `ruleSide`（`Flow.hs:3569`）の寸法を持たせる。
+G07134 は、`Physical.lean` のページの上で同じ規則（`Flow.hs:793`）で判定する。
+二つのファイルは全域の定義だけを持ち、定理はまだない。
 
 区切りの保持は、生成と後処理の二つの性質として示した。
 `I3_separator_keeps` は、可視の区切りの後に行アキと、行アキでも改ページでもない単位が続くと、`space` が区切りの行、1 行の `keep-with-next`、アキ、その単位をこの順に置くことを示す。
@@ -1064,8 +1072,18 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3814`）、g
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
 空の段に収まる保持に G07134 を返さないことは、照合だけで確かめ、定理としてはまだ示していない。
-単位のフローの後の `joinBoxes`、`ruledLinks`、`markBookParts` は写しておらず、箱、罫線つきのブロック、本の部を区切りと並べた原稿は照合していない。
-自由な配置の区切り（`paginatePhysical` に渡す区切りのフロー）も、`Physical.lean` の上ではまだ照合していない。
+`check.sh` は、区切りの原稿を四つの組で golem-typeset と照合し、すべて一致した。
+格子モードと自由な配置の 8784 個ずつの原稿は、これまでの項目の組み合わせである。
+もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
+自由な配置は、`SeparatorBoundary.hs` が `alignment = "free"` の組版の設定で選ぶ。
+
+照合の感度は、写した計算を一つずつ替えて確かめた。
+自由な配置では、アキを sp にせず行数のまま渡すと 696 個（箱などを含む組で 2709 個）、アキを捨てると 696 個（2658 個）、段の高さを行数と行送りの積にすると 4802 個（3403 個）、G07134 の判定を外すと 3404 個（5585 個）の入力で出力が食い違った。
+箱の padding を渡さないと 3164 個、罫線を外すと 2020 個、前の罫線の外側のアキを 0 にすると 1124 個の入力で食い違った。
+箱などを含む組では、`joinBoxes` を外すと格子モードで 49 個と自由な配置で 34 個、`ruledLinks` を外すと 86 個と 53 個、`markBookParts` を外すと自由な配置で 167 個の入力で食い違った。
+罫線の共有の領域を 0 行にすると 36 個、段の始めの領域を 0 行にすると 1183 個、段の終わりの領域を 2 行にすると 1149 個、箱の前後を 0 行にすると 2870 個の入力で食い違った。
+格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、この入力では照合できていない。
+`markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、まだ照合していない。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 
@@ -1085,6 +1103,7 @@ sh experiments/pagination-proof/check.sh
 区切りの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
 `check.sh` は、`Whole.olean` と `Boundary.olean` を作ってから、それを読み込む `Separator.lean` と `SeparatorBoundary.lean` を検査する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
+`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で四つの組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

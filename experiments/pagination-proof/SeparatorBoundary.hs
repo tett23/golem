@@ -18,11 +18,14 @@ import Golem.Length (Sp (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..), SrcSpan (..))
 import Golem.Typeset (PdfLayout (..))
 import Support (horizontalStyle, layoutMini, replaceIn)
+import System.Environment (getArgs)
 
 -- | A paragraph of so many lines, the separators default and scene, the
--- separator gap of kind blank, a blank line, a page break and a
--- need-lines of two lines.
-data Item = P Int | S | T | G | B | E | N
+-- separator gap of kind blank, a blank line, a page break, a need-lines
+-- of two lines, and, in the manuscripts with blocks, a paragraph of one
+-- line in a box, a paragraph of one line with rules before and after,
+-- and an item of a list of one line, a book part (markBookParts).
+data Item = P Int | S | T | G | B | E | N | X | R | L
   deriving stock (Eq)
 
 name :: Item -> String
@@ -34,6 +37,9 @@ name = \case
   B -> "B"
   E -> "E"
   N -> "N"
+  X -> "X"
+  R -> "R"
+  L -> "L"
 
 source :: Item -> T.Text
 source = \case
@@ -44,6 +50,10 @@ source = \case
   B -> "@blank-line 1"
   E -> "@page-break"
   N -> "@need-lines 2"
+  -- the padding of 1zw on both sides leaves 10 characters a line
+  X -> "@style boxed\n" <> T.replicate 10 (T.singleton '\12356')
+  R -> "@style ruled\n" <> T.replicate 12 (T.singleton '\12358')
+  L -> "- " <> T.replicate 10 (T.singleton '\12360')
 
 -- | The lines an item takes.
 linesOf :: Item -> Int
@@ -51,6 +61,9 @@ linesOf = \case
   P k -> k
   S -> 1
   T -> 1
+  X -> 1
+  R -> 1
+  L -> 1
   _ -> 0
 
 -- | The grid lines before and after the separators default and scene.
@@ -83,6 +96,34 @@ manuscripts =
 inputs :: [(Int, Int, [Item])]
 inputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [1, 2, 3], items <- manuscripts]
 
+-- | The styles of the box, of the rules and of the swatch of the box: a
+-- padding of 1zw takes a grid line before and after the box
+-- (boxLinesAround), and the rules take one grid line inside the column,
+-- one at its start or end, and two when the rule after of one ruled
+-- paragraph and the rule before of the next share their area (RuleArea.hs).
+blockStyle :: BS.ByteString
+blockStyle =
+  "\n[color.swatches]\npale = { cmyk = [8, 0, 0, 0] }\n[paragraph-styles.boxed]\nbackground = \"pale\"\npadding = \"1zw\"\n"
+    <> "[paragraph-styles.ruled]\nrule-before = { weight = \"1pt\", space-before = \"10pt\", space-after = \"5pt\" }\n"
+    <> "rule-after = { weight = \"1pt\", space-before = \"10pt\", space-after = \"5pt\" }\n"
+
+-- | One or two leading items, one to three items with a visible separator,
+-- then no paragraph, a paragraph of one line, a box, a ruled paragraph or
+-- an item of a list; with a box, a ruled paragraph or an item of a list.
+blockManuscripts :: [[Item]]
+blockManuscripts =
+  [ lead <> middle <> lastItem
+  | lead <- [[], [P 1]],
+    n <- [1, 2, 3],
+    middle <- replicateM n [S, T, X, R, L, N, P 1],
+    any (`elem` [S, T]) middle,
+    lastItem <- [[], [P 1], [X], [R], [L]],
+    any (`elem` [X, R, L]) (middle <> lastItem)
+  ]
+
+blockInputs :: [(Int, Int, [Item])]
+blockInputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [3, 4], items <- blockManuscripts]
+
 slot :: (Int, Slotted) -> String
 slot (g, s) = show g <> ":" <> case s of
   SLine i -> "L" <> show i
@@ -93,16 +134,29 @@ slot (g, s) = show g <> ":" <> case s of
 starts :: [Item] -> [(Int, Int, Item)]
 starts items = zip3 (scanl (+) 0 (map linesOf items)) (scanl (+) 0 [BS.length (TE.encodeUtf8 (source i)) + 2 | i <- items]) items
 
+-- | With the argument @free@, the page grid alignment is free
+-- (@alignment = "free"@), and golem-typeset paginates with
+-- paginatePhysical; the slots are then printed at their offsets in sp.
+-- With @blocks@ first, the manuscripts with blocks are laid out.
 main :: IO ()
-main = forM_ inputs $ \(c, capacity, items) -> do
+main = do
+  args <- getArgs
+  let (set, extra) = case args of
+        "blocks" : _ -> (blockInputs, blockStyle)
+        _ -> (inputs, "")
+  forM_ set (run (drop 1 args == ["free"] || args == ["free"]) extra)
+
+run :: Bool -> BS.ByteString -> (Int, Int, [Item]) -> IO ()
+run free extra (c, capacity, items) = do
   putStrLn (show c <> " " <> show capacity <> " [" <> unwords (map name items) <> "]")
   let text = T.concat [source i <> "\n\n" | i <- items]
       pitch = 15 * 65536
-  result <- layoutMini (style capacity (combos !! c)) text []
+  let aligned = if free then replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" else id
+  result <- layoutMini (aligned (style capacity (combos !! c) <> extra)) text []
   case result of
     Right (_, layout) ->
       forM_ (plPages layout) $ \p ->
-        putStrLn ("  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p then "blank" else "-"] <> map (\(x, s) -> slot (fromIntegral (unSp x `div` pitch), s)) (poSlots p) <> map unmet (poUnmet p)))
+        putStrLn ("  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p then "blank" else "-"] <> map (\(x, s) -> slot (fromIntegral (if free then unSp x else unSp x `div` pitch), s)) (poSlots p) <> map unmet (poUnmet p)))
     Left ds ->
       let at d = case [(ident, item) | (ident, offset, item) <- starts items, offset == spanStart (diagSpan d)] of
             [(ident, item)] | item `elem` [S, T] -> show ident

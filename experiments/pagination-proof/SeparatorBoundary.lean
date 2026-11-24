@@ -1,12 +1,23 @@
 /- Root ADR 0352: the manuscripts of SeparatorBoundary.hs on the flows
-   Separator.lean makes and the paginate of Whole.lean, under the `Env`
-   of Boundary.lean.  `report` prints the pages, or G07134 at the line of
+   Separator.lean makes, after `joinBoxes`, `ruledLinks` and
+   `markBookParts` of SeparatorBlocks.lean, and the paginate of
+   Whole.lean, under the `Env` of Boundary.lean.  `report` prints the pages, or G07134 at the line of
    the first separator of each chain split across columns, in the format
    of SeparatorBoundary.hs, and check.sh compares the two with diff.
+   With `SEPARATOR_MODE=free`, the same manuscripts are laid out in the
+   free placement: the sp flows of SeparatorPhysical.lean on the paginate
+   of Physical.lean, under `freeEnv`, the `PhysicalSettings` that
+   `physicalSettings` (Flow.hs:853) gives for the page of
+   SeparatorBoundary.hs.  With `SEPARATOR_MODE` starting with `blocks`,
+   the manuscripts with a box, a ruled paragraph or an item of a list
+   (`blockManuscripts`) are laid out instead.
    This is a check on finitely many inputs, not a proof. -/
 import Whole
 import Separator
 import Boundary
+import Physical
+import SeparatorPhysical
+import SeparatorBlocks
 open WholePagination Boundary
 
 namespace SeparatorBoundary
@@ -14,6 +25,9 @@ namespace SeparatorBoundary
 /-- The items of SeparatorBoundary.hs. -/
 inductive Item where
   | p (k : Nat) | s | t | g | b | e | n
+  /-- A paragraph of one line in a box, one with rules and an item of a
+      list of one line. -/
+  | x | r | l
   /-- `@blank-line` lines collapsed into one block of `k` lines. -/
   | bk (k : Nat)
   deriving DecidableEq
@@ -21,6 +35,7 @@ inductive Item where
 def Item.name : Item → String
   | .p k => s!"P{k}"
   | .s => "S" | .t => "T" | .g => "G" | .b => "B" | .e => "E" | .n => "N" | .bk k => s!"B{k}"
+  | .x => "X" | .r => "R" | .l => "L"
 
 /-- The grid lines before and after the separators default and scene. -/
 def combos : List ((Nat × Nat) × (Nat × Nat)) := [((0, 0), (1, 2)), ((1, 1), (2, 0))]
@@ -38,6 +53,9 @@ def units (c : (Nat × Nat) × (Nat × Nat)) : Nat → List Item → List Separa
   | id, .bk k :: r => .blank k :: units c id r
   | id, .e :: r => .brk .page :: units c id r
   | id, .n :: r => .other .pass [.needLines 2] none :: units c id r
+  | id, .x :: r => .other .block [.boxed id 1 1 [.paragraph defaultKeep (lines' id 1)]] (some id) :: units c (id + 1) r
+  | id, .r :: r => .other .block [.ruled id true true false (.lines defaultKeep (lines' id 1))] (some id) :: units c (id + 1) r
+  | id, .l :: r => .other .block [.paragraph defaultKeep (lines' id 1)] (some id) :: units c (id + 1) r
 
 /-- `ineffectiveBlankLines` of golem-assemble (Assemble.hs): a blank
     line with only blank lines, need-lines and breaks after it, or a
@@ -103,6 +121,58 @@ def manuscripts : List (List Item) :=
 def inputs : List (Nat × Nat × List Item) :=
   (List.range combos.length).bind fun c => [1, 2, 3].bind fun capacity => manuscripts.map fun m => (c, capacity, m)
 
+/-- `blockManuscripts` of SeparatorBoundary.hs. -/
+def blockManuscripts : List (List Item) :=
+  [[], [Item.p 1]].bind fun lead => [1, 2, 3].bind fun n =>
+    ((replicateM n [Item.s, .t, .x, .r, .l, .n, .p 1]).filter fun m => m.any fun i => i == .s || i == .t).bind fun middle =>
+      ([[], [Item.p 1], [Item.x], [Item.r], [Item.l]].filter fun last =>
+        (middle ++ last).any fun i => i == .x || i == .r || i == .l).map fun last => lead ++ middle ++ last
+
+def blockInputs : List (Nat × Nat × List Item) :=
+  (List.range combos.length).bind fun c => [3, 4].bind fun capacity => blockManuscripts.map fun m => (c, capacity, m)
+
+/-- The lines an item takes. -/
+def Item.lines : Item → Nat
+  | .p k => k
+  | .s | .t | .x | .r | .l => 1
+  | _ => 0
+
+/-- The first line of each item with lines and the item of a list it is,
+    if any (`owners` of `markBookParts`). -/
+def owners (items : List Item) : List (Nat × Option Nat) :=
+  let rec go : Nat → List Item → List (Nat × Option Nat)
+    | _, [] => []
+    | ident, i :: rest =>
+      (if 0 < i.lines then [(ident, if i == .l then some ident else none)] else []) ++ go (ident + i.lines) rest
+  go 0 items
+
+/-- The boxes by their first line: all of one paragraph style. -/
+def boxKey (items : List Item) (i : Nat) : Option Nat :=
+  if (boxIds items).contains i then some 0 else none
+where
+  boxIds (items : List Item) : List Nat :=
+    let rec go : Nat → List Item → List Nat
+      | _, [] => []
+      | ident, it :: rest => (if it == .x then [ident] else []) ++ go (ident + it.lines) rest
+    go 0 items
+
+/-- The flows golem-typeset paginates (`bRetainedFlow`), in a column of
+    `capacity` lines, the parts of lists kept in a column. -/
+def flowsOf (items : List Item) (capacity : Nat) (us : List Separator.Unit) : List Flow :=
+  SeparatorBlocks.blockFlows (boxKey items) .column (owners items) capacity us
+
+/-- `boundaryEnv` with the rule areas of RuleArea.hs for the rules of
+    `blockStyle` (a weight of 1pt, 10pt outside and 5pt inside the rule
+    before, 10pt inside and 5pt outside the rule after, on a pitch of 15pt
+    and a face of 10pt): one grid line inside the column (`ruleLines`),
+    one at its start and at its end, and two shared. -/
+def blockEnv (capacity : Nat) : Env :=
+  { boundaryEnv capacity with
+    ruleBefore := fun _ _ _ => 1
+    rulesJoined := fun _ _ => 2
+    ruleAfter := fun _ => 1
+    ruleAfterAtEnd := fun _ _ => 1 }
+
 /-- The line of the separator at an index of the units. -/
 def siteLine (us : List Separator.Unit) (i : Nat) : String :=
   match us.get? i with
@@ -112,7 +182,7 @@ def siteLine (us : List Separator.Unit) (i : Nat) : String :=
 def output (c capacity : Nat) (items : List Item) : List String :=
   let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
   let made := Separator.separatorUnits capacity us
-  let final := paginate (boundaryEnv capacity) (Separator.separatorFlows capacity us)
+  let final := paginate (blockEnv capacity) (flowsOf items capacity us)
   -- the controls not met in a column with no output go with the last
   -- page, as `paginateWithin` of Paginate.hs puts them
   let pages := match final.done with
@@ -122,17 +192,149 @@ def output (c capacity : Nat) (items : List Item) : List String :=
   | [] => pages.map pageText
   | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
 
-def report (part parts : Nat) : String :=
-  let size := (inputs.length + parts - 1) / parts
-  String.join (((inputs.drop (part * size)).take size).map fun (c, capacity, items) =>
-    s!"{c} {capacity} [{" ".intercalate (items.map Item.name)}]\n" ++ String.join ((output c capacity items).map fun p => s!"  {p}\n"))
+
+/-! ## The free placement -/
+
+/-- The line pitch and the font size of `horizontalStyle` (15pt, 10pt) in sp. -/
+def pitch : Int := 15 * 65536
+def face : Int := 10 * 65536
+
+/-- `firstNeed` of Physical.hs (Paginate/Physical.hs:731), every line of
+    the pitch of the page: the body paragraphs and the separators of these
+    manuscripts take no line pitch of their own (`bLinePitches`). -/
+partial def firstNeed (separator capacity : Int) (hasNotes : Bool) (wanted : Nat) : List PhysicalPagination.Flow → Int
+  | .paragraph k ls :: rest => paragraphNeed separator capacity hasNotes wanted k true ls rest
+  | .continued k ls :: rest => paragraphNeed separator capacity hasNotes wanted k false ls rest
+  | .stanza k vs :: rest =>
+    let total := vs.length
+    let lowest := max (PhysicalPagination.firstPart k true total) (min total (max 1 wanted))
+    let count := ((List.range (total + 1)).filter (fun n => lowest ≤ n ∧ PhysicalPagination.splitAtBreak k true total n = n)).headD total
+    let chosen := (vs.take count).join
+    let following :=
+      match count == total, PhysicalPagination.keepAhead rest with
+      | true, some (_, f, later) => firstNeed separator capacity (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
+      | _, _ => 0
+    (chosen.length : Int) * pitch + noteNeed separator hasNotes chosen + following
+  | .space s :: rest => s + firstNeed separator capacity hasNotes wanted rest
+  | .blank n :: rest => (n : Int) * pitch + firstNeed separator capacity hasNotes wanted rest
+  | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
+  | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed separator capacity hasNotes wanted rest
+  | .figure _ e :: _ => e
+  | .wrapped _ e _ :: _ => e
+  | .heading true _ _ :: _ => 0
+  | .heading false extent ls :: rest =>
+    extent + noteNeed separator hasNotes ls + firstNeed separator capacity (hasNotes || ls.any (fun l => !l.notes.isEmpty)) 1 rest
+  | .defTerm ls :: _ => (ls.length : Int) * pitch + noteNeed separator hasNotes ls
+  | _ => 0
+where
+  noteNeed (separator : Int) (hasNotes : Bool) (ls : List PhysicalPagination.Line) : Int :=
+    let c : Nat := (ls.map PhysicalPagination.noteLines).foldr (· + ·) 0
+    (if 0 < c ∧ !hasNotes then separator else 0) + (c : Int) * pitch
+  paragraphNeed (separator capacity : Int) (hasNotes : Bool) (wanted : Nat) (k : PhysicalPagination.Keep) (start : Bool)
+      (ls : List PhysicalPagination.Line) (rest : List PhysicalPagination.Flow) : Int :=
+    let total := ls.length
+    let lowest := max (PhysicalPagination.firstPart k start total) (min total (max 1 wanted))
+    let count := ((List.range (total + 1)).filter (fun n => lowest ≤ n ∧ PhysicalPagination.splitAtBreak k start total n = n)).headD total
+    let chosen := ls.take count
+    let following :=
+      match count == total, PhysicalPagination.keepAhead rest with
+      | true, some (_, f, later) => firstNeed separator capacity (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
+      | _, _ => 0
+    (chosen.length : Int) * pitch + noteNeed separator hasNotes chosen + following
+
+/-- `physicalSettings` (Flow.hs:853) for a column of `lines` grid lines:
+    its height is `(lines - 1) * pitch + face`; the manuscripts have no
+    notes, no `@page-lines`, no headings, no wrapped figures, and the
+    boxes have no padding of their own. -/
+def freeEnv (lines : Nat) : PhysicalPagination.Env :=
+  let cap : Int := ((lines : Int) - 1) * pitch + face
+  { pagePitch := pitch, fontSize := face, capacity := cap, maxCapacity := cap, separator := pitch,
+    columns := 1, firstLine := 0, pitchOf := fun _ => pitch, faceOf := fun _ => face,
+    headingBounds := fun _ => none, wrappedBefore := fun _ => 0, boxPadding := fun _ => none,
+    firstNeed := firstNeed pitch cap, retention := none }
+
+/-- The rules of `blockStyle` as `ruleSide` (Flow.hs:3569) makes them:
+    the rule before has its space after inside and its space before
+    outside, the rule after the other way round; both are spaced and kept
+    in the column. -/
+def side : Bool → PhysicalPagination.RuleSide
+  | true => ⟨5 * 65536, 10 * 65536, 65536, true, none⟩
+  | false => ⟨10 * 65536, 5 * 65536, 65536, true, none⟩
+
+/-- `freeEnv` with the padding of the boxes of `blockStyle`, 1zw, by the
+    first line of each box (`bBoxPadding`, Flow.hs:4202). -/
+def freeBlockEnv (items : List Item) (lines : Nat) : PhysicalPagination.Env :=
+  { freeEnv lines with boxPadding := fun i => if (boxKey items i).isSome then some face else none }
+
+def freeSlot : Int × PhysicalPagination.Slot → String
+  | (p, .line i) | (p, .repeated i) => s!"{p}:L{i}"
+  | (p, .figure i) => s!"{p}:SFigure {i}"
+  | (p, .pageFigure i) => s!"{p}:SPageFigure {i}"
+  | (p, .wrapped i) => s!"{p}:SWrapped {i}"
+  | (p, .heading i n) => s!"{p}:SHeading {i} {n}"
+  | (p, .code ids g) => s!"{p}:SCode {ids.headD 0} {ids.length} {g}"
+
+def freeUnmet : PhysicalPagination.Unmet → String
+  | .needLines n => s!"!need{n}"
+  | .noBreak => "!nobreak"
+  | .keepNext => "!keepnext"
+  | .droppedBlank => "!dropped"
+  | .shortPart true i w g => s!"!first{i}:{w}:{g}"
+  | .shortPart false i w g => s!"!last{i}:{w}:{g}"
+  | _ => "!other"
+
+def freePageText (p : PhysicalPagination.PageOut) : String :=
+  " ".intercalate ([toString p.number, toString p.column, if p.blank then "blank" else "-"] ++ p.slots.map freeSlot ++ p.unmet.map freeUnmet)
+
+/-- The byte length of the source of an item in SeparatorBoundary.hs. -/
+def Item.bytes : Item → Nat
+  | .p k => 36 * k
+  | .s => 3 | .t => 16 | .g => 14 | .b => 13 | .e => 11 | .n => 13 | .bk _ => 13
+  | .x => 13 + 30 | .r => 13 + 36 | .l => 2 + 30
+
+/-- Where SeparatorBoundary.hs prints a diagnostic at the unit of the line
+    `i`: the id of a separator, or the byte offset of the paragraph
+    (`physicalError` and `paraOfLine`, Flow.hs:840). -/
+def lineSite (items : List Item) (i : Nat) : String :=
+  let rec go : Nat → Nat → List Item → String
+    | _, _, [] => s!"?{i}"
+    | ident, offset, it :: rest =>
+      if ident ≤ i ∧ i < ident + it.lines then
+        (if it == .s || it == .t then toString ident else s!"@{offset}")
+      else go (ident + it.lines) (offset + it.bytes + 2) rest
+  go 0 0 items
+
+def failureText (items : List Item) : PhysicalPagination.Failure → String
+  | .lineTooTall i => s!"G07129:{lineSite items i}"
+  | .boxTooTall i => s!"G07121:{lineSite items i}"
+  | _ => "failure"
+
+def freeOutput (c capacity : Nat) (items : List Item) : List String :=
+  let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
+  let made := Separator.separatorUnits capacity us
+  match PhysicalPagination.paginate (freeBlockEnv items capacity) (SeparatorPhysical.flows pitch side (flowsOf items capacity us)) with
+  | .error f => ["error " ++ failureText items f]
+  | .ok pages =>
+    match SeparatorPhysical.holdErrors made pages with
+    | [] => pages.map freePageText
+    | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
+
+def report (blocks free : Bool) (part parts : Nat) : String :=
+  let all := if blocks then blockInputs else inputs
+  let size := (all.length + parts - 1) / parts
+  String.join (((all.drop (part * size)).take size).map fun (c, capacity, items) =>
+    s!"{c} {capacity} [{" ".intercalate (items.map Item.name)}]\n" ++
+      String.join (((if free then freeOutput else output) c capacity items).map fun p => s!"  {p}\n"))
 
 end SeparatorBoundary
 
 -- check.sh evaluates the inputs in `SEPARATOR_PARTS` contiguous parts
--- side by side, this one part `SEPARATOR_PART`; `#eval` prints it, as
--- `main` is Boundary.lean's.
+-- side by side, this one part `SEPARATOR_PART`: the manuscripts with
+-- blocks when `SEPARATOR_MODE` starts with `blocks`, in the free
+-- placement when it ends with `free`; `#eval` prints it, as `main` is
+-- Boundary.lean's.
 #eval show IO _root_.Unit from do
   let part := ((← IO.getEnv "SEPARATOR_PART").getD "0").toNat!
   let parts := ((← IO.getEnv "SEPARATOR_PARTS").getD "1").toNat!
-  IO.print (SeparatorBoundary.report part parts)
+  let mode := (← IO.getEnv "SEPARATOR_MODE").getD ""
+  IO.print (SeparatorBoundary.report (mode.startsWith "blocks") (mode.endsWith "free") part parts)

@@ -68,6 +68,17 @@ fi
 lean=${LEAN:-lean}
 "$lean" -o "$tmp/Pagination.olean" "$proof"
 
+# The free placement of root ADR 0397 (Paginate/Physical.hs): every
+# definition must be total and every theorem proved.  It is checked in the
+# background, beside Whole.lean, as the separators below need it.
+physical=$root/experiments/pagination-proof/Physical.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$physical"; then
+  echo "unproved or unchecked Lean declaration in $physical" >&2
+  exit 1
+fi
+"$lean" -o "$tmp/Physical.olean" "$physical" &
+physicalPid=$!
+
 # The whole pagination of the grid mode: every definition must be total
 # and every theorem proved.
 whole=$root/experiments/pagination-proof/Whole.lean
@@ -99,10 +110,24 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
 fi
 (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Separator.olean" "$separator")
 echo "the separator flows are total and their theorems are proved"
-(cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
-  --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
-  experiments/pagination-proof/SeparatorBoundary.hs) > "$tmp/separator-haskell" &
-separatorPid=$!
+# The manuscripts in the four modes of SeparatorBoundary.hs: the grid and
+# the free placement, without and with boxes, ruled blocks and items of
+# lists.
+modes='grid free blocks blocks-free'
+separatorPids=
+for mode in $modes; do
+  case $mode in
+    grid) args= ;;
+    free) args=free ;;
+    blocks) args=blocks ;;
+    blocks-free) args='blocks free' ;;
+  esac
+  # shellcheck disable=SC2086
+  (cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
+    --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
+    experiments/pagination-proof/SeparatorBoundary.hs $args) > "$tmp/separator-haskell-$mode" &
+  separatorPids="$separatorPids $!"
+done
 
 # The boundary inputs of boundaryTableTests on Whole.lean's paginate,
 # evaluated under the Env of Paginate/Decide.hs, against golem-layout's
@@ -149,20 +174,33 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|exter
   exit 1
 fi
 (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Boundary.olean" "$boundary")
-(cd "$root" && LEAN_PATH="$tmp" "$lean" "$sboundary") > "$tmp/separator-lean"
-wait "$separatorPid"
-diff -u "$tmp/separator-haskell" "$tmp/separator-lean"
-manuscripts=$(grep -c '^[0-9]' "$tmp/separator-lean")
-echo "the $manuscripts manuscripts with separators give the same pages and G07134 in Separator.lean and golem-typeset"
+# The separators in the free placement (SeparatorPhysical.lean) and next
+# to boxes, ruled blocks and book parts (SeparatorBlocks.lean): every
+# definition must be total.
+wait "$physicalPid"
+for model in SeparatorBlocks SeparatorPhysical; do
+  file=$root/experiments/pagination-proof/$model.lean
+  if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$file"; then
+    echo "unproved or unchecked Lean declaration in $file" >&2
+    exit 1
+  fi
+  (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/$model.olean" "$file")
+done
+echo "the separator flows of the free placement and next to boxes, ruled blocks and book parts are total"
+leanPids=
+for mode in $modes; do
+  (cd "$root" && SEPARATOR_MODE=${mode#grid} LEAN_PATH="$tmp" "$lean" "$sboundary") > "$tmp/separator-lean-$mode" &
+  leanPids="$leanPids $!"
+done
+for pid in $separatorPids $leanPids; do
+  wait "$pid"
+done
+for mode in $modes; do
+  diff -u "$tmp/separator-haskell-$mode" "$tmp/separator-lean-$mode"
+  manuscripts=$(grep -c '^[0-9]' "$tmp/separator-lean-$mode")
+  echo "the $manuscripts manuscripts ($mode) with separators give the same pages and G07134 in the Lean models and golem-typeset"
+done
 
-# The free placement of root ADR 0397 (Paginate/Physical.hs): every
-# definition must be total and every theorem proved.
-physical=$root/experiments/pagination-proof/Physical.lean
-if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$physical"; then
-  echo "unproved or unchecked Lean declaration in $physical" >&2
-  exit 1
-fi
-"$lean" -o "$tmp/Physical.olean" "$physical"
 echo "the free placement model is total and its theorems are proved"
 
 # The footnote lines of the free placement, note by note (PhysicalNotes.lean).
