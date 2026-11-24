@@ -5344,5 +5344,202 @@ if [ -z "$(folder_0430 "$HERE/../..")" ]; then ok; else
   ng "root ADR 0430 I4: no Haskell source of modules/*/src or modules/*/app has フォルダー ($(folder_0430 "$HERE/../.." | tr '\n' '|'))"
 fi
 
+# ---------------------------------------------------------------- unsafe FFI calls (root ADR 0435)
+# unsafe_ffi_0435 ROOT: checks that the unsafe foreign imports of the
+# Haskell sources under ROOT/modules, as (the path of the module, the name of
+# the C function), are the lines of ROOT/scripts/ci/unsafe-ffi.tsv, and
+# that every foreign import says safe or unsafe. The source is read by the
+# approximation of the lexer of scripts/ci/unsafe-io.sh (root ADR 0069),
+# with the strings kept: comments are not declarations. The word after the
+# calling convention is the safety; the last word of the string after an
+# unsafe one is the C function, and a word that starts with & (the address
+# of a function) is not a call. A missing or extra line, or an import with
+# neither safe nor unsafe, is written to stderr, and the exit code is 1. A
+# line of the list is the path, the name, the number of the reason and the
+# reason, split by tabs; blank lines and lines that start with # are
+# skipped.
+unsafe_ffi_0435() {
+  uf_root=$1
+  (cd "$uf_root" && find modules -name '*.hs' -type f) | LC_ALL=C sort | while read -r f; do
+    LC_ALL=C awk -v file="$f" -v q="'" '
+      BEGIN {
+        ident = "[A-Za-z0-9_" q "]"
+        special = "[-{\"" q "]"
+        symbols = "!#$%&*+./<=>?@\\^|~:-"
+        depth = 0; instr = 0
+      }
+      # the code of a line as in scripts/ci/unsafe-io.sh, but the text of
+      # the strings is kept
+      function lex(s,   out, a, b, k, n, c, m, len, nc, pc) {
+        out = ""
+        while (s != "") {
+          if (depth > 0) {
+            a = index(s, "{-"); b = index(s, "-}")
+            if (a == 0 && b == 0) break
+            if (a > 0 && (b == 0 || a < b)) { depth++; s = substr(s, a + 2) }
+            else { depth--; s = substr(s, b + 2) }
+            continue
+          }
+          if (instr) {
+            n = length(s); k = 1
+            while (k <= n) {
+              c = substr(s, k, 1)
+              if (c == "\\") k += 2
+              else if (c == "\"") break
+              else k++
+            }
+            if (k > n) {
+              instr = (k == n + 2)
+              out = out s
+              if (!instr) out = out "\""
+              break
+            }
+            instr = 0; out = out substr(s, 1, k); s = substr(s, k + 1)
+            continue
+          }
+          m = match(s, special)
+          if (m == 0) { out = out s; break }
+          out = out substr(s, 1, m - 1); s = substr(s, m)
+          c = substr(s, 1, 1)
+          pc = substr(out, length(out), 1)
+          if (c == "{") {
+            if (substr(s, 1, 3) == "{-#") {
+              k = index(s, "#-}")
+              if (k == 0) { out = out s; break }
+              s = substr(s, k + 3)
+            } else if (substr(s, 1, 2) == "{-") { depth++; s = substr(s, 3) }
+            else { out = out "{"; s = substr(s, 2) }
+          } else if (c == "-") {
+            match(s, /^-+/); len = RLENGTH
+            nc = substr(s, len + 1, 1)
+            if (len >= 2 && (pc == "" || index(symbols, pc) == 0) && (nc == "" || index(symbols, nc) == 0)) break
+            out = out substr(s, 1, len); s = substr(s, len + 1)
+          } else if (c == "\"") {
+            instr = 1; out = out "\""; s = substr(s, 2)
+          } else if (pc ~ ident) {
+            out = out q; s = substr(s, 2)
+          } else if (substr(s, 2, 1) == "\\" && (k = index(substr(s, 4), q)) > 0) {
+            out = out " "; s = substr(s, k + 4)
+          } else if (substr(s, 2, 1) != "" && substr(s, 3, 1) == q) {
+            out = out " "; s = substr(s, 4)
+          } else {
+            out = out " "; s = substr(s, 2)
+          }
+        }
+        return out
+      }
+      {
+        code = lex($0)
+        if (code !~ /^foreign[ \t]+import([ \t]|$)/) next
+        rest = code
+        sub(/^foreign[ \t]+import[ \t]*/, "", rest)
+        # the calling convention, then the safety
+        sub(/^[^ \t]*[ \t]*/, "", rest)
+        safety = rest
+        sub(/[ \t].*$/, "", safety)
+        if (safety != "safe" && safety != "unsafe") { print "B\t" file ":" FNR; next }
+        if (safety == "safe") next
+        if (!match(rest, /"[^"]*"/)) { print "B\t" file ":" FNR; next }
+        entity = substr(rest, RSTART + 1, RLENGTH - 2)
+        sub(/[ \t]+$/, "", entity)
+        n = split(entity, words, /[ \t]+/)
+        if (n == 0) { print "B\t" file ":" FNR; next }
+        if (substr(words[n], 1, 1) == "&") next
+        print "U\t" file "\t" words[n]
+      }
+    ' "$uf_root/$f"
+  done >"$WORK/unsafe-ffi-scan"
+  sed -n 's/^U	//p' "$WORK/unsafe-ffi-scan" | LC_ALL=C sort -u >"$WORK/unsafe-ffi-found"
+  if [ -f "$uf_root/scripts/ci/unsafe-ffi.tsv" ]; then
+    grep -v -e '^#' -e '^[[:space:]]*$' "$uf_root/scripts/ci/unsafe-ffi.tsv" | cut -f1,2 | LC_ALL=C sort -u >"$WORK/unsafe-ffi-listed" || :
+  else
+    : >"$WORK/unsafe-ffi-listed"
+  fi
+  uf_status=0
+  if grep -q '^B	' "$WORK/unsafe-ffi-scan"; then
+    sed -n 's/^B	/unsafe-ffi: a foreign import with neither safe nor unsafe: /p' "$WORK/unsafe-ffi-scan" >&2
+    uf_status=1
+  fi
+  LC_ALL=C comm -23 "$WORK/unsafe-ffi-found" "$WORK/unsafe-ffi-listed" | sed 's/^/unsafe-ffi: not in scripts\/ci\/unsafe-ffi.tsv: /' >&2
+  LC_ALL=C comm -13 "$WORK/unsafe-ffi-found" "$WORK/unsafe-ffi-listed" | sed 's/^/unsafe-ffi: listed but not in the sources: /' >&2
+  if ! cmp -s "$WORK/unsafe-ffi-found" "$WORK/unsafe-ffi-listed"; then uf_status=1; fi
+  return "$uf_status"
+}
+: >"$WORK/in"
+: >"$WORK/out"
+: >"$WORK/err"
+for uf_call in "golem-plugin/src/Golem/Plugin.hs golem_plugin.h golem_plugin_load" "golem-plugin/src/Golem/Plugin.hs golem_plugin.h golem_wat2wasm" "golem-font/src/Golem/Font.hs golem_font.h golem_font_open" "golem-font/src/Golem/Font.hs golem_font.h golem_font_subset"; do
+  uf_file=${uf_call%% *} uf_entity=${uf_call#* }
+  if grep -qF "foreign import capi safe \"$uf_entity\"" "$HERE/../../modules/$uf_file"; then ok; else
+    ng "root ADR 0435 I1: $uf_entity is a safe foreign import of modules/$uf_file"
+  fi
+done
+run unsafe_ffi_0435 "$HERE/../.."
+expect "root ADR 0435 I2, I3: the unsafe foreign imports of the repository are the lines of scripts/ci/unsafe-ffi.tsv" 0
+UF=$WORK/unsafe-ffi
+# uf_case SOURCE LIST: modules/x/src/X/A.hs is SOURCE and the list is LIST
+uf_case() {
+  rm -rf "$UF"
+  mkdir -p "$UF/modules/x/src/X" "$UF/scripts/ci"
+  printf '%s\n' "$1" >"$UF/modules/x/src/X/A.hs"
+  printf '%s' "$2" >"$UF/scripts/ci/unsafe-ffi.tsv"
+  run unsafe_ffi_0435 "$UF"
+}
+UF_KEPT='module X.A where
+
+foreign import capi unsafe "x.h x_kept" c_kept :: IO ()'
+UF_LINE='modules/x/src/X/A.hs	x_kept	1	it reads a value
+'
+uf_case "$UF_KEPT" "$UF_LINE"
+expect "root ADR 0435 I2: a listed unsafe import passes" 0
+uf_case "$UF_KEPT
+foreign import ccall unsafe \"x.h x_added\"
+  c_added :: IO ()" "$UF_LINE"
+expect "root ADR 0435 I2: an unsafe import not in the list fails" 1
+if grep -qxF "unsafe-ffi: not in scripts/ci/unsafe-ffi.tsv: modules/x/src/X/A.hs	x_added" "$WORK/err"; then ok; else ng "root ADR 0435 I2: the missing line is written"; fi
+uf_case "$UF_KEPT" "$UF_LINE# a comment
+
+modules/x/src/X/A.hs	x_gone	2	it is called often
+"
+expect "root ADR 0435 I2: a line of the list not in the sources fails" 1
+if grep -qxF "unsafe-ffi: listed but not in the sources: modules/x/src/X/A.hs	x_gone" "$WORK/err"; then ok; else ng "root ADR 0435 I2: the extra line is written"; fi
+if [ "$(grep -c '^unsafe-ffi:' "$WORK/err")" = 1 ]; then ok; else ng "root ADR 0435 I2: comments and blank lines of the list are skipped"; fi
+uf_case 'module X.A where
+
+foreign import ccall safe "x.h x_safe" c_safe :: IO ()' ''
+expect "root ADR 0435 I2: an empty list and no unsafe import pass" 0 ""
+uf_case 'module X.A where
+
+foreign import capi unsafe "x.h &x_close" c_close :: FunPtr (Ptr X -> IO ())' ''
+expect "root ADR 0435 I2: an unsafe import of the address of a function is not counted" 0 ""
+uf_case 'module X.A where
+
+-- foreign import capi unsafe "x.h x_line" c_line :: IO ()
+{- foreign import capi unsafe "x.h x_block" c_block :: IO ()
+foreign import capi unsafe "x.h x_nested" c_nested :: IO ()
+-}
+other :: String
+other = "foreign import capi unsafe \"x.h x_string\""' ''
+expect "root ADR 0435 I2: foreign imports in comments and strings are not counted" 0 ""
+uf_case 'module X.A where
+
+foreign import capi safe "unsafe.h unsafe_get" c_unsafeGet :: IO ()' ''
+expect "root ADR 0435 I2: a safe import whose names have unsafe is not counted" 0 ""
+uf_case 'module X.A where
+
+foreign import capi "x.h x_plain" c_plain :: IO ()' ''
+expect "root ADR 0435 I3: an import with neither safe nor unsafe fails" 1
+if grep -qxF "unsafe-ffi: a foreign import with neither safe nor unsafe: modules/x/src/X/A.hs:3" "$WORK/err"; then ok; else ng "root ADR 0435 I3: the import is written with its line"; fi
+uf_case 'module X.A where
+
+foreign import ccall interruptible "x.h x_wait" c_wait :: IO ()' ''
+expect "root ADR 0435 I3: an interruptible import fails" 1
+uf_case "$UF_KEPT" "$UF_LINE"
+mkdir -p "$UF/modules/x/test"
+printf '%s\n' 'module Main where' '' 'foreign import capi unsafe "unistd.h sleep" c_sleep :: CUInt -> IO CUInt' >"$UF/modules/x/test/Main.hs"
+run unsafe_ffi_0435 "$UF"
+expect "root ADR 0435 I2: an unsafe import of a test is counted" 1
+if grep -qxF "unsafe-ffi: not in scripts/ci/unsafe-ffi.tsv: modules/x/test/Main.hs	sleep" "$WORK/err"; then ok; else ng "root ADR 0435 I2: the import of the test is written"; fi
+
 printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
