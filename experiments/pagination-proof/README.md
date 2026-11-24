@@ -738,8 +738,14 @@ p は段落の最初の部分の行数で、1 行以上 n 行以下であり、�
 このとき区切りの `keep-with-next` が区切りの段で待っているので、`heldHere` が成り立ち、`placeKept` は段落の全体を今の段から置く（`placeKept_held`）。
 そのため、段落は `keptNeed` が `none` のときと同じに置かれる。
 
-この定理は、後のフローが閉じた段と今の段の行を保つことまでは示さない。
-`Together` から G07134 がないことを導くには、後のすべてのフローの `step` が閉じた段を変えず、今の段の行をそのまま閉じることを示す必要がある。
+後のフローは、閉じた段と今の段の行を変えない。
+`WholeNotes.lean` の `Keeps` は、出力済みのページと段がそのまま残り、今の段の行が段の先頭に残るか、後に続く行と一緒に閉じた段に入ることである。
+`Keeps` は、`WholeNotes.lean` が脚注の行を注ごとに数える関係 `Rel` の一部（`Grows`）なので、`Rel` と同じく改ページのすべての関数で示される。
+`keeps_placeAll` は、読む脚注が新しいとき（`Fresh`）に、`placeAll` がこの性質を保つことを示す。
+`I3_separator_hold_one_column` は、`I3_separator_hold_together` の前提に、脚注区切りの行数が 0 行以上であることと、後のフローの脚注が新しいことを加えて、区切りの行と段落の最初の行が出力の段の一つに入ることを示す。
+`I3_separator_hold_no_error` は、さらに二つの行がそれぞれ出力の一つの段にだけあるとき、区切りと段落の連続に G07134 を返さない（`holdErrors` に区切りの番号がない）ことを示す。
+この最後の前提は、行の id が出力の段の間で重ならないことを求める仮定であり、定理の中では示していない。
+段落の後に `@no-page-break` か `keep-with-next` が続き、`placeKept` が段落を分けて送るときは、まだ定理の範囲にない。
 区切りの後ろのアキ、保持の中の `@need-lines`、区切りの連続、区切りの前の行アキも、まだ定理の範囲にない。
 自由な配置（`SeparatorPhysical.lean`）の同じ性質も、まだ示していない。
 
@@ -1142,8 +1148,8 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3823`）、g
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
 不変条件 4 と 5 は、`joinBoxes`、`ruledLinks`、`markBookParts` を通したフローと、自由な配置に写したフローにも当てた。
-空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について、二つの行が一つの段に入るところまで定理で示した。
-後のフローが閉じた段を保つことと、後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
+空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について定理で示した（`I3_separator_hold_no_error`）。
+`placeKept` が段落を分けて送る場合、後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
 `check.sh` は、区切りの原稿を六つの組で golem-typeset と照合し、すべて一致した。
 格子モードと自由な配置の 8784 個ずつの原稿は、「区切りのモデル」の節で述べた項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
@@ -1181,7 +1187,7 @@ sh experiments/pagination-proof/check.sh
 
 `check.sh` は、境界入力、自由な配置の境界入力、区切り、キャプションの評価値の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
 区切りの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
-`check.sh` は、`Whole.olean` を作ってから、それを読み込む `Separator.lean` を検査する。
+`check.sh` は、`Whole.olean` と `WholeNotes.olean` を作ってから、それを読み込む `Separator.lean` を検査する。
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
 `SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で六つの組を一つずつ評価する。

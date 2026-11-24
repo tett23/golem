@@ -100,18 +100,63 @@ def allUnmet (st : St) : List Unmet := st.done.reverse.bind (·.unmet) ++ st.unm
 
 def Dropped (st : St) (i : Nat) : Prop := ∃ c, Unmet.unplaceableFootnote i c ∈ allUnmet st
 
-def Grows (st s : St) : Prop := ∃ u, allUnmet s = allUnmet st ++ u
+/-- From `a` to `b` the pages and columns closed stay as they are, and
+    the slots of the current column stay at its start or go, as they are
+    with what follows them, to a column closed. -/
+def Keeps (a b : St) : Prop :=
+  (∃ ds, b.done = ds ++ a.done) ∧
+    ((∃ xs, b.slots = a.slots ++ xs) ∨ ∃ p ∈ b.done, ∃ xs, p.slots = a.slots ++ xs)
 
-theorem Grows.refl (st : St) : Grows st st := ⟨[], by simp⟩
+theorem Keeps.refl (a : St) : Keeps a a := ⟨⟨[], rfl⟩, Or.inl ⟨[], by simp⟩⟩
+
+theorem Keeps.same {a b : St} (hd : b.done = a.done) (hs : b.slots = a.slots) : Keeps a b :=
+  ⟨⟨[], by simp [hd]⟩, Or.inl ⟨[], by simp [hs]⟩⟩
+
+theorem Keeps.trans {a b c : St} (h1 : Keeps a b) (h2 : Keeps b c) : Keeps a c := by
+  obtain ⟨⟨d1, e1⟩, s1⟩ := h1
+  obtain ⟨⟨d2, e2⟩, s2⟩ := h2
+  have mem : ∀ p ∈ b.done, p ∈ c.done := fun p m => by rw [e2]; exact List.mem_append_of_mem_right _ m
+  refine ⟨⟨d2 ++ d1, by rw [e2, e1, List.append_assoc]⟩, ?_⟩
+  rcases s1 with ⟨xs, ex⟩ | ⟨p, mp, xs, ep⟩
+  · rcases s2 with ⟨ys, ey⟩ | ⟨q, mq, ys, eq⟩
+    · exact Or.inl ⟨xs ++ ys, by rw [ey, ex, List.append_assoc]⟩
+    · exact Or.inr ⟨q, mq, xs ++ ys, by rw [eq, ex, List.append_assoc]⟩
+  · exact Or.inr ⟨p, mem p mp, xs, ep⟩
+
+theorem Keeps.put {a b : St} (hd : b.done = a.done) (xs : List (Int × Slot)) (hs : b.slots = a.slots ++ xs) :
+    Keeps a b :=
+  ⟨⟨[], by simp [hd]⟩, Or.inl ⟨xs, hs⟩⟩
+
+/-- A column closed with the slots of the current one, and the slots
+    started anew. -/
+theorem Keeps.closed {a b : St} (hd : ∃ ds, b.done = ds ++ a.done)
+    (hc : a.slots ≠ [] → ∃ p ∈ b.done, p.slots = a.slots) : Keeps a b := by
+  refine ⟨hd, ?_⟩
+  by_cases e : a.slots = []
+  · exact Or.inl ⟨b.slots, by rw [e]; rfl⟩
+  · obtain ⟨p, m, h⟩ := hc e
+    exact Or.inr ⟨p, m, [], by rw [h, List.append_nil]⟩
+
+theorem Keeps.cons {a b : St} (p : PageOut) (hd : b.done = p :: a.done) (hs : b.slots = a.slots) : Keeps a b :=
+  ⟨⟨[p], hd⟩, Or.inl ⟨[], by simp [hs]⟩⟩
+
+/-- A frame: the pages closed stay, and slots are only added. -/
+syntax "keeps_frame" : tactic
+macro_rules
+  | `(tactic| keeps_frame) => `(tactic| first | exact Keeps.same rfl rfl | exact Keeps.put rfl _ rfl)
+
+def Grows (st s : St) : Prop := (∃ u, allUnmet s = allUnmet st ++ u) ∧ Keeps st s
+
+theorem Grows.refl (st : St) : Grows st st := ⟨⟨[], by simp⟩, Keeps.refl st⟩
 
 theorem Grows.trans {a b c : St} (h1 : Grows a b) (h2 : Grows b c) : Grows a c := by
-  obtain ⟨u, e⟩ := h1; obtain ⟨v, f⟩ := h2
-  exact ⟨u ++ v, by rw [f, e, List.append_assoc]⟩
+  obtain ⟨⟨u, e⟩, k1⟩ := h1; obtain ⟨⟨v, f⟩, k2⟩ := h2
+  exact ⟨⟨u ++ v, by rw [f, e, List.append_assoc]⟩, k1.trans k2⟩
 
-theorem Grows.of_eq {a b : St} (h : allUnmet b = allUnmet a) : Grows a b := ⟨[], by simp [h]⟩
+theorem Grows.of_eq {a b : St} (h : allUnmet b = allUnmet a) (k : Keeps a b) : Grows a b := ⟨⟨[], by simp [h]⟩, k⟩
 
 theorem Grows.dropped {a b : St} (h : Grows a b) {i : Nat} (d : Dropped a i) : Dropped b i := by
-  obtain ⟨u, e⟩ := h; obtain ⟨c, m⟩ := d
+  obtain ⟨⟨u, e⟩, _⟩ := h; obtain ⟨c, m⟩ := d
   exact ⟨c, by rw [e]; exact List.mem_append_of_mem_left _ m⟩
 
 /-- From `st` to `s` the note lines `Y` are added, note by note; a note
@@ -237,14 +282,16 @@ theorem R0.of_filt {st s : St} {Y : List (Nat × Nat)} (h : ∀ i, filt i (NM s)
   ⟨g, fun i e => by rw [h]; exact e, fun i _ => h i⟩
 
 theorem R0.frame {st s : St} (hd : s.done = st.done) (hn : s.notes = st.notes) (hp : s.pending = st.pending)
-    (hu : s.unmet = st.unmet) : R0 st s [] :=
-  R0.same (by simp [NM, hd, hn, hp]) (Grows.of_eq (by simp [allUnmet, hd, hu]))
+    (hu : s.unmet = st.unmet) (hk : Keeps st s := by keeps_frame) :
+    R0 st s [] :=
+  R0.same (by simp [NM, hd, hn, hp]) (Grows.of_eq (by simp [allUnmet, hd, hu]) hk)
 
 theorem Rel.frame {st s : St} (hd : s.done = st.done) (hn : s.notes = st.notes) (hp : s.pending = st.pending)
-    (hu : s.unmet = st.unmet) : Rel st s [] := Rel.of_R0 (R0.frame hd hn hp hu)
+    (hu : s.unmet = st.unmet) (hk : Keeps st s := by keeps_frame) :
+    Rel st s [] := Rel.of_R0 (R0.frame hd hn hp hu hk)
 
 theorem R0.addU (u : Unmet) (st : St) : R0 st (addUnmet u st) [] :=
-  R0.same (by simp [NM, addUnmet]) ⟨[u], by simp [allUnmet, addUnmet, List.append_assoc]⟩
+  R0.same (by simp [NM, addUnmet]) ⟨⟨[u], by simp [allUnmet, addUnmet, List.append_assoc]⟩, Keeps.same rfl rfl⟩
 
 theorem Rel.addU (u : Unmet) (st : St) : Rel st (addUnmet u st) [] := Rel.of_R0 (R0.addU u st)
 
@@ -261,7 +308,7 @@ theorem R0.put {st s : St} {Y : List (Nat × Nat)} (sp : List NotePart × List N
 theorem rel_putLineKeeping (env : Env) (r : Int) (st : St) (l : Line) :
     Rel st (putLineKeeping env r st l) l.notes := by
   intro ⟨d, _⟩
-  exact R0.put (splitNotes _ l.notes) (splitNotes_lines _ _) rfl rfl rfl (Grows.of_eq rfl) d
+  exact R0.put (splitNotes _ l.notes) (splitNotes_lines _ _) rfl rfl rfl (Grows.of_eq rfl (Keeps.put rfl _ rfl)) d
 
 theorem rel_putLine (env : Env) (st : St) (l : Line) : Rel st (putLine env st l) l.notes :=
   rel_putLineKeeping env 0 st l
@@ -273,8 +320,8 @@ theorem rel_putBlock (env : Env) (st : St) (n : Nat) (ls : List Line) :
   | cons l0 ls =>
     intro ⟨d, _⟩
     exact R0.put (splitNotes _ ((l0 :: ls).bind (·.notes))) (splitNotes_lines _ _) rfl rfl rfl
-      ⟨if free env st < n then [Unmet.tallHeading l0.id n (free env st)] else [],
-        by simp [allUnmet, putBlock, List.append_assoc]⟩ d
+      ⟨⟨if free env st < n then [Unmet.tallHeading l0.id n (free env st)] else [],
+        by simp [allUnmet, putBlock, List.append_assoc]⟩, Keeps.put rfl _ rfl⟩ d
 
 theorem filt_seg_ne (j i f n : Nat) (h : j ≠ i) : filt j (seg i f n) = [] := by
   induction n generalizing f with
@@ -345,7 +392,8 @@ theorem carryNote_step (env : Env) (hs : 0 ≤ env.separator) (s : St) (p : Note
   obtain ⟨i, f, n⟩ := p
   simp only [carryNote]
   split
-  · refine ⟨⟨⟨[Unmet.unplaceableFootnote i (cap env s)], by simp [allUnmet, addUnmet, List.append_assoc]⟩, ?_, ?_⟩, hj⟩
+  · refine ⟨⟨⟨⟨[Unmet.unplaceableFootnote i (cap env s)], by simp [allUnmet, addUnmet, List.append_assoc]⟩,
+      Keeps.same rfl rfl⟩, ?_, ?_⟩, hj⟩
     · intro j h; rw [filt_append, append_eq_nil'] at h; exact h.1
     · intro j nd
       have ne : j ≠ i := by
@@ -368,7 +416,7 @@ theorem carryNote_step (env : Env) (hs : 0 ≤ env.separator) (s : St) (p : Note
     generalize carryShown env s n = sh at *
     have room0 : carryRoom env s = 0 → sh = 0 := by intro c; rw [c] at shr; simpa using shr
     rcases hj with hp | hr
-    · refine ⟨R0.of_eq ?_ (Grows.of_eq rfl), ?_⟩
+    · refine ⟨R0.of_eq ?_ (Grows.of_eq rfl (Keeps.same rfl rfl)), ?_⟩
       · simp only [NM, hp, ex_append, ex_nil, List.append_nil, ex_cons, partLines, List.nil_append]
         split
         · have e : n = sh + (n - sh) := by omega
@@ -381,7 +429,7 @@ theorem carryNote_step (env : Env) (hs : 0 ≤ env.separator) (s : St) (p : Note
         · exact Or.inl (by simp [hp])
     · have sh0 := room0 hr
       subst sh0
-      refine ⟨R0.of_eq ?_ (Grows.of_eq rfl), Or.inr ?_⟩
+      refine ⟨R0.of_eq ?_ (Grows.of_eq rfl (Keeps.same rfl rfl)), Or.inr ?_⟩
       · simp only [NM, ex_append, ex_cons, ex_nil, partLines, seg, List.append_nil, List.append_assoc]
         split
         · simp [ex_cons, partLines]
@@ -410,21 +458,89 @@ theorem placeDeferred_NM (env : Env) (ws : List Deferred) (st : St) :
       · exact ⟨rfl, rfl⟩
     | pageFigure i => exact ⟨rfl, rfl⟩
 
+theorem keeps_closePage (env : Env) (st : St) : Keeps st (closePage env st) := by
+  unfold closePage; split
+  · exact Keeps.refl st
+  · exact Keeps.cons ⟨st.page, st.column, false, st.slots, st.notes, st.unmet⟩ rfl rfl
+
+theorem closePage_closes (env : Env) (st : St) (ne : st.slots ≠ []) :
+    ∃ p ∈ (closePage env st).done, p.slots = st.slots := by
+  unfold closePage; split
+  · rename_i h; exact absurd (isEmpty_nil _ h.1) ne
+  · exact ⟨_, List.mem_cons_self _ _, rfl⟩
+
+theorem keeps_startSet (env : Env) (st : St) (n : Nat) (first : Int) : Keeps st (startSet env st n first) :=
+  Keeps.closed (keeps_closePage env st).1 (closePage_closes env st)
+
+theorem keeps_advanceFresh (env : Env) (b : Bool) (st : St) : Keeps st (advanceFresh env b st) := by
+  refine Keeps.closed ?_ ?_
+  · unfold advanceFresh closePage; dsimp only
+    repeat' split
+    all_goals first | exact ⟨[], rfl⟩ | exact ⟨[_], rfl⟩ | exact ⟨[_, _], rfl⟩
+  · intro ne
+    have e : ¬ (st.slots.isEmpty = true ∧ st.notes.isEmpty = true) := by
+      intro h; apply ne; cases e : st.slots with
+      | nil => rfl
+      | cons _ _ => rw [e] at h; simp [List.isEmpty] at h
+    unfold advanceFresh closePage; dsimp only
+    simp only [e, ite_false]
+    split
+    · exact ⟨_, List.mem_cons_of_mem _ (List.mem_cons_self _ _), rfl⟩
+    · exact ⟨_, List.mem_cons_self _ _, rfl⟩
+
+theorem keeps_pageFigures (env : Env) (ts : List Nat) (st : St) : Keeps st (ts.foldl (pageFigure env) st) := by
+  induction ts generalizing st with
+  | nil => exact Keeps.refl st
+  | cons t ts ih => exact Keeps.trans (by exact Keeps.cons ⟨st.page, 0, false, [(0, .pageFigure t)], [], []⟩ rfl rfl) (ih _)
+
+theorem keeps_carryAll (env : Env) (ps : List NotePart) (st : St) : Keeps st (ps.foldl (carryNote env) st) := by
+  induction ps generalizing st with
+  | nil => exact Keeps.refl st
+  | cons p ps ih =>
+    refine Keeps.trans ?_ (ih _)
+    unfold carryNote; split
+    · exact Keeps.same rfl rfl
+    · exact Keeps.same rfl rfl
+
+theorem keeps_placeDeferred (env : Env) (ws : List Deferred) (st : St) : Keeps st (placeDeferred env st ws) := by
+  induction ws generalizing st with
+  | nil => exact Keeps.refl st
+  | cons w ws ih =>
+    cases w with
+    | figure i n =>
+      unfold placeDeferred; split
+      · exact Keeps.trans (by exact Keeps.put rfl _ rfl) (ih _)
+      · exact Keeps.same rfl rfl
+    | pageFigure i => exact Keeps.same rfl rfl
+
+theorem keeps_openColumn (env : Env) (base : St) (turned : List Nat) (notes : List NotePart) (ws : List Deferred) :
+    Keeps base (openColumn env base turned notes ws) :=
+  (keeps_pageFigures env turned base).trans ((keeps_carryAll env notes _).trans
+    (Keeps.trans (by exact Keeps.same rfl rfl) (keeps_placeDeferred env ws _)))
+
+theorem keeps_openBox (st : St) : Keeps st (openBox st) := Keeps.same (openBox_done st) (openBox_slots st)
+
+theorem keeps_advance (env : Env) (b : Bool) (st : St) : Keeps st (advance env b st) :=
+  (keeps_advanceFresh env b st).trans ((keeps_openColumn env _ _ _ _).trans (keeps_openBox _))
+
 theorem R0.adv (env : Env) (hs : 0 ≤ env.separator) (b : Bool) (st : St) : R0 st (advance env b st) [] := by
   obtain ⟨f1, f2, f3⟩ := advanceFresh_NM env b st
+  have k1 := keeps_advanceFresh env b st
   simp only [advance, advanceIn, openColumn]
   generalize advanceFresh env b st = F at *
   obtain ⟨g1, g2, g3⟩ := pageFigures_NM env (advanceTurned b st).1 F
+  have k2 := k1.trans (keeps_pageFigures env (advanceTurned b st).1 F)
   generalize List.foldl (pageFigure env) F (advanceTurned b st).1 = F' at *
   have c := carryAll_R0 env hs st.pending F' (Or.inl (g3.trans f3))
   generalize st.pending.foldl (carryNote env) F' = C at *
   obtain ⟨d1, d2⟩ := placeDeferred_NM env (advanceTurned b st).2 { C with deferred := [] }
   have o : R0 C (openBox (placeDeferred env { C with deferred := [] } (advanceTurned b st).2)) [] :=
     R0.same (by rw [NM, openBox_done, openBox_notes, openBox_pending, ← NM, d1]; rfl)
-      (Grows.of_eq (by rw [allUnmet, openBox_done, openBox_unmet, ← allUnmet, d2]; rfl))
+      (Grows.of_eq (by rw [allUnmet, openBox_done, openBox_unmet, ← allUnmet, d2]; rfl)
+        (Keeps.trans (by exact Keeps.same rfl rfl) ((keeps_placeDeferred env _ _).trans (keeps_openBox _))))
   have := c.trans o
   rw [List.append_nil] at this
-  exact R0.pre (by rw [g1, f1]) (Grows.of_eq (by rw [g2, f2])) this
+  exact R0.pre (by rw [g1, f1]) (Grows.of_eq (by rw [g2, f2]) k2) this
 
 theorem rel_nextColumn (env : Env) (hs : 0 ≤ env.separator) (st : St) : Rel st (nextColumn env st) [] :=
   Rel.of_R0 (R0.adv env hs _ st)
@@ -489,10 +605,14 @@ theorem Rel.nr {a b c : St} {X : List Note} (h1 : Rel a b X) (h2 : Rel b c []) :
   Rel.tr h1 h2 (List.append_nil _)
 
 theorem Rel.fl {st s c : St} {X : List Note} (h : Rel s c X) (hd : s.done = st.done := by rfl)
-    (hn : s.notes = st.notes := by rfl) (hp : s.pending = st.pending := by rfl) (hu : s.unmet = st.unmet := by rfl) : Rel st c X := Rel.nl (Rel.frame hd hn hp hu) h
+    (hn : s.notes = st.notes := by rfl) (hp : s.pending = st.pending := by rfl) (hu : s.unmet = st.unmet := by rfl)
+    (hk : Keeps st s := by keeps_frame) : Rel st c X :=
+  Rel.nl (Rel.frame hd hn hp hu hk) h
 
 theorem Rel.fr {st s c : St} {X : List Note} (h : Rel st s X) (hd : c.done = s.done := by rfl)
-    (hn : c.notes = s.notes := by rfl) (hp : c.pending = s.pending := by rfl) (hu : c.unmet = s.unmet := by rfl) : Rel st c X := Rel.nr h (Rel.frame hd hn hp hu)
+    (hn : c.notes = s.notes := by rfl) (hp : c.pending = s.pending := by rfl) (hu : c.unmet = s.unmet := by rfl)
+    (hk : Keeps s c := by keeps_frame) : Rel st c X :=
+  Rel.nr h (Rel.frame hd hn hp hu hk)
 
 theorem Rel.ite {c : Prop} [Decidable c] {st a b : St} {X : List Note} (ha : Rel st a X) (hb : Rel st b X) :
     Rel st (if c then a else b) X := by
@@ -502,14 +622,16 @@ theorem Rel.ite {c : Prop} [Decidable c] {st a b : St} {X : List Note} (ha : Rel
 
 theorem Rel.blankP (env : Env) (st : St) : Rel st (blankPage env st) [] :=
   Rel.of_R0 (R0.same (by simp [NM, blankPage, pagesNotes_cons])
-    (Grows.of_eq (by simp [allUnmet, blankPage, List.reverse_cons, List.append_bind])))
+    (Grows.of_eq (by simp [allUnmet, blankPage, List.reverse_cons, List.append_bind])
+      (by exact Keeps.cons ⟨st.page, 0, true, [], [], []⟩ rfl rfl)))
 
 theorem Rel.pageF (env : Env) (st : St) (i : Nat) : Rel st (pageFigure env st i) [] :=
   Rel.of_R0 (R0.same (by simp [NM, pageFigure, pagesNotes_cons])
-    (Grows.of_eq (by simp [allUnmet, pageFigure, List.reverse_cons, List.append_bind])))
+    (Grows.of_eq (by simp [allUnmet, pageFigure, List.reverse_cons, List.append_bind])
+      (by exact Keeps.cons ⟨st.page, 0, false, [(0, .pageFigure i)], [], []⟩ rfl rfl)))
 
 theorem Rel.oBox (st : St) : Rel st (openBox st) [] :=
-  Rel.frame (openBox_done st) (openBox_notes st) (openBox_pending st) (openBox_unmet st)
+  Rel.frame (openBox_done st) (openBox_notes st) (openBox_pending st) (openBox_unmet st) (Keeps.same (openBox_done st) (openBox_slots st))
 
 theorem Rel.addUs (us : List Unmet) (st : St) : Rel st (us.foldl (fun s u => addUnmet u s) st) [] := by
   induction us generalizing st with
@@ -954,7 +1076,7 @@ theorem rel_placeTableAcross (st : St) (h : List Line) (rows : List (List Line))
 
 theorem rel_startSet (st : St) (n : Nat) (first : Int) : Rel st (startSet env st n first) [] := by
   obtain ⟨c1, c2, c3⟩ := closePage_facts env st
-  refine Rel.of_R0 (R0.same ?_ (Grows.of_eq ?_))
+  refine Rel.of_R0 (R0.same ?_ (Grows.of_eq ?_ (keeps_startSet env st n first)))
   · simp only [NM, startSet]; rw [c1, c3]; simp [ex_append, List.append_assoc]
   · simp only [allUnmet, startSet]; exact c2
 
@@ -1289,6 +1411,27 @@ theorem paginate_facts (env : Env) (hs : 0 ≤ env.separator) (flows : List Flow
   refine ⟨_, r, ?_, ?_⟩
   · simp only [paginate]; rw [c1, NM, p, ex_append]; simp
   · simp only [paginate, allUnmet] at c2 ⊢; exact c2
+
+/-- What `Rel.trans` reads off its first step: the notes read after it
+    are still new. -/
+theorem Rel.fresh_after {a b : St} {X1 X2 : List Note} (h1 : Rel a b X1) (f : Fresh a (X1 ++ X2)) :
+    Fresh b X2 := by
+  obtain ⟨d, s⟩ := f
+  obtain ⟨s1, s2, d12⟩ := Sep.append X1 X2 s
+  rw [exN_append, Disj.append_right] at d
+  have r1 := h1 ⟨d.1, s1⟩
+  refine ⟨fun i => ?_, s2⟩
+  rcases d.2 i with e | e
+  · rcases d12 i with e' | e'
+    · exact Or.inl (r1.2.1 i (by rw [filt_append, e, e']; rfl))
+    · exact Or.inr e'
+  · exact Or.inr e
+
+/-- The later steps keep the pages and columns closed, and the slots of
+    the current column, as they are (`Keeps`), when the notes read are new. -/
+theorem keeps_placeAll (env : Env) (hs : 0 ≤ env.separator) (flows : List Flow) (st : St)
+    (hf : Fresh st (sourceNotes flows)) : Keeps st (placeAll env st flows) :=
+  ((rel_placeAll env hs flows st).1 hf).1.2
 
 /-- Root ADR 0352 invariant 5 for the footnotes of the grid mode: the
     pages of the pagination hold no line of a note not written, and, note

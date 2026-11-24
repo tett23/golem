@@ -96,7 +96,7 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $wholeNotes" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$wholeNotes"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/WholeNotes.olean" "$wholeNotes"
 echo "every footnote line of the grid mode is placed once, note by note"
 
 # The separators of root ADR 0398 on the flows of Whole.lean: every

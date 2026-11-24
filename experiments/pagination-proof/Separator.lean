@@ -25,6 +25,7 @@ theorems hold for every choice of them.  README.md lists the
 correspondence with file:line.
 -/
 import Whole
+import WholeNotes
 
 namespace WholePagination
 namespace Separator
@@ -1581,6 +1582,169 @@ theorem I3_separator_hold_together (env : Env) (hfit : PlainFitting env) (st : S
   · left; rw [sl, h]; exact both
   · right; refine ⟨q, by rw [dn]; exact mq, ?_⟩
     rw [hq]; exact both
+
+/-! ## The hold in the pages output -/
+
+theorem bind_nil' {α β : Type} (g : α → List β) : ∀ (xs : List α), (∀ x ∈ xs, g x = []) → xs.bind g = []
+  | [], _ => rfl
+  | x :: xs, h => by
+    rw [List.cons_bind, h x (List.mem_cons_self _ _), bind_nil' g xs (fun y m => h y (List.mem_cons_of_mem _ m))]; rfl
+
+theorem mem_bind_iff {α β : Type} (g : α → List β) (y : β) : ∀ (xs : List α), y ∈ xs.bind g ↔ ∃ x ∈ xs, y ∈ g x
+  | [] => by simp
+  | x :: xs => by
+    rw [List.cons_bind, mem_app, mem_bind_iff g y xs]
+    constructor
+    · rintro (h | ⟨z, m, h⟩)
+      · exact ⟨x, List.mem_cons_self _ _, h⟩
+      · exact ⟨z, List.mem_cons_of_mem _ m, h⟩
+    · rintro ⟨z, m, h⟩
+      cases m with
+      | head => exact Or.inl h
+      | tail _ m => exact Or.inr ⟨z, m, h⟩
+
+theorem mem_reverse' {α : Type} {x : α} : ∀ {xs : List α}, x ∈ xs → x ∈ xs.reverse
+  | _ :: xs, .head _ => by rw [List.reverse_cons]; exact mem_app.mpr (Or.inr (List.mem_cons_self _ _))
+  | _ :: xs, .tail _ m => by rw [List.reverse_cons]; exact mem_app.mpr (Or.inl (mem_reverse' m))
+
+theorem find?_none' {α : Type} (f : α → Bool) : ∀ (xs : List α), xs.find? f = none → ∀ x ∈ xs, f x = false
+  | [], _, _, m => absurd m (List.not_mem_nil _)
+  | y :: ys, h, x, m => by
+    unfold List.find? at h
+    cases e : f y with
+    | true => rw [e] at h; cases h
+    | false =>
+      rw [e] at h
+      cases m with
+      | head => exact e
+      | tail _ m => exact find?_none' f ys h x m
+
+theorem find?_some' {α : Type} (f : α → Bool) : ∀ (xs : List α) (r : α), xs.find? f = some r → f r = true ∧ r ∈ xs
+  | [], _, h => by cases h
+  | y :: ys, r, h => by
+    unfold List.find? at h
+    cases e : f y with
+    | true => rw [e] at h; cases h; exact ⟨e, List.mem_cons_self _ _⟩
+    | false =>
+      rw [e] at h
+      obtain ⟨a, b⟩ := find?_some' f ys r h
+      exact ⟨a, List.mem_cons_of_mem _ b⟩
+
+/-- Two ids in one column stay in one column when the later steps keep the
+    columns closed and the slots of the current column (`Notes.Keeps`). -/
+theorem together_keeps {a b : St} (k : Notes.Keeps a b) {x y : Nat} (h : Together a x y) : Together b x y := by
+  obtain ⟨⟨ds, e⟩, s⟩ := k
+  rcases h with ⟨hx, hy⟩ | ⟨p, mp, hx, hy⟩
+  · rcases s with ⟨xs, ex⟩ | ⟨q, mq, xs, eq⟩
+    · left; rw [ex, slotsIds_append]; exact ⟨mem_app.mpr (Or.inl hx), mem_app.mpr (Or.inl hy)⟩
+    · right
+      exact ⟨q, mq, by rw [eq, slotsIds_append]; exact mem_app.mpr (Or.inl hx),
+        by rw [eq, slotsIds_append]; exact mem_app.mpr (Or.inl hy)⟩
+  · right; exact ⟨p, by rw [e]; exact List.mem_append_of_mem_right _ mp, hx, hy⟩
+
+/-- `closePage` closes the current column with its slots. -/
+theorem together_closePage (env : Env) {st : St} {x y : Nat} (h : Together st x y) :
+    ∃ p ∈ (closePage env st).done, x ∈ slotsIds p.slots ∧ y ∈ slotsIds p.slots := by
+  rcases h with ⟨hx, hy⟩ | ⟨p, mp, hx, hy⟩
+  · have ne : st.slots ≠ [] := by
+      intro e; rw [e] at hx; exact absurd hx (List.not_mem_nil _)
+    obtain ⟨p, mp, ep⟩ := Notes.closePage_closes env st ne
+    exact ⟨p, mp, by rw [ep]; exact hx, by rw [ep]; exact hy⟩
+  · obtain ⟨⟨ds, e⟩, _⟩ := Notes.keeps_closePage env st
+    exact ⟨p, by rw [e]; exact List.mem_append_of_mem_right _ mp, hx, hy⟩
+
+/-- Root ADR 0352 invariant 3 on G07134, from `I3_separator_hold_together`:
+    under its hypotheses, the separator's line and the first line of the
+    paragraph after it are in one column of the pages output, as the later
+    steps keep the columns closed (`Notes.keeps_placeAll`).  It also
+    assumes that the footnote separator takes 0 lines or more and that the
+    notes after the paragraph are new (`Notes.Fresh`). -/
+theorem I3_separator_hold_one_column (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
+    (c : Clear st) (hw : heldHere env st = false)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
+    (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
+    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hsp : env.held sp = true)
+    (hnext : env.keptNeed rest = none ∨
+      keptCut (previousKeep env rest kq) (l0 :: ls).length = (l0 :: ls).length)
+    (hhold : 1 + (n : Int) ≤ env.capacity)
+    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
+    (hf : Notes.Fresh st (Notes.sourceNotes rest)) :
+    ∃ q ∈ (closePage env (placeAll env st (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done,
+      l.id ∈ slotsIds q.slots ∧ l0.id ∈ slotsIds q.slots := by
+  obtain ⟨e, t⟩ := I3_separator_hold_together env hfit st c hw kp kq l l0 ls rest n p sp hl hlast hkept hsp hnext
+    hhold hp hpn hpart
+  rw [e]
+  have n1 : Notes.flowNotes (.paragraph kp [l]) = [] := by
+    simp [Notes.flowNotes, hl l (List.mem_cons_self _ _)]
+  have n3 : Notes.flowNotes (.paragraph kq (l0 :: ls)) = [] := by
+    have : ∀ x ∈ l0 :: ls, x.notes = [] := fun x m => hl x (List.mem_cons_of_mem _ m)
+    simp only [Notes.flowNotes]
+    exact bind_nil' _ _ this
+  have n2 : Notes.flowNotes (.keepNext 1 sp) = [] := by simp [Notes.flowNotes]
+  have r1 := Notes.rel_step env hs st (.paragraph kp [l]) (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)
+  have r2 := Notes.rel_step env hs (step env st (.paragraph kp [l]) (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))
+    (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest)
+  have r3 := Notes.rel_step env hs (step env (step env st (.paragraph kp [l])
+    (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest)) (.keepNext 1 sp) (.paragraph kq (l0 :: ls) :: rest))
+    (.paragraph kq (l0 :: ls)) rest
+  rw [n1] at r1; rw [n2] at r2; rw [n3] at r3
+  have r := Notes.Rel.nl r1 (Notes.Rel.nl r2 r3)
+  have f3 := Notes.Rel.fresh_after r (by rw [List.nil_append]; exact hf)
+  exact together_closePage env (together_keeps (Notes.keeps_placeAll env hs rest _ f3) t)
+
+theorem slotsIds_mem {i : Nat} {ss : List (Int × Slot)} :
+    i ∈ slotsIds ss ↔ (ss.any (fun s => (slotIds s.2).contains i)) = true := by
+  rw [slotsIds, mem_bind_iff, List.any_eq_true]
+  constructor
+  · rintro ⟨s, m, h⟩; exact ⟨s, m, List.elem_eq_true_of_mem h⟩
+  · rintro ⟨s, m, h⟩; exact ⟨s, m, List.mem_of_elem_eq_true h⟩
+
+/-- The place of an id in one column only of the pages. -/
+theorem place_one {pages : List PageOut} {q : PageOut} (mq : q ∈ pages) {i : Nat} (hi : i ∈ slotsIds q.slots)
+    (hu : ∀ q' ∈ pages, i ∈ slotsIds q'.slots → q' = q) : place pages i = some (q.number, q.column) := by
+  unfold place
+  cases e : pages.find? (fun p => p.slots.any (fun s => (slotIds s.2).contains i)) with
+  | none =>
+    have := find?_none' _ _ e q mq
+    rw [slotsIds_mem.mp hi] at this; cases this
+  | some r =>
+    obtain ⟨hr, mr⟩ := find?_some' _ _ _ e
+    rw [hu r mr (slotsIds_mem.mpr hr)]; rfl
+
+/-- Root ADR 0352 invariant 3 on G07134 for one visible separator held
+    with the paragraph after it: under the hypotheses of
+    `I3_separator_hold_one_column`, and when each of the two lines is in
+    one column only of the pages output, the post-processing reports no
+    G07134 for the chain of the separator and the paragraph. -/
+theorem I3_separator_hold_no_error (env : Env) (hs : 0 ≤ env.separator) (hfit : PlainFitting env) (st : St)
+    (c : Clear st) (hw : heldHere env st = false)
+    (kp kq : Keep) (l l0 : Line) (ls : List Line) (rest : List Flow) (n p sp : Nat)
+    (hl : ∀ x ∈ l :: l0 :: ls, x.notes = []) (hlast : 1 ≤ kp.last)
+    (hkept : env.keptNeed (.keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest) = some ⟨n, 0⟩)
+    (hsp : env.held sp = true)
+    (hnext : env.keptNeed rest = none ∨
+      keptCut (previousKeep env rest kq) (l0 :: ls).length = (l0 :: ls).length)
+    (hhold : 1 + (n : Int) ≤ env.capacity)
+    (hp : 1 ≤ p) (hpn : p ≤ n) (hpart : (l0 :: ls).length ≤ p ∨ splitAtBreak kq true (l0 :: ls).length p = p)
+    (hf : Notes.Fresh st (Notes.sourceNotes rest))
+    (b a : Nat) (kp' : Keep) (mids : List Unit) (hm : ∀ m ∈ mids, passes m = true) (fs : List Flow)
+    (hu : ∀ i ∈ [l.id, l0.id], ∀ q ∈ (closePage env (placeAll env st
+      (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse,
+      ∀ q' ∈ (closePage env (placeAll env st
+        (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse,
+      i ∈ slotsIds q.slots → i ∈ slotsIds q'.slots → q = q') :
+    0 ∉ holdErrors (.separator b a kp' l :: mids ++ [.other .block fs (some l0.id)])
+      (closePage env (placeAll env st
+        (.paragraph kp [l] :: .keepNext 1 sp :: .paragraph kq (l0 :: ls) :: rest))).done.reverse := by
+  obtain ⟨q, mq, h1, h2⟩ := I3_separator_hold_one_column env hs hfit st c hw kp kq l l0 ls rest n p sp hl hlast
+    hkept hsp hnext hhold hp hpn hpart hf
+  have mq' := mem_reverse' mq
+  have e1 := place_one mq' h1 (fun q' m h => hu l.id (List.mem_cons_self _ _) q' m q mq' h h1)
+  have e2 := place_one mq' h2 (fun q' m h =>
+    hu l0.id (List.mem_cons_of_mem _ (List.mem_cons_self _ _)) q' m q mq' h h2)
+  rw [I3_separator_error_single b a kp' l mids hm fs l0.id _ _ _ e1 e2]
+  exact fun ne => ne rfl
 
 /-- The flows `separatorFlows` makes of a visible separator with no space
     before or after it and the paragraph after it are the separator's
