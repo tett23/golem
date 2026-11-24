@@ -87,6 +87,7 @@ paginateTests =
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "the index columns after page-lines (root ADR 0025, root ADR 0030)" indexAfterAdjustTests,
+      testGroup "the index columns on a page of adjusted lines (root ADR 0441)" indexOnAdjustedPageTests,
       testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
@@ -2187,6 +2188,63 @@ boundaryTableTests =
         isFigure = either (const False) (const True)
         element k (Left n) = [FParagraph defaultKeep (lines' (10 * k) n)]
         element k (Right size) = [FFigure (100 + k) size [] []]
+
+{- | The index columns on the page of the switch end before the footnotes
+of the column before it, @page-lines or not: at
+min(the lines of the type area, the lines of that column − the lines of
+its footnotes) (root ADR 0441).
+-}
+indexOnAdjustedPageTests :: [TestTree]
+indexOnAdjustedPageTests =
+  [ testCase "root ADR 0441 I1, I2: page-lines -3, two lines and a note of two, the index takes lines 2 and 3 only" $ do
+      let ps = switchPage (-3) 2 2
+      indexRows 1 ps @?= [2, 3, 2, 3]
+      length (indexRows 2 ps) @?= 8,
+    testCase "root ADR 0441 I2: page-lines -3, two lines and no note, the index takes lines 2 to 6" $
+      indexRows 1 (switchPage (-3) 2 0) @?= [2 .. 6] <> [2 .. 6],
+    testCase "root ADR 0441 I1, I2: page-lines -3, three lines and a note of two, the index takes line 3 only" $
+      indexRows 1 (switchPage (-3) 3 2) @?= [3, 3],
+    testCase "root ADR 0441 I3: page-lines -3, four lines and a note of two leave no line, the index starts on the next page" $ do
+      let ps = switchPage (-3) 4 2
+      indexRows 1 ps @?= []
+      take 2 (indexRows 2 ps) @?= [0, 1],
+    testCase "root ADR 0441 I3: page-lines -3, five lines and a note of two, the index starts on the next page" $
+      indexRows 1 (switchPage (-3) 5 2) @?= [],
+    testCase "root ADR 0441 I1, I2: page-lines +3, two lines and a note of two, the index takes lines 2 to 9 above the note" $ do
+      let ps = switchPage 3 2 2
+      indexRows 1 ps @?= [2 .. 9] <> [2 .. 5]
+      [(poLines p, noteRows p) | p <- take 1 ps] @?= [(13, [10, 11, 12])],
+    testCase "root ADR 0441 I1, I4: no page-lines, two lines and a note of two, the index takes lines 2 to 6 as before" $
+      indexRows 1 (switchPage 0 2 2) @?= [2 .. 6] <> [2 .. 6],
+    testCase "root ADR 0441 I1, I2, I3: whatever the page-lines, the lines and the note, the index on the page of the switch ends before the note and the type area" $
+      forM_ [(k, n, m) | k <- [-4 .. 4], n <- [1 .. 7], m <- [0 .. 3]] $ \(k, n, m) -> do
+        let ps = switchPage k n m
+        case [p | p <- ps, poNumber p == 1, csColumns (poColumnSet p) == 1] of
+          body : _ -> do
+            let end = min 10 (poLines body - length (noteRows body))
+                used = 1 + maximum (0 : map fst (lineRows body))
+                rows = indexRows 1 ps
+                what = show (k, n, m, end, rows)
+            assertBool ("I2 " <> what) (all (< end) rows)
+            assertBool ("I1 " <> what) (all (`notElem` noteRows body) rows)
+            when (used >= end) $ assertBool ("I3 " <> what) (null rows)
+          [] -> assertFailure "no column of the body on page 1"
+  ]
+  where
+    index2 = ColumnSet 2 (15 * 65536) (2 * 65536) 0
+    entries base n = [FParagraph defaultKeep [LineBox (base + i) [] [] [] 0] | i <- [0 .. n - 1]]
+    -- a page of 10 lines and a separator of 1: page-lines k, a paragraph of n lines whose first has a note of m lines, then 12 entries in two columns
+    switchPage k n m =
+      let first = if m > 0 then noted 0 m else LineBox 0 [] [] [] 0
+          adjust = [FAdjustLines mk k | k /= 0]
+       in paginate 1 10 (adjust <> [FParagraph defaultKeep (first : lines' 1 (n - 1)), FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
+    lineRows p = [(l, i) | (l, SLine i) <- poSlots p]
+    -- the grid lines of the entries on a page, column by column
+    indexRows page ps = [l | p <- ps, poNumber p == page, (l, i) <- lineRows p, i >= 100]
+    -- the grid lines of the separator and the notes of a column, at the end of its lines
+    noteRows p =
+      let k = sum [n | (_, _, n) <- poFootnotes p]
+       in if k == 0 then [] else [poLines p - k - 1 .. poLines p - 1]
 
 {- | On the grid, a wrapped figure fits the column when the larger of its
 lines and its side lines, the lines of the notes of its side lines and

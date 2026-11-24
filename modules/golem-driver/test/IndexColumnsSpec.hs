@@ -32,5 +32,23 @@ indexColumnsTests =
             outside @?= []
             -- the first column of the index holds the heading and its first entry
             assertBool (show (map poSlots index)) (maybe False ((>= 2) . length . poSlots) (listToMaybe index))
+          Left errs -> assertFailure (show errs),
+      testCase "root ADR 0441 I1, I2: after page-lines -3, a line and a note of two, no index line on the page of the switch reaches the separator or the note" $ do
+        let style = replaceIn "lines = 30" "lines = 10" horizontalStyle <> "\n[index]\ncolumns = 2\n"
+            marks = T.concat ["[index reading=あ" <> n <> ": 語あ" <> n <> "]" | k <- [1 .. 12 :: Int], let n = T.pack (show k)]
+            source = "@page-lines -3\n\n本文[note: " <> T.replicate 20 "注" <> "]" <> marks <> "。\n\n@index\n"
+            pitch = Sp (15 * 65536)
+        result <- layoutMiniWith miniManifest (withBodyFont style) source fakeFontFiles
+        case result of
+          Right (_, pl) -> case [p | p <- plPages pl, poNumber p == 1, csColumns (poColumnSet p) == 1] of
+            body : _ -> do
+              let notes = sum [n | (_, _, n) <- poFootnotes body]
+                  -- the separator takes a line at most
+                  end = min (10 * pitch) (poLines body - fromIntegral (notes + 1) * pitch)
+                  index = [at | p <- plPages pl, poNumber p == 1, csColumns (poColumnSet p) == 2, (at, _) <- poSlots p]
+              assertBool ("a note of two lines: " <> show (poFootnotes body)) (notes == 2)
+              assertBool ("the index starts on the page: " <> show index) (not (null index))
+              assertBool (show (poLines body, notes, index)) (all (\at -> at + pitch <= end) index)
+            [] -> assertFailure "no column of the body on page 1"
           Left errs -> assertFailure (show errs)
     ]
