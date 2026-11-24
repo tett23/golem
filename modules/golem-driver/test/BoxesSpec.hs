@@ -78,7 +78,7 @@ boxesTests =
             writeProject tmp (miniManifest <> "\n[targets.html]\n") style source fakeFontFiles
             r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optFonts = fakeProvider}
             filter isError (brDiagnostics r) @?= []
-            page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+            page <- TIO.readFile (tmp </> "build/html/a.html")
             assertBool (T.unpack page) ("<div class=\"box box-title\">\n<p class=\"ps-title\">題。</p>\n<p class=\"ps-column\">本文。</p>\n</div>\n<div class=\"box box-caution\">\n<p class=\"ps-caution\">注意。</p>\n</div>" `T.isInfixOf` page),
         testCase "B1, B5: PDF: a box of @style-def is drawn as one of style.toml, and not without the keys" $ do
           let keys = [("background", "\"pale\"", "pale"), ("border", "\"blue\"", "blue"), ("border-width", "\"2pt\"", "2pt"), ("border-style", "\"dashed\"", "dashed"), ("border-sides", "[\"before\", \"start\"]", "before,start"), ("border-radius", "\"1zw\"", "1zw"), ("padding", "\"1zw\"", "1zw")]

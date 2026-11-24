@@ -96,7 +96,7 @@ securityTests =
         brWritten r @?= []
         forM_ ["html", "text", "epub", "pdf"] $ \d ->
           doesFileExist (v </> d </> "precious.txt") >>= assertBool ("kept " <> d)
-        doesFileExist (v </> "html" </> "a.xhtml") >>= assertBool "nothing written there" . not,
+        doesFileExist (v </> "html" </> "a.html") >>= assertBool "nothing written there" . not,
       testCase "build/html as a symbolic link is G08013 too" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         v <- victim tmp
         let root = tmp </> "p"
@@ -196,7 +196,7 @@ securityTests =
         r <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
         map diagCode (filter isError (brDiagnostics r)) @?= []
         assertBool (show (brWritten r)) (any ((root </> "build" </> "html") `isPrefixOf`) (brWritten r) && not (null (brWritten r)))
-        doesFileExist (root </> "build" </> "html" </> "a.xhtml") >>= assertBool "written in build/html"
+        doesFileExist (root </> "build" </> "html" </> "a.html") >>= assertBool "written in build/html"
         doesFileExist (v </> "pdf" </> "precious.txt") >>= assertBool "kept",
       testCase "Golem ADR 0326 B1 and B4: prod clears stale PDF and dev keeps it" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         project tmp "" (withBodyFont horizontalStyle) "@figure images/bad.png alt=\"t\"\n" (bodyFontFiles horizontalStyle <> [("images/bad.png", "\x89PNG\r\n\x1a\n")])
@@ -248,7 +248,7 @@ securityTests =
             assertBool (show got) ("old.txt" `notElem` got)
             fixed got
         | (target, d, fixed) <-
-            [ (TargetHtml, "html", \got -> assertBool (show got) (all (`elem` got) ["a.xhtml", "index.xhtml", "style.css"])),
+            [ (TargetHtml, "html", \got -> assertBool (show got) (all (`elem` got) ["a.html", "index.html", "style.css"])),
               (TargetEpub, "epub", (@?= ["book.epub"])),
               (TargetText, "text", (@?= ["horizontal/a.txt", "vertical/a.txt"])),
               (TargetPdf, "pdf", \got -> (length got, "pages.json" `elem` got, length (filter (".pdf" `isSuffixOf`) got)) @?= (2, True, 1))
@@ -328,7 +328,7 @@ securityTests =
         project tmp "" horizontalStyle "# 章\n\n@figure \"q\\\" onerror=\\\"alert(1).jpg\" alt=\"t\"\n" [(name, bytes) | (_, bytes) <- img]
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         map diagCode (filter isError (brDiagnostics r)) @?= []
-        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        page <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool (T.unpack page) ("<img src=\"q&quot; onerror=&quot;alert(1).jpg\"" `T.isInfixOf` page)
         assertBool (T.unpack page) (not ("onerror=\"" `T.isInfixOf` page)),
       testCase "a font role with a quote stays inside the CSS strings" $ withSystemTempDirectory "golem-sec" $ \tmp -> do

@@ -274,7 +274,7 @@ taggedPdfTests =
                    [(diagMessage x, spanStart (diagSpan x)) | x <- dDiagnostics d, diagCode x == DiagnosticCode "G03113"]
                      @?= [("PDF/A には [color] の intent が要ります", offsetOf "\"2a\"" (dManifest d))]
                    hasPdf d @?= False
-                   assertBool (show (dWritten d)) (any (".xhtml" `isSuffixOf`) (dWritten d))
+                   assertBool (show (dWritten d)) (any (".html" `isSuffixOf`) (dWritten d))
                    assertBool (show (dWritten d)) (any (".txt" `isSuffixOf`) (dWritten d))
                )
                [Dev, Prod],
