@@ -87,7 +87,7 @@ data PhysicalState = PhysicalState
     psSlots :: ![(Sp, Slotted)],
     psNotes :: ![(NoteId, Int, Int)],
     psCarry :: ![(NoteId, Int, Int)],
-    psDeferred :: ![(Int, Sp, [Data.Text.Text], [Golem.Syntax.SrcSpan])],
+    psDeferred :: ![Waiting],
     psLabels :: ![Data.Text.Text],
     psMarks :: ![Golem.Syntax.SrcSpan],
     psDone :: ![PageOutAt Sp],
@@ -103,6 +103,21 @@ data PhysicalState = PhysicalState
     psWaits :: ![(Unmet, Int, Int, Int, Int, Bool)],
     psSections :: ![(Int, Int)]
   }
+
+-- | A figure waiting for room, or a turned figure waiting for a page of its own (golem-driver ADR 0034).
+data Waiting
+  = WaitingFigure !Int !Sp ![Data.Text.Text] ![Golem.Syntax.SrcSpan]
+  | WaitingTurned !Int ![Data.Text.Text] ![Golem.Syntax.SrcSpan]
+
+waitingId :: Waiting -> Int
+waitingId = \case
+  WaitingFigure ident _ _ _ -> ident
+  WaitingTurned ident _ _ -> ident
+
+isTurned :: Waiting -> Bool
+isTurned = \case
+  WaitingTurned {} -> True
+  WaitingFigure {} -> False
 
 {- | A complete, immutable placement snapshot, including notes, labels,
 marks, diagnostics, deferred figures and the columns already closed.
@@ -131,7 +146,7 @@ retainPhysicalPart cfg unit source kind cursor@(PhysicalCursor initialState) com
       (value, identifiers, PhysicalCursor placed) <- compose at
       let wanted = IS.fromList identifiers
           settle st
-            | any (\(ident, _, _, _) -> IS.member ident wanted) (psDeferred st) = settle (nextColumn cfg st)
+            | any (\waiting -> IS.member (waitingId waiting) wanted) (psDeferred st) = settle (nextColumn cfg st)
             | otherwise = st
       pure (value, wanted, settle placed, key (psPage starting) (psColumn starting))
     accepted (value, _, placed, _) = (value, PhysicalCursor placed)
@@ -314,20 +329,37 @@ nextColumn cfg st =
             psRules = [],
             psJoin = Nothing
           }
-   in carryInto cfg (placeDeferred cfg fresh)
+   in carryInto cfg (placeDeferred cfg (if pageEnd then placeTurned cfg fresh else fresh))
 
 nextPage :: PhysicalSettings -> PhysicalState -> PhysicalState
 nextPage cfg st =
   let s = close cfg st
       set = (psSet st) {csFirstLine = 0}
-   in carryInto cfg (placeDeferred cfg (s {psPage = psPage st + 1, psColumn = 0, psSet = set, psUsed = 0, psNotesUsed = 0, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psAdjustment = 0, psPendingSpace = 0, psBlankActive = False, psTables = [], psBoxes = [], psRules = [], psJoin = Nothing}))
+   in carryInto cfg (placeDeferred cfg (placeTurned cfg s {psPage = psPage st + 1, psColumn = 0, psSet = set, psUsed = 0, psNotesUsed = 0, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psAdjustment = 0, psPendingSpace = 0, psBlankActive = False, psTables = [], psBoxes = [], psRules = [], psJoin = Nothing}))
 
+-- | A turned figure waits for the next page, and the figures after it with it (golem-driver ADR 0034).
 placeDeferred :: PhysicalSettings -> PhysicalState -> PhysicalState
 placeDeferred cfg st = case psDeferred st of
-  [] -> st
-  (ident, extent, labels, marks) : later
+  WaitingFigure ident extent labels marks : later
     | extent <= room cfg st -> placeDeferred cfg ((putSlot st extent (SFigure ident) labels marks) {psDeferred = later})
   _ -> st
+
+{- | The turned figures waiting at the start of a new page each take a page
+of their own, without notes; the notes carried go on to the next page of
+text (golem-driver ADR 0034).
+-}
+placeTurned :: PhysicalSettings -> PhysicalState -> PhysicalState
+placeTurned cfg st = case psDeferred st of
+  WaitingTurned ident labels marks : later ->
+    let page = PageOut (psPage st) 0 False [(0, SPageFigure ident)] [] labels marks [] (psSet st) [] (limit cfg st) [] [] []
+     in placeTurned cfg st {psDone = page : psDone st, psPage = psPage st + 1, psDeferred = later}
+  _ -> st
+
+-- | The page before is the page of a turned figure (golem-driver ADR 0039).
+afterTurned :: PhysicalState -> Bool
+afterTurned st = case psDone st of
+  page : _ -> poNumber page == psPage st - 1 && any (\case (_, SPageFigure _) -> True; _ -> False) (poSlots page)
+  [] -> False
 
 carryInto :: PhysicalSettings -> PhysicalState -> PhysicalState
 carryInto cfg st
@@ -860,9 +892,9 @@ placeFlow cfg st = \case
   FFigure ident extent labels marks
     | extent > physicalCapacity cfg -> Left (PhysicalFigureTooTall ident)
     | not (null (psDeferred st)) ->
-        Right st {psDeferred = psDeferred st <> [(ident, extent, labels, marks)]}
+        Right st {psDeferred = psDeferred st <> [WaitingFigure ident extent labels marks]}
     | extent + psPendingSpace st > room cfg st && not (empty st) ->
-        Right st {psDeferred = psDeferred st <> [(ident, extent, labels, marks)], psPendingSpace = 0, psBlankActive = False}
+        Right st {psDeferred = psDeferred st <> [WaitingFigure ident extent labels marks], psPendingSpace = 0, psBlankActive = False}
     | otherwise -> Right (putSlot (fit cfg st extent) extent (SFigure ident) labels marks)
   FWrapped ident extent labels marks beside -> do
     let beforeLine line = Map.findWithDefault 0 (lbId line) (physicalWrappedBefore cfg)
@@ -932,7 +964,10 @@ placeFlow cfg st = \case
                 closed = close cfg settled
              in Right closed {psSet = set {csFirstLine = first}, psColumn = 0, psUsed = first, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psTables = [], psBoxes = [], psRules = [], psJoin = Nothing, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []}
           else let fresh = nextPage cfg settled in Right fresh {psSet = set {csFirstLine = 0}}
-  FPageFigure ident labels marks -> let fresh = if empty st then st else nextPage cfg st in Right (nextPage cfg (putSlot fresh (physicalCapacity cfg) (SPageFigure ident) labels marks))
+  -- a turned figure takes a page with nothing on it, or waits (golem-driver ADR 0034)
+  FPageFigure ident labels marks
+    | null (psDeferred st) && psColumn st == 0 && psUsed st == 0 && empty st -> Right (nextPage cfg (putSlot st (physicalCapacity cfg) (SPageFigure ident) labels marks))
+    | otherwise -> Right st {psDeferred = psDeferred st <> [WaitingTurned ident labels marks]}
   FTable ident before header rows caption below
     | Just (unit, source) <- physicalRetention cfg -> placeTableAcross cfg unit source st ident before header rows caption below
     | otherwise -> placeTable cfg st ident before header rows caption below
@@ -1611,12 +1646,19 @@ placeTableRows cfg ident header rows caption below startingState = do
 
 breakAt :: PhysicalSettings -> BreakKind -> PhysicalState -> PhysicalState
 breakAt cfg kind st = case kind of
-  BreakColumn -> nextColumn cfg st
-  BreakPage -> nextPage cfg st
+  BreakColumn
+    -- a waiting turned figure is placed first, on a page of its own (golem-driver ADR 0034, 0039)
+    | csColumns (psSet st) > 1 && not (any isTurned (psDeferred st)) -> nextColumn cfg st
+    | otherwise -> breakPage
+  BreakPage -> breakPage
   BreakRecto -> parity odd
   BreakVerso -> parity even
   where
     parity accept = parityStart cfg accept st
+    breakPage
+      -- the page after a turned figure is already a new page (golem-driver ADR 0039)
+      | empty st && psColumn st == 0 && afterTurned st = st
+      | otherwise = nextPage cfg st
 
 parityStart :: PhysicalSettings -> (Int -> Bool) -> PhysicalState -> PhysicalState
 parityStart cfg accept st =
