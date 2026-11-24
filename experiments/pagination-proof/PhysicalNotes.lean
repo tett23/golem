@@ -510,6 +510,17 @@ theorem rel_putLines (env : Env) (allow : Bool) (st s : St) (ls : List Line)
     · rename_i s1 e
       exact Rel.tr (rel_putLine env allow st s1 l e) (ih s1 h) rfl
 
+theorem rel_putLinesKeeping (env : Env) (allow : Bool) (adj after : Int) (st s : St) (ls : List Line)
+    (h : putLinesKeeping allow env adj after st ls = .ok s) : Rel st s (notesOf ls) := by
+  induction ls generalizing st with
+  | nil => simp only [putLinesKeeping, Except.ok.injEq] at h; subst h; exact Rel.refl _
+  | cons l ls ih =>
+    unfold putLinesKeeping at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      exact Rel.tr (Rel.pre (a := st) rfl (rel_putLine env allow { st with adjust := adj - (sumPitch env ls + after) } s1 l e)) (ih s1 h) rfl
+
 theorem trialRest_moved_nm (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (fid : Nat)
     (next : St) (r : Keep) (h : trialRest env k start st rows fid = .ok (.moved next r)) :
     NM next = NM st := by
@@ -757,7 +768,7 @@ theorem rel_ruledPlaceAt (env : Env) (st : St) (r : Ruled) (first lastLine : Lin
   · cases h
   · rename_i placed e
     injection h with h; subst h
-    exact Rel.post (Rel.via (rel_putLines env true _ placed r.lines e) rfl) rfl
+    exact Rel.post (Rel.via (rel_putLinesKeeping env true _ _ _ placed r.lines e) rfl) rfl
 
 theorem rel_ruledLinesHere (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
     (h : ruledLinesHere env st r later = .ok (some p)) : Rel st p (notesOf r.lines) := by

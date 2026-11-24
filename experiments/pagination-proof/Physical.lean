@@ -1060,14 +1060,22 @@ theorem hereOr_some (b : Bool) (inside : Option St) (later : List Flow) (fb : Ex
   · injection h with h; exact Or.inl h
   · exact Or.inr h
 
+/-- `putKeeping` of `ruledLinesPlan`: each line put with the column made
+    shorter by the lines after it in the block and the extra `after`, so
+    that its notes keep that area clear (golem-driver ADR 0027). -/
+def putLinesKeeping (allow : Bool) (env : Env) (adj after : Int) (st : St) : List Line → Except Failure St
+  | [] => .ok st
+  | l :: ls =>
+    match putLineWithReserve allow env { st with adjust := adj - (sumPitch env ls + after) } l with
+    | .error e => .error e
+    | .ok s => putLinesKeeping allow env adj after s ls
+
 /-- `place` of `ruledLinesPlan`: the lines of a ruled paragraph put from
     `ready`, the extra before them and the extra after them. -/
 def ruledPlaceAt (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (later : List Flow) (ready : St) :
     Except Failure St :=
-  match putLines true env
-      { ready with
-        used := ready.used + ruledBeforeExtra env st r first
-        adjust := ready.adjust - ruledAfterExtra env r lastLine later }
+  match putLinesKeeping true env ready.adjust (ruledAfterExtra env r lastLine later)
+      { ready with used := ready.used + ruledBeforeExtra env st r first }
       r.lines with
   | .error e => .error e
   | .ok placed =>
@@ -3643,6 +3651,18 @@ theorem step_putLines (env : Env) (allow : Bool) (st s : St) (ls : List Line)
       have b := ih s1 h
       simpa [lineIds] using a.trans b
 
+theorem step_putLinesKeeping (env : Env) (allow : Bool) (adj after : Int) (st s : St) (ls : List Line)
+    (h : putLinesKeeping allow env adj after st ls = .ok s) : Step st s (lineIds ls) [] := by
+  induction ls generalizing st with
+  | nil => simp only [putLinesKeeping, Except.ok.injEq] at h; subst h; exact Step.refl _
+  | cons l ls ih =>
+    unfold putLinesKeeping at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have a := (Step.same rfl rfl rfl).trans (step_putLine env allow _ s1 l e)
+      have b := ih s1 h
+      simpa [lineIds] using a.trans b
 
 theorem step_unmet (st : St) (u : List Unmet) : Step st { st with unmet := u } [] [] :=
   Step.same rfl rfl rfl
@@ -4199,7 +4219,7 @@ theorem ruledPlaceAt_step (env : Env) (st : St) (r : Ruled) (first lastLine : Li
   · cases h
   · rename_i placed e
     injection h with h; subst h
-    have c := step_putLines env true _ placed r.lines e
+    have c := step_putLinesKeeping env true _ _ _ placed r.lines e
     simpa using (Step.same rfl rfl rfl).trans (c.trans (Step.same rfl rfl rfl))
 
 theorem ruledLinesHere_step (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
@@ -5553,6 +5573,201 @@ theorem half_le (n : Int) (h : 0 ≤ n) : half n ≤ n := by
     show Int.ofNat ((k + 1) / 2) ≤ Int.ofNat (k + 1)
     exact Int.ofNat_le.mpr (Nat.div_le_self _ _)
 
+theorem fdiv_mul_le (a b : Int) (hb : 0 < b) (hq : 1 ≤ Int.fdiv a b) : Int.fdiv a b * b ≤ a := by
+  match a, b, hb, hq with
+  | Int.ofNat (k + 1), Int.ofNat n, _, _ =>
+    rw [fdiv_nat]
+    simp only [Int.ofNat_eq_coe]
+    exact Int.ofNat_le.mpr (Nat.div_mul_le_self _ _)
+  | Int.ofNat 0, Int.ofNat n, _, hq =>
+    have : Int.fdiv (Int.ofNat 0) (Int.ofNat n) = 0 := by cases n <;> rfl
+    rw [this] at hq; omega
+  | Int.negSucc m, Int.ofNat (n + 1), _, hq =>
+    have : Int.fdiv (Int.negSucc m) (Int.ofNat (n + 1)) = Int.negSucc (m / (n + 1)) := rfl
+    rw [this] at hq; have := Int.negSucc_lt_zero (m / (n + 1)); omega
+  | Int.negSucc m, Int.ofNat 0, hb, _ => simp at hb
+  | _, Int.negSucc m, hb, _ => exact absurd hb (Int.not_lt.2 (Int.le_of_lt (Int.negSucc_lt_zero m)))
+
+theorem splitNotes_parts_le : ∀ (c : Nat) (ns : List Note), partsLines (splitNotes c ns).1 ≤ c
+  | c, [] => by rw [splitNotes_nil]; simp [partsLines]
+  | c, n :: rest => by
+    simp only [splitNotes]
+    split
+    · have := splitNotes_parts_le (c - n.lines) rest
+      simp only [partsLines, List.foldr] at this ⊢
+      omega
+    · split
+      · simp [partsLines]
+      · simp [partsLines]
+
+theorem splitNotes_parts_pos : ∀ (c : Nat) (ns : List Note), (∀ n ∈ ns, 0 < n.lines) →
+    (splitNotes c ns).1 ≠ [] → 1 ≤ partsLines (splitNotes c ns).1
+  | c, [], _, h => by rw [splitNotes_nil] at h; exact absurd rfl h
+  | c, n :: rest, hp, h => by
+    have p := hp n (List.mem_cons_self _ _)
+    simp only [splitNotes] at h ⊢
+    split
+    · simp only [partsLines, List.foldr]; omega
+    · split
+      · simp only [partsLines, List.foldr]; omega
+      · rename_i h1 h2; simp only [h1, h2, if_false] at h; exact absurd rfl h
+
+theorem lineNotesUsed_le (env : Env) (st : St) (l : Line) (hp : 0 < env.pagePitch) (hn : ∀ n ∈ l.notes, 0 < n.lines)
+    (hr : st.used + env.pitchOf l.id + st.notesUsed ≤ limit env st) :
+    st.used + env.pitchOf l.id + lineNotesUsed env st l ≤ limit env st := by
+  unfold lineNotesUsed
+  by_cases he : (lineNotes env st l).1.isEmpty
+  · rw [if_pos he]
+    have : (lineNotes env st l).1 = [] := by
+      revert he; cases (lineNotes env st l).1 <;> simp [List.isEmpty]
+    rw [this]; simp only [partsLines, List.foldr]; omega
+  · rw [if_neg he]
+    have ne : (lineNotes env st l).1 ≠ [] := fun e => he (by rw [e]; rfl)
+    unfold lineNotes at ne ⊢
+    dsimp only at ne ⊢
+    generalize hq : Int.fdiv (limit env st - st.used - env.pitchOf l.id - st.notesUsed - lineSep env st l) env.pagePitch = q
+    rw [hq] at ne
+    have le := splitNotes_parts_le (max 0 q).toNat l.notes
+    have pos := splitNotes_parts_pos (max 0 q).toNat l.notes hn ne
+    generalize partsLines (splitNotes (max 0 q).toNat l.notes).1 = m at le pos ⊢
+    have q1 : 1 ≤ q := by
+      have : 1 ≤ (max 0 q).toNat := Nat.le_trans pos le
+      have := Int.toNat_of_nonneg (Int.le_max_left 0 q)
+      omega
+    have qm := fdiv_mul_le _ _ hp (by rw [hq]; exact q1)
+    rw [hq] at qm
+    have kq : ((max 0 q).toNat : Int) = q := by
+      rw [Int.toNat_of_nonneg (Int.le_max_left 0 q)]; omega
+    have : (m : Int) * env.pagePitch ≤ q * env.pagePitch := by
+      rw [← kq]; exact Int.mul_le_mul_of_nonneg_right (Int.ofNat_le.mpr le) (Int.le_of_lt hp)
+    omega
+
+theorem putLine_room (allow : Bool) (env : Env) (st s : St) (l : Line) (hp : 0 < env.pagePitch)
+    (hn : ∀ n ∈ l.notes, 0 < n.lines) (hr : st.used + env.pitchOf l.id + st.notesUsed ≤ limit env st)
+    (h : putLineWithReserve allow env st l = .ok s) :
+    s.used = st.used + env.pitchOf l.id ∧ s.used + s.notesUsed ≤ limit env st := by
+  unfold putLineWithReserve at h
+  split at h
+  · cases h
+  · split at h
+    · split at h
+      · cases h
+      · rename_i c _ e
+        exfalso
+        have : noteLines l = 0 := by simp [noteLines, e]
+        omega
+    · injection h with h; subst h
+      have := lineNotesUsed_le env st l hp hn hr
+      refine ⟨rfl, ?_⟩
+      show st.used + env.pitchOf l.id + lineNotesUsed env st l ≤ limit env st
+      exact this
+
+theorem putLinesKeeping_room (allow : Bool) (env : Env) (adj after : Int) (hp : 0 < env.pagePitch) :
+    ∀ (ls : List Line) (st s : St), (∀ l ∈ ls, ∀ n ∈ l.notes, 0 < n.lines) →
+    st.used + st.notesUsed + sumPitch env ls + after ≤ env.capacity + adj →
+    putLinesKeeping allow env adj after st ls = .ok s → s.used + s.notesUsed + after ≤ env.capacity + adj
+  | [], st, s, _, hr, h => by
+    simp only [putLinesKeeping, Except.ok.injEq] at h; subst h
+    simp only [sumPitch, List.foldr] at hr; omega
+  | l :: ls, st, s, hn, hr, h => by
+    unfold putLinesKeeping at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have sp : sumPitch env (l :: ls) = env.pitchOf l.id + sumPitch env ls := rfl
+      obtain ⟨_, r⟩ := putLine_room allow env _ s1 l hp (hn l (List.mem_cons_self _ _))
+        (by simp only [limit]; omega) e
+      simp only [limit] at r
+      exact putLinesKeeping_room allow env adj after hp ls s1 s (fun x hx => hn x (List.mem_cons_of_mem _ hx))
+        (by omega) h
+
+/-- A ruled paragraph placed from a state where its extent fits the room
+    leaves its lines, the area of its rule after and its notes within the
+    column. -/
+theorem ruledPlaceAt_room (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (later : List Flow)
+    (ready p : St) (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
+    (hr : ruledExtent env st r first lastLine later ≤ room env ready)
+    (h : ruledPlaceAt env st r first lastLine later ready = .ok p) :
+    p.used + p.notesUsed ≤ limit env p := by
+  unfold ruledPlaceAt at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    have := putLinesKeeping_room true env _ _ hp r.lines _ placed hn
+      (by simp only [ruledExtent, room, limit] at hr ⊢; omega) e
+    simp only [limit]; omega
+
+theorem nextColumn_elsewhere (env : Env) (st : St) :
+    (nextColumn env st).page ≠ st.page ∨ (nextColumn env st).column ≠ st.column := by
+  have keep : ∀ O : St, (carryInto env (placeDeferredGo env O O.deferred)).page = O.page ∧
+      (carryInto env (placeDeferredGo env O O.deferred)).column = O.column := by
+    intro O
+    obtain ⟨p1, p2, _⟩ := placeDeferredGo_fields env O O.deferred
+    obtain ⟨c1, c2, _⟩ := carryInto_fields env (placeDeferredGo env O O.deferred)
+    exact ⟨by rw [c1, p1], by rw [c2, p2]⟩
+  unfold nextColumn placeDeferred
+  obtain ⟨k1, k2⟩ := keep (opened env false st)
+  rw [k1, k2]
+  by_cases pe : st.columns ≤ st.column + 1
+  · left
+    have op : opened env false st = placeTurned env (fresh env false st) := by simp [opened, pe]
+    rw [op]; unfold placeTurned
+    have := placeTurnedGo_page env (fresh env false st) (fresh env false st).deferred
+    have fp : (fresh env false st).page = st.page + 1 := by simp [fresh, pe]
+    omega
+  · right
+    have op : opened env false st = fresh env false st := by simp [opened, pe]
+    rw [op, fresh_inPage env st pe]; omega
+
+/-- `fit` keeps the column only where the amount fits its room, or where
+    the column is empty and its room shorter than the amount. -/
+theorem fit_here_room (env : Env) (st : St) (a : Int)
+    (h : (fit env st a).page = st.page ∧ (fit env st a).column = st.column) :
+    a ≤ room env (fit env st a) ∨ (empty st = true ∧ room env st < a) := by
+  unfold fit at h ⊢
+  by_cases c1 : empty st = true ∧ a ≤ room env st
+  · rw [if_pos c1]; left; simp only [dropAtTop, room, limit] at c1 ⊢; omega
+  · rw [if_neg c1] at h ⊢
+    by_cases c2 : empty st = true ∧ st.adjust < 0
+    · right; exact ⟨c2.1, Int.not_le.mp (fun x => c1 ⟨c2.1, x⟩)⟩
+    · rw [if_neg c2] at h ⊢
+      by_cases c3 : a + st.pending ≤ room env st
+      · rw [if_pos c3]; left; simp only [room, limit] at c3 ⊢; omega
+      · rw [if_neg c3] at h ⊢
+        by_cases c4 : empty st = true
+        · right; exact ⟨c4, Int.not_le.mp (fun x => c1 ⟨c4, x⟩)⟩
+        · rw [if_neg c4] at h
+          exfalso
+          rcases nextColumn_elsewhere env st with e | e
+          · exact e h.1
+          · exact e h.2
+
+/-- What `ruledLinesHere` places lies within the column with its notes,
+    unless the column was empty and its room shorter than the block. -/
+theorem ruledLinesHere_room (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
+    (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
+    (h : ruledLinesHere env st r later = .ok (some p)) :
+    p.used + p.notesUsed ≤ limit env p ∨
+      (empty st = true ∧ ∃ first lastLine, r.lines.getLast? = some lastLine
+        ∧ room env st < ruledExtent env st r first lastLine later) := by
+  unfold ruledLinesHere at h
+  split at h
+  · rename_i first lastLine _ _ hlast
+    split at h
+    · cases h
+    · split at h
+      · rename_i hc
+        split at h
+        · cases h
+        · rename_i s0 e
+          injection h with h; injection h with h; subst h
+          rcases fit_here_room env st _ hc with f | ⟨em, f⟩
+          · exact Or.inl (ruledPlaceAt_room env st r first lastLine later _ _ hp hn f e)
+          · exact Or.inr ⟨em, first, lastLine, hlast, f⟩
+      · cases h
+  · cases h
+
 /-- The rule after of a ruled paragraph at the end of the column
     (`ruleAfterEdge` with no outside, the flows after it not read) ends
     within the area counted after its last line: the pitch of that line and
@@ -5608,34 +5823,45 @@ theorem ruledHere_cases (inner : Inner) (env : Env) (st : St) (r : Ruled) (later
 
 /-- The rule after of a ruled paragraph `ruledHere` places in the free
     placement (golem-driver ADR 0027, root ADR 0397 I8): it waits for the
-    next block to share its area, or it ends above the notes of the column
-    (`ruleAfterInColumn`), or it is placed at the end of the column within
-    the area the block counts after its last line, so that it ends at or
-    before the length the block uses.  That length is not bounded by the
-    notes of the column: the extent of a ruled paragraph does not count
-    the notes of its lines, so a rule placed at the end of the column can
-    lie in the notes (README.md). -/
+    next block to share its area, or it ends within the column and above
+    the notes of the column.  Each line of the block keeps the lines after
+    it and the area of the rule after out of its notes (`putKeeping` of
+    `ruledLinesPlan`), so a rule placed at the end of the column ends above
+    the notes as well.  The one exception is a column that was empty and
+    whose room was shorter than the block: `fit` keeps such a column, and
+    the block runs past its room (README.md). -/
 theorem I3_ruledHere_rule_after (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
     (side : RuleSide) (lastLine : Line) (ha : r.after = some side) (hl : r.lines.getLast? = some lastLine)
-    (hi : 0 ≤ side.inner) (h : ruledHere inner env st r later = .ok (some p)) :
+    (hi : 0 ≤ side.inner) (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
+    (h : ruledHere inner env st r later = .ok (some p)) :
     (ruledLinesHere env st r later = .ok (some p) ∧ joiningNext later = true)
-    ∨ (ruledLinesHere env st r later = .ok (some p) ∧ later ≠ []
-      ∧ p.used - ruledAfterExtra env r lastLine later - env.pitchOf lastLine.id
-        + ruleAfterPos env r lastLine later side + side.weight ≤ limit env p - p.notesUsed)
-    ∨ (∃ l', ruledLinesHere env st r l' = .ok (some p) ∧ ruledAfterExtra env r lastLine l' = ruledAfterExtra env r lastLine []
-      ∧ ruleAfterPos env r lastLine l' side = ruleAfterPos env r lastLine [] side
-      ∧ p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
-        + ruleAfterPos env r lastLine l' side + side.weight ≤ p.used) := by
+    ∨ (∃ l', ruledLinesHere env st r l' = .ok (some p) ∧ joiningNext l' = false
+      ∧ (p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
+          + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed
+        ∨ (empty st = true ∧ ∃ first, room env st < ruledExtent env st r first lastLine l'))) := by
   have edge := I3_ruleAfter_edge env r lastLine side ha hi
+  have atEdge : ruledLinesHere env st r [] = .ok (some p) →
+      ∃ l', ruledLinesHere env st r l' = .ok (some p) ∧ joiningNext l' = false
+        ∧ (p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
+            + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed
+          ∨ (empty st = true ∧ ∃ first, room env st < ruledExtent env st r first lastLine l')) := by
+    intro e
+    refine ⟨[], e, rfl, ?_⟩
+    rcases ruledLinesHere_room env st r [] p hp hn e with f | ⟨em, first, last', hl', f⟩
+    · left; omega
+    · right
+      rw [hl] at hl'; injection hl' with hl'; subst hl'
+      exact ⟨em, first, f⟩
   rcases ruledHere_cases inner env st r later p h with ⟨e, c⟩ | e
-  · rcases c with c | c | c
-    · subst c; exact Or.inr (Or.inr ⟨[], e, rfl, rfl, by omega⟩)
-    · exact Or.inl ⟨e, c⟩
-    · by_cases hn : later = []
-      · subst hn; exact Or.inr (Or.inr ⟨[], e, rfl, rfl, by omega⟩)
-      · refine Or.inr (Or.inl ⟨e, hn, ?_⟩)
+  · by_cases hj : joiningNext later = true
+    · exact Or.inl ⟨e, hj⟩
+    · rcases c with c | c | c
+      · subst c; exact Or.inr (atEdge e)
+      · exact absurd c hj
+      · refine Or.inr ⟨later, e, by simpa using hj, Or.inl ?_⟩
         simp only [ruleAfterFitsLast, hl, ruleAfterFits, ha, decide_eq_true_eq] at c
         exact c
-  · exact Or.inr (Or.inr ⟨[], e, rfl, rfl, by omega⟩)
+  · exact Or.inr (atEdge e)
+
 
 end PhysicalPagination

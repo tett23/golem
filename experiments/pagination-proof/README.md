@@ -828,16 +828,25 @@ PR #1133 は、後続ブロックの最初の部分をそのブロック自身�
 `Physical.lean` は、`ruleAfterInColumn` が読む `psRules` を写さず、ブロックの後の罫線を一つだけ読む（`ruleAfterFits`）。
 罫線つきのブロックの id は互いに異なるので、`psRules` の中でその id を持つ後の罫線はこの一つである。
 
-`I3_ruledHere_rule_after` は、`ruledHere` が置いた段落の後の罫線について、次の三つのどれかが成り立つことを示す。
-一つ目は、後の罫線が次の段落との共有を待つことである。
-二つ目は、後続を読んだ配置で、後の罫線が段の脚注より上で終わることである。
-三つ目は、段の終わりの長さで置いた後の罫線が、段落が使った長さの中で終わることである（`I3_ruleAfter_edge`）。
-三つ目の罫線は、段の脚注に重なりうる。
-罫線つきの段落の長さ（`ruledExtent`）が行の脚注を数えないので、行の脚注が段を埋めると、段落の残りの行と後の罫線が脚注の領域に入るからである。
-容量 40 sp、脚注の区切り 2 sp の段に、3 行の脚注を持つ行と脚注のない行からなる段落を、後の罫線（内側 2 sp、外側 2 sp、太さ 1 sp）とともに置き、1 行の段落を続けた。
-golem-layout の `paginatePhysical` は、1 ページ目に脚注を 2 行置いて脚注の領域を 18 sp から始め、段落の 2 行目を 10 sp に、後の罫線を 21 sp に置いた。
-`Physical.lean` の `ruledHere` も、同じ使用長と脚注の長さと罫線の位置を返す。
-`PhysicalBoundary.hs` は、この形の入力（後の罫線を持ち最初の行に脚注を持つ段落）を照合に含む。
+`I3_ruledHere_rule_after` は、`ruledHere` が置いた段落の後の罫線が、次の段落との共有を待つか、段の中で段の脚注より上で終わることを示す。
+段の終わりの長さで置いた後の罫線も、段落が使った長さの中で終わり（`I3_ruleAfter_edge`）、その長さは段の脚注より上にある。
+段落の各行は、段落の残りの行と後の罫線の領域を、その行の脚注に使わせないからである（`Paginate/Physical.hs:1380` の `ruledLinesPlan` の `putKeeping`、`Physical.lean` の `putLinesKeeping`）。
+各行を置いた後で、使用長と脚注の長さと残りの行と後の罫線の領域の和が段の長さを超えないことが、行ごとに保たれる（`putLinesKeeping_room`）。
+定理の前提は、ページの行送りが正であることと、段落の行の脚注がどれも 1 行以上であることである。
+脚注が 0 行なら、脚注の区切りだけが余りを越えて数えられうる。
+
+この性質は、PR #1149 が golem-layout を直す前には成り立たなかった。
+容量 40 sp、脚注の区切り 2 sp の段に、3 行の脚注を持つ行と脚注のない行からなる段落を、後の罫線（内側 2 sp、外側 2 sp、太さ 1 sp）とともに置き、1 行の段落を続けた入力で、直す前の `paginatePhysical` は脚注を 2 行置き、後の罫線を脚注の領域の中の 21 sp に置いた。
+直した後は、1 ページ目に脚注を 1 行だけ置いて脚注の領域を 28 sp から始め、後の罫線を 22 sp に置く。
+`PhysicalBoundary.hs` は、この形の入力（後の罫線を持ち、1 行目か 2 行目に脚注を持つ 2 行または 3 行の段落）を照合に含む。
+
+定理の例外は、空の段の余りが段落より短いときである。
+`fit` は空の段を次の段へ送らないので、段落はその段の余りを越えて置かれ、後の罫線も脚注の領域や段の外に出うる。
+容量 40 sp の 1 段組みで、2 行の段落の後に 2 段組みに切り替え、2 行の段落と、後の罫線を持つ 3 行の罫線つきの段落を続けた。
+golem-layout の `paginatePhysical` は、2 段目を 20 sp から始め、罫線つきの段落の 3 行目を 40 sp に、後の罫線を 51 sp に置いた。
+どちらも容量の 40 sp を越える。
+同じ 3 行を罫線のない段落にすると、2 段目に 2 行を置き、残りの 1 行を次のページへ送る。
+`Physical.lean` の `paginate` も同じ位置を返し、`PhysicalBoundary.hs` はこの入力を照合に含む。
 これは golem-layout の側の課題として報告し、golem-layout は直していない。
 
 回り込み図版は、長さのないスロット（`SWrapped`）として段に置き、横に収まる行（`fittingWrapped`）を図版の終わりまでの長さを予約して置き、残りの行を次の段から置く（`placeWrappedOverflow`）。
@@ -1085,7 +1094,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:990` `placeFlow` の混ぜた `FBoxed`、`:1023` `boxKeepLinks`、`:1034` `boxKeepMarks`、`:1038` `boxKeepCounts`、`:1042` `BoxUnitKeep`、`:1049` `boxUnitKeeps`、`:1064` `collectMixedBoxUnits`、`:1150` `placeBoxedStanzaWith` | `collectMixed`、`boxLinks`、`unitKeepsOf`、`unitEntries`、`mapsOf`、`BoxMaps`、`UnitKeep`、`unitGaps`、`linkBreaks`、`unitBoundary`、`atGroupStart`、`paragraphBreak`、`legalBreak`、`boundaryWarnings`、`relaxFor`、`fallbackKeep`、`unrelaxed`、`boxSelected`、`boxShort`、`putUnits`、`putStanzaPart`、`placeBoxedStanza` |
 | `Paginate/Physical.hs:991` `placeFlow` のそのほかの `FBoxed`、`:1008` `flowLines` | `placeGeneric`、`genericExtra`、`genericMinimum`、`placeFlows`、`Inner`、`level`、`flowDepth`、`flowsDepth`、`flowLines`、`bodyLines` |
 | `Paginate/Physical.hs:812` `fitsFollowing` の `FBoxed` | `boxFits` |
-| `Paginate/Physical.hs:1311` `placeRuledKeeping`、`:1320` `movesForFollowing`、`:1332` `joinsNext`、`:1345` `ruledHere`、`:1356` `ruleAfterInColumn`、`:1361` `settlesHere`、`:1367` `ruledLinesHere`、`:1380` `ruledLinesPlan`、`:1430` `placeRuled`、`:1502` `flushPendingRule` | `placeRuledKeeping`、`movesForFollowing`、`joiningNext`、`ruledHere`、`hereOr`、`ruleAfterFits`、`ruleAfterFitsLast`、`ruleAfterPos`、`settlesHere`、`ruledLinesHere`、`ruledPlaceAt`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`flushPendingRule`、`ruledRank` |
+| `Paginate/Physical.hs:1311` `placeRuledKeeping`、`:1320` `movesForFollowing`、`:1332` `joinsNext`、`:1345` `ruledHere`、`:1356` `ruleAfterInColumn`、`:1361` `settlesHere`、`:1367` `ruledLinesHere`、`:1380` `ruledLinesPlan`、`:1433` `placeRuled`、`:1505` `flushPendingRule` | `placeRuledKeeping`、`movesForFollowing`、`joiningNext`、`ruledHere`、`hereOr`、`ruleAfterFits`、`ruleAfterFitsLast`、`ruleAfterPos`、`settlesHere`、`ruledLinesHere`、`ruledPlaceAt`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`flushPendingRule`、`ruledRank` |
 | `Paginate/Physical.hs:1448` `placeRuled` の `RuledHeading` | `placeRuled`、`headingStateOf`、`keepFrom`、`headingBeforeExtra`、`headingAfterExtra`、`headingNotesExtent`、`putRuledHeading`、`ruledText` |
 | `Paginate/Physical.hs:1416` `waitFor`、`:1423` `waitForPrior` | `waitFor`、`waitForPrior` |
 | `Paginate/Physical.hs:1659` `breakAt`、`:1675` `parityStart` | `breakAt`、`parityStart` |

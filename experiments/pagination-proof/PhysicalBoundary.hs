@@ -188,13 +188,21 @@ ruledInputs =
          n <- [1, 2],
          e <- [10, 20]
        ]
-    -- a ruled paragraph with a note on its first line, its rule after
-    -- placed with the column-end area when it does not lie above the notes
-    <> [ (Column cap 2 1, [para 0 p | p > 0] <> [ruled 100 Nothing (Just s) False (Keep 1 1 False) (noted 10 2 0 m), para 30 1])
+    -- a ruled paragraph with a note on one of its lines, whose lines keep
+    -- the later lines and the area of the rule after out of their notes
+    <> [ (Column cap 2 1, [para 0 p | p > 0] <> [ruled 100 Nothing (Just s) False (Keep 1 1 False) (noted 10 n at m), para 30 1])
        | cap <- [40, 60],
          p <- [0, 1],
          s <- sides,
+         n <- [2, 3],
+         at <- [0, 1],
          m <- [1 .. 4]
+       ]
+    -- a ruled paragraph taller than the room of the empty second column
+    -- of a set switched to in the page, which fit keeps
+    <> [ (Column 40 0 1, [para 0 2, FSwitchColumns (ColumnSet 2 0 0 0), para 10 2, ruled 100 Nothing (Just s) False defaultKeep (lines' 20 n), para 30 1])
+       | s <- sides,
+         n <- [2, 3]
        ]
 
 -- A column made shorter before a tall line or a need-lines; chains of
