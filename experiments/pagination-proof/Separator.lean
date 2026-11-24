@@ -1179,6 +1179,7 @@ structure Clear (st : St) : Prop where
   first : st.firstLine = 0
   reserved : st.reserved = 0
   noteLines : st.notes = [] → st.noteLines = 0
+  setAdjust : st.setAdjust = 0
 
 theorem closePage_keeps (env : Env) (st : St) :
     (closePage env st).breaks = st.breaks ∧ (closePage env st).need = st.need ∧ (closePage env st).blank = st.blank ∧
@@ -1244,14 +1245,16 @@ theorem nextColumn_clear (env : Env) (st : St) (c : Clear st) :
   have r : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).reserved = 0 := by
     unfold advanceFresh; dsimp only; split <;> simp [c.reserved]
   have a : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).adjust = 0 := by
-    unfold advanceFresh; dsimp only
+    unfold advanceFresh; dsimp only; split <;> simp [c.setAdjust]
+  have sa : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).setAdjust = 0 := by
+    unfold advanceFresh; dsimp only; split <;> simp [c.setAdjust]
   have sl : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).slots = [] := by
     unfold advanceFresh; dsimp only
   have no : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).notes = [] := by
     unfold advanceFresh; dsimp only
   have pe : (advanceFresh env (decide (st.columns ≤ st.column + 1)) st).pending = [] := by
     unfold advanceFresh; dsimp only
-  exact ⟨⟨k1.trans c.breaks, k2.trans c.need, k3.trans c.blank, k4.trans c.box, a, rfl, pe, f, r, fun _ => nl⟩,
+  exact ⟨⟨k1.trans c.breaks, k2.trans c.need, k3.trans c.blank, k4.trans c.box, a, rfl, pe, f, r, fun _ => nl, sa⟩,
     u, nl, sl, no, d1, d2⟩
 
 /-- A line with no footnote takes one line of the column and nothing else. -/
@@ -1262,10 +1265,11 @@ theorem putLine_plain (env : Env) (st : St) (l : Line) (h : l.notes = []) :
 
 theorem clear_putLine (env : Env) (st : St) (l : Line) (h : l.notes = []) (c : Clear st) : Clear (putLine env st l) := by
   rw [putLine_plain env st l h]
-  exact ⟨c.breaks, c.need, c.blank, c.box, c.adjust, c.deferred, c.pending, c.first, c.reserved, c.noteLines⟩
+  exact ⟨c.breaks, c.need, c.blank, c.box, c.adjust, c.deferred, c.pending, c.first, c.reserved, c.noteLines,
+    c.setAdjust⟩
 
 theorem clear_addUnmet (u : Unmet) (st : St) (c : Clear st) : Clear (addUnmet u st) :=
-  ⟨c.breaks, c.need, c.blank, c.box, c.adjust, c.deferred, c.pending, c.first, c.reserved, c.noteLines⟩
+  ⟨c.breaks, c.need, c.blank, c.box, c.adjust, c.deferred, c.pending, c.first, c.reserved, c.noteLines, c.setAdjust⟩
 
 theorem clear_addUnmets (us : List Unmet) (st : St) (c : Clear st) : Clear (us.foldl (fun s u => addUnmet u s) st) := by
   induction us generalizing st with
@@ -1599,13 +1603,13 @@ theorem separator_place (env : Env) (hfit : PlainFitting env) (st : St) (kp : Ke
 /-- What the empty-column rule reads of a state. -/
 def View (st : St) :=
   (st.slots, st.done, st.used, st.noteLines, st.notes, st.breaks, st.need, st.blank, st.box, st.adjust,
-    st.deferred, st.pending, st.firstLine, st.reserved)
+    st.deferred, st.pending, st.firstLine, st.reserved, st.setAdjust)
 
 theorem view_clear {a b : St} (v : View a = View b) (c : Clear a) : Clear b := by
   simp only [View, Prod.mk.injEq] at v
-  obtain ⟨_, _, _, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14⟩ := v
+  obtain ⟨_, _, _, e4, e5, e6, e7, e8, e9, e10, e11, e12, e13, e14, e15⟩ := v
   exact ⟨e6 ▸ c.breaks, e7 ▸ c.need, e8 ▸ c.blank, e9 ▸ c.box, e10 ▸ c.adjust, e11 ▸ c.deferred, e12 ▸ c.pending,
-    e13 ▸ c.first, e14 ▸ c.reserved, fun h => e4 ▸ c.noteLines (e5 ▸ h)⟩
+    e13 ▸ c.first, e14 ▸ c.reserved, fun h => e4 ▸ c.noteLines (e5 ▸ h), e15 ▸ c.setAdjust⟩
 
 theorem view_free (env : Env) {a b : St} (v : View a = View b) : free env a = free env b := by
   simp only [View, Prod.mk.injEq] at v
@@ -1984,7 +1988,7 @@ theorem I3_separator_hold_together (env : Env) (hs : 0 ≤ env.separator) (hfit 
     have cg : Clear sg := by
       rw [esg]
       exact ⟨c2.breaks, c2.need, c2.blank, c2.box, c2.adjust, c2.deferred, c2.pending, c2.first, c2.reserved,
-        c2.noteLines⟩
+        c2.noteLines, c2.setAdjust⟩
     have hg : heldHere env sg = true := by rw [esg]; exact h2
     have mg : l.id ∈ slotsIds sg.slots := by rw [esg]; exact m2
     have fg : (p : Int) ≤ free env sg := by
@@ -2423,7 +2427,7 @@ theorem keep_gap (env : Env) (hs : 0 ≤ env.separator) (s1 : St) (c1 : Clear s1
     · rw [e2]; show placeAll env (step env s2 (.space g) R) R = _; rw [hsg]
     · rw [esg]
       exact ⟨c2.breaks, c2.need, c2.blank, c2.box, c2.adjust, c2.deferred, c2.pending, c2.first, c2.reserved,
-        c2.noteLines⟩
+        c2.noteLines, c2.setAdjust⟩
     · rw [esg]; exact h2
     · rw [esg]; exact sl2
     · rw [esg]; simp only [gapLines]; simp only [free, cap, boxAfter] at f2 ⊢; omega

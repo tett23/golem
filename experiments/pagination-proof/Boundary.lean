@@ -98,7 +98,8 @@ partial def nextNeed (held : Nat → Bool) (capacity columns : Nat) : List Flow 
     | .heading _ n ls => plus ⟨n, noteLinesOf ls⟩ (nextNeed held capacity columns rest)
     | .figure _ n => grid (min n capacity)
     | .pageFigure _ => grid 0
-    | .wrapped _ n ls => grid (max n ls.length)
+    -- with the notes of the side lines (root ADR 0443)
+    | .wrapped _ n ls => ⟨max n ls.length, noteLinesOf ls⟩
     | .space n => spaced capacity n (nextNeed held capacity columns rest)
     | .brk _ | .sectionStart _ _ => grid 0
     | .noBreak | .noBreakLines _ | .keepNext _ _ | .needLines _ | .adjustLines _ => nextNeed held capacity columns rest
@@ -246,6 +247,13 @@ inductive Element where
   | wrapped (id n base b : Nat)
   /-- first line, lines, the line with the note, lines of the note -/
   | noted (base n pos m : Nat)
+  /-- the grid lines `@page-lines` changes the column by -/
+  | adjust (k : Int)
+  /-- the columns switched to -/
+  | switch (n : Nat)
+  /-- id, grid lines, first line beside, lines beside, the line with the
+      note, lines of the note -/
+  | wrappedNoted (id n base b pos m : Nat)
   deriving Inhabited
 
 instance : Inhabited Flow := ⟨.noBreak⟩
@@ -256,6 +264,9 @@ def lines' (base n : Nat) : List Line := (List.range n).map fun i => ⟨base + i
 def runs (base : Nat) : List Nat → List (List Line)
   | [] => []
   | n :: ns => lines' base n :: runs (base + n) ns
+
+def notedLines (base n pos m : Nat) : List Line :=
+  (lines' base n).enum.map fun (j, l) => if j = pos then { l with notes := [⟨500 + base, m⟩] } else l
 
 partial def Element.flow : Element → Flow
   | .boxed i b a body => .boxed i b a (body.map Element.flow)
@@ -269,9 +280,10 @@ partial def Element.flow : Element → Flow
       | .inr n => .heading false n (lines' base 1))
   | .stanza all base vs => .stanza ⟨2, 2, all⟩ (runs base vs)
   | .wrapped i n base b => .wrapped i n (lines' base b)
-  | .noted base n pos m =>
-    .paragraph defaultKeep ((lines' base n).enum.map fun (j, l) =>
-      if j = pos then { l with notes := [⟨500 + base, m⟩] } else l)
+  | .noted base n pos m => .paragraph defaultKeep (notedLines base n pos m)
+  | .adjust k => .adjustLines k
+  | .switch n => .switchColumns n
+  | .wrappedNoted i n base b pos m => .wrapped i n (notedLines base b pos m)
   | .para base n => .paragraph defaultKeep (lines' base n)
   | .fig id n => .figure id n
   | .head base => .heading false 1 (lines' base 1)
@@ -297,6 +309,9 @@ partial def Element.show : Element → String
     s!"R{i}:{bit b}{bit a}{bit j}:" ++ (match body with | .inl n => s!"L{n}" | .inr n => s!"H{n}") ++ s!":{base}"
   | .stanza all base vs => s!"V{base}:{bit all}:" ++ ",".intercalate (vs.map toString)
   | .wrapped i n base b => s!"W{i}:{n}:{base}:{b}"
+  | .adjust k => s!"A{k}"
+  | .switch n => s!"S{n}"
+  | .wrappedNoted i n base b pos m => s!"Y{i}:{n}:{base}:{b}:{pos}:{m}"
   | .noted base n pos m => s!"Q{base}:{n}:{pos}:{m}"
 where
   bit (b : Bool) : String := if b then "1" else "0"
@@ -387,6 +402,21 @@ def kindInputs : List (Nat × List Element) :=
       kindChoices.bind fun kind => [true, false].bind fun kindFirst => [1, 3].map fun n =>
       (c, [Element.para 0 p] ++ (if kindFirst then [kind 1, control 2] else [control 1, kind 2]) ++ [.para 30 n]))
 
+/-- `adjustInputs` of Boundary.hs. -/
+def adjustInputs : List (Nat × List Element) :=
+  ([3, 4, 5].bind fun c => [2, 3, 4, 5, 6].bind fun m => [(-1 : Int), 1, 2, 3, 4].bind fun a =>
+      [[], [Element.noted 10 1 0 1], [Element.wrappedNoted 100 2 10 2 0 1], [Element.switch 2, .para 10 3]].bind fun more =>
+      [1, 3].map fun n => (c, [Element.noted 0 1 0 m, .adjust a] ++ more ++ [.para 20 n]))
+  ++ ([3, 4, 5].bind fun c => [1, 2].bind fun p => [0, 1, 2].bind fun m => [(-2 : Int), -1, 1, 2].bind fun a =>
+      [2, 3].bind fun s => [1, 2, 3, 4, 5, 6].map fun q =>
+      (c, [if m = 0 then Element.para 0 p else .noted 0 p 0 m, .adjust a, .switch s, .para 10 q, .para 20 1]))
+  ++ ([2, 3, 4, 5].bind fun c => [0, 1, 2].bind fun p => [1, 2, 3].bind fun n => [1, 2, 3].bind fun b =>
+      (List.range b).bind fun pos => [1, 2, 3].bind fun m => [1, 2, 3].map fun k =>
+      (c, (if 0 < p then [Element.para 0 p] else []) ++ [.wrappedNoted 100 n 10 b pos m, .para 20 k]))
+  ++ ([3, 4, 5].bind fun c => [1, 2].bind fun p => [Element.head 40, .keepNext 1, .noBreak, .need 3].bind fun control =>
+      [1, 2].bind fun n => [1, 2].bind fun b => [1, 2, 3].map fun m =>
+      (c, [Element.para 0 p, control, .wrappedNoted 100 n 10 b 0 m, .para 20 1]))
+
 def inputs : List (Nat × List Element) :=
   ([1, 2, 3].bind fun c => [(c, []), (c, [.para 0 1])])
   ++ ([1, 2, 3].bind fun c =>
@@ -418,6 +448,8 @@ def unmetText : Unmet → String
   | .shortFirst i w g => s!"!first{i}:{w}:{g}"
   | .shortLast i w g => s!"!last{i}:{w}:{g}"
   | .unplaceableFootnote i n => s!"!unplaceable{i}:{n}"
+  | .adjust n limit =>
+    s!"!adjust{n}:" ++ (match limit with | .noRoom => "AdjustNoRoom" | .linesPlaced => "AdjustLinesPlaced" | .oneLine => "AdjustOneLine")
   | u => s!"!{reprStr u}"
 
 def pageText (p : PageOut) : String :=
@@ -434,7 +466,7 @@ def pages (capacity : Nat) (es : List Element) : List String :=
 /-- The pages of the inputs of part `part` of `parts` contiguous parts,
     so that check.sh evaluates the parts side by side. -/
 def report (part parts : Nat) : String :=
-  let all := inputs ++ kindInputs
+  let all := inputs ++ kindInputs ++ adjustInputs
   let size := (all.length + parts - 1) / parts
   String.join (((all.drop (part * size)).take size).map fun (c, es) =>
     s!"{c} [{" ".intercalate (es.map Element.show)}]\n" ++ String.join ((pages c es).map fun p => s!"  {p}\n"))

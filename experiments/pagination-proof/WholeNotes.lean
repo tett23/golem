@@ -638,6 +638,67 @@ theorem Rel.addUs (us : List Unmet) (st : St) : Rel st (us.foldl (fun s u => add
   | nil => exact Rel.refl st
   | cons u us ih => simp only [List.foldl]; exact Rel.nl (Rel.addU u st) (ih _)
 
+/-- Joining a part to the part before it of the same note keeps the lines. -/
+theorem ex_joinNotePart (parts : List NotePart) (q : NotePart) :
+    ex (joinNotePart parts q) = ex parts ++ partLines q := by
+  unfold joinNotePart
+  split
+  · rename_i j f l before e
+    split
+    · rename_i c
+      obtain ⟨c1, c2⟩ := c
+      have pr : parts = before.reverse ++ [(j, f, l)] := by
+        have := congrArg List.reverse e; simpa using this
+      obtain ⟨qi, qf, ql⟩ := q
+      simp only at c1 c2
+      subst c1; subst c2
+      rw [pr, ex_append, ex_append, List.append_assoc]
+      simp only [ex, partLines, List.cons_bind, List.nil_bind, List.append_nil]
+      rw [seg_add]
+    · rw [ex_append]; simp [ex, partLines]
+  · rw [ex_append]; simp [ex, partLines]
+
+theorem ex_foldl_joinNotePart (parts qs : List NotePart) :
+    ex (qs.foldl joinNotePart parts) = ex parts ++ ex qs := by
+  induction qs generalizing parts with
+  | nil => simp
+  | cons q qs ih =>
+    simp only [List.foldl]; rw [ih, ex_joinNotePart, ex_cons, List.append_assoc]
+
+theorem takeNoteLines_lines (r : Int) (ps : List NotePart) :
+    ex (takeNoteLines r ps).1 ++ ex (takeNoteLines r ps).2 = ex ps := by
+  induction ps generalizing r with
+  | nil => rfl
+  | cons p more ih =>
+    obtain ⟨i, f, l⟩ := p
+    simp only [takeNoteLines]
+    split
+    · rfl
+    · split
+      · simp only [ex_cons, List.append_assoc, ih]
+      · rename_i h1 h2
+        have t := Int.toNat_of_nonneg (show 0 ≤ r by omega)
+        simp only [ex_cons, ex_nil, List.append_nil, partLines, ← List.append_assoc]
+        rw [← seg_add, show r.toNat + (l - r.toNat) = l by omega]
+
+/-- `drainPendingNotes` moves lines of the notes continued to the column,
+    in their order, and keeps every line of every note: the lines of the
+    notes of the pages, of the column and continued, in this order, stay
+    as they are, so the continued notes come before any note placed after
+    them (root ADR 0444 I1 for `@page-lines` on the grid). -/
+theorem nm_drainPendingNotes (env : Env) (st : St) : NM (drainPendingNotes env st) = NM st := by
+  unfold drainPendingNotes
+  split
+  · rfl
+  · dsimp only [NM]
+    rw [ex_foldl_joinNotePart, List.append_assoc, List.append_assoc, List.append_assoc, takeNoteLines_lines]
+
+theorem rel_drainPendingNotes (env : Env) (st : St) : Rel st (drainPendingNotes env st) [] := by
+  obtain ⟨ns, nl, ps, e⟩ := drainPendingNotes_eq env st
+  have n := nm_drainPendingNotes env st
+  rw [e] at n ⊢
+  exact Rel.of_R0 (R0.same n (Grows.of_eq rfl (Keeps.same rfl rfl)))
+
 theorem Rel.dropBlanks (ns : List Nat) (st : St) :
     Rel st (ns.foldl (fun s _ => addUnmet .droppedBlank s) st) [] := by
   induction ns generalizing st with
@@ -1218,7 +1279,8 @@ theorem rel_place (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (r
   | ruled i b a j body => simp only [place]; rw [flowNotes_ruled]; exact rel_placeRuled env hs _ _ _ _ _ _ _
   | wrapped i n beside =>
     simp only [place, flowNotes]
-    have h : Rel st (placeLines env defaultKeep (putSlot (keep env (flushFigures env st) (fun _ => max (n : Int) beside.length)) 0
+    have h : Rel st (placeLines env defaultKeep (putSlot (keep env (flushFigures env st)
+        (fun s => needIn env s ⟨max n beside.length, noteLinesOf beside⟩ ⟨0, 0⟩)) 0
         (.wrapped i)) false beside) (beside.bind (·.notes)) :=
       Rel.nl (Rel.nl (rel_flushFigures env hs st) (rel_keep env hs _ _)) (Rel.fl (rel_placeLines env hs _ _ _ _))
     exact Rel.ite (Rel.fr h) h
@@ -1325,8 +1387,9 @@ theorem rel_step (env : Env) (hs : 0 ≤ env.separator) (st : St) (f : Flow) (re
     · intro s; have := rel_runFlows { env with keepParts := u, inBookPart := true } hs s (flattenParts body) rest
       rw [sourceNotes_flatten] at this; exact this
   | adjustLines k =>
-    simp only [step, flowNotes, adjustLines]
-    refine Rel.nl (rel_applyBreaks env hs st) ?_
+    simp only [step, flowNotes]
+    refine Rel.nl (rel_applyBreaks env hs st) (Rel.nr ?_ (rel_drainPendingNotes env _))
+    simp only [adjustLines]
     split
     · exact Rel.fl (Rel.addU _ _)
     · exact Rel.frame rfl rfl rfl rfl

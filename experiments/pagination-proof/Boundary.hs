@@ -22,7 +22,8 @@ lines' base n = [LineBox (base + i) [] [] [] 0 | i <- [0 .. n - 1]]
 -- A paragraph, a figure, a heading of one line over one grid line, a
 -- need-lines, a no-break, a no-break of so many lines and a keep-with-next;
 -- a box, a space, a table, a code block, a ruled block, a stanza, a
--- wrapped figure and a paragraph with a footnote.
+-- wrapped figure and a paragraph with a footnote; a page-lines, a switch of
+-- the columns and a wrapped figure whose side lines have a footnote.
 data Element
   = Para Int Int
   | Fig Int Int
@@ -46,6 +47,12 @@ data Element
     Wrapped Int Int Int Int
   | -- | first line, lines, the line with the note, lines of the note
     Noted Int Int Int Int
+  | -- | the grid lines @page-lines changes the column by
+    Adjust Int
+  | -- | the columns switched to
+    Switch Int
+  | -- | id, grid lines, first line beside, lines beside, the line with the note, lines of the note
+    WrappedNoted Int Int Int Int Int Int
 
 flowOf :: Element -> Flow
 flowOf = \case
@@ -68,9 +75,12 @@ flowOf = \case
       Right n -> RuledHeading False n (lines' base 1)
   Stanza kAll base vs -> FStanza (Keep 2 2 kAll) (zipWith lines' (scanl (+) base vs) vs)
   Wrapped i n base b -> FWrapped i n [] [] (lines' base b)
-  Noted base n at m ->
-    FParagraph defaultKeep [if j == at then l {lbNotes = [NoteBody (NoteId control (500 + base)) m]} else l | (j, l) <- zip [0 ..] (lines' base n)]
+  Noted base n at m -> FParagraph defaultKeep (noted base n at m)
+  Adjust k -> FAdjustLines control k
+  Switch n -> FSwitchColumns (ColumnSet n 0 0 0)
+  WrappedNoted i n base b at m -> FWrapped i n [] [] (noted base b at m)
   where
+    noted base n at m = [if j == at then l {lbNotes = [NoteBody (NoteId control (500 + base)) m]} else l | (j, l) <- zip [0 ..] (lines' base n)]
     control = mkSpan (FileId 1) 0 1
 
 -- | The code geometries: rows of one grid line each, with no padding (0)
@@ -103,6 +113,9 @@ showElement = \case
   Stanza kAll base vs -> "V" <> show base <> ":" <> bit kAll <> ":" <> intercalate "," (map show vs)
   Wrapped i n base b -> "W" <> show i <> ":" <> show n <> ":" <> show base <> ":" <> show b
   Noted base n at m -> "Q" <> show base <> ":" <> show n <> ":" <> show at <> ":" <> show m
+  Adjust k -> "A" <> show k
+  Switch n -> "S" <> show n
+  WrappedNoted i n base b at m -> "Y" <> show i <> ":" <> show n <> ":" <> show base <> ":" <> show b <> ":" <> show at <> ":" <> show m
   where
     bit b = if b then "1" else "0"
 
@@ -169,6 +182,45 @@ kindInputs =
          n <- [1, 3]
        ]
 
+-- root ADR 0444: a note going on takes the room @page-lines adds first;
+-- root ADR 0441: the columns of a set started after @page-lines end at the
+-- type area or above the notes of the column before; root ADR 0443: a
+-- wrapped figure fits with the notes of its side lines.
+adjustInputs :: [(Int, [Element])]
+adjustInputs =
+  [ (c, [Noted 0 1 0 m, Adjust a] <> more <> [Para 20 n])
+  | c <- [3 .. 5],
+    m <- [2 .. 6],
+    a <- [-1, 1, 2, 3, 4],
+    more <- [[], [Noted 10 1 0 1], [WrappedNoted 100 2 10 2 0 1], [Switch 2, Para 10 3]],
+    n <- [1, 3]
+  ]
+    <> [ (c, [if m == 0 then Para 0 p else Noted 0 p 0 m, Adjust a, Switch s, Para 10 q, Para 20 1])
+       | c <- [3 .. 5],
+         p <- [1, 2],
+         m <- [0 .. 2],
+         a <- [-2, -1, 1, 2],
+         s <- [2, 3],
+         q <- [1 .. 6]
+       ]
+    <> [ (c, [Para 0 p | p > 0] <> [WrappedNoted 100 n 10 b at m, Para 20 k])
+       | c <- [2 .. 5],
+         p <- [0 .. 2],
+         n <- [1 .. 3],
+         b <- [1 .. 3],
+         at <- [0 .. b - 1],
+         m <- [1 .. 3],
+         k <- [1 .. 3]
+       ]
+    <> [ (c, [Para 0 p, control, WrappedNoted 100 n 10 b 0 m, Para 20 1])
+       | c <- [3 .. 5],
+         p <- [1, 2],
+         control <- [Head 40, KeepNext 1, NoBreak, NeedLines 3],
+         n <- [1, 2],
+         b <- [1, 2],
+         m <- [1 .. 3]
+       ]
+
 kindChoices :: [Int -> Element]
 kindChoices =
   [\k -> Boxed (100 + k) b a [Para (10 * k) n] | (b, a) <- [(0, 0), (1, 1), (1, 0)], n <- [1 .. 4]]
@@ -231,6 +283,7 @@ unmet = \case
   ShortPart FirstPart i w g -> "!first" <> show i <> ":" <> show w <> ":" <> show g
   ShortPart LastPart i w g -> "!last" <> show i <> ":" <> show w <> ":" <> show g
   UnplaceableFootnote (NoteId _ i) n -> "!unplaceable" <> show i <> ":" <> show n
+  UnmetAdjust _ n limit -> "!adjust" <> show n <> ":" <> show limit
   other -> "!" <> show other
 
 page :: PageOut -> String
@@ -239,7 +292,7 @@ page p = "  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p th
     note (NoteId _ i, first, n) = "n" <> show i <> ":" <> show first <> ":" <> show n
 
 main :: IO ()
-main = mapM_ run (inputs <> kindInputs)
+main = mapM_ run (inputs <> kindInputs <> adjustInputs)
   where
     run (c, es) = do
       putStrLn (show c <> " [" <> intercalate " " (map showElement es) <> "]")
