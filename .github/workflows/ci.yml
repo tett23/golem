@@ -555,6 +555,21 @@ jobs:
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
           epubcheck build/epub/book.epub
+      # the license documents of the embedded fonts in OEBPS/fonts/, a .txt
+      # as text/plain and a .md as text/markdown in the manifest, which
+      # nothing refers to (docs/adr/0433); prod, so that a missing license
+      # stops the build
+      - name: The EPUB with the license documents of its fonts passes epubcheck (docs/adr/0433)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        working-directory: modules/golem-driver/test/fixtures/font-licenses
+        run: |
+          mkdir -p fonts
+          cp ../kanikosen/fonts/NotoSerifJP-Regular.otf fonts/ja.otf
+          cp ../kanikosen/fonts/LICENSE-NotoSerifJP.txt fonts/LICENSE-ja.txt
+          cp ../../../../golem-font/test/fonts/SourceSansPro-Regular.otf fonts/latin.otf
+          cp ../../../../golem-font/test/fonts/OFL.txt fonts/LICENSE-latin.md
+          "$(cabal list-bin -v0 golem)" build --profile prod --target epub
+          epubcheck build/epub/book.epub
       # a citation of @bibliography in another file, a navigation of depth
       # 1 and the channel of the sample plugin glossary, put in a cache by
       # the SHA-256 of plugins.lock so that its url is not fetched

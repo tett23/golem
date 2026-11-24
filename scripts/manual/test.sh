@@ -345,10 +345,10 @@ run build manual
 expect "build: build/html/fonts/ and the license documents" 0
 check "build: build/html/LICENSE is the LICENSE of the project" \
   cmp -s "$R/manual/LICENSE" "$R/manual/build/html/LICENSE"
-check "build: fonts/LICENSE-A.txt is copied" \
-  cmp -s "$R/manual/fonts/LICENSE-A.txt" "$R/manual/build/html/fonts/LICENSE-A.txt"
-check "build: fonts/LICENSE-B.md is copied" \
-  cmp -s "$R/manual/fonts/LICENSE-B.md" "$R/manual/build/html/fonts/LICENSE-B.md"
+# golem copies the license documents of the fonts from style.toml, not
+# build.sh (docs/adr/0433-bundle-font-licenses-with-embedded-fonts.md)
+check "build: fonts/LICENSE-A.txt is not copied by build.sh" test ! -e "$R/manual/build/html/fonts/LICENSE-A.txt"
+check "build: fonts/LICENSE-B.md is not copied by build.sh" test ! -e "$R/manual/build/html/fonts/LICENSE-B.md"
 check "build: a font is not copied by build.sh" test ! -e "$R/manual/build/html/fonts/A.otf"
 
 FAKE_HTML=html

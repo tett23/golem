@@ -20,8 +20,8 @@ import Golem.Doc.IR
 import Golem.Epub
 import Golem.Html
 import Golem.Syntax.Span
-import System.Directory (setModificationTime)
-import System.FilePath ((</>))
+import System.Directory (createDirectoryIfMissing, setModificationTime)
+import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -89,7 +89,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic arabic True Map.empty Nothing
+  HtmlConfig "書名" "ja" False Nothing "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False True Map.empty False "center" "space-between" "center" Nothing Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty arabic arabic True [] Map.empty Nothing
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -174,10 +174,46 @@ genericFonts =
       let textOf path = maybe "" (T.pack . map (toEnum . fromEnum) . BL.unpack . fromEntry) (findEntryByPath path archive)
       pure (map eRelativePath (zEntries archive), textOf "OEBPS/package.opf", textOf "OEBPS/style.css")
 
+-- | The license documents of the fonts in the EPUB (root ADR 0433).
+fontLicenses :: TestTree
+fontLicenses =
+  testGroup
+    "root ADR 0433"
+    [ testCase "root ADR 0433 I2: the license documents are in OEBPS/fonts/ and in the manifest, .md as text/markdown and the others as text/plain" $ do
+        (names, packageDoc) <- epubOf True ["OFL.md", "lic/OFL.txt", "LICENSE"]
+        filter (T.isPrefixOf "OEBPS/fonts/" . T.pack) names @?= ["OEBPS/fonts/LICENSE", "OEBPS/fonts/OFL.md", "OEBPS/fonts/OFL.txt", "OEBPS/fonts/b.otf"]
+        [snd (T.breakOn "href=" l) | l <- T.lines packageDoc, "href=\"fonts/" `T.isInfixOf` l]
+          @?= [ "href=\"fonts/LICENSE\" media-type=\"text/plain\"/>",
+                "href=\"fonts/OFL.md\" media-type=\"text/markdown\"/>",
+                "href=\"fonts/OFL.txt\" media-type=\"text/plain\"/>",
+                "href=\"fonts/b.otf\" media-type=\"font/otf\"/>"
+              ],
+      testCase "root ADR 0433 I2: the media type of a license document is not that of its extension" $
+        filter (T.isInfixOf "<item id=\"item") (T.lines (packageDocumentWithLicenses cfg0 ["fonts/LICENSE.css", "fonts/OFL.MD"] [] ["fonts/LICENSE.css", "fonts/OFL.MD", "fonts/x.otf", "fonts/y.css"]))
+          @?= [ "<item id=\"item1\" href=\"fonts/LICENSE.css\" media-type=\"text/plain\"/>",
+                "<item id=\"item2\" href=\"fonts/OFL.MD\" media-type=\"text/markdown\"/>",
+                "<item id=\"item3\" href=\"fonts/x.otf\" media-type=\"font/otf\"/>",
+                "<item id=\"item4\" href=\"fonts/y.css\" media-type=\"text/css\"/>"
+              ],
+      testCase "root ADR 0433 I5: a site of generic families puts no license document in the EPUB" $ do
+        (names, packageDoc) <- epubOf False ["OFL.md"]
+        (filter (T.isInfixOf "fonts/" . T.pack) names, T.isInfixOf "text/markdown" packageDoc) @?= ([], False)
+    ]
+  where
+    epubOf embed licenses = withSystemTempDirectory "golem-epub" $ \root -> do
+      BS.writeFile (root </> "b.otf") "fake"
+      mapM_ (\l -> createDirectoryIfMissing True (takeDirectory (root </> l)) >> BS.writeFile (root </> l) "license") licenses
+      let site = renderXhtml htmlConfig {hcFonts = Map.singleton "body" (Just "b.otf", Nothing), hcEmbedFonts = embed, hcFontLicenses = licenses} ft emptyBook
+      writeEpub root (root </> "book.epub") cfg0 ft emptyBook site
+      archive <- toArchive . BL.fromStrict <$> BS.readFile (root </> "book.epub")
+      let textOf path = maybe "" (T.pack . map (toEnum . fromEnum) . BL.unpack . fromEntry) (findEntryByPath path archive)
+      pure (map eRelativePath (zEntries archive), textOf "OEBPS/package.opf")
+
 tests :: [TestTree]
 tests =
   [ determinism,
     genericFonts,
+    fontLicenses,
     testGroup
       "package document"
       [ testCase "the identifier is the given ISBN" $

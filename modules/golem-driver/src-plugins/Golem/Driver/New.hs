@@ -74,11 +74,11 @@ templateFilesFor screen lang uuid =
     style = T.unlines $ case lang of
       Japanese ->
         page "A6" "right" "vertical" "3mm" "12.5Q" 38 16 "20H" "14mm" "14mm"
-          <> fonts "# Noto Serif JP (Noto Serif CJK 2.003, Subset OTF), SIL Open Font License 1.1" "ja = \"fonts/NotoSerifJP-Regular.otf\""
+          <> fonts "# Noto Serif JP (Noto Serif CJK 2.003, Subset OTF), SIL Open Font License 1.1" "ja = \"fonts/NotoSerifJP-Regular.otf\"" "ja-license = \"fonts/LICENSE-NotoSerifJP.txt\""
           <> rest "第{n:kanji}章"
       English ->
         page "mass-market" "left" "horizontal" "0.125in" "9.5pt" 24 33 "12pt" "16mm" "15mm"
-          <> fonts "# Source Serif 4 Regular (4.005R), SIL Open Font License 1.1" "latin = \"fonts/SourceSerif4-Regular.otf\""
+          <> fonts "# Source Serif 4 Regular (4.005R), SIL Open Font License 1.1" "latin = \"fonts/SourceSerif4-Regular.otf\"" "latin-license = \"fonts/LICENSE-SourceSerif4.md\""
           <> rest "Chapter {n}"
     -- the bleed is the usual one of the printers of the language
     -- (golem-pdf ADR 0010): 3mm in Japan, 0.125in in English
@@ -103,7 +103,8 @@ templateFilesFor screen lang uuid =
              "folio = { position = \"bottom-outside\", format = \"{n}\" }",
              ""
            ]
-    fonts comment path = ["[fonts.body]", comment, path, ""]
+    -- each font with the license document golem new fetches with it (root ADR 0433)
+    fonts comment path license = ["[fonts.body]", comment, path, license, ""]
     rest number =
       [ "[headings.1]",
         "number = \"" <> number <> "\""

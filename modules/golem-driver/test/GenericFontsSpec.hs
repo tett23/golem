@@ -170,7 +170,8 @@ fontStyle gb gr =
   horizontalStyle
     <> TE.encodeUtf8
       ( T.concat
-          [ "\n[fonts." <> role <> "]\n" <> key <> " = \"fonts/" <> file <> "\"\n" <> maybe "" (\g -> "generic-family = \"" <> g <> "\"\n") gen
+          -- each font with its license document, which HTML and EPUB copy with it when they embed it (root ADR 0433)
+          [ "\n[fonts." <> role <> "]\n" <> key <> " = \"fonts/" <> file <> "\"\n" <> key <> "-license = \"fonts/OFL.txt\"\n" <> maybe "" (\g -> "generic-family = \"" <> g <> "\"\n") gen
           | (role, key, file, gen) <- [("body", "ja", "b.otf", gb), ("sans", "ja", "w.otf", gr), ("code", "latin", "h.otf", gr), ("mono", "latin", "h.otf", gr)]
           ]
           <> "\n[paragraph-styles.note]\nfont = \"sans\"\n\n[paragraph-styles.code]\nfont = \"code\"\n\n[character-styles.kbd]\nbased-on = \"code\"\nfont = \"mono\"\n\n[character-styles.em2]\nfont = \"sans\"\n"
@@ -196,7 +197,8 @@ withProjectOf manifest style files act = withSystemTempDirectory "golem-generic"
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "本文。\n")
-  writeFiles tmp files
+  -- the license document fontStyle names (root ADR 0433)
+  writeFiles tmp (("fonts/OFL.txt", "OFL") : files)
   act tmp
 
 -- | No font file in build/html or in the EPUB, and no @font-face in their CSS.

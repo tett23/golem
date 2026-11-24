@@ -363,6 +363,12 @@ fonts = "embed"
 同梱する出力は、フォントのファイルがなければ、[code: --profile dev] ではそのフォントを除いて書き、G03010 の警告を出します。
 [code: --profile prod] ではエラーになり、書きません。
 
+同梱する出力は、フォントの役割の [code: ja-license] と [code: latin-license] に書いたライセンスの文書を、フォントの隣の [code: fonts/] に写します（「[ref-title fonts]」、[ref-page fonts] ページ）。
+ライセンスの文書を書いていないか、書いたファイルがなければ、G03282 か G03283 になり、[code: --profile dev] では警告で、[code: --profile prod] ではエラーです。
+EPUB は、写した文書を [code: package.opf] の manifest に挙げ、拡張子が [code: .md] なら [code: text/markdown]、ほかは [code: text/plain] とします。
+フォントとライセンスの文書が [code: fonts/] の同じ名前になり、中身が違えば、エラー（G03284）になり、その出力を書きません。
+中身が同じなら、一つだけ写します。
+
 ## EPUB
 
 ```sh

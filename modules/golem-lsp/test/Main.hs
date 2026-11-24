@@ -3,7 +3,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -371,6 +371,17 @@ tests =
         ws <- openWorkspace tmp
         let codes = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
         filter (`elem` ["G07127", "G07128"]) codes @?= [],
+      testCase "root ADR 0433: the LSP reports a font without its license key on style.toml as G03282, and no missing license file" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        forM_ [("html", True), ("epub", True), ("pdf", False)] $ \(target, reported) -> do
+          let fonts = if target == "pdf" then "" else "fonts = \"embed\"\n"
+          BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = []} <> "\n[targets." <> target <> "]\n" <> fonts))
+          BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/none.otf\"\nlatin = \"fonts/none-latin.otf\"\nlatin-license = \"fonts/none.txt\"\n"
+          TIO.writeFile (tmp </> "a.gm") "本文。\n"
+          ws <- openWorkspace tmp
+          let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+              everywhere = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
+          (target, codesIn "style.toml") @?= (target, ["G03282" | reported])
+          (target, filter (`elem` ["G03010", "G03283", "G03284"]) everywhere) @?= (target, []),
       testCase "a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "A.\n"
