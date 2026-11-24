@@ -3,6 +3,7 @@ module BoxSpec (boxTests) where
 
 import Control.Monad (forM_, when)
 import Golem.LayoutSpec (Rect (..))
+import Golem.Pdf (Segment (..), SubPath (..))
 import Golem.Project.Style (BoxSide (..), RuleStyle (..), Sp (..))
 import Golem.Typeset.Box
 import Golem.Typeset.RuleShape (RuleShape (..))
@@ -122,40 +123,39 @@ cornerTests =
         let cs = boxCorners border sides first lastPart (cornerRadius r rect)
             outline = boxOutline vertical rect cs
             runs = boxBorderRuns vertical rect cs sides
-            inside (x, y) = x >= toRational (unSp (rectX rect)) && x <= toRational (unSp (rectX rect + rectW rect)) && y >= toRational (unSp (rectY rect)) && y <= toRational (unSp (rectY rect + rectH rect))
-            points (start, segs) = start : concatMap segPoints segs
+            inside (x, y) = x >= rectX rect && x <= rectX rect + rectW rect && y >= rectY rect && y <= rectY rect + rectH rect
+            points (SubPath start segs _) = start : concatMap segPoints segs
             segPoints = \case
-              SegLine q -> [q]
-              SegCurve a b c -> [a, b, c]
-            ends (start, segs) = start : map segEnd segs
+              LineTo q -> [q]
+              CurveTo a b c -> [a, b, c]
+            ends (SubPath start segs _) = start : map segEnd segs
             segEnd = \case
-              SegLine q -> q
-              SegCurve _ _ c -> c
-            corner (cx, cy) = (toRational (unSp cx), toRational (unSp cy))
+              LineTo q -> q
+              CurveTo _ _ c -> c
             physical = physicalCorners vertical rect cs
         assertBool (show (vertical, r, first, lastPart, sides, border)) (all inside (points outline))
-        assertBool (show (vertical, r, first, lastPart, sides, border)) (all (all inside . points . (\(s, g, _) -> (s, g))) runs)
-        forM_ physical $ \(pt, radius) -> when (radius == 0) (assertBool (show (pt, outline)) (corner pt `elem` ends outline)),
+        assertBool (show (vertical, r, first, lastPart, sides, border)) (all (all inside . points) runs)
+        forM_ physical $ \(pt, radius) -> when (radius == 0) (assertBool (show (pt, outline)) (pt `elem` ends outline)),
     testCase "B9: with r = 0 the outline is the rectangle" $ do
       let rect = Rect 100 200 3000 4000
           cs = boxCorners True allSides True True (cornerRadius 0 rect)
-      boxOutline False rect cs @?= ((100, 200), [SegLine (3100, 200), SegLine (3100, 4200), SegLine (100, 4200), SegLine (100, 200)])
-      boxOutline True rect cs @?= ((100, 200), [SegLine (3100, 200), SegLine (3100, 4200), SegLine (100, 4200), SegLine (100, 200)]),
+      boxOutline False rect cs @?= SubPath (100, 200) [LineTo (3100, 200), LineTo (3100, 4200), LineTo (100, 4200), LineTo (100, 200)] True
+      boxOutline True rect cs @?= SubPath (100, 200) [LineTo (3100, 200), LineTo (3100, 4200), LineTo (100, 4200), LineTo (100, 200)] True,
     testCase "a closed border of four sides is one closed path; of before and after, two open ones" $ do
       let rect = Rect 0 0 4000 3000
           cs = boxCorners True allSides True True (cornerRadius 500 rect)
-      [closed | (_, _, closed) <- boxBorderRuns False rect cs allSides] @?= [True]
+      map subClosed (boxBorderRuns False rect cs allSides) @?= [True]
       let cs2 = boxCorners True [SideBefore, SideAfter] True True (cornerRadius 500 rect)
-      [closed | (_, _, closed) <- boxBorderRuns False rect cs2 [SideBefore, SideAfter]] @?= [False, False],
-    testCase "the control points of a quarter are kappa r from its ends along the tangents" $ do
+      map subClosed (boxBorderRuns False rect cs2 [SideBefore, SideAfter]) @?= [False, False],
+    testCase "the control points of a quarter are kappa r from its ends along the tangents, rounded to sp" $ do
       let rect = Rect 0 0 4000 3000
           cs = boxCorners False allSides True True (cornerRadius 1000 rect)
       case boxOutline False rect cs of
-        (start, SegLine a : SegCurve c1 c2 e : _) -> do
+        SubPath start (LineTo a : CurveTo c1 c2 e : _) _ -> do
           start @?= (1000, 0)
           a @?= (3000, 0)
-          c1 @?= (3000 + kappa * 1000, 0)
-          c2 @?= (4000, 1000 - kappa * 1000)
+          c1 @?= (Sp (round (3000 + kappa * 1000)), 0)
+          c2 @?= (4000, Sp (round (1000 - kappa * 1000)))
           e @?= (4000, 1000)
         other -> assertFailure (show other)
   ]

@@ -28,7 +28,7 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Pdf.Rect (Rect (..))
+import Golem.Geometry (Rect (..))
 import Golem.Project.Style
 import Golem.Syntax
 
