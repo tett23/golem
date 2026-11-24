@@ -3,6 +3,7 @@ module PhysicalPaginateSpec (physicalPaginateTests) where
 import Control.Monad (forM_, when)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Set qualified as Set
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (codeGeometry)
@@ -745,6 +746,7 @@ physicalPaginateTests =
       <> continuedLineLessBoxTests
       <> indexColumnNotesTests
       <> indexOnAdjustedPageTests
+      <> joinedRuleTests
 
 turnedSettings :: PhysicalSettings
 turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
@@ -993,3 +995,103 @@ indexOnAdjustedPageTests =
     tens a b = [fromIntegral (10 * i) | i <- [a .. b]]
     -- the starts of the entries on a page, column by column
     indexAt page pages = [at | p <- pages, poNumber p == page, (at, SLine i) <- poSlots p, i >= 100]
+
+{- | The rules of a column of the free placement that are not in it: a rule
+of keep-in-column = true starts at or after the start of the column and its
+weight ends at or before the start of the notes of the column. A rule of
+keep-in-column = false (the blocks of id 200 or more) may go 20 sp further
+out, but not into the notes.
+-}
+freeRulesOutOfColumn :: PhysicalSettings -> Sp -> PageOutAt Sp -> [PlacedRule]
+freeRulesOutOfColumn cfg w p =
+  let noteLines = sum [n | (_, _, n) <- poFootnotes p]
+      notes = if noteLines > 0 then physicalSeparator cfg + fromIntegral noteLines * physicalPagePitch cfg else 0
+      end = poLines p - notes
+      room r = if prId r >= 200 && noteLines == 0 then 20 else 0
+   in [r | r <- poRules p, prAt r < negate (room r) || prAt r + w > end + room r]
+
+{- | The ruled paragraphs whose rules are not placed once each: a block
+keeps all its rules, or, broken because an empty column cannot hold it
+(golem-driver ADR 0035), none of them.
+-}
+lostRules :: [FlowAt Sp] -> [PageOutAt Sp] -> [Int]
+lostRules flows pages =
+  [ frId f
+  | f@FRuled {frBody = RuledLines {}} <- flows,
+    let placed b = length [() | p <- pages, r <- poRules p, prId r == frId f, prBefore r == b]
+        counts = [placed True | isJust (frBefore f)] <> [placed False | isJust (frAfter f)],
+    counts /= map (const 1) counts && counts /= map (const 0) counts
+  ]
+
+{- | Golem-driver ADR 0027 in the free placement of root ADR 0397: two
+rules share an area only when the block after goes on in the same column
+(「隣り合う罫線」); otherwise the rule after is the first block's own, its
+block is not split and keeps the rule inside the column (keep-in-column =
+true), going whole to the next column, or broken without rules when an
+empty column cannot hold it (golem-driver ADR 0035). Root ADR 0397 I8:
+the rules lie in the column, above the notes.
+-}
+joinedRuleTests :: [TestTree]
+joinedRuleTests =
+  [ testCase "root ADR 0397 I8, golem-driver ADR 0027: the rule after of a block the next ruled block cannot join stays in the column" $ do
+      -- 60 sp: three lines of 16 sp and the rule after 15 sp below the em box of the last line
+      let cfg = settings {physicalCapacity = 60, physicalMaxCapacity = 60}
+          after = RuleSide 15 0 1 True Nothing
+          first = FRuled 5 Nothing (Just after) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 0, line 1, line 2])
+          second = FRuled 6 (Just (RuleSide 0 0 1 False Nothing)) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 3, line 4])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [first, second])
+      concatMap (freeRulesOutOfColumn cfg 1) ps @?= []
+      -- the block of three lines and its own rule after at the end take 48 + 13 sp, more than an empty column: broken without rules
+      map (\p -> (poSlots p, poRules p)) ps @?= [([(0, SLine 0), (16, SLine 1), (32, SLine 2)], []), ([(0, SLine 3), (16, SLine 4)], [PlacedRule 6 True 1])],
+    testCase "root ADR 0397 I8, golem-driver ADR 0027: the first block whose own rule after does not fit the room goes whole to the next column" $ do
+      -- 58 sp, 32 used: the block of one line and its own rule after at the end take 16 + 13 sp
+      let cfg = settings {physicalCapacity = 58, physicalMaxCapacity = 58}
+          after = RuleSide 15 0 1 True Nothing
+          first = FRuled 5 Nothing (Just after) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 1])
+          second = FRuled 6 (Just (RuleSide 0 0 1 False Nothing)) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 2, line 3, line 4])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0, line 10], first, second])
+      concatMap (freeRulesOutOfColumn cfg 1) ps @?= []
+      take 2 (map (\p -> (poSlots p, poRules p)) ps) @?= [([(0, SLine 0), (16, SLine 10)], []), ([(0, SLine 1)], [PlacedRule 5 False 28])],
+    testCase "root ADR 0397 I8, I11, golem-driver ADR 0027: the rules of two ruled blocks in a row lie in their columns and above the notes, joined or not" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            -- a column too short for a line and its note fails before any rule (root ADR 0397 I13)
+            Left (PhysicalFootnoteTooTall _) -> pure ()
+            Left failure -> assertFailure (show (c, sep, w, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, sep, w, map showFlow flows, [(poNumber p, poSlots p, poRules p, poFootnotes p) | p <- ps])
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfColumn cfg w) ps)
+              assertBool ("lost: " <> show shown) (null (lostRules flows ps))
+        | c <- [26, 42, 58, 60, 64, 74, 90, 106],
+          sep <- [0, 10],
+          lead <- [[], [FParagraph defaultKeep [line 0]], [FParagraph defaultKeep [line 0, line 1]], [FParagraph defaultKeep [noteLine 0]], [FParagraph defaultKeep [longNoteLine 0, line 1]]],
+          b1 <- [False, True],
+          n <- [1 .. 3],
+          a2 <- [False, True],
+          second <- [RuledLines defaultKeep (map line [20 .. 20]), RuledLines defaultKeep (map line [20 .. 21]), RuledLines defaultKeep (map line [20 .. 22]), RuledHeading False 16 [line 20]],
+          i <- [100, 200],
+          -- unspaced and thin, spaced 15 sp after the em box, and thick
+          (w, side) <- [(1, RuleSide 0 0 1 False), (1, RuleSide 15 0 1 True), (12, RuleSide 2 4 12 True)],
+          let ruled ident b a j = FRuled ident (side (outside ident) <$ guardB b) (side (outside ident) <$ guardB a) j (RuleGrid 16 10) 0
+              outside ident = if ident >= 200 then Just 20 else Nothing
+              guardB x = if x then Just () else Nothing,
+          third <- [[], [ruled (i + 2) True True True (RuledLines defaultKeep [line 30])]],
+          k <- [1, 2],
+          let cfg = settings {physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = sep}
+              flows = lead <> [ruled i b1 True False (RuledLines defaultKeep (map line [10 .. 9 + n])), ruled (i + 1) True a2 True second] <> third <> [FParagraph defaultKeep (map line [40 .. 39 + k])]
+        ],
+    testCase "root ADR 0397 I11, golem-driver ADR 0027: two blocks that fit one column still share one area" $ do
+      let side = RuleSide 0 0 1 False Nothing
+          first = FRuled 5 Nothing (Just side) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 0])
+          second = FRuled 6 (Just side) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 1])
+      fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical settings [first, second])
+        @?= Right [([(0, SLine 0), (16, SLine 1)], [PlacedRule 5 False 14, PlacedRule 6 True 17])]
+  ]
+  where
+    showFlow = \case
+      FRuled {frId = i, frBefore = b, frAfter = a, frJoined = j, frBody = body} -> "R" <> show i <> ":" <> concatMap (\x -> if x then "1" else "0") [isJust b, isJust a, j] <> ":" <> either' body
+      FParagraph _ ls -> "P" <> show (map lbId ls) <> show (sum [m | l <- ls, NoteBody _ m <- lbNotes l])
+      _ -> "?"
+    either' = \case
+      RuledLines _ ls -> "L" <> show (length ls)
+      RuledHeading _ m _ -> "H" <> show m

@@ -1311,23 +1311,76 @@ placeBoxedStanzaWith keepMarks keepCounts unitKeeps gaps cfg starting ident fall
 placeRuledKeeping :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Either PhysicalFailure PhysicalState
 placeRuledKeeping cfg st ruled@FRuled {} later = do
   full <- placeRuled cfg st ruled later
+  if movesForFollowing cfg st ruled full later
+    then placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} later
+    else Right full
+placeRuledKeeping cfg st flow later = placeRuled cfg st flow later
+
+-- | Whether a ruled block placed as full goes on to the next column for what it keeps with it.
+movesForFollowing :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> PhysicalState -> [FlowAt Sp] -> Bool
+movesForFollowing cfg st ruled full later =
   let following = case keepAhead later of
         Just (_, wanted, rest) -> Just (wanted, rest)
         Nothing -> case frBody ruled of
           RuledHeading {} -> Just (1, later)
           _ -> Nothing
-  case following of
-    Just (wanted, rest)
-      | not (empty st),
-        not (fitsFollowing cfg full wanted rest) ->
-          placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} later
-    _ -> Right full
-placeRuledKeeping cfg st flow later = placeRuled cfg st flow later
+   in case following of
+        Just (wanted, rest) -> not (empty st) && not (fitsFollowing cfg full wanted rest)
+        Nothing -> False
 
-placeRuled :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Either PhysicalFailure PhysicalState
-placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
-  RuledLines keep lines' -> case (safeHead lines', safeHead (reverse lines')) of
-    (Just first, Just last') -> do
+-- | Whether the flows begin with a ruled paragraph whose rule before shares the area of the rule after before it.
+joinsNext :: [FlowAt Sp] -> Bool
+joinsNext = \case
+  FRuled {frJoined = True, frBefore = Just _, frBody = RuledLines {}} : _ -> True
+  _ -> False
+
+{- | A ruled paragraph in this column: with its rule after waiting to share
+its area with the next block's rule before when that block goes on in
+this column (golem-driver ADR 0027, 「隣り合う罫線」), or with the area of
+its own before the next block when the rule lies in the column. Else the
+rule ends the column: its own area at the end of the column is counted
+in the block, so that the rule stays in the column (root ADR 0397 I8).
+Nothing when the block goes on to the next column.
+-}
+ruledHere :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Either PhysicalFailure (Maybe PhysicalState)
+ruledHere cfg st ruled laterFlows = do
+  inside <- ruledLinesHere cfg st ruled laterFlows
+  let settled = case (inside, laterFlows) of
+        (Just placed, next : later)
+          | joinsNext laterFlows -> settlesHere cfg placed next later
+          | otherwise -> ruleAfterInColumn cfg ruled placed
+        _ -> True
+  if settled && (isJust inside || null laterFlows) then Right inside else ruledLinesHere cfg st ruled []
+
+-- | Whether the rule after of a ruled paragraph placed lies in the column, above its notes.
+ruleAfterInColumn :: PhysicalSettings -> FlowAt Sp -> PhysicalState -> Bool
+ruleAfterInColumn cfg ruled placed =
+  and [prAt r + rsdWeight side <= limit cfg placed - psNotesUsed placed | Just side <- [frAfter ruled], r <- psRules placed, prId r == frId ruled, not (prBefore r)]
+
+-- | Whether the block after a rule after that waits takes that rule into its area in the same column.
+settlesHere :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Bool
+settlesHere cfg st next later = case ruledHere cfg st next later of
+  Right (Just placed) -> not (movesForFollowing cfg st next placed later)
+  _ -> False
+
+-- | A ruled paragraph placed in this column with the flows after it, or Nothing when it does not fit the room.
+ruledLinesHere :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Either PhysicalFailure (Maybe PhysicalState)
+ruledLinesHere cfg st ruled ahead = case ruledLinesPlan cfg st ruled ahead of
+  Nothing -> Right Nothing
+  Just (extent, place)
+    | extent > physicalCapacity cfg -> Right Nothing
+    | otherwise ->
+        let ready = fit cfg st extent
+         in if (psPage ready, psColumn ready) /= (psPage st, psColumn st) then Right Nothing else Just <$> place ready
+
+{- | The extent of a ruled paragraph with the flows after it, and how it is
+placed from a state. Its rule after waits to share an area when the flows
+after begin with a ruled paragraph that joins it (golem-driver ADR 0027).
+-}
+ruledLinesPlan :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Maybe (Sp, PhysicalState -> Either PhysicalFailure PhysicalState)
+ruledLinesPlan cfg st ruled laterFlows = case frBody ruled of
+  RuledLines _ lines' -> case (safeHead lines', safeHead (reverse lines')) of
+    (Just first, Just last') ->
       let firstPitch = pitchOf cfg first
           lastPitch = pitchOf cfg last'
           beforeGeometry side = case psJoin st of
@@ -1351,9 +1404,7 @@ placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
                 let (extra, position) = ruleBeforeEdge firstPitch (faceOf cfg first) (if empty st && psUsed st == 0 then side else side {rsdOutside = Nothing}) (lbOverhang first)
                  in (extra, psUsed st + position, [])
           beforeExtra = maybe 0 (\side -> let (extra, _, _) = beforeGeometry side in extra) (frBefore ruled)
-          joiningNext = case laterFlows of
-            FRuled {frJoined = True, frBefore = Just _} : _ -> True
-            _ -> False
+          joiningNext = joinsNext laterFlows
           afterGeometry side = case laterFlows of
             nextFlow : _
               | nextLine : _ <- flowLines nextFlow ->
@@ -1362,28 +1413,38 @@ placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
                    in (extra, faceOffset lastPitch (faceOf cfg last') + faceOf cfg last' + position)
             _ -> ruleAfterEdge lastPitch (faceOf cfg last') side {rsdOutside = Nothing}
           afterExtra = if joiningNext then 0 else maybe 0 (fst . afterGeometry) (frAfter ruled)
-          bodyExtent = sum (map (pitchOf cfg) lines')
-          extent = beforeExtra + bodyExtent + afterExtra
-      if frJoined ruled && isJust (psJoin st) && extent + psPendingSpace st > room cfg st && not (empty st)
-        then
-          placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} laterFlows
-        else
-          if extent > physicalCapacity cfg
-            then placeLines cfg keep True st lines'
-            else do
-              let ready = fit cfg st extent
-              if (psPage ready, psColumn ready) /= (psPage st, psColumn st)
-                then placeRuled cfg ready ruled laterFlows
-                else do
-                  let origin = psUsed ready
-                      withBefore = ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}
-                  placed <- foldl' (\acc line -> acc >>= \s -> putLineWithReserve True cfg s line) (Right withBefore) lines'
-                  let sharedRules = concat [prior | side <- maybe [] pure (frBefore ruled), let (_, _, prior) = beforeGeometry side]
-                      startRule = [PlacedRule (frId ruled) True position | side <- maybe [] pure (frBefore ruled), let (_, position, _) = beforeGeometry side]
-                      endRule = [PlacedRule (frId ruled) False (psUsed placed - lastPitch + snd (afterGeometry side)) | not joiningNext, side <- maybe [] pure (frAfter ruled)]
-                      waiting = if joiningNext then (frId ruled,,last',afterExtra) <$> frAfter ruled else Nothing
-                  pure placed {psUsed = psUsed placed + afterExtra, psAdjustment = psAdjustment ready, psRules = psRules placed <> sharedRules <> startRule <> endRule, psJoin = waiting}
-    _ -> Right st
+          extent = beforeExtra + sum (map (pitchOf cfg) lines') + afterExtra
+          place ready = do
+            let origin = psUsed ready
+                withBefore = ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}
+            placed <- foldl' (\acc line -> acc >>= \s -> putLineWithReserve True cfg s line) (Right withBefore) lines'
+            let sharedRules = concat [prior | side <- maybe [] pure (frBefore ruled), let (_, _, prior) = beforeGeometry side]
+                startRule = [PlacedRule (frId ruled) True position | side <- maybe [] pure (frBefore ruled), let (_, position, _) = beforeGeometry side]
+                endRule = [PlacedRule (frId ruled) False (psUsed placed - lastPitch + snd (afterGeometry side)) | not joiningNext, side <- maybe [] pure (frAfter ruled)]
+                waiting = if joiningNext then (frId ruled,,last',afterExtra) <$> frAfter ruled else Nothing
+            pure placed {psUsed = psUsed placed + afterExtra, psAdjustment = psAdjustment ready, psRules = psRules placed <> sharedRules <> startRule <> endRule, psJoin = waiting}
+       in Just (extent, place)
+    _ -> Nothing
+  RuledHeading {} -> Nothing
+
+placeRuled :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Either PhysicalFailure PhysicalState
+placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
+  RuledLines keep lines' -> case ruledLinesPlan cfg st ruled laterFlows of
+    Nothing -> Right st
+    Just (least, _) -> do
+      here <- ruledHere cfg st ruled laterFlows
+      case here of
+        Just placed -> Right placed
+        Nothing
+          | frJoined ruled && isJust (psJoin st) && not (empty st) ->
+              placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} laterFlows
+          | least > physicalCapacity cfg -> placeLines cfg keep True st lines'
+          | otherwise ->
+              -- a block an empty column cannot hold with its rules is broken without them (golem-driver ADR 0035)
+              let moved = fit cfg st (room cfg st + 1)
+               in if (psPage moved, psColumn moved) == (psPage st, psColumn st)
+                    then placeLines cfg keep True st lines'
+                    else placeRuled cfg moved ruled laterFlows
   RuledHeading recto extent lines' -> do
     let headingState = if recto then parityStart cfg odd st else keepFollowing cfg True st extent lines' laterFlows
     let firstId = maybe 0 lbId (safeHead lines')
