@@ -1,6 +1,6 @@
 # ADR 0123: プラグインが作った画像の図版
 
-Status: superseded [{"by":["docs/adr/0137-plugin-image-folder-collision-g08102.md"],"part":"`images/golem-plugin/` と重なる原稿の図版のエラー（G08102）"},{"by":["docs/adr/0144-figure-captions-hold-paragraphs-only.md"],"part":"キャプションの中の図版とブロックの扱い"}]
+Status: superseded [{"by":["docs/adr/0137-plugin-image-folder-collision-g08102.md"],"part":"`images/golem-plugin/` と重なる原稿の図版のエラー（G08102）"},{"by":["docs/adr/0144-figure-captions-hold-paragraphs-only.md"],"part":"キャプションの中の図版とブロックの扱い"},{"part":"メモリの上の画像を図版にする経路","by":["docs/adr/0439-benchmark-path-drawing.md"],"kind":"supplement"}]
 
 ## 文脈
 

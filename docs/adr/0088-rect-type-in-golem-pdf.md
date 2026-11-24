@@ -1,6 +1,6 @@
 # ADR 0088: 矩形の型 Rect を golem-pdf に移し、golem-pdf を golem-layout-spec から切り離す
 
-Status: accepted
+Status: superseded [{"part":"`Rect` の置き場所","by":["docs/adr/0437-paths-and-the-box-model.md"],"kind":"supplement"}]
 
 ## 文脈
 

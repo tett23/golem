@@ -1,6 +1,6 @@
 # ADR 0082: 二つのマニュアルの原稿と、組んだ PDF と HTML を CC0 1.0 にする
 
-Status: accepted
+Status: superseded [{"part":"組んだ HTML に入れるライセンスの文書の、fonts/LICENSE-* を写す手順","by":["docs/adr/0433-bundle-font-licenses-with-embedded-fonts.md"],"kind":"replace"},{"part":"実装しないこと","by":["docs/adr/0433-bundle-font-licenses-with-embedded-fonts.md"],"kind":"supplement"}]
 
 ## 文脈
 

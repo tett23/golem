@@ -1,6 +1,6 @@
 # ADR 0203: golem-driver の Template Haskell を、生成してコミットしたモジュールにする
 
-Status: accepted
+Status: superseded [{"part":"1. 生成するスクリプト","by":["docs/adr/0434-split-evaluation-from-golem-driver.md"],"kind":"replace"}]
 
 ## 文脈
 
