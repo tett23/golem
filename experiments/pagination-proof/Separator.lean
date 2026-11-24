@@ -1,14 +1,16 @@
 /-
 Root ADR 0352: the separators of root ADR 0398 on the flows of Whole.lean.
 
-This file models two functions of
+This file models four functions of
 modules/golem-typeset/src/Golem/Typeset/Flow.hs.  `spaceSeparators`
 (the local function of `blocks`) turns the units of a document into the
 units the flow is made of: it puts a keep-with-next of one line after a
 visible separator and replaces the blank lines at its boundary by one
-space.  `separatorHoldErrors` reads the pages and returns G07134 for each
-chain of visible separators whose lines and the first line of the block
-after them are not in one column.
+space.  `holdSeparatorNeeds`, after it, puts a need-lines before the
+first separator of a hold with a need-lines in it, and `unmetWarnings`
+reports nothing of that need-lines.  `separatorHoldErrors` reads the
+pages and returns G07134 for each chain of visible separators whose lines
+and the first line of the block after them are not in one column.
 
 The units other than the separators, the blank lines and the breaks are
 left abstract: each carries its flows, whether it starts a block, passes
@@ -141,11 +143,68 @@ def space : Option Nat → List Unit → List Unit → List Unit
   | previous, pending, u :: rest =>
     (if previous.isSome then [.keepNext 1] else []) ++ gapOf previous pending u ++ u :: space (afterOf u) [] rest
 
-/-- The units of `blocks`, after `spaceSeparators`. -/
-def separatorUnits (us : List Unit) : List Unit := space none [] us
+/-! ## The need-lines asked for before a separator hold -/
+
+/-- `inHold` of `holdSeparatorNeeds`: the units a hold goes on through,
+    `USeparator`, `UGap`, `UBlank`, `UKeepNext` and `UPageControl`. -/
+def inHold : Unit → Bool
+  | .separator _ _ _ _ | .gap _ | .blank _ | .keepNext _ | .other .pass _ _ => true
+  | _ => false
+
+/-- `holdLines` of `holdSeparatorNeeds`: a visible separator is one line,
+    blank lines and a gap are their lines. -/
+def holdLines : Unit → Nat
+  | .separator _ _ _ _ => 1
+  | .blank k | .gap k => k
+  | _ => 0
+
+/-- The lines a `UPageControl (NeedLines k)` asks for. -/
+def needOf : Unit → Option Nat
+  | .other .pass [.needLines k] _ => some k
+  | _ => none
+
+/-- `chain` of `holdSeparatorNeeds`: the units of the hold after its
+    first separator (`span inHold`). -/
+def takeHold : List Unit → List Unit
+  | [] => []
+  | u :: r => if inHold u then u :: takeHold r else []
+
+/-- `wanted` of `holdSeparatorNeeds`: `at + k` for each need-lines of `k`
+    lines, `at` the lines of the hold before it and the blank lines before
+    the hold. -/
+def wants : Nat → List Unit → List Nat
+  | _, [] => []
+  | pos, u :: r => ((needOf u).map (pos + ·)).toList ++ wants (pos + holdLines u) r
+
+/-- `hoisted` of `holdSeparatorNeeds`: a need-lines of the most lines
+    wanted, at most the lines of a column, or nothing when no need-lines
+    is in the hold. -/
+def hoisted (capacity : Nat) (blanks : Nat) (hold : List Unit) : List Unit :=
+  match wants blanks hold with
+  | [] => []
+  | w :: ws => [.other .pass [.needLines (min capacity (ws.foldl max w))] none]
+
+/-- `holdSeparatorNeeds` (Flow.hs), on the units after `spaceSeparators`.
+    `blanks` counts the blank lines just before the unit, `held` says the
+    unit is in a hold.  A unit that goes on a hold is put as it is; the
+    first separator of a hold gets `hoisted` before it; any other unit
+    ends the hold. -/
+def holdNeeds (capacity : Nat) : Nat → Bool → List Unit → List Unit
+  | _, _, [] => []
+  | blanks, held, u :: rest =>
+    if held && inHold u then u :: holdNeeds capacity 0 true rest
+    else match u with
+      | .separator b a kp l =>
+        hoisted capacity blanks (.separator b a kp l :: takeHold rest) ++ .separator b a kp l :: holdNeeds capacity 0 true rest
+      | .blank k => .blank k :: holdNeeds capacity (blanks + k) false rest
+      | u => u :: holdNeeds capacity 0 false rest
+
+/-- The units of `blocks`, after `spaceSeparators` and
+    `holdSeparatorNeeds`, in a column of `capacity` lines. -/
+def separatorUnits (capacity : Nat) (us : List Unit) : List Unit := holdNeeds capacity 0 false (space none [] us)
 
 /-- The flows made of the units, as the pagination receives them. -/
-def separatorFlows (us : List Unit) : List Flow := allFlows (separatorUnits us)
+def separatorFlows (capacity : Nat) (us : List Unit) : List Flow := allFlows (separatorUnits capacity us)
 
 /-! ## The flows made carry the text and the figures of the units -/
 
@@ -323,7 +382,7 @@ theorem space_other (previous : Option Nat) (pending : List Unit) (h : Blanks pe
 
 /-- The flows a unit other than `other` is made of. -/
 def plainFlow : Flow → Bool
-  | .paragraph _ _ | .blank _ | .space _ | .keepNext _ | .brk _ => true
+  | .paragraph _ _ | .blank _ | .space _ | .keepNext _ | .brk _ | .needLines _ => true
   | _ => false
 
 /-- `ys` is `xs` with plain flows put in between. -/
@@ -354,10 +413,100 @@ theorem allFlows_ins (us : List Unit) : Ins (otherFlows us) (allFlows us) := by
     | gap n => exact .plain _ rfl ih
     | keepNext n => exact .plain _ rfl ih
 
-theorem separatorFlows_ins (us : List Unit) : Ins (otherFlows us) (separatorFlows us) := by
-  have h := allFlows_ins (separatorUnits us)
-  rw [separatorUnits, space_other none [] Blanks.nil] at h
-  exact h
+theorem Ins.trans {xs ys zs : List Flow} (h : Ins xs ys) (k : Ins ys zs) : Ins xs zs := by
+  induction k generalizing xs with
+  | nil => exact h
+  | keep f _ ih =>
+    cases h with
+    | keep _ h' => exact .keep f (ih h')
+    | plain _ hp h' => exact .plain _ hp (ih h')
+  | plain p hp _ ih => exact .plain p hp (ih h)
+
+/-- `hoisted` is nothing or one need-lines. -/
+theorem hoisted_flows (capacity blanks : Nat) (hold : List Unit) :
+    allFlows (hoisted capacity blanks hold) = [] ∨ ∃ n, allFlows (hoisted capacity blanks hold) = [.needLines n] := by
+  unfold hoisted
+  split
+  · exact Or.inl rfl
+  · exact Or.inr ⟨_, rfl⟩
+
+theorem hoisted_text (capacity blanks : Nat) (hold : List Unit) (r : List Flow) :
+    sourceText (allFlows (hoisted capacity blanks hold) ++ r) = sourceText r := by
+  rcases hoisted_flows capacity blanks hold with e | ⟨n, e⟩ <;> rw [e]
+  · rfl
+  · simp only [List.singleton_append, sourceText, flowText, List.nil_append]
+
+theorem hoisted_ins (capacity blanks : Nat) (hold : List Unit) {xs ys : List Flow} (h : Ins xs ys) :
+    Ins xs (allFlows (hoisted capacity blanks hold) ++ ys) := by
+  rcases hoisted_flows capacity blanks hold with e | ⟨n, e⟩ <;> rw [e]
+  · exact h
+  · exact .plain _ rfl h
+
+theorem foldl_max_ge (acc : Nat) (l : List Nat) : acc ≤ l.foldl max acc ∧ ∀ x ∈ l, x ≤ l.foldl max acc := by
+  induction l generalizing acc with
+  | nil => exact ⟨Nat.le_refl _, fun x m => absurd m (List.not_mem_nil _)⟩
+  | cons y ys ih =>
+    obtain ⟨h1, h2⟩ := ih (max acc y)
+    refine ⟨Nat.le_trans (Nat.le_max_left _ _) h1, fun x m => ?_⟩
+    rcases List.mem_cons.mp m with e | m
+    · subst e; exact Nat.le_trans (Nat.le_max_right _ _) h1
+    · exact h2 x m
+
+/-- The need-lines asked for before a hold is there exactly when the hold
+    has a need-lines; it asks for no more than a column and, for each
+    need-lines of the hold, for its lines and the lines before it in the
+    hold, or a whole column when they are more. -/
+theorem hoisted_need (capacity blanks : Nat) (hold : List Unit) :
+    (wants blanks hold = [] ∧ hoisted capacity blanks hold = []) ∨
+      ∃ n, hoisted capacity blanks hold = [.other .pass [.needLines n] none] ∧ n ≤ capacity ∧
+        ∀ x ∈ wants blanks hold, min capacity x ≤ n := by
+  unfold hoisted
+  split
+  · rename_i e; exact Or.inl ⟨e, rfl⟩
+  · rename_i w ws e
+    refine Or.inr ⟨_, rfl, Nat.min_le_left _ _, fun x m => ?_⟩
+    rw [e] at m
+    obtain ⟨h1, h2⟩ := foldl_max_ge w ws
+    have hx : x ≤ ws.foldl max w := by
+      rcases List.mem_cons.mp m with e | m
+      · subst e; exact h1
+      · exact h2 x m
+    rw [Nat.le_min]; exact ⟨Nat.min_le_left _ _, Nat.le_trans (Nat.min_le_right _ _) hx⟩
+
+/-- `holdSeparatorNeeds` keeps the lines and headings of the units. -/
+theorem holdNeeds_text (capacity : Nat) (blanks : Nat) (held : Bool) (us : List Unit) :
+    sourceText (allFlows (holdNeeds capacity blanks held us)) = sourceText (allFlows us) := by
+  induction us generalizing blanks held with
+  | nil => rfl
+  | cons u rest ih =>
+    unfold holdNeeds
+    split
+    · simp only [allFlows, sourceText_append, ih]
+    · split
+      · rw [allFlows_append, hoisted_text]; simp only [allFlows, sourceText_append, ih]
+      · simp only [allFlows, sourceText_append, ih]
+      · simp only [allFlows, sourceText_append, ih]
+
+/-- `holdSeparatorNeeds` keeps the flows of the units and puts only
+    need-lines in between. -/
+theorem holdNeeds_ins (capacity : Nat) (blanks : Nat) (held : Bool) (us : List Unit) :
+    Ins (allFlows us) (allFlows (holdNeeds capacity blanks held us)) := by
+  induction us generalizing blanks held with
+  | nil => exact .nil
+  | cons u rest ih =>
+    unfold holdNeeds
+    split
+    · exact (Ins.refl u.flows).append (ih _ _)
+    · split
+      · rw [allFlows_append]
+        exact hoisted_ins _ _ _ ((Ins.refl _).append (ih _ _))
+      · exact (Ins.refl _).append (ih _ _)
+      · exact (Ins.refl _).append (ih _ _)
+
+theorem separatorFlows_ins (capacity : Nat) (us : List Unit) : Ins (otherFlows us) (separatorFlows capacity us) := by
+  have h := allFlows_ins (space none [] us)
+  rw [space_other none [] Blanks.nil] at h
+  exact h.trans (holdNeeds_ins capacity 0 false _)
 
 theorem plain_flatten {p : Flow} (hp : plainFlow p = true) (r : List Flow) :
     flattenParts (p :: r) = p :: flattenParts r := by
@@ -455,8 +604,8 @@ theorem sourceFigs_ins {xs ys : List Flow} (h : Ins xs ys) : sourceFigs ys = sou
     pagination of the flows `spaceSeparators` makes of any finite list of
     units ends, by `I4_paginate_ends`. -/
 theorem I4_separator_paginate_ends (env : Env) (us : List Unit) :
-    ∃ st, paginate env (separatorFlows us) = st :=
-  I4_paginate_ends env (separatorFlows us)
+    ∃ st, paginate env (separatorFlows env.capacity.toNat us) = st :=
+  I4_paginate_ends env (separatorFlows env.capacity.toNat us)
 
 /-- Root ADR 0352 invariant 5 for the lines on the flows of root ADR
     0398: the pages hold the line of every visible separator and every
@@ -464,8 +613,8 @@ theorem I4_separator_paginate_ends (env : Env) (us : List Unit) :
     written, by `I5_paginate_text`.  The keep-with-nexts, gaps and blank
     lines `spaceSeparators` puts in or takes out carry no line. -/
 theorem I5_separator_text (env : Env) (us : List Unit) :
-    pagesText (paginate env (separatorFlows us)).done = unitsText us := by
-  rw [I5_paginate_text, separatorFlows, separatorUnits, space_text none [] Blanks.nil]
+    pagesText (paginate env (separatorFlows env.capacity.toNat us)).done = unitsText us := by
+  rw [I5_paginate_text, separatorFlows, separatorUnits, holdNeeds_text, space_text none [] Blanks.nil]
 
 /-- Root ADR 0352 invariant 5 for the figures on the flows of root ADR
     0398, by `I5_paginate_figures`: its hypotheses on the flows of the
@@ -473,8 +622,8 @@ theorem I5_separator_text (env : Env) (us : List Unit) :
     gaps and the keep-with-nexts give those on the flows made. -/
 theorem I5_separator_figures (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (us : List Unit)
     (hf : ∀ f ∈ otherFlows us, figureOk f) (hb : BoxesOk (otherFlows us)) :
-    pagesFigs (paginate env (separatorFlows us)).done = sourceFigs (otherFlows us) := by
-  have i := separatorFlows_ins us
+    pagesFigs (paginate env (separatorFlows env.capacity.toNat us)).done = sourceFigs (otherFlows us) := by
+  have i := separatorFlows_ins env.capacity.toNat us
   rw [I5_paginate_figures env hc hs _ (figureOk_ins i hf) (boxesOk_ins i [] hb), sourceFigs_ins i]
 
 /-! ## The keep after a visible separator -/
@@ -514,6 +663,53 @@ theorem I3_separator_keeps (previous : Option Nat) (pending : List Unit) (b a : 
   rw [List.cons_append, space_step _ _ _ _ (fun k e => Unit.noConfusion e) (fun k e => Unit.noConfusion e)]
   rw [afterOf, space_blanks _ [] blanks _ hb, List.nil_append, space_step _ _ _ _ hu hk]
   simp only [Option.isSome, ite_true, List.append_assoc, List.cons_append, List.singleton_append, List.nil_append]
+
+/-! ## The warnings of the need-lines not met -/
+
+/-- The spans of the visible separators, by the ids of their lines, as
+    the spans of `USeparator` units `layoutFigures` gives `unmetWarnings`. -/
+def separatorSpans : List Unit → List Nat
+  | [] => []
+  | .separator _ _ _ l :: r => l.id :: separatorSpans r
+  | _ :: r => separatorSpans r
+
+def needUnmet : Unmet → Bool
+  | .needLines _ => true
+  | _ => false
+
+/-- The filter of `unmetWarnings` (Flow.hs): of the controls not met, each
+    at the span of its unit, a need-lines at the span of a separator, the
+    one `holdSeparatorNeeds` asks for, reports nothing; the others go on
+    to their warnings.  `Unmet` of Whole.lean has no span, so the span is
+    given beside it. -/
+def reported (held : Nat → Bool) (unmet : List (Nat × Unmet)) : List (Nat × Unmet) :=
+  unmet.filter fun x => !(held x.1 && needUnmet x.2)
+
+/-- The need-lines asked for before a separator hold gives no warning,
+    and every other control not met goes on to its warning. -/
+theorem reported_iff (us : List Unit) (unmet : List (Nat × Unmet)) (sp : Nat) (u : Unmet) :
+    (sp, u) ∈ reported (fun s => (separatorSpans us).contains s) unmet ↔
+      (sp, u) ∈ unmet ∧ (sp ∈ separatorSpans us → ∀ n, u ≠ .needLines n) := by
+  have key : (separatorSpans us).contains sp = true ↔ sp ∈ separatorSpans us :=
+    ⟨List.mem_of_elem_eq_true, List.elem_eq_true_of_mem⟩
+  unfold reported
+  rw [List.mem_filter]
+  constructor
+  · rintro ⟨m, h⟩
+    refine ⟨m, fun hs n e => ?_⟩
+    subst e
+    simp [needUnmet, key.mpr hs] at h
+  · rintro ⟨m, h⟩
+    refine ⟨m, ?_⟩
+    by_cases hs : sp ∈ separatorSpans us
+    · cases u with
+      | needLines n => exact absurd rfl (h hs n)
+      | _ => simp [needUnmet]
+    · have : (separatorSpans us).contains sp = false := by
+        cases e : (separatorSpans us).contains sp
+        · rfl
+        · exact absurd (key.mp e) hs
+      simp [this]
 
 /-! ## G07134: the post-processing of the pages -/
 

@@ -111,8 +111,8 @@ def siteLine (us : List Separator.Unit) (i : Nat) : String :=
 
 def output (c capacity : Nat) (items : List Item) : List String :=
   let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
-  let made := Separator.separatorUnits us
-  let final := paginate (boundaryEnv capacity) (Separator.separatorFlows us)
+  let made := Separator.separatorUnits capacity us
+  let final := paginate (boundaryEnv capacity) (Separator.separatorFlows capacity us)
   -- the controls not met in a column with no output go with the last
   -- page, as `paginateWithin` of Paginate.hs puts them
   let pages := match final.done with
