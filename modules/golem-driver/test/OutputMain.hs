@@ -10,6 +10,7 @@ import ForceTableSpec (forceTableTests)
 import GenericFontsSpec (genericFontsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
+import HtmlSyntaxBuildSpec (htmlSyntaxBuildTests)
 import InMemorySpec (inMemoryTests)
 import IndexColumnsSpec (indexColumnsTests)
 import IndexRangeSpec (indexRangeTests)
@@ -39,6 +40,7 @@ tests skips =
   testGroup
     "golem-driver (ADR 0001)"
     ( [ testGroup "extended Japanese composition (root ADR 0380)" extendedJapaneseOutputTests,
+        htmlSyntaxBuildTests,
         indexRangeTests,
         indexColumnsTests,
         tocStylesTests,

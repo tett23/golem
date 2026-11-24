@@ -43,7 +43,7 @@ extendedJapaneseOutputTests =
         writeProject tmp manifest horizontalStyle source []
         result <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
         assertEqual "no output errors" [] [diagCode d | d <- brDiagnostics result, isError d]
-        html <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        html <- TIO.readFile (tmp </> "build/html/a.html")
         assertBool "cutting note has two lines" (T.count "class=\"warichu-line\"" html == 2)
         assertBool "upright content" ("class=\"upright\">AB</span>" `T.isInfixOf` html)
         css <- TIO.readFile (tmp </> "build/html/style.css")

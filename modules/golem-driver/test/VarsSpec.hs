@@ -112,11 +112,11 @@ varsTests =
             src = [("a.gm", "[= vars.product] [= vars.count]\n")]
         (ds, _, dev) <- buildWith (defaultOptions ".") {optProfile = Dev} manifest horizontalStyle src
         [diagMessage d | d <- ds, isError d] @?= []
-        assertBool (show (map fst dev)) (any ((".xhtml" `isSuffixOf`) . fst) dev)
+        assertBool (show (map fst dev)) (any ((".html" `isSuffixOf`) . fst) dev)
         (_, _, prod) <- buildWith (defaultOptions ".") {optProfile = Prod} manifest horizontalStyle src
-        let html = [b | (p, b) <- dev, ".xhtml" `isSuffixOf` p]
+        let html = [b | (p, b) <- dev, ".html" `isSuffixOf` p]
         assertBool "the value in the HTML" (any ("Golem 3" `BS.isInfixOf`) html)
-        [b | (p, b) <- prod, ".xhtml" `isSuffixOf` p] @?= html,
+        [b | (p, b) <- prod, ".html" `isSuffixOf` p] @?= html,
       testCase "the same input gives the same bytes" $ do
         let style = headsStyle "content = [\"{vars.product}\"]"
             src = [("a.gm", "[= vars.author.short]\n\n" <> twoChapters)]

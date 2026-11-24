@@ -91,22 +91,22 @@ buildTests :: [TestTree]
 buildTests =
   [ golden "text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
     golden "text-vertical-01.txt" "build/text/vertical/chapters/01.txt",
-    golden "html-01.xhtml" "build/html/chapters/01.xhtml",
-    golden "html-front.xhtml" "build/html/front.xhtml",
-    golden "html-02.xhtml" "build/html/chapters/02.xhtml",
+    golden "html-01.html" "build/html/chapters/01.html",
+    golden "html-front.html" "build/html/front.html",
+    golden "html-02.html" "build/html/chapters/02.html",
     golden "html-style.css" "build/html/style.css",
     -- prod drops the proofreading comment of chapters/01.gm (docs/adr/0064)
     goldenIn Prod "prod-text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
     goldenIn Prod "prod-text-vertical-01.txt" "build/text/vertical/chapters/01.txt",
-    goldenIn Prod "prod-html-01.xhtml" "build/html/chapters/01.xhtml",
+    goldenIn Prod "prod-html-01.html" "build/html/chapters/01.html",
     differsInProd "build/text/horizontal/chapters/01.txt",
     differsInProd "build/text/vertical/chapters/01.txt",
-    differsInProd "build/html/chapters/01.xhtml",
-    sameInProd "build/html/front.xhtml",
-    sameInProd "build/html/chapters/02.xhtml",
+    differsInProd "build/html/chapters/01.html",
+    sameInProd "build/html/front.html",
+    sameInProd "build/html/chapters/02.html",
     testCase "two builds produce identical bytes" $ do
-      a <- buildAndRead Dev "build/html/chapters/01.xhtml"
-      b <- buildAndRead Dev "build/html/chapters/01.xhtml"
+      a <- buildAndRead Dev "build/html/chapters/01.html"
+      b <- buildAndRead Dev "build/html/chapters/01.html"
       a @?= b
       c <- buildAndRead Dev "build/text/vertical/chapters/01.txt"
       d <- buildAndRead Dev "build/text/vertical/chapters/01.txt"
@@ -173,14 +173,14 @@ publicDomainTests skips =
     "public-domain books"
     [ testCase "The Tempest builds horizontally to every target" $ do
         (written, pdf, texts) <- buildBook "tempest"
-        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"])
         let horizontal = [t | (p, t) <- texts, "horizontal/tempest.txt" `isSuffixOf` p]
         assertBool "verse lines" (any ("Full fathom five thy father lies;\nOf his bones are coral made;" `T.isInfixOf`) horizontal)
         assertBool "horizontal" (not ("/Identity-V" `BS.isInfixOf` pdf))
         qpdfCheck pdf,
       testCase "蟹工船 builds vertically to every target" $ do
         (written, pdf, _) <- buildBook "kanikosen"
-        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"])
         assertBool "vertical" ("/Identity-V" `BS.isInfixOf` pdf)
         -- 「——漁夫は」: the dashes (CID 722) turned (golem-driver ADR 0015) and scaled along the line (docs/adr ADR 0172)
         content <- BS.concat <$> inflateAll pdf
@@ -228,7 +228,7 @@ pdBookTest skips (name, vertical) = testCase name $ withSystemTempDirectory "gol
   assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
   when full $ do
     let written = brWritten r
-    assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+    assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".html", ".txt"])
     pdf <- case filter (".pdf" `isSuffixOf`) written of
       [p] -> BS.readFile p
       other -> assertFailure (show other)
@@ -393,7 +393,7 @@ sepHtmlStyle lang style source = withSystemTempDirectory "golem-sep" $ \tmp -> d
   writeFiles tmp img
   r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
-  (,) <$> TIO.readFile (tmp </> "build/html/a.xhtml") <*> TIO.readFile (tmp </> "build/html/index.xhtml")
+  (,) <$> TIO.readFile (tmp </> "build/html/a.html") <*> TIO.readFile (tmp </> "build/html/index.html")
 
 -- | The EPUB navigation document of the one-chapter project of the language.
 sepNav :: T.Text -> T.Text -> T.Text -> IO T.Text
