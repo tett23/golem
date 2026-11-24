@@ -3290,8 +3290,15 @@ placeFigure fe u fig content =
       depth = if n > 0 then fromIntegral m * pitch + fromIntegral (n - 1) * cp + cs else across
       gap = dimToSp fs (stWrapGap style)
       ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
-      errs = case (figWrap fig, ex) of
-        (Nothing, _) | free && gridLines == 0 -> [diagnostic "G07131" Error (uSpan u) "図版の一行分の領域が段に収まりません"]
+      -- the length across the lines before fitting (root ADR 0440)
+      across0 = case figWrap fig of
+        Nothing -> Sp (floor (fromInteger (unSp (min alongSp lineLen)) * ratio))
+        Just _ -> Sp (floor (fromInteger (unSp alongSp) * ratio))
+      noLine = isNothing (figWrap fig) && free && gridLines == 0
+      -- a figure of no length across the lines draws nothing, so it is not placed (root ADR 0440)
+      zeroErrs = [zeroAcrossError (uSpan u) | across0 == 0, not tooDeep, not noLine]
+      errs = (<> zeroErrs) $ case (figWrap fig, ex) of
+        (Nothing, _) | noLine -> [diagnostic "G07131" Error (uSpan u) "図版の一行分の領域が段に収まりません"]
         -- no wrapping on a page of columns (docs/adr ADR 0018)
         (Just _, _)
           | length (pgColumns geom) > 1 -> [diagnostic "G07026" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
@@ -3309,6 +3316,16 @@ placeFigure fe u fig content =
         | pgVertical geom = Just P.TurnedRight
         | otherwise = Just P.TurnedLeft
    in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (depth + gap) (figSource fig) (snd (figureKey fig)) (uSpan u) (if isJust (figWrap fig) then alongSp else lineLen) turn (uIndex u), errs, notices, captionMarks)
+
+-- | The error of a figure whose length across the lines before fitting is 0 sp (root ADR 0440).
+zeroAcrossError :: SrcSpan -> Diagnostic
+zeroAcrossError sp = diagnostic "G07135" Error sp "図版の行の方向の長さと画像の縦横の比から求めた、行の送りの方向の長さが 0 になります"
+
+{- | Whether the errors of a figure keep it off the pages: G07135, of a
+figure that draws nothing (root ADR 0440).
+-}
+keepsOffPages :: [Diagnostic] -> Bool
+keepsOffPages = any ((== DiagnosticCode "G07135") . diagCode)
 
 {- | The paragraphs right after a wrapped figure, in order, composed beside
 its exclusion: each by its index, with the line of the exclusion it starts
@@ -3758,6 +3775,10 @@ rest of a paragraph cut short continues after it.
 -}
 numberFigure :: FlowEnv -> ComposedUnits -> Int -> Unit -> (PlacedFigure, [Diagnostic], [Diagnostic], [SrcSpan]) -> Numbered -> Numbered
 numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
+  -- a figure of no rows does not reach the pagination; it has its error (root ADR 0440 I1)
+  _
+    | keepsOffPages ferrs || (not (null ferrs) && isNothing (pfTurn pf) && pfImageLines pf + pfCaptionSpan pf == 0) ->
+        nb {nuErrors = nuErrors nb <> ferrs}
   Just ex
     | null ferrs ->
         let besides = cuBesides cu
