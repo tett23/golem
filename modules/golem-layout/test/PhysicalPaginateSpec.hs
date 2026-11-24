@@ -1,6 +1,6 @@
 module PhysicalPaginateSpec (physicalPaginateTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, when)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -743,6 +743,7 @@ physicalPaginateTests =
       <> continuedNoteOrderTests
       <> continuedTableNoteTests
       <> indexColumnNotesTests
+      <> indexOnAdjustedPageTests
 
 turnedSettings :: PhysicalSettings
 turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
@@ -916,3 +917,45 @@ indexColumnNotesTests =
     -- the lines a to b of pitch 10
     tens :: Int -> Int -> [Sp]
     tens a b = [fromIntegral (10 * i) | i <- [a .. b]]
+
+-- | The index columns on the page of the switch, laid out freely, end before the footnotes of the column before it (root ADR 0441).
+indexOnAdjustedPageTests :: [TestTree]
+indexOnAdjustedPageTests =
+  [ testCase "root ADR 0441 I1, I2: freely, page-lines -3, two lines and a note of two, the index takes lines 2 and 3 only" $
+      fmap (indexAt 1) (switchPage (-3) 2 2) @?= Right [20, 30, 20, 30],
+    testCase "root ADR 0441 I2: freely, page-lines -3, two lines and no note, the index takes lines 2 to 6" $
+      fmap (indexAt 1) (switchPage (-3) 2 0) @?= Right (tens 2 6 <> tens 2 6),
+    testCase "root ADR 0441 I3: freely, page-lines -3, four lines and a note of two leave no line, the index starts on the next page" $
+      fmap (indexAt 1) (switchPage (-3) 4 2) @?= Right [],
+    testCase "root ADR 0441 I1, I2: freely, page-lines +3, two lines and a note of two, the index takes lines 2 to 9" $
+      fmap (indexAt 1) (switchPage 3 2 2) @?= Right (tens 2 9 <> tens 2 5),
+    testCase "root ADR 0441 I1, I4: freely, no page-lines, two lines and a note of two, the index takes lines 2 to 6" $
+      fmap (indexAt 1) (switchPage 0 2 2) @?= Right (tens 2 6 <> tens 2 6),
+    testCase "root ADR 0441 I1, I2, I3: freely, whatever the page-lines, the lines and the note, the index on the page of the switch ends before the note and the type area" $
+      forM_ [(k, n, m) | k <- [-4 .. 4], n <- [1 .. 7], m <- [0 .. 3]] $ \(k, n, m) -> case switchPage k n m of
+        Left failure -> assertFailure (show failure)
+        Right pages -> case [p | p <- pages, poNumber p == 1, csColumns (poColumnSet p) == 1] of
+          body : _ -> do
+            let notes = sum [c | (_, _, c) <- poFootnotes body]
+                noteLength = if notes == 0 then 0 else 10 + fromIntegral notes * 10
+                end = min 100 (poLines body - noteLength)
+                used = maximum (0 : [at + 10 | (at, SLine _) <- poSlots body])
+                rows = indexAt 1 pages
+                label = show (k, n, m, end, rows)
+            assertBool ("I1, I2 " <> label) (all (\at -> at + 10 <= end) rows)
+            when (used >= end) $ assertBool ("I3 " <> label) (null rows)
+          [] -> assertFailure "no column of the body on page 1"
+  ]
+  where
+    cfg = settings {physicalPagePitch = 10, physicalFontSize = 10, physicalCapacity = 100, physicalMaxCapacity = 200, physicalSeparator = 10}
+    index2 = ColumnSet 2 0 0 0
+    switchPage :: Int -> Int -> Int -> Either PhysicalFailure [PageOutAt Sp]
+    switchPage k n m =
+      let first = if m > 0 then LineBox 0 [NoteBody (NoteId span0 0) m] [] [] 0 else line 0
+          adjust = [FAdjustLines span0 k | k /= 0]
+       in paginatePhysical cfg (adjust <> [FParagraph defaultKeep (first : map line [1 .. n - 1]), FSwitchColumns index2] <> [FParagraph defaultKeep [line (100 + i)] | i <- [0 .. 11]] <> [FRestoreColumns])
+    -- the lines a to b of pitch 10
+    tens :: Int -> Int -> [Sp]
+    tens a b = [fromIntegral (10 * i) | i <- [a .. b]]
+    -- the starts of the entries on a page, column by column
+    indexAt page pages = [at | p <- pages, poNumber p == page, (at, SLine i) <- poSlots p, i >= 100]
