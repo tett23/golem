@@ -59,6 +59,8 @@ module Golem.Typeset.Flow
     labelSpans,
     noteNumberDiagnostics,
     Assumed (..),
+    composeEnv,
+    paraLook,
     fixpoint,
     rubyStyleOf,
     RuledInfo (..),
