@@ -6,10 +6,11 @@ next column, in this order, are the lines of the notes read, in the
 manuscript's order, but for the notes reported unplaceable: no line of a
 later note comes before a line of an earlier one (`I1_paginate_order`).
 The statement holds of the flows `plainFlows` admits: no box, no switch
-of the columns, and headings of one grid line or more.  A box breaks it:
-its grid lines after are given back when it ends in a column where its
-part has no line, and a later note then takes them while an earlier one
-is still carried on (README.md).
+of the columns, and headings of one grid line or more.  The grid lines
+after a box, given back when it ends in a column where its part has no
+line, go to the notes carried on first (`drainPendingNotes`, root ADR
+0444); the proof does not cover boxes yet, as `Ok` needs a column of one
+grid line or more, which the grid lines after a box can take (README.md).
 -/
 import WholeNotes
 
