@@ -24,17 +24,19 @@ import System.Timeout (timeout)
 -- | The column: capacity, separator and columns; the pitch and the face
 -- of the lines whose id is at least 900 are 14 and 12 sp, and the heading
 -- whose first line is 385 has the bounds 4 and 16 sp; the lines 702 and
--- 705 have a gap of 3 sp before them beside a wrapped figure, 712 of 5 sp.
+-- 705 have a gap of 3 sp before them beside a wrapped figure, 712 of 5 sp;
+-- the box 170 has a padding of 3 sp.
 data Column = Column Int Int Int
 
 settingsOf :: Column -> PhysicalSettings
 settingsOf (Column cap sep cols) =
-  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces Map.empty gaps bounds Nothing
+  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces padding gaps bounds Nothing
   where
     tall = Map.fromList [(i, 14) | i <- [900 .. 999]]
     faces = Map.fromList [(i, 12) | i <- [900 .. 999]]
     bounds = Map.fromList [(385, (4, 16))]
     gaps = Map.fromList [(702, 3), (705, 3), (712, 5)]
+    padding = Map.fromList [(170, 3)]
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 1) 0 1
@@ -442,12 +444,37 @@ tableInputs =
          rows <- [[lines' 810 1, lines' 820 2], [lines' 810 2, lines' 820 1]]
        ]
 
+-- Boxes of one paragraph or one stanza, with a padding and with the
+-- lengths of the flow, after paragraphs and before what follows, and kept
+-- with the paragraph before them.
+boxInputs :: [(Column, [FlowAt Sp])]
+boxInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [box] <> after <> [para 20 n])
+  | cap <- [30, 40, 60],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    box <- boxes,
+    after <- [[], [FKeepNext span0 1, para 30 2]],
+    n <- [1, 2]
+  ]
+    <> [ (Column cap 4 1, [para 50 1, para 0 3, ctl, box, para 20 1])
+       | cap <- [40, 50],
+         ctl <- [FKeepNext span0 1, FNoBreak span0],
+         box <- boxes
+       ]
+  where
+    boxes =
+      [FBoxed i b a [FParagraph k ls] | i <- [170, 171], (b, a) <- [(5, 5), (0, 10)], k <- keeps, ls <- [lines' 400 m | m <- [1 .. 4]] <> [noted 400 2 1 2]]
+        <> [FBoxed i b a [FStanza k [lines' (400 + 10 * j) m | (j, m) <- zip [0 ..] shape]] | i <- [170, 171], (b, a) <- [(5, 5), (0, 10)], k <- keeps, shape <- [[1], [1, 1], [2, 1], [1, 2, 1], [3, 1], [5]]]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
   FContinued k ls -> "c:" <> keepToken k <> ":" <> linesToken ls
   FFigure i e _ _ -> "f:" <> show i <> ":" <> show (unSp e)
   FTable i b h rs c below -> "g:" <> show i <> ":" <> show (unSp b) <> ":" <> linesToken h <> ":" <> intercalate "/" (map linesToken rs) <> ":" <> linesToken c <> ":" <> bit below
+  FBoxed i b a [FParagraph k ls] -> "X:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> keepToken k <> ":" <> linesToken ls
+  FBoxed i b a [FStanza k vs] -> "Y:" <> show i <> ":" <> show (unSp b) <> ":" <> show (unSp a) <> ":" <> keepToken k <> ":" <> intercalate "/" (map linesToken vs)
   FWrapped i e _ _ ls -> "w:" <> show i <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FPageFigure i _ _ -> "t:" <> show i
   FSpace n -> "s:" <> show (unSp n)
@@ -518,7 +545,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

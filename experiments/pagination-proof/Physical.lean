@@ -95,6 +95,10 @@ inductive Flow where
   /-- `FTable`: the space before it, the header, the rows, the caption and
       whether the caption is below. -/
   | table (id : Nat) (before : Int) (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool)
+  /-- `FBoxed ident before after [FParagraph keep lines]`. -/
+  | boxedParagraph (id : Nat) (before after : Int) (k : Keep) (ls : List Line)
+  /-- `FBoxed ident before after [FStanza keep verses]`. -/
+  | boxedStanza (id : Nat) (before after : Int) (k : Keep) (verses : List (List Line))
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -139,6 +143,7 @@ inductive Failure where
   | codeTooTall (id : Nat)
   | tableTooTall (id : Nat)
   | tableCaptionTooTall (id : Nat)
+  | boxTooTall (id : Nat)
   /-- A flow that fits in no column: Physical.hs goes on to the next
       column for ever (see `seek`). -/
   | noProgress (id : Nat)
@@ -206,6 +211,8 @@ structure St where
   /-- `psJoin`: the block, its rule after, its last line, the extra. -/
   join : Option (Nat × RuleSide × Line × Int)
   waits : List Wait
+  /-- `psBoxes`: the box, the start and the end of each part in the column. -/
+  boxes : List (Nat × Int × Int)
 
 /-- `PhysicalSettings` without the maps the flows of the model do not
     read; the pitch and the face of a line are functions of its id. -/
@@ -225,11 +232,13 @@ structure Env where
   /-- `physicalWrappedBefore`: the gap before a line beside or after a
       wrapped figure. -/
   wrappedBefore : Nat → Int
+  /-- `physicalBoxPadding`: the padding of a box. -/
+  boxPadding : Nat → Option Int
   /-- `firstNeed` of Physical.hs: the length the flows ahead need. -/
   firstNeed : Bool → Nat → List Flow → Int
 
 def initial (env : Env) : St :=
-  ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, []⟩
+  ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, [], []⟩
 
 def limit (env : Env) (st : St) : Int := env.capacity + st.adjust
 def room (env : Env) (st : St) : Int := limit env st - st.used - st.notesUsed
@@ -294,7 +303,8 @@ def fresh (env : Env) (toPage : Bool) (st : St) : St :=
     adjust := 0
     pending := 0
     blankActive := false
-    join := none }
+    join := none
+    boxes := [] }
 
 /-- The loop of `placeTurned`: each turned figure waiting at the start of a
     page takes that page. -/
@@ -741,6 +751,8 @@ def flowLines : Flow → List Line
   | .code _ _ _ _ rows => rows
   | .wrapped _ _ ls => ls
   | .table _ _ header rows caption _ => header ++ rows.join ++ caption
+  | .boxedParagraph _ _ _ _ ls => ls
+  | .boxedStanza _ _ _ _ vs => vs.join
   | _ => []
 
 /-! ## Ruled blocks -/
@@ -1239,7 +1251,7 @@ def switchColumns (env : Env) (cols : Nat) (st : St) : St :=
   if (env.columns = 1 ∧ 0 < room env settled) ∨ (empty settled ∧ settled.column = 0) then
     { close env settled with
       columns := cols, firstLine := settled.used, column := 0, used := settled.used,
-      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0 }
+      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] }
   else { nextPage env settled with columns := cols, firstLine := 0 }
 
 /-- `FRestoreColumns`: the next page, in the columns of the page. -/
@@ -1314,6 +1326,203 @@ theorem rank_headingState_le (env : Env) (st : St) (recto b : Bool) :
   split
   · exact rank_parityStart_le env _ st
   · exact rank_keepFrom_le env st b
+
+/-! ## Boxes of one paragraph or one stanza -/
+
+/-- `extras` of `placeBoxedParagraphWithKeeps` and `placeBoxedStanzaWith`:
+    the padding of the box around its first and last lines (`boxExtras`
+    of FreeGeometry.hs), or the lengths the flow gives. -/
+def boxExtra (env : Env) (ident : Nat) (fb fa : Int) (first last : Line) : Int × Int :=
+  match env.boxPadding ident with
+  | some padding =>
+    (max 0 (padding - faceOffset (env.pitchOf first.id) (env.faceOf first.id)),
+     max 0 (padding - (env.pitchOf last.id - env.faceOf last.id - faceOffset (env.pitchOf last.id) (env.faceOf last.id))))
+  | none => (fb, fa)
+
+/-- The note lines of the lines and the separator they need. -/
+def boxNotes (env : Env) (st : St) (ls : List Line) : Int :=
+  (if 0 < notesCount ls ∧ st.notesUsed = 0 then env.separator else 0) + (notesCount ls : Int) * env.pagePitch
+
+/-- `fragmentSize`: a part of a boxed paragraph with its padding and notes. -/
+def fragmentSize (env : Env) (ident : Nat) (fb fa : Int) (st : St) (ls : List Line) : Int :=
+  match ls.head?, ls.getLast? with
+  | some first, some last =>
+    (boxExtra env ident fb fa first last).1 + sumPitch env ls + (boxExtra env ident fb fa first last).2 + boxNotes env st ls
+  | _, _ => 0
+
+/-- The largest number of the first lines whose part fits (`available`). -/
+def boxAvailable (fits : Nat → Bool) : Nat → Nat
+  | 0 => 0
+  | k + 1 => if fits (k + 1) then k + 1 else boxAvailable fits k
+
+/-- The lines of a boxed paragraph a column takes (`candidateCount`). -/
+def boxCount (selected available : Nat) : Nat := if selected = 0 then max 1 available else selected
+
+theorem boxCount_pos (s a : Nat) : 1 ≤ boxCount s a := by unfold boxCount; split <;> omega
+
+/-- The verse lines of a boxed stanza a column takes (`count`). -/
+def stanzaBoxCount (selected available : Nat) : Nat := if 0 < selected then selected else available
+
+theorem stanzaBoxCount_pos {s a : Nat} (h : ¬(s = 0 ∧ a = 0)) : 1 ≤ stanzaBoxCount s a := by
+  unfold stanzaBoxCount; split <;> omega
+
+/-- A part of a box put at `ready`: its padding before, its lines, its
+    padding after, and its segment. -/
+def putBoxPart (env : Env) (ident : Nat) (ready : St) (origin before after : Int) (ls : List Line) (short : List Unmet) :
+    Except Failure St :=
+  match putLines false env { ready with used := ready.used + before, adjust := ready.adjust - after } ls with
+  | .error e => .error e
+  | .ok placed =>
+    .ok { placed with used := placed.used + after, adjust := ready.adjust,
+                      boxes := placed.boxes ++ [(ident, origin, placed.used + after)], unmet := placed.unmet ++ short }
+
+set_option linter.unusedVariables false in
+/-- `placeBoxedParagraph` (`placeBoxedParagraphWithKeeps` with no marks,
+    every gap 0): the lines of one paragraph in a box. -/
+def placeBoxedParagraph (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (st : St) (ls : List Line) :
+    Except Failure St :=
+  match ls with
+  | [] => .ok st
+  | first :: more =>
+    let firstSize := (boxExtra env ident fb fa first first).1 + env.pitchOf first.id + (boxExtra env ident fb fa first first).2
+    let available := boxAvailable (fun j => decide (fragmentSize env ident fb fa st ((first :: more).take j) + st.pending ≤ room env st))
+      (more.length + 1)
+    let selected := splitAtBreak k start (more.length + 1) available
+    let count := boxCount selected available
+    if env.capacity < firstSize then .error (.boxTooTall ident)
+    else if env.capacity < firstSize + env.separator + env.pagePitch ∧ (first.notes.filter (fun n => 0 < n.lines)) ≠ [] then
+      .error (.footnoteTooTall ((first.notes.filter (fun n => 0 < n.lines)).headD ⟨0, 0⟩).id)
+    else if h1 : k.all ∧ start ∧ available < more.length + 1 then
+      if h2 : empty st then placeBoxedParagraph env ident fb fa { k with all := false } start (addUnmet (.splitKept first.id) st) (first :: more)
+      else placeBoxedParagraph env ident fb fa k start (nextColumn env st) (first :: more)
+    else if h3 : selected = 0 ∧ empty st = false then placeBoxedParagraph env ident fb fa k start (nextColumn env st) (first :: more)
+    else
+      let here := (first :: more).take count
+      let forced := selected = 0 ∧ empty st ∧ count < more.length + 1
+      let short :=
+        (if forced ∧ start ∧ count < k.first then [Unmet.shortPart true first.id k.first count] else []) ++
+        (if forced ∧ more.length + 1 - count < k.last then [Unmet.shortPart false first.id k.last (more.length + 1 - count)] else [])
+      let extra := boxExtra env ident fb fa (here.headD first) (here.getLastD first)
+      let ready := fit env st (fragmentSize env ident fb fa st here)
+      match putBoxPart env ident ready ready.used extra.1 extra.2 here short with
+      | .error e => .error e
+      | .ok finished =>
+        if h4 : count < more.length + 1 then
+          placeBoxedParagraph env ident fb fa k false (nextColumn env finished) ((first :: more).drop count)
+        else .ok finished
+termination_by (ls.length, keepRank k, rank st)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h1.1]
+  · apply Prod.Lex.right; apply Prod.Lex.right
+    exact I4_nextColumn_rank env st (Or.inl (by simpa using h2))
+  · apply Prod.Lex.right; apply Prod.Lex.right; exact I4_nextColumn_rank env st (Or.inl h3.2)
+  · apply Prod.Lex.left
+    exact Nat.sub_lt (Nat.succ_pos _) (boxCount_pos _ _)
+
+/-- The box segment left open over a fallback paragraph of a stanza. -/
+abbrev BoxOpen := Option ((Nat × Int × Int) × Int)
+
+def seal (open? : BoxOpen) (st : St) : St :=
+  match open? with
+  | none => st
+  | some (segment, after) => { st with used := st.used + after, boxes := st.boxes ++ [segment] }
+
+/-- `reopen`: the segment of the box the fallback paragraph closed at the
+    end of the column, opened again for the verse lines after it. -/
+def reopen (env : Env) (ident : Nat) (fb fa : Int) (verse : List Line) (st : St) : St × BoxOpen :=
+  match st.boxes.reverse, verse.getLast? with
+  | segment :: earlier, some lastLine =>
+    if segment.1 = ident ∧ segment.2.2 = st.used then
+      ({ st with used := st.used - (boxExtra env ident fb fa lastLine lastLine).2, boxes := earlier.reverse },
+       some (segment, (boxExtra env ident fb fa lastLine lastLine).2))
+    else (st, none)
+  | _, _ => (st, none)
+
+/-- `size` of `placeBoxedStanzaWith` with no gaps. -/
+def stanzaBoxSize (env : Env) (ident : Nat) (fb fa : Int) (st : St) (open? : BoxOpen) (vs : List (List Line)) : Int :=
+  match vs.join.head?, vs.join.getLast? with
+  | some first, some last =>
+    (if open?.isSome then 0 else (boxExtra env ident fb fa first last).1) + sumPitch env vs.join +
+      (boxExtra env ident fb fa first last).2 + boxNotes env st vs.join
+  | _, _ => 0
+
+theorem rank_seal_lt (env : Env) (o : BoxOpen) (st : St) (h : empty st = false) :
+    rank (nextColumn env (seal o st)) < rank st := by
+  cases o with
+  | none => exact I4_nextColumn_rank env st (Or.inl h)
+  | some p =>
+    obtain ⟨seg, after⟩ := p
+    cases e : empty (seal (some (seg, after)) st)
+    · have e' := e
+      simp only [seal] at e'
+      have : rank (seal (some (seg, after)) st) = rank st := by simp only [rank, seal, waiting, e', h]
+      have := I4_nextColumn_rank env _ (Or.inl e); omega
+    · have a := rank_open_le env false (seal (some (seg, after)) st)
+      have e' := e
+      simp only [seal] at e'
+      have : rank (seal (some (seg, after)) st) + 1 = rank st := by
+        simp only [rank, seal, waiting, h, e']; simp
+      exact Nat.lt_of_le_of_lt a (by omega)
+
+set_option linter.unusedVariables false in
+/-- `placeBoxedStanza` (`placeBoxedStanzaWith` with no maps): the verse
+    lines of one stanza in a box, a verse line too tall for an empty column
+    broken as a boxed paragraph. -/
+def placeBoxedStanza (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (open? : BoxOpen) (st : St) :
+    List (List Line) → Except Failure St
+  | [] => .ok (seal open? st)
+  | firstVerse :: more =>
+    let available := boxAvailable
+      (fun j => decide (stanzaBoxSize env ident fb fa st open? ((firstVerse :: more).take j) + st.pending ≤ room env st))
+      (more.length + 1)
+    let selected := splitAtBreak k start (more.length + 1) available
+    if h1 : selected = 0 ∧ empty st = false then
+      placeBoxedStanza env ident fb fa k start none (nextColumn env (seal open? st)) (firstVerse :: more)
+    else if h2 : selected = 0 ∧ k.all ∧ start then
+      placeBoxedStanza env ident fb fa { k with all := false } start open? (addUnmet (.splitKept (headId firstVerse)) st)
+        (firstVerse :: more)
+    else if h3 : selected = 0 ∧ available = 0 then
+      match placeBoxedParagraph env ident fb fa ⟨1, 1, false⟩ true st firstVerse with
+      | .error e => .error e
+      | .ok placed =>
+        placeBoxedStanza env ident fb fa k false (reopen env ident fb fa firstVerse placed).2
+          (reopen env ident fb fa firstVerse placed).1 more
+    else
+      let count := stanzaBoxCount selected available
+      let here := (firstVerse :: more).take count
+      let forced := selected = 0 ∧ count < more.length + 1
+      let short :=
+        (if forced ∧ start ∧ count < k.first then [Unmet.shortPart true (headId firstVerse) k.first count] else []) ++
+        (if forced ∧ more.length + 1 - count < k.last then [Unmet.shortPart false (headId firstVerse) k.last (more.length + 1 - count)] else [])
+      let extra := boxExtra env ident fb fa (here.join.headD ⟨0, [], 0⟩) (here.join.getLastD ⟨0, [], 0⟩)
+      let ready := fit env st (stanzaBoxSize env ident fb fa st open? here)
+      let origin := match open? with
+        | some (segment, _) => segment.2.1
+        | none => ready.used
+      match putBoxPart env ident ready origin (if open?.isSome then 0 else extra.1) extra.2 here.join short with
+      | .error e => .error e
+      | .ok finished =>
+        if h4 : count < more.length + 1 then
+          placeBoxedStanza env ident fb fa k false none (nextColumn env finished) ((firstVerse :: more).drop count)
+        else .ok finished
+termination_by vs => (vs.length, keepRank k, rank st)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right; apply Prod.Lex.right; exact rank_seal_lt env _ st h1.2
+  · apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h2.2.1]
+  · apply Prod.Lex.left; omega
+  · apply Prod.Lex.left
+    exact Nat.sub_lt (Nat.succ_pos _) (stanzaBoxCount_pos h3)
+
+/-- `fitsFollowing` of a box placed on trial: it puts a part in the column. -/
+def boxFits (st : St) : Except Failure St → Bool
+  | .ok placed =>
+    (placed.page == st.page && placed.column == st.column && decide (st.slots.length < placed.slots.length)) ||
+      placed.done.any (fun o => o.number == st.page && o.column == st.column && decide (st.slots.length < o.slots.length))
+  | .error _ => false
+
+def nonemptyVerses (vs : List (List Line)) : List (List Line) := vs.filter (fun v => !v.isEmpty)
 
 /-! ## What follows a block, and ruled blocks -/
 
@@ -1436,6 +1645,9 @@ def fitsFollowingGo (env : Env) (st : St) (wanted : Nat) (extra : Int) : List Fl
       match placeRuled env { st with pending := st.pending + extra } r rest with
       | .ok placed => placed.page == st.page && placed.column == st.column
       | .error _ => false
+  | .boxedParagraph i b a k ls :: _ => boxFits st (placeBoxedParagraph env i b a k true { st with pending := st.pending + extra } ls)
+  | .boxedStanza i b a k vs :: _ =>
+    boxFits st (placeBoxedStanza env i b a k true none { st with pending := st.pending + extra } (nonemptyVerses vs))
   | rest => decide (extra + env.firstNeed (decide (0 < st.notesUsed)) wanted rest ≤ room env st)
 termination_by fs => (fs.length, 5, 0)
 decreasing_by
@@ -1930,9 +2142,12 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .code caption first continued spans rows => placeCode env caption first continued spans true st rows
   | .wrapped i e ls => placeWrapped env st i e ls
   | .table i b header rows caption below => placeTable env st i b header rows caption below
+  | .boxedParagraph i b a k ls => placeBoxedParagraph env i b a k true st ls
+  | .boxedStanza i b a k vs => placeBoxedStanza env i b a k true none st (nonemptyVerses vs)
 
 def occupies : Flow → Bool
-  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ | .wrapped _ _ _ | .table _ _ _ _ _ _ => true
+  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ | .wrapped _ _ _ | .table _ _ _ _ _ _
+  | .boxedParagraph _ _ _ _ _ | .boxedStanza _ _ _ _ _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -2752,7 +2967,7 @@ theorem step_switchColumns (env : Env) (cols : Nat) (st : St) :
   split
   · have h := step_closed env (drainCarry env st) { close env (drainCarry env st) with
       columns := cols, firstLine := (drainCarry env st).used, column := 0, used := (drainCarry env st).used,
-      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0 } rfl rfl (close_fields env _).1 (close_fields env _).2.1
+      slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] } rfl rfl (close_fields env _).1 (close_fields env _).2.1
     simpa using a.trans h
   · simpa using (a.trans (step_nextPage env _)).trans (Step.same rfl rfl rfl rfl)
 
@@ -3202,6 +3417,157 @@ theorem step_placeTable (env : Env) (st : St) (ident : Nat) (before : Int) (head
   · cases h
   · exact step_placeTableFrom env st ident before header rows caption below _ hh hr hc s h
 
+theorem take_of_le {α : Type} : ∀ (n : Nat) (ls : List α), ls.length ≤ n → ls.take n = ls
+  | _, [], _ => by cases ‹Nat› <;> rfl
+  | 0, _ :: _, h => by simp at h
+  | n + 1, x :: xs, h => by simp only [List.take, List.cons.injEq, true_and]; exact take_of_le n xs (by simp at h; omega)
+
+theorem step_putBoxPart (env : Env) (ident : Nat) (ready s : St) (origin b a : Int) (ls : List Line) (short : List Unmet)
+    (hl : ∀ l ∈ ls, LineOk env l) (h : putBoxPart env ident ready origin b a ls short = .ok s) :
+    Step env ready s (lineIds ls) [] := by
+  unfold putBoxPart at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    have c := ((Step.same rfl rfl rfl rfl).trans (step_putLines env false _ placed ls hl e)).trans (Step.same rfl rfl rfl rfl)
+    simpa only [List.nil_append, List.append_nil] using c
+
+set_option linter.unusedVariables false in
+theorem step_placeBoxedParagraph (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (st : St) (ls : List Line)
+    (hl : ∀ l ∈ ls, LineOk env l) (s : St) (h : placeBoxedParagraph env ident fb fa k start st ls = .ok s) :
+    Step env st s (lineIds ls) [] := by
+  match ls with
+  | [] => simp only [placeBoxedParagraph, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | first :: more =>
+    rw [placeBoxedParagraph] at h
+    dsimp only at h
+    split at h
+    · cases h
+    · split at h
+      · cases h
+      · split at h
+        · rename_i h1
+          split at h
+          · have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) ((first :: more).length, keepRank { k with all := false }, rank (addUnmet (.splitKept first.id) st))
+                ((first :: more).length, keepRank k, rank st) := by
+              apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h1.1]
+            have b := step_placeBoxedParagraph env ident fb fa _ start _ (first :: more) hl s h
+            simpa using (step_addUnmet env st _).trans b
+          · rename_i h2
+            have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) ((first :: more).length, keepRank k, rank (nextColumn env st))
+                ((first :: more).length, keepRank k, rank st) := by
+              apply Prod.Lex.right; apply Prod.Lex.right
+              exact I4_nextColumn_rank env st (Or.inl (by simpa using h2))
+            have b := step_placeBoxedParagraph env ident fb fa k start _ (first :: more) hl s h
+            simpa using (step_nextColumn env st).trans b
+        · split at h
+          · rename_i h3
+            have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) ((first :: more).length, keepRank k, rank (nextColumn env st))
+                ((first :: more).length, keepRank k, rank st) := by
+              apply Prod.Lex.right; apply Prod.Lex.right; exact I4_nextColumn_rank env st (Or.inl h3.2)
+            have b := step_placeBoxedParagraph env ident fb fa k start _ (first :: more) hl s h
+            simpa using (step_nextColumn env st).trans b
+          · split at h
+            · cases h
+            · rename_i finished e
+              have a := (step_fit env st _).trans (step_putBoxPart env ident _ finished _ _ _ _ _ (lineOk_take _ hl) e)
+              split at h
+              · rename_i h4
+                have b := step_placeBoxedParagraph env ident fb fa k false _ _ (lineOk_drop _ hl) s h
+                have all := (a.trans (step_nextColumn env _)).trans b
+                rw [List.append_nil, List.nil_append, ← lineIds_append, List.take_append_drop] at all
+                exact all
+              · rename_i h4
+                injection h with h; subst h
+                rw [take_of_le _ (first :: more) ?_] at a
+                · simpa using a
+                · simp; omega
+termination_by (ls.length, keepRank k, rank st)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | assumption
+    | (apply Prod.Lex.left; try simp only [List.length_drop, List.length_cons]
+       exact Nat.sub_lt (Nat.succ_pos _) (boxCount_pos _ _))
+
+theorem step_seal (env : Env) (o : BoxOpen) (st : St) : Step env st (seal o st) [] [] := by
+  cases o with
+  | none => exact Step.refl env st
+  | some p => exact Step.same rfl rfl rfl rfl
+
+theorem step_reopen (env : Env) (ident : Nat) (fb fa : Int) (verse : List Line) (st : St) :
+    Step env st (reopen env ident fb fa verse st).1 [] [] := by
+  unfold reopen
+  split
+  · split
+    · exact Step.same rfl rfl rfl rfl
+    · exact Step.refl env st
+  · exact Step.refl env st
+
+theorem join_nonempty (vs : List (List Line)) : (nonemptyVerses vs).join = vs.join := by
+  induction vs with
+  | nil => rfl
+  | cons v vs ih =>
+    unfold nonemptyVerses at *
+    cases v with
+    | nil => exact ih
+    | cons x xs => exact congrArg ((x :: xs) ++ ·) ih
+
+set_option linter.unusedVariables false in
+theorem step_placeBoxedStanza (env : Env) (ident : Nat) (fb fa : Int) (k : Keep) (start : Bool) (o : BoxOpen) (st : St)
+    (vs : List (List Line)) (hl : ∀ l ∈ vs.join, LineOk env l) (s : St)
+    (h : placeBoxedStanza env ident fb fa k start o st vs = .ok s) : Step env st s (lineIds vs.join) [] := by
+  match vs with
+  | [] =>
+    simp only [placeBoxedStanza, Except.ok.injEq] at h; subst h
+    simpa [List.join, lineIds] using step_seal env o st
+  | v :: more =>
+    have hv : ∀ l ∈ v, LineOk env l := fun l m => hl l (by rw [List.join]; exact mem_append_left' _ m)
+    have hm : ∀ l ∈ more.join, LineOk env l := fun l m => hl l (by rw [List.join]; exact mem_append_right' _ m)
+    rw [placeBoxedStanza] at h
+    dsimp only at h
+    split at h
+    · rename_i h1
+      have hne := h1.2
+      have b := step_placeBoxedStanza env ident fb fa k start none _ (v :: more) hl s h
+      simpa using ((step_seal env o st).trans (step_nextColumn env _)).trans b
+    · split at h
+      · rename_i h2
+        have hk := h2.2.1
+        have b := step_placeBoxedStanza env ident fb fa _ start o _ (v :: more) hl s h
+        simpa using (step_addUnmet env st _).trans b
+      · split at h
+        · split at h
+          · cases h
+          · rename_i placed e
+            have a := step_placeBoxedParagraph env ident fb fa _ true st v hv placed e
+            have b := step_placeBoxedStanza env ident fb fa k false _ _ more hm s h
+            simpa [List.join, lineIds_append] using (a.trans (step_reopen env ident fb fa v placed)).trans b
+        · rename_i h3
+          split at h
+          · cases h
+          · rename_i finished e
+            have a := (step_fit env st _).trans (step_putBoxPart env ident _ finished _ _ _ _ _ (lineOk_join hl _).1 e)
+            split at h
+            · have b := step_placeBoxedStanza env ident fb fa k false none _ _ (lineOk_join hl _).2 s h
+              have all := (a.trans (step_nextColumn env _)).trans b
+              simpa [join_take_drop] using all
+            · rename_i h4
+              injection h with h; subst h
+              rw [take_of_le _ (v :: more) ?_] at a
+              · simpa using a
+              · simp; omega
+termination_by (vs.length, keepRank k, rank st)
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (apply Prod.Lex.right; apply Prod.Lex.right; exact rank_seal_lt env _ _ (by assumption))
+    | (apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, hk])
+    | (apply Prod.Lex.left; omega)
+    | (apply Prod.Lex.left; try simp only [List.length_drop, List.length_cons]
+       exact Nat.sub_lt (Nat.succ_pos _) (stanzaBoxCount_pos (by assumption)))
+
 theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
   | [], _, m => Or.inr m
   | y :: ys, b, m => by
@@ -3233,6 +3599,10 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | code c f k sp rows => exact step_placeCode env c f k sp true st rows s h
   | wrapped i e ls => exact step_placeWrapped env st i e ls hf s h
   | table i b header rows caption below => exact step_placeTable env st i b header rows caption below hf s h
+  | boxedParagraph i b a k ls => exact step_placeBoxedParagraph env i b a k true st ls hf s h
+  | boxedStanza i b a k vs =>
+    have c := step_placeBoxedStanza env i b a k true none st (nonemptyVerses vs) (by rw [join_nonempty]; exact hf) s h
+    rw [join_nonempty] at c; exact c
   | heading recto extent ls =>
     simp only [placeFlow] at h
     have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
@@ -3345,6 +3715,8 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | code c f k sp rows => exact step_placeFlow env b _ hf s h
   | wrapped i e ls => exact step_placeFlow env b _ hf s h
   | table i bf header rows caption below => exact step_placeFlow env b _ hf s h
+  | boxedParagraph i bf a k ls => exact step_placeFlow env b _ hf s h
+  | boxedStanza i bf a k vs => exact step_placeFlow env b _ hf s h
   | stanza k vs =>
     cases e : keepAhead rest with
     | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
@@ -3460,7 +3832,8 @@ decreasing_by
 theorem I4_paginate_ends (env : Env) (flows : List Flow) : ∃ r, paginate env flows = r := ⟨_, rfl⟩
 
 /-- Invariant 5: the lines of the paragraphs, definition terms, stanzas,
-    code blocks, ruled blocks and the lines beside wrapped figures, the
+    code blocks, ruled blocks, tables (a header repeated in a later column
+    aside), boxes and the lines beside wrapped figures, the
     first line of each heading and ruled heading, and each wrapped figure
     before its lines, are placed once each, in the order of the manuscript. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) (pages : List PageOut)

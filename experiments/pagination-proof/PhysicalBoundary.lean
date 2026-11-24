@@ -85,6 +85,7 @@ def boundaryEnv (cap sep : Int) (cols : Nat) : Env :=
     columns := cols, firstLine := 0, pitchOf := pitchOf, faceOf := faceOf,
     headingBounds := fun i => if i = 385 then some (4, 16) else none,
     wrappedBefore := fun i => if i = 702 ∨ i = 705 then 3 else if i = 712 then 5 else 0,
+    boxPadding := fun i => if i = 170 then some 3 else none,
     firstNeed := firstNeed 10 sep cap }
 
 def int! (s : String) : Int := s.toInt!
@@ -124,6 +125,8 @@ def flowOf (s : String) : Flow :=
   | ["f", i, e] => .figure (nat! i) (int! e)
   | ["g", i, b, h, rs, c, bl] =>
     .table (nat! i) (int! b) (linesOr h) (if rs == "" then [] else (rs.splitOn "/").map linesOr) (linesOr c) (bl == "1")
+  | ["X", i, b, a, k, ls] => .boxedParagraph (nat! i) (int! b) (int! a) (keepOf k) (linesOr ls)
+  | ["Y", i, b, a, k, vs] => .boxedStanza (nat! i) (int! b) (int! a) (keepOf k) ((vs.splitOn "/").map linesOr)
   | ["w", i, e, ls] => .wrapped (nat! i) (int! e) (if ls == "" then [] else linesOf ls)
   | ["t", i] => .pageFigure (nat! i)
   | ["s", n] => .space (int! n)
@@ -181,6 +184,7 @@ def failureToken : Failure → String
   | .codeTooTall i => s!"code{i}"
   | .tableTooTall i => s!"table{i}"
   | .tableCaptionTooTall i => s!"tablecaption{i}"
+  | .boxTooTall i => s!"box{i}"
   | .noProgress _ => "loop"
 
 def run (input : String) : List String :=
