@@ -182,7 +182,7 @@ pageNoteNumbersTests =
             (ds, files) <- buildFor [t] pageStyle src
             [(diagSeverity d, spanStart (diagSpan d)) | d <- ds, diagCode d == DiagnosticCode "G03259"] @?= [(Warning, 3)]
             -- the output is written
-            assertBool (show t) (any (\(p, _) -> any (`isSuffixOf` p) [".xhtml", ".epub", ".txt"]) files),
+            assertBool (show t) (any (\(p, _) -> any (`isSuffixOf` p) [".html", ".epub", ".txt"]) files),
         testCase "a book without notes, or of another numbering, gives none" $ do
           (none, _) <- buildFor [TargetHtml] pageStyle "本文。\n"
           [c | c <- codesOf none, c == "G03259"] @?= []

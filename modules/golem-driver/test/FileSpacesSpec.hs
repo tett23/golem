@@ -104,7 +104,7 @@ buildCase c = do
     res <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
     assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- filter isError (brDiagnostics res)]
     css <- TIO.readFile (tmp </> "build/html/style.css")
-    pages <- forM (zip [1 :: Int ..] (caseChapters c)) $ \(i, _) -> pageOf <$> TIO.readFile (tmp </> "build/html/c" <> show i <> ".xhtml")
+    pages <- forM (zip [1 :: Int ..] (caseChapters c)) $ \(i, _) -> pageOf <$> TIO.readFile (tmp </> "build/html/c" <> show i <> ".html")
     archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
     let entry p = maybe (error ("no " <> p <> " in the EPUB")) (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath ("OEBPS/" <> p) archive)
         ecss = entry "style.css"

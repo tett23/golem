@@ -81,7 +81,7 @@ pdfPipelineTests =
           map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 8 Error
           pdfDir <- doesDirectoryExist (tmp </> "build/pdf")
           assertBool "no build/pdf" (not pdfDir)
-          html <- doesFileExist (tmp </> "build/html/index.xhtml")
+          html <- doesFileExist (tmp </> "build/html/index.html")
           assertBool "HTML written" html,
       testCase "G08100: the same diagnostics whether laid out in parallel or not (docs/adr 0081)" $
         withMissingGlyphs subsetJa $ \tmp -> do
@@ -853,7 +853,7 @@ marksTests =
          testCase "Japanese marks without bleed are not G07002 when PDF is not a target" $ do
            b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Just [TargetHtml]}) (Just horizontalStyle)
            map diagCode (bErrors b) @?= []
-           assertBool "HTML" (any (".xhtml" `isSuffixOf`) (bWritten b)),
+           assertBool "HTML" (any (".html" `isSuffixOf`) (bWritten b)),
          testCase "golem check with Japanese marks and no bleed is G07002 and writes nothing" $ do
            b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Nothing, optCheckOnly = True}) (Just horizontalStyle)
            map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
@@ -1276,7 +1276,7 @@ kentenTests =
       assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "HTML: the class of the shape; no shape is sesame" $ do
       n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
-      case [b | (p, b) <- nOutputs n, ".xhtml" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
+      case [b | (p, b) <- nOutputs n, ".html" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
         [page] -> do
           assertBool "sesame" ("<span class=\"kenten kenten-sesame\">" `BS.isInfixOf` page)
           assertBool "open-triangle" ("<span class=\"kenten kenten-open-triangle\">" `BS.isInfixOf` page)
@@ -1890,7 +1890,7 @@ codeTests =
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
       css <- TIO.readFile (tmp </> "build/html/style.css")
-      page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+      page <- TIO.readFile (tmp </> "build/html/a.html")
       k css page
 
 -- ------------------------------------------------------------------ the background of inline code (golem-driver ADR 0029)
@@ -2063,7 +2063,7 @@ inlineCodeBackgroundTests =
       case concatMap filledRects contents of
         [[_, _, w, _]] -> approx w 15
         other -> assertFailure (show other),
-    testCase "golem-layout ADR 0048 D7: the HTML and the EPUB of code with spaces at its ends are as before" $
+    testCase "golem-layout ADR 0048 D7: the HTML and the EPUB of code with spaces at its ends are as before, the HTML in the syntax of root ADR 0432" $
       withSystemTempDirectory "golem-code-padding" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
         BS.writeFile (tmp </> "style.toml") (withBodyFont (horizontalStyle <> cbg))
@@ -2073,8 +2073,8 @@ inlineCodeBackgroundTests =
         files <- (<>) <$> filesUnder (tmp </> "build/html") <*> filesUnder (tmp </> "build/epub")
         bytes <- mapM BS.readFile files
         let digest = hex (sha256 (BS.concat [BC.pack (drop (length tmp) f) <> "\0" <> b <> "\0" | (f, b) <- zip files bytes]))
-        -- the digest from the build before golem-layout ADR 0048
-        digest @?= "4d6d61f539c0f7c524bc676b377f0147b3fd8dfec3d7ad3053b8c13faec36788",
+        -- the digest from the build before golem-layout ADR 0048, with the HTML of root ADR 0432
+        digest @?= "7e9cd5342b8fd31dc6c083ed4f5f4c30a3cf637bbdf9e0420616fb0bc0db2a3f",
     testCase "HTML: the background and the padding of code" $
       withCodeHtml (horizontalStyle <> cbg) "[code: y]\n" $ \css ->
         rulesOf "code" css @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"]

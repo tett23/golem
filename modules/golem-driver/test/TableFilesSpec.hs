@@ -142,7 +142,7 @@ tableFileTests =
       testCase "align=right reaches HTML, and the PDF sets it as a | table with ---:" $ do
         written <- withTables [("a.gm", "@table data/x.csv align=right\n")] [("data/x.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] $ \tmp -> do
           r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-          mapM (fmap TE.decodeUtf8 . BS.readFile) (filter (".xhtml" `isSuffixOf`) (brWritten r))
+          mapM (fmap TE.decodeUtf8 . BS.readFile) (filter (".html" `isSuffixOf`) (brWritten r))
         assertBool "align-right" (any ("class=\"align-right\"" `T.isInfixOf`) written)
         fromCsv <- miniPdf fakeProvider True horizontalStyle "@table data.csv align=right\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
         fromBars <- miniPdf fakeProvider True horizontalStyle "| 項目 | 値 |\n|---:|---:|\n| 幅 | 10 |\n" [] >>= fmap BS.concat . inflateAll

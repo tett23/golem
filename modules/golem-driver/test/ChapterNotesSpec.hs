@@ -158,7 +158,7 @@ chapterNoteTests =
       (_, a) <- buildFor [TargetHtml, TargetText, TargetEpub] oneChapter (horizontalStyle <> "\n[notes]\nplacement = \"page-foot\"\n") src
       (_, b) <- buildFor [TargetHtml, TargetText, TargetEpub] oneChapter (horizontalStyle <> "\n[notes]\nplacement = \"chapter-end\"\n") src
       -- style.toml is not an input of the HTML, EPUB or plain text but its bytes; compare the pages and texts
-      let pagesAndTexts = filter (\(p, _) -> any (`isSuffixOf` p) [".xhtml", ".txt"]) . notPdf
+      let pagesAndTexts = filter (\(p, _) -> any (`isSuffixOf` p) [".html", ".txt"]) . notPdf
       pagesAndTexts a @?= pagesAndTexts b
-      map fst (pagesAndTexts a) @?= ["build/html/a.xhtml", "build/html/b.xhtml", "build/html/index.xhtml", "build/text/horizontal/a.txt", "build/text/horizontal/b.txt"]
+      map fst (pagesAndTexts a) @?= ["build/html/a.html", "build/html/b.html", "build/html/index.html", "build/text/horizontal/a.txt", "build/text/horizontal/b.txt"]
   ]

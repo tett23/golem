@@ -71,7 +71,7 @@ LSP、[code: golem check]、[code: golem build] は、プリフライトの検�
 
 | 対象 | 出力 |
 | --- | --- |
-| [code: html] | [code: build/html/]（[code: index.xhtml]、章ごとの XHTML、[code: style.css]、図版とフォント） |
+| [code: html] | [code: build/html/]（[code: index.html]、章ごとの HTML、[code: style.css]、図版とフォント） |
 | [code: epub] | [code: build/epub/book.epub] |
 | [code: text] | [code: build/text/vertical/] と [code: build/text/horizontal/] |
 | [code: pdf] | [code: build/pdf/<id>.pdf]（マニフェストの [code: id] の [code: :] を [code: -] にした名前） |
