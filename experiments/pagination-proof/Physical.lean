@@ -84,6 +84,9 @@ inductive Flow where
   | defTerm (ls : List Line)
   /-- `FStanza`: its verse lines, each the lines it is broken into. -/
   | stanza (k : Keep) (verses : List (List Line))
+  /-- `FCode`: the caption, the rows of the first part, continued, the
+      grid lines `codeSpan` gives for 0, 1, 2, ... rows, and the rows. -/
+  | code (caption : Int) (first : Nat) (continued : Bool) (spans : List Nat) (rows : List Line)
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -92,6 +95,9 @@ inductive Slot where
   | pageFigure (id : Nat)
   /-- `SHeading`: the first line and the number of lines. -/
   | heading (id : Nat) (n : Nat)
+  /-- `SCode`: the rows of the part (Physical.hs keeps the first and the
+      number) and the grid lines it takes. -/
+  | code (ids : List Nat) (grid : Nat)
   deriving DecidableEq, Repr
 
 inductive AdjustLimit where
@@ -117,6 +123,10 @@ inductive Failure where
   | footnoteTooTall (id : Nat)
   | figureTooTall (id : Nat)
   | headingTooTall (id : Nat)
+  | codeTooTall (id : Nat)
+  /-- A flow that fits in no column: Physical.hs goes on to the next
+      column for ever (see `seek`). -/
+  | noProgress (id : Nat)
   deriving DecidableEq, Repr
 
 /-- A note part: the note, the first line shown, the lines. -/
@@ -707,6 +717,7 @@ def flowLines : Flow → List Line
   | .heading _ _ ls => ls
   | .defTerm ls => ls
   | .stanza _ vs => vs.join
+  | .code _ _ _ _ rows => rows
   | _ => []
 
 /-! ## Ruled blocks -/
@@ -1162,12 +1173,13 @@ theorem fresh_inPage (env : Env) (st : St) (h : ¬st.columns ≤ st.column + 1) 
 /-- `drainCarry` goes on to a column that leaves fewer columns on the
     page or less waiting, and on to a new page only with less waiting. -/
 theorem I4_drain_rank (env : Env) (st : St)
-    (h : (st.carry.isEmpty && st.deferred.isEmpty) = false ∧ drainOk env st = true) :
+    (h : ((st.carry.isEmpty && st.deferred.isEmpty) = false ∨ ¬st.columns ≤ st.column + 1) ∧ drainOk env st = true) :
     Prod.Lex (· < ·) (· < ·) (waiting (nextColumn env st), columnsLeft (nextColumn env st))
       (waiting st, columnsLeft st) := by
   obtain ⟨le, _, _⟩ := open_waiting env false st
   by_cases pe : st.columns ≤ st.column + 1
   · apply Prod.Lex.left
+    have h1 : (st.carry.isEmpty && st.deferred.isEmpty) = false := h.1.resolve_right (fun n => n pe)
     have op : opened env false st = placeTurned env (fresh env false st) := by simp [opened, pe]
     unfold nextColumn placeDeferred
     rw [op]
@@ -1204,7 +1216,7 @@ theorem I4_drain_rank (env : Env) (st : St)
           omega
       | nil =>
         have ne : st.carry ≠ [] := by
-          intro c; have := h.1; rw [c, d] at this; exact absurd this (by decide)
+          intro c; have := h1; rw [c, d] at this; exact absurd this (by decide)
         have fits : 0 < env.pagePitch ∧ env.separator + env.pagePitch ≤ env.capacity := by
           have := h.2
           cases c : st.carry with
@@ -1242,7 +1254,34 @@ def drainCarry (env : Env) (st : St) : St :=
 termination_by (waiting st, columnsLeft st)
 decreasing_by
   simp_wf
-  exact I4_drain_rank env st h
+  exact I4_drain_rank env st ⟨Or.inl h.1, h.2⟩
+
+theorem seek_cond (st : St) (h : ¬(waiting st = 0 ∧ st.columns ≤ st.column + 1)) :
+    (st.carry.isEmpty && st.deferred.isEmpty) = false ∨ ¬st.columns ≤ st.column + 1 := by
+  by_cases pe : st.columns ≤ st.column + 1
+  · left
+    have w : waiting st ≠ 0 := fun w => h ⟨w, pe⟩
+    cases c : st.carry with
+    | cons _ _ => rfl
+    | nil =>
+      cases d : st.deferred with
+      | cons _ _ => rfl
+      | nil => exact absurd (by simp [waiting, c, d, carryWeight]) w
+  · exact Or.inr pe
+
+set_option linter.unusedVariables false in
+/-- The loop of a flow that goes on to the next column until it fits
+    (`count == 0` of `placeCode`). It stops after the start of a page with
+    nothing waiting: Physical.hs would loop for ever when the flow does
+    not fit there, as every later column is the same. -/
+def seek (env : Env) (p : St → Bool) (st : St) : St :=
+  if p st then st
+  else if h : drainOk env st = true ∧ ¬(waiting st = 0 ∧ st.columns ≤ st.column + 1) then seek env p (nextColumn env st)
+  else nextColumn env st
+termination_by (waiting st, columnsLeft st)
+decreasing_by
+  simp_wf
+  exact I4_drain_rank env st ⟨seek_cond st h.2, h.1⟩
 
 def parityStart (env : Env) (accept : Nat → Bool) (st : St) : St :=
   let settled := drainCarry env st
@@ -1290,6 +1329,68 @@ def switchColumns (env : Env) (cols : Nat) (st : St) : St :=
 /-- `FRestoreColumns`: the next page, in the columns of the page. -/
 def restoreColumns (env : Env) (st : St) : St :=
   { nextPage env st with columns := env.columns, firstLine := env.firstLine }
+
+/-! ## Code -/
+
+def codeSpanOf (spans : List Nat) (k : Nat) : Nat := spans.getD k 1
+
+/-- `spanOf` of `placeCode`. -/
+def codeExtent (env : Env) (caption : Int) (isFirst continued : Bool) (spans : List Nat) (total n : Nat) : Int :=
+  (if isFirst then caption else 0) + (codeSpanOf spans (n + if continued ∧ n < total then 1 else 0) : Int) * env.pagePitch
+
+def codeMinimum (isFirst : Bool) (first total : Nat) : Nat := if isFirst then min total (max 1 first) else 1
+
+/-- The consecutive numbers of rows from `j` that fit. -/
+def codeFit (ok : Nat → Bool) (j : Nat) : Nat → Nat
+  | 0 => 0
+  | r + 1 => if ok j then codeFit ok (j + 1) r + 1 else 0
+
+theorem codeFit_le (ok : Nat → Bool) : ∀ (j n : Nat), codeFit ok j n ≤ n
+  | _, 0 => Nat.le_refl _
+  | j, r + 1 => by
+    simp only [codeFit]
+    split
+    · exact Nat.succ_le_succ (codeFit_le ok (j + 1) r)
+    · exact Nat.zero_le _
+
+def codeFitting (env : Env) (st : St) (caption : Int) (isFirst continued : Bool) (spans : List Nat) (total : Nat) : Nat :=
+  codeFit (fun n => decide (codeExtent env caption isFirst continued spans total n + (if empty st then 0 else st.pending) ≤ room env st)) 1 total
+
+/-- `count` of `placeCode`: the rows that fit, or none below the minimum. -/
+def codeCount (env : Env) (st : St) (caption : Int) (first : Nat) (isFirst continued : Bool) (spans : List Nat) (total : Nat) : Nat :=
+  if codeMinimum isFirst first total ≤ codeFitting env st caption isFirst continued spans total
+  then codeFitting env st caption isFirst continued spans total else 0
+
+theorem codeCount_le (env : Env) (st : St) (c : Int) (f : Nat) (i k : Bool) (sp : List Nat) (t : Nat) :
+    codeCount env st c f i k sp t ≤ t := by
+  unfold codeCount
+  split
+  · exact codeFit_le _ _ _
+  · omega
+
+set_option linter.unusedVariables false in
+def placeCode (env : Env) (caption : Int) (first : Nat) (continued : Bool) (spans : List Nat)
+    (isFirst : Bool) (st : St) (rows : List Line) : Except Failure St :=
+  match rows with
+  | [] => .ok st
+  | r :: rs =>
+    if env.capacity < codeExtent env caption isFirst continued spans (rs.length + 1) (codeMinimum isFirst first (rs.length + 1)) then
+      .error (.codeTooTall r.id)
+    else
+      let found := seek env (fun s => decide (0 < codeCount env s caption first isFirst continued spans (rs.length + 1))) st
+      let count := codeCount env found caption first isFirst continued spans (rs.length + 1)
+      have hc : count ≤ rs.length + 1 := codeCount_le env found caption first isFirst continued spans (rs.length + 1)
+      if h : count = 0 then .error (.noProgress r.id)
+      else
+        let extent := codeExtent env caption isFirst continued spans (rs.length + 1) count
+        let grid := codeSpanOf spans (count + if continued ∧ count < rs.length + 1 then 1 else 0)
+        let placed := putSlot (fit env found extent) extent (.code (((r :: rs).take count).map (·.id)) grid)
+        if h2 : count = rs.length + 1 then .ok placed
+        else placeCode env caption first continued spans false (nextColumn env placed) ((r :: rs).drop count)
+termination_by rows.length
+decreasing_by
+  simp_wf
+  exact Nat.sub_lt (Nat.succ_pos _) (Nat.pos_of_ne_zero h)
 
 /-! ## Need-lines and adjust-lines -/
 
@@ -1355,9 +1456,10 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
     placeHeading env (if recto then parityStart env (fun p => p % 2 == 1) st else st) (headId ls) extent ls
   | .defTerm ls => placeLines env defaultKeep true st ls
   | .stanza k vs => placeStanza env k true st vs
+  | .code caption first continued spans rows => placeCode env caption first continued spans true st rows
 
 def occupies : Flow → Bool
-  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ => true
+  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -1424,6 +1526,7 @@ def textSlots : List (Int × Slot) → List Nat
   | [] => []
   | (_, .line i) :: r => i :: textSlots r
   | (_, .heading i _) :: r => i :: textSlots r
+  | (_, .code ids _) :: r => ids ++ textSlots r
   | _ :: r => textSlots r
 def figSlots : List (Int × Slot) → List Nat
   | [] => []
@@ -2096,13 +2199,73 @@ theorem step_drainCarry (env : Env) (st : St) : Step env st (drainCarry env st) 
   rw [drainCarry]
   split
   · rename_i h
-    have dec := I4_drain_rank env st h
+    have dec := I4_drain_rank env st ⟨Or.inl h.1, h.2⟩
     simpa using (step_nextColumn env st).trans (step_drainCarry env (nextColumn env st))
   · exact Step.refl env st
 termination_by (waiting st, columnsLeft st)
 decreasing_by
   all_goals simp_wf
   all_goals assumption
+
+set_option linter.unusedVariables false in
+theorem step_seek (env : Env) (p : St → Bool) (st : St) : Step env st (seek env p st) [] [] := by
+  rw [seek]
+  split
+  · exact Step.refl env st
+  · split
+    · rename_i h
+      have dec := I4_drain_rank env st ⟨seek_cond st h.2, h.1⟩
+      simpa using (step_nextColumn env st).trans (step_seek env p (nextColumn env st))
+    · exact step_nextColumn env st
+termination_by (waiting st, columnsLeft st)
+decreasing_by
+  all_goals simp_wf
+  all_goals assumption
+
+theorem step_putCodeSlot (env : Env) (st : St) (e : Int) (ids : List Nat) (g : Nat) :
+    Step env st (putSlot st e (.code ids g)) ids [] := by
+  refine ⟨?_, ?_, fun g => g⟩
+  · simp [text, putSlot, textSlots_append, textSlots]
+  · simp [figs, putSlot, figSlots_append, figSlots]
+
+theorem Step.text_eq {env : Env} {st s : St} {t t' g : List Nat} (e : t = t') (h : Step env st s t g) :
+    Step env st s t' g := e ▸ h
+
+theorem step_seekFitCode (env : Env) (p : St → Bool) (st : St) (e : Int) (ids : List Nat) (g : Nat) :
+    Step env st (putSlot (fit env (seek env p st) e) e (.code ids g)) ids [] := by
+  simpa using (step_seek env p st).trans ((step_fit env _ e).trans (step_putCodeSlot env _ e ids g))
+
+theorem step_placeCode (env : Env) (caption : Int) (first : Nat) (continued : Bool) (spans : List Nat)
+    (isFirst : Bool) (st : St) (rows : List Line) (s : St)
+    (h : placeCode env caption first continued spans isFirst st rows = .ok s) : Step env st s (lineIds rows) [] := by
+  have key : ∀ n, ∀ (isFirst : Bool) (st : St) (rows : List Line), rows.length = n →
+      ∀ s, placeCode env caption first continued spans isFirst st rows = .ok s → Step env st s (lineIds rows) [] := by
+    intro n
+    induction n using Nat.strongInductionOn with
+    | _ n ih =>
+    intro isFirst st rows hn s h
+    match rows with
+    | [] => simp only [placeCode, Except.ok.injEq] at h; subst h; exact Step.refl env _
+    | r :: rs =>
+      rw [placeCode] at h
+      dsimp only at h
+      split at h
+      · cases h
+      · split at h
+        · cases h
+        · rename_i c0
+          split at h
+          · injection h with h; subst h
+            rename_i c
+            refine Step.text_eq ?_ (step_seekFitCode env _ st _ _ _)
+            rw [c]; exact congrArg lineIds (take_length' (r :: rs))
+          · rename_i c
+            have b := ih _ (by rw [← hn]; simp only [List.length_drop, List.length_cons]; exact Nat.sub_lt (Nat.succ_pos _) (Nat.pos_of_ne_zero c0))
+              false _ _ rfl s h
+            refine Step.text_eq ?_ (((step_seekFitCode env _ st _ _ _).trans (step_nextColumn env _)).trans b)
+            show lineIds _ ++ [] ++ lineIds _ = _
+            rw [List.append_nil, ← lineIds_append, List.take_append_drop]
+  exact key _ isFirst st rows rfl s h
 
 theorem step_parityStart (env : Env) (accept : Nat → Bool) (st : St) :
     Step env st (parityStart env accept st) [] [] := by
@@ -2275,6 +2438,7 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | restoreColumns => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_restoreColumns env st
   | defTerm ls => exact step_placeLines env _ true st ls hf s h
   | stanza k vs => exact step_placeStanza env k true st vs hf s h
+  | code c f k sp rows => exact step_placeCode env c f k sp true st rows s h
   | heading recto extent ls =>
     simp only [placeFlow] at h
     have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
@@ -2384,6 +2548,7 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | start k => exact step_placeFlow env b _ hf s h
   | switchColumns c => exact step_placeFlow env b _ hf s h
   | restoreColumns => exact step_placeFlow env b _ hf s h
+  | code c f k sp rows => exact step_placeFlow env b _ hf s h
   | stanza k vs =>
     cases e : keepAhead rest with
     | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
@@ -2477,7 +2642,7 @@ theorem drain_empty (env : Env) (hp : 0 < env.pagePitch) (st : St) (g : Good env
   rw [drainCarry]
   split
   · rename_i h
-    have dec := I4_drain_rank env st h
+    have dec := I4_drain_rank env st ⟨Or.inl h.1, h.2⟩
     exact drain_empty env hp (nextColumn env st) ((step_nextColumn env st).2.2 g)
   · rename_i h
     have ok := drainOk_of_good env st hp g

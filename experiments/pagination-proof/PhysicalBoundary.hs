@@ -11,6 +11,7 @@ import Control.Monad (replicateM)
 import Data.List (intercalate)
 import Data.Map.Strict qualified as Map
 import Golem.Doc.IR (BreakKind (..))
+import Golem.Layout.Code (CodeGeometry (..), codeSpan)
 import Golem.Layout.Look (NoteId (..))
 import Golem.Layout.Paginate
 import Golem.Layout.Paginate.Physical
@@ -293,6 +294,34 @@ stanzaInputs =
   where
     verses base shape = [lines' (base + 10 * j) m | (j, m) <- zip [0 ..] shape]
 
+-- Code blocks of one and of padded grid lines a row, with captions and
+-- continuation rows, after paragraphs and keeps.
+codeInputs :: [(Column, [FlowAt Sp])]
+codeInputs =
+  [ (Column cap 0 cols, [para 0 p | p > 0] <> [FCode g c f k (lines' 600 r)] <> after <> [para 20 1])
+  | cap <- [30, 40],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    g <- geometries,
+    c <- [0, 10],
+    f <- [1, 2],
+    k <- [False, True],
+    r <- [1 .. 5],
+    after <- [[], [FKeepNext span0 1]]
+  ]
+    <> [ (Column cap 0 1, [para 0 p, ctl, FCode g 0 f False (lines' 600 r), para 20 1])
+       | cap <- [30, 40],
+         p <- [1, 2],
+         ctl <- [FKeepNext span0 1, FKeepNext span0 3, FBlank span0 1],
+         g <- geometries,
+         f <- [1, 3],
+         r <- [2, 4]
+       ]
+    <> [(Column 30 0 1, [FBlank span0 b, FCode g 0 1 False (lines' 600 r), para 20 1]) | b <- [1, 2], g <- geometries, r <- [2, 3]]
+    <> [(Column 20 0 1, [para 0 1, FCode (geometries !! 1) 10 1 False (lines' 600 2)])]
+  where
+    geometries = [CodeGeometry 10 10 10 10 0, CodeGeometry 10 10 10 10 5]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -311,6 +340,7 @@ flowToken = \case
     "r:" <> show i <> ":" <> sideToken b <> ":" <> sideToken a <> ":" <> bit j <> ":" <> show (unSp o) <> ":" <> keepToken k <> ":" <> linesToken ls
   FHeading _ recto e ls -> "h:" <> bit recto <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FDefTerm ls -> "d:" <> linesToken ls
+  FCode g c f k ls -> "x:" <> show (unSp c) <> ":" <> show f <> ":" <> bit k <> ":" <> intercalate "," [show (codeSpan g n) | n <- [0 .. length ls + 1]] <> ":" <> linesToken ls
   FStanza k vs -> "v:" <> keepToken k <> ":" <> intercalate "/" (map linesToken vs)
   FSection _ k -> "S:" <> breakToken k
   FSwitchColumns (ColumnSet c _ _ _) -> "W:" <> show c
@@ -335,6 +365,7 @@ slotToken (at, s) = show (unSp at) <> ":" <> case s of
   SFigure i -> "F" <> show i
   SPageFigure i -> "T" <> show i
   SHeading i n -> "H" <> show i <> "." <> show n
+  SCode i n g -> "C" <> show i <> "." <> show n <> "." <> show g
   other -> show other
 
 unmetToken :: Unmet -> String
@@ -363,7 +394,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))
@@ -375,4 +406,5 @@ main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs
       PhysicalFootnoteTooTall (NoteId _ i) -> "note" <> show i
       PhysicalFigureTooTall i -> "figure" <> show i
       PhysicalHeadingTooTall i -> "heading" <> show i
+      PhysicalCodeTooTall i -> "code" <> show i
       other -> show other

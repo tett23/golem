@@ -47,6 +47,9 @@ partial def firstNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Na
   | .heading false extent ls :: rest =>
     extent + noteNeed pagePitch separator hasNotes ls +
       firstNeed pagePitch separator (hasNotes || ls.any (fun l => !l.notes.isEmpty)) 1 rest
+  | .code caption first continued spans rows :: _ =>
+    let count := min rows.length (max first (max 1 wanted))
+    caption + (codeSpanOf spans (count + if continued ∧ count < rows.length then 1 else 0) : Int) * pagePitch
   | .defTerm ls :: _ => sumInt (ls.map (fun l => pitchOf l.id)) + noteNeed pagePitch separator hasNotes ls
   | _ => 0
 where
@@ -119,6 +122,7 @@ def flowOf (s : String) : Flow :=
   | ["K", n] => .keepNext (nat! n)
   | ["h", r, e, ls] => .heading (r == "1") (int! e) (linesOf ls)
   | ["d", ls] => .defTerm (linesOf ls)
+  | ["x", c, f, k, sp, ls] => .code (int! c) (nat! f) (k == "1") ((sp.splitOn ",").map nat!) (linesOf ls)
   | ["v", k, vs] => .stanza (keepOf k) ((vs.splitOn "/").map linesOf)
   | ["S", k] => .start (breakOf k)
   | ["W", c] => .switchColumns (nat! c)
@@ -132,6 +136,7 @@ def slotToken : Int × Slot → String
   | (p, .figure i) => s!"{p}:F{i}"
   | (p, .pageFigure i) => s!"{p}:T{i}"
   | (p, .heading i n) => s!"{p}:H{i}.{n}"
+  | (p, .code ids g) => s!"{p}:C{ids.headD 0}.{ids.length}.{g}"
 
 def unmetToken : Unmet → String
   | .needLines n => s!"!need{n}"
@@ -155,6 +160,8 @@ def failureToken : Failure → String
   | .footnoteTooTall i => s!"note{i}"
   | .figureTooTall i => s!"figure{i}"
   | .headingTooTall i => s!"heading{i}"
+  | .codeTooTall i => s!"code{i}"
+  | .noProgress i => s!"noprogress{i}"
 
 def run (input : String) : List String :=
   match input.splitOn " " with
