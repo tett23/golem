@@ -224,6 +224,9 @@ structure St where
   waits : List Wait
   /-- `psBoxes`: the box, the start and the end of each part in the column. -/
   boxes : List (Nat × Int × Int)
+  /-- `psReserved`: the notes at the foot of the page that the columns of
+      a set started on it keep clear (root ADR 0025). -/
+  reserved : Int
 
 /-- `PhysicalSettings` without the maps the flows of the model do not
     read; the pitch and the face of a line are functions of its id. -/
@@ -255,7 +258,7 @@ structure Env where
   held : Nat → Bool
 
 def initial (env : Env) : St :=
-  ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, [], []⟩
+  ⟨1, 0, env.columns, env.firstLine, 0, 0, [], [], [], [], [], 0, [], 0, false, 0, none, [], [], 0⟩
 
 def limit (env : Env) (st : St) : Int := env.capacity + st.adjust
 def room (env : Env) (st : St) : Int := limit env st - st.used - st.notesUsed
@@ -297,11 +300,11 @@ def splitCarried : Nat → List NotePart → List NotePart × List NotePart
 def carryInto (env : Env) (st : St) : St :=
   if st.carry.isEmpty then st
   else
-    let available := limit env st - st.used - env.separator
+    let available := limit env st - st.used - st.notesUsed - env.separator
     let count := (max 0 (Int.fdiv available env.pagePitch)).toNat
     let p := splitCarried count st.carry
     let extent := env.separator + (partsLines p.1 : Int) * env.pagePitch
-    { st with notes := p.1, carry := p.2, notesUsed := if p.1.isEmpty then 0 else extent }
+    { st with notes := p.1, carry := p.2, notesUsed := st.notesUsed + if p.1.isEmpty then 0 else extent }
 
 /-- The column closed and the next one opened (`fresh` of `nextColumn`,
     and of `nextPage` when `toPage`). -/
@@ -314,7 +317,8 @@ def fresh (env : Env) (toPage : Bool) (st : St) : St :=
     column := if pageEnd then 0 else st.column + 1
     firstLine := first
     used := first
-    notesUsed := 0
+    notesUsed := if pageEnd then 0 else st.reserved
+    reserved := if pageEnd then 0 else st.reserved
     slots := []
     notes := []
     adjust := 0
@@ -546,7 +550,7 @@ theorem carryInto_fields (env : Env) (st : St) :
   · rename_i h
     have ne : st.carry ≠ [] := by intro c; rw [c] at h; exact h rfl
     dsimp only
-    generalize (max 0 (Int.fdiv (limit env st - st.used - env.separator) env.pagePitch)).toNat = n
+    generalize (max 0 (Int.fdiv (limit env st - st.used - st.notesUsed - env.separator) env.pagePitch)).toNat = n
     obtain ⟨a, b, c⟩ := splitCarried_weight n st.carry
     refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, a, fun e => Or.inl ?_⟩
     cases n with
@@ -1130,7 +1134,7 @@ theorem fdiv_pos (a b : Int) (hb : 0 < b) (h : b ≤ a) : 1 ≤ Int.fdiv a b := 
 
 /-- A note carried on shows at least one line where a line fits. -/
 theorem carryInto_strict (env : Env) (st : St) (ne : st.carry ≠ [])
-    (h : 1 ≤ Int.fdiv (limit env st - st.used - env.separator) env.pagePitch) :
+    (h : 1 ≤ Int.fdiv (limit env st - st.used - st.notesUsed - env.separator) env.pagePitch) :
     carryWeight (carryInto env st).carry < carryWeight st.carry := by
   unfold carryInto
   have e : st.carry.isEmpty = false := by
@@ -1140,7 +1144,7 @@ theorem carryInto_strict (env : Env) (st : St) (ne : st.carry ≠ [])
   rw [e]
   dsimp only
   simp only [ite_false]
-  generalize Int.fdiv (limit env st - st.used - env.separator) env.pagePitch = q at h ⊢
+  generalize Int.fdiv (limit env st - st.used - st.notesUsed - env.separator) env.pagePitch = q at h ⊢
   have m : max 0 q = q := Int.max_eq_right (by omega)
   have t : ((q.toNat : Nat) : Int) = q := Int.toNat_of_nonneg (by omega)
   rw [m]
@@ -1205,7 +1209,7 @@ theorem drain_rank_core (env : Env) (st : St)
         have fits : 0 < env.pagePitch ∧ env.separator + env.pagePitch ≤ env.capacity := h.2.2 d ne
         simp only [placeDeferredGo]
         have s := carryInto_strict env { T with deferred := [] } (by rw [← f6, ← t6] at ne; exact ne)
-          (fdiv_pos _ _ fits.1 (by show env.pagePitch ≤ env.capacity + T.adjust - T.used - env.separator; rw [t3, t5, u0, a0]; omega))
+          (fdiv_pos _ _ fits.1 (by show env.pagePitch ≤ env.capacity + T.adjust - T.used - T.notesUsed - env.separator; rw [t3, t5, t7, u0, a0, n0]; omega))
         simp only [waiting, d, List.length_nil]
         have : ({ T with deferred := [] } : St).carry = st.carry := t6.trans f6
         obtain ⟨_, _, _, _, _, _, _, c8, _, _, _⟩ := carryInto_fields env { T with deferred := [] }
@@ -1322,13 +1326,22 @@ def sectionStart (env : Env) (k : BreakKind) (st : St) : St :=
   | .page => if empty settled ∧ settled.column = 0 then settled else breakAt env k settled
   | _ => breakAt env k settled
 
+/-- `setRoom` of `FSwitchColumns`: the room left above the type area or
+    above the footnotes of the column, whichever comes first (root ADR
+    0441). -/
+def setRoom (env : Env) (st : St) : Int := min env.capacity (limit env st - st.notesUsed) - st.used
+
 /-- `FSwitchColumns`: the new columns start below what the page holds, or
-    on the next page. -/
+    on the next page.  They keep the notes of the page clear (root ADR
+    0025) and end where the first does, at the type area or above the
+    footnotes of the column before, whichever comes first (root ADR
+    0441). -/
 def switchColumns (env : Env) (cols : Nat) (st : St) : St :=
   let settled := drainCarry env st
-  if (env.columns = 1 ∧ 0 < room env settled) ∨ (empty settled ∧ settled.column = 0) then
+  if (env.columns = 1 ∧ 0 < setRoom env settled) ∨ (empty settled ∧ settled.column = 0) then
     { close env settled with
       columns := cols, firstLine := settled.used, column := 0, used := settled.used,
+      reserved := settled.notesUsed, adjust := min settled.notesUsed settled.adjust,
       slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] }
   else { nextPage env settled with columns := cols, firstLine := 0 }
 
@@ -3841,6 +3854,7 @@ theorem step_switchColumns (env : Env) (cols : Nat) (st : St) :
   split
   · have h := step_closed env (drainCarry env st) { close env (drainCarry env st) with
       columns := cols, firstLine := (drainCarry env st).used, column := 0, used := (drainCarry env st).used,
+      reserved := (drainCarry env st).notesUsed, adjust := min (drainCarry env st).notesUsed (drainCarry env st).adjust,
       slots := [], notes := [], join := none, pending := 0, blankActive := false, blankSpans := 0, boxes := [] } rfl rfl (close_fields env _).1
     simpa using a.trans h
   · simpa using (a.trans (step_nextPage env _)).trans (Step.same rfl rfl rfl)
