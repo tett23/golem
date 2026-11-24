@@ -22,9 +22,9 @@ instance : Inhabited Line := ⟨⟨0, [], 0⟩⟩
 instance : Inhabited Flow := ⟨.noBreak⟩
 
 /-- `firstNeed` of Physical.hs. -/
-partial def firstNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Nat) : List Flow → Int
-  | .paragraph k ls :: rest => paragraphNeed pagePitch separator hasNotes wanted k true ls rest
-  | .continued k ls :: rest => paragraphNeed pagePitch separator hasNotes wanted k false ls rest
+partial def firstNeed (pagePitch separator capacity : Int) (hasNotes : Bool) (wanted : Nat) : List Flow → Int
+  | .paragraph k ls :: rest => paragraphNeed pagePitch separator capacity hasNotes wanted k true ls rest
+  | .continued k ls :: rest => paragraphNeed pagePitch separator capacity hasNotes wanted k false ls rest
   | .stanza k vs :: rest =>
     let total := vs.length
     let lowest := max (firstPart k true total) (min total (max 1 wanted))
@@ -35,19 +35,26 @@ partial def firstNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Na
     let following :=
       match count == total, keepAhead rest with
       | true, some (_, f, later) =>
-        firstNeed pagePitch separator (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
+        firstNeed pagePitch separator capacity (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
       | _, _ => 0
     sumInt (chosen.map (fun l => pitchOf l.id)) + sep + (noteCount : Int) * pagePitch + following
-  | .space s :: rest => s + firstNeed pagePitch separator hasNotes wanted rest
-  | .blank n :: rest => (n : Int) * pagePitch + firstNeed pagePitch separator hasNotes wanted rest
+  | .space s :: rest => s + firstNeed pagePitch separator capacity hasNotes wanted rest
+  | .blank n :: rest => (n : Int) * pagePitch + firstNeed pagePitch separator capacity hasNotes wanted rest
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
-  | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed pagePitch separator hasNotes wanted rest
+  | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed pagePitch separator capacity hasNotes wanted rest
   | .figure _ e :: _ => e
   | .wrapped _ e _ :: _ => e
+  | .table _ before header rows caption below :: _ =>
+    let chosen := header ++ rows.headD [] ++ (if !below || rows.length ≤ 1 then caption else [])
+    let extent := before + (chosen.length : Int) * pagePitch
+    let complete := extent + noteNeed pagePitch separator hasNotes chosen
+    let noted := chosen.any (fun l => !l.notes.isEmpty)
+    let minimumNotes : Int := if noted then pagePitch + (if hasNotes then 0 else separator) else 0
+    if complete ≤ capacity then complete else extent + minimumNotes
   | .heading true _ _ :: _ => 0
   | .heading false extent ls :: rest =>
     extent + noteNeed pagePitch separator hasNotes ls +
-      firstNeed pagePitch separator (hasNotes || ls.any (fun l => !l.notes.isEmpty)) 1 rest
+      firstNeed pagePitch separator capacity (hasNotes || ls.any (fun l => !l.notes.isEmpty)) 1 rest
   | .code caption first continued spans rows :: _ =>
     let count := min rows.length (max first (max 1 wanted))
     caption + (codeSpanOf spans (count + if continued ∧ count < rows.length then 1 else 0) : Int) * pagePitch
@@ -57,7 +64,7 @@ where
   noteNeed (pagePitch separator : Int) (hasNotes : Bool) (ls : List Line) : Int :=
     let c : Nat := (ls.map noteLines).foldr (· + ·) 0
     (if 0 < c ∧ !hasNotes then separator else 0) + (c : Int) * pagePitch
-  paragraphNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Nat) (k : Keep) (start : Bool)
+  paragraphNeed (pagePitch separator capacity : Int) (hasNotes : Bool) (wanted : Nat) (k : Keep) (start : Bool)
       (ls : List Line) (rest : List Flow) : Int :=
     let total := ls.length
     let lowest := max (firstPart k start total) (min total (max 1 wanted))
@@ -69,7 +76,7 @@ where
     let following :=
       match count == total, keepAhead rest with
       | true, some (_, f, later) =>
-        firstNeed pagePitch separator (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
+        firstNeed pagePitch separator capacity (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
       | _, _ => 0
     lineNeed + following
 
@@ -78,7 +85,7 @@ def boundaryEnv (cap sep : Int) (cols : Nat) : Env :=
     columns := cols, firstLine := 0, pitchOf := pitchOf, faceOf := faceOf,
     headingBounds := fun i => if i = 385 then some (4, 16) else none,
     wrappedBefore := fun i => if i = 702 ∨ i = 705 then 3 else if i = 712 then 5 else 0,
-    firstNeed := firstNeed 10 sep }
+    firstNeed := firstNeed 10 sep cap }
 
 def int! (s : String) : Int := s.toInt!
 def nat! (s : String) : Nat := s.toNat!
@@ -96,6 +103,7 @@ def lineOf (s : String) : Line :=
   | [] => panic! "line"
 
 def linesOf (s : String) : List Line := (s.splitOn ",").map lineOf
+def linesOr (s : String) : List Line := if s == "" then [] else linesOf s
 
 def sideOf (s : String) : Option RuleSide :=
   if s == "-" then none
@@ -114,6 +122,8 @@ def flowOf (s : String) : Flow :=
   | ["p", k, ls] => .paragraph (keepOf k) (linesOf ls)
   | ["c", k, ls] => .continued (keepOf k) (linesOf ls)
   | ["f", i, e] => .figure (nat! i) (int! e)
+  | ["g", i, b, h, rs, c, bl] =>
+    .table (nat! i) (int! b) (linesOr h) (if rs == "" then [] else (rs.splitOn "/").map linesOr) (linesOr c) (bl == "1")
   | ["w", i, e, ls] => .wrapped (nat! i) (int! e) (if ls == "" then [] else linesOf ls)
   | ["t", i] => .pageFigure (nat! i)
   | ["s", n] => .space (int! n)
@@ -144,6 +154,7 @@ def slotToken : Int × Slot → String
   | (p, .heading i n) => s!"{p}:H{i}.{n}"
   | (p, .code ids g) => s!"{p}:C{ids.headD 0}.{ids.length}.{g}"
   | (p, .wrapped i) => s!"{p}:W{i}"
+  | (p, .repeated i) => s!"{p}:L{i}"
 
 def unmetToken : Unmet → String
   | .needLines n => s!"!need{n}"
@@ -168,7 +179,9 @@ def failureToken : Failure → String
   | .figureTooTall i => s!"figure{i}"
   | .headingTooTall i => s!"heading{i}"
   | .codeTooTall i => s!"code{i}"
-  | .noProgress i => s!"noprogress{i}"
+  | .tableTooTall i => s!"table{i}"
+  | .tableCaptionTooTall i => s!"tablecaption{i}"
+  | .noProgress _ => "loop"
 
 def run (input : String) : List String :=
   match input.splitOn " " with

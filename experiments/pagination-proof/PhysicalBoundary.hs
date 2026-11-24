@@ -7,6 +7,7 @@
 -- "out" lines; check.sh compares the two with diff.
 module Main (main) where
 
+import Control.Exception (evaluate)
 import Control.Monad (replicateM)
 import Data.List (intercalate)
 import Data.Map.Strict qualified as Map
@@ -18,6 +19,7 @@ import Golem.Layout.Paginate.Physical
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Length (Sp (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
+import System.Timeout (timeout)
 
 -- | The column: capacity, separator and columns; the pitch and the face
 -- of the lines whose id is at least 900 are 14 and 12 sp, and the heading
@@ -403,11 +405,49 @@ wrappedInputs =
          m <- [1, 3]
        ]
 
+-- Tables after paragraphs, with and without a header, a caption above
+-- and below, rows of one to three lines and with a note, before what
+-- follows; a header with a note; a space before a table; and a header whose line is taller than the page pitch, which
+-- paginatePhysical repeats for ever when the next row does not fit.
+tableInputs :: [(Column, [FlowAt Sp])]
+tableInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FTable 160 (Sp b) header rows caption below] <> after <> [para 20 n])
+  | cap <- [30, 40, 60],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    b <- [0, 5],
+    header <- [[], [line 800], lines' 800 2],
+    rows <- [[lines' 810 1], [lines' 810 1, lines' 820 2], [lines' 810 1, lines' 820 1, lines' 830 1, lines' 840 1], [lines' 810 3, lines' 820 1], [noted 810 1 0 2, lines' 820 1]],
+    caption <- [[], [line 850]],
+    below <- [False, True],
+    after <- [[], [FKeepNext span0 1, para 30 2]],
+    n <- [1, 2]
+  ]
+    <> [ (Column cap 4 1, [para 0 p | p > 0] <> [FTable 160 0 (noted 800 1 0 m) rows caption below, para 20 1])
+       | cap <- [40, 50, 60],
+         p <- [0 .. 3],
+         m <- [1 .. 4],
+         rows <- [[lines' 810 1, lines' 820 1], [noted 810 1 0 2, lines' 820 1], [noted 810 2 1 3], [lines' 810 1, noted 820 1 0 3]],
+         caption <- [[], [line 850]],
+         below <- [False, True]
+       ]
+    <> [ (Column cap 4 1, [para 0 p, gap, FTable 160 5 [line 800] [lines' 810 1, lines' 820 1] [] False, para 20 1])
+       | cap <- [30, 40],
+         p <- [1 .. 3],
+         gap <- [FSpace 5, FSpace 10, FBlank span0 1]
+       ]
+    <> [ (Column cap 4 1, [para 0 p, FTable 160 0 [line 905] rows [] False, para 20 1])
+       | cap <- [30, 40],
+         p <- [1, 2],
+         rows <- [[lines' 810 1, lines' 820 2], [lines' 810 2, lines' 820 1]]
+       ]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
   FContinued k ls -> "c:" <> keepToken k <> ":" <> linesToken ls
   FFigure i e _ _ -> "f:" <> show i <> ":" <> show (unSp e)
+  FTable i b h rs c below -> "g:" <> show i <> ":" <> show (unSp b) <> ":" <> linesToken h <> ":" <> intercalate "/" (map linesToken rs) <> ":" <> linesToken c <> ":" <> bit below
   FWrapped i e _ _ ls -> "w:" <> show i <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FPageFigure i _ _ -> "t:" <> show i
   FSpace n -> "s:" <> show (unSp n)
@@ -478,17 +518,23 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))
-      case paginatePhysical (settingsOf column) flows of
-        Left failure -> putStrLn ("out fail " <> failureToken failure)
-        Right pages -> mapM_ (putStrLn . pageToken) pages
+      let out = case paginatePhysical (settingsOf column) flows of
+            Left failure -> ["out fail " <> failureToken failure]
+            Right pages -> map pageToken pages
+      -- an input on which paginatePhysical does not end within 2 s is
+      -- printed as a loop, which Physical.lean gives as noProgress
+      done <- timeout 2000000 (evaluate (length (concat out)))
+      mapM_ putStrLn (maybe ["out fail loop"] (const out) done)
     failureToken = \case
       PhysicalLineTooTall i -> "line" <> show i
       PhysicalFootnoteTooTall (NoteId _ i) -> "note" <> show i
       PhysicalFigureTooTall i -> "figure" <> show i
       PhysicalHeadingTooTall i -> "heading" <> show i
       PhysicalCodeTooTall i -> "code" <> show i
-      other -> show other
+      PhysicalTableTooTall i -> "table" <> show i
+      PhysicalTableCaptionTooTall i -> "tablecaption" <> show i
+      PhysicalBoxTooTall i -> "box" <> show i

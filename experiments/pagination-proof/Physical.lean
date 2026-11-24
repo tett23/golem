@@ -92,6 +92,9 @@ inductive Flow where
   | code (caption : Int) (first : Nat) (continued : Bool) (spans : List Nat) (rows : List Line)
   /-- `FWrapped`: the figure, its extent and the lines beside it. -/
   | wrapped (id : Nat) (extent : Int) (beside : List Line)
+  /-- `FTable`: the space before it, the header, the rows, the caption and
+      whether the caption is below. -/
+  | table (id : Nat) (before : Int) (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool)
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -105,6 +108,9 @@ inductive Slot where
   | code (ids : List Nat) (grid : Nat)
   /-- `SWrapped`: a wrapped figure, of no extent. -/
   | wrapped (id : Nat)
+  /-- A header line of a table repeated in a later column: `SLine` in
+      Physical.hs, not counted as text. -/
+  | repeated (id : Nat)
   deriving DecidableEq, Repr
 
 inductive AdjustLimit where
@@ -131,6 +137,8 @@ inductive Failure where
   | figureTooTall (id : Nat)
   | headingTooTall (id : Nat)
   | codeTooTall (id : Nat)
+  | tableTooTall (id : Nat)
+  | tableCaptionTooTall (id : Nat)
   /-- A flow that fits in no column: Physical.hs goes on to the next
       column for ever (see `seek`). -/
   | noProgress (id : Nat)
@@ -732,6 +740,7 @@ def flowLines : Flow → List Line
   | .stanza _ vs => vs.join
   | .code _ _ _ _ rows => rows
   | .wrapped _ _ ls => ls
+  | .table _ _ header rows caption _ => header ++ rows.join ++ caption
   | _ => []
 
 /-! ## Ruled blocks -/
@@ -1687,6 +1696,173 @@ def placeWrapped (env : Env) (st : St) (i : Nat) (extent : Int) (beside : List L
       if (beside.drop count).isEmpty then .ok after
       else placeWrappedOverflow env (nextColumn env after) (beside.drop count)
 
+/-! ## Tables -/
+
+/-- The header lines repeated in a later column, without their notes. -/
+def repeatedOf (ls : List Line) : List Line := ls.map (fun l => { l with notes := [] })
+
+/-- `tableNeed`: the lines and, all or one, the note lines of a table part. -/
+def tableNeed (env : Env) (st : St) (complete : Bool) (ls : List Line) : Int :=
+  let count := notesCount ls
+  let sep : Int := if 0 < count ∧ st.notesUsed = 0 then env.separator else 0
+  ((ls.length + (if complete then count else min 1 count) : Nat) : Int) * env.pagePitch + sep
+
+def checkTableNotes (env : Env) (ls : List Line) : Option Failure :=
+  match notesOf ls with
+  | n :: _ => if env.capacity < tableNeed env (initial env) false ls then some (.footnoteTooTall n.id) else none
+  | [] => none
+
+/-- `placeTableLinesReserved`: each line with the lines after it reserved. -/
+def putReserved (env : Env) (reserve : Int) (st : St) : List Line → Except Failure St
+  | [] => .ok st
+  | l :: rest =>
+    match putLineWithReserve true env { st with adjust := st.adjust - (reserve + (rest.length : Int) * env.pagePitch) } l with
+    | .error e => .error e
+    | .ok placed => putReserved env reserve { placed with adjust := st.adjust } rest
+
+/-- The header repeated in a later column: `placeTableLinesReserved` of
+    lines without notes, in slots that do not count as text. -/
+def putRepeated (env : Env) (st : St) : List Line → Except Failure St
+  | [] => .ok st
+  | l :: rest =>
+    if env.capacity < env.pitchOf l.id then .error (.lineTooTall l.id)
+    else putRepeated env (putSlot st (env.pitchOf l.id) (.repeated l.id)) rest
+
+/-- The condition of `tableReady`. -/
+def tableFits (env : Env) (before : Int) (ls : List Line) (s : St) : Bool :=
+  decide (tableNeed env s false ls + (if empty s then 0 else before + s.pending) ≤ room env s)
+
+/-- The column `tableReady` returns once `tableFits` holds. -/
+def tableAt (env : Env) (before : Int) (ls : List Line) (s : St) : St :=
+  fit env s (tableNeed env s false ls + (if empty s then 0 else before))
+
+def tableRowsRank (passed : Bool) (st : St) (seeking : Bool) : Nat × Nat × Nat × Nat :=
+  (if passed then 0 else 1, waiting st, columnsLeft st, if seeking then 1 else 0)
+
+theorem lex3_of_lex2 {a b c d x y : Nat} (h : Prod.Lex (· < ·) (· < ·) (a, b) (c, d)) :
+    Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) (a, b, x) (c, d, y) := by
+  cases h with
+  | left _ _ h => exact Prod.Lex.left _ _ h
+  | right _ h => exact Prod.Lex.right _ (Prod.Lex.left _ _ h)
+
+/-- Where `tableFits` holds, `fit` stays in the column. -/
+theorem tableAt_fields (env : Env) (b : Int) (ls : List Line) (s : St) (h : tableFits env b ls s = true) :
+    (tableAt env b ls s).deferred = s.deferred ∧ (tableAt env b ls s).carry = s.carry ∧
+    (tableAt env b ls s).column = s.column ∧ (tableAt env b ls s).columns = s.columns ∧
+    (tableAt env b ls s).page = s.page := by
+  unfold tableFits at h
+  unfold tableAt fit
+  cases e : empty s
+  · simp only [e, if_false, decide_eq_true_eq, false_and] at h ⊢
+    rw [if_pos (by omega)]
+    exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+  · simp only [e, if_true, decide_eq_true_eq, true_and] at h ⊢
+    rw [if_pos (by omega)]
+    exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+
+theorem putRepeated_fields (env : Env) (st s : St) (ls : List Line) (h : putRepeated env st ls = .ok s) :
+    s.deferred = st.deferred ∧ s.carry = st.carry ∧ s.column = st.column ∧ s.columns = st.columns ∧
+    s.page = st.page ∧ s.done = st.done := by
+  induction ls generalizing st with
+  | nil => simp only [putRepeated, Except.ok.injEq] at h; subst h; exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+  | cons l ls ih =>
+    unfold putRepeated at h
+    split at h
+    · cases h
+    · exact ih (putSlot st (env.pitchOf l.id) (.repeated l.id)) h
+
+/-- The caption below a table, with its last row. -/
+def tableTail (caption : List Line) (below : Bool) (rest : List (List Line)) : List Line :=
+  if below ∧ rest.isEmpty then caption else []
+
+set_option linter.unusedVariables false in
+/-- `go` of `placeTableRows`, with the loop of `tableReady` after a row
+    that does not fit (`seeking`). It stops where Physical.hs would repeat
+    the header for ever: when it goes on from the last column of a page
+    with nothing waiting a second time since the last row it placed
+    (`passed`), every later column is the same. -/
+def tableRowsGo (env : Env) (header caption : List Line) (below : Bool) (ident : Nat)
+    (seeking passed : Bool) (start : Int) (st : St) : List (List Line) → Except Failure St
+  | [] => if below then putReserved env 0 st caption else .ok st
+  | row :: rest =>
+    if h1 : seeking ∧ tableFits env 0 (repeatedOf header ++ row ++ tableTail caption below rest) st then
+      match h : putRepeated env (tableAt env 0 (repeatedOf header ++ row ++ tableTail caption below rest) st) header with
+      | .error e => .error e
+      | .ok withHeader =>
+        tableRowsGo env header caption below ident false passed
+          (tableAt env 0 (repeatedOf header ++ row ++ tableTail caption below rest) st).used withHeader (row :: rest)
+    else if ¬seeking ∧ (tableNeed env st true (row ++ tableTail caption below rest) ≤ room env st ∨
+        st.used = start + (header.length : Int) * env.pagePitch) then
+      match putReserved env (((tableTail caption below rest).length : Int) * env.pagePitch) st row with
+      | .error e => .error e
+      | .ok placed => tableRowsGo env header caption below ident false false start placed rest
+    else if h2 : drainOk env st = true ∧ ¬(waiting st = 0 ∧ st.columns ≤ st.column + 1) then
+      tableRowsGo env header caption below ident true passed start (nextColumn env st) (row :: rest)
+    else if h3 : passed = false then
+      tableRowsGo env header caption below ident true true start (nextColumn env st) (row :: rest)
+    else .error (.noProgress ident)
+termination_by rows => (rows.length, tableRowsRank passed st seeking)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right
+    obtain ⟨d1, c1, k1, n1, _⟩ := tableAt_fields env 0 _ st h1.2
+    obtain ⟨d2, c2, k2, n2, _, _⟩ := putRepeated_fields env _ _ header h
+    simp only [tableRowsRank, waiting, columnsLeft, d1, c1, k1, n1, d2, c2, k2, n2, h1.1]
+    exact Prod.Lex.right _ (Prod.Lex.right _ (Prod.Lex.right _ (by decide)))
+  · apply Prod.Lex.left; omega
+  · apply Prod.Lex.right; simp only [tableRowsRank]
+    exact Prod.Lex.right _ (lex3_of_lex2 (I4_drain_rank env st ⟨seek_cond st h2.2, h2.1⟩))
+  · apply Prod.Lex.right; simp only [tableRowsRank, h3]; exact Prod.Lex.left _ _ (by decide)
+
+/-- The caption above a table, placed before its header. -/
+def tableCaption (env : Env) (below : Bool) (reserve : Int) (start : St) (caption : List Line) : Except Failure St :=
+  if below then .ok start else putReserved env reserve start caption
+
+/-- `placeTable` from `tableReady` on, for the first part `firstPart`. -/
+def placeTableFrom (env : Env) (st : St) (ident : Nat) (before : Int) (header : List Line) (rows : List (List Line))
+    (caption : List Line) (below : Bool) (firstPart : List Line) : Except Failure St :=
+  let found := seek env (tableFits env before firstPart) st
+  if tableFits env before firstPart found = false then .error (.noProgress ident)
+  else
+    let ready := tableAt env before firstPart found
+    match tableCaption env below (((header.length + (rows.headD []).length : Nat) : Int) * env.pagePitch)
+        { ready with used := ready.used + if empty ready then 0 else before } caption with
+    | .error e => .error e
+    | .ok placed =>
+      match putReserved env ((((rows.headD []) ++ (if below ∧ rows.length ≤ 1 then caption else [])).length : Int) * env.pagePitch)
+          placed header with
+      | .error e => .error e
+      | .ok withHeader => tableRowsGo env header caption below ident false false placed.used withHeader rows
+
+/-- The first part of a table: the header, the first row and the caption
+    that goes with them. -/
+def tableFirstPart (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool) : List Line :=
+  (if below then [] else caption) ++ header ++ rows.headD [] ++
+    (if below then (if below = false ∨ rows.length ≤ 1 then caption else []) else [])
+
+/-- The checks of `placeTable` before it places anything. -/
+def tableCheck (env : Env) (ident : Nat) (header : List Line) (rows : List (List Line)) (caption : List Line)
+    (below : Bool) : Option Failure :=
+  let firstPart := tableFirstPart header rows caption below
+  let captionRows := if below = false ∨ rows.length ≤ 1 then caption else []
+  let remainingParts := (rows.drop 1).enum.map (fun (j, row) =>
+    repeatedOf header ++ row ++ (if below ∧ j + 2 = rows.length then caption else []))
+  if env.capacity < (firstPart.length : Int) * env.pagePitch then
+    some (if captionRows.isEmpty then .tableTooTall ident else .tableCaptionTooTall ident)
+  else if rows.any (fun row => decide (env.capacity < ((header.length + row.length : Nat) : Int) * env.pagePitch)) then
+    some (.tableTooTall ident)
+  else if below ∧ env.capacity < ((header.length + (rows.getLastD []).length + caption.length : Nat) : Int) * env.pagePitch then
+    some (.tableCaptionTooTall ident)
+  else ((firstPart :: remainingParts).filterMap (checkTableNotes env)).head?
+
+/-- `placeTable`, out of a book part: the first part where it fits, then
+    the rows, the header repeated in each later column. -/
+def placeTable (env : Env) (st : St) (ident : Nat) (before : Int) (header : List Line) (rows : List (List Line))
+    (caption : List Line) (below : Bool) : Except Failure St :=
+  match tableCheck env ident header rows caption below with
+  | some e => .error e
+  | none => placeTableFrom env st ident before header rows caption below (tableFirstPart header rows caption below)
+
 /-! ## Need-lines and adjust-lines -/
 
 set_option linter.unusedVariables false in
@@ -1753,9 +1929,10 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .stanza k vs => placeStanza env k true st vs
   | .code caption first continued spans rows => placeCode env caption first continued spans true st rows
   | .wrapped i e ls => placeWrapped env st i e ls
+  | .table i b header rows caption below => placeTable env st i b header rows caption below
 
 def occupies : Flow → Bool
-  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ | .wrapped _ _ _ => true
+  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ | .wrapped _ _ _ | .table _ _ _ _ _ _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -1845,6 +2022,11 @@ def flowFigs : Flow → List Nat
   | .figure i _ => [i]
   | .pageFigure i => [i]
   | _ => []
+/-- The ids a table adds to the text, in the order it is placed. -/
+def tableText (header : List Line) (rows : List (List Line)) (caption : List Line) (below : Bool) : List Nat :=
+  if below then lineIds header ++ lineIds rows.join ++ lineIds caption
+  else lineIds caption ++ lineIds header ++ lineIds rows.join
+
 /-- The ids a ruled block adds to the text: its lines, or the first line
     of a ruled heading. -/
 def ruledText (r : Ruled) : List Nat := if r.heading.isSome then [headId r.lines] else lineIds r.lines
@@ -1853,6 +2035,7 @@ def flowText : Flow → List Nat
   | .heading _ _ ls => [headId ls]
   | .ruled r => ruledText r
   | .wrapped i _ ls => i :: lineIds ls
+  | .table _ _ header rows caption below => tableText header rows caption below
   | f => lineIds (flowLines f)
 def sourceText : List Flow → List Nat
   | [] => []
@@ -2870,6 +3053,155 @@ theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List L
           rfl rfl rfl rfl)).trans (step_nextColumn env _)).trans b
         simpa only [List.append_nil] using c2
 
+theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
+    (h : putReserved env reserve st ls = .ok s) : Step env st s (lineIds ls) [] := by
+  induction ls generalizing st with
+  | nil => simp only [putReserved, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | cons l ls ih =>
+    unfold putReserved at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have a := step_putLine env true _ s1 l (hl l (List.mem_cons_self _ _)) e
+      have b := ih _ (fun x m => hl x (List.mem_cons_of_mem _ m)) h
+      have c := (((Step.same rfl rfl rfl rfl).trans a).trans (Step.same rfl rfl rfl rfl)).trans b
+      simpa only [lineIds, List.map, List.nil_append, List.append_nil, List.singleton_append] using c
+
+theorem step_putRepeated (env : Env) (st s : St) (ls : List Line) (h : putRepeated env st ls = .ok s) :
+    Step env st s [] [] := by
+  induction ls generalizing st with
+  | nil => simp only [putRepeated, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | cons l ls ih =>
+    unfold putRepeated at h
+    split at h
+    · cases h
+    · have a : Step env st (putSlot st (env.pitchOf l.id) (.repeated l.id)) [] [] := by
+        refine ⟨?_, ?_, fun g => g⟩
+        · simp [text, putSlot, textSlots_append, textSlots]
+        · simp [figs, putSlot, figSlots_append, figSlots]
+      simpa using a.trans (ih _ h)
+
+theorem step_tableAt (env : Env) (b : Int) (ls : List Line) (s : St) : Step env s (tableAt env b ls s) [] [] :=
+  step_fit env s _
+
+def tableLt (a b : Nat × Nat × Nat × Nat × Nat) : Prop :=
+  Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)))) a b
+
+theorem table_wf : WellFounded tableLt :=
+  (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)))).wf
+
+theorem step_tableRowsGo (env : Env) (header caption : List Line) (below : Bool) (ident : Nat)
+    (hc : ∀ l ∈ caption, LineOk env l) :
+    ∀ m (seeking passed : Bool) (start : Int) (st : St) (rows : List (List Line)),
+      (rows.length, tableRowsRank passed st seeking) = m → (∀ l ∈ rows.join, LineOk env l) →
+      ∀ s, tableRowsGo env header caption below ident seeking passed start st rows = .ok s →
+      Step env st s (lineIds rows.join ++ (if below then lineIds caption else [])) [] := by
+  intro m
+  induction m using table_wf.induction with
+  | _ m ih =>
+  intro seeking passed start st rows hm hr s h
+  subst hm
+  match rows with
+  | [] =>
+    rw [tableRowsGo] at h
+    split at h
+    · rename_i b; simpa [b, List.join] using step_putReserved env 0 st s caption hc h
+    · rename_i b; injection h with h; subst h; simpa [b, List.join] using Step.refl env st
+  | row :: rest =>
+    have hrow : ∀ l ∈ row, LineOk env l := fun l m => hr l (by rw [List.join]; exact mem_append_left' _ m)
+    have hrest : ∀ l ∈ rest.join, LineOk env l := fun l m => hr l (by rw [List.join]; exact mem_append_right' _ m)
+    rw [tableRowsGo] at h
+    split at h
+    · rename_i h1
+      split at h
+      · cases h
+      · rename_i withHeader e
+        have dec : tableLt ((row :: rest).length, tableRowsRank passed withHeader false)
+            ((row :: rest).length, tableRowsRank passed st seeking) := by
+          apply Prod.Lex.right
+          obtain ⟨d1, c1, k1, n1, _⟩ := tableAt_fields env 0 _ st h1.2
+          obtain ⟨d2, c2, k2, n2, _, _⟩ := putRepeated_fields env _ _ header e
+          simp only [tableRowsRank, waiting, columnsLeft, d1, c1, k1, n1, d2, c2, k2, n2, h1.1]
+          exact Prod.Lex.right _ (Prod.Lex.right _ (Prod.Lex.right _ (by decide)))
+        have a := (step_tableAt env 0 _ st).trans (step_putRepeated env _ withHeader header e)
+        have b := ih _ dec false passed _ withHeader (row :: rest) rfl hr s h
+        simpa using a.trans b
+    · split at h
+      · split at h
+        · cases h
+        · rename_i placed e
+          have dec : tableLt (rest.length, tableRowsRank false placed false)
+              ((row :: rest).length, tableRowsRank passed st seeking) := by
+            apply Prod.Lex.left; simp
+          have a := step_putReserved env _ st placed row hrow e
+          have b := ih _ dec false false start placed rest rfl hrest s h
+          have c := a.trans b
+          simpa only [List.join, lineIds_append, List.append_assoc] using c
+      · split at h
+        · rename_i h2
+          have dec : tableLt ((row :: rest).length, tableRowsRank passed (nextColumn env st) true)
+              ((row :: rest).length, tableRowsRank passed st seeking) := by
+            apply Prod.Lex.right; simp only [tableRowsRank]
+            exact Prod.Lex.right _ (lex3_of_lex2 (I4_drain_rank env st ⟨seek_cond st h2.2, h2.1⟩))
+          have b := ih _ dec true passed start _ (row :: rest) rfl hr s h
+          simpa using (step_nextColumn env st).trans b
+        · split at h
+          · rename_i h3
+            have dec : tableLt ((row :: rest).length, tableRowsRank true (nextColumn env st) true)
+                ((row :: rest).length, tableRowsRank passed st seeking) := by
+              apply Prod.Lex.right; simp only [tableRowsRank, h3]; exact Prod.Lex.left _ _ (by decide)
+            have b := ih _ dec true true start _ (row :: rest) rfl hr s h
+            simpa using (step_nextColumn env st).trans b
+          · cases h
+
+theorem step_tableCaption (env : Env) (below : Bool) (reserve : Int) (start s : St) (caption : List Line)
+    (hc : ∀ l ∈ caption, LineOk env l) (h : tableCaption env below reserve start caption = .ok s) :
+    Step env start s (if below then [] else lineIds caption) [] := by
+  unfold tableCaption at h
+  split at h
+  · rename_i b; injection h with h; subst h; simpa [b] using Step.refl env start
+  · rename_i b; simpa [b] using step_putReserved env reserve start s caption hc h
+
+theorem step_placeTableFrom (env : Env) (st : St) (ident : Nat) (before : Int) (header : List Line)
+    (rows : List (List Line)) (caption : List Line) (below : Bool) (firstPart : List Line)
+    (hh : ∀ l ∈ header, LineOk env l) (hr : ∀ l ∈ rows.join, LineOk env l) (hc : ∀ l ∈ caption, LineOk env l)
+    (s : St) (h : placeTableFrom env st ident before header rows caption below firstPart = .ok s) :
+    Step env st s (tableText header rows caption below) [] := by
+  unfold placeTableFrom at h
+  have sk := step_seek env (tableFits env before firstPart) st
+  generalize seek env (tableFits env before firstPart) st = F at h sk
+  dsimp only at h
+  split at h
+  · cases h
+  · split at h
+    · cases h
+    · rename_i placed e1
+      split at h
+      · cases h
+      · rename_i withHeader e2
+        have a := (sk.trans (step_tableAt env before firstPart F)).trans (Step.same rfl rfl rfl rfl)
+        have b := step_tableCaption env below _ _ placed caption hc e1
+        have c := step_putReserved env _ placed withHeader header hh e2
+        have d := step_tableRowsGo env header caption below ident hc _ false false _ withHeader rows rfl hr s h
+        have all := ((a.trans b).trans c).trans d
+        unfold tableText
+        cases below
+        · simpa [List.append_assoc] using all
+        · simpa [List.append_assoc] using all
+
+theorem step_placeTable (env : Env) (st : St) (ident : Nat) (before : Int) (header : List Line)
+    (rows : List (List Line)) (caption : List Line) (below : Bool)
+    (hf : ∀ l ∈ header ++ rows.join ++ caption, LineOk env l)
+    (s : St) (h : placeTable env st ident before header rows caption below = .ok s) :
+    Step env st s (tableText header rows caption below) [] := by
+  have hh : ∀ l ∈ header, LineOk env l := fun l m => hf l (mem_append_left' _ (mem_append_left' _ m))
+  have hr : ∀ l ∈ rows.join, LineOk env l := fun l m => hf l (mem_append_left' _ (mem_append_right' _ m))
+  have hc : ∀ l ∈ caption, LineOk env l := fun l m => hf l (mem_append_right' _ m)
+  unfold placeTable at h
+  split at h
+  · cases h
+  · exact step_placeTableFrom env st ident before header rows caption below _ hh hr hc s h
+
 theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
   | [], _, m => Or.inr m
   | y :: ys, b, m => by
@@ -2900,6 +3232,7 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | stanza k vs => exact step_placeStanza env k true st vs hf s h
   | code c f k sp rows => exact step_placeCode env c f k sp true st rows s h
   | wrapped i e ls => exact step_placeWrapped env st i e ls hf s h
+  | table i b header rows caption below => exact step_placeTable env st i b header rows caption below hf s h
   | heading recto extent ls =>
     simp only [placeFlow] at h
     have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
@@ -3011,6 +3344,7 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | restoreColumns => exact step_placeFlow env b _ hf s h
   | code c f k sp rows => exact step_placeFlow env b _ hf s h
   | wrapped i e ls => exact step_placeFlow env b _ hf s h
+  | table i bf header rows caption below => exact step_placeFlow env b _ hf s h
   | stanza k vs =>
     cases e : keepAhead rest with
     | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
