@@ -80,6 +80,7 @@ paginateTests =
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "the side lines of a wrapped figure sent on by their notes (golem-driver ADR 0005)" wrappedNoteTests,
+      testGroup "a wrapped figure fits with the notes of its side lines (root ADR 0443)" wrappedFitNoteTests,
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "the index columns after page-lines (root ADR 0025, root ADR 0030)" indexAfterAdjustTests,
@@ -1859,3 +1860,53 @@ spaceBeforeWaitingTests =
         <> (show k <> " column" <> (if k > 1 then "s, " else ", "))
         <> (show w <> " figures of " <> show h <> " lines waiting between " <> show s <> " spaces and need-lines 2, ")
         <> (show r <> " grid lines left before the spaces")
+
+{- | On the grid, a wrapped figure fits the column when the larger of its
+lines and its side lines, the lines of the notes of its side lines and
+the separator, if they are the first notes of the column, fit; otherwise
+the figure and its side lines go to the next column together (root ADR
+0443).
+-}
+wrappedFitNoteTests :: [TestTree]
+wrappedFitNoteTests =
+  [ testCase "root ADR 0443 I2: a figure of 2, 5 side lines and a note of 5 do not fit 8 lines left and go to the next page" $
+      placesOf (wrappedAfter 8 2 5 5) @?= [(2, 1), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14)],
+    testCase "root ADR 0443 I1: with exactly 11 lines left, the figure, its side lines and their note stay" $
+      placesOf (wrappedAfter 5 2 5 5) @?= [(1, 1), (1, 10), (1, 11), (1, 12), (1, 13), (1, 14)],
+    testCase "root ADR 0443 I2: with 10 lines left, they go to the next page" $
+      placesOf (wrappedAfter 6 2 5 5) @?= [(2, 1), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14)],
+    testCase "root ADR 0443 I1: with 10 lines left and a note already in the column, no separator is counted and they stay" $
+      -- four lines, the first with a note of one: 4 + separator 1 + note 1 = 6 used, 10 left
+      placesOf (paginate 1 16 [FParagraph defaultKeep (LineBox 0 [NoteBody (nid 800) 1] [] [] 0 : lines' 1 3), wrapped 2 5 5])
+        @?= [(1, 1), (1, 10), (1, 11), (1, 12), (1, 13), (1, 14)],
+    testCase "root ADR 0443 I2: a figure of 10 with 2 side lines and a note of 5 do not fit 11 lines left" $
+      placesOf (wrappedAfter 5 10 2 5) @?= [(2, 1), (2, 10), (2, 11)],
+    testCase "root ADR 0443 I2: a heading before such a figure goes to the next page with it" $ do
+      let ps = paginate 1 16 [FParagraph defaultKeep (lines' 0 7), FHeading 2 False 1 (lines' 20 1), wrapped 2 5 5]
+      [poNumber p | p <- ps, (_, SHeading 20 _) <- poSlots p] @?= [2]
+      placesOf ps @?= [(2, 1), (2, 10), (2, 11), (2, 12), (2, 13), (2, 14)],
+    testCase "root ADR 0443 I4: with a note of 20, the figure and its side lines take the next page from its top, and the side lines that do not fit go on" $ do
+      let ps = wrappedAfter 8 2 5 20
+      take 2 (placesOf ps) @?= [(2, 1), (2, 10)]
+      [(poNumber p, at) | p <- ps, (at, SWrapped 1) <- poSlots p] @?= [(2, 0)],
+    testCase "root ADR 0443 I3: side lines without notes fit as before" $
+      placesOf (wrappedAfter 11 2 5 0) @?= [(1, 1), (1, 10), (1, 11), (1, 12), (1, 13), (1, 14)],
+    testCase "root ADR 0443 I1, I2, I4: whatever the lines left, the figure, the side lines and the note, the figure and its side lines part only when they exceed a column" $
+      forM_ [(used, n, k, m) | used <- [0 .. 15], n <- [1 .. 6], k <- [1 .. 5], m <- [0 .. 6]] $ \(used, n, k, m) -> do
+        let need = max n k + m + (if m > 0 then 1 else 0)
+            places = placesOf (wrappedAfter used n k m)
+            pages = map fst places
+            what = show (used, n, k, m, places)
+        when (need <= 16 - used) $ assertBool ("I1 " <> what) (all (== 1) pages)
+        when (need > 16 - used && need <= 16 && used > 0) $ assertBool ("I2 " <> what) (all (== 2) pages)
+        when (need <= 16) $ assertBool ("I4 " <> what) (and (zipWith (==) pages (drop 1 pages)))
+  ]
+  where
+    -- a figure of n lines whose k side lines from 10 have a note of m lines on the first
+    wrapped n k m =
+      let first = if m > 0 then LineBox 10 [NoteBody (nid 900) m] [] [] 0 else LineBox 10 [] [] [] 0
+       in FWrapped 1 n [] [] (first : lines' 11 (k - 1))
+    -- on a page of 16 lines, that figure after a paragraph of used lines
+    wrappedAfter used n k m = paginate 1 16 ([FParagraph defaultKeep (lines' 100 used) | used > 0] <> [wrapped n k m])
+    -- the page of the figure and of each side line
+    placesOf ps = [(poNumber p, i) | p <- ps, (_, s) <- poSlots p, i <- case s of SWrapped 1 -> [1]; SLine j | j >= 10 && j < 20 -> [j]; _ -> []]

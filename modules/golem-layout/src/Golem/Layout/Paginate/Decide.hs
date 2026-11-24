@@ -80,7 +80,8 @@ nextNeed env = \case
   (FHeading _ _ n ls : rest) -> Need n (noteLinesOf ls) <> nextNeed env rest
   (FFigure _ n _ _ : _) -> grid (min n capacity)
   (FPageFigure {} : _) -> mempty
-  (FWrapped _ n _ _ ls : _) -> grid (max n (length ls))
+  -- with the notes of the side lines (root ADR 0443)
+  (FWrapped _ n _ _ ls : _) -> Need (max n (length ls)) (noteLinesOf ls)
   -- the space before a paragraph goes with what follows it (docs/adr/0205)
   (FSpace n : rest) -> spaced env n (nextNeed env rest)
   (FBreak _ : _) -> mempty
