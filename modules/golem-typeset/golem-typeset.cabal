@@ -28,6 +28,7 @@ library
                     Golem.Typeset.FigureColor
                     Golem.Typeset.FontProvider
                     Golem.Typeset.GlyphRuns
+                    Golem.Typeset.Internal
                     Golem.Typeset.Memo
                     Golem.Typeset.Overhang
                     Golem.Typeset.PdfColor
@@ -83,6 +84,7 @@ test-suite golem-typeset-test
     FigureColorSpec
     GlyphRunsSpec
     MemoSpec
+    NoBreakProductSpec
     RuleShapeSpec
     PdfColorCcittSpec
     PdfColorClassifySpec
@@ -102,12 +104,17 @@ test-suite golem-typeset-test
     , JuicyPixels ==3.3.9
     , base
     , bytestring
+    , golem-doc
+    , golem-font
+    , golem-layout
     , golem-layout-spec
     , golem-pdf
     , golem-project
+    , golem-syntax
     , golem-typeset
     , golem-test-support
     , golem-svg
+    , golem-unicode
     , bytestring
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
