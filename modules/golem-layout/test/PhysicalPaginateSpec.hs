@@ -1072,7 +1072,7 @@ joinedRuleTests =
           i <- [100, 200],
           -- unspaced and thin, spaced 15 sp after the em box, and thick
           (w, side) <- [(1, RuleSide 0 0 1 False), (1, RuleSide 15 0 1 True), (12, RuleSide 2 4 12 True)],
-          let ruled ident b a j body = FRuled ident (side (outside ident) <$ guardB b) (side (outside ident) <$ guardB a) j (RuleGrid 16 10) 0 body
+          let ruled ident b a j = FRuled ident (side (outside ident) <$ guardB b) (side (outside ident) <$ guardB a) j (RuleGrid 16 10) 0
               outside ident = if ident >= 200 then Just 20 else Nothing
               guardB x = if x then Just () else Nothing,
           third <- [[], [ruled (i + 2) True True True (RuledLines defaultKeep [line 30])]],
