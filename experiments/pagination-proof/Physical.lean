@@ -82,6 +82,8 @@ inductive Flow where
   /-- `FHeading`: recto, its extent and its lines. -/
   | heading (recto : Bool) (extent : Int) (ls : List Line)
   | defTerm (ls : List Line)
+  /-- `FStanza`: its verse lines, each the lines it is broken into. -/
+  | stanza (k : Keep) (verses : List (List Line))
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -704,6 +706,7 @@ def flowLines : Flow → List Line
   | .ruled r => r.lines
   | .heading _ _ ls => ls
   | .defTerm ls => ls
+  | .stanza _ vs => vs.join
   | _ => []
 
 /-! ## Ruled blocks -/
@@ -906,6 +909,7 @@ def keepAheadGo (between : List Flow) : List Flow → Option (Nat × Nat × List
 def keepAhead (flows : List Flow) : Option (Nat × Nat × List Flow) := keepAheadGo [] flows
 
 def followingRows (wanted : Nat) : List Flow → Nat × Bool
+  | .stanza k vs :: _ => ((vs.take (max (firstPart k true vs.length) (min wanted vs.length))).join.length, true)
   | .paragraph k ls :: _ => (max (firstPart k true ls.length) (min wanted ls.length), true)
   | .continued k ls :: _ => (max (firstPart k false ls.length) (min wanted ls.length), true)
   | .space _ :: rest | .needLines _ :: rest | .adjustLines _ :: rest
@@ -975,6 +979,89 @@ def placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Lin
       | .ok before =>
         placeLines env k (start && (ls.take (ls.length - keptBack k lastCount ls.length)).isEmpty)
           (afterFront env before) (ls.drop (ls.length - keptBack k lastCount ls.length))
+
+/-! ## Stanzas -/
+
+/-- The verse lines whose lines all fit among the first `count` lines. -/
+def wholeVerses (count : Nat) : List (List Line) → Nat
+  | [] => 0
+  | v :: vs => if v.length ≤ count then wholeVerses (count - v.length) vs + 1 else 0
+
+def stanzaShort (k : Keep) (start : Bool) (firstId total whole : Nat) : List Unmet :=
+  (if start ∧ whole < k.first then [Unmet.shortPart true firstId k.first whole] else []) ++
+  (if total - whole < k.last then [Unmet.shortPart false firstId k.last (total - whole)] else [])
+
+theorem wholeVerses_le (c : Nat) (vs : List (List Line)) : wholeVerses c vs ≤ vs.length := by
+  induction vs generalizing c with
+  | nil => simp [wholeVerses]
+  | cons v vs ih => simp only [wholeVerses]; split <;> simp; have := ih (c - v.length); omega
+
+set_option linter.unusedVariables false in
+/-- `placeStanza`: a verse line is not broken between columns. -/
+def placeStanza (env : Env) (k : Keep) (start : Bool) (st : St) (verses : List (List Line)) : Except Failure St :=
+  match verses with
+  | [] => .ok st
+  | firstVerse :: remaining =>
+    let count := fitting env st (firstVerse :: remaining).join
+    let whole := wholeVerses count (firstVerse :: remaining)
+    let total := remaining.length + 1
+    let selected := splitAtBreak k start total whole
+    if h1 : k.all ∧ start ∧ whole < total then
+      if h2 : (empty st || headingOnly st) = true then
+        placeStanza env { k with all := false } start (addUnmet (.splitKept (headId firstVerse)) st) (firstVerse :: remaining)
+      else placeStanza env k start (nextColumn env st) (firstVerse :: remaining)
+    else if h3 : selected = 0 ∧ (empty st || (headingOnly st && decide (0 < count))) = false then
+      placeStanza env k start (nextColumn env st) (firstVerse :: remaining)
+    else if h4 : selected = 0 ∧ 0 < whole then
+      match placeLines env defaultKeep start st ((firstVerse :: remaining).take whole).join with
+      | .error e => .error e
+      | .ok placed =>
+        let warned := { placed with unmet := placed.unmet ++ stanzaShort k start (headId firstVerse) total whole }
+        if whole = total then .ok warned
+        else placeStanza env k false (nextColumn env warned) ((firstVerse :: remaining).drop whole)
+    else if h5 : selected = 0 then
+      match placeLines env defaultKeep true st firstVerse with
+      | .error e => .error e
+      | .ok placed => placeStanza env k false placed remaining
+    else
+      match placeLines env ⟨1, 1, false⟩ start st ((firstVerse :: remaining).take selected).join with
+      | .error e => .error e
+      | .ok placed =>
+        if selected = total then .ok placed
+        else placeStanza env k false (nextColumn env placed) ((firstVerse :: remaining).drop selected)
+termination_by (verses.length, keepRank k, rank st)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, h1.1]
+  · apply Prod.Lex.right; apply Prod.Lex.right
+    apply I4_nextColumn_rank; left
+    cases e : empty st
+    · rfl
+    · simp [e] at h2
+  · apply Prod.Lex.right; apply Prod.Lex.right
+    apply I4_nextColumn_rank; left
+    have := h3.2; simp only [Bool.or_eq_false_iff] at this; exact this.1
+  · apply Prod.Lex.left; have h := h4.2; simp only [whole, count, List.join] at h; omega
+  · apply Prod.Lex.left; omega
+  · apply Prod.Lex.left; have h := h5; simp only [selected, whole, count, total, List.join] at h; omega
+
+/-- The verse lines moved on with what follows (`backCount`). -/
+def stanzaBack (k : Keep) (lastCount total : Nat) : Nat :=
+  let requested := max lastCount k.last
+  if k.all ∨ total ≤ requested ∨ total - requested < k.first then total else requested
+
+def placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Line))
+    (lastCount firstCount : Nat) (later : List Flow) : Except Failure St :=
+  match placeStanza env k true st verses with
+  | .error e => .error e
+  | .ok full =>
+    if fitsFollowing env full firstCount later then .ok full
+    else
+      match placeStanza env k true st (verses.take (verses.length - stanzaBack k lastCount verses.length)) with
+      | .error e => .error e
+      | .ok before =>
+        if (verses.drop (verses.length - stanzaBack k lastCount verses.length)).isEmpty ∨ empty before = true then .ok full
+        else placeStanza env k true (nextColumn env before) (verses.drop (verses.length - stanzaBack k lastCount verses.length))
 
 def placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure St :=
   match placeRuled env st r later with
@@ -1267,9 +1354,10 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .heading recto extent ls =>
     placeHeading env (if recto then parityStart env (fun p => p % 2 == 1) st else st) (headId ls) extent ls
   | .defTerm ls => placeLines env defaultKeep true st ls
+  | .stanza k vs => placeStanza env k true st vs
 
 def occupies : Flow → Bool
-  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ => true
+  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -1292,6 +1380,7 @@ def placeBody (env : Env) (before : St) (flow : Flow) (rest : List Flow) : Excep
   | .noBreakLines n, _ =>
     if 0 < n then .ok (waitForPrior .noBreak (followingRows 0 rest) before) else placeFlow env before flow
   | .keepNext n, _ => .ok (waitForPrior .keepNext (followingRows n rest) before)
+  | .stanza k vs, some (l, f, later) => placeStanzaWithNext env k before vs l f later
   | .defTerm ls, _ => placeLines env defaultKeep true (keepFollowing env false before (sumPitch env ls) ls rest) ls
   | .heading recto extent ls, _ =>
     placeHeading env (if recto then parityStart env (fun p => p % 2 == 1) before
@@ -1819,6 +1908,137 @@ theorem step_placeWithNext (env : Env) (k : Keep) (start : Bool) (st : St) (ls :
           rw [List.append_nil, ← lineIds_append, List.take_append_drop] at this
           exact this
 
+theorem mem_append_left' {α : Type} {x : α} : ∀ {a : List α} (b : List α), x ∈ a → x ∈ a ++ b
+  | _ :: _, _, .head _ => .head _
+  | _ :: _, b, .tail _ m => .tail _ (mem_append_left' b m)
+
+theorem mem_append_right' {α : Type} {x : α} : ∀ (a : List α) {b : List α}, x ∈ b → x ∈ a ++ b
+  | [], _, m => m
+  | _ :: a, _, m => .tail _ (mem_append_right' a m)
+
+theorem join_app (a b : List (List Line)) : (a ++ b).join = a.join ++ b.join := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih => simp [List.join, ih]
+
+theorem join_take_drop (n : Nat) (vs : List (List Line)) :
+    lineIds (vs.take n).join ++ lineIds (vs.drop n).join = lineIds vs.join := by
+  rw [← lineIds_append, ← join_app, List.take_append_drop]
+
+theorem lineOk_join {env : Env} {vs : List (List Line)} (h : ∀ l ∈ vs.join, LineOk env l) (n : Nat) :
+    (∀ l ∈ (vs.take n).join, LineOk env l) ∧ (∀ l ∈ (vs.drop n).join, LineOk env l) := by
+  rw [← List.take_append_drop n vs, join_app] at h
+  exact ⟨fun l m => h l (mem_append_left' _ m), fun l m => h l (mem_append_right' _ m)⟩
+
+/-- The rank of `placeStanza`. -/
+def stanzaRank (k : Keep) (st : St) (verses : List (List Line)) : Nat × Nat × Nat := (verses.length, keepRank k, rank st)
+def stanzaLt (a b : Nat × Nat × Nat) : Prop := Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)) a b
+
+theorem stanza_wf : WellFounded stanzaLt :=
+  (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)).wf
+
+theorem step_placeStanza (env : Env) (k : Keep) (start : Bool) (st : St) (verses : List (List Line))
+    (hl : ∀ l ∈ verses.join, LineOk env l) (s : St) (h : placeStanza env k start st verses = .ok s) :
+    Step env st s (lineIds verses.join) [] := by
+  have key : ∀ m, ∀ (k : Keep) (start : Bool) (st : St) (verses : List (List Line)),
+      stanzaRank k st verses = m → (∀ l ∈ verses.join, LineOk env l) → ∀ s, placeStanza env k start st verses = .ok s →
+      Step env st s (lineIds verses.join) [] := by
+    intro m
+    induction m using stanza_wf.induction with
+    | _ m ih =>
+    intro k start st verses hm hl s h
+    subst hm
+    match verses with
+    | [] => simp only [placeStanza, Except.ok.injEq] at h; subst h; exact Step.refl env _
+    | v :: vs =>
+      rw [placeStanza] at h
+      dsimp only at h
+      split at h
+      · rename_i h1
+        split at h
+        · have := ih _ (Prod.Lex.right _ (Prod.Lex.left _ _ (by simp [keepRank, h1.1]))) _ start _ (v :: vs) rfl hl s h
+          simpa using (step_addUnmet env st _).trans this
+        · rename_i h2
+          have r : rank (nextColumn env st) < rank st := by
+            apply I4_nextColumn_rank; left
+            cases e : empty st
+            · rfl
+            · simp [e] at h2
+          have := ih _ (Prod.Lex.right _ (Prod.Lex.right _ r)) k start _ (v :: vs) rfl hl s h
+          simpa using (step_nextColumn env st).trans this
+      · split at h
+        · rename_i h3
+          have r : rank (nextColumn env st) < rank st := by
+            apply I4_nextColumn_rank; left
+            have := h3.2; simp only [Bool.or_eq_false_iff] at this; exact this.1
+          have := ih _ (Prod.Lex.right _ (Prod.Lex.right _ r)) k start _ (v :: vs) rfl hl s h
+          simpa using (step_nextColumn env st).trans this
+        · split at h
+          · rename_i h4
+            split at h
+            · cases h
+            · rename_i placed e
+              have hj := lineOk_join hl (wholeVerses (fitting env st (v :: vs).join) (v :: vs))
+              have a := step_placeLines env _ _ st _ hj.1 placed e
+              split at h
+              · injection h with h; subst h
+                rename_i c
+                have : (v :: vs).drop (wholeVerses (fitting env st (v :: vs).join) (v :: vs)) = [] := by
+                  rw [c]; simp
+                have b := a.trans (step_unmet env placed (placed.unmet ++ stanzaShort k start (headId v) (vs.length + 1)
+                  (wholeVerses (fitting env st (v :: vs).join) (v :: vs))))
+                rw [← join_take_drop (wholeVerses (fitting env st (v :: vs).join) (v :: vs)) (v :: vs), this]
+                simpa [lineIds] using b
+              · have b := ih _ (by apply Prod.Lex.left; simp only [stanzaRank, List.length_drop, List.length_cons]; have := h4.2; omega) k false _ _ rfl hj.2 s h
+                have := ((a.trans (step_unmet env placed _)).trans (step_nextColumn env _)).trans b
+                simpa [join_take_drop] using this
+          · split at h
+            · split at h
+              · cases h
+              · rename_i placed e
+                have a := step_placeLines env _ true st v (fun l m => hl l (by rw [List.join]; exact mem_append_left' _ m)) placed e
+                have b := ih _ (Prod.Lex.left _ _ (by simp)) k false placed vs rfl
+                  (fun l m => hl l (by rw [List.join]; exact mem_append_right' _ m)) s h
+                simpa [List.join, lineIds_append] using a.trans b
+            · rename_i h5
+              split at h
+              · cases h
+              · rename_i placed e
+                have hj := lineOk_join hl (splitAtBreak k start (vs.length + 1) (wholeVerses (fitting env st (v :: vs).join) (v :: vs)))
+                have a := step_placeLines env _ _ st _ hj.1 placed e
+                split at h
+                · injection h with h; subst h
+                  rename_i c
+                  have : (v :: vs).drop (splitAtBreak k start (vs.length + 1) (wholeVerses (fitting env st (v :: vs).join) (v :: vs))) = [] := by
+                    rw [c]; simp
+                  rw [← join_take_drop (splitAtBreak k start (vs.length + 1) (wholeVerses (fitting env st (v :: vs).join) (v :: vs))) (v :: vs), this]
+                  simpa [lineIds] using a
+                · have b := ih _ (by apply Prod.Lex.left; simp only [stanzaRank, List.length_drop, List.length_cons]; omega) k false _ _ rfl hj.2 s h
+                  have := (a.trans (step_nextColumn env _)).trans b
+                  simpa [join_take_drop] using this
+  exact key _ k start st verses rfl hl s h
+
+theorem step_placeStanzaWithNext (env : Env) (k : Keep) (st : St) (verses : List (List Line))
+    (l f : Nat) (later : List Flow) (hl : ∀ x ∈ verses.join, LineOk env x) (s : St)
+    (h : placeStanzaWithNext env k st verses l f later = .ok s) : Step env st s (lineIds verses.join) [] := by
+  unfold placeStanzaWithNext at h
+  split at h
+  · cases h
+  · rename_i full e
+    have a := step_placeStanza env k true st verses hl full e
+    split at h
+    · injection h with h; subst h; exact a
+    · split at h
+      · cases h
+      · rename_i before e2
+        split at h
+        · injection h with h; subst h; exact a
+        · have hj := lineOk_join hl (verses.length - stanzaBack k l verses.length)
+          have a2 := step_placeStanza env k true st _ hj.1 before e2
+          have b := step_placeStanza env k true _ _ hj.2 s h
+          have := (a2.trans (step_nextColumn env _)).trans b
+          simpa [join_take_drop] using this
+
 theorem step_placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List Flow)
     (hl : ∀ l ∈ r.lines, LineOk env l) (s : St) (h : placeRuledKeeping env st r later = .ok s) :
     Step env st s (lineIds r.lines) [] := by
@@ -2054,6 +2274,7 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | switchColumns c => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_switchColumns env c st
   | restoreColumns => simp only [placeFlow, Except.ok.injEq] at h; subst h; exact step_restoreColumns env st
   | defTerm ls => exact step_placeLines env _ true st ls hf s h
+  | stanza k vs => exact step_placeStanza env k true st vs hf s h
   | heading recto extent ls =>
     simp only [placeFlow] at h
     have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
@@ -2163,6 +2384,12 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | start k => exact step_placeFlow env b _ hf s h
   | switchColumns c => exact step_placeFlow env b _ hf s h
   | restoreColumns => exact step_placeFlow env b _ hf s h
+  | stanza k vs =>
+    cases e : keepAhead rest with
+    | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
+    | some p =>
+      obtain ⟨l, f, later⟩ := p
+      simp only [e] at h; exact step_placeStanzaWithNext env k b vs l f later hf s h
   | defTerm ls =>
     simpa using (step_keepFollowing env false b _ ls rest).trans (step_placeLines env _ true _ ls hf s h)
   | heading recto extent ls =>
@@ -2212,14 +2439,6 @@ theorem bind_nil {α β : Type} (g : α → List β) : ∀ {xs : List α}, xs.bi
       cases m with
       | head => exact hy
       | tail _ m => exact bind_nil g e x m
-
-theorem mem_append_left' {α : Type} {x : α} : ∀ {a : List α} (b : List α), x ∈ a → x ∈ a ++ b
-  | _ :: _, _, .head _ => .head _
-  | _ :: _, b, .tail _ m => .tail _ (mem_append_left' b m)
-
-theorem mem_append_right' {α : Type} {x : α} : ∀ (a : List α) {b : List α}, x ∈ b → x ∈ a ++ b
-  | [], _, m => m
-  | _ :: a, _, m => .tail _ (mem_append_right' a m)
 
 theorem mem_bind' {α β : Type} {g : α → List β} {x : α} {y : β} : ∀ {xs : List α}, x ∈ xs → y ∈ g x → y ∈ xs.bind g
   | _ :: ys, .head _, my => by rw [List.cons_bind]; exact mem_append_left' _ my

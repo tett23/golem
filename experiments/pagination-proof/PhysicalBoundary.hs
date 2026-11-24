@@ -272,6 +272,27 @@ turnedInputs =
     n <- [1, 2]
   ]
 
+-- Stanzas after paragraphs or a heading, before what they keep.
+stanzaInputs :: [(Column, [FlowAt Sp])]
+stanzaInputs =
+  [ (Column cap 4 cols, pre <> [FStanza k (verses 10 shape)] <> after <> [para 40 n])
+  | cap <- [20, 30, 40],
+    cols <- [1, 2],
+    pre <- [[], [para 0 1], [para 0 2], [FHeading 1 False 10 [line 300]]],
+    k <- keeps,
+    shape <- [[1], [1, 1], [2, 1], [1, 2, 1], [2, 2], [1, 1, 1, 1], [3, 1], [1, 3]],
+    after <- [[], [FKeepNext span0 2], [FNoBreak span0]],
+    n <- [1, 2]
+  ]
+    <> [ (Column 30 4 1, [para 0 p, FKeepNext span0 w, FStanza k (verses 10 shape), para 40 1])
+       | p <- [1, 2],
+         w <- [1, 3],
+         k <- keeps,
+         shape <- [[1, 1], [2, 1], [1, 2, 1]]
+       ]
+  where
+    verses base shape = [lines' (base + 10 * j) m | (j, m) <- zip [0 ..] shape]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
@@ -290,6 +311,7 @@ flowToken = \case
     "r:" <> show i <> ":" <> sideToken b <> ":" <> sideToken a <> ":" <> bit j <> ":" <> show (unSp o) <> ":" <> keepToken k <> ":" <> linesToken ls
   FHeading _ recto e ls -> "h:" <> bit recto <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FDefTerm ls -> "d:" <> linesToken ls
+  FStanza k vs -> "v:" <> keepToken k <> ":" <> intercalate "/" (map linesToken vs)
   FSection _ k -> "S:" <> breakToken k
   FSwitchColumns (ColumnSet c _ _ _) -> "W:" <> show c
   FRestoreColumns -> "R"
@@ -341,7 +363,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

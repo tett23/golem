@@ -25,6 +25,19 @@ instance : Inhabited Flow := ⟨.noBreak⟩
 partial def firstNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Nat) : List Flow → Int
   | .paragraph k ls :: rest => paragraphNeed pagePitch separator hasNotes wanted k true ls rest
   | .continued k ls :: rest => paragraphNeed pagePitch separator hasNotes wanted k false ls rest
+  | .stanza k vs :: rest =>
+    let total := vs.length
+    let lowest := max (firstPart k true total) (min total (max 1 wanted))
+    let count := ((List.range (total + 1)).filter (fun n => lowest ≤ n ∧ splitAtBreak k true total n = n)).headD total
+    let chosen := (vs.take count).join
+    let noteCount : Nat := (chosen.map noteLines).foldr (· + ·) 0
+    let sep : Int := if 0 < noteCount ∧ !hasNotes then separator else 0
+    let following :=
+      match count == total, keepAhead rest with
+      | true, some (_, f, later) =>
+        firstNeed pagePitch separator (hasNotes || chosen.any (fun l => !l.notes.isEmpty)) f later
+      | _, _ => 0
+    sumInt (chosen.map (fun l => pitchOf l.id)) + sep + (noteCount : Int) * pagePitch + following
   | .space s :: rest => s + firstNeed pagePitch separator hasNotes wanted rest
   | .blank n :: rest => (n : Int) * pagePitch + firstNeed pagePitch separator hasNotes wanted rest
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
@@ -106,6 +119,7 @@ def flowOf (s : String) : Flow :=
   | ["K", n] => .keepNext (nat! n)
   | ["h", r, e, ls] => .heading (r == "1") (int! e) (linesOf ls)
   | ["d", ls] => .defTerm (linesOf ls)
+  | ["v", k, vs] => .stanza (keepOf k) ((vs.splitOn "/").map linesOf)
   | ["S", k] => .start (breakOf k)
   | ["W", c] => .switchColumns (nat! c)
   | ["R"] => .restoreColumns
