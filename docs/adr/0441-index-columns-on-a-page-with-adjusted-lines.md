@@ -1,6 +1,6 @@
 # ADR 0441: 行数を変えた段から索引の段組みに切り替えるページで、索引の段の最後の行を決める
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

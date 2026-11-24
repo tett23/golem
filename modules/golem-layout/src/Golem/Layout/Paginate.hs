@@ -219,7 +219,8 @@ step env st f rest = case f of
   -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
   -- before the spaces placed after the block before it (golem-layout ADR 0043)
   FNeedLines sp n -> needMore env sp n st
-  FAdjustLines sp k -> adjustLines env (applyBreaks env st) sp k
+  -- the continued notes take the room added first (root ADR 0444)
+  FAdjustLines sp k -> drainPendingNotes env (adjustLines env (applyBreaks env st) sp k)
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
     | all waitsFor rest -> st
@@ -561,8 +562,9 @@ place env st f rest = case f of
   FWrapped i n labels marks beside ->
     let st0 = flushFigures env st
         size = max n (length beside)
-        -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025)
-        st1 = keep env st0 (const size)
+        -- the continued notes take the foot of the columns gone on to (golem-layout ADR 0025);
+        -- the figure fits with the notes of its side lines and their separator (root ADR 0443)
+        st1 = keep env st0 (\s -> needIn env s (Need size (noteLinesOf beside)) mempty)
         st2 = putSlot st1 0 (SWrapped i) labels marks
         placed = placeLines env defaultKeep st2 False beside
         -- the side lines their notes send on take the next column from its top (golem-driver ADR 0005)
@@ -573,7 +575,7 @@ place env st f rest = case f of
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
-     in -- only the lines of the type area are left to the set (root ADR 0025, root ADR 0030)
+     in -- the set ends at the type area or above the footnotes, whichever comes first (root ADR 0025, root ADR 0030, root ADR 0441)
         if (csColumns (envBase env) == 1 && typeAreaFree env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
           then startSet env st1 set (sUsed st1)
           else (nextPage env st1) {sSet = set {csFirstLine = 0}}

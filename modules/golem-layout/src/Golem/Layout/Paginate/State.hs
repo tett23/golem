@@ -34,6 +34,7 @@ module Golem.Layout.Paginate.State
     isPageFigure,
     flushDeferred,
     flushFigures,
+    drainPendingNotes,
   )
 where
 
@@ -132,12 +133,14 @@ data St = St
     -- | the box being placed (docs/adr/0271)
     sBox :: !(Maybe BoxAt),
     -- | the parts of boxes in the column (docs/adr/0271)
-    sBoxes :: ![BoxSegment]
+    sBoxes :: ![BoxSegment],
+    -- | the grid lines @page-lines changes in every column of a set started on this page, against the type area (root ADR 0441)
+    sSetAdjust :: !Int
   }
 
 -- | Page 1, column 0, nothing placed, in the columns of the page.
 initialState :: Env -> St
-initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] [] [] False False False Nothing []
+initialState env = St 1 0 0 0 [] [] [] [] [] [] [] [] [] [] (envBase env) {csFirstLine = 0} 0 [] Nothing Nothing Nothing [] 0 [] [] [] False False False Nothing [] 0
 
 -- | The first grid line of the set of columns on this page.
 top :: St -> Int
@@ -157,12 +160,13 @@ columnLines env st = envCapacity env + sAdjust st
 free :: Env -> St -> Int
 free env st = cap env st - sUsed st - sNoteLines st
 
-{- | The grid lines of the type area left in the current column: the lines
-added by @page-lines belong to the column of the mark alone, so they are
-not counted (root ADR 0025, root ADR 0030).
+{- | The grid lines left in the current column for the columns of a set
+started after it: they end at the type area or above the footnotes of the
+column, whichever comes first (root ADR 0025, root ADR 0030, root ADR
+0441).
 -}
 typeAreaFree :: Env -> St -> Int
-typeAreaFree env st = envCapacity env - sUsed st - sNoteLines st
+typeAreaFree env st = min (envCapacity env) (columnLines env st - sNoteLines st) - sUsed st
 
 {- | Whether nothing is placed in the current column; in a part of a box
 that starts at the top of an empty column, nothing but the grid lines
@@ -311,7 +315,9 @@ advance env toPage st =
             sColumn = if toPage then 0 else sColumn st + 1,
             sSet = if toPage then (sSet st) {csFirstLine = 0} else sSet st,
             sReserved = if toPage then 0 else sReserved st,
-            sAdjust = 0,
+            -- the columns of a set started on the page end where its first does (root ADR 0441)
+            sAdjust = if toPage then 0 else sSetAdjust st,
+            sSetAdjust = if toPage then 0 else sSetAdjust st,
             sUsed = if toPage then 0 else top st,
             sNoteLines = if toPage then 0 else sReserved st,
             sSlots = [],
@@ -333,28 +339,32 @@ advance env toPage st =
    in openBox (placeDeferred env withNotes {sDeferred = []} waiting)
 
 {- | The set starts at line @first@ of the page, above the footnotes
-already there; its columns have the lines of the type area, without
-those of @page-lines (root ADR 0030).
+already there. Its columns end at the type area or above the footnotes of
+the column before, whichever comes first: the lines added by @page-lines
+belong to that column alone (root ADR 0030), and the lines it took away
+end the set too (root ADR 0441).
 -}
 startSet :: Env -> St -> ColumnSet -> Int -> St
 startSet env st set first =
-  (closePage env st)
-    { sSet = set {csFirstLine = first},
-      sColumn = 0,
-      sAdjust = 0,
-      sUsed = first,
-      sReserved = sNoteLines st,
-      sSlots = [],
-      sNotes = [],
-      sLabels = [],
-      sMarks = [],
-      sTables = [],
-      sRules = [],
-      sJoin = Nothing,
-      sSpaces = [],
-      sHeadingOnly = False,
-      sBoxes = []
-    }
+  let adjust = min (sNoteLines st) (sAdjust st)
+   in (closePage env st)
+        { sSet = set {csFirstLine = first},
+          sColumn = 0,
+          sAdjust = adjust,
+          sSetAdjust = adjust,
+          sUsed = first,
+          sReserved = sNoteLines st,
+          sSlots = [],
+          sNotes = [],
+          sLabels = [],
+          sMarks = [],
+          sTables = [],
+          sRules = [],
+          sJoin = Nothing,
+          sSpaces = [],
+          sHeadingOnly = False,
+          sBoxes = []
+        }
 
 isPageFigure :: Flow -> Bool
 isPageFigure = \case
@@ -382,6 +392,39 @@ carryNote env st (i, from, len) =
               sNoteLines = sNoteLines st + sep + shown,
               sPendingNotes = sPendingNotes st <> [(i, from + shown, len - shown) | shown < len]
             }
+
+{- | The continued notes take the room that @page-lines has added to the
+column, in their order, before any later note (root ADR 0444): all of it
+when the column has text, all but one line when it has none, as
+'carryNote' leaves one. What does not fit goes on to the next column.
+-}
+drainPendingNotes :: Env -> St -> St
+drainPendingNotes env st
+  | null (sPendingNotes st) || room <= 0 = st
+  | otherwise =
+      st
+        { sNotes = foldl' joinNotePart (sNotes st) shown,
+          sNoteLines = sNoteLines st + sep + sum [n | (_, _, n) <- shown],
+          sPendingNotes = rest
+        }
+  where
+    sep = if sNoteLines st == 0 then envSeparator env else 0
+    room = free env st - sep - (if null (sSlots st) then 1 else 0)
+    (shown, rest) = takeNoteLines room (sPendingNotes st)
+
+-- | The first @r@ lines of notes in parts, in their order, and the rest.
+takeNoteLines :: Int -> [(NoteId, Int, Int)] -> ([(NoteId, Int, Int)], [(NoteId, Int, Int)])
+takeNoteLines _ [] = ([], [])
+takeNoteLines r notes@((i, from, len) : more)
+  | r <= 0 = ([], notes)
+  | len <= r = let (a, b) = takeNoteLines (r - len) more in ((i, from, len) : a, b)
+  | otherwise = ([(i, from, r)], (i, from + r, len - r) : more)
+
+-- | A part of a note after the parts of a column, joined to the part before it of the same note.
+joinNotePart :: [(NoteId, Int, Int)] -> (NoteId, Int, Int) -> [(NoteId, Int, Int)]
+joinNotePart parts part@(i, from, len) = case reverse parts of
+  (j, from', len') : before | j == i && from' + len' == from -> reverse before <> [(j, from', len' + len)]
+  _ -> parts <> [part]
 
 placeDeferred :: Env -> St -> [Flow] -> St
 placeDeferred _ st [] = st

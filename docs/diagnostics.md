@@ -10789,14 +10789,15 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 
 - `@no-page-break`：前のブロックの最後の部分と、後のブロックの最初の部分を、同じ段に置けなかった。本の先頭か末尾に書いた場合、前のブロックが次の段に送られた図版の場合、二つを合わせると段に入らない場合に起きる。
 - `@need-lines`：求めた行数が、段の行の格子の数を超える。段の格子の数として扱い、今の段が空でなければ次の段から続けた。
+  可視の区切りと後続ブロックの間に書いた `@need-lines` は、区切りから数えた行と求めた行数の和が段の行の格子の数を超えると守れない。区切りと後続ブロックの最初の部分を同じ段に置き、`@need-lines` は何も送らない（[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)）。
 - `@page-lines`：増減の結果の行数が、裁ち落としを除いたページの内側に収まる行数を超えるか、その段にすでに置いた行の数より少ない。収まる数に切り詰めた。
 
 自由な配置では、`@need-lines` の行数を版面の行送りで長さへ直し、段の長さと比べる。
 `@page-lines` の増減も版面の行送り単位で行い、すでに配置した本文と脚注を収める範囲へ切り詰める。
 
-- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`（自由な配置では `@need-lines <N> の長さ <要求長>pt は段の長さ <段長>pt を超えます`）、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
+- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`（自由な配置では `@need-lines <N> の長さ <要求長>pt は段の長さ <段長>pt を超えます`）、`区切りからの <K> 行と合わせると、@need-lines <N> は段の行数 <M> を超えます`（`<K>` は、区切りの連続と後ろのアキのうち `@need-lines` より前にある行の数）、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
 - 段階とモジュール: レイアウト（golem-typeset の `Golem.Typeset`、golem-layout の `Golem.Layout.Paginate`）
-- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)、[root ADR 0398](adr/0398-styled-separators-in-manuscripts.md)
 
 ### 主な原因
 

@@ -105,7 +105,11 @@ data PhysicalState = PhysicalState
     psRules :: ![PlacedRule],
     psJoin :: !(Maybe (Int, RuleSide, LineBox, Sp)),
     psWaits :: ![(Unmet, Int, Int, Int, Int, Bool)],
-    psSections :: ![(Int, Int)]
+    psSections :: ![(Int, Int)],
+    -- | the notes at the foot of the page that the columns of a set started on it keep clear (root ADR 0025)
+    psReserved :: !Sp,
+    -- | what @page-lines changes in every column of a set started on this page (root ADR 0441)
+    psSetAdjustment :: !Sp
   }
 
 -- | A figure waiting for room, or a turned figure waiting for a page of its own (golem-driver ADR 0034).
@@ -279,7 +283,7 @@ finishPhysicalCursor cfg (PhysicalCursor st) =
         pages -> decorateSections (psSections closed) pages
 
 initial :: PhysicalSettings -> PhysicalState
-initial cfg = PhysicalState 1 0 (physicalColumns cfg) 0 0 [] [] [] [] [] [] [] 0 [] 0 False [] [] [] [] Nothing [] []
+initial cfg = PhysicalState 1 0 (physicalColumns cfg) 0 0 [] [] [] [] [] [] [] 0 [] 0 False [] [] [] [] Nothing [] [] 0 0
 
 limit :: PhysicalSettings -> PhysicalState -> Sp
 limit cfg st = physicalCapacity cfg + psAdjustment st
@@ -320,12 +324,16 @@ nextColumn cfg st =
             psColumn = if pageEnd then 0 else psColumn st + 1,
             psSet = newSet,
             psUsed = csFirstLine newSet,
-            psNotesUsed = 0,
+            -- the next column of a set started on this page keeps the notes of the page clear (root ADR 0025)
+            psNotesUsed = if pageEnd then 0 else psReserved st,
+            psReserved = if pageEnd then 0 else psReserved st,
             psSlots = [],
             psNotes = [],
             psLabels = [],
             psMarks = [],
-            psAdjustment = 0,
+            -- the columns of a set started on the page end where its first does (root ADR 0441)
+            psAdjustment = if pageEnd then 0 else psSetAdjustment st,
+            psSetAdjustment = if pageEnd then 0 else psSetAdjustment st,
             psPendingSpace = 0,
             psBlankActive = False,
             psTables = [],
@@ -339,7 +347,7 @@ nextPage :: PhysicalSettings -> PhysicalState -> PhysicalState
 nextPage cfg st =
   let s = close cfg st
       set = (psSet st) {csFirstLine = 0}
-   in carryInto cfg (placeDeferred cfg (placeTurned cfg s {psPage = psPage st + 1, psColumn = 0, psSet = set, psUsed = 0, psNotesUsed = 0, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psAdjustment = 0, psPendingSpace = 0, psBlankActive = False, psTables = [], psBoxes = [], psRules = [], psJoin = Nothing}))
+   in carryInto cfg (placeDeferred cfg (placeTurned cfg s {psPage = psPage st + 1, psColumn = 0, psSet = set, psUsed = 0, psNotesUsed = 0, psReserved = 0, psSetAdjustment = 0, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psAdjustment = 0, psPendingSpace = 0, psBlankActive = False, psTables = [], psBoxes = [], psRules = [], psJoin = Nothing}))
 
 -- | A turned figure waits for the next page, and the figures after it with it (golem-driver ADR 0034).
 placeDeferred :: PhysicalSettings -> PhysicalState -> PhysicalState
@@ -369,11 +377,34 @@ carryInto :: PhysicalSettings -> PhysicalState -> PhysicalState
 carryInto cfg st
   | null (psCarry st) = st
   | otherwise =
-      let available = limit cfg st - psUsed st - physicalSeparator cfg
+      let available = limit cfg st - psUsed st - psNotesUsed st - physicalSeparator cfg
           count = max 0 (fromInteger (unSp available `div` unSp (physicalPagePitch cfg)))
           (shown, remaining) = splitCarried count (psCarry st)
           extent = physicalSeparator cfg + fromIntegral (sum [n | (_, _, n) <- shown]) * physicalPagePitch cfg
-       in st {psNotes = shown, psCarry = remaining, psNotesUsed = if null shown then 0 else extent}
+       in st {psNotes = shown, psCarry = remaining, psNotesUsed = psNotesUsed st + (if null shown then 0 else extent)}
+
+{- | The continued notes take the room that @page-lines has added to the
+column, in their order, before any later note, leaving nothing for the
+text, as 'carryInto' (root ADR 0444). What does not fit goes on.
+-}
+drainCarried :: PhysicalSettings -> PhysicalState -> PhysicalState
+drainCarried cfg st
+  | null (psCarry st) || null shown = st
+  | otherwise =
+      st
+        { psNotes = foldl' joinPart (psNotes st) shown,
+          psCarry = remaining,
+          psNotesUsed = psNotesUsed st + separator + fromIntegral (sum [n | (_, _, n) <- shown]) * physicalPagePitch cfg
+        }
+  where
+    separator = if psNotesUsed st == 0 then physicalSeparator cfg else 0
+    available = room cfg st - separator
+    count = max 0 (fromInteger (unSp available `div` unSp (physicalPagePitch cfg)))
+    (shown, remaining) = splitCarried count (psCarry st)
+    -- a part after the part before it of the same note joins it
+    joinPart parts part@(i, from, len) = case reverse parts of
+      (j, from', len') : before | j == i && from' + len' == from -> reverse before <> [(j, from', len' + len)]
+      _ -> parts <> [part]
 
 splitCarried :: Int -> [(NoteId, Int, Int)] -> ([(NoteId, Int, Int)], [(NoteId, Int, Int)])
 splitCarried _ [] = ([], [])
@@ -962,7 +993,8 @@ placeFlow cfg st = \case
           | usedLength > faceLength = AdjustLinesPlaced
           | otherwise = AdjustOneLine
         limited = [UnmetAdjust span' (fromInteger chosen) limitReason | chosen /= wanted]
-     in Right st {psAdjustment = fromInteger chosen * physicalPagePitch cfg, psUnmet = psUnmet st <> limited}
+     in -- the continued notes take the room added first (root ADR 0444)
+        Right (drainCarried cfg st {psAdjustment = fromInteger chosen * physicalPagePitch cfg, psUnmet = psUnmet st <> limited})
   FNoBreak span' -> Right (waitForPrior (UnmetNoBreak span') (1, False) st)
   FNoBreakLines _ n | n <= 0 -> Right st
   FNoBreakLines span' _ -> Right (waitForPrior (UnmetNoBreak span') (1, False) st)
@@ -970,11 +1002,14 @@ placeFlow cfg st = \case
   FRestoreColumns -> Right ((nextPage cfg st) {psSet = physicalColumns cfg})
   FSwitchColumns set ->
     let settled = drainCarry cfg st
-     in if (csColumns (physicalColumns cfg) == 1 && room cfg settled > 0) || (empty settled && psColumn settled == 0)
+        -- the set ends at the type area or above the footnotes of the column before, whichever comes first (root ADR 0441)
+        adjustment = min (psNotesUsed settled) (psAdjustment settled)
+        setRoom = min (physicalCapacity cfg) (limit cfg settled - psNotesUsed settled) - psUsed settled
+     in if (csColumns (physicalColumns cfg) == 1 && setRoom > 0) || (empty settled && psColumn settled == 0)
           then
             let first = psUsed settled
                 closed = close cfg settled
-             in Right closed {psSet = set {csFirstLine = first}, psColumn = 0, psUsed = first, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psTables = [], psBoxes = [], psRules = [], psJoin = Nothing, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []}
+             in Right closed {psSet = set {csFirstLine = first}, psColumn = 0, psReserved = psNotesUsed settled, psAdjustment = adjustment, psSetAdjustment = adjustment, psUsed = first, psSlots = [], psNotes = [], psLabels = [], psMarks = [], psTables = [], psBoxes = [], psRules = [], psJoin = Nothing, psPendingSpace = 0, psBlankActive = False, psBlankSpans = []}
           else let fresh = nextPage cfg settled in Right fresh {psSet = set {csFirstLine = 0}}
   -- a turned figure takes a page with nothing on it, or waits (golem-driver ADR 0034)
   FPageFigure ident labels marks
