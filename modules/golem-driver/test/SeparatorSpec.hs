@@ -118,3 +118,26 @@ visibleSeparatorTests =
            map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 15, 30]]
        | mode <- ["grid", "free"]
        ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold over need-lines moves to an empty column that fits it in " <> T.unpack mode) $ do
+           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" "lines = 3" horizontalStyle)
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+           (_, layout) <- layoutOk style "前。\n---\n@need-lines 2\n後。\n" []
+           map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 15]]
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold over need-lines that no empty column fits is an error in " <> T.unpack mode <> " with " <> show need <> " lines needed") $ do
+           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" ("lines = " <> lines') horizontalStyle)
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+           (errors, result) <- buildMiniErrors fakeProvider True style ("lead\n---\n@need-lines " <> T.pack (show need) <> "\n後。\n") []
+           map (spanStart . diagSpan) (filter ((== DiagnosticCode "G07134") . diagCode) errors) @?= [5]
+           assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
+       | mode <- ["grid", "free"],
+         (lines', need) <- [("2", 2 :: Int), ("3", 5)]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold over need-lines counts the space after the separator in " <> T.unpack mode) $ do
+           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" "lines = 4" horizontalStyle)
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\nspace-after = 1\n"
+           (_, layout) <- layoutOk style "前。\n\n中。\n---\n@need-lines 2\n後。\n" []
+           map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 15], [0, 30]]
+       | mode <- ["grid", "free"]
+       ]

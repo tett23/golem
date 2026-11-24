@@ -108,11 +108,12 @@ import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (fromRight)
 import Data.Foldable (toList)
 import Data.Int (Int64)
-import Data.List (groupBy, intercalate, mapAccumL, mapAccumR, nub, sortOn, unsnoc, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, mapAccumR, maximumBy, nub, sortOn, unsnoc, zip4)
 import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Ord (comparing)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -2435,7 +2436,46 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
     blocks style ctx spaced n bs =
       let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx spaced prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
-       in (n', spaceSeparators (concat uss))
+       in (n', holdSeparatorNeeds (spaceSeparators (concat uss)))
+    {- A need-lines inside a separator hold is asked for before the first
+    separator too, with the lines of the hold before it and the blank lines
+    before the hold, at most a column: the keep of a separator looks past
+    a need-lines, so without it the hold stays where the need-lines then
+    sends the next block on (root ADR 0398 I7). The need-lines written stays
+    where it is, so a hold that no empty column fits is still an error. -}
+    holdSeparatorNeeds units = case break isSeparator units of
+      (leading, []) -> leading
+      (leading, opening : rest) ->
+        let (chain, after) = span inHold rest
+            hold = opening : chain
+            blanks = sum [fromIntegral k | Unit {uKind = UBlank k} <- takeWhile isBlank (reverse leading)]
+            offsets = scanl (+) blanks (map holdLines hold)
+            wanted = [(u, at + k) | (at, u@Unit {uKind = UPageControl (NeedLines k)}) <- zip offsets hold]
+            hoisted = case wanted of
+              [] -> []
+              _ ->
+                let (u, k) = maximumBy (comparing snd) wanted
+                 in [u {uKind = UPageControl (NeedLines (min (length (pgLineGrid geom)) k))}]
+         in leading <> hoisted <> hold <> holdSeparatorNeeds after
+      where
+        isSeparator u = case uKind u of
+          USeparator _ -> True
+          _ -> False
+        isBlank u = case uKind u of
+          UBlank _ -> True
+          _ -> False
+        inHold u = case uKind u of
+          USeparator _ -> True
+          UGap _ -> True
+          UBlank _ -> True
+          UKeepNext _ -> True
+          UPageControl _ -> True
+          _ -> False
+        holdLines u = case uKind u of
+          USeparator _ -> 1
+          UBlank k -> fromIntegral k
+          UGap g -> fromInteger ((unSp g + unSp (pgLinePitch geom) - 1) `div` unSp (pgLinePitch geom))
+          _ -> 0 :: Int
     -- A visible separator owns its boundary spacing. Explicit blank lines
     -- at that boundary and the two separator requests take the maximum.
     spaceSeparators = go Nothing []
