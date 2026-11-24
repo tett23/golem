@@ -1007,8 +1007,9 @@ freeRulesOutOfColumn cfg w p =
   let noteLines = sum [n | (_, _, n) <- poFootnotes p]
       notes = if noteLines > 0 then physicalSeparator cfg + fromIntegral noteLines * physicalPagePitch cfg else 0
       end = poLines p - notes
-      room r = if prId r >= 200 && noteLines == 0 then 20 else 0
-   in [r | r <- poRules p, prAt r < negate (room r) || prAt r + w > end + room r]
+      above r = if prId r >= 200 then 20 else 0
+      below r = if prId r >= 200 && noteLines == 0 then 20 else 0
+   in [r | r <- poRules p, prAt r < negate (above r) || prAt r + w > end + below r]
 
 {- | The ruled paragraphs whose rules are not placed once each: a block
 keeps all its rules, or, broken because an empty column cannot hold it
@@ -1085,9 +1086,50 @@ joinedRuleTests =
           first = FRuled 5 Nothing (Just side) False (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 0])
           second = FRuled 6 (Just side) Nothing True (RuleGrid 16 10) 0 (RuledLines defaultKeep [line 1])
       fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical settings [first, second])
-        @?= Right [([(0, SLine 0), (16, SLine 1)], [PlacedRule 5 False 14, PlacedRule 6 True 17])]
+        @?= Right [([(0, SLine 0), (16, SLine 1)], [PlacedRule 5 False 14, PlacedRule 6 True 17])],
+    testCase "root ADR 0397 I8, I9, golem-driver ADR 0027: the notes of a ruled paragraph leave room for its later lines and its rule after" $ do
+      -- 40 sp: two lines of 10 sp and the rule after take 25 sp, so one note line of the three and the separator fit below them
+      let cfg = settings {physicalPagePitch = 10, physicalCapacity = 40, physicalMaxCapacity = 40, physicalSeparator = 2}
+          ruled = FRuled 5 Nothing (Just (RuleSide 2 2 1 False Nothing)) False (RuleGrid 10 10) 0 (RuledLines defaultKeep [longNoteLine 0, line 1])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [ruled, FParagraph defaultKeep [line 2]])
+      concatMap (freeRulesOutOfColumn cfg 1) ps @?= []
+      take 1 (map (\p -> (poSlots p, poFootnotes p)) ps) @?= [([(0, SLine 0), (10, SLine 1)], [(NoteId span0 0, 0, 1)])],
+    testCase "root ADR 0397 I8, I9, golem-driver ADR 0027: the rules of ruled paragraphs whose lines have notes lie in their columns and above the notes" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left (PhysicalFootnoteTooTall _) -> pure ()
+            Left failure -> assertFailure (show (c, sep, w, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, sep, w, map showFlow flows, [(poNumber p, poSlots p, poRules p, poFootnotes p) | p <- ps])
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfColumn cfg w) ps)
+              assertBool ("lost: " <> show shown) (null (lostRules flows ps))
+              -- every note line is placed once: the notes that do not fit go on
+              sum [m | p <- ps, (_, _, m) <- poFootnotes p] @?= sum [m | f <- flows, l <- flowLinesOf f, NoteBody _ m <- lbNotes l]
+        | c <- [26, 40, 42, 58, 64, 90],
+          sep <- [0, 2, 10],
+          lead <- [[], [FParagraph defaultKeep [line 0]], [FParagraph defaultKeep [noteLine 0]]],
+          n <- [1 .. 3],
+          -- the line of the first block with a note, and the note's length
+          noted <- [Nothing] <> [Just (j, m) | j <- [0 .. n - 1], m <- [1, 3]],
+          a2 <- [False, True],
+          i <- [100, 200],
+          (w, side) <- [(1, RuleSide 0 0 1 False), (1, RuleSide 2 2 1 False), (1, RuleSide 15 0 1 True), (12, RuleSide 2 4 12 True)],
+          let ruled ident b a j = FRuled ident (side (outside ident) <$ guardB b) (side (outside ident) <$ guardB a) j (RuleGrid 10 10) 0
+              outside ident = if ident >= 200 then Just 20 else Nothing
+              guardB x = if x then Just () else Nothing
+              noteOn k l = case noted of
+                Just (j, m) | j == k -> l {lbNotes = [NoteBody (NoteId span0 0) m]}
+                _ -> l,
+          next <- [[], [ruled (i + 1) True a2 True (RuledLines defaultKeep [noteLine 20, line 21])], [ruled (i + 1) True a2 False (RuledLines defaultKeep [line 20])]],
+          let cfg = settings {physicalPagePitch = 10, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = sep}
+              flows = lead <> [ruled i False True False (RuledLines defaultKeep (zipWith noteOn [0 ..] (map line [10 .. 9 + n])))] <> next <> [FParagraph defaultKeep [line 40]]
+        ]
   ]
   where
+    flowLinesOf = \case
+      FRuled {frBody = RuledLines _ ls} -> ls
+      FParagraph _ ls -> ls
+      _ -> []
     showFlow = \case
       FRuled {frId = i, frBefore = b, frAfter = a, frJoined = j, frBody = body} -> "R" <> show i <> ":" <> concatMap (\x -> if x then "1" else "0") [isJust b, isJust a, j] <> ":" <> either' body
       FParagraph _ ls -> "P" <> show (map lbId ls) <> show (sum [m | l <- ls, NoteBody _ m <- lbNotes l])

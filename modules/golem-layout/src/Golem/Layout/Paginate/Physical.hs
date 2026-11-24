@@ -1414,10 +1414,13 @@ ruledLinesPlan cfg st ruled laterFlows = case frBody ruled of
             _ -> ruleAfterEdge lastPitch (faceOf cfg last') side {rsdOutside = Nothing}
           afterExtra = if joiningNext then 0 else maybe 0 (fst . afterGeometry) (frAfter ruled)
           extent = beforeExtra + sum (map (pitchOf cfg) lines') + afterExtra
+          -- the lines of the block after each line and the area of its rule after, kept from that line's notes (golem-driver ADR 0027)
+          belowEach = map (+ afterExtra) (drop 1 (scanr (+) 0 (map (pitchOf cfg) lines')))
           place ready = do
             let origin = psUsed ready
-                withBefore = ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}
-            placed <- foldl' (\acc line -> acc >>= \s -> putLineWithReserve True cfg s line) (Right withBefore) lines'
+                withBefore = ready {psUsed = origin + beforeExtra}
+                putKeeping acc (below, line) = acc >>= \s -> putLineWithReserve True cfg s {psAdjustment = psAdjustment ready - below} line
+            placed <- foldl' putKeeping (Right withBefore) (zip belowEach lines')
             let sharedRules = concat [prior | side <- maybe [] pure (frBefore ruled), let (_, _, prior) = beforeGeometry side]
                 startRule = [PlacedRule (frId ruled) True position | side <- maybe [] pure (frBefore ruled), let (_, position, _) = beforeGeometry side]
                 endRule = [PlacedRule (frId ruled) False (psUsed placed - lastPitch + snd (afterGeometry side)) | not joiningNext, side <- maybe [] pure (frAfter ruled)]
