@@ -1,6 +1,6 @@
 # ADR 0442: wait-pdfs.sh で待った成果物を、digest で確かめて取り直しつきで取り寄せる
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

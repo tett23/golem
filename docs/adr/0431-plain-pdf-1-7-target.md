@@ -1,6 +1,6 @@
 # ADR 0431: PDF/X-4 を宣言しない、画面で読むための PDF 1.7 のターゲットを足す
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0438: ページの任意の位置にテキストフレームを置く
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

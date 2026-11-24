@@ -1,6 +1,6 @@
 # ADR 0432: HTML のターゲットを HTML の書き方で書き、EPUB は XHTML のまま書く
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0437: パスとボックスモデルをレイアウトエンジンに入れる
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
