@@ -141,3 +141,11 @@ visibleSeparatorTests =
            map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 15], [0, 30]]
        | mode <- ["grid", "free"]
        ]
+    <> [ testCase ("root ADR 0398 I7: the need-lines asked for before a separator hold reports nothing of its own in " <> T.unpack mode) $ do
+           let base = replaceIn "font-size = \"10pt\"" "font-size = \"15pt\"" (replaceIn "lines = 30" "lines = 3" horizontalStyle)
+               style = replaceIn "[page.grid]" ("[page.grid]\nalignment = \"" <> mode <> "\"") base <> "\n[separators.default]\nkind = \"text\"\ntext = \"*\"\n"
+           (_, layout) <- layoutOk style "@page-lines -1\n前。\n---\n@need-lines 2\n後。\n" []
+           [(diagCode d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout] @?= []
+           map (map (fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0], [0, 15]]
+       | mode <- ["grid", "free"]
+       ]

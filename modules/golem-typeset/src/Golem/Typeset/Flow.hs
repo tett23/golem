@@ -108,12 +108,11 @@ import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (fromRight)
 import Data.Foldable (toList)
 import Data.Int (Int64)
-import Data.List (groupBy, intercalate, mapAccumL, mapAccumR, maximumBy, nub, sortOn, unsnoc, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, mapAccumR, nub, sortOn, unsnoc, zip4)
 import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
-import Data.Ord (comparing)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -785,7 +784,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
           -- the page number of each entry as set, for the text of its link (docs/adr/0267)
           tocNumbers = Map.fromList [(ui, T.concat [bcText c | Box _ c <- lineItems (tpNumber tp)]) | (_, ui, tp) <- tocEntries]
        in case pageNoteNumberDiagnostics (piStyle inp) (piBook inp) (pageNoteNumbers pages built0) <> concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
+            [] -> Right (PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (`Set.member` Set.fromList [uSpan u | (_, u) <- bUnits built, USeparator _ <- [uKind u]]) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers)
             ds -> Left (ds <> bCaptionWarnings built)
 
 -- Ordinary paragraph keep options may fall back when no empty column fits.
@@ -1009,14 +1008,18 @@ paraOfLine built lid = (\(_, sp) -> (sp, styleAtSpan built sp)) <$> Map.lookupLE
 styleAtSpan :: Built -> SrcSpan -> Text
 styleAtSpan built sp = fromMaybe "body" (listToMaybe [n | (_, u) <- bUnits built, uSpan u == sp, Just n <- [uParaStyle u]])
 
-unmetWarnings :: Sp -> Bool -> Map Int (SrcSpan, Text) -> (Int -> Maybe (SrcSpan, Text)) -> (SrcSpan -> Text) -> [PageOutAt Sp] -> [Diagnostic]
-unmetWarnings pagePitch free names paraOf styleAt pages =
+unmetWarnings :: Sp -> Bool -> (SrcSpan -> Bool) -> Map Int (SrcSpan, Text) -> (Int -> Maybe (SrcSpan, Text)) -> (SrcSpan -> Text) -> [PageOutAt Sp] -> [Diagnostic]
+unmetWarnings pagePitch free held names paraOf styleAt pages =
   [ d
   | p <- pages,
     u <- poUnmet p,
     d <- case u of
       SplitBookPart sp kind unit -> [notice "G07133" sp (kind <> "が空の保持単位にも収まらないため、" <> keepName unit <> " の保持を外して通常の位置で分けました")]
       UnmetNoBreak sp -> [diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"]
+      -- the need-lines asked for before a separator hold, at the span of
+      -- the separator, is not written by the author: it reports nothing
+      -- of its own (root ADR 0398 I7)
+      UnmetNeedLines sp _ | held sp -> []
       UnmetNeedLines sp k ->
         [ diagnostic
             "G07037"
@@ -2442,7 +2445,9 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     before the hold, at most a column: the keep of a separator looks past
     a need-lines, so without it the hold stays where the need-lines then
     sends the next block on (root ADR 0398 I7). The need-lines written stays
-    where it is, so a hold that no empty column fits is still an error. -}
+    where it is, so a hold that no empty column fits is still an error. The
+    one asked for has the span of the separator, so that it reports nothing
+    of its own ('unmetWarnings'). -}
     holdSeparatorNeeds units = case break isSeparator units of
       (leading, []) -> leading
       (leading, opening : rest) ->
@@ -2450,12 +2455,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
             hold = opening : chain
             blanks = sum [fromIntegral k | Unit {uKind = UBlank k} <- takeWhile isBlank (reverse leading)]
             offsets = scanl (+) blanks (map holdLines hold)
-            wanted = [(u, at + k) | (at, u@Unit {uKind = UPageControl (NeedLines k)}) <- zip offsets hold]
+            wanted = [at + k | (at, Unit {uKind = UPageControl (NeedLines k)}) <- zip offsets hold]
             hoisted = case wanted of
               [] -> []
-              _ ->
-                let (u, k) = maximumBy (comparing snd) wanted
-                 in [u {uKind = UPageControl (NeedLines (min (length (pgLineGrid geom)) k))}]
+              _ -> [opening {uKind = UPageControl (NeedLines (min (length (pgLineGrid geom)) (maximum wanted))), uInlines = []}]
          in leading <> hoisted <> hold <> holdSeparatorNeeds after
       where
         isSeparator u = case uKind u of
