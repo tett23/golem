@@ -722,12 +722,15 @@ PR #1131 が golem-typeset に `holdSeparatorNeeds` を加えたので、この 
 区切りの後の `keep-with-next` は可視の区切りの位置を持つ（`env.held sp`）。
 段組みを切り替えない本文では、`firstLine` と `reserved` は 0 のままである。
 行は脚注を持たず、`fitting` は段に残る行の数だけ行を数える（`PlainFitting`）。
+脚注区切りの行数は 0 行以上である。
 `SeparatorBoundary.lean` の `boundary_plainFitting` は、照合に使う `boundaryEnv` の `fitting` がこの前提を満たすことを示し、`blockEnv` は `fitting` を変えない。
 区切りの段落は最後の 1 行以上を送る段落スタイルを持つ（`keep-last-lines` は 1 以上である、[仕様](../../docs/specifications.md)の 3100 行）。
 `keptNeed`（`modules/golem-layout/src/Golem/Layout/Paginate/Decide.hs:126`）が区切りの後に求める行数を n とし、1 + n が段の容量以下であることを、保持が空の段に収まることとする。
 p は段落の最初の部分の行数で、1 行以上 n 行以下であり、段落の全体か、`splitAtBreak` がそのまま返す行数である（`firstPart`、`Decide.hs:257`）。
-段落の後に `@no-page-break` も `keep-with-next` も続かない（段落の後の `keptNeed` が `none`）か、`placeKept` が段落の全体を次の段へ送る行数にする（`keptCut` が段落の行数に等しい）。
-後者は、たとえば最後に送る行数以下の行数の段落である。
+段落の後に `@no-page-break` も `keep-with-next` も続かない（段落の後の `keptNeed` が `none`）か、p が `placeKept` の前の部分の最初の部分でもある。
+前の部分は、`placeKept` が後の指定のために送る段落の最後の行（`keptCut`）より前の行である。
+p がその行数以上であるか、`splitAtBreak` が前の部分について p をそのまま返すことを、p が前の部分の最初の部分であることとする。
+`placeKept` が段落の全体を送るときは前の部分が 0 行なので、この条件はいつも成り立つ。
 
 証明は、まず `placeKept` が区切りの行を置いた段に n 行以上が残ることを示す（`separator_place`）。
 今の段に区切りの行を置いて n 行が残らず、今の段が空でなければ、区切りの行は次の段の先頭に送られ、その段には容量から 1 を引いた行が残る。
@@ -735,14 +738,17 @@ p は段落の最初の部分の行数で、1 行以上 n 行以下であり、�
 続く `keep-with-next` は段を変えず（`view_keepNext`）、段落は残りの行に p 行以上の最初の部分を置く（`placeLinesGo_first`、`split_pos`）。
 段落が段に収まらないときは、最初の部分を置いた段を閉じてから次の段へ進むので、二つの行は閉じた段の一つに入る。
 段落の後に `@no-page-break` か `keep-with-next` が続くときは、段落は `placeKept` で置かれる。
-このとき区切りの `keep-with-next` が区切りの段で待っているので、`heldHere` が成り立ち、`placeKept` は段落の全体を今の段から置く（`placeKept_held`）。
+`placeKept` が段落の全体を送る行数にするときは、区切りの `keep-with-next` が区切りの段で待っているので、`heldHere` が成り立ち、`placeKept` は段落の全体を今の段から置く（`placeKept_held`）。
 そのため、段落は `keptNeed` が `none` のときと同じに置かれる。
+`placeKept` が段落を分けるときは、段落の全体を今の段から置くか、前の部分を今の段から置いた後に残りを同じ段か次の段へ置く（`placeKept_cases`）。
+前者は `keptNeed` が `none` のときと同じである。
+後者では、前の部分の最初の部分が区切りの行と一つの段に入り（`together_lines`）、残りを置く処理と次の段へ進む処理は閉じた段と今の段の行を変えない（`keeps_lines`、`keeps_nextColumn`）。
 
 後のフローは、閉じた段と今の段の行を変えない。
 `WholeNotes.lean` の `Keeps` は、出力済みのページと段がそのまま残り、今の段の行が段の先頭に残るか、後に続く行と一緒に閉じた段に入ることである。
 `Keeps` は、`WholeNotes.lean` が脚注の行を注ごとに数える関係 `Rel` の一部（`Grows`）なので、`Rel` と同じく改ページのすべての関数で示される。
 `keeps_placeAll` は、読む脚注が新しいとき（`Fresh`）に、`placeAll` がこの性質を保つことを示す。
-`I3_separator_hold_one_column` は、`I3_separator_hold_together` の前提に、脚注区切りの行数が 0 行以上であることと、後のフローの脚注が新しいことを加えて、区切りの行と段落の最初の行が出力の段の一つに入ることを示す。
+`I3_separator_hold_one_column` は、`I3_separator_hold_together` の前提に、後のフローの脚注が新しいことを加えて、区切りの行と段落の最初の行が出力の段の一つに入ることを示す。
 `hold_no_error_of_once` は、さらに二つの行がそれぞれ出力の一つの段にだけあるとき、区切りと段落の連続に G07134 を返さない（`holdErrors` に区切りの番号がない）ことを示す。
 `I3_separator_hold_no_error` は、この最後の前提を、出力の行の列についての `text_placeAll` から導く。
 `once_of_uniq` は、前の状態に置いた行と原稿のフローの行の id が重ならないとき（`Uniq`）、id は出力の一つの段にだけあることを示す。
@@ -750,7 +756,6 @@ p は段落の最初の部分の行数で、1 行以上 n 行以下であり、�
 golem-typeset は、行、図版、コードの行の id を一つの番号（`nuNext`、`Flow.hs:3816`、`Flow.hs:3826`）から振るので、実際の入力は `Uniq` を満たす。
 ただし、`textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは、まだ前提に残る。
 これらの id が原稿の id から来ることは、まだ示していない。
-段落の後に `@no-page-break` か `keep-with-next` が続き、`placeKept` が段落を分けて送るときは、まだ定理の範囲にない。
 区切りの後ろのアキ、保持の中の `@need-lines`、区切りの連続、区切りの前の行アキも、まだ定理の範囲にない。
 自由な配置（`SeparatorPhysical.lean`）の同じ性質も、まだ示していない。
 
@@ -1154,7 +1159,8 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3823`）、g
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
 不変条件 4 と 5 は、`joinBoxes`、`ruledLinks`、`markBookParts` を通したフローと、自由な配置に写したフローにも当てた。
 空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について定理で示した（`I3_separator_hold_no_error`）。
-`placeKept` が段落を分けて送る場合、後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
+`placeKept` が段落を分けて送る場合も、この定理の範囲に入る。
+後ろのアキ、保持の中の `@need-lines`、区切りの連続、自由な配置は、まだ照合だけで確かめている。
 `check.sh` は、区切りの原稿を六つの組で golem-typeset と照合し、すべて一致した。
 格子モードと自由な配置の 8784 個ずつの原稿は、「区切りのモデル」の節で述べた項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
