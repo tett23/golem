@@ -43,6 +43,7 @@ partial def firstNeed (pagePitch separator : Int) (hasNotes : Bool) (wanted : Na
   | .needLines _ :: rest | .adjustLines _ :: rest | .noBreak :: rest
   | .noBreakLines _ :: rest | .keepNext _ :: rest => firstNeed pagePitch separator hasNotes wanted rest
   | .figure _ e :: _ => e
+  | .wrapped _ e _ :: _ => e
   | .heading true _ _ :: _ => 0
   | .heading false extent ls :: rest =>
     extent + noteNeed pagePitch separator hasNotes ls +
@@ -76,6 +77,7 @@ def boundaryEnv (cap sep : Int) (cols : Nat) : Env :=
   { pagePitch := 10, fontSize := 10, capacity := cap, maxCapacity := cap + 20, separator := sep,
     columns := cols, firstLine := 0, pitchOf := pitchOf, faceOf := faceOf,
     headingBounds := fun i => if i = 385 then some (4, 16) else none,
+    wrappedBefore := fun i => if i = 702 ∨ i = 705 then 3 else if i = 712 then 5 else 0,
     firstNeed := firstNeed 10 sep }
 
 def int! (s : String) : Int := s.toInt!
@@ -112,6 +114,7 @@ def flowOf (s : String) : Flow :=
   | ["p", k, ls] => .paragraph (keepOf k) (linesOf ls)
   | ["c", k, ls] => .continued (keepOf k) (linesOf ls)
   | ["f", i, e] => .figure (nat! i) (int! e)
+  | ["w", i, e, ls] => .wrapped (nat! i) (int! e) (if ls == "" then [] else linesOf ls)
   | ["t", i] => .pageFigure (nat! i)
   | ["s", n] => .space (int! n)
   | ["b", n] => .blank (nat! n)
@@ -140,6 +143,7 @@ def slotToken : Int × Slot → String
   | (p, .pageFigure i) => s!"{p}:T{i}"
   | (p, .heading i n) => s!"{p}:H{i}.{n}"
   | (p, .code ids g) => s!"{p}:C{ids.headD 0}.{ids.length}.{g}"
+  | (p, .wrapped i) => s!"{p}:W{i}"
 
 def unmetToken : Unmet → String
   | .needLines n => s!"!need{n}"

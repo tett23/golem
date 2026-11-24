@@ -21,16 +21,18 @@ import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 
 -- | The column: capacity, separator and columns; the pitch and the face
 -- of the lines whose id is at least 900 are 14 and 12 sp, and the heading
--- whose first line is 385 has the bounds 4 and 16 sp.
+-- whose first line is 385 has the bounds 4 and 16 sp; the lines 702 and
+-- 705 have a gap of 3 sp before them beside a wrapped figure, 712 of 5 sp.
 data Column = Column Int Int Int
 
 settingsOf :: Column -> PhysicalSettings
 settingsOf (Column cap sep cols) =
-  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces Map.empty Map.empty bounds Nothing
+  PhysicalSettings 10 10 (Sp (fromIntegral cap)) (Sp (fromIntegral cap + 20)) (Sp (fromIntegral sep)) (ColumnSet cols 0 0 0) tall faces Map.empty gaps bounds Nothing
   where
     tall = Map.fromList [(i, 14) | i <- [900 .. 999]]
     faces = Map.fromList [(i, 12) | i <- [900 .. 999]]
     bounds = Map.fromList [(385, (4, 16))]
+    gaps = Map.fromList [(702, 3), (705, 3), (712, 5)]
 
 span0 :: SrcSpan
 span0 = mkSpan (FileId 1) 0 1
@@ -379,11 +381,34 @@ ruledHeadingInputs =
   where
     hsides = [Nothing, Just (sides !! 0), Just (sides !! 1), Just (sides !! 3)]
 
+-- Wrapped figures and the lines beside them after paragraphs, before what
+-- follows, and after a figure sent on, a blank, a column made shorter, a
+-- keep and a heading.
+wrappedInputs :: [(Column, [FlowAt Sp])]
+wrappedInputs =
+  [ (Column cap 4 cols, [para 0 p | p > 0] <> [FWrapped 150 (Sp e) [] [] ls] <> after <> [para 20 n])
+  | cap <- [30, 40, 60],
+    cols <- [1, 2],
+    p <- [0, 1, 3],
+    e <- [10, 25, 40, 61],
+    ls <- [lines' 700 m | m <- [0 .. 5]] <> [noted 700 3 1 m | m <- [1, 3]] <> [lines' 710 3],
+    after <- [[], [FFigure 100 15 [] []], [FKeepNext span0 1, para 30 2], [FSpace 5]],
+    n <- [1, 2]
+  ]
+    <> [ (Column cap 4 1, [para 0 p] <> pre <> [FWrapped 150 (Sp e) [] [] (lines' 700 m), para 20 1])
+       | cap <- [30, 40],
+         p <- [1, 2],
+         pre <- [[FFigure 100 25 [] []], [FBlank span0 1], [FAdjustLines span0 (-1)], [FKeepNext span0 1], [FHeading 1 False 10 [line 300]], [FSpace 5]],
+         e <- [10, 25],
+         m <- [1, 3]
+       ]
+
 flowToken :: FlowAt Sp -> String
 flowToken = \case
   FParagraph k ls -> "p:" <> keepToken k <> ":" <> linesToken ls
   FContinued k ls -> "c:" <> keepToken k <> ":" <> linesToken ls
   FFigure i e _ _ -> "f:" <> show i <> ":" <> show (unSp e)
+  FWrapped i e _ _ ls -> "w:" <> show i <> ":" <> show (unSp e) <> ":" <> linesToken ls
   FPageFigure i _ _ -> "t:" <> show i
   FSpace n -> "s:" <> show (unSp n)
   FBlank _ n -> "b:" <> show n
@@ -425,7 +450,7 @@ slotToken (at, s) = show (unSp at) <> ":" <> case s of
   SPageFigure i -> "T" <> show i
   SHeading i n -> "H" <> show i <> "." <> show n
   SCode i n g -> "C" <> show i <> "." <> show n <> "." <> show g
-  other -> show other
+  SWrapped i -> "W" <> show i
 
 unmetToken :: Unmet -> String
 unmetToken = \case
@@ -453,7 +478,7 @@ pageToken p =
     )
 
 main :: IO ()
-main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> failureInputs)
+main = mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))

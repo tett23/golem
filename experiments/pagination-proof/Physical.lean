@@ -90,6 +90,8 @@ inductive Flow where
   /-- `FCode`: the caption, the rows of the first part, continued, the
       grid lines `codeSpan` gives for 0, 1, 2, ... rows, and the rows. -/
   | code (caption : Int) (first : Nat) (continued : Bool) (spans : List Nat) (rows : List Line)
+  /-- `FWrapped`: the figure, its extent and the lines beside it. -/
+  | wrapped (id : Nat) (extent : Int) (beside : List Line)
   deriving DecidableEq, Repr
 
 inductive Slot where
@@ -101,6 +103,8 @@ inductive Slot where
   /-- `SCode`: the rows of the part (Physical.hs keeps the first and the
       number) and the grid lines it takes. -/
   | code (ids : List Nat) (grid : Nat)
+  /-- `SWrapped`: a wrapped figure, of no extent. -/
+  | wrapped (id : Nat)
   deriving DecidableEq, Repr
 
 inductive AdjustLimit where
@@ -210,6 +214,9 @@ structure Env where
   /-- `physicalHeadingBounds`: the face of the first line of a heading from
       its top and the end of the face of its last line. -/
   headingBounds : Nat → Option (Int × Int)
+  /-- `physicalWrappedBefore`: the gap before a line beside or after a
+      wrapped figure. -/
+  wrappedBefore : Nat → Int
   /-- `firstNeed` of Physical.hs: the length the flows ahead need. -/
   firstNeed : Bool → Nat → List Flow → Int
 
@@ -724,6 +731,7 @@ def flowLines : Flow → List Line
   | .defTerm ls => ls
   | .stanza _ vs => vs.join
   | .code _ _ _ _ rows => rows
+  | .wrapped _ _ ls => ls
   | _ => []
 
 /-! ## Ruled blocks -/
@@ -1610,6 +1618,75 @@ decreasing_by
   simp_wf
   exact Nat.sub_lt (Nat.succ_pos _) (Nat.pos_of_ne_zero h)
 
+/-! ## Wrapped figures -/
+
+/-- The loop of `fittingWrapped`: the lines beside a wrapped figure that fit
+    with the notes they show. -/
+def fittingWrappedGo (env : Env) (st : St) (figureEnd used notes : Int) : List Line → Nat
+  | [] => 0
+  | l :: ls =>
+    let n : Int := noteLines l
+    let sep : Int := if 0 < n ∧ notes = 0 then env.separator else 0
+    let used' := used + env.wrappedBefore l.id + env.pitchOf l.id
+    let available := limit env st - max figureEnd used' - notes - sep
+    let shown := max 0 (min n (Int.fdiv available env.pagePitch))
+    let notes' := notes + (if shown = 0 then 0 else sep + shown * env.pagePitch)
+    if max figureEnd used' + notes + (if 0 < n then sep + env.pagePitch else 0) ≤ limit env st
+    then fittingWrappedGo env st figureEnd used' notes' ls + 1 else 0
+
+def fittingWrapped (env : Env) (st : St) (figureEnd : Int) (ls : List Line) : Nat :=
+  fittingWrappedGo env st figureEnd st.used st.notesUsed ls
+
+/-- A line beside a wrapped figure, the rest of the figure reserved. -/
+def putWrappedLine (env : Env) (figureEnd : Int) (st : St) (l : Line) : Except Failure St :=
+  match putLine env { st with adjust := st.adjust - max 0 (figureEnd - st.used - env.pitchOf l.id) } l with
+  | .error e => .error e
+  | .ok placed => .ok { placed with adjust := st.adjust }
+
+/-- The fold of `FWrapped` over the lines beside the figure. -/
+def putBeside (env : Env) (figureEnd : Int) (st : St) : List Line → Except Failure St
+  | [] => .ok st
+  | l :: ls =>
+    match putWrappedLine env figureEnd { st with used := st.used + env.wrappedBefore l.id } l with
+    | .error e => .error e
+    | .ok s => putBeside env figureEnd s ls
+
+/-- The next column when the line does not fit with its gap (`ready` of
+    `placeWrappedOverflow`). -/
+def overflowMove (env : Env) (st : St) (l : Line) (gap : Int) : St :=
+  if fitting env { st with pending := st.pending + gap } [l] = 0 ∧ empty st = false then nextColumn env st else st
+
+/-- The column a line after a wrapped figure is put in (`atLine` of
+    `placeWrappedOverflow`), with the gap before it. -/
+def overflowReady (env : Env) (st : St) (l : Line) : St :=
+  let gap := if empty st then 0 else env.wrappedBefore l.id
+  let ready := overflowMove env st l gap
+  fit env { ready with pending := ready.pending + if empty ready then 0 else gap } (env.pitchOf l.id)
+
+/-- `placeWrappedOverflow`: the lines that do not fit beside the figure. -/
+def placeWrappedOverflow (env : Env) (st : St) : List Line → Except Failure St
+  | [] => .ok st
+  | l :: rest =>
+    match putLine env (overflowReady env st l) l with
+    | .error e => .error e
+    | .ok placed => placeWrappedOverflow env placed rest
+
+/-- `FWrapped`: the figure at the start of its lines, those that fit beside
+    it, and the rest after it. -/
+def placeWrapped (env : Env) (st : St) (i : Nat) (extent : Int) (beside : List Line) : Except Failure St :=
+  if env.capacity < extent then .error (.figureTooTall i)
+  else
+    let start := fit env st extent
+    let origin := start.used
+    let withFigure := putSlot start 0 (.wrapped i)
+    let count := fittingWrapped env withFigure (origin + extent) beside
+    match putBeside env (origin + extent) withFigure (beside.take count) with
+    | .error e => .error e
+    | .ok placed =>
+      let after := { placed with used := max placed.used (origin + extent) }
+      if (beside.drop count).isEmpty then .ok after
+      else placeWrappedOverflow env (nextColumn env after) (beside.drop count)
+
 /-! ## Need-lines and adjust-lines -/
 
 set_option linter.unusedVariables false in
@@ -1675,9 +1752,10 @@ def placeFlow (env : Env) (st : St) : Flow → Except Failure St
   | .defTerm ls => placeLines env defaultKeep true st ls
   | .stanza k vs => placeStanza env k true st vs
   | .code caption first continued spans rows => placeCode env caption first continued spans true st rows
+  | .wrapped i e ls => placeWrapped env st i e ls
 
 def occupies : Flow → Bool
-  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ => true
+  | .paragraph _ _ | .continued _ _ | .figure _ _ | .pageFigure _ | .ruled _ | .heading _ _ _ | .defTerm _ | .stanza _ _ | .code _ _ _ _ _ | .wrapped _ _ _ => true
   | _ => false
 
 /-- The state a flow starts from in `placeNext`: the next column when a
@@ -1745,6 +1823,7 @@ def textSlots : List (Int × Slot) → List Nat
   | (_, .line i) :: r => i :: textSlots r
   | (_, .heading i _) :: r => i :: textSlots r
   | (_, .code ids _) :: r => ids ++ textSlots r
+  | (_, .wrapped i) :: r => i :: textSlots r
   | _ :: r => textSlots r
 def figSlots : List (Int × Slot) → List Nat
   | [] => []
@@ -1773,6 +1852,7 @@ def ruledText (r : Ruled) : List Nat := if r.heading.isSome then [headId r.lines
 def flowText : Flow → List Nat
   | .heading _ _ ls => [headId ls]
   | .ruled r => ruledText r
+  | .wrapped i _ ls => i :: lineIds ls
   | f => lineIds (flowLines f)
 def sourceText : List Flow → List Nat
   | [] => []
@@ -2700,6 +2780,96 @@ theorem step_placeRuledKeeping (env : Env) (st : St) (r : Ruled) (later : List F
       · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
     · injection h with h; subst h; exact step_placeRuled env st r later hl _ e
 
+theorem step_putWrappedSlot (env : Env) (st : St) (i : Nat) :
+    Step env st (putSlot st 0 (.wrapped i)) [i] [] := by
+  refine ⟨?_, ?_, fun g => g⟩
+  · simp [text, putSlot, textSlots_append, textSlots]
+  · simp [figs, putSlot, figSlots_append, figSlots]
+
+theorem step_putWrappedLine (env : Env) (fe : Int) (st s : St) (l : Line) (hl : LineOk env l)
+    (h : putWrappedLine env fe st l = .ok s) : Step env st s [l.id] [] := by
+  unfold putWrappedLine at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    have c := step_putLine env false _ placed l hl e
+    simpa using ((Step.same rfl rfl rfl rfl).trans c).trans (Step.same rfl rfl rfl rfl)
+
+theorem step_putBeside (env : Env) (fe : Int) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
+    (h : putBeside env fe st ls = .ok s) : Step env st s (lineIds ls) [] := by
+  induction ls generalizing st with
+  | nil => simp only [putBeside, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | cons l ls ih =>
+    unfold putBeside at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have a := step_putWrappedLine env fe _ s1 l (hl l (List.mem_cons_self _ _)) e
+      have b := ih s1 (fun x m => hl x (List.mem_cons_of_mem _ m)) h
+      simpa [lineIds] using ((Step.same rfl rfl rfl rfl).trans a).trans b
+
+theorem step_fitPending (env : Env) (st R : St) (p a : Int) (h : Step env st R [] []) :
+    Step env st (fit env { R with pending := p } a) [] [] := by
+  have c := (h.trans (Step.same rfl rfl rfl rfl)).trans (step_fit env { R with pending := p } a)
+  simpa only [List.append_nil] using c
+
+theorem step_overflowMove (env : Env) (st : St) (l : Line) (gap : Int) :
+    Step env st (overflowMove env st l gap) [] [] := by
+  unfold overflowMove
+  split
+  · exact step_nextColumn env st
+  · exact Step.refl env st
+
+theorem step_overflowReady (env : Env) (st : St) (l : Line) : Step env st (overflowReady env st l) [] [] := by
+  unfold overflowReady
+  dsimp only
+  apply step_fitPending
+  exact step_overflowMove env st l _
+
+theorem step_placeWrappedOverflow (env : Env) (st s : St) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
+    (h : placeWrappedOverflow env st ls = .ok s) : Step env st s (lineIds ls) [] := by
+  induction ls generalizing st with
+  | nil => simp only [placeWrappedOverflow, Except.ok.injEq] at h; subst h; exact Step.refl env _
+  | cons l ls ih =>
+    unfold placeWrappedOverflow at h
+    split at h
+    · cases h
+    · rename_i placed e
+      have a := step_putLine env false _ placed l (hl l (List.mem_cons_self _ _)) e
+      have b := ih placed (fun x m => hl x (List.mem_cons_of_mem _ m)) h
+      simpa [lineIds] using ((step_overflowReady env st l).trans a).trans b
+
+theorem step_placeWrapped (env : Env) (st : St) (i : Nat) (e : Int) (ls : List Line) (hl : ∀ l ∈ ls, LineOk env l)
+    (s : St) (h : placeWrapped env st i e ls = .ok s) : Step env st s (i :: lineIds ls) [] := by
+  unfold placeWrapped at h
+  split at h
+  · cases h
+  · dsimp only at h
+    split at h
+    · cases h
+    · rename_i placed eq
+      generalize fittingWrapped env _ _ ls = c at h eq
+      have ab := ((step_fit env st e).trans (step_putWrappedSlot env _ i)).trans
+        (step_putBeside env _ _ placed _ (lineOk_take c hl) eq)
+      have tx : i :: lineIds ls = [] ++ [i] ++ lineIds (ls.take c) ++ lineIds (ls.drop c) := by
+        rw [List.append_assoc, ← lineIds_append, List.take_append_drop]; rfl
+      rw [tx]
+      split at h
+      · rename_i emp
+        injection h with h; subst h
+        have hd : ls.drop c = [] := by
+          cases d : ls.drop c with
+          | nil => rfl
+          | cons _ _ => rw [d] at emp; cases emp
+        rw [hd]
+        have c2 := ab.trans (Step.same (s := { placed with used := max placed.used ((fit env st e).used + e) }) rfl rfl rfl rfl)
+        simpa only [List.append_nil, lineIds, List.map] using c2
+      · have b := step_placeWrappedOverflow env _ s _ (lineOk_drop c hl) h
+        have c2 := ((ab.trans (Step.same (s := { placed with used := max placed.used ((fit env st e).used + e) })
+          rfl rfl rfl rfl)).trans (step_nextColumn env _)).trans b
+        simpa only [List.append_nil] using c2
+
 theorem mem_append' {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
   | [], _, m => Or.inr m
   | y :: ys, b, m => by
@@ -2729,6 +2899,7 @@ theorem step_placeFlow (env : Env) (st : St) (f : Flow) (hf : FlowOk env f) (s :
   | defTerm ls => exact step_placeLines env _ true st ls hf s h
   | stanza k vs => exact step_placeStanza env k true st vs hf s h
   | code c f k sp rows => exact step_placeCode env c f k sp true st rows s h
+  | wrapped i e ls => exact step_placeWrapped env st i e ls hf s h
   | heading recto extent ls =>
     simp only [placeFlow] at h
     have a : Step env st (if recto = true then parityStart env (fun p => p % 2 == 1) st else st) [] [] := by
@@ -2839,6 +3010,7 @@ theorem step_placeBody (env : Env) (b : St) (flow : Flow) (rest : List Flow) (hf
   | switchColumns c => exact step_placeFlow env b _ hf s h
   | restoreColumns => exact step_placeFlow env b _ hf s h
   | code c f k sp rows => exact step_placeFlow env b _ hf s h
+  | wrapped i e ls => exact step_placeFlow env b _ hf s h
   | stanza k vs =>
     cases e : keepAhead rest with
     | none => simp only [e] at h; exact step_placeFlow env b _ hf s h
@@ -2954,8 +3126,9 @@ decreasing_by
 theorem I4_paginate_ends (env : Env) (flows : List Flow) : ∃ r, paginate env flows = r := ⟨_, rfl⟩
 
 /-- Invariant 5: the lines of the paragraphs, definition terms, stanzas,
-    code blocks and ruled blocks, and the first line of each heading, are
-    placed once each, in the order of the manuscript. -/
+    code blocks, ruled blocks and the lines beside wrapped figures, the
+    first line of each heading and ruled heading, and each wrapped figure
+    before its lines, are placed once each, in the order of the manuscript. -/
 theorem I5_paginate_text (env : Env) (flows : List Flow) (pages : List PageOut)
     (h : paginate env flows = .ok pages) : pagesText pages = sourceText flows := by
   unfold paginate at h
