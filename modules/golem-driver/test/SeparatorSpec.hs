@@ -181,6 +181,19 @@ visibleSeparatorTests =
            assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
        | mode <- ["grid", "free"]
        ]
+    -- the first part of the next paragraph is the whole of it: three lines that the widow and orphan rules do not split two and one
+    <> [ testCase ("root ADR 0398 I7: a separator hold needs the smallest first part of the next paragraph, which no three-line column fits, in " <> T.unpack mode) $ do
+           (errors, result) <- buildMiniErrors fakeProvider True (heldStyle mode 3 "") ("---\n" <> threeLines <> "\n") []
+           [(diagCode d, spanStart (diagSpan d)) | d <- errors] @?= [(DiagnosticCode "G07134", 0)]
+           assertBool "no PDF on impossible separator hold" (case result of Nothing -> True; Just _ -> False)
+       | mode <- ["grid", "free"]
+       ]
+    <> [ testCase ("root ADR 0398 I7: a separator hold and the whole of a three-line paragraph fit a four-line column in " <> T.unpack mode) $ do
+           (_, layout) <- layoutOk (heldStyle mode 4 "") ("---\n" <> threeLines <> "\n") []
+           [(diagCode d, spanStart (diagSpan d)) | d <- plNotices layout] @?= []
+           map (map ((/ 15) . fromSp Pt . fst) . poSlots) (plPages layout) @?= [[0, 1, 2, 3]]
+       | mode <- ["grid", "free"]
+       ]
   where
     threeLines = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひ。"
     leadStyle = "\n[paragraph-styles.lead]\nkeep-with-next = 1\n"
