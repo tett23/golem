@@ -5,12 +5,14 @@ The note lines of the pages, of the current column and carried on to the
 next column, in this order, are the lines of the notes read, in the
 manuscript's order, but for the notes reported unplaceable: no line of a
 later note comes before a line of an earlier one (`I1_paginate_order`).
-The statement holds of the flows `plainFlows` admits: no box, no switch
-of the columns, and headings of one grid line or more.  The grid lines
-after a box, given back when it ends in a column where its part has no
-line, go to the notes carried on first (`drainPendingNotes`, root ADR
-0444); the proof does not cover boxes yet, as `Ok` needs a column of one
-grid line or more, which the grid lines after a box can take (README.md).
+The statement holds of the flows `plainFlows` admits: no switch of the
+columns, no box in a box, and headings of one grid line or more, and of
+the flows `BoxesOk` admits: no block after a box shares the area of a
+rule waiting.  The grid lines after a box, given back when it ends in a
+column where its part has no line, go to the notes carried on first
+(`drainPendingNotes`, root ADR 0444).  A rule after waiting for the next
+block leaves the column room or note lines (`W`), so the area it takes
+when the next block does not share it keeps the lines used (`q_flushUsed`).
 -/
 import WholeNotes
 
@@ -90,11 +92,12 @@ theorem OR.trans {a b c : St} {Y1 Y2 : List (Nat × Nat)} (h1 : OR a b Y1) (h2 :
 theorem OR.of_eq {st s : St} {Y : List (Nat × Nat)} (h : NM s = NM st ++ Y) (g : G st s) : OR st s Y :=
   ⟨g, by rw [h]⟩
 
-/-! ## The state kept: no box, the first line of the set at 0 or below,
-    and the room of the column when a note is carried on -/
+/-! ## The state kept: the first line of the set at 0 or below, no rule
+    waiting, and the room of the column when a note is carried on -/
 
-structure Base (st : St) : Prop where
-  box : st.box = none
+structure Base (bx : Bool) (st : St) : Prop where
+  /-- In a box exactly when `bx`: a box is never opened in a box. -/
+  box : st.box.isSome = bx
   first : 0 ≤ st.firstLine
   /-- The spaces placed in the column took 0 lines or more. -/
   spaces : ∀ x ∈ st.spaces, 0 ≤ x.2
@@ -103,16 +106,19 @@ structure Base (st : St) : Prop where
   setAdj : st.setAdjust = 0
   res : st.reserved = 0
   nl : 0 ≤ st.noteLines
+  /-- No rule after waits for the next block (`BJ` keeps the state with
+      one waiting). -/
+  join : st.join = none
 
 syntax "le_tac" : tactic
 macro_rules
   | `(tactic| le_tac) => `(tactic| first | exact Int.le_refl _ | omega)
 
-theorem Base.of {st s : St} (b : Base st) (hb : s.box = st.box := by rfl) (hf : s.firstLine = st.firstLine := by rfl)
-    (hsp : s.spaces = st.spaces := by rfl) (hsa : s.setAdjust = st.setAdjust := by rfl)
+theorem Base.of {bx : Bool} {st s : St} (b : Base bx st) (hb : s.box = st.box := by rfl)
+    (hj : s.join = st.join := by rfl) (hf : s.firstLine = st.firstLine := by rfl) (hsp : s.spaces = st.spaces := by rfl) (hsa : s.setAdjust = st.setAdjust := by rfl)
     (hr : s.reserved = st.reserved := by rfl) (hl : st.noteLines ≤ s.noteLines := by le_tac) :
-    Base s :=
-  ⟨hb ▸ b.box, hf ▸ b.first, hsp ▸ b.spaces, hsa ▸ b.setAdj, hr ▸ b.res, by have := b.nl; omega⟩
+    Base bx s :=
+  ⟨hb ▸ b.box, hf ▸ b.first, hsp ▸ b.spaces, hsa ▸ b.setAdj, hr ▸ b.res, by have := b.nl; omega, hj ▸ b.join⟩
 
 /-- The lines of the parts. -/
 theorem ex_length (ps : List NotePart) : (ex ps).length = partsLines ps := by
@@ -133,31 +139,30 @@ theorem ex_nil_of {ps : List NotePart} (h : partsLines ps = 0) : ex ps = [] := b
 /-- The column holds a line, a note line or a note part. -/
 def Touched (st : St) : Prop := 1 ≤ st.used ∨ 0 < st.noteLines ∨ st.notes ≠ []
 
-/-- The column has a grid line or more, the lines used are negative only
-    below note lines, and when a note is carried on, the column holds
-    something and has at most `k` lines free beyond the separator a new
-    note would take. -/
+/-- The lines used are negative only below note lines, and when a note is
+    carried on, the column holds something and has at most `k` lines free
+    beyond the separator a new note would take. -/
 def OkK (env : Env) (k : Int) (st : St) : Prop :=
-  1 ≤ cap env st ∧ (0 ≤ st.used ∨ 0 < st.noteLines) ∧
+  (0 ≤ st.used ∨ 0 < st.noteLines) ∧
     (partsLines st.pending = 0 ∨ (free env st ≤ carrySep env st + k ∧ Touched st))
 
 abbrev Ok (env : Env) (st : St) : Prop := OkK env 1 st
 
 theorem OkK.mono {env : Env} {k k' : Int} {st : St} (h : OkK env k st) (le : k ≤ k') : OkK env k' st := by
-  obtain ⟨h1, h2, h | ⟨h, t⟩⟩ := h
-  · exact ⟨h1, h2, Or.inl h⟩
-  · exact ⟨h1, h2, Or.inr ⟨by omega, t⟩⟩
+  obtain ⟨h2, h | ⟨h, t⟩⟩ := h
+  · exact ⟨h2, Or.inl h⟩
+  · exact ⟨h2, Or.inr ⟨by omega, t⟩⟩
 
 /-- Each step: from a state kept, the notes `X` read are added in order
     and the state is kept. -/
 def Q (env : Env) (st s : St) (X : List Note) : Prop :=
-  Base st → Ok env st → OR st s (exN X) ∧ Base s ∧ Ok env s
+  ∀ ⦃bx : Bool⦄, Base bx st → Ok env st → OR st s (exN X) ∧ Base bx s ∧ Ok env s
 
-theorem Q.refl (env : Env) (st : St) : Q env st st [] := fun b o => ⟨OR.refl st, b, o⟩
+theorem Q.refl (env : Env) (st : St) : Q env st st [] := fun _ b o => ⟨OR.refl st, b, o⟩
 
 theorem Q.trans {env : Env} {a b c : St} {X1 X2 : List Note} (h1 : Q env a b X1) (h2 : Q env b c X2) :
     Q env a c (X1 ++ X2) := by
-  intro ba oa
+  intro bx ba oa
   obtain ⟨r1, bb, ob⟩ := h1 ba oa
   obtain ⟨r2, bc, oc⟩ := h2 bb ob
   refine ⟨?_, bc, oc⟩
@@ -196,17 +201,17 @@ macro_rules
 theorem Q.frame {env : Env} {st s : St} (hd : s.done = st.done := by rfl) (hn : s.notes = st.notes := by rfl)
     (hp : s.pending = st.pending := by rfl) (hu : s.unmet = st.unmet := by rfl) (hb : s.box = st.box := by rfl)
     (hf : s.firstLine = st.firstLine := by rfl) (hsp : s.spaces = st.spaces := by rfl)
-    (hl : s.noteLines = st.noteLines := by rfl) (ha : s.adjust = st.adjust := by rfl)
+    (hl : s.noteLines = st.noteLines := by rfl) (ha : s.adjust = st.adjust := by rfl) (hj : s.join = st.join := by rfl)
     (hsa : s.setAdjust = st.setAdjust := by rfl) (hr : s.reserved = st.reserved := by rfl)
     (hused : st.used ≤ s.used := by used_le) :
     Q env st s [] := by
-  intro ba oa
-  refine ⟨OR.of_eq (by simp [NM, hd, hn, hp]) ⟨[], by simp [allUnmet, hd, hu]⟩, ba.of hb hf hsp hsa hr (by omega), ?_⟩
+  intro bx ba oa
+  refine ⟨OR.of_eq (by simp [NM, hd, hn, hp]) ⟨[], by simp [allUnmet, hd, hu]⟩, ba.of hb hj hf hsp hsa hr (by omega), ?_⟩
   have c : carrySep env s = carrySep env st := by simp only [carrySep, hl]
   have cp : cap env s = cap env st := by simp only [cap, boxAfter, ha, hb]
-  obtain ⟨o1, o2, o | ⟨o, t⟩⟩ := oa
-  · exact ⟨by omega, by omega, Or.inl (by rw [hp]; exact o)⟩
-  · refine ⟨by omega, by omega, Or.inr ⟨?_, ?_⟩⟩
+  obtain ⟨o2, o | ⟨o, t⟩⟩ := oa
+  · exact ⟨by omega, Or.inl (by rw [hp]; exact o)⟩
+  · refine ⟨by omega, Or.inr ⟨?_, ?_⟩⟩
     · simp only [free, c, cp] at o ⊢; omega
     · rcases t with t | t | t
       · exact Or.inl (by omega)
@@ -214,7 +219,7 @@ theorem Q.frame {env : Env} {st s : St} (hd : s.done = st.done := by rfl) (hn : 
       · exact Or.inr (Or.inr (by rw [hn]; exact t))
 
 theorem Q.addU (env : Env) (u : Unmet) (st : St) : Q env st (addUnmet u st) [] := by
-  intro ba oa
+  intro bx ba oa
   exact ⟨OR.of_eq (by simp [NM, addUnmet]) ⟨[u], by simp [allUnmet, addUnmet, List.append_assoc]⟩, ba.of, oa⟩
 
 theorem Q.addUs (env : Env) (us : List Unmet) (st : St) : Q env st (us.foldl (fun s u => addUnmet u s) st) [] := by
@@ -326,11 +331,11 @@ theorem placeDeferred_fields (env : Env) (ws : List Deferred) (st : St) :
 theorem openBox_none (st : St) (h : st.box = none) : openBox st = st := by
   unfold openBox; rw [h]
 
-theorem advanceFresh_fields (env : Env) (b : Bool) (st : St) (hb : Base st) :
+theorem advanceFresh_fields (env : Env) (b : Bool) (st : St) (h1 : 0 ≤ st.firstLine) (h2 : st.setAdjust = 0)
+    (h3 : st.reserved = 0) :
     let F := advanceFresh env b st
     F.box = st.box ∧ 0 ≤ F.used ∧ 0 ≤ F.firstLine ∧ F.spaces = [] ∧ F.setAdjust = 0 ∧ F.reserved = 0 ∧
       F.noteLines = 0 ∧ F.adjust = 0 ∧ F.notes = [] := by
-  have h1 := hb.first; have h2 := hb.setAdj; have h3 := hb.res
   unfold advanceFresh closePage; dsimp only
   repeat' split
   all_goals refine ⟨rfl, ?_, ?_, rfl, ?_, ?_, ?_, ?_, rfl⟩ <;> simp_all [top]
@@ -397,15 +402,44 @@ structure Hyp (env : Env) : Prop where
   sep : 0 ≤ env.separator
   cap : 1 ≤ env.capacity
 
+/-- The part of a box opened at the top of a column takes its grid lines
+    before: the column keeps its room for the notes carried on. -/
+theorem openBox_keep {bx : Bool} {env : Env} {st D : St} {Y : List (Nat × Nat)} (h : OR st D Y ∧ Base bx D ∧ Ok env D) :
+    OR st (openBox D) Y ∧ Base bx (openBox D) ∧ Ok env (openBox D) := by
+  unfold openBox
+  split
+  · exact h
+  · rename_i b hbD
+    obtain ⟨r, ba, o2, o3⟩ := h
+    have hb : (0 : Int) ≤ b.before := Int.ofNat_nonneg _
+    have c : cap env D = env.capacity + D.adjust - b.after := by simp only [cap, boxAfter, hbD]
+    refine ⟨r, ⟨by rw [← ba.box, hbD] <;> rfl, ba.first, ba.spaces, ba.setAdj, ba.res, ba.nl, ba.join⟩, ?_, ?_⟩
+    · rcases o2 with u | u
+      · exact Or.inl (show 0 ≤ D.used + b.before by omega)
+      · exact Or.inr u
+    · rcases o3 with o | ⟨o, t⟩
+      · exact Or.inl o
+      · refine Or.inr ⟨?_, ?_⟩
+        · show env.capacity + D.adjust - b.after - (D.used + b.before) - D.noteLines ≤ carrySep env D + 1
+          simp only [free] at o; omega
+        · rcases t with t | t | t
+          · exact Or.inl (show 1 ≤ D.used + b.before by omega)
+          · exact Or.inr (Or.inl t)
+          · exact Or.inr (Or.inr t)
+
 /-- A column opened from a state kept is kept, and when a note is carried on
     after it, the column holds its part and its lines are taken but for
     one (`carryNote`). -/
-theorem adv (env : Env) (hs : Hyp env) (b : Bool) (st : St) (hb : Base st) :
-    OR st (advance env b st) [] ∧ Base (advance env b st) ∧ Ok env (advance env b st) := by
+theorem adv {bx : Bool} (env : Env) (hs : Hyp env) (b : Bool) (st : St) (hb : Base bx { st with join := none }) :
+    OR st (advance env b st) [] ∧ Base bx (advance env b st) ∧ Ok env (advance env b st) := by
   obtain ⟨f1, f2, f3⟩ := advanceFresh_NM env b st
-  obtain ⟨h1, u0, l0, f4, f5, f6, f7, f8, f9⟩ := advanceFresh_fields env b st hb
-  have hbF : (advanceFresh env b st).box = none := h1.trans hb.box
+  obtain ⟨h1, u0, l0, f4, f5, f6, f7, f8, f9⟩ := advanceFresh_fields env b st hb.first hb.setAdj hb.res
+  have hjF : (advanceFresh env b st).join = none := rfl
+  have key : ∀ X : St, carryRoom env X = 0 → 0 ≤ X.used → ∀ u : Int, X.used ≤ u →
+      cap env X - u - X.noteLines ≤ carrySep env X + 1 := by
+    intro X h h0 u hu; simp only [carryRoom, Int.max_def] at h; split at h <;> omega
   simp only [advance, advanceIn, openColumn]
+  apply openBox_keep
   generalize advanceFresh env b st = F at *
   obtain ⟨g1, g2, g3⟩ := pageFigures_NM env (advanceTurned b st).1 F
   obtain ⟨dd, pg, pe⟩ := pageFigures_eq env (advanceTurned b st).1 F
@@ -421,28 +455,22 @@ theorem adv (env : Env) (hs : Hyp env) (b : Bool) (st : St) (hb : Base st) :
   generalize placeDeferred env { C with deferred := [] } (advanceTurned b st).2 = D at *
   subst de
   subst ce'
-  rw [openBox_none _ (by exact hbF)]
   obtain ⟨⟨u, gu⟩, ce⟩ := c
   have sp0 : ∀ x ∈ F.spaces, 0 ≤ x.2 := by rw [f4]; intro x m; cases m
   have du' : F.used ≤ u1 := du
   have cg1' : F.noteLines ≤ nl := cg1
-  refine ⟨⟨⟨u, ?_⟩, ?_⟩, ⟨hbF, l0, sp0, f5, f6, by show 0 ≤ nl; omega⟩, ⟨?_, Or.inl (by show 0 ≤ u1; omega), ?_⟩⟩
+  refine ⟨⟨⟨u, ?_⟩, ?_⟩, ⟨by show F.box.isSome = bx; rw [h1]; exact hb.box, l0, sp0, f5, f6, by show 0 ≤ nl; omega, hjF⟩, ⟨Or.inl (by show 0 ≤ u1; omega), ?_⟩⟩
   · exact d2.trans (gu.trans (by rw [g2, f2]))
   · have iD : dropIds _ = dropIds _ := congrArg dropsOf d2
     rw [iD, d1, List.append_nil, ← f1, ← g1]
     exact ce
-  · show 1 ≤ env.capacity + F.adjust - boxAfter F
-    simp only [boxAfter, hbF, f8]; have := hs.cap; omega
   · by_cases pe : pd = []
     · left; rw [pe]; rfl
     · right
       rcases cj with e | e
       · exact absurd e pe
       refine ⟨?_, Or.inr (Or.inr (by rcases tch with t | t; exact absurd t pe; exact t))⟩
-      simp only [carryRoom, Int.max_def] at e
-      show env.capacity + F.adjust - boxAfter F - u1 - nl ≤ (if nl = 0 then env.separator else 0) + 1
-      simp only [cap, boxAfter, carrySep, hbF, f8] at e ⊢
-      split at e <;> split at e <;> split <;> omega
+      exact key _ e (by show 0 ≤ F.used; omega) u1 du'
 
 /-! ## Steps that place no note: they keep the column or open one -/
 
@@ -461,11 +489,10 @@ theorem ok_of {env : Env} {a b : St} (a1 : b.used = a.used) (a2 : b.noteLines = 
     (a3 : b.pending = a.pending) (a4 : b.adjust = a.adjust) (a5 : b.box = a.box) (a6 : b.notes = a.notes)
     (o : Ok env a) : Ok env b := by
   have f : free env b = free env a := by simp only [free, cap, boxAfter, a1, a2, a4, a5]
-  have cp : cap env b = cap env a := by simp only [cap, boxAfter, a4, a5]
   have c : carrySep env b = carrySep env a := by simp only [carrySep, a2]
-  obtain ⟨o1, o2, o | ⟨o, t⟩⟩ := o
-  · exact ⟨by rw [cp]; exact o1, by rw [a1, a2]; exact o2, Or.inl (by rw [a3]; exact o)⟩
-  · refine ⟨by rw [cp]; exact o1, by rw [a1, a2]; exact o2, Or.inr ⟨by rw [f, c]; exact o, ?_⟩⟩
+  obtain ⟨o2, o | ⟨o, t⟩⟩ := o
+  · exact ⟨by rw [a1, a2]; exact o2, Or.inl (by rw [a3]; exact o)⟩
+  · refine ⟨by rw [a1, a2]; exact o2, Or.inr ⟨by rw [f, c]; exact o, ?_⟩⟩
     unfold Touched; rw [a1, a2, a6]; exact t
 
 theorem Frame.ok {env : Env} {a b : St} (h : Frame a b) (o : Ok env a) : Ok env b :=
@@ -473,12 +500,12 @@ theorem Frame.ok {env : Env} {a b : St} (h : Frame a b) (o : Ok env a) : Ok env 
 
 /-- A step that places no note: it keeps the column, or opens a column
     kept. -/
-def N (env : Env) (a b : St) : Prop := Base a → OR a b [] ∧ Base b ∧ (Ok env b ∨ Frame a b)
+def N (env : Env) (a b : St) : Prop := ∀ ⦃bx : Bool⦄, Base bx a → OR a b [] ∧ Base bx b ∧ (Ok env b ∨ Frame a b)
 
-theorem N.refl (env : Env) (a : St) : N env a a := fun b => ⟨OR.refl a, b, Or.inr (Frame.refl a)⟩
+theorem N.refl (env : Env) (a : St) : N env a a := fun _ b => ⟨OR.refl a, b, Or.inr (Frame.refl a)⟩
 
 theorem N.trans {env : Env} {a b c : St} (h1 : N env a b) (h2 : N env b c) : N env a c := by
-  intro ba
+  intro bx ba
   obtain ⟨r1, bb, o1⟩ := h1 ba
   obtain ⟨r2, bc, o2⟩ := h2 bb
   refine ⟨by simpa using r1.trans r2, bc, ?_⟩
@@ -489,7 +516,7 @@ theorem N.trans {env : Env} {a b c : St} (h1 : N env a b) (h2 : N env b c) : N e
     · exact Or.inr (f1.trans f2)
 
 theorem N.toQ {env : Env} {a b : St} (h : N env a b) : Q env a b [] := by
-  intro ba oa
+  intro bx ba oa
   obtain ⟨r, bb, o⟩ := h ba
   refine ⟨r, bb, ?_⟩
   rcases o with o | f
@@ -507,14 +534,15 @@ theorem N.frame {env : Env} {st s : St} (hd : s.done = st.done := by rfl) (hn : 
     (hf : s.firstLine = st.firstLine := by rfl) (hsp : s.spaces = st.spaces := by rfl)
     (hl : s.noteLines = st.noteLines := by rfl) (hus : s.used = st.used := by rfl)
     (ha : s.adjust = st.adjust := by rfl) (hpg : s.page = st.page := by rfl) (hc : s.column = st.column := by rfl)
-    (hsa : s.setAdjust = st.setAdjust := by rfl) (hr : s.reserved = st.reserved := by rfl) :
+    (hsa : s.setAdjust = st.setAdjust := by rfl) (hr : s.reserved = st.reserved := by rfl)
+    (hj : s.join = st.join := by rfl) :
     N env st s := by
-  intro ba
+  intro bx ba
   refine ⟨OR.of_eq (by simp [NM, hd, hn, hp]) ⟨[], by simp [allUnmet, hd, hu]⟩,
-    ba.of hb hf hsp hsa hr (by omega), Or.inr ⟨hus, hl, hp, ha, hb, hpg, hc, hn⟩⟩
+    ba.of hb hj hf hsp hsa hr (by omega), Or.inr ⟨hus, hl, hp, ha, hb, hpg, hc, hn⟩⟩
 
 theorem N.addU (env : Env) (u : Unmet) (st : St) : N env st (addUnmet u st) := by
-  intro ba
+  intro bx ba
   exact ⟨OR.of_eq (by simp [NM, addUnmet]) ⟨[u], by simp [allUnmet, addUnmet, List.append_assoc]⟩,
     ba.of, Or.inr (Frame.refl st)⟩
 
@@ -522,8 +550,8 @@ section
 variable (env : Env) (hs : Hyp env)
 
 theorem n_advance (b : Bool) (st : St) : N env st (advance env b st) := by
-  intro ba
-  obtain ⟨r, bb, o⟩ := adv env hs b st ba
+  intro bx ba
+  obtain ⟨r, bb, o⟩ := adv env hs b st (by rw [withJoin_self st ba.join]; exact ba)
   exact ⟨r, bb, Or.inl o⟩
 
 theorem n_nextColumn (st : St) : N env st (nextColumn env st) := n_advance env hs _ st
@@ -565,13 +593,13 @@ theorem q_applyNeed (st : St) : Q env st (applyNeed env st) [] := (n_applyNeed e
 theorem q_needBeforeSpace (st : St) : Q env st (needBeforeSpace env st) [] := (n_needBeforeSpace env hs st).toQ
 
 theorem q_blankPage (st : St) : Q env st (blankPage env st) [] := by
-  intro ba oa
+  intro bx ba oa
   refine ⟨OR.of_eq (by simp [NM, blankPage, pagesNotes_cons])
     ⟨[], by simp [allUnmet, blankPage, List.reverse_cons, List.append_bind]⟩, ba.of, ?_⟩
   exact ok_of rfl rfl rfl rfl rfl rfl oa
 
 theorem q_pageFigure (st : St) (i : Nat) : Q env st (pageFigure env st i) [] := by
-  intro ba oa
+  intro bx ba oa
   refine ⟨OR.of_eq (by simp [NM, pageFigure, pagesNotes_cons])
     ⟨[], by simp [allUnmet, pageFigure, List.reverse_cons, List.append_bind]⟩, ba.of, ?_⟩
   exact ok_of rfl rfl rfl rfl rfl rfl oa
@@ -765,8 +793,8 @@ theorem carrySep_cases (env : Env) (st : St) :
 section
 variable (env : Env) (hs : Hyp env)
 
-theorem q_putLineKeeping (R : Nat) (st : St) (l : Line) (ba : Base st) (o : OkK env (R + 1) st) :
-    OR st (putLineKeeping env R st l) (exN l.notes) ∧ Base (putLineKeeping env R st l) ∧
+theorem q_putLineKeeping {bx : Bool} (R : Nat) (st : St) (l : Line) (ba : Base bx st) (o : OkK env (R + 1) st) :
+    OR st (putLineKeeping env R st l) (exN l.notes) ∧ Base bx (putLineKeeping env R st l) ∧
       OkK env R (putLineKeeping env R st l) := by
   have hsep := sep_cases env st.noteLines ((l.notes.map (·.lines)).foldr (· + ·) 0)
   generalize hN : (l.notes.map (·.lines)).foldr (· + ·) 0 = N at hsep
@@ -796,7 +824,7 @@ theorem q_putLineKeeping (R : Nat) (st : St) (l : Line) (ba : Base st) (o : OkK 
       slots := st.slots ++ [(st.used, .line l.id)], used := st.used + 1,
       noteLines := st.noteLines + e + partsLines sp.1, notes := st.notes ++ sp.1,
       pending := st.pending ++ sp.2, headingOnly := false }
-  obtain ⟨oc, ou, o⟩ := o
+  obtain ⟨ou, o⟩ := o
   have o' : ((partsLines st.pending : Nat) : Int) = 0 ∨ cap env st - st.used - st.noteLines ≤ carrySep env st + (R + 1) := by
     rcases o with o | ⟨o, _⟩
     · exact Or.inl (by exact_mod_cast o)
@@ -813,7 +841,7 @@ theorem q_putLineKeeping (R : Nat) (st : St) (l : Line) (ba : Base st) (o : OkK 
     · exact Or.inl (by exact_mod_cast h)
     · exact Or.inr (by exact_mod_cast h)
   refine ⟨OR.of_eq (nm_put sp _ L rfl rfl rfl a1') ⟨[], by simp [allUnmet]⟩,
-    ba.of (hl := by show st.noteLines ≤ st.noteLines + e + _; omega), oc, ?_, ?_⟩
+    ba.of (hl := by show st.noteLines ≤ st.noteLines + e + _; omega), ?_, ?_⟩
   · rcases ou with u | u
     · exact Or.inl (show 0 ≤ st.used + 1 by omega)
     · exact Or.inr (show 0 < st.noteLines + e + _ by omega)
@@ -825,7 +853,7 @@ theorem q_putLineKeeping (R : Nat) (st : St) (l : Line) (ba : Base st) (o : OkK 
     · exact Or.inr (Or.inl (show 0 < st.noteLines + e + _ by omega))
 
 theorem q_putLine (st : St) (l : Line) : Q env st (putLine env st l) l.notes := by
-  intro ba oa
+  intro bx ba oa
   obtain ⟨a, b, c⟩ := q_putLineKeeping env hs 0 st l ba (by simpa using oa)
   exact ⟨a, b, c.mono (by decide)⟩
 
@@ -839,7 +867,7 @@ theorem q_putBlock (st : St) (n : Nat) (hn : 1 ≤ n) (ls : List Line) :
   cases ls with
   | nil => exact Q.refl env st
   | cons l0 ls =>
-  intro ba o
+  intro bx ba o
   have hsep := sep_cases env st.noteLines ((((l0 :: ls).bind (·.notes)).map (·.lines)).foldr (· + ·) 0)
   generalize hN : (((l0 :: ls).bind (·.notes)).map (·.lines)).foldr (· + ·) 0 = N at hsep
   generalize hsp : (if st.noteLines = 0 ∧ 0 < N then env.separator else 0) = sep at hsep
@@ -869,7 +897,7 @@ theorem q_putBlock (st : St) (n : Nat) (hn : 1 ≤ n) (ls : List Line) :
       slots := st.slots ++ [(st.used, .heading l0.id (l0 :: ls).length)], used := st.used + n,
       noteLines := st.noteLines + e + partsLines sp.1, notes := st.notes ++ sp.1,
       pending := st.pending ++ sp.2, headingOnly := isEmpty st || st.headingOnly, unmet := st.unmet ++ tall }
-  obtain ⟨oc, ou, o⟩ := o
+  obtain ⟨ou, o⟩ := o
   have o' : ((partsLines st.pending : Nat) : Int) = 0 ∨ cap env st - st.used - st.noteLines ≤ carrySep env st + 1 := by
     rcases o with o | ⟨o, _⟩
     · exact Or.inl (by exact_mod_cast o)
@@ -886,7 +914,7 @@ theorem q_putBlock (st : St) (n : Nat) (hn : 1 ≤ n) (ls : List Line) :
     · exact Or.inl (by exact_mod_cast h)
     · exact Or.inr (by exact_mod_cast h)
   refine ⟨OR.of_eq ?_ ⟨tall, by simp [allUnmet, List.append_assoc]⟩,
-    ba.of (hl := by show st.noteLines ≤ st.noteLines + e + _; omega), oc, ?_, ?_⟩
+    ba.of (hl := by show st.noteLines ≤ st.noteLines + e + _; omega), ?_, ?_⟩
   · rw [exN]; exact nm_put sp _ L rfl rfl rfl a1'
   · rcases ou with u | u
     · exact Or.inl (show 0 ≤ st.used + n by omega)
@@ -898,9 +926,9 @@ theorem q_putBlock (st : St) (n : Nat) (hn : 1 ≤ n) (ls : List Line) :
     · exact Or.inl (show 1 ≤ st.used + n by omega)
     · exact Or.inr (Or.inl (show 0 < st.noteLines + e + _ by omega))
 
-theorem drain_facts (st : St) (hc : 1 ≤ cap env st) (hu : 0 ≤ st.used ∨ 0 < st.noteLines)
+theorem drain_facts (st : St) (hu : 0 ≤ st.used ∨ 0 < st.noteLines)
     (ht : 0 < partsLines st.pending → Touched st) (hnl : 0 ≤ st.noteLines) :
-    OR st (drainPendingNotes env st) [] ∧ (Base st → Base (drainPendingNotes env st)) ∧
+    OR st (drainPendingNotes env st) [] ∧ (∀ ⦃bx : Bool⦄, Base bx st → Base bx (drainPendingNotes env st)) ∧
       Ok env (drainPendingNotes env st) := by
   have s0 := hs.sep
   have ds : 0 ≤ drainSep env st := by unfold drainSep; split <;> omega
@@ -911,16 +939,15 @@ theorem drain_facts (st : St) (hc : 1 ≤ cap env st) (hu : 0 ≤ st.used ∨ 0 
     · exact Int.le_refl _
     · show st.noteLines ≤ st.noteLines + drainSep env st + _; omega
   refine ⟨OR.of_eq (by rw [n, List.append_nil]) ⟨[], by rw [e]; simp [allUnmet]⟩,
-    fun b => b.of (hb := by rw [e]) (hf := by rw [e]) (hsp := by rw [e]) (hsa := by rw [e]) (hr := by rw [e])
+    fun _ b => b.of (hb := by rw [e]) (hj := by rw [e]) (hf := by rw [e]) (hsp := by rw [e]) (hsa := by rw [e]) (hr := by rw [e])
       (hl := grow), ?_⟩
-  have hc' : 1 ≤ cap env (drainPendingNotes env st) := by rw [e]; exact hc
   have hu' : 0 ≤ (drainPendingNotes env st).used ∨ 0 < (drainPendingNotes env st).noteLines := by
     have : (drainPendingNotes env st).used = st.used := by rw [e]
     rcases hu with u | u
     · exact Or.inl (by omega)
     · exact Or.inr (by omega)
-  refine ⟨hc', hu', ?_⟩
-  clear hc' hu' grow
+  refine ⟨hu', ?_⟩
+  clear hu' grow
   unfold drainPendingNotes
   split
   · rename_i c
@@ -955,32 +982,17 @@ theorem drain_facts (st : St) (hc : 1 ≤ cap env st) (hu : 0 ≤ st.used ∨ 0 
 
 /-- `@page-lines`, then the carried notes drained. -/
 theorem q_adjust (st : St) (k : Int) : Q env st (drainPendingNotes env (adjustLines env st k)) [] := by
-  intro ba oa
-  obtain ⟨_, ou, op⟩ := oa
-  have a : OR st (adjustLines env st k) [] ∧ Base (adjustLines env st k) ∧
+  intro bx ba oa
+  obtain ⟨ou, op⟩ := oa
+  have a : OR st (adjustLines env st k) [] ∧ Base bx (adjustLines env st k) ∧
       (adjustLines env st k).used = st.used ∧ (adjustLines env st k).noteLines = st.noteLines ∧
-      (adjustLines env st k).pending = st.pending ∧ (adjustLines env st k).notes = st.notes ∧
-      1 ≤ cap env (adjustLines env st k) := by
+      (adjustLines env st k).pending = st.pending ∧ (adjustLines env st k).notes = st.notes := by
     simp only [adjustLines]
     split
-    · refine ⟨OR.of_eq (by simp [NM, addUnmet]) ⟨[_], by simp [allUnmet, addUnmet]; rfl⟩, ba.of, rfl, rfl, rfl, rfl, ?_⟩
-      show 1 ≤ env.capacity + max (max 1 (st.used + st.noteLines) - env.capacity)
-        (min (env.maxLines - env.capacity) (st.adjust + k)) - boxAfter st
-      simp only [boxAfter, ba.box]
-      have := Int.le_max_left (max 1 (st.used + st.noteLines) - env.capacity)
-        (min (env.maxLines - env.capacity) (st.adjust + k))
-      have := Int.le_max_left 1 (st.used + st.noteLines)
-      omega
-    · refine ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩, ba.of, rfl, rfl, rfl, rfl, ?_⟩
-      show 1 ≤ env.capacity + max (max 1 (st.used + st.noteLines) - env.capacity)
-        (min (env.maxLines - env.capacity) (st.adjust + k)) - boxAfter st
-      simp only [boxAfter, ba.box]
-      have := Int.le_max_left (max 1 (st.used + st.noteLines) - env.capacity)
-        (min (env.maxLines - env.capacity) (st.adjust + k))
-      have := Int.le_max_left 1 (st.used + st.noteLines)
-      omega
-  obtain ⟨a1, a2, a3, a4, a5, a6, a7⟩ := a
-  obtain ⟨d1, d2, d3⟩ := drain_facts env hs (adjustLines env st k) a7 (by rw [a3, a4]; exact ou)
+    · exact ⟨OR.of_eq (by simp [NM, addUnmet]) ⟨[_], by simp [allUnmet, addUnmet]; rfl⟩, ba.of, rfl, rfl, rfl, rfl⟩
+    · exact ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩, ba.of, rfl, rfl, rfl, rfl⟩
+  obtain ⟨a1, a2, a3, a4, a5, a6⟩ := a
+  obtain ⟨d1, d2, d3⟩ := drain_facts env hs (adjustLines env st k) (by rw [a3, a4]; exact ou)
     (fun h => by
       rw [a5] at h
       rcases op with o | ⟨_, t⟩
@@ -1010,8 +1022,8 @@ theorem mem_append_cases {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ 
 
 theorem ok_addUsed {env : Env} {s : St} (d : Int) (hd : 0 ≤ d) (o : Ok env s) :
     Ok env { s with used := s.used + d } := by
-  obtain ⟨o1, o2, o3⟩ := o
-  refine ⟨o1, ?_, ?_⟩
+  obtain ⟨o2, o3⟩ := o
+  refine ⟨?_, ?_⟩
   · rcases o2 with h | h
     · exact Or.inl (show 0 ≤ s.used + d by omega)
     · exact Or.inr h
@@ -1114,10 +1126,10 @@ theorem placeSpaceFlow_used (st : St) (n : Nat) : st.used ≤ (placeSpaceFlow en
     show st.used ≤ st.used + _; omega
 
 theorem q_placeSpace (st : St) (n : Nat) : Q env st (placeSpace env st n) [] := by
-  intro ba oa
+  intro bx ba oa
   obtain ⟨r, b, o⟩ := q_placeSpaceFlow env st n ba oa
   have u := placeSpaceFlow_used env st n
-  refine ⟨?_, ⟨b.box, b.first, ?_, b.setAdj, b.res, b.nl⟩, ?_⟩
+  refine ⟨?_, ⟨b.box, b.first, ?_, b.setAdj, b.res, b.nl, b.join⟩, ?_⟩
   · obtain ⟨g, e⟩ := r
     exact ⟨g, e⟩
   · intro x m
@@ -1136,12 +1148,12 @@ theorem q_placeSpaces (ns : List Nat) (st : St) : Q env st (ns.foldl (placeSpace
 /-- The spaces taken off, the need placed, and the spaces placed again:
     where the column stays, its lines are as they were. -/
 theorem q_needBeforeSpaces (st : St) : Q env st (needBeforeSpaces env st) [] := by
-  intro ba oa
+  intro bx ba oa
   unfold needBeforeSpaces
   simp only
   have k0 := spaces_nonneg st.spaces ba.spaces
   generalize (st.spaces.map (·.2)).foldr (· + ·) 0 = k at k0
-  have b0 : Base { st with used := st.used - k } := ba.of
+  have b0 : Base bx { st with used := st.used - k } := ba.of
   have r0 : OR st { st with used := st.used - k } [] := OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩
   obtain ⟨r1, b1, o1⟩ := n_needBeforeSpace env hs { st with used := st.used - k } b0
   generalize needBeforeSpace env { st with used := st.used - k } = s1 at r1 b1 o1
@@ -1500,9 +1512,9 @@ theorem q_placeKept {α : Type} (kp : Keep) (placeIn : St → Bool → List α �
 /-- The lines of a paragraph with rules, each keeping the lines after it
     and the rule after: the lines free beyond the separator stay within
     what is kept for them. -/
-theorem q_putRuledLines (k2 : Nat) (ls : List Line) (st : St) (ba : Base st)
+theorem q_putRuledLines {bx : Bool} (k2 : Nat) (ls : List Line) (st : St) (ba : Base bx st)
     (o : OkK env (max 1 ((ls.length + k2 : Nat) : Int)) st) :
-    OR st (putRuledLines env k2 st ls) (exN (ls.bind (·.notes))) ∧ Base (putRuledLines env k2 st ls) ∧
+    OR st (putRuledLines env k2 st ls) (exN (ls.bind (·.notes))) ∧ Base bx (putRuledLines env k2 st ls) ∧
       OkK env (max 1 (k2 : Int)) (putRuledLines env k2 st ls) := by
   induction ls generalizing st with
   | nil => exact ⟨OR.refl st, ba, by simpa using o⟩
@@ -1518,11 +1530,13 @@ theorem q_putRuledLines (k2 : Nat) (ls : List Line) (st : St) (ba : Base st)
     have := r1.trans r2
     rw [List.cons_bind, exN_append]; exact this
 
-theorem q_commitRuled (st : St) (body : RuledBody) (p : Plan) (hb : RuledOk body) :
-    Q env st (commitRuled env st body p) (ruledNotes body) := by
-  intro ba oa
+/-- A block committed from a state kept: the notes of its lines added in
+    order, the state kept but for the rule it leaves waiting. -/
+theorem q_commitRuled (st : St) (body : RuledBody) (p : Plan) {bx : Bool} (hb : RuledOk body) (ba : Base bx st) (oa : Ok env st) :
+    OR st (commitRuled env st body p) (exN (ruledNotes body)) ∧
+      Base bx { commitRuled env st body p with join := none } ∧ Ok env (commitRuled env st body p) := by
   have q1 : Q env st { st with used := st.used + p.before, join := none } [] :=
-    Q.frame (hused := by show st.used ≤ st.used + p.before; omega)
+    Q.frame (hj := ba.join.symm) (hused := by show st.used ≤ st.used + p.before; omega)
   obtain ⟨r1, b1, o1⟩ := q1 ba oa
   have fin : ∀ s : St, OkK env (max 1 (p.after : Int)) s →
       Ok env { s with used := min (s.used + p.after) (max s.used (cap env s - s.noteLines)), join := p.waiting } := by
@@ -1530,9 +1544,9 @@ theorem q_commitRuled (st : St) (body : RuledBody) (p : Plan) (hb : RuledOk body
     have up : s.used ≤ min (s.used + p.after) (max s.used (cap env s - s.noteLines)) := by
       have := Int.le_max_left s.used (cap env s - s.noteLines)
       simp only [Int.min_def]; split <;> omega
-    obtain ⟨o1, o2, o | ⟨o, t⟩⟩ := o
-    · exact ⟨o1, by rcases o2 with h | h; exact Or.inl (by show 0 ≤ min _ _; omega); exact Or.inr h, Or.inl o⟩
-    · refine ⟨o1, by rcases o2 with h | h; exact Or.inl (by show 0 ≤ min _ _; omega); exact Or.inr h, Or.inr ⟨?_, ?_⟩⟩
+    obtain ⟨o2, o | ⟨o, t⟩⟩ := o
+    · exact ⟨by rcases o2 with h | h; exact Or.inl (by show 0 ≤ min _ _; omega); exact Or.inr h, Or.inl o⟩
+    · refine ⟨by rcases o2 with h | h; exact Or.inl (by show 0 ≤ min _ _; omega); exact Or.inr h, Or.inr ⟨?_, ?_⟩⟩
       · show cap env s - min (s.used + p.after) (max s.used (cap env s - s.noteLines)) - s.noteLines ≤ carrySep env s + 1
         have c0 : 0 ≤ carrySep env s := by have := hs.sep; unfold carrySep; split <;> omega
         simp only [free] at o
@@ -1550,7 +1564,7 @@ theorem q_commitRuled (st : St) (body : RuledBody) (p : Plan) (hb : RuledOk body
     obtain ⟨r2, b2, o2⟩ := q_putRuledLines env hs p.after ls st1 b1
       (o1.mono (by simp only [Int.max_def]; split <;> omega))
     generalize putRuledLines env p.after st1 ls = s2 at r2 b2 o2 ⊢
-    refine ⟨?_, b2.of, fin _ o2⟩
+    refine ⟨?_, b2.of (hj := b2.join.symm), fin _ o2⟩
     have := (r1.trans r2).trans (OR.of_eq (Y := []) (st := s2)
       (s := { s2 with used := min (s2.used + p.after) (max s2.used (cap env s2 - s2.noteLines)), join := p.waiting })
       (by simp [NM]) ⟨[], by simp [allUnmet]⟩)
@@ -1559,13 +1573,56 @@ theorem q_commitRuled (st : St) (body : RuledBody) (p : Plan) (hb : RuledOk body
     simp only
     obtain ⟨r2, b2, o2⟩ := q_putBlock env hs st1 n hb ls b1 o1
     generalize putBlock env st1 n ls = s2 at r2 b2 o2 ⊢
-    refine ⟨?_, b2.of, ?_⟩
+    refine ⟨?_, b2.of (hj := b2.join.symm), ?_⟩
     · have := (r1.trans r2).trans (OR.of_eq (Y := []) (st := s2)
         (s := { { s2 with headingOnly := isEmpty st || st.headingOnly } with
           used := min (s2.used + p.after) (max s2.used (cap env s2 - s2.noteLines)), join := p.waiting })
         (by simp [NM]) ⟨[], by simp [allUnmet]⟩)
       simpa [ruledNotes] using this
     · exact fin { s2 with headingOnly := isEmpty st || st.headingOnly } (o2.mono (by simp only [Int.max_def]; split <;> omega))
+
+/-- A block committed with no rule left waiting keeps the state. -/
+theorem q_commitNone (st : St) (body : RuledBody) (p : Plan) (hb : RuledOk body) (hp : p.waiting = none) :
+    Q env st (commitRuled env st body p) (ruledNotes body) := by
+  intro bx ba oa
+  obtain ⟨r, b, o⟩ := q_commitRuled env hs st body p hb ba oa
+  have e : (commitRuled env st body p).join = none := hp
+  exact ⟨r, by rw [← withJoin_self _ e]; exact b, o⟩
+
+/-- When its rule after waits, a block committed where it fits leaves the
+    column with room or with note lines (Whole.lean's `commitRuled_good`). -/
+theorem commit_room (st : St) (body : RuledBody) (p : Plan) (ha : p.after = 0)
+    (hf : planNeed env st body p ≤ free env st) :
+    0 < (commitRuled env st body p).noteLines ∨ 0 ≤ free env (commitRuled env st body p) := by
+  have ge := planNeed_ge env hs.sep st body p
+  have fin : ∀ s2 : St, cap env s2 = cap env st → (0 < s2.noteLines ∨ s2.used + s2.noteLines ≤ cap env st) →
+      0 < s2.noteLines ∨
+        0 ≤ cap env s2 - min (s2.used + p.after) (max s2.used (cap env s2 - s2.noteLines)) - s2.noteLines := by
+    intro s2 c2 r2
+    have m1 := Int.le_max_left s2.used (cap env s2 - s2.noteLines)
+    have e : min (s2.used + p.after) (max s2.used (cap env s2 - s2.noteLines)) = s2.used := by
+      rw [ha]; simp only [Int.ofNat_zero, Int.add_zero]; exact Int.min_eq_left m1
+    rw [e, c2]; omega
+  cases body with
+  | lines kp ls =>
+    simp only [RuledBody.size] at ge
+    have := putRuledLines_room env hs.sep p.after ls { st with used := st.used + p.before, join := none }
+      (Or.inr (by simp only [free] at hf; push_cast at hf ge ⊢; show _ ≤ cap env st; omega))
+    refine fin (putRuledLines env p.after { st with used := st.used + p.before, join := none } ls)
+      (cap_putRuledLines ..) ?_
+    rcases this.1 with a | a
+    · exact Or.inl a
+    · right; rw [this.2] at a
+      have a' : (putRuledLines env p.after { st with used := st.used + p.before, join := none } ls).used
+          + (putRuledLines env p.after { st with used := st.used + p.before, join := none } ls).noteLines
+          + p.after ≤ cap env st := a
+      omega
+  | heading r n ls =>
+    simp only [RuledBody.size] at ge
+    refine fin { putBlock env { st with used := st.used + p.before, join := none } n ls with
+      headingOnly := isEmpty st || st.headingOnly } (by show cap env (putBlock env _ n ls) = _; cases ls <;> rfl) ?_
+    exact putBlock_room env hs.sep { st with used := st.used + p.before, join := none } n ls
+      (Or.inr (by simp only [free] at hf; push_cast at hf ge ⊢; show _ ≤ cap env st; omega))
 
 theorem q_splitRuled (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) (hb : RuledOk body) :
     Q env st (splitRuled env st i b a body rest) (ruledNotes body) := by
@@ -1577,142 +1634,228 @@ theorem q_splitRuled (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest :
     simp only [splitRuled]
     generalize (if isEmpty st = true then st else nextColumn env st) = s at h0
     split
-    · exact Q.nl h0 (q_commitRuled env hs _ _ _ hb)
+    · exact Q.nl h0 (q_commitNone env hs _ _ _ hb rfl)
     · split
-      · exact Q.nl h0 (q_commitRuled env hs _ _ _ hb)
+      · exact Q.nl h0 (q_commitNone env hs _ _ _ hb rfl)
       · exact Q.nl h0 (q_putBlock env hs _ n hb ls)
 
-theorem q_flushUsed (st : St) (x : Int) (hx : 0 ≤ x) :
-    Q env st { st with used := st.used + min x (free env st), join := none } [] := by
-  · intro ba oa
-    refine ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩, ba.of, ?_⟩
-    obtain ⟨o1, o2, o3⟩ := oa
-    have nl := ba.nl
-    have c0 : 0 ≤ carrySep env st := by have := hs.sep; unfold carrySep; split <;> omega
-    have fr : free env st = cap env st - st.used - st.noteLines := rfl
-    have m : ∀ (x : Int), 0 ≤ x → (0 ≤ free env st → min x (free env st) ≥ 0 ∧ min x (free env st) ≤ free env st) ∧
-        (free env st < 0 → min x (free env st) = free env st) := by
-      intro x hx; simp only [Int.min_def]; constructor <;> intro h <;> split <;> omega
-    obtain ⟨m1, m2⟩ := m x hx
-    refine ⟨o1, ?_, ?_⟩
-    · show 0 ≤ st.used + min x (free env st) ∨ 0 < st.noteLines
-      by_cases f0 : 0 ≤ free env st
-      · have := m1 f0; rcases o2 with h | h
-        · exact Or.inl (by omega)
-        · exact Or.inr h
-      · have := m2 (by omega)
-        by_cases n0 : 0 < st.noteLines
-        · exact Or.inr n0
-        · exact Or.inl (by omega)
-    · rcases o3 with o | ⟨o, t⟩
-      · exact Or.inl o
-      · refine Or.inr ⟨?_, ?_⟩
-        · show cap env st - (st.used + min x (free env st)) - st.noteLines ≤ carrySep env st + 1
-          by_cases f0 : 0 ≤ free env st
-          · have := m1 f0; omega
-          · have := m2 (by omega); omega
-        · show 1 ≤ st.used + min x (free env st) ∨ 0 < st.noteLines ∨ st.notes ≠ []
-          by_cases f0 : 0 ≤ free env st
-          · have := m1 f0
-            rcases t with t | t | t
-            · exact Or.inl (by omega)
-            · exact Or.inr (Or.inl t)
-            · exact Or.inr (Or.inr t)
-          · have := m2 (by omega)
-            by_cases n0 : 0 < st.noteLines
-            · exact Or.inr (Or.inl n0)
-            · exact Or.inl (by omega)
+/-- The rule after of the block before in its own area: it takes the
+    lines free, or none where the column has none. -/
+theorem q_flushUsed (st : St) (x : Int) (hx : 0 ≤ x) {bx : Bool} (ba : Base bx { st with join := none }) (oa : Ok env st)
+    (hr : 0 < st.noteLines ∨ 0 ≤ free env st) :
+    OR st { st with used := st.used + min x (free env st), join := none } [] ∧
+      Base bx { st with used := st.used + min x (free env st), join := none } ∧
+      Ok env { st with used := st.used + min x (free env st), join := none } := by
+  refine ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩, ba.of, ?_⟩
+  obtain ⟨o2, o3⟩ := oa
+  have c0 : 0 ≤ carrySep env st := by have := hs.sep; unfold carrySep; split <;> omega
+  have m : (0 ≤ free env st → min x (free env st) ≥ 0 ∧ min x (free env st) ≤ free env st) ∧
+      (free env st < 0 → min x (free env st) = free env st) := by
+    simp only [Int.min_def]; constructor <;> intro h <;> split <;> omega
+  obtain ⟨m1, m2⟩ := m
+  refine ⟨?_, ?_⟩
+  · show 0 ≤ st.used + min x (free env st) ∨ 0 < st.noteLines
+    by_cases f0 : 0 ≤ free env st
+    · have := m1 f0; rcases o2 with h | h
+      · exact Or.inl (by omega)
+      · exact Or.inr h
+    · rcases hr with h | h
+      · exact Or.inr h
+      · exact absurd h f0
+  · rcases o3 with o | ⟨o, t⟩
+    · exact Or.inl o
+    · refine Or.inr ⟨?_, ?_⟩
+      · show cap env st - (st.used + min x (free env st)) - st.noteLines ≤ carrySep env st + 1
+        by_cases f0 : 0 ≤ free env st
+        · have := m1 f0; simp only [free] at o; omega
+        · have := m2 (by omega); simp only [free] at o this ⊢; omega
+      · show 1 ≤ st.used + min x (free env st) ∨ 0 < st.noteLines ∨ st.notes ≠ []
+        by_cases f0 : 0 ≤ free env st
+        · have := m1 f0
+          rcases t with t | t | t
+          · exact Or.inl (by omega)
+          · exact Or.inr (Or.inl t)
+          · exact Or.inr (Or.inr t)
+        · rcases hr with h | h
+          · exact Or.inr (Or.inl h)
+          · exact absurd h f0
 
-theorem q_flushJoin (st : St) : Q env st (flushJoin env st) [] := by
-  unfold flushJoin; split
-  · exact Q.refl env st
-  · exact q_flushUsed env hs st _ (Int.ofNat_nonneg _)
+/-! ### A rule waiting between two blocks -/
 
-theorem q_placeRuledFresh (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) (hb : RuledOk body) :
-    Q env st (placeRuledFresh env st i b a body rest) (ruledNotes body) := by
-  have h1 : Q env st (if body.recto = true then parityStart env odd st else st) [] :=
-    Q.ite (q_parityStart env hs _ _) (Q.refl env st)
+/-- The state after a block whose rule after waits (Whole.lean's `Win`):
+    room left or note lines in the column, and no break, need-lines or
+    blank lines waiting. -/
+def W (env : Env) (st : St) : Prop :=
+  (0 < st.noteLines ∨ 0 ≤ free env st) ∧ st.breaks = [] ∧ st.need = none ∧ st.blank = []
+
+theorem W.room {env : Env} {st : St} (w : W env st) : 0 < st.noteLines ∨ 0 ≤ free env st := w.1
+theorem W.breaks {env : Env} {st : St} (w : W env st) : st.breaks = [] := w.2.1
+theorem W.need {env : Env} {st : St} (w : W env st) : st.need = none := w.2.2.1
+theorem W.blank {env : Env} {st : St} (w : W env st) : st.blank = [] := w.2.2.2
+
+/-- The state kept, or kept but for a rule after waiting. -/
+def BJ (bx : Bool) (env : Env) (st : St) : Prop := Base bx { st with join := none } ∧ (st.join ≠ none → W env st)
+
+theorem Base.bj {bx : Bool} {env : Env} {st : St} (h : Base bx st) : BJ bx env st :=
+  ⟨by rw [withJoin_self st h.join]; exact h, fun n => absurd h.join n⟩
+
+theorem BJ.base {bx : Bool} {env : Env} {st : St} (h : BJ bx env st) (e : st.join = none) : Base bx st := by
+  have := h.1; rwa [withJoin_self st e] at this
+
+/-- From a state kept: the notes `X` read are added in order, the state
+    is kept but for a rule after waiting, and a rule waits only for the
+    flows `rest` to share its area. -/
+def QB (env : Env) (st s : St) (X : List Note) (rest : List Flow) : Prop :=
+  ∀ ⦃bx : Bool⦄, Base bx st → Ok env st → OR st s (exN X) ∧ BJ bx env s ∧ Ok env s ∧ JoinAhead s rest
+
+theorem Q.toB {env : Env} {st s : St} {X : List Note} {rest : List Flow} (h : Q env st s X) : QB env st s X rest := by
+  intro bx ba oa
+  obtain ⟨r, b, o⟩ := h ba oa
+  exact ⟨r, b.bj, o, joinAhead_of_none _ b.join⟩
+
+theorem Q.thenB {env : Env} {a b c : St} {X : List Note} {rest : List Flow} (h1 : Q env a b []) (h2 : QB env b c X rest) :
+    QB env a c X rest := by
+  intro bx ba oa
+  obtain ⟨r1, b1, o1⟩ := h1 ba oa
+  obtain ⟨r2, b2, o2, j2⟩ := h2 b1 o1
+  exact ⟨by simpa using r1.trans r2, b2, o2, j2⟩
+
+theorem QB.ite {env : Env} {c : Prop} [Decidable c] {st a b : St} {X : List Note} {rest : List Flow}
+    (ha : QB env st a X rest) (hb : QB env st b X rest) : QB env st (if c then a else b) X rest := by
+  split
+  · exact ha
+  · exact hb
+
+/-- A block committed where it fits, no break, need-lines or blank lines
+    waiting: its rule after waits only for the block ahead. -/
+theorem qb_commit (s : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) (j : Option (Nat × Int))
+    (hb : RuledOk body) (hq : s.breaks = [] ∧ s.need = none ∧ s.blank = [])
+    (hf : planNeed env s body (planOf env s i b a body rest j) ≤ free env s) {bx : Bool} (ba : Base bx { s with join := none })
+    (oa : Ok env s) :
+    OR s (commitRuled env s body (planOf env s i b a body rest j)) (exN (ruledNotes body)) ∧
+      BJ bx env (commitRuled env s body (planOf env s i b a body rest j)) ∧
+      Ok env (commitRuled env s body (planOf env s i b a body rest j)) ∧
+      JoinAhead (commitRuled env s body (planOf env s i b a body rest j)) rest := by
+  have e : commitRuled env s body (planOf env s i b a body rest j)
+      = commitRuled env { s with join := none } body (planOf env s i b a body rest j) := rfl
+  obtain ⟨r, bc, oc⟩ := q_commitRuled env hs { s with join := none } body (planOf env s i b a body rest j) hb ba oa
+  rw [← e] at r bc oc
+  have jw : (commitRuled env s body (planOf env s i b a body rest j)).join = (planOf env s i b a body rest j).waiting := rfl
+  refine ⟨r, ⟨bc, fun n => ?_⟩, oc, fun n => (planOf_waiting' env s i b a body rest j (jw ▸ n)).1⟩
+  obtain ⟨_, _, a0⟩ := planOf_waiting' env s i b a body rest j (jw ▸ n)
+  have fp := frame_parts (frame_commitRuled env s body (planOf env s i b a body rest j))
+  exact ⟨commit_room env hs s body _ a0 hf, fp.1.trans hq.1, fp.2.1.trans hq.2.1, fp.2.2.trans hq.2.2⟩
+
+theorem q_placeRuledFresh (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) (hb : RuledOk body)
+    (hq : st.breaks = [] ∧ st.need = none ∧ st.blank = []) :
+    QB env st (placeRuledFresh env st i b a body rest) (ruledNotes body) rest := by
+  have qf : ∀ s : St, frame s = frame st → s.breaks = [] ∧ s.need = none ∧ s.blank = [] := by
+    intro s e; have := frame_parts e; exact ⟨this.1.trans hq.1, this.2.1.trans hq.2.1, this.2.2.trans hq.2.2⟩
+  have cm : ∀ s : St, frame s = frame st → planNeed env s body (planOf env s i b a body rest none) ≤ free env s →
+      QB env s (commitRuled env s body (planOf env s i b a body rest none)) (ruledNotes body) rest := by
+    intro s fs hf _ bs os
+    exact qb_commit env hs s i b a body rest none hb (qf s fs) hf (by rw [withJoin_self s bs.join]; exact bs) os
+  have h1 : Q env st (if body.recto = true then parityStart env odd st else st) [] ∧
+      frame (if body.recto = true then parityStart env odd st else st) = frame st := by
+    split
+    · exact ⟨q_parityStart env hs _ _, frame_parityStart ..⟩
+    · exact ⟨Q.refl env st, rfl⟩
   simp only [placeRuledFresh]
   generalize (if body.recto = true then parityStart env odd st else st) = s1 at h1
-  have h2 : ∀ s2 : St, Q env st s2 [] →
-      Q env st (if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
-          commitRuled env s2 body (planOf env s2 i b a body rest none)
-        else if isEmpty s2 = true then splitRuled env s2 i b a body rest
-        else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-            ≤ free env (nextColumn env s2) then
-          commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-        else splitRuled env (nextColumn env s2) i b a body rest) (ruledNotes body) := by
-    intro s2 e
-    split
-    · exact Q.nl e (q_commitRuled env hs _ _ _ hb)
-    · split
-      · exact Q.nl e (q_splitRuled env hs _ _ _ _ _ _ hb)
+  obtain ⟨h1, fr1⟩ := h1
+  have h2 : Q env st (ruledKeep env s1 i b a body rest) [] ∧ frame (ruledKeep env s1 i b a body rest) = frame st := by
+    have kp : ∀ nd, Q env st (keep env s1 nd) [] ∧ frame (keep env s1 nd) = frame st :=
+      fun nd => ⟨Q.nl h1 (q_keep env hs _ _), (frame_keep ..).trans fr1⟩
+    cases body with
+    | heading r n ls =>
+      cases r
+      · exact kp _
+      · exact ⟨h1, fr1⟩
+    | lines kp' ls =>
+      simp only [ruledKeep]
+      split
       · split
-        · exact Q.nl e (Q.nl (q_nextColumn env hs _) (q_commitRuled env hs _ _ _ hb))
-        · exact Q.nl e (Q.nl (q_nextColumn env hs _) (q_splitRuled env hs _ _ _ _ _ _ hb))
-  apply h2
-  cases body with
-  | heading r n ls =>
-    cases r <;> simp only [ruledKeep]
-    · exact Q.nl h1 (q_keep env hs _ _)
-    · exact h1
-  | lines kp ls =>
-    simp only [ruledKeep]
-    split
+        · exact kp _
+        · exact ⟨h1, fr1⟩
+      · exact ⟨h1, fr1⟩
+  generalize ruledKeep env s1 i b a body rest = s2 at h2
+  obtain ⟨e, fr2⟩ := h2
+  have fn2 : frame (nextColumn env s2) = frame st := (frame_nextColumn ..).trans fr2
+  split
+  · rename_i hf; exact Q.thenB e (cm s2 fr2 hf)
+  · split
+    · exact Q.thenB e (q_splitRuled env hs _ _ _ _ _ _ hb).toB
     · split
-      · exact Q.nl h1 (q_keep env hs _ _)
-      · exact h1
-    · exact h1
+      · rename_i _ _ hf; exact Q.thenB (Q.nl e (q_nextColumn env hs _)) (cm _ fn2 hf)
+      · exact Q.thenB (Q.nl e (q_nextColumn env hs _)) (q_splitRuled env hs _ _ _ _ _ _ hb).toB
 
-theorem q_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest : List Flow) (hb : RuledOk body) :
-    Q env st (placeRuled env st i b a j body rest) (ruledNotes body) := by
+/-- A block with rules, from a state kept but for a rule waiting. -/
+theorem q_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest : List Flow) (hb : RuledOk body)
+    (hq : st.breaks = [] ∧ st.need = none ∧ st.blank = []) {bx : Bool} (bj : BJ bx env st) (oa : Ok env st) :
+    OR st (placeRuled env st i b a j body rest) (exN (ruledNotes body)) ∧ BJ bx env (placeRuled env st i b a j body rest)
+      ∧ Ok env (placeRuled env st i b a j body rest) ∧ JoinAhead (placeRuled env st i b a j body rest) rest := by
   unfold placeRuled
   split
-  · split
-    · exact q_commitRuled env hs _ _ _ hb
-    · exact Q.nl (q_flushJoin env hs st) (q_placeRuledFresh env hs _ _ _ _ _ _ hb)
-  · exact q_placeRuledFresh env hs _ _ _ _ _ _ hb
+  · rename_i jj e
+    have w : W env st := bj.2 (by rw [e]; simp)
+    split
+    · rename_i c
+      have hf : planNeed env st body (planOf env st i b a body rest (some jj)) ≤ free env st := by
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at c; exact c.2
+      exact qb_commit env hs st i b a body rest (some jj) hb hq hf bj.1 oa
+    · have fl : OR st (flushJoin env st) [] ∧ Base bx (flushJoin env st) ∧ Ok env (flushJoin env st) := by
+        unfold flushJoin; rw [e]; exact q_flushUsed env hs st _ (Int.ofNat_nonneg _) bj.1 oa w.room
+      have fq := frame_parts (frame_flushJoin env st)
+      obtain ⟨r1, b1, o1⟩ := fl
+      obtain ⟨r2, b2, o2, j2⟩ := q_placeRuledFresh env hs (flushJoin env st) i b a body rest hb
+        ⟨fq.1.trans hq.1, fq.2.1.trans hq.2.1, fq.2.2.trans hq.2.2⟩ b1 o1
+      exact ⟨by simpa using r1.trans r2, b2, o2, j2⟩
+  · rename_i e
+    exact q_placeRuledFresh env hs st i b a body rest hb hq (bj.base e) oa
 
 end
 
 /-! ## The flows `I1_paginate_order` admits -/
 
 mutual
-/-- No box, no switch of the columns, and headings of one grid line or
-    more (`hbSpan` of `headingBlock`, Paginate.hs, is `max 1 least` or
-    more). -/
-def plainFlow : Flow → Prop
-  | .boxed _ _ _ _ => False
-  | .switchColumns _ => False
-  | .heading _ n _ => 1 ≤ n
-  | .ruled _ _ _ _ body => RuledOk body
-  | .bookPart _ _ _ body => plainFlows body
-  | _ => True
-termination_by f => sizeOf f
-def plainFlows : List Flow → Prop
-  | [] => True
-  | g :: r => plainFlow g ∧ plainFlows r
-termination_by fs => sizeOf fs
+/-- No switch of the columns, no box in a box (`bx`: in a box), and
+    headings of one grid line or more (`hbSpan` of `headingBlock`,
+    Paginate.hs, is `max 1 least` or more). -/
+def plainFlow : Bool → Flow → Prop
+  | bx, .boxed _ _ _ body => bx = false ∧ plainFlows true body
+  | _, .switchColumns _ => False
+  | _, .heading _ n _ => 1 ≤ n
+  | _, .ruled _ _ _ _ body => RuledOk body
+  | bx, .bookPart _ _ _ body => plainFlows bx body
+  | _, _ => True
+termination_by _ f => sizeOf f
+def plainFlows : Bool → List Flow → Prop
+  | _, [] => True
+  | bx, g :: r => plainFlow bx g ∧ plainFlows bx r
+termination_by _ fs => sizeOf fs
 end
 
-theorem plainFlows_append : ∀ (a b : List Flow), plainFlows a → plainFlows b → plainFlows (a ++ b)
+theorem plainFlows_append (bx : Bool) : ∀ (a b : List Flow), plainFlows bx a → plainFlows bx b → plainFlows bx (a ++ b)
   | [], _, _, hb => hb
   | g :: r, b, ha, hb => by
     simp only [List.cons_append, plainFlows] at ha ⊢
-    exact ⟨ha.1, plainFlows_append r b ha.2 hb⟩
+    exact ⟨ha.1, plainFlows_append bx r b ha.2 hb⟩
 
-theorem plainFlows_flatten (fs : List Flow) (h : plainFlows fs) : plainFlows (flattenParts fs) := by
+theorem plainFlows_flatten (bx : Bool) (fs : List Flow) (h : plainFlows bx fs) : plainFlows bx (flattenParts fs) := by
   match fs with
   | [] => simp [flattenParts, plainFlows]
   | f :: r =>
     simp only [plainFlows] at h
-    have hr := plainFlows_flatten r h.2
+    have hr := plainFlows_flatten bx r h.2
     cases f with
     | bookPart u k i b =>
       simp only [plainFlow] at h
       simp only [flattenParts]
-      exact plainFlows_append _ _ (plainFlows_flatten b h.1) hr
-    | boxed j kb ka b => simp only [plainFlow] at h; exact h.1.elim
+      exact plainFlows_append bx _ _ (plainFlows_flatten bx b h.1) hr
+    | boxed j kb ka b =>
+      simp only [plainFlow] at h
+      simp only [flattenParts, plainFlows, plainFlow]
+      exact ⟨⟨h.1.1, plainFlows_flatten true b h.1.2⟩, hr⟩
     | _ => simp only [flattenParts, plainFlows]; exact ⟨h.1, hr⟩
 termination_by sizeOf fs
 
@@ -1720,33 +1863,20 @@ theorem Q.bookEnv {env : Env} (u : KeepParts) {a b : St} {X : List Note}
     (h : Q { env with keepParts := u, inBookPart := true } a b X) : Q env a b X := h
 
 theorem q_setFirst (env : Env) (st : St) (c : Nat) : Q env st { st with columns := c, firstLine := 0 } [] := by
-  intro ba oa
+  intro bx ba oa
   exact ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩,
-    ⟨ba.box, Int.le_refl _, ba.spaces, ba.setAdj, ba.res, ba.nl⟩, ok_of rfl rfl rfl rfl rfl rfl oa⟩
+    ⟨ba.box, Int.le_refl _, ba.spaces, ba.setAdj, ba.res, ba.nl, ba.join⟩, ok_of rfl rfl rfl rfl rfl rfl oa⟩
 
-theorem q_settle (env : Env) (st : St) (s a : Bool) (c : Prop) [Decidable c] :
-    Q env st { st with seen := s, lastDeferred := a, spaces := if c then st.spaces else [] } [] := by
-  intro ba oa
-  refine ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩,
-    ⟨ba.box, ba.first, ?_, ba.setAdj, ba.res, ba.nl⟩, ok_of rfl rfl rfl rfl rfl rfl oa⟩
-  show ∀ x ∈ (if c then st.spaces else []), 0 ≤ x.2
-  split
-  · exact ba.spaces
-  · intro x m; cases m
-
-theorem q_pageFigurePlace (env : Env) (hs : Hyp env) (st : St) (i : Nat)
+theorem q_pageFigurePlace (env : Env) (st : St) (i : Nat)
     (c : st.deferred.isEmpty ∧ st.column = 0 ∧ st.used = 0 ∧ st.notes.isEmpty ∧ st.noteLines = 0) :
     Q env st (pageFigure env { st with adjust := 0 } i) [] := by
-  intro ba oa
+  intro bx ba oa
   obtain ⟨_, _, u0, n0, l0⟩ := c
   refine ⟨OR.of_eq (by simp [NM, pageFigure, pagesNotes_cons])
-    ⟨[], by simp [allUnmet, pageFigure, List.reverse_cons, List.append_bind]⟩,
-    ⟨ba.box, ba.first, ba.spaces, ba.setAdj, ba.res, ba.nl⟩, ?_, ?_, ?_⟩
-  · show 1 ≤ env.capacity + 0 - boxAfter st
-    simp only [boxAfter, ba.box]; have := hs.cap; omega
+    ⟨[], by simp [allUnmet, pageFigure, List.reverse_cons, List.append_bind]⟩, ba.of, ?_, ?_⟩
   · exact Or.inl (show 0 ≤ st.used by omega)
   · left
-    obtain ⟨_, _, o | ⟨_, t⟩⟩ := oa
+    obtain ⟨_, o | ⟨_, t⟩⟩ := oa
     · exact o
     · exfalso
       have ne : st.notes = [] := by
@@ -1762,24 +1892,244 @@ theorem flowNotes_ruled' (i : Nat) (b a j : Bool) (body : RuledBody) :
     flowNotes (.ruled i b a j body) = ruledNotes body := by
   cases body <;> simp [flowNotes, ruledNotes]
 
-mutual
-theorem q_place (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flow) (hp : plainFlow f) :
-    Q env st (place env st f rest) (flowNotes f) := by
+/-! ## The steps, with a rule waiting between two blocks -/
+
+/-- A flow other than a block with rules or a book part has no rule
+    waiting before it. -/
+theorem jh_false (f : Flow) (r : List Flow) (n1 : ∀ i b a j body, f ≠ .ruled i b a j body)
+    (n2 : ∀ u k ret body, f ≠ .bookPart u k ret body) : joinsHead (f :: r) = false := by
+  rw [joinsHead_cons f r n2]
   cases f with
-  | paragraph kp ls => simp only [place, flowNotes]; exact q_placeLines env hs _ _ _ _
-  | stanza kp vs => simp only [place, flowNotes]; exact q_placeStanza env hs _ _ _ _
+  | ruled i b a j body => exact absurd rfl (n1 i b a j body)
+  | _ => rfl
+
+syntax "jhf" : term
+macro_rules
+  | `(jhf) => `(jh_false _ _ (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e))
+
+theorem joinNone {st : St} {fs : List Flow} (j : JoinAhead st fs) (h : joinsHead fs = false) : st.join = none := by
+  cases e : st.join with
+  | none => rfl
+  | some _ => have := j (by simp [e]); rw [h] at this; cases this
+
+/-- A step from a state kept but for a rule waiting before the flows `fs`:
+    the notes `X` read are added in order, and the state is kept but for
+    a rule waiting before the flows `rest`. -/
+def QS (bx : Bool) (env : Env) (st s : St) (X : List Note) (fs rest : List Flow) : Prop :=
+  BJ bx env st → Ok env st → JoinAhead st fs → OR st s (exN X) ∧ BJ bx env s ∧ Ok env s ∧ JoinAhead s rest
+
+theorem Q.toS {bx : Bool} {env : Env} {st s : St} {X : List Note} {fs rest : List Flow} (h : Q env st s X)
+    (hh : joinsHead fs = false) : QS bx env st s X fs rest := by
+  intro b0 o0 j0
+  obtain ⟨r, b1, o1⟩ := h (b0.base (joinNone j0 hh)) o0
+  exact ⟨r, b1.bj, o1, joinAhead_of_none _ b1.join⟩
+
+theorem QS.bookEnv {bx : Bool} {env : Env} (u : KeepParts) {a b : St} {X : List Note} {fs rest : List Flow}
+    (h : QS bx { env with keepParts := u, inBookPart := true } a b X fs rest) : QS bx env a b X fs rest := h
+
+section
+variable (env : Env) (hs : Hyp env)
+
+theorem s_addUnmet {bx : Bool} {rest : List Flow} (u : Unmet) (s : St) (h : BJ bx env s ∧ Ok env s ∧ JoinAhead s rest) :
+    OR s (addUnmet u s) [] ∧ BJ bx env (addUnmet u s) ∧ Ok env (addUnmet u s) ∧ JoinAhead (addUnmet u s) rest := by
+  obtain ⟨⟨b, w⟩, o, j⟩ := h
+  refine ⟨OR.of_eq (by simp [NM, addUnmet]) ⟨[u], by simp [allUnmet, addUnmet, List.append_assoc]⟩,
+    ⟨b.of, fun n => let x := w n; ⟨x.room, x.breaks, x.need, x.blank⟩⟩, ok_of rfl rfl rfl rfl rfl rfl o, j⟩
+
+theorem s_checkNoBreak {bx : Bool} (s : St) (b : BJ bx env s) (o : Ok env s) :
+    OR s (checkNoBreak s) [] ∧ BJ bx env (checkNoBreak s) ∧ Ok env (checkNoBreak s) ∧ (checkNoBreak s).join = s.join := by
+  have gen : ∀ u : List Unmet, OR s { s with unmet := s.unmet ++ u, noBreak := [] } [] ∧
+      BJ bx env { s with unmet := s.unmet ++ u, noBreak := [] } ∧ Ok env { s with unmet := s.unmet ++ u, noBreak := [] } := by
+    intro u
+    exact ⟨OR.of_eq (by simp [NM]) ⟨u, by simp [allUnmet, List.append_assoc]⟩,
+      ⟨b.1.of, fun n => let x := b.2 n; ⟨x.room, x.breaks, x.need, x.blank⟩⟩, ok_of rfl rfl rfl rfl rfl rfl o⟩
+  have hw : ∀ (ws : List (Unmet × Nat × Nat × Nat × (Nat × Bool))) (t : St),
+      ws.foldl (fun s w => addUnmet w.1 s) t = { t with unmet := t.unmet ++ ws.map (·.1) } := by
+    intro ws
+    induction ws with
+    | nil => intro t; simp
+    | cons w ws ih => intro t; simp only [List.foldl]; rw [ih]; simp [addUnmet, List.append_assoc]
+  unfold checkNoBreak
+  split
+  · exact ⟨OR.refl s, b, o, rfl⟩
+  · have key : ∀ X : St, (X = s ∨ ∃ u, X = { s with unmet := s.unmet ++ u }) →
+        OR s { X with noBreak := [] } [] ∧ BJ bx env { X with noBreak := [] } ∧ Ok env { X with noBreak := [] } ∧
+          ({ X with noBreak := [] } : St).join = s.join := by
+      rintro X (rfl | ⟨u, rfl⟩)
+      · have := gen []; simp only [List.append_nil] at this; exact ⟨this.1, this.2.1, this.2.2, rfl⟩
+      · exact ⟨(gen u).1, (gen u).2.1, (gen u).2.2, rfl⟩
+    refine key _ ?_
+    repeat' split
+    all_goals first | exact Or.inl rfl | exact Or.inr ⟨_, hw _ _⟩
+
+theorem s_settle {bx : Bool} (s : St) (a : Bool) (c : Prop) [Decidable c] (b : BJ bx env s) (o : Ok env s) :
+    let r : St := { s with seen := true, lastDeferred := a, spaces := if c then s.spaces else [] }
+    OR s r [] ∧ BJ bx env r ∧ Ok env r ∧ r.join = s.join := by
+  refine ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩,
+    ⟨⟨b.1.box, b.1.first, ?_, b.1.setAdj, b.1.res, b.1.nl, rfl⟩,
+      fun n => let x := b.2 n; ⟨x.room, x.breaks, x.need, x.blank⟩⟩, ok_of rfl rfl rfl rfl rfl rfl o, rfl⟩
+  show ∀ x ∈ (if c then s.spaces else []), 0 ≤ x.2
+  split
+  · exact b.1.spaces
+  · intro x m; cases m
+
+/-- A column opened from a state kept but for a rule waiting. -/
+theorem s_advance {bx : Bool} (t : Bool) (s : St) (b : BJ bx env s) :
+    OR s (advance env t s) [] ∧ Base bx (advance env t s) ∧ Ok env (advance env t s) :=
+  adv env hs t s b.1
+
+theorem s_flushFigures {bx : Bool} {rest : List Flow} (s : St) (h : BJ bx env s ∧ Ok env s ∧ JoinAhead s rest) :
+    OR s (flushFigures env s) [] ∧ BJ bx env (flushFigures env s) ∧ Ok env (flushFigures env s) ∧
+      JoinAhead (flushFigures env s) rest := by
+  by_cases c : s.deferred = []
+  · unfold flushFigures; rw [dif_pos c]; exact ⟨OR.refl s, h⟩
+  · unfold flushFigures; rw [dif_neg c]
+    obtain ⟨r1, b1, o1⟩ := s_advance env hs _ s h.1
+    obtain ⟨r2, b2, o2⟩ := q_flushFigures env hs _ b1 o1
+    exact ⟨by simpa using r1.trans r2, b2.bj, o2, joinAhead_of_none _ b2.join⟩
+
+theorem s_nextUnit {bx : Bool} (unit : KeepParts) (s : St) (h : BJ bx env s) :
+    OR s (nextUnit env unit s) [] ∧ Base bx (nextUnit env unit s) ∧ Ok env (nextUnit env unit s) := by
+  cases unit
+  · exact s_advance env hs _ s h
+  · exact s_advance env hs _ s h
+  · simp only [nextUnit]
+    generalize (if s.page = 1 then 2 else 2 * (s.page / 2 + 1)) = t
+    unfold nextSpread
+    split
+    · obtain ⟨r1, b1, o1⟩ := s_advance env hs true s h
+      obtain ⟨r2, b2, o2⟩ := q_nextSpread env hs t _ b1 o1
+      exact ⟨by simpa using r1.trans r2, b2, o2⟩
+    · exact s_advance env hs true s h
+
+theorem partTrial_S (runBody runPlain : St → St) (Y : List (Nat × Nat)) (Pin Pout : St → Prop)
+    (hb : ∀ s, Pin s → OR s (runBody s) Y ∧ Pout (runBody s))
+    (hp : ∀ s, Pin s → OR s (runPlain s) Y ∧ Pout (runPlain s))
+    (hff : ∀ s, Pout s → OR s (flushFigures env s) [] ∧ Pout (flushFigures env s))
+    (unit : KeepParts) (fits : St → Bool) (nested whole : Bool) (st : St) (h : Pin st) :
+    OR st (partTrial env runBody runPlain unit fits nested whole st) Y ∧
+      Pout (partTrial env runBody runPlain unit fits nested whole st) := by
+  have p := hp st h
+  have b := hb st h
+  have fp : OR st (flushFigures env (runPlain st)) Y ∧ Pout (flushFigures env (runPlain st)) :=
+    ⟨by simpa using p.1.trans (hff _ p.2).1, (hff _ p.2).2⟩
+  have fb : OR st (flushFigures env (runBody st)) Y ∧ Pout (flushFigures env (runBody st)) :=
+    ⟨by simpa using b.1.trans (hff _ b.2).1, (hff _ b.2).2⟩
+  simp only [partTrial]
+  repeat' split
+  all_goals first | exact p | exact fp | exact fb
+
+theorem placeBookPart_S (runBody runPlain : St → St) (Y : List (Nat × Nat)) (Pin Pout : St → Prop)
+    (hb : ∀ s, Pin s → OR s (runBody s) Y ∧ Pout (runBody s))
+    (hp : ∀ s, Pin s → OR s (runPlain s) Y ∧ Pout (runPlain s))
+    (hff : ∀ s, Pout s → OR s (flushFigures env s) [] ∧ Pout (flushFigures env s))
+    (hrep : ∀ u s, Pout s → OR s (addUnmet u s) [] ∧ Pout (addUnmet u s))
+    (initial : St) (unit : KeepParts) (kind : Option Nat) (retained : List Nat) (nested whole : Bool)
+    (hnu : OR initial (nextUnit env unit initial) [] ∧ Pin (nextUnit env unit initial))
+    (h : Pin initial) :
+    OR initial (placeBookPart env runBody runPlain initial unit kind retained nested whole) Y ∧
+      Pout (placeBookPart env runBody runPlain initial unit kind retained nested whole) := by
+  have t0 := partTrial_S env runBody runPlain Y Pin Pout hb hp hff unit (fitsPart unit initial.page retained)
+    nested whole initial h
+  have t1' := partTrial_S env runBody runPlain Y Pin Pout hb hp hff unit (fitsPart unit initial.page retained)
+    nested whole _ hnu.2
+  have t1 : OR initial (partTrial env runBody runPlain unit (fitsPart unit initial.page retained) nested whole
+      (nextUnit env unit initial)) Y ∧ Pout (partTrial env runBody runPlain unit (fitsPart unit initial.page retained)
+        nested whole (nextUnit env unit initial)) := ⟨by simpa using hnu.1.trans t1'.1, t1'.2⟩
+  have b0 := hb initial h
+  have b1' := hb _ hnu.2
+  have b1 : OR initial (runBody (nextUnit env unit initial)) Y ∧ Pout (runBody (nextUnit env unit initial)) :=
+    ⟨by simpa using hnu.1.trans b1'.1, b1'.2⟩
+  have rep : ∀ k (x : St), OR initial x Y ∧ Pout x → OR initial (addUnmet k x) Y ∧ Pout (addUnmet k x) :=
+    fun k x hx => ⟨by simpa using hx.1.trans (hrep k x hx.2).1, (hrep k x hx.2).2⟩
+  simp only [placeBookPart]
+  repeat' split
+  all_goals first
+    | exact b0
+    | exact t0
+    | exact t1
+    | exact b1
+    | exact rep _ _ b0
+    | exact rep _ _ t0
+    | exact rep _ _ b1
+    | exact rep _ _ t1
+
+/-- Before a block with a rule waiting, the breaks, the need-lines and the
+    blank lines do nothing (Whole.lean's `prelude_win`). -/
+theorem prelude_w (st : St) (f : Flow) (rest : List Flow) (w : W env st) :
+    placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest = { st with needAt := none } := by
+  rw [applyBreaks_nil env st w.breaks]
+  have n : needBefore env st (f :: rest) = { st with needAt := none } := by
+    unfold needBefore; rw [w.need]; simp only [applyNeed]
+  rw [n]
+  unfold placeBlank; simp only [w.blank]
+
+end
+
+/-- The box a flow opens, at the top of the column kept for it. -/
+theorem q_openBoxed (env : Env) (st : St) (B : BoxAt) (ba : Base false st) (oa : Ok env st) :
+    OR st (openBox { st with box := some B }) [] ∧ Base true (openBox { st with box := some B }) ∧
+      Ok env (openBox { st with box := some B }) := by
+  have e : st.box = none := by have := ba.box; cases h : st.box <;> simp_all
+  apply openBox_keep
+  refine ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩, ⟨rfl, ba.first, ba.spaces, ba.setAdj, ba.res, ba.nl, ba.join⟩,
+    ?_, ?_⟩
+  · exact oa.1
+  · rcases oa.2 with o | ⟨o, t⟩
+    · exact Or.inl o
+    · refine Or.inr ⟨?_, t⟩
+      show env.capacity + st.adjust - B.after - st.used - st.noteLines ≤ carrySep env st + 1
+      simp only [free, cap, boxAfter, e] at o
+      have : (0 : Int) ≤ B.after := Int.ofNat_nonneg _
+      omega
+
+/-- The box closed: its part in the column ends with its grid lines after,
+    and the room it leaves goes to the notes carried on first. -/
+theorem q_closeBox (env : Env) (hs : Hyp env) (s : St) (bs : Base true s) (os : Ok env s) :
+    let c : St := { s with box := none, used := max s.used (boxEnd s) }
+    OR s (drainPendingNotes env c) [] ∧ Base false (drainPendingNotes env c) ∧ Ok env (drainPendingNotes env c) := by
+  intro c
+  have m := Int.le_max_left s.used (boxEnd s)
+  have r0 : OR s c [] := OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩
+  have bc : Base false c := ⟨rfl, bs.first, bs.spaces, bs.setAdj, bs.res, bs.nl, bs.join⟩
+  obtain ⟨o2, o3⟩ := os
+  obtain ⟨d1, d2, d3⟩ := drain_facts env hs c
+    (by rcases o2 with u | u
+        · exact Or.inl (show 0 ≤ max s.used (boxEnd s) by omega)
+        · exact Or.inr u)
+    (fun h => by
+      have h' : 0 < partsLines s.pending := h
+      rcases o3 with o | ⟨_, t⟩
+      · omega
+      · rcases t with t | t | t
+        · exact Or.inl (show 1 ≤ max s.used (boxEnd s) by omega)
+        · exact Or.inr (Or.inl t)
+        · exact Or.inr (Or.inr t))
+    bs.nl
+  exact ⟨by simpa using r0.trans d1, d2 bc, d3⟩
+
+mutual
+theorem q_place (bx : Bool) (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flow) (hp : plainFlow bx f)
+    (hb : BoxesOk (f :: rest))
+    (hq : ∀ i b a j body, f = .ruled i b a j body → st.breaks = [] ∧ st.need = none ∧ st.blank = []) :
+    QS bx env st (place env st f rest) (flowNotes f) (f :: rest) rest := by
+  cases f with
+  | paragraph kp ls => simp only [place, flowNotes]; exact (q_placeLines env hs _ _ _ _).toS jhf
+  | stanza kp vs => simp only [place, flowNotes]; exact (q_placeStanza env hs _ _ _ _).toS jhf
   | ruled i b a j body =>
     simp only [plainFlow] at hp
-    simp only [place]; rw [flowNotes_ruled']; exact q_placeRuled env hs _ _ _ _ _ _ _ hp
+    simp only [place]; rw [flowNotes_ruled']
+    intro b0 o0 _
+    exact q_placeRuled env hs st i b a j body rest hp (hq i b a j body rfl) b0 o0
   | wrapped i n beside =>
     simp only [place, flowNotes]
     have h : Q env st (placeLines env defaultKeep (putSlot (keep env (flushFigures env st)
         (fun s => needIn env s ⟨max n beside.length, noteLinesOf beside⟩ ⟨0, 0⟩)) 0
         (.wrapped i)) false beside) (beside.bind (·.notes)) :=
       Q.nl (Q.nl (q_flushFigures env hs st) (q_keep env hs _ _)) (Q.nl (q_putSlot env _ _ _) (q_placeLines env hs _ _ _ _))
-    refine Q.ite (Q.nr h (Q.frame (hused := ?_))) h
+    refine (Q.ite (Q.nr h (Q.frame (hused := ?_))) h).toS jhf
     exact Int.le_max_right _ _
-  | continued kp ls => simp only [place, flowNotes]; exact q_placeLines env hs _ _ _ _
+  | continued kp ls => simp only [place, flowNotes]; exact (q_placeLines env hs _ _ _ _).toS jhf
   | heading recto n ls =>
     simp only [plainFlow] at hp
     simp only [place, flowNotes]
@@ -1788,41 +2138,65 @@ theorem q_place (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flo
       Q.ite (q_parityStart env hs _ _) (q_keep env hs _ _)
     generalize (if recto = true then parityStart env odd st
         else keep env st (fun s => needIn env s ⟨n, noteLinesOf ls⟩ (env.nextNeed rest))) = s1 at h1
-    exact Q.nl (Q.ite h1 (Q.nl h1 (q_nextColumn env hs _))) (q_putBlock env hs _ n hp ls)
+    exact (Q.nl (Q.ite h1 (Q.nl h1 (q_nextColumn env hs _))) (q_putBlock env hs _ n hp ls)).toS jhf
   | figure i n =>
     simp only [place, flowNotes]
-    exact Q.ite Q.frame (Q.ite (q_putSlot env _ _ _) Q.frame)
+    exact (Q.ite Q.frame (Q.ite (q_putSlot env _ _ _) Q.frame)).toS jhf
   | pageFigure i =>
     simp only [place, flowNotes]
+    refine Q.toS ?_ jhf
     split
     · rename_i c
-      exact q_pageFigurePlace env hs st i (by simpa using c)
+      exact q_pageFigurePlace env st i (by simpa using c)
     · exact Q.frame
-  | brk k => simp only [place, flowNotes]; exact Q.frame
-  | sectionStart sec k => simp only [place, flowNotes]; exact Q.frame
-  | space n => simp only [place, flowNotes]; exact q_placeSpaceFlow env _ _
-  | needLines n => simp only [place, flowNotes]; exact Q.refl env st
-  | blank n => simp only [place, flowNotes]; exact Q.refl env st
-  | noBreak => simp only [place, flowNotes]; exact Q.refl env st
-  | noBreakLines n => simp only [place, flowNotes]; exact Q.refl env st
-  | keepNext n => simp only [place, flowNotes]; exact Q.refl env st
+  | brk k => simp only [place, flowNotes]; exact (Q.frame).toS jhf
+  | sectionStart sec k => simp only [place, flowNotes]; exact (Q.frame).toS jhf
+  | space n => simp only [place, flowNotes]; exact (q_placeSpaceFlow env _ _).toS jhf
+  | needLines n => simp only [place, flowNotes]; exact (Q.refl env st).toS jhf
+  | blank n => simp only [place, flowNotes]; exact (Q.refl env st).toS jhf
+  | noBreak => simp only [place, flowNotes]; exact (Q.refl env st).toS jhf
+  | noBreakLines n => simp only [place, flowNotes]; exact (Q.refl env st).toS jhf
+  | keepNext n => simp only [place, flowNotes]; exact (Q.refl env st).toS jhf
   | switchColumns n => simp only [plainFlow] at hp
   | restoreColumns =>
     simp only [place, flowNotes]
-    exact Q.ite (q_setFirst env st _) (Q.nr (q_nextPage env hs st) (q_setFirst env _ _))
-  | adjustLines k => simp only [place, flowNotes]; exact Q.refl env st
+    exact (Q.ite (q_setFirst env st _) (Q.nr (q_nextPage env hs st) (q_setFirst env _ _))).toS jhf
+  | adjustLines k => simp only [place, flowNotes]; exact (Q.refl env st).toS jhf
   | bookPart u k r body =>
     simp only [plainFlow] at hp
-    simp only [place, flowNotes]; exact q_runFlows env hs st body rest hp
-  | boxed i kb ka body => simp only [plainFlow] at hp
-  | code g c first cont ls => simp only [place, flowNotes]; exact q_placeCode env hs _ _ _ _ _ _ _
+    simp only [place, flowNotes]
+    intro b0 o0 j0
+    exact q_runFlows bx env hs st body rest hp hb.part'.1 b0 o0
+      (fun n => (joinsHead_bookPart u k r body rest).1 ▸ j0 n)
+  | boxed i kb ka body =>
+    simp only [plainFlow] at hp
+    obtain ⟨hn, hbb⟩ := hb.box'
+    obtain ⟨hx, hpb⟩ := hp
+    subst hx
+    simp only [place, flowNotes]
+    intro b0 o0 j0
+    have ba := b0.base (joinNone j0 jhf)
+    obtain ⟨r1, b1, o1⟩ := q_keep env hs st (fun s => (kb : Int) + ka + needIn env s noNeed (env.nextNeed body)) ba o0
+    generalize keep env st (fun s => (kb : Int) + ka + needIn env s noNeed (env.nextNeed body)) = st1 at r1 b1 o1
+    obtain ⟨r2, b2, o2⟩ := q_openBoxed env st1 ⟨i, kb, ka, 0, false⟩ b1 o1
+    generalize openBox { st1 with box := some ⟨i, kb, ka, 0, false⟩ } = s2 at r2 b2 o2
+    obtain ⟨r3, b3, o3, j3⟩ := q_runFlows true env hs s2 body rest hpb hbb b2.bj o2 (joinAhead_of_none _ b2.join)
+    generalize runFlows env s2 body rest = ib at r3 b3 o3 j3
+    have bi := b3.base (joinNone j3 hn)
+    obtain ⟨r4, b4, o4⟩ := q_closeBox env hs ib bi o3
+    refine ⟨?_, b4.bj, o4, joinAhead_of_none _ b4.join⟩
+    have := ((r1.trans r2).trans r3).trans r4
+    simpa using this
+  | code g c first cont ls => simp only [place, flowNotes]; exact (q_placeCode env hs _ _ _ _ _ _ _).toS jhf
   | defTerm ls =>
     simp only [place, flowNotes]
+    refine Q.toS ?_ jhf
     split
     · exact Q.nl (q_keep env hs _ _) (q_placeLines env hs _ _ _ _)
     · exact q_placeLines env hs _ _ _ _
   | table sp0 h rows capt below =>
     simp only [place, flowNotes]
+    refine Q.toS ?_ jhf
     split
     · refine Q.nl ?_ (q_placeTable env hs _ _ _ _ _)
       apply Q.ite
@@ -1840,86 +2214,201 @@ theorem q_place (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flo
 termination_by (flowWeight f, 0)
 decreasing_by all_goals simp_wf; (try subst_vars); apply Prod.Lex.left; simp only [flowWeight]; omega
 
-theorem q_placeFlow (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flow) (hp : plainFlow f) :
-    Q env st (placeFlow env st f rest) (flowNotes f) := by
+theorem q_placeFlow (bx : Bool) (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flow)
+    (hp : plainFlow bx f) (hb : BoxesOk (f :: rest))
+    (hq : ∀ i b a j body, f = .ruled i b a j body → st.breaks = [] ∧ st.need = none ∧ st.blank = []) :
+    QS bx env st (placeFlow env st f rest) (flowNotes f) (f :: rest) rest := by
   have pl : ∀ kp s b xs, Q env s (placeLines env kp s b xs) (xs.bind (·.notes)) :=
     fun kp s b xs => q_placeLines env hs kp s b xs
   unfold placeFlow
   split
-  · simp only [flowNotes]; exact q_placeKept env hs _ _ _ (fun a b => List.append_bind a b _) (pl _) st true _ _
   · simp only [flowNotes]
-    exact q_placeKept env hs _ _ (fun vs => vs.join.bind (·.notes))
-      (fun a b => by simp only [join_append', List.append_bind]) (fun s b xs => q_placeStanza env hs _ s b xs) st true _ _
-  · simp only [flowNotes]; exact q_placeKept env hs _ _ _ (fun a b => List.append_bind a b _) (pl _) st false _ _
+    exact (q_placeKept env hs _ _ _ (fun a b => List.append_bind a b _) (pl _) st true _ _).toS jhf
   · simp only [flowNotes]
-    exact Q.nl (Q.ite (Q.refl env st) (q_keep env hs _ _))
-      (q_placeKept env hs _ _ _ (fun a b => List.append_bind a b _) (pl _) _ true _ _)
-  · exact q_place env hs _ _ _ hp
+    exact (q_placeKept env hs _ _ (fun vs => vs.join.bind (·.notes))
+      (fun a b => by simp only [join_append', List.append_bind]) (fun s b xs => q_placeStanza env hs _ s b xs) st true _ _).toS
+      (jh_false (.stanza _ _) rest (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e))
+  · simp only [flowNotes]
+    exact (q_placeKept env hs _ _ _ (fun a b => List.append_bind a b _) (pl _) st false _ _).toS jhf
+  · simp only [flowNotes]
+    exact (Q.nl (Q.ite (Q.refl env st) (q_keep env hs _ _))
+      (q_placeKept env hs _ _ _ (fun a b => List.append_bind a b _) (pl _) _ true _ _)).toS jhf
+  · exact q_place bx env hs _ _ _ hp hb hq
 termination_by (flowWeight f, 1)
 decreasing_by all_goals simp_wf; apply Prod.Lex.right; decide
 
-theorem q_step (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flow) (hp : plainFlow f) :
-    Q env st (step env st f rest) (flowNotes f) := by
-  have general : ∀ (a : Bool) (c : Prop) [Decidable c], Q env st (
+theorem q_step (bx : Bool) (env : Env) (hs : Hyp env) (st : St) (f : Flow) (rest : List Flow) (hp : plainFlow bx f)
+    (hb : BoxesOk (f :: rest)) :
+    QS bx env st (step env st f rest) (flowNotes f) (f :: rest) rest := by
+  -- the breaks, the need-lines and the blank lines, the flow, its no-breaks checked, and the state settled
+  have finish : ∀ (s : St) (a : Bool) (c : Prop) [Decidable c], (BJ bx env st → Ok env st → JoinAhead st (f :: rest) →
+      OR st s (exN (flowNotes f)) ∧ BJ bx env s ∧ Ok env s ∧ JoinAhead s rest) →
+      QS bx env st (let X := checkNoBreak s; { X with seen := true, lastDeferred := a, spaces := if c then X.spaces else [] } : St)
+        (flowNotes f) (f :: rest) rest := by
+    intro s a c _ h b0 o0 j0
+    obtain ⟨r1, b1, o1, j1⟩ := h b0 o0 j0
+    obtain ⟨r2, b2, o2, e2⟩ := s_checkNoBreak env _ b1 o1
+    obtain ⟨r3, b3, o3, e3⟩ := s_settle env _ a c b2 o2
+    refine ⟨by simpa using (r1.trans r2).trans r3, b3, o3, fun n => j1 (e2 ▸ e3 ▸ n)⟩
+  have general : (∀ i b a j body, f ≠ .ruled i b a j body) → (∀ u k r body, f ≠ .bookPart u k r body) →
+      ∀ (a : Bool) (c : Prop) [Decidable c], QS bx env st (
       let X := if waitsBehind (applyBreaks env st) f
         then checkNoBreak (place env (applyBreaks env st) f rest)
         else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest)
-      { X with seen := true, lastDeferred := a, spaces := if c then X.spaces else [] } : St) (flowNotes f) := by
-    intro a c _
-    have h : Q env st (if waitsBehind (applyBreaks env st) f
-      then checkNoBreak (place env (applyBreaks env st) f rest)
-      else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st) (f :: rest)) f rest) f rest))
-        (flowNotes f) := by
-      apply Q.ite
-      · exact Q.nl (q_applyBreaks env hs st) (Q.nr (q_place env hs _ _ _ hp) (q_checkNoBreak env _))
-      · exact Q.nl (Q.nl (q_applyBreaks env hs st) (Q.nl (q_needBefore env hs _ _) (q_placeBlank env hs _ _ _)))
-          (Q.nr (q_placeFlow env hs _ _ _ hp) (q_checkNoBreak env _))
-    exact Q.nr h (q_settle env _ _ _ _)
+      { X with seen := true, lastDeferred := a, spaces := if c then X.spaces else [] } : St) (flowNotes f) (f :: rest) rest := by
+    intro n1 n2 a c _
+    have hq : ∀ (s : St) i b a j body, f = .ruled i b a j body → s.breaks = [] ∧ s.need = none ∧ s.blank = [] :=
+      fun _ i b a j body e => absurd e (n1 i b a j body)
+    simp only []
+    split
+    · apply finish
+      intro b0 o0 j0
+      have ba := b0.base (joinNone j0 (jh_false f rest n1 n2))
+      obtain ⟨r1, b1, o1⟩ := q_applyBreaks env hs st ba o0
+      obtain ⟨r2, b2, o2, j2⟩ := q_place bx env hs _ f rest hp hb (hq _) b1.bj o1 (joinAhead_of_none _ b1.join)
+      exact ⟨by simpa using r1.trans r2, b2, o2, j2⟩
+    · apply finish
+      intro b0 o0 j0
+      have ba := b0.base (joinNone j0 (jh_false f rest n1 n2))
+      obtain ⟨r1, b1, o1⟩ := (Q.nl (q_applyBreaks env hs st) (Q.nl (q_needBefore env hs _ _) (q_placeBlank env hs _ _ _)))
+        ba o0
+      obtain ⟨r2, b2, o2, j2⟩ := q_placeFlow bx env hs _ f rest hp hb (hq _) b1.bj o1 (joinAhead_of_none _ b1.join)
+      exact ⟨by simpa using r1.trans r2, b2, o2, j2⟩
   have ctl : ∀ (u : Unmet) (k : Nat × Bool), Q env st (if st.seen = false ∨ st.lastDeferred = true then addUnmet u st
       else waitFor u k st) [] := fun u k => Q.ite (Q.addU env u st) (q_waitFor env u k st)
   cases f with
-  | needLines n => simp only [step, flowNotes]; exact q_needMore env hs _ _
+  | needLines n => simp only [step, flowNotes]; exact (q_needMore env hs _ _).toS jhf
   | bookPart u k r body =>
     simp only [plainFlow] at hp
     simp only [step, flowNotes]
-    refine Q.nl (b := if r = [] then st else applyBreaks env st) (Q.ite (Q.refl env st) (q_applyBreaks env hs st)) ?_
+    intro b0 o0 j0
+    obtain ⟨jb, jp⟩ := joinsHead_bookPart u k r body rest
+    obtain ⟨bb, bp⟩ := hb.part'
     have hs' : Hyp { env with keepParts := u, inBookPart := true } := ⟨hs.sep, hs.cap⟩
-    apply q_placeBookPart env hs
-    · intro s; exact Q.bookEnv u (q_runFlows { env with keepParts := u, inBookPart := true } hs' s body rest hp)
-    · intro s; have := q_runFlows { env with keepParts := u, inBookPart := true } hs' s (flattenParts body) rest
-        (plainFlows_flatten body hp)
-      rw [sourceNotes_flatten] at this; exact Q.bookEnv u this
+    have init : OR st (if r = [] then st else applyBreaks env st) [] ∧
+        BJ bx env (if r = [] then st else applyBreaks env st) ∧ Ok env (if r = [] then st else applyBreaks env st) ∧
+        JoinAhead (if r = [] then st else applyBreaks env st) (.bookPart u k r body :: rest) := by
+      split
+      · exact ⟨OR.refl st, b0, o0, j0⟩
+      · cases e : st.join with
+        | none =>
+          obtain ⟨r1, b1, o1⟩ := q_applyBreaks env hs st (b0.base e) o0
+          exact ⟨r1, b1.bj, o1, joinAhead_of_none _ b1.join⟩
+        | some _ =>
+          have w := b0.2 (by rw [e]; simp)
+          rw [applyBreaks_nil env st w.breaks]
+          exact ⟨OR.refl st, b0, o0, j0⟩
+    generalize (if r = [] then st else applyBreaks env st) = s0 at init
+    obtain ⟨i1, i2, i3, i4⟩ := init
+    have := placeBookPart_S env (fun s => runFlows { env with keepParts := u, inBookPart := true } s body rest)
+      (fun s => runFlows { env with keepParts := u, inBookPart := true } s (flattenParts body) rest)
+      (exN (sourceNotes body))
+      (fun s => BJ bx env s ∧ Ok env s ∧ JoinAhead s (.bookPart u k r body :: rest))
+      (fun s => BJ bx env s ∧ Ok env s ∧ JoinAhead s rest)
+      (fun s x => by
+        obtain ⟨a1, a2, a3, a4⟩ := QS.bookEnv u (q_runFlows bx { env with keepParts := u, inBookPart := true } hs' s body rest
+          hp bb) x.1 x.2.1 (fun n => jb ▸ x.2.2 n)
+        exact ⟨a1, a2, a3, a4⟩)
+      (fun s x => by
+        have q := QS.bookEnv u (q_runFlows bx { env with keepParts := u, inBookPart := true } hs' s (flattenParts body) rest
+          (plainFlows_flatten bx body hp) bp)
+        rw [sourceNotes_flatten] at q
+        obtain ⟨a1, a2, a3, a4⟩ := q x.1 x.2.1 (fun n => jp ▸ x.2.2 n)
+        exact ⟨a1, a2, a3, a4⟩)
+      (fun s x => by
+        obtain ⟨a1, a2, a3, a4⟩ := s_flushFigures env hs s x
+        exact ⟨a1, a2, a3, a4⟩)
+      (fun u' s x => by
+        obtain ⟨a1, a2, a3, a4⟩ := s_addUnmet env u' s x
+        exact ⟨a1, a2, a3, a4⟩)
+      s0 u (some k) r (anyNested body) ((flowsSlotIds (flattenParts body)).all r.contains)
+      (by
+        obtain ⟨a1, a2, a3⟩ := s_nextUnit env hs u s0 i2
+        exact ⟨a1, a2.bj, a3, joinAhead_of_none _ a2.join⟩)
+      ⟨i2, i3, i4⟩
+    exact ⟨by simpa using i1.trans this.1, this.2⟩
   | adjustLines k =>
     simp only [step, flowNotes]
-    exact Q.nl (q_applyBreaks env hs st) (q_adjust env hs _ k)
-  | noBreak => simp only [step, flowNotes]; exact ctl _ _
+    exact (Q.nl (q_applyBreaks env hs st) (q_adjust env hs _ k)).toS jhf
+  | noBreak => simp only [step, flowNotes]; exact (ctl _ _).toS jhf
   | noBreakLines n =>
     cases n with
-    | zero => simp only [step, flowNotes]; exact Q.refl env st
-    | succ m => simp only [step, flowNotes]; exact ctl _ _
-  | keepNext n => simp only [step, flowNotes]; exact ctl _ _
+    | zero => simp only [step, flowNotes]; exact (Q.refl env st).toS jhf
+    | succ m => simp only [step, flowNotes]; exact (ctl _ _).toS jhf
+  | keepNext n => simp only [step, flowNotes]; exact (ctl _ _).toS jhf
   | blank n =>
     simp only [step, flowNotes]
-    exact Q.ite (Q.refl env st) Q.frame
-  | brk k => simp only [step]; exact q_place env hs st (.brk k) rest hp
-  | sectionStart sec k => simp only [step]; exact q_place env hs st (.sectionStart sec k) rest hp
+    exact (Q.ite (Q.refl env st) Q.frame).toS jhf
+  | brk k => simp only [step]; exact q_place bx env hs st (.brk k) rest hp hb (fun _ _ _ _ _ e => Flow.noConfusion e)
+  | sectionStart sec k =>
+    simp only [step]; exact q_place bx env hs st (.sectionStart sec k) rest hp hb (fun _ _ _ _ _ e => Flow.noConfusion e)
   | space n =>
     simp only [step, flowNotes]
-    exact Q.nl (Q.nl (q_applyBreaks env hs st) (q_needBeforeSpaces env hs _)) (q_placeSpace env _ _)
-  | paragraph kp ls => simp only [step]; exact general _ _
-  | continued kp ls => simp only [step]; exact general _ _
-  | heading recto n ls => simp only [step]; exact general _ _
-  | figure i n => simp only [step]; exact general _ _
-  | pageFigure i => simp only [step]; exact general _ _
-  | code g c first cont ls => simp only [step]; exact general _ _
-  | defTerm ls => simp only [step]; exact general _ _
-  | table sp0 h rows capt below => simp only [step]; exact general _ _
-  | switchColumns n => simp only [step]; exact general _ _
-  | restoreColumns => simp only [step]; exact general _ _
-  | stanza kp vs => simp only [step]; exact general _ _
-  | wrapped i n beside => simp only [step]; exact general _ _
-  | ruled i b a j body => simp only [step]; exact general _ _
-  | boxed i kb ka body => simp only [step]; exact general _ _
+    exact (Q.nl (Q.nl (q_applyBreaks env hs st) (q_needBeforeSpaces env hs _)) (q_placeSpace env _ _)).toS jhf
+  | paragraph kp ls => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | continued kp ls => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | heading recto n ls => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | figure i n => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | pageFigure i => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | code g c first cont ls => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | defTerm ls => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | table sp0 h rows capt below => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | switchColumns n => simp only [plainFlow] at hp
+  | restoreColumns => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | stanza kp vs => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | wrapped i n beside => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | boxed i kb ka body => simp only [step]; exact general (fun _ _ _ _ _ e => Flow.noConfusion e) (fun _ _ _ _ e => Flow.noConfusion e) _ _
+  | ruled i b a j body =>
+    simp only [step]
+    have wb : waitsBehind (applyBreaks env st) (.ruled i b a j body) = false := rfl
+    have key : ∀ (a' : Bool) (c : Prop) [Decidable c], QS bx env st (
+        let X := if waitsBehind (applyBreaks env st) (.ruled i b a j body)
+          then checkNoBreak (place env (applyBreaks env st) (.ruled i b a j body) rest)
+          else checkNoBreak (placeFlow env (placeBlank env (needBefore env (applyBreaks env st)
+            (.ruled i b a j body :: rest)) (.ruled i b a j body) rest) (.ruled i b a j body) rest)
+        { X with seen := true, lastDeferred := a', spaces := if c then X.spaces else [] } : St)
+        (flowNotes (.ruled i b a j body)) (.ruled i b a j body :: rest) rest := by
+      intro a' c _
+      rw [wb, if_neg (show ¬ (false = true) by decide)]
+      apply finish
+      intro b0 o0 j0
+      -- the breaks, the need-lines and the blank lines before the block
+      have pre : OR st (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest) [] ∧
+          BJ bx env (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest) ∧
+          Ok env (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest) ∧
+          JoinAhead (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest) (.ruled i b a j body :: rest) ∧
+          (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest).breaks = [] ∧
+          (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest).need = none ∧
+          (placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest).blank = [] := by
+        cases e : st.join with
+        | none =>
+          obtain ⟨r1, b1, o1⟩ := (Q.nl (q_applyBreaks env hs st) (Q.nl (q_needBefore env hs _ _) (q_placeBlank env hs _ _ _)))
+            (b0.base e) o0
+          obtain ⟨a1, _, _⟩ := applyBreaks_frame env st
+          obtain ⟨n1, n2, _⟩ := needBefore_frame env (applyBreaks env st) (.ruled i b a j body :: rest)
+          obtain ⟨k1, k2, k3⟩ := placeBlank_frame env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest))
+            (.ruled i b a j body) rest
+          exact ⟨r1, b1.bj, o1, joinAhead_of_none _ b1.join, k1.trans (n1.trans a1), k2.trans n2, k3⟩
+        | some _ =>
+          have w := b0.2 (by rw [e]; simp)
+          rw [prelude_w env st _ rest w]
+          exact ⟨OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩,
+            ⟨b0.1.of, fun _ => ⟨w.room, w.breaks, w.need, w.blank⟩⟩, ok_of rfl rfl rfl rfl rfl rfl o0, j0,
+            w.breaks, w.need, w.blank⟩
+      generalize placeBlank env (needBefore env (applyBreaks env st) (.ruled i b a j body :: rest)) (.ruled i b a j body) rest
+        = s at pre
+      obtain ⟨r0, g0, k0, a0, q1, q2, q3⟩ := pre
+      obtain ⟨r1, b1, o1, j1⟩ := q_placeFlow bx env hs s (.ruled i b a j body) rest hp hb
+        (fun _ _ _ _ _ _ => ⟨q1, q2, q3⟩) g0 k0 a0
+      exact ⟨by simpa using r0.trans r1, b1, o1, j1⟩
+    exact key _ _
 termination_by (flowWeight f, 2)
 decreasing_by
   all_goals simp_wf
@@ -1929,28 +2418,39 @@ decreasing_by
     | (apply Prod.Lex.left; simp only [flowWeight]; omega)
     | (apply Prod.Lex.left; have := flattenParts_weight body; simp only [flowWeight]; omega)
 
-theorem q_runFlows (env : Env) (hs : Hyp env) (st : St) (fs : List Flow) (rest : List Flow) (hp : plainFlows fs) :
-    Q env st (runFlows env st fs rest) (sourceNotes fs) := by
+theorem q_runFlows (bx : Bool) (env : Env) (hs : Hyp env) (st : St) (fs : List Flow) (rest : List Flow)
+    (hp : plainFlows bx fs) (hb : BoxesOk (fs ++ rest)) :
+    QS bx env st (runFlows env st fs rest) (sourceNotes fs) (fs ++ rest) rest := by
   match fs with
-  | [] => unfold runFlows; simp only [sourceNotes]; exact Q.refl env st
+  | [] =>
+    unfold runFlows; simp only [sourceNotes]
+    intro b0 o0 j0
+    exact ⟨OR.refl st, b0, o0, by simpa using j0⟩
   | g :: more =>
     simp only [plainFlows] at hp
     unfold runFlows
-    exact Q.tr (q_step env hs st g (more ++ rest) hp.1) (q_runFlows env hs _ more rest hp.2) (by simp [sourceNotes])
+    intro b0 o0 j0
+    obtain ⟨r1, b1, o1, j1⟩ := q_step bx env hs st g (more ++ rest) hp.1 hb b0 o0 j0
+    obtain ⟨r2, b2, o2, j2⟩ := q_runFlows bx env hs _ more rest hp.2 hb.tail' b1 o1 j1
+    refine ⟨?_, b2, o2, j2⟩
+    have := r1.trans r2
+    rw [← exN_append] at this
+    simpa [sourceNotes] using this
 termination_by (flowsWeight fs, 3)
 decreasing_by
   all_goals simp_wf
   all_goals apply Prod.Lex.left; simp only [flowsWeight]; omega
 end
 
-theorem q_placeAll (env : Env) (hs : Hyp env) (flows : List Flow) (st : St) (hp : plainFlows flows) :
-    Q env st (placeAll env st flows) (sourceNotes flows) ∧ (placeAll env st flows).pending = [] := by
+theorem q_placeAll (env : Env) (hs : Hyp env) (flows : List Flow) (st : St) (hp : plainFlows false flows)
+    (hb : BoxesOk flows) :
+    QS false env st (placeAll env st flows) (sourceNotes flows) flows [] ∧ (placeAll env st flows).pending = [] := by
   induction flows generalizing st with
   | nil =>
     simp only [placeAll, sourceNotes]
     have a := Q.addWs env st.noBreak st
     generalize st.noBreak.foldl (fun s w => addUnmet w.1 s) st = s1 at a
-    refine ⟨?_, ?_⟩
+    refine ⟨Q.toS ?_ (by simp [joinsHead, flattenParts]), ?_⟩
     · split
       · exact Q.nl (Q.nr a Q.frame) (q_flushDeferred env hs _)
       · split
@@ -1962,22 +2462,28 @@ theorem q_placeAll (env : Env) (hs : Hyp env) (flows : List Flow) (st : St) (hp 
   | cons f rest ih =>
     simp only [plainFlows] at hp
     simp only [placeAll]
-    obtain ⟨a, b⟩ := ih (step env st f rest) hp.2
-    exact ⟨Q.tr (q_step env hs st f rest hp.1) a (by simp [sourceNotes]), b⟩
+    obtain ⟨a, b⟩ := ih (step env st f rest) hp.2 hb.tail'
+    refine ⟨?_, b⟩
+    intro b0 o0 j0
+    obtain ⟨r1, b1, o1, j1⟩ := q_step false env hs st f rest hp.1 hb b0 o0 j0
+    obtain ⟨r2, b2, o2, j2⟩ := a b1 o1 j1
+    refine ⟨?_, b2, o2, j2⟩
+    have := r1.trans r2
+    rw [← exN_append] at this
+    simpa [sourceNotes] using this
 
 /-! ## The order of the notes on the pages (root ADR 0444 I1) -/
 
 /-- The note lines of the pages are the lines of the notes of the
     manuscript, in the manuscript's order, but for the notes reported
     unplaceable. -/
-theorem paginate_order (env : Env) (hs : Hyp env) (flows : List Flow) (hp : plainFlows flows) :
+theorem paginate_order (env : Env) (hs : Hyp env) (flows : List Flow) (hp : plainFlows false flows) (hb : BoxesOk flows) :
     kd (dropIds (paginate env flows)) (ex (pagesNotes (paginate env flows).done)) =
       kd (dropIds (paginate env flows)) (exN (sourceNotes flows)) := by
-  obtain ⟨q, p⟩ := q_placeAll env hs flows (initialState env) hp
-  have b0 : Base (initialState env) := ⟨rfl, Int.le_refl _, (fun _ m => by cases m), rfl, rfl, Int.le_refl _⟩
-  have o0 : Ok env (initialState env) := ⟨by show 1 ≤ env.capacity + 0 - 0; have := hs.cap; omega,
-    Or.inl (Int.le_refl _), Or.inl rfl⟩
-  obtain ⟨⟨_, e⟩, _, _⟩ := q b0 o0
+  obtain ⟨q, p⟩ := q_placeAll env hs flows (initialState env) hp hb
+  have b0 : Base false (initialState env) := ⟨rfl, Int.le_refl _, (fun _ m => by cases m), rfl, rfl, Int.le_refl _, rfl⟩
+  have o0 : Ok env (initialState env) := ⟨Or.inl (Int.le_refl _), Or.inl rfl⟩
+  obtain ⟨⟨_, e⟩, _, _⟩ := q b0.bj o0 (joinAhead_of_none _ rfl)
   obtain ⟨c1, c2, _⟩ := closePage_facts env (placeAll env (initialState env) flows)
   have d : dropIds (paginate env flows) = dropIds (placeAll env (initialState env) flows) := by
     simp only [dropIds, paginate]; exact congrArg dropsOf c2
@@ -2042,15 +2548,16 @@ theorem distinct_apart : ∀ (xs ys : List Nat), Distinct (xs ++ ys) → ∀ i, 
     before the mark of note `b` in the manuscript, the lines of the pages
     split into a front holding every line of `a` and a back holding every
     line of `b`, unless one of them is reported unplaceable.  It assumes
-    the flows of `plainFlows`, distinct note ids, a separator of 0 lines
-    or more and a column of 1 grid line or more. -/
-theorem I1_paginate_order (env : Env) (hs : Hyp env) (flows : List Flow) (hp : plainFlows flows)
+    the flows of `plainFlows` and `BoxesOk`, distinct note ids, a
+    separator of 0 lines or more and a column of 1 grid line or more. -/
+theorem I1_paginate_order (env : Env) (hs : Hyp env) (flows : List Flow) (hp : plainFlows false flows)
+    (hb : BoxesOk flows)
     (hd : Distinct ((sourceNotes flows).map (·.id))) (a b : Note) (A B C : List Note)
     (ho : sourceNotes flows = A ++ a :: (B ++ b :: C))
     (na : ¬ ∃ c, Unmet.unplaceableFootnote a.id c ∈ allUnmet (paginate env flows))
     (nb : ¬ ∃ c, Unmet.unplaceableFootnote b.id c ∈ allUnmet (paginate env flows)) :
     ∃ L1 L2, ex (pagesNotes (paginate env flows).done) = L1 ++ L2 ∧ filt b.id L1 = [] ∧ filt a.id L2 = [] := by
-  have e := paginate_order env hs flows hp
+  have e := paginate_order env hs flows hp hb
   have nd : ∀ n : Note, (¬ ∃ c, Unmet.unplaceableFootnote n.id c ∈ allUnmet (paginate env flows)) →
       n.id ∉ dropIds (paginate env flows) := by
     intro n h m

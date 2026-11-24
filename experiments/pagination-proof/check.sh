@@ -267,5 +267,5 @@ if ! wait "$wholeOrderPid"; then
   cat "$tmp/whole-order" >&2
   exit 1
 fi
-echo "the footnote lines of the grid mode come in the manuscript's order, the boxes and switches of columns apart"
+echo "the footnote lines of the grid mode come in the manuscript's order, the switches of columns apart"
 echo "42 Alloy commands have checked Lean counterparts, all 42 on the transcription"
