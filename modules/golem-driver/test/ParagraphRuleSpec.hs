@@ -4,7 +4,7 @@ module ParagraphRuleSpec (paragraphRuleTests) where
 import Control.Monad (zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
-import Data.List (isSuffixOf)
+import Data.List (isSuffixOf, nub)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -176,6 +176,25 @@ paragraphRuleTests =
       map length ruled @?= [0, 2]
       n <- notified miniManifest style source
       map diagMessage (g07046 n) @?= ["罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）"],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I9: laid out freely, the rule after of a paragraph with a note stays above the notes" $ do
+      -- 5 lines of 15pt laid out freely; a paragraph of two lines whose first line has a note of three lines
+      let style = withRule (replaceIn "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" (replaceIn "lines = 30" "lines = 5" horizontalStyle)) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\", space-before = \"10pt\" }\n"
+          source = "@style sec\n  あ[note: " <> T.replicate 30 "注" <> "。]" <> T.replicate 18 "い" <> "。\n\n次。\n"
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let top = 595.2756 - mmPt 18
+          -- the end of the column: (5 - 1) x 15pt + 10pt
+          bottom = top - (4 * 15 + 10)
+          noteLines c = length (nub [ptToRational (dY d) | d <- drawnGlyphs c, dGlyph d == fromEnum '注'])
+          shown = [(rects c, noteLines c) | c <- pages]
+      case pages of
+        first : _ -> do
+          -- the two lines take 30pt and the rule after 10pt below the em box takes 5.5pt more; 34.5pt is left for the separator and the notes
+          assertBool (show shown) (noteLines first == 1)
+          -- the rule lies in the column and above the line of the note
+          assertBool (show shown) (and [y >= bottom + 15 && y + h <= top | (_, y, _, h) <- rects first])
+        [] -> assertFailure "no page"
+      -- all three lines of the note are placed
+      sum (map noteLines pages) @?= 3,
     testCase "a book without a broken block has no G07046" $ do
       n <- notified miniManifest (withRule horizontalStyle "weight = \"0.5pt\"") section
       g07046 n @?= [],
