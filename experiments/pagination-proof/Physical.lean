@@ -946,8 +946,11 @@ def ruledBefore (env : Env) (st : St) (r : Ruled) (first : Line) (side : RuleSid
     else unjoined
   | none => unjoined
 
+/-- `joinsNext` of Physical.hs: the flows begin with a ruled paragraph
+    whose rule before shares the area of the rule after before it; a ruled
+    heading does not share it. -/
 def joiningNext : List Flow → Bool
-  | .ruled r :: _ => r.joined && r.before.isSome
+  | .ruled r :: _ => r.joined && r.before.isSome && r.heading.isNone
   | _ => false
 
 /-- The extra after the last line of a ruled block (`afterGeometry`). -/
@@ -1005,6 +1008,87 @@ def ruledJoin (env : Env) (r : Ruled) (lastLine : Line) (later : List Flow) : Op
 
 def ruledExtent (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (later : List Flow) : Int :=
   ruledBeforeExtra env st r first + sumPitch env r.lines + ruledAfterExtra env r lastLine later
+
+/-- The position of the rule after from the start of the last line
+    (`snd (afterGeometry side)` of `ruledLinesPlan`): in the gap before the
+    first line of the next flow (`ruleAfterGap`), or at the edge
+    (`ruleAfterEdge` with no outside). -/
+def ruleAfterPos (env : Env) (r : Ruled) (lastLine : Line) (later : List Flow) (side : RuleSide) : Int :=
+  let lastPitch := env.pitchOf lastLine.id
+  let lastFace := env.faceOf lastLine.id
+  let faceEnd := faceOffset lastPitch lastFace + lastFace
+  let edge := if side.spaced then faceEnd + side.inner
+    else faceEnd + half (lastPitch + ruleAfterExtra lastPitch lastFace side.inner side.weight - faceEnd - side.weight)
+  match later with
+  | f :: _ =>
+    match flowLines f with
+    | n :: _ =>
+      let gap := lastPitch - lastFace - faceOffset lastPitch lastFace + faceOffset (env.pitchOf n.id) (env.faceOf n.id)
+      faceEnd + (if side.spaced then side.inner
+        else half (gap + ruleGapExtra gap side r.nextOverhang - r.nextOverhang - side.weight))
+    | [] => edge
+  | [] => edge
+
+/-- `ruleAfterInColumn` of Physical.hs on the state `f` a ruled paragraph
+    is placed to: its rule after (`endRule`, placed `afterExtra` and the
+    pitch of the last line before the lines used) ends before the notes of
+    the column.  The model reads the one rule after of the block, not
+    `psRules`; the ids of ruled blocks are distinct. -/
+def ruleAfterFits (env : Env) (r : Ruled) (lastLine : Line) (later : List Flow) (f : St) : Bool :=
+  match r.after with
+  | none => true
+  | some side =>
+    decide (f.used - ruledAfterExtra env r lastLine later - env.pitchOf lastLine.id
+      + ruleAfterPos env r lastLine later side + side.weight ≤ limit env f - f.notesUsed)
+
+/-- `ruleAfterInColumn` of the last line of a ruled paragraph. -/
+def ruleAfterFitsLast (env : Env) (r : Ruled) (later : List Flow) (f : St) : Bool :=
+  match r.lines.getLast? with
+  | some lastLine => ruleAfterFits env r lastLine later f
+  | none => true
+
+/-- The last step of `ruledHere`: the placement with the flows after it
+    when it settles and fits, else `fallback`. -/
+def hereOr (settled : Bool) (inside : Option St) (later : List Flow) (fallback : Except Failure (Option St)) :
+    Except Failure (Option St) :=
+  if settled && (inside.isSome || later.isEmpty) then .ok inside else fallback
+
+theorem hereOr_some (b : Bool) (inside : Option St) (later : List Flow) (fb : Except Failure (Option St)) (p : St)
+    (h : hereOr b inside later fb = .ok (some p)) : inside = some p ∨ fb = .ok (some p) := by
+  unfold hereOr at h
+  split at h
+  · injection h with h; exact Or.inl h
+  · exact Or.inr h
+
+/-- `place` of `ruledLinesPlan`: the lines of a ruled paragraph put from
+    `ready`, the extra before them and the extra after them. -/
+def ruledPlaceAt (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (later : List Flow) (ready : St) :
+    Except Failure St :=
+  match putLines true env
+      { ready with
+        used := ready.used + ruledBeforeExtra env st r first
+        adjust := ready.adjust - ruledAfterExtra env r lastLine later }
+      r.lines with
+  | .error e => .error e
+  | .ok placed =>
+    .ok { placed with
+      used := placed.used + ruledAfterExtra env r lastLine later
+      adjust := ready.adjust
+      join := ruledJoin env r lastLine later }
+
+/-- `ruledLinesHere` of Physical.hs: a ruled paragraph placed in this
+    column with the flows after it, or none when it does not fit the room. -/
+def ruledLinesHere (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure (Option St) :=
+  match r.heading, r.lines.head?, r.lines.getLast? with
+  | none, some first, some lastLine =>
+    if env.capacity < ruledExtent env st r first lastLine later then .ok none
+    else if (fit env st (ruledExtent env st r first lastLine later)).page = st.page
+        ∧ (fit env st (ruledExtent env st r first lastLine later)).column = st.column then
+      match ruledPlaceAt env st r first lastLine later (fit env st (ruledExtent env st r first lastLine later)) with
+      | .error e => .error e
+      | .ok s => .ok (some s)
+    else .ok none
+  | _, _, _ => .ok none
 
 /-! ## Headings -/
 
@@ -2138,25 +2222,18 @@ def placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List F
   | none =>
     match r.lines.head?, r.lines.getLast? with
     | some first, some lastLine =>
-      if h1 : r.joined ∧ st.join.isSome ∧ room env st < ruledExtent env st r first lastLine later + st.pending ∧
-          empty st = false then
-        placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
-      else if env.capacity < ruledExtent env st r first lastLine later then placeLines env r.keep true st r.lines
-      else if h2 : ¬((fit env st (ruledExtent env st r first lastLine later)).page = st.page ∧
-          (fit env st (ruledExtent env st r first lastLine later)).column = st.column) then
-        placeRuled inner env (fit env st (ruledExtent env st r first lastLine later)) r later
-      else
-        match putLines true env
-            { fit env st (ruledExtent env st r first lastLine later) with
-              used := (fit env st (ruledExtent env st r first lastLine later)).used + ruledBeforeExtra env st r first
-              adjust := (fit env st (ruledExtent env st r first lastLine later)).adjust - ruledAfterExtra env r lastLine later }
-            r.lines with
-        | .error e => .error e
-        | .ok placed =>
-          .ok { placed with
-            used := placed.used + ruledAfterExtra env r lastLine later
-            adjust := (fit env st (ruledExtent env st r first lastLine later)).adjust
-            join := ruledJoin env r lastLine later }
+      match ruledHere inner env st r later with
+      | .error e => .error e
+      | .ok (some placed) => .ok placed
+      | .ok none =>
+        if h1 : r.joined ∧ st.join.isSome ∧ empty st = false then
+          placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later
+        else if env.capacity < ruledExtent env st r first lastLine later then placeLines env r.keep true st r.lines
+        -- a block an empty column cannot hold with its rules is broken without them (golem-driver ADR 0035)
+        else if h2 : ¬((fit env st (room env st + 1)).page = st.page ∧
+            (fit env st (room env st + 1)).column = st.column) then
+          placeRuled inner env (fit env st (room env st + 1)) r later
+        else placeLines env r.keep true st r.lines
     | _, _ => .ok st
 termination_by (later.length + 1, ruledRank r + 1, rank st)
 decreasing_by
@@ -2166,8 +2243,62 @@ decreasing_by
   · apply Prod.Lex.right; apply Prod.Lex.left; have := ruledRank_before r ha hb; omega
   · apply Prod.Lex.right; apply Prod.Lex.right
     exact Nat.lt_of_lt_of_le (I4_fit_moved env _ _ h2) (rank_headingState_le env st recto _)
+  · apply Prod.Lex.right; apply Prod.Lex.left; omega
   · apply Prod.Lex.right; apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
   · apply Prod.Lex.right; apply Prod.Lex.right; exact I4_fit_moved env st _ h2
+
+/-- `ruledHere` of Physical.hs: a ruled paragraph in this column, with its
+    rule after waiting to share its area with the next block's rule before
+    when that block goes on in this column (golem-driver ADR 0027,
+    「隣り合う罫線」), or with the area of its own before the next flow when
+    the rule lies in the column.  Else the rule ends the column: its own
+    area at the end of the column is counted in the block (the flows after
+    it are not read), so that the rule stays in the column (root ADR 0397
+    I8).  None when the block goes on to the next column. -/
+def ruledHere (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure (Option St) :=
+  match ruledLinesHere env st r later with
+  | .error e => .error e
+  | .ok inside =>
+    let settled : Bool := match inside with
+      | none => true
+      | some placed =>
+        if later.isEmpty then true
+        else if joiningNext later then settlesHere inner env placed later
+        else ruleAfterFitsLast env r later placed
+    hereOr settled inside later (ruledLinesHere env st r [])
+termination_by (later.length + 1, 0, 0)
+decreasing_by
+  all_goals simp_wf
+  apply Prod.Lex.left; omega
+
+/-- `settlesHere` of Physical.hs on the flows after a rule after that
+    waits: the ruled block they begin with takes that rule into its area in
+    the same column. -/
+def settlesHere (inner : Inner) (env : Env) (st : St) (later : List Flow) : Bool :=
+  match later with
+  | .ruled next :: rest =>
+    match ruledHere inner env st next rest with
+    | .ok (some placed) => !movesForFollowing inner env st next placed rest
+    | _ => false
+  | _ => false
+termination_by (later.length, 1, 0)
+decreasing_by
+  all_goals simp_wf
+  all_goals (apply Prod.Lex.right; apply Prod.Lex.left; omega)
+
+/-- `movesForFollowing` of Physical.hs: a ruled block placed as `full`
+    goes on to the next column for what it keeps with it. -/
+def movesForFollowing (inner : Inner) (env : Env) (st : St) (r : Ruled) (full : St) (later : List Flow) : Bool :=
+  match h : keepAhead later with
+  | some (_, wanted, rest) => !empty st && !fitsFollowingGo inner env full wanted 0 rest
+  | none => if r.heading.isSome then !empty st && !fitsFollowingGo inner env full 1 0 later else false
+termination_by (later.length + 1, 0, 0)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.left
+    have := keepAheadGo_length [] later _ _ rest h
+    simp at this; omega
+  · apply Prod.Lex.left; omega
 end
 
 def fitsFollowing (inner : Inner) (env : Env) (st : St) (wanted : Nat) (flows : List Flow) : Bool :=
@@ -4047,6 +4178,45 @@ theorem step_headingState (env : Env) (st : St) (recto b : Bool) :
     · exact step_nextColumn env st
     · exact Step.refl st
 
+/-- What `ruledHere` places is what `ruledLinesHere` places with the flows
+    after the block or without them. -/
+theorem ruledHere_some (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
+    (h : ruledHere inner env st r later = .ok (some p)) :
+    ∃ l', ruledLinesHere env st r l' = .ok (some p) := by
+  rw [ruledHere] at h
+  split at h
+  · cases h
+  · rename_i inside e
+    rcases hereOr_some _ _ _ _ p h with h | h
+    · subst h; exact ⟨later, e⟩
+    · exact ⟨[], h⟩
+
+theorem ruledPlaceAt_step (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (later : List Flow)
+    (ready p : St) (h : ruledPlaceAt env st r first lastLine later ready = .ok p) :
+    Step ready p (lineIds r.lines) [] := by
+  unfold ruledPlaceAt at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    have c := step_putLines env true _ placed r.lines e
+    simpa using (Step.same rfl rfl rfl).trans (c.trans (Step.same rfl rfl rfl))
+
+theorem ruledLinesHere_step (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
+    (h : ruledLinesHere env st r later = .ok (some p)) : Step st p (lineIds r.lines) [] := by
+  unfold ruledLinesHere at h
+  split at h
+  · split at h
+    · cases h
+    · split at h
+      · split at h
+        · cases h
+        · rename_i s0 e
+          injection h with h; injection h with h; subst h
+          simpa using (step_fit env st _).trans (ruledPlaceAt_step env st r _ _ later _ s0 e)
+      · cases h
+  · cases h
+
 set_option linter.unusedVariables false in
 theorem step_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (s : St) (h : placeRuled inner env st r later = .ok s) :
     Step st s (ruledText r) [] := by
@@ -4097,29 +4267,30 @@ theorem step_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later
     split at h
     · rename_i first lastLine _ _
       split at h
-      · rename_i h1
-        have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with joined := false }, rank (nextColumn env (flushPendingRule env st)))
-            (ruledRank r, rank st) := by
-          apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
-        have c := step_placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later s h
-        rw [tx { r with joined := false } rfl rfl] at c
-        simpa using ((step_flush env st).trans (step_nextColumn env _)).trans c
+      · cases h
+      · rename_i placed hr
+        injection h with h; subst h
+        obtain ⟨l', e⟩ := ruledHere_some inner env st r later placed hr
+        exact ruledLinesHere_step env st r l' placed e
       · split at h
-        · exact step_placeLines env r.keep true st r.lines s h
+        · rename_i h1
+          have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with joined := false }, rank (nextColumn env (flushPendingRule env st)))
+              (ruledRank r, rank st) := by
+            apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
+          have c := step_placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later s h
+          rw [tx { r with joined := false } rfl rfl] at c
+          simpa using ((step_flush env st).trans (step_nextColumn env _)).trans c
         · split at h
-          · rename_i h2
-            have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env st (ruledExtent env st r first lastLine later)))
-                (ruledRank r, rank st) :=
-              Prod.Lex.right _ (I4_fit_moved env st _ h2)
-            have c := step_placeRuled inner env _ r later s h
-            rw [tx r rfl rfl] at c
-            simpa using (step_fit env st _).trans c
+          · exact step_placeLines env r.keep true st r.lines s h
           · split at h
-            · cases h
-            · rename_i placed e
-              injection h with h; subst h
-              have c := step_putLines env true _ placed r.lines e
-              simpa using ((step_fit env st _).trans (Step.same rfl rfl rfl)).trans (c.trans (Step.same rfl rfl rfl))
+            · rename_i h2
+              have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env st (room env st + 1)))
+                  (ruledRank r, rank st) :=
+                Prod.Lex.right _ (I4_fit_moved env st _ h2)
+              have c := step_placeRuled inner env _ r later s h
+              rw [tx r rfl rfl] at c
+              simpa using (step_fit env st _).trans c
+            · exact step_placeLines env r.keep true st r.lines s h
     · rename_i H
       have : r.lines = [] := by
         cases e : r.lines with
@@ -5371,5 +5542,100 @@ theorem I5_paginate_figures (env : Env) (flows : List Flow) (pages : List PageOu
     (h : paginate env flows = .ok pages) : pagesFigs pages = sourceFigs flows :=
   (paginate_step env flows pages h).2
 
+
+/-! ## The rule after of a ruled paragraph in the free placement (golem-driver ADR 0027) -/
+
+theorem half_le (n : Int) (h : 0 ≤ n) : half n ≤ n := by
+  unfold half
+  match n, h with
+  | .ofNat 0, _ => decide
+  | .ofNat (k + 1), _ =>
+    show Int.ofNat ((k + 1) / 2) ≤ Int.ofNat (k + 1)
+    exact Int.ofNat_le.mpr (Nat.div_le_self _ _)
+
+/-- The rule after of a ruled paragraph at the end of the column
+    (`ruleAfterEdge` with no outside, the flows after it not read) ends
+    within the area counted after its last line: the pitch of that line and
+    the extra after it. -/
+theorem I3_ruleAfter_edge (env : Env) (r : Ruled) (lastLine : Line) (side : RuleSide) (ha : r.after = some side)
+    (hi : 0 ≤ side.inner) :
+    ruleAfterPos env r lastLine [] side + side.weight ≤ env.pitchOf lastLine.id + ruledAfterExtra env r lastLine [] := by
+  simp only [ruleAfterPos, ruledAfterExtra, joiningNext, ha, ruledAfter, ruleAfterEdgeExtra]
+  generalize env.pitchOf lastLine.id = p
+  generalize env.faceOf lastLine.id = f
+  have hE : side.inner + side.weight - (p - f - faceOffset p f) ≤ ruleAfterExtra p f side.inner side.weight := by
+    unfold ruleAfterExtra; exact Int.le_max_right _ _
+  simp only [if_false]
+  split
+  · omega
+  · have := half_le (p + ruleAfterExtra p f side.inner side.weight - (faceOffset p f + f) - side.weight) (by omega)
+    omega
+
+/-- What `ruledHere` places: the block with the flows after it, when they
+    are none, or begin with a ruled paragraph that takes its rule after
+    into its area, or its rule after in the area of its own lies in the
+    column (`ruleAfterInColumn`); or else the block with the column-end
+    area of its own, the flows after it not read. -/
+theorem hereOr_cases (b : Bool) (inside : Option St) (later : List Flow) (fb : Except Failure (Option St)) (p : St)
+    (h : hereOr b inside later fb = .ok (some p)) : (inside = some p ∧ b = true) ∨ fb = .ok (some p) := by
+  unfold hereOr at h
+  split at h
+  · rename_i c
+    injection h with h
+    simp only [Bool.and_eq_true] at c
+    exact Or.inl ⟨h, c.1⟩
+  · exact Or.inr h
+
+theorem ruledHere_cases (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
+    (h : ruledHere inner env st r later = .ok (some p)) :
+    (ruledLinesHere env st r later = .ok (some p)
+      ∧ (later = [] ∨ joiningNext later = true ∨ ruleAfterFitsLast env r later p = true))
+    ∨ ruledLinesHere env st r [] = .ok (some p) := by
+  rw [ruledHere] at h
+  split at h
+  · cases h
+  · rename_i inside e
+    rcases hereOr_cases _ _ _ _ p h with ⟨hi, c1⟩ | h
+    · subst hi
+      refine Or.inl ⟨e, ?_⟩
+      dsimp only at c1
+      split at c1
+      · rename_i he; exact Or.inl (by cases later with | nil => rfl | cons _ _ => cases he)
+      · split at c1
+        · rename_i hj; exact Or.inr (Or.inl hj)
+        · exact Or.inr (Or.inr c1)
+    · exact Or.inr h
+
+/-- The rule after of a ruled paragraph `ruledHere` places in the free
+    placement (golem-driver ADR 0027, root ADR 0397 I8): it waits for the
+    next block to share its area, or it ends above the notes of the column
+    (`ruleAfterInColumn`), or it is placed at the end of the column within
+    the area the block counts after its last line, so that it ends at or
+    before the length the block uses.  That length is not bounded by the
+    notes of the column: the extent of a ruled paragraph does not count
+    the notes of its lines, so a rule placed at the end of the column can
+    lie in the notes (README.md). -/
+theorem I3_ruledHere_rule_after (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
+    (side : RuleSide) (lastLine : Line) (ha : r.after = some side) (hl : r.lines.getLast? = some lastLine)
+    (hi : 0 ≤ side.inner) (h : ruledHere inner env st r later = .ok (some p)) :
+    (ruledLinesHere env st r later = .ok (some p) ∧ joiningNext later = true)
+    ∨ (ruledLinesHere env st r later = .ok (some p) ∧ later ≠ []
+      ∧ p.used - ruledAfterExtra env r lastLine later - env.pitchOf lastLine.id
+        + ruleAfterPos env r lastLine later side + side.weight ≤ limit env p - p.notesUsed)
+    ∨ (∃ l', ruledLinesHere env st r l' = .ok (some p) ∧ ruledAfterExtra env r lastLine l' = ruledAfterExtra env r lastLine []
+      ∧ ruleAfterPos env r lastLine l' side = ruleAfterPos env r lastLine [] side
+      ∧ p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
+        + ruleAfterPos env r lastLine l' side + side.weight ≤ p.used) := by
+  have edge := I3_ruleAfter_edge env r lastLine side ha hi
+  rcases ruledHere_cases inner env st r later p h with ⟨e, c⟩ | e
+  · rcases c with c | c | c
+    · subst c; exact Or.inr (Or.inr ⟨[], e, rfl, rfl, by omega⟩)
+    · exact Or.inl ⟨e, c⟩
+    · by_cases hn : later = []
+      · subst hn; exact Or.inr (Or.inr ⟨[], e, rfl, rfl, by omega⟩)
+      · refine Or.inr (Or.inl ⟨e, hn, ?_⟩)
+        simp only [ruleAfterFitsLast, hl, ruleAfterFits, ha, decide_eq_true_eq] at c
+        exact c
+  · exact Or.inr (Or.inr ⟨[], e, rfl, rfl, by omega⟩)
 
 end PhysicalPagination

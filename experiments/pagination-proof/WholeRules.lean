@@ -9,8 +9,9 @@ column.  A rule after that waits for the rule before of the next block
 (`sJoin`) is placed in the column of the block before when the next block
 takes the area with it.  The rule after that `flushJoin` places when the
 next block does not share its area lies in the column only when its area
-fits the room left; golem-layout and Whole.lean both place it out of the
-column otherwise (README.md).
+fits the room left; `settleRuled` lets a rule after wait only when the
+flows ahead settle it: the next block shares the area in this column, or
+the area of its own fits the room (`I3_waiting_rule_in_column`).
 -/
 import Whole
 
@@ -235,22 +236,36 @@ theorem splitRuled_placed (env : Env) (hs : 0 ≤ env.separator) (st0 : St) (i :
         · simp at h
       · exact Or.inr (Or.inr ⟨s, r, n, ls, rfl, rfl⟩)
 
+/-- `settleRuled` places the block with rules that each lie in the column
+    of the state it places them from: the plan that shares the rule after
+    with the block ahead and the plan whose rule after takes its own area
+    are each committed only when the block with its areas fits the room. -/
+theorem I3_settleRuled_rules (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Nat) (b a : Bool)
+    (body : RuledBody) (rest : List Flow) (joined : Option (Nat × Int)) (r : St)
+    (h : settleRuled env st i b a body rest joined = some r)
+    (hj : ∀ x l, joined = some (x, l) → st.used = l + 1) :
+    Placed env body r := by
+  obtain ⟨rest', _, fit, hr⟩ := settleRuled_spec env st i b a body rest joined r h
+  rw [hr]
+  exact placed_of_plan env hs st i b a body rest' joined fit hj
+
 theorem fresh_tail (env : Env) (hs : 0 ≤ env.separator) (i : Nat) (b a : Bool) (body : RuledBody)
     (rest : List Flow) (s2 : St) :
     SplitPlaced env body
-      (if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
-        commitRuled env s2 body (planOf env s2 i b a body rest none)
-      else if isEmpty s2 = true then splitRuled env s2 i b a body rest
-      else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-          ≤ free env (nextColumn env s2) then
-        commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-      else splitRuled env (nextColumn env s2) i b a body rest) := by
-  split
-  · rename_i fit; exact Or.inl (placed_of_plan env hs _ i b a body rest none fit (fun _ _ h => nomatch h))
+      (match settleRuled env s2 i b a body rest none with
+        | some placed => placed
+        | none =>
+          if isEmpty s2 = true then splitRuled env s2 i b a body rest
+          else
+            match settleRuled env (nextColumn env s2) i b a body rest none with
+            | some placed => placed
+            | none => splitRuled env (nextColumn env s2) i b a body rest) := by
+  apply settle_or (SplitPlaced env body)
+  · intro rest' _ fit; exact Or.inl (placed_of_plan env hs _ i b a body rest' none fit (fun _ _ h => nomatch h))
   · split
     · exact splitRuled_placed env hs _ i b a body rest
-    · split
-      · rename_i _ fit; exact Or.inl (placed_of_plan env hs _ i b a body rest none fit (fun _ _ h => nomatch h))
+    · apply settle_or (SplitPlaced env body)
+      · intro rest' _ fit; exact Or.inl (placed_of_plan env hs _ i b a body rest' none fit (fun _ _ h => nomatch h))
       · exact splitRuled_placed env hs _ i b a body rest
 
 /-- `placeRuled` with no rule waiting places the block with rules that lie
@@ -261,7 +276,6 @@ theorem I3_placeRuledFresh_rules (env : Env) (hs : 0 ≤ env.separator) (st : St
     SplitPlaced env body (placeRuledFresh env st i b a body rest) := by
   unfold placeRuledFresh
   exact fresh_tail env hs i b a body rest _
-
 
 /-- `placeRuled`: the block shares the area of the rule waiting, placed
     with both rules in the column of the state it is called in, or the rule
@@ -274,31 +288,32 @@ theorem I3_placeRuled_rules (env : Env) (hs : 0 ≤ env.separator) (st : St) (i 
   unfold placeRuled
   split
   · rename_i w hw
-    split
-    · rename_i c
-      have fit : planNeed env st body (planOf env st i b a body rest (some w)) ≤ free env st := by
-        simp only [Bool.and_eq_true, decide_eq_true_eq] at c; exact c.2
-      exact Or.inl (placed_of_plan env hs st i b a body rest (some w) fit
+    apply joined_or (SplitPlaced env body)
+    · intro rest' _ fit
+      exact Or.inl (placed_of_plan env hs st i b a body rest' (some w) fit
         (fun x l e => hu x l (by rw [hw, e])))
     · exact I3_placeRuledFresh_rules env hs _ i b a body rest
   · exact I3_placeRuledFresh_rules env hs _ i b a body rest
 
 /-- A block that shares the area of the rule after of the block before
-    (`frJoined`) is placed in the column of the state it is called in, the
-    column of the block before, with the rule after of that block and its
-    own rule before in the area after the last line of that block. -/
+    (`frJoined`) and settles in the column of the state it is called in,
+    the column of the block before, is placed there with the rule after of
+    that block and its own rule before in the area after the last line of
+    that block. -/
 theorem I3_placeRuled_joined (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow)
-    (x : Nat) (l : Int) (hw : st.join = some (x, l)) (hb : b = true) (hr : body.recto = false)
-    (fit : planNeed env st body (planOf env st i b a body rest (some (x, l))) ≤ free env st) :
-    placeRuled env st i b a true body rest = commitRuled env st body (planOf env st i b a body rest (some (x, l)))
-    ∧ (planOf env st i b a body rest (some (x, l))).beforeRules
-      = [⟨x, false, l, .joinedAfter i, (planOf env st i b a body rest (some (x, l))).before⟩,
-        ⟨i, true, l, .joinedBefore x, (planOf env st i b a body rest (some (x, l))).before⟩] := by
+    (x : Nat) (l : Int) (hw : st.join = some (x, l)) (hb : b = true) (hr : body.recto = false) (r : St)
+    (hset : settleRuled env st i b a body rest (some (x, l)) = some r) :
+    placeRuled env st i b a true body rest = r
+    ∧ ∃ rest', r = commitRuled env st body (planOf env st i b a body rest' (some (x, l)))
+      ∧ (planOf env st i b a body rest' (some (x, l))).beforeRules
+        = [⟨x, false, l, .joinedAfter i, (planOf env st i b a body rest' (some (x, l))).before⟩,
+          ⟨i, true, l, .joinedBefore x, (planOf env st i b a body rest' (some (x, l))).before⟩] := by
   subst hb
-  refine ⟨?_, rfl⟩
+  obtain ⟨rest', _, _, e⟩ := settleRuled_spec env st i true a body rest (some (x, l)) r hset
+  refine ⟨?_, rest', e, rfl⟩
   unfold placeRuled
   rw [hw]
-  simp only [hr, fit, Bool.true_and, Bool.not_false, decide_True, ↓reduceIte]
+  simp only [settleJoined, hr, Bool.true_and, Bool.not_false, ↓reduceIte, hset]
 
 /-- The rule after that `flushJoin` places when the next block does not
     share its area: it is put in the column of the block before, on the line
@@ -435,6 +450,141 @@ theorem I3_commitRuled_waiting_line (env : Env) (st : St) (i : Nat) (b a : Bool)
   have : v = l := by rw [e, hl]; simp [RuledBody.size]
   rw [← this]
   exact List.mem_append_of_mem_right _ m
+
+/-! ## The rule after that waits stays in its column (golem-driver ADR 0027) -/
+
+/-- A block `settleRuled` places with its rule after waiting leaves the
+    flows ahead settling that rule (`settlesAfter`): `settleRuled` lets the
+    rule wait only when it does, and counts the area of the rule after in
+    the block otherwise. -/
+theorem I3_settleRuled_waiting (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow)
+    (j : Option (Nat × Int)) (r : St) (h : settleRuled env st i b a body rest j = some r) (hn : r.join ≠ none) :
+    settlesAfter env r rest = true := by
+  unfold settleRuled at h
+  split at h
+  · rename_i c; rw [← Option.some.inj h]; exact c.2
+  · split at h
+    · exfalso; apply hn; rw [← Option.some.inj h]
+      show (planOf env st i b a body [] j).waiting = none
+      simp [planOf, joinsNext, flattenParts]
+    · cases h
+
+/-- The rule after that waits, placed in its own area by `flushJoin` when
+    that area fits the room (`ownFits`), lies in the column. -/
+theorem I3_ownFits_flushJoin (env : Env) (st : St) (x : Nat) (l : Int) (hw : st.join = some (x, l))
+    (hu : st.used = l + 1) (h : ownFits env st = true) :
+    ∃ rr, (flushJoin env st).rules = st.rules ++ [rr] ∧ rr.id = x ∧ rr.before = false ∧ rr.line = l
+      ∧ InColumn env st rr := by
+  unfold ownFits at h; rw [hw] at h; simp only [decide_eq_true_eq] at h
+  unfold flushJoin; rw [hw]
+  refine ⟨_, rfl, rfl, rfl, rfl, ?_⟩
+  have hf : ∀ r : PlacedRule, r.line = l → (∀ o, r.edge ≠ .start o) → (r.area : Int) ≤ free env st →
+      InColumn env st r := by
+    intro r e h2 ar
+    simp only [InColumn, free, first_of_not_start r h2, e] at ar ⊢
+    omega
+  exact hf _ rfl (fun o => ite_not_start _ _ o) h
+
+/-- A rule after that waits and that the flows ahead settle
+    (`settlesAfter`) is taken into its area by the next block, a block that
+    shares it and is placed with it in this column, or lies in this column
+    in its own area (`flushJoin`). -/
+theorem I3_settlesAfter_rule (env : Env) (st : St) (rest : List Flow) (x : Nat) (l : Int)
+    (hw : st.join = some (x, l)) (hu : st.used = l + 1) (h : settlesAfter env st rest = true) :
+    (∃ i a body later r, flattenParts rest = .ruled i true a true body :: later ∧ body.recto = false
+      ∧ settleRuled env st i true a body later (some (x, l)) = some r)
+    ∨ (∃ rr, (flushJoin env st).rules = st.rules ++ [rr] ∧ rr.id = x ∧ rr.before = false ∧ rr.line = l
+      ∧ InColumn env st rr) := by
+  unfold settlesAfter at h
+  generalize e : flattenParts rest = fs at h
+  unfold settlesOn at h
+  rw [hw] at h
+  split at h
+  · rename_i hj; cases hj
+  · rename_i j i a body later hj
+    cases hj
+    split at h
+    · rename_i c
+      simp only [Bool.and_eq_true, Bool.not_eq_true'] at c
+      obtain ⟨c1, c2⟩ := c
+      cases hs : settleRuled env st i true a body later (some (x, l)) with
+      | none => rw [hs] at c2; cases c2
+      | some r => exact Or.inl ⟨i, a, body, later, r, rfl, c1, hs⟩
+    · exact Or.inr (I3_ownFits_flushJoin env st x l hw hu h)
+  · exact Or.inr (I3_ownFits_flushJoin env st x l hw hu h)
+
+/-- `settleRuled` reads the flows ahead with their book parts opened. -/
+theorem settleRuled_flatten (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow)
+    (j : Option (Nat × Int)) :
+    settleRuled env st i b a body (flattenParts rest) j = settleRuled env st i b a body rest j := by
+  have hp : ∀ s, planOf env s i b a body (flattenParts rest) j = planOf env s i b a body rest j := by
+    intro s; simp only [planOf, joinsNext, flattenParts_flattenParts]
+  unfold settleRuled
+  simp only [hp, flattenParts_flattenParts]
+
+/-- The rule after of a block that waits for a block sharing its area
+    stays in its column: when the flows ahead settle it, the next block
+    shares the area and `placeRuled` places it with both rules in this
+    column, or `flushJoin` puts the rule in its own area in this column. -/
+theorem I3_waiting_rule_in_column (env : Env) (hs : 0 ≤ env.separator) (st : St) (x : Nat) (l : Int)
+    (i : Nat) (a : Bool) (body : RuledBody) (later : List Flow)
+    (hw : st.join = some (x, l)) (hu : st.used = l + 1)
+    (h : settlesAfter env st (.ruled i true a true body :: later) = true) :
+    (Placed env body (placeRuled env st i true a true body later)
+      ∧ ∃ r, settleRuled env st i true a body later (some (x, l)) = some r
+        ∧ placeRuled env st i true a true body later = r)
+    ∨ (∃ rr, (flushJoin env st).rules = st.rules ++ [rr] ∧ rr.id = x ∧ rr.before = false ∧ rr.line = l
+      ∧ InColumn env st rr) := by
+  rcases I3_settlesAfter_rule env st _ x l hw hu h with ⟨i', a', body', later', r, e, hr, hset⟩ | o
+  · simp only [flattenParts, List.cons.injEq, Flow.ruled.injEq] at e
+    obtain ⟨⟨e1, -, e2, -, e3⟩, e4⟩ := e
+    subst e1 e2 e3 e4
+    rw [settleRuled_flatten] at hset
+    have pj := (I3_placeRuled_joined env st _ true _ _ later x l hw rfl hr r hset).1
+    refine Or.inl ⟨?_, r, hset, pj⟩
+    rw [pj]
+    exact I3_settleRuled_rules env hs st _ true _ _ later (some (x, l)) r hset
+      (fun x' l' e => by cases e; exact hu)
+  · exact Or.inr o
+
+/-- A block `settleRuled` places with its rule after waiting leaves the
+    lines used at the line after its last line, the line the waiting rule
+    names. -/
+theorem I3_settleRuled_used (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow)
+    (j : Option (Nat × Int)) (r : St) (x : Nat) (l : Int) (hb : body.lines' ≠ [])
+    (h : settleRuled env st i b a body rest j = some r) (hn : r.join = some (x, l)) : r.used = l + 1 := by
+  obtain ⟨rest', _, _, e⟩ := settleRuled_spec env st i b a body rest j r h
+  subst e
+  have hj : (planOf env st i b a body rest' j).waiting = some (x, l) := hn
+  have ha : (planOf env st i b a body rest' j).after = 0 := by
+    simp only [planOf] at hj ⊢
+    split at hj
+    · rename_i hn; simp [hn]
+    · simp at hj
+  simp only [planOf] at hj
+  split at hj
+  · simp only [Option.some.injEq, Prod.mk.injEq] at hj
+    obtain ⟨_, hl⟩ := hj
+    have u2 : ∀ s2 : St, s2.used = st.used + (planOf env st i b a body rest' j).before + body.size →
+        min (s2.used + (planOf env st i b a body rest' j).after) (max s2.used (cap env s2 - s2.noteLines))
+          = l + 1 := by
+      intro s2 hs2
+      rw [ha, ← hl]
+      have m := Int.le_max_left s2.used (cap env s2 - s2.noteLines)
+      simp only [planOf] at hs2
+      omega
+    simp only [commitRuled]
+    apply u2
+    cases body with
+    | lines kp ls =>
+      have := (putRuledLines_keeps env (planOf env st i b a (.lines kp ls) rest' j).after ls
+        { st with used := st.used + (planOf env st i b a (.lines kp ls) rest' j).before, join := none }).2.2.2
+      simp only [RuledBody.size]; rw [this]
+    | heading r n ls =>
+      cases ls with
+      | nil => exact absurd rfl hb
+      | cons l0 ls => simp [putBlock, RuledBody.size]
+  · simp at hj
 
 end Rules
 end WholePagination

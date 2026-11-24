@@ -576,8 +576,8 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:642` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate.hs:562` `place` の `FWrapped` | `place` の `wrapped` |
 | `Paginate.hs:682` `placeStanza` | `placeStanza`、`placeStanzaGo`、`versesFitting`、`stanzaK0`、`stanzaK2`、`putVerses`、`shortVerse` |
-| `Paginate.hs:729` `placeRuled` | `placeRuled`、`placeRuledFresh` |
-| `Paginate.hs:760` `commitRuled`、`:773` `splitRuled`、`:789` `flushJoin` | `commitRuled`、`putRuledLines`、`splitRuled`、`flushJoin` |
+| `Paginate.hs:729` `placeRuled`、`:762` `settleRuled`、`:775` `settlesAfter` | `placeRuled`、`placeRuledFresh`、`settleJoined`、`settleRuled`、`settlesOn`、`settlesAfter` |
+| `Paginate.hs:785` `commitRuled`、`:798` `splitRuled`、`:814` `flushJoin`、`:820` `ownAfter` | `commitRuled`、`putRuledLines`、`splitRuled`、`flushJoin`、`ownArea`、`ownFits` |
 | `Paginate.hs:804` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
 | `Paginate.hs:829` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
 | `Paginate/BookParts.hs:13` `placeBookPart` | `placeBookPart`、`partTrial`、`fitsPart`、`unitKey`、`emptyUnit`、`nextUnit`、`nextSpread`、`hasNested` |
@@ -817,7 +817,28 @@ PR #1133 は、後続ブロックの最初の部分をそのブロック自身�
 罫線の領域と見出しと脚注の長さの和が段の容量を超えるときは、後の罫線を外し、次に前の罫線を外して置き直し、どちらもなければ罫線のない見出しとして置く。
 見出しの罫線の領域は、`physicalHeadingBounds` に見出しの字面の位置があればその位置から求めた仮想の送りで求める（`Env.headingBounds`）。
 罫線の領域の長さは、`FreeGeometry.hs` の `faceOffset`、`ruleBeforeGap`、`ruleAfterGap`、`rulesSharedGap`、`ruleBeforeEdge`、`ruleAfterEdge` のうち、使用長に足す長さ（extra）だけを写した。
+罫線つきの段落の後の罫線の位置だけは、段に置けるかの判定（`ruleAfterInColumn`）が読むので、`ruleAfterGap` と `ruleAfterEdge` が返す位置も写した（`ruleAfterPos`）。
 先のフローが求める長さ（`firstNeed`）は `Env` の引数とし、定理はそのどの値でも成り立つ。
+
+罫線つきの段落は、`ruledHere`（`Paginate/Physical.hs:1345`）が置く段を決める（[golem-driver ADR 0027](../../docs/golem-driver/adr/0027-paragraph-style-rules.md)）。
+`ruledHere` は、後続を読んだ配置で段落が段に収まり、後の罫線が段にとどまるときに、その配置で置く。
+後の罫線がとどまるのは、後続が罫線の領域を共有する段落で始まり、その段落が同じ段で領域を共有して置けて後続のために次の段へ送られないとき（`settlesHere`）か、後続が共有しないときに後の罫線が段の脚注より上で終わるとき（`ruleAfterInColumn`）である。
+とどまらなければ、後続を読まず、後の罫線を段の終わりの長さで数えた配置で置き直す。
+見出しの罫線つきのブロックは、前の罫線を共有しない（`joinsNext`）。
+`Physical.lean` は、`ruleAfterInColumn` が読む `psRules` を写さず、ブロックの後の罫線を一つだけ読む（`ruleAfterFits`）。
+罫線つきのブロックの id は互いに異なるので、`psRules` の中でその id を持つ後の罫線はこの一つである。
+
+`I3_ruledHere_rule_after` は、`ruledHere` が置いた段落の後の罫線について、次の三つのどれかが成り立つことを示す。
+一つ目は、後の罫線が次の段落との共有を待つことである。
+二つ目は、後続を読んだ配置で、後の罫線が段の脚注より上で終わることである。
+三つ目は、段の終わりの長さで置いた後の罫線が、段落が使った長さの中で終わることである（`I3_ruleAfter_edge`）。
+三つ目の罫線は、段の脚注に重なりうる。
+罫線つきの段落の長さ（`ruledExtent`）が行の脚注を数えないので、行の脚注が段を埋めると、段落の残りの行と後の罫線が脚注の領域に入るからである。
+容量 40 sp、脚注の区切り 2 sp の段に、3 行の脚注を持つ行と脚注のない行からなる段落を、後の罫線（内側 2 sp、外側 2 sp、太さ 1 sp）とともに置き、1 行の段落を続けた。
+golem-layout の `paginatePhysical` は、1 ページ目に脚注を 2 行置いて脚注の領域を 18 sp から始め、段落の 2 行目を 10 sp に、後の罫線を 21 sp に置いた。
+`Physical.lean` の `ruledHere` も、同じ使用長と脚注の長さと罫線の位置を返す。
+`PhysicalBoundary.hs` は、この形の入力（後の罫線を持ち最初の行に脚注を持つ段落）を照合に含む。
+これは golem-layout の側の課題として報告し、golem-layout は直していない。
 
 回り込み図版は、長さのないスロット（`SWrapped`）として段に置き、横に収まる行（`fittingWrapped`）を図版の終わりまでの長さを予約して置き、残りの行を次の段から置く（`placeWrappedOverflow`）。
 横の行と残りの行の前のアキは `physicalWrappedBefore` の値で、`Env.wrappedBefore` に写した。
@@ -917,6 +938,10 @@ golem-typeset が `physicalPitches` に送りを与えるのは段落の単位�
 `fitsFollowingGo` が `placeRuled` を呼ぶときは後続のフローの数が等しく、`ruledRank` は 3 以下なので、二つ目が減る。
 `placeRuled` が `fitsFollowingGo` を呼ぶときは、`keepAhead` が返す列が元の列より長くならないので（`keepWanted_length`）、一つ目が減る。
 `placeRuled` が自身を呼ぶときは、罫線を外すか共有をやめれば `ruledRank` が減り、`fit` が段を進めれば `rank` が減る（`I4_fit_moved`）。
+罫線つきの段落を置く段を決める `ruledHere`、`settlesHere`、`movesForFollowing` も、同じ相互再帰に入る。
+`ruledHere` と `movesForFollowing` の尺度は後に続くフローの数に 1 を足した値、0、0 の組で、`settlesHere` の尺度は後に続くフローの数、1、0 の組である。
+`placeRuled` は同じ後続で `ruledHere` を呼ぶので二つ目が減り、`ruledHere` は同じ後続で `settlesHere` を呼ぶので一つ目が減る。
+`settlesHere` は後続の先頭を除いた列で `ruledHere` と `movesForFollowing` を呼ぶので二つ目が減り、`movesForFollowing` が `fitsFollowingGo` に渡す列は後続より長くならないので一つ目が減る。
 見出しを置く前の `keepFollowing` と奇数ページへの改ページは `rank` を増やさない（`rank_headingState_le`）。
 
 `drainCarry` は、`waiting` とページの残りの段数の辞書式順序で止まる（`I4_drain_rank`）。
@@ -959,7 +984,7 @@ id が 702 と 705 の行には 3 sp、712 の行には 5 sp の `physicalWrappe
 `PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
 `PhysicalBoundary.hs` は、2 秒で終わらない入力を `out fail loop` と書き出し、`PhysicalBoundary.lean` は `noProgress` を同じく書き出す。
 見出しの行の送りが 14 sp の表の 8 個の入力では、4 個が両方で `loop` になった。
-`check.sh` は二つの出力を `diff` で比べ、151738 個の入力と 10368 個の試しですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、151930 個の入力と 10368 個の試しですべて一致した。
 写した計算を一つずつ替えると、`drainCarried` を外すと 308 個、組の段に組の縮みを渡さないと 474 個、組の段に脚注の行を確保しないと 356 個の入力で出力が食い違った。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
@@ -1060,8 +1085,8 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:990` `placeFlow` の混ぜた `FBoxed`、`:1023` `boxKeepLinks`、`:1034` `boxKeepMarks`、`:1038` `boxKeepCounts`、`:1042` `BoxUnitKeep`、`:1049` `boxUnitKeeps`、`:1064` `collectMixedBoxUnits`、`:1150` `placeBoxedStanzaWith` | `collectMixed`、`boxLinks`、`unitKeepsOf`、`unitEntries`、`mapsOf`、`BoxMaps`、`UnitKeep`、`unitGaps`、`linkBreaks`、`unitBoundary`、`atGroupStart`、`paragraphBreak`、`legalBreak`、`boundaryWarnings`、`relaxFor`、`fallbackKeep`、`unrelaxed`、`boxSelected`、`boxShort`、`putUnits`、`putStanzaPart`、`placeBoxedStanza` |
 | `Paginate/Physical.hs:991` `placeFlow` のそのほかの `FBoxed`、`:1008` `flowLines` | `placeGeneric`、`genericExtra`、`genericMinimum`、`placeFlows`、`Inner`、`level`、`flowDepth`、`flowsDepth`、`flowLines`、`bodyLines` |
 | `Paginate/Physical.hs:812` `fitsFollowing` の `FBoxed` | `boxFits` |
-| `Paginate/Physical.hs:1276` `placeRuledKeeping`、`:1292` `placeRuled`、`:1406` `flushPendingRule` | `placeRuledKeeping`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`joiningNext`、`flushPendingRule`、`ruledRank` |
-| `Paginate/Physical.hs:1352` `placeRuled` の `RuledHeading` | `placeRuled`、`headingStateOf`、`keepFrom`、`headingBeforeExtra`、`headingAfterExtra`、`headingNotesExtent`、`putRuledHeading`、`ruledText` |
+| `Paginate/Physical.hs:1311` `placeRuledKeeping`、`:1320` `movesForFollowing`、`:1332` `joinsNext`、`:1345` `ruledHere`、`:1356` `ruleAfterInColumn`、`:1361` `settlesHere`、`:1367` `ruledLinesHere`、`:1380` `ruledLinesPlan`、`:1430` `placeRuled`、`:1502` `flushPendingRule` | `placeRuledKeeping`、`movesForFollowing`、`joiningNext`、`ruledHere`、`hereOr`、`ruleAfterFits`、`ruleAfterFitsLast`、`ruleAfterPos`、`settlesHere`、`ruledLinesHere`、`ruledPlaceAt`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`flushPendingRule`、`ruledRank` |
+| `Paginate/Physical.hs:1448` `placeRuled` の `RuledHeading` | `placeRuled`、`headingStateOf`、`keepFrom`、`headingBeforeExtra`、`headingAfterExtra`、`headingNotesExtent`、`putRuledHeading`、`ruledText` |
 | `Paginate/Physical.hs:1416` `waitFor`、`:1423` `waitForPrior` | `waitFor`、`waitForPrior` |
 | `Paginate/Physical.hs:1659` `breakAt`、`:1675` `parityStart` | `breakAt`、`parityStart` |
 | `Paginate/Physical.hs:298` `headingOnly`、`:824` `keepFollowing`、`:1434` `putHeading`、`:1441` `headingNeed`、`:1450` `placeHeading` | `headingOnly`、`keepFollowing`、`keepFrom`、`keepVirtual`、`keepWanted`、`putHeading`、`headingEnv`、`headingNeed`、`tallAt`、`placeHeading` |
@@ -1204,15 +1229,19 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を
 その間に `step` が通る処理は、`applyBreaks`、`needBefore`、`placeBlank` と、本の部の `placeBookPart` である。
 
 `I3_flushJoin_rule` は、`flushJoin` が置く後の罫線が段の中にあるのは、その領域が段の空きに収まるときに限ることを示す。
-golem-layout と `Whole.lean` は、収まらないときにもその罫線を段の終わりの後に置く。
-`planOf` は、次のブロックが領域を共有するなら後の罫線の領域を数えずにブロックを置き（`modules/golem-layout/src/Golem/Layout/Paginate/Decide.hs:397` と `:406`）、次のブロックが収まらなければ、`flushJoin` が使った行を `min k (free env st)` だけ進めて罫線を置く（`Paginate.hs:797`）。
-容量 3 行の段に、前後に罫線を持つ 1 行の段落と、その後の罫線と領域を共有する 1 行の段落を置くと（`Boundary.hs` の記法で `3 [R100:111:L1:0 R101:111:L1:10 P20:1]`）、1 ページ目の罫線 100 の後の罫線は 32 sp に置かれ、段の最後の行の字面の下端の 28 sp より後になる。
-この罫線は版面の外に出さない（`rsdOutside` が `Nothing`）。
-55358 個の入力のうち、版面の外に出さない罫線を段の外に置いたのは 548 個で、どれも領域を共有するブロックの前で後の罫線が待った入力だった。
-golem-typeset の原稿でも起きる。
-`horizontalStyle` の行数を 4 行にし、前後に罫線（太さ 1pt、`space-before` 10pt、`space-after` 5pt）を持つ段落スタイルで 3 行の段落と 1 行の段落を続けると、1 ページ目の最初の段落の後の罫線は 65pt に置かれ、4 行の段の高さの 60pt を超え、次の段落は 2 ページ目に置かれた。
-これは、`keep-in-column = true` の罫線を段の端の内側に収め、罫線のまとまりを改ページで分けないとする [golem-driver ADR 0027](../../docs/golem-driver/adr/0027-paragraph-style-rules.md) と、`keep-in-column` の既定を `true` とする仕様（`docs/specifications.md:2371`）に反する。
-Haskell の側の誤りとして報告し、golem-layout は直していない。
+golem-layout は、後の罫線を待たせる前に、その罫線が段にとどまるかを確かめる（`Paginate.hs:762` の `settleRuled`、`:775` の `settlesAfter`）。
+`Whole.lean` の `settleRuled` は、後続を渡した `planOf` の計画でブロックが収まり、後続がその罫線を段にとどめるときに限ってその計画で置き、そうでなければ後続を空にした `planOf` の計画、つまり後の罫線の領域をブロック自身のものとして数えた計画で置く。
+後続が罫線を段にとどめるのは、本の部を開いた後続が領域を共有するブロックで始まり、そのブロックが同じ状態から `settleRuled` で置けるときか、待つ罫線を自身の領域に置いても段の空きに収まるとき（`ownFits`）である（`settlesOn`）。
+`settleRuled` と `settlesOn` は互いを呼ぶので、後続の重さ（`flowsWeight`）と 1 か 0 の組を尺度とした。
+`settleRuled` は本の部を開いた後続を渡すので重さが増えず、`settlesOn` は先頭のブロックを除いた後続を渡すので重さが減る（`flattenParts_weight`）。
+
+`I3_settleRuled_rules` は、`settleRuled` の二つの計画のどちらでも、ブロックの罫線が段の中にあることを示す。
+`I3_settleRuled_waiting` は、`settleRuled` が後の罫線を待たせたなら、後続がその罫線を段にとどめることを示し、`I3_settleRuled_used` は、そのときブロックが使った行が待つ罫線の起点の次の行であることを示す。
+`I3_settlesAfter_rule` は、後続が罫線をとどめるなら、次のブロックが同じ段で領域を共有して置けるか、`flushJoin` の罫線が段の中にあることを示す。
+`I3_waiting_rule_in_column` は、待つ罫線の直後のフローが領域を共有するブロックなら、`placeRuled` がそのブロックを二つの罫線とともに段の中に置くか、`flushJoin` の罫線が段の中にあることを示す。
+前の版の golem-layout は、容量 3 行の段に、前後に罫線を持つ 1 行の段落と、その後の罫線と領域を共有する 1 行の段落を置くと、最初の段落の後の罫線を段の外に置いた。
+今の版は、同じ入力（`Boundary.hs` の記法で `3 [R100:110:L1:10 R101:111:L1:20 P30:1]`）で、最初の段落が二つの罫線とともに空の段に収まらないので、罫線を外して 1 ページ目に置き（[golem-driver ADR 0035](../../docs/golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）、次の段落を 2 ページ目に置く。
+`Whole.lean` も同じページと罫線を返す。
 
 本の部の最初のブロックが前のブロックと領域を共有すると、`placeBookPart` の `nextUnit` が待つ罫線を置かずに次の段へ進み、前のブロックの後の罫線が失われる。
 容量 7 行の段で、前後に罫線を持つ 1 行の段落の後に、領域を共有する 1 行の段落と 2 行の段落を `keep-parts = "page"` の本の部に入れると、golem-layout の `paginate` は罫線 100 の後の罫線を置かなかった。

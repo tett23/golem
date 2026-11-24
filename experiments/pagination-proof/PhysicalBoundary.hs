@@ -178,6 +178,24 @@ ruledInputs =
          s <- sides,
          n <- [1, 2]
        ]
+    -- a ruled paragraph before a ruled heading marked as sharing its rule
+    -- before, which the free placement does not share (golem-driver ADR 0027)
+    <> [ (Column cap 0 1, [para 0 p, ruled 100 (Just s) (Just s) False defaultKeep (lines' 10 n), FRuled 101 (Just t) (Just t) True (RuleGrid 10 8) 0 (RuledHeading False (Sp e) (lines' 20 1)), para 30 1])
+       | cap <- [40, 60],
+         p <- [1, 2],
+         s <- sides,
+         t <- take 2 sides,
+         n <- [1, 2],
+         e <- [10, 20]
+       ]
+    -- a ruled paragraph with a note on its first line, its rule after
+    -- placed with the column-end area when it does not lie above the notes
+    <> [ (Column cap 2 1, [para 0 p | p > 0] <> [ruled 100 Nothing (Just s) False (Keep 1 1 False) (noted 10 2 0 m), para 30 1])
+       | cap <- [40, 60],
+         p <- [0, 1],
+         s <- sides,
+         m <- [1 .. 4]
+       ]
 
 -- A column made shorter before a tall line or a need-lines; chains of
 -- keep-with-next and no-break; keeps before a paragraph with a note.

@@ -1757,15 +1757,32 @@ theorem qb_commit (s : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : Lis
   have fp := frame_parts (frame_commitRuled env s body (planOf env s i b a body rest j))
   exact ⟨commit_room env hs s body _ a0 hf, fp.1.trans hq.1, fp.2.1.trans hq.2.1, fp.2.2.trans hq.2.2⟩
 
+/-- `qb_commit` for the plans `settleRuled` commits: sharing the rule
+    after with the flows ahead, or with its own area. -/
+theorem qb_commit' (s : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest rest' : List Flow)
+    (er : rest' = rest ∨ rest' = []) (j : Option (Nat × Int))
+    (hb : RuledOk body) (hq : s.breaks = [] ∧ s.need = none ∧ s.blank = [])
+    (hf : planNeed env s body (planOf env s i b a body rest' j) ≤ free env s) {bx : Bool} (ba : Base bx { s with join := none })
+    (oa : Ok env s) :
+    OR s (commitRuled env s body (planOf env s i b a body rest' j)) (exN (ruledNotes body)) ∧
+      BJ bx env (commitRuled env s body (planOf env s i b a body rest' j)) ∧
+      Ok env (commitRuled env s body (planOf env s i b a body rest' j)) ∧
+      JoinAhead (commitRuled env s body (planOf env s i b a body rest' j)) rest := by
+  have := qb_commit env hs s i b a body rest' j hb hq hf ba oa
+  rcases er with rfl | rfl
+  · exact this
+  · exact ⟨this.1, this.2.1, this.2.2.1, fun n => absurd (this.2.2.2 n) (by simp [joinsHead, flattenParts])⟩
+
 theorem q_placeRuledFresh (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow) (hb : RuledOk body)
     (hq : st.breaks = [] ∧ st.need = none ∧ st.blank = []) :
     QB env st (placeRuledFresh env st i b a body rest) (ruledNotes body) rest := by
   have qf : ∀ s : St, frame s = frame st → s.breaks = [] ∧ s.need = none ∧ s.blank = [] := by
     intro s e; have := frame_parts e; exact ⟨this.1.trans hq.1, this.2.1.trans hq.2.1, this.2.2.trans hq.2.2⟩
-  have cm : ∀ s : St, frame s = frame st → planNeed env s body (planOf env s i b a body rest none) ≤ free env s →
-      QB env s (commitRuled env s body (planOf env s i b a body rest none)) (ruledNotes body) rest := by
-    intro s fs hf _ bs os
-    exact qb_commit env hs s i b a body rest none hb (qf s fs) hf (by rw [withJoin_self s bs.join]; exact bs) os
+  have cm : ∀ s : St, frame s = frame st → ∀ rest', (rest' = rest ∨ rest' = []) →
+      planNeed env s body (planOf env s i b a body rest' none) ≤ free env s →
+      QB env s (commitRuled env s body (planOf env s i b a body rest' none)) (ruledNotes body) rest := by
+    intro s fs rest' er hf _ bs os
+    exact qb_commit' env hs s i b a body rest rest' er none hb (qf s fs) hf (by rw [withJoin_self s bs.join]; exact bs) os
   have h1 : Q env st (if body.recto = true then parityStart env odd st else st) [] ∧
       frame (if body.recto = true then parityStart env odd st else st) = frame st := by
     split
@@ -1792,12 +1809,12 @@ theorem q_placeRuledFresh (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (r
   generalize ruledKeep env s1 i b a body rest = s2 at h2
   obtain ⟨e, fr2⟩ := h2
   have fn2 : frame (nextColumn env s2) = frame st := (frame_nextColumn ..).trans fr2
-  split
-  · rename_i hf; exact Q.thenB e (cm s2 fr2 hf)
+  apply settle_or (fun r => QB env st r (ruledNotes body) rest)
+  · intro rest' er hf; exact Q.thenB e (cm s2 fr2 rest' er hf)
   · split
     · exact Q.thenB e (q_splitRuled env hs _ _ _ _ _ _ hb).toB
-    · split
-      · rename_i _ _ hf; exact Q.thenB (Q.nl e (q_nextColumn env hs _)) (cm _ fn2 hf)
+    · apply settle_or (fun r => QB env st r (ruledNotes body) rest)
+      · intro rest' er hf; exact Q.thenB (Q.nl e (q_nextColumn env hs _)) (cm _ fn2 rest' er hf)
       · exact Q.thenB (Q.nl e (q_nextColumn env hs _)) (q_splitRuled env hs _ _ _ _ _ _ hb).toB
 
 /-- A block after a rule that took the lines the column did not have
@@ -1811,10 +1828,11 @@ theorem qb_placeRuledLow (F : St) (i : Nat) (b a : Bool) (body : RuledBody) (res
       ∧ Ok env (placeRuledFresh env F i b a body rest) ∧ JoinAhead (placeRuledFresh env F i b a body rest) rest := by
   have qf : ∀ s : St, frame s = frame F → s.breaks = [] ∧ s.need = none ∧ s.blank = [] := by
     intro s e; have := frame_parts e; exact ⟨this.1.trans hq.1, this.2.1.trans hq.2.1, this.2.2.trans hq.2.2⟩
-  have cm : ∀ s : St, frame s = frame F → planNeed env s body (planOf env s i b a body rest none) ≤ free env s →
-      QB env s (commitRuled env s body (planOf env s i b a body rest none)) (ruledNotes body) rest := by
-    intro s fs hf _ bs os
-    exact qb_commit env hs s i b a body rest none hb (qf s fs) hf (by rw [withJoin_self s bs.join]; exact bs) os
+  have cm : ∀ s : St, frame s = frame F → ∀ rest', (rest' = rest ∨ rest' = []) →
+      planNeed env s body (planOf env s i b a body rest' none) ≤ free env s →
+      QB env s (commitRuled env s body (planOf env s i b a body rest' none)) (ruledNotes body) rest := by
+    intro s fs rest' er hf _ bs os
+    exact qb_commit' env hs s i b a body rest rest' er none hb (qf s fs) hf (by rw [withJoin_self s bs.join]; exact bs) os
   simp only [placeRuledFresh]
   -- the first column of the block: the next recto, or the column of F
   have h1 : OR F (if body.recto = true then parityStart env odd F else F) [] ∧
@@ -1886,30 +1904,32 @@ theorem qb_placeRuledLow (F : St) (i : Nat) (b a : Bool) (body : RuledBody) (res
   have fin : ∀ R Y, (OR s2 R Y ∧ BJ bx env R ∧ Ok env R ∧ JoinAhead R rest) →
       OR F R Y ∧ BJ bx env R ∧ Ok env R ∧ JoinAhead R rest := by
     intro R Y h; exact ⟨by simpa using r12.trans h.1, h.2⟩
+  let P : St → Prop := fun R => OR F R (exN (ruledNotes body)) ∧ BJ bx env R ∧ Ok env R ∧ JoinAhead R rest
   rcases o2' with o2 | f
-  · split
-    · rename_i hf; exact fin _ _ (cm s2 fr2 hf b2 o2)
+  · apply settle_or P
+    · intro rest' er hf; exact fin _ _ (cm s2 fr2 rest' er hf b2 o2)
     · split
       · exact fin _ _ ((q_splitRuled env hs _ _ _ _ _ _ hb).toB b2 o2)
-      · split
-        · rename_i _ _ hf; exact fin _ _ (Q.thenB (q_nextColumn env hs _) (cm _ fn2 hf) b2 o2)
+      · apply settle_or P
+        · intro rest' er hf; exact fin _ _ (Q.thenB (q_nextColumn env hs _) (cm _ fn2 rest' er hf) b2 o2)
         · exact fin _ _ (Q.thenB (q_nextColumn env hs _) (q_splitRuled env hs _ _ _ _ _ _ hb).toB b2 o2)
   · have u2 : s2.used < 0 := by rw [f.1]; exact hu
     have fz : free env s2 = free env F := by
       simp only [free, cap, boxAfter, f.1, f.2.1, f.2.2.2.1, f.2.2.2.2.1]
-    have pn := planNeed_ge env hs.sep s2 body (planOf env s2 i b a body rest none)
     have sz := hb.size
     have ne := isEmpty_low b2 u2
-    split
-    · rename_i hf'; omega
+    apply settle_or P
+    · intro rest' _ hf'
+      have pn := planNeed_ge env hs.sep s2 body (planOf env s2 i b a body rest' none)
+      omega
     · split
       · rename_i c; rw [ne] at c; exact absurd c (by decide)
       · have a3 : OR s2 (nextColumn env s2) [] ∧ Base bx (nextColumn env s2) ∧ Ok env (nextColumn env s2) :=
           adv env hs _ s2 (by rw [withJoin_self _ b2.join]; exact b2)
         obtain ⟨r3, b3, o3⟩ := a3
-        split
-        · rename_i _ _ hf
-          have h := cm _ fn2 hf b3 o3
+        apply settle_or P
+        · intro rest' er hf
+          have h := cm _ fn2 rest' er hf b3 o3
           exact fin _ _ ⟨by simpa using r3.trans h.1, h.2⟩
         · have h := (q_splitRuled env hs (nextColumn env s2) i b a body rest hb).toB (rest := rest) b3 o3
           exact fin _ _ ⟨by simpa using r3.trans h.1, h.2⟩
@@ -1923,11 +1943,9 @@ theorem q_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest
   split
   · rename_i jj e
     have w : W env st := bj.2 (by rw [e]; simp)
-    split
-    · rename_i c
-      have hf : planNeed env st body (planOf env st i b a body rest (some jj)) ≤ free env st := by
-        simp only [Bool.and_eq_true, decide_eq_true_eq] at c; exact c.2
-      exact qb_commit env hs st i b a body rest (some jj) hb hq hf bj.1 oa
+    apply joined_or (fun R => OR st R (exN (ruledNotes body)) ∧ BJ bx env R ∧ Ok env R ∧ JoinAhead R rest)
+    · intro rest' er hf
+      exact qb_commit' env hs st i b a body rest rest' er (some jj) hb hq hf bj.1 oa
     · have fq := frame_parts (frame_flushJoin env st)
       have hq' : (flushJoin env st).breaks = [] ∧ (flushJoin env st).need = none ∧ (flushJoin env st).blank = [] :=
         ⟨fq.1.trans hq.1, fq.2.1.trans hq.2.1, fq.2.2.trans hq.2.2⟩

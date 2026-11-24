@@ -2049,6 +2049,91 @@ def flushJoin (env : Env) (st : St) : St :=
       rules := st.rules ++ [⟨a, false, aLast,
         if cap env st - st.noteLines ≤ aLast + 1 + env.ruleAfter a then .atEnd (st.noteLines == 0) else .inside, k⟩] }
 
+/-- The grid lines of the area of the rule after that waits, in its own
+    area (`ownAfter` of Paginate.hs): at the end of the column when the
+    area would reach it or the footnote lines. -/
+def ownArea (env : Env) (st : St) (a : Nat) (aLast : Int) : Nat :=
+  if cap env st - st.noteLines ≤ aLast + 1 + env.ruleAfter a
+  then env.ruleAfterAtEnd a (st.noteLines == 0) else env.ruleAfter a
+
+/-- `maybe True ((<= free env st) . snd) (ownAfter env st)` of
+    Paginate.hs: the rule after that waits fits the room in its own area. -/
+def ownFits (env : Env) (st : St) : Bool :=
+  match st.join with
+  | none => true
+  | some (a, aLast) => decide ((ownArea env st a aLast : Int) ≤ free env st)
+
+mutual
+/-- `settleRuled` of Paginate.hs: a block placed here when its block fits
+    the room.  Its rule after shares an area with the next block's rule
+    before only when that block goes on in this column (golem-driver ADR
+    0027, 「隣り合う罫線」); otherwise the area is its own and is counted in
+    the block, so that the rule stays in the column. -/
+def settleRuled (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBody) (rest : List Flow)
+    (joined : Option (Nat × Int)) : Option St :=
+  if planNeed env st body (planOf env st i before after body rest joined) ≤ free env st
+      ∧ settlesOn env (commitRuled env st body (planOf env st i before after body rest joined)) (flattenParts rest) = true then
+    some (commitRuled env st body (planOf env st i before after body rest joined))
+  else if planNeed env st body (planOf env st i before after body [] joined) ≤ free env st then
+    some (commitRuled env st body (planOf env st i before after body [] joined))
+  else none
+termination_by (flowsWeight rest, 1)
+decreasing_by
+  simp_wf
+  have := flattenParts_weight rest
+  rcases Nat.lt_or_eq_of_le this with h | h
+  · exact Prod.Lex.left _ _ h
+  · rw [h]; exact Prod.Lex.right _ (by decide)
+
+/-- `settlesAfter` of Paginate.hs on the flows ahead with their book parts
+    opened (`flattenBookParts`): the rule after that waits stays in the
+    column: the next block takes it into its area in this column, or its
+    own area fits the room. -/
+def settlesOn (env : Env) (st : St) (fs : List Flow) : Bool :=
+  match st.join, fs with
+  | none, _ => true
+  | some j, .ruled i true a true body :: later =>
+    if !body.recto && (settleRuled env st i true a body later (some j)).isSome then true
+    else ownFits env st
+  | some _, _ => ownFits env st
+termination_by (flowsWeight fs, 0)
+decreasing_by
+  simp_wf
+  apply Prod.Lex.left
+  simp only [flowsWeight]; omega
+end
+
+/-- `settlesAfter` of Paginate.hs. -/
+def settlesAfter (env : Env) (st : St) (rest : List Flow) : Bool := settlesOn env st (flattenParts rest)
+
+/-- What `settleRuled` places: the block committed with the plan that
+    shares its rule after with the flows ahead, or with the plan whose
+    rule after takes its own area, each fitting the room. -/
+theorem settleRuled_spec (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody) (rest : List Flow)
+    (j : Option (Nat × Int)) (r : St) (h : settleRuled env st i b a body rest j = some r) :
+    ∃ rest', (rest' = rest ∨ rest' = []) ∧ planNeed env st body (planOf env st i b a body rest' j) ≤ free env st
+      ∧ r = commitRuled env st body (planOf env st i b a body rest' j) := by
+  unfold settleRuled at h
+  split at h
+  · rename_i c; exact ⟨rest, Or.inl rfl, c.1, (Option.some.inj h).symm⟩
+  · split at h
+    · rename_i c; exact ⟨[], Or.inr rfl, c, (Option.some.inj h).symm⟩
+    · cases h
+
+/-- A property of every block `settleRuled` commits holds of what a
+    placement that falls back to `x` places. -/
+theorem settle_or (P : St → Prop) (env : Env) (st : St) (i : Nat) (b a : Bool) (body : RuledBody)
+    (rest : List Flow) (j : Option (Nat × Int)) (x : St)
+    (hc : ∀ rest', (rest' = rest ∨ rest' = []) → planNeed env st body (planOf env st i b a body rest' j) ≤ free env st →
+      P (commitRuled env st body (planOf env st i b a body rest' j)))
+    (hx : P x) :
+    P (match settleRuled env st i b a body rest j with | some p => p | none => x) := by
+  cases h : settleRuled env st i b a body rest j with
+  | none => exact hx
+  | some r =>
+    obtain ⟨rest', e, fit, hr⟩ := settleRuled_spec env st i b a body rest j r h
+    simp only []; rw [hr]; exact hc rest' e fit
+
 /-- The columns a block with no rule waiting goes on to first: a heading
     not at a recto keeps the first part of what follows, a paragraph of
     keep-with-next the first part of what follows that. -/
@@ -2065,26 +2150,58 @@ def ruledKeep (env : Env) (st1 : St) (i : Nat) (before after : Bool) (body : Rul
 /-- `placeRuled` of Paginate.hs with no rule waiting. -/
 def placeRuledFresh (env : Env) (st : St) (i : Nat) (before after : Bool) (body : RuledBody) (rest : List Flow) : St :=
   let st1 := if body.recto then parityStart env odd st else st
-  let plan (s : St) := planOf env s i before after body rest none
   let st2 := ruledKeep env st1 i before after body rest
-  if planNeed env st2 body (plan st2) ≤ free env st2 then commitRuled env st2 body (plan st2)
-  else if isEmpty st2 then splitRuled env st2 i before after body rest
-  else
-    let st3 := nextColumn env st2
-    if planNeed env st3 body (plan st3) ≤ free env st3 then commitRuled env st3 body (plan st3)
-    else splitRuled env st3 i before after body rest
+  match settleRuled env st2 i before after body rest none with
+  | some placed => placed
+  | none =>
+    if isEmpty st2 then splitRuled env st2 i before after body rest
+    else
+      match settleRuled env (nextColumn env st2) i before after body rest none with
+      | some placed => placed
+      | none => splitRuled env (nextColumn env st2) i before after body rest
+
+/-- The block placed sharing the area of the rule waiting `j`, when it
+    shares it (`frJoined`, a rule before, not at a recto) and settles in
+    this column. -/
+def settleJoined (env : Env) (st : St) (i : Nat) (before after joined : Bool) (body : RuledBody) (rest : List Flow)
+    (j : Nat × Int) : Option St :=
+  if joined && before && !body.recto then settleRuled env st i before after body rest (some j) else none
 
 /-- `placeRuled` of Paginate.hs: a block whose rule before shares the area
-    of the rule waiting when it fits there; else the rule waiting takes
+    of the rule waiting when it settles there; else the rule waiting takes
     its own area first. -/
 def placeRuled (env : Env) (st : St) (i : Nat) (before after joined : Bool) (body : RuledBody) (rest : List Flow) : St :=
   match st.join with
   | some j =>
-    if joined && before && !body.recto
-        && decide (planNeed env st body (planOf env st i before after body rest (some j)) ≤ free env st) then
-      commitRuled env st body (planOf env st i before after body rest (some j))
-    else placeRuledFresh env (flushJoin env st) i before after body rest
+    match settleJoined env st i before after joined body rest j with
+    | some placed => placed
+    | none => placeRuledFresh env (flushJoin env st) i before after body rest
   | none => placeRuledFresh env st i before after body rest
+
+theorem settleJoined_spec (env : Env) (st : St) (i : Nat) (b a jn : Bool) (body : RuledBody) (rest : List Flow)
+    (jj : Nat × Int) (r : St) (h : settleJoined env st i b a jn body rest jj = some r) :
+    (jn && b && !body.recto) = true ∧ settleRuled env st i b a body rest (some jj) = some r := by
+  unfold settleJoined at h
+  split at h
+  · rename_i c; exact ⟨c, h⟩
+  · cases h
+
+/-- A property of every block committed sharing the rule waiting `jj`
+    holds of what `placeRuled` places when a rule waits, falling back to
+    `x`. -/
+theorem joined_or (P : St → Prop) (env : Env) (st : St) (i : Nat) (b a jn : Bool) (body : RuledBody)
+    (rest : List Flow) (jj : Nat × Int) (x : St)
+    (hc : ∀ rest', (rest' = rest ∨ rest' = []) →
+      planNeed env st body (planOf env st i b a body rest' (some jj)) ≤ free env st →
+      P (commitRuled env st body (planOf env st i b a body rest' (some jj))))
+    (hx : P x) :
+    P (match settleJoined env st i b a jn body rest jj with | some p => p | none => x) := by
+  cases h : settleJoined env st i b a jn body rest jj with
+  | none => exact hx
+  | some r =>
+    obtain ⟨_, h2⟩ := settleJoined_spec env st i b a jn body rest jj r h
+    obtain ⟨rest', e, fit, hr⟩ := settleRuled_spec env st i b a body rest (some jj) r h2
+    simp only []; rw [hr]; exact hc rest' e fit
 
 /-! ## One flow and the flows of a part (mutual: a book part and a box run their flows by `step`) -/
 
@@ -2951,20 +3068,21 @@ theorem text_placeRuledFresh (env : Env) (st : St) (i : Nat) (b a : Bool) (body 
   simp only [placeRuledFresh]
   generalize (if body.recto = true then parityStart env odd st else st) = s1 at h1
   have h2 : ∀ s2 : St, text s2 = text st →
-      text (if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
-          commitRuled env s2 body (planOf env s2 i b a body rest none)
-        else if isEmpty s2 = true then splitRuled env s2 i b a body rest
-        else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-            ≤ free env (nextColumn env s2) then
-          commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-        else splitRuled env (nextColumn env s2) i b a body rest) = text st ++ flowText (.ruled 0 false false false body) := by
+      text (match settleRuled env s2 i b a body rest none with
+        | some placed => placed
+        | none =>
+          if isEmpty s2 = true then splitRuled env s2 i b a body rest
+          else
+            match settleRuled env (nextColumn env s2) i b a body rest none with
+            | some placed => placed
+            | none => splitRuled env (nextColumn env s2) i b a body rest) = text st ++ flowText (.ruled 0 false false false body) := by
     intro s2 e
-    split
-    · rw [text_commitRuled, e]
+    apply settle_or (fun r => text r = _)
+    · intro _ _ _; rw [text_commitRuled, e]
     · split
       · rw [text_splitRuled, e]
-      · split
-        · rw [text_commitRuled, text_nextColumn, e]
+      · apply settle_or (fun r => text r = _)
+        · intro _ _ _; rw [text_commitRuled, text_nextColumn, e]
         · rw [text_splitRuled, text_nextColumn, e]
   apply h2
   cases body with
@@ -2983,8 +3101,8 @@ theorem text_placeRuled (env : Env) (st : St) (i : Nat) (b a j : Bool) (body : R
   rw [e]
   unfold placeRuled
   split
-  · split
-    · exact text_commitRuled ..
+  · apply joined_or (fun r => text r = _)
+    · intro _ _ _; exact text_commitRuled ..
     · rw [text_placeRuledFresh, text_flushJoin]
   · exact text_placeRuledFresh ..
 
@@ -5023,6 +5141,20 @@ theorem commit_good (env : Env) (hs : 0 ≤ env.separator) (s : St) (i : Nat) (b
     rw [j1] at n
     exact (planOf_waiting' env s i b a body rest j n).1
 
+/-- `commit_good` for the plans `settleRuled` commits: sharing the rule
+    after with the flows ahead, or with its own area. -/
+theorem commit_good' (env : Env) (hs : 0 ≤ env.separator) (s : St) (i : Nat) (b a : Bool) (body : RuledBody)
+    (rest rest' : List Flow) (e : rest' = rest ∨ rest' = []) (j : Option (Nat × Int)) (h : Inv { s with join := none })
+    (q : s.breaks = [] ∧ s.need = none ∧ s.blank = [])
+    (hf : planNeed env s body (planOf env s i b a body rest' j) ≤ free env s) :
+    figs (commitRuled env s body (planOf env s i b a body rest' j)) = figs s
+      ∧ Good env (commitRuled env s body (planOf env s i b a body rest' j))
+      ∧ JoinAhead (commitRuled env s body (planOf env s i b a body rest' j)) rest := by
+  have := commit_good env hs s i b a body rest' j h q hf
+  rcases e with rfl | rfl
+  · exact this
+  · exact ⟨this.1, this.2.1, fun n => absurd (this.2.2 n) (by simp [joinsHead, flattenParts])⟩
+
 theorem placeRuledFresh_good (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Nat) (b a : Bool)
     (body : RuledBody) (rest : List Flow) (h : Inv st) (q : st.breaks = [] ∧ st.need = none ∧ st.blank = []) :
     figs (placeRuledFresh env st i b a body rest) = figs st ∧ Good env (placeRuledFresh env st i b a body rest)
@@ -5035,13 +5167,6 @@ theorem placeRuledFresh_good (env : Env) (hs : 0 ≤ env.separator) (st : St) (i
     · exact ⟨rfl, h, rfl⟩
   have qf : ∀ s : St, frame s = frame st → s.breaks = [] ∧ s.need = none ∧ s.blank = [] := by
     intro s e; have := frame_parts e; exact ⟨this.1.trans q.1, this.2.1.trans q.2.1, this.2.2.trans q.2.2⟩
-  have cg : ∀ s : St, Inv s → frame s = frame st →
-      planNeed env s body (planOf env s i b a body rest none) ≤ free env s →
-      figs (commitRuled env s body (planOf env s i b a body rest none)) = figs s
-        ∧ Good env (commitRuled env s body (planOf env s i b a body rest none))
-        ∧ JoinAhead (commitRuled env s body (planOf env s i b a body rest none)) rest := by
-    intro s is fs hf
-    exact commit_good env hs s i b a body rest none (by rwa [withJoin_self s is.join]) (qf s fs) hf
   have sg : ∀ s : St, Inv s →
       figs (splitRuled env s i b a body rest) = figs s ∧ Good env (splitRuled env s i b a body rest)
         ∧ JoinAhead (splitRuled env s i b a body rest) rest := by
@@ -5049,25 +5174,30 @@ theorem placeRuledFresh_good (env : Env) (hs : 0 ≤ env.separator) (st : St) (i
     have := splitRuled_figs env hs s i b a body rest is
     exact ⟨this.1, Or.inl this.2, joinAhead_of_none _ this.2.join⟩
   have last : ∀ s2 : St, figs s2 = figs st → Inv s2 → frame s2 = frame st →
-      let r := if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
-          commitRuled env s2 body (planOf env s2 i b a body rest none)
-        else if isEmpty s2 = true then splitRuled env s2 i b a body rest
-        else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-            ≤ free env (nextColumn env s2) then
-          commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-        else splitRuled env (nextColumn env s2) i b a body rest
+      let r := match settleRuled env s2 i b a body rest none with
+        | some placed => placed
+        | none =>
+          if isEmpty s2 = true then splitRuled env s2 i b a body rest
+          else
+            match settleRuled env (nextColumn env s2) i b a body rest none with
+            | some placed => placed
+            | none => splitRuled env (nextColumn env s2) i b a body rest
       figs r = figs st ∧ Good env r ∧ JoinAhead r rest := by
     intro s2 e i2 fr2
     have n2 := inv_nextColumn env s2 i2
     have e2 : figs (nextColumn env s2) = figs st := (figs_nextColumn ..).trans e
     have fn2 : frame (nextColumn env s2) = frame st := (frame_nextColumn ..).trans fr2
     simp only []
-    split
-    · rename_i hf; have := cg s2 i2 fr2 hf; exact ⟨this.1.trans e, this.2⟩
+    apply settle_or (fun r => figs r = figs st ∧ Good env r ∧ JoinAhead r rest)
+    · intro rest' er hf
+      have := commit_good' env hs s2 i b a body rest rest' er none (by rwa [withJoin_self s2 i2.join]) (qf s2 fr2) hf
+      exact ⟨this.1.trans e, this.2⟩
     · split
       · have := sg s2 i2; exact ⟨this.1.trans e, this.2⟩
-      · split
-        · rename_i _ _ hf; have := cg _ n2 fn2 hf; exact ⟨this.1.trans e2, this.2⟩
+      · apply settle_or (fun r => figs r = figs st ∧ Good env r ∧ JoinAhead r rest)
+        · intro rest' er hf
+          have := commit_good' env hs _ i b a body rest rest' er none (by rwa [withJoin_self _ n2.join]) (qf _ fn2) hf
+          exact ⟨this.1.trans e2, this.2⟩
         · have := sg _ n2; exact ⟨this.1.trans e2, this.2⟩
   simp only [placeRuledFresh]
   generalize (if body.recto = true then parityStart env odd st else st) = s1 at h1
@@ -5100,11 +5230,9 @@ theorem placeRuled_good (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Na
       rcases hg with i0 | w
       · rw [i0.join] at e; cases e
       · exact w
-    split
-    · rename_i c
-      have hf : planNeed env st body (planOf env st i b a body rest (some jj)) ≤ free env st := by
-        simp only [Bool.and_eq_true, decide_eq_true_eq] at c; exact c.2
-      exact commit_good env hs st i b a body rest (some jj) w.inv q hf
+    apply joined_or (fun r => figs r = figs st ∧ Good env r ∧ JoinAhead r rest)
+    · intro rest' er hf
+      exact commit_good' env hs st i b a body rest rest' er (some jj) w.inv q hf
     · have fl := flushJoin_inv env st w
       have := placeRuledFresh_good env hs (flushJoin env st) i b a body rest fl.2
         (by have := frame_parts (frame_flushJoin env st); exact ⟨this.1.trans q.1, this.2.1.trans q.2.1, this.2.2.trans q.2.2⟩)

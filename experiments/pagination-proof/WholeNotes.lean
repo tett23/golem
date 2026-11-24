@@ -1226,20 +1226,21 @@ theorem rel_placeRuledFresh (st : St) (i : Nat) (b a : Bool) (body : RuledBody) 
   simp only [placeRuledFresh]
   generalize (if body.recto = true then parityStart env odd st else st) = s1 at h1
   have h2 : ∀ s2 : St, Rel st s2 [] →
-      Rel st (if planNeed env s2 body (planOf env s2 i b a body rest none) ≤ free env s2 then
-          commitRuled env s2 body (planOf env s2 i b a body rest none)
-        else if isEmpty s2 = true then splitRuled env s2 i b a body rest
-        else if planNeed env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-            ≤ free env (nextColumn env s2) then
-          commitRuled env (nextColumn env s2) body (planOf env (nextColumn env s2) i b a body rest none)
-        else splitRuled env (nextColumn env s2) i b a body rest) (ruledNotes body) := by
+      Rel st (match settleRuled env s2 i b a body rest none with
+        | some placed => placed
+        | none =>
+          if isEmpty s2 = true then splitRuled env s2 i b a body rest
+          else
+            match settleRuled env (nextColumn env s2) i b a body rest none with
+            | some placed => placed
+            | none => splitRuled env (nextColumn env s2) i b a body rest) (ruledNotes body) := by
     intro s2 e
-    split
-    · exact Rel.nl e (rel_commitRuled env _ _ _)
+    apply settle_or (fun r => Rel st r (ruledNotes body))
+    · intro _ _ _; exact Rel.nl e (rel_commitRuled env _ _ _)
     · split
       · exact Rel.nl e (rel_splitRuled env hs _ _ _ _ _ _)
-      · split
-        · exact Rel.nl e (Rel.nl (rel_nextColumn env hs _) (rel_commitRuled env _ _ _))
+      · apply settle_or (fun r => Rel st r (ruledNotes body))
+        · intro _ _ _; exact Rel.nl e (Rel.nl (rel_nextColumn env hs _) (rel_commitRuled env _ _ _))
         · exact Rel.nl e (Rel.nl (rel_nextColumn env hs _) (rel_splitRuled env hs _ _ _ _ _ _))
   apply h2
   cases body with
@@ -1259,8 +1260,8 @@ theorem rel_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (re
     Rel st (placeRuled env st i b a j body rest) (ruledNotes body) := by
   unfold placeRuled
   split
-  · split
-    · exact rel_commitRuled env _ _ _
+  · apply joined_or (fun r => Rel st r (ruledNotes body))
+    · intro _ _ _; exact rel_commitRuled env _ _ _
     · exact Rel.nl (rel_flushJoin env st) (rel_placeRuledFresh env hs _ _ _ _ _ _)
   · exact rel_placeRuledFresh env hs _ _ _ _ _ _
 
