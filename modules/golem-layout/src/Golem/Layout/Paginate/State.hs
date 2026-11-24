@@ -34,6 +34,7 @@ module Golem.Layout.Paginate.State
     isPageFigure,
     flushDeferred,
     flushFigures,
+    drainPendingNotes,
   )
 where
 
@@ -383,6 +384,39 @@ carryNote env st (i, from, len) =
               sNoteLines = sNoteLines st + sep + shown,
               sPendingNotes = sPendingNotes st <> [(i, from + shown, len - shown) | shown < len]
             }
+
+{- | The continued notes take the room that @page-lines has added to the
+column, in their order, before any later note (root ADR 0444): all of it
+when the column has text, all but one line when it has none, as
+'carryNote' leaves one. What does not fit goes on to the next column.
+-}
+drainPendingNotes :: Env -> St -> St
+drainPendingNotes env st
+  | null (sPendingNotes st) || room <= 0 = st
+  | otherwise =
+      st
+        { sNotes = foldl' joinNotePart (sNotes st) shown,
+          sNoteLines = sNoteLines st + sep + sum [n | (_, _, n) <- shown],
+          sPendingNotes = rest
+        }
+  where
+    sep = if sNoteLines st == 0 then envSeparator env else 0
+    room = free env st - sep - (if null (sSlots st) then 1 else 0)
+    (shown, rest) = takeNoteLines room (sPendingNotes st)
+
+-- | The first @r@ lines of notes in parts, in their order, and the rest.
+takeNoteLines :: Int -> [(NoteId, Int, Int)] -> ([(NoteId, Int, Int)], [(NoteId, Int, Int)])
+takeNoteLines _ [] = ([], [])
+takeNoteLines r notes@((i, from, len) : more)
+  | r <= 0 = ([], notes)
+  | len <= r = let (a, b) = takeNoteLines (r - len) more in ((i, from, len) : a, b)
+  | otherwise = ([(i, from, r)], (i, from + r, len - r) : more)
+
+-- | A part of a note after the parts of a column, joined to the part before it of the same note.
+joinNotePart :: [(NoteId, Int, Int)] -> (NoteId, Int, Int) -> [(NoteId, Int, Int)]
+joinNotePart parts part@(i, from, len) = case reverse parts of
+  (j, from', len') : before | j == i && from' + len' == from -> reverse before <> [(j, from', len' + len)]
+  _ -> parts <> [part]
 
 placeDeferred :: Env -> St -> [Flow] -> St
 placeDeferred _ st [] = st
