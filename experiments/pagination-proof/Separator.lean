@@ -219,9 +219,35 @@ def holdNeeds (capacity : Nat) : Nat → Bool → List Unit → List Unit
       | .blank k => .blank k :: holdNeeds capacity (blanks + k) false rest
       | u => u :: holdNeeds capacity 0 false rest
 
+/-- `settle` of `holdSeparatorNeeds` (root ADR 0398 I7, G07037): a
+    need-lines of `k` lines in a hold, `pos` lines of the hold before it,
+    that no column of `capacity` lines fits (`pos + k > capacity`) becomes
+    `UHeldNeedLines`, which gives no flow; the blank lines before the
+    hold are not counted. -/
+def settleNeed (capacity pos : Nat) : Unit → Unit
+  | .other .pass [.needLines k] f => if capacity < pos + k then .other .pass [] f else .other .pass [.needLines k] f
+  | u => u
+
+/-- The units after `hoisted` with each need-lines of a hold settled:
+    `pos` is `some` of the lines of the hold before the unit, or `none`
+    outside a hold.  A hold starts at a visible separator and goes on
+    through the units `inHold` takes, as `holdSeparatorNeeds` splits the
+    units; the need-lines `hoisted` puts before the first separator is
+    outside the hold. -/
+def settleHolds (capacity : Nat) : Option Nat → List Unit → List Unit
+  | _, [] => []
+  | some pos, u :: rest =>
+    if inHold u then settleNeed capacity pos u :: settleHolds capacity (some (pos + holdLines u)) rest
+    else u :: settleHolds capacity none rest
+  | none, u :: rest =>
+    match u with
+    | .separator _ _ _ _ => u :: settleHolds capacity (some (holdLines u)) rest
+    | _ => u :: settleHolds capacity none rest
+
 /-- The units of `blocks`, after `spaceSeparators` and
     `holdSeparatorNeeds`, in a column of `capacity` lines. -/
-def separatorUnits (capacity : Nat) (us : List Unit) : List Unit := holdNeeds capacity 0 false (space none [] us)
+def separatorUnits (capacity : Nat) (us : List Unit) : List Unit :=
+  settleHolds capacity none (holdNeeds capacity 0 false (space none [] us))
 
 /-- The flows made of the units, as the pagination receives them. -/
 def separatorFlows (capacity : Nat) (us : List Unit) : List Flow := allFlows (separatorUnits capacity us)
@@ -522,10 +548,129 @@ theorem holdNeeds_ins (capacity : Nat) (blanks : Nat) (held : Bool) (us : List U
       · exact (Ins.refl _).append (ih _ _)
       · exact (Ins.refl _).append (ih _ _)
 
-theorem separatorFlows_ins (capacity : Nat) (us : List Unit) : Ins (otherFlows us) (separatorFlows capacity us) := by
+/-- `holdSeparatorNeeds` before its settling keeps the flows of the
+    units and puts only need-lines in between. -/
+theorem holdFlows_ins (capacity : Nat) (us : List Unit) :
+    Ins (otherFlows us) (allFlows (holdNeeds capacity 0 false (space none [] us))) := by
   have h := allFlows_ins (space none [] us)
   rw [space_other none [] Blanks.nil] at h
   exact h.trans (holdNeeds_ins capacity 0 false _)
+
+def isNeed : Flow → Bool
+  | .needLines _ => true
+  | _ => false
+
+/-- The flows without their need-lines. -/
+def dropNeeds : List Flow → List Flow
+  | [] => []
+  | f :: r => if isNeed f then dropNeeds r else f :: dropNeeds r
+
+/-- `ys` is `xs` with some need-lines taken out. -/
+inductive Del : List Flow → List Flow → Prop
+  | nil : Del [] []
+  | keep (f : Flow) {xs ys : List Flow} : Del xs ys → Del (f :: xs) (f :: ys)
+  | drop (k : Nat) {xs ys : List Flow} : Del xs ys → Del (.needLines k :: xs) ys
+
+theorem Del.refl : ∀ xs : List Flow, Del xs xs
+  | [] => .nil
+  | f :: r => .keep f (Del.refl r)
+
+theorem Del.append {a b c d : List Flow} (h : Del a b) (k : Del c d) : Del (a ++ c) (b ++ d) := by
+  induction h with
+  | nil => exact k
+  | keep f _ ih => exact .keep f ih
+  | drop n _ ih => exact .drop n ih
+
+theorem settleNeed_del (capacity pos : Nat) (u : Unit) : Del u.flows (settleNeed capacity pos u).flows := by
+  unfold settleNeed
+  split
+  · split
+    · exact .drop _ .nil
+    · exact Del.refl _
+  · exact Del.refl _
+
+/-- Settling the need-lines of the holds only takes need-lines out. -/
+theorem settleHolds_del (capacity : Nat) (s : Option Nat) (us : List Unit) :
+    Del (allFlows us) (allFlows (settleHolds capacity s us)) := by
+  induction us generalizing s with
+  | nil => cases s <;> exact .nil
+  | cons u rest ih =>
+    cases s with
+    | some a =>
+      simp only [settleHolds]
+      split
+      · exact (settleNeed_del capacity a u).append (ih _)
+      · exact (Del.refl _).append (ih _)
+    | none =>
+      simp only [settleHolds]
+      split
+      · exact (Del.refl _).append (ih _)
+      · exact (Del.refl _).append (ih _)
+
+theorem Del.dropNeeds_eq {xs ys : List Flow} (h : Del xs ys) : dropNeeds xs = dropNeeds ys := by
+  induction h with
+  | nil => rfl
+  | keep f _ ih => simp only [dropNeeds, ih]
+  | drop k _ ih => simp only [dropNeeds, isNeed, ite_true, ih]
+
+theorem Del.sourceText_eq {xs ys : List Flow} (h : Del xs ys) : sourceText xs = sourceText ys := by
+  induction h with
+  | nil => rfl
+  | keep f _ ih => simp only [sourceText, ih]
+  | drop k _ ih => simp only [sourceText, flowText, List.nil_append, ih]
+
+theorem Ins.dropNeeds {xs ys : List Flow} (h : Ins xs ys) : Ins (dropNeeds xs) (dropNeeds ys) := by
+  induction h with
+  | nil => exact .nil
+  | keep f _ ih =>
+    simp only [Separator.dropNeeds]
+    split
+    · exact ih
+    · exact .keep f ih
+  | plain p hp _ ih =>
+    simp only [Separator.dropNeeds]
+    split
+    · exact ih
+    · exact .plain p hp ih
+
+theorem dropNeeds_ins : ∀ xs : List Flow, Ins (dropNeeds xs) xs
+  | [] => .nil
+  | f :: r => by
+    simp only [dropNeeds]
+    split
+    · rename_i e
+      cases f <;> simp [isNeed] at e
+      exact .plain _ rfl (dropNeeds_ins r)
+    · exact .keep f (dropNeeds_ins r)
+
+theorem dropNeeds_mem {f : Flow} : ∀ {xs : List Flow}, f ∈ dropNeeds xs → f ∈ xs
+  | [], m => m
+  | g :: r, m => by
+    simp only [dropNeeds] at m
+    split at m
+    · exact List.mem_cons_of_mem _ (dropNeeds_mem m)
+    · rcases List.mem_cons.mp m with e | m
+      · subst e; exact List.mem_cons_self _ _
+      · exact List.mem_cons_of_mem _ (dropNeeds_mem m)
+
+theorem sourceFigs_dropNeeds : ∀ xs : List Flow, sourceFigs (dropNeeds xs) = sourceFigs xs
+  | [] => rfl
+  | f :: r => by
+    simp only [dropNeeds]
+    split
+    · rename_i e
+      cases f <;> simp [isNeed] at e
+      simp only [sourceFigs, flowFigs, List.nil_append, sourceFigs_dropNeeds r]
+    · simp only [sourceFigs, sourceFigs_dropNeeds r]
+
+/-- The flows made keep the flows of the units but their need-lines, and
+    put only plain flows in between: `holdSeparatorNeeds` puts need-lines
+    in and takes out those of a hold that no column fits. -/
+theorem separatorFlows_ins (capacity : Nat) (us : List Unit) :
+    Ins (dropNeeds (otherFlows us)) (separatorFlows capacity us) := by
+  have h := (holdFlows_ins capacity us).dropNeeds
+  rw [(settleHolds_del capacity none _).dropNeeds_eq] at h
+  exact h.trans (dropNeeds_ins _)
 
 theorem plain_flatten {p : Flow} (hp : plainFlow p = true) (r : List Flow) :
     flattenParts (p :: r) = p :: flattenParts r := by
@@ -633,17 +778,21 @@ theorem I4_separator_paginate_ends (env : Env) (us : List Unit) :
     lines `spaceSeparators` puts in or takes out carry no line. -/
 theorem I5_separator_text (env : Env) (us : List Unit) :
     pagesText (paginate env (separatorFlows env.capacity.toNat us)).done = unitsText us := by
-  rw [I5_paginate_text, separatorFlows, separatorUnits, holdNeeds_text, space_text none [] Blanks.nil]
+  rw [I5_paginate_text, separatorFlows, separatorUnits, ← (settleHolds_del _ _ _).sourceText_eq,
+    holdNeeds_text, space_text none [] Blanks.nil]
 
 /-- Root ADR 0352 invariant 5 for the figures on the flows of root ADR
     0398, by `I5_paginate_figures`: its hypotheses on the flows of the
     units other than the separators, the blank lines, the breaks, the
-    gaps and the keep-with-nexts give those on the flows made. -/
+    gaps and the keep-with-nexts give those on the flows made.  `BoxesOk`
+    is asked of those flows without their need-lines, since a need-lines
+    of a hold that no column fits gives no flow (G07037). -/
 theorem I5_separator_figures (env : Env) (hc : 1 ≤ env.capacity) (hs : 0 ≤ env.separator) (us : List Unit)
-    (hf : ∀ f ∈ otherFlows us, figureOk f) (hb : BoxesOk (otherFlows us)) :
+    (hf : ∀ f ∈ otherFlows us, figureOk f) (hb : BoxesOk (dropNeeds (otherFlows us))) :
     pagesFigs (paginate env (separatorFlows env.capacity.toNat us)).done = sourceFigs (otherFlows us) := by
   have i := separatorFlows_ins env.capacity.toNat us
-  rw [I5_paginate_figures env hc hs _ (figureOk_ins i hf) (boxesOk_ins i [] hb), sourceFigs_ins i]
+  rw [I5_paginate_figures env hc hs _ (figureOk_ins i (fun f m => hf f (dropNeeds_mem m))) (boxesOk_ins i [] hb),
+    sourceFigs_ins i, sourceFigs_dropNeeds]
 
 /-! ## The keep after a visible separator -/
 
@@ -744,6 +893,14 @@ theorem Additive.space_eq {α : Type} {T : List Flow → List α} (h : Additive 
       simp only [allFlows]
       rw [h.append, h.append, ih _ [] Blanks.nil]
 
+/-- Taking need-lines out keeps what adds up over the flows. -/
+theorem Additive.del_eq {α : Type} {T : List Flow → List α} (h : Additive T) {xs ys : List Flow} (d : Del xs ys) :
+    T xs = T ys := by
+  induction d with
+  | nil => rfl
+  | keep f _ ih => rw [h.cons, ih, ← h.cons]
+  | drop k _ ih => rw [h.cons, h.onNeedLines, List.nil_append, ih]
+
 theorem Additive.hoisted_eq {α : Type} {T : List Flow → List α} (h : Additive T) (capacity blanks : Nat)
     (hold : List Unit) (r : List Flow) : T (allFlows (hoisted capacity blanks hold) ++ r) = T r := by
   rcases hoisted_flows capacity blanks hold with e | ⟨n, e⟩ <;> rw [e]
@@ -767,7 +924,7 @@ theorem Additive.holdNeeds_eq {α : Type} {T : List Flow → List α} (h : Addit
 
 theorem Additive.separatorFlows_eq {α : Type} {T : List Flow → List α} (h : Additive T) (capacity : Nat)
     (us : List Unit) : T (separatorFlows capacity us) = T (allFlows us) := by
-  rw [separatorFlows, separatorUnits, h.holdNeeds_eq, h.space_eq none [] Blanks.nil]
+  rw [separatorFlows, separatorUnits, ← h.del_eq (settleHolds_del _ _ _), h.holdNeeds_eq, h.space_eq none [] Blanks.nil]
 
 theorem sourceText_additive : Additive sourceText where
   nil := rfl
@@ -2083,7 +2240,7 @@ theorem separatorFlows_hold_gap (capacity : Nat) (kp kq : Keep) (l : Line) (ls :
     separatorFlows capacity [.separator 0 a kp l, .other .block [.paragraph kq ls] (some i)] =
       [.paragraph kp [l], .keepNext 1 l.id] ++ gapFlows (some a) ++ [.paragraph kq ls] := by
   have m : max (blankLines []) a = a := by simp [blankLines]
-  simp [separatorFlows, separatorUnits, space, gapOf, holdOf, keepOf, beforeOf, m, ha, holdNeeds, inHold, hoisted,
+  simp [separatorFlows, separatorUnits, space, gapOf, holdOf, keepOf, beforeOf, m, ha, holdNeeds, inHold, hoisted, settleHolds, settleNeed,
     wants, takeHold, needOf, holdLines, allFlows, Unit.flows, gapFlows]
 
 
