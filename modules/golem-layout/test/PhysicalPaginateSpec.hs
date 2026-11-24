@@ -849,6 +849,7 @@ indexColumnNotesTests =
     -- the lines a to b of pitch 10
     tens :: Int -> Int -> [Sp]
     tens a b = [fromIntegral (10 * i) | i <- [a .. b]]
+
 -- | The index columns on the page of the switch, laid out freely, end before the footnotes of the column before it (root ADR 0441).
 indexOnAdjustedPageTests :: [TestTree]
 indexOnAdjustedPageTests =
