@@ -1035,15 +1035,31 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 回り込み図版の横の段落を改行し直すループ（`parts`）は写したが、改行器と後続の判定を引数とし、golem-typeset の出力とは照合していない。
 golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、まだ写していない。
 
-繰り越した脚注の行が一度ずつ出力に並ぶことと、置いた罫線の位置も、まだ証明していない。
+置いた罫線の位置は、まだ証明していない。
+
 脚注の行は、注ごとに見れば最初の行から順に並ぶが、原稿の注の順には並ばないことがある。
 容量 40 sp、送り 10 sp、区切り 0 sp の 1 段で、`[FParagraph (Keep 1 1 False) (5 行の脚注 500 を持つ 1 行), FAdjustLines 2, FParagraph (Keep 1 1 False) (1 行の脚注 510 を持つ 1 行), 1 行の段落]` を `paginatePhysical` に渡すと、1 ページ目に脚注 500 の 0〜2 行目と脚注 510 の全体が並び、脚注 500 の 3〜4 行目は 2 ページ目に置かれた。
 `FAdjustLines` がない同じ入力では、脚注 510 を持つ行は 2 ページ目に送られ、脚注 500 の続きの後に置かれた。
 `putLineWithReserve`（`Paginate/Physical.hs:404`）は、繰り越す脚注が残っていても、段の残りが増えれば新しい行の脚注を今の段に置くからである。
 [仕様](../../docs/specifications.md)は、前のページから続く脚注を次の本文のページに続ける（5324 行）と定めるが、後の注との順は定めていない。
 このため、この README は食い違いとは扱わず、注の順を定めるかをメンテナーの判断に残す。
-証明は、注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる形にする。
-不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を、注ごとに行の番号へ展開したものが、読んだ行の脚注を展開したものに注ごとに等しいことである。
+そこで、脚注の証明は、注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる。
+不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を、注ごとに行の番号へ展開したものが、読んだ行の脚注を展開したものに注ごとに等しいことである（`WholeNotes.lean` と `PhysicalNotes.lean` の `Rel`）。
+新しい行の脚注は、繰り越す脚注の前に今の段へ置かれることがあるので、この等しさは列全体ではなく注ごとに成り立つ。
+この入れ替わりが同じ注の中で起きないために、原稿の注の id が互いに異なること（`Distinct`）を前提に置く。
+golem-typeset は注の id を注の原稿上の範囲と番号から作る（`Look.hs:250` の `NoteId`、`Structure.hs:114`）ので、実際の入力はこの前提を満たす。
+
+格子モードでは、`WholeNotes.lean` の `I5_paginate_each_note` が、原稿のどの注についても、ページに並ぶその注の行が 0 行目から最後の行まで一度ずつ順に並ぶことを示す。
+ただし、置けない脚注として `unplaceableFootnote` を報告した注は除く。
+`carryNote` は、空の段に脚注の行が入らないとき、その注の残りを捨てて報告するからである。
+証明は、脚注区切りの行数を 0 行以上とする前提も置く。
+繰り越す注の一つが途中までしか入らなかった後は段の残りが 0 行になり、続く注が先に置かれないことに、この前提を使う。
+`I5_paginate_notes` は、原稿にない注の行がページに現れないことも示す。
+
+自由な配置では、`PhysicalNotes.lean` の `I5_paginate_each_note` が同じことを、`paginatePhysical` が成功したすべての入力について示す。
+自由な配置では、入らない脚注は `footnoteTooTall` の失敗になり（`Physical.lean:377`）、`drainCarry` の後に繰り越す脚注が残れば `noProgress` の失敗になる（`Physical.lean:3050`）ので、除く注はない。
+コードの行は脚注を持たない。
+golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3814`）、golem-layout の `placeCode` は行の脚注を読まないからである。
 
 四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
@@ -1068,6 +1084,7 @@ sh experiments/pagination-proof/check.sh
 `check.sh` は境界入力とキャプションの評価値の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
 区切りの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
 `check.sh` は、`Whole.olean` と `Boundary.olean` を作ってから、それを読み込む `Separator.lean` と `SeparatorBoundary.lean` を検査する。
+`WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

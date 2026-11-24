@@ -78,6 +78,16 @@ fi
 "$lean" -o "$tmp/Whole.olean" "$whole"
 echo "the whole pagination model is total and its theorems are proved"
 
+# The footnote lines of the grid mode, note by note (WholeNotes.lean):
+# every theorem proved.
+wholeNotes=$root/experiments/pagination-proof/WholeNotes.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wholeNotes"; then
+  echo "unproved or unchecked Lean declaration in $wholeNotes" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$wholeNotes"
+echo "every footnote line of the grid mode is placed once, note by note"
+
 # The separators of root ADR 0398 on the flows of Whole.lean: every
 # definition must be total and every theorem proved.  The manuscripts of
 # SeparatorBoundary.hs are laid out by golem-typeset in the background,
@@ -154,6 +164,15 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
 fi
 "$lean" -o "$tmp/Physical.olean" "$physical"
 echo "the free placement model is total and its theorems are proved"
+
+# The footnote lines of the free placement, note by note (PhysicalNotes.lean).
+physicalNotes=$root/experiments/pagination-proof/PhysicalNotes.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$physicalNotes"; then
+  echo "unproved or unchecked Lean declaration in $physicalNotes" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$physicalNotes"
+echo "every footnote line of the free placement is placed once, note by note"
 
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).
