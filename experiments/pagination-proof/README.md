@@ -408,7 +408,9 @@ Lean はループごとに減少する尺度の証明を求めるので、定義
 次のページへ進むときは、待つ内容があれば必ず減る。
 先頭の転置図版にページを与えるか、最初の繰り越し脚注を 1 行以上置くか、その脚注を置けないと診断して除くか、待機中の最初の図版を空の段に置くからである。
 待つ内容がなければ、新しいページの段は空になり、行数の縮みも 0 に戻る。
-同じページの次の段へ進むときは、待つ内容が増えず、行数の縮みが 0 に戻り、残りの段数が一つ減る。
+同じページの次の段へ進むときは、待つ内容が増えず、残りの段数が一つ減る。
+行数の縮みの項（`adjustRank`）は、組の段がそろって縮むとき（`setAdjust` が負）は残りの段数に 2 を足した値、その段だけが縮むときは 1、縮まないときは 0 である。
+[root ADR 0441](https://github.com/tett23/golem/blob/7e332092be2f3b7523faaa09d73a7e657f2ca27d/docs/adr/0441-index-columns-on-a-page-with-adjusted-lines.md) の後は、同じページの次の段は組の縮み（`sSetAdjust`）を受け継ぐので、組の段がそろって縮むときは次の段も縮むが、この項が残りの段数の分だけ減る。
 `I4_nextColumn_flush_rank` は、待つ内容がある間は、待つ内容とページの残りの段数の組が減ることを証明する。
 `flushDeferred` と `flushFigures` は、この組で止まる。
 ページの残りの段数は、状態が持つ段組みの段数から求める。
@@ -469,10 +471,12 @@ golem-layout の `paginateWithin` は区切りの行数を 1 以上にするの�
 `KeepColumn` の表の前のアキは `max 0 (min sp (free st))` を足すので、脚注の行数が段の行数を超えて残りの行数が負の段でも、使用行数は段の先頭より下がらない。
 段の容量の前提は、行アキの行数が 0 以上で、行アキを足しても使用行数が減らないことに使う。
 行数の変更（`FAdjustLines`）は段の行数を負にもするが、図版の順序の不変条件はどの値でも保たれる。
-`adjustLines` は使用行数、脚注の行数、スロットを変えず、次の段へ進むと行数の変更は 0 に戻るからである。
+`adjustLines` は使用行数、脚注の行数、スロットを変えないからである。
+`adjustLines` の後の `drainPendingNotes` は、繰り越す脚注を段に移して脚注の行数を増やすだけで、スロットと使用行数を変えない（`drainPendingNotes_eq`）。
 
-段組みを切り替える `FSwitchColumns` は、`FAdjustLines` が足した行を数えず、版面の行（`typeAreaFree`）が残るときだけ同じページで新しい組を始める。
-新しい組の段は行数の変更を 0 に戻し、版面の行数を持つ。
+段組みを切り替える `FSwitchColumns` は、版面の終わりと前の段の脚注の上のどちらか早いほうまでの行（`typeAreaFree`）が残るときだけ、同じページで新しい組を始める。
+新しい組の段は、前の段の行数の変更と脚注の行数の小さいほうを行数の変更とし（`startSet` の `adjust` と `setAdjust`）、同じページの後の段もそれを受け継ぐ。
+この終わりは [root ADR 0441](https://github.com/tett23/golem/blob/7e332092be2f3b7523faaa09d73a7e657f2ca27d/docs/adr/0441-index-columns-on-a-page-with-adjusted-lines.md) が決めたもので、`FAdjustLines` が足した行は数えず、引いた行は数える。
 そのため、組の先頭行は段の行数より小さい。
 `paginate 1 5 [FAdjustLines mk 3, FParagraph defaultKeep (ls 0 7), FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep (ls 10 1), FBreak BreakColumn, FTable 50 0 (ls 20 1) [ls 30 1] [] False]` を `runghc` で実行した（`ls b n` は id が b から n 個の注のない行）。
 1 ページ目は段落の 7 行だけを持ち、2 段組みは 2 ページ目の 0 行目から始まった。
@@ -617,6 +621,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 区切りの保持は、可視の区切りから、区切り、アキ、行アキ、`keep-with-next`、`UPageControl` が続くあいだの単位の列である（`inHold`）。
 この関数は、区切りの保持に `@need-lines` があると、保持の最初の区切りの前に `@need-lines` を一つ足す。
 足す `@need-lines` の行数は、保持の中の各 `@need-lines` について、保持の前の行アキと保持の中でそれより前の行数に、その行数を足したものの最大で、段の行数を超えない。
+PR #1141 の後、この関数は、保持の中でそれより前の行数と合わせると段の行数を超える `@need-lines` を `UHeldNeedLines` に変え、フローを作らずに G07037 で報告する。
+`settleHolds` はこの置き換えを写し、足す `@need-lines` を決めた後の単位の列で、そのような保持の中の `@need-lines` をフローのない単位に変える。
+保持の前の行アキは、この判定では数えない。
 `reported` は、`unmetWarnings`（`Flow.hs:1015`）が区切りの位置の満たせなかった `@need-lines` と `keep-with-next` を報告しない処理（`Flow.hs:1026`、`Flow.hs:1029`）を写す。
 `Whole.lean` の `Unmet` のうち `needLines` は位置を持たないので、`reported` は位置を `Unmet` と組にして受け取る。
 `holdErrors` は、`separatorHoldErrors`（`Flow.hs:793`）を写す。
@@ -650,8 +657,9 @@ golem-typeset は可視の区切りの位置の集合（`separatorSpans`、`Flow
 `space` が足す `keep-with-next`、アキ、行アキと、除く行アキは行を持たないので、`space_text` がこの列を保つ。
 `holdNeeds` が足す `@need-lines` も行を持たないので、`holdNeeds_text` がこの列を保つ。
 `I5_separator_figures` は、図版と転置図版が原稿順に一度ずつ出ることを `I5_paginate_figures` から示す。
-その前提は、区切り、行アキ、改ページ、アキ、`keep-with-next` を除いたほかの単位のフロー（`otherFlows`）についての `figureOk` と `BoxesOk` である。
-`space` と `holdNeeds` が作るフローは、このフローの間に、段落、行アキ、スペース、`keep-with-next`、改ページ、`need-lines` のフロー（`plainFlow`）を挟んだものである（`holdNeeds_ins`、`Ins.trans`、`separatorFlows_ins`）。
+その前提は、区切り、行アキ、改ページ、アキ、`keep-with-next` を除いたほかの単位のフロー（`otherFlows`）についての `figureOk` と、そのフローから `need-lines` を除いた列（`dropNeeds`）についての `BoxesOk` である。
+`settleHolds` が `need-lines` を除くと箱と罫線つきのブロックが隣り合うことがあるので、`BoxesOk` は `need-lines` を除いた列に置く。
+`space` と `holdNeeds` と `settleHolds` が作るフローは、`need-lines` を除いたこのフローの間に、段落、行アキ、スペース、`keep-with-next`、改ページ、`need-lines` のフロー（`plainFlow`）を挟んだものである（`holdFlows_ins`、`Del`、`Ins.dropNeeds`、`separatorFlows_ins`）。
 `boxesOk_ins` と `figureOk_ins` は、そのようなフローを挟んでも二つの前提が保たれることを示す。
 実際のフローでは、`ruledLinks`（`Flow.hs:4664`）が直前のフローが罫線つきのブロックのときだけ共有を付けるので、共有するブロックの直前には `otherFlows` でも罫線つきのブロックがあり、箱は来ない。
 golem-typeset が単位のフローの後に行う `joinBoxes`（`Flow.hs:3960`）、`ruledLinks`（`Flow.hs:4664`）、`markBookParts`（`Flow.hs:4540`）は、`SeparatorBlocks.lean` に写した。
@@ -870,7 +878,9 @@ golem-typeset はコードの行に続く番号を振るので、二つは一致
 
 終了は、各ループが整礎な再帰で定義されていることで示す。
 `I4_nextColumn_rank` は、何かを置いた段か `FAdjustLines` で縮んだ段から次の段へ進むと、尺度 `rank` が減ることを証明する。
-`rank` は、待機中の図版の数と繰り越す脚注ごとの行数に 1 を足した値の和（`waiting`）を 4 倍し、段が縮んでいれば 2 を、段が空でなければ 1 を足した値である。
+`rank` は、待機中の図版の数と繰り越す脚注ごとの行数に 1 を足した値の和（`waiting`）に、組の段の数の 4 倍に 8 を足した重み（`unitWeight`）を掛け、段の縮みの重み（`adjustWeight`）と、段が空でなければ 1 を足した値である。
+段の縮みの重みは、組の段がそろって縮むとき（`psSetAdjustment` を写した `setAdjust` が負）はページの残りの段数の 4 倍に 4 を足した値、その段だけが縮むときは 2、縮まないときは 0 である。
+組の段がそろって縮むときは次の段も縮むので、`fresh_weight` は、次の段の重みが前の段より小さいか 0 であることを示す。
 `placeLines` は残りの行数、`keep-all-lines` の有無、この尺度の辞書式順序で止まる（`I4_trial_moved`、`I4_trial_placed`）。
 `placeStanza` も、残りの詩の行の数、`keep-all-lines` の有無、この尺度の辞書式順序で止まる。
 `placeCode` が収まる段まで進むループは `seek` に写し、`drainCarry` と同じく `waiting` とページの残りの段数の辞書式順序で止まる。
@@ -940,6 +950,7 @@ golem-typeset は、行に `bUnitFirsts updated Map.! index + countBefore` か�
 
 `PhysicalBoundary.hs` は、境界の入力を作って golem-layout の `paginatePhysical` に渡し、入力を `in` の行に、出力のページを `out` の行に書き出す。
 入力は、段の容量 12〜80 sp の 1 段か 2 段の組で、1〜3 個の段落の組み合わせ、段落と図版と回した図版の 1〜4 個の並び、段落の間の制御、脚注つきの段落、単独と共有の罫線つきのブロック、縮めた段、`keep-with-next` と `no-break` の連鎖、節の開始と段組みの切り替えと戻し、見出しと定義の項とその後続、縮めた段の見出し、回した図版の前後の改段と改ページと図版、段落か見出しの後の詩とその後続、コードとその前後の保持と行アキ、見出しの罫線つきのブロックとその前後の見出しと保持と縮めた段、回り込み図版とその前後、見出しの行と本体の行とキャプションと脚注の組み合わせを変えた表とその前後、一つの段落か一つの詩の箱とその前後、段落と詩とスペースと保持を混ぜた箱とそのほかの中身の箱とその前後、段とページと見開きの本の部とその前後、ページか見開きの本の部の中の表、失敗する入力からなる。
+さらに、脚注を繰り越す段の行数の変更とその後の段落か段組みの切り替え、行数の変更の後の段組みの切り替えと組の段に続く段落の入力を足した（[root ADR 0441](https://github.com/tett23/golem/blob/7e332092be2f3b7523faaa09d73a7e657f2ca27d/docs/adr/0441-index-columns-on-a-page-with-adjusted-lines.md) と [root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md)）。
 さらに、図版の前のフロー、図版の高さ、行数の上限、保持、段落の始めかを変えて、回り込み図版の横の段落の一部分を `trialParagraphPartLimit` で試す入力を `tw` の行に書き出す。
 次の段へ送った部分は、送った先の段でもう一度試す。
 id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
@@ -948,7 +959,8 @@ id が 702 と 705 の行には 3 sp、712 の行には 5 sp の `physicalWrappe
 `PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
 `PhysicalBoundary.hs` は、2 秒で終わらない入力を `out fail loop` と書き出し、`PhysicalBoundary.lean` は `noProgress` を同じく書き出す。
 見出しの行の送りが 14 sp の表の 8 個の入力では、4 個が両方で `loop` になった。
-`check.sh` は二つの出力を `diff` で比べ、150106 個の入力と 10368 個の試しですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、151738 個の入力と 10368 個の試しですべて一致した。
+写した計算を一つずつ替えると、`drainCarried` を外すと 308 個、組の段に組の縮みを渡さないと 474 個、組の段に脚注の行を確保しないと 356 個の入力で出力が食い違った。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
 この照合の感度は、写した計算を一つずつ替えて確かめた。
@@ -1069,6 +1081,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 格子モードの改ページ全体は `Whole.lean` が扱う。
 格子モードのすべてのフローについて、改ページ全体の終了と、段落、詩の行、回り込み図版の横の行、定義の項、表の行、見出し、コードの行、罫線つきのブロックの行の過不足と順序を証明した。
 図版と転置図版の過不足と順序は、図版の高さと段の容量を 1 行以上、脚注区切りの行数を 0 行以上とし、箱の直後のブロックが罫線の領域を共有しない（`BoxesOk`）前提の下で証明した。
+図版の高さの前提は、[root ADR 0440](https://github.com/tett23/golem/blob/0c204cb98782e325a9e04357176962419310d182/docs/adr/0440-reject-figures-of-zero-extent-across-the-lines.md) の後は golem-typeset が受け持つ。
+行の方向の長さが 0 sp の図版は G07135 になり、行のない図版とともにページに置かれない（`Flow.hs` の `numberFigure`）。
+`Whole.lean` の `admitFigures` はこの除外を写し、`I5_paginate_figures_admitted` は、除外を通したフローについて、図版の高さの前提なしに図版と転置図版の過不足と順序を示す。
 [root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の完了の判定のうち、一般化できる性質の証明と実装との境界例の照合について、残るのは次の四つである。
 
 一つ目は、境界入力の表のうち、キャプションの行の Lean の側の照合である。
@@ -1082,7 +1097,11 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 三組目は、1 行か 2 行の段落の後に、一つの種類と、見出し、`keep-with-next`、`no-break`、`need-lines` のどれかを両方の順に並べ、最後に 1 行か 3 行の段落を置いたもので、段の容量は 3〜5 行である。
 罫線は、段の中では 1 行、段の始めと終わりでは 2 行、前後の罫線が領域を共有すると 3 行を取る寸法にした。
 コードは、一行が格子の 1 行を取る寸法と、上下に半行のアキを足した寸法の二つを使う。
-`Boundary.lean` は、これらの 48394 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、満たせなかった指定を書き出す。
+さらに、`adjustInputs` の三組 3696 個の入力を足した。
+一組目は、2〜6 行の脚注を持つ 1 行の段落、行数の変更、なしか 1 行の脚注を持つ段落か横の行に 1 行の脚注を持つ回り込み図版か 2 段組みへの切り替えと段落、1 行か 3 行の段落を並べたもので、段の容量は 3〜5 行である（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md)）。
+二組目は、脚注のない段落か脚注つきの段落、行数の変更、2 段か 3 段への切り替え、1〜6 行の段落、1 行の段落を並べたものである（[root ADR 0441](https://github.com/tett23/golem/blob/7e332092be2f3b7523faaa09d73a7e657f2ca27d/docs/adr/0441-index-columns-on-a-page-with-adjusted-lines.md)）。
+三組目は、横の行に脚注を持つ回り込み図版を段落の後か見出しなどの指定の後に置いたものである（[root ADR 0443](https://github.com/tett23/golem/blob/8873337addc24163574d69d33c20d4f95b67ac9b/docs/adr/0443-count-side-line-notes-when-a-wrapped-figure-fits.md)）。
+`Boundary.lean` は、これらの 52090 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、満たせなかった指定を書き出す。
 `Env` は `paginate 1` の容量ごとの `Env` で、その引数は `Decide.hs` の `nextNeed`、`keptNeed`、`keepAhead`、`nextFirstLines`、`fitting`、`roomForLine` を写した関数と、`Code.hs` の `codeSpan` と `RuleArea.hs` の罫線の領域をこの寸法で求めた値である（`boundaryEnv`）。
 `check.sh` は、`Whole.lean` を `.olean` にして `Boundary.lean` を四つに分けて並べて評価し、`Boundary.hs` が golem-layout の `paginate` に同じ入力を渡した出力と `diff` で比べる。
 二つの出力は一致した。
@@ -1102,6 +1121,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 詩では、`nextNeed` の最初の部分を 1 行にすると 66 個である。
 回り込み図版では、`nextNeed` から横の行の数を除くと 16 個である。
 脚注では、`fitting` から脚注の行を除くと 2295 個、`roomForLine` から脚注の行を除くと 40 個、`nextNeed` の求める行から脚注の行を除くと 82 個である。
+足した 3696 個の入力では、`drainPendingNotes` を外すと 336 個、組の後の段に組の縮みを渡さないと 192 個、`startSet` の縮みを 0 にすると 312 個、`typeAreaFree` を版面だけで測ると 184 個、回り込み図版を収める判定から横の行の脚注を除くと 769 個、`nextNeed` の回り込み図版から脚注を除くと 41 個である。
 
 境界入力の照合には、一つのことが残る。
 表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめるので、Lean の側の照合は、二つ目の項目に残る、実フォントの送りを `FigureSpec.hs` の計測値で渡す照合を待つ。
@@ -1152,13 +1172,14 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を
 
 置いた罫線の位置は、まだ証明していない。
 
-脚注の行は、注ごとに見れば最初の行から順に並ぶが、原稿の注の順には並ばないことがある。
-容量 40 sp、送り 10 sp、区切り 0 sp の 1 段で、`[FParagraph (Keep 1 1 False) (5 行の脚注 500 を持つ 1 行), FAdjustLines 2, FParagraph (Keep 1 1 False) (1 行の脚注 510 を持つ 1 行), 1 行の段落]` を `paginatePhysical` に渡すと、1 ページ目に脚注 500 の 0〜2 行目と脚注 510 の全体が並び、脚注 500 の 3〜4 行目は 2 ページ目に置かれた。
-`FAdjustLines` がない同じ入力では、脚注 510 を持つ行は 2 ページ目に送られ、脚注 500 の続きの後に置かれた。
-`putLineWithReserve`（`Paginate/Physical.hs:408`）は、繰り越す脚注が残っていても、段の残りが増えれば新しい行の脚注を今の段に置くからである。
-[仕様](../../docs/specifications.md)は、前のページから続く脚注を次の本文のページに続ける（5327 行）と定めるが、後の注との順は定めていない。
-このため、この README は食い違いとは扱わず、注の順を定めるかをメンテナーの判断に残す。
-そこで、脚注の証明は、注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる。
+脚注の行の原稿の注の順は、[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md) の I1 が定めた。
+この ADR の前は、容量 40 sp、送り 10 sp、区切り 0 sp の 1 段で、`[FParagraph (Keep 1 1 False) (5 行の脚注 500 を持つ 1 行), FAdjustLines 2, FParagraph (Keep 1 1 False) (1 行の脚注 510 を持つ 1 行), 1 行の段落]` を `paginatePhysical` に渡すと、脚注 510 が脚注 500 の続きより前に置かれた。
+今の実装では、`@page-lines` が足した行を繰り越す脚注が先に取る（`drainCarried`、`drainPendingNotes`）ので、同じ入力で 1 ページ目に脚注 500 の全体が並び、2 ページ目に脚注 510 が置かれた。
+`WholeNotes.lean` の `nm_drainPendingNotes` と `PhysicalNotes.lean` の `nm_drainCarried` は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を行に展開したものを、この移し替えが注ごとでなく列全体で保つことを示す。
+`drain_room` は、格子モードで移し替えの後に繰り越す脚注が残れば、段の空きが、使わなかった区切りの行と、本文の行のない段に残す 1 行の和以下であることを示す（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md) の I2）。
+原稿の注の順の全体（I1）は、まだ証明していない。
+新しい行の脚注を置く操作のどれもが、繰り越す脚注が残る段に新しい脚注を置かないことを、すべての操作について示す必要があるからである。
+そこで、脚注の証明は、今も注の id ごとに出力の行を並べた列が、その注の 0 行目から最後の行までの列に等しいことを述べる。
 不変条件は、出力済みの段の脚注、現在の段の脚注、繰り越す脚注をつないだ列を、注ごとに行の番号へ展開したものが、読んだ行の脚注を展開したものに注ごとに等しいことである（`WholeNotes.lean` と `PhysicalNotes.lean` の `Rel`）。
 新しい行の脚注は、繰り越す脚注の前に今の段へ置かれることがあるので、この等しさは列全体ではなく注ごとに成り立つ。
 この入れ替わりが同じ注の中で起きないために、原稿の注の id が互いに異なること（`Distinct`）を前提に置く。
@@ -1182,6 +1203,7 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3823`）、g
 空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について定理で示した（`I3_separator_hold_no_error`）。
 `placeKept` が段落を分けて送る場合、区切りの後ろのアキ、区切りの連続も、定理の範囲に入る（`I3_separator_chain_no_error`）。
 保持の中の `@need-lines`、区切りの前の行アキ、自由な配置は、まだ照合だけで確かめている。
+段の行数を超える保持の中の `@need-lines`（G07037）を `settleHolds` が除かないと、格子モードで 140 個、自由な配置で 152 個、箱などを含む格子モードの組で 2 個の原稿で出力が食い違った。
 `check.sh` は、区切りの原稿を六つの組で golem-typeset と照合し、すべて一致した。
 格子モードと自由な配置の 8784 個ずつの原稿は、「区切りのモデル」の節で述べた項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
