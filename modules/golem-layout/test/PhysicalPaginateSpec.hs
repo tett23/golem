@@ -749,7 +749,7 @@ pageTrace = fmap (map (\page -> (poNumber page, poColumn page, poSlots page)))
 lines10 :: Int -> Int -> [LineBox]
 lines10 from count = map line [from .. from + count - 1]
 
--- The specification's turned figures (docs/specifications.md, golem-driver ADR 0034 and 0039) in the free placement of root ADR 0397.
+-- The turned figures of the specification (golem-driver ADR 0034 and 0039) in the free placement of root ADR 0397.
 turnedFigureTests :: [TestTree]
 turnedFigureTests =
   [ testCase "golem-driver ADR 0034, root ADR 0397: a turned figure after waiting figures takes a page after them in manuscript order" $
