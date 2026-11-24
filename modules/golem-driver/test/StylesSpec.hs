@@ -8,7 +8,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book)
 import Golem.Driver
-import Golem.Driver.Lint (lintProject)
+import Golem.Evaluate.Lint (lintProject)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.LayoutSpec (pageGeometry)

@@ -3,11 +3,11 @@ cache as plugins.lock names them, checked for name collisions, and
 turned into the evaluator's plugin hook. Builds never use the network.
 The codes, messages and spans of the diagnostics: golem-plugin ADR 0003.
 -}
-module Golem.Driver.Plugins
+module Golem.Evaluate.Plugins
   ( loadPlugins,
     LoadedPlugins (..),
     FunctionFilter,
-    -- of golem-plugin, for Golem.Driver and Golem.Driver.Functions; src-no-plugins/ has its own (docs/adr/0199)
+    -- of golem-plugin, for Golem.Evaluate and Golem.Evaluate.Functions; src-no-plugins/ has its own (docs/adr/0199)
     HostContext (..),
     defaultCacheDir,
     maxDataBytes,
@@ -56,7 +56,7 @@ data Pending
 
 {- | A filter of a .emet (docs/adr/0162) by the path of the .emet and its
 name: over the document of a .gm by its path, Nothing for one the
-functions do not have (golem-driver reports it).
+functions do not have (Golem.Evaluate reports it).
 -}
 type FunctionFilter = FilePath -> Text -> FilePath -> Document -> Maybe (Either [Diagnostic] (Document, [Diagnostic]))
 

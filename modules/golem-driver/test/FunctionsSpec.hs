@@ -10,9 +10,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Functions
 import Golem.Emet (Result (..), callFunction)
 import Golem.Eval.Value (Value (..))
+import Golem.Evaluate.Functions
 import Golem.Project (Project (..), ProjectFailure (..), loadProjectWith)
 import Golem.Project.Files (diskFiles)
 import Golem.Syntax

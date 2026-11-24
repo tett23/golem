@@ -1,6 +1,6 @@
 # ADR 0434: プロジェクトの評価を golem-driver から新しいパッケージ golem-evaluate に分ける
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

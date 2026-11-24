@@ -1756,12 +1756,12 @@ job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on =
 EMBEDDED_STEP="name: Generated modules match VERSION and docs/diagnostics.md"
 if step_if "$EMBEDDED_STEP" "if: matrix.tests && matrix.suites == 'rest'" &&
   step_has "$EMBEDDED_STEP" "sh scripts/gen-embedded.sh" &&
-  step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs" &&
+  step_has "$EMBEDDED_STEP" "git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs" &&
   [ "$(awk '/^      - name: / { print }' "$CI_YML" | grep -A1 -F "name: Generated parser matches the grammar" | sed -n 2p)" = "      - $EMBEDDED_STEP" ]; then ok; else
   ng "ci.yml: the step after the generated parser runs gen-embedded.sh and checks that the generated modules of golem-driver have no diff (docs/adr/0203)"
 fi
 # the format job leaves the generated modules to the script, like the parser
-for f in modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs; do
+for f in modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs; do
   if job_lines format | grep -qF -- "!$f" && job_lines format | grep -qF -- "--ignore-glob=\"$f\""; then ok; else
     ng "ci.yml: fourmolu and hlint skip $f (docs/adr/0203)"
   fi
@@ -3770,6 +3770,16 @@ docdeps "the lib of a per-package element" 1 "$DOC_PLANS/per-package.json" \
 # outputs and the tools (docs/adr/0192)
 docdeps "golem-typeset depends on golem-eval" 1 "$DOC_PLANS/typeset-eval.json" \
   "doc-deps: golem-typeset depends on golem-eval"
+# the library of golem-evaluate reaches none of golem-driver and the outputs,
+# and the library of golem-lsp none of golem-driver and the outputs but
+# golem-pdf, which golem-preflight brings; ok.json has both, golem-lsp
+# reaching golem-pdf, and a test suite of golem-lsp on golem-typeset
+docdeps "root ADR 0434 I1, I2: golem-evaluate and golem-lsp as the ADR has them" 0 "$DOC_PLANS/ok.json"
+docdeps "root ADR 0434 I1, I2: golem-evaluate depends on golem-typeset, and golem-lsp through it" 1 "$DOC_PLANS/evaluate-typeset.json" \
+  "doc-deps: golem-evaluate depends on golem-typeset" "doc-deps: golem-lsp depends on golem-typeset"
+docdeps "root ADR 0434 I2: golem-lsp depends on golem-driver" 1 "$DOC_PLANS/lsp-driver.json" \
+  "doc-deps: golem-lsp depends on golem-driver"
+docdeps "root ADR 0434 I1: no library of golem-evaluate in the plan" 2 "$DOC_PLANS/no-evaluate.json"
 docdeps "a package missing from the plan" 2 "$DOC_PLANS/no-numerals.json"
 docdeps "no such file" 2 "$WORK/no-such-plan.json"
 printf 'not json\n' >"$WORK/bad.json"
@@ -5234,7 +5244,11 @@ CC=$HERE/testdata/ci-checks
 awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver-test" {
     for (i = split("pdf page output cli", s, " "); i > 0; i--) print $1, $2, "golem-driver:test:golem-driver-" s[i] "-test"
     next
-  } { print }' "$CC/before-0395.txt" | LC_ALL=C sort >"$WORK/before"
+  } { print }' "$CC/before-0395.txt" |
+  # the generated module of docs/diagnostics.md is that of golem-evaluate
+  # (root ADR 0434)
+  sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|' |
+  LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
 grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
 if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else

@@ -22,8 +22,8 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Driver.Functions (formatFunctionFile)
-import Golem.Driver.Lint (lintProject)
+import Golem.Evaluate.Functions (formatFunctionFile)
+import Golem.Evaluate.Lint (lintProject)
 import Golem.Syntax
 import Support (codesOf, copyTree)
 import System.Directory (listDirectory)

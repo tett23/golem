@@ -1,0 +1,65 @@
+cabal-version:      3.0
+name:               golem-evaluate
+version:            0.1.0
+synopsis:           The evaluation of a Golem project
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+-- read by the tests that compare it with the module that
+-- scripts/gen-embedded.sh generates (docs/adr/0203, root ADR 0434): the
+-- explanations of the diagnostic codes (golem-cli ADR 0005), a symbolic
+-- link to docs/diagnostics.md
+extra-source-files:
+  diagnostics.md
+
+-- plugins (docs/adr/0199, root ADR 0434): the plugins of golem-plugin
+-- (wasmtime). Without it, Golem.Evaluate.Plugins of src-no-plugins/
+-- reports G06106 for a project that uses a plugin; the wasm build turns it
+-- off (cabal.project.wasm). golem-cli and golem-lsp build with it.
+flag plugins
+  description: The plugins (golem-plugin, wasmtime)
+  default:     True
+  manual:      True
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.Evaluate
+                    Golem.Evaluate.Explain
+                    Golem.Evaluate.Explain.Catalog
+                    Golem.Evaluate.Explain.Embedded
+                    Golem.Evaluate.Functions
+                    Golem.Evaluate.Lint
+                    Golem.Evaluate.Plugins
+                    Golem.Evaluate.Verse
+  other-modules:    Golem.Evaluate.ProjectVars
+  build-depends:
+    , base          >=4.20 && <4.21
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6  && <0.8
+    , directory     >=1.3  && <1.4
+    , filepath      >=1.4  && <1.6
+    , golem-assemble
+    , golem-bibliography
+    , golem-doc
+    , golem-emet
+    , golem-eval
+    , golem-lint
+    , golem-parser
+    , golem-project
+    , golem-syntax
+    , text          >=2.0  && <2.2
+    , time          >=1.12 && <1.15
+  default-language: GHC2021
+  -- the two Golem.Evaluate.Plugins export the same names and types (docs/adr/0199)
+  if flag(plugins)
+    hs-source-dirs:  src-plugins
+    build-depends:   golem-plugin
+  else
+    hs-source-dirs:  src-no-plugins

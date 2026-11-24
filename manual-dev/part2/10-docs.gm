@@ -71,7 +71,7 @@ diagnostic のコードを足すときは、同じ変更で [code: docs/diagnost
 - 使用中のコードの節は、「意味」「主な原因」「直し方」の三つの小見出しをこの順に持ち、どれも空にしない。
 - 節はコードの昇順に並べる。
 
-この文書は、[code: scripts/gen-embedded.sh] が生成してコミットしたモジュール（[code: modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs]）で golem-driver に埋め込まれる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
+この文書は、[code: scripts/gen-embedded.sh] が生成してコミットしたモジュール（[code: modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs]）で golem-evaluate に埋め込まれる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
 文書を変えたら、同じ変更でこのスクリプトを走らせ、生成し直したモジュールもコミットする。
 
 ```sh

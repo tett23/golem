@@ -28,6 +28,7 @@ executable golem
     , filepath              >=1.4  && <1.6
     , golem-doc
     , golem-driver
+    , golem-evaluate
     , golem-emet
     , golem-eval
     , golem-fmt
@@ -68,6 +69,7 @@ test-suite golem-cli-test
     , filepath
     , golem-doc
     , golem-driver
+    , golem-evaluate
     , golem-eval
     , golem-fmt
     , golem-project
