@@ -6733,6 +6733,18 @@ S2 は、範囲に触れるソフトハイフンが罰点を残さないこと�
 行の幅は 2 字から 5 字である。
 プルリクエストの CI は部品 2 個まで、毎晩の `enum.yml` は部品 3 個までを調べる。
 
+S1 は、実際の書体の送りでも確かめる。
+golem-layout のテスト（`modules/golem-layout/test/NoBreakShapeSpec.hs`）は、[ADR 0314](adr/0314-check-no-break-widths-with-harfbuzz.md) に従い、Source Sans Pro、Source Serif Variable、Source Han Sans のサブセットの三つの書体で、機能の一覧を渡さずに HarfBuzz で組んだ語の送りを使う。
+golem-typeset のテスト（`modules/golem-typeset/test/NoBreakProductSpec.hs`）は、[ADR 0436](adr/0436-check-no-break-s1-through-the-product-shaping.md) に従い、製品と同じ組版の環境で S1 を確かめる。
+その環境は golem-typeset の `composeEnv` が作り、引数は、検査のための `style.toml` を読んだスタイル、その判型から `pageGeometry` で作った版面、フォントの提供者が読んだ書体、空の仮定、本文の段落のスタイルから `paraLook` で作った見た目である。
+`composeEnv`、`paraLook` と空の仮定（`emptyAssumed`）は、テストのための公開のモジュール `Golem.Typeset.Internal` が export する。
+確かめる書体の性質は、Source Sans Pro のペアのカーニング、Source Serif Variable の合字、NotoSerifJP（golem-driver のテストの素材）の横組みの `palt` と縦組みの `vpal` の四つである。
+NotoSerifJP では、役割の `ja` と `latin` の両方にこの書体を当て、本文の段落のスタイルの `proportional-metrics = true` と役割の `punctuation-proportional = true` で `palt`（縦組みでは `vpal`）を入れる。
+列は、どの性質でも 0314 と同じ 1814 入力である。
+各性質が語の送りに現れること（`AV` が `A` と `V` の和より短い、`fi` が `f` と `i` の和と違う、`「あ` が `palt`（`vpal`）の無い役割より短い）と、性質を持たない役割では現れないことも確かめる。
+列のどの字も、一字の送り（`ceAdvance`）は、golem-font の `shapeUnits` にその字と役割の機能の一覧を渡した送りに等しい。
+ルビの送りと、字間の追加（トラッキング）を通した送りは、この検査に含めない。
+
 囲みの中のぶら下げは、[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md) の H1、H2、H3 として、golem-driver のテスト（`modules/golem-driver/test/BoxesSpec.hs`）が横組みと縦組みの本で確かめる。
 
 - **H1**：囲みの段落の句点と読点の箱は、行末で突き出さない。

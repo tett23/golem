@@ -1,6 +1,6 @@
 # ADR 0436: 改行しない範囲の S1 を、製品と同じ組版の環境の送りで確かめる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
