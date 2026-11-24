@@ -162,6 +162,20 @@ paragraphRuleTests =
       map length ruled @?= [0, 2]
       n <- notified miniManifest style source
       map diagMessage (g07046 n) @?= ["罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）"],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8: laid out freely, the rule after of a paragraph the next ruled paragraph cannot join in its column stays in the column" $ do
+      -- 4 lines of 15pt laid out freely; the rule after 15pt below the em box of the last line
+      let style = withRule (replaceIn "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" (replaceIn "lines = 30" "lines = 4" horizontalStyle)) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\", space-before = \"15pt\" }\n"
+          source = "@style sec\n  " <> T.replicate 29 "あ" <> "。\n\n@style sec\n  い。\n"
+          top = 595.2756 - mmPt 18
+          -- the length of the column: (4 - 1) x 15pt + 10pt
+          bottom = top - (3 * 15 + 10)
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let ruled = map rects pages
+      assertBool (show ruled) (and [y >= bottom && y + h <= top | rs <- ruled, (_, y, _, h) <- rs])
+      -- the first paragraph with its own rule after takes 45 + 13 pt: broken without rules
+      map length ruled @?= [0, 2]
+      n <- notified miniManifest style source
+      map diagMessage (g07046 n) @?= ["罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）"],
     testCase "a book without a broken block has no G07046" $ do
       n <- notified miniManifest (withRule horizontalStyle "weight = \"0.5pt\"") section
       g07046 n @?= [],
