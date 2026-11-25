@@ -35,6 +35,7 @@ import Control.Monad (forM, unless, when)
 import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
 import Data.Char (isAscii, isAsciiLower, isDigit)
 import Data.Either (fromLeft, fromRight, isLeft, lefts)
 import Data.List (mapAccumL, partition)
@@ -47,6 +48,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Array qualified as TA
+import Data.Text.Encoding qualified as TE
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.FigureWidth (FigureWidth (..), parseFigureWidth)
@@ -70,6 +72,7 @@ import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
 import Golem.Syntax.LanguageTag (isLanguageTag)
+import Golem.Syntax.Sha256 (sha256)
 import Golem.Syntax.Text (isSpaceTab, tshow)
 import Numeric.Natural (Natural)
 
@@ -671,27 +674,49 @@ pluginBlock ctx sp pb args body = do
       Left ds -> mapM_ report ds >> pure []
       Right (out, imgs, ds) -> do
         mapM_ report ds
-        concat <$> mapM (pluginFigure body' imgs) out
+        concat <$> mapM (memoryFigure sp body' imgs) out
+
+{- | A figure a block command made, whose image is in memory (docs/adr/0123,
+root ADR 0439), goes through the checks of @figure (checkFigure), its
+image found among the images of the command; one that fails gives no
+block, as @figure, and its image is not kept. A paragraph style in its
+caption is G02013, and is dropped, as @figure does. A block of the body,
+and a block that is no figure, passes as it is.
+-}
+memoryFigure :: SrcSpan -> [Block] -> Map Text ByteString -> Block -> M [Block]
+memoryFigure sp body imgs b = case b of
+  Block bsp lbl lang (FigureBlock f) | b `notElem` body -> do
+    mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ _ (Paragraph (Just _) _) <- figCaption f]
+    let unstyle = \case
+          Block csp clbl clang (Paragraph (Just _) is) -> Block csp clbl clang (Paragraph Nothing is)
+          c -> c
+        f' = f {figCaption = map unstyle (figCaption f)}
+    ok <- checkFigure sp (pure . (`Map.member` imgs)) f'
+    if ok
+      then do
+        modify' (\s -> s {stImages = Map.union (stImages s) (Map.restrictKeys imgs (Set.fromList (figSource f' : maybe [] pure (figWeb f'))))})
+        pure [Block bsp lbl lang (FigureBlock f')]
+      else pure []
+  _ -> pure [b]
+
+{- | The images of the figures a block command of a .emet made (root ADR
+0439): the SVG after 'svgDataPrefix' in the source of each, as UTF-8,
+named as the image of a plugin is, by the SHA-256 of its bytes, with the
+sources of the figures set to the names. golem-emet has refused any other
+figure the command made (E06104); a block of the body passes as it is.
+-}
+dataImages :: [Block] -> [Block] -> ([Block], Map Text ByteString)
+dataImages body = foldr place ([], Map.empty)
   where
-    {- a figure the plugin made goes through the checks of @figure
-    (checkFigure), its image found among the images of the answer; one that
-    fails gives no block, as @figure, and its image is not kept. A paragraph
-    style in its caption is G02013, and is dropped, as @figure does
-    (docs/adr/0123) -}
-    pluginFigure body' imgs b = case b of
-      Block bsp lbl lang (FigureBlock f) | b `notElem` body' -> do
-        mapM_ (\_ -> err "G02013" sp "@style は図版のキャプションには付けられません") [() | Block _ _ _ (Paragraph (Just _) _) <- figCaption f]
-        let unstyle = \case
-              Block csp clbl clang (Paragraph (Just _) is) -> Block csp clbl clang (Paragraph Nothing is)
-              c -> c
-            f' = f {figCaption = map unstyle (figCaption f)}
-        ok <- checkFigure sp (pure . (`Map.member` imgs)) f'
-        if ok
-          then do
-            modify' (\s -> s {stImages = Map.union (stImages s) (Map.restrictKeys imgs (Set.fromList (figSource f' : maybe [] pure (figWeb f'))))})
-            pure [Block bsp lbl lang (FigureBlock f')]
-          else pure []
-      _ -> pure [b]
+    place b@(Block bsp lbl lang (FigureBlock f)) (bs, imgs)
+      | b `notElem` body,
+        Just svg <- T.stripPrefix svgDataPrefix (figSource f) =
+          let bytes = TE.encodeUtf8 svg
+              name = pluginImagePrefix <> hexOf (sha256 bytes) <> ".svg"
+           in (Block bsp lbl lang (FigureBlock f {figSource = name}) : bs, Map.insert name bytes imgs)
+    place b (bs, imgs) = (b : bs, imgs)
+    hexOf = T.pack . concatMap (\w -> [hexDigit (w `div` 16), hexDigit (w `mod` 16)]) . BS.unpack
+    hexDigit w = "0123456789abcdef" !! fromIntegral w
 
 {- | The arguments of a call of a plugin: a keyword with its name
 (docs/adr/0110). A spread is already expanded by 'prepareArgs'
@@ -850,7 +875,9 @@ functionBlock ctx sp nsp ns n args body =
                   Right out -> do
                     let out' = map (fillKentenBlock ctx) out
                     ok <- outputChecked ctx sp [] out'
-                    pure (if ok then out' else [])
+                    if ok
+                      then let (placed, imgs) = dataImages body' out' in concat <$> mapM (memoryFigure sp body' imgs) placed
+                      else pure []
   where
     qualified = ns <> "." <> n
 

@@ -56,7 +56,7 @@ test-suite golem-emet-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ExportSpec FmtSpec IdeSpec LanguageSpec LintSpec RequirementSpec Support
+  other-modules:    ExportSpec FmtSpec GmFigureSpec IdeSpec LanguageSpec LintSpec RequirementSpec Support
   build-depends:
     , base
     , bytestring

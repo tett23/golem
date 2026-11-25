@@ -49,8 +49,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **プルリクエストの CI の時間の記録（未実装）**：golem-driver のテストを分けた後の、プルリクエストの CI の 20 回の中央値を `docs/ci-timings/` に記録する（[root ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の A1）。記録したら、0416 を実装済みにする。
 - **warning の検査の失敗が止んだことの記録（未実装）**：ログの無いジョブ、キャッシュの復元の失敗、ランナーの action の取り直し、wasm のキャッシュの追い出しの四つの原因で、`ci` の warning の検査が 20 回の実行のあいだ失敗しないことを数えて記録する（[root ADR 0427](adr/0427-warning-gate-and-jobs-without-logs.md) の A1）。記録したら、0427 を実装済みにする。
 
-- **パスの描画のベンチマーク（未実装）**：Golem が PDF にパスを書き出す速さを測るベンチマークを設ける。入力は、乱数で多数の図形を作るジェネラティブアートとする。図形を作るコードは Emet（`.emet` の関数）で書き、乱数のシード値は Golem の `manifest.toml` から取るので、同じ入力からは同じ PDF ができる。ベンチマークのための乱数なので、生成器の実装（線形合同法、メルセンヌツイスタなど）は問わない。生成した図形を Golem に渡す形、ベンチマークの予算、記録の置き場所（`docs/benchmarks/`）は ADR で決める。[root ADR 0439](adr/0439-benchmark-path-drawing.md) で決めた。
-
 ### 記法と設定の値
 
 - **ルビの区切りの記法（仕様を検討中）**：ルビの親文字と読みは `/` で区切るが、`/` は原稿の地の文の字でもあるので、ルビの中だけ `/` と書く例外になっている（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。式の値の中の `/` は区切りにならないなど、パースの例外が増えている。区切りの記法を、ほかの記法と同じ規則で読める形に改める。記法が変わるので v1.0.0 までに仕様を決める。
@@ -247,6 +245,7 @@ v1 より後のバージョンのための事項には、そのバージョン�
 ### その他の未決事項
 
 - **奥付の多言語化と日本語の例外**：版と刷、日付、発行履歴の表記について、日本語の例外と他言語の奥付の実例を集め、書式で必要な条件分岐と数の表記を検討する。
+- **パスの描画の予算**：[root ADR 0439](adr/0439-benchmark-path-drawing.md) は、パスの描画のベンチマークの予算の値を決めなかった。[最初の記録](benchmarks/2026-11-26-path-drawing.md) を見て、値と比べるマシンを別の ADR で決め、`docs/budgets.md` に写す。
 - **画像フレームの導入時期**：InDesign のように画像と画像を収めるフレームを別々に扱う方式へ移行するかを検討する。時期の候補は v1.x、v2、v3 である。
 - **Linux の Neovim での `silence-notices` の保存**：Neovim 0.12.6 は、`workspace/didChangeWatchedFiles` の動的な登録を macOS と Windows でだけ申し出て、Linux では申し出ない（`vim.lsp.protocol.make_client_capabilities`）。golem lsp は、ディスクの `manifest.toml` の変更をこの通知でだけ知る。この登録を申し出ないクライアントでは、`silence-notices` にコードを加えて保存しても、LSP を起動し直すまで notice が消えない（macOS の Neovim で、能力を Linux と同じにして確かめた）。CI の `editors-lsp` の notice のテストは、クライアントの能力でこの登録を申し出て確かめている。`manifest.toml` の保存（`textDocument/didSave`）でも評価し直すかが決まっていない（[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。[docs/adr/0231](adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md) の I3 は、この登録を申し出るクライアントについての性質と読む（[docs/adr/0259](adr/0259-record-what-the-audit-of-the-ci-release-and-tooling-adrs-found-on-2026-11-09.md)）。
 - **PDF/X-4 の要件と規格の本文の照合**：[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) は、規格の本文を参照せずに要件を書き、本文と照合して差分があれば新しい ADR を作るとしたが、照合の結果を記した ADR はない。文書情報辞書と XMP の値を一致させる要件も、本文では確かめていない（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。v1 の PDF を PDF/X-4 として出すまでに、本文と照合するか、商用のプリフライトでの確認で代えるかが決まっていない。

@@ -15,6 +15,7 @@ import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import NewPlanSpec (newPlanTests)
 #endif
 import NumberUnitBuildSpec (numberUnitBuildTests)
+import PathDrawingSpec (pathDrawingTests)
 import SecuritySpec
 import Test.Tasty
 import UnwritableNumbersSpec (unwritableNumbersTests)
@@ -42,6 +43,7 @@ tests =
         evalDiagnosticTests,
         functionsTests,
         callsTests,
+        pathDrawingTests,
         varsTests,
         unwritableNumbersTests,
         numberUnitBuildTests,

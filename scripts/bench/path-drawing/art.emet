@@ -1,0 +1,72 @@
+-- The shapes of the benchmark of the drawing of paths (root ADR 0439).
+-- In book.gm: `@art.page [= vars.seed] <page> [= vars.shapes]`.
+-- A page is one SVG figure of that many shapes, half of them polygons of
+-- straight lines and half closed shapes of cubic Bézier curves, each
+-- filled and stroked. The numbers come from a linear congruential
+-- generator written with %, * and +, so that the same seed gives the
+-- same shapes.
+
+-- The figure of the shapes of a page, its SVG in a data: source.
+pub block page :: Nat -> Nat -> Nat -> Blocks
+page seed n count = [Block.FigureBlock (Block.Figure (source seed n count) Nothing ("乱数の図形 " ++ String.fromNat n) Nothing Nothing [] Nothing False True)]
+
+-- The SVG of a page. The shapes are joined by String.join, as adding
+-- each to the string with ++ takes steps in the square of their number.
+source :: Nat -> Nat -> Nat -> String
+source seed n count = "data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1000 1000\" width=\"400\" height=\"400\">" ++ String.join "" (shapes 0 (numbers (seed * 1000 + n) (16 * count))) ++ "</svg>"
+
+-- One step of the generator, with the constants of the rand of ANSI C.
+step :: Nat -> Nat
+step x = (1103515245 * x + 12345) % 2147483648
+
+-- The first count states of the generator after the start, in order.
+numbers :: Nat -> Nat -> List Nat
+numbers start count = List.reverse (List.foldl next [step start] (List.range 2 count))
+
+next :: List Nat -> Int -> List Nat
+next (x : xs) _ = step x : x : xs
+next [] _ = []
+
+-- The high bits of a state, which a linear congruential generator mixes
+-- better than the low ones.
+high :: Nat -> Nat
+high x = div x 65536
+
+-- The shapes of the states, sixteen states a shape: the centre, six
+-- points around it, and the colours of the fill and the stroke. The
+-- shapes of even numbers are polygons, those of odd numbers curves.
+shapes :: Nat -> List Nat -> List String
+shapes k (x1 : x2 : x3 : x4 : x5 : x6 : x7 : x8 : x9 : x10 : x11 : x12 : x13 : x14 : x15 : x16 : rest) = shape (k % 2 == 0) (points (80 + high x1 % 840) (80 + high x2 % 840) [x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14]) (colour x15) (colour x16) : shapes (k + 1) rest
+shapes _ _ = []
+
+shape :: Bool -> List String -> Nat -> Nat -> String
+shape polygon ps fill stroke = "<path d=\"" ++ (polygon ? straight ps : curved ps) ++ "\" fill=\"#" ++ hex fill ++ "\" stroke=\"#" ++ hex stroke ++ "\" stroke-width=\"2\"/>"
+
+-- The points around a centre, each at most 80 from it on each axis.
+points :: Nat -> Nat -> List Nat -> List String
+points cx cy (x : y : rest) = (coordinate cx x ++ " " ++ coordinate cy y) : points cx cy rest
+points _ _ _ = []
+
+coordinate :: Nat -> Nat -> String
+coordinate c x = String.fromInt (c + high x % 161 - 80)
+
+-- A closed polygon through the points.
+straight :: List String -> String
+straight (p : ps) = "M " ++ p ++ " L " ++ String.join " L " ps ++ " Z"
+straight [] = ""
+
+-- A closed shape of two cubic Bézier curves through the points.
+curved :: List String -> String
+curved [p0, p1, p2, p3, p4, p5] = "M " ++ p0 ++ " C " ++ p1 ++ " " ++ p2 ++ " " ++ p3 ++ " C " ++ p4 ++ " " ++ p5 ++ " " ++ p0 ++ " Z"
+curved _ = ""
+
+-- Six hexadecimal digits of a colour.
+hex :: Nat -> String
+hex n = digit (div n 1048576) ++ digit (div n 65536) ++ digit (div n 4096) ++ digit (div n 256) ++ digit (div n 16) ++ digit n
+
+digit :: Nat -> String
+digit n = String.take 1 (String.drop (n % 16) "0123456789abcdef")
+
+-- A colour of the high 24 of the 31 bits of a state.
+colour :: Nat -> Nat
+colour x = div x 128

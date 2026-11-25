@@ -828,6 +828,12 @@ tests =
         normalizeRelative "../x.gm" @?= Left EscapesRoot
         normalizeRelative "/etc/passwd" @?= Left Absolute
         normalizeRelative "https://example.com/a.gm" @?= Left Url,
+      testCase "root ADR 0439 I7: a path of the scheme data: is a URL, in any case" $ do
+        normalizeRelative "data:image/svg+xml,<svg></svg>" @?= Left Url
+        normalizeRelative "DATA:image/png,x" @?= Left Url
+        normalizeRelative "data" @?= Right "data"
+        normalizeRelative "data/a.svg" @?= Right "data/a.svg"
+        normalizeRelative "images/data:a.svg" @?= Right "images/data:a.svg",
       testCase "F4: normalizeRelative makes the empty path the empty path (docs/adr/0225)" $ do
         normalizeRelative "" @?= Right ""
         normalizeRelative "." @?= Right ""
