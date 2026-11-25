@@ -1,6 +1,6 @@
 # ADR 0456: 回り込むフレームに、短くできないブロックと回り込む図版の脇の段落も重ならないようにする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
