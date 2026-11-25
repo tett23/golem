@@ -5881,6 +5881,108 @@ theorem tryVerses_column_check_unobservable (env : Env) (hs : 0 ≤ env.separato
           rw [if_pos hc, if_pos hb, ih placed]
         · rw [if_neg hc, if_neg (fun x => hc x.1)]
 
+/-- `itemJobs` runs the figures at the front of `later` that belong to the
+    item `key`, each once and in order, and leaves the figures after them:
+    the last figure it returns is the last of those it ran (or `prior`),
+    and the figures it leaves are `later` without them. -/
+theorem I5_itemJobs_figures (j : Jobs) (key prior : Nat) (cursor : St) (later : List Nat)
+    (r : (Nat × {l : List Nat // l.length ≤ later.length}) × St) (h : itemJobs j key prior cursor later = .ok r) :
+    r.1.2.val = later.dropWhile (fun x => j.itemOf x = some key) ∧
+      r.1.1 = (prior :: later.takeWhile (fun x => j.itemOf x = some key)).getLast (by simp) := by
+  induction later generalizing prior cursor with
+  | nil =>
+    unfold itemJobs itemEnd at h
+    split at h
+    · cases h
+    · injection h with h; subst h; simp [List.getLast]
+  | cons next more ih =>
+    unfold itemJobs at h
+    by_cases hk : j.itemOf next = some key
+    · rw [if_pos hk] at h
+      split at h
+      · cases h
+      · rename_i c _
+        split at h
+        · cases h
+        · rename_i last' left' hl' placed e
+          injection h with h; subst h
+          have ⟨a, b⟩ := ih next c _ e
+          refine ⟨by simp only at a ⊢; rw [a]; simp [List.dropWhile, hk], ?_⟩
+          simp only at b ⊢; rw [b]; simp [List.takeWhile, hk, List.getLast]
+    · rw [if_neg hk] at h
+      unfold itemEnd at h
+      split at h
+      · cases h
+      · injection h with h; subst h
+        simp [List.dropWhile, List.takeWhile, hk, List.getLast]
+
+theorem dropWhile_length_le (f : Nat → Bool) (l : List Nat) : (l.dropWhile f).length ≤ l.length := by
+  induction l with
+  | nil => simp
+  | cons x xs ih =>
+    simp only [List.dropWhile_cons]
+    split
+    · simp only [List.length_cons]; omega
+    · simp
+
+/-- `retain` returns the value of one of the trials it runs. -/
+def RetainOk (j : Jobs) : Prop :=
+  ∀ {α : Type} (trial : St → Except Failure (α × St)) (at' : St) (r : α × St),
+    j.retain trial at' = .ok r → ∃ s r', trial s = .ok r' ∧ r'.1 = r.1
+
+/-- The groups of figures `jobsFrom` takes one call at a time: a figure in a
+    retained list item with the later figures of its item at the front of
+    the rest, or a figure alone. -/
+def jobGroups (j : Jobs) (jobs : List Nat) : List (List Nat) :=
+  match jobs with
+  | [] => []
+  | job :: rest =>
+    match j.itemOf job with
+    | some key =>
+      (job :: rest.takeWhile (fun x => j.itemOf x = some key)) ::
+        jobGroups j (rest.dropWhile (fun x => j.itemOf x = some key))
+    | none => [job] :: jobGroups j rest
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  · exact Nat.lt_succ_of_le (dropWhile_length_le _ _)
+
+/-- Every figure is in one group, in the order of the input. -/
+theorem I5_jobGroups_join (j : Jobs) (jobs : List Nat) : (jobGroups j jobs).join = jobs := by
+  match jobs with
+  | [] => rw [jobGroups]; rfl
+  | job :: rest =>
+    rw [jobGroups]
+    split
+    · rename_i key _
+      simp only [List.join_cons, List.cons_append]
+      rw [I5_jobGroups_join j (rest.dropWhile (fun x => j.itemOf x = some key)), takeWhile_dropWhile]
+    · simp only [List.join_cons, List.singleton_append]
+      rw [I5_jobGroups_join j rest]
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  · exact Nat.lt_succ_of_le (dropWhile_length_le _ _)
+
+/-- When `retain` returns the value of one of its trials, the trial of a
+    figure in a retained list item runs the figures of its group
+    (`I5_itemJobs_figures`), and `jobsFrom` goes on with the figures after
+    the group, from its last figure. -/
+theorem I5_jobsFrom_after_group (j : Jobs) (hr : RetainOk j) (prior done : Option Nat) (job key : Nat)
+    (rest : List Nat) (ready : St) (lastJob : Nat) (left : List Nat) (hl : left.length ≤ rest.length) (pc : St)
+    (h : j.retain (fun at' => match j.run prior done job at' with
+      | .error e => .error e
+      | .ok first => itemJobs j key job first rest) ready = .ok ((lastJob, ⟨left, hl⟩), pc)) :
+    left = rest.dropWhile (fun x => j.itemOf x = some key) ∧
+      lastJob = (job :: rest.takeWhile (fun x => j.itemOf x = some key)).getLast (by simp) := by
+  obtain ⟨s, r', e, v⟩ := hr _ ready _ h
+  split at e
+  · cases e
+  · rename_i first _
+    have := I5_itemJobs_figures j key job first rest r' e
+    rw [v] at this
+    exact this
+
 theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line)
     (h : putReserved env reserve st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with

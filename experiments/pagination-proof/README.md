@@ -1309,7 +1309,11 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落
 一つの詩の行が置く行は、あるカーソルで組んだその詩の行の行か、段に入らない詩の行を表示の行で置く `paragraph`（`fallback`）が置く行である。
 この定理は、`fallback` がその詩の行の行を置くことと、後続を待つ `hold` が行を置かないことを仮定する。
 `stanza` が `fallback` の後に詩の行を一つ飛ばす写しでは、この証明が通らないことを確かめた。
-`probeNext`、`probeChain`、`jobsFrom`、`itemJobs` の行の過不足と順序は、まだ証明していない。
+`itemJobs` は、残りの図版のうち先頭から続く同じ項目の図版を一つずつ順に組み、その後の図版を残す（`I5_itemJobs_figures`）。
+`jobsFrom` が一度の呼び出しで組む図版の群（`jobGroups`）は、図版を過不足なく順に分ける（`I5_jobGroups_join`）。
+`retain` が試しのどれかの値を返すとき（`RetainOk`）、項目の図版の試しはその群の図版を組み、`jobsFrom` はその群の後の図版から続ける（`I5_jobsFrom_after_group`）。
+`probeNext` と `probeChain` は後続が収まるかを返すだけでカーソルを返さないので、行を置かない。
+`jobsFrom` と `itemJobs` が置く行の過不足と順序は、`outside`、`run`、`itemRest`、`finish`、`retain` が置く行についての仮定を要し、まだ証明していない。
 
 このうち `jobsFrom`、`itemJobs`、`paragraphs`、`parts`、`probeNext`、`probeChain`、`stanza`、`tryVerses`、`accept` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
 `CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に段落か連を置いた原稿と、回り込み図版をリスト項目の中に置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
