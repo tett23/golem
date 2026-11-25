@@ -1255,8 +1255,30 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 この寸法では、段の端の後の罫線の領域（2 行）が段の中の領域（1 行）より大きく、段の中に収める段の終わりの後の罫線を `commitRuled` が置くことがないからである。
 版面の外に出す段の終わりの後の罫線は、段の中の罫線と同じ sp の位置に置かれる。
 
-境界入力の表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめる。
-その Lean の側の照合は、「未完の項目」の節の一つ目に挙げる。
+境界入力の表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、実フォントの送りで Lean の側とも照合する。
+golem-driver の `FigureSpec.hs` は、縦横比 1 対 3 の画像の図版に、図番号「F1」と全角空白の後に M を続けたキャプションを付け、Source Sans Pro と Source Serif で改行して図版を縮小して確かめる。
+`CaptionFonts.hs` は、同じ設定（10pt、行送り 15pt、一行 12 字の行長 120pt）で、M を 10〜14 字続けたキャプションの図版を、容量 1〜4 行の段で golem-typeset に組ませる。
+二つのフォントと五つの字数と四つの容量の 40 個の入力について、`CaptionFonts.hs` は、キャプションの項目、改行器の引数、段と画像の寸法を書き出し、golem-typeset が置いた改行位置、総デメリット、キャプションの格子の行数、画像の行数と寸法か G07038 を書き出す。
+`CaptionValues.lean` は、同じ項目を `captionCompared` で改行し、`captionGridSpan` と `fitCaptionedFigure` で図版を求め、`check.sh` は二つの出力を `diff` で比べる。
+二つの出力は一致した。
+
+Lean に渡した計測結果は、`CaptionFonts.hs` の出力の `in fig` の行に残る。
+M の送りは、Source Sans Pro で 476447 sp、Source Serif で 591135 sp である。
+M の間の改行候補は幅を持つハイフンのペナルティ（ペナルティ 50）で、その幅は Source Sans Pro で 203817 sp、Source Serif で 203162 sp である。
+改行位置の前後に一文字足す行は、Source Serif の 11 字（1 行）と 12 字（2 行）、Source Sans Pro の 13 字（1 行）と 14 字（2 行）である。
+2 行のキャプションは改行器の pass 4 で改行され、総デメリットは 100022600 になる。
+画像に残る行が一行の行は、1 行のキャプションの容量 2 行の段と、2 行のキャプションの容量 3 行の段である。
+キャプションが段を埋める行は、1 行のキャプションの容量 1 行の段と、2 行のキャプションの容量 1 行と 2 行の段で、どれも G07038 になる。
+
+`CaptionFonts.hs` は、項目を golem-typeset が置いたキャプションの行から作る。
+行は、その行の項目と、幅を持つペナルティで終わればそのペナルティを持つので、行の項目をつなぎ、最後に強制改行を足すと原稿の項目になる。
+ただし、行の間で項目が落ちないことが要るので、`CaptionFonts.hs` は、どの改行も幅を持つペナルティで、次の行がボックスで始まることを確かめる。
+さらに、golem-layout の `breakParagraph` がその項目と引数から置いた行と同じ行を組み直すことと、字形を伸縮しないことと、`headingBlock` の行数が置いたキャプションの行数と一致することを確かめ、どれかが成り立たなければ止まる。
+改行器の引数は、golem-typeset の `kpParams` と、`adjustedParams` の `pPullInFirst` を、段落スタイル `caption` について組版の設定から求め直したものである。
+`adjustedParams` のほかの引数（`pStretchLimit` と `pAdjustOrder`）は、golem-layout の `breakParagraph` が行に写すだけで（`KnuthPlass.hs` の `mkLine`）、改行位置と調整比の計算には使わない。
+
+照合の感度は、写した計算を一つずつ替えて確かめた。
+`captionGridSpan` に行数より 1 多い行数を渡すと 40 個、ペナルティの幅を 0 にすると 4 個、`fitCaptionedFigure` の容量を 1 行増やすと 10 個、行長を 1pt 縮めると 4 個の入力で出力が食い違った。
 
 ### キャプションの評価値と改行器
 
@@ -1297,7 +1319,7 @@ golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）�
 `I2_caption_compared_diagnostic` は、組み立てた行の格子の行数が改行位置の数から決まり、その行数が段の空きを超えるのは行の高さが空きを超えるときに限ることを示す。
 `I2_caption_compared_figure` は、その行数が段を埋めれば図版を返さず（G07038）、行が残れば縮小した図版の高さが残りの行に収まることを示す。
 
-この対応に残ることは、「未完の項目」の節の一つ目から三つ目に挙げる。
+この対応に残ることは、「未完の項目」の節の一つ目と二つ目に挙げる。
 
 ### `causalFreeFlow` のループ
 
@@ -1565,36 +1587,33 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
 残るのは、次の項目である。
 各項目には、完了の判定に欠けている根拠を書く。
 
-1. 境界入力の表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）の Lean の側の照合。
-   欠けているのは、golem-driver の `FigureSpec.hs` の実フォントの計測値を Lean に渡し、`captionCompared` の改行位置と行数、`captionGridSpan`、`fitCaptionedFigure` の寸法と G07038 を golem-typeset の結果と `check.sh` で比べた記録である。
-   ADR のテスト設計が求める、送りの異なる実フォントの例と Lean に渡した計測結果の記録も、この照合で残す。
-2. `captionCompared` と golem-layout の `breakParagraph` の一致の証明。
+1. `captionCompared` と golem-layout の `breakParagraph` の一致の証明。
    今は 24186 個のキャプションで照合しただけで、どの入力でも一致するという定理はない。
    総デメリットの等しい経路から最後の行の fitness と前の改行の列で選ぶ規則は、照合の入力でも区別されていない。
-3. 行ごとに変わる行長と、字形の伸縮（`pExpansion`）の写し。
+2. 行ごとに変わる行長と、字形の伸縮（`pExpansion`）の写し。
    `captionEvaluate` は行長が行ごとに変わらず字形を伸縮しない場合だけを写すので、この二つの写しと、その照合がない。
-4. `causalFreeFlow` のループの、任意の入力についての行の過不足と順序。
+3. `causalFreeFlow` のループの、任意の入力についての行の過不足と順序。
    `I5_itemJobs_lines` と `I5_jobsFrom_lines` は前提 `JobsLines` を置き、前提なしの `I5_causal_jobsFrom_lines` は `CausalBoundary.lean` の 4864 個の原稿についての定理である。
    `I5_stanza_lines` は `fallback` と `hold` についての仮定を置き、`I5_parts_lines` の前提 `hb`（改行し直しても段落の最初の行の id が変わらないこと）は未確認である。
    欠けているのは、golem-typeset の改行器と後続の判定について、これらの前提を導く定理か、前提を確かめる照合である。
-5. 自由な配置の `drainCarry` の前提（`drainOk`）。
+4. 自由な配置の `drainCarry` の前提（`drainOk`）。
    本の部を含まずに `checkNotes` を通った原稿でこの前提が成り立つことは、推測であり、証明していない。
-6. スロットの id の前提。
+5. スロットの id の前提。
    自由な配置の `slotIds` がコードのスロットに振る id が golem-typeset の番号と一致することは未確認である。
    格子モードの `textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは前提に残り、その id が原稿の id から来ることは示していない。
-7. 格子モードの待つ罫線の使った行。
+6. 格子モードの待つ罫線の使った行。
    待つ罫線を置いてから次のブロックを置くまで使った行が変わらないことは、全体の不変条件としては証明していない。
-8. 区切りの残り。
+7. 区切りの残り。
    保持の中の `@need-lines`、区切りの前の行アキ、自由な配置（`SeparatorPhysical.lean`）の保持の性質は、照合だけで確かめ、定理がない。
    `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、照合していない。
    格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、照合の入力が足りない。
-9. Alloy のコマンドの算術モデルと原稿の対応。
+8. Alloy のコマンドの算術モデルと原稿の対応。
    見出しと最初の本文行の間か後ろに図版が一つある場合の算術モデルについて、任意の原稿列の図版の位置との対応は未証明である。
    見出し列の長さと段落構造を原稿列から取り出す一般的な対応も未証明である。
-10. 出力を変えなかった写しのうち、理由を確かめていないもの。
-    「自由な配置のモデル」の節の照合で、残りの行を置く前に次の段へ進まない写し、`tableReady` の条件から待っているスペースを除く写し、図版の横の行を `putWrappedLine` でなく `putLine` で置く写しは、出力を変えなかった。
-    その理由は推測であり、未確認である。
-    「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割も、照合できていない。
+9. 出力を変えなかった写しのうち、理由を確かめていないもの。
+   「自由な配置のモデル」の節の照合で、残りの行を置く前に次の段へ進まない写し、`tableReady` の条件から待っているスペースを除く写し、図版の横の行を `putWrappedLine` でなく `putLine` で置く写しは、出力を変えなかった。
+   その理由は推測であり、未確認である。
+   「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割も、照合できていない。
 
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
 終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
@@ -1611,8 +1630,8 @@ cabal build golem-layout golem-driver:tests
 sh experiments/pagination-proof/check.sh
 ```
 
-`check.sh` は、境界入力、自由な配置の境界入力、区切り、キャプションの評価値の照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
-区切りの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
+`check.sh` は、境界入力、自由な配置の境界入力、区切り、キャプションの評価値と実フォントの照合で `cabal exec` から `runghc` を呼ぶので、先に golem-layout をビルドしておく。
+区切りとキャプションの実フォントの照合は golem-driver のテストの `Support.hs` を読み込むので、golem-driver のテストもビルドしておく。
 `check.sh` は、`Whole.olean` と `WholeNotes.olean` を作ってから、それを読み込む `Separator.lean` を検査する。
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。

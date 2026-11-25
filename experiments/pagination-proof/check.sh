@@ -301,6 +301,19 @@ LEAN_PATH="$tmp" "$lean" --run "$values" "$tmp/caption-values" | sed -n 's/^out 
 diff -u "$tmp/caption-haskell" "$tmp/caption-lean"
 captions=$(grep -c '^in obs' "$tmp/caption-values")
 echo "the evaluation and the breaks of $captions captions are the same in Pagination.lean and golem-layout"
+
+# The caption rows of the table of boundary inputs, in the advances of
+# two real fonts (CaptionFonts.hs): the breaks of captionCompared, the
+# grid lines of the caption and the figure of fitCaptionedFigure, or
+# G07038, against golem-typeset (root ADR 0352, invariants 1 and 2).
+(cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
+  --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
+  experiments/pagination-proof/CaptionFonts.hs) > "$tmp/caption-fonts"
+sed -n 's/^out //p' "$tmp/caption-fonts" > "$tmp/caption-fonts-haskell"
+LEAN_PATH="$tmp" "$lean" --run "$values" "$tmp/caption-fonts" | sed -n 's/^out //p' > "$tmp/caption-fonts-lean"
+diff -u "$tmp/caption-fonts-haskell" "$tmp/caption-fonts-lean"
+fonts=$(grep -c '^in fig' "$tmp/caption-fonts")
+echo "the breaks, the grid lines and the figures of $fonts captions in real fonts are the same in Pagination.lean and golem-typeset"
 if ! wait "$wholeOrderPid"; then
   cat "$tmp/whole-order" >&2
   exit 1

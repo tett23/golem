@@ -22,7 +22,13 @@
      compression of `captionWidthEvaluation` is 0;
    * after `|`, the pass, the breaks and the demerits of `captionCompared`,
      the breaker of Pagination.lean on the same items, against those of
-     `breakParagraph`.
+     `breakParagraph`;
+   * `fig ...`: a caption of CaptionFonts.hs, in the advances of a real
+     font, with the sizes of its column and its image.  It prints the
+     pass, the breaks and the demerits of `captionCompared`, the grid
+     lines `captionGridSpan` gives its lines, and the image lines and the
+     size along and across the lines of `fitCaptionedFigure`, or G07038,
+     against what golem-typeset placed.
 
    check.sh compares the output with the "out" lines by diff.  This is a
    check on finitely many inputs, not a proof. -/
@@ -117,6 +123,26 @@ def answer (line : String) : String :=
       | none => "none"
     " ".intercalate ((if ps.pass < 4 then toString (pathDemerits ps items breaks) else "-")
       :: ranges.map (lineText ps items)) ++ " | " ++ compared
+  | "in" :: "fig" :: capacity :: body :: pitch :: size :: along :: num :: den :: _ :: lp :: adj :: dbl ::
+      endStretch :: emergency :: pull :: prot :: pretol :: tol :: width :: rest =>
+    -- a caption of CaptionFonts.hs in real fonts: the breaks of
+    -- `captionCompared`, the grid lines of its lines and the figure
+    let params : CaptionParams :=
+      ⟨int! pretol, int! tol, int! lp, int! adj, int! dbl, int! endStretch, int! emergency,
+        pull == "1", prot == "1", int! width⟩
+    let items := rest.map item
+    match captionCompared params items with
+    | none => "none"
+    | some (pass, node) =>
+      let breaks := captionComparedBreaks node
+      match captionAssembleWhole CaptionItem.kind items breaks with
+      | none => "unassembled"
+      | some lines =>
+        let span := captionGridSpan (nat! body) (nat! pitch) (nat! size) lines.length
+        let figure := match fitCaptionedFigure (nat! capacity) span (nat! pitch) (nat! along) (nat! num) (nat! den) with
+          | none => "G07038"
+          | some (along', across') => s!"{(across' + nat! pitch - 1) / nat! pitch}:{along'}:{across'}"
+        s!"{pass} " ++ ",".intercalate (breaks.map toString) ++ s!" {node.demerits} {span} {figure}"
   | _ => s!"unread: {line}"
 
 end CaptionValues
