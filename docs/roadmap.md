@@ -93,6 +93,10 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **輪郭に沿った回り込み**：矩形でない形の回り込みは、上の「パス」の項目の ADR を待ってから実装する（[Golem ADR 0382](adr/0382-figure-extent-and-captions.md) の輪郭の指定）。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。
 
+### マニュアル
+
+- **クイックスタートのマニュアル**：Golem に初めて触れる人が、短い時間で最初の PDF を組むところまでたどり着ける、薄いマニュアルを作る。今の使い手のマニュアルは機能をすべて説明する厚い本で、初めての人にいきなり読ませるものではないためである。導入、プロジェクトの雛形の作成、原稿とスタイルの最小の書き方、`golem build`、出力の確かめ、エラーの読み方までを扱い、その先は今の二冊のマニュアルの該当の章へ案内する。v1.0.0 の機能をそろえた後に書き、機能の変更に追いかけられないようにする。マニュアルなので ADR は作らず、読み手、範囲、組み方を [マニュアルの方針](manual-policy.md) に足して、同じプルリクエストで作る。
+
 ### 機能をそろえた後の確かめ
 
 - **wasm32 で落ちることがわかっているテストを 0 にする**：毎晩の `wasm-tests.yml` は、`golem.wasm` のパッケージのテストのスイートを wasm32 で走らせ、落ちることがわかっているテストを `scripts/wasm/test-failures.tsv` に、製品の問題（product）とテストの問題（test）に分けて載せる（[docs/adr/0293](adr/0293-run-the-test-suites-of-the-packages-of-golem-wasm-on-wasm32-every-night.md)）。一覧が空になるまで、一つずつ別のプルリクエストで直す。
