@@ -105,7 +105,7 @@ Golem の構成は、IO を処理の両端に寄せ、そのあいだを純粋�
 @figure images/purity.svg alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV と TSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
   純粋なカーネルと、読む側と書く側の IO のエッジ。
 
-IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-typeset の PDF を組む [code: renderPdf] と [code: renderPdfView]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
+IO を持つのは、golem-evaluate の [code: evaluateProjectWith]、golem-driver の [code: buildCore]、golem-typeset の PDF を組む [code: renderPdf] と [code: renderPdfView]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
 開発用の golem-fixtures と golem-test-support を除き、ほかのライブラリのモジュールは、公開する関数の型に [code: IO] を持たない。
 処理の各段階は、読み込みの済んだ値を受け取る純粋な関数として書いてある。
 主な関数の型は次のとおりである。
@@ -153,7 +153,7 @@ S0 の結果から S1 を組み直す [code: evReassemble] も、同じ形の純
 
 ### 読むファイルは原稿の記述で決まる
 
-図版、取り込むコード、CSV と TSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
+図版、取り込むコード、CSV と TSV は、golem-evaluate の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
 パスは golem-project の [code: normalizeRelative] で字句の上で正規化し、[code: resolveInRoot] でプロジェクトルートの外を指していないことを確かめる。
 PDF の経路は、図版のファイル（PNG、JPEG、PDF、SVG）を、golem-typeset の [code: loadFigures] が S1 の結果の図版のブロックから集めたパスとページの組だけ読む。
 ディレクトリを列挙する [code: listDirectory] は、[code: golem new] が作る先のディレクトリが空かどうかを見る箇所と、LSP がワークスペースを探す箇所にしか現れない。
@@ -298,7 +298,7 @@ Template Haskell の [code: runIO] は、コンパイルの時点でファイル
 golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は、この方法で hyph-utf8 のパターンを埋め込んでいる。
 [code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
 
-golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、[code: Golem.Driver.Explain] は diagnostic のコードの説明を埋め込んでいる。
+golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-evaluate の [code: Golem.Evaluate.Explain] は diagnostic のコードの説明を埋め込んでいる。
 この二つは Template Haskell を使わず、[code: scripts/gen-embedded.sh] がファイルから生成してコミットしたモジュールを読む（第[ref-number build-test]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
 ファイルが変わったのに生成し直していなければ、golem-driver のテストと CI が止める。
 
@@ -450,7 +450,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 | 時計を読まない | golem-pdf、golem-epub | 日時は [code: metadata.date] から作り、zip の時刻には 0 を渡す |
 | 乱数を使わない | golem-cli | [code: golem new] の id だけ。ライブラリには引数で渡す |
 | 環境変数、ロケール | golem-project、golem-plugin | 原稿はバイト列で読む。[code: XDG_CACHE_HOME] は場所だけを決める |
-| ディレクトリを列挙しない | golem-driver | 読むファイルは [code: assetRefs] が原稿から集める |
+| ディレクトリを列挙しない | golem-evaluate | 読むファイルは [code: assetRefs] が原稿から集める |
 | 走査の順を固定する | すべて | [code: Data.Map]。freeze のフラグ |
 | 並列の結果の順 | golem-typeset | [code: mapConcurrently] は入力の順で返す |
 | 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。[code: -ffp-contract=off] |

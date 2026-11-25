@@ -154,7 +154,7 @@ v1 の要求は [code: file "パス"] だけである。
 [code: List.map] のような組み込みの高階の関数は、渡された関数の列の変数を自分の列にするので、要求を持つ関数も渡せる。
 囲む列にない要求を使えば E05101、本体の前の矢印に列を書けば E05106 である。
 
-ハンドラは golem-driver の [code: Golem.Driver.Functions] が作る。
+ハンドラは golem-evaluate の [code: Golem.Evaluate.Functions] が作る。
 [code: manifest.toml] の [code: \[functions.requires\]] の [code: file] のファイルを、関数を呼ぶかどうかによらず、プロジェクトを読み込む時点で一度だけ読む。
 評価のあいだ、[code: File.read] はハンドラから読んだ文字列を受け取るだけで、ファイルシステムに触れない。
 同じパスは一回のビルドの中でいつも同じ値になるので、ファイルを並列に評価しても結果は変わらない。

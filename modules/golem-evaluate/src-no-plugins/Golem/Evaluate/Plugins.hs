@@ -1,13 +1,13 @@
 {- | The plugins of a project in a Golem built without them (the flag
-plugins of golem-driver off, docs/adr/0199): the wasm build. The names
-and types are those of src-plugins/Golem/Driver/Plugins.hs; what that
+plugins of golem-evaluate off, docs/adr/0199, root ADR 0434): the wasm build. The names
+and types are those of src-plugins/Golem/Evaluate/Plugins.hs; what that
 module takes from golem-plugin is copied here, so that this build does
 not depend on golem-plugin. A project without [plugins] and without
 filters of plugins in [[filters]] loads as with plugins: no plugin, and
 the filters of the .emet (docs/adr/0162). Any other gets G06106 at the
 top of manifest.toml.
 -}
-module Golem.Driver.Plugins
+module Golem.Evaluate.Plugins
   ( loadPlugins,
     LoadedPlugins (..),
     FunctionFilter,
@@ -25,14 +25,14 @@ import Golem.Eval.File (PluginHook (..), noPlugins)
 import Golem.Project.Manifest
 import Golem.Syntax
 
--- | As in src-plugins/Golem/Driver/Plugins.hs.
+-- | As in src-plugins/Golem/Evaluate/Plugins.hs.
 data LoadedPlugins = LoadedPlugins
   { lpHook :: !(Either [Diagnostic] PluginHook),
     lpWarnings :: ![Diagnostic],
     lpSources :: !(Map.Map FileId SourceInfo)
   }
 
--- | As in src-plugins/Golem/Driver/Plugins.hs.
+-- | As in src-plugins/Golem/Evaluate/Plugins.hs.
 type FunctionFilter = FilePath -> Text -> FilePath -> Document -> Maybe (Either [Diagnostic] (Document, [Diagnostic]))
 
 -- | The type of golem-plugin, of the same form (docs/adr/0121).
@@ -68,7 +68,7 @@ filtersOver functionFilter manifest path doc0 =
     (Right (doc0, []))
     (manifestFilters manifest)
 
-{- | The arguments of src-plugins/Golem/Driver/Plugins.hs; only the FileId
+{- | The arguments of src-plugins/Golem/Evaluate/Plugins.hs; only the FileId
 of manifest.toml, the filters of the .emet and the manifest are used.
 -}
 loadPlugins :: FilePath -> Map.Map FilePath Text -> FilePath -> FileId -> FileId -> Text -> FileId -> HostContext -> FunctionFilter -> Manifest -> IO LoadedPlugins

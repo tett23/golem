@@ -1,6 +1,6 @@
 # ADR 0434: プロジェクトの評価を golem-driver から新しいパッケージ golem-evaluate に分ける
 
-Status: superseded-pending [{"part":"文脈と調査した事項の、golem-lsp のライブラリが golem-driver から使うものの一覧","by":["docs/adr/0448-check-font-license-keys-in-golem-project.md"],"kind":"supplement"}]
+Status: superseded [{"part":"文脈と調査した事項の、golem-lsp のライブラリが golem-driver から使うものの一覧","by":["docs/adr/0448-check-font-license-keys-in-golem-project.md"],"kind":"supplement"}]
 
 ## 文脈
 
