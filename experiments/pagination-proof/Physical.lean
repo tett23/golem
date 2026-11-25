@@ -3372,6 +3372,132 @@ decreasing_by
   all_goals simp_wf
   all_goals (have := verseSpan_after b index later; omega)
 
+/-- The groups `paragraphs` hands on, in order: a paragraph alone, or the
+    verse lines of a stanza (`verseSpan`). -/
+def groups (b : Beside) (indices : List Nat) : List (List Nat) :=
+  match indices with
+  | [] => []
+  | index :: later =>
+    if b.isStanza index then (verseSpan b index later).1 :: groups b (verseSpan b index later).2
+    else [index] :: groups b later
+termination_by indices.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after b index later; omega)
+
+theorem takeWhile_dropWhile (f : Nat → Bool) (l : List Nat) : l.takeWhile f ++ l.dropWhile f = l := by
+  induction l with
+  | nil => rfl
+  | cons x xs ih => by_cases hx : f x <;> simp [List.takeWhile, List.dropWhile, hx, ih]
+
+theorem verseSpan_join (b : Beside) (i : Nat) (more : List Nat) :
+    (verseSpan b i more).1 ++ (verseSpan b i more).2 = i :: more := by
+  simp only [verseSpan, List.cons_append, takeWhile_dropWhile]
+
+/-- Every paragraph and verse line is in one group, in the order of the
+    input. -/
+theorem I5_groups_join (b : Beside) (indices : List Nat) : (groups b indices).join = indices := by
+  match indices with
+  | [] => simp [groups]
+  | index :: later =>
+    unfold groups
+    split
+    · simp only [List.join_cons]
+      rw [I5_groups_join b (verseSpan b index later).2, verseSpan_join]
+    · simp only [List.join_cons, List.singleton_append]
+      rw [I5_groups_join b later]
+termination_by indices.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after b index later; omega)
+
+/-- One group of `paragraphs`: a paragraph through `paragraph`, or a stanza
+    through `tryVerses` and `stanza`, with `later` the groups after it. -/
+def placeGroup (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (p : Paras) (prior : Nat) (cursor : St)
+    (g later : List Nat) : Except Failure St :=
+  match g with
+  | [] => .ok cursor
+  | index :: _ =>
+    match p.preliminary prior index cursor with
+    | .error e => .error e
+    | .ok pre =>
+      if b.isStanza index then
+        match tryVerses env region b pre g with
+        | .error e => .error e
+        | .ok trials =>
+          match p.ready prior index cursor (verseRows b p (pre :: trials).dropLast g) with
+          | .error e => .error e
+          | .ok ready => stanza env region b a later (b.keepOf index) true ready g
+      else
+        match p.ready prior index cursor [b.compose pre index] with
+        | .error e => .error e
+        | .ok ready => p.paragraph index later ready
+
+/-- The groups placed one after another, each after the last index of the
+    group before it. -/
+def byGroups (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (p : Paras) (prior : Nat) (cursor : St) :
+    List (List Nat) → Except Failure St
+  | [] => .ok cursor
+  | g :: gs =>
+    match placeGroup env region b a p prior cursor g gs.join with
+    | .error e => .error e
+    | .ok next => byGroups env region b a p (g.getLast?.getD prior) next gs
+
+theorem getLast_getD (x : Nat) (t : List Nat) (y z : Nat) : (x :: t).getLast?.getD y = (x :: t).getLast?.getD z := by
+  induction t generalizing x with
+  | nil => rfl
+  | cons u us ih => simp only [List.getLast?] at ih ⊢; exact ih u
+
+/-- `paragraphs` hands every paragraph and verse line it takes to one
+    group, the groups in the order of the input (`I5_groups_join`): it is
+    `byGroups` on `groups`. -/
+theorem I5_paragraphs_groups (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (p : Paras) (prior : Nat)
+    (cursor : St) (indices : List Nat) :
+    paragraphs env region b a p prior cursor indices = byGroups env region b a p prior cursor (groups b indices) := by
+  match indices with
+  | [] => simp [paragraphs, groups, byGroups]
+  | index :: later =>
+    rw [paragraphs, groups]
+    by_cases hs : b.isStanza index = true
+    · have hv : (verseSpan b index later).1 = index :: later.takeWhile (b.sameVerse index) := rfl
+      simp only [hs, if_true]
+      rw [hv]
+      simp only [byGroups, placeGroup, hs, if_true, I5_groups_join]
+      cases p.preliminary prior index cursor with
+      | error e => rfl
+      | ok pre =>
+        simp only
+        cases tryVerses env region b pre (index :: later.takeWhile (b.sameVerse index)) with
+        | error e => rfl
+        | ok trials =>
+          simp only
+          cases p.ready prior index cursor (verseRows b p (pre :: trials).dropLast (index :: later.takeWhile (b.sameVerse index))) with
+          | error e => rfl
+          | ok ready =>
+            simp only
+            cases stanza env region b a (verseSpan b index later).2 (b.keepOf index) true ready (index :: later.takeWhile (b.sameVerse index)) with
+            | error e => rfl
+            | ok next =>
+              simp only
+              rw [I5_paragraphs_groups env region b a p _ next (verseSpan b index later).2, getLast_getD]
+    · simp only [hs, if_false]
+      simp only [byGroups, placeGroup, hs, if_false, I5_groups_join, List.getLast?, Option.getD]
+      cases p.preliminary prior index cursor with
+      | error e => rfl
+      | ok pre =>
+        simp only
+        cases p.ready prior index cursor [b.compose pre index] with
+        | error e => rfl
+        | ok ready =>
+          simp only
+          cases p.paragraph index later ready with
+          | error e => rfl
+          | ok next => simp only; rw [I5_paragraphs_groups env region b a p index next later]; rfl
+termination_by indices.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after b index later; omega)
+
 /-! ## Tables -/
 
 /-- The header lines repeated in a later column, without their notes. -/

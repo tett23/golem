@@ -1003,6 +1003,10 @@ golem-typeset が `trials !! (count - 1)` で読む行数は 1 以上で試し�
 回り込み図版の横の段落と連を順に置くループ（`paragraphs`）は、段落を `paragraph` に、連を `stanza` に渡し、残りの段落の数で止まる。
 連のときは、同じ連の詩の行（`verseSpan`）をまとめて先頭から外すので、残りは `verseSpan_after` により 1 以上減る。
 段落の前の制御と始まりの改段（`stepPhysicalCursor` と `stepPhysicalPrefix`）、試さなかった詩の行の組み直す前の行、`paragraph` は、`Paras` の引数として受け取る。
+`paragraphs` が段落と詩の行を過不足なく順に渡すことも証明した。
+`groups` は、入力の列を `paragraphs` が一度に扱う組（段落一つか、一つの連の詩の行）に分ける。
+`I5_groups_join` は、組をつなげると入力の列に戻ることを示すので、どの段落と詩の行もちょうど一つの組に、入力の順で入る。
+`I5_paragraphs_groups` は、`paragraphs` が、組を順に一つずつ `paragraph` か `stanza` に渡す `byGroups` と等しいことを示す。
 
 `fitsFollowing` は罫線つきのブロックを試しに置き、見出しの罫線つきのブロックは `keepFollowing` を通して `fitsFollowing` を呼ぶので、`fitsFollowingGo` と `placeRuled` は相互再帰で定義した。
 尺度は三つ組の辞書式順序である。
@@ -1157,7 +1161,7 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4451` `tryVerses`、`:4464` `stanza` | `Beside`、`tryVerses`、`StanzaArgs`、`stanza`、`accept` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4399` `probeNext`、`:4442` `probeChain` | `Probe`、`verseSpan`、`probeNext`、`probeChain` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4307` `jobsFrom`、`:4331` `itemJobs` | `Jobs`、`jobsFrom`、`itemJobs`、`itemEnd` |
-| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4360` `paragraphs` | `Paras`、`verseRows`、`paragraphs` |
+| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4360` `paragraphs` | `Paras`、`verseRows`、`paragraphs`、`groups`、`placeGroup`、`byGroups` |
 | `Paginate/Physical.hs:628` `placeLines` | `placeLines` |
 | `Paginate/Physical.hs:641` `checkPhysicalNotes`、`:649` `paginatePhysical` | `checkNotes`、`paginate` |
 | `Paginate/Physical.hs:663` `drainCarry` | `drainCarry`、`drainOk` |
@@ -1299,7 +1303,7 @@ golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）�
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
 golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落を改行し直すループ（`parts`）、段落と連を順に置くループ（`paragraphs`）、詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることを証明した。
-行の過不足と順序は、まだ証明していない。
+`paragraphs` が段落と詩の行を過不足なく順に渡すことは証明したが（`I5_paragraphs_groups`）、ほかのループの行の過不足と順序は、まだ証明していない。
 
 このうち `jobsFrom`、`paragraphs`、`parts`、`probeNext`、`probeChain` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
 `CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に 1〜3 個の段落を置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
