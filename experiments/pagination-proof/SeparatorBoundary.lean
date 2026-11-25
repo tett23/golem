@@ -12,7 +12,9 @@
    the manuscripts with a box, a ruled paragraph or an item of a list
    (`blockManuscripts`) are laid out instead, and with `SEPARATOR_MODE`
    starting with `holds`, the manuscripts with a no-break after the
-   paragraph a separator is held with (`holdManuscripts`).
+   paragraph a separator is held with (`holdManuscripts`), and with
+   `SEPARATOR_MODE` starting with `code`, the manuscripts with code blocks
+   (`codeManuscripts`), whose slots print the ids of their rows.
    This is a check on finitely many inputs, not a proof. -/
 import Whole
 import Separator
@@ -34,12 +36,14 @@ inductive Item where
   | bk (k : Nat)
   /-- `@no-page-break`, in the manuscripts of the holds. -/
   | nb
+  /-- A code block of `k` rows, in the manuscripts with code. -/
+  | c (k : Nat)
   deriving DecidableEq
 
 def Item.name : Item → String
   | .p k => s!"P{k}"
   | .s => "S" | .t => "T" | .g => "G" | .b => "B" | .e => "E" | .n => "N" | .bk k => s!"B{k}"
-  | .x => "X" | .r => "R" | .l => "L" | .nb => "K"
+  | .x => "X" | .r => "R" | .l => "L" | .nb => "K" | .c k => s!"C{k}"
 
 /-- The grid lines before and after the separators default and scene. -/
 def combos : List ((Nat × Nat) × (Nat × Nat)) := [((0, 0), (1, 2)), ((1, 1), (2, 0))]
@@ -61,6 +65,10 @@ def units (c : (Nat × Nat) × (Nat × Nat)) : Nat → List Item → List Separa
   | id, .x :: r => .other .block [.boxed id 1 1 [.paragraph defaultKeep (lines' id 1)]] (some id) :: units c (id + 1) r
   | id, .r :: r => .other .block [.ruled id true true false (.lines defaultKeep (lines' id 1))] (some id) :: units c (id + 1) r
   | id, .l :: r => .other .block [.paragraph defaultKeep (lines' id 1)] (some id) :: units c (id + 1) r
+  -- the rows numbered from the line `id` on (numberCode, Flow.hs:3866),
+  -- of geometry 1 (`codeLines`: one grid line more than the rows), no
+  -- caption, one row first and no continuation mark (Flow.hs:4944)
+  | id, .c k :: r => .other .block [.code 1 0 1 false (lines' id k)] (some id) :: units c (id + k) r
 
 /-- `ineffectiveBlankLines` of golem-assemble (Assemble.hs): a blank
     line with only blank lines, need-lines and breaks after it, or a
@@ -146,10 +154,25 @@ def holdManuscripts : List (List Item) :=
 def holdInputs : List (Nat × Nat × List Item) :=
   (List.range combos.length).bind fun c => [2, 3, 4, 5].bind fun capacity => holdManuscripts.map fun m => (c, capacity, m)
 
+def Item.isCode : Item → Bool
+  | .c _ => true
+  | _ => false
+
+/-- `codeManuscripts` of SeparatorBoundary.hs. -/
+def codeManuscripts : List (List Item) :=
+  [[], [Item.p 1]].bind fun lead => [1, 2, 3].bind fun n =>
+    ((replicateM n [Item.s, .t, .c 1, .c 3, .p 1]).filter fun m => m.any fun i => i == .s || i == .t).bind fun middle =>
+      ([[], [Item.p 1], [Item.c 1], [Item.c 3]].filter fun last => (middle ++ last).any Item.isCode).map fun last =>
+        lead ++ middle ++ last
+
+def codeInputs : List (Nat × Nat × List Item) :=
+  (List.range combos.length).bind fun c => [3, 4].bind fun capacity => codeManuscripts.map fun m => (c, capacity, m)
+
 /-- The lines an item takes. -/
 def Item.lines : Item → Nat
   | .p k => k
   | .s | .t | .x | .r | .l => 1
+  | .c k => k
   | _ => 0
 
 /-- The first line of each item with lines and the item of a list it is,
@@ -199,6 +222,16 @@ def siteLine (us : List Separator.Unit) (i : Nat) : String :=
   | some (.separator _ _ _ l) => toString l.id
   | _ => s!"@{i}"
 
+/-- `pageText`, with the slot of a part of a code block by the ids of
+    its rows, as SeparatorBoundary.hs prints it. -/
+def codePageText (p : PageOut) : String :=
+  " ".intercalate ([toString p.number, toString p.column, if p.blank then "blank" else "-"] ++ p.slots.map codeSlot
+    ++ p.notes.map (fun (i, first, n) => s!"n{i}:{first}:{n}") ++ p.unmet.map unmetText)
+where
+  codeSlot : Int × Slot → String
+    | (g, .code rows) => s!"{g}:SCode {",".intercalate (rows.map toString)}"
+    | s => slotText s
+
 def output (c capacity : Nat) (items : List Item) : List String :=
   let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
   let made := Separator.separatorUnits capacity us
@@ -210,7 +243,7 @@ def output (c capacity : Nat) (items : List Item) : List String :=
     | last :: earlier => ({ last with unmet := last.unmet ++ final.unmet } :: earlier).reverse
   match Separator.holdErrors made pages with
   -- SeparatorBoundary.hs does not print the rules placed
-  | [] => pages.map fun p => pageText { p with rules := [] }
+  | [] => pages.map fun p => codePageText { p with rules := [] }
   | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
 
 
@@ -246,6 +279,9 @@ partial def firstNeed (separator capacity : Int) (hasNotes : Bool) (wanted : Nat
   | .heading false extent ls :: rest =>
     extent + noteNeed separator hasNotes ls + firstNeed separator capacity (hasNotes || ls.any (fun l => !l.notes.isEmpty)) 1 rest
   | .defTerm ls :: _ => (ls.length : Int) * pitch + noteNeed separator hasNotes ls
+  | .code caption first continued spans rows :: _ =>
+    let count := min rows.length (max first (max 1 wanted))
+    caption + (PhysicalPagination.codeSpanOf spans (count + if continued ∧ count < rows.length then 1 else 0) : Int) * pitch
   | _ => 0
 where
   noteNeed (separator : Int) (hasNotes : Bool) (ls : List PhysicalPagination.Line) : Int :=
@@ -293,7 +329,7 @@ def freeSlot : Int × PhysicalPagination.Slot → String
   | (p, .pageFigure i) => s!"{p}:SPageFigure {i}"
   | (p, .wrapped i) => s!"{p}:SWrapped {i}"
   | (p, .heading i n) => s!"{p}:SHeading {i} {n}"
-  | (p, .code ids g) => s!"{p}:SCode {ids.headD 0} {ids.length} {g}"
+  | (p, .code ids g) => s!"{p}:SCode {",".intercalate (ids.map toString)} {g}"
 
 def freeUnmet : PhysicalPagination.Unmet → String
   | .needLines n => s!"!need{n}"
@@ -311,7 +347,7 @@ def freePageText (p : PhysicalPagination.PageOut) : String :=
 def Item.bytes : Item → Nat
   | .p k => 36 * k
   | .s => 3 | .t => 16 | .g => 14 | .b => 13 | .e => 11 | .n => 13 | .bk _ => 13
-  | .x => 13 + 30 | .r => 13 + 36 | .l => 2 + 30 | .nb => 14
+  | .x => 13 + 30 | .r => 13 + 36 | .l => 2 + 30 | .nb => 14 | .c k => 2 * k + 7
 
 /-- Where SeparatorBoundary.hs prints a diagnostic at the unit of the line
     `i`: the id of a separator, or the byte offset of the paragraph
@@ -330,18 +366,28 @@ def failureText (items : List Item) : PhysicalPagination.Failure → String
   | .boxTooTall i => s!"G07121:{lineSite items i}"
   | _ => "failure"
 
+/-- `SeparatorPhysical.flows`, with a code block of the grid mode as the
+    `FCode` of the free placement: no caption, the grid lines of
+    `codeLines` for 0, 1, 2, ... rows. -/
+def freeFlows : List Flow → List PhysicalPagination.Flow
+  | [] => []
+  | .code g cap first cont ls :: rest =>
+    .code ((cap : Int) * pitch) first cont ((List.range (ls.length + 2)).map (codeLines g)) (ls.map SeparatorPhysical.line)
+      :: freeFlows rest
+  | f :: rest => SeparatorPhysical.flows pitch side [f] ++ freeFlows rest
+
 def freeOutput (c capacity : Nat) (items : List Item) : List String :=
   let us := units (combos.getD c ((0, 0), (0, 0))) 0 (overPage capacity (effective (collapse items)))
   let made := Separator.separatorUnits capacity us
-  match PhysicalPagination.paginate (freeBlockEnv items capacity (held us)) (SeparatorPhysical.flows pitch side (flowsOf items capacity us)) with
+  match PhysicalPagination.paginate (freeBlockEnv items capacity (held us)) (freeFlows (flowsOf items capacity us)) with
   | .error f => ["error " ++ failureText items f]
   | .ok pages =>
     match SeparatorPhysical.holdErrors made pages with
     | [] => pages.map freePageText
     | sites => ["error " ++ " ".intercalate ((sites.map fun i => s!"G07134:{siteLine made i}").toArray.qsort (· < ·)).toList]
 
-def report (blocks holds free : Bool) (part parts : Nat) : String :=
-  let all := if blocks then blockInputs else if holds then holdInputs else inputs
+def report (blocks holds code free : Bool) (part parts : Nat) : String :=
+  let all := if blocks then blockInputs else if holds then holdInputs else if code then codeInputs else inputs
   let size := (all.length + parts - 1) / parts
   String.join (((all.drop (part * size)).take size).map fun (c, capacity, items) =>
     s!"{c} {capacity} [{" ".intercalate (items.map Item.name)}]\n" ++
@@ -388,11 +434,13 @@ end SeparatorBoundary
 -- check.sh evaluates the inputs in `SEPARATOR_PARTS` contiguous parts
 -- side by side, this one part `SEPARATOR_PART`: the manuscripts with
 -- blocks when `SEPARATOR_MODE` starts with `blocks`, those of the holds
--- when it starts with `holds`, in the free
+-- when it starts with `holds`, those with code blocks when it starts with
+-- `code`, in the free
 -- placement when it ends with `free`; `#eval` prints it, as `main` is
 -- Boundary.lean's.
 #eval show IO _root_.Unit from do
   let part := ((← IO.getEnv "SEPARATOR_PART").getD "0").toNat!
   let parts := ((← IO.getEnv "SEPARATOR_PARTS").getD "1").toNat!
   let mode := (← IO.getEnv "SEPARATOR_MODE").getD ""
-  IO.print (SeparatorBoundary.report (mode.startsWith "blocks") (mode.startsWith "holds") (mode.endsWith "free") part parts)
+  IO.print (SeparatorBoundary.report (mode.startsWith "blocks") (mode.startsWith "holds") (mode.startsWith "code")
+    (mode.endsWith "free") part parts)

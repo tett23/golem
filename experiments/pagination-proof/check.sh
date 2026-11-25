@@ -132,10 +132,11 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
 fi
 (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Separator.olean" "$separator")
 echo "the separator flows are total and their theorems are proved"
-# The manuscripts in the six modes of SeparatorBoundary.hs: the grid and
+# The manuscripts in the eight modes of SeparatorBoundary.hs: the grid and
 # the free placement, without and with boxes, ruled blocks and items of
-# lists, and with a no-break after the paragraph a separator is held with.
-modes='grid free blocks blocks-free holds holds-free'
+# lists, with a no-break after the paragraph a separator is held with, and
+# with code blocks, whose slots print the ids of their rows.
+modes='grid free blocks blocks-free holds holds-free code code-free'
 separatorPids=
 for mode in $modes; do
   case $mode in
@@ -145,6 +146,8 @@ for mode in $modes; do
     blocks-free) args='blocks free' ;;
     holds) args=holds ;;
     holds-free) args='holds free' ;;
+    code) args=code ;;
+    code-free) args='code free' ;;
   esac
   # shellcheck disable=SC2086
   (cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \

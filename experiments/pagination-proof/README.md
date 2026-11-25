@@ -951,7 +951,10 @@ golem-typeset が小さくならない上限で試し直すとき、または後
 `trialParagraphPartLimit` が呼ぶたびに行う `checkPhysicalNotes` は、`trial` も呼ぶたびに行う（`checkRows`）。
 `paginatePhysical` の最初の検査は本の部の中の行を見ないので（`flowLines` の `FBookPart` は空）、本の部の中の段落にはこの検査が働く。
 `slotIds` は、コードのスロットの id を、Physical.hs の最初の行から続く番号でなく、モデルのスロットが持つ行の id の列とする。
-golem-typeset はコードの行に続く番号を振るので、二つは一致すると考えられるが、未確認である。
+golem-typeset はコードの行に、行と図版と同じ番号から続く番号を振る（`numberCode`、`Flow.hs:3866`）。
+`SeparatorBoundary.hs` のコードブロックを含む組（`code` と `code-free`）は、golem-typeset のコードのスロットの最初の行と行数から行の番号を並べ、モデルのスロットの id の列と照合し、すべて一致した。
+これは有限個の原稿の照合であり、定理ではない。
+モデルのコードの行の id を一つずらすと、格子モードで 2620 個、自由な配置で 2300 個の原稿で出力が食い違った。
 `drainCarry` は、次のページが最初の待機中の図版と最初の繰り越し脚注の 1 行を受け取れる間だけ進む（`drainOk`）。
 この条件が成り立たない状態では、Physical.hs の `drainCarry` は止まらないか、送りが 0 のときに `div` の例外になる。
 繰り越す脚注の 1 行が新しいページに収まらなければ、どのページでも脚注は減らないからである。
@@ -1585,11 +1588,14 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
 `placeKept` が段落を分けて送る場合、区切りの後ろのアキ、区切りの連続も、定理の範囲に入る（`I3_separator_chain_no_error`）。
 保持の中の `@need-lines`、区切りの前の行アキ、自由な配置は、まだ照合だけで確かめている。
 段の行数を超える保持の中の `@need-lines`（G07037）を `settleHolds` が除かないと、格子モードで 140 個、自由な配置で 152 個、箱などを含む格子モードの組で 2 個の原稿で出力が食い違った。
-`check.sh` は、区切りの原稿を六つの組で golem-typeset と照合し、すべて一致した。
+`check.sh` は、区切りの原稿を八つの組で golem-typeset と照合し、すべて一致した。
 格子モードと自由な配置の 8784 個ずつの原稿は、「区切りのモデル」の節で述べた項目の組み合わせである。
 もう二組の 8640 個ずつの原稿は、項目に箱、前後に罫線のある段落、1 行のリスト項目を足し、段の容量を 3 行か 4 行にしたもので、格子モードと自由な配置で照合した。
 残る二組の 1440 個ずつの原稿（`holds` と `holds-free`）は、保持の後の段落に `@no-page-break` を続けたもので、格子モードと自由な配置で照合した。
 この原稿は、なしか 1 行の段落の後に、`---` か `@separator scene`、なしか `---` か `@blank-line 1`、1〜3 行の段落、`@no-page-break` を置き、最後に 1〜3 行の段落か、1 行か 2 行の段落と `@no-page-break` と同じ行数の段落を置いたもので、段の容量は 2〜5 行である。
+コードブロックを含む二組の 3136 個ずつの原稿（`code` と `code-free`）は、なしか 1 行の段落の後に、`---`、`@separator scene`、1 行か 3 行のコードブロック、1 行の段落から 1〜3 個を区切りを含めて並べ、最後に、なしか 1 行の段落か 1 行か 3 行のコードブロックを置き、コードブロックを一つ以上含むもので、段の容量は 3 行か 4 行である。
+この二組では、コードのスロットを行の id の列で書き出す。
+自由な配置では、`SeparatorPhysical.lean` の `flows` が写さないコードブロックを、`SeparatorBoundary.lean` の `freeFlows` が `FCode` に写す。
 自由な配置は、`SeparatorBoundary.hs` が `alignment = "free"` の組版の設定で選ぶ。
 
 照合の感度は、写した計算を一つずつ替えて確かめた。
@@ -1623,7 +1629,6 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    `I5_stanza_lines` は `fallback` と `hold` についての仮定を置き、`I5_parts_lines` の前提 `hb`（改行し直しても段落の最初の行の id が変わらないこと）は未確認である。
    欠けているのは、golem-typeset の改行器と後続の判定について、これらの前提を導く定理か、前提を確かめる照合である。
 4. スロットの id の前提。
-   自由な配置の `slotIds` がコードのスロットに振る id が golem-typeset の番号と一致することは未確認である。
    格子モードの `textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは前提に残り、その id が原稿の id から来ることは示していない。
 5. 区切りの残り。
    保持の中の `@need-lines`、区切りの前の行アキ、自由な配置（`SeparatorPhysical.lean`）の保持の性質は、照合だけで確かめ、定理がない。
@@ -1659,7 +1664,7 @@ sh experiments/pagination-proof/check.sh
 `PhysicalDrain.lean` は、`PhysicalNotes.olean` を作ってから、それを読み込んで検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
-`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で六つの組を一つずつ評価する。
+`SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で八つの組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。
 

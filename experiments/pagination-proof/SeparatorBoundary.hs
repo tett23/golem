@@ -25,8 +25,9 @@ import System.Environment (getArgs)
 -- of two lines, and, in the manuscripts with blocks, a paragraph of one
 -- line in a box, a paragraph of one line with rules before and after,
 -- and an item of a list of one line, a book part (markBookParts); in
--- the manuscripts of the holds, a no-break.
-data Item = P Int | S | T | G | B | E | N | X | R | L | K
+-- the manuscripts of the holds, a no-break; in the manuscripts with code,
+-- a code block of so many rows.
+data Item = P Int | S | T | G | B | E | N | X | R | L | K | C Int
   deriving stock (Eq)
 
 name :: Item -> String
@@ -42,6 +43,7 @@ name = \case
   R -> "R"
   L -> "L"
   K -> "K"
+  C k -> "C" <> show k
 
 source :: Item -> T.Text
 source = \case
@@ -57,6 +59,7 @@ source = \case
   R -> "@style ruled\n" <> T.replicate 12 (T.singleton '\12358')
   L -> "- " <> T.replicate 10 (T.singleton '\12360')
   K -> "@no-page-break"
+  C k -> "```\n" <> T.intercalate "\n" (replicate k "a") <> "\n```"
 
 -- | The lines an item takes.
 linesOf :: Item -> Int
@@ -67,6 +70,7 @@ linesOf = \case
   X -> 1
   R -> 1
   L -> 1
+  C k -> k
   _ -> 0
 
 -- | The grid lines before and after the separators default and scene.
@@ -145,9 +149,34 @@ blockManuscripts =
 blockInputs :: [(Int, Int, [Item])]
 blockInputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [3, 4], items <- blockManuscripts]
 
-slot :: (Int, Slotted) -> String
-slot (g, s) = show g <> ":" <> case s of
+-- | One or two leading items, one to three items with a visible
+-- separator and a code block of one or three rows, then no paragraph, a
+-- paragraph of one line or a code block.  golem-typeset numbers the rows
+-- of a code block by the counter of the lines (numberCode, Flow.hs:3866).
+codeManuscripts :: [[Item]]
+codeManuscripts =
+  [ lead <> middle <> lastItem
+  | lead <- [[], [P 1]],
+    n <- [1, 2, 3],
+    middle <- replicateM n [S, T, C 1, C 3, P 1],
+    any (`elem` [S, T]) middle,
+    lastItem <- [[], [P 1], [C 1], [C 3]],
+    any isCode (middle <> lastItem)
+  ]
+  where
+    isCode = \case
+      C _ -> True
+      _ -> False
+
+codeInputs :: [(Int, Int, [Item])]
+codeInputs = [(c, capacity, items) | c <- [0 .. length combos - 1], capacity <- [3, 4], items <- codeManuscripts]
+
+-- | A slot; the slot of a part of a code block by the ids of its rows,
+-- and, in the free placement, its grid lines.
+slot :: Bool -> (Int, Slotted) -> String
+slot free (g, s) = show g <> ":" <> case s of
   SLine i -> "L" <> show i
+  SCode first count grid -> "SCode " <> intercalate "," (map show [first .. first + count - 1]) <> (if free then " " <> show grid else "")
   other -> show other
 
 -- | The id of the first line of each item and its byte offset in the
@@ -159,13 +188,15 @@ starts items = zip3 (scanl (+) 0 (map linesOf items)) (scanl (+) 0 [BS.length (T
 -- (@alignment = "free"@), and golem-typeset paginates with
 -- paginatePhysical; the slots are then printed at their offsets in sp.
 -- With @blocks@ first, the manuscripts with blocks are laid out, with
--- @holds@ first, those of the holds.
+-- @holds@ first, those of the holds, with @code@ first, those with code
+-- blocks.
 main :: IO ()
 main = do
   args <- getArgs
   let (set, extra) = case args of
         "blocks" : _ -> (blockInputs, blockStyle)
         "holds" : _ -> (holdInputs, "")
+        "code" : _ -> (codeInputs, "")
         _ -> (inputs, "")
   forM_ set (run (drop 1 args == ["free"] || args == ["free"]) extra)
 
@@ -179,7 +210,7 @@ run free extra (c, capacity, items) = do
   case result of
     Right (_, layout) ->
       forM_ (plPages layout) $ \p ->
-        putStrLn ("  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p then "blank" else "-"] <> map (\(x, s) -> slot (fromIntegral (if free then unSp x else unSp x `div` pitch), s)) (poSlots p) <> map unmet (poUnmet p)))
+        putStrLn ("  " <> unwords ([show (poNumber p), show (poColumn p), if poBlank p then "blank" else "-"] <> map (\(x, s) -> slot free (fromIntegral (if free then unSp x else unSp x `div` pitch), s)) (poSlots p) <> map unmet (poUnmet p)))
     Left ds ->
       let at d = case [(ident, item) | (ident, offset, item) <- starts items, offset == spanStart (diagSpan d)] of
             [(ident, item)] | item `elem` [S, T] -> show ident
