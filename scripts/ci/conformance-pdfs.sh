@@ -2,7 +2,8 @@
 # Typesets the books that the CI job verapdf checks against PDF/A-2a and
 # PDF/UA-1 (docs/adr/0183-tagged-pdf-and-pdf-a.md).
 #
-#   conformance-pdfs.sh OUT     writes OUT/<book>.pdf for every book
+#   conformance-pdfs.sh OUT     writes OUT/<book>.pdf for every book, and
+#                               OUT/screen/<book>.pdf for the books of the screen
 #   conformance-pdfs.sh --list  prints the names of the books, one per line
 #
 # Each book is a copy of a fixture with an output intent added to its
@@ -13,6 +14,11 @@
 # scripts/visual/build.sh does; the conformance fixture is set horizontally
 # with its manifest.toml and style.toml, and vertically with its
 # manifest-vertical.toml and style-vertical.toml.
+#
+# The PDFs for the screen (root ADR 0431) are copies of the conformance
+# fixture, horizontal and vertical, with pdfua = "1" in [targets.pdf-screen]
+# and built with --target pdf-screen; verapdf.sh checks them against
+# PDF/UA-1 alone, as they declare no PDF/A.
 #
 # GOLEM chooses the golem to run. A book that does not build fails the
 # script with exit code 1 and the output of golem on stderr.
@@ -66,6 +72,35 @@ fonts() {
   cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$1/fonts/latin.otf"
 }
 
+# screen NAME SRC [STYLE MANIFEST]: a copy of the fixture SRC at
+# WORK/screen-NAME, as 'declared' copies it, with pdfua = "1" in
+# [targets.pdf-screen] of its manifest and no output intent
+screen() {
+  dir=$WORK/screen-$1
+  cp -R "$2" "$dir"
+  rm -rf "$dir/build"
+  if [ -n "${3-}" ]; then cp "$2/$3" "$dir/style.toml"; fi
+  if [ -n "${4-}" ]; then cp "$2/$4" "$dir/manifest.toml"; fi
+  printf '\n[targets.pdf-screen]\npdfua = "1"\n' >>"$dir/manifest.toml"
+  fonts "$dir"
+}
+
+# screenpdf NAME: builds the PDF for the screen of WORK/screen-NAME and
+# copies it to OUT/screen/NAME.pdf
+screenpdf() {
+  if ! (cd "$WORK/screen-$1" && "$GOLEM" build --target pdf-screen) 2>&1; then
+    echo "conformance-pdfs: golem build --target pdf-screen of $1 failed"
+    return 1
+  fi
+  find "$WORK/screen-$1/build/pdf-screen" -type f -name '*.pdf' >"$WORK/pdfs-screen-$1"
+  if [ "$(wc -l <"$WORK/pdfs-screen-$1" | tr -d ' ')" != 1 ]; then
+    echo "conformance-pdfs: $1 did not write exactly one PDF for the screen"
+    return 1
+  fi
+  mkdir -p "$OUT/screen"
+  cp "$(cat "$WORK/pdfs-screen-$1")" "$OUT/screen/$1.pdf"
+}
+
 # pdf NAME: builds the PDF of WORK/NAME and copies it to OUT/NAME.pdf
 pdf() {
   if ! (cd "$WORK/$1" && "$GOLEM" build --target pdf) 2>&1; then
@@ -91,3 +126,8 @@ fonts "$WORK/conformance-vertical"
 declared languages "$FIX/languages"
 fonts "$WORK/languages"
 for name in $(list); do pdf "$name" >"$WORK/log-$name" 2>&1 || { cat "$WORK/log-$name" >&2; exit 1; }; done
+screen conformance-horizontal "$FIX/conformance"
+screen conformance-vertical "$FIX/conformance" style-vertical.toml manifest-vertical.toml
+for name in conformance-horizontal conformance-vertical; do
+  screenpdf "$name" >"$WORK/log-screen-$name" 2>&1 || { cat "$WORK/log-screen-$name" >&2; exit 1; }
+done

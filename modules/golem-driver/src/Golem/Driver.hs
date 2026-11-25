@@ -113,12 +113,19 @@ import System.Posix.IO (OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd)
 import System.Posix.Types (Fd (..))
 #endif
 
-data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
+{- | The targets: the PDF for print, and the PDF for the screen (root ADR
+0431), which is built only when it is chosen.
+-}
+data Target = TargetHtml | TargetEpub | TargetText | TargetPdf | TargetPdfScreen
   deriving stock (Eq, Ord, Show)
 
--- | Every target, in the order they are written (golem-cli ADR 0002).
+-- | Every target built without --target, in the order they are written (golem-cli ADR 0002); not the PDF for the screen (root ADR 0431).
 allTargets :: [Target]
 allTargets = [TargetHtml, TargetEpub, TargetText, TargetPdf]
+
+-- | The PDF for print and the PDF for the screen, which share their layout (root ADR 0431).
+isPdfTarget :: Target -> Bool
+isPdfTarget t = t == TargetPdf || t == TargetPdfScreen
 
 {- | The crop marks of the PDF (golem-pdf ADR 0004), chosen by golem build
 --marks. golem-cli does not depend on golem-pdf, so this is not its type.
@@ -217,15 +224,17 @@ cleanFinderInfo _ _ = pure ()
 build :: BuildOptions -> IO BuildResult
 build opts = withOutputLock (optRoot opts) $ do
   (result, _, _, selectedTargets) <- buildCore False opts
-  let pdfDir = optRoot opts </> "build/pdf"
-      pdfWasWritten = any ((== pdfDir) . takeDirectory) (brWritten result)
-      pdfWasSelected = TargetPdf `elem` fromMaybe [TargetPdf] selectedTargets
-      selectedDirs = maybe [] (map targetOutputDir) selectedTargets
+  let selectedDirs = maybe [] (map targetOutputDir) selectedTargets
   unless (optCheckOnly opts) $
     cleanFinderInfo (optRoot opts) ("." : "build" : selectedDirs)
-  when (optProfile opts == Prod && not (optCheckOnly opts) && pdfWasSelected && hasErrors (brDiagnostics result) && not pdfWasWritten) $ do
-    unsafe <- unsafeOutputDirs (optRoot opts) [TargetPdf]
-    when (null unsafe) (cleanDir pdfDir)
+  -- the PDF for print and the PDF for the screen of an earlier build (docs/adr/0326, root ADR 0431)
+  forM_ [TargetPdf, TargetPdfScreen] $ \t -> do
+    let dir = optRoot opts </> targetOutputDir t
+        wasWritten = any ((== dir) . takeDirectory) (brWritten result)
+        wasSelected = t `elem` fromMaybe [TargetPdf] selectedTargets
+    when (optProfile opts == Prod && not (optCheckOnly opts) && wasSelected && hasErrors (brDiagnostics result) && not wasWritten) $ do
+      unsafe <- unsafeOutputDirs (optRoot opts) [t]
+      when (null unsafe) (cleanDir dir)
   pure result
 
 targetOutputDir :: Target -> FilePath
@@ -234,6 +243,7 @@ targetOutputDir = \case
   TargetEpub -> "build/epub"
   TargetText -> "build/text"
   TargetPdf -> "build/pdf"
+  TargetPdfScreen -> "build/pdf-screen"
 
 -- | The PDF of a project built from its files in memory (docs/adr/0199).
 data BuildInMemory = BuildInMemory
@@ -261,14 +271,17 @@ buildPdfInMemory table = do
 its view (golem preflight, golem-cli ADR 0006).
 -}
 buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View), Maybe (SrcSpan, Sp), Maybe [Target])
-buildCore inMemory opts = do
-  ev <- evaluateProjectWith (optFiles opts) Map.empty (optProfile opts) (optRoot opts)
+buildCore inMemory opts0 = do
+  ev <- evaluateProjectWith (optFiles opts0) Map.empty (optProfile opts0) (optRoot opts0)
   case ev of
-    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, Nothing, optTargets opts)
+    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing, Nothing, optTargets opts0)
     Right e -> do
       let project = evProject e
           finish = finishWith (manifestSilencedNotices (projectManifest project)) (manifestSilencedInfo (projectManifest project))
-          targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
+          targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts0)
+          -- the crop marks are those of the PDF for print; the PDF for the screen has none (root ADR 0431)
+          opts = if TargetPdf `elem` targets then opts0 else opts0 {optMarks = NoMarks}
+          pdfAny = any isPdfTarget targets
       hasStyle <- isPresent (optFiles opts) "style.toml"
       let styleFid = evStyleFile e
           -- style.toml is a source of diagnostics (golem-project ADR 0004, G07002) when it exists
@@ -281,9 +294,11 @@ buildCore inMemory opts = do
           -- G07002, and what style.toml decides of the layout (G07001, G07025; golem-driver ADR 0016)
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
-              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
+              <> (if pdfAny then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
+          -- what stops the PDF for the screen: the layout without the crop marks of the PDF for print (root ADR 0431)
+          screenStops = if isJust (markStyle (optMarks opts)) then styleLayoutDiagnostics diagFid False (evStyle e) (Map.elems (localStylesOf e)) else marksDiags
           -- G07128: reported, but it holds back neither the layout nor, in dev, the PDF (docs/adr/0389)
-          sidenoteDiags = if TargetPdf `elem` targets then pdfSidenoteIndents opts e diagFid else []
+          sidenoteDiags = if pdfAny then pdfSidenoteIndents opts e diagFid else []
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optFiles opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
@@ -292,7 +307,7 @@ buildCore inMemory opts = do
       -- G08019: CFF2 fonts, which the PDF cannot embed (golem-font ADR 0003), and G08110, G08111, G08112:
       -- instances that are not in their fonts (Golem ADR 0358); golem check reports them too
       cff2Diags <-
-        if TargetPdf `elem` targets
+        if pdfAny
           then pdfFontDiagnostics (optFiles opts) diagFid [(r, fr {frJa = mfilter (`Map.notMember` missing) (frJa fr), frLatin = mfilter (`Map.notMember` missing) (frLatin fr)}) | (r, fr) <- pdfFontRoles fileStyle locals]
           else pure []
       -- G03284: files of the same name and other bytes under fonts/, for the targets that embed the fonts (root ADR 0433)
@@ -301,14 +316,14 @@ buildCore inMemory opts = do
         if embedsFonts declared (TargetHtml `elem` targets) (TargetEpub `elem` targets)
           then fontClashDiagnostics (optFiles opts) diagFid fileStyle missing
           else pure []
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid declared fileStyle locals missing clashes t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid declared fileStyle locals missing clashes t <> (if isPdfTarget t then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G07001, G07002 and G07025 stop the PDF before it is laid out; the other targets are written
-          writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
+          writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags, t /= TargetPdfScreen || null screenStops]
           -- the variables of the running heads, after S0, only for the PDF (golem-driver ADR 0022)
           evDiags =
             evDiagnostics e
-              <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
+              <> (if pdfAny then snd (runningVars e) else [])
               <> maybe [] (chapterNoteDiagnostics (evStyle e) targets infos) (evBook e)
               <> maybe [] (pageNumberingDiagnostics (evStyle e) targets) (evBook e)
       case evBook e of
@@ -324,7 +339,7 @@ buildCore inMemory opts = do
                   else pure []
               let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
                   -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (all (== TargetPdf) targets) (evStyle e) book
+                  listDiags = listNumberDiagnostics (lsNumbers (stLists (evStyle e))) (maybe False pageVertical (stPage (evStyle e))) book <> noteNumberDiagnostics (all isPdfTarget targets) (evStyle e) book
               (written, outDiags, pdf) <-
                 if null listDiags || null webWritable
                   then writeTargets inMemory opts e diagFid book missing webWritable
@@ -335,7 +350,7 @@ buildCore inMemory opts = do
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
     -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
     finishWith silenced silencedInfo =
-      finishDiagnostics (optProfile opts) (if optNoNotices opts then Nothing else Just silenced) silencedInfo (optVerbose opts)
+      finishDiagnostics (optProfile opts0) (if optNoNotices opts0 then Nothing else Just silenced) silencedInfo (optVerbose opts0)
 
 {- | G08102 (docs/adr/0123): a figure of the source whose image HTML and
 EPUB copy (its web image, or itself) would be written under
@@ -393,7 +408,7 @@ chapterNoteDiagnostics style targets infos book =
          (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentEndnotes ch)]
        ]
   where
-    gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
+    gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (any isPdfTarget targets && stNotesPlacement style == PlaceChapterEnd)
     pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
 
 {- | G03259 (docs/adr/0383): notes numbered per page, and a target without
@@ -547,6 +562,10 @@ targetFileDiagnostics fid declared style locals missing clashes target =
       bodyFontDiagnostics fid style
         <> report "G08002" Error "フォントのファイルがありません" (pdfFontPaths style locals)
         <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
+    -- the PDF for the screen has no output intent (root ADR 0431)
+    TargetPdfScreen ->
+      bodyFontDiagnostics fid style
+        <> report "G08002" Error "フォントのファイルがありません" (pdfFontPaths style locals)
     TargetHtml -> siteFonts (tgHtmlFonts declared)
     TargetEpub -> siteFonts (tgEpubFonts declared)
     TargetText -> []
@@ -638,6 +657,7 @@ unsafeOutputDirs root targets = do
       TargetEpub -> "build/epub"
       TargetText -> "build/text"
       TargetPdf -> "build/pdf"
+      TargetPdfScreen -> "build/pdf-screen"
     unsafe rel = do
       let p = root </> rel
       link <- fromRight False <$> (try (pathIsSymbolicLink p) :: IO (Either SomeException Bool))
@@ -669,7 +689,11 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
     TargetHtml -> let (hcfg, site) = web renderHtml (tgHtmlFonts declared) in writeHtmlTarget root hcfg ft webBook site
     TargetEpub -> let (hcfg, site) = web renderXhtml (tgEpubFonts declared) in writeEpubTarget opts e hcfg ft webBook site
     TargetText -> writeTextTarget root (optProfile opts == Dev) e bib ft book
-    TargetPdf -> writePdfTarget inMemory opts e diagFid book bib
+    -- one layout for the PDF for print and the PDF for the screen (root ADR 0431)
+    TargetPdf -> writePdfTarget inMemory True (TargetPdfScreen `elem` targets) opts e diagFid book bib
+    TargetPdfScreen
+      | TargetPdf `elem` targets -> pure ([], [], Nothing)
+      | otherwise -> writePdfTarget inMemory False True opts {optMarks = NoMarks} e diagFid book bib
   pure (concat [w | (w, _, _) <- results], webDiags <> concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
 
 {- | The configuration of the HTML of a book from its style.toml and the
@@ -927,41 +951,62 @@ writeTextTarget root dev e bib ft book = do
       pure (dir </> sub </> p)
   pure (concat files, [], Nothing)
 
-{- | Writes the PDF to build/pdf with pages.json, where each of its pages
-starts in the source (docs/adr ADR 0195), or keeps it in memory with its
-view for golem preflight (@inMemory@), with the notices of the PDF.
+{- | Writes the PDF for print to build/pdf with pages.json, where each of
+its pages starts in the source (docs/adr ADR 0195), when @printed@, and the
+PDF for the screen of the same layout to build/pdf-screen when @screen@
+(root ADR 0431), or keeps the PDF for print in memory with its view for
+golem preflight (@inMemory@), with the notices of the PDF.
 -}
-writePdfTarget :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
-writePdfTarget inMemory opts e diagFid book bib = do
+writePdfTarget :: Bool -> Bool -> Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map Text [EntryPart] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writePdfTarget inMemory printed screen opts e diagFid book bib = do
   let root = optRoot opts
       project = evProject e
       style = evStyle e
-      dir = root </> "build" </> "pdf"
-      out = dir </> pdfFileName (mdId (manifestMetadata (projectManifest project)))
+      dir = root </> targetOutputDir TargetPdf
+      screenDir = root </> targetOutputDir TargetPdfScreen
+      name = pdfFileName (mdId (manifestMetadata (projectManifest project)))
+      out = dir </> name
+      screenOut = screenDir </> name
       pagesOut = dir </> "pages.json"
-  r <- renderPdfView golemVersion (optFonts opts) (pdfInputOf opts e diagFid book bib)
+      dirs = [dir | printed] <> [screenDir | screen]
+      -- the PDF/UA of [targets.pdf-screen] (root ADR 0431)
+      screenUa = if screen then Just (join (tgPdfScreen (manifestTargets (projectManifest project)))) else Nothing
+  r <- renderPdfOutputs printed screenUa golemVersion (optFonts opts) (pdfInputOf opts e diagFid book bib)
   -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
   -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
   let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
   case r of
     Left ds -> do
-      when (not inMemory && any ((== DiagnosticCode "G08113") . diagCode) ds) (cleanDir dir)
+      when (not inMemory && any ((== DiagnosticCode "G08113") . diagCode) ds) (mapM_ cleanDir dirs)
       pure ([], ds <> fontNotice, Nothing)
-    Right (bytes, notices, view, starts)
+    Right (bytes, notices, view, starts, screenBytes)
       -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
       | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
       -- G08100, G08103, G07127 and G07128 are errors in prod and stop the PDF; the PDF of an earlier build goes too (docs/adr 0081, docs/adr/0268, docs/adr/0389)
       -- G07128 is reported by buildCore, and only stops the PDF here
       | hasErrors (map (adjustForProfile (optProfile opts)) (glyphs <> notices <> pdfSidenoteIndents opts e diagFid)) -> do
-          cleanDir dir
+          mapM_ cleanDir dirs
           pure ([], notices <> fontNotice <> glyphs, Nothing)
       | otherwise -> do
-          cleanDir dir
-          createDirectoryIfMissing True dir
-          BS.writeFile out bytes
-          -- where each page starts in the source, next to the PDF (docs/adr ADR 0195)
-          writeUtf8File pagesOut (pagesJson (Map.map (\sf -> (sfPath sf, sfText sf)) (projectSources project)) starts)
-          pure ([out, pagesOut], notices <> fontNotice <> glyphs, Nothing)
+          printedFiles <-
+            if printed
+              then do
+                cleanDir dir
+                createDirectoryIfMissing True dir
+                BS.writeFile out bytes
+                -- where each page starts in the source, next to the PDF (docs/adr ADR 0195)
+                writeUtf8File pagesOut (pagesJson (Map.map (\sf -> (sfPath sf, sfText sf)) (projectSources project)) starts)
+                pure [out, pagesOut]
+              else pure []
+          -- the PDF for the screen alone, without pages.json (root ADR 0431)
+          screenFiles <- case screenBytes of
+            Just sb | screen -> do
+              cleanDir screenDir
+              createDirectoryIfMissing True screenDir
+              BS.writeFile screenOut sb
+              pure [screenOut]
+            _ -> pure []
+          pure (printedFiles <> screenFiles, notices <> fontNotice <> glyphs, Nothing)
       where
         -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
         glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]

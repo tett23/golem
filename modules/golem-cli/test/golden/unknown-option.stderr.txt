@@ -1,6 +1,6 @@
 未知のオプションです: --nope
 
-使い方: golem build [--target html|epub|text|pdf] [--profile dev|prod] 
+使い方: golem build [--target html|epub|text|pdf|pdf-screen] [--profile dev|prod]
                     [--marks japanese|western|none] [--no-notices] [-v|--verbose]
                     [--format human|json]
 

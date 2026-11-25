@@ -45,7 +45,7 @@ Golem はこの性質をプレーンテキストの上で実現する。
 
 同一の原稿から次の四つを生成する。
 
-- 商業入稿に耐える印刷用 PDF（PDF/X-4、ISO 15930-7:2010）
+- 商業入稿に耐える印刷用 PDF（PDF/X-4、ISO 15930-7:2010）。`--target pdf-screen` で選んだときだけ、同じ組版から画面で読むための PDF 1.7 も作る（「画面で読む PDF」の節）
 - EPUB
 - HTML
 - プレーンテキスト（縦書きと横書きの二変種。横書きはブログ等への転載用）
@@ -75,7 +75,8 @@ PDF に PDF/X-4 の出力インテント[^intent]を書くのは、`style.toml` 
 その PDF は PDF/X-4 の要件を満たさないので、`golem preflight` の `pdf-x` の検査は、欠けた要件を一つずつ並べず、出力インテントがないことの G09014 を一つだけ出す（「golem preflight」の節）。
 `intent` のファイルがないときは G08006 のエラーとし、PDF を書かない（「style.toml」の節、[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 
-PDF の版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの埋め込み、文書情報辞書の `Title`、日時、`Producer` は、`intent` の有無によらず書く。
+`pdf` のターゲットの PDF では、版（1.6）、各ページの `TrimBox` と `BleedBox`、フォントの埋め込み、文書情報辞書の `Title`、日時、`Producer` を、`intent` の有無によらず書く。
+画面で読むための `pdf-screen` のターゲットは、`intent` があっても出力インテントを書かず、版を 1.7 とする（「画面で読む PDF」の節）。
 
 ### PDF の題と言語
 
@@ -209,8 +210,9 @@ dev と prod の両方で同じである。
 `pdfa` もある PDF では、`pdfuaid:part` も拡張スキーマで定義する。
 `intent` のない PDF にも、`pdfua` があれば XMP（題名、日時、文書 ID とインスタンス ID、Producer）を書く。
 
-文書 ID とインスタンス ID は入力全体のハッシュから作るので、宣言を変えれば ID も変わる。
-PDF の版（1.6）、フォント、色、画像の書き方は、宣言によらない。
+インスタンス ID は入力全体のハッシュから作るので、宣言を変えればインスタンス ID も変わる。
+文書 ID はマニフェストの `id` から作るので、宣言によらない（「識別子」の節）。
+`pdf` のターゲットの PDF の版（1.6）、フォント、色、画像の書き方は、宣言によらない。
 
 宣言した PDF の要件のうち、Golem が検査するものは限られる。
 `golem preflight` の G09014 は、PDF/A-2a の PDF にも PDF/X-4 の要件を検査する。
@@ -226,6 +228,65 @@ PDF/A と PDF/UA への適合は、CI の `verapdf` ジョブが確かめる。
 
 `verapdf` ジョブは、veraPDF を、版を固定した nixpkgs から Nix で取得し、ストアのパスが `ci.yml` の `VERAPDF_STORE_PATH` と違えば検証の前に失敗する。
 `scripts/ci/verapdf.sh` は、まずタグのない PDF（`scripts/ci/testdata/verapdf/untagged.pdf`）が PDF/UA-1 に適合しないことを確かめ、次にすべての PDF を `-f 2a` と `-f ua1` で検証し、どれかが適合しなければ、その PDF と規則の番号を書いて失敗する。
+
+画面で読む PDF（次の「画面で読む PDF」の節）も、PDF/UA-1 への適合を同じジョブで確かめる（[root ADR 0431](adr/0431-plain-pdf-1-7-target.md)）。
+`conformance-pdfs.sh` は、`conformance` の fixture の横組みと縦組みの写しに `[targets.pdf-screen]` の `pdfua = "1"` を足して `--target pdf-screen` で組み、出力先のディレクトリの `screen/` に置く。
+`verapdf.sh` は、`screen/` の PDF を `-f ua1` だけで検証する。
+画面で読む PDF は PDF/A を宣言しないので、`-f 2a` では検証しない。
+
+### 画面で読む PDF
+
+`pdf-screen` のターゲットは、PDF/X-4 の制約を持たない、画面で読むための PDF 1.7 を書く（[root ADR 0431](adr/0431-plain-pdf-1-7-target.md)、[root ADR 0445](adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md)）。
+電子配布、校正の回覧、ウェブでの公開に使う PDF を、入稿の PDF と同じビルドで作るためである。
+`--target pdf-screen` で選んだときだけ作り、`--target` を省いたビルドでは作らない。
+`--target pdf --target pdf-screen` は、二つの PDF を一度に作る。
+出力は `build/pdf-screen` に、`pdf` と同じ名前の PDF を一つ書き、`pages.json` は書かない。
+ページの割り付けは `pdf` と同じなので、エディタは `build/pdf/pages.json` を読めば足りる。
+
+`pdf-screen` は、組版の結果（ページの割り付け、行、図版の位置）を `pdf` と共有し、書き出し方だけを変える。
+二つを選んだビルドも、組版を一度だけ行い、その diagnostics を一度だけ出す。
+`pdf` との違いは次の表のとおりである。
+
+| 項目 | `pdf` | `pdf-screen` |
+| --- | --- | --- |
+| 版 | 1.6 | 1.7（PDF/UA-1 が基礎とする版。1.7 の機能は新たに使わない） |
+| 出力インテント | `intent` があれば `OutputIntents`、`GTS_PDFXVersion`、`Trapped` を書く | `intent` があっても書かない |
+| ページの寸法 | `MediaBox`、`TrimBox`、`BleedBox`。`--marks` があればトンボを、`[page]` の `bleed` が 0 より大きければ塗り足しを描く | `pdf` の `TrimBox` の大きさの `MediaBox` を原点に置き、`TrimBox` と `BleedBox` を書かない。塗り足しに伸びた背景と図版は仕上がりの寸法で切れる。トンボ、隠しノンブル、Separation の色空間を書かない |
+| リンク | `intent` があればリンクの注釈を書かず、構造の Link を Span にする | ページのリンクの注釈と文書内の行き先を書き、構造の Link を Link のまま書く |
+| スウォッチの文字、罫線、背景 | DeviceCMYK | HTML と EPUB と同じ `cmykToRgb` の sRGB を ICCBased の色空間 `GolemSRGB` で書く |
+| `[figures]` の `color` で色を置き換えた PDF の図版 | DeviceCMYK | `pdf` と同じ DeviceCMYK。透明のグループの色空間も同じ |
+| `[figures]` の `color` で色を置き換えた SVG の図版 | DeviceCMYK に塗り直した PDF のページ | HTML の SVG と同じ色の sRGB の描画 |
+| `[figures]` の `color` で色を置き換えた PNG と JPEG の図版 | DeviceCMYK の画像 | HTML の PNG と同じ画素の sRGB の画像。透明度は HTML の PNG のアルファと同じ値の SMask |
+| PDF/UA の宣言 | `[targets.pdf]` の `pdfua` | `[targets.pdf-screen]` の `pdfua` |
+| インスタンス ID | 入力全体のハッシュ | 入力全体に `target pdf-screen` を足したもののハッシュ |
+
+スウォッチの色の各成分は、`cmykToRgb` の 0 から 255 の整数を 255 で割り、内容のストリームのほかの数と同じ小数第四位までの桁で書く。
+`cmykToRgb` は golem-html の関数の写しを golem-pdf に置き、二つの写しが同じ値を返すことをテストで確かめる。
+色を指定しない文字は、`pdf` と同じく色を設定せずに描く。
+画像の元の色、透明の扱い（不透明度と描画モード）、タグ、`/Lang`、`DisplayDocTitle`、しおり、文書 ID は、`pdf` と変えない。
+`[figures]` の `color` で置き換えた PDF の図版の色だけは、PDF の閲覧ソフトが DeviceCMYK を画面の色に変えるので、同じページのスウォッチの文字と少し違って見えることがある。
+
+`manifest.toml` の `[targets.pdf-screen]` は、画面で読む PDF の設定の表である。
+書いても、`--target` を省いたビルドのターゲットは変わらない（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
+書けるキーは `pdfua` だけで、値は `[targets.pdf]` と同じく `"1"` だけを受け付ける。
+`pdfua = "1"` を書けば、XMP に `pdfuaid:part`（`1`）を書いて PDF/UA-1 を宣言し、`pdfua` を書いた `pdf` と同じく G07103 を検査する。
+`pdfa` を含むほかのキーと、`"1"` でない `pdfua` の値は G03001 とし、PDF を書かない。
+`intent` の無い PDF/A を作らないという [docs/adr/0183](adr/0183-tagged-pdf-and-pdf-a.md) の決定に合わせるためである。
+`[targets.pdf-screen]` だけのマニフェストも、出力ターゲットのある本として G03001 にしない。
+
+PDF に固有の検査は、`pdf-screen` だけを選んだビルドでは次のように扱う。
+
+| 検査 | `pdf-screen` だけを選んだとき |
+| --- | --- |
+| レイアウトの diagnostics（版面、傍注、柱の変数、注の番号など） | `pdf` と同じに出す |
+| 本文のフォントの欠け（G08002） | `pdf` と同じに出し、PDF を書かない |
+| 出力インテントの ICC プロファイルの欠け（G08006） | 出さない |
+| トンボの diagnostics（`--marks`、G07002 など） | 出さない（トンボを描かない） |
+
+`pdf` と `pdf-screen` の両方を選んだビルドは、`pdf` の検査をそのまま行い、G08006 とトンボの diagnostics では `pdf` だけを止める。
+prod のビルドでエラーのために `pdf-screen` の PDF を書けなければ、`pdf` と同じく前の `build/pdf-screen` を片付ける（[root ADR 0326](adr/0326-discard-stale-pdf-after-build-errors.md)）。
+`golem preflight` は、今までどおり `pdf` の PDF だけを検査する。
+決定性の検査（`scripts/determinism.sh`）は、`pdf` の入力を `--target pdf --target pdf-screen` で組み、二つの PDF のハッシュを並べる。
 
 ## 処理の流れ
 
@@ -1048,8 +1109,9 @@ HTML、EPUB、プレーンテキストはページを持たないので、`page-
 
 ### 出力ターゲットとプラグインの宣言
 
-マニフェストは、本の構成に加えて、出力ターゲット（PDF、EPUB、HTML、プレーンテキスト）ごとの設定（ISBN、HTML と EPUB のフォントの同梱、プレーンテキストの縦書きと横書き）を持つ。
+マニフェストは、本の構成に加えて、出力ターゲット（PDF、画面で読む PDF、EPUB、HTML、プレーンテキスト）ごとの設定（ISBN、PDF/A と PDF/UA の宣言、HTML と EPUB のフォントの同梱、プレーンテキストの縦書きと横書き）を持つ。
 `golem build` は、`--target` で絞らなければ四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
+画面で読む PDF（`pdf-screen`）は、`--target pdf-screen` で選んだときだけ作り、マニフェストの `[targets.pdf-screen]` があっても、`--target` を省いたビルドでは作らない（[root ADR 0431](adr/0431-plain-pdf-1-7-target.md)、「画面で読む PDF」の節）。
 プレーンテキストの設定がなければ、縦書きと横書きの両方を生成する。
 
 出力は、プロジェクトルートの `build` の下のターゲットごとのディレクトリ（`build/html` など）に、前の出力を消してから書く（[root ADR 0429](adr/0429-clear-the-target-output-before-writing.md)）。
@@ -1387,6 +1449,9 @@ HTML とプレーンテキストにはページ一覧を出さない。
   `style.toml` はマニフェストの直後に置き、ないときは空のバイト列とする。
   CLI のオプションは、ソースファイルの後に `options marks=<値> profile=<値>` の形の一つの要素として置き、既定の値も省かない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
   Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+  画面で読む PDF（`pdf-screen`）のインスタンス ID は、CLI のオプションの要素の直後に `target pdf-screen` の一つの要素を足した入力から作る（[root ADR 0431](adr/0431-plain-pdf-1-7-target.md)）。
+  `pdf` を選ばないビルドはトンボを描かないので、`--marks` を受け付けても使わず、オプションの要素を `marks=none` とする。
+  同じ本の `pdf` と `pdf-screen` は別のファイルなので、文書 ID は同じで、インスタンス ID は異なる。
 - **EPUB の識別子**：電子版の ISBN があればそれを使い、なければマニフェストの `id` を使う。
 
 PDF の Producer には Golem のバージョンを書く。
@@ -9640,7 +9705,7 @@ Golem の操作は、すべて `golem` という一つの実行ファイルの�
 | コマンド | 内容 |
 |---|---|
 | `golem new <dir> [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する。`<dir>` は、ないパスか、プロジェクトのないディレクトリである（空でなくてよい。[ADR 0273](adr/0273-golem-new-in-a-directory-without-a-project.md)）。「[golem new](#golem-new)」の節を参照 |
-| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
+| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | ビルドする。`--target` の値は `html`、`epub`、`text`、`pdf`、`pdf-screen` で、何度でも書ける。`--target` を省くと `pdf-screen` を除く四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)、[root ADR 0431](adr/0431-plain-pdf-1-7-target.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose] [--format human\|json]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。「[golem check](#golem-check)」の節を参照 |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。「[golem preflight](#golem-preflight)」の節を参照 |
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の分量を数え、指定した字数と行数でページ数に換算する（[Golem ADR 0355](adr/0355-manuscript-statistics.md)）。「[golem stats](#golem-stats)」の節を参照 |
@@ -9775,7 +9840,7 @@ G03131 から G03134 の四つのコードは、パスの先頭（`<パス>:1:1`
 
 日本式のトンボは、仕上がりの線と塗り足しの線の間隔で塗り足しを示す。
 そのため、`--marks japanese` で塗り足しが 0 ならエラー（G07002）とし、PDF を出力しない。
-G07002 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
+G07002 は `pdf` のターゲットを含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
 G07002 は、`[page]` の `bleed` に 0 より大きい長さを書くよう案内する（[ADR 0332](adr/0332-positive-bleed-in-japanese-crop-mark-message.md)）。
 
 トンボを付けた PDF には、`style.toml` の `[hidden-folio]` に従って隠しノンブルが入る（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、「style.toml」の節を参照）。

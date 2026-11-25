@@ -6,6 +6,7 @@ InDesign で言えば書き出し[index reading=かきだし: 書き出し]に�
 InDesign の書き出しと違い、形式ごとの設定を書き出すたびに選ぶことはありません。
 設定はすべて [code: manifest.toml] と [code: style.toml] に書いてあり、同じコマンドで同じ設定から四つの形式を作ります。
 入稿用のトンボのように、同じ原稿から作り分けたいものだけを、コマンドのオプションで選びます。
+PDF は、入稿用の PDF のほかに、同じ組版から画面で読むための PDF も作れます（「[ref-title pdf-screen]」、[ref-page pdf-screen] ページ）。
 
 四つの形式は、見た目までは同じになりません。
 本文、見出し、注、図版といった中身はどの形式でも同じで、ページ番号や柱のようにページがあって初めて決まるものは、形式ごとに表し方が変わります[note: 仕様書の「成果物」の節の「媒体契約」。[code: https://github.com/tett23/golem/blob/main/docs/specifications.md]]。
@@ -59,8 +60,9 @@ ICC プロファイルのファイルは Golem に含まれていません。
 
 [strong: [code: intent] を書かないと、PDF は PDF/X-4 の形になりません。]
 Golem は、[code: intent] があるときにだけ、出力インテントと、PDF/X-4 であることを示すメタデータ（XMP）を PDF に書きます。
-画面で読むための PDF なら [code: intent] は要りませんが、入稿用の PDF には必ず書いてください。
-このマニュアルの PDF は画面で読むためのものなので、[code: intent] を書いていません。
+画面で読むための PDF は、[code: intent] を省かずに [code: --target pdf-screen] で作れます（「[ref-title pdf-screen]」、[ref-page pdf-screen] ページ）。
+入稿用の PDF には、[code: intent] を必ず書いてください。
+このマニュアルの PDF は入稿しないので、[code: intent] を書いていません。
 
 出力インテントを書いても、スウォッチの CMYK の値は変わりません。
 Golem は、文字と罫線のスウォッチの値を、出力インテントの印刷の条件で刷るための値として、そのまま PDF に書きます。
@@ -292,6 +294,53 @@ $ golem preflight --rules ../printer.toml
 同じ本を別の印刷所に出すときは、[code: --rules] だけを替えれば済みます。
 設定のファイルに誤りがあると、原因に応じて G09001、G09100〜G09104 のエラーになり、PDF を組まずに終わります。
 設定に [code: name] を書くと、要約の行の「設定」にその名前が出ます。
+
+@label pdf-screen
+## 画面で読む PDF
+
+```sh
+$ golem build --target pdf-screen
+```
+
+入稿用の PDF は、印刷所に渡すための PDF です。
+[code: bleed] を書けば塗り足しを、[code: --marks] を付ければトンボを持ち、色は CMYK で書きます。
+[code: intent] を書けば、PDF/X-4 の約束に従ってリンクをクリックできなくなります。
+電子配布、校正の回覧、ウェブでの公開のように画面で読む PDF には、塗り足しもトンボも CMYK も要らず、リンクはクリックできるほうが便利です。
+画面で読むための PDF は [code: --target pdf-screen] で作り、[code: build/pdf-screen/] のフォルダに、入稿用の PDF と同じ名前で書きます。
+
+画面で読む PDF は、入稿用の PDF とページの割り付けも行も同じで、書き出し方だけが違います。
+校正で見るページと、配布するページが一致します。
+入稿用の PDF との主な違いは、次のとおりです。
+
+- 仕上がりの寸法だけのページで、塗り足しとトンボはありません。塗り足しまで伸ばした背景や図版は、仕上がりの寸法で切れます。
+- [code: \[color\]] に [code: intent] があっても、出力インテントを書きません。PDF/X-4 ではない、PDF 1.7 のファイルです。
+- 本文のリンクと相互参照をクリックできます。
+- スウォッチの色で塗る文字、罫線、背景は、HTML と EPUB と同じ RGB の値で書きます。
+
+[code: \[figures\]] の [code: color] で単色図版の色を置き換えた場合は、図版の形式で書き方が分かれます。
+SVG、PNG、JPEG の図版は、HTML と同じ RGB の色で描きます。
+PDF の図版は、入稿用の PDF と同じ CMYK の色で描き、画面の色への変換は PDF を開くソフトに任せます。
+そのため、PDF の図版の色だけは、同じページのスウォッチの文字や罫線と少し違って見えることがあります。
+
+入稿用の PDF と画面で読む PDF は、一度のビルドで両方作れます。
+組版は一度だけ行い、警告やエラーも一度だけ出ます。
+
+```sh
+$ golem build --target pdf --target pdf-screen
+```
+
+[code: --target] を省いた [code: golem build] は、画面で読む PDF を作りません。
+入稿用の PDF だけが要る本で、ビルドの時間を増やさないためです。
+画面で読む PDF にアクセシビリティの規格 PDF/UA-1 を宣言するには、[code: manifest.toml] に次のように書きます。
+
+```toml
+[targets.pdf-screen]
+pdfua = "1"
+```
+
+[code: \[targets.pdf-screen\]] に書けるのは [code: pdfua] だけです。
+画面で読む PDF には出力インテントがないので、出力インテントを要する PDF/A は宣言できません。
+[code: golem preflight] は、入稿用の PDF だけを検査します。
 
 ## HTML
 
