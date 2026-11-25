@@ -11,6 +11,7 @@ import Data.Char (toUpper)
 import Data.List (find, sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -100,7 +101,8 @@ documentWith tinyJpeg ps =
       docPdfUa = Nothing,
       docStructure = structElem SDocument [KidLeaf (LeafId [0])],
       docPageLabels = [],
-      docOutline = []
+      docOutline = [],
+      docScreen = False
     }
 
 -- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
@@ -277,6 +279,45 @@ verifyTests tinyJpeg =
     mapKey k f = map (\(k', v) -> if k' == k then (k', f v) else (k', v))
     mapStreamKey k f (kvs, b) = (mapKey k f kvs, b)
     cut piece (kvs, b) = let (pre, post) = BS.breakSubstring piece b in (kvs, pre <> BS.drop (BS.length piece) post)
+
+{- | The PDF for the screen (root ADR 0431): version 1.7, the trimmed page
+alone, and the swatches in the sRGB of golem-html's cmykToRgb.
+-}
+screenTests :: ByteString -> [TestTree]
+screenTests tinyJpeg =
+  [ testCase "root ADR 0431 I1: the PDF for the screen is version 1.7, the PDF for print 1.6" $ do
+      assertBool "1.7" ("%PDF-1.7" `BS.isPrefixOf` writePdf (screen [ruleIn (Swatch 0 0 0 100)]))
+      assertBool "1.6" ("%PDF-1.6" `BS.isPrefixOf` writePdf (printed [ruleIn (Swatch 0 0 0 100)])),
+    testCase "root ADR 0431 I2: the pages of the PDF for the screen have a MediaBox and neither a TrimBox nor a BleedBox" $ do
+      let pdf = writePdf (screen [ruleIn (Swatch 0 0 0 100)])
+      assertBool "MediaBox" ("/MediaBox [0 0 595 842]" `BS.isInfixOf` pdf)
+      assertBool "no TrimBox" (not ("/TrimBox" `BS.isInfixOf` pdf))
+      assertBool "no BleedBox" (not ("/BleedBox" `BS.isInfixOf` pdf))
+      assertBool "the PDF for print keeps them" (all (`BS.isInfixOf` writePdf (printed [ruleIn (Swatch 0 0 0 100)])) ["/TrimBox", "/BleedBox"]),
+    testCase "root ADR 0431 I4: a swatch of the PDF for the screen is the sRGB of cmykToRgb, in the digits of the numbers of the PDF" $
+      forM_ [(0, 0, 0, 0), (100, 100, 100, 100), (0, 100, 100, 0), (15, 30, 45, 60), (1, 2, 3, 99)] $ \cmyk@(c, m, y, k) -> do
+        let content = contentOf (screen [ruleIn (Swatch c m y k)])
+            (r, g, b) = cmykToRgb cmyk
+            vs = BS.concat [TE.encodeUtf8 (showRational4 (toInteger v % 255)) <> " " | v <- [r, g, b]]
+        assertBool (show (cmyk, content)) (("/GolemSRGB cs " <> vs <> "sc /GolemSRGB CS " <> vs <> "SC") `BS.isInfixOf` content)
+        assertBool "no CMYK" (not (" k " `BS.isInfixOf` content)),
+    testCase "root ADR 0431 I4: the both ends of cmykToRgb" $ do
+      cmykToRgb (0, 0, 0, 0) @?= (255, 255, 255)
+      cmykToRgb (100, 100, 100, 100) @?= (0, 0, 0),
+    testCase "root ADR 0431 I4: GolemSRGB of the pages is the ICCBased space of the document's sRGB profile" $ do
+      let pdf = writePdf (screen [ruleIn (Swatch 0 100 0 0)])
+      assertBool "the colour space" ("/ColorSpace << /GolemSRGB [/ICCBased " `BS.isInfixOf` pdf)
+      assertBool "the profile" ("/N 3" `BS.isInfixOf` pdf)
+  ]
+  where
+    ruleIn sw = [SetColor sw, Rule (Rect 0 0 65536 65536)]
+    printed ms = documentWith tinyJpeg [page (concat ms)]
+    screen ms = (printed ms) {docScreen = True}
+    contentOf doc =
+      let PdfObjects _ objs _ = documentObjects doc
+       in case drop 3 objs of
+            OStream _ body : _ -> BL.toStrict (Z.decompress (BL.fromStrict body))
+            _ -> ""
 
 marksTests :: ByteString -> [TestTree]
 marksTests tinyJpeg =
@@ -1046,6 +1087,7 @@ tests tinyJpeg =
         ],
       testGroup "PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" (conformanceTests tinyJpeg),
       testGroup "page labels (docs/adr/0260)" (pageLabelTests tinyJpeg),
+      testGroup "the PDF for the screen (root ADR 0431)" (screenTests tinyJpeg),
       goldenVsString "XMP packet of PDF/A-2a and PDF/UA-1 (docs/adr ADR 0183)" "test/golden/xmp-pdfa-pdfua.xml" $
         pure (BL.fromStrict (xmpPacket (Just (PdfX "" "JC200103" ["山田 太郎"] [] (Just PdfA2a))) (Just PdfUa1) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       goldenVsString "XMP packet of PDF/A-2a (docs/adr ADR 0183)" "test/golden/xmp-pdfa.xml" $

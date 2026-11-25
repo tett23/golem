@@ -1,4 +1,5 @@
-{- | The deterministic PDF writer (golem-pdf ADR 0001): PDF 1.6, objects
+{- | The deterministic PDF writer (golem-pdf ADR 0001): PDF 1.6 (1.7 for
+the screen, root ADR 0431), objects
 numbered in a fixed order, sorted dictionary keys, a classic xref table,
 numbers rounded with integer arithmetic, Flate by the bundled zlib.
 -}
@@ -9,6 +10,7 @@ module Golem.Pdf.Writer
     ImageRef (..),
     FormRef (..),
     Swatch (..),
+    cmykToRgb,
     RunStyle (..),
     Turn (..),
     turnRect,
@@ -100,6 +102,16 @@ newtype FormRef = FormRef Int
 data Swatch = Swatch !Int !Int !Int !Int
   deriving stock (Eq, Show)
 
+{- | A swatch on the screen (root ADR 0431): each of R, G and B from 0 to
+255, as golem-html's cmykToRgb gives it to HTML and EPUB. A copy, so that
+golem-pdf does not depend on golem-html; the tests of root ADR 0431 I4
+compare the two.
+-}
+cmykToRgb :: (Int, Int, Int, Int) -> (Int, Int, Int)
+cmykToRgb (c, m, y, k) =
+  let ch v = round (255 * (1 - fromIntegral v / 100 :: Rational) * (1 - fromIntegral k / 100))
+   in (ch c, ch m, ch y)
+
 {- | How a styled glyph run is drawn (golem-driver ADR 0004): horizontal
 scaling in permille, turned for vertical writing, a slant (0 for none)
 and the width of the outline stroke of synthetic bold (0 for none).
@@ -144,6 +156,11 @@ data Mark
     StrokedPath !LineStroke !(Sp, Sp) ![PathSegment] !Bool
   | Image !ImageRef !Rect
   | SetColor !Swatch
+  | {- | a colour of sRGB, each of R, G and B from 0 to 255, in the
+    ICCBased space of the document's sRGB profile: what 'SetColor' becomes
+    in the PDF for the screen (root ADR 0431)
+    -}
+    SetRgbColor !Int !Int !Int
   | -- | a glyph run slanted or emboldened (golem-driver ADR 0004)
     StyledGlyphRun !RunStyle !FontRef !Sp ![(GlyphId, Sp, Sp)]
   | {- | font, size, the width of the outline stroke of synthetic bold (0 for
@@ -325,7 +342,11 @@ data Document = Document
     their first pages; none writes no /PageLabels
     -} docPageLabels :: ![PageLabelRange],
     -- | the top items of the outline (docs/adr/0267); none writes no /Outlines
-    docOutline :: ![OutlineItem]
+    docOutline :: ![OutlineItem],
+    {- | the PDF for the screen (root ADR 0431): version 1.7, no TrimBox
+    nor BleedBox, and each swatch in sRGB; the caller gives no PDF/X, marks
+    nor bleed
+    -} docScreen :: !Bool
   }
 
 {- | A range of page labels (ISO 32000-1, 12.4.2; docs/adr/0260): the
@@ -482,6 +503,10 @@ markBuilder fontNames imageNames formNames = mark
       SetColor (Swatch c m y k) ->
         let vs = mconcat [ratio (toInteger v % 100) <> sp | v <- [c, m, y, k]]
          in vs <> "k " <> vs <> "K" <> nl
+      -- the components in the digits of the other numbers of the content (root ADR 0431)
+      SetRgbColor r g b ->
+        let vs = mconcat [ratio (toInteger v % 255) <> sp | v <- [r, g, b]]
+         in "/GolemSRGB cs " <> vs <> "sc /GolemSRGB CS " <> vs <> "SC" <> nl
       StyledGlyphRun (RunStyle scale rotated slant stroke) f size gs ->
         let matrix
               | rotated = "0 -1 1 " <> ratio (negate slant) <> sp
@@ -633,7 +658,8 @@ printLinksAsText doc
 documentObjectsWith :: ([ByteString] -> [ByteString]) -> Document -> PdfObjects
 documentObjectsWith strategy input =
   let doc = printLinksAsText input
-      pages = docPages doc
+      -- the swatches of the PDF for the screen in sRGB (root ADR 0431)
+      pages = [if docScreen doc then p {pageContent = map screenContent (pageContent p)} else p | p <- docPages doc]
       fontOrder = nub [f | p <- pages, m <- pageMarks p, f <- fontsOf m]
       imageOrder = nub [i | p <- pages, m <- pageMarks p, i <- imagesOf m]
       fontNames = Map.fromList (zip fontOrder [1 ..])
@@ -654,6 +680,7 @@ documentObjectsWith strategy input =
       needSrgb =
         any defaultSrgb [img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
           || any (\case (_, DrawnForm _) -> True; (_, ImportedForm ip) -> any ((== 0) . fst) (ipObjects ip)) forms
+          || screenRgb
       srgbRef = afterImages0
       srgbObjs = [OStream [("N", OInt 3), ("Filter", OName "FlateDecode")] (flate srgbProfile) | needSrgb]
       -- the Form XObjects of PDF figures and drawings, each followed by the objects it brings that are not yet written (ADR 0008)
@@ -710,7 +737,7 @@ documentObjectsWith strategy input =
                    )
                  | not (null imageOrder && null formOrder)
                  ]
-              <> [("ColorSpace", ODict [("Reg", registrationColorSpace)]) | any usesRegistration [m | p <- pages, m <- pageMarks p]]
+              <> [("ColorSpace", ODict ([("Reg", registrationColorSpace) | any usesRegistration marks] <> [("GolemSRGB", OArr [OName "ICCBased", ORef srgbRef]) | screenRgb])) | any usesRegistration marks || screenRgb]
           )
       -- the language of the book and its title shown by viewers, in every PDF (docs/adr ADR 0183)
       catalog =
@@ -732,15 +759,16 @@ documentObjectsWith strategy input =
       pageObjs =
         concat
           [ [ ODict
-                [ ("Type", OName "Page"),
-                  ("Parent", ORef 2),
-                  ("MediaBox", rectObj (pageMediaBox p)),
-                  ("TrimBox", rectObj (pageTrimBox p)),
-                  ("BleedBox", rectObj (pageBleedBox p)),
-                  ("Resources", resources),
-                  ("Contents", ORef (pageObj i + 1)),
-                  ("StructParents", OInt (fromIntegral i))
-                ]
+                ( [ ("Type", OName "Page"),
+                    ("Parent", ORef 2),
+                    ("MediaBox", rectObj (pageMediaBox p)),
+                    ("Resources", resources),
+                    ("Contents", ORef (pageObj i + 1)),
+                    ("StructParents", OInt (fromIntegral i))
+                  ]
+                    -- the PDF for the screen has the trimmed page alone (root ADR 0431)
+                    <> concat [[("TrimBox", rectObj (pageTrimBox p)), ("BleedBox", rectObj (pageBleedBox p))] | not (docScreen doc)]
+                )
                 `withAnnots` refs,
               OStream [("Filter", OName "FlateDecode")] stream
             ]
@@ -763,7 +791,9 @@ documentObjectsWith strategy input =
       addInfo o _ = o
       objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> annotObjs <> outlineObjs <> structObjs <> [info]
       size = length objects + 1
-   in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
+      marks = [m | p <- pages, m <- pageMarks p]
+      screenRgb = any usesRgb marks
+   in PdfObjects (if docScreen doc then "1.7" else "1.6") objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
     pageMarks = concatMap contentMarks . pageContent
     fontsOf = \case
@@ -1127,6 +1157,34 @@ formObject remap ip =
 {- | Whether a mark is or contains 'RegistrationRules', which needs the
 @/Reg@ colour space resource (ADR 0007).
 -}
+
+-- | Whether a mark paints in sRGB, 'SetRgbColor' (root ADR 0431).
+usesRgb :: Mark -> Bool
+usesRgb = \case
+  SetRgbColor {} -> True
+  Saved ms -> any usesRgb ms
+  ActualText _ ms -> any usesRgb ms
+  Translated _ _ ms -> any usesRgb ms
+  Turned _ _ ms -> any usesRgb ms
+  _ -> False
+
+{- | Content with each 'SetColor' as the 'SetRgbColor' of 'cmykToRgb' (root
+ADR 0431).
+-}
+screenContent :: Content -> Content
+screenContent = \case
+  Tagged l ms -> Tagged l (map screenMark ms)
+  Artifact k ms -> Artifact k (map screenMark ms)
+  Moved m cs -> Moved m (map screenContent cs)
+  where
+    screenMark = \case
+      SetColor (Swatch c m y k) -> let (r, g, b) = cmykToRgb (c, m, y, k) in SetRgbColor r g b
+      Saved ms -> Saved (map screenMark ms)
+      ActualText t ms -> ActualText t (map screenMark ms)
+      Translated x y ms -> Translated x y (map screenMark ms)
+      Turned t r ms -> Turned t r (map screenMark ms)
+      other -> other
+
 usesRegistration :: Mark -> Bool
 usesRegistration = \case
   RegistrationRules _ -> True
