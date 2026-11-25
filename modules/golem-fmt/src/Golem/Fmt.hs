@@ -16,8 +16,8 @@ module Golem.Fmt
   )
 where
 
-import Data.Char (isAscii, isPunctuation, isSpace, isSymbol)
 import Data.ByteString qualified as BS
+import Data.Char (isAscii, isPunctuation, isSpace, isSymbol)
 import Data.List (sortOn, stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)

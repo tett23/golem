@@ -8,8 +8,8 @@ import ExceptionsSpec qualified
 import ExprSpec qualified
 import FileSpec qualified
 import FunctionSpec qualified
-import ImportListSpec qualified
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
+import ImportListSpec qualified
 import IndexKindSpec qualified
 import LangSpec qualified
 import LinkSpec qualified

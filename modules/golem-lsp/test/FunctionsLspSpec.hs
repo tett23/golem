@@ -208,7 +208,8 @@ listedTests =
   testGroup
     "the names listed by @import (root ADR 0451)"
     [ testCase "root ADR 0451 I2: the project of listed names has no diagnostics" $
-        withFunctionsOf listedChapter $ \_ ws -> codesOf ws "a.gm" @?= [],
+        withFunctionsOf listedChapter $
+          \_ ws -> codesOf ws "a.gm" @?= [],
       testCase "root ADR 0451 I2: completion in the list: the names the file gives" $
         withFunctionsOf listedChapter $ \_ ws -> do
           let at text = do
