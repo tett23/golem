@@ -695,26 +695,28 @@ theorem boxesOk_plain {p : Flow} (hp : plainFlow p = true) (a r : List Flow) (h 
     intro i kb ka body e; subst e; simp [plainFlow] at hp
   have np : ∀ u k ret body, p ≠ .bookPart u k ret body := by
     intro u k ret body e; subst e; simp [plainFlow] at hp
+  have nh : ∀ i b a j t n ls, p = .ruled i b a j (.heading t n ls) → ls ≠ [] := by
+    intro i b a j t n ls e; subst e; simp [plainFlow] at hp
   generalize e : a ++ r = l at h
   induction h generalizing a with
   | nil =>
     obtain ⟨rfl, rfl⟩ := List.append_eq_nil.mp e
     exact .cons p [] (fun i kb ka body q => absurd q (nb i kb ka body))
       (fun i kb ka body q => absurd q (nb i kb ka body)) (fun u k ret body q => absurd q (np u k ret body))
-      (fun u k ret body q => absurd q (np u k ret body)) .nil
-  | cons f r' box boxBody part partFlat tail ihBody ihPart ihFlat _ =>
+      (fun u k ret body q => absurd q (np u k ret body)) nh .nil
+  | cons f r' box boxBody part partFlat heading tail ihBody ihPart ihFlat _ =>
     cases a with
     | nil =>
       simp only [List.nil_append] at e
       subst e
       exact .cons p _ (fun i kb ka body q => absurd q (nb i kb ka body))
         (fun i kb ka body q => absurd q (nb i kb ka body)) (fun u k ret body q => absurd q (np u k ret body))
-        (fun u k ret body q => absurd q (np u k ret body)) (.cons f r' box boxBody part partFlat tail)
+        (fun u k ret body q => absurd q (np u k ret body)) nh (.cons f r' box boxBody part partFlat heading tail)
     | cons g a' =>
       simp only [List.cons_append, List.cons.injEq] at e
       obtain ⟨rfl, e⟩ := e
       subst e
-      refine .cons g _ ?_ ?_ ?_ ?_ ?_
+      refine .cons g _ ?_ ?_ ?_ ?_ heading ?_
       · intro i kb ka body q; exact plain_joinsHead hp a' r (box i kb ka body q)
       · intro i kb ka body q
         have := ihBody i kb ka body q (body ++ a') (by rw [List.append_assoc])
