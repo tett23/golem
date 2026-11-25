@@ -14,6 +14,7 @@ module Golem.Doc.Validate
   )
 where
 
+import Data.Char (isAsciiLower, isDigit)
 import Data.List (nub)
 import Data.Maybe (isJust, isNothing)
 import Data.Ratio (denominator, numerator)
@@ -106,6 +107,17 @@ blocksAt fileSize allowed top0 = concatMap (blockAt top0)
       PageControl _ -> []
       BlankLines _ -> []
       Separator _ -> []
+      -- a frame holds paragraphs only, and is named as a style is (root ADR 0438)
+      FrameBlock name bs ->
+        ["フレームの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> name | not (frameName name)]
+          <> ["フレームの中身は段落だけです" | not (all isParagraph bs)]
+          <> concatMap blockErrors bs
+    frameName name = case T.uncons name of
+      Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+      Nothing -> False
+    isParagraph = \case
+      Block _ _ _ (Paragraph _ _) -> True
+      _ -> False
 
 {- | The invariants of a table (docs/adr/0262): as many cells in each row
 as in the header row, no widths or one for each column, every width but

@@ -2406,6 +2406,18 @@ with the styles its file defines (docs/adr ADR 0014). Lists are numbered
 in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
+
+{- | The blocks without their text frames, at any depth: a frame takes no
+room in the flow (root ADR 0438).
+-}
+withoutFrames :: [Block] -> [Block]
+withoutFrames = concatMap $ \b -> case blockBody b of
+  FrameBlock {} -> []
+  BulletList items -> [b {blockBody = BulletList [i {itemBlocks = withoutFrames (itemBlocks i)} | i <- items]}]
+  OrderedList items -> [b {blockBody = OrderedList [i {itemBlocks = withoutFrames (itemBlocks i)} | i <- items]}]
+  DefList gs -> [b {blockBody = DefList [g {dgDefs = map withoutFrames (dgDefs g)} | g <- gs]}]
+  _ -> [b]
+
 unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe PageLabel) -> Map Text [EntryPart] -> Map Int (Maybe Integer) -> [Unit]
 unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAccumL chapter 0 indexedChapters))
   where
@@ -2413,8 +2425,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
     -- the documents with their places in the book, the places of the chapter files (docs/adr/0260)
     indexedChapters = snd (mapAccumL (\k ds -> (k + length ds, zip [k ..] ds)) 0 (bookChapters book))
     -- a file that starts a section starts with its break (docs/adr/0260)
-    doc n (k, Document fid bs) =
+    doc n (k, Document fid bs0) =
       let style = styleOf fid
+          -- a text frame takes no room in the flow: the blocks around it are set as without it (root ADR 0438 I3)
+          bs = withoutFrames bs0
           start = [Unit (USection k st) Nothing [] (mkSpan fid 0 0) (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) Nothing SourceGrid [] 0 Nothing Nothing | Just st <- [Map.lookup k sections]]
        in (start <>) <$> blocks style [] True n bs
     {- the documents of a chapter of the manifest; at the end of the chapter,
@@ -2676,6 +2690,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib sections = concat (snd (mapAc
                         SeparatorRuleAppearance {} -> [Text sp "\x200B"]
                    in (n, [plainUnit (USeparator appearance) Nothing content])
                 Nothing -> (n, [])
+            -- left out by withoutFrames; set in their frames (root ADR 0438)
+            FrameBlock {} -> (n, [])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =

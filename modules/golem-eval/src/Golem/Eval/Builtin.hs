@@ -190,5 +190,7 @@ builtinBlockCommands =
     -- docs/adr/0263
     "note",
     -- root ADR 0412
-    "endnote"
+    "endnote",
+    -- root ADR 0438
+    "frame"
   ]

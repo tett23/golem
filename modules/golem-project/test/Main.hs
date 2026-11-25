@@ -19,6 +19,7 @@ import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
 import FilesSpec qualified
 import FontLicensesSpec qualified
+import FramesSpec qualified
 import FunctionsSpec qualified
 import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
@@ -887,6 +888,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       PathDataSpec.pathDataTests,
+      FramesSpec.tests,
       FeaturesSpec.tests,
       GenericFontsSpec.tests,
       FontLicensesSpec.tests,

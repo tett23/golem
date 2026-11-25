@@ -788,6 +788,7 @@ htmlConfig dev embed e book missing bib =
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
       FigureBlock f -> figCaption f
+      FrameBlock _ bs -> bs
       _ -> []
     ruby = compRuby (stComposition style)
 
@@ -856,6 +857,7 @@ recolorWebFigures opts style book site = case figureColor style of
                 BulletList items -> BulletList [item {itemBlocks = map rewrite (itemBlocks item)} | item <- items]
                 OrderedList items -> OrderedList [item {itemBlocks = map rewrite (itemBlocks item)} | item <- items]
                 DefList groups -> DefList [group {dgDefs = map (map rewrite) (dgDefs group)} | group <- groups]
+                FrameBlock name bs -> FrameBlock name (map rewrite bs)
                 other -> other
             }
         docs = [Document fid (map rewrite bs) | Document fid bs <- bookDocs book]

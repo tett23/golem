@@ -157,6 +157,7 @@ blockSource =
       "  | PageControl PageControl",
       "  | BlankLines Nat",
       "  | Separator String",
+      "  | FrameBlock String (List Block)",
       "",
       "pub data HeadingAttrs = HeadingAttrs { tocTitle :: Maybe Inlines, number :: Maybe Nat, nonumber :: Bool, notoc :: Bool }",
       "",

@@ -27,6 +27,7 @@ block-body =
   / [13, lines: 1..9223372036854775807]            ; blank lines before what follows (docs/adr ADR 0046)
   / [14, table]                                    ; table (docs/adr/0262)
   / [15, name: tstr]                                ; named separator (root ADR 0398)
+  / [16, name: tstr, [* block]]                     ; text frame holding paragraphs (root ADR 0438)
 ; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005);
 ; 5 (table without caption and widths) is retired (docs/adr/0262)
 
