@@ -10,6 +10,7 @@ import CompressedNoteMarksSpec (compressedNoteMarksTests)
 import EndnotesSpec (endnoteTests)
 import FigureSpec
 import FileSpacesSpec (fileSpacesTests)
+import FramesSpec (framesTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import HeadingLevelsSpec (headingLevelsTests)
@@ -83,6 +84,7 @@ tests =
       testGroup "turned figures (golem-driver ADR 0034)" turnedFigureTests,
       testGroup "figures of zero extent across the lines (root ADR 0440)" zeroExtentFigureTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
+      testGroup "text frames (root ADR 0438)" framesTests,
       testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
       pageStartsTests,
       pageMapTests,

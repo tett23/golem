@@ -179,6 +179,7 @@ test-suite golem-driver-page-test
     CompressedNoteMarksSpec
     FigureSpec
     FileSpacesSpec
+    FramesSpec
     HeadingLevelsSpec
     KeepBookPartsSpec
     KeepOptionsSpec
