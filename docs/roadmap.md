@@ -67,6 +67,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **CFF2 の可変フォントの PDF への埋め込み（未実装）**：CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、PDF の組版で G08019 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、変換の前と後で使うすべてのグリフの描画を比べる回帰テストを通してからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[Golem ADR 0358](adr/0358-font-instance-selection.md)）。
 - **HTML と EPUB での可変フォントのインスタンス（未決）**：役割の `instance` と `axes` は、PDF だけが使う（[Golem ADR 0358](adr/0358-font-instance-selection.md)）。`fonts = "embed"` の HTML と EPUB はフォントのファイルをそのまま同梱するので、可変フォントの座標はブラウザーと読書環境が CSS の規則で決め、PDF と違う太さで描かれうる。CSS の `font-variation-settings` で座標を渡すか、固定したフォントを同梱するかを、ADR で決める。
 
+- **プレーンな PDF 1.7 のターゲット（未実装）**：PDF/X-4 の制約を持たない PDF 1.7 を出力のターゲットに足す。今の PDF は、`[color]` の `intent` の有無によらず版 1.6 で書き、`intent` があれば PDF/X-4 の出力インテントを書く（仕様書の「PDF/X-4 と出力インテント」の節）。ターゲットの名前、今の PDF との違い（色空間、透明、注釈、出力インテント）、PDF/A と PDF/UA の宣言との関係は ADR で決める。[root ADR 0431](adr/0431-plain-pdf-1-7-target.md) で決めた。
 
 ### スタイル
 
