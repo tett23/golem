@@ -148,7 +148,7 @@ golem new mybook
 | `golem new DIR [--language ja\|en] [--no-fonts] [--screen]` | プロジェクトを作る（下に詳しく書く） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
-| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
+| `golem build [--target html\|epub\|text\|pdf\|pdf-screen] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` は何度でも書ける。`--target` を省くと、画面で読む PDF（`pdf-screen`）を除く四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。PDF を組めた場合は SHA-256、組めなかった場合はエラー件数と未検査の項目を出す |
 | `golem stats [--chars-per-line N] [--lines-per-page N]` | PDF を書き出さずに本文の文字数、ワード数、組版後の行数を数え、ページ数に換算する（[Golem ADR 0355](docs/adr/0355-manuscript-statistics.md)） |
@@ -396,6 +396,12 @@ CI がその PDF を veraPDF で検証する（[docs/adr/0183](docs/adr/0183-tag
 ルビの親文字の中の `[ref-number]` と `[ref-title]` も `Reference` になる。
 読みのある区切りの参照は、親文字の `RB` の中に置く（[Golem ADR 0360](docs/adr/0360-ruby-base-references.md)）。
 読みのない区切りの参照は、`Ruby` の外の、区切りの字が入る親の構造の要素の中に置く（[Golem ADR 0393](docs/adr/0393-references-in-ruby-segments-without-readings.md)）。
+
+画面で読む PDF は `golem build --target pdf-screen` で作り、`build/pdf-screen/` に書く（[root ADR 0431](docs/adr/0431-plain-pdf-1-7-target.md)）。
+画面で読む PDF は、入稿する PDF と組版を共有する PDF 1.7 で、出力インテント、塗り足し、トンボを持たず、リンクを押せ、スウォッチの色を HTML と同じ sRGB で書く。
+`--target pdf --target pdf-screen` で、入稿する PDF と画面で読む PDF を一度のビルドで作る。
+`[figures]` の `color` で色を置き換えた図版のうち、PDF の図版は入稿する PDF と同じ CMYK のまま書き、SVG、PNG、JPEG の図版は HTML と同じ sRGB で書く（[root ADR 0445](docs/adr/0445-keep-the-cmyk-recoloring-of-pdf-figures-in-pdf-screen.md)）。
+`manifest.toml` の `[targets.pdf-screen]` に `pdfua = "1"` を書けば、画面で読む PDF に PDF/UA-1 を宣言する。
 
 入稿する PDF は `golem build --target pdf --profile prod` で作る。
 prod の PDF ビルドがエラーで書けなければ、前の `build/pdf/` と `pages.json` を片付ける。dev では前の結果を残す（[ADR 0326](./docs/adr/0326-discard-stale-pdf-after-build-errors.md)）。

@@ -3,6 +3,7 @@
 -- | The flow of the PDF: composition, line breaking and pagination (golem-driver ADR 0002).
 module Golem.Typeset.Flow
   ( SetLine (..),
+    loadScreenFigures,
     CodeInfo (..),
     CodeCaption (..),
     PlacedSidenote (..),
@@ -115,7 +116,7 @@ import Data.List (groupBy, intercalate, mapAccumL, mapAccumR, nub, sortOn, unsno
 import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ord (Down (..))
 import Data.Ratio ((%))
 import Data.Set qualified as Set
@@ -166,12 +167,12 @@ import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
 import Golem.Typeset.Box (BoxPaint (..), boxLineRange, boxLinesAround, groupBoxes)
-import Golem.Typeset.FigureColor (RasterAnalysis (..), analyzeRaster, forceImportedPage, guardColorConversion, safeAnalyzeRaster)
+import Golem.Typeset.FigureColor (RasterAnalysis (..), analyzeRaster, forceImportedPage, guardColorConversion, safeAnalyzeRaster, safeRecolorRasterBytes)
 import Golem.Typeset.Fonts
 import Golem.Typeset.Overhang (lineOverhang, reachesBackground)
 import Golem.Typeset.Pages (sourceAt)
 import Golem.Typeset.PdfColor (recolorImportedPage)
-import Golem.Typeset.Svg (drawingImportedPage, figureColor, markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
+import Golem.Typeset.Svg (drawingImportedPage, figureColor, markerMessage, markerSegmentsMessage, recolorFigure, svgDrawing, unsupportedMessage)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -5391,6 +5392,36 @@ loadFigures inp = do
         pure $ case changed of
           Left why -> Left (ColorConversion why)
           Right result -> Right (maybe original P.VectorFigure result)
+
+{- | The figures of the PDF for the screen whose colours [figures] color
+changes as HTML changes them (root ADR 0445), by file and page: an SVG
+figure recoloured in sRGB as the SVG of HTML, a PNG or JPEG figure as the
+pixels of the PNG of HTML, its alpha with them. PDF figures, and a figure
+whose colours do not change or cannot be read, are not here: the PDF for
+the screen keeps those of the PDF for print.
+-}
+loadScreenFigures :: PdfInput -> IO (Map (Text, Int) P.FigureContent)
+loadScreenFigures inp = case figureColor (piStyle inp) of
+  Nothing -> pure Map.empty
+  Just swatch -> do
+    let keys = nub [figureKey f | (_, f) <- figureBlocks (piBook inp)]
+    pairs <- mapM (\k -> fmap (k,) <$> loadOne swatch k) keys
+    pure (Map.fromList (catMaybes pairs))
+  where
+    loadOne swatch (s, _) = do
+      let path = T.unpack s
+          lower = T.toLower s
+      bytes <- maybe (filesRead (piFiles inp) (fromRight path (normalizeRelative path))) pure (Map.lookup s (bookImages (piBook inp)))
+      if
+        | ".pdf" `T.isSuffixOf` lower -> pure Nothing
+        | ".svg" `T.isSuffixOf` lower -> pure $ case S.readSvg bytes of
+            Right svg -> Just (recolorFigure swatch (P.SvgFigure (svgDrawing svg)))
+            Left _ -> Nothing
+        | otherwise -> do
+            recolored <- safeRecolorRasterBytes swatch bytes
+            pure $ case recolored of
+              Right (Just (_, png)) -> either (const Nothing) (Just . P.RasterFigure) (P.readImage png)
+              _ -> Nothing
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]

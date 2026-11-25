@@ -2,6 +2,7 @@
 module Golem.Typeset.Draw
   ( renderPdf,
     renderPdfView,
+    renderPdfOutputs,
     masterFlowText,
     renderPdfStructure,
     renderPdfLeafTexts,
@@ -15,6 +16,7 @@ module Golem.Typeset.Draw
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (forM, join)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.Containers.ListUtils (nubOrd, nubOrdOn)
@@ -122,6 +124,24 @@ data Tamper = Tamper
 untouched :: Tamper
 untouched = Tamper id id
 
+{- | The PDFs of one layout (root ADR 0431): that for print, written when
+@printed@, and that for the screen, with the PDF/UA of [targets.pdf-screen],
+when it is given. The layout, its diagnostics and the view are those of
+'renderPdfView'; without the PDF for print, its output intent is not read
+and its bytes are not written.
+-}
+renderPdfOutputs :: Bool -> Maybe (Maybe PdfUaPart) -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, [Maybe (FileId, Int)], Maybe ByteString))
+renderPdfOutputs printed screen version provider inp = fmap (\(bytes, notices, view, _, starts, sb) -> (bytes, notices, view, starts, sb)) <$> renderPdfOutputsUsing True untouched (PdfOutputs printed screen) version provider inp
+
+{- | Which PDFs are written from one layout (root ADR 0431): that for print,
+and that for the screen with its PDF/UA.
+-}
+data PdfOutputs = PdfOutputs !Bool !(Maybe (Maybe PdfUaPart))
+
+-- | The PDF for print alone.
+printOnly :: PdfOutputs
+printOnly = PdfOutputs True Nothing
+
 -- | The PDF, its notices, its view, its structure tree as text with the texts of its leaves, and where its pages start.
 renderPdfAll :: Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
 renderPdfAll = renderPdfAllWith untouched
@@ -179,7 +199,13 @@ masterFlowText provider input = case checkedGeometry inp of
             | otherwise -> T.splitOn "\n" t
 
 renderPdfAllUsing :: Bool -> Tamper -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)]))
-renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors inp, checkedGeometry inp) of
+renderPdfAllUsing reuse tamper version provider inp = fmap (\(bytes, notices, view, st, starts, _) -> (bytes, notices, view, st, starts)) <$> renderPdfOutputsUsing reuse tamper printOnly version provider inp
+
+{- | 'renderPdfAllUsing' for the PDFs of 'PdfOutputs', with the PDF for the
+screen last (root ADR 0431).
+-}
+renderPdfOutputsUsing :: Bool -> Tamper -> PdfOutputs -> Text -> FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View, Structure, [Maybe (FileId, Int)], Maybe ByteString))
+renderPdfOutputsUsing reuse tamper (PdfOutputs printed screen) version provider inp0 = case (nub (declarationErrors printed screen inp), checkedGeometry inp) of
   (ds, Left gs) -> pure (Left (ds <> gs))
   (ds@(_ : _), Right _) -> pure (Left ds)
   ([], Right geom) -> do
@@ -187,8 +213,9 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
-        -- a missing profile is reported before any time is spent on the layout (golem-project ADR 0004)
-        li <- loadIntent inp
+        -- a missing profile is reported before any time is spent on the layout (golem-project ADR 0004);
+        -- the PDF for the screen alone has no output intent (root ADR 0431)
+        li <- if printed then loadIntent inp else pure (Right Nothing)
         case li of
           Left ds -> pure (Left ds)
           Right intent -> do
@@ -201,7 +228,11 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
               Right layout | ds@(_ : _) <- sectionErrors inp layout <> folioErrors inp geom layout -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
                 [] -> do
-                  let (used, stops, overfull, missingFeatures, finish) = writeDocumentView tamper version inp geom fonts layout intent
+                  -- the figures of the PDF for the screen in the colours of HTML (root ADR 0445)
+                  screenFigures <- maybe (pure Map.empty) (const (loadScreenFigures inp)) screen
+                  let (used, printStops, overfull, missingFeatures, finish) = writeDocumentView tamper version PrintPdf inp geom fonts layout intent
+                      screenView = [writeDocumentView tamper version (ScreenPdf ua screenFigures) inp geom fonts layout Nothing | Just ua <- [screen]]
+                      stops = nub ((if printed then printStops else []) <> concat [st | (_, st, _, _, _) <- screenView])
                   {- G07104 stops the PDF/A-2a before its fonts are embedded (docs/adr ADR 0183);
                   G07107, content drawn but not in the structure tree, stops every PDF (docs/adr ADR 0216),
                   and so does G07120, a link or a bookmark whose destination is not drawn (docs/adr/0267) -}
@@ -209,15 +240,20 @@ renderPdfAllUsing reuse tamper version provider inp0 = case (declarationErrors i
                     then pure (Left stops)
                     else do
                       -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
-                      embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
+                      let embed = Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts)
+                      embedded <- embed used
+                      -- the PDF for the screen embeds the glyphs it draws: those of the PDF for print, unless that draws hidden folios (root ADR 0431)
+                      screenEmbedded <- forM screenView $ \(u, _, _, _, f) -> if u == used then pure (embedded, f) else (,f) <$> embed u
                       -- a face used horizontally and vertically is reported once
-                      case nub (concat (lefts (Map.elems embedded))) of
+                      case nub (concat (lefts (concatMap Map.elems (embedded : map fst screenEmbedded)))) of
                         [] -> do
-                          let (bytes, view, structure) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
+                          let fontsOf = Map.mapMaybe (either (const Nothing) Just)
+                              (bytes, view, structure) = finish (fontsOf embedded)
+                              screenBytes = listToMaybe [b | (e, f) <- screenEmbedded, let (b, _, _) = f (fontsOf e)]
                           -- G07101: dashes without ink (docs/adr ADR 0172)
                           -- G07105: the lines past their measure, from the lines drawn, not from the view (docs/adr ADR 0210)
                           -- G07109: the sections with no page (docs/adr/0260); G08103: the features the fonts do not have (docs/adr/0268)
-                          pure (Right (bytes, plNotices layout <> sectionNotices inp layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> punctuationInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull <> missingFeatures, view, structure, pageStarts layout))
+                          pure (Right (bytes, plNotices layout <> sectionNotices inp layout <> runningHeadNotices inp geom fonts layout <> dashInkNotices (pgVertical geom) fonts layout <> punctuationInkNotices (pgVertical geom) fonts layout <> overfullWarnings overfull <> missingFeatures, view, structure, pageStarts layout, screenBytes))
                         ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
@@ -378,14 +414,16 @@ set (docs/adr ADR 0183), in dev and prod alike: an output intent for PDF/A
 level 1 and never go two levels deeper (G07103, at the heading). The
 document itself is level 0 before the first heading.
 -}
-declarationErrors :: PdfInput -> [Diagnostic]
-declarationErrors inp =
+declarationErrors :: Bool -> Maybe (Maybe PdfUaPart) -> PdfInput -> [Diagnostic]
+declarationErrors printed screen inp =
   [ diagnostic "G03113" Error (valueSpan ["targets", "pdf", "pdfa"]) "PDF/A には [color] の intent が要ります"
-  | isJust pdfA,
+  | printed,
+    isJust pdfA,
     isNothing (stIntent (piStyle inp))
   ]
     <> [ diagnostic "G07103" Error sp ("PDF/UA では見出しの段を飛ばせません: " <> tshow' before <> " から " <> tshow' l)
-       | isJust pdfUa,
+       | -- the PDF/UA of [targets.pdf], or of [targets.pdf-screen] (root ADR 0431)
+         (printed && isJust pdfUa) || isJust (join screen),
          let levels = [(l, sp) | Document _ bs <- bookDocs (piBook inp), Block sp _ _ (Heading l _ _) <- blocksWithin bs],
          (before, (l, sp)) <- zip (0 : map fst levels) levels,
          l > before + 1
@@ -520,9 +558,21 @@ embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
 used in each font and their text, then the PDF and its view from the
 embedded fonts.
 -}
-writeDocumentView :: Tamper -> Text -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
-writeDocumentView tamper version inp geom fonts layout intent =
-  let md = manifestMetadata (projectManifest (piProject inp))
+writeDocumentView :: Tamper -> Text -> PdfVariant -> PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], [Diagnostic], [(OverfullLine, Bool)], [Diagnostic], Map P.FontRef P.Font -> (ByteString, V.View, Structure))
+writeDocumentView tamper version variant inp0 geom fonts layout0 intent =
+  let -- the PDF for the screen has no crop marks and its figures are those of 'loadScreenFigures' (root ADR 0431, root ADR 0445)
+      (inp, layout, screen) = case variant of
+        PrintPdf -> (inp0, layout0, False)
+        ScreenPdf _ figures ->
+          ( inp0 {piMarks = Nothing},
+            layout0 {plFigures = Map.map (\pf -> maybe pf (\c -> pf {pfContent = c}) (Map.lookup (pfSource pf, pfPage pf) figures)) (plFigures layout0)},
+            True
+          )
+      -- the PDF/UA of [targets.pdf], or of [targets.pdf-screen] (root ADR 0431)
+      declaredUa = case variant of
+        PrintPdf -> tgPdfUa (manifestTargets (projectManifest (piProject inp)))
+        ScreenPdf ua _ -> ua
+      md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
       -- the master page of each page (golem-driver ADR 0014)
       masters = pageMasters inp geom layout
@@ -554,7 +604,8 @@ writeDocumentView tamper version inp geom fonts layout intent =
         P.RasterFigure _ -> Nothing
       formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
-      bleed = maybe 0 pageBleed (stPage style)
+      -- the PDF for the screen is the trimmed page alone (root ADR 0431)
+      bleed = if screen then 0 else maybe 0 pageBleed (stPage style)
       {- the link annotations, each of the Link of the structure tree that holds
       the first box of its line (docs/adr ADR 0183): to a URL, or to the
       destination of its target (docs/adr/0267) -}
@@ -602,16 +653,18 @@ writeDocumentView tamper version inp geom fonts layout intent =
                   P.docTitle = mdTitle md,
                   P.docDate = (y, mo, d),
                   P.docId = P.documentId (mdId md),
-                  P.docInstanceId = P.instanceId (instanceIdInputs version (piInputs inp) programs),
+                  -- the PDF for the screen is another file of the same book (root ADR 0431)
+                  P.docInstanceId = P.instanceId (instanceIdInputs version (piInputs inp <> ["target pdf-screen" | screen]) programs),
                   P.docProducer = producer version,
                   P.docPdfX = intent,
                   P.docLang = mdLanguage md,
-                  P.docPdfUa = case tgPdfUa (manifestTargets (projectManifest (piProject inp))) of
+                  P.docPdfUa = case declaredUa of
                     Just PdfUa1 -> Just P.PdfUa1
                     Nothing -> Nothing,
                   P.docStructure = structure,
                   P.docPageLabels = pdfPageLabels inp layout,
-                  P.docOutline = outline
+                  P.docOutline = outline,
+                  P.docScreen = screen
                 }
             bytes = P.writePdf doc
             -- the view of golem preflight (golem-cli ADR 0006)
@@ -678,6 +731,12 @@ writeDocumentView tamper version inp geom fonts layout intent =
           (Map.fromList [(i, uSpan u) | (i, u) <- plUnits layout])
           (P.orphanLeaves structure [l | p <- pdfPages, l <- P.contentLeaves (P.pageContent p)])
    in (used, privateUse <> orphans <> destErrors, overfull, featureWarnings inp fonts (zip [1 ..] (map pdUses drawn)), finish)
+
+{- | What one PDF of a layout is (root ADR 0431): the PDF for print, or the
+PDF for the screen with the PDF/UA of [targets.pdf-screen] and the figures
+of 'loadScreenFigures' (root ADR 0445).
+-}
+data PdfVariant = PrintPdf | ScreenPdf !(Maybe PdfUaPart) !(Map (Text, Int) P.FigureContent)
 
 {- | The destination of each target of a link inside the document drawn
 (docs/adr/0267): the page of the first drawing of what it is, from 0, and

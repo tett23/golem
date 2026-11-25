@@ -34,7 +34,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 
 | オプション | 受け付けるコマンド | 値 |
 | --- | --- | --- |
-| [code: --target] | [code: build] | [code: html]、[code: epub]、[code: text]、[code: pdf]。何度でも書ける |
+| [code: --target] | [code: build] | [code: html]、[code: epub]、[code: text]、[code: pdf]、[code: pdf-screen]。何度でも書ける |
 | [code: --profile] | [code: build]、[code: check]、[code: lint] | [code: dev]（既定）、[code: prod] |
 | [code: --marks] | [code: build]、[code: check]、[code: preflight] | [code: none]（既定）、[code: japanese]、[code: western] |
 | [code: --no-notices] | [code: build]、[code: check]、[code: lint] | なし |
@@ -50,6 +50,11 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 マニフェストの [code: \[targets.*\]] の有無は見ない。
 [code: \[targets.*\]] は、ISBN やプレーンテキストの [code: variants] のような、ターゲットごとの設定の置き場所である。
 CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0002-build-all-targets-by-default.md]（golem-cli ADR 0002「--target を省いた golem build はすべてのターゲットを作る」）]
+
+画面で読むための PDF（[code: pdf-screen]）は、[code: --target pdf-screen] で選んだときだけ作り、[code: --target] を省いたビルドには入れない。
+入稿の PDF だけが要る本で、ビルドの時間を増やさないためである。
+マニフェストの [code: \[targets.pdf-screen\]] は設定の表で、書いても [code: --target] を省いたビルドのターゲットは変わらない。
+[code: --target pdf --target pdf-screen] は二つの PDF を一度の組版から作り、組版の diagnostic を一度だけ出す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0431-plain-pdf-1-7-target.md]（root ADR 0431「PDF/X-4 を宣言しない、画面で読むための PDF 1.7 のターゲットを足す」）]
 
 [code: golem check] は出力を作らず、構文、評価、文書構造（S1）までを検査する。[index reading="golem check": golem check]
 マニフェストの [code: \[targets.*\]] によらず四つのターゲットを検査するので、四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G07001）、トンボと塗り足しの誤り（G07002）、段落スタイルの字下げの誤り（G07025）、本文のフォントの欠け（G08007）も報告する。

@@ -274,6 +274,7 @@ variants = ["horizontal"]
 - [code: \[targets.text\]] の [code: variants] で、プレーンテキストを縦書き用（[code: "vertical"]）と横書き用（[code: "horizontal"]）のどちらで作るかを選びます。省けば両方を作ります。
 
 [code: golem build] は、[code: --target] を指定しなければ、ここに書いていない形式も含めて四つの形式をすべて作ります。
+画面で読む PDF は、[code: --target pdf-screen] を指定したときだけ作ります（「[ref-title pdf-screen]」、[ref-page pdf-screen] ページ）。
 このマニュアルは PDF と HTML だけを使うので、[code: golem build --target pdf --target html] で組んでいます。
 
 ### PDF/A と PDF/UA
@@ -289,6 +290,9 @@ PDF は、どの本もタグ付き PDF になります。
 pdfa = "2a"
 pdfua = "1"
 ```
+
+画面で読む PDF に PDF/UA-1 を宣言するときは、[code: \[targets.pdf-screen\]] に [code: pdfua = "1"] を書きます。
+画面で読む PDF には出力インテントがないので、[code: pdfa] は書けません（G03001）。
 
 - [code: pdfa] に書ける値は [code: "2a"] だけ、[code: pdfua] に書ける値は [code: "1"] だけです。ほかの値はエラー（G03001）になります。
 - 二つは別々に書けます。PDF/A は印刷用の PDF/X-4 の上に作るので、[code: pdfa] を書くときは、[code: style.toml] の [code: \[color\]] に [code: intent] を書きます。ないとエラー（G03113）になります。[code: pdfua] だけなら [code: intent] は要りません。

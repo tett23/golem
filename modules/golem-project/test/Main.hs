@@ -441,6 +441,27 @@ pdfConformanceTests =
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] ("[targets.pdf]\n" <> extra))
     conformance t = (tgPdfA t, tgPdfUa t)
 
+-- | [targets.pdf-screen] (root ADR 0431).
+pdfScreenTableTests :: TestTree
+pdfScreenTableTests =
+  testGroup
+    "[targets.pdf-screen] (root ADR 0431)"
+    [ testCase "root ADR 0431 I8: a manifest with [targets.pdf-screen] alone is not G03001" $
+        fmap (tgPdfScreen . manifestTargets) (alone "") @?= Right (Just Nothing),
+      testCase "root ADR 0431 I8: pdfua = \"1\" is read" $
+        fmap (tgPdfScreen . manifestTargets) (alone "pdfua = \"1\"\n") @?= Right (Just (Just PdfUa1)),
+      testCase "root ADR 0431 I8: a key other than pdfua, and a pdfua other than \"1\", are G03001" $
+        mapM_
+          (\v -> (v, codes (alone v)) @?= (v, ["G03001"]))
+          ["pdfa = \"2a\"\n", "pdfua = \"2\"\n", "pdfua = 1\n", "isbn = \"978-4-00-000000-0\"\n", "intent = \"x.icc\"\n"],
+      testCase "root ADR 0431 I8: without [targets.pdf-screen] the PDF for the screen is not configured" $
+        fmap (tgPdfScreen . manifestTargets) (parseManifest (FileId 0) (manifest ["\"a.gm\""])) @?= Right Nothing,
+      testCase "root ADR 0431 I8: pdfua of [targets.pdf-screen] is completed with \"1\"" $
+        manifestChoiceValues ["targets", "pdf-screen", "pdfua"] False @?= ["1"]
+    ]
+  where
+    alone extra = parseManifest (FileId 0) (T.replace "[targets.html]" ("[targets.pdf-screen]\n" <> extra) (manifest ["\"a.gm\""]))
+
 -- | A plugin in the project, declared with path (docs/adr/0109).
 pluginPathTests :: TestTree
 pluginPathTests =
@@ -1320,6 +1341,7 @@ tests =
       pluginDataTests,
       pluginPathTests,
       pdfConformanceTests,
+      pdfScreenTableTests,
       pageNumberingTests,
       indexStyleTests,
       hiddenFolioTests,
