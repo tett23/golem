@@ -238,6 +238,13 @@ def coveredEnd (m : Ms) (job : Nat) : Nat := ((besides m job).getLast?).getD job
 
 def inner : Inner := level 1
 
+/-- The settings of these manuscripts meet the premises of
+    `tryVerses_column_check_unobservable`: `tryVerses` gives the same
+    trials with or without its same-column check. -/
+theorem tryVerses_column_check_here (lines : Nat) (region : Region) (b : Beside) (cursor : St) (indices : List Nat) :
+    tryVersesAnyColumn (env lines) region b cursor indices = tryVerses (env lines) region b cursor indices :=
+  tryVerses_column_check_unobservable (env lines) (by simp [env, pitch]) (by simp [env, pitch]) region b cursor indices
+
 /-- `stepPhysicalPrefix`: the prefix placed with the following flows ahead. -/
 def stepPrefix (e : Env) (st : St) (following : List Flow) : List Flow → Except Failure St
   | [] => .ok st

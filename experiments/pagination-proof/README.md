@@ -1341,7 +1341,13 @@ golem-typeset は、図版を組む段階で、除外領域が段より長い図
 照合が写しの誤りを見つけることは、写しを変えて確かめた。
 後続の判定を常に収まるとすると 291 個、`parts` が最後の部分の行数を見ずに続けると 108 個の原稿で出力が食い違った。
 連については、`ident` を常に 0 とすると 672 個、`stanza` が `splitAtBreak` を使わずに収まった詩の行をすべて置くと 841 個、収まった詩の行の数で `accept` を呼ぶと 24 個、最後の部分が短いことを `total - whole ≤ keep.last` で判定すると 224 個、`accept` の `front` を `count - 1` とすると 23 個の原稿で食い違った。
-`tryVerses` が置いた段がカーソルの段と同じかを見ない写しは、これらの原稿では出力が変わらず、この照合では見つからない。
+`tryVerses` が置いた段がカーソルの段と同じかを見ない写しは、これらの原稿では出力が変わらない。
+この確かめは、どの入力でも `tryVerses` の結果を変えないからである。
+`trialWrap_placed_column` は、`trialParagraphPartLimit` の試しが行を置いたとき、置いた後のカーソルが試しの前と同じページと段にあることを示す。
+試しが置く行は、`fittingHere` が段に収まると数えた行か、空の段に押し込む一行であり、`fit` が次の段へ送るのはそのどちらでもないときに限る。
+この定理は、区切りの長さ（`separator`）とページの行送り（`pagePitch`）が負でないことを前提に置く。
+`tryVerses_column_check_unobservable` は、これを使って、段の確かめを除いた写し（`tryVersesAnyColumn`）が `tryVerses` と等しいことを示す。
+`CausalBoundary.lean` の `tryVerses_column_check_here` は、これらの原稿の設定がこの前提を満たすことを示す。
 まだ試していない詩の行の行数（`orig`、`composeBeside` が組んだ行数）を 0 とする写しも同じく見つからない。
 リスト項目については、`itemJobs` が同じ項目の次の図版に進まないと 28 個、`jobsFrom` が `retainPhysicalPart` を通さずに試しを一度だけ置くと 235 個、`jobsFrom` が `itemJobs` の残した図版でなく自分の受け取った残りの図版で続けると 28 個の原稿で食い違った。
 `jobsFrom` が終えた項目（`done`）を忘れる写しは、これらの原稿では出力が変わらず、この照合では見つからない。

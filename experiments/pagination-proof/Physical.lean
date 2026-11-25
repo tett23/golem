@@ -5627,6 +5627,260 @@ theorem I5_stanza_lines (env : Env) (region : Region) (b : Beside) (a : StanzaAr
     ∃ lss, Each P indices lss ∧ Step cursor s lss.join [] :=
   (stanza_accept_lines env region b a P hP hf hh _).1 later keep isStart cursor indices s rfl h
 
+/-! ### The same-column check of `tryVerses`
+
+`tryVerses` accepts a trial that placed its verse line whole only when the
+trial stayed in the column of the cursor.  The check never fails there: a
+trial of `trialParagraphPartLimit` that places lines leaves the page and the
+column of its cursor as they were, when the separator and the pitch of the
+page are not negative.  `tryVersesAnyColumn` is `tryVerses` without the
+check, and `tryVerses_column_check_unobservable` shows the two equal. -/
+
+theorem putLineWithReserve_column (allow : Bool) (env : Env) (st s : St) (l : Line)
+    (h : putLineWithReserve allow env st l = .ok s) : s.page = st.page ∧ s.column = st.column := by
+  unfold putLineWithReserve at h
+  split at h
+  · cases h
+  · split at h
+    · split at h
+      · cases h
+      · injection h with h; subst h; exact ⟨rfl, rfl⟩
+    · injection h with h; subst h; exact ⟨rfl, rfl⟩
+
+theorem putHere_column (env : Env) (region : Region) (st s : St) (l : Line) (h : putHere env region st l = .ok s) :
+    s.page = st.page ∧ s.column = st.column := by
+  unfold putHere at h
+  split at h
+  · unfold putWrappedLine at h
+    split at h
+    · cases h
+    · rename_i placed e
+      injection h with h; subst h
+      unfold putLine at e
+      have a := putLineWithReserve_column false env _ placed l e
+      exact a
+  · exact putLineWithReserve_column false env st s l h
+
+theorem putHereLines_column (env : Env) (region : Region) (st s : St) (ls : List Line)
+    (h : putHereLines env region st ls = .ok s) : s.page = st.page ∧ s.column = st.column := by
+  induction ls generalizing st with
+  | nil => simp only [putHereLines, Except.ok.injEq] at h; subst h; exact ⟨rfl, rfl⟩
+  | cons l ls ih =>
+    unfold putHereLines at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      have a := putHere_column env region st s1 l e
+      have b := ih s1 h
+      exact ⟨b.1.trans a.1, b.2.trans a.2⟩
+
+/-- `fit` keeps the column where an empty column with a negative
+    adjustment has room for the amount and a column that is not empty has
+    room for it with the pending space. -/
+theorem fit_same_column (env : Env) (st : St) (a : Int)
+    (h2 : empty st = true → st.adjust < 0 → a ≤ room env st)
+    (h5 : empty st = false → a + st.pending ≤ room env st) :
+    (fit env st a).page = st.page ∧ (fit env st a).column = st.column := by
+  unfold fit
+  by_cases c1 : empty st = true ∧ a ≤ room env st
+  · rw [if_pos c1]; exact ⟨rfl, rfl⟩
+  rw [if_neg c1]
+  by_cases c2 : empty st = true ∧ st.adjust < 0
+  · exact absurd ⟨c2.1, h2 c2.1 c2.2⟩ c1
+  rw [if_neg c2]
+  by_cases c3 : a + st.pending ≤ room env st
+  · rw [if_pos c3]; exact ⟨rfl, rfl⟩
+  rw [if_neg c3]
+  by_cases c4 : empty st = true
+  · rw [if_pos c4]; exact ⟨rfl, rfl⟩
+  · exact absurd (h5 (by simpa using c4)) c3
+
+theorem notes_grow (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch) (notes : Int) (l : Line)
+    (c : Bool) : notes ≤ notes + (if c then env.separator else 0) + (noteLines l : Int) * env.pagePitch := by
+  have : 0 ≤ (noteLines l : Int) * env.pagePitch := Int.mul_nonneg (Int.ofNat_nonneg _) hp
+  cases c <;> simp <;> omega
+
+theorem sumPitch_take_succ (env : Env) (l : Line) (ls : List Line) (n : Nat) :
+    sumPitch env ((l :: ls).take (n + 1)) = env.pitchOf l.id + sumPitch env (ls.take n) := rfl
+
+/-- The lines `fittingGo` counts fit under the limit with their notes. -/
+theorem fittingGo_bound (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch) (st : St) :
+    ∀ (ls : List Line) (used notes : Int) (n : Nat), 0 < n → n ≤ fittingGo env st used notes ls →
+      used + sumPitch env (ls.take n) + notes ≤ limit env st
+  | [], _, _, n, h0, h => by simp [fittingGo] at h; omega
+  | l :: ls, used, notes, n, h0, h => by
+    unfold fittingGo at h
+    dsimp only at h
+    have q0 : 0 ≤ (noteLines l : Int) * env.pagePitch := Int.mul_nonneg (Int.ofNat_nonneg _) hp
+    generalize (noteLines l : Int) * env.pagePitch = q at *
+    match n, h0 with
+    | m + 1, _ =>
+      rw [sumPitch_take_succ]
+      split at h <;> split at h <;> first
+        | omega
+        | (rename_i c
+           cases m with
+           | zero => simp only [List.take_zero, sumPitch, List.foldr]; omega
+           | succ m' =>
+             have ih := fittingGo_bound env hs hp st ls _ _ (m' + 1) (by omega) (Nat.le_of_succ_le_succ h)
+             simp only [Nat.succ_eq_add_one] at *
+             omega)
+
+/-- The lines `fittingWrapGo` counts fit under the limit with their notes. -/
+theorem fittingWrapGo_bound (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch) (st : St) (e : Int) :
+    ∀ (ls : List Line) (used notes : Int) (n : Nat), 0 < n → n ≤ fittingWrapGo env st e used notes ls →
+      used + sumPitch env (ls.take n) + notes ≤ limit env st
+  | [], _, _, n, h0, h => by simp [fittingWrapGo] at h; omega
+  | l :: ls, used, notes, n, h0, h => by
+    unfold fittingWrapGo at h
+    dsimp only at h
+    have q0 : 0 ≤ (noteLines l : Int) * env.pagePitch := Int.mul_nonneg (Int.ofNat_nonneg _) hp
+    generalize (noteLines l : Int) * env.pagePitch = q at *
+    have mx := Int.le_max_right e (used + env.pitchOf l.id)
+    match n, h0 with
+    | m + 1, _ =>
+      rw [sumPitch_take_succ]
+      split at h <;> split at h <;> first
+        | omega
+        | (rename_i c
+           cases m with
+           | zero => simp only [List.take_zero, sumPitch, List.foldr]; omega
+           | succ m' =>
+             have ih := fittingWrapGo_bound env hs hp st e ls _ _ (m' + 1) (by omega) (Nat.le_of_succ_le_succ h)
+             simp only [Nat.succ_eq_add_one] at *
+             omega)
+
+/-- The lines `fittingHere` counts fit in the room of the column, after the
+    pending space when the column is not empty. -/
+theorem fittingHere_bound (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch) (region : Region) (st : St)
+    (rows : List Line) (n : Nat) (h0 : 0 < n) (h : n ≤ fittingHere env region st rows) :
+    sumPitch env (rows.take n) + (if empty st then 0 else st.pending) ≤ room env st := by
+  unfold fittingHere at h
+  unfold room
+  split at h
+  · unfold fitting at h
+    have := fittingGo_bound env hs hp st rows _ _ n h0 h
+    generalize (if empty st = true then 0 else st.pending) = x at *
+    omega
+  · have := fittingWrapGo_bound env hs hp st _ rows _ _ n h0 h
+    generalize (if empty st = true then 0 else st.pending) = x at *
+    omega
+
+theorem splitAtBreak_le (k : Keep) (start : Bool) (total count : Nat) : splitAtBreak k start total count ≤ count := by
+  unfold splitAtBreak
+  split
+  · omega
+  · split
+    · omega
+    · show (if start = true ∧ 0 < (if total - count < k.last then total - k.last else count) ∧
+          (if total - count < k.last then total - k.last else count) < k.first then 0
+          else (if total - count < k.last then total - k.last else count)) ≤ count
+      by_cases h3 : total - count < k.last
+      · rw [if_pos h3]; split <;> omega
+      · rw [if_neg h3]; split <;> omega
+
+theorem limited_le (limit : Option Nat) (n : Nat) : limited limit n ≤ n := by
+  unfold limited; split <;> omega
+
+/-- A trial of `trialParagraphPartLimit` after its first test that places
+    lines leaves them in the column of its cursor. -/
+theorem trialWrapRest_column (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch) (region : Region)
+    (limit : Option Nat) (k : Keep) (start : Bool) (st : St) (rows : List Line) (fid : Nat) (c : Nat) (next : St)
+    (r : Keep) (h : trialWrapRest env region limit k start st rows fid = .ok (.placed c next r)) :
+    next.page = st.page ∧ next.column = st.column := by
+  unfold trialWrapRest at h
+  have bound := fittingHere_bound env hs hp region st rows
+  have sl := splitAtBreak_le k start rows.length (fittingHere env region st rows)
+  have ll := limited_le limit (splitAtBreak k start rows.length (fittingHere env region st rows))
+  dsimp only at h
+  generalize fittingHere env region st rows = count at *
+  generalize limited limit (splitAtBreak k start rows.length count) = sel at *
+  split at h
+  · simp at h
+  · rename_i moved
+    split at h
+    · simp at h
+    · rename_i placed e
+      injection h with h; injection h with _ h2 _
+      subst h2
+      have hc := putHereLines_column env region _ placed _ e
+      have tk : count = 0 ∨ (0 < (if sel = 0 then max 1 count else sel) ∧ (if sel = 0 then max 1 count else sel) ≤ count) := by
+        by_cases c0 : count = 0
+        · exact Or.inl c0
+        · right; split <;> omega
+      have fs := fit_same_column env st (sumPitch env (rows.take (if sel = 0 then max 1 count else sel)))
+        (fun he ha => by
+          rcases tk with c0 | ⟨t0, t1⟩
+          · exact absurd (Or.inl ⟨he, ha, c0⟩) moved
+          · have := bound _ t0 t1; simp only [he, if_true] at this; omega)
+        (fun he => by
+          rcases tk with c0 | ⟨t0, t1⟩
+          · subst c0
+            have : sel = 0 := by omega
+            exact absurd (Or.inr ⟨this, by simp [he]⟩) moved
+          · have := bound _ t0 t1; simp only [he] at this; simpa using this)
+      exact ⟨hc.1.trans fs.1, hc.2.trans fs.2⟩
+
+/-- A trial of `trialParagraphPartLimit` that places lines leaves them in
+    the column of its cursor. -/
+theorem trialWrap_placed_column (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch) (region : Region)
+    (limit : Option Nat) (k : Keep) (start : Bool) (st : St) (rows : List Line) (c : Nat) (next : St) (r : Keep)
+    (h : trialWrap env region limit k start st rows = .ok (.placed c next r)) :
+    next.page = st.page ∧ next.column = st.column := by
+  unfold trialWrap at h
+  split at h
+  · cases h
+  unfold trialWrapFrom at h
+  split at h
+  · injection h with h; injection h with _ h2 _; subst h2; exact ⟨rfl, rfl⟩
+  · split at h
+    · simp at h
+    · split at h
+      · split at h
+        · have a := trialWrapRest_column env hs hp region limit _ start _ _ _ c next r h
+          exact a
+        · simp at h
+      · exact trialWrapRest_column env hs hp region limit _ start _ _ _ c next r h
+
+/-- `tryVerses` without the check that the trial stayed in the column of
+    the cursor. -/
+def tryVersesAnyColumn (env : Env) (region : Region) (b : Beside) (cursor : St) : List Nat → Except Failure (List St)
+  | [] => .ok []
+  | index :: later =>
+    match trialWrap env region none ⟨1, 1, false⟩ true cursor (b.compose cursor index) with
+    | .error e => .error e
+    | .ok (.placed count placed _) =>
+      if count = (b.compose cursor index).length then
+        match tryVersesAnyColumn env region b placed later with
+        | .error e => .error e
+        | .ok rest => .ok (placed :: rest)
+      else .ok []
+    | .ok (.moved _ _) => .ok []
+
+/-- The check of `tryVerses` that the trial stayed in the column of the
+    cursor does not change what it returns, on every input whose separator
+    and pitch of the page are not negative (`trialWrap_placed_column`). -/
+theorem tryVerses_column_check_unobservable (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env.pagePitch)
+    (region : Region) (b : Beside) (cursor : St) (indices : List Nat) :
+    tryVersesAnyColumn env region b cursor indices = tryVerses env region b cursor indices := by
+  induction indices generalizing cursor with
+  | nil => rfl
+  | cons index later ih =>
+    unfold tryVersesAnyColumn tryVerses
+    cases hm : trialWrap env region none ⟨1, 1, false⟩ true cursor (b.compose cursor index) with
+    | error e => rfl
+    | ok part =>
+      cases part with
+      | moved _ _ => rfl
+      | placed count placed relaxed =>
+        have col := trialWrap_placed_column env hs hp region none _ true cursor _ count placed relaxed hm
+        dsimp only
+        by_cases hc : count = (b.compose cursor index).length
+        · have hb : count = (b.compose cursor index).length ∧ placed.page = cursor.page ∧
+              placed.column = cursor.column := ⟨hc, col.1, col.2⟩
+          rw [if_pos hc, if_pos hb, ih placed]
+        · rw [if_neg hc, if_neg (fun x => hc x.1)]
+
 theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line)
     (h : putReserved env reserve st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with
