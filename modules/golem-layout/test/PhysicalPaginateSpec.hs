@@ -1282,11 +1282,11 @@ joinedRuleTests =
                 [ assertEqual ("interior extra: " <> show shown) (headingEnd + interior) nextAt
                 | (p, rule) <- rules,
                   (headingAt, SHeading 0 _) <- poSlots p,
-                  (nextAt, SLine 40) <- poSlots p,
                   let headingEnd = headingAt + extentOf body
                       interior = max 0 (i' + w + o' + r - 10),
                   headingEnd + interior <= c,
-                  prAt rule + w <= c
+                  prAt rule + w <= c,
+                  (nextAt, SLine 40) <- poSlots p
                 ]
         | c <- [40, 43, 45, 50, 60, 100],
           leadKind <- [0 .. 2 :: Int],
