@@ -28,16 +28,16 @@ where
 import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, fontLicenseKeyDiagnostics, keepStyles, targetsOf)
-import Golem.Driver.Lint (lintEvaluated)
 import Golem.Emet (Program, programModules)
 import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
 import Golem.Eval.Value (Value)
+import Golem.Evaluate (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
+import Golem.Evaluate.Lint (lintEvaluated)
 import Golem.Lint
 import Golem.Lsp.FileRename qualified as Rename
 import Golem.Parser (parseAst)
@@ -47,7 +47,7 @@ import Golem.Parser.Read (checkText)
 import Golem.Parser.SourceSettings
 import Golem.Project
 import Golem.Project.Files (diskFiles)
-import Golem.Project.Style (defaultStyle, withLocalStyles)
+import Golem.Project.Style (defaultStyle, fontLicenseKeyDiagnostics, withLocalStyles)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (makeRelative, takeExtension, (</>))
@@ -348,7 +348,9 @@ diagnosticsFor ws =
             lintDiags = lintEvaluated e
             m = projectManifest p
             -- G03282 on style.toml, without looking at the font files (root ADR 0433)
-            licenseDiags = fontLicenseKeyDiagnostics (evStyleFile e) (manifestTargets m) (targetsOf m) (evStyle e) (const True)
+            -- whether the manifest declares an HTML or EPUB that embeds the fonts (root ADR 0448)
+            declared = manifestTargets m
+            licenseDiags = if embedsFonts declared (tgHtml declared) (isJust (tgEpub declared)) then fontLicenseKeyDiagnostics (evStyleFile e) (evStyle e) (const True) else []
             all' = publishable (manifestSilencedNotices m) (manifestSilencedInfo m) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags <> licenseDiags))
             -- a file read for @table or @listing is where its diagnostics point too (golem-eval ADR 0004)
             pathOf fid = lookupPath fid ft <|> (siPath <$> Map.lookup fid (evAssetSources e)) <|> (if fid == evStyleFile e then Just "style.toml" else Nothing)

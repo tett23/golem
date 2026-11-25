@@ -26,20 +26,24 @@
 
   <!-- edges -->
   <line x1="720" y1="78" x2="720" y2="122"/><!-- cli → lsp -->
-  <line x1="720" y1="178" x2="720" y2="222"/><!-- lsp → driver -->
+  <line x1="795" y1="60" x2="960" y2="138"/><!-- cli → driver -->
+  <line x1="720" y1="178" x2="720" y2="222"/><!-- lsp → evaluate -->
   <line x1="660" y1="178" x2="330" y2="222"/><!-- lsp → fmt -->
-  <line x1="650" y1="278" x2="120" y2="342"/><!-- driver → text -->
-  <line x1="665" y1="278" x2="310" y2="342"/><!-- driver → lint -->
-  <line x1="685" y1="278" x2="480" y2="342"/><!-- driver → plugin -->
-  <line x1="705" y1="278" x2="640" y2="342"/><!-- driver → emet -->
-  <line x1="740" y1="278" x2="790" y2="342"/><!-- driver → epub -->
-  <line x1="780" y1="265" x2="1000" y2="342"/><!-- driver → typeset -->
+  <path class="edge" d="M795,150 H888 V490 H910"/><!-- lsp → preflight -->
+  <path class="edge" d="M1080,122 V10 H95 V342"/><!-- driver → text -->
+  <line x1="965" y1="178" x2="795" y2="250"/><!-- driver → evaluate -->
+  <line x1="975" y1="178" x2="830" y2="342"/><!-- driver → epub -->
+  <line x1="1035" y1="178" x2="1035" y2="342"/><!-- driver → typeset -->
+  <line x1="665" y1="278" x2="310" y2="342"/><!-- evaluate → lint -->
+  <line x1="685" y1="278" x2="480" y2="342"/><!-- evaluate → plugin -->
+  <line x1="700" y1="278" x2="645" y2="342"/><!-- evaluate → emet -->
+  <line x1="715" y1="278" x2="715" y2="702"/><!-- evaluate → bibliography -->
   <line x1="330" y1="398" x2="410" y2="462"/><!-- lint → eval -->
   <line x1="460" y1="398" x2="460" y2="462"/><!-- plugin → eval -->
   <line x1="590" y1="398" x2="510" y2="462"/><!-- emet → eval -->
   <line x1="800" y1="398" x2="800" y2="462"/><!-- epub → html -->
   <line x1="965" y1="398" x2="860" y2="462"/><!-- typeset → html -->
-  <line x1="1000" y1="398" x2="975" y2="462"/><!-- typeset → preflight -->
+  <line x1="1005" y1="398" x2="985" y2="462"/><!-- typeset → preflight -->
   <line x1="1055" y1="398" x2="1055" y2="582"/><!-- typeset → layout-spec -->
   <line x1="1085" y1="398" x2="1130" y2="462"/><!-- typeset → layout -->
   <line x1="1110" y1="385" x2="1300" y2="462"/><!-- typeset → font -->
@@ -47,8 +51,8 @@
   <line x1="500" y1="518" x2="600" y2="582"/><!-- eval → project -->
   <line x1="725" y1="505" x2="365" y2="600"/><!-- html → assemble -->
   <line x1="790" y1="518" x2="745" y2="702"/><!-- html → bibliography -->
-  <line x1="915" y1="518" x2="705" y2="615"/><!-- preflight → project -->
-  <path class="edge" d="M1040,490 H1080 V702"/><!-- preflight → pdf -->
+  <line x1="925" y1="518" x2="705" y2="615"/><!-- preflight → project -->
+  <path class="edge" d="M1050,490 H1080 V702"/><!-- preflight → pdf -->
   <path class="edge" d="M1165,518 V560 H680 V582"/><!-- layout → project -->
   <line x1="890" y1="628" x2="705" y2="628"/><!-- layout-spec → project -->
   <line x1="1030" y1="638" x2="1030" y2="702"/><!-- layout-spec → pdf -->
@@ -66,7 +70,8 @@
   <rect class="box tool" x="645" y="22" width="150" height="56"/><text class="name" x="720" y="50">cli</text>
   <rect class="box tool" x="645" y="122" width="150" height="56"/><text class="name" x="720" y="150">lsp</text>
   <rect class="box tool" x="215" y="222" width="150" height="56"/><text class="name" x="290" y="250">fmt</text>
-  <rect class="box tool" x="645" y="222" width="150" height="56"/><text class="name" x="720" y="250">driver</text>
+  <rect class="box tool" x="960" y="122" width="150" height="56"/><text class="name" x="1035" y="150">driver</text>
+  <rect class="box core" x="645" y="222" width="150" height="56"/><text class="name" x="720" y="250">evaluate</text>
   <rect class="box txt" x="20" y="342" width="150" height="56"/><text class="name" x="95" y="370">text</text>
   <rect class="box core" x="215" y="342" width="150" height="56"/><text class="name" x="290" y="370">lint</text>
   <rect class="box core" x="385" y="342" width="150" height="56"/><text class="name" x="460" y="370">plugin</text>
@@ -75,7 +80,7 @@
   <rect class="box pdf" x="960" y="342" width="150" height="56"/><text class="name" x="1035" y="370">typeset</text>
   <rect class="box core" x="385" y="462" width="150" height="56"/><text class="name" x="460" y="490">eval</text>
   <rect class="box web" x="725" y="462" width="150" height="56"/><text class="name" x="800" y="490">html</text>
-  <rect class="box pdf" x="900" y="462" width="140" height="56"/><text class="name" x="970" y="490">preflight</text>
+  <rect class="box pdf" x="910" y="462" width="140" height="56"/><text class="name" x="980" y="490">preflight</text>
   <rect class="box pdf" x="1090" y="462" width="150" height="56"/><text class="name" x="1165" y="490">layout</text>
   <rect class="box pdf" x="1270" y="462" width="150" height="56"/><text class="name" x="1345" y="490">font</text>
   <rect class="box core" x="215" y="582" width="150" height="56"/><text class="name" x="290" y="610">assemble</text>

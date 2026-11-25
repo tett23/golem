@@ -439,7 +439,8 @@ flowchart TD
     cli["golem-cli<br/>golem コマンド"]
     lsp["golem-lsp<br/>LSP サーバー"]
     wasm["golem-wasm<br/>PDF を組む wasm の reactor モジュール"]
-    driver["golem-driver<br/>パイプラインの束ね"]
+    driver["golem-driver<br/>パイプラインの束ねと書き出し"]
+    evaluate["golem-evaluate<br/>プロジェクトの評価"]
     lint["golem-lint<br/>lint の規則"]
     fmt["golem-fmt<br/>CST の整形"]
     plugin["golem-plugin<br/>wasm のランタイム、取得とロックファイル"]
@@ -474,15 +475,18 @@ flowchart TD
     end
     assemble --> doc
     assemble --> numerals
+    cli --> driver
     cli --> lsp
     doc --> parser
     driver --> epub
-    driver --> emet
-    driver --> lint
-    driver --> plugin
+    driver --> evaluate
     driver --> text
     driver --> typeset
     emet --> eval
+    evaluate --> bibliography
+    evaluate --> emet
+    evaluate --> lint
+    evaluate --> plugin
     epub --> html
     eval --> project
     fmt --> parser
@@ -494,8 +498,9 @@ flowchart TD
     layoutspec --> pdf
     layoutspec --> project
     lint --> eval
-    lsp --> driver
+    lsp --> evaluate
     lsp --> fmt
+    lsp --> preflight
     pdf --> geometry
     wasm --> driver
     plugin --> eval
@@ -547,14 +552,29 @@ golem-numerals は golem のどのパッケージにも依存せず、golem-bibl
 golem-doc はこの三つに依存せず、golem-bibliography と golem-numerals は golem-doc に依存しない。
 この向きは、cabal が解決した計画を読む `scripts/ci/doc-deps.sh` が CI の `build` ジョブで確かめる。
 
-### golem-emet と golem-driver
+### golem-evaluate と golem-driver
+
+プロジェクトの評価は golem-evaluate が、書き出しは golem-driver が持つ（[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）。
+golem-evaluate は、評価の結果の型 `Evaluated` と、評価の関数（`evaluateProject`、`evaluateProjectWith`、`evaluateLoose`）と、評価の結果の補助（`docStyles`、`localStylesOf`、`runningVars`、`assetRefs`、`metadataValues` など）を `Golem.Evaluate` に持つ。
+プラグイン、関数、柱の変数、詩の行番号、lint、diagnostic の説明は、`Golem.Evaluate.Plugins`、`Golem.Evaluate.Functions`、`Golem.Evaluate.ProjectVars`、`Golem.Evaluate.Verse`、`Golem.Evaluate.Lint`、`Golem.Evaluate.Explain` にある。
+golem-driver は golem-evaluate に依存し、評価した本から PDF、HTML、EPUB、プレーンテキスト、page-map を書き出し、プリフライトを組み立てる。
+`Golem.Driver` は、golem-evaluate の評価の関数と型と補助を export し直すので、golem-cli と golem-wasm は `Golem.Driver` からそのまま使える。
+移した下位のモジュールは、`Golem.Evaluate.*` の名前でだけ見える。
+
+golem-lsp のライブラリは、golem-driver ではなく golem-evaluate に依存する。
+そのため、golem-lsp のライブラリを組むのに、組版のパッケージは要らない。
+golem-evaluate のライブラリは golem-driver、golem-typeset、golem-font、golem-layout、golem-html、golem-epub、golem-pdf に届かない。
+golem-lsp のライブラリは、golem-pdf を除くこれらに届かず、golem-pdf には golem-preflight を通して届く。
+この向きも、`scripts/ci/doc-deps.sh` が確かめる。
+
+### golem-emet と golem-evaluate
 
 golem-emet は関数を書く言語 Emet（`.emet`）の読み込み、型の検査、評価、整形を持ち、数の演算を golem-eval と共有する（[docs/adr/0160](adr/0160-emet-function-language-core.md)、仕様は [golem-emet の仕様書](golem-emet/specifications.md)）。
 golem-emet は golem-doc にも依存し、意味論 IR を `.emet` のデータ型に写す（[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。
-golem-driver は golem-emet に依存し、関数の要求を処理するハンドラを持ち、`.gm` が使う関数の表を golem-emet から作る（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)、[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)）。
+golem-evaluate は golem-emet に依存し、関数の要求を処理するハンドラを持ち、`.gm` が使う関数の表を golem-emet から作る（[docs/adr/0161](adr/0161-emet-requirements-and-driver-handlers.md)、[ADR 0162](adr/0162-calling-emet-functions-from-gm.md)、[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）。
 関数の表の型は golem-eval が持ち、golem-eval は golem-emet に依存しない。
 
-golem-driver は、リポジトリの根の `VERSION` と `docs/diagnostics.md` を、`scripts/gen-embedded.sh` が生成してコミットしたモジュール（`Golem.Driver.Version.Embedded` と `Golem.Driver.Explain.Embedded`）で埋め込む（[ADR 0203](adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
+golem-driver は、リポジトリの根の `VERSION` を、golem-evaluate は `docs/diagnostics.md` を、`scripts/gen-embedded.sh` が生成してコミットしたモジュール（`Golem.Driver.Version.Embedded` と `Golem.Evaluate.Explain.Embedded`）で埋め込む（[ADR 0203](adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)、[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）。
 生成したモジュールが元のファイルとバイト単位で一致することは、golem-driver のテストと CI の `build` ジョブが確かめる。
 golem-font に依存するパッケージでは、Template Haskell を使わない。
 wasm の GHC は Template Haskell の splice を評価するときに依存のパッケージを読み込み、golem-font が import する例外処理のタグ `__c_longjmp` を扱えないためである。
@@ -694,16 +714,19 @@ PDF と diagnostics の JSON は、同じファイルを `golem build --target p
 
 ### プラグインのない版
 
-golem-driver の cabal は、プラグインの機能を外すフラグ `plugins` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)）。
-フラグを偽にするのは wasm のビルドだけである。
-golem-cli と golem-lsp は golem-plugin に直接依存するので、フラグを使わない。
+golem-evaluate と golem-driver の cabal は、どちらもプラグインの機能を外すフラグ `plugins` を持つ（[ADR 0199](adr/0199-pdf-typesetting-as-wasm-reactor.md)、[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）。
+フラグを偽にするのは wasm のビルドだけで、`cabal.project.wasm` は二つのパッケージのフラグをともに外す。
+golem-cli と golem-lsp は、フラグを使わない。
 
-フラグの値によって、組むモジュールが変わる。
+golem-evaluate のフラグは、組むプラグインのモジュールを変える。
 
-- 既定は真で、golem-plugin に依存し、`src-plugins/` の `Golem.Driver.Plugins` と `Golem.Driver.New`（`golem new`）を組む。
-- 偽のときは golem-plugin に依存せず、`src-no-plugins/` の `Golem.Driver.Plugins` を組み、`Golem.Driver.New` を組まない。
+- 既定は真で、golem-plugin に依存し、`src-plugins/` の `Golem.Evaluate.Plugins` を組む。
+- 偽のときは golem-plugin に依存せず、`src-no-plugins/` の `Golem.Evaluate.Plugins` を組む。
 
-二つの `Golem.Driver.Plugins` は同じ名前と型を export し、`Golem.Driver` と `Golem.Driver.Functions` が使う golem-plugin の型と値（`HostContext`、`defaultCacheDir`、`maxDataBytes`）も、このモジュールを通して取り込む。
+golem-driver のフラグは、`golem new` を組むかどうかだけを決める。
+真なら golem-plugin に依存して `src-plugins/` の `Golem.Driver.New` を組み、偽なら組まない。
+
+二つの `Golem.Evaluate.Plugins` は同じ名前と型を export し、`Golem.Evaluate` と `Golem.Evaluate.Functions` が使う golem-plugin の型と値（`HostContext`、`defaultCacheDir`、`maxDataBytes`）も、このモジュールを通して取り込む。
 プラグインのない版は、`HostContext` を同じ形の型として、`maxDataBytes` を同じ値として持つ。
 
 プラグインのない版で組んだプロジェクトに `[plugins]` もプラグインのフィルタの `[[filters]]` もなければ、プラグインのある版と同じく、プラグインなしで `.emet` のフィルタだけを掛ける。
@@ -744,7 +767,7 @@ golem-wasm は、PDF の組版を、ファイルを読まない wasm の reactor
 #### wasm のビルド
 
 wasm のビルドは、別の cabal のプロジェクトのファイル `cabal.project.wasm` で行う。
-`packages:` には golem-wasm と、その依存の golem のパッケージだけを並べ、golem-driver のフラグ `plugins` を外し、テストを組まない。
+`packages:` には golem-wasm と、その依存の golem のパッケージだけを並べ、golem-evaluate と golem-driver のフラグ `plugins` を外し、テストを組まない。
 ツールチェーンは、ghc-wasm-meta（コミット `8079eb96`）の 9.10 の flavour の配布物（GHC `9.10.3.20260731`、wasi-sdk、libffi-wasm、cabal 3.14.2.0、Template Haskell を評価する Node）で、`scripts/fetch-ghc-wasm.sh` が x86-64 の Linux の向けだけを、SHA-256 と `autogen.json` の SRI の値（16 進に直したもの）で確かめて `third_party/ghc-wasm/` に取る。
 
 Hackage のパッケージの版は `cabal.project.freeze` と同じにする。
@@ -4204,7 +4227,7 @@ PDF の格子への配置では、段落と見出しの罫線を、格子の行�
 
 - 段の中の罫線の領域の行の数は `k = max(0, ceil((i + w + o + r - (p - h)) / p))` である。罫線は段落の字面（前の罫線では一行目の字面を `r` だけ延ばした端）から `i` だけ離して引き、切り上げで余った距離は外側の間隔に入れる。どちらの間隔も書かなければ、距離 `k × p + (p - h)` から `r` を除いた範囲の中央に引く。
 - 段の始まりの前の罫線と、段の終わりの後の罫線は、外側の間隔を数えず、`k = max(1, ceil((i + w + r) / p))` とする。段の終わりの後の罫線では `r` は 0 である。段の終わりで終わるかは、段の中の `k` で置いたときにまとまりの終わりが段の終わりに達するかで決める。
-- 後の罫線を持つ段落の直後に前の罫線を持つ段落が同じ段で続くと、二つの罫線を一つの領域に置く。`k = max(0, ceil((iA + wA + max(oA, oB) + wB + iB + rB - (p - h)) / p))` である。四つの間隔のどれも書かなければ、距離から `rB` を除いた範囲を三つに等しく分け、余りは真ん中に入れる。`space-between` の空きの行があれば、二つの領域は別に数える。
+- 後の罫線を持つ罫線つきのまとまり（段落か見出し）の直後に、前の罫線を持つ罫線つきのまとまりが同じ段で続くと、二つの罫線を一つの領域に置く（[root ADR 0449](adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md)）。組み合わせは、段落と段落、段落と見出し、見出しと段落、見出しと見出しの四つである。`k = max(0, ceil((iA + wA + max(oA, oB) + wB + iB + rB - (p - h)) / p))` である。`rB` は後のまとまりの最初の行の張り出しで、後のまとまりが見出しなら見出しの最初の行の張り出しである。四つの間隔のどれも書かなければ、距離から `rB` を除いた範囲を三つに等しく分け、余りは真ん中に入れる。`space-between` の空きの行があれば、二つの領域は別に数える。
 
 自由な配置では、行ボックスの先頭を x、行送りを p、文字の大きさを h とし、字面の始まりを `x + floor(p / 2) - floor(h / 2)`、終わりを始まりに h を足した位置とする。
 隣接する行の字面のあいだの距離を g として、段内の罫線の追加量は `max(0, i + w + o + r - g)` sp とし、格子行へ切り上げない。
@@ -4213,6 +4236,8 @@ PDF の格子への配置では、段落と見出しの罫線を、格子の行�
 間隔が未指定なら、張り出しと線の太さを除いた距離の中央へ線を置き、奇数 sp の余りを外側へ置く。
 
 二つの罫線が領域を共有する場合は、必要量 `iA + wA + max(oA, oB) + wB + iB + rB` から g を引いた非負の長さを追加する。
+格子への配置と同じく、共有するのは段落と段落、段落と見出し、見出しと段落、見出しと見出しの四つの組み合わせである（[root ADR 0449](adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md)）。
+g は、前のまとまりの最後の行の字面の終わりから、後のまとまりの最初の行の字面の始まりまでの距離であり、見出しの字面は見出しの実寸の字面とする。
 指定した内側の間隔を保ち、余りは罫線のあいだへ置く。
 すべての間隔が未指定なら、線の太さと張り出しを除いた距離を三つに分け、割り切れない sp は中央へ置く。
 段落間のアキを挟む場合は領域を共有せず、各罫線の外側の境界をアキの領域の端とし、アキの長さを罫線の間隔へ流用しない。
@@ -5610,7 +5635,7 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 コードの形の誤りのメッセージは、`G` か `E` の後に 5 桁の数字を続けることを示す（[docs/adr/0176](adr/0176-e-code-shape-message.md)）。
 
 diagnostic のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
-docs/diagnostics.md は golem-driver に埋め込み、`golem explain <コード>` はその節をそのまま表示する。
+docs/diagnostics.md は golem-evaluate の `Golem.Evaluate.Explain` に埋め込み（[root ADR 0434](adr/0434-split-evaluation-from-golem-driver.md)）、`golem explain <コード>` はその節をそのまま表示する。
 埋め込みには、`scripts/gen-embedded.sh` が生成してコミットしたモジュールを使う（[ADR 0203](adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
 そのため、docs/diagnostics.md を変えたら、同じ変更でこのスクリプトを走らせ、生成し直したモジュールもコミットする。
 節の形（題、重大度、状態、意味、主な原因、直し方）は golem-driver のテストが検査し、形の崩れた文書は CI を通らない。
@@ -6157,13 +6182,14 @@ W3 も、すべての入力のテストと抜き取りのテストで確かめ�
 罫線を持つ段落と見出しは、前の罫線の領域、行、後の罫線の領域を合わせて一つのまとまりとして置き、改ページと改段で分けない（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 - まとまりが今の段に入らなければ、次の段から置く。罫線を持つ段落のまとまりが段に入るかは、格子の行の数だけで決め、注の本文の行を数えない。段落はその位置に留まり、入らない注の本文を次のページに送る。注の本文が入るかは、格子への配置でも自由な配置でも、まとまりのその行より後の行と後の罫線の領域を残して判定する。そのため、注の本文はまとまりの後の行にも後の罫線にも重ならない。
-- 格子への配置でも自由な配置でも、後の罫線の領域を次の段落と共有するのは、次の段落のまとまりが同じ段に入るときだけである。入らなければ、後の罫線の領域はその段落だけのものとしてまとまりに数え、まとまりが今の段に入らなければ次の段から置く。そのため、`keep-in-column = true` の後の罫線は段の外にも注の領域にも出ない。
-- 罫線を持つ見出しは、見出しの行と注の本文と区切りの行に、罫線の領域を足して判定し、入らなければ注と罫線とともに次の段に送る。
-- 見出しの直後で改ページしない規則は、続く要素が罫線のまとまりなら、その全体の行の数を数える。
+- 格子への配置でも自由な配置でも、後の罫線の領域を次のまとまり（段落か見出し）と共有するのは、次のまとまりが同じ段に入るときだけである（[root ADR 0449](adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md)）。入らなければ、後の罫線の領域はそのまとまりだけのものとしてまとまりに数え、まとまりが今の段に入らなければ次の段から置く。次のまとまりは次の段から置く。そのため、`keep-in-column = true` の後の罫線は段の外にも注の領域にも出ず、隣り合う二つのまとまりの罫線は重ならない。
+- 前のまとまりが後の罫線の領域を共有するときは、前のまとまりが段に入るかの判定に、その領域を数えない。共有した領域は、後のまとまりが入るかの判定に数える。
+- 罫線を持つ見出しは、見出しの行と注の本文と区切りの行に、罫線の領域（共有した領域を含む）を足して判定し、入らなければ注と罫線とともに次の段に送る。
+- 見出しの直後で改ページしない規則は、続く要素が罫線のまとまりなら、その全体の行の数を数え、共有した領域はその続くまとまりに含める。
 - 空の段にも入らないまとまりは、notice（G07046）を出して組む（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
   - 段落は、罫線を持たない段落と同じ規則で行を段に分け、前の罫線も後の罫線も引かず、罫線の領域の行も取らない。最初の部分は、段の最初の格子の行から始まる。
   - 分けて組んだ段落は、隣り合う罫線の領域を共有しない。直前の段落の後の罫線と直後の段落の前の罫線は、それぞれの段落だけの罫線として数える。
-  - 見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。
+  - 見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。罫線を省く見出しは、前のまとまりとも後のまとまりとも罫線の領域を共有しない。後の罫線だけを省いて前の罫線を残した見出しも、前の罫線を見出しだけの罫線として数える（[root ADR 0449](adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md)）。
 - 回り込む図版の脇には、罫線を持つ段落を組まない。その段落は図版の後から置き、図版の脇の残りの行は空ける。
 
 ### 原稿からの改ページ
@@ -8515,7 +8541,7 @@ JSON として読めた配列は、値の全体をたどり、すべての文字
 引用されている項目かどうか、Golem が読むフィールドかどうかを問わない。
 一つでもあれば、G03108 のエラーを `manifest.toml` の先頭に出し、そのファイルの項目を一つも使わない（G03026 と同じ扱い）。
 dev と prod の両方でエラーであり、ターゲットを問わず出し、LSP も出す。
-検査は golem-bibliography の `Golem.Bibliography.Csl.decodeCslJson` が行い（`CslUnwritable`）、golem-driver の `loadBibliography` が G03108 にする。
+検査は golem-bibliography の `Golem.Bibliography.Csl.decodeCslJson` が行い（`CslUnwritable`）、golem-evaluate の `loadBibliography` が G03108 にする。
 
 G03108 は、一つのファイルに一つ出す。
 たどる順は、配列は添字の小さい順、オブジェクトはキーの符号位置の順（aeson の `KeyMap` の並びには依らない）で、キーはその値より先に検査する。
