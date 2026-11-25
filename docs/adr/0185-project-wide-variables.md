@@ -1,6 +1,6 @@
 # ADR 0185: プロジェクト全体の変数を `manifest.toml` の `[vars]` に書く
 
-Status: superseded [{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"ホバーの環境の `vars`"}]
+Status: superseded [{"by":["docs/adr/0211-record-what-implementations-decided-found-by-the-review-of-2026-11-08.md"],"part":"ホバーの環境の `vars`"},{"part":"参照の書き方と名前空間","by":["docs/adr/0451-import-listed-names-without-a-namespace.md"],"kind":"supplement"}]
 
 ## 文脈
 
