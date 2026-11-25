@@ -20725,6 +20725,280 @@ def captionCompared (ps : CaptionParams) (items : List CaptionItem) : Option (Na
 
 def captionComparedBreaks (node : CaptionActiveNode) : List Nat := node.history.reverse.map Prod.fst
 
+/-! ### The overfull pass ends at the last item
+
+The fourth pass of `breakParagraph` (`allowOverfull`) never runs out of
+active nodes: where no node goes on, it restarts from a pushed-out break or
+rescues the line of least overflow.  So when the items end with a forced
+break, the scan ends with a node at the last item and `captionPass` of
+pass 4 returns a node, and `captionCompared` does not return `none`. -/
+
+theorem captionActiveSuccessors_position (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode) :
+    ∀ n ∈ captionActiveSuccessors position flagged evaluate actives, n.position = position + 1 := by
+  induction actives with
+  | nil => simp [captionActiveSuccessors]
+  | cons prior rest ih =>
+    simp only [captionActiveSuccessors]
+    split
+    · intro n member
+      simp only [List.mem_cons] at member
+      rcases member with rfl | member
+      · rfl
+      · exact ih n member
+    · exact ih
+
+/-- At a forced break every active node ends: the nodes after the step are
+    the new nodes at the break. -/
+theorem captionActiveStep_forced (position : Nat) (flagged : Bool)
+    (evaluate : CaptionActiveNode → CaptionActiveEval) (actives : List CaptionActiveNode) :
+    ∀ n ∈ captionActiveStep position true flagged evaluate actives, n.position = position + 1 := by
+  unfold captionActiveStep
+  simp only [if_true, List.nil_append]
+  exact captionFold_preserves _ [] (captionActiveSuccessors_position position flagged evaluate actives)
+    (by simp)
+
+theorem captionChooseOverflow_some (overflow : CaptionActiveNode → Int)
+    (actives : List CaptionActiveNode) (nonempty : actives ≠ []) :
+    ∃ prior, captionChooseOverflow overflow actives = some prior := by
+  cases actives with
+  | nil => exact absurd rfl nonempty
+  | cons head tail =>
+    simp only [captionChooseOverflow]
+    split
+    · exact ⟨_, rfl⟩
+    · exact ⟨_, rfl⟩
+
+/-- A candidate list ordered below `upper` that holds `upper - 1`: a list
+    from it that is not empty holds `upper - 1`, and `upper - 1` is its
+    last candidate. -/
+theorem captionOrdered_last_tail (lower upper position : Nat) (rest : List Nat)
+    (ordered : CaptionCandidatesOrdered lower upper (position :: rest)) (last : position + 1 = upper) :
+    rest = [] := by
+  cases rest with
+  | nil => rfl
+  | cons next more =>
+    have := ordered.2.2.1
+    have := ordered.2.2.2.1
+    omega
+
+theorem captionOrdered_mem (lower upper : Nat) (candidates : List Nat)
+    (ordered : CaptionCandidatesOrdered lower upper candidates) (m : Nat) (member : m ∈ candidates) :
+    lower ≤ m ∧ m < upper := by
+  induction candidates generalizing lower with
+  | nil => simp at member
+  | cons x xs ih =>
+    rcases List.mem_cons.mp member with e | r
+    · subst e; exact ⟨ordered.1, ordered.2.1⟩
+    · have := ih (x + 1) ordered.2.2 r; have := ordered.1; omega
+
+theorem captionFilter_holds_last (candidates : List Nat) (bound last : Nat)
+    (member : last ∈ candidates) (below : bound ≤ last) :
+    last ∈ candidates.filter (fun p => decide (bound ≤ p)) :=
+  List.mem_filter.mpr ⟨member, by simp [below]⟩
+
+/-- What the overfull pass keeps: the scan invariant, an active node, the
+    last candidate in what is left to scan, and a node at the end of the
+    items once nothing is left. -/
+def CaptionOverfullHolds (context : CaptionScanContext) (last : Nat) (state : CaptionScanState) : Prop :=
+  CaptionScanValid context state ∧ state.actives ≠ [] ∧
+    (state.remaining ≠ [] → last ∈ state.remaining) ∧
+    (state.remaining = [] → ∃ n ∈ state.actives, n.position = last + 1)
+
+theorem captionOverfull_step (context : CaptionScanContext) (last : Nat)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (ends : last + 1 = context.items.length) (member : last ∈ context.candidates)
+    (forced : context.forced last = true) (overfull : context.allowOverfull = true)
+    (state next : CaptionScanState) (holds : CaptionOverfullHolds context last state)
+    (advanced : captionScanNext context state = some next) :
+    CaptionOverfullHolds context last next := by
+  obtain ⟨valid, nonempty, lastLeft, _⟩ := holds
+  have valid' := (I1_caption_full_scan_step context state next original valid advanced).1
+  cases source : state.remaining with
+  | nil => simp [captionScanNext, source] at advanced
+  | cons position rest =>
+    have ordered : CaptionCandidatesOrdered state.lower context.items.length (position :: rest) := by
+      simpa [source] using valid.2.2.1
+    have inLeft : last ∈ position :: rest := by
+      have := lastLeft (by simp [source]); simpa [source] using this
+    have restLast : rest ≠ [] → last ∈ rest := by
+      intro r
+      rcases List.mem_cons.mp inLeft with e | m
+      · subst e; exact absurd (captionOrdered_last_tail _ _ _ _ ordered ends) r
+      · exact m
+    have restEnd : rest = [] → position = last := by
+      intro r; subst r; simp only [List.mem_cons, List.not_mem_nil, or_false] at inLeft; omega
+    simp only [captionScanNext, source, overfull, Bool.true_and] at advanced
+    split at advanced
+    · rename_i empty
+      split at advanced
+      · rename_i selected chosen
+        cases advanced
+        have progress := I1_caption_push_out_advances context.items context.candidates position state.lower
+          context.flagged (fun prior p => context.evaluate p prior) context.finite state.actives selected
+          valid.2.2.2 chosen
+        have below : position ≤ last := by
+          rcases List.mem_cons.mp inLeft with e | m
+          · omega
+          · have := (captionOrdered_mem _ _ _ ordered.2.2 last m).1; omega
+        have mem' := captionFilter_holds_last context.candidates selected.node.position last member
+          (by have := progress.2; omega)
+        refine ⟨valid', by simp, fun _ => mem', fun e => ?_⟩
+        simp only at e; rw [e] at mem'; simp at mem'
+      · cases advanced
+        obtain ⟨prior, chosen⟩ := captionChooseOverflow_some (context.overflow position) state.actives nonempty
+        refine ⟨valid', ?_, ?_, ?_⟩
+        · simp only [chosen]; simp
+        · exact restLast
+        · intro r
+          have e := restEnd r
+          refine ⟨captionRescueNode position (context.flagged position) prior, ?_, ?_⟩
+          · simp only [chosen]; simp
+          · simp [captionRescueNode, e]
+    · rename_i notEmpty
+      cases advanced
+      refine ⟨valid', ?_, restLast, ?_⟩
+      · intro e; simp only at e; rw [e] at notEmpty; simp [List.isEmpty] at notEmpty
+      · intro r
+        simp only at r ⊢
+        have e := restEnd r
+        subst e
+        have step := captionActiveStep_forced position (context.flagged position) (context.evaluate position)
+          state.actives
+        rw [forced] at notEmpty ⊢
+        cases h : captionActiveStep position true (context.flagged position) (context.evaluate position)
+            state.actives with
+        | nil => rw [h] at notEmpty; simp [List.isEmpty] at notEmpty
+        | cons n ns =>
+          rw [h] at step
+          exact ⟨n, List.Mem.head _, step n (List.Mem.head _)⟩
+
+theorem captionOverfull_runs (context : CaptionScanContext) (last : Nat)
+    (original : CaptionCandidatesOrdered 0 context.items.length context.candidates)
+    (ends : last + 1 = context.items.length) (member : last ∈ context.candidates)
+    (forced : context.forced last = true) (overfull : context.allowOverfull = true)
+    (state final : CaptionScanState) (runs : CaptionScanRuns context state final)
+    (holds : CaptionOverfullHolds context last state) :
+    CaptionOverfullHolds context last final ∧ final.remaining = [] := by
+  induction runs with
+  | done state stops =>
+    refine ⟨holds, ?_⟩
+    cases source : state.remaining with
+    | nil => rfl
+    | cons position rest =>
+      simp only [captionScanNext, source] at stops
+      split at stops
+      · split at stops <;> cases stops
+      · cases stops
+  | step state next _ advanced _ ih =>
+    exact ih (captionOverfull_step context last original ends member forced overfull state next holds advanced)
+
+/-- A forced break at the end of the items is the last candidate of every
+    pass after the first. -/
+theorem captionBreakIndices_last (prevBox : Bool) (start : Nat) (kinds : List CaptionItemKind)
+    (v : Int) (h : Bool) (hv : v ≤ -10000) :
+    start + kinds.length ∈ captionBreakIndices true prevBox start (kinds ++ [.penalty v h]) := by
+  induction kinds generalizing start prevBox with
+  | nil =>
+    simp only [List.nil_append, captionBreakIndices, captionBreakCandidate, List.length_nil, Nat.add_zero]
+    have : decide (v < 10000) = true := by simp; omega
+    simp [this]
+  | cons item tail ih =>
+    have := ih (decide (item = .box)) (start + 1)
+    simp only [List.cons_append, captionBreakIndices, List.length_cons]
+    rw [show start + (tail.length + 1) = start + 1 + tail.length by omega]
+    split
+    · exact List.Mem.tail _ this
+    · exact this
+
+theorem captionGetLast_split {α : Type} (l : List α) (x : α) (h : l.getLast? = some x) :
+    ∃ init, l = init ++ [x] := by
+  induction l with
+  | nil => simp at h
+  | cons a t ih =>
+    cases t with
+    | nil =>
+      simp [List.getLast?, List.getLast] at h
+      exact ⟨[], by subst h; rfl⟩
+    | cons b u =>
+      have h' : (b :: u).getLast? = some x := by simpa [List.getLast?, List.getLast] using h
+      obtain ⟨init, e⟩ := ih h'
+      exact ⟨a :: init, by rw [e]; rfl⟩
+
+/-- Root ADR 0352 invariant 1 for the captions: when the items end with a
+    forced break, the overfull pass (pass 4) of `breakParagraph` ends with
+    a path to the last item, so `captionPass` returns a node. -/
+theorem I1_caption_overfull_pass_some (ps : CaptionParams) (items : List CaptionItem) (lastItem : CaptionItem)
+    (v : Int) (h : Bool) (hl : items.getLast? = some lastItem) (hk : lastItem.kind = .penalty v h)
+    (hv : v ≤ -10000) :
+    ∃ node, captionPass ps items 4 = some node := by
+  obtain ⟨init, split⟩ := captionGetLast_split items lastItem hl
+  let context := captionContext ps items 4
+  have hlen : context.items.length = init.length + 1 := by
+    simp [context, captionContext, split]
+  have hcand : context.candidates = captionBreakIndices true false 0 (items.map (·.kind)) := rfl
+  have original : CaptionCandidatesOrdered 0 context.items.length context.candidates := by
+    rw [hcand]
+    simpa only [Nat.zero_add] using I1_caption_generated_scan_order true false 0 (items.map (·.kind))
+  have member : init.length ∈ context.candidates := by
+    rw [hcand, split, List.map_append]
+    have := captionBreakIndices_last false 0 (init.map (·.kind)) v h hv
+    simpa [hk] using this
+  have forced : context.forced init.length = true := by
+    show (match (items.getD init.length default).kind with
+      | .penalty p _ => decide (p ≤ -10000)
+      | _ => false) = true
+    rw [split]
+    simp [List.getD, hk, hv]
+  have overfull : context.allowOverfull = true := rfl
+  have startValid := I1_caption_full_scan_start_valid context original
+  obtain ⟨final, ran⟩ := captionScanFuel_enough context original
+    (captionStateRank context (captionStart context) + 1) (captionStart context) startValid (Nat.lt_succ_self _)
+  have runs := captionScanFuel_runs context _ _ _ ran
+  have startHolds : CaptionOverfullHolds context init.length (captionStart context) :=
+    ⟨startValid, by simp [captionStart], fun _ => member,
+      fun e => by simp only [captionStart] at e; rw [e] at member; simp at member⟩
+  obtain ⟨⟨_, _, _, atEnd⟩, done⟩ := captionOverfull_runs context init.length original hlen.symm member forced
+    overfull _ _ runs startHolds
+  obtain ⟨n, nm, np⟩ := atEnd done
+  unfold captionPass
+  show ∃ node, (match captionScanFuel context (captionStateRank context (captionStart context) + 1)
+    (captionStart context) with
+    | none => none
+    | some final => captionPickEnd (final.actives.filter fun node => node.position = context.items.length)) = some node
+  rw [ran]
+  dsimp only
+  have mem : n ∈ final.actives.filter fun node => node.position = context.items.length := by
+    rw [List.mem_filter]; exact ⟨nm, by rw [hlen]; simp [np]⟩
+  cases e : final.actives.filter fun node => node.position = context.items.length with
+  | nil => rw [e] at mem; simp at mem
+  | cons first rest => exact ⟨_, rfl⟩
+
+theorem captionFirstPass_some (ps : CaptionParams) (items : List CaptionItem) (passes : List Nat)
+    (pass : Nat) (member : pass ∈ passes) (node : CaptionActiveNode) (found : captionPass ps items pass = some node) :
+    ∃ chosen, captionFirstPass ps items passes = some chosen := by
+  induction passes with
+  | nil => simp at member
+  | cons first rest ih =>
+    simp only [captionFirstPass]
+    split
+    · exact ⟨_, rfl⟩
+    · rcases List.mem_cons.mp member with e | m
+      · subst e; rename_i none; rw [found] at none; cases none
+      · exact ih m
+
+/-- Root ADR 0352 invariant 1 for the captions: `captionCompared` does not
+    return `none` when the items end with a forced break, as pass 4 is the
+    last pass it tries and succeeds (`I1_caption_overfull_pass_some`). -/
+theorem I1_caption_compared_some (ps : CaptionParams) (items : List CaptionItem) (lastItem : CaptionItem)
+    (v : Int) (h : Bool) (hl : items.getLast? = some lastItem) (hk : lastItem.kind = .penalty v h)
+    (hv : v ≤ -10000) :
+    ∃ pass node, captionCompared ps items = some (pass, node) := by
+  obtain ⟨node, found⟩ := I1_caption_overfull_pass_some ps items lastItem v h hl hk hv
+  obtain ⟨⟨pass, chosen⟩, e⟩ := captionFirstPass_some ps items (captionPasses ps) 4
+    (by unfold captionPasses; split <;> split <;> simp) node found
+  exact ⟨pass, chosen, e⟩
+
 theorem captionFirstPass_pass (ps : CaptionParams) (items : List CaptionItem) (passes : List Nat)
     (pass : Nat) (node : CaptionActiveNode)
     (found : captionFirstPass ps items passes = some (pass, node)) :

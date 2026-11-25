@@ -1277,12 +1277,17 @@ Lean の側も、伸びと縮みを項目の和ではなく累積の和の差と
 `I1_caption_compared_scan_ends` は、どの pass でも走査が終わることを示す。
 `I1_caption_compared_lines` は、`captionCompared` が選んだ改行位置がキャプションを行に組み立て、行の数が節点の行数と等しく、行のボックスが原稿のボックスと順に一致することを示す。
 `I1_caption_compared_deterministic` は、同じ項目と引数が同じ pass と改行位置を与えることを示す。
+`I1_caption_overfull_pass_some` は、項目が強制改行（ペナルティ -10000 以下）で終われば、pass 4 が最後の項目までの経路を持つ節点を返すことを示す。
+pass 4 の走査は能動節点を失わない。
+進む節点がなければ、押し出した改行から走査し直すか、超過の最も小さい行で救済するからである（`CaptionOverfullHolds` と `captionOverfull_step`）。
+最後の強制改行では前の節点がすべて終わるので、走査の終わりには最後の項目に節点がある。
+`I1_caption_compared_some` は、この前提で `captionCompared` が `none` を返さないことを示す。
+golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）は、どれもこの強制改行で終わる。
 `I2_caption_compared_diagnostic` は、組み立てた行の格子の行数が改行位置の数から決まり、その行数が段の空きを超えるのは行の高さが空きを超えるときに限ることを示す。
 `I2_caption_compared_figure` は、その行数が段を埋めれば図版を返さず（G07038）、行が残れば縮小した図版の高さが残りの行に収まることを示す。
 
 対応には、次の三点が残る。
 第一に、`captionCompared` と `breakParagraph` の一致は有限の入力で照合しただけで、証明ではない。
-pass 4 が常に成功し、`captionCompared` が `none` を返さないことも、まだ証明していない。
 第二に、行ごとに変わる行長と、字形の伸縮（`pExpansion`）は写していない。
 第三に、実フォントの送りを golem-driver の `FigureSpec.hs` の計測値で渡す照合も、まだしていない。
 
