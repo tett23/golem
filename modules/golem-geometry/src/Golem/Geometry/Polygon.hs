@@ -120,7 +120,8 @@ winding es (px, py) = sum (map at es)
 
 {- | The intervals of x whose points are inside the polygons by the fill
 rule at every y from the first to the second (the strip), in order;
-closed, and of no length where the inside narrows to a point.
+closed, and of no length where the inside narrows to a point (root ADR
+0447).
 
 The strip is cut at the vertices in it and where edges cross in it. In
 each part, the edges that cross the part keep their order, so each gap
