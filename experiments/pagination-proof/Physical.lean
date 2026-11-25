@@ -3500,6 +3500,165 @@ decreasing_by
   all_goals simp_wf
   all_goals (have := verseSpan_after b index later; omega)
 
+/-! ### The rows of the verse lines not tried, ahead of a no-break
+
+`paragraphs` steps the controls before a stanza with the rows of its verse
+lines ahead (`verseRows`): those `tryVerses` placed as composed at their
+cursors, the others as composed before (`orig`).  A no-break among the
+controls waits for the rows of the first part of the stanza
+(`followingRows`).  These rows come from `orig` only when `tryVerses`
+placed fewer verse lines than the first part (`I5_noBreak_rows_orig`), and
+the verse lines `stanza` takes into a column that is not empty, by
+`splitAtBreak`, are never fewer than the first part
+(`I5_splitAtBreak_firstPart`). -/
+
+theorem dropLast_length (c : St) (cs : List St) : ((c :: cs).dropLast).length = cs.length := by
+  induction cs generalizing c with
+  | nil => rfl
+  | cons d ds ih => simp only [List.dropLast, List.length_cons]; rw [ih d]
+
+theorem verseRows_take (b : Beside) (p p' : Paras) :
+    ∀ (cs : List St) (vs : List Nat) (n : Nat), n ≤ cs.length →
+    (verseRows b p cs vs).take n = (verseRows b p' cs vs).take n
+  | [], _, n, h => by simp at h; subst h; rfl
+  | _ :: _, [], n, _ => by simp [verseRows]
+  | c :: cs, v :: vs, 0, _ => rfl
+  | c :: cs, v :: vs, n + 1, h => by
+    simp only [verseRows, List.take]
+    exact congrArg _ (verseRows_take b p p' cs vs n (by simp at h; omega))
+
+/-- The rows a no-break waits for ahead of a stanza do not read `orig`
+    when `tryVerses` placed the first part of the stanza. -/
+theorem I5_noBreak_rows_orig (b : Beside) (p p' : Paras) (k : Keep) (pre : St) (trials : List St) (vs : List Nat)
+    (h : firstPart k true vs.length ≤ trials.length) (hl : trials.length ≤ vs.length) :
+    followingRows 0 [.stanza k (verseRows b p (pre :: trials).dropLast vs)] =
+      followingRows 0 [.stanza k (verseRows b p' (pre :: trials).dropLast vs)] := by
+  have len : ∀ q : Paras, (verseRows b q (pre :: trials).dropLast vs).length = vs.length := by
+    intro q
+    have g : ∀ (cs : List St) (ws : List Nat), cs.length ≤ ws.length → (verseRows b q cs ws).length = ws.length := by
+      intro cs
+      induction cs with
+      | nil => intro ws _; simp [verseRows]
+      | cons c cs ih =>
+        intro ws hw
+        cases ws with
+        | nil => simp at hw
+        | cons w ws => simp only [verseRows, List.length_cons]; rw [ih ws (by simp at hw; omega)]
+    exact g _ _ (by rw [dropLast_length]; omega)
+  simp only [followingRows, len, Nat.min_zero, Nat.max_zero]
+  rw [verseRows_take b p p' _ _ _ (by rw [dropLast_length]; omega)]
+
+theorem range_loop_app (k : Nat) (acc : List Nat) : List.range.loop k acc = List.range.loop k [] ++ acc := by
+  induction k generalizing acc with
+  | zero => rfl
+  | succ k ih => simp only [List.range.loop]; rw [ih (k :: acc), ih [k]]; simp
+
+theorem range_succ' (n : Nat) : List.range (n + 1) = List.range n ++ [n] := by
+  simp only [List.range, List.range.loop]; exact range_loop_app n [n]
+
+theorem filter_app (P : Nat → Bool) (a b : List Nat) : (a ++ b).filter P = a.filter P ++ b.filter P := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih => by_cases hx : P x = true <;> simp [List.filter, hx, ih]
+
+theorem filter_range_head (P : Nat → Bool) :
+    ∀ (m y : Nat) (ys : List Nat), (List.range m).filter P = y :: ys → y < m
+  | 0, _, _, h => by simp [List.range, List.range.loop, List.filter] at h
+  | m + 1, y, ys, h => by
+    rw [range_succ', filter_app] at h
+    cases e : (List.range m).filter P with
+    | nil =>
+      rw [e] at h
+      by_cases pm : P m = true
+      · simp [List.filter, pm] at h; omega
+      · simp [List.filter, pm] at h
+    | cons z zs =>
+      rw [e] at h
+      simp only [List.cons_append, List.cons.injEq] at h
+      have := filter_range_head P m z zs e
+      omega
+
+theorem headD_filter_range_le (P : Nat → Bool) :
+    ∀ (n s d : Nat), s ≤ n → P s = true → ((List.range (n + 1)).filter P).headD d ≤ s
+  | 0, s, d, hs, hp => by
+    have : s = 0 := by omega
+    subst this
+    simp [List.range, List.range.loop, List.filter, hp]
+  | n + 1, s, d, hs, hp => by
+    rw [range_succ', filter_app]
+    cases e : (List.range (n + 1)).filter P with
+    | nil =>
+      by_cases sn : s ≤ n
+      · have := headD_filter_range_le P n s (s + 1) sn hp
+        rw [e] at this; simp at this; omega
+      · have : s = n + 1 := by omega
+        subst this
+        simp [List.filter, hp]
+    | cons y ys =>
+      simp only [List.cons_append, List.headD]
+      by_cases sn : s ≤ n
+      · have := headD_filter_range_le P n s d sn hp
+        rw [e] at this; simpa using this
+      · have := filter_range_head P (n + 1) y ys e
+        omega
+
+theorem splitAtBreak_spec (k : Keep) (n c : Nat) (hc : c ≤ n) (h : 0 < splitAtBreak k true n c) :
+    splitAtBreak k true n c ≤ n ∧ (splitAtBreak k true n c = n ∨
+      (k.all = false ∧ k.last ≤ n - splitAtBreak k true n c ∧ k.first ≤ splitAtBreak k true n c)) := by
+  unfold splitAtBreak at h ⊢
+  by_cases t : n ≤ c
+  · rw [if_pos t] at h ⊢; omega
+  rw [if_neg t] at h ⊢
+  by_cases a : k.all = true
+  · rw [if_pos a] at h; omega
+  rw [if_neg a] at h ⊢
+  have a' : k.all = false := by simpa using a
+  dsimp only at h ⊢
+  by_cases w : n - c < k.last
+  · rw [if_pos w] at h ⊢
+    by_cases q : 0 < n - k.last ∧ n - k.last < k.first
+    · rw [if_pos ⟨rfl, q⟩] at h; omega
+    · rw [if_neg (fun x => q x.2)] at h ⊢
+      have f := Nat.not_lt.mp (fun x => q ⟨h, x⟩)
+      refine ⟨by omega, Or.inr ⟨a', by omega, f⟩⟩
+  · rw [if_neg w] at h ⊢
+    by_cases q : 0 < c ∧ c < k.first
+    · rw [if_pos ⟨rfl, q⟩] at h; omega
+    · rw [if_neg (fun x => q x.2)] at h ⊢
+      have f := Nat.not_lt.mp (fun x => q ⟨h, x⟩)
+      refine ⟨by omega, Or.inr ⟨a', by omega, f⟩⟩
+
+theorem splitAtBreak_fix (k : Keep) (n s : Nat)
+    (h : s = n ∨ (k.all = false ∧ k.last ≤ n - s ∧ k.first ≤ s)) : splitAtBreak k true n s = s := by
+  unfold splitAtBreak
+  by_cases t : n ≤ s
+  · rw [if_pos t]
+  rw [if_neg t]
+  rcases h with e | ⟨a, l, f⟩
+  · omega
+  rw [if_neg (by simp [a])]
+  dsimp only
+  have w : ¬ (n - s < k.last) := by omega
+  simp only [w, if_false]
+  rw [if_neg (fun x => absurd x.2.2 (by omega))]
+
+/-- A number of verse lines `splitAtBreak` takes at the start of a stanza,
+    from at most the stanza, is none or at least its first part. -/
+theorem I5_splitAtBreak_firstPart (k : Keep) (n c : Nat) (hc : c ≤ n) (h : 0 < splitAtBreak k true n c) :
+    firstPart k true n ≤ splitAtBreak k true n c := by
+  obtain ⟨le, spec⟩ := splitAtBreak_spec k n c hc h
+  unfold firstPart
+  by_cases a : k.all = true
+  · rw [if_pos a]
+    rcases spec with e | ⟨a', _, _⟩
+    · omega
+    · rw [a] at a'; cases a'
+  rw [if_neg a]
+  have fix := splitAtBreak_fix k n _ spec
+  have first : min k.first n ≤ splitAtBreak k true n c := by
+    rcases spec with e | ⟨_, _, f⟩ <;> omega
+  exact headD_filter_range_le _ n _ n le (by simp [first, fix])
+
 /-! ## Tables -/
 
 /-- The header lines repeated in a later column, without their notes. -/
