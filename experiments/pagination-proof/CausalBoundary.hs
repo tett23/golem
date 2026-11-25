@@ -33,8 +33,10 @@ import Support (horizontalStyle, layoutMini, replaceIn)
 -- lines of so many characters each, or a list item of a paragraph of so
 -- many characters followed by wrapped figures, each with the paragraphs of
 -- the item after it.  Q and H are the paragraph and the stanza that keep
--- with the next 3 lines.
-data Item = P Int | K | V [Int] | I Int [[Int]] | Q Int | H [Int]
+-- with the next 3 lines.  J is a list item like I followed by a nested list
+-- item of a paragraph of so many characters, which is not set beside the
+-- figures of its outer item.
+data Item = P Int | K | V [Int] | I Int [[Int]] | Q Int | H [Int] | J Int [[Int]] Int
 
 name :: Item -> String
 name = \case
@@ -44,6 +46,7 @@ name = \case
   Q n -> "Q" <> show n
   H ns -> "H" <> intercalate "," (map show ns)
   I n fs -> "I" <> show n <> concat ["/" <> intercalate "," (map show ps) | ps <- fs]
+  J n fs sub -> "J" <> show n <> concat ["/" <> intercalate "," (map show ps) | ps <- fs] <> "-" <> show sub
 
 -- | One to three paragraphs; then two or three paragraphs with a no-break
 -- after one of them or more.
@@ -93,6 +96,15 @@ lists =
     <> [[I 3 (map pure pq)] | pq <- replicateM 2 [5, 25]]
     <> [[I 3 [[p]] | p <- pq] | pq <- replicateM 2 [5, 25]]
     <> [items | n <- [5, 25], p <- [5, 12, 25], items <- [[P n, I 3 [[p]]], [I 3 [[p]], P n]]]
+    <> nested
+
+-- | An item with a figure and a nested item after it, alone, before a
+-- paragraph, and before an item with a figure.
+nested :: [[Item]]
+nested =
+  [[J 3 [[p]] sub] | p <- [5, 25], sub <- [5, 12, 25]]
+    <> [[J 3 [[p]] sub, P n] | p <- [5, 25], sub <- [5, 25], n <- [5, 25]]
+    <> [[J 3 [[p]] sub, I 3 [[q]]] | p <- [5, 25], sub <- [5, 25], q <- [5, 25]]
 
 -- | The width of the figure in zw, the lines of the column, whether a list
 -- item is kept on a page, and the items, after a wrapped figure when not.
@@ -125,6 +137,10 @@ sources width cs = \case
      in "- " <> T.replicate n (letter 0) <> "\n\n"
           <> T.concat [figureOf width "  " <> T.concat ["  " <> T.replicate p (letter k) <> "\n\n" | (k, p) <- zip [start ..] ps] | (start, ps) <- zip paragraphs fs]
           : sources width (drop (1 + sum (map length fs)) cs) rest
+  J n fs sub : rest ->
+    let item = sources width cs [I n fs]
+        letter = T.take 1 (T.drop (1 + sum (map length fs)) (T.pack cs))
+     in T.concat item <> "  - " <> T.replicate sub letter <> "\n\n" : sources width (drop (2 + sum (map length fs)) cs) rest
 
 slot :: (Sp, Slotted) -> String
 slot (x, s) = show (unSp x) <> ":" <> case s of

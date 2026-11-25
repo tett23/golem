@@ -131,7 +131,9 @@ def breakLines (w measure : Nat) (region : Region) (origin : Int) (at' : St) (st
     of so many characters each, or a list item of a paragraph of so many
     characters followed by wrapped figures, each with the paragraphs of the
     item after it.  `q` and `h` are the paragraph and the stanza that keep
-    with the next 3 lines. -/
+    with the next 3 lines.  `j` is a list item like `i` followed by a nested
+    list item of a paragraph of so many characters, which is not set beside
+    the figures of its outer item. -/
 inductive Item where
   | p (n : Nat)
   | k
@@ -139,6 +141,7 @@ inductive Item where
   | i (first : Nat) (figures : List (List Nat))
   | q (n : Nat)
   | h (ns : List Nat)
+  | j (first : Nat) (figures : List (List Nat)) (sub : Nat)
 
 def Item.name : Item → String
   | .p n => toString n
@@ -147,15 +150,19 @@ def Item.name : Item → String
   | .i n fs => "I" ++ toString n ++ String.join (fs.map fun ps => "/" ++ ",".intercalate (ps.map toString))
   | .q n => "Q" ++ toString n
   | .h ns => "H" ++ ",".intercalate (ns.map toString)
+  | .j n fs sub => "J" ++ toString n ++ String.join (fs.map fun ps => "/" ++ ",".intercalate (ps.map toString)) ++
+    "-" ++ toString sub
 
 /-- A unit of golem-typeset: a paragraph (of the list item `item`, if any),
     a no-break, a verse line of the stanza `s` (each verse line of a stanza
-    is a unit of its own), or a wrapped figure. -/
+    is a unit of its own), a wrapped figure, or a paragraph of a list item
+    nested in the list item `item`. -/
 inductive Unit' where
   | para (item : Option Nat) (n : Nat)
   | ctrl
   | verse (s n : Nat)
   | fig (item : Option Nat)
+  | sub (item n : Nat)
 
 /-- The units of the items after a wrapped figure, if `lead`; the stanzas
     and the list items are numbered by their position. -/
@@ -165,7 +172,9 @@ def units (lead : Bool) (items : List Item) : List Unit' :=
     | .p n | .q n => [Unit'.para none n]
     | .k => [Unit'.ctrl]
     | .v ns | .h ns => ns.map (Unit'.verse s)
-    | .i n fs => Unit'.para (some s) n :: fs.bind fun ps => Unit'.fig (some s) :: ps.map (Unit'.para (some s))).join
+    | .i n fs => Unit'.para (some s) n :: fs.bind fun ps => Unit'.fig (some s) :: ps.map (Unit'.para (some s))
+    | .j n fs sub =>
+      Unit'.para (some s) n :: (fs.bind fun ps => Unit'.fig (some s) :: ps.map (Unit'.para (some s))) ++ [Unit'.sub s sub]).join
 
 /-- The lines each unit of `units` keeps with what follows by its style
     (`keep-with-next`). -/
@@ -176,6 +185,7 @@ def wants (lead : Bool) (items : List Item) : List Nat :=
     | .h ns => ns.map fun _ => 3
     | .v ns => ns.map fun _ => 0
     | .i _ fs => 0 :: fs.bind fun ps => 0 :: ps.map fun _ => 0
+    | .j _ fs _ => 0 :: (fs.bind fun ps => 0 :: ps.map fun _ => 0) ++ [0]
     | _ => [0]).join
 
 /-- A manuscript: the width of its figures in zw, whether a list item is
@@ -196,16 +206,22 @@ def chars (m : Ms) (i : Nat) : Nat :=
   match m.at i with
   | some (.para _ n) => n
   | some (.verse _ n) => n
+  | some (.sub _ n) => n
   | _ => 0
 
 def itemAt (m : Ms) (i : Nat) : Option Nat :=
   match m.at i with
   | some (.para k _) => k
   | some (.fig k) => k
+  | some (.sub k _) => some k
   | _ => none
 
-/-- The characters of a line: a list item is indented by 2zw. -/
-def measure (m : Ms) (i : Nat) : Nat := if (itemAt m i).isSome then 10 else 12
+/-- The characters of a line: a list item is indented by 2zw, a nested
+    one by 4zw. -/
+def measure (m : Ms) (i : Nat) : Nat :=
+  match m.at i with
+  | some (.sub _ _) => 8
+  | _ => if (itemAt m i).isSome then 10 else 12
 
 def stanzaOf (m : Ms) (i : Nat) : Option Nat :=
   match m.at i with
@@ -256,6 +272,7 @@ def besides (m : Ms) (job : Nat) : List Nat :=
       match m.at j with
       | some (.para k _) => if !m.retaining || k == itemAt m job then j :: go fuel (j + 1) else []
       | some (.verse _ _) => if !m.retaining || none == itemAt m job then j :: go fuel (j + 1) else []
+      | some (.sub _ _) => if !m.retaining then j :: go fuel (j + 1) else []
       | some .ctrl => go fuel (j + 1)
       | _ => []
   go m.us.length (job + 1)
@@ -286,7 +303,7 @@ def flowsOf (m : Ms) (first : Nat) : List Nat → List Flow
   | [] => []
   | i :: rest =>
     match m.at i with
-    | some (.para _ n) =>
+    | some (.para _ n) | some (.sub _ n) =>
       let rows : List Line := (List.range ((n + measure m i - 1) / measure m i)).map fun k => ⟨first + k, [], 0⟩
       .paragraph defaultKeep rows :: flowsOf m (first + rows.length) rest
     | some .ctrl => .noBreak :: flowsOf m first rest
@@ -506,6 +523,13 @@ def manuscripts : List (List Item) :=
       (List.zip (0 :: hs) ns).bind fun (h, c) => (if h == 1 then [Item.k] else []) ++ [Item.p c]) ++
   stanzas ++ holding
 
+/-- An item with a figure and a nested item after it, alone, before a
+    paragraph, and before an item with a figure. -/
+def nested : List (List Item) :=
+  ([5, 25].bind fun p => [5, 12, 25].map fun sub => [Item.j 3 [[p]] sub]) ++
+  ([5, 25].bind fun p => [5, 25].bind fun sub => [5, 25].map fun n => [Item.j 3 [[p]] sub, .p n]) ++
+  ([5, 25].bind fun p => [5, 25].bind fun sub => [5, 25].map fun q => [Item.j 3 [[p]] sub, .i 3 [[q]]])
+
 /-- The list items of CausalBoundary.hs, kept on a page: an item with a
     figure and one or two paragraphs after it, an item with two figures, two
     items, and an item after or before a paragraph. -/
@@ -513,7 +537,8 @@ def lists : List (List Item) :=
   ([3, 15].bind fun a => ([1, 2].bind fun n => replicateM n [5, 12, 25]).map fun ps => [Item.i a [ps]]) ++
   ((replicateM 2 [5, 25]).map fun pq => [Item.i 3 (pq.map ([·]))]) ++
   ((replicateM 2 [5, 25]).map fun pq => pq.map fun p => Item.i 3 [[p]]) ++
-  ([5, 25].bind fun n => [5, 12, 25].bind fun p => [[.p n, .i 3 [[p]]], [.i 3 [[p]], .p n]])
+  ([5, 25].bind fun n => [5, 12, 25].bind fun p => [[.p n, .i 3 [[p]]], [.i 3 [[p]], .p n]]) ++
+  nested
 
 def inputs : List (String × Ms × Nat) :=
   ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => manuscripts.map fun items =>
