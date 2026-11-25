@@ -375,16 +375,17 @@ evalAll profile project style assets citeKeys hook table = foldl' step Map.empty
 -- | S0 of one file, with the exports of its imports taken from @acc@.
 reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> FunctionTable -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
 reeval profile project style assets citeKeys hook table acc fid sf =
-  let ft = projectFiles project
-      meta = metadataValues (manifestMetadata (projectManifest project))
+  let meta = metadataValues (manifestMetadata (projectManifest project))
       importsOfFile f = let ImportGraph g = projectImports project in Map.findWithDefault [] f g
+      -- each @import line gives the exports of the file the import graph says it points at,
+      -- by the path as the line writes it, whatever its ./, .. or links (root ADR 0455)
       exports =
-        Map.fromList
-          [ (path, erExports r)
-          | (tfid, _) <- importsOfFile fid,
-            Just path <- [lookupPath tfid ft],
-            Just r <- [Map.lookup tfid acc]
-          ]
+        ResolvedImports $
+          Map.fromList
+            [ (isPath site, erExports r)
+            | (tfid, site) <- importsOfFile fid,
+              Just r <- [Map.lookup tfid acc]
+            ]
       ctx =
         EvalContext
           { ctxFile = fid,
@@ -418,7 +419,8 @@ evaluateLoose path text =
   let fid = FileId 0
       (ast, _, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
+      -- the imports of variable files are not resolved, as those of the .emet (root ADR 0455)
+      ctx = EvalContext fid path Dev Map.empty Map.empty UnresolvedImports Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle noFunctions
       res = evalFile ctx ast
       syntax = checkText fid text <> synDiags
    in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}

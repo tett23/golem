@@ -11,6 +11,7 @@ import FunctionLibrarySpec (functionLibraryTests)
 import FunctionsSpec (functionsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import ImportGraphSpec (importGraphTests)
 #ifdef GOLEM_PLUGINS
 import NewPlanSpec (newPlanTests)
 #endif
@@ -45,6 +46,7 @@ tests =
         callsTests,
         pathDrawingTests,
         varsTests,
+        importGraphTests,
         unwritableNumbersTests,
         numberUnitBuildTests,
         functionLibraryTests,
