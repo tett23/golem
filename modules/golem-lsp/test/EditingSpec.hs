@@ -52,11 +52,13 @@ featureTests =
   [ testCase "references of an imported variable from its definition include the namespaced uses" $ do
       ws <- openWorkspace root
       map (slice ws) (references ws "common/values.gm" (at ws "common/values.gm" "version" 0))
-        @?= [("common/values.gm", "version"), ("a.gm", "values.version")],
+        -- the name after the namespace, as the rename writes it (root ADR 0454 I1)
+        @?= [("common/values.gm", "version"), ("a.gm", "version")],
     testCase "references of a namespaced variable find its definition in the imported file" $ do
       ws <- openWorkspace root
       map (slice ws) (references ws "a.gm" (at ws "a.gm" "values.version" 8))
-        @?= [("common/values.gm", "version"), ("a.gm", "values.version")],
+        -- the name after the namespace, as the rename writes it (root ADR 0454 I1)
+        @?= [("common/values.gm", "version"), ("a.gm", "version")],
     testCase "ADR 0391 I1: definition of a variable of the file is its @set" $ do
       ws0 <- openWorkspace root
       ws <- updateFile ws0 "b.gm" "@set count = 3\n\n@label second\n# 次の章\n\n[= count]\n"
