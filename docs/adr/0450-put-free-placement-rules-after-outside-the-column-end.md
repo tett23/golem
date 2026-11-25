@@ -1,6 +1,6 @@
 # ADR 0450: 自由な配置でも、段の終わりの後の `keep-in-column = false` の罫線を段の外に引く
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

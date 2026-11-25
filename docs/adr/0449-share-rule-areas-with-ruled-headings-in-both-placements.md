@@ -1,6 +1,6 @@
 # ADR 0449: 罫線つき見出しも、隣り合う罫線の領域を共有する
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
