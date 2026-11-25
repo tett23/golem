@@ -47,10 +47,9 @@ data Env = Env
     envFunctions :: !(Map Name FunctionRef),
     -- | the pub fn an @import lists, called without a namespace (root ADR 0451)
     envListed :: !(Map Name FunctionRef),
-    -- | the names an @import of a variable file lists, and the namespaces of
-    -- such an @import, that the evaluation does not resolve: their
-    -- references report nothing (root ADR 0455)
+    -- | the names an @import of a variable file lists that the evaluation does not resolve (root ADR 0455)
     envUnresolvedVars :: !(Set Name),
+    -- | the namespaces of such @import lines; references through them report nothing
     envUnresolvedNamespaces :: !(Set Name)
   }
 

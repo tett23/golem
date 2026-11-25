@@ -25,13 +25,14 @@ import VarsSpec (varsTests)
 main :: IO ()
 main = enterPackageDirectory >> defaultMainReportingSkips (const tests)
 
--- | The tests of diagnostics, functions, plugins, projects and the
--- commands near the CLI. golem-driver-test was split into four suites, each
--- with this first group, so that the names of the tests did not change (root
--- ADR 0416). The suite is -threaded and tasty runs them at the same time:
--- none of them changes the state of the process (environment variables, the
--- locale encoding, the current directory). Those that do are in
--- golem-driver-global-test (GlobalMain.hs, docs/adr/0146).
+{- | The tests of diagnostics, functions, plugins, projects and the
+commands near the CLI. golem-driver-test was split into four suites, each
+with this first group, so that the names of the tests did not change (root
+ADR 0416). The suite is -threaded and tasty runs them at the same time:
+none of them changes the state of the process (environment variables, the
+locale encoding, the current directory). Those that do are in
+golem-driver-global-test (GlobalMain.hs, docs/adr/0146).
+-}
 tests :: TestTree
 tests =
   testGroup
