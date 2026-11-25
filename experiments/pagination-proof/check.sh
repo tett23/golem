@@ -233,8 +233,18 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
   echo "unproved or unchecked Lean declaration in $physicalNotes" >&2
   exit 1
 fi
-LEAN_PATH="$tmp" "$lean" "$physicalNotes"
+LEAN_PATH="$tmp" "$lean" -o "$tmp/PhysicalNotes.olean" "$physicalNotes"
 echo "every footnote line of the free placement is placed once, note by note"
+
+# The premise drainOk of drainCarry at the end of the free placement
+# (PhysicalDrain.lean).
+physicalDrain=$root/experiments/pagination-proof/PhysicalDrain.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$physicalDrain"; then
+  echo "unproved or unchecked Lean declaration in $physicalDrain" >&2
+  exit 1
+fi
+LEAN_PATH="$tmp" "$lean" "$physicalDrain"
+echo "drainOk holds at the last drainCarry of the free placement"
 
 # The boundary inputs of PhysicalBoundary.hs on Physical.lean's paginate,
 # against golem-layout's paginatePhysical (root ADR 0352).

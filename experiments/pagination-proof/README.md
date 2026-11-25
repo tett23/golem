@@ -956,7 +956,14 @@ golem-typeset はコードの行に続く番号を振るので、二つは一致
 この条件が成り立たない状態では、Physical.hs の `drainCarry` は止まらないか、送りが 0 のときに `div` の例外になる。
 繰り越す脚注の 1 行が新しいページに収まらなければ、どのページでも脚注は減らないからである。
 そのため、`paginate` は、最後の `drainCarry` の後に待機中の図版か繰り越す脚注が残れば `noProgress` を返す。
-本の部を含まずに `checkNotes` を通った原稿では、待機中の図版は `FFigure` の検査で段の容量以下であり、繰り越す脚注は区切りと 1 行の和が段の容量以下なので、この条件は成り立つと考えられるが、証明していない。
+`PhysicalDrain.lean` は、本の部を含まずに `checkNotes` を通り、行送りが正の原稿では、`paginate` がこの `noProgress` を返さないことを証明する（`I4_paginate_checked`）。
+その不変条件 `Inv` は、待機中の図版がどれも段の容量以下であり、繰り越す脚注は、区切りと 1 行の和が段の容量以下で行送りが正のときにだけ残ることである。
+図版を待機させるのは `placeFlow` の `FFigure` と `FPageFigure` だけで、`FFigure` は段の容量を超える図版を `figureTooTall` にしてから待機させる（`dk_send`）。
+脚注を繰り越すのは脚注を持つ行を置く `putLineWithReserve` だけなので、原稿が脚注を持たなければ繰り越す脚注は空のままである（`dr_putLine`）。
+`R` は、`PhysicalNotes.lean` の `Rel` と同じ形で、読んだ脚注が空か脚注の 1 行が空の段に収まるとき、関数の前後で `Inv` が保たれることを表す。
+`dr_placeAll` は、`paginate` が呼ぶ `placeAll` が箱と本の部の入れ子のどの深さでも `Inv` を保つことを示し、`Inv` は `drainOk` を導き（`inv_drainOk`）、`nextColumn` で保たれる。
+そのため、最後の `drainCarry` は待機中の図版と繰り越す脚注をすべて置く（`I4_paginate_drained`）。
+`checkNotes` は本の部の中の行を見ないので、本の部を含む原稿は、脚注を持たないか、区切りと 1 行の和が段の容量以下の場合だけを `I4_paginate_drained` が扱う。
 
 終了は、各ループが整礎な再帰で定義されていることで示す。
 `I4_nextColumn_rank` は、何かを置いた段か `FAdjustLines` で縮んだ段から次の段へ進むと、尺度 `rank` が減ることを証明する。
@@ -1615,19 +1622,17 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    `I5_itemJobs_lines` と `I5_jobsFrom_lines` は前提 `JobsLines` を置き、前提なしの `I5_causal_jobsFrom_lines` は `CausalBoundary.lean` の 4864 個の原稿についての定理である。
    `I5_stanza_lines` は `fallback` と `hold` についての仮定を置き、`I5_parts_lines` の前提 `hb`（改行し直しても段落の最初の行の id が変わらないこと）は未確認である。
    欠けているのは、golem-typeset の改行器と後続の判定について、これらの前提を導く定理か、前提を確かめる照合である。
-4. 自由な配置の `drainCarry` の前提（`drainOk`）。
-   本の部を含まずに `checkNotes` を通った原稿でこの前提が成り立つことは、推測であり、証明していない。
-5. スロットの id の前提。
+4. スロットの id の前提。
    自由な配置の `slotIds` がコードのスロットに振る id が golem-typeset の番号と一致することは未確認である。
    格子モードの `textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは前提に残り、その id が原稿の id から来ることは示していない。
-6. 区切りの残り。
+5. 区切りの残り。
    保持の中の `@need-lines`、区切りの前の行アキ、自由な配置（`SeparatorPhysical.lean`）の保持の性質は、照合だけで確かめ、定理がない。
    `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、照合していない。
    格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、照合の入力が足りない。
-7. Alloy のコマンドの算術モデルと原稿の対応。
+6. Alloy のコマンドの算術モデルと原稿の対応。
    見出しと最初の本文行の間か後ろに図版が一つある場合の算術モデルについて、任意の原稿列の図版の位置との対応は未証明である。
    見出し列の長さと段落構造を原稿列から取り出す一般的な対応も未証明である。
-8. 照合できていない変更と、`putWrappedLine` の写しの前提。
+7. 照合できていない変更と、`putWrappedLine` の写しの前提。
    「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割は、照合できていない。
    `trialWrapRest_putLine` の前提のうち、回り込みの段が空でないことと、次の段が回り込みの段でないことは、`parts` の呼び出しについて示していない。
 
@@ -1651,6 +1656,7 @@ sh experiments/pagination-proof/check.sh
 `check.sh` は、`Whole.olean` と `WholeNotes.olean` を作ってから、それを読み込む `Separator.lean` を検査する。
 `SeparatorBoundary.lean` は、`Boundary.olean`、`Physical.olean`、`SeparatorPhysical.olean`、`SeparatorBlocks.olean` を作った後に評価する。
 `WholeNotes.lean` と `PhysicalNotes.lean` も、`Whole.olean` と `Physical.olean` を読み込んで検査する。
+`PhysicalDrain.lean` は、`PhysicalNotes.olean` を作ってから、それを読み込んで検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
 `SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で六つの組を一つずつ評価する。
