@@ -5286,6 +5286,10 @@ done
 if [ "$(lib_deps "$MODULES/golem-unicode/golem-unicode.cabal" | sort | tr '\n' ' ')" = "base containers text " ]; then ok; else
   ng "root ADR 0411 I5: the library of golem-unicode depends on base, containers and text only"
 fi
+# the library of golem-geometry depends on base, text and golem-length only (root ADR 0437)
+if [ "$(lib_deps "$MODULES/golem-geometry/golem-geometry.cabal" | sort | tr '\n' ' ')" = "base golem-length text " ]; then ok; else
+  ng "root ADR 0437: the library of golem-geometry depends on base, text and golem-length only"
+fi
 # the check sees a dependency of the library, and not one of a test suite
 cat >"$WORK/i5.cabal" <<'EOF'
 cabal-version: 3.0

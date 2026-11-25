@@ -107,9 +107,9 @@ wrapMarkTests =
             and (zipWith close (pointsOf (wrapMarkPolygons True (0, 0) s)) (map turn (pointsOf (wrapMarkPolygons False (0, 0) s)))) @? show s
         )
         [s10, odd10],
-    testCase "W1: each part is a CurveFill of straight edges, its control points at the ends, closed at its start" $
+    testCase "W1: each part is a filled path of straight edges, its control points at the ends, closed at its start" $
       case wrapMarkFills [[(0, 0), (2, 0), (2, 1)]] of
-        [P.CurveFill (0, 0) [((0, 0), (2, 0), (2, 0)), ((2, 0), (2, 1), (2, 1)), ((2, 1), (0, 0), (0, 0))]] -> pure ()
+        [P.FilledPath P.NonZero (P.Path [P.SubPath (0, 0) [P.CurveTo (0, 0) (2, 0) (2, 0), P.CurveTo (2, 0) (2, 1) (2, 1), P.CurveTo (2, 1) (0, 0) (0, 0)] True])] -> pure ()
         other -> assertFailure (show other),
     testCase "W7: the colour of the mark is half of each value of the code's, rounded down" $ do
       wrapMarkSwatch (Just (P.Swatch 45 25 0 15)) @?= P.Swatch 22 12 0 7

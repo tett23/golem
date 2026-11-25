@@ -17,6 +17,7 @@ aarch64	golem-fixtures-test	10
 aarch64	golem-fmt-test	10
 aarch64	golem-font-race-test	10
 aarch64	golem-font-test	16
+aarch64	golem-geometry-test	10
 aarch64	golem-html-test	10
 aarch64	golem-layout-spec-test	10
 aarch64	golem-layout-test	116
@@ -56,6 +57,7 @@ x86_64	golem-fixtures-test	10
 x86_64	golem-fmt-test	10
 x86_64	golem-font-race-test	10
 x86_64	golem-font-test	22
+x86_64	golem-geometry-test	10
 x86_64	golem-html-test	10
 x86_64	golem-layout-spec-test	10
 x86_64	golem-layout-test	142

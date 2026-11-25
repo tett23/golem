@@ -20,6 +20,7 @@ packages:
   modules/golem-eval
   modules/golem-evaluate
   modules/golem-font
+  modules/golem-geometry
   modules/golem-html
   modules/golem-layout
   modules/golem-layout-spec

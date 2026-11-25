@@ -1,6 +1,6 @@
 # ADR 0447: 行の帯の内側の区間は、頂点と辺の交点で分けた部分ごとに求める
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

@@ -3,7 +3,8 @@ into one box, the grid lines a box takes around its lines, its rectangle
 in a column, its corners, and its background and border as marks.
 
 Every length is an 'Sp'; the points of a path with round corners are
-found as rationals and rounded to sp once, when they become marks.
+found as rationals and rounded to sp once, when they become the points
+of the paths of golem-geometry (root ADR 0437).
 -}
 module Golem.Typeset.Box
   ( groupBoxes,
@@ -16,7 +17,6 @@ module Golem.Typeset.Box
     boxCorners,
     physicalCorners,
     Point,
-    Segment (..),
     kappa,
     boxOutline,
     boxBorderRuns,
@@ -27,6 +27,8 @@ module Golem.Typeset.Box
 where
 
 import Data.Maybe (isJust)
+import Golem.Geometry (Path (..), Segment (..), SubPath (..), segmentEnd)
+import Golem.Geometry qualified as G
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf qualified as P
 import Golem.Project.Style (BoxSide (..), RuleStyle (..), Sp (..))
@@ -110,12 +112,8 @@ boxCorners border sides isFirst isLast r =
          in if open && drawn then r else 0
    in Corners (at SideBefore SideStart) (at SideBefore SideEnd) (at SideAfter SideStart) (at SideAfter SideEnd)
 
--- | A point of a path, in rationals.
+-- | A point of a path, in rationals, before it is rounded to sp.
 type Point = (Rational, Rational)
-
--- | A part of a path: a line or a cubic curve to a point.
-data Segment = SegLine !Point | SegCurve !Point !Point !Point
-  deriving stock (Eq, Show)
 
 {- | 4(√2 − 1)/3, of the control points of a quarter of a circle drawn as
 one cubic curve, as a rational of ten digits.
@@ -143,29 +141,33 @@ physicalCorners vertical (Rect x y w h) cs =
 
 {- | The four sides of a rectangle on the page from the lower left corner
 counterclockwise, each from where it starts to where it ends, with the
-quarter at its end; the quarter of a radius 0 is none.
+quarter at its end; the quarter of a radius 0 is none. Each point is
+rounded to sp once.
 -}
-sidesAround :: Rect -> Physical -> [(Point, Point, [Segment])]
+sidesAround :: Rect -> Physical -> [(G.Point, G.Point, [Segment])]
 sidesAround (Rect x0 y0 w0 h0) (Physical bl br tr tl) =
   let x = toRational (unSp x0)
       y = toRational (unSp y0)
       w = toRational (unSp w0)
       h = toRational (unSp h0)
-      quarter r a b c = [SegCurve a b c | r > 0]
-   in [ ((x + bl, y), (x + w - br, y), quarter br (x + w - br + kappa * br, y) (x + w, y + br - kappa * br) (x + w, y + br)),
-        ((x + w, y + br), (x + w, y + h - tr), quarter tr (x + w, y + h - tr + kappa * tr) (x + w - tr + kappa * tr, y + h) (x + w - tr, y + h)),
-        ((x + w - tr, y + h), (x + tl, y + h), quarter tl (x + tl - kappa * tl, y + h) (x, y + h - tl + kappa * tl) (x, y + h - tl)),
-        ((x, y + h - tl), (x, y + bl), quarter bl (x, y + bl - kappa * bl) (x + bl - kappa * bl, y) (x + bl, y))
-      ]
+      quarter r a b c = [CurveTo (spPoint a) (spPoint b) (spPoint c) | r > 0]
+      side (a, b, q) = (spPoint a, spPoint b, q)
+   in map
+        side
+        [ ((x + bl, y), (x + w - br, y), quarter br (x + w - br + kappa * br, y) (x + w, y + br - kappa * br) (x + w, y + br)),
+          ((x + w, y + br), (x + w, y + h - tr), quarter tr (x + w, y + h - tr + kappa * tr) (x + w - tr + kappa * tr, y + h) (x + w - tr, y + h)),
+          ((x + w - tr, y + h), (x + tl, y + h), quarter tl (x + tl - kappa * tl, y + h) (x, y + h - tl + kappa * tl) (x, y + h - tl)),
+          ((x, y + h - tl), (x, y + bl), quarter bl (x, y + bl - kappa * bl) (x + bl - kappa * bl, y) (x + bl, y))
+        ]
 
 {- | The closed path of the background of a part (docs/adr/0271, B9): the
 sides of the rectangle in lines, the round corners in quarters, from the
-lower left corner counterclockwise.
+lower left corner counterclockwise; its last line goes back to its start.
 -}
-boxOutline :: Bool -> Rect -> Corners -> (Point, [Segment])
+boxOutline :: Bool -> Rect -> Corners -> SubPath
 boxOutline vertical rect cs = case sidesAround rect (physical vertical cs) of
-  sides@((start, _, _) : _) -> (start, concat [SegLine end : quarter | (_, end, quarter) <- sides])
-  [] -> ((0, 0), [])
+  sides@((start, _, _) : _) -> SubPath start (concat [LineTo end : quarter | (_, end, quarter) <- sides]) True
+  [] -> SubPath (0, 0) [] True
 
 -- | The sides of the page of the logical sides, in the order of 'sidesAround': bottom, right, top, left.
 pageSides :: Bool -> [BoxSide]
@@ -177,11 +179,11 @@ pageSides vertical
 the sides drawn joined by their quarters, one path for each run of sides
 that follow one another; one closed path when all four are drawn.
 -}
-boxBorderRuns :: Bool -> Rect -> Corners -> [BoxSide] -> [(Point, [Segment], Bool)]
+boxBorderRuns :: Bool -> Rect -> Corners -> [BoxSide] -> [SubPath]
 boxBorderRuns vertical rect cs sides =
   let around = zip (map (`elem` sides) (pageSides vertical)) (sidesAround rect (physical vertical cs))
    in if all fst around
-        then [(start, concat [SegLine end : quarter | (_, (_, end, quarter)) <- around], True) | (_, (start, _, _)) : _ <- [around]]
+        then [SubPath start (concat [LineTo end : quarter | (_, (_, end, quarter)) <- around]) True | (_, (start, _, _)) : _ <- [around]]
         else
           let -- from the side after one not drawn, so that no run goes round the end of the list
               k = length (takeWhile fst around) + 1
@@ -190,8 +192,8 @@ boxBorderRuns vertical rect cs sides =
               runs xs = let (run, rest) = span fst (dropWhile (not . fst) xs) in [map snd run | not (null run)] <> runs rest
               path run =
                 let (start, _, _) = head' run
-                    segs = concat [SegLine end : (if i < length run then quarter else []) | (i, (_, end, quarter)) <- zip [1 :: Int ..] run]
-                 in (start, segs, False)
+                    segs = concat [LineTo end : (if i < length run then quarter else []) | (i, (_, end, quarter)) <- zip [1 :: Int ..] run]
+                 in SubPath start segs False
            in map path (runs turned)
   where
     head' = \case
@@ -242,24 +244,24 @@ boxMarks vertical rect bp isFirst isLast =
       background = case bpBackground bp of
         Just sw
           | square -> [(sw, P.Saved [P.SetColor sw, P.Rule rect])]
-          | otherwise -> let (start, segs) = boxOutline vertical rect cs in [(sw, P.Saved [P.SetColor sw, P.CurveFill (spPoint start) (asCurves start (dropClosing start segs))])]
+          | otherwise -> let SubPath start segs _ = boxOutline vertical rect cs in [(sw, P.Saved [P.SetColor sw, P.FilledPath P.NonZero (Path [SubPath start (asCurves start (dropClosing start segs)) True])])]
         Nothing -> []
       border = case bpBorder bp of
         Just (sw, t, style)
           | square -> [(sw, m) | m <- ruleMarks (Just sw) (boxBands vertical rect t style (bpSides bp))]
           | otherwise ->
               let stroke = case style of
-                    RuleDashed d g -> P.LineStroke t [d, g] False
-                    RuleDotted g -> P.LineStroke t [0, t + g] True
-                    _ -> P.LineStroke t [] False
-               in [(sw, P.Saved (P.SetColor sw : [P.StrokedPath stroke (spPoint start) (map spSegment (if closed then dropClosing start segs else segs)) closed | (start, segs, closed) <- boxBorderRuns vertical rect cs (bpSides bp)]))]
+                    RuleDashed d g -> P.LineStroke (G.solidStroke t) [d, g]
+                    RuleDotted g -> P.LineStroke (G.Stroke t G.RoundCap G.MiterJoin) [0, t + g]
+                    _ -> P.LineStroke (G.solidStroke t) []
+               in [(sw, P.Saved (P.SetColor sw : [P.StrokedPath stroke (Path [SubPath start (if closed then dropClosing start segs else segs) closed]) | SubPath start segs closed <- boxBorderRuns vertical rect cs (bpSides bp)]))]
         Nothing -> []
    in (background, border)
   where
     isJustBorder = isJust . bpBorder
     -- the last line back to the start of a closed path is the h that closes it
     dropClosing start segs = case reverse segs of
-      SegLine end : rest | end == start -> reverse rest
+      LineTo end : rest | end == start -> reverse rest
       _ -> segs
 
 {- | The segments of a filled path as cubic curves, a line as one whose
@@ -267,19 +269,14 @@ control points are its ends (as the wrap mark draws its edges,
 golem-layout ADR 0042): the operators the rasterizer of the visual
 regression test reads (docs/adr/0093).
 -}
-asCurves :: Point -> [Segment] -> [((Sp, Sp), (Sp, Sp), (Sp, Sp))]
+asCurves :: G.Point -> [Segment] -> [Segment]
 asCurves = go
   where
     go _ [] = []
     go q (seg : rest) = case seg of
-      SegLine e -> (spPoint q, spPoint e, spPoint e) : go e rest
-      SegCurve a b c -> (spPoint a, spPoint b, spPoint c) : go c rest
+      LineTo e -> CurveTo q e e : go e rest
+      c -> c : go (segmentEnd c) rest
 
 -- | A point rounded to sp.
-spPoint :: Point -> (Sp, Sp)
+spPoint :: Point -> G.Point
 spPoint (x, y) = (Sp (round x), Sp (round y))
-
-spSegment :: Segment -> P.PathSegment
-spSegment = \case
-  SegLine q -> P.LineTo (spPoint q)
-  SegCurve a b c -> P.CurveTo (spPoint a) (spPoint b) (spPoint c)
