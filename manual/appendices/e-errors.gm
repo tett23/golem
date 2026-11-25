@@ -249,8 +249,8 @@ G03010、G03282、G03283、G05004、G07127、G07128、G08100、G08103 は、[cod
   [code: doc]、[code: meta]、[code: true]、[code: false]、[code: nil] は、変数や [code: @import] の名前に使えません。
 = [strong: G02024 [code: 変数を二度定義しています: …]]
   同じファイルで、同じ名前の変数を二度 [code: @set] しています。
-= [strong: G03009 [code: @import は「@import パス as 名前空間」の形で書きます]]
-  [code: @import common/values.gm as values] のように書いてください。
+= [strong: G03009 [code: @import は「@import パス * as 名前空間」の形で書きます]]
+  [code: @import common/values.gm * as values] のように書いてください。
 = [strong: G03005 [code: import が循環しています: …]]
   [code: @import] でファイルどうしが互いを取り込んでいます。
   共通の変数を別のファイルに移してください。

@@ -1,5 +1,5 @@
 -- 奥付とカバーに載せる項目：ISBN、定価、版と刷、発行の日付と刷の履歴。
--- 原稿では `@import functions/colophon.emet as colophon` で取り込む。
+-- 原稿では `@import functions/colophon.emet * as colophon` で取り込む。
 -- functions/numbers.emet と functions/dates.emet を使う。
 
 import "functions/numbers.emet"

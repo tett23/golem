@@ -1,5 +1,5 @@
 -- Numbers: prices, kansuji, circled numbers, units and page ranges.
--- In .gm: `@import fn/numbers.emet as n`.
+-- In .gm: `@import fn/numbers.emet * as n`.
 
 import "fn/lib.emet"
 

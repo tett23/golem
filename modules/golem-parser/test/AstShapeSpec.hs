@@ -133,10 +133,10 @@ tests =
         shapeOf "# はじめに\n\n## 節\n\n### 項\n" [Heading 1 [txt "はじめに"], Heading 2 [txt "節"], Heading 3 [txt "項"]],
       testCase "attributes and block commands" $
         shapeOf
-          "@import common/values.gm as values\n@set version = \"1.0\"\n\n@label intro\n@nonumber\n# はじめに\n\n本文。\n"
+          "@import common/values.gm * as values\n@set version = \"1.0\"\n\n@label intro\n@nonumber\n# はじめに\n\n本文。\n"
           [ -- lines of commands without a block after them are a group without a target
             Attributed
-              [ l (BlockCommand (l "import") (map l [Positional (Word "common/values.gm"), Positional (Word "as"), Positional (Word "values")]) []),
+              [ l (BlockCommand (l "import") (map l [Positional (Word "common/values.gm"), Positional (Word "*"), Positional (Word "as"), Positional (Word "values")]) []),
                 l (SetVar (l "version") (l (EString "1.0")))
               ]
               Nothing,

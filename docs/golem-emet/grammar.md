@@ -727,7 +727,7 @@ before = shift (-1)
 
 ## .gm からの呼び出し
 
-`.gm` は、`@import パス as 名前空間` で `.emet` を取り込み、`pub` の後ろの種類の語で決まる形で呼ぶ（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)、仕様書の「[.gm から関数を使う](../specifications.md#gm-から関数を使う)」）。
+`.gm` は、`@import パス * as 名前空間` か `@import パス { 名前, … }`（[docs/adr/0451](../adr/0451-import-listed-names-without-a-namespace.md)）で `.emet` を取り込み、`pub` の後ろの種類の語で決まる形で呼ぶ（[ADR 0162](../adr/0162-calling-emet-functions-from-gm.md)、仕様書の「[.gm から関数を使う](../specifications.md#gm-から関数を使う)」）。
 呼び出しの文法は `.gm` の文法（[docs/markup.md](../markup.md)）であり、Emet の文法ではない。
 
 | `.emet` の宣言 | `.gm` からの呼び出し |

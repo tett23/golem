@@ -1,5 +1,5 @@
 -- Text: ruby, manuscript pages, page references and index terms.
--- In .gm: `@import fn/text.emet as t`.
+-- In .gm: `@import fn/text.emet * as t`.
 
 -- 6. Mono ruby: one reading for each character of the base. A character
 -- without a reading has none.

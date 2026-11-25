@@ -437,10 +437,10 @@ tests =
         errs "@set x = 1\n\n@set x = 2\n" @?= ["G02024"]
         errs "[= y]\n\n@set y = 1\n" @?= ["G02002"],
       testCase "imports bind a namespace" $
-        paraOf "@import common/values.gm as v\n\n[= v.price + 1]\n" @?= ["101"],
+        paraOf "@import common/values.gm * as v\n\n[= v.price + 1]\n" @?= ["101"],
       testCase "an expression as the path of @import is G03009 (golem-project ADR 0006)" $ do
         errs "@import [= 1] as x\n" @?= ["G03009"]
-        errs "@import \"common/values.gm\" as v\n" @?= [],
+        errs "@import \"common/values.gm\" * as v\n" @?= [],
       testCase "doc becomes a deferred expression; forbidden in headings" $ do
         paraOf "@set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
         errs "# 全 [= doc.chapters.count] 章\n" @?= ["G02014"]
@@ -1011,9 +1011,9 @@ spreadTests =
         codesS "@manifest **[{a: \"line\"}]\n" @?= ["G02114"]
         codesS "@style-def character x **[{weight: \"bold\"}]\n" @?= ["G02114"],
       -- docs/adr ADR 0142: @import is read as written, as the project reads it
-      testCase "@import *[[\"x.gm\"]] as n is G03009 and binds no namespace (ADR 0142)" $ do
-        errs "@import *[[\"x.gm\"]] as n\n" @?= ["G03009"]
-        usageImports (erUsage (evalResult ctx "@import *[[\"x.gm\"]] as n\n")) @?= [],
+      testCase "@import *[[\"x.gm\"]] * as n is G03009 and binds no namespace (ADR 0142)" $ do
+        errs "@import *[[\"x.gm\"]] * as n\n" @?= ["G03009"]
+        usageImports (erUsage (evalResult ctx "@import *[[\"x.gm\"]] * as n\n")) @?= [],
       testCase "@import *[1] is G03009 only (ADR 0142)" $
         errs "@import *[1]\n" @?= ["G03009"],
       testCase "@import *[y] with y undefined is G03009 only (ADR 0142)" $
@@ -1023,7 +1023,7 @@ spreadTests =
       testCase "a spread in @import has the message and position of the project's importsOf (ADR 0142)" $
         mapM_
           (\src -> diags src @?= importSites src)
-          ["@import *[[\"x.gm\"]] as n\n", "@import *[1]\n", "@import *[y]\n", "@import **[{a: 1}]\n"],
+          ["@import *[[\"x.gm\"]] * as n\n", "@import *[1]\n", "@import *[y]\n", "@import **[{a: 1}]\n"],
       -- docs/adr ADR 0143: one G02114 for each spread of @style, at the spread, in order
       testCase "@style in the body form gives G02114 at each spread (ADR 0143)" $
         g02114At "@style *[[\"a\"]] **[{b: 1}]\n  a\n" @?= [(7, 15), (16, 26)],
@@ -1926,7 +1926,7 @@ diagnosticTests =
     "diagnostic codes (golem-eval ADR 0003)"
     [ testCase "G02023: a reserved word as a name" $ do
         diags "@set doc = 1\n" @?= [("G02023", "予約語は変数の名前に使えません: doc", 5, 8)]
-        diags "@import common/values.gm as meta\n" @?= [("G02023", "予約語は名前空間に使えません: meta", 28, 32)],
+        diags "@import common/values.gm * as meta\n" @?= [("G02023", "予約語は名前空間に使えません: meta", 30, 34)],
       testCase "G02025: the depth of @toc" $ do
         mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=7\n", "@toc depth=x\n"]
         msgs "@toc depth=0\n" @?= [("G02025", "@toc の depth は 1 から 6 の整数です")]

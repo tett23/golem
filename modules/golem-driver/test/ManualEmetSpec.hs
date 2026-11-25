@@ -62,7 +62,7 @@ mistakeCodes f = withSystemTempDirectory "golem-manual-emet" $ \tmp -> do
   let gm = replaceExtension f "gm"
   hasGm <- doesFileExist gm
   calls <- if hasGm then readText gm else pure ""
-  BS.writeFile (tmp </> "example.gm") (TE.encodeUtf8 ("@import functions/ex.emet as ex\n\n" <> calls))
+  BS.writeFile (tmp </> "example.gm") (TE.encodeUtf8 ("@import functions/ex.emet * as ex\n\n" <> calls))
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 projectManifest)
   BS.writeFile (tmp </> "style.toml") "[paragraph-styles.example]\nindent = \"1zw\"\n"
   r <- build (defaultOptions tmp)

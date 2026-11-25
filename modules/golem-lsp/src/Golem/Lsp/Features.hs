@@ -128,6 +128,8 @@ data Occurrence
     OccCommand Bool Text
   | -- | a call of a pub fn of a .emet in an expression, ns.f(...)
     OccFunction Text
+  | -- | a name in the list of an @import, with the path (root ADR 0451)
+    OccListed Text Text
   deriving stock (Show)
 
 labelCommands :: [Text]
@@ -139,8 +141,12 @@ noteCommands = ["note", "sidenote", "endnote"]
 
 -- | Every occurrence in a file with its span.
 occurrences :: File -> [(SrcSpan, Occurrence)]
-occurrences (File _ bs) = concatMap block bs
+occurrences file@(File _ bs) = concatMap block bs
   where
+    -- the names the @import lines of the file list, which .gm calls without a namespace (root ADR 0451)
+    listed = [n | Right site <- importsOf file, (n, _) <- importNames site]
+    called name = T.isInfixOf "." name || name `elem` listed
+    listedIn bsp p args = [(nsp, OccListed p n) | Right site <- [importSite bsp args], (n, nsp) <- importNames site]
     block (Located sp b) = case b of
       Paragraph is -> concatMap inline is
       Heading _ is -> concatMap inline is
@@ -149,12 +155,12 @@ occurrences (File _ bs) = concatMap block bs
       DefList gs -> concatMap (\g -> concatMap (concatMap inline) (dgTerms g) <> concatMap (concatMap block) (dgDefs g)) gs
       Table _ h rows -> concatMap (concatMap inline) h <> concatMap (concatMap (concatMap inline)) rows
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
-      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | T.isInfixOf "." name] <> blockCommand sp name args <> concatMap block body
+      BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | called name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
       _ -> []
-    blockCommand _ name args = case (name, args) of
-      ("import", Located asp (Positional (Word p)) : _) -> [(asp, OccImport p)]
-      ("import", Located asp (Positional (StringLit p)) : _) -> [(asp, OccImport p)]
+    blockCommand importSp name args = case (name, args) of
+      ("import", Located asp (Positional (Word p)) : _) -> (asp, OccImport p) : listedIn importSp p args
+      ("import", Located asp (Positional (StringLit p)) : _) -> (asp, OccImport p) : listedIn importSp p args
       ("label", Located asp (Positional (Word l)) : _) -> [(asp, OccLabelDef l)]
       ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef ParagraphKind n)]
       -- a regex style names a paragraph style and a character style (docs/adr ADR 0015)
@@ -167,7 +173,7 @@ occurrences (File _ bs) = concatMap block bs
     inline (Located sp i) = case i of
       Expr e -> (sp, OccExpr e) : expr e
       Command (Located nsp name) args slots ->
-        [(nsp, OccCommand True name) | T.isInfixOf "." name]
+        [(nsp, OccCommand True name) | called name]
           <> ( case (name, args) of
                  (n, Located asp (Positional (Word l)) : _)
                    | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
@@ -198,7 +204,7 @@ occurrences (File _ bs) = concatMap block bs
       EVar (ns : v : _) -> [(sp, OccVar (Just ns) v)]
       EArray es -> concatMap expr es
       EHash kvs -> concatMap (expr . snd) kvs
-      ECall f es -> [(sp, OccFunction f) | T.isInfixOf "." f] <> concatMap expr es
+      ECall f es -> [(sp, OccFunction f) | called f] <> concatMap expr es
       EUnary _ a -> expr a
       EBinary _ a b -> expr a <> expr b
       ERange a b -> expr a <> expr b
@@ -216,13 +222,32 @@ its syntax, so that a file being typed with an error keeps them.
 emetImports :: Source -> Map.Map Text FilePath
 emetImports src =
   Map.fromList
-    [ (isNamespace site, p)
+    [ (ns, p)
     | Right site <- importsOf (srcAst src),
-      ".emet" `T.isSuffixOf` isPath site,
-      Right p <- [normalizeRelative (T.unpack (isPath site))]
+      Just ns <- [importNamespace site],
+      Right p <- [emetPath (isPath site)]
     ]
 
--- | The function of a .emet a name of a source calls: ns.name of a kind.
+{- | The names a source lists by @import of a .emet (root ADR 0451), with
+the path of the .emet: the first @import that lists a name.
+-}
+emetListed :: Source -> Map.Map Text FilePath
+emetListed src =
+  Map.fromListWith
+    (\_ first -> first)
+    [ (n, p)
+    | Right site <- importsOf (srcAst src),
+      (n, _) <- importNames site,
+      Right p <- [emetPath (isPath site)]
+    ]
+
+-- | The path of a .emet an @import names, from the root.
+emetPath :: Text -> Either () FilePath
+emetPath path
+  | ".emet" `T.isSuffixOf` path = either (const (Left ())) Right (normalizeRelative (T.unpack path))
+  | otherwise = Left ()
+
+-- | The function of a .emet a name of a source calls: ns.name of a kind, or a name listed by @import.
 exportOf :: Workspace -> Source -> Kind -> Text -> Maybe Export
 exportOf ws src kind q = programOf ws >>= \p -> exportIn p src kind q
 
@@ -230,9 +255,16 @@ exportOf ws src kind q = programOf ws >>= \p -> exportIn p src kind q
 exportIn :: Program -> Source -> Kind -> Text -> Maybe Export
 exportIn p src kind q = do
   let (ns, rest) = T.breakOn "." q
-  n <- T.stripPrefix "." rest
-  path <- Map.lookup ns (emetImports src)
+  (path, n) <- case T.stripPrefix "." rest of
+    Just n -> (,n) <$> Map.lookup ns (emetImports src)
+    Nothing -> (,q) <$> Map.lookup q (emetListed src)
   listToMaybe [e | e <- Map.findWithDefault [] path (programExports p), exKind e == kind, exName e == n]
+
+-- | The function a name in the list of an @import names (root ADR 0451): the first kind the .emet gives it.
+listedExport :: Program -> Text -> Text -> Maybe Export
+listedExport p path n = do
+  file <- either (const Nothing) Just (emetPath path)
+  listToMaybe [e | e <- Map.findWithDefault [] file (programExports p), exName e == n, exKind e `elem` [KindInline, KindBlock, KindFn]]
 
 -- | The declaration of a function of a .emet.
 exportLocation :: Export -> Location
@@ -248,11 +280,10 @@ callsIn p ws e =
   [ loc s sp
   | s <- allSources ws,
     (sp, occ) <- occurrences (srcAst s),
-    Just (kind, q) <- [called occ],
-    Just e' <- [exportIn p s kind q],
-    exPath e' == exPath e,
-    exKind e' == exKind e,
-    exName e' == exName e
+    case occ of
+      -- the name in the list of an @import (root ADR 0451)
+      OccListed path n -> n == exName e && emetPath path == Right (exPath e)
+      _ -> or [exPath e' == exPath e && exKind e' == exKind e && exName e' == exName e | Just (kind, q) <- [called occ], Just e' <- [exportIn p s kind q]]
   ]
   where
     called = \case
@@ -266,6 +297,7 @@ occurrenceExport :: Workspace -> Source -> Occurrence -> Maybe Export
 occurrenceExport ws src = \case
   OccCommand inline q -> exportOf ws src (if inline then KindInline else KindBlock) q
   OccFunction q -> exportOf ws src KindFn q
+  OccListed path n -> programOf ws >>= \p -> listedExport p path n
   _ -> Nothing
 
 -- | The innermost occurrence at an offset.
@@ -290,7 +322,11 @@ definition ws path off = case sourceOf ws path of
   Just src | Just e <- occurrenceAt src off >>= occurrenceExport ws src . snd -> [exportLocation e]
   Just src -> case snd <$> occurrenceAt src off of
     Just (OccImport p) -> [Location (T.unpack p) 0 0 | T.unpack p `elem` wsSourceFiles ws || any ((== T.unpack p) . srcPath) (allSources ws)]
-    Just (OccVar Nothing v) -> [loc src sp | Just r <- [srcResult src], (d, sp) <- usageDefined (erUsage r), d == v]
+    Just (OccVar Nothing v) -> case [loc src sp | Just r <- [srcResult src], (d, sp) <- usageDefined (erUsage r), d == v] of
+      [] -> listedVar src v
+      own -> own
+    -- a variable in the list of an @import (root ADR 0451)
+    Just (OccListed _ v) -> listedVar src v
     Just (OccVar (Just ns) v) ->
       [ loc t sp
       | Just r <- [srcResult src],
@@ -307,6 +343,18 @@ definition ws path off = case sourceOf ws path of
     Just (OccStyleRef k n) -> styleDefs src k n
     Just (OccStyleDef k n) -> styleDefs src k n
     _ -> []
+  where
+    -- the @set of a variable an @import of the source lists (root ADR 0451)
+    listedVar src v =
+      [ loc t sp
+      | Just r <- [srcResult src],
+        (n, target, _) <- usageListed (erUsage r),
+        n == v,
+        Just t <- [sourceOf ws target],
+        Just tr <- [srcResult t],
+        (d, sp) <- usageDefined (erUsage tr),
+        d == v
+      ]
 
 styleDefs :: Source -> StyleKind -> Text -> [Location]
 styleDefs src k n = take 1 [loc src sp | (sp, OccStyleDef k' n') <- occurrences (srcAst src), k' == k, n' == n]
@@ -476,9 +524,14 @@ renameEmet ws manifest path off new = do
           (pre, rest) = BS.breakSubstring needle piece
           after = BS.drop (BS.length needle) rest
           isNameByte b = b == 95 || b == 45 || (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
-      if BS.null rest || maybe False (isNameByte . fst) (BS.uncons after)
-        then Nothing
-        else Just (Location p (s + BS.length pre + 1) (s + BS.length pre + BS.length needle))
+          plain = TE.encodeUtf8 old
+          -- a name listed by @import, called without a namespace (root ADR 0451)
+          unqualified = plain `BS.isPrefixOf` piece && not (maybe False (\(b, _) -> isNameByte b || b == 46) (BS.uncons (BS.drop (BS.length plain) piece)))
+          found
+            | unqualified = Just (Location p s (s + BS.length plain))
+            | BS.null rest || maybe False (isNameByte . fst) (BS.uncons after) = Nothing
+            | otherwise = Just (Location p (s + BS.length pre + 1) (s + BS.length pre + BS.length needle))
+      found
 
 -- | The program of the last evaluation that checked the functions (docs/adr/0170).
 lastProgramOf :: Workspace -> Maybe Program
@@ -587,6 +640,7 @@ completions ws path off = case sourceOf ws path of
   Just src
     | codeBlockAt off (srcAst src) -> []
     | Just names <- namespaceCompletions ws src off -> names
+    | Just names <- importListCompletions ws src off -> names
   Just src ->
     let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
         lineBefore = T.takeWhileEnd (/= '\n') before
@@ -609,8 +663,10 @@ completions ws path off = case sourceOf ws path of
           Nothing -> Nothing
         meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
         projectVars = projectVarsOf ws
+        -- the names the file lists by @import, without a namespace (root ADR 0451)
+        listedOf k = [Completion n CkCommand | n <- listedNamesOf ws src k]
      in if maybe False (T.all nameChar) (T.stripPrefix "@" (T.stripStart lineBefore))
-          then [Completion n CkCommand | n <- builtinBlockCommands]
+          then [Completion n CkCommand | n <- builtinBlockCommands] <> listedOf KindBlock
           else
             if "@import " `T.isPrefixOf` T.stripStart lineBefore
               then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
@@ -640,11 +696,11 @@ completions ws path off = case sourceOf ws path of
                                       Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
                                       -- the keys of [vars] and of its tables (docs/adr/0185)
                                       Just ("vars" : keyPath@(_ : _)) | Just keys <- varKeys projectVars (init keyPath) -> [Completion k CkSettingKey | k <- keys]
-                                      Just [_] | inOperand lastOpen -> expressionNames
+                                      Just [_] | inOperand lastOpen -> expressionNames <> listedOf KindFn <> [Completion n CkSettingKey | n <- listedVarNames src]
                                       Just _ -> []
                                       _ -> case ws' of
-                                        [] -> commandNames
-                                        [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                        [] -> commandNames <> listedOf KindInline
+                                        [_] | not (T.isSuffixOf " " lastOpen) -> commandNames <> listedOf KindInline
                                         (cmd : _)
                                           | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
                                           -- label= after the command of a note (root ADR 0422)
@@ -667,6 +723,51 @@ completions ws path off = case sourceOf ws path of
       ]
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
+
+-- | The names a source lists by @import of a .emet that are functions of a kind (root ADR 0451).
+listedNamesOf :: Workspace -> Source -> Kind -> [Text]
+listedNamesOf ws src kind =
+  [ n
+  | Just p <- [lastProgramOf ws],
+    (n, path) <- Map.toList (emetListed src),
+    any (\e -> exKind e == kind && exName e == n) (Map.findWithDefault [] path (programExports p))
+  ]
+
+-- | The variables a source lists by @import of a .gm (root ADR 0451).
+listedVarNames :: Source -> [Text]
+listedVarNames src = nub [n | Right site <- importsOf (srcAst src), not (".emet" `T.isSuffixOf` isPath site), (n, _) <- importNames site]
+
+{- | Completion in the list of names of an @import (root ADR 0451): the
+names a .emet gives .gm, or the variables a .gm sets. Nothing when the
+cursor is not in the braces of an @import.
+-}
+importListCompletions :: Workspace -> Source -> Int -> Maybe [Completion]
+importListCompletions ws src off = do
+  let before = TE.decodeUtf8Lenient (BS.take off (TE.encodeUtf8 (srcText src)))
+      lineBefore = T.takeWhileEnd (/= '\n') before
+  rest <- T.stripPrefix "@import " (T.stripStart lineBefore)
+  let (written, braces) = T.breakOn "{" rest
+      path = T.dropAround (== '"') (T.strip written)
+  if T.null braces || "}" `T.isInfixOf` braces
+    then Nothing
+    else
+      Just $
+        if ".emet" `T.isSuffixOf` path
+          then
+            nub
+              [ Described (exName e) CkCommand (exSignature e)
+              | Just p <- [lastProgramOf ws],
+                Right file <- [emetPath path],
+                e <- Map.findWithDefault [] file (programExports p),
+                exKind e `elem` [KindInline, KindBlock, KindFn]
+              ]
+          else
+            [ Completion v CkSettingKey
+            | Right file <- [normalizeRelative (T.unpack path)],
+              Just t <- [sourceOf ws file],
+              Just r <- [srcResult t],
+              v <- nub (map fst (usageDefined (erUsage r)))
+            ]
 
 -- | The namespace vars of the project (docs/adr/0185); empty without a project.
 projectVarsOf :: Workspace -> Map.Map Text Value

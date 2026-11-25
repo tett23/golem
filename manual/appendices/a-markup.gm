@@ -118,13 +118,18 @@
   同じファイルで同じ名前を二度定義すると、エラーになります。
   [code: doc]、[code: meta]、[code: true]、[code: false]、[code: nil] は名前に使えません。
   例：[code: @set price = 1800]
-= [strong: [code: @import パス as 名前]]
+= [strong: [code: @import パス * as 名前]]
   別のファイルの [code: @set] の変数を、名前を付けて取り込みます。
   取り込んだ変数は [code: 名前.変数] で参照します。
   パスの拡張子が [code: .emet] なら、関数を書くファイルの関数を取り込みます（付録J）。
-  [code: as] と名前は省けません。
+  [code: *] と [code: as] と名前は省けません。[code: *] のない形はエラーで、[code: golem fmt] が [code: * as] の形に書き換えます。
   パスはプロジェクトのフォルダからの相対パスで書きます。
-  例：[code: @import common/values.gm as values]
+  例：[code: @import common/values.gm * as values]
+= [strong: [code: @import パス { 名前, … }]]
+  別のファイルの変数や関数のうち、並べた名前だけを、名前を前に付けずに参照できるように取り込みます。
+  名前は [code: ,] で区切り、一つ以上並べます。
+  組み込みのコマンドや式の名前、プラグインのコマンド、同じファイルの [code: @set] の変数、ほかの [code: @import] が並べた名前と同じ名前は、エラーになります。
+  例：[code: @import common/values.gm { price, edition }]
 = [strong: [code: @toc depth=N]]
   その位置に目次を組みます。
   [code: depth] は目次に載せる見出しの階層で、1 から 6 です。
@@ -501,7 +506,7 @@ PDF と HTML では、この例の一行めのうち、ルビと圏点を次の�
   値の並び（配列）は [code: \[1, 2, 3\]]、名前と値の組の集まり（連想配列）は [code: {price: 1800, tax: 10}] のように書きます。
   本文には埋め込めません。
 = [strong: 名前]
-  [code: @set] の変数は名前で、[code: @import] で取り込んだ変数は [code: 名前.変数] で参照します。
+  [code: @set] の変数と、[code: @import] で名前を並べて取り込んだ変数は名前で、[code: * as] で取り込んだ変数は [code: 名前.変数] で参照します。
   連想配列の値は、[code: 名前.キー] で参照します。
   [code: pi] と [code: e] は円周率と自然対数の底です。
 = [strong: 本の情報]

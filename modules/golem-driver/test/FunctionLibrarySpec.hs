@@ -102,7 +102,7 @@ withLibrary k = withSystemTempDirectory "golem-functions" $ \tmp -> do
   let names = [chapterName i | i <- [1 .. length examples]]
   forM_ (zip names examples) $ \(n, ex) ->
     BS.writeFile (tmp </> n <> ".gm") . TE.encodeUtf8 . T.unlines $
-      ("@import functions/" <> T.pack (exFile ex) <> " as " <> T.pack (dropExtension (exFile ex))) : "" : exCall ex
+      ("@import functions/" <> T.pack (exFile ex) <> " * as " <> T.pack (dropExtension (exFile ex))) : "" : exCall ex
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifest names))
   BS.writeFile (tmp </> "style.toml") styles
   k tmp examples

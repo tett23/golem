@@ -1,4 +1,4 @@
-@import art.emet as art
+@import art.emet * as art
 
 @art.page [= vars.seed] 1 [= vars.shapes]
 

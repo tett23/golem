@@ -183,6 +183,23 @@ tests =
             expected = "[cmd %%注%%]\n\n[cmd x %%注%%: 本文]\n\n[cmd \"x\" %%甲%% %%乙%% key=y]\n\n[= 1+ %%注%% 2]\n"
         formatted source @?= expected
         formatted expected @?= expected,
+      testCase "root ADR 0451 I5: the form without * is written with * as" $ do
+        formatted "@import common/values.gm as v\n\n[= v.price]\n" @?= "@import common/values.gm * as v\n\n[= v.price]\n"
+        formatted "@import   \"a b.gm\"   as   v\n" @?= "@import \"a b.gm\" * as v\n"
+        formatted "@label x\n@import f.emet as f\n" @?= "@label x\n@import f.emet * as f\n"
+        formatted "@import f.emet * as f\n" @?= "@import f.emet * as f\n",
+      testCase "root ADR 0451 I6: a list of names is written { a, b }" $ do
+        formatted "@import f.emet {a,b}\n" @?= "@import f.emet { a, b }\n"
+        formatted "@import f.emet {  a ,b   }\n" @?= "@import f.emet { a, b }\n"
+        formatted "@import f.emet { 名前,  tax-included }\n" @?= "@import f.emet { 名前, tax-included }\n"
+        formatted "@import f.emet { a }\n" @?= "@import f.emet { a }\n",
+      testCase "root ADR 0451 I6: a malformed @import and one with a comment are left alone" $ do
+        formatted "@import f.emet { a b }\n" @?= "@import f.emet { a b }\n"
+        formatted "@import f.emet {}\n" @?= "@import f.emet {}\n"
+        formatted "@import f.emet as\n" @?= "@import f.emet as\n"
+        formatted "@import f.emet %%注%% as f\n" @?= "@import f.emet %%注%% as f\n",
+      testCase "root ADR 0451 I5: formatting the imports is idempotent" $
+        mapM_ (\src -> formatted (formatted src) @?= formatted src) ["@import a.gm as v\n", "@import f.emet {a,b}\n", "@import \"x.gm\"  as  w\n\n@import f.emet{ c }\n"],
       testCase "Golem ADR 0339 I5: missing quotes prevent rewriting" $
         case format "[cmd key=x%%注%%]\n" of
           Unformattable ds -> map diagCode ds @?= [DiagnosticCode "G01102"]

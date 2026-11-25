@@ -1,4 +1,4 @@
-@import fn/book.emet as book
+@import fn/book.emet * as book
 
 @label pick
 # 活字を拾う

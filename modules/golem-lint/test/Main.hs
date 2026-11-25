@@ -29,7 +29,7 @@ newlineCodesIn :: SourceSettings -> Set.Set Text -> Text -> [Text]
 newlineCodesIn source keep src = [c | d <- latinJoinedByNewline source keep (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
 
 usage :: Usage
-usage = Usage [] Set.empty Map.empty []
+usage = Usage [] Set.empty Map.empty [] [] Set.empty
 
 codes :: [Diagnostic] -> [Text]
 codes = map (\d -> let DiagnosticCode c = diagCode d in c)
@@ -99,6 +99,17 @@ tests =
       testCase "G05003 unused import" $ do
         let f = FileLint (FileId 1) "a.gm" (fst (parse (FileId 1) "")) blankLine usage {usageImports = [("v", "v.gm", sp)]}
         codes (lint (LintInput [f] Map.empty Set.empty (Set.fromList ["verse"]))) @?= ["G05003"],
+      testCase "root ADR 0451 I2: G05003 at each listed name no one uses" $ do
+        let at s = mkSpan (FileId 1) s (s + 1)
+            f = FileLint (FileId 1) "a.gm" (fst (parse (FileId 1) "")) blankLine usage {usageListed = [("total", "f.emet", at 3), ("price", "v.gm", at 9), ("rate", "v.gm", at 6)], usageListedRefs = Set.fromList ["price"]}
+            ds = lint (LintInput [f] Map.empty Set.empty Set.empty)
+        coded ds @?= [("G05003", "使われていない import の名前です: total"), ("G05003", "使われていない import の名前です: rate")]
+        map (spanStart . diagSpan) ds @?= [3, 6],
+      testCase "root ADR 0451 I2: G05002 counts a variable an importer uses by its listed name" $ do
+        let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) blankLine usage {usageDefined = [("x", sp), ("y", sp), ("z", sp)]}
+            importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) blankLine usage {usageListed = [("x", "common.gm", sp), ("y", "common.gm", sp)], usageListedRefs = Set.fromList ["x"]}
+            elsewhere = FileLint (FileId 3) "other.gm" (fst (parse (FileId 3) "")) blankLine usage {usageListed = [("z", "other-common.gm", sp)], usageListedRefs = Set.fromList ["z"]}
+        coded (lint (LintInput [defining, importing, elsewhere] Map.empty Set.empty Set.empty)) @?= [("G05002", "使われていない変数です: y"), ("G05002", "使われていない変数です: z"), ("G05003", "使われていない import の名前です: y")],
       testCase "G05004 unreferenced labels are warnings, errors in prod" $ do
         let ds = lint (LintInput [] (Map.fromList [("a", sp), ("b", sp)]) (Set.fromList ["a"]) (Set.fromList ["verse"]))
         map diagSeverity ds @?= [Warning]

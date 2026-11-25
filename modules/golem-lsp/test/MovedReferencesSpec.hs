@@ -140,14 +140,14 @@ boundaryTests =
       (_, b) <- equivalent fx ("p/a.gm", "p/part/a.gm") []
       chaptersIn b "p/manifest.toml" @?= Just ["part/a.gm"],
     testCase "root ADR 0426 I1, I2: moving a manuscript with an import edits that import at the new URI" $ do
-      let fx = Fixture [("notes/x.gm", "@import \"sub/y.gm\" as y\n"), ("notes/sub/y.gm", "# Y\n")] [] [] [] [] []
+      let fx = Fixture [("notes/x.gm", "@import \"sub/y.gm\" * as y\n"), ("notes/sub/y.gm", "# Y\n")] [] [] [] [] []
       (_, b) <- equivalent fx ("notes/x.gm", "x.gm") []
-      Map.lookup "x.gm" (outTree b) @?= Just "@import \"notes/sub/y.gm\" as y\n"
+      Map.lookup "x.gm" (outTree b) @?= Just "@import \"notes/sub/y.gm\" * as y\n"
       either (const []) (map (look ["textDocument", "uri"]) . planEdits) (outPlan b) @?= [String "@x.gm"],
     testCase "root ADR 0426 I1, I2: moving a folder of manuscripts edits references under it" $ do
-      let fx = single [("p/manifest.toml", manifest ["a.gm", "d1/b.gm"]), ("p/a.gm", "@import \"d1/b.gm\" as b\n"), ("p/d1/b.gm", "# B\n")] []
+      let fx = single [("p/manifest.toml", manifest ["a.gm", "d1/b.gm"]), ("p/a.gm", "@import \"d1/b.gm\" * as b\n"), ("p/d1/b.gm", "# B\n")] []
       (_, b) <- equivalent fx ("p/d1", "p/d3") []
-      Map.lookup "p/a.gm" (outTree b) @?= Just "@import \"d3/b.gm\" as b\n"
+      Map.lookup "p/a.gm" (outTree b) @?= Just "@import \"d3/b.gm\" * as b\n"
       chaptersIn b "p/manifest.toml" @?= Just ["a.gm", "d3/b.gm"],
     testCase "root ADR 0426 I1, I2: moving a chapter to another project edits both manifests and returns the same chapters" $ do
       let fx =
@@ -310,7 +310,7 @@ graphFixture graph =
     )
     []
   where
-    importLine y = "@import \"" <> T.pack (makeRelative "p" (location y)) <> "\" as m" <> T.singleton y <> "\n"
+    importLine y = "@import \"" <> T.pack (makeRelative "p" (location y)) <> "\" * as m" <> T.singleton y <> "\n"
 
 checkGraph :: [(Char, Char)] -> Assertion
 checkGraph graph = do
@@ -343,10 +343,10 @@ imports text = (mapMaybe spelling ls, T.unlines (map blank ls))
     spelling line = do
       afterKeyword <- T.stripPrefix "@import \"" line
       let (path, rest) = T.breakOn "\"" afterKeyword
-      alias <- T.stripPrefix "\" as m" rest
+      alias <- T.stripPrefix "\" * as m" rest
       pure (alias, path)
     blank line = case spelling line of
-      Just (alias, _) -> "@import _ as m" <> alias
+      Just (alias, _) -> "@import _ * as m" <> alias
       Nothing -> line
 
 -- Procedures ----------------------------------------------------------------

@@ -6,7 +6,7 @@
 ## 原稿の例
 
 ```
-@import common/values.gm as values
+@import common/values.gm * as values
 @set version = "1.0"
 
 @label intro
@@ -274,7 +274,8 @@ PDF の既定の番号は、横組みでは算用数字とピリオド（`1.`）
 v1 で定めるブロックコマンドは次のとおりである。
 
 - `@set name = 式`：ファイル単位の変数を定義する。式は式文脈の言語で書く。`@` の無い行頭の `set name = 式` は宣言にならず、本文として読む（[ADR 0391](adr/0391-keep-the-at-sign-on-variable-declarations.md)）。
-- `@import path as ns`：別のファイルで `@set` により定義した変数を、名前空間 `ns` の下に取り込む。名前空間は省略できない。パスはプロジェクトルートの中に限る。パスの拡張子が `.emet` なら、`.emet` の関数を名前空間 `ns` の下に取り込む（[docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)）。取り込んだ名前は、`@import` を書いたファイルの中だけで見える。
+- `@import path * as ns`：別のファイルで `@set` により定義した変数を、名前空間 `ns` の下に取り込む。名前空間は省略できない。パスはプロジェクトルートの中に限る。パスの拡張子が `.emet` なら、`.emet` の関数を名前空間 `ns` の下に取り込む（[docs/adr/0162](adr/0162-calling-emet-functions-from-gm.md)）。取り込んだ名前は、`@import` を書いたファイルの中だけで見える。
+- `@import path { a, b }`：別のファイルの `@set` の変数か `.emet` の関数のうち、並べた名前だけを、名前空間なしで参照できるように取り込む。`*` のない `@import path as ns` は G03295 のエラーで、`golem fmt` が `* as` の形に書き換える。名前の重なりの規則は仕様書の「定義の取り込み」の節にある（[docs/adr/0451](adr/0451-import-listed-names-without-a-namespace.md)）。
 - `@label name`：直後のブロックにラベルを付ける。
 - `@separator 名前`：指定した名前の区切りを文書の最上位に置く。`---` は `@separator default` と同じ名前を使う（「区切り」の節を参照）。
 - `@toc depth=N`：目次を出力する。`N` は載せる見出しの階層で、1 から 6 の整数であり、省けば 2 である（[ADR 0188](adr/0188-headings-beyond-level-3.md)）。文書に一つだけ置ける。PDF では、各項目に見出しのページ番号をリーダーとともに出す（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。

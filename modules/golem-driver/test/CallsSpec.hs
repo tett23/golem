@@ -105,7 +105,7 @@ texts e path = [concatMap inlineTexts is | Block _ _ _ (Paragraph _ is) <- block
       _ -> []
 
 imported :: Text -> Text
-imported body = "@import functions/book.emet as book\n\n" <> body
+imported body = "@import functions/book.emet * as book\n\n" <> body
 
 -- | The files under a folder and their bytes, by their paths from it.
 filesUnder :: FilePath -> IO [(FilePath, BS.ByteString)]
@@ -124,7 +124,7 @@ callsTests =
   testGroup
     "the functions of .emet in a book (docs/adr/0162)"
     [ testCase "root ADR 0398 I6: two generated separator names at one span resolve separately" $
-        withBook [("a.gm", "@import functions/scene.emet as scene\n\n@scene.two\n")] [("style.toml", "[separators.scene]\nkind = \"text\"\ntext = \"＊\"\n[separators.rule]\nkind = \"rule\"\n"), ("functions/scene.emet", "pub block two :: Blocks\ntwo = Block.separator \"scene\" ++ Block.separator \"rule\"\n")] "" $ \tmp -> do
+        withBook [("a.gm", "@import functions/scene.emet * as scene\n\n@scene.two\n")] [("style.toml", "[separators.scene]\nkind = \"text\"\ntext = \"＊\"\n[separators.rule]\nkind = \"rule\"\n"), ("functions/scene.emet", "pub block two :: Blocks\ntwo = Block.separator \"scene\" ++ Block.separator \"rule\"\n")] "" $ \tmp -> do
           e <- evaluated tmp
           codesIn e @?= []
           map (Map.size . bookSeparators) (maybe [] pure (evBook e)) @?= [2],

@@ -395,7 +395,7 @@ PDF では、引用符、ダッシュ、三点リーダーのように和文に�
 HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の言語の情報を書きます。
 画面の読み上げソフトは、この情報で読み上げの言語を切り替えます。
 
-@import common/values.gm as values
+@import common/values.gm * as values
 
 ## 変数をファイルで共有する
 
@@ -409,7 +409,7 @@ HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の�
 このファイルを [code: common/values.gm] とすると、章の原稿からは次のように使います。
 
 ```
-@import common/values.gm as values
+@import common/values.gm * as values
 
 本書は[= values.edition]です。
 ```
@@ -417,6 +417,19 @@ HTML と EPUB には [code: lang] の属性を、PDF にはタグ付き PDF の�
 [code: @import] で取り込めるのは、[code: @set] で定義した変数と、関数を書くファイル（[code: .emet]）の関数です。
 関数は、第[ref-number emet-intro]章「[ref-title emet-intro]」と[ref-title app-emet]（[ref-page app-emet] ページ）で説明します。
 取り込んだ変数は、[code: as] で付けた名前を前に付けて参照します。
+[code: *] を落とした [code: @import common/values.gm as values] はエラーになります。
+[code: golem fmt] を動かすと、[code: * as] の形に書き換わります。
+
+使う変数の名前を [code: { }] の中に [code: ,] で区切って並べると、名前を前に付けずに参照できます。
+
+```
+@import common/values.gm { price, edition }
+
+本書は[= edition]です。
+```
+
+並べた名前が、組み込みのコマンドや式の名前、プラグインのコマンド、同じファイルの [code: @set] の変数、ほかの [code: @import] が並べた名前と同じなら、エラーになります。
+どの名前がどのファイルから来たかは、[code: @import] の行で読めます。
 取り込むファイルは、章として [code: manifest.toml] に並べる必要はありません。
 このマニュアルも、版面の字数と行数を [code: common/values.gm] に書いて取り込み、ここで「一行 [= values.characters] 字、一ページ [= values.lines] 行」と組んでいます。
 
