@@ -19,6 +19,7 @@ packages:
   modules/golem-epub
   modules/golem-eval
   modules/golem-font
+  modules/golem-geometry
   modules/golem-html
   modules/golem-layout
   modules/golem-layout-spec

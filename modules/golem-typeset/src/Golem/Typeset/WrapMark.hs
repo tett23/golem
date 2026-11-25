@@ -70,7 +70,7 @@ wrapMarkFills :: [[(Sp, Sp)]] -> [P.Mark]
 wrapMarkFills = concatMap fill
   where
     fill = \case
-      ps@(p0 : rest) -> [P.CurveFill p0 [(a, b, b) | (a, b) <- zip ps (rest <> [p0])]]
+      ps@(p0 : rest) -> [P.FilledPath P.NonZero (P.Path [P.SubPath p0 [P.CurveTo a b b | (a, b) <- zip ps (rest <> [p0])] True])]
       [] -> []
 
 {- | The colour of the mark: half of each value of the colour of the code,
