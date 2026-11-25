@@ -192,8 +192,31 @@ fontLicensesTests =
       a <- run
       b <- run
       a @?= b
-      sort [c | (c, _, _) <- a] @?= map DiagnosticCode ["G03282", "G03282", "G03283", "G03284"]
+      sort [c | (c, _, _) <- a] @?= map DiagnosticCode ["G03282", "G03282", "G03283", "G03284"],
+    testCase "root ADR 0448 I3: golem build reports G03282 once for each font without its key, only when a built target embeds the fonts" $
+      forM_ i3Rows $ \(name, targets, style, built, expected) ->
+        withLicenseProject targets style (font "a.otf" <> font "b.otf") $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just built, optFonts = fakeProvider, optProfile = Dev}
+          (name, length [() | c <- codesIn r, c == DiagnosticCode "G03282"]) @?= (name, expected)
   ]
+
+{- | The rows of the table of root ADR 0448 for golem build: the name, the
+targets of the manifest, style.toml, the targets built, and the number of
+G03282.
+-}
+i3Rows :: [(String, Text, Text, [Target], Int)]
+i3Rows =
+  [ ("no [fonts]", embedBoth, TE.decodeUtf8 horizontalStyle, [TargetHtml, TargetEpub], 0),
+    ("one font, HTML embeds", embedBoth, oneFont, [TargetHtml], 1),
+    ("two fonts, HTML embeds", embedBoth, bodyStyle "ja = \"fonts/a.otf\"\nlatin = \"fonts/b.otf\"\n", [TargetHtml], 2),
+    ("one font, HTML and EPUB embed", embedBoth, oneFont, [TargetHtml, TargetEpub], 1),
+    ("HTML generic, EPUB embeds", "[targets.html]\nfonts = \"generic\"\n\n[targets.epub]\nfonts = \"embed\"\n", oneFont, [TargetHtml, TargetEpub], 1),
+    ("HTML generic", "[targets.html]\nfonts = \"generic\"\n", oneFont, [TargetHtml], 0),
+    ("only the PDF", "[targets.pdf]\n\n" <> embedBoth, oneFont, [TargetPdf], 0),
+    ("HTML embeds, EPUB generic, built with --target epub", "[targets.html]\nfonts = \"embed\"\n\n[targets.epub]\n", oneFont, [TargetEpub], 0)
+  ]
+  where
+    oneFont = bodyStyle "ja = \"fonts/a.otf\"\n"
 
 -- | The codes of root ADR 0433.
 licenseCodes :: [DiagnosticCode]

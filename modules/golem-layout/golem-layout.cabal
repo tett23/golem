@@ -29,6 +29,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Layout.Warichu
+                    Golem.Layout.BoxModel
                     Golem.Layout.KnuthPlass
                     Golem.Layout.Align
                     Golem.Layout.Aki
@@ -65,6 +66,7 @@ library
     , base               >=4.20 && <4.21
     , containers         >=0.6  && <0.8
     , golem-doc
+    , golem-geometry
     , golem-length
     , golem-numerals
     , golem-project
@@ -87,6 +89,7 @@ test-suite golem-layout-test
   if !arch(wasm32)
     ghc-options:    -threaded "-with-rtsopts=-N -qg -A64m"
   other-modules:    BookPartsEnum
+                    BoxModelSpec
                     BookPartsSpec
                     ExtendedJapaneseSpec
                     AkiTableSpec
@@ -147,6 +150,7 @@ test-suite golem-layout-test
     , bytestring
     , containers
     , golem-doc
+    , golem-geometry
     , golem-font
     , golem-layout
     , golem-length

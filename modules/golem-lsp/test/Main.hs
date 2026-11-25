@@ -382,6 +382,25 @@ tests =
               everywhere = [c | ds <- Map.elems (diagnosticsFor ws), d <- ds, let DiagnosticCode c = diagCode d]
           (target, codesIn "style.toml") @?= (target, ["G03282" | reported])
           (target, filter (`elem` ["G03010", "G03283", "G03284"]) everywhere) @?= (target, []),
+      testCase "root ADR 0448 I4: the LSP reports G03282 once for each font without its key, only when the manifest declares a web target that embeds the fonts" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let embedHtml = "[targets.html]\nfonts = \"embed\"\n" :: Text
+            oneFont = "[fonts.body]\nja = \"fonts/a.otf\"\n" :: BS.ByteString
+        forM_
+          [ ("no [fonts]", embedHtml, "", 0),
+            ("one font, HTML embeds", embedHtml, oneFont, 1),
+            ("two fonts, HTML embeds", embedHtml, "[fonts.body]\nja = \"fonts/a.otf\"\nlatin = \"fonts/b.otf\"\n", 2),
+            ("one font, HTML and EPUB embed", "[targets.html]\nfonts = \"embed\"\n\n[targets.epub]\nfonts = \"embed\"\n", oneFont, 1),
+            ("HTML generic, EPUB embeds", "[targets.html]\nfonts = \"generic\"\n\n[targets.epub]\nfonts = \"embed\"\n", oneFont, 1),
+            ("HTML generic", "[targets.html]\nfonts = \"generic\"\n", oneFont, 0),
+            ("HTML embeds, EPUB generic", "[targets.html]\nfonts = \"embed\"\n\n[targets.epub]\n", oneFont, 1)
+          ]
+          $ \(name, targets, style, expected) -> do
+            BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 (manifestToml testManifest {tmTargets = []} <> "\n" <> targets))
+            BS.writeFile (tmp </> "style.toml") style
+            TIO.writeFile (tmp </> "a.gm") "本文。\n"
+            ws <- openWorkspace tmp
+            let g03282 = [() | d <- fromMaybe [] (Map.lookup "style.toml" (diagnosticsFor ws)), diagCode d == DiagnosticCode "G03282"]
+            (name :: String, length g03282) @?= (name, expected),
       testCase "a bibliography with a character that cannot be written is G03108 on manifest.toml (docs/adr/0159)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "A.\n"

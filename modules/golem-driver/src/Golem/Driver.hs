@@ -48,7 +48,6 @@ module Golem.Driver
     sourceSettingsOf,
     builtinKeepStyles,
     cssFontSize,
-    fontLicenseKeyDiagnostics,
     targetsOf,
   )
 where
@@ -981,7 +980,7 @@ buildCore inMemory opts = do
       -- G03284: files of the same name and other bytes under fonts/, for the targets that embed the fonts (root ADR 0433)
       let declared = manifestTargets (projectManifest project)
       clashes <-
-        if any (\t -> (t == TargetHtml && tgHtmlFonts declared == WebFontsEmbed) || (t == TargetEpub && tgEpubFonts declared == WebFontsEmbed)) targets
+        if embedsFonts declared (TargetHtml `elem` targets) (TargetEpub `elem` targets)
           then fontClashDiagnostics (optFiles opts) diagFid fileStyle missing
           else pure []
       let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid declared fileStyle locals missing clashes t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
@@ -1182,27 +1181,6 @@ styleFilePaths style = nub (map snd (fontFiles style) <> licenses <> maybe [] pu
   where
     licenses = [l | fr <- Map.elems (stFonts style), Just l <- [frJaLicense fr, frLatinLicense fr]]
 
-{- | G03282 (root ADR 0433): each font file HTML and EPUB copy, the
-@present@ ones, whose role has no license document for its key; when a
-target of @targets@ embeds the fonts. At the top of style.toml, a warning
-that the profile prod makes an error. The language server, which looks at
-no file, takes every font as present.
--}
-fontLicenseKeyDiagnostics :: FileId -> Targets -> [Target] -> Style -> (FilePath -> Bool) -> [Diagnostic]
-fontLicenseKeyDiagnostics fid declared targets style present
-  | any embeds targets =
-      [ diagnostic "G03282" Warning (mkSpan fid 0 0) ("フォントのライセンスの文書を指定していません: [fonts." <> ffRole f <> "] の " <> ffKey f <> "-license（" <> T.pack (ffPath f) <> "）")
-      | f <- fontFilesWithLicenses style,
-        present (ffPath f),
-        isNothing (ffLicense f)
-      ]
-  | otherwise = []
-  where
-    embeds = \case
-      TargetHtml -> tgHtmlFonts declared == WebFontsEmbed
-      TargetEpub -> tgEpubFonts declared == WebFontsEmbed
-      _ -> False
-
 {- | The files HTML and EPUB copy to fonts/ when they embed the fonts (root
 ADR 0433): each font that is not @missing@, then the license document of
 each such font that is not missing, as (output path, source path).
@@ -1265,7 +1243,7 @@ targetFileDiagnostics fid declared style locals missing clashes target =
       WebFontsEmbed ->
         report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
           -- the license documents of the fonts that are copied (root ADR 0433)
-          <> fontLicenseKeyDiagnostics fid declared [target] style (`Map.notMember` missing)
+          <> fontLicenseKeyDiagnostics fid style (`Map.notMember` missing)
           <> report "G03283" Warning "フォントのライセンスの文書のファイルがありません" [l | f <- fontFilesWithLicenses style, Map.notMember (ffPath f) missing, Just l <- [ffLicense f]]
           <> clashes
       WebFontsGeneric -> []
