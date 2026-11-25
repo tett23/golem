@@ -13,7 +13,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
 import Golem.Driver
-import Golem.Driver.Verse
+import Golem.Evaluate.Verse
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Project.Style
 import Golem.Syntax

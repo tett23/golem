@@ -1,5 +1,6 @@
 module PhysicalPaginateSpec (physicalPaginateTests) where
 
+import AdjacentRules (Adjacent (..), adjacentCases, adjacentFree, adjacentFreeSettings, adjacentGrid, freeShared, gridShared, rulesOverlap)
 import Control.Monad (forM_, when)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
@@ -1305,6 +1306,30 @@ joinedRuleTests =
               i' = rsdInner side
               o' = rsdOuter side
               flows = lead <> [FRuled 100 Nothing (Just side) False (RuleGrid 20 10) r body, FParagraph defaultKeep [line 40]]
+        ],
+    testCase "root ADR 0449 I1: in the free placement, a ruled paragraph or heading and the ruled paragraph or heading right after it in the same column share one area at the places of the shared formula" $
+      sequence_
+        [ case paginatePhysical (adjacentFreeSettings ad) (adjacentFree ad) of
+            Left failure -> assertFailure (show (ad, failure))
+            Right ps -> assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (freeShared ad ps /= Just False)
+        | ad <- adjacentCases,
+          not (adSpace ad)
+        ],
+    testCase "root ADR 0449 I2: in the free placement, the rules of two adjacent ruled blocks do not overlap" $
+      sequence_
+        [ case paginatePhysical (adjacentFreeSettings ad) (adjacentFree ad) of
+            Left failure -> assertFailure (show (ad, failure))
+            Right ps -> assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (all (null . rulesOverlap ad) ps)
+        | ad <- adjacentCases
+        ],
+    testCase "root ADR 0449 I3: when the second block goes on in the column of the first in both placements, both share the area of the two rules or neither does" $
+      sequence_
+        [ case (gridShared ad (paginate 1 (adCapacity ad) (adjacentGrid ad)), paginatePhysical (adjacentFreeSettings ad) (adjacentFree ad)) of
+            (_, Left failure) -> assertFailure (show (ad, failure))
+            (grid, Right ps) -> case (grid, freeShared ad ps) of
+              (Just inGrid, Just inFree) -> assertEqual (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) inGrid inFree
+              _ -> pure ()
+        | ad <- adjacentCases
         ]
   ]
   where

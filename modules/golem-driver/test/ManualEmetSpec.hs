@@ -17,7 +17,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
-import Golem.Driver.Functions (formatFunctionFile)
+import Golem.Evaluate.Functions (formatFunctionFile)
 import Support (codesOf)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.FilePath (replaceExtension, takeExtension, takeFileName, (</>))
