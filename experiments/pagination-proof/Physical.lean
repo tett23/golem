@@ -6258,19 +6258,67 @@ theorem ruleBeforeEdgeExtra_nonneg (pitch face : Int) (side : RuleSide) (overhan
 theorem ruleGapExtra_nonneg (gap : Int) (side : RuleSide) (overhang : Int) : 0 ≤ ruleGapExtra gap side overhang := by
   unfold ruleGapExtra; exact Int.le_max_left _ _
 
+/-- `fit` that keeps the column leaves the used length as it was when no
+    space is pending: it drops the space at the top of an empty column, or
+    puts the pending space, which is 0. -/
+theorem fit_here_used (env : Env) (st : St) (a : Int)
+    (h : (fit env st a).page = st.page ∧ (fit env st a).column = st.column) (hp : st.pending = 0) :
+    (fit env st a).used = st.used := by
+  unfold fit at h ⊢
+  by_cases c1 : empty st = true ∧ a ≤ room env st
+  · rw [if_pos c1]; rfl
+  · rw [if_neg c1] at h ⊢
+    by_cases c2 : empty st = true ∧ st.adjust < 0
+    · rw [if_pos c2] at h
+      exfalso
+      have := nextColumn_elsewhere env st
+      simp only [dropAtTop] at h
+      rcases this with e | e
+      · exact e h.1
+      · exact e h.2
+    · rw [if_neg c2] at h ⊢
+      by_cases c3 : a + st.pending ≤ room env st
+      · rw [if_pos c3]; simp only [hp]; omega
+      · rw [if_neg c3] at h ⊢
+        by_cases c4 : empty st = true
+        · rw [if_pos c4]; rfl
+        · rw [if_neg c4] at h
+          exfalso
+          have := nextColumn_elsewhere env st
+          simp only [dropAtTop] at h
+          rcases this with e | e
+          · exact e h.1
+          · exact e h.2
+
+/-- `headingReady` that keeps the column leaves the used length as it was
+    when no space is pending: the column made shorter (`tallAt`) keeps it,
+    and so does `fit` (`fit_here_used`). -/
+theorem headingReady_here_used (env : Env) (hs : St) (firstId : Nat) (extent size : Int)
+    (h : (headingReady env hs firstId extent size).page = hs.page ∧
+      (headingReady env hs firstId extent size).column = hs.column) (hp : hs.pending = 0) :
+    (headingReady env hs firstId extent size).used = hs.used := by
+  unfold headingReady at h ⊢
+  split
+  · rfl
+  · rename_i c
+    rw [if_neg c] at h
+    exact fit_here_used env hs size h hp
+
 /-- The rule before a ruled heading placed from `ready`, with its geometry
     taken on `cur` (`beforeGeometry headingState`), lies off the heading's
     face and in the column above the notes; it starts after the face of
     the line before it, or at or after the start of the heading's area, or
     else it lies wholly above an empty column that starts at 0 (the
-    outside of golem-driver ADR 0040).  `ready` is `cur` with no space
-    pending put, as `fit` leaves it in the same column. -/
+    outside of golem-driver ADR 0040).  `ready` is `headingReady` of `cur`
+    in the same column, as `placeRuled` puts the heading
+    (`headingReady_here_used`). -/
 theorem I3_ruledHeading_rule_before (env : Env) (r : Ruled) (side : RuleSide) (l : Line) (cur ready s : St)
-    (extent after : Int) (ends : List Int) (hb : r.before = some side) (hl : r.lines.head? = some l)
+    (extent after size : Int) (ends : List Int) (hb : r.before = some side) (hl : r.lines.head? = some l)
     (hi : 0 ≤ side.inner) (ho : 0 ≤ side.outer) (hp : 0 < env.pagePitch)
     (hn : ∀ n ∈ notesOf r.lines, 0 < n.lines)
     (he : faceOffset (headingFirstPitch env r l) (env.faceOf l.id) - l.overhang ≤ extent)
-    (hu : cur.pending = 0 → ready.used = cur.used) (ha : 0 ≤ after)
+    (hready : ready = headingReady env cur (headId r.lines) extent size)
+    (hk : ready.page = cur.page ∧ ready.column = cur.column) (ha : 0 ≤ after)
     (hr : headingBeforeAt env cur r + extent + after ≤ room env ready)
     (h : putRuledHeading env ready (headingBeforeAt env cur r) after ends (headId r.lines) extent r.lines = .ok s) :
     ready.used + (headingBeforeGeom env cur r side l).2 + side.weight
@@ -6281,6 +6329,8 @@ theorem I3_ruledHeading_rule_before (env : Env) (r : Ruled) (side : RuleSide) (l
           ≤ ready.used + (headingBeforeGeom env cur r side l).2) ∨
       ready.used ≤ ready.used + (headingBeforeGeom env cur r side l).2 ∨
       (empty cur ∧ cur.used = 0 ∧ ready.used + (headingBeforeGeom env cur r side l).2 + side.weight ≤ ready.used)) := by
+  have hu : cur.pending = 0 → ready.used = cur.used := by
+    intro hpend; subst hready; exact headingReady_here_used env cur _ _ _ hk hpend
   have room' := putRuledHeading_room env ready s _ _ _ _ extent r.lines hp hn hr h
   have hB : headingBeforeAt env cur r = (headingBeforeGeom env cur r side l).1 := by
     unfold headingBeforeAt; rw [hb, hl]
