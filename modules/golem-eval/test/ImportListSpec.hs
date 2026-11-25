@@ -65,7 +65,7 @@ ctx :: EvalContext
 ctx =
   baseCtx
     { ctxFunctions = FunctionTable (Map.fromList [("functions/book.emet", book), ("functions/other.emet", book)]) False Set.empty,
-      ctxImports = Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100), ("toc", VString "T"), ("rate", VNat 8)])],
+      ctxImports = ResolvedImports (Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100), ("toc", VString "T"), ("rate", VNat 8)])]),
       ctxPlugins = plugins
     }
 

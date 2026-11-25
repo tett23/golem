@@ -38,7 +38,7 @@ ctx :: EvalContext
 ctx =
   baseCtx
     { ctxMeta = Map.fromList [("title", VString "本の題")],
-      ctxImports = Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100)])],
+      ctxImports = ResolvedImports (Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100)])]),
       ctxSwatches = Set.fromList ["accent"],
       ctxCharStyles = Set.fromList ["term", "strong", "bold", "italic"],
       ctxParaStyles = Map.fromList [("body", JoinLines), ("verse", KeepLines), ("caption", JoinLines), ("sidenote", JoinLines), ("quote", JoinLines)],
