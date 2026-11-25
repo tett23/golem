@@ -181,7 +181,7 @@ ruledInputs =
          n <- [1, 2]
        ]
     -- a ruled paragraph before a ruled heading marked as sharing its rule
-    -- before, which the free placement does not share (golem-driver ADR 0027)
+    -- before, which shares the area of the rule after (root ADR 0449)
     <> [ (Column cap 0 1, [para 0 p, ruled 100 (Just s) (Just s) False defaultKeep (lines' 10 n), FRuled 101 (Just t) (Just t) True (RuleGrid 10 8) 0 (RuledHeading False (Sp e) (lines' 20 1)), para 30 1])
        | cap <- [40, 60],
          p <- [1, 2],
@@ -189,6 +189,23 @@ ruledInputs =
          t <- take 2 sides,
          n <- [1, 2],
          e <- [10, 20]
+       ]
+    -- the four pairs of a ruled paragraph or heading with a rule after and
+    -- a ruled paragraph or heading with a rule before that joins it, with
+    -- no space or a space between, in columns where the second block fits
+    -- with the shared area, overflows it, or drops its rules (root ADR 0449)
+    <> [ (Column cap 0 1, [para 0 p, first] <> between <> [second, para 30 1])
+       | cap <- [36, 44, 60],
+         p <- [1, 2],
+         s <- [sides !! 0, sides !! 3],
+         t <- [sides !! 0, sides !! 1],
+         first <-
+           [ruled 100 (Just s) (Just s) False defaultKeep (lines' 10 n) | n <- [1, 2]]
+             <> [ruledHeading 100 (Just s) (Just s) False e ls | (e, ls) <- [(10, [line 300]), (20, [line 385])]],
+         between <- [[], [FSpace 5]],
+         second <-
+           [ruled 101 (Just t) (Just t) True defaultKeep (lines' 20 m) | m <- [1, 2]]
+             <> [FRuled 101 (Just t) (Just t) True (RuleGrid 10 8) 0 (RuledHeading False (Sp e) [line 310]) | e <- [10, 24]]
        ]
     -- a ruled paragraph with a note on one of its lines, whose lines keep
     -- the later lines and the area of the rule after out of their notes

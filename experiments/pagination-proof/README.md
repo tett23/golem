@@ -577,10 +577,10 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate.hs:642` `placeLines` | `placeLines`、`placeLinesGo`、`lineCount`、`shortParts` |
 | `Paginate.hs:562` `place` の `FWrapped` | `place` の `wrapped` |
 | `Paginate.hs:682` `placeStanza` | `placeStanza`、`placeStanzaGo`、`versesFitting`、`stanzaK0`、`stanzaK2`、`putVerses`、`shortVerse` |
-| `Paginate.hs:729` `placeRuled`、`:762` `settleRuled`、`:775` `settlesAfter` | `placeRuled`、`placeRuledFresh`、`settleJoined`、`settleRuled`、`settlesOn`、`settlesAfter` |
-| `Paginate.hs:785` `commitRuled`、`:798` `splitRuled`、`:814` `flushJoin`、`:820` `ownAfter` | `commitRuled`、`putRuledLines`、`splitRuled`、`flushJoin`、`ownArea`、`ownFits` |
-| `Paginate.hs:835` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
-| `Paginate.hs:860` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
+| `Paginate.hs:729` `placeRuled`、`:768` `settleRuled`、`:781` `settlesAfter` | `placeRuled`、`placeRuledFresh`、`settleJoined`、`unjoined`、`settleRuled`、`settlesOn`、`settlesAfter` |
+| `Paginate.hs:791` `commitRuled`、`:804` `splitRuled`、`:820` `flushJoin`、`:826` `ownAfter` | `commitRuled`、`putRuledLines`、`splitRuled`、`flushJoin`、`ownArea`、`ownFits` |
+| `Paginate.hs:841` `placeTable` | `placeTable`、`tableRowsGo`、`withCaption`、`putRepeated` |
+| `Paginate.hs:866` `placeTableAcross` | `placeTableAcross`、`acrossGo`、`tableGroups`、`mustRepeat`、`retainsTail` |
 | `Paginate/BookParts.hs:13` `placeBookPart` | `placeBookPart`、`partTrial`、`fitsPart`、`unitKey`、`emptyUnit`、`nextUnit`、`nextSpread`、`hasNested` |
 | `Paginate/BookParts.hs:60` `flattenBookParts` | `flattenParts` |
 | `Paginate/BookParts.hs:66` `flowSlotIds`、`:83` `slotIds` | `flowSlotIds`、`flowsSlotIds`、`slotIds` |
@@ -644,8 +644,8 @@ PR #1141 の後、この関数は、保持の中でそれより前の行数と�
 golem-typeset は可視の区切りの位置の集合（`separatorSpans`、`Flow.hs:829`）を golem-layout の `paginateHeld` と `PhysicalSettings` の `physicalHeld` に渡す（`Flow.hs:835`、`:862`）。
 モデルでは、位置を行の id で表す。
 `Whole.lean` と `Physical.lean` の `keepNext` のフローと満たせなかった `keepNext` は位置の id を持ち、`space` は区切りの後の `keep-with-next` に区切りの行の id を付ける（`keepOf`、`holdOf`）。
-`heldHere`（`modules/golem-layout/src/Golem/Layout/Paginate/State.hs:183` と `Paginate/Physical.hs:910`）は、`held` に入る位置の `keep-with-next` が今の段で待っているかを返す。
-格子モードの `placeKept`（`Paginate.hs:442`）と自由な配置の `placeWithNext` と `placeStanzaWithNext`（`Paginate/Physical.hs:887`、`:901`）は、保持が待つ段から後続のブロックを自分の指定のために送らず、空の段からと同じに置く。
+`heldHere`（`modules/golem-layout/src/Golem/Layout/Paginate/State.hs:183` と `Paginate/Physical.hs:935`）は、`held` に入る位置の `keep-with-next` が今の段で待っているかを返す。
+格子モードの `placeKept`（`Paginate.hs:442`）と自由な配置の `placeWithNext` と `placeStanzaWithNext`（`Paginate/Physical.hs:912`、`:926`）は、保持が待つ段から後続のブロックを自分の指定のために送らず、空の段からと同じに置く。
 格子モードでは、`Boundary.lean` の `holds` と `chained` が `Decide.hs` の `holds`（`Decide.hs:135`）と `chainedHeld`（`Decide.hs:197`）を写す。
 保持の後のブロックの全体の後に `@no-page-break` が続くと、`keptNeed` はその `@no-page-break` が保つ後の最初の部分も区切りに求める。
 `held` は `Env` の引数なので、`Whole.lean`、`Physical.lean`、`Separator.lean` の定理は `held` のどの値でも成り立つ。
@@ -821,6 +821,13 @@ PR #1133 は、後続ブロックの最初の部分をそのブロック自身�
 見出しは一つのスロット（`SHeading`）に置き、`I5_paginate_text` では見出しの最初の行の id を一つだけ数える。
 脚注は、行ごとの脚注の分割（`splitNotes`）、次の段への繰り越し（`carryInto` と `splitCarried`）、区切りの長さを含めて写した。
 罫線つきのブロックは、前のブロックと罫線の領域を共有する配置（`psJoin`）、共有をやめて次の段へ送る配置（`placeRuledKeeping` と `flushPendingRule`）を含めて写した。
+待つ罫線は、`Paginate/Physical.hs` の `PendingRule` と同じく、ブロックの id、罫線の寸法、段の終わりで罫線が使う箱の始まりと送りと字面で持つ（`Pending`）。
+[root ADR 0449](../../docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md) の後、見出しの罫線つきのブロックも、前の罫線を待つ罫線と共有し（`headingBeforeShared`）、後の罫線を次のブロックのために待たせる（`headingWaiting`、`ruledHeadingHere`）。
+`ruledHeadingHere`（`Paginate/Physical.hs:1569`）は、`placeRuled` の `RuledHeading` の枝から分かれた関数で、`Physical.lean` でも同じ名前で写した。
+段の終わりの後の罫線で次の段へ送った見出しは、`Paginate/Physical.hs` では `placeRuled` で置き直すが、`Physical.lean` では `ruledHeadingHere` で置き直す。
+新しい段には待つ罫線も後の罫線もないので、`placeRuled` はそのまま `ruledHeadingHere` を呼び、二つは同じ配置を返す。
+こう写すと、`placeRuled` と `ruledHeadingHere` の相互再帰の尺度を、罫線の数の 2 倍（`placeRuled` ではそれに 1 を足す）と段の順位で取れる。
+共有できないブロックが次の段から始まる規則（`startsAfterOwnRule`）も写した。
 見出しの罫線つきのブロックは、`keepFollowing` で後続を判定した段から、罫線の領域を足した長さで見出しを置く。
 罫線の領域と見出しと脚注の長さの和が段の容量を超えるときは、後の罫線を外し、次に前の罫線を外して置き直し、どちらもなければ罫線のない見出しとして置く。
 見出しの罫線の領域は、`physicalHeadingBounds` に見出しの字面の位置があればその位置から求めた仮想の送りで求める（`Env.headingBounds`）。
@@ -830,17 +837,17 @@ PR #1133 は、後続ブロックの最初の部分をそのブロック自身�
 見出しの罫線は、領域の長さと位置をともに写した（`headingBeforeGeom`、`headingAfterGeom`）。
 先のフローが求める長さ（`firstNeed`）は `Env` の引数とし、定理はそのどの値でも成り立つ。
 
-罫線つきの段落は、`ruledHere`（`Paginate/Physical.hs:1345`）が置く段を決める（[golem-driver ADR 0027](../../docs/golem-driver/adr/0027-paragraph-style-rules.md)）。
+罫線つきの段落は、`ruledHere`（`Paginate/Physical.hs:1384`）が置く段を決める（[golem-driver ADR 0027](../../docs/golem-driver/adr/0027-paragraph-style-rules.md)）。
 `ruledHere` は、後続を読んだ配置で段落が段に収まり、後の罫線が段にとどまるときに、その配置で置く。
-後の罫線がとどまるのは、後続が罫線の領域を共有する段落で始まり、その段落が同じ段で領域を共有して置けて後続のために次の段へ送られないとき（`settlesHere`）か、後続が共有しないときに後の罫線が段の脚注より上で終わるとき（`ruleAfterInColumn`）である。
+後の罫線がとどまるのは、後続が罫線の領域を共有する段落か見出しで始まり、そのブロックが同じ段で領域を共有して置けて後続のために次の段へ送られないとき（`settlesHere`）か、後続が共有しないときに後の罫線が段の脚注より上で終わるとき（`ruleAfterInColumn`）である。
 とどまらなければ、後続を読まず、後の罫線を段の終わりの長さで数えた配置で置き直す。
-見出しの罫線つきのブロックは、前の罫線を共有しない（`joinsNext`）。
+罫線を省く見出し（G07046、`headingDrops`）と、奇数ページから始める見出しは、前の罫線を共有しない（`joinsNext`、`settlesHere`）。
 `Physical.lean` は、`ruleAfterInColumn` が読む `psRules` を写さず、ブロックの後の罫線を一つだけ読む（`ruleAfterFits`、見出しでは `headingRuleFits`）。
 罫線つきのブロックの id は互いに異なるので、`psRules` の中でその id を持つ後の罫線はこの一つである。
 
 `I3_ruledHere_rule_after` は、`ruledHere` が置いた段落の後の罫線が、次の段落との共有を待つか、段の中で段の脚注より上で終わることを示す。
 段の終わりの長さで置いた後の罫線も、段落が使った長さの中で終わり（`I3_ruleAfter_edge`）、その長さは段の脚注より上にある。
-段落の各行は、段落の残りの行と後の罫線の領域を、その行の脚注に使わせないからである（`Paginate/Physical.hs:1391` の `ruledLinesPlan` の `putKeeping`、`Physical.lean` の `putLinesKeeping`）。
+段落の各行は、段落の残りの行と後の罫線の領域を、その行の脚注に使わせないからである（`Paginate/Physical.hs:1436` の `ruledLinesPlan` の `putKeeping`、`Physical.lean` の `putLinesKeeping`）。
 各行を置いた後で、使用長と脚注の長さと残りの行と後の罫線の領域の和が段の長さを超えないことが、行ごとに保たれる（`putLinesKeeping_room`）。
 定理の前提は、ページの行送りが正であることと、段落の行の脚注がどれも 1 行以上であることである。
 脚注が 0 行なら、脚注の区切りだけが余りを越えて数えられうる。
@@ -860,16 +867,14 @@ PR #1133 は、後続ブロックの最初の部分をそのブロック自身�
 `I3_ruledHere_in_column` は、`ruledHere` が置いた段落の使用長と脚注の長さの和が段の長さを超えないこと、つまり段落の各行が段の中にあることを示す。
 `PhysicalBoundary.hs` はこの入力（2 行と 3 行の段落、後の罫線の各形）を照合に含み、`Physical.lean` の `paginate` は直した後の位置を返す。
 
-PR #1148 の後の自由な配置では、後の罫線が領域を共有するのは罫線つきの段落の間だけである。
-罫線つきの段落の後に見出しの罫線つきのブロックが続くと、段落の後の罫線と見出しの前の罫線は別々に置かれる。
-段落の後の罫線は、見出しの最初の行との間のアキに `ruleAfterGap` で置かれる（`ruledLinesPlan` の `endRule`、`Physical.lean` の `ruleAfterPos`）。
-`I3_ruledHere_heading_rule_after` は、見出しの前で `ruledHere` が置いた段落の後の罫線が、共有を待たず、段の中で段の脚注より上で終わることを示す。
+罫線つきの段落の後に、領域を共有しないブロック（前の罫線がない、共有の印がない、奇数ページから始める見出し）が続くときは、段落の後の罫線は待たず、次の行の字面との間のアキか段の終わりに置かれる（`ruledLinesPlan` の `endRule`、`Physical.lean` の `ruleAfterPos`）。
+`I3_ruledHere_unshared_rule_after` は、このとき `ruledHere` が置いた段落の後の罫線が、段の中で段の脚注より上で終わることを示す。
 
 PR #1151 の後、見出しの前の罫線は、罫線つきの段落の前の罫線と同じく置かれる（`placeRuled` の `RuledHeading` の `beforeGeometry`、`Physical.lean` の `headingBeforeGeom`）。
 直前のスロットが行で、待っているスペースがなく、その行の始まりより後に後の罫線がないときは、行の字面と見出しの字面の間のアキに `ruleBeforeGap` で置かれる。
 そうでないときは、見出しの領域の始めから `ruleBeforeEdge` で置かれ、版面の外に出るのは、使用長 0 の空の段の始めだけである。
 空の段に罫線とともに収まるかの判定には、これまでと同じく版面の外を持つ寸法の領域（`headingBeforeExtra`）を使う。
-`I3_ruledHeading_rule_before` は、この前の罫線が三つの性質を持つことを示す。
+`I3_ruledHeading_rule_before` は、待つ罫線と領域を共有しないときに（`headingBeforeSharedAt_own`）、この前の罫線が三つの性質を持つことを示す。
 一つ目に、見出しの最初の行の字面の始まりからはみ出しを引いた位置より前で終わる。
 二つ目に、段の脚注より上で終わる。
 三つ目に、直前の行の字面の終わり以降から始まるか、見出しの領域の始め以降から始まるか、使用長 0 の空の段の始めより前に収まる。
@@ -896,17 +901,23 @@ PR #1152 の後、見出しの後の罫線は、段の途中では次の行の�
 `placeRuled` は、段の途中の配置を `headingRuleFits` が真のときにだけ返す。
 この位置は、段に置いた後の罫線の位置の記録（`St.afterRules`）の最後に入る。
 
-段落の後の罫線と見出しの前の罫線は、PR #1151 の後も、段の中にあって重なりうる。
-段落の後の罫線は段落の最後の行の始まりより後に置かれるので、見出しの前の罫線は見出しの領域の始めから置かれる。
-段落の後の罫線は、段落の最後の行の字面の後のアキと見出しの最初の行の字面の前のアキを合わせたアキに置かれ、見出しの前の罫線は、見出しの最初の行の字面の前のアキに置かれる。
-二つの罫線の領域は、それぞれ自身の罫線だけを数えるので、見出しの字面の前のアキを二つの罫線が取り合う。
-行送り 20 sp、字面 10 sp、容量 200 sp の 1 段組みで、後の罫線を持つ 1 行の罫線つきの段落と、前の罫線を持つ長さ 20 sp の見出しの罫線つきのブロックを続けた入力を、PR #1151 と #1152 の後の golem-layout の `paginatePhysical` に渡した。
-罫線が内側 0 sp、外側 0 sp、太さ 4 sp でアキを指定しないとき、`paginatePhysical` は段落の行を 0 sp に、見出しを 20 sp に置き、段落の後の罫線を 18 sp に、見出しの前の罫線を 21 sp に置いた。
-段落の後の罫線は 22 sp まで続くので、21 sp から 22 sp までが重なる。
-罫線が内側 4 sp、太さ 2 sp でアキを指定したときは、段落の後の罫線を 19 sp に、見出しの前の罫線を 20 sp に置き（見出しは 21 sp）、20 sp から 21 sp までが重なった。
-太さ 1 sp でアキを指定しないときは、19 sp と 22 sp に置き、重ならなかった。
-`ruledHeading_rules_overlap` は、太さ 4 sp の入力で、後の罫線の位置の記録が 18 sp になり、`headingBeforeGeom` がその記録を読んで見出しの領域の始めから 1 sp の位置を与え、二つの罫線が重なることを示す。
-この重なりは golem-layout の問題として報告し、golem-layout は変えていない。
+段落の後の罫線と見出しの前の罫線は、PR #1151 と #1152 の後も、段の中にあって重なりえた。
+後の罫線を待たせるのは次のブロックが段落のときだけで、見出しの前の罫線は見出しの領域の始めから置かれ、二つの罫線が見出しの字面の前のアキを取り合ったからである。
+行送り 20 sp、字面 10 sp、容量 200 sp の 1 段組みで、後の罫線（内側 0 sp、外側 0 sp、太さ 4 sp、アキの指定なし）を持つ 1 行の罫線つきの段落と、同じ寸法の前の罫線を持つ長さ 20 sp の見出しの罫線つきのブロックを続けると、PR #1152 の後の `paginatePhysical` は段落の後の罫線を 18 sp に、見出しの前の罫線を 21 sp に置き、21 sp から 22 sp までが重なった。
+
+[root ADR 0449](../../docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md) の後、段落と見出しの四つの組で、後の罫線と前の罫線は一つの領域を共有する。
+同じ入力で見出しに共有の印（`frJoined`）を付けると、PR #1159 の後の `paginatePhysical` は段落の後の罫線を 15 sp に、見出しの前の罫線を 21 sp に置き、二つは重ならない。
+`ruledHeading_rules_shared` は、この入力で段落の後の罫線が待ち、見出しが共有の領域から 0 sp の長さと二つの罫線の位置 15 sp と 21 sp を与えることを示す。
+golem-typeset の `ruledLinks` は、後の罫線を持つブロックの直後の前の罫線を持つブロックに必ず共有の印を付けるので、実際のフローで重なりが起きる組は残らない。
+共有の印のない同じ入力では、`paginatePhysical` は今も 18 sp と 21 sp に置く。
+
+[root ADR 0449](../../docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md) の不変条件 2（罫線が重ならないこと）は、自由な配置では五つの定理で示す。
+`I2_sharedGap_disjoint` は、共有の領域（`rulesSharedGap`）で、前のブロックの後の罫線が前の字面の終わり以降から始まり、後のブロックの前の罫線がその罫線の終わり以降から始まり、後の字面の始まりからはみ出しを引いた位置より前で終わることを示す。
+前提は、二つの罫線の内側のアキと、前のブロックの後の罫線の外側のアキが 0 以上であることである。
+`I2_ruledLines_shared` と `I2_ruledHeading_shared` は、待つ罫線を共有する段落と見出しの配置が、この共有の領域を前の罫線の領域とし、前のブロックの後の罫線をその中に置くことを示す。
+`I2_placeRuled_joined` は、待つ罫線を共有する印を持つブロックが同じ段で共有しないとき、待つ罫線を段の終わりに置き、ブロックを次の段から置くことを示す。
+`I2_startsAfterOwnRule` は、前のブロックの後の罫線が段の最後のスロット以降に自身の領域で置かれた段では、共有の印を持つブロックが次の段から始まることを示す。
+`PhysicalBoundary.hs` は、四つの組を、あいだにスペースを置くか置かないか、段の容量（36、44、60 sp）、後のブロックの長さ（1 行か 2 行の段落、長さ 10 sp か 24 sp の見出し）を変えて照合に含む。
 
 回り込み図版は、長さのないスロット（`SWrapped`）として段に置き、横に収まる行（`fittingWrapped`）を図版の終わりまでの長さを予約して置き、残りの行を次の段から置く（`placeWrappedOverflow`）。
 横の行と残りの行の前のアキは `physicalWrappedBefore` の値で、`Env.wrappedBefore` に写した。
@@ -1089,7 +1100,7 @@ runghc で数えると、終わる 152126 個の入力が割り当てるのは�
 割り当てずに回るループに備えて、120 秒の壁時計の見張りも残すが、そこで止めた入力は `out fail hang` と書き出す。
 `PhysicalBoundary.lean` は `hang` を書き出さないので、見張りが働けば `check.sh` は必ず失敗し、`loop` と取り違えることはない。
 見出しの行の送りが 14 sp の表の 8 個の入力では、4 個が両方で `loop` になった。
-`check.sh` は二つの出力を `diff` で比べ、155592 個の入力と 10368 個の試しですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、156360 個の入力と 10368 個の試しですべて一致した。
 写した計算を一つずつ替えると、`drainCarried` を外すと 308 個、組の段に組の縮みを渡さないと 474 個、組の段に脚注の行を確保しないと 356 個の入力で出力が食い違った。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
@@ -1172,50 +1183,50 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 
 | Haskell | Lean |
 | --- | --- |
-| `Paginate/Physical.hs:285` `initial`、`:288` `limit`、`:291` `room`、`:294` `empty` | `initial`、`limit`、`room`、`empty` |
-| `Paginate/Physical.hs:309` `close` | `close` |
-| `Paginate/Physical.hs:316` `nextColumn`、`:346` `nextPage` | `fresh`、`nextColumn`、`nextPage` |
-| `Paginate/Physical.hs:116` `Waiting`、`:353` `placeDeferred`、`:363` `placeTurned`、`:371` `afterTurned` | `Waiting`、`placeDeferred`、`placeDeferredGo`、`placeTurned`、`placeTurnedGo`、`opened`、`afterTurned`、`breakPage` |
-| `Paginate/Physical.hs:376` `carryInto`、`:409` `splitCarried` | `carryInto`、`splitCarried` |
-| `Paginate/Physical.hs:419` `fit` | `fit`、`dropAtTop` |
-| `Paginate/Physical.hs:429` `putSlot` | `putSlot` |
-| `Paginate/Physical.hs:439` `putLineWithReserve`、`:466` `splitNotes` | `putLineWithReserve`、`lineSep`、`lineNotes`、`lineNotesUsed`、`putLines`、`splitNotes` |
-| `Paginate/Physical.hs:476` `fitting` | `fitting`、`fittingGo` |
-| `Paginate/Physical.hs:488` `fittingWrapped`、`:502` `putWrappedLine`、`:509` `placeWrappedOverflow`、`:942` `placeFlow` の `FWrapped` | `fittingWrapped`、`fittingWrappedGo`、`putWrappedLine`、`putBeside`、`placeWrappedOverflow`、`overflowMove`、`overflowReady`、`placeWrapped` |
-| `Paginate/Physical.hs:520` `splitAtBreak`、`Paginate/Decide.hs:258` `firstPart` | `splitAtBreak`、`firstPart` |
-| `Paginate/Physical.hs:581` `trialParagraphPartLimit` | `trial`、`trialFrom`、`trialRest`、`checkRows`、`Part`、`trialWrap`、`trialWrapFrom`、`trialWrapRest`、`fittingHere`、`fittingWrapGo`、`putHere`、`putHereLines`、`limited` |
-| `Paginate/Physical.hs:192` `PhysicalWrap`、`:222` `activeWrapEnd`、`:227` `endPhysicalWrap`、`:230` `movePhysicalCursor`、`:255` `beginPhysicalWrap` | `Region`、`wrapEnd`、`endWrap`、`moveCursor`、`beginWrap` |
+| `Paginate/Physical.hs:303` `initial`、`:306` `limit`、`:309` `room`、`:312` `empty` | `initial`、`limit`、`room`、`empty` |
+| `Paginate/Physical.hs:327` `close` | `close` |
+| `Paginate/Physical.hs:334` `nextColumn`、`:364` `nextPage` | `fresh`、`nextColumn`、`nextPage` |
+| `Paginate/Physical.hs:134` `Waiting`、`:371` `placeDeferred`、`:381` `placeTurned`、`:389` `afterTurned` | `Waiting`、`placeDeferred`、`placeDeferredGo`、`placeTurned`、`placeTurnedGo`、`opened`、`afterTurned`、`breakPage` |
+| `Paginate/Physical.hs:394` `carryInto`、`:427` `splitCarried` | `carryInto`、`splitCarried` |
+| `Paginate/Physical.hs:437` `fit` | `fit`、`dropAtTop` |
+| `Paginate/Physical.hs:447` `putSlot` | `putSlot` |
+| `Paginate/Physical.hs:457` `putLineWithReserve`、`:484` `splitNotes` | `putLineWithReserve`、`lineSep`、`lineNotes`、`lineNotesUsed`、`putLines`、`splitNotes` |
+| `Paginate/Physical.hs:494` `fitting` | `fitting`、`fittingGo` |
+| `Paginate/Physical.hs:506` `fittingWrapped`、`:520` `putWrappedLine`、`:527` `placeWrappedOverflow`、`:967` `placeFlow` の `FWrapped` | `fittingWrapped`、`fittingWrappedGo`、`putWrappedLine`、`putBeside`、`placeWrappedOverflow`、`overflowMove`、`overflowReady`、`placeWrapped` |
+| `Paginate/Physical.hs:538` `splitAtBreak`、`Paginate/Decide.hs:258` `firstPart` | `splitAtBreak`、`firstPart` |
+| `Paginate/Physical.hs:599` `trialParagraphPartLimit` | `trial`、`trialFrom`、`trialRest`、`checkRows`、`Part`、`trialWrap`、`trialWrapFrom`、`trialWrapRest`、`fittingHere`、`fittingWrapGo`、`putHere`、`putHereLines`、`limited` |
+| `Paginate/Physical.hs:210` `PhysicalWrap`、`:240` `activeWrapEnd`、`:245` `endPhysicalWrap`、`:248` `movePhysicalCursor`、`:273` `beginPhysicalWrap` | `Region`、`wrapEnd`、`endWrap`、`moveCursor`、`beginWrap` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4512` `paragraph`（`parts`） | `parts`、`nextItem`、`minimumFront`、`limitRank` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4451` `tryVerses`、`:4464` `stanza` | `Beside`、`tryVerses`、`StanzaArgs`、`stanza`、`accept` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4399` `probeNext`、`:4442` `probeChain` | `Probe`、`verseSpan`、`probeNext`、`probeChain` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4307` `jobsFrom`、`:4331` `itemJobs` | `Jobs`、`jobsFrom`、`itemJobs`、`itemEnd` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4360` `paragraphs` | `Paras`、`verseRows`、`paragraphs`、`groups`、`placeGroup`、`byGroups` |
-| `Paginate/Physical.hs:628` `placeLines` | `placeLines` |
-| `Paginate/Physical.hs:641` `checkPhysicalNotes`、`:649` `paginatePhysical` | `checkNotes`、`paginate` |
-| `Paginate/Physical.hs:663` `drainCarry` | `drainCarry`、`drainOk` |
-| `Paginate/Physical.hs:668` `placeAll`、`:674` `placeNext`、`:702` `occupies` | `placeAll`、`placeNext`、`beforeOf`、`placeBody`、`occupies` |
-| `Paginate/Physical.hs:718` `checkWaits` | `checkWaits`、`checkWait`、`waitMet`、`markUnmet`、`addedSlots` |
-| `Paginate/Physical.hs:733` `followingRows`、`:746` `keepAhead` | `followingRows`、`keepAhead`、`keepAheadGo`、`collect`、`soft`、`counts` |
-| `Paginate/Physical.hs:766` `firstNeed` | `Env.firstNeed`（照合では `PhysicalBoundary.firstNeed`） |
-| `Paginate/Physical.hs:821` `fitsFollowing` | `fitsFollowing`、`fitsFollowingGo`、`keepWanted_length` |
-| `Paginate/Physical.hs:872` `placeWithNext` | `placeWithNext`、`keptBack`、`afterFront` |
-| `Paginate/Physical.hs:913` `placeFlow` | `placeFlow`、`judgeNeed`、`adjustLines`、`ceilDiv` |
-| `Paginate/Physical.hs:1023` `placeFlow` の `FBoxed`、`:1114` `placeBoxedParagraph`、`:1181` `placeBoxedStanza` | `Flow.boxed`、`placeBox`、`paddingExtra`、`boxExtra`、`boxNotes`、`fragmentSize`、`boxAvailable`、`boxCount`、`putBoxPart`、`placeBoxedParagraph`、`stanzaBoxSize`、`stanzaBoxCount`、`seal`、`reopen`、`placeBoxedStanza`、`nonemptyVerses` |
-| `Paginate/Physical.hs:1025` `placeFlow` の混ぜた `FBoxed`、`:1058` `boxKeepLinks`、`:1069` `boxKeepMarks`、`:1073` `boxKeepCounts`、`:1077` `BoxUnitKeep`、`:1084` `boxUnitKeeps`、`:1099` `collectMixedBoxUnits`、`:1185` `placeBoxedStanzaWith` | `collectMixed`、`boxLinks`、`unitKeepsOf`、`unitEntries`、`mapsOf`、`BoxMaps`、`UnitKeep`、`unitGaps`、`linkBreaks`、`unitBoundary`、`atGroupStart`、`paragraphBreak`、`legalBreak`、`boundaryWarnings`、`relaxFor`、`fallbackKeep`、`unrelaxed`、`boxSelected`、`boxShort`、`putUnits`、`putStanzaPart`、`placeBoxedStanza` |
-| `Paginate/Physical.hs:1026` `placeFlow` のそのほかの `FBoxed`、`:1043` `flowLines` | `placeGeneric`、`genericExtra`、`genericMinimum`、`placeFlows`、`Inner`、`level`、`flowDepth`、`flowsDepth`、`flowLines`、`bodyLines` |
-| `Paginate/Physical.hs:843` `fitsFollowing` の `FBoxed` | `boxFits` |
-| `Paginate/Physical.hs:1311` `placeRuledKeeping`、`:1320` `movesForFollowing`、`:1332` `joinsNext`、`:1345` `ruledHere`、`:1356` `ruledBefore`、`:1362` `ruleAfterInColumn`、`:1367` `settlesHere`、`:1378` `ruledLinesHere`、`:1391` `ruledLinesPlan`、`:1444` `placeRuled`、`:1571` `flushPendingRule` | `placeRuledKeeping`、`movesForFollowing`、`joiningNext`、`ruledHere`、`hereOr`、`ruleAfterFits`、`ruleAfterFitsLast`、`ruleAfterPos`、`settlesHere`、`ruledLinesHere`、`ruledPlaceAt`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`flushPendingRule`、`ruledRank`、`ruledAfterRules`、`sharedPriorPos`、`ruleAfterEdgePos`、`ruledBeforeFlow` |
-| `Paginate/Physical.hs:1462` `placeRuled` の `RuledHeading` | `placeRuled`、`headingStateOf`、`keepFrom`、`headingBeforeExtra`、`headingBeforeAt`、`headingBeforeGeom`、`lastLineSlot`、`ruleBeforeGapPos`、`headingAfterExtra`、`headingAfterAt`、`headingAfterGeom`、`headingAfterRule`、`headingLastFace`、`headingNextGap`、`headingRuleFits`、`headingReady`、`headingNotesExtent`、`putRuledHeading`、`ruledText`、`headingFirstPitch`、`headingBeforePos` |
-| `Paginate/Physical.hs:1581` `waitFor`、`:1588` `waitForPrior` | `waitFor`、`waitForPrior` |
-| `Paginate/Physical.hs:1824` `breakAt`、`:1840` `parityStart` | `breakAt`、`parityStart` |
-| `Paginate/Physical.hs:302` `headingOnly`、`:855` `keepFollowing`、`:1599` `putHeading`、`:1606` `headingNeed`、`:1615` `placeHeading` | `headingOnly`、`keepFollowing`、`keepFrom`、`keepVirtual`、`keepWanted`、`putHeading`、`headingEnv`、`headingNeed`、`tallAt`、`placeHeading` |
-| `Paginate/Physical.hs:531` `placeStanza`、`:890` `placeStanzaWithNext` | `placeStanza`、`wholeVerses`、`stanzaShort`、`placeStanzaWithNext`、`stanzaBack` |
-| `Paginate/Physical.hs:1625` `placeCode` | `placeCode`、`codeExtent`、`codeMinimum`、`codeFit`、`codeFitting`、`codeCount`、`seek` |
-| `Paginate/Physical.hs:1655` `tableNeed`、`:1662` `checkTableNotes`、`:1668` `tableReady`、`:1676` `placeTable` | `tableNeed`、`checkTableNotes`、`tableFits`、`tableAt`、`seek`、`tableCheck`、`tableFirstPart`、`placeTableFrom`、`tableCaption`、`placeTable` |
-| `Paginate/Physical.hs:1787` `placeTableLinesReserved`、`:1797` `placeTableRows` | `putReserved`、`putRepeated`、`repeatedOf`、`tableRowsGo`、`tableTail`、`tableText` |
-| `Paginate/Physical.hs:136` `retainPhysicalPart`、`:915` `placeFlow` の `FBookPart`、`Paginate/BookParts.hs:83` `slotIds` | `Flow.bookPart`、`PartUnit`、`retain`、`retainTry`、`settle`、`figureOk`、`partFits`、`minKey`、`lexMin`、`slotIds`、`unitKey`、`emptyUnit`、`nextUnit`、`advanceUnit`、`Env.retention` |
-| `Paginate/Physical.hs:688` `placeNext` の `FDefTerm`、`:1018` `placeFlow` の `FTable`、`:1711` `placeTableAcross` | `placeBody`、`placeFlow`、`placeTableAcross`、`acrossGo`、`acrossTail`、`splitLast` |
-| `Paginate/Physical.hs:960` `FSection`、`:1002` `FRestoreColumns`、`:1003` `FSwitchColumns` | `sectionStart`、`restoreColumns`、`switchColumns` |
+| `Paginate/Physical.hs:646` `placeLines` | `placeLines` |
+| `Paginate/Physical.hs:659` `checkPhysicalNotes`、`:667` `paginatePhysical` | `checkNotes`、`paginate` |
+| `Paginate/Physical.hs:681` `drainCarry` | `drainCarry`、`drainOk` |
+| `Paginate/Physical.hs:686` `placeAll`、`:692` `placeNext`、`:720` `occupies` | `placeAll`、`placeNext`、`beforeOf`、`placeBody`、`occupies` |
+| `Paginate/Physical.hs:736` `checkWaits` | `checkWaits`、`checkWait`、`waitMet`、`markUnmet`、`addedSlots` |
+| `Paginate/Physical.hs:751` `followingRows`、`:764` `keepAhead` | `followingRows`、`keepAhead`、`keepAheadGo`、`collect`、`soft`、`counts` |
+| `Paginate/Physical.hs:784` `firstNeed` | `Env.firstNeed`（照合では `PhysicalBoundary.firstNeed`） |
+| `Paginate/Physical.hs:839` `fitsFollowing` | `fitsFollowing`、`fitsFollowingGo`、`keepWanted_length` |
+| `Paginate/Physical.hs:897` `placeWithNext` | `placeWithNext`、`keptBack`、`afterFront` |
+| `Paginate/Physical.hs:938` `placeFlow` | `placeFlow`、`judgeNeed`、`adjustLines`、`ceilDiv` |
+| `Paginate/Physical.hs:1048` `placeFlow` の `FBoxed`、`:1139` `placeBoxedParagraph`、`:1206` `placeBoxedStanza` | `Flow.boxed`、`placeBox`、`paddingExtra`、`boxExtra`、`boxNotes`、`fragmentSize`、`boxAvailable`、`boxCount`、`putBoxPart`、`placeBoxedParagraph`、`stanzaBoxSize`、`stanzaBoxCount`、`seal`、`reopen`、`placeBoxedStanza`、`nonemptyVerses` |
+| `Paginate/Physical.hs:1050` `placeFlow` の混ぜた `FBoxed`、`:1083` `boxKeepLinks`、`:1094` `boxKeepMarks`、`:1098` `boxKeepCounts`、`:1102` `BoxUnitKeep`、`:1109` `boxUnitKeeps`、`:1124` `collectMixedBoxUnits`、`:1210` `placeBoxedStanzaWith` | `collectMixed`、`boxLinks`、`unitKeepsOf`、`unitEntries`、`mapsOf`、`BoxMaps`、`UnitKeep`、`unitGaps`、`linkBreaks`、`unitBoundary`、`atGroupStart`、`paragraphBreak`、`legalBreak`、`boundaryWarnings`、`relaxFor`、`fallbackKeep`、`unrelaxed`、`boxSelected`、`boxShort`、`putUnits`、`putStanzaPart`、`placeBoxedStanza` |
+| `Paginate/Physical.hs:1051` `placeFlow` のそのほかの `FBoxed`、`:1068` `flowLines` | `placeGeneric`、`genericExtra`、`genericMinimum`、`placeFlows`、`Inner`、`level`、`flowDepth`、`flowsDepth`、`flowLines`、`bodyLines` |
+| `Paginate/Physical.hs:861` `fitsFollowing` の `FBoxed` | `boxFits` |
+| `Paginate/Physical.hs:121` `PendingRule`、`:1336` `placeRuledKeeping`、`:1345` `movesForFollowing`、`:1360` `joinsNext`、`:1370` `startsAfterOwnRule`、`:1384` `ruledHere`、`:1395` `ruledBefore`、`:1401` `ruleAfterInColumn`、`:1406` `settlesHere`、`:1423` `ruledLinesHere`、`:1436` `ruledLinesPlan`、`:1487` `placeRuled`、`:1690` `flushPendingRule` | `Pending`、`Pending.faceEnd`、`placeRuledKeeping`、`movesForFollowing`、`joiningNext`、`startsAfterOwnRule`、`ruledHere`、`hereOr`、`ruleAfterFits`、`ruleAfterFitsLast`、`ruleAfterPos`、`settlesHere`、`ruledLinesHere`、`ruledPlaceAt`、`placeRuled`、`ruledBefore`、`ruledAfter`、`ruledBeforeExtra`、`ruledAfterExtra`、`ruledJoin`、`ruledExtent`、`flushPendingRule`、`ruledRank`、`ruledAfterRules`、`sharedPriorPos`、`sharedCurrentPos`、`ruleAfterEdgePos`、`ruledBeforeFlow` |
+| `Paginate/Physical.hs:880` `keepFollowingWaiting`、`:1487` `placeRuled` の `RuledHeading`、`:1524` `headingBeforeEdge`、`:1540` `headingEndBox`、`:1549` `headingDropsRules`、`:1569` `ruledHeadingHere` | `placeRuled`、`ruledHeadingHere`、`headingStateOf`、`keepFrom`、`headingBeforeExtra`、`headingBeforeAt`、`headingBeforeGeom`、`headingBeforeShared`、`headingBeforeSharedAt`、`headingSharedRules`、`headingWaiting`、`headingEndBox`、`headingDropsAt`、`headingDrops`、`lastLineSlot`、`ruleBeforeGapPos`、`headingAfterExtra`、`headingAfterAt`、`headingAfterGeom`、`headingAfterRule`、`headingLastFace`、`headingNextGap`、`headingRuleFits`、`headingReady`、`headingNotesExtent`、`putRuledHeading`、`ruledText`、`headingFirstPitch`、`headingBeforePos` |
+| `Paginate/Physical.hs:1697` `waitFor`、`:1704` `waitForPrior` | `waitFor`、`waitForPrior` |
+| `Paginate/Physical.hs:1940` `breakAt`、`:1956` `parityStart` | `breakAt`、`parityStart` |
+| `Paginate/Physical.hs:320` `headingOnly`、`:873` `keepFollowing`、`:1715` `putHeading`、`:1722` `headingNeed`、`:1731` `placeHeading` | `headingOnly`、`keepFollowing`、`keepFrom`、`keepVirtual`、`keepWanted`、`putHeading`、`headingEnv`、`headingNeed`、`tallAt`、`placeHeading` |
+| `Paginate/Physical.hs:549` `placeStanza`、`:915` `placeStanzaWithNext` | `placeStanza`、`wholeVerses`、`stanzaShort`、`placeStanzaWithNext`、`stanzaBack` |
+| `Paginate/Physical.hs:1741` `placeCode` | `placeCode`、`codeExtent`、`codeMinimum`、`codeFit`、`codeFitting`、`codeCount`、`seek` |
+| `Paginate/Physical.hs:1771` `tableNeed`、`:1778` `checkTableNotes`、`:1784` `tableReady`、`:1792` `placeTable` | `tableNeed`、`checkTableNotes`、`tableFits`、`tableAt`、`seek`、`tableCheck`、`tableFirstPart`、`placeTableFrom`、`tableCaption`、`placeTable` |
+| `Paginate/Physical.hs:1903` `placeTableLinesReserved`、`:1913` `placeTableRows` | `putReserved`、`putRepeated`、`repeatedOf`、`tableRowsGo`、`tableTail`、`tableText` |
+| `Paginate/Physical.hs:154` `retainPhysicalPart`、`:940` `placeFlow` の `FBookPart`、`Paginate/BookParts.hs:83` `slotIds` | `Flow.bookPart`、`PartUnit`、`retain`、`retainTry`、`settle`、`figureOk`、`partFits`、`minKey`、`lexMin`、`slotIds`、`unitKey`、`emptyUnit`、`nextUnit`、`advanceUnit`、`Env.retention` |
+| `Paginate/Physical.hs:706` `placeNext` の `FDefTerm`、`:1043` `placeFlow` の `FTable`、`:1827` `placeTableAcross` | `placeBody`、`placeFlow`、`placeTableAcross`、`acrossGo`、`acrossTail`、`splitLast` |
+| `Paginate/Physical.hs:985` `FSection`、`:1027` `FRestoreColumns`、`:1028` `FSwitchColumns` | `sectionStart`、`restoreColumns`、`switchColumns` |
 | `FreeGeometry.hs:29` `faceOffset`、`:56` `ruleBeforeExtra`、`:59` `ruleAfterExtra` | `faceOffset`、`ruleBeforeExtra`、`ruleAfterExtra` |
 | `FreeGeometry.hs:68` `ruleBeforeGap`、`:76` `ruleAfterGap`、`:83` `rulesSharedGap` | `ruleGapExtra`、`rulesSharedExtra` |
 | `FreeGeometry.hs:97` `ruleBeforeEdge`、`:109` `ruleAfterEdge` | `ruleBeforeEdgeExtra`、`ruleAfterEdgeExtra` |
@@ -1250,11 +1261,12 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 三組目は、横の行に脚注を持つ回り込み図版を段落の後か見出しなどの指定の後に置いたものである（[root ADR 0443](https://github.com/tett23/golem/blob/8873337addc24163574d69d33c20d4f95b67ac9b/docs/adr/0443-count-side-line-notes-when-a-wrapped-figure-fits.md)）。
 さらに、`boxInputs` の 864 個の入力を足した。
 この入力は、1〜4 行の脚注を持つ 1 行の段落と、行のない最後の部分を作るコードか横の行のない回り込み図版を箱に入れ、箱の後に 1 行の脚注を持つ 1 行の段落と 1 行か 2 行の段落を置いたもので、箱の前のアキは 0 行か 1 行、後のアキは 1〜3 行、段の容量は 3〜5 行である（[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md)）。
-さらに、`ruleInputs` の三組 2404 個の入力を足した。
+さらに、`ruleInputs` の四組 2884 個の入力を足した。
 一組目の 1080 個は、なしか 1〜2 行の段落の後に、後の罫線と、なしか前の罫線を持つ 1〜3 行の段落のブロックと、その後の罫線と領域を共有するブロック（1 行か 2 行の段落か 1 行の見出し）を置き、最後に 1 行か 2 行の段落を置いたもので、段の容量は 2〜6 行である。
 二組目の 1260 個は、一組目と同じ組を版面の外に出してよい罫線（`keep-in-column = false`、余白 20 sp）で作り、前になしか 1 行の段落か 1 行の脚注を持つ段落を置き、共有するブロックの代わりに 1 行の段落も選べるようにしたものである。
 三組目の 64 個は、罫線つきのブロックの後に段組みの切り替えと領域を共有しないブロックを置いたものである。
-`Boundary.lean` は、これらの 55358 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、置いた罫線の位置、満たせなかった指定を書き出す。
+四組目の 480 個は、なしか 1〜2 行の段落の後に、後の罫線と、なしか前の罫線を持つ 1 行か 2 行の見出しのブロックと、その後の罫線と領域を共有するブロック（1 行か 2 行の段落か、1 行か 2 行の見出し）を置き、最後に 1 行の段落を置いたもので、段の容量は 2〜6 行である（[root ADR 0449](../../docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md)）。
+`Boundary.lean` は、これらの 55838 個の入力を `Whole.lean` の `paginate` で評価し、ページ、段、スロットとその格子の行、置いた罫線の位置、満たせなかった指定を書き出す。
 `Env` は `paginate 1` の容量ごとの `Env` で、その引数は `Decide.hs` の `nextNeed`、`keptNeed`、`keepAhead`、`nextFirstLines`、`fitting`、`roomForLine` を写した関数と、`Code.hs` の `codeSpan` と `RuleArea.hs` の罫線の領域をこの寸法で求めた値である（`boundaryEnv`）。
 `check.sh` は、`Whole.lean` を `.olean` にして `Boundary.lean` を四つに分けて並べて評価し、`Boundary.hs` が golem-layout の `paginate` に同じ入力を渡した出力と `diff` で比べる。
 二つの出力は一致した。
@@ -1479,7 +1491,7 @@ golem-typeset は、図版を組む段階で、除外領域が段より長い図
 golem-typeset は、文字のない見出し（`# `）も 1 行の見出しとして組む（`Support.hs` の `layoutMini` で `headings.1` に `rule-after` を付けて確かめた）。
 
 `I3_flushJoin_rule` は、`flushJoin` が置く後の罫線が段の中にあるのは、その領域が段の空きに収まるときに限ることを示す。
-golem-layout は、後の罫線を待たせる前に、その罫線が段にとどまるかを確かめる（`Paginate.hs:762` の `settleRuled`、`:775` の `settlesAfter`）。
+golem-layout は、後の罫線を待たせる前に、その罫線が段にとどまるかを確かめる（`Paginate.hs:768` の `settleRuled`、`:781` の `settlesAfter`）。
 `Whole.lean` の `settleRuled` は、後続を渡した `planOf` の計画でブロックが収まり、後続がその罫線を段にとどめるときに限ってその計画で置き、そうでなければ後続を空にした `planOf` の計画、つまり後の罫線の領域をブロック自身のものとして数えた計画で置く。
 後続が罫線を段にとどめるのは、本の部を開いた後続が領域を共有するブロックで始まり、そのブロックが同じ状態から `settleRuled` で置けるときか、待つ罫線を自身の領域に置いても段の空きに収まるとき（`ownFits`）である（`settlesOn`）。
 `settleRuled` と `settlesOn` は互いを呼ぶので、後続の重さ（`flowsWeight`）と 1 か 0 の組を尺度とした。
@@ -1492,6 +1504,12 @@ golem-layout は、後の罫線を待たせる前に、その罫線が段にと�
 前の版の golem-layout は、容量 3 行の段に、前後に罫線を持つ 1 行の段落と、その後の罫線と領域を共有する 1 行の段落を置くと、最初の段落の後の罫線を段の外に置いた。
 今の版は、同じ入力（`Boundary.hs` の記法で `3 [R100:110:L1:10 R101:111:L1:20 P30:1]`）で、最初の段落が二つの罫線とともに空の段に収まらないので、罫線を外して 1 ページ目に置き（[golem-driver ADR 0035](../../docs/golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）、次の段落を 2 ページ目に置く。
 `Whole.lean` も同じページと罫線を返す。
+
+[root ADR 0449](../../docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md) の後、格子の `placeRuled`（`Paginate.hs:729`）は、待つ罫線と領域を共有する印を持つブロックが同じ段で共有できないとき、待つ罫線を前のブロックの段に置いてから、ブロックを次の段から置く。
+`Whole.lean` は、この分かれ目を `unjoined` に写した。
+`I2_placeRuled_next_column`（`WholeRules.lean`）は、この場合に、待つ罫線が前のブロックの段に置かれ（`flushJoin`）、ブロックがその段より後の段から、待つ罫線も罫線もない状態で置かれることを示す。
+そのため、ブロックの罫線は前のブロックの後の罫線と同じ段に入らず、重ならない（[root ADR 0449](../../docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md) の不変条件 2）。
+`Boundary.hs` は、罫線つきの見出しの後の罫線と、それを共有する罫線つきの段落または見出しの組を、段の容量と見出しの格子の行数を変えて照合に含む。
 
 本の部の最初のブロックが前のブロックと領域を共有すると、`placeBookPart` の `nextUnit` が待つ罫線を置かずに次の段へ進み、前のブロックの後の罫線が失われる。
 容量 7 行の段で、前後に罫線を持つ 1 行の段落の後に、領域を共有する 1 行の段落と 2 行の段落を `keep-parts = "page"` の本の部に入れると、golem-layout の `paginate` は罫線 100 の後の罫線を置かなかった。

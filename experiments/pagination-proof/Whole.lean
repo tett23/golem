@@ -2167,15 +2167,23 @@ def settleJoined (env : Env) (st : St) (i : Nat) (before after joined : Bool) (b
     (j : Nat × Int) : Option St :=
   if joined && before && !body.recto then settleRuled env st i before after body rest (some j) else none
 
+/-- The block placed when the rule waiting does not share its area with
+    it: the rule waiting takes its own area first; a block that shares it
+    (`frJoined`, a rule before, not at a recto) but does not settle in this
+    column starts in the next one, after that rule (root ADR 0449). -/
+def unjoined (env : Env) (st : St) (i : Nat) (before after joined : Bool) (body : RuledBody) (rest : List Flow) : St :=
+  if joined && before && !body.recto then placeRuledFresh env (nextColumn env (flushJoin env st)) i before after body rest
+  else placeRuledFresh env (flushJoin env st) i before after body rest
+
 /-- `placeRuled` of Paginate.hs: a block whose rule before shares the area
     of the rule waiting when it settles there; else the rule waiting takes
-    its own area first. -/
+    its own area first (`unjoined`). -/
 def placeRuled (env : Env) (st : St) (i : Nat) (before after joined : Bool) (body : RuledBody) (rest : List Flow) : St :=
   match st.join with
   | some j =>
     match settleJoined env st i before after joined body rest j with
     | some placed => placed
-    | none => placeRuledFresh env (flushJoin env st) i before after body rest
+    | none => unjoined env st i before after joined body rest
   | none => placeRuledFresh env st i before after body rest
 
 theorem settleJoined_spec (env : Env) (st : St) (i : Nat) (b a jn : Bool) (body : RuledBody) (rest : List Flow)
@@ -3103,7 +3111,9 @@ theorem text_placeRuled (env : Env) (st : St) (i : Nat) (b a j : Bool) (body : R
   split
   · apply joined_or (fun r => text r = _)
     · intro _ _ _; exact text_commitRuled ..
-    · rw [text_placeRuledFresh, text_flushJoin]
+    · unfold unjoined; split
+      · rw [text_placeRuledFresh, text_nextColumn, text_flushJoin]
+      · rw [text_placeRuledFresh, text_flushJoin]
   · exact text_placeRuledFresh ..
 
 theorem text_place (env : Env) (st : St) (f : Flow) (rest : List Flow) :
@@ -5286,9 +5296,15 @@ theorem placeRuled_good (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Na
     · intro rest' er hf
       exact commit_good' env hs st i b a body rest rest' er (some jj) w.inv q hf hb
     · have fl := flushJoin_inv env st w
-      have := placeRuledFresh_good env hs (flushJoin env st) i b a body rest fl.2
-        (by have := frame_parts (frame_flushJoin env st); exact ⟨this.1.trans q.1, this.2.1.trans q.2.1, this.2.2.trans q.2.2⟩) hb
-      exact ⟨this.1.trans fl.1, this.2⟩
+      have qf : ∀ s : St, frame s = frame st → s.breaks = [] ∧ s.need = none ∧ s.blank = [] := by
+        intro s e; have := frame_parts e; exact ⟨this.1.trans q.1, this.2.1.trans q.2.1, this.2.2.trans q.2.2⟩
+      unfold unjoined
+      split
+      · have := placeRuledFresh_good env hs (nextColumn env (flushJoin env st)) i b a body rest
+          (inv_nextColumn env _ fl.2) (qf _ ((frame_nextColumn ..).trans (frame_flushJoin env st))) hb
+        exact ⟨this.1.trans ((figs_nextColumn ..).trans fl.1), this.2⟩
+      · have := placeRuledFresh_good env hs (flushJoin env st) i b a body rest fl.2 (qf _ (frame_flushJoin env st)) hb
+        exact ⟨this.1.trans fl.1, this.2⟩
   · rename_i e
     exact placeRuledFresh_good env hs st i b a body rest (inv_of_good env st hg e) q hb
 

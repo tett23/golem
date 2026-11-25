@@ -751,8 +751,9 @@ theorem rel_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (l
     · exact Rel.via (rel_putHeading env _ firstId extent ls s h) rfl
     · exact Rel.via (rel_putHeading env _ firstId extent ls s h) (nm_fit env st _)
 
-theorem rel_putRuledHeading (env : Env) (ready : St) (b a : Int) (ends : List Int) (fid : Nat) (e : Int) (ls : List Line)
-    (s : St) (h : putRuledHeading env ready b a ends fid e ls = .ok s) : Rel ready s (notesOf ls) := by
+theorem rel_putRuledHeading (env : Env) (ready : St) (b a : Int) (sh ends : List Int) (j : Option Pending) (fid : Nat)
+    (e : Int) (ls : List Line) (s : St) (h : putRuledHeading env ready b a sh ends j fid e ls = .ok s) :
+    Rel ready s (notesOf ls) := by
   unfold putRuledHeading at h
   split at h
   · cases h
@@ -792,89 +793,22 @@ theorem nm_headingReady (env : Env) (hs : St) (fid : Nat) (extent size : Int) :
   · rfl
   · exact nm_fit env hs size
 
-set_option linter.unusedVariables false in
 theorem rel_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (s : St)
-    (h : placeRuled inner env st r later = .ok s) : Rel st s (notesOf r.lines) := by
-  rw [placeRuled] at h
-  split at h
-  · rename_i recto extent hh
-    dsimp only at h
-    generalize fitsFollowingGo inner env (keepVirtual env true st extent r.lines) (keepWanted later).1 0 (keepWanted later).2 = fb at h
-    have hr := rank_headingState_le env st recto fb
-    have hsS := nm_headingState env st recto fb
-    generalize headingStateOf env st recto fb = HS at h hr hsS
-    split at h
-    · cases h
-    · split at h
-      · split at h
-        · rename_i ha
-          have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with after := none }, rank HS) (ruledRank r, rank st) :=
-            Prod.Lex.left _ _ (ruledRank_after r ha)
-          exact Rel.via (rel_placeRuled inner env HS { r with after := none } later s h) hsS
-        · rename_i ha hb
-          have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with before := none }, rank HS) (ruledRank r, rank st) :=
-            Prod.Lex.left _ _ (ruledRank_before r ha hb)
-          exact Rel.via (rel_placeRuled inner env HS { r with before := none } later s h) hsS
-        · exact Rel.via (rel_placeHeading env HS _ extent r.lines s h) hsS
-      · split at h
-        · split at h
-          · rename_i h2 h3
-            have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (headingReady env HS (headId r.lines) extent
-                (headingBeforeAt env HS r + headingNeed env HS extent r.lines + headingAfterExtra env r extent)))
-                (ruledRank r, rank st) :=
-              Prod.Lex.right _ (Nat.lt_of_lt_of_le (headingReady_moved env HS _ _ _ h3) hr)
-            exact Rel.via (rel_placeRuled inner env _ r later s h) ((nm_headingReady env HS _ _ _).trans hsS)
-          · exact Rel.via (rel_putRuledHeading env _ _ _ _ _ extent r.lines s h) ((nm_headingReady env HS _ _ _).trans hsS)
-        · split at h
-          · cases h
-          · rename_i inside e
-            split at h
-            · injection h with h; subst h
-              exact Rel.via (rel_putRuledHeading env _ _ _ _ _ extent r.lines inside e) ((nm_headingReady env HS _ _ _).trans hsS)
-            · split at h
-              · rename_i h4
-                have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (headingReady env HS (headId r.lines) extent
-                    (headingBeforeAt env HS r + headingNeed env HS extent r.lines + headingAfterExtra env r extent)))
-                    (ruledRank r, rank st) :=
-                  Prod.Lex.right _ (Nat.lt_of_lt_of_le (headingReady_moved env HS _ _ _ h4) hr)
-                exact Rel.via (rel_placeRuled inner env _ r later s h) ((nm_headingReady env HS _ _ _).trans hsS)
-              · exact Rel.via (rel_putRuledHeading env _ _ _ _ _ extent r.lines s h) ((nm_headingReady env HS _ _ _).trans hsS)
-  · rename_i hh
-    split at h
-    · rename_i first lastLine _ _
-      split at h
-      · cases h
-      · rename_i placed hr
-        injection h with h; subst h
-        obtain ⟨l', e⟩ := ruledHere_some inner env st r later placed hr
-        exact rel_ruledLinesHere env st r l' placed e
-      · split at h
-        · rename_i h1
-          have dec : Prod.Lex (· < ·) (· < ·) (ruledRank { r with joined := false }, rank (nextColumn env (flushPendingRule env st)))
-              (ruledRank r, rank st) := by
-            apply Prod.Lex.left; simp [ruledRank, joinedRank, h1.1]
-          exact Rel.via (rel_placeRuled inner env (nextColumn env (flushPendingRule env st)) { r with joined := false } later s h)
-            ((nm_nextColumn env _).trans (nm_flush env st))
-        · split at h
-          · exact rel_placeLines env r.keep true st r.lines s h
-          · split at h
-            · rename_i h2
-              have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env st (room env st + 1)))
-                  (ruledRank r, rank st) :=
-                Prod.Lex.right _ (I4_fit_moved env st _ h2)
-              exact Rel.via (rel_placeRuled inner env _ r later s h) (nm_fit env st _)
-            · exact rel_placeLines env r.keep true st r.lines s h
-    · rename_i H
-      have : r.lines = [] := by
-        cases e : r.lines with
-        | nil => rfl
-        | cons x xs => exact absurd (H x ((x :: xs).getLast (by simp)) (by rw [e]; rfl) (by rw [e]; rfl)) id
-      injection h with h; subst h
-      rw [this]; exact Rel.refl _
-termination_by (ruledRank r, rank st)
-decreasing_by
-  all_goals simp_wf
-  all_goals assumption
+    (h : placeRuled inner env st r later = .ok s) : Rel st s (notesOf r.lines) :=
+  gen_placeRuled inner env (N := fun a b => NM b = NM a) (F := fun a b => Rel a b (notesOf r.lines))
+    { nf := fun h1 h2 => Rel.via h2 h1
+      flush := nm_flush env
+      next := nm_nextColumn env
+      fit := nm_fit env
+      hs := nm_headingState env
+      ready := nm_headingReady env
+      put := fun r' _ _ _ _ _ _ _ _ _ e e2 => by
+        rw [← e]; exact rel_putRuledHeading env _ _ _ _ _ _ _ _ _ _ e2
+      head := fun r' _ _ _ _ e e2 => by rw [← e]; exact rel_placeHeading env _ _ _ _ _ e2
+      lines := fun _ r' _ _ _ e e2 => by rw [← e]; exact rel_ruledLinesHere env _ r' _ _ e2
+      place := fun r' _ _ _ e _ e2 => by rw [← e]; exact rel_placeLines env _ true _ _ _ e2
+      nil := fun a _ e => by rw [e]; exact Rel.refl a }
+    st r later s rfl rfl rfl h
 
 theorem rel_placeRuledKeeping (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (s : St)
     (h : placeRuledKeeping inner env st r later = .ok s) : Rel st s (notesOf r.lines) := by

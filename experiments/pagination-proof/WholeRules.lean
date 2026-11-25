@@ -292,7 +292,7 @@ theorem I3_placeRuled_rules (env : Env) (hs : 0 ≤ env.separator) (st : St) (i 
     · intro rest' _ fit
       exact Or.inl (placed_of_plan env hs st i b a body rest' (some w) fit
         (fun x l e => hu x l (by rw [hw, e])))
-    · exact I3_placeRuledFresh_rules env hs _ i b a body rest
+    · unfold unjoined; split <;> exact I3_placeRuledFresh_rules env hs _ i b a body rest
   · exact I3_placeRuledFresh_rules env hs _ i b a body rest
 
 /-- A block that shares the area of the rule after of the block before
@@ -585,6 +585,37 @@ theorem I3_settleRuled_used (env : Env) (st : St) (i : Nat) (b a : Bool) (body :
       | nil => exact absurd rfl hb
       | cons l0 ls => simp [putBlock, RuledBody.size]
   · simp at hj
+
+/-- A block that shares the area of the rule waiting (`frJoined`, a rule
+    before, not at a recto) but does not settle in its column starts in
+    the next column (root ADR 0449, Paginate.hs `placeRuled`): the rule
+    waiting is put in its own area in the column of the block before
+    (`flushJoin`), and the block is placed as `placeRuledFresh` places it
+    from the next column, which comes after that column and starts with no
+    rule waiting and no rules.  So the rules of the block lie in a column
+    after the rule of the block before (root ADR 0449 I2), each in the
+    column it is placed from, or the block is split without them. -/
+theorem I2_placeRuled_next_column (env : Env) (hs : 0 ≤ env.separator) (st : St) (i : Nat) (a : Bool)
+    (body : RuledBody) (rest : List Flow) (x : Nat) (l : Int) (hw : st.join = some (x, l)) (hu : st.used = l + 1)
+    (hr : body.recto = false) (hn : settleRuled env st i true a body rest (some (x, l)) = none) :
+    placeRuled env st i true a true body rest
+        = placeRuledFresh env (nextColumn env (flushJoin env st)) i true a body rest
+      ∧ (∃ rr, (flushJoin env st).rules = st.rules ++ [rr] ∧ rr.id = x ∧ rr.before = false ∧ rr.line = l
+        ∧ SameColumn st (flushJoin env st))
+      ∧ posLt st (nextColumn env (flushJoin env st))
+      ∧ (nextColumn env (flushJoin env st)).join = none ∧ (nextColumn env (flushJoin env st)).rules = []
+      ∧ SplitPlaced env body (placeRuled env st i true a true body rest) := by
+  have e : placeRuled env st i true a true body rest
+      = placeRuledFresh env (nextColumn env (flushJoin env st)) i true a body rest := by
+    unfold placeRuled
+    rw [hw]
+    simp only [settleJoined, hr, Bool.true_and, Bool.not_false, ↓reduceIte, hn, unjoined]
+  obtain ⟨rr, h1, h2, h3, h4, h5, _⟩ := I3_flushJoin_rule env st x l hw hu
+  have p : posLt (flushJoin env st) (nextColumn env (flushJoin env st)) := advance_posLt ..
+  have p' : posLt st (nextColumn env (flushJoin env st)) := by
+    simp only [posLt] at p ⊢; rw [h5.1, h5.2.1] at p; exact p
+  refine ⟨e, ⟨rr, h1, h2, h3, h4, h5⟩, p', (I3_advance_clears ..).1, (I3_advance_clears ..).2, ?_⟩
+  rw [e]; exact I3_placeRuledFresh_rules env hs _ i true a body rest
 
 end Rules
 end WholePagination

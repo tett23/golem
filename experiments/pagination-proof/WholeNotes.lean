@@ -1262,7 +1262,9 @@ theorem rel_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (re
   split
   · apply joined_or (fun r => Rel st r (ruledNotes body))
     · intro _ _ _; exact rel_commitRuled env _ _ _
-    · exact Rel.nl (rel_flushJoin env st) (rel_placeRuledFresh env hs _ _ _ _ _ _)
+    · unfold unjoined; split
+      · exact Rel.nl (rel_flushJoin env st) (Rel.nl (rel_nextColumn env hs _) (rel_placeRuledFresh env hs _ _ _ _ _ _))
+      · exact Rel.nl (rel_flushJoin env st) (rel_placeRuledFresh env hs _ _ _ _ _ _)
   · exact rel_placeRuledFresh env hs _ _ _ _ _ _
 
 end

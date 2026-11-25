@@ -429,8 +429,9 @@ def boxInputs : List (Nat × List Element) :=
 /-- Two ruled blocks whose rules may share an area, the first ending at or
     near the end of a column, between paragraphs: the places of the rules
     (`poRules`); the same with rules that may go out of the column, after
-    a paragraph with a note or not; and a ruled block before a switch of
-    the columns. -/
+    a paragraph with a note or not; a ruled block before a switch of the
+    columns; and a ruled heading whose rule after may share an area with
+    a ruled paragraph or heading after it (root ADR 0449). -/
 def ruleInputs : List (Nat × List Element) :=
   ([2, 3, 4, 5, 6].bind fun c => [0, 1, 2].bind fun p => [false, true].bind fun b1 => [1, 2, 3].bind fun n =>
     [false, true].bind fun a2 => [(Sum.inl 1 : Sum Nat Nat), .inl 2, .inr 1].bind fun second => [1, 2].map fun k =>
@@ -444,6 +445,10 @@ def ruleInputs : List (Nat × List Element) :=
   ++ ([3, 4, 5, 6].bind fun c => [0, 1].bind fun p => [100, 200].bind fun r => [1, 2].bind fun n => [1, 2].map fun cs =>
       (c, (if 0 < p then [Element.para 0 p] else [])
         ++ [Element.ruled r true true false (.inl n) 10, .switch cs, .ruled (r + 1) true true true (.inl 1) 20, .para 30 2]))
+  ++ ([2, 3, 4, 5, 6].bind fun c => [0, 1, 2].bind fun p => [false, true].bind fun b1 => [1, 2].bind fun h =>
+    [false, true].bind fun a2 => [(Sum.inl 1 : Sum Nat Nat), .inl 2, .inr 1, .inr 2].map fun second =>
+      (c, (if 0 < p then [Element.para 0 p] else [])
+        ++ [Element.ruled 300 b1 true false (.inr h) 10, .ruled 301 true a2 true second 20, .para 30 1]))
 
 def inputs : List (Nat × List Element) :=
   ([1, 2, 3].bind fun c => [(c, []), (c, [.para 0 1])])

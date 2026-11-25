@@ -244,7 +244,8 @@ boxInputs =
 -- near the end of a column, between paragraphs: the places of the rules
 -- (poRules); the same with rules that may go out of the column, after a
 -- paragraph with a note or not; and a ruled block before a switch of the
--- columns.
+-- columns; and a ruled heading whose rule after may share an area with a
+-- ruled paragraph or heading after it (root ADR 0449).
 ruleInputs :: [(Int, [Element])]
 ruleInputs =
   [ (c, [Para 0 p | p > 0] <> [Ruled 100 b1 True False (Left n) 10, Ruled 101 True a2 True second 20, Para 30 k])
@@ -270,6 +271,14 @@ ruleInputs =
          r <- [100, 200],
          n <- [1, 2],
          cs <- [1, 2]
+       ]
+    <> [ (c, [Para 0 p | p > 0] <> [Ruled 300 b1 True False (Right h) 10, Ruled 301 True a2 True second 20, Para 30 1])
+       | c <- [2 .. 6],
+         p <- [0 .. 2],
+         b1 <- [False, True],
+         h <- [1, 2],
+         a2 <- [False, True],
+         second <- [Left 1, Left 2, Right 1, Right 2]
        ]
 
 kindChoices :: [Int -> Element]

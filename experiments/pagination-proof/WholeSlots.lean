@@ -849,7 +849,9 @@ theorem u_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest
   split
   · apply joined_or (fun r => U S st r [])
     · intro _ _ _; exact u_commitRuled env _ _ _
-    · exact U.nl (u_flushJoin env st) (u_placeRuledFresh env _ _ _ _ _ _)
+    · unfold unjoined; split
+      · exact U.nl (u_flushJoin env st) (U.nl (u_nextColumn env _) (u_placeRuledFresh env _ _ _ _ _ _))
+      · exact U.nl (u_flushJoin env st) (u_placeRuledFresh env _ _ _ _ _ _)
   · exact u_placeRuledFresh env _ _ _ _ _ _
 
 end

@@ -1954,6 +1954,19 @@ theorem q_placeRuled (st : St) (i : Nat) (b a j : Bool) (body : RuledBody) (rest
           = { { st with rules := rs } with used := st.used + min (x : Int) (free env st), join := none } := by
         unfold flushJoin; rw [e]; exact ⟨_, _, rfl⟩
       obtain ⟨x, rs, fe⟩ := fe
+      unfold unjoined
+      split
+      · -- the block that shares the area but does not settle starts in the next column (root ADR 0449)
+        have r1 : OR st (flushJoin env st) [] := by
+          rw [fe]; exact OR.of_eq (by simp [NM]) ⟨[], by simp [allUnmet]⟩
+        have b1 : Base bx (flushJoin env st) := by rw [fe]; exact bj.1.of
+        have fn := frame_parts ((frame_nextColumn env (flushJoin env st)).trans (frame_flushJoin env st))
+        have hqn : (nextColumn env (flushJoin env st)).breaks = [] ∧ (nextColumn env (flushJoin env st)).need = none
+            ∧ (nextColumn env (flushJoin env st)).blank = [] :=
+          ⟨fn.1.trans hq.1, fn.2.1.trans hq.2.1, fn.2.2.trans hq.2.2⟩
+        obtain ⟨r3, b3, o3⟩ := adv env hs _ (flushJoin env st) (by rw [withJoin_self _ b1.join]; exact b1)
+        obtain ⟨r2, b2, o2, j2⟩ := q_placeRuledFresh env hs (nextColumn env (flushJoin env st)) i b a body rest hb hqn b3 o3
+        exact ⟨by simpa using (r1.trans r3).trans r2, b2, o2, j2⟩
       by_cases hu : 0 ≤ (flushJoin env st).used
       · have fl : OR st (flushJoin env st) [] ∧ Base bx (flushJoin env st) ∧ Ok env (flushJoin env st) := by
           rw [fe] at hu ⊢; exact q_flushUsed env hs { st with rules := rs } _ (Int.ofNat_nonneg _) bj.1.of oa w.room hu
