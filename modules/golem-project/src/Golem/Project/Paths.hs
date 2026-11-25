@@ -9,6 +9,7 @@ module Golem.Project.Paths
   )
 where
 
+import Data.Char (toLower)
 import Data.List (intercalate, isInfixOf, isPrefixOf)
 import System.Directory (canonicalizePath, doesFileExist, doesPathExist, makeAbsolute)
 import System.FilePath (makeRelative, splitDirectories, takeDirectory, (</>))
@@ -29,11 +30,13 @@ pathErrorMessage = \case
   Missing -> "ファイルがありません"
 
 {- | Resolves @.@ and @..@ lexically. Absolute paths, URLs and paths that
-climb out of the root are errors.
+climb out of the root are errors. A path with @://@, or one that starts
+with the scheme @data:@ in any case (root ADR 0439), is a URL.
 -}
 normalizeRelative :: FilePath -> Either PathError FilePath
 normalizeRelative p
   | "://" `isInfixOf` p = Left Url
+  | map toLower (take 5 p) == "data:" = Left Url
   | "/" `isPrefixOf` p = Left Absolute
   | otherwise = intercalate "/" . reverse <$> go [] (splitDirectories p)
   where
