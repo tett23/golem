@@ -9825,4 +9825,282 @@ theorem ruledHeading_outside_rule_off_face :
       + faceOffset (overlapEnv.pitchOf overlapHeadingLine.id) (overlapEnv.faceOf overlapHeadingLine.id) := by
   decide
 
+/-! ## The lines beside a wrapped figure: `putWrappedLine` is `putLine` -/
+
+theorem splitNotes_all : ∀ (c : Nat) (ns : List Note), ns.foldr (fun n a => n.lines + a) 0 ≤ c →
+    splitNotes c ns = (ns.map (fun n => (n.id, 0, n.lines)), [])
+  | c, [], _ => splitNotes_nil c
+  | c, n :: rest, h => by
+    simp only [List.foldr] at h
+    simp only [splitNotes]
+    rw [if_pos (by omega), splitNotes_all (c - n.lines) rest (by omega)]
+    rfl
+
+theorem fdiv_ge (a p : Int) (n : Nat) (hp : 0 < p) (h : (n : Int) * p ≤ a) : (n : Int) ≤ Int.fdiv a p := by
+  have a0 : 0 ≤ a := Int.le_trans (Int.mul_nonneg (Int.ofNat_nonneg n) (Int.le_of_lt hp)) h
+  obtain ⟨k, rfl⟩ := Int.eq_ofNat_of_zero_le a0
+  obtain ⟨q, rfl⟩ := Int.eq_ofNat_of_zero_le (Int.le_of_lt hp)
+  have e : Int.fdiv (k : Int) (q : Int) = ((k / q : Nat) : Int) := by
+    cases k with
+    | zero => simp [Int.fdiv]
+    | succ k => exact fdiv_nat k q
+  rw [e]
+  have hq : 0 < q := by exact_mod_cast hp
+  have : n * q ≤ k := by exact_mod_cast h
+  exact_mod_cast (Nat.le_div_iff_mul_le hq).2 this
+
+theorem lineNotes_all (env : Env) (hp : 0 < env.pagePitch) (st : St) (l : Line)
+    (h : (noteLines l : Int) * env.pagePitch ≤ limit env st - st.used - env.pitchOf l.id - st.notesUsed - lineSep env st l) :
+    lineNotes env st l = (l.notes.map (fun n => (n.id, 0, n.lines)), []) := by
+  unfold lineNotes
+  apply splitNotes_all
+  have f := fdiv_ge _ _ _ hp h
+  show noteLines l ≤ _
+  have : (noteLines l : Int) ≤ max 0 (Int.fdiv (limit env st - st.used - env.pitchOf l.id - st.notesUsed - lineSep env st l) env.pagePitch) :=
+    Int.le_trans f (Int.le_max_right _ _)
+  have t := Int.toNat_of_nonneg (Int.le_trans (Int.ofNat_nonneg _) this)
+  omega
+
+/-- `putLineWithReserve` when the line shows every line of its notes. -/
+theorem putLineWithReserve_shown (env : Env) (allow : Bool) (st : St) (l : Line)
+    (t : ¬env.capacity < env.pitchOf l.id)
+    (n : lineNotes env st l = (l.notes.map (fun n => (n.id, 0, n.lines)), [])) :
+    putLineWithReserve allow env st l = .ok { putSlot st (env.pitchOf l.id) (.line l.id) with
+      notesUsed := lineNotesUsed env st l
+      notes := st.notes ++ (l.notes.map (fun n => (n.id, 0, n.lines)))
+      carry := st.carry ++ [] } := by
+  unfold putLineWithReserve
+  rw [if_neg t, if_neg, n]
+  intro ⟨a, b, _⟩
+  rw [n] at b
+  cases d : l.notes with
+  | nil => simp [noteLines, d] at a
+  | cons _ _ => rw [d] at b; simp [List.isEmpty] at b
+
+/-- A line beside a wrapped figure whose notes fit below the figure and the
+    line is put as `putLine` puts it: reserving the rest of the figure
+    leaves room for every note line. -/
+theorem putWrappedLine_eq (env : Env) (hp : 0 < env.pagePitch) (e : Int) (st : St) (l : Line)
+    (h : max e (st.used + env.pitchOf l.id) + (st.notesUsed + lineSep env st l + (noteLines l : Int) * env.pagePitch)
+      ≤ limit env st) :
+    putWrappedLine env e st l = putLine env st l := by
+  have n1 : lineNotes env { st with adjust := st.adjust - max 0 (e - st.used - env.pitchOf l.id) } l
+      = (l.notes.map (fun n => (n.id, 0, n.lines)), []) := by
+    apply lineNotes_all env hp
+    show _ ≤ env.capacity + (st.adjust - max 0 (e - st.used - env.pitchOf l.id)) - st.used - env.pitchOf l.id
+      - st.notesUsed - lineSep env st l
+    simp only [limit] at h
+    have : max 0 (e - st.used - env.pitchOf l.id) = max e (st.used + env.pitchOf l.id) - (st.used + env.pitchOf l.id) := by
+      rcases Int.le_total e (st.used + env.pitchOf l.id) with c | c
+      · rw [Int.max_eq_right c, Int.max_eq_left (by omega)]; omega
+      · rw [Int.max_eq_left c, Int.max_eq_right (by omega)]; omega
+    rw [this]; omega
+  have n2 : lineNotes env st l = (l.notes.map (fun n => (n.id, 0, n.lines)), []) := by
+    apply lineNotes_all env hp
+    have m2 := Int.le_max_right e (st.used + env.pitchOf l.id)
+    omega
+  unfold putWrappedLine putLine
+  by_cases t : env.capacity < env.pitchOf l.id
+  · simp [putLineWithReserve, t]
+  · rw [putLineWithReserve_shown env false _ l t n1, putLineWithReserve_shown env false st l t n2]
+    have u : lineNotesUsed env { st with adjust := st.adjust - max 0 (e - st.used - env.pitchOf l.id) } l
+        = lineNotesUsed env st l := by
+      unfold lineNotesUsed; rw [n1, n2]; rfl
+    simp only []
+    rw [u]
+    rfl
+
+theorem fittingWrapGo_congr (env : Env) (a b : St) (hab : limit env a = limit env b) (e : Int) :
+    ∀ (u n : Int) (ls : List Line), fittingWrapGo env a e u n ls = fittingWrapGo env b e u n ls
+  | _, _, [] => rfl
+  | u, n, l :: ls => by
+    simp only [fittingWrapGo, hab, fittingWrapGo_congr env a b hab e _ _ ls]
+
+theorem wrapEnd_congr (region : Region) (a b : St) (hp : a.page = b.page) (hc : a.column = b.column) :
+    wrapEnd region a = wrapEnd region b := by
+  unfold wrapEnd; rw [hp, hc]
+
+theorem putLineWithReserve_place (env : Env) (allow : Bool) (st s : St) (l : Line)
+    (h : putLineWithReserve allow env st l = .ok s) : s.page = st.page ∧ s.column = st.column := by
+  unfold putLineWithReserve at h
+  split at h
+  · cases h
+  · split at h
+    · split at h
+      · cases h
+      · injection h with h; subst h; exact ⟨rfl, rfl⟩
+    · injection h with h; subst h; exact ⟨rfl, rfl⟩
+
+theorem partsLines_full (ns : List Note) :
+    partsLines (ns.map (fun n => (n.id, 0, n.lines))) = ns.foldr (fun n a => n.lines + a) 0 := by
+  induction ns with
+  | nil => rfl
+  | cons n ns ih => simp only [List.map, partsLines, List.foldr] at ih ⊢; rw [ih]
+
+/-- Away from the column of the exclusion, `putHereLines` is `putLines`. -/
+theorem putHereLines_outside (env : Env) (region : Region) :
+    ∀ (st : St) (ls : List Line), ¬0 < wrapEnd region st → putHereLines env region st ls = putLines false env st ls
+  | _, [], _ => rfl
+  | st, l :: ls, h => by
+    have e1 : putHere env region st l = putLineWithReserve false env st l := by
+      simp only [putHere, if_neg h]; rfl
+    simp only [putHereLines, putLines, e1]
+    cases hq : putLineWithReserve false env st l with
+    | error _ => rfl
+    | ok s =>
+      have q := putLineWithReserve_place env false st s l hq
+      exact putHereLines_outside env region s ls (by rw [wrapEnd_congr region s st q.1 q.2]; exact h)
+
+/-- The lines `fittingHere` counts beside the exclusion are put by
+    `putHereLines` as `putLines` puts them. -/
+theorem putHereLines_fitting (env : Env) (hp : 0 < env.pagePitch) (region : Region) :
+    ∀ (st : St) (ls : List Line), 0 < wrapEnd region st →
+      ls.length ≤ fittingWrapGo env st (wrapEnd region st) st.used st.notesUsed ls →
+      putHereLines env region st ls = putLines false env st ls
+  | _, [], _, _ => rfl
+  | st, l :: ls, hw, hf => by
+    have hs : (if 0 < noteLines l ∧ st.notesUsed = 0 then env.separator else 0) = lineSep env st l := rfl
+    simp only [fittingWrapGo, hs] at hf
+    split at hf
+    · rename_i c
+      have c' : max (wrapEnd region st) (st.used + env.pitchOf l.id) +
+          (st.notesUsed + lineSep env st l + (noteLines l : Int) * env.pagePitch) ≤ limit env st := by
+        have := c; omega
+      have pw := putWrappedLine_eq env hp (wrapEnd region st) st l c'
+      have n2 : lineNotes env st l = (l.notes.map (fun n => (n.id, 0, n.lines)), []) := by
+        apply lineNotes_all env hp
+        have m2 := Int.le_max_right (wrapEnd region st) (st.used + env.pitchOf l.id)
+        omega
+      have e1 : putHere env region st l = putLineWithReserve false env st l := by
+        simp only [putHere, if_pos hw, pw]; rfl
+      simp only [putHereLines, putLines, e1]
+      by_cases t : env.capacity < env.pitchOf l.id
+      · simp [putLineWithReserve, t]
+      · rw [putLineWithReserve_shown env false st l t n2]
+        simp only []
+        apply putHereLines_fitting env hp region _ ls
+        · exact hw
+        · rw [fittingWrapGo_congr env { putSlot st (env.pitchOf l.id) (.line l.id) with
+            notesUsed := lineNotesUsed env st l, notes := st.notes ++ l.notes.map (fun n => (n.id, 0, n.lines)),
+            carry := st.carry ++ [] } st rfl]
+          have nu : lineNotesUsed env st l = st.notesUsed + lineSep env st l + (noteLines l : Int) * env.pagePitch := by
+            unfold lineNotesUsed
+            rw [n2, partsLines_full]
+            show st.notesUsed + _ + _ = _
+            cases d : l.notes with
+            | nil => simp [noteLines, lineSep, d]
+            | cons _ _ => simp [noteLines, d, List.isEmpty]
+          show ls.length ≤ fittingWrapGo env st (wrapEnd region st) (st.used + env.pitchOf l.id) (lineNotesUsed env st l) ls
+          rw [nu]
+          simp only [List.length_cons] at hf
+          omega
+    · simp at hf
+
+theorem fittingWrapGo_take (env : Env) (st : St) (e : Int) :
+    ∀ (rows : List Line) (n : Nat) (u m : Int), n ≤ fittingWrapGo env st e u m rows →
+      (rows.take n).length ≤ fittingWrapGo env st e u m (rows.take n)
+  | _, 0, _, _, _ => by simp
+  | [], _ + 1, _, _, _ => by simp [fittingWrapGo]
+  | l :: ls, n + 1, u, m, h => by
+    simp only [List.take, List.length_cons]
+    simp only [fittingWrapGo] at h ⊢
+    generalize (if 0 < noteLines l ∧ m = 0 then env.separator else 0) = sp at h ⊢
+    by_cases c : max e (u + env.pitchOf l.id) + (m + sp + (noteLines l : Int) * env.pagePitch) ≤ limit env st
+    · rw [if_pos c] at h ⊢
+      exact Nat.succ_le_succ (fittingWrapGo_take env st e ls n _ _ (Nat.le_of_succ_le_succ h))
+    · rw [if_neg c] at h; omega
+
+/-- `trialWrapRest` with every line put by `putLine`, the copy whose output
+    the comparison of README.md found unchanged. -/
+def trialWrapRestLine (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (firstId : Nat) : Except Failure Part :=
+  let total := rows.length
+  let count := fittingHere env region st rows
+  let selected := limited limit (splitAtBreak k start total count)
+  let emptyish := empty st || (headingOnly st && decide (0 < count))
+  if (empty st ∧ st.adjust < 0 ∧ count = 0) ∨ (selected = 0 ∧ emptyish = false) then
+    .ok (.moved (moveCursor env region st) k)
+  else
+    let takeCount := if selected = 0 then max 1 count else selected
+    let here := rows.take takeCount
+    let forced := selected = 0 ∧ emptyish ∧ takeCount < total
+    let short :=
+      (if forced ∧ start ∧ takeCount < k.first then [Unmet.shortPart true firstId k.first takeCount] else []) ++
+      (if forced ∧ total - takeCount < k.last then [Unmet.shortPart false firstId k.last (total - takeCount)] else [])
+    let ready := fit env st (sumPitch env here)
+    match putLines false env ready here with
+    | .error e => .error e
+    | .ok placed => .ok (.placed takeCount { placed with unmet := placed.unmet ++ short } k)
+
+/-- Root ADR 0352: a line beside a wrapped figure put by `putWrappedLine`
+    is put as `putLine` puts it, so `trialWrapRest` is `trialWrapRestLine`.
+    `fittingHere` takes a line beside the figure only when every line of
+    its notes fits below the end of the figure, and reserving the rest of
+    the figure then shows them all.  It assumes that the column of the
+    exclusion is not empty (`beginWrap` puts the figure there) and that
+    the next column is not that of the exclusion. -/
+theorem trialWrapRest_putLine (env : Env) (hp : 0 < env.pagePitch) (region : Region) (limit : Option Nat) (k : Keep)
+    (start : Bool) (st : St) (rows : List Line) (fid : Nat)
+    (hne : 0 < wrapEnd region st → empty st = false) (hnext : wrapEnd region (nextColumn env st) = 0) :
+    trialWrapRest env region limit k start st rows fid = trialWrapRestLine env region limit k start st rows fid := by
+  have main : ∀ n, (0 < wrapEnd region st → n ≤ fittingHere env region st rows) →
+      putHereLines env region (fit env st (sumPitch env (rows.take n))) (rows.take n)
+        = putLines false env (fit env st (sumPitch env (rows.take n))) (rows.take n) := by
+    intro n hn
+    have out : ∀ X : St, X.page = st.page → X.column = st.column → ¬0 < wrapEnd region st →
+        putHereLines env region X (rows.take n) = putLines false env X (rows.take n) := fun X p c h =>
+      putHereLines_outside env region X _ (by rw [wrapEnd_congr region X st p c]; exact h)
+    have away : ∀ X : St, X.page = (nextColumn env st).page → X.column = (nextColumn env st).column →
+        putHereLines env region X (rows.take n) = putLines false env X (rows.take n) := fun X p c =>
+      putHereLines_outside env region X _ (by rw [wrapEnd_congr region X _ p c, hnext]; decide)
+    unfold fit
+    split
+    · rename_i c
+      exact out _ rfl rfl (fun w => by have := hne w; rw [this] at c; simp at c)
+    · split
+      · exact away _ rfl rfl
+      · split
+        · by_cases w : 0 < wrapEnd region st
+          · have ne := hne w
+            have f := hn w
+            have wz : wrapEnd region st ≠ 0 := by omega
+            simp only [fittingHere, wz, if_false, ne] at f
+            generalize hR : ({ st with used := st.used + st.pending, pending := 0, blankActive := false, blankSpans := 0 } : St) = R
+            have rp : R.page = st.page := by rw [← hR]
+            have rc : R.column = st.column := by rw [← hR]
+            have ru : R.used = st.used + st.pending := by rw [← hR]
+            have rn : R.notesUsed = st.notesUsed := by rw [← hR]
+            have rl : PhysicalPagination.limit env R = PhysicalPagination.limit env st := by rw [← hR]; rfl
+            apply putHereLines_fitting env hp region R _ (by rw [wrapEnd_congr region R st rp rc]; exact w)
+            rw [wrapEnd_congr region R st rp rc, fittingWrapGo_congr env R st rl, ru, rn]
+            exact fittingWrapGo_take env st _ rows n _ _ (by simpa using f)
+          · exact out _ rfl rfl w
+        · split
+          · rename_i c
+            exact out _ rfl rfl (fun w => by have := hne w; rw [this] at c; simp at c)
+          · exact away _ rfl rfl
+  unfold trialWrapRest trialWrapRestLine
+  dsimp only
+  split
+  · rfl
+  · rename_i nm
+    have hk : 0 < wrapEnd region st →
+        (if limited limit (splitAtBreak k start rows.length (fittingHere env region st rows)) = 0
+          then max 1 (fittingHere env region st rows)
+          else limited limit (splitAtBreak k start rows.length (fittingHere env region st rows)))
+          ≤ fittingHere env region st rows := by
+      intro w
+      have ne := hne w
+      simp only [ne, Bool.false_or] at nm
+      split
+      · rename_i s0
+        have : (headingOnly st && decide (0 < fittingHere env region st rows)) = true := by
+          cases h : (headingOnly st && decide (0 < fittingHere env region st rows))
+          · exact absurd (Or.inr ⟨s0, h⟩) nm
+          · rfl
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at this
+        omega
+      · exact Nat.le_trans (limited_le _ _) (splitAtBreak_le _ _ _ _)
+    rw [main _ hk]
+
 end PhysicalPagination

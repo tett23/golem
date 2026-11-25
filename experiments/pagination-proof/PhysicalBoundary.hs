@@ -459,7 +459,9 @@ ruledHeadingRuleInputs =
 
 -- Wrapped figures and the lines beside them after paragraphs, before what
 -- follows, and after a figure sent on, a blank, a column made shorter, a
--- keep and a heading.
+-- keep and a heading.  After a figure sent on, the line that does not fit
+-- beside the figure has a note: it fits the next column, which the figure
+-- sent on starts, but its note does not.
 wrappedInputs :: [(Column, [FlowAt Sp])]
 wrappedInputs =
   [ (Column cap 4 cols, [para 0 p | p > 0] <> [FWrapped 150 (Sp e) [] [] ls] <> after <> [para 20 n])
@@ -478,10 +480,17 @@ wrappedInputs =
          e <- [10, 25],
          m <- [1, 3]
        ]
+    <> [ (Column 40 4 1, [para 0 2, FFigure 100 25 [] [], FWrapped 150 (Sp e) [] [] (noted 720 3 2 m), para 20 1])
+       | e <- [10, 15],
+         m <- [1, 2]
+       ]
 
 -- Tables after paragraphs, with and without a header, a caption above
 -- and below, rows of one to three lines and with a note, before what
--- follows; a header with a note; a space before a table; and a header whose line is taller than the page pitch, which
+-- follows; a header with a note; a space before a table, and after a
+-- figure sent on, a space before a table whose first part fits the column
+-- without the space but neither with it nor in the next column; and a
+-- header whose line is taller than the page pitch, which
 -- paginatePhysical repeats for ever when the next row does not fit.
 tableInputs :: [(Column, [FlowAt Sp])]
 tableInputs =
@@ -509,6 +518,9 @@ tableInputs =
        | cap <- [30, 40],
          p <- [1 .. 3],
          gap <- [FSpace 5, FSpace 10, FBlank span0 1]
+       ]
+    <> [ (Column 40 4 1, [para 0 2, FFigure 100 25 [] [], FSpace 5, FTable 160 0 header rows [] False, para 20 1])
+       | (header, rows) <- [([], [lines' 810 2]), ([line 800], [lines' 810 1, lines' 820 1])]
        ]
     <> [ (Column cap 4 1, [para 0 p, FTable 160 0 [line 905] rows [] False, para 20 1])
        | cap <- [30, 40],
