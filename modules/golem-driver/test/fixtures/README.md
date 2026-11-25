@@ -147,10 +147,12 @@ with its caption.
 `specimens/frames/` is a third, one-column book of the text frames (the
 input `specimens-frames`): a master page that puts an ornament on the
 foot of its pages and a frame of `wrap = "around"` on the fore-edge, a
-`@frame` with a quote, and a master page that puts a frame of a circle
-and one of a star
+`@frame` with a quote, a master page that puts a frame of a circle
+and one of a star, and a chapter of a table, a code block, a heading, a
+figure and a wrapped figure at the frame of `wrap = "around"`
 ([root ADR 0437](../../../../docs/adr/0437-paths-and-the-box-model.md) A1,
-[root ADR 0438](../../../../docs/adr/0438-place-text-frames-anywhere-on-a-page.md) A1).
+[root ADR 0438](../../../../docs/adr/0438-place-text-frames-anywhere-on-a-page.md) A1,
+[root ADR 0456](../../../../docs/adr/0456-keep-every-block-off-around-frames.md) A1).
 Its pages are checked by eye by the maintainer.
 
 What a page of these books shows is accepted by eye once, when its

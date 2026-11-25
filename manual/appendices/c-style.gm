@@ -747,7 +747,7 @@ PDF でだけ形と位置を使います。
 | [code: x-from] | [code: x] を測る端です。[code: "left"]（書かないとき）、[code: "inside"]（ノド）、[code: "outside"]（小口）のどれかです。左右固定モードでは [code: "left"] だけです。 |
 | [code: paragraph-style] | 中の文字を組む段落スタイルです。書かなければ [code: body] です。 |
 | [code: writing-mode] | [code: "horizontal"] か [code: "vertical"] です。書かなければ [code: \[page\]] と同じです。 |
-| [code: wrap] | [code: "none"]（書かないとき）なら本文と重なり、[code: "around"] なら本文の行を短くしてフレームを避けます。[code: "around"] はマスターページに置くフレームだけで使えます。 |
+| [code: wrap] | [code: "none"]（書かないとき）なら本文と重なり、[code: "around"] なら本文の行を短くしてフレームを避け、表、コードブロック、図版はフレームを越えた位置から置きます。[code: "around"] はマスターページに置くフレームだけで使えます。 |
 | [code: text] | マスターページに置くときにフレームに組む文字です。 |
 
 長さには [code: zw] も使え、フレームの段落スタイルの文字の大きさで測ります。
