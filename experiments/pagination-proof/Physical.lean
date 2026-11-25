@@ -5786,6 +5786,294 @@ theorem I5_stanza_lines (env : Env) (region : Region) (b : Beside) (a : StanzaAr
     ∃ lss, Each P indices lss ∧ Step cursor s lss.join [] :=
   (stanza_accept_lines env region b a P hP hf hh _).1 later keep isStart cursor indices s rfl h
 
+/-! ### Lines numbered on from the text placed
+
+When the breaker and `compose` number each line after the text placed
+before the cursor they compose at (`bUnitFirsts`, which counts the lines
+and the wrapped figures placed), `parts`, `stanza` and `paragraphs` add
+lines numbered on from the text at their cursor (`Counts`), whatever
+columns they move through. -/
+
+/-- From `c` to `s`, lines numbered on from the text at `c` are added, and
+    no figures. -/
+def Counts (c s : St) : Prop := ∃ n, Step c s (ids (text c).length n) []
+
+theorem ids_length (s n : Nat) : (ids s n).length = n := by
+  induction n generalizing s with
+  | zero => rfl
+  | succ n ih => simp [ids, ih]
+
+theorem Counts.ofStep {c s : St} (h : Step c s [] []) : Counts c s := ⟨0, by simpa [ids] using h⟩
+
+theorem Counts.refl (c : St) : Counts c c := Counts.ofStep (Step.refl c)
+
+theorem Counts.trans {a b c : St} (h : Counts a b) (h' : Counts b c) : Counts a c := by
+  obtain ⟨n, s⟩ := h
+  obtain ⟨n', s'⟩ := h'
+  have lb : (text b).length = (text a).length + n := by rw [s.1, List.length_append, ids_length]
+  rw [lb] at s'
+  exact ⟨n + n', by simpa [ids_append] using s.trans s'⟩
+
+/-- `parts` adds lines numbered on from the text at its cursor, when the
+    breaker numbers the lines it composes at a cursor on from the text
+    there. -/
+theorem parts_counts (env : Env) (region : Region) (breaker : St → Nat → Nat → List (Line × Nat)) (items lastWanted : Nat)
+    (follows : St → Bool) (hold : St → St)
+    (hb : ∀ a c t, lineIds ((breaker a c t).map (·.1)) = ids (text a).length (breaker a c t).length)
+    (hh : ∀ s, Step s (hold s) [] []) :
+    ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St) (s : St),
+    parts env region breaker items lastWanted follows hold limit k isStart start before at' = .ok s → Counts at' s := by
+  have key : ∀ m, ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St),
+      (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) = m → ∀ s,
+      parts env region breaker items lastWanted follows hold limit k isStart start before at' = .ok s →
+      Counts at' s := by
+    intro m
+    induction m using lex4_wf.induction with
+    | _ m ih =>
+    intro limit k isStart start before at' hm0 s h
+    subst hm0
+    rw [parts] at h
+    split at h
+    · cases h
+    · rename_i moved relaxed hm
+      have a := trialWrap_moved_step env region limit k isStart at' _ moved relaxed hm
+      have dec : lex4lt (items - start, keepRank relaxed, rank moved, limitRank none (breaker moved before start).length)
+          (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+        apply Prod.Lex.right
+        cases I4_trialWrap_moved env region limit k isStart at' _ moved relaxed hm with
+        | inl l => exact Prod.Lex.left _ _ l
+        | inr e => rw [e.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ e.2)
+      exact (Counts.ofStep a).trans (ih _ dec none relaxed isStart start before moved rfl s h)
+    · rename_i count placed relaxed hm
+      have a := trialWrap_placed_step env region limit k isStart at' _ count placed relaxed hm
+      rw [lineIds_take, hb, ids_take] at a
+      have pc : Counts at' placed := ⟨_, a⟩
+      have done : Counts at' (hold (checkWaits placed)) :=
+        pc.trans (Counts.ofStep (by simpa using (step_checkWaits placed).trans (hh _)))
+      have movePart : ∀ s, empty at' = false →
+          parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at') = .ok s →
+          Counts at' s := by
+        intro s e3 e
+        have dec : lex4lt (items - start, keepRank k, rank (moveCursor env region at'),
+            limitRank none (breaker (moveCursor env region at') before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+          exact I4_moveCursor_rank env region at' (Or.inl e3)
+        exact (Counts.ofStep (step_moveCursor env region at')).trans (ih _ dec none k isStart start before _ rfl s e)
+      have retry : ∀ s n, n < limitRank limit (breaker at' before start).length →
+          parts env region breaker items lastWanted follows hold (some n) k isStart start before at' = .ok s →
+          Counts at' s := by
+        intro s n hn e
+        have dec : lex4lt (items - start, keepRank k, rank at', limitRank (some n) (breaker at' before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; exact hn
+        exact ih _ dec (some n) k isStart start before at' rfl s e
+      split at h
+      · split at h
+        · injection h with h; subst h; exact done
+        · split at h
+          · split at h
+            · rename_i h2; exact retry s _ h2 h
+            · cases h
+          · split at h
+            · rename_i h3; exact movePart s h3 h
+            · injection h with h; subst h; exact done
+      · split at h
+        · rename_i h4
+          have go : ∀ s, parts env region breaker items lastWanted follows hold none relaxed false
+              (nextItem (breaker at' before start) count start) (before + count) (moveCursor env region placed) = .ok s →
+              Counts at' s := by
+            intro s e
+            have dec : lex4lt (items - nextItem (breaker at' before start) count start, keepRank relaxed,
+                rank (moveCursor env region placed), limitRank none (breaker (moveCursor env region placed) (before + count)
+                  (nextItem (breaker at' before start) count start)).length)
+                (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+              apply Prod.Lex.left; obtain ⟨_, _⟩ := h4; omega
+            exact (pc.trans (Counts.ofStep (step_moveCursor env region placed))).trans
+              (ih _ dec none relaxed false _ (before + count) _ rfl s e)
+          split at h
+          · split at h
+            · split at h
+              · rename_i h6; exact retry s _ h6 h
+              · cases h
+            · split at h
+              · rename_i h7; exact movePart s h7 h
+              · exact go s h
+          · exact go s h
+        · cases h
+  intro limit k isStart start before at' s h
+  exact key _ limit k isStart start before at' rfl s h
+
+/-- Each trial of `tryVerses` adds lines numbered on from the text at its
+    cursor, when `compose` numbers them so. -/
+theorem verseChain_counts (b : Beside)
+    (hP : ∀ c i, lineIds (b.compose c i) = ids (text c).length (b.compose c i).length) :
+    ∀ (ts : List St) (c : St) (is : List Nat) (n : Nat) (t : St), VerseChain b c is ts → ts.get? n = some t →
+    Counts c t
+  | [], _, _, _, _, _, e => by simp at e
+  | _ :: _, _, [], _, _, h, _ => h.elim
+  | t0 :: ts, c, i :: is, 0, t, ⟨s, _⟩, e => by
+    simp at e; subst e
+    rw [hP] at s; exact ⟨_, s⟩
+  | t0 :: ts, c, i :: is, n + 1, t, ⟨s, r⟩, e => by
+    simp at e
+    rw [hP] at s
+    exact Counts.trans (⟨_, s⟩ : Counts c t0) (verseChain_counts b hP ts t0 is n t r e)
+
+/-- `stanza` and `accept` add lines numbered on from the text at their
+    cursor, when `compose` numbers the rows so, the fallback adds lines so
+    and the hold of what follows places nothing. -/
+theorem stanza_accept_counts (env : Env) (region : Region) (b : Beside) (a : StanzaArgs)
+    (hP : ∀ c i, lineIds (b.compose c i) = ids (text c).length (b.compose c i).length)
+    (hf : ∀ i later c s, a.fallback i later c = .ok s → Counts c s)
+    (hh : ∀ i r l s, Step s (b.hold i r l s) [] []) : ∀ m,
+    (∀ later keep isStart cursor indices s, (indices.length, keepRank keep, rank cursor, 1, 0) = m →
+      stanza env region b a later keep isStart cursor indices = .ok s → Counts cursor s) ∧
+    (∀ later keep isStart cursor indices trials count problems s, (indices.length, keepRank keep, rank cursor, 0, count) = m →
+      VerseChain b cursor indices trials →
+      accept env region b a later keep isStart cursor indices trials count problems = .ok s → Counts cursor s) := by
+  intro m
+  induction m using lex5_wf.induction with
+  | _ m ih =>
+  constructor
+  · intro later keep isStart cursor indices s hm h
+    subst hm
+    cases indices with
+    | nil =>
+      simp only [stanza, Except.ok.injEq] at h; subst h
+      exact Counts.ofStep (step_checkWaits cursor)
+    | cons firstIndex rest =>
+      rw [stanza] at h
+      split at h
+      · cases h
+      · rename_i trials ht
+        have hc := I5_tryVerses_lines env region b cursor _ trials ht
+        have again : ∀ keep' cursor', Step cursor cursor' [] [] →
+            lex5lt ((firstIndex :: rest).length, keepRank keep', rank cursor', 1, 0)
+              ((firstIndex :: rest).length, keepRank keep, rank cursor, 1, 0) →
+            stanza env region b a later keep' isStart cursor' (firstIndex :: rest) = .ok s → Counts cursor s := by
+          intro keep' cursor' st dec e
+          exact (Counts.ofStep st).trans ((ih _ dec).1 later keep' isStart cursor' _ s rfl e)
+        have moved : empty cursor = false →
+            stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest) = .ok s →
+            Counts cursor s := fun e =>
+          again keep _ (step_moveCursor env region cursor) (by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+            exact I4_moveCursor_rank env region cursor (Or.inl e))
+        have accepted : ∀ count problems,
+            accept env region b a later keep isStart cursor (firstIndex :: rest) trials count problems = .ok s →
+            Counts cursor s := fun count problems e =>
+          (ih _ (by apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; omega)).2
+            later keep isStart cursor _ trials count problems s rfl hc e
+        dsimp only at h
+        split at h
+        · rename_i c
+          split at h
+          · exact again _ _ (step_addUnmet _ _) (by
+              apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, c.1]) h
+          · split at h
+            · rename_i e; exact moved e h
+            · rename_i e1 e2; simp_all
+        · split at h
+          · exact accepted _ _ h
+          · split at h
+            · rename_i e; exact moved e h
+            · split at h
+              · exact accepted _ _ h
+              · split at h
+                · cases h
+                · rename_i next hn
+                  exact (hf _ _ _ _ hn).trans ((ih _ (by apply Prod.Lex.left; simp)).1 later keep false next rest s rfl h)
+  · intro later keep isStart cursor indices trials count problems s hm hc h
+    subst hm
+    rw [accept] at h
+    split at h
+    · cases h
+    · rename_i h0
+      split at h
+      · cases h
+      · rename_i placed hp
+        have cp : Counts cursor placed :=
+          verseChain_counts b hP trials cursor indices (count - 1) placed hc (by rw [← hp, getElem?_get?])
+        have sw : Counts cursor { placed with unmet := placed.unmet ++ problems } :=
+          cp.trans (Counts.ofStep (step_unmet placed _))
+        dsimp only at h
+        split at h
+        · have held : ∀ (r : Nat) (l : Bool), Counts cursor
+              (if b.holds (indices.getLast?.getD 0) then b.hold (indices.getLast?.getD 0) r l
+                (checkWaits { placed with unmet := placed.unmet ++ problems })
+               else checkWaits { placed with unmet := placed.unmet ++ problems }) := by
+            intro r l
+            have sc := sw.trans (Counts.ofStep (step_checkWaits _))
+            split
+            · exact sc.trans (Counts.ofStep (hh _ _ _ _))
+            · exact sc
+          split at h
+          · cases h
+          · rename_i required linesOnly fits _
+            split at h
+            · injection h with h; subst h; exact held _ _
+            · generalize (if isStart = true then max 1 keep.first else 1) = q at h
+              split at h
+              · exact (ih _ (by
+                  apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; omega)).2
+                  later keep isStart cursor indices trials _ [] s rfl hc h
+              · split at h
+                · rename_i e
+                  exact (Counts.ofStep (step_moveCursor env region cursor)).trans ((ih _ (by
+                    apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+                    exact I4_moveCursor_rank env region cursor (Or.inl e))).1
+                    later keep isStart _ indices s rfl h)
+                · injection h with h; subst h; exact held _ _
+        · rename_i hr
+          have hne : indices.length ≠ 0 := by
+            intro e; rw [List.length_eq_zero.mp e] at hr; simp [List.isEmpty] at hr
+          exact (sw.trans (Counts.ofStep (step_moveCursor env region _))).trans
+            ((ih _ (by apply Prod.Lex.left; simp; omega)).1 later keep false _ (indices.drop count) s rfl h)
+
+/-- `paragraphs` adds lines numbered on from the text at its cursor, when
+    `compose` numbers the rows so, `ready` steps the controls without
+    placing anything numbered otherwise, and `paragraph` and the fallback
+    add lines so. -/
+theorem I5_paragraphs_counts (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (p : Paras)
+    (hP : ∀ c i, lineIds (b.compose c i) = ids (text c).length (b.compose c i).length)
+    (hf : ∀ i later c s, a.fallback i later c = .ok s → Counts c s)
+    (hh : ∀ i r l s, Step s (b.hold i r l s) [] [])
+    (hr : ∀ prior index c rows s, p.ready prior index c rows = .ok s → Counts c s)
+    (hp : ∀ index later c s, p.paragraph index later c = .ok s → Counts c s)
+    (prior : Nat) (cursor : St) (indices : List Nat) (s : St)
+    (h : paragraphs env region b a p prior cursor indices = .ok s) : Counts cursor s := by
+  match indices with
+  | [] => simp only [paragraphs, Except.ok.injEq] at h; subst h; exact Counts.refl _
+  | index :: later =>
+    rw [paragraphs] at h
+    split at h
+    · cases h
+    · split at h
+      · split at h
+        · cases h
+        · split at h
+          · cases h
+          · rename_i ready er
+            split at h
+            · cases h
+            · rename_i next es
+              exact ((hr _ _ _ _ _ er).trans
+                ((stanza_accept_counts env region b a hP hf hh _).1 _ _ _ ready _ next rfl es)).trans
+                (I5_paragraphs_counts env region b a p hP hf hh hr hp _ next _ s h)
+      · split at h
+        · cases h
+        · rename_i ready er
+          split at h
+          · cases h
+          · rename_i next en
+            exact ((hr _ _ _ _ _ er).trans (hp _ _ _ _ en)).trans
+              (I5_paragraphs_counts env region b a p hP hf hh hr hp index next later s h)
+termination_by indices.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after b index later; omega)
+
 /-! ### The same-column check of `tryVerses`
 
 `tryVerses` accepts a trial that placed its verse line whole only when the

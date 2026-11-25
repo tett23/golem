@@ -101,11 +101,10 @@ def narrowed (region : Region) (origin : Int) (at' : St) (k : Nat) : Bool :=
   | some (p, c, e) => p == at'.page && c == at'.column && intersects (rowExtent (paragraphOrigin at' + (k : Int) * pitch)) (origin, e)
   | none => false
 
-/-- The lines and the wrapped figures placed: the id of the next one
+/-- The text placed, the lines and the wrapped figures in these
+    manuscripts, which have no headings and no code: the id of the next one
     (`bUnitFirsts` numbers the lines and the figures in order from 0). -/
-def slotCount (st : St) : Nat :=
-  (((st.done.reverse.map (·.slots)).join ++ st.slots).filter
-    (fun s => match s.2 with | .line _ | .wrapped _ => true | _ => false)).length
+def slotCount (st : St) : Nat := (text st).length
 
 /-- The ids of the slots placed. -/
 def placedIds (st : St) : List Nat :=
@@ -479,10 +478,13 @@ def jobs (e : Env) (m : Ms) : Jobs :=
 `outside`, `itemRest` and `finish` place the lines of their positions, as
 `FParagraph`s numbered from the lines and figures placed before them
 (`stepAt_lines`), and `retainPart` returns one run of its trial
-(`retainPart_retains`).  These are proved.  That `runJob` places the
-lines of the flows before the figure, the figure and then lines numbered
-on from it (`runLines`) is not: `check.sh` checks it at each run in the
-manuscripts (`premiseFailures`). -/
+(`retainPart_retains`).  `runJob` places the lines of the flows before
+the figure, the figure and then lines numbered on from it (`runLines`,
+`runJob_lines`): a line or a wrapped figure has the id of the text placed
+before it (`slotCount`), so the lines `parts`, `stanza` and `paragraphs`
+add are numbered on from the text at their cursor (`I5_paragraphs_counts`).
+`check.sh` still checks `runLines` at each run in the manuscripts
+(`premiseFailures`), as a guard on the copies. -/
 
 theorem flowsOf_figs (m : Ms) (first : Nat) (ps : List Nat) : sourceFigs (flowsOf m first ps) = [] := by
   induction ps generalizing first with
@@ -530,6 +532,232 @@ def runLines (m : Ms) (prior : Option Nat) (job : Nat) (c : St) (ls : List Nat) 
   let pre := sourceText (prefixFlows m prior job c) ++ [wrapIdent m prior job c]
   ls.take pre.length == pre && ls.drop pre.length == ids (wrapIdent m prior job c + 1) (ls.length - pre.length)
 
+theorem breakLines_go_ids (w measure : Nat) (region : Region) (origin : Int) (at' : St) (n first : Nat) :
+    ∀ fuel k from', lineIds ((breakLines.go w measure region origin at' n first fuel k from').map (·.1)) =
+      ids (first + k) (breakLines.go w measure region origin at' n first fuel k from').length
+  | 0, _, _ => rfl
+  | fuel + 1, k, from' => by
+    have ih := fun k f => breakLines_go_ids w measure region origin at' n first fuel k f
+    unfold breakLines.go
+    split
+    · rfl
+    · simp only [lineIds] at ih ⊢
+      simp only [Nat.add_eq, Nat.add_zero]
+      simp only [List.map, List.length_cons, ih, ids, Nat.add_assoc]
+      rfl
+
+/-- The lines `breakLines` composes at a cursor are numbered on from the
+    text placed there. -/
+theorem breakLines_ids (w measure : Nat) (region : Region) (origin : Int) (at' : St) (start n : Nat) :
+    lineIds ((breakLines w measure region origin at' start n).map (·.1)) =
+      ids (text at').length (breakLines w measure region origin at' start n).length := by
+  have := breakLines_go_ids w measure region origin at' n (slotCount at') (n + 1) 0 start
+  simpa [breakLines] using this
+
+theorem range_length : ∀ n, (List.range n).length = n
+  | 0 => rfl
+  | n + 1 => by rw [range_succ', List.length_append, range_length n]; rfl
+
+theorem rows_ids (first : Nat) : ∀ n,
+    lineIds ((List.range n).map fun k => (⟨first + k, [], 0⟩ : Line)) = ids first n
+  | 0 => rfl
+  | n + 1 => by
+    rw [range_succ', List.map_append, lineIds_append, rows_ids first n, ← ids_append]
+    rfl
+
+def flowLength : Flow → Nat
+  | .paragraph _ ls => ls.length
+  | _ => 0
+
+theorem para_text (m : Ms) (first N : Nat) (rest : List Nat)
+    (ih : ∀ f, sourceText (flowsOf m f rest) = ids f (sourceText (flowsOf m f rest)).length) :
+    sourceText (.paragraph defaultKeep ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)) ::
+        flowsOf m (first + ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)).length) rest) =
+      ids first (sourceText (.paragraph defaultKeep ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)) ::
+        flowsOf m (first + ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)).length) rest)).length := by
+  simp only [sourceText, flowText, rows_ids, List.length_map, range_length, List.length_append, ids_length]
+  have := ih (first + N)
+  generalize sourceText (flowsOf m (first + N) rest) = t at this ⊢
+  have e : ids first N ++ t = ids first N ++ ids (first + N) t.length := congrArg _ this
+  rw [e, ids_append]
+
+theorem para_length (m : Ms) (first N acc : Nat) (rest : List Nat)
+    (ih : ∀ f acc, ((flowsOf m f rest).map flowLength).foldl (· + ·) acc = acc + (sourceText (flowsOf m f rest)).length) :
+    ((Flow.paragraph defaultKeep ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)) ::
+        flowsOf m (first + ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)).length) rest).map flowLength).foldl
+        (· + ·) acc =
+      acc + (sourceText (.paragraph defaultKeep ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)) ::
+        flowsOf m (first + ((List.range N).map fun k => (⟨first + k, [], 0⟩ : Line)).length) rest)).length := by
+  simp only [List.map, List.foldl, flowLength, sourceText, flowText, rows_ids, List.length_map, range_length,
+    List.length_append, ids_length]
+  rw [ih]; omega
+
+/-- The flows of the positions place the lines numbered from `first` on. -/
+theorem flowsOf_text (m : Ms) : ∀ (first : Nat) (ps : List Nat),
+    sourceText (flowsOf m first ps) = ids first (sourceText (flowsOf m first ps)).length
+  | _, [] => rfl
+  | first, i :: rest => by
+    unfold flowsOf
+    split
+    · exact para_text m first _ rest (fun f => flowsOf_text m f rest)
+    · exact para_text m first _ rest (fun f => flowsOf_text m f rest)
+    · simp only [sourceText, flowText, List.nil_append]; exact flowsOf_text m first rest
+    · exact flowsOf_text m first rest
+
+/-- The lines of the paragraphs of the flows of the positions are those
+    they place. -/
+theorem flowsOf_length (m : Ms) : ∀ (first : Nat) (ps : List Nat) (acc : Nat),
+    ((flowsOf m first ps).map flowLength).foldl (· + ·) acc = acc + (sourceText (flowsOf m first ps)).length
+  | _, [], acc => rfl
+  | first, i :: rest, acc => by
+    unfold flowsOf
+    split
+    · exact para_length m first _ acc rest (fun f acc => flowsOf_length m f rest acc)
+    · exact para_length m first _ acc rest (fun f acc => flowsOf_length m f rest acc)
+    · simp only [List.map, List.foldl, flowLength, sourceText, flowText, List.nil_append, Nat.add_zero]
+      exact flowsOf_length m first rest acc
+    · exact flowsOf_length m first rest acc
+
+theorem noBreaks_text : ∀ (l : List Flow), (∀ f ∈ l, f = .noBreak) → sourceText l = [] ∧ sourceFigs l = []
+  | [], _ => ⟨rfl, rfl⟩
+  | f :: fs, h => by
+    have e := h f (List.mem_cons_self _ _)
+    subst e
+    have := noBreaks_text fs (fun g hg => h g (List.mem_cons_of_mem _ hg))
+    simp only [sourceText, sourceFigs, flowText, flowFigs, List.nil_append, this, and_self]
+
+theorem filterMap_noBreaks (g : Nat → Option Flow) (hg : ∀ a x, g a = some x → x = .noBreak) :
+    ∀ (l : List Nat) (f : Flow), f ∈ l.filterMap g → f = .noBreak
+  | [], _, h => by cases h
+  | a :: l, f, h => by
+    simp only [List.filterMap] at h
+    split at h
+    · exact filterMap_noBreaks g hg l f h
+    · rename_i x e
+      cases h with
+      | head => exact hg a f e
+      | tail _ h => exact filterMap_noBreaks g hg l f h
+
+theorem controlsBetween_text (m : Ms) (prior index : Nat) :
+    sourceText (controlsBetween m prior index) = [] ∧ sourceFigs (controlsBetween m prior index) = [] := by
+  apply noBreaks_text
+  apply filterMap_noBreaks
+  intro j x e
+  split at e
+  · split at e
+    · injection e with e; exact e.symm
+    · cases e
+  · cases e
+
+theorem step_stepPrefix (e : Env) (following : List Flow) :
+    ∀ (flows : List Flow) (st s : St), stepPrefix e st following flows = .ok s →
+    Step st s (sourceText flows) (sourceFigs flows)
+  | [], st, s, h => by simp only [stepPrefix, Except.ok.injEq] at h; subst h; exact Step.refl _
+  | f :: rest, st, s, h => by
+    simp only [stepPrefix] at h
+    split at h
+    · cases h
+    · rename_i s1 e1
+      have := (step_placeNext inner (level_ok 1) e st f _ s1 e1).trans (step_stepPrefix e following rest s1 s h)
+      simpa [sourceText, sourceFigs] using this
+
+theorem step_beginWrap (e : Env) (st : St) (ident : Nat) (extent : Int) (r : St × Region)
+    (h : beginWrap e st ident extent = .ok r) : Step st r.1 [ident] [] := by
+  unfold beginWrap at h
+  split at h
+  · cases h
+  · injection h with h; subst h
+    simpa using ((step_fit e st extent).trans (step_putWrappedSlot _ ident)).trans (step_checkWaits _)
+
+theorem step_holdNext (required : Nat) (linesOnly : Bool) (st : St) : Step st (holdNext required linesOnly st) [] [] :=
+  step_waitForPrior _ _ st
+
+theorem compose_ids (m : Ms) (region : Region) (origin : Int) (c : St) (i : Nat) :
+    lineIds ((beside m region origin).compose c i) = ids (text c).length ((beside m region origin).compose c i).length := by
+  simp only [beside]
+  rw [breakLines_ids, List.length_map]
+
+/-- `paragraph` and the fallback of a verse line add lines numbered on
+    from the text at their cursor. -/
+theorem paragraphAt_counts (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (index : Nat)
+    (later : List Nat) (k : Keep) (lastWanted wanted : Nat) (c s : St)
+    (h : paragraphAt e m job region origin index later k lastWanted wanted c = .ok s) : Counts c s := by
+  unfold paragraphAt at h
+  refine parts_counts _ _ _ _ _ _ _ (fun a _ t => breakLines_ids _ _ _ _ a t _) (fun st => ?_) _ _ _ _ _ _ _ h
+  dsimp only
+  split
+  · exact step_holdNext _ _ st
+  · exact Step.refl st
+
+/-- The paragraphs beside a figure add lines numbered on from the text at
+    their cursor. -/
+theorem paragraphs_counts_here (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (prior : Nat)
+    (c s : St) (positions : List Nat)
+    (h : paragraphs e region (beside m region origin) (stanzaArgs e m job region origin) (paras e m job region origin)
+      prior c positions = .ok s) : Counts c s := by
+  refine I5_paragraphs_counts e region (beside m region origin) (stanzaArgs e m job region origin)
+    (paras e m job region origin) (compose_ids m region origin)
+    (fun i later c s h => paragraphAt_counts e m job region origin i later defaultKeep 0 0 c s h)
+    (fun _ _ _ st => step_holdNext _ _ st) (fun prior index c rows s h => ?_)
+    (fun index later c s h => by
+      simp only [paras] at h
+      exact paragraphAt_counts e m job region origin index later _ _ _ c s h) prior c positions s h
+  have := step_stepPrefix e _ _ c s h
+  rw [(controlsBetween_text m prior index).1, (controlsBetween_text m prior index).2] at this
+  exact Counts.ofStep this
+
+theorem take_drop_app (a x : List Nat) : (a ++ x).take a.length = a ∧ (a ++ x).drop a.length = x := by
+  induction a with
+  | nil => simp
+  | cons y ys ih => simp [ih.1, ih.2]
+
+/-- `runJob` places the lines of the flows before the figure, the figure,
+    and lines numbered on from the figure (`runLines`). -/
+theorem runJob_lines (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (c s : St)
+    (h : runJob e m prior job c = .ok s) : ∃ ls, runLines m prior job c ls = true ∧ Step c s ls [] := by
+  unfold runJob at h
+  dsimp only at h
+  split at h
+  · cases h
+  · rename_i ready hready
+    split at h
+    · cases h
+    · rename_i anchored region hbw
+      split at h
+      · cases h
+      · rename_i placed hpl
+        injection h with h; subst h
+        have s1 := step_stepPrefix e _ _ c ready hready
+        rw [show sourceFigs (prefixFlows m prior job c) = [] from flowsOf_figs _ _ _] at s1
+        have s2 := step_beginWrap e ready _ _ _ hbw
+        obtain ⟨n, s3⟩ := paragraphs_counts_here e m job region _ job anchored placed _ hpl
+        have s4 := step_endWrap region placed
+        have pre : sourceText (prefixFlows m prior job c) = ids (slotCount c) (sourceText (prefixFlows m prior job c)).length :=
+          flowsOf_text m _ _
+        have wi : wrapIdent m prior job c = slotCount c + (sourceText (prefixFlows m prior job c)).length := by
+          unfold wrapIdent
+          have := flowsOf_length m (slotCount c) (span m (if !m.retaining then after m prior
+            else if prior.isSome || (itemAt m job).isSome then max (after m prior) (itemStart m job) else 0) (job - 1) none
+              |>.filter (· < job)) 0
+          simp only [prefixFlows] at this ⊢
+          rw [show (fun f => match f with | .paragraph _ ls => ls.length | _ => 0) = flowLength from
+            funext fun f => by cases f <;> rfl]
+          omega
+        have la : (text anchored).length = wrapIdent m prior job c + 1 := by
+          rw [s2.1, s1.1, wi]; simp only [slotCount, List.length_append, List.length_cons, List.length_nil]
+        rw [la] at s3
+        refine ⟨sourceText (prefixFlows m prior job c) ++ [wrapIdent m prior job c] ++ ids (wrapIdent m prior job c + 1) n,
+          ?_, by simpa using ((s1.trans s2).trans s3).trans s4⟩
+        have hA := take_drop_app (sourceText (prefixFlows m prior job c) ++ [wrapIdent m prior job c])
+          (ids (wrapIdent m prior job c + 1) n)
+        have hl : ((sourceText (prefixFlows m prior job c) ++ [wrapIdent m prior job c]) ++
+            ids (wrapIdent m prior job c + 1) n).length -
+            (sourceText (prefixFlows m prior job c) ++ [wrapIdent m prior job c]).length = n := by
+          simp only [List.length_append, ids_length]; omega
+        simp only [runLines]
+        rw [hA.1, hA.2, hl]
+        simp
+
 /-- What each piece of `jobsFrom` places on these manuscripts. -/
 def piecePremise (m : Ms) : JobPiece → St → List Nat → Prop
   | .outside prior done job, c, ls =>
@@ -539,13 +767,10 @@ def piecePremise (m : Ms) : JobPiece → St → List Nat → Prop
     ls = sourceText (flowsOf m (slotCount c) ((span m (after m (some prior)) m.us.length none).filter (fun j => itemAt m j == some key)))
   | .finish prior done, c, ls => ls = sourceText (flowsOf m (slotCount c) (span m (after m prior) m.us.length done))
 
-/-- The premises of `I5_jobsFrom_lines` hold for these manuscripts when
-    `runJob` places `runLines`. -/
-theorem jobs_lines (e : Env) (m : Ms)
-    (hrun : ∀ prior job c s, runJob e m prior job c = .ok s → ∃ ls, runLines m prior job c ls = true ∧ Step c s ls []) :
-    JobsLines (jobs e m) (piecePremise m) where
+/-- The premises of `I5_jobsFrom_lines` hold for these manuscripts. -/
+theorem jobs_lines (e : Env) (m : Ms) : JobsLines (jobs e m) (piecePremise m) where
   outside := fun _ _ _ c s h => ⟨_, rfl, stepAt_lines e m c s _ h⟩
-  run := fun prior _ job c s h => hrun prior job c s h
+  run := fun prior _ job c s h => runJob_lines e m prior job c s h
   itemRest := fun _ _ c s h => ⟨_, rfl, stepAt_lines e m c s _ h⟩
   finish := fun _ _ c s h => ⟨_, rfl, stepAt_lines e m c s _ h⟩
   retain := by
@@ -557,14 +782,15 @@ theorem jobs_lines (e : Env) (m : Ms)
 
 /-- On these manuscripts, `jobsFrom` places the lines of the positions
     outside the figures and of the runs of the figures, each piece once and
-    in order, when `runJob` places `runLines`. -/
-theorem I5_causal_jobsFrom_lines (e : Env) (m : Ms)
-    (hrun : ∀ prior job c s, runJob e m prior job c = .ok s → ∃ ls, runLines m prior job c ls = true ∧ Step c s ls [])
-    (s : St) (h : jobsFrom (jobs e m) none none (initial e) ((indices m).filter (isFig m)) = .ok s) :
+    in order. -/
+theorem I5_causal_jobsFrom_lines (e : Env) (m : Ms) (s : St)
+    (h : jobsFrom (jobs e m) none none (initial e) ((indices m).filter (isFig m)) = .ok s) :
     ∃ lss, PieceChain (piecePremise m) (initial e) (jobPieces (jobs e m) none none ((indices m).filter (isFig m))) lss s :=
-  I5_jobsFrom_lines _ _ (jobs_lines e m hrun) _ _ _ _ _ h
+  I5_jobsFrom_lines _ _ (jobs_lines e m) _ _ _ _ _ h
 
-/-- `runJob`, failing where it does not place `runLines` and no figures. -/
+/-- `runJob`, failing where it does not place `runLines` and no figures;
+    `runJob_lines` proves it never fails so, and check.sh keeps the check
+    as a guard on the copies. -/
 def runChecked (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (c : St) : Except Failure St :=
   match runJob e m prior job c with
   | .error f => .error f

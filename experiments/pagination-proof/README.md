@@ -1320,9 +1320,10 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落
 一つは、`outside`、`run`、`itemRest`、`finish` が、それぞれ呼び出しごとの述語を満たす行を置き、図版を置かないことである。
 もう一つは、`retain` が、行を置かずに進めたカーソルで試しを走らせ、その試しの値と、その試しのカーソルから行を置かずに進めたカーソルを返すことである。
 `CausalBoundary.lean` では、`outside`、`itemRest`、`finish` がその位置の段落の行をちょうど置くこと（`stepAt_lines`）と、`retainPart` が後者の前提を満たすこと（`retainPart_retains`）を証明した（`jobs_lines`）。
-`runJob` が、図版の前のフローの行、図版、図版に続く番号の行をこの順に置くこと（`runLines`）は証明していない。
-`check.sh` は、4864 個の原稿で `runJob` を呼ぶたびにこれを確かめる（`premiseFailures`）。
-`I5_causal_jobsFrom_lines` は、この前提のもとで、これらの原稿の `jobsFrom` が置く行の過不足と順序を与える。
+`runJob` が、図版の前のフローの行、図版、図版に続く番号の行をこの順に置くこと（`runLines`）も証明した（`runJob_lines`）。
+組む行の番号はカーソルの前に置いたテキストの長さから始まるので、`parts`、`stanza`、`paragraphs` が足す行は、どの段へ移っても、それぞれのカーソルのテキストに続く番号になる（`Counts`、`I5_paragraphs_counts`）。
+`check.sh` は、4864 個の原稿で `runJob` を呼ぶたびにこれを確かめる検査（`premiseFailures`）を、写しの守りとして残す。
+`I5_causal_jobsFrom_lines` は、前提を仮定せずに、これらの原稿の `jobsFrom` が置く行の過不足と順序を与える。
 
 このうち `jobsFrom`、`itemJobs`、`paragraphs`、`parts`、`probeNext`、`probeChain`、`stanza`、`tryVerses`、`accept` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
 `CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に段落か連を置いた原稿と、回り込み図版をリスト項目の中に置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
@@ -1351,6 +1352,8 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落
 リスト項目の段落は 2zw 字下げされ、一行に 10 字が入る。
 入れ子の項目の段落は 4zw 字下げされ、一行に 8 字が入る。
 行と図版の番号は、golem-typeset の `bUnitFirsts` と同じく、前に置いた行と図版の数である。
+`CausalBoundary.lean` では、この数を置いたテキスト（`text`）の長さ（`slotCount`）とした。
+見出しもコードも置かないこれらの原稿では、テキストは置いた行と回り込み図版の番号だけからなる。
 図版の横に置かない段落（項目の始めの段落と、項目の外の段落）は、その幅で組んだ行の `FParagraph` として置く。
 `retainPhysicalPart` が項目のものとして調べる番号（`flowSlotIds`）は、試しで新たに置いた行と図版の番号として与えた。
 golem-typeset は、図版を組む段階で、除外領域が段より長い図版を一つずつ報告し（G07023）、`causalFreeFlow` に進まない。
