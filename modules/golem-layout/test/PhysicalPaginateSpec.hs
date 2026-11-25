@@ -1024,17 +1024,76 @@ lostRules flows pages =
     counts /= map (const 1) counts && counts /= map (const 0) counts
   ]
 
+{- | The lines of a column that lie outside it: above the start of the
+column, which a column switch moves down the page, or below its end above
+the notes (root ADR 0397 I8).
+-}
+freeLinesOutOfColumn :: PhysicalSettings -> PageOutAt Sp -> [Int]
+freeLinesOutOfColumn cfg p =
+  [n | (at, SLine n) <- poSlots p, at < csFirstLine (poColumnSet p) || at + physicalPagePitch cfg > columnEnd cfg p]
+
+-- | The rules of a column, kept in it, that lie outside it (root ADR 0397 I8, golem-driver ADR 0040).
+freeRulesOutOfSwitched :: PhysicalSettings -> Sp -> PageOutAt Sp -> [PlacedRule]
+freeRulesOutOfSwitched cfg w p = [r | r <- poRules p, prAt r < csFirstLine (poColumnSet p) || prAt r + w > columnEnd cfg p]
+
+-- | The end of a column above its notes.
+columnEnd :: PhysicalSettings -> PageOutAt Sp -> Sp
+columnEnd cfg p =
+  let noteLines = sum [n | (_, _, n) <- poFootnotes p]
+   in poLines p - (if noteLines > 0 then physicalSeparator cfg + fromIntegral noteLines * physicalPagePitch cfg else 0)
+
 {- | Golem-driver ADR 0027 in the free placement of root ADR 0397: two
 rules share an area only when the block after goes on in the same column
 (「隣り合う罫線」); otherwise the rule after is the first block's own, its
 block is not split and keeps the rule inside the column (keep-in-column =
 true), going whole to the next column, or broken without rules when an
 empty column cannot hold it (golem-driver ADR 0035). Root ADR 0397 I8:
-the rules lie in the column, above the notes.
+the rules lie in the column, above the notes. An empty column is one with
+nothing placed in it, also when a column switch has started it down the
+page (root ADR 0397, 「罫線付き段落が空段の長さを超える」), as in the grid
+placement.
 -}
 joinedRuleTests :: [TestTree]
 joinedRuleTests =
-  [ testCase "root ADR 0397 I8, golem-driver ADR 0027: the rule after of a block the next ruled block cannot join stays in the column" $ do
+  [ testCase "root ADR 0397 I8, golem-driver ADR 0035: a ruled paragraph longer than the empty column a column switch started down the page is broken there without rules, as in the grid placement" $ do
+      -- 40 sp: column 2 of the set starts at 20 sp; three lines of 10 sp and the rule after do not fit its 20 sp
+      let cfg = settings {physicalPagePitch = 10, physicalCapacity = 40, physicalMaxCapacity = 40}
+          ruled = FRuled 100 Nothing (Just (RuleSide 2 2 1 False Nothing)) False (RuleGrid 10 8) 0 (RuledLines defaultKeep (map line [20 .. 22]))
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0, line 1], FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep [line 10, line 11], ruled, FParagraph defaultKeep [line 30]])
+      map (\p -> (poNumber p, poColumn p, poSlots p, poRules p)) ps
+        @?= [ (1, 0, [(0, SLine 0), (10, SLine 1)], []),
+              (1, 0, [(20, SLine 10), (30, SLine 11)], []),
+              (1, 1, [(20, SLine 20), (30, SLine 21)], []),
+              (2, 0, [(0, SLine 22), (10, SLine 30)], [])
+            ],
+    testCase "root ADR 0397 I8, golem-driver ADR 0027, 0035: after a column switch the lines and rules of ruled paragraphs lie in their columns, with all their rules or none" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, cols, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, cols, map showFlow flows, [(poNumber p, poColumn p, csFirstLine (poColumnSet p), poSlots p, poRules p) | p <- ps])
+              assertBool ("lines out of the column: " <> show shown) (all (null . freeLinesOutOfColumn cfg) ps)
+              assertBool ("rules out of the column: " <> show shown) (all (null . freeRulesOutOfSwitched cfg (rsdWeight side)) ps)
+              assertBool ("lost: " <> show shown) (null (lostRules flows ps))
+              sort [k | p <- ps, (_, SLine k) <- poSlots p] @?= sort [lbId l | f <- flows, l <- flowLinesOf f]
+        | c <- [30, 40, 50, 60],
+          cols <- [2, 3],
+          lead <- [0 .. 3],
+          inColumn <- [0 .. 2],
+          n <- [1 .. 5],
+          side <- [RuleSide 0 0 1 False Nothing, RuleSide 2 2 1 False Nothing, RuleSide 3 1 2 True Nothing],
+          (b, a) <- [(Nothing, Just side), (Just side, Nothing), (Just side, Just side)],
+          next <- [[], [FRuled 101 (Just side) Nothing True (RuleGrid 10 8) 0 (RuledLines defaultKeep [line 40])]],
+          let cfg = settings {physicalPagePitch = 10, physicalCapacity = c, physicalMaxCapacity = c}
+              flows =
+                [FParagraph defaultKeep (map line [0 .. lead - 1]) | lead > 0]
+                  <> [FSwitchColumns (ColumnSet cols 0 0 0)]
+                  <> [FParagraph defaultKeep (map line [10 .. 9 + inColumn]) | inColumn > 0]
+                  <> [FRuled 100 b a False (RuleGrid 10 8) 0 (RuledLines defaultKeep (map line [20 .. 19 + n]))]
+                  <> next
+                  <> [FParagraph defaultKeep [line 30], FRestoreColumns]
+        ],
+    testCase "root ADR 0397 I8, golem-driver ADR 0027: the rule after of a block the next ruled block cannot join stays in the column" $ do
       -- 60 sp: three lines of 16 sp and the rule after 15 sp below the em box of the last line
       let cfg = settings {physicalCapacity = 60, physicalMaxCapacity = 60}
           after = RuleSide 15 0 1 True Nothing
