@@ -255,6 +255,24 @@ wrapTrials=$(grep -c '^tw ' "$tmp/physical-lean")
 echo "the $physicalInputs boundary inputs give the same pages in Physical.lean and golem-layout's paginatePhysical"
 echo "the $wrapTrials trials beside a wrapped figure give the same parts in Physical.lean and trialParagraphPartLimit"
 
+# The manuscripts of CausalBoundary.hs, a wrapped figure followed by
+# paragraphs, on the copies of causalFreeFlow's loops in Physical.lean
+# (jobsFrom, paragraphs, parts, probeNext and probeChain), against
+# golem-typeset's layoutPdf (root ADR 0352).  CausalBoundary.lean is
+# evaluated, not proved, so it may use partial.
+cboundary=$root/experiments/pagination-proof/CausalBoundary.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|native_decide|implemented_by|extern)([^A-Za-z_]|$)' "$cboundary"; then
+  echo "unchecked Lean declaration in $cboundary" >&2
+  exit 1
+fi
+(cd "$root" && cabal exec -v0 -- runghc --ghc-arg=-XGHC2021 --ghc-arg=-XLambdaCase \
+  --ghc-arg=-XOverloadedStrings --ghc-arg=-XDerivingStrategies --ghc-arg=-imodules/golem-driver/test \
+  experiments/pagination-proof/CausalBoundary.hs) > "$tmp/causal-haskell"
+LEAN_PATH="$tmp" "$lean" --run "$cboundary" > "$tmp/causal-lean"
+diff -u "$tmp/causal-haskell" "$tmp/causal-lean"
+causalInputs=$(grep -c '^[0-9]' "$tmp/causal-lean")
+echo "the $causalInputs manuscripts with a wrapped figure give the same pages in causalFreeFlow's loops of Physical.lean and golem-typeset"
+
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
 # breaks and the ratio and overflow of each line) on Pagination.lean's

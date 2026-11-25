@@ -1298,9 +1298,20 @@ golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）�
 三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わない処理である。
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
-回り込み図版の横の段落を改行し直すループ（`parts`）は写したが、改行器と後続の判定を引数とし、golem-typeset の出力とは照合していない。
-golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落と連を順に置くループ（`paragraphs`）、詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることだけを証明した。
-これらは golem-typeset の出力とは照合しておらず、行の過不足と順序もまだ証明していない。
+golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落を改行し直すループ（`parts`）、段落と連を順に置くループ（`paragraphs`）、詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることを証明した。
+行の過不足と順序は、まだ証明していない。
+
+このうち `jobsFrom`、`paragraphs`、`parts`、`probeNext`、`probeChain` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
+`CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に 1〜3 個の段落を置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
+段落は 5、12、25 字のいずれかで、段は 3〜6 行である。
+2 個か 3 個の段落の原稿には、段落の後に `@no-page-break` を挟んだものも含める。
+`CausalBoundary.lean` は、同じ原稿で `Physical.lean` の `jobsFrom` を評価し、同じ形式で書き出す。
+写したループの引数は、これらの原稿について golem-typeset が計算するとおりに与える。
+改行器（`composeAt`）は偽のフォントに合わせて、行の幅に収まる字数を前から詰める関数とし、行の幅は、行の領域（`rowExtent`）が図版の除外領域と交わるときに除外の幅を引いた値とした。
+除外領域の長さと幅は、図版の長さと幅にそれぞれ 1zw の `wrap-gap` を足した値である。
+`check.sh` は二つの出力を `diff` で比べ、1032 個の原稿ですべて一致した。
+後続の判定を常に収まるとすると 291 個、`parts` が最後の部分の行数を見ずに続けると 108 個の原稿で出力が食い違った。
+連（`stanza`、`tryVerses`）とリスト項目の中の図版（`itemJobs`）は、この照合に含まれない。
 
 置いた罫線の位置は、格子の上で `WholeRules.lean` が扱う（不変条件 3）。
 `Whole.lean` の `St` と `PageOut` は、golem-layout の `sRules` と `poRules` を写した `rules` を持つ。
