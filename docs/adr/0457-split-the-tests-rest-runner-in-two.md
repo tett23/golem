@@ -1,6 +1,6 @@
 # ADR 0457: プルリクエストの CI の tests-rest の脚を二つに分ける
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
