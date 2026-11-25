@@ -1363,7 +1363,12 @@ settlesHere cfg st next later = case ruledHere cfg st next later of
   Right (Just placed) -> not (movesForFollowing cfg st next placed later)
   _ -> False
 
--- | A ruled paragraph placed in this column with the flows after it, or Nothing when it does not fit the room.
+{- | A ruled paragraph placed in this column with the flows after it, or
+Nothing when it does not fit the room. An empty column keeps the block
+even when it is longer than the room ('fit'), as when a column switch
+starts the column down the page; the block does not fit it then and is
+broken without rules (golem-driver ADR 0035, root ADR 0397 I8).
+-}
 ruledLinesHere :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Either PhysicalFailure (Maybe PhysicalState)
 ruledLinesHere cfg st ruled ahead = case ruledLinesPlan cfg st ruled ahead of
   Nothing -> Right Nothing
@@ -1371,7 +1376,7 @@ ruledLinesHere cfg st ruled ahead = case ruledLinesPlan cfg st ruled ahead of
     | extent > physicalCapacity cfg -> Right Nothing
     | otherwise ->
         let ready = fit cfg st extent
-         in if (psPage ready, psColumn ready) /= (psPage st, psColumn st) then Right Nothing else Just <$> place ready
+         in if (psPage ready, psColumn ready) /= (psPage st, psColumn st) || extent > room cfg ready then Right Nothing else Just <$> place ready
 
 {- | The extent of a ruled paragraph with the flows after it, and how it is
 placed from a state. Its rule after waits to share an area when the flows
