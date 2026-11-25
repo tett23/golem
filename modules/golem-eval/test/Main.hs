@@ -10,13 +10,13 @@ import FileSpec qualified
 import FunctionSpec qualified
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import ImportListSpec qualified
-import OverrideImportSpec qualified
 import IndexKindSpec qualified
 import LangSpec qualified
 import LinkSpec qualified
 import NaturalSpec qualified
 import NoteSpec qualified
 import OperatorSpec qualified
+import OverrideImportSpec qualified
 import ParagraphStyleControlsSpec qualified
 import RangeSpec qualified
 import RationalSpec qualified
