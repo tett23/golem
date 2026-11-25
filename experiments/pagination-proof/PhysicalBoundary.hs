@@ -7,12 +7,14 @@
 -- "out" lines; check.sh compares the two with diff.
 module Main (main) where
 
-import Control.Exception (evaluate)
+import Control.Exception (AllocationLimitExceeded (..), evaluate, try)
 import Control.Monad (replicateM)
+import Data.Int (Int64)
 import Data.List (intercalate)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text qualified
+import GHC.Conc (disableAllocationLimit, enableAllocationLimit, setAllocationCounter)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..), codeSpan)
 import Golem.Layout.Look (NoteId (..))
@@ -723,6 +725,16 @@ wrapTrialInputs =
     rows <- [lines' 700 m | m <- [1 .. 4]] <> [noted 700 3 1 2, noted 700 3 0 1, noted 700 2 0 3, lines' 900 2]
   ]
 
+-- | The bytes an input may allocate before it is printed as a loop: 100 MB,
+-- over 400 times the most that an input which ends allocates (about 240 KB
+-- under runghc), and reached by the looping inputs within a second.
+loopAllocation :: Int64
+loopAllocation = 100000000
+
+-- | The wall-clock guard against a loop that does not allocate: 120 s.
+hangGuard :: Int
+hangGuard = 120000000
+
 main :: IO ()
 main = mapM_ runWrap wrapTrialInputs >> mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> bookPartInputs <> tableAcrossInputs <> failureInputs)
   where
@@ -731,10 +743,20 @@ main = mapM_ runWrap wrapTrialInputs >> mapM_ run (paragraphInputs <> figureInpu
       let out = case paginatePhysical (settingsOf column) flows of
             Left failure -> ["out fail " <> failureToken failure]
             Right pages -> map pageToken pages
-      -- an input on which paginatePhysical does not end within 2 s is
-      -- printed as a loop, which Physical.lean gives as noProgress
-      done <- timeout 2000000 (evaluate (length (concat out)))
-      mapM_ putStrLn (maybe ["out fail loop"] (const out) done)
+      -- an input on which paginatePhysical allocates more than
+      -- loopAllocation bytes is printed as a loop, which Physical.lean
+      -- gives as noProgress; the count of allocated bytes does not depend
+      -- on the load of the machine, as a wall-clock timeout would.  An
+      -- input that runs hangGuard microseconds without reaching the limit
+      -- is printed as a hang, which Physical.lean never prints.
+      setAllocationCounter loopAllocation
+      enableAllocationLimit
+      done <- timeout hangGuard (try (evaluate (length (concat out))))
+      disableAllocationLimit
+      mapM_ putStrLn $ case done of
+        Nothing -> ["out fail hang"]
+        Just (Left AllocationLimitExceeded) -> ["out fail loop"]
+        Just (Right _) -> out
     runWrap (column@(Column cap sep cols), pre, e, lim, k, s, rows) = do
       putStrLn (unwords (["tw", show cap, show sep, show cols, show e, maybe "-" show lim, flowToken (FParagraph k rows), if s then "1" else "0"] <> map flowToken pre))
       let cfg = settingsOf column

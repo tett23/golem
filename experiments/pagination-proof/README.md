@@ -960,7 +960,7 @@ golem-typeset はコードの行に続く番号を振るので、二つは一致
 見出しの行の送りが行の送りと異なると、この判定が偽になり、Physical.hs は収まらない行の前で見出しの行を繰り返し続ける。
 モデルは、最後に行を置いてから二度目に、待つもののないページの最後の段から進むとき、`noProgress` を返す。
 一度目にそこを通った後の段は、ページの番号のほかはどれも同じ状態なので、Haskell の実装はそこから止まらないからである。
-容量 30 sp、送り 10 sp の 1 段で、2 行の段落の後に、送り 14 sp の行 905 だけの見出しの行と本体の行 `[810]`、`[820, 821]` を持つ表を置くと、`paginatePhysical` は 2 秒で終わらなかった。
+容量 30 sp、送り 10 sp の 1 段で、2 行の段落の後に、送り 14 sp の行 905 だけの見出しの行と本体の行 `[810]`、`[820, 821]` を持つ表を置くと、`paginatePhysical` は 2 秒で 2.8 GB を割り当てても終わらなかった。
 golem-typeset が `physicalPitches` に送りを与えるのは段落の単位の行だけで（`modules/golem-typeset/src/Golem/Typeset/Flow.hs:4222`）、表の行には与えないので、原稿から作る表では見出しの行の送りは行の送りに等しい。
 
 `judgeNeed`（`FNeedLines` の段のループ）も、空でない段か縮んだ段からだけ次の段へ進むので、`rank` で止まる。
@@ -1022,7 +1022,16 @@ id が 900 以上の行は、送り 14 sp、字面 12 sp とした。
 最初の行の id が 385 の見出しには、`physicalHeadingBounds` として字面の始まり 4 sp と終わり 16 sp を与えた。
 id が 702 と 705 の行には 3 sp、712 の行には 5 sp の `physicalWrappedBefore` を与え、箱 170 には 3 sp の `physicalBoxPadding` を与えた。
 `PhysicalBoundary.lean` は `in` の行を読み、`Physical.lean` の `paginate` で評価して同じ形式で書き出す。
-`PhysicalBoundary.hs` は、2 秒で終わらない入力を `out fail loop` と書き出し、`PhysicalBoundary.lean` は `noProgress` を同じく書き出す。
+`PhysicalBoundary.hs` は、`paginatePhysical` が 100 MB を割り当てても終わらない入力を `out fail loop` と書き出し、`PhysicalBoundary.lean` は `noProgress` を同じく書き出す。
+止まらないかどうかの判定には、壁時計の時間でなく、GHC の割り当ての上限（`enableAllocationLimit`）を使う。
+初めは 2 秒で終わらない入力を `loop` としていたが、機械が混んでいたときに、終わる入力 `in 40 4 1 p:2,2,0:0,1,2 X:171:5:5:3,2,0:400,401,402 p:2,2,0:20,21` を一度 `loop` と書き出した。
+割り当てたバイト数は、同じ入力と同じ GHC では機械の負荷によらないので、この判定は負荷で変わらない。
+runghc で数えると、終わる 152126 個の入力が割り当てるのは多くて約 240 KB で、上の入力は約 109 KB だった。
+`loop` になる 4 個の入力は、2 秒で 0.8〜8.1 GB を割り当てていたので、100 MB の上限には 1 秒以内に達する。
+上限は終わる入力の最大の 400 倍を超えるので、終わる入力を `loop` とすることはない。
+`loop` の判定は、`diff` で `Physical.lean` の `noProgress` と照らし合わされるので、Haskell の判定だけで決まることはない。
+割り当てずに回るループに備えて、120 秒の壁時計の見張りも残すが、そこで止めた入力は `out fail hang` と書き出す。
+`PhysicalBoundary.lean` は `hang` を書き出さないので、見張りが働けば `check.sh` は必ず失敗し、`loop` と取り違えることはない。
 見出しの行の送りが 14 sp の表の 8 個の入力では、4 個が両方で `loop` になった。
 `check.sh` は二つの出力を `diff` で比べ、151930 個の入力と 10368 個の試しですべて一致した。
 写した計算を一つずつ替えると、`drainCarried` を外すと 308 個、組の段に組の縮みを渡さないと 474 個、組の段に脚注の行を確保しないと 356 個の入力で出力が食い違った。
