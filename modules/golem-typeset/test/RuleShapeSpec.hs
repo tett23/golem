@@ -58,7 +58,8 @@ ruleShapeTests =
       drop 33 ds @?= [Rect (pt 99) 0 (pt 1) (pt 1)],
     testCase "wavy: 13 half periods on each edge, touching both edges of the band and inside it" $
       case ruleShapes False (band (pt 100) (pt 4)) RuleWavy of
-        [ShapeCurve start segs] -> do
+        [ShapePath (P.Path [P.SubPath start segs' True])] -> do
+          let segs = [(a, b, c) | P.CurveTo a b c <- segs']
           -- the upper edge, the end, the lower edge back
           length segs @?= 13 + 1 + 13
           let ys = fromInteger (unSp (snd start)) : concat [map snd (bezier p0 s) | (p0, s) <- zip (start : [e | (_, _, e) <- segs]) segs]
@@ -96,7 +97,8 @@ ruleShapeTests =
       -- weight 4pt: t = 1pt, a = 1.5pt, the centre line 2pt from the before edge;
       -- the upper edge starts 1.5pt from the right edge at the top
       case ruleShapes True (Rect 0 0 (pt 4) (pt 100)) RuleWavy of
-        [ShapeCurve start segs] -> do
+        [ShapePath (P.Path [P.SubPath start segs' True])] -> do
+          let segs = [(a, b, c) | P.CurveTo a b c <- segs']
           start @?= (pt 2.5, pt 100)
           length segs @?= 27
         other -> assertFailure (show other),
@@ -127,8 +129,11 @@ ruleShapeTests =
     turn len = \case
       ShapeRect (Rect x y w h) -> ShapeRect (Rect y (len - x - w) h w)
       ShapeDisc x y r -> ShapeDisc y (len - x) r
-      ShapeCurve s cs -> ShapeCurve (pturn len s) [(pturn len a, pturn len b, pturn len c) | (a, b, c) <- cs]
+      ShapePath (P.Path subs) -> ShapePath (P.Path [P.SubPath (pturn len s) (map (turnSeg len) cs) closed | P.SubPath s cs closed <- subs])
     pturn len (x, y) = (y, len - x)
+    turnSeg len = \case
+      P.LineTo p -> P.LineTo (pturn len p)
+      P.CurveTo a b c -> P.CurveTo (pturn len a) (pturn len b) (pturn len c)
     -- points along a cubic curve
     bezier (Sp x0, Sp y0) ((Sp x1, Sp y1), (Sp x2, Sp y2), (Sp x3, Sp y3)) =
       [ (cubic (fromInteger x0) (fromInteger x1) (fromInteger x2) (fromInteger x3) t, cubic (fromInteger y0) (fromInteger y1) (fromInteger y2) (fromInteger y3) t)

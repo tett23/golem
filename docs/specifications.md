@@ -430,8 +430,8 @@ golem-driver のテストのスイートは、どちらのアーキテクチャ�
 矢印は、元のモジュールが先のモジュールを使うことを表す。
 図を読みやすくするため、次の矢印を省いている。
 
-- golem-syntax への矢印：golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-numerals、golem-unicode、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
-- golem-length への矢印：golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset）が多いので、矢印を省く。
+- golem-syntax への矢印：golem-syntax は golem-regex、golem-font、golem-svg、golem-length、golem-geometry、golem-numerals、golem-unicode、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+- golem-length への矢印：golem-length も、golem-syntax と同じく使うモジュール（golem-doc、golem-driver、golem-geometry、golem-html、golem-layout、golem-pdf、golem-preflight、golem-project、golem-typeset）が多いので、矢印を省く。
 - ほかの依存を通して届く依存の矢印。
 
 ```mermaid
@@ -455,6 +455,7 @@ flowchart TD
     syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     length["golem-length<br/>長さの型と単位の変換（最下層）"]
     unicode["golem-unicode<br/>書記素と語の分割、文字クラス（最下層）"]
+    geometry["golem-geometry<br/>パスと矩形、閉じたパスの内側"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
         typeset["golem-typeset<br/>PDF の組版と描画"]
@@ -495,11 +496,13 @@ flowchart TD
     lint --> eval
     lsp --> driver
     lsp --> fmt
+    pdf --> geometry
     wasm --> driver
     plugin --> eval
     preflight --> pdf
     preflight --> project
     project --> assemble
+    project --> geometry
     project --> regex
     text --> assemble
     text --> bibliography
@@ -526,6 +529,10 @@ PDF 経路のモジュールだけが、レイアウト IR、シェイピング[
   分割は Haskell の純粋な関数であり、FFI を使わないので、wasm でもそのまま組める。
   分割の規則は libgrapheme 3.0.0 の実装に倣い、字の性質の表は Unicode 17.0.0 のデータから `scripts/gen-unicode-segmentation.sh` が生成する。
   golem-html と golem-unicode のライブラリが golem-layout と golem-project に依存しないことは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
+- golem-geometry は base、text、golem-length だけに依存し、パスと矩形の型、パスのデータの読み込み、曲線を折れ線に直すことと、閉じたパスの内側の区間を持つ（[root ADR 0437](adr/0437-paths-and-the-box-model.md)、「パスとボックスモデル」）。
+  計算は整数と有理数だけで行う。
+  golem-geometry のライブラリが base、text、golem-length だけに依存することは、`scripts/ci/test.sh` が `.cabal` を読んで確かめる。
+  golem-pdf、golem-project、golem-layout、golem-layout-spec、golem-typeset が golem-geometry に依存する。
 - golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 - golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
   golem-pdf は golem-svg に依存せず、golem-typeset が golem-svg の描画を golem-pdf の描画に直す。
@@ -3608,7 +3615,7 @@ HTML と EPUB には印を出さない。
 - 横の線：中心線 y = 0.30 の、x = 0.12 + t から 0.82 + t/2 までの長方形
 - 開いた矢じり：先端 (0.12, 0.30) から (0.36, 0.48) と (0.36, 0.12) への、太さ t の二本の線
 
-各部分は、制御点を両端に置いた直線の辺の、塗った閉じた道（`CurveFill`）で描く。
+各部分は、制御点を両端に置いた直線の辺の、塗った閉じたパス（`FilledPath`、[root ADR 0437](adr/0437-paths-and-the-box-model.md)）で描く。
 座標は有理数で計算し、sp に変えるときに切り捨てるので、x86-64 と aarch64 で同じ座標になる。
 横組みでは、正方形は印の位置から行の方向に W だけ取り、その中心をコードの字の基準線より (0.88 − 1/2) ×（コードの字の大きさ）だけ上に置く。
 縦組みでは、正方形は印の位置から行の方向（下）に W だけ取り、行と直交する方向は行の中心線に中心を置き、図形を正方形の中心のまわりに時計回りに 90 度回して描く。
@@ -6845,6 +6852,107 @@ NotoSerifJP では、役割の `ja` と `latin` の両方にこの書体を当�
 - **H1**：囲みの段落の句点と読点の箱は、行末で突き出さない。
 - **H2**：`hanging-punctuation` だけが違う二つの本で、囲みの段落の行は等しい。
 - **H3**：囲みを持たない段落は、[ADR 0279](adr/0279-no-hanging-punctuation-inside-paragraph-boxes.md) の前と同じくぶら下がる。
+
+## パスとボックスモデル
+
+レイアウトエンジンは、領域の形をパスで表す（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
+パスの型は、golem-geometry の `Golem.Geometry` にある。
+パスは部分パスの並びであり、部分パスは、始点と、線分（`LineTo`）と三次のベジェ曲線（`CurveTo`）の並びと、閉じているかの印を持つ。
+円弧は、三次のベジェ曲線で近似して表す。
+二次のベジェ曲線と、円弧をそのまま表す型は持たない。
+座標は整数の sp で表し、PDF と同じく左下を原点とする。
+
+塗りの規則は、非ゼロの回転数（nonzero）を既定とし、偶奇（even-odd）も選べる。
+PDF では、非ゼロの塗りを `f`、偶奇の塗りを `f*` で書く。
+線は、太さ、線端（butt、round、square）、角の形（miter、round、bevel）を持つ。
+PDF の既定の線端（butt）と角の形（miter）は、`J` と `j` を書かずに表す。
+
+矩形（`Rect`）は golem-geometry にあり、golem-pdf の `Golem.Pdf.Rect` と golem-layout-spec が export し直す。
+矩形は閉じたパスの特別な形であり、`rectPath` で、左下の角から反時計回りの閉じたパスに変えられる。
+矩形の内側（辺を含む）と、そのパスの内側は、すべての点で等しい。
+ページの描画、PDF の書き出し、行の配置の速さが要るところは、矩形のまま扱う。
+
+PDF に書くパスの印（`FilledPath` と `StrokedPath`）、段落スタイルの囲みの輪郭と枠線（`Golem.Typeset.Box`）、罫線の線種の形（`Golem.Typeset.RuleShape`）、コードの折り返しの印は、golem-geometry のパスで表す。
+囲みの輪郭の点は有理数で求め、パスの点にするときに一度だけ sp に丸める。
+この表し方を入れる前と同じ入力の PDF は、バイト列まで変わらない。
+SVG の図版の表し方（golem-svg の `Segment` と、golem-pdf の `Golem.Pdf.Drawing` の `PathSeg`）は、図版の座標系と書き出しの桁数を保つため、これとは別にする。
+
+### ボックスモデル
+
+レイアウトの内部では、文字を置く領域と、文字を避ける領域をボックスとして表す（golem-layout の `Golem.Layout.BoxModel`）。
+ボックスは、形（閉じたパス）と、その内側を決める塗りの規則を持つ。
+文字を置くボックスは、加えて、書く向き（横組みか縦組みか）と、行の始まりの辺を持つ。
+行の始まりの辺は、形の外接矩形の、行を並べる向きの始まりの辺であり、横組みでは上（既定）か下、縦組みでは右（既定）か左である。
+版面、段、傍注の領域、テキストフレームは文字を置くボックスで、回り込みの除外の領域は文字を避けるボックスである。
+版面、段、傍注の領域は、形が矩形のボックスにあたる。
+今のレイアウトはこれらを `Rect` のまま扱い、`LayoutBox` には変えていない。
+回り込みの除外の領域は、今の表し方（段の側、幅、行の数）のまま扱う。
+
+ここでいうボックスは、段落スタイルの囲み（[docs/adr/0271](adr/0271-paragraph-backgrounds-and-borders.md)）とも、行ボックス（[root ADR 0397](adr/0397-paragraph-line-pitch-and-dimensional-spacing.md)）とも別のものである。
+
+### 閉じたパスの内側に文字を置く
+
+形が矩形でない、文字を置くボックスに文字を流すときは、行ごとに次のように行の区間を求める。
+
+1. 行の帯は、行を並べる向きに、ボックスの段落スタイルの文字の大きさ（仮想ボディの高さ）の幅を持つ帯とする。
+   最初の行の帯は、外接矩形の行の始まりの辺に接して置き、次の帯からは、ボックスの段落スタイルの行送りずつずらす。
+   行の始まりの辺は、形の内側に向けて sp に丸める。
+   格子の配置か自由な配置かによらず、ボックスの中では行送りで並べる。
+   帯の終わりが外接矩形の反対の辺を越える帯は置かない。
+   文字の大きさか行送りが 0 以下のときは、帯を一つも置かない。
+2. 曲線を折れ線に直す。
+   有理数で de Casteljau の分割を繰り返し、分けた各曲線の二つの内側の制御点と、その曲線の始点と終点を結ぶ弦（線分）との距離の 2 乗が、どちらも (1/4 sp)² 以下になるまで分け、各曲線をその弦に置き換える。
+   三次のベジェ曲線は制御点の凸包の中にあるので、元の曲線と弦の距離は 1/4 sp 以下になる。
+   部分パスは、閉じていなくても、塗るときと同じく閉じたものとして扱う。
+3. 各行の帯について、帯の幅の全体にわたって折れ線の内側（辺を含む）にある、行の向きの区間を有理数で求める。
+   求め方は [root ADR 0447](adr/0447-find-the-strip-intervals-by-pieces-between-vertices-and-crossings.md) による。
+   帯を、帯の中にある折れ線の頂点と、帯の中で二つの辺が交わる点を通る線（横組みでは水平線、縦組みでは垂直線）で、部分に分ける。
+   交点が帯の端の線の上にあるときは、その交点では分けない。
+   分けた各部分では、部分の中に頂点が無く、部分を横切る辺の順が変わらないので、辺のあいだの隙間ごとの回転数は部分の全体で一定である。
+   各部分で、部分の中央の線を横切る辺を行の向きに並べ、隣り合う二つの辺のあいだの隙間のうち、ボックスの塗りの規則で外側のものを求める。
+   外側の隙間は、始まりの側の辺が部分の両端の線で通る二つの位置のうち始まりに近いほうから、終わりの側の辺が通る二つの位置のうち終わりに近いほうまで（両端を含まない）を除く。
+   辺は直線なので、部分の中で隙間が通る範囲は、この二つの位置で決まる。
+   片側に辺の無い隙間は、その側へ限りなく除く。
+   水平な辺（縦組みでは垂直な辺）は部分の境目の線の上にあり、辺の上の点は内側と数えるので、隙間を作らない。
+   すべての部分で除かれずに残った区間の共通部分が、帯の全体で内側にある区間である。
+   高さが 0 の帯には区間が無い。
+   区間の端は、内側に向けて sp に丸める。
+4. 一つの行の帯に区間が二つ以上あるときは、幅がボックスの段落スタイルの文字の大きさの 8 倍以上の区間のうち、書く向き（横組みでは左から、縦組みでは上から）で最初に現れるものを使い、ほかの区間には文字を置かない。
+5. 使える区間が無い行の帯は、飛ばす。
+6. 行分けには、行ごとに一つの幅として、その区間の幅をそのまま渡す。
+   行分けの関数（`breakParagraph`）は変えない。
+
+回り込みと違い、幅の足りない行の帯はエラーにしない。
+円や多角形の上下の端は、形として細くなるのが当然だからである。
+置いた字の仮想ボディの矩形は、どれも折れ線の内側にある。
+凹んだ曲線では、弦が元の曲線から最大で 1/4 sp 外に出るので、字の矩形が元の曲線からその分だけはみ出しうる。
+計算は浮動小数を使わないので、ネイティブと wasm で同じ結果になる。
+
+ボックスに中身が収まらないときは、そのボックスに文字を置かずに、収まらないことを返す（`BoxOverflow`）。
+収まらないのは、行の数がボックスの行の数を超えるとき、区間より長い行（あふれる行）があるとき、中身があるのに区間が一つも無い形（空のパス、細すぎる形）のときである。
+中身の無いボックスは、形によらず収まる。
+これを diagnostic のコードにするのは、ボックスに文字を流す最初の場所であるテキストフレーム（[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)）の実装であり、それまでは利用者に見える diagnostic を出さない（[root ADR 0447](adr/0447-find-the-strip-intervals-by-pieces-between-vertices-and-crossings.md)）。
+今の本の組版に、この流し方を使うところは無い。
+
+一つの行の帯に区間が二つ以上ある形では、一つの区間にしか文字を置かないので、凹んだ形の残りは空く。
+開いたパスの上に文字を置くこと、図版の輪郭の書き方、輪郭に沿う回り込みは、まだ無い（[docs/roadmap.md](roadmap.md) の「パス」）。
+
+### パスの記法
+
+パスは `style.toml` にだけ書き、原稿（意味論 IR）には書かない（「幾何の隔離」）。
+パスの値は、SVG のパスのデータの書き方の文字列とし、コマンドは `M`、`L`、`C`、`Z` の絶対座標だけを読む（`Golem.Geometry.parsePathData`）。
+数は、符号と小数点を持てる十進の数で、空白かカンマで区切る。
+コマンドの数は繰り返してよく、`M` の後の二つめからの点は線分になる。
+`Z` の後に `M` 以外のコマンドが来たときは、閉じた部分パスの始点から新しい部分パスを始める。
+空の文字列は空のパスである。
+相対座標のコマンド（`m`、`l` など）、ほかのコマンド（`Q`、`A` など）、指数の書き方（`1e3`）、`M` で始まらないデータ、点の数が足りないコマンドは読めない。
+
+座標の単位は、同じ表の `unit` のキーで `mm`（既定）、`pt`、`Q` から選ぶ（golem-project の `Golem.Project.PathData`）。
+各座標は、書いた十進の数の正確な有理数から、一度だけ sp に丸める（偶数への丸め）。
+パスを書くキーを持つ最初の表は、テキストフレームの `[frames.<名前>]` である（[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md)）。
+
+HTML と EPUB はリフローなので、パスの形を使わない。
+閉じたパスのボックスの文字は、本文の流れの中の段落として書く。
 
 ## 原稿の中の言語
 
