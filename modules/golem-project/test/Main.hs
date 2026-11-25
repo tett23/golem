@@ -37,6 +37,7 @@ import KeepPartsSpec qualified
 import NaturalKeySpec qualified
 import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
+import PathDataSpec qualified
 import PositionSpec qualified
 import SharedValuesSpec qualified
 import SinglePageSpec qualified
@@ -906,6 +907,7 @@ tests =
       tomlMessageTests,
       TomlMessageSpec.tests,
       ColophonSpec.tests,
+      PathDataSpec.pathDataTests,
       FeaturesSpec.tests,
       GenericFontsSpec.tests,
       FontLicensesSpec.tests,

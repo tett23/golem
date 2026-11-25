@@ -1,6 +1,6 @@
 # ADR 0027: 段落スタイルの罫線
 
-Status: superseded [{"by":["docs/golem-driver/adr/0035-paragraph-rules-split-and-space-units.md"],"part":"分けて組んだ段落の罫線と間隔の単位"},{"by":["docs/golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md"],"part":"（`keep-in-column = false` の罫線を版面の外に出す位置と、段間との比較）"},{"part":"自由な配置での罫線領域と段端の配置","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]}]
+Status: superseded [{"by":["docs/golem-driver/adr/0035-paragraph-rules-split-and-space-units.md"],"part":"分けて組んだ段落の罫線と間隔の単位"},{"by":["docs/golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md"],"part":"（`keep-in-column = false` の罫線を版面の外に出す位置と、段間との比較）"},{"part":"自由な配置での罫線領域と段端の配置","by":["docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md"]},{"part":"隣り合う罫線","by":["docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md"],"kind":"supplement"}]
 
 ## 文脈
 

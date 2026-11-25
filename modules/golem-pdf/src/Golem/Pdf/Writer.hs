@@ -15,7 +15,14 @@ module Golem.Pdf.Writer
     Turn (..),
     turnRect,
     Mark (..),
-    PathSegment (..),
+    Segment (..),
+    SubPath (..),
+    Path (..),
+    FillRule (..),
+    Stroke (..),
+    LineCap (..),
+    LineJoin (..),
+    solidStroke,
     LineStroke (..),
     Content (..),
     ArtifactKind (..),
@@ -71,6 +78,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Conc (par, pseq)
+import Golem.Geometry (FillRule (..), LineCap (..), LineJoin (..), Path (..), Segment (..), Stroke (..), SubPath (..), solidStroke)
 import Golem.Length (Sp (..))
 import Golem.Pdf.Drawing
 import Golem.Pdf.Image
@@ -124,14 +132,10 @@ data RunStyle = RunStyle
   }
   deriving stock (Eq, Show)
 
--- | A part of a path: a line or a cubic curve (its two control points and its end) to a point (docs/adr/0271).
-data PathSegment = LineTo !(Sp, Sp) | CurveTo !(Sp, Sp) !(Sp, Sp) !(Sp, Sp)
-  deriving stock (Eq, Show)
-
-{- | The line a path is stroked with (docs/adr/0271): its width, its dash
-array (empty for a solid line) and whether its ends are round.
+{- | The line a path is stroked with (docs/adr/0271, root ADR 0437): its
+width, ends and corners, and its dash array (empty for a solid line).
 -}
-data LineStroke = LineStroke {lsWidth :: !Sp, lsDash :: ![Sp], lsRoundCap :: !Bool}
+data LineStroke = LineStroke {lsStroke :: !Stroke, lsDash :: ![Sp]}
   deriving stock (Eq, Show)
 
 data Mark
@@ -146,14 +150,14 @@ data Mark
   | Rule !Rect
   | -- | a filled disc: the x and y of its centre and its radius (golem-driver ADR 0028)
     Disc !Sp !Sp !Sp
-  | {- | a filled closed path of cubic curves: the start and, for each
-    curve, its two control points and its end (golem-driver ADR 0028)
+  | {- | a path filled by the fill rule (golem-driver ADR 0028, root ADR
+    0437); a path of no subpath draws nothing
     -}
-    CurveFill !(Sp, Sp) ![((Sp, Sp), (Sp, Sp), (Sp, Sp))]
-  | {- | a path of lines and cubic curves from its start, stroked with a
-    line; closed when the last argument is true (docs/adr/0271)
+    FilledPath !FillRule !Path
+  | {- | a path stroked with a line (docs/adr/0271, root ADR 0437); a path
+    of no subpath draws nothing
     -}
-    StrokedPath !LineStroke !(Sp, Sp) ![PathSegment] !Bool
+    StrokedPath !LineStroke !Path
   | Image !ImageRef !Rect
   | SetColor !Swatch
   | {- | a colour of sRGB, each of R, G and B from 0 to 255, in the
@@ -485,19 +489,17 @@ markBuilder fontNames imageNames formNames = mark
               <> curve ((x + k, y - r), (x + r, y - k), (x + r, y))
               <> "f"
               <> nl
-      CurveFill start cs -> point start <> " m" <> nl <> mconcat (map curve cs) <> "h f" <> nl
-      StrokedPath (LineStroke w dash roundCap) start segs closed ->
+      FilledPath _ (Path []) -> mempty
+      FilledPath rule p -> path p (case rule of NonZero -> "f"; EvenOdd -> "f*")
+      StrokedPath _ (Path []) -> mempty
+      StrokedPath (LineStroke (Stroke w cap corner) dash) p ->
         num w
           <> " w"
-          <> (if roundCap then " 1 J" else "")
+          <> (case cap of ButtCap -> ""; RoundCap -> " 1 J"; SquareCap -> " 2 J")
+          <> (case corner of MiterJoin -> ""; RoundJoin -> " 1 j"; BevelJoin -> " 2 j")
           <> (if null dash then "" else " [" <> mconcat (zipWith (\i d -> (if i == (0 :: Int) then "" else sp) <> num d) [0 ..] dash) <> "] 0 d")
           <> nl
-          <> point start
-          <> " m"
-          <> nl
-          <> mconcat (map segment segs)
-          <> (if closed then "h S" else "S")
-          <> nl
+          <> path p "S"
       Image i (Rect x y w h) ->
         "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Im" <> B.intDec (Map.findWithDefault 0 i imageNames) <> " Do Q" <> nl
       SetColor (Swatch c m y k) ->
@@ -550,6 +552,17 @@ markBuilder fontNames imageNames formNames = mark
     segment = \case
       LineTo p -> point p <> " l" <> nl
       CurveTo a b c -> curve (a, b, c)
+    {- the subpaths, each closed by h, and the operator that paints them:
+    the h of the last subpath shares the line of the operator -}
+    path (Path subs) op =
+      let n = length subs
+          sub i (SubPath start segs closed) =
+            point start
+              <> " m"
+              <> nl
+              <> mconcat (map segment segs)
+              <> (if closed then "h" <> (if i == n then sp else nl) else "")
+       in mconcat (zipWith sub [1 ..] subs) <> op <> nl
 
 -- ------------------------------------------------------------------ serialization
 

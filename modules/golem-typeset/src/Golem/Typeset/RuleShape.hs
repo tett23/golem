@@ -12,6 +12,7 @@ module Golem.Typeset.RuleShape
   )
 where
 
+import Golem.Geometry (FillRule (..), Path (..), Segment (..), SubPath (..))
 import Golem.LayoutSpec (Rect (..))
 import Golem.Length (divSp)
 import Golem.Pdf qualified as P
@@ -22,8 +23,8 @@ data RuleShape
   = ShapeRect !Rect
   | -- | centre x, centre y, radius
     ShapeDisc !Sp !Sp !Sp
-  | -- | the start and the cubic curves of a closed path: two control points and the end each
-    ShapeCurve !(Sp, Sp) ![((Sp, Sp), (Sp, Sp), (Sp, Sp))]
+  | -- | a closed path of cubic curves (root ADR 0437)
+    ShapePath !Path
   deriving stock (Eq, Show)
 
 {- | A shape in the coordinates of the band: along the rule from its
@@ -53,7 +54,7 @@ ruleShapes vertical band style = map place (localShapes len w style)
         | vertical -> ShapeRect (Rect (rectX band + w - t - lt) (rectY band + len - s - ls) lt ls)
         | otherwise -> ShapeRect (Rect (rectX band + s) (rectY band + w - t - lt) ls lt)
       LDisc s t r -> let (x, y) = point (s, t) in ShapeDisc x y r
-      LCurve start cs -> ShapeCurve (point start) [(point a, point b, point c) | (a, b, c) <- cs]
+      LCurve start cs -> ShapePath (Path [SubPath (point start) [CurveTo (point a) (point b) (point c) | (a, b, c) <- cs] True])
 
 -- | The shapes of a style for a band of length len and weight w.
 localShapes :: Sp -> Sp -> RuleStyle -> [Local]
@@ -138,4 +139,4 @@ ruleMarks sw shapes = maybe id (\c ms -> [P.Saved (P.SetColor c : ms)]) sw (map 
     mark = \case
       ShapeRect r -> P.Rule r
       ShapeDisc x y r -> P.Disc x y r
-      ShapeCurve start cs -> P.CurveFill start cs
+      ShapePath p -> P.FilledPath NonZero p
