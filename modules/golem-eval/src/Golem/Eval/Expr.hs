@@ -25,6 +25,7 @@ module Golem.Eval.Expr
 where
 
 import Data.Char (isAlphaNum, isAscii)
+import Data.Foldable (traverse_)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
@@ -159,7 +160,7 @@ evalExpr env le@(Located _ e) = case e of
   ECall f args | Just (ns, name) <- splitNamespace f -> do
     vs <- traverse (evalExpr env) args
     callFunction env le ns name vs
-  ECall f args | Set.member f (envUnresolvedVars env) -> traverse (evalExpr env) args >> unresolved le f
+  ECall f args | Set.member f (envUnresolvedVars env) -> traverse_ (evalExpr env) args >> unresolved le f
   ECall f args | Just ref <- Map.lookup f (envListed env) -> do
     vs <- traverse (evalExpr env) args
     callRef le f ref f vs
