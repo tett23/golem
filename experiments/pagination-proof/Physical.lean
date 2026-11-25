@@ -5411,6 +5411,222 @@ theorem I5_parts_lines (env : Env) (region : Region) (breaker : St → Nat → N
   intro limit k isStart start before at' s h
   exact key _ limit k isStart start before at' rfl s h
 
+/-- Each index with its lines, `P i ls` for each pair, in order. -/
+def Each (P : Nat → List Nat → Prop) : List Nat → List (List Nat) → Prop
+  | [], [] => True
+  | i :: is, ls :: lss => P i ls ∧ Each P is lss
+  | _, _ => False
+
+theorem Each.append {P : Nat → List Nat → Prop} :
+    ∀ {a b : List Nat} {la lb : List (List Nat)}, Each P a la → Each P b lb → Each P (a ++ b) (la ++ lb)
+  | [], _, [], _, _, hb => hb
+  | _ :: _, _, _ :: _, _, ⟨p, r⟩, hb => ⟨p, Each.append r hb⟩
+  | [], _, _ :: _, _, h, _ => h.elim
+  | _ :: _, _, [], _, h, _ => h.elim
+
+theorem join_append' (a b : List (List Nat)) : (a ++ b).join = a.join ++ b.join := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih => simp [List.join, ih, List.append_assoc]
+
+/-- The trials of `tryVerses`: each places the rows of its verse line
+    composed at the cursor the trial before it leaves. -/
+def VerseChain (b : Beside) : St → List Nat → List St → Prop
+  | _, _, [] => True
+  | c, i :: is, t :: ts => Step c t (lineIds (b.compose c i)) [] ∧ VerseChain b t is ts
+  | _, [], _ :: _ => False
+
+theorem I5_tryVerses_lines (env : Env) (region : Region) (b : Beside) (cursor : St) (indices : List Nat)
+    (trials : List St) (h : tryVerses env region b cursor indices = .ok trials) : VerseChain b cursor indices trials := by
+  induction indices generalizing cursor trials with
+  | nil => simp [tryVerses] at h; subst h; trivial
+  | cons index later ih =>
+    unfold tryVerses at h
+    split at h
+    · cases h
+    · rename_i count placed relaxed hm
+      split at h
+      · rename_i hc
+        split at h
+        · cases h
+        · rename_i rest e
+          injection h with h; subst h
+          have a := trialWrap_placed_step env region none ⟨1, 1, false⟩ true cursor _ count placed relaxed hm
+          rw [hc.1, List.take_length] at a
+          exact ⟨a, ih placed rest e⟩
+      · injection h with h; subst h; trivial
+    · injection h with h; subst h; trivial
+
+theorem verseChain_get (b : Beside) (P : Nat → List Nat → Prop) (hP : ∀ c i, P i (lineIds (b.compose c i))) :
+    ∀ (ts : List St) (c : St) (is : List Nat) (n : Nat) (t : St), VerseChain b c is ts → ts.get? n = some t →
+    ∃ lss, Each P (is.take (n + 1)) lss ∧ Step c t lss.join []
+  | [], _, _, _, _, _, e => by simp at e
+  | _ :: _, _, [], _, _, h, _ => h.elim
+  | t0 :: ts, c, i :: is, 0, t, ⟨s, _⟩, e => by
+    simp at e; subst e
+    exact ⟨[lineIds (b.compose c i)], ⟨hP c i, by cases is <;> trivial⟩, by simpa [List.join] using s⟩
+  | t0 :: ts, c, i :: is, n + 1, t, ⟨s, r⟩, e => by
+    simp at e
+    obtain ⟨lss, he, st⟩ := verseChain_get b P hP ts t0 is n t r e
+    exact ⟨lineIds (b.compose c i) :: lss, ⟨hP c i, he⟩, by simpa [List.join] using s.trans st⟩
+
+def lex5lt (a b : Nat × Nat × Nat × Nat × Nat) : Prop :=
+  Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·)))) a b
+
+theorem lex5_wf : WellFounded lex5lt :=
+  (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel (Prod.lex Nat.lt_wfRel Nat.lt_wfRel)))).wf
+
+theorem getElem?_get? (l : List St) (n : Nat) : l[n]? = l.get? n := by
+  unfold getElem?
+  split
+  · rename_i h; simp [List.get?_eq_get h]; rfl
+  · rename_i h; rw [List.get?_len_le (by omega)]
+
+theorem take_of_drop_isEmpty (l : List Nat) (n : Nat) (h : (l.drop n).isEmpty = true) : l.take n = l := by
+  have e : l.drop n = [] := by cases hd : l.drop n <;> simp_all [List.isEmpty]
+  have := List.take_append_drop n l
+  rw [e, List.append_nil] at this; exact this
+
+/-- The verse lines `stanza` places: each verse line of the stanza once, in
+    order, each the lines of `P` (the rows of the verse line composed at a
+    cursor, or the lines the fallback places), when the fallback places the
+    lines of `P` of its verse line and the hold of what follows places
+    nothing. -/
+theorem stanza_accept_lines (env : Env) (region : Region) (b : Beside) (a : StanzaArgs)
+    (P : Nat → List Nat → Prop) (hP : ∀ c i, P i (lineIds (b.compose c i)))
+    (hf : ∀ i later c s, a.fallback i later c = .ok s → ∃ ls, P i ls ∧ Step c s ls [])
+    (hh : ∀ i r l s, Step s (b.hold i r l s) [] []) : ∀ m,
+    (∀ later keep isStart cursor indices s, (indices.length, keepRank keep, rank cursor, 1, 0) = m →
+      stanza env region b a later keep isStart cursor indices = .ok s →
+      ∃ lss, Each P indices lss ∧ Step cursor s lss.join []) ∧
+    (∀ later keep isStart cursor indices trials count problems s, (indices.length, keepRank keep, rank cursor, 0, count) = m →
+      VerseChain b cursor indices trials →
+      accept env region b a later keep isStart cursor indices trials count problems = .ok s →
+      ∃ lss, Each P indices lss ∧ Step cursor s lss.join []) := by
+  intro m
+  induction m using lex5_wf.induction with
+  | _ m ih =>
+  constructor
+  · intro later keep isStart cursor indices s hm h
+    subst hm
+    cases indices with
+    | nil =>
+      simp only [stanza, Except.ok.injEq] at h; subst h
+      exact ⟨[], trivial, by simpa using step_checkWaits cursor⟩
+    | cons firstIndex rest =>
+      rw [stanza] at h
+      split at h
+      · cases h
+      · rename_i trials ht
+        have hc := I5_tryVerses_lines env region b cursor _ trials ht
+        -- a recursive `stanza` on the same verse lines from a cursor the step to which places nothing
+        have again : ∀ keep' cursor', Step cursor cursor' [] [] →
+            lex5lt ((firstIndex :: rest).length, keepRank keep', rank cursor', 1, 0)
+              ((firstIndex :: rest).length, keepRank keep, rank cursor, 1, 0) →
+            stanza env region b a later keep' isStart cursor' (firstIndex :: rest) = .ok s →
+            ∃ lss, Each P (firstIndex :: rest) lss ∧ Step cursor s lss.join [] := by
+          intro keep' cursor' st dec e
+          obtain ⟨lss, he, st'⟩ := (ih _ dec).1 later keep' isStart cursor' _ s rfl e
+          exact ⟨lss, he, by simpa using st.trans st'⟩
+        have moved : empty cursor = false →
+            stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest) = .ok s →
+            ∃ lss, Each P (firstIndex :: rest) lss ∧ Step cursor s lss.join [] := fun e =>
+          again keep _ (step_moveCursor env region cursor) (by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+            exact I4_moveCursor_rank env region cursor (Or.inl e))
+        have accepted : ∀ count problems,
+            accept env region b a later keep isStart cursor (firstIndex :: rest) trials count problems = .ok s →
+            ∃ lss, Each P (firstIndex :: rest) lss ∧ Step cursor s lss.join [] := fun count problems e =>
+          (ih _ (by apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; omega)).2
+            later keep isStart cursor _ trials count problems s rfl hc e
+        dsimp only at h
+        split at h
+        · rename_i c
+          split at h
+          · exact again _ _ (step_addUnmet _ _) (by
+              apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, c.1]) h
+          · split at h
+            · rename_i e; exact moved e h
+            · rename_i e1 e2; simp_all
+        · split at h
+          · exact accepted _ _ h
+          · split at h
+            · rename_i e; exact moved e h
+            · split at h
+              · exact accepted _ _ h
+              · split at h
+                · cases h
+                · rename_i next hn
+                  obtain ⟨ls, hp, st⟩ := hf _ _ _ _ hn
+                  obtain ⟨lss, he, st'⟩ := (ih _ (by apply Prod.Lex.left; simp)).1 later keep false next rest s rfl h
+                  exact ⟨ls :: lss, ⟨hp, he⟩, by simpa [List.join] using st.trans st'⟩
+  · intro later keep isStart cursor indices trials count problems s hm hc h
+    subst hm
+    rw [accept] at h
+    split at h
+    · cases h
+    · rename_i h0
+      split at h
+      · cases h
+      · rename_i placed hp
+        obtain ⟨lp, hep, stp⟩ := verseChain_get b P hP trials cursor indices (count - 1) placed hc (by
+          rw [← hp, getElem?_get?])
+        rw [show count - 1 + 1 = count by omega] at hep
+        have sw := stp.trans (step_unmet placed (placed.unmet ++ problems))
+        dsimp only at h
+        split at h
+        · rename_i hr
+          rw [take_of_drop_isEmpty indices count hr] at hep
+          have held : ∀ (r : Nat) (l : Bool), Step cursor
+              (if b.holds (indices.getLast?.getD 0) then b.hold (indices.getLast?.getD 0) r l
+                (checkWaits { placed with unmet := placed.unmet ++ problems })
+               else checkWaits { placed with unmet := placed.unmet ++ problems }) lp.join [] := by
+            intro r l
+            have sc := sw.trans (step_checkWaits _)
+            split
+            · simpa using sc.trans (hh _ _ _ _)
+            · simpa using sc
+          split at h
+          · cases h
+          · rename_i required linesOnly fits _
+            split at h
+            · injection h with h; subst h; exact ⟨lp, hep, held _ _⟩
+            · generalize (if isStart = true then max 1 keep.first else 1) = q at h
+              split at h
+              · exact (ih _ (by
+                  apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; omega)).2
+                  later keep isStart cursor indices trials _ [] s rfl hc h
+              · split at h
+                · rename_i e
+                  obtain ⟨lss, he, st'⟩ := (ih _ (by
+                    apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+                    exact I4_moveCursor_rank env region cursor (Or.inl e))).1
+                    later keep isStart _ indices s rfl h
+                  exact ⟨lss, he, by simpa using (step_moveCursor env region cursor).trans st'⟩
+                · injection h with h; subst h; exact ⟨lp, hep, held _ _⟩
+        · rename_i hr
+          have hne : indices.length ≠ 0 := by
+            intro e; rw [List.length_eq_zero.mp e] at hr; simp [List.isEmpty] at hr
+          obtain ⟨lr, her, str⟩ := (ih _ (by apply Prod.Lex.left; simp; omega)).1
+            later keep false _ (indices.drop count) s rfl h
+          refine ⟨lp ++ lr, ?_, ?_⟩
+          · have := Each.append hep her; rwa [List.take_append_drop] at this
+          · rw [join_append']; simpa using (sw.trans (step_moveCursor env region _)).trans str
+
+/-- `tryVerses` places each verse line it takes whole, once and in order:
+    each trial places the rows of its verse line composed at the cursor the
+    trial before it leaves (`I5_tryVerses_lines`).  `stanza` places each
+    verse line of the stanza once and in order, each by the rows of a trial
+    or by the fallback. -/
+theorem I5_stanza_lines (env : Env) (region : Region) (b : Beside) (a : StanzaArgs)
+    (P : Nat → List Nat → Prop) (hP : ∀ c i, P i (lineIds (b.compose c i)))
+    (hf : ∀ i later c s, a.fallback i later c = .ok s → ∃ ls, P i ls ∧ Step c s ls [])
+    (hh : ∀ i r l s, Step s (b.hold i r l s) [] [])
+    (later : List Nat) (keep : Keep) (isStart : Bool) (cursor : St) (indices : List Nat) (s : St)
+    (h : stanza env region b a later keep isStart cursor indices = .ok s) :
+    ∃ lss, Each P indices lss ∧ Step cursor s lss.join [] :=
+  (stanza_accept_lines env region b a P hP hf hh _).1 later keep isStart cursor indices s rfl h
+
 theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line)
     (h : putReserved env reserve st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with

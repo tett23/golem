@@ -1303,7 +1303,13 @@ golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）�
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
 golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落を改行し直すループ（`parts`）、段落と連を順に置くループ（`paragraphs`）、詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることを証明した。
-`paragraphs` が段落と詩の行を過不足なく順に渡すことは証明したが（`I5_paragraphs_groups`）、ほかのループの行の過不足と順序は、まだ証明していない。
+`paragraphs` が段落と詩の行を過不足なく順に渡すことは証明した（`I5_paragraphs_groups`）。
+`tryVerses` の試しは、それぞれ一つ前の試しが残したカーソルで組んだその詩の行の行を、ちょうど置く（`I5_tryVerses_lines`）。
+`stanza` は、連の詩の行をそれぞれ一度ずつ、順に置く（`I5_stanza_lines`）。
+一つの詩の行が置く行は、あるカーソルで組んだその詩の行の行か、段に入らない詩の行を表示の行で置く `paragraph`（`fallback`）が置く行である。
+この定理は、`fallback` がその詩の行の行を置くことと、後続を待つ `hold` が行を置かないことを仮定する。
+`stanza` が `fallback` の後に詩の行を一つ飛ばす写しでは、この証明が通らないことを確かめた。
+`probeNext`、`probeChain`、`jobsFrom`、`itemJobs` の行の過不足と順序は、まだ証明していない。
 
 このうち `jobsFrom`、`itemJobs`、`paragraphs`、`parts`、`probeNext`、`probeChain`、`stanza`、`tryVerses`、`accept` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
 `CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に段落か連を置いた原稿と、回り込み図版をリスト項目の中に置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
