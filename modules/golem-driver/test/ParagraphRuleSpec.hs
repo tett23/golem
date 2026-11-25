@@ -148,6 +148,17 @@ paragraphRuleTests =
       let style = fiveLines <> "\n[headings.2]\nlines = 3\nrule-before = { space-after = \"5pt\", space-before = \"10pt\" }\nrule-after = { space-before = \"20pt\" }\n"
       n <- notified miniManifest style "## 節\n\n本文。\n"
       map diagMessage (g07046 n) @?= ["罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し 2）"],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I11: free placement, keep-in-column = false: the rule before of a heading after a paragraph stays in the column, clear of both faces" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle <> "\n[headings.1]\nlines = 1\nsize = \"15pt\"\nrule-before = { weight = \"10pt\", keep-in-column = false }\n"
+      content <- miniPdf fakeProvider True style "前。\n\n# 章\n\n本文。\n" [] >>= fmap BS.concat . inflateAll
+      (_, yMae) <- glyphAt content '前'
+      (_, ySho) <- glyphAt content '章'
+      -- 前 is 10pt, its em box 8.8pt above and 1.2pt below its baseline; 章 is 15pt, its em box 13.2pt above; one line of 15pt leaves 7.5pt above the em box of 章 in its box, less than the weight
+      case rects content of
+        [(_, y, _, h)] -> do
+          assertBool ("below the face of 前: " <> show (fromRational (y + h) :: Double, fromRational yMae :: Double)) (y + h <= yMae - 1.2)
+          assertBool ("above the face of 章: " <> show (fromRational y :: Double, fromRational ySho :: Double)) (y >= ySho + 13.2)
+        other -> assertFailure (show other),
     testCase "golem-driver ADR 0027, root ADR 0352 I3: the rule after of a paragraph the next ruled paragraph cannot join in its column stays in the column" $ do
       -- 4 lines of 15pt; a paragraph of 3 lines and one of 1 line, both with rules before and after
       let style = withRule (replaceIn "lines = 30" "lines = 4" horizontalStyle) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\" }\n"
