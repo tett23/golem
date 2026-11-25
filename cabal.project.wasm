@@ -18,6 +18,7 @@ packages:
   modules/golem-emet
   modules/golem-epub
   modules/golem-eval
+  modules/golem-evaluate
   modules/golem-font
   modules/golem-geometry
   modules/golem-html
@@ -45,8 +46,12 @@ packages:
 tests: False
 
 -- the plugins (golem-plugin, wasmtime) and golem new are left out
--- (docs/adr/0199 section 3)
+-- (docs/adr/0199 section 3): golem new of golem-driver, and the plugins of
+-- golem-evaluate (root ADR 0434)
 package golem-driver
+  flags: -plugins
+
+package golem-evaluate
   flags: -plugins
 
 -- the same commit as cabal.project (golem-parser ADR 0002)

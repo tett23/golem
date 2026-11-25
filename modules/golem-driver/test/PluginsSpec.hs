@@ -14,9 +14,9 @@ import Data.Text.IO qualified as TIO
 import Golem.Assemble (Book (..), inlineText)
 import Golem.Doc.IR (Block (..), BlockBody (..), Document (..), Inline, InlineF (..), ListItem (..), NumberStyle (..), RubySegment (..), Table (..))
 import Golem.Driver
-import Golem.Driver.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
 import Golem.Eval.File (EvalResult (..), PluginHook (..))
+import Golem.Evaluate.Plugins (LoadedPlugins (..), loadPlugins)
 import Golem.Plugin (HostContext (..), maxDataBytes, watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Manifest (..), Project (..), ProjectFailure (..), SourceFile (..))

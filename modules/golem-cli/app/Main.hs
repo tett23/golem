@@ -19,12 +19,12 @@ import Data.UUID.V4 qualified as UUID
 import Golem.Cli.BuildCommand (BuildMode (..), jsonResult, runBuild)
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
-import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
-import Golem.Driver.Functions (formatFunctionFile)
-import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
 import Golem.Eval.File (EvalResult (..))
+import Golem.Evaluate.Explain (Explanation (..), Status (..), catalog, explainHint)
+import Golem.Evaluate.Functions (formatFunctionFile)
+import Golem.Evaluate.Lint (lintProject)
 import Golem.Fmt (FormatResult (..), format, formatTable, preprocess)
 import Golem.Lsp.Server (runGolemLsp)
 import Golem.Parser (parseAst, parseFile)

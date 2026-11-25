@@ -2,7 +2,7 @@
 (docs/adr/0185): their text, and the checks of @{vars.<name>}@ of the
 formats of style.toml.
 -}
-module Golem.Driver.ProjectVars
+module Golem.Evaluate.ProjectVars
   ( projectVarTexts,
     projectVarDiagnostics,
   )

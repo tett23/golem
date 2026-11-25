@@ -159,6 +159,23 @@ paragraphRuleTests =
           assertBool ("below the face of 前: " <> show (fromRational (y + h) :: Double, fromRational yMae :: Double)) (y + h <= yMae - 1.2)
           assertBool ("above the face of 章: " <> show (fromRational y :: Double, fromRational ySho :: Double)) (y >= ySho + 13.2)
         other -> assertFailure (show other),
+    testCase "root ADR 0449 I1, I2: laid out freely, the rule after of a paragraph and the rule before of the ruled heading after it share one area between the faces" $ do
+      let style = replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-after = { weight = \"3pt\" }\n\n[headings.1]\nlines = 1\nsize = \"15pt\"\nrule-before = { weight = \"3pt\" }\n"
+      content <- miniPdf fakeProvider True style "@style sec\n  前。\n\n# 章\n\n本文。\n" [] >>= fmap BS.concat . inflateAll
+      (_, yMae) <- glyphAt content '前'
+      (_, ySho) <- glyphAt content '章'
+      -- 前 is 10pt, its em box 1.2pt below its baseline; 章 is 15pt, its em box 13.2pt above its baseline
+      case rects content of
+        [(_, y1, _, h1), (_, y2, _, h2)] -> do
+          let shown = show [(fromRational y1 :: Double, fromRational h1 :: Double), (fromRational y2, fromRational h2), (fromRational yMae, fromRational ySho)]
+              faceEnd = yMae - 1.2
+              faceStart = ySho + 13.2
+          assertBool ("a rule over a face: " <> shown) (and [y + h <= faceEnd && y >= faceStart | (y, h) <- [(y1, h1), (y2, h2)]])
+          assertBool ("overlapping rules: " <> shown) (y1 + h1 <= y2 || y2 + h2 <= y1)
+          -- without spaces, the shared area puts the rules at a third and two thirds of the distance less the weights: three equal gaps
+          let gaps = [faceEnd - (y1 + h1), y1 - (y2 + h2), y2 - faceStart]
+          assertBool ("not one shared area: " <> shown) (maximum gaps - minimum gaps < 1 / 100)
+        other -> assertFailure (show other),
     testCase "golem-driver ADR 0027, root ADR 0352 I3: the rule after of a paragraph the next ruled paragraph cannot join in its column stays in the column" $ do
       -- 4 lines of 15pt; a paragraph of 3 lines and one of 1 line, both with rules before and after
       let style = withRule (replaceIn "lines = 30" "lines = 4" horizontalStyle) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\" }\n"

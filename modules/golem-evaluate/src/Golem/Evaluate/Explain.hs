@@ -1,15 +1,15 @@
 {- | The explanations of the diagnostic codes (golem-cli ADR 0005), shown by
 golem explain and linked from the LSP. scripts/gen-embedded.sh writes
-docs/diagnostics.md into "Golem.Driver.Explain.Embedded" (docs/adr/0203);
+docs/diagnostics.md into "Golem.Evaluate.Explain.Embedded" (docs/adr/0203);
 the tests of golem-driver check that the module is the document and that
-the document has the form of "Golem.Driver.Explain.Catalog".
+the document has the form of "Golem.Evaluate.Explain.Catalog".
 -}
-module Golem.Driver.Explain
+module Golem.Evaluate.Explain
   ( catalog,
     lookupExplanation,
     explainHint,
     codeDescriptionUrl,
-    module Golem.Driver.Explain.Catalog,
+    module Golem.Evaluate.Explain.Catalog,
   )
 where
 
@@ -18,8 +18,8 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Driver.Explain.Catalog
-import Golem.Driver.Explain.Embedded (documentText)
+import Golem.Evaluate.Explain.Catalog
+import Golem.Evaluate.Explain.Embedded (documentText)
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
 
 -- | The content of docs/diagnostics.md.

@@ -626,7 +626,7 @@ GOLEM="$(cabal list-bin -v0 golem)" scripts/visual/run.sh --accept
 scripts/gen-parser.sh
 ```
 
-golem-driver が埋め込む `VERSION` と `docs/diagnostics.md` も、`scripts/gen-embedded.sh` で生成したモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`）をコミットする。
+golem-driver が埋め込む `VERSION` と golem-evaluate が埋め込む `docs/diagnostics.md` も、`scripts/gen-embedded.sh` で生成したモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`）をコミットする（[docs/adr/0434](./docs/adr/0434-split-evaluation-from-golem-driver.md)）。
 どちらかのファイルを変えたら、同じ変更で生成し直す。
 golem-font に依存するパッケージは、wasm で組むために Template Haskell を使わない（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
 
@@ -804,7 +804,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
   `main` への push では省く。
 - `textlint`：`tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
   何も報告しなかったファイルのキーをキャッシュに保つ（[docs/adr/0258](./docs/adr/0258-textlint-per-file-jobs-and-a-cache-of-clean-results.md)）。
-- `anchors`：`docs/diagnostics.md` か `modules/golem-driver/src/Golem/Driver/Explain.hs` を変えたプルリクエストと `main` への push で、GitHub の API が描いた `docs/diagnostics.md` の HTML に、すべての diagnostic のコードの見出しの `id`（`user-content-g01017` の形）があることを確かめる（`scripts/ci/github-anchors.sh`）。
+- `anchors`：`docs/diagnostics.md` か `modules/golem-evaluate/src/Golem/Evaluate/Explain.hs` を変えたプルリクエストと `main` への push で、GitHub の API が描いた `docs/diagnostics.md` の HTML に、すべての diagnostic のコードの見出しの `id`（`user-content-g01017` の形）があることを確かめる（`scripts/ci/github-anchors.sh`）。
   API から引けないフォークのコミットは飛ばし、`main` への push で確かめる（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
 
 #### コードのワークフロー（ci.yml）
@@ -842,7 +842,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 上限は、直近の `main` への push の 20 回の中央値 m から `max(10, ceil(2 × m))` で決める（[ADR 0292](./docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
 
 ビルドの後に、生成物と出力を確かめる。
-生成したパーサーが文法と一致すること、`scripts/gen-embedded.sh` で生成した golem-driver のモジュールが `VERSION` と `docs/diagnostics.md` と一致すること（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）を確かめる。
+生成したパーサーが文法と一致すること、`scripts/gen-embedded.sh` で生成した golem-driver と golem-evaluate のモジュールが `VERSION` と `docs/diagnostics.md` と一致すること（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）を確かめる。
 `scripts/determinism.sh` の出力を作り、その中で `manual/` と `manual-dev/` を notice も含めて diagnostic を一つも出さずに組む。
 
 x86-64 では、さらに次のことを行う。
