@@ -1,6 +1,6 @@
 # ADR 0397: 段落ごとの行送りと寸法で指定する段落間隔
 
-Status: accepted
+Status: superseded [{"part":"段落の罫線","by":["docs/adr/0449-share-rule-areas-with-ruled-headings-in-both-placements.md"],"kind":"supplement"},{"part":"段落の罫線","by":["docs/adr/0450-put-free-placement-rules-after-outside-the-column-end.md"],"kind":"supplement"}]
 
 ## 文脈
 

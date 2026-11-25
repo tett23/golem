@@ -19,6 +19,7 @@ module Golem.Project.Manifest
     Targets (..),
     WebFonts (..),
     webFontsValues,
+    embedsFonts,
     PdfAPart (..),
     PdfUaPart (..),
     TextVariant (..),
@@ -274,6 +275,14 @@ data WebFonts = WebFontsGeneric | WebFontsEmbed
 -- | The values of fonts in [targets.html] and [targets.epub] (docs/adr/0423).
 webFontsValues :: [(Text, WebFonts)]
 webFontsValues = [("generic", WebFontsGeneric), ("embed", WebFontsEmbed)]
+
+{- | Whether the targets built embed the fonts (root ADR 0448): HTML,
+when it is built and its fonts are embed, or EPUB, when it is built and
+its fonts are embed. The second argument is whether HTML is built, the
+third whether EPUB is.
+-}
+embedsFonts :: Targets -> Bool -> Bool -> Bool
+embedsFonts t html epub = (html && tgHtmlFonts t == WebFontsEmbed) || (epub && tgEpubFonts t == WebFontsEmbed)
 
 -- | The parts and levels of PDF/A a book can declare: pdfa = "2a" (docs/adr ADR 0183).
 data PdfAPart = PdfA2a
