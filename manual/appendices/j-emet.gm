@@ -2,7 +2,7 @@
 @label app-emet
 # 付録J 関数を書く言語 Emet
 
-@import functions/book.emet as book
+@import functions/book.emet * as book
 
 この付録は、本を作る人が自分の本のための小さな計算や書式を関数として書き、原稿から呼び出す方法を説明します。[index reading=かんすう: 関数]
 関数は、Emet[index reading=えめと: Emet] という言語で、拡張子が [code: .emet] のファイルに書きます。
@@ -50,13 +50,25 @@ LSP に対応したエディタでは、[code: .emet] のファイルでも誤�
 この付録の原稿の先頭にも、次の一行があります。
 
 ```
-@import functions/book.emet as book
+@import functions/book.emet * as book
 ```
 
 取り込んだ関数は、[code: as] の後に書いた名前（ここでは [code: book]）と [code: .] を前に付けて呼びます。
 取り込んだ関数は、[code: @import] を書いたファイルの中でだけ使えます。
 ほかの章のファイルで使うときは、そのファイルにも [code: @import] を書きます。
 名前を前に付けるので、関数の名前が組み込みのコマンドやプラグインのコマンドと同じでも構いません。
+
+使う関数の名前を [code: { }] の中に [code: ,] で区切って並べて取り込むと、名前を前に付けずに呼べます。
+
+```
+@import functions/book.emet { tax-included, total }
+
+[tax-included 1000]、[= total([1200, 800])]
+```
+
+並べる名前は、原稿から呼ぶときの名前です。
+並べた名前が、組み込みのコマンドや式の名前、プラグインのコマンド、同じファイルの [code: @set] の変数、ほかの [code: @import] が並べた名前と同じなら、エラーになります。
+同じ関数のファイルを、二つの書き方の両方で取り込んでも構いません。
 
 関数には、原稿からの呼び方で分けた四つの種類があります。
 種類は、関数のファイルの中で、関数の名前の前に書く語で決まります。
@@ -260,7 +272,7 @@ Emet では、改行が等式や選択肢の区切りになります。
 import "functions/numbers.emet"
 ```
 
-原稿の [code: @import] と違い、名前の前に何も付けません。
+原稿の [code: @import] と違い、名前を並べずに、公開された名前をすべて、名前の前に何も付けずに使えます。
 取り込んだ名前が、ほかのファイルから取り込んだ名前や、そのファイルの名前と重なると、エラー（E02108）になります。
 
 @nonumber

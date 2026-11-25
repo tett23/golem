@@ -1,5 +1,5 @@
 -- Blocks: boxes, a glossary, a price table and a checklist.
--- In .gm: `@import fn/blocks.emet as b`.
+-- In .gm: `@import fn/blocks.emet * as b`.
 
 import "fn/lib.emet"
 import "fn/numbers.emet"

@@ -42,12 +42,14 @@ data Env = Env
   { envVars :: !(Map Name Value),
     envNamespaces :: !(Map Name (Map Name Value)),
     -- | the namespaces of the .emet a file imports (docs/adr/0162)
-    envFunctions :: !(Map Name FunctionRef)
+    envFunctions :: !(Map Name FunctionRef),
+    -- | the pub fn an @import lists, called without a namespace (root ADR 0451)
+    envListed :: !(Map Name FunctionRef)
   }
 
 -- | An environment of variables and namespaces of variables, without functions.
 plainEnv :: Map Name Value -> Map Name (Map Name Value) -> Env
-plainEnv vars nss = Env vars nss Map.empty
+plainEnv vars nss = Env vars nss Map.empty Map.empty
 
 -- | The namespace and the name of @ns.f@, a function of a .emet (docs/adr/0162).
 splitNamespace :: Name -> Maybe (Name, Name)
@@ -149,6 +151,9 @@ evalExpr env le@(Located _ e) = case e of
   ECall f args | Just (ns, name) <- splitNamespace f -> do
     vs <- traverse (evalExpr env) args
     callFunction env le ns name vs
+  ECall f args | Just ref <- Map.lookup f (envListed env) -> do
+    vs <- traverse (evalExpr env) args
+    callRef le f ref f vs
   ECall f args -> do
     vs <- traverse (evalExpr env) args
     case (args, vs) of
@@ -311,16 +316,24 @@ callFunction env le ns name vs = case Map.lookup ns (envFunctions env) of
   Nothing
     | Map.member ns (envNamespaces env) -> err "G02002" le ("名前空間 " <> ns <> " は .gm の変数の取り込みで、関数を持ちません: " <> qualified)
     | otherwise -> err "G02002" le ("未定義の名前空間 " <> ns <> " です: " <> qualified)
-  Just Unloaded -> Left ((diagnostic "G02002" Error (locSpan le) ("読み込めなかった .emet の関数です: " <> qualified)) {diagFacts = [unloadedFact]})
-  Just (Loaded fns) -> case Map.lookup name (fnExpr fns) of
+  Just ref -> callRef le qualified ref name vs
+  where
+    qualified = ns <> "." <> name
+
+{- | A call of a pub fn of a .emet, by the name it is written with: one of
+a .emet that could not be loaded carries 'unloadedFact', and is not
+reported.
+-}
+callRef :: Located Expr -> Name -> FunctionRef -> Name -> [Value] -> Eval Value
+callRef le qualified ref name vs = case ref of
+  Unloaded -> Left ((diagnostic "G02002" Error (locSpan le) ("読み込めなかった .emet の関数です: " <> qualified)) {diagFacts = [unloadedFact]})
+  Loaded fns -> case Map.lookup name (fnExpr fns) of
     Just ef -> case positionalValues (efParams ef) vs of
       Left e -> Left (argErrorDiagnostic (locSpan le) qualified e)
       Right args -> efCall ef args (locSpan le)
     Nothing -> case Map.lookup name (fnOthers fns) of
       Just why -> err "G02002" le (qualified <> " は pub fn ではないので、式からは呼べません（" <> why <> "）")
       Nothing -> err "G02002" le ("未定義の関数 " <> qualified <> " です")
-  where
-    qualified = ns <> "." <> name
 
 call :: Located Expr -> Name -> [Value] -> Eval Value
 call le f args = case (f, args) of

@@ -195,9 +195,10 @@ GHC のスタックに深さを任せると、深さの上限がランタイム�
 
 ## .gm からの呼び出し
 
-[code: .gm] は、[code: @import functions/book.emet as book] で [code: .emet] を取り込む。
+[code: .gm] は、[code: @import functions/book.emet * as book] で [code: .emet] を取り込む。
 パスの拡張子が [code: .emet] なら関数の取り込み、そうでなければ変数の取り込みである。
-取り込んだ関数は名前空間を通してだけ参照するので、組み込みのコマンドやプラグインのコマンドと名前が重ならない。
+名前空間つきの取り込み（[code: * as]）では、関数を名前空間を通してだけ参照するので、組み込みのコマンドやプラグインのコマンドと名前が重ならない。
+名前を並べた取り込み（[code: @import functions/book.emet { total }]）では、並べた名前を名前空間なしで参照し、組み込みのコマンド、プラグインのコマンド、ほかの取り込みの名前と重なればエラーにする。
 関数の種類は、シグネチャの [code: pub] の後ろの語（[code: inline]、[code: block]、[code: filter]、[code: fn]）で決まる。
 [code: .emet] の識別子は [code: -] を持てないので、[code: .gm] に出す名前は種類の語の後ろに文字列で書ける（[code: pub inline "tax-included" taxIncluded]）。
 

@@ -238,10 +238,10 @@ fmtCrTests =
         lookup "a.gm" files' @?= Just "一。\n二。\n"
         lookup "b.gm" files' @?= Just "三。\n",
       testCase "a file read only by @import is fixed too" $ do
-        ([(code, _, err)], files') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import c.gm as c\n\n本文。\n"), ("c.gm", "一。\r\n")] [["fmt"]]
+        ([(code, _, err)], files') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import c.gm * as c\n\n本文。\n"), ("c.gm", "一。\r\n")] [["fmt"]]
         assertEqual err ExitSuccess code
         lookup "c.gm" files' @?= Just "一。\n"
-        lookup "a.gm" files' @?= Just "@import c.gm as c\n\n本文。\n",
+        lookup "a.gm" files' @?= Just "@import c.gm * as c\n\n本文。\n",
       testCase "a CR in manifest.toml is G01003, and nothing is rewritten" $ do
         let files = [("manifest.toml", T.unpack (T.replace "\n" "\r\n" (T.pack (crManifest ["a.gm"])))), ("a.gm", "本文。\r\n")]
         ([(code, _, err)], files') <- golemSteps files [["fmt"]]
@@ -260,7 +260,7 @@ fmtCrTests =
         ([(code, _, err)], files') <- golemSteps [("f.emet", messy)] [["fmt", "f.emet"]]
         assertEqual err ExitSuccess code
         lookup "f.emet" files' @?= Just tidy
-        ([(code', _, err'), (lcode, _, lerr)], files'') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import f.emet as f\n\n[f.f]\n"), ("f.emet", messy)] [["fmt"], ["lint"]]
+        ([(code', _, err'), (lcode, _, lerr)], files'') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import f.emet * as f\n\n[f.f]\n"), ("f.emet", messy)] [["fmt"], ["lint"]]
         assertEqual err' ExitSuccess code'
         lookup "f.emet" files'' @?= Just tidy
         -- the lint of .emet: helper is not used
@@ -678,7 +678,7 @@ noticeTests =
         let files =
               [ (p, if p == "manifest.toml" then c <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n" else c) | (p, c) <- noticeFiles, p /= "a.gm"
               ]
-                <> [ ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
+                <> [ ("a.gm", "@import f.emet * as f\n\n[f.x]\n"),
                      ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n"),
                      ("w.tsv", "w\n")
                    ]

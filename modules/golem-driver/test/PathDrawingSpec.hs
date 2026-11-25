@@ -86,7 +86,7 @@ pdfBuild tmp = do
 -- | The PDF and diagnostics of an SVG returned by a block command, and of it as a file of @figure.
 bothWays :: Text -> IO ((Maybe BS.ByteString, [Diagnostic]), (Maybe BS.ByteString, [Diagnostic]))
 bothWays svg = do
-  fromData <- withArt "@import f.emet as f\n\n@f.fig\n" [("f.emet", figureEmet "fig" ("data:image/svg+xml," <> svg))] "" pdfBuild
+  fromData <- withArt "@import f.emet * as f\n\n@f.fig\n" [("f.emet", figureEmet "fig" ("data:image/svg+xml," <> svg))] "" pdfBuild
   fromFile <- withArt "@nonumber\n@figure ./images/a.svg alt=x\n" [("images/a.svg", TE.encodeUtf8 svg)] "" pdfBuild
   pure (fromData, fromFile)
 
@@ -159,7 +159,7 @@ pathDrawingTests =
         assertBool "an error" (not (null (codes fileDiags)))
         codes dataDiags @?= codes fileDiags,
       testCase "root ADR 0439 I4: two figures of the same SVG point at one image" $
-        withArt "@import f.emet as f\n\n@f.fig\n\n@f.fig\n" [("f.emet", figureEmet "fig" ("data:image/svg+xml," <> triangle))] "" $ \tmp -> do
+        withArt "@import f.emet * as f\n\n@f.fig\n\n@f.fig\n" [("f.emet", figureEmet "fig" ("data:image/svg+xml," <> triangle))] "" $ \tmp -> do
           e <- evaluated tmp
           codesIn e @?= []
           let figures = figuresOf e "a.gm"
@@ -167,7 +167,7 @@ pathDrawingTests =
           map figSource figures @?= [expected, expected]
           fmap (Map.toList . bookImages) (evBook e) @?= Just [(expected, TE.encodeUtf8 triangle)],
       testCase "root ADR 0439 I6: HTML and EPUB have the image of a plugin's name and an <img> of it" $
-        withArt "# 章\n\n@import f.emet as f\n\n@f.fig\n" [("f.emet", figureEmet "fig" ("data:image/svg+xml," <> triangle))] "" $ \tmp -> do
+        withArt "# 章\n\n@import f.emet * as f\n\n@f.fig\n" [("f.emet", figureEmet "fig" ("data:image/svg+xml," <> triangle))] "" $ \tmp -> do
           r <- build (defaultOptions tmp) {optFonts = fakeProvider}
           filter isError (brDiagnostics r) @?= []
           let svg = TE.encodeUtf8 triangle
@@ -191,7 +191,7 @@ pathDrawingTests =
             ("a figure in a bulleted list", TE.encodeUtf8 ("pub block fig :: Blocks\nfig = [Block.BulletList [Block.ListItem Nothing [" <> figureOf ("data:image/svg+xml," <> triangle) <> "]]]\n"))
           ]
         $ \(what, emet) ->
-          withArt "@import f.emet as f\n\n@f.fig\n" [("f.emet", emet), ("images/a.svg", TE.encodeUtf8 triangle), ("images/a.png", "\x89PNG\r\n\x1a\n")] "" $ \tmp -> do
+          withArt "@import f.emet * as f\n\n@f.fig\n" [("f.emet", emet), ("images/a.svg", TE.encodeUtf8 triangle), ("images/a.png", "\x89PNG\r\n\x1a\n")] "" $ \tmp -> do
             e <- evaluated tmp
             assertEqual what ["E06104"] (codesIn e)
             assertEqual what [] (figuresOf e "a.gm"),

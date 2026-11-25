@@ -1,5 +1,5 @@
 -- 数の書き方：3 桁ごとのカンマ、金額、万と億の単位、漢数字。
--- 原稿では `@import functions/numbers.emet as numbers` で取り込む。
+-- 原稿では `@import functions/numbers.emet * as numbers` で取り込む。
 
 -- 3 桁ごとにカンマを入れた数。
 -- >>> [= numbers.commas(1234567)]

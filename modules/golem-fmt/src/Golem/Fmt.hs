@@ -16,13 +16,16 @@ module Golem.Fmt
   )
 where
 
+import Data.ByteString qualified as BS
 import Data.Char (isAscii, isPunctuation, isSpace, isSymbol)
-import Data.List (stripPrefix)
+import Data.List (sortOn, stripPrefix)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Parser (parse, parseAst)
 import Golem.Parser.AST (plainEscapesIn)
+import Golem.Parser.AST qualified as A
 import Golem.Parser.CST
 import Golem.Syntax
 import Golem.Syntax.Text (isSpaceTab)
@@ -83,8 +86,12 @@ rule must keep.
 -}
 format :: Text -> FormatResult
 format src0 =
-  let src = preprocess src0
-      (root, diags) = parse (FileId 0) src
+  let src1 = preprocess src0
+      (_, diags) = parse (FileId 0) src1
+      -- the forms of @import are written first; they change the AST (root ADR 0451)
+      rewritten = importForms src1
+      src = if hasErrors (snd (parse (FileId 0) rewritten)) then src1 else rewritten
+      (root, _) = parse (FileId 0) src
    in if hasErrors diags
         then Unformattable diags
         else Formatted (foldl' (apply src) (render root) rulesWith)
@@ -97,6 +104,64 @@ format src0 =
        in if next /= cur && astFingerprintWith removable next == astFingerprintWith removable orig && not (hasErrors (snd (parse (FileId 0) next)))
             then next
             else cur
+
+{- | The two forms of @import (root ADR 0451): the form without @*@,
+@path as ns@, is written @path * as ns@, and a list of names is written
+@{ a, b }@, a space inside the braces and after each comma. This is the
+one rewriting that changes the AST, so it is applied before the rules.
+An @import with anything but spaces between its words (a comment), with
+a body, or of another form is left as it is.
+-}
+importForms :: Text -> Text
+importForms src =
+  let (A.File _ bs, _, _) = parseAst (FileId 0) src
+   in splice (concatMap site bs)
+  where
+    bytes = TE.encodeUtf8 src
+    slice s e = TE.decodeUtf8Lenient (BS.take (e - s) (BS.drop s bytes))
+    site (A.Located _ b) = case b of
+      A.BlockCommand (A.Located _ "import") (path : rest@(_ : _)) [] -> edit path rest
+      A.Attributed cmds _ -> concatMap site cmds
+      _ -> []
+    edit (A.Located psp pathArg) rest = case (pathArg, traverse word rest) of
+      (A.Positional v, Just ws)
+        | isPath v,
+          let start = spanEnd psp
+              end = maximum (map (spanEnd . A.locSpan) rest)
+              written = slice start end,
+          T.words written == ws,
+          Just new <- shape ws,
+          new /= written ->
+            [(start, end, new)]
+      _ -> []
+    isPath = \case
+      A.Word _ -> True
+      A.StringLit _ -> True
+      _ -> False
+    word = \case
+      A.Located _ (A.Positional (A.Word w)) -> Just w
+      _ -> Nothing
+    shape = \case
+      ["as", ns] -> Just (" * as " <> ns)
+      ws -> (\ns -> " { " <> T.intercalate ", " ns <> " }") <$> listed (concatMap pieces ws)
+    pieces w = case T.uncons w of
+      Nothing -> []
+      Just (c, rest)
+        | isMark c -> Left c : pieces rest
+        | otherwise -> let (n, rest') = T.break isMark w in Right n : pieces rest'
+    isMark c = c == '{' || c == '}' || c == ','
+    listed = \case
+      Left '{' : Right n : rest -> (n :) <$> more rest
+      _ -> Nothing
+    more = \case
+      [Left '}'] -> Just []
+      Left ',' : Right n : rest -> (n :) <$> more rest
+      _ -> Nothing
+    splice edits =
+      let go from = \case
+            [] -> [BS.drop from bytes]
+            (s, e, new) : es -> BS.take (s - from) (BS.drop from bytes) : TE.encodeUtf8 new : go e es
+       in TE.decodeUtf8 (BS.concat (go 0 (sortOn (\(s, _, _) -> s) edits)))
 
 -- | The rules, in the order they are applied.
 rules :: [Node -> Node]

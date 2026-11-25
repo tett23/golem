@@ -72,7 +72,7 @@ paragraphPitchTests =
         let style = freeStyle <> "\n[paragraph-styles.dialogue]\nline-pitch = \"18pt\"\nspace-between = \"6pt\"\n"
             library = "pub block dialogue :: Blocks -> Blocks\ndialogue body = List.map styled body\nstyled :: Block.Block -> Block.Block\nstyled (Block.Paragraph _ xs) = Block.Paragraph (Just \"dialogue\") xs\nstyled b = b\n"
         (_, direct) <- layoutOk style "@style dialogue\nあ\n\n@style dialogue\nい\n" []
-        (_, emitted) <- layoutOk style "@import script.emet as script\n\n@script.dialogue\n  あ\n\n@script.dialogue\n  い\n" [("script.emet", library)]
+        (_, emitted) <- layoutOk style "@import script.emet * as script\n\n@script.dialogue\n  あ\n\n@script.dialogue\n  い\n" [("script.emet", library)]
         map poSlots (plPages emitted) @?= map poSlots (plPages direct),
       testCase "root ADR 0397 I13: oversized paragraph fails at its source span" $ do
         let style = freeStyle <> "\n[paragraph-styles.dialogue]\nline-pitch = \"1000pt\"\n"

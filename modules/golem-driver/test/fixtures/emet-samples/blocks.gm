@@ -1,4 +1,4 @@
-@import fn/blocks.emet as b
+@import fn/blocks.emet * as b
 
 # ブロック
 

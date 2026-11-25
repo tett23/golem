@@ -1,4 +1,4 @@
-@import fn/dates.emet as d
+@import fn/dates.emet * as d
 
 # 日付
 

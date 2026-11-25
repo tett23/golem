@@ -1,6 +1,6 @@
 # ADR 0451: `@import` で、並べた名前を名前空間なしで取り込めるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

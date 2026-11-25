@@ -373,7 +373,7 @@ tests =
         assertBool (show codes) (all (`notElem` codes) ["G03006", "G03010", "G08002"]),
       testCase "a missing import is reported on the file of the @import (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         mapM_ (\f -> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "b.gm"]
-        BS.writeFile (tmp </> "a.gm") "@import nope.gm as x\n"
+        BS.writeFile (tmp </> "a.gm") "@import nope.gm * as x\n"
         ws <- openWorkspace tmp
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "a.gm" @?= ["G03002"]

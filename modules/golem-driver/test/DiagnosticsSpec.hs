@@ -31,7 +31,7 @@ import Test.Tasty.HUnit
 readingTests :: [TestTree]
 readingTests =
   [ testCase "an imported file with CRLF is shown at its path" $
-      withChapters "" [("a.gm", "@import y.gm as y\n\n一。\n")] [("y.gm", "a\r\nb\n")] $ \tmp -> do
+      withChapters "" [("a.gm", "@import y.gm * as y\n\n一。\n")] [("y.gm", "a\r\nb\n")] $ \tmp -> do
         (codes, out) <- checked tmp
         codes @?= [DiagnosticCode "G01003"]
         assertBool (T.unpack out) ("y.gm:1:2:" `T.isPrefixOf` out),
@@ -140,7 +140,7 @@ everyNoticeProjects =
     \extra ->
       [ ("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra) <> "\n[functions.requires]\nfile = [\"w.tsv\"]\n"),
         ("style.toml", horizontalStyle),
-        ("a.gm", "@import f.emet as f\n\n[f.x]\n"),
+        ("a.gm", "@import f.emet * as f\n\n[f.x]\n"),
         ("f.emet", "pub inline x :: <file \"w.tsv\"> Inlines\nx = Inline.text \"x\"\n  where {\n    unused = 1\n  }\n"),
         ("w.tsv", "w\n")
       ],
