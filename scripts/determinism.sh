@@ -71,7 +71,8 @@ mkdir -p "$WORK/pdf/fonts"
 cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" "$WORK/pdf/fonts/ja.otf"
 cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$WORK/pdf/fonts/latin.otf"
 cp "$ROOT/scripts/determinism/pdf-style.toml" "$WORK/pdf/style.toml"
-build pdf "$WORK/pdf" --target pdf
+# with the PDF for the screen of the same layout (root ADR 0431)
+build pdf "$WORK/pdf" --target pdf --target pdf-screen
 # the two books that combine the features (docs/adr/0175), to every target,
 # with the same fonts
 for book in complex-vertical complex-horizontal; do

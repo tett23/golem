@@ -137,8 +137,8 @@ verboseOpt = switch (long "verbose" <> short 'v' <> help "情報（info）の di
 targetOpt :: Parser Target
 targetOpt =
   option
-    (choice "ターゲット" [("html", TargetHtml), ("epub", TargetEpub), ("text", TargetText), ("pdf", TargetPdf)])
-    (long "target" <> metavar "html|epub|text|pdf" <> help "作るターゲット（省くとすべて）")
+    (choice "ターゲット" [("html", TargetHtml), ("epub", TargetEpub), ("text", TargetText), ("pdf", TargetPdf), ("pdf-screen", TargetPdfScreen)])
+    (long "target" <> metavar "html|epub|text|pdf|pdf-screen" <> help "作るターゲット（省くと pdf-screen を除くすべて）")
 
 -- | The crop marks of the PDF (golem-pdf ADR 0004).
 marksOpt :: Parser CropMarks

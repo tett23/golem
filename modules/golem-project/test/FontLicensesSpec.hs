@@ -71,6 +71,6 @@ tests =
     missingMessage :: (Text, Text, Text) -> Text
     missingMessage (r, k, p) = "フォントのライセンスの文書を指定していません: [fonts." <> r <> "] の " <> k <> "-license（" <> p <> "）"
     targetsOf :: WebFonts -> WebFonts -> Targets
-    targetsOf hf ef = Targets {tgPdf = Nothing, tgEpub = Just Nothing, tgHtml = True, tgText = [], tgPdfA = Nothing, tgPdfUa = Nothing, tgEpubPageMap = Nothing, tgHtmlFonts = hf, tgEpubFonts = ef}
+    targetsOf hf ef = Targets {tgPdf = Nothing, tgEpub = Just Nothing, tgHtml = True, tgText = [], tgPdfA = Nothing, tgPdfUa = Nothing, tgPdfScreen = Nothing, tgEpubPageMap = Nothing, tgHtmlFonts = hf, tgEpubFonts = ef}
     licensesOf :: Text -> Style -> Maybe (Maybe FilePath, Maybe FilePath)
     licensesOf role s = (\fr -> (frJaLicense fr, frLatinLicense fr)) <$> Map.lookup role (stFonts s)
