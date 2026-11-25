@@ -1458,10 +1458,28 @@ placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
     let firstId = maybe 0 lbId (safeHead lines')
         firstLine = safeHead lines'
         lastLine = safeHead (reverse lines')
-        beforeGeometry side line =
+        -- the area of the rule before and its place from the start of the heading's box
+        beforeEdge side line =
           let size = faceOf cfg line
               virtualPitch = maybe (pitchOf cfg line) (\(firstFaceAt, _) -> 2 * firstFaceAt + size) (Map.lookup firstId (physicalHeadingBounds cfg))
            in ruleBeforeEdge virtualPitch size side (lbOverhang line)
+        {- The rule before as a ruled paragraph's (golem-driver ADR 0027, root
+        ADR 0397 「段落の罫線」): out of the column only at the start of a
+        column at the edge of the type area (golem-driver ADR 0040); after a
+        line, in the gap between the faces; else in the heading's own area,
+        as after the rule after of a ruled paragraph, which takes its own
+        area in that gap. Its area and its place from the start of the
+        heading's box.
+        -}
+        beforeGeometry at side line = case safeHead (reverse (psSlots at)) of
+          Just (priorAt, SLine priorId)
+            | psPendingSpace at == 0 && null [r | r <- psRules at, not (prBefore r), prAt r >= priorAt] ->
+                let priorLine = LineBox priorId [] [] [] 0
+                    priorEnd = priorAt + faceOffset (pitchOf cfg priorLine) (faceOf cfg priorLine) + faceOf cfg priorLine
+                    faceAt = maybe (faceOffset (pitchOf cfg line) (faceOf cfg line)) fst (Map.lookup firstId (physicalHeadingBounds cfg))
+                    (extra, position) = ruleBeforeGap (psUsed at + faceAt - priorEnd) side (lbOverhang line)
+                 in (extra, priorEnd + position - psUsed at)
+          _ -> beforeEdge (if empty at && psUsed at == 0 then side else side {rsdOutside = Nothing}) line
         afterGeometry side line = case Map.lookup firstId (physicalHeadingBounds cfg) of
           Nothing ->
             let (extra, position) = ruleAfterEdge (pitchOf cfg line) (faceOf cfg line) side {rsdOutside = Nothing}
@@ -1472,14 +1490,16 @@ placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
                 virtualPitch = 2 * trailing + size
                 (extra, position) = ruleAfterEdge virtualPitch size side {rsdOutside = Nothing}
              in (extra, lastFaceEnd - size - trailing + position)
-        beforeExtra = maybe 0 (\side -> maybe 0 (fst . beforeGeometry side) firstLine) (frBefore ruled)
+        -- whether an empty column holds the heading with its rules (golem-driver ADR 0035)
+        startExtra = maybe 0 (\side -> maybe 0 (fst . beforeEdge side) firstLine) (frBefore ruled)
+        beforeExtra = maybe 0 (\side -> maybe 0 (fst . beforeGeometry headingState side) firstLine) (frBefore ruled)
         afterExtra = maybe 0 (\side -> maybe 0 (fst . afterGeometry side) lastLine) (frAfter ruled)
         noteCount = sum [nbLines note | line <- lines', note <- lbNotes line]
         headingNotes = fromIntegral noteCount * physicalPagePitch cfg + (if noteCount > 0 then physicalSeparator cfg else 0)
     if extent > physicalCapacity cfg
       then Left (PhysicalHeadingTooTall firstId)
       else
-        if beforeExtra + extent + afterExtra + headingNotes > physicalCapacity cfg
+        if startExtra + extent + afterExtra + headingNotes > physicalCapacity cfg
           then case frAfter ruled of
             Just _ -> placeRuled cfg headingState ruled {frAfter = Nothing} laterFlows
             Nothing -> case frBefore ruled of
@@ -1498,7 +1518,8 @@ placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
                 let origin = psUsed ready
                 placed0 <- putHeading cfg (ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}) firstId extent lines'
                 let placed = placed0 {psAdjustment = psAdjustment ready}
-                    startRule = [PlacedRule (frId ruled) True (origin + snd (beforeGeometry (if empty ready && origin == 0 then side else side {rsdOutside = Nothing}) line)) | side <- maybe [] pure (frBefore ruled), line <- maybe [] pure firstLine]
+                    -- the same column as headingState: the geometry of its fit, the place from origin
+                    startRule = [PlacedRule (frId ruled) True (origin + snd (beforeGeometry headingState side line)) | side <- maybe [] pure (frBefore ruled), line <- maybe [] pure firstLine]
                     endRule = [PlacedRule (frId ruled) False (psUsed placed - extent + snd (afterGeometry side line)) | side <- maybe [] pure (frAfter ruled), line <- maybe [] pure lastLine]
                 pure placed {psUsed = psUsed placed + afterExtra, psRules = psRules placed <> startRule <> endRule}
 placeRuled _ st _ _ = Right st
