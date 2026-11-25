@@ -24,3 +24,5 @@ cabal.project.local
 /tools/editors/node_modules/
 /dist-wasm/
 /scripts/browser/node_modules/
+# the font measure.sh copies into the benchmark of path drawing (root ADR 0439)
+/scripts/bench/path-drawing/fonts/

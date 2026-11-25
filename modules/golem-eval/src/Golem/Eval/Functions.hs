@@ -19,6 +19,7 @@ module Golem.Eval.Functions
     BlockFunction (..),
     ExprFunction (..),
     FunctionNamespace (..),
+    svgDataPrefix,
     emptyNamespace,
     FunctionTable (..),
     noFunctions,
@@ -91,6 +92,13 @@ data InlineFunction = InlineFunction
     ifSignature :: !Text,
     ifCall :: [Value] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] [Inline]
   }
+
+{- | The start of the source of a figure a block command returns (root ADR
+0439): the SVG follows it as it is. The evaluation puts the SVG among the
+images of the plugins (docs/adr/0123).
+-}
+svgDataPrefix :: Text
+svgDataPrefix = "data:image/svg+xml,"
 
 -- | A block command: whether it takes the indented body.
 data BlockFunction = BlockFunction
