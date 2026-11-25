@@ -798,7 +798,7 @@ diagnosticCodeTests =
           [("@import x.gm as x\n", "x.gm"), ("@import \"x.gm\" as x\n", "\"x.gm\"")],
       testCase "root ADR 0451 I6: the two forms are read, with the places of the names" $ do
         let sitesOf src = let (f, _, _) = parseAst (FileId 1) src in [fmap (\s -> (isPath s, isForm s)) e | e <- importsOf f]
-            at a b = mkSpan (FileId 1) a b
+            at = mkSpan (FileId 1)
         sitesOf "@import x.gm * as v\n" @?= [Right ("x.gm", ImportAll "v" (at 18 19))]
         sitesOf "@import x.gm { a }\n" @?= [Right ("x.gm", ImportNames [("a", at 15 16)])]
         sitesOf "@import x.gm { a, bc }\n" @?= [Right ("x.gm", ImportNames [("a", at 15 16), ("bc", at 18 20)])]

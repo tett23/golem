@@ -37,7 +37,7 @@ import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.Either (fromLeft, fromRight, isLeft, lefts)
+import Data.Either (fromLeft, fromRight, isLeft, lefts, rights)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -275,7 +275,7 @@ evalFile ctx0 (A.File fid blocks0) =
       -- meta and vars, which every file reads without @import (docs/adr/0185)
       st0 =
         (St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty)
-          { stFileImports = [s | Right s <- importsOf (A.File fid blocks0)],
+          { stFileImports = rights (importsOf (A.File fid blocks0)),
             stSetNames = Set.fromList (concatMap setNames blocks0)
           }
       (bsEval, st) = runState (nextStyled ctx fileStyle blocks) st0

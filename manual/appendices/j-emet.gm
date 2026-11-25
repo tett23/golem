@@ -61,9 +61,9 @@ LSP に対応したエディタでは、[code: .emet] のファイルでも誤�
 使う関数の名前を [code: { }] の中に [code: ,] で区切って並べて取り込むと、名前を前に付けずに呼べます。
 
 ```
-@import functions/book.emet { tax-included, word-table, total }
+@import functions/book.emet { tax-included, total }
 
-本体は[tax-included 1000]です。合計は[= total([1200, 800])]円です。
+[tax-included 1000]、[= total([1200, 800])]
 ```
 
 並べる名前は、原稿から呼ぶときの名前です。
