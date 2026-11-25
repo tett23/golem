@@ -807,6 +807,519 @@ def premiseFailures (m : Ms) (lines : Nat) : Bool :=
   | .error (.noProgress 1000000) => true
   | _ => false
 
+/-! ### The rows of the verse lines not tried
+
+`paragraphs` steps the no-breaks before a stanza with the rows of its
+verse lines ahead, and the verse lines `tryVerses` did not place keep the
+rows composed before (`orig`).  On these manuscripts any rows in their
+place give the same pages (`I5_paragraphs_orig`).  When `tryVerses` placed
+the first part of the stanza, the no-breaks wait for the same lines
+(`I5_noBreak_rows_orig`).  When it did not, at an empty cursor the
+no-breaks mark themselves unmet without waiting, and at a cursor that is
+not empty `stanza` places none of its lines in that column
+(`I5_stanza_moves`); the waits of the no-breaks are then dead, and the
+stanza gives the same result whatever lines they ask for
+(`stanza_accept_sim`). -/
+
+theorem breakLines_go_blind (w measure : Nat) (region : Region) (origin : Int) (at' : St) (n first : Nat)
+    (ws : List Wait) : ∀ fuel k from', breakLines.go w measure region origin (setW at' ws) n first fuel k from' =
+      breakLines.go w measure region origin at' n first fuel k from'
+  | 0, _, _ => rfl
+  | fuel + 1, k, from' => by
+    unfold breakLines.go
+    have hn : ∀ k, narrowed region origin (setW at' ws) k = narrowed region origin at' k := fun _ => rfl
+    simp only [Nat.add_eq, Nat.add_zero, hn, breakLines_go_blind w measure region origin at' n first ws fuel]
+
+theorem breakLines_blind (w measure : Nat) (region : Region) (origin : Int) (at' : St) (start n : Nat) (ws : List Wait) :
+    breakLines w measure region origin (setW at' ws) start n = breakLines w measure region origin at' start n := by
+  unfold breakLines
+  rw [show slotCount (setW at' ws) = slotCount at' from rfl, breakLines_go_blind]
+
+theorem beside_blind (m : Ms) (region : Region) (origin : Int) : (beside m region origin).blind := by
+  intro st w i
+  simp only [beside]
+  rw [breakLines_blind]
+
+theorem paragraphAt_sim (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (index : Nat)
+    (later : List Nat) (k : Keep) (lastWanted wanted : Nat) (c : St) (w : List Wait) (h : Sim c (setW c w)) :
+    paragraphAt e m job region origin index later k lastWanted wanted (setW c w) =
+      paragraphAt e m job region origin index later k lastWanted wanted c := by
+  unfold paragraphAt
+  exact parts_sim _ _ _ _ _ _ _ (fun st ws _ t => breakLines_blind _ _ _ _ st t _ ws) _ _ _ _ _ c w h
+
+/-- A no-break before a stanza: it waits for `R`, or marks itself unmet at
+    an empty cursor. -/
+def nbStep (R : Nat × Bool) (st : St) : St := waitForPrior .noBreak R { st with join := none }
+
+def nbIter (R : Nat × Bool) : Nat → St → St
+  | 0, st => st
+  | n + 1, st => nbIter R n (nbStep R st)
+
+theorem followingRows_noBreaks (following : List Flow) :
+    ∀ (fs : List Flow), (∀ f ∈ fs, f = .noBreak) → followingRows 0 (fs ++ following) = followingRows 0 following
+  | [], _ => rfl
+  | f :: fs, h => by
+    rw [h f (.head _)]
+    exact followingRows_noBreaks following fs (fun g hg => h g (.tail _ hg))
+
+theorem stepPrefix_noBreaks (e : Env) (following : List Flow) :
+    ∀ (fs : List Flow) (st : St), (∀ f ∈ fs, f = .noBreak) →
+    stepPrefix e st following fs = .ok (nbIter (followingRows 0 following) fs.length st)
+  | [], _, _ => rfl
+  | f :: fs, st, h => by
+    have hf := h f (.head _)
+    subst hf
+    have hr := fun g hg => h g (.tail _ hg)
+    simp only [stepPrefix, placeNext, placeBody, beforeOf, occupies]
+    rw [followingRows_noBreaks following fs hr]
+    simp only [show (false = true) = False from by decide, false_and, and_false, if_false]
+    exact stepPrefix_noBreaks e following fs _ hr
+
+theorem placeAll_noBreaks (e : Env) :
+    ∀ (fs : List Flow) (st : St), (∀ f ∈ fs, f = .noBreak) → placeAll inner e st fs = .ok (nbIter (1, false) fs.length st)
+  | [], _, _ => rfl
+  | f :: fs, st, h => by
+    have hf := h f (.head _)
+    subst hf
+    have hr := fun g hg => h g (.tail _ hg)
+    have : followingRows 0 fs = (1, false) := by
+      have := followingRows_noBreaks [] fs hr
+      rw [List.append_nil] at this; rw [this]; rfl
+    simp only [placeAll, placeNext, placeBody, beforeOf, occupies]
+    rw [this]
+    simp only [show (false = true) = False from by decide, false_and, and_false, if_false]
+    exact placeAll_noBreaks e fs _ hr
+
+theorem controls_noBreaks (m : Ms) (prior index : Nat) : ∀ f ∈ controlsBetween m prior index, f = .noBreak :=
+  filterMap_noBreaks _ (by
+    intro j x e
+    split at e
+    · split at e
+      · injection e with e; exact e.symm
+      · cases e
+    · cases e) _
+
+/-- A no-break keeps the column, the slots and the pages closed. -/
+theorem nbStep_keeps (R : Nat × Bool) (st : St) :
+    (nbStep R st).page = st.page ∧ (nbStep R st).column = st.column ∧ (nbStep R st).slots = st.slots ∧
+    (nbStep R st).done = st.done ∧ (nbStep R st).notes = st.notes ∧ (nbStep R st).used = st.used ∧
+    (nbStep R st).firstLine = st.firstLine ∧ (nbStep R st).deferred = st.deferred := by
+  unfold nbStep waitForPrior; split <;> exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
+theorem nbIter_keeps (R : Nat × Bool) : ∀ (n : Nat) (st : St),
+    (nbIter R n st).page = st.page ∧ (nbIter R n st).column = st.column ∧ (nbIter R n st).slots = st.slots ∧
+    (nbIter R n st).done = st.done ∧ (nbIter R n st).notes = st.notes ∧ (nbIter R n st).used = st.used ∧
+    (nbIter R n st).firstLine = st.firstLine ∧ (nbIter R n st).deferred = st.deferred
+  | 0, _ => ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+  | n + 1, st => by
+    obtain ⟨a1, a2, a3, a4, a5, a6, a7, a8⟩ := nbIter_keeps R n (nbStep R st)
+    obtain ⟨b1, b2, b3, b4, b5, b6, b7, b8⟩ := nbStep_keeps R st
+    exact ⟨a1.trans b1, a2.trans b2, a3.trans b3, a4.trans b4, a5.trans b5, a6.trans b6, a7.trans b7, a8.trans b8⟩
+
+theorem nbIter_empty (R : Nat × Bool) (n : Nat) (st : St) : empty (nbIter R n st) = empty st := by
+  obtain ⟨_, _, a3, _, a5, a6, a7, _⟩ := nbIter_keeps R n st
+  simp only [empty, a3, a5, a6, a7]
+
+/-- At an empty cursor, or one with figures sent on, the no-breaks wait
+    for nothing. -/
+theorem nbIter_unmet (R R' : Nat × Bool) : ∀ (n : Nat) (st : St), (empty st = true ∨ st.deferred ≠ []) →
+    nbIter R n st = nbIter R' n st
+  | 0, _, _ => rfl
+  | n + 1, st, h => by
+    have e : nbStep R st = nbStep R' st := by
+      unfold nbStep waitForPrior
+      rw [if_pos (by simpa [empty] using h), if_pos (by simpa [empty] using h)]
+    simp only [nbIter]
+    rw [e]
+    apply nbIter_unmet R R' n
+    obtain ⟨_, _, a3, _, a5, a6, a7, a8⟩ := nbStep_keeps R' st
+    simpa [empty, a3, a5, a6, a7, a8] using h
+
+/-- The no-breaks with two counts give states that differ only in their
+    waits. -/
+theorem nbStep_setW (R R' : Nat × Bool) (st : St) (w : List Wait) : ∃ w', nbStep R' (setW st w) = setW (nbStep R st) w' := by
+  have e : nbStep R' (setW st w) = waitForPrior .noBreak R' (setW { st with join := none } w) := rfl
+  rw [e]
+  unfold nbStep waitForPrior
+  simp only [empty_setW, setW_deferred]
+  split
+  · exact ⟨w, rfl⟩
+  · exact ⟨_, rfl⟩
+
+theorem nbIter_setW (R R' : Nat × Bool) : ∀ (n : Nat) (st : St) (w : List Wait),
+    ∃ w', nbIter R' n (setW st w) = setW (nbIter R n st) w'
+  | 0, st, w => ⟨w, rfl⟩
+  | n + 1, st, w => by
+    simp only [nbIter]
+    obtain ⟨w1, e⟩ := nbStep_setW R R' st w
+    rw [e]
+    exact nbIter_setW R R' n (nbStep R st) w1
+
+/-- A wait at the column and after the slots of `c`. -/
+def AtC (c : St) (x : Wait) : Prop := x.2.1 = c.page ∧ x.2.2.1 = c.column ∧ x.2.2.2.1 = c.slots.length
+
+def setReq (q : Nat) (ol : Bool) (x : Wait) : Wait := (x.1, x.2.1, x.2.2.1, x.2.2.2.1, q, ol)
+
+theorem WRel.lines {D : Wait → Prop} : ∀ {ws w : List Wait}, WRel D ws w →
+    ws.map (fun x => x.2.2.2.2.2) = w.map (fun x => x.2.2.2.2.2)
+  | [], [], _ => rfl
+  | x :: xs, y :: ys, ⟨h, r⟩ => by
+    simp only [List.map]
+    rw [WRel.lines r]
+    rcases h with e | ⟨t, _⟩
+    · rw [e]
+    · rw [t.2.2.2.2]
+  | [], _ :: _, r => r.elim
+  | _ :: _, [], r => r.elim
+
+theorem WRel.setReq {D : Wait → Prop} (q q' : Nat) (ol : Bool) (hD : ∀ x, D x → D (setReq q ol x)) :
+    ∀ {ws w : List Wait}, WRel D ws w → (∀ x ∈ ws, D x) → WRel D (ws.map (setReq q ol)) (w.map (setReq q' ol))
+  | [], [], _, _ => trivial
+  | x :: xs, y :: ys, ⟨h, r⟩, hx => by
+    refine ⟨Or.inr ⟨?_, hD x (hx x (.head _))⟩, WRel.setReq q q' ol hD r (fun z hz => hx z (.tail _ hz))⟩
+    rcases h with e | ⟨t, _⟩
+    · subst e; exact ⟨rfl, rfl, rfl, rfl, rfl⟩
+    · exact ⟨t.1, t.2.1, t.2.2.1, t.2.2.2.1, rfl⟩
+  | [], _ :: _, r, _ => r.elim
+  | _ :: _, [], r, _ => r.elim
+
+theorem WRel.append {D : Wait → Prop} : ∀ {a b a' b' : List Wait}, WRel D a a' → WRel D b b' → WRel D (a ++ b) (a' ++ b')
+  | [], _, [], _, _, h => h
+  | _ :: _, _, _ :: _, _, ⟨h, r⟩, h' => ⟨h, WRel.append r h'⟩
+  | [], _, _ :: _, _, r, _ => r.elim
+  | _ :: _, _, [], _, r, _ => r.elim
+
+theorem any_lines (ws w : List Wait) (e : ws.map (fun x => x.2.2.2.2.2) = w.map (fun x => x.2.2.2.2.2)) :
+    ws.any (fun x => x.2.2.2.2.2) = w.any (fun x => x.2.2.2.2.2) := by
+  induction ws generalizing w with
+  | nil => cases w with
+    | nil => rfl
+    | cons _ _ => cases e
+  | cons x xs ih => cases w with
+    | nil => cases e
+    | cons y ys =>
+      simp only [List.map, List.cons.injEq] at e
+      simp only [List.any, e.1, ih ys e.2]
+
+theorem waitFor_eq (u : Unmet) (R : Nat × Bool) (st : St) :
+    (waitFor u R st).waits = st.waits.map (setReq (st.waits.foldl (fun a w => max a w.2.2.2.2.1) R.1)
+      (R.2 || st.waits.any (fun w => w.2.2.2.2.2))) ++
+      [(u, st.page, st.column, st.slots.length, st.waits.foldl (fun a w => max a w.2.2.2.2.1) R.1,
+        R.2 || st.waits.any (fun w => w.2.2.2.2.2))] := rfl
+
+/-- The no-breaks with two counts of the same kind give states whose waits
+    differ only in the lines they ask for, all at the column and after
+    the slots of the cursor. -/
+theorem nbIter_twin (c : St) (R R' : Nat × Bool) (h2 : R.2 = R'.2) : ∀ (n : Nat) (st : St) (w : List Wait),
+    st.page = c.page → st.column = c.column → st.slots = c.slots → (∀ x ∈ st.waits, AtC c x) →
+    WRel (AtC c) st.waits w →
+    ∃ w', nbIter R' n (setW st w) = setW (nbIter R n st) w' ∧ WRel (AtC c) (nbIter R n st).waits w' ∧
+      ∀ x ∈ (nbIter R n st).waits, AtC c x
+  | 0, st, w, _, _, _, ha, hr => ⟨w, rfl, hr, ha⟩
+  | n + 1, st, w, hp, hc, hs, ha, hr => by
+    simp only [nbIter]
+    have step : ∃ w1, nbStep R' (setW st w) = setW (nbStep R st) w1 ∧ WRel (AtC c) (nbStep R st).waits w1 ∧
+        ∀ x ∈ (nbStep R st).waits, AtC c x := by
+      have e : nbStep R' (setW st w) = waitForPrior .noBreak R' (setW { st with join := none } w) := rfl
+      rw [e]
+      unfold nbStep waitForPrior
+      simp only [empty_setW, setW_deferred]
+      split
+      · exact ⟨w, rfl, hr, ha⟩
+      · refine ⟨(waitFor .noBreak R' (setW { st with join := none } w)).waits, rfl, ?_, ?_⟩
+        · rw [waitFor_eq, waitFor_eq]
+          have hl : (R.2 || st.waits.any (fun w => w.2.2.2.2.2)) =
+              (R'.2 || (setW { st with join := none } w).waits.any (fun w => w.2.2.2.2.2)) := by
+            rw [h2]; exact congrArg _ (any_lines _ _ (WRel.lines hr))
+          rw [← hl]
+          refine WRel.append (WRel.setReq _ _ _ (fun x d => d) hr ha) ⟨Or.inr ⟨⟨rfl, rfl, rfl, rfl, rfl⟩, ?_⟩, trivial⟩
+          exact ⟨hp, hc, by rw [hs]⟩
+        · intro x hx
+          rw [waitFor_eq] at hx
+          rcases mem_app hx with m | m
+          · obtain ⟨y, hy, ey⟩ := mem_map_of m
+            rw [← ey]; exact ha y hy
+          · cases m with
+            | head => exact ⟨hp, hc, by rw [hs]⟩
+            | tail _ m => cases m
+    obtain ⟨w1, e, r1, a1⟩ := step
+    rw [e]
+    obtain ⟨k1, k2, k3, _⟩ := nbStep_keeps R st
+    exact nbIter_twin c R R' h2 n (nbStep R st) w1 (k1.trans hp) (k2.trans hc) (k3.trans hs) a1 r1
+
+theorem addedSlots_all (lo : Bool) (s : List (Int × Slot)) : addedSlots lo s.length s = 0 := by
+  unfold addedSlots; rw [List.drop_length]; rfl
+
+theorem moveCursor_waits (e : Env) (region : Region) (st : St) : (moveCursor e region st).waits = st.waits := by
+  have := moveCursor_setW e region st st.waits
+  rw [setW_self] at this
+  rw [this]; rfl
+
+/-- After the move to the next column, a wait at the column and after the
+    slots of the cursor is dead. -/
+theorem dead_moved (e : Env) (region : Region) (c st : St) (hw : WO st) (hp : st.page = c.page)
+    (hc : st.column = c.column) (hs : st.slots = c.slots) (x : Wait) (hx : AtC c x) :
+    Dead (moveCursor e region st) x := by
+  obtain ⟨x1, x2, x3⟩ := hx
+  have lt := nextColumn_lt e (endWrap region st)
+  refine ⟨?_, ?_⟩
+  · simp only [pos, x1, x2, ← hp, ← hc] at lt ⊢; exact lt
+  · intro o ho e1 e2
+    rcases nextColumn_done e (endWrap region st) o ho with m | ⟨_, sl⟩ | q
+    · exfalso
+      have := hw o m
+      simp only [PLt, opos, pos, e1, e2, x1, x2, ← hp, ← hc] at this
+      omega
+    · rw [sl, x3, ← hs]; exact addedSlots_all _ _
+    · exfalso
+      simp only [PLt, opos, pos, e1, e2, x1, x2, ← hp, ← hc] at q
+      exact absurd q (by simp [endWrap])
+
+/-- `paras` with other rows for the verse lines not tried. -/
+def parasWith (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (o : Nat → List Line) : Paras :=
+  { paras e m job region origin with orig := o }
+
+theorem WO_nbIter (R : Nat × Bool) (n : Nat) (st : St) (h : WO st) : WO (nbIter R n st) := by
+  obtain ⟨a1, a2, _, a4, _⟩ := nbIter_keeps R n st
+  intro o ho
+  rw [a4] at ho
+  simp only [pos, a1, a2]
+  exact h o ho
+
+theorem holdNext_fresh (r : Nat) (l : Bool) (st : St) : Fresh (holdNext r l (checkWaits st)) :=
+  Fresh_waitForPrior _ _ _ (checkWaits_fields st).1
+
+theorem paragraphAt_rel (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (index : Nat)
+    (later : List Nat) (k : Keep) (lastWanted wanted : Nat) (c s : St)
+    (h : paragraphAt e m job region origin index later k lastWanted wanted c = .ok s) : (WO c → WO s) ∧ Fresh s := by
+  unfold paragraphAt at h
+  refine parts_rel _ _ _ _ _ _ _ (fun a b => WO a → WO b) Fresh (fun f g x => g (f x))
+    (fun _ _ _ st _ p hp x => x.adv (adv_trialWrap _ _ _ _ _ st _ p hp))
+    (fun st x => x.adv (adv_moveCursor _ _ st))
+    (fun st => ?_) _ _ _ _ _ _ _ h
+  dsimp only
+  split
+  · exact ⟨fun x => WO_waitForPrior _ _ (WO_checkWaits x), holdNext_fresh _ _ _⟩
+  · exact ⟨fun x => WO_checkWaits x, Fresh_checkWaits _⟩
+
+theorem stanza_rel (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (later : List Nat) (keep : Keep)
+    (isStart : Bool) (c s : St) (indices : List Nat)
+    (h : stanza e region (beside m region origin) (stanzaArgs e m job region origin) later keep isStart c indices = .ok s) :
+    (WO c → WO s) ∧ Fresh s :=
+  (stanza_accept_rel e region (beside m region origin) (stanzaArgs e m job region origin) (fun a b => WO a → WO b) Fresh (fun f g x => g (f x))
+    (fun _ _ _ st _ p hp x => x.adv (adv_trialWrap _ _ _ _ _ st _ p hp))
+    (fun st x => x.adv (adv_moveCursor _ _ st)) (fun _ _ x => x) (fun _ _ x => x)
+    (fun _ => ⟨fun x => WO_checkWaits x, Fresh_checkWaits _⟩)
+    (fun _ _ _ _ => ⟨fun x => WO_waitForPrior _ _ (WO_checkWaits x), holdNext_fresh _ _ _⟩)
+    (fun i later c s h => (paragraphAt_rel e m job region origin i later defaultKeep 0 0 c s h).1) _).1
+    later keep isStart c indices s rfl h
+
+/-- The rows the verse lines not tried keep (`orig`) leave what `paragraphs`
+    places unchanged, from a cursor whose closed pages lie before its column
+    and whose waits are in its column after its slots. -/
+theorem I5_paragraphs_orig (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (o : Nat → List Line)
+    (prior : Nat) (cursor : St) (positions : List Nat) (hw : WO cursor) (hf : Fresh cursor) :
+    paragraphs e region (beside m region origin) (stanzaArgs e m job region origin) (parasWith e m job region origin o)
+      prior cursor positions =
+    paragraphs e region (beside m region origin) (stanzaArgs e m job region origin) (paras e m job region origin)
+      prior cursor positions := by
+  match positions with
+  | [] => rfl
+  | index :: later =>
+    conv => lhs; rw [paragraphs]
+    conv => rhs; rw [paragraphs]
+    have f1 : (parasWith e m job region origin o).preliminary = (paras e m job region origin).preliminary := rfl
+    have f2 : (parasWith e m job region origin o).ready = (paras e m job region origin).ready := rfl
+    have f3 : (parasWith e m job region origin o).paragraph = (paras e m job region origin).paragraph := rfl
+    rw [f1, f2, f3]
+    have hpre : (paras e m job region origin).preliminary prior index cursor =
+        .ok (nbIter (1, false) (controlsBetween m prior index).length cursor) :=
+      placeAll_noBreaks e _ cursor (controls_noBreaks m prior index)
+    rw [hpre]
+    simp only
+    have hready : ∀ rows, (beside m region origin).isStanza index = true →
+        (paras e m job region origin).ready prior index cursor rows =
+        .ok (nbIter (followingRows 0 [.stanza defaultKeep rows]) (controlsBetween m prior index).length cursor) := by
+      intro rows hs
+      have hv : isVerse m index = true := hs
+      simp only [paras, hv, if_true]
+      exact stepPrefix_noBreaks e _ _ cursor (controls_noBreaks m prior index)
+    by_cases hs : (beside m region origin).isStanza index = true
+    · rw [if_pos hs, if_pos hs]
+      cases ht : tryVerses e region (beside m region origin) (nbIter (1, false) (controlsBetween m prior index).length cursor)
+          (verseSpan (beside m region origin) index later).1 with
+      | error x => rfl
+      | ok trials =>
+        simp only
+        rw [hready _ hs, hready _ hs]
+        simp only
+        generalize (controlsBetween m prior index).length = n at ht ⊢
+        generalize hvs : (verseSpan (beside m region origin) index later).1 = vs at ht ⊢
+        generalize hpre : nbIter (1, false) n cursor = pre at ht ⊢
+        have hst : stanza e region (beside m region origin) (stanzaArgs e m job region origin)
+              (verseSpan (beside m region origin) index later).2 ((beside m region origin).keepOf index) true
+              (nbIter (followingRows 0 [.stanza defaultKeep
+                (verseRows (beside m region origin) (parasWith e m job region origin o) (pre :: trials).dropLast vs)]) n cursor) vs =
+            stanza e region (beside m region origin) (stanzaArgs e m job region origin)
+              (verseSpan (beside m region origin) index later).2 ((beside m region origin).keepOf index) true
+              (nbIter (followingRows 0 [.stanza defaultKeep
+                (verseRows (beside m region origin) (paras e m job region origin) (pre :: trials).dropLast vs)]) n cursor) vs := by
+          have hle := tryVerses_length e region (beside m region origin) pre vs trials ht
+          by_cases hE : empty cursor = true ∨ cursor.deferred ≠ []
+          · rw [nbIter_unmet _ _ n cursor hE]
+          by_cases hfp : firstPart defaultKeep true vs.length ≤ trials.length
+          · rw [I5_noBreak_rows_orig (beside m region origin) (parasWith e m job region origin o)
+              (paras e m job region origin) defaultKeep pre trials vs hfp hle]
+          have he : empty cursor = false := by
+            cases h : empty cursor with
+            | false => rfl
+            | true => exact absurd (Or.inl h) hE
+          generalize (verseRows (beside m region origin) (parasWith e m job region origin o) (pre :: trials).dropLast vs) = ro
+          generalize (verseRows (beside m region origin) (paras e m job region origin) (pre :: trials).dropLast vs) = rr
+          obtain ⟨w, ew, wr, _⟩ := nbIter_twin cursor (followingRows 0 [.stanza defaultKeep rr])
+            (followingRows 0 [.stanza defaultKeep ro]) rfl n cursor cursor.waits rfl rfl rfl hf (WRel.refl _ _)
+          rw [setW_self] at ew
+          rw [ew]
+          obtain ⟨w1, e1⟩ := nbIter_setW (1, false) (followingRows 0 [.stanza defaultKeep rr]) n cursor cursor.waits
+          rw [setW_self, hpre] at e1
+          have kp := nbIter_keeps (followingRows 0 [.stanza defaultKeep rr]) n cursor
+          have hX : tryVerses e region (beside m region origin) (nbIter (followingRows 0 [.stanza defaultKeep rr]) n cursor) vs =
+              .ok (trials.map (setW · w1)) := by
+            rw [e1, tryVerses_setW _ _ _ (beside_blind m region origin), ht]; rfl
+          have hXo : tryVerses e region (beside m region origin)
+              (setW (nbIter (followingRows 0 [.stanza defaultKeep rr]) n cursor) w) vs = .ok (trials.map (setW · w)) := by
+            rw [e1]
+            show tryVerses _ _ _ (setW pre w) vs = _
+            rw [tryVerses_setW _ _ _ (beside_blind m region origin), ht]; rfl
+          have hne : vs ≠ [] := by rw [← hvs]; simp [verseSpan]
+          have lt : trials.length < firstPart ((beside m region origin).keepOf index) true vs.length := Nat.lt_of_not_le hfp
+          have heX : empty (nbIter (followingRows 0 [.stanza defaultKeep rr]) n cursor) = false := by
+            rw [nbIter_empty]; exact he
+          have hk : ((beside m region origin).keepOf index).all = false := rfl
+          rw [I5_stanza_moves e region (beside m region origin) (stanzaArgs e m job region origin) _ _ _ vs _ hk hX
+              (by rw [List.length_map]; exact lt) heX hne,
+            I5_stanza_moves e region (beside m region origin) (stanzaArgs e m job region origin) _ _ _ vs _ hk hXo
+              (by rw [List.length_map]; exact lt) heX hne,
+            moveCursor_setW]
+          exact (stanza_accept_sim e region (beside m region origin) (stanzaArgs e m job region origin)
+            (beside_blind m region origin) (fun _ _ _ => rfl)
+            (fun i later c w h => paragraphAt_sim e m job region origin i later defaultKeep 0 0 c w h) _).1
+            _ _ true _ vs w rfl ⟨w, rfl, by
+              rw [moveCursor_waits]
+              exact WRel.mono (fun x hx => dead_moved e region cursor _ (WO_nbIter _ _ _ hw) kp.1 kp.2.1 kp.2.2.1 x hx) wr⟩
+        rw [hst]
+        cases hs2 : stanza e region (beside m region origin) (stanzaArgs e m job region origin)
+            (verseSpan (beside m region origin) index later).2 ((beside m region origin).keepOf index) true
+            (nbIter (followingRows 0 [.stanza defaultKeep
+              (verseRows (beside m region origin) (paras e m job region origin) (pre :: trials).dropLast vs)]) n cursor) vs with
+        | error x => rfl
+        | ok next =>
+          simp only
+          have r := stanza_rel e m job region origin _ _ true _ next _ hs2
+          exact I5_paragraphs_orig e m job region origin o _ next _ (r.1 (WO_nbIter _ _ _ hw)) r.2
+    · rw [if_neg hs, if_neg hs]
+      cases hr : (paras e m job region origin).ready prior index cursor
+          [(beside m region origin).compose (nbIter (1, false) (controlsBetween m prior index).length cursor) index] with
+      | error x => rfl
+      | ok ready =>
+        simp only
+        cases hn : (paras e m job region origin).paragraph index later ready with
+        | error x => rfl
+        | ok next =>
+          simp only
+          have hv : isVerse m index = false := by simpa using hs
+          have er : ready = nbIter (followingRows 0 ([(beside m region origin).compose
+              (nbIter (1, false) (controlsBetween m prior index).length cursor) index].map (.paragraph defaultKeep ·)))
+              (controlsBetween m prior index).length cursor := by
+            simp only [paras, hv] at hr
+            rw [stepPrefix_noBreaks e _ _ cursor (controls_noBreaks m prior index)] at hr
+            injection hr with hr; exact hr.symm
+          simp only [paras] at hn
+          have r := paragraphAt_rel e m job region origin index later _ _ _ ready next hn
+          exact I5_paragraphs_orig e m job region origin o index next later (r.1 (er ▸ WO_nbIter _ _ _ hw)) r.2
+termination_by positions.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after (beside m region origin) index later; omega)
+
+theorem flowsOf_kinds (m : Ms) : ∀ (first : Nat) (ps : List Nat),
+    ∀ f ∈ flowsOf m first ps, (∃ k ls, f = .paragraph k ls) ∨ f = .noBreak
+  | _, [] => fun _ h => by cases h
+  | first, i :: rest => by
+    unfold flowsOf
+    split
+    · intro f hf
+      cases hf with
+      | head => exact Or.inl ⟨_, _, rfl⟩
+      | tail _ m' => exact flowsOf_kinds m _ rest f m'
+    · intro f hf
+      cases hf with
+      | head => exact Or.inl ⟨_, _, rfl⟩
+      | tail _ m' => exact flowsOf_kinds m _ rest f m'
+    · intro f hf
+      cases hf with
+      | head => exact Or.inr rfl
+      | tail _ m' => exact flowsOf_kinds m _ rest f m'
+    · exact flowsOf_kinds m first rest
+
+theorem WO_stepPrefix (e : Env) (following : List Flow) : ∀ (flows : List Flow) (st s : St),
+    (∀ f ∈ flows, (∃ k ls, f = .paragraph k ls) ∨ f = .noBreak) → stepPrefix e st following flows = .ok s → WO st → WO s
+  | [], st, s, _, h, hw => by simp only [stepPrefix, Except.ok.injEq] at h; subst h; exact hw
+  | f :: rest, st, s, hk, h, hw => by
+    simp only [stepPrefix] at h
+    split at h
+    · cases h
+    · rename_i s1 e1
+      exact WO_stepPrefix e following rest s1 s (fun g hg => hk g (.tail _ hg)) h
+        (WO_placeNext inner e st f _ s1 (hk f (.head _)) e1 hw)
+
+/-- `runJob` with the rows `o job` for the verse lines not tried. -/
+def runJobWith (o : Nat → Nat → List Line) (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) :
+    Except Failure St :=
+  let prefixFlows := prefixFlows m prior job at'
+  let ident := wrapIdent m prior job at'
+  match stepPrefix e at' [.wrapped ident (extent m.w) []] prefixFlows with
+  | .error f => .error f
+  | .ok ready =>
+    match beginWrap e ready ident (extent m.w) with
+    | .error f => .error f
+    | .ok (anchored, region) =>
+      let origin := (region.map (·.2.2)).getD 0 - extent m.w
+      let positions := (besides m job).filter (fun i => 0 < chars m i)
+      match paragraphs e region (beside m region origin) (stanzaArgs e m job region origin)
+          (parasWith e m job region origin (o job)) job anchored positions with
+      | .error f => .error f
+      | .ok placed => .ok (endWrap region placed)
+
+theorem runJob_with (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (c : St) :
+    runJobWith (orig m) e m prior job c = runJob e m prior job c := rfl
+
+/-- On these manuscripts, the rows the verse lines not tried keep (`orig`)
+    leave what a run of a figure places unchanged, from a cursor whose
+    closed pages lie before its column. -/
+theorem I5_runJob_orig (o : Nat → Nat → List Line) (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (c : St)
+    (hw : WO c) : runJobWith o e m prior job c = runJob e m prior job c := by
+  unfold runJobWith runJob
+  dsimp only
+  cases h1 : stepPrefix e c [.wrapped (wrapIdent m prior job c) (extent m.w) []] (prefixFlows m prior job c) with
+  | error x => rfl
+  | ok ready =>
+    simp only
+    cases h2 : beginWrap e ready (wrapIdent m prior job c) (extent m.w) with
+    | error x => rfl
+    | ok r =>
+      obtain ⟨anchored, region⟩ := r
+      simp only
+      have wr := WO_stepPrefix e _ _ c ready (flowsOf_kinds m _ _) h1 hw
+      unfold beginWrap at h2
+      split at h2
+      · cases h2
+      · injection h2 with h2
+        injection h2 with ha _
+        rw [I5_paragraphs_orig e m job region _ (o job) job anchored _ (by
+          rw [← ha]; exact WO_checkWaits ((wr.adv (adv_fit e ready _)).adv (Adv.same rfl rfl rfl))) (by
+          rw [← ha]; exact Fresh_checkWaits _)]
+
 def slotText : Int × Slot → String
   | (p, .line i) => s!"{p}:L{i}"
   | (p, .wrapped i) => s!"{p}:SWrapped {i}"
@@ -842,6 +1355,167 @@ def output (m : Ms) (lines : Nat) : List String :=
     match (close e (drainCarry e final)).done.reverse with
     | [] => ["  1 0 -"]
     | pages => pages.map pageText
+
+theorem WO_placeAll (e : Env) : ∀ (flows : List Flow) (st s : St),
+    (∀ f ∈ flows, (∃ k ls, f = .paragraph k ls) ∨ f = .noBreak) → placeAll inner e st flows = .ok s → WO st → WO s
+  | [], st, s, _, h, hw => by simp only [placeAll, Except.ok.injEq] at h; subst h; exact hw
+  | f :: rest, st, s, hk, h, hw => by
+    simp only [placeAll] at h
+    split at h
+    · cases h
+    · rename_i s1 e1
+      exact WO_placeAll e rest s1 s (fun g hg => hk g (.tail _ hg)) h (WO_placeNext inner e st f _ s1 (hk f (.head _)) e1 hw)
+
+theorem WO_stepAt (e : Env) (m : Ms) (c s : St) (ps : List Nat) (h : stepAt e m c ps = .ok s) (hw : WO c) : WO s :=
+  WO_placeAll e _ c s (flowsOf_kinds m _ _) h hw
+
+theorem WO_ready (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (prior index : Nat) (c s : St)
+    (rows : List (List Line)) (h : (paras e m job region origin).ready prior index c rows = .ok s) (hw : WO c) : WO s := by
+  simp only [paras] at h
+  rw [stepPrefix_noBreaks e _ _ c (controls_noBreaks m prior index)] at h
+  injection h with h; subst h
+  exact WO_nbIter _ _ _ hw
+
+theorem WO_paragraphs (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (prior : Nat) (cursor : St)
+    (positions : List Nat) (s : St)
+    (h : paragraphs e region (beside m region origin) (stanzaArgs e m job region origin) (paras e m job region origin)
+      prior cursor positions = .ok s) (hw : WO cursor) : WO s := by
+  match positions with
+  | [] => simp only [paragraphs, Except.ok.injEq] at h; subst h; exact hw
+  | index :: later =>
+    rw [paragraphs] at h
+    split at h
+    · cases h
+    · split at h
+      · split at h
+        · cases h
+        · split at h
+          · cases h
+          · rename_i ready er
+            split at h
+            · cases h
+            · rename_i next es
+              exact WO_paragraphs e m job region origin _ next _ s h
+                ((stanza_rel e m job region origin _ _ _ ready next _ es).1 (WO_ready e m job region origin _ _ _ _ _ er hw))
+      · split at h
+        · cases h
+        · rename_i ready er
+          split at h
+          · cases h
+          · rename_i next en
+            simp only [paras] at en
+            exact WO_paragraphs e m job region origin index next later s h
+              ((paragraphAt_rel e m job region origin _ _ _ _ _ ready next en).1 (WO_ready e m job region origin _ _ _ _ _ er hw))
+termination_by positions.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after (beside m region origin) index later; omega)
+
+theorem WO_runJob (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (c s : St) (h : runJob e m prior job c = .ok s)
+    (hw : WO c) : WO s := by
+  unfold runJob at h
+  dsimp only at h
+  split at h
+  · cases h
+  · rename_i ready h1
+    have wr := WO_stepPrefix e _ _ c ready (flowsOf_kinds m _ _) h1 hw
+    split at h
+    · cases h
+    · rename_i anchored region h2
+      split at h
+      · cases h
+      · rename_i placed h3
+        injection h with h; subst h
+        unfold beginWrap at h2
+        split at h2
+        · cases h2
+        · injection h2 with h2
+          injection h2 with ha _
+          have wa : WO anchored := by
+            rw [← ha]; exact WO_checkWaits ((wr.adv (adv_fit e ready _)).adv (Adv.same rfl rfl rfl))
+          exact (WO_paragraphs e m job region _ job anchored _ placed h3 wa).adv (Adv.same rfl rfl rfl)
+
+theorem retainPart_congr (e : Env) (u : PartUnit) {α : Type} (trial trial' : St → Except Failure (α × St)) (at' : St)
+    (h1 : trial' at' = trial at') (h2 : trial' (nextUnit e u at') = trial (nextUnit e u at')) :
+    retainPart e u trial' at' = retainPart e u trial at' := by
+  unfold retainPart
+  dsimp only
+  rw [h1, h2]
+
+theorem WO_retainPart (e : Env) (u : PartUnit) {α : Type} (trial : St → Except Failure (α × St)) (at' : St)
+    (r : α × St) (h : retainPart e u trial at' = .ok r) (hw : WO at')
+    (ht : ∀ s r, WO s → trial s = .ok r → WO r.2) : WO r.2 := by
+  unfold retainPart at h
+  dsimp only at h
+  cases h1 : trial at' with
+  | error f => rw [h1] at h; cases h
+  | ok p =>
+    obtain ⟨a, placed⟩ := p
+    rw [h1] at h
+    dsimp only at h
+    have wp : WO placed := ht _ _ hw h1
+    split at h
+    · injection h with h; subst h; exact wp.adv (adv_settle _ _ _)
+    · have wn : WO (nextUnit e u at') := hw.adv (adv_nextUnit e u at')
+      cases h2 : trial (nextUnit e u at') with
+      | error f => rw [h2] at h; cases h
+      | ok q =>
+        obtain ⟨b, placed'⟩ := q
+        rw [h2] at h
+        dsimp only at h
+        have wq : WO placed' := ht _ _ wn h2
+        split at h
+        · injection h with h; subst h; exact wq.adv (adv_settle _ _ _)
+        · split at h
+          · injection h with h; subst h; exact (wp.adv (adv_settle _ _ _)).adv (Adv.same rfl rfl rfl)
+          · injection h with h; subst h; exact (wq.adv (adv_settle _ _ _)).adv (Adv.same rfl rfl rfl)
+
+/-- The loop over the figures with the rows `o job` for the verse lines
+    not tried. -/
+def jobsWith (o : Nat → Nat → List Line) (e : Env) (m : Ms) : Jobs :=
+  { jobs e m with run := fun prior _ job at' => runJobWith o e m prior job at' }
+
+/-- On these manuscripts, the rows the verse lines not tried keep (`orig`)
+    leave the pages `jobsFrom` places unchanged. -/
+theorem I5_jobsFrom_orig (o : Nat → Nat → List Line) (e : Env) (m : Ms) (jobsList : List Nat) :
+    jobsFrom (jobsWith o e m) none none (initial e) jobsList = jobsFrom (jobs e m) none none (initial e) jobsList := by
+  refine jobsFrom_congr (jobs e m) _ WO
+    (fun prior _ job c hc => I5_runJob_orig o e m prior job c hc)
+    (fun prior _ job c s hc h => WO_runJob e m prior job c s h hc)
+    (fun _ _ _ c s hc h => WO_stepAt e m c s _ h hc)
+    (fun _ _ c s hc h => WO_stepAt e m c s _ h hc)
+    (fun trial trial' at' hw ht => ?_)
+    (fun trial at' r hw ht h => ?_) none none (initial e) jobsList (fun o ho => by cases ho)
+  · simp only [jobs]
+    split
+    · exact retainPart_congr e m.part trial trial' at' (ht _ hw) (ht _ (hw.adv (adv_nextUnit e m.part at')))
+    · exact ht _ hw
+  · simp only [jobs] at h
+    split at h
+    · exact WO_retainPart e m.part trial at' r h hw ht
+    · exact ht _ _ hw h
+
+/-- `output` with the rows `o job` for the verse lines not tried. -/
+def outputWith (o : Nat → Nat → List Line) (m : Ms) (lines : Nat) : List String :=
+  let e := env lines
+  let figures := (indices m).filter (isFig m)
+  let tall := figures.filter (fun _ => e.capacity < extent m.w)
+  if 0 < tall.length then ["  error " ++ " ".intercalate (tall.map fun _ => "G07023")] else
+  match jobsFrom (jobsWith o e m) none none (initial e) figures with
+  | .error (.figureTooTall _) => ["  error G07038"]
+  | .error _ => ["  error failure"]
+  | .ok final =>
+    match (close e (drainCarry e final)).done.reverse with
+    | [] => ["  1 0 -"]
+    | pages => pages.map pageText
+
+/-- The rows the verse lines not tried keep (`orig`), which a no-break
+    ahead of a stanza waits for, never change the pages or the diagnostics
+    of these manuscripts. -/
+theorem I5_output_orig (o : Nat → Nat → List Line) (m : Ms) (lines : Nat) : outputWith o m lines = output m lines := by
+  unfold outputWith output
+  dsimp only
+  rw [I5_jobsFrom_orig]
 
 def replicateM : Nat → List Nat → List (List Nat)
   | 0, _ => [[]]

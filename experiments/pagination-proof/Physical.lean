@@ -3510,7 +3510,9 @@ controls waits for the rows of the first part of the stanza
 placed fewer verse lines than the first part (`I5_noBreak_rows_orig`), and
 the verse lines `stanza` takes into a column that is not empty, by
 `splitAtBreak`, are never fewer than the first part
-(`I5_splitAtBreak_firstPart`). -/
+(`I5_splitAtBreak_firstPart`), so the stanza then leaves that column empty
+of its lines (`I5_stanza_moves`) and the wait can no longer be met
+(`stanza_accept_sim`). -/
 
 theorem dropLast_length (c : St) (cs : List St) : ((c :: cs).dropLast).length = cs.length := by
   induction cs generalizing c with
@@ -6074,6 +6076,1201 @@ decreasing_by
   all_goals simp_wf
   all_goals (have := verseSpan_after b index later; omega)
 
+/-! ### The rows of the verse lines not tried leave the output unchanged
+
+The rows `orig` of the verse lines `tryVerses` did not place reach the
+output only through the lines a no-break ahead of a stanza waits for.  A
+state with its waits replaced (`setW`) runs through `trialWrap`,
+`tryVerses`, `moveCursor` and the moves of a column alike, its waits
+carried along unread.  Those moves never go back to an earlier column
+(`Adv`), so a wait whose column is passed and whose closed page took
+nothing after it can no longer be met (`Dead`), whatever lines it asks
+for, and `checkWaits` leaves the same state (`checkWaits_sim`).  So
+`parts` and `stanza` give the same result from two cursors whose waits
+differ only in the lines dead waits ask for (`parts_sim`,
+`stanza_accept_sim`). -/
+
+def setW (st : St) (w : List Wait) : St := { st with waits := w }
+
+macro "wsplit" : tactic => `(tactic| ((repeat' split) <;> first | rfl | (exfalso; simp_all) | simp_all))
+
+theorem setW_ite (c : Prop) [Decidable c] (a b : St) (w : List Wait) :
+    setW (if c then a else b) w = if c then setW a w else setW b w := by split <;> rfl
+
+theorem empty_setW (st : St) (w : List Wait) : empty (setW st w) = empty st := rfl
+theorem limit_setW (env : Env) (st : St) (w : List Wait) : limit env (setW st w) = limit env st := rfl
+theorem room_setW (env : Env) (st : St) (w : List Wait) : room env (setW st w) = room env st := rfl
+theorem headingOnly_setW (st : St) (w : List Wait) : headingOnly (setW st w) = headingOnly st := rfl
+theorem text_setW (st : St) (w : List Wait) : text (setW st w) = text st := rfl
+@[simp] theorem waits_setW (st : St) (w : List Wait) : (setW st w).waits = w := rfl
+@[simp] theorem setW_page (st : St) (w : List Wait) : (setW st w).page = st.page := rfl
+@[simp] theorem setW_column (st : St) (w : List Wait) : (setW st w).column = st.column := rfl
+@[simp] theorem setW_columns (st : St) (w : List Wait) : (setW st w).columns = st.columns := rfl
+@[simp] theorem setW_firstLine (st : St) (w : List Wait) : (setW st w).firstLine = st.firstLine := rfl
+@[simp] theorem setW_used (st : St) (w : List Wait) : (setW st w).used = st.used := rfl
+@[simp] theorem setW_notesUsed (st : St) (w : List Wait) : (setW st w).notesUsed = st.notesUsed := rfl
+@[simp] theorem setW_slots (st : St) (w : List Wait) : (setW st w).slots = st.slots := rfl
+@[simp] theorem setW_notes (st : St) (w : List Wait) : (setW st w).notes = st.notes := rfl
+@[simp] theorem setW_carry (st : St) (w : List Wait) : (setW st w).carry = st.carry := rfl
+@[simp] theorem setW_deferred (st : St) (w : List Wait) : (setW st w).deferred = st.deferred := rfl
+@[simp] theorem setW_done (st : St) (w : List Wait) : (setW st w).done = st.done := rfl
+@[simp] theorem setW_adjust (st : St) (w : List Wait) : (setW st w).adjust = st.adjust := rfl
+@[simp] theorem setW_unmet (st : St) (w : List Wait) : (setW st w).unmet = st.unmet := rfl
+@[simp] theorem setW_pending (st : St) (w : List Wait) : (setW st w).pending = st.pending := rfl
+@[simp] theorem setW_blankActive (st : St) (w : List Wait) : (setW st w).blankActive = st.blankActive := rfl
+@[simp] theorem setW_blankSpans (st : St) (w : List Wait) : (setW st w).blankSpans = st.blankSpans := rfl
+@[simp] theorem setW_join (st : St) (w : List Wait) : (setW st w).join = st.join := rfl
+@[simp] theorem setW_boxes (st : St) (w : List Wait) : (setW st w).boxes = st.boxes := rfl
+@[simp] theorem setW_reserved (st : St) (w : List Wait) : (setW st w).reserved = st.reserved := rfl
+@[simp] theorem setW_setAdjust (st : St) (w : List Wait) : (setW st w).setAdjust = st.setAdjust := rfl
+@[simp] theorem setW_afterRules (st : St) (w : List Wait) : (setW st w).afterRules = st.afterRules := rfl
+
+theorem close_setW (env : Env) (st : St) (w : List Wait) : close env (setW st w) = setW (close env st) w := by
+  unfold close setW; dsimp only; wsplit
+
+theorem fresh_setW (env : Env) (tp : Bool) (st : St) (w : List Wait) : fresh env tp (setW st w) = setW (fresh env tp st) w := by
+  unfold fresh close setW; dsimp only; wsplit
+
+theorem placeTurnedGo_setW (env : Env) (w : List Wait) : ∀ ds st, placeTurnedGo env (setW st w) ds = setW (placeTurnedGo env st ds) w
+  | [], _ => rfl
+  | .figure _ _ :: _, _ => rfl
+  | .turned i :: ds, st => by
+    simp only [placeTurnedGo]
+    exact placeTurnedGo_setW env w ds { st with
+      done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], limit env st, []⟩ :: st.done, page := st.page + 1 }
+
+theorem opened_setW (env : Env) (tp : Bool) (st : St) (w : List Wait) : opened env tp (setW st w) = setW (opened env tp st) w := by
+  unfold opened placeTurned
+  simp only [fresh_setW, setW_deferred, placeTurnedGo_setW, setW_columns, setW_column, setW_ite]
+
+theorem placeDeferredGo_setW (env : Env) (w : List Wait) : ∀ ds st, placeDeferredGo env (setW st w) ds = setW (placeDeferredGo env st ds) w
+  | [], _ => rfl
+  | .turned _ :: _, _ => rfl
+  | .figure i e :: ds, st => by
+    simp only [placeDeferredGo, room_setW]
+    split
+    · exact placeDeferredGo_setW env w ds (putSlot st e (.figure i))
+    · rfl
+
+theorem carryInto_setW (env : Env) (st : St) (w : List Wait) : carryInto env (setW st w) = setW (carryInto env st) w := by
+  unfold carryInto; simp only [setW_carry, limit_setW, setW_used, setW_notesUsed, setW_ite]; rfl
+
+theorem placeDeferred_setW (env : Env) (st : St) (w : List Wait) : placeDeferred env (setW st w) = setW (placeDeferred env st) w := by
+  unfold placeDeferred; rw [setW_deferred, placeDeferredGo_setW]
+
+theorem nextColumn_setW (env : Env) (st : St) (w : List Wait) : nextColumn env (setW st w) = setW (nextColumn env st) w := by
+  unfold nextColumn; rw [opened_setW, placeDeferred_setW, carryInto_setW]
+
+theorem dropAtTop_setW (st : St) (w : List Wait) : dropAtTop (setW st w) = setW (dropAtTop st) w := rfl
+
+theorem fit_setW (env : Env) (st : St) (a : Int) (w : List Wait) : fit env (setW st w) a = setW (fit env st a) w := by
+  unfold fit
+  simp only [empty_setW, room_setW, setW_adjust, setW_pending, nextColumn_setW, dropAtTop_setW, setW_ite]
+  rfl
+
+theorem addUnmet_setW (u : Unmet) (st : St) (w : List Wait) : addUnmet u (setW st w) = setW (addUnmet u st) w := rfl
+theorem endWrap_setW (region : Region) (st : St) (w : List Wait) : endWrap region (setW st w) = setW (endWrap region st) w := rfl
+theorem wrapEnd_setW (region : Region) (st : St) (w : List Wait) : wrapEnd region (setW st w) = wrapEnd region st := rfl
+theorem moveCursor_setW (env : Env) (region : Region) (st : St) (w : List Wait) :
+    moveCursor env region (setW st w) = setW (moveCursor env region st) w := by
+  unfold moveCursor; rw [endWrap_setW, nextColumn_setW]
+theorem putSlot_setW (st : St) (e : Int) (x : Slot) (w : List Wait) : putSlot (setW st w) e x = setW (putSlot st e x) w := rfl
+
+def exW : Except Failure St → List Wait → Except Failure St
+  | .ok s, w => .ok (setW s w)
+  | .error e, _ => .error e
+
+theorem putLineWithReserve_setW (allow : Bool) (env : Env) (st : St) (l : Line) (w : List Wait) :
+    putLineWithReserve allow env (setW st w) l = exW (putLineWithReserve allow env st l) w := by
+  unfold putLineWithReserve
+  have a : lineNotes env (setW st w) l = lineNotes env st l := rfl
+  have b : lineSep env (setW st w) l = lineSep env st l := rfl
+  have c : lineNotesUsed env (setW st w) l = lineNotesUsed env st l := rfl
+  simp only [a, b, c, empty_setW, limit_setW]
+  repeat' split
+  all_goals first | rfl | (exfalso; simp_all) | simp_all [exW]
+
+theorem putWrappedLine_setW (env : Env) (fe : Int) (st : St) (l : Line) (w : List Wait) :
+    putWrappedLine env fe (setW st w) l = exW (putWrappedLine env fe st l) w := by
+  unfold putWrappedLine putLine
+  have := putLineWithReserve_setW false env { st with adjust := st.adjust - max 0 (fe - st.used - env.pitchOf l.id) } l w
+  rw [show ({ setW st w with adjust := (setW st w).adjust - max 0 (fe - (setW st w).used - env.pitchOf l.id) } : St) =
+    setW { st with adjust := st.adjust - max 0 (fe - st.used - env.pitchOf l.id) } w from rfl, this]
+  cases putLineWithReserve false env { st with adjust := st.adjust - max 0 (fe - st.used - env.pitchOf l.id) } l <;> rfl
+
+theorem putHere_setW (env : Env) (region : Region) (st : St) (l : Line) (w : List Wait) :
+    putHere env region (setW st w) l = exW (putHere env region st l) w := by
+  unfold putHere
+  rw [wrapEnd_setW]
+  split
+  · exact putWrappedLine_setW env _ st l w
+  · exact putLineWithReserve_setW false env st l w
+
+theorem putHereLines_setW (env : Env) (region : Region) (w : List Wait) :
+    ∀ (ls : List Line) (st : St), putHereLines env region (setW st w) ls = exW (putHereLines env region st ls) w
+  | [], _ => rfl
+  | l :: ls, st => by
+    simp only [putHereLines]
+    rw [putHere_setW]
+    cases putHere env region st l with
+    | error e => rfl
+    | ok s => exact putHereLines_setW env region w ls s
+
+theorem fittingGo_setW (env : Env) (st : St) (w : List Wait) :
+    ∀ (ls : List Line) (u n : Int), fittingGo env (setW st w) u n ls = fittingGo env st u n ls
+  | [], _, _ => rfl
+  | l :: ls, u, n => by simp only [fittingGo, limit_setW, fittingGo_setW env st w ls]
+
+theorem fittingWrapGo_setW (env : Env) (st : St) (w : List Wait) (e : Int) :
+    ∀ (ls : List Line) (u n : Int), fittingWrapGo env (setW st w) e u n ls = fittingWrapGo env st e u n ls
+  | [], _, _ => rfl
+  | l :: ls, u, n => by simp only [fittingWrapGo, limit_setW, fittingWrapGo_setW env st w e ls]
+
+theorem fittingHere_setW (env : Env) (region : Region) (st : St) (rows : List Line) (w : List Wait) :
+    fittingHere env region (setW st w) rows = fittingHere env region st rows := by
+  unfold fittingHere fitting
+  simp only [wrapEnd_setW, fittingGo_setW, fittingWrapGo_setW, setW_used, setW_pending, setW_notesUsed, empty_setW]
+
+def pW : Part → List Wait → Part
+  | .moved s k, w => .moved (setW s w) k
+  | .placed c s k, w => .placed c (setW s w) k
+
+def exPW : Except Failure Part → List Wait → Except Failure Part
+  | .ok p, w => .ok (pW p w)
+  | .error e, _ => .error e
+
+theorem trialWrapRest_setW (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (firstId : Nat) (w : List Wait) :
+    trialWrapRest env region limit k start (setW st w) rows firstId = exPW (trialWrapRest env region limit k start st rows firstId) w := by
+  unfold trialWrapRest
+  simp only [fittingHere_setW, empty_setW, headingOnly_setW, setW_adjust, moveCursor_setW, fit_setW, putHereLines_setW]
+  split
+  · rfl
+  · cases putHereLines env region (fit env st _) _ <;> rfl
+
+theorem trialWrapFrom_setW (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (w : List Wait) :
+    trialWrapFrom env region limit k start (setW st w) rows = exPW (trialWrapFrom env region limit k start st rows) w := by
+  unfold trialWrapFrom
+  split
+  · rfl
+  · simp only [fittingHere_setW, empty_setW, headingOnly_setW]
+    split
+    · rfl
+    · split
+      · split
+        · rw [addUnmet_setW, trialWrapRest_setW]
+        · simp only [moveCursor_setW]; rfl
+      · exact trialWrapRest_setW _ _ _ _ _ _ _ _ w
+
+theorem trialWrap_setW (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (w : List Wait) :
+    trialWrap env region limit k start (setW st w) rows = exPW (trialWrap env region limit k start st rows) w := by
+  unfold trialWrap
+  split
+  · rfl
+  · exact trialWrapFrom_setW env region limit k start st rows w
+
+/-- `compose` reads no waits. -/
+def Beside.blind (b : Beside) : Prop := ∀ st w i, b.compose (setW st w) i = b.compose st i
+
+def exLW : Except Failure (List St) → List Wait → Except Failure (List St)
+  | .ok ts, w => .ok (ts.map (setW · w))
+  | .error e, _ => .error e
+
+theorem tryVerses_setW (env : Env) (region : Region) (b : Beside) (hb : b.blind) (w : List Wait) :
+    ∀ (indices : List Nat) (cursor : St),
+    tryVerses env region b (setW cursor w) indices = exLW (tryVerses env region b cursor indices) w
+  | [], _ => rfl
+  | index :: later, cursor => by
+    simp only [tryVerses]
+    rw [hb, trialWrap_setW]
+    cases trialWrap env region none ⟨1, 1, false⟩ true cursor (b.compose cursor index) with
+    | error e => rfl
+    | ok p =>
+      cases p with
+      | moved s k => rfl
+      | placed count placed k =>
+        simp only [exPW, pW, setW_page, setW_column]
+        split
+        · rw [tryVerses_setW env region b hb w later placed]
+          cases tryVerses env region b placed later <;> rfl
+        · rfl
+
+/-! Positions -/
+
+def PLt (a b : Nat × Nat) : Prop := a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 < b.2)
+def PLe (a b : Nat × Nat) : Prop := a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 ≤ b.2)
+
+theorem PLe.refl (a : Nat × Nat) : PLe a a := Or.inr ⟨rfl, Nat.le_refl _⟩
+theorem PLe.trans {a b c : Nat × Nat} (h : PLe a b) (h' : PLe b c) : PLe a c := by
+  unfold PLe at *; omega
+theorem PLt.le_trans {a b c : Nat × Nat} (h : PLt a b) (h' : PLe b c) : PLt a c := by
+  unfold PLe PLt at *; omega
+theorem PLe.lt_trans {a b c : Nat × Nat} (h : PLe a b) (h' : PLt b c) : PLt a c := by
+  unfold PLe PLt at *; omega
+
+def pos (st : St) : Nat × Nat := (st.page, st.column)
+def opos (o : PageOut) : Nat × Nat := (o.number, o.column)
+
+/-- From `st` to `s` the column does not go back, and the pages closed on
+    the way are those of the columns passed. -/
+def Adv (st s : St) : Prop :=
+  PLe (pos st) (pos s) ∧ ∃ new, s.done = new ++ st.done ∧ ∀ o ∈ new, PLe (pos st) (opos o) ∧ PLt (opos o) (pos s)
+
+theorem Adv.same {st s : St} (p : s.page = st.page) (c : s.column = st.column) (d : s.done = st.done) : Adv st s :=
+  ⟨by simp [pos, p, c, PLe.refl], [], by simp [d], by simp⟩
+
+theorem Adv.refl (st : St) : Adv st st := Adv.same rfl rfl rfl
+
+theorem mem_app {α : Type} {x : α} : ∀ {a b : List α}, x ∈ a ++ b → x ∈ a ∨ x ∈ b
+  | [], _, h => Or.inr h
+  | _ :: _, _, .head _ => Or.inl (.head _)
+  | _ :: _, _, .tail _ h => match mem_app h with
+    | Or.inl m => Or.inl (.tail _ m)
+    | Or.inr m => Or.inr m
+
+theorem Adv.trans {a b c : St} (h : Adv a b) (h' : Adv b c) : Adv a c := by
+  obtain ⟨l1, n1, d1, o1⟩ := h
+  obtain ⟨l2, n2, d2, o2⟩ := h'
+  refine ⟨l1.trans l2, n2 ++ n1, by rw [d2, d1, List.append_assoc], ?_⟩
+  intro o ho
+  rcases mem_app ho with m | m
+  · exact ⟨l1.trans (o2 o m).1, (o2 o m).2⟩
+  · exact ⟨(o1 o m).1, (o1 o m).2.le_trans l2⟩
+
+theorem fresh_done (env : Env) (tp : Bool) (st : St) : (fresh env tp st).done = (close env st).done := rfl
+
+theorem fresh_pos (env : Env) (tp : Bool) (st : St) :
+    pos (fresh env tp st) = if (tp || decide (st.columns ≤ st.column + 1)) = true then (st.page + 1, 0)
+      else (st.page, st.column + 1) := by
+  unfold fresh; dsimp only; split <;> rfl
+
+theorem close_done (env : Env) (st : St) :
+    (close env st).done = st.done ∨ (close env st).done = ⟨st.page, st.column, false, st.slots, st.notes, limit env st, st.unmet⟩ :: st.done := by
+  unfold close; split
+  · exact Or.inl rfl
+  · exact Or.inr rfl
+
+theorem adv_fresh (env : Env) (tp : Bool) (st : St) : Adv st (fresh env tp st) := by
+  have hp : PLt (pos st) (pos (fresh env tp st)) := by
+    rw [fresh_pos]; simp only [pos, PLt]; split <;> simp
+  refine ⟨?_, ?_⟩
+  · unfold PLt PLe at *; omega
+  · rw [fresh_done]
+    rcases close_done env st with e | e
+    · exact ⟨[], by rw [e]; rfl, by intro o ho; cases ho⟩
+    · refine ⟨[_], by rw [e]; rfl, ?_⟩
+      intro o ho
+      cases ho with
+      | head => exact ⟨PLe.refl _, hp⟩
+      | tail _ h => cases h
+
+theorem adv_placeTurnedGo (env : Env) : ∀ (ds : List Waiting) (st : St), st.column = 0 → Adv st (placeTurnedGo env st ds)
+  | [], st, _ => Adv.same rfl rfl rfl
+  | .figure _ _ :: _, st, _ => Adv.same rfl rfl rfl
+  | .turned i :: ds, st, h => by
+    simp only [placeTurnedGo]
+    refine Adv.trans (b := { st with
+      done := ⟨st.page, 0, false, [(0, .pageFigure i)], [], limit env st, []⟩ :: st.done, page := st.page + 1 })
+      ⟨?_, [⟨st.page, 0, false, [(0, .pageFigure i)], [], limit env st, []⟩], rfl, ?_⟩ (adv_placeTurnedGo env ds _ h)
+    · simp [pos, PLe]
+    · intro o ho
+      cases ho with
+      | head => simp [pos, opos, PLe, PLt, h]
+      | tail _ m => cases m
+
+theorem adv_opened (env : Env) (tp : Bool) (st : St) : Adv st (opened env tp st) := by
+  unfold opened placeTurned
+  split
+  · rename_i c
+    refine (adv_fresh env tp st).trans (adv_placeTurnedGo env _ _ ?_)
+    unfold fresh; dsimp only; simp only [c, if_true]
+  · exact adv_fresh env tp st
+
+theorem adv_placeDeferredGo (env : Env) : ∀ (ds : List Waiting) (st : St), Adv st (placeDeferredGo env st ds)
+  | [], st => Adv.same rfl rfl rfl
+  | .turned _ :: _, st => Adv.same rfl rfl rfl
+  | .figure i e :: ds, st => by
+    simp only [placeDeferredGo]
+    split
+    · exact (Adv.same rfl rfl rfl : Adv st (putSlot st e (.figure i))).trans (adv_placeDeferredGo env ds _)
+    · exact Adv.same rfl rfl rfl
+
+theorem adv_carryInto (env : Env) (st : St) : Adv st (carryInto env st) := by
+  unfold carryInto; split
+  · exact Adv.refl st
+  · exact Adv.same rfl rfl rfl
+
+theorem adv_nextColumn (env : Env) (st : St) : Adv st (nextColumn env st) :=
+  ((adv_opened env false st).trans (adv_placeDeferredGo env _ _)).trans (adv_carryInto env _)
+
+theorem adv_fit (env : Env) (st : St) (a : Int) : Adv st (fit env st a) := by
+  unfold fit
+  repeat' split
+  all_goals first
+    | exact Adv.same rfl rfl rfl
+    | exact (adv_nextColumn env st).trans (Adv.same rfl rfl rfl)
+
+theorem adv_moveCursor (env : Env) (region : Region) (st : St) : Adv st (moveCursor env region st) :=
+  (Adv.same rfl rfl rfl : Adv st (endWrap region st)).trans (adv_nextColumn env _)
+
+theorem adv_putLineWithReserve (allow : Bool) (env : Env) (st s : St) (l : Line)
+    (h : putLineWithReserve allow env st l = .ok s) : Adv st s := by
+  unfold putLineWithReserve at h
+  repeat' split at h
+  all_goals first | (injection h with h; subst h; exact Adv.same rfl rfl rfl) | cases h
+
+theorem adv_putHere (env : Env) (region : Region) (st s : St) (l : Line) (h : putHere env region st l = .ok s) :
+    Adv st s := by
+  unfold putHere at h
+  split at h
+  · unfold putWrappedLine putLine at h
+    split at h
+    · cases h
+    · rename_i placed e
+      injection h with h; subst h
+      exact (Adv.same rfl rfl rfl : Adv st { st with adjust := _ }).trans
+        ((adv_putLineWithReserve false env _ placed l e).trans (Adv.same rfl rfl rfl))
+  · exact adv_putLineWithReserve false env st s l h
+
+theorem adv_putHereLines (env : Env) (region : Region) : ∀ (ls : List Line) (st s : St),
+    putHereLines env region st ls = .ok s → Adv st s
+  | [], st, s, h => by simp only [putHereLines, Except.ok.injEq] at h; subst h; exact Adv.refl st
+  | l :: ls, st, s, h => by
+    simp only [putHereLines] at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      exact (adv_putHere env region st s1 l e).trans (adv_putHereLines env region ls s1 s h)
+
+def Part.st : Part → St
+  | .moved s _ => s
+  | .placed _ s _ => s
+
+theorem adv_trialWrapRest (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (firstId : Nat) (p : Part) (h : trialWrapRest env region limit k start st rows firstId = .ok p) :
+    Adv st p.st := by
+  unfold trialWrapRest at h
+  dsimp only at h
+  split at h
+  · injection h with h; subst h; exact adv_moveCursor env region st
+  · split at h
+    · cases h
+    · rename_i placed e
+      injection h with h; subst h
+      exact ((adv_fit env st _).trans (adv_putHereLines env region _ _ placed e)).trans (Adv.same rfl rfl rfl)
+
+theorem adv_trialWrap (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (p : Part) (h : trialWrap env region limit k start st rows = .ok p) : Adv st p.st := by
+  unfold trialWrap trialWrapFrom at h
+  split at h
+  · cases h
+  split at h
+  · injection h with h; subst h; exact Adv.refl st
+  · split at h
+    · cases h
+    · split at h
+      · split at h
+        · exact (Adv.same rfl rfl rfl : Adv st (addUnmet _ st)).trans (adv_trialWrapRest env region limit _ start _ _ _ p h)
+        · injection h with h; subst h; exact adv_moveCursor env region st
+      · exact adv_trialWrapRest env region limit _ start _ _ _ p h
+
+theorem adv_tryVerses (env : Env) (region : Region) (b : Beside) :
+    ∀ (indices : List Nat) (cursor : St) (trials : List St), tryVerses env region b cursor indices = .ok trials →
+    ∀ t ∈ trials, Adv cursor t
+  | [], cursor, trials, h => by simp only [tryVerses, Except.ok.injEq] at h; subst h; intro t ht; cases ht
+  | index :: later, cursor, trials, h => by
+    simp only [tryVerses] at h
+    split at h
+    · cases h
+    · rename_i count placed relaxed hm
+      split at h
+      · split at h
+        · cases h
+        · rename_i rest e
+          injection h with h; subst h
+          have a : Adv cursor placed := adv_trialWrap env region none _ true cursor _ _ hm
+          intro t ht
+          rcases List.mem_cons.mp ht with ht | ht
+          · subst ht; exact a
+          · exact a.trans (adv_tryVerses env region b later placed rest e t ht)
+      · injection h with h; subst h; intro t ht; cases ht
+    · injection h with h; subst h; intro t ht; cases ht
+
+/-! Waits that can no longer be met -/
+
+/-- A wait that can no longer be met: its column is passed, and the pages
+    closed in that column took nothing after it. -/
+def Dead (st : St) (w : Wait) : Prop :=
+  PLt (w.2.1, w.2.2.1) (pos st) ∧
+    ∀ o ∈ st.done, o.number = w.2.1 → o.column = w.2.2.1 → addedSlots w.2.2.2.2.2 w.2.2.2.1 o.slots = 0
+
+theorem Dead.adv {st s : St} {w : Wait} (h : Dead st w) (a : Adv st s) : Dead s w := by
+  obtain ⟨lt, z⟩ := h
+  obtain ⟨le, new, d, hn⟩ := a
+  refine ⟨lt.le_trans le, ?_⟩
+  intro o ho e1 e2
+  rw [d] at ho
+  rcases mem_app ho with m | m
+  · exfalso
+    have := (hn o m).1
+    simp only [PLe, PLt, opos, pos, e1, e2] at this lt
+    omega
+  · exact z o m e1 e2
+
+/-- Two waits alike but in the lines they ask for. -/
+def Twin (w w' : Wait) : Prop :=
+  w.1 = w'.1 ∧ w.2.1 = w'.2.1 ∧ w.2.2.1 = w'.2.2.1 ∧ w.2.2.2.1 = w'.2.2.2.1 ∧ w.2.2.2.2.2 = w'.2.2.2.2.2
+
+/-- The waits of two states that differ only in the lines dead waits ask
+    for. -/
+def WRel (D : Wait → Prop) : List Wait → List Wait → Prop
+  | [], [] => True
+  | w :: ws, w' :: ws' => (w = w' ∨ (Twin w w' ∧ D w)) ∧ WRel D ws ws'
+  | _, _ => False
+
+theorem WRel.mono {D E : Wait → Prop} (h : ∀ w, D w → E w) : ∀ {ws ws' : List Wait}, WRel D ws ws' → WRel E ws ws'
+  | [], [], _ => trivial
+  | _ :: _, _ :: _, ⟨Or.inl e, r⟩ => ⟨Or.inl e, WRel.mono h r⟩
+  | _ :: _, _ :: _, ⟨Or.inr ⟨t, d⟩, r⟩ => ⟨Or.inr ⟨t, h _ d⟩, WRel.mono h r⟩
+  | [], _ :: _, r => r.elim
+  | _ :: _, [], r => r.elim
+
+theorem WRel.refl (D : Wait → Prop) : ∀ ws : List Wait, WRel D ws ws
+  | [] => trivial
+  | _ :: ws => ⟨Or.inl rfl, WRel.refl D ws⟩
+
+/-- `st'` is `st` with waits that differ only in the lines dead waits ask
+    for. -/
+def Sim (st st' : St) : Prop := ∃ w, st' = setW st w ∧ WRel (Dead st) st.waits w
+
+theorem setW_self (st : St) : setW st st.waits = st := rfl
+
+theorem Sim.refl (st : St) : Sim st st := ⟨st.waits, rfl, WRel.refl _ _⟩
+
+theorem Sim.map {st st' : St} (f : St → St) (hc : ∀ st w, f (setW st w) = setW (f st) w) (ha : ∀ st, Adv st (f st))
+    (h : Sim st st') : Sim (f st) (f st') := by
+  obtain ⟨w, e, r⟩ := h
+  subst e
+  refine ⟨w, hc st w, ?_⟩
+  have : (f st).waits = st.waits := by
+    have := hc st st.waits; rw [setW_self] at this; rw [this]; rfl
+  rw [this]
+  exact WRel.mono (fun _ d => d.adv (ha st)) r
+
+theorem foldl_max_zero (f : PageOut → Nat) : ∀ (l : List PageOut) (a : Nat), (∀ o ∈ l, f o = 0) →
+    l.foldl (fun a o => max a (f o)) a = a
+  | [], _, _ => rfl
+  | o :: l, a, h => by
+    simp only [List.foldl]
+    rw [h o (.head _), Nat.max_zero]
+    exact foldl_max_zero f l a (fun x hx => h x (.tail _ hx))
+
+theorem mem_filter_of {o : PageOut} {p : PageOut → Bool} : ∀ {l : List PageOut}, o ∈ l.filter p → o ∈ l ∧ p o = true
+  | [], h => by cases h
+  | x :: xs, h => by
+    simp only [List.filter] at h
+    split at h
+    · cases h with
+      | head => rename_i e; exact ⟨.head _, e⟩
+      | tail _ m => exact ⟨.tail _ (mem_filter_of m).1, (mem_filter_of m).2⟩
+    · exact ⟨.tail _ (mem_filter_of h).1, (mem_filter_of h).2⟩
+
+theorem mem_map_of {α β : Type} {f : α → β} {b : β} : ∀ {l : List α}, b ∈ l.map f → ∃ a, a ∈ l ∧ f a = b
+  | [], h => by cases h
+  | x :: xs, h => by
+    cases h with
+    | head => exact ⟨x, .head _, rfl⟩
+    | tail _ m => obtain ⟨a, ha, e⟩ := mem_map_of m; exact ⟨a, .tail _ ha, e⟩
+
+theorem waitMet_dead (acc : St) (w : Wait) (h : Dead acc w) : waitMet acc w = false := by
+  obtain ⟨lt, z⟩ := h
+  obtain ⟨u, page, column, prior, required, linesOnly⟩ := w
+  simp only [PLt, pos] at lt
+  unfold waitMet
+  dsimp only
+  have c : (acc.page == page && acc.column == column) = false := by
+    cases e1 : acc.page == page <;> cases e2 : acc.column == column <;> simp_all <;> omega
+  rw [c, if_neg (by simp)]
+  rw [foldl_max_zero _ _ 0 (by
+    intro o ho
+    obtain ⟨m, p⟩ := mem_filter_of ho
+    simp only [Bool.and_eq_true, beq_iff_eq] at p
+    exact z o m p.1 p.2)]
+  have : 1 ≤ max 1 required := Nat.le_max_left _ _
+  simp only [Nat.max_zero, decide_eq_false_iff_not]
+  omega
+
+theorem markUnmet_twin (w w' : Wait) (t : Twin w w') : markUnmet w = markUnmet w' := by
+  obtain ⟨a, b, c, _, _⟩ := t
+  funext o
+  unfold markUnmet
+  rw [a, b, c]
+
+theorem dead_checkWait (acc : St) (v w : Wait) (h : Dead acc w) : Dead (checkWait acc v) w := by
+  unfold checkWait
+  split
+  · exact h
+  · split
+    · exact h
+    · refine ⟨h.1, ?_⟩
+      intro o ho e1 e2
+      obtain ⟨x, hx, ex⟩ := mem_map_of ho
+      subst ex
+      have q : (markUnmet v x).number = x.number ∧ (markUnmet v x).column = x.column ∧ (markUnmet v x).slots = x.slots := by
+        unfold markUnmet; split <;> exact ⟨rfl, rfl, rfl⟩
+      rw [q.1] at e1; rw [q.2.1] at e2; rw [q.2.2]
+      exact h.2 x hx e1 e2
+
+theorem dead_twin {acc : St} {w w' : Wait} (t : Twin w w') (h : Dead acc w) : Dead acc w' := by
+  obtain ⟨_, b, c, d, e⟩ := t
+  unfold Dead at *
+  rw [← b, ← c, ← d, ← e]; exact h
+
+theorem checkWait_twin (acc : St) (w w' : Wait) (t : Twin w w') (h : Dead acc w) : checkWait acc w = checkWait acc w' := by
+  unfold checkWait
+  rw [waitMet_dead acc w h, waitMet_dead acc w' (dead_twin t h), markUnmet_twin w w' t, t.1, t.2.1, t.2.2.1]
+
+theorem fold_sim : ∀ (ws ws' : List Wait) (acc : St), WRel (Dead acc) ws ws' → ws.foldl checkWait acc = ws'.foldl checkWait acc
+  | [], [], _, _ => rfl
+  | w :: ws, w' :: ws', acc, ⟨h, r⟩ => by
+    simp only [List.foldl]
+    have e : checkWait acc w = checkWait acc w' := by
+      rcases h with e | ⟨t, d⟩
+      · rw [e]
+      · exact checkWait_twin acc w w' t d
+    rw [e]
+    exact fold_sim ws ws' _ (WRel.mono (fun x d => dead_checkWait acc w' x d) r)
+  | [], _ :: _, _, r => r.elim
+  | _ :: _, [], _, r => r.elim
+
+/-- `checkWaits` gives the same state on two states whose waits differ only
+    in the lines dead waits ask for. -/
+theorem checkWaits_sim {st st' : St} (h : Sim st st') : checkWaits st' = checkWaits st := by
+  obtain ⟨w, e, r⟩ := h
+  subst e
+  unfold checkWaits
+  exact (fold_sim st.waits w { st with waits := [] } (WRel.mono (fun x d => d) r)).symm
+
+theorem trialWrap_waits (env : Env) (region : Region) (limit : Option Nat) (k : Keep) (start : Bool) (st : St)
+    (rows : List Line) (p : Part) (h : trialWrap env region limit k start st rows = .ok p) : p.st.waits = st.waits := by
+  have := trialWrap_setW env region limit k start st rows st.waits
+  rw [setW_self, h] at this
+  cases p with
+  | moved s k' =>
+    simp only [exPW, pW] at this
+    injection this with h1; injection h1 with h2
+    show s.waits = st.waits; rw [h2]; rfl
+  | placed c s k' =>
+    simp only [exPW, pW] at this
+    injection this with h1; injection h1 with _ h2
+    show s.waits = st.waits; rw [h2]; rfl
+
+theorem Sim.next {st m : St} {w : List Wait} (h : Sim st (setW st w)) (a : Adv st m) (e : m.waits = st.waits) :
+    Sim m (setW m w) := by
+  obtain ⟨w', e', r⟩ := h
+  have : w' = w := by have := congrArg St.waits e'; exact this.symm
+  subst this
+  exact ⟨w', rfl, by rw [e]; exact WRel.mono (fun _ d => d.adv a) r⟩
+
+theorem Sim.ofEq {st st' : St} (h : Sim st st') : ∃ w, st' = setW st w ∧ Sim st (setW st w) := by
+  obtain ⟨w, e, r⟩ := h
+  exact ⟨w, e, w, rfl, r⟩
+
+theorem Sim.move {st : St} {w : List Wait} (env : Env) (region : Region) (h : Sim st (setW st w)) :
+    Sim (moveCursor env region st) (setW (moveCursor env region st) w) := by
+  have := Sim.map (PhysicalPagination.moveCursor env region) (moveCursor_setW env region) (adv_moveCursor env region) h
+  rwa [moveCursor_setW] at this
+
+/-- `parts` gives the same result from two cursors whose waits differ only
+    in the lines dead waits ask for, when the breaker reads no waits. -/
+theorem parts_sim (env : Env) (region : Region) (breaker : St → Nat → Nat → List (Line × Nat)) (items lastWanted : Nat)
+    (follows : St → Bool) (hold : St → St) (hb : ∀ st w c t, breaker (setW st w) c t = breaker st c t) :
+    ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St) (w : List Wait),
+    Sim at' (setW at' w) →
+    parts env region breaker items lastWanted follows hold limit k isStart start before (setW at' w) =
+    parts env region breaker items lastWanted follows hold limit k isStart start before at' := by
+  have key : ∀ m, ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St),
+      (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) = m →
+      ∀ (w : List Wait), Sim at' (setW at' w) →
+      parts env region breaker items lastWanted follows hold limit k isStart start before (setW at' w) =
+      parts env region breaker items lastWanted follows hold limit k isStart start before at' := by
+    intro m
+    induction m using lex4_wf.induction with
+    | _ m ih =>
+    intro limit k isStart start before at' hm0 w hs
+    subst hm0
+    conv => lhs; rw [parts]
+    conv => rhs; rw [parts]
+    rw [hb, trialWrap_setW]
+    cases hT : trialWrap env region limit k isStart at' ((breaker at' before start).map (·.1)) with
+    | error e => rfl
+    | ok p =>
+      have adv := adv_trialWrap env region limit k isStart at' _ p hT
+      have wt := trialWrap_waits env region limit k isStart at' _ p hT
+      cases p with
+      | moved moved relaxed =>
+        simp only [exPW, pW]
+        have dec : lex4lt (items - start, keepRank relaxed, rank moved, limitRank none (breaker moved before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right
+          cases I4_trialWrap_moved env region limit k isStart at' _ moved relaxed hT with
+          | inl l => exact Prod.Lex.left _ _ l
+          | inr e => rw [e.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ e.2)
+        exact ih _ dec none relaxed isStart start before moved rfl w (hs.next adv wt)
+      | placed count placed relaxed =>
+        simp only [exPW, pW]
+        have hp : Sim placed (setW placed w) := hs.next adv wt
+        have hc : checkWaits (setW placed w) = checkWaits placed := checkWaits_sim hp
+        have movePart : empty at' = false →
+            parts env region breaker items lastWanted follows hold none k isStart start before
+              (setW (moveCursor env region at') w) =
+            parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at') := by
+          intro e3
+          have dec : lex4lt (items - start, keepRank k, rank (moveCursor env region at'),
+              limitRank none (breaker (moveCursor env region at') before start).length)
+              (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+            exact I4_moveCursor_rank env region at' (Or.inl e3)
+          exact ih _ dec none k isStart start before _ rfl w (hs.move env region)
+        have retry : ∀ n, n < limitRank limit (breaker at' before start).length →
+            parts env region breaker items lastWanted follows hold (some n) k isStart start before (setW at' w) =
+            parts env region breaker items lastWanted follows hold (some n) k isStart start before at' := by
+          intro n hn
+          have dec : lex4lt (items - start, keepRank k, rank at', limitRank (some n) (breaker at' before start).length)
+              (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; exact hn
+          exact ih _ dec (some n) k isStart start before at' rfl w hs
+        have go : start < nextItem (breaker at' before start) count start ∧ start < items →
+            parts env region breaker items lastWanted follows hold none relaxed false
+              (nextItem (breaker at' before start) count start) (before + count) (setW (moveCursor env region placed) w) =
+            parts env region breaker items lastWanted follows hold none relaxed false
+              (nextItem (breaker at' before start) count start) (before + count) (moveCursor env region placed) := by
+          intro h4
+          have dec : lex4lt (items - nextItem (breaker at' before start) count start, keepRank relaxed,
+              rank (moveCursor env region placed), limitRank none (breaker (moveCursor env region placed) (before + count)
+                (nextItem (breaker at' before start) count start)).length)
+              (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+            apply Prod.Lex.left; obtain ⟨_, _⟩ := h4; omega
+          exact ih _ dec none relaxed false _ (before + count) _ rfl w (hp.move env region)
+        simp only [hb, hc, moveCursor_setW, empty_setW]
+        repeat' split
+        all_goals first
+          | rfl
+          | exact retry _ ‹_›
+          | exact movePart ‹_›
+          | exact go ‹_›
+          | (exfalso; simp_all; done)
+  intro limit k isStart start before at' w hs
+  exact key _ limit k isStart start before at' rfl w hs
+
+theorem tryVerses_waits (env : Env) (region : Region) (b : Beside) (hb : b.blind) (cursor : St) (indices : List Nat)
+    (trials : List St) (h : tryVerses env region b cursor indices = .ok trials) : ∀ t ∈ trials, t.waits = cursor.waits := by
+  have := tryVerses_setW env region b hb cursor.waits indices cursor
+  rw [setW_self, h] at this
+  simp only [exLW] at this
+  injection this with e
+  intro t ht
+  have : t ∈ trials.map (setW · cursor.waits) := e ▸ ht
+  obtain ⟨x, _, ex⟩ := mem_map_of this
+  rw [← ex]; rfl
+
+theorem get?_mem : ∀ (l : List St) (n : Nat) (x : St), l.get? n = some x → x ∈ l
+  | [], _, _, h => by cases h
+  | y :: ys, 0, x, h => by simp at h; subst h; exact .head _
+  | y :: ys, n + 1, x, h => .tail _ (get?_mem ys n x h)
+
+theorem getElem_map_setW (trials : List St) (w : List Wait) (n : Nat) :
+    (trials.map (setW · w))[n]? = (trials[n]?).map (setW · w) := by
+  rw [getElem?_get?, getElem?_get?]
+  induction trials generalizing n with
+  | nil => rfl
+  | cons t ts ih => cases n with
+    | zero => rfl
+    | succ n => exact ih n
+
+/-- `stanza` and `accept` give the same result from two cursors whose waits
+    differ only in the lines dead waits ask for. -/
+theorem stanza_accept_sim (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (hb : b.blind)
+    (hi : ∀ st w i, b.ident (setW st w) i = b.ident st i)
+    (hf : ∀ i later c w, Sim c (setW c w) → a.fallback i later (setW c w) = a.fallback i later c) : ∀ m,
+    (∀ later keep isStart cursor indices w, (indices.length, keepRank keep, rank cursor, 1, 0) = m →
+      Sim cursor (setW cursor w) →
+      stanza env region b a later keep isStart (setW cursor w) indices = stanza env region b a later keep isStart cursor indices) ∧
+    (∀ later keep isStart cursor indices trials count problems w, (indices.length, keepRank keep, rank cursor, 0, count) = m →
+      Sim cursor (setW cursor w) → (∀ t ∈ trials, Sim t (setW t w)) →
+      accept env region b a later keep isStart (setW cursor w) indices (trials.map (setW · w)) count problems =
+      accept env region b a later keep isStart cursor indices trials count problems) := by
+  intro m
+  induction m using lex5_wf.induction with
+  | _ m ih =>
+  constructor
+  · intro later keep isStart cursor indices w hm hs
+    subst hm
+    cases indices with
+    | nil =>
+      simp only [stanza]
+      rw [checkWaits_sim hs]
+    | cons firstIndex rest =>
+      conv => lhs; rw [stanza]
+      conv => rhs; rw [stanza]
+      rw [tryVerses_setW env region b hb]
+      cases ht : tryVerses env region b cursor (firstIndex :: rest) with
+      | error e => rfl
+      | ok trials =>
+        have hts : ∀ t ∈ trials, Sim t (setW t w) := fun t m =>
+          hs.next (adv_tryVerses env region b _ cursor trials ht t m) (tryVerses_waits env region b hb cursor _ trials ht t m)
+        simp only [exLW, List.length_map, empty_setW, hi]
+        have moved : empty cursor = false →
+            stanza env region b a later keep isStart (setW (moveCursor env region cursor) w) (firstIndex :: rest) =
+            stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest) := fun e =>
+          (ih _ (by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+            exact I4_moveCursor_rank env region cursor (Or.inl e))).1 later keep isStart _ _ w rfl (hs.move env region)
+        have accepted : ∀ count problems,
+            accept env region b a later keep isStart (setW cursor w) (firstIndex :: rest) (trials.map (setW · w)) count problems =
+            accept env region b a later keep isStart cursor (firstIndex :: rest) trials count problems := fun count problems =>
+          (ih _ (by apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; omega)).2
+            later keep isStart cursor _ trials count problems w rfl hs hts
+        have kept : keep.all = true →
+            stanza env region b a later { keep with all := false } isStart
+              (setW (addUnmet (.splitKept (b.ident cursor firstIndex)) cursor) w) (firstIndex :: rest) =
+            stanza env region b a later { keep with all := false } isStart
+              (addUnmet (.splitKept (b.ident cursor firstIndex)) cursor) (firstIndex :: rest) := fun c =>
+          (ih _ (by apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, c])).1 later _ isStart _ _ w rfl
+            (Sim.map (addUnmet _) (addUnmet_setW _) (fun st => Adv.same rfl rfl rfl) hs)
+        simp only [moveCursor_setW, ← addUnmet_setW, hf firstIndex (rest ++ later) cursor w hs]
+        repeat' split
+        all_goals first
+          | rfl
+          | exact moved ‹_›
+          | exact accepted _ _
+          | exact kept (by simp_all)
+          | (exfalso; simp_all; done)
+          | (simp_all; done)
+  · intro later keep isStart cursor indices trials count problems w hm hs hts
+    subst hm
+    conv => lhs; rw [accept]
+    conv => rhs; rw [accept]
+    rw [getElem_map_setW]
+    simp only [hi]
+    split
+    · rfl
+    · cases hp : trials[count - 1]? with
+      | none => rfl
+      | some placed =>
+        simp only [Option.map]
+        rename_i h0
+        have hpm : Sim placed (setW placed w) := hts placed (get?_mem trials _ placed (by rw [← getElem?_get?]; exact hp))
+        have hsw : Sim { placed with unmet := placed.unmet ++ problems }
+            (setW { placed with unmet := placed.unmet ++ problems } w) := hpm.next (Adv.same rfl rfl rfl) rfl
+        have hc : checkWaits ({ setW placed w with unmet := (setW placed w).unmet ++ problems } : St) =
+            checkWaits { placed with unmet := placed.unmet ++ problems } := checkWaits_sim hsw
+        have hmv : moveCursor env region ({ setW placed w with unmet := (setW placed w).unmet ++ problems } : St) =
+            setW (moveCursor env region { placed with unmet := placed.unmet ++ problems }) w :=
+          moveCursor_setW env region { placed with unmet := placed.unmet ++ problems } w
+        rw [hc, hmv, moveCursor_setW, empty_setW]
+        have again : ∀ front, front < count →
+            accept env region b a later keep isStart (setW cursor w) indices (trials.map (setW · w)) front [] =
+            accept env region b a later keep isStart cursor indices trials front [] := fun front hf =>
+          (ih _ (by apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; omega)).2
+            later keep isStart cursor indices trials front [] w rfl hs hts
+        have moved : empty cursor = false →
+            stanza env region b a later keep isStart (setW (moveCursor env region cursor) w) indices =
+            stanza env region b a later keep isStart (moveCursor env region cursor) indices := fun e =>
+          (ih _ (by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+            exact I4_moveCursor_rank env region cursor (Or.inl e))).1 later keep isStart _ indices w rfl (hs.move env region)
+        have rest : (List.drop count indices).isEmpty = false →
+            stanza env region b a later keep false
+              (setW (moveCursor env region { placed with unmet := placed.unmet ++ problems }) w) (indices.drop count) =
+            stanza env region b a later keep false
+              (moveCursor env region { placed with unmet := placed.unmet ++ problems }) (indices.drop count) := fun hr =>
+          (ih _ (by
+            apply Prod.Lex.left
+            have : indices.length ≠ 0 := by
+              intro e; rw [List.length_eq_zero.mp e] at hr; simp [List.isEmpty] at hr
+            simp; omega)).1 later keep false _ _ w rfl (hsw.move env region)
+        repeat' split
+        all_goals first
+          | rfl
+          | exact again _ (by omega)
+          | exact moved ‹_›
+          | exact rest (by simp_all)
+          | (exfalso; simp_all; done)
+          | (simp_all; done)
+
+/-- What `parts` leaves: a relation of each cursor to the next that
+    `trialWrap` and `moveCursor` keep, and a property of the state the
+    hold leaves after the waits are checked. -/
+theorem parts_rel (env : Env) (region : Region) (breaker : St → Nat → Nat → List (Line × Nat)) (items lastWanted : Nat)
+    (follows : St → Bool) (hold : St → St) (M : St → St → Prop) (F : St → Prop)
+    (mt : ∀ {a b c}, M a b → M b c → M a c)
+    (hw : ∀ limit k isStart st rows p, trialWrap env region limit k isStart st rows = .ok p → M st p.st)
+    (hm : ∀ st, M st (moveCursor env region st))
+    (hl : ∀ st, M st (hold (checkWaits st)) ∧ F (hold (checkWaits st))) :
+    ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St) (s : St),
+    parts env region breaker items lastWanted follows hold limit k isStart start before at' = .ok s → M at' s ∧ F s := by
+  have key : ∀ m, ∀ (limit : Option Nat) (k : Keep) (isStart : Bool) (start before : Nat) (at' : St),
+      (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) = m → ∀ s,
+      parts env region breaker items lastWanted follows hold limit k isStart start before at' = .ok s →
+      M at' s ∧ F s := by
+    intro m
+    induction m using lex4_wf.induction with
+    | _ m ih =>
+    intro limit k isStart start before at' hm0 s h
+    subst hm0
+    rw [parts] at h
+    split at h
+    · cases h
+    · rename_i moved relaxed hT
+      have a := hw _ _ _ _ _ _ hT
+      have dec : lex4lt (items - start, keepRank relaxed, rank moved, limitRank none (breaker moved before start).length)
+          (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+        apply Prod.Lex.right
+        cases I4_trialWrap_moved env region limit k isStart at' _ moved relaxed hT with
+        | inl l => exact Prod.Lex.left _ _ l
+        | inr e => rw [e.1]; exact Prod.Lex.right _ (Prod.Lex.left _ _ e.2)
+      have r := ih _ dec none relaxed isStart start before moved rfl s h
+      exact ⟨mt a r.1, r.2⟩
+    · rename_i count placed relaxed hT
+      have a : M at' placed := hw _ _ _ _ _ _ hT
+      have done : M at' (hold (checkWaits placed)) ∧ F (hold (checkWaits placed)) :=
+        ⟨mt a (hl placed).1, (hl placed).2⟩
+      have movePart : ∀ s, empty at' = false →
+          parts env region breaker items lastWanted follows hold none k isStart start before (moveCursor env region at') = .ok s →
+          M at' s ∧ F s := by
+        intro s e3 e
+        have dec : lex4lt (items - start, keepRank k, rank (moveCursor env region at'),
+            limitRank none (breaker (moveCursor env region at') before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+          exact I4_moveCursor_rank env region at' (Or.inl e3)
+        have r := ih _ dec none k isStart start before _ rfl s e
+        exact ⟨mt (hm at') r.1, r.2⟩
+      have retry : ∀ s n, n < limitRank limit (breaker at' before start).length →
+          parts env region breaker items lastWanted follows hold (some n) k isStart start before at' = .ok s →
+          M at' s ∧ F s := by
+        intro s n hn e
+        have dec : lex4lt (items - start, keepRank k, rank at', limitRank (some n) (breaker at' before start).length)
+            (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+          apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; exact hn
+        exact ih _ dec (some n) k isStart start before at' rfl s e
+      split at h
+      · split at h
+        · injection h with h; subst h; exact done
+        · split at h
+          · split at h
+            · rename_i h2; exact retry s _ h2 h
+            · cases h
+          · split at h
+            · rename_i h3; exact movePart s h3 h
+            · injection h with h; subst h; exact done
+      · split at h
+        · rename_i h4
+          have go : ∀ s, parts env region breaker items lastWanted follows hold none relaxed false
+              (nextItem (breaker at' before start) count start) (before + count) (moveCursor env region placed) = .ok s →
+              M at' s ∧ F s := by
+            intro s e
+            have dec : lex4lt (items - nextItem (breaker at' before start) count start, keepRank relaxed,
+                rank (moveCursor env region placed), limitRank none (breaker (moveCursor env region placed) (before + count)
+                  (nextItem (breaker at' before start) count start)).length)
+                (items - start, keepRank k, rank at', limitRank limit (breaker at' before start).length) := by
+              apply Prod.Lex.left; obtain ⟨_, _⟩ := h4; omega
+            have r := ih _ dec none relaxed false _ (before + count) _ rfl s e
+            exact ⟨mt (mt a (hm placed)) r.1, r.2⟩
+          split at h
+          · split at h
+            · split at h
+              · rename_i h6; exact retry s _ h6 h
+              · cases h
+            · split at h
+              · rename_i h7; exact movePart s h7 h
+              · exact go s h
+          · exact go s h
+        · cases h
+  intro limit k isStart start before at' s h
+  exact key _ limit k isStart start before at' rfl s h
+
+theorem tryVerses_get_rel (env : Env) (region : Region) (b : Beside) (M : St → St → Prop)
+    (mt : ∀ {a b c}, M a b → M b c → M a c)
+    (hw : ∀ limit k isStart st rows p, trialWrap env region limit k isStart st rows = .ok p → M st p.st) :
+    ∀ (indices : List Nat) (cursor : St) (trials : List St), tryVerses env region b cursor indices = .ok trials →
+    ∀ t ∈ trials, M cursor t
+  | [], cursor, trials, h => by simp only [tryVerses, Except.ok.injEq] at h; subst h; intro t ht; cases ht
+  | index :: later, cursor, trials, h => by
+    simp only [tryVerses] at h
+    split at h
+    · cases h
+    · rename_i count placed relaxed hm
+      split at h
+      · split at h
+        · cases h
+        · rename_i rest e
+          injection h with h; subst h
+          have a : M cursor placed := hw _ _ _ _ _ _ hm
+          intro t ht
+          rcases List.mem_cons.mp ht with ht | ht
+          · subst ht; exact a
+          · exact mt a (tryVerses_get_rel env region b M mt hw later placed rest e t ht)
+      · injection h with h; subst h; intro t ht; cases ht
+    · injection h with h; subst h; intro t ht; cases ht
+
+/-- What `stanza` and `accept` leave, as `parts_rel`. -/
+theorem stanza_accept_rel (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (M : St → St → Prop) (F : St → Prop)
+    (mt : ∀ {a b c}, M a b → M b c → M a c)
+    (hw : ∀ limit k isStart st rows p, trialWrap env region limit k isStart st rows = .ok p → M st p.st)
+    (hm : ∀ st, M st (moveCursor env region st)) (hu : ∀ st u, M st (addUnmet u st))
+    (hum : ∀ st u, M st { st with unmet := u })
+    (hc : ∀ st, M st (checkWaits st) ∧ F (checkWaits st))
+    (hh : ∀ i r l st, M st (b.hold i r l (checkWaits st)) ∧ F (b.hold i r l (checkWaits st)))
+    (hf : ∀ i later c s, a.fallback i later c = .ok s → M c s) : ∀ m,
+    (∀ later keep isStart cursor indices s, (indices.length, keepRank keep, rank cursor, 1, 0) = m →
+      stanza env region b a later keep isStart cursor indices = .ok s → M cursor s ∧ F s) ∧
+    (∀ later keep isStart cursor indices trials count problems s, (indices.length, keepRank keep, rank cursor, 0, count) = m →
+      (∀ t ∈ trials, M cursor t) →
+      accept env region b a later keep isStart cursor indices trials count problems = .ok s → M cursor s ∧ F s) := by
+  intro m
+  induction m using lex5_wf.induction with
+  | _ m ih =>
+  constructor
+  · intro later keep isStart cursor indices s hm0 h
+    subst hm0
+    cases indices with
+    | nil =>
+      simp only [stanza, Except.ok.injEq] at h; subst h
+      exact hc cursor
+    | cons firstIndex rest =>
+      rw [stanza] at h
+      split at h
+      · cases h
+      · rename_i trials ht
+        have hts := tryVerses_get_rel env region b M mt hw _ cursor trials ht
+        have again : ∀ keep' cursor', M cursor cursor' →
+            lex5lt ((firstIndex :: rest).length, keepRank keep', rank cursor', 1, 0)
+              ((firstIndex :: rest).length, keepRank keep, rank cursor, 1, 0) →
+            stanza env region b a later keep' isStart cursor' (firstIndex :: rest) = .ok s → M cursor s ∧ F s := by
+          intro keep' cursor' st dec e
+          have r := (ih _ dec).1 later keep' isStart cursor' _ s rfl e
+          exact ⟨mt st r.1, r.2⟩
+        have moved : empty cursor = false →
+            stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest) = .ok s →
+            M cursor s ∧ F s := fun e =>
+          again keep _ (hm cursor) (by
+            apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+            exact I4_moveCursor_rank env region cursor (Or.inl e))
+        have accepted : ∀ count problems,
+            accept env region b a later keep isStart cursor (firstIndex :: rest) trials count problems = .ok s →
+            M cursor s ∧ F s := fun count problems e =>
+          (ih _ (by apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; omega)).2
+            later keep isStart cursor _ trials count problems s rfl hts e
+        dsimp only at h
+        split at h
+        · rename_i c
+          split at h
+          · exact again _ _ (hu _ _) (by
+              apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, c.1]) h
+          · split at h
+            · rename_i e; exact moved e h
+            · rename_i e1 e2; simp_all
+        · split at h
+          · exact accepted _ _ h
+          · split at h
+            · rename_i e; exact moved e h
+            · split at h
+              · exact accepted _ _ h
+              · split at h
+                · cases h
+                · rename_i next hn
+                  have r := (ih _ (by apply Prod.Lex.left; simp)).1 later keep false next rest s rfl h
+                  exact ⟨mt (hf _ _ _ _ hn) r.1, r.2⟩
+  · intro later keep isStart cursor indices trials count problems s hm0 hts h
+    subst hm0
+    rw [accept] at h
+    split at h
+    · cases h
+    · rename_i h0
+      split at h
+      · cases h
+      · rename_i placed hp
+        have cp : M cursor placed := hts placed (get?_mem trials _ placed (by rw [← getElem?_get?]; exact hp))
+        have sw : M cursor { placed with unmet := placed.unmet ++ problems } := mt cp (hum _ _)
+        dsimp only at h
+        split at h
+        · have held : ∀ (r : Nat) (l : Bool),
+              M cursor (if b.holds (indices.getLast?.getD 0) then b.hold (indices.getLast?.getD 0) r l
+                (checkWaits { placed with unmet := placed.unmet ++ problems })
+               else checkWaits { placed with unmet := placed.unmet ++ problems }) ∧
+              F (if b.holds (indices.getLast?.getD 0) then b.hold (indices.getLast?.getD 0) r l
+                (checkWaits { placed with unmet := placed.unmet ++ problems })
+               else checkWaits { placed with unmet := placed.unmet ++ problems }) := by
+            intro r l
+            split
+            · exact ⟨mt sw (hh _ _ _ _).1, (hh _ _ _ _).2⟩
+            · exact ⟨mt sw (hc _).1, (hc _).2⟩
+          split at h
+          · cases h
+          · rename_i required linesOnly fits _
+            split at h
+            · injection h with h; subst h; exact held _ _
+            · generalize (if isStart = true then max 1 keep.first else 1) = q at h
+              split at h
+              · exact (ih _ (by
+                  apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; omega)).2
+                  later keep isStart cursor indices trials _ [] s rfl hts h
+              · split at h
+                · rename_i e
+                  have r := (ih _ (by
+                    apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+                    exact I4_moveCursor_rank env region cursor (Or.inl e))).1
+                    later keep isStart _ indices s rfl h
+                  exact ⟨mt (hm _) r.1, r.2⟩
+                · injection h with h; subst h; exact held _ _
+        · rename_i hr
+          have hne : indices.length ≠ 0 := by
+            intro e; rw [List.length_eq_zero.mp e] at hr; simp [List.isEmpty] at hr
+          have r := (ih _ (by apply Prod.Lex.left; simp; omega)).1 later keep false _ (indices.drop count) s rfl h
+          exact ⟨mt (mt sw (hm _)) r.1, r.2⟩
+
+
+/-- The pages closed lie before the column of the cursor. -/
+def WO (st : St) : Prop := ∀ o ∈ st.done, PLt (opos o) (pos st)
+
+theorem WO.adv {st s : St} (h : WO st) (a : Adv st s) : WO s := by
+  obtain ⟨le, new, d, hn⟩ := a
+  intro o ho
+  rw [d] at ho
+  rcases mem_app ho with m | m
+  · exact (hn o m).2
+  · exact (h o m).le_trans le
+
+/-- Every wait is in the column of the cursor, after its slots. -/
+def Fresh (st : St) : Prop := ∀ x ∈ st.waits, x.2.1 = st.page ∧ x.2.2.1 = st.column ∧ x.2.2.2.1 = st.slots.length
+
+theorem checkWait_fields (acc : St) (v : Wait) :
+    (checkWait acc v).waits = acc.waits ∧ (checkWait acc v).page = acc.page ∧ (checkWait acc v).column = acc.column ∧
+    (checkWait acc v).done.map opos = acc.done.map opos := by
+  unfold checkWait
+  split
+  · exact ⟨rfl, rfl, rfl, rfl⟩
+  · split
+    · exact ⟨rfl, rfl, rfl, rfl⟩
+    · refine ⟨rfl, rfl, rfl, ?_⟩
+      show (acc.done.map (markUnmet v)).map opos = acc.done.map opos
+      rw [List.map_map]
+      congr 1
+      funext o
+      unfold markUnmet; simp only [Function.comp]; split <;> rfl
+
+theorem checkWaits_fields (st : St) :
+    (checkWaits st).waits = [] ∧ (checkWaits st).page = st.page ∧ (checkWaits st).column = st.column ∧
+    (checkWaits st).done.map opos = st.done.map opos := by
+  unfold checkWaits
+  have : ∀ (ws : List Wait) (a : St), (ws.foldl checkWait a).waits = a.waits ∧ (ws.foldl checkWait a).page = a.page ∧
+      (ws.foldl checkWait a).column = a.column ∧ (ws.foldl checkWait a).done.map opos = a.done.map opos := by
+    intro ws
+    induction ws with
+    | nil => intro a; exact ⟨rfl, rfl, rfl, rfl⟩
+    | cons v vs ih =>
+      intro a
+      obtain ⟨w1, p1, c1, d1⟩ := ih (checkWait a v)
+      obtain ⟨w2, p2, c2, d2⟩ := checkWait_fields a v
+      exact ⟨w1.trans w2, p1.trans p2, c1.trans c2, d1.trans d2⟩
+  exact this st.waits { st with waits := [] }
+
+theorem WO_map {st s : St} (h : WO st) (p : s.page = st.page) (c : s.column = st.column)
+    (d : s.done.map opos = st.done.map opos) : WO s := by
+  intro o ho
+  have : opos o ∈ st.done.map opos := d ▸ List.mem_map_of_mem opos ho
+  obtain ⟨x, hx, ex⟩ := mem_map_of this
+  have := h x hx
+  rw [ex] at this
+  simp only [pos, p, c] at this ⊢
+  exact this
+
+theorem WO_checkWaits {st : St} (h : WO st) : WO (checkWaits st) :=
+  WO_map h (checkWaits_fields st).2.1 (checkWaits_fields st).2.2.1 (checkWaits_fields st).2.2.2
+
+theorem Fresh_checkWaits (st : St) : Fresh (checkWaits st) := by
+  intro x hx; rw [(checkWaits_fields st).1] at hx; cases hx
+
+theorem Fresh_waitForPrior (u : Unmet) (q : Nat × Bool) (st : St) (h : st.waits = []) : Fresh (waitForPrior u q st) := by
+  unfold waitForPrior
+  split
+  · intro x hx; simp only [addUnmet, h] at hx; cases hx
+  · intro x hx
+    simp only [waitFor, h, List.map, List.nil_append, List.foldl] at hx
+    cases hx with
+    | head => exact ⟨rfl, rfl, rfl⟩
+    | tail _ m => cases m
+
+theorem WO_waitForPrior {st : St} (u : Unmet) (q : Nat × Bool) (h : WO st) : WO (waitForPrior u q st) := by
+  unfold waitForPrior; split
+  · exact h
+  · exact h
+
+theorem fresh_lt (env : Env) (tp : Bool) (st : St) : PLt (pos st) (pos (fresh env tp st)) := by
+  rw [fresh_pos]; simp only [pos, PLt]; split <;> simp
+
+theorem nextColumn_lt (env : Env) (st : St) : PLt (pos st) (pos (nextColumn env st)) := by
+  have a : Adv (opened env false st) (nextColumn env st) := (adv_placeDeferredGo env _ _).trans (adv_carryInto env _)
+  have b : PLt (pos st) (pos (opened env false st)) := by
+    unfold opened placeTurned
+    split
+    · rename_i c
+      have := (adv_placeTurnedGo env (fresh env false st).deferred (fresh env false st) (by
+        unfold fresh; dsimp only; simp only [c, if_true])).1
+      exact (fresh_lt env false st).le_trans this
+    · exact fresh_lt env false st
+  exact b.le_trans a.1
+
+theorem carryInto_done (env : Env) (st : St) : (carryInto env st).done = st.done := by
+  unfold carryInto; split <;> rfl
+
+theorem placeDeferredGo_done (env : Env) : ∀ (ds : List Waiting) (st : St), (placeDeferredGo env st ds).done = st.done
+  | [], _ => rfl
+  | .turned _ :: _, _ => rfl
+  | .figure i e :: ds, st => by
+    simp only [placeDeferredGo]
+    split
+    · exact placeDeferredGo_done env ds _
+    · rfl
+
+theorem fresh_done_cases (env : Env) (tp : Bool) (st : St) :
+    ∀ o ∈ (fresh env tp st).done, o ∈ st.done ∨ (opos o = pos st ∧ o.slots = st.slots) := by
+  intro o ho
+  rw [fresh_done] at ho
+  rcases close_done env st with e | e
+  · rw [e] at ho; exact Or.inl ho
+  · rw [e] at ho
+    cases ho with
+    | head => exact Or.inr ⟨rfl, rfl⟩
+    | tail _ m => exact Or.inl m
+
+/-- The pages `nextColumn` closes: the column it leaves, with its slots,
+    and pages after it. -/
+theorem nextColumn_done (env : Env) (st : St) :
+    ∀ o ∈ (nextColumn env st).done, o ∈ st.done ∨ (opos o = pos st ∧ o.slots = st.slots) ∨ PLt (pos st) (opos o) := by
+  intro o ho
+  have a : (nextColumn env st).done = (opened env false st).done := by
+    unfold nextColumn placeDeferred; rw [carryInto_done, placeDeferredGo_done]
+  rw [a] at ho
+  unfold opened placeTurned at ho
+  split at ho
+  · rename_i c
+    obtain ⟨_, new, d, hn⟩ := adv_placeTurnedGo env (fresh env false st).deferred (fresh env false st) (by
+        unfold fresh; dsimp only; simp only [c, if_true])
+    rw [d] at ho
+    rcases mem_app ho with m | m
+    · exact Or.inr (Or.inr ((fresh_lt env false st).le_trans (hn o m).1))
+    · rcases fresh_done_cases env false st o m with x | x
+      · exact Or.inl x
+      · exact Or.inr (Or.inl x)
+  · rcases fresh_done_cases env false st o ho with x | x
+    · exact Or.inl x
+    · exact Or.inr (Or.inl x)
+
 /-! ### The same-column check of `tryVerses`
 
 `tryVerses` accepts a trial that placed its verse line whole only when the
@@ -6213,6 +7410,281 @@ theorem fittingHere_bound (env : Env) (hs : 0 ≤ env.separator) (hp : 0 ≤ env
     generalize (if empty st = true then 0 else st.pending) = x at *
     omega
 
+theorem adv_putLines (allow : Bool) (env : Env) : ∀ (ls : List Line) (st s : St), putLines allow env st ls = .ok s → Adv st s
+  | [], st, s, h => by simp only [putLines, Except.ok.injEq] at h; subst h; exact Adv.refl st
+  | l :: ls, st, s, h => by
+    simp only [putLines] at h
+    split at h
+    · cases h
+    · rename_i s1 e
+      exact (adv_putLineWithReserve allow env st s1 l e).trans (adv_putLines allow env ls s1 s h)
+
+theorem adv_trialRest (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (firstId : Nat) (p : Part)
+    (h : trialRest env k start st rows firstId = .ok p) : Adv st p.st := by
+  unfold trialRest at h
+  dsimp only at h
+  split at h
+  · injection h with h; subst h; exact adv_nextColumn env st
+  · split at h
+    · cases h
+    · rename_i placed e
+      injection h with h; subst h
+      exact ((adv_fit env st _).trans (adv_putLines false env _ _ placed e)).trans (Adv.same rfl rfl rfl)
+
+theorem adv_trial (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (p : Part)
+    (h : trial env k start st rows = .ok p) : Adv st p.st := by
+  unfold trial trialFrom at h
+  split at h
+  · cases h
+  split at h
+  · injection h with h; subst h; exact Adv.refl st
+  · split at h
+    · cases h
+    · split at h
+      · split at h
+        · exact (Adv.same rfl rfl rfl : Adv st (addUnmet _ st)).trans (adv_trialRest env _ start _ _ _ p h)
+        · injection h with h; subst h; exact adv_nextColumn env st
+      · exact adv_trialRest env _ start _ _ _ p h
+
+set_option linter.unusedVariables false in
+theorem adv_placeLines (env : Env) (k : Keep) (start : Bool) (st : St) (rows : List Line) (s : St)
+    (h : placeLines env k start st rows = .ok s) : Adv st s := by
+  match rows with
+  | [] => simp only [placeLines, Except.ok.injEq] at h; subst h; exact Adv.refl _
+  | r :: rs =>
+    rw [placeLines] at h
+    split at h
+    · cases h
+    · rename_i next relaxed e
+      have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))
+          (Nat.succ rs.length, keepRank relaxed, rank next) (Nat.succ rs.length, keepRank k, rank st) := by
+        apply Prod.Lex.right
+        cases I4_trial_moved env k start st _ next relaxed e with
+        | inl l => exact Prod.Lex.left _ _ l
+        | inr e => rw [e.1]; exact Prod.Lex.right _ e.2
+      exact (adv_trial env k start st _ _ e).trans (adv_placeLines env relaxed start next (r :: rs) s h)
+    · rename_i count next relaxed e
+      have a := adv_trial env k start st _ _ e
+      split at h
+      · injection h with h; subst h; exact a
+      · have dec : Prod.Lex (· < ·) (Prod.Lex (· < ·) (· < ·))
+            (Nat.succ rs.length - count, keepRank relaxed, rank (nextColumn env next))
+            (Nat.succ rs.length, keepRank k, rank st) := by
+          apply Prod.Lex.left
+          have := I4_trial_placed env k start st _ _ count next relaxed e
+          omega
+        exact (a.trans (adv_nextColumn env next)).trans
+          (adv_placeLines env relaxed false (nextColumn env next) ((r :: rs).drop count) s h)
+termination_by (rows.length, keepRank k, rank st)
+decreasing_by
+  all_goals simp_wf
+  all_goals assumption
+
+theorem adv_placeWithNext (inner : Inner) (env : Env) (k : Keep) (start : Bool) (st : St) (ls : List Line)
+    (l f : Nat) (later : List Flow) (s : St)
+    (h : placeWithNext inner env k start st ls l f later = .ok s) : Adv st s := by
+  unfold placeWithNext at h
+  split at h
+  · cases h
+  · rename_i full e
+    split at h
+    · injection h with h; subst h; exact adv_placeLines env k start st ls _ e
+    · split at h
+      · injection h with h; subst h; exact adv_placeLines env k start st ls _ e
+      · split at h
+        · cases h
+        · rename_i before e2
+          have m : Adv before (afterFront env before) := by
+            unfold afterFront; split
+            · exact Adv.refl _
+            · exact adv_nextColumn env _
+          exact ((adv_placeLines env k start st _ before e2).trans m).trans (adv_placeLines env k _ _ _ s h)
+
+theorem adv_beforeOf (env : Env) (st : St) (flow : Flow) (rest : List Flow) : Adv st (beforeOf env st flow rest) := by
+  unfold beforeOf
+  dsimp only
+  have a : Adv st (if st.blankActive = true ∧ occupies flow = true ∧ empty st = false ∧
+      room env st < min env.capacity (st.pending + env.firstNeed (decide (0 < st.notesUsed)) 1 (flow :: rest))
+      then nextColumn env st else st) := by
+    split
+    · exact adv_nextColumn env st
+    · exact Adv.refl st
+  split
+  · exact a
+  · exact a.trans (Adv.same rfl rfl rfl)
+
+/-- A paragraph or a no-break placed by `placeNext` keeps the pages closed
+    before the column of the cursor. -/
+theorem WO_placeNext (inner : Inner) (env : Env) (st : St) (flow : Flow) (rest : List Flow) (s : St)
+    (hf : (∃ k ls, flow = .paragraph k ls) ∨ flow = .noBreak) (h : placeNext inner env st flow rest = .ok s)
+    (hw : WO st) : WO s := by
+  unfold placeNext at h
+  split at h
+  · cases h
+  · rename_i p e
+    injection h with h; subst h
+    have hb := hw.adv (adv_beforeOf env st flow rest)
+    have hp : WO p := by
+      rcases hf with ⟨k, ls, rfl⟩ | rfl
+      · cases hk : keepAhead rest with
+        | none =>
+          simp only [placeBody, hk, placeFlow] at e
+          exact hb.adv (adv_placeLines _ _ _ _ _ _ e)
+        | some x =>
+          obtain ⟨l, f, later⟩ := x
+          simp only [placeBody, hk] at e
+          exact hb.adv (adv_placeWithNext _ _ _ _ _ _ _ _ _ _ e)
+      · simp only [placeBody, Except.ok.injEq] at e; subst e; exact WO_waitForPrior _ _ hb
+    split
+    · exact WO_checkWaits hp
+    · exact hp
+
+set_option linter.unusedVariables false in
+theorem adv_settle (env : Env) (ids : List Nat) (st : St) : Adv st (settle env ids st) := by
+  rw [settle]
+  split
+  · rename_i h
+    have dec := I4_settle_rank env st ⟨fun e => (by have := h.1; rw [e] at this; cases this), h.2⟩
+    exact (adv_nextColumn env st).trans (adv_settle env ids (nextColumn env st))
+  · exact Adv.refl st
+termination_by (waiting st, columnsLeft st)
+decreasing_by
+  all_goals simp_wf
+  all_goals assumption
+
+set_option linter.unusedVariables false in
+theorem adv_advanceUnit (env : Env) (u : PartUnit) (w : Nat × Nat) (st : St) : Adv st (advanceUnit env u w st) := by
+  rw [advanceUnit]
+  split
+  · rename_i h
+    have dec : Prod.Lex (· < ·) (· < ·) (2 * w.1 + 2 - (nextColumn env st).page, columnsLeft (nextColumn env st))
+        (2 * w.1 + 2 - st.page, columnsLeft st) := by
+      have b := unitKey_page u st.page st.column
+      rw [h] at b
+      cases nextColumn_moves env st with
+      | inl l => exact Prod.Lex.left _ _ (by omega)
+      | inr r => rw [r.1]; exact Prod.Lex.right _ r.2
+    exact (adv_nextColumn env st).trans (adv_advanceUnit env u w (nextColumn env st))
+  · exact Adv.refl st
+termination_by (2 * w.1 + 2 - st.page, columnsLeft st)
+decreasing_by
+  all_goals simp_wf
+  all_goals assumption
+
+theorem adv_nextUnit (env : Env) (u : PartUnit) (st : St) : Adv st (nextUnit env u st) :=
+  (adv_nextColumn env st).trans (adv_advanceUnit env u _ _)
+
+/-! ### `jobsFrom` with another `run`
+
+`jobsFrom` and `itemJobs` give the same result with another `run` that
+agrees with `run` on the cursors of an invariant every piece keeps. -/
+
+theorem itemJobs_congr (j : Jobs) (run' : Option Nat → Option Nat → Nat → St → Except Failure St) (I : St → Prop)
+    (hrun : ∀ prior done job c, I c → run' prior done job c = j.run prior done job c)
+    (Irun : ∀ prior done job c s, I c → j.run prior done job c = .ok s → I s) (key : Nat) :
+    ∀ (later : List Nat) (prior : Nat) (cursor : St), I cursor →
+    itemJobs { j with run := run' } key prior cursor later = itemJobs j key prior cursor later
+  | [], _, _, _ => rfl
+  | next :: more, prior, cursor, hc => by
+    simp only [itemJobs]
+    split
+    · rw [hrun _ _ _ _ hc]
+      cases hr : j.run (some prior) none next cursor with
+      | error x => rfl
+      | ok nc =>
+        simp only
+        rw [itemJobs_congr j run' I hrun Irun key more next nc (Irun _ _ _ _ _ hc hr)]
+    · rfl
+
+theorem itemJobs_inv (j : Jobs) (I : St → Prop)
+    (Irun : ∀ prior done job c s, I c → j.run prior done job c = .ok s → I s)
+    (Irest : ∀ key prior c s, I c → j.itemRest key prior c = .ok s → I s) (key : Nat) :
+    ∀ (later : List Nat) (prior : Nat) (cursor : St) r, I cursor → itemJobs j key prior cursor later = .ok r → I r.2
+  | [], prior, cursor, r, hc, h => by
+    unfold itemJobs itemEnd at h
+    split at h
+    · cases h
+    · rename_i final e; injection h with h; subst h; exact Irest _ _ _ _ hc e
+  | next :: more, prior, cursor, r, hc, h => by
+    unfold itemJobs at h
+    split at h
+    · split at h
+      · cases h
+      · rename_i nc e
+        split at h
+        · cases h
+        · rename_i last left hl placed e'
+          injection h with h; subst h
+          exact itemJobs_inv j I Irun Irest key more next nc _ (Irun _ _ _ _ _ hc e) e'
+    · unfold itemEnd at h
+      split at h
+      · cases h
+      · rename_i final e; injection h with h; subst h; exact Irest _ _ _ _ hc e
+
+/-- `jobsFrom` gives the same result with another `run` that agrees with
+    `run` on the cursors of an invariant every piece keeps. -/
+theorem jobsFrom_congr (j : Jobs) (run' : Option Nat → Option Nat → Nat → St → Except Failure St) (I : St → Prop)
+    (hrun : ∀ prior done job c, I c → run' prior done job c = j.run prior done job c)
+    (Irun : ∀ prior done job c s, I c → j.run prior done job c = .ok s → I s)
+    (Iout : ∀ prior done job c s, I c → j.outside prior done job c = .ok s → I s)
+    (Irest : ∀ key prior c s, I c → j.itemRest key prior c = .ok s → I s)
+    (hret : ∀ {α : Type} (trial trial' : St → Except Failure (α × St)) (at' : St), I at' →
+      (∀ s, I s → trial' s = trial s) → j.retain trial' at' = j.retain trial at')
+    (Iret : ∀ {α : Type} (trial : St → Except Failure (α × St)) (at' : St) (r : α × St), I at' →
+      (∀ s r, I s → trial s = .ok r → I r.2) → j.retain trial at' = .ok r → I r.2)
+    (prior done : Option Nat) (cursor : St) (jobs : List Nat) (hc : I cursor) :
+    jobsFrom { j with run := run' } prior done cursor jobs = jobsFrom j prior done cursor jobs := by
+  match jobs with
+  | [] => rfl
+  | job :: rest =>
+    conv => lhs; rw [jobsFrom]
+    conv => rhs; rw [jobsFrom]
+    dsimp only
+    split
+    · rename_i key _
+      cases ho : j.outside prior done job cursor with
+      | error x => rfl
+      | ok ready =>
+        simp only
+        have hr : I ready := Iout _ _ _ _ _ hc ho
+        have htr : ∀ s, I s → (match run' prior done job s with
+              | .error e => .error e
+              | .ok first => itemJobs { j with run := run' } key job first rest :
+                Except Failure ((Nat × {l : List Nat // l.length ≤ rest.length}) × St)) =
+            (match j.run prior done job s with
+              | .error e => .error e
+              | .ok first => itemJobs j key job first rest) := by
+          intro s hs
+          rw [hrun _ _ _ _ hs]
+          cases hs' : j.run prior done job s with
+          | error x => rfl
+          | ok first =>
+            exact itemJobs_congr j run' I hrun Irun key rest job first (Irun _ _ _ _ _ hs hs')
+        rw [hret _ _ ready hr htr]
+        cases ht : j.retain (fun at' => match j.run prior done job at' with
+            | .error e => .error e
+            | .ok first => itemJobs j key job first rest) ready with
+        | error x => rfl
+        | ok r =>
+          obtain ⟨⟨lastJob, ⟨left, hl⟩⟩, placedCursor⟩ := r
+          simp only
+          have hp : I placedCursor := Iret _ ready _ hr (fun s r hs e => by
+            split at e
+            · cases e
+            · rename_i first hf
+              exact itemJobs_inv j I Irun Irest key rest job first r (Irun _ _ _ _ _ hs hf) e) ht
+          exact jobsFrom_congr j run' I hrun Irun Iout Irest hret Iret _ _ placedCursor left hp
+    · rw [hrun _ _ _ _ hc]
+      cases hr : j.run prior done job cursor with
+      | error x => rfl
+      | ok placed =>
+        simp only
+        exact jobsFrom_congr j run' I hrun Irun Iout Irest hret Iret _ _ placed rest (Irun _ _ _ _ _ hc hr)
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  all_goals omega
+
 theorem splitAtBreak_le (k : Keep) (start : Bool) (total count : Nat) : splitAtBreak k start total count ≤ count := by
   unfold splitAtBreak
   split
@@ -6225,6 +7697,39 @@ theorem splitAtBreak_le (k : Keep) (start : Bool) (total count : Nat) : splitAtB
       by_cases h3 : total - count < k.last
       · rw [if_pos h3]; split <;> omega
       · rw [if_neg h3]; split <;> omega
+
+/-- A stanza of which `tryVerses` places fewer verse lines than its first
+    part, at a cursor that is not empty, puts none of its lines in that
+    column: `stanza` goes on from the next column. -/
+theorem I5_stanza_moves (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (later : List Nat) (keep : Keep)
+    (cursor : St) (indices : List Nat) (trials : List St) (hk : keep.all = false)
+    (ht : tryVerses env region b cursor indices = .ok trials) (hl : trials.length < firstPart keep true indices.length)
+    (he : empty cursor = false) (hn : indices ≠ []) :
+    stanza env region b a later keep true cursor indices =
+      stanza env region b a later keep true (moveCursor env region cursor) indices := by
+  cases indices with
+  | nil => exact absurd rfl hn
+  | cons firstIndex rest =>
+    have hle := tryVerses_length env region b cursor _ trials ht
+    generalize hL : (firstIndex :: rest).length = L at hl hle
+    have fp : firstPart keep true L ≤ L := by
+      unfold firstPart; rw [if_neg (by simp [hk])]
+      exact headD_filter_range_le _ _ _ _ (Nat.le_refl _) (by
+        simp only [decide_eq_true_eq, splitAtBreak, Nat.le_refl, if_true]
+        exact ⟨Nat.min_le_right _ _, trivial⟩)
+    have hlt : trials.length < L := by omega
+    have sel : splitAtBreak keep true L trials.length = 0 := by
+      cases e : splitAtBreak keep true L trials.length with
+      | zero => rfl
+      | succ q =>
+        have p := I5_splitAtBreak_firstPart keep L trials.length (by omega) (by rw [e]; omega)
+        have l := splitAtBreak_le keep true L trials.length
+        omega
+    have hL' : rest.length + 1 = L := hL
+    conv => lhs; rw [stanza]
+    rw [ht]
+    simp only [hL', hk, sel, he]
+    simp
 
 theorem limited_le (limit : Option Nat) (n : Nat) : limited limit n ≤ n := by
   unfold limited; split <;> omega
