@@ -1,6 +1,6 @@
 # ADR 0416: キャッシュを保存する組み立てを臨界経路から外し、golem-driver-test を分けて、プルリクエストの CI を縮める
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
