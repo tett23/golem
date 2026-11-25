@@ -1049,7 +1049,15 @@ gridLines = map (map fst . poSlots)
 
 ruledTests :: [TestTree]
 ruledTests =
-  [ testCase "keep-in-column = false at the start of columns that start mid-page: in the column, as keep-in-column = true (golem-driver ADR 0040)" $ do
+  [ testCase "golem-driver ADR 0035: a ruled paragraph longer than the empty column a column switch started down the page is broken there without rules" $ do
+      let ps = paginate 1 4 [FParagraph defaultKeep (lines' 0 2), FSwitchColumns (ColumnSet 2 0 0 0), FParagraph defaultKeep (lines' 10 2), ruled Nothing (Just (spaced 2 2)) (lines' 20 3), FParagraph defaultKeep (lines' 30 1)]
+      [(poNumber p, poColumn p, poSlots p, poRules p) | p <- ps]
+        @?= [ (1, 0, [(0, SLine 0), (1, SLine 1)], []),
+              (1, 0, [(2, SLine 10), (3, SLine 11)], []),
+              (1, 1, [(2, SLine 20), (3, SLine 21)], []),
+              (2, 0, [(0, SLine 22), (1, SLine 30)], [])
+            ],
+    testCase "keep-in-column = false at the start of columns that start mid-page: in the column, as keep-in-column = true (golem-driver ADR 0040)" $ do
       let outside = (spaced 5 10) {rsdOutside = Just (100 * 65536)}
           flows b = [FParagraph defaultKeep (lines' 0 2), FSwitchColumns (ColumnSet 2 0 0 0), ruled (Just b) Nothing (lines' 10 1)]
           inside = paginateIn 1 (ColumnSet 1 0 0 0) 10 (flows (spaced 5 10))
