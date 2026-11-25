@@ -145,6 +145,7 @@ module Golem.Project.Style
     fontFiles,
     FontFile (..),
     fontFilesWithLicenses,
+    fontLicenseKeyDiagnostics,
     pageSize,
   )
 where
@@ -4203,6 +4204,20 @@ fontFilesWithLicenses s =
   [ FontFile r k p l
   | (r, fr) <- Map.toAscList (stFonts s),
     (k, Just p, l) <- [("ja", frJa fr, frJaLicense fr), ("latin", frLatin fr, frLatinLicense fr)]
+  ]
+
+{- | G03282 (root ADRs 0433 and 0448): one for each @present@ font file
+whose role has no license document for its key, whether or not the
+outputs embed the fonts; the callers ask that. At the top of style.toml, a
+warning that the profile prod makes an error. The language server, which
+looks at no file, takes every font as present.
+-}
+fontLicenseKeyDiagnostics :: FileId -> Style -> (FilePath -> Bool) -> [Diagnostic]
+fontLicenseKeyDiagnostics fid style present =
+  [ diagnostic "G03282" Warning (mkSpan fid 0 0) ("フォントのライセンスの文書を指定していません: [fonts." <> ffRole f <> "] の " <> ffKey f <> "-license（" <> T.pack (ffPath f) <> "）")
+  | f <- fontFilesWithLicenses style,
+    present (ffPath f),
+    isNothing (ffLicense f)
   ]
 
 -- ------------------------------------------------------------------ the schema
