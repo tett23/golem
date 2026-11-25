@@ -5871,5 +5871,191 @@ theorem I3_ruledHere_rule_after (inner : Inner) (env : Env) (st : St) (r : Ruled
         exact c
   · exact Or.inr (atEdge e)
 
+/-! ## A ruled paragraph before a ruled heading in the free placement (PR #1148)
+
+Since PR #1148 a rule after waits to share its area only with a ruled
+paragraph (`joiningNext`); before a ruled heading the paragraph draws its
+own rule after (`endRule` of `ruledLinesPlan`, in the gap before the first
+line of the heading) and the heading draws its own rule before
+(`startRule` of `placeRuled`'s `RuledHeading`, at the edge of its area).
+Each lies in the column above the notes; the two may overlap
+(`ruledHeading_rules_overlap`). -/
+
+theorem half_nonneg (n : Int) (h : 0 ≤ n) : 0 ≤ half n := by
+  unfold half
+  match n, h with
+  | .ofNat 0, _ => decide
+  | .ofNat (k + 1), _ =>
+    show (0 : Int) ≤ Int.ofNat ((k + 1) / 2)
+    exact Int.ofNat_le.mpr (Nat.zero_le _)
+
+/-- The virtual pitch of the first line of a ruled heading
+    (`virtualPitch` of `beforeGeometry` in `placeRuled`'s `RuledHeading`). -/
+def headingFirstPitch (env : Env) (r : Ruled) (l : Line) : Int :=
+  match env.headingBounds (headId r.lines) with
+  | some (firstFaceAt, _) => 2 * firstFaceAt + env.faceOf l.id
+  | none => env.pitchOf l.id
+
+theorem headingBeforeExtra_eq (env : Env) (r : Ruled) (side : RuleSide) (l : Line)
+    (hb : r.before = some side) (hl : r.lines.head? = some l) :
+    headingBeforeExtra env r = ruleBeforeEdgeExtra (headingFirstPitch env r l) (env.faceOf l.id) side l.overhang := by
+  unfold headingBeforeExtra headingFirstPitch
+  rw [hb, hl]
+
+/-- The position of the rule before a ruled heading from the start of its
+    area (`snd (beforeGeometry side line)`, `ruleBeforeEdge` with the
+    virtual pitch).  `placeRuled` passes `side` itself only at the top of
+    an empty column, and otherwise `side` with no outside. -/
+def headingBeforePos (env : Env) (r : Ruled) (side : RuleSide) (l : Line) : Int :=
+  let pitch := headingFirstPitch env r l
+  let size := env.faceOf l.id
+  let leading := faceOffset pitch size
+  let exact := leading - l.overhang - side.inner - side.weight
+  let outside := if side.spaced then exact else min (-side.weight) exact
+  let extra := ruleBeforeExtra pitch size side.inner side.weight l.overhang
+  let rest := leading + extra - l.overhang - side.weight
+  let inside := if side.spaced then exact + extra else rest - half rest
+  match side.outside with
+  | some available => if outside + side.weight ≤ 0 ∧ -outside ≤ available then outside else inside
+  | none => inside
+
+/-- With no outside, the rule before a ruled heading starts at or after the
+    start of the heading's area and ends within the extra before the
+    heading and the leading of its first line. -/
+theorem headingBeforePos_bounds (env : Env) (r : Ruled) (side : RuleSide) (l : Line)
+    (hs : side.outside = none) (hi : 0 ≤ side.inner) :
+    0 ≤ headingBeforePos env r side l ∧
+    headingBeforePos env r side l + side.weight
+      ≤ ruleBeforeEdgeExtra (headingFirstPitch env r l) (env.faceOf l.id) side l.overhang
+        + faceOffset (headingFirstPitch env r l) (env.faceOf l.id) - l.overhang := by
+  simp only [headingBeforePos, ruleBeforeEdgeExtra, hs]
+  generalize headingFirstPitch env r l = p
+  generalize env.faceOf l.id = f
+  have hE : side.inner + side.weight + l.overhang - faceOffset p f ≤ ruleBeforeExtra p f side.inner side.weight l.overhang := by
+    unfold ruleBeforeExtra; exact Int.le_max_right _ _
+  split
+  · constructor <;> omega
+  · have r0 : 0 ≤ faceOffset p f + ruleBeforeExtra p f side.inner side.weight l.overhang - l.overhang - side.weight := by omega
+    have a := half_le _ r0
+    have b := half_nonneg _ r0
+    constructor <;> omega
+
+/-- `putRuledHeading` from a state whose room holds the extras and the
+    extent: the heading's area ends at the used length it leaves, and that
+    length and the notes lie within the column. -/
+theorem putRuledHeading_room (env : Env) (ready s : St) (before after : Int) (firstId : Nat) (extent : Int)
+    (ls : List Line) (hp : 0 < env.pagePitch) (hn : ∀ n ∈ notesOf ls, 0 < n.lines)
+    (hr : before + extent + after ≤ room env ready)
+    (h : putRuledHeading env ready before after firstId extent ls = .ok s) :
+    s.used = ready.used + before + extent + after ∧ s.used + s.notesUsed ≤ limit env s := by
+  unfold putRuledHeading at h
+  split at h
+  · cases h
+  · rename_i placed e
+    injection h with h; subst h
+    unfold putHeading at e
+    split at e
+    · cases e
+    · rename_i s1 e1
+      injection e with e; subst e
+      have pe : (headingEnv env firstId extent).pitchOf firstId = extent := by simp [headingEnv]
+      have := putLine_room false (headingEnv env firstId extent) _ s1 ⟨firstId, notesOf ls, 0⟩ hp hn
+        (by rw [pe]; simp only [room, limit, headingEnv] at hr ⊢; omega) e1
+      rw [pe] at this
+      simp only [limit, headingEnv] at this ⊢
+      constructor <;> omega
+
+/-- The rule before a ruled heading placed in a column (not at its top, so
+    with no outside) lies in the column above the notes: it starts at or
+    after the used length the heading starts from, and ends within the
+    heading's area, given that the leading of the first line of the
+    heading, less its overhang, lies within the extent. -/
+theorem headingAfterExtra_nonneg (env : Env) (r : Ruled) (extent : Int) : 0 ≤ headingAfterExtra env r extent := by
+  unfold headingAfterExtra
+  split
+  · simp only [ruleAfterEdgeExtra, ruleAfterExtra]
+    exact Int.le_max_left _ _
+  · exact Int.le_refl 0
+
+theorem I3_ruledHeading_rule_before (env : Env) (r : Ruled) (side : RuleSide) (l : Line) (ready s : St)
+    (extent : Int) (hb : r.before = some side) (hl : r.lines.head? = some l)
+    (hs : side.outside = none) (hi : 0 ≤ side.inner) (hp : 0 < env.pagePitch)
+    (hn : ∀ n ∈ notesOf r.lines, 0 < n.lines)
+    (he : faceOffset (headingFirstPitch env r l) (env.faceOf l.id) - l.overhang ≤ extent)
+    (hr : headingBeforeExtra env r + extent + headingAfterExtra env r extent ≤ room env ready)
+    (h : putRuledHeading env ready (headingBeforeExtra env r) (headingAfterExtra env r extent) (headId r.lines)
+      extent r.lines = .ok s) :
+    ready.used ≤ ready.used + headingBeforePos env r side l ∧
+    ready.used + headingBeforePos env r side l + side.weight ≤ limit env s - s.notesUsed := by
+  have bounds := headingBeforePos_bounds env r side l hs hi
+  have ha := headingAfterExtra_nonneg env r extent
+  have room' := putRuledHeading_room env ready s _ _ _ extent r.lines hp hn hr h
+  rw [headingBeforeExtra_eq env r side l hb hl] at room'
+  constructor <;> omega
+
+/-- A ruled paragraph `ruledHere` places before a ruled heading: its rule
+    after does not wait (a ruled heading shares no area), and it ends
+    within the column above the notes. -/
+theorem I3_ruledHere_heading_rule_after (inner : Inner) (env : Env) (st : St) (r h : Ruled) (rest : List Flow)
+    (p : St) (side : RuleSide) (lastLine : Line) (hh : h.heading.isSome = true)
+    (ha : r.after = some side) (hl : r.lines.getLast? = some lastLine)
+    (hi : 0 ≤ side.inner) (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
+    (e : ruledHere inner env st r (.ruled h :: rest) = .ok (some p)) :
+    ∃ l', ruledLinesHere env st r l' = .ok (some p)
+      ∧ p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
+          + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed := by
+  rcases I3_ruledHere_rule_after inner env st r _ p side lastLine ha hl hi hp hn e with ⟨_, j⟩ | ⟨l', e', _, b⟩
+  · have : joiningNext (.ruled h :: rest) = false := by
+      simp only [joiningNext]
+      cases c : h.heading with
+      | none => rw [c] at hh; cases hh
+      | some _ => simp
+    rw [this] at j; cases j
+  · exact ⟨l', e', b⟩
+
+/-- The column of `ruledHeading_rules_overlap`: lines of pitch 20 sp and
+    face 10 sp, no heading bounds. -/
+def overlapEnv : Env :=
+  { pagePitch := 20, fontSize := 10, capacity := 200, maxCapacity := 220, separator := 0, columns := 1,
+    firstLine := 0, pitchOf := fun _ => 20, faceOf := fun _ => 10, headingBounds := fun _ => none,
+    wrappedBefore := fun _ => 0, boxPadding := fun _ => none, firstNeed := fun _ _ _ => 0,
+    retention := none, held := fun _ => false }
+
+/-- A centred rule of 4 sp with no spaces. -/
+def overlapSide : RuleSide := ⟨0, 0, 4, false, none⟩
+def overlapLine : Line := ⟨10, [], 0⟩
+def overlapHeadingLine : Line := ⟨20, [], 0⟩
+/-- The ruled paragraph of one line with a rule after. -/
+def overlapParagraph : Ruled := ⟨1, none, some overlapSide, false, 0, defaultKeep, [overlapLine], none⟩
+/-- The ruled heading of extent 20 sp with a rule before. -/
+def overlapHeading : Ruled := ⟨2, some overlapSide, none, false, 0, defaultKeep, [overlapHeadingLine], some (false, 20)⟩
+
+/-- The two rules overlap: the paragraph's line is placed at 0, so its rule
+    after (in the gap before the heading's first line, with no extra) runs
+    from 18 to 22 sp; the heading starts at 20 sp with no extra before it,
+    and its rule before runs from 21 to 25 sp.  golem-layout's
+    paginatePhysical places the two rules at 18 and 21 sp on this input
+    (README.md). -/
+theorem ruledHeading_rules_overlap :
+    ruledAfterExtra overlapEnv overlapParagraph overlapLine [.ruled overlapHeading] = 0 ∧
+    headingBeforeExtra overlapEnv overlapHeading = 0 ∧
+    ruleAfterPos overlapEnv overlapParagraph overlapLine [.ruled overlapHeading] overlapSide = 18 ∧
+    overlapEnv.pitchOf overlapLine.id + headingBeforePos overlapEnv overlapHeading overlapSide overlapHeadingLine = 21 ∧
+    (21 : Int) < 18 + overlapSide.weight := by
+  decide
+
+/-- With an outside (keep-in-column = false) the extra before a ruled
+    heading is counted as if the rule were drawn outside the column, but
+    in a column that is not empty `placeRuled` draws it inside, from the
+    start of the heading's area: the rule of 12 sp then ends 12 sp after
+    that start, past the start of the heading's face 5 sp after it, with
+    no extra before the heading.  golem-layout draws it at 20 sp over the
+    heading's face from 25 sp on the input of README.md. -/
+theorem ruledHeading_outside_rule_over_face :
+    headingBeforeExtra overlapEnv { overlapHeading with before := some ⟨0, 0, 12, false, some 20⟩ } = 0 ∧
+    headingBeforePos overlapEnv { overlapHeading with before := some ⟨0, 0, 12, false, some 20⟩ }
+      ⟨0, 0, 12, false, none⟩ overlapHeadingLine + 12 = 12 ∧
+    faceOffset (overlapEnv.pitchOf overlapHeadingLine.id) (overlapEnv.faceOf overlapHeadingLine.id) = 5 := by
+  decide
 
 end PhysicalPagination
