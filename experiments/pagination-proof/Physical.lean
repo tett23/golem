@@ -2975,6 +2975,340 @@ decreasing_by
   · apply Prod.Lex.left; have a := h4.1; have b := h4.2; omega
   · apply Prod.Lex.left; have a := h4.1; have b := h4.2; omega
 
+/-! ## The loops of `causalFreeFlow` beside a wrapped figure -/
+
+/-- What `causalFreeFlow` reads from the composition and from what follows
+    a stanza, given as arguments as `parts` takes its breaker.
+    `compose at i` stands for `composeAt` from the item 0 and
+    `numberedLines`: the rows of the paragraph or verse line `i` composed
+    at the cursor `at`.  `binding i` is `bindingAfter` of `i` (`lastWanted`
+    and `wanted`), `keepOf i` the keep of `i`, `holds i` whether `i` keeps
+    with what follows (`snd (paraStartAndKeep unit) > 0`), `hold i` its
+    `keepPhysicalNext`, and `ident i` its first line.  `sameVerse i j`
+    is whether `j` is a verse line of the stanza of `i`, and `isStanza i`
+    whether `i` is a verse line. -/
+structure Beside where
+  compose : St → Nat → List Line
+  binding : Nat → Nat × Nat
+  keepOf : Nat → Keep
+  holds : Nat → Bool
+  hold : Nat → Nat → Bool → St → St
+  ident : Nat → Nat
+  isStanza : Nat → Bool
+  sameVerse : Nat → Nat → Bool
+
+/-- `tryVerses` of `causalFreeFlow`: each verse line composed at the cursor
+    the verse lines before it leave, while it is placed whole in the
+    column of the cursor.  It recurses on the verse lines. -/
+def tryVerses (env : Env) (region : Region) (b : Beside) (cursor : St) : List Nat → Except Failure (List St)
+  | [] => .ok []
+  | index :: later =>
+    match trialWrap env region none ⟨1, 1, false⟩ true cursor (b.compose cursor index) with
+    | .error e => .error e
+    | .ok (.placed count placed _) =>
+      if count = (b.compose cursor index).length ∧ placed.page = cursor.page ∧ placed.column = cursor.column then
+        match tryVerses env region b placed later with
+        | .error e => .error e
+        | .ok rest => .ok (placed :: rest)
+      else .ok []
+    | .ok (.moved _ _) => .ok []
+
+theorem tryVerses_length (env : Env) (region : Region) (b : Beside) (cursor : St) (indices : List Nat)
+    (trials : List St) (h : tryVerses env region b cursor indices = .ok trials) : trials.length ≤ indices.length := by
+  induction indices generalizing cursor trials with
+  | nil => simp [tryVerses] at h; subst h; simp
+  | cons index later ih =>
+    unfold tryVerses at h
+    split at h
+    · cases h
+    · split at h
+      · split at h
+        · cases h
+        · rename_i rest e
+          injection h with h; subst h
+          have := ih _ _ e
+          simp only [List.length_cons]; omega
+      · injection h with h; subst h; simp
+    · injection h with h; subst h; simp
+
+/-- The verse lines of a stanza from its first verse line `i`: `span
+    sameVerse (i : more)`, where `i` is a verse line of its own stanza. -/
+def verseSpan (b : Beside) (i : Nat) (more : List Nat) : List Nat × List Nat :=
+  (i :: more.takeWhile (b.sameVerse i), more.dropWhile (b.sameVerse i))
+
+theorem verseSpan_after (b : Beside) (i : Nat) (more : List Nat) : (verseSpan b i more).2.length ≤ more.length := by
+  unfold verseSpan
+  induction more with
+  | nil => simp
+  | cons x xs ih =>
+    simp only [List.dropWhile_cons]
+    split
+    · simp only [List.length_cons] at ih ⊢; omega
+    · simp
+
+/-- What the probe of `causalFreeFlow` reads besides `Beside`: `prefix i j
+    at` stands for `stepPhysicalCursor` of the controls between `i` and `j`
+    and the start break of `j`; `following at wanted` for the result of
+    `probeNext` after the last paragraph beside the figure
+    (`physicalFollowingRows` and `fitsPhysicalFollowing` on the cursor
+    `endPhysicalWrap` leaves); `required wanted keep rows` for
+    `fst (physicalFollowingRows wanted [FParagraph keep rows])`; and
+    `verseRequired verses trials n` for the rows of the first `n` verse
+    lines as the trials composed them. -/
+structure Probe where
+  prefixAt : Nat → Nat → St → Except Failure St
+  following : St → Nat → Nat × Bool × Bool
+  required : Nat → Keep → List Line → Nat
+  verseRequired : List Nat → List St → Nat → Nat
+
+/- `probeNext` and `probeChain` of `causalFreeFlow`: whether what follows a
+   paragraph beside a wrapped figure fits after it.  `probeNext` passes
+   `probeChain` fewer flows than it takes: the paragraph or the stanza it
+   tries comes off the front.  `probeChain` passes `probeNext` the same
+   flows, so the two stop by the number of flows and then the function. -/
+mutual
+def probeNext (env : Env) (region : Region) (b : Beside) (p : Probe) (index : Nat) (later : List Nat) (cursor : St)
+    (wanted : Nat) : Except Failure (Nat × Bool × Bool) :=
+  match later with
+  | [] => .ok (p.following (endWrap region cursor) wanted)
+  | nextIndex :: more =>
+    match p.prefixAt index nextIndex cursor with
+    | .error e => .error e
+    | .ok ready =>
+      let same := fun (a c : St) => a.page = c.page ∧ a.column = c.column
+      if b.isStanza nextIndex then
+        let verses := (verseSpan b nextIndex more).1
+        let afterVerses := (verseSpan b nextIndex more).2
+        let wantedVerses := max (firstPart (b.keepOf nextIndex) true verses.length) (min wanted verses.length)
+        match tryVerses env region b ready verses with
+        | .error e => .error e
+        | .ok trials =>
+          let required := p.verseRequired verses trials wantedVerses
+          let prefixFits := decide (same cursor ready) && decide (wantedVerses ≤ trials.length)
+          let chain : Except Failure Bool :=
+            if prefixFits && decide (wantedVerses = verses.length) then
+              match trials.getLast? with
+              | some placed => probeChain env region b p (verses.getLast?.getD nextIndex) afterVerses placed
+              | none => .ok true
+            else .ok true
+          match chain with
+          | .error e => .error e
+          | .ok chainFits => .ok (required, true, prefixFits && chainFits)
+      else
+        let rows := b.compose ready nextIndex
+        let keep := b.keepOf nextIndex
+        let required := p.required wanted keep rows
+        match trialWrap env region none { keep with first := max keep.first required } true ready rows with
+        | .error e => .error e
+        | .ok (.moved _ _) => .ok (required, true, false)
+        | .ok (.placed count placed _) =>
+          let prefixFits := decide (same cursor ready) && decide (same ready placed) && decide (required ≤ count)
+          let chain : Except Failure Bool :=
+            if prefixFits && decide (count = rows.length) then probeChain env region b p nextIndex more placed
+            else .ok true
+          match chain with
+          | .error e => .error e
+          | .ok chainFits => .ok (required, true, prefixFits && chainFits)
+termination_by (later.length, 0)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.left; have := verseSpan_after b index later; omega
+  · apply Prod.Lex.left; omega
+
+def probeChain (env : Env) (region : Region) (b : Beside) (p : Probe) (index : Nat) (later : List Nat) (cursor : St) :
+    Except Failure Bool :=
+  if 0 < (b.binding index).2 ∨ 0 < (b.binding index).1 then
+    match probeNext env region b p index later cursor (b.binding index).2 with
+    | .error e => .error e
+    | .ok r => .ok r.2.2
+  else .ok true
+termination_by (later.length, 1)
+decreasing_by
+  all_goals simp_wf
+  apply Prod.Lex.right; omega
+end
+
+/-- What `stanza` reads besides `Beside`: `follows i later at wanted`
+    stands for `probeNext` after the last verse line `i`, and `fallback i
+    later at` for `paragraph` (the loop `parts`) placing the verse line
+    `i` by its display rows. -/
+structure StanzaArgs where
+  follows : Nat → List Nat → St → Nat → Except Failure (Nat × Bool × Bool)
+  fallback : Nat → List Nat → St → Except Failure St
+
+/- `stanza` of `causalFreeFlow` and its `accept`.  `stanza` takes the verse
+   lines of a stanza still to place; `accept count` places the first
+   `count` verse lines that `tryVerses` placed whole.  Every call of
+   `stanza` from `stanza` or `accept` places a verse line or more
+   (`accept` with `count` at least 1, and the fallback of one verse line
+   that an empty column cannot hold), clears keep-all-lines, or moves a
+   cursor that is not empty to the next column (`I4_moveCursor_rank`);
+   `accept` calls itself with a smaller count.  So the two stop by the
+   number of the verse lines, `keepRank`, `rank`, the function, and the
+   count.  A count of 0, or one beyond the trials, which golem-typeset
+   would read with `!!` and fail on, returns `noProgress`; `count` is 1 or
+   more and at most the trials (`splitAtBreak` returns at most the count
+   it takes). -/
+set_option linter.unusedVariables false in
+mutual
+def stanza (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (later : List Nat) (keep : Keep)
+    (isStart : Bool) (cursor : St) (indices : List Nat) : Except Failure St :=
+  match indices with
+  | [] => .ok (checkWaits cursor)
+  | firstIndex :: rest =>
+    match tryVerses env region b cursor (firstIndex :: rest) with
+    | .error e => .error e
+    | .ok trials =>
+      let whole := trials.length
+      let total := rest.length + 1
+      let selected := splitAtBreak keep isStart total whole
+      if keep.all ∧ isStart ∧ whole < total then
+        if empty cursor then
+          stanza env region b a later { keep with all := false } isStart
+            (addUnmet (.splitKept (b.ident firstIndex)) cursor) (firstIndex :: rest)
+        else if h : empty cursor = false then
+          stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest)
+        else .ok cursor
+      else if 0 < selected then
+        accept env region b a later keep isStart cursor (firstIndex :: rest) trials selected []
+      else if h : empty cursor = false then
+        stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest)
+      else if 0 < whole then
+        accept env region b a later keep isStart cursor (firstIndex :: rest) trials whole
+          ((if isStart ∧ whole < keep.first then [Unmet.shortPart true (b.ident firstIndex) keep.first whole] else []) ++
+            (if total - whole < keep.last then [Unmet.shortPart false (b.ident firstIndex) keep.last (total - whole)] else []))
+      else
+        match a.fallback firstIndex (rest ++ later) cursor with
+        | .error e => .error e
+        | .ok next => stanza env region b a later keep false next rest
+termination_by (indices.length, keepRank keep, rank cursor, 1, 0)
+decreasing_by
+  all_goals simp_wf
+  · rename_i c _; apply Prod.Lex.right; apply Prod.Lex.left; simp [keepRank, c.1]
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+    exact I4_moveCursor_rank env region cursor (Or.inl h)
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; omega
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+    exact I4_moveCursor_rank env region cursor (Or.inl h)
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left; omega
+  · apply Prod.Lex.left; omega
+
+def accept (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (later : List Nat) (keep : Keep)
+    (isStart : Bool) (cursor : St) (indices : List Nat) (trials : List St) (count : Nat) (problems : List Unmet) :
+    Except Failure St :=
+  if h0 : count = 0 then .error (.noProgress (b.ident (indices.headD 0)))
+  else
+    match trials[count - 1]? with
+    | none => .error (.noProgress (b.ident (indices.headD 0)))
+    | some placed =>
+      let warned := { placed with unmet := placed.unmet ++ problems }
+      if hr : (indices.drop count).isEmpty then
+        let settled := checkWaits warned
+        let lastIndex := indices.getLast?.getD 0
+        let lastWanted := (b.binding lastIndex).1
+        let wanted := (b.binding lastIndex).2
+        let probed : Except Failure (Nat × Bool × Bool) :=
+          if 0 < wanted ∨ 0 < lastWanted then a.follows lastIndex later settled wanted else .ok (0, true, true)
+        match probed with
+        | .error e => .error e
+        | .ok (required, linesOnly, fits) =>
+          let held := if b.holds lastIndex then b.hold lastIndex required linesOnly settled else settled
+          let front := count - max lastWanted (max 1 keep.last)
+          if fits then .ok held
+          else if (if isStart then max 1 keep.first else 1) ≤ front ∧ keep.all = false then
+            accept env region b a later keep isStart cursor indices trials front []
+          else if h : empty cursor = false then
+            stanza env region b a later keep isStart (moveCursor env region cursor) indices
+          else .ok held
+      else
+        stanza env region b a later keep false (moveCursor env region warned) (indices.drop count)
+termination_by (indices.length, keepRank keep, rank cursor, 0, count)
+decreasing_by
+  all_goals simp_wf
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.right; omega
+  · apply Prod.Lex.right; apply Prod.Lex.right; apply Prod.Lex.left
+    exact I4_moveCursor_rank env region cursor (Or.inl h)
+  · apply Prod.Lex.left
+    have : indices.length ≠ 0 := by
+      intro e; rw [List.length_eq_zero.mp e] at hr; simp [List.isEmpty] at hr
+    omega
+end
+
+/-- What the loop over the wrapped figures of `causalFreeFlow` reads, given
+    as arguments.  `itemOf job` is the outermost list item of the figure
+    `job` when page or spread retention is on (`[key | retaining, …]`).
+    `outside prior done job at` stands for `stepPhysicalCursor` of the
+    flows before the item, `run prior done job at` for `runJob` of `job`
+    after the flows before it (the paragraphs beside it go through
+    `paragraphs`, `parts` and `stanza`), `itemRest key prior at` for
+    `stepPhysicalCursor` of the rest of the item, `finish prior done at`
+    for the flows after the last figure and `finishPhysicalCursor`, and
+    `retain` for `retainPhysicalPart`, which may run its trial at several
+    cursors. -/
+structure Jobs where
+  itemOf : Nat → Option Nat
+  outside : Option Nat → Option Nat → Nat → St → Except Failure St
+  run : Option Nat → Option Nat → Nat → St → Except Failure St
+  itemRest : Nat → Nat → St → Except Failure St
+  finish : Option Nat → Option Nat → St → Except Failure St
+  retain : {α : Type} → (St → Except Failure (α × St)) → St → Except Failure (α × St)
+
+/-- The end of `itemJobs`: the rest of the item after the figure `prior`,
+    with the figures `later` left. -/
+def itemEnd (j : Jobs) (key prior : Nat) (cursor : St) (later : List Nat) :
+    Except Failure ((Nat × {l : List Nat // l.length ≤ later.length}) × St) :=
+  match j.itemRest key prior cursor with
+  | .error e => .error e
+  | .ok final => .ok ((prior, ⟨later, Nat.le_refl _⟩), final)
+
+/-- `itemJobs` of `causalFreeFlow`: the later figures of the same list
+    item, then the rest of the item.  It returns the last figure placed,
+    the figures it left, which are no more than it took, and the cursor.
+    It recurses on the figures. -/
+def itemJobs (j : Jobs) (key prior : Nat) (cursor : St) :
+    (later : List Nat) → Except Failure ((Nat × {l : List Nat // l.length ≤ later.length}) × St)
+  | next :: more =>
+    if j.itemOf next = some key then
+      match j.run (some prior) none next cursor with
+      | .error e => .error e
+      | .ok nextCursor =>
+        match itemJobs j key next nextCursor more with
+        | .error e => .error e
+        | .ok ((last, ⟨left, hl⟩), placed) =>
+          .ok ((last, ⟨left, by simp only [List.length_cons]; omega⟩), placed)
+    else itemEnd j key prior cursor (next :: more)
+  | [] => itemEnd j key prior cursor []
+
+set_option linter.unusedVariables false in
+/-- `jobsFrom` of `causalFreeFlow`: each wrapped figure with the paragraphs
+    beside it, a figure in a list item with the later figures of its item.
+    Each call places one figure or more and goes on with the figures
+    `itemJobs` left, so it stops by the number of figures. -/
+def jobsFrom (j : Jobs) (prior done : Option Nat) (cursor : St) (jobs : List Nat) : Except Failure St :=
+  match jobs with
+  | [] => j.finish prior done cursor
+  | job :: rest =>
+    match j.itemOf job with
+    | some key =>
+      match j.outside prior done job cursor with
+      | .error e => .error e
+      | .ok ready =>
+        let trial : St → Except Failure ((Nat × {l : List Nat // l.length ≤ rest.length}) × St) := fun at' =>
+          match j.run prior done job at' with
+          | .error e => .error e
+          | .ok first => itemJobs j key job first rest
+        match j.retain trial ready with
+        | .error e => .error e
+        | .ok ((lastJob, ⟨left, hl⟩), placedCursor) => jobsFrom j (some lastJob) (some key) placedCursor left
+    | none =>
+      match j.run prior done job cursor with
+      | .error e => .error e
+      | .ok placed => jobsFrom j (some job) none placed rest
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  all_goals omega
+
 /-! ## Tables -/
 
 /-- The header lines repeated in a later column, without their notes. -/

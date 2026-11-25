@@ -991,6 +991,16 @@ golem-typeset が `physicalPitches` に送りを与えるのは段落の単位�
 `parts` は、原稿の残りの項目の数、`keep-all-lines` の有無、`rank`、行数の上限の辞書式順序で止まる。
 段を進めると `rank` が減り（`I4_trialWrap_moved` と `I4_moveCursor_rank`）、試し直すと上限が減り、続けると残りの項目が減る。
 
+回り込み図版の横のほかのループも、`parts` と同じく、組んだ行と後続の判定を引数（`Beside`、`Probe`、`StanzaArgs`、`Jobs`）に取って写し、明示した尺度で止まることを証明した。
+詩の行を一つずつ試すループ（`tryVerses`）は、詩の行の列で構造的に止まる。
+後続を試すループ（`probeNext` と `probeChain`）は、相互再帰で定義し、残りの段落の数と関数（`probeChain` が 1、`probeNext` が 0）の辞書式順序で止まる。
+`probeNext` は、試す段落か連（`verseSpan`）を先頭から外した残りを `probeChain` に渡し、`probeChain` は同じ残りを `probeNext` に渡すからである。
+連を置くループ（`stanza` とその `accept`）も相互再帰で定義し、残りの詩の行の数、`keepRank`、`rank`、関数（`stanza` が 1、`accept` が 0）、`accept` の行数の辞書式順序で止まる。
+`stanza` を呼び直すのは、1 行以上を置いたとき、空の段に収まらない詩の行を表示の行で置いたとき、`keep-all-lines` を外したとき、空でない段から次の段へ進んだとき（`I4_moveCursor_rank`）だけであり、`accept` は行数を減らして自身を呼ぶ。
+golem-typeset が `trials !! (count - 1)` で読む行数は 1 以上で試しの数以下なので（`splitAtBreak` は受け取った数を越えない）、その外の行数では `noProgress` を返す。
+図版ごとの仕事を進めるループ（`jobsFrom`）は、図版の数で止まる。
+リスト項目の中の図版では、`itemJobs` が返す残りの図版の数が受け取った数を越えないことを型（部分型）で持たせたので、`retainPhysicalPart` が試しを何度呼んでも、`jobsFrom` に戻る図版は減る。
+
 `fitsFollowing` は罫線つきのブロックを試しに置き、見出しの罫線つきのブロックは `keepFollowing` を通して `fitsFollowing` を呼ぶので、`fitsFollowingGo` と `placeRuled` は相互再帰で定義した。
 尺度は三つ組の辞書式順序である。
 `fitsFollowingGo` の尺度は、読む後続のフローの数、5、0 の組である。
@@ -1141,6 +1151,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `Paginate/Physical.hs:581` `trialParagraphPartLimit` | `trial`、`trialFrom`、`trialRest`、`checkRows`、`Part`、`trialWrap`、`trialWrapFrom`、`trialWrapRest`、`fittingHere`、`fittingWrapGo`、`putHere`、`putHereLines`、`limited` |
 | `Paginate/Physical.hs:192` `PhysicalWrap`、`:222` `activeWrapEnd`、`:227` `endPhysicalWrap`、`:230` `movePhysicalCursor`、`:255` `beginPhysicalWrap` | `Region`、`wrapEnd`、`endWrap`、`moveCursor`、`beginWrap` |
 | `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4512` `paragraph`（`parts`） | `parts`、`nextItem`、`minimumFront`、`limitRank` |
+| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4451` `tryVerses`、`:4464` `stanza` | `Beside`、`tryVerses`、`StanzaArgs`、`stanza`、`accept` |
+| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4399` `probeNext`、`:4442` `probeChain` | `Probe`、`verseSpan`、`probeNext`、`probeChain` |
+| `modules/golem-typeset/src/Golem/Typeset/Flow.hs:4307` `jobsFrom`、`:4331` `itemJobs` | `Jobs`、`jobsFrom`、`itemJobs`、`itemEnd` |
 | `Paginate/Physical.hs:628` `placeLines` | `placeLines` |
 | `Paginate/Physical.hs:641` `checkPhysicalNotes`、`:649` `paginatePhysical` | `checkNotes`、`paginate` |
 | `Paginate/Physical.hs:663` `drainCarry` | `drainCarry`、`drainOk` |
@@ -1277,7 +1290,9 @@ pass 4 が常に成功し、`captionCompared` が `none` を返さないこと�
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
 回り込み図版の横の段落を改行し直すループ（`parts`）は写したが、改行器と後続の判定を引数とし、golem-typeset の出力とは照合していない。
-golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、まだ写していない。
+golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることだけを証明した。
+これらは golem-typeset の出力とは照合しておらず、行の過不足と順序もまだ証明していない。
+段落を順に置くループ（`paragraphs`）は、まだ写していない。
 
 置いた罫線の位置は、格子の上で `WholeRules.lean` が扱う（不変条件 3）。
 `Whole.lean` の `St` と `PageOut` は、golem-layout の `sRules` と `poRules` を写した `rules` を持つ。
