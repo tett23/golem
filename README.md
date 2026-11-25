@@ -858,6 +858,8 @@ x86-64 では、さらに次のことを行う。
 - EPUB が epubcheck を通ることを確かめる。
 - 組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる。
 - 見た目の回帰テストの 23 の PDF を `scripts/visual/build.sh` で組んで成果物 `visual-pdfs` として上げる（[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)）。
+- `outputs` が、すべてのパッケージのソースの tarball を `cabal sdist all` で作る。
+  `.cabal` の `extra-source-files`、`extra-doc-files`、`data-files` のワイルドカードがチェックアウトのファイルに一つも当たらなければ、`cabal install` と同じく失敗する（[docs/adr/0452](./docs/adr/0452-check-the-file-lists-of-the-packages-with-cabal-sdist-in-ci.md)）。
 - 実行の環境を変えても出力が変わらないことを `scripts/env-determinism/check.sh` で確かめる。
   プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。
 

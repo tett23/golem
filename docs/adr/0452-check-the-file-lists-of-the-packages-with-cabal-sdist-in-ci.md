@@ -1,6 +1,6 @@
 # ADR 0452: パッケージのファイルの一覧を CI の `cabal sdist all` で確かめる
 
-Status: proposed
+Status: accepted
 
 ## 文脈
 
