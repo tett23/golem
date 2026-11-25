@@ -792,7 +792,7 @@ golem-typeset は、行、図版、コードの行の id を一つの番号（`n
 区切りの行、1 行の段落、3 行の段落の最初の 2 行は合わせて 4 行で、空の段に収まる。
 PR #1132 は、区切りの `keptNeed` に `@no-page-break` が保つ後の最初の部分を足し、保持の後のブロックを保持の段から送らないようにした。
 その後は、golem-typeset と Lean の両方が、区切りの行と 1 行の段落を 2 ページ目に置き、3 行の段落を 3 ページ目に置いて、満たせなかった `@no-page-break` を付けたページを返す。
-この原稿は、「未完の項目」の節で述べる照合の組 `holds`（`SeparatorBoundary.hs` の `holdInputs`）に含まれる。
+この原稿は、「実装との照合と全体の証明」の節で述べる照合の組 `holds`（`SeparatorBoundary.hs` の `holdInputs`）に含まれる。
 容量 3 行の段で `---` と 3 行の段落を並べた原稿も、照合の組には含まれないが、両方が G07134 を返す。
 3 行の段落は、最初と最後の 2 行を同じ段に置く規則（`keep-first-lines` と `keep-last-lines` の既定値）で分けられず、全体で一つの段に置かれる。
 区切りの行と段落の最初の 1 行だけなら空の段に収まるが、分け方の規則を守ると区切りの行と合わせて 4 行になり、収まらない。
@@ -1119,8 +1119,7 @@ PR #1151 と #1152 を写した後に、見出しの罫線の置き方を変え�
 `moveCursor` が使用長を図版の終わりまで広げる処理は、閉じた段の使用長が出力に現れないからである。
 `fittingHere` が待っているスペースを足す処理は、`beginWrap` の `fit` が待っているスペースを使用長に移した後に試すからである。
 図版の横の行を `putWrappedLine` でなく `putLine` で置いても出力が変わらないのは、`fittingHere` が図版の終わりの下に脚注が収まる行だけを選ぶので、予約しても表示する脚注の行が変わらないためと考えられるが、未確認である。
-`parts` の照合はしていない。
-golem-typeset の改行器と `probeNext` を入力から作るには、組版の全体を動かす必要があるからである。
+`parts` は、この入力では照合せず、「実装との照合と全体の証明」の節で述べる `CausalBoundary.hs` の原稿で golem-typeset と照合する。
 見出しでは、`headingOnly` を常に偽にすると 1444 個、`TallHeadingExtent` の分岐を除くと 29 個、`headingNeed` が脚注の全体を常に求めると 23 個、`headingNeed` から脚注の区切りを除くと 2 個、`putHeading` が見出しの長さを行の送りにしないと 3414 個である。
 `keepFollowing` では、次の段へ送らないと 1292 個、仮の配置に脚注の長さを足さないと 8 個、待っているスペースを足さないと 30 個、後続の保持の行数を 1 行にすると 18 個、定義の項の長さを 0 にすると 324 個、定義の項の仮のスロットを見出しにすると 6 個である。
 回した図版では、段の終わりでページを開くときに `placeTurned` を呼ばないと、回した図版を一度も置かないと、どちらも評価が 300 秒で終わらなかった。
@@ -1192,7 +1191,10 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 | `FreeGeometry.hs:68` `ruleBeforeGap`、`:76` `ruleAfterGap`、`:83` `rulesSharedGap` | `ruleGapExtra`、`rulesSharedExtra` |
 | `FreeGeometry.hs:97` `ruleBeforeEdge`、`:109` `ruleAfterEdge` | `ruleBeforeEdgeExtra`、`ruleAfterEdgeExtra` |
 
-## 未完の項目
+## 実装との照合と全体の証明
+
+[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の完了の判定のうち、一般化できる性質の証明と実装との境界例の照合について、この節は済ませたことを述べる。
+まだ済んでいないことは「未完の項目」の節に挙げる。
 
 格子モードの改ページ全体は `Whole.lean` が扱う。
 格子モードのすべてのフローについて、改ページ全体の終了と、段落、詩の行、回り込み図版の横の行、定義の項、表の行、見出し、コードの行、罫線つきのブロックの行の過不足と順序を証明した。
@@ -1200,9 +1202,9 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 図版の高さの前提は、[root ADR 0440](https://github.com/tett23/golem/blob/0c204cb98782e325a9e04357176962419310d182/docs/adr/0440-reject-figures-of-zero-extent-across-the-lines.md) の後は golem-typeset が受け持つ。
 行の方向の長さが 0 sp の図版は G07135 になり、行のない図版とともにページに置かれない（`Flow.hs` の `numberFigure`）。
 `Whole.lean` の `admitFigures` はこの除外を写し、`I5_paginate_figures_admitted` は、除外を通したフローについて、図版の高さの前提なしに図版と転置図版の過不足と順序を示す。
-[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) の完了の判定のうち、一般化できる性質の証明と実装との境界例の照合について、残るのは次の四つである。
 
-一つ目は、境界入力の表のうち、キャプションの行の Lean の側の照合である。
+### 境界入力の表
+
 `modules/golem-layout/test/PaginateSpec.hs` の `boundaryTableTests` は、空の原稿と一行の原稿、容量 1〜3 行の段の段落、空の段にちょうど収まる図版と一行高い図版、図版を一〜三つ含む原稿について、Haskell の実装の終了、行と図版を原稿順に一度ずつ置くこと、空の段を残さないことを確かめる。
 同じ表は、見出し、`need-lines`、`no-break`、行数を指定した `no-break`、`keep-with-next` を段落の間に置いた原稿についても、終了と、段落と見出しの行を原稿順に一度ずつ置くことを確かめる。
 この原稿は、1〜5 行の段落、一行の見出し、2 行か 3 行の `need-lines`、`no-break`、3 行の `no-break`、1 行か 2 行の `keep-with-next` から一〜三つを並べ、最後に 1〜3 行の段落を置いたもので、段の容量は 2〜4 行である。
@@ -1253,10 +1255,11 @@ Haskell の位置は `modules/golem-layout/src/Golem/Layout/` からの相対パ
 この寸法では、段の端の後の罫線の領域（2 行）が段の中の領域（1 行）より大きく、段の中に収める段の終わりの後の罫線を `commitRuled` が置くことがないからである。
 版面の外に出す段の終わりの後の罫線は、段の中の罫線と同じ sp の位置に置かれる。
 
-境界入力の照合には、一つのことが残る。
-表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめるので、Lean の側の照合は、二つ目の項目に残る、実フォントの送りを `FigureSpec.hs` の計測値で渡す照合を待つ。
+境界入力の表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）は、golem-driver の `FigureSpec.hs` がキャプションを改行して図版を縮小して確かめる。
+その Lean の側の照合は、「未完の項目」の節の一つ目に挙げる。
 
-二つ目は、キャプションの評価値と幅の計算の Haskell との対応である。
+### キャプションの評価値と改行器
+
 `Pagination.lean` は、改行候補の選択、改行列からの行の組み立て、占有行数の計算を、評価値と幅を引数として証明する（`I1_caption_*`）。
 評価値と幅の計算は、有限の入力で Haskell の改行器と照合した。
 `CheckCaptionAssembly.hs --values` は、golem-layout の `badness`、`fitnessOf`、`lineDemerits` を境界の値で評価し、改行器が改行した 24186 個のキャプションについて、項目、引数、行長、選んだ改行位置と、その総デメリット、各行の調整比と超過幅を書き出す。
@@ -1294,12 +1297,11 @@ golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）�
 `I2_caption_compared_diagnostic` は、組み立てた行の格子の行数が改行位置の数から決まり、その行数が段の空きを超えるのは行の高さが空きを超えるときに限ることを示す。
 `I2_caption_compared_figure` は、その行数が段を埋めれば図版を返さず（G07038）、行が残れば縮小した図版の高さが残りの行に収まることを示す。
 
-対応には、次の三点が残る。
-第一に、`captionCompared` と `breakParagraph` の一致は有限の入力で照合しただけで、証明ではない。
-第二に、行ごとに変わる行長と、字形の伸縮（`pExpansion`）は写していない。
-第三に、実フォントの送りを golem-driver の `FigureSpec.hs` の計測値で渡す照合も、まだしていない。
+この対応に残ることは、「未完の項目」の節の一つ目から三つ目に挙げる。
 
-三つ目は、[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` が扱わない処理である。
+### `causalFreeFlow` のループ
+
+[root ADR 0397](https://github.com/tett23/golem/blob/7fc360ff641d7eea6e8ee3ace30eca26e545334b/docs/adr/0397-paragraph-line-pitch-and-dimensional-spacing.md) の自由な配置の状態遷移のうち、`Physical.lean` の `paginate` が扱わない処理は、golem-typeset の `causalFreeFlow` のループである。
 `Physical.lean` は、「自由な配置のモデル」の節に挙げたフローについて、終了、行の過不足と順序、図版と回した図版の過不足と順序を証明し、境界の入力で `paginatePhysical` と照合した。
 整数行の `Whole.lean` は、自由な配置の証明とは扱わない。
 golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落を改行し直すループ（`parts`）、段落と連を順に置くループ（`paragraphs`）、詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることを証明した。
@@ -1397,6 +1399,8 @@ golem-typeset は、図版を組む段階で、除外領域が段より長い図
 入れ子の項目の段落は、外の項目の図版の横に置かれず（`composeBeside` の `sameItem`）、`itemJobs` が項目の残りとして置く。
 `done` を忘れる写しはこの段落をもう一度置き、`"page"` と `"spread"` の入れ子の項目の原稿それぞれ 176 個のうち 154 個、計 308 個で食い違った。
 
+### 置いた罫線の位置
+
 置いた罫線の位置は、格子の上で `WholeRules.lean` が扱う（不変条件 3）。
 `Whole.lean` の `St` と `PageOut` は、golem-layout の `sRules` と `poRules` を写した `rules` を持つ。
 置いた罫線（`PlacedRule`）は、ブロックの id、前の罫線かどうか、位置を測る起点の格子の行、起点の種類（`RuleEdge`）、領域の行数を持つ。
@@ -1434,6 +1438,8 @@ golem-layout は、後の罫線を待たせる前に、その罫線が段にと�
 本の部の最初のブロックが前のブロックと領域を共有すると、`placeBookPart` の `nextUnit` が待つ罫線を置かずに次の段へ進み、前のブロックの後の罫線が失われる。
 容量 7 行の段で、前後に罫線を持つ 1 行の段落の後に、領域を共有する 1 行の段落と 2 行の段落を `keep-parts = "page"` の本の部に入れると、golem-layout の `paginate` は罫線 100 の後の罫線を置かなかった。
 golem-typeset は、リストの項目と定義の段落に罫線を付けず（`Flow.hs:2596`）、表は罫線つきのブロックでないので、本の部の最初のフローは罫線つきのブロックにならず、この入力は golem-typeset からは来ない。
+
+### 脚注の順
 
 脚注の行の原稿の注の順は、[root ADR 0444](https://github.com/tett23/golem/blob/87b1cf391e1995235f957bb0c530640792b8a704/docs/adr/0444-keep-footnotes-in-order-while-one-continues.md) の I1 が定めた。
 この ADR の前は、容量 40 sp、送り 10 sp、区切り 0 sp の 1 段で、`[FParagraph (Keep 1 1 False) (5 行の脚注 500 を持つ 1 行), FAdjustLines 2, FParagraph (Keep 1 1 False) (1 行の脚注 510 を持つ 1 行), 1 行の段落]` を `paginatePhysical` に渡すと、脚注 510 が脚注 500 の続きより前に置かれた。
@@ -1522,7 +1528,9 @@ golem-layout は区切りを 1 行以上にする（`Paginate.hs:155`）。
 コードの行は脚注を持たない。
 golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、golem-layout の `placeCode` は行の脚注を読まないからである。
 
-四つ目は、[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りの残りである。
+### 区切り
+
+[root ADR 0398](https://github.com/tett23/golem/blob/0d20d3e2e445d69aa576ec97615a51c31114ceec/docs/adr/0398-styled-separators-in-manuscripts.md) の区切りは、「区切りのモデル」の節の後に、次のところまで扱った。
 格子モードのフロー生成と G07134 の後処理は、「区切りのモデル」の節のとおり `Whole.lean` の `Flow` の上に写し、不変条件 4 と 5 を当て、golem-typeset と照合した。
 不変条件 4 と 5 は、`joinBoxes`、`ruledLinks`、`markBookParts` を通したフローと、自由な配置に写したフローにも当てた。
 空の段に収まる保持に G07134 を返さないことは、格子モードの区切り一つと後続の段落について定理で示した（`I3_separator_hold_no_error`）。
@@ -1550,7 +1558,46 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
 格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、この入力では照合できていない。
 `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、まだ照合していない。
 
+## 未完の項目
+
+[root ADR 0352](../../docs/adr/0352-prove-pagination-in-lean.md) は、42 件の対応、一般化できる性質の証明、実装との境界例の照合で移行の完了を判定し、未証明の項目や未説明の反例がある間は完了としない。
+42 件の対応は `check.sh` が検査し、残っていない。
+残るのは、次の項目である。
+各項目には、完了の判定に欠けている根拠を書く。
+
+1. 境界入力の表のキャプションの行（改行位置の前後に一文字足す、画像に残る行が一行かゼロ行、キャプションが一行超過）の Lean の側の照合。
+   欠けているのは、golem-driver の `FigureSpec.hs` の実フォントの計測値を Lean に渡し、`captionCompared` の改行位置と行数、`captionGridSpan`、`fitCaptionedFigure` の寸法と G07038 を golem-typeset の結果と `check.sh` で比べた記録である。
+   ADR のテスト設計が求める、送りの異なる実フォントの例と Lean に渡した計測結果の記録も、この照合で残す。
+2. `captionCompared` と golem-layout の `breakParagraph` の一致の証明。
+   今は 24186 個のキャプションで照合しただけで、どの入力でも一致するという定理はない。
+   総デメリットの等しい経路から最後の行の fitness と前の改行の列で選ぶ規則は、照合の入力でも区別されていない。
+3. 行ごとに変わる行長と、字形の伸縮（`pExpansion`）の写し。
+   `captionEvaluate` は行長が行ごとに変わらず字形を伸縮しない場合だけを写すので、この二つの写しと、その照合がない。
+4. `causalFreeFlow` のループの、任意の入力についての行の過不足と順序。
+   `I5_itemJobs_lines` と `I5_jobsFrom_lines` は前提 `JobsLines` を置き、前提なしの `I5_causal_jobsFrom_lines` は `CausalBoundary.lean` の 4864 個の原稿についての定理である。
+   `I5_stanza_lines` は `fallback` と `hold` についての仮定を置き、`I5_parts_lines` の前提 `hb`（改行し直しても段落の最初の行の id が変わらないこと）は未確認である。
+   欠けているのは、golem-typeset の改行器と後続の判定について、これらの前提を導く定理か、前提を確かめる照合である。
+5. 自由な配置の `drainCarry` の前提（`drainOk`）。
+   本の部を含まずに `checkNotes` を通った原稿でこの前提が成り立つことは、推測であり、証明していない。
+6. スロットの id の前提。
+   自由な配置の `slotIds` がコードのスロットに振る id が golem-typeset の番号と一致することは未確認である。
+   格子モードの `textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは前提に残り、その id が原稿の id から来ることは示していない。
+7. 格子モードの待つ罫線の使った行。
+   待つ罫線を置いてから次のブロックを置くまで使った行が変わらないことは、全体の不変条件としては証明していない。
+8. 区切りの残り。
+   保持の中の `@need-lines`、区切りの前の行アキ、自由な配置（`SeparatorPhysical.lean`）の保持の性質は、照合だけで確かめ、定理がない。
+   `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、照合していない。
+   格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、照合の入力が足りない。
+9. Alloy のコマンドの算術モデルと原稿の対応。
+   見出しと最初の本文行の間か後ろに図版が一つある場合の算術モデルについて、任意の原稿列の図版の位置との対応は未証明である。
+   見出し列の長さと段落構造を原稿列から取り出す一般的な対応も未証明である。
+10. 出力を変えなかった写しのうち、理由を確かめていないもの。
+    「自由な配置のモデル」の節の照合で、残りの行を置く前に次の段へ進まない写し、`tableReady` の条件から待っているスペースを除く写し、図版の横の行を `putWrappedLine` でなく `putLine` で置く写しは、出力を変えなかった。
+    その理由は推測であり、未確認である。
+    「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割も、照合できていない。
+
 これらを終えるまで Alloy の定期実行と既存の参照を維持する。
+終えたときは、Alloy の定期実行を終え、規則やモデルを変えたときにローカルの Lean で検証し直す手順を CONTRIBUTING に書く。
 
 ## 検査の手順
 
