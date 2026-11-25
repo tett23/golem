@@ -42,7 +42,7 @@ freeGeometryTests =
         ruleBeforeGap 8 side 0 @?= (0, 4)
         ruleAfterGap 8 side 0 @?= (0, 3)
         ruleBeforeEdge 18 10 side 0 @?= (0, 2)
-        ruleAfterEdge 18 10 side @?= (0, 15),
+        ruleAfterEdge 18 10 18 side @?= (0, 15),
       testCase "root ADR 0397 I11: negative face gaps receive only the required extra length" $ do
         let side = RuleSide 2 3 1 True Nothing
         ruleBeforeGap (-4) side 1 @?= (11, 3)
@@ -57,10 +57,10 @@ freeGeometryTests =
       testCase "root ADR 0397 I11: edge rules reserve exact missing leading" $ do
         let side = RuleSide 2 99 1 True Nothing
         ruleBeforeEdge 4 10 side 1 @?= (7, 0)
-        ruleAfterEdge 4 10 side @?= (6, 9),
+        ruleAfterEdge 4 10 4 side @?= (6, 9),
       testCase "root ADR 0397 I11: permitted outside rules use no body space" $ do
         let before = RuleSide 2 99 1 True (Just 7)
             afterSide = RuleSide 2 99 1 True (Just 6)
         ruleBeforeEdge 4 10 before 1 @?= (0, -7)
-        ruleAfterEdge 4 10 afterSide @?= (0, 9)
+        ruleAfterEdge 4 10 4 afterSide @?= (0, 9)
     ]

@@ -1,6 +1,6 @@
 # ADR 0446: 同じ名前の成果物が試行をまたいで残るときは、いちばん新しいものを取り寄せる
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

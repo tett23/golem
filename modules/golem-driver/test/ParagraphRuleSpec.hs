@@ -176,6 +176,23 @@ paragraphRuleTests =
           let gaps = [faceEnd - (y1 + h1), y1 - (y2 + h2), y2 - faceStart]
           assertBool ("not one shared area: " <> shown) (maximum gaps - minimum gaps < 1 / 100)
         other -> assertFailure (show other),
+    testCase "root ADR 0450 I1, I4: laid out freely, keep-in-column = false: the rule after whose place is past the column end is in the bottom margin, and the column closes" $ do
+      -- 4 lines of 15pt laid out freely: the column is (4 - 1) x 15pt + 10pt long; the face of the third line ends at 42.5pt, the rule 13pt after it at 55.5pt
+      let style = replaceIn "[page.grid]\n" "[page.grid]\nalignment = \"free\"\n" (replaceIn "lines = 30" "lines = 4" horizontalStyle) <> "\n[paragraph-styles.sec]\nrule-after = { weight = \"0.5pt\", space-before = \"13pt\", keep-in-column = false }\n"
+          source = "@style sec\n  " <> T.replicate 29 "あ" <> "。\n\n次。\n"
+          top = 595.2756 - mmPt 18
+          bottom = top - (3 * 15 + 10)
+      pages <- miniPdf fakeProvider True style source [] >>= pageContents
+      let ruled = map rects pages
+          has c content = not (null [() | d <- drawnGlyphs content, dGlyph d == fromEnum c])
+      case ruled of
+        [(_, y, _, h)] : _ -> do
+          -- the rule lies below the column, its top 0.5pt below the column end, on the page
+          near (y + h) (bottom - 0.5)
+          assertBool (show ruled) (y >= 0)
+        _ -> assertFailure (show ruled)
+      -- the paragraph after goes on the next page
+      map (has '次') pages @?= [False, True],
     testCase "golem-driver ADR 0027, root ADR 0352 I3: the rule after of a paragraph the next ruled paragraph cannot join in its column stays in the column" $ do
       -- 4 lines of 15pt; a paragraph of 3 lines and one of 1 line, both with rules before and after
       let style = withRule (replaceIn "lines = 30" "lines = 4" horizontalStyle) "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\" }\n"

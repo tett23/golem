@@ -748,6 +748,7 @@ physicalPaginateTests =
       <> indexColumnNotesTests
       <> indexOnAdjustedPageTests
       <> joinedRuleTests
+      <> outsideRuleTests
 
 turnedSettings :: PhysicalSettings
 turnedSettings = settings {physicalPagePitch = 10, physicalCapacity = 50, physicalMaxCapacity = 50}
@@ -1347,3 +1348,103 @@ joinedRuleTests =
     either' = \case
       RuledLines _ ls -> "L" <> show (length ls)
       RuledHeading _ m _ -> "H" <> show m
+
+{- | Root ADR 0450: in the free placement, the rule after at the end of a
+column of keep-in-column = false goes out of the column, with no extra,
+when its place right after the last line (i from the end of the face when
+spaced, else the later of the end of the line box and of the face) is at
+or past the end of the column, the column has no notes and the rule
+reaches past the end no further than the room outside (20 sp for the
+blocks of id 200 or more); then the column closes. The pitch is 20 sp and
+the face 10 sp, which starts 5 sp into its line box.
+-}
+outsideRuleTests :: [TestTree]
+outsideRuleTests =
+  [ testCase "root ADR 0450 I1, I2, I4: an unspaced rule after whose line box ends at the column end goes out of the column there, and the column closes" $
+      placed 40 [FParagraph defaultKeep [line 0], ruledOf 200 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 40]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: an unspaced rule after whose line box ends 1 sp before the column end stays in the column" $
+      placed 41 [FParagraph defaultKeep [line 0], ruledOf 200 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 39]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I1, I2, I4: a spaced rule after whose face end and inner space reach the column end exactly goes out of the column, and the column closes before a line that fits the rest" $
+      -- the face of line 10 ends at 35 sp, the rule 8 sp after it at 43 sp; line 2 of 3 sp would fit the 3 sp left
+      placedWith (Map.singleton 2 3) 43 [FParagraph defaultKeep [line 0], ruledOf 200 (spacedOut 8), FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 43]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: a spaced rule after whose place is 1 sp before the column end stays in the column with its extra" $
+      -- the extra 8 + 1 - 5 = 4 sp ends the block at 44 sp
+      placed 44 [FParagraph defaultKeep [line 0], ruledOf 200 (spacedOut 8), FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 43]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: a rule after of keep-in-column = true stays in the column" $
+      placed 40 [FParagraph defaultKeep [line 0], ruledOf 100 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 100 False 39]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I3: a rule after in a column with notes stays in the column, above the notes" $
+      -- 60 sp: the note of line 0 takes 20 sp, the column ends at 40 sp
+      placed 60 [FParagraph defaultKeep [noteLine 0], ruledOf 200 thin, FParagraph defaultKeep [line 2]]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 39]), ([(0, SLine 2)], [])],
+    testCase "root ADR 0450 I1, I4: the rule after of a ruled heading that ends the column at its end goes out of the column" $
+      placed 40 [FParagraph defaultKeep [line 0], FRuled 200 Nothing (Just thin) False (RuleGrid 20 10) 0 (RuledHeading False 20 [line 10])]
+        @?= Right [([(0, SLine 0), (20, SHeading 10 1)], [PlacedRule 200 False 40])],
+    testCase "root ADR 0450 I1, I4: a rule after that the next block cannot share goes out of the column at its end" $
+      placed 40 [FParagraph defaultKeep [line 0], ruledOf 200 thin, FRuled 201 (Just thin) Nothing True (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 20, line 21])]
+        @?= Right [([(0, SLine 0), (20, SLine 10)], [PlacedRule 200 False 40]), ([(0, SLine 20), (20, SLine 21)], [PlacedRule 201 True (-1)])],
+    testCase "root ADR 0450 I1, I2, I3, I4: the rules after of ruled paragraphs and headings at the end of a column go out of it exactly when the three conditions hold, and close the column" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, kind, side, out, leadKind, nextKind, failure))
+            Right ps -> sequence_ [check (c, kind, side, out, leadKind, nextKind, [(poNumber q, poSlots q, poRules q, poFootnotes q) | q <- ps]) cfg ident kind side p | p <- ps]
+        | c <- [40, 41, 43, 44, 48, 60, 61, 63, 64, 68, 80, 83],
+          kind <- [0 .. 3 :: Int],
+          side <- [thin {rsdOutside = Nothing}, RuleSide 0 0 12 False Nothing, RuleSide 0 0 1 True Nothing, RuleSide 5 0 1 True Nothing, RuleSide 8 3 2 True Nothing, RuleSide 8 0 12 True Nothing, RuleSide 25 0 1 True Nothing],
+          out <- [False, True],
+          leadKind <- [0 .. 3 :: Int],
+          nextKind <- [0 .. 2 :: Int],
+          let ident = if out then 200 else 100
+              sideOut = side {rsdOutside = if out then Just 20 else Nothing}
+              cfg = settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = 0}
+              lead = case leadKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 0]]
+                2 -> [FParagraph defaultKeep [line 0, line 1]]
+                _ -> [FParagraph defaultKeep [noteLine 0]]
+              body = case kind of
+                0 -> RuledLines defaultKeep [line 10]
+                1 -> RuledLines defaultKeep [line 10, line 11]
+                2 -> RuledHeading False 20 [line 10]
+                _ -> RuledHeading False 40 [line 10, line 11]
+              next = case nextKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 40]]
+                _ -> [FRuled (ident + 1) (Just sideOut) Nothing True (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 20, line 21]), FParagraph defaultKeep [line 40]]
+              flows = lead <> [FRuled ident Nothing (Just sideOut) False (RuleGrid 20 10) 0 body] <> next
+        ]
+  ]
+  where
+    thin = RuleSide 0 0 1 False (Just 20)
+    spacedOut i = RuleSide i 0 1 True (Just 20)
+    ruledOf ident side = FRuled ident Nothing (Just side {rsdOutside = if ident >= 200 then rsdOutside side else Nothing}) False (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 10])
+    placed = placedWith Map.empty
+    placedWith pitches c flows = fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c, physicalPitches = pitches, physicalSeparator = 0} flows)
+    check shown cfg ident kind side p =
+      let end = columnEnd cfg p
+          w = rsdWeight side
+          extentOf = \case
+            SLine n -> Map.findWithDefault 20 n (physicalPitches cfg)
+            SHeading 10 _ -> if kind == 2 then 20 else 40
+            _ -> 0
+          -- the start of the last line box of the block
+          lastBox = case kind of
+            0 -> [s | (s, SLine 10) <- poSlots p]
+            1 -> [s | (s, SLine 11) <- poSlots p]
+            2 -> [s | (s, SHeading 10 _) <- poSlots p]
+            _ -> [s + 20 | (s, SHeading 10 _) <- poSlots p]
+          rules = [prAt r | r <- poRules p, prId r == ident, not (prBefore r)]
+       in case lastBox of
+            [s] -> do
+              let place = if rsdSpaced side then s + 15 + rsdInner side else s + 20
+                  eligible = ident >= 200 && null (poFootnotes p) && place >= end && place + w - end <= 20
+              if eligible
+                then do
+                  assertEqual ("I1, out of the column: " <> show shown) [place] rules
+                  assertBool ("I2, I4, nothing after the rule: " <> show shown) (and [at + extentOf slot <= place && at <= s | (at, slot) <- poSlots p])
+                else assertBool ("I3, in the column: " <> show shown) (and [at >= 0 && at + w <= end | at <- rules])
+            _ -> pure ()

@@ -1,6 +1,6 @@
 # ADR 0442: wait-pdfs.sh で待った成果物を、digest で確かめて取り直しつきで取り寄せる
 
-Status: superseded-pending [{"part":"実装することの、取り寄せる成果物の選び方と、名前の一致する成果物が二つ以上あるときの扱い（未確認の注記を含む）、I5、境界の表の「同じ名前の成果物が二つある」の行","by":["docs/adr/0446-pick-the-newest-artifact-of-a-name-across-attempts.md"],"kind":"replace"}]
+Status: superseded [{"part":"実装することの、取り寄せる成果物の選び方と、名前の一致する成果物が二つ以上あるときの扱い（未確認の注記を含む）、I5、境界の表の「同じ名前の成果物が二つある」の行","by":["docs/adr/0446-pick-the-newest-artifact-of-a-name-across-attempts.md"],"kind":"replace"}]
 
 ## 文脈
 
