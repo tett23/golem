@@ -1,6 +1,6 @@
 # ADR 0433: HTML と EPUB に写したフォントに、そのライセンスの文書を添える
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

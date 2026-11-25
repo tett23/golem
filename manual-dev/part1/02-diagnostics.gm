@@ -142,7 +142,7 @@ CI でコードごとに扱いを分ける仕組み（特定のコードを集�
 原因が違えば、メッセージを変えるだけでなく、コードを分ける。
 
 一部のコードは、プロファイルで重大度が変わる。
-今は G03010（[code: fonts = "embed"] の HTML と EPUB に同梱するフォントの欠け）、G05004（参照されていないラベル）、G08100（PDF のフォントにない字）で、[code: dev] では警告、[code: prod] ではエラーになる。
+今は G03010（[code: fonts = "embed"] の HTML と EPUB に同梱するフォントの欠け）、G03282 と G03283（そのフォントのライセンスの文書の欠け）、G05004（参照されていないラベル）、G08100（PDF のフォントにない字）で、[code: dev] では警告、[code: prod] ではエラーになる。
 G02005（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
 G09002 から G09021 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
 設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] と [code: info] は選べない。

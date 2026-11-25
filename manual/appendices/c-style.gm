@@ -101,6 +101,7 @@ PDF を作るには必須です。
 
 フォントのファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
 絶対パス、URL、プロジェクトの外を指すパスやシンボリックリンクを書くと、どの出力でもエラー（G03279）になります。
+フォントのライセンスの文書のパス（[code: ja-license]、[code: latin-license]）も同じです。
 Golem は、コンピューターに入っているフォントを探しません。
 フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G08004）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）は PDF に埋め込めないので、PDF が使う役割に書くとエラー（G08019）になります。
@@ -112,6 +113,8 @@ TrueType の輪郭の可変フォント（[code: .ttf]）は、[code: instance] 
 |:---|:---|
 | [code: ja] | 和文のフォントのファイルです。 |
 | [code: latin] | 欧文のフォントのファイルです。 |
+| [code: ja-license] | [code: ja] のフォントのライセンスの文書のファイルです。[code: fonts = "embed"] の HTML と EPUB が、フォントと一緒に [code: fonts/] に写します。同梱するフォントにこのキーを書かないと G03282、書いたファイルがないと G03283 になります。[code: --profile dev] では警告で、その文書なしで書き、[code: --profile prod] ではエラーで、その出力を書きません。別のフォルダにある同じ名前で中身の違うファイルとぶつかると、エラー（G03284）になります。拡張子が [code: .md] の文書は、EPUB の中で Markdown（[code: text/markdown]）、ほかは平文（[code: text/plain]）として扱います（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
+| [code: latin-license] | [code: latin] のフォントのライセンスの文書のファイルです。扱いは [code: ja-license] と同じです。 |
 | [code: generic-family] | HTML と EPUB で使う総称の書体です。[code: "serif"]（明朝の系統）、[code: "sans-serif"]（ゴシックの系統）、[code: "monospace"]（等幅）のどれかです。ほかの値はエラー（G03281）になります。PDF は使いません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。 |
 | [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の仮名などを詰めて組みます。PDF では、[code: punctuation-proportional] が [code: true] でなければ、括弧類、句読点、中点類には [code: palt] と [code: vpal] を当てません。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
 | [code: punctuation-proportional] | 真偽値です。[code: true] にすると、PDF で括弧類、句読点、中点類にも、[code: features] や [code: proportional-metrics] で指定した [code: palt]（縦組みでは [code: vpal]）を当てます。当てた約物には、Golem が全角の字形の機能（[code: fwid]）を足しません。これだけでは機能を足しません。[code: kerning = "japanese-equal-width"] の文字は全角の送りのままです。既定は [code: false] です。 |
@@ -242,6 +245,8 @@ space-after = 1
 [code: keep-all-lines] の段落と、二つの和より短い段落は分けられないので、全体を区切りと同じ段へ置きます。
 連続する可視の区切りは、後続の通常のブロックまでまとめて同じ段へ置きます。
 空の段へ送っても、区切りと後ろのアキ、後続の最初の部分を同じ段に置けないときは、エラー（G07134）になり、PDF は書きません。
+区切りと後続のブロックの間に書いた [code: @need-lines] は、この保持に含めません。
+区切りから数えた行と合わせて段の行数を超える [code: @need-lines] は守れず、警告（G07037）になり、区切りは後続の最初の部分と同じ段に置きます。
 本の末尾や明示した改ページの直前では、区切りを残し、後ろのアキを捨てます。
 
 @nonumber

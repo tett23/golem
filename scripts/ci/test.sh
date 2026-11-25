@@ -1845,6 +1845,9 @@ if step_if "name: epubcheck is installed" "$EPUBCHECK_IF" && step_has "name: epu
 # the four EPUBs of the fixtures pass epubcheck; epub-forms takes glossary
 # from plugins/wasm through a cache (docs/adr/0232)
 if step_if "name: The EPUB of epub-forms passes epubcheck" "$EPUBCHECK_IF" && step_has "name: The EPUB of epub-forms passes epubcheck" 'XDG_CACHE_HOME="$cache"' && step_has "name: The EPUB of epub-forms passes epubcheck" "epubcheck build/epub/book.epub"; then ok; else ng "ci.yml: the EPUB of epub-forms passes epubcheck on the x86-64 runner of the outputs"; fi
+# the EPUB whose fonts carry their license documents, built in prod, passes
+# epubcheck (docs/adr/0433)
+if step_if "name: The EPUB with the license documents of its fonts passes epubcheck" "$EPUBCHECK_IF" && step_has "name: The EPUB with the license documents of its fonts passes epubcheck" "build --profile prod --target epub" && step_has "name: The EPUB with the license documents of its fonts passes epubcheck" "epubcheck build/epub/book.epub"; then ok; else ng "ci.yml: the EPUB with the license documents of its fonts passes epubcheck on the x86-64 runner of the outputs"; fi
 if step_if "name: qpdf is installed" "$QPDF_IF" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests and the x86-64 runner of the outputs wait for qpdf"; fi
 # the manuals pass golem preflight with the rules of CI, and their PDFs
 # name no typeface but the fonts of their fonts/ (docs/adr/0232)

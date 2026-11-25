@@ -63,7 +63,7 @@ import Control.Applicative ((<|>))
 import Data.Bifunctor (bimap)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Ratio ((%))
 import Data.Set (Set)
 import Data.Set qualified as Set
@@ -71,7 +71,7 @@ import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
 import Golem.Layout.PageLabel
-import Golem.Layout.Paginate.BookParts (flowSlotIds, placeBookPart)
+import Golem.Layout.Paginate.BookParts (flattenBookParts, flowSlotIds, placeBookPart)
 import Golem.Layout.Paginate.Decide
 import Golem.Layout.Paginate.State
 import Golem.Layout.Paginate.Types
@@ -219,7 +219,8 @@ step env st f rest = case f of
   -- the larger need-lines is kept; one larger than the need-lines judged is judged again (golem-layout ADR 0035),
   -- before the spaces placed after the block before it (golem-layout ADR 0043)
   FNeedLines sp n -> needMore env sp n st
-  FAdjustLines sp k -> adjustLines env (applyBreaks env st) sp k
+  -- the continued notes take the room added first (root ADR 0444)
+  FAdjustLines sp k -> drainPendingNotes env (adjustLines env (applyBreaks env st) sp k)
   -- blank lines with nothing after them that places anything are the end of the book's (docs/adr ADR 0046)
   FBlank sp n
     | all waitsFor rest -> st
@@ -574,7 +575,7 @@ place env st f rest = case f of
   FCode g caption first cont ls -> placeCode env st (g, caption, first, cont) True ls
   FSwitchColumns set ->
     let st1 = flushDeferred env st
-     in -- only the lines of the type area are left to the set (root ADR 0025, root ADR 0030)
+     in -- the set ends at the type area or above the footnotes, whichever comes first (root ADR 0025, root ADR 0030, root ADR 0441)
         if (csColumns (envBase env) == 1 && typeAreaFree env st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
           then startSet env st1 set (sUsed st1)
           else (nextPage env st1) {sSet = set {csFirstLine = 0}}
@@ -594,13 +595,15 @@ place env st f rest = case f of
   FBlank _ _ -> st
   {- a box (docs/adr/0271): where its grid lines before, the first part
   of its body and its grid lines after fit; its body placed as outside a
-  box, each part of it in a column closed by its grid lines after -}
+  box, each part of it in a column closed by its grid lines after; the
+  room kept for those that its last part does not take, as when that part
+  has no text line, goes to the continued notes first (root ADR 0444) -}
   FBoxed i kb ka body ->
     let st1 = keep env st (\s -> kb + ka + needIn env s mempty (nextNeed env body))
         inBox = foldBody (openBox st1 {sBox = Just (BoxAt i kb ka 0 False)}) body
         closed = closeBox inBox
         ends = [bsLast b + 1 | b <- drop (length (sBoxes inBox)) (sBoxes closed)]
-     in closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
+     in drainPendingNotes env closed {sBox = Nothing, sUsed = maximum (sUsed closed : ends)}
   where
     need = nextNeed env rest
     foldBody s0 body = foldl' (\s (g, more) -> step env s g (more <> rest)) s0 [(g, drop k body) | (k, g) <- zip [1 ..] body]
@@ -729,9 +732,8 @@ placeRuled env st fr rest = case sJoin st of
     | frJoined fr,
       Just b <- frBefore fr,
       not (isRecto (frBody fr)),
-      let plan = planOf env st fr rest (Just (j, b)),
-      planNeed env st fr plan <= free env st ->
-        commitRuled env st fr plan
+      Just placed <- settleRuled env st fr rest (Just (j, b)) ->
+        placed
   Just _ -> placeRuled env (flushJoin env st) fr rest
   Nothing ->
     let st1 = if isRecto (frBody fr) then parityStart env odd st else st
@@ -743,16 +745,42 @@ placeRuled env st fr rest = case sJoin st of
           | isHeadingBody (frBody fr) && not (isRecto (frBody fr)) = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) (nextNeed env rest))
           | Just kn <- keepNext = keep env st1 (\s -> needIn env s (planParts fr (planOf env s fr rest Nothing)) kn)
           | otherwise = st1
-        plan2 = planOf env st2 fr rest Nothing
-     in if planNeed env st2 fr plan2 <= free env st2
-          then commitRuled env st2 fr plan2
-          else
-            if isEmpty st2
-              then splitRuled env st2 fr rest
-              else
+     in case settleRuled env st2 fr rest Nothing of
+          Just placed -> placed
+          Nothing
+            | isEmpty st2 -> splitRuled env st2 fr rest
+            | otherwise ->
                 let st3 = nextColumn env st2
-                    plan3 = planOf env st3 fr rest Nothing
-                 in if planNeed env st3 fr plan3 <= free env st3 then commitRuled env st3 fr plan3 else splitRuled env st3 fr rest
+                 in fromMaybe (splitRuled env st3 fr rest) (settleRuled env st3 fr rest Nothing)
+
+{- | A block placed here when its block fits the room. Its rule after
+shares an area with the next block's rule before only when that block
+goes on in this column (golem-driver ADR 0027, 「隣り合う罫線」);
+otherwise the area is its own and is counted in the block, so that the
+rule stays in the column.
+-}
+settleRuled :: Env -> St -> Flow -> [Flow] -> Maybe ((Int, RuleGrid, RuleSide, Int), RuleSide) -> Maybe St
+settleRuled env st fr rest joined =
+  let fits plan = planNeed env st fr plan <= free env st
+      shared = planOf env st fr rest joined
+      own = planOf env st fr [] joined
+      placed = commitRuled env st fr shared
+   in if fits shared && settlesAfter env placed rest
+        then Just placed
+        else if fits own then Just (commitRuled env st fr own) else Nothing
+
+{- | Whether the rule after that waits stays in the column: the next block
+takes it into its area in this column, or its own area fits the room.
+-}
+settlesAfter :: Env -> St -> [Flow] -> Bool
+settlesAfter env st rest = case sJoin st of
+  Nothing -> True
+  Just j -> case flattenBookParts rest of
+    next@FRuled {frJoined = True, frBefore = Just b} : later
+      | not (isRecto (frBody next)),
+        isJust (settleRuled env st next later (Just (j, b))) ->
+          True
+    _ -> maybe True ((<= free env st) . snd) (ownAfter env st)
 
 commitRuled :: Env -> St -> Flow -> Plan -> St
 commitRuled env st fr (k1, before, k2, after, waiting) =
@@ -784,14 +812,20 @@ splitRuled env st0 fr rest =
 
 -- | The rule after of the block before, in its own area: nothing shares it.
 flushJoin :: Env -> St -> St
-flushJoin env st = case sJoin st of
+flushJoin env st = case ownAfter env st of
   Nothing -> st
+  Just (rule, k) -> st {sRules = sRules st <> [rule], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
+
+-- | The rule after that waits, in its own area: the rule and the grid lines of the area.
+ownAfter :: Env -> St -> Maybe (PlacedRule, Int)
+ownAfter env st = case sJoin st of
+  Nothing -> Nothing
   Just (aid, g@(RuleGrid p h), a, aLast) ->
     let (ki, offi) = ruleAfter g a 0
         (k, off)
           | aLast + 1 + ki >= cap env st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if sNoteLines st > 0 then Nothing else rsdOutside a}
           | otherwise = (ki, offi)
-     in st {sRules = sRules st <> [PlacedRule aid False (fromIntegral aLast * p + h + off)], sUsed = sUsed st + min k (free env st), sJoin = Nothing}
+     in Just (PlacedRule aid False (fromIntegral aLast * p + h + off), k)
 
 {- | A table: rows whole, a page break between rows repeats the header
 without its labels, notes and marks (golem-driver ADR 0008). The

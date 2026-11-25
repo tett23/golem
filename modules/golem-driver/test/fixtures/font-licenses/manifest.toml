@@ -1,0 +1,21 @@
+# The license documents of the embedded fonts (docs/adr/0433): HTML and
+# EPUB embed the fonts and copy ja-license and latin-license beside them.
+# The fonts are not committed: CI copies them in as fonts/ja.otf and
+# fonts/latin.otf with their licenses (the README of the fixtures) and runs
+# epubcheck on the EPUB.
+chapters = ["font-licenses.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000433"
+title = "フォントのライセンス"
+language = "ja"
+date = 2026-11-24
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.html]
+fonts = "embed"
+
+[targets.epub]
+fonts = "embed"

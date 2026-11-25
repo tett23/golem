@@ -146,6 +146,19 @@ InDesign は、Document Fonts フォルダにないフォントをコンピュ�
 HTML と EPUB は、既定ではフォントのファイルを同梱しません（「[ref-title web-fonts]」、[ref-page web-fonts] ページ）。
 [code: fonts = "embed"] で同梱した HTML と EPUB を公開すると、フォントも配ることになります。
 フォントのライセンスが、この使い方を許しているかを確かめてください。
+同梱するフォントには、そのライセンスの文書を添えます。
+フォントの役割の [code: ja-license] と [code: latin-license] に、[code: ja] と [code: latin] のフォントのライセンスの文書のパスを書くと、Golem はフォントの隣の [code: fonts/] にその文書を写します。
+
+```toml
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+ja-license = "fonts/LICENSE-NotoSerifJP.txt"
+```
+
+同梱するフォントにライセンスの文書を書かないと G03282、書いた文書のファイルがないと G03283 になります。
+どちらも [code: --profile dev] では警告で、その文書なしで書き、[code: --profile prod] ではエラーで、その出力を書きません。
+配る出力に、ライセンスの文書が欠けないようにするためです。
+[code: golem new] で作ったプロジェクトの [code: style.toml] には、取ってきたフォントのライセンスの文書がはじめから書いてあります。
 このマニュアルで使っているフォントは、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
 
 ### 埋め込みのライセンス
@@ -1189,6 +1202,7 @@ column-gap = "2zw"
 一段組みの版面では、[code: @index] の位置から、そのページの残りの行を段に分けて索引を組みます。
 [code: # 索引] のような見出しは、一段の幅のまま索引の段の上に置かれます。
 [code: @page-lines +N] で増やした行は、残りの行に数えません。
+[code: @page-lines -N] で減らしたページでは、索引の段は脚注の区切りの前で終わります。
 残りの行がなければ、次のページの最初から索引を組みます。
 二段以上の版面では、次のページの最初から索引を組みます。
 索引の後の内容は、次のページから版面の段組みに戻ります。

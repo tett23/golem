@@ -18,6 +18,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FeaturesSpec qualified
 import FilesSpec qualified
+import FontLicensesSpec qualified
 import FunctionsSpec qualified
 import GenericFontsSpec qualified
 import Golem.Assemble (NoteNumbering (..))
@@ -888,6 +889,7 @@ tests =
       PathDataSpec.pathDataTests,
       FeaturesSpec.tests,
       GenericFontsSpec.tests,
+      FontLicensesSpec.tests,
       KeepPartsSpec.tests,
       PositionSpec.tests,
       UnderlineSpec.tests,

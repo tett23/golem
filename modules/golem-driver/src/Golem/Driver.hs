@@ -48,6 +48,8 @@ module Golem.Driver
     sourceSettingsOf,
     builtinKeepStyles,
     cssFontSize,
+    fontLicenseKeyDiagnostics,
+    targetsOf,
   )
 where
 
@@ -976,7 +978,13 @@ buildCore inMemory opts = do
         if TargetPdf `elem` targets
           then pdfFontDiagnostics (optFiles opts) diagFid [(r, fr {frJa = mfilter (`Map.notMember` missing) (frJa fr), frLatin = mfilter (`Map.notMember` missing) (frLatin fr)}) | (r, fr) <- pdfFontRoles fileStyle locals]
           else pure []
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid (manifestTargets (projectManifest project)) fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
+      -- G03284: files of the same name and other bytes under fonts/, for the targets that embed the fonts (root ADR 0433)
+      let declared = manifestTargets (projectManifest project)
+      clashes <-
+        if any (\t -> (t == TargetHtml && tgHtmlFonts declared == WebFontsEmbed) || (t == TargetEpub && tgEpubFonts declared == WebFontsEmbed)) targets
+          then fontClashDiagnostics (optFiles opts) diagFid fileStyle missing
+          else pure []
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid declared fileStyle locals missing clashes t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G07001, G07002 and G07025 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -1168,9 +1176,63 @@ missingStyleFiles files style = do
   resolved <- forM (styleFilePaths style) $ \p -> (p,) <$> filesResolve files p
   pure (Map.fromList [(p, err) | (p, Left err) <- resolved])
 
--- | The files style.toml names: the fonts of every role, then the output intent.
+-- | The files style.toml names: the fonts of every role, their license documents (root ADR 0433), then the output intent.
 styleFilePaths :: Style -> [FilePath]
-styleFilePaths style = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
+styleFilePaths style = nub (map snd (fontFiles style) <> licenses <> maybe [] pure (stIntent style))
+  where
+    licenses = [l | fr <- Map.elems (stFonts style), Just l <- [frJaLicense fr, frLatinLicense fr]]
+
+{- | G03282 (root ADR 0433): each font file HTML and EPUB copy, the
+@present@ ones, whose role has no license document for its key; when a
+target of @targets@ embeds the fonts. At the top of style.toml, a warning
+that the profile prod makes an error. The language server, which looks at
+no file, takes every font as present.
+-}
+fontLicenseKeyDiagnostics :: FileId -> Targets -> [Target] -> Style -> (FilePath -> Bool) -> [Diagnostic]
+fontLicenseKeyDiagnostics fid declared targets style present
+  | any embeds targets =
+      [ diagnostic "G03282" Warning (mkSpan fid 0 0) ("フォントのライセンスの文書を指定していません: [fonts." <> ffRole f <> "] の " <> ffKey f <> "-license（" <> T.pack (ffPath f) <> "）")
+      | f <- fontFilesWithLicenses style,
+        present (ffPath f),
+        isNothing (ffLicense f)
+      ]
+  | otherwise = []
+  where
+    embeds = \case
+      TargetHtml -> tgHtmlFonts declared == WebFontsEmbed
+      TargetEpub -> tgEpubFonts declared == WebFontsEmbed
+      _ -> False
+
+{- | The files HTML and EPUB copy to fonts/ when they embed the fonts (root
+ADR 0433): each font that is not @missing@, then the license document of
+each such font that is not missing, as (output path, source path).
+-}
+copiedFontFiles :: Style -> Map FilePath PathError -> [(FilePath, FilePath)]
+copiedFontFiles style missing =
+  [(fontOutput p, p) | p <- present]
+    <> [(fontOutput l, l) | f <- fontFilesWithLicenses style, Map.notMember (ffPath f) missing, Just l <- [ffLicense f], Map.notMember l missing]
+  where
+    present = [p | (_, p) <- fontFiles style, Map.notMember p missing]
+    fontOutput p = "fonts" </> takeFileName p
+
+{- | G03284 (root ADR 0433): files that HTML and EPUB would copy to the
+same name under fonts/ with other bytes; one error for each name, with its
+files in order. Files of the same bytes are copied once and are no error.
+-}
+fontClashDiagnostics :: Files -> FileId -> Style -> Map FilePath PathError -> IO [Diagnostic]
+fontClashDiagnostics files fid style missing = do
+  let byName = Map.fromListWith (flip (<>)) [(o, [src]) | (o, src) <- copiedFontFiles style missing]
+  clashes <- forM [(o, srcs) | (o, srcs0) <- Map.toAscList byName, let { srcs = sort (nub srcs0) }, length srcs > 1] $ \(o, srcs) -> do
+    contents <- forM srcs $ \src -> do
+      resolved <- filesResolve files src
+      case resolved of
+        Left _ -> pure Nothing
+        Right rel -> either (const Nothing) Just <$> (try (filesRead files rel) :: IO (Either IOException BS.ByteString))
+    pure [(o, srcs) | length (nub contents) > 1]
+  pure
+    [ diagnostic "G03284" Error (mkSpan fid 0 0) ("fonts に写す同じ名前のファイルの中身が違います: " <> T.pack o <> "（" <> T.intercalate "、" (map T.pack srcs) <> "）")
+    | (o, srcs) <- concat clashes
+    ]
 
 {- | Diagnostics of the files of style.toml for one target. A path outside
 the project (absolute, a URL, out of the root, or a symbolic link out of
@@ -1182,8 +1244,8 @@ output intent (errors), every font for HTML and EPUB that embed them
 families (docs/adr/0423) and for plain text. The PDF also needs a body font
 with a file (G08007, golem-driver ADR 0016).
 -}
-targetFileDiagnostics :: FileId -> Targets -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid declared style locals missing target =
+targetFileDiagnostics :: FileId -> Targets -> Style -> [LocalStyles] -> Map FilePath PathError -> [Diagnostic] -> Target -> [Diagnostic]
+targetFileDiagnostics fid declared style locals missing clashes target =
   outside <> case target of
     TargetPdf ->
       bodyFontDiagnostics fid style
@@ -1200,7 +1262,12 @@ targetFileDiagnostics fid declared style locals missing target =
         err /= Missing
       ]
     siteFonts = \case
-      WebFontsEmbed -> report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+      WebFontsEmbed ->
+        report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+          -- the license documents of the fonts that are copied (root ADR 0433)
+          <> fontLicenseKeyDiagnostics fid declared [target] style (`Map.notMember` missing)
+          <> report "G03283" Warning "フォントのライセンスの文書のファイルがありません" [l | f <- fontFilesWithLicenses style, Map.notMember (ffPath f) missing, Just l <- [ffLicense f]]
+          <> clashes
       WebFontsGeneric -> []
     report code sev msg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
@@ -1397,6 +1464,8 @@ htmlConfig dev embed e book missing bib =
       hcEndnoteNotation = mfNotation (stNotesMarkFormat (endnoteStyle style)),
       -- the fonts embedded, or generic families alone (docs/adr/0423)
       hcEmbedFonts = embed,
+      -- the license documents of the fonts that are copied, when they are there (root ADR 0433)
+      hcFontLicenses = [l | f <- fontFilesWithLicenses style, Map.notMember (ffPath f) missing, Just l <- [ffLicense f], Map.notMember l missing],
       hcGenericFamilies = Map.mapMaybe (fmap genericFamilyName . frGenericFamily) (stFonts style),
       hcCharacterAdvance = do
         grid <- stPage style >>= pageGrid

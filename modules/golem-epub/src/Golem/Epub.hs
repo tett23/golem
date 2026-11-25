@@ -5,6 +5,7 @@ module Golem.Epub
   ( EpubConfig (..),
     EpubCreator (..),
     packageDocument,
+    packageDocumentWithLicenses,
     navDocument,
     containerXml,
     writeEpub,
@@ -69,12 +70,25 @@ mediaType p = case map toLower (takeExtension p) of
   ".woff2" -> "font/woff2"
   _ -> "application/octet-stream"
 
+{- | The media type of a license document of a font (root ADR 0433):
+text/markdown for .md, text/plain for any other extension, whatever
+'mediaType' gives the extension.
+-}
+licenseMediaType :: FilePath -> Text
+licenseMediaType p = if map toLower (takeExtension p) == ".md" then "text/markdown" else "text/plain"
+
 itemId :: Int -> Text
 itemId i = "item" <> T.pack (show i)
 
 -- | The package document. Pages keep the order of the book (spine).
 packageDocument :: EpubConfig -> [FilePath] -> [FilePath] -> Text
-packageDocument cfg pages others =
+packageDocument cfg = packageDocumentWithLicenses cfg []
+
+{- | The package document whose items of @licenses@ are license documents
+of fonts, of the media type 'licenseMediaType' (root ADR 0433).
+-}
+packageDocumentWithLicenses :: EpubConfig -> [FilePath] -> [FilePath] -> [FilePath] -> Text
+packageDocumentWithLicenses cfg licenses pages others =
   let items = zip [1 :: Int ..] (pages <> others)
       -- dc:creator or dc:contributor, its role and its reading (docs/adr ADR 0033)
       person element prefix (i, c) =
@@ -100,7 +114,7 @@ packageDocument cfg pages others =
                "<manifest>",
                "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>"
              ]
-          <> ["<item id=\"" <> itemId i <> "\" href=\"" <> escapeXml (T.pack p) <> "\" media-type=\"" <> mediaType p <> "\"/>" | (i, p) <- items]
+          <> ["<item id=\"" <> itemId i <> "\" href=\"" <> escapeXml (T.pack p) <> "\" media-type=\"" <> (if p `elem` licenses then licenseMediaType p else mediaType p) <> "\"/>" | (i, p) <- items]
           <> ["</manifest>", "<spine" <> (if epVertical cfg then " page-progression-direction=\"rtl\"" else "") <> ">"]
           <> ["<itemref idref=\"" <> itemId i <> "\"/>" | (i, p) <- items, p `elem` pages]
           <> ["</spine>", "</package>"]
@@ -160,7 +174,7 @@ writeEpub root out cfg ft book site = do
       entries =
         [ mimetype,
           toEntry "META-INF/container.xml" 0 (BL.fromStrict (TE.encodeUtf8 containerXml)),
-          text "package.opf" (packageDocument cfg pages others),
+          text "package.opf" (packageDocumentWithLicenses cfg (siteLicenses site) pages others),
           text "nav.xhtml" (navDocument cfg ft book),
           text "style.css" (siteCss site)
         ]
