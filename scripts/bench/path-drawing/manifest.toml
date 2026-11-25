@@ -1,0 +1,22 @@
+chapters = ["book.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000439"
+title = "パスの描画のベンチマーク"
+language = "ja"
+date = 2026-11-25
+
+[[metadata.creators]]
+name = "Golem"
+role = "author"
+
+[source]
+paragraph-separator = "line"
+
+[targets.pdf]
+
+# The seed of the generator, and the shapes of each of the ten pages
+# (root ADR 0439)
+[vars]
+seed = 1
+shapes = 1000
