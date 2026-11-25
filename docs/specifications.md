@@ -1631,6 +1631,9 @@ CI では、`build` の x86-64 の `outputs` のランナーが、epubcheck と�
 成果物は既定で 30 秒ごとに問い合わせる。
 見つからなければ初回と以降 4 間隔ごとに生成元のジョブを確認する。
 GitHub API が利用上限を返したときは、応答に従って待ってから再試行する（[ADR 0333](adr/0333-wait-for-ci-artifacts-with-fewer-api-requests.md)）。
+待ち終えた成果物は、`visual`、`wasm`、`editors-lsp`、`verapdf` のどれでも `scripts/ci/download-artifact.sh` で取り寄せる。
+この実行の同じ名前の期限切れでない成果物のうち `created_at` がいちばん新しいものを選び、zip の SHA-256 が `digest` と一致したときだけ展開する。
+成果物がない、`digest` がない、取り寄せが 404 か利用上限で失敗した、のどれかなら 5 秒おきに 12 回まで取り直し、いちばん新しいものが二つ以上あるとき、SHA-256 が一致しないとき、ほかの理由で取り寄せに失敗したときは、取り直さずに失敗する（[ADR 0442](adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md)、[ADR 0446](adr/0446-pick-the-newest-artifact-of-a-name-across-attempts.md)）。
 集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](adr/0349-retry-ci-job-list-on-rate-limit.md)）。
 全ページを取得してから各ジョブのログを検査する。
 比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
