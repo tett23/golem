@@ -1,6 +1,6 @@
 # ADR 0427: warning の検査で、ログの無いジョブと、変更と関係の無いキャッシュの知らせを扱う
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 
