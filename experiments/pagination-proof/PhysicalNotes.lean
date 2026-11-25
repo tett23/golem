@@ -751,8 +751,8 @@ theorem rel_placeHeading (env : Env) (st : St) (firstId : Nat) (extent : Int) (l
     · exact Rel.via (rel_putHeading env _ firstId extent ls s h) rfl
     · exact Rel.via (rel_putHeading env _ firstId extent ls s h) (nm_fit env st _)
 
-theorem rel_putRuledHeading (env : Env) (ready : St) (b a : Int) (fid : Nat) (e : Int) (ls : List Line) (s : St)
-    (h : putRuledHeading env ready b a fid e ls = .ok s) : Rel ready s (notesOf ls) := by
+theorem rel_putRuledHeading (env : Env) (ready : St) (b a : Int) (ends : List Int) (fid : Nat) (e : Int) (ls : List Line)
+    (s : St) (h : putRuledHeading env ready b a ends fid e ls = .ok s) : Rel ready s (notesOf ls) := by
   unfold putRuledHeading at h
   split at h
   · cases h
@@ -785,6 +785,13 @@ theorem rel_ruledLinesHere (env : Env) (st : St) (r : Ruled) (later : List Flow)
       · cases h
   · cases h
 
+theorem nm_headingReady (env : Env) (hs : St) (fid : Nat) (extent size : Int) :
+    NM (headingReady env hs fid extent size) = NM hs := by
+  unfold headingReady
+  split
+  · rfl
+  · exact nm_fit env hs size
+
 set_option linter.unusedVariables false in
 theorem rel_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (s : St)
     (h : placeRuled inner env st r later = .ok s) : Rel st s (notesOf r.lines) := by
@@ -810,14 +817,28 @@ theorem rel_placeRuled (inner : Inner) (env : Env) (st : St) (r : Ruled) (later 
           exact Rel.via (rel_placeRuled inner env HS { r with before := none } later s h) hsS
         · exact Rel.via (rel_placeHeading env HS _ extent r.lines s h) hsS
       · split at h
-        · exact Rel.via (rel_putRuledHeading env _ _ _ _ extent r.lines s h) hsS
         · split at h
-          · rename_i h2
-            have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (fit env HS (headingBeforeExtra env r +
-                headingNeed env HS extent r.lines + headingAfterExtra env r extent))) (ruledRank r, rank st) :=
-              Prod.Lex.right _ (Nat.lt_of_lt_of_le (I4_fit_moved env HS _ h2) hr)
-            exact Rel.via (rel_placeRuled inner env _ r later s h) ((nm_fit env HS _).trans hsS)
-          · exact Rel.via (rel_putRuledHeading env _ _ _ _ extent r.lines s h) ((nm_fit env HS _).trans hsS)
+          · rename_i h2 h3
+            have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (headingReady env HS (headId r.lines) extent
+                (headingBeforeAt env HS r + headingNeed env HS extent r.lines + headingAfterExtra env r extent)))
+                (ruledRank r, rank st) :=
+              Prod.Lex.right _ (Nat.lt_of_lt_of_le (headingReady_moved env HS _ _ _ h3) hr)
+            exact Rel.via (rel_placeRuled inner env _ r later s h) ((nm_headingReady env HS _ _ _).trans hsS)
+          · exact Rel.via (rel_putRuledHeading env _ _ _ _ _ extent r.lines s h) ((nm_headingReady env HS _ _ _).trans hsS)
+        · split at h
+          · cases h
+          · rename_i inside e
+            split at h
+            · injection h with h; subst h
+              exact Rel.via (rel_putRuledHeading env _ _ _ _ _ extent r.lines inside e) ((nm_headingReady env HS _ _ _).trans hsS)
+            · split at h
+              · rename_i h4
+                have dec : Prod.Lex (· < ·) (· < ·) (ruledRank r, rank (headingReady env HS (headId r.lines) extent
+                    (headingBeforeAt env HS r + headingNeed env HS extent r.lines + headingAfterExtra env r extent)))
+                    (ruledRank r, rank st) :=
+                  Prod.Lex.right _ (Nat.lt_of_lt_of_le (headingReady_moved env HS _ _ _ h4) hr)
+                exact Rel.via (rel_placeRuled inner env _ r later s h) ((nm_headingReady env HS _ _ _).trans hsS)
+              · exact Rel.via (rel_putRuledHeading env _ _ _ _ _ extent r.lines s h) ((nm_headingReady env HS _ _ _).trans hsS)
   · rename_i hh
     split at h
     · rename_i first lastLine _ _

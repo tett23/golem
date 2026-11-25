@@ -438,6 +438,25 @@ ruledHeadingInputs =
   where
     hsides = [Nothing, Just (sides !! 0), Just (sides !! 1), Just (sides !! 3)]
 
+-- The rules of ruled headings in the middle of a column (PR #1151, #1152):
+-- a rule before after a plain line, a ruled paragraph's rule after or a
+-- taller line takes the gap between the faces or the edge of the
+-- heading's area, the outside only at the top of an empty column; a rule
+-- after takes the gap before the next line with its outer space and the
+-- next line's overhang, or the end of the column when that does not fit or
+-- the next block has a rule before of its own.
+ruledHeadingRuleInputs :: [(Column, [FlowAt Sp])]
+ruledHeadingRuleInputs =
+  [ (Column cap 0 1, lead <> [FRuled 100 b a False (RuleGrid 10 8) o (RuledHeading False (Sp e) ls)] <> next)
+  | cap <- [30, 36, 60],
+    lead <- [[], [para 0 1], [ruled 50 Nothing (Just (sides !! 0)) False defaultKeep (lines' 60 1)], [FParagraph defaultKeep (lines' 900 1)]],
+    b <- [Nothing, Just (RuleSide 0 0 12 False (Just 20)), Just (sides !! 3)],
+    a <- [Nothing, Just (RuleSide 4 6 2 True Nothing), Just (RuleSide 0 0 12 False Nothing), Just (sides !! 1)],
+    o <- [0, 3],
+    (e, ls) <- [(20, [line 300]), (20, [line 385]), (24, lines' 950 2)],
+    next <- [[para 20 1], [FParagraph defaultKeep (lines' 960 2)], [ruledHeading 101 (Just (sides !! 0)) Nothing False 10 [line 310], para 30 1], [FSpace 5, para 20 1]]
+  ]
+
 -- Wrapped figures and the lines beside them after paragraphs, before what
 -- follows, and after a figure sent on, a blank, a column made shorter, a
 -- keep and a heading.
@@ -736,7 +755,7 @@ hangGuard :: Int
 hangGuard = 120000000
 
 main :: IO ()
-main = mapM_ runWrap wrapTrialInputs >> mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> bookPartInputs <> tableAcrossInputs <> failureInputs)
+main = mapM_ runWrap wrapTrialInputs >> mapM_ run (paragraphInputs <> figureInputs <> controlInputs <> noteInputs <> ruledInputs <> chainInputs <> startInputs <> headingInputs <> turnedInputs <> stanzaInputs <> codeInputs <> ruledHeadingInputs <> ruledHeadingRuleInputs <> wrappedInputs <> tableInputs <> boxInputs <> mixedBoxInputs <> genericBoxInputs <> bookPartInputs <> tableAcrossInputs <> failureInputs)
   where
     run (column@(Column cap sep cols), flows) = do
       putStrLn (unwords (["in", show cap, show sep, show cols] <> map flowToken flows))
