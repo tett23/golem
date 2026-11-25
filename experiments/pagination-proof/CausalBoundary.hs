@@ -8,8 +8,9 @@
 -- paragraph of the style poem, which keeps its lines (line-breaks =
 -- "keep"), each verse line a unit; a stanza of the style poemk and a
 -- paragraph of the style held keep with the next 3 lines (keep-with-next =
--- 3), which keepPhysicalNext waits for.  With keep-parts = "page", wrapped
--- figures in list items go through itemJobs and retainPhysicalPart.
+-- 3), which keepPhysicalNext waits for.  With keep-parts = "page" or
+-- "spread", wrapped figures in list items go through itemJobs and
+-- retainPhysicalPart; with "column", they are placed as the others.
 -- CausalBoundary.lean prints the same for the copies of
 -- those loops in Physical.lean; check.sh compares the two with diff.  The
 -- manuscripts are laid out with the fake fonts of the golem-driver tests
@@ -21,6 +22,7 @@ module Main (main) where
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.List (intercalate, sort)
+import Data.String (fromString)
 import Data.Text qualified as T
 import Golem.Layout.Paginate (PageOutAt (..), Part (..), Slotted (..), Unmet (..))
 import Golem.Length (Sp (..))
@@ -87,7 +89,7 @@ stanzas =
        ]
     <> [[V as, V bs] | as <- replicateM 2 [5, 25], bs <- replicateM 2 [5, 25]]
 
--- | The list items, kept on a page: an item with a figure and one or two
+-- | The list items, in each of the modes of keep-parts: an item with a figure and one or two
 -- paragraphs after it, an item with two figures, two items, and an item
 -- after or before a paragraph.
 lists :: [[Item]]
@@ -106,12 +108,13 @@ nested =
     <> [[J 3 [[p]] sub, P n] | p <- [5, 25], sub <- [5, 25], n <- [5, 25]]
     <> [[J 3 [[p]] sub, I 3 [[q]]] | p <- [5, 25], sub <- [5, 25], q <- [5, 25]]
 
--- | The width of the figure in zw, the lines of the column, whether a list
--- item is kept on a page, and the items, after a wrapped figure when not.
-inputs :: [(Int, Int, Bool, [Item])]
+-- | The width of the figure in zw, the lines of the column, the value of
+-- keep-parts for the list items, and the items, after a wrapped figure when
+-- there is no value.
+inputs :: [(Int, Int, Maybe String, [Item])]
 inputs =
-  [(width, capacity, False, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- manuscripts]
-    <> [(width, capacity, True, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- lists]
+  [(width, capacity, Nothing, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- manuscripts]
+    <> [(width, capacity, Just mode, items) | mode <- ["column", "page", "spread"], width <- [2, 3], capacity <- [3, 4, 5, 6], items <- lists]
 
 -- | The wrapped figure of `width` zw, indented by `indent`.
 figureOf :: Int -> T.Text -> T.Text
@@ -155,21 +158,22 @@ unmet = \case
   ShortPart FirstPart i w g -> "!first" <> show i <> ":" <> show w <> ":" <> show g
   ShortPart LastPart i w g -> "!last" <> show i <> ":" <> show w <> ":" <> show g
   SplitBookPart _ _ KeepPage -> "!splitpage"
+  SplitBookPart _ _ KeepSpread -> "!splitspread"
   other -> "!" <> show other
 
 main :: IO ()
 main = do
   image <- BS.readFile "modules/golem-pdf/test/fixtures/tiny.jpg"
-  forM_ inputs $ \(width, capacity, retaining, items) -> do
-    putStrLn (show width <> " " <> show capacity <> (if retaining then " page" else "") <> " [" <> unwords (map name items) <> "]")
+  forM_ inputs $ \(width, capacity, mode, items) -> do
+    putStrLn (show width <> " " <> show capacity <> maybe "" (" " <>) mode <> " [" <> unwords (map name items) <> "]")
     let style =
           replaceIn "lines = 30" (T.pack ("lines = " <> show capacity)) $
             replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle
               <> "\n[paragraph-styles.poem]\nline-breaks = \"keep\"\n"
               <> "\n[paragraph-styles.poemk]\nline-breaks = \"keep\"\nkeep-with-next = 3\n"
               <> "\n[paragraph-styles.held]\nkeep-with-next = 3\n"
-              <> (if retaining then "\n[composition]\nkeep-parts = \"page\"\n" else "")
-        text = (if retaining then "" else figureOf width "") <> T.concat (sources width letters items)
+              <> maybe "" (\m -> "\n[composition]\nkeep-parts = \"" <> fromString m <> "\"\n") mode
+        text = maybe (figureOf width "") (const "") mode <> T.concat (sources width letters items)
     result <- layoutMini style text [("images/tiny.jpg", image)]
     case result of
       Right (_, layout) ->

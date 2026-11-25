@@ -4,7 +4,7 @@
    `jobsFrom` runs the figure, `paragraphs` the paragraphs and stanzas
    beside it, `parts` (`paragraph`) each paragraph, broken again at each
    cursor, `stanza`, `tryVerses` and `accept` each stanza, `itemJobs` the
-   later figures of a list item kept on a page, and, with a
+   later figures of a list item kept on a page or a spread, and, with a
    no-break after a paragraph or a stanza, `probeNext` and `probeChain`
    what follows it.  `main` prints the pages in the format of
    CausalBoundary.hs, and check.sh compares the two with diff.
@@ -188,16 +188,19 @@ def wants (lead : Bool) (items : List Item) : List Nat :=
     | .j _ fs _ => 0 :: (fs.bind fun ps => 0 :: ps.map fun _ => 0) ++ [0]
     | _ => [0]).join
 
-/-- A manuscript: the width of its figures in zw, whether a list item is
-    kept on one page (`keep-parts = "page"`), its units, and the lines each
-    keeps with what follows by its style. -/
+/-- A manuscript: the width of its figures in zw, the unit a list item is
+    kept in (`keep-parts`; a list item is retained when it is a page or a
+    spread), its units, and the lines each keeps with what follows by its
+    style. -/
 structure Ms where
   w : Nat
-  retaining : Bool
+  part : PartUnit
   us : List Unit'
   wanted : List Nat
 
 def Ms.at (m : Ms) (i : Nat) : Option Unit' := m.us.get? i
+
+def Ms.retaining (m : Ms) : Bool := m.part != .column
 
 /-- The lines the unit `i` keeps with what follows by its style. -/
 def wantOf (m : Ms) (i : Nat) : Nat := (m.wanted.get? i).getD 0
@@ -264,7 +267,7 @@ def holdNext (required : Nat) (linesOnly : Bool) (st : St) : St :=
 
 /-- The paragraphs beside the figure `job` (`composeBeside` and
     `besideParagraphs`): the paragraphs and verse lines after it, past
-    no-breaks, of its list item when one is kept on a page. -/
+    no-breaks, of its list item when one is kept on a page or a spread. -/
 def besides (m : Ms) (job : Nat) : List Nat :=
   let rec go : Nat → Nat → List Nat
     | 0, _ => []
@@ -412,7 +415,9 @@ def itemStart (m : Ms) (job : Nat) : Nat :=
     figure `prior`), the figure (`beginPhysicalWrapAfter`, its id the
     lines and figures before it), and the paragraphs beside it. -/
 def runJob (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : Except Failure St :=
-  let low := if prior.isSome || (itemAt m job).isSome then max (after m prior) (itemStart m job) else 0
+  let low :=
+    if !m.retaining then after m prior
+    else if prior.isSome || (itemAt m job).isSome then max (after m prior) (itemStart m job) else 0
   let prefixFlows := flowsOf m (slotCount at') (span m low (job - 1) none |>.filter (· < job))
   let ident := slotCount at' + (prefixFlows.map fun f => match f with | .paragraph _ ls => ls.length | _ => 0).foldl (· + ·) 0
   match stepPrefix e at' [.wrapped ident (extent m.w) []] prefixFlows with
@@ -428,9 +433,10 @@ def runJob (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : Exce
       | .error f => .error f
       | .ok placed => .ok (endWrap region placed)
 
-/-- `retainPhysicalPart` of `keep-parts = "page"`, the ids of the part
-    those of the slots the trial placed. -/
-def retainPage (e : Env) {α : Type} (trial : St → Except Failure (α × St)) (at' : St) : Except Failure (α × St) :=
+/-- `retainPhysicalPart` of `keep-parts = "page"` or `"spread"` (`u`), the
+    ids of the part those of the slots the trial placed. -/
+def retainPart (e : Env) (u : PartUnit) {α : Type} (trial : St → Except Failure (α × St)) (at' : St) :
+    Except Failure (α × St) :=
   let attempt : St → Except Failure (α × List Nat × St) := fun s =>
     match trial s with
     | .error f => .error f
@@ -440,15 +446,15 @@ def retainPage (e : Env) {α : Type} (trial : St → Except Failure (α × St)) 
   match attempt at' with
   | .error f => .error f
   | .ok (a, ids, ordinary) =>
-    if partFits PartUnit.page at' ids ordinary (unitKey PartUnit.page at'.page at'.column) then .ok (a, ordinary)
+    if partFits u at' ids ordinary (unitKey u at'.page at'.column) then .ok (a, ordinary)
     else
-      let moved := nextUnit e PartUnit.page at'
+      let moved := nextUnit e u at'
       match attempt moved with
       | .error f => .error f
       | .ok (b, ids', m) =>
-        if partFits PartUnit.page at' ids' m (unitKey PartUnit.page moved.page moved.column) then .ok (b, m)
-        else if emptyUnit PartUnit.page at' then .ok (a, addUnmet (Unmet.splitPart false PartUnit.page) ordinary)
-        else .ok (b, addUnmet (Unmet.splitPart false PartUnit.page) m)
+        if partFits u at' ids' m (unitKey u moved.page moved.column) then .ok (b, m)
+        else if emptyUnit u at' then .ok (a, addUnmet (Unmet.splitPart false u) ordinary)
+        else .ok (b, addUnmet (Unmet.splitPart false u) m)
 
 /-- The loop over the figures of the manuscript (`jobsFrom`). -/
 def jobs (e : Env) (m : Ms) : Jobs :=
@@ -457,7 +463,7 @@ def jobs (e : Env) (m : Ms) : Jobs :=
     run := fun prior _ job at' => runJob e m prior job at',
     itemRest := fun key prior at' => stepAt e m at' ((span m (after m (some prior)) m.us.length none).filter (fun j => itemAt m j == some key)),
     finish := fun prior done at' => stepAt e m at' (span m (after m prior) m.us.length done),
-    retain := fun trial at' => if m.retaining then retainPage e trial at' else trial at' }
+    retain := fun trial at' => if m.retaining then retainPart e m.part trial at' else trial at' }
 
 def slotText : Int × Slot → String
   | (p, .line i) => s!"{p}:L{i}"
@@ -471,6 +477,7 @@ def unmetText : Unmet → String
   | .shortPart true i w g => s!"!first{i}:{w}:{g}"
   | .shortPart false i w g => s!"!last{i}:{w}:{g}"
   | .splitPart false .page => "!splitpage"
+  | .splitPart false .spread => "!splitspread"
   | _ => "!other"
 
 def pageText (p : PageOut) : String :=
@@ -530,7 +537,7 @@ def nested : List (List Item) :=
   ([5, 25].bind fun p => [5, 25].bind fun sub => [5, 25].map fun n => [Item.j 3 [[p]] sub, .p n]) ++
   ([5, 25].bind fun p => [5, 25].bind fun sub => [5, 25].map fun q => [Item.j 3 [[p]] sub, .i 3 [[q]]])
 
-/-- The list items of CausalBoundary.hs, kept on a page: an item with a
+/-- The list items of CausalBoundary.hs, in each mode of `keep-parts`: an item with a
     figure and one or two paragraphs after it, an item with two figures, two
     items, and an item after or before a paragraph. -/
 def lists : List (List Item) :=
@@ -542,9 +549,10 @@ def lists : List (List Item) :=
 
 def inputs : List (String × Ms × Nat) :=
   ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => manuscripts.map fun items =>
-    (s!"{w} {lines} [{" ".intercalate (items.map Item.name)}]", ⟨w, false, units true items, wants true items⟩, lines)) ++
-  ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => lists.map fun items =>
-    (s!"{w} {lines} page [{" ".intercalate (items.map Item.name)}]", ⟨w, true, units false items, wants false items⟩, lines))
+    (s!"{w} {lines} [{" ".intercalate (items.map Item.name)}]", ⟨w, .column, units true items, wants true items⟩, lines)) ++
+  ([("column", PartUnit.column), ("page", .page), ("spread", .spread)].bind fun (mode, u) =>
+    [2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => lists.map fun items =>
+      (s!"{w} {lines} {mode} [{" ".intercalate (items.map Item.name)}]", ⟨w, u, units false items, wants false items⟩, lines))
 
 end CausalBoundary
 
