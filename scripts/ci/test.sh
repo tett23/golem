@@ -5254,7 +5254,8 @@ awk -F '\t' -v OFS='\t' '$1 == "suites" && $3 == "golem-driver:test:golem-driver
   sed 's|modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs|modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs|' |
   LC_ALL=C sort >"$WORK/before"
 run sh "$HERE/ci-checks.sh" "$CI_YML"
-grep -vF 'same-plan.sh' "$WORK/out" >"$WORK/a1" 2>/dev/null
+# the step of cabal sdist all is a check added after the ADR (root ADR 0452)
+grep -vF -e 'same-plan.sh' -e 'cabal sdist all' "$WORK/out" >"$WORK/a1" 2>/dev/null
 if [ "$CODE" = 0 ] && diff "$WORK/before" "$WORK/a1" >"$WORK/a1.diff"; then ok; else
   ng "ADR 0395 A1: the checks of a pull request are those of the commit before the ADR, on the same architectures"
   sed 's/^/  /' "$WORK/a1.diff" 2>/dev/null | head -40

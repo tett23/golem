@@ -434,6 +434,12 @@ jobs:
         with:
           name: golem-linux-x86_64
           path: golem-linux-x86_64
+      # cabal expands the wildcards of extra-source-files, extra-doc-files
+      # and data-files only when it makes the tarball of a package, as
+      # cabal install does; cabal build does not (root ADR 0452)
+      - name: Every package makes its source tarball (root ADR 0452)
+        if: matrix.artifacts
+        run: cabal sdist all --output-directory="$RUNNER_TEMP/sdist"
       - name: qpdf is installed
         if: matrix.tests || (matrix.runner == 'ubuntu-24.04' && matrix.outputs)
         timeout-minutes: 5
