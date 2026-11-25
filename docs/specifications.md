@@ -446,8 +446,9 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 CI は、検査を減らさずに時間を縮める（[ADR 0395](adr/0395-bring-the-pull-request-ci-under-five-minutes.md)）。
 `build` のランナーは、自分が使うものだけを組む（`scripts/ci/build-targets.sh`）。
 テストのランナーは自分が走らせるテストのスイートを、出力と環境の検査のランナーは実行ファイルの `golem` だけを組む。
-`tests-rest` は、生成したパーサーを確かめるための `peg-hs` と、`golem` のほかの、ネイティブで組める実行ファイルも組む。
-`tests-rest` がこれらも組むのは、これらを組むテストのスイートがなく、`ci` が待つジョブで `-Werror` のコンパイルを確かめるためである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+`tests-rest-a` は生成したパーサーを確かめるための `peg-hs` も、`tests-rest-b` は `golem` のほかの、ネイティブで組める実行ファイルも組む（[ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md)）。
+これらも組むのは、これらを組むテストのスイートがなく、`ci` が待つジョブで `-Werror` のコンパイルを確かめるためである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md)）。
+新しく足した実行ファイルも、`tests-rest-b` で組む。
 `cabal build all` を組んで `dist-newstyle` を保存するのは、アーキテクチャごとに一つ動くジョブ `cache-dist` で、`ci` はこのジョブを待たない（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I3）。
 ビルドの計画を読む検査は、どのランナーでも `cabal build all` の計画を読み、組んだときの計画と要素の一覧が等しいことを `scripts/ci/same-plan.sh` で確かめる。
 x86-64 の出力は二つのランナーに分け、`outputs` がほかのジョブ（`visual`、`verapdf`、`wasm`、`editors-lsp`）が待つ成果物を、`outputs-checks` がそのほかの手順を受け持つ。
@@ -459,6 +460,16 @@ golem-driver のテストのスイートは、どちらのアーキテクチャ�
 | --- | --- |
 | `tests-driver-a` | golem-driver-pdf-test、golem-driver-cli-test、golem-driver-global-test |
 | `tests-driver-b` | golem-driver-page-test、golem-driver-output-test、golem-driver-parallel-test |
+
+golem-driver に属さないテストのスイートも、どちらのアーキテクチャでも `tests-rest-a` と `tests-rest-b` の二つのランナーに分け、どのスイートもちょうど一つのランナーで走る（[ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の I1）。
+振り分けは `scripts/ci/test-suites.sh` の `rest-a` と `rest-b` が決め、`REST_A` に挙げないスイートは `tests-rest-b` で走る。
+最も長い golem-emet-test と、最後に終わる golem-pdf-test を別のランナーに置き、golem-pdf-test が始まるまでの待ちを減らす。
+生成したパーサーと文法の照合（`scripts/gen-parser.sh`）と、埋め込んだモジュールの照合（`scripts/gen-embedded.sh`）は、`peg-hs` を組む `tests-rest-a` でだけ走る（[ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の I6）。
+
+| ランナー | スイート |
+| --- | --- |
+| `tests-rest-a` | golem-emet-test、golem-parser-test |
+| `tests-rest-b` | golem-driver に属さないスイートのうち、`tests-rest-a` のほかのすべて |
 
 四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
 四つは、共通の stanza `driver-suite` の設定と依存を読み、テストを助けるモジュール（`Support` と、ほかのモジュールが読む `PdfSpec`、`LinkSpec` などの `*Spec` のモジュール）を、それぞれの `other-modules` に挙げて組む。
