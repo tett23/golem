@@ -136,6 +136,7 @@ bodyTexts book = [(destination, sp, text) | Document destination blocks <- bookD
       DefList groups -> concat [concatMap (concatMap inlineTexts) terms <> concatMap (concatMap blockTexts) defs | DefGroup terms defs <- groups]
       TableBlock table -> concatMap (concatMap inlineTexts) (tableHeader table <> concat (tableRows table))
       FigureBlock figure -> concatMap blockTexts (figCaption figure)
+      FrameBlock _ bs -> concatMap blockTexts bs
       _ -> []
     inlineTexts :: InlineF r -> [(SrcSpan, Text)]
     inlineTexts = \case

@@ -277,7 +277,23 @@ assembleResults channels handlers program style styleFid styleText manifest proj
             [ numberVerseDocument (maybe style (withLocalStyles style . erStyles) (Map.lookup fid results)) doc
             | doc@(Document fid _) <- bookDocs book
             ]
-       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, separatorDiags <> s1Diags)
+          -- G03289: a @frame of a name [frames] does not have (root ADR 0438)
+          frameDiags =
+            [ diagnostic "G03289" Error sp ("[frames] にないフレームの名前です: " <> name)
+            | Document _ bs <- resolvedDocs,
+              Block sp _ _ (FrameBlock name _) <- framesIn bs,
+              Map.notMember name (stFrames style)
+            ]
+       in (Just book {bookDocs = numberedDocs, bookTitleSeparators = separators, bookImages = Map.unions (map erImages (Map.elems results)), bookSeparators = resolvedSeparators}, separatorDiags <> frameDiags <> s1Diags)
+
+-- | The text frames of blocks, at any depth, in order (root ADR 0438).
+framesIn :: [Block] -> [Block]
+framesIn = concatMap $ \b -> case blockBody b of
+  FrameBlock {} -> [b]
+  BulletList items -> framesIn (concatMap itemBlocks items)
+  OrderedList items -> framesIn (concatMap itemBlocks items)
+  DefList gs -> framesIn (concat (concatMap dgDefs gs))
+  _ -> []
 
 -- | Resolve names only after plugin and Emet filters have run (root ADR 0398).
 resolveSeparators :: Handlers -> Maybe Program -> Style -> FileId -> Text -> [Document] -> ([Document], Map (SrcSpan, Text) SeparatorAppearance, [Diagnostic])

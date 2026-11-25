@@ -741,7 +741,7 @@ outputDiagnosticTests =
             modifyIORef' calls (+ 1)
             n <- readIORef calls
             pure (Right ((), pagesWith (if odd n then [["a", "b"], []] else [[], ["a", "b"]])))
-      r <- fixpoint Map.empty labelSpan (const "") (const flipping)
+      r <- fixpoint Map.empty labelSpan (const "") (\_ _ -> Map.empty) (const flipping)
       case r of
         Left [d] -> do
           diagCode d @?= DiagnosticCode "G07021"
@@ -759,7 +759,7 @@ outputDiagnosticTests =
               if n == 2
                 then Left [diagnostic "G07022" Error (mkSpan (FileId 1) 0 0) "x"]
                 else Right ((), pagesWith [["a"]])
-      r <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") (\_ a -> failing (a :: Assumed))
+      r <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") (\_ _ -> Map.empty) (\_ a -> failing (a :: Assumed))
       either (map diagCode) (const []) r @?= [DiagnosticCode "G07022"],
     testCase "G07025: an indent that leaves exactly 8 characters is not G07025; one character more is" $ do
       -- 12 characters of 10pt

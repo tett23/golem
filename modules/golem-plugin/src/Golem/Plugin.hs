@@ -628,6 +628,7 @@ placeImages body images bs = do
       BulletList items -> concatMap itemBlocks items
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
+      FrameBlock _ held -> held
       _ -> []
 
 {- | The kinds of blocks a block command makes, at any depth, and no label
@@ -651,6 +652,8 @@ blockKind (Block _ lbl _ body)
       PageControl _ -> refuse "改ページの制御"
       BlankLines _ -> refuse "行アキ"
       Separator _ -> Right ()
+      -- a frame takes no room in the flow, and holds paragraphs (root ADR 0438)
+      FrameBlock _ bs -> mapM_ blockKind bs
   where
     refuse k = Left (BadOutput ("ブロックコマンドが返せないブロックです: " <> k))
 
@@ -822,6 +825,7 @@ blocksOf (Document _ bs) = concatMap go bs
         OrderedList items -> concatMap (concatMap go . itemBlocks) items
         DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
         FigureBlock f -> concatMap go (figCaption f)
+        FrameBlock _ inner -> concatMap go inner
         _ -> []
 
 blockInlines :: Block -> [Inline]

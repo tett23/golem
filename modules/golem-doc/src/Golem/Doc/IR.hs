@@ -146,6 +146,8 @@ data BlockBody
     BlankLines !Int64
   | -- | a named project separator, resolved after all filters (root ADR 0398)
     Separator !Text
+  | -- | a text frame named in style.toml, holding paragraphs; it takes no room in the flow (root ADR 0438)
+    FrameBlock !Text [Block]
   deriving stock (Eq, Show)
 
 {- | A manual control of page breaks (docs/adr ADR 0030): no break

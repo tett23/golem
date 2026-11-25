@@ -75,6 +75,7 @@ applyRegexStyles rules d
       OrderedList items -> OrderedList (map item items)
       DefList groups -> DefList [g {dgTerms = map (paragraph (rulesOf "body")) (dgTerms g), dgDefs = map (map (block Nothing)) (dgDefs g)} | g <- groups]
       FigureBlock fig -> FigureBlock fig {figCaption = map (block (Just "caption")) (figCaption fig)}
+      FrameBlock name bs -> FrameBlock name (map (block Nothing) bs)
       TableBlock t ->
         let cell = paragraph (rulesOf (fromMaybe "table" (tableStyle t)))
          in TableBlock t {tableHeader = map cell (tableHeader t), tableRows = map (map cell) (tableRows t)}

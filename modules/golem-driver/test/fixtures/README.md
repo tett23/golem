@@ -12,7 +12,7 @@
 | `languages/` | a small horizontal book of the characters of both scripts (quotation marks, dashes, the ellipsis, guillemets) in and out of `[lang]` spans, `@lang` on blocks and its body form, and the hyphenation of English and French paragraphs; `TaggedPdfSpec` fixes its structure tree, `scripts/ci/conformance-pdfs.sh` declares PDF/A-2a and PDF/UA-1 for the CI job verapdf, CI runs epubcheck on its EPUB, and the visual regression test builds it ([docs/adr/0187](../../../../docs/adr/0187-inline-language-switch.md)); the tests copy its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `figures-external/` | figures written by Inkscape, LibreOffice Draw, Chromium's print, matplotlib, pdfTeX, LuaTeX and draw.io, with their sources and commands in its `README.md`; `FigureExternalSpec` places each, expects it placed or refused as the README says, and compares each placed PDF with its page in `pdftoppm` ([docs/adr/0232](../../../../docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)) |
 | `epub-forms/` | a small book of three files with the forms CI runs epubcheck on: a citation whose `@bibliography` is in another file, `@toc depth=1` over headings of three levels, and the channel of the sample plugin `glossary`, read from `plugins/wasm/glossary.wasm` through a cache named by the SHA-256 of its `plugins.lock` (the url is not fetched); `PluginsSpec` of golem-driver-global-test checks the three forms in its EPUB ([docs/adr/0232](../../../../docs/adr/0232-check-inks-fonts-figures-links-and-epubs-structurally-in-ci.md)) |
-| `specimens/` | two small books of the specimens of what was checked by eye (`horizontal/`, `vertical/`), built by the visual regression test ([docs/adr/0233](../../../../docs/adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)); see "The specimens" |
+| `specimens/` | small books of the specimens of what was checked by eye (`horizontal/`, `vertical/`, and the text frames in `frames/`), built by the visual regression test ([docs/adr/0233](../../../../docs/adr/0233-add-the-specimens-of-the-visual-checks-to-the-visual-regression-test.md)); see "The specimens" |
 | `int-width/` | a small horizontal book whose values the width of `Int` would change (32 bits in wasm32, 64 in the native builds; [docs/adr/0247](../../../../docs/adr/0247-keep-the-values-of-golem-wasm-independent-of-the-width-of-int.md)): `images/ascii85.pdf`, whose two content streams are written in ASCII85 (with groups of the values 2^31 - 1 and 2^31 in a comment) and are named twice each by `Contents`, each a `BDC` and an `EMC`, and a list item of `@number 2147483648`; with `images/reference.pdf` (`4294967297 0 R` in its resources), `images/icc.pdf` (an `ICCBased` of `/N 4294967299`), `images/ihdr-width.png` (an IHDR of width 2^31) and `images/chunk-length.png` (a chunk of length 2^31), which `scripts/wasm/compare.sh` puts in the place of the first figure, one at a time, and a printing of edition 2147483648 it adds to `manifest.toml`; the files were written byte by byte, and `images/figure.svg` is the image of the web of the PDF figures; `compare.sh` copies its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `font-licenses/` | a small horizontal book whose HTML and EPUB embed two fonts, each with its license document of `ja-license` and `latin-license` (a `.txt` and a `.md`); CI copies Noto Serif JP of `kanikosen/` and Source Sans Pro of `modules/golem-font/test/fonts/` into its `fonts/` as `ja.otf` and `latin.otf`, with their licenses as `LICENSE-ja.txt` and `LICENSE-latin.md`, and runs epubcheck on its EPUB; the PDF tests copy their fonts in as `fonts/ja.otf` and `fonts/latin.otf` ([root ADR 0433](../../../../docs/adr/0433-bundle-font-licenses-with-embedded-fonts.md)) |
 | `tempest/` | *The Tempest* by William Shakespeare, set horizontally |
@@ -143,6 +143,15 @@ marks and a bleed of 3 mm (`specimens-vertical-marks-japanese`); its
 The figures are small PNG images; shem draws their samples, so the
 references show the place, the size and the content of a figure, turned
 with its caption.
+
+`specimens/frames/` is a third, one-column book of the text frames (the
+input `specimens-frames`): a master page that puts an ornament on the
+foot of its pages and a frame of `wrap = "around"` on the fore-edge, a
+`@frame` with a quote, and a master page that puts a frame of a circle
+and one of a star
+([root ADR 0437](../../../../docs/adr/0437-paths-and-the-box-model.md) A1,
+[root ADR 0438](../../../../docs/adr/0438-place-text-frames-anywhere-on-a-page.md) A1).
+Its pages are checked by eye by the maintainer.
 
 What a page of these books shows is accepted by eye once, when its
 reference is written (the pull request says what was looked at on each
