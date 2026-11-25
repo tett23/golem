@@ -10,7 +10,7 @@ import Golem.Layout.Code (codeGeometry)
 import Golem.Layout.Paginate
 import Golem.Layout.Paginate.Physical
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
-import Golem.Length (Sp)
+import Golem.Length (Sp (..))
 import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Test.Tasty hiding (after)
@@ -1036,6 +1036,36 @@ freeLinesOutOfColumn cfg p =
 freeRulesOutOfSwitched :: PhysicalSettings -> Sp -> PageOutAt Sp -> [PlacedRule]
 freeRulesOutOfSwitched cfg w p = [r | r <- poRules p, prAt r < csFirstLine (poColumnSet p) || prAt r + w > columnEnd cfg p]
 
+{- | The rules of a column of the free placement that lie over the face of
+a line or a heading (golem-driver ADR 0027, root ADR 0397 I11): the face
+of a line box starts floor(p / 2) - floor(h / 2) into it, and a heading
+of n lines takes n line pitches. The weight of each rule is given.
+-}
+freeRulesOverFaces :: PhysicalSettings -> (PlacedRule -> Sp) -> PageOutAt Sp -> [PlacedRule]
+freeRulesOverFaces cfg weightOf p =
+  let pitch = physicalPagePitch cfg
+      face = physicalFontSize cfg
+      lead = Sp (unSp pitch `div` 2 - unSp face `div` 2)
+      faces = [(at + lead, at + n * pitch - (pitch - lead - face)) | (at, slot) <- poSlots p, Just n <- [linesOf slot]]
+      linesOf = \case
+        SLine _ -> Just 1
+        SHeading _ n -> Just (fromIntegral (max 1 n))
+        _ -> Nothing
+   in [r | r <- poRules p, any (\(start, end) -> prAt r < end && start < prAt r + weightOf r) faces]
+
+{- | The rules of a column of the free placement that leave it other than
+at its edge (golem-driver ADR 0027, 0040, root ADR 0397 I8): a rule of
+keep-in-column = true (the blocks of id below 200) stays in the column;
+one of keep-in-column = false may go 20 sp out, a rule before over the
+start of the column and a rule after past its end, and nowhere else.
+-}
+freeRulesOutOfEdge :: PhysicalSettings -> (PlacedRule -> Sp) -> PageOutAt Sp -> [PlacedRule]
+freeRulesOutOfEdge cfg weightOf p =
+  let outside r = prId r >= 200
+      lo r = if outside r && prBefore r then -20 else 0
+      hi r = columnEnd cfg p + (if outside r && not (prBefore r) && null (poFootnotes p) then 20 else 0)
+   in [r | r <- poRules p, prAt r < lo r || prAt r + weightOf r > hi r]
+
 -- | The end of a column above its notes.
 columnEnd :: PhysicalSettings -> PageOutAt Sp -> Sp
 columnEnd cfg p =
@@ -1182,6 +1212,99 @@ joinedRuleTests =
           next <- [[], [ruled (i + 1) True a2 True (RuledLines defaultKeep [noteLine 20, line 21])], [ruled (i + 1) True a2 False (RuledLines defaultKeep [line 20])]],
           let cfg = settings {physicalPagePitch = 10, physicalCapacity = c, physicalMaxCapacity = c, physicalSeparator = sep}
               flows = lead <> [ruled i False True False (RuledLines defaultKeep (zipWith noteOn [0 ..] (map line [10 .. 9 + n])))] <> next <> [FParagraph defaultKeep [line 40]]
+        ],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I11: the rule before of a ruled heading in the middle of a column keeps its area in the column" $ do
+      -- pitch 20 sp, face 10 sp: the face of the heading starts 5 sp into its box, the rule is 12 sp thick and may go 20 sp out
+      let cfg = settings {physicalPagePitch = 20, physicalCapacity = 200, physicalMaxCapacity = 200}
+          heading = FRuled 200 (Just (RuleSide 0 0 12 False (Just 20))) Nothing False (RuleGrid 20 10) 0 (RuledHeading False 20 [line 1])
+      ps <- either (assertFailure . show) pure (paginatePhysical cfg [FParagraph defaultKeep [line 0], heading])
+      [r | p <- ps, r <- freeRulesOverFaces cfg (const 12) p] @?= []
+      [r | p <- ps, r <- freeRulesOutOfEdge cfg (const 12) p] @?= [],
+    testCase "golem-driver ADR 0027, root ADR 0397 I8, I11: the rules of ruled headings and paragraphs lie off every face and go out of the column only at its edge" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, inner, outer, w, spaced, map showFlow flows, [(poNumber p, poSlots p, poRules p) | p <- ps])
+              assertBool ("over a face: " <> show shown) (all (null . freeRulesOverFaces cfg (const w)) ps)
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfEdge cfg (const w)) ps)
+        | c <- [60, 100, 200],
+          -- nothing, one or two lines, a heading, or a ruled paragraph whose rule after the block joins
+          leadKind <- [0 .. 4 :: Int],
+          inner <- [0, 2],
+          outer <- [0, 4],
+          w <- [1, 12],
+          spaced <- [False, True],
+          i <- [100, 200],
+          (b, a) <- [(True, False), (False, True), (True, True)],
+          body <- [RuledLines defaultKeep [line 10], RuledLines defaultKeep [line 10, line 11], RuledHeading False 20 [line 10], RuledHeading False 40 [line 10, line 11]],
+          let side = RuleSide inner outer w spaced (if i >= 200 then Just 20 else Nothing)
+              guardB x = if x then Just side else Nothing
+              cfg = settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c}
+              lead = case leadKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 0]]
+                2 -> [FParagraph defaultKeep [line 0, line 1]]
+                3 -> [FHeading 2 False 20 [line 2]]
+                _ -> [FRuled 50 Nothing (Just side {rsdOutside = Nothing}) False (RuleGrid 20 10) 0 (RuledLines defaultKeep [line 0])]
+              flows = lead <> [FRuled i (guardB b) (guardB a) (leadKind == 4) (RuleGrid 20 10) 0 body, FParagraph defaultKeep [line 40]]
+        ],
+    testCase "root ADR 0397 I11, golem-driver ADR 0027: the rule after of a ruled heading in the middle of a column takes the interior extra with its outer space and the next line's overhang" $ do
+      -- pitch 20 sp, face 10 sp: the heading's face ends at 15 sp, the next face starts 5 sp into its box, g = 10 sp
+      let cfg = settings {physicalPagePitch = 20, physicalCapacity = 200, physicalMaxCapacity = 200}
+          heading side r = FRuled 5 Nothing (Just side) False (RuleGrid 20 10) r (RuledHeading False 20 [line 0])
+          placed side r = fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical cfg [heading side r, FParagraph defaultKeep [line 1]])
+      -- spaced: i 4 + w 2 + o 6 + r 3 - g 10 = 5 sp; the rule 4 sp off the face
+      placed (RuleSide 4 6 2 True Nothing) 3 @?= Right [([(0, SHeading 0 1), (25, SLine 1)], [PlacedRule 5 False 19])]
+      -- unspaced: w 12 + r 3 - g 10 = 5 sp; the rule in the middle of the 15 sp less the overhang and the weight
+      placed (RuleSide 0 0 12 False Nothing) 3 @?= Right [([(0, SHeading 0 1), (25, SLine 1)], [PlacedRule 5 False 15])]
+      -- no extra when the gap holds the rule, its spaces and the overhang
+      placed (RuleSide 2 2 1 True Nothing) 0 @?= Right [([(0, SHeading 0 1), (20, SLine 1)], [PlacedRule 5 False 17])],
+    testCase "root ADR 0397 I8, I11, golem-driver ADR 0027: the rule after of a ruled heading at the end of the column drops its outer space" $ do
+      -- the interior extra 5 sp would end the area 2 sp past the column end of 23 sp; the end-of-column extra max 0 (4 + 2 - 5) = 1 sp fits
+      let cfg = settings {physicalPagePitch = 20, physicalCapacity = 23, physicalMaxCapacity = 23}
+          heading = FRuled 5 Nothing (Just (RuleSide 4 6 2 True Nothing)) False (RuleGrid 20 10) 3 (RuledHeading False 20 [line 0])
+      fmap (map (\p -> (poSlots p, poRules p))) (paginatePhysical cfg [heading, FParagraph defaultKeep [line 1]])
+        @?= Right [([(0, SHeading 0 1)], [PlacedRule 5 False 19]), ([(0, SLine 1)], [])],
+    testCase "root ADR 0397 I8, I11, golem-driver ADR 0027: the rules after of ruled headings and paragraphs lie in the column, off every face, and take the interior extra in the middle of a column" $
+      sequence_
+        [ case paginatePhysical cfg flows of
+            Left failure -> assertFailure (show (c, map showFlow flows, failure))
+            Right ps -> do
+              let shown = (c, inner, outer, w, spaced, r, map showFlow flows, [(poNumber p, poSlots p, poRules p) | p <- ps])
+                  rules = [(p, rule) | p <- ps, rule <- poRules p, prId rule == 100, not (prBefore rule)]
+              assertBool ("over a face: " <> show shown) (all (null . freeRulesOverFaces cfg (const w)) ps)
+              assertBool ("out of the column: " <> show shown) (all (null . freeRulesOutOfColumn cfg w) ps)
+              -- an empty column that cannot hold the heading with its rule at the column end drops the rule (golem-driver ADR 0035)
+              assertEqual ("rules after: " <> show shown) (if extentOf body + max 0 (i' + w - 5) > c then 0 else 1) (length rules)
+              -- in the middle of a column the next line starts where the interior extra puts it
+              sequence_
+                [ assertEqual ("interior extra: " <> show shown) (headingEnd + interior) nextAt
+                | (p, rule) <- rules,
+                  (headingAt, SHeading 0 _) <- poSlots p,
+                  let headingEnd = headingAt + extentOf body
+                      interior = max 0 (i' + w + o' + r - 10),
+                  headingEnd + interior <= c,
+                  prAt rule + w <= c,
+                  (nextAt, SLine 40) <- poSlots p
+                ]
+        | c <- [40, 43, 45, 50, 60, 100],
+          leadKind <- [0 .. 2 :: Int],
+          inner <- [0, 4],
+          outer <- [0, 6],
+          w <- [1, 12],
+          spaced <- [False, True],
+          r <- [0, 3],
+          body <- [RuledHeading False 20 [line 0], RuledHeading False 40 [line 0, line 1]],
+          let side = RuleSide (if spaced then inner else 0) (if spaced then outer else 0) w spaced Nothing
+              cfg = settings {physicalPagePitch = 20, physicalCapacity = c, physicalMaxCapacity = c}
+              lead = case leadKind of
+                0 -> []
+                1 -> [FParagraph defaultKeep [line 30]]
+                _ -> [FParagraph defaultKeep [line 30, line 31]]
+              i' = rsdInner side
+              o' = rsdOuter side
+              flows = lead <> [FRuled 100 Nothing (Just side) False (RuleGrid 20 10) r body, FParagraph defaultKeep [line 40]]
         ]
   ]
   where
@@ -1193,6 +1316,9 @@ joinedRuleTests =
       FRuled {frId = i, frBefore = b, frAfter = a, frJoined = j, frBody = body} -> "R" <> show i <> ":" <> concatMap (\x -> if x then "1" else "0") [isJust b, isJust a, j] <> ":" <> either' body
       FParagraph _ ls -> "P" <> show (map lbId ls) <> show (sum [m | l <- ls, NoteBody _ m <- lbNotes l])
       _ -> "?"
+    extentOf = \case
+      RuledHeading _ m _ -> m
+      RuledLines _ ls -> 20 * fromIntegral (length ls)
     either' = \case
       RuledLines _ ls -> "L" <> show (length ls)
       RuledHeading _ m _ -> "H" <> show m
