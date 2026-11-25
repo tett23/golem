@@ -56,6 +56,7 @@ module Golem.Typeset
     pdfXPeople,
     Assumed (..),
     fixpoint,
+    fixpointWith,
     labelSpans,
     TocGeometry (..),
     TocPage (..),

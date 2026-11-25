@@ -70,7 +70,7 @@ pagesOf Grid i flows = Right (map summary (paginate (inColumns i) (inLines i) fl
 pagesOf Free i flows = either (Left . show) (Right . map summary) (paginatePhysical cfg flows)
   where
     height = fromIntegral (16 * inLines i)
-    cfg = PhysicalSettings 16 10 height height 0 (ColumnSet (inColumns i) 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty
+    cfg = PhysicalSettings 16 10 height height 0 (ColumnSet (inColumns i) 0 0 0) Map.empty Map.empty Map.empty Map.empty Map.empty Nothing Set.empty noAvoid
 
 summary :: PageOutAt position -> (Int, Int, [Int], [Unmet])
 summary p = (poNumber p, poColumn p, [ident | (_, SLine ident) <- poSlots p], poUnmet p)

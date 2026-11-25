@@ -1,5 +1,5 @@
 -- | The text frames of the pages (root ADR 0438).
-module FramesSpec (framesTests) where
+module FramesSpec (framesTests, frameDef, layoutCodes, ptSp, spPt) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS

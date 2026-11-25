@@ -35,6 +35,9 @@ module Golem.Layout.Paginate.State
     flushDeferred,
     flushFigures,
     drainPendingNotes,
+    avoidHere,
+    spotOf,
+    spotFrom,
   )
 where
 
@@ -63,7 +66,9 @@ data Env = Env
     {- | the spans of the keep-with-next of the visible separators (root
     ADR 0398 I7): a separator hold goes with the first part of the block
     after it, and with what that block keeps, as that block is placed
-    -} envHeld :: !(Set SrcSpan)
+    -} envHeld :: !(Set SrcSpan),
+    -- | the areas of each column that a block that cannot be shortened is not placed over (root ADR 0456)
+    envAvoid :: AvoidAt Int
   }
 
 {- | A break not applied yet: a forced break (docs/adr ADR 0017), or the
@@ -427,11 +432,15 @@ joinNotePart parts part@(i, from, len) = case reverse parts of
   (j, from', len') : before | j == i && from' + len' == from -> reverse before <> [(j, from', len' + len)]
   _ -> parts <> [part]
 
+{- | The figures sent on, at the top of the column, off the areas of the
+frames of wrap around (root ADR 0456).
+-}
 placeDeferred :: Env -> St -> [Flow] -> St
 placeDeferred _ st [] = st
-placeDeferred env st (FFigure i n labels marks : rest)
-  | n <= free env st || isEmpty st = placeDeferred env (putSlot st n (SFigure i) labels marks) rest
-  | otherwise = st {sDeferred = FFigure i n labels marks : rest}
+placeDeferred env st (FFigure i n labels marks : rest) = case spotOf env st i n of
+  SpotAt u -> placeDeferred env (putSlot st {sUsed = u} n (SFigure i) labels marks) rest
+  SpotUnplaced -> placeDeferred env (addUnmet (UnplacedBlock i) st) rest
+  SpotNone -> st {sDeferred = FFigure i n labels marks : rest}
 -- a turned figure waits for the next page, and the figures after it with it (golem-driver ADR 0034)
 placeDeferred _ st rest@(FPageFigure {} : _) = st {sDeferred = rest}
 placeDeferred env st (_ : rest) = placeDeferred env st rest
@@ -446,3 +455,28 @@ flushFigures :: Env -> St -> St
 flushFigures env st
   | null (sDeferred st) = st
   | otherwise = flushFigures env (nextColumn env st)
+
+-- | The areas of the current column that the block @i@ is not placed over (root ADR 0456).
+avoidHere :: Env -> St -> Int -> [(Int, Int)]
+avoidHere env st = envAvoid env (sPage st) (sColumn st) (sSet st)
+
+{- | The place of the least part of @n@ grid lines of the block @i@ from
+the grid lines used (root ADR 0456). Without an area it overlaps, it is
+where it was before: there when it fits or the column is empty. Past the
+areas, there when it fits. An empty column that it fits without the
+frames, but past them not, leaves it out; one that it does not fit even
+without them places it as before.
+-}
+spotOf :: Env -> St -> Int -> Int -> Spot Int
+spotOf env st i n = spotFrom env st i (sUsed st) n
+
+-- | 'spotOf' from grid line @u@ of the column.
+spotFrom :: Env -> St -> Int -> Int -> Int -> Spot Int
+spotFrom env st i u n
+  | v == u = if fitsAt u || isEmpty st then SpotAt u else SpotNone
+  | fitsAt v = SpotAt v
+  | isEmpty st = if fitsAt u then SpotUnplaced else SpotAt u
+  | otherwise = SpotNone
+  where
+    v = clearFrom (avoidHere env st i) u n
+    fitsAt w = n <= cap env st - w - sNoteLines st

@@ -64,6 +64,7 @@ module Golem.Typeset.Flow
     composeEnv,
     paraLook,
     fixpoint,
+    fixpointWith,
     rubyStyleOf,
     RuledInfo (..),
     BoxInfo (..),
@@ -706,7 +707,7 @@ flowLines provider inp0 = case checkedGeometry inp of
       Left ds -> pure (Left ds)
       Right fonts -> do
         figures <- Map.mapMaybe (either (const Nothing) Just) <$> loadFigures inp
-        built <- buildFlow inp geom fonts figures Nothing (Assumed Map.empty Map.empty Map.empty)
+        built <- buildFlow inp geom fonts figures Nothing (Assumed Map.empty Map.empty Map.empty Map.empty)
         pure (Right (bFlow built, [(lineTarget (slLine sl), slIndent sl) | sl <- Map.elems (bLines built)]))
   where
     inp = codeInput inp0
@@ -776,7 +777,7 @@ layoutFigures reuse numbered inp geom fonts figures = do
                     Right _ -> if null errors then Right (built, pages) else Left (errors <> bCaptionWarnings built)
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
-  result <- fixpoint (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) (\built pages -> fst (aroundCuts inp geom built pages)) round'
+  result <- fixpointWith (bookSections inp) labelSpan (\sp -> Map.findWithDefault "" sp terms) (\built pages -> fst (aroundCuts inp geom built pages)) (assumedMasters inp geom) round'
   pure $ case result of
     Left ds -> Left ds
     -- the ranges of the index on the settled pages stop the PDF (docs/adr/0265)
@@ -812,9 +813,23 @@ layoutFigures reuse numbered inp geom fonts figures = do
               let layout0 = PdfLayout pages (bLinePitches built) (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> bCaptionWarnings built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (pgLinePitch geom) (maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)) (`Set.member` separatorSpans built) (bHeadingNames built) (paraOfLine built) (styleAtSpan built) pages <> heldNeedNotices (bUnits built) <> softHyphenNotices inp <> (if numbered then chapterPageNoteWarnings inp (pageNoteNumbers pages built0) else [])) (bLineSpans built) (bRules built) (bSeparatorLines built) (bUnits built) (bFlowEnv built) (bTableCaptions built) (bBoxes built) (bDestAnchors built) tocNumbers Map.empty
                   -- the text frames, once, on the settled pages (root ADR 0438)
                   (frameErrors0, frames) = layoutFrames inp geom layout0
-                  frameErrors = snd (aroundCuts inp geom built0 pages) <> frameErrors0
+                  frameErrors = snd (aroundCuts inp geom built0 pages) <> unplacedErrors built0 pages <> frameErrors0
                in if null frameErrors then Right layout0 {plFrames = frames} else Left (frameErrors <> bCaptionWarnings built)
             ds -> Left (ds <> bCaptionWarnings built)
+
+{- | G07142: a table, a code block or a figure that the pagination left out
+of an empty column, as no place of it keeps its least part off the frames
+of wrap around (root ADR 0456); at its block, once.
+-}
+unplacedErrors :: Built -> [PageOutAt Sp] -> [Diagnostic]
+unplacedErrors built pages =
+  nubOrdOn
+    diagSpan
+    [ diagnostic "G07142" Error sp "回り込むフレームのまわりに、このブロックを置ける空きがありません"
+    | p <- pages,
+      UnplacedBlock ident <- poUnmet p,
+      let sp = maybe (maybe (mkSpan (FileId 0) 0 0) snd (Map.lookupLE ident (bLineSpans built))) pfSpan (Map.lookup ident (bFigures built))
+    ]
 
 -- Ordinary paragraph keep options may fall back when no empty column fits.
 -- A visible separator instead requires its whole chain and the first display
@@ -859,7 +874,7 @@ separatorSpans built = Set.fromList [uSpan u | (_, u) <- bUnits built, USeparato
 paginateBuilt :: PdfInput -> PageGeometry -> Int -> Built -> Either [Diagnostic] [PageOutAt Sp]
 paginateBuilt inp geom capacity built
   | free = either (Left . pure . physicalError) Right (fromMaybe (paginatePhysical settings (bRetainedFlow built)) (bFreePages built))
-  | otherwise = Right (map normalize (paginateHeld (separatorSpans built) (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
+  | otherwise = Right (map normalize (paginateAvoiding (avoidLines inp geom built) (separatorSpans built) (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (map (fmap gridUnits) (bRetainedFlow built))))
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -886,7 +901,7 @@ paginateBuilt inp geom capacity built
 -- | Resolve the same physical geometry for a causal trial and final pagination.
 physicalSettings :: PdfInput -> PageGeometry -> Int -> Built -> PhysicalSettings
 physicalSettings inp geom capacity built =
-  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing (separatorSpans built)
+  PhysicalSettings pitch face height (fromIntegral (max 0 (adjustLimit geom - 1)) * pitch + face) (fromIntegral (pgNoteSeparator geom) * pitch) (fmap (\n -> fromIntegral n * pitch) (pageColumnSet (piStyle inp) geom)) (bLinePitches built) (Map.map slSize (bLines built)) (bBoxPadding built) (bWrappedBefore built) headingBounds Nothing (separatorSpans built) (avoidAcross inp geom built)
   where
     pitch = pgLinePitch geom
     face = pgFontSize geom
@@ -1079,6 +1094,8 @@ unmetWarnings pagePitch free held names paraOf styleAt pages =
       UnmetAdjust sp k limit -> [diagnostic "G07037" Warning sp (adjustReason limit <> "@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")]
       -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046), an info (docs/adr 0104)
       DroppedBlank sp -> [infoDiagnostic "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"]
+      -- G07142 is an error of the layout (root ADR 0456)
+      UnplacedBlock _ -> []
       TallHeading i n room ->
         [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
         | Just (sp, name) <- [Map.lookup i names]
@@ -1976,68 +1993,79 @@ each page, each frame of wrap around of its master page shortens, in
 each column its bounding rectangle overlaps, the lines whose em box
 crosses the rectangle across the lines, by the overlap of the rectangle
 and the column along the lines (the part over the margin does not
-count). The overlap holds the start or the end edge of the column, or it
+count): the lines of paragraphs, of headings and beside a wrapped
+figure, but not those of tables, which go past the frames (root ADR
+0456). The overlap holds the start or the end edge of the column, or it
 is G07136 at the frame; a line left shorter than 8 characters of the
-size of the grid is G07138 at its block.
+size of the grid is G07138 at its block, beside a wrapped figure at its
+paragraph once the exclusion of the figure is taken on its side too
+(root ADR 0456).
 -}
 aroundCuts :: PdfInput -> PageGeometry -> Built -> [PageOutAt Sp] -> (Map Int (Map Int (Sp, Sp)), [Diagnostic])
 aroundCuts inp geom built pages =
-  let style = piStyle inp
-      firstPages = [p | (p : _) <- pagesOf pages]
-      masters = zip (map poNumber firstPages) (map (fmap fst) (masterNamesOf inp geom (pageFilesOf inp (bLineFiles built) pages)))
-      aroundOf m =
-        [ (name, frameBounds geom style f shape)
-        | Just md <- [Map.lookup m (stMasters style)],
-          name <- mdFrames md,
-          Just f <- [Map.lookup name (stFrames style)],
-          frWrap f == FrameWrapAround,
-          Just shape <- [frameShape f]
-        ]
-      framesOf = Map.fromList [(n, aroundOf m) | (n, Just m) <- masters]
+  let framesOf = aroundFramesByPage inp geom built pages
       tableSpan name = fromMaybe (mkSpan (piStyleFile inp) 0 0) (manifestValueSpan (piStyleFile inp) (piStyleText inp) ["frames", name])
       vertical = pgVertical geom
-      free = maybe False ((== AlignFree) . gridAlignment) (stPage style >>= pageGrid)
+      free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle inp) >>= pageGrid)
       firstOf = Map.fromList [(lid, i) | (i, lid) <- Map.toList (bUnitFirsts built)]
-      -- the em box of a line across the column, from its start edge
+      -- the lines of tables go past the frames (root ADR 0456)
+      tableLines = Set.fromList (concat [map lbId (h <> concat rs <> c) | FTable {ftHeader = h, ftRows = rs, ftCaption = c} <- bFlow built])
+      beside = besideLines built
+      -- the em box of a line across the column, from its start edge, by its baseline
+      emBox base size = if vertical then (base - Sp (unSp size `div` 2), base + Sp (unSp size `div` 2)) else (base - L.zwToSp size baselineRatio, base + size - L.zwToSp size baselineRatio)
+      toBaseline size = if vertical then Sp (unSp size `div` 2) else L.zwToSp size baselineRatio
       across lid pos sl =
         let size = slSize sl
             pitch = Map.findWithDefault (pgLinePitch geom) lid (bLinePitches built)
             base
-              | free = pos + faceOffset pitch size + (if vertical then Sp (unSp size `div` 2) else L.zwToSp size baselineRatio)
+              | free = pos + faceOffset pitch size + toBaseline size
               | otherwise = pos + sum (take 1 (pgLineGrid geom))
-         in if vertical then (base - Sp (unSp size `div` 2), base + Sp (unSp size `div` 2)) else (base - L.zwToSp size baselineRatio, base + size - L.zwToSp size baselineRatio)
+         in emBox base size
+      -- the lines of a heading block, each at its place in the block (golem-driver ADR 0003)
+      headingAcross lid j pos sl =
+        let size = slSize sl
+            hb = Map.lookup lid (bHeadings built)
+            top = pos + (if free then faceOffset (pgLinePitch geom) (pgFontSize geom) else 0) + maybe 0 hbOffset hb + fromIntegral j * maybe 0 hbPitch hb
+         in emBox (top + toBaseline size) size
+      slotLines pos = \case
+        SLine lid | Set.notMember lid tableLines -> [(lid, across lid pos sl) | Just sl <- [Map.lookup lid (bLines built)]]
+        SHeading lid count -> [(lid + j, headingAcross lid j pos sl) | j <- [0 .. count - 1], Just sl <- [Map.lookup (lid + j) (bLines built)]]
+        _ -> []
       results =
         [ case cutOf col bounds of
             Nothing -> Left (diagnostic "G07136" Error (tableSpan name) ("回り込むフレームが段の始まりの辺にも終わりの辺にも接していません: " <> name))
-            Just cut -> Right [((ui, lid - firstId), cut, col) | (lid, (c0, c1)) <- lineSpans, c0 < bx1 && c1 > bx0, Just (firstId, ui) <- [Map.lookupLE lid firstOf]]
+            Just cut -> Right [((ui, lid - firstId), lid, cut, col) | (lid, (c0, c1)) <- lineSpans, c0 < bx1 && c1 > bx0, Just (firstId, ui) <- [Map.lookupLE lid firstOf]]
         | p <- pages,
           let n = poNumber p,
           (name, boundsOn) <- Map.findWithDefault [] n framesOf,
           let bounds = boundsOn n,
           col <- take 1 (drop (poColumn p) (columnSetRects geom n (poColumnSet p))),
-          overlaps col bounds,
-          let (bx0, bx1) = crossOf col bounds
-              lineSpans = [(lid, across lid pos sl) | (pos, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (bLines built)]]
+          rectsOverlap col bounds,
+          let (bx0, bx1) = acrossColumn geom col bounds
+              lineSpans = concat [slotLines pos s | (pos, s) <- poSlots p]
         ]
-      cuts = Map.fromListWith (Map.unionWith (\(a, b) (c, d) -> (max a c, max b d))) [(ui, Map.singleton k cut) | Right xs <- results, ((ui, k), cut, _) <- xs]
+      cuts = Map.fromListWith (Map.unionWith (\(a, b) (c, d) -> (max a c, max b d))) [(ui, Map.singleton k cut) | Right xs <- results, ((ui, k), _, cut, _) <- xs]
       measureOf col = if vertical then rectH col else rectW col
+      -- what the line loses: beside a wrapped figure, the exclusion on its side too
+      takes lid (s, e) = case Map.lookup lid beside of
+        Just (_, Just (WrapStart, w)) -> (max s w, e)
+        Just (_, Just (WrapEnd, w)) -> (s, max e w)
+        _ -> (s, e)
+      siteOf ui lid = case Map.lookup lid beside of
+        Just (sp, _) -> Just sp
+        Nothing -> Map.lookup ui (bUnitFirsts built) >>= (`Map.lookup` bLineSpans built)
       short =
         nubOrdOn
           diagSpan
-          [ diagnostic "G07138" Error (Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) firstId (bLineSpans built)) "回り込むフレームで短くした本文の行が、本文の文字の大きさの 8 字に満たなくなります"
+          [ diagnostic "G07138" Error sp "回り込むフレームで短くした本文の行が、本文の文字の大きさの 8 字に満たなくなります"
           | Right xs <- results,
-            ((ui, _), (s, e), col) <- xs,
+            ((ui, _), lid, cut, col) <- xs,
+            let (s, e) = takes lid cut,
             measureOf col - s - e < 8 * pgFontSize geom,
-            Just firstId <- [Map.lookup ui (bUnitFirsts built)]
+            Just sp <- [siteOf ui lid]
           ]
    in (cuts, nubOrdOn diagSpan (lefts results) <> short)
   where
-    -- the overlap of a bounding rectangle and a column, of an area
-    overlaps (Rect cx cy cw ch) (Rect bx by bw bh) = bx < cx + cw && bx + bw > cx && by < cy + ch && by + bh > cy
-    -- the rectangle across the lines, from the start edge of the column: from its top in horizontal writing, from its right in vertical writing
-    crossOf (Rect cx cy cw ch) (Rect bx by bw bh)
-      | pgVertical geom = (cx + cw - (bx + bw), cx + cw - bx)
-      | otherwise = (cy + ch - (by + bh), cy + ch - by)
     -- along the lines, from the start of the column: what the frame takes at the start or at the end
     cutOf (Rect cx cy cw ch) (Rect bx by bw bh) =
       let (measure, a0, a1)
@@ -2046,6 +2074,130 @@ aroundCuts inp geom built pages =
        in if a0 <= 0
             then Just (a1, 0)
             else if a1 >= measure then Just (0, measure - a0) else Nothing
+
+-- | Whether a bounding rectangle and a column overlap in an area.
+rectsOverlap :: Rect -> Rect -> Bool
+rectsOverlap (Rect cx cy cw ch) (Rect bx by bw bh) = bx < cx + cw && bx + bw > cx && by < cy + ch && by + bh > cy
+
+{- | A bounding rectangle across the lines, from the start edge of the
+column: from its top in horizontal writing, from its right in vertical
+writing.
+-}
+acrossColumn :: PageGeometry -> Rect -> Rect -> (Sp, Sp)
+acrossColumn geom (Rect cx cy cw ch) (Rect bx by bw bh)
+  | pgVertical geom = (cx + cw - (bx + bw), cx + cw - bx)
+  | otherwise = (cy + ch - (by + bh), cy + ch - by)
+
+{- | The lines set beside a wrapped figure (root ADR 0456): by their ids,
+the block of their paragraph and, for the lines beside the exclusion,
+its side and its width.
+-}
+besideLines :: Built -> Map Int (SrcSpan, Maybe (Wrap, Sp))
+besideLines built =
+  let cu = bComposed built
+      units = cuUnits cu
+      free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput (bFlowEnv built))) >>= pageGrid)
+      narrow = Map.fromList [(lbId l, fid) | FWrapped {fwId = fid, fwBeside = ls} <- bFlow built, l <- ls]
+      exclusionOf fid = Map.lookup fid (bFigures built) >>= \pf -> (\ex -> (exSide ex, exWidth ex)) <$> pfExclusion pf
+      -- the lines of the paragraphs beside each figure, from the line after it (in free placement, by their own units)
+      paragraphs =
+        [ (u, firstLine, length (cLines c))
+        | (i, _) <- Map.toList (cuFigures cu),
+          Just figureFirst <- [Map.lookup i (bUnitFirsts built)],
+          j <- besideParagraphs units (cuBesides cu) i,
+          Just (c, off) <- [Map.lookup j (cuBesides cu)],
+          Just u <- [Map.lookup j units],
+          let firstLine = if free then Map.findWithDefault (figureFirst + 1 + off) j (bUnitFirsts built) else figureFirst + 1 + off
+        ]
+   in Map.fromList [(lid, (uSpan u, Map.lookup lid narrow >>= exclusionOf)) | (u, firstLine, count) <- paragraphs, lid <- take count [firstLine ..]]
+
+{- | The frames of wrap around of the master page of each page (root ADR
+0438): by page number, each by its name and its bounding rectangle on a
+page.
+-}
+aroundFramesByPage :: PdfInput -> PageGeometry -> Built -> [PageOutAt Sp] -> Map Int [(Text, Int -> Rect)]
+aroundFramesByPage inp geom built pages = Map.map (maybe [] (aroundFramesOf inp geom)) (pageMastersOf inp geom built pages)
+
+-- | The frames of wrap around of a master page, each by its name and its bounding rectangle on a page (root ADR 0438).
+aroundFramesOf :: PdfInput -> PageGeometry -> Text -> [(Text, Int -> Rect)]
+aroundFramesOf inp geom m =
+  let style = piStyle inp
+   in [ (name, frameBounds geom style f shape)
+      | Just md <- [Map.lookup m (stMasters style)],
+        name <- mdFrames md,
+        Just f <- [Map.lookup name (stFrames style)],
+        frWrap f == FrameWrapAround,
+        Just shape <- [frameShape f]
+      ]
+
+-- | The name of the master page of each page by its number, from the files of its first lines.
+pageMastersOf :: PdfInput -> PageGeometry -> Built -> [PageOutAt Sp] -> Map Int (Maybe Text)
+pageMastersOf inp geom built pages =
+  let firstPages = [p | (p : _) <- pagesOf pages]
+   in Map.fromList (zip (map poNumber firstPages) (map (fmap fst) (masterNamesOf inp geom (pageFilesOf inp (bLineFiles built) pages))))
+
+{- | The master pages of the pages a round of S2 assumes (root ADR 0456):
+none when no master page has a frame of wrap around, so that the rounds
+of a book without them are those before.
+-}
+assumedMasters :: PdfInput -> PageGeometry -> Built -> [PageOutAt Sp] -> Map Int (Maybe Text)
+assumedMasters inp geom built pages
+  | hasAroundFrames inp geom = pageMastersOf inp geom built pages
+  | otherwise = Map.empty
+
+-- | Whether a master page of the style has a frame of wrap around (root ADR 0456).
+hasAroundFrames :: PdfInput -> PageGeometry -> Bool
+hasAroundFrames inp geom = any (not . null . aroundFramesOf inp geom) (Map.keys (stMasters (piStyle inp)))
+
+{- | The areas of the frames of wrap around that a block that cannot be
+shortened is not placed over (root ADR 0456), in sp from the start edge of
+the column: on page n, in column c of the set, those of the master page
+the page had in the round before, or of the master page of the file of
+the block when the round before has none; for each frame whose bounding
+rectangle overlaps the column and the block along the lines, its
+rectangle across the lines. Along the lines, a table and a code block
+take the measure of the column; a figure takes its image, and the
+measure of the column with a caption, but for a wrapped figure, whose
+caption is as wide as its image.
+-}
+avoidAcross :: PdfInput -> PageGeometry -> Built -> AvoidAt Sp
+avoidAcross inp geom built n c set ident
+  | not (hasAroundFrames inp geom) = []
+  | otherwise =
+      let file = maybe (FileId 0) snd (Map.lookupLE ident (bLineFiles built))
+          master = case Map.lookup n (asMasters (feAssumed (bFlowEnv built))) of
+            Just m -> m
+            Nothing -> fst <$> join (listToMaybe (masterNamesOf inp geom [file]))
+          alongOf col = case Map.lookup ident (bFigures built) of
+            Just pf
+              | isJust (pfWrap pf) || null (pfCaption pf) -> imageRectAt geom (paperOf geom) col 0 pf
+            _ -> col
+          along (Rect cx cy cw ch) (Rect bx by bw bh)
+            | pgVertical geom = by < cy + ch && by + bh > cy
+            | otherwise = bx < cx + cw && bx + bw > cx
+       in [ acrossColumn geom col bounds
+          | Just m <- [master],
+            (_, boundsOn) <- aroundFramesOf inp geom m,
+            let bounds = boundsOn n,
+            col <- take 1 (drop c (columnSetRects geom n set)),
+            rectsOverlap col bounds,
+            along (alongOf col) bounds
+          ]
+
+{- | 'avoidAcross' in grid lines (root ADR 0456): for each area, the grid
+lines whose em box of the size of the grid crosses it.
+-}
+avoidLines :: PdfInput -> PageGeometry -> Built -> AvoidAt Int
+avoidLines inp geom built n c set ident =
+  let Sp pitch = pgLinePitch geom
+      face = pgFontSize geom
+      Sp top0 = sum (take 1 (pgLineGrid geom)) - (if pgVertical geom then Sp (unSp face `div` 2) else L.zwToSp face baselineRatio)
+   in [ (lo, hi)
+      | (Sp x0, Sp x1) <- avoidAcross inp geom built n c (fmap (\k -> fromIntegral k * Sp pitch) set) ident,
+        let lo = max 0 (fromInteger ((x0 - top0 - unSp face) `div` pitch) + 1)
+            hi = fromInteger (negate ((top0 - x1) `div` pitch)),
+        lo < hi
+      ]
 
 {- | The outline of a text frame on page n (root ADR 0438): the rectangle
 or the path of its [frames.<name>], the origin at the top of the trimmed
@@ -2096,7 +2248,9 @@ data Assumed = Assumed
   { asLabels :: !(Map Text PageLabel),
     asMarks :: !(Map SrcSpan PageLabel),
     -- | the cuts of the lines under the frames of wrap around, by unit and line (root ADR 0438)
-    asCuts :: !(Map Int (Map Int (Sp, Sp)))
+    asCuts :: !(Map Int (Map Int (Sp, Sp))),
+    -- | the master page of each page, when a master page has frames of wrap around (root ADR 0456)
+    asMasters :: !(Map Int (Maybe Text))
   }
   deriving stock (Eq, Show)
 
@@ -2107,7 +2261,15 @@ first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
 or an index mark.
 -}
 fixpoint :: Map Int Section -> (Text -> SrcSpan) -> (SrcSpan -> Text) -> (b -> [PageOutAt position] -> Map Int (Map Int (Sp, Sp))) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOutAt position]))) -> IO (Either [Diagnostic] (b, [PageOutAt position]))
-fixpoint sections labelSpan termOf cutsOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty Map.empty Map.empty)
+fixpoint sections labelSpan termOf cutsOf = fixpointWith sections labelSpan termOf cutsOf (\_ _ -> Map.empty)
+
+{- | 'fixpoint' with the master pages of the pages laid out (root ADR
+0456): the pagination of a round places the blocks that cannot be
+shortened off the frames of wrap around of the master pages the round
+before ended with, and the rounds go on until they settle too.
+-}
+fixpointWith :: Map Int Section -> (Text -> SrcSpan) -> (SrcSpan -> Text) -> (b -> [PageOutAt position] -> Map Int (Map Int (Sp, Sp))) -> (b -> [PageOutAt position] -> Map Int (Maybe Text)) -> (Maybe b -> Assumed -> IO (Either [Diagnostic] (b, [PageOutAt position]))) -> IO (Either [Diagnostic] (b, [PageOutAt position]))
+fixpointWith sections labelSpan termOf cutsOf mastersOf layoutWith = go (1 :: Int) Nothing (Assumed Map.empty Map.empty Map.empty Map.empty)
   where
     -- each round is given the value of the round just before it, and of no other (docs/adr ADR 0251)
     go i prev assumed = do
@@ -2116,7 +2278,7 @@ fixpoint sections labelSpan termOf cutsOf layoutWith = go (1 :: Int) Nothing (As
         Left ds -> pure (Left ds)
         Right (built, pages) ->
           -- the labels of the pages: a first page of a section that moves moves them too (docs/adr/0260)
-          let actual = Assumed (labelPages sections pages) (markPages sections pages) (cutsOf built pages)
+          let actual = Assumed (labelPages sections pages) (markPages sections pages) (cutsOf built pages) (mastersOf built pages)
            in if actual == assumed
                 then pure (Right (built, pages))
                 else
@@ -2126,7 +2288,7 @@ fixpoint sections labelSpan termOf cutsOf layoutWith = go (1 :: Int) Nothing (As
       where
         moved :: (Ord k) => Assumed -> (Assumed -> Map k PageLabel) -> [k]
         moved now field = [k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
-    -- the lines under the frames of wrap around move with their cuts (root ADR 0438)
+    -- the lines under the frames of wrap around move with their cuts (root ADR 0438), the blocks past them with the master pages (root ADR 0456)
     cutsNotSettled = diagnostic "G07141" Error (mkSpan (FileId 0) 0 0) "回り込むフレームで短くする本文の行が定まりません"
     notSettled labels marks =
       let named = [(labelSpan l, l) | l <- labels] <> nubOrdOn snd [(m, termOf m) | m <- marks]
@@ -3675,10 +3837,26 @@ composeBeside fe widths unitAt i pf = go (i + 1) 0 0
       | not free && offset >= exLines ex = pure []
       | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing), uBox = Nothing} <- Map.lookup j unitAt,
         sameItem u = do
-          c <- forceComposed (composeUnit fe widths (\k -> feMeasure fe - (if narrowed u distance k then exWidth ex else 0) - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u)) u)
+          -- the exclusion and the frames of wrap around, the larger on each side (root ADR 0456)
+          let taken k =
+                let (s, e) = besideCut fe i j offset k
+                    narrow = if narrowed u distance k then exWidth ex else 0
+                 in if exSide ex == WrapStart then max narrow s + e else s + max narrow e
+          c <- forceComposed (composeUnit fe widths (\k -> feMeasure fe - taken k - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u)) u)
           ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c)) (distance + fromIntegral (length (cLines c)) * unitPitch u)
       | free, Just u <- Map.lookup j unitAt, Just controls <- besideControlFlow u = go (j + 1) offset (distance + sum [gap | FSpace gap <- controls])
       | otherwise = pure []
+
+{- | The cuts of the frames of wrap around of line k of the paragraph j
+set beside the wrapped figure of the unit i, from line @offset@ of its
+side lines (root ADR 0456): by the unit of the paragraph in free
+placement, by the unit of the figure on the grid, whose lines follow it.
+-}
+besideCut :: FlowEnv -> Int -> Int -> Int -> Int -> (Sp, Sp)
+besideCut fe i j offset k =
+  let free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
+      (unit, line) = if free then (j, k) else (i, offset + k + 1)
+   in fromMaybe (0, 0) (Map.lookup unit (asCuts (feAssumed fe)) >>= Map.lookup line)
 
 -- | Paragraphs in one figure's side job; physical paragraph gaps may lie between them.
 besideParagraphs :: Map Int Unit -> Map Int (Composed, Int) -> Int -> [Int]
@@ -3763,7 +3941,7 @@ order, for the tests of 'forceTable' (docs/adr ADR 0299).
 composedTables :: PdfInput -> PageGeometry -> LoadedFonts -> [Either TableRefusal (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])]
 composedTables inp geom fonts = [composeTable fe i (spanFile (uSpan u)) (uStyle u) (lkLang (uLook u)) t | (i, u@Unit {uKind = UTable t}) <- fst (flowUnits fe)]
   where
-    fe = flowEnv inp geom fonts (Assumed Map.empty Map.empty Map.empty)
+    fe = flowEnv inp geom fonts (Assumed Map.empty Map.empty Map.empty Map.empty)
 
 composeTableCells :: FlowEnv -> Int -> FileId -> Style -> Maybe Text -> Table -> Either [TableError] (SetTable, [[([(NoteId, [Line])], [(SrcSpan, [PartLine])], [SrcSpan])]])
 composeTableCells fe i fid st lang t =
@@ -4128,7 +4306,8 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
             narrowed j off distance k
               | free = intersects (rowExtent (distance + fromIntegral k * unitPitch j) (unitPitch j) (lkSize (uLook (unitAt Map.! j)))) excluded
               | otherwise = off + k < exLines ex
-            indentOf j off distance k = if pfWrap pf == Just WrapStart && narrowed j off distance k then exWidth ex else 0
+            -- the frames of wrap around at the start of the line too, the larger (root ADR 0456)
+            indentOf j off distance k = max (if pfWrap pf == Just WrapStart && narrowed j off distance k then exWidth ex else 0) (fst (besideCut fe i j off k))
             -- beside the figure the paragraph indent adds to the exclusion (docs/adr ADR 0006)
             go (nid, boxAcc, setAcc, gapAcc) (j, c, off, distance, gap) =
               let (bs, set) = numberedLines fe nid (unitAt Map.! j) c (\k -> indentOf j off distance k + unitLineIndent fs (uKind (unitAt Map.! j)) k)

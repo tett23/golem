@@ -2,6 +2,7 @@ module Main (main) where
 
 import AdjustOrderSpec (adjustOrderTests)
 import AlignSpaceSpec (alignSpaceTests)
+import AroundBlocksSpec (aroundBlocksTests)
 import BoxesSpec (boxesTests)
 import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
 import CaptionSidenoteParagraphsSpec (captionSidenoteParagraphsTests)
@@ -85,6 +86,7 @@ tests =
       testGroup "figures of zero extent across the lines (root ADR 0440)" zeroExtentFigureTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "text frames (root ADR 0438)" framesTests,
+      testGroup "blocks around the frames of wrap around (root ADR 0456)" aroundBlocksTests,
       testGroup "notes of more than one paragraph (docs/adr/0263)" notesTests,
       pageStartsTests,
       pageMapTests,
