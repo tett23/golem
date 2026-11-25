@@ -23,9 +23,11 @@
    line (`ident`) is the number of them placed before the cursor.  A verse
    line not yet tried keeps the rows `composeBeside` composed.  A
    paragraph not beside a figure is placed as an `FParagraph` of the rows
-   of its measure.  The paragraphs and the verse lines have the default keep and
-   keep nothing with what follows by themselves, so `bindingAfter` comes
-   from the no-breaks after them alone and nothing is held.
+   of its measure.  The paragraphs and the verse lines have the default
+   keep.  Those of the styles `held` and `poemk` keep with the next 3 lines
+   (`keep-with-next = 3`), the others with nothing, so `bindingAfter` comes
+   from the no-breaks after them and that count, and `keepPhysicalNext`
+   waits after those that keep.
 
    This is a check on finitely many inputs, not a proof. -/
 import Physical
@@ -128,18 +130,23 @@ def breakLines (w measure : Nat) (region : Region) (origin : Int) (at' : St) (st
 /-- A paragraph of so many characters, a no-break, a stanza of verse lines
     of so many characters each, or a list item of a paragraph of so many
     characters followed by wrapped figures, each with the paragraphs of the
-    item after it. -/
+    item after it.  `q` and `h` are the paragraph and the stanza that keep
+    with the next 3 lines. -/
 inductive Item where
   | p (n : Nat)
   | k
   | v (ns : List Nat)
   | i (first : Nat) (figures : List (List Nat))
+  | q (n : Nat)
+  | h (ns : List Nat)
 
 def Item.name : Item → String
   | .p n => toString n
   | .k => "K"
   | .v ns => "V" ++ ",".intercalate (ns.map toString)
   | .i n fs => "I" ++ toString n ++ String.join (fs.map fun ps => "/" ++ ",".intercalate (ps.map toString))
+  | .q n => "Q" ++ toString n
+  | .h ns => "H" ++ ",".intercalate (ns.map toString)
 
 /-- A unit of golem-typeset: a paragraph (of the list item `item`, if any),
     a no-break, a verse line of the stanza `s` (each verse line of a stanza
@@ -155,19 +162,35 @@ inductive Unit' where
 def units (lead : Bool) (items : List Item) : List Unit' :=
   (if lead then [Unit'.fig none] else []) ++
   (items.enum.map fun (s, i) => match i with
-    | .p n => [Unit'.para none n]
+    | .p n | .q n => [Unit'.para none n]
     | .k => [Unit'.ctrl]
-    | .v ns => ns.map (Unit'.verse s)
+    | .v ns | .h ns => ns.map (Unit'.verse s)
     | .i n fs => Unit'.para (some s) n :: fs.bind fun ps => Unit'.fig (some s) :: ps.map (Unit'.para (some s))).join
 
+/-- The lines each unit of `units` keeps with what follows by its style
+    (`keep-with-next`). -/
+def wants (lead : Bool) (items : List Item) : List Nat :=
+  (if lead then [0] else []) ++
+  (items.map fun i => match i with
+    | .q _ => [3]
+    | .h ns => ns.map fun _ => 3
+    | .v ns => ns.map fun _ => 0
+    | .i _ fs => 0 :: fs.bind fun ps => 0 :: ps.map fun _ => 0
+    | _ => [0]).join
+
 /-- A manuscript: the width of its figures in zw, whether a list item is
-    kept on one page (`keep-parts = "page"`), and its units. -/
+    kept on one page (`keep-parts = "page"`), its units, and the lines each
+    keeps with what follows by its style. -/
 structure Ms where
   w : Nat
   retaining : Bool
   us : List Unit'
+  wanted : List Nat
 
 def Ms.at (m : Ms) (i : Nat) : Option Unit' := m.us.get? i
+
+/-- The lines the unit `i` keeps with what follows by its style. -/
+def wantOf (m : Ms) (i : Nat) : Nat := (m.wanted.get? i).getD 0
 
 def chars (m : Ms) (i : Nat) : Nat :=
   match m.at i with
@@ -212,12 +235,16 @@ def controlsBetween (m : Ms) (prior index : Nat) : List Flow :=
 def controlsAfter (m : Ms) (index : Nat) : List Flow :=
   ((m.us.drop (index + 1)).takeWhile (fun i => match i with | .ctrl => true | _ => false)).map (fun _ => .noBreak)
 
-/-- `bindingAfter` for a paragraph or a verse line of the default style
-    and of `poem`, which keep nothing with what follows by themselves. -/
+/-- `bindingAfter` for a paragraph or a verse line: the no-breaks after it
+    and the lines its style keeps with what follows. -/
 def binding (m : Ms) (index : Nat) : Nat × Nat :=
   match keepAhead (controlsAfter m index) with
-  | none => (0, 0)
-  | some (l, f, _) => (l, f)
+  | none => (0, wantOf m index)
+  | some (l, f, _) => (l, max f (wantOf m index))
+
+/-- `keepPhysicalNext`: the wait for the lines asked of what follows. -/
+def holdNext (required : Nat) (linesOnly : Bool) (st : St) : St :=
+  waitForPrior (.keepNext 0) (max 1 required, linesOnly) st
 
 /-- The paragraphs beside the figure `job` (`composeBeside` and
     `besideParagraphs`): the paragraphs and verse lines after it, past
@@ -276,8 +303,8 @@ def stepAt (e : Env) (m : Ms) (at' : St) (ps : List Nat) : Except Failure St :=
 
 def beside (m : Ms) (region : Region) (origin : Int) : Beside :=
   { compose := fun at' i => (breakLines m.w (measure m i) region origin at' 0 (chars m i)).map (·.1),
-    binding := binding m, keepOf := fun _ => defaultKeep, holds := fun _ => false,
-    hold := fun _ _ _ st => st, ident := fun at' _ => slotCount at', isStanza := isVerse m,
+    binding := binding m, keepOf := fun _ => defaultKeep, holds := fun i => 0 < wantOf m i,
+    hold := fun _ required linesOnly st => holdNext required linesOnly st, ident := fun at' _ => slotCount at', isStanza := isVerse m,
     sameVerse := fun i j => isVerse m j && stanzaOf m i == stanzaOf m j }
 
 /-- The number of rows of `n` characters as `composeBeside` composes them
@@ -328,14 +355,15 @@ def probe (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) : Prob
     and the binding `(lastWanted, wanted)`. -/
 def paragraphAt (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (index : Nat)
     (later : List Nat) (k : Keep) (lastWanted wanted : Nat) (at' : St) : Except Failure St :=
-  let follows := fun st =>
+  let probed := fun st =>
     if 0 < wanted ∨ 0 < lastWanted then
       match probeNext e region (beside m region origin) (probe e m job region origin) index later st wanted with
-      | .ok r => r.2.2
-      | .error _ => false
-    else true
+      | .ok r => r
+      | .error _ => (0, true, false)
+    else (0, true, true)
+  let hold := fun st => if 0 < wantOf m index then holdNext (probed st).1 (probed st).2.1 st else st
   parts e region (fun at'' _ start => breakLines m.w (measure m index) region origin at'' start (chars m index))
-    (chars m index) lastWanted follows id none k true 0 0 at'
+    (chars m index) lastWanted (fun st => (probed st).2.2) hold none k true 0 0 at'
 
 def paras (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) : Paras :=
   { preliminary := fun prior index at' => placeAll inner e at' (controlsBetween m prior index),
@@ -463,13 +491,20 @@ def stanzas : List (List Item) :=
     [[.p size, .v ns], [.v ns, .p size], [.p size, .k, .v ns], [.v ns, .k, .p size]]) ++
   ((replicateM 2 [5, 25]).bind fun as => (replicateM 2 [5, 25]).map fun bs => [Item.v as, Item.v bs])
 
+/-- A stanza or a paragraph that keeps with the next 3 lines, before a
+    stanza of four verse lines or before a paragraph. -/
+def holding : List (List Item) :=
+  let heads := ((replicateM 2 [5, 25]).map Item.h) ++ ([5, 12].map Item.q)
+  (heads.bind fun held => (replicateM 4 [5, 25]).map fun bs => [held, Item.v bs]) ++
+  (heads.bind fun held => [5, 12, 25].map fun n => [held, Item.p n])
+
 /-- The manuscripts of CausalBoundary.hs after a wrapped figure. -/
 def manuscripts : List (List Item) :=
   ([1, 2, 3].bind fun n => (replicateM n [5, 12, 25]).map (·.map Item.p)) ++
   ([2, 3].bind fun n => (replicateM n [5, 12, 25]).bind fun ns =>
     ((replicateM (n - 1) [0, 1]).filter (fun hs => hs.any (· == 1))).map fun hs =>
       (List.zip (0 :: hs) ns).bind fun (h, c) => (if h == 1 then [Item.k] else []) ++ [Item.p c]) ++
-  stanzas
+  stanzas ++ holding
 
 /-- The list items of CausalBoundary.hs, kept on a page: an item with a
     figure and one or two paragraphs after it, an item with two figures, two
@@ -482,9 +517,9 @@ def lists : List (List Item) :=
 
 def inputs : List (String × Ms × Nat) :=
   ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => manuscripts.map fun items =>
-    (s!"{w} {lines} [{" ".intercalate (items.map Item.name)}]", ⟨w, false, units true items⟩, lines)) ++
+    (s!"{w} {lines} [{" ".intercalate (items.map Item.name)}]", ⟨w, false, units true items, wants true items⟩, lines)) ++
   ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => lists.map fun items =>
-    (s!"{w} {lines} page [{" ".intercalate (items.map Item.name)}]", ⟨w, true, units false items⟩, lines))
+    (s!"{w} {lines} page [{" ".intercalate (items.map Item.name)}]", ⟨w, true, units false items, wants false items⟩, lines))
 
 end CausalBoundary
 

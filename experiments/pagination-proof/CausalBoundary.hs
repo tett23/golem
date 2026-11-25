@@ -6,7 +6,9 @@
 -- tryVerses and accept, and, with a no-break after a paragraph or a stanza,
 -- tries what follows it with probeNext and probeChain.  A stanza is a
 -- paragraph of the style poem, which keeps its lines (line-breaks =
--- "keep"), each verse line a unit.  With keep-parts = "page", wrapped
+-- "keep"), each verse line a unit; a stanza of the style poemk and a
+-- paragraph of the style held keep with the next 3 lines (keep-with-next =
+-- 3), which keepPhysicalNext waits for.  With keep-parts = "page", wrapped
 -- figures in list items go through itemJobs and retainPhysicalPart.
 -- CausalBoundary.lean prints the same for the copies of
 -- those loops in Physical.lean; check.sh compares the two with diff.  The
@@ -30,14 +32,17 @@ import Support (horizontalStyle, layoutMini, replaceIn)
 -- | A paragraph of so many characters, a no-break, a stanza of verse
 -- lines of so many characters each, or a list item of a paragraph of so
 -- many characters followed by wrapped figures, each with the paragraphs of
--- the item after it.
-data Item = P Int | K | V [Int] | I Int [[Int]]
+-- the item after it.  Q and H are the paragraph and the stanza that keep
+-- with the next 3 lines.
+data Item = P Int | K | V [Int] | I Int [[Int]] | Q Int | H [Int]
 
 name :: Item -> String
 name = \case
   P n -> show n
   K -> "K"
   V ns -> "V" <> intercalate "," (map show ns)
+  Q n -> "Q" <> show n
+  H ns -> "H" <> intercalate "," (map show ns)
   I n fs -> "I" <> show n <> concat ["/" <> intercalate "," (map show ps) | ps <- fs]
 
 -- | One to three paragraphs; then two or three paragraphs with a no-break
@@ -52,6 +57,17 @@ manuscripts =
          or holds
        ]
     <> stanzas
+    <> holding
+
+-- | A stanza or a paragraph that keeps with the next 3 lines, before a
+-- stanza of four verse lines, some of which tryVerses may not try, or
+-- before a paragraph.
+holding :: [[Item]]
+holding =
+  [[held, V bs] | held <- heads, bs <- replicateM 4 [5, 25]]
+    <> [[held, P n] | held <- heads, n <- [5, 12, 25]]
+  where
+    heads = [H as | as <- replicateM 2 [5, 25]] <> [Q n | n <- [5, 12]]
 
 -- | A stanza of one to four verse lines alone; a stanza of two or three
 -- before or after a paragraph, with or without a no-break between them;
@@ -101,6 +117,8 @@ sources width cs = \case
   K : rest -> "@no-page-break\n\n" : sources width cs rest
   P n : rest -> T.replicate n (T.take 1 (T.pack cs)) <> "\n\n" : sources width (drop 1 cs) rest
   V ns : rest -> "@style poem\n" <> T.concat [T.replicate n (T.take 1 (T.pack cs)) <> "\n" | n <- ns] <> "\n" : sources width (drop 1 cs) rest
+  H ns : rest -> "@style poemk\n" <> T.concat [T.replicate n (T.take 1 (T.pack cs)) <> "\n" | n <- ns] <> "\n" : sources width (drop 1 cs) rest
+  Q n : rest -> "@style held\n" <> T.replicate n (T.take 1 (T.pack cs)) <> "\n\n" : sources width (drop 1 cs) rest
   I n fs : rest ->
     let letter k = T.take 1 (T.drop k (T.pack cs))
         paragraphs = scanl (+) 1 (map length fs)
@@ -132,6 +150,8 @@ main = do
           replaceIn "lines = 30" (T.pack ("lines = " <> show capacity)) $
             replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle
               <> "\n[paragraph-styles.poem]\nline-breaks = \"keep\"\n"
+              <> "\n[paragraph-styles.poemk]\nline-breaks = \"keep\"\nkeep-with-next = 3\n"
+              <> "\n[paragraph-styles.held]\nkeep-with-next = 3\n"
               <> (if retaining then "\n[composition]\nkeep-parts = \"page\"\n" else "")
         text = (if retaining then "" else figureOf width "") <> T.concat (sources width letters items)
     result <- layoutMini style text [("images/tiny.jpg", image)]
