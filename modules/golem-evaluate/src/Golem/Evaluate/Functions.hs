@@ -5,7 +5,7 @@ of @file@ returns what was read, so that evaluation never touches the
 file system. The requirements the signatures of .emet write are checked
 against [functions.requires] (E05104).
 -}
-module Golem.Driver.Functions
+module Golem.Evaluate.Functions
   ( RequiredFiles (..),
     loadRequiredFiles,
     requiredFileSet,
@@ -29,8 +29,8 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Plugins (maxDataBytes)
 import Golem.Emet
+import Golem.Evaluate.Plugins (maxDataBytes)
 import Golem.Project.Files (Files (..))
 import Golem.Project.Manifest (Manifest (..))
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)

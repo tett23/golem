@@ -18,8 +18,8 @@ import EditingSpec (editingTests)
 import FileMoveSpec (fileMoveTests)
 import FileRenameSpec (fileRenameTests)
 import FunctionsLspSpec (functionsLspTests)
-import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Eval.File (builtinInlineCommands)
+import Golem.Evaluate.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace

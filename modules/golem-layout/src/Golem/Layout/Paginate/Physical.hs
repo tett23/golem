@@ -35,13 +35,13 @@ import Control.Applicative ((<|>))
 import Data.IntSet qualified as IS
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text qualified
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
-import Golem.Layout.FreeGeometry (boxExtras, faceOffset, ruleAfterEdge, ruleAfterGap, ruleBeforeEdge, ruleBeforeGap, rulesSharedGap)
+import Golem.Layout.FreeGeometry (boxExtras, faceOffset, ruleAfterEdge, ruleAfterGap, ruleAfterOutside, ruleBeforeEdge, ruleBeforeGap, rulesSharedGap)
 import Golem.Layout.Paginate.BookParts (slotIds)
 import Golem.Layout.Paginate.Decide qualified as Decide
 import Golem.Layout.Paginate.Types
@@ -103,7 +103,7 @@ data PhysicalState = PhysicalState
     psTables :: ![TableSegmentAt Sp],
     psBoxes :: ![BoxSegmentAt Sp],
     psRules :: ![PlacedRule],
-    psJoin :: !(Maybe (Int, RuleSide, LineBox, Sp)),
+    psJoin :: !(Maybe PendingRule),
     psWaits :: ![(Unmet, Int, Int, Int, Int, Bool)],
     psSections :: ![(Int, Int)],
     -- | the notes at the foot of the page that the columns of a set started on it keep clear (root ADR 0025)
@@ -111,6 +111,24 @@ data PhysicalState = PhysicalState
     -- | what @page-lines changes in every column of a set started on this page (root ADR 0441)
     psSetAdjustment :: !Sp
   }
+
+{- | The rule after of a ruled block that waits to share its area with
+the rule before of the next block (golem-driver ADR 0027, root ADR
+0449): the block's id, the side of the rule, and the box at the end of
+the block that the rule takes at the end of the column when it does not
+share: where the box starts, its pitch and its face.
+-}
+data PendingRule = PendingRule
+  { pendingId :: !Int,
+    pendingSide :: !RuleSide,
+    pendingBase :: !Sp,
+    pendingPitch :: !Sp,
+    pendingFace :: !Sp
+  }
+
+-- | The end of the face of the block whose rule after waits.
+pendingFaceEnd :: PendingRule -> Sp
+pendingFaceEnd pending = pendingBase pending + faceOffset (pendingPitch pending) (pendingFace pending) + pendingFace pending
 
 -- | A figure waiting for room, or a turned figure waiting for a page of its own (golem-driver ADR 0034).
 data Waiting
@@ -853,7 +871,14 @@ fitsFollowing cfg st wanted = go 0
 -- Keep the first usable part of the following block with a heading or
 -- definition term. An empty column is the finite relaxation boundary.
 keepFollowing :: PhysicalSettings -> Bool -> PhysicalState -> Sp -> [LineBox] -> [FlowAt Sp] -> PhysicalState
-keepFollowing cfg heading st extent lines' later =
+keepFollowing cfg heading = keepFollowingWaiting cfg heading (const Nothing)
+
+{- | 'keepFollowing' with the rule after that the block leaves waiting for
+the next block, from the start of the block (root ADR 0449): the area
+the next block shares counts in that block.
+-}
+keepFollowingWaiting :: PhysicalSettings -> Bool -> (Sp -> Maybe PendingRule) -> PhysicalState -> Sp -> [LineBox] -> [FlowAt Sp] -> PhysicalState
+keepFollowingWaiting cfg heading waitingFrom st extent lines' later =
   let noteCount = sum [nbLines note | line <- lines', note <- lbNotes line]
       notes = fromIntegral noteCount * physicalPagePitch cfg + (if noteCount > 0 && psNotesUsed st == 0 then physicalSeparator cfg else 0)
       origin = psUsed st + psPendingSpace st
@@ -861,7 +886,7 @@ keepFollowing cfg heading st extent lines' later =
         if heading
           then [(origin, SHeading (maybe 0 lbId (safeHead lines')) (length lines'))]
           else zip (scanl (+) origin (map (pitchOf cfg) lines')) (map (SLine . lbId) lines')
-      virtual = st {psUsed = origin + extent, psNotesUsed = psNotesUsed st + notes, psSlots = psSlots st <> virtualSlots, psPendingSpace = 0}
+      virtual = st {psUsed = origin + extent, psNotesUsed = psNotesUsed st + notes, psSlots = psSlots st <> virtualSlots, psPendingSpace = 0, psJoin = waitingFrom origin}
       (wanted, following) = case keepAhead later of
         Just (_, n, rest) -> (n, rest)
         Nothing -> (1, later)
@@ -1328,11 +1353,25 @@ movesForFollowing cfg st ruled full later =
         Just (wanted, rest) -> not (empty st) && not (fitsFollowing cfg full wanted rest)
         Nothing -> False
 
--- | Whether the flows begin with a ruled paragraph whose rule before shares the area of the rule after before it.
+{- | Whether the flows begin with a ruled paragraph or heading whose rule
+before shares the area of the rule after before it (root ADR 0449); a
+heading that starts a recto page does not share it.
+-}
 joinsNext :: [FlowAt Sp] -> Bool
 joinsNext = \case
-  FRuled {frJoined = True, frBefore = Just _, frBody = RuledLines {}} : _ -> True
+  FRuled {frBody = RuledHeading True _ _} : _ -> False
+  FRuled {frJoined = True, frBefore = Just _} : _ -> True
   _ -> False
+
+{- | Whether a ruled block that joins the block before it cannot share the
+area in this column: the rule after of that block is placed as its own
+(root ADR 0449). The block then starts in the next column.
+-}
+startsAfterOwnRule :: PhysicalState -> FlowAt Sp -> Bool
+startsAfterOwnRule st ruled =
+  joinsNext [ruled] && isNothing (psJoin st) && not (empty st) && case safeHead (reverse (psSlots st)) of
+    Just (lastAt, _) -> or [not (prBefore r) && prAt r >= lastAt | r <- psRules st]
+    Nothing -> False
 
 {- | A ruled paragraph in this column: with its rule after waiting to share
 its area with the next block's rule before when that block goes on in
@@ -1358,16 +1397,29 @@ ruledBefore = \case
   FRuled {frBefore = Just _} -> True
   _ -> False
 
--- | Whether the rule after of a ruled block placed lies in the column, above its notes.
+{- | Whether the rule after of a ruled block placed lies in the column,
+above its notes, or out of it past the end of a column without notes
+(root ADR 0450).
+-}
 ruleAfterInColumn :: PhysicalSettings -> FlowAt Sp -> PhysicalState -> Bool
 ruleAfterInColumn cfg ruled placed =
-  and [prAt r + rsdWeight side <= limit cfg placed - psNotesUsed placed | Just side <- [frAfter ruled], r <- psRules placed, prId r == frId ruled, not (prBefore r)]
+  and [prAt r + rsdWeight side <= limit cfg placed - psNotesUsed placed || outside side r | Just side <- [frAfter ruled], r <- psRules placed, prId r == frId ruled, not (prBefore r)]
+  where
+    outside side r = case rsdOutside side of
+      Just available -> psNotesUsed placed == 0 && prAt r >= limit cfg placed && prAt r + rsdWeight side - limit cfg placed <= available
+      Nothing -> False
 
 -- | Whether the block after a rule after that waits takes that rule into its area in the same column.
 settlesHere :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Bool
-settlesHere cfg st next later = case ruledHere cfg st next later of
-  Right (Just placed) -> not (movesForFollowing cfg st next placed later)
-  _ -> False
+settlesHere cfg st next later = case frBody next of
+  RuledHeading {}
+    | headingDropsRules cfg next -> False
+    | otherwise -> case placeRuled cfg st next later of
+        Right placed -> (psPage placed, psColumn placed) == (psPage st, psColumn st) && not (movesForFollowing cfg st next placed later)
+        Left _ -> False
+  RuledLines {} -> case ruledHere cfg st next later of
+    Right (Just placed) -> not (movesForFollowing cfg st next placed later)
+    _ -> False
 
 {- | A ruled paragraph placed in this column with the flows after it, or
 Nothing when it does not fit the room. An empty column keeps the block
@@ -1395,14 +1447,12 @@ ruledLinesPlan cfg st ruled laterFlows = case frBody ruled of
       let firstPitch = pitchOf cfg first
           lastPitch = pitchOf cfg last'
           beforeGeometry side = case psJoin st of
-            Just (priorId, prior, priorLine, priorExtra)
+            Just pending
               | frJoined ruled ->
-                  let previousPitch = pitchOf cfg priorLine
-                      previousFace = faceOf cfg priorLine
-                      priorEnd = psUsed st - priorExtra - previousPitch + faceOffset previousPitch previousFace + previousFace
+                  let priorEnd = pendingFaceEnd pending
                       gap = psUsed st + faceOffset firstPitch (faceOf cfg first) - priorEnd
-                      (extra, priorPosition, currentPosition) = rulesSharedGap gap prior side (lbOverhang first)
-                   in (extra, priorEnd + currentPosition, [PlacedRule priorId False (priorEnd + priorPosition)])
+                      (extra, priorPosition, currentPosition) = rulesSharedGap gap (pendingSide pending) side (lbOverhang first)
+                   in (extra, priorEnd + currentPosition, [PlacedRule (pendingId pending) False (priorEnd + priorPosition)])
             _ -> case safeHead (reverse (psSlots st)) of
               Just (priorAt, SLine priorId)
                 | psPendingSpace st == 0 ->
@@ -1416,14 +1466,20 @@ ruledLinesPlan cfg st ruled laterFlows = case frBody ruled of
                  in (extra, psUsed st + position, [])
           beforeExtra = maybe 0 (\side -> let (extra, _, _) = beforeGeometry side in extra) (frBefore ruled)
           joiningNext = joinsNext laterFlows
-          afterGeometry side = case laterFlows of
-            nextFlow : _
+          noNotes = psNotesUsed st == 0 && all (null . lbNotes) lines'
+          -- the start of the last line box of the block placed here
+          lastStart = (if empty st then psUsed st else psUsed st + psPendingSpace st) + beforeExtra + sum (map (pitchOf cfg) lines') - lastPitch
+          -- the rule after out of the column, right after the last line, from the start of its box (root ADR 0450)
+          outsideAt end start side = if noNotes then ruleAfterOutside lastPitch (faceOf cfg last') (end - start) side else Nothing
+          afterGeometry end start side = case (outsideAt end start side, laterFlows) of
+            (Just position, _) -> (0, position)
+            (_, nextFlow : _)
               | nextLine : _ <- flowLines nextFlow ->
                   let gap = lastPitch - faceOf cfg last' - faceOffset lastPitch (faceOf cfg last') + faceOffset (pitchOf cfg nextLine) (faceOf cfg nextLine)
                       (extra, position) = ruleAfterGap gap side (frNextOverhang ruled)
                    in (extra, faceOffset lastPitch (faceOf cfg last') + faceOf cfg last' + position)
-            _ -> ruleAfterEdge lastPitch (faceOf cfg last') side {rsdOutside = Nothing}
-          afterExtra = if joiningNext then 0 else maybe 0 (fst . afterGeometry) (frAfter ruled)
+            _ -> ruleAfterEdge lastPitch (faceOf cfg last') lastPitch side {rsdOutside = Nothing}
+          afterExtra = if joiningNext then 0 else maybe 0 (fst . afterGeometry (limit cfg st) lastStart) (frAfter ruled)
           extent = beforeExtra + sum (map (pitchOf cfg) lines') + afterExtra
           -- the lines of the block after each line and the area of its rule after, kept from that line's notes (golem-driver ADR 0027)
           belowEach = map (+ afterExtra) (drop 1 (scanr (+) 0 (map (pitchOf cfg) lines')))
@@ -1434,9 +1490,13 @@ ruledLinesPlan cfg st ruled laterFlows = case frBody ruled of
             placed <- foldl' putKeeping (Right withBefore) (zip belowEach lines')
             let sharedRules = concat [prior | side <- maybe [] pure (frBefore ruled), let (_, _, prior) = beforeGeometry side]
                 startRule = [PlacedRule (frId ruled) True position | side <- maybe [] pure (frBefore ruled), let (_, position, _) = beforeGeometry side]
-                endRule = [PlacedRule (frId ruled) False (psUsed placed - lastPitch + snd (afterGeometry side)) | not joiningNext, side <- maybe [] pure (frAfter ruled)]
-                waiting = if joiningNext then (frId ruled,,last',afterExtra) <$> frAfter ruled else Nothing
-            pure placed {psUsed = psUsed placed + afterExtra, psAdjustment = psAdjustment ready, psRules = psRules placed <> sharedRules <> startRule <> endRule, psJoin = waiting}
+                start = psUsed placed - lastPitch
+                end = limit cfg ready
+                endRule = [PlacedRule (frId ruled) False (start + snd (afterGeometry end start side)) | not joiningNext, side <- maybe [] pure (frAfter ruled)]
+                waiting = if joiningNext then (\side -> PendingRule (frId ruled) side start lastPitch (faceOf cfg last')) <$> frAfter ruled else Nothing
+                -- a rule out of the column closes it (root ADR 0450)
+                closes = not joiningNext && or [isJust (outsideAt end start side) | Just side <- [frAfter ruled]]
+            pure placed {psUsed = if closes then max end (psUsed placed) else psUsed placed + afterExtra, psAdjustment = psAdjustment ready, psRules = psRules placed <> sharedRules <> startRule <> endRule, psJoin = waiting}
        in Just (extent, place)
     _ -> Nothing
   RuledHeading {} -> Nothing
@@ -1445,124 +1505,222 @@ placeRuled :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> E
 placeRuled cfg st ruled@FRuled {} laterFlows = case frBody ruled of
   RuledLines keep lines' -> case ruledLinesPlan cfg st ruled laterFlows of
     Nothing -> Right st
-    Just (least, _) -> do
-      here <- ruledHere cfg st ruled laterFlows
-      case here of
-        Just placed -> Right placed
-        Nothing
-          | frJoined ruled && isJust (psJoin st) && not (empty st) ->
-              placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} laterFlows
-          | least > physicalCapacity cfg -> placeLines cfg keep True st lines'
-          | otherwise ->
-              -- a block an empty column cannot hold with its rules is broken without them (golem-driver ADR 0035)
-              let moved = fit cfg st (room cfg st + 1)
-               in if (psPage moved, psColumn moved) == (psPage st, psColumn st)
-                    then placeLines cfg keep True st lines'
-                    else placeRuled cfg moved ruled laterFlows
-  RuledHeading recto extent lines' -> do
-    let headingState = if recto then parityStart cfg odd st else keepFollowing cfg True st extent lines' laterFlows
-    let firstId = maybe 0 lbId (safeHead lines')
-        firstLine = safeHead lines'
-        lastLine = safeHead (reverse lines')
-        -- the area of the rule before and its place from the start of the heading's box
-        beforeEdge side line =
-          let size = faceOf cfg line
-              virtualPitch = maybe (pitchOf cfg line) (\(firstFaceAt, _) -> 2 * firstFaceAt + size) (Map.lookup firstId (physicalHeadingBounds cfg))
-           in ruleBeforeEdge virtualPitch size side (lbOverhang line)
-        {- The rule before as a ruled paragraph's (golem-driver ADR 0027, root
-        ADR 0397 「段落の罫線」): out of the column only at the start of a
-        column at the edge of the type area (golem-driver ADR 0040); after a
-        line, in the gap between the faces; else in the heading's own area,
-        as after the rule after of a ruled paragraph, which takes its own
-        area in that gap. Its area and its place from the start of the
-        heading's box.
-        -}
-        beforeGeometry at side line = case safeHead (reverse (psSlots at)) of
-          Just (priorAt, SLine priorId)
-            | psPendingSpace at == 0 && null [r | r <- psRules at, not (prBefore r), prAt r >= priorAt] ->
-                let priorLine = LineBox priorId [] [] [] 0
-                    priorEnd = priorAt + faceOffset (pitchOf cfg priorLine) (faceOf cfg priorLine) + faceOf cfg priorLine
-                    faceAt = maybe (faceOffset (pitchOf cfg line) (faceOf cfg line)) fst (Map.lookup firstId (physicalHeadingBounds cfg))
-                    (extra, position) = ruleBeforeGap (psUsed at + faceAt - priorEnd) side (lbOverhang line)
-                 in (extra, priorEnd + position - psUsed at)
-          _ -> beforeEdge (if empty at && psUsed at == 0 then side else side {rsdOutside = Nothing}) line
-        -- the end of the heading's face and the space after it to the end of its box
-        lastFace line = case Map.lookup firstId (physicalHeadingBounds cfg) of
-          Nothing -> let pitch = pitchOf cfg line in (extent - pitch + faceOffset pitch (faceOf cfg line) + faceOf cfg line, pitch - faceOf cfg line - faceOffset pitch (faceOf cfg line))
-          Just (_, lastFaceEnd) -> (lastFaceEnd, extent - lastFaceEnd)
-        {- The rule after as a ruled paragraph's (golem-driver ADR 0027, root
-        ADR 0397 「段落の罫線」): in the middle of a column, in the gap between
-        the faces with its outer space and the overhang of the next line
-        (`max(0, i + w + o + r - g)`), unless the next block has a rule
-        before of its own; else, at the end of the column, without the
-        outer space. Its area and its place from the start of the heading's
-        box.
-        -}
-        afterGeometry interior side line =
-          let (faceEnd, trailing) = lastFace line
-              size = faceOf cfg line
-           in case laterFlows of
-                nextFlow : _
-                  | interior,
-                    not (ruledBefore nextFlow),
-                    nextLine : _ <- flowLines nextFlow ->
-                      let gap = trailing + faceOffset (pitchOf cfg nextLine) (faceOf cfg nextLine)
-                          (extra, position) = ruleAfterGap gap side (frNextOverhang ruled)
-                       in (extra, faceEnd + position)
-                _ -> case Map.lookup firstId (physicalHeadingBounds cfg) of
-                  Nothing ->
-                    let (extra, position) = ruleAfterEdge (pitchOf cfg line) size side {rsdOutside = Nothing}
-                     in (extra, extent - pitchOf cfg line + position)
-                  Just _ ->
-                    let (extra, position) = ruleAfterEdge (2 * trailing + size) size side {rsdOutside = Nothing}
-                     in (extra, faceEnd - size - trailing + position)
-        -- whether an empty column holds the heading with its rules (golem-driver ADR 0035)
-        startExtra = maybe 0 (\side -> maybe 0 (fst . beforeEdge side) firstLine) (frBefore ruled)
-        beforeExtra = maybe 0 (\side -> maybe 0 (fst . beforeGeometry headingState side) firstLine) (frBefore ruled)
-        afterExtraOf interior = maybe 0 (\side -> maybe 0 (fst . afterGeometry interior side) lastLine) (frAfter ruled)
-        noteCount = sum [nbLines note | line <- lines', note <- lbNotes line]
-        headingNotes = fromIntegral noteCount * physicalPagePitch cfg + (if noteCount > 0 then physicalSeparator cfg else 0)
-        -- the state the heading is placed from, and how it is placed there, with the interior or the end-of-column rule after
-        attempt interior =
-          let afterExtra = afterExtraOf interior
-              headingSize = beforeExtra + headingNeed cfg headingState extent lines' + afterExtra
-              adjustedException = empty headingState && psAdjustment headingState < 0 && headingSize > room cfg headingState && headingSize <= physicalCapacity cfg - psUsed headingState - psNotesUsed headingState
-              ready =
-                if adjustedException
-                  then headingState {psPendingSpace = 0, psBlankActive = False, psBlankSpans = [], psUnmet = psUnmet headingState <> [TallHeadingExtent firstId extent (room cfg headingState)]}
-                  else fit cfg headingState headingSize
-              place = do
-                let origin = psUsed ready
-                placed0 <- putHeading cfg (ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}) firstId extent lines'
-                let placed = placed0 {psAdjustment = psAdjustment ready}
-                    -- the same column as headingState: the geometry of its fit, the place from origin
-                    startRule = [PlacedRule (frId ruled) True (origin + snd (beforeGeometry headingState side line)) | side <- maybe [] pure (frBefore ruled), line <- maybe [] pure firstLine]
-                    endRule = [PlacedRule (frId ruled) False (psUsed placed - extent + snd (afterGeometry interior side line)) | side <- maybe [] pure (frAfter ruled), line <- maybe [] pure lastLine]
-                pure placed {psUsed = psUsed placed + afterExtra, psRules = psRules placed <> startRule <> endRule}
-           in (ready, place)
-        moves ready = (psPage ready, psColumn ready) /= (psPage headingState, psColumn headingState)
-    if extent > physicalCapacity cfg
-      then Left (PhysicalHeadingTooTall firstId)
-      else
-        if startExtra + extent + afterExtraOf False + headingNotes > physicalCapacity cfg
-          then case frAfter ruled of
-            Just _ -> placeRuled cfg headingState ruled {frAfter = Nothing} laterFlows
-            Nothing -> case frBefore ruled of
-              Just _ -> placeRuled cfg headingState ruled {frBefore = Nothing} laterFlows
-              Nothing -> placeHeading cfg headingState firstId extent lines'
-          else do
-            -- the interior rule after while it and its area lie in the column, else the rule at the end of the column (root ADR 0397 I8)
-            let (insideReady, insidePlace) = attempt True
-                (edgeReady, edgePlace) = attempt False
-                atEnd
-                  | moves edgeReady = placeRuled cfg edgeReady ruled laterFlows
-                  | otherwise = edgePlace
-            if moves insideReady
-              then atEnd
-              else do
-                inside <- insidePlace
-                if ruleAfterInColumn cfg ruled inside then Right inside else atEnd
+    Just (inPlace, _)
+      -- the block that cannot share the area of the rule after before it starts in the next column (root ADR 0449)
+      | startsAfterOwnRule st ruled && least <= physicalCapacity cfg ->
+          placeRuled cfg (nextColumn cfg st) ruled {frJoined = False} laterFlows
+      | otherwise -> do
+          here <- ruledHere cfg st ruled laterFlows
+          case here of
+            Just placed -> Right placed
+            Nothing
+              | frJoined ruled && isJust (psJoin st) && not (empty st) ->
+                  placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} laterFlows
+              | least > physicalCapacity cfg -> placeLines cfg keep True st lines'
+              | otherwise ->
+                  -- a block an empty column cannot hold with its rules is broken without them (golem-driver ADR 0035)
+                  let moved = fit cfg st (room cfg st + 1)
+                   in if (psPage moved, psColumn moved) == (psPage st, psColumn st)
+                        then placeLines cfg keep True st lines'
+                        else placeRuled cfg moved ruled laterFlows
+      where
+        -- the block in an empty column too, where its rule after may go out of the column at its end (root ADR 0450)
+        least = min inPlace (maybe inPlace fst (ruledLinesPlan cfg (nextColumn cfg st) ruled {frJoined = False} laterFlows))
+  RuledHeading recto extent lines'
+    -- a heading that does not share the area of the rule after that waits takes it as its own before it (root ADR 0449)
+    | isJust (psJoin st) && not (joinsNext [ruled] && not (headingDropsRules cfg ruled)) ->
+        placeRuled cfg (flushPendingRule cfg st) ruled {frJoined = False} laterFlows
+    | isJust (psJoin st) -> do
+        joined <- ruledHeadingHere cfg st ruled laterFlows recto extent lines'
+        if (psPage joined, psColumn joined) == (psPage st, psColumn st)
+          then Right joined
+          else placeRuled cfg (nextColumn cfg (flushPendingRule cfg st)) ruled {frJoined = False} laterFlows
+    | startsAfterOwnRule st ruled && not (headingDropsRules cfg ruled) ->
+        placeRuled cfg (nextColumn cfg st) ruled {frJoined = False} laterFlows
+    | otherwise -> ruledHeadingHere cfg st ruled laterFlows recto extent lines'
 placeRuled _ st _ _ = Right st
+
+-- | The area of the rule before of a ruled heading at the edge of a column and its place from the start of the heading's box.
+headingBeforeEdge :: PhysicalSettings -> Int -> RuleSide -> LineBox -> (Sp, Sp)
+headingBeforeEdge cfg firstId side line =
+  let size = faceOf cfg line
+      virtualPitch = maybe (pitchOf cfg line) (\(firstFaceAt, _) -> 2 * firstFaceAt + size) (Map.lookup firstId (physicalHeadingBounds cfg))
+   in ruleBeforeEdge virtualPitch size side (lbOverhang line)
+
+-- | The end of a heading's face and the space after it to the end of its box.
+headingLastFace :: PhysicalSettings -> Int -> Sp -> LineBox -> (Sp, Sp)
+headingLastFace cfg firstId extent line = case Map.lookup firstId (physicalHeadingBounds cfg) of
+  Nothing -> let pitch = pitchOf cfg line in (extent - pitch + faceOffset pitch (faceOf cfg line) + faceOf cfg line, pitch - faceOf cfg line - faceOffset pitch (faceOf cfg line))
+  Just (_, lastFaceEnd) -> (lastFaceEnd, extent - lastFaceEnd)
+
+{- | The box at the end of a heading that its rule after takes at the end
+of a column: where it starts from the start of the heading's box, its
+pitch and its face.
+-}
+headingEndBox :: PhysicalSettings -> Int -> Sp -> LineBox -> (Sp, Sp, Sp)
+headingEndBox cfg firstId extent line =
+  let (faceEnd, trailing) = headingLastFace cfg firstId extent line
+      size = faceOf cfg line
+   in case Map.lookup firstId (physicalHeadingBounds cfg) of
+        Nothing -> (extent - pitchOf cfg line, pitchOf cfg line, size)
+        Just _ -> (faceEnd - size - trailing, 2 * trailing + size, size)
+
+-- | Whether an empty column cannot hold a ruled heading with its rules at its edges, so that it drops them (golem-driver ADR 0035).
+headingDropsRules :: PhysicalSettings -> FlowAt Sp -> Bool
+headingDropsRules cfg = \case
+  ruled@FRuled {frBody = RuledHeading _ extent lines'} ->
+    let firstId = maybe 0 lbId (safeHead lines')
+        startExtra = sum [fst (headingBeforeEdge cfg firstId side line) | Just side <- [frBefore ruled], Just line <- [safeHead lines']]
+        noteCount = sum [nbLines note | line <- lines', note <- lbNotes line]
+        -- the rule after at the end of the column, out of it when it may be (root ADR 0450)
+        endExtra =
+          sum
+            [ fst (ruleAfterEdge pitch face (physicalCapacity cfg - startExtra - base) (if noteCount == 0 then side else side {rsdOutside = Nothing}))
+            | Just side <- [frAfter ruled],
+              Just line <- [safeHead (reverse lines')],
+              let (base, pitch, face) = headingEndBox cfg firstId extent line
+            ]
+        headingNotes = fromIntegral noteCount * physicalPagePitch cfg + (if noteCount > 0 then physicalSeparator cfg else 0)
+     in startExtra + extent + endExtra + headingNotes > physicalCapacity cfg
+  _ -> False
+
+-- | Whether a heading's rule after waits for the next block, or is in the gap before the next line, or at the end of the column.
+data HeadingAfter = AfterWaiting | AfterInterior | AfterEdge
+  deriving stock (Eq)
+
+{- | A ruled heading from a state: its rule before shares the area of the
+rule after that waits (root ADR 0449), or is its own; its rule after
+waits for the next block that shares its area in this column, or is its
+own.
+-}
+ruledHeadingHere :: PhysicalSettings -> PhysicalState -> FlowAt Sp -> [FlowAt Sp] -> Bool -> Sp -> [LineBox] -> Either PhysicalFailure PhysicalState
+ruledHeadingHere cfg st ruled@FRuled {} laterFlows recto extent lines' = do
+  let firstId = maybe 0 lbId (safeHead lines')
+      firstLine = safeHead lines'
+      lastLine = safeHead (reverse lines')
+      joiningNext = joinsNext laterFlows && isJust (frAfter ruled)
+      -- the rule after that waits for the next block, from the start of the heading's box
+      waitingFrom start = case (frAfter ruled, lastLine) of
+        (Just side, Just line) | joiningNext -> let (base, pitch, face) = headingEndBox cfg firstId extent line in Just (PendingRule (frId ruled) side (start + base) pitch face)
+        _ -> Nothing
+      headingState = if recto then parityStart cfg odd st else keepFollowingWaiting cfg True waitingFrom st extent lines' laterFlows
+      beforeEdge = headingBeforeEdge cfg firstId
+      -- where the heading's face starts in its box
+      faceAt line = maybe (faceOffset (pitchOf cfg line) (faceOf cfg line)) fst (Map.lookup firstId (physicalHeadingBounds cfg))
+      {- The rule before as a ruled paragraph's (golem-driver ADR 0027, root
+      ADR 0397 「段落の罫線」): in the area it shares with the rule after
+      that waits (root ADR 0449); out of the column only at the start of a
+      column at the edge of the type area (golem-driver ADR 0040); after a
+      line, in the gap between the faces; else in the heading's own area,
+      as after the rule after of a ruled paragraph, which takes its own
+      area in that gap. Its area, its place from the start of the
+      heading's box, and the rule after it shares the area with.
+      -}
+      beforeShared at side line = case psJoin at of
+        Just pending
+          | frJoined ruled ->
+              let priorEnd = pendingFaceEnd pending
+                  (extra, priorPosition, position) = rulesSharedGap (psUsed at + faceAt line - priorEnd) (pendingSide pending) side (lbOverhang line)
+               in (extra, priorEnd + position - psUsed at, [PlacedRule (pendingId pending) False (priorEnd + priorPosition)])
+        _ -> let (extra, position) = beforeGeometry at side line in (extra, position, [])
+      beforeGeometry at side line = case safeHead (reverse (psSlots at)) of
+        Just (priorAt, SLine priorId)
+          | psPendingSpace at == 0 && null [r | r <- psRules at, not (prBefore r), prAt r >= priorAt] ->
+              let priorLine = LineBox priorId [] [] [] 0
+                  priorEnd = priorAt + faceOffset (pitchOf cfg priorLine) (faceOf cfg priorLine) + faceOf cfg priorLine
+                  (extra, position) = ruleBeforeGap (psUsed at + faceAt line - priorEnd) side (lbOverhang line)
+               in (extra, priorEnd + position - psUsed at)
+        _ -> beforeEdge (if empty at && psUsed at == 0 then side else side {rsdOutside = Nothing}) line
+      {- The rule after as a ruled paragraph's (golem-driver ADR 0027, root
+      ADR 0397 「段落の罫線」): in the middle of a column, in the gap between
+      the faces with its outer space and the overhang of the next line
+      (`max(0, i + w + o + r - g)`), unless the next block has a rule
+      before of its own; else, at the end of the column, without the
+      outer space. Its area and its place from the start of the heading's
+      box.
+      -}
+      afterGeometry end start interior side line =
+        let (faceEnd, trailing) = headingLastFace cfg firstId extent line
+         in case (outsideAt end start side line, laterFlows) of
+              (Just position, _) -> (0, position)
+              (_, nextFlow : _)
+                | interior,
+                  not (ruledBefore nextFlow),
+                  nextLine : _ <- flowLines nextFlow ->
+                    let gap = trailing + faceOffset (pitchOf cfg nextLine) (faceOf cfg nextLine)
+                        (extra, position) = ruleAfterGap gap side (frNextOverhang ruled)
+                     in (extra, faceEnd + position)
+              _ ->
+                let (base, pitch, face) = headingEndBox cfg firstId extent line
+                    (extra, position) = ruleAfterEdge pitch face pitch side {rsdOutside = Nothing}
+                 in (extra, base + position)
+      noNotes = psNotesUsed headingState == 0 && all (null . lbNotes) lines'
+      -- the rule after out of the column, right after the heading, from the start of its box, for the end of the column and the start of the box (root ADR 0450)
+      outsideAt end start side line =
+        let (base, pitch, face) = headingEndBox cfg firstId extent line
+         in if noNotes then (base +) <$> ruleAfterOutside pitch face (end - start - base) side else Nothing
+      beforeExtra = maybe 0 (\side -> maybe 0 (\line -> let (extra, _, _) = beforeShared headingState side line in extra) firstLine) (frBefore ruled)
+      -- where the heading's box starts when it is placed from headingState
+      startHere = (if empty headingState then psUsed headingState else psUsed headingState + psPendingSpace headingState) + beforeExtra
+      afterExtraOf mode
+        | mode == AfterWaiting = 0
+        | otherwise = maybe 0 (\side -> maybe 0 (fst . afterGeometry (limit cfg headingState) startHere (mode == AfterInterior) side) lastLine) (frAfter ruled)
+      -- the state the heading is placed from, and how it is placed there, with its rule after waiting, interior or at the end of the column
+      attempt mode =
+        let afterExtra = afterExtraOf mode
+            headingSize = beforeExtra + headingNeed cfg headingState extent lines' + afterExtra
+            adjustedException = empty headingState && psAdjustment headingState < 0 && headingSize > room cfg headingState && headingSize <= physicalCapacity cfg - psUsed headingState - psNotesUsed headingState
+            ready =
+              if adjustedException
+                then headingState {psPendingSpace = 0, psBlankActive = False, psBlankSpans = [], psUnmet = psUnmet headingState <> [TallHeadingExtent firstId extent (room cfg headingState)]}
+                else fit cfg headingState headingSize
+            place = do
+              let origin = psUsed ready
+              placed0 <- putHeading cfg (ready {psUsed = origin + beforeExtra, psAdjustment = psAdjustment ready - afterExtra}) firstId extent lines'
+              let placed = placed0 {psAdjustment = psAdjustment ready}
+                  -- the same column as headingState: the geometry of its fit, the place from origin
+                  before = [(origin + position, shared) | side <- maybe [] pure (frBefore ruled), line <- maybe [] pure firstLine, let (_, position, shared) = beforeShared headingState side line]
+                  startRule = [PlacedRule (frId ruled) True at | (at, _) <- before]
+                  sharedRules = concatMap snd before
+                  start = psUsed placed - extent
+                  end = limit cfg ready
+                  endRule = [PlacedRule (frId ruled) False (start + snd (afterGeometry end start (mode == AfterInterior) side line)) | mode /= AfterWaiting, side <- maybe [] pure (frAfter ruled), line <- maybe [] pure lastLine]
+                  waiting = if mode == AfterWaiting then waitingFrom start else Nothing
+                  -- a rule out of the column closes it (root ADR 0450)
+                  closes = mode /= AfterWaiting && or [isJust (outsideAt end start side line) | Just side <- [frAfter ruled], Just line <- [lastLine]]
+              pure placed {psUsed = if closes then max end (psUsed placed) else psUsed placed + afterExtra, psRules = psRules placed <> sharedRules <> startRule <> endRule, psJoin = waiting}
+         in (ready, place)
+      moves ready = (psPage ready, psColumn ready) /= (psPage headingState, psColumn headingState)
+  if extent > physicalCapacity cfg
+    then Left (PhysicalHeadingTooTall firstId)
+    else
+      if headingDropsRules cfg ruled
+        then case frAfter ruled of
+          Just _ -> placeRuled cfg headingState ruled {frAfter = Nothing, frJoined = False} laterFlows
+          Nothing -> case frBefore ruled of
+            Just _ -> placeRuled cfg headingState ruled {frBefore = Nothing, frJoined = False} laterFlows
+            Nothing -> placeHeading cfg headingState firstId extent lines'
+        else do
+          -- the interior rule after while it and its area lie in the column, else the rule at the end of the column (root ADR 0397 I8)
+          let (insideReady, insidePlace) = attempt AfterInterior
+              (edgeReady, edgePlace) = attempt AfterEdge
+              (waitingReady, waitingPlace) = attempt AfterWaiting
+              atEnd
+                | moves edgeReady = placeRuled cfg edgeReady ruled laterFlows
+                | otherwise = edgePlace
+              own
+                | moves insideReady = atEnd
+                | otherwise = do
+                    inside <- insidePlace
+                    if ruleAfterInColumn cfg ruled inside then Right inside else atEnd
+          -- the rule after waits when the next block shares its area in this column (root ADR 0449)
+          case laterFlows of
+            next : later
+              | joiningNext && not (moves waitingReady) -> do
+                  waited <- waitingPlace
+                  if settlesHere cfg waited next later then Right waited else own
+            _ -> own
+ruledHeadingHere _ st _ _ _ _ _ = Right st
 
 safeHead :: [a] -> Maybe a
 safeHead [] = Nothing
@@ -1571,12 +1729,14 @@ safeHead (x : _) = Just x
 flushPendingRule :: PhysicalSettings -> PhysicalState -> PhysicalState
 flushPendingRule cfg st = case psJoin st of
   Nothing -> st
-  Just (ident, side, lastLine, priorExtra) ->
-    let pitch = pitchOf cfg lastLine
-        face = faceOf cfg lastLine
-        firstAt = psUsed st - priorExtra - pitch
-        (extra, position) = ruleAfterEdge pitch face side {rsdOutside = Nothing}
-     in st {psUsed = psUsed st + max 0 (extra - priorExtra), psRules = psRules st <> [PlacedRule ident False (firstAt + position)], psJoin = Nothing}
+  Just pending ->
+    let end = limit cfg st
+        -- out of the column past its end, which closes the column (root ADR 0450)
+        outside = if psNotesUsed st == 0 then ruleAfterOutside (pendingPitch pending) (pendingFace pending) (end - pendingBase pending) (pendingSide pending) else Nothing
+        (extra, position) = ruleAfterEdge (pendingPitch pending) (pendingFace pending) (pendingPitch pending) (pendingSide pending) {rsdOutside = Nothing}
+     in case outside of
+          Just at -> st {psUsed = max end (psUsed st), psRules = psRules st <> [PlacedRule (pendingId pending) False (pendingBase pending + at)], psJoin = Nothing}
+          Nothing -> st {psUsed = psUsed st + extra, psRules = psRules st <> [PlacedRule (pendingId pending) False (pendingBase pending + position)], psJoin = Nothing}
 
 waitFor :: Unmet -> (Int, Bool) -> PhysicalState -> PhysicalState
 waitFor unmet (required, linesOnly) st =

@@ -242,7 +242,7 @@ epubcheck と [code: scripts/determinism.sh] は、別のランナー [code: out
 + 10 分を上限に [code: sh scripts/visual/fetch-shem.sh] を実行する。戻したアーカイブは SHA-256 を照合してから展開する。アーカイブがないか SHA-256 が合わなければ、[code: scripts/ci/fetch-url.sh] が shem の release から取り直す。取得は 3 回まで試し、試行のあいだに 10 秒と 30 秒を待つ。
 + [code: main] への push では、キャッシュになかったアーカイブを保存する。
 + [code: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh] で、この実行に [code: visual-pdfs] が上がるのを待つ。
-+ [code: visual-pdfs] を取り寄せる。
++ 5 分を上限に [code: sh scripts/ci/download-artifact.sh] で、[code: visual-pdfs] を取り寄せる。
 + [code: timeout -k 10 600 sh scripts/visual/check.sh --lists ...] で、ページの画像を参照と比べる。[code: --lists] は、[code: --accept] が書くはずの参照を、報告のために別のディレクトリに書く。
 + 比べる手順が失敗したときだけ、[code: scripts/visual/report.sh] がジョブの要約と報告を書き、報告を成果物 [code: visual-diff] として上げる。
 
@@ -275,6 +275,21 @@ API が利用上限を返したときは、応答の指定に従って待ち、�
 待つ上限の 60 分は、キャッシュのない [code: build] でも届く長さである。
 [code: build] が [code: visual-pdfs] を上げずに失敗すると、[code: visual] も失敗する（以前は省かれた）。
 どちらの場合も [code: ci] は失敗するので、必須の検査の結果は変わらない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0099-visual-job-waits-only-for-visual-pdfs.md]（docs/adr の ADR 0099「visual ジョブを build と同時に始め、成果物 visual-pdfs だけを待つ」）]
+
+待ち終えた後の取り寄せには、[code: actions/download-artifact] を使わない。
+[code: wait-pdfs.sh] が成果物を見つけた 1 秒以内に、[code: actions/download-artifact] が同じ成果物を見つけられずに失敗したことがあるためである。
+代わりに [code: scripts/ci/download-artifact.sh] が、一覧の API でこの実行の [code: visual-pdfs] を問い合わせ、その zip を取り寄せる。
+zip の SHA-256 が成果物の [code: digest] と一致したときだけ展開する。
+成果物がない、[code: digest] がない、取り寄せが 404 か利用上限で失敗した、のどれかなら、5 秒おきに 12 回まで取り直す。
+SHA-256 が一致しないときと、取り寄せがほかの理由（401 や 403 など）で失敗したときは、取り直しても直らないので、すぐに失敗する。
+成果物の zip を取り寄せるには、トークンに [code: actions: read] が要る。
+[code: wasm]、[code: editors-lsp]、[code: verapdf] も、待った成果物を同じスクリプトで取り寄せる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md]（docs/adr の ADR 0442「wait-pdfs.sh で待った成果物を、digest で確かめて取り直しつきで取り寄せる」）]
+
+上げる側のジョブを再実行した実行では、前の試行の成果物が同じ名前で一覧に残る。
+一覧の API は試行の番号を返さないので、[code: download-artifact.sh] は、名前の一致する成果物のうち [code: created_at] がいちばん新しいものを選ぶ。
+いちばん新しいものが二つ以上あれば、取り寄せずに失敗する。
+選んだ成果物の id と [code: created_at] と、名前の一致した成果物の数は、標準エラーに書く。
+上げる側の再実行が成果物を上げる前に取り寄せる側が走ると、前の試行の成果物を使う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0446-pick-the-newest-artifact-of-a-name-across-attempts.md]（docs/adr の ADR 0446「同じ名前の成果物が試行をまたいで残るときは、いちばん新しいものを取り寄せる」）]
 
 [code: unreadable] は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
 shem を直してリリースし、固定した版を上げる（第[ref-number build-test]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0095-visual-job-in-ci.md]（docs/adr の ADR 0095「見た目の回帰テストを、CI の新しいジョブ visual で動かす」）]
@@ -309,7 +324,7 @@ shem を直してリリースし、固定した版を上げる（第[ref-number 
 前の画像は、プルリクエストではベースのコミット、[code: main] への push では push の前のコミットの PDF から描く。
 [code: release.yml] から呼ばれたときはベースがないので、前の画像を探さない。
 前の PDF は、ベースのコミットから first-parent の祖先を 20 個までたどり、[code: ci.yml] の push の実行で成果物 [code: visual-pdfs] を持つ最初のコミットのものを、[code: gh run list] と [code: gh run download] で取り寄せる。
-このため、[code: visual] ジョブだけがトークンに [code: actions: read] の権限を持ち、チェックアウトで履歴をすべて取る。
+このためにも、[code: visual] ジョブはトークンに [code: actions: read] の権限を持ち、チェックアウトで履歴をすべて取る。
 ワークフローの全体の権限は [code: contents: read] のままである。
 取り寄せた PDF のページは、72 dpi の PPM の SHA-256 がベースのコミットの参照の行と一致したときだけ、前の画像として使う。
 祖先の PDF でも、ベースと同じ画素のページなら前の画像として正しい。

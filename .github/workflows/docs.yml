@@ -136,7 +136,7 @@ jobs:
           if [ "$EVENT" = pull_request ]; then
             # exit code 3 (no range) or a failure of git: check
             if paths=$(sh scripts/ci/changed-paths.sh "$EVENT" "$BASE" "$HEAD"); then
-              printf '%s\n' "$paths" | grep -qx -e docs/diagnostics.md -e modules/golem-driver/src/Golem/Driver/Explain.hs || run=false
+              printf '%s\n' "$paths" | grep -qx -e docs/diagnostics.md -e modules/golem-evaluate/src/Golem/Evaluate/Explain.hs || run=false
             fi
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"

@@ -48,7 +48,6 @@ import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver (Evaluated (..), metadataValues)
 import Golem.Emet (Export (..), Kind (..), Program, formatEmet, programExports, programModules)
 import Golem.Emet.Highlight (Highlight (..), HlType (..), emetHighlights)
 import Golem.Emet.Ide (IdeKind (..), emetCompletions, emetDefinition, emetExportAt, emetHover, emetLocalHover)
@@ -57,6 +56,7 @@ import Golem.Eval.Builtin (builtinBlockCommands)
 import Golem.Eval.Expr (builtinExpressionNames, embedValue, evalExpr, plainEnv)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), projectVarValues, typeName)
+import Golem.Evaluate (Evaluated (..), metadataValues)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Toml (Context (..), Quote (..), contextAt, definedPaths)
 import Golem.Lsp.Workspace

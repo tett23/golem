@@ -16,6 +16,7 @@ module Golem.Layout.FreeGeometry
     rulesSharedGap,
     ruleBeforeEdge,
     ruleAfterEdge,
+    ruleAfterOutside,
   )
 where
 
@@ -106,14 +107,27 @@ ruleBeforeEdge pitch face side overhang =
         Just available | outside + rsdWeight side <= 0 && negate outside <= available -> (0, outside)
         _ -> (extra, inside)
 
-ruleAfterEdge :: Sp -> Sp -> RuleSide -> (Sp, Sp)
-ruleAfterEdge pitch face side =
+{- | A rule after at the end of a column whose end lies so far from the
+start of the last line box. With rsdOutside, the rule goes right after
+the last line, without extra (root ADR 0450): i from the end of the face
+when spaced, else at the later of the end of the line box and the end of
+the face, when that place is at or past the end of the column and the
+rule reaches past it no further than the room outside.
+-}
+ruleAfterEdge :: Sp -> Sp -> Sp -> RuleSide -> (Sp, Sp)
+ruleAfterEdge pitch face end side = case ruleAfterOutside pitch face end side of
+  Just outside -> (0, outside)
+  Nothing ->
+    let faceEnd = faceOffset pitch face + face
+        extra = ruleAfterExtra pitch face (rsdInner side) (rsdWeight side)
+        rest = pitch + extra - faceEnd - rsdWeight side
+     in (extra, if rsdSpaced side then faceEnd + rsdInner side else faceEnd + half rest)
+
+-- | The place of a rule after out of the column, from the start of the last line box, when 'ruleAfterEdge' puts it there.
+ruleAfterOutside :: Sp -> Sp -> Sp -> RuleSide -> Maybe Sp
+ruleAfterOutside pitch face end side =
   let faceEnd = faceOffset pitch face + face
-      exact = faceEnd + rsdInner side
-      outside = if rsdSpaced side then exact else max pitch exact
-      extra = ruleAfterExtra pitch face (rsdInner side) (rsdWeight side)
-      rest = pitch + extra - faceEnd - rsdWeight side
-      inside = if rsdSpaced side then exact else faceEnd + half rest
+      outside = if rsdSpaced side then faceEnd + rsdInner side else max pitch faceEnd
    in case rsdOutside side of
-        Just available | outside >= pitch && outside + rsdWeight side - pitch <= available -> (0, outside)
-        _ -> (extra, inside)
+        Just available | outside >= end && outside + rsdWeight side - end <= available -> Just outside
+        _ -> Nothing
