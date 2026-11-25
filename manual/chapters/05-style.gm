@@ -1096,11 +1096,13 @@ paragraph-style = "quote"
 
 四角でないフレームは、[code: x]、[code: y]、[code: width]、[code: height] の代わりに、[code: path] に形を書きます。
 形は SVG のパスの書き方の [code: M]、[code: L]、[code: C]、[code: Z] で、[code: unit] に座標の単位（[code: "mm"]、[code: "pt"]、[code: "Q"]）を書きます。
+この例はひし形です。
+曲線（[code: C]）を使えば円も書けます。
 円や星の形の中に、行の長さを変えながら文字を組みます。
 
 ```toml
 [frames.round]
-path = "M 60 30 C 60 46.57 46.57 60 30 60 C 13.43 60 0 46.57 0 30 C 0 13.43 13.43 0 30 0 C 46.57 0 60 13.43 60 30 Z"
+path = "M 30 0 L 60 30 L 30 60 L 0 30 Z"
 unit = "mm"
 ```
 
