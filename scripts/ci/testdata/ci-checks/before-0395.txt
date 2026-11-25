@@ -68,6 +68,7 @@ suites	ubuntu-24.04	golem-fixtures:test:golem-fixtures-test
 suites	ubuntu-24.04	golem-fmt:test:golem-fmt-test
 suites	ubuntu-24.04	golem-font:test:golem-font-race-test
 suites	ubuntu-24.04	golem-font:test:golem-font-test
+suites	ubuntu-24.04	golem-geometry:test:golem-geometry-test
 suites	ubuntu-24.04	golem-html:test:golem-html-test
 suites	ubuntu-24.04	golem-layout-spec:test:golem-layout-spec-test
 suites	ubuntu-24.04	golem-layout:test:golem-layout-test
@@ -104,6 +105,7 @@ suites	ubuntu-24.04-arm	golem-fixtures:test:golem-fixtures-test
 suites	ubuntu-24.04-arm	golem-fmt:test:golem-fmt-test
 suites	ubuntu-24.04-arm	golem-font:test:golem-font-race-test
 suites	ubuntu-24.04-arm	golem-font:test:golem-font-test
+suites	ubuntu-24.04-arm	golem-geometry:test:golem-geometry-test
 suites	ubuntu-24.04-arm	golem-html:test:golem-html-test
 suites	ubuntu-24.04-arm	golem-layout-spec:test:golem-layout-spec-test
 suites	ubuntu-24.04-arm	golem-layout:test:golem-layout-test

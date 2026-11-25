@@ -1,0 +1,45 @@
+cabal-version:      3.0
+name:               golem-geometry
+version:            0.1.0
+synopsis:           Paths, rectangles and the regions inside closed paths for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns -Werror
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+-- depends on base, text and golem-length only (root ADR 0437)
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.Geometry
+    Golem.Geometry.Polygon
+  build-depends:
+    , base          >=4.20 && <4.21
+    , golem-length
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-geometry-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    FlattenSpec
+                    PathDataSpec
+                    RegionSpec
+  build-depends:
+    , base
+    , golem-geometry
+    , golem-length
+    , hedgehog       >=1.4 && <1.6
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021
