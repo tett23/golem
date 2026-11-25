@@ -1085,13 +1085,18 @@ def ruledPlaceAt (env : Env) (st : St) (r : Ruled) (first lastLine : Line) (late
       join := ruledJoin env r lastLine later }
 
 /-- `ruledLinesHere` of Physical.hs: a ruled paragraph placed in this
-    column with the flows after it, or none when it does not fit the room. -/
+    column with the flows after it, or none when it does not fit the room.
+    An empty column that `fit` keeps although its room is shorter than the
+    block (a column switch started it down the page) does not take the
+    block either (PR #1150); `placeRuled` then breaks it without rules. -/
 def ruledLinesHere (env : Env) (st : St) (r : Ruled) (later : List Flow) : Except Failure (Option St) :=
   match r.heading, r.lines.head?, r.lines.getLast? with
   | none, some first, some lastLine =>
     if env.capacity < ruledExtent env st r first lastLine later then .ok none
     else if (fit env st (ruledExtent env st r first lastLine later)).page = st.page
-        ∧ (fit env st (ruledExtent env st r first lastLine later)).column = st.column then
+        ∧ (fit env st (ruledExtent env st r first lastLine later)).column = st.column
+        ∧ ruledExtent env st r first lastLine later
+            ≤ room env (fit env st (ruledExtent env st r first lastLine later)) then
       match ruledPlaceAt env st r first lastLine later (fit env st (ruledExtent env st r first lastLine later)) with
       | .error e => .error e
       | .ok s => .ok (some s)
@@ -5743,17 +5748,16 @@ theorem fit_here_room (env : Env) (st : St) (a : Int)
           · exact e h.1
           · exact e h.2
 
-/-- What `ruledLinesHere` places lies within the column with its notes,
-    unless the column was empty and its room shorter than the block. -/
+/-- What `ruledLinesHere` places lies within the column with its notes:
+    it places the block only where its extent fits the room of the column
+    `fit` keeps (PR #1150). -/
 theorem ruledLinesHere_room (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
     (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
     (h : ruledLinesHere env st r later = .ok (some p)) :
-    p.used + p.notesUsed ≤ limit env p ∨
-      (empty st = true ∧ ∃ first lastLine, r.lines.getLast? = some lastLine
-        ∧ room env st < ruledExtent env st r first lastLine later) := by
+    p.used + p.notesUsed ≤ limit env p := by
   unfold ruledLinesHere at h
   split at h
-  · rename_i first lastLine _ _ hlast
+  · rename_i first lastLine _ _ _
     split at h
     · cases h
     · split at h
@@ -5762,9 +5766,7 @@ theorem ruledLinesHere_room (env : Env) (st : St) (r : Ruled) (later : List Flow
         · cases h
         · rename_i s0 e
           injection h with h; injection h with h; subst h
-          rcases fit_here_room env st _ hc with f | ⟨em, f⟩
-          · exact Or.inl (ruledPlaceAt_room env st r first lastLine later _ _ hp hn f e)
-          · exact Or.inr ⟨em, first, lastLine, hlast, f⟩
+          exact ruledPlaceAt_room env st r first lastLine later _ _ hp hn hc.2.2 e
       · cases h
   · cases h
 
@@ -5821,44 +5823,50 @@ theorem ruledHere_cases (inner : Inner) (env : Env) (st : St) (r : Ruled) (later
         · exact Or.inr (Or.inr c1)
     · exact Or.inr h
 
+/-- Each line of a ruled paragraph `ruledHere` places, and the notes of
+    the lines, lie within the column (golem-driver ADR 0027, root ADR 0397
+    I8): the used length only grows while the lines are put, and the state
+    after the last line keeps the used length and the notes within the
+    column. -/
+theorem I3_ruledHere_in_column (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
+    (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
+    (h : ruledHere inner env st r later = .ok (some p)) :
+    p.used + p.notesUsed ≤ limit env p := by
+  rcases ruledHere_cases inner env st r later p h with ⟨e, _⟩ | e
+  · exact ruledLinesHere_room env st r later p hp hn e
+  · exact ruledLinesHere_room env st r [] p hp hn e
+
 /-- The rule after of a ruled paragraph `ruledHere` places in the free
     placement (golem-driver ADR 0027, root ADR 0397 I8): it waits for the
     next block to share its area, or it ends within the column and above
     the notes of the column.  Each line of the block keeps the lines after
     it and the area of the rule after out of its notes (`putKeeping` of
     `ruledLinesPlan`), so a rule placed at the end of the column ends above
-    the notes as well.  The one exception is a column that was empty and
-    whose room was shorter than the block: `fit` keeps such a column, and
-    the block runs past its room (README.md). -/
+    the notes as well. -/
 theorem I3_ruledHere_rule_after (inner : Inner) (env : Env) (st : St) (r : Ruled) (later : List Flow) (p : St)
     (side : RuleSide) (lastLine : Line) (ha : r.after = some side) (hl : r.lines.getLast? = some lastLine)
     (hi : 0 ≤ side.inner) (hp : 0 < env.pagePitch) (hn : ∀ l ∈ r.lines, ∀ n ∈ l.notes, 0 < n.lines)
     (h : ruledHere inner env st r later = .ok (some p)) :
     (ruledLinesHere env st r later = .ok (some p) ∧ joiningNext later = true)
     ∨ (∃ l', ruledLinesHere env st r l' = .ok (some p) ∧ joiningNext l' = false
-      ∧ (p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
-          + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed
-        ∨ (empty st = true ∧ ∃ first, room env st < ruledExtent env st r first lastLine l'))) := by
+      ∧ p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
+          + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed) := by
   have edge := I3_ruleAfter_edge env r lastLine side ha hi
   have atEdge : ruledLinesHere env st r [] = .ok (some p) →
       ∃ l', ruledLinesHere env st r l' = .ok (some p) ∧ joiningNext l' = false
-        ∧ (p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
-            + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed
-          ∨ (empty st = true ∧ ∃ first, room env st < ruledExtent env st r first lastLine l')) := by
+        ∧ p.used - ruledAfterExtra env r lastLine l' - env.pitchOf lastLine.id
+            + ruleAfterPos env r lastLine l' side + side.weight ≤ limit env p - p.notesUsed := by
     intro e
     refine ⟨[], e, rfl, ?_⟩
-    rcases ruledLinesHere_room env st r [] p hp hn e with f | ⟨em, first, last', hl', f⟩
-    · left; omega
-    · right
-      rw [hl] at hl'; injection hl' with hl'; subst hl'
-      exact ⟨em, first, f⟩
+    have f := ruledLinesHere_room env st r [] p hp hn e
+    omega
   rcases ruledHere_cases inner env st r later p h with ⟨e, c⟩ | e
   · by_cases hj : joiningNext later = true
     · exact Or.inl ⟨e, hj⟩
     · rcases c with c | c | c
       · subst c; exact Or.inr (atEdge e)
       · exact absurd c hj
-      · refine Or.inr ⟨later, e, by simpa using hj, Or.inl ?_⟩
+      · refine Or.inr ⟨later, e, by simpa using hj, ?_⟩
         simp only [ruleAfterFitsLast, hl, ruleAfterFits, ha, decide_eq_true_eq] at c
         exact c
   · exact Or.inr (atEdge e)

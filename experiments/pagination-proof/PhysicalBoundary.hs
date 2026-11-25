@@ -199,7 +199,8 @@ ruledInputs =
          m <- [1 .. 4]
        ]
     -- a ruled paragraph taller than the room of the empty second column
-    -- of a set switched to in the page, which fit keeps
+    -- of a set switched to in the page, which fit keeps: it is broken
+    -- there without rules (PR #1150, G07046)
     <> [ (Column 40 0 1, [para 0 2, FSwitchColumns (ColumnSet 2 0 0 0), para 10 2, ruled 100 Nothing (Just s) False defaultKeep (lines' 20 n), para 30 1])
        | s <- sides,
          n <- [2, 3]
