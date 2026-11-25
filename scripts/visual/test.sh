@@ -224,7 +224,7 @@ while IFS= read -r line; do
   printf "P6\n1 1\n255\n%s\n" "$line" >"$2/$(printf "page-%04d.ppm" "$n")"
 done <"$1"'
 INPUTS=$(sh "$HERE/build.sh" --list 2>/dev/null)
-if [ "$(printf '%s\n' "$INPUTS" | wc -l | tr -d ' ')" = 23 ]; then ok; else ng "build: --list has the 23 inputs"; fi
+if [ "$(printf '%s\n' "$INPUTS" | wc -l | tr -d ' ')" = 24 ]; then ok; else ng "build: --list has the 24 inputs"; fi
 for i in complex-vertical complex-horizontal; do
   if printf '%s\n' "$INPUTS" | grep -qx "$i"; then ok; else ng "build: --list has $i (docs/adr/0175)"; fi
 done

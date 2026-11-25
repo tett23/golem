@@ -213,6 +213,14 @@ PDF では約物と罫線の区切りを後続の最初の行と同じ段に置�
 
 段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 
+### テキストフレーム
+
+ページの任意の位置にテキストフレームを置き、その中に文字を組める（[root ADR 0438](docs/adr/0438-place-text-frames-anywhere-on-a-page.md)）。
+フレームの位置と形（矩形か閉じたパス）は `style.toml` の `[frames.名前]` に書き、マスターページの `frames` に挙げるか、原稿に `@frame 名前` と段落を書いて置く。
+マスターページが置くフレームは `wrap = "around"` で本文を避けられる。
+HTML と EPUB は `@frame` の段落をその位置の `aside` に書き、マスターページのフレームの文字は書かない。
+規則は [docs/specifications.md](docs/specifications.md) の「テキストフレーム」の節にある。
+
 ### 原稿の変数
 
 行頭の `@set x = "abc"` でファイル内の変数を宣言し、`[= x]` で参照する（[ADR 0391](docs/adr/0391-keep-the-at-sign-on-variable-declarations.md)）。

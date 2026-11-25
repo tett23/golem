@@ -232,7 +232,7 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 ## visual
 
 [code: visual] は、見た目の回帰テスト（第[ref-number determinism]章）を動かす。
-x86-64 の [code: outputs] のランナーが、ビルドの直後、ほかの成果物より先に、[code: scripts/visual/build.sh] で 23 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
+x86-64 の [code: outputs] のランナーが、ビルドの直後、ほかの成果物より先に、[code: scripts/visual/build.sh] で 24 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
 epubcheck と [code: scripts/determinism.sh] は、別のランナー [code: outputs-checks] で走る。
 [code: scripts/visual/build.sh] は入力を一時ディレクトリに写して組み、マニュアルのフォントも自分で取るので、ほかの出力を待たない。
 [code: visual] は [code: changes] だけを待ち、[code: build] と同時に [code: ubuntu-24.04] で走り始め、次の順に進む。

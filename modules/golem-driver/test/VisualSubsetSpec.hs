@@ -169,6 +169,7 @@ prepareInput name tmp = case name of
   "tempest" -> copyTree (fix "tempest") tmp
   "specimens-horizontal" -> fixtureWith "specimens/horizontal"
   "specimens-vertical" -> fixtureWith "specimens/vertical"
+  "specimens-frames" -> fixtureWith "specimens/frames"
   "specimens-vertical-marks-japanese" -> do
     fixtureWith "specimens/vertical"
     withBleed
