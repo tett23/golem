@@ -145,7 +145,7 @@ reuseTests =
             modifyIORef' calls (+ 1)
             n <- readIORef calls
             pure (Right (n, pagesWith (if odd n then [["a"], []] else [[], ["a"]])))
-      _ <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") flipping
+      _ <- fixpoint Map.empty (const (mkSpan (FileId 0) 0 0)) (const "") (\_ _ -> Map.empty) flipping
       readIORef seen >>= (@?= [Nothing, Just 1, Just 2, Just 3, Just 4]) . reverse,
     testGroup
       "I1: the PDF and the diagnostics are those of composing every unit again"

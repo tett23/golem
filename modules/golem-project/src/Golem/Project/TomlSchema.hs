@@ -60,7 +60,7 @@ data Leaf
   deriving stock (Eq, Show)
 
 -- | The kinds of names a file defines and refers to.
-data Namespace = FontRoles | Swatches | CharStyles | ParaStyles | AkiSets | Masters
+data Namespace = FontRoles | Swatches | CharStyles | ParaStyles | AkiSets | Masters | Frames
   deriving stock (Eq, Ord, Show)
 
 {- | The keys of a TOML document that its schema does not know, as the

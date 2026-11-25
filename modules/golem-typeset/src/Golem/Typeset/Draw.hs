@@ -1861,8 +1861,15 @@ drawPage env ps master = case ps of
             let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,
             pl' <- psLines ps'
           ]
+        -- the lines of the text frames of the page, as the running head, artifacts (root ADR 0438)
+        frameParts =
+          [ asArtifact P.Pagination (entryAt envOf "フレームの行" (pfrSpan f) (frameLineStart f r sl) sl)
+          | f <- Map.findWithDefault [] n (plFrames layout),
+            let envOf = if pfrVertical f == pgVertical geom then env else env {deGeom = geom {pgVertical = pfrVertical f}},
+            (r, sl) <- pfrLines f
+          ]
         columnParts = concat [t | (t, _, _, _) <- columns]
-        allParts = columnParts <> sidenoteParts <> masterParts
+        allParts = columnParts <> sidenoteParts <> masterParts <> frameParts
         images = concat [snd f | (_, f, _, _) <- columns]
         rules = concat [snd r | (_, _, r, _) <- columns]
         backs = concat [fst b | (_, _, _, b) <- columns]
@@ -2120,6 +2127,15 @@ masterMarks env n blank master headLines = case master of
   where
     geom = deGeom env
     ph = snd (pgPageSize geom)
+
+{- | Where a line of a text frame starts (root ADR 0438): in horizontal
+writing on its baseline, which sits baselineRatio down the em box of its
+slot; in vertical writing on the centre line of its slot, at its top.
+-}
+frameLineStart :: PlacedFrame -> Rect -> SetLine -> (Sp, Sp)
+frameLineStart f r sl
+  | pfrVertical f = (rectX r + Sp (unSp (rectW r) `div` 2), rectY r + rectH r)
+  | otherwise = (rectX r, rectY r + rectH r - zwToSp (slSize sl) baselineRatio)
 
 -- | The image of a figure: the content of its Figure (docs/adr ADR 0183).
 figureMark :: DrawEnv -> Int -> Rect -> PlacedFigure -> P.Content

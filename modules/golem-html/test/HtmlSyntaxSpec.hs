@@ -167,6 +167,21 @@ allHtml s = T.concat (map snd (htmlPages s)) <> indexPage cfg0 ft (sBook s)
 allEpub :: Sample -> Text
 allEpub s = T.concat (map snd (epubPages s))
 
+-- | A text frame between two paragraphs (root ADR 0438).
+frameSample :: Sample
+frameSample = sample "frame" $ bookOf [para 0 [txt "前の段落"], Block (at 1) Nothing Nothing (FrameBlock "quote" [para 2 [txt "枠の一"], para 3 [txt "枠の二"]]), para 4 [txt "後の段落"]]
+
+{- | The page of the frame sample has the paragraph before, the aside of
+the frame with its two paragraphs, and the paragraph after, in this
+order (root ADR 0438 I6).
+-}
+assertFrameInPlace :: Text -> Assertion
+assertFrameInPlace page = do
+  let order = ["前の段落", "<aside class=\"frame frame-quote\">", "枠の一", "枠の二", "</aside>", "後の段落"]
+      positions = [T.length (fst (T.breakOn t page)) | t <- order]
+  assertBool ("every piece is on the page: " <> T.unpack page) (and [t `T.isInfixOf` page | t <- order])
+  assertBool ("the pieces are in order: " <> show positions) (and (zipWith (<) positions (drop 1 positions)))
+
 -- | The start tags of the void elements of HTML that end with a slash.
 slashedVoids :: Text -> [Text]
 slashedVoids page =
@@ -281,7 +296,13 @@ htmlSyntaxTests :: TestTree
 htmlSyntaxTests =
   testGroup
     "the HTML target in the HTML syntax (root ADR 0432)"
-    [ testCase "root ADR 0432 I1: a book without documents has the index page alone, which starts with the doctype" $ do
+    [ testCase "root ADR 0438 I6: the paragraphs of @frame are in an aside at the place of the command in HTML" $
+        do
+          forM_ (htmlPages frameSample) (uncurry assertHtmlSyntax)
+          assertFrameInPlace (T.concat (map snd (htmlPages frameSample))),
+      testCase "root ADR 0438 I6: the paragraphs of @frame are in an aside at the place of the command in EPUB" $
+        assertFrameInPlace (allEpub frameSample),
+      testCase "root ADR 0432 I1: a book without documents has the index page alone, which starts with the doctype" $ do
         let book = bookOfDocs []
         map fst (sitePages (renderHtml cfg0 ft book)) @?= []
         assertHtmlSyntax "index.html" (indexPage cfg0 ft book),

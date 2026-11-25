@@ -24,6 +24,7 @@ numberVerseDocument style doc = doc {docBlocks = map block (docBlocks doc)}
       OrderedList items -> OrderedList (map item items)
       DefList groups -> DefList [g {dgTerms = map (map inline) (dgTerms g), dgDefs = map (map block) (dgDefs g)} | g <- groups]
       FigureBlock f -> FigureBlock f {figCaption = map block (figCaption f)}
+      FrameBlock name bs -> FrameBlock name (map block bs)
       TableBlock t -> TableBlock t {tableHeader = map (map inline) (tableHeader t), tableRows = map (map (map inline)) (tableRows t), tableCaption = map inline <$> tableCaption t}
       CodeBlock c -> CodeBlock c {codeCaption = map inline <$> codeCaption c}
       other -> other

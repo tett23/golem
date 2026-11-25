@@ -360,6 +360,7 @@ unwritableText = concatMap blockDiags . docBlocks
       PageControl _ -> []
       BlankLines _ -> []
       Separator _ -> []
+      FrameBlock _ bs -> concatMap blockDiags bs
     inlines :: [InlineF r] -> [Diagnostic]
     inlines = concatMap inline
     inline :: InlineF r -> [Diagnostic]
@@ -640,6 +641,8 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "separator" -> case (map A.locValue args, body) of
     ([A.Positional v], []) | Just name' <- nameArg v, not (T.null name') -> pure [block sp (Separator name')]
     _ -> err "G02158" sp "@separator には名前を一つ書き、本体は付けません" >> pure []
+  -- a text frame named in style.toml, holding paragraphs (root ADR 0438)
+  "frame" -> frameBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
   "no-page-break" -> noPageBreak ctx sp args body
@@ -915,6 +918,7 @@ nameErrors ctx is bs =
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
       FigureBlock f -> figCaption f
+      FrameBlock _ inner -> inner
       _ -> []
     blockInlines (Block _ _ _ body) = case body of
       Paragraph _ xs -> xs
@@ -983,6 +987,7 @@ fillKentenBlock ctx (Block sp l lang body) = Block sp l lang $ case body of
   OrderedList items -> OrderedList [ListItem n (map (fillKentenBlock ctx) bs) | ListItem n bs <- items]
   DefList gs -> DefList [DefGroup (map (map f) ts) (map (map (fillKentenBlock ctx)) ds) | DefGroup ts ds <- gs]
   TableBlock t -> TableBlock t {tableCaption = map f <$> tableCaption t, tableHeader = map (map f) (tableHeader t), tableRows = map (map (map f)) (tableRows t)}
+  FrameBlock name bs -> FrameBlock name (map (fillKentenBlock ctx) bs)
   other -> other
   where
     f = fillKenten ctx
@@ -1411,6 +1416,7 @@ belowTop = inner
       OrderedList items -> rebuild OrderedList <$> traverse item items
       DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
       FigureBlock f -> rebuild (\c -> FigureBlock f {figCaption = c}) <$> nested (figCaption f)
+      FrameBlock name bs' -> rebuild (FrameBlock name) <$> nested bs'
       _ -> ([], [b])
       where
         rebuild f x = [Block sp lbl lang (f x)]
@@ -1575,6 +1581,39 @@ noteDefinition ctx kind sp args body = case args of
       Block bsp l lang (Paragraph (Just _) is) -> [Block bsp l lang (Paragraph Nothing is)]
       _ -> []
 
+{- | @frame NAME and its paragraphs (root ADR 0438): a text frame of
+style.toml that takes no room in the flow. The name is one word of the
+letters of a style name (G02255); the body holds paragraphs only
+(G02256), without @style (G02013), as the body of a @note. Whether
+[frames] has the name is checked once the style is known (G03289).
+-}
+frameBlock :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+frameBlock ctx sp args body = case args of
+  [A.Located _ (A.Positional v)]
+    | Just name <- nameArg v,
+      frameName name -> do
+        bs <- concat <$> mapM inBody body
+        pure [block sp (FrameBlock name bs)]
+  _ -> err "G02255" sp "@frame にはフレームの名前を一つ書きます" >> pure []
+  where
+    frameName name = case T.uncons name of
+      Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+      Nothing -> False
+    inBody lb@(A.Located bsp b) = case b of
+      A.Paragraph _ -> concatMap paragraphOf <$> evalBlock ctx lb
+      A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand cmds -> do
+        mapM_ (\(A.Located csp _) -> err "G02013" csp "@style はフレームの中の段落には付けられません") (filter isStyleCommand cmds)
+        concatMap paragraphOf <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand) cmds) t))
+      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> concatMap paragraphOf <$> evalBlock ctx lb
+      A.BlockCommand (A.Located _ "style") _ inner -> do
+        err "G02013" bsp "@style はフレームの中の段落には付けられません"
+        concat <$> mapM inBody [A.Located psp (A.Paragraph (joinSoftBreaks is)) | A.Located psp (A.Paragraph is) <- inner]
+      A.ErrorBlock -> pure []
+      _ -> err "G02256" bsp "フレームの中身には段落だけを書けます" >> pure []
+    paragraphOf = \case
+      Block bsp l lang (Paragraph _ is) -> [Block bsp l lang (Paragraph Nothing is)]
+      _ -> []
+
 {- | The notes written by name take the bodies of their @note
 (docs/adr/0263): G02137 for a name no @note of the file defines, G02139
 for a second [note] of the same name, which puts out nothing, as one of
@@ -1632,6 +1671,7 @@ mapBlockInlines f = map blk
       TableBlock t -> TableBlock t {tableCaption = inls <$> tableCaption t, tableHeader = map inls (tableHeader t), tableRows = map (map inls) (tableRows t)}
       CodeBlock c -> CodeBlock c {codeCaption = inls <$> codeCaption c}
       FigureBlock fig -> FigureBlock fig {figCaption = map blk (figCaption fig)}
+      FrameBlock name bs -> FrameBlock name (map blk bs)
       other -> other
     inls = concatMap (f . inner)
     inner = \case
@@ -1783,6 +1823,7 @@ unknownParaStyles ctx (Document _ bs) = concatMap go bs
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
       FigureBlock f -> concatMap go (figCaption f)
+      FrameBlock _ inner -> concatMap go inner
       _ -> []
 
 {- | Spaces and tabs at the start and the end of a line are not text,
@@ -1975,6 +2016,7 @@ figure ctx sp args body = do
       CodeBlock _ -> Just "コードブロック"
       Heading {} -> Just "見出し"
       ChannelOutput _ -> Just "一覧の出力"
+      FrameBlock _ _ -> Just "フレーム"
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G02013" csp "@style は図版のキャプションには付けられません"
     unstyled = \case

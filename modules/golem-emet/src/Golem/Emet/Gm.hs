@@ -132,6 +132,7 @@ separatorFunction hs p e = BlockFunction (paramsOf e) False (exSignature e) $ \_
       OrderedList xs -> any (any hasSeparator . itemBlocks) xs
       DefList xs -> any (any (any hasSeparator) . dgDefs) xs
       FigureBlock f -> any hasSeparator (figCaption f)
+      FrameBlock _ bs -> any hasSeparator bs
       _ -> False
 
 exprFunction :: Handlers -> Program -> Export -> Maybe ExprFunction
@@ -193,6 +194,8 @@ blockKind (Block _ _ _ body) = case body of
   PageControl _ -> refuse "改ページの制御"
   BlankLines _ -> refuse "行アキ"
   Separator _ -> []
+  -- a frame takes no room in the flow, and holds paragraphs (root ADR 0438)
+  FrameBlock _ bs -> concatMap blockKind bs
   where
     refuse k = ["ブロックコマンドが返せないブロックです: " <> k]
 
@@ -235,4 +238,5 @@ filterOf hs p path name = case [e | e <- Map.findWithDefault [] path (programExp
       OrderedList items -> concatMap itemBlocks items
       DefList gs -> concat (concatMap dgDefs gs)
       FigureBlock f -> figCaption f
+      FrameBlock _ bs -> bs
       _ -> []

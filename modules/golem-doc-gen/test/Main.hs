@@ -36,6 +36,7 @@ data BlockKind
   | KPageControl
   | KBlankLines
   | KSeparator
+  | KFrameBlock
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 -- | The constructors of 'InlineF'.
@@ -80,6 +81,7 @@ blockKind = \case
   PageControl {} -> KPageControl
   BlankLines {} -> KBlankLines
   Separator {} -> KSeparator
+  FrameBlock {} -> KFrameBlock
 
 inlineKind :: InlineF r -> InlineKind
 inlineKind = \case
@@ -127,6 +129,7 @@ kinds = foldMap block . docBlocks
       PageControl _ -> mempty
       BlankLines _ -> mempty
       Separator _ -> mempty
+      FrameBlock _ bs -> blocks bs
     inlines :: [InlineF r] -> (Set BlockKind, Set InlineKind)
     inlines = foldMap inline
     inline :: InlineF r -> (Set BlockKind, Set InlineKind)

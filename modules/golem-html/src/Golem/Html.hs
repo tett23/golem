@@ -770,6 +770,8 @@ blockHtml c (Block sp lbl blang body) = case body of
     Just (SeparatorRuleAppearance before after align len weight color stroke) ->
       [el "div" [("class", "separator separator-rule"), ("style", separatorStyle align before after)] [separatorRuleSvg c sp name len weight color stroke], nl]
     Nothing -> []
+  -- a text frame at the place of the command; its position and shape are for the PDF only (root ADR 0438)
+  FrameBlock name bs -> [el "aside" [("class", "frame frame-" <> name)] (nl : concatMap (block c) bs), nl]
   where
     separatorStyle align before after = "text-align:" <> align <> ";margin-block-start:" <> tshow before <> "lh;margin-block-end:" <> tshow after <> "lh"
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)

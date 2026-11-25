@@ -36,6 +36,7 @@ module Golem.Typeset
     CodeCaption (..),
     PlacedFigure (..),
     PlacedSidenote (..),
+    PlacedFrame (..),
     PartLine (..),
     PdfLayout (..),
     layoutPageGeometry,

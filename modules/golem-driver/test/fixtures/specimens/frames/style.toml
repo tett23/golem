@@ -1,0 +1,80 @@
+# テキストフレームの見本の横組みの本（root ADR 0437 A1、root ADR 0438 A1）
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 32
+lines = 30
+line-pitch = "19H"
+position = { top = "24mm", gutter = "17mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+page-break = "any"
+size = "1.5zw"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.ornament]
+size = "10Q"
+align = "center"
+
+[paragraph-styles.quote]
+size = "11Q"
+
+[paragraph-styles.shape]
+size = "10Q"
+
+# 扉の飾りの文：マスターページ body の各ページの地の余白に置く
+[frames.ornament]
+x = "25mm"
+y = "196mm"
+width = "98mm"
+height = "4mm"
+paragraph-style = "ornament"
+text = "テキストフレームの見本　マスターページが置く飾りの文"
+
+# 小口の側の囲み：本文の行を短くして避ける
+[frames.side]
+x = "0mm"
+y = "90mm"
+width = "40mm"
+height = "40mm"
+x-from = "outside"
+wrap = "around"
+paragraph-style = "ornament"
+text = "この囲みは小口の側にあり、本文はその分だけ短い行で組まれる。"
+
+# 章の引用：@frame で置く
+[frames.chapter-quote]
+x = "30mm"
+y = "8mm"
+width = "88mm"
+height = "12mm"
+paragraph-style = "quote"
+
+# 円と星形の閉じたパスのフレーム（root ADR 0437 A1）
+[frames.circle]
+path = "M 109 70 C 109 89.331 93.331 105 74 105 C 54.669 105 39 89.331 39 70 C 39 50.669 54.669 35 74 35 C 93.331 35 109 50.669 109 70 Z"
+paragraph-style = "shape"
+text = "円の形のテキストフレームには、行の帯ごとに円の内側にある区間を求め、その幅で一行ずつ組む。上と下の端の行は短く、中ほどの行は長い。文字の大きさの八倍に満たない区間には文字を置かないので、円の上と下の端は空く。"
+
+[frames.star]
+path = "M 74 120 L 85.756 143.82 L 112.042 147.639 L 93.021 166.18 L 97.511 192.361 L 74 180 L 50.489 192.361 L 54.979 166.18 L 35.958 147.639 L 62.244 143.82 Z"
+paragraph-style = "shape"
+text = "星形のフレームは凹んだ形である。一つの行の帯に区間が二つあれば、書く向きで最初の区間だけに組む。頂点が帯に食い込むところで行が短くなる。"
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+frames = ["ornament", "side"]
+
+[masters.shapes]
+folio = { position = "bottom-outside", format = "{n}" }
+frames = ["circle", "star"]
