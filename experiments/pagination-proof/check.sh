@@ -256,9 +256,10 @@ echo "the $physicalInputs boundary inputs give the same pages in Physical.lean a
 echo "the $wrapTrials trials beside a wrapped figure give the same parts in Physical.lean and trialParagraphPartLimit"
 
 # The manuscripts of CausalBoundary.hs, a wrapped figure followed by
-# paragraphs and stanzas, on the copies of causalFreeFlow's loops in
-# Physical.lean (jobsFrom, paragraphs, parts, probeNext, probeChain,
-# stanza, tryVerses and accept), against
+# paragraphs and stanzas, and wrapped figures in list items kept on a
+# page, on the copies of causalFreeFlow's loops in Physical.lean
+# (jobsFrom, itemJobs, paragraphs, parts, probeNext, probeChain, stanza,
+# tryVerses and accept), against
 # golem-typeset's layoutPdf (root ADR 0352).  CausalBoundary.lean is
 # evaluated, not proved, so it may use partial.
 cboundary=$root/experiments/pagination-proof/CausalBoundary.lean

@@ -3,7 +3,8 @@
    of the loops of golem-typeset's causalFreeFlow in Physical.lean:
    `jobsFrom` runs the figure, `paragraphs` the paragraphs and stanzas
    beside it, `parts` (`paragraph`) each paragraph, broken again at each
-   cursor, `stanza`, `tryVerses` and `accept` each stanza, and, with a
+   cursor, `stanza`, `tryVerses` and `accept` each stanza, `itemJobs` the
+   later figures of a list item kept on a page, and, with a
    no-break after a paragraph or a stanza, `probeNext` and `probeChain`
    what follows it.  `main` prints the pages in the format of
    CausalBoundary.hs, and check.sh compares the two with diff.
@@ -12,16 +13,17 @@
    computes it for these manuscripts.  The line breaker (`composeAt`) is
    modelled for the fake fonts of the golem-driver tests: every character
    is 1zw and a line takes as many characters as its width holds, its
-   width the measure of 12zw less the exclusion of the figure where the
-   row meets it (`rowExtent` and `intersects` of FreeGeometry.hs).  The
+   width the measure of 12zw (10zw in a list item, indented by 2zw) less
+   the exclusion of the figure where the row meets it (`rowExtent` and `intersects` of FreeGeometry.hs).  The
    figure is the image of 2 by 3 pixels at a width of `w` zw: its length
    across the lines is 1.5 `w` zw, and the gap of 1zw (`wrap-gap`) is
    added to both its exclusion length and width (`exclusion`,
-   Flow.hs:3315).  A line has the id of the lines placed before it plus
-   one, the figure taking the id 0; so the first line of a verse line
-   (`ident`, `bUnitFirsts`) is the lines placed before the cursor plus
-   one.  A verse line not yet tried keeps the rows composed at the full
-   measure.  The paragraphs and the verse lines have the default keep and
+   Flow.hs:3315).  A line or a figure has the id of the lines and the
+   figures placed before it (`bUnitFirsts`), so the first line of a verse
+   line (`ident`) is the number of them placed before the cursor.  A verse
+   line not yet tried keeps the rows `composeBeside` composed.  A
+   paragraph not beside a figure is placed as an `FParagraph` of the rows
+   of its measure.  The paragraphs and the verse lines have the default keep and
    keep nothing with what follows by themselves, so `bindingAfter` comes
    from the no-breaks after them alone and nothing is held.
 
@@ -97,86 +99,142 @@ def narrowed (region : Region) (origin : Int) (at' : St) (k : Nat) : Bool :=
   | some (p, c, e) => p == at'.page && c == at'.column && intersects (rowExtent (paragraphOrigin at' + (k : Int) * pitch)) (origin, e)
   | none => false
 
-def lineCount (st : St) : Nat :=
-  (((st.done.reverse.map (·.slots)).join ++ st.slots).filter (fun s => match s.2 with | .line _ => true | _ => false)).length
+/-- The lines and the wrapped figures placed: the id of the next one
+    (`bUnitFirsts` numbers the lines and the figures in order from 0). -/
+def slotCount (st : St) : Nat :=
+  (((st.done.reverse.map (·.slots)).join ++ st.slots).filter
+    (fun s => match s.2 with | .line _ | .wrapped _ => true | _ => false)).length
+
+/-- The ids of the slots placed. -/
+def placedIds (st : St) : List Nat :=
+  ((st.done.reverse.map (·.slots)).join ++ st.slots).bind (fun s => slotIds s.2)
 
 /-- `composeAt` and `numberedLines` for the fake fonts: the lines of the
-    characters from `start` to `n`, each with the character after its
+    characters from `start` to `n`, `measure` characters to a line where
+    the row does not meet the exclusion, each with the character after its
     break. -/
-def breakLines (w : Nat) (region : Region) (origin : Int) (at' : St) (start n : Nat) : List (Line × Nat) :=
-  let first := lineCount at' + 1
+def breakLines (w measure : Nat) (region : Region) (origin : Int) (at' : St) (start n : Nat) : List (Line × Nat) :=
+  let first := slotCount at'
   let rec go : Nat → Nat → Nat → List (Line × Nat)
     | 0, _, _ => []
     | fuel + 1, k, from' =>
       if n ≤ from' then []
       else
-        let width := 12 * zw - (if narrowed region origin at' k then exclusionWidth w else 0)
+        let width := (measure : Int) * zw - (if narrowed region origin at' k then exclusionWidth w else 0)
         let next := min n (from' + (width / zw).toNat)
         (⟨first + k, [], 0⟩, next) :: go fuel (k + 1) next
   go (n + 1) 0 start
 
-/-- A paragraph of so many characters, a no-break, or a stanza of verse
-    lines of so many characters each. -/
+/-- A paragraph of so many characters, a no-break, a stanza of verse lines
+    of so many characters each, or a list item of a paragraph of so many
+    characters followed by wrapped figures, each with the paragraphs of the
+    item after it. -/
 inductive Item where
   | p (n : Nat)
   | k
   | v (ns : List Nat)
+  | i (first : Nat) (figures : List (List Nat))
 
 def Item.name : Item → String
   | .p n => toString n
   | .k => "K"
   | .v ns => "V" ++ ",".intercalate (ns.map toString)
+  | .i n fs => "I" ++ toString n ++ String.join (fs.map fun ps => "/" ++ ",".intercalate (ps.map toString))
 
-/-- A unit of golem-typeset: a paragraph, a no-break, or a verse line of
-    the stanza `s` (each verse line of a stanza is a unit of its own). -/
+/-- A unit of golem-typeset: a paragraph (of the list item `item`, if any),
+    a no-break, a verse line of the stanza `s` (each verse line of a stanza
+    is a unit of its own), or a wrapped figure. -/
 inductive Unit' where
-  | para (n : Nat)
+  | para (item : Option Nat) (n : Nat)
   | ctrl
   | verse (s n : Nat)
+  | fig (item : Option Nat)
 
-/-- The units of the items, the stanzas numbered by their position. -/
-def units (items : List Item) : List Unit' :=
+/-- The units of the items after a wrapped figure, if `lead`; the stanzas
+    and the list items are numbered by their position. -/
+def units (lead : Bool) (items : List Item) : List Unit' :=
+  (if lead then [Unit'.fig none] else []) ++
   (items.enum.map fun (s, i) => match i with
-    | .p n => [Unit'.para n]
+    | .p n => [Unit'.para none n]
     | .k => [Unit'.ctrl]
-    | .v ns => ns.map (Unit'.verse s)).join
+    | .v ns => ns.map (Unit'.verse s)
+    | .i n fs => Unit'.para (some s) n :: fs.bind fun ps => Unit'.fig (some s) :: ps.map (Unit'.para (some s))).join
 
-/-- The unit at the position `i` (from 1; the figure is 0). -/
-def unitAt (items : List Item) (i : Nat) : Option Unit' := (units items).get? (i - 1)
+/-- A manuscript: the width of its figures in zw, whether a list item is
+    kept on one page (`keep-parts = "page"`), and its units. -/
+structure Ms where
+  w : Nat
+  retaining : Bool
+  us : List Unit'
 
-def chars (items : List Item) (i : Nat) : Nat :=
-  match unitAt items i with
-  | some (.para n) => n
+def Ms.at (m : Ms) (i : Nat) : Option Unit' := m.us.get? i
+
+def chars (m : Ms) (i : Nat) : Nat :=
+  match m.at i with
+  | some (.para _ n) => n
   | some (.verse _ n) => n
   | _ => 0
 
-def stanzaOf (items : List Item) (i : Nat) : Option Nat :=
-  match unitAt items i with
+def itemAt (m : Ms) (i : Nat) : Option Nat :=
+  match m.at i with
+  | some (.para k _) => k
+  | some (.fig k) => k
+  | _ => none
+
+/-- The characters of a line: a list item is indented by 2zw. -/
+def measure (m : Ms) (i : Nat) : Nat := if (itemAt m i).isSome then 10 else 12
+
+def stanzaOf (m : Ms) (i : Nat) : Option Nat :=
+  match m.at i with
   | some (.verse s _) => some s
   | _ => none
 
-def isVerse (items : List Item) (i : Nat) : Bool := (stanzaOf items i).isSome
+def isVerse (m : Ms) (i : Nat) : Bool := (stanzaOf m i).isSome
+
+def isFig (m : Ms) (i : Nat) : Bool :=
+  match m.at i with
+  | some (.fig _) => true
+  | _ => false
+
+def indices (m : Ms) : List Nat := List.range m.us.length
 
 /-- The no-breaks between the positions `prior` and `index`
     (`controlsBetween`). -/
-def controlsBetween (items : List Item) (prior index : Nat) : List Flow :=
-  ((List.range (units items).length).map (· + 1)).filterMap fun j =>
+def controlsBetween (m : Ms) (prior index : Nat) : List Flow :=
+  (indices m).filterMap fun j =>
     if prior < j ∧ j < index then
-      match unitAt items j with
+      match m.at j with
       | some .ctrl => some .noBreak
       | _ => none
     else none
 
 /-- The no-breaks right after the position `index` (`bindingAfter`). -/
-def controlsAfter (items : List Item) (index : Nat) : List Flow :=
-  (((units items).drop index).takeWhile (fun i => match i with | .ctrl => true | _ => false)).map (fun _ => .noBreak)
+def controlsAfter (m : Ms) (index : Nat) : List Flow :=
+  ((m.us.drop (index + 1)).takeWhile (fun i => match i with | .ctrl => true | _ => false)).map (fun _ => .noBreak)
 
 /-- `bindingAfter` for a paragraph or a verse line of the default style
     and of `poem`, which keep nothing with what follows by themselves. -/
-def binding (items : List Item) (index : Nat) : Nat × Nat :=
-  match keepAhead (controlsAfter items index) with
+def binding (m : Ms) (index : Nat) : Nat × Nat :=
+  match keepAhead (controlsAfter m index) with
   | none => (0, 0)
   | some (l, f, _) => (l, f)
+
+/-- The paragraphs beside the figure `job` (`composeBeside` and
+    `besideParagraphs`): the paragraphs and verse lines after it, past
+    no-breaks, of its list item when one is kept on a page. -/
+def besides (m : Ms) (job : Nat) : List Nat :=
+  let rec go : Nat → Nat → List Nat
+    | 0, _ => []
+    | fuel + 1, j =>
+      match m.at j with
+      | some (.para k _) => if !m.retaining || k == itemAt m job then j :: go fuel (j + 1) else []
+      | some (.verse _ _) => if !m.retaining || none == itemAt m job then j :: go fuel (j + 1) else []
+      | some .ctrl => go fuel (j + 1)
+      | _ => []
+  go m.us.length (job + 1)
+
+/-- The last position the figure `job` and its paragraphs take. -/
+def coveredEnd (m : Ms) (job : Nat) : Nat := ((besides m job).getLast?).getD job
 
 def inner : Inner := level 1
 
@@ -188,102 +246,166 @@ def stepPrefix (e : Env) (st : St) (following : List Flow) : List Flow → Excep
     | .error x => .error x
     | .ok s => stepPrefix e s following rest
 
-def beside (w : Nat) (region : Region) (origin : Int) (items : List Item) : Beside :=
-  { compose := fun at' i => (breakLines w region origin at' 0 (chars items i)).map (·.1),
-    binding := binding items, keepOf := fun _ => defaultKeep, holds := fun _ => false,
-    hold := fun _ _ _ st => st, ident := fun at' _ => lineCount at' + 1, isStanza := isVerse items,
-    sameVerse := fun i j => isVerse items j && stanzaOf items i == stanzaOf items j }
+/-- The flows of the positions, not beside a figure: a paragraph composed
+    at its measure, its lines numbered from `first`. -/
+def flowsOf (m : Ms) (first : Nat) : List Nat → List Flow
+  | [] => []
+  | i :: rest =>
+    match m.at i with
+    | some (.para _ n) =>
+      let rows : List Line := (List.range ((n + measure m i - 1) / measure m i)).map fun k => ⟨first + k, [], 0⟩
+      .paragraph defaultKeep rows :: flowsOf m (first + rows.length) rest
+    | some .ctrl => .noBreak :: flowsOf m first rest
+    | _ => flowsOf m first rest
+
+/-- The positions from `low` to `high`, both included, outside the list
+    item `done`. -/
+def span (m : Ms) (low high : Nat) (done : Option Nat) : List Nat :=
+  (indices m).filter fun j => low ≤ j ∧ j ≤ high ∧ !(done.isSome && itemAt m j == done)
+
+/-- `stepPhysicalCursor` of the positions. -/
+def stepAt (e : Env) (m : Ms) (at' : St) (ps : List Nat) : Except Failure St :=
+  placeAll inner e at' (flowsOf m (slotCount at') ps)
+
+def beside (m : Ms) (region : Region) (origin : Int) : Beside :=
+  { compose := fun at' i => (breakLines m.w (measure m i) region origin at' 0 (chars m i)).map (·.1),
+    binding := binding m, keepOf := fun _ => defaultKeep, holds := fun _ => false,
+    hold := fun _ _ _ st => st, ident := fun at' _ => slotCount at', isStanza := isVerse m,
+    sameVerse := fun i j => isVerse m j && stanzaOf m i == stanzaOf m j }
 
 /-- The number of rows of `n` characters as `composeBeside` composes them
     before the trials: the row `k` of a unit at `distance` from the top of
     the figure is narrowed where it meets the exclusion from 0. -/
-def besideRows (w n : Nat) (distance : Int) : Nat :=
+def besideRows (w measure n : Nat) (distance : Int) : Nat :=
   let rec go : Nat → Nat → Nat → Nat
     | 0, _, _ => 0
     | fuel + 1, k, from' =>
       if n ≤ from' then 0
       else
         let narrow := intersects (rowExtent (distance + (k : Int) * pitch)) (0, extent w)
-        let width := 12 * zw - (if narrow then exclusionWidth w else 0)
+        let width := (measure : Int) * zw - (if narrow then exclusionWidth w else 0)
         go fuel (k + 1) (min n (from' + (width / zw).toNat)) + 1
   go (n + 1) 0 0
 
-/-- The rows of the units before `i` and after the figure as `composeBeside`
-    composes them, each at the distance the units before it take. -/
-def besideDistance (w : Nat) (items : List Item) (i : Nat) : Int :=
-  ((List.range (i - 1)).map (· + 1)).foldl (fun d j => d + (besideRows w (chars items j) d : Int) * pitch) 0
+/-- The distance from the top of the figure `job` of the paragraph `i`
+    beside it: the rows of the paragraphs before `i`, each composed at the
+    distance of those before it. -/
+def besideDistance (m : Ms) (job i : Nat) : Int :=
+  ((besides m job).filter (· < i)).foldl (fun d j => d + (besideRows m.w (measure m j) (chars m j) d : Int) * pitch) 0
 
 /-- The rows of a verse line as composed before it is tried
     (`composeBeside`); only their number is read. -/
-def orig (w : Nat) (items : List Item) (i : Nat) : List Line :=
-  (List.range (besideRows w (chars items i) (besideDistance w items i))).map fun _ => ⟨0, [], 0⟩
+def orig (m : Ms) (job i : Nat) : List Line :=
+  (List.range (besideRows m.w (measure m i) (chars m i) (besideDistance m job i))).map fun _ => ⟨0, [], 0⟩
 
 /-- The rows of the first `n` verse lines: those `tryVerses` placed as
     composed at the cursor before each, the others as composed before. -/
-def verseRowCount (w : Nat) (region : Region) (origin : Int) (items : List Item) (ready : St) (verses : List Nat)
+def verseRowCount (m : Ms) (job : Nat) (region : Region) (origin : Int) (ready : St) (verses : List Nat)
     (trials : List St) (n : Nat) : Nat :=
   ((List.range n).map fun k =>
     match verses.get? k, (ready :: trials).get? k with
-    | some i, some at' => if k < trials.length then ((beside w region origin items).compose at' i).length else (orig w items i).length
-    | some i, none => (orig w items i).length
+    | some i, some at' => if k < trials.length then ((beside m region origin).compose at' i).length else (orig m job i).length
+    | some i, none => (orig m job i).length
     | none, _ => 0).foldl (· + ·) 0
 
 /-- What follows the paragraphs beside the figure: no flows. -/
-def probe (e : Env) (w : Nat) (region : Region) (origin : Int) (items : List Item) : Probe :=
-  { prefixAt := fun i j at' => placeAll inner e at' (controlsBetween items i j),
+def probe (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) : Probe :=
+  { prefixAt := fun i j at' => placeAll inner e at' (controlsBetween m i j),
     following := fun at' wanted =>
       let (required, linesOnly) := followingRows wanted []
       (required, linesOnly, fitsFollowing inner e at' wanted []),
     required := fun wanted keep rows => (followingRows wanted [.paragraph keep rows]).1,
-    verseRequired := verseRowCount w region origin items }
+    verseRequired := verseRowCount m job region origin }
 
 /-- `paragraph` of the paragraph or verse line `index` with the keep `k`
     and the binding `(lastWanted, wanted)`. -/
-def paragraphAt (e : Env) (w : Nat) (region : Region) (origin : Int) (items : List Item) (index : Nat)
+def paragraphAt (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) (index : Nat)
     (later : List Nat) (k : Keep) (lastWanted wanted : Nat) (at' : St) : Except Failure St :=
   let follows := fun st =>
     if 0 < wanted ∨ 0 < lastWanted then
-      match probeNext e region (beside w region origin items) (probe e w region origin items) index later st wanted with
+      match probeNext e region (beside m region origin) (probe e m job region origin) index later st wanted with
       | .ok r => r.2.2
       | .error _ => false
     else true
-  parts e region (fun at'' _ start => breakLines w region origin at'' start (chars items index)) (chars items index)
-    lastWanted follows id none k true 0 0 at'
+  parts e region (fun at'' _ start => breakLines m.w (measure m index) region origin at'' start (chars m index))
+    (chars m index) lastWanted follows id none k true 0 0 at'
 
-def paras (e : Env) (w : Nat) (region : Region) (origin : Int) (items : List Item) : Paras :=
-  { preliminary := fun prior index at' => placeAll inner e at' (controlsBetween items prior index),
+def paras (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) : Paras :=
+  { preliminary := fun prior index at' => placeAll inner e at' (controlsBetween m prior index),
     ready := fun prior index at' rows =>
-      let ahead := if isVerse items index then [.stanza defaultKeep rows] else rows.map (.paragraph defaultKeep ·)
-      stepPrefix e at' ahead (controlsBetween items prior index),
-    orig := orig w items,
+      let ahead := if isVerse m index then [.stanza defaultKeep rows] else rows.map (.paragraph defaultKeep ·)
+      stepPrefix e at' ahead (controlsBetween m prior index),
+    orig := orig m job,
     paragraph := fun index later at' =>
-      let (lastWanted, wanted) := binding items index
-      paragraphAt e w region origin items index later defaultKeep lastWanted wanted at' }
+      let (lastWanted, wanted) := binding m index
+      paragraphAt e m job region origin index later defaultKeep lastWanted wanted at' }
 
 /-- `probeNext` after the last verse line, and the fallback of a verse line
     by its display rows: `paragraph` with the default keep and no binding. -/
-def stanzaArgs (e : Env) (w : Nat) (region : Region) (origin : Int) (items : List Item) : StanzaArgs :=
+def stanzaArgs (e : Env) (m : Ms) (job : Nat) (region : Region) (origin : Int) : StanzaArgs :=
   { follows := fun i later at' wanted =>
-      probeNext e region (beside w region origin items) (probe e w region origin items) i later at' wanted,
-    fallback := fun i later at' => paragraphAt e w region origin items i later defaultKeep 0 0 at' }
+      probeNext e region (beside m region origin) (probe e m job region origin) i later at' wanted,
+    fallback := fun i later at' => paragraphAt e m job region origin i later defaultKeep 0 0 at' }
 
-/-- `runJob` of the figure 0 with the paragraphs after it. -/
-def jobs (e : Env) (w : Nat) (items : List Item) : Jobs :=
-  { itemOf := fun _ => none,
-    outside := fun _ _ _ at' => .ok at',
-    run := fun _ _ job at' =>
-      match beginWrap e at' job (extent w) with
+/-- The first position after the figure `prior` and its paragraphs. -/
+def after (m : Ms) (prior : Option Nat) : Nat := (prior.map (coveredEnd m · + 1)).getD 0
+
+/-- The first position of the list item of `job`, or `job`. -/
+def itemStart (m : Ms) (job : Nat) : Nat :=
+  match itemAt m job with
+  | some k => ((indices m).find? fun j => itemAt m j == some k).getD job
+  | none => job
+
+/-- `runJob`: the flows before the figure `job` in its item (or since the
+    figure `prior`), the figure (`beginPhysicalWrapAfter`, its id the
+    lines and figures before it), and the paragraphs beside it. -/
+def runJob (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : Except Failure St :=
+  let low := if prior.isSome || (itemAt m job).isSome then max (after m prior) (itemStart m job) else 0
+  let prefixFlows := flowsOf m (slotCount at') (span m low (job - 1) none |>.filter (· < job))
+  let ident := slotCount at' + (prefixFlows.map fun f => match f with | .paragraph _ ls => ls.length | _ => 0).foldl (· + ·) 0
+  match stepPrefix e at' [.wrapped ident (extent m.w) []] prefixFlows with
+  | .error f => .error f
+  | .ok ready =>
+    match beginWrap e ready ident (extent m.w) with
+    | .error f => .error f
+    | .ok (anchored, region) =>
+      let origin := (region.map (·.2.2)).getD 0 - extent m.w
+      let positions := (besides m job).filter (fun i => 0 < chars m i)
+      match paragraphs e region (beside m region origin) (stanzaArgs e m job region origin)
+          (paras e m job region origin) job anchored positions with
       | .error f => .error f
-      | .ok (anchored, region) =>
-        let origin := (region.map (·.2.2)).getD 0 - extent w
-        let positions := ((List.range (units items).length).map (· + 1)).filter (fun i => 0 < chars items i)
-        match paragraphs e region (beside w region origin items) (stanzaArgs e w region origin items)
-            (paras e w region origin items) job anchored positions with
-        | .error f => .error f
-        | .ok placed => .ok (endWrap region placed),
-    itemRest := fun _ _ at' => .ok at',
-    finish := fun _ _ at' => .ok at',
-    retain := fun trial at' => trial at' }
+      | .ok placed => .ok (endWrap region placed)
+
+/-- `retainPhysicalPart` of `keep-parts = "page"`, the ids of the part
+    those of the slots the trial placed. -/
+def retainPage (e : Env) {α : Type} (trial : St → Except Failure (α × St)) (at' : St) : Except Failure (α × St) :=
+  let attempt : St → Except Failure (α × List Nat × St) := fun s =>
+    match trial s with
+    | .error f => .error f
+    | .ok (a, placed) =>
+      let ids := (placedIds placed).filter (fun i => !(placedIds s).contains i)
+      .ok (a, ids, settle e ids placed)
+  match attempt at' with
+  | .error f => .error f
+  | .ok (a, ids, ordinary) =>
+    if partFits PartUnit.page at' ids ordinary (unitKey PartUnit.page at'.page at'.column) then .ok (a, ordinary)
+    else
+      let moved := nextUnit e PartUnit.page at'
+      match attempt moved with
+      | .error f => .error f
+      | .ok (b, ids', m) =>
+        if partFits PartUnit.page at' ids' m (unitKey PartUnit.page moved.page moved.column) then .ok (b, m)
+        else if emptyUnit PartUnit.page at' then .ok (a, addUnmet (Unmet.splitPart false PartUnit.page) ordinary)
+        else .ok (b, addUnmet (Unmet.splitPart false PartUnit.page) m)
+
+/-- The loop over the figures of the manuscript (`jobsFrom`). -/
+def jobs (e : Env) (m : Ms) : Jobs :=
+  { itemOf := fun job => if m.retaining then itemAt m job else none,
+    outside := fun prior done job at' => stepAt e m at' (span m (after m prior) (itemStart m job - 1) done |>.filter (· < itemStart m job)),
+    run := fun prior _ job at' => runJob e m prior job at',
+    itemRest := fun key prior at' => stepAt e m at' ((span m (after m (some prior)) m.us.length none).filter (fun j => itemAt m j == some key)),
+    finish := fun prior done at' => stepAt e m at' (span m (after m prior) m.us.length done),
+    retain := fun trial at' => if m.retaining then retainPage e trial at' else trial at' }
 
 def slotText : Int × Slot → String
   | (p, .line i) => s!"{p}:L{i}"
@@ -296,16 +418,24 @@ def unmetText : Unmet → String
   | .needLines n => s!"!need{n}"
   | .shortPart true i w g => s!"!first{i}:{w}:{g}"
   | .shortPart false i w g => s!"!last{i}:{w}:{g}"
+  | .splitPart false .page => "!splitpage"
   | _ => "!other"
 
 def pageText (p : PageOut) : String :=
   "  " ++ " ".intercalate ([toString p.number, toString p.column, if p.blank then "blank" else "-"] ++
     p.slots.map slotText ++ p.unmet.map unmetText)
 
-def output (w lines : Nat) (items : List Item) : List String :=
+/-- The pages, or the diagnostics.  golem-typeset reports a figure whose
+    exclusion is longer than the column (G07023) for each such figure when
+    it composes the figures, before `causalFreeFlow`; `beginWrap` would
+    stop at the first (G07038). -/
+def output (m : Ms) (lines : Nat) : List String :=
   let e := env lines
-  match jobsFrom (jobs e w items) none none (initial e) [0] with
-  | .error (.figureTooTall _) => ["  error G07023"]
+  let figures := (indices m).filter (isFig m)
+  let tall := figures.filter (fun _ => e.capacity < extent m.w)
+  if 0 < tall.length then ["  error " ++ " ".intercalate (tall.map fun _ => "G07023")] else
+  match jobsFrom (jobs e m) none none (initial e) figures with
+  | .error (.figureTooTall _) => ["  error G07038"]
   | .error _ => ["  error failure"]
   | .ok final =>
     match (close e (drainCarry e final)).done.reverse with
@@ -326,7 +456,7 @@ def stanzas : List (List Item) :=
     [[.p size, .v ns], [.v ns, .p size], [.p size, .k, .v ns], [.v ns, .k, .p size]]) ++
   ((replicateM 2 [5, 25]).bind fun as => (replicateM 2 [5, 25]).map fun bs => [Item.v as, Item.v bs])
 
-/-- The manuscripts of CausalBoundary.hs. -/
+/-- The manuscripts of CausalBoundary.hs after a wrapped figure. -/
 def manuscripts : List (List Item) :=
   ([1, 2, 3].bind fun n => (replicateM n [5, 12, 25]).map (·.map Item.p)) ++
   ([2, 3].bind fun n => (replicateM n [5, 12, 25]).bind fun ns =>
@@ -334,14 +464,26 @@ def manuscripts : List (List Item) :=
       (List.zip (0 :: hs) ns).bind fun (h, c) => (if h == 1 then [Item.k] else []) ++ [Item.p c]) ++
   stanzas
 
-def inputs : List (Nat × Nat × List Item) :=
-  [2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => manuscripts.map fun items => (w, lines, items)
+/-- The list items of CausalBoundary.hs, kept on a page: an item with a
+    figure and one or two paragraphs after it, an item with two figures, two
+    items, and an item after or before a paragraph. -/
+def lists : List (List Item) :=
+  ([3, 15].bind fun a => ([1, 2].bind fun n => replicateM n [5, 12, 25]).map fun ps => [Item.i a [ps]]) ++
+  ((replicateM 2 [5, 25]).map fun pq => [Item.i 3 (pq.map ([·]))]) ++
+  ((replicateM 2 [5, 25]).map fun pq => pq.map fun p => Item.i 3 [[p]]) ++
+  ([5, 25].bind fun n => [5, 12, 25].bind fun p => [[.p n, .i 3 [[p]]], [.i 3 [[p]], .p n]])
+
+def inputs : List (String × Ms × Nat) :=
+  ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => manuscripts.map fun items =>
+    (s!"{w} {lines} [{" ".intercalate (items.map Item.name)}]", ⟨w, false, units true items⟩, lines)) ++
+  ([2, 3].bind fun w => [3, 4, 5, 6].bind fun lines => lists.map fun items =>
+    (s!"{w} {lines} page [{" ".intercalate (items.map Item.name)}]", ⟨w, true, units false items⟩, lines))
 
 end CausalBoundary
 
 def main : IO Unit := do
   let out ← IO.getStdout
-  for (w, lines, items) in CausalBoundary.inputs do
-    out.putStrLn s!"{w} {lines} [{" ".intercalate (items.map CausalBoundary.Item.name)}]"
-    for l in CausalBoundary.output w lines items do
+  for (name, m, lines) in CausalBoundary.inputs do
+    out.putStrLn name
+    for l in CausalBoundary.output m lines do
       out.putStrLn l

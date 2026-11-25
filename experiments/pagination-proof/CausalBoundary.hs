@@ -6,7 +6,9 @@
 -- tryVerses and accept, and, with a no-break after a paragraph or a stanza,
 -- tries what follows it with probeNext and probeChain.  A stanza is a
 -- paragraph of the style poem, which keeps its lines (line-breaks =
--- "keep"), each verse line a unit.  CausalBoundary.lean prints the same for the copies of
+-- "keep"), each verse line a unit.  With keep-parts = "page", wrapped
+-- figures in list items go through itemJobs and retainPhysicalPart.
+-- CausalBoundary.lean prints the same for the copies of
 -- those loops in Physical.lean; check.sh compares the two with diff.  The
 -- manuscripts are laid out with the fake fonts of the golem-driver tests
 -- (modules/golem-driver/test/Support.hs): a character is 1zw (10pt), a
@@ -20,19 +22,23 @@ import Data.List (intercalate, sort)
 import Data.Text qualified as T
 import Golem.Layout.Paginate (PageOutAt (..), Part (..), Slotted (..), Unmet (..))
 import Golem.Length (Sp (..))
+import Golem.Project.Style (KeepParts (..))
 import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
 import Golem.Typeset (PdfLayout (..))
 import Support (horizontalStyle, layoutMini, replaceIn)
 
--- | A paragraph of so many characters, a no-break, or a stanza of verse
--- lines of so many characters each.
-data Item = P Int | K | V [Int]
+-- | A paragraph of so many characters, a no-break, a stanza of verse
+-- lines of so many characters each, or a list item of a paragraph of so
+-- many characters followed by wrapped figures, each with the paragraphs of
+-- the item after it.
+data Item = P Int | K | V [Int] | I Int [[Int]]
 
 name :: Item -> String
 name = \case
   P n -> show n
   K -> "K"
   V ns -> "V" <> intercalate "," (map show ns)
+  I n fs -> "I" <> show n <> concat ["/" <> intercalate "," (map show ps) | ps <- fs]
 
 -- | One to three paragraphs; then two or three paragraphs with a no-break
 -- after one of them or more.
@@ -62,22 +68,45 @@ stanzas =
        ]
     <> [[V as, V bs] | as <- replicateM 2 [5, 25], bs <- replicateM 2 [5, 25]]
 
--- | The width of the figure in zw, the lines of the column and the
--- items after the figure.
-inputs :: [(Int, Int, [Item])]
-inputs = [(width, capacity, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- manuscripts]
+-- | The list items, kept on a page: an item with a figure and one or two
+-- paragraphs after it, an item with two figures, two items, and an item
+-- after or before a paragraph.
+lists :: [[Item]]
+lists =
+  [[I a [ps]] | a <- [3, 15], n <- [1, 2], ps <- replicateM n [5, 12, 25]]
+    <> [[I 3 (map pure pq)] | pq <- replicateM 2 [5, 25]]
+    <> [[I 3 [[p]] | p <- pq] | pq <- replicateM 2 [5, 25]]
+    <> [items | n <- [5, 25], p <- [5, 12, 25], items <- [[P n, I 3 [[p]]], [I 3 [[p]], P n]]]
+
+-- | The width of the figure in zw, the lines of the column, whether a list
+-- item is kept on a page, and the items, after a wrapped figure when not.
+inputs :: [(Int, Int, Bool, [Item])]
+inputs =
+  [(width, capacity, False, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- manuscripts]
+    <> [(width, capacity, True, items) | width <- [2, 3], capacity <- [3, 4, 5, 6], items <- lists]
+
+-- | The wrapped figure of `width` zw, indented by `indent`.
+figureOf :: Int -> T.Text -> T.Text
+figureOf width indent = indent <> "@nonumber\n" <> indent <> "@figure images/tiny.jpg alt=\"t\" wrap=start width=" <> T.pack (show width) <> "zw\n\n"
 
 -- | The characters of the paragraphs and stanzas, a different one for each.
 letters :: [Char]
-letters = "\12354\12356\12358\12360"
+letters = "\12354\12356\12358\12360\12362\12363\12365\12367\12369\12371\12373\12375"
 
--- | The source of the items, each paragraph of its own character.
-sources :: [Char] -> [Item] -> [T.Text]
-sources cs = \case
+-- | The source of the items, each paragraph of its own character; `width`
+-- is that of the figures of the list items.
+sources :: Int -> [Char] -> [Item] -> [T.Text]
+sources width cs = \case
   [] -> []
-  K : rest -> "@no-page-break\n\n" : sources cs rest
-  P n : rest -> T.replicate n (T.take 1 (T.pack cs)) <> "\n\n" : sources (drop 1 cs) rest
-  V ns : rest -> "@style poem\n" <> T.concat [T.replicate n (T.take 1 (T.pack cs)) <> "\n" | n <- ns] <> "\n" : sources (drop 1 cs) rest
+  K : rest -> "@no-page-break\n\n" : sources width cs rest
+  P n : rest -> T.replicate n (T.take 1 (T.pack cs)) <> "\n\n" : sources width (drop 1 cs) rest
+  V ns : rest -> "@style poem\n" <> T.concat [T.replicate n (T.take 1 (T.pack cs)) <> "\n" | n <- ns] <> "\n" : sources width (drop 1 cs) rest
+  I n fs : rest ->
+    let letter k = T.take 1 (T.drop k (T.pack cs))
+        paragraphs = scanl (+) 1 (map length fs)
+     in "- " <> T.replicate n (letter 0) <> "\n\n"
+          <> T.concat [figureOf width "  " <> T.concat ["  " <> T.replicate p (letter k) <> "\n\n" | (k, p) <- zip [start ..] ps] | (start, ps) <- zip paragraphs fs]
+          : sources width (drop (1 + sum (map length fs)) cs) rest
 
 slot :: (Sp, Slotted) -> String
 slot (x, s) = show (unSp x) <> ":" <> case s of
@@ -91,19 +120,20 @@ unmet = \case
   UnmetNeedLines _ n -> "!need" <> show n
   ShortPart FirstPart i w g -> "!first" <> show i <> ":" <> show w <> ":" <> show g
   ShortPart LastPart i w g -> "!last" <> show i <> ":" <> show w <> ":" <> show g
+  SplitBookPart _ _ KeepPage -> "!splitpage"
   other -> "!" <> show other
 
 main :: IO ()
 main = do
   image <- BS.readFile "modules/golem-pdf/test/fixtures/tiny.jpg"
-  forM_ inputs $ \(width, capacity, items) -> do
-    putStrLn (show width <> " " <> show capacity <> " [" <> unwords (map name items) <> "]")
+  forM_ inputs $ \(width, capacity, retaining, items) -> do
+    putStrLn (show width <> " " <> show capacity <> (if retaining then " page" else "") <> " [" <> unwords (map name items) <> "]")
     let style =
           replaceIn "lines = 30" (T.pack ("lines = " <> show capacity)) $
             replaceIn "[page.grid]" "[page.grid]\nalignment = \"free\"" horizontalStyle
               <> "\n[paragraph-styles.poem]\nline-breaks = \"keep\"\n"
-        figure = "@nonumber\n@figure images/tiny.jpg alt=\"t\" wrap=start width=" <> T.pack (show width) <> "zw\n\n"
-        text = figure <> T.concat (sources letters items)
+              <> (if retaining then "\n[composition]\nkeep-parts = \"page\"\n" else "")
+        text = (if retaining then "" else figureOf width "") <> T.concat (sources width letters items)
     result <- layoutMini style text [("images/tiny.jpg", image)]
     case result of
       Right (_, layout) ->
