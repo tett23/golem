@@ -773,8 +773,15 @@ p がその行数以上であるか、`splitAtBreak` が前の部分について
 `once_of_uniq` は、前の状態に置いた行と原稿のフローの行の id が重ならないとき（`Uniq`）、id は出力の一つの段にだけあることを示す。
 出力の行の列は前の状態の行と原稿の行を一度ずつ並べたものなので、二つの段にある id は、この列に二度現れるからである。
 golem-typeset は、行、図版、コードの行の id を一つの番号（`nuNext`、`Flow.hs:3863`、`Flow.hs:3873`）から振るので、実際の入力は `Uniq` を満たす。
-ただし、`textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは、まだ前提に残る。
-これらの id が原稿の id から来ることは、まだ示していない。
+`textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）の id は、`WholeSlots.lean` が原稿の id に結びつける。
+`WholeSlots.lean` の `P S` は、出力済みの段と今の段の `unlisted` のスロットと待機中の図版が `S` の id だけを持つことである。
+`U` は、`WholeNotes.lean` の `Rel` と同じ形で、読んだフローが足す id（`flowUnl`）が `S` にあるとき、関数の前後で `P S` が保たれることを表し、改ページのすべての関数で示される。
+フローが足す id は、図版、転置図版、回り込み図版の id と、表の見出しの行の id である。
+表の見出しの行を後の段で繰り返すのは `putRepeated` だけで、その行は表の見出しの行である（`u_putRepeateds`）。
+`hn_of` は、前の状態の `unlisted` のスロットが持たず（`T`）、フローも足さない id について、`I3_separator_hold_no_error` の前提 `hn` を導く。
+表の見出しの行は後に続くフローの本文の行なので、`Uniq` から区切りの行と段落の最初の行の id と異なる（`not_unl`）。
+`I3_separator_hold_no_error_ids` と `I3_separator_chain_no_error_ids` は、前提 `hn` の代わりに、前の状態の `unlisted` のスロットが二つの行の id を持たないことと、後に続くフローの図版の id（`sourceFigIds`）が二つの行の id でないことを置く。
+golem-typeset は行と図版の id を一つの番号から振るので、実際の入力はこの二つも満たす。
 区切りの連続も、格子モードで定理にした。
 `Link` は連続の一つの区切りを、その段落スタイル、行、`keep-with-next` の位置、後ろのアキで表し、`chainFlows` はその列のフローである。
 `I3_separator_chain_together` は、最初の区切りと後に続く区切りの列と段落のフローを進めると、すべての区切りの行と段落の最初の行が一つの段に入ることを示す（`TogetherAll`）。
@@ -1628,16 +1635,14 @@ golem-typeset はコードの行を脚注なしで作り（`Flow.hs:3870`）、g
    `I5_itemJobs_lines` と `I5_jobsFrom_lines` は前提 `JobsLines` を置き、前提なしの `I5_causal_jobsFrom_lines` は `CausalBoundary.lean` の 4864 個の原稿についての定理である。
    `I5_stanza_lines` は `fallback` と `hold` についての仮定を置き、`I5_parts_lines` の前提 `hb`（改行し直しても段落の最初の行の id が変わらないこと）は未確認である。
    欠けているのは、golem-typeset の改行器と後続の判定について、これらの前提を導く定理か、前提を確かめる照合である。
-4. スロットの id の前提。
-   格子モードの `textSlots` が読まない図版、転置図版、回り込み図版、表の繰り返す見出しの行のスロット（`unlisted`）が二つの行の id を持たないことは前提に残り、その id が原稿の id から来ることは示していない。
-5. 区切りの残り。
+4. 区切りの残り。
    保持の中の `@need-lines`、区切りの前の行アキ、自由な配置（`SeparatorPhysical.lean`）の保持の性質は、照合だけで確かめ、定理がない。
    `markBookParts` の定義の項と表、入れ子のリスト、段組みが二つ以上の段、本文と行送りの違う段落スタイル、脚注を区切りと並べた原稿は、照合していない。
    格子モードで `markBookParts` を外す変更、`joinBoxes` で何も結ばない変更、罫線の共有の領域を 1 行にする変更、`firstNeed` がアキを数えない変更は、出力を変えなかったので、照合の入力が足りない。
-6. Alloy のコマンドの算術モデルと原稿の対応。
+5. Alloy のコマンドの算術モデルと原稿の対応。
    見出しと最初の本文行の間か後ろに図版が一つある場合の算術モデルについて、任意の原稿列の図版の位置との対応は未証明である。
    見出し列の長さと段落構造を原稿列から取り出す一般的な対応も未証明である。
-7. 照合できていない変更と、`putWrappedLine` の写しの前提。
+6. 照合できていない変更と、`putWrappedLine` の写しの前提。
    「区切りのモデル」の節の `keep-with-next` の行数を 2 にする変更と、段の番号だけが異なる分割は、照合できていない。
    `trialWrapRest_putLine` の前提のうち、回り込みの段が空でないことと、次の段が回り込みの段でないことは、`parts` の呼び出しについて示していない。
 
@@ -1664,6 +1669,7 @@ sh experiments/pagination-proof/check.sh
 `PhysicalDrain.lean` は、`PhysicalNotes.olean` を作ってから、それを読み込んで検査する。
 `WholeOrder.lean` は `WholeNotes.olean` を読み込み、ほかの検査と並んで検査し、最後にその結果を待つ。
 `WholeRules.lean` は `Whole.olean` を読み込み、同じくほかの検査と並んで検査する。
+`WholeSlots.lean` は `Separator.olean` を読み込んで検査する。
 `SeparatorPhysical.lean` と `SeparatorBlocks.lean` も同じく読み込み、`SeparatorBoundary.lean` は環境変数 `SEPARATOR_MODE` で八つの組を一つずつ評価する。
 
 書き写しの有限の照合は、`Pagination.olean` を作ってから `LEAN_PATH` に置いて `EnumerateSmall.lean` を実行する。

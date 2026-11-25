@@ -132,6 +132,15 @@ if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|exte
 fi
 (cd "$root" && LEAN_PATH="$tmp" "$lean" -o "$tmp/Separator.olean" "$separator")
 echo "the separator flows are total and their theorems are proved"
+# Where the ids of the slots the text leaves out come from in the grid
+# mode (WholeSlots.lean).
+wholeSlots=$root/experiments/pagination-proof/WholeSlots.lean
+if grep -En '(^|[^A-Za-z_])(sorry|admit|axiom|partial|unsafe|implemented_by|extern|native_decide)([^A-Za-z_]|$)' "$wholeSlots"; then
+  echo "unproved or unchecked Lean declaration in $wholeSlots" >&2
+  exit 1
+fi
+(cd "$root" && LEAN_PATH="$tmp" "$lean" "$wholeSlots")
+echo "the slots the text leaves out hold ids of the manuscript in the grid mode"
 # The manuscripts in the eight modes of SeparatorBoundary.hs: the grid and
 # the free placement, without and with boxes, ruled blocks and items of
 # lists, with a no-break after the paragraph a separator is held with, and
