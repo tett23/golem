@@ -1,6 +1,6 @@
 # ADR 0437: パスとボックスモデルをレイアウトエンジンに入れる
 
-Status: superseded-pending [{"part":"「閉じたパスの内側に文字を置く」の手順 3 の求め方とその理由の文、ボックスに中身が収まらないときのエラーのコードを決める時期","by":["docs/adr/0447-find-the-strip-intervals-by-pieces-between-vertices-and-crossings.md"],"kind":"replace"}]
+Status: superseded [{"part":"「閉じたパスの内側に文字を置く」の手順 3 の求め方とその理由の文、ボックスに中身が収まらないときのエラーのコードを決める時期","by":["docs/adr/0447-find-the-strip-intervals-by-pieces-between-vertices-and-crossings.md"],"kind":"replace"}]
 
 ## 文脈
 
