@@ -665,8 +665,10 @@ completions ws path off = case sourceOf ws path of
         projectVars = projectVarsOf ws
         -- the names the file lists by @import, without a namespace (root ADR 0451)
         listedOf k = [Completion n CkCommand | n <- listedNamesOf ws src k]
+        -- a listed name over a built-in command is one candidate (root ADR 0453)
+        commandsAnd builtins k = [Completion n CkCommand | n <- nub (builtins <> listedNamesOf ws src k)]
      in if maybe False (T.all nameChar) (T.stripPrefix "@" (T.stripStart lineBefore))
-          then [Completion n CkCommand | n <- builtinBlockCommands] <> listedOf KindBlock
+          then commandsAnd builtinBlockCommands KindBlock
           else
             if "@import " `T.isPrefixOf` T.stripStart lineBefore
               then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
@@ -703,8 +705,8 @@ completions ws path off = case sourceOf ws path of
                                           Just [_] | inOperand lastOpen -> expressionNames <> listedOf KindFn <> [Completion n CkSettingKey | n <- listedVarNames src]
                                           Just _ -> []
                                           _ -> case ws' of
-                                            [] -> commandNames <> listedOf KindInline
-                                            [_] | not (T.isSuffixOf " " lastOpen) -> commandNames <> listedOf KindInline
+                                            [] -> commandsAnd commandNames KindInline
+                                            [_] | not (T.isSuffixOf " " lastOpen) -> commandsAnd commandNames KindInline
                                             (cmd : _)
                                               | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
                                               -- label= after the command of a note (root ADR 0422)
@@ -726,7 +728,7 @@ completions ws path off = case sourceOf ws path of
       | n <- builtinExpressionNames
       ]
     -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
-    commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
+    commandNames = builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)
 
 -- | The names a source lists by @import of a .emet that are functions of a kind (root ADR 0451).
 listedNamesOf :: Workspace -> Source -> Kind -> [Text]

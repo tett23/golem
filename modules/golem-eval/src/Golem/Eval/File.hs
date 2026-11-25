@@ -98,6 +98,8 @@ data PluginHook = PluginHook
     phCommands :: !(Map PluginCommandName PluginCommand),
     -- | the block commands of the plugins, by name (docs/adr/0122)
     phBlocks :: !(Map Text PluginBlockCommand),
+    -- | the overrides of built-in block commands that block-overrides declares (root ADR 0453)
+    phBlockOverrides :: !(Map OverridableBlock PluginBlockCommand),
     -- | the channels the plugins declare (golem-doc ADR 0007)
     phChannels :: !(Map Text ChannelDecl),
     phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic]),
@@ -106,7 +108,7 @@ data PluginHook = PluginHook
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
+noPlugins = PluginHook Map.empty Map.empty Map.empty Map.empty Map.empty (\_ d -> Right (d, [])) []
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
@@ -621,9 +623,24 @@ alignment = \case
   A.AlignCenter -> AlignCenter
   A.AlignRight -> AlignRight
 
--- A block command that is not an attribute of another block.
+{- | A block command that is not an attribute of another block. An
+overridable built-in one is looked up first in the overrides of the
+plugins, then among the names the file lists by @import (root ADR 0453): a
+listed name that puts out nothing does not fall back to the built-in one.
+-}
 standalone :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-standalone ctx sp (A.Located nsp name) args body = case name of
+standalone ctx sp lname@(A.Located _ name) args body
+  | Just o <- parseOverridableBlock name, Just pb <- Map.lookup o (phBlockOverrides (ctxPlugins ctx)) = pluginBlock ctx sp pb args body
+  | Just _ <- parseOverridableBlock name =
+      listedFunction BlockSpace name >>= \case
+        Nothing -> builtinBlock ctx sp lname args body
+        Just (Loaded fns) | Just f <- Map.lookup name (fnBlock fns) -> callBlock ctx sp ("@" <> name) f args body
+        Just _ -> pure []
+  | otherwise = builtinBlock ctx sp lname args body
+
+-- | A block command of the language, a plugin or a function, after the overrides.
+builtinBlock :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+builtinBlock ctx sp (A.Located nsp name) args body = case name of
   "import" -> do
     -- the same check as the project's (golem-project ADR 0006); G02023 points at the namespace
     case importSite sp args of
@@ -729,13 +746,13 @@ listedSpaces src n = case src of
   FromVars vals -> Just [ExprSpace | Map.member n vals]
   Unchecked -> Nothing
 
-{- | The names of the built-in commands, by space of use (G02270): every
-name the evaluation reads as built in without a namespace.
+{- | The names of the built-in commands a listed name may not override, by
+space of use (G02270, root ADR 0453).
 -}
 builtinNamesIn :: Space -> [Text]
 builtinNamesIn = \case
-  InlineSpace -> builtinInlineCommands
-  BlockSpace -> builtinBlockCommands <> settingCommands <> attributeCommands <> ["separator"]
+  InlineSpace -> [builtinName b | b@(Fixed _) <- allBuiltins]
+  BlockSpace -> fixedBlockCommands
   ExprSpace -> []
 
 {- | An @import of names (root ADR 0451): each name is checked, then put
@@ -754,9 +771,10 @@ listedImport ctx sp path names = do
   others <- gets (filter ((/= sp) . isSpan) . stFileImports)
   set <- gets stSetNames
   let src = listedSource ctx path
+      -- the overrides the plugins declare count as their commands (root ADR 0453)
       pluginNames = \case
-        InlineSpace -> map unPluginCommandName (Map.keys (phCommands (ctxPlugins ctx)))
-        BlockSpace -> Map.keys (phBlocks (ctxPlugins ctx))
+        InlineSpace -> map unPluginCommandName (Map.keys (phCommands (ctxPlugins ctx))) <> map (builtinName . Overridable) (Map.keys (phOverrides (ctxPlugins ctx)))
+        BlockSpace -> Map.keys (phBlocks (ctxPlugins ctx)) <> map overridableBlockName (Map.keys (phBlockOverrides (ctxPlugins ctx)))
         ExprSpace -> []
       otherSpaces n = concat [fromMaybe [] (listedSpaces (listedSource ctx (isPath o)) n) | o <- others, (m, _) <- importNames o, m == n]
       one (i, (n, nsp))
@@ -770,7 +788,7 @@ listedImport ctx sp path names = do
               note n nsp
               let earlier = n `elem` map fst (take i names)
                   clashes s =
-                    [("G02270", "組み込みのコマンドと同じ名前は取り込めません: " <> n) | n `elem` builtinNamesIn s]
+                    [("G02270", "上書きできない組み込みのコマンドと同じ名前は取り込めません: " <> n) | n `elem` builtinNamesIn s]
                       <> [("G02271", "プラグインのコマンドと同じ名前は取り込めません: " <> n) | n `elem` pluginNames s]
                       <> [("G02272", "ほかの @import が並べた名前と同じです: " <> n) | s `elem` otherSpaces n]
                       <> [("G02273", "同じ並びに二度書いた名前です: " <> n) | earlier]
@@ -2813,17 +2831,19 @@ codeSlots (A.Located _ name) args slots
 evalCommand :: EvalContext -> Bool -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
 evalCommand ctx inHeading sp (A.Located nsp name) args slots
   | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) = plugin pc
+  -- an overridable command a name listed by @import overrides (root ADR 0453)
+  | Just b@(Overridable _) <- parsed = listedFunction InlineSpace name >>= maybe (builtin ctx inHeading sp b args slots) listed
   | Just b <- parsed = builtin ctx inHeading sp b args slots
   | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) = plugin pc
   | Just (ns, n) <- splitNamespace name = functionInline ctx inHeading sp nsp ns n args slots
   | otherwise =
       -- an inline command listed by @import (root ADR 0451)
-      listedFunction InlineSpace name >>= \case
-        Nothing -> err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []
-        Just (Loaded fns) | Just f <- Map.lookup name (fnInline fns) -> callInline ctx inHeading sp name f args slots
-        Just _ -> pure []
+      listedFunction InlineSpace name >>= maybe (err "G02022" nsp ("未知のコマンドです: " <> name) >> pure []) listed
   where
     parsed = parseBuiltin name
+    listed = \case
+      Loaded fns | Just f <- Map.lookup name (fnInline fns) -> callInline ctx inHeading sp name f args slots
+      _ -> pure []
     plugin pc = do
       vals <- pluginArgs ctx sp args
       slots' <- mapM (evalInlines ctx inHeading) slots
