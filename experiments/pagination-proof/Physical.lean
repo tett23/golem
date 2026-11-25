@@ -2984,7 +2984,9 @@ decreasing_by
     at the cursor `at`.  `binding i` is `bindingAfter` of `i` (`lastWanted`
     and `wanted`), `keepOf i` the keep of `i`, `holds i` whether `i` keeps
     with what follows (`snd (paraStartAndKeep unit) > 0`), `hold i` its
-    `keepPhysicalNext`, and `ident i` its first line.  `sameVerse i j`
+    `keepPhysicalNext`, and `ident at i` its first line in the composition of
+    the cursor `at` (`bUnitFirsts`, which counts the lines composed before
+    `i` at the cursors they were placed at).  `sameVerse i j`
     is whether `j` is a verse line of the stanza of `i`, and `isStanza i`
     whether `i` is a verse line. -/
 structure Beside where
@@ -2993,7 +2995,7 @@ structure Beside where
   keepOf : Nat → Keep
   holds : Nat → Bool
   hold : Nat → Nat → Bool → St → St
-  ident : Nat → Nat
+  ident : St → Nat → Nat
   isStanza : Nat → Bool
   sameVerse : Nat → Nat → Bool
 
@@ -3053,13 +3055,13 @@ theorem verseSpan_after (b : Beside) (i : Nat) (more : List Nat) : (verseSpan b 
     (`physicalFollowingRows` and `fitsPhysicalFollowing` on the cursor
     `endPhysicalWrap` leaves); `required wanted keep rows` for
     `fst (physicalFollowingRows wanted [FParagraph keep rows])`; and
-    `verseRequired verses trials n` for the rows of the first `n` verse
-    lines as the trials composed them. -/
+    `verseRequired ready verses trials n` for the rows of the first `n` verse
+    lines as the trials from the cursor `ready` composed them. -/
 structure Probe where
   prefixAt : Nat → Nat → St → Except Failure St
   following : St → Nat → Nat × Bool × Bool
   required : Nat → Keep → List Line → Nat
-  verseRequired : List Nat → List St → Nat → Nat
+  verseRequired : St → List Nat → List St → Nat → Nat
 
 /- `probeNext` and `probeChain` of `causalFreeFlow`: whether what follows a
    paragraph beside a wrapped figure fits after it.  `probeNext` passes
@@ -3083,7 +3085,7 @@ def probeNext (env : Env) (region : Region) (b : Beside) (p : Probe) (index : Na
         match tryVerses env region b ready verses with
         | .error e => .error e
         | .ok trials =>
-          let required := p.verseRequired verses trials wantedVerses
+          let required := p.verseRequired ready verses trials wantedVerses
           let prefixFits := decide (same cursor ready) && decide (wantedVerses ≤ trials.length)
           let chain : Except Failure Bool :=
             if prefixFits && decide (wantedVerses = verses.length) then
@@ -3165,7 +3167,7 @@ def stanza (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (later : 
       if keep.all ∧ isStart ∧ whole < total then
         if empty cursor then
           stanza env region b a later { keep with all := false } isStart
-            (addUnmet (.splitKept (b.ident firstIndex)) cursor) (firstIndex :: rest)
+            (addUnmet (.splitKept (b.ident cursor firstIndex)) cursor) (firstIndex :: rest)
         else if h : empty cursor = false then
           stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest)
         else .ok cursor
@@ -3175,8 +3177,8 @@ def stanza (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (later : 
         stanza env region b a later keep isStart (moveCursor env region cursor) (firstIndex :: rest)
       else if 0 < whole then
         accept env region b a later keep isStart cursor (firstIndex :: rest) trials whole
-          ((if isStart ∧ whole < keep.first then [Unmet.shortPart true (b.ident firstIndex) keep.first whole] else []) ++
-            (if total - whole < keep.last then [Unmet.shortPart false (b.ident firstIndex) keep.last (total - whole)] else []))
+          ((if isStart ∧ whole < keep.first then [Unmet.shortPart true (b.ident cursor firstIndex) keep.first whole] else []) ++
+            (if total - whole < keep.last then [Unmet.shortPart false (b.ident cursor firstIndex) keep.last (total - whole)] else []))
       else
         match a.fallback firstIndex (rest ++ later) cursor with
         | .error e => .error e
@@ -3196,10 +3198,10 @@ decreasing_by
 def accept (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (later : List Nat) (keep : Keep)
     (isStart : Bool) (cursor : St) (indices : List Nat) (trials : List St) (count : Nat) (problems : List Unmet) :
     Except Failure St :=
-  if h0 : count = 0 then .error (.noProgress (b.ident (indices.headD 0)))
+  if h0 : count = 0 then .error (.noProgress (b.ident cursor (indices.headD 0)))
   else
     match trials[count - 1]? with
-    | none => .error (.noProgress (b.ident (indices.headD 0)))
+    | none => .error (.noProgress (b.ident cursor (indices.headD 0)))
     | some placed =>
       let warned := { placed with unmet := placed.unmet ++ problems }
       if hr : (indices.drop count).isEmpty then

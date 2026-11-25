@@ -1305,17 +1305,29 @@ golem-layout と照合する入力（`CheckCaptionAssembly.hs` の `finish`）�
 golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落を改行し直すループ（`parts`）、段落と連を順に置くループ（`paragraphs`）、詩を置くループ（`stanza` と `tryVerses`）、後続を試すループ（`probeNext` と `probeChain`）、図版ごとの仕事を進めるループ（`jobsFrom` と `itemJobs`）は、組んだ行と後続の判定を引数として写し、止まることを証明した。
 `paragraphs` が段落と詩の行を過不足なく順に渡すことは証明したが（`I5_paragraphs_groups`）、ほかのループの行の過不足と順序は、まだ証明していない。
 
-このうち `jobsFrom`、`paragraphs`、`parts`、`probeNext`、`probeChain` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
-`CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に 1〜3 個の段落を置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
+このうち `jobsFrom`、`paragraphs`、`parts`、`probeNext`、`probeChain`、`stanza`、`tryVerses`、`accept` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
+`CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に段落か連を置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。
 段落は 5、12、25 字のいずれかで、段は 3〜6 行である。
-2 個か 3 個の段落の原稿には、段落の後に `@no-page-break` を挟んだものも含める。
+段落だけの原稿は 1〜3 個の段落からなり、2 個か 3 個の段落の原稿には、段落の後に `@no-page-break` を挟んだものも含める。
+連は、`line-breaks = "keep"` の段落スタイル `poem` の段落で、詩の行ごとに一つの単位になる。
+連の原稿は、1〜4 行の連だけのもの、2 行か 3 行の連の前か後に段落を置いたもの（間に `@no-page-break` を挟んだものも含める）、2 行の連を二つ続けたものである。
 `CausalBoundary.lean` は、同じ原稿で `Physical.lean` の `jobsFrom` を評価し、同じ形式で書き出す。
 写したループの引数は、これらの原稿について golem-typeset が計算するとおりに与える。
 改行器（`composeAt`）は偽のフォントに合わせて、行の幅に収まる字数を前から詰める関数とし、行の幅は、行の領域（`rowExtent`）が図版の除外領域と交わるときに除外の幅を引いた値とした。
 除外領域の長さと幅は、図版の長さと幅にそれぞれ 1zw の `wrap-gap` を足した値である。
-`check.sh` は二つの出力を `diff` で比べ、1032 個の原稿ですべて一致した。
+
+連の `ShortPart` と `SplitKept` が持つ行の番号は、golem-typeset では、`stanza` を呼んだときの `Built` の `bUnitFirsts`、つまりその時点の組みでその詩の行より前にある行の数で決まる。
+そこで `Physical.lean` の `Beside` の `ident` は、詩の行の番号だけでなくカーソルも受け取る。
+`CausalBoundary.lean` は、カーソルより前に置いた行の数に 1 を足した値を与える。
+同じく `Probe` の `verseRequired` は、最初の詩の行を試したカーソルも受け取り、試した詩の行はそのカーソルから組み直した行数、試していない詩の行は先に組んだ行数（`composeBeside` が図版の除外領域に合わせて組んだ行数）で数える。
+
+`check.sh` は二つの出力を `diff` で比べ、2368 個の原稿（段落だけの 1032 個と連を含む 1336 個）ですべて一致した。
+照合が写しの誤りを見つけることは、写しを変えて確かめた。
 後続の判定を常に収まるとすると 291 個、`parts` が最後の部分の行数を見ずに続けると 108 個の原稿で出力が食い違った。
-連（`stanza`、`tryVerses`）とリスト項目の中の図版（`itemJobs`）は、この照合に含まれない。
+連については、`ident` を常に 0 とすると 672 個、`stanza` が `splitAtBreak` を使わずに収まった詩の行をすべて置くと 841 個、収まった詩の行の数で `accept` を呼ぶと 24 個、最後の部分が短いことを `total - whole ≤ keep.last` で判定すると 224 個、`accept` の `front` を `count - 1` とすると 23 個の原稿で食い違った。
+`tryVerses` が置いた段がカーソルの段と同じかを見ない写しは、これらの原稿では出力が変わらず、この照合では見つからない。
+まだ試していない詩の行の行数（`orig`、`composeBeside` が組んだ行数）を 0 とする写しも同じく見つからない。
+リスト項目の中の図版（`itemJobs`）は、この照合に含まれない。
 
 置いた罫線の位置は、格子の上で `WholeRules.lean` が扱う（不変条件 3）。
 `Whole.lean` の `St` と `PageOut` は、golem-layout の `sRules` と `poRules` を写した `rules` を持つ。
