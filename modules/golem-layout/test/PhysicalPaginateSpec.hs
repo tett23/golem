@@ -1067,7 +1067,7 @@ freeRulesOutOfEdge cfg weightOf p =
    in [r | r <- poRules p, prAt r < lo r || prAt r + weightOf r > hi r]
 
 -- | The end of a column above its notes.
-columnEnd ::PhysicalSettings -> PageOutAt Sp -> Sp
+columnEnd :: PhysicalSettings -> PageOutAt Sp -> Sp
 columnEnd cfg p =
   let noteLines = sum [n | (_, _, n) <- poFootnotes p]
    in poLines p - (if noteLines > 0 then physicalSeparator cfg + fromIntegral noteLines * physicalPagePitch cfg else 0)
