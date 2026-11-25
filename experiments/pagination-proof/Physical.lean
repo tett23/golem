@@ -5983,6 +5983,237 @@ theorem I5_jobsFrom_after_group (j : Jobs) (hr : RetainOk j) (prior done : Optio
     rw [v] at this
     exact this
 
+/-! ### The lines of `jobsFrom` and `itemJobs`
+
+`jobsFrom` and `itemJobs` place no lines of their own: every line comes
+from one call of `outside`, `run`, `itemRest` or `finish` (a piece,
+`JobPiece`), and `retain` keeps the lines of one run of its trial.  The
+pieces of one run of `jobsFrom` follow from the figures alone
+(`jobPieces`).  Given what each piece places (`JobsLines`), the lines
+`jobsFrom` places are those of its pieces, each piece once and in order
+(`I5_jobsFrom_lines`); its runs are those of the figures, each once and in
+order (`I5_jobPieces_runs`). -/
+
+/-- One call that places lines in `jobsFrom` or `itemJobs`. -/
+inductive JobPiece where
+  | outside (prior done : Option Nat) (job : Nat)
+  | run (prior done : Option Nat) (job : Nat)
+  | rest (key prior : Nat)
+  | finish (prior done : Option Nat)
+
+/-- The figure of a run. -/
+def JobPiece.job? : JobPiece → Option Nat
+  | .run _ _ job => some job
+  | _ => none
+
+/-- The pieces of `itemJobs`: a run for each figure at the front of `later`
+    in the item `key`, then the rest of the item. -/
+def itemPieces (j : Jobs) (key prior : Nat) : List Nat → List JobPiece
+  | next :: more =>
+    if j.itemOf next = some key then .run (some prior) none next :: itemPieces j key next more
+    else [.rest key prior]
+  | [] => [.rest key prior]
+
+/-- The last figure of a group. -/
+def lastOf (job : Nat) (more : List Nat) : Nat := (job :: more).getLast (by simp)
+
+/-- The pieces of `jobsFrom`: for a figure in a retained list item, the
+    flows before the item, the run of the figure and the pieces of
+    `itemJobs`; for another figure, its run; and the flows after the last
+    figure. -/
+def jobPieces (j : Jobs) (prior done : Option Nat) (jobs : List Nat) : List JobPiece :=
+  match jobs with
+  | [] => [.finish prior done]
+  | job :: rest =>
+    match j.itemOf job with
+    | some key =>
+      .outside prior done job :: .run prior done job :: itemPieces j key job rest ++
+        jobPieces j (some (lastOf job (rest.takeWhile (fun x => j.itemOf x = some key)))) (some key)
+          (rest.dropWhile (fun x => j.itemOf x = some key))
+    | none => .run prior done job :: jobPieces j (some job) none rest
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  · exact Nat.lt_succ_of_le (dropWhile_length_le _ _)
+
+theorem fm_run (prior done : Option Nat) (job : Nat) (l : List JobPiece) :
+    (JobPiece.run prior done job :: l).filterMap JobPiece.job? = job :: l.filterMap JobPiece.job? := rfl
+
+theorem fm_outside (prior done : Option Nat) (job : Nat) (l : List JobPiece) :
+    (JobPiece.outside prior done job :: l).filterMap JobPiece.job? = l.filterMap JobPiece.job? := rfl
+
+theorem filterMap_app (f : JobPiece → Option Nat) (a b : List JobPiece) :
+    (a ++ b).filterMap f = a.filterMap f ++ b.filterMap f := by
+  induction a with
+  | nil => rfl
+  | cons x xs ih => simp only [List.cons_append, List.filterMap]; cases f x <;> simp [ih]
+
+theorem itemPieces_runs (j : Jobs) (key prior : Nat) (later : List Nat) :
+    (itemPieces j key prior later).filterMap JobPiece.job? = later.takeWhile (fun x => j.itemOf x = some key) := by
+  induction later generalizing prior with
+  | nil => rfl
+  | cons next more ih =>
+    by_cases hk : j.itemOf next = some key
+    · simp [itemPieces, hk, List.filterMap, JobPiece.job?, ih, List.takeWhile]
+    · simp [itemPieces, hk, List.filterMap, JobPiece.job?, List.takeWhile]
+
+/-- The runs of the pieces of `jobsFrom` are those of the figures, each
+    once and in order. -/
+theorem I5_jobPieces_runs (j : Jobs) (prior done : Option Nat) (jobs : List Nat) :
+    (jobPieces j prior done jobs).filterMap JobPiece.job? = jobs := by
+  match jobs with
+  | [] => rw [jobPieces]; rfl
+  | job :: rest =>
+    rw [jobPieces]
+    split
+    · rename_i key _
+      rw [filterMap_app, fm_outside, fm_run, itemPieces_runs, I5_jobPieces_runs j _ _ (rest.dropWhile (fun x => j.itemOf x = some key)), List.cons_append, takeWhile_dropWhile]
+    · rw [fm_run, I5_jobPieces_runs j _ _ rest]
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  · exact Nat.lt_succ_of_le (dropWhile_length_le _ _)
+
+/-- From `c` to `s` through the pieces, each with its lines: before a
+    piece the cursor may move without placing anything (`retain` runs its
+    trial at another cursor), the piece places its lines `ls` with
+    `P piece at ls` at the cursor `at` it runs at, and after the last piece
+    the cursor may move again. -/
+def PieceChain (P : JobPiece → St → List Nat → Prop) : St → List JobPiece → List (List Nat) → St → Prop
+  | c, [], [], s => Step c s [] []
+  | c, p :: ps, ls :: lss, s => ∃ a b, Step c a [] [] ∧ P p a ls ∧ Step a b ls [] ∧ PieceChain P b ps lss s
+  | _, _, _, _ => False
+
+theorem PieceChain.step {P : JobPiece → St → List Nat → Prop} :
+    ∀ {c s : St} {ps : List JobPiece} {lss : List (List Nat)}, PieceChain P c ps lss s → Step c s lss.join []
+  | _, _, [], [], h => h
+  | _, _, _ :: _, _ :: _, ⟨_, _, m, _, st, r⟩ => by
+    simpa using (m.trans st).trans (PieceChain.step r)
+  | _, _, [], _ :: _, h => h.elim
+  | _, _, _ :: _, [], h => h.elim
+
+theorem PieceChain.pre {P : JobPiece → St → List Nat → Prop} {c a : St} (m : Step c a [] []) :
+    ∀ {s : St} {ps : List JobPiece} {lss : List (List Nat)}, PieceChain P a ps lss s → PieceChain P c ps lss s
+  | _, [], [], h => by simpa using m.trans h
+  | _, _ :: _, _ :: _, ⟨a', b, m', p, st, r⟩ => ⟨a', b, by simpa using m.trans m', p, st, r⟩
+  | _, [], _ :: _, h => h.elim
+  | _, _ :: _, [], h => h.elim
+
+theorem PieceChain.append {P : JobPiece → St → List Nat → Prop} :
+    ∀ {c s t : St} {ps qs : List JobPiece} {lss mss : List (List Nat)},
+    PieceChain P c ps lss s → PieceChain P s qs mss t → PieceChain P c (ps ++ qs) (lss ++ mss) t
+  | _, _, _, [], _, [], _, h, h' => PieceChain.pre h h'
+  | _, _, _, _ :: _, _, _ :: _, _, ⟨a, b, m, p, st, r⟩, h' => ⟨a, b, m, p, st, PieceChain.append r h'⟩
+  | _, _, _, [], _, _ :: _, _, h, _ => h.elim
+  | _, _, _, _ :: _, _, [], _, h, _ => h.elim
+
+theorem PieceChain.single {P : JobPiece → St → List Nat → Prop} {p : JobPiece} {c s : St} {ls : List Nat}
+    (hp : P p c ls) (st : Step c s ls []) : PieceChain P c [p] [ls] s :=
+  ⟨c, s, Step.refl c, hp, st, Step.refl s⟩
+
+/-- What `jobsFrom` and `itemJobs` assume of their arguments: `outside`,
+    `run`, `itemRest` and `finish` each place lines `ls` with `P piece at ls`
+    and no figures, and `retain` returns the value of one run of its trial
+    at a cursor it reaches without placing anything, the cursor of that run
+    moved on without placing anything. -/
+structure JobsLines (j : Jobs) (P : JobPiece → St → List Nat → Prop) : Prop where
+  outside : ∀ prior done job c s, j.outside prior done job c = .ok s →
+    ∃ ls, P (.outside prior done job) c ls ∧ Step c s ls []
+  run : ∀ prior done job c s, j.run prior done job c = .ok s → ∃ ls, P (.run prior done job) c ls ∧ Step c s ls []
+  itemRest : ∀ key prior c s, j.itemRest key prior c = .ok s → ∃ ls, P (.rest key prior) c ls ∧ Step c s ls []
+  finish : ∀ prior done c s, j.finish prior done c = .ok s → ∃ ls, P (.finish prior done) c ls ∧ Step c s ls []
+  retain : ∀ {α : Type} (trial : St → Except Failure (α × St)) (at' : St) (r : α × St), j.retain trial at' = .ok r →
+    ∃ s r', trial s = .ok r' ∧ r'.1 = r.1 ∧ Step at' s [] [] ∧ Step r'.2 r.2 [] []
+
+/-- `itemJobs` places the lines of its pieces, each once and in order. -/
+theorem I5_itemJobs_lines (j : Jobs) (P : JobPiece → St → List Nat → Prop) (hj : JobsLines j P) (key : Nat) :
+    ∀ (later : List Nat) (prior : Nat) (cursor : St) (r : (Nat × {l : List Nat // l.length ≤ later.length}) × St),
+    itemJobs j key prior cursor later = .ok r → ∃ lss, PieceChain P cursor (itemPieces j key prior later) lss r.2
+  | [], prior, cursor, r, h => by
+    unfold itemJobs itemEnd at h
+    split at h
+    · cases h
+    · rename_i final e
+      injection h with h; subst h
+      obtain ⟨ls, p, st⟩ := hj.itemRest _ _ _ _ e
+      exact ⟨[ls], PieceChain.single p st⟩
+  | next :: more, prior, cursor, r, h => by
+    unfold itemJobs at h
+    by_cases hk : j.itemOf next = some key
+    · rw [if_pos hk] at h
+      split at h
+      · cases h
+      · rename_i c e
+        split at h
+        · cases h
+        · rename_i last' left' hl' placed e'
+          injection h with h; subst h
+          obtain ⟨ls, p, st⟩ := hj.run _ _ _ _ _ e
+          obtain ⟨lss, ch⟩ := I5_itemJobs_lines j P hj key more next c _ e'
+          refine ⟨ls :: lss, ?_⟩
+          simp only [itemPieces, hk, if_true]
+          exact ⟨cursor, c, Step.refl _, p, st, ch⟩
+    · rw [if_neg hk] at h
+      unfold itemEnd at h
+      split at h
+      · cases h
+      · rename_i final e
+        injection h with h; subst h
+        obtain ⟨ls, p, st⟩ := hj.itemRest _ _ _ _ e
+        refine ⟨[ls], ?_⟩
+        simp only [itemPieces, hk, if_false]
+        exact PieceChain.single p st
+
+/-- `jobsFrom` places the lines of its pieces (`jobPieces`), each once and
+    in order, under the premises `JobsLines` on its arguments. -/
+theorem I5_jobsFrom_lines (j : Jobs) (P : JobPiece → St → List Nat → Prop) (hj : JobsLines j P)
+    (prior done : Option Nat) (cursor s : St) (jobs : List Nat) (h : jobsFrom j prior done cursor jobs = .ok s) :
+    ∃ lss, PieceChain P cursor (jobPieces j prior done jobs) lss s := by
+  match jobs with
+  | [] =>
+    rw [jobsFrom] at h
+    obtain ⟨ls, p, st⟩ := hj.finish _ _ _ _ h
+    rw [jobPieces]
+    exact ⟨[ls], PieceChain.single p st⟩
+  | job :: rest =>
+    rw [jobsFrom] at h
+    rw [jobPieces]
+    split at h
+    · rename_i key _
+      split at h
+      · cases h
+      · rename_i ready ho
+        dsimp only at h
+        split at h
+        · cases h
+        · rename_i lastJob left hl pc hr
+          obtain ⟨lo, po, so⟩ := hj.outside _ _ _ _ _ ho
+          obtain ⟨s0, r', ht, hv, m0, m1⟩ := hj.retain _ _ _ hr
+          try simp only at ht
+          split at ht
+          · cases ht
+          · rename_i first hrun
+            obtain ⟨lr, pr, sr⟩ := hj.run _ _ _ _ _ hrun
+            obtain ⟨li, ci⟩ := I5_itemJobs_lines j P hj key rest job first r' ht
+            have fig := I5_itemJobs_figures j key job first rest r' ht
+            rw [hv] at fig
+            obtain ⟨lj, cj⟩ := I5_jobsFrom_lines j P hj (some lastJob) (some key) pc s left h
+            simp only at fig
+            rw [fig.1, fig.2] at cj
+            refine ⟨lo :: lr :: (li ++ lj), ?_⟩
+            refine ⟨cursor, ready, Step.refl _, po, so, s0, first, m0, pr, sr, ?_⟩
+            exact PieceChain.append ci (PieceChain.pre m1 cj)
+    · split at h
+      · cases h
+      · rename_i placed hrun
+        obtain ⟨lr, pr, sr⟩ := hj.run _ _ _ _ _ hrun
+        obtain ⟨lj, cj⟩ := I5_jobsFrom_lines j P hj (some job) none placed s rest h
+        exact ⟨lr :: lj, cursor, placed, Step.refl _, pr, sr, cj⟩
+termination_by jobs.length
+decreasing_by
+  all_goals simp_wf
+  all_goals omega
+
 theorem step_putReserved (env : Env) (reserve : Int) (st s : St) (ls : List Line)
     (h : putReserved env reserve st ls = .ok s) : Step st s (lineIds ls) [] := by
   induction ls generalizing st with

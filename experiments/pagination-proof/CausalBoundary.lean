@@ -411,15 +411,24 @@ def itemStart (m : Ms) (job : Nat) : Nat :=
   | some k => ((indices m).find? fun j => itemAt m j == some k).getD job
   | none => job
 
-/-- `runJob`: the flows before the figure `job` in its item (or since the
-    figure `prior`), the figure (`beginPhysicalWrapAfter`, its id the
-    lines and figures before it), and the paragraphs beside it. -/
-def runJob (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : Except Failure St :=
+/-- The flows before the figure `job` in its item, or since the figure
+    `prior`. -/
+def prefixFlows (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : List Flow :=
   let low :=
     if !m.retaining then after m prior
     else if prior.isSome || (itemAt m job).isSome then max (after m prior) (itemStart m job) else 0
-  let prefixFlows := flowsOf m (slotCount at') (span m low (job - 1) none |>.filter (· < job))
-  let ident := slotCount at' + (prefixFlows.map fun f => match f with | .paragraph _ ls => ls.length | _ => 0).foldl (· + ·) 0
+  flowsOf m (slotCount at') (span m low (job - 1) none |>.filter (· < job))
+
+/-- The id of the figure `job`: the lines and figures placed before it. -/
+def wrapIdent (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : Nat :=
+  slotCount at' + ((prefixFlows m prior job at').map fun f => match f with | .paragraph _ ls => ls.length | _ => 0).foldl (· + ·) 0
+
+/-- `runJob`: the flows before the figure `job` (`prefixFlows`), the
+    figure (`beginPhysicalWrapAfter`, its id the lines and figures before
+    it), and the paragraphs beside it. -/
+def runJob (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (at' : St) : Except Failure St :=
+  let prefixFlows := prefixFlows m prior job at'
+  let ident := wrapIdent m prior job at'
   match stepPrefix e at' [.wrapped ident (extent m.w) []] prefixFlows with
   | .error f => .error f
   | .ok ready =>
@@ -464,6 +473,113 @@ def jobs (e : Env) (m : Ms) : Jobs :=
     itemRest := fun key prior at' => stepAt e m at' ((span m (after m (some prior)) m.us.length none).filter (fun j => itemAt m j == some key)),
     finish := fun prior done at' => stepAt e m at' (span m (after m prior) m.us.length done),
     retain := fun trial at' => if m.retaining then retainPart e m.part trial at' else trial at' }
+
+/-! ### The premises of `I5_jobsFrom_lines` on these manuscripts
+
+`outside`, `itemRest` and `finish` place the lines of their positions, as
+`FParagraph`s numbered from the lines and figures placed before them
+(`stepAt_lines`), and `retainPart` returns one run of its trial
+(`retainPart_retains`).  These are proved.  That `runJob` places the
+lines of the flows before the figure, the figure and then lines numbered
+on from it (`runLines`) is not: `check.sh` checks it at each run in the
+manuscripts (`premiseFailures`). -/
+
+theorem flowsOf_figs (m : Ms) (first : Nat) (ps : List Nat) : sourceFigs (flowsOf m first ps) = [] := by
+  induction ps generalizing first with
+  | nil => rfl
+  | cons i rest ih => unfold flowsOf; split <;> simp [sourceFigs, flowFigs, ih]
+
+theorem stepAt_lines (e : Env) (m : Ms) (c s : St) (ps : List Nat) (h : stepAt e m c ps = .ok s) :
+    Step c s (sourceText (flowsOf m (slotCount c) ps)) [] := by
+  have := step_placeAll inner (level_ok 1) e c _ s h
+  rwa [flowsOf_figs] at this
+
+theorem retainPart_retains (e : Env) (u : PartUnit) {α : Type} (trial : St → Except Failure (α × St)) (at' : St)
+    (r : α × St) (h : retainPart e u trial at' = .ok r) :
+    ∃ s r', trial s = .ok r' ∧ r'.1 = r.1 ∧ Step at' s [] [] ∧ Step r'.2 r.2 [] [] := by
+  unfold retainPart at h
+  dsimp only at h
+  cases ht : trial at' with
+  | error f => rw [ht] at h; cases h
+  | ok p =>
+    obtain ⟨a, placed⟩ := p
+    rw [ht] at h
+    dsimp only at h
+    split at h
+    · injection h with h; subst h; exact ⟨at', (a, placed), ht, rfl, Step.refl _, step_settle _ _ _⟩
+    · cases hm : trial (nextUnit e u at') with
+      | error f => rw [hm] at h; cases h
+      | ok q =>
+        obtain ⟨b, placed'⟩ := q
+        rw [hm] at h
+        dsimp only at h
+        split at h
+        · injection h with h; subst h
+          exact ⟨nextUnit e u at', (b, placed'), hm, rfl, step_nextUnit _ _ _, step_settle _ _ _⟩
+        · split at h
+          · injection h with h; subst h
+            exact ⟨at', (a, placed), ht, rfl, Step.refl _, by simpa using (step_settle e _ placed).trans (step_addUnmet _ _)⟩
+          · injection h with h; subst h
+            exact ⟨nextUnit e u at', (b, placed'), hm, rfl, step_nextUnit _ _ _,
+              by simpa using (step_settle e _ placed').trans (step_addUnmet _ _)⟩
+
+/-- The lines `runJob` places at `c`: those of the flows before the figure,
+    the figure, and lines numbered on from the figure, each once and in
+    order. -/
+def runLines (m : Ms) (prior : Option Nat) (job : Nat) (c : St) (ls : List Nat) : Bool :=
+  let pre := sourceText (prefixFlows m prior job c) ++ [wrapIdent m prior job c]
+  ls.take pre.length == pre && ls.drop pre.length == ids (wrapIdent m prior job c + 1) (ls.length - pre.length)
+
+/-- What each piece of `jobsFrom` places on these manuscripts. -/
+def piecePremise (m : Ms) : JobPiece → St → List Nat → Prop
+  | .outside prior done job, c, ls =>
+    ls = sourceText (flowsOf m (slotCount c) (span m (after m prior) (itemStart m job - 1) done |>.filter (· < itemStart m job)))
+  | .run prior _ job, c, ls => runLines m prior job c ls = true
+  | .rest key prior, c, ls =>
+    ls = sourceText (flowsOf m (slotCount c) ((span m (after m (some prior)) m.us.length none).filter (fun j => itemAt m j == some key)))
+  | .finish prior done, c, ls => ls = sourceText (flowsOf m (slotCount c) (span m (after m prior) m.us.length done))
+
+/-- The premises of `I5_jobsFrom_lines` hold for these manuscripts when
+    `runJob` places `runLines`. -/
+theorem jobs_lines (e : Env) (m : Ms)
+    (hrun : ∀ prior job c s, runJob e m prior job c = .ok s → ∃ ls, runLines m prior job c ls = true ∧ Step c s ls []) :
+    JobsLines (jobs e m) (piecePremise m) where
+  outside := fun _ _ _ c s h => ⟨_, rfl, stepAt_lines e m c s _ h⟩
+  run := fun prior _ job c s h => hrun prior job c s h
+  itemRest := fun _ _ c s h => ⟨_, rfl, stepAt_lines e m c s _ h⟩
+  finish := fun _ _ c s h => ⟨_, rfl, stepAt_lines e m c s _ h⟩
+  retain := by
+    intro α trial at' r h
+    simp only [jobs] at h
+    split at h
+    · exact retainPart_retains e m.part trial at' r h
+    · exact ⟨at', r, h, rfl, Step.refl _, Step.refl _⟩
+
+/-- On these manuscripts, `jobsFrom` places the lines of the positions
+    outside the figures and of the runs of the figures, each piece once and
+    in order, when `runJob` places `runLines`. -/
+theorem I5_causal_jobsFrom_lines (e : Env) (m : Ms)
+    (hrun : ∀ prior job c s, runJob e m prior job c = .ok s → ∃ ls, runLines m prior job c ls = true ∧ Step c s ls [])
+    (s : St) (h : jobsFrom (jobs e m) none none (initial e) ((indices m).filter (isFig m)) = .ok s) :
+    ∃ lss, PieceChain (piecePremise m) (initial e) (jobPieces (jobs e m) none none ((indices m).filter (isFig m))) lss s :=
+  I5_jobsFrom_lines _ _ (jobs_lines e m hrun) _ _ _ _ _ h
+
+/-- `runJob`, failing where it does not place `runLines` and no figures. -/
+def runChecked (e : Env) (m : Ms) (prior : Option Nat) (job : Nat) (c : St) : Except Failure St :=
+  match runJob e m prior job c with
+  | .error f => .error f
+  | .ok s =>
+    if (text s).take (text c).length == text c && figs s == figs c &&
+        runLines m prior job c ((text s).drop (text c).length) then .ok s
+    else .error (.noProgress 1000000)
+
+/-- The manuscripts where a run of `jobsFrom` does not place `runLines`. -/
+def premiseFailures (m : Ms) (lines : Nat) : Bool :=
+  let e := env lines
+  match jobsFrom { jobs e m with run := fun prior _ job at' => runChecked e m prior job at' } none none (initial e)
+      ((indices m).filter (isFig m)) with
+  | .error (.noProgress 1000000) => true
+  | _ => false
 
 def slotText : Int × Slot → String
   | (p, .line i) => s!"{p}:L{i}"
@@ -556,9 +672,18 @@ def inputs : List (String × Ms × Nat) :=
 
 end CausalBoundary
 
-def main : IO Unit := do
+/-- The pages of the manuscripts, or, with `premises`, the manuscripts
+    where a run does not place `runLines` and their number. -/
+def main (args : List String) : IO UInt32 := do
   let out ← IO.getStdout
+  if args == ["premises"] then
+    let failed := CausalBoundary.inputs.filter (fun (_, m, lines) => CausalBoundary.premiseFailures m lines)
+    for (name, _, _) in failed do
+      out.putStrLn s!"runLines fails: {name}"
+    out.putStrLn s!"{CausalBoundary.inputs.length} manuscripts, {failed.length} where a run does not place runLines"
+    return (if failed.isEmpty then 0 else 1)
   for (name, m, lines) in CausalBoundary.inputs do
     out.putStrLn name
     for l in CausalBoundary.output m lines do
       out.putStrLn l
+  return 0

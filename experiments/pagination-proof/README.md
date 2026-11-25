@@ -1313,7 +1313,16 @@ golem-typeset の `causalFreeFlow` のうち、回り込み図版の横の段落
 `jobsFrom` が一度の呼び出しで組む図版の群（`jobGroups`）は、図版を過不足なく順に分ける（`I5_jobGroups_join`）。
 `retain` が試しのどれかの値を返すとき（`RetainOk`）、項目の図版の試しはその群の図版を組み、`jobsFrom` はその群の後の図版から続ける（`I5_jobsFrom_after_group`）。
 `probeNext` と `probeChain` は後続が収まるかを返すだけでカーソルを返さないので、行を置かない。
-`jobsFrom` と `itemJobs` が置く行の過不足と順序は、`outside`、`run`、`itemRest`、`finish`、`retain` が置く行についての仮定を要し、まだ証明していない。
+`jobsFrom` と `itemJobs` は自分では行を置かず、行はすべて `outside`、`run`、`itemRest`、`finish` の呼び出し（`JobPiece`）が置く。
+一度の `jobsFrom` が通る呼び出しの列（`jobPieces`）は図版の列だけから決まり、その列の `run` の図版は、図版の列と過不足なく同じ順に並ぶ（`I5_jobPieces_runs`）。
+`I5_itemJobs_lines` と `I5_jobsFrom_lines` は、前提（`JobsLines`）のもとで、`itemJobs` と `jobsFrom` が置く行が、その列の呼び出しが置く行を一度ずつ順に並べたものであることを示す（`PieceChain`）。
+前提は二つある。
+一つは、`outside`、`run`、`itemRest`、`finish` が、それぞれ呼び出しごとの述語を満たす行を置き、図版を置かないことである。
+もう一つは、`retain` が、行を置かずに進めたカーソルで試しを走らせ、その試しの値と、その試しのカーソルから行を置かずに進めたカーソルを返すことである。
+`CausalBoundary.lean` では、`outside`、`itemRest`、`finish` がその位置の段落の行をちょうど置くこと（`stepAt_lines`）と、`retainPart` が後者の前提を満たすこと（`retainPart_retains`）を証明した（`jobs_lines`）。
+`runJob` が、図版の前のフローの行、図版、図版に続く番号の行をこの順に置くこと（`runLines`）は証明していない。
+`check.sh` は、4864 個の原稿で `runJob` を呼ぶたびにこれを確かめる（`premiseFailures`）。
+`I5_causal_jobsFrom_lines` は、この前提のもとで、これらの原稿の `jobsFrom` が置く行の過不足と順序を与える。
 
 このうち `jobsFrom`、`itemJobs`、`paragraphs`、`parts`、`probeNext`、`probeChain`、`stanza`、`tryVerses`、`accept` は、`CausalBoundary.hs` と `CausalBoundary.lean` で golem-typeset の出力と照合する。
 `CausalBoundary.hs` は、回り込み図版（2 × 3 画素の画像を幅 2zw か 3zw で行の始めに回り込ませたもの）の後に段落か連を置いた原稿と、回り込み図版をリスト項目の中に置いた原稿を、golem-driver のテストの偽のフォントと `alignment = "free"` の設定で golem-typeset の `layoutPdf` に渡し、ページか診断の一覧を書き出す。

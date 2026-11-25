@@ -274,6 +274,13 @@ LEAN_PATH="$tmp" "$lean" --run "$cboundary" > "$tmp/causal-lean"
 diff -u "$tmp/causal-haskell" "$tmp/causal-lean"
 causalInputs=$(grep -c '^[0-9]' "$tmp/causal-lean")
 echo "the $causalInputs manuscripts with a wrapped figure give the same pages in causalFreeFlow's loops of Physical.lean and golem-typeset"
+# The premise of I5_causal_jobsFrom_lines that is not proved: each run of
+# a figure places the lines of runLines (CausalBoundary.lean).
+LEAN_PATH="$tmp" "$lean" --run "$cboundary" premises > "$tmp/causal-premises" || {
+  cat "$tmp/causal-premises" >&2
+  exit 1
+}
+echo "every run of a figure places the lines of runLines in the $causalInputs manuscripts"
 
 # The values of the evaluation of Golem.Layout.KnuthPlass (badness,
 # fitness, line demerits, cumulative widths, the demerits of the chosen
