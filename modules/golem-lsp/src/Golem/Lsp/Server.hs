@@ -41,9 +41,9 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Emet.Outline (emetOutline)
 import Golem.Emet.Outline qualified as O
+import Golem.Evaluate.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features qualified as F
 import Golem.Lsp.FileMove qualified as Move
 import Golem.Lsp.FileRename qualified as R

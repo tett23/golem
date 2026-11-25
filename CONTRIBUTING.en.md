@@ -230,7 +230,7 @@ When raising ghcup, change the ghcup version, the commit of the bootstrap script
 Format Haskell code with fourmolu 0.21.0.0 and resolve every hlint 3.10 hint.
 The `format` job in CI checks both.
 The generated parser (`modules/golem-parser/src/Golem/Parser/Generated.hs`) and the grammar without its labels (`modules/golem-parser/test/StrippedGrammar.hs`) are excluded.
-So are the two modules of golem-driver that `scripts/gen-embedded.sh` generates (`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` and `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`).
+So are the two modules of golem-driver and golem-evaluate that `scripts/gen-embedded.sh` generates (`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` and `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`).
 
 After changing the grammar (`modules/golem-parser/grammar/Golem.hpeg`), regenerate the parser with `scripts/gen-parser.sh` and commit the generated files.
 The script also generates the grammar without its labels; the golem-parser tests check that both grammars accept the same inputs.
@@ -248,7 +248,7 @@ When an item is implemented, remove it from roadmap.md and describe the behavior
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
 
-When you change [docs/diagnostics.md](./docs/diagnostics.md), run `sh scripts/gen-embedded.sh` in the same change and commit the regenerated `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`.
+When you change [docs/diagnostics.md](./docs/diagnostics.md), run `sh scripts/gen-embedded.sh` in the same change and commit the regenerated `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`.
 golem-driver embeds the document through this generated module ([docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)).
 If you forget to regenerate it, the tests of golem-driver and the `build` job of CI fail.
 

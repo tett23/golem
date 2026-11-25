@@ -1,7 +1,7 @@
 {- | @golem lint@ (golem-lint ADR 0001): parse, evaluate to S1, apply the
 rules. Syntax and evaluation errors are reported as well.
 -}
-module Golem.Driver.Lint
+module Golem.Evaluate.Lint
   ( lintProject,
     lintEvaluated,
   )
@@ -11,9 +11,9 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Golem.Assemble (Book (..), LabelTarget (..))
-import Golem.Driver
 import Golem.Emet.Lint (lintProgram)
 import Golem.Eval.File (EvalResult (..))
+import Golem.Evaluate
 import Golem.Lint
 import Golem.Parser (commentBoundaryInfos)
 import Golem.Project

@@ -32,12 +32,12 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
-import Golem.Driver.Lint (lintEvaluated)
 import Golem.Emet (Program, programModules)
 import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
 import Golem.Eval.Value (Value)
+import Golem.Evaluate (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
+import Golem.Evaluate.Lint (lintEvaluated)
 import Golem.Lint
 import Golem.Lsp.FileRename qualified as Rename
 import Golem.Parser (parseAst)
