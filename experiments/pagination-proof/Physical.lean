@@ -3309,6 +3309,69 @@ decreasing_by
   all_goals simp_wf
   all_goals omega
 
+/-- What the loop over the paragraphs beside a wrapped figure reads besides
+    `Beside` and `StanzaArgs`.  `preliminary prior index at` stands for
+    `stepPhysicalCursor` of the controls between `prior` and `index` and of
+    the start break of `index`; `ready prior index at rows` for
+    `stepPhysicalPrefix` of the same flows followed by the rows of `index`
+    (the paragraph, or each verse line of the stanza); `orig i` for the rows
+    of the verse line `i` as composed before, which golem-typeset reads for
+    the verse lines `tryVerses` did not place; and `paragraph index later
+    at` for `paragraph` (the loop `parts`) with the keep of `index` and its
+    `bindingAfter`. -/
+structure Paras where
+  preliminary : Nat → Nat → St → Except Failure St
+  ready : Nat → Nat → St → List (List Line) → Except Failure St
+  orig : Nat → List Line
+  paragraph : Nat → List Nat → St → Except Failure St
+
+/-- The rows of each verse line of a stanza that `paragraphs` steps the
+    prefix with: a verse line `tryVerses` placed is composed at the cursor
+    the verse lines before it left (`starts`), one it did not place keeps
+    the rows composed before. -/
+def verseRows (b : Beside) (p : Paras) : List St → List Nat → List (List Line)
+  | at' :: more, i :: rest => b.compose at' i :: verseRows b p more rest
+  | [], rest => rest.map p.orig
+  | _, [] => []
+
+/-- `paragraphs` of `causalFreeFlow`: the paragraphs and stanzas beside a
+    wrapped figure, in order.  A paragraph goes through `paragraph` and a
+    stanza, the verse lines of one source span (`verseSpan`), through
+    `stanza`.  Each call takes the paragraph or the whole stanza off the
+    front, so it stops by the number of the paragraphs left. -/
+def paragraphs (env : Env) (region : Region) (b : Beside) (a : StanzaArgs) (p : Paras) (prior : Nat) (cursor : St)
+    (indices : List Nat) : Except Failure St :=
+  match indices with
+  | [] => .ok cursor
+  | index :: later =>
+    match p.preliminary prior index cursor with
+    | .error e => .error e
+    | .ok pre =>
+      if b.isStanza index then
+        match tryVerses env region b pre (verseSpan b index later).1 with
+        | .error e => .error e
+        | .ok trials =>
+          match p.ready prior index cursor (verseRows b p (pre :: trials).dropLast (verseSpan b index later).1) with
+          | .error e => .error e
+          | .ok ready =>
+            match stanza env region b a (verseSpan b index later).2 (b.keepOf index) true ready
+                (verseSpan b index later).1 with
+            | .error e => .error e
+            | .ok next =>
+              paragraphs env region b a p (((verseSpan b index later).1.getLast?).getD index) next
+                (verseSpan b index later).2
+      else
+        match p.ready prior index cursor [b.compose pre index] with
+        | .error e => .error e
+        | .ok ready =>
+          match p.paragraph index later ready with
+          | .error e => .error e
+          | .ok next => paragraphs env region b a p index next later
+termination_by indices.length
+decreasing_by
+  all_goals simp_wf
+  all_goals (have := verseSpan_after b index later; omega)
+
 /-! ## Tables -/
 
 /-- The header lines repeated in a later column, without their notes. -/
