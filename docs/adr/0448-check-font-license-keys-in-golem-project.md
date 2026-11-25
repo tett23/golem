@@ -1,6 +1,6 @@
 # ADR 0448: フォントのライセンスのキーの検査を golem-project に置き、golem-lsp が golem-driver に依存しないようにする
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 

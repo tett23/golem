@@ -1,6 +1,6 @@
 # ADR 0445: pdf-screen でも、PDF の図版の色の置換は CMYK のまま書き、SVG とラスターの図版は HTML と同じ値で書く
 
-Status: proposed
+Status: accepted-pending
 
 ## 文脈
 
