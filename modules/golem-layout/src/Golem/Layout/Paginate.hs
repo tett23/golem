@@ -734,6 +734,12 @@ placeRuled env st fr rest = case sJoin st of
       not (isRecto (frBody fr)),
       Just placed <- settleRuled env st fr rest (Just (j, b)) ->
         placed
+  -- a block that cannot share the area in this column starts in the next one, after the rule of its own (root ADR 0449)
+  Just _
+    | frJoined fr,
+      isJust (frBefore fr),
+      not (isRecto (frBody fr)) ->
+        placeRuled env (nextColumn env (flushJoin env st)) fr rest
   Just _ -> placeRuled env (flushJoin env st) fr rest
   Nothing ->
     let st1 = if isRecto (frBody fr) then parityStart env odd st else st

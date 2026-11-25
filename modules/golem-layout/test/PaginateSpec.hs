@@ -9,6 +9,7 @@ separator takes.
 -}
 module PaginateSpec (paginateTests) where
 
+import AdjacentRules (Adjacent (..), adjacentCases, adjacentGrid, gridShared, rulesOverlap)
 import Control.Exception (evaluate)
 import Control.Monad (forM_, replicateM, when)
 import Data.List (sortOn)
@@ -1198,7 +1199,20 @@ joinedRuleTests =
     testCase "I3: two blocks that fit one column still share one area" $ do
       let ps = paginate 1 8 [smallRuled 12 100 False True False (RuledLines defaultKeep (lines' 0 1)), smallRuled 12 101 True False True (RuledLines defaultKeep (lines' 10 1))]
       map poSlots ps @?= [[(0, SLine 0), (4, SLine 10)]]
-      map (map prId . poRules) ps @?= [[100, 101]]
+      map (map prId . poRules) ps @?= [[100, 101]],
+    testCase "root ADR 0449 I1: in the grid placement, a ruled paragraph or heading and the ruled paragraph or heading right after it in the same column share one area at the places of the shared formula" $
+      sequence_
+        [ assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (gridShared ad ps /= Just False)
+        | ad <- adjacentCases,
+          not (adSpace ad),
+          let ps = paginate 1 (adCapacity ad) (adjacentGrid ad)
+        ],
+    testCase "root ADR 0449 I2: in the grid placement, the rules of two adjacent ruled blocks do not overlap" $
+      sequence_
+        [ assertBool (show (ad, [(poNumber p, poSlots p, poRules p) | p <- ps])) (all (null . rulesOverlap ad) ps)
+        | ad <- adjacentCases,
+          let ps = paginate 1 (adCapacity ad) (adjacentGrid ad)
+        ]
   ]
   where
     showFlow = \case
