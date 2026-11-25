@@ -40,7 +40,8 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-html | HTML、XHTML と CSS |
 | golem-epub | EPUB のパッケージ |
 | golem-text | プレーンテキスト（縦書きと横書き） |
-| golem-driver | パイプラインの束ね |
+| golem-evaluate | プロジェクトの評価（S0 と S1）、プラグインと関数の読み込み、lint、diagnostic の説明 |
+| golem-driver | パイプラインの束ねと書き出し（PDF、HTML、EPUB、プレーンテキスト）、プリフライト |
 | golem-lsp | LSP のサーバー |
 | golem-cli | [code: golem] コマンド |
 | golem-fixtures | テストのフィクスチャの変換（開発用） |
@@ -56,13 +57,16 @@ golem-length を使うのは、golem-doc、golem-driver、golem-geometry、golem
 golem-unicode は golem-layout だけが直接使う最下層で、golem-length と同じく図に含めなかった。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0411-segment-graphemes-and-words-in-haskell.md]（docs/adr ADR 0411「書記素と語の分割を Haskell で実装し、依存のないパッケージに置く」）]
 golem-geometry はパスと矩形の型を持つ下の層で、golem-pdf、golem-project、golem-layout、golem-layout-spec、golem-typeset が直接使う。
 図[ref-number fig-modules]には描いていない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0437-paths-and-the-box-model.md]（root ADR 0437「パスとボックスモデルをレイアウトエンジンに入れる」）]
-たとえば golem-cli は golem-driver にも直接依存しているが、golem-lsp を通して届くので、矢印は golem-lsp への一本だけである。
+たとえば golem-cli は golem-evaluate にも直接依存しているが、golem-lsp を通して届くので、golem-evaluate への矢印は描かない。
 
 @label fig-modules
-@figure images/modules.svg alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が typeset、text、epub、lint、plugin、emet を使う。typeset は preflight、layout、layout-spec、font、svg、html を使い、preflight と layout-spec が pdf を使う。emet は eval を、lint と plugin は eval を使い、下の層は project、assemble、doc、parser、syntax と続く。text と html は assemble と bibliography を、assemble は doc と numerals を使う。length は syntax と並ぶ最下層に置き、どちらへの矢印も省いた。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
+@figure images/modules.svg alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp と driver を、lsp が evaluate、fmt、preflight を、driver が evaluate、typeset、text、epub を使う。evaluate は lint、plugin、emet、bibliography を使う。typeset は preflight、layout、layout-spec、font、svg、html を使い、preflight と layout-spec が pdf を使う。emet は eval を、lint と plugin は eval を使い、下の層は project、assemble、doc、parser、syntax と続く。text と html は assemble と bibliography を、assemble は doc と numerals を使う。length は syntax と並ぶ最下層に置き、どちらへの矢印も省いた。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
   パッケージの依存（golem- の接頭辞を省いた）。
 
-上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint、golem-plugin、golem-emet を束ねる。
+上から読むと、golem-cli が golem-lsp と golem-driver を使う。
+golem-evaluate はプロジェクトを評価し、golem-lint、golem-plugin、golem-emet を束ねる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0434-split-evaluation-from-golem-driver.md]（docs/adr の ADR 0434「プロジェクトの評価を golem-driver から新しいパッケージ golem-evaluate に分ける」）]
+golem-driver は golem-evaluate が評価した本から、出力の各パッケージで書き出す。
+golem-lsp は golem-evaluate を使い、golem-typeset などの組版のパッケージに依存しない。
 PDF の組版（行とページを組み、PDF を書くこと）は、golem-typeset が受け持つ。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0192-split-pdf-typesetting-from-golem-driver.md]（docs/adr の ADR 0192「PDF の組版を golem-driver から新しいパッケージに分ける」）]
 golem-emet は関数を書く言語 Emet を持ち、数の演算を golem-eval と共有する（第[ref-number emet]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0160-emet-function-language-core.md]（docs/adr の ADR 0160「関数を書く言語 Emet の核」）]
 golem-preflight は、golem-typeset が PDF を書きながら作る組んだ結果の写し（[code: Golem.Preflight.View]）を、プリフライトの設定に従って検査する。
@@ -156,7 +160,7 @@ hyph-utf8 は欧文の八つの言語（英語の米国と英国、フランス�
 並列化が出力の順序を変えないようにするためである。
 
 [code: golem check] は同じ流れを S1 まで実行し、出力を作らない。
-golem-lsp も golem-driver に依存し、ファイルの変更ごとに S0 と、必要なときは S1 をやり直す（第[ref-number lsp]章）。
+golem-lsp は golem-evaluate に依存し、ファイルの変更ごとに S0 と、必要なときは S1 をやり直す（第[ref-number lsp]章）。
 
 ## import と名前の範囲
 

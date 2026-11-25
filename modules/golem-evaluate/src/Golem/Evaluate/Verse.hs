@@ -1,5 +1,5 @@
 -- | Source-line numbering before the renderers wrap lines (root ADR 0384).
-module Golem.Driver.Verse (numberVerseDocument, numberVerseLines) where
+module Golem.Evaluate.Verse (numberVerseDocument, numberVerseLines) where
 
 import Data.Text qualified as T
 import Golem.Assemble (inlineText)

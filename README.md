@@ -620,7 +620,7 @@ GOLEM="$(cabal list-bin -v0 golem)" scripts/visual/run.sh --accept
 scripts/gen-parser.sh
 ```
 
-golem-driver が埋め込む `VERSION` と `docs/diagnostics.md` も、`scripts/gen-embedded.sh` で生成したモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`）をコミットする。
+golem-driver が埋め込む `VERSION` と golem-evaluate が埋め込む `docs/diagnostics.md` も、`scripts/gen-embedded.sh` で生成したモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`）をコミットする（[docs/adr/0434](./docs/adr/0434-split-evaluation-from-golem-driver.md)）。
 どちらかのファイルを変えたら、同じ変更で生成し直す。
 golem-font に依存するパッケージは、wasm で組むために Template Haskell を使わない（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
 
@@ -798,7 +798,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
   `main` への push では省く。
 - `textlint`：`tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
   何も報告しなかったファイルのキーをキャッシュに保つ（[docs/adr/0258](./docs/adr/0258-textlint-per-file-jobs-and-a-cache-of-clean-results.md)）。
-- `anchors`：`docs/diagnostics.md` か `modules/golem-driver/src/Golem/Driver/Explain.hs` を変えたプルリクエストと `main` への push で、GitHub の API が描いた `docs/diagnostics.md` の HTML に、すべての diagnostic のコードの見出しの `id`（`user-content-g01017` の形）があることを確かめる（`scripts/ci/github-anchors.sh`）。
+- `anchors`：`docs/diagnostics.md` か `modules/golem-evaluate/src/Golem/Evaluate/Explain.hs` を変えたプルリクエストと `main` への push で、GitHub の API が描いた `docs/diagnostics.md` の HTML に、すべての diagnostic のコードの見出しの `id`（`user-content-g01017` の形）があることを確かめる（`scripts/ci/github-anchors.sh`）。
   API から引けないフォークのコミットは飛ばし、`main` への push で確かめる（[docs/adr/0235](./docs/adr/0235-check-the-manual-wat-example-the-diagnostic-anchors-and-the-alloy-models-in-ci.md)）。
 
 #### コードのワークフロー（ci.yml）
@@ -836,7 +836,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 上限は、直近の `main` への push の 20 回の中央値 m から `max(10, ceil(2 × m))` で決める（[ADR 0292](./docs/adr/0292-limit-the-time-of-each-test-suite-by-the-median-of-main.md)）。
 
 ビルドの後に、生成物と出力を確かめる。
-生成したパーサーが文法と一致すること、`scripts/gen-embedded.sh` で生成した golem-driver のモジュールが `VERSION` と `docs/diagnostics.md` と一致すること（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）を確かめる。
+生成したパーサーが文法と一致すること、`scripts/gen-embedded.sh` で生成した golem-driver と golem-evaluate のモジュールが `VERSION` と `docs/diagnostics.md` と一致すること（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）を確かめる。
 `scripts/determinism.sh` の出力を作り、その中で `manual/` と `manual-dev/` を notice も含めて diagnostic を一つも出さずに組む。
 
 x86-64 では、さらに次のことを行う。
@@ -895,6 +895,16 @@ GitHub API が利用上限を返したときは、応答に従って待ってか
 集約ジョブの警告検査でも、ジョブ一覧の取得が利用上限に達したら最大 60 分待つ（[Golem ADR 0349](./docs/adr/0349-retry-ci-job-list-on-rate-limit.md)）。
 全ページを取得してから各ジョブのログを検査する。
 
+待ち終えた後の取り寄せは、`actions/download-artifact` ではなく `scripts/ci/download-artifact.sh` で行う（[docs/adr/0442](./docs/adr/0442-download-the-waited-artifacts-with-retries-checked-by-digest.md)、[docs/adr/0446](./docs/adr/0446-pick-the-newest-artifact-of-a-name-across-attempts.md)）。
+`wait-pdfs.sh` が見つけた直後の成果物を `actions/download-artifact` が見つけられずに失敗したことがあり、このスクリプトは取れるまで取り直す。
+一覧の API で、この実行の同じ名前の期限切れでない成果物のうち `created_at` がいちばん新しいものを選び、その zip を取り寄せて、SHA-256 が成果物の `digest` と一致したら展開する。
+上げる側のジョブを再実行した実行では、前の試行の成果物が同じ名前で一覧に残るので、いちばん新しいものを選ぶ。
+選んだ成果物の id と `created_at` と、名前の一致した成果物の数は標準エラーに書く。
+成果物がない、選んだ成果物に `digest` がない、取り寄せが 404 か利用上限で失敗した、のどれかなら、5 秒おきに 12 回まで取り直す。
+いちばん新しいものが二つ以上あるとき、SHA-256 が一致しないとき、取り寄せがほかの理由（401 や 403 など）で失敗したときは、取り直さずに失敗する。
+成果物の zip を取り寄せるには、トークンに `actions: read` が要る。
+`wasm`、`editors-lsp`、`verapdf` も同じスクリプトで取り寄せる。
+
 上がった `visual-pdfs` を取り寄せ、固定した版の shem で 72 dpi の PPM に描き、ページごとの SHA-256 が `scripts/visual/pages/` の参照と一致することを `scripts/visual/check.sh` で確かめる。
 shem は、shem のアーカイブを `third_party/downloads` に `scripts/visual/fetch-shem.sh` のハッシュをキーにキャッシュし、`fetch-shem.sh` を 10 分の上限で実行して取る。
 戻したアーカイブは SHA-256 を照合してから展開する（[docs/adr/0243](./docs/adr/0243-retry-every-download-and-cache-the-archives-checked-by-sha-256.md)）。
@@ -902,7 +912,7 @@ shem は、shem のアーカイブを `third_party/downloads` に `scripts/visua
 
 失敗したときは、`scripts/visual/report.sh` がジョブの要約に、shem が読めなかった PDF と、変わったページ（違う画素の数と矩形）を書く。
 変わったページの前と後の画像と差分の画像、このコミットの参照の一覧は、成果物 `visual-diff` として上げる。
-前の画像は、ベースのコミットか、その 20 個までの first-parent の祖先の `ci.yml` の push の実行の成果物 `visual-pdfs` から描くので、このジョブだけがトークンに `actions: read` を持つ（[docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)、[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)、[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)、[docs/adr/0096](./docs/adr/0096-before-and-after-images-of-changed-pages.md)）。
+前の画像は、ベースのコミットか、その 20 個までの first-parent の祖先の `ci.yml` の push の実行の成果物 `visual-pdfs` から描くので、このジョブはトークンに `actions: read` を持つ（[docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)、[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)、[docs/adr/0095](./docs/adr/0095-visual-job-in-ci.md)、[docs/adr/0096](./docs/adr/0096-before-and-after-images-of-changed-pages.md)）。
 
 ##### `release-scripts`
 
@@ -944,7 +954,7 @@ Helix は版とアーカイブの SHA-256 で固定する。
 `editors-lsp` は、ヘッドレスの Neovim 0.12.6 で、golem lsp とエディタの文法を `tools/editors/nvim/test.sh` で確かめる（[docs/adr/0231](./docs/adr/0231-run-the-lsp-and-the-editor-grammars-in-headless-neovim-and-helix.md)）。
 確かめるのは、位置の符号化、diagnostic の列の丸め、notice の severity と quickfix と `silence-notices`、空白の semantic tokens とその強調のグループ、`style.toml` と `preflight.toml` の補完の一覧と選んだ後の行、`tools/editors/README.md` の nvim-treesitter を使わない手順である。
 各テストの期待を反転すると失敗することも `--self-test` で確かめる。
-`changes` だけを待ち、`build` の x86-64 の `outputs` が上げる成果物 `golem-linux-x86_64` を `scripts/visual/wait-pdfs.sh` で待つ。
+`changes` だけを待ち、`build` の x86-64 の `outputs` が上げる成果物 `golem-linux-x86_64` を `scripts/visual/wait-pdfs.sh` で待ち、`visual` と同じく `scripts/ci/download-artifact.sh` で取り寄せる（トークンに `actions: read` を持つ）。
 Neovim は `tools/editors/fetch-nvim.sh` が版とアーカイブの SHA-256 で固定する。
 
 ##### `wasm`
@@ -959,7 +969,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 組んだ `golem.wasm` は、二つの方法で確かめる。
 `setup-node` の Node LTS の `node:wasi` で `scripts/wasm/run.mjs` から動かし、エクスポートとインポート、読めない入力の枠、`[plugins]` を書いたマニフェスト（G06106）、同じインスタンスと新しいインスタンスでの繰り返しを確かめる。
-`scripts/wasm/compare.sh` で入力ごとの PDF と diagnostics の JSON と終了コードの SHA-256 の一覧を作り、`build` の x86-64 の `outputs` がネイティブの `golem` で作って上げる一覧 `wasm-native-list` を `scripts/visual/wait-pdfs.sh` で待って、`diff` で比べる。
+`scripts/wasm/compare.sh` で入力ごとの PDF と diagnostics の JSON と終了コードの SHA-256 の一覧を作り、`build` の x86-64 の `outputs` がネイティブの `golem` で作って上げる一覧 `wasm-native-list` を `scripts/visual/wait-pdfs.sh` で待ち、`visual` と同じく `scripts/ci/download-artifact.sh` で取り寄せて（トークンに `actions: read` を持つ）、`diff` で比べる。
 `golem.wasm` と一覧は成果物 `golem-wasm` として上げる。
 
 キャッシュは三つに分ける。
@@ -974,6 +984,7 @@ ghc-wasm-meta の 9.10 の flavour のツールチェーンを `scripts/fetch-gh
 
 `verapdf` は、`build` の x86-64 の `outputs` が上げる成果物 `conformance-pdfs` の PDF を、veraPDF で PDF/A-2a と PDF/UA-1 として検証する（`scripts/ci/verapdf.sh`、[docs/adr/0183](./docs/adr/0183-tagged-pdf-and-pdf-a.md)）。
 `visual` と同じく `changes` だけを待って `build` と同時に始まり、Nix の導入と veraPDF の取得を終えてから、`conformance-pdfs` が上がるのを `scripts/visual/wait-pdfs.sh` で待つ（上限は 60 分、ジョブは 75 分。`outputs` が上げずに終わると失敗する）。
+待ち終えたら、`visual` と同じく `scripts/ci/download-artifact.sh` で取り寄せる（トークンに `actions: read` を持つ）。
 `build` の全体を待たないので、CI の臨界経路にない（[docs/adr/0244](./docs/adr/0244-take-verapdf-off-the-critical-path-of-ci.md)）。
 
 ##### `caches`
@@ -1164,7 +1175,7 @@ step を一つも走らせずに取り消されたジョブは、ジョブの一
 リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 
 - `ci`：`ci.yml` を再利用可能なワークフローとして呼ぶ。
-  呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える。
+  呼び出したワークフローは呼ぶジョブの権限までしか持てないので、`ci.yml` のジョブが求める権限（`visual`、`wasm`、`editors-lsp`、`verapdf` の `actions: read` と、`main` への push でだけ走る `caches` の `actions: write`）を与える。
   `actions: write` を受け取るのは `caches` だけで、タグの push では `caches` は走らない。
   ほかのジョブが `actions: write` を求めないことと、ジョブが求めない権限を与えないことは、`scripts/ci/test.sh` が確かめる（[ADR 0287](./docs/adr/0287-keep-actions-write-of-the-ci-call-in-release-yml-for-the-caches-job-alone.md)）。
 - `version`：`scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる。

@@ -12,8 +12,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
-import Golem.Driver.Explain.Embedded (documentText)
+import Golem.Evaluate.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
+import Golem.Evaluate.Explain.Embedded (documentText)
 import Golem.Layout.Paginate (ColumnSetAt (..), PageOut, PageOutAt (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
@@ -410,7 +410,7 @@ explainTests =
             -- modules/golem-driver/diagnostics.md links to docs/diagnostics.md
             file <- BS.readFile "diagnostics.md"
             assertBool
-              "Golem.Driver.Explain.Embedded differs from docs/diagnostics.md; run sh scripts/gen-embedded.sh"
+              "Golem.Evaluate.Explain.Embedded differs from docs/diagnostics.md; run sh scripts/gen-embedded.sh"
               (TE.encodeUtf8 documentText == file),
           testCase "documentText has the form of the catalog, with a section or more" $
             case parseCatalog documentText of
@@ -604,8 +604,9 @@ sourceCodes = do
   pure (sort (nub (concat codes)))
 
 {- | The folders of the sources of every package: src, and src-plugins and
-src-no-plugins of golem-driver, which its flag plugins chooses between
-(docs/adr/0199); and the app of golem-cli.
+src-no-plugins of golem-evaluate and golem-driver, which their flags
+plugins choose between (docs/adr/0199, root ADR 0434); and the app of
+golem-cli.
 -}
 sourceDirs :: IO [FilePath]
 sourceDirs = do

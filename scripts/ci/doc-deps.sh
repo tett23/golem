@@ -7,7 +7,11 @@
 # the PDF typesetting, depends on none of golem-driver, the evaluation
 # (golem-eval, golem-emet, golem-plugin), the other outputs (golem-epub,
 # golem-text) and the tools (golem-lint, golem-fmt, golem-lsp, golem-cli)
-# (docs/adr/0192).
+# (docs/adr/0192). The library of golem-evaluate, the evaluation of a
+# project, depends on none of golem-driver, golem-typeset, golem-font,
+# golem-layout, golem-html, golem-epub and golem-pdf, and the library of
+# golem-lsp on none of these but golem-pdf, which golem-preflight brings
+# (root ADR 0434).
 #
 #   doc-deps.sh PLAN_JSON
 #
@@ -22,8 +26,8 @@
 # Exit code 1: some do; each is one line on stderr,
 #   `doc-deps: <package> depends on <package>`.
 # Exit code 2: the plan cannot be read, or the library of a package of
-# RULES (golem-doc, golem-bibliography, golem-numerals, golem-typeset) is
-# not in it.
+# RULES (golem-doc, golem-bibliography, golem-numerals, golem-typeset,
+# golem-evaluate, golem-lsp) is not in it.
 set -eu
 
 cannot() {
@@ -43,7 +47,9 @@ jq -e '(type == "object") and (."install-plan" | type == "array")' "$PLAN" >/dev
 RULES='golem-doc golem-assemble golem-bibliography golem-numerals
 golem-bibliography golem-doc
 golem-numerals golem-doc
-golem-typeset golem-driver golem-eval golem-emet golem-plugin golem-epub golem-text golem-lint golem-fmt golem-lsp golem-cli'
+golem-typeset golem-driver golem-eval golem-emet golem-plugin golem-epub golem-text golem-lint golem-fmt golem-lsp golem-cli
+golem-evaluate golem-driver golem-typeset golem-font golem-layout golem-html golem-epub golem-pdf
+golem-lsp golem-driver golem-typeset golem-font golem-layout golem-html golem-epub'
 
 # reached PACKAGE: the pkg-names of the local packages that the library of
 # PACKAGE reaches, one per line; exit code 3 when it has no library

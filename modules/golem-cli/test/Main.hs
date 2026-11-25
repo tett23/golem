@@ -17,8 +17,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import FmtTableSpec (fmtTableTests)
-import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
+import Golem.Evaluate.Explain (catalog)
 import Golem.Syntax.Sha256 (sha256)
 import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import KinsokuSpec (kinsokuTests)

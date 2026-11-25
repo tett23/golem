@@ -6,7 +6,7 @@ The document is read line by line; only the lines that start with @## @,
 @### @, @- 重大度: @ and @- 状態: @ (outside fenced code blocks) carry the
 structure, so no Markdown parser is needed.
 -}
-module Golem.Driver.Explain.Catalog
+module Golem.Evaluate.Explain.Catalog
   ( Status (..),
     Explanation (..),
     parseCatalog,

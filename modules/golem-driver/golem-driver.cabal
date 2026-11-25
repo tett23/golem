@@ -16,12 +16,12 @@ extra-source-files:
   VERSION
   diagnostics.md
 
--- plugins (docs/adr/0199): the plugins of golem-plugin (wasmtime) and golem
--- new. Without it, Golem.Driver.Plugins of src-no-plugins/ reports G06106
--- for a project that uses a plugin; the wasm build turns it off
--- (cabal.project.wasm). golem-cli and golem-lsp build with it.
+-- plugins (docs/adr/0199, root ADR 0434): golem new, Golem.Driver.New of
+-- src-plugins/. The plugins themselves are those of golem-evaluate, which
+-- has a flag plugins of its own; the wasm build turns both off
+-- (cabal.project.wasm). golem-cli builds with it.
 flag plugins
-  description: The plugins (golem-plugin, wasmtime) and golem new
+  description: golem new (golem-plugin)
   default:     True
   manual:      True
 
@@ -33,20 +33,12 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Driver
-                    Golem.Driver.Verse
-                    Golem.Driver.Explain
-                    Golem.Driver.Explain.Catalog
-                    Golem.Driver.Explain.Embedded
-                    Golem.Driver.Functions
                     Golem.Driver.Html
                     Golem.Driver.PageMap
-                    Golem.Driver.Lint
-                    Golem.Driver.Plugins
                     Golem.Driver.Svg
                     Golem.Driver.Version
                     Golem.Driver.Version.Embedded
   other-modules:    Golem.Driver.PageMap.Alignment
-                    Golem.Driver.ProjectVars
   build-depends:
     , aeson         >=2.2 && <2.3
     , base          >=4.20 && <4.21
@@ -57,12 +49,10 @@ library
     , golem-assemble
     , golem-bibliography
     , golem-doc
-    , golem-emet
     , golem-epub
-    , golem-eval
+    , golem-evaluate
     , golem-html
     , golem-length
-    , golem-lint
     , golem-pdf
     , golem-parser
     , golem-preflight
@@ -73,18 +63,15 @@ library
     , golem-typeset
     , text          >=2.0  && <2.2
     , vector        >=0.13 && <0.14
-    , time          >=1.12 && <1.15
   default-language: GHC2021
   if !arch(wasm32)
     c-sources:     cbits/output_lock.c
     build-depends: unix >=2.8 && <3
-  -- the two Golem.Driver.Plugins export the same names and types (docs/adr/0199)
+  -- golem new, only with the plugins (docs/adr/0199, root ADR 0434)
   if flag(plugins)
     hs-source-dirs:  src-plugins
     exposed-modules: Golem.Driver.New
     build-depends:   golem-plugin
-  else
-    hs-source-dirs:  src-no-plugins
 
 -- What the four suites that golem-driver-test was split into share: the
 -- options and the dependencies; each lists its own modules, and the
@@ -179,6 +166,8 @@ test-suite golem-driver-page-test
   import:           driver-suite
   type:             exitcode-stdio-1.0
   main-is:          PageMain.hs
+  -- the modules of golem-evaluate that the tests import (root ADR 0434)
+  build-depends:    golem-evaluate
   other-modules:
     AdjustOrderSpec
     AlignSpaceSpec
@@ -227,6 +216,8 @@ test-suite golem-driver-output-test
   import:           driver-suite
   type:             exitcode-stdio-1.0
   main-is:          OutputMain.hs
+  -- the modules of golem-evaluate that the tests import (root ADR 0434)
+  build-depends:    golem-evaluate
   other-modules:
     BookLanguageSpec
     BuildSpec
@@ -257,6 +248,8 @@ test-suite golem-driver-cli-test
   import:           driver-suite
   type:             exitcode-stdio-1.0
   main-is:          CliMain.hs
+  -- the modules of golem-evaluate that the tests import (root ADR 0434)
+  build-depends:    golem-evaluate
   other-modules:
     CallsSpec
     CliSpec
@@ -324,7 +317,7 @@ test-suite golem-driver-global-test
   if flag(plugins)
     cpp-options:   -DGOLEM_PLUGINS
     other-modules: PluginsSpec
-    build-depends: golem-plugin
+    build-depends: golem-plugin, golem-evaluate
 
 -- Parallel composition on several OS threads (ParallelSpec), in a suite of
 -- its own.

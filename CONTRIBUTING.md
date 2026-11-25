@@ -285,7 +285,7 @@ ghcup を上げるときは、`scripts/release/build-linux.sh` の ghcup のバ�
 Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘をなくす。
 どちらも CI の `format` ジョブで検査する。
 生成したパーサー（`modules/golem-parser/src/Golem/Parser/Generated.hs`）と、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）は対象外である。
-`scripts/gen-embedded.sh` が生成する golem-driver の二つのモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs`）も対象外である。
+`scripts/gen-embedded.sh` が生成する golem-driver と golem-evaluate の二つのモジュール（`modules/golem-driver/src/Golem/Driver/Version/Embedded.hs` と `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs`）も対象外である。
 
 文法（`modules/golem-parser/grammar/Golem.hpeg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
 このスクリプトは、ラベルを外した文法も生成する。
@@ -304,7 +304,7 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
 
-[docs/diagnostics.md](./docs/diagnostics.md) を変えたら、同じ変更で `sh scripts/gen-embedded.sh` を走らせ、生成し直した `modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs` もコミットする。
+[docs/diagnostics.md](./docs/diagnostics.md) を変えたら、同じ変更で `sh scripts/gen-embedded.sh` を走らせ、生成し直した `modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs` もコミットする。
 golem-driver は、この生成したモジュールで文書を埋め込む（[docs/adr/0203](./docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md)）。
 生成し直すのを忘れると、golem-driver のテストと CI の `build` ジョブが失敗する。
 

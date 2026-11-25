@@ -156,8 +156,8 @@ CI の [code: build] ジョブは、[code: scripts/gen-parser.sh] を実行し�
 
 ## 埋め込むモジュールを生成する
 
-golem-driver は、リポジトリのルートの [code: VERSION] と [code: docs/diagnostics.md] を、生成してコミットしたモジュールで埋め込む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
-[code: VERSION] は [code: modules/golem-driver/src/Golem/Driver/Version/Embedded.hs] に、[code: docs/diagnostics.md] は [code: modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs] になる。
+golem-driver はリポジトリのルートの [code: VERSION] を、golem-evaluate は [code: docs/diagnostics.md] を、生成してコミットしたモジュールで埋め込む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0434-split-evaluation-from-golem-driver.md]（docs/adr の ADR 0434「プロジェクトの評価を golem-driver から新しいパッケージ golem-evaluate に分ける」）][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0203-generated-modules-instead-of-template-haskell-in-golem-driver.md]（docs/adr の ADR 0203「golem-driver の Template Haskell を、生成してコミットしたモジュールにする」）]
+[code: VERSION] は [code: modules/golem-driver/src/Golem/Driver/Version/Embedded.hs] に、[code: docs/diagnostics.md] は [code: modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs] になる。
 どちらかのファイルを変えたら、同じ変更で生成し直して生成物もコミットする。
 
 ```sh

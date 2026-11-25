@@ -481,13 +481,13 @@ jobs:
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs modules/golem-emet/src/Golem/Emet/Generated.hs
-      # the modules that embed VERSION and docs/diagnostics.md in golem-driver
-      # in place of Template Haskell (docs/adr/0203)
+      # the modules that embed VERSION in golem-driver and docs/diagnostics.md in
+      # golem-evaluate in place of Template Haskell (docs/adr/0203, root ADR 0434)
       - name: Generated modules match VERSION and docs/diagnostics.md
         if: matrix.tests && matrix.suites == 'rest'
         run: |
           sh scripts/gen-embedded.sh
-          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
+          git diff --exit-code modules/golem-driver/src/Golem/Driver/Version/Embedded.hs modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         if: matrix.outputs || matrix.artifacts || matrix.env
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -861,6 +861,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of wasm-native-list (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     env:
       HOSTTOOLS: ${{ github.workspace }}/third_party/hosttools
       # the templates of the native alex and happy, which they read from
@@ -1030,9 +1034,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' wasm-native-list
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: wasm-native-list
+      # the newest wasm-native-list of the run, checked by its digest and
+      # tried again until it can be downloaded (docs/adr/0442, docs/adr/0446)
+      - name: Download wasm-native-list (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" wasm-native-list .
       - name: The PDFs and the diagnostics of golem.wasm are those of golem (docs/adr/0199, docs/adr/0238 I2)
         run: sh scripts/wasm/compare.sh --check wasm-native-list.txt wasm-list.txt
       # why the toolchain cache missed: the toolchain or the project
@@ -1089,7 +1098,8 @@ jobs:
     timeout-minutes: 75
     runs-on: ubuntu-24.04
     # actions: read for the artifact visual-pdfs of an earlier run, in the
-    # report of a failure; this job only (docs/adr/0035, docs/adr/0096)
+    # report of a failure, and for the zip of visual-pdfs of this run
+    # (docs/adr/0035, docs/adr/0096, docs/adr/0442)
     permissions:
       contents: read
       actions: read
@@ -1128,10 +1138,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: visual-pdfs
-          path: visual-pdfs
+      - name: Download visual-pdfs (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" visual-pdfs visual-pdfs
       # the limit only finds a shem that does not stop; the budget is 2
       # minutes, and a run over it does not fail (docs/adr/0095). --lists
       # keeps the references of these PDFs for the report (docs/adr/0096)
@@ -1222,7 +1234,7 @@ jobs:
             !modules/golem-parser/test/StrippedGrammar.hs
             !modules/golem-emet/src/Golem/Emet/Generated.hs
             !modules/golem-driver/src/Golem/Driver/Version/Embedded.hs
-            !modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs
+            !modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs
       # the archives of the downloads, from the cache of main; each is checked
       # by its SHA-256 before it is used (docs/adr/0243)
       - id: downloads
@@ -1244,7 +1256,7 @@ jobs:
           path: third_party/downloads
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       # -j checks the files on every core of the runner (docs/adr/0037)
-      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Explain/Embedded.hs"'
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs" --ignore-glob="modules/golem-emet/src/Golem/Emet/Generated.hs" --ignore-glob="modules/golem-driver/src/Golem/Driver/Version/Embedded.hs" --ignore-glob="modules/golem-evaluate/src/Golem/Evaluate/Explain/Embedded.hs"'
 
   # The sample plugins and their helper crate (docs/adr/0106): the tests of
   # the crates, and the committed plugins/wasm/*.wasm are the bytes the
@@ -1333,6 +1345,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of golem-linux-x86_64 (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1361,10 +1377,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' golem-linux-x86_64
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: golem-linux-x86_64
-          path: golem-linux-x86_64
+      - name: Download golem-linux-x86_64 (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" golem-linux-x86_64 golem-linux-x86_64
       # an artifact keeps no mode of its files
       - run: chmod +x golem-linux-x86_64/golem
       - name: golem lsp in a headless Neovim (docs/adr/0231)
@@ -1387,6 +1405,10 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 75
     runs-on: ubuntu-24.04
+    # actions: read for the zip of conformance-pdfs (docs/adr/0442)
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1409,10 +1431,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)' conformance-pdfs
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: conformance-pdfs
-          path: conformance-pdfs
+      - name: Download conformance-pdfs (docs/adr/0442)
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/ci/download-artifact.sh "$GITHUB_RUN_ID" conformance-pdfs conformance-pdfs
       - name: The PDFs pass PDF/A-2a and PDF/UA-1
         run: sh scripts/ci/verapdf.sh "$VERAPDF_STORE_PATH/bin/verapdf" conformance-pdfs
 
