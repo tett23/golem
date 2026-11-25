@@ -4,6 +4,7 @@ the layout (S2) are left as 'Ref' and 'Deferred' inlines.
 -}
 module Golem.Eval.File
   ( EvalContext (..),
+    VarImports (..),
     Asset (..),
     PluginHook (..),
     PluginCommand (..),
@@ -115,7 +116,8 @@ data EvalContext = EvalContext
     ctxMeta :: !(Map Text Value),
     -- | the namespace vars, the values of [vars] of manifest.toml (docs/adr/0185)
     ctxVars :: !(Map Text Value),
-    ctxImports :: !(Map FilePath (Map Text Value)), -- exported variables by file
+    -- | the variables the @import lines of variable files give (root ADR 0455)
+    ctxImports :: !VarImports,
     ctxSwatches :: !(Set Text),
     -- | the character styles, built-in ones included (docs/adr ADR 0005)
     ctxCharStyles :: !(Set Text),
@@ -133,6 +135,21 @@ data EvalContext = EvalContext
     -- | the functions of the .emet of the project (docs/adr/0162)
     ctxFunctions :: !FunctionTable
   }
+
+{- | The variables the @import lines of variable files give (root ADR
+0455). The evaluation of a project resolves each line through the import
+graph and gives the variables the file it points at exports, by the path
+as the line writes it; the evaluation of a file outside a project does not
+resolve them, and an @import of a variable file is then as one of a .emet
+that could not be loaded.
+-}
+data VarImports = ResolvedImports !(Map Text (Map Text Value)) | UnresolvedImports
+
+-- | The variables an @import of a path gives; Nothing when the evaluation does not resolve the imports.
+importedVars :: EvalContext -> Text -> Maybe (Map Text Value)
+importedVars ctx path = case ctxImports ctx of
+  ResolvedImports m -> Just (Map.findWithDefault Map.empty path m)
+  UnresolvedImports -> Nothing
 
 -- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
 data Asset
@@ -216,7 +233,10 @@ data St = St
     -- | the variables listed by @import
     stListedVars :: !(Map Text Value),
     stListedSites :: ![(Text, FilePath, SrcSpan)],
-    stListedRefs :: !(Set Text)
+    stListedRefs :: !(Set Text),
+    -- | the names listed by, and the namespaces of, the @import lines of variable files the evaluation does not resolve (root ADR 0455)
+    stUnresolvedVars :: !(Set Text),
+    stUnresolvedNamespaces :: !(Set Text)
   }
 
 -- | Where .gm uses a name: an inline command, a block command, or an expression (root ADR 0451).
@@ -274,7 +294,7 @@ evalFile ctx0 (A.File fid blocks0) =
       fileStyle = withLocalStyles (ctxStyle ctx0) local
       -- meta and vars, which every file reads without @import (docs/adr/0185)
       st0 =
-        (St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty)
+        (St Map.empty (Map.fromList [("meta", ctxMeta ctx), ("vars", ctxVars ctx)]) Map.empty [] Set.empty Map.empty [] 0 0 0 (settingDiags <> styleDiags <> exceptionDiags) Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty)
           { stFileImports = rights (importsOf (A.File fid blocks0)),
             stSetNames = Set.fromList (concatMap setNames blocks0)
           }
@@ -555,7 +575,7 @@ splitParagraph = concatMap paragraph . chunks
 -- ------------------------------------------------------------------ blocks
 
 env :: M Env
-env = gets (\s -> Env (Map.union (stVars s) (stListedVars s)) (stNamespaces s) (stFunctions s) (Map.fromList [(n, r) | ((ExprSpace, n), r) <- Map.toList (stListedFns s)]))
+env = gets (\s -> Env (Map.union (stVars s) (stListedVars s)) (stNamespaces s) (stFunctions s) (Map.fromList [(n, r) | ((ExprSpace, n), r) <- Map.toList (stListedFns s)]) (stUnresolvedVars s) (stUnresolvedNamespaces s))
 
 block :: SrcSpan -> BlockBody -> Block
 block sp = Block sp Nothing Nothing
@@ -640,8 +660,10 @@ standalone ctx sp (A.Located nsp name) args body = case name of
                       _ -> Unloaded
                  in modify' (\s -> s {stFunctions = Map.insert ns ref (stFunctions s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
               else do
-                let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
-                modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
+                -- a namespace of an @import the evaluation does not resolve: its references report nothing (root ADR 0455)
+                let vals = importedVars ctx path
+                    unresolvedNs = if isNothing vals then Set.insert ns else Set.delete ns
+                modify' (\s -> s {stNamespaces = Map.insert ns (fromMaybe Map.empty vals) (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)], stUnresolvedNamespaces = unresolvedNs (stUnresolvedNamespaces s)})
       Left d -> report d
     pure []
   "toc" -> do
@@ -709,9 +731,11 @@ listedFunction space name = do
 
 {- | What a path an @import lists names of gives (root ADR 0451): the
 functions of a .emet, the variables of a .gm, or nothing to check for a
-.emet that could not be loaded, whose names report nothing.
+.emet that could not be loaded, whose names report nothing, and for a
+variable file whose @import the evaluation does not resolve, whose
+references in the expressions report nothing (root ADR 0455).
 -}
-data ListedSource = FromEmet !FunctionNamespace | FromVars !(Map Text Value) | Unchecked
+data ListedSource = FromEmet !FunctionNamespace | FromVars !(Map Text Value) | Unchecked | UnresolvedVars
 
 listedSource :: EvalContext -> Text -> ListedSource
 listedSource ctx path
@@ -720,7 +744,7 @@ listedSource ctx path
        in case normalizeRelative (T.unpack path) >>= \p -> maybe (Left Missing) Right (Map.lookup p (ftFiles table)) of
             Right fns | not (ftUnloaded table) -> FromEmet fns
             _ -> Unchecked
-  | otherwise = FromVars (fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx)))
+  | otherwise = maybe UnresolvedVars FromVars (importedVars ctx path)
 
 -- | The spaces of use a source gives a name in; Nothing for one that is not checked.
 listedSpaces :: ListedSource -> Text -> Maybe [Space]
@@ -728,6 +752,7 @@ listedSpaces src n = case src of
   FromEmet fns -> Just ([InlineSpace | Map.member n (fnInline fns)] <> [BlockSpace | Map.member n (fnBlock fns)] <> [ExprSpace | Map.member n (fnExpr fns)])
   FromVars vals -> Just [ExprSpace | Map.member n vals]
   Unchecked -> Nothing
+  UnresolvedVars -> Nothing
 
 {- | The names of the built-in commands, by space of use (G02270): every
 name the evaluation reads as built in without a namespace.
@@ -762,6 +787,10 @@ listedImport ctx sp path names = do
       one (i, (n, nsp))
         | n `elem` reservedNames = err "G02275" nsp ("予約語は取り込む名前に使えません: " <> n)
         | otherwise = case listedSpaces src n of
+            -- a variable of an @import not resolved: only its references in the expressions report nothing (root ADR 0455)
+            Nothing | UnresolvedVars <- src -> do
+              note n nsp
+              modify' (\st -> st {stUnresolvedVars = Set.insert n (stUnresolvedVars st)})
             Nothing -> do
               note n nsp
               mapM_ (\s -> put' s n Unloaded) [InlineSpace, BlockSpace, ExprSpace]
@@ -787,6 +816,7 @@ listedImport ctx sp path names = do
                           FromEmet fns -> put' s n (Loaded fns)
                           FromVars vals -> mapM_ (\v -> modify' (\st -> st {stListedVars = Map.insert n v (stListedVars st)})) (Map.lookup n vals)
                           Unchecked -> pure ()
+                          UnresolvedVars -> pure ()
                 kept
   mapM_ one (zip [0 :: Int ..] names)
   where
@@ -2027,7 +2057,7 @@ them: the diagnostics, and whether the figure passes.
 -}
 figureChecks :: EvalContext -> SrcSpan -> Figure -> ([Diagnostic], Bool)
 figureChecks ctx sp f =
-  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty
+  let st0 = St Map.empty Map.empty Map.empty [] Set.empty Map.empty [] 0 0 0 [] Map.empty Map.empty [] [] [] [] Map.empty [] Set.empty Map.empty Map.empty [] Set.empty Set.empty Set.empty
       (ok, st) = runState (checkFigure sp (fmap isJust . asset ctx sp) f) st0
    in (stDiags st, ok)
 
