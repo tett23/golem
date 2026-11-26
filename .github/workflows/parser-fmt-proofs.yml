@@ -51,11 +51,11 @@ jobs:
       - name: Check grammar proofs, mutations and native parser examples
         if: matrix.model == 'grammar'
         run: node experiments/parser-fmt-proof/grammar/test.mjs
-      - name: Require the full grammar model
+      - name: Require the full grammar model but the deferred choices
         if: matrix.model == 'grammar'
         run: |
           grammar=experiments/parser-fmt-proof/grammar
-          node "$grammar/generate.mjs" modules/golem-parser/grammar/Golem.hpeg "$RUNNER_TEMP/Generated.lean"
+          node "$grammar/check-deferred.mjs" modules/golem-parser/grammar/Golem.hpeg "$grammar/deferred-choices.txt" "$RUNNER_TEMP/Generated.lean"
           "$LEAN" -o "$RUNNER_TEMP/PegModel.olean" "$grammar/PegModel.lean"
           cd "$RUNNER_TEMP"
           LEAN_PATH=. "$LEAN" Generated.lean

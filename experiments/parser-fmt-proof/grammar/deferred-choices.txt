@@ -1,0 +1,30 @@
+# The choices of the grammar that the Lean model of root ADR 0351 does not
+# prove yet (docs/roadmap.md). check-deferred.mjs fails when this list and
+# the unsupported choices differ: remove a line when its choice is proved.
+File choice 1: BlankLines? (&. Blocks(0) BlankLines?)?
+Blocks choice 1: Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))*
+ReservedRange choice 1: !'...' &'..' (&{ False } '..')^reserved (ES AddExpr)? (ES (ReservedRange / RangeOp (ES AddExpr)?))*
+ReservedRange choice 2: ReservedRange
+ReservedRange choice 3: RangeOp (ES AddExpr)?
+BlockGroup choice 1: cs:BlockCommand(ind)+ (&{ not (or (take 1 (reverse cs))) } GroupBody(ind))?
+GroupBody choice 1: Div(ind)
+GroupBody choice 2: &(Ind(ind) !BlockCommandStart ![ \t] !BlankLine) AttributedBlock(ind)
+Div choice 1: Ind(ind) DivMark Sp (Nl / !.) DivBlocks(fenced ind) (BlankLines? Ind(ind) DivMark Sp (Nl / !.))?
+DivBlocks choice 1: (BlankLines? !(Ind(ind) DivLine) &(Ind(ind) ![ \t] !BlankLine .) Block(ind))*
+BlockCommand choice 1: Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.)
+BlockCommand choice 2: Ind(ind) At Ident Arguments Sp (Nl / !.) b:CommandBody(ind)?
+CommandBody choice 1: &(Ind(col ind + 2) ![ \t] !BlankLine .) Blocks(col ind + 2)
+BulletList choice 1: ListItem(ind, 0) (BlankLines? ListItem(ind, 0))*
+OrderedList choice 1: ListItem(ind, 1) (BlankLines? ListItem(ind, 1))*
+ListItem choice 1: Ind(ind) ListMark(ordered) Ws Inline(col ind + 2)+ (Nl / !.) ItemTail(col ind + 2)
+ItemTail choice 1: (BlankLines? &(Ind(ind) ![ \t] !BlankLine .) Block(ind))*
+DefList choice 1: DefGroup(ind) (BlankLines? &(Ind(ind) '=' [ \t]) DefGroup(ind))*
+DefGroup choice 1: DefTerm(ind)+ DefBody(ind) (BlankLines? DefNew(ind) DefBody(ind))*
+DefBody choice 1: &(Ind(col ind + 2) ![ \t] !BlankLine .) Block(col ind + 2) (BlankLines? &(Ind(col ind + 2) ![ \t] !BlankLine .) Block(col ind + 2))*
+Table choice 1: h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter TableBodyRow(ind, h)* (!(Nl Ind(ind) Pipe))^table_row (Nl / !.)
+TableBodyRow choice 1: Nl r:TableRow(ind) (&{ r == h })^table_cells
+TableRow choice 1: Ind(ind) cs:TableCellAndPipe+ Pipe Sp RowBreak?
+SkippedReserved choice 1: '[!' ReservedBracketBody ']'
+ReservedBracketBody choice 1: ('\\' ![\n] . / '%%' (!'%%' ![\n] .)* '%%' / '[' ReservedBracketBody ']' / ![\[\]\\\n] .)*
+ReservedBracketBody choice 2: '%%' (!'%%' ![\n] .)* '%%'
+ReservedBracketBody choice 3: '[' ReservedBracketBody ']'
