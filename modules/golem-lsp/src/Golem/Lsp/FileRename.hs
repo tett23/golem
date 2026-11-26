@@ -98,6 +98,7 @@ planImportsWith strict rewrite source = do
       raw sp = TE.decodeUtf8 (BS.take (spanEnd sp - spanStart sp) (BS.drop (spanStart sp) bytes))
       sites (A.Located _ (A.BlockCommand (A.Located _ name) args body)) = commandSites name args <> concatMap sites body
       sites (A.Located _ (A.Attributed commands inner)) = concatMap sites commands <> maybe [] sites inner
+      sites (A.Located _ (A.Fenced inner)) = concatMap sites inner
       sites (A.Located _ (A.BulletList items)) = concatMap (concatMap sites) items
       sites (A.Located _ (A.OrderedList items)) = concatMap (concatMap sites) items
       sites (A.Located _ (A.DefList groups)) = concatMap (concatMap (concatMap sites) . A.dgDefs) groups

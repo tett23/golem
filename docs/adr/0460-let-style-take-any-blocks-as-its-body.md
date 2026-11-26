@@ -1,6 +1,6 @@
 # ADR 0460: `@style` の本体に、段落のほかのブロックも置けるようにする
 
-Status: accepted-pending
+Status: accepted
 
 ## 文脈
 

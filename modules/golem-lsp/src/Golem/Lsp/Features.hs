@@ -28,6 +28,7 @@ module Golem.Lsp.Features
     formatting,
     Outline (..),
     outline,
+    foldingRanges,
     Encoding (..),
     toLineCol,
     fromLineCol,
@@ -168,6 +169,7 @@ occurrences file@(File _ bs) = concatMap block bs
       SetVar (Located vsp v) e -> (vsp, OccVar Nothing v) : expr e
       BlockCommand (Located nsp name) args body -> [(nsp, OccCommand False name) | called name] <> blockCommand sp name args <> concatMap block body
       Attributed cs t -> concatMap block cs <> maybe [] block t
+      Fenced fbs -> concatMap block fbs
       _ -> []
     blockCommand importSp name args = case (name, args) of
       ("import", Located asp (Positional (Word p)) : _) -> (asp, OccImport p) : listedIn importSp p args
@@ -690,6 +692,7 @@ codeBlockAt off (File _ blocks) = any inside blocks
       CodeBlock {} -> spanStart sp <= off && off < spanEnd sp
       BlockCommand _ _ body -> any inside body
       Attributed commands body -> any inside commands || maybe False inside body
+      Fenced fbs -> any inside fbs
       BulletList items -> any (any inside) items
       OrderedList items -> any (any inside) items
       DefList groups -> any (any (any inside) . dgDefs) groups
@@ -1199,6 +1202,7 @@ outline ws path = case sourceOf ws path of
     h (Located sp b) = case b of
       Heading l is -> [(sp, l, is)]
       Attributed _ (Just t) -> h t
+      Fenced fbs -> concatMap h fbs
       _ -> []
     title src is = T.strip (T.concat (map (piece src) is))
     piece src (Located sp i) = case i of
@@ -1211,6 +1215,29 @@ outline ws path = case sourceOf ws path of
     nest (o : rest) =
       let (kids, others) = span ((> olLevel o) . olLevel) rest
        in o {olChildren = nest kids} : nest others
+
+-- ------------------------------------------------------------------ folding ranges
+
+{- | The folding ranges of a source (root ADR 0459): for each body between
+::: lines, the line that opens and the line that closes, or the last line
+of the body when it is not closed; zero-based, in the order of the lines
+that open.
+-}
+foldingRanges :: Text -> [(Int, Int)]
+foldingRanges text = sortOn fst (walk 0 (fst (parse (FileId 0) text)))
+  where
+    bytes = TE.encodeUtf8 text
+    lineAt off = BS.count 10 (BS.take off bytes)
+    walk start n =
+      let placed = zip (scanl (+) start (map C.elementWidth (C.nodeChildren n))) (C.nodeChildren n)
+          here = case C.nodeKind n of
+            C.NDiv ->
+              case [off | (off, C.ElemToken t) <- placed, C.tokKind t == C.KDivMark] of
+                [open] -> [(lineAt open, lineAt (max open (start + C.nodeWidth n - 1)))]
+                (open : close : _) -> [(lineAt open, lineAt close)]
+                [] -> []
+            _ -> []
+       in here <> concat [walk off m | (off, C.ElemNode m) <- placed]
 
 -- ------------------------------------------------------------------ semantic tokens
 
@@ -1370,6 +1397,8 @@ tokenType (Place parent inExpr first idents word) = \case
   C.KPipe -> plain SemanticTokenTypes_Operator
   C.KDelim -> plain SemanticTokenTypes_Operator
   C.KFence -> plain SemanticTokenTypes_Keyword
+  -- the ::: of the lines around a body (root ADR 0459)
+  C.KDivMark -> plain SemanticTokenTypes_Keyword
   -- \*[ and **[ and their closing bracket (golem-lsp ADR 0008)
   k | parent == C.NSplatArgument, k `elem` [C.KStar, C.KRBracket] -> plain SemanticTokenTypes_Operator
   -- the spaces of commands and expressions, without the indentation of a
@@ -1403,6 +1432,7 @@ setSites (File _ bs) = concatMap go bs
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
       BlockCommand _ _ body -> concatMap go body
       Attributed cs t -> concatMap go cs <> maybe [] go t
+      Fenced fbs -> concatMap go fbs
       _ -> []
 
 setNamesOf :: Source -> [Text]

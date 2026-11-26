@@ -102,6 +102,7 @@ summaryOf ast res =
       A.Heading l is -> [show (l, is)]
       -- the file settings change that file alone (docs/adr ADR 0014)
       A.Attributed cs t -> [show c | x@(A.Located _ c) <- cs, not (isSettingCommand x)] <> maybe [] blk t
+      A.Fenced fbs -> concatMap blk fbs
       A.BlockCommand _ _ body -> concatMap blk body
       A.BulletList items -> concatMap (concatMap blk) items
       A.OrderedList items -> concatMap (concatMap blk) items

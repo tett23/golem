@@ -458,7 +458,17 @@ handlers encVar rootVar plotVar wikiVar moveWorkspace wsVar gen watchVar lock di
                   ws <- mws
                   _ <- sourceOf ws p
                   pure (map (symbol enc (lineIndexOf ws p)) (F.outline ws p))
-        respond (Right (InR (InL syms)))
+        respond (Right (InR (InL syms))),
+      -- the bodies between ::: lines (root ADR 0459)
+      requestHandler SMethod_TextDocumentFoldingRange $ \(TRequestMessage _ _ _ (FoldingRangeParams _ _ (TextDocumentIdentifier docUri))) respond -> do
+        st <- state
+        mws <- liftIO (readTVarIO wsVar)
+        let ranges = fromMaybe [] $ do
+              p <- relPath st docUri
+              ws <- mws
+              src <- sourceOf ws p
+              pure [FoldingRange (fromIntegral a) Nothing (fromIntegral b) Nothing (Just FoldingRangeKind_Region) Nothing | (a, b) <- F.foldingRanges (srcText src)]
+        respond (Right (InL ranges))
     ]
   where
     state = do

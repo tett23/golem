@@ -46,6 +46,7 @@ block = \case
   SetVar n e -> SetVar (unspan id n) (unspan expr e)
   BlockCommand n args body -> BlockCommand (unspan id n) (map (unspan argument) args) (map (unspan block) body)
   Attributed as b -> Attributed (map (unspan block) as) (fmap (unspan block) b)
+  Fenced bs -> Fenced (map (unspan block) bs)
   ErrorBlock -> ErrorBlock
 
 inlines :: [Located Inline] -> [Located Inline]

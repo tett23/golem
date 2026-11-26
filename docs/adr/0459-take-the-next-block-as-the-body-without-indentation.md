@@ -1,6 +1,6 @@
 # ADR 0459: 続けて書いたブロックコマンドを一つのコマンドとし、字下げしない次のブロックと `:::` で囲んだブロックを本体として受け取る
 
-Status: accepted-pending
+Status: superseded [{"part":"今の原稿で変わる出力","by":["docs/adr/0460-let-style-take-any-blocks-as-its-body.md"],"kind":"supplement"}]
 
 ## 文脈
 

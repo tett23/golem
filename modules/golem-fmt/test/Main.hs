@@ -306,6 +306,19 @@ tests =
         ],
       testCase "code blocks and comments are untouched" $
         formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n",
+      testCase "root ADR 0459 I7: the three forms of a body stay as they are" $
+        mapM_
+          (\s -> formatted s @?= s)
+          [ "@stage-direction\n  一\n",
+            "@stage-direction\n一\n",
+            "@stage-direction\n:::\n一\n\n二\n:::\n",
+            "@a\n:::\n@b\n:::\n一\n\n二\n:::\n\n三\n:::\n",
+            "@a\n:::\n@figure x.png\n\n:::\n"
+          ],
+      testCase "root ADR 0459 I7: the blocks between ::: lines are formatted as a body without indentation" $ do
+        let s = "@stage-direction   x\n:::\n一   \n\n\n\n二\n:::   \n"
+        formatted s @?= "@stage-direction x\n:::\n一\n\n二\n:::\n"
+        astFingerprint (formatted s) @?= astFingerprint s,
       tableTests,
       grammarRoundTrips
     ]

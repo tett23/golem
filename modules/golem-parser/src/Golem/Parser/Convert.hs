@@ -43,6 +43,7 @@ kindForRule = \case
   "BlockGroup" -> Just NAttributed
   "BlockCommand" -> Just NBlockCommand
   "CommandBody" -> Just NCommandBody
+  "Div" -> Just NDiv
   "BulletList" -> Just NBulletList
   "OrderedList" -> Just NOrderedList
   "ListItem" -> Just NListItem
@@ -82,6 +83,7 @@ kindForToken = \case
   "Number" -> KNumber
   "StringLit" -> KString
   "Fence" -> KFence
+  "DivMark" -> KDivMark
   "CodeLine" -> KCodeText
   "Lang" -> KWord
   "LBr" -> KLBracket

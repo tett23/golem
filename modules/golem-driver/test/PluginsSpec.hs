@@ -281,6 +281,17 @@ blockCommandTests =
       withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n[grid]\n\n@nope\n" $ \tmp -> do
         r <- build (defaultOptions tmp)
         map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
+    testCase "root ADR 0459 I1: a block command of a plugin takes the next paragraph as its body" $ do
+      let shape (bs, ds) = ([(blockLabel b, blockLang b, [t | Paragraph _ is <- [blockBody b], Text _ t <- is]) | b <- bs], ds)
+      next <- withBlockProject [("gr", "grid.wat", "")] "@grid\n本文\n" (fmap shape . blocksOf)
+      indented <- withBlockProject [("gr", "grid.wat", "")] "@grid\n  本文\n" (fmap shape . blocksOf)
+      -- grid.wat reads no body: both forms pass the paragraph to it, and both fail alike
+      next @?= indented
+      assertBool "no G02011" (DiagnosticCode "G02011" `notElem` map fst (snd next)),
+    testCase "root ADR 0459 I5: no G02011 for a block command left unknown after a plugin failed to load" $
+      withBlockProject [("gr", "grid.wat", "data = { table = \"none.tsv\" }\n")] "@grid\n\n@nope\n本文\n" $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06101", DiagnosticCode "G06102"],
     testCase "G06006: two plugins with the same block command" $
       withBlockProject [("a", "grid.wat", ""), ("b", "grid.wat", "")] "本文\n" $ \tmp -> do
         r <- build (defaultOptions tmp)

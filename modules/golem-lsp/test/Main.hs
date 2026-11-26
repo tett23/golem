@@ -203,6 +203,14 @@ tests =
         map (slice ws) (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["n-one"]
         map locPath (definition ws "b.gm" (offsetIn src "n-one]" 1)) @?= ["b.gm"]
         fmap (map snd) (renameLabel ws "b.gm" (offsetIn src "n-one]" 1) "n-first") @?= Right ["n-first", "n-first"],
+      testCase "root ADR 0459: completion and definition in a body between ::: lines, and its folding range" $ do
+        ws0 <- openWorkspace root
+        let src = "@label sec\n:::\n# 見出し\n\n本文 [ref-title sec]。\n:::\n\n@stage\n:::\n一\n\n@note n\n:::\n二\n\n三\n:::\n\n:::\n\n[ref-page sec]\n"
+        ws <- updateFile ws0 "b.gm" src
+        assertBool "labels" ("sec" `elem` map cmpLabel (completions ws "b.gm" (offsetIn src "[ref-title " 11)))
+        map (slice ws) (definition ws "b.gm" (offsetIn src "sec]。" 1)) @?= ["sec"]
+        map (slice ws) (definition ws "b.gm" (offsetIn src "sec]\n" 1)) @?= ["sec"]
+        foldingRanges src @?= [(1, 5), (8, 18), (12, 16)],
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
