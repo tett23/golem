@@ -397,7 +397,7 @@ checkTests =
     testCase "G09008: a gray ICC profile is allowed where gray is" $
       only "G09008" (check printRules (imagePage [vector [UseIcc 1 "p", UseCmyk]])) @?= [],
     testCase "an SVG figure is rgb for G09008 and not checked by G09006, G09007 and G09009 (golem-pdf ADR 0009)" $ do
-      let iv = ImageView (Rect (mm 20) (mm 20) (inch 100) (inch 100)) (SvgFigure (Drawing (10, 10) [])) srcSpan "images/a.svg" False
+      let iv = ImageView (Rect (mm 20) (mm 20) (inch 100) (inch 100)) (SvgFigure (Drawing (10, 10) [] [1, 0, 0, 1, 0, 0])) srcSpan "images/a.svg" False
           r = printRules {ruImageResolutionMax = LevelWarning, ruColorMax = 1}
       map (lookup "color-space" . diagFacts) (only "G09008" (check printRules (imagePage [iv]))) @?= [Just (FactText "rgb")]
       only "G09006" (check printRules (imagePage [iv])) @?= []

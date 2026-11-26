@@ -92,6 +92,7 @@ test-suite golem-layout-test
                     AvoidSpec
                     BookPartsEnum
                     BoxModelSpec
+                    WrapOutlineSpec
                     BookPartsSpec
                     ExtendedJapaneseSpec
                     AkiTableSpec

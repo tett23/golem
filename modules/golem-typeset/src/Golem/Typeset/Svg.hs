@@ -28,7 +28,7 @@ import Golem.Typeset.FigureColor (Cmyk, rgbTone)
 
 -- | The drawing of an SVG in the terms of golem-pdf.
 svgDrawing :: S.Svg -> P.Drawing
-svgDrawing s = P.Drawing (S.svgSize s) (map item (S.svgDrawing s))
+svgDrawing s = P.Drawing (S.svgSize s) (map item (S.svgDrawing s)) (let S.Matrix a b c d e f = S.svgViewBox s in [a, b, c, d, e, f])
   where
     item = \case
       S.DPath p segs -> P.DrawPath (paint p) (map seg segs)
@@ -139,7 +139,7 @@ recolorFigure _ figure = figure
 
 -- | A self-contained SVG of the supported drawing subset, preserving geometry.
 drawingSvg :: P.Drawing -> Text
-drawingSvg (P.Drawing (width, height) items) =
+drawingSvg (P.Drawing (width, height) items _) =
   "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" <> number width <> "\" height=\"" <> number height <> "\" viewBox=\"0 0 " <> number width <> " " <> number height <> "\">" <> children "g" items <> "</svg>"
   where
     number = showRationalDigits 12

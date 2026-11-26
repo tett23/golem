@@ -38,8 +38,12 @@ import Golem.Eval.Value (Value (..), numberOf)
 import Golem.Syntax
 import Numeric.Natural (Natural)
 
--- | What a node carries that its fields do not show: its span, the label of a block or a note (root ADR 0422), the language of a block, the number of a note.
-data Hidden = Hidden !SrcSpan !(Maybe Text) !(Maybe Text) !Int
+{- | What a node carries that its fields do not show: its span, the label
+of a block or a note (root ADR 0422), the language of a block, the number
+of a note, and the outline of a figure (root ADR 0464), which the data
+type of a figure does not have, so a filter passes it through.
+-}
+data Hidden = Hidden !SrcSpan !(Maybe Text) !(Maybe Text) !Int !(Maybe Text)
 
 -- | What the nodes that came in carry, by their indexes.
 data Carried = Carried
@@ -152,9 +156,9 @@ encodeInline = \case
     modify' (\s -> s {cDeferred = cDeferred s Seq.|> e})
     at sp "Deferred" [con "Opaque" [nat j]]
   -- the label of a note is carried as that of a block (root ADR 0422)
-  Note sp n lbl bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp lbl Nothing n)
-  Sidenote sp n lbl bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp lbl Nothing n)
-  Endnote sp n lbl bs -> encodeBlocks bs >>= \b -> node "Endnote" [b] (Hidden sp lbl Nothing n)
+  Note sp n lbl bs -> encodeBlocks bs >>= \b -> node "Note" [b] (Hidden sp lbl Nothing n Nothing)
+  Sidenote sp n lbl bs -> encodeBlocks bs >>= \b -> node "Sidenote" [b] (Hidden sp lbl Nothing n Nothing)
+  Endnote sp n lbl bs -> encodeBlocks bs >>= \b -> node "Endnote" [b] (Hidden sp lbl Nothing n Nothing)
   -- the kind of a mark (docs/adr/0265)
   IndexMark sp (IndexEntry ts rs k) -> at sp "IndexMark" [RList (map str ts), RList (map str rs), indexKind k]
   -- the items of a citation (docs/adr/0266)
@@ -171,7 +175,7 @@ encodeInline = \case
   (docs/adr/0215): a resolved one would be the reference as written -}
   Resolved sp k l _ -> at sp "Ref" [con (refKind k) [], str l]
   where
-    at sp c fs = node c fs (Hidden sp Nothing Nothing 0)
+    at sp c fs = node c fs (Hidden sp Nothing Nothing 0 Nothing)
     numberStyle = \case
       StyleKanji -> con "Kanji" []
       StyleKanjiDigits -> con "KanjiDigits" []
@@ -222,7 +226,7 @@ encodeBlock (Block sp lbl blang body) = do
       c <- maybeE encodeInlines cap
       cls <- mapM codeLine ls
       pure ("CodeBlock", [con "Code" [maybeR str lang, maybeR bool nums, maybeR str file, c, bool diff, RList cls, bool nonum]])
-    FigureBlock (Figure src web alt wrap width cap page rot nonum) -> do
+    FigureBlock (Figure src web alt wrap width cap page rot nonum _) -> do
       c <- encodeBlocks cap
       pure ("FigureBlock", [con "Figure" [str src, maybeR str web, str alt, maybeR wrapR wrap, maybeR str width, c, maybeR nat page, bool rot, bool nonum]])
     ChannelOutput ch -> pure ("ChannelOutput", [channel ch])
@@ -231,7 +235,7 @@ encodeBlock (Block sp lbl blang body) = do
     BlankLines n -> pure ("BlankLines", [nat n])
     Separator name -> pure ("Separator", [str name])
     FrameBlock name bs -> (\b -> ("FrameBlock", [str name, b])) <$> encodeBlocks bs
-  node c fs (Hidden sp lbl blang 0)
+  node c fs (Hidden sp lbl blang 0 (case body of FigureBlock f -> figOutline f; _ -> Nothing))
   where
     item (ListItem n bs) = (\b -> con "ListItem" [maybeR nat n, b]) <$> encodeBlocks bs
     columnWidth = \case
@@ -248,7 +252,7 @@ encodeBlock (Block sp lbl blang body) = do
     that came in carries it, one a function made has none (docs/adr/0218) -}
     codeLine (CodeLine t n m hl cs lsp) =
       let fs = [str t, maybeR nat n, maybeR diffMark m, bool hl, RList (map nat cs)]
-       in maybe (pure (con "CodeLine" fs)) (\s -> node "CodeLine" fs (Hidden s Nothing Nothing 0)) lsp
+       in maybe (pure (con "CodeLine" fs)) (\s -> node "CodeLine" fs (Hidden s Nothing Nothing 0 Nothing)) lsp
     diffMark = \case
       DiffAdded -> con "Added" []
       DiffRemoved -> con "Removed" []
@@ -285,7 +289,7 @@ came in, a new one at the span of new nodes otherwise.
 fieldsOf :: Ctx -> Int -> [Result] -> ([Result], Hidden)
 fieldsOf (Ctx carried sp) n fs = case drop n fs of
   [RPrim (VNat i)] | Just h <- Seq.lookup (fromIntegral i) (cHidden carried) -> (take n fs, h)
-  _ -> (take n fs, Hidden sp Nothing Nothing 0)
+  _ -> (take n fs, Hidden sp Nothing Nothing 0 Nothing)
 
 bad :: Text -> Dec a
 bad = Left
@@ -383,7 +387,7 @@ inlineD cx = \case
     where
       arity = bad ("欄の数が合いません: " <> c)
       one n k =
-        let (xs, Hidden s _ _ _) = fieldsOf cx n fs
+        let (xs, Hidden s _ _ _ _) = fieldsOf cx n fs
          in if length xs == n then k s xs else arity
       one1 k = one 1 $ \s -> \case
         [a] -> k s a
@@ -392,7 +396,7 @@ inlineD cx = \case
         [a, b] -> k s a b
         _ -> arity
       withNumber mk =
-        let (xs, Hidden s lbl _ num) = fieldsOf cx 1 fs
+        let (xs, Hidden s lbl _ num _) = fieldsOf cx 1 fs
          in case xs of
               [body] -> mk s num lbl <$> listD (blockD cx) body
               _ -> bad ("欄の数が合いません: " <> c)
@@ -480,8 +484,12 @@ blockD cx = \case
     where
       arity = bad ("欄の数が合いません: " <> c)
       one n k =
-        let (xs, Hidden s lbl blang _) = fieldsOf cx n fs
-         in if length xs == n then Block s lbl blang <$> k xs else arity
+        let (xs, Hidden s lbl blang _ outline) = fieldsOf cx n fs
+         in if length xs == n then Block s lbl blang . withOutline outline <$> k xs else arity
+      -- a figure that came in keeps its outline (root ADR 0464)
+      withOutline outline = \case
+        FigureBlock f -> FigureBlock f {figOutline = outline}
+        other -> other
       one1 k = one 1 $ \case
         [a] -> k a
         _ -> arity
@@ -523,7 +531,7 @@ blockD cx = \case
     carriedSpan fs =
       let Ctx carried _ = cx
        in case drop 5 fs of
-            [RPrim (VNat i)] | Just (Hidden s _ _ _) <- Seq.lookup (fromIntegral i) (cHidden carried) -> Just s
+            [RPrim (VNat i)] | Just (Hidden s _ _ _ _) <- Seq.lookup (fromIntegral i) (cHidden carried) -> Just s
             _ -> Nothing
     diffMark = \case
       RCon "Added" [] -> pure DiffAdded
@@ -531,7 +539,7 @@ blockD cx = \case
       RCon "Unchanged" [] -> pure DiffContext
       r -> bad ("差分の印ではない値です: " <> shown r)
     figure = \case
-      RCon "Figure" [src, web, alt, wrap, width, cap, page, rot, nonum] -> Figure <$> strD src <*> maybeD strD web <*> strD alt <*> maybeD wrapD wrap <*> maybeD strD width <*> blocks cap <*> maybeD natD page <*> boolD rot <*> boolD nonum
+      RCon "Figure" [src, web, alt, wrap, width, cap, page, rot, nonum] -> Figure <$> strD src <*> maybeD strD web <*> strD alt <*> maybeD wrapD wrap <*> maybeD strD width <*> blocks cap <*> maybeD natD page <*> boolD rot <*> boolD nonum <*> pure Nothing
       r -> bad ("図版ではない値です: " <> shown r)
     wrapD = \case
       RCon "WrapStart" [] -> pure WrapStart

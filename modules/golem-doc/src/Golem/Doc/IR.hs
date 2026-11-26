@@ -321,7 +321,9 @@ data Figure = Figure
     -- | whether the PDF turns the figure and its caption onto a page of their own (golem-driver ADR 0034)
     figRotate :: !Bool,
     -- | whether the figure takes no figure number (docs/adr/0200)
-    figNoNumber :: !Bool
+    figNoNumber :: !Bool,
+    -- | the name of the outline in style.toml a wrapped figure wraps along (root ADR 0464)
+    figOutline :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 

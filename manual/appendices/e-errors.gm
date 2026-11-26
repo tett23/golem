@@ -305,6 +305,13 @@ G03010、G03282、G03283、G05004、G07127、G07128、G08100、G08103 は、[cod
   PDF の画像を使うときは、[code: web=] で HTML と EPUB のための PNG、JPEG、SVG のどれかの画像を指定してください。
 = [strong: G02030 [code: wrap は start か end です: …]]
   [code: wrap=start] か [code: wrap=end] にしてください。
+= [strong: G02285 [code: 輪郭 … がありません]]
+  [code: @figure] の [code: outline] に書いた名前が、[code: style.toml] の [code: \[outlines\]] にありません。
+  図版は四角に沿って回り込みます。
+  名前の綴りを確かめるか、[code: \[outlines.名前\]] を足してください。
+= [strong: G02286 [code: outline は wrap のある図版にだけ使います]]（警告）
+  [code: wrap] の無い図版に [code: outline] を書きました。[code: outline] は使いません。
+  回り込ませるなら [code: wrap] と [code: width] を書き、回り込ませないなら [code: outline] を消してください。
 = [strong: G02031 [code: 回り込む図版には width が必要です]]
   [code: wrap] を書いた図版に、[code: width=] で幅を書いてください。
 = [strong: G02133 [code: 図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: …]]
@@ -753,6 +760,10 @@ G03010、G03282、G03283、G05004、G07127、G07128、G08100、G08103 は、[cod
 = [strong: G03289 [code: \[frames\] にないフレームの名前です: …]]
   [code: @frame] かマスターページの [code: frames] に書いた名前が、[code: \[frames\]] にありません。
   名前の綴りを確かめるか、[code: \[frames.名前\]] を足してください。
+= [strong: G03300 [code: 輪郭 … のパスを読めません: …]]
+  [code: \[outlines.名前\]] の [code: path] が無いか、読めないか、閉じていません。
+  [code: M]、[code: L]、[code: C]、[code: Z] の絶対座標で書き、部分パスを [code: Z] で閉じてください。
+  この輪郭を指す図版は、四角に沿って回り込みます。
 = [strong: G03008 [code: style.toml にないフォントの役割です: …]]
   見出しやスタイルの [code: font] に書いた役割が、[code: \[fonts\]] にありません。
 = [strong: G03011 [code: 段落スタイルの文字の大きさが版面の文字の大きさを超えます: …]]

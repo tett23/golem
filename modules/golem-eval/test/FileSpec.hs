@@ -86,7 +86,7 @@ diagsWith c = map diagSite . fst . evalSource c
 
 -- | A PNG figure of images/a.png with the alt text x.
 fig0 :: Figure
-fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False False
+fig0 = Figure "images/a.png" Nothing "x" Nothing Nothing [] Nothing False False Nothing
 
 -- | The diagnostics golem-project's importsOf gives the @import of a source (golem-project ADR 0006).
 importSites :: Text -> [(Text, Text, Int, Int)]
@@ -199,7 +199,7 @@ pluginBlockTests =
       testCase "a figure of a plugin keeps its image and goes through the checks of @figure" $ do
         let src = "golem-plugin-image://00.svg"
             drawn f = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (f sp))], Map.fromList [(src, "<svg/>")], [])))]}
-            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing Nothing (Paragraph Nothing [Text sp "図"])] Nothing False False
+            plain sp = Figure src Nothing "棒グラフ" Nothing Nothing [Block sp Nothing Nothing (Paragraph Nothing [Text sp "図"])] Nothing False False Nothing
             r = evalResult ctx {ctxPlugins = drawn plain} "@label c\n@chart\n"
         map blockLabel (resultBlocks r) @?= [Just "c"]
         map blockBody (resultBlocks r) @?= [FigureBlock (plain (mkSpan (FileId 1) 9 16))]
@@ -213,11 +213,11 @@ pluginBlockTests =
         map (\(c, _, _, _) -> c) (diagsWith ctx {ctxPlugins = drawn (\sp -> (plain sp) {figPage = Just 2})} "@chart\n") @?= ["G02075"],
       testCase "the image of a figure that fails the checks is not kept" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False False))], Map.fromList [(src, "<svg/>")], [])))]}
+            drawn = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (Figure src Nothing "x" (Just WrapEnd) Nothing [] Nothing False False Nothing))], Map.fromList [(src, "<svg/>")], [])))]}
         erImages (evalResult ctx {ctxPlugins = drawn} "@chart\n") @?= Map.empty,
       testCase "a paragraph style in the caption of a figure of a plugin is G02013 and is dropped, as @figure" $ do
         let src = "golem-plugin-image://00.svg"
-            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False False
+            styled sp = Figure src Nothing "x" Nothing Nothing [Block sp Nothing Nothing (Paragraph (Just "quote") [Text sp "図"])] Nothing False False Nothing
             hook = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (styled sp))], Map.fromList [(src, "<svg/>")], [])))]}
             (bs, ds) = run ctx {ctxPlugins = hook} "@chart\n"
         ds @?= ["G02013"]
@@ -596,7 +596,7 @@ tests =
         map (\(c, _, _, _) -> c) (diags "@figure images/a.png alt=x wrap=end width=abc\n") @?= ["G02133"],
       testCase "a figure of a plugin with a width that cannot be read is G02133 at the call (docs/adr/0190)" $ do
         let src = "golem-plugin-image://00.svg"
-            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False False))], Map.fromList [(src, "<svg/>")], [])))]}
+            drawn w = noPlugins {phBlocks = Map.fromList [("chart", PluginBlockCommand (\_ _ sp -> Right ([Block sp Nothing Nothing (FigureBlock (Figure src Nothing "x" Nothing (Just w) [] Nothing False False Nothing))], Map.fromList [(src, "<svg/>")], [])))]}
         diagsWith ctx {ctxPlugins = drawn "abc"} "@chart\n" @?= [("G02133", "図版の width が読めません。寸法（10zw、50mm など）か行長の割合（50% など）で書きます: abc", 0, 7)]
         fst (run ctx {ctxPlugins = drawn "abc"} "@chart\n") @?= []
         diagsWith ctx {ctxPlugins = drawn "50%"} "@chart\n" @?= [],

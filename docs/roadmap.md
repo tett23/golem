@@ -33,7 +33,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **IR と ABI の設計と妥当性の検査**：意味論の IR とプラグインの ABI を設計し、その設計が妥当であることを検査する。どちらも v1.0.0 の後に変えると互換を壊すので、v1.0.0 の前に扱う。検査の方法は、着手するときに ADR で決める。記法、IR、ABI を変えるほかの項目は、この項目の後に扱う。
 - **余白などのブロックの命令が重なったときの AST から IR への変換**：`@blank-line`、`@need-lines`、`@page-lines`、`@page-break`、`@column-break`、`@no-page-break` など、余白や改ページを決めるブロックの命令が、ほかのブロックを挟まずに複数並んだときに、AST をどの IR に変換するかを一般の規則として定める。今は `@blank-line` どうしの足し合わせ、`@blank-line` と改ページの組み合わせ（G04010）など、組み合わせごとに個別に決めているだけで（[docs/adr/0046](adr/0046-blank-line-command.md)、[docs/adr/0030](adr/0030-manual-page-break-control.md)）、決めていない組み合わせの変換は定義されていない。段落スタイルの分割禁止と連動（[ADR 0261](adr/0261-keep-options-of-paragraph-styles.md)）は改ページの手での制御と同じ仕組みで組んだ。
-- **パス（未実装）**：閉じていないパスの上に文字を置けるようにする。字ごとの位置と回転を有理数で決める方法を ADR で決める。図版の輪郭の書き方と、輪郭に沿う回り込みは [root ADR 0464](adr/0464-wrap-text-along-figure-outlines.md) で決めた。円と星形の閉じたパスのテキストフレームの見本を目で確かめる受けいれ条件 A1 は、「手で確かめる項目」の「閉じたパスのテキストフレームの見本」に移した（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
+- **パス（未実装）**：閉じていないパスの上に文字を置けるようにする。字ごとの位置と回転を有理数で決める方法を ADR で決める。円と星形の閉じたパスのテキストフレームの見本を目で確かめる受けいれ条件 A1 は、「手で確かめる項目」の「閉じたパスのテキストフレームの見本」に移した（[root ADR 0437](adr/0437-paths-and-the-box-model.md)）。
 
 ### テストと CI
 
@@ -81,8 +81,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 ### 本の部品の拡張
 
-- **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。矩形以外の形の回り込みは「パス」の後に扱う。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
-  - **輪郭に沿った回り込み（未実装）**：`style.toml` の `[outlines.<名前>]` と `@figure` の `outline` で、輪郭に沿って本文を回り込ませる。 [root ADR 0464](adr/0464-wrap-text-along-figure-outlines.md)。
+- **図版とキャプションの拡張（未実装）**：複数のページに分ける、見開きに置くといった扱い、ページの端や塗り足しの領域まで伸ばす図版、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。 [Golem ADR 0382](adr/0382-figure-extent-and-captions.md)。
 - **参考文献のスタイル（未実装）**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、書き手が文献スタイルを自作し、投稿先の雑誌ごとに指定できるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。本文の引用の印の書式（今は番号の書式の一種類だけ）を選べるようにすること、引用の前置きと後置き、`page` のほかの位置の種類（`chapter` など）、文献ごとの頁を一つの印に書く記法（biblatex の `\cites`）、引用の印の文言（`p.` と「頁」の選び方）、著者名の順の一覧、書誌のぶら下げ字下げもこの項目で決める（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。意味論 IR の引用はそれらの値をすでに持ち、今は出力の前の検査で止める（[docs/adr/0266](adr/0266-citation-locators-and-multiple-keys.md)）。 [Golem ADR 0385](adr/0385-bibliography-and-citation-styles.md)。 スタイルの書き方、決まった名前、注の引用、見本の論文は [root ADR 0470](adr/0470-bibliography-styles-by-name-and-by-declaration.md) で決めた。
 
 ### マニュアル
@@ -193,6 +192,7 @@ v3 の GUI は、次の原則に従って作る。
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
+- **輪郭に沿う回り込みの見本**：[root ADR 0464](adr/0464-wrap-text-along-figure-outlines.md) の A1（円と星形の輪郭の図版を回り込ませた見本を PDF で組み、本文が輪郭から `wrap-gap` 離れて沿っていることを目で確かめる）が残っている。見本は、golem-driver のテストのデータ `modules/golem-driver/test/fixtures/specimens/outlines/` であり、フォントを写してから `golem build` で組む。
 - **閉じたパスのテキストフレームの見本**：[root ADR 0437](adr/0437-paths-and-the-box-model.md) の A1（円と星形の閉じたパスのテキストフレームを持つ見本を組み、文字が形の内側に置かれていることを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 3 ページ目（マスターページ `shapes` の円と星形のフレーム）である。
 - **テキストフレームの見本**：[root ADR 0438](adr/0438-place-text-frames-anywhere-on-a-page.md) の A1（扉の飾りの文と回り込むフレーム（マスターページが置くフレーム）と、章の引用（`@frame`）を持つ見本を組み、フレームの位置と本文の回り込みを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 1 ページ目と 2 ページ目である。
 - **回り込むフレームのまわりのブロックの見本**：[root ADR 0456](adr/0456-keep-every-block-off-around-frames.md) の A1（回り込むフレームと、表、コードブロック、図版、回り込む図版の脇の段落、見出しを持つ見本を組み、どれもフレームと重ならないことと、送った後の空きが組版として不自然でないことを PDF で目で確かめる）が残っている。見本は、見た目の回帰テストの入力 `specimens-frames` の 4 ページ目から 9 ページ目（`chapters/03-blocks.gm`。表、コードブロック、見出し、図版、フレームと反対の側の回り込む図版、同じ側の回り込む図版の順）である。

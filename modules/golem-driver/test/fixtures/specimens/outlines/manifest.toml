@@ -1,0 +1,21 @@
+# 輪郭に沿う回り込みの見本の横組みの本（root ADR 0464 A1）。メンテナーが PDF に組んで目で確かめる。
+# フォントはコミットしない。組む前に fonts/ja.otf と fonts/latin.otf を写す（../README.md）。
+chapters = [
+  { file = "chapters/01-outlines.gm" },
+]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000464"
+title = "輪郭に沿う回り込みの見本"
+language = "ja"
+date = 2026-11-26
+publisher = "Golem プロジェクト"
+
+[[metadata.creators]]
+name = "Golem プロジェクト"
+role = "author"
+
+[source]
+paragraph-separator = "blank-line"
+
+[targets.pdf]

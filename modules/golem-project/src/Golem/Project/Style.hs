@@ -114,6 +114,8 @@ module Golem.Project.Style
     HiddenFolioPages (..),
     MasterDef (..),
     FrameDef (..),
+    OutlineDef (..),
+    outlinePath,
     FrameXFrom (..),
     FrameWrap (..),
     FrameShape (..),
@@ -182,7 +184,7 @@ import Golem.Length (Sp (..))
 import Golem.Length qualified as L
 import Golem.Project.Feature
 import Golem.Project.Manifest (codedMessage, decodeStrictBy, decodeStrictTableWith, decodeStrictWith, failAtCode, maxNaturalInt, naturalIntOf, naturalOf, positionSpan, readTomlTable)
-import Golem.Project.PathData (Path (..), SubPath (..), pathUnit, readStylePath)
+import Golem.Project.PathData (Path (..), PathDataError (..), SubPath (..), pathUnit, readOutlinePath, readStylePath)
 import Golem.Project.Paths (normalizeRelative)
 import Golem.Project.Position qualified as P
 import Golem.Project.TomlMessage (schemaMessage)
@@ -1509,6 +1511,34 @@ data FrameDef = FrameDef
   }
   deriving stock (Eq, Show)
 
+{- | An outline of @[outlines.<name>]@ (root ADR 0464): its path in the
+coordinates of the image of a figure, of no unit, or why it cannot be
+read. The checks of the style put out G03300 for one that cannot be read
+or is not closed ('outlineChecks').
+-}
+newtype OutlineDef = OutlineDef {olPath :: Either Text Path}
+  deriving stock (Eq, Show)
+
+-- | The path of an outline that can be read and is closed, the only kind a figure wraps along.
+outlinePath :: OutlineDef -> Maybe Path
+outlinePath o = case olPath o of
+  Right p | Nothing <- outlineProblem p -> Just p
+  _ -> Nothing
+
+-- | Why a path read is no outline: it has no subpath, or a subpath of it is not closed.
+outlineProblem :: Path -> Maybe Text
+outlineProblem p
+  | null (pathSubPaths p) = Just "パスが空です"
+  | not (all subClosed (pathSubPaths p)) = Just "閉じていない部分パスがあります。部分パスを Z で閉じます"
+  | otherwise = Nothing
+
+instance FromValue OutlineDef where
+  fromValue = parseTableFromValue $ do
+    path <- optKeyOf "path" $ \case
+      Text' _ t -> pure (either (Left . pdeReason) Right (readOutlinePath t))
+      _ -> pure (Left "パスは文字列で書きます")
+    pure (OutlineDef (fromMaybe (Left "path がありません") path))
+
 -- | The shape of a text frame: its rectangle (x, y, width, height) or its path.
 data FrameShape = FrameRect !Dim !Dim !Dim !Dim | FramePath !Path
   deriving stock (Eq, Show)
@@ -2032,6 +2062,8 @@ data Style = Style
     stMasters :: !(Map Text MasterDef),
     -- | the text frames by their names (root ADR 0438)
     stFrames :: !(Map Text FrameDef),
+    -- | the outlines of figures by their names (root ADR 0464)
+    stOutlines :: !(Map Text OutlineDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
     -- | [printings] format: the format of a line of @printings, Nothing for the default (docs/adr ADR 0375)
@@ -2089,6 +2121,7 @@ defaultStyle =
       stSwatches = Map.empty,
       stMasters = Map.empty,
       stFrames = Map.empty,
+      stOutlines = Map.empty,
       stTocLeader = "dots",
       stPrintingsFormat = Nothing,
       stLists = defaultListStyle,
@@ -3219,6 +3252,8 @@ instance FromValue Style where
     masters <- fromMaybe Map.empty <$> optKey "masters"
     -- the text frames (root ADR 0438)
     frames <- fromMaybe Map.empty <$> optKey "frames"
+    -- the outlines of figures (root ADR 0464)
+    outlines <- fromMaybe Map.empty <$> optKey "outlines"
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     printingFormat <- optKeyOf "printings" (parseTableFromValue (optKeyOf "format" (withValue printingTemplate)))
@@ -3276,6 +3311,7 @@ instance FromValue Style where
           stSwatches = swatches,
           stMasters = masters,
           stFrames = frames,
+          stOutlines = outlines,
           stTocLeader = fromMaybe (stTocLeader d) leader,
           stPrintingsFormat = fromMaybe Nothing printingFormat,
           stLists = lists,
@@ -3627,6 +3663,7 @@ styleChecks owner s =
     <> ruleStyleChecks s
     <> singlePageChecks s
     <> frameChecks s
+    <> outlineChecks s
     <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (effectiveHiddenFolio s)]
     <> fontRoleChecks s
     <> styleReferenceChecks owner s
@@ -4170,6 +4207,16 @@ frameChecks s =
          Map.notMember n (stFrames s)
        ]
 
+{- | The outlines of figures that cannot be read or are not closed
+(root ADR 0464): G03300 at the path of each.
+-}
+outlineChecks :: Style -> [(Text, Text, [Scope], Text)]
+outlineChecks s =
+  [ ("G03300", "", styleKeys ["outlines", n, "path"], "輪郭 " <> n <> " のパスを読めません: " <> reason)
+  | (n, o) <- Map.toList (stOutlines s),
+    Just reason <- [either Just outlineProblem (olPath o)]
+  ]
+
 singlePageChecks :: Style -> [(Text, Text, [Scope], Text)]
 singlePageChecks s
   | not (singlePage s) = []
@@ -4517,6 +4564,8 @@ styleSchema =
       ("masters", NNamed (Just Masters) masterNode),
       -- the text frames (root ADR 0438)
       ("frames", NNamed (Just Frames) frameNode),
+      -- the outlines of figures (root ADR 0464)
+      ("outlines", NNamed Nothing (NTable [("path", str)])),
       ("verse", NRejected),
       ("printings", NTable [("format", str)]),
       ("toc", NTable [("leader", enum leaderValues)]),

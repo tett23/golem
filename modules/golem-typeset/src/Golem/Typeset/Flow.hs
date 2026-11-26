@@ -156,7 +156,7 @@ import Golem.Layout.Ruby qualified as R
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
-import Golem.Layout.Wrap (Exclusion (..), exclusion)
+import Golem.Layout.Wrap (Exclusion (..), PlacedOutline (..), exclusion, lineTake, outlinedExclusion, placeOutline)
 import Golem.LayoutSpec (HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, gutterSide, gutterSideFor, pageGeometry, pgBindingRight, sidenoteAreaFor, typeAreaFor)
 import Golem.Length qualified as L
 import Golem.Numerals (circled)
@@ -165,6 +165,7 @@ import Golem.Numerals.Notation (writeNumber)
 import Golem.Pdf qualified as P
 import Golem.Project
 import Golem.Project.Files (Files (..))
+import Golem.Project.PathData (outlineScale)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Position (Position (..))
 import Golem.Project.Style
@@ -2135,18 +2136,18 @@ besideLines built =
       units = cuUnits cu
       free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput (bFlowEnv built))) >>= pageGrid)
       narrow = Map.fromList [(lbId l, fid) | FWrapped {fwId = fid, fwBeside = ls} <- bFlow built, l <- ls]
-      exclusionOf fid = Map.lookup fid (bFigures built) >>= fmap (\ex -> (exSide ex, exWidth ex)) . pfExclusion
+      -- what line k of a paragraph loses to the exclusion of the figure (root ADR 0464)
+      exclusionOf u off distance k fid = Map.lookup fid (bFigures built) >>= fmap (\ex -> (exSide ex, besideTake (bFlowEnv built) ex u off distance k)) . pfExclusion
       -- the lines of the paragraphs beside each figure, from the line after it (in free placement, by their own units)
       paragraphs =
-        [ (u, firstLine, length (cLines c))
+        [ (u, firstLine, length (cLines c), off, distance)
         | (i, _) <- Map.toList (cuFigures cu),
           Just figureFirst <- [Map.lookup i (bUnitFirsts built)],
-          j <- besideParagraphs units (cuBesides cu) i,
-          Just (c, off) <- [Map.lookup j (cuBesides cu)],
+          (j, c, off, distance, _) <- besideRows (bFlowEnv built) cu i,
           let firstLine = if free then Map.findWithDefault (figureFirst + 1 + off) j (bUnitFirsts built) else figureFirst + 1 + off,
           Just u <- [Map.lookup j units]
         ]
-   in Map.fromList [(lid, (uSpan u, Map.lookup lid narrow >>= exclusionOf)) | (u, firstLine, count) <- paragraphs, lid <- take count [firstLine ..]]
+   in Map.fromList [(lid, (uSpan u, Map.lookup lid narrow >>= exclusionOf u off distance k)) | (u, firstLine, count, off, distance) <- paragraphs, (k, lid) <- zip [0 ..] (take count [firstLine ..])]
 
 {- | The frames of wrap around of the master page of each page (root ADR
 0438): by page number, each by its name and its bounding rectangle on a
@@ -3808,7 +3809,26 @@ placeFigure fe u fig content =
         ]
       depth = if n > 0 then fromIntegral m * pitch + fromIntegral (n - 1) * cp + cs else across
       gap = dimToSp fs (stWrapGap style)
-      ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
+      -- the outline of the figure (root ADR 0464): of style.toml, read and closed; otherwise its rectangle
+      outlined = figOutline fig >>= (`Map.lookup` stOutlines style) >>= outlinePath
+      -- a point of the outline as stored into the coordinates of the image: for an SVG through its viewBox
+      toImage (x, y) =
+        let (ix, iy) = (x / fromInteger outlineScale, y / fromInteger outlineScale)
+         in case content of
+              P.SvgFigure d | [a, b, c, d', e, f] <- P.drViewBox d -> (a * ix + c * iy + e, b * ix + d' * iy + f)
+              _ -> (ix, iy)
+      spR (Sp v) = fromInteger v :: Rational
+      area side = case outlined of
+        Nothing -> exclusion side pitch gap alongSp depth
+        Just o ->
+          outlinedExclusion side pitch gap alongSp depth $
+            PlacedOutline
+              (placeOutline (pgVertical geom) side toImage (w, h) (alongSp, across) o)
+              (spR alongSp, spR across)
+              (if n > 0 then Just (spR (fromIntegral m * pitch), spR depth) else Nothing)
+      ex = area <$> figWrap fig
+      -- the shortest line beside the figure (root ADR 0464): the most a line of the body on the grid loses
+      widest e = maximum [lineTake e (fromIntegral g * pitch + (if free then faceOffset pitch fs else 0)) fs | g <- [0 .. max 1 (exLines e) - 1]]
       -- the length across the lines before fitting (root ADR 0440)
       across0 = case figWrap fig of
         Nothing -> Sp (floor (fromInteger (unSp (min alongSp lineLen)) * ratio))
@@ -3822,7 +3842,7 @@ placeFigure fe u fig content =
         (Just _, _)
           | length (pgColumns geom) > 1 -> [diagnostic "G07026" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
         (Just _, Just e)
-          | isNothing written || measure - exWidth e < 8 * fs ->
+          | isNothing written || measure - widest e < 8 * fs ->
               [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
           | (if free then depth + gap > height else exLines e > capacity) ->
               [diagnostic "G07023" Error (uSpan u) (if free then "回り込む図版の除外領域（長さ " <> L.ptText (depth + gap) <> "pt）が段の長さ " <> L.ptText height <> "pt を超えます" else "回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
@@ -3875,12 +3895,50 @@ composeBeside fe widths unitAt i pf = go (i + 1) 0 0
           -- the exclusion and the frames of wrap around, the larger on each side (root ADR 0456)
           let taken k =
                 let (s, e) = besideCut fe i j offset k
-                    narrow = if narrowed u distance k then exWidth ex else 0
+                    narrow = if narrowed u distance k then besideTake fe ex u offset distance k else 0
                  in if exSide ex == WrapStart then max narrow s + e else s + max narrow e
-          c <- forceComposed (composeUnit fe widths (\k -> feMeasure fe - taken k - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u)) u)
+              -- each line's width once: the line breaking asks for it again and again (root ADR 0464)
+              lineWidths = [feMeasure fe - taken k - unitLineIndent pageFace (uKind u) k - unitEndIndent (uKind u) | k <- [0 ..]]
+          c <- forceComposed (composeUnit fe widths (lineWidths !!) u)
           ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c)) (distance + fromIntegral (length (cLines c)) * unitPitch u)
       | free, Just u <- Map.lookup j unitAt, Just controls <- besideControlFlow u = go (j + 1) offset (distance + sum [gap | FSpace gap <- controls])
       | otherwise = pure []
+
+{- | The paragraphs beside the wrapped figure of the unit i, in order: each
+by its index, its composition, the line of the exclusion it starts at, its
+distance from the top of the exclusion (in free placement, the gaps
+between them counted) and the gap before it.
+-}
+besideRows :: FlowEnv -> ComposedUnits -> Int -> [(Int, Composed, Int, Sp, Sp)]
+besideRows fe cu i = snd (mapAccumL step (i, 0) paras)
+  where
+    besides = cuBesides cu
+    unitAt = cuUnits cu
+    pagePitch = pgLinePitch (feGeom fe)
+    unitPitch j = fromMaybe pagePitch (paraStyle (uStyle (unitAt Map.! j)) (uParaStyle (unitAt Map.! j)) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
+    paras = [(j, c, off) | j <- besideParagraphs unitAt besides i, let (c, off) = besides Map.! j]
+    gapBetween prior j = sum [gap | k <- [prior + 1 .. j - 1], Just Unit {uKind = UGap gap} <- [Map.lookup k unitAt]]
+    step (prior, distance) (j, c, off) =
+      let gap = gapBetween prior j
+          start = distance + gap
+       in ((j, start + fromIntegral (length (cLines c)) * unitPitch j), (j, c, off, start, gap))
+
+{- | What line k of the paragraph of the unit u beside a wrapped figure
+loses to its exclusion (root ADR 0464): the band of the line is its em
+box, from the start of grid line @offset + k@ of the exclusion on the
+grid, and in free placement from @distance@ and k of its pitches, the face
+in the middle of its row.
+-}
+besideTake :: FlowEnv -> Exclusion -> Unit -> Int -> Sp -> Int -> Sp
+besideTake fe ex u offset distance k = lineTake ex start size
+  where
+    geom = feGeom fe
+    free = maybe False ((== AlignFree) . gridAlignment) (stPage (piStyle (feInput fe)) >>= pageGrid)
+    size = lkSize (uLook u)
+    pitch = fromMaybe (pgLinePitch geom) (paraStyle (uStyle u) (uParaStyle u) >>= resolvedParagraphPitch (uStyle u))
+    start
+      | free = distance + fromIntegral k * pitch + faceOffset pitch size
+      | otherwise = fromIntegral (offset + k) * pgLinePitch geom
 
 {- | The cuts of the frames of wrap around of line k of the paragraph j
 set beside the wrapped figure of the unit i, from line @offset@ of its
@@ -4326,23 +4384,14 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
             excluded = (0, pfExclusionLength pf)
             unitPitch j = fromMaybe pagePitch (paraStyle (uStyle (unitAt Map.! j)) (uParaStyle (unitAt Map.! j)) >>= resolvedParagraphPitch (uStyle (unitAt Map.! j)))
             paras = [(j, c, off) | j <- besideParagraphs unitAt besides i, let (c, off) = besides Map.! j]
-            gapBetween prior j = sum [gap | k <- [prior + 1 .. j - 1], Just Unit {uKind = UGap gap} <- [Map.lookup k unitAt]]
-            parasAt =
-              snd
-                ( mapAccumL
-                    ( \(prior, distance) (j, c, off) ->
-                        let gap = gapBetween prior j
-                            start = distance + gap
-                         in ((j, start + fromIntegral (length (cLines c)) * unitPitch j), (j, c, off, start, gap))
-                    )
-                    (i, 0)
-                    paras
-                )
+            parasAt = besideRows fe cu i
+            -- what line k of the paragraph j loses to the exclusion (root ADR 0464)
+            takes j = besideTake fe ex (unitAt Map.! j)
             narrowed j off distance k
               | free = intersects (rowExtent (distance + fromIntegral k * unitPitch j) (unitPitch j) (lkSize (uLook (unitAt Map.! j)))) excluded
               | otherwise = off + k < exLines ex
             -- the frames of wrap around at the start of the line too, the larger (root ADR 0456)
-            indentOf j off distance k = max (if pfWrap pf == Just WrapStart && narrowed j off distance k then exWidth ex else 0) (fst (besideCut fe i j off k))
+            indentOf j off distance k = max (if pfWrap pf == Just WrapStart && narrowed j off distance k then takes j off distance k else 0) (fst (besideCut fe i j off k))
             -- beside the figure the paragraph indent adds to the exclusion (docs/adr ADR 0006)
             go (nid, boxAcc, setAcc, gapAcc) (j, c, off, distance, gap) =
               let (bs, set) = numberedLines fe nid (unitAt Map.! j) c (\k -> indentOf j off distance k + unitLineIndent fs (uKind (unitAt Map.! j)) k)
@@ -4353,7 +4402,7 @@ numberFigure fe cu i u (pf, ferrs, _, fmarks) nb = case pfExclusion pf of
                   then diagnostic "G07028" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
                   else listTooDeep (uSpan (unitAt Map.! j))
               | (j, c, off, distance, _) <- parasAt,
-                any (\k -> if free && isJust (cActualIndents c) then lineTarget (cLines c !! k) <= 0 else feMeasure fe - (if narrowed j off distance k then exWidth ex else 0) - unitLineIndent fs (uKind (unitAt Map.! j)) k - unitEndIndent (uKind (unitAt Map.! j)) <= 0) [0 .. length (cLines c) - 1]
+                any (\k -> if free && isJust (cActualIndents c) then lineTarget (cLines c !! k) <= 0 else feMeasure fe - (if narrowed j off distance k then takes j off distance k else 0) - unitLineIndent fs (uKind (unitAt Map.! j)) k - unitEndIndent (uKind (unitAt Map.! j)) <= 0) [0 .. length (cLines c) - 1]
               ]
             (nextId', allBoxes, sets, wrappedBefore) = foldl go (nextId + 1, [], Map.empty, Map.empty) parasAt
             narrowCount = if free then length (takeWhile id [narrowed j off distance k | (j, c, off, distance, _) <- parasAt, k <- [0 .. length (cLines c) - 1]]) else exLines ex
@@ -4905,12 +4954,15 @@ causalFreeFlow inp geom fe units widths jobs initialBuilt = jobsFrom Nothing Not
           (actualPage, actualColumn, _) = physicalCursorPosition at
           pitch = fromMaybe (pgLinePitch geom) (paraStyle (uStyle unit) (uParaStyle unit) >>= resolvedParagraphPitch (uStyle unit))
           face = lkSize (uLook unit)
-          exclusionWidth = maybe 0 exWidth (pfExclusion pf)
+          -- what line k loses to the exclusion, its band the em box of the line from the top of the exclusion (root ADR 0464)
+          exclusionWidth = (exclusionWidths !!)
+          -- each line's once: the line breaking asks for it again and again
+          exclusionWidths = [maybe 0 (\ex -> lineTake ex (physicalParagraphOrigin at + fromIntegral k * pitch - origin + faceOffset pitch face) face) (pfExclusion pf) | k <- [0 :: Int ..]]
           narrowed k = (page, column) == (actualPage, actualColumn) && intersects (rowExtent (physicalParagraphOrigin at + fromIntegral k * pitch) pitch face) (origin, end)
           indent k = unitLineIndent (pgFontSize geom) (uKind unit) (countBefore + k)
-          width k = feMeasure fe - (if narrowed k then exclusionWidth else 0) - indent k - unitEndIndent (uKind unit)
+          width k = feMeasure fe - (if narrowed k then exclusionWidth k else 0) - indent k - unitEndIndent (uKind unit)
           tailComposed = rebreakComposed fe unit width start source
-          tailIndents = [indent k + if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth else 0 | k <- [0 .. length (cLines tailComposed) - 1]]
+          tailIndents = [indent k + if pfWrap pf == Just WrapStart && narrowed k then exclusionWidth k else 0 | k <- [0 .. length (cLines tailComposed) - 1]]
        in (tailComposed, tailIndents)
     probeNext job pf origin region index later built cursor wanted = case later of
       [] ->

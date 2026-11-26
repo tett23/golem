@@ -149,8 +149,8 @@ itemT :: ListItem -> Term
 itemT (ListItem n bs) = TList [opt int n, list blockT bs]
 
 figureT :: Figure -> Term
-figureT (Figure src web alt wr w cap pg rot nn) =
-  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot, TBool nn]
+figureT (Figure src web alt wr w cap pg rot nn ol) =
+  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot, TBool nn, opt text ol]
 
 channelT :: ChannelBlock -> Term
 channelT = \case
@@ -510,8 +510,10 @@ termGroup t =
 termFigure :: Term -> D Figure
 termFigure t =
   asList t >>= \case
-    [src, web, alt, wr, w, cap, pg, rot, nn] ->
-      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot <*> asBool nn
+    -- the outline is the tenth, which a plugin may leave out (root ADR 0464)
+    [src, web, alt, wr, w, cap, pg, rot, nn] -> termFigure (TList [src, web, alt, wr, w, cap, pg, rot, nn, TNull])
+    [src, web, alt, wr, w, cap, pg, rot, nn, ol] ->
+      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asNatural pg <*> asBool rot <*> asBool nn <*> asOpt asText ol
     _ -> bad "図版"
 
 termChannel :: Term -> D ChannelBlock

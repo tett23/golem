@@ -37,6 +37,7 @@ import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import HyphenationExceptionsSpec qualified
 import KeepPartsSpec qualified
 import NaturalKeySpec qualified
+import OutlinesSpec qualified
 import OutputCharsSpec qualified
 import ParagraphPitchSpec qualified
 import PathDataSpec qualified
@@ -975,6 +976,7 @@ tests =
       ColophonSpec.tests,
       PathDataSpec.pathDataTests,
       FramesSpec.tests,
+      OutlinesSpec.tests,
       FeaturesSpec.tests,
       GenericFontsSpec.tests,
       FontLicensesSpec.tests,

@@ -89,6 +89,7 @@ import TrackingBoxesSpec qualified
 import UnbreakablePairsSpec (unbreakablePairsTests)
 import UnbreakableSpacingSpec (unbreakableSpacingTests)
 import UrlBreakSpec (urlBreakTests)
+import WrapOutlineSpec (wrapOutlineTests)
 
 main :: IO ()
 main = enterPackageDirectory >> defaultMain tests
@@ -407,7 +408,7 @@ tests =
       testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
-      testGroup "boundaries and invariants" [BookPartsSpec.tests, bookPartsEnumTests, paginateTests, paginateElementsTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, noBreakTests, noBreakShapeTests, columnWidthInvariantTests, citeBreakTests, joinedWordTests, enumSplitTests, softHyphenTests, exceptionsTests, overflowTests, boxModelTests, alignTests, expansionStepTests, charClassTests],
+      testGroup "boundaries and invariants" [BookPartsSpec.tests, bookPartsEnumTests, paginateTests, paginateElementsTests, invariantTests, punctuationTests, lineBreakingTests, lineInvariantTests, noBreakTests, noBreakShapeTests, columnWidthInvariantTests, citeBreakTests, joinedWordTests, enumSplitTests, softHyphenTests, exceptionsTests, overflowTests, boxModelTests, wrapOutlineTests, alignTests, expansionStepTests, charClassTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       doubleDashTests,

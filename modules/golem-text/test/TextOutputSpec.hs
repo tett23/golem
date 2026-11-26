@@ -211,12 +211,12 @@ tests =
     testCase "a line break is a newline" $
       only (horizontal (bookOf [para 0 [txt "一行目", LineBreak (at 1), txt "二行目"]])) @?= "一行目\n二行目\n",
     testCase "a figure is one line of number and caption in corner brackets" $
-      let fig = Figure "a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False
+      let fig = Figure "a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False False Nothing
           book = (bookOf [Block (at 0) Nothing Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
        in only (horizontal book) @?= "［図1-1　キャプション］\n",
     -- docs/adr/0200
     testCase "a figure without a number is its caption in corner brackets; without a caption either, no line" $ do
-      let fig cap = Figure "a.png" Nothing "代替" Nothing Nothing cap Nothing False True
+      let fig cap = Figure "a.png" Nothing "代替" Nothing Nothing cap Nothing False True Nothing
       only (horizontal (bookOf [Block (at 0) Nothing Nothing (FigureBlock (fig [para 3 [txt "キャプション"]]))])) @?= "［キャプション］\n"
       only (horizontal (bookOf [para 0 [txt "前"], Block (at 1) Nothing Nothing (FigureBlock (fig [])), para 2 [txt "後"]])) @?= "前\n\n後\n",
     testCase "a bullet list is ・ and the item" $
