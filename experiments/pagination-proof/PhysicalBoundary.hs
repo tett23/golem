@@ -180,6 +180,17 @@ ruledInputs =
          s <- sides,
          n <- [1, 2]
        ]
+    -- a spaced rule after that may go out of the column (root ADR 0450): it
+    -- goes `inner` after the end of the face, at or past the end of the
+    -- column, within the margin or past it
+    <> [ (Column cap 0 1, [para 0 p | p > 0] <> [block] <> [para 30 1])
+       | cap <- [30, 40, 50, 60],
+         p <- [0 .. 3],
+         s <- [RuleSide 2 0 3 True (Just 10), RuleSide 6 0 3 True (Just 4)],
+         block <-
+           [ruled 100 Nothing (Just s) False defaultKeep (lines' 10 n) | n <- [1 .. 3]]
+             <> [ruledHeading 100 Nothing (Just s) False e ls | (e, ls) <- [(10, [line 300]), (20, [line 385])]]
+       ]
     -- a ruled paragraph before a ruled heading marked as sharing its rule
     -- before, which shares the area of the rule after (root ADR 0449)
     <> [ (Column cap 0 1, [para 0 p, ruled 100 (Just s) (Just s) False defaultKeep (lines' 10 n), FRuled 101 (Just t) (Just t) True (RuleGrid 10 8) 0 (RuledHeading False (Sp e) (lines' 20 1)), para 30 1])

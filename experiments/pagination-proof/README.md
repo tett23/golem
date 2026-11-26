@@ -927,8 +927,10 @@ Lean は、この判定を段落の後の罫線（`ruledOutsideAt`、`ruledAfter
 `I3_ruled_rule_after_outside` と `I3_ruledHeading_rule_after_outside` は、段の外に出た罫線が段の終わり以降にあり、はみ出しが外の余白以下で、段に脚注がないことを示す。
 `ruledPlaceAt_room` と `I3_ruledHere_in_column` は、罫線が段を閉じる場合も、行と脚注が段に収まることを示す。
 段の中に置く罫線についての定理（`I3_ruledHere_rule_after`、`I3_ruledHere_unshared_rule_after`、`I3_ruledHeading_rule_after`）は、`RuleSide.outside` が `none` の罫線について述べる。
-`PhysicalBoundary.hs` の 156360 個の境界入力は、段の外に出てよい後の罫線（外の余白 5 sp と 20 sp）を持つブロックを含み、すべて golem-layout の `paginatePhysical` と一致した。
-ただし、段の外に出てよい罫線はどれも字面からのアキを指定しない（`spaced` が偽）ので、`ruleAfterOutside` の `spaced` の場合は照合に含まれない。
+`PhysicalBoundary.hs` の 156520 個の境界入力は、段の外に出てよい後の罫線を持つブロックを含み、すべて golem-layout の `paginatePhysical` と一致した。
+その罫線は、字面からのアキを指定しないもの（外の余白 5 sp と 20 sp）と、指定するもの（内側 2 sp で外の余白 10 sp、内側 6 sp で外の余白 4 sp）である。
+後者の 160 個は、1〜3 行の罫線つきの段落か 1 行の見出しを、なしか 1〜3 行の段落の後に容量 30〜60 sp の段に置く。
+`ruleAfterOutside` の `spaced` の場合を、内側のアキを足さない位置か `spaced` でない場合と同じ位置に替えると、どちらも 18 個の入力で出力が食い違ったので、この照合はその場合を区別する。
 
 回り込み図版は、長さのないスロット（`SWrapped`）として段に置き、横に収まる行（`fittingWrapped`）を図版の終わりまでの長さを予約して置き、残りの行を次の段から置く（`placeWrappedOverflow`）。
 横の行と残りの行の前のアキは `physicalWrappedBefore` の値で、`Env.wrappedBefore` に写した。
@@ -1111,7 +1113,7 @@ runghc で数えると、終わる 152126 個の入力が割り当てるのは�
 割り当てずに回るループに備えて、120 秒の壁時計の見張りも残すが、そこで止めた入力は `out fail hang` と書き出す。
 `PhysicalBoundary.lean` は `hang` を書き出さないので、見張りが働けば `check.sh` は必ず失敗し、`loop` と取り違えることはない。
 見出しの行の送りが 14 sp の表の 8 個の入力では、4 個が両方で `loop` になった。
-`check.sh` は二つの出力を `diff` で比べ、156360 個の入力と 10368 個の試しですべて一致した。
+`check.sh` は二つの出力を `diff` で比べ、156520 個の入力と 10368 個の試しですべて一致した。
 写した計算を一つずつ替えると、`drainCarried` を外すと 308 個、組の段に組の縮みを渡さないと 474 個、組の段に脚注の行を確保しないと 356 個の入力で出力が食い違った。
 `PhysicalBoundary.lean` の `firstNeed` は `Physical.hs` の `firstNeed` の写しで、評価のためのファイルなので `partial` を使う。
 
