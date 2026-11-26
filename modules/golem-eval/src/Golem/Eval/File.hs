@@ -37,7 +37,7 @@ import Control.Monad.State.Strict
 import Data.Bifunctor qualified as Bi
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (isAscii, isAsciiLower, isDigit)
+import Data.Char (isAscii, isAsciiLower, isAsciiUpper, isDigit)
 import Data.Either (fromLeft, fromRight, isLeft, lefts, rights)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
@@ -68,7 +68,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.Lower qualified as A (numberWord)
 import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
-import Golem.Project.Imports (ImportForm (..), ImportSite (..), importNames, importSite, importsOf)
+import Golem.Project.Imports (ImportForm (..), ImportSite (..), ListedName (..), importNames, importSite, importsOf)
 import Golem.Project.Paths (PathError (..), normalizeRelative, pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), ParaStyleDef (..), Sp (..), Style (stPrintingsFormat), kentenShapeNames, noLocalStyles, paraLineBreaks, paraStyle, parseAki, parseDim, renderPrintingTemplate, withLocalStyles)
 import Golem.Syntax
@@ -178,8 +178,8 @@ data Usage = Usage
     usageReferenced :: !(Set Text),
     usageNamespaceRefs :: !(Map Text (Set Text)),
     usageImports :: ![(Text, FilePath, SrcSpan)],
-    -- | each name an @import lists, with its path and its span (root ADR 0451)
-    usageListed :: ![(Text, FilePath, SrcSpan)],
+    -- | each item an @import lists: its alias, its original name, its path and the span of its alias (root ADR 0451, root ADR 0458)
+    usageListed :: ![(Text, Text, FilePath, SrcSpan)],
     -- | the listed names the file uses without a namespace (root ADR 0451)
     usageListedRefs :: !(Set Text)
   }
@@ -234,7 +234,7 @@ data St = St
     stListedFns :: !(Map (Space, Text) FunctionRef),
     -- | the variables listed by @import
     stListedVars :: !(Map Text Value),
-    stListedSites :: ![(Text, FilePath, SrcSpan)],
+    stListedSites :: ![(Text, Text, FilePath, SrcSpan)],
     stListedRefs :: !(Set Text),
     -- | the names listed by, and the namespaces of, the @import lines of variable files the evaluation does not resolve (root ADR 0455)
     stUnresolvedVars :: !(Set Text),
@@ -780,19 +780,23 @@ builtinNamesIn = \case
   BlockSpace -> fixedBlockCommands
   ExprSpace -> []
 
-{- | An @import of names (root ADR 0451): each name is checked, then put
-in the spaces of use its source gives it. A reserved name is G02275 and a
-name the source does not give G02276, with no other check. Otherwise each
-kind of clash gives its code once: a built-in command (G02270), a command
-of a plugin (G02271), a name another @import lists (G02272, at both), a
-name before it in the list (G02273), a variable the file sets (G02274), a
-built-in name of the expressions (G02277). A name that clashes with
+{- | An @import of names (root ADR 0451, root ADR 0458): each item is
+checked, then its alias is put in the spaces of use its source gives the
+original name, bound to the definition of the original name. The checks
+of an item stop at the first that falls: a reserved alias is G02275, an
+original name the source does not give G02276, an alias that breaks the
+rules of the names of a space of use of the original name G02278 (none
+for a source that is not checked). Otherwise each kind of clash of the
+alias gives its code once: a built-in command (G02270), a command of a
+plugin (G02271), an alias another @import lists (G02272, at both), an
+alias before it in the list (G02273), a variable the file sets (G02274),
+a built-in name of the expressions (G02277). An alias that clashes with
 another @import is put in as one whose calls report nothing, so that the
 order of the @import lines changes nothing; one that clashes with a name
 of the language or a variable is left out of that space.
 -}
-listedImport :: EvalContext -> SrcSpan -> Text -> [(Text, SrcSpan)] -> M ()
-listedImport ctx sp path names = do
+listedImport :: EvalContext -> SrcSpan -> Text -> [ListedName] -> M ()
+listedImport ctx sp path items = do
   others <- gets (filter ((/= sp) . isSpan) . stFileImports)
   set <- gets stSetNames
   let src = listedSource ctx path
@@ -801,45 +805,86 @@ listedImport ctx sp path names = do
         InlineSpace -> map unPluginCommandName (Map.keys (phCommands (ctxPlugins ctx))) <> map (builtinName . Overridable) (Map.keys (phOverrides (ctxPlugins ctx)))
         BlockSpace -> Map.keys (phBlocks (ctxPlugins ctx)) <> map overridableBlockName (Map.keys (phBlockOverrides (ctxPlugins ctx)))
         ExprSpace -> []
-      otherSpaces n = concat [fromMaybe [] (listedSpaces (listedSource ctx (isPath o)) n) | o <- others, (m, _) <- importNames o, m == n]
-      one (i, (n, nsp))
-        | n `elem` reservedNames = err "G02275" nsp ("予約語は取り込む名前に使えません: " <> n)
+      -- the spaces of use of the items of the other @import lines under an alias, of those that pass their own checks
+      otherSpaces a = concat [spaces | o <- others, l <- importNames o, lnAlias l == a, Just spaces <- [admitted (listedSource ctx (isPath o)) l]]
+      one (i, l@(ListedName n nsp a asp))
+        | a `elem` reservedNames = err "G02275" asp ("予約語は取り込む名前に使えません: " <> a)
         | otherwise = case listedSpaces src n of
             -- a variable of an @import not resolved: only its references in the expressions report nothing (root ADR 0455)
             Nothing | UnresolvedVars <- src -> do
-              note n nsp
-              modify' (\st -> st {stUnresolvedVars = Set.insert n (stUnresolvedVars st)})
+              note l
+              modify' (\st -> st {stUnresolvedVars = Set.insert a (stUnresolvedVars st)})
             Nothing -> do
-              note n nsp
-              mapM_ (\s -> put' s n Unloaded) [InlineSpace, BlockSpace, ExprSpace]
+              note l
+              mapM_ (\s -> put' s a Unloaded) [InlineSpace, BlockSpace, ExprSpace]
             Just [] -> err "G02276" nsp (path <> " が公開していない名前です: " <> n)
-            Just spaces -> do
-              note n nsp
-              let earlier = n `elem` map fst (take i names)
-                  clashes s =
-                    [("G02270", "上書きできない組み込みのコマンドと同じ名前は取り込めません: " <> n) | n `elem` builtinNamesIn s]
-                      <> [("G02271", "プラグインのコマンドと同じ名前は取り込めません: " <> n) | n `elem` pluginNames s]
-                      <> [("G02272", "ほかの @import が並べた名前と同じです: " <> n) | s `elem` otherSpaces n]
-                      <> [("G02273", "同じ並びに二度書いた名前です: " <> n) | earlier]
-                      <> [("G02274", "@set の変数と同じ名前は取り込めません: " <> n) | s == ExprSpace, n `Set.member` set]
-                      <> [("G02277", "組み込みの式の名前と同じ名前は取り込めません: " <> n) | s == ExprSpace, n `elem` builtinExpressionNames]
-                  codes = concatMap clashes spaces
-              mapM_ (\(c, m) -> err c nsp m) (Map.toList (Map.fromList codes))
-              forM_ spaces $ \s -> do
-                let cs = map fst (clashes s) :: [Text]
+            Just spaces
+              | not (all (`aliasShape` a) spaces) -> err "G02278" asp ("別名の形が不正です: " <> a)
+              | otherwise -> do
+                  note l
+                  let earlier = or [True | e <- take i items, lnAlias e == a, isJust (admitted src e)]
+                      clashes s =
+                        [("G02270", "上書きできない組み込みのコマンドと同じ名前は取り込めません: " <> a) | a `elem` builtinNamesIn s]
+                          <> [("G02271", "プラグインのコマンドと同じ名前は取り込めません: " <> a) | a `elem` pluginNames s]
+                          <> [("G02272", "ほかの @import が並べた名前と同じです: " <> a) | s `elem` otherSpaces a]
+                          <> [("G02273", "同じ並びに二度書いた名前です: " <> a) | earlier]
+                          <> [("G02274", "@set の変数と同じ名前は取り込めません: " <> a) | s == ExprSpace, a `Set.member` set]
+                          <> [("G02277", "組み込みの式の名前と同じ名前は取り込めません: " <> a) | s == ExprSpace, a `elem` builtinExpressionNames]
+                      codes = concatMap clashes spaces
+                  mapM_ (\(c, m) -> err c asp m) (Map.toList (Map.fromList codes))
+                  forM_ spaces $ \s -> do
+                    let cs = map fst (clashes s) :: [Text]
+                        kept
+                          | any (`elem` cs) ["G02270", "G02271", "G02274", "G02277"] = pure ()
+                          | "G02272" `elem` cs = put' s a Unloaded
+                          | otherwise = case src of
+                              FromEmet fns -> put' s a (Loaded (renamed n a fns))
+                              FromVars vals -> mapM_ (\v -> modify' (\st -> st {stListedVars = Map.insert a v (stListedVars st)})) (Map.lookup n vals)
+                              Unchecked -> pure ()
+                              UnresolvedVars -> pure ()
                     kept
-                      | any (`elem` cs) ["G02270", "G02271", "G02274", "G02277"] = pure ()
-                      | "G02272" `elem` cs = put' s n Unloaded
-                      | otherwise = case src of
-                          FromEmet fns -> put' s n (Loaded fns)
-                          FromVars vals -> mapM_ (\v -> modify' (\st -> st {stListedVars = Map.insert n v (stListedVars st)})) (Map.lookup n vals)
-                          Unchecked -> pure ()
-                          UnresolvedVars -> pure ()
-                kept
-  mapM_ one (zip [0 :: Int ..] names)
+  mapM_ one (zip [0 :: Int ..] items)
   where
-    note n nsp = modify' (\s -> s {stListedSites = stListedSites s <> [(n, T.unpack path, nsp)]})
-    put' s n ref = modify' (\st -> st {stListedFns = Map.insert (s, n) ref (stListedFns st)})
+    note (ListedName n _ a asp) = modify' (\s -> s {stListedSites = stListedSites s <> [(a, n, T.unpack path, asp)]})
+    put' s a ref = modify' (\st -> st {stListedFns = Map.insert (s, a) ref (stListedFns st)})
+
+{- | The spaces of use an item of a source is put in under its alias, when
+it passes the checks of its own (G02275, G02276, G02278); an empty list
+for a source that is not checked (root ADR 0458).
+-}
+admitted :: ListedSource -> ListedName -> Maybe [Space]
+admitted src (ListedName n _ a _)
+  | a `elem` reservedNames = Nothing
+  | otherwise = case listedSpaces src n of
+      Nothing -> Just []
+      Just [] -> Nothing
+      Just spaces
+        | all (`aliasShape` a) spaces -> Just spaces
+        | otherwise -> Nothing
+
+{- | Whether an alias keeps the rules of the names of a space of use (root
+ADR 0458, G02278): those of the commands of .gm in the inline and the
+block spaces (a lowercase letter, then lowercase letters, digits and -),
+those of the expressions in theirs (a letter or _, then letters, digits
+and _).
+-}
+aliasShape :: Space -> Text -> Bool
+aliasShape s a = case (s, T.uncons a) of
+  (ExprSpace, Just (c, rest)) -> (letter c || c == '_') && T.all (\x -> letter x || isDigit x || x == '_') rest
+  (_, Just (c, rest)) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
+  (_, Nothing) -> False
+  where
+    letter x = isAsciiLower x || isAsciiUpper x
+
+{- | The definitions of the original name of a .emet under an alias (root
+ADR 0458): a call under the alias finds the function of the original
+name, and no other.
+-}
+renamed :: Text -> Text -> FunctionNamespace -> FunctionNamespace
+renamed n a fns = FunctionNamespace (pick (fnInline fns)) (pick (fnBlock fns)) (pick (fnExpr fns)) (pick (fnOthers fns))
+  where
+    pick :: Map Text v -> Map Text v
+    pick m = maybe Map.empty (Map.singleton a) (Map.lookup n m)
 
 {- | A block command of a plugin (docs/adr/0122): its arguments as a plugin
 command's, its body evaluated as blocks. An argument beyond int64 is
