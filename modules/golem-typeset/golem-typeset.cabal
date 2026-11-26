@@ -87,6 +87,7 @@ test-suite golem-typeset-test
     GlyphRunsSpec
     MemoSpec
     NoBreakProductSpec
+    OpeningIndentSpec
     PathMarksSpec
     RuleShapeSpec
     PdfColorCcittSpec

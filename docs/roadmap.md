@@ -74,7 +74,6 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
   - **字取り（未実装）**：`fit-characters` と、`drop-lines` との併用の誤り。 [root ADR 0466](adr/0466-fit-characters.md)。
   - **段落ごとの上書き（未実装）**：`@style` の名前付き引数。 [root ADR 0467](adr/0467-override-paragraph-style-keys-with-style-arguments.md)。
   - **見出しとリストへの段落スタイル（未実装）**：`[headings.<階層>]` の `paragraph-style` と、本体の形の `@style` のリスト。 [root ADR 0468](adr/0468-paragraph-styles-for-headings-and-lists.md)。
-  - **HTML と EPUB の始め括弧の字下げ（未実装）**：`data-opening` の段落の字下げ。 [root ADR 0469](adr/0469-opening-indent-in-html-and-epub.md)。
 
 - **縦中横とルビの内部の字間**：縦中横の中の文字、ルビの親文字と読みのそれぞれに、書き手が字間を指定できるようにする。外側の箱どうしのトラッキングは [Golem ADR 0370](adr/0370-tracking-inline-boxes.md) で扱う。
 

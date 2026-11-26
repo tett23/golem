@@ -63,6 +63,9 @@ module Golem.Typeset.Flow
     Assumed (..),
     composeEnv,
     paraLook,
+    -- the indent of a paragraph that starts with an opening bracket (root ADR 0374, 0469)
+    Indent (..),
+    openingIndent,
     fixpoint,
     fixpointWith,
     rubyStyleOf,

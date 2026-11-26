@@ -8,6 +8,7 @@ module Golem.Html
     HtmlCharStyle (..),
     HtmlParaStyle (..),
     HtmlPhysicalParagraph (..),
+    HtmlIndent (..),
     HtmlBox (..),
     defaultAlignDecls,
     HtmlRule (..),
@@ -63,7 +64,7 @@ import Golem.Numerals
 import Golem.Numerals.Notation (Notation, notationName, writeNumber)
 import Golem.Syntax.Span
 import Golem.Syntax.Text (escapeXml, tshow)
-import Golem.Unicode.CharClass (CharClass (..), charClass)
+import Golem.Unicode.CharClass (CharClass (..), charClass, charClassIn)
 import Golem.Unicode.Grapheme (graphemeClusters)
 import Numeric (showHex)
 import Skylighting qualified as S
@@ -260,9 +261,16 @@ data HtmlParaStyle = HtmlParaStyle
     -- | the box of the style (docs/adr/0271)
     hpsBox :: !(Maybe HtmlBox),
     -- | Resolved absolute lengths in free placement (root ADR 0397).
-    hpsPhysical :: !(Maybe HtmlPhysicalParagraph)
+    hpsPhysical :: !(Maybe HtmlPhysicalParagraph),
+    {- | the first-line indent of a style with opening-indent = "half", Nothing
+    for any other (root ADR 0469)
+    -} hpsOpeningHalf :: !(Maybe HtmlIndent)
   }
   deriving stock (Eq)
+
+-- | A first-line indent as style.toml gives it: in em, or absolute in sp (root ADR 0469).
+data HtmlIndent = IndentEm !Rational | IndentAbs !L.Sp
+  deriving stock (Eq, Show)
 
 {- | Absolute pitch and additional boundary gaps. Legacy styles retain their
 integer em spacing, so grid output remains byte-for-byte unchanged.
@@ -658,6 +666,56 @@ breakName = \case
 block :: Ctx -> Block -> [Node]
 block c b@(Block _ _ lang _) = maybe id (addAttrs . langPairs) lang (blockHtml c b)
 
+{- | The first character of a paragraph is an opening bracket (root ADR
+0469), in the language of its span or of the block, as the PDF judges it
+(root ADR 0374).
+-}
+opensWithBracket :: Maybe Text -> [Inline] -> Bool
+opensWithBracket blang is = case firstCharOf Nothing is of
+  Just (spanLang, ch) -> charClassIn (spanLang <|> blang) ch == Opening
+  Nothing -> False
+
+{- | The first character of inlines, with the language of the span it is
+in: inside styles, links, language spans and the bases of ruby, past the
+elements without a character (copied from golem-typeset, root ADR 0469).
+-}
+firstCharOf :: Maybe Text -> [InlineF r] -> Maybe (Maybe Text, Char)
+firstCharOf lang = \case
+  [] -> Nothing
+  x : xs ->
+    let inner l ys = firstCharOf l ys <|> firstCharOf lang xs
+     in case x of
+          Text _ t -> maybe (firstCharOf lang xs) (\(ch, _) -> Just (lang, ch)) (T.uncons t)
+          Kenten _ _ ys -> inner lang ys
+          Color _ _ ys -> inner lang ys
+          CharStyle _ _ ys -> inner lang ys
+          Link _ _ ys -> inner lang ys
+          Lang _ l ys -> inner (Just l) ys
+          Resolved _ _ _ ys -> inner lang ys
+          Ruby _ _ segs -> firstCharOf lang (concatMap rsBase segs) <|> firstCharOf lang xs
+          IndexMark {} -> firstCharOf lang xs
+          ProofComment {} -> firstCharOf lang xs
+          ChannelItem {} -> firstCharOf lang xs
+          _ -> Nothing
+
+{- | The text-indent of the first line of a paragraph that starts with an
+opening bracket (root ADR 0469): max(min(f, 0), f - 0.5em) of the
+first-line indent f, computed for em, written with max() of CSS for an
+absolute length.
+-}
+openingTextIndent :: HtmlIndent -> Text
+openingTextIndent = \case
+  IndentEm r -> let v = max (min r 0) (r - 1 / 2) in if v == 0 then "0" else L.emText v <> "em"
+  IndentAbs 0 -> "0"
+  IndentAbs sp -> let f = L.ptText sp <> "pt" in "max(min(" <> f <> ", 0em), " <> f <> " - 0.5em)"
+
+{- | The selector of the paragraphs of a style that start with an opening
+bracket (root ADR 0469): the selector of the style with data-opening; the
+first line of a style that keeps its lines, each of which is a block.
+-}
+openingSelector :: Text -> HtmlParaStyle -> Text
+openingSelector sel ps = sel <> "[data-opening]" <> (if hpsKeepLines ps then " > .line:first-child" else "")
+
 blockHtml :: Ctx -> Block -> [Node]
 blockHtml c (Block sp lbl blang body) = case body of
   Paragraph st is ->
@@ -667,7 +725,9 @@ blockHtml c (Block sp lbl blang body) = case body of
         content
           | keepsLines c st = intercalate [el "br" [] [], nl] [[el "span" [("class", "line")] (inlines c l)] | l <- splitAtLineBreaks is]
           | otherwise = inlines c is
-     in [el "p" (idAttr lbl <> cls) content, nl] <> sidenotes c blang is
+        -- a paragraph of a style with opening-indent = "half" that starts with an opening bracket, outside lists, which have no indent (root ADR 0469)
+        opening = [("data-opening", "") | cListDepth c == 0, isJust (Map.lookup (fromMaybe "body" st) (cParaStyles c) >>= hpsOpeningHalf), opensWithBracket blang is]
+     in [el "p" (idAttr lbl <> cls <> opening) content, nl] <> sidenotes c blang is
   Heading l _ is ->
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
@@ -1734,6 +1794,8 @@ css cfg book =
             <> [ sel <> " { padding-inline-start: " <> hpsIndent ps <> "; text-indent: " <> hpsFirstLineIndent ps <> "; }"
                | indentRule name ps
                ]
+            -- the first line of a paragraph that starts with an opening bracket (root ADR 0469)
+            <> [openingSelector sel ps <> " { text-indent: " <> openingTextIndent f <> "; }" | Just f <- [hpsOpeningHalf ps]]
             <> [rule sel (hpsAlign ps) | alignRule name ps]
             <> [sel <> " { padding-inline-end: " <> hpsEndIndent ps <> "; }" | endIndentRule name ps]
             <> [ prefixed (outside [name | name /= "body"]) (adjacent <> " + " <> adjacent) <> " { margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else "0") <> "; }"
@@ -1877,6 +1939,8 @@ css cfg book =
                     ),
                   rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if spaceBetween ps > 0 then spaceText ps (spaceBetween ps) else if spaced ps then "0" else margin ps)]
                 ]
+                  -- the first line of a paragraph that starts with an opening bracket (root ADR 0469)
+                  <> [rule (openingSelector (paraSel name) ps) ["text-indent: " <> openingTextIndent f] | Just f <- [hpsOpeningHalf ps]]
               | (name, ps) <- locals
               ]
               -- the pairs of a style of the file and another

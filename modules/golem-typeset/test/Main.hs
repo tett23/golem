@@ -8,6 +8,7 @@ import GlyphRunsSpec (glyphRunsTests)
 import Golem.TestSupport.PackageDirectory (enterPackageDirectory)
 import MemoSpec (memoTests)
 import NoBreakProductSpec (noBreakProductTests)
+import OpeningIndentSpec (openingIndentTests)
 import PathMarksSpec (pathMarksTests)
 import PdfColorCcittSpec (pdfColorCcittTests)
 import PdfColorClassifySpec (pdfColorClassifyTests)
@@ -56,5 +57,6 @@ tests =
       testGroup "the fit of a tate-chu-yoko in its box (golem-driver ADR 0045)" tcyTests,
       testGroup "the shape and the colour of the wrap mark of inline code (golem-layout ADR 0042)" wrapMarkTests,
       testGroup "the boxes of paragraph styles (docs/adr/0271)" boxTests,
-      noBreakProductTests
+      noBreakProductTests,
+      openingIndentTests
     ]

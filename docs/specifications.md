@@ -4037,7 +4037,17 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 先頭の字は、文字スタイル、圏点、色、リンク、言語の範囲、ルビの親文字の中の字も数え、索引の印のように字を持たない要素は飛ばす。
 `line-breaks = "keep"` の段落では、最初の行の字下げを受ける行のそれぞれを、その行の先頭の字で決める。
 `opening-indent` は、PDF の文書の最上位の段落と `@style` の本体の段落にだけ当たり、定義リストの説明の段落、キャプション、傍注の本文には当たらない。
-HTML と EPUB は `opening-indent` を使わない。
+
+HTML と EPUB でも、`opening-indent = "half"` は、始め括弧類で始まる段落の最初の行の字下げを、PDF と同じ式 `max(min(f, 0), f - h)` で決める（[root ADR 0469](adr/0469-opening-indent-in-html-and-epub.md)）。
+先頭の字が始め括弧類かどうかは、PDF と同じく、先頭の字とその字の区間の言語で決める。
+始め括弧類で始まる段落の `p` には、属性 `data-opening` を足す。
+class ではなく属性で示すので、class の無い `p` を選ぶ `body` の規則は、そのまま当たる。
+その段落スタイルの CSS には、`p.ps-<名前>[data-opening]`（`body` では `p[data-opening]`、ファイルの段落スタイルではファイルの class の下）の規則で、`text-indent` を書く。
+`first-line-indent` が `zw` なら、出力の側で計算した `em` の値を書き、絶対の長さなら、CSS の `max(min(f, 0em), f - 0.5em)` を書く。
+ブラウザーの `em` は段落の文字の大きさなので、半角分は PDF と同じ長さになる。
+`line-breaks = "keep"` の段落は HTML では一つの `p` なので、`data-opening` は段落の先頭の字で決め、規則は最初の行（`> .line:first-child`）にだけ当たる。
+リストの項目の中の段落は字下げを持たないので、`data-opening` を足さない。
+脚注と後注の本文、キャプション、傍注の本文にも足さない。
 
 プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、行の先頭に全角の空白を置く（[docs/adr/0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 
