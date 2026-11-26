@@ -464,11 +464,12 @@ golem-driver のテストのスイートは、どちらのアーキテクチャ�
 golem-driver に属さないテストのスイートも、どちらのアーキテクチャでも `tests-rest-a` と `tests-rest-b` の二つのランナーに分け、どのスイートもちょうど一つのランナーで走る（[ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の I1）。
 振り分けは `scripts/ci/test-suites.sh` の `rest-a` と `rest-b` が決め、`REST_A` に挙げないスイートは `tests-rest-b` で走る。
 最も長い golem-emet-test と、最後に終わる golem-pdf-test を別のランナーに置き、golem-pdf-test が始まるまでの待ちを減らす。
+golem-typeset-test は、golem-pdf-test と golem-layout-test と同じランナーで走らせると上限の 10 秒を超えたので、`tests-rest-a` に置く（[ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の割り当ての入れ替え）。
 生成したパーサーと文法の照合（`scripts/gen-parser.sh`）と、埋め込んだモジュールの照合（`scripts/gen-embedded.sh`）は、`peg-hs` を組む `tests-rest-a` でだけ走る（[ADR 0457](adr/0457-split-the-tests-rest-runner-in-two.md) の I6）。
 
 | ランナー | スイート |
 | --- | --- |
-| `tests-rest-a` | golem-emet-test、golem-parser-test |
+| `tests-rest-a` | golem-emet-test、golem-parser-test、golem-typeset-test |
 | `tests-rest-b` | golem-driver に属さないスイートのうち、`tests-rest-a` のほかのすべて |
 
 四つのスイート golem-driver-pdf-test、golem-driver-page-test、golem-driver-output-test、golem-driver-cli-test は、一つだった golem-driver-test を領域ごとに分けたもので、テストの名前と数は分ける前と同じである（[ADR 0416](adr/0416-shorten-the-build-of-the-pull-request-ci.md) の I1）。
