@@ -832,21 +832,21 @@ importListCompletions ws src off = do
           then []
           else
             if ".emet" `T.isSuffixOf` path
-          then
-            nub
-              [ Described (exName e) CkCommand (exSignature e)
-              | Just p <- [lastProgramOf ws],
-                Right file <- [emetPath path],
-                e <- Map.findWithDefault [] file (programExports p),
-                exKind e `elem` [KindInline, KindBlock, KindFn]
-              ]
-          else
-            [ Completion v CkSettingKey
-            | Right file <- [normalizeRelative (T.unpack path)],
-              Just t <- [sourceOf ws file],
-              Just r <- [srcResult t],
-              v <- nub (map fst (usageDefined (erUsage r)))
-            ]
+              then
+                nub
+                  [ Described (exName e) CkCommand (exSignature e)
+                  | Just p <- [lastProgramOf ws],
+                    Right file <- [emetPath path],
+                    e <- Map.findWithDefault [] file (programExports p),
+                    exKind e `elem` [KindInline, KindBlock, KindFn]
+                  ]
+              else
+                [ Completion v CkSettingKey
+                | Right file <- [normalizeRelative (T.unpack path)],
+                  Just t <- [sourceOf ws file],
+                  Just r <- [srcResult t],
+                  v <- nub (map fst (usageDefined (erUsage r)))
+                ]
 
 -- | The namespace vars of the project (docs/adr/0185); empty without a project.
 projectVarsOf :: Workspace -> Map.Map Text Value
