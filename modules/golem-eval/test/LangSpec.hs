@@ -131,11 +131,11 @@ tests =
       testCase "a heading in the body of @lang" $ do
         langs "@lang en\n  # Title\n\n  Text.\n" @?= [("h", Just "en"), ("p", Just "en")]
         msgs "@lang en\n  # Title\n\n  Text.\n" @?= [],
-      testCase "a page break in the body of @lang is G02059, and so on" $ do
-        codes "@lang en\n  Text.\n\n  @page-break\n" @?= ["G02059"]
-        langs "@lang en\n  Text.\n\n  @page-break\n" @?= [("p", Just "en")]
-        codes "@lang en\n  Text.\n\n  @no-page-break\n" @?= ["G02071"]
-        codes "@lang en\n  Text.\n\n  @blank-line\n" @?= ["G02093"],
+      testCase "root ADR 0462 I1: a page break in the body of @lang at the top is no error, and so on" $ do
+        codes "@lang en\n  Text.\n\n  @page-break\n" @?= []
+        [blockBody b | b <- blocksOf "@lang en\n  Text.\n\n  @page-break\n", kind (blockBody b) == "other"] @?= [ForcedBreak BreakPage]
+        codes "@lang en\n  Text.\n\n  @no-page-break\n" @?= []
+        codes "@lang en\n  Text.\n\n  @blank-line\n" @?= [],
       testCase "G02010: @lang without a block after it" $ do
         codes "@lang en\n" @?= ["G02010"]
         codes "@lang en\n@label a\n" @?= ["G02010"],
