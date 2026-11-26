@@ -32,6 +32,7 @@ redSquare =
             [SegMove (0, 0), SegLine (5, 0), SegCurve (6, 1) (6, 2) (5, 5), SegClose]
         ]
     ]
+    [1, 0, 0, 1, 0, 0]
 
 doc :: [Mark] -> [(FormRef, FormContent)] -> Map.Map ImageRef ImageData -> Document
 doc marks forms images =
@@ -97,6 +98,7 @@ tests =
                   (Just (0, 0, 4, 5))
                   [DrawPath (PathPaint (Just (128, 0, 255)) True Nothing) [SegMove (0, 0), SegLine (1 / 3, 1), SegClose]]
               ]
+              [1, 0, 0, 1, 0, 0]
           )
           -- 128/255 = 0.50196 to four decimals; 1/3 rounded to 1/65536 is 21845/65536 = 0.333328
           @?= "1 0 0 -1 0 20 cm\n/GolemSRGB cs /GolemSRGB CS\nq 1 0 0 1 2 3 cm\n0 0 4 5 re W n\nq\n0.502 0 1 sc\n0 0 m\n0.333328 1 l\nh\nf*\nQ\nQ\n",
