@@ -1348,6 +1348,7 @@ tokenType (Place parent inExpr first idents word) = \case
   where
     plain t = Just (t, [])
     exprPunctuation = [C.KDot, C.KLParen, C.KRParen, C.KComma, C.KLBracket, C.KRBracket, C.KLBrace, C.KRBrace, C.KColon]
+
 -- ------------------------------------------------------------------ variables of @set
 
 -- | A variable of @set: the file that sets it and its name (root ADR 0454).
@@ -1380,15 +1381,16 @@ writes it. Nothing for a .emet, or outside the project.
 importTarget :: Workspace -> Source -> ImportSite -> Maybe FilePath
 importTarget ws s site
   | ".emet" `T.isSuffixOf` isPath site = Nothing
-  | otherwise = listToMaybe
-      [ sfPath sf
-      | Just e <- [wsEvaluated ws],
-        srcInProject s,
-        let ImportGraph g = projectImports (evProject e),
-        (tfid, site') <- Map.findWithDefault [] (srcFile s) g,
-        isPath site' == isPath site,
-        Just sf <- [Map.lookup tfid (projectSources (evProject e))]
-      ]
+  | otherwise =
+      listToMaybe
+        [ sfPath sf
+        | Just e <- [wsEvaluated ws],
+          srcInProject s,
+          let ImportGraph g = projectImports (evProject e),
+          (tfid, site') <- Map.findWithDefault [] (srcFile s) g,
+          isPath site' == isPath site,
+          Just sf <- [Map.lookup tfid (projectSources (evProject e))]
+        ]
 
 -- | Whether an occurrence is a name of the expressions or of the list of an @import.
 isVariableOccurrence :: Occurrence -> Bool
@@ -1529,5 +1531,6 @@ renameVariable ws style path off new = do
     when (name `elem` [old, new]) (Left (RunningHeadVariable whole l c))
   -- a name written already that would point at the variable after the rename
   when clash $
-    forM_ (variableOccurrences ws (Just (f, new)) (f, new)) $ \l -> Left (NewNameReferenced (locPath l) new)
+    forM_ (variableOccurrences ws (Just (f, new)) (f, new)) $
+      \l -> Left (NewNameReferenced (locPath l) new)
   pure [(l, new) | l <- edits]
