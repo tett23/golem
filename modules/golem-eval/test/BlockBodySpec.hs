@@ -99,7 +99,7 @@ keepsLines :: EvalContext -> Text -> Bool
 keepsLines c s = "LineBreak" `isInfixOf` ir c s
 
 tests :: TestTree
-tests = testGroup "block bodies (root ADR 0459, root ADR 0460)" [bodyTests, styleTests]
+tests = testGroup "block bodies (root ADR 0459, root ADR 0460, root ADR 0462)" [bodyTests, styleTests, breakTests]
 
 bodyTests :: TestTree
 bodyTests =
@@ -269,3 +269,84 @@ styleTests =
     unstyled = replace "Paragraph (Just \"quote\")" "Paragraph Nothing"
     unstyledHeading = ir ctx "# 見出し\n\n@style quote\n  一\n"
     replace from to s = T.unpack (T.replace from to (T.pack s))
+
+-- | The bodies at the top of the output.
+bodies :: EvalContext -> Text -> [BlockBody]
+bodies c s = resultBodies (evalResult c (src s))
+
+-- | A page break, a page control, blank lines or a separator.
+isBreakBody :: BlockBody -> Bool
+isBreakBody = \case
+  ForcedBreak _ -> True
+  PageControl _ -> True
+  BlankLines _ -> True
+  Separator _ -> True
+  _ -> False
+
+-- | The blocks of each frame of the output.
+frameBodies :: EvalContext -> Text -> [[BlockBody]]
+frameBodies c s = [map blockBody bs | FrameBlock _ bs <- bodies c s]
+
+-- | How many of the codes are the one given.
+count :: Text -> [Text] -> Int
+count x = length . filter (== x)
+
+breakTests :: TestTree
+breakTests =
+  testGroup
+    "breaks in the bodies of block commands, and commands written twice (root ADR 0462)"
+    [ testCase "root ADR 0462 I1: @lang en with @page-break and a paragraph in its body" $ do
+        codes ctx "@lang en\n  @page-break\n\n  段落\n" @?= []
+        [b | b <- bodies ctx "@lang en\n  @page-break\n\n  段落\n", isBreakBody b] @?= [ForcedBreak BreakPage]
+        paragraphs ctx "@lang en\n  @page-break\n\n  段落\n" @?= [(Nothing, "段落")],
+      testCase "root ADR 0462 I1: the breaks of the body of @lang stay in the order written" $ do
+        let s = "@lang en\n  一\n\n  @need-lines 3\n\n  二\n\n  @blank-line\n\n  ---\n\n  三\n"
+        codes ctx s @?= []
+        [if isBreakBody b then "break" else "p" | b <- bodies ctx s] @?= ["p" :: String, "break", "p", "break", "break", "p"],
+      testCase "root ADR 0462 I1: the body of @lang with a break before a paragraph in its group" $ do
+        codes ctx "@lang en\n  @page-break\n  段落\n" @?= []
+        [b | b <- bodies ctx "@lang en\n  @page-break\n  段落\n", isBreakBody b] @?= [ForcedBreak BreakPage],
+      testCase "root ADR 0462 I1: @style body with @blank-line in its body" $ do
+        codes ctx "@style body\n  @blank-line\n\n  段落\n" @?= []
+        [b | b <- bodies ctx "@style body\n  @blank-line\n\n  段落\n", isBreakBody b] @?= [BlankLines 1]
+        -- a body with no paragraph is G02046 (root ADR 0460), not an error of the break
+        codes ctx "@style body\n  @blank-line\n" @?= ["G02046"]
+        [b | b <- bodies ctx "@style body\n  @blank-line\n", isBreakBody b] @?= [BlankLines 1],
+      testCase "root ADR 0462 I1: a block function and a plugin block command keep a break of their bodies" $ do
+        codes ctx "@stage-direction\n  @page-break\n\n  段落\n" @?= []
+        [b | b <- bodies ctx "@stage-direction\n  @page-break\n\n  段落\n", isBreakBody b] @?= [ForcedBreak BreakPage]
+        codes ctx "@box\n  @page-break\n\n  段落\n" @?= []
+        [b | b <- bodies ctx "@box\n  @page-break\n\n  段落\n", isBreakBody b] @?= [ForcedBreak BreakPage],
+      testCase "root ADR 0462 I1: @lang en with @page-break in its body inside a list item is G02059" $
+        codes ctx "- 項目\n\n  @lang en\n    @page-break\n" @?= ["G02059"],
+      testCase "root ADR 0462 I2: @frame f with @page-break and a paragraph on the next line is G02256" $ do
+        codes ctx "@frame f\n  @page-break\n  段落\n" @?= ["G02256"]
+        map (filter isBreakBody) (frameBodies ctx "@frame f\n  @page-break\n  段落\n") @?= [[]]
+        map length (frameBodies ctx "@frame f\n  @page-break\n  段落\n") @?= [1],
+      testCase "root ADR 0462 I2: @frame f with two @page-break is G02256 twice" $ do
+        codes ctx "@frame f\n  @page-break\n  @page-break\n" @?= ["G02256", "G02256"]
+        codes ctx "@frame f\n  @page-break\n\n  @page-break\n" @?= ["G02256", "G02256"]
+        codes ctx "@frame f\n  @page-break\n  @blank-line\n  段落\n" @?= ["G02256", "G02256"]
+        frameBodies ctx "@frame f\n  @page-break\n  @page-break\n" @?= [[]],
+      testCase "root ADR 0462 I2: @frame f with @need-lines 3 is G02256" $
+        codes ctx "@frame f\n  @need-lines 3\n" @?= ["G02256"],
+      testCase "root ADR 0462 I2: a break inside @style in a frame is G02256" $
+        codes ctx "@frame f\n  @style quote\n    @page-break\n\n    段落\n" @?= ["G02013", "G02256"],
+      testCase "root ADR 0462 I2: @note n with @separator s is G02141" $ do
+        codes ctx "本文[note n]。\n\n@note n\n  @separator s\n\n  段落\n" @?= ["G02141"]
+        codes ctx "本文[note n]。\n\n@note n\n  @page-break\n  段落\n" @?= ["G02141"]
+        codes ctx "本文[endnote n]。\n\n@endnote n\n  @blank-line\n  @column-break\n  段落\n" @?= ["G02141", "G02141"],
+      testCase "root ADR 0462 I2: @blank-line in a caption is G02093" $ do
+        codes ctx "@figure x.png alt=x\n  一\n\n  @blank-line\n" @?= ["G02093"]
+        codes ctx "@figure x.png alt=x\n  @page-break\n  一\n" @?= ["G02059"]
+        [() | FigureBlock f <- bodies ctx "@figure x.png alt=x\n  @page-break\n  一\n", b <- figCaption f, isBreakBody (blockBody b)] @?= [],
+      testCase "root ADR 0462 I3, I4: @label a, @label b, @label c and a paragraph" $ do
+        count "G02012" (codes ctx "@label a\n@label b\n@label c\n段落\n") @?= 2
+        [blockLabel b | b <- resultBlocks (evalResult ctx (src "@label a\n@label b\n@label c\n段落\n"))] @?= [Just "c"],
+      testCase "root ADR 0462 I3, I4: @style a, @style b and a paragraph" $ do
+        codes ctx "@style quote\n@style aside\n段落\n" @?= ["G02012"]
+        paragraphs ctx "@style quote\n@style aside\n段落\n" @?= [(Just "aside", "段落")],
+      testCase "root ADR 0462 I3, I4: @lang written three times keeps the last" $ do
+        count "G02012" (codes ctx "@lang en\n@lang fr\n@lang de\n段落\n") @?= 2
+        [blockLang b | b <- resultBlocks (evalResult ctx (src "@lang en\n@lang fr\n@lang de\n段落\n"))] @?= [Just "de"]
+    ]

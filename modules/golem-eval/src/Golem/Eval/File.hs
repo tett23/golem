@@ -1353,8 +1353,8 @@ command (root ADR 0459): a command that takes a body takes the commands
 after it with the body; an attribute goes to the first block of what
 follows; a command that puts out blocks is evaluated where it is written,
 its blocks before the rest. G02013 for an attribute, @style or @lang
-outside @note and @endnote, which are left out; G02012 for one written
-twice, the second left out; G02011 once for the group when a command
+outside @note and @endnote, which are left out; G02012 for each one
+written again, all but the last left out (root ADR 0462); G02011 once for the group when a command
 that puts out blocks has an attribute outside it, or the next block after
 it; G02123 for the blocks between ::: lines after it. A name the
 evaluation cannot call counts as a command that puts out blocks for them,
@@ -1376,8 +1376,8 @@ commandRow ctx passed sp cmds0 target = do
   let tagged1 = (if null fromNote then outside else filter (not . wrapper) outside) <> fromNote
       once = [(n, i) | (i, (k, c@(A.Located _ (A.BlockCommand (A.Located _ n) _ _)))) <- zip [0 :: Int ..] tagged1, k == Attribute || isStyleCommand c || isLangCommand c]
       repeated = [i | (j, (n, i)) <- zip [0 :: Int ..] once, n `elem` map fst (take j once)]
-      -- the first @style is kept; of the others, the one written last (golem-eval ADR 0003, docs/adr ADR 0187)
-      dropped = [i | (j, (n, i)) <- zip [0 :: Int ..] once, if n == "style" then n `elem` map fst (take j once) else n `elem` map fst (drop (j + 1) once)]
+      -- of a command written twice, the one written last is kept (root ADR 0462)
+      dropped = [i | (j, (n, i)) <- zip [0 :: Int ..] once, n `elem` map fst (drop (j + 1) once)]
   mapM_ (\(_, (_, A.Located asp _)) -> err "G02012" asp "同じ属性を二度書いています") [x | x@(i, _) <- zip [0 :: Int ..] tagged1, i `elem` repeated]
   let tagged = [x | (i, x) <- zip [0 :: Int ..] tagged1, i `notElem` dropped]
       -- a name the evaluation cannot call is one that puts out blocks (root ADR 0461)
@@ -1826,8 +1826,9 @@ langSpan ctx inHeading sp args slots = do
 
 {- | The body form of @lang (docs/adr ADR 0187): each block at the top of
 the body takes the language, unless it has one of its own; no block wraps
-them. A forced break, a page control and blank lines in the body are not
-at the top of the document (G02059, G02071, G02093).
+them. A forced break, a page control, blank lines and a separator of the
+body stay where they are, without a language; 'nestedBreaks' reports them
+if that is not the top of the document (root ADR 0462).
 -}
 langBody :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 langBody ctx = langBodyWith (evalBlocks ctx)
@@ -1837,9 +1838,16 @@ langBodyWith :: ([A.Located A.Block] -> M [Block]) -> SrcSpan -> [A.Located A.Ar
 langBodyWith evalBody sp args body = do
   tag <- langTag sp args
   bs <- evalBody body
-  let (ds, bs') = concat <$> traverse belowTop bs
-  mapM_ report ds
-  pure (map (withLang tag) bs')
+  pure [if isBreakBlock (blockBody b) then b else withLang tag b | b <- bs]
+
+-- | A forced break, a page control, blank lines or a separator: a point between the blocks, not a block of text.
+isBreakBlock :: BlockBody -> Bool
+isBreakBlock = \case
+  ForcedBreak _ -> True
+  PageControl _ -> True
+  BlankLines _ -> True
+  Separator _ -> True
+  _ -> False
 
 -- | A block with a language, unless it has one of its own (docs/adr ADR 0187).
 withLang :: Maybe Text -> Block -> Block
@@ -1852,12 +1860,7 @@ withLang l b = b {blockLang = blockLang b <|> l}
 nestedBreaks :: [Block] -> ([Block], [Diagnostic])
 nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
   where
-    top b = case blockBody b of
-      ForcedBreak _ -> ([], [b])
-      PageControl _ -> ([], [b])
-      BlankLines _ -> ([], [b])
-      Separator _ -> ([], [b])
-      _ -> belowTop b
+    top b = if isBreakBlock (blockBody b) then ([], [b]) else belowTop b
 
 -- | The diagnostics and what is left of a block below the top of the document ('nestedBreaks').
 belowTop :: Block -> ([Diagnostic], [Block])
@@ -2013,29 +2016,43 @@ noteDefinition ctx kind sp args body = case args of
         defined <- gets (any (\(n, _, _) -> n == name) . kindDefs kind)
         when defined $ err "G02140" sp ("同じ名前の注の本文を二度書いています: " <> name)
         when (null body) $ err "G02143" sp ("@" <> kindCommand kind <> " に本文がありません: " <> name)
-        bs <- concat <$> mapM inBody body
+        bs <- concat <$> mapM (paragraphsOnly ctx ("G02141", "注の本文には段落だけを書けます") "@style は注の本文には付けられません") body
         unless defined $ modify' $ \s -> case kind of
           FootKind -> s {stNoteDefs = stNoteDefs s <> [(name, sp, bs)]}
           EndKind -> s {stEndnoteDefs = stEndnoteDefs s <> [(name, sp, bs)]}
         pure []
   _ -> err "G02142" sp noteNameMessage >> pure []
+
+{- | The body of a block that holds paragraphs only (@note, @endnote,
+@frame): the code given at each block of the body that is not a
+paragraph, and at each break, page control, blank line and separator of a
+group, which are dropped (root ADR 0462); G02013 for @style on a
+paragraph of the body, whose style is dropped.
+-}
+paragraphsOnly :: EvalContext -> (Text, Text) -> Text -> A.Located A.Block -> M [Block]
+paragraphsOnly ctx (code, message) styleMessage = inBody
   where
     inBody lb@(A.Located bsp b) = case b of
-      A.Paragraph _ -> concatMap paragraphOf <$> evalBlock ctx lb
+      A.Attributed cmds t | (breaks@(_ : _), rest) <- partition isBreakCommand cmds -> do
+        mapM_ (\(A.Located csp _) -> err code csp message) breaks
+        if null rest then maybe (pure []) inBody t else inBody (A.Located bsp (A.Attributed rest t))
+      A.Paragraph _ -> unstyled <$> evalBlock ctx lb
       A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand cmds -> do
-        mapM_ (\(A.Located csp _) -> err "G02013" csp "@style は注の本文には付けられません") (filter isStyleCommand cmds)
-        concatMap paragraphOf <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand) cmds) t))
-      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> concatMap paragraphOf <$> evalBlock ctx lb
-      -- the body form of @style: G02013, its paragraphs without the style
+        mapM_ (\(A.Located csp _) -> err "G02013" csp styleMessage) (filter isStyleCommand cmds)
+        unstyled <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand) cmds) t))
+      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> unstyled <$> evalBlock ctx lb
+      -- the body form of @style: G02013, its paragraphs without the style, its other blocks the code given
       A.BlockCommand (A.Located _ "style") _ inner -> do
-        err "G02013" bsp "@style は注の本文には付けられません"
-        concat <$> mapM inBody [A.Located psp (A.Paragraph (joinSoftBreaks is)) | A.Located psp (A.Paragraph is) <- inner]
+        err "G02013" bsp styleMessage
+        concat <$> mapM (inBody . joined) inner
       A.ErrorBlock -> pure []
-      _ -> err "G02141" bsp "注の本文には段落だけを書けます" >> pure []
-    -- a paragraph with a style (a body form of @style) loses it with G02013
-    paragraphOf = \case
-      Block bsp l lang (Paragraph Nothing is) -> [Block bsp l lang (Paragraph Nothing is)]
-      Block bsp l lang (Paragraph (Just _) is) -> [Block bsp l lang (Paragraph Nothing is)]
+      _ -> err code bsp message >> pure []
+    joined = \case
+      A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (joinSoftBreaks is))
+      other -> other
+    -- a paragraph with a style (a body form of @style) loses it
+    unstyled = concatMap $ \case
+      Block bsp l lang (Paragraph _ is) -> [Block bsp l lang (Paragraph Nothing is)]
       _ -> []
 
 {- | @frame NAME and its paragraphs (root ADR 0438): a text frame of
@@ -2049,27 +2066,13 @@ frameBlock ctx sp args body = case args of
   [A.Located _ (A.Positional v)]
     | Just name <- nameArg v,
       frameName name -> do
-        bs <- concat <$> mapM inBody body
+        bs <- concat <$> mapM (paragraphsOnly ctx ("G02256", "フレームの中身には段落だけを書けます") "@style はフレームの中の段落には付けられません") body
         pure [block sp (FrameBlock name bs)]
   _ -> err "G02255" sp "@frame にはフレームの名前を一つ書きます" >> pure []
   where
     frameName name = case T.uncons name of
       Just (c, rest) -> isAsciiLower c && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest
       Nothing -> False
-    inBody lb@(A.Located bsp b) = case b of
-      A.Paragraph _ -> concatMap paragraphOf <$> evalBlock ctx lb
-      A.Attributed cmds t@(Just (A.Located _ (A.Paragraph _))) | any isStyleCommand cmds -> do
-        mapM_ (\(A.Located csp _) -> err "G02013" csp "@style はフレームの中の段落には付けられません") (filter isStyleCommand cmds)
-        concatMap paragraphOf <$> evalBlock ctx (A.Located bsp (A.Attributed (filter (not . isStyleCommand) cmds) t))
-      A.Attributed _ (Just (A.Located _ (A.Paragraph _))) -> concatMap paragraphOf <$> evalBlock ctx lb
-      A.BlockCommand (A.Located _ "style") _ inner -> do
-        err "G02013" bsp "@style はフレームの中の段落には付けられません"
-        concat <$> mapM inBody [A.Located psp (A.Paragraph (joinSoftBreaks is)) | A.Located psp (A.Paragraph is) <- inner]
-      A.ErrorBlock -> pure []
-      _ -> err "G02256" bsp "フレームの中身には段落だけを書けます" >> pure []
-    paragraphOf = \case
-      Block bsp l lang (Paragraph _ is) -> [Block bsp l lang (Paragraph Nothing is)]
-      _ -> []
 
 {- | The notes written by name take the bodies of their @note
 (docs/adr/0263): G02137 for a name no @note of the file defines, G02139
