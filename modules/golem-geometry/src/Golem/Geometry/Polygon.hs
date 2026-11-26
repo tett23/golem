@@ -16,12 +16,18 @@ module Golem.Geometry.Polygon
     splitCurve,
     flatPieces,
     flattenPath,
+    flattenPathWith,
     insidePolygons,
     stripInside,
+    reachInBox,
+    EdgeIndex,
+    indexPolygons,
+    reachInIndex,
   )
 where
 
-import Data.List (sort, sortOn)
+import Data.Function (on)
+import Data.List (groupBy, sort, sortOn)
 import Golem.Geometry (FillRule (..), Path (..), Point, Segment (..), SubPath (..))
 import Golem.Length (Sp (..))
 
@@ -69,7 +75,16 @@ line and of each flat piece of each curve. A subpath of no segment is no
 polygon.
 -}
 flattenPath :: Path -> [[RPoint]]
-flattenPath (Path subs) = [polygon s | s <- subs, not (null (subSegments s))]
+flattenPath = flattenPathWith (\(Sp x, Sp y) -> (toRational x, toRational y))
+
+{- | The polygons of a path whose points are first mapped by an affine
+function (root ADR 0464): an outline in the units of its image, scaled to
+the size the image is placed at. An affine map takes a cubic curve to the
+curve of the mapped control points, so the curves are flattened after the
+map, within 'flattenTolerance2' of sp.
+-}
+flattenPathWith :: (Point -> RPoint) -> Path -> [[RPoint]]
+flattenPathWith rp (Path subs) = [polygon s | s <- subs, not (null (subSegments s))]
   where
     polygon (SubPath start segs _) = rp start : go (rp start) segs
     go _ [] = []
@@ -78,8 +93,6 @@ flattenPath (Path subs) = [polygon s | s <- subs, not (null (subSegments s))]
       CurveTo a b e ->
         let ps = [p3 | (_, _, _, p3) <- flatPieces (q, rp a, rp b, rp e)]
          in ps <> go (rp e) rest
-    rp :: Point -> RPoint
-    rp (Sp x, Sp y) = (toRational x, toRational y)
 
 -- | The edges of polygons, each closed back to its start; edges of no length are left out.
 edgesOf :: [[RPoint]] -> [(RPoint, RPoint)]
@@ -234,3 +247,108 @@ dedupe = \case
   a : b : rest | a == b -> dedupe (b : rest)
   a : rest -> a : dedupe rest
   [] -> []
+
+{- | The furthest x of the region inside polygons by the fill rule within
+the box from x0 to x1 and from y0 to y1, edges included (root ADR 0464):
+Nothing when the region does not meet the box.
+
+The furthest point of the region in the box is on the boundary of their
+common part: a vertex in the box, a point where an edge crosses a side of
+the box, or a corner of the box inside the region. Along an edge the x is
+furthest at an end of the part of the edge in the box, and along a side of
+the box inside the region at an edge or at a corner, so these points are
+all that need looking at.
+-}
+reachInBox :: FillRule -> [[RPoint]] -> (Rational, Rational) -> (Rational, Rational) -> Maybe Rational
+reachInBox rule = reachInIndex rule . indexPolygons
+
+{- | The edges and vertices of polygons by where they are across the
+lines (y), so that 'reachInIndex' looks only at those near a box: a curve
+flattened within 1/4 sp has many short edges.
+-}
+data EdgeIndex = EdgeIndex
+  { -- | the edges by their lowest y
+    eiEdges :: !(Keyed (RPoint, RPoint)),
+    -- | the most an edge spans in y
+    eiSpan :: !Rational,
+    -- | the vertices by their y
+    eiVertices :: !(Keyed Rational)
+  }
+
+-- | The index of the edges and the vertices of polygons.
+indexPolygons :: [[RPoint]] -> EdgeIndex
+indexPolygons polys =
+  let es = edgesOf polys
+      lowY ((_, ay), (_, by)) = min ay by
+      highY ((_, ay), (_, by)) = max ay by
+   in EdgeIndex
+        (keyed [(lowY e, e) | e <- es])
+        (maximum (0 : [highY e - lowY e | e <- es]))
+        (keyed [(y, x) | poly <- polys, length poly > 1, (x, y) <- poly])
+
+-- | 'reachInBox' of the polygons of an index.
+reachInIndex :: FillRule -> EdgeIndex -> (Rational, Rational) -> (Rational, Rational) -> Maybe Rational
+reachInIndex rule ix (x0, x1) (y0, y1)
+  | x0 > x1 || y0 > y1 = Nothing
+  | null candidates = Nothing
+  | otherwise = Just (maximum candidates)
+  where
+    -- the edges that reach the box across the lines: those from y0 less the longest span to y1 that end at y0 or after
+    es =
+      [ e
+      | e@((_, ay), (_, by)) <- inRange (y0 - eiSpan ix) y1 (eiEdges ix),
+        max ay by >= y0
+      ]
+    verticesIn = inRange y0 y1 (eiVertices ix)
+    vertices = [x | x <- verticesIn, x0 <= x, x <= x1]
+    -- the part of each edge on a side of the box across the lines: its furthest x within the box
+    onSideY y =
+      [ x
+      | ((ax, ay), (bx, by)) <- es,
+        min ay by <= y,
+        y <= max ay by,
+        x <- if ay == by then [min x1 (max ax bx) | max ax bx >= x0, min ax bx <= x1] else [ax + (bx - ax) * (y - ay) / (by - ay)],
+        x0 <= x,
+        x <= x1
+      ]
+    -- an edge that meets a side of the box along the lines there
+    onSideX x =
+      [ x
+      | ((ax, ay), (bx, by)) <- es,
+        min ax bx <= x,
+        x <= max ax bx,
+        let (lo, hi) = if ax == bx then (min ay by, max ay by) else let y = ay + (by - ay) * (x - ax) / (bx - ax) in (y, y),
+        lo <= y1,
+        hi >= y0
+      ]
+    -- a corner inside the region: on an edge, at a vertex, or covered; the edges that matter reach its y, so are in es
+    inside p@(px, py) =
+      elem px (inRange py py (eiVertices ix)) || any (onEdge p) es || covered rule (winding es p)
+    corners = [x | x <- [x0, x1], y <- [y0, y1], inside (x, y)]
+    candidates = vertices <> onSideY y0 <> onSideY y1 <> onSideX x0 <> onSideX x1 <> corners
+
+{- | Values by a rational key, for the values of the keys within a closed
+range: a search tree built once from the sorted keys (base has no map).
+-}
+data Keyed a = KLeaf | KNode !(Keyed a) !Rational [a] !(Keyed a)
+
+-- | The tree of values by their keys, balanced by splitting the sorted keys in the middle.
+keyed :: [(Rational, a)] -> Keyed a
+keyed kvs = build [(fst (head' g), map snd g) | g <- groupBy ((==) `on` fst) (sortOn fst kvs)]
+  where
+    head' g = case g of
+      x : _ -> x
+      [] -> error "keyed: an empty group"
+    build xs = case splitAt (length xs `div` 2) xs of
+      (_, []) -> KLeaf
+      (l, (k, vs) : r) -> KNode (build l) k vs (build r)
+
+-- | The values whose keys are from lo to hi, both included.
+inRange :: Rational -> Rational -> Keyed a -> [a]
+inRange lo hi = go
+  where
+    go KLeaf = []
+    go (KNode l k vs r) =
+      (if lo < k then go l else [])
+        <> (if lo <= k && k <= hi then vs else [])
+        <> (if k < hi then go r else [])

@@ -1,0 +1,32 @@
+# 輪郭に沿う回り込みの見本の横組みの本（root ADR 0464 A1）
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "12Q"
+characters = 32
+lines = 30
+line-pitch = "19H"
+position = { top = "24mm", gutter = "17mm" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
+
+[headings.1]
+page-break = "any"
+size = "1.5zw"
+
+[figures]
+number = "図{n}"
+wrap-gap = "1zw"
+
+# 円：images/circle.svg の viewBox（200 × 200）の単位
+[outlines.circle]
+path = "M 190 100 C 190 149.71 149.71 190 100 190 C 50.29 190 10 149.71 10 100 C 10 50.29 50.29 10 100 10 C 149.71 10 190 50.29 190 100 Z"
+
+# 星形：images/star.svg の viewBox（200 × 200）の単位。SVG の大きさは 400 × 400 で、viewBox の単位と違う
+[outlines.star]
+path = "M 100 5 L 123.51 67.64 L 190.35 70.64 L 138.04 112.36 L 155.84 176.86 L 100 140 L 44.16 176.86 L 61.96 112.36 L 9.65 70.64 L 76.49 67.64 Z"

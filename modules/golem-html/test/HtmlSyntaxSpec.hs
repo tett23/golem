@@ -127,7 +127,7 @@ samples =
       bookOf
         [ para 0 [txt "一行目", LineBreak (at 1), txt "二行目"],
           Block (at 2) Nothing Nothing (TableBlock (Table [AlignLeft, AlignDefault] [ColumnAuto, ColumnZw 3] Nothing False Nothing [[txt "a"], [txt "b"]] [[[txt "1"], [txt "2"]]])),
-          Block (at 3) Nothing Nothing (FigureBlock (Figure "images/a.png" Nothing "代替" Nothing Nothing [para 4 [txt "図"]] Nothing False False))
+          Block (at 3) Nothing Nothing (FigureBlock (Figure "images/a.png" Nothing "代替" Nothing Nothing [para 4 [txt "図"]] Nothing False False Nothing))
         ],
     sample "notes" $
       (bookOf [para 0 [txt "本文", Note (at 1) 1 Nothing (noteBody (at 1) [txt "注。"]), Endnote (at 2) 1 Nothing (noteBody (at 2) [txt "後注。"])], Block (at 3) Nothing Nothing (ChannelOutput (TocOutput 2))])

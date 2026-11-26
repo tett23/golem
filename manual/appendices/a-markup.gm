@@ -164,6 +164,7 @@
   - [code: wrap]：[code: start] か [code: end] を書くと、図版を版面の端に寄せ、本文を脇に回り込ませます。PDF でだけ有効です。
   - [code: width]：図版の行の方向の長さ（横組みでは幅、縦組みでは高さ）です。[code: 12zw]、[code: 40mm] のような寸法か、[code: 50%] のような行長に対する割合で書きます。[code: wrap] を書くときは省けません。回り込ませない図版では省け、省けば行長になります。
   - [code: rotate]：[code: true] を書くと、図版とキャプションを一緒に 90 度回し、一ページに置きます。省けば [code: false] です。PDF でだけ有効で、[code: wrap] とは一緒に書けません。
+  - [code: outline]：[code: style.toml] の [code: \[outlines\]] の輪郭の名前です。本文を、四角でなく、その輪郭に沿って回り込ませます。[code: wrap] と一緒に書きます。PDF でだけ有効です。
 = [strong: [code: @table ファイル]]
   CSV か TSV のファイルから表を作ります。
   ファイルは最初の引数に書きます。

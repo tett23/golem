@@ -164,7 +164,7 @@ genBlock =
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genNat <*> Gen.list (Range.linear 0 2) genBlock),
         OrderedList <$> Gen.list (Range.linear 1 3) (ListItem Nothing <$> Gen.list (Range.linear 0 2) genBlock),
         DefList <$> Gen.list (Range.linear 1 2) (DefGroup <$> Gen.list (Range.linear 1 2) inl <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 0 2) genBlock)),
-        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool),
+        FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool <*> Gen.maybe genText),
         -- a text frame of paragraphs (root ADR 0438)
         FrameBlock <$> Gen.element ["quote", "a", "side-1"] <*> Gen.list (Range.linear 0 2) (Block <$> genSpan <*> Gen.maybe genText <*> Gen.maybe genText <*> (Paragraph <$> Gen.maybe genText <*> inl))
       ]

@@ -33,7 +33,7 @@ block s = \case
   Captioned -> table (Just [Text (sp s) "表題"]) False
   NoNumber -> table (Just [Text (sp s) "表題"]) True
   Plain -> table Nothing False
-  Fig -> Block (sp s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False))
+  Fig -> Block (sp s) Nothing Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False False Nothing))
   Listing -> Block (sp s) Nothing Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp s) "例"]) False [] False))
   where
     table cap nn = Block (sp s) Nothing Nothing (TableBlock (plainTable [AlignDefault] [[Text (sp s) "a"]] []) {tableCaption = cap, tableNoNumber = nn})

@@ -233,11 +233,11 @@ cbor =
         -- the next version is not accepted either
         decodeDocument (toStrictByteString (encodeTerm (TList [TInt 10, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 10",
       testCase "a figure with its page and rotate survives the CBOR round trip (golem-pdf ADR 0008, golem-driver ADR 0034)" $ do
-        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True False
+        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True False Nothing
             doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing Nothing (FigureBlock fig)]
         decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "a figure and a code block with nonumber survive the CBOR round trip (docs/adr/0200)" $ do
-        let fig = Figure "images/a.png" Nothing "alt" Nothing Nothing [] Nothing False True
+        let fig = Figure "images/a.png" Nothing "alt" Nothing Nothing [] Nothing False True Nothing
             code = Code Nothing Nothing Nothing (Just [Text sp "例"]) False [CodeLine "a" (Just 1) Nothing False [] Nothing] True
             doc = Document (FileId 0) [Block sp Nothing Nothing (FigureBlock fig), Block sp Nothing Nothing (CodeBlock code)]
         decodeDocument (encodeDocument doc) @?= Right doc,
@@ -318,12 +318,12 @@ cbor =
         validateDocument size [] (doc [Block sp Nothing Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
         validateDocument size [] (doc [Block sp Nothing Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
         -- a caption holds paragraphs only (docs/adr/0144)
-        validateDocument size [] (doc [Block sp Nothing Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False False))]) @?= ["図版のキャプションには段落だけを置けます"]
+        validateDocument size [] (doc [Block sp Nothing Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False False Nothing))]) @?= ["図版のキャプションには段落だけを置けます"]
         validateDocument size [] (doc [Block sp (Just "x") Nothing (ForcedBreak BreakRecto)]) @?= [msgLabel],
       testCase "a caption holds paragraphs only (docs/adr/0144)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            fig c = Block sp Nothing Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing c Nothing False False))
+            fig c = Block sp Nothing Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing c Nothing False False Nothing))
             par = Block sp Nothing Nothing (Paragraph Nothing [Text sp "a"])
             msg = "図版のキャプションには段落だけを置けます"
         mapM_

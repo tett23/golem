@@ -155,6 +155,16 @@ figure and a wrapped figure at the frame of `wrap = "around"`
 [root ADR 0456](../../../../docs/adr/0456-keep-every-block-off-around-frames.md) A1).
 Its pages are checked by eye by the maintainer.
 
+`specimens/outlines/` is a one-column book of figures wrapped along
+their outlines ([root ADR 0464](../../../../docs/adr/0464-wrap-text-along-figure-outlines.md) A1):
+an SVG circle at the start of the lines and an SVG star at their end,
+each with the outline of `[outlines.circle]` and `[outlines.star]` in
+the units of its viewBox (the star's SVG is 400 by 400, its viewBox 200 by
+200). It is not an input of the visual regression test: the maintainer
+builds it to PDF, after copying the fonts in as for the other books, and
+checks by eye that the text keeps the wrap gap from each outline. The
+tests of golem-driver build it with the fonts of the tests.
+
 What a page of these books shows is accepted by eye once, when its
 reference is written (the pull request says what was looked at on each
 page). The geometric properties of the same looks are checked by the

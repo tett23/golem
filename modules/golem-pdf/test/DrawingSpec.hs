@@ -32,6 +32,7 @@ redSquare =
             [SegMove (0, 0), SegLine (5, 0), SegCurve (6, 1) (6, 2) (5, 5), SegClose]
         ]
     ]
+    [1, 0, 0, 1, 0, 0]
 
 doc :: [Mark] -> [(FormRef, FormContent)] -> Map.Map ImageRef ImageData -> Document
 doc marks forms images =
@@ -97,19 +98,20 @@ tests =
                   (Just (0, 0, 4, 5))
                   [DrawPath (PathPaint (Just (128, 0, 255)) True Nothing) [SegMove (0, 0), SegLine (1 / 3, 1), SegClose]]
               ]
+              [1, 0, 0, 1, 0, 0]
           )
           -- 128/255 = 0.50196 to four decimals; 1/3 rounded to 1/65536 is 21845/65536 = 0.333328
           @?= "1 0 0 -1 0 20 cm\n/GolemSRGB cs /GolemSRGB CS\nq 1 0 0 1 2 3 cm\n0 0 4 5 re W n\nq\n0.502 0 1 sc\n0 0 m\n0.333328 1 l\nh\nf*\nQ\nQ\n",
       testCase "a group without a clip has no re W n" $
-        drawingContent (Drawing (1, 1) [DrawGroup [2, 0, 0, 2, 0, 0] Nothing []])
+        drawingContent (Drawing (1, 1) [DrawGroup [2, 0, 0, 2, 0, 0] Nothing []] [1, 0, 0, 1, 0, 0])
           @?= "1 0 0 -1 0 1 cm\n/GolemSRGB cs /GolemSRGB CS\nq 2 0 0 2 0 0 cm\nQ\n",
       testCase "a dashed stroke writes its colour, width, cap, join, miter limit and dash array" $
-        drawingContent (Drawing (1, 1) [DrawPath (PathPaint Nothing False (Just (PathStroke (0, 255, 0) (1 / 2) 1 2 10 [1, 2, 3] (1 / 2)))) [SegMove (0, 0), SegCurve (1, 0) (1, 1) (0, 1)]])
+        drawingContent (Drawing (1, 1) [DrawPath (PathPaint Nothing False (Just (PathStroke (0, 255, 0) (1 / 2) 1 2 10 [1, 2, 3] (1 / 2)))) [SegMove (0, 0), SegCurve (1, 0) (1, 1) (0, 1)]] [1, 0, 0, 1, 0, 0])
           @?= "1 0 0 -1 0 1 cm\n/GolemSRGB cs /GolemSRGB CS\nq\n0 1 0 SC 0.5 w 1 J 2 j 10 M [1 2 3] 0.5 d\n0 0 m\n1 0 1 1 0 1 c\nS\nQ\n",
       testGroup
         "the painting operator follows the fill, the fill rule and the stroke"
         [ testCase (name <> " paints with " <> show op) $
-            let content = drawingContent (Drawing (1, 1) [DrawPath (PathPaint fill evenOdd stroke) [SegMove (0, 0)]])
+            let content = drawingContent (Drawing (1, 1) [DrawPath (PathPaint fill evenOdd stroke) [SegMove (0, 0)]] [1, 0, 0, 1, 0, 0])
              in assertBool (show content) (("0 0 m\n" <> op <> "\nQ\n") `BS.isSuffixOf` content)
         | (name, fill, evenOdd, stroke, op) <-
             [ ("a fill", Just (0, 0, 0), False, Nothing, "f"),

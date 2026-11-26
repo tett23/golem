@@ -19,7 +19,7 @@ svgColorTests =
         recolorFigure (0, 100, 100, 0) (P.SvgFigure (drawing [black])) @?= P.SvgFigure (drawing [(255, 0, 0)]),
       testCase "root ADR 0386 I1: grouped strokes keep their geometry and line style" $ do
         let stroke = P.PathStroke black 2 1 2 4 [1, 2] 1
-            drawing' color = P.Drawing (10, 10) [P.DrawGroup [1, 0, 0, 1, 2, 3] (Just (0, 0, 8, 8)) [P.DrawPath (P.PathPaint Nothing False (Just stroke {P.psColor = color})) [P.SegMove (0, 0), P.SegLine (10, 10)]]]
+            drawing' color = P.Drawing (10, 10) [P.DrawGroup [1, 0, 0, 1, 2, 3] (Just (0, 0, 8, 8)) [P.DrawPath (P.PathPaint Nothing False (Just stroke {P.psColor = color})) [P.SegMove (0, 0), P.SegLine (10, 10)]]] [1, 0, 0, 1, 0, 0]
         recolorFigure (0, 100, 100, 0) (P.SvgFigure (drawing' black)) @?= P.SvgFigure (drawing' (255, 0, 0)),
       testCase "root ADR 0403 I1: SVG white gray and black preserve their tone" $
         recolorFigure (0, 100, 100, 0) (P.SvgFigure (drawing [(255, 255, 255), (128, 128, 128), black])) @?= P.SvgFigure (drawing [(255, 255, 255), (255, 128, 128), (255, 0, 0)]),
@@ -60,4 +60,4 @@ svgColorTests =
     ]
   where
     black = (0, 0, 0)
-    drawing colors = P.Drawing (10, 10) [P.DrawPath (P.PathPaint (Just color) False Nothing) [P.SegMove (0, 0), P.SegLine (10, 10)] | color <- colors]
+    drawing colors = P.Drawing (10, 10) [P.DrawPath (P.PathPaint (Just color) False Nothing) [P.SegMove (0, 0), P.SegLine (10, 10)] | color <- colors] [1, 0, 0, 1, 0, 0]

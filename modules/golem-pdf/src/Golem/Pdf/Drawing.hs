@@ -25,7 +25,9 @@ import Golem.Pdf.Number (showRationalDigits)
 -- | A drawing: its width and height, and what it draws, y downwards from the top left.
 data Drawing = Drawing
   { drSize :: !(Rational, Rational),
-    drItems :: ![DrawItem]
+    drItems :: ![DrawItem],
+    -- | the matrix [a b c d e f] of the viewBox of an SVG into its size, applied to the items already (root ADR 0464)
+    drViewBox :: ![Rational]
   }
   deriving stock (Eq, Show)
 
@@ -86,7 +88,7 @@ drawingContentForRecoloring :: Drawing -> ByteString
 drawingContentForRecoloring = drawingContentWithPrecision 12
 
 drawingContentWithPrecision :: Int -> Drawing -> ByteString
-drawingContentWithPrecision digits (Drawing (_, h) items) =
+drawingContentWithPrecision digits (Drawing (_, h) items _) =
   BL.toStrict (B.toLazyByteString ("1 0 0 -1 0 " <> fixed h <> " cm\n/GolemSRGB cs /GolemSRGB CS\n" <> mconcat (map item items)))
   where
     sp = B.char7 ' '

@@ -55,7 +55,9 @@ import Golem.Svg.Xml
 data Svg = Svg
   { -- | the width and the height of the viewport, in CSS px
     svgSize :: !(Rational, Rational),
-    svgDrawing :: ![DrawOp]
+    svgDrawing :: ![DrawOp],
+    -- | the matrix of the viewBox into the viewport, the identity without one; the drawing has it applied (root ADR 0464)
+    svgViewBox :: !Matrix
   }
   deriving stock (Eq, Show)
 
@@ -207,7 +209,7 @@ readSvg bytes = do
           (if drawnByMarkers > markerSegmentLimit then Just drawnByMarkers else Nothing)
       body = if rootMatrix == identity && isNothing rootClip then ops else [DGroup rootMatrix rootClip ops]
   if problems == SvgProblems [] [] [] Nothing
-    then Right (Svg size body)
+    then Right (Svg size body rootMatrix)
     else Left (SvgUnsupported problems)
   where
     sheetOf e = [(r, ()) | r <- fst (parseStylesheet (T.concat [t | NText t _ <- elChildren e]))]
