@@ -1,7 +1,7 @@
 -- | Renaming the variables of @set in the language server, and their references (root ADR 0454).
 module SetRenameSpec (setRenameTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Data.ByteString qualified as BS
 import Data.List (nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
@@ -191,7 +191,7 @@ setRenameTests =
               r -> assertFailure (show (fmap places r)),
       testCase "root ADR 0463: title-format without {set.*} does not refuse the rename" $
         withProject baseFiles $ \_ ws ->
-          () <$ renamed ws (Just "[headings.1]\ntitle-format = \"{number}{title}\"\n") "common/f.gm" (offsetIn fText "price = 1" 0) "worth",
+          void $ renamed ws (Just "[headings.1]\ntitle-format = \"{number}{title}\"\n") "common/f.gm" (offsetIn fText "price = 1" 0) "worth",
       testCase "root ADR 0454 I3, I4: a reference to the new name, which the rename would make point at the variable, is refused" $ do
         withProject (("h2.gm", h2Text <> "\n[= worth]\n") : filter ((/= "h2.gm") . fst) baseFiles) $ \_ ws ->
           refused ws Nothing "common/f.gm" (offsetIn fText "price = 1" 0) "worth"
