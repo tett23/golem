@@ -168,12 +168,12 @@ import Data.Bifunctor (bimap)
 import Data.Bifunctor qualified as Bifunctor
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit, isLetter)
+import Data.Either (isRight)
 import Data.Foldable (asum, toList)
 import Data.List (find, nub, nubBy, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Either (isRight)
 import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)

@@ -22,11 +22,11 @@ import NoteSpec qualified
 import OperatorSpec qualified
 import OverrideImportSpec qualified
 import ParagraphStyleControlsSpec qualified
-import StyleArgumentsSpec qualified
 import RangeSpec qualified
 import RationalSpec qualified
 import RegexStyleSpec qualified
 import ShySpec qualified
+import StyleArgumentsSpec qualified
 import TableAttributesSpec qualified
 import TableSpec qualified
 import Test.Tasty

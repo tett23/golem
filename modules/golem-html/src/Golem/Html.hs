@@ -129,8 +129,8 @@ data HtmlConfig = HtmlConfig
     -- | full-width character cells in em, without changing glyph size (root ADR 0380)
     hcCharacterAdvance :: !(Maybe Text),
     {- | the paragraph styles without a name of the book, with the keys of
-    @style over a style (root ADR 0467), resolved with style.toml -}
-    hcAnonymousStyles :: !(Map StyleRef HtmlParaStyle),
+    @style over a style (root ADR 0467), resolved with style.toml
+    -} hcAnonymousStyles :: !(Map StyleRef HtmlParaStyle),
     -- | those of each file with styles of its own, resolved with its styles (root ADR 0467)
     hcLocalAnonymousStyles :: !(Map FileId (Map StyleRef HtmlParaStyle)),
     -- | the font and size of the cells of the tables in a paragraph style without a name (root ADR 0467)
@@ -379,8 +379,8 @@ data Ctx = Ctx
     -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
     cParaStyles :: Map Text HtmlParaStyle,
     {- | the number of each paragraph style without a name in the book and
-    the style as the page resolves it (root ADR 0467) -}
-    cAnonymous :: Map StyleRef (Int, Maybe HtmlParaStyle),
+    the style as the page resolves it (root ADR 0467)
+    -} cAnonymous :: Map StyleRef (Int, Maybe HtmlParaStyle),
     -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
     cListDepth :: Int,
     -- | the notes of the chapter of the page (golem-driver ADR 0026)

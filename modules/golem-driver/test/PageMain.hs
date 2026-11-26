@@ -2,7 +2,6 @@ module Main (main) where
 
 import AdjustOrderSpec (adjustOrderTests)
 import AlignSpaceSpec (alignSpaceTests)
-import StyleArgumentsPdfSpec (styleArgumentsPdfTests)
 import AroundBlocksSpec (aroundBlocksTests)
 import BoxesSpec (boxesTests)
 import CaptionSidenoteIndentSpec (captionSidenoteIndentTests)
@@ -39,6 +38,7 @@ import ReuseSpec
 import SeparatorSpec (visibleSeparatorTests)
 import SinglePageSpec qualified
 import SoftHyphenSpec (softHyphenTests)
+import StyleArgumentsPdfSpec (styleArgumentsPdfTests)
 import StylesSpec
 import Test.Tasty
 import TitleFormatSpec (titleFormatTests)
